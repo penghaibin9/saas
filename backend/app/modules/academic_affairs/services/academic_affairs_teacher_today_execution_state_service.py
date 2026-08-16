@@ -15,6 +15,7 @@ from app.services.db_service import _tid
 from .academic_affairs_roster_consumer_service import roster_hash
 
 _ADMIN_SPECIAL = "ADMIN_SPECIAL"
+_ATTENDANCE_PAGE = "/pages/teacher/academic-affairs/attendance"
 
 
 def _roster_state(teaching_class, version, member_ids) -> dict:
@@ -108,12 +109,12 @@ def _action_state(row: dict, roster_state: dict, attendance_state: dict) -> dict
         }
     if attendance_state.get("attendanceSessionId"):
         status = str(attendance_state.get("attendanceState") or "").upper()
+        session_id = str(attendance_state["attendanceSessionId"])
         return {
             "attendanceAction": "OPEN_EXISTING",
             "attendanceActionLabel": "继续点名" if status == "DRAFT" else "查看考勤",
-            # C-W2 next slice will replace this temporary block with an exact sessionId deep-link.
-            "attendanceRoute": None,
-            "attendanceBlockReason": "该课次已有考勤场次，请从课堂考勤列表继续处理",
+            "attendanceRoute": f"{_ATTENDANCE_PAGE}?sessionId={session_id}",
+            "attendanceBlockReason": "",
         }
     if not roster_state.get("rosterReady"):
         return {

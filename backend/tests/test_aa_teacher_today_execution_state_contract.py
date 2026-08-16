@@ -51,7 +51,7 @@ def test_attendance_state_never_picks_one_of_duplicate_formal_sessions():
     assert conflict["attendanceSessionId"] is None
 
 
-def test_action_state_never_offers_create_for_existing_or_unready_occurrence():
+def test_action_state_uses_exact_existing_session_route_and_never_recreates_it():
     from app.modules.academic_affairs.services import academic_affairs_teacher_today_execution_state_service as state
 
     row = {
@@ -67,16 +67,27 @@ def test_action_state_never_offers_create_for_existing_or_unready_occurrence():
         {"attendanceState": "NOT_STARTED", "attendanceSessionId": None, "attendanceIssue": ""},
     )
     assert create["attendanceAction"] == "CREATE"
+    assert create["attendanceActionLabel"] == "去点名"
     assert create["attendanceRoute"] == row["attendanceRoute"]
 
-    existing = state._action_state(
+    draft = state._action_state(
         row,
         ready,
         {"attendanceState": "DRAFT", "attendanceSessionId": "301", "attendanceIssue": ""},
     )
-    assert existing["attendanceAction"] == "OPEN_EXISTING"
-    assert existing["attendanceRoute"] is None
-    assert "已有考勤场次" in existing["attendanceBlockReason"]
+    assert draft["attendanceAction"] == "OPEN_EXISTING"
+    assert draft["attendanceActionLabel"] == "继续点名"
+    assert draft["attendanceRoute"] == "/pages/teacher/academic-affairs/attendance?sessionId=301"
+    assert draft["attendanceBlockReason"] == ""
+
+    submitted = state._action_state(
+        row,
+        ready,
+        {"attendanceState": "SUBMITTED", "attendanceSessionId": "302", "attendanceIssue": ""},
+    )
+    assert submitted["attendanceAction"] == "OPEN_EXISTING"
+    assert submitted["attendanceActionLabel"] == "查看考勤"
+    assert submitted["attendanceRoute"] == "/pages/teacher/academic-affairs/attendance?sessionId=302"
 
     blocked_roster = state._action_state(
         row,
