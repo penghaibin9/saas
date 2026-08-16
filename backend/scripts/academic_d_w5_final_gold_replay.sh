@@ -30,6 +30,7 @@ W5_PHASE="EXACT_D_CHECK"
 CLEAN_SCHEMA_PROVEN=false
 MIGRATED_TENANT_SCHEMA_PROVEN=false
 TARGETED_CONTRACTS_PROVEN=false
+PERMISSION_NEGATIVE_PROVEN=false
 MAIN_ALEMBIC_VERSION=""
 INTEGRATED_ALEMBIC_VERSION=""
 MIGRATED_PROBE_DIGEST=""
@@ -65,7 +66,7 @@ migrated_tenant_contracts_proven=$TARGETED_CONTRACTS_PROVEN
 main_alembic_version=$MAIN_ALEMBIC_VERSION
 integrated_alembic_version=$INTEGRATED_ALEMBIC_VERSION
 migrated_probe_digest=$MIGRATED_PROBE_DIGEST
-permission_negative_contract_included=true
+permission_negative_contract_proven=$PERMISSION_NEGATIVE_PROVEN
 datascope_negative_contract_included=true
 cross_tenant_sentinel_included=true
 r11_contract_included=true
@@ -242,6 +243,7 @@ files=(
   tests/test_aa_selection_w6_roster_reconcile_mysql.py
   tests/test_aa_attendance_published_occurrence_contract.py
   tests/test_aa_graduation_d_w0_scope_guard.py
+  tests/test_aa_graduation_d_w5_permission_negative.py
   tests/test_aa_archive_d_w1_authority_regressions.py
   tests/test_aa_semester_pilot_r11.py
   tests/test_aa_main_permission_middleware_compat.py
@@ -254,5 +256,6 @@ pytest -q -p no:warnings \
   "${files[@]}" \
   --maxfail=1 \
   --junitxml="$JUNIT"
+PERMISSION_NEGATIVE_PROVEN=true
 TARGETED_CONTRACTS_PROVEN=true
 W5_PHASE="PRE_GOLD_REPLAY_COMPLETE"
