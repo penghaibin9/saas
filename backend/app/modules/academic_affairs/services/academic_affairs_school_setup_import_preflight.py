@@ -44,8 +44,89 @@ def _snapshot_key(row: Mapping[str, object]) -> str:
     return _course_key(row.get("courseCode"), row.get("version"))
 
 
+def _required_snapshot_id(value: object, *, field: str, business_key: str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"existing Course {business_key} missing/invalid {field}") from exc
+    if parsed <= 0:
+        raise ValueError(f"existing Course {business_key} missing/invalid {field}")
+    return parsed
+
+
+def _optional_snapshot_id(value: object, *, field: str, business_key: str) -> int | None:
+    if value in (None, "", 0, "0"):
+        return None
+    return _required_snapshot_id(value, field=field, business_key=business_key)
+
+
+def _validate_existing_course_chains(existing: list[dict]) -> tuple[dict[str, dict], dict[str, list[dict]]]:
+    """Prove the existing version graph is a linear v1→v2→… chain per code.
+
+    W2 Course Authority creates exactly one direct successor by ``prev_version_id``.
+    Import preflight must therefore fail closed when persisted data is already
+    forked/gapped/mislinked instead of guessing from ``max(version)``.
+    """
+    existing_by_key: dict[str, dict] = {}
+    versions_by_code: dict[str, list[dict]] = defaultdict(list)
+    seen_course_ids: set[int] = set()
+
+    for course in existing:
+        key = _snapshot_key(course)
+        if key in existing_by_key:
+            raise ValueError(f"duplicate existing Course stable key: {key}")
+        course_id = _required_snapshot_id(course.get("courseId"), field="courseId", business_key=key)
+        if course_id in seen_course_ids:
+            raise ValueError(f"duplicate existing Course courseId: {course_id}")
+        seen_course_ids.add(course_id)
+        existing_by_key[key] = course
+        code = str(course.get("courseCode") or "").strip().upper()
+        versions_by_code[code].append(course)
+
+    for code, versions in versions_by_code.items():
+        versions.sort(key=lambda item: int(item.get("version") or 0))
+        first = versions[0]
+        first_key = _snapshot_key(first)
+        first_version = int(first.get("version") or 0)
+        first_prev = _optional_snapshot_id(
+            first.get("prevVersionId"), field="prevVersionId", business_key=first_key
+        )
+        if first_version != 1:
+            raise ValueError(
+                f"existing Course version chain for {code} does not start at v1: found v{first_version}"
+            )
+        if first_prev is not None:
+            raise ValueError(f"existing Course version chain for {code} has v1 prevVersionId")
+
+        previous = first
+        for current in versions[1:]:
+            previous_key = _snapshot_key(previous)
+            current_key = _snapshot_key(current)
+            previous_version = int(previous.get("version") or 0)
+            current_version = int(current.get("version") or 0)
+            if current_version != previous_version + 1:
+                raise ValueError(
+                    f"existing Course version chain gap for {code}: "
+                    f"{previous_key} -> {current_key}"
+                )
+            previous_id = _required_snapshot_id(
+                previous.get("courseId"), field="courseId", business_key=previous_key
+            )
+            current_prev = _optional_snapshot_id(
+                current.get("prevVersionId"), field="prevVersionId", business_key=current_key
+            )
+            if current_prev != previous_id:
+                raise ValueError(
+                    f"existing Course prevVersionId mismatch for {current_key}: "
+                    f"expected {previous_id}, got {current_prev}"
+                )
+            previous = current
+
+    return existing_by_key, versions_by_code
+
+
 def _normalize_compare_value(field: str, value):
-    if field in {"credit"}:
+    if field == "credit":
         return float(value or 0)
     if field in {
         "hoursTotal", "hoursTheory", "hoursPractice", "hoursExperiment", "hoursComputer",
@@ -70,7 +151,15 @@ def _payload_differences(incoming: Mapping[str, object], existing: Mapping[str, 
     )
 
 
-def _item(row: Mapping[str, object], action: str, code: str, message: str, *, evidence=None, how_to_resolve="") -> dict:
+def _item(
+    row: Mapping[str, object],
+    action: str,
+    code: str,
+    message: str,
+    *,
+    evidence=None,
+    how_to_resolve="",
+) -> dict:
     return {
         "row": int(row["rowNo"]),
         "businessKey": str(row["businessKey"]),
@@ -91,24 +180,15 @@ def course_catalog_preflight(
     """Classify Course Catalog rows with no writes and no name-based identity.
 
     ``existing_courses`` must be the result of one tenant-scoped batch lookup
-    for all incoming course codes.  ``allowed_college_ids=None`` means the
-    caller has school-wide authority; an empty/non-empty set is an explicit
-    college scope and is enforced per row.
+    for all incoming course codes and must include ``courseId`` plus
+    ``prevVersionId`` so the W2 direct-successor chain can be proven before any
+    row is classified. ``allowed_college_ids=None`` means school-wide authority;
+    an empty/non-empty set is an explicit college scope and is enforced per row.
     """
     rows = [dict(row) for row in normalized_rows]
     existing = [dict(row) for row in existing_courses]
     source_key_counts = Counter(str(row["businessKey"]) for row in rows)
-
-    existing_by_key: dict[str, dict] = {}
-    versions_by_code: dict[str, list[dict]] = defaultdict(list)
-    for course in existing:
-        key = _snapshot_key(course)
-        if key in existing_by_key:
-            raise ValueError(f"duplicate existing Course stable key: {key}")
-        existing_by_key[key] = course
-        versions_by_code[str(course.get("courseCode") or "").strip().upper()].append(course)
-    for values in versions_by_code.values():
-        values.sort(key=lambda item: int(item.get("version") or 0))
+    existing_by_key, versions_by_code = _validate_existing_course_chains(existing)
 
     items: list[dict] = []
     errors: list[dict] = []
