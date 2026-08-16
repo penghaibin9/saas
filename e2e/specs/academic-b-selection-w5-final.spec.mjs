@@ -143,7 +143,20 @@ test('Academic B W5 server actions close Student PC + miniapp with blocked/enrol
   await expect(miniBlocked).toContainText('不可选')
   await expect(miniBlocked).toContainText('课程容量已满')
   await expect(miniBlocked).toContainText('下一步：')
-  await expect(miniBlocked.locator('.sl__btn')).toBeDisabled()
+  const miniBlockedButton = miniBlocked.locator('.sl__btn')
+  await expect(miniBlockedButton).toHaveText('不可选')
+  await expect(miniBlockedButton).toHaveAttribute('disabled', /^(true|disabled)$/)
+  let blockedEnrollRequests = 0
+  const countBlockedEnroll = (request) => {
+    if (request.url().includes('/api/v1/mobile/academic/selection/enroll') && request.method() === 'POST') {
+      blockedEnrollRequests += 1
+    }
+  }
+  mini.on('request', countBlockedEnroll)
+  await miniBlockedButton.click({ force: true })
+  await mini.waitForTimeout(300)
+  mini.off('request', countBlockedEnroll)
+  expect(blockedEnrollRequests).toBe(0)
 
   const miniEligible = await miniCard(mini, batch.batchName, miniCourse.courseName)
   await expect(miniEligible.locator('.sl__btn')).toHaveText('选课')
