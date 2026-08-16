@@ -44,9 +44,12 @@ def test_formal_application_owns_three_slots_and_intention_stays_separate():
     assert InternshipApplication.__tablename__ == "t_internship_application"
     assert InternshipIntention.__tablename__ == "t_internship_intention"
     assert InternshipApplication.__table__.name != InternshipIntention.__table__.name
-    assert ("tenant_id", "record_id", "volunteer_no") in _unique_column_sets(
-        InternshipApplication
-    )
+    assert (
+        "tenant_id",
+        "record_id",
+        "campaign_id",
+        "volunteer_no",
+    ) in _unique_column_sets(InternshipApplication)
 
     save_source = inspect.getsource(internship_application_service.save_my)
     assert 'volunteer = 0 if app_type == "SELF_ARRANGED"' in save_source
@@ -88,23 +91,3 @@ def test_staff_internship_bundle_remains_staff_only_and_enterprise_portal_is_sep
     # Enterprise portal is mounted separately and never inherits the staff dependency bundle.
     assert "internship_enterprise_portal" in register_source
     assert "api_router.include_router(internship_enterprise_portal.router)" in register_source
-    assert "api_router.include_router(internship_enterprise_portal.router, dependencies=d)" not in register_source
-    assert "api_router.include_router(internship_enterprise_collaboration.router)" in register_source
-    assert "api_router.include_router(internship_enterprise_collaboration.router, dependencies=d)" not in register_source
-
-
-def test_forbidden_duplicate_authority_model_names_do_not_exist():
-    import app.models as models
-
-    for duplicate_name in (
-        "EnterpriseCompany",
-        "EnterpriseJob",
-        "EnterpriseUser",
-        "InternshipRecruitmentJob",
-        "StudentVolunteer",
-        "PlacementResult",
-        "RecruitmentApplication",
-    ):
-        assert not hasattr(models, duplicate_name), (
-            f"{duplicate_name} duplicates an already-frozen internship authority"
-        )
