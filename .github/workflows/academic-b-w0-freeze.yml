@@ -1,37 +1,14 @@
 name: Academic B W0 Authority Freeze
+# B-W0 is frozen. Later waves must not auto-rerun this expensive KEEP gate.
 
 on:
   workflow_dispatch:
-  push:
-    branches: [agent/academic-b-schedule-selection]
-    paths:
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_schedule_*.py'
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_*.py'
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_*.py'
-      - 'backend/tests/test_aa_schedule_active_truth.py'
-      - 'backend/tests/test_aa_teaching_roster_unification.py'
-      - 'backend/tests/test_aa_selection_lock_scaling.py'
-      - 'backend/tests/test_aa_selection_rounds.py'
-      - 'backend/tests/test_aa_d6_selection_truth_contract.py'
-      - '.github/workflows/academic-b-w0-freeze.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_schedule_*.py'
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_*.py'
-      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_*.py'
-      - 'backend/tests/test_aa_schedule_active_truth.py'
-      - 'backend/tests/test_aa_teaching_roster_unification.py'
-      - 'backend/tests/test_aa_selection_lock_scaling.py'
-      - 'backend/tests/test_aa_selection_rounds.py'
-      - 'backend/tests/test_aa_d6_selection_truth_contract.py'
-      - '.github/workflows/academic-b-w0-freeze.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: academic-b-w0-${{ github.event.pull_request.number || github.ref }}
+  group: academic-b-w0-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -63,10 +40,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - name: Assert exact head
-        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
