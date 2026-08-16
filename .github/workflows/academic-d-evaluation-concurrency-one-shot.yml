@@ -92,7 +92,7 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
-          python scripts/academic_d_evaluation_concurrency_probe.py \
+          PYTHONPATH=. python scripts/academic_d_evaluation_concurrency_probe.py \
             --output test-results/academic-d-evaluation-concurrency.json
 
       - name: Summarize evaluation concurrency evidence
