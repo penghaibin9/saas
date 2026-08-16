@@ -79,8 +79,11 @@ class Finding:
     severity: str
 
     @property
-    def count_key(self) -> tuple[str, str]:
-        return self.rule, self.source
+    def debt_key(self) -> tuple[str, str]:
+        # Historical debt identity follows the bad call itself, not its file path.
+        # A frozen-module move must not manufacture a "new" violation, while
+        # multiplicity accounting below still blocks an extra copied occurrence.
+        return self.rule, self.snippet
 
 
 def iter_files() -> Iterable[Path]:
@@ -146,13 +149,42 @@ def base_text(base_ref: str, source: str) -> str:
     return completed.stdout if completed.returncode == 0 else ""
 
 
+def base_sources(base_ref: str) -> list[str]:
+    """List scannable source paths from the base tree, including paths moved in HEAD."""
+    completed = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", base_ref, "--", *SOURCE_ROOTS],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"cannot enumerate file-center scan base {base_ref}: {completed.stderr.strip()}"
+        )
+    sources: list[str] = []
+    for raw in completed.stdout.splitlines():
+        source = raw.strip()
+        if not source:
+            continue
+        path = Path(source)
+        if path.suffix.lower() not in SUFFIXES or any(part in SKIP_PARTS for part in path.parts):
+            continue
+        sources.append(source)
+    return sources
+
+
 def classify_against_base(findings: list[Finding], base_ref: str) -> list[Finding]:
+    # Compare against the entire base source tree by stable call signature. Using
+    # current file paths alone turns an unchanged call into a false BLOCKER when
+    # code is frozen/moved into a bundle. Counts still make any extra occurrence
+    # beyond the base debt a real blocker.
     base_counts: collections.Counter[tuple[str, str]] = collections.Counter()
-    sources = sorted({item.source for item in findings if item.classification == "UNCLASSIFIED"})
-    for source in sources:
+    for source in base_sources(base_ref):
         for item in scan_text(source, base_text(base_ref, source)):
             if item.classification != "BOUNDARY":
-                base_counts[item.count_key] += 1
+                base_counts[item.debt_key] += 1
 
     consumed: collections.Counter[tuple[str, str]] = collections.Counter()
     classified: list[Finding] = []
@@ -160,7 +192,7 @@ def classify_against_base(findings: list[Finding], base_ref: str) -> list[Findin
         if item.classification != "UNCLASSIFIED":
             classified.append(item)
             continue
-        key = item.count_key
+        key = item.debt_key
         if consumed[key] < base_counts[key]:
             consumed[key] += 1
             classified.append(Finding(

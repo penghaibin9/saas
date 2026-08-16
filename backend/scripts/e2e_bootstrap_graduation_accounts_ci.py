@@ -1,10 +1,11 @@
 """Bootstrap dedicated graduation/internship E2E identities through canonical Data Exchange.
 
-The retired mixed identity parser is intentionally not used.  CI splits the historical
-combined workbook into the canonical TEACHER and STUDENT contracts, runs each file through
-FileObject -> explicit process/staging -> canonical confirm, and keeps any credential
-receipt in memory only.  Passwords are normalized by the official reset/change endpoints
-in the following workflow step and are never written to an artifact.
+The retired mixed identity parser is intentionally not used. CI builds the dedicated
+TEACHER and STUDENT workbooks from the same production template builders exposed to
+schools, runs each file through FileObject -> explicit process/staging -> canonical
+confirm, and keeps any credential receipt in memory only. Passwords are normalized by
+the official reset/change endpoints in the following workflow step and are never written
+to an artifact.
 """
 from __future__ import annotations
 
@@ -17,64 +18,68 @@ from openpyxl import load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.services.identity_import_file_service import (  # noqa: E402
+    build_student_template,
+    build_teacher_template,
+)
 from scripts.e2e_bootstrap_graduation_accounts import (  # noqa: E402
+    CLASS,
+    COLLEGE,
+    MAJOR,
     _req,
-    build_xlsx,
     ensure_org,
     login,
     multipart,
 )
 
 
-def _add_internship_mentor_role(content: bytes) -> bytes:
-    """Give the existing E2E advisor the real internship-mentor role as well."""
-    wb = load_workbook(io.BytesIO(content))
+def _workbook_with_rows(template: bytes, rows: list[list[str]]) -> bytes:
+    """Populate the canonical Import sheet without changing its production headers."""
+    wb = load_workbook(io.BytesIO(template))
     ws = wb["导入模板"]
-    headers = {str(cell.value or "").strip(): idx for idx, cell in enumerate(ws[1], start=1)}
-    login_col = headers.get("工号/学号") or headers.get("账号") or 2
-    role_col = headers.get("角色编码") or headers.get("角色") or 11
-    found = False
-    for row in range(2, ws.max_row + 1):
-        if str(ws.cell(row, login_col).value or "").strip() != "e2e_advisor_a":
-            continue
-        roles = [part.strip() for part in str(ws.cell(row, role_col).value or "").split(",") if part.strip()]
-        for code in ("GD_MENTOR", "INTERN_MENTOR"):
-            if code not in roles:
-                roles.append(code)
-        ws.cell(row, role_col).value = ",".join(roles)
-        found = True
-        break
-    if not found:
-        raise SystemExit("e2e_advisor_a is missing from identity workbook")
+    if ws.max_row > 1:
+        ws.delete_rows(2, ws.max_row - 1)
+    for row in rows:
+        ws.append(row)
     out = io.BytesIO()
     wb.save(out)
     wb.close()
     return out.getvalue()
 
 
-def _split_identity_workbook(content: bytes, identity_type: str) -> bytes:
-    """Keep the official template but retain rows for exactly one canonical identity kind."""
-    expected = str(identity_type or "").strip().upper()
-    if expected not in {"TEACHER", "STUDENT"}:
-        raise ValueError(f"unsupported identity type: {identity_type}")
-    wb = load_workbook(io.BytesIO(content))
-    ws = wb["导入模板"]
-    headers = {str(cell.value or "").strip(): idx for idx, cell in enumerate(ws[1], start=1)}
-    type_col = headers.get("类型") or headers.get("身份类型") or 1
-    kept = 0
-    for row in range(ws.max_row, 1, -1):
-        actual = str(ws.cell(row, type_col).value or "").strip().upper()
-        if actual != expected:
-            ws.delete_rows(row, 1)
-        else:
-            kept += 1
-    if kept <= 0:
-        wb.close()
-        raise SystemExit(f"canonical {expected} workbook contains no data rows")
-    out = io.BytesIO()
-    wb.save(out)
-    wb.close()
-    return out.getvalue()
+def _teacher_workbook() -> bytes:
+    return _workbook_with_rows(
+        build_teacher_template(),
+        [
+            ["e2e_academic_admin", "E2E教务管理员", "教务处", "教务管理员",
+             "ACADEMIC_ADMIN,GRADUATION_ADMIN", "", ""],
+            ["e2e_college_secretary", "E2E学院秘书", COLLEGE, "学院秘书",
+             "GD_COLLEGE_ADMIN", "COLLEGE", COLLEGE],
+            ["e2e_major_admin", "E2E专业负责人", COLLEGE, "专业负责人",
+             "GD_MAJOR_ADMIN", "MAJOR", MAJOR],
+            ["e2e_advisor_a", "E2E指导教师A", COLLEGE, "指导教师",
+             "GD_MENTOR,INTERN_MENTOR", "", ""],
+            ["e2e_advisor_b", "E2E指导教师B", COLLEGE, "指导教师",
+             "GD_MENTOR", "", ""],
+            ["e2e_reviewer", "E2E评阅教师", COLLEGE, "评阅教师",
+             "GD_REVIEWER", "", ""],
+            ["e2e_defense_a", "E2E答辩专家A", COLLEGE, "答辩专家",
+             "GD_DEFENSE_EXPERT", "", ""],
+            ["e2e_defense_b", "E2E答辩专家B", COLLEGE, "答辩专家",
+             "GD_DEFENSE_EXPERT", "", ""],
+        ],
+    )
+
+
+def _student_workbook() -> bytes:
+    return _workbook_with_rows(
+        build_student_template(),
+        [
+            ["E2E20260001", "E2E学生A", COLLEGE, MAJOR, CLASS, "2024", "男", ""],
+            ["E2E20260002", "E2E学生B", COLLEGE, MAJOR, CLASS, "2024", "女", ""],
+            ["E2E20260003", "E2E学生C", COLLEGE, MAJOR, CLASS, "2024", "男", ""],
+        ],
+    )
 
 
 def _canonical_import(token: str, *, kind: str, content: bytes) -> dict:
@@ -83,7 +88,7 @@ def _canonical_import(token: str, *, kind: str, content: bytes) -> dict:
         raise ValueError(f"unsupported canonical identity kind: {kind}")
     filename = f"e2e_interaction_{kind}.xlsx"
     body, boundary = multipart(content, filename)
-    upload_key = f"e2e-graduation-{kind}-canonical-v2"
+    upload_key = f"e2e-graduation-{kind}-canonical-v3"
     created = _req(
         "POST",
         f"/data-exchange/imports/identity/{kind}/validate-file",
@@ -141,7 +146,7 @@ def _canonical_import(token: str, *, kind: str, content: bytes) -> dict:
         f"/data-exchange/imports/{job_id}/confirm",
         token=token,
         body={"expectedVersion": expected_version},
-        headers={"Idempotency-Key": f"e2e-graduation-{kind}-confirm-v2"},
+        headers={"Idempotency-Key": f"e2e-graduation-{kind}-confirm-v3"},
     )
     if confirmed.get("code") != 0:
         raise SystemExit(
@@ -163,11 +168,8 @@ def _canonical_import(token: str, *, kind: str, content: bytes) -> dict:
 
 
 def import_accounts_without_receipt_file(token: str) -> dict:
-    combined = _add_internship_mentor_role(build_xlsx(token))
-    teachers = _split_identity_workbook(combined, "TEACHER")
-    students = _split_identity_workbook(combined, "STUDENT")
-    teacher_receipt = _canonical_import(token, kind="teachers", content=teachers)
-    student_receipt = _canonical_import(token, kind="students", content=students)
+    teacher_receipt = _canonical_import(token, kind="teachers", content=_teacher_workbook())
+    student_receipt = _canonical_import(token, kind="students", content=_student_workbook())
     return {
         "teachers": str(teacher_receipt.get("id") or teacher_receipt.get("jobId") or "confirmed"),
         "students": str(student_receipt.get("id") or student_receipt.get("jobId") or "confirmed"),
