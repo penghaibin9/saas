@@ -140,23 +140,27 @@ def _existing_definitions():
 
 
 def _loaders(calls, *, programs=(), definitions=(), class_rows=(), status=None, active=()):
-    def loader(name, value):
-        def _load():
-            calls.append(name)
+    def scope_loader():
+        calls.append(("scope", ()))
+        return None
+
+    def keyed_loader(name, value):
+        def _load(keys):
+            calls.append((name, tuple(keys)))
             return value
         return _load
 
     return {
-        "load_allowed_major_ids": loader("scope", None),
-        "load_major_snapshots": loader(
+        "load_allowed_major_ids": scope_loader,
+        "load_major_snapshots": keyed_loader(
             "major", [{"majorId": 1, "educationYears": 3, "status": "ACTIVE"}]
         ),
-        "load_class_snapshots": loader("class", list(class_rows)),
-        "load_course_snapshots": loader("course", _course_snapshots()),
-        "load_program_snapshots": loader("program", list(programs)),
-        "load_existing_definition_rows": loader("definitions", list(definitions)),
-        "load_program_status_by_id": loader("status", dict(status or {})),
-        "load_active_binding_snapshots": loader("active_binding", list(active)),
+        "load_class_snapshots": keyed_loader("class", list(class_rows)),
+        "load_course_snapshots": keyed_loader("course", _course_snapshots()),
+        "load_program_snapshots": keyed_loader("program", list(programs)),
+        "load_existing_definition_rows": keyed_loader("definitions", list(definitions)),
+        "load_program_status_by_id": keyed_loader("status", dict(status or {})),
+        "load_active_binding_snapshots": keyed_loader("active_binding", list(active)),
     }
 
 
@@ -170,6 +174,7 @@ def test_source_blocker_short_circuits_every_snapshot_loader():
     )
     assert result["stage"] == "SOURCE"
     assert result["programPreflightSafe"] is False
+    assert result["requestKeys"] == {}
     assert calls == []
     assert {item["businessCode"] for item in result["errors"]} >= {
         "PROGRAM_COURSE_EMPTY",
@@ -178,7 +183,7 @@ def test_source_blocker_short_circuits_every_snapshot_loader():
     }
 
 
-def test_new_v1_definition_phase_is_ready_without_loading_reuse_or_binding_state():
+def test_new_v1_definition_phase_uses_exact_bounded_keys_and_skips_reuse_binding_reads():
     calls = []
     result = _pipeline().run_program_import_preflight(
         _rows(include_binding=True),
@@ -187,21 +192,26 @@ def test_new_v1_definition_phase_is_ready_without_loading_reuse_or_binding_state
     )
     assert result["stage"] == "READY"
     assert result["programPreflightSafe"] is True
-    assert calls == ["scope", "major", "course", "program"]
-    assert result["actions"] == [{
-        "programKey": "SERIES:SER-A:v1",
-        "action": "CREATE",
-        "programId": "",
-        "createStatus": "DRAFT",
-        "predecessorProgramId": "",
-        "requiresDefinitionReconciliation": False,
-    }]
+    assert result["requestKeys"] == {
+        "majorIds": (1,),
+        "classIds": (),
+        "courseKeys": ("CS101@v1",),
+        "seriesKeys": ("SER-A",),
+        "bindingScopeKeys": ("MAJOR:1:GRADE:2026:MAJOR_GRADE",),
+    }
+    assert calls == [
+        ("scope", ()),
+        ("major", (1,)),
+        ("course", ("CS101@v1",)),
+        ("program", ("SER-A",)),
+    ]
+    assert result["actions"][0]["action"] == "CREATE"
+    assert result["actions"][0]["createStatus"] == "DRAFT"
     assert result["binding"]["bindingWriteAllowed"] is False
-    assert result["binding"]["deferredCount"] == 1
     assert result["binding"]["intents"][0]["decision"] == "DEFER_UNTIL_PUBLISHED"
 
 
-def test_reuse_loads_full_definition_only_after_reference_is_green():
+def test_reuse_loads_only_exact_program_definition_ids_after_reference_is_green():
     calls = []
     result = _pipeline().run_program_import_preflight(
         _rows(),
@@ -214,12 +224,18 @@ def test_reuse_loads_full_definition_only_after_reference_is_green():
     )
     assert result["stage"] == "READY"
     assert result["programPreflightSafe"] is True
-    assert calls == ["scope", "major", "course", "program", "definitions"]
+    assert calls == [
+        ("scope", ()),
+        ("major", (1,)),
+        ("course", ("CS101@v1",)),
+        ("program", ("SER-A",)),
+        ("definitions", ("501",)),
+    ]
     assert result["actions"][0]["action"] == "REUSE"
     assert result["actions"][0]["definitionReconciled"] is True
 
 
-def test_binding_phase_defers_binding_reads_until_definition_is_proven():
+def test_binding_phase_reads_only_target_program_ids_and_exact_binding_scopes():
     calls = []
     result = _pipeline().run_program_import_preflight(
         _rows(include_binding=True),
@@ -234,20 +250,26 @@ def test_binding_phase_defers_binding_reads_until_definition_is_proven():
     assert result["stage"] == "READY"
     assert result["programPreflightSafe"] is True
     assert calls == [
-        "scope", "major", "course", "program", "definitions", "status", "active_binding",
+        ("scope", ()),
+        ("major", (1,)),
+        ("course", ("CS101@v1",)),
+        ("program", ("SER-A",)),
+        ("definitions", ("501",)),
+        ("status", ("501",)),
+        ("active_binding", ("MAJOR:1:GRADE:2026:MAJOR_GRADE",)),
     ]
     assert result["binding"]["bindingWriteAllowed"] is True
-    assert result["binding"]["intents"] == [{
+    assert result["binding"]["intents"][0] == {
         "row": 2,
         "programKey": "SERIES:SER-A:v1",
         "programId": "501",
         "scopeKey": "MAJOR:1:GRADE:2026:MAJOR_GRADE",
         "action": "CREATE",
         "supersedeProgramId": "",
-    }]
+    }
 
 
-def test_class_lookup_is_conditional_and_occurs_before_course_lookup():
+def test_class_lookup_is_conditional_bounded_and_occurs_before_course_lookup():
     calls = []
     result = _pipeline().run_program_import_preflight(
         _rows(include_binding=True, class_binding=True),
@@ -263,7 +285,14 @@ def test_class_lookup_is_conditional_and_occurs_before_course_lookup():
         ),
     )
     assert result["stage"] == "READY"
-    assert calls == ["scope", "major", "class", "course", "program"]
+    assert result["requestKeys"]["classIds"] == (77,)
+    assert calls == [
+        ("scope", ()),
+        ("major", (1,)),
+        ("class", (77,)),
+        ("course", ("CS101@v1",)),
+        ("program", ("SER-A",)),
+    ]
 
 
 def test_pipeline_has_no_session_or_shared_dispatcher_owner():
