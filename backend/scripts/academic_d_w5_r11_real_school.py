@@ -3,7 +3,8 @@
 
 The script never manufactures semester facts. It scans existing AaTerm rows, evaluates each
 through the production R11 stage readers, and only uses the public R11 create/check/complete
-service chain when one real term already satisfies all six stages.
+service chain when one real term already satisfies all six stages. A red run still writes a
+complete blocker inventory so the next construction knife can fix facts instead of guessing.
 """
 from __future__ import annotations
 
@@ -88,7 +89,7 @@ def _proxy(term):
 def _candidate(term, user: dict) -> dict:
     try:
         stages = r11._run_stages(_proxy(term), user)
-    except Exception as exc:  # surface production reader failures as blockers, never guess around them
+    except Exception as exc:  # production reader failures are blockers; never guess around them
         return {
             "termId": str(term.id),
             "termCode": f"{term.year_code}-{term.term_no}",
@@ -96,7 +97,7 @@ def _candidate(term, user: dict) -> dict:
             "passedStageCount": 0,
             "stageCount": 6,
             "blockerCount": 1,
-            "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+            "error": f"{type(exc).__name__}: {str(exc)[:500]}",
             "stages": [],
         }
     stage_summary = [
@@ -106,6 +107,8 @@ def _candidate(term, user: dict) -> dict:
             "blockerCount": int(row["blockerCount"]),
             "warningCount": int(row["warningCount"]),
             "blockers": list(row.get("blockers") or []),
+            "warnings": list(row.get("warnings") or []),
+            "evidence": row.get("evidence") or {},
             "evidenceHash": row.get("evidenceHash") or "",
         }
         for row in stages
@@ -117,14 +120,15 @@ def _candidate(term, user: dict) -> dict:
         "passedStageCount": sum(1 for row in stages if row["passed"]),
         "stageCount": len(stages),
         "blockerCount": sum(int(row["blockerCount"]) for row in stages),
+        "warningCount": sum(int(row["warningCount"]) for row in stages),
         "stages": stage_summary,
     }
 
 
-def _choose_candidate(user: dict) -> tuple[object, dict, list[dict]]:
+def _rank_candidates(user: dict) -> tuple[object, dict, list[dict]]:
     terms = _term_rows()
     if not terms:
-        raise SystemExit("R11 cannot run: sandbox-school has no AaTerm rows")
+        raise RuntimeError("R11 cannot run: sandbox-school has no AaTerm rows")
     candidates = [(term, _candidate(term, user)) for term in terms]
     ranked = sorted(
         candidates,
@@ -136,13 +140,15 @@ def _choose_candidate(user: dict) -> tuple[object, dict, list[dict]]:
         reverse=True,
     )
     selected_term, selected = ranked[0]
-    summaries = [item[1] for item in ranked]
-    if int(selected["passedStageCount"]) != 6 or int(selected["blockerCount"]) != 0:
-        raise RuntimeError(
-            "no existing real term satisfies all R11 stages: "
-            + json.dumps(summaries, ensure_ascii=False, separators=(",", ":"))
-        )
-    return selected_term, selected, summaries
+    return selected_term, selected, [item[1] for item in ranked]
+
+
+def _selected_ready(selected: dict) -> bool:
+    return (
+        int(selected.get("stageCount") or 0) == 6
+        and int(selected.get("passedStageCount") or 0) == 6
+        and int(selected.get("blockerCount") or 0) == 0
+    )
 
 
 def _persisted_proof(pilot_id: int) -> dict:
@@ -178,15 +184,52 @@ def _persisted_proof(pilot_id: int) -> dict:
         db.close()
 
 
+def _write_output(output: str | Path, payload: dict) -> None:
+    output_path = Path(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def run(output: str | Path) -> dict:
     _assert_safe_target()
     user = _activate_context()
-    term, candidate, candidates = _choose_candidate(user)
+    term, selected, candidates = _rank_candidates(user)
+
+    base_payload = {
+        "schemaVersion": 2,
+        "tenantId": str(SANDBOX_TENANT_ID),
+        "tenantCode": SANDBOX_TENANT_CODE,
+        "termId": str(term.id),
+        "termCode": selected["termCode"],
+        "selectedPreflight": selected,
+        "candidateCount": len(candidates),
+        "candidates": candidates,
+        "r11RealDataCompleted": False,
+    }
+    _write_output(output, base_payload)
+
+    if not _selected_ready(selected):
+        blockers = [
+            {
+                "termCode": row["termCode"],
+                "passedStageCount": row["passedStageCount"],
+                "blockerCount": row["blockerCount"],
+                "failedStages": [stage for stage in row.get("stages", []) if not stage.get("passed")],
+                "error": row.get("error") or "",
+            }
+            for row in candidates
+        ]
+        base_payload["blockers"] = blockers
+        _write_output(output, base_payload)
+        raise RuntimeError(
+            "no existing real term satisfies all six R11 stages; blocker inventory written to "
+            f"{Path(output)}"
+        )
 
     created = r11.create_pilot(
         user,
         term_id=int(term.id),
-        pilot_name=f"D-W5真实学校学期-{candidate['termCode']}",
+        pilot_name=f"D-W5真实学校学期-{selected['termCode']}",
         purpose="D-W5最终Gold真实学校完整学期签字",
         real_data_confirmed=True,
     )
@@ -215,21 +258,13 @@ def run(output: str | Path) -> dict:
         raise RuntimeError(f"persisted R11 stage order drifted: {persisted}")
 
     payload = {
-        "schemaVersion": 1,
-        "tenantId": str(SANDBOX_TENANT_ID),
-        "tenantCode": SANDBOX_TENANT_CODE,
-        "termId": str(term.id),
-        "termCode": candidate["termCode"],
-        "selectedPreflight": candidate,
-        "candidateCount": len(candidates),
+        **base_payload,
         "pilotId": str(pilot_id),
         "persisted": persisted,
         "environment": completed.get("environment") or {},
         "r11RealDataCompleted": True,
     }
-    output_path = Path(output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _write_output(output, payload)
     return payload
 
 
