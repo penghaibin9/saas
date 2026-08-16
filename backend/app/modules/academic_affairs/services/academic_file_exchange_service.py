@@ -68,6 +68,42 @@ def _redacted_rows(rows: list[dict], limit: int = 200) -> list[dict]:
     ]
 
 
+_ERROR_SENSITIVE_KEYS = frozenset({
+    "idcard", "id_card", "phone", "mobile", "bankaccount", "bank_account",
+})
+
+
+def _redact_error_value(value: Any) -> Any:
+    """Recursively remove sensitive identity/payment keys before error evidence is persisted."""
+    if isinstance(value, dict):
+        return {
+            str(key): _redact_error_value(item)
+            for key, item in value.items()
+            if str(key).replace("-", "_").lower() not in _ERROR_SENSITIVE_KEYS
+        }
+    if isinstance(value, (list, tuple)):
+        return [_redact_error_value(item) for item in value]
+    return _json_safe(value)
+
+
+def _error_snapshot(item: dict) -> dict:
+    """Persist only server-produced, recursively redacted error evidence.
+
+    Legacy raw fields remain at the top level for backwards compatibility. W4
+    adds reserved metadata keys so polling and error-xlsx can reconstruct the
+    explanation without trusting any frontend-supplied error payload.
+    """
+    raw = _redact_error_value(dict(item.get("raw") or item.get("rowData") or {}))
+    snapshot = dict(raw) if isinstance(raw, dict) else {}
+    evidence = item.get("evidence")
+    if evidence not in (None, "", {}, []):
+        snapshot["_evidence"] = _redact_error_value(evidence)
+    resolution = str(item.get("howToResolve") or "").strip()
+    if resolution:
+        snapshot["_howToResolve"] = resolution[:1000]
+    return _json_safe(snapshot)
+
+
 def create_academic_import_job(
     *,
     filename: str,
@@ -299,15 +335,21 @@ def _stored_errors(db, job_id: int) -> list[dict]:
         ImportRowError.import_job_id == int(job_id),
         ImportRowError.is_deleted.is_(False),
     ).order_by(ImportRowError.row_no, ImportRowError.id)).all()
-    return [
-        {
+    result: list[dict] = []
+    for item in rows:
+        snapshot = dict(item.raw_snapshot_json or {})
+        evidence = snapshot.pop("_evidence", {})
+        resolution = str(snapshot.pop("_howToResolve", "") or "")
+        result.append({
             "row": item.row_no,
             "field": item.field_code,
             "code": item.error_code,
             "message": item.error_message,
-        }
-        for item in rows
-    ]
+            "raw": snapshot,
+            "evidence": _json_safe(evidence) if evidence not in (None, "") else {},
+            "howToResolve": resolution,
+        })
+    return result
 
 
 def refresh_import_job(job_id: str, *, user: dict) -> dict:
@@ -396,9 +438,7 @@ def refresh_import_job(job_id: str, *, user: dict) -> dict:
         ))
         actor_id = jobs._actor_id(user)
         for item in errors:
-            raw = dict(item.get("raw") or item.get("rowData") or {})
-            for field in ("idCard", "id_card", "phone", "mobile", "bankAccount", "bank_account"):
-                raw.pop(field, None)
+            error_snapshot = _error_snapshot(item)
             db.add(ImportRowError(
                 tenant_id=jobs._tenant_id(),
                 import_job_id=row.id,
@@ -407,7 +447,7 @@ def refresh_import_job(job_id: str, *, user: dict) -> dict:
                 field_code=str(item.get("field") or item.get("fieldCode") or "")[:100] or None,
                 error_code=str(item.get("code") or item.get("errorCode") or "VALIDATION_ERROR")[:80],
                 error_message=str(item.get("message") or item.get("reason") or "预检失败")[:1000],
-                raw_snapshot_json=_json_safe(raw) if raw else None,
+                raw_snapshot_json=error_snapshot or None,
                 created_by=actor_id,
             ))
         snapshot = dict(row.source_snapshot_json or {})
@@ -474,7 +514,23 @@ def confirm_roster_import(job_id: str, *, lease: str, user: dict) -> dict:
     return confirm_academic_import(job_id, lease=lease, user=user)
 
 
-_ERROR_XLSX_HEADERS = ["行号", "字段", "错误代码", "错误信息", "原始值(已脱敏)"]
+_ERROR_XLSX_HEADERS = [
+    "行号", "字段", "错误代码", "错误信息", "原始值(已脱敏)", "处理建议", "证据(已脱敏)",
+]
+
+
+def _error_xlsx_row(item: dict) -> list[Any]:
+    raw = item.get("raw") or {}
+    evidence = item.get("evidence") or {}
+    return [
+        item.get("row") or "",
+        item.get("field") or "",
+        item.get("code") or "",
+        item.get("message") or "",
+        json.dumps(_json_safe(raw), ensure_ascii=False, sort_keys=True) if raw else "",
+        str(item.get("howToResolve") or ""),
+        json.dumps(_json_safe(evidence), ensure_ascii=False, sort_keys=True) if evidence else "",
+    ]
 
 
 def export_import_errors_xlsx(job_id: str, *, user: dict) -> dict:
@@ -504,13 +560,7 @@ def export_import_errors_xlsx(job_id: str, *, user: dict) -> dict:
     ws.title = "导入错误清单"
     ws.append(_ERROR_XLSX_HEADERS)
     for item in errors:
-        ws.append([
-            item.get("row") or "",
-            item.get("field") or "",
-            item.get("code") or "",
-            item.get("message") or "",
-            "",  # 存量 ImportRowError 未回传原始快照字段名，此处留空位而非编造内容
-        ])
+        ws.append(_error_xlsx_row(item))
     from io import BytesIO
     buffer = BytesIO()
     wb.save(buffer)
