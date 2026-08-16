@@ -1,7 +1,8 @@
 """A-W2 Program Authority MySQL concurrency contracts.
 
-Only the two scopes that require row-level serialization live here:
+Only the scopes that require row-level serialization live here:
 - same major+grade binding scope must end with one ACTIVE binding;
+- same class override scope must end with one ACTIVE binding;
 - one source program version must produce at most one direct successor.
 """
 from __future__ import annotations
@@ -120,6 +121,61 @@ def test_w2_same_binding_scope_serializes_to_one_active(monkeypatch):
     db.close()
 
     assert len(active) == 1, "same major+grade scope must never expose two ACTIVE bindings"
+    assert len(all_rows) == 2
+    assert sorted(row.status for row in all_rows) == ["ACTIVE", "SUPERSEDED"]
+
+
+@pytest.mark.usefixtures("db_mode")
+def test_w2_same_class_override_scope_serializes_to_one_active(monkeypatch):
+    from app.db.session import get_sessionmaker
+    from app.models import AaProgramBinding, SchoolClass
+
+    authority = _patch_writer_tenant(monkeypatch)
+    major_id, first_id, second_id = _seed_programs_for_binding()
+
+    db = get_sessionmaker()()
+    suffix = uuid.uuid4().hex[:8]
+    clazz = SchoolClass(
+        tenant_id=TID,
+        major_id=major_id,
+        class_name=f"A-W2并发班级-{suffix}",
+        grade="2026",
+        status="ACTIVE",
+        class_status="NORMAL",
+    )
+    db.add(clazz)
+    db.commit()
+    class_id = clazz.id
+    db.close()
+
+    def bind(program_id):
+        return authority.bind_grade(program_id, None, "2026", class_id)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(bind, [first_id, second_id]))
+
+    assert len(results) == 2
+    assert {int(row["programId"]) for row in results} == {first_id, second_id}
+
+    db = get_sessionmaker()()
+    active = db.scalars(select(AaProgramBinding).where(
+        AaProgramBinding.tenant_id == TID,
+        AaProgramBinding.major_id == major_id,
+        AaProgramBinding.grade_year == "2026",
+        AaProgramBinding.class_id == class_id,
+        AaProgramBinding.status == "ACTIVE",
+        AaProgramBinding.is_deleted.is_(False),
+    )).all()
+    all_rows = db.scalars(select(AaProgramBinding).where(
+        AaProgramBinding.tenant_id == TID,
+        AaProgramBinding.major_id == major_id,
+        AaProgramBinding.grade_year == "2026",
+        AaProgramBinding.class_id == class_id,
+        AaProgramBinding.is_deleted.is_(False),
+    )).all()
+    db.close()
+
+    assert len(active) == 1, "same class override scope must never expose two ACTIVE bindings"
     assert len(all_rows) == 2
     assert sorted(row.status for row in all_rows) == ["ACTIVE", "SUPERSEDED"]
 
