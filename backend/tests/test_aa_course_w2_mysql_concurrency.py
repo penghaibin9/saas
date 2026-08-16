@@ -1,8 +1,8 @@
-"""A-W2 Course Identity: MySQL version-linearity RED contracts.
+"""A-W2 Course Identity: MySQL version-linearity RED/GREEN contracts.
 
 AaCourse already has the canonical (tenant_id, course_code, version) unique key.
-The service layer must serialize ENABLED -> v+1 creation so concurrent editors receive
-one successor plus a stable business conflict, never a raw IntegrityError/500.
+The public service layer must serialize ENABLED -> v+1 creation so concurrent editors
+receive one successor plus a stable business conflict, never a raw IntegrityError/500.
 """
 from __future__ import annotations
 
@@ -74,14 +74,22 @@ def _seed_enabled_course():
     return result
 
 
+def _patch_course_tenant(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_course_public_service as service
+    from app.modules.academic_affairs.services import academic_affairs_course_service as core
+
+    monkeypatch.setattr(service, "_tid", lambda: TID)
+    monkeypatch.setattr(core, "_tid", lambda: TID)
+    return service
+
+
 @pytest.mark.usefixtures("db_mode")
 def test_w2_concurrent_enabled_course_edits_create_one_successor_and_one_business_conflict(monkeypatch):
     from app.core.exceptions import AppException
     from app.db.session import get_sessionmaker
     from app.models import AaCourse
-    from app.modules.academic_affairs.services import academic_affairs_course_service as service
 
-    monkeypatch.setattr(service, "_tid", lambda: TID)
+    service = _patch_course_tenant(monkeypatch)
     source_id, code = _seed_enabled_course()
     barrier = Barrier(2)
 
@@ -117,9 +125,8 @@ def test_w2_concurrent_enabled_course_edits_create_one_successor_and_one_busines
 @pytest.mark.usefixtures("db_mode")
 def test_w2_old_course_version_cannot_create_a_second_direct_successor(monkeypatch):
     from app.core.exceptions import AppException
-    from app.modules.academic_affairs.services import academic_affairs_course_service as service
 
-    monkeypatch.setattr(service, "_tid", lambda: TID)
+    service = _patch_course_tenant(monkeypatch)
     source_id, _code = _seed_enabled_course()
 
     first = service.update_course(source_id, None, _body("A-W2课程新版本-第一次"))
