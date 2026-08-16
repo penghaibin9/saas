@@ -1,20 +1,23 @@
-"""Control Plane compatibility cutover for temporary school-role delegation.
+"""Control Plane compatibility cutovers for frozen System governance services.
 
-Legacy delegation rows stored only ``roleCode`` and expanded that role at read time.
-After SCHOOL_ADMIN wildcard retirement, that couples an existing temporary grant to
-future role growth. New rows therefore pin the canonical concrete TENANT permission
-snapshot at creation; runtime consumes that immutable snapshot. Historical rows keep
-the old resolver only as a read-only migration fallback until they expire/revoke.
+Temporary delegation is pinned to a concrete canonical permission snapshot so an
+active grant cannot silently grow when a role changes.  The legacy role-template
+bootstrap is retained for its bundle/wildcard migration evidence, but every call is
+finished by B8 published-template convergence so its runtime result can never leave
+pre-catalog permissions in the published SYSTEM-role Authority.
 """
 from __future__ import annotations
 
+import os
 from uuid import uuid4
 
 from app.core.exceptions import AppException
+from app.services import permission_bundle_service as _bundles
 from app.services import system_governance_service as _legacy
 from app.services import system_role_shadow_service as shadow
 
 AUTHORITY_SOURCE = "CANONICAL_TENANT_ROLE_SNAPSHOT"
+_ORIGINAL_BOOTSTRAP_FROM_CODE = _bundles.bootstrap_from_code
 
 
 def _delegated_permission_snapshot(role_code: str) -> tuple[str, ...]:
@@ -26,8 +29,6 @@ def _delegated_permission_snapshot(role_code: str) -> tuple[str, ...]:
         raise AppException("VALIDATION_ERROR", "临时角色不存在或没有可授予权限")
     if code.startswith("PLATFORM_"):
         raise AppException("NO_PERMISSION", "学校临时授权禁止授予平台角色")
-    # Preserve the existing hard boundary: SCHOOL_ADMIN / any full wildcard role
-    # is never eligible for temporary delegation even though B8 can expand it.
     if "*" in patterns:
         raise AppException("NO_PERMISSION", "临时授权禁止授予全量通配权限")
     concrete = tuple(shadow.expected_system_role_permissions(code))
@@ -51,8 +52,6 @@ def create_delegation(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "到期时间必须晚于当前时间")
 
     permission_codes = _delegated_permission_snapshot(role_code)
-    # This helper intentionally reads permanent/base authority only. Temporary
-    # privileges therefore can never be re-delegated into a longer-lived chain.
     assert_delegable_permission_codes(user, permission_codes)
 
     grantee_user_id, grantee_login = _legacy._resolve_grantee(grantee)
@@ -103,7 +102,7 @@ def create_delegation(user: dict, body: dict) -> dict:
 
 
 def active_delegation_permission_patterns(user: dict) -> set[str]:
-    """Resolve only the pinned concrete snapshot for new delegation rows."""
+    """Resolve pinned concrete snapshots; N-1 rows keep read-only expiry fallback."""
     from app.core.permissions import ROLE_PERMISSIONS
 
     login = str((user or {}).get("loginName") or (user or {}).get("userNo") or "").strip()
@@ -134,14 +133,41 @@ def active_delegation_permission_patterns(user: dict) -> set[str]:
             permissions.update(snapshot)
             continue
 
-        # N-1 rows have no pinned snapshot. They keep their historical resolver
-        # only until expiry/revoke; no new writer is allowed to create such rows.
         role_code = str(item.get("roleCode") or "").strip().upper()
         permissions.update(ROLE_PERMISSIONS.get(role_code) or set())
     return permissions
 
 
+def bootstrap_permission_governance_from_code(*, tenant_id: int | None = None) -> dict:
+    """Keep legacy discovery evidence, then converge runtime templates to B8 truth."""
+    result = _ORIGINAL_BOOTSTRAP_FROM_CODE(tenant_id=tenant_id)
+    from app.core.context import get_current_user_ctx
+
+    actor = get_current_user_ctx() or {}
+    raw_actor = actor.get("userId") or actor.get("id") or 0
+    try:
+        actor_id = int(str(raw_actor).removeprefix("db-") or 0)
+    except (TypeError, ValueError):
+        actor_id = 0
+    source = str(
+        os.getenv("RELEASE_SHA")
+        or os.getenv("GIT_SHA")
+        or os.getenv("GITHUB_SHA")
+        or "control-plane-runtime-bootstrap"
+    ).strip()
+    convergence = shadow.converge_published_system_templates(
+        actor_user_id=actor_id,
+        source_commit_sha=source,
+    )
+    return {
+        **result,
+        "authority": "CONTROL_PLANE_B8_PUBLISHED_TEMPLATE",
+        "canonicalConvergence": convergence,
+    }
+
+
 def install_legacy_delegation_authority_adapter() -> None:
-    """Install the Control Plane writer/reader on the frozen compatibility module."""
+    """Install named cutovers on the frozen compatibility modules once per process."""
     _legacy.create_delegation = create_delegation
     _legacy.active_delegation_permission_patterns = active_delegation_permission_patterns
+    _bundles.bootstrap_from_code = bootstrap_permission_governance_from_code
