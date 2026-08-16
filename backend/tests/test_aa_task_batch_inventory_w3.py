@@ -57,6 +57,24 @@ def test_writer_scope_key_semantics_fail_closed_for_unknown_status():
 
 
 @pytest.mark.parametrize(
+    ("term_id", "college_id", "status", "message"),
+    [
+        (0, None, "DRAFT", "term_id"),
+        (-1, 17, "RETURNED", "term_id"),
+        (202601, 0, "DRAFT", "college_id"),
+        (202601, -2, "RETURNED", "college_id"),
+        (0, None, "APPROVED", "term_id"),
+        (202601, 0, "ARCHIVED", "college_id"),
+    ],
+)
+def test_writer_scope_key_semantics_reject_malformed_scope_even_when_key_would_be_null(
+    term_id, college_id, status, message
+):
+    with pytest.raises(ValueError, match=message):
+        _service().editable_scope_key_for_status(term_id, college_id, status)
+
+
+@pytest.mark.parametrize(
     ("term_id", "college_id", "message"),
     [
         (0, None, "term_id"),
