@@ -244,7 +244,7 @@ export default {
         { key: 'reportStatus', label: '报到状态', type: 'select', options: this.statusOptions.reportStatus || [] },
         { key: 'counselor', label: '辅导员', type: 'text' },
         { key: 'phone', label: '联系电话', type: 'text', placeholder: '敏感字段，列表脱敏展示' },
-        { key: 'origin', label: '生源地', type: 'text' }
+        { key: 'origin', label: '生源地', type: 'region' }
       ]
     }
   },

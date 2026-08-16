@@ -112,8 +112,8 @@
               <AppFormItem label="发放周期"><AppSelect v-model="form.remunerationCycle" :options="cycleOptions" :disabled="readonly" /></AppFormItem>
               <AppFormItem label="提供住宿"><AppRadioGroup v-model="form.accommodationProvided" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
               <AppFormItem label="提供餐食"><AppRadioGroup v-model="form.mealProvided" :options="triStateOptions" :disabled="readonly" /></AppFormItem>
-              <AppFormItem label="工作地点" prop="workLocation">
-                <AppTextInput v-model="form.workLocation" :disabled="readonly" placeholder="如：深圳市南山区科技园" />
+              <AppFormItem class="pf-grid__full" label="工作地点" prop="workLocation">
+                <AppChinaRegionPicker v-model="form.workLocation" :disabled="readonly" placeholder="请选择工作省 / 市 / 区县" />
               </AppFormItem>
               <AppFormItem label="薪资" prop="salaryRange">
                 <AppTextInput v-model="form.salaryRange" :disabled="readonly" placeholder="如 3k-4k" />
@@ -205,10 +205,11 @@ import { AppButton } from '@/components/ui'
 import {
   AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
   AppSubmitBar, AppInternshipEnterprisePicker, AppEnterpriseMentorPicker, AppTemplateChips,
-  AppSelect, AppRadioGroup
+  AppSelect, AppRadioGroup, AppChinaRegionPicker
 } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { positionApi } from '@/modules/internship/api/position.api'
+import { REMUNERATION_TYPE, REMUNERATION_CYCLE } from '@/modules/internship/constants/position.constants'
 import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
@@ -234,7 +235,7 @@ export default {
     ModulePageShell, LoadingState, ErrorState, AppButton,
     AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppNumberInput, AppTextarea,
     AppSubmitBar, AppInternshipEnterprisePicker, AppEnterpriseMentorPicker, AppTemplateChips,
-    AppSelect, AppRadioGroup
+    AppSelect, AppRadioGroup, AppChinaRegionPicker
   },
   data() {
     return {
@@ -268,10 +269,10 @@ export default {
       return [{ label: '未知', value: null }, { label: '是', value: true }, { label: '否', value: false }]
     },
     remunerationOptions() {
-      return ['HOURLY', 'MONTHLY', 'DAILY', 'ALLOWANCE', 'UNPAID', 'OTHER'].map((value) => ({ label: value, value }))
+      return REMUNERATION_TYPE
     },
     cycleOptions() {
-      return ['MONTHLY', 'WEEKLY', 'DAILY', 'ON_COMPLETION', 'OTHER'].map((value) => ({ label: value, value }))
+      return REMUNERATION_CYCLE
     },
     complianceDescription() {
       const c = this.detail?.compliance || {}

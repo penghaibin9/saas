@@ -53,6 +53,11 @@ _COLLEGE_INTERNSHIP = {
     "internship.student.eligibility.review",
     "internship.batch.view", "internship.batch.manage", "internship.batch.export",
     "internship.enterprise.view", "internship.enterprise.manage", "internship.enterprise.export",
+    # 招聘季（企业协同 V3）：与 internship.enterprise.* 并列的细粒度授权点，
+    # 路由见 routers/internship_recruitment_campaign.py。未注册时只能靠 enterprise.* 兜底，
+    # 学院无法单独收回「邀请企业」而保留「查看企业库」。
+    "internship.recruitment.view", "internship.recruitment.manage",
+    "internship.recruitment.invite", "internship.recruitment.close",
     "internship.position.view", "internship.position.manage", "internship.position.export",
     "internship.application.view", "internship.application.review",
     "internship.match.batch", "internship.match.manual", "internship.match.export",
