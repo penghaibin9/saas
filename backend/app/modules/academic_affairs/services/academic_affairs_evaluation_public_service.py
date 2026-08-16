@@ -358,6 +358,12 @@ def close_and_score(user, bid):
 
 
 # D-W3 appeal state owner: existing routes/permissions stay unchanged; only write semantics tighten.
+def list_appeals(user, status=None):
+    from . import academic_affairs_evaluation_appeal_service as _appeal
+
+    return _appeal.list_appeals(user, status=status)
+
+
 def archive_batch(user, bid):
     from . import academic_affairs_evaluation_appeal_service as _appeal
 
