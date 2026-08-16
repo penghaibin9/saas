@@ -4,7 +4,7 @@ This module deliberately owns no schema and performs no repair. It gives the
 future INT migration an executable preflight before adding a database unique
 constraint for the invariant:
 
-    tenant + term + management scope -> at most one editable batch
+    tenant + term + management scope -> at most one live editable batch
 
 Both DRAFT and RETURNED are editable states. Historical duplicates are
 reported fail-closed and must be reconciled explicitly; this service never
@@ -12,9 +12,9 @@ chooses a winner or mutates a batch.
 
 MySQL unique indexes allow multiple NULL values. Therefore the future unique
 constraint must not rely on nullable ``college_id`` to distinguish school
-scope. Editable rows use a canonical non-null ``editable_scope_key`` and
-non-editable rows keep that key NULL, allowing historical terminal batches
-while still making the editable school scope genuinely unique.
+scope. Only live editable rows use a canonical non-null ``editable_scope_key``;
+non-editable or soft-deleted rows keep that key NULL. This allows historical
+rows while making the live editable school scope genuinely unique.
 """
 from __future__ import annotations
 
@@ -74,21 +74,27 @@ def canonical_editable_scope_key(term_id: int, college_id: int | None) -> str:
     return key
 
 
-def editable_scope_key_for_status(term_id: int, college_id: int | None, status: str) -> str | None:
-    """Return the DB key a canonical batch writer must persist for ``status``.
+def editable_scope_key_for_status(
+    term_id: int,
+    college_id: int | None,
+    status: str,
+    *,
+    is_deleted: bool = False,
+) -> str | None:
+    """Return the DB key a canonical batch writer must persist for a row.
 
-    Only DRAFT/RETURNED reserve the management scope. Non-editable states use
-    SQL NULL so multiple historical/terminal batches remain legal. Unknown
-    states or malformed scope identifiers fail closed instead of silently
-    escaping the uniqueness invariant.
+    Only live DRAFT/RETURNED rows reserve the management scope. Non-editable
+    states and soft-deleted rows use SQL NULL so historical rows remain legal.
+    Unknown states or malformed scope identifiers fail closed instead of
+    silently escaping the uniqueness invariant.
     """
     normalized = str(status or "").strip().upper()
     if normalized not in _BATCH_STATUSES:
         raise ValueError(f"unsupported teaching task batch status: {normalized or '<empty>'}")
     term_id, college_id = _validated_scope_ids(term_id, college_id)
-    if normalized in _EDITABLE_BATCH_STATUSES:
-        return canonical_editable_scope_key(term_id, college_id)
-    return None
+    if bool(is_deleted) or normalized not in _EDITABLE_BATCH_STATUSES:
+        return None
+    return canonical_editable_scope_key(term_id, college_id)
 
 
 def _sample_limit(value) -> int:
@@ -131,7 +137,7 @@ def _row_value(row, name: str, index: int):
 
 
 def inventory_editable_batch_scope_conflicts(db, tenant_id: int, *, sample_limit: int = 20) -> dict:
-    """Inventory duplicate editable scopes with one tenant-scoped read query.
+    """Inventory duplicate live editable scopes with one tenant-scoped read query.
 
     The result is intentionally migration-oriented: it returns counts plus
     bounded batch-id/status samples, but never returns student/teacher data and
