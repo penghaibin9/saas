@@ -557,7 +557,12 @@ export default {
       if (res.code === 0) this.rosterRows = res.data.list
       else toast.error(res.message)
     },
-    onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
+    onConfirm() {
+      const a = this.pendingAction
+      this.pendingAction = null
+      this.confirmVisible = false
+      if (a) a()
+    }
   }
 }
 </script>
