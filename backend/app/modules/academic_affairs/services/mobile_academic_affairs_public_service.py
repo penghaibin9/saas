@@ -185,9 +185,10 @@ def evaluation_submit_my(user, body) -> dict:
 
 
 def teacher_schedule_my(user) -> dict:
-    """教师移动课表消费正式课次，并纯读补齐 Teacher Today 执行状态。"""
+    """教师移动课表纯读聚合正式课次、执行状态、监考与成绩待办。"""
     from . import academic_affairs_teacher_today_execution_state_service as execution_state
     from . import academic_affairs_teacher_today_service as teacher_today
+    from . import academic_affairs_teacher_today_work_service as teacher_work
 
     result = teacher_today.teacher_today_projection(user)
     with session() as db:
@@ -196,4 +197,10 @@ def teacher_schedule_my(user) -> dict:
             db,
             result.get("todayItems") or [],
         )
+        work_cues = teacher_work.teacher_work_cues(
+            db,
+            user,
+            exam_date=str(result.get("todayDate") or ""),
+        )
+        enriched.update(work_cues)
         return enriched

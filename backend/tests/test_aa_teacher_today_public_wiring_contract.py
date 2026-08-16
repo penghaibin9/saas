@@ -25,6 +25,22 @@ def test_mobile_public_teacher_schedule_pure_reads_execution_state_after_formal_
     assert "db.commit(" not in source
 
 
+def test_mobile_public_teacher_schedule_reuses_mature_invigilation_and_grade_todo_truth():
+    from app.modules.academic_affairs.services import mobile_academic_affairs_public_service as public
+
+    source = inspect.getsource(public.teacher_schedule_my)
+    assert "academic_affairs_teacher_today_work_service" in source
+    assert "teacher_work_cues" in source
+    assert 'exam_date=str(result.get("todayDate") or "")' in source
+    assert "enriched.update(work_cues)" in source
+    assert "_push_grade_entry_todo" not in source
+    assert "AaExamInvigilator(" not in source
+    assert "UnifiedTodo(" not in source
+    assert "db.add(" not in source
+    assert "db.flush(" not in source
+    assert "db.commit(" not in source
+
+
 def test_teacher_today_preserves_existing_mobile_schedule_metadata_contract():
     from app.modules.academic_affairs.services import academic_affairs_teacher_today_service as today
 
