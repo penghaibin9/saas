@@ -8,7 +8,8 @@
  *   - 教师端与门户同属 frontend 应用，登录页固定为 /login
  *   - 学生端为独立 student-portal 应用，默认部署在 /portal/（见 deploy/nginx/nginx.portal.conf.example
  *     与 student-portal/vite.config.js 的 VITE_BASE 默认值），登录页即 /portal/login
- * 若学校把学生端部署到独立子域名，只需构建时提供 VITE_PORTAL_STUDENT_LOGIN_URL 覆盖。
+ *   - 企业协同端为独立 enterprise-portal 应用，默认部署在 /enterprise/，登录页即 /enterprise/login
+ * 若学校把学生端或企业端部署到独立子域名，只需构建时提供对应 VITE_PORTAL_*_LOGIN_URL 覆盖。
  *
  * 安全：所有对外地址在使用前都会经 sanitizeEntryUrl() 校验，只放行同源相对路径与
  * http(s) 绝对地址，杜绝 javascript:/data: 等协议注入与开放重定向。
@@ -44,6 +45,11 @@ export const TEACHER_LOGIN_URL = sanitizeEntryUrl(
 /** 学生登录页：student-portal 应用，默认子路径部署 /portal/ + 其路由 /login */
 export const STUDENT_LOGIN_URL = sanitizeEntryUrl(
   readEnv('VITE_PORTAL_STUDENT_LOGIN_URL') || '/portal/login'
+)
+
+/** 企业协同登录页：enterprise-portal 默认 base=/enterprise/，真实公开登录路由为 /login */
+export const ENTERPRISE_LOGIN_URL = sanitizeEntryUrl(
+  readEnv('VITE_PORTAL_ENTERPRISE_LOGIN_URL') || '/enterprise/login'
 )
 
 /** 教师端微信小程序码地址；未配置时门户显示「即将接入」占位，绝不展示伪造二维码 */
