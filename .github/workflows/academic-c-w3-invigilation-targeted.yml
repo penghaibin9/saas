@@ -9,6 +9,8 @@ on:
       - 'backend/app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py'
       - 'backend/tests/test_aa_exam_invigilation_workbench_contract.py'
       - 'backend/tests/test_aa_exam_invigilation_mobile_wiring_contract.py'
+      - 'miniapp/src/pages/teacher/academic-affairs/index.vue'
+      - 'miniapp/tests/academic-invigilation-workbench-source-contract.test.mjs'
       - '.github/workflows/academic-c-w3-invigilation-targeted.yml'
   workflow_dispatch:
 
@@ -21,7 +23,7 @@ concurrency:
 
 jobs:
   invigilation-workbench:
-    name: canonical invigilation projection / MySQL
+    name: canonical invigilation projection / MySQL + miniapp
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -53,6 +55,9 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
@@ -73,6 +78,9 @@ jobs:
             tests/test_aa_exam_invigilation_workbench_contract.py \
             tests/test_aa_exam_invigilation_mobile_wiring_contract.py \
             -p no:warnings --durations=10
+      - name: C-W3 teacher miniapp invigilation source contract
+        working-directory: miniapp
+        run: node --test tests/academic-invigilation-workbench-source-contract.test.mjs
       - name: Prove invigilation workbench is read-only
         working-directory: backend
         run: |
