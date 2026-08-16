@@ -13,8 +13,8 @@ chooses a winner or mutates a batch.
 MySQL unique indexes allow multiple NULL values. Therefore the future unique
 constraint must not rely on nullable ``college_id`` to distinguish school
 scope. Editable rows use a canonical non-null ``editable_scope_key`` and
-terminal rows keep that key NULL, allowing historical terminal batches while
-still making the editable school scope genuinely unique.
+non-editable rows keep that key NULL, allowing historical terminal batches
+while still making the editable school scope genuinely unique.
 """
 from __future__ import annotations
 
@@ -23,6 +23,8 @@ from collections import defaultdict
 from sqlalchemy import select
 
 _EDITABLE_BATCH_STATUSES = ("DRAFT", "RETURNED")
+_NON_EDITABLE_BATCH_STATUSES = ("COLLEGE_CONFIRMED", "APPROVED", "ARCHIVED")
+_BATCH_STATUSES = frozenset((*_EDITABLE_BATCH_STATUSES, *_NON_EDITABLE_BATCH_STATUSES))
 _DEFAULT_SAMPLE_LIMIT = 20
 _MAX_SAMPLE_LIMIT = 100
 _EDITABLE_SCOPE_KEY_VERSION = "V1"
@@ -54,6 +56,21 @@ def canonical_editable_scope_key(term_id: int, college_id: int | None) -> str:
         return f"{_EDITABLE_SCOPE_KEY_VERSION}:TERM:{term_id}:SCHOOL"
     college_id = _positive_scope_id(college_id, name="college_id")
     return f"{_EDITABLE_SCOPE_KEY_VERSION}:TERM:{term_id}:COLLEGE:{college_id}"
+
+
+def editable_scope_key_for_status(term_id: int, college_id: int | None, status: str) -> str | None:
+    """Return the DB key a canonical batch writer must persist for ``status``.
+
+    Only DRAFT/RETURNED reserve the management scope. Non-editable states use
+    SQL NULL so multiple historical/terminal batches remain legal. Unknown
+    states fail closed instead of silently escaping the uniqueness invariant.
+    """
+    normalized = str(status or "").strip().upper()
+    if normalized not in _BATCH_STATUSES:
+        raise ValueError(f"unsupported teaching task batch status: {normalized or '<empty>'}")
+    if normalized in _EDITABLE_BATCH_STATUSES:
+        return canonical_editable_scope_key(term_id, college_id)
+    return None
 
 
 def _sample_limit(value) -> int:
