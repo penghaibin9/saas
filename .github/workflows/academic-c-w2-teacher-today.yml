@@ -13,7 +13,9 @@ on:
       - 'backend/tests/test_aa_teacher_today_visibility_contract.py'
       - 'backend/tests/test_aa_teacher_today_execution_state_contract.py'
       - 'miniapp/src/pages/teacher/academic-affairs/index.vue'
+      - 'miniapp/src/pages/teacher/academic-affairs/attendance.vue'
       - 'miniapp/tests/academic-teacher-today-contract.test.mjs'
+      - 'miniapp/tests/academic-attendance-source-contract.test.mjs'
       - '.github/workflows/academic-c-w2-teacher-today.yml'
   push:
     branches:
@@ -93,7 +95,10 @@ jobs:
 
       - name: Teacher Today miniapp source contract
         working-directory: miniapp
-        run: node --test tests/academic-teacher-today-contract.test.mjs
+        run: |
+          node --test \
+            tests/academic-teacher-today-contract.test.mjs \
+            tests/academic-attendance-source-contract.test.mjs
 
       - name: Prove read projection reuses C-C1 truth
         working-directory: backend

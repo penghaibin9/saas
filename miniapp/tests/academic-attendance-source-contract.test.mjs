@@ -43,7 +43,7 @@ test('create submits the selected schedule item as an optimistic occurrence iden
 })
 
 test('deep-link seed remains strictly validated, maps to exact current pattern, and never silently falls back', () => {
-  assert.match(page, /onLoad\(options = \{\}\)\s*\{[\s\S]*this\.routeSeed = this\.parseOccurrenceSeed\(options\)[\s\S]*this\.loadTasks\(\)/)
+  assert.match(page, /onLoad\(options = \{\}\)\s*\{[\s\S]*this\.sessionSeed = this\.parseSessionSeed\(options\)[\s\S]*this\.routeSeed = this\.sessionSeed \? null : this\.parseOccurrenceSeed\(options\)[\s\S]*this\.loadTasks\(\)/)
   assert.match(page, /parseOccurrenceSeed\(options = \{\}\)/)
   assert.match(page, /const scheduleItemId = String\(options\.scheduleItemId \|\| ''\)\.trim\(\)/)
   assert.match(page, /const anySeed = Boolean\(taskIdRaw \|\| sessionDate \|\| slotRaw \|\| scheduleItemId\)/)
@@ -58,10 +58,20 @@ test('deep-link seed remains strictly validated, maps to exact current pattern, 
   assert.match(page, /该正式课次已不在当前发布课表中/)
   assert.match(page, /this\.patternIndex = patternIndex[\s\S]*this\.form\.sessionDate = seed\.sessionDate[\s\S]*this\.form\.slotNo = String\(this\.formalPatterns\[patternIndex\]\.slotNo\)[\s\S]*this\.form\.scheduleItemId = String\(this\.formalPatterns\[patternIndex\]\.scheduleItemId \|\| ''\)/)
   assert.match(page, /applyOccurrenceSeed\(\)\s*\{[\s\S]*if \(!seed\)\s*\{[\s\S]*this\.taskIndex = 0[\s\S]*this\.applyTask\(this\.taskOptions\[0\]\)[\s\S]*return/)
-  assert.doesNotMatch(page, /if \(!seed\)\s*\{[\s\S]{0,160}this\.applyOccurrenceSeed\(\)/)
   assert.match(page, /loadTasks\(\)\s*\{[\s\S]*teacherApi\.getAttendanceClassOptions\(\)[\s\S]*this\.applyOccurrenceSeed\(\)[\s\S]*\.catch/)
   assert.match(page, /onTaskPick\(event\)\s*\{[\s\S]*this\.routeSeed = null[\s\S]*this\.taskSelectionInvalid = false/)
-  assert.doesNotMatch(page, /onLoad\(\) \{ this\.load\(\); this\.loadTasks\(\) \}/)
+})
+
+test('existing attendance session deep-link is exact, single-use, and never mixed with occurrence creation params', () => {
+  assert.match(page, /sessionSeed: null/)
+  assert.match(page, /parseSessionSeed\(options = \{\}\)/)
+  assert.match(page, /const sessionRaw = String\(options\.sessionId \|\| ''\)\.trim\(\)/)
+  assert.match(page, /occurrenceFields = \[options\.teachingTaskId, options\.sessionDate, options\.slotNo, options\.scheduleItemId\]/)
+  assert.match(page, /考勤链接参数冲突，请重新从教师今日课次进入/)
+  assert.match(page, /Number\.isInteger\(sessionId\) \|\| sessionId <= 0/)
+  assert.match(page, /applySessionSeed\(\)\s*\{[\s\S]*this\.sessionSeed = null[\s\S]*this\.openSession\(\{ sessionId: seed\.sessionId \}\)/)
+  assert.match(page, /load\(\)\s*\{[\s\S]*getAttendanceSessions\(\)[\s\S]*this\.state = 'ready'[\s\S]*this\.applySessionSeed\(\)/)
+  assert.match(page, /teacherApi\.getAttendanceDetail\(session\.sessionId\)/)
 })
 
 test('ADMIN_SPECIAL provenance remains visible and unavailable as an ordinary teacher creation choice', () => {
