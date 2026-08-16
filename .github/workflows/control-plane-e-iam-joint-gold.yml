@@ -43,7 +43,7 @@ env:
 
 jobs:
   e-iam-joint-gold:
-    name: Exact-head temporary integration + DENY matrix
+    name: Exact-head E-series convergence + DENY matrix
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
@@ -86,107 +86,40 @@ jobs:
           echo "Control Plane HEAD: $CONTROL_HEAD"
           echo "E-series PR #132 HEAD: $E_HEAD"
 
-      - name: Create local-only temporary integration merge
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Resolve current E-series topology without mutating source branches
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'control-plane-joint-gold'
           git config user.email 'control-plane-joint-gold@invalid.local'
 
-          set +e
-          git merge --no-ff --no-commit "$E_HEAD"
-          MERGE_RC=$?
-          set -e
-          if [ "$MERGE_RC" -ne 0 ]; then
-            mapfile -t UNMERGED < <(git diff --name-only --diff-filter=U)
-            printf 'unmerged: %s\n' "${UNMERGED[@]}"
-            test "${#UNMERGED[@]}" -eq 1
-            test "${UNMERGED[0]}" = 'backend/app/api/v1/route_registration.py'
+          if git merge-base --is-ancestor "$E_HEAD" "$CONTROL_HEAD"; then
+            echo 'E-series is already contained by Control Plane HEAD.'
+            TOPOLOGY_MODE='ALREADY_CONVERGED'
+            E_ALREADY_IN_CONTROL='true'
+            SYNTHETIC_ALEMBIC_MERGE='false'
+            INTEGRATION_HEAD="$CONTROL_HEAD"
+            test -z "$(git status --porcelain)"
+          else
+            echo 'E-series is not yet contained; create a local-only clean integration merge.'
+            TOPOLOGY_MODE='TEMPORARY_MERGE'
+            E_ALREADY_IN_CONTROL='false'
+            git merge --no-ff --no-commit "$E_HEAD"
+            test -z "$(git diff --name-only --diff-filter=U)"
 
-            # Only the known route owner seam may be resolved. Start from Control Plane route
-            # ownership and inject PR #132's E-series registrations at exact anchors.
-            git checkout --ours backend/app/api/v1/route_registration.py
             python - <<'PY'
-          from pathlib import Path
-
-          path = Path('backend/app/api/v1/route_registration.py')
-          source = path.read_text(encoding='utf-8')
-
-          def replace_once(old: str, new: str, label: str) -> None:
-              global source
-              count = source.count(old)
-              if count != 1:
-                  raise SystemExit(f'{label}: expected one anchor, found {count}')
-              source = source.replace(old, new, 1)
-
-          replace_once(
-              '''        internship_communication, internship_complaint, internship_compliance,\n        internship_enterprise_eval_versioned, internship_insurance,\n        internship_match, internship_material_center, internship_participant,\n        internship_plan, internship_position, internship_process, internship_stats,\n        internship_student, internship_visit_plan,\n''',
-              '''        internship_communication, internship_complaint, internship_compliance,\n        internship_enterprise_collaboration, internship_enterprise_eval_versioned,\n        internship_enterprise_portal, internship_insurance, internship_match, internship_material_center,\n        internship_participant, internship_plan, internship_position, internship_process,\n        internship_recruitment_campaign, internship_stats, internship_student, internship_visit_plan,\n''',
-              'E-series internship router imports',
-          )
-          replace_once(
-              '''        internship_communication, internship_visit_plan, internship_complaint, internship_compliance,\n        internship_enterprise_eval_versioned,\n    ):\n        api_router.include_router(r.router, dependencies=d)\n\n\ndef register_student_affairs_routes''',
-              '''        internship_communication, internship_visit_plan, internship_complaint, internship_compliance,\n        internship_enterprise_eval_versioned, internship_recruitment_campaign,\n    ):\n        api_router.include_router(r.router, dependencies=d)\n\n    # Enterprise APIs intentionally stay outside the staff dependency bundle.\n    api_router.include_router(internship_enterprise_portal.router)\n    api_router.include_router(internship_enterprise_collaboration.router)\n\n\ndef register_student_affairs_routes''',
-              'E-series staff/enterprise route ownership',
-          )
-          replace_once(
-              '''    from app.api.v1.todos import make_router as make_todos_router\n    from app.modules.platform.routers import platform_router\n''',
-              '''    from app.api.v1.todos import make_router as make_todos_router\n    from app.modules.internship.routers import internship_student_selection\n    from app.modules.platform.routers import platform_router\n''',
-              'student selection import',
-          )
-          replace_once(
-              '''    api_router.include_router(mobile_internship_leave_context.router)\n    api_router.include_router(mobile_internship_student.router)\n    api_router.include_router(student_portal_graduation_guard.router)\n''',
-              '''    api_router.include_router(mobile_internship_leave_context.router)\n    api_router.include_router(mobile_internship_student.router)\n    api_router.include_router(internship_student_selection.mobile_router)\n    api_router.include_router(student_portal_graduation_guard.router)\n''',
-              'student selection mobile route',
-          )
-          replace_once(
-              '''    portal_gate = [Depends(enforce_student_portal_module_access)]\n    api_router.include_router(student_portal_internship_router, dependencies=portal_gate)\n    from app.api.v1 import student_portal_admin\n''',
-              '''    portal_gate = [Depends(enforce_student_portal_module_access)]\n    api_router.include_router(student_portal_internship_router, dependencies=portal_gate)\n    api_router.include_router(internship_student_selection.portal_router)\n    from app.api.v1 import student_portal_admin\n''',
-              'student selection portal route',
-          )
-
-          required = (
-              'from app.modules.platform.routers import platform_router',
-              'from app.modules.system_admin.routers import system_i4_router',
-              'api_router.include_router(platform_router.router)',
-              'api_router.include_router(system_i4_router.router, tags=["system"])',
-              'internship_enterprise_portal',
-              'internship_enterprise_collaboration',
-              'internship_recruitment_campaign',
-              'internship_student_selection.mobile_router',
-              'internship_student_selection.portal_router',
-          )
-          missing = [item for item in required if item not in source]
-          if missing:
-              raise SystemExit(f'integration route resolution lost required owners: {missing}')
-          if any(marker in source for marker in ('<<<<<<<', '=======', '>>>>>>>')):
-              raise SystemExit('conflict markers remain after semantic resolution')
-          path.write_text(source, encoding='utf-8')
-          PY
-            git add backend/app/api/v1/route_registration.py
-          fi
-
-          test -z "$(git diff --name-only --diff-filter=U)"
-
-          # Both PRs intentionally branch from the same main migration head. The temporary
-          # integration must prove that the two lineages converge cleanly without mutating
-          # either remote branch. Create a standard no-DDL Alembic merge revision inside the
-          # local two-parent merge commit only. Head ownership is derived from each exact
-          # branch diff against their merge base; revision names/dates are not treated as truth.
-          python - <<'PY'
           import ast
-          import os
-          import subprocess
           from pathlib import Path
 
           versions = Path('backend/alembic/versions')
-          merge_path = versions / 'zz_ci_e_iam_joint_merge.py'
-          if merge_path.exists():
-              raise SystemExit(f'unexpected persisted CI merge revision: {merge_path}')
-
           revisions: set[str] = set()
           parents: set[str] = set()
-          revision_paths: dict[str, str] = {}
           for path in versions.glob('*.py'):
               tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
               values = {}
@@ -194,111 +127,67 @@ jobs:
                   if not isinstance(node, (ast.Assign, ast.AnnAssign)):
                       continue
                   targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                  value_node = node.value
                   for target in targets:
                       if isinstance(target, ast.Name) and target.id in {'revision', 'down_revision'}:
                           try:
-                              values[target.id] = ast.literal_eval(value_node)
+                              values[target.id] = ast.literal_eval(node.value)
                           except Exception:
                               pass
               revision = values.get('revision')
               down = values.get('down_revision')
               if isinstance(revision, str):
                   revisions.add(revision)
-                  revision_paths[revision] = path.as_posix()
               if isinstance(down, str):
                   parents.add(down)
               elif isinstance(down, (tuple, list)):
                   parents.update(item for item in down if isinstance(item, str))
 
           heads = sorted(revisions - parents)
-          print('pre-merge Alembic heads:', heads)
-          if len(heads) != 2:
-              raise SystemExit(f'expected exactly two branch heads before CI merge revision, got {heads}')
-
-          control_head = os.environ['CONTROL_HEAD']
-          e_head = os.environ['E_HEAD']
-          base = subprocess.check_output(
-              ['git', 'merge-base', control_head, e_head], text=True
-          ).strip()
-
-          def changed_migrations(head: str) -> set[str]:
-              output = subprocess.check_output(
-                  [
-                      'git', 'diff', '--name-only', f'{base}..{head}', '--',
-                      'backend/alembic/versions/*.py',
-                  ],
-                  text=True,
+          print('post-merge Alembic heads before optional CI convergence:', heads)
+          if len(heads) == 1:
+              Path('artifacts/control-plane/e-iam-synthetic-merge.txt').write_text('false\n', encoding='utf-8')
+          elif len(heads) == 2:
+              merge_path = versions / 'zz_ci_e_iam_joint_merge.py'
+              if merge_path.exists():
+                  raise SystemExit(f'unexpected persisted CI merge revision: {merge_path}')
+              merge_path.write_text(
+                  '"""CI-only E x IAM Alembic lineage merge; no schema mutation.\n\n'
+                  'Never persist this revision to either source branch.\n"""\n'
+                  'revision = "ci_e_iam_joint_merge"\n'
+                  f'down_revision = {tuple(heads)!r}\n'
+                  'branch_labels = None\n'
+                  'depends_on = None\n\n'
+                  'def upgrade():\n    pass\n\n'
+                  'def downgrade():\n    pass\n',
+                  encoding='utf-8',
               )
-              return {line.strip() for line in output.splitlines() if line.strip()}
-
-          control_changed = changed_migrations(control_head)
-          e_changed = changed_migrations(e_head)
-          control_owned = [
-              head for head in heads
-              if revision_paths.get(head) in control_changed
-              and revision_paths.get(head) not in e_changed
-          ]
-          e_owned = [
-              head for head in heads
-              if revision_paths.get(head) in e_changed
-              and revision_paths.get(head) not in control_changed
-          ]
-          if len(control_owned) != 1:
-              raise SystemExit(
-                  f'Control Plane migration head provenance is ambiguous: heads={heads}, '
-                  f'owned={control_owned}, base={base}'
-              )
-          if len(e_owned) != 1:
-              raise SystemExit(
-                  f'E-series migration head provenance is ambiguous: heads={heads}, '
-                  f'owned={e_owned}, base={base}'
-              )
-          if control_owned[0] == e_owned[0]:
-              raise SystemExit(f'branch migration heads unexpectedly collapse: {heads}')
-          print('Control Plane migration head:', control_owned[0], revision_paths[control_owned[0]])
-          print('E-series migration head:', e_owned[0], revision_paths[e_owned[0]])
-
-          Path('artifacts/control-plane/e-iam-alembic-premerge-heads.txt').write_text(
-              '\n'.join(heads) + '\n', encoding='utf-8'
-          )
-          Path('artifacts/control-plane/e-iam-alembic-provenance.txt').write_text(
-              f'mergeBase={base}\n'
-              f'controlHead={control_owned[0]} path={revision_paths[control_owned[0]]}\n'
-              f'eSeriesHead={e_owned[0]} path={revision_paths[e_owned[0]]}\n',
-              encoding='utf-8',
-          )
-          merge_path.write_text(
-              '"""CI-only E x IAM Alembic lineage merge; no schema mutation.\n\n'
-              'Never persist this revision to either source branch.\n"""\n'
-              'revision = "ci_e_iam_joint_merge"\n'
-              f'down_revision = {tuple(heads)!r}\n'
-              'branch_labels = None\n'
-              'depends_on = None\n\n'
-              'def upgrade():\n    pass\n\n'
-              'def downgrade():\n    pass\n',
-              encoding='utf-8',
-          )
+              Path('artifacts/control-plane/e-iam-synthetic-merge.txt').write_text('true\n', encoding='utf-8')
+          else:
+              raise SystemExit(f'expected one or two Alembic heads after local merge, got {heads}')
           PY
-          git add backend/alembic/versions/zz_ci_e_iam_joint_merge.py
-          git diff --cached --check
-          ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- backend/app/api/v1/route_registration.py
-          git commit -m 'CI-only E x IAM temporary integration'
 
-          INTEGRATION_HEAD="$(git rev-parse HEAD)"
-          PARENTS="$(git show -s --format=%P HEAD)"
-          test "$(printf '%s\n' "$PARENTS" | awk '{print $1}')" = "$CONTROL_HEAD"
-          test "$(printf '%s\n' "$PARENTS" | awk '{print $2}')" = "$E_HEAD"
+            if [ -f backend/alembic/versions/zz_ci_e_iam_joint_merge.py ]; then
+              git add backend/alembic/versions/zz_ci_e_iam_joint_merge.py
+              SYNTHETIC_ALEMBIC_MERGE='true'
+            else
+              SYNTHETIC_ALEMBIC_MERGE='false'
+            fi
+            git diff --cached --check
+            ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)'
+            git commit -m 'CI-only E x IAM temporary integration'
+            INTEGRATION_HEAD="$(git rev-parse HEAD)"
+            PARENTS="$(git show -s --format=%P HEAD)"
+            test "$(printf '%s\n' "$PARENTS" | awk '{print $1}')" = "$CONTROL_HEAD"
+            test "$(printf '%s\n' "$PARENTS" | awk '{print $2}')" = "$E_HEAD"
+          fi
+
+          echo "TOPOLOGY_MODE=$TOPOLOGY_MODE" >> "$GITHUB_ENV"
+          echo "E_ALREADY_IN_CONTROL=$E_ALREADY_IN_CONTROL" >> "$GITHUB_ENV"
+          echo "SYNTHETIC_ALEMBIC_MERGE=$SYNTHETIC_ALEMBIC_MERGE" >> "$GITHUB_ENV"
           echo "INTEGRATION_HEAD=$INTEGRATION_HEAD" >> "$GITHUB_ENV"
-          printf '%s\n' "$INTEGRATION_HEAD" > artifacts/control-plane/e-iam-temporary-integration-head.txt
-          printf '%s\n' "$PARENTS" > artifacts/control-plane/e-iam-temporary-integration-parents.txt
-          test -z "$(git status --porcelain --untracked-files=no)"
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
+          printf '%s\n' "$TOPOLOGY_MODE" > artifacts/control-plane/e-iam-topology-mode.txt
+          printf '%s\n' "$INTEGRATION_HEAD" > artifacts/control-plane/e-iam-integration-head.txt
+          test -z "$(git diff --name-only --diff-filter=U)"
 
       - name: Install backend dependencies
         working-directory: backend
@@ -315,7 +204,7 @@ jobs:
           echo 'MySQL did not become ready' >&2
           exit 1
 
-      - name: Fresh MySQL one-head migration after temporary convergence
+      - name: Fresh MySQL one-head migration after convergence
         working-directory: backend
         shell: bash
         run: |
@@ -323,10 +212,9 @@ jobs:
           alembic heads | tee ../artifacts/control-plane/e-iam-alembic-heads.txt
           HEAD_COUNT="$(grep -c '(head)' ../artifacts/control-plane/e-iam-alembic-heads.txt || true)"
           test "$HEAD_COUNT" = '1'
-          grep -q 'ci_e_iam_joint_merge (head)' ../artifacts/control-plane/e-iam-alembic-heads.txt
           alembic upgrade head | tee ../artifacts/control-plane/e-iam-alembic-upgrade.txt
           alembic current | tee ../artifacts/control-plane/e-iam-alembic-current.txt
-          grep -q 'ci_e_iam_joint_merge (head)' ../artifacts/control-plane/e-iam-alembic-current.txt
+          grep -q '(head)' ../artifacts/control-plane/e-iam-alembic-current.txt
 
       - name: Shared IAM and internship permission contracts
         shell: bash
@@ -412,9 +300,11 @@ jobs:
           evidence = {
               'controlHead': os.environ['CONTROL_HEAD'],
               'eSeriesHead': os.environ['E_HEAD'],
-              'temporaryIntegrationHead': os.environ['INTEGRATION_HEAD'],
+              'integrationHead': os.environ['INTEGRATION_HEAD'],
+              'topologyMode': os.environ['TOPOLOGY_MODE'],
+              'eSeriesAlreadyInControl': os.environ['E_ALREADY_IN_CONTROL'] == 'true',
+              'syntheticAlembicMerge': os.environ['SYNTHETIC_ALEMBIC_MERGE'] == 'true',
               'remoteBranchesMutated': False,
-              'temporaryAlembicMergeRevision': 'ci_e_iam_joint_merge',
               'mysql': '8.0',
               'moduleEntitlementDeny': True,
               'normalTeacherRecruitmentManageDeny': True,

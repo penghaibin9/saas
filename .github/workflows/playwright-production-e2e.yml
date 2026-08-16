@@ -75,9 +75,22 @@ jobs:
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
       E2E_MINIAPP_BASE_URL: http://localhost:5188
+      E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Exact branch HEAD assertion
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
 
       - uses: actions/setup-python@v5
         with:
@@ -113,6 +126,10 @@ jobs:
       - name: Seed minimal isolated E2E tenants
         working-directory: backend
         run: python scripts/e2e_seed_playwright_tenants.py
+
+      - name: Seed real School IAM runtime fixture
+        working-directory: backend
+        run: python scripts/e2e_seed_control_plane_school_iam.py
 
       - name: Start backend
         run: |

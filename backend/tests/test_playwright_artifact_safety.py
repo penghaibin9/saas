@@ -9,6 +9,7 @@ VERIFY_SCRIPT = ROOT / "backend" / "scripts" / "e2e_verify_graduation_accounts.p
 BOOTSTRAP_SCRIPT = ROOT / "backend" / "scripts" / "e2e_bootstrap_graduation_accounts_ci.py"
 COUNSELOR_BOOTSTRAP = ROOT / "backend" / "scripts" / "e2e_bootstrap_affairs_counselor_ci.py"
 INTERNSHIP_SEED = ROOT / "backend" / "scripts" / "e2e_seed_internship_sandbox.py"
+SCHOOL_IAM_SEED = ROOT / "backend" / "scripts" / "e2e_seed_control_plane_school_iam.py"
 
 
 def test_playwright_artifacts_never_collect_backend_tmp_wildcards():
@@ -39,6 +40,22 @@ def test_workflow_keeps_mock_login_disabled_and_isolated_database_guarded():
     assert "E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'" in text
     assert "student_lifecycle_e2e" in text
     assert "APP_ENV: test" in text
+
+
+def test_playwright_runs_exact_head_and_real_school_iam_fixture_seed():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    seed = SCHOOL_IAM_SEED.read_text(encoding="utf-8")
+
+    assert "E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}" in workflow
+    assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" in workflow
+    assert "Exact branch HEAD assertion" in workflow
+    assert "python scripts/e2e_seed_control_plane_school_iam.py" in workflow
+    assert workflow.index("python scripts/e2e_seed_playwright_tenants.py") < workflow.index(
+        "python scripts/e2e_seed_control_plane_school_iam.py"
+    )
+    assert '"control-plane-school-iam.json"' in seed
+    assert "reconcile_permission_catalog(" in seed
+    assert "converge_published_system_templates(" in seed
 
 
 def test_internship_seed_only_creates_prerequisites_in_local_e2e_database():
