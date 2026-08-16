@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import is_super_admin
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_program_activation_service as program_activation
@@ -597,7 +598,7 @@ def get_batch_workbench(batch_id, user) -> dict:
             *_visible_task_conditions(scope, AaTeachingTask),
         )).all()
         summary = _summary(tasks)
-        term = db.get(AaTerm, int(batch.term_id)) if batch.term_id else None
+        term = tenant_get(db, AaTerm, int(batch.term_id), tenant_id=_tid()) if batch.term_id else None
         role = str((user or {}).get("currentRoleCode") or "").upper()
         school_review = is_super_admin(user) or role in _SCHOOL_REVIEW_ROLES
         college_manage = scope.all or bool(scope.college_ids)
