@@ -1,7 +1,9 @@
 """INT contract for Program File Exchange result/replay receipts."""
 from __future__ import annotations
 
+import hashlib
 import inspect
+import json
 
 import pytest
 
@@ -13,7 +15,16 @@ def _receipt():
 
 ROW_DIGEST = "a" * 64
 DEF_HASH = "b" * 64
-REL_HASH = "c" * 64
+RELATIONSHIP_FACTS = [{
+    "scopeKey": "MAJOR:10:GRADE:2026:MAJOR_GRADE",
+    "programId": "501",
+}]
+REL_HASH = hashlib.sha256(json.dumps(
+    RELATIONSHIP_FACTS,
+    ensure_ascii=False,
+    sort_keys=True,
+    separators=(",", ":"),
+).encode("utf-8")).hexdigest()
 
 
 def _preview():
@@ -44,6 +55,27 @@ def _definition_reconciliation(*, action="CREATE", imported=1, reused=0):
                 "prevProgramId": "",
                 "expectedPrevProgramId": "",
             },
+        }],
+        "errors": [],
+    }
+
+
+def _binding_reconciliation(*, relationship_hash=REL_HASH):
+    return {
+        "phase": "BINDING",
+        "reconciliationSafe": True,
+        "createdBindings": 0,
+        "reusedBindings": 1,
+        "bindingCount": 1,
+        "activeRelationshipHash": relationship_hash,
+        "items": [{
+            "programKey": "SERIES:SER-A:v1",
+            "programId": "501",
+            "scopeKey": "MAJOR:10:GRADE:2026:MAJOR_GRADE",
+            "action": "REUSE",
+            "activeRelationshipMatch": True,
+            "supersedeRelationshipMatch": True,
+            "targetStatusMatch": True,
         }],
         "errors": [],
     }
@@ -99,29 +131,11 @@ def test_identical_new_job_is_revalidated_then_full_definition_reuse_zero_write(
     assert result["idempotency"]["replayNoOp"] is True
 
 
-def test_binding_receipt_uses_authoritative_relationship_hash_and_can_be_noop_reuse():
-    reconciliation = {
-        "phase": "BINDING",
-        "reconciliationSafe": True,
-        "createdBindings": 0,
-        "reusedBindings": 1,
-        "bindingCount": 1,
-        "activeRelationshipHash": REL_HASH,
-        "items": [{
-            "programKey": "SERIES:SER-A:v1",
-            "programId": "501",
-            "scopeKey": "MAJOR:10:GRADE:2026:MAJOR_GRADE",
-            "action": "REUSE",
-            "activeRelationshipMatch": True,
-            "supersedeRelationshipMatch": True,
-            "targetStatusMatch": True,
-        }],
-        "errors": [],
-    }
+def test_binding_receipt_recomputes_authoritative_relationship_hash_and_can_be_noop_reuse():
     result = _receipt().build_program_import_receipt(
         row_digest=ROW_DIGEST,
         preview=_preview(),
-        reconciliation=reconciliation,
+        reconciliation=_binding_reconciliation(),
         mutation_write_count=0,
     )
     assert result["phase"] == "BINDING"
@@ -130,6 +144,16 @@ def test_binding_receipt_uses_authoritative_relationship_hash_and_can_be_noop_re
     assert result["reconciliationHash"] == REL_HASH
     assert result["domainMutationWriteCount"] == 0
     assert result["idempotency"]["replayNoOp"] is True
+
+
+def test_binding_receipt_rejects_forged_relationship_hash_even_when_items_are_green():
+    with pytest.raises(ValueError, match="hash does not match relationship items"):
+        _receipt().build_program_import_receipt(
+            row_digest=ROW_DIGEST,
+            preview=_preview(),
+            reconciliation=_binding_reconciliation(relationship_hash="c" * 64),
+            mutation_write_count=0,
+        )
 
 
 @pytest.mark.parametrize("digest", ["", "abc", "g" * 64, "a" * 63])
