@@ -39,3 +39,13 @@ def test_confirm_gate_requires_validated_nonempty_zero_error_rows():
     assert "IMPORT_EMPTY" in source
     assert "validRows" in source
     assert "invalidRows" in source
+
+
+def test_identity_confirm_delegates_to_frozen_unified_dispatcher():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "backend/app/services/data_exchange_confirm_service.py").read_text(encoding="utf-8")
+    identity_body = source.split("def confirm_identity_import_job", 1)[1].split(
+        "def confirm_migration_import_job", 1
+    )[0]
+    assert "return _legacy.confirm_import_job(" in identity_body
+    assert "_legacy.confirm_identity_import_job(" not in identity_body

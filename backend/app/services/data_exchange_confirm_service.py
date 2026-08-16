@@ -26,7 +26,7 @@ def confirm_identity_import_job(
         raise AppException("IMPORT_HAS_ERRORS", "预检存在错误行，禁止确认", http_status=409)
     if int(item.get("validRows") or 0) <= 0:
         raise AppException("IMPORT_EMPTY", "没有可确认导入的有效数据行", http_status=409)
-    return _legacy.confirm_identity_import_job(
+    return _legacy.confirm_import_job(
         job_id,
         expected_version=expected_version,
         user=user,
