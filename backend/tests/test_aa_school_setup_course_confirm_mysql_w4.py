@@ -57,7 +57,7 @@ def _row(code: str, *, version=1, name=None, **changes):
     return row
 
 
-def _seed_enabled_course(code: str):
+def _seed_enabled_course(code: str, *, applicable_json=None):
     from app.db.session import get_sessionmaker
     from app.models import AaCourse
 
@@ -81,7 +81,7 @@ def _seed_enabled_course(code: str):
         is_core=False,
         prerequisite_codes_json="[]",
         description="必须由后继版本继承的简介",
-        applicable_majors_json=json.dumps([901, 902]),
+        applicable_majors_json=applicable_json if applicable_json is not None else json.dumps([901, 902]),
         is_all_major=False,
         version=1,
         prev_version_id=None,
@@ -112,6 +112,10 @@ def test_course_confirm_new_v1_is_atomic_and_repeat_confirm_reuses(monkeypatch):
     assert second["confirmedRows"] == 1
     assert second["createdCount"] == 0
     assert second["reusedCount"] == 1
+    assert first["reconciliation"][0]["action"] == "CREATE"
+    assert second["reconciliation"][0]["action"] == "REUSE"
+    assert first["reconciliation"][0]["courseId"] == first["createdCourseIds"][0]
+    assert second["reconciliation"][0]["courseId"] == first["createdCourseIds"][0]
 
     db = get_sessionmaker()()
     rows = db.scalars(select(AaCourse).where(
@@ -150,6 +154,8 @@ def test_course_confirm_successor_inherits_non_template_facts(monkeypatch):
 
     result = service.confirm_course_catalog_import(source, {"currentRoleCode": "ACADEMIC_ADMIN"})
     assert result["createdCount"] == 1
+    assert result["reconciliation"][0]["action"] == "CREATE"
+    assert result["reconciliation"][0]["courseId"] == result["createdCourseIds"][0]
 
     db = get_sessionmaker()()
     successor = db.scalars(select(AaCourse).where(
@@ -199,7 +205,47 @@ def test_course_confirm_invalid_second_row_writes_nothing(monkeypatch):
 
 
 @pytest.mark.usefixtures("db_mode")
-def test_course_confirm_concurrent_new_v1_has_one_truth_and_business_conflict(monkeypatch):
+def test_course_confirm_corrupt_hidden_predecessor_fails_closed_without_successor(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse
+
+    service = _service(monkeypatch)
+    code = _code("HD")
+    _seed_enabled_course(code, applicable_json="{broken")
+
+    with pytest.raises(AppException) as exc_info:
+        service.confirm_course_catalog_import(
+            [_row(code, version=2)],
+            {"currentRoleCode": "ACADEMIC_ADMIN"},
+        )
+    assert exc_info.value.code == "DATA_CONFLICT"
+
+    db = get_sessionmaker()()
+    count = db.scalar(select(func.count()).select_from(AaCourse).where(
+        AaCourse.tenant_id == TID,
+        AaCourse.course_code == code,
+        AaCourse.version == 2,
+        AaCourse.is_deleted.is_(False),
+    ))
+    db.close()
+    assert int(count or 0) == 0
+
+
+def test_course_confirm_invalid_source_row_is_business_validation_error(monkeypatch):
+    from app.core.exceptions import AppException
+
+    service = _service(monkeypatch)
+    with pytest.raises(AppException) as exc_info:
+        service.confirm_course_catalog_import(
+            [_row("bad-code")],
+            {"currentRoleCode": "ACADEMIC_ADMIN"},
+        )
+    assert exc_info.value.code == "VALIDATION_ERROR"
+
+
+@pytest.mark.usefixtures("db_mode")
+def test_course_confirm_concurrent_new_v1_converges_to_one_truth(monkeypatch):
     from app.core.exceptions import AppException
     from app.db.session import get_sessionmaker
     from app.models import AaCourse
@@ -220,11 +266,13 @@ def test_course_confirm_concurrent_new_v1_has_one_truth_and_business_conflict(mo
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(confirm, [1, 2]))
 
-    kinds = [kind for kind, _value in results]
-    assert kinds.count("ok") == 1
-    assert kinds.count("conflict") == 1
-    conflict_code = next(value for kind, value in results if kind == "conflict")
-    assert conflict_code == "DATA_CONFLICT"
+    successful = [value for kind, value in results if kind == "ok"]
+    conflicts = [value for kind, value in results if kind == "conflict"]
+    assert len(successful) in {1, 2}
+    assert all(code == "DATA_CONFLICT" for code in conflicts)
+    assert sum(int(result["createdCount"]) for result in successful) == 1
+    if len(successful) == 2:
+        assert sum(int(result["reusedCount"]) for result in successful) == 1
 
     db = get_sessionmaker()()
     rows = db.scalars(select(AaCourse).where(
