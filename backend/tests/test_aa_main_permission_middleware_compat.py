@@ -9,7 +9,9 @@ from app.core.context import (
 
 ROOT = Path(__file__).resolve().parents[1]
 PERMISSIONS = (ROOT / "app/core/permissions.py").read_text(encoding="utf-8")
-MIDDLEWARE = (ROOT / "app/middleware/context.py").read_text(encoding="utf-8")
+# app/middleware/context.py is now only the Control Plane compatibility facade;
+# production request/tenant/batch guards remain implemented in context_legacy.py.
+MIDDLEWARE = (ROOT / "app/middleware/context_legacy.py").read_text(encoding="utf-8")
 
 
 def test_current_main_graduation_permission_additions_are_preserved():

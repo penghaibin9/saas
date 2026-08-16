@@ -10,7 +10,9 @@ PACKAGE = (ROOT / "app/modules/academic_affairs/routers/__init__.py").read_text(
 BUNDLE = (ROOT / "app/modules/academic_affairs/routers/academic_affairs_bundle.py").read_text(encoding="utf-8")
 PERMISSIONS = (ROOT / "app/core/permissions.py").read_text(encoding="utf-8")
 CONTEXT = (ROOT / "app/core/context.py").read_text(encoding="utf-8")
-MIDDLEWARE = (ROOT / "app/middleware/context.py").read_text(encoding="utf-8")
+# app/middleware/context.py is the Control Plane compatibility facade; the
+# production request/tenant/batch implementation remains in context_legacy.py.
+MIDDLEWARE = (ROOT / "app/middleware/context_legacy.py").read_text(encoding="utf-8")
 MODELS_INIT = (ROOT / "app/models/__init__.py").read_text(encoding="utf-8")
 
 

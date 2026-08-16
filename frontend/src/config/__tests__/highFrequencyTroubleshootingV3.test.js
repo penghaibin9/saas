@@ -14,7 +14,7 @@ const responseSource = readFileSync(resolve(here, '../../../../backend/app/core/
 const exceptionSource = readFileSync(resolve(here, '../../../../backend/app/core/exceptions.py'), 'utf8')
 const excelSource = readFileSync(resolve(here, '../../components/common/excel/AppExcelImportDrawer.vue'), 'utf8')
 const fileApiSource = readFileSync(resolve(here, '../../../../backend/app/api/v1/file.py'), 'utf8')
-const dataExchangeSource = readFileSync(resolve(here, '../../../../backend/app/api/v1/data_exchange.py'), 'utf8')
+const dataExchangeSource = readFileSync(resolve(here, '../../../../backend/app/modules/system_admin/routers/data_exchange_bundle.py'), 'utf8')
 
 const FIRST_IDS = [
   'tr-v3-permission-scope-403',

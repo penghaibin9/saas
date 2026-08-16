@@ -1,7 +1,8 @@
 """师生身份主数据唯一导入入口。
 
-只有本服务允许批量创建登录账号并绑定预设角色。毕设、实习、教务、学工等业务导入
-只能引用这里已经存在的学号/工号，不得隐式创建 User。
+只有本服务允许批量创建登录账号并绑定预设角色。I3 staging marker 会在本入口
+确认前校验 digest/row count，并原地展开成可重复迭代的 DB-backed sequences；
+最终业务写入仍只走 school_onboarding_service 的单事务 authority。
 """
 from __future__ import annotations
 
@@ -9,6 +10,14 @@ from app.core.exceptions import AppException
 from app.services import school_onboarding_service
 
 _ALLOWED_KEYS = {"tenantId", "atomic", "students", "teachers"}
+
+
+def _expand_staging_if_needed(source: dict) -> dict:
+    if source.get("_staging"):
+        from app.services.identity_import_staging_service import expand_staging_marker
+
+        return expand_staging_marker(source)
+    return source
 
 
 def preview_identity_import(user: dict, body: dict, *, pre_errors: list[dict] | None = None) -> dict:
@@ -27,7 +36,7 @@ def preview_identity_import(user: dict, body: dict, *, pre_errors: list[dict] | 
 def run_identity_import(user: dict, body: dict, *, dry_run: bool) -> dict:
     if not dry_run and not school_onboarding_service.db_enabled():
         raise AppException("SERVER_ERROR", "数据库未启用，禁止确认创建师生账号")
-    source = body or {}
+    source = _expand_staging_if_needed(body or {})
     unknown = sorted(set(source) - _ALLOWED_KEYS)
     if unknown:
         raise AppException(

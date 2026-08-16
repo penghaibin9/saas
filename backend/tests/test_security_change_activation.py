@@ -12,6 +12,7 @@ from app.core.exceptions import AppException
 from app.services import permission_bundle_service as pbs
 from app.services import scope_policy_service as sps
 from app.services import security_change_service as svc
+from app.services.permission_catalog_reconciliation_service import reconcile_permission_catalog
 
 TENANT = 8501
 OTHER_TENANT = 8502
@@ -43,6 +44,9 @@ def _role_permissions(role_code: str = ROLE, tenant_id: int = TENANT) -> list[st
 
 def _prepare_role(tenant_id: int = TENANT, role_code: str = ROLE) -> tuple[list[str], list[str]]:
     """建一个自定义角色，返回 (当前权限, 模板上限)。"""
+    # Permission Catalog 是全局唯一 Authority。生产写路径遇到缺目录必须 fail-closed；
+    # 测试夹具因此先走正式 reconciliation，而不是自己插 Permission 或绕过校验。
+    reconcile_permission_catalog(source="TEST_SECURITY_CHANGE_ACTIVATION")
     pbs.bootstrap_from_code(tenant_id=tenant_id)
     ceiling = pbs.get_template("SYS_ADMIN", tenant_id=tenant_id)["permissionCeiling"]
     initial = sorted(ceiling)[:2]

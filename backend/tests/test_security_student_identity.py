@@ -3,7 +3,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SECURITY = (ROOT / "app/core/security.py").read_text(encoding="utf-8")
+# app/core/security.py is the Control Plane compatibility facade. The frozen
+# authentication hot path remains implemented in security_legacy.py.
+SECURITY = (ROOT / "app/core/security_legacy.py").read_text(encoding="utf-8")
 AUTH_SERVICE = (ROOT / "app/services/auth_service_db.py").read_text(encoding="utf-8")
 RESOLVER = (ROOT / "app/services/mobile_student_service.py").read_text(encoding="utf-8")
 FACADE = (ROOT / "app/services/mobile_student_identity_facade.py").read_text(encoding="utf-8")

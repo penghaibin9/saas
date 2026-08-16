@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "card": "S0-01",
+  "surface": "SYSTEM_ADMIN",
+  "legacyPath": "backend/app/api/v1/system.py",
+  "canonicalBundlePath": "backend/app/modules/system_admin/routers/system_bundle.py",
+  "frozenSourceBlobSha": "be527b964f7f183fa93df245a96951b8de6c47a3",
+  "moveInvariant": "canonical bundle uses the exact pre-move Git blob; compatibility facade exports the same router object",
+  "routeRegistrationChanged": false
+}

@@ -1,31 +1,30 @@
 """Bootstrap the single student-affairs counselor needed by Playwright CI.
 
-This fixture intentionally uses only official identity and password APIs.  It does not
+This fixture intentionally uses only official identity and password APIs. It does not
 persist credentials, does not relax login throttling, and avoids the broad student-affairs
 acceptance bootstrap which repeatedly authenticates the school admin.
 """
 from __future__ import annotations
 
-import io
 import json
 import sys
 import time
-import urllib.request
 from pathlib import Path
-
-from openpyxl import load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.services.identity_import_file_service import build_teacher_template  # noqa: E402
 from scripts.e2e_bootstrap_graduation_accounts import (  # noqa: E402
-    BASE,
     CLASS,
     COLLEGE,
     TENANT,
     _req,
     ensure_org,
     login,
-    multipart,
+)
+from scripts.e2e_bootstrap_graduation_accounts_ci import (  # noqa: E402
+    _canonical_import,
+    _workbook_with_rows,
 )
 
 LOGIN_NAME = "e2e_counselor_a"
@@ -33,60 +32,32 @@ DISPLAY_NAME = "E2E辅导员A"
 STABLE_PASSWORD = "E2eTest@2026"
 
 
-def build_counselor_xlsx(token: str) -> bytes:
-    request = urllib.request.Request(
-        f"{BASE}/system/identity-import/template",
-        headers={"Authorization": f"Bearer {token}"},
+def build_counselor_xlsx() -> bytes:
+    return _workbook_with_rows(
+        build_teacher_template(),
+        [[
+            LOGIN_NAME,
+            DISPLAY_NAME,
+            COLLEGE,
+            "辅导员",
+            "COUNSELOR",
+            "CLASS",
+            CLASS,
+        ]],
     )
-    content = urllib.request.urlopen(request, timeout=60).read()
-    wb = load_workbook(io.BytesIO(content))
-    ws = wb["导入模板"]
-    if ws.max_row > 1:
-        ws.delete_rows(2, ws.max_row - 1)
-    ws.append([
-        "TEACHER",
-        LOGIN_NAME,
-        DISPLAY_NAME,
-        "",
-        "",
-        "",
-        "",
-        "",
-        COLLEGE,
-        "辅导员",
-        "COUNSELOR",
-        "CLASS",
-        CLASS,
-    ])
-    out = io.BytesIO()
-    wb.save(out)
-    return out.getvalue()
 
 
 def import_counselor(token: str) -> None:
-    body, boundary = multipart(build_counselor_xlsx(token), "e2e_affairs_counselor.xlsx")
-    validated = _req(
-        "POST",
-        "/system/identity-import/validate-file",
-        token=token,
-        raw=body,
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    receipt = _canonical_import(
+        token,
+        kind="teachers",
+        content=build_counselor_xlsx(),
+        idempotency_namespace="e2e-affairs-counselor",
     )
-    if validated.get("code") != 0:
-        raise SystemExit("counselor identity validation failed: " + json.dumps(validated, ensure_ascii=False))
-    data = validated.get("data") or {}
-    batch_no = data.get("batchNo")
-    if not batch_no:
-        raise SystemExit("counselor identity validation returned no batchNo")
-    confirmed = _req(
-        "POST",
-        "/system/identity-import/confirm-batch",
-        token=token,
-        body={"batchNo": batch_no},
+    print(
+        "[e2e-affairs-counselor] canonical identity import confirmed",
+        str(receipt.get("id") or receipt.get("jobId") or "confirmed"),
     )
-    if confirmed.get("code") != 0:
-        raise SystemExit("counselor identity import failed: " + json.dumps(confirmed, ensure_ascii=False))
-    print("[e2e-affairs-counselor] identity import confirmed", batch_no)
 
 
 def find_user(token: str) -> dict:

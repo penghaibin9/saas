@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 2,
+  "card": "I4_GOLD",
+  "schoolScaleTarget": 20000,
+  "gates": {
+    "roleMembers": {"paginationRequired": true, "maxPageSize": 200, "unboundedList": false},
+    "roleAudit": {"paginationRequired": true, "maxPageSize": 200, "unboundedList": false},
+    "effectiveAccess": {"cacheKeyIncludes": ["permissionDigest", "securityRevision", "permissionVersion", "tenantId", "subjectId"], "moduleFailureCacheable": false},
+    "permissionCatalog": {"usedUndefined": "RED", "enterpriseSchoolAssignment": "RED"},
+    "bulkMutation": {"expectedVersionOrIdempotency": true, "criticalAudit": true, "cacheInvalidation": true},
+    "identityImport": {
+      "targetRows": 20000,
+      "currentSingleJobGold": true,
+      "blockedBy": null,
+      "normalizedStaging": true,
+      "stageChunkSize": 500,
+      "batchPayloadRowsMaterialized": false,
+      "canonicalConfirm": true,
+      "realPasswordHashing": "PBKDF2_SHA256_200000",
+      "idempotentReplay": true,
+      "proofWorkflow": "Control Plane I4 20K Identity Gold Probe"
+    }
+  },
+  "candidateEvidence": {
+    "headSha": "91a11475919d42ce0b85fd7faab16fb1db29292e",
+    "workflowRunId": 31860701717,
+    "artifactId": 9240797901,
+    "artifactDigest": "sha256:3b08bcaed48d78e7bccd1f0e67bd5e44d8bb999231712f79b3f54b2d8444809d",
+    "rows": 20000,
+    "runtimeUsers": 20000,
+    "runtimeRoleLinks": 20000,
+    "stagingRows": 20000,
+    "rowErrors": 0,
+    "markerPayloadBytes": 203,
+    "stagingSeconds": 15.181,
+    "validationSeconds": 19.407,
+    "confirmSeconds": 1336.385,
+    "idempotentReplaySeconds": 0.002,
+    "maxRssMb": 213.45,
+    "totalSeconds": 1372.597
+  },
+  "performanceNote": "20K production correctness is proven; synchronous canonical confirm is dominated by real credential hashing/account writes and remains a performance-optimization opportunity, not hidden by the Gold gate.",
+  "goldRule": "Gold declaration is valid only when the final branch HEAD that contains this contract also passes the exact-head MySQL 20K identity proof workflow."
+}

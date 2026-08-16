@@ -1,21 +1,19 @@
-"""SYS-06 权限包、交付角色模板与学校自定义角色。
+"""SYS-06 权限包、RoleTemplate 与学校 CUSTOM Role 治理。
 
-治理层，不接管鉴权
-──────────────────
-真实鉴权仍然读 ``app.core.permissions.ROLE_PERMISSIONS``。本服务做四件事：
-
-1. 把代码里的角色固化成 **DELIVERED 模板**（只读），并记录每个模板的权限上限快照；
-2. 把权限码按域组织成 **权限包**，让页面能用 20~40 个包而不是几百个原子权限来配角色；
-3. 学校 **自定义角色必须从模板复制**，保存时校验"不得超出模板上限"；
-4. 把 ``*`` / ``module.*`` 登记进 **通配退役队列**，展开可见、可排期。
-
-之所以不直接把鉴权切到数据库：一次性切换会让全系统登录与权限同时受影响，必须双读对账
-一个发布周期后再切，属于后续独立步骤。
+B1/B5 终态：
+- t_role 是学校角色唯一 runtime identity；
+- t_custom_role_source 通过 role_id 1:1 记录模板/provenance；
+- t_role_template_permission 是模板权限规范化真值；
+- permission_ceiling_json 仅保留兼容快照；
+- DRAFT 自定义角色不物化 RolePermission，只有 SecurityChange 激活才改变 runtime 权限。
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import pathlib
 import re
+from datetime import datetime
 from functools import lru_cache
 from typing import Iterable
 
@@ -24,15 +22,21 @@ from sqlalchemy import select
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.db.session import get_sessionmaker
-from app.models.permission_governance import (EFFECT_ALLOW,
-                                              ROLE_SOURCE_CUSTOM,
-                                              WILDCARD_PENDING,
-                                              CustomRoleSource,
-                                              PermissionBundle,
-                                              PermissionBundleItem,
-                                              RoleTemplate, WildcardRetirement)
+from app.models.permission_governance import (
+    EFFECT_ALLOW,
+    ROLE_SOURCE_CUSTOM,
+    TEMPLATE_CATEGORY_SYSTEM_ROLE,
+    TEMPLATE_PLANE_TENANT,
+    TEMPLATE_PUBLISHED,
+    WILDCARD_PENDING,
+    CustomRoleSource,
+    PermissionBundle,
+    PermissionBundleItem,
+    RoleTemplate,
+    RoleTemplatePermission,
+    WildcardRetirement,
+)
 
-# 平台交付内容挂在 tenant_id=0 下，各校共享同一份模板与包
 PLATFORM_TENANT = 0
 
 
@@ -58,30 +62,22 @@ def _session():
 
 def _role_permissions() -> dict[str, set[str]]:
     from app.core.permissions import ROLE_PERMISSIONS
-
     return ROLE_PERMISSIONS
 
 
-# 权限码形态：至少两段、点分。用于从源码里识别字符串字面量。
-_CODE_LITERAL = re.compile(r"""['"]([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_*]+)+)['"]""")
+def _digest(codes) -> str:
+    payload = json.dumps(sorted({str(c) for c in (codes or []) if str(c)}), ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-# 会携带权限码的调用点：端点鉴权依赖、直接判定、以及菜单预设登记。
-# ``_entry`` 是 runtime_preset_install_service 里登记菜单的工厂，dataCenter.dashboard.view
-# 这类"只有菜单、没有端点校验"的权限码只能从这里发现。
+
+_CODE_LITERAL = re.compile(r"""['"]([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_*]+)+)['"]""")
 _PERMISSION_CALL = re.compile(
     r"(?:require_permission|require_any_permission|require_permission_compat"
     r"|require_any_permission_compat|has_permission|has_any_permission|_entry)\s*\(([^)]*)\)",
     re.S,
 )
-
-# 明确排除：文档示例里的占位符，以及 mock/演示数据里的假权限码。
 _PLACEHOLDER_CODES = {"module.domain.action", "a.b.xxx", "a.b.c"}
 _EXCLUDED_FILE_HINTS = ("mock_", "_mock", "/tests/", "\\tests\\")
-
-
-# 各业务域自带的权限定义模块。它们用 f-string 等方式动态生成权限码
-# （如 ``{f"graduationDesign.guidance.{x}" for x in (...)}"``），正则扫源码扫不到，
-# 只能在运行时读它们的模块级常量。
 _PERMISSION_MODULES = (
     "app.core.graduation_permissions",
     "app.core.domain_request_permissions",
@@ -89,12 +85,10 @@ _PERMISSION_MODULES = (
     "app.core.mobile_internship_permission_gate",
     "app.core.rbac09_permission_bundles",
 )
-
 _CODE_SHAPE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+$")
 
 
 def _iter_code_like(value, depth: int = 0):
-    """从常量里挖出形如 ``a.b.c`` 的权限码，容器最多下钻两层。"""
     if depth > 2:
         return
     if isinstance(value, str):
@@ -111,21 +105,20 @@ def _iter_code_like(value, depth: int = 0):
 
 @lru_cache(maxsize=1)
 def discover_domain_module_permission_codes() -> frozenset[str]:
-    """读取各业务域权限模块导出的常量。导入失败的模块跳过，不影响整体。"""
     import importlib
 
     codes: set[str] = set()
     for name in _PERMISSION_MODULES:
         try:
             module = importlib.import_module(name)
-        except Exception:  # noqa: BLE001 - 某个域模块不可用不该拖垮权限治理页面
+        except Exception:
             continue
         for attr in dir(module):
             if attr.startswith("_"):
                 continue
             try:
                 value = getattr(module, attr)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
             codes.update(_iter_code_like(value))
     return frozenset(codes)
@@ -133,16 +126,7 @@ def discover_domain_module_permission_codes() -> frozenset[str]:
 
 @lru_cache(maxsize=1)
 def discover_endpoint_permission_codes() -> frozenset[str]:
-    """扫描源码，找出真实被校验或被菜单登记的权限码。
-
-    为什么必须扫源码：权限目录 ``SCHOOL_PERMISSION_GROUPS`` 是人工维护的，实测发现它
-    完全没覆盖 ``employment`` / ``dataCenter`` 等域。而真实鉴权按前缀放行，不查目录——
-    也就是说这些权限**确实在生效**，只是治理侧看不见。靠人去补目录必然再次滞后，
-    所以这里以代码为准自动发现，新增端点无需再手工登记。
-
-    结果缓存在进程内：源码在运行期不变，扫描一次即可。
-    """
-    root = pathlib.Path(__file__).resolve().parent.parent  # backend/app
+    root = pathlib.Path(__file__).resolve().parent.parent
     codes: set[str] = set()
     for path in root.rglob("*.py"):
         text = str(path)
@@ -154,27 +138,14 @@ def discover_endpoint_permission_codes() -> frozenset[str]:
             continue
         for call in _PERMISSION_CALL.finditer(source):
             for code in _CODE_LITERAL.findall(call.group(1)):
-                if code in _PLACEHOLDER_CODES:
-                    continue
-                if code == "*" or code.endswith(".*"):
+                if code in _PLACEHOLDER_CODES or code == "*" or code.endswith(".*"):
                     continue
                 codes.add(code)
     return frozenset(codes)
 
 
 def all_known_permission_codes() -> set[str]:
-    """全部具体权限码 = 权限目录 ∪ 端点/菜单扫描结果 ∪ 角色名单里的具体码。
-
-    三个来源缺一不可：
-    - 权限目录 ``collect_concrete_permission_codes``：带展示名，是页面勾选的基础；
-    - 端点与菜单扫描：目录漏掉的域（employment / dataCenter 等）只能从这里补全；
-    - ``ROLE_PERMISSIONS`` 里的非通配码：少数只在角色名单里出现、没有端点的码。
-
-    曾经只用第一个来源，``systemAdmin.*`` 展开出 0 条——因为具体码在端点侧不在角色侧；
-    也曾想当然地只用角色名单，同样是 0。两次都不报错，静默算错，所以三源合并。
-    """
-    from app.services.system_admin_catalog_service import \
-        collect_concrete_permission_codes
+    from app.services.system_admin_catalog_service import collect_concrete_permission_codes
 
     codes = set(collect_concrete_permission_codes())
     codes |= set(discover_endpoint_permission_codes())
@@ -185,20 +156,14 @@ def all_known_permission_codes() -> set[str]:
 
 
 def expand_wildcard(wildcard: str, universe: Iterable[str] | None = None) -> set[str]:
-    """把 ``*`` / ``a.b.*`` / ``*.view`` 展开为具体权限码。
-
-    匹配语义与既有 ``expand_permission_patterns`` 保持一致（前缀通配、后缀通配、精确码），
-    但**不能直接调用它**：它内部把全集写死成权限目录，而目录漏了 employment / dataCenter
-    等域，用它展开会重新掉进"展开 0 条"的坑。这里改为对合并后的全集做同样的匹配。
-    """
     codes = set(universe) if universe is not None else all_known_permission_codes()
     if wildcard == "*":
         return set(codes)
     if wildcard.endswith(".*"):
-        prefix = wildcard[:-1]  # 保留末尾的点，"a.b.*" → "a.b."
+        prefix = wildcard[:-1]
         return {c for c in codes if c.startswith(prefix) or c == wildcard[:-2]}
     if wildcard.startswith("*."):
-        suffix = wildcard[1:]  # "*.view" → ".view"
+        suffix = wildcard[1:]
         return {c for c in codes if c.endswith(suffix)}
     return {wildcard} & codes
 
@@ -207,32 +172,69 @@ def _domain_of(code: str) -> str:
     return code.split(".", 1)[0] if "." in code else "GENERAL"
 
 
-def bootstrap_from_code(*, tenant_id: int | None = None) -> dict:
-    """把当前代码里的角色固化为交付模板与权限包（幂等）。
+def _template_permissions(db, template: RoleTemplate) -> list[str]:
+    rows = list(db.scalars(select(RoleTemplatePermission.permission_code).where(
+        RoleTemplatePermission.tenant_id == template.tenant_id,
+        RoleTemplatePermission.role_template_id == template.id,
+        RoleTemplatePermission.effect == EFFECT_ALLOW,
+        RoleTemplatePermission.is_deleted.is_(False),
+    )).all())
+    if rows:
+        return sorted(set(rows))
+    # Upgrade compatibility only. New writes always create normalized rows.
+    return sorted(set((template.permission_ceiling_json or {}).get("items") or []))
 
-    每个角色一份模板，模板的 ``permission_ceiling_json`` 是它展开后的权限上限；
-    持有的通配同时登记进退役队列。重复执行不会产生重复行。
-    """
+
+def _sync_template_permissions(db, template: RoleTemplate, codes) -> None:
+    wanted = sorted({str(code) for code in (codes or []) if str(code)})
+    existing = list(db.scalars(select(RoleTemplatePermission).where(
+        RoleTemplatePermission.tenant_id == template.tenant_id,
+        RoleTemplatePermission.role_template_id == template.id,
+    )).all())
+    by_code = {(row.permission_code, row.effect): row for row in existing}
+    for row in existing:
+        if row.effect != EFFECT_ALLOW or row.permission_code not in wanted:
+            row.is_deleted = True
+    for code in wanted:
+        key = (code, EFFECT_ALLOW)
+        if key in by_code:
+            by_code[key].is_deleted = False
+        else:
+            db.add(RoleTemplatePermission(
+                tenant_id=int(template.tenant_id),
+                role_template_id=int(template.id),
+                permission_code=code,
+                effect=EFFECT_ALLOW,
+                created_by=_actor_id(),
+                updated_by=_actor_id(),
+            ))
+    template.permission_ceiling_json = {
+        **dict(template.permission_ceiling_json or {}),
+        "items": wanted,
+        "permissionDigest": _digest(wanted),
+    }
+    template.permission_digest = _digest(wanted)
+
+
+def bootstrap_from_code(*, tenant_id: int | None = None) -> dict:
     tid = _tenant_id(tenant_id)
     universe = all_known_permission_codes()
     role_perms = _role_permissions()
-
     created_bundles = created_templates = created_wildcards = 0
+    now = datetime.utcnow()
+
     with _session() as db:
-        # 1) 按域建权限包
         by_domain: dict[str, set[str]] = {}
         for code in universe:
             by_domain.setdefault(_domain_of(code), set()).add(code)
 
         for domain, codes in sorted(by_domain.items()):
             bundle_code = f"{domain.upper()}_ALL"
-            exists = db.scalars(
-                select(PermissionBundle).where(
-                    PermissionBundle.tenant_id == PLATFORM_TENANT,
-                    PermissionBundle.bundle_code == bundle_code,
-                    PermissionBundle.is_deleted.is_(False),
-                )
-            ).first()
+            exists = db.scalars(select(PermissionBundle).where(
+                PermissionBundle.tenant_id == PLATFORM_TENANT,
+                PermissionBundle.bundle_code == bundle_code,
+                PermissionBundle.is_deleted.is_(False),
+            )).first()
             if exists:
                 continue
             bundle = PermissionBundle(
@@ -242,93 +244,87 @@ def bootstrap_from_code(*, tenant_id: int | None = None) -> dict:
                 owner_domain=domain.upper(),
                 delivered=True,
                 description=f"由代码 ROLE_PERMISSIONS 固化，共 {len(codes)} 个权限码",
-                created_by=_actor_id(),
-                updated_by=_actor_id(),
+                created_by=_actor_id(), updated_by=_actor_id(),
             )
             db.add(bundle)
             db.flush()
             for code in sorted(codes):
-                db.add(
-                    PermissionBundleItem(
-                        tenant_id=PLATFORM_TENANT,
-                        bundle_id=int(bundle.id),
-                        permission_code=code,
-                        effect=EFFECT_ALLOW,
-                        created_by=_actor_id(),
-                        updated_by=_actor_id(),
-                    )
-                )
+                db.add(PermissionBundleItem(
+                    tenant_id=PLATFORM_TENANT,
+                    bundle_id=int(bundle.id),
+                    permission_code=code,
+                    effect=EFFECT_ALLOW,
+                    created_by=_actor_id(), updated_by=_actor_id(),
+                ))
             created_bundles += 1
 
-        # 2) 每个角色一份交付模板
         for role_code, granted in sorted(role_perms.items()):
+            # PLATFORM workforce never enters school RoleTemplate.
+            if str(role_code).upper().startswith("PLATFORM_"):
+                continue
             wildcards = sorted(c for c in granted if c == "*" or c.endswith(".*"))
             explicit = {c for c in granted if c not in wildcards}
             ceiling = set(explicit)
             for wc in wildcards:
                 ceiling |= expand_wildcard(wc, universe)
 
-            exists = db.scalars(
-                select(RoleTemplate).where(
-                    RoleTemplate.tenant_id == PLATFORM_TENANT,
-                    RoleTemplate.template_code == role_code,
-                    RoleTemplate.template_version == 1,
-                    RoleTemplate.is_deleted.is_(False),
+            template = db.scalars(select(RoleTemplate).where(
+                RoleTemplate.tenant_id == PLATFORM_TENANT,
+                RoleTemplate.template_code == role_code,
+                RoleTemplate.template_version == 1,
+                RoleTemplate.is_deleted.is_(False),
+            )).first()
+            if template is None:
+                template = RoleTemplate(
+                    tenant_id=PLATFORM_TENANT,
+                    template_code=role_code,
+                    template_name=role_code,
+                    template_version=1,
+                    template_plane=TEMPLATE_PLANE_TENANT,
+                    template_category=TEMPLATE_CATEGORY_SYSTEM_ROLE,
+                    publish_status=TEMPLATE_PUBLISHED,
+                    permission_digest=_digest(ceiling),
+                    change_reason="bootstrap from ROLE_PERMISSIONS",
+                    effective_at=now,
+                    published_at=now,
+                    published_by=_actor_id(),
+                    delivered=True,
+                    bundle_codes_json={"items": sorted({f"{_domain_of(c).upper()}_ALL" for c in ceiling})},
+                    permission_ceiling_json={"items": sorted(ceiling), "permissionDigest": _digest(ceiling)},
+                    wildcard_json={"items": wildcards} if wildcards else None,
+                    status="ACTIVE",
+                    created_by=_actor_id(), updated_by=_actor_id(),
                 )
-            ).first()
-            if not exists:
-                db.add(
-                    RoleTemplate(
-                        tenant_id=PLATFORM_TENANT,
-                        template_code=role_code,
-                        template_name=role_code,
-                        template_version=1,
-                        delivered=True,
-                        bundle_codes_json={"items": sorted({f"{_domain_of(c).upper()}_ALL" for c in ceiling})},
-                        permission_ceiling_json={"items": sorted(ceiling)},
-                        wildcard_json={"items": wildcards} if wildcards else None,
-                        created_by=_actor_id(),
-                        updated_by=_actor_id(),
-                    )
-                )
+                db.add(template)
+                db.flush()
                 created_templates += 1
+            _sync_template_permissions(db, template, ceiling)
 
-            # 3) 通配退役队列（登记在当前学校名下，便于各校分别推进）
             for wc in wildcards:
-                exists_wc = db.scalars(
-                    select(WildcardRetirement).where(
-                        WildcardRetirement.tenant_id == tid,
-                        WildcardRetirement.role_code == role_code,
-                        WildcardRetirement.wildcard_code == wc,
-                        WildcardRetirement.is_deleted.is_(False),
-                    )
-                ).first()
+                exists_wc = db.scalars(select(WildcardRetirement).where(
+                    WildcardRetirement.tenant_id == tid,
+                    WildcardRetirement.role_code == role_code,
+                    WildcardRetirement.wildcard_code == wc,
+                    WildcardRetirement.is_deleted.is_(False),
+                )).first()
                 if exists_wc:
                     continue
                 expanded = sorted(expand_wildcard(wc, universe))
-                # 全集已合并权限目录、端点扫描、域模块常量和角色名单四个来源。
-                # 到这一步仍展开为 0，说明整个仓库都找不到该前缀的具体权限码——
-                # 也就是这条通配实际上什么都没放开，是历史遗留的死通配，可安全退役。
-                # 注意区别于早期版本：那时展开为 0 是因为全集取源不全（真在放行却看不见），
-                # 两者危险程度完全相反，不能用同一句话描述。
                 note = (
                     "由 SYS-06 自动登记；展开结果取自权限目录+端点扫描+域模块常量+角色名单四个来源"
                     if expanded
                     else "四个来源中均无该前缀的具体权限码：这条通配实际未放开任何权限，属死通配，可安全退役"
                 )
-                db.add(
-                    WildcardRetirement(
-                        tenant_id=tid,
-                        role_code=role_code,
-                        wildcard_code=wc,
-                        expanded_count=len(expanded),
-                        expanded_json={"items": expanded},
-                        status=WILDCARD_PENDING,
-                        note=note,
-                        created_by=_actor_id(),
-                        updated_by=_actor_id(),
-                    )
-                )
+                db.add(WildcardRetirement(
+                    tenant_id=tid,
+                    role_code=role_code,
+                    wildcard_code=wc,
+                    expanded_count=len(expanded),
+                    expanded_json={"items": expanded},
+                    status=WILDCARD_PENDING,
+                    note=note,
+                    created_by=_actor_id(), updated_by=_actor_id(),
+                ))
                 created_wildcards += 1
         db.commit()
 
@@ -343,176 +339,212 @@ def bootstrap_from_code(*, tenant_id: int | None = None) -> dict:
 def list_bundles(*, tenant_id: int | None = None) -> dict:
     _tenant_id(tenant_id)
     with _session() as db:
-        bundles = db.scalars(
-            select(PermissionBundle)
-            .where(PermissionBundle.is_deleted.is_(False))
-            .order_by(PermissionBundle.owner_domain, PermissionBundle.bundle_code)
-        ).all()
+        bundles = db.scalars(select(PermissionBundle).where(
+            PermissionBundle.is_deleted.is_(False)
+        ).order_by(PermissionBundle.owner_domain, PermissionBundle.bundle_code)).all()
         items = []
-        for b in bundles:
-            count = len(
-                db.scalars(
-                    select(PermissionBundleItem).where(
-                        PermissionBundleItem.bundle_id == b.id,
-                        PermissionBundleItem.is_deleted.is_(False),
-                    )
-                ).all()
-            )
-            items.append(
-                {
-                    "bundleCode": b.bundle_code,
-                    "bundleName": b.bundle_name,
-                    "ownerDomain": b.owner_domain,
-                    "riskLevel": b.risk_level,
-                    "delivered": bool(b.delivered),
-                    "permissionCount": count,
-                    "description": b.description,
-                }
-            )
+        for bundle in bundles:
+            count = len(db.scalars(select(PermissionBundleItem).where(
+                PermissionBundleItem.bundle_id == bundle.id,
+                PermissionBundleItem.is_deleted.is_(False),
+            )).all())
+            items.append({
+                "bundleCode": bundle.bundle_code,
+                "bundleName": bundle.bundle_name,
+                "ownerDomain": bundle.owner_domain,
+                "riskLevel": bundle.risk_level,
+                "delivered": bool(bundle.delivered),
+                "permissionCount": count,
+                "description": bundle.description,
+            })
         return {"items": items}
 
 
 def list_templates(*, tenant_id: int | None = None) -> dict:
     _tenant_id(tenant_id)
     with _session() as db:
-        rows = db.scalars(
-            select(RoleTemplate)
-            .where(RoleTemplate.is_deleted.is_(False), RoleTemplate.status == "ACTIVE")
-            .order_by(RoleTemplate.template_code)
-        ).all()
-        return {
-            "items": [
-                {
-                    "templateCode": r.template_code,
-                    "templateName": r.template_name,
-                    "templateVersion": int(r.template_version or 1),
-                    "delivered": bool(r.delivered),
-                    "permissionCount": len((r.permission_ceiling_json or {}).get("items") or []),
-                    "wildcards": (r.wildcard_json or {}).get("items") or [],
-                    "bundles": (r.bundle_codes_json or {}).get("items") or [],
-                }
-                for r in rows
-            ]
-        }
+        rows = db.scalars(select(RoleTemplate).where(
+            RoleTemplate.is_deleted.is_(False),
+            RoleTemplate.status == "ACTIVE",
+            RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
+            RoleTemplate.publish_status == TEMPLATE_PUBLISHED,
+        ).order_by(RoleTemplate.template_code, RoleTemplate.template_version.desc())).all()
+        seen: set[str] = set()
+        items = []
+        for row in rows:
+            if row.template_code in seen:
+                continue
+            seen.add(row.template_code)
+            items.append({
+                "templateCode": row.template_code,
+                "templateName": row.template_name,
+                "templateVersion": int(row.template_version or 1),
+                "templatePlane": row.template_plane,
+                "publishStatus": row.publish_status,
+                "delivered": bool(row.delivered),
+                "permissionCount": len(_template_permissions(db, row)),
+                "permissionDigest": row.permission_digest or _digest(_template_permissions(db, row)),
+                "wildcards": (row.wildcard_json or {}).get("items") or [],
+                "bundles": (row.bundle_codes_json or {}).get("items") or [],
+            })
+        return {"items": items}
+
+
+def _load_template(db, template_code: str) -> RoleTemplate:
+    row = db.scalars(select(RoleTemplate).where(
+        RoleTemplate.tenant_id == PLATFORM_TENANT,
+        RoleTemplate.template_code == template_code,
+        RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
+        RoleTemplate.publish_status == TEMPLATE_PUBLISHED,
+        RoleTemplate.status == "ACTIVE",
+        RoleTemplate.is_deleted.is_(False),
+    ).order_by(RoleTemplate.template_version.desc())).first()
+    if not row:
+        raise not_found(f"已发布 TENANT 角色模板不存在：{template_code}")
+    return row
 
 
 def get_template(template_code: str, *, tenant_id: int | None = None) -> dict:
     _tenant_id(tenant_id)
     with _session() as db:
         row = _load_template(db, template_code)
+        permissions = _template_permissions(db, row)
         return {
             "templateCode": row.template_code,
             "templateName": row.template_name,
             "templateVersion": int(row.template_version or 1),
+            "templatePlane": row.template_plane,
+            "publishStatus": row.publish_status,
             "delivered": bool(row.delivered),
-            "permissionCeiling": (row.permission_ceiling_json or {}).get("items") or [],
+            "permissionCeiling": permissions,
+            "permissionDigest": row.permission_digest or _digest(permissions),
             "wildcards": (row.wildcard_json or {}).get("items") or [],
         }
-
-
-def _load_template(db, template_code: str) -> RoleTemplate:
-    row = db.scalars(
-        select(RoleTemplate)
-        .where(
-            RoleTemplate.template_code == template_code,
-            RoleTemplate.is_deleted.is_(False),
-            RoleTemplate.status == "ACTIVE",
-        )
-        .order_by(RoleTemplate.template_version.desc())
-    ).first()
-    if not row:
-        raise not_found(f"交付角色模板不存在：{template_code}")
-    return row
 
 
 def clone_template(
     template_code: str, *, new_role_code: str, permission_codes: list[str] | None = None,
     tenant_id: int | None = None,
 ) -> dict:
-    """从交付模板复制出学校自定义角色。不传权限清单时默认继承模板全部上限。"""
+    """同事务创建 runtime CUSTOM Role + pinned governance source；不提前物化权限。"""
+    from app.models import Role
+
     tid = _tenant_id(tenant_id)
-    if not str(new_role_code or "").strip():
+    code = str(new_role_code or "").strip()
+    if not code:
         raise AppException("VALIDATION_ERROR", "自定义角色编码不能为空")
+    if code.upper().startswith("PLATFORM_"):
+        raise AppException("NO_PERMISSION", "学校角色不能使用 PLATFORM_ 命名空间", http_status=403)
 
     with _session() as db:
         template = _load_template(db, template_code)
-        ceiling = set((template.permission_ceiling_json or {}).get("items") or [])
+        ceiling = set(_template_permissions(db, template))
         picked = set(permission_codes) if permission_codes is not None else set(ceiling)
-
         over = sorted(picked - ceiling)
         if over:
             raise AppException(
-                "PERMISSION_EXCEEDS_TEMPLATE",
-                "自定义角色的权限超出了交付模板上限",
-                http_status=403,
-                details={"exceeded": over[:20], "exceededCount": len(over)},
+                "PERMISSION_EXCEEDS_TEMPLATE", "自定义角色的权限超出了交付模板上限",
+                http_status=403, details={"exceeded": over[:20], "exceededCount": len(over)},
             )
 
-        exists = db.scalars(
-            select(CustomRoleSource).where(
-                CustomRoleSource.tenant_id == tid,
-                CustomRoleSource.role_code == new_role_code,
-                CustomRoleSource.is_deleted.is_(False),
-            )
-        ).first()
-        if exists:
-            raise AppException("ROLE_ALREADY_EXISTS", f"自定义角色已存在：{new_role_code}", http_status=409)
+        source_exists = db.scalars(select(CustomRoleSource).where(
+            CustomRoleSource.tenant_id == tid,
+            CustomRoleSource.role_code == code,
+            CustomRoleSource.is_deleted.is_(False),
+        )).first()
+        role_exists = db.scalars(select(Role).where(
+            Role.tenant_id == tid,
+            Role.role_code == code,
+            Role.is_deleted.is_(False),
+        )).first()
+        if source_exists or role_exists:
+            raise AppException("ROLE_ALREADY_EXISTS", f"自定义角色已存在：{code}", http_status=409)
 
-        row = CustomRoleSource(
+        role = Role(
             tenant_id=tid,
-            role_code=new_role_code,
+            role_code=code,
+            role_name=code,
+            role_type="CUSTOM",
+            status="ACTIVE",
+            remark=f"DERIVED_PINNED:{template.template_code}:v{int(template.template_version or 1)}",
+            created_by=_actor_id(), updated_by=_actor_id(),
+        )
+        db.add(role)
+        db.flush()
+        source = CustomRoleSource(
+            tenant_id=tid,
+            role_id=int(role.id),
+            role_code=code,
             source_template_code=template.template_code,
             source_template_version=int(template.template_version or 1),
             permission_codes_json={"items": sorted(picked)},
+            drift_json={"policy": "DERIVED_PINNED", "automaticUpgrade": False},
             status="DRAFT",
-            created_by=_actor_id(),
-            updated_by=_actor_id(),
+            created_by=_actor_id(), updated_by=_actor_id(),
         )
-        db.add(row)
+        db.add(source)
         db.commit()
-        db.refresh(row)
-        return _custom_role_row(row)
+        db.refresh(source)
+        return _custom_role_row(source)
+
+
+def _load_custom_role(db, tid: int, role_code: str):
+    from app.models import Role
+
+    source = db.scalars(select(CustomRoleSource).where(
+        CustomRoleSource.tenant_id == tid,
+        CustomRoleSource.role_code == role_code,
+        CustomRoleSource.is_deleted.is_(False),
+    ).with_for_update()).first()
+    if source is None:
+        raise not_found(f"自定义角色不存在：{role_code}")
+    role = db.scalars(select(Role).where(
+        Role.tenant_id == tid,
+        Role.id == source.role_id,
+        Role.role_code == source.role_code,
+        Role.role_type == "CUSTOM",
+        Role.is_deleted.is_(False),
+    ).with_for_update()).first()
+    if role is None:
+        raise AppException(
+            "CUSTOM_ROLE_BINDING_DRIFT",
+            "自定义角色治理源与 runtime Role 绑定已漂移，拒绝继续修改",
+            http_status=409,
+            details={"roleCode": source.role_code, "roleId": str(source.role_id)},
+        )
+    return source, role
 
 
 def update_custom_role(
     role_code: str, *, permission_codes: list[str], expected_version: int, tenant_id: int | None = None
 ) -> dict:
-    """裁剪自定义角色权限。仍然只能在模板上限内，草稿保存不改变真实鉴权。"""
     tid = _tenant_id(tenant_id)
     with _session() as db:
-        row = db.scalars(
-            select(CustomRoleSource).where(
-                CustomRoleSource.tenant_id == tid,
-                CustomRoleSource.role_code == role_code,
-                CustomRoleSource.is_deleted.is_(False),
-            )
-        ).first()
-        if not row:
-            raise not_found(f"自定义角色不存在：{role_code}")
-        if int(row.version or 0) != int(expected_version):
+        source, role = _load_custom_role(db, tid, role_code)
+        if int(source.version or 0) != int(expected_version):
             raise AppException("VERSION_CONFLICT", "该角色已被其他人修改，请刷新后重试", http_status=409)
-
-        template = _load_template(db, row.source_template_code)
-        ceiling = set((template.permission_ceiling_json or {}).get("items") or [])
+        template = _load_template(db, source.source_template_code)
+        ceiling = set(_template_permissions(db, template))
         picked = set(permission_codes or [])
         over = sorted(picked - ceiling)
         if over:
             raise AppException(
-                "PERMISSION_EXCEEDS_TEMPLATE",
-                "自定义角色的权限超出了交付模板上限",
-                http_status=403,
-                details={"exceeded": over[:20], "exceededCount": len(over)},
+                "PERMISSION_EXCEEDS_TEMPLATE", "自定义角色的权限超出了交付模板上限",
+                http_status=403, details={"exceeded": over[:20], "exceededCount": len(over)},
             )
-        row.permission_codes_json = {"items": sorted(picked)}
-        row.updated_by = _actor_id()
-        row.version = int(row.version or 0) + 1
+        source.permission_codes_json = {"items": sorted(picked)}
+        source.updated_by = _actor_id()
+        source.version = int(source.version or 0) + 1
+        role.updated_by = _actor_id()
+        role.version = int(role.version or 0) + 1
         db.commit()
-        db.refresh(row)
-        return _custom_role_row(row)
+        db.refresh(source)
+        return _custom_role_row(source)
 
 
 def _custom_role_row(row: CustomRoleSource) -> dict:
     return {
+        "roleId": str(row.role_id),
         "roleCode": row.role_code,
         "sourceTemplate": row.source_template_code,
         "sourceTemplateVersion": int(row.source_template_version or 1),
@@ -526,43 +558,36 @@ def _custom_role_row(row: CustomRoleSource) -> dict:
 def list_custom_roles(*, tenant_id: int | None = None) -> dict:
     tid = _tenant_id(tenant_id)
     with _session() as db:
-        rows = db.scalars(
-            select(CustomRoleSource)
-            .where(CustomRoleSource.tenant_id == tid, CustomRoleSource.is_deleted.is_(False))
-            .order_by(CustomRoleSource.role_code)
-        ).all()
-        return {"items": [_custom_role_row(r) for r in rows]}
+        rows = db.scalars(select(CustomRoleSource).where(
+            CustomRoleSource.tenant_id == tid,
+            CustomRoleSource.is_deleted.is_(False),
+        ).order_by(CustomRoleSource.role_code)).all()
+        return {"items": [_custom_role_row(row) for row in rows]}
 
 
 def wildcard_queue(*, tenant_id: int | None = None) -> dict:
-    """通配权限退役队列。展开数是下界，页面必须如实标注。"""
     tid = _tenant_id(tenant_id)
     with _session() as db:
-        rows = db.scalars(
-            select(WildcardRetirement)
-            .where(WildcardRetirement.tenant_id == tid, WildcardRetirement.is_deleted.is_(False))
-            .order_by(WildcardRetirement.expanded_count.desc())
-        ).all()
-        items = [
-            {
-                "roleCode": r.role_code,
-                "wildcardCode": r.wildcard_code,
-                "expandedCount": int(r.expanded_count or 0),
-                # 展开为 0 = 四个来源里都找不到该前缀的具体权限码，这条通配实际未放开任何东西。
-                # 这类可以安全退役，风险最低——优先从它们开始清理。
-                "deadWildcard": int(r.expanded_count or 0) == 0,
-                "status": r.status,
-                "note": r.note,
-            }
-            for r in rows
-        ]
-        dead = sorted({i["wildcardCode"] for i in items if i["deadWildcard"]})
+        rows = db.scalars(select(WildcardRetirement).where(
+            WildcardRetirement.tenant_id == tid,
+            WildcardRetirement.is_deleted.is_(False),
+        ).order_by(WildcardRetirement.expanded_count.desc())).all()
+        items = [{
+            "roleCode": row.role_code,
+            "wildcardCode": row.wildcard_code,
+            "expandedCount": int(row.expanded_count or 0),
+            "deadWildcard": int(row.expanded_count or 0) == 0,
+            "status": row.status,
+            "note": row.note,
+        } for row in rows]
+        dead = sorted({item["wildcardCode"] for item in items if item["deadWildcard"]})
+        source_count = len(all_known_permission_codes())
         return {
             "items": items,
             "deadWildcards": dead,
-            "sourceCount": len(all_known_permission_codes()),
+            "sourceCount": source_count,
             "disclaimer": (
-                f"展开基于 {len(all_known_permission_codes())} 个权限码全集"
+                f"展开基于 {source_count} 个权限码全集"
                 "（权限目录 + 端点扫描 + 各域权限模块常量 + 角色名单四个来源合并）；"
                 f"其中 {len(dead)} 条通配在四个来源中均无对应权限码，实际未放开任何权限，可优先退役"
             ),

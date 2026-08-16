@@ -38,8 +38,13 @@ jobs:
       - name: V9.2 PR diff scope gate
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
           test -n "$BASE_SHA"
+          if [[ ! "$HEAD_BRANCH" =~ ^((agent|candidate|ops|sync|fix)/)?graduation-(v9|v92|u[0-9]+) ]]; then
+            echo "Graduation V9 construction scope is not applicable to head branch: $HEAD_BRANCH"
+            exit 0
+          fi
           CURRENT_CARD=V9_PR BASE_SHA="$BASE_SHA" HEAD_SHA=HEAD \
             node scripts/check/check-graduation-v9-scope.mjs

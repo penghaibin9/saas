@@ -42,8 +42,8 @@
               <AppFormItem label="来源" prop="source">
                 <AppSelect v-model="form.source" :options="sourceOptions" placeholder="请选择" />
               </AppFormItem>
-              <AppFormItem label="地区" prop="region">
-                <AppTextInput v-model="form.region" placeholder="省/市" />
+              <AppFormItem class="ef-grid__full" label="地区" prop="region">
+                <AppChinaRegionPicker v-model="form.region" level="city" placeholder="请选择企业所在省 / 市" />
               </AppFormItem>
               <AppFormItem label="规模" prop="scale">
                 <AppTextInput v-model="form.scale" placeholder="微/小/中/大型" />
@@ -115,7 +115,8 @@
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import {
-  AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppSubmitBar
+  AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppSubmitBar,
+  AppChinaRegionPicker
 } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
@@ -129,7 +130,8 @@ export default {
   name: 'EnterpriseFormView',
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
-    AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppSubmitBar
+    AppInlineAlert, AppForm, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppSubmitBar,
+    AppChinaRegionPicker
   },
   data() {
     return {

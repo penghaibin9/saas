@@ -10,6 +10,7 @@ from app.db.session import get_sessionmaker
 from app.models.file import FileObject
 from app.modules.academic_affairs.routers.academic_file_exchange_router import ConfirmRequest, router
 from app.modules.academic_affairs.services import academic_file_exchange_service as exchange
+from app.services import data_exchange_confirm_legacy as confirm_legacy
 from app.services import data_exchange_confirm_service as confirm_service
 
 TENANT_ID = 1000000000000000001
@@ -122,12 +123,17 @@ def test_quarantined_file_remains_scanning_without_preview_parse(db_mode):
 
 
 def test_excel_dispatch_has_explicit_academic_adapter_whitelist():
-    source = inspect.getsource(confirm_service.confirm_import_job)
+    wrapper_source = inspect.getsource(confirm_service.confirm_import_job)
+    academic_wrapper_source = inspect.getsource(confirm_service.confirm_academic_import_job)
+    legacy_source = inspect.getsource(confirm_legacy.confirm_import_job)
     for import_type in ("ACADEMIC_ROSTER", "ACADEMIC_GRADE", "ACADEMIC_SCHEDULE"):
-        assert import_type in source
-    assert "confirm_academic_import" in source
-    assert "assert_file_ready_for_business" in source
-    assert "尚未迁移到服务端权威确认" in source
+        assert import_type in wrapper_source
+        assert import_type in legacy_source
+    assert "confirm_academic_import_job" in wrapper_source
+    assert "_legacy.confirm_import_job" in academic_wrapper_source
+    assert "confirm_academic_import" in legacy_source
+    assert "assert_file_ready_for_business" in legacy_source
+    assert "尚未迁移到服务端权威确认" in legacy_source
 
 
 def test_authoritative_confirm_reloads_and_revalidates_same_file():

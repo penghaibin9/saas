@@ -1,11 +1,18 @@
 """系统管理·实施与预设中心 API。"""
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, File, UploadFile
 
-from app.core.permissions import require_any_permission, require_permission
+from app.core.permissions import enforce_permission, require_any_permission, require_permission
 from app.core.response import success
 from app.services import system_implementation_service as service
 
 router = APIRouter(prefix="/system/implementation", tags=["实施与预设中心"])
+
+
+def _require_identity_mapping_import(
+    user=Depends(require_permission("systemAdmin.implementation.mapping.manage")),
+):
+    enforce_permission(user, "systemAdmin.user.import")
+    return user
 
 
 @router.get("/preset-catalog")
@@ -40,6 +47,32 @@ def preview(project_id: int, user=Depends(require_permission("systemAdmin.implem
 def apply(project_id: int, body: dict = Body(...),
           user=Depends(require_permission("systemAdmin.implementation.apply"))):
     return success(service.apply_snapshot(user, project_id, body), message="预设快照已应用")
+
+
+@router.post("/identity-import/files")
+async def upload_identity_implementation_file(
+    file: UploadFile = File(...),
+    user=Depends(_require_identity_mapping_import),
+):
+    from app.services import implementation_identity_import_service as identity_file
+
+    return success(
+        await identity_file.upload(file, user=user),
+        message="实施导入文件已进入统一文件安全链",
+    )
+
+
+@router.post("/identity-import/files/{file_id}/validate")
+def validate_identity_implementation_file(
+    file_id: str,
+    user=Depends(_require_identity_mapping_import),
+):
+    from app.services import implementation_identity_import_service as identity_file
+
+    return success(
+        identity_file.validate(file_id, user=user),
+        message="实施导入文件安全扫描通过并完成预检",
+    )
 
 
 @router.post("/projects/{project_id}/mapping/discover")

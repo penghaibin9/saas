@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "card": "B0-06",
+  "requiredEvidence": [
+    "expectedVersionOrCreateIdempotency",
+    "rowLockOrUniqueness",
+    "criticalAuditSameTransaction",
+    "reasonWhenRiskRequires",
+    "cacheOrSessionInvalidation",
+    "rollbackOrRecovery"
+  ],
+  "criticalFamilies": [
+    "system.account",
+    "system.role",
+    "system.scope",
+    "system.delegation",
+    "system.securityChange",
+    "platform.tenantLifecycle",
+    "platform.packageQuotaEntitlement",
+    "platform.duty",
+    "platform.elevation",
+    "platform.supportSession"
+  ],
+  "rule": "CRITICAL mutation missing any required production property cannot be Gold"
+}
