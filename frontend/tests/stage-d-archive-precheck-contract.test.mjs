@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const viewUrl = new URL('../src/modules/academicAffairs/views/ArchivePrecheckView.vue', import.meta.url)
+const consoleUrl = new URL('../src/modules/academicAffairs/views/AaArchiveConsoleView.vue', import.meta.url)
 
 test('Stage D 归档预检首屏只消费后端真实语义结果与阻断计数', async () => {
   const source = await readFile(viewUrl, 'utf8')
@@ -61,7 +62,6 @@ test('Stage D 归档预检具备阻断优先与移动端响应式收口', async 
   assert.match(source, /@media \(max-width: 600px\)/)
 })
 
-
 test('D-W1 Archive 四态必须在 UI 中可区分且 UNKNOWN 绝不绿色', async () => {
   const source = await readFile(viewUrl, 'utf8')
   for (const token of [
@@ -79,4 +79,27 @@ test('D-W1 Archive 四态必须在 UI 中可区分且 UNKNOWN 绝不绿色', asy
     '.aapc-card.is-na'
   ]) assert.ok(source.includes(token), `missing D-W1 archive state token: ${token}`)
   assert.ok(!source.includes('data.blockedDomains ||'), 'blockedDomains=0 must never fall through to legacy non-PASS counting')
+})
+
+test('D-W1 正式归档控制台必须按 result 四态展示，且不存在整体强制归档死入口', async () => {
+  const source = await readFile(consoleUrl, 'utf8')
+
+  for (const token of [
+    "itemState(row)",
+    "PASS: '通过'",
+    "BLOCKED: '阻断'",
+    "UNKNOWN: '待治理'",
+    "NOT_APPLICABLE: '不适用'",
+    "UNKNOWN: 'warning'",
+    "NOT_APPLICABLE: 'info'",
+    "itemColumns: [{ key: 'domain'",
+    "{ key: 'result', title: '归档状态' }",
+    '整体强制归档已停用',
+    '请处理阻断 / 待治理域后重新执行完整性检查',
+    "api.confirm(this.current.batchId, false)"
+  ]) assert.ok(source.includes(token), `missing archive console W1 token: ${token}`)
+
+  assert.ok(!source.includes("@click=\"doConfirm(true)\""), 'MISSING_ITEMS must not expose force-confirm action')
+  assert.ok(!source.includes('>强制归档</AppButton>'), 'legacy force archive CTA must be removed')
+  assert.ok(!source.includes("row.present ? 'success' : 'danger'"), 'persisted N/A/UNKNOWN must not be rendered from legacy present boolean')
 })
