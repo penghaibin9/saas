@@ -18,7 +18,10 @@
 from __future__ import annotations
 
 import importlib
+from contextlib import contextmanager
 from datetime import datetime
+from threading import BoundedSemaphore, Lock
+from time import monotonic
 from types import SimpleNamespace
 
 from app.core.exceptions import AppException, not_found
@@ -30,6 +33,61 @@ _base = importlib.import_module(
     ".academic_affairs_selection_service",
     package=__package__,
 )
+
+# W6 peak admission is process-local backpressure, never the business authority.
+# Each process owns its SQLAlchemy pool, so this gate preserves DB headroom for
+# nested EffectiveGrade/read sessions. Cross-process correctness stays in MySQL.
+from app.core.config import get_settings as _get_settings
+
+_db_settings = _get_settings()
+_selection_pool_total = max(
+    1,
+    int(_db_settings.DB_POOL_SIZE or 1) + int(_db_settings.DB_MAX_OVERFLOW or 0),
+)
+_selection_process_limit = max(
+    1,
+    min(
+        int(_db_settings.DB_POOL_SIZE or 1),
+        max(1, _selection_pool_total // 2),
+    ),
+)
+_SELECTION_ENROLL_PROCESS_GATE = BoundedSemaphore(_selection_process_limit)
+_SELECTION_ENROLL_STRIPES = tuple(Lock() for _ in range(64))
+_SELECTION_ADMISSION_TIMEOUT_SECONDS = max(
+    10.0,
+    min(30.0, float(_db_settings.DB_POOL_TIMEOUT or 5) * 6.0),
+)
+
+
+@contextmanager
+def _selection_course_admission(selection_course_id: int):
+    """Bound hot-key fan-in before DB checkout; MySQL remains final authority."""
+    course_id = int(selection_course_id)
+    stripe = _SELECTION_ENROLL_STRIPES[course_id % len(_SELECTION_ENROLL_STRIPES)]
+    deadline = monotonic() + _SELECTION_ADMISSION_TIMEOUT_SECONDS
+    if not stripe.acquire(timeout=_SELECTION_ADMISSION_TIMEOUT_SECONDS):
+        raise AppException(
+            "SELECTION_BUSY",
+            "当前课程选课请求繁忙，请稍后重试",
+            details={"selectionCourseId": str(course_id)},
+            http_status=429,
+        )
+    process_acquired = False
+    try:
+        remaining = max(0.0, deadline - monotonic())
+        process_acquired = _SELECTION_ENROLL_PROCESS_GATE.acquire(timeout=remaining)
+        if not process_acquired:
+            raise AppException(
+                "SELECTION_BUSY",
+                "当前选课请求繁忙，请稍后重试",
+                details={"selectionCourseId": str(course_id)},
+                http_status=429,
+            )
+        yield
+    finally:
+        if process_acquired:
+            _SELECTION_ENROLL_PROCESS_GATE.release()
+        stripe.release()
 
 
 def __getattr__(name):
@@ -499,6 +557,13 @@ def student_preflight(user, body):
 
 
 def student_enroll(user, body):
+    """Peak-safe public command; admission happens before any DB checkout."""
+    selection_course_id = int(body.selectionCourseId)
+    with _selection_course_admission(selection_course_id):
+        return _student_enroll_guarded(user, body)
+
+
+def _student_enroll_guarded(user, body):
     from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
 
     with _base._core.session() as db:
