@@ -95,6 +95,36 @@ def test_parser_adapter_uses_caller_security_gated_reader_and_fixed_query_dry_ru
     assert preview is expected_preview
 
 
+def test_empty_course_workbook_is_rejected_before_domain_dry_run(monkeypatch):
+    spec = _spec()
+    calls = {"dryRun": 0}
+
+    def fake_reader(_path, _header_map):
+        return []
+
+    def forbidden_dry_run(_rows, _user):
+        calls["dryRun"] += 1
+        raise AssertionError("empty workbook must not enter DB dry-run")
+
+    monkeypatch.setattr(spec, "course_catalog_dry_run", forbidden_dry_run)
+    rows, preview = spec.parse_and_validate_course_catalog(
+        Path("/tmp/header-only-course.xlsx"),
+        user={"currentRoleCode": "ACADEMIC_ADMIN"},
+        reader=fake_reader,
+    )
+
+    assert rows == []
+    assert calls["dryRun"] == 0
+    assert preview["totalRows"] == 0
+    assert preview["validRows"] == 0
+    assert preview["invalidRows"] == 1
+    assert preview["rejectRows"] == 1
+    assert preview["items"][0]["action"] == "REJECT"
+    assert preview["items"][0]["code"] == "COURSE_SOURCE_EMPTY"
+    assert preview["errors"][0]["field"] == "file"
+    assert preview["errors"][0]["code"] == "COURSE_SOURCE_EMPTY"
+
+
 def test_spec_explicitly_stays_internal_until_int_shared_confirm_is_ready():
     contract = _spec().course_catalog_file_exchange_contract()
     assert contract["templateVersion"] == "course-catalog-v1"
