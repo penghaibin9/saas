@@ -68,7 +68,7 @@
             <button class="mp-link" @click="showAdd = !showAdd">{{ showAdd ? '收起' : '＋ 从课程库添加' }}</button>
           </template>
           <div v-if="showAdd && editable" class="aa-add-panel">
-            <AppCoursePicker v-model="addForm.courseId" placeholder="选择已启用课程" @change="onPickCourse" />
+            <AppCoursePicker v-model="addForm.courseId" :remote-search="searchProgramCourses" placeholder="选择已启用课程（显示版本）" @change="onPickCourse" />
             <input v-model.number="addForm.openTermNo" type="number" min="1" max="12" class="aa-input aa-input--sm" placeholder="开课学期" />
             <input v-model.trim="addForm.module" class="aa-input aa-input--sm" placeholder="课程模块" />
             <AppButton variant="primary" :disabled="!canAddCourse" :loading="adding" @click="addCourse">添加</AppButton>
@@ -113,11 +113,19 @@
               <AppButton @click="openReview('RETURN')">退回</AppButton>
             </template>
             <template v-if="bindable">
-              <input v-model.trim="bindForm.gradeYear" class="aa-input aa-input--sm" placeholder="绑定年级 如2026" maxlength="4" />
-              <AppButton variant="primary" :disabled="!/^\d{4}$/.test(bindForm.gradeYear)" :loading="acting" @click="doBind">绑定年级</AppButton>
+              <input v-model.trim="bindForm.gradeYear" class="aa-input aa-input--sm" placeholder="绑定年级 如2026" maxlength="4" @input="bindForm.classId = ''" />
+              <AppClassPicker
+                v-model="bindForm.classId"
+                class="aa-bind-class"
+                :disabled="!/^\d{4}$/.test(bindForm.gradeYear)"
+                :query="{ majorId: program.majorId, grade: bindForm.gradeYear, classStatus: 'NORMAL' }"
+                placeholder="班级特例（可选）"
+                data-scope-hint="留空=专业年级通用；选择班级=仅该班覆盖"
+              />
+              <AppButton variant="primary" :disabled="!/^\d{4}$/.test(bindForm.gradeYear)" :loading="acting" @click="doBind">{{ bindForm.classId ? '绑定班级特例' : '绑定年级' }}</AppButton>
             </template>
           </div>
-          <p class="mp-note">提交前必须通过右侧结构化校验；发布后按专业年级或班级绑定，历史年级继续锁定旧版本。</p>
+          <p class="mp-note">提交前必须通过右侧结构化校验；留空班级时建立专业年级通用绑定，选择班级时仅建立该班特例，其他同专业年级班级继续走通用方案。</p>
         </AppSectionCard>
       </main>
 
@@ -161,7 +169,7 @@
 <script>
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppCoursePicker, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppCoursePicker, AppClassPicker, AppInlineAlert } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { programQualityApi } from '@/modules/academicAffairs/api/program-quality.api'
 import { REVIEW_STATUS, reviewStatusColor, inReview, canSubmit } from '@/modules/academicAffairs/constants/course-program'
@@ -170,7 +178,7 @@ import AaOpeningPlanDiffView from './AaOpeningPlanDiffView.vue'
 
 export default {
   name: 'AaProgramEditorView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppCoursePicker, AppInlineAlert, AaOpeningPlanDiffView },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppCoursePicker, AppClassPicker, AppInlineAlert, AaOpeningPlanDiffView },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -178,7 +186,7 @@ export default {
       validation: null, validationLoading: false, validationError: '',
       activeStep: 'basic', showAdd: false, adding: false,
       addForm: { courseId: '', courseName: '', credit: null, openTermNo: null, module: '' },
-      bindForm: { gradeYear: '' },
+      bindForm: { gradeYear: '', classId: '' },
       showEdit: false, savingEdit: false, editForm: { programName: '', totalCredits: null },
       dlg: { visible: false, title: '', type: 'primary', confirmText: '确认', requireReason: false, submitting: false, action: '' },
       steps: [
@@ -218,6 +226,16 @@ export default {
         const target = issue.objectId ? document.getElementById(`course-${issue.objectId}`) : null
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' })
       })
+    },
+    async searchProgramCourses(keyword = '') {
+      const res = await academicAffairsApi.getCourses({ status: 'ENABLED', keyword, page: 1, pageSize: 50 })
+      if (res.code !== 0) return []
+      return (res.data?.list || []).map(course => ({
+        value: String(course.courseId),
+        label: course.courseName,
+        desc: [course.courseCode, `v${course.version}`, `${course.credit ?? 0} 学分`].filter(Boolean).join(' · '),
+        raw: course
+      }))
     },
     onPickCourse(value, items) {
       const item = items?.[0]
@@ -290,10 +308,14 @@ export default {
     async doBind() {
       if (this.acting || !/^\d{4}$/.test(this.bindForm.gradeYear)) return
       this.acting = true
-      const res = await academicAffairsApi.bindProgramGrade(this.programId, this.bindForm.gradeYear)
+      const classId = this.bindForm.classId || undefined
+      const res = await academicAffairsApi.bindProgramGrade(this.programId, this.bindForm.gradeYear, classId)
       this.acting = false
-      if (res.code === 0) { toast.success(`已绑定 ${this.bindForm.gradeYear} 级`); this.bindForm.gradeYear = ''; await this.load() }
-      else toast.error(res.message || '绑定失败')
+      if (res.code === 0) {
+        toast.success(classId ? `已绑定 ${this.bindForm.gradeYear} 级班级特例` : `已绑定 ${this.bindForm.gradeYear} 级通用方案`)
+        this.bindForm = { gradeYear: '', classId: '' }
+        await this.load()
+      } else toast.error(res.message || '绑定失败')
     },
     async load() {
       this.loading = true
@@ -338,6 +360,7 @@ export default {
 .aa-input { height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); }
 .aa-input--sm { width: 150px; }
 .aa-input--wide { min-width: 280px; flex: 1; }
+.aa-bind-class { min-width: 260px; }
 .aa-course-table { width: 100%; border-collapse: collapse; }
 .aa-course-table th, .aa-course-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-200, #e5e7eb); text-align: left; }
 .aa-course-table th { font-size: 12px; color: var(--text-500, #64748b); }
