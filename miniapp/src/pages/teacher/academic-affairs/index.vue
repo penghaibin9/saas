@@ -179,6 +179,8 @@ export default {
   },
   onLoad() {
     try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+  },
+  onShow() {
     this.load()
   },
   methods: {
