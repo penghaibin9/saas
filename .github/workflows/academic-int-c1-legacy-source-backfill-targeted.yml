@@ -54,16 +54,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Assert dual-write green parent and current main
+      - name: Assert dual-write green base and current main
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "0703ec4fb11cab9b50d6bbaf4eddfbbea8091b62"
+          git merge-base --is-ancestor 0703ec4fb11cab9b50d6bbaf4eddfbbea8091b62 HEAD
+          python - <<'PY'
+          import subprocess
+          files = subprocess.check_output([
+              'git', 'diff', '--name-only',
+              '0703ec4fb11cab9b50d6bbaf4eddfbbea8091b62..HEAD',
+          ], text=True).splitlines()
+          print('pre-backfill INT delta=', files)
+          assert files == ['.github/workflows/academic-int-c1-legacy-source-backfill-targeted.yml']
+          PY
           git fetch origin main --no-tags
           test "$(git rev-parse origin/main)" = "457dc8821876b8e1b67e0fb5911a9eec33e37616"
           grep -F 'revision = "20260816_acad_int_c1_att"' backend/alembic/versions/20260816_academic_int_c1_attendance.py
           grep -F 'occurrenceIdentity' backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py
-          grep -F 'source_type = source_type' backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py
+          grep -F 'source_type=source_type' backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py
 
       - name: Fetch pinned backfill staging
         run: |
