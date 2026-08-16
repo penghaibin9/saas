@@ -1,16 +1,15 @@
 """INT Program import preflight pipeline with bounded injected snapshot loaders.
 
 This owner stops before shared File Exchange dispatch and before any Program
-writer. It composes the frozen source/reference/definition/binding classifiers
-while enforcing the read order and exact lookup keys a later DB bridge must use:
+writer. It composes source/reference/quality/definition/binding classifiers while
+forcing exact bounded snapshot keys and response-scope guards.
 
+Order:
 source-only -> affairs scope -> Major -> SchoolClass(binding phase only) -> exact
-Course versions -> Program series/version -> REUSE child definitions -> ACTIVE
-bindings.
+Course versions -> Program series/version -> authoritative credit quality -> REUSE
+child definitions -> ACTIVE bindings.
 
-The module opens no session, performs no writes, and accepts injected loaders so
-targeted tests can prove malformed source rows cause zero DB work and valid rows
-never authorize or consume an unbounded lookup.
+The module opens no session and performs no writes.
 """
 from __future__ import annotations
 
@@ -24,6 +23,9 @@ from .academic_affairs_school_setup_program_binding_policy import (
     PHASE_BINDING,
     PHASE_DEFINITION,
     classify_program_binding_phase,
+)
+from .academic_affairs_school_setup_program_definition_quality_preflight import (
+    program_definition_quality_preflight,
 )
 from .academic_affairs_school_setup_program_definition_reconciliation import (
     reconcile_program_definitions,
@@ -79,6 +81,7 @@ def _result(
     source: Mapping[str, object],
     request_keys: Mapping[str, object] | None = None,
     reference: Mapping[str, object] | None = None,
+    quality: Mapping[str, object] | None = None,
     definition: Mapping[str, object] | None = None,
     binding: Mapping[str, object] | None = None,
     actions: Iterable[Mapping[str, object]] = (),
@@ -91,6 +94,7 @@ def _result(
         "source": dict(source),
         "requestKeys": dict(request_keys or {}),
         "reference": dict(reference or {}),
+        "quality": dict(quality or {}),
         "definition": dict(definition or {}),
         "binding": dict(binding or {}),
         "actions": [dict(item) for item in actions],
@@ -114,8 +118,8 @@ def run_program_import_preflight(
 ) -> dict:
     """Run local Program preflight without owning DB/session lifecycle.
 
-    DEFINITION deliberately defers the complete binding relationship, including
-    SchoolClass lookup. BINDING re-runs source/reference checks and reads current
+    DEFINITION defers the complete binding relationship, including SchoolClass
+    lookup. BINDING re-runs source/reference/quality checks and reads current
     class/status/ACTIVE-binding facts immediately before binding confirmation.
     Every loader response is checked against its exact request before use.
     """
@@ -171,8 +175,6 @@ def run_program_import_preflight(
         request_keys["seriesKeys"],
     )
 
-    # Definition confirmation deliberately excludes binding rows from reference
-    # validation. Their current class/scope facts are revalidated in BINDING.
     reference_rows = rows if resolved_phase == PHASE_BINDING else [
         row for row in rows
         if str(row.get("logicalGroup") or "").strip().upper() != PROGRAM_GROUP_BINDING
@@ -195,6 +197,22 @@ def run_program_import_preflight(
             reference=reference,
             actions=reference_actions,
             errors=reference.get("errors") or (),
+        )
+
+    quality = program_definition_quality_preflight(
+        rows,
+        course_snapshots=course_snapshots,
+    )
+    if not bool(quality.get("definitionQualitySafe")):
+        return _result(
+            stage="QUALITY",
+            safe=False,
+            source=source,
+            request_keys=request_keys,
+            reference=reference,
+            quality=quality,
+            actions=reference_actions,
+            errors=quality.get("errors") or (),
         )
 
     reuse_program_ids = tuple(sorted({
@@ -228,6 +246,7 @@ def run_program_import_preflight(
             source=source,
             request_keys=request_keys,
             reference=reference,
+            quality=quality,
             definition=definition,
             actions=final_actions,
             errors=definition.get("errors") or (),
@@ -271,6 +290,7 @@ def run_program_import_preflight(
             source=source,
             request_keys=request_keys,
             reference=reference,
+            quality=quality,
             definition=definition,
             binding=binding,
             actions=final_actions,
@@ -283,6 +303,7 @@ def run_program_import_preflight(
         source=source,
         request_keys=request_keys,
         reference=reference,
+        quality=quality,
         definition=definition,
         binding=binding,
         actions=final_actions,
