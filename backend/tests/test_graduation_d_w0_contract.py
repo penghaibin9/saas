@@ -6,6 +6,7 @@ A review note is audit context, never an override authority.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
@@ -29,6 +30,26 @@ def _complete_pass_items():
         {"item": "FEE", "result": "UNKNOWN"},
     ])
     return items
+
+
+def _pass_snapshot(*, evaluated_at: str, fact_version: int = 1, evidence_hashes=None):
+    return {
+        "evaluatorVersion": "STAGE_C3_V1",
+        "evaluatedAt": evaluated_at,
+        "studentId": "123",
+        "academicFact": {
+            "id": "88",
+            "versionNo": fact_version,
+            "validFrom": "2026-02-01T00:00:00",
+            "studentStatus": "REGISTERED",
+            "collegeId": "1",
+            "majorId": "2",
+            "classId": "3",
+            "grade": "2023",
+        },
+        "programId": "9",
+        "evidenceHashes": list(evidence_hashes or ["ev-a", "ev-b"]),
+    }
 
 
 def _seed_formal_result(
@@ -150,6 +171,7 @@ def test_d_w0_only_advisory_unknowns_can_pass_but_archive_unknown_blocks(db_mode
     assert immutable._strict_overall(archive_unknown) == "SYSTEM_ABNORMAL"
     assert immutable._strict_overall(credit_unknown) == "SYSTEM_ABNORMAL"
     assert immutable._strict_overall(archive_fail) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall(["malformed-item"]) == "SYSTEM_ABNORMAL"
 
 
 def test_d_w0_missing_required_evidence_item_cannot_pass(db_mode):
@@ -163,6 +185,46 @@ def test_d_w0_missing_required_evidence_item_cannot_pass(db_mode):
     for missing in sorted(required):
         partial = [row for row in complete if row["item"] != missing]
         assert immutable._strict_overall(partial) == "SYSTEM_ABNORMAL", missing
+
+
+def test_d_w0_approved_run_stability_ignores_clock_but_detects_evidence_change(db_mode):
+    """Repeated precheck must not reset approval for time alone; real evidence changes must."""
+    from app.modules.academic_affairs.services import academic_affairs_graduation_immutable_service as immutable
+
+    items = _complete_pass_items()
+    run = SimpleNamespace(
+        overall="SYSTEM_PASSED",
+        item_results_json=json.dumps(items, ensure_ascii=False),
+        input_snapshot_json=json.dumps(
+            _pass_snapshot(evaluated_at="2026-08-16T01:00:00"),
+            ensure_ascii=False,
+        ),
+    )
+    result = SimpleNamespace(overall="SYSTEM_PASSED")
+    evaluated = {
+        "overall": "SYSTEM_PASSED",
+        "items": items,
+        "inputSnapshot": _pass_snapshot(evaluated_at="2026-08-16T02:00:00"),
+    }
+    assert immutable._approved_run_is_current(run, result, evaluated) is True
+
+    changed_evidence = {
+        **evaluated,
+        "inputSnapshot": _pass_snapshot(
+            evaluated_at="2026-08-16T02:00:00",
+            evidence_hashes=["ev-a", "ev-changed"],
+        ),
+    }
+    assert immutable._approved_run_is_current(run, result, changed_evidence) is False
+
+    changed_fact = {
+        **evaluated,
+        "inputSnapshot": _pass_snapshot(
+            evaluated_at="2026-08-16T02:00:00",
+            fact_version=2,
+        ),
+    }
+    assert immutable._approved_run_is_current(run, result, changed_fact) is False
 
 
 def test_d_w0_abnormal_cannot_advance_to_academic_review(client, db_mode):

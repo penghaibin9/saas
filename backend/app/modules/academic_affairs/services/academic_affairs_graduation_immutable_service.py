@@ -14,7 +14,7 @@ import hashlib
 import json
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.services.db_service import _tid
@@ -47,7 +47,7 @@ def _strict_overall(items: list[dict]) -> str:
     rows = list(items or [])
     required_unknown_blockers = set(getattr(graduation_service, "_BLOCKING_UNKNOWN_ITEMS", ()) or ())
     required_unknown_blockers.add("ARCHIVE")
-    if not rows or not required_unknown_blockers:
+    if not rows or not required_unknown_blockers or any(not isinstance(item, dict) for item in rows):
         return "SYSTEM_ABNORMAL"
     present_codes = {str(item.get("item") or "").upper() for item in rows}
     if not required_unknown_blockers.issubset(present_codes):
@@ -89,6 +89,40 @@ def _run_items(run) -> list[dict]:
     except (TypeError, ValueError, json.JSONDecodeError):
         return []
     return payload if isinstance(payload, list) else []
+
+
+def _run_snapshot(run) -> dict:
+    try:
+        payload = json.loads(run.input_snapshot_json or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _stable_snapshot_hash(snapshot: dict) -> str | None:
+    """Compare business evidence without the evaluation clock itself causing false changes."""
+    if not isinstance(snapshot, dict) or not snapshot:
+        return None
+    stable = dict(snapshot)
+    stable.pop("evaluatedAt", None)
+    return _hash(stable)
+
+
+def _approved_run_is_current(run, result, evaluated: dict) -> bool:
+    """True only when an already college-approved PASS still matches the live evidence basis."""
+    if not run or not result or not isinstance(evaluated, dict):
+        return False
+    if str(run.overall or "").upper() != "SYSTEM_PASSED":
+        return False
+    if str(result.overall or "").upper() != "SYSTEM_PASSED":
+        return False
+    if str(evaluated.get("overall") or "").upper() != "SYSTEM_PASSED":
+        return False
+    if _strict_overall(_run_items(run)) != "SYSTEM_PASSED":
+        return False
+    previous_basis = _stable_snapshot_hash(_run_snapshot(run))
+    current_basis = _stable_snapshot_hash(evaluated.get("inputSnapshot") or {})
+    return bool(previous_basis and current_basis and previous_basis == current_basis)
 
 
 def evaluate_student(db, student, *, evaluated_at: datetime | None = None) -> dict:
@@ -153,7 +187,7 @@ def evaluate_preview(student_id, user) -> dict:
 
 
 def precheck(batch_id, user) -> dict:
-    """Formal precheck: append Run#N, then update only the compatibility projection."""
+    """Append a new formal run when the work-queue row or approved evidence basis changed."""
     graduation_service._require_review_role(user)
     with graduation_service.session() as db:
         from app.models import (
@@ -170,7 +204,9 @@ def precheck(batch_id, user) -> dict:
             select(AaGraduationAuditResult).where(
                 AaGraduationAuditResult.tenant_id == _tid(),
                 AaGraduationAuditResult.batch_id == batch.id,
-                AaGraduationAuditResult.status.in_(["WAIT_PRECHECK", "SYSTEM_PASSED", "SYSTEM_ABNORMAL"]),
+                AaGraduationAuditResult.status.in_([
+                    "WAIT_PRECHECK", "SYSTEM_PASSED", "SYSTEM_ABNORMAL", "ACADEMIC_REVIEW",
+                ]),
                 AaGraduationAuditResult.is_deleted.is_(False),
             ).order_by(AaGraduationAuditResult.id).with_for_update()
         ).all()
@@ -186,13 +222,19 @@ def precheck(batch_id, user) -> dict:
                 )
             evaluated_at = datetime.utcnow()
             evaluated = evaluate_student(db, student, evaluated_at=evaluated_at)
-            current_max = db.scalar(
-                select(func.max(GraduationEvaluationRun.run_no)).where(
-                    GraduationEvaluationRun.tenant_id == _tid(),
-                    GraduationEvaluationRun.result_id == result.id,
-                )
-            ) or 0
-            run_no = int(current_max) + 1
+            latest_run = db.scalars(select(GraduationEvaluationRun).where(
+                GraduationEvaluationRun.tenant_id == _tid(),
+                GraduationEvaluationRun.result_id == result.id,
+            ).order_by(GraduationEvaluationRun.run_no.desc()).limit(1)).first()
+
+            # A stable college-approved PASS must remain approved. Re-evaluate it only when
+            # the business evidence basis changed (grade correction, fee update, academic
+            # fact version, cross-domain evidence, evaluator version, etc.). evaluatedAt is
+            # deliberately excluded from the stable basis so the clock alone never resets it.
+            if result.status == "ACADEMIC_REVIEW" and _approved_run_is_current(latest_run, result, evaluated):
+                continue
+
+            run_no = int(latest_run.run_no) + 1 if latest_run else 1
             run = GraduationEvaluationRun(
                 tenant_id=_tid(),
                 batch_id=batch.id,
@@ -212,7 +254,8 @@ def precheck(batch_id, user) -> dict:
             db.flush()
             run_ids.append(str(run.id))
 
-            # Compatibility/current projection only. Historical readers use the run.
+            # Any evidence change invalidates the old college approval. The mutable row
+            # returns to the fresh SYSTEM_* projection; the old immutable Run stays replayable.
             result.item_results_json = _json(evaluated["items"])
             result.overall = evaluated["overall"]
             result.status = evaluated["overall"]

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const viewUrl = new URL('../src/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue', import.meta.url)
+const resultUrl = new URL('../src/modules/academicAffairs/views/AaGraduationResultView.vue', import.meta.url)
 const constantsUrl = new URL('../src/modules/academicAffairs/constants/grade-graduation.js', import.meta.url)
 const batchUrl = new URL('../src/modules/academicAffairs/views/AaGraduationBatchView.vue', import.meta.url)
 const termArchiveUrl = new URL('../src/modules/academicAffairs/views/AaTermArchiveView.vue', import.meta.url)
@@ -62,6 +63,7 @@ test('D-W0/W1 可达入口必须显示十一项毕业预审与十三域教务归
   assert.match(batchSource, /十一项供数三态预审/)
   assert.match(batchSource, /执行十一项预审/)
   assert.match(batchSource, /学工归档\/费用/)
+  assert.match(batchSource, /只有最新完整正式 Run 为 SYSTEM_PASSED 才能学院通过并进入教务终审/)
   assert.doesNotMatch(batchSource, /十项供数|执行十项预审/)
   assert.match(termArchiveSource, /13数据域完整性检查/)
   assert.match(termArchiveSource, /13 数据域完整性检查/)
@@ -89,4 +91,17 @@ test('D-W0 SYSTEM_ABNORMAL 不得暴露普通毕业终审动作', async () => {
     '正式例外必须走独立 Override 流程'
   ]) assert.ok(source.includes(token), `missing D-W0 final guard token: ${token}`)
   assert.doesNotMatch(source, /v-if="detail\.row\.status === 'ACADEMIC_REVIEW'" class="agc-actions"/)
+})
+
+test('D-W0 预审结果页学院通过与普通终审都必须绑定完整 SYSTEM_PASSED', async () => {
+  const source = await readFile(resultUrl, 'utf8')
+  for (const token of [
+    'canCollegeApprove(r)',
+    "r.overall === 'SYSTEM_PASSED'",
+    'canNormalFinal(r)',
+    "r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED'",
+    '系统异常须先治理阻断项并重新预审，不能直接学院通过',
+    '系统异常 · 普通教务终审不可用'
+  ]) assert.ok(source.includes(token), `missing result-view W0 guard token: ${token}`)
+  assert.doesNotMatch(source, /v-if="r\.status === 'ACADEMIC_REVIEW'" variant="primary" @click="openFinal\(r\)"/)
 })

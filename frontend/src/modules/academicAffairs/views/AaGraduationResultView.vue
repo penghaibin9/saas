@@ -55,11 +55,11 @@
             </div>
           </div>
           <div class="aa-result-actions">
-            <template v-if="canCollegeReview(r)">
-              <AppButton variant="primary" :loading="busy" @click="collegeReview(r, 'APPROVE')">学院初审通过</AppButton>
-              <AppButton :loading="busy" @click="collegeReview(r, 'REJECT')">学院驳回</AppButton>
-            </template>
-            <AppButton v-if="r.status === 'ACADEMIC_REVIEW'" variant="primary" @click="openFinal(r)">教务终审</AppButton>
+            <AppButton v-if="canCollegeApprove(r)" variant="primary" :loading="busy" @click="collegeReview(r, 'APPROVE')">学院初审通过</AppButton>
+            <AppButton v-if="canCollegeReject(r)" :loading="busy" @click="collegeReview(r, 'REJECT')">学院驳回</AppButton>
+            <span v-if="r.status === 'SYSTEM_ABNORMAL'" class="aa-blocked-tip">系统异常须先治理阻断项并重新预审，不能直接学院通过</span>
+            <AppButton v-if="canNormalFinal(r)" variant="primary" @click="openFinal(r)">教务终审</AppButton>
+            <span v-else-if="r.status === 'ACADEMIC_REVIEW' && r.overall !== 'SYSTEM_PASSED'" class="aa-blocked-tip">系统异常 · 普通教务终审不可用</span>
             <span v-if="r.conclusion" class="aa-final-tag">终审结论：{{ conclusionLabel(r.conclusion) }}</span>
           </div>
         </AppSectionCard>
@@ -139,7 +139,11 @@ export default {
       if (!route.startsWith('/admin/')) { toast.error('证据下钻地址无效'); return }
       this.$router.push(route)
     },
-    canCollegeReview(r) { return ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status) },
+    canCollegeApprove(r) {
+      return Boolean(r && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
+    },
+    canCollegeReject(r) { return Boolean(r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
+    canNormalFinal(r) { return Boolean(r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
     search() { this.pagination.page = 1; this.load() },
     async loadRosters() {
       const res = await academicAffairsApi.getGradRosters(this.batchId)
@@ -188,6 +192,6 @@ export default {
 .aa-item__head { display: flex; align-items: center; gap: 8px; }.aa-item__label { color: var(--text-700, #4e5969); min-width: 64px; font-weight: 600; }.aa-item__drill { margin: 0 0 0 auto; }
 .aa-item__ev { display: block; margin-top: 7px; color: var(--text-600, #64748b); font-size: 12px; line-height: 1.5; }
 .aa-item__lineage { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border-200, #e5e7eb); color: var(--text-400, #8a9099); font-size: 11px; }
-.aa-result-actions { margin-top: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.aa-final-tag { color: var(--success-600, #16a34a); font-size: 13px; }.aa-final-form { display: flex; flex-direction: column; gap: 8px; }.aa-radio { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.aa-result-actions { margin-top: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.aa-final-tag { color: var(--success-600, #16a34a); font-size: 13px; }.aa-blocked-tip { color: var(--warning-700, #b45309); font-size: 12px; }.aa-final-form { display: flex; flex-direction: column; gap: 8px; }.aa-radio { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 @media (max-width: 900px) { .aa-items { grid-template-columns: 1fr; } }
 </style>
