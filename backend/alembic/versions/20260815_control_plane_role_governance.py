@@ -111,8 +111,8 @@ def upgrade() -> None:
                 bind.execute(sa.text(
                     "UPDATE t_custom_role_source SET role_id=:role_id WHERE id=:source_id"
                 ), {"role_id": role_id, "source_id": source_id})
-            # Empty source tables are valid; any existing row was preaudited and bound above.
-            op.alter_column("t_custom_role_source", "role_id", existing_type=sa.BigInteger(), nullable=False)
+            # Expand-only for N-1 rolling deploys: previous-release writers do not know role_id.
+            # Backfill existing rows now; tighten to NOT NULL only after old writers are retired.
             op.create_index("ix_t_custom_role_source_role_id", "t_custom_role_source", ["role_id"])
             op.create_unique_constraint(
                 "uk_custom_role_source_role", "t_custom_role_source", ["tenant_id", "role_id"]

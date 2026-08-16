@@ -112,7 +112,9 @@ class CustomRoleSource(PKMixin, TenantMixin, CommonMixin, Base):
 
     __tablename__ = "t_custom_role_source"
 
-    role_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    # N-1 rolling compatibility: previous-release writers do not know role_id yet.
+    # New Control Plane writes still populate it; a later contract migration may tighten NOT NULL.
+    role_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     role_code: Mapped[str] = mapped_column(String(64), nullable=False)
     source_template_code: Mapped[str] = mapped_column(String(64), nullable=False)
     source_template_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
