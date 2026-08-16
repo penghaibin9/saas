@@ -20,7 +20,14 @@ from .academic_affairs_teaching_roster_service import resolve_teaching_task_rost
 
 _STATUS_OK = ("PRESENT", "LATE", "ABSENT", "LEAVE")
 _ADMIN_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}
-_ATTENDANCE_TASK_STATUSES = {"TEACHER_CONFIRMED", "COLLEGE_REVIEW", "APPROVED", "READY"}
+ATTENDANCE_TASK_STATUSES = frozenset({"TEACHER_CONFIRMED", "COLLEGE_REVIEW", "APPROVED", "READY"})
+# Backward-compatible private alias for mature in-module consumers; new cross-module reads use the public constant/helper.
+_ATTENDANCE_TASK_STATUSES = ATTENDANCE_TASK_STATUSES
+
+
+def attendance_task_executable(status) -> bool:
+    """Single executable-state contract shared by attendance read and write paths."""
+    return str(status or "").strip().upper() in ATTENDANCE_TASK_STATUSES
 
 
 def _op():
