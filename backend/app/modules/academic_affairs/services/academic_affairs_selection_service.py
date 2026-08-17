@@ -1,7 +1,7 @@
 """选课域唯一公开 Service。
 
 原列表、统计、冲突报表和归档导出保存在 ``academic_affairs_selection_core_service``；本文件显式收口：
-- 所有写动作在同一事务校验正式学期存在、未删除且未封存；
+- 所有写动作在同一事务锁住正式学期并校验其存在、未删除且未封存；
 - 学生本人只使用稳定账号绑定；
 - 已修与先修规则按稳定 courseCode 和统一有效成绩判断；
 - 先到先得、抽签、补退选继续复用同一批次/记录状态机；
@@ -52,7 +52,7 @@ def __getattr__(name):
 
 
 def _require_term_reference_writable(db, term_id, *, required=True):
-    """B-local strict term reference gate; archive policy remains owned by Archive Authority."""
+    """Lock B's referenced term, then defer archive policy to the shared Authority."""
     from app.models import AaTerm
     from . import academic_affairs_archive_service as archive_service
 
@@ -70,11 +70,16 @@ def _require_term_reference_writable(db, term_id, *, required=True):
             http_status=409,
         ) from exc
 
-    term = db.query(AaTerm).filter(
-        AaTerm.id == parsed_term_id,
-        AaTerm.tenant_id == _core._tid(),
-        AaTerm.is_deleted.is_(False),
-    ).first()
+    # The Archive owner ultimately mutates AaTerm.status. Lock the same row before
+    # checking writability so a concurrent archive/unfreeze serializes with every
+    # canonical Selection write instead of racing a stale PUBLISHED observation.
+    term = db.execute(
+        select(AaTerm).where(
+            AaTerm.id == parsed_term_id,
+            AaTerm.tenant_id == _core._tid(),
+            AaTerm.is_deleted.is_(False),
+        ).with_for_update()
+    ).scalar_one_or_none()
     if not term:
         raise AppException(
             "SELECTION_TERM_INVALID",

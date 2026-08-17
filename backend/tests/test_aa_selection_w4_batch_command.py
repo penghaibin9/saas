@@ -235,9 +235,18 @@ def test_batch_command_source_locks_rule_write_and_reuses_w1_preflight():
 
     assert "def _require_term_reference_writable(" in selection_source
     assert "AaTerm.is_deleted.is_(False)" in selection_source
-    assert "archive_service.guard_term_writable" in selection_source
+    term_lock = selection_source.index("select(AaTerm).where(")
+    archive_check = selection_source.index("archive_service.guard_term_writable")
+    assert term_lock < archive_check
+    assert ".with_for_update()" in selection_source[term_lock:archive_check]
+
     assert "_validate_term_reference(db, batch, blockers)" in preflight_source
     assert "SELECTION_TERM_INVALID" in preflight_source
+    preflight_guard = preflight_source[
+        preflight_source.index("def _validate_term_reference"):
+        preflight_source.index("def evaluate_batch")
+    ]
+    assert ".with_for_update()" not in preflight_guard
 
     assert "selection_batch_command_svc.create_batch" in router
     assert "selection_batch_command_svc.save_rule" in router
