@@ -36,6 +36,9 @@ from .academic_affairs_school_setup_program_import_preflight import (
 from .academic_affairs_school_setup_program_reference_preflight import (
     program_import_reference_preflight,
 )
+from .academic_affairs_school_setup_program_series_continuity_guard import (
+    enforce_program_series_continuity,
+)
 from .academic_affairs_school_setup_program_snapshot_request_plan import (
     plan_program_snapshot_requests,
 )
@@ -186,6 +189,11 @@ def run_program_import_preflight(
         course_snapshots=course_snapshots,
         program_snapshots=program_snapshots,
         allowed_major_ids=allowed_major_ids,
+    )
+    reference = enforce_program_series_continuity(
+        reference_rows,
+        reference,
+        program_snapshots=program_snapshots,
     )
     reference_actions = [dict(item) for item in reference.get("actions") or ()]
     if not bool(reference.get("referencePreflightSafe")):
