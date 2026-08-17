@@ -211,6 +211,24 @@ def classify_program_binding_phase(
 
         current = active_by_scope.get(scope_key)
         if current and str(current["programId"]) == program_id:
+            # ACTIVE binding is a live relationship fact.  Reuse must be a true
+            # zero-write replay, so its target must already satisfy the post-
+            # confirm invariant.  PUBLISHED+ACTIVE is dirty state; ordinary import
+            # must not silently repair it by turning REUSE into a status write.
+            if status != "ENABLED":
+                errors.append({
+                    "row": int(row.get("rowNo") or 0),
+                    "programKey": program_key,
+                    "businessCode": "PROGRAM_BINDING_ACTIVE_TARGET_NOT_ENABLED",
+                    "message": "已存在 ACTIVE 绑定的目标 Program 不是 ENABLED，禁止按 REUSE 静默修复关系状态",
+                    "evidence": {
+                        "scopeKey": scope_key,
+                        "programId": program_id,
+                        "status": status,
+                    },
+                    "howToResolve": "先通过受控修复/回滚流程恢复 Program 状态与 ACTIVE binding 一致性，再重新执行普通 BINDING confirm",
+                })
+                continue
             intents.append({
                 "row": int(row.get("rowNo") or 0),
                 "programKey": program_key,
