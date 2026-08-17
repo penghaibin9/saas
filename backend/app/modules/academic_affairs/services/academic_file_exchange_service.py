@@ -367,11 +367,13 @@ def _parse_and_validate(import_row, source_path: Path, user: dict) -> tuple[list
         )
     if import_row.import_type == ACADEMIC_PROGRAM_IMPORT:
         from .academic_affairs_school_setup_program_preview_service import preview_program_normalized_rows
-        from .academic_affairs_school_setup_program_workbook_adapter import parse_and_normalize_program_workbook
+        from .academic_affairs_school_setup_program_workbook_adapter import (
+            parse_and_normalize_program_workbook_path,
+        )
 
         phase = _program_phase(context)
-        grouped, rows = parse_and_normalize_program_workbook(
-            source_path.read_bytes(),
+        grouped, rows = parse_and_normalize_program_workbook_path(
+            source_path,
             max_bytes=MAX_IMPORT_BYTES,
         )
         preview = preview_program_normalized_rows(rows, phase=phase, user=user)

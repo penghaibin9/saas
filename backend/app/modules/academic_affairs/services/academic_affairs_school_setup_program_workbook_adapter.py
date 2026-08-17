@@ -11,6 +11,7 @@ public dispatcher.
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
@@ -181,12 +182,48 @@ def _read_sheet_rows(ws, *, group: str) -> list[dict]:
     return out
 
 
+def _read_program_workbook(wb) -> dict[str, list[dict]]:
+    """Apply the six-sheet semantic contract to an already package-safe workbook."""
+    names = tuple(wb.sheetnames)
+    missing = [name for name in PROGRAM_SHEET_ORDER if name not in names]
+    unexpected = [name for name in names if name not in _ALLOWED_SHEETS]
+    if missing or unexpected:
+        parts = []
+        if missing:
+            parts.append("缺少工作表：" + "、".join(missing))
+        if unexpected:
+            parts.append("存在未知工作表：" + "、".join(unexpected))
+        raise AppException(
+            "VALIDATION_ERROR",
+            "培养方案工作簿结构与模板不一致；" + "；".join(parts),
+        )
+    if tuple(name for name in names if name in PROGRAM_SHEET_ORDER) != PROGRAM_SHEET_ORDER:
+        raise AppException(
+            "VALIDATION_ERROR",
+            "培养方案六张业务工作表顺序必须与服务端模板一致",
+        )
+
+    grouped: dict[str, list[dict]] = {}
+    total_rows = 0
+    for sheet_name in PROGRAM_SHEET_ORDER:
+        group = PROGRAM_GROUP_BY_SHEET[sheet_name]
+        rows = _read_sheet_rows(wb[sheet_name], group=group)
+        grouped[group] = rows
+        total_rows += len(rows)
+        if total_rows > xlsx_util.MAX_ROWS:
+            raise AppException(
+                "VALIDATION_ERROR",
+                f"培养方案工作簿六表合计不得超过 {xlsx_util.MAX_ROWS} 行数据",
+            )
+    return grouped
+
+
 def read_program_workbook(
     file_bytes: bytes,
     *,
     max_bytes: int = xlsx_util.MAX_UPLOAD_BYTES,
 ) -> dict[str, list[dict]]:
-    """Validate one Program workbook and return rows keyed by logical group."""
+    """Validate one byte-backed Program workbook and return rows by logical group."""
     xlsx_util.validate_xlsx_package(file_bytes, max_bytes=max_bytes)
     wb = load_workbook(
         BytesIO(file_bytes),
@@ -195,38 +232,27 @@ def read_program_workbook(
         keep_links=False,
     )
     try:
-        names = tuple(wb.sheetnames)
-        missing = [name for name in PROGRAM_SHEET_ORDER if name not in names]
-        unexpected = [name for name in names if name not in _ALLOWED_SHEETS]
-        if missing or unexpected:
-            parts = []
-            if missing:
-                parts.append("缺少工作表：" + "、".join(missing))
-            if unexpected:
-                parts.append("存在未知工作表：" + "、".join(unexpected))
-            raise AppException(
-                "VALIDATION_ERROR",
-                "培养方案工作簿结构与模板不一致；" + "；".join(parts),
-            )
-        if tuple(name for name in names if name in PROGRAM_SHEET_ORDER) != PROGRAM_SHEET_ORDER:
-            raise AppException(
-                "VALIDATION_ERROR",
-                "培养方案六张业务工作表顺序必须与服务端模板一致",
-            )
+        return _read_program_workbook(wb)
+    finally:
+        wb.close()
 
-        grouped: dict[str, list[dict]] = {}
-        total_rows = 0
-        for sheet_name in PROGRAM_SHEET_ORDER:
-            group = PROGRAM_GROUP_BY_SHEET[sheet_name]
-            rows = _read_sheet_rows(wb[sheet_name], group=group)
-            grouped[group] = rows
-            total_rows += len(rows)
-            if total_rows > xlsx_util.MAX_ROWS:
-                raise AppException(
-                    "VALIDATION_ERROR",
-                    f"培养方案工作簿六表合计不得超过 {xlsx_util.MAX_ROWS} 行数据",
-                )
-        return grouped
+
+def read_program_workbook_path(
+    file_path: str | Path,
+    *,
+    max_bytes: int = xlsx_util.MAX_UPLOAD_BYTES,
+) -> dict[str, list[dict]]:
+    """Validate one path-backed Program workbook without whole-file buffering."""
+    path = Path(file_path)
+    xlsx_util.validate_xlsx_path(path, max_bytes=max_bytes)
+    wb = load_workbook(
+        path,
+        read_only=True,
+        data_only=True,
+        keep_links=False,
+    )
+    try:
+        return _read_program_workbook(wb)
     finally:
         wb.close()
 
@@ -238,5 +264,16 @@ def parse_and_normalize_program_workbook(
 ) -> tuple[dict[str, list[dict]], list[dict]]:
     """Return both grouped source rows and the frozen canonical normalized rows."""
     grouped = read_program_workbook(file_bytes, max_bytes=max_bytes)
+    normalized = normalize_program_import_rows(grouped)
+    return grouped, normalized
+
+
+def parse_and_normalize_program_workbook_path(
+    file_path: str | Path,
+    *,
+    max_bytes: int = xlsx_util.MAX_UPLOAD_BYTES,
+) -> tuple[dict[str, list[dict]], list[dict]]:
+    """Path-backed equivalent used by shared File Exchange runtime."""
+    grouped = read_program_workbook_path(file_path, max_bytes=max_bytes)
     normalized = normalize_program_import_rows(grouped)
     return grouped, normalized
