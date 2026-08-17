@@ -193,7 +193,7 @@ class AaProgram(PKMixin, TenantMixin, CommonMixin, Base):
     total_credits: Mapped[float | None] = mapped_column(Numeric(4, 1), comment="毕业总学分(支持0.5步长)")
     requirement_json: Mapped[str | None] = mapped_column(String(2000), comment="分模块学分要求")
     series_key: Mapped[str | None] = mapped_column(
-        String(64), nullable=True, index=True,
+        String(64), nullable=True,
         comment="Stable Program series identity; unresolved historical rows stay NULL",
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
