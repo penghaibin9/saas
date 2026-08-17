@@ -6,10 +6,13 @@ on:
       - agent/academic-b-schedule-selection
     paths:
       - .github/workflows/academic-b-w4-formation-handoff.yml
+      - .github/workflows/academic-b-w4-formation-real-click.yml
       - backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py
       - backend/app/modules/academic_affairs/services/academic_affairs_selection_formation_dependency.py
+      - backend/scripts/e2e_seed_academic_b_w4_formation.py
       - backend/tests/test_aa_selection_w4_formation_handoff.py
       - backend/tests/test_aa_selection_read_production_contract.py
+      - e2e/specs/academic-b-selection-w4-formation.spec.mjs
   workflow_dispatch:
 
 permissions:
