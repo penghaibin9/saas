@@ -8,15 +8,19 @@ The independent invariants enforced here are already available from current code
 - the task must exist in the current tenant and be READY;
 - the task must point at the same course as the SelectionCourse supply;
 - the task batch and selection batch must belong to the same formal term;
+- once the INT provenance runtime exists, the exact TeachingTask -> ProgramCourse
+  snapshot must be PROVEN and A's canonical policy must allow Selection supply;
 - mutable lifecycle/task/supply rows are locked before validation and persistence;
 - every supply mutation reuses the canonical term-writable guard;
 - capacity/min-capacity invariants are checked atomically against selected_count.
 
 Legacy ``academic_affairs_selection_core_service`` supply writes remain compatibility
 debt only; the formal router is statically sealed against calling them.  DB NOT NULL /
-FK / generated constraints and formation provenance remain INT-owned.
+FK / generated constraints and provenance schema remain INT-owned.
 """
 from __future__ import annotations
+
+import importlib
 
 from sqlalchemy import select
 
@@ -24,6 +28,11 @@ from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_selection_core_service as _core
 from . import academic_affairs_selection_service as _selection
+
+
+_UPSTREAM_PROVENANCE_MODULE = (
+    f"{__package__}.academic_affairs_task_formation_provenance_service"
+)
 
 
 def _conflict(message: str, **details) -> AppException:
@@ -75,6 +84,66 @@ def _lock_supply_batch(db, batch_id):
     if not row:
         raise not_found("选课批次不存在")
     return row
+
+
+def _guard_selection_formation(db, teaching_task_id: int) -> bool:
+    """Activate the frozen A/INT formation handoff without copying A policy into B.
+
+    The already-sealed B independent surface predates the shared provenance module, so
+    a standalone B checkout keeps that historical sub-seal and returns ``False`` only
+    when the *whole* upstream provenance module is genuinely absent.  Once INT is
+    present in the integration tree, missing/partial provenance is fail-closed through
+    B's existing dependency normalizer and eligibility is delegated to A's canonical
+    ``selection_eligible`` policy.  A broken partial upstream import is never swallowed.
+    """
+    try:
+        provenance = importlib.import_module(
+            ".academic_affairs_task_formation_provenance_service",
+            package=__package__,
+        )
+    except ModuleNotFoundError as exc:
+        if exc.name == _UPSTREAM_PROVENANCE_MODULE:
+            return False
+        raise
+
+    policy = importlib.import_module(
+        ".academic_affairs_task_formation_policy",
+        package=__package__,
+    )
+    dependency = importlib.import_module(
+        ".academic_affairs_selection_formation_dependency",
+        package=__package__,
+    )
+
+    snapshot = provenance.resolve_task_formation_snapshot(
+        db,
+        int(teaching_task_id),
+        tenant_id=_core._tid(),
+    )
+    normalized = dependency.require_proven_task_formation_snapshot(
+        snapshot,
+        teaching_task_id=int(teaching_task_id),
+    )
+    mode_key = "formation" + "Mode"
+    mode = normalized[mode_key]
+    try:
+        allowed = bool(policy.selection_eligible(mode))
+    except ValueError as exc:
+        raise _conflict(
+            "教学任务编班模式非法，禁止进入选课供给",
+            blocker="SELECTION_FORMATION_INVALID",
+            teachingTaskId=str(teaching_task_id),
+            formation_mode=str(mode or ""),
+        ) from exc
+    if not allowed:
+        raise _conflict(
+            "当前教学任务的正式编班模式不允许进入学生选课供给",
+            blocker="SELECTION_FORMATION_NOT_SELECTABLE",
+            teachingTaskId=str(teaching_task_id),
+            sourceProgramCourseId=str(normalized.get("sourceProgramCourseId") or ""),
+            formation_mode=str(mode or ""),
+        )
+    return True
 
 
 def add_course(user, batch_id, body) -> dict:
@@ -175,6 +244,8 @@ def add_course(user, batch_id, body) -> dict:
                 taskTermId=str(task_batch.term_id),
                 selectionTermId=str(batch.term_id),
             )
+
+        _guard_selection_formation(db, task_id)
 
         duplicate = db.query(AaSelectionCourse).filter(
             AaSelectionCourse.tenant_id == _core._tid(),
