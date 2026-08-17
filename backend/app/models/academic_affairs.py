@@ -192,11 +192,19 @@ class AaProgram(PKMixin, TenantMixin, CommonMixin, Base):
     grade_year: Mapped[str | None] = mapped_column(String(20), comment="适用年级 如 2026")
     total_credits: Mapped[float | None] = mapped_column(Numeric(4, 1), comment="毕业总学分(支持0.5步长)")
     requirement_json: Mapped[str | None] = mapped_column(String(2000), comment="分模块学分要求")
+    series_key: Mapped[str | None] = mapped_column(
+        String(64), nullable=True,
+        comment="Stable Program series identity; unresolved historical rows stay NULL",
+    )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     prev_version_id: Mapped[int | None] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True,
                                         comment="DRAFT/COLLEGE_REVIEW/ACADEMIC_REVIEW/RETURNED/PUBLISHED/ENABLED/FROZEN/DISABLED")
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "series_key", "version", name="uk_aa_program_series_version"),
+    )
 
 
 class AaProgramCourse(PKMixin, TenantMixin, CommonMixin, Base):
