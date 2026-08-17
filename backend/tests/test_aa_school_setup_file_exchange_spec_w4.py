@@ -125,8 +125,8 @@ def test_empty_course_workbook_is_rejected_before_domain_dry_run(monkeypatch):
     assert preview["errors"][0]["code"] == "COURSE_SOURCE_EMPTY"
 
 
-def test_spec_explicitly_stays_internal_until_int_shared_confirm_is_ready():
+def test_spec_reflects_int_shared_confirm_handoff_once_public_route_is_ready():
     contract = _spec().course_catalog_file_exchange_contract()
     assert contract["templateVersion"] == "course-catalog-v1"
-    assert contract["publicImportEnabled"] is False
-    assert contract["confirmOwner"] == "INT_SHARED_DATA_EXCHANGE"
+    assert contract["publicImportEnabled"] is True
+    assert contract["confirmOwner"] == "ACADEMIC_FILE_EXCHANGE"

@@ -78,14 +78,14 @@ def _representative_school_package():
             "credit": Decimal("4"),
             "module": "MAJOR_CORE",
         })
-    for suffix, label, credit in closure.MAJOR_EXPANSION:
+    for index, label in enumerate(closure.MAJOR_EXTENSION_LABELS, start=10):
         courses.append({
-            "code": f"{major_code}-{suffix}",
+            "code": f"{major_code}-{index:02d}",
             "name": f"{major_name}{label}",
-            "credit": Decimal(str(credit)),
+            "credit": Decimal("4"),
             "module": "MAJOR_CORE",
         })
-    for index, (label, _segment_type, _weeks, credit) in enumerate(
+    for index, (label, credit, _segment_type, _weeks) in enumerate(
         closure.PRACTICE_LABELS,
         start=18,
     ):
@@ -117,6 +117,12 @@ def _representative_school_package():
     assert set(term_by_code) == {row["code"] for row in courses}
     assert 1 <= min(term_by_code.values()) <= max(term_by_code.values()) <= 6
 
+    graduation_items = (
+        ("KNOWLEDGE", "掌握{major}专业基础理论、技术标准和岗位知识体系。"),
+        ("ABILITY", "能够完成{major}典型岗位任务、项目实施与质量改进。"),
+        ("QUALITY", "具备职业道德、团队协作、安全意识、数字素养和持续学习能力。"),
+        ("CERTIFICATE", "鼓励取得与{major}相关的职业技能等级证书或行业认证。"),
+    )
     grouped = {
         "MAIN": [{
             "programSeriesKey": series_key,
@@ -142,9 +148,9 @@ def _representative_school_package():
         "CREDIT_REQUIREMENT": [{
             "programSeriesKey": series_key,
             "programVersion": 1,
-            "module": item["module"],
-            "creditTarget": item["creditTarget"],
-        } for item in closure.CREDIT_STRUCTURE],
+            "module": module,
+            "creditTarget": credit_target,
+        } for module, credit_target in closure.CREDIT_STRUCTURE],
         "PRACTICE": [{
             "programSeriesKey": series_key,
             "programVersion": 1,
@@ -157,14 +163,14 @@ def _representative_school_package():
             "assessmentMode": "CHECK",
             "location": "校内实训中心/合作企业",
             "sortOrder": index,
-        } for index, (label, segment_type, weeks, credit) in enumerate(closure.PRACTICE_LABELS)],
+        } for index, (label, credit, segment_type, weeks) in enumerate(closure.PRACTICE_LABELS)],
         "GRADUATION": [{
             "programSeriesKey": series_key,
             "programVersion": 1,
             "category": category,
             "content": template.format(major=major_name),
             "sortOrder": index,
-        } for index, (category, template) in enumerate(closure.GRADUATION_ITEMS)],
+        } for index, (category, template) in enumerate(graduation_items, start=1)],
         "BINDING": [{
             "programSeriesKey": series_key,
             "programVersion": 1,
@@ -350,7 +356,7 @@ def test_representative_school_program_import_create_bind_and_independent_replay
         first,
         course_snapshots=course_snapshots,
     )
-    assert first_plan["executable"] is False  # shared schema owner is still pending
+    assert first_plan["executable"] is False  # shared writer activation is still pending
     create_plan = first_plan["programPlans"][0]
     assert create_plan["action"] == "CREATE"
     assert create_plan["writeCount"] == 48  # Program + 37 Course + 6 Practice + 4 Graduation

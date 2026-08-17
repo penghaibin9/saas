@@ -1,10 +1,10 @@
 """INT pure Program workbook adapter for Academic File Exchange.
 
-The shared FileObject/ImportJob/parser lifecycle is intentionally not imported
-here. This module only normalizes already-parsed logical Program rows into a
-canonical, deterministic representation that later preflight/confirm code may
-consume. It performs no database I/O and never invents Program identity from
-major, grade, binding scope, or display names.
+The shared file/job/parser lifecycle is intentionally not imported here. This
+module only normalizes already-parsed logical Program rows into a canonical,
+deterministic representation that later preflight/confirm code may consume. It
+performs no database I/O and never invents Program identity from major, grade,
+binding scope, or display names.
 """
 from __future__ import annotations
 

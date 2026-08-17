@@ -208,7 +208,7 @@ def test_canonical_series_safe_report_requires_complete_unique_backfill_mapping(
         (_series(), None, _program_course_formation(), "task_formation_inventory"),
         (_series(), _task_formation(), None, "program_course_formation_inventory"),
         ({"migrationPreflightSafe": "yes", "totalRows": 0, "blockers": [], "proposedBackfill": []}, _task_formation(), _program_course_formation(), "must be boolean"),
-        ({"migrationPreflightSafe": True, "totalRows": 0, "blockers": {}}, _task_formation(), _program_course_formation(), "proposedBackfill must be a list"),
+        ({"migrationPreflightSafe": True, "totalRows": 0, "blockers": []}, _task_formation(), _program_course_formation(), "proposedBackfill must be a list"),
         (_series(), {"migrationPreflightSafe": True, "unresolvedTaskCount": -1}, _program_course_formation(), "non-negative integer"),
         (_series(), _task_formation(), {"migrationPreflightSafe": True}, "programCourseFormationBackfill"),
     ],
