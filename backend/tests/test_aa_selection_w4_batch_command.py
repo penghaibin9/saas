@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -12,6 +13,7 @@ BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
 _SEQ = itertools.count(1)
 ROOT = Path(__file__).resolve().parents[1]
+_TICK_MAX_SECONDS = 15.0
 
 
 def _admin(client):
@@ -20,6 +22,23 @@ def _admin(client):
         json={"loginName": "school_admin01", "password": "any"},
     ).json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
+
+
+def _post_tick_with_budget(client, admin):
+    """Measure only scheduler latency after first-request app/auth warm-up.
+
+    The whole test still has a hard pytest timeout. This wall-clock assertion catches
+    a scheduler that returns only after waiting on a MySQL row lock, without charging
+    FastAPI's first lazy route/dependency construction to the scheduler budget.
+    """
+    started = time.monotonic()
+    response = client.post(f"{BASE}/selection/time-tick", headers=admin)
+    elapsed = time.monotonic() - started
+    assert elapsed < _TICK_MAX_SECONDS, (
+        f"selection time-tick took {elapsed:.2f}s; expected < {_TICK_MAX_SECONDS:.2f}s "
+        "after app/auth warm-up"
+    )
+    return response
 
 
 def _seed_tick_batches(db_mode):
@@ -127,13 +146,14 @@ def _seed_soft_deleted_term_batch(db_mode):
         db.close()
 
 
-@pytest.mark.timeout(20, method="signal")
+@pytest.mark.timeout(45, method="signal")
 def test_time_tick_uses_preflight_and_bad_batch_does_not_poison_good_batch(client, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import AaSelectionBatch
 
     good_id, bad_id = _seed_tick_batches(db_mode)
-    response = client.post(f"{BASE}/selection/time-tick", headers=_admin(client))
+    admin = _admin(client)
+    response = _post_tick_with_budget(client, admin)
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     assert data["opened"] >= 1
@@ -158,7 +178,7 @@ def test_time_tick_uses_preflight_and_bad_batch_does_not_poison_good_batch(clien
         db.close()
 
 
-@pytest.mark.timeout(20, method="signal")
+@pytest.mark.timeout(45, method="signal")
 def test_time_tick_skips_busy_batch_row_and_still_advances_unlocked_peer(client, db_mode):
     from sqlalchemy import select
 
@@ -178,7 +198,7 @@ def test_time_tick_skips_busy_batch_row_and_still_advances_unlocked_peer(client,
         ).scalar_one()
         assert int(locked.id) == busy_id
 
-        response = client.post(f"{BASE}/selection/time-tick", headers=admin)
+        response = _post_tick_with_budget(client, admin)
         assert response.status_code == 200, response.text
         data = response.json()["data"]
         assert str(busy_id) not in {str(row["batchId"]) for row in data["blocked"]}
@@ -201,7 +221,7 @@ def test_time_tick_skips_busy_batch_row_and_still_advances_unlocked_peer(client,
         db.close()
 
 
-@pytest.mark.timeout(20, method="signal")
+@pytest.mark.timeout(45, method="signal")
 def test_time_tick_defers_busy_term_row_instead_of_waiting_for_archive_owner(client, db_mode):
     from sqlalchemy import select
 
@@ -228,7 +248,7 @@ def test_time_tick_defers_busy_term_row_instead_of_waiting_for_archive_owner(cli
         ).scalar_one()
         assert int(locked_term.id) == term_id
 
-        response = client.post(f"{BASE}/selection/time-tick", headers=admin)
+        response = _post_tick_with_budget(client, admin)
         assert response.status_code == 200, response.text
         data = response.json()["data"]
         deferred_ids = {str(row["batchId"]) for row in data["deferred"]}
