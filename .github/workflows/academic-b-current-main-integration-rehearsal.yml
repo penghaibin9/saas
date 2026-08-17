@@ -97,12 +97,13 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
-          # Batch command contract seals dangling term refs and Term-row TOCTOU serialization.
+          # Seal term-row TOCTOU plus fail-closed upstream formation-provenance dependency.
           pytest -q -p no:warnings \
             tests/test_aa_selection_w4_task_identity.py \
             tests/test_aa_selection_w4_toctou_guard.py \
             tests/test_aa_selection_w4_supply_write_owner.py \
             tests/test_aa_selection_w4_batch_command.py \
+            tests/test_aa_selection_formation_dependency_contract.py \
             tests/test_aa_selection_w6_lock_drop_order_mysql.py \
             tests/test_aa_selection_w6_lottery_concurrency_mysql.py \
             tests/test_aa_selection_w6_roster_reconcile_mysql.py \
