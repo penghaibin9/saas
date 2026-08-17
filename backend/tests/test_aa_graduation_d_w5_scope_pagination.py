@@ -4,96 +4,150 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 
-def _fake_service():
-    rows = [
-        {"batchId": "3", "batchName": "tenant-hidden-newest", "total": 30, "systemPassed": 30, "systemAbnormal": 0, "finalized": 30},
-        {"batchId": "2", "batchName": "tenant-hidden-middle", "total": 20, "systemPassed": 20, "systemAbnormal": 0, "finalized": 20},
-        {"batchId": "1", "batchName": "college-visible-oldest", "total": 10, "systemPassed": 10, "systemAbnormal": 0, "finalized": 10},
-    ]
-
-    def list_batches(_user, status=None, page=1, page_size=50):
-        del status
-        start = (int(page) - 1) * int(page_size)
-        end = start + int(page_size)
-        return [dict(item) for item in rows[start:end]], len(rows)
-
-    return SimpleNamespace(
-        list_batches=list_batches,
-        get_result=lambda *args, **kwargs: {"resultId": "1"},
-        list_results=lambda *args, **kwargs: ([], 0),
-        rosters=lambda *args, **kwargs: [],
-        final=lambda *args, **kwargs: {"resultId": "1"},
-    )
+def _sql(statement) -> str:
+    return str(statement).lower()
 
 
-def test_college_scope_paginates_after_scope_filter_not_before(monkeypatch):
+class _Rows:
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def all(self):
+        return list(self._rows)
+
+
+class _ScopedDb:
+    def __init__(self):
+        self.count_query = None
+        self.page_query = None
+        self.aggregate_query = None
+
+    def scalar(self, statement):
+        self.count_query = statement
+        return 1
+
+    def scalars(self, statement):
+        self.page_query = statement
+        return _Rows(
+            [
+                SimpleNamespace(
+                    id=1,
+                    batch_name="college-visible-oldest",
+                    grade_year="2026",
+                    major_id=None,
+                    status="OPEN",
+                )
+            ]
+        )
+
+    def execute(self, statement):
+        self.aggregate_query = statement
+        return _Rows(
+            [
+                SimpleNamespace(
+                    batch_id=1,
+                    total=1,
+                    passed=0,
+                    abnormal=1,
+                    concluded=0,
+                    archived=0,
+                )
+            ]
+        )
+
+
+class _NoQueryDb:
+    def scalar(self, _statement):
+        raise AssertionError("empty college scope must not count tenant batches")
+
+    def scalars(self, _statement):
+        raise AssertionError("empty college scope must not fetch tenant batches")
+
+    def execute(self, _statement):
+        raise AssertionError("empty college scope must not aggregate tenant results")
+
+
+def test_college_scope_is_applied_before_count_page_and_aggregate(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_graduation_scope_guard as guard
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as service
 
-    service = _fake_service()
+    db = _ScopedDb()
 
     @contextmanager
     def fake_session():
-        yield object()
+        yield db
 
-    monkeypatch.setattr(guard, "session", fake_session)
-    monkeypatch.setattr(
-        guard,
-        "_resolve_scope",
-        lambda _db, _user: {"scopeMode": "COLLEGE", "collegeIds": [101]},
-    )
-    monkeypatch.setattr(
-        guard,
-        "_visible_batch_ids",
-        lambda _db, _college_ids, batch_ids: {1}.intersection({int(value) for value in batch_ids}),
-    )
-    monkeypatch.setattr(
-        guard,
-        "_scoped_batch_stats",
-        lambda _db, _college_ids, _batch_id: {
-            "total": 1,
-            "systemPassed": 0,
-            "systemAbnormal": 1,
-            "finalized": 0,
-        },
-    )
+    monkeypatch.setattr(service, "session", fake_session)
+    monkeypatch.setattr(service, "_tid", lambda: 7)
+    monkeypatch.setattr(guard, "graduation_college_scope_ids", lambda _db, _user: {101})
 
-    guard.install(service)
-    items, total = service.list_batches({"currentRoleCode": "COLLEGE_ADMIN"}, page=1, page_size=1)
+    items, total = guard.graduation_list_batches(
+        {"currentRoleCode": "COLLEGE_ADMIN"},
+        page=1,
+        page_size=1,
+    )
 
     assert total == 1
-    assert [item["batchId"] for item in items] == ["1"]
-    assert items[0]["total"] == 1
-    assert items[0]["systemPassed"] == 0
-    assert items[0]["systemAbnormal"] == 1
+    assert items == [
+        {
+            "batchId": "1",
+            "batchName": "college-visible-oldest",
+            "gradeYear": "2026",
+            "majorId": None,
+            "status": "OPEN",
+            "total": 1,
+            "passed": 0,
+            "abnormal": 1,
+            "concluded": 0,
+            "archived": 0,
+        }
+    ]
+
+    assert db.count_query is not None
+    assert db.page_query is not None
+    assert db.aggregate_query is not None
+
+    count_sql = _sql(db.count_query)
+    page_sql = _sql(db.page_query)
+    aggregate_sql = _sql(db.aggregate_query)
+
+    # The count and page statements must both carry the college-filtered visible-batch
+    # subquery. Pagination is therefore applied to the scoped relation, never to a
+    # tenant-wide page that would later be filtered in memory.
+    for statement_sql in (count_sql, page_sql):
+        assert "college_id" in statement_sql
+        assert "select" in statement_sql
+    assert "limit" in page_sql
+    assert "offset" in page_sql
+
+    # Per-page counters must use the same college boundary as the batch projection.
+    assert "college_id" in aggregate_sql
+    assert "batch_id" in aggregate_sql
 
 
-def test_scope_empty_still_returns_zero_without_scanning_tenant_pages(monkeypatch):
+def test_empty_college_scope_fails_closed_without_tenant_queries(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_graduation_scope_guard as guard
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as service
 
-    service = _fake_service()
-    calls = {"list": 0}
-    original = service.list_batches
-
-    def counted(*args, **kwargs):
-        calls["list"] += 1
-        return original(*args, **kwargs)
-
-    service.list_batches = counted
+    db = _NoQueryDb()
 
     @contextmanager
     def fake_session():
-        yield object()
+        yield db
 
-    monkeypatch.setattr(guard, "session", fake_session)
+    monkeypatch.setattr(service, "session", fake_session)
     monkeypatch.setattr(
-        guard,
-        "_resolve_scope",
-        lambda _db, _user: {"scopeMode": "COLLEGE", "collegeIds": []},
+        service,
+        "_tid",
+        lambda: (_ for _ in ()).throw(AssertionError("tenant id lookup must not run for empty scope")),
     )
+    monkeypatch.setattr(guard, "graduation_college_scope_ids", lambda _db, _user: set())
 
-    guard.install(service)
-    items, total = service.list_batches({"currentRoleCode": "COLLEGE_ADMIN"}, page=1, page_size=20)
+    items, total = guard.graduation_list_batches(
+        {"currentRoleCode": "COLLEGE_ADMIN"},
+        page=1,
+        page_size=20,
+    )
 
     assert items == []
     assert total == 0
-    assert calls["list"] == 0

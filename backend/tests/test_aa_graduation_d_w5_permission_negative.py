@@ -35,7 +35,8 @@ def _headers(client) -> dict[str, str]:
 def _assert_no_permission(response, *, label: str) -> None:
     assert response.status_code == 403, f"{label}: {response.status_code} {response.text}"
     body = response.json()
-    assert body.get("code") == "NO_PERMISSION", f"{label}: {body}"
+    assert body.get("code") == 403001, f"{label}: {body}"
+    assert body.get("bizCode") == "NO_PERMISSION", f"{label}: {body}"
 
 
 @pytest.mark.parametrize(
@@ -45,8 +46,12 @@ def _assert_no_permission(response, *, label: str) -> None:
         ("POST", f"{BASE}/graduation-audit-batches", {"batchName": "forbidden", "gradeYear": "2026"}),
         ("GET", f"{BASE}/graduation-audit-batches/987654321/results?page=1&pageSize=20", None),
         ("POST", f"{BASE}/graduation-audit-batches/987654321/precheck", None),
-        ("GET", f"{BASE}/graduation-audit-results/987654321", None),
-        ("POST", f"{BASE}/graduation-audit-results/987654321/final", {"decision": "GRADUATED"}),
+        ("GET", f"{BASE}/graduation-results/987654321", None),
+        (
+            "POST",
+            f"{BASE}/graduation-results/987654321/final",
+            {"conclusion": "GRADUATED", "confirm": True},
+        ),
     ],
 )
 def test_academic_teacher_cannot_cross_graduation_permission_boundary(
