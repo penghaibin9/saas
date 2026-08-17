@@ -133,7 +133,7 @@ def _guard_selection_formation(db, teaching_task_id: int) -> bool:
             "教学任务编班模式非法，禁止进入选课供给",
             blocker="SELECTION_FORMATION_INVALID",
             teachingTaskId=str(teaching_task_id),
-            formation_mode=str(mode or ""),
+            resolvedMode=str(mode or ""),
         ) from exc
     if not allowed:
         raise _conflict(
@@ -141,7 +141,7 @@ def _guard_selection_formation(db, teaching_task_id: int) -> bool:
             blocker="SELECTION_FORMATION_NOT_SELECTABLE",
             teachingTaskId=str(teaching_task_id),
             sourceProgramCourseId=str(normalized.get("sourceProgramCourseId") or ""),
-            formation_mode=str(mode or ""),
+            resolvedMode=str(mode or ""),
         )
     return True
 
@@ -316,7 +316,7 @@ def update_course(user, course_id, body) -> dict:
         return _core._course_dto(course)
 
 
-def cancel_course(user, course_id) -> dict:
+def cancel_course(user, course_id, body=None) -> dict:
     """Cancel a CLOSED-batch supply row and its selected records under one lock order."""
     from app.models import AaSelectionRecord
 
