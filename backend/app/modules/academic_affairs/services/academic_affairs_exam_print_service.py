@@ -27,8 +27,9 @@ def formal_room_print(user, room_id: int) -> dict:
     """Return an immutable-source print projection for one official exam room.
 
     This is strictly read-only.  It validates the published batch, confirmed course, active room,
-    frozen EXAM_COURSE roster identity and exact persisted seat set before returning printable
-    student fields.  Internal student primary keys are deliberately not exposed to the document.
+    frozen EXAM_COURSE roster identity and exact persisted seat allocation before returning
+    printable student fields.  Internal student primary keys are deliberately not exposed to the
+    document.
     """
     from app.models import AaExamRoom, AaExamRoomStudent
 
@@ -68,16 +69,46 @@ def formal_room_print(user, room_id: int) -> dict:
             _conflict("正式考场没有可打印座位数据", examRoomId=str(room.id))
 
         frozen_ids = [int(value) for value in (snapshot.get("studentIds") or [])]
+        if int(snapshot.get("memberCount") or 0) != len(frozen_ids):
+            _conflict(
+                "考试课程冻结名单计数与成员证据不一致，禁止打印",
+                examCourseId=str(course.id),
+                frozenCount=len(frozen_ids),
+                snapshotMemberCount=int(snapshot.get("memberCount") or 0),
+            )
+
+        # A frozen exam-course roster may legitimately be split across several rooms.  Therefore
+        # the course-wide active seat allocation, not one room's subset, must equal the frozen
+        # roster.  This also prevents a student from being seated in two active rooms.
+        active_rooms = db.query(AaExamRoom).filter(
+            AaExamRoom.tenant_id == _tid(),
+            AaExamRoom.exam_course_id == course.id,
+            AaExamRoom.status == "ACTIVE",
+            AaExamRoom.is_deleted.is_(False),
+        ).all()
+        active_room_ids = [int(value.id) for value in active_rooms]
+        course_seats = db.query(AaExamRoomStudent).filter(
+            AaExamRoomStudent.tenant_id == _tid(),
+            AaExamRoomStudent.exam_room_id.in_(active_room_ids),
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).all() if active_room_ids else []
+        course_seat_ids = [int(value.student_id) for value in course_seats]
+        if len(course_seat_ids) != len(set(course_seat_ids)):
+            _conflict(
+                "正式考试课程存在跨考场重复考生，禁止打印",
+                examCourseId=str(course.id),
+            )
+        if set(course_seat_ids) != set(frozen_ids):
+            _conflict(
+                "正式考试课程座位数据与发布时冻结名单不一致，禁止打印",
+                examCourseId=str(course.id),
+                frozenCount=len(frozen_ids),
+                seatedCount=len(course_seat_ids),
+            )
+
         seat_ids = [int(row.student_id) for row in seats]
         if len(seat_ids) != len(set(seat_ids)):
             _conflict("正式座位数据存在重复考生，禁止打印", examRoomId=str(room.id))
-        if set(seat_ids) != set(frozen_ids):
-            _conflict(
-                "正式座位数据与发布时冻结名单不一致，禁止打印",
-                examRoomId=str(room.id),
-                frozenCount=len(frozen_ids),
-                seatCount=len(seat_ids),
-            )
         if int(room.planned_count or 0) != len(seats):
             _conflict(
                 "考场计划人数与正式座位数不一致，禁止打印",

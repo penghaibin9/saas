@@ -135,6 +135,9 @@ def _seed(db_mode):
         "task": int(task.id),
         "student": int(student.id),
         "classroom": int(classroom.id),
+        "college": int(college.id),
+        "major": int(major.id),
+        "class": int(klass.id),
     }
     db.commit()
     db.close()
@@ -281,3 +284,73 @@ def test_formal_print_fails_closed_when_published_seat_set_drifts(client, db_mod
         print_service.formal_room_print(user, room_id)
     assert exc.value.code == "DATA_CONFLICT"
     assert "没有可打印座位数据" in exc.value.message
+
+
+def test_formal_print_accepts_one_frozen_roster_split_across_multiple_rooms(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaClassroom, StudentProfile
+    from app.modules.academic_affairs.services import academic_affairs_exam_print_service as print_service
+
+    ids = _seed(db_mode)
+    db = get_sessionmaker()()
+    second_student = StudentProfile(
+        tenant_id=TID,
+        student_no="CW328002",
+        real_name="C-W3第二考生",
+        college_id=ids["college"],
+        major_id=ids["major"],
+        class_id=ids["class"],
+        grade="2028",
+        student_status="NORMAL",
+        status="ACTIVE",
+    )
+    second_classroom = AaClassroom(
+        tenant_id=TID,
+        building_code="CW3",
+        building_name="C-W3楼",
+        room_code="302",
+        room_name="C-W3-302",
+        capacity=30,
+        status="AVAILABLE",
+    )
+    db.add_all([second_student, second_classroom])
+    db.flush()
+    second_student_id = int(second_student.id)
+    second_classroom_id = int(second_classroom.id)
+    db.commit()
+    db.close()
+
+    admin = _hdr(client)
+    bid, cid, first_room_id = _arranged_room(client, admin, ids)
+    second_room = client.post(
+        f"{BASE}/exam/courses/{cid}/rooms",
+        headers=admin,
+        json={"classroomId": str(second_classroom_id), "capacity": 30},
+    )
+    assert second_room.status_code == 200, second_room.text
+    second_room_id = int(second_room.json()["data"]["examRoomId"])
+    second_invigilator = client.post(
+        f"{BASE}/exam/rooms/{second_room_id}/invigilators",
+        headers=admin,
+        json={"teacherKey": "cw3_invigilator_02", "teacherName": "C-W3第二监考"},
+    )
+    assert second_invigilator.status_code == 200, second_invigilator.text
+    second_seat = client.post(
+        f"{BASE}/exam/rooms/{second_room_id}/seats",
+        headers=admin,
+        json={"studentIds": [str(second_student_id)]},
+    )
+    assert second_seat.status_code == 200, second_seat.text
+
+    published = client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
+    assert published.status_code == 200, published.text
+
+    user = _set_context()
+    first_print = print_service.formal_room_print(user, first_room_id)
+    second_print = print_service.formal_room_print(user, second_room_id)
+    assert first_print["rosterIdentity"]["memberCount"] == 2
+    assert second_print["rosterIdentity"]["memberCount"] == 2
+    assert first_print["seatCount"] == 1
+    assert second_print["seatCount"] == 1
+    assert first_print["seats"][0]["studentNo"] == "CW328001"
+    assert second_print["seats"][0]["studentNo"] == "CW328002"
