@@ -1,0 +1,57 @@
+name: Academic INT Program Series Materializer Scratch V2
+
+on:
+  push:
+    branches:
+      - tmp/academic-int-program-series-materializer-v2-20260818
+    paths:
+      - '.tmp/academic-int-program-series/materialize.py'
+      - '.github/workflows/academic-int-program-series-materializer-scratch-v2.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-int-program-series-materializer-scratch-v2
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Exact bootstrap/base guard
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "4d971781a9d0d1728cc7ab01daefb25de95fd23a"
+          git cat-file -e edca0064aec6a2bd34ed96261c23f1596dcceee0^{commit}
+          git cat-file -e cc560ca6719a56cb3125afaa4deeaf18140db9bd^{commit}
+
+      - name: Materialize exact source candidate
+        run: |
+          set -euo pipefail
+          python .tmp/academic-int-program-series/materialize.py
+          git diff --check
+
+      - name: Commit ordinary generated files to scratch only
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/academic-int-program-series-targeted.yml
+          git add \
+            backend/app/models/academic_affairs.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_program_core_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_program_authority_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_program_service.py \
+            backend/alembic/versions/20260817_academic_int_program_series.py \
+            backend/tests/test_academic_int_program_series_schema_red.py \
+            backend/tests/test_academic_int_program_series_mysql.py
+          git diff --cached --check
+          git commit -m "build(academic-int): materialize Program stable-series source tree"
+          git push origin HEAD:tmp/academic-int-program-series-materializer-v2-20260818
