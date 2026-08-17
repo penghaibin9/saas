@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   task-program-course-provenance:
-    name: Task ProgramCourse provenance exact-head MySQL gate
+    name: Task ProgramCourse provenance sealed-head MySQL regression
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
@@ -50,12 +50,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove exact stable-series base
+      - name: Prove sealed provenance ancestry on exact head
         run: |
           set -euo pipefail
+          SEALED="6bb48f1c055d8fd16fe9563ba4ea64c36ac15f9a"
+          BASE="fc6029e0af973a679c3ecd9c9dae40dcc46c73ff"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "fc6029e0af973a679c3ecd9c9dae40dcc46c73ff"
-          test "$(git rev-list --count fc6029e0af973a679c3ecd9c9dae40dcc46c73ff..HEAD)" = "1"
+          git cat-file -e "${SEALED}^{commit}"
+          git merge-base --is-ancestor "$SEALED" HEAD
+          test "$(git rev-list --count "${BASE}..${SEALED}")" = "1"
+          if test "$GITHUB_SHA" = "$SEALED"; then
+            test "$(git rev-parse HEAD^)" = "$BASE"
+          fi
 
       - uses: actions/setup-python@v5
         with:
@@ -67,7 +73,7 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
-      - name: Prove direct-source contract and single Alembic head
+      - name: Prove direct-source contract and one live Alembic head
         working-directory: backend
         run: |
           set -euo pipefail
@@ -82,16 +88,17 @@ jobs:
           HEADS="$(alembic heads)"
           echo "$HEADS"
           test "$(printf '%s\n' "$HEADS" | grep -c ' (head)')" = "1"
-          printf '%s\n' "$HEADS" | grep -F '20260818_acad_int_task_pc_prov (head)'
 
-      - name: Fresh MySQL upgrade
+      - name: Fresh MySQL upgrade to current exact-head schema
         working-directory: backend
         run: |
           set -euo pipefail
           alembic upgrade head
-          alembic current | grep -F '20260818_acad_int_task_pc_prov (head)'
+          CURRENT="$(alembic current)"
+          echo "$CURRENT"
+          printf '%s\n' "$CURRENT" | grep -F ' (head)'
 
-      - name: Run provenance and formation targeted contracts
+      - name: Run provenance and formation targeted regression on exact head
         working-directory: backend
         run: |
           set -euo pipefail

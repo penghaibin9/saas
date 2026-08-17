@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   program-stable-series:
-    name: Program stable-series exact-head MySQL gate
+    name: Program stable-series sealed-head MySQL regression
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
@@ -53,12 +53,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove exact atomic base
+      - name: Prove sealed stable-series ancestry on exact head
         run: |
           set -euo pipefail
+          SEALED="fc6029e0af973a679c3ecd9c9dae40dcc46c73ff"
+          BASE="4d971781a9d0d1728cc7ab01daefb25de95fd23a"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "4d971781a9d0d1728cc7ab01daefb25de95fd23a"
-          test "$(git rev-list --count 4d971781a9d0d1728cc7ab01daefb25de95fd23a..HEAD)" = "1"
+          git cat-file -e "${SEALED}^{commit}"
+          git merge-base --is-ancestor "$SEALED" HEAD
+          test "$(git rev-list --count "${BASE}..${SEALED}")" = "1"
+          if test "$GITHUB_SHA" = "$SEALED"; then
+            test "$(git rev-parse HEAD^)" = "$BASE"
+          fi
 
       - uses: actions/setup-python@v5
         with:
@@ -70,7 +76,7 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
-      - name: Prove source contract and single Alembic head
+      - name: Prove stable-series source contract and one live Alembic head
         working-directory: backend
         run: |
           set -euo pipefail
@@ -84,16 +90,17 @@ jobs:
           HEADS="$(alembic heads)"
           echo "$HEADS"
           test "$(printf '%s\n' "$HEADS" | grep -c ' (head)')" = "1"
-          printf '%s\n' "$HEADS" | grep -F '20260817_acad_int_program_series (head)'
 
-      - name: Fresh MySQL upgrade
+      - name: Fresh MySQL upgrade to current exact-head schema
         working-directory: backend
         run: |
           set -euo pipefail
           alembic upgrade head
-          alembic current | grep -F '20260817_acad_int_program_series (head)'
+          CURRENT="$(alembic current)"
+          echo "$CURRENT"
+          printf '%s\n' "$CURRENT" | grep -F ' (head)'
 
-      - name: Run only stable-series targeted contracts
+      - name: Run stable-series targeted regression on exact head
         working-directory: backend
         run: |
           set -euo pipefail
