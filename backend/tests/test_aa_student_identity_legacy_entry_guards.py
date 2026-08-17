@@ -49,7 +49,12 @@ def test_selection_passed_and_prerequisite_rules_use_course_code():
 
     assert "_passed_course_codes" in source
     assert "passed_course_codes(" in source
-    assert "effective_grade_rows" in authority
+    # Selection must consume the canonical transcript projection rather than
+    # reaching back into raw AcademicGrade rows or a specific grade helper.
+    assert "grade_service.transcript(" in authority
+    assert 'item.get("passStatus")' in authority
+    assert 'item.get("courseCode")' in authority
+    assert "AcademicGrade" not in authority
     assert "target_code in passed_codes" in source
     assert "prerequisites - passed_codes" in source
     assert "target.course_name in passed" not in source
