@@ -26,3 +26,12 @@ test('student ticket action is only exposed for a non-empty published schedule',
   assert.match(page, /studentApi\.printExamTicket\('个人准考证'\)/)
   assert.match(page, /已留痕并复制准考证摘要/)
 })
+
+test('student defer action is fail-closed on server canApply truth', () => {
+  assert.match(page, /v-if="c\.hasActiveDefer"[\s\S]*?>申请中<\/button>/)
+  assert.match(page, /v-else-if="c\.canApply === true"[\s\S]*?@click="openForm\(c\)"[\s\S]*?>申请缓考<\/button>/)
+  assert.match(page, /v-else class="btn-tag is-disabled" disabled>暂不可申请<\/button>/)
+  assert.match(page, /if \(!c \|\| c\.hasActiveDefer \|\| c\.canApply !== true\) return/)
+  assert.match(page, /if \(!this\.selectedCourse \|\| this\.selectedCourse\.canApply !== true \|\| this\.submitting\) return/)
+  assert.doesNotMatch(page, /<button v-else class="btn-tag" @click="openForm\(c\)">申请缓考<\/button>/)
+})

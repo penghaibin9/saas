@@ -122,7 +122,7 @@ def exam_my(user) -> dict:
 
 
 def deferrable_courses(user) -> dict:
-    """本人名单内、尚未开考且没有进行中缓考申请的课程。"""
+    """本人名单内、尚未开考的课程；进行中申请保留用于展示但不暴露写动作。"""
     from app.models import AaDeferredExam, AaExamBatch, AaExamCourse
 
     with session() as db:
@@ -146,12 +146,20 @@ def deferrable_courses(user) -> dict:
             batch = db.get(AaExamBatch, int(course.batch_id)) if course.batch_id else None
             if not batch or batch.is_deleted or batch.tenant_id != _tid() or batch.status != "PUBLISHED":
                 continue
-            started = exam_started(course, zone=zone)
+
+            # Read-model boundary is fail-closed: an already-started exam is not an option at all.
+            # Malformed/missing local datetime is also omitted because the client must never receive
+            # an ambiguous row that could accidentally expose a write action.
+            exam_at = _local_exam_datetime(course, zone)
+            if exam_at is None or exam_started(course, zone=zone):
+                continue
+
+            has_active = cid in active
             items.append({
                 "examCourseId": str(course.id), "courseName": course.course_name or "",
                 "examDate": course.exam_date or "", "startTime": course.start_time or "",
-                "endTime": course.end_time or "", "hasActiveDefer": cid in active,
-                "started": started, "canApply": not started and cid not in active,
+                "endTime": course.end_time or "", "hasActiveDefer": has_active,
+                "started": False, "canApply": not has_active,
             })
         items.sort(key=lambda x: (x.get("examDate") or "9999-99-99", x.get("startTime") or "99:99"))
         return {"items": items, "total": len(items), "timezone": zone_name}

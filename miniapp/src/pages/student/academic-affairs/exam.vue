@@ -35,7 +35,8 @@
               <text class="ed__sub">{{ c.examDate || '未排定日期' }} {{ c.startTime || '' }}</text>
             </view>
             <button v-if="c.hasActiveDefer" class="btn-tag is-disabled" disabled>申请中</button>
-            <button v-else class="btn-tag" @click="openForm(c)">申请缓考</button>
+            <button v-else-if="c.canApply === true" class="btn-tag" @click="openForm(c)">申请缓考</button>
+            <button v-else class="btn-tag is-disabled" disabled>暂不可申请</button>
           </view>
         </view>
 
@@ -137,12 +138,13 @@ export default {
     },
     onReasonPick(e) { this.form.reasonType = this.reasonOptions[e.detail.value].value },
     openForm(c) {
+      if (!c || c.hasActiveDefer || c.canApply !== true) return
       this.selectedCourse = c
       this.form = { reasonType: 'SICK', reason: '' }
       this.showForm = true
     },
     submit() {
-      if (!this.selectedCourse || this.submitting) return
+      if (!this.selectedCourse || this.selectedCourse.canApply !== true || this.submitting) return
       this.submitting = true
       submitLock.run(() => studentApi.applyDefer(this.selectedCourse.examCourseId, this.form.reasonType, this.form.reason.trim()))
         .then(() => {
