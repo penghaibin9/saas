@@ -8,12 +8,23 @@ on:
       - 'backend/app/modules/academic_affairs/routers/academic_affairs_bundle.py'
       - 'backend/app/modules/academic_affairs/services/academic_file_exchange_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_export_compat_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_file_exchange_spec.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_adapter.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_workbook_adapter.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_authority_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_confirm_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_binding_confirm_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
+      - 'backend/app/services/data_exchange_confirm_legacy.py'
       - 'backend/tests/test_academic_file_exchange_center.py'
       - 'backend/tests/test_academic_export_compat.py'
+      - 'backend/tests/test_aa_program_file_exchange_shared_int.py'
+      - 'backend/tests/test_aa_program_file_exchange_shared_mysql_int.py'
       - 'frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js'
       - 'frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue'
       - 'docs/architecture/file-capability-inventory.d/07-academic-file-exchange.yaml'
+      - 'docs/architecture/file-capability-inventory.d/07-academic-program-workbook.yaml'
       - '.github/workflows/academic-file-exchange-center.yml'
   push:
     branches:
@@ -24,12 +35,23 @@ on:
       - 'backend/app/modules/academic_affairs/routers/academic_affairs_bundle.py'
       - 'backend/app/modules/academic_affairs/services/academic_file_exchange_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_export_compat_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_file_exchange_spec.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_adapter.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_workbook_adapter.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_authority_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_confirm_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_binding_confirm_service.py'
       - 'backend/app/services/data_exchange_confirm_service.py'
+      - 'backend/app/services/data_exchange_confirm_legacy.py'
       - 'backend/tests/test_academic_file_exchange_center.py'
       - 'backend/tests/test_academic_export_compat.py'
+      - 'backend/tests/test_aa_program_file_exchange_shared_int.py'
+      - 'backend/tests/test_aa_program_file_exchange_shared_mysql_int.py'
       - 'frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js'
       - 'frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue'
       - 'docs/architecture/file-capability-inventory.d/07-academic-file-exchange.yaml'
+      - 'docs/architecture/file-capability-inventory.d/07-academic-program-workbook.yaml'
       - '.github/workflows/academic-file-exchange-center.yml'
 
 concurrency:
@@ -93,13 +115,20 @@ jobs:
             app/modules/academic_affairs/routers/academic_affairs_bundle.py \
             app/modules/academic_affairs/services/academic_file_exchange_service.py \
             app/modules/academic_affairs/services/academic_export_compat_service.py \
-            app/services/data_exchange_confirm_service.py
+            app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_service.py \
+            app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_authority_service.py \
+            app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_confirm_service.py \
+            app/modules/academic_affairs/services/academic_affairs_school_setup_program_binding_confirm_service.py \
+            app/services/data_exchange_confirm_service.py \
+            app/services/data_exchange_confirm_legacy.py
       - name: Authoritative job contract tests
         working-directory: backend
         run: >-
           pytest tests/test_academic_file_exchange_center.py
           tests/test_academic_export_compat.py
           tests/test_data_exchange_job_center.py
+          tests/test_aa_program_file_exchange_shared_int.py
+          tests/test_aa_program_file_exchange_shared_mysql_int.py
           -q -p no:warnings
       - name: Teacher PC lint and build
         working-directory: frontend
