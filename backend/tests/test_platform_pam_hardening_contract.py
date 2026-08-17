@@ -4,6 +4,83 @@ from app.core.exceptions import AppException
 from app.modules.platform.services import platform_access_governance_hardening as pam
 
 
+def test_review_create_rejects_client_snapshot_injection_before_reads(monkeypatch):
+    monkeypatch.setattr(
+        pam._runtime,
+        "list_records",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must reject before authority reads")),
+    )
+    with pytest.raises(AppException) as exc:
+        pam.create_access_review(
+            {"requestId": "review-0001", "items": [{"itemKey": "fake"}]},
+            actor={"userId": "p-1"},
+        )
+    assert getattr(exc.value, "biz_code", getattr(exc.value, "code", "")) == "ACCESS_REVIEW_SCOPE_INVALID"
+
+
+def test_review_create_filters_server_snapshot_by_exact_scope(monkeypatch):
+    monkeypatch.setenv("PLATFORM_ACCESS_REVIEW_MAX_ITEMS", "5")
+    monkeypatch.setattr(pam._runtime, "assert_recent_platform_auth", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(pam._runtime, "_existing", lambda *_args, **_kwargs: None)
+    rows = {
+        pam._runtime.ASSIGNMENT: [{"id": "a-1", "tenantId": 0, "status": "ACTIVE", "version": 1}],
+        pam._runtime.ELEVATION: [{"id": "e-1", "tenantId": 0, "status": "ACTIVE", "version": 2}],
+        pam._runtime.SUPPORT: [
+            {"id": "s-7", "tenantId": 7, "status": "ACTIVE", "version": 3},
+            {"id": "s-8", "tenantId": 8, "status": "ACTIVE", "version": 4},
+            {"id": "s-old", "tenantId": 7, "status": "TERMINATED", "version": 5},
+        ],
+    }
+    seen = {}
+    monkeypatch.setattr(pam._runtime, "list_records", lambda config_type, **_kwargs: list(rows[config_type]))
+
+    def save(config_type, data, **kwargs):
+        seen.update(config_type=config_type, data=data, kwargs=kwargs)
+        return data
+
+    monkeypatch.setattr(pam._runtime._base, "_save_atomic", save)
+    out = pam.create_access_review(
+        {
+            "requestId": "review-0002",
+            "name": "tenant 7 support review",
+            "scope": {"configTypes": [pam._runtime.SUPPORT], "tenantIds": [7]},
+        },
+        actor={"userId": "p-1"},
+    )
+    assert [item["recordId"] for item in out["items"]] == ["s-7"]
+    assert out["scope"] == {"configTypes": [pam._runtime.SUPPORT], "tenantIds": [7]}
+    assert out["maxItemsAtCreate"] == 5
+    assert seen["kwargs"]["create_idempotent"] is True
+
+
+def test_review_create_rejects_over_limit_before_campaign_write(monkeypatch):
+    monkeypatch.setenv("PLATFORM_ACCESS_REVIEW_MAX_ITEMS", "1")
+    monkeypatch.setattr(pam._runtime, "assert_recent_platform_auth", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(pam._runtime, "_existing", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        pam._runtime,
+        "list_records",
+        lambda config_type, **_kwargs: [
+            {"id": "s-1", "tenantId": 7, "status": "ACTIVE", "version": 1},
+            {"id": "s-2", "tenantId": 7, "status": "ACTIVE", "version": 1},
+        ] if config_type == pam._runtime.SUPPORT else [],
+    )
+    monkeypatch.setattr(
+        pam._runtime._base,
+        "_save_atomic",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("oversized campaign must not be written")),
+    )
+    with pytest.raises(AppException) as exc:
+        pam.create_access_review(
+            {
+                "requestId": "review-0003",
+                "scope": {"configTypes": [pam._runtime.SUPPORT], "tenantIds": [7]},
+            },
+            actor={"userId": "p-1"},
+        )
+    assert getattr(exc.value, "biz_code", getattr(exc.value, "code", "")) == "ACCESS_REVIEW_SCOPE_TOO_LARGE"
+
+
 def test_review_close_rejects_missing_and_unknown_decisions(monkeypatch):
     review = {
         "id": "review-1",
