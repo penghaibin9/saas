@@ -153,14 +153,18 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Pin current main and B Gold; prove zero direct A/B collision
+      - name: Pin main + immutable B Gold; prove live B descends and zero collision
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git fetch origin main --no-tags
           test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA"
           git fetch origin agent/academic-b-schedule-selection --no-tags
-          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_B_GOLD_SHA"
+          live_b="$(git rev-parse FETCH_HEAD)"
+          git cat-file -e "$EXPECTED_B_GOLD_SHA^{commit}"
+          git merge-base --is-ancestor "$EXPECTED_B_GOLD_SHA" "$live_b"
+          echo "Pinned B Gold=$EXPECTED_B_GOLD_SHA"
+          echo "Live B head=$live_b"
           python - <<'PY'
           import os
           import subprocess
@@ -182,9 +186,9 @@ jobs:
           b_paths = names(b_base, b_head)
           overlap = sorted(a_paths & b_paths)
           print("A changed paths=", len(a_paths))
-          print("B changed paths=", len(b_paths))
+          print("B Gold changed paths=", len(b_paths))
           print("direct overlap=", overlap)
-          assert overlap == [], f"A/B direct path collision: {overlap}"
+          assert overlap == [], f"A/B Gold direct path collision: {overlap}"
           PY
 
       - name: Ephemeral merge pinned B Gold into A runner only
