@@ -176,6 +176,7 @@ def test_binding_confirm_requires_published_definition_then_create_and_repeat_re
 
 
 def test_binding_writer_reuses_frozen_preflight_plan_and_post_confirm_owners():
+    import ast
     import inspect
     from app.modules.academic_affairs.services import academic_affairs_school_setup_program_binding_confirm_service as service
 
@@ -183,6 +184,11 @@ def test_binding_writer_reuses_frozen_preflight_plan_and_post_confirm_owners():
     assert "run_program_import_preflight" in source
     assert "build_program_binding_write_plan" in source
     assert "reconcile_program_confirm_reread" in source
-    assert "bind_grade" not in source
+    tree = ast.parse(source)
+    assert not any(
+        (isinstance(node, ast.Name) and node.id == "bind_grade")
+        or (isinstance(node, ast.Attribute) and node.attr == "bind_grade")
+        for node in ast.walk(tree)
+    )
     assert "data_exchange_confirm_service" not in source
     assert "academic_file_exchange_service" not in source

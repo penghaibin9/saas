@@ -1,0 +1,23 @@
+entries:
+  - module: academic-affairs
+    client: backend
+    route: inventory://academic-affairs/program-six-sheet-workbook
+    page: backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_workbook_adapter.py
+    action: template+parse+import
+    fileCategory: PROGRAM_XLSX_LOCAL_CONTRACT
+    api: not-public-yet
+    backendService: backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_workbook_adapter.py::build_program_import_template+read_program_workbook+parse_and_normalize_program_workbook
+    storageMode: caller-owned-in-memory-xlsx-bytes
+    authMode: local-domain-caller-only-public-dispatch-disabled
+    dataScope: tenant+academic-affairs-context-enforced-by-preview-confirm-callers
+    versioned: true
+    scanGated: false
+    preview: false
+    download: false
+    import: true
+    export: true
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '7'
+    notes: Local Program six-sheet workbook capability only. Reuses xlsx_util package safety validation and enforces exact sheets/headers plus a bounded total row budget. It owns no FileObject/ImportJob lifecycle and exposes no public route; shared Academic File Exchange must remain scan-gated before this parser is wired publicly.
