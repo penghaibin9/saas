@@ -1,0 +1,143 @@
+name: Academic Cross-Line B Formation Activation Rehearsal
+
+on:
+  push:
+    branches:
+      - integration/academic-b-formation-activation-rehearsal
+    paths:
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_formation_dependency.py'
+      - 'backend/tests/test_aa_selection_formation_dependency_contract.py'
+      - 'backend/tests/test_academic_crossline_b_formation_activation_rehearsal.py'
+      - '.github/workflows/academic-crossline-b-formation-activation-rehearsal.yml'
+
+concurrency:
+  group: academic-crossline-b-formation-activation-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  cross-line-activation:
+    name: Frozen B consumes formal INT provenance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      APP_ENV: test
+      SECRET_KEY: academic-crossline-b-formation-activation
+    steps:
+      - name: Checkout exact rehearsal head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove frozen inputs and atomic rehearsal shape
+        run: |
+          set -euo pipefail
+          INT="35d4e485bb96f17ceb0697ec75b506947a89b61f"
+          B="799a82e61c24a52724dbb071e751850450be2e68"
+          B_DEP_BLOB="54dc1c59b806fb9ff2dc886457fcd45c746ea58c"
+          B_TEST_BLOB="bf32fd2d76d25f6236e1c70cd0e7dea78a0f0752"
+
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$INT"
+          test "$(git rev-list --count "${INT}..HEAD")" = "1"
+          test "$(git rev-list --parents -n 1 HEAD | wc -w)" = "2"
+
+          git fetch --no-tags origin refs/heads/integration/academic-school-gold:refs/remotes/origin/integration/academic-school-gold
+          test "$(git rev-parse refs/remotes/origin/integration/academic-school-gold)" = "$INT"
+          git fetch --no-tags origin refs/heads/agent/academic-b-schedule-selection:refs/remotes/origin/agent/academic-b-schedule-selection
+          test "$(git rev-parse refs/remotes/origin/agent/academic-b-schedule-selection)" = "$B"
+
+          test "$(git hash-object backend/app/modules/academic_affairs/services/academic_affairs_selection_formation_dependency.py)" = "$B_DEP_BLOB"
+          test "$(git hash-object backend/tests/test_aa_selection_formation_dependency_contract.py)" = "$B_TEST_BLOB"
+
+          ACTUAL="$(git diff --name-only "$INT"...HEAD | sort)"
+          EXPECTED="$(printf '%s\n' \
+            '.github/workflows/academic-crossline-b-formation-activation-rehearsal.yml' \
+            'backend/app/modules/academic_affairs/services/academic_affairs_selection_formation_dependency.py' \
+            'backend/tests/test_aa_selection_formation_dependency_contract.py' \
+            'backend/tests/test_academic_crossline_b_formation_activation_rehearsal.py' | sort)"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Prove A owner and frozen B consumer boundary
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          grep -F 'source_program_course_id' app/modules/academic_affairs/services/academic_affairs_task_formation_provenance_service.py
+          grep -F 'STATUS_PROVEN = "PROVEN"' app/modules/academic_affairs/services/academic_affairs_task_formation_provenance_service.py
+          grep -F 'requiredEvidence' app/modules/academic_affairs/services/academic_affairs_selection_formation_dependency.py
+          grep -F 'sourceProgramCourseId' app/modules/academic_affairs/services/academic_affairs_selection_formation_dependency.py
+          grep -F 'formationMode' app/modules/academic_affairs/services/academic_affairs_selection_formation_dependency.py
+          ! grep -F 'selection_eligible' app/modules/academic_affairs/services/academic_affairs_selection_formation_dependency.py
+          ! grep -F 'resolve_legacy_task_formation' app/modules/academic_affairs/services/academic_affairs_selection_formation_dependency.py
+          HEADS="$(alembic heads)"
+          echo "$HEADS"
+          test "$(printf '%s\n' "$HEADS" | grep -c ' (head)')" = "1"
+
+      - name: Fresh MySQL upgrade to formal INT schema
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          alembic upgrade head
+          CURRENT="$(alembic current)"
+          echo "$CURRENT"
+          printf '%s\n' "$CURRENT" | grep -F ' (head)'
+
+      - name: Run frozen B contract plus A-to-B bridge
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q \
+            --junitxml=/tmp/academic-crossline-b-formation.xml \
+            tests/test_aa_selection_formation_dependency_contract.py \
+            tests/test_academic_int_task_program_course_provenance_contract.py \
+            tests/test_academic_int_task_program_course_provenance_mysql.py \
+            tests/test_academic_crossline_b_formation_activation_rehearsal.py
+
+      - name: Write exact-head evidence
+        run: |
+          set -euo pipefail
+          cat > /tmp/academic-crossline-b-formation-evidence.txt <<EOF
+          rehearsalHead=$GITHUB_SHA
+          formalInt=35d4e485bb96f17ceb0697ec75b506947a89b61f
+          frozenB=799a82e61c24a52724dbb071e751850450be2e68
+          frozenBDependencyBlob=54dc1c59b806fb9ff2dc886457fcd45c746ea58c
+          frozenBContractBlob=bf32fd2d76d25f6236e1c70cd0e7dea78a0f0752
+          contract=PROVEN+sourceProgramCourseId+formationMode
+          EOF
+
+      - name: Upload cross-line evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-crossline-b-formation-${{ github.sha }}
+          path: |
+            /tmp/academic-crossline-b-formation.xml
+            /tmp/academic-crossline-b-formation-evidence.txt
+          if-no-files-found: error
+          retention-days: 30
