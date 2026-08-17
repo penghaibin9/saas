@@ -8,8 +8,8 @@ Selection Final 的四条最终入口（批次发布、学生可选课程、选�
 B-W4 起，课程供给写动作由 ``academic_affairs_selection_course_command_service``
 单一持有：新增必须 TeachingTask 必填、READY、same-course、same-term；编辑容量/
 取消开课也必须走 canonical term guard + locking command，不得回落 legacy core 写实现。
-规则保存与自动时间迁移由 ``academic_affairs_selection_batch_command_service`` 持有，
-复用 Final/W1 的 term guard 和 OPEN/CLOSE preflight，不另造生命周期真值。
+批次创建、规则保存与自动时间迁移由 ``academic_affairs_selection_batch_command_service``
+持有；显式 termId 必须真实可写，OPEN/CLOSE 复用 Final/W1 preflight，不另造生命周期真值。
 其余 canonical service、权限、DTO、状态机、TeachingRoster 投影保持不变。
 """
 from __future__ import annotations
@@ -54,7 +54,7 @@ selection_round_svc = legacy.selection_round_svc
 # ── 批次（发布由 Selection Final owner 持有） ──
 @router.post("/selection/batches", summary="建选课批次")
 def sel_batch_create(body: SelectionBatchBody, user=Depends(require_permission(_SEL_MANAGE))):
-    return success(selection_svc.create_batch(user, body), message="已创建")
+    return success(selection_batch_command_svc.create_batch(user, body), message="已创建")
 
 
 @router.get("/selection/batches", summary="选课批次列表")

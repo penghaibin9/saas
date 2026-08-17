@@ -54,6 +54,56 @@ def _strict_object(raw, *, code, label, batch_id, blockers):
     return value
 
 
+def _validate_term_reference(db, batch, blockers):
+    """Pure-read existence check, then defer writability policy to Archive Authority."""
+    from app.models import AaTerm
+    from . import academic_affairs_archive_service as archive_service
+
+    raw_term_id = getattr(batch, "term_id", None)
+    if raw_term_id in (None, ""):
+        blockers.append(_block(
+            "SELECTION_TERM_MISSING",
+            "选课批次未绑定正式学期",
+            how_to_resolve="返回批次配置并绑定正式termId",
+        ))
+        return
+    try:
+        term_id = int(raw_term_id)
+    except (TypeError, ValueError):
+        blockers.append(_block(
+            "SELECTION_TERM_INVALID",
+            "选课批次关联的termId格式无效",
+            how_to_resolve="重新绑定本租户存在的正式termId",
+            termId=str(raw_term_id),
+        ))
+        return
+
+    term = db.query(AaTerm).filter(
+        AaTerm.id == term_id,
+        AaTerm.tenant_id == _tid(),
+        AaTerm.is_deleted.is_(False),
+    ).first()
+    if not term:
+        blockers.append(_block(
+            "SELECTION_TERM_INVALID",
+            "选课批次关联的学期不存在或已删除",
+            how_to_resolve="重新绑定本租户存在的正式学期后再预检",
+            termId=str(term_id),
+        ))
+        return
+
+    try:
+        archive_service.guard_term_writable(db, term_id)
+    except AppException as exc:
+        blockers.append(_block(
+            "SELECTION_TERM_NOT_WRITABLE",
+            str(getattr(exc, "message", "") or str(exc)),
+            how_to_resolve="先完成学期解冻/归档治理，再重新预检选课批次",
+            termId=str(term_id),
+            authorityCode=str(getattr(exc, "code", "") or "DATA_CONFLICT"),
+        ))
+
+
 def evaluate_batch(db, batch, action: str) -> dict:
     """Pure read. Return lifecycle blockers and existing roster validation for LOCK."""
     from app.models import AaSelectionCourse
@@ -72,12 +122,7 @@ def evaluate_batch(db, batch, action: str) -> dict:
             expectedStatus=expected,
             actualStatus=str(batch.status or ""),
         ))
-    if not getattr(batch, "term_id", None):
-        blockers.append(_block(
-            "SELECTION_TERM_MISSING",
-            "选课批次未绑定正式学期",
-            how_to_resolve="返回批次配置并绑定正式termId",
-        ))
+    _validate_term_reference(db, batch, blockers)
 
     _strict_object(
         getattr(batch, "apply_scope_json", None),

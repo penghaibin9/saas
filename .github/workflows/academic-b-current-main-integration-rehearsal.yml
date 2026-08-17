@@ -97,6 +97,7 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
+          # Batch command contract also seals explicit/dangling term-reference fail-closed semantics.
           pytest -q -p no:warnings \
             tests/test_aa_selection_w4_task_identity.py \
             tests/test_aa_selection_w4_toctou_guard.py \

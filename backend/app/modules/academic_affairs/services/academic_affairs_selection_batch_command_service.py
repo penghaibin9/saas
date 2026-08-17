@@ -1,9 +1,11 @@
 """B production-audit · canonical SelectionBatch management commands.
 
-Only management writes that were still falling through the compatibility core live
-here.  Manual OPEN/CLOSE/PUBLISH/LOCK remain owned by Selection Final; this module
-closes two residual gaps without creating another lifecycle truth:
+Management writes that were still falling through the compatibility core live here.
+Manual OPEN/CLOSE/PUBLISH/LOCK remain owned by Selection Final; this module closes
+residual write-authority gaps without creating another lifecycle truth:
 
+- batch creation validates any explicit term reference in the same transaction while
+  preserving the supported term-less DRAFT workflow;
 - rule updates lock the batch and re-check term/state before writing;
 - scheduler ticks reuse the same W1 OPEN/CLOSE preflight as manual commands, one
   locked batch at a time, so malformed/archived batches fail closed without blocking
@@ -23,7 +25,10 @@ from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_selection_core_service as _core
 from .academic_affairs_selection_preflight_service import require_batch_action
-from .academic_affairs_selection_service import _guard_batch_writable
+from .academic_affairs_selection_service import (
+    _guard_batch_writable,
+    _require_term_reference_writable,
+)
 
 
 def _lock_batch(db, batch_id):
@@ -39,6 +44,48 @@ def _lock_batch(db, batch_id):
     if not row:
         raise not_found("选课批次不存在")
     return row
+
+
+def create_batch(user, body) -> dict:
+    """Create DRAFT; explicit termId must already resolve to a writable tenant term."""
+    from app.models import AaSelectionBatch
+
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        name = (getattr(body, "batchName", None) or "").strip()
+        if not name:
+            raise AppException("VALIDATION_ERROR", "批次名称必填")
+
+        raw_term_id = getattr(body, "termId", None)
+        term_id = None
+        if raw_term_id not in (None, ""):
+            term = _require_term_reference_writable(db, raw_term_id, required=False)
+            term_id = int(term.id)
+
+        batch = AaSelectionBatch(
+            tenant_id=_core._tid(),
+            batch_name=name,
+            term_id=term_id,
+            select_start_at=_core._parse_dt(getattr(body, "selectStartAt", None)),
+            select_end_at=_core._parse_dt(getattr(body, "selectEndAt", None)),
+            apply_scope_json=(
+                json.dumps(body.applyScope, ensure_ascii=False)
+                if getattr(body, "applyScope", None)
+                else None
+            ),
+            rule_json=(
+                json.dumps(body.rule, ensure_ascii=False)
+                if getattr(body, "rule", None)
+                else None
+            ),
+            remark=getattr(body, "remark", None),
+            status=_core._BATCH_DRAFT,
+        )
+        db.add(batch)
+        db.flush()
+        _core._audit(db, batch.id, "SELECTION_BATCH_CREATE", f"建批次 {name}")
+        db.commit()
+        return _core._batch_dto(batch)
 
 
 def save_rule(user, batch_id, rule) -> dict:
