@@ -12,6 +12,8 @@ on:
       - 'frontend/src/modules/academicAffairs/api/academic-exam-formal-print.api.js'
       - 'frontend/src/modules/academicAffairs/views/AaExamSeatingPrintView.vue'
       - 'frontend/tests/academic-exam-formal-print-source-contract.test.mjs'
+      - 'miniapp/src/pages/student/academic-affairs/exam.vue'
+      - 'miniapp/tests/academic-student-exam-source-contract.test.mjs'
       - '.github/workflows/academic-c-w3-exam-targeted.yml'
   workflow_dispatch:
 
@@ -24,7 +26,7 @@ concurrency:
 
 jobs:
   exam-formal-print:
-    name: formal print projection / MySQL + frontend
+    name: formal print projection / MySQL + frontend + student miniapp
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -82,6 +84,9 @@ jobs:
       - name: C-W3 formal print frontend source contract
         working-directory: frontend
         run: node --test tests/academic-exam-formal-print-source-contract.test.mjs
+      - name: C-W3 student exam source contract
+        working-directory: miniapp
+        run: node --test tests/academic-student-exam-source-contract.test.mjs
       - name: Prove formal print provider is read-only
         working-directory: backend
         run: |
