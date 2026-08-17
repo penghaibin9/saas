@@ -17,6 +17,8 @@ function identity() {
   const user = currentUserFromToken() || {}
   return {
     userId: String(user.userId || ''),
+    loginName: String(user.loginName || ''),
+    realName: String(user.realName || ''),
     userType: String(user.userType || '').trim().toUpperCase(),
     roleCode: String(user.currentRoleCode || '').trim().toUpperCase()
   }
@@ -59,7 +61,40 @@ export function resolvePlatformHome(context = cachedContext) {
   if (duties.has('commercial.view')) return '/admin/platform/orders'
   if (duties.has('audit.view')) return '/admin/platform/audit'
   if (duties.has('tenant.view')) return '/admin/platform/tenants'
-  return '/security/403?reason=platform-no-delegated-surface'
+  return '/security/403'
+}
+
+export function toPlatformUiContext(context = cachedContext) {
+  if (!context) return null
+  const user = identity()
+  const duties = Array.isArray(context.duties) ? context.duties : []
+  const root = duties.includes('*')
+  const roleCode = String(context.roleCode || user.roleCode || user.userType || 'PLATFORM').toUpperCase()
+  const operatorName = user.realName || user.loginName || roleCode
+  return {
+    tenantBrandConfig: {
+      tenantId: '0',
+      operatorName,
+      schoolName: '',
+      platformDisplayName: '高校学生全生命周期管理平台',
+      schoolLogo: '',
+      schoolBadge: '',
+      brandColor: '#2563eb',
+      watermarkText: '平台运营数据 · 严禁外传'
+    },
+    currentRole: {
+      userId: String(context.subjectId || user.userId),
+      userName: operatorName,
+      roleCode,
+      roleName: roleCode
+    },
+    dataScope: {
+      scopeCode: root ? 'PLATFORM_ALL' : 'PLATFORM_CAPABILITY',
+      scopeName: root ? '全平台控制面' : `平台主管职责：${duties.join('、') || '无已授权能力'}`
+    },
+    platformAccessContext: context,
+    permissionPatterns: platformDutyPatterns(duties)
+  }
 }
 
 export async function ensurePlatformAccessContext({ force = false } = {}) {
