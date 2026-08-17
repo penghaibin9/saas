@@ -33,8 +33,8 @@ def test_program_parse_branch_reuses_six_sheet_adapter_and_read_only_preview(tmp
     }
     calls = []
 
-    def fake_parse(file_bytes, *, max_bytes):
-        calls.append((file_bytes, max_bytes))
+    def fake_parse(file_path, *, max_bytes):
+        calls.append((file_path, max_bytes))
         return expected_grouped, expected_rows
 
     def fake_preview(rows, *, phase, user):
@@ -43,7 +43,7 @@ def test_program_parse_branch_reuses_six_sheet_adapter_and_read_only_preview(tmp
         assert user == {"userId": "7"}
         return dict(expected_preview)
 
-    monkeypatch.setattr(workbook, "parse_and_normalize_program_workbook", fake_parse)
+    monkeypatch.setattr(workbook, "parse_and_normalize_program_workbook_path", fake_parse)
     monkeypatch.setattr(preview_service, "preview_program_normalized_rows", fake_preview)
     row = SimpleNamespace(
         import_type=exchange.ACADEMIC_PROGRAM_IMPORT,
@@ -56,7 +56,7 @@ def test_program_parse_branch_reuses_six_sheet_adapter_and_read_only_preview(tmp
     assert preview["stage"] == "READY"
     assert preview["sheetRowCounts"] == {"MAIN": 1}
     assert preview["normalizedRowCount"] == 1
-    assert calls == [(b"program-xlsx-placeholder", exchange.MAX_IMPORT_BYTES)]
+    assert calls == [(source_path, exchange.MAX_IMPORT_BYTES)]
 
 
 def test_program_phase_permissions_are_server_side_and_fail_closed(monkeypatch):
