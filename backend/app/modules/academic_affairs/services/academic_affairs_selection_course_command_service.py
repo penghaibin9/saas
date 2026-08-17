@@ -8,13 +8,15 @@ The independent invariants enforced here are already available from current code
 - the task must exist in the current tenant and be READY;
 - the task must point at the same course as the SelectionCourse supply;
 - the task batch and selection batch must belong to the same formal term;
-- validation and insert happen in one database transaction.
+- mutable SelectionBatch/TeachingTask authorities are locked before validation+insert.
 
 Legacy ``academic_affairs_selection_core_service.add_course`` remains only as
 compatibility debt while W4 is open; the Move-Only router is statically sealed
 against calling it.  DB NOT NULL / FK / generated constraints remain INT-owned.
 """
 from __future__ import annotations
+
+from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
 
@@ -45,11 +47,29 @@ def _required_int(value, *, field: str, message: str) -> int:
 
 def add_course(user, batch_id, body) -> dict:
     """Create one task-bound SelectionCourse in a single canonical transaction."""
-    from app.models import AaCourse, AaSelectionCourse, AaTeachingTask, AaTeachingTaskBatch
+    from app.models import (
+        AaCourse,
+        AaSelectionBatch,
+        AaSelectionCourse,
+        AaTeachingTask,
+        AaTeachingTaskBatch,
+    )
 
     with _core.session() as db:
         _core._require_manage_scope(_core._ctx(user, db))
-        batch = _core._get_batch(db, int(batch_id))
+
+        # Freeze the lifecycle state before deciding whether supply is still writable.
+        # This serializes add-course against PUBLISH/OPEN/CLOSE, whose canonical
+        # commands also lock the SelectionBatch row before changing its state.
+        batch = db.execute(
+            select(AaSelectionBatch).where(
+                AaSelectionBatch.id == int(batch_id),
+                AaSelectionBatch.tenant_id == _core._tid(),
+                AaSelectionBatch.is_deleted.is_(False),
+            ).with_for_update()
+        ).scalar_one_or_none()
+        if not batch:
+            raise not_found("选课批次不存在")
         _selection._guard_batch_writable(db, batch)
         if batch.status not in (_core._BATCH_DRAFT, _core._BATCH_PUBLISHED):
             raise _core._invalid("仅 DRAFT/PUBLISHED 批次可增课程")
@@ -72,11 +92,16 @@ def add_course(user, batch_id, body) -> dict:
             field="teachingTaskId",
             message="可选课程必须绑定 READY 教学任务",
         )
-        task = db.query(AaTeachingTask).filter(
-            AaTeachingTask.id == task_id,
-            AaTeachingTask.tenant_id == _core._tid(),
-            AaTeachingTask.is_deleted.is_(False),
-        ).first()
+
+        # READY is a mutable authority fact. Lock the task row so another writer
+        # cannot invalidate it between this check and SelectionCourse persistence.
+        task = db.execute(
+            select(AaTeachingTask).where(
+                AaTeachingTask.id == task_id,
+                AaTeachingTask.tenant_id == _core._tid(),
+                AaTeachingTask.is_deleted.is_(False),
+            ).with_for_update()
+        ).scalar_one_or_none()
         if not task:
             raise not_found("教学任务不存在")
         if str(task.status or "").upper() != "READY":

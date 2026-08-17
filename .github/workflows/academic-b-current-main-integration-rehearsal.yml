@@ -48,11 +48,10 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Pin B parent and current main; prove zero direct path collision
+      - name: Pin exact B head and current main; prove zero direct path collision
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "fd66bd0548a4d0d4e7d9e9d1341546578823bdd1"
           git fetch origin main --no-tags
           test "$(git rev-parse origin/main)" = "4b706f392bd4213edcf4fbf81e4c292f90028c12"
           python - <<'PY'
@@ -99,6 +98,8 @@ jobs:
         run: |
           set -euo pipefail
           pytest -q -p no:warnings \
+            tests/test_aa_selection_w4_task_identity.py \
+            tests/test_aa_selection_w4_toctou_guard.py \
             tests/test_aa_selection_w6_lock_drop_order_mysql.py \
             tests/test_aa_selection_w6_lottery_concurrency_mysql.py \
             tests/test_aa_selection_w6_roster_reconcile_mysql.py \
