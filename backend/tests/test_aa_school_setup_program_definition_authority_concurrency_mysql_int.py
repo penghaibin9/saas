@@ -19,8 +19,17 @@ def _seed_two_majors_and_course():
     from app.models import AaCourse, Major, Tenant
 
     db = get_sessionmaker()()
-    assert db.get(Tenant, TID) is not None, "canonical demo tenant must exist in MySQL fixture"
     suffix = uuid.uuid4().hex[:8].upper()
+    tenant = db.get(Tenant, TID)
+    if tenant is None:
+        tenant = Tenant(
+            id=TID,
+            tenant_code=f"int-program-{suffix.lower()}",
+            school_name=f"INT培养方案并发学校-{suffix}",
+            status="ACTIVE",
+        )
+        db.add(tenant)
+        db.flush()
     majors = [
         Major(
             tenant_id=TID,
