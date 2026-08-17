@@ -93,17 +93,26 @@ jobs:
           test "$(alembic heads | grep -c '(head)')" -eq 1
           alembic upgrade head
 
-      - name: Run critical B MySQL and current-main compatibility contracts
+      - name: Run B batch-term concurrency and formation dependency contracts
         working-directory: backend
         run: |
           set -euo pipefail
-          # Seal term-row TOCTOU plus fail-closed upstream formation-provenance dependency.
+          pytest -vv -p no:warnings \
+            tests/test_aa_selection_w4_batch_command.py \
+            tests/test_aa_selection_formation_dependency_contract.py \
+            --timeout=45 \
+            --timeout-method=signal \
+            --maxfail=1 \
+            --junitxml=/tmp/academic-b-batch-term-junit.xml
+
+      - name: Run remaining critical B MySQL and current-main compatibility contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
           pytest -q -p no:warnings \
             tests/test_aa_selection_w4_task_identity.py \
             tests/test_aa_selection_w4_toctou_guard.py \
             tests/test_aa_selection_w4_supply_write_owner.py \
-            tests/test_aa_selection_w4_batch_command.py \
-            tests/test_aa_selection_formation_dependency_contract.py \
             tests/test_aa_selection_w6_lock_drop_order_mysql.py \
             tests/test_aa_selection_w6_lottery_concurrency_mysql.py \
             tests/test_aa_selection_w6_roster_reconcile_mysql.py \
@@ -121,6 +130,8 @@ jobs:
             tests/test_aa_student_identity_legacy_entry_guards.py \
             tests/test_stage_d_integration_contract.py \
             tests/test_aa_frontend_p0_contracts.py \
+            --timeout=300 \
+            --timeout-method=signal \
             --maxfail=1 \
             --junitxml=/tmp/academic-b-current-main-junit.xml
 
@@ -142,6 +153,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: academic-b-current-main-integration-${{ github.sha }}
-          path: /tmp/academic-b-current-main-junit.xml
+          path: |
+            /tmp/academic-b-batch-term-junit.xml
+            /tmp/academic-b-current-main-junit.xml
           if-no-files-found: warn
           retention-days: 14

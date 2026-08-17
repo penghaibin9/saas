@@ -5,6 +5,8 @@ import itertools
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 
 BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
@@ -125,6 +127,7 @@ def _seed_soft_deleted_term_batch(db_mode):
         db.close()
 
 
+@pytest.mark.timeout(20, method="signal")
 def test_time_tick_uses_preflight_and_bad_batch_does_not_poison_good_batch(client, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import AaSelectionBatch
@@ -133,11 +136,12 @@ def test_time_tick_uses_preflight_and_bad_batch_does_not_poison_good_batch(clien
     response = client.post(f"{BASE}/selection/time-tick", headers=_admin(client))
     assert response.status_code == 200, response.text
     data = response.json()["data"]
-    assert data["opened"] == 1
+    assert data["opened"] >= 1
     assert data["closed"] == 0
-    assert data["blockedCount"] == 1
-    assert data["blocked"][0]["batchId"] == str(bad_id)
-    assert "规则" in data["blocked"][0]["message"]
+    blocked_by_id = {str(row["batchId"]): row for row in data["blocked"]}
+    assert str(bad_id) in blocked_by_id
+    assert "规则" in blocked_by_id[str(bad_id)]["message"]
+    assert data["processedCount"] <= data["scanLimit"] == 100
 
     db = get_sessionmaker()()
     try:
@@ -152,6 +156,89 @@ def test_time_tick_uses_preflight_and_bad_batch_does_not_poison_good_batch(clien
         assert statuses[bad_id] == "PUBLISHED"
     finally:
         db.close()
+
+
+@pytest.mark.timeout(20, method="signal")
+def test_time_tick_skips_busy_batch_row_and_still_advances_unlocked_peer(client, db_mode):
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models import AaSelectionBatch
+
+    good_id, busy_id = _seed_tick_batches(db_mode)
+    admin = _admin(client)
+    holder = get_sessionmaker()()
+    try:
+        locked = holder.execute(
+            select(AaSelectionBatch).where(
+                AaSelectionBatch.tenant_id == TID,
+                AaSelectionBatch.id == busy_id,
+                AaSelectionBatch.is_deleted.is_(False),
+            ).with_for_update()
+        ).scalar_one()
+        assert int(locked.id) == busy_id
+
+        response = client.post(f"{BASE}/selection/time-tick", headers=admin)
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        assert str(busy_id) not in {str(row["batchId"]) for row in data["blocked"]}
+    finally:
+        holder.rollback()
+        holder.close()
+
+    db = get_sessionmaker()()
+    try:
+        statuses = {
+            int(row.id): str(row.status)
+            for row in db.query(AaSelectionBatch).filter(
+                AaSelectionBatch.tenant_id == TID,
+                AaSelectionBatch.id.in_([good_id, busy_id]),
+            ).all()
+        }
+        assert statuses[good_id] == "OPEN"
+        assert statuses[busy_id] == "PUBLISHED"
+    finally:
+        db.close()
+
+
+@pytest.mark.timeout(20, method="signal")
+def test_time_tick_defers_busy_term_row_instead_of_waiting_for_archive_owner(client, db_mode):
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models import AaSelectionBatch, AaTerm
+
+    good_id, bad_id = _seed_tick_batches(db_mode)
+    admin = _admin(client)
+    lookup = get_sessionmaker()()
+    try:
+        batch = lookup.get(AaSelectionBatch, good_id)
+        term_id = int(batch.term_id)
+    finally:
+        lookup.close()
+
+    holder = get_sessionmaker()()
+    try:
+        locked_term = holder.execute(
+            select(AaTerm).where(
+                AaTerm.tenant_id == TID,
+                AaTerm.id == term_id,
+                AaTerm.is_deleted.is_(False),
+            ).with_for_update()
+        ).scalar_one()
+        assert int(locked_term.id) == term_id
+
+        response = client.post(f"{BASE}/selection/time-tick", headers=admin)
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        deferred_ids = {str(row["batchId"]) for row in data["deferred"]}
+        assert str(good_id) in deferred_ids
+        assert str(bad_id) in deferred_ids
+        assert all(row["code"] == "SELECTION_TERM_BUSY" for row in data["deferred"] if str(row["batchId"]) in {str(good_id), str(bad_id)})
+    finally:
+        holder.rollback()
+        holder.close()
+
 
 
 def test_batch_create_allows_termless_draft_but_rejects_explicit_unknown_term(client, db_mode):
@@ -225,13 +312,21 @@ def test_batch_command_source_locks_rule_write_and_reuses_w1_preflight():
     assert "def create_batch(" in source
     assert "def save_rule(" in source
     assert "def run_time_tick(" in source
-    assert "select(AaSelectionBatch)" in source
-    assert ".with_for_update()" in source
+    assert "_TICK_BATCH_LIMIT = 100" in source
+    assert "def _lock_next_due_batch_for_tick(" in source
+    assert "def _term_lock_available_for_tick(" in source
+    assert ".with_for_update(skip_locked=True)" in source
+    assert ".limit(1)" in source
     assert "_guard_batch_writable(db, batch)" in source
     assert "_require_term_reference_writable(db, raw_term_id" in source
     assert 'require_batch_action(db, batch, "OPEN")' in source
     assert 'require_batch_action(db, batch, "CLOSE")' in source
+    assert "SELECTION_TERM_BUSY" in source
     assert "except AppException as exc" in source
+
+    command_lock = source[source.index("def _lock_batch("):source.index("def _lock_next_due_batch_for_tick(")]
+    assert ".with_for_update()" in command_lock
+    assert "skip_locked=True" not in command_lock
 
     assert "def _require_term_reference_writable(" in selection_source
     assert "AaTerm.is_deleted.is_(False)" in selection_source

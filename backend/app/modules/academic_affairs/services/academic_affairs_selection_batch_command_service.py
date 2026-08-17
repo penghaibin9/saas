@@ -7,9 +7,8 @@ residual write-authority gaps without creating another lifecycle truth:
 - batch creation validates any explicit term reference in the same transaction while
   preserving the supported term-less DRAFT workflow;
 - rule updates lock the batch and re-check term/state before writing;
-- scheduler ticks reuse the same W1 OPEN/CLOSE preflight as manual commands, one
-  locked batch at a time, so malformed/archived batches fail closed without blocking
-  unrelated due batches.
+- scheduler ticks reuse the same W1 OPEN/CLOSE preflight as manual commands, process
+  a bounded keyset, and never wait behind a busy Batch/Term authority row.
 
 The scheduler preserves the historical catch-up semantic: if both start and end are
 already due, one tick may advance PUBLISHED -> OPEN -> CLOSED under one row lock.
@@ -19,7 +18,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
 from app.core.exceptions import AppException, not_found
 
@@ -31,7 +30,11 @@ from .academic_affairs_selection_service import (
 )
 
 
+_TICK_BATCH_LIMIT = 100
+
+
 def _lock_batch(db, batch_id):
+    """Blocking command lock; interactive writes must serialize, never skip."""
     from app.models import AaSelectionBatch
 
     row = db.execute(
@@ -44,6 +47,73 @@ def _lock_batch(db, batch_id):
     if not row:
         raise not_found("选课批次不存在")
     return row
+
+
+def _lock_next_due_batch_for_tick(db, tick_at: datetime, after_id: int):
+    """Lock the next due row without waiting behind another batch writer.
+
+    The keyset + hard limit keeps one scheduler invocation bounded. SKIP LOCKED is
+    deliberately scheduler-only: a batch currently owned by an interactive/manual
+    command is deferred to the next tick instead of delaying every later due batch.
+    """
+    from app.models import AaSelectionBatch
+
+    due_to_open = and_(
+        AaSelectionBatch.status == _core._BATCH_PUBLISHED,
+        AaSelectionBatch.select_start_at.isnot(None),
+        AaSelectionBatch.select_start_at <= tick_at,
+    )
+    due_to_close = and_(
+        AaSelectionBatch.status == _core._BATCH_OPEN,
+        AaSelectionBatch.select_end_at.isnot(None),
+        AaSelectionBatch.select_end_at <= tick_at,
+    )
+    return db.execute(
+        select(AaSelectionBatch).where(
+            AaSelectionBatch.tenant_id == _core._tid(),
+            AaSelectionBatch.is_deleted.is_(False),
+            AaSelectionBatch.id > int(after_id),
+            or_(due_to_open, due_to_close),
+        )
+        .order_by(AaSelectionBatch.id.asc())
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    ).scalar_one_or_none()
+
+
+def _term_lock_available_for_tick(db, batch) -> bool:
+    """Non-blocking pre-lock for the Term row used by the canonical writability guard.
+
+    Invalid/missing references are left to ``_guard_batch_writable`` so the canonical
+    business error stays unchanged. A real row that exists but cannot be locked is a
+    concurrent Archive/Term mutation and must be deferred rather than waited on.
+    """
+    from app.models import AaTerm
+
+    raw_term_id = getattr(batch, "term_id", None)
+    if raw_term_id in (None, ""):
+        return True
+    try:
+        term_id = int(raw_term_id)
+    except (TypeError, ValueError):
+        return True
+
+    predicate = (
+        AaTerm.id == term_id,
+        AaTerm.tenant_id == _core._tid(),
+        AaTerm.is_deleted.is_(False),
+    )
+    locked_id = db.execute(
+        select(AaTerm.id).where(*predicate).with_for_update(skip_locked=True)
+    ).scalar_one_or_none()
+    if locked_id is not None:
+        return True
+
+    # A consistent read does not wait on the row lock. If the committed row is still
+    # visible, SKIP LOCKED missed it because another writer owns it; otherwise the
+    # canonical guard should map the genuinely missing/deleted reference.
+    existing_id = db.execute(select(AaTerm.id).where(*predicate)).scalar_one_or_none()
+    return existing_id is None
 
 
 def create_batch(user, body) -> dict:
@@ -102,45 +172,38 @@ def save_rule(user, batch_id, rule) -> dict:
         return _core._batch_dto(batch)
 
 
-def _due_batch_ids(user, tick_at: datetime) -> list[int]:
-    """Pure discovery; every candidate is locked and revalidated before mutation."""
-    from app.models import AaSelectionBatch
-
-    with _core.session() as db:
-        _core._require_manage_scope(_core._ctx(user, db))
-        common = (
-            AaSelectionBatch.tenant_id == _core._tid(),
-            AaSelectionBatch.is_deleted.is_(False),
-        )
-        opening = db.query(AaSelectionBatch.id).filter(
-            *common,
-            AaSelectionBatch.status == _core._BATCH_PUBLISHED,
-            AaSelectionBatch.select_start_at.isnot(None),
-            AaSelectionBatch.select_start_at <= tick_at,
-        ).all()
-        closing = db.query(AaSelectionBatch.id).filter(
-            *common,
-            AaSelectionBatch.status == _core._BATCH_OPEN,
-            AaSelectionBatch.select_end_at.isnot(None),
-            AaSelectionBatch.select_end_at <= tick_at,
-        ).all()
-        return sorted({int(row[0]) for row in [*opening, *closing]})
-
-
 def run_time_tick(user) -> dict:
-    """Advance due batches with locked W1 preflight; one bad batch cannot poison peers."""
+    """Advance a bounded set of due batches without waiting on busy authority rows."""
     tick_at = datetime.utcnow()
     opened = 0
     closed = 0
     blocked = []
+    deferred = []
+    processed = 0
+    after_id = 0
 
-    for batch_id in _due_batch_ids(user, tick_at):
+    while processed < _TICK_BATCH_LIMIT:
         local_opened = 0
         local_closed = 0
+        batch_id = None
         try:
             with _core.session() as db:
                 _core._require_manage_scope(_core._ctx(user, db))
-                batch = _lock_batch(db, batch_id)
+                batch = _lock_next_due_batch_for_tick(db, tick_at, after_id)
+                if batch is None:
+                    break
+
+                batch_id = int(batch.id)
+                after_id = batch_id
+                processed += 1
+
+                if not _term_lock_available_for_tick(db, batch):
+                    deferred.append({
+                        "batchId": str(batch_id),
+                        "code": "SELECTION_TERM_BUSY",
+                        "message": "关联学期正在被其它命令更新，本批次延后到下一次定时轮询",
+                    })
+                    continue
 
                 if (
                     batch.status == _core._BATCH_PUBLISHED
@@ -171,6 +234,8 @@ def run_time_tick(user) -> dict:
                 opened += local_opened
                 closed += local_closed
         except AppException as exc:
+            if batch_id is None:
+                raise
             blocked.append({
                 "batchId": str(batch_id),
                 "code": str(getattr(exc, "code", "") or "DATA_CONFLICT"),
@@ -182,5 +247,10 @@ def run_time_tick(user) -> dict:
         "closed": closed,
         "blockedCount": len(blocked),
         "blocked": blocked,
+        "deferredCount": len(deferred),
+        "deferred": deferred,
+        "processedCount": processed,
+        "scanLimit": _TICK_BATCH_LIMIT,
+        "scanLimitReached": processed >= _TICK_BATCH_LIMIT,
         "tickAt": tick_at.isoformat(),
     }
