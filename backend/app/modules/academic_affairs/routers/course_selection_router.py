@@ -5,8 +5,9 @@ Selection Final 的四条最终入口（批次发布、学生可选课程、选�
 唯一持有；本 Router 只迁 legacy base 中其余选课管理、课程供给、名单、补选、
 统计、归档与轮次入口。
 
-B-W4 起，新增可选课程写动作由 ``academic_affairs_selection_course_command_service``
-单一持有：TeachingTask 必填、READY、same-course、same-term 后才允许落 SelectionCourse。
+B-W4 起，课程供给写动作由 ``academic_affairs_selection_course_command_service``
+单一持有：新增必须 TeachingTask 必填、READY、same-course、same-term；编辑容量/
+取消开课也必须走 canonical term guard + locking command，不得回落 legacy core 写实现。
 其余 canonical service、权限、DTO、状态机、TeachingRoster 投影保持不变。
 """
 from __future__ import annotations
@@ -126,12 +127,12 @@ def sel_course_update(
     courseId: int = Path(...),
     user=Depends(require_permission(_SEL_MANAGE)),
 ):
-    return success(selection_svc.update_course(user, courseId, body), message="已保存")
+    return success(selection_course_command_svc.update_course(user, courseId, body), message="已保存")
 
 
 @router.post("/selection/courses/{courseId}/cancel", summary="人工取消开课（人数不足）")
 def sel_course_cancel(courseId: int = Path(...), user=Depends(require_permission(_SEL_MANAGE))):
-    return success(selection_svc.cancel_course(user, courseId), message="已取消开课")
+    return success(selection_course_command_svc.cancel_course(user, courseId), message="已取消开课")
 
 
 @router.get("/selection/courses/{courseId}/roster", summary="选课名单（教师按授课关系收敛）")

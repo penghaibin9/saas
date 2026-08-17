@@ -1,18 +1,20 @@
-"""B-W4 · SelectionCourse canonical write command.
+"""B-W4 · SelectionCourse canonical write commands.
 
-This command owns the formal ``POST /selection/batches/{batchId}/courses`` write.
-It deliberately does not invent the upstream formation contract before A-C4 freezes.
+This module owns the formal SelectionCourse supply mutations exposed by the Move-Only
+router.  It does not invent the upstream formation contract before INT freezes it.
 The independent invariants enforced here are already available from current code:
 
 - every formal SelectionCourse must bind an explicit TeachingTask;
 - the task must exist in the current tenant and be READY;
 - the task must point at the same course as the SelectionCourse supply;
 - the task batch and selection batch must belong to the same formal term;
-- mutable SelectionBatch/TeachingTask authorities are locked before validation+insert.
+- mutable lifecycle/task/supply rows are locked before validation and persistence;
+- every supply mutation reuses the canonical term-writable guard;
+- capacity/min-capacity invariants are checked atomically against selected_count.
 
-Legacy ``academic_affairs_selection_core_service.add_course`` remains only as
-compatibility debt while W4 is open; the Move-Only router is statically sealed
-against calling it.  DB NOT NULL / FK / generated constraints remain INT-owned.
+Legacy ``academic_affairs_selection_core_service`` supply writes remain compatibility
+debt only; the formal router is statically sealed against calling them.  DB NOT NULL /
+FK / generated constraints and formation provenance remain INT-owned.
 """
 from __future__ import annotations
 
@@ -43,6 +45,36 @@ def _required_int(value, *, field: str, message: str) -> int:
     if parsed <= 0:
         raise _conflict(message, field=field)
     return parsed
+
+
+def _lock_supply_course(db, course_id):
+    from app.models import AaSelectionCourse
+
+    row = db.execute(
+        select(AaSelectionCourse).where(
+            AaSelectionCourse.id == int(course_id),
+            AaSelectionCourse.tenant_id == _core._tid(),
+            AaSelectionCourse.is_deleted.is_(False),
+        ).with_for_update()
+    ).scalar_one_or_none()
+    if not row:
+        raise not_found("可选课程供给项不存在")
+    return row
+
+
+def _lock_supply_batch(db, batch_id):
+    from app.models import AaSelectionBatch
+
+    row = db.execute(
+        select(AaSelectionBatch).where(
+            AaSelectionBatch.id == int(batch_id),
+            AaSelectionBatch.tenant_id == _core._tid(),
+            AaSelectionBatch.is_deleted.is_(False),
+        ).with_for_update()
+    ).scalar_one_or_none()
+    if not row:
+        raise not_found("选课批次不存在")
+    return row
 
 
 def add_course(user, batch_id, body) -> dict:
@@ -178,3 +210,71 @@ def add_course(user, batch_id, body) -> dict:
         )
         db.commit()
         return _core._course_dto(row)
+
+
+def update_course(user, course_id, body) -> dict:
+    """Update supply capacity atomically without falling back to legacy writes."""
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        # Global Selection command lock order keeps the hot supply row before batch.
+        course = _lock_supply_course(db, course_id)
+        batch = _lock_supply_batch(db, course.batch_id)
+        _selection._guard_batch_writable(db, batch)
+        if batch.status in (_core._BATCH_LOCKED, _core._BATCH_ARCHIVED):
+            raise _core._invalid("批次已锁定，不可改课程容量/规则")
+
+        next_capacity = int(course.capacity or 0)
+        next_min_capacity = int(course.min_capacity or 0)
+        if getattr(body, "capacity", None) is not None:
+            next_capacity = int(body.capacity)
+        if getattr(body, "minCapacity", None) is not None:
+            next_min_capacity = int(body.minCapacity)
+
+        selected_count = int(course.selected_count or 0)
+        if next_capacity < selected_count:
+            raise AppException("VALIDATION_ERROR", f"容量不可小于已选人数 {selected_count}")
+        if next_min_capacity < 0:
+            raise AppException("VALIDATION_ERROR", "开班下限不可小于 0")
+        if next_min_capacity > next_capacity:
+            raise AppException("VALIDATION_ERROR", "开班下限不可大于课程容量")
+
+        course.capacity = next_capacity
+        course.min_capacity = next_min_capacity
+        _core._audit(db, batch.id, "SELECTION_COURSE_UPDATE", f"改课程 {course.course_name} 容量/下限")
+        db.commit()
+        return _core._course_dto(course)
+
+
+def cancel_course(user, course_id) -> dict:
+    """Cancel a CLOSED-batch supply row and its selected records under one lock order."""
+    from app.models import AaSelectionRecord
+
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        # Keep course→batch ordering aligned with student Selection commands.
+        course = _lock_supply_course(db, course_id)
+        batch = _lock_supply_batch(db, course.batch_id)
+        _selection._guard_batch_writable(db, batch)
+        if batch.status != _core._BATCH_CLOSED:
+            raise _core._invalid("仅 CLOSED 批次可取消低人数课程")
+        if course.status == _core._COURSE_CANCELLED:
+            return _core._course_dto(course)
+
+        course.status = _core._COURSE_CANCELLED
+        db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.selection_course_id == course.id,
+            AaSelectionRecord.tenant_id == _core._tid(),
+            AaSelectionRecord.status == _core._REC_SELECTED,
+            AaSelectionRecord.is_deleted.is_(False),
+        ).update(
+            {AaSelectionRecord.status: _core._REC_COURSE_CANCELLED},
+            synchronize_session=False,
+        )
+        _core._audit(
+            db,
+            batch.id,
+            "SELECTION_COURSE_CANCEL",
+            f"取消开课 {course.course_name}(人数不足)",
+        )
+        db.commit()
+        return _core._course_dto(course)
