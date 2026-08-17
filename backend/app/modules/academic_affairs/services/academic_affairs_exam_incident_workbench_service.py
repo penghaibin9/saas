@@ -79,6 +79,7 @@ def project_incident_workbench(
 
     ``view`` 只接受 ALL/OPEN/CLOSED/VOIDED。CLOSED 是 CASE_LINKED 与 RISK_TRANSFERRED 的
     展示分组，不创造数据库新状态。分页在完成闭环事实推导后执行，避免旧接口先丢掉历史记录。
+    三个状态计数始终基于同一 batch/data-scope 下的完整事实集，切换列表 view 不改变总览。
     """
     from app.models import (
         AaExamAuditTrail,
@@ -143,7 +144,7 @@ def project_incident_workbench(
     for audit in audits:
         latest_audit.setdefault(int(audit.biz_id), audit)
 
-    items = []
+    all_items = []
     for incident, course, batch, room in rows:
         closure = _closure_from_facts(incident)
         audit = latest_audit.get(int(incident.id))
@@ -151,7 +152,7 @@ def project_incident_workbench(
         audit_closure = _CLOSURE_ACTIONS.get(str(audit.action or ""), "") if audit else ""
         # Persisted facts are authoritative. Audit may only corroborate them; any disagreement is surfaced.
         evidence_consistent = not audit_closure or audit_closure == closure
-        item = {
+        all_items.append({
             "incidentId": str(incident.id),
             "examRoomId": str(incident.exam_room_id) if incident.exam_room_id else None,
             "examCourseId": str(course.id),
@@ -181,14 +182,19 @@ def project_incident_workbench(
             "resolvedBy": audit.operator if audit else "",
             "resolvedAt": _iso(audit.occurred_at) if audit else None,
             "closureEvidenceConsistent": evidence_consistent,
-        }
-        if requested_view == "OPEN" and closure != "OPEN":
-            continue
-        if requested_view == "CLOSED" and closure not in {"CASE_LINKED", "RISK_TRANSFERRED"}:
-            continue
-        if requested_view == "VOIDED" and closure != "VOIDED":
-            continue
-        items.append(item)
+        })
+
+    if requested_view == "OPEN":
+        items = [item for item in all_items if item["closureStatus"] == "OPEN"]
+    elif requested_view == "CLOSED":
+        items = [
+            item for item in all_items
+            if item["closureStatus"] in {"CASE_LINKED", "RISK_TRANSFERRED"}
+        ]
+    elif requested_view == "VOIDED":
+        items = [item for item in all_items if item["closureStatus"] == "VOIDED"]
+    else:
+        items = all_items
 
     total = len(items)
     start = (page - 1) * page_size
@@ -198,10 +204,10 @@ def project_incident_workbench(
         "total": total,
         "page": page,
         "pageSize": page_size,
-        "openCount": sum(1 for item in items if item["closureStatus"] == "OPEN"),
+        "openCount": sum(1 for item in all_items if item["closureStatus"] == "OPEN"),
         "closedCount": sum(
-            1 for item in items if item["closureStatus"] in {"CASE_LINKED", "RISK_TRANSFERRED"}
+            1 for item in all_items if item["closureStatus"] in {"CASE_LINKED", "RISK_TRANSFERRED"}
         ),
-        "voidedCount": sum(1 for item in items if item["closureStatus"] == "VOIDED"),
+        "voidedCount": sum(1 for item in all_items if item["closureStatus"] == "VOIDED"),
         "source": "CANONICAL_EXAM_INCIDENT_FACTS",
     }

@@ -200,6 +200,12 @@ def test_incident_workbench_keeps_closed_voided_and_open_history(client, db_mode
     assert by_name["待处理违纪"]["closureStatus"] == "OPEN"
 
 
+def _assert_scope_counts(data):
+    assert data["openCount"] == 1
+    assert data["closedCount"] == 2
+    assert data["voidedCount"] == 1
+
+
 def test_incident_workbench_view_filters_after_canonical_closure_projection(client, db_mode):
     _seed(db_mode)
     admin = _admin_headers(client)
@@ -207,14 +213,17 @@ def test_incident_workbench_view_filters_after_canonical_closure_projection(clie
     opened = client.get(f"{BASE}/exam/incidents/workbench?view=OPEN", headers=admin).json()["data"]
     assert opened["total"] == 1
     assert opened["items"][0]["studentName"] == "待处理违纪"
+    _assert_scope_counts(opened)
 
     closed = client.get(f"{BASE}/exam/incidents/workbench?view=CLOSED", headers=admin).json()["data"]
     assert closed["total"] == 2
     assert {item["closureStatus"] for item in closed["items"]} == {"CASE_LINKED", "RISK_TRANSFERRED"}
+    _assert_scope_counts(closed)
 
     voided = client.get(f"{BASE}/exam/incidents/workbench?view=VOIDED", headers=admin).json()["data"]
     assert voided["total"] == 1
     assert voided["items"][0]["closureStatus"] == "VOIDED"
+    _assert_scope_counts(voided)
 
 
 def test_incident_workbench_is_read_only_and_student_fails_closed(db_mode):
