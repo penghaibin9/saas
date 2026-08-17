@@ -316,7 +316,7 @@ def update_course(user, course_id, body) -> dict:
         return _core._course_dto(course)
 
 
-def cancel_course(user, course_id, body=None) -> dict:
+def cancel_course(user, course_id) -> dict:
     """Cancel a CLOSED-batch supply row and its selected records under one lock order."""
     from app.models import AaSelectionRecord
 
