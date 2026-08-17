@@ -1,0 +1,53 @@
+name: Academic INT Task ProgramCourse Provenance Materializer Scratch
+
+on:
+  push:
+    branches:
+      - tmp/academic-int-task-program-course-provenance-materializer-20260818
+    paths:
+      - '.tmp/academic-int-task-program-course-provenance/materialize.py'
+      - '.github/workflows/academic-int-task-program-course-provenance-materializer-scratch.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-int-task-program-course-provenance-materializer
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Exact stable-series base guard
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "fc6029e0af973a679c3ecd9c9dae40dcc46c73ff"
+
+      - name: Materialize exact provenance candidate
+        run: |
+          set -euo pipefail
+          python .tmp/academic-int-task-program-course-provenance/materialize.py
+          git diff --check
+
+      - name: Commit ordinary generated files to scratch only
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend/app/models/academic_affairs.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_task_generation_service.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_task_formation_provenance_service.py \
+            backend/alembic/versions/20260818_academic_int_task_program_course_provenance.py \
+            backend/tests/test_academic_int_task_program_course_provenance_contract.py \
+            backend/tests/test_academic_int_task_program_course_provenance_mysql.py
+          git diff --cached --check
+          git commit -m "build(academic-int): materialize task ProgramCourse provenance"
+          git push origin HEAD:tmp/academic-int-task-program-course-provenance-materializer-20260818
