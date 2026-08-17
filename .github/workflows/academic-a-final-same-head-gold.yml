@@ -14,6 +14,7 @@ on:
       - backend/app/services/data_exchange_confirm_service.py
       - backend/app/services/data_exchange_confirm_legacy.py
       - backend/app/services/xlsx_util.py
+      - backend/tests/test_aa_course_catalog_confirm_permission_toctou.py
       - backend/tests/test_aa_program_*.py
       - backend/tests/test_aa_school_setup_program_*.py
   workflow_dispatch:
@@ -31,7 +32,7 @@ env:
 
 jobs:
   program-final-seal:
-    name: Program source/query/TOCTOU/idempotency Gold
+    name: Program + Course confirm IAM Gold
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     services:
@@ -87,11 +88,12 @@ jobs:
           test "$(alembic heads | grep -c '(head)')" -eq 1
           alembic upgrade head
 
-      - name: Run Program final source/query/TOCTOU/idempotency contracts
+      - name: Run Program + Course confirm IAM contracts
         working-directory: backend
         run: |
           set -euo pipefail
           pytest -q -p no:warnings \
+            tests/test_aa_course_catalog_confirm_permission_toctou.py \
             tests/test_aa_program_xlsx_path_source_contract.py \
             tests/test_aa_school_setup_program_import_adapter_int.py \
             tests/test_aa_school_setup_program_import_preflight_int.py \

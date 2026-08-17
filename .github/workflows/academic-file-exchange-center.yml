@@ -19,6 +19,7 @@ on:
       - 'backend/app/services/data_exchange_confirm_legacy.py'
       - 'backend/tests/test_academic_file_exchange_center.py'
       - 'backend/tests/test_academic_export_compat.py'
+      - 'backend/tests/test_aa_course_catalog_confirm_permission_toctou.py'
       - 'backend/tests/test_aa_program_file_exchange_shared_int.py'
       - 'backend/tests/test_aa_program_file_exchange_shared_mysql_int.py'
       - 'backend/tests/test_aa_program_xlsx_path_source_contract.py'
@@ -47,6 +48,7 @@ on:
       - 'backend/app/services/data_exchange_confirm_legacy.py'
       - 'backend/tests/test_academic_file_exchange_center.py'
       - 'backend/tests/test_academic_export_compat.py'
+      - 'backend/tests/test_aa_course_catalog_confirm_permission_toctou.py'
       - 'backend/tests/test_aa_program_file_exchange_shared_int.py'
       - 'backend/tests/test_aa_program_file_exchange_shared_mysql_int.py'
       - 'backend/tests/test_aa_program_xlsx_path_source_contract.py'
@@ -129,6 +131,7 @@ jobs:
           pytest tests/test_academic_file_exchange_center.py
           tests/test_academic_export_compat.py
           tests/test_data_exchange_job_center.py
+          tests/test_aa_course_catalog_confirm_permission_toctou.py
           tests/test_aa_program_file_exchange_shared_int.py
           tests/test_aa_program_file_exchange_shared_mysql_int.py
           tests/test_aa_program_xlsx_path_source_contract.py
