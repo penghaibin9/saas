@@ -85,9 +85,11 @@ def test_preview_preserves_sheet_location_evidence_and_resolution_for_shared_err
     assert preview["errors"][0] == {
         "row": 2,
         "logicalGroup": "COURSE",
+        "sheetName": "方案课程",
         "field": "COURSE:PROGRAM_COURSE_VERSION_NOT_FOUND",
         "code": "PROGRAM_COURSE_VERSION_NOT_FOUND",
         "message": "方案课程引用的 exact Course version 不存在",
+        "raw": {"definitionKey": "", "programKey": "SERIES:A:v1"},
         "evidence": {"courseKey": "CS404@v1", "programKey": "SERIES:A:v1"},
         "howToResolve": "先建立并启用 exact Course version",
     }
@@ -126,6 +128,7 @@ def test_non_blocking_quality_warning_and_metrics_survive_preview_without_markin
     assert preview["warnings"] == [{
         "row": 0,
         "logicalGroup": "",
+        "sheetName": "培养方案",
         "field": "WORKBOOK:PROGRAM_ACTUAL_CREDIT_EXCEEDED",
         "code": "PROGRAM_ACTUAL_CREDIT_EXCEEDED",
         "message": "课程与实践学分合计超过培养方案毕业总学分",

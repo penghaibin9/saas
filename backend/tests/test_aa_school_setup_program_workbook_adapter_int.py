@@ -102,7 +102,8 @@ def test_workbook_adapter_reuses_shared_xlsx_package_security_owner():
     import inspect
 
     source = inspect.getsource(_adapter())
-    assert "xlsx_util.validate_xlsx_package(file_bytes)" in source
+    assert "xlsx_util.validate_xlsx_package(file_bytes, max_bytes=max_bytes)" in source
+    assert "xlsx_util.validate_xlsx_path(path, max_bytes=max_bytes)" in source
     assert "zipfile.ZipFile" not in source
     assert "read_safe_upload" not in source
     assert "FileObject" in source  # docstring explicitly declares non-ownership
