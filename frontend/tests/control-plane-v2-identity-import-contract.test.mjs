@@ -16,6 +16,7 @@ const dialog = readFront('src/modules/system/components/ImportDialog.vue')
 const student = readFront('src/modules/system/views/SystemStudentImportView.vue')
 const teacher = readFront('src/modules/system/views/SystemTeacherImportView.vue')
 const worker = readRepo('backend/app/workers/identity_import_worker.py')
+const service = readRepo('deploy/systemd/school-lifecycle-identity-import.service')
 
 test('P-01 processing states never masquerade as confirmable zero-error preview', () => {
   for (const status of ['SCANNING', 'WORKER_CLAIMED', 'PARSING']) assert.match(state, new RegExp(`['\"]${status}['\"]`))
@@ -45,4 +46,13 @@ test('P-01 canonical worker exclusively claims durable identity jobs', () => {
   assert.match(worker, /CLAIMED = "WORKER_CLAIMED"/)
   assert.match(worker, /process_next_identity_import/)
   assert.match(worker, /worker_claimed=True/)
+})
+
+test('P-01 production process manager starts and restarts the canonical identity worker', () => {
+  assert.match(service, /^WorkingDirectory=\/opt\/school-lifecycle\/current\/backend$/m)
+  assert.match(service, /^EnvironmentFile=\/etc\/school-lifecycle\/backend\.env$/m)
+  assert.match(service, /^ExecStart=\/opt\/school-lifecycle\/current\/backend\/\.venv\/bin\/python -m app\.workers\.identity_import_worker$/m)
+  assert.match(service, /^Restart=always$/m)
+  assert.match(service, /^NoNewPrivileges=true$/m)
+  assert.match(service, /^WantedBy=multi-user\.target$/m)
 })
