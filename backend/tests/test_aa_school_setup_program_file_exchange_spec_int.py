@@ -22,8 +22,8 @@ def test_program_workbook_freezes_all_six_logical_groups_in_exact_order():
         "MAIN", "COURSE", "CREDIT_REQUIREMENT", "PRACTICE", "GRADUATION", "BINDING",
     ]
     assert contract["confirmPhases"] == ["DEFINITION", "BINDING"]
-    assert contract["publicImportEnabled"] is False
-    assert contract["confirmOwner"] == "INT_SHARED_DATA_EXCHANGE"
+    assert contract["publicImportEnabled"] is True
+    assert contract["confirmOwner"] == "ACADEMIC_FILE_EXCHANGE"
 
 
 def test_every_required_program_field_has_a_workbook_header():

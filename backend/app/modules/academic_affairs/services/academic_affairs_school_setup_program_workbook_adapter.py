@@ -181,9 +181,13 @@ def _read_sheet_rows(ws, *, group: str) -> list[dict]:
     return out
 
 
-def read_program_workbook(file_bytes: bytes) -> dict[str, list[dict]]:
+def read_program_workbook(
+    file_bytes: bytes,
+    *,
+    max_bytes: int = xlsx_util.MAX_UPLOAD_BYTES,
+) -> dict[str, list[dict]]:
     """Validate one Program workbook and return rows keyed by logical group."""
-    xlsx_util.validate_xlsx_package(file_bytes)
+    xlsx_util.validate_xlsx_package(file_bytes, max_bytes=max_bytes)
     wb = load_workbook(
         BytesIO(file_bytes),
         read_only=True,
@@ -227,8 +231,12 @@ def read_program_workbook(file_bytes: bytes) -> dict[str, list[dict]]:
         wb.close()
 
 
-def parse_and_normalize_program_workbook(file_bytes: bytes) -> tuple[dict[str, list[dict]], list[dict]]:
+def parse_and_normalize_program_workbook(
+    file_bytes: bytes,
+    *,
+    max_bytes: int = xlsx_util.MAX_UPLOAD_BYTES,
+) -> tuple[dict[str, list[dict]], list[dict]]:
     """Return both grouped source rows and the frozen canonical normalized rows."""
-    grouped = read_program_workbook(file_bytes)
+    grouped = read_program_workbook(file_bytes, max_bytes=max_bytes)
     normalized = normalize_program_import_rows(grouped)
     return grouped, normalized

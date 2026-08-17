@@ -19,6 +19,8 @@ router = APIRouter(prefix="/academic-affairs/file-exchange", tags=["教务中心
 
 _XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _COURSE_MANAGE_PERMISSION = "academicAffairs.course.manage"
+_PROGRAM_MANAGE_PERMISSION = "academicAffairs.program.manage"
+_PROGRAM_PUBLISH_PERMISSION = "academicAffairs.program.publish"
 
 
 class ConfirmRequest(BaseModel):
@@ -111,6 +113,55 @@ async def create_course_catalog_import_job(
     return success(item, message=_created_message(item))
 
 
+@router.get("/programs/import-template", summary="下载培养方案六工作表权威导入模板")
+def program_import_template(
+    user=Depends(require_any_permission(
+        _PROGRAM_MANAGE_PERMISSION,
+        _PROGRAM_PUBLISH_PERMISSION,
+    )),
+):
+    _ = user
+    from app.modules.academic_affairs.services.academic_affairs_school_setup_program_workbook_adapter import (
+        build_program_import_template,
+    )
+
+    return StreamingResponse(
+        io.BytesIO(build_program_import_template()),
+        media_type=_XLSX_MEDIA,
+        headers={"Content-Disposition": "attachment; filename=academic_program_import.xlsx"},
+    )
+
+
+@router.post("/programs/definition/import-jobs", summary="上传培养方案定义 XLSX 并创建服务端权威 ImportJob")
+async def create_program_definition_import_job(
+    file: UploadFile = File(...),
+    user=Depends(require_permission(_PROGRAM_MANAGE_PERMISSION)),
+):
+    item = await _store_import_job(
+        file=file,
+        biz_type="ACADEMIC_PROGRAM_DEFINITION_IMPORT_SOURCE",
+        import_type=exchange.ACADEMIC_PROGRAM_IMPORT,
+        context={"phase": "DEFINITION"},
+        user=user,
+    )
+    return success(item, message=_created_message(item))
+
+
+@router.post("/programs/binding/import-jobs", summary="上传培养方案适用范围 XLSX 并创建服务端权威 ImportJob")
+async def create_program_binding_import_job(
+    file: UploadFile = File(...),
+    user=Depends(require_permission(_PROGRAM_PUBLISH_PERMISSION)),
+):
+    item = await _store_import_job(
+        file=file,
+        biz_type="ACADEMIC_PROGRAM_BINDING_IMPORT_SOURCE",
+        import_type=exchange.ACADEMIC_PROGRAM_IMPORT,
+        context={"phase": "BINDING"},
+        user=user,
+    )
+    return success(item, message=_created_message(item))
+
+
 @router.post("/roster/import-jobs", summary="上传学籍 XLSX 并创建服务端权威 ImportJob")
 async def create_roster_import_job(
     file: UploadFile = File(...),
@@ -173,6 +224,8 @@ def confirm_import(
         "academicAffairs.grade.input",
         "academicAffairs.schedule.import",
         _COURSE_MANAGE_PERMISSION,
+        _PROGRAM_MANAGE_PERMISSION,
+        _PROGRAM_PUBLISH_PERMISSION,
     )),
 ):
     from app.services.data_exchange_confirm_service import confirm_import_job

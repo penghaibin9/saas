@@ -1,9 +1,8 @@
-"""INT Program workbook specification for later Academic File Exchange wiring.
+"""Program workbook specification consumed by Academic File Exchange.
 
-This module freezes the six-sheet workbook contract only. It deliberately does
-not parse XLSX bytes, open sessions, create ImportJob/FileObject rows, or own the
-shared dispatcher. The existing Academic File Exchange must consume this spec
-when the shared owner is available.
+The six-sheet workbook contract stays local to the Program domain while the
+mature Academic File Exchange owns FileObject/ImportJob lifecycle, scan gating,
+leases, row-digest revalidation and public routing.
 """
 from __future__ import annotations
 
@@ -120,7 +119,7 @@ def _required_headers(group: str) -> tuple[str, ...]:
 
 
 def program_file_exchange_contract() -> dict:
-    """Return a deterministic, JSON-safe description of the future workbook."""
+    """Return the public six-sheet Program File Exchange contract."""
     sheets = []
     for sheet_name in PROGRAM_SHEET_ORDER:
         group = PROGRAM_GROUP_BY_SHEET[sheet_name]
@@ -138,7 +137,7 @@ def program_file_exchange_contract() -> dict:
         "sheetCount": len(sheets),
         "sheets": sheets,
         "confirmPhases": ["DEFINITION", "BINDING"],
-        "publicImportEnabled": False,
-        "confirmOwner": "INT_SHARED_DATA_EXCHANGE",
+        "publicImportEnabled": True,
+        "confirmOwner": "ACADEMIC_FILE_EXCHANGE",
         "notes": list(PROGRAM_FILLING_NOTES),
     }

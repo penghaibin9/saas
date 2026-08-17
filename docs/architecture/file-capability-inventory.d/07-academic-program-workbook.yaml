@@ -1,23 +1,23 @@
 entries:
   - module: academic-affairs
     client: backend
-    route: inventory://academic-affairs/program-six-sheet-workbook
-    page: backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_workbook_adapter.py
-    action: template+parse+import
-    fileCategory: PROGRAM_XLSX_LOCAL_CONTRACT
-    api: not-public-yet
-    backendService: backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_workbook_adapter.py::build_program_import_template+read_program_workbook+parse_and_normalize_program_workbook
-    storageMode: caller-owned-in-memory-xlsx-bytes
-    authMode: local-domain-caller-only-public-dispatch-disabled
-    dataScope: tenant+academic-affairs-context-enforced-by-preview-confirm-callers
+    route: /api/v1/academic-affairs/file-exchange/programs/{definition|binding}/import-jobs
+    page: backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py, backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_workbook_adapter.py
+    action: upload+preview+import
+    fileCategory: PROGRAM_XLSX_IMPORT
+    api: GET /api/v1/academic-affairs/file-exchange/programs/import-template; POST /api/v1/academic-affairs/file-exchange/programs/definition/import-jobs; POST /api/v1/academic-affairs/file-exchange/programs/binding/import-jobs; GET /api/v1/academic-affairs/file-exchange/imports/{job_id}; POST /api/v1/academic-affairs/file-exchange/imports/{job_id}/confirm
+    backendService: backend/app/modules/academic_affairs/services/academic_file_exchange_service.py::create_academic_import_job+refresh_import_job+confirm_academic_import -> backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_service.py+academic_affairs_school_setup_program_definition_authority_service.py+academic_affairs_school_setup_program_binding_confirm_service.py
+    storageMode: configurable-quarantine+server-authoritative-import-job
+    authMode: DEFINITION=academicAffairs.program.manage; BINDING=academicAffairs.program.publish; exact phase revalidated from server-owned job context on refresh+confirm
+    dataScope: tenant+operator+academic-affairs-context+program-series/binding-scope
     versioned: true
-    scanGated: false
-    preview: false
-    download: false
+    scanGated: true
+    preview: true
+    download: true
     import: true
     export: true
     archive: false
     status: active
     risk: P0
     targetPhase: '7'
-    notes: Local Program six-sheet workbook capability only. Reuses xlsx_util package safety validation and enforces exact sheets/headers plus a bounded total row budget. It owns no FileObject/ImportJob lifecycle and exposes no public route; shared Academic File Exchange must remain scan-gated before this parser is wired publicly.
+    notes: Program 六工作表复用 FileObject/ImportJob 扫描、租约、rowDigest 与错误 XLSX；客户端不能自选 phase。DEFINITION 只调用 Tenant-Authority definition wrapper 并创建/复用 DRAFT 定义，BINDING 只调用发布后的 atomic binding writer；确认重新读取同一安全文件并重跑同一 preflight。

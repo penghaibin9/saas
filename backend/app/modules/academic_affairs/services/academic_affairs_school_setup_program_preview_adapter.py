@@ -11,14 +11,45 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 
 from .academic_affairs_school_setup_import_contract import (
+    PROGRAM_GROUP_BINDING,
+    PROGRAM_GROUP_COURSE,
+    PROGRAM_GROUP_CREDIT_REQUIREMENT,
+    PROGRAM_GROUP_GRADUATION,
+    PROGRAM_GROUP_MAIN,
+    PROGRAM_GROUP_PRACTICE,
     RECONCILIATION_CONFLICT,
     RECONCILIATION_CREATE,
     RECONCILIATION_REJECT,
     RECONCILIATION_REUSE,
 )
 
+_SHEET_BY_GROUP = {
+    PROGRAM_GROUP_MAIN: "培养方案",
+    PROGRAM_GROUP_COURSE: "方案课程",
+    PROGRAM_GROUP_CREDIT_REQUIREMENT: "学分要求",
+    PROGRAM_GROUP_PRACTICE: "实践环节",
+    PROGRAM_GROUP_GRADUATION: "毕业要求",
+    PROGRAM_GROUP_BINDING: "适用范围",
+}
 
-def _evidence_item(item: Mapping[str, object], *, default_message: str) -> dict:
+
+def _raw_snapshot(row: Mapping[str, object] | None) -> dict:
+    if not row:
+        return {}
+    payload = dict(row.get("payload") or {})
+    return {
+        "programKey": str(row.get("programKey") or "").strip(),
+        "definitionKey": str(row.get("definitionKey") or "").strip(),
+        **payload,
+    }
+
+
+def _evidence_item(
+    item: Mapping[str, object],
+    *,
+    default_message: str,
+    source_by_location: Mapping[tuple[str, int], Mapping[str, object]],
+) -> dict:
     row = int(item.get("row") or item.get("rowNo") or 0)
     logical_group = str(item.get("logicalGroup") or "").strip().upper()
     program_key = str(item.get("programKey") or "").strip()
@@ -28,15 +59,21 @@ def _evidence_item(item: Mapping[str, object], *, default_message: str) -> dict:
     evidence = dict(item.get("evidence") or {})
     if program_key and "programKey" not in evidence:
         evidence["programKey"] = program_key
-    return {
+    source_row = source_by_location.get((logical_group, row)) if row > 0 else None
+    result = {
         "row": row,
         "logicalGroup": logical_group,
+        "sheetName": _SHEET_BY_GROUP.get(logical_group, "培养方案"),
         "field": f"{logical_group or 'WORKBOOK'}:{business_code}",
         "code": business_code,
         "message": str(item.get("message") or default_message),
         "evidence": evidence,
         "howToResolve": str(item.get("howToResolve") or "").strip(),
     }
+    raw = _raw_snapshot(source_row)
+    if raw:
+        result["raw"] = raw
+    return result
 
 
 def program_preflight_to_file_exchange_preview(
@@ -44,13 +81,29 @@ def program_preflight_to_file_exchange_preview(
     preflight_result: Mapping[str, object],
 ) -> dict:
     rows = [dict(row) for row in normalized_rows]
+    source_by_location = {
+        (
+            str(row.get("logicalGroup") or "").strip().upper(),
+            int(row.get("rowNo") or 0),
+        ): row
+        for row in rows
+        if int(row.get("rowNo") or 0) > 0
+    }
     errors = [
-        _evidence_item(item, default_message="培养方案导入预检失败")
+        _evidence_item(
+            item,
+            default_message="培养方案导入预检失败",
+            source_by_location=source_by_location,
+        )
         for item in (preflight_result.get("errors") or ())
     ]
     quality = dict(preflight_result.get("quality") or {})
     warnings = [
-        _evidence_item(item, default_message="培养方案导入存在治理提示")
+        _evidence_item(
+            item,
+            default_message="培养方案导入存在治理提示",
+            source_by_location=source_by_location,
+        )
         for item in (quality.get("warnings") or ())
     ]
     invalid_locations = {
