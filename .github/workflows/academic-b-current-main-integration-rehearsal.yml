@@ -6,6 +6,28 @@ on:
       - agent/academic-b-schedule-selection
     paths:
       - .github/workflows/academic-b-current-main-integration-rehearsal.yml
+      - backend/app/modules/academic_affairs/routers/course_selection_router.py
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection*.py
+      - backend/tests/test_aa_selection*.py
+      - backend/tests/test_aa_prerequisite*.py
+      - backend/tests/test_aa_student_identity_legacy_entry_guards.py
+      - backend/tests/test_stage_d_selection_trace.py
+      - backend/tests/test_stage_d_integration_contract.py
+      - backend/tests/test_aa_main_permission_middleware_compat.py
+      - backend/tests/test_aa_route_registration_main_compat.py
+      - backend/tests/test_aa_frontend_p0_contracts.py
+      - frontend/src/modules/academicAffairs/api/academic-affairs.api.js
+      - frontend/src/modules/academicAffairs/views/AaSelectionConsoleView.vue
+      - frontend/src/modules/academicAffairs/views/AaScheduleMaintainView.vue
+      - frontend/tests/academic-b-*.mjs
+      - frontend/tests/academic-schedule-task-first-contract.test.mjs
+      - student-portal/src/services/portalApi.js
+      - student-portal/src/views/academic/StudentSelectionView.vue
+      - student-portal/tests/academic-b-*.mjs
+      - miniapp/src/services/realApi.js
+      - miniapp/src/services/studentApi.js
+      - miniapp/src/pages/student/academic-affairs/selection.vue
+      - miniapp/tests/academic-b-*.mjs
   workflow_dispatch:
 
 permissions:
