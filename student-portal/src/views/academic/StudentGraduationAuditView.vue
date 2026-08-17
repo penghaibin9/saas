@@ -15,7 +15,7 @@
         <span>学分达成</span>
         <strong>{{ creditPct }}<small>%</small></strong>
         <div class="graduation-hero__bar" aria-hidden="true"><i :style="{ width: `${creditPct}%` }"></i></div>
-        <button class="sp-btn sp-btn--ghost sp-btn--sm" type="button" :disabled="loading" @click="load">
+        <button class="sp-btn sp-btn--ghost sp-btn--sm" type="button" :disabled="loading" @click="refreshAudit">
           {{ loading ? '刷新中…' : '重新核验' }}
         </button>
       </aside>
@@ -26,7 +26,7 @@
       <div class="graduation-error__icon" aria-hidden="true">!</div>
       <strong>毕业自查暂时无法加载</strong>
       <span>{{ error }}</span>
-      <button class="sp-btn sp-btn--ghost sp-btn--sm" type="button" @click="load">重新加载</button>
+      <button class="sp-btn sp-btn--ghost sp-btn--sm" type="button" @click="refreshAudit">重新加载</button>
     </section>
 
     <template v-else>
@@ -189,6 +189,10 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+async function refreshAudit() {
+  await load()
 }
 
 onMounted(load)

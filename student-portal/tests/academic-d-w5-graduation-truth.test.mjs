@@ -27,3 +27,9 @@ test('non-PASS graduation items remain warning tone and UNKNOWN never becomes gr
   assert.match(view, /value\s*===\s*['"]PASS['"]\s*\?\s*['"]已通过['"]\s*:\s*value\s*===\s*['"]FAIL['"]\s*\?\s*['"]未达标['"]\s*:\s*['"]待核验['"]/)
   assert.match(view, /itemTone\(item\)[\s\S]*?itemResult\(item\)\s*===\s*['"]PASS['"]\s*\?\s*['"]is-pass['"]\s*:\s*['"]is-pending['"]/)
 })
+
+test('manual recheck is wired through an explicit handler to the canonical server-truth loader', () => {
+  assert.match(view, /@click=['"]refreshAudit['"]/)
+  assert.match(view, /async function refreshAudit\(\)\s*\{\s*await load\(\)\s*\}/)
+  assert.match(view, /async function load\(\)[\s\S]*?portalApi\.academicGraduationAudit\(\)/)
+})
