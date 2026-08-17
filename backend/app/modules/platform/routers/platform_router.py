@@ -179,6 +179,9 @@ def delegated_audit_logs(
     )
 
 
+# ── P-04 Platform Access Governance commands ────────────────────────────────
+
+
 @_routes.get("/access-assignments", summary="平台职责分配")
 def access_assignments(user=Depends(require_platform_principal)):
     _cap(user, "access.review")
@@ -191,6 +194,23 @@ def access_assignment_save(body: dict = Body(...), user=Depends(require_platform
     return success(_pam().save_access_assignment(body, actor=user))
 
 
+@_routes.post("/access-assignments/{assignment_id}/revoke", summary="撤销平台职责分配")
+def access_assignment_revoke(
+    assignment_id: str,
+    body: dict = Body(...),
+    user=Depends(require_platform_principal),
+):
+    _cap(user, "access.manage")
+    return success(_pam().terminate_record(
+        _pam().ASSIGNMENT,
+        assignment_id,
+        tenant_id=0,
+        expected_version=int(body.get("expectedVersion") or -1),
+        reason=body.get("reason") or "",
+        actor=user,
+    ))
+
+
 @_routes.get("/elevation-sessions", summary="临时权限提升会话")
 def elevation_sessions(user=Depends(require_platform_principal)):
     _cap(user, "access.review")
@@ -201,6 +221,23 @@ def elevation_sessions(user=Depends(require_platform_principal)):
 def elevation_session_create(body: dict = Body(...), user=Depends(require_platform_principal)):
     _cap(user, "access.manage")
     return success(_pam().create_elevation(body, actor=user))
+
+
+@_routes.post("/elevation-sessions/{session_id}/revoke", summary="撤销临时权限提升")
+def elevation_session_revoke(
+    session_id: str,
+    body: dict = Body(...),
+    user=Depends(require_platform_principal),
+):
+    _cap(user, "access.manage")
+    return success(_pam().terminate_record(
+        _pam().ELEVATION,
+        session_id,
+        tenant_id=0,
+        expected_version=int(body.get("expectedVersion") or -1),
+        reason=body.get("reason") or "",
+        actor=user,
+    ))
 
 
 @_routes.get("/support-sessions", summary="受控学校协助会话")
