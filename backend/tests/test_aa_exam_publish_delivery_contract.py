@@ -22,20 +22,40 @@ def _admin_headers(client):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _active_users(db, limit=2):
+def _ensure_teacher_users(db, count=2):
+    """Seed only the teacher identities this contract owns; never depend on ambient DB users."""
     from app.models import User
 
-    return db.query(User).filter(
-        User.tenant_id == TID,
-        User.status == "ACTIVE",
-        User.is_deleted.is_(False),
-        User.login_name.isnot(None),
-    ).order_by(User.id).limit(limit).all()
+    users = []
+    for index in range(1, count + 1):
+        login_name = f"cw3_delivery_teacher_{index:02d}"
+        user = db.query(User).filter(
+            User.tenant_id == TID,
+            User.login_name == login_name,
+            User.is_deleted.is_(False),
+        ).one_or_none()
+        if user is None:
+            user = User(
+                tenant_id=TID,
+                login_name=login_name,
+                real_name=f"C-W3监考教师{index}",
+                password_hash="cw3-contract-password-not-used",
+                user_type="TEACHER",
+                status="ACTIVE",
+                is_deleted=False,
+            )
+            db.add(user)
+        else:
+            user.real_name = f"C-W3监考教师{index}"
+            user.user_type = "TEACHER"
+            user.status = "ACTIVE"
+        users.append(user)
+    db.flush()
+    return users
 
 
-def _active_user(db):
-    rows = _active_users(db, 1)
-    return rows[0] if rows else None
+def _ensure_teacher_user(db):
+    return _ensure_teacher_users(db, 1)[0]
 
 
 def _seed_assignment(db, teacher_key: str, *, batch_status="PUBLISHED"):
@@ -95,8 +115,8 @@ def test_publish_delivery_emits_teacher_outbox_from_current_canonical_assignment
     _set_tenant()
 
     db = get_sessionmaker()()
-    user = _active_user(db)
-    assert user is not None and user.login_name
+    user = _ensure_teacher_user(db)
+    assert user.login_name
     batch, course, _room, invigilator = _seed_assignment(db, str(user.login_name))
 
     sent = delivery.emit_published_invigilation_notices(db, batch, [course])
@@ -152,7 +172,7 @@ def test_published_reassignment_keeps_one_assignment_and_notifies_old_and_new_te
     admin = _admin_headers(client)
     _set_tenant()
     db = get_sessionmaker()()
-    users = _active_users(db, 2)
+    users = _ensure_teacher_users(db, 2)
     assert len(users) == 2
     old_user, new_user = users
     assert old_user.login_name and new_user.login_name and old_user.id != new_user.id
@@ -218,7 +238,7 @@ def test_reassignment_before_publish_fails_closed_and_rolls_back_assignment(clie
     admin = _admin_headers(client)
     _set_tenant()
     db = get_sessionmaker()()
-    users = _active_users(db, 2)
+    users = _ensure_teacher_users(db, 2)
     assert len(users) == 2
     old_user, new_user = users
     _batch, _course, room, invigilator = _seed_assignment(
