@@ -54,6 +54,9 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
     from app.services.sandbox_school_academic_archive_prereq import (
         seed_school_academic_archive_prerequisites_20k,
     )
+    from app.services.sandbox_school_academic_r11_runtime_seed import (
+        seed_school_academic_r11_runtime_20k,
+    )
     from app.services.sandbox_school_curriculum_closure import (
         prepare_school_curriculum_20k,
         seed_historical_teaching_closure_20k,
@@ -77,6 +80,11 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
     # 历史考试课程已经扩到1024门；统一考场容量重排器负责拆考场/座位/监考，
     # 正式 EXAM policy 因此看到的就是最终可归档考务事实。
     exam_reconciliation = reconcile_exam_rooms(db, tenant_id)
+
+    # 上面的历史 closure 会最后一次重建 GradeTask / ExamCourse；主键稳定后，
+    # 才能冻结 R11 所需独立教学班、名单版本、三类消费者、正式成绩回链和统计快照。
+    # 这些运行事实在正式十三域归档预检之前落库，因此自身也必须接受同一归档策略审计。
+    r11_runtime = seed_school_academic_r11_runtime_20k(db, tenant_id)
 
     historical_term = db.scalars(select(AaTerm).where(
         AaTerm.tenant_id == tenant_id,
@@ -140,6 +148,7 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
         "snapshotReconciliation": snapshot_reconciliation,
         "prerequisites": prerequisites.get("validation") or prerequisites,
         "examReconciliation": exam_reconciliation,
+        "r11Runtime": r11_runtime.get("validation") or r11_runtime,
         "domains": domains,
     }
     _write_precheck_artifact(precheck)
@@ -195,6 +204,7 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
         "snapshotReconciliation": snapshot_reconciliation,
         "prerequisites": prerequisites,
         "examReconciliation": exam_reconciliation,
+        "r11Runtime": r11_runtime,
         "precheckElapsedMs": elapsed_ms,
         "precheckArtifact": "test-results/sandbox-20k/archive-precheck.json",
         "validation": validation,
