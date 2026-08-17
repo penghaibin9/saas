@@ -188,6 +188,7 @@ def create_new_version(program_id, user, reason=None) -> dict:
 
         new_program = AaProgram(
             tenant_id=_tid(),
+            series_key=old.series_key,
             program_name=old.program_name,
             major_id=old.major_id,
             grade_year=old.grade_year,
@@ -214,6 +215,7 @@ def create_new_version(program_id, user, reason=None) -> dict:
                 open_term_no=course.open_term_no,
                 module=course.module,
                 credit_snapshot=course.credit_snapshot,
+                formation_mode=course.formation_mode,
             ))
 
         requirements = db.scalars(select(Req).where(
