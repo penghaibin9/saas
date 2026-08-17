@@ -1,13 +1,15 @@
 """培养方案公开 Service。
 
-原有 CRUD、版本、审核和绑定实现保存在 ``academic_affairs_program_core_service``；
-本文件是唯一公开入口，只显式增加提交前治理校验，不执行 monkey patch 或导入副作用。
+原有 CRUD、审核与普通生命周期保存在 ``academic_affairs_program_core_service``；
+A-W2 将绑定 scope 与版本链这三类必须串行/fail-closed 的高风险入口显式交给
+``academic_affairs_program_authority_service``。本文件仍是唯一公开入口，不执行 monkey patch。
 """
 from __future__ import annotations
 
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid, session
 
+from . import academic_affairs_program_authority_service as authority
 from . import academic_affairs_program_core_service as _core
 from . import academic_affairs_program_governance_service as governance
 
@@ -15,6 +17,21 @@ from . import academic_affairs_program_governance_service as governance
 def __getattr__(name):
     """兼容既有调用方，同时保持一条明确的公开入口。"""
     return getattr(_core, name)
+
+
+def bind_grade(program_id, user, grade_year, class_id=None) -> dict:
+    """A-W2：按 scope 串行绑定；班级 override 不吞专业年级 fallback。"""
+    return authority.bind_grade(program_id, user, grade_year, class_id)
+
+
+def create_new_version(program_id, user, reason=None) -> dict:
+    """A-W2：创建唯一直接后继并复制完整方案定义快照。"""
+    return authority.create_new_version(program_id, user, reason)
+
+
+def list_program_versions(program_id, user):
+    """A-W2：版本链 fork/cycle/断链一律 fail-closed。"""
+    return authority.list_program_versions(program_id, user)
 
 
 def submit_program(program_id, user) -> dict:
@@ -31,7 +48,7 @@ def submit_program(program_id, user) -> dict:
         if not program:
             raise not_found("培养方案不存在")
         if program.status not in ("DRAFT", "RETURNED"):
-            raise AppException("APPROVAL_VERSION_CONFLICT", "仅编制或退回状态的方案可提交")
+            raise AppException("APPROVAL_VERSION_CONFLICT", "仅编制或退回状态方案可提交")
 
         validation = governance.validate_program_db(db, program.id)
         blockers = [item for item in validation["issues"] if item["level"] == "BLOCKER"]
