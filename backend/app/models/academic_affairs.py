@@ -375,6 +375,10 @@ class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
     course_code: Mapped[str | None] = mapped_column(String(50))
     course_name: Mapped[str | None] = mapped_column(String(200))
     class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    source_program_course_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True,
+        comment="INT direct provenance: exact t_aa_program_course.id used when this task was generated; legacy unresolved stays NULL",
+    )
     formation_mode: Mapped[str | None] = mapped_column(
         String(20),
         comment="INT A-C4: ADMIN_FIXED/SELECTABLE/MERGED/RETAKE/LAYERED; legacy unresolved stays NULL",
