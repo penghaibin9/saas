@@ -129,15 +129,22 @@ def test_t02b_security_auditor_http_denied_on_business_write(client, tenant_ctx)
 
 
 # ── SYS21-T03：证据包范围与操作者权限一致 ────────────────────────────────────
-def test_t03_unrestricted_actor_gets_null_allowlist(tenant_ctx):
+def test_t03_school_admin_uses_explicit_audit_allowlist(tenant_ctx):
+    from app.core.permissions import get_effective_permission_patterns
     from app.services import audit_evidence_service as evid
 
-    admin = {"userId": "db-1", "currentRoleCode": "SCHOOL_ADMIN"}  # 持有 "*"
+    admin = {"userId": "db-1", "currentRoleCode": "SCHOOL_ADMIN", "tenantId": str(MAIN_TID)}
+    patterns = set(get_effective_permission_patterns(admin))
+    assert "*" not in patterns, "SCHOOL_ADMIN runtime wildcard 已退役，测试不得重新依赖旧 * 真值"
+
+    expected = evid._allowed_action_prefixes(patterns)
+    assert expected is not None and expected, "学校管理员应至少拥有一个显式审计可见前缀"
+
     out = evid.create_evidence_pack_job(admin, {"action": "PLATFORM_CHANGE_ROLLBACK"})
-    assert out["scopeSnapshot"]["actionPrefixAllowlist"] is None
+    assert out["scopeSnapshot"]["actionPrefixAllowlist"] == sorted(expected)
 
     fetched = evid.get_evidence_pack_scope(int(out["jobId"]))
-    assert fetched["scopeSnapshot"]["actionPrefixAllowlist"] is None
+    assert fetched["scopeSnapshot"]["actionPrefixAllowlist"] == sorted(expected)
 
 
 def test_t03b_restricted_pattern_set_derives_allowed_prefixes(tenant_ctx):

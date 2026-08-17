@@ -1,0 +1,334 @@
+name: Control Plane E x IAM Joint Gold
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [integration/control-plane-option-b-20260815]
+    paths:
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/services/module_access_service.py'
+      - 'backend/app/services/scope_policy_service.py'
+      - 'backend/tests/e_iam_joint_gold.py'
+      - 'backend/tests/test_scope_policy_inheritance.py'
+      - 'shared/contracts/permission-catalog*.json'
+      - 'scripts/check/check-permission-catalog.py'
+      - '.github/workflows/control-plane-e-iam-joint-gold.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/app/core/permissions.py'
+      - 'backend/app/services/module_access_service.py'
+      - 'backend/app/services/scope_policy_service.py'
+      - 'backend/tests/e_iam_joint_gold.py'
+      - 'backend/tests/test_scope_policy_inheritance.py'
+      - 'shared/contracts/permission-catalog*.json'
+      - 'scripts/check/check-permission-catalog.py'
+      - '.github/workflows/control-plane-e-iam-joint-gold.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-e-iam-joint-gold-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ENV: test
+  DEPLOYMENT_MODE: local
+  TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/e_iam_joint_gold?charset=utf8mb4
+  DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/e_iam_joint_gold?charset=utf8mb4
+  SECRET_KEY: control-plane-e-iam-joint-gold-secret
+  JWT_SECRET: control-plane-e-iam-joint-gold-secret
+  CONTROL_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  e-iam-joint-gold:
+    name: Exact-head E-series convergence + DENY matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: e_iam_joint_gold
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CONTROL_HEAD }}
+          fetch-depth: 0
+
+      - name: Assert exact Control Plane HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CONTROL_HEAD"
+          mkdir -p artifacts/control-plane
+          printf '%s\n' "$CONTROL_HEAD" > artifacts/control-plane/e-iam-control-head.txt
+
+      - name: Fetch exact E-series PR 132 HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin '+refs/pull/132/head:refs/remotes/origin/e-series-pr-132'
+          E_HEAD="$(git rev-parse refs/remotes/origin/e-series-pr-132)"
+          test -n "$E_HEAD"
+          echo "E_HEAD=$E_HEAD" >> "$GITHUB_ENV"
+          printf '%s\n' "$E_HEAD" > artifacts/control-plane/e-iam-e-series-head.txt
+          echo "Control Plane HEAD: $CONTROL_HEAD"
+          echo "E-series PR #132 HEAD: $E_HEAD"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Resolve current E-series topology without mutating source branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'control-plane-joint-gold'
+          git config user.email 'control-plane-joint-gold@invalid.local'
+
+          if git merge-base --is-ancestor "$E_HEAD" "$CONTROL_HEAD"; then
+            echo 'E-series is already contained by Control Plane HEAD.'
+            TOPOLOGY_MODE='ALREADY_CONVERGED'
+            E_ALREADY_IN_CONTROL='true'
+            SYNTHETIC_ALEMBIC_MERGE='false'
+            INTEGRATION_HEAD="$CONTROL_HEAD"
+            test -z "$(git status --porcelain)"
+          else
+            echo 'E-series is not yet contained; create a local-only clean integration merge.'
+            TOPOLOGY_MODE='TEMPORARY_MERGE'
+            E_ALREADY_IN_CONTROL='false'
+            git merge --no-ff --no-commit "$E_HEAD"
+            test -z "$(git diff --name-only --diff-filter=U)"
+
+            python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          versions = Path('backend/alembic/versions')
+          revisions: set[str] = set()
+          parents: set[str] = set()
+          for path in versions.glob('*.py'):
+              tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+              values = {}
+              for node in tree.body:
+                  if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                      continue
+                  targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                  for target in targets:
+                      if isinstance(target, ast.Name) and target.id in {'revision', 'down_revision'}:
+                          try:
+                              values[target.id] = ast.literal_eval(node.value)
+                          except Exception:
+                              pass
+              revision = values.get('revision')
+              down = values.get('down_revision')
+              if isinstance(revision, str):
+                  revisions.add(revision)
+              if isinstance(down, str):
+                  parents.add(down)
+              elif isinstance(down, (tuple, list)):
+                  parents.update(item for item in down if isinstance(item, str))
+
+          heads = sorted(revisions - parents)
+          print('post-merge Alembic heads before optional CI convergence:', heads)
+          if len(heads) == 1:
+              Path('artifacts/control-plane/e-iam-synthetic-merge.txt').write_text('false\n', encoding='utf-8')
+          elif len(heads) == 2:
+              merge_path = versions / 'zz_ci_e_iam_joint_merge.py'
+              if merge_path.exists():
+                  raise SystemExit(f'unexpected persisted CI merge revision: {merge_path}')
+              merge_path.write_text(
+                  '"""CI-only E x IAM Alembic lineage merge; no schema mutation.\n\n'
+                  'Never persist this revision to either source branch.\n"""\n'
+                  'revision = "ci_e_iam_joint_merge"\n'
+                  f'down_revision = {tuple(heads)!r}\n'
+                  'branch_labels = None\n'
+                  'depends_on = None\n\n'
+                  'def upgrade():\n    pass\n\n'
+                  'def downgrade():\n    pass\n',
+                  encoding='utf-8',
+              )
+              Path('artifacts/control-plane/e-iam-synthetic-merge.txt').write_text('true\n', encoding='utf-8')
+          else:
+              raise SystemExit(f'expected one or two Alembic heads after local merge, got {heads}')
+          PY
+
+            if [ -f backend/alembic/versions/zz_ci_e_iam_joint_merge.py ]; then
+              git add backend/alembic/versions/zz_ci_e_iam_joint_merge.py
+              SYNTHETIC_ALEMBIC_MERGE='true'
+            else
+              SYNTHETIC_ALEMBIC_MERGE='false'
+            fi
+            git diff --cached --check
+            ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)'
+            git commit -m 'CI-only E x IAM temporary integration'
+            INTEGRATION_HEAD="$(git rev-parse HEAD)"
+            PARENTS="$(git show -s --format=%P HEAD)"
+            test "$(printf '%s\n' "$PARENTS" | awk '{print $1}')" = "$CONTROL_HEAD"
+            test "$(printf '%s\n' "$PARENTS" | awk '{print $2}')" = "$E_HEAD"
+          fi
+
+          echo "TOPOLOGY_MODE=$TOPOLOGY_MODE" >> "$GITHUB_ENV"
+          echo "E_ALREADY_IN_CONTROL=$E_ALREADY_IN_CONTROL" >> "$GITHUB_ENV"
+          echo "SYNTHETIC_ALEMBIC_MERGE=$SYNTHETIC_ALEMBIC_MERGE" >> "$GITHUB_ENV"
+          echo "INTEGRATION_HEAD=$INTEGRATION_HEAD" >> "$GITHUB_ENV"
+          printf '%s\n' "$TOPOLOGY_MODE" > artifacts/control-plane/e-iam-topology-mode.txt
+          printf '%s\n' "$INTEGRATION_HEAD" > artifacts/control-plane/e-iam-integration-head.txt
+          test -z "$(git diff --name-only --diff-filter=U)"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Wait for MySQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if mysqladmin ping -h127.0.0.1 -uroot -proot --silent; then exit 0; fi
+            sleep 2
+          done
+          echo 'MySQL did not become ready' >&2
+          exit 1
+
+      - name: Fresh MySQL one-head migration after convergence
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          alembic heads | tee ../artifacts/control-plane/e-iam-alembic-heads.txt
+          HEAD_COUNT="$(grep -c '(head)' ../artifacts/control-plane/e-iam-alembic-heads.txt || true)"
+          test "$HEAD_COUNT" = '1'
+          alembic upgrade head | tee ../artifacts/control-plane/e-iam-alembic-upgrade.txt
+          alembic current | tee ../artifacts/control-plane/e-iam-alembic-current.txt
+          grep -q '(head)' ../artifacts/control-plane/e-iam-alembic-current.txt
+
+      - name: Shared IAM and internship permission contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/check/check-permission-catalog.py --strict
+          python scripts/check/check-internship-route-permissions.py
+          python - <<'PY'
+          from pathlib import Path
+          routes = Path('backend/app/api/v1/route_registration.py').read_text(encoding='utf-8')
+          recruitment = Path('backend/app/modules/internship/routers/internship_recruitment_campaign.py').read_text(encoding='utf-8')
+          enterprise_ctx = Path('backend/app/modules/internship/dependencies/enterprise_context.py').read_text(encoding='utf-8')
+          member = Path('backend/app/modules/internship/services/internship_enterprise_member_service.py').read_text(encoding='utf-8')
+          access = Path('backend/app/modules/internship/services/internship_enterprise_access_service.py').read_text(encoding='utf-8')
+          collab = Path('backend/app/modules/internship/services/internship_enterprise_collaboration_service.py').read_text(encoding='utf-8')
+
+          assert '"intern": [Depends(require_staff), Depends(require_module("internship"))]' in routes
+          assert 'from app.modules.platform.routers import platform_router' in routes
+          assert 'from app.modules.system_admin.routers import system_i4_router' in routes
+          assert 'api_router.include_router(platform_router.router)' in routes
+          assert 'api_router.include_router(system_i4_router.router, tags=["system"])' in routes
+          assert 'api_router.include_router(internship_enterprise_portal.router)' in routes
+          assert 'api_router.include_router(internship_enterprise_collaboration.router)' in routes
+          assert 'api_router.include_router(internship_student_selection.mobile_router)' in routes
+          assert 'api_router.include_router(internship_student_selection.portal_router)' in routes
+          assert '_MANAGE = require_any_permission("internship.recruitment.manage", "internship.enterprise.manage")' in recruitment
+          assert 'resolve_active_grant_in_tx(' in enterprise_ctx
+          assert 'InternshipCampaignEnterprise.status == "ACCEPTED"' in enterprise_ctx
+          assert 'InternshipEnterpriseMember' in member and 'User' in member
+          assert 'effective_grant_status(grant, now=now) != "ACTIVE"' in access
+          assert 'InternshipRecord.enterprise_id == context.company_id' in collab
+          assert 'InternshipRecord.batch_id == context.batch_id' in collab
+          assert 'InternshipRecord.mentor_contact_id == mentor_contact_id' in collab
+          print('E x IAM source authority contracts: OK')
+          PY
+
+      - name: Run E x IAM joint negative matrix
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/e_iam_joint_gold.py \
+            tests/test_scope_policy_inheritance.py::test_t01_inherited_deny_blocks_children \
+            tests/test_scope_policy_inheritance.py::test_t01_default_is_deny \
+            tests/test_scope_policy_inheritance.py::test_t04_cannot_target_other_tenant_node \
+            tests/test_scope_policy_inheritance.py::test_t04_policies_are_tenant_isolated \
+            --disable-warnings | tee ../artifacts/control-plane/e-iam-deny-matrix.txt
+          if grep -Eiq '([1-9][0-9]* skipped|[1-9][0-9]* xfailed|[1-9][0-9]* xpassed)' ../artifacts/control-plane/e-iam-deny-matrix.txt; then
+            echo 'Joint Gold refuses skipped/xfail/xpass evidence' >&2
+            exit 1
+          fi
+
+      - name: Reuse E-series enterprise Authority contracts and MySQL chain
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_internship_enterprise_member.py \
+            tests/test_internship_enterprise_access.py \
+            tests/test_internship_enterprise_auth_context.py \
+            tests/test_internship_enterprise_e9_facade_contract.py \
+            tests/test_internship_enterprise_collaboration_canonical_contract.py \
+            tests/test_internship_e_series_final_mysql.py::test_mysql_student_enterprise_school_chain_closes_one_canonical_placement \
+            --disable-warnings | tee ../artifacts/control-plane/e-iam-e-authority-contracts.txt
+          if grep -Eiq '([1-9][0-9]* skipped|[1-9][0-9]* xfailed|[1-9][0-9]* xpassed)' ../artifacts/control-plane/e-iam-e-authority-contracts.txt; then
+            echo 'Joint Gold refuses skipped/xfail/xpass E-series evidence' >&2
+            exit 1
+          fi
+
+      - name: Freeze exact-head joint evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONTROL_REMOTE="$(git ls-remote origin 'refs/heads/integration/control-plane-option-b-20260815' | awk '{print $1}')"
+          E_REMOTE="$(git ls-remote origin 'refs/pull/132/head' | awk '{print $1}')"
+          test "$CONTROL_REMOTE" = "$CONTROL_HEAD"
+          test "$E_REMOTE" = "$E_HEAD"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          evidence = {
+              'controlHead': os.environ['CONTROL_HEAD'],
+              'eSeriesHead': os.environ['E_HEAD'],
+              'integrationHead': os.environ['INTEGRATION_HEAD'],
+              'topologyMode': os.environ['TOPOLOGY_MODE'],
+              'eSeriesAlreadyInControl': os.environ['E_ALREADY_IN_CONTROL'] == 'true',
+              'syntheticAlembicMerge': os.environ['SYNTHETIC_ALEMBIC_MERGE'] == 'true',
+              'remoteBranchesMutated': False,
+              'mysql': '8.0',
+              'moduleEntitlementDeny': True,
+              'normalTeacherRecruitmentManageDeny': True,
+              'sameSchoolCrossCollegeDeny': True,
+              'crossTenantDeny': True,
+              'schoolAdminEnterpriseApiDeny': True,
+              'expiredEnterpriseGrantDeny': True,
+              'wrongEnterpriseDeny': True,
+              'mentorNonOwnedStudentFilter': True,
+              'secondIamRootAbsent': True,
+              'studentEnterpriseSchoolMysqlChain': True,
+              'skipOrXfailAccepted': False,
+              'gold': True,
+          }
+          path = Path('artifacts/control-plane/e-iam-joint-gold.json')
+          path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(evidence, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload E x IAM joint evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-plane-e-iam-joint-gold-${{ env.CONTROL_HEAD }}
+          path: artifacts/control-plane/
+          if-no-files-found: warn
+          retention-days: 14

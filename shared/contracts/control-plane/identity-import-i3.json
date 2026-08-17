@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "card": "I3",
+  "authorityTable": "t_identity_import_staging_row",
+  "maxRows": 20000,
+  "stageChunkSize": 500,
+  "parser": {
+    "xlsxReadOnly": true,
+    "fullRowArraysForbidden": true,
+    "sourceFileMustBeScanReady": true
+  },
+  "rowAuthority": {
+    "fields": [
+      "tenant_id",
+      "import_job_id",
+      "row_no",
+      "entity_type",
+      "natural_key",
+      "payload_json",
+      "validation_status",
+      "error_count",
+      "resolved_student_id",
+      "resolved_user_id",
+      "row_digest"
+    ],
+    "unique": ["tenant_id", "import_job_id", "row_no"],
+    "integrity": "recompute-payload-row-digest-and-aggregate-before-confirm"
+  },
+  "validation": "canonical identity preview over repeatable DB-backed lazy sequences",
+  "errorAuthority": "t_import_row_error",
+  "batchCompatibility": "IdentityImportBatch stores marker only; never 20K row payload arrays",
+  "confirm": {
+    "existingImportJobExpectedVersion": true,
+    "existingImportJobIdempotency": true,
+    "existingBatchLease": true,
+    "existingOnboardingSingleTransaction": true,
+    "stagingReads": "keyset-paged",
+    "duplicateBusinessWriterForbidden": true
+  },
+  "cleanup": "expired ImportJob soft-deletes staging rows in same tenant",
+  "gold": false,
+  "goldBlocker": "I4 real MySQL 20K single-job proof"
+}

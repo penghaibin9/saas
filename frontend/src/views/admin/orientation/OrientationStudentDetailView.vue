@@ -296,7 +296,7 @@ export default {
         { key: 'reportStatus', label: '报到状态', type: 'select', options: this.statusOptions.reportStatus || [], required: true },
         { key: 'counselor', label: '辅导员', type: 'text' },
         { key: 'phone', label: '联系电话', type: 'text' },
-        { key: 'origin', label: '生源地', type: 'text' }
+        { key: 'origin', label: '生源地', type: 'region' }
       ]
     },
     showMaterialActions() {

@@ -69,10 +69,11 @@ def test_enterprise_invite_user_constructor_is_disabled_scoped_preprovision_only
 
 
 def test_identity_import_api_has_no_raw_json_account_creation_bypass():
-    """允许通用 xlsx + 师生专用 xlsx 工作流，但禁止出现 raw JSON 建号旁路。"""
+    """身份导入兼容层只允许文件/任务适配，不得出现 raw JSON 建号旁路。"""
     root = Path(__file__).resolve().parents[2]
-    system_api = root / "backend/app/api/v1/system.py"
-    tree = ast.parse(system_api.read_text(encoding="utf-8"))
+    compat_api = root / "backend/app/modules/system_admin/routers/identity_import_compat_router.py"
+    source = compat_api.read_text(encoding="utf-8")
+    tree = ast.parse(source)
     routes = set()
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -87,23 +88,18 @@ def test_identity_import_api_has_no_raw_json_account_creation_bypass():
                 routes.add((decorator.func.attr.upper(), route))
 
     assert routes == {
-        ("GET", "/system/identity-import/role-templates"),
-        ("GET", "/system/identity-import/template"),
         ("POST", "/system/identity-import/validate-file"),
-        ("POST", "/system/identity-import/confirm-batch"),
-        ("GET", "/system/identity-import/students/template"),
         ("POST", "/system/identity-import/students/validate-file"),
         ("POST", "/system/identity-import/students/confirm-batch"),
-        ("GET", "/system/identity-import/teachers/template"),
         ("POST", "/system/identity-import/teachers/validate-file"),
         ("POST", "/system/identity-import/teachers/confirm-batch"),
-        ("GET", "/system/identity-import/batches/{batch_no}/errors"),
+        ("POST", "/system/identity-import/confirm-batch"),
     }
-    assert all(
-        path.endswith(("/template", "/validate-file", "/confirm-batch", "/errors", "/role-templates"))
-        or "/batches/" in path
-        for _method, path in routes
-    )
+    assert "LEGACY_IDENTITY_IMPORT_RETIRED" in source
+    assert "data_exchange_router.run_identity_import_upload" in source
+    assert "confirm_identity_import_job" in source
+    assert "User(" not in source
+    assert "db.add(" not in source
 
 
 def test_frontend_exposes_batch_account_creation_only_at_fixed_system_route():

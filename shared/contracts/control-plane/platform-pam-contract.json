@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "card": "B2",
+  "principalDependencies": ["require_platform_principal", "require_platform_root", "require_platform_permission", "require_platform_support_scope"],
+  "supportSession": {
+    "ticketOnly": "DENY_UNTIL_CANONICAL_TICKET_AUTHORITY_EXISTS",
+    "incidentBinding": "MUST_EXIST_AND_INCLUDE_TARGET_TENANT_AND_NOT_RESOLVED",
+    "scopeCatalog": "shared/contracts/support-scope-catalog.json",
+    "wildcard": "DENY",
+    "runtimeEndpoints": ["/platform/support/tenants/{tenant_id}/context", "/platform/support/tenants/{tenant_id}/audit"]
+  },
+  "pamMutation": {
+    "criticalAudit": "SAME_TRANSACTION",
+    "createIdempotency": "requestId",
+    "recentAuth": true,
+    "sensitiveSupportMfa": true
+  },
+  "accessReview": "OPEN campaign snapshots active grants; CLOSE KEEP/REVOKE with optimistic conflict detection"
+}

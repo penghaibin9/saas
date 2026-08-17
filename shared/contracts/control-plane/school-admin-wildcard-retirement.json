@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "card": "CTRL-B8-WILDCARD-RETIREMENT",
+  "roleCode": "SCHOOL_ADMIN",
+  "wildcardCode": "*",
+  "preconditions": [
+    "CTRL-B8-01_ZERO_UNEXPLAINED_SYSTEM_SHADOW",
+    "CTRL-B8-02_PR104_STYLE_20K_ROLE_TOPOLOGY",
+    "CTRL-B8-SCHOOL-FULL-E2E"
+  ],
+  "runtimeResolver": "PUBLISHED_TENANT_ROLE_TEMPLATE",
+  "permissionUniverse": {
+    "lifecycle": "ACTIVE",
+    "plane": "TENANT",
+    "tenantAssignable": true,
+    "minimumConcreteCount": 400,
+    "platformPermissionsForbidden": true,
+    "enterprisePermissionsForbidden": true
+  },
+  "requireExactNormalizedSnapshot": true,
+  "legacyWildcardBaseline": "SHADOW_ONLY",
+  "dbFailurePolicy": "FAIL_CLOSED",
+  "dbDisabledCompatibility": "AUTHORITATIVE_CATALOG_EXPLICIT_SET",
+  "customRoleResolverUnchanged": true,
+  "platformWorkforceResolverUnchanged": true,
+  "cutoverSequence": [
+    "PREFLIGHT_EXACT_SNAPSHOT",
+    "REMOVE_RUNTIME_WILDCARD",
+    "WIRE_PUBLISHED_TEMPLATE_RESOLVER",
+    "20K_EXACT_HEAD_REPROOF",
+    "SCHOOL_FULL_E2E_REPROOF"
+  ],
+  "rollbackPolicy": "REVERT_CUTOVER_COMMIT_ONLY_NEVER_RESTORE_BY_RUNTIME_FALLBACK",
+  "nextGate": "E_X_IAM_JOINT_GOLD"
+}
