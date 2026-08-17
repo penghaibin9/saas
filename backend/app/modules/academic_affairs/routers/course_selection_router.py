@@ -8,6 +8,8 @@ Selection Final 的四条最终入口（批次发布、学生可选课程、选�
 B-W4 起，课程供给写动作由 ``academic_affairs_selection_course_command_service``
 单一持有：新增必须 TeachingTask 必填、READY、same-course、same-term；编辑容量/
 取消开课也必须走 canonical term guard + locking command，不得回落 legacy core 写实现。
+规则保存与自动时间迁移由 ``academic_affairs_selection_batch_command_service`` 持有，
+复用 Final/W1 的 term guard 和 OPEN/CLOSE preflight，不另造生命周期真值。
 其余 canonical service、权限、DTO、状态机、TeachingRoster 投影保持不变。
 """
 from __future__ import annotations
@@ -20,6 +22,7 @@ from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
 from app.modules.academic_affairs.services import academic_affairs_production_audit_guard as production_guard
+from app.modules.academic_affairs.services import academic_affairs_selection_batch_command_service as selection_batch_command_svc
 from app.modules.academic_affairs.services import academic_affairs_selection_course_command_service as selection_course_command_svc
 
 # PR #101 production-audit hardening. Idempotent and read-side only: this tightens
@@ -97,7 +100,7 @@ def sel_rule_save(
     batchId: int = Path(...),
     user=Depends(require_permission(_SEL_RULE)),
 ):
-    return success(selection_svc.save_rule(user, batchId, body.rule), message="已保存")
+    return success(selection_batch_command_svc.save_rule(user, batchId, body.rule), message="已保存")
 
 
 # ── 课程供给 ──
@@ -190,7 +193,7 @@ def sel_conflict_report(
 
 @router.post("/selection/time-tick", summary="定时触发：到点自动开选/截止（供 cron 调度，幂等）")
 def sel_time_tick(user=Depends(require_permission(_SEL_MANAGE))):
-    return success(selection_svc.run_time_tick(user), message="已执行时间触发")
+    return success(selection_batch_command_svc.run_time_tick(user), message="已执行时间触发")
 
 
 # ── 选课归档（导出由 academic_export_compat_router owner 持有） ──
