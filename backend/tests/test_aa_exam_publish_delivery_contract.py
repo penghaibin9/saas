@@ -263,7 +263,7 @@ def test_reassignment_before_publish_fails_closed_and_rolls_back_assignment(clie
     )
     assert changed.status_code == 409, changed.text
     payload = changed.json()
-    assert payload.get("code") == "DATA_CONFLICT"
+    assert payload.get("bizCode") == "DATA_CONFLICT"
     assert "发布前请使用正常监考编排入口" in str(payload.get("message") or "")
 
     db = get_sessionmaker()()
