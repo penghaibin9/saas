@@ -1,6 +1,8 @@
 """V2 R5 教师微信成绩录入补充端点。
 
 保留既有单生录入和提交 URL，只新增整批事务保存与提交前质量报告。
+W5 起两个补充端点统一走 Grade Execution owner：实时校验正式教学任务当前教师，
+不再依赖成绩任务创建时复制的 teacher_key 快照。
 """
 from __future__ import annotations
 
@@ -11,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
 from app.core.response import success
-from app.modules.academic_affairs.services import mobile_academic_affairs_service as service
+from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as service
 
 router = APIRouter(prefix="/mobile/teacher/academic", tags=["教师移动端-成绩录入"])
 
