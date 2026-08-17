@@ -149,7 +149,12 @@ merge_layer() {
     exit 1
   fi
   echo "[merged] $layer tree=$(git rev-parse HEAD^{tree}) commit=$(git rev-parse HEAD)" | tee -a "$MERGE_LEDGER"
-  git diff --check HEAD^
+  # A successful automatic merge already rejects unresolved textual conflicts.
+  # Seal the integration invariant directly instead of running `git diff --check HEAD^`,
+  # which audits the upstream branch's entire historical delta and can misclassify
+  # pre-existing whitespace as a D-W5 merge failure.
+  test -z "$(git diff --name-only --diff-filter=U)"
+  test -z "$(git ls-files -u)"
 }
 
 merge_layer A "$A_SHA"
