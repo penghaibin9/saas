@@ -5,7 +5,7 @@ from fastapi import APIRouter, Body, Depends
 
 from app.core.platform_principal import require_platform_principal, assert_platform_root
 from app.core.response import success
-from app.modules.platform.services import platform_product_iam_service as svc
+from app.modules.platform.services import platform_product_iam_hardening as svc
 
 router = APIRouter(prefix="/platform/product-iam", tags=["16·平台产品IAM"])
 
