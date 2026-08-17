@@ -21,6 +21,7 @@ on:
       - 'backend/tests/test_academic_export_compat.py'
       - 'backend/tests/test_aa_program_file_exchange_shared_int.py'
       - 'backend/tests/test_aa_program_file_exchange_shared_mysql_int.py'
+      - 'backend/tests/test_aa_program_xlsx_path_source_contract.py'
       - 'frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js'
       - 'frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue'
       - 'docs/architecture/file-capability-inventory.d/07-academic-file-exchange.yaml'
@@ -48,6 +49,7 @@ on:
       - 'backend/tests/test_academic_export_compat.py'
       - 'backend/tests/test_aa_program_file_exchange_shared_int.py'
       - 'backend/tests/test_aa_program_file_exchange_shared_mysql_int.py'
+      - 'backend/tests/test_aa_program_xlsx_path_source_contract.py'
       - 'frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js'
       - 'frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue'
       - 'docs/architecture/file-capability-inventory.d/07-academic-file-exchange.yaml'
@@ -129,6 +131,7 @@ jobs:
           tests/test_data_exchange_job_center.py
           tests/test_aa_program_file_exchange_shared_int.py
           tests/test_aa_program_file_exchange_shared_mysql_int.py
+          tests/test_aa_program_xlsx_path_source_contract.py
           -q -p no:warnings
       - name: Teacher PC lint and build
         working-directory: frontend
