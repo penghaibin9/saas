@@ -59,6 +59,35 @@ def _decimal_json(value):
     raise TypeError(f"unsupported JSON value: {type(value).__name__}")
 
 
+def _source_series_keys(rows: Iterable[Mapping[str, object]]) -> tuple[str, ...]:
+    keys = set()
+    for raw in rows:
+        if str(raw.get("logicalGroup") or "").strip().upper() != "MAIN":
+            continue
+        payload = raw.get("payload") or {}
+        if not isinstance(payload, Mapping):
+            continue
+        key = str(payload.get("programSeriesKey") or "").strip().upper()
+        if key:
+            keys.add(key)
+    return tuple(sorted(keys))
+
+
+def _prelock_existing_program_series(db, rows: Iterable[Mapping[str, object]]) -> list[dict]:
+    """Take Program-series locks before Major/Course locks for deadlock-safe vN confirm.
+
+    Interactive binding and the frozen BINDING mutation plan both lock Program
+    before Major/Class.  DEFINITION confirmation must share that prefix.  v1 has
+    no existing Program row, so the activation authority's Tenant lock remains
+    its absent-series anchor; v2+ locks the proven series rows here and later
+    pipeline Program reads are same-transaction re-entrant locks.
+    """
+    keys = _source_series_keys(rows)
+    if not keys:
+        return []
+    return _program_snapshots(db, keys)
+
+
 def _allowed_major_ids(db, security) -> set[int] | None:
     """Return None for tenant-all, exact major ids for bounded scopes, empty on unsupported scopes."""
     from app.models import Major, SchoolClass
@@ -510,6 +539,11 @@ def confirm_program_definition_import(
 
     try:
         with session() as db:
+            # Global Program mutation order starts with existing Program rows. This
+            # matches interactive bind_grade/BINDING and removes the vN
+            # Program<->Major lock inversion without changing the frozen pure
+            # preflight loader contract.
+            _prelock_existing_program_series(db, rows)
             security = build_affairs_context(user, db)
             allowed_major_ids = _allowed_major_ids(db, security)
             course_cache: dict[str, dict] = {}
