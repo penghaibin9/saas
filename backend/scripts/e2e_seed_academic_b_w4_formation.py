@@ -23,6 +23,9 @@ from app.models import (
 
 TID = 1000000000000000007
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "e2e" / "academic-b-w4-formation-fixture.json"
+BOOTSTRAP_COLLEGE = "E2E智能制造学院"
+BOOTSTRAP_MAJOR = "E2E工业机器人技术"
+BOOTSTRAP_CLASS = "E2E机器人2401班"
 
 
 def _assert_safe_target() -> None:
@@ -94,14 +97,22 @@ def main() -> int:
         if course is None:
             raise RuntimeError("formation handoff requires the authoritative B course seed")
 
-        college = College(tenant_id=TID, college_name="B线W4编班证据学院", code="E2EBW4F", status="ACTIVE")
+        # Reuse the exact organization names expected by the existing official
+        # identity-import bootstrap.  This keeps permission enforcement intact:
+        # the bootstrap discovers these rows instead of creating org nodes via API.
+        college = College(
+            tenant_id=TID,
+            college_name=BOOTSTRAP_COLLEGE,
+            code="E2E-COL-GD",
+            status="ACTIVE",
+        )
         db.add(college)
         db.flush()
         major = Major(
             tenant_id=TID,
             college_id=college.id,
-            major_name="B线W4编班证据专业",
-            code="E2EBW4F01",
+            major_name=BOOTSTRAP_MAJOR,
+            code="E2E-MAJ-GD",
             status="ACTIVE",
         )
         db.add(major)
@@ -109,8 +120,8 @@ def main() -> int:
         klass = SchoolClass(
             tenant_id=TID,
             major_id=major.id,
-            class_name="B线W4编班证据2401",
-            class_code="E2E-B-W4-F-2401",
+            class_name=BOOTSTRAP_CLASS,
+            class_code="E2E-CLS-GD",
             grade="2024",
             status="ACTIVE",
         )

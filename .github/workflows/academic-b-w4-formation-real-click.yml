@@ -121,6 +121,14 @@ jobs:
         working-directory: backend
         run: python scripts/e2e_seed_playwright_tenants.py
 
+      - name: Seed canonical Selection, org and formation provenance facts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_academic_b_selection.py
+          python scripts/e2e_seed_academic_b_w4_formation.py
+          test -s ../e2e/academic-b-w4-formation-fixture.json
+
       - name: Start backend
         run: |
           set -euo pipefail
@@ -135,21 +143,13 @@ jobs:
           cat ../e2e/runtime-logs/backend.log
           exit 1
 
-      - name: Bootstrap and verify academic-admin account
+      - name: Bootstrap and verify academic-admin account against preseeded org
         working-directory: backend
         run: |
           set -euo pipefail
           python scripts/e2e_bootstrap_graduation_accounts_ci.py
           python scripts/e2e_reset_graduation_passwords.py
           python scripts/e2e_verify_graduation_accounts.py
-
-      - name: Seed canonical Selection and formation provenance facts
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          python scripts/e2e_seed_academic_b_selection.py
-          python scripts/e2e_seed_academic_b_w4_formation.py
-          test -s ../e2e/academic-b-w4-formation-fixture.json
 
       - name: Install, production-build and start staff PC
         run: |
