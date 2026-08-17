@@ -86,7 +86,12 @@ def _normalized(*, major_id: int, course_code: str, series_key: str):
                 "creditTarget": "3",
             }],
             "PRACTICE": [],
-            "GRADUATION": [],
+            "GRADUATION": [{
+                "programSeriesKey": series_key,
+                "programVersion": 1,
+                "category": "ABILITY",
+                "content": "完成专业综合项目并通过考核",
+            }],
             "BINDING": [],
         }
     )
@@ -143,7 +148,7 @@ def test_same_new_series_across_different_majors_serializes_to_one_create(monkey
         results = [future.result() for future in futures]
 
     assert sorted(kind for kind, _value in results) == ["error", "ok"]
-    assert next(value for kind, value in results if kind == "ok") == 2
+    assert next(value for kind, value in results if kind == "ok") == 3
     assert next(value for kind, value in results if kind == "error") == "DATA_CONFLICT"
 
     db = get_sessionmaker()()
