@@ -32,6 +32,39 @@ def _phase(preflight_result: Mapping[str, object]) -> str:
     return phase
 
 
+def _normalize_program_predecessor_aliases(
+    rows: Iterable[Mapping[str, object]],
+) -> list[dict]:
+    """Canonicalize ORM/preflight ``prevVersionId`` into post-confirm ``prevProgramId``.
+
+    ``AaProgram.prev_version_id`` points to the previous Program row.  Older
+    preflight/DB bridges expose that relationship as ``prevVersionId`` while the
+    post-confirm reconciliation contract names the same foreign key
+    ``prevProgramId``.  Accept both spellings only when they agree; conflicting
+    aliases are evidence corruption and fail closed.
+    """
+    normalized: list[dict] = []
+    for raw in rows:
+        row = dict(raw)
+        has_program_alias = "prevProgramId" in row
+        has_version_alias = "prevVersionId" in row
+        program_value = str(row.get("prevProgramId") or "").strip()
+        version_value = str(row.get("prevVersionId") or "").strip()
+        if (
+            has_program_alias
+            and has_version_alias
+            and program_value != version_value
+        ):
+            raise RuntimeError(
+                "PROGRAM_REREAD_PREDECESSOR_ALIAS_CONFLICT:"
+                f"programId={str(row.get('programId') or '').strip()}:"
+                f"prevProgramId={program_value}:prevVersionId={version_value}"
+            )
+        row["prevProgramId"] = program_value if has_program_alias else version_value
+        normalized.append(row)
+    return normalized
+
+
 def reconcile_program_confirm_reread(
     preflight_result: Mapping[str, object],
     *,
@@ -47,7 +80,7 @@ def reconcile_program_confirm_reread(
     if phase == PHASE_DEFINITION:
         program_rows = guard_definition_program_reread(
             preflight_result,
-            authoritative_program_snapshots,
+            _normalize_program_predecessor_aliases(authoritative_program_snapshots),
         )
         target_program_ids = target_program_ids_from_reread(
             preflight_result,
