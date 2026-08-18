@@ -7,7 +7,8 @@ Grade Execution live-owner authority。正式教学班存在时只认 TeachingCl
 
 该 extension router 也是 C 线执行 guard 的稳定启动点：只安装 C-owned adapter，
 不改共享 route_registration/services registry。考勤 PRIMARY/CO_TEACHER 的执行+台账+统计、
-工作量正式来源 relation-first 对账因此在同一次 academic-affairs bundle 构建时生效。
+工作量正式来源 relation-first 对账、AA_GRADE_ENTRY Todo assignee 同步因此在同一次
+academic-affairs bundle 构建时生效。
 
 老版本客户端仍可能调用 ``/mobile/teacher/academic/grade-tasks/*``。本模块在启动时
 只重绑这些 legacy service 函数到同一 live authority，不删 URL、不复制成绩状态机，
@@ -29,6 +30,7 @@ from app.modules.academic_affairs.services import academic_affairs_attendance_te
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as service
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as read_service
 from app.modules.academic_affairs.services import academic_affairs_grade_teacher_relation_guard as teacher_relation_guard
+from app.modules.academic_affairs.services import academic_affairs_grade_todo_teacher_relation_guard as grade_todo_relation_guard
 from app.modules.academic_affairs.services import academic_affairs_workload_teacher_relation_guard as workload_relation_guard
 from app.modules.academic_affairs.services import mobile_academic_affairs_public_service as mobile_public
 
@@ -38,6 +40,7 @@ teacher_relation_guard.install()
 attendance_relation_guard.install()
 attendance_relation_read_guard.install()
 workload_relation_guard.install()
+grade_todo_relation_guard.install()
 
 router = APIRouter(prefix="/mobile/teacher/academic", tags=["教师移动端-成绩录入"])
 
