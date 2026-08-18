@@ -11,18 +11,19 @@ from app.core.response import paginate, success
 from app.modules.academic_affairs.services import academic_affairs_attendance_swap_teacher_week_guard as attendance_swap_week_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_todo_teacher_relation_guard as grade_todo_relation_guard
 from app.modules.academic_affairs.services import academic_affairs_schedule_teacher_snapshot_guard as schedule_teacher_snapshot_guard
+from app.modules.academic_affairs.services import academic_affairs_teaching_class_active_guard as teaching_class_active_guard
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_query_service as query_service
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_admin_service as admin_service
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_change_service as change_service
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_teacher_service as teacher_service
 
 # Teacher-relation management may be imported independently from mobile grade routes.
-# Install explicit-topology protection, SWAP logical-week reauthorization, and the
-# schedule teacher-snapshot compatibility rule here so runtime correctness never
-# depends on router import order.
+# Install all C-owned teaching-class/teacher compatibility guards here so runtime
+# correctness never depends on router import order.
 grade_todo_relation_guard.install()
 attendance_swap_week_guard.install()
 schedule_teacher_snapshot_guard.install()
+teaching_class_active_guard.install()
 
 router = APIRouter(prefix="/academic-affairs/teaching-classes", tags=["教务中心-教学班"])
 
@@ -46,7 +47,7 @@ class TeachingClassRosterChangeBody(TeachingClassRosterPreviewBody):
 
 class TeachingClassTeacherCreateBody(BaseModel):
     teacherKey: str = Field(..., min_length=1, max_length=100)
-    roleType: str = Field(default="CO_TEACHER", pattern="^(PRIMARY|CO_TEACHER)$")
+    roleType: str = Field(default="CO_TEACHER", pattern="^CO_TEACHER$")
     startWeek: Optional[int] = Field(default=None, ge=1, le=60)
     endWeek: Optional[int] = Field(default=None, ge=1, le=60)
     reason: str = Field(..., min_length=5, max_length=500)
@@ -118,7 +119,7 @@ def teaching_class_teacher_list(
     return success({"items": teacher_service.list_relations(user, teaching_class_id)})
 
 
-@router.post("/{teaching_class_id}/teachers", summary="新增正式任课教师关系")
+@router.post("/{teaching_class_id}/teachers", summary="新增共同授课教师关系")
 def teaching_class_teacher_create(
     body: TeachingClassTeacherCreateBody,
     teaching_class_id: int = Path(..., gt=0),
@@ -128,15 +129,15 @@ def teaching_class_teacher_create(
         user,
         teaching_class_id,
         teacher_key=body.teacherKey,
-        role_type=body.roleType,
+        role_type="CO_TEACHER",
         start_week=body.startWeek,
         end_week=body.endWeek,
         reason=body.reason,
     )
-    return success(result, message="正式教师关系已生效")
+    return success(result, message="共同授课教师关系已生效")
 
 
-@router.put("/{teaching_class_id}/teachers/{relation_id}", summary="调整教师身份或有效周次")
+@router.put("/{teaching_class_id}/teachers/{relation_id}", summary="调整正式教师身份或有效周次")
 def teaching_class_teacher_update(
     body: TeachingClassTeacherUpdateBody,
     teaching_class_id: int = Path(..., gt=0),
