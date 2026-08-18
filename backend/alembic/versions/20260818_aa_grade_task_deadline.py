@@ -5,8 +5,12 @@ Revises: 20260814_merge_ix_v93_main
 
 This is an additive C-line revision. PR #148 was cut from the published
 20260814_merge_ix_v93_main head. Current main has since advanced on another
-Alembic lineage (including #145); final integration must merge the two heads
-rather than rewrite either published ancestry.
+Alembic lineage (including #145); final integration merges the two heads rather
+than rewriting either published ancestry.
+
+The application performs a friendly deadline preflight, while a MySQL BEFORE UPDATE
+trigger is the final atomic guard against a submit crossing the deadline between
+preflight and the canonical status mutation.
 """
 from __future__ import annotations
 
@@ -18,6 +22,8 @@ revision = "20260818_aa_grade_deadline"
 down_revision = "20260814_merge_ix_v93_main"
 branch_labels = None
 depends_on = None
+
+_TRIGGER = "trg_aa_grade_task_deadline_submit_guard"
 
 
 def _require_mysql() -> None:
@@ -43,9 +49,29 @@ def upgrade() -> None:
             unique=False,
         )
 
+    # App preflight and canonical submit live in separate service transactions today.
+    # The trigger closes that tiny TOCTOU window at the authoritative status mutation.
+    op.execute(f"DROP TRIGGER IF EXISTS {_TRIGGER}")
+    op.execute(
+        f"""
+        CREATE TRIGGER {_TRIGGER}
+        BEFORE UPDATE ON t_aa_grade_task
+        FOR EACH ROW
+        BEGIN
+            IF NEW.status = 'SUBMITTED'
+               AND OLD.status IN ('INPUTTING', 'RETURNED')
+               AND OLD.deadline_at IS NOT NULL
+               AND UTC_TIMESTAMP() > OLD.deadline_at THEN
+                SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'GRADE_DEADLINE_EXPIRED';
+            END IF;
+        END
+        """
+    )
+
 
 def downgrade() -> None:
     _require_mysql()
+    op.execute(f"DROP TRIGGER IF EXISTS {_TRIGGER}")
     bind = op.get_bind()
     insp = inspect(bind)
     indexes = {row["name"] for row in insp.get_indexes("t_aa_grade_task")}
