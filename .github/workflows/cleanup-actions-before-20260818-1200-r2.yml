@@ -1,0 +1,110 @@
+name: Cleanup runs before 2026-08-18 12:00 GMT+8
+
+on:
+  push:
+    branches:
+      - cleanup/actions-before-20260818-1200-r2
+    paths:
+      - .github/workflows/cleanup-actions-before-20260818-1200-r2.yml
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor == 'penghaibin9'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Cancel and delete workflow runs before cutoff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          TEMP_BRANCH: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          token = os.environ["GH_TOKEN"]
+          repo = os.environ["REPO"]
+          current_run_id = int(os.environ["CURRENT_RUN_ID"])
+          temp_branch = os.environ["TEMP_BRANCH"]
+          cutoff_range = "1970-01-01T00:00:00Z..2026-08-18T03:59:59Z"
+          api = f"https://api.github.com/repos/{repo}"
+
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "saas-actions-cleanup",
+          }
+
+          def request(method, url, data=None, allow=(200, 201, 202, 204, 404, 409)):
+              body = None if data is None else json.dumps(data).encode()
+              req = urllib.request.Request(url, data=body, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as resp:
+                      payload = resp.read()
+                      return resp.status, json.loads(payload) if payload else None
+              except urllib.error.HTTPError as exc:
+                  payload = exc.read().decode(errors="replace")
+                  if exc.code in allow:
+                      return exc.code, payload
+                  raise RuntimeError(f"{method} {url} -> {exc.code}: {payload}") from exc
+
+          def list_runs():
+              params = urllib.parse.urlencode({"created": cutoff_range, "per_page": 100})
+              status, payload = request("GET", f"{api}/actions/runs?{params}")
+              runs = payload.get("workflow_runs", []) if isinstance(payload, dict) else []
+              return [r for r in runs if int(r["id"]) != current_run_id]
+
+          deleted = 0
+          cancelled = 0
+          force_cancelled = 0
+          stagnant = 0
+          previous_ids = None
+
+          while True:
+              runs = list_runs()
+              if not runs:
+                  break
+
+              ids = tuple(sorted(int(r["id"]) for r in runs))
+              stagnant = stagnant + 1 if ids == previous_ids else 0
+              previous_ids = ids
+
+              progress = False
+              for run in runs:
+                  run_id = int(run["id"])
+                  status = run.get("status")
+                  if status == "completed":
+                      code, _ = request("DELETE", f"{api}/actions/runs/{run_id}")
+                      if code in (204, 404):
+                          deleted += 1
+                          progress = True
+                  else:
+                      endpoint = "force-cancel" if stagnant >= 3 else "cancel"
+                      code, _ = request("POST", f"{api}/actions/runs/{run_id}/{endpoint}")
+                      if code in (202, 409):
+                          if endpoint == "force-cancel":
+                              force_cancelled += 1
+                          else:
+                              cancelled += 1
+                          progress = True
+
+              print(f"batch={len(runs)} deleted={deleted} cancelled={cancelled} force_cancelled={force_cancelled} stagnant={stagnant}")
+              time.sleep(3 if progress else 8)
+
+          print(f"cleanup complete: deleted={deleted}, cancelled={cancelled}, force_cancelled={force_cancelled}")
+
+          encoded_ref = urllib.parse.quote(f"heads/{temp_branch}", safe="/")
+          code, _ = request("DELETE", f"{api}/git/refs/{encoded_ref}")
+          print(f"temporary branch delete status={code}")
+          PY
