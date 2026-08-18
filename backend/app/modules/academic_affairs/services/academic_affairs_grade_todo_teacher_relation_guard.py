@@ -114,6 +114,10 @@ _push_grade_entry_todo._grade_todo_teacher_relation_guard = True
 def _sync_primary_teacher(db, teaching_class, task) -> None:
     """Preserve mature relation sync, then repair an existing grade task Todo in-transaction."""
     _ORIGINAL_SYNC_PRIMARY(db, teaching_class, task)
+    # db_service sessions run with autoflush=False. The relation query used by Todo
+    # synchronization must observe the newly added ACTIVE row / old INACTIVE row now,
+    # not the pre-reassignment database state.
+    db.flush()
     from app.models import AaGradeTask
 
     grade_task = db.scalars(select(AaGradeTask).where(
