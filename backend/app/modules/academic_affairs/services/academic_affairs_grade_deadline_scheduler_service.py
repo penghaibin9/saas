@@ -6,6 +6,8 @@ owns only the tenant-scoped business scan:
 - 7 / 3 / 1 day milestones remind current formal grade-entry assignees;
 - upcoming tasks are locked with ``FOR UPDATE SKIP LOCKED`` so a concurrent deadline
   extension cannot race a teacher reminder;
+- the upcoming SQL excludes tasks whose current milestone dedup already exists, so a
+  large already-reminded prefix cannot consume the bounded queue forever;
 - overdue escalation is not a fixed-row queue: every admin receives a scope-filtered
   full SQL count plus a bounded oldest-50 sample, once per UTC day;
 - shared MessageEventOutbox provides delivery, retry and durable deduplication;
@@ -154,7 +156,6 @@ def _overdue_total(db) -> int:
 
 
 def _overdue_digest_rows(db, college_ids: set[int] | None) -> tuple[list[dict], int]:
-    where_scope = ""
     params: dict = {
         "tenant_id": int(grade_core._tid()),
         "sample_limit": _MAX_DIGEST_ITEMS,
@@ -255,13 +256,31 @@ def _emit_overdue_digests(db, now: datetime) -> int:
 
 
 def _locked_upcoming_rows(db, limit: int):
+    """Lock only work still missing the *current* milestone event.
+
+    The SQL milestone CASE mirrors ``_milestone_days``. When a task later crosses
+    D7→D3→D1 the dedup expression changes, so it becomes eligible again; meanwhile
+    already-emitted rows no longer consume the bounded queue.
+    """
     return db.execute(text(
-        "SELECT id, deadline_at, status FROM t_aa_grade_task "
-        "WHERE tenant_id=:tenant_id AND is_deleted=0 "
-        "AND status IN ('NOT_STARTED','INPUTTING','RETURNED') "
-        "AND deadline_at IS NOT NULL AND deadline_at > UTC_TIMESTAMP() "
-        "AND deadline_at <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 DAY) "
-        "ORDER BY deadline_at ASC, id ASC LIMIT :limit FOR UPDATE SKIP LOCKED"
+        "SELECT gt.id, gt.deadline_at, gt.status FROM t_aa_grade_task gt "
+        "WHERE gt.tenant_id=:tenant_id AND gt.is_deleted=0 "
+        "AND gt.status IN ('NOT_STARTED','INPUTTING','RETURNED') "
+        "AND gt.deadline_at IS NOT NULL AND gt.deadline_at > UTC_TIMESTAMP() "
+        "AND gt.deadline_at <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 DAY) "
+        "AND NOT EXISTS ("
+        "  SELECT 1 FROM t_message_event_outbox meo "
+        "  WHERE meo.tenant_id=gt.tenant_id AND meo.is_deleted=0 "
+        "    AND meo.dedup_key=CONCAT("
+        "      'GRADE.ENTRY_DEADLINE_REMINDER:', gt.id, ':', "
+        "      DATE_FORMAT(gt.deadline_at, '%Y%m%dT%H%i%s'), ':D', "
+        "      CASE "
+        "        WHEN TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), gt.deadline_at) <= 86400 THEN 1 "
+        "        WHEN TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), gt.deadline_at) <= 259200 THEN 3 "
+        "        ELSE 7 END"
+        "    )"
+        ") "
+        "ORDER BY gt.deadline_at ASC, gt.id ASC LIMIT :limit FOR UPDATE SKIP LOCKED"
     ), {"tenant_id": int(grade_core._tid()), "limit": int(limit)}).mappings().all()
 
 
