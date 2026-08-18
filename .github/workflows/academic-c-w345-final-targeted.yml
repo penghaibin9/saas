@@ -20,6 +20,7 @@ on:
       - 'backend/app/services/xlsx_util.py'
       - 'frontend/src/modules/academicAffairs/views/AaTeachingClassDetailView.vue'
       - 'frontend/src/modules/academicAffairs/views/AaExamSeatingPrintView.vue'
+      - 'frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue'
       - 'frontend/src/modules/academicAffairs/api/academic-exam-formal-print.api.js'
       - 'frontend/src/modules/academicAffairs/api/grade-reminder.api.js'
       - '.github/workflows/academic-c-w345-final-targeted.yml'
@@ -190,3 +191,8 @@ jobs:
           grep -q 'formal-print/issue' frontend/src/modules/academicAffairs/api/academic-exam-formal-print.api.js
           grep -q '单个补打' frontend/src/modules/academicAffairs/views/AaExamSeatingPrintView.vue
           grep -q 'extendDeadline' frontend/src/modules/academicAffairs/api/grade-reminder.api.js
+          grep -q 'v-if="canSubmit"' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
+          grep -q 'task.isOverdue === true' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
+          grep -q 'gradeReminderApi.extendDeadline' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
+          grep -q 'GRADE.ENTRY_REMINDED' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
+          ! grep -q '当前未配置独立成绩催录消息事件模板' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
