@@ -2,7 +2,7 @@
 
 Only this policy is exercised here: 7/3/1 milestone selection, formal teacher
 recipient resolution, overdue college scope, school academic visibility and durable
-outbox deduplication.  The shared delivery worker is tested elsewhere.
+outbox deduplication. The shared delivery worker is tested elsewhere.
 """
 from __future__ import annotations
 
@@ -98,15 +98,14 @@ def _college(db, name: str):
 def _college_scope(db, user, college):
     from app.models import TeacherStudentScope
 
-    row = TeacherStudentScope(
+    db.add(TeacherStudentScope(
         tenant_id=TID,
         teacher_key=user.login_name,
         role_code="COLLEGE_ADMIN",
         scope_type="COLLEGE",
         ref_value=college.college_name,
         status="ACTIVE",
-    )
-    db.add(row)
+    ))
     db.flush()
 
 
@@ -206,7 +205,14 @@ def test_grade_deadline_scheduler_teacher_and_scoped_overdue_digest(db_mode):
         teacher_key=teacher_b.login_name,
         deadline=now - timedelta(hours=3),
     )
-    task_ids = {int(upcoming.id), int(overdue_a.id), int(overdue_b.id)}
+
+    upcoming_id = int(upcoming.id)
+    overdue_a_id = int(overdue_a.id)
+    overdue_b_id = int(overdue_b.id)
+    teacher_a_id = int(teacher_a.id)
+    college_admin_a_id = int(college_admin_a.id)
+    college_admin_b_id = int(college_admin_b.id)
+    academic_admin_id = int(academic_admin.id)
     db.commit()
     db.close()
 
@@ -226,11 +232,11 @@ def test_grade_deadline_scheduler_teacher_and_scoped_overdue_digest(db_mode):
     reminder = db.query(MessageEventOutbox).filter(
         MessageEventOutbox.tenant_id == TID,
         MessageEventOutbox.event_code == "GRADE.ENTRY_DEADLINE_REMINDER",
-        MessageEventOutbox.source_biz_id == int(upcoming.id),
+        MessageEventOutbox.source_biz_id == upcoming_id,
         MessageEventOutbox.is_deleted.is_(False),
     ).order_by(MessageEventOutbox.id.desc()).first()
     assert reminder is not None
-    assert _recipient_ids(reminder) == {int(teacher_a.id)}
+    assert _recipient_ids(reminder) == {teacher_a_id}
     variables = (reminder.payload_json or {}).get("variables") or {}
     assert int(variables.get("milestoneDays")) == 7
 
@@ -240,22 +246,20 @@ def test_grade_deadline_scheduler_teacher_and_scoped_overdue_digest(db_mode):
         MessageEventOutbox.is_deleted.is_(False),
     ).all()
     by_recipient = {}
+    expected_admins = {college_admin_a_id, college_admin_b_id, academic_admin_id}
     for row in digests:
         recipients = _recipient_ids(row)
         if len(recipients) == 1:
             uid = next(iter(recipients))
-            if uid in {int(college_admin_a.id), int(college_admin_b.id), int(academic_admin.id)}:
+            if uid in expected_admins:
                 by_recipient[uid] = row
 
-    assert int(college_admin_a.id) in by_recipient
-    assert int(college_admin_b.id) in by_recipient
-    assert int(academic_admin.id) in by_recipient
+    assert expected_admins.issubset(by_recipient)
 
-    a_ids = {int(item["gradeTaskId"]) for item in _payload_items(by_recipient[int(college_admin_a.id)])}
-    b_ids = {int(item["gradeTaskId"]) for item in _payload_items(by_recipient[int(college_admin_b.id)])}
-    school_ids = {int(item["gradeTaskId"]) for item in _payload_items(by_recipient[int(academic_admin.id)])}
-    assert int(overdue_a.id) in a_ids and int(overdue_b.id) not in a_ids
-    assert int(overdue_b.id) in b_ids and int(overdue_a.id) not in b_ids
-    assert {int(overdue_a.id), int(overdue_b.id)}.issubset(school_ids)
-    assert task_ids.isdisjoint(a_ids - {int(overdue_a.id)}) or int(overdue_b.id) not in a_ids
+    a_ids = {int(item["gradeTaskId"]) for item in _payload_items(by_recipient[college_admin_a_id])}
+    b_ids = {int(item["gradeTaskId"]) for item in _payload_items(by_recipient[college_admin_b_id])}
+    school_ids = {int(item["gradeTaskId"]) for item in _payload_items(by_recipient[academic_admin_id])}
+    assert overdue_a_id in a_ids and overdue_b_id not in a_ids
+    assert overdue_b_id in b_ids and overdue_a_id not in b_ids
+    assert {overdue_a_id, overdue_b_id}.issubset(school_ids)
     db.close()
