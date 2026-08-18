@@ -1,0 +1,177 @@
+name: Academic C W3 W4 W5 Final Targeted
+
+on:
+  push:
+    branches:
+      - agent/academic-c-teaching-execution
+    paths:
+      - 'backend/alembic/versions/20260818_aa_grade_task_deadline.py'
+      - 'backend/app/modules/academic_affairs/routers/grade_core_router.py'
+      - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_print_service.py'
+      - 'backend/app/services/xlsx_util.py'
+      - 'frontend/src/modules/academicAffairs/views/AaTeachingClassDetailView.vue'
+      - 'frontend/src/modules/academicAffairs/views/AaExamSeatingPrintView.vue'
+      - 'frontend/src/modules/academicAffairs/api/academic-exam-formal-print.api.js'
+      - 'frontend/src/modules/academicAffairs/api/grade-reminder.api.js'
+      - '.github/workflows/academic-c-w345-final-targeted.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-c-w345-final-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  targeted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      APP_ENV: test
+      JWT_SECRET: academic-c-w345-final-secret-at-least-32-bytes
+      DB_ENABLED: 'true'
+      MOCK_LOGIN_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: C migration DAG and MySQL schema smoke
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          heads="$(alembic heads)"
+          echo "$heads"
+          echo "$heads" | grep -q '20260818_aa_grade_deadline (head)'
+          test "$(echo "$heads" | grep -c '(head)')" -eq 1
+          alembic upgrade head
+          mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse \
+            "SHOW COLUMNS FROM t_aa_grade_task LIKE 'deadline_at'" | grep -q deadline_at
+          mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse \
+            "SHOW COLUMNS FROM t_aa_grade_task LIKE 'deadline_updated_at'" | grep -q deadline_updated_at
+          mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse \
+            "SHOW INDEX FROM t_aa_grade_task WHERE Key_name='ix_aa_grade_task_deadline'" | grep -q ix_aa_grade_task_deadline
+
+      - name: Compile affected production modules
+        working-directory: backend
+        run: |
+          python -m py_compile \
+            app/modules/academic_affairs/routers/grade_core_router.py \
+            app/modules/academic_affairs/routers/exam_incident_closure_router.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py \
+            app/modules/academic_affairs/services/academic_affairs_exam_print_service.py \
+            app/services/xlsx_util.py
+
+      - name: C-W3 W4 W5 source contracts
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from tempfile import NamedTemporaryFile
+          from openpyxl import Workbook
+          from app.services import xlsx_util
+
+          root = Path('.')
+          grade_router = (root / 'app/modules/academic_affairs/routers/grade_core_router.py').read_text(encoding='utf-8')
+          deadline = (root / 'app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py').read_text(encoding='utf-8')
+          reminder = (root / 'app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py').read_text(encoding='utf-8')
+          event_guard = (root / 'app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py').read_text(encoding='utf-8')
+          grade_xlsx = (root / 'app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py').read_text(encoding='utf-8')
+          exam_print = (root / 'app/modules/academic_affairs/services/academic_affairs_exam_print_service.py').read_text(encoding='utf-8')
+
+          assert '/extend-deadline' in grade_router
+          assert 'grade_deadline_svc.teacher_submit_task' in grade_router
+          assert 'read_grade_upload_path' in grade_router
+          assert 'read_safe_upload(file)' not in grade_router
+          assert 'GRADE_DEADLINE_EXPIRED' in deadline
+          assert '_check_college_scope' in deadline
+          assert 'GRADE.ENTRY_REMINDED' in reminder and 'messagePushReady": True' in reminder
+          assert 'GRADE.ENTRY_REMINDED' in event_guard
+          assert 'validate_xlsx_path' in grade_xlsx and 'zipfile' not in grade_xlsx
+          assert 'EXAM_TICKET_PRINT' in exam_print and 'printSequence' in exam_print
+
+          with NamedTemporaryFile(suffix='.xlsx') as tmp:
+              wb = Workbook()
+              ws = wb.active
+              ws.append(['学号', '期末分'])
+              ws.append(['20260001', 90])
+              wb.save(tmp.name)
+              xlsx_util.validate_xlsx_path(tmp.name)
+          print('C-W3/W4/W5 source contracts=ok')
+          PY
+
+      - name: Targeted mature Grade and Exam regression on MySQL
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_aa_exam_facade_contract_and_changes.py \
+            tests/test_aa_exam_fact_guards.py \
+            tests/test_aa_effective_grade_identity.py \
+            tests/test_aa_grade_recheck_concurrency.py \
+            tests/test_aa_p0_hardening_20260804.py \
+            -p no:warnings --durations=20
+
+      - name: Frontend production build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Frontend source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '新增共同授课' frontend/src/modules/academicAffairs/views/AaTeachingClassDetailView.vue
+          grep -q 'deactivateTeacher' frontend/src/modules/academicAffairs/views/AaTeachingClassDetailView.vue
+          grep -q 'formal-print/issue' frontend/src/modules/academicAffairs/api/academic-exam-formal-print.api.js
+          grep -q '单个补打' frontend/src/modules/academicAffairs/views/AaExamSeatingPrintView.vue
+          grep -q 'extendDeadline' frontend/src/modules/academicAffairs/api/grade-reminder.api.js
