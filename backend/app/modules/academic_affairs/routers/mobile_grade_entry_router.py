@@ -2,12 +2,12 @@
 
 既有 legacy 单生录入/提交 URL 继续保留兼容；C-W5 新增 ``grade-execution``
 同源入口，任务列表、名单回显、单生保存、整批保存、质量报告和提交全部统一走
-Grade Execution live-owner authority。这样教师替换后旧教师立即失权，新教师无需改写
-AaGradeTask.teacher_key 历史快照即可继续 canonical 成绩状态机。
+Grade Execution live-owner authority。正式教学班存在时只认 TeachingClassTeacher + 有效周次；
+尚未投影教学班的历史数据才允许 AaTeachingTask 迁移回退。
 
 老版本客户端仍可能调用 ``/mobile/teacher/academic/grade-tasks/*``。本模块在启动时
 只重绑这些 legacy service 函数到同一 live authority，不删 URL、不复制成绩状态机，
-从而避免兼容入口变成旧教师绕过实时任课关系的后门。
+从而避免兼容入口变成旧教师绕过正式任课关系的后门。
 """
 from __future__ import annotations
 
@@ -22,7 +22,12 @@ from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as service
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as read_service
+from app.modules.academic_affairs.services import academic_affairs_grade_teacher_relation_guard as teacher_relation_guard
 from app.modules.academic_affairs.services import mobile_academic_affairs_public_service as mobile_public
+
+# This router can be imported before the PC grade router; install the same formal
+# teacher relation primitive locally so mobile execution never depends on router order.
+teacher_relation_guard.install()
 
 router = APIRouter(prefix="/mobile/teacher/academic", tags=["教师移动端-成绩录入"])
 
