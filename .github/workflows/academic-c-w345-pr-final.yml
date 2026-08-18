@@ -106,8 +106,11 @@ jobs:
           assert 'deadline_service.teacher_submit_task' in mobile and '_quality_report_with_deadline' in mobile
           assert 'service.teacher_submit_task(' not in mobile
           assert 'GRADE_DEADLINE_EXPIRED' in d and '_check_college_scope' in d and 'DBAPIError' in d
+          assert '_DEADLINE_MUTABLE_STATES = {"NOT_STARTED", "INPUTTING", "RETURNED"}' in d
+          assert 'if state not in _DEADLINE_MUTABLE_STATES' in d
           assert 'CREATE TRIGGER' in m and 'UTC_TIMESTAMP()' in m and 'GRADE_DEADLINE_EXPIRED' in m
           assert 'deadline_projection_map' in q and '_deadline.deadline_projection(db' not in q and 'not deadline_overdue' in q
+          assert 'actions.extend(["EXTEND_DEADLINE", "REMIND"])' in q
           assert 'class_authority_weeks' in q and 'class_authority_weeks' in a
           assert 'validate_xlsx_path' in x and 'zipfile' not in x
           assert 'GRADE.ENTRY_REMINDED' in r and 'messagePushReady": True' in r
