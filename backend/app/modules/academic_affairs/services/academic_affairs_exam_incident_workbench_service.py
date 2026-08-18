@@ -4,12 +4,16 @@
 ``list_incidents`` 却只返回 ``status=ACTIVE`` 的少数字段，使已移交/已关闭/已作废事实在工作台
 消失。本 provider 只消费 ``AaExamIncident`` 当前事实和 ``AaExamAuditTrail`` append-only 闭环
 证据，保留完整历史；不修改 record/resolve/archive Authority，也不为读取补写任何状态。
+
+C-W3 scale guard：闭环分类由持久化 incident facts 决定，因此 ALL/OPEN/CLOSED/VOIDED 过滤、
+总量和三类计数全部下推 SQL；审计证据只读取当前页 incident IDs，不再整范围 ``.all()`` 后
+Python 切片。
 """
 from __future__ import annotations
 
 import importlib
 
-from sqlalchemy import or_, select
+from sqlalchemy import case, func, or_, select
 
 from app.core.affairs_security import _derive_keys, no_data_scope
 from app.services.db_service import _iso, _tid
@@ -34,6 +38,20 @@ def _closure_from_facts(incident) -> str:
     if str(incident.incident_type or "").upper() == "ABSENT" and bool(incident.risk_alert_sent):
         return "RISK_TRANSFERRED"
     return "OPEN"
+
+
+def _closure_sql(AaExamIncident):
+    """Same precedence as ``_closure_from_facts`` for SQL filtering/counts."""
+    return case(
+        (func.upper(func.coalesce(AaExamIncident.status, "")) == "VOIDED", "VOIDED"),
+        (func.length(func.trim(func.coalesce(AaExamIncident.discipline_case_ref, ""))) > 0, "CASE_LINKED"),
+        (
+            (func.upper(func.coalesce(AaExamIncident.incident_type, "")) == "ABSENT")
+            & (AaExamIncident.risk_alert_sent.is_(True)),
+            "RISK_TRANSFERRED",
+        ),
+        else_="OPEN",
+    )
 
 
 def _audit_detail(detail: str | None) -> dict[str, str]:
@@ -66,39 +84,13 @@ def _invigilated_course_ids(db, teacher_keys: set[str]) -> set[int]:
     return {int(course_id) for (course_id,) in rows if course_id}
 
 
-def project_incident_workbench(
-    db,
-    user,
-    *,
-    batch_id: int | None = None,
-    view: str = "ALL",
-    page: int = 1,
-    page_size: int = 50,
-) -> dict:
-    """返回当前权限范围内的考场异常全生命周期历史。
-
-    ``view`` 只接受 ALL/OPEN/CLOSED/VOIDED。CLOSED 是 CASE_LINKED 与 RISK_TRANSFERRED 的
-    展示分组，不创造数据库新状态。分页在完成闭环事实推导后执行，避免旧接口先丢掉历史记录。
-    三个状态计数始终基于同一 batch/data-scope 下的完整事实集，切换列表 view 不改变总览。
-    """
-    from app.models import (
-        AaExamAuditTrail,
-        AaExamBatch,
-        AaExamCourse,
-        AaExamIncident,
-        AaExamRoom,
-    )
+def _scoped_query(db, user, *, batch_id=None):
+    from app.models import AaExamBatch, AaExamCourse, AaExamIncident, AaExamRoom
 
     if str((user or {}).get("userType") or "").upper() == "STUDENT":
         raise no_data_scope("学生无权访问考场异常工作台")
 
     context = _legacy._ctx(user, db)
-    requested_view = str(view or "ALL").strip().upper()
-    if requested_view not in {"ALL", "OPEN", "CLOSED", "VOIDED"}:
-        requested_view = "ALL"
-    page = max(1, int(page or 1))
-    page_size = min(100, max(1, int(page_size or 50)))
-
     query = (
         select(AaExamIncident, AaExamCourse, AaExamBatch, AaExamRoom)
         .join(AaExamCourse, AaExamCourse.id == AaExamIncident.exam_course_id)
@@ -129,8 +121,62 @@ def project_incident_workbench(
         if not scope_terms:
             raise no_data_scope("当前账号没有可查看的考场异常范围")
         query = query.where(or_(*scope_terms))
+    return query
 
-    rows = db.execute(query.order_by(AaExamIncident.id.desc())).all()
+
+def project_incident_workbench(
+    db,
+    user,
+    *,
+    batch_id: int | None = None,
+    view: str = "ALL",
+    page: int = 1,
+    page_size: int = 50,
+) -> dict:
+    """返回当前权限范围内的考场异常全生命周期历史，SQL 真分页。"""
+    from app.models import AaExamAuditTrail, AaExamIncident
+
+    requested_view = str(view or "ALL").strip().upper()
+    if requested_view not in {"ALL", "OPEN", "CLOSED", "VOIDED"}:
+        requested_view = "ALL"
+    page = max(1, int(page or 1))
+    page_size = min(100, max(1, int(page_size or 50)))
+
+    scoped = _scoped_query(db, user, batch_id=batch_id)
+    closure = _closure_sql(AaExamIncident)
+    scoped_subquery = scoped.with_only_columns(
+        AaExamIncident.id.label("incident_id"),
+        closure.label("closure_status"),
+    ).subquery()
+
+    counts = db.execute(
+        select(
+            func.count(scoped_subquery.c.incident_id),
+            func.coalesce(func.sum(case((scoped_subquery.c.closure_status == "OPEN", 1), else_=0)), 0),
+            func.coalesce(func.sum(case((scoped_subquery.c.closure_status.in_(["CASE_LINKED", "RISK_TRANSFERRED"]), 1), else_=0)), 0),
+            func.coalesce(func.sum(case((scoped_subquery.c.closure_status == "VOIDED", 1), else_=0)), 0),
+        )
+    ).one()
+    all_total, open_count, closed_count, voided_count = [int(value or 0) for value in counts]
+
+    list_query = scoped
+    if requested_view == "OPEN":
+        list_query = list_query.where(closure == "OPEN")
+        total = open_count
+    elif requested_view == "CLOSED":
+        list_query = list_query.where(closure.in_(["CASE_LINKED", "RISK_TRANSFERRED"]))
+        total = closed_count
+    elif requested_view == "VOIDED":
+        list_query = list_query.where(closure == "VOIDED")
+        total = voided_count
+    else:
+        total = all_total
+
+    rows = db.execute(
+        list_query.order_by(AaExamIncident.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
     incident_ids = [int(incident.id) for incident, _course, _batch, _room in rows]
     audits = []
     if incident_ids:
@@ -144,15 +190,15 @@ def project_incident_workbench(
     for audit in audits:
         latest_audit.setdefault(int(audit.biz_id), audit)
 
-    all_items = []
+    items = []
     for incident, course, batch, room in rows:
-        closure = _closure_from_facts(incident)
+        closure_status = _closure_from_facts(incident)
         audit = latest_audit.get(int(incident.id))
         detail = _audit_detail(audit.detail if audit else "")
         audit_closure = _CLOSURE_ACTIONS.get(str(audit.action or ""), "") if audit else ""
         # Persisted facts are authoritative. Audit may only corroborate them; any disagreement is surfaced.
-        evidence_consistent = not audit_closure or audit_closure == closure
-        all_items.append({
+        evidence_consistent = not audit_closure or audit_closure == closure_status
+        items.append({
             "incidentId": str(incident.id),
             "examRoomId": str(incident.exam_room_id) if incident.exam_room_id else None,
             "examCourseId": str(course.id),
@@ -176,7 +222,7 @@ def project_incident_workbench(
             "status": incident.status,
             "riskAlertSent": bool(incident.risk_alert_sent),
             "disciplineCaseRef": incident.discipline_case_ref or "",
-            "closureStatus": closure,
+            "closureStatus": closure_status,
             "resolutionAction": str(audit.action or "").removeprefix("EXAM_INCIDENT_") if audit else "",
             "resolutionReason": detail.get("reason", ""),
             "resolvedBy": audit.operator if audit else "",
@@ -184,30 +230,13 @@ def project_incident_workbench(
             "closureEvidenceConsistent": evidence_consistent,
         })
 
-    if requested_view == "OPEN":
-        items = [item for item in all_items if item["closureStatus"] == "OPEN"]
-    elif requested_view == "CLOSED":
-        items = [
-            item for item in all_items
-            if item["closureStatus"] in {"CASE_LINKED", "RISK_TRANSFERRED"}
-        ]
-    elif requested_view == "VOIDED":
-        items = [item for item in all_items if item["closureStatus"] == "VOIDED"]
-    else:
-        items = all_items
-
-    total = len(items)
-    start = (page - 1) * page_size
-    paged = items[start:start + page_size]
     return {
-        "items": paged,
+        "items": items,
         "total": total,
         "page": page,
         "pageSize": page_size,
-        "openCount": sum(1 for item in all_items if item["closureStatus"] == "OPEN"),
-        "closedCount": sum(
-            1 for item in all_items if item["closureStatus"] in {"CASE_LINKED", "RISK_TRANSFERRED"}
-        ),
-        "voidedCount": sum(1 for item in all_items if item["closureStatus"] == "VOIDED"),
+        "openCount": open_count,
+        "closedCount": closed_count,
+        "voidedCount": voided_count,
         "source": "CANONICAL_EXAM_INCIDENT_FACTS",
     }
