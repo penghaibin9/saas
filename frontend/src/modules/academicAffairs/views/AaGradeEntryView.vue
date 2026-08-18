@@ -7,7 +7,7 @@
   >
     <template #actions>
       <AppButton @click="$router.push('/admin/academic-affairs/grade-overview')">成绩总览</AppButton>
-      <AppButton @click="loadTasks">我的录入任务</AppButton>
+      <AppButton @click="loadTasks">{{ isAdminRole ? '成绩任务' : '我的录入任务' }}</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -45,12 +45,13 @@
         <div class="aa-actions"><AppButton variant="primary" :loading="creating" @click="createTask">创建任务</AppButton></div>
 
         <div v-if="myTasks.length" class="aa-my-tasks">
-          <h4>我的录入任务</h4>
+          <h4>{{ isAdminRole ? '成绩任务' : '我的录入任务' }}</h4>
           <ul>
             <li v-for="t in myTasks" :key="t.gradeTaskId" class="aa-my-task-item">
               <span>{{ t.courseName }}<small v-if="t.courseId"> · 课程ID {{ t.courseId }}</small></span>
               <AppStatusTag :type="statusColor(t.status)" dot>{{ statusLabel(t.status) }}</AppStatusTag>
               <button class="mp-link" @click="openTask(t)">进入</button>
+              <button v-if="canRemind(t)" class="mp-link aa-remind-link" @click.stop="openReminder(t)">催录</button>
             </li>
           </ul>
         </div>
@@ -183,6 +184,22 @@
         </AppSectionCard>
       </template>
     </div>
+
+    <AppConfirmDialog
+      v-model:visible="reminderVisible"
+      title="催录成绩"
+      :message="reminderTask ? `将刷新《${reminderTask.courseName || '课程'}》当前正式任课教师的待录待办。` : ''"
+      type="warning"
+      confirm-text="确认催录"
+      require-reason
+      reason-label="催录说明"
+      reason-placeholder="例如：请于本周内完成成绩录入并提交学院审核"
+      :reason-min-length="2"
+      :loading="reminding"
+      @confirm="confirmReminder"
+    >
+      <p class="mp-note">仅刷新系统内 AA_GRADE_ENTRY 待办；当前未配置独立成绩催录消息事件模板，因此不会伪装成已发送站内信/短信。</p>
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -190,7 +207,7 @@
 import { ModulePageShell, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import {
-  AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect,
+  AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppConfirmDialog,
   AppClassPicker, AppStudentPicker, AppTeachingTaskPicker,
   AppCoursePicker, AppTermEntityPicker
 } from '@/components/common'
@@ -198,6 +215,7 @@ import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { gradeIdentityApi } from '@/modules/academicAffairs/api/grade-identity.api'
 import { academicAffairsR10Api } from '@/modules/academicAffairs/api/academic-affairs-r10.api'
+import { gradeReminderApi } from '@/modules/academicAffairs/api/grade-reminder.api'
 import { toast } from '@/utils/toast'
 
 const TASK_STATUS = {
@@ -206,13 +224,13 @@ const TASK_STATUS = {
   RETURNED: '已退回', ARCHIVED: '已归档'
 }
 const EDITABLE_STATUS = new Set(['NOT_STARTED', 'INPUTTING', 'RETURNED'])
-const ADMIN_ROLES = new Set(['SCHOOL_ADMIN', 'ACADEMIC_ADMIN', 'JWC_ADMIN', 'PLATFORM_SUPER_ADMIN'])
+const ADMIN_ROLES = new Set(['SCHOOL_ADMIN', 'ACADEMIC_ADMIN', 'JWC_ADMIN', 'PLATFORM_SUPER_ADMIN', 'COLLEGE_ADMIN'])
 
 export default {
   name: 'AaGradeEntryView',
   components: {
     ModulePageShell, EmptyState, LoadingState, ErrorState, AppButton, AppSectionCard,
-    AppStatusTag, AppInlineAlert, AppSelect, AppExcelImportDrawer, AppClassPicker,
+    AppStatusTag, AppInlineAlert, AppSelect, AppConfirmDialog, AppExcelImportDrawer, AppClassPicker,
     AppStudentPicker, AppTeachingTaskPicker, AppCoursePicker, AppTermEntityPicker
   },
   props: { ctx: { type: Object, required: true } },
@@ -226,6 +244,7 @@ export default {
       creating: false, task: null, myTasks: [],
       candidateStudentId: '', loadingRoster: false, rows: [], submitting: false,
       importVisible: false,
+      reminderVisible: false, reminderTask: null, reminding: false,
       dynamicMode: false, dynamicLoading: false, dynamicError: '', dynamicData: null,
       schemeDraft: [], schemeSaving: false, dynamicSavingId: ''
     }
@@ -257,6 +276,27 @@ export default {
       if (['RETURNED'].includes(status)) return 'warning'
       if (['SUBMITTED', 'COLLEGE_REVIEW', 'ACADEMIC_REVIEW'].includes(status)) return 'primary'
       return 'default'
+    },
+    canRemind(row) {
+      return this.isAdminRole && Array.isArray(row?.allowedActions) && row.allowedActions.includes('REMIND')
+    },
+    openReminder(row) {
+      if (!this.canRemind(row)) return
+      this.reminderTask = row
+      this.reminderVisible = true
+    },
+    async confirmReminder({ reason }) {
+      if (!this.reminderTask || this.reminding) return
+      this.reminding = true
+      const res = await gradeReminderApi.remind(this.reminderTask.gradeTaskId, reason)
+      this.reminding = false
+      if (res.code === 0) {
+        const count = Number(res.data?.remindedCount || 0)
+        toast.success(`已刷新 ${count} 位当前任课教师的待录待办`)
+        this.reminderVisible = false
+        this.reminderTask = null
+        await this.loadTasks()
+      } else toast.error(res.message || '催录失败')
     },
     closeTask() {
       this.task = null; this.rows = []; this.dynamicData = null; this.dynamicMode = false
@@ -472,5 +512,6 @@ export default {
 .aa-scheme-list { display: flex; flex-direction: column; gap: 8px; }.aa-scheme-row { display: flex; align-items: center; gap: 10px; }.aa-code { width: 150px; }.aa-name { flex: 1; }.aa-weight { width: 110px; }.aa-required { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; }.is-danger { color: var(--danger-600, #dc2626); }
 .aa-my-tasks { margin-top: 20px; border-top: 1px solid var(--border-100, #f0f1f2); padding-top: 16px; }.aa-my-tasks h4 { margin: 0 0 10px; font-size: 14px; }
 .aa-my-tasks ul { list-style: none; margin: 0; padding: 0; }.aa-my-task-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 14px; }.aa-my-task-item small { color: var(--text-500, #64748b); }
+.aa-remind-link { color: var(--warning-700, #b45309); }
 @media (max-width: 760px) { .aa-grid2 { grid-template-columns: 1fr; }.aa-scheme-row { align-items: stretch; flex-direction: column; }.aa-code, .aa-weight { width: 100%; } }
 </style>
