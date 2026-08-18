@@ -1,10 +1,10 @@
 """D8-U2 / C-W5 成绩任务列表只读 SQL 分页。
 
 GET /grade-tasks keeps COUNT + LIMIT/OFFSET in SQL. For teacher-facing scope the
-formal authority is ``AaTeachingClassTeacher`` + effective teaching week whenever a
-teaching-class projection exists. ``AaTeachingTask.teacher_key`` is used only for
-not-yet-projected migration data; ``AaGradeTask.teacher_key`` is only a final
-compatibility scope for tasks with no teaching_task_id.
+formal authority is ``AaTeachingClassTeacher`` + the linked TeachingTask's effective
+window whenever a teaching-class projection exists. ``AaTeachingTask.teacher_key``
+is used only for not-yet-projected migration data; ``AaGradeTask.teacher_key`` is
+only a final compatibility scope for tasks with no teaching_task_id.
 
 The projection publishes one status/action/authority vocabulary for PC and miniapp.
 Deadline fields are intentionally absent until the INT-owned GradeTask deadline
@@ -25,7 +25,7 @@ _TEACHER_EDITABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 
 
 def _user_relation_task_ids(db, user) -> set[int]:
-    """Resolve this teacher's formal task IDs using active relation + effective week."""
+    """Resolve this teacher's formal task IDs using task-clamped non-occurrence week."""
     from app.models import AaTeachingClass, AaTeachingClassTeacher
 
     keys = sorted(_teacher_authority.user_keys(user))
@@ -44,15 +44,14 @@ def _user_relation_task_ids(db, user) -> set[int]:
             AaTeachingClass.is_deleted.is_(False),
         )
     ).all()
-    week_by_term: dict[int, int | None] = {}
     task_ids: set[int] = set()
+    week_by_class: dict[int, int | None] = {}
     for relation, teaching_class in rows:
-        term_id = int(teaching_class.term_id)
-        if term_id not in week_by_term:
-            week_by_term[term_id] = _teacher_authority.authority_week(db, term_id)
-        week = week_by_term[term_id]
+        class_id = int(teaching_class.id)
+        if class_id not in week_by_class:
+            week_by_class[class_id] = _teacher_authority.class_authority_week(db, teaching_class)
+        week = week_by_class[class_id]
         if (relation.start_week is not None or relation.end_week is not None) and week is None:
-            # A bounded relation without a resolvable term week is not safe to expose.
             continue
         if _teacher_authority.relation_covers_week(relation, week):
             task_ids.add(int(teaching_class.teaching_task_id))
@@ -149,13 +148,9 @@ def _formal_teacher_projection(db, teaching_task_ids) -> dict[int, dict]:
     for relation in relation_rows:
         relations_by_class[int(relation.teaching_class_id)].append(relation)
 
-    week_by_term: dict[int, int | None] = {}
     result: dict[int, dict] = {}
     for teaching_class in classes:
-        term_id = int(teaching_class.term_id)
-        if term_id not in week_by_term:
-            week_by_term[term_id] = _teacher_authority.authority_week(db, term_id)
-        week = week_by_term[term_id]
+        week = _teacher_authority.class_authority_week(db, teaching_class)
         candidates = []
         relation_error = False
         for relation in relations_by_class.get(int(teaching_class.id), []):
@@ -174,7 +169,7 @@ def _formal_teacher_projection(db, teaching_task_ids) -> dict[int, dict]:
             "teacherKeys": [str(row.teacher_key) for row in candidates if row.teacher_key],
             "teacherNames": [str(row.teacher_name or "") for row in candidates],
             "authorityReady": str(teaching_class.status or "").upper() == "ACTIVE" and bool(candidates) and not relation_error,
-            "authorityError": "TERM_WEEK_UNRESOLVED" if relation_error else "",
+            "authorityError": "TASK_WEEK_UNRESOLVED" if relation_error else "",
         }
     return result
 
