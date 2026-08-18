@@ -8,10 +8,16 @@ from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
+from app.modules.academic_affairs.services import academic_affairs_grade_todo_teacher_relation_guard as grade_todo_relation_guard
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_query_service as query_service
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_admin_service as admin_service
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_change_service as change_service
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_teacher_service as teacher_service
+
+# Teacher-relation management may be imported independently from mobile grade routes.
+# Install explicit-topology protection here too so a later ensure/backfill cannot
+# rewrite CO_TEACHER or split-week relations through the legacy PRIMARY synchronizer.
+grade_todo_relation_guard.install()
 
 router = APIRouter(prefix="/academic-affairs/teaching-classes", tags=["教务中心-教学班"])
 
