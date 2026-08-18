@@ -25,7 +25,6 @@ from . import academic_affairs_teacher_relation_authority as _teacher_authority
 _MAX_PAGE_SIZE = 200
 _TEACHER_EDITABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 _REMINDABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
-_FINAL_STATES = {"PUBLISHED", "ARCHIVED"}
 
 
 def _user_relation_task_ids(db, user) -> set[int]:
@@ -187,10 +186,8 @@ def _allowed_actions(task, user, authority_ready: bool, *, deadline_overdue: boo
         role = "SCHOOL_ADMIN"
 
     if role in {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}:
-        if status not in _FINAL_STATES:
-            actions.append("EXTEND_DEADLINE")
         if status in _REMINDABLE:
-            actions.append("REMIND")
+            actions.extend(["EXTEND_DEADLINE", "REMIND"])
         if status == "ACADEMIC_REVIEW":
             actions.extend(["PUBLISH", "RETURN"])
         if status == "PUBLISHED":
@@ -198,10 +195,8 @@ def _allowed_actions(task, user, authority_ready: bool, *, deadline_overdue: boo
         return actions
 
     if role == "COLLEGE_ADMIN":
-        if status not in _FINAL_STATES:
-            actions.append("EXTEND_DEADLINE")
         if status in _REMINDABLE:
-            actions.append("REMIND")
+            actions.extend(["EXTEND_DEADLINE", "REMIND"])
         if status == "SUBMITTED":
             actions.append("COLLEGE_REVIEW")
         return actions
