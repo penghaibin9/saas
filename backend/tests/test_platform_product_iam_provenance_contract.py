@@ -27,6 +27,43 @@ def test_product_iam_draft_stores_server_deployed_sha(monkeypatch):
     assert seen["source_commit_sha"] == DEPLOYED
 
 
+def test_product_iam_draft_uses_immutable_release_marker_when_env_absent(monkeypatch, tmp_path):
+    monkeypatch.delenv("DEPLOYED_COMMIT_SHA", raising=False)
+    marker = tmp_path / ".release-commit"
+    marker.write_text(DEPLOYED + "\n", encoding="utf-8")
+    monkeypatch.setenv("DEPLOYED_COMMIT_FILE", str(marker))
+    seen = {}
+
+    def create(**kwargs):
+        seen.update(kwargs)
+        return {"sourceCommitSha": kwargs["source_commit_sha"]}
+
+    monkeypatch.setattr(iam._base, "create_release_draft", create)
+    out = iam.create_release_draft(
+        reason="release governance",
+        source_commit_sha=DEPLOYED,
+        request_id="request-marker-0001",
+        actor={"userId": "root-1"},
+    )
+    assert out["sourceCommitSha"] == DEPLOYED
+    assert seen["source_commit_sha"] == DEPLOYED
+
+
+def test_product_iam_invalid_explicit_env_fails_closed_even_with_marker(monkeypatch, tmp_path):
+    marker = tmp_path / ".release-commit"
+    marker.write_text(DEPLOYED + "\n", encoding="utf-8")
+    monkeypatch.setenv("DEPLOYED_COMMIT_FILE", str(marker))
+    monkeypatch.setenv("DEPLOYED_COMMIT_SHA", "not-a-sha")
+    with pytest.raises(AppException) as exc:
+        iam.create_release_draft(
+            reason="release governance",
+            source_commit_sha="",
+            request_id="request-marker-0002",
+            actor={"userId": "root-1"},
+        )
+    assert getattr(exc.value, "biz_code", getattr(exc.value, "code", "")) == "PRODUCT_IAM_PROVENANCE_UNAVAILABLE"
+
+
 def test_product_iam_draft_rejects_client_commit_mismatch_before_writer(monkeypatch):
     monkeypatch.setenv("DEPLOYED_COMMIT_SHA", DEPLOYED)
     monkeypatch.setattr(
@@ -74,6 +111,7 @@ def test_product_iam_publish_keeps_canonical_digest_gate(monkeypatch):
 
 def test_product_iam_provenance_fails_closed_when_deployed_sha_missing(monkeypatch):
     monkeypatch.delenv("DEPLOYED_COMMIT_SHA", raising=False)
+    monkeypatch.delenv("DEPLOYED_COMMIT_FILE", raising=False)
     with pytest.raises(AppException) as exc:
         iam.create_release_draft(
             reason="release governance",

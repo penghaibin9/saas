@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 
 from app.core.exceptions import AppException
 from app.modules.platform.services import platform_product_iam_service as _base
@@ -17,14 +18,38 @@ _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _deployed_commit_sha() -> str:
-    value = str(os.getenv("DEPLOYED_COMMIT_SHA", "") or "").strip().lower()
-    if not _SHA_RE.fullmatch(value):
+    configured = str(os.getenv("DEPLOYED_COMMIT_SHA", "") or "").strip().lower()
+    if configured:
+        if _SHA_RE.fullmatch(configured):
+            return configured
         raise AppException(
             "PRODUCT_IAM_PROVENANCE_UNAVAILABLE",
-            "部署环境未提供有效的 40 位 DEPLOYED_COMMIT_SHA，禁止创建或发布 Product IAM 版本",
+            "DEPLOYED_COMMIT_SHA 已配置但不是有效的 40 位 Git SHA，禁止创建或发布 Product IAM 版本",
             http_status=503,
         )
-    return value
+
+    marker_paths: list[Path] = []
+    explicit_marker = str(os.getenv("DEPLOYED_COMMIT_FILE", "") or "").strip()
+    if explicit_marker:
+        marker_paths.append(Path(explicit_marker))
+    try:
+        marker_paths.append(Path(__file__).resolve().parents[5] / ".release-commit")
+    except IndexError:
+        pass
+
+    for marker in marker_paths:
+        try:
+            value = marker.read_text(encoding="utf-8").strip().lower()
+        except (OSError, UnicodeError):
+            continue
+        if _SHA_RE.fullmatch(value):
+            return value
+
+    raise AppException(
+        "PRODUCT_IAM_PROVENANCE_UNAVAILABLE",
+        "部署环境既没有有效 DEPLOYED_COMMIT_SHA，也没有可验证的不可变 .release-commit，禁止创建或发布 Product IAM 版本",
+        http_status=503,
+    )
 
 
 def _assert_expected_commit(expected: str, deployed: str) -> None:

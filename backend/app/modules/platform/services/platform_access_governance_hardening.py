@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import os
 
+from sqlalchemy import select
+
 from app.core.exceptions import AppException
+from app.db.session import get_sessionmaker
 from app.modules.platform.services import platform_access_governance_runtime as _runtime
 
 _REVIEW_TYPES = frozenset({_runtime.ASSIGNMENT, _runtime.ELEVATION, _runtime.SUPPORT})
@@ -100,6 +103,32 @@ def _review_scope(payload: dict) -> dict:
     return {"configTypes": config_types, "tenantIds": tenant_ids}
 
 
+def _bounded_review_records(config_type: str, *, tenant_ids: list[int], limit: int) -> list[dict]:
+    """Read only the active rows needed to prove the review fits its hard bound.
+
+    The legacy list API intentionally serves operator screens and is unbounded.
+    Access-review creation is different: it must never hydrate an arbitrarily
+    large PlatformConfig set merely to discover that the campaign is too large.
+    """
+    from app.models import PlatformConfig
+
+    db = get_sessionmaker()()
+    try:
+        query = select(PlatformConfig).where(
+            PlatformConfig.config_type == config_type,
+            PlatformConfig.is_deleted.is_(False),
+            PlatformConfig.enabled.is_(True),
+        )
+        if tenant_ids:
+            query = query.where(PlatformConfig.tenant_id.in_(tuple(int(value) for value in tenant_ids)))
+        rows = db.scalars(
+            query.order_by(PlatformConfig.id.desc()).limit(int(limit))
+        ).all()
+        return [_runtime._base._row_to_dict(row) for row in rows]
+    finally:
+        db.close()
+
+
 def create_access_review(payload: dict, *, actor: dict) -> dict:
     """Create one bounded, server-derived review snapshot.
 
@@ -129,7 +158,13 @@ def create_access_review(payload: dict, *, actor: dict) -> dict:
     tenant_filter = set(scope["tenantIds"])
     snapshots: list[dict] = []
     for config_type in scope["configTypes"]:
-        for item in _runtime.list_records(config_type):
+        remaining = max_items - len(snapshots)
+        rows = _bounded_review_records(
+            config_type,
+            tenant_ids=scope["tenantIds"],
+            limit=remaining + 1,
+        )
+        for item in rows:
             if str(item.get("status") or "ACTIVE").upper() != "ACTIVE":
                 continue
             tenant_id = int(item.get("tenantId") or 0)

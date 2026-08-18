@@ -6,8 +6,8 @@ from app.modules.platform.services import platform_access_governance_hardening a
 
 def test_review_create_rejects_client_snapshot_injection_before_reads(monkeypatch):
     monkeypatch.setattr(
-        pam._runtime,
-        "list_records",
+        pam,
+        "_bounded_review_records",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must reject before authority reads")),
     )
     with pytest.raises(AppException) as exc:
@@ -32,7 +32,13 @@ def test_review_create_filters_server_snapshot_by_exact_scope(monkeypatch):
         ],
     }
     seen = {}
-    monkeypatch.setattr(pam._runtime, "list_records", lambda config_type, **_kwargs: list(rows[config_type]))
+    reads = []
+
+    def bounded(config_type, *, tenant_ids, limit):
+        reads.append((config_type, list(tenant_ids), limit))
+        return list(rows[config_type])
+
+    monkeypatch.setattr(pam, "_bounded_review_records", bounded)
 
     def save(config_type, data, **kwargs):
         seen.update(config_type=config_type, data=data, kwargs=kwargs)
@@ -50,6 +56,7 @@ def test_review_create_filters_server_snapshot_by_exact_scope(monkeypatch):
     assert [item["recordId"] for item in out["items"]] == ["s-7"]
     assert out["scope"] == {"configTypes": [pam._runtime.SUPPORT], "tenantIds": [7]}
     assert out["maxItemsAtCreate"] == 5
+    assert reads == [(pam._runtime.SUPPORT, [7], 6)]
     assert seen["kwargs"]["create_idempotent"] is True
 
 
@@ -58,8 +65,8 @@ def test_review_create_rejects_over_limit_before_campaign_write(monkeypatch):
     monkeypatch.setattr(pam._runtime, "assert_recent_platform_auth", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(pam._runtime, "_existing", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
-        pam._runtime,
-        "list_records",
+        pam,
+        "_bounded_review_records",
         lambda config_type, **_kwargs: [
             {"id": "s-1", "tenantId": 7, "status": "ACTIVE", "version": 1},
             {"id": "s-2", "tenantId": 7, "status": "ACTIVE", "version": 1},
