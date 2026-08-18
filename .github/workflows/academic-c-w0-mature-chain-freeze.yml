@@ -1,11 +1,12 @@
 name: Academic C W0 Mature Chain Freeze
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/academic-c-teaching-execution
+      - main
     paths:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py'
@@ -143,6 +144,7 @@ jobs:
         run: |
           python -m py_compile \
             app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py \
+            app/modules/academic_affairs/services/academic_affairs_attendance_service.py \
             app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py \
             app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py \
             app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py \
