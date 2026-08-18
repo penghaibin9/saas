@@ -10,6 +10,7 @@ on:
       - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py'
@@ -77,19 +78,26 @@ jobs:
           alembic upgrade head
           mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse "SHOW COLUMNS FROM t_aa_grade_task LIKE 'deadline_at'" | grep -q deadline_at
           mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse "SHOW INDEX FROM t_aa_grade_task WHERE Key_name='ix_aa_grade_task_deadline'" | grep -q ix_aa_grade_task_deadline
+          mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE() AND TRIGGER_NAME='trg_aa_grade_task_deadline_submit_guard'" | grep -q trg_aa_grade_task_deadline_submit_guard
       - name: Compile and source contracts
         working-directory: backend
         run: |
-          python -m py_compile app/modules/academic_affairs/routers/grade_core_router.py app/modules/academic_affairs/routers/exam_incident_closure_router.py app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py app/modules/academic_affairs/services/academic_affairs_exam_print_service.py app/services/xlsx_util.py
+          python -m py_compile app/modules/academic_affairs/routers/grade_core_router.py app/modules/academic_affairs/routers/exam_incident_closure_router.py app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py app/modules/academic_affairs/services/academic_affairs_exam_print_service.py app/services/xlsx_util.py
           python - <<'PY'
           from pathlib import Path
           p=Path('app/modules/academic_affairs/routers/grade_core_router.py').read_text()
           d=Path('app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py').read_text()
+          q=Path('app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py').read_text()
+          a=Path('app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py').read_text()
+          m=Path('alembic/versions/20260818_aa_grade_task_deadline.py').read_text()
           x=Path('app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py').read_text()
           r=Path('app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py').read_text()
           e=Path('app/modules/academic_affairs/services/academic_affairs_exam_print_service.py').read_text()
           assert '/extend-deadline' in p and 'read_grade_upload_path' in p and 'read_safe_upload(file)' not in p
-          assert 'GRADE_DEADLINE_EXPIRED' in d and '_check_college_scope' in d
+          assert 'GRADE_DEADLINE_EXPIRED' in d and '_check_college_scope' in d and 'DBAPIError' in d
+          assert 'CREATE TRIGGER' in m and 'UTC_TIMESTAMP()' in m and 'GRADE_DEADLINE_EXPIRED' in m
+          assert 'deadline_projection_map' in q and '_deadline.deadline_projection(db' not in q
+          assert 'class_authority_weeks' in q and 'class_authority_weeks' in a
           assert 'validate_xlsx_path' in x and 'zipfile' not in x
           assert 'GRADE.ENTRY_REMINDED' in r and 'messagePushReady": True' in r
           assert 'EXAM_TICKET_PRINT' in e and 'printSequence' in e
