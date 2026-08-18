@@ -16,9 +16,15 @@ from fastapi.responses import StreamingResponse
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import academic_affairs_grade_change_live_authority as grade_change_live_authority
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as grade_exec_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as grade_task_read_svc
 from app.services import xlsx_util
+
+# shared services/__init__.py first installs the mature append-only correction command.
+# C then narrows only its teacher-facing scope to the current formal TeachingTask owner;
+# no shared service registry file is modified.
+grade_change_live_authority.install()
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-成绩主链"])
 
