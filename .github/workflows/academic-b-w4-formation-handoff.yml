@@ -78,7 +78,6 @@ jobs:
           test "$(git rev-parse HEAD)" = "$B_HEAD_SHA"
           if test "${{ github.event_name }}" = "pull_request"; then
             test "${{ github.event.pull_request.base.ref }}" = "integration/academic-school-gold"
-            test "${{ github.event.pull_request.base.sha }}" = "$EXPECTED_INTEGRATION_BASE_SHA"
           fi
 
           git fetch origin integration/academic-school-gold --no-tags

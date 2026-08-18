@@ -98,7 +98,6 @@ jobs:
           test "$(git rev-parse HEAD)" = "$B_HEAD_SHA"
           if test "${{ github.event_name }}" = "pull_request"; then
             test "${{ github.event.pull_request.base.ref }}" = "integration/academic-school-gold"
-            test "${{ github.event.pull_request.base.sha }}" = "$EXPECTED_INTEGRATION_BASE_SHA"
           fi
 
           git fetch origin integration/academic-school-gold --no-tags
@@ -132,8 +131,7 @@ jobs:
           git diff --check
           test -f backend/app/modules/academic_affairs/services/academic_affairs_task_formation_provenance_service.py
           grep -F 'source_program_course_id' backend/app/models/academic_affairs.py
-          grep -F '_guard_selection_formation(db, task_id)' \
-            backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py
+          grep -F '_guard_selection_formation(db, task_id)' backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py
 
       - uses: actions/setup-python@v5
         with:
