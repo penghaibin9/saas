@@ -18,7 +18,7 @@ from . import academic_affairs_grade_core_service as _core
 from . import academic_affairs_grade_execution_service as _grade_exec
 from . import academic_affairs_grade_service as _grade
 
-_FINAL_STATES = {"PUBLISHED", "ARCHIVED"}
+_DEADLINE_MUTABLE_STATES = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 _SUBMITTED_STATES = {"SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW", "PUBLISHED", "ARCHIVED"}
 
 
@@ -145,8 +145,14 @@ def extend_deadline(task_id: int, user, deadline_at, reason: str) -> dict:
         _core._check_course_scope(task, user)
         if role == "COLLEGE_ADMIN":
             _core._check_college_scope(db, task, user)
-        if str(task.status or "").upper() in _FINAL_STATES:
-            raise AppException("DATA_CONFLICT", "成绩已发布/归档，禁止修改截止时间", http_status=409)
+        state = str(task.status or "").upper()
+        if state not in _DEADLINE_MUTABLE_STATES:
+            raise AppException(
+                "DATA_CONFLICT",
+                "成绩任务已提交审核或结束，截止时间已冻结，禁止再修改",
+                details={"gradeTaskId": str(task.id), "status": state},
+                http_status=409,
+            )
 
         row = _deadline_row(db, int(task_id), lock=True)
         previous = row.get("deadline_at") if row else None
