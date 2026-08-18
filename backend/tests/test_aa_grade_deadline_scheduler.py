@@ -184,12 +184,19 @@ def test_grade_deadline_scheduler_teacher_and_scoped_overdue_digest(db_mode):
     _college_scope(db, college_admin_b, college_b)
 
     now = datetime.utcnow().replace(microsecond=0)
-    upcoming = _grade_task(
+    upcoming_a = _grade_task(
         db,
-        course_name=f"截止提醒课程-{suffix}",
+        course_name=f"截止提醒课程A-{suffix}",
         class_id=class_a.id,
         teacher_key=teacher_a.login_name,
         deadline=now + timedelta(days=6),
+    )
+    upcoming_b = _grade_task(
+        db,
+        course_name=f"截止提醒课程B-{suffix}",
+        class_id=class_b.id,
+        teacher_key=teacher_b.login_name,
+        deadline=now + timedelta(days=6, hours=1),
     )
     overdue_a = _grade_task(
         db,
@@ -206,10 +213,12 @@ def test_grade_deadline_scheduler_teacher_and_scoped_overdue_digest(db_mode):
         deadline=now - timedelta(hours=3),
     )
 
-    upcoming_id = int(upcoming.id)
+    upcoming_a_id = int(upcoming_a.id)
+    upcoming_b_id = int(upcoming_b.id)
     overdue_a_id = int(overdue_a.id)
     overdue_b_id = int(overdue_b.id)
     teacher_a_id = int(teacher_a.id)
+    teacher_b_id = int(teacher_b.id)
     college_admin_a_id = int(college_admin_a.id)
     college_admin_b_id = int(college_admin_b.id)
     academic_admin_id = int(academic_admin.id)
@@ -218,27 +227,34 @@ def test_grade_deadline_scheduler_teacher_and_scoped_overdue_digest(db_mode):
 
     set_tenant({"tenantId": str(TID)})
     try:
-        first = service.scan_grade_deadlines(limit=500)
-        second = service.scan_grade_deadlines(limit=500)
+        first = service.scan_grade_deadlines(limit=1)
+        second = service.scan_grade_deadlines(limit=1)
+        third = service.scan_grade_deadlines(limit=1)
     finally:
         set_tenant(None)
 
-    assert first["teacherReminders"] >= 1
+    # limit=1 must still make forward progress: the second scan skips the already
+    # emitted current milestone and reaches the next task instead of starving it.
+    assert first["teacherReminders"] == 1
+    assert second["teacherReminders"] == 1
+    assert third["teacherReminders"] == 0
     assert first["overdueTasks"] >= 2
-    assert second["teacherReminders"] == 0
     assert second["overdueDigests"] == 0
+    assert third["overdueDigests"] == 0
 
     db = get_sessionmaker()()
-    reminder = db.query(MessageEventOutbox).filter(
+    reminders = db.query(MessageEventOutbox).filter(
         MessageEventOutbox.tenant_id == TID,
         MessageEventOutbox.event_code == "GRADE.ENTRY_DEADLINE_REMINDER",
-        MessageEventOutbox.source_biz_id == upcoming_id,
+        MessageEventOutbox.source_biz_id.in_([upcoming_a_id, upcoming_b_id]),
         MessageEventOutbox.is_deleted.is_(False),
-    ).order_by(MessageEventOutbox.id.desc()).first()
-    assert reminder is not None
-    assert _recipient_ids(reminder) == {teacher_a_id}
-    variables = (reminder.payload_json or {}).get("variables") or {}
-    assert int(variables.get("milestoneDays")) == 7
+    ).all()
+    reminder_by_task = {int(row.source_biz_id): row for row in reminders}
+    assert {upcoming_a_id, upcoming_b_id}.issubset(reminder_by_task)
+    assert _recipient_ids(reminder_by_task[upcoming_a_id]) == {teacher_a_id}
+    assert _recipient_ids(reminder_by_task[upcoming_b_id]) == {teacher_b_id}
+    assert int(((reminder_by_task[upcoming_a_id].payload_json or {}).get("variables") or {}).get("milestoneDays")) == 7
+    assert int(((reminder_by_task[upcoming_b_id].payload_json or {}).get("variables") or {}).get("milestoneDays")) == 7
 
     digests = db.query(MessageEventOutbox).filter(
         MessageEventOutbox.tenant_id == TID,
