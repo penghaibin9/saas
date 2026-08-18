@@ -12,6 +12,7 @@ from app.modules.academic_affairs.services import academic_affairs_attendance_sw
 from app.modules.academic_affairs.services import academic_affairs_grade_todo_teacher_relation_guard as grade_todo_relation_guard
 from app.modules.academic_affairs.services import academic_affairs_schedule_teacher_snapshot_guard as schedule_teacher_snapshot_guard
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_active_guard as teaching_class_active_guard
+from app.modules.academic_affairs.services import academic_affairs_teaching_class_teacher_scope_guard as teaching_class_teacher_scope_guard
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_query_service as query_service
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_admin_service as admin_service
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_change_service as change_service
@@ -24,6 +25,7 @@ grade_todo_relation_guard.install()
 attendance_swap_week_guard.install()
 schedule_teacher_snapshot_guard.install()
 teaching_class_active_guard.install()
+teaching_class_teacher_scope_guard.install()
 
 router = APIRouter(prefix="/academic-affairs/teaching-classes", tags=["教务中心-教学班"])
 
