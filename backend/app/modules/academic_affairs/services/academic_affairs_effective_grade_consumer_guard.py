@@ -1,29 +1,34 @@
 """C-C3 Effective Grade read-contract consumer guard.
 
 The canonical grade service already owns effective-grade identity, ACTIVE-only
-selection and frozen attempt-strategy semantics.  A few older academic-process
+selection and frozen attempt-strategy semantics. A few older academic-process
 readers predate that contract and still expose/count raw ``AcademicGrade`` rows.
 This module closes only those read-side bypasses; it never writes grade facts and
 never re-implements the ranking policy.
 
 Scale discipline:
 - student detail resolves one student's ACTIVE rows;
-- legacy grade ledger streams rows grouped by student, retains only effective IDs,
-  then fetches the requested page;
+- legacy grade ledger streams rows grouped by student and keeps only a bounded
+  top-ID window needed for the requested page, never all effective grade IDs;
 - overview fail-rate streams one student's rows at a time, so a large tenant does
   not materialize the whole grade table merely to compute one indicator.
 """
 from __future__ import annotations
 
+import heapq
 from collections.abc import Iterable, Iterator
 
 from sqlalchemy import or_, select
 
+from app.core.exceptions import AppException
 from app.modules.academic_affairs.services import academic_affairs_effective_grade_policy_service as policy
 from app.modules.academic_affairs.services import academic_affairs_stats_scale_guard as stats_scale
 from app.modules.academic_affairs.services import academic_affairs_stats_service as stats
 from app.services import academic_service as legacy_academic
 from app.services.db_service import _tid, session
+
+_MAX_PAGE_SIZE = 200
+_MAX_LEDGER_WINDOW = 20_000
 
 
 def _effective_groups(db, conditions: Iterable) -> Iterator:
@@ -65,7 +70,7 @@ def _active_conditions():
 
 def get_student_detail(sid) -> dict:
     """Legacy academic-process detail, with grades/credits sourced from EffectiveGrade."""
-    from app.models import AcademicGrade, AcademicStudent
+    from app.models import AcademicGrade
 
     result = legacy_academic._effective_grade_guard_original_get_student_detail(sid)
     with session() as db:
@@ -108,11 +113,19 @@ get_student_detail._effective_grade_consumer_guard = True
 
 
 def list_grades(page, ps, keyword=None, term=None, pass_status=None, exam_type=None):
-    """Legacy grade ledger lists only effective grades, then paginates selected IDs."""
+    """Legacy grade ledger lists only effective grades with a bounded exact top-ID window."""
     from app.models import AcademicGrade, AcademicStudent
 
     page_no = max(1, int(page or 1))
-    page_size = max(1, min(int(ps or 20), 200))
+    page_size = max(1, min(int(ps or 20), _MAX_PAGE_SIZE))
+    window = page_no * page_size
+    if window > _MAX_LEDGER_WINDOW:
+        raise AppException(
+            "VALIDATION_ERROR",
+            "成绩台账翻页范围过深，请增加学期、关键字或状态筛选后再查询",
+            details={"maxWindow": _MAX_LEDGER_WINDOW, "page": page_no, "pageSize": page_size},
+        )
+
     conditions = _active_conditions()
     if term:
         conditions.append(AcademicGrade.term == term)
@@ -130,19 +143,29 @@ def list_grades(page, ps, keyword=None, term=None, pass_status=None, exam_type=N
             )
         )
 
+    expected_pass = str(pass_status or "").upper()
+    expected_exam = str(exam_type or "").upper()
     with session() as db:
-        selected_ids = []
+        # Exact pagination by descending grade ID without retaining every selected ID.
+        # A min-heap of the largest ``page * pageSize`` IDs is sufficient to reconstruct
+        # all rows through the requested page after the EffectiveGrade stream completes.
+        top_ids: list[int] = []
+        total = 0
         for row in _effective_groups(db, conditions):
-            if pass_status and str(row.pass_status or "") != str(pass_status):
+            if expected_pass and str(row.pass_status or "").upper() != expected_pass:
                 continue
-            if exam_type and str(row.exam_type or "") != str(exam_type):
+            if expected_exam and str(row.exam_type or "").upper() != expected_exam:
                 continue
-            selected_ids.append(int(row.id))
+            total += 1
+            row_id = int(row.id)
+            if len(top_ids) < window:
+                heapq.heappush(top_ids, row_id)
+            elif row_id > top_ids[0]:
+                heapq.heapreplace(top_ids, row_id)
 
-        selected_ids.sort(reverse=True)
-        total = len(selected_ids)
+        ordered_ids = sorted(top_ids, reverse=True)
         start = (page_no - 1) * page_size
-        page_ids = selected_ids[start:start + page_size]
+        page_ids = ordered_ids[start:start + page_size]
         if not page_ids:
             return [], total
         rows = db.execute(
@@ -155,6 +178,7 @@ def list_grades(page, ps, keyword=None, term=None, pass_status=None, exam_type=N
 
 
 list_grades._effective_grade_consumer_guard = True
+list_grades._effective_grade_bounded_window = _MAX_LEDGER_WINDOW
 
 
 def _effective_fail_rate(db, scope, acad_ids, term_id) -> dict:
