@@ -23,9 +23,10 @@ import pytest
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
-# 正式 submit 门禁会校验稳定课程身份、结构化毕业要求与国家标准绑定告警，故最小表集必须覆盖
-# 这些真实读取源；不再用“课程名占位 + 缺表”绕过生产治理。
+# 正式 submit/bind 门禁会校验稳定课程身份、真实专业、结构化毕业要求与国家标准绑定告警，
+# 故最小表集必须覆盖这些真实读取源；不再用 phantom majorId 或“课程名占位 + 缺表”绕过生产治理。
 _PROGRAM_TABLES = [
+    "t_college", "t_major",
     "t_aa_program", "t_aa_program_course", "t_aa_program_binding",
     "t_aa_program_graduation_requirement", "t_aa_program_practice_segment",
     "t_aa_course", "t_national_standard_document", "t_school_major_standard_binding",
@@ -78,10 +79,56 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _ensure_real_major():
+    """最小真库夹具补齐真实学院/专业，使 Program bind 使用正式 Major 锁锚点。"""
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major
+
+    db = get_sessionmaker()()
+    try:
+        major = db.query(Major).filter(
+            Major.tenant_id == TID,
+            Major.status == "ACTIVE",
+            Major.is_deleted.is_(False),
+        ).order_by(Major.id).first()
+        if major:
+            return major.id
+
+        college = db.query(College).filter(
+            College.tenant_id == TID,
+            College.code == "AW2TESTCOL",
+            College.is_deleted.is_(False),
+        ).first()
+        if not college:
+            college = College(
+                tenant_id=TID,
+                college_name="A-W2测试学院",
+                code="AW2TESTCOL",
+                status="ACTIVE",
+            )
+            db.add(college)
+            db.flush()
+
+        major = Major(
+            tenant_id=TID,
+            college_id=college.id,
+            major_name="A-W2测试专业",
+            code="AW2TESTMAJ",
+            status="ACTIVE",
+            enroll_status="ENROLLING",
+        )
+        db.add(major)
+        db.commit()
+        return major.id
+    finally:
+        db.close()
+
+
 def _new_program(client, hdr, name):
-    # 正式发布门禁要求方案必须有稳定专业/年级身份；普通草稿测试也使用真实基础身份。
+    # 正式发布/绑定门禁要求方案必须有稳定且真实存在的专业/年级身份。
+    major_id = _ensure_real_major()
     r = client.post(f"{BASE}/programs", headers=hdr, json={
-        "programName": name, "majorId": "1", "gradeYear": "2026"})
+        "programName": name, "majorId": str(major_id), "gradeYear": "2026"})
     assert r.status_code == 200, r.text
     return r.json()["data"]["programId"]
 

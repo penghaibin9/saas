@@ -157,7 +157,8 @@ def test_locked_selection_roster_overrides_administrative_class(monkeypatch):
     assert result["items"][0]["studentNo"] == "S002"
 
 
-def test_locked_selection_with_empty_roster_is_not_ready(monkeypatch):
+def test_locked_selection_with_empty_roster_is_valid_current_fact(monkeypatch):
+    """LOCKED 后的正式空名单仍是 current truth，不得回退行政班或伪造 SELECTION_EMPTY。"""
     service = _patch_tid(monkeypatch)
     db = _Db(
         task=_task(), task_batch=_task_batch(),
@@ -167,8 +168,11 @@ def test_locked_selection_with_empty_roster_is_not_ready(monkeypatch):
 
     result = service.resolve_teaching_task_roster(db, 30)
 
-    assert result["ready"] is False
-    assert result["source"] == "SELECTION_EMPTY"
+    assert result["ready"] is True
+    assert result["source"] == "SELECTION_LOCKED"
+    assert result["studentIds"] == []
+    assert result["items"] == []
+    assert "正式名单为空" in result["note"]
 
 
 def test_administrative_class_is_used_only_when_no_selection_relation(monkeypatch):

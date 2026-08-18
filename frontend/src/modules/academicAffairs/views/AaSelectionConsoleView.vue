@@ -87,6 +87,13 @@
             </div>
           </section>
 
+          <AppInlineAlert
+            v-if="preflight && !preflight.allowed"
+            class="aasel-preflight-alert"
+            type="danger"
+            :description="preflightMessage(preflight)"
+          />
+
           <section class="aasel-metrics" aria-label="批次关键指标">
             <article>
               <span>课程供给</span>
@@ -212,12 +219,20 @@
 
     <AppDrawer :visible="courseVisible" title="添加可选课程" mode="modal" size="large" @close="courseVisible = false">
       <div class="aasel-form">
-        <AppFormItem label="课程" required>
-          <AppCoursePicker v-model="courseForm.courseId" :disabled="saving" />
+        <AppFormItem label="教学任务" required>
+          <AppTeachingTaskPicker
+            v-model="courseForm.teachingTaskId"
+            :remote-search="searchSelectionTasks"
+            placeholder="选择当前批次学期的 READY 教学任务"
+            :disabled="saving"
+            @change="onSelectionTaskChange"
+          />
         </AppFormItem>
-        <AppFormItem label="教学任务">
-          <AppTeachingTaskPicker v-model="courseForm.teachingTaskId" :query="{ courseId: courseForm.courseId || undefined }" placeholder="选填（关联任课教师/教学班）" :disabled="saving" />
-        </AppFormItem>
+        <AppInlineAlert
+          v-if="courseForm.teachingTaskId"
+          type="info"
+          :description="selectionTaskFactText"
+        />
         <AppFormItem label="容量上限" required>
           <AppNumberInput v-model="courseForm.capacity" :min="1" :max="1000" :disabled="saving" />
         </AppFormItem>
@@ -266,7 +281,7 @@
 /** 选课管理 · 教务处控制台（/admin/academic-affairs/selection）：批次生命周期 + 课程供给 + 名单 + 统计。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppCoursePicker, AppTeachingTaskPicker } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsSelectionApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -284,7 +299,7 @@ export default {
   name: 'AaSelectionConsoleView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppCoursePicker, AppTeachingTaskPicker
+    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker
   },
   data() {
     return {
@@ -293,10 +308,13 @@ export default {
       pagination: { page: 1, pageSize: 50, total: 0 },
       current: null, courses: [], stats: null,
       createVisible: false, form: { batchName: '', maxCredits: 0, remark: '' }, formError: '',
-      courseVisible: false, courseForm: { courseId: '', teachingTaskId: '', capacity: 30, minCapacity: 1 }, courseError: '',
+      courseVisible: false,
+      courseForm: { courseId: '', teachingTaskId: '', courseCode: '', courseName: '', teacherName: '', teachingClassName: '', capacity: 30, minCapacity: 1 },
+      courseError: '',
       rosterVisible: false, rosterCourse: null, rosterRows: [],
       saving: false,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      preflight: null, preflightLoading: false, preflightRequestSeq: 0,
       rounds: [], drawResult: null,
       roundVisible: false, roundForm: { roundName: '', mode: 'FCFS', ctrl: 'BOTH' }, roundError: '',
       roundColumns: [
@@ -315,6 +333,12 @@ export default {
       if (!this.rounds.length) return '无独立轮次 · 先到先得'
       const active = this.rounds.filter((row) => row.status === 'OPEN').length
       return `${this.rounds.length} 个轮次 · ${active} 个进行中`
+    },
+    selectionTaskFactText() {
+      const f = this.courseForm
+      if (!f.teachingTaskId) return ''
+      const course = [f.courseCode, f.courseName].filter(Boolean).join(' · ') || '课程信息缺失'
+      return `课程：${course}；教师：${f.teacherName || '未提供'}；教学班：${f.teachingClassName || '未提供'}。这些身份由 TeachingTask 只读带出，提交时不允许手工改写。`
     },
     healthLabel() {
       const status = this.current?.status
@@ -381,6 +405,35 @@ export default {
       return 'primary'
     },
     nextActionFor(status) { return _NEXT[status] || '查看批次详情' },
+    lifecycleAction(status) { return { DRAFT: 'PUBLISH', PUBLISHED: 'OPEN', OPEN: 'CLOSE', CLOSED: 'LOCK' }[status] || '' },
+    preflightMessage(result) {
+      const blockers = (result && result.blockers) || []
+      if (!blockers.length) return '当前动作预检未通过，请刷新后重试。'
+      return blockers.map((item) => `${item.message}${item.howToResolve ? `；处理：${item.howToResolve}` : ''}`).join('；')
+    },
+    async refreshPreflight() {
+      const batchId = this.current && this.current.batchId
+      const status = this.current && this.current.status
+      const action = this.lifecycleAction(status)
+      if (!batchId || !action) {
+        this.preflightRequestSeq += 1
+        this.preflight = null
+        this.preflightLoading = false
+        return null
+      }
+      const requestSeq = ++this.preflightRequestSeq
+      this.preflightLoading = true
+      const res = await api.batchPreflight(batchId, action)
+      if (
+        requestSeq !== this.preflightRequestSeq ||
+        !this.current ||
+        this.current.batchId !== batchId ||
+        this.current.status !== status
+      ) return null
+      this.preflightLoading = false
+      this.preflight = res.code === 0 ? res.data : { allowed: false, blockers: [{ message: res.message || '预检失败' }] }
+      return this.preflight
+    },
     formatDateTime(value, compact = false) {
       if (!value) return ''
       const date = new Date(value)
@@ -426,9 +479,17 @@ export default {
       this.loading = false
     },
     async select(b) {
+      const passiveEpoch = ++this.preflightRequestSeq
       this.current = b
       this.drawResult = null
+      this.preflight = null
       await this.refreshDetail()
+      if (
+        passiveEpoch !== this.preflightRequestSeq ||
+        !this.current ||
+        this.current.batchId !== b.batchId
+      ) return
+      await this.refreshPreflight()
     },
     async refreshDetail() {
       if (!this.current) return
@@ -485,23 +546,81 @@ export default {
       if (res.code === 0) { toast.success('已创建'); this.createVisible = false; await this.load() }
       else this.formError = res.message
     },
-    lifecycle(fn, label) {
+    async lifecycle(fn, label) {
+      const action = { publishBatch: 'PUBLISH', openBatch: 'OPEN', closeBatch: 'CLOSE', lockBatch: 'LOCK' }[fn]
+      if (action) {
+        let checked = await this.refreshPreflight()
+        if (!checked && action === this.lifecycleAction(this.current && this.current.status)) {
+          checked = await this.refreshPreflight()
+        }
+        if (!checked || !checked.allowed) {
+          toast.error(this.preflightMessage(checked))
+          return
+        }
+      }
       this.confirmTitle = label
       this.confirmMessage = `确认对批次「${this.current.batchName}」执行「${label}」？`
       this.pendingAction = async () => {
         const res = await api[fn](this.current.batchId)
-        if (res.code === 0) { toast.success(label + '成功'); this.current = res.data; await this.load(); await this.refreshDetail() }
+        if (res.code === 0) {
+          toast.success(label + '成功')
+          const passiveEpoch = ++this.preflightRequestSeq
+          this.preflight = null
+          this.current = res.data
+          await this.load()
+          await this.refreshDetail()
+          if (passiveEpoch === this.preflightRequestSeq) await this.refreshPreflight()
+        }
         else toast.error(res.message)
       }
       this.confirmVisible = true
     },
-    openAddCourse() { this.courseForm = { courseId: '', teachingTaskId: '', capacity: 30, minCapacity: 1 }; this.courseError = ''; this.courseVisible = true },
+    openAddCourse() {
+      this.courseForm = { courseId: '', teachingTaskId: '', courseCode: '', courseName: '', teacherName: '', teachingClassName: '', capacity: 30, minCapacity: 1 }
+      this.courseError = ''
+      this.courseVisible = true
+    },
+    async searchSelectionTasks(keyword = '') {
+      const termId = this.current?.termId
+      if (!termId) return []
+      const [batchRes, taskRes] = await Promise.all([
+        academicAffairsApi.getTaskBatches({ termId, page: 1, pageSize: 500 }),
+        academicAffairsApi.listAllTasks({ status: 'READY', page: 1, pageSize: 500 })
+      ])
+      if (batchRes.code !== 0) throw new Error(batchRes.message || '当前学期教学任务批次加载失败')
+      if (taskRes.code !== 0) throw new Error(taskRes.message || 'READY 教学任务加载失败')
+      const allowedBatchIds = new Set((batchRes.data?.list || []).map((row) => String(row.batchId)))
+      const key = String(keyword || '').trim().toLowerCase()
+      return (taskRes.data?.list || [])
+        .filter((row) => allowedBatchIds.has(String(row.batchId)))
+        .filter((row) => !key || [row.courseCode, row.courseName, row.teacherName, row.teachingClassName, row.className]
+          .some((value) => String(value || '').toLowerCase().includes(key)))
+        .map((row) => ({
+          value: row.taskId,
+          label: [row.courseCode, row.courseName].filter(Boolean).join(' · ') || `教学任务 ${row.taskId}`,
+          desc: [row.teachingClassName || row.className, row.teacherName].filter(Boolean).join(' · '),
+          raw: row
+        }))
+    },
+    onSelectionTaskChange(value, items) {
+      const raw = items?.[0]?.raw || null
+      this.courseForm.teachingTaskId = value || ''
+      this.courseForm.courseId = raw?.courseId || ''
+      this.courseForm.courseCode = raw?.courseCode || ''
+      this.courseForm.courseName = raw?.courseName || ''
+      this.courseForm.teacherName = raw?.teacherName || ''
+      this.courseForm.teachingClassName = raw?.teachingClassName || raw?.className || ''
+      this.courseError = ''
+    },
     async submitCourse() {
-      if (!this.courseForm.courseId) { this.courseError = '请选择课程'; return }
+      if (!this.courseForm.teachingTaskId || !this.courseForm.courseId) {
+        this.courseError = '请选择当前批次学期的 READY 教学任务'
+        return
+      }
       this.saving = true
       const res = await api.addCourse(this.current.batchId, {
         courseId: this.courseForm.courseId,
-        teachingTaskId: this.courseForm.teachingTaskId || undefined,
+        teachingTaskId: this.courseForm.teachingTaskId,
         capacity: this.courseForm.capacity, minCapacity: this.courseForm.minCapacity
       })
       this.saving = false
@@ -524,7 +643,12 @@ export default {
       if (res.code === 0) this.rosterRows = res.data.list
       else toast.error(res.message)
     },
-    onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
+    onConfirm() {
+      const a = this.pendingAction
+      this.pendingAction = null
+      this.confirmVisible = false
+      if (a) a()
+    }
   }
 }
 </script>
@@ -553,6 +677,7 @@ export default {
 .aasel-batch-next b { color: #44546a; font-size: 10.5px; font-weight: 650; }
 
 .aasel-detail { min-width: 0; display: grid; gap: 14px; }
+.aasel-preflight-alert { margin: 0; }
 .aasel-placeholder { display: grid; justify-items: center; gap: 8px; min-height: 300px; align-content: center; padding: 28px; text-align: center; }
 .aasel-placeholder-icon { display: grid; place-items: center; width: 54px; height: 54px; border-radius: 16px; background: #eef5ff; color: #2468d8; font-weight: 800; }
 .aasel-placeholder strong { color: #172033; font-size: 15px; }

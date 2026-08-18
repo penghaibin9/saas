@@ -113,6 +113,11 @@ def academic_course_selection(user=Depends(get_current_user), batchId: str | Non
     return success(academic.selection_courses(user, batchId))
 
 
+@router.post("/academic/course-selection/preflight", summary="选课纯读预检（本人）")
+def academic_course_preflight(user=Depends(get_current_user), body: dict = Body(...)):
+    return success(academic.selection_preflight(user, body))
+
+
 @router.post("/academic/course-selection/enroll", summary="选课（本人）")
 def academic_course_enroll(user=Depends(get_current_user), body: dict = Body(...)):
     return success(academic.selection_enroll(user, body))

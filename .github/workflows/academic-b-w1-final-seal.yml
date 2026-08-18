@@ -1,0 +1,261 @@
+name: Academic B W1 Final Seal
+# B-W1 is frozen at its recorded exact-head evidence. Later waves must not auto-rerun it.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-b-w1-final-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  w0-mysql-freeze:
+    name: W0 fresh-MySQL authority freeze
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      MOCK_LOGIN_ENABLED: 'true'
+      JWT_SECRET: academic-b-w1-final-w0-secret-at-least-32-bytes
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_b_w1_final_w0?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_b_w1_final_w0?charset=utf8mb4
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: academic_b_w1_final_w0
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Assert exact W1 final head
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend and migrate clean MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+          alembic current
+      - name: Reprove B-W0 KEEP authority on exact head
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_aa_schedule_active_truth.py \
+            tests/test_aa_teaching_roster_unification.py \
+            tests/test_aa_selection_lock_scaling.py \
+            tests/test_aa_selection_rounds.py \
+            tests/test_aa_d6_selection_truth_contract.py \
+            --maxfail=1 \
+            --junitxml=w0-junit.xml
+      - name: Upload W0 JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-b-w1-final-w0-junit-${{ github.sha }}
+          path: backend/w0-junit.xml
+          if-no-files-found: error
+          retention-days: 14
+
+  browser-cross-end:
+    name: admin + student PC + miniapp real-click evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: academic_b_w1_final_e2e
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_b_w1_final_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_b_w1_final_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: academic_b_w1_final_e2e
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: academic-b-w1-final
+      REDIS_CONNECT_TIMEOUT: '2'
+      REDIS_SOCKET_TIMEOUT: '2'
+      JWT_SECRET: academic-b-w1-browser-final-only-not-production
+      JWT_SECRET_KEY: academic-b-w1-browser-final-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_MINIAPP_BASE_URL: http://localhost:5188
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Assert exact W1 final head
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+            miniapp/package-lock.json
+      - name: Install backend and migrate isolated browser database
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+      - name: Seed minimal tenants
+        working-directory: backend
+        run: python scripts/e2e_seed_playwright_tenants.py
+      - name: Start backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+      - name: Import and normalize isolated student/academic-admin accounts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+      - name: Seed B-W1 authoritative term/course facts
+        working-directory: backend
+        run: python scripts/e2e_seed_academic_b_selection.py
+      - name: Install, production-build and start staff PC
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci --no-audit --no-fund
+          npm run build
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+      - name: Install, production-build and start student PC
+        env:
+          VITE_BASE: /portal/
+          VITE_API_BASE_URL: /
+          VITE_PROXY_TARGET: http://127.0.0.1:8000
+        run: |
+          set -euo pipefail
+          cd student-portal
+          npm ci --no-audit --no-fund
+          npm run build
+          nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/student-portal.pid
+      - name: Install, dual-build and start miniapp H5
+        env:
+          VITE_USE_MOCK: 'false'
+          VITE_API_BASE_URL: http://127.0.0.1:8000
+        run: |
+          set -euo pipefail
+          cd miniapp
+          npm ci --no-audit --no-fund
+          npm run build:h5
+          npm run build:mp-weixin
+          nohup npm run dev:h5 > ../e2e/runtime-logs/miniapp.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/miniapp.pid
+      - name: Wait for three browser applications
+        run: |
+          set -euo pipefail
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://localhost:5188/; do
+            ok=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ok" ]; then
+              echo "Application not ready: $url"
+              cat e2e/runtime-logs/*.log
+              exit 1
+            fi
+          done
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Run only Academic B W1 visible-click final seal
+        working-directory: e2e
+        run: npx playwright test specs/academic-b-selection-w1-final.spec.mjs --reporter=line
+      - name: Upload W1 screenshots/traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-b-w1-final-evidence-${{ github.sha }}
+          path: e2e/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload W1 browser report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-b-w1-final-report-${{ github.sha }}
+          path: e2e/playwright-report/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload W1 service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-b-w1-final-logs-${{ github.sha }}
+          path: e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14

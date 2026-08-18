@@ -43,9 +43,18 @@ def test_selection_guard_is_only_a_compatibility_export():
 
 def test_selection_passed_and_prerequisite_rules_use_course_code():
     source = _read("backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py")
+    authority = _read(
+        "backend/app/modules/academic_affairs/services/academic_affairs_selection_authority_consumer.py"
+    )
 
     assert "_passed_course_codes" in source
-    assert "effective_grade_rows" in source
+    assert "passed_course_codes(" in source
+    # Selection must consume the canonical transcript projection rather than
+    # reaching back into raw AcademicGrade rows or a specific grade helper.
+    assert "grade_service.transcript(" in authority
+    assert 'item.get("passStatus")' in authority
+    assert 'item.get("courseCode")' in authority
+    assert "AcademicGrade" not in authority
     assert "target_code in passed_codes" in source
     assert "prerequisites - passed_codes" in source
     assert "target.course_name in passed" not in source

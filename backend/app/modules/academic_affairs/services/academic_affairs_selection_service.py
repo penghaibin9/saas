@@ -1,7 +1,7 @@
 """选课域唯一公开 Service。
 
 原列表、统计、冲突报表和归档导出保存在 ``academic_affairs_selection_core_service``；本文件显式收口：
-- 所有写动作在同一事务校验正式学期未封存；
+- 所有写动作在同一事务锁住正式学期并校验其存在、未删除且未封存；
 - 学生本人只使用稳定账号绑定；
 - 已修与先修规则按稳定 courseCode 和统一有效成绩判断；
 - 先到先得、抽签、补退选继续复用同一批次/记录状态机；
@@ -21,7 +21,6 @@ from sqlalchemy import select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 
-from . import academic_affairs_grade_service as grade_service
 from . import academic_affairs_selection_core_service as _core
 from . import academic_affairs_selection_roster_projection_service as roster_projection
 from . import academic_affairs_teaching_class_service as teaching_class_service
@@ -52,12 +51,48 @@ def __getattr__(name):
     return getattr(_core, name)
 
 
-def _guard_batch_writable(db, batch):
+def _require_term_reference_writable(db, term_id, *, required=True):
+    """Lock B's referenced term, then defer archive policy to the shared Authority."""
+    from app.models import AaTerm
     from . import academic_affairs_archive_service as archive_service
 
-    if not getattr(batch, "term_id", None):
-        raise AppException("DATA_CONFLICT", "选课批次必须绑定正式学期termId", http_status=409)
-    archive_service.guard_term_writable(db, int(batch.term_id))
+    if term_id in (None, ""):
+        if required:
+            raise AppException("DATA_CONFLICT", "选课批次必须绑定正式学期termId", http_status=409)
+        return None
+    try:
+        parsed_term_id = int(term_id)
+    except (TypeError, ValueError) as exc:
+        raise AppException(
+            "SELECTION_TERM_INVALID",
+            "选课批次关联的termId格式无效",
+            details={"termId": str(term_id)},
+            http_status=409,
+        ) from exc
+
+    # The Archive owner ultimately mutates AaTerm.status. Lock the same row before
+    # checking writability so a concurrent archive/unfreeze serializes with every
+    # canonical Selection write instead of racing a stale PUBLISHED observation.
+    term = db.execute(
+        select(AaTerm).where(
+            AaTerm.id == parsed_term_id,
+            AaTerm.tenant_id == _core._tid(),
+            AaTerm.is_deleted.is_(False),
+        ).with_for_update()
+    ).scalar_one_or_none()
+    if not term:
+        raise AppException(
+            "SELECTION_TERM_INVALID",
+            "选课批次关联的学期不存在或已删除",
+            details={"termId": str(parsed_term_id)},
+            http_status=409,
+        )
+    archive_service.guard_term_writable(db, parsed_term_id)
+    return term
+
+
+def _guard_batch_writable(db, batch):
+    _require_term_reference_writable(db, getattr(batch, "term_id", None), required=True)
     return batch
 
 
@@ -71,27 +106,10 @@ def _load_student(db):
 
 
 def _passed_course_codes(db, student) -> set[str]:
-    from app.models import AcademicGrade, AcademicStudent
+    """只消费 EffectiveGrade 正式投影；Selection 不再直知成绩存储模型。"""
+    from .academic_affairs_selection_authority_consumer import passed_course_codes
 
-    academic_student = db.query(AcademicStudent).filter(
-        AcademicStudent.tenant_id == _core._tid(),
-        AcademicStudent.student_id == int(student.id),
-        AcademicStudent.is_deleted.is_(False),
-    ).first()
-    if not academic_student:
-        return set()
-    rows = db.query(AcademicGrade).filter(
-        AcademicGrade.tenant_id == _core._tid(),
-        AcademicGrade.acad_student_id == academic_student.id,
-        AcademicGrade.record_status == "ACTIVE",
-        AcademicGrade.is_deleted.is_(False),
-    ).all()
-    return {
-        str(row.course_code or "").strip().upper()
-        for row in grade_service.effective_grade_rows(rows)
-        if str(row.pass_status or "").upper() == "PASSED"
-        and str(row.course_code or "").strip()
-    }
+    return passed_course_codes(int(student.id), get_current_user_ctx() or {})
 
 
 def _load_prerequisite_codes(course) -> set[str]:
@@ -149,8 +167,20 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allo
     if batch.apply_scope_json:
         try:
             scope = json.loads(batch.apply_scope_json)
-        except (TypeError, ValueError):
-            scope = {}
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次适用范围JSON损坏，请联系教务管理员修复后再选课",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            ) from exc
+        if not isinstance(scope, dict):
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次适用范围格式错误，必须是对象",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            )
         college_ids = {int(x) for x in (scope.get("collegeIds") or []) if str(x).isdigit()}
         major_ids = {int(x) for x in (scope.get("majorIds") or []) if str(x).isdigit()}
         grade_years = {str(x) for x in (scope.get("gradeYears") or []) if str(x).strip()}

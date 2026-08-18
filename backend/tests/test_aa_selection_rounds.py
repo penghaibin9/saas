@@ -133,18 +133,66 @@ def _seed(db_mode, students=3):
     return {"course1": course_id, "studentNos": stus}
 
 
+def _ready_teaching_task(term_id, course_id):
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+
+    db = get_sessionmaker()()
+    try:
+        course = db.query(AaCourse).filter(
+            AaCourse.tenant_id == TID,
+            AaCourse.id == int(course_id),
+            AaCourse.is_deleted.is_(False),
+        ).one()
+        task_batch = AaTeachingTaskBatch(
+            tenant_id=TID,
+            term_id=int(term_id),
+            college_id=None,
+            batch_name=f"轮次测试教学任务-{course.id}",
+            status="APPROVED",
+        )
+        db.add(task_batch); db.flush()
+        task = AaTeachingTask(
+            tenant_id=TID,
+            batch_id=task_batch.id,
+            course_id=course.id,
+            course_code=course.course_code,
+            course_name=course.course_name,
+            teacher_key=f"ROUND-T-{course.id}",
+            teacher_name="轮次测试教师",
+            status="READY",
+            weekly_hours=2,
+            total_hours=36,
+            start_week=1,
+            end_week=18,
+        )
+        db.add(task); db.flush()
+        task_id = task.id
+        db.commit()
+        return task_id
+    finally:
+        db.close()
+
+
 def _open_batch(client, admin, course_id, capacity=5):
+    term_id = _ensure_term()
+    teaching_task_id = _ready_teaching_task(term_id, course_id)
     create = client.post(
         f"{BASE}/selection/batches",
         headers=admin,
-        json={"batchName": "轮次测试批次", "termId": str(_ensure_term())},
+        json={"batchName": "轮次测试批次", "termId": str(term_id)},
     )
     assert create.status_code == 200, create.text
     bid = create.json()["data"]["batchId"]
     added = client.post(
         f"{BASE}/selection/batches/{bid}/courses",
         headers=admin,
-        json={"courseId": str(course_id), "capacity": capacity, "minCapacity": 1},
+        json={
+            "courseId": str(course_id),
+            "teachingTaskId": str(teaching_task_id),
+            "capacity": capacity,
+            "minCapacity": 1,
+        },
     )
     assert added.status_code == 200, added.text
     scid = added.json()["data"]["selectionCourseId"]

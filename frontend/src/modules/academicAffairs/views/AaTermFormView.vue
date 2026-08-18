@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="新建学年学期"
-    subtitle="创建后为「草稿」状态，回列表发布即成为当前学期"
+    subtitle="创建后为「草稿」状态；正式教学任务只使用学校真实时间轴，不默认18周"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -52,8 +52,9 @@
         <div class="aa-form__row">
           <label class="aa-form__label">教学周数</label>
           <div class="aa-form__field">
-            <input v-model.number="form.teachingWeeks" type="number" min="1" max="30" class="aa-input aa-input--num" placeholder="如 18" />
+            <input v-model.number="form.teachingWeeks" type="number" min="1" max="30" class="aa-input aa-input--num" placeholder="按学校校历填写，如 17 或 20" />
             <div v-if="errors.teachingWeeks" class="aa-form__err">{{ errors.teachingWeeks }}</div>
+            <div v-else class="aa-form__hint">正式教学任务不会默认18周；建议填写学校确认的教学周数。未填写时，后端必须能由考试周、教学事件或完整学期日期可靠推导，否则会阻断任务生成。</div>
           </div>
         </div>
 
@@ -203,19 +204,19 @@ export default {
   width: 100%;
   height: 34px;
   padding: 0 12px;
-  border: 1px solid var(--border-300, #d0d3d9);
-  border-radius: 6px;
+  border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px;
   background: var(--bg-white, #fff);
   color: var(--text-900, #1f2329);
   font-size: 14px;
   box-sizing: border-box;
 }
 .aa-input--date { width: 180px; }
-.aa-input--num { width: 200px; }
+.aa-input--num { width: 260px; }
 .aa-form__tilde { color: var(--text-500, #646a73); }
 .aa-form__hint {
   margin-top: 4px;
   font-size: 12px;
+  line-height: 1.6;
   color: var(--text-400, #8a9099);
 }
 .aa-form__err {

@@ -8,6 +8,7 @@ from sqlalchemy.dialects import mysql
 
 from app.models.academic_grade_extensions import install_academic_grade_extensions
 from app.models.academic_affairs import AaGraduationAuditResult, AaStatusChange
+from app.models.academic_affairs_program_extensions import install_academic_program_extensions
 from app.models.academic_affairs_teaching_class import (
     AaTeachingClass,
     AaTeachingClassMember,
@@ -58,10 +59,13 @@ AaGraduationAuditResult.__table__.c.item_results_json.type = Text()
 
 
 # 模型注册阶段只允许注册模型/ORM 元数据，不反向 import 业务 Service。
+# Program expand 列与成绩增量列都通过正式 extension owner 安装；两者只镜像 migration
+# 已声明的 schema，不在注册阶段猜历史值、做 backfill 或提前收紧约束。
 # 有效成绩兼容、当前学期、ACTIVE-only、fail-closed 监听器统一由
 # ``app.modules.academic_affairs.services`` 在基础模型与 db_service 初始化完成后安装。
 # 这样保留原安全语义，同时避免：services -> db_service -> app.models -> registry -> services
 # 的冷启动循环导入。
+install_academic_program_extensions()
 install_academic_grade_extensions()
 
 __all__ = [

@@ -1,0 +1,91 @@
+name: Academic B W4 Task Identity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [agent/academic-b-schedule-selection]
+    paths:
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py'
+      - 'backend/app/modules/academic_affairs/routers/course_selection_router.py'
+      - 'backend/tests/test_aa_selection_w4_task_identity.py'
+      - 'frontend/src/modules/academicAffairs/views/AaSelectionConsoleView.vue'
+      - 'backend/tests/test_aa_selection_w4_ui_contract.py'
+      - '.github/workflows/academic-b-w4-task-identity.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-b-w4-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  targeted-mysql:
+    name: TeachingTask-bound SelectionCourse + staff build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      MOCK_LOGIN_ENABLED: 'true'
+      JWT_SECRET: academic-b-w4-task-identity-secret-at-least-32-bytes
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_b_w4?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_b_w4?charset=utf8mb4
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: academic_b_w4
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Assert exact W4 head
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install backend and migrate clean MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+      - name: Run only W4 backend and UI contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_aa_selection_w4_task_identity.py \
+            tests/test_aa_selection_w4_ui_contract.py \
+            --maxfail=1 --junitxml=w4-junit.xml
+      - name: Install and production-build staff PC
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Upload W4 JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-b-w4-task-identity-${{ github.sha }}
+          path: backend/w4-junit.xml
+          if-no-files-found: error
+          retention-days: 14

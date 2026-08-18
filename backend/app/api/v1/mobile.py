@@ -1959,6 +1959,11 @@ def academic_selection_courses(batch_id: str = None, user=Depends(get_current_us
     return success(aa.selection_courses_my(user, batch_id))
 
 
+@router.post("/academic/selection/preflight", summary="教务·网上选课·本人纯读预检")
+def academic_selection_preflight(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(aa.selection_preflight_my(user, body))
+
+
 @router.post("/academic/selection/enroll", summary="教务·网上选课·本人选课")
 def academic_selection_enroll(body: dict = Body(...), user=Depends(get_current_user)):
     return success(aa.selection_enroll_my(user, body), message="选课成功")

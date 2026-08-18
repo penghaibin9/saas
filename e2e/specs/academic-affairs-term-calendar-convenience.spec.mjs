@@ -120,7 +120,7 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/calendar`)
     await expect(page).toHaveURL(/\/admin\/academic-affairs\/calendar/)
     await dismissPageGuide(page)
-    await chooseTerm(page, targetName)
+    await chooseTerm(page, targetYearCode)
 
     const copyPanel = page.getByText('快速复制上一学期校历', { exact: true }).locator('..').locator('..')
     await expect(page.getByText('快速复制上一学期校历', { exact: true })).toBeVisible()

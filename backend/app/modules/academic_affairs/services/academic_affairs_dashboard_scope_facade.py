@@ -2,6 +2,11 @@
 
 校级教务保留既有全校实时聚合；学院、课程、班级等范围不复用全校统计。
 本模块显式代理旧 Service，不再通过导入副作用替换其函数对象。
+
+A-W1：公开 ``/terms/current`` 消费 A-C1 ``Term Context Resolver``。Resolver 优先
+SYS-12 ACTIVE 治理学期；尚未纳入治理的历史学校暂走严格 ``AaTerm.is_current``
+兼容，多 current 必须 fail-closed。返回值同时解释当前 Authority 与允许的切换入口，
+让管理 PC 不再展示一个必定被后端拒绝的旁路按钮。
 """
 from __future__ import annotations
 
@@ -18,6 +23,29 @@ _legacy = importlib.import_module(
 
 def __getattr__(name):
     return getattr(_legacy, name)
+
+
+def current_term(user) -> dict:
+    """A-C1 public current-term contract: one resolver, no duplicate interpretation."""
+    from .academic_affairs_term_context_service import resolve_current_term
+
+    with _legacy.session() as db:
+        resolved = resolve_current_term(db, tenant_id=int(_legacy._tid()))
+        if resolved.term is None:
+            row = {"termId": "", "isCurrent": False, "note": "尚未设置当前学期"}
+        else:
+            row = _legacy._term_row(resolved.term)
+            if resolved.authority == "CALENDAR_GOVERNANCE":
+                # governance ACTIVE 是当前学期的公开 Authority；即便历史 AaTerm 标志
+                # 尚未完成 reconciliation，公开 DTO 也不能把已解析的当前学期显示为 false。
+                row["isCurrent"] = True
+        row.update({
+            "currentAuthority": resolved.authority,
+            "canDirectSwitch": resolved.can_direct_switch,
+            "switchRoute": resolved.switch_route,
+            "switchHint": resolved.switch_hint,
+        })
+        return row
 
 
 def dashboard(user) -> dict:
