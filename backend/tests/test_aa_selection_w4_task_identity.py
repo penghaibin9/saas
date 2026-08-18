@@ -1,7 +1,8 @@
 """B-W4 · SelectionCourse must be bound to one legal current TeachingTask.
 
-Focused MySQL contracts only.  formationMode is intentionally not asserted here until
-A-C4 publishes its authoritative enum/formation contract.
+Focused MySQL contracts only.  The task-identity surface stays runnable on the
+standalone B subseal, while an INT-overlay run seeds the canonical direct
+ProgramCourse provenance required by the shared formation runtime.
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ def _seed(db_mode):
     from app.db.session import get_sessionmaker
     from app.models import (
         AaCourse,
+        AaProgramCourse,
         AaTeachingTask,
         AaTeachingTaskBatch,
         AaTerm,
@@ -91,6 +93,27 @@ def _seed(db_mode):
         )
         db.add_all([course, other_course]); db.flush()
 
+        # The standalone B subseal predates the INT-owned provenance columns.  When
+        # those columns are present in an ephemeral INT merge, seed the exact direct
+        # source relation instead of weakening or mocking the production guard.
+        formation_source = None
+        if (
+            hasattr(AaTeachingTask, "source_program_course_id")
+            and hasattr(AaTeachingTask, "formation_mode")
+            and hasattr(AaProgramCourse, "formation_mode")
+        ):
+            formation_source = AaProgramCourse(
+                tenant_id=TID,
+                program_id=880000 + n,
+                course_id=course.id,
+                course_name=course.course_name,
+                open_term_no=1,
+                module="MAJOR_CORE",
+                credit_snapshot=2,
+                formation_mode="SELECTABLE",
+            )
+            db.add(formation_source); db.flush()
+
         task_batch = AaTeachingTaskBatch(
             tenant_id=TID,
             term_id=term.id,
@@ -124,6 +147,9 @@ def _seed(db_mode):
                 end_week=17,
                 status=status,
             )
+            if suffix == "ready" and formation_source is not None:
+                row.source_program_course_id = formation_source.id
+                row.formation_mode = "SELECTABLE"
             db.add(row); db.flush()
             return row
 
@@ -254,5 +280,4 @@ def test_w4_formal_router_has_no_legacy_add_course_bypass():
     assert "task.status" in command_source and '"READY"' in command_source
     assert "task.course_id" in command_source
     assert "task_batch.term_id" in command_source
-    # A-C4 is still pending: W4 must not invent a local formationMode enum.
-    assert "formationMode" not in command_source
+    assert "_guard_selection_formation(db, task_id)" in command_source
