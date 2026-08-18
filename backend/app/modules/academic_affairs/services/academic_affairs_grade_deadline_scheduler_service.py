@@ -1,18 +1,18 @@
 """C-W4 scheduled GradeTask deadline reminders and overdue escalation.
 
-Production scheduling remains owned by ``scripts.run_scheduled_jobs``.  This module
+Production scheduling remains owned by ``scripts.run_scheduled_jobs``. This module
 owns only the tenant-scoped business scan:
 
 - 7 / 3 / 1 day milestones remind current formal grade-entry assignees;
 - overdue tasks are grouped into scoped digests for college/school academic admins;
 - shared MessageEventOutbox provides delivery, retry and deduplication;
-- current GradeTask rows are selected with ``FOR UPDATE SKIP LOCKED`` so the scan
-  never races a concurrent deadline extension and never waits behind an operator;
+- upcoming and overdue tasks use separate bounded ``FOR UPDATE SKIP LOCKED`` queues,
+  so a large overdue backlog cannot starve deadline-soon teacher reminders;
 - college recipients are resolved through the same ``build_affairs_context``
   fail-closed scope model used by academic-affairs services.
 
 No scheduler state table is added: the outbox dedup key is the durable execution
-proof.  Extending a deadline changes the deadline identity and therefore creates a
+proof. Extending a deadline changes the deadline identity and therefore creates a
 new legitimate reminder series while old milestone keys remain historical facts.
 """
 from __future__ import annotations
@@ -281,6 +281,21 @@ def _emit_overdue_digests(db, overdue_tasks, deadlines: dict[int, datetime], tas
     return emitted
 
 
+def _locked_deadline_rows(db, *, overdue: bool, limit: int):
+    operator = "<=" if overdue else ">"
+    upper = "" if overdue else "AND deadline_at <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 DAY) "
+    order = "DESC" if overdue else "ASC"
+    return db.execute(text(
+        "SELECT id, deadline_at, status FROM t_aa_grade_task "
+        "WHERE tenant_id=:tenant_id AND is_deleted=0 "
+        "AND status IN ('NOT_STARTED','INPUTTING','RETURNED') "
+        "AND deadline_at IS NOT NULL "
+        f"AND deadline_at {operator} UTC_TIMESTAMP() "
+        + upper
+        + f"ORDER BY deadline_at {order}, id ASC LIMIT :limit FOR UPDATE SKIP LOCKED"
+    ), {"tenant_id": int(grade_core._tid()), "limit": int(limit)}).mappings().all()
+
+
 def scan_grade_deadlines(*, limit: int = _MAX_SCAN) -> dict:
     """Run one tenant-scoped scheduled scan. Caller owns tenant iteration/policy."""
     from app.models import AaGradeTask
@@ -288,17 +303,19 @@ def scan_grade_deadlines(*, limit: int = _MAX_SCAN) -> dict:
     bounded = min(_MAX_SCAN, max(1, int(limit or _MAX_SCAN)))
     now = datetime.utcnow().replace(microsecond=0)
     with grade_core.session() as db:
-        rows = db.execute(text(
-            "SELECT id, deadline_at, status FROM t_aa_grade_task "
-            "WHERE tenant_id=:tenant_id AND is_deleted=0 "
-            "AND status IN ('NOT_STARTED','INPUTTING','RETURNED') "
-            "AND deadline_at IS NOT NULL "
-            "AND deadline_at <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 DAY) "
-            "ORDER BY deadline_at ASC, id ASC LIMIT :limit FOR UPDATE SKIP LOCKED"
-        ), {"tenant_id": int(grade_core._tid()), "limit": bounded}).mappings().all()
+        upcoming_rows = _locked_deadline_rows(db, overdue=False, limit=bounded)
+        overdue_rows = _locked_deadline_rows(db, overdue=True, limit=bounded)
+        rows = [*upcoming_rows, *overdue_rows]
         if not rows:
             db.rollback()
-            return {"scanned": 0, "teacherReminders": 0, "overdueDigests": 0}
+            return {
+                "scanned": 0,
+                "upcomingScanned": 0,
+                "overdueScanned": 0,
+                "teacherReminders": 0,
+                "overdueTasks": 0,
+                "overdueDigests": 0,
+            }
 
         row_by_id = {int(row["id"]): row for row in rows}
         task_ids = sorted(row_by_id)
@@ -313,13 +330,14 @@ def scan_grade_deadlines(*, limit: int = _MAX_SCAN) -> dict:
         teacher_emitted = 0
         overdue_tasks = []
         deadlines: dict[int, datetime] = {}
+        overdue_ids = {int(row["id"]) for row in overdue_rows}
         for task in tasks:
             raw = row_by_id.get(int(task.id))
             deadline = raw.get("deadline_at") if raw else None
             if not isinstance(deadline, datetime):
                 continue
             deadlines[int(task.id)] = deadline
-            if deadline <= now:
+            if int(task.id) in overdue_ids or deadline <= now:
                 overdue_tasks.append(task)
                 continue
             milestone = _milestone_days(deadline, now)
@@ -332,6 +350,8 @@ def scan_grade_deadlines(*, limit: int = _MAX_SCAN) -> dict:
         db.commit()
         return {
             "scanned": len(tasks),
+            "upcomingScanned": len(upcoming_rows),
+            "overdueScanned": len(overdue_rows),
             "teacherReminders": teacher_emitted,
             "overdueTasks": len(overdue_tasks),
             "overdueDigests": overdue_digest_count,
