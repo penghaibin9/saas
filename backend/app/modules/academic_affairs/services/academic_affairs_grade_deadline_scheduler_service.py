@@ -9,17 +9,22 @@ owns only the tenant-scoped business scan:
 - the upcoming SQL excludes tasks whose current milestone dedup already exists, so a
   large already-reminded prefix cannot consume the bounded queue forever;
 - overdue escalation is not a fixed-row queue: every admin receives a scope-filtered
-  full SQL count plus a bounded oldest-50 sample, once per UTC day;
+  full SQL count plus a bounded oldest-50 sample;
+- unchanged overdue scope is deduplicated within the UTC day, while a same-day scope
+  change produces a fresh digest on the next hourly scheduler pass; an unchanged
+  backlog is reminded again on the next UTC day;
 - shared MessageEventOutbox provides delivery, retry and durable deduplication;
 - college recipients are resolved through the same ``build_affairs_context``
   fail-closed scope model used by academic-affairs services.
 
 No scheduler state table is added. Extending a deadline changes the milestone dedup
-identity, while overdue digest dedup is recipient+day to avoid hourly notification
-spam from the production scheduler.
+identity. Overdue digest identity is recipient + UTC day + a compact SQL aggregate
+fingerprint of the recipient's current overdue set, preventing hourly duplicates
+without delaying newly overdue work until the next day.
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 
 from sqlalchemy import bindparam, select, text
@@ -155,25 +160,40 @@ def _overdue_total(db) -> int:
     }) or 0)
 
 
-def _overdue_digest_rows(db, college_ids: set[int] | None) -> tuple[list[dict], int]:
+def _overdue_digest_rows(db, college_ids: set[int] | None) -> tuple[list[dict], int, str]:
     params: dict = {
         "tenant_id": int(grade_core._tid()),
         "sample_limit": _MAX_DIGEST_ITEMS,
     }
     stmt = text(
         "SELECT gt.id, gt.course_name, gt.deadline_at, "
-        + _COLLEGE_EXPR + " AS college_id, COUNT(*) OVER() AS total_count "
+        + _COLLEGE_EXPR + " AS college_id, "
+        "COUNT(*) OVER() AS total_count, "
+        "COALESCE(SUM(gt.id) OVER(), 0) AS id_sum, "
+        "COALESCE(MAX(gt.id) OVER(), 0) AS max_id, "
+        "MAX(gt.deadline_at) OVER() AS latest_deadline "
         + _OVERDUE_FROM
         + (f" AND {_COLLEGE_EXPR} IN :college_ids" if college_ids is not None else "")
         + " ORDER BY gt.deadline_at ASC, gt.id ASC LIMIT :sample_limit"
     )
     if college_ids is not None:
         if not college_ids:
-            return [], 0
+            return [], 0, ""
         stmt = stmt.bindparams(bindparam("college_ids", expanding=True))
         params["college_ids"] = sorted(int(value) for value in college_ids)
     rows = [dict(row) for row in db.execute(stmt, params).mappings().all()]
-    return rows, int(rows[0].get("total_count") or 0) if rows else 0
+    if not rows:
+        return [], 0, ""
+    head = rows[0]
+    total = int(head.get("total_count") or 0)
+    fingerprint_source = "|".join([
+        str(total),
+        str(head.get("id_sum") or 0),
+        str(head.get("max_id") or 0),
+        str(head.get("latest_deadline") or ""),
+    ])
+    fingerprint = hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()[:16]
+    return rows, total, fingerprint
 
 
 def _emit_teacher_milestone(db, task, deadline: datetime, milestone_days: int) -> bool:
@@ -217,11 +237,11 @@ def _emit_overdue_digests(db, now: datetime) -> int:
     emitted = 0
     day_key = now.strftime("%Y%m%d")
     for user_id, college_ids in _admin_scopes(db).items():
-        key = f"GRADE.ENTRY_OVERDUE_DIGEST:{int(user_id)}:{day_key}"
-        if _outbox_exists(db, key):
+        rows, total, digest_fingerprint = _overdue_digest_rows(db, college_ids)
+        if total <= 0 or not rows or not digest_fingerprint:
             continue
-        rows, total = _overdue_digest_rows(db, college_ids)
-        if total <= 0 or not rows:
+        key = f"GRADE.ENTRY_OVERDUE_DIGEST:{int(user_id)}:{day_key}:{digest_fingerprint}"
+        if _outbox_exists(db, key):
             continue
         preview_text = "；".join(
             f"{row.get('course_name') or '课程'}(任务#{row['id']})" for row in rows[:10]
@@ -246,6 +266,7 @@ def _emit_overdue_digests(db, now: datetime) -> int:
                 "items": items,
                 "truncated": total > len(items),
                 "generatedAt": now.isoformat(),
+                "digestFingerprint": digest_fingerprint,
             },
             content=f"当前有 {total} 个成绩任务已逾期未提交：{preview_text}。请进入成绩任务工作台处理。",
             title=f"成绩录入逾期清单（{total}项）",
