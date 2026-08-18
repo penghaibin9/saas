@@ -294,7 +294,7 @@ def _locked_upcoming_rows(db, limit: int):
         "  WHERE meo.tenant_id=gt.tenant_id AND meo.is_deleted=0 "
         "    AND meo.dedup_key=CONCAT("
         "      'GRADE.ENTRY_DEADLINE_REMINDER:', gt.id, ':', "
-        "      DATE_FORMAT(gt.deadline_at, '%Y%m%dT%H%i%s'), ':D', "
+        "      DATE_FORMAT(gt.deadline_at, '%Y%m%dT%H%i%s'), ':', 'D', "
         "      CASE "
         "        WHEN TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), gt.deadline_at) <= 86400 THEN 1 "
         "        WHEN TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), gt.deadline_at) <= 259200 THEN 3 "
