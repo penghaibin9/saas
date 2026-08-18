@@ -1,4 +1,9 @@
-"""Platform Control Plane adapters layered over the byte-frozen platform bundle."""
+"""Platform Control Plane adapters layered over the byte-frozen platform bundle.
+
+The frozen bundle remains the business implementation. This router owns exact
+(method, path) capability replacements so delegated platform duties can use
+only the surfaces explicitly granted by the canonical PAM contract.
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, Query
@@ -21,23 +26,160 @@ def _cap(user: dict, capability: str) -> dict:
     return _pam().assert_platform_capability(user, capability)
 
 
+def require_platform_capability(capability: str):
+    """Identity-first dependency factory for delegated platform surfaces."""
+    def _dep(user=Depends(require_platform_principal)):
+        return _cap(user, capability)
+    return _dep
+
+
 @_routes.get("/context", summary="平台主管 identity-first 上下文")
 def platform_context(user=Depends(require_platform_principal)):
     pam = _pam()
     uid = str(user.get("userId") or "")
-    elevations = [item for item in pam.list_records(pam.ELEVATION) if str(item.get("userId")) == uid and str(item.get("status") or "ACTIVE").upper() == "ACTIVE"]
-    supports = [item for item in pam.list_records(pam.SUPPORT) if str(item.get("operatorUserId")) == uid and str(item.get("status") or "ACTIVE").upper() == "ACTIVE"]
+    elevations = [
+        item for item in pam.list_records(pam.ELEVATION)
+        if str(item.get("userId")) == uid and str(item.get("status") or "ACTIVE").upper() == "ACTIVE"
+    ]
+    supports = [
+        item for item in pam.list_records(pam.SUPPORT)
+        if str(item.get("operatorUserId")) == uid and str(item.get("status") or "ACTIVE").upper() == "ACTIVE"
+    ]
     state = assurance_state(user)
+    duties = sorted(pam.effective_platform_duties(user))
     return success({
         "principalPlane": "PLATFORM",
         "subjectId": uid,
         "roleCode": user.get("currentRoleCode") or user.get("userType"),
-        "duties": sorted(pam.effective_platform_duties(user)),
+        "duties": duties,
         "temporaryElevations": elevations,
-        "supportScopeSummary": [{"tenantId": item.get("tenantId"), "ticketId": item.get("ticketId"), "scopes": item.get("scopes"), "expiresAt": item.get("expiresAt")} for item in supports],
-        "recentAuthState": {"recent": state["recent"], "ageSeconds": state["ageSeconds"], "maxAgeSeconds": state["maxAgeSeconds"]},
-        "mfaAssurance": {"satisfied": state["mfa"], "amr": state["amr"], "acr": state["acr"], "source": state["source"]},
+        "supportScopeSummary": [
+            {
+                "tenantId": item.get("tenantId"),
+                "ticketId": item.get("ticketId"),
+                "scopes": item.get("scopes"),
+                "expiresAt": item.get("expiresAt"),
+            }
+            for item in supports
+        ],
+        "recentAuthState": {
+            "recent": state["recent"],
+            "ageSeconds": state["ageSeconds"],
+            "maxAgeSeconds": state["maxAgeSeconds"],
+        },
+        "mfaAssurance": {
+            "satisfied": state["mfa"],
+            "amr": state["amr"],
+            "acr": state["acr"],
+            "source": state["source"],
+        },
     })
+
+
+# ── P-02 exact capability replacements over frozen root-only endpoints ──────
+# Read access does not imply tenant lifecycle mutation. High-risk global/root
+# writes intentionally remain in platform_bundle behind require_platform_super_admin.
+
+
+@_routes.get("/tenants", summary="租户列表（delegated tenant.view）")
+def delegated_tenants(
+    keyword: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    user=Depends(require_platform_capability("tenant.view")),
+):
+    return _bundle.tenants(keyword=keyword, status=status, user=user)
+
+
+@_routes.get("/tenants/{tenant_id}", summary="租户详情（delegated tenant.view）")
+def delegated_tenant_get(
+    tenant_id: int,
+    user=Depends(require_platform_capability("tenant.view")),
+):
+    return _bundle.tenant_get(tenant_id=tenant_id, user=user)
+
+
+@_routes.get("/tenants/{tenant_id}/usage", summary="租户用量（delegated tenant.view）")
+def delegated_tenant_usage(
+    tenant_id: int,
+    user=Depends(require_platform_capability("tenant.view")),
+):
+    return _bundle.tenant_usage(tenant_id=tenant_id, user=user)
+
+
+@_routes.get("/tenants/{tenant_id}/audit-logs", summary="租户审计（delegated audit.view）")
+def delegated_tenant_audit(
+    tenant_id: int,
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    user=Depends(require_platform_capability("audit.view")),
+):
+    return _bundle.tenant_audit(tenant_id=tenant_id, page=page, pageSize=pageSize, user=user)
+
+
+@_routes.get("/packages", summary="套餐列表（delegated commercial.view）")
+def delegated_packages(user=Depends(require_platform_capability("commercial.view"))):
+    return _bundle.packages(user=user)
+
+
+@_routes.get("/orders", summary="订单列表（delegated commercial.view）")
+def delegated_orders(
+    tenantId: int | None = Query(default=None),
+    status: str | None = Query(default=None),
+    user=Depends(require_platform_capability("commercial.view")),
+):
+    return _bundle.orders(tenantId=tenantId, status=status, user=user)
+
+
+@_routes.post("/orders", summary="人工录入订单（delegated order.manage）")
+def delegated_order_create(
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("order.manage")),
+):
+    return _bundle.order_create(body=body, user=user)
+
+
+@_routes.post("/orders/{order_no}/mark-paid", summary="订单入账（delegated order.manage）")
+def delegated_order_paid(
+    order_no: str,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("order.manage")),
+):
+    return _bundle.order_paid(order_no=order_no, body=body, user=user)
+
+
+@_routes.post("/orders/{order_no}/cancel", summary="取消订单（delegated order.manage）")
+def delegated_order_cancel(
+    order_no: str,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("order.manage")),
+):
+    return _bundle.order_cancel(order_no=order_no, body=body, user=user)
+
+
+@_routes.get("/audit-logs", summary="全平台审计（delegated audit.view）")
+def delegated_audit_logs(
+    tenantId: int | None = Query(default=None),
+    action: str | None = Query(default=None),
+    operator: str | None = Query(default=None),
+    dateFrom: str | None = Query(default=None),
+    dateTo: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    user=Depends(require_platform_capability("audit.view")),
+):
+    return _bundle.audit_logs(
+        tenantId=tenantId,
+        action=action,
+        operator=operator,
+        dateFrom=dateFrom,
+        dateTo=dateTo,
+        page=page,
+        pageSize=pageSize,
+        user=user,
+    )
+
+
+# ── P-04 Platform Access Governance commands ────────────────────────────────
 
 
 @_routes.get("/access-assignments", summary="平台职责分配")
@@ -52,6 +194,23 @@ def access_assignment_save(body: dict = Body(...), user=Depends(require_platform
     return success(_pam().save_access_assignment(body, actor=user))
 
 
+@_routes.post("/access-assignments/{assignment_id}/revoke", summary="撤销平台职责分配")
+def access_assignment_revoke(
+    assignment_id: str,
+    body: dict = Body(...),
+    user=Depends(require_platform_principal),
+):
+    _cap(user, "access.manage")
+    return success(_pam().terminate_record(
+        _pam().ASSIGNMENT,
+        assignment_id,
+        tenant_id=0,
+        expected_version=int(body.get("expectedVersion") or -1),
+        reason=body.get("reason") or "",
+        actor=user,
+    ))
+
+
 @_routes.get("/elevation-sessions", summary="临时权限提升会话")
 def elevation_sessions(user=Depends(require_platform_principal)):
     _cap(user, "access.review")
@@ -64,12 +223,29 @@ def elevation_session_create(body: dict = Body(...), user=Depends(require_platfo
     return success(_pam().create_elevation(body, actor=user))
 
 
+@_routes.post("/elevation-sessions/{session_id}/revoke", summary="撤销临时权限提升")
+def elevation_session_revoke(
+    session_id: str,
+    body: dict = Body(...),
+    user=Depends(require_platform_principal),
+):
+    _cap(user, "access.manage")
+    return success(_pam().terminate_record(
+        _pam().ELEVATION,
+        session_id,
+        tenant_id=0,
+        expected_version=int(body.get("expectedVersion") or -1),
+        reason=body.get("reason") or "",
+        actor=user,
+    ))
+
+
 @_routes.get("/support-sessions", summary="受控学校协助会话")
 def support_sessions(tenantId: int | None = Query(default=None), user=Depends(require_platform_principal)):
     pam = _pam()
     uid = str(user.get("userId") or "")
-    role = str(user.get("currentRoleCode") or user.get("userType") or "").upper()
-    review_all = role in {"PLATFORM_OWNER", "PLATFORM_SUPER_ADMIN", "PLATFORM_SECURITY_AUDITOR"}
+    duties = pam.effective_platform_duties(user)
+    review_all = "*" in duties or "access.review" in duties
     if tenantId is not None:
         _cap(user, "support.request")
         rows = pam.list_records(pam.SUPPORT, tenant_id=tenantId)
@@ -93,7 +269,8 @@ def support_session_create(body: dict = Body(...), user=Depends(require_platform
 def support_session_terminate(session_id: str, body: dict = Body(...), user=Depends(require_platform_principal)):
     _cap(user, "support.request")
     out = _pam().terminate_record(
-        _pam().SUPPORT, session_id,
+        _pam().SUPPORT,
+        session_id,
         tenant_id=int(body.get("tenantId") or 0),
         expected_version=int(body.get("expectedVersion") or -1),
         reason=body.get("reason") or "",
@@ -109,11 +286,19 @@ def support_tenant_context(tenant_id: int, user=Depends(require_platform_princip
     pam.assert_support_session(user, tenant_id=tenant_id, scope="tenant.context.read")
     from app.services import platform_service as svc
     tenant = svc.get_tenant(tenant_id)
-    return success({k: tenant.get(k) for k in ("tenantId", "tenantCode", "tenantName", "status", "expireAt", "studentCount", "userCount")})
+    return success({
+        k: tenant.get(k)
+        for k in ("tenantId", "tenantCode", "tenantName", "status", "expireAt", "studentCount", "userCount")
+    })
 
 
 @_routes.get("/support/tenants/{tenant_id}/audit", summary="受控协助：学校审计摘要")
-def support_tenant_audit(tenant_id: int, page: int = Query(default=1, ge=1), pageSize: int = Query(default=20, ge=1, le=100), user=Depends(require_platform_principal)):
+def support_tenant_audit(
+    tenant_id: int,
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    user=Depends(require_platform_principal),
+):
     pam = _pam()
     _cap(user, "support.request")
     pam.assert_support_session(user, tenant_id=tenant_id, scope="tenant.audit.read")
