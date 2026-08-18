@@ -15,15 +15,17 @@ EXPECTED_C_SHA="$C_SHA"
 EXPECTED_INT_SHA="$INT_SHA"
 
 # INT imported the frozen C-C1 attendance consumer first, then added the shared
-# persisted source/occurrence Authority. The C branch subsequently changed only
-# the two miniapp files below to support exact existing-session reopen. W5 may
-# resolve this one known handoff only while every reviewed blob/ancestry invariant
-# still matches. Any new conflict or upstream drift fails closed for re-review.
+# persisted source/occurrence Authority. C subsequently promoted the public
+# attendance surface to explicit relation-aware command/read delegates and reduced
+# the historical attendance_service module to a compatibility export. W5 preserves
+# those two final C facades while retaining the reviewed B/INT occurrence, warning,
+# source-contract and exact-session miniapp handoff. Any other conflict fails closed.
 INT_C1_IMPORT_SHA="93650baec930d7e4efd7b04e9ec851e5887a795b"
 INT_SOURCE_AUTH_SHA="0703ec4fb11cab9b50d6bbaf4eddfbbea8091b62"
 INT_C_HANDOFF_PATHS=(
   backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py
   backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py
+  backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py
   backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py
   backend/tests/test_aa_attendance_admin_special_contract.py
   backend/tests/test_aa_attendance_published_occurrence_contract.py
@@ -33,19 +35,25 @@ INT_C_HANDOFF_PATHS=(
 )
 INT_C_HANDOFF_TAKE_INT=(
   backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py
-  backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py
   backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py
   backend/tests/test_aa_attendance_admin_special_contract.py
   backend/tests/test_aa_attendance_published_occurrence_contract.py
   backend/tests/test_aa_attendance_warning_source_contract.py
 )
 INT_C_HANDOFF_KEEP_C=(
+  backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py
+  backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py
+  miniapp/src/pages/teacher/academic-affairs/attendance.vue
+  miniapp/tests/academic-attendance-source-contract.test.mjs
+)
+INT_C_HANDOFF_KEEP_C_UNTOUCHED=(
   miniapp/src/pages/teacher/academic-affairs/attendance.vue
   miniapp/tests/academic-attendance-source-contract.test.mjs
 )
 declare -A INT_C_HANDOFF_C_BLOBS=(
   [backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py]="76f42d0f515fc9881aee87bfbaa1bb49b02b8ae3"
-  [backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py]="023b3ee5540c7986e38b6a2fd5f821842dcc9f81"
+  [backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py]="29460448ff5bf34154cf5d674f3e790e179d9872"
+  [backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py]="bb6bb7a330be2ce08dc763f82e70e2b2d44d2728"
   [backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py]="b442eef7ed496b03196bebb5e56c527d7c7c8fc5"
   [backend/tests/test_aa_attendance_admin_special_contract.py]="66f8fcbfaae184e982b10c2d949e3ff6f135056f"
   [backend/tests/test_aa_attendance_published_occurrence_contract.py]="d2d6b2e70b55d2a5d82427ac16f6c087bc1e6955"
@@ -57,12 +65,14 @@ declare -A INT_C_HANDOFF_IMPORT_MINI_BLOBS=(
   [miniapp/src/pages/teacher/academic-affairs/attendance.vue]="9df52087dcbe47a37f3bca57b03430fc363d022c"
   [miniapp/tests/academic-attendance-source-contract.test.mjs]="a94116cefb269ed9db1c06eaf64cb58b799d31ea"
 )
+C_FINAL_RELATION_GUARD_PATH="backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py"
+C_FINAL_RELATION_GUARD_BLOB="e1a4317d03b9575b9626c9957e3dd57805e00a74"
 
-# B is built on the shared INT Authority while C owns the exact-session reopen.
-# At the current reviewed topology, merging C after B yields exactly the eight
-# attendance conflicts below. Program expand no longer conflicts because B is a
-# descendant of the C migration, but its safer descendant blob remains pinned
-# independently and must survive the automatic merge unchanged.
+# B is built on the shared INT Authority while C owns the final relation-aware
+# public/compatibility facades plus exact-session reopen. At the reviewed topology,
+# merging C after B yields exactly the nine attendance conflicts below. Program
+# expand no longer conflicts because B is a descendant of the C migration, but its
+# safer descendant blob remains pinned independently and must survive unchanged.
 B_C_PROGRAM_MIGRATION_PATH="backend/alembic/versions/20260817_aa_prog_expand.py"
 B_C_HANDOFF_PATHS=(
   "${INT_C_HANDOFF_PATHS[@]}"
@@ -77,6 +87,7 @@ declare -A B_C_HANDOFF_B_BLOBS=(
   [backend/alembic/versions/20260817_aa_prog_expand.py]="6c8b165767f01c6aaa8e868dcad2bcc343d081b7"
   [backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py]="2bc151356268eafa7300bddbd78a878f067caa72"
   [backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py]="4d5dbdcb72a470f0a276b01bfe6559fa62305e0e"
+  [backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py]="a8e08149d8d813e25cb6fe050977ce1c995d1a36"
   [backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py]="6feee794a472525dfe66a4e46231672530598a01"
   [backend/tests/test_aa_attendance_admin_special_contract.py]="b8782621fe902a684e27cc5c9a0f0ff16080e3a8"
   [backend/tests/test_aa_attendance_published_occurrence_contract.py]="cf413b96988d4b3fa777dcca2890f5365ad4ff12"
@@ -236,7 +247,7 @@ verify_b_c_handoff_contract() {
     return 1
   fi
 
-  local migration_b_blob migration_c_blob path b_blob c_blob
+  local migration_b_blob migration_c_blob path b_blob c_blob guard_blob
   migration_b_blob="$(git rev-parse "${B_SHA}:${B_C_PROGRAM_MIGRATION_PATH}")"
   migration_c_blob="$(git rev-parse "${C_SHA}:${B_C_PROGRAM_MIGRATION_PATH}")"
   if [[ "$migration_b_blob" != "${B_C_HANDOFF_B_BLOBS[$B_C_PROGRAM_MIGRATION_PATH]}" ]]; then
@@ -261,6 +272,12 @@ verify_b_c_handoff_contract() {
       return 1
     fi
   done
+
+  guard_blob="$(git rev-parse "${C_SHA}:${C_FINAL_RELATION_GUARD_PATH}")"
+  if [[ "$guard_blob" != "$C_FINAL_RELATION_GUARD_BLOB" ]]; then
+    echo "[handoff-drift] C relation guard expected=$C_FINAL_RELATION_GUARD_BLOB actual=$guard_blob" | tee -a "$MERGE_LEDGER"
+    return 1
+  fi
 }
 
 resolve_b_c_handoff_conflicts() {
@@ -305,14 +322,14 @@ resolve_b_c_handoff_conflicts() {
   test -z "$(git diff --name-only --diff-filter=U)"
   test -z "$(git ls-files -u)"
   git commit --no-edit
-  echo "[handoff-resolved] B/INT attendance Authority preserved; C exact-session miniapp reopen preserved; descendant-safe Program migration verified unchanged" | tee -a "$MERGE_LEDGER"
+  echo "[handoff-resolved] B/INT occurrence+warning+source contracts preserved; C final attendance facades and exact-session miniapp reopen preserved; descendant-safe Program migration verified unchanged" | tee -a "$MERGE_LEDGER"
 }
 
 verify_int_c_handoff_contract() {
   git merge-base --is-ancestor "$INT_C1_IMPORT_SHA" "$INT_SHA"
   git merge-base --is-ancestor "$INT_SOURCE_AUTH_SHA" "$INT_SHA"
 
-  local path actual_blob imported_blob
+  local path actual_blob imported_blob int_blob guard_blob
   for path in "${INT_C_HANDOFF_PATHS[@]}"; do
     actual_blob="$(git rev-parse "${C_SHA}:${path}")"
     if [[ "$actual_blob" != "${INT_C_HANDOFF_C_BLOBS[$path]}" ]]; then
@@ -321,8 +338,14 @@ verify_int_c_handoff_contract() {
     fi
   done
 
-  # The six backend files in the INT import are byte-for-byte the reviewed C snapshot.
-  # Therefore taking INT for them preserves C and layers only later INT-owned Authority.
+  guard_blob="$(git rev-parse "${C_SHA}:${C_FINAL_RELATION_GUARD_PATH}")"
+  if [[ "$guard_blob" != "$C_FINAL_RELATION_GUARD_BLOB" ]]; then
+    echo "[handoff-drift] C relation guard expected=$C_FINAL_RELATION_GUARD_BLOB actual=$guard_blob" | tee -a "$MERGE_LEDGER"
+    return 1
+  fi
+
+  # The five retained INT backend/source-contract files remain byte-for-byte the
+  # reviewed C-C1 import before INT layered source/occurrence Authority.
   for path in "${INT_C_HANDOFF_TAKE_INT[@]}"; do
     imported_blob="$(git rev-parse "${INT_C1_IMPORT_SHA}:${path}")"
     if [[ "$imported_blob" != "${INT_C_HANDOFF_C_BLOBS[$path]}" ]]; then
@@ -331,9 +354,22 @@ verify_int_c_handoff_contract() {
     fi
   done
 
+  # INT still carries the reviewed pre-facade public/compatibility implementation;
+  # final C deliberately supersedes only these two entrypoint modules while the
+  # merged INT source contracts below prove persisted source/occurrence semantics.
+  for path in \
+    backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py \
+    backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py; do
+    int_blob="$(git rev-parse "${INT_SHA}:${path}")"
+    if [[ "$int_blob" != "${B_C_HANDOFF_B_BLOBS[$path]}" ]]; then
+      echo "[handoff-drift] INT facade blob $path expected=${B_C_HANDOFF_B_BLOBS[$path]} actual=$int_blob" | tee -a "$MERGE_LEDGER"
+      return 1
+    fi
+  done
+
   # C added exact session reopen after the INT import. INT has not touched either
   # miniapp file since that import, so W5 must keep the newer C version verbatim.
-  for path in "${INT_C_HANDOFF_KEEP_C[@]}"; do
+  for path in "${INT_C_HANDOFF_KEEP_C_UNTOUCHED[@]}"; do
     imported_blob="$(git rev-parse "${INT_C1_IMPORT_SHA}:${path}")"
     if [[ "$imported_blob" != "${INT_C_HANDOFF_IMPORT_MINI_BLOBS[$path]}" ]]; then
       echo "[handoff-drift] INT imported miniapp blob $path expected=${INT_C_HANDOFF_IMPORT_MINI_BLOBS[$path]} actual=$imported_blob" | tee -a "$MERGE_LEDGER"
@@ -351,7 +387,7 @@ resolve_int_c_handoff_conflicts() {
   actual_conflicts="$(git diff --name-only --diff-filter=U | LC_ALL=C sort)"
   expected_conflicts="$(printf '%s\n' "${INT_C_HANDOFF_PATHS[@]}" | LC_ALL=C sort)"
   if [[ "$actual_conflicts" != "$expected_conflicts" ]]; then
-    echo "[handoff-rejected] INT conflict set differs from reviewed C-C1 handoff" | tee -a "$MERGE_LEDGER"
+    echo "[handoff-rejected] INT conflict set differs from reviewed final C attendance handoff" | tee -a "$MERGE_LEDGER"
     printf '%s\n' "$actual_conflicts" | tee -a "$MERGE_LEDGER"
     return 1
   fi
@@ -364,7 +400,7 @@ resolve_int_c_handoff_conflicts() {
   test -z "$(git diff --name-only --diff-filter=U)"
   test -z "$(git ls-files -u)"
   git commit --no-edit
-  echo "[handoff-resolved] INT source Authority layered over reviewed C-C1; newer C miniapp exact-session reopen preserved" | tee -a "$MERGE_LEDGER"
+  echo "[handoff-resolved] INT occurrence+warning+source contracts layered over reviewed C-C1; C final attendance facades and newer miniapp exact-session reopen preserved" | tee -a "$MERGE_LEDGER"
 }
 
 merge_layer() {
