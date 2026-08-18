@@ -128,8 +128,25 @@ export default {
     async load() {
       this.loading = true
       try {
-        const res = await api.listBatches({ pageSize: 100 })
-        this.rows = res.code === 0 ? res.data.list : []
+        const pageSize = 100
+        const all = []
+        let page = 1
+        let total = 0
+        do {
+          const res = await api.listBatches({ page, pageSize })
+          if (res.code !== 0) {
+            toast.error(res.message || '归档批次加载失败')
+            return
+          }
+          const list = Array.isArray(res.data?.list) ? res.data.list : []
+          all.push(...list)
+          total = Number(res.data?.total || all.length)
+          if (!list.length) break
+          page += 1
+        } while (all.length < total)
+        this.rows = all
+      } catch (e) {
+        toast.error((e && e.message) || '归档批次加载失败')
       } finally {
         this.loading = false
       }

@@ -9,6 +9,7 @@ on:
       - "backend/app/modules/academic_affairs/services/academic_affairs_program_activation_service.py"
       - "backend/app/modules/academic_affairs/services/academic_affairs_graduation_service.py"
       - "backend/app/modules/academic_affairs/services/academic_affairs_graduation_immutable_service.py"
+      - "frontend/src/modules/academicAffairs/views/AaArchiveConsoleView.vue"
       - "frontend/src/modules/academicAffairs/views/AaGraduationBatchView.vue"
       - "frontend/src/modules/academicAffairs/views/AaGraduationResultView.vue"
       - "frontend/src/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue"
@@ -16,6 +17,7 @@ on:
       - "student-portal/src/views/academic/StudentGraduationAuditView.vue"
       - "frontend/tests/pr147-merge-review-ui-contract.test.mjs"
       - "frontend/tests/pr147-pagination-control-contract.test.mjs"
+      - "frontend/tests/stage-d-archive-precheck-contract.test.mjs"
       - "frontend/tests/stage-d-graduation-audit-console-contract.test.mjs"
       - "frontend/tests/stage-d-evaluation-console-production-contract.test.mjs"
       - "student-portal/tests/academic-d-w5-graduation-truth.test.mjs"
@@ -68,6 +70,7 @@ jobs:
           node --test \
             frontend/tests/pr147-merge-review-ui-contract.test.mjs \
             frontend/tests/pr147-pagination-control-contract.test.mjs \
+            frontend/tests/stage-d-archive-precheck-contract.test.mjs \
             frontend/tests/stage-d-graduation-audit-console-contract.test.mjs \
             frontend/tests/stage-d-evaluation-console-production-contract.test.mjs \
             student-portal/tests/academic-d-w5-graduation-truth.test.mjs

@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 const graduationResultUrl = new URL('../src/modules/academicAffairs/views/AaGraduationResultView.vue', import.meta.url)
 const graduationConsoleUrl = new URL('../src/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue', import.meta.url)
 const evaluationConsoleUrl = new URL('../src/modules/academicAffairs/views/AaEvaluationConsoleView.vue', import.meta.url)
+const archiveConsoleUrl = new URL('../src/modules/academicAffairs/views/AaArchiveConsoleView.vue', import.meta.url)
 
 test('PR147 direct pagination controls do not expose an unbound page-size changer', async () => {
   const [graduationSource, evaluationSource] = await Promise.all([
@@ -31,4 +32,21 @@ test('PR147 graduation audit batch picker loads every server page instead of sil
   ]) assert.ok(source.includes(token), `missing all-page graduation batch picker contract: ${token}`)
 
   assert.doesNotMatch(source, /const res = await academicAffairsApi\.listGradBatches\(\{ pageSize: 100 \}\)\s*\n\s*if \(res\.code === 0\) this\.batches = res\.data\.list/)
+})
+
+test('PR147 archive console loads every server page instead of silently capping historical batches at 100', async () => {
+  const source = await readFile(archiveConsoleUrl, 'utf8')
+  for (const token of [
+    'const pageSize = 100',
+    'const all = []',
+    'let page = 1',
+    'let total = 0',
+    'api.listBatches({ page, pageSize })',
+    'all.push(...list)',
+    'while (all.length < total)',
+    'this.rows = all',
+    "toast.error(res.message || '归档批次加载失败')"
+  ]) assert.ok(source.includes(token), `missing all-page archive batch contract: ${token}`)
+
+  assert.doesNotMatch(source, /api\.listBatches\(\{ pageSize: 100 \}\)/)
 })
