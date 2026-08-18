@@ -3,6 +3,11 @@
 The module only inspects already-materialized TeachingClass/RosterVersion/Attendance facts.
 It must never call an ensure/project/freeze helper and never writes while rendering a teacher
 home page.
+
+C15-18: one formal attendance occurrence is identified by class/date/slot after the upstream
+ScopeHead + scheduleItem resolution. ``AttendanceSession.teacher_key`` records the teacher who
+created the session, not the occurrence identity. PRIMARY/CO_TEACHER therefore discover and
+resume the same session instead of creating parallel sessions under different teacher keys.
 """
 from __future__ import annotations
 
@@ -188,15 +193,13 @@ def enrich_today_execution_state(db, items: list[dict]) -> list[dict]:
         member_ids_by_version[int(member.roster_version_id)].append(int(member.student_id))
 
     class_ids = sorted({int(row.get("classId") or 0) for row in rows if int(row.get("classId") or 0) > 0})
-    teacher_keys = sorted({str(row.get("teacherKey") or "") for row in rows if str(row.get("teacherKey") or "")})
     dates = sorted({str(row.get("sessionDate") or "") for row in rows if str(row.get("sessionDate") or "")})
     slots = sorted({int(row.get("slotNo") or 0) for row in rows if int(row.get("slotNo") or 0) > 0})
     attendance_rows = []
-    if class_ids and teacher_keys and dates and slots:
+    if class_ids and dates and slots:
         attendance_rows = db.scalars(select(AaAttendanceSession).where(
             AaAttendanceSession.tenant_id == _tid(),
             AaAttendanceSession.class_id.in_(class_ids),
-            AaAttendanceSession.teacher_key.in_(teacher_keys),
             AaAttendanceSession.session_date.in_(dates),
             AaAttendanceSession.slot_no.in_(slots),
             AaAttendanceSession.is_deleted.is_(False),
@@ -209,7 +212,6 @@ def enrich_today_execution_state(db, items: list[dict]) -> list[dict]:
     for session_row in attendance_rows:
         key = (
             int(session_row.class_id or 0),
-            str(session_row.teacher_key or ""),
             str(session_row.session_date or ""),
             int(session_row.slot_no or 0),
         )
@@ -241,7 +243,6 @@ def enrich_today_execution_state(db, items: list[dict]) -> list[dict]:
 
         attendance_key = (
             int(row.get("classId") or 0),
-            str(row.get("teacherKey") or ""),
             str(row.get("sessionDate") or ""),
             int(row.get("slotNo") or 0),
         )
