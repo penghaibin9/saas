@@ -46,6 +46,9 @@ unpackage/
 *.sqlite
 *.sqlite3
 
+# Control Plane CI evidence is runtime-only and must not dirty source-tree checks.
+artifacts/control-plane/
+
 # 密钥 / 证书（任何目录）
 *.pem
 *.key

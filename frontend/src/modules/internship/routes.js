@@ -194,6 +194,20 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.ENTERPRISE_POSITION, title: P.ENTERPRISE_LIST, requiresAuth: true, permissionKey: 'internship.enterprise.view' }
     },
     {
+      // 招聘季（企业招募轮次）：学校邀请企业参与实习招募的唯一正式入口，
+      // 企业协同账号也只能由此产生（后端 routers/internship_recruitment_campaign.py）。
+      path: 'recruitment-campaigns',
+      name: 'internship-recruitment-campaigns',
+      component: () => import('@/modules/internship/views/RecruitmentCampaignListView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.ENTERPRISE_POSITION, title: P.RECRUITMENT_CAMPAIGN, requiresAuth: true, permissionKey: 'internship.recruitment.view' }
+    },
+    {
+      path: 'recruitment-campaigns/:id',
+      name: 'internship-recruitment-campaign-detail',
+      component: () => import('@/modules/internship/views/RecruitmentCampaignDetailView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.ENTERPRISE_POSITION, title: '招聘季详情与参与企业', requiresAuth: true, permissionKey: 'internship.recruitment.view' }
+    },
+    {
       path: 'enterprises/new',
       name: 'internship-enterprise-new',
       component: () => import('@/modules/internship/views/EnterpriseFormView.vue'),

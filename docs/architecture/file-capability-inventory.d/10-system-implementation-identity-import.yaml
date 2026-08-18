@@ -1,0 +1,23 @@
+entries:
+  - module: system-management
+    client: admin-pc
+    route: /api/v1/system/implementation/identity-import/files
+    page: frontend/src/modules/system/views/SystemImplementationView.vue
+    action: upload+scan+mixed-identity-preview+mapping
+    fileCategory: IMPLEMENTATION_IDENTITY_IMPORT_XLSX
+    api: POST /api/v1/system/implementation/identity-import/files; POST /api/v1/system/implementation/identity-import/files/{fileId}/validate
+    backendService: backend/app/services/implementation_identity_import_service.py; backend/app/api/v1/implementation.py
+    storageMode: PRIVATE_FILEOBJECT_QUARANTINE_TO_SCANNED_LOCAL_MATERIALIZATION
+    authMode: systemAdmin.implementation.mapping.manage+systemAdmin.user.import+tenant+file-bind-owner
+    dataScope: tenant+implementation-project+uploader-owned-file+operator-owned-batch
+    versioned: false
+    scanGated: true
+    preview: true
+    download: false
+    import: true
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 实施中心保留唯一混合师生与业务关系工作簿语义，但上传不再直解析；文件先登记为 PRIVATE/SENSITIVE DATA_IMPORT_SOURCE FileObject，生产扫描通过并 AVAILABLE 后才从 storage backend 本地物化路径解析，随后创建 operator-owned IdentityImportBatch。感染或扫描异常 fail-closed，旧 mixed direct parser 在生产继续返回 410。

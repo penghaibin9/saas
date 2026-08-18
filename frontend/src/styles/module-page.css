@@ -21,8 +21,11 @@
 }
 .mp-card {
   background: var(--card);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  /* 不要在这里加 backdrop-filter / filter / transform / will-change：
+     它们会让每张卡片各自成为层叠上下文，卡片之间只能按 DOM 先后叠放，
+     于是「后一张卡片」必然盖住「前一张卡片里溢出的下拉面板」，
+     面板内部再高的 z-index 也失效（企业选择器下拉被下一张卡片遮挡、点不中，即由此而来）。
+     各主题卡底色本就是 0.90~1.0 不透明，毛玻璃几乎不可见，收益远小于代价。 */
   border: 1px solid var(--card-b);
   border-radius: var(--r);
   box-shadow: var(--s1);

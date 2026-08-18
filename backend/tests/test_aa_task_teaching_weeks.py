@@ -57,6 +57,15 @@ def test_explicit_teaching_weeks_has_highest_priority(monkeypatch):
     )
 
 
+@pytest.mark.parametrize("weeks", [17, 20])
+def test_real_school_week_counts_are_preserved_exactly(monkeypatch, weeks):
+    service = _service()
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    assert service.resolve_teaching_weeks(_Db(_term(teaching_weeks=weeks)), 1) == (
+        weeks, "TERM_TEACHING_WEEKS"
+    )
+
+
 def test_exam_week_start_derives_teaching_weeks(monkeypatch):
     service = _service()
     monkeypatch.setattr(service, "_tid", lambda: 1)
@@ -83,11 +92,15 @@ def test_term_date_range_is_compatible_fallback(monkeypatch):
     )), 1) == (18, "TERM_DATE_RANGE")
 
 
-def test_legacy_18_is_explicit_last_resort(monkeypatch, caplog):
+def test_missing_reliable_teaching_weeks_fails_closed_for_formal_generation(monkeypatch):
+    from app.core.exceptions import AppException
+
     service = _service()
     monkeypatch.setattr(service, "_tid", lambda: 1)
-    assert service.resolve_teaching_weeks(_Db(_term()), 1) == (18, "LEGACY_FALLBACK_18")
-    assert "no reliable teaching-week configuration" in caplog.text
+    with pytest.raises(AppException) as exc:
+        service.resolve_teaching_weeks(_Db(_term()), 1)
+    assert exc.value.code == "DATA_CONFLICT"
+    assert "教学周" in exc.value.message
 
 
 def test_missing_term_is_rejected(monkeypatch):

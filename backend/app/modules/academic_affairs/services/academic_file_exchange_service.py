@@ -5,7 +5,7 @@
 - 任务详情在文件 CLEAN/AVAILABLE 后推进 PARSING → VALIDATED/VALIDATION_FAILED；
 - 预检只持久化摘要与脱敏错误，原始 rows 不进入任务 JSON；
 - 确认只接受 jobId + expectedVersion，并重新读取同一 FileObject、复算 rowDigest、重新预检；
-- 学籍、成绩、排课写入继续委托原领域事务，公共层负责租约、文件安全和任务生命周期；
+- 学籍、成绩、排课、课程库、培养方案写入继续委托原领域事务，公共层负责租约、文件安全和任务生命周期；
 - 导出生成 FileObject + ExportJob，支持过期、撤销和一次性下载票据。
 """
 from __future__ import annotations
@@ -22,6 +22,7 @@ from openpyxl import load_workbook
 from sqlalchemy import delete, select
 
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import enforce_permission
 from app.db.session import get_sessionmaker
 from app.services import data_exchange_job_service as jobs
 
@@ -29,8 +30,15 @@ ACADEMIC_MODULE_CODE = "ACADEMIC_AFFAIRS"
 ACADEMIC_ROSTER_IMPORT = "ACADEMIC_ROSTER"
 ACADEMIC_GRADE_IMPORT = "ACADEMIC_GRADE"
 ACADEMIC_SCHEDULE_IMPORT = "ACADEMIC_SCHEDULE"
+ACADEMIC_COURSE_CATALOG_IMPORT = "ACADEMIC_COURSE_CATALOG"
+ACADEMIC_PROGRAM_IMPORT = "ACADEMIC_PROGRAM"
 ACADEMIC_ROSTER_EXPORT = "ACADEMIC_ROSTER"
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
+
+_PROGRAM_PHASE_PERMISSIONS = {
+    "DEFINITION": "academicAffairs.program.manage",
+    "BINDING": "academicAffairs.program.publish",
+}
 
 
 def _json_safe(value: Any) -> Any:
@@ -68,6 +76,65 @@ def _redacted_rows(rows: list[dict], limit: int = 200) -> list[dict]:
     ]
 
 
+_ERROR_SENSITIVE_KEYS = frozenset({
+    "idcard", "id_card", "phone", "mobile", "bankaccount", "bank_account",
+})
+
+
+def _redact_error_value(value: Any) -> Any:
+    """Recursively remove sensitive identity/payment keys before error evidence is persisted."""
+    if isinstance(value, dict):
+        return {
+            str(key): _redact_error_value(item)
+            for key, item in value.items()
+            if str(key).replace("-", "_").lower() not in _ERROR_SENSITIVE_KEYS
+        }
+    if isinstance(value, (list, tuple)):
+        return [_redact_error_value(item) for item in value]
+    return _json_safe(value)
+
+
+def _error_snapshot(item: dict) -> dict:
+    """Persist only server-produced, recursively redacted error evidence.
+
+    Legacy raw fields remain at the top level for backwards compatibility. W4
+    adds reserved metadata keys so polling and error-xlsx can reconstruct the
+    explanation without trusting any frontend-supplied error payload.
+    """
+    raw = _redact_error_value(dict(item.get("raw") or item.get("rowData") or {}))
+    snapshot = dict(raw) if isinstance(raw, dict) else {}
+    evidence = item.get("evidence")
+    if evidence not in (None, "", {}, []):
+        snapshot["_evidence"] = _redact_error_value(evidence)
+    resolution = str(item.get("howToResolve") or "").strip()
+    if resolution:
+        snapshot["_howToResolve"] = resolution[:1000]
+    return _json_safe(snapshot)
+
+
+def _program_phase(context: dict[str, Any] | None) -> str:
+    phase = str((context or {}).get("phase") or "").strip().upper()
+    if phase not in _PROGRAM_PHASE_PERMISSIONS:
+        raise AppException(
+            "DATA_CONFLICT",
+            "培养方案导入任务缺少服务端冻结的 DEFINITION/BINDING phase",
+        )
+    return phase
+
+
+def _enforce_program_job_permission(import_type: object, context: dict[str, Any] | None, user: dict) -> str | None:
+    if str(import_type or "").strip().upper() != ACADEMIC_PROGRAM_IMPORT:
+        return None
+    phase = _program_phase(context)
+    enforce_permission(user, _PROGRAM_PHASE_PERMISSIONS[phase])
+    return phase
+
+
+def _job_context(row) -> dict[str, Any]:
+    snapshot = dict(row.source_snapshot_json or {})
+    return dict(snapshot.get("context") or {})
+
+
 def create_academic_import_job(
     *,
     filename: str,
@@ -81,8 +148,24 @@ def create_academic_import_job(
     from app.models.file import FileObject
 
     import_type = str(import_type or "").upper()
-    if import_type not in {ACADEMIC_ROSTER_IMPORT, ACADEMIC_GRADE_IMPORT, ACADEMIC_SCHEDULE_IMPORT}:
+    if import_type not in {
+        ACADEMIC_ROSTER_IMPORT,
+        ACADEMIC_GRADE_IMPORT,
+        ACADEMIC_SCHEDULE_IMPORT,
+        ACADEMIC_COURSE_CATALOG_IMPORT,
+        ACADEMIC_PROGRAM_IMPORT,
+    }:
         raise AppException("VALIDATION_ERROR", "不支持的教务导入类型")
+    context = dict(context or {})
+    template_version = "v1"
+    if import_type == ACADEMIC_COURSE_CATALOG_IMPORT:
+        from .academic_affairs_school_setup_import_contract import COURSE_TEMPLATE_VERSION
+        template_version = COURSE_TEMPLATE_VERSION
+    elif import_type == ACADEMIC_PROGRAM_IMPORT:
+        from .academic_affairs_school_setup_import_contract import PROGRAM_TEMPLATE_VERSION
+        phase = _enforce_program_job_permission(import_type, context, user)
+        context = {"phase": phase}
+        template_version = PROGRAM_TEMPLATE_VERSION
     db = get_sessionmaker()()
     try:
         file_row = db.scalars(select(FileObject).where(
@@ -104,7 +187,7 @@ def create_academic_import_job(
             source_file_id=int(source_file_id),
             adapter_type=jobs.IMPORT_ADAPTER_EXCEL,
             adapter_ref=f"AA-{import_type}-{uuid.uuid4().hex}",
-            template_version="v1",
+            template_version=template_version,
             status="SCANNING",
             total_rows=0,
             valid_rows=0,
@@ -260,7 +343,6 @@ def _parse_and_validate(import_row, source_path: Path, user: dict) -> tuple[list
         return rows, roster.roster_import_dry_run(rows)
     if import_row.import_type == ACADEMIC_GRADE_IMPORT:
         from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
-        from app.services import xlsx_util
         task_id = int(context.get("taskId") or 0)
         if not task_id:
             raise AppException("DATA_CONFLICT", "成绩导入任务缺少成绩任务编号")
@@ -268,7 +350,6 @@ def _parse_and_validate(import_row, source_path: Path, user: dict) -> tuple[list
         return rows, grade.grade_import_dry_run(task_id, user, rows)
     if import_row.import_type == ACADEMIC_SCHEDULE_IMPORT:
         from app.modules.academic_affairs.services import academic_affairs_schedule_service as schedule
-        from app.services import xlsx_util
         batch_id = int(context.get("batchId") or 0)
         if not batch_id:
             raise AppException("DATA_CONFLICT", "排课导入任务缺少排课批次编号")
@@ -276,8 +357,32 @@ def _parse_and_validate(import_row, source_path: Path, user: dict) -> tuple[list
         if len(rows) > schedule.IMPORT_MAX_ROWS:
             raise AppException("VALIDATION_ERROR", f"单批导入行数不得超过 {schedule.IMPORT_MAX_ROWS} 行")
         rows = schedule.sanitize_import_rows(rows)
-        # 真正跑一遍排课冲突检测器（与确认导入同一 _apply_import_rows），不再假装零错误。
         return rows, schedule.import_dry_run(batch_id, user, rows)
+    if import_row.import_type == ACADEMIC_COURSE_CATALOG_IMPORT:
+        from .academic_affairs_school_setup_file_exchange_spec import parse_and_validate_course_catalog
+        return parse_and_validate_course_catalog(
+            source_path,
+            user=user,
+            reader=_read_xlsx_path,
+        )
+    if import_row.import_type == ACADEMIC_PROGRAM_IMPORT:
+        from .academic_affairs_school_setup_program_preview_service import preview_program_normalized_rows
+        from .academic_affairs_school_setup_program_workbook_adapter import (
+            parse_and_normalize_program_workbook_path,
+        )
+
+        phase = _program_phase(context)
+        grouped, rows = parse_and_normalize_program_workbook_path(
+            source_path,
+            max_bytes=MAX_IMPORT_BYTES,
+        )
+        preview = preview_program_normalized_rows(rows, phase=phase, user=user)
+        preview = {
+            **preview,
+            "sheetRowCounts": {group: len(items) for group, items in grouped.items()},
+            "normalizedRowCount": len(rows),
+        }
+        return rows, preview
     raise AppException("DATA_CONFLICT", "未知教务导入类型")
 
 
@@ -299,15 +404,21 @@ def _stored_errors(db, job_id: int) -> list[dict]:
         ImportRowError.import_job_id == int(job_id),
         ImportRowError.is_deleted.is_(False),
     ).order_by(ImportRowError.row_no, ImportRowError.id)).all()
-    return [
-        {
+    result: list[dict] = []
+    for item in rows:
+        snapshot = dict(item.raw_snapshot_json or {})
+        evidence = snapshot.pop("_evidence", {})
+        resolution = str(snapshot.pop("_howToResolve", "") or "")
+        result.append({
             "row": item.row_no,
             "field": item.field_code,
             "code": item.error_code,
             "message": item.error_message,
-        }
-        for item in rows
-    ]
+            "raw": snapshot,
+            "evidence": _json_safe(evidence) if evidence not in (None, "") else {},
+            "howToResolve": resolution,
+        })
+    return result
 
 
 def refresh_import_job(job_id: str, *, user: dict) -> dict:
@@ -317,6 +428,7 @@ def refresh_import_job(job_id: str, *, user: dict) -> dict:
     db = get_sessionmaker()()
     try:
         row = jobs._owned_import(db, job_id, user)
+        _enforce_program_job_permission(row.import_type, _job_context(row), user)
         if row.status not in {"SCANNING", "PARSING"}:
             return _detail(row, _stored_errors(db, int(row.id)))
         if row.expires_at and row.expires_at <= jobs._now():
@@ -396,9 +508,7 @@ def refresh_import_job(job_id: str, *, user: dict) -> dict:
         ))
         actor_id = jobs._actor_id(user)
         for item in errors:
-            raw = dict(item.get("raw") or item.get("rowData") or {})
-            for field in ("idCard", "id_card", "phone", "mobile", "bankAccount", "bank_account"):
-                raw.pop(field, None)
+            error_snapshot = _error_snapshot(item)
             db.add(ImportRowError(
                 tenant_id=jobs._tenant_id(),
                 import_job_id=row.id,
@@ -407,7 +517,7 @@ def refresh_import_job(job_id: str, *, user: dict) -> dict:
                 field_code=str(item.get("field") or item.get("fieldCode") or "")[:100] or None,
                 error_code=str(item.get("code") or item.get("errorCode") or "VALIDATION_ERROR")[:80],
                 error_message=str(item.get("message") or item.get("reason") or "预检失败")[:1000],
-                raw_snapshot_json=_json_safe(raw) if raw else None,
+                raw_snapshot_json=error_snapshot or None,
                 created_by=actor_id,
             ))
         snapshot = dict(row.source_snapshot_json or {})
@@ -439,6 +549,7 @@ def confirm_academic_import(job_id: str, *, lease: str, user: dict) -> dict:
         snapshot = dict(row.source_snapshot_json or {})
         context = dict(snapshot.get("context") or {})
         import_type = row.import_type
+        program_phase = _enforce_program_job_permission(import_type, context, user)
         source_path = _source_file_path(row, user)
         rows, preview = _parse_and_validate(row, source_path, user)
     finally:
@@ -461,6 +572,18 @@ def confirm_academic_import(job_id: str, *, lease: str, user: dict) -> dict:
         from app.modules.academic_affairs.services import academic_affairs_schedule_service as schedule
         atomic = str(context.get("importMode") or "ATOMIC").strip().upper() != "PARTIAL"
         result = schedule.import_items(int(context.get("batchId") or 0), user, rows, atomic=atomic)
+    elif import_type == ACADEMIC_COURSE_CATALOG_IMPORT:
+        from . import academic_affairs_school_setup_course_confirm_service as course_catalog
+        result = course_catalog.confirm_course_catalog_import(rows, user)
+    elif import_type == ACADEMIC_PROGRAM_IMPORT:
+        if program_phase == "DEFINITION":
+            from . import academic_affairs_school_setup_program_definition_authority_service as program_definition
+            result = program_definition.confirm_program_definition_import(rows, user=user)
+        elif program_phase == "BINDING":
+            from . import academic_affairs_school_setup_program_binding_confirm_service as program_binding
+            result = program_binding.confirm_program_binding_import(rows, user=user)
+        else:  # pragma: no cover - _enforce_program_job_permission already fails closed
+            raise RuntimeError(f"unsupported Program phase: {program_phase}")
     else:
         raise AppException("DATA_CONFLICT", "未知教务导入类型")
     if not isinstance(result, dict):
@@ -474,7 +597,23 @@ def confirm_roster_import(job_id: str, *, lease: str, user: dict) -> dict:
     return confirm_academic_import(job_id, lease=lease, user=user)
 
 
-_ERROR_XLSX_HEADERS = ["行号", "字段", "错误代码", "错误信息", "原始值(已脱敏)"]
+_ERROR_XLSX_HEADERS = [
+    "行号", "字段", "错误代码", "错误信息", "原始值(已脱敏)", "处理建议", "证据(已脱敏)",
+]
+
+
+def _error_xlsx_row(item: dict) -> list[Any]:
+    raw = item.get("raw") or {}
+    evidence = item.get("evidence") or {}
+    return [
+        item.get("row") or "",
+        item.get("field") or "",
+        item.get("code") or "",
+        item.get("message") or "",
+        json.dumps(_json_safe(raw), ensure_ascii=False, sort_keys=True) if raw else "",
+        str(item.get("howToResolve") or ""),
+        json.dumps(_json_safe(evidence), ensure_ascii=False, sort_keys=True) if evidence else "",
+    ]
 
 
 def export_import_errors_xlsx(job_id: str, *, user: dict) -> dict:
@@ -504,13 +643,7 @@ def export_import_errors_xlsx(job_id: str, *, user: dict) -> dict:
     ws.title = "导入错误清单"
     ws.append(_ERROR_XLSX_HEADERS)
     for item in errors:
-        ws.append([
-            item.get("row") or "",
-            item.get("field") or "",
-            item.get("code") or "",
-            item.get("message") or "",
-            "",  # 存量 ImportRowError 未回传原始快照字段名，此处留空位而非编造内容
-        ])
+        ws.append(_error_xlsx_row(item))
     from io import BytesIO
     buffer = BytesIO()
     wb.save(buffer)

@@ -2,10 +2,11 @@ import {
   fetchMyAuthContexts,
   getToken,
   request,
-  requestBlob,
-  requestUpload
+  requestBlob
 } from '@/services/http/client'
 import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
+
+const identityUploadKeys = new WeakMap()
 
 function saveBlob(blob, filename) {
   const href = URL.createObjectURL(blob)
@@ -18,11 +19,27 @@ function saveBlob(blob, filename) {
   URL.revokeObjectURL(href)
 }
 
-function createIdempotencyKey(jobId, expectedVersion) {
+function randomKey(prefix) {
   const random = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
-  return `data-exchange-confirm:${jobId}:v${expectedVersion}:${random}`
+  return `${prefix}:${random}`
+}
+
+function createIdempotencyKey(jobId, expectedVersion) {
+  return randomKey(`data-exchange-confirm:${jobId}:v${expectedVersion}`)
+}
+
+function identityUploadKey(kind, file) {
+  let byKind = identityUploadKeys.get(file)
+  if (!byKind) {
+    byKind = new Map()
+    identityUploadKeys.set(file, byKind)
+  }
+  if (!byKind.has(kind)) {
+    byKind.set(kind, randomKey(`identity-upload:${kind}`))
+  }
+  return byKind.get(kind)
 }
 
 async function governedJsonRequest(path, { method = 'GET', params, body, headers = {} } = {}, retried = false) {
@@ -43,9 +60,40 @@ async function governedJsonRequest(path, { method = 'GET', params, body, headers
     body: body ? JSON.stringify(body) : undefined
   })
   if (response.status === 401 && !retried) {
-    // 复用统一客户端完成 refresh-token 单飞轮换，再用新 access token 重试带幂等头请求。
     await fetchMyAuthContexts()
     return governedJsonRequest(path, { method, params, body, headers }, true)
+  }
+  const payload = await response.json().catch(() => null)
+  if (!payload || typeof payload.code !== 'number') {
+    throw new Error(`响应结构异常（HTTP ${response.status}）`)
+  }
+  if (payload.code !== 0) {
+    const error = new Error(payload.message || `业务错误 ${payload.code}`)
+    error.biz = true
+    error.code = payload.code
+    error.bizCode = payload.bizCode
+    error.traceId = payload.traceId
+    error.details = payload.details
+    throw error
+  }
+  return payload.data
+}
+
+async function governedUploadRequest(path, file, idempotencyKey, retried = false) {
+  const token = getToken()
+  const form = new FormData()
+  form.append('file', file)
+  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Idempotency-Key': idempotencyKey
+    },
+    body: form
+  })
+  if (response.status === 401 && !retried) {
+    await fetchMyAuthContexts()
+    return governedUploadRequest(path, file, idempotencyKey, true)
   }
   const payload = await response.json().catch(() => null)
   if (!payload || typeof payload.code !== 'number') {
@@ -113,7 +161,12 @@ export const dataExchangeApi = {
     })
   },
   validateIdentity(kind, file) {
-    return requestUpload(`/data-exchange/imports/identity/${kind}/validate-file`, file)
+    const idempotencyKey = identityUploadKey(kind, file)
+    return governedUploadRequest(
+      `/data-exchange/imports/identity/${kind}/validate-file`,
+      file,
+      idempotencyKey
+    )
   },
   async downloadExport(job) {
     const ticket = await request(`/data-exchange/exports/${job.id}/download-ticket`, {

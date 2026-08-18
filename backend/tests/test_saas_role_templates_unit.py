@@ -1,8 +1,8 @@
 """SaaS 角色模板与身份导入合同。
 
 原有纯单元测试完整保存在同目录 ``_saas_role_templates_contracts.py``；本文件复用所有
-未变化的测试，只对已经发生权威架构演进的四个合同做显式更新。这样不删除、不 skip、
-不 xfail 任何既有覆盖，同时避免为满足旧静态断言把生产入口退回到师生混合路由。
+未变化的测试，只对已经发生权威架构演进的合同做显式更新。这样不删除、不 skip、
+不 xfail 任何既有覆盖，同时避免为满足旧静态断言把生产入口退回到历史架构。
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ _SPEC.loader.exec_module(_LEGACY)
 
 _REPLACED = {
     "test_every_school_permission_role_has_a_versioned_template",
+    "test_all_production_login_account_constructors_match_the_frozen_allowlist",
     "test_identity_import_api_has_no_raw_json_account_creation_bypass",
     "test_frontend_exposes_batch_account_creation_only_at_fixed_system_route",
     "test_business_import_screens_show_the_non_account_creation_boundary",
@@ -39,11 +40,40 @@ def test_every_school_permission_role_has_a_versioned_template():
     assert not any(code.startswith("PLATFORM_") for code in template_codes)
 
 
-def test_identity_import_api_has_no_raw_json_account_creation_bypass():
-    """允许通用 xlsx + 师生专用 xlsx 工作流，但禁止出现 raw JSON 建号旁路。"""
+def test_all_production_login_account_constructors_match_the_frozen_allowlist():
+    """V3 adds exactly one external-enterprise pre-provisioning constructor, not a generic bypass."""
+    assert _LEGACY._user_constructor_sites() == {
+        ("services/school_onboarding_service.py", "run_onboarding"),
+        ("services/platform_service.py", "create_school_admin"),
+        ("services/sandbox_service.py", "seed_sandbox"),
+        (
+            "modules/internship/services/internship_enterprise_auth_service.py",
+            "_ensure_invited_user_in_tx",
+        ),
+    }
+
+
+def test_enterprise_invite_user_constructor_is_disabled_scoped_preprovision_only():
     root = Path(__file__).resolve().parents[2]
-    system_api = root / "backend/app/api/v1/system.py"
-    tree = ast.parse(system_api.read_text(encoding="utf-8"))
+    source = (root / "backend/app/modules/internship/services/internship_enterprise_auth_service.py").read_text(
+        encoding="utf-8")
+    block = source.split("def _ensure_invited_user_in_tx", 1)[1].split("def issue_company_invite", 1)[0]
+    assert 'user_type="ENTERPRISE_MENTOR"' in block
+    assert 'status="DISABLED"' in block
+    assert 'password_hash=hash_password(secrets.token_urlsafe(48))' in block
+    assert 'phone_encrypted=encrypt_sensitive(phone_text, "phone")' in block
+    assert 'phone_hash=phone_hash' in block
+    assert 'must_change_password=False' in block
+    assert "db.commit()" not in block
+    assert "db.flush()" in block
+
+
+def test_identity_import_api_has_no_raw_json_account_creation_bypass():
+    """身份导入兼容层只允许文件/任务适配，不得出现 raw JSON 建号旁路。"""
+    root = Path(__file__).resolve().parents[2]
+    compat_api = root / "backend/app/modules/system_admin/routers/identity_import_compat_router.py"
+    source = compat_api.read_text(encoding="utf-8")
+    tree = ast.parse(source)
     routes = set()
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -58,23 +88,18 @@ def test_identity_import_api_has_no_raw_json_account_creation_bypass():
                 routes.add((decorator.func.attr.upper(), route))
 
     assert routes == {
-        ("GET", "/system/identity-import/role-templates"),
-        ("GET", "/system/identity-import/template"),
         ("POST", "/system/identity-import/validate-file"),
-        ("POST", "/system/identity-import/confirm-batch"),
-        ("GET", "/system/identity-import/students/template"),
         ("POST", "/system/identity-import/students/validate-file"),
         ("POST", "/system/identity-import/students/confirm-batch"),
-        ("GET", "/system/identity-import/teachers/template"),
         ("POST", "/system/identity-import/teachers/validate-file"),
         ("POST", "/system/identity-import/teachers/confirm-batch"),
-        ("GET", "/system/identity-import/batches/{batch_no}/errors"),
+        ("POST", "/system/identity-import/confirm-batch"),
     }
-    assert all(
-        path.endswith(("/template", "/validate-file", "/confirm-batch", "/errors", "/role-templates"))
-        or "/batches/" in path
-        for _method, path in routes
-    )
+    assert "LEGACY_IDENTITY_IMPORT_RETIRED" in source
+    assert "data_exchange_router.run_identity_import_upload" in source
+    assert "confirm_identity_import_job" in source
+    assert "User(" not in source
+    assert "db.add(" not in source
 
 
 def test_frontend_exposes_batch_account_creation_only_at_fixed_system_route():

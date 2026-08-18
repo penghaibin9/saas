@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "authorityFile": "shared/contracts/permission-catalog.json",
+  "classification": ["DEFINED_AND_USED","DEFINED_UNUSED","USED_UNDEFINED","USED_LEGACY_PATTERN","ROADMAP_RESERVED","DEPRECATED_ALIAS","UI_ACTION_NOT_PERMISSION"],
+  "ci": {"USED_UNDEFINED":"RED","E_ROUTE_USED_UNDEFINED":"RED","enterpriseSchoolCustomRoleAssignment":"RED","ePermissionWrongModuleKey":"RED","USED_LEGACY_PATTERN":"YELLOW_UNTIL_B8"},
+  "runtimePermissionCreator": "catalog reconciliation / migration only",
+  "uiActionKey": "NOT_PERMISSION",
+  "roadmapCapability": "NOT_ACTIVE_PERMISSION"
+}

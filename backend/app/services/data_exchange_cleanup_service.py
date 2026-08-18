@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.context import current_tenant_id
 from app.core.exceptions import AppException
@@ -12,8 +12,8 @@ from app.services.storage import get_backend
 
 
 def cleanup_current_tenant_expired_jobs(*, limit: int = 200) -> dict:
-    """学校端维护只处理当前 tenant；不得横跨其它学校。"""
-    from app.models.data_exchange import ExportJob, ImportJob
+    """学校端维护只处理当前 tenant；I3 staging 随过期 ImportJob 一并软删。"""
+    from app.models.data_exchange import ExportJob, IdentityImportStagingRow, ImportJob
     from app.models.file import FileObject
 
     try:
@@ -25,7 +25,7 @@ def cleanup_current_tenant_expired_jobs(*, limit: int = 200) -> dict:
 
     now = datetime.utcnow()
     db = get_sessionmaker()()
-    import_count = export_count = file_count = 0
+    import_count = export_count = file_count = staging_count = 0
     try:
         imports = db.scalars(select(ImportJob).where(
             ImportJob.tenant_id == tenant_id,
@@ -39,6 +39,12 @@ def cleanup_current_tenant_expired_jobs(*, limit: int = 200) -> dict:
             row.lease_token = None
             row.lease_started_at = None
             row.version = int(row.version or 0) + 1
+            result = db.execute(update(IdentityImportStagingRow).where(
+                IdentityImportStagingRow.tenant_id == tenant_id,
+                IdentityImportStagingRow.import_job_id == int(row.id),
+                IdentityImportStagingRow.is_deleted.is_(False),
+            ).values(is_deleted=True, version=IdentityImportStagingRow.version + 1))
+            staging_count += int(result.rowcount or 0)
             import_count += 1
 
         exports = db.scalars(select(ExportJob).where(
@@ -61,7 +67,6 @@ def cleanup_current_tenant_expired_jobs(*, limit: int = 200) -> dict:
                     try:
                         get_backend().delete(file_row.file_key)
                     except Exception as exc:
-                        # 字节删除失败时不伪装完成；本任务留待下一次重试。
                         row.status = "SUCCEEDED"
                         row.error_message = f"过期字节清理失败：{exc}"[:4000]
                         continue
@@ -76,6 +81,7 @@ def cleanup_current_tenant_expired_jobs(*, limit: int = 200) -> dict:
             "expiredImports": import_count,
             "expiredExports": export_count,
             "deletedFiles": file_count,
+            "expiredStagingRows": staging_count,
         }
     except Exception:
         db.rollback()

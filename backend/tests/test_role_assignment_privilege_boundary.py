@@ -14,6 +14,21 @@ from app.services import role_assignment_service as ras
 TENANT_ID = 1000000000000000001
 
 
+@pytest.fixture(autouse=True)
+def _bootstrap_school_iam_authority(db_mode):
+    """Each migrated-schema reset replays the same production Control Plane Authority."""
+    from app.services.school_iam_authority_service import converge_school_iam_authority
+
+    result = converge_school_iam_authority(
+        source="PYTEST_ROLE_ASSIGNMENT_PRIVILEGE_BOUNDARY",
+        source_commit_sha="pytest-role-assignment-boundary",
+        actor_user_id=None,
+    )
+    assert result["converged"] is True
+    assert result["shadow"]["zeroUnexplainedDrift"] is True
+    assert result["catalogReconciliation"]["missingAfterReconcile"] == 0
+
+
 def _session():
     from app.db.session import get_sessionmaker
     return get_sessionmaker()()

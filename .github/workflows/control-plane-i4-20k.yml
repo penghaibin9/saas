@@ -1,0 +1,126 @@
+name: Control Plane I4 20K Identity Gold Probe
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/app/models/data_exchange.py'
+      - 'backend/app/services/identity_import_staging_service.py'
+      - 'backend/app/services/identity_import_service.py'
+      - 'backend/app/services/data_exchange_job_service.py'
+      - 'backend/app/services/school_onboarding_service.py'
+      - 'backend/app/services/saas_role_service.py'
+      - 'backend/app/core/security_legacy.py'
+      - 'backend/scripts/check_control_plane_i4_20k_identity.py'
+      - 'shared/contracts/control-plane/i4-20k-preflight.json'
+      - 'backend/tests/test_control_plane_i4_preflight.py'
+      - '.github/workflows/control-plane-i4-20k.yml'
+  push:
+    branches:
+      - integration/control-plane-option-b-20260815
+    paths:
+      - 'backend/app/models/data_exchange.py'
+      - 'backend/app/services/identity_import_staging_service.py'
+      - 'backend/app/services/identity_import_service.py'
+      - 'backend/app/services/data_exchange_job_service.py'
+      - 'backend/app/services/school_onboarding_service.py'
+      - 'backend/app/services/saas_role_service.py'
+      - 'backend/app/core/security_legacy.py'
+      - 'backend/scripts/check_control_plane_i4_20k_identity.py'
+      - 'shared/contracts/control-plane/i4-20k-preflight.json'
+      - 'backend/tests/test_control_plane_i4_preflight.py'
+      - '.github/workflows/control-plane-i4-20k.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-i4-20k-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mysql-20k-single-job:
+    name: Exact-head MySQL 20K identity single-job proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      APP_ENV: test
+      SECRET_KEY: control-plane-i4-20k-production-proof-secret
+      FILE_SCAN_ENABLED: 'false'
+      FILE_SCAN_REQUIRED: 'false'
+      I4_EVIDENCE_PATH: ../artifacts/control-plane/i4-20k.json
+      I4_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Exact branch HEAD assertion
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Verify MySQL single head and schema
+        working-directory: backend
+        run: |
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          python -m py_compile scripts/check_control_plane_i4_20k_identity.py
+      - name: Run real 20K single-job proof
+        working-directory: backend
+        run: PYTHONPATH=. timeout 40m python scripts/check_control_plane_i4_20k_identity.py
+      - name: Validate evidence is non-Gold probe truth
+        if: success()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('artifacts/control-plane/i4-20k.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          assert data['rows'] == 20000
+          assert data['runtimeTeachers'] == 20000
+          assert data['runtimeRoleLinks'] == 20000
+          assert data['stagingRows'] == 20000
+          assert data['validStagingRows'] == 20000
+          assert data['rowErrors'] == 0
+          assert data['idempotentReplay'] is True
+          assert data['goldCandidate'] is True
+          assert data['headSha'] == '${{ github.event.pull_request.head.sha || github.sha }}'
+          print(json.dumps(data, ensure_ascii=False, sort_keys=True))
+          PY
+      - name: Upload sanitized I4 metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-plane-i4-20k-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/control-plane/i4-20k.json
+          if-no-files-found: warn
+          retention-days: 14

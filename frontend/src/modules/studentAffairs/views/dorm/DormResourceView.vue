@@ -74,7 +74,7 @@
           <template #cell-floorNo="{ row }">{{ row.floorNo }}</template>
           <template #cell-capacity="{ row }">{{ row.capacity }}</template>
           <template #cell-vacantBeds="{ row }"><strong :class="row.vacantBeds ? 'dorm-vacant' : 'dorm-full'">{{ row.vacantBeds }}</strong></template>
-          <template #cell-status="{ row }">{{ row.status }}</template>
+          <template #cell-status="{ row }">{{ roomStatusLabel(row.status) }}</template>
           <template #cell-actions="{ row }">
             <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" size="sm" variant="secondary" @click="openRoom(row)">查看床位</AppPermissionButton>
           </template>
@@ -257,7 +257,10 @@ export default {
       catch (e) { this.errorMessage = e.message || '操作失败'; return false }
       finally { this.actioning = false }
     },
-    genderLabel(g) { return ({ MALE: '男寝', FEMALE: '女寝', MIXED: '混合' })[g] || g }
+    genderLabel(g) { return ({ MALE: '男寝', FEMALE: '女寝', MIXED: '混合' })[g] || g },
+    /** 房间状态：建房时写入 ENABLED（见 affairs_dorm_service 铺床逻辑）；
+     *  未收录取值原样显示，避免后端新增状态时显示成空白 */
+    roomStatusLabel(s) { return ({ ENABLED: '启用', DISABLED: '停用', MAINTENANCE: '维修中' })[s] || s || '—' }
   }
 }
 </script>

@@ -46,6 +46,16 @@ def test_generation_precheck_accepts_valid_program_and_counts_warnings(monkeypat
     }
 
 
+def test_generation_program_scope_reuses_canonical_activation_status_policy():
+    import inspect
+    from app.modules.academic_affairs.services import academic_affairs_task_service as service
+
+    source = inspect.getsource(service._generation_programs)
+    assert "program_activation.CURRENT_EFFECTIVE_PROGRAM_STATUSES" in source
+    assert "AaProgramBinding.status == \"ACTIVE\"" in source
+    assert 'AaProgram.status == "ENABLED"' not in source
+
+
 def test_public_task_generation_is_explicit_and_projects_teaching_class():
     from app.modules.academic_affairs.services import academic_affairs_task_service as service
 

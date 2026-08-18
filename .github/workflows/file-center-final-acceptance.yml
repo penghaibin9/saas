@@ -7,6 +7,8 @@ on:
       - 'backend/app/models/file.py'
       - 'backend/app/services/file**'
       - 'backend/app/services/storage/**'
+      - 'backend/app/services/xlsx_util.py'
+      - 'backend/app/modules/system_admin/routers/system_bundle.py'
       - 'backend/app/workers/file_*worker.py'
       - 'backend/app/modules/**/material*'
       - 'backend/app/modules/academic_affairs/**'

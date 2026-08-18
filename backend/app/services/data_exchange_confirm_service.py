@@ -1,156 +1,145 @@
-"""统一 ImportJob 确认分派。
-
-身份账号、老系统迁移与已迁移教务作业均只接受 jobId + expectedVersion；真正写入继续委托原业务
-adapter，公共层负责租户、所有者、版本、过期、文件安全门、任务租约与结果投影。
-"""
+"""I2 confirmation gate over the frozen Data Exchange confirm implementation."""
 from __future__ import annotations
 
-import secrets
-from datetime import timedelta
-
 from app.core.exceptions import AppException
-from app.db.session import get_sessionmaker
-from app.services import data_exchange_job_service as jobs
+from app.core.permissions import enforce_permission
+from app.services import data_exchange_confirm_legacy as _legacy
+
+_COURSE_CATALOG_CONFIRM_PERMISSION = "academicAffairs.course.manage"
 
 
-def _begin_adapter_confirm(job_id: str, expected_version: int, user: dict) -> tuple[str, str, str]:
-    lease = secrets.token_hex(32)
+def _normalize_identity_source_user_binding(source_file_id: str, user: dict) -> None:
+    """Normalize pre-canonical USER bindings without widening file access.
+
+    Historical uploads stored the token-shaped subject (for example ``db-2`` or
+    ``u_2``), while the file resolver compares the canonical numeric actor id.
+    Identity confirmation may repair that representation only when the source
+    FileObject belongs to the same tenant and the same resolved uploader.  A
+    different owner, tenant or non-identity source is intentionally untouched and
+    will continue to fail closed in the normal file-ready authorization gate.
+    """
+    raw_file_id = str(source_file_id or "").strip()
+    if not raw_file_id.isdigit():
+        return
+
+    from sqlalchemy import select
+
+    from app.db.session import get_sessionmaker
+    from app.models.file import FileBinding, FileObject
+    from app.services import data_exchange_job_service as jobs
+
+    tenant_id = jobs._tenant_id()  # noqa: SLF001 - same Data Exchange authority
+    actor_id = jobs._actor_id(user)  # noqa: SLF001 - canonical server-side actor id
+    if not actor_id:
+        return
+
     db = get_sessionmaker()()
     try:
-        row = jobs._owned_import(db, job_id, user, lock=True)
-        if row.status == "SUCCEEDED":
-            return row.adapter_type, row.adapter_ref, "ALREADY_DONE"
-        if row.expires_at and row.expires_at <= jobs._now():
-            row.status = "EXPIRED"
-            row.version = int(row.version or 0) + 1
-            db.commit()
-            raise AppException("DATA_CONFLICT", "导入任务已过期，请重新上传预检")
-        if int(row.version or 0) != int(expected_version):
-            raise AppException("DATA_CONFLICT", "任务版本已变化，请刷新后重试")
-        if row.invalid_rows or row.status == "VALIDATION_FAILED":
-            raise AppException("VALIDATION_ERROR", "该任务存在预检错误，禁止确认导入")
-        if row.status == "CONFIRMING" and row.lease_started_at \
-                and row.lease_started_at > jobs._now() - timedelta(seconds=jobs.LEASE_STALE_SECONDS):
-            raise AppException("DATA_CONFLICT", "该任务正在另一服务实例确认，请稍后刷新")
-        if row.status not in {"VALIDATED", "CONFIRMING"}:
-            raise AppException("DATA_CONFLICT", f"当前任务状态 {row.status} 不允许确认")
-        row.status = "CONFIRMING"
-        row.lease_token = lease
-        row.lease_started_at = jobs._now()
-        row.error_message = None
-        row.version = int(row.version or 0) + 1
-        adapter_type, adapter_ref = row.adapter_type, row.adapter_ref
-        db.commit()
-        return adapter_type, adapter_ref, lease
-    finally:
-        db.close()
+        file_obj = db.scalars(select(FileObject).where(
+            FileObject.id == int(raw_file_id),
+            FileObject.tenant_id == int(tenant_id),
+            FileObject.owner_user_id == int(actor_id),
+            FileObject.biz_type == "DATA_IMPORT_SOURCE",
+            FileObject.is_deleted.is_(False),
+        )).first()
+        if file_obj is None:
+            return
 
-
-def _finish(job_id: str, lease: str, result: dict, user: dict) -> dict:
-    db = get_sessionmaker()()
-    try:
-        row = jobs._owned_import(db, job_id, user, lock=True)
-        if row.status == "SUCCEEDED":
-            return jobs._import_row(row)
-        if row.lease_token != lease:
-            raise AppException("DATA_CONFLICT", "导入任务确认租约已失效")
-        row.status = "SUCCEEDED"
-        row.confirmed_rows = int(
-            result.get("createdCount")
-            or result.get("insertedRows")
-            or result.get("confirmedRows")
-            or row.valid_rows
-            or 0
-        )
-        row.confirmed_at = jobs._now()
-        row.result_json = result
-        row.lease_token = None
-        row.lease_started_at = None
-        row.error_message = None
-        row.version = int(row.version or 0) + 1
-        db.commit()
-        db.refresh(row)
-        return jobs._import_row(row)
-    finally:
-        db.close()
-
-
-def _release(job_id: str, lease: str, error: Exception, user: dict) -> None:
-    db = get_sessionmaker()()
-    try:
-        row = jobs._owned_import(db, job_id, user, lock=True)
-        if row.lease_token == lease:
-            row.status = "VALIDATED"
-            row.lease_token = None
-            row.lease_started_at = None
-            row.error_message = str(error)[:4000]
-            row.version = int(row.version or 0) + 1
+        aliases = {str(actor_id), f"db-{actor_id}", f"u_{actor_id}"}
+        bindings = db.scalars(select(FileBinding).where(
+            FileBinding.tenant_id == int(tenant_id),
+            FileBinding.file_id == int(file_obj.id),
+            FileBinding.biz_type == "DATA_IMPORT_SOURCE",
+            FileBinding.subject_type == "USER",
+            FileBinding.is_deleted.is_(False),
+        )).all()
+        changed = False
+        for binding in bindings:
+            subject = str(binding.subject_id or "").strip()
+            if subject in aliases and subject != str(actor_id):
+                binding.subject_id = str(actor_id)
+                changed = True
+        if changed:
             db.commit()
     finally:
         db.close()
 
 
-def confirm_import_job(
+def confirm_identity_import_job(
     job_id: str,
     *,
     expected_version: int,
     user: dict,
-    idempotency_key: str | None = None,
+    idempotency_key: str | None,
 ) -> dict:
-    """按 adapter 类型分派；所有调用者只能提供统一任务编号与任务版本。"""
-    db = get_sessionmaker()()
-    try:
-        current = jobs._owned_import(db, job_id, user)
-        adapter_type = current.adapter_type
-        import_type = current.import_type
-        if current.status == "SUCCEEDED":
-            return jobs._import_row(current)
-    finally:
-        db.close()
+    from app.services import data_exchange_job_service as jobs
 
-    if adapter_type == jobs.IMPORT_ADAPTER_IDENTITY:
-        return jobs.confirm_identity_import_job(
-            job_id,
-            expected_version=expected_version,
-            user=user,
-            idempotency_key=idempotency_key,
+    item = jobs.get_import_job(job_id, user=user)
+    if str(item.get("status") or "").upper() != "VALIDATED":
+        raise AppException(
+            "IMPORT_NOT_VALIDATED",
+            "导入任务尚未完成安全扫描与服务端预检，禁止确认",
+            http_status=409,
+            details={"status": item.get("status")},
         )
+    if int(item.get("invalidRows") or 0) > 0:
+        raise AppException("IMPORT_HAS_ERRORS", "预检存在错误行，禁止确认", http_status=409)
+    if int(item.get("validRows") or 0) <= 0:
+        raise AppException("IMPORT_EMPTY", "没有可确认导入的有效数据行", http_status=409)
+    _normalize_identity_source_user_binding(str(item.get("sourceFileId") or ""), user)
+    return _legacy.confirm_import_job(
+        job_id,
+        expected_version=expected_version,
+        user=user,
+        idempotency_key=idempotency_key,
+    )
 
-    adapter_type, adapter_ref, lease = _begin_adapter_confirm(job_id, expected_version, user)
-    if lease == "ALREADY_DONE":
-        db = get_sessionmaker()()
-        try:
-            return jobs._import_row(jobs._owned_import(db, job_id, user))
-        finally:
-            db.close()
-    try:
-        db = get_sessionmaker()()
-        try:
-            row = jobs._owned_import(db, job_id, user)
-            source_file_id = str(row.source_file_id or "")
-        finally:
-            db.close()
-        if not source_file_id:
-            raise AppException("DATA_CONFLICT", "导入任务缺少原始文件，请重新上传")
-        from app.services.file_scan_service import assert_file_ready_for_business
-        assert_file_ready_for_business(source_file_id, user=user)
 
-        if adapter_type == jobs.IMPORT_ADAPTER_MIGRATION:
-            from app.services import migration_import_service as migration
-            result = migration.confirm(adapter_ref)
-            return _finish(job_id, lease, result, user)
-        if adapter_type == jobs.IMPORT_ADAPTER_EXCEL and import_type in {
-            "ACADEMIC_ROSTER", "ACADEMIC_GRADE", "ACADEMIC_SCHEDULE",
-        }:
-            from app.modules.academic_affairs.services import academic_file_exchange_service as academic
-            result = academic.confirm_academic_import(job_id, lease=lease, user=user)
-            return _finish(job_id, lease, result, user)
-        if adapter_type == jobs.IMPORT_ADAPTER_EXCEL:
-            raise AppException(
-                "DATA_CONFLICT",
-                "该 Excel 作业尚未迁移到服务端权威确认，请使用对应业务入口",
-            )
-        raise AppException("DATA_CONFLICT", "未知导入 adapter，拒绝确认")
-    except Exception as exc:
-        _release(job_id, lease, exc, user)
-        raise
+def confirm_migration_import_job(*args, **kwargs):
+    return _legacy.confirm_migration_import_job(*args, **kwargs)
+
+
+def confirm_academic_import_job(*args, **kwargs):
+    """显式 Academic canonical confirm 入口。
+
+    frozen legacy 层继续持有统一任务租约、FileObject READY gate、幂等完成投影；
+    其 Academic whitelist 唯一委托
+    ``academic_file_exchange_service.confirm_academic_import`` 重读同一文件并执行领域事务。
+    """
+    return _legacy.confirm_import_job(*args, **kwargs)
+
+
+def confirm_import_job(*args, **kwargs):
+    job_id = str(args[0] if args else kwargs.get("job_id") or "")
+    from app.services import data_exchange_job_service as jobs
+
+    user = kwargs.get("user") or {}
+    item = jobs.get_import_job(job_id, user=user)
+    adapter_type = str(item.get("adapterType") or "")
+    import_type = str(item.get("importType") or "")
+    if adapter_type in {jobs.IMPORT_ADAPTER_IDENTITY, jobs.PENDING_IDENTITY_ADAPTER}:
+        return confirm_identity_import_job(*args, **kwargs)
+    if adapter_type == jobs.IMPORT_ADAPTER_EXCEL and import_type in {
+        "ACADEMIC_ROSTER",
+        "ACADEMIC_GRADE",
+        "ACADEMIC_SCHEDULE",
+        "ACADEMIC_COURSE_CATALOG",
+        "ACADEMIC_PROGRAM",
+    }:
+        # The public Academic router intentionally accepts any Academic import
+        # permission to enter this shared dispatcher.  Job ownership proves only
+        # object visibility; it must never preserve a revoked domain write grant.
+        # Re-check Course Catalog authority at the confirmation instant before the
+        # legacy lease/FileObject path can reach the atomic Course writer.
+        if import_type == "ACADEMIC_COURSE_CATALOG":
+            enforce_permission(user, _COURSE_CATALOG_CONFIRM_PERMISSION)
+        return confirm_academic_import_job(*args, **kwargs)
+    return _legacy.confirm_import_job(*args, **kwargs)
+
+
+def __getattr__(name: str):
+    return getattr(_legacy, name)
+
+
+def __dir__():
+    return sorted(set(globals()) | set(dir(_legacy)))

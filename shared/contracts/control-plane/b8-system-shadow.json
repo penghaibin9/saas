@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 2,
+  "card": "CTRL-B8-01",
+  "shadowScope": "TENANT_SYSTEM_ROLES_ONLY",
+  "resolvers": [
+    "OLD_BUILTIN_ROLE_PERMISSIONS",
+    "NEW_PUBLISHED_TENANT_ROLE_TEMPLATE",
+    "CUSTOM_ROLE_PERMISSION",
+    "PLATFORM_WORKFORCE"
+  ],
+  "permissionUniverse": {
+    "sources": ["permission-catalog.json", "permission-catalog-b8-concrete.json"],
+    "lifecycle": "ACTIVE",
+    "plane": "TENANT",
+    "tenantAssignable": true,
+    "platformPermissionsForbidden": true,
+    "enterprisePermissionsForbidden": true,
+    "minimumConcreteCount": 400
+  },
+  "classification": ["ALLOW_ALLOW", "DENY_DENY", "ALLOW_DENY", "DENY_ALLOW"],
+  "mismatchPolicy": "ZERO_UNEXPLAINED_DRIFT",
+  "strictCatalog": {
+    "concreteLegacyUsageAllowed": 0,
+    "temporaryRuntimeProbeCodes": ["*"],
+    "runtimeProbeMustBeRetiredBy": "CTRL-B8-WILDCARD-RETIREMENT"
+  },
+  "customTemplateFallback": false,
+  "platformMayEnterSchoolTemplate": false,
+  "enterpriseMayEnterSchoolTemplate": false,
+  "runtimeWildcardRetiredByThisCard": false,
+  "nextGate": "CTRL-B8-02_PR104_STYLE_20K_ROLE_TOPOLOGY"
+}

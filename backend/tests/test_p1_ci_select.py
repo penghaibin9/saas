@@ -164,16 +164,26 @@ def test_existing_targets_expands_globs_before_pytest(tmp_path, monkeypatch):
     assert all("*" not in target for target in targets)
 
 
-def test_large_pr_uses_full_regression_with_main_failure_baseline():
+def test_pr_ci_stays_change_aware_while_main_owns_full_regression():
     root = Path(__file__).resolve().parents[2]
-    workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert 'push:\n    branches: [ "main" ]' in workflow
-    assert "CHANGED_COUNT" in workflow
-    assert 'if [ "$CHANGED_COUNT" -ge 150 ]' in workflow
-    assert "--junitxml=test-results/backend-full.xml" in workflow
-    assert "compare-pytest-junit-baseline.py" in workflow
-    assert "backend-known-failures-main.txt" in workflow
-    assert '--base-ref "${{ github.event.pull_request.base.sha }}"' in workflow
-    assert 'github.event_name }}" = "schedule"' in workflow
-    assert "timeout 80m pytest -q" in workflow
-    assert "select_pytest_targets.py" in workflow
+    ci_workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    main_workflow = (
+        root / ".github" / "workflows" / "main-canonical-release-gate.yml"
+    ).read_text(encoding="utf-8")
+
+    assert 'push:\n    branches: [ "main" ]' in ci_workflow
+    assert 'github.event_name }}" = "schedule"' in ci_workflow
+    assert "timeout 80m pytest -q" in ci_workflow
+    assert "select_pytest_targets.py" in ci_workflow
+    assert "timeout 40m pytest $TARGETS" in ci_workflow
+    assert "CHANGED_COUNT" not in ci_workflow
+    assert "compare-pytest-junit-baseline.py" not in ci_workflow
+
+    # PR full-regression authority is the canonical Main workflow, where it is
+    # sharded deterministically so repository size cannot turn CI into a
+    # single-runner timeout. CI remains the fast change-aware signal.
+    assert "backend-full-regression:" in main_workflow
+    assert "shard: [0, 1, 2, 3]" in main_workflow
+    assert "Run every backend test in this shard" in main_workflow
+    assert "canonical-release-gate:" in main_workflow
+    assert 'test "${{ needs.backend-full-regression.result }}" = "success"' in main_workflow

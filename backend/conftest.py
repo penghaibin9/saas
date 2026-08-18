@@ -22,7 +22,15 @@ _REQUEST_WRAPPER_PATCHED = False
 
 @pytest.fixture(autouse=True)
 def _seed_authoritative_tenant_for_db_tests(request):
-    """Seed the canonical active tenant after ``db_mode`` resets the schema."""
+    """Seed the canonical tenant and post-B8 School-IAM deployment Authority.
+
+    ``db_mode`` recreates or clears the database before each integration test.
+    After B8 retired the SCHOOL_ADMIN runtime wildcard, a clean schema is not a
+    production-equivalent deployment until the authoritative Permission Catalog
+    has been reconciled and the Published SYSTEM RoleTemplates have been
+    generated.  Run the same production convergence here instead of granting a
+    pytest-only wildcard or weakening the runtime fail-closed resolver.
+    """
     if "db_mode" not in request.fixturenames:
         yield
         return
@@ -52,6 +60,14 @@ def _seed_authoritative_tenant_for_db_tests(request):
         raise
     finally:
         db.close()
+
+    from app.services.school_iam_authority_service import converge_school_iam_authority
+
+    converge_school_iam_authority(
+        source="pytest-db-deployment-baseline",
+        source_commit_sha="pytest-db-deployment-baseline",
+        actor_user_id=None,
+    )
 
     yield
 

@@ -4,7 +4,7 @@
 # 相对本地预演版（docker-compose.local.yml, PostgreSQL）的差异：
 #   - 数据库改为 MySQL 8（utf8mb4 / utf8mb4_unicode_ci），不再默认 postgres。
 #   - 后端用 DB_DRIVER=mysql + DB_* 连接（见 backend 支持的 effective_database_url）。
-#   - Nginx 单站点对外：/（PC）、/miniapp/（H5）、/api/（后端）、/uploads/、/exports/。
+#   - Nginx 单站点对外：/（PC/跃科门户）、/enterprise/（企业协同端）、/miniapp/（H5）、/api/（后端）、/uploads/、/exports/。
 #   - 上传/导出目录 bind mount 到服务器磁盘（./volumes/...），数据持久化不随容器销毁。
 #
 # ── 使用（服务器上，一次性）─────────────────────────────────────────────
@@ -12,18 +12,20 @@
 #        cp ../env/backend.mysql.env.example ../env/backend.mysql.env
 #        # 编辑 backend.mysql.env，填 DB_PASSWORD / MYSQL_ROOT_PASSWORD / REDIS_PASSWORD /
 #        # JWT_SECRET_KEY / 你的服务器 IP 到 CORS；缺少必填密码时 Compose 会拒绝启动。
-#   2) 构建前端 / H5 静态产物（在开发机或 CI 上）：
+#   2) 构建 PC / 企业协同端 / H5 静态产物（在开发机或 CI 上）：
 #        powershell -File ../../scripts/deploy/build-pc.ps1
-#        powershell -File ../../scripts/deploy/build-miniapp.ps1
-#      注意：miniapp 若走 /miniapp/ 子路径，H5 需以 base=/miniapp/ 构建。
+#        cd ../../enterprise-portal && npm ci && npm run build
+#        powershell -File ../scripts/deploy/build-miniapp.ps1
+#      注意：enterprise-portal 默认 base=/enterprise/；miniapp 走 /miniapp/ 子路径时 H5 需以 base=/miniapp/ 构建。
 #   3) 起服务（--env-file 同时供 Compose 变量替换和容器 env_file 使用）：
 #        docker compose --env-file ../env/backend.mysql.env -f docker-compose.mysql.yml up -d --build
 #   4) 建表 + 灌演示数据（首次）：
 #        docker compose --env-file ../env/backend.mysql.env -f docker-compose.mysql.yml exec backend python scripts/init_mysql_db.py
 #        docker compose --env-file ../env/backend.mysql.env -f docker-compose.mysql.yml exec backend python scripts/seed_mysql_demo_data.py
-#   5) 访问： http://服务器IP/           （PC 管理端）
-#            http://服务器IP/miniapp/    （H5）
-#            http://服务器IP/api/v1/docs （后端 Swagger）
+#   5) 访问： http://服务器IP/                 （PC 管理端 / 跃科门户）
+#            http://服务器IP/enterprise/login （企业注册/登录入口；首次注册由学校邀请激活）
+#            http://服务器IP/miniapp/          （H5）
+#            http://服务器IP/api/v1/docs       （后端 Swagger）
 #
 # ── 用「外部已装好的 MySQL」而非本 compose 内置 mysql ──────────────────
 #   把下面 mysql 服务整段注释掉；在 backend.mysql.env 里将 DB_HOST 指到外部地址
@@ -205,7 +207,7 @@ services:
     networks:
       - school-lifecycle
 
-  # ── Nginx：托管 PC + miniapp H5，反代 /api/，直读 uploads/exports ──
+  # ── Nginx：托管 PC/跃科门户 + 企业协同端 + miniapp H5，反代 /api/，直读 uploads/exports ──
   nginx:
     image: nginx:1.27-alpine
     container_name: school-lifecycle-nginx
@@ -216,6 +218,7 @@ services:
       - ../nginx/security-server.conf:/etc/nginx/conf.d/security-server.conf:ro
       - ../nginx/security-headers.conf:/etc/nginx/conf.d/security-headers.conf:ro
       - ../../frontend/dist:/usr/share/nginx/html/pc:ro
+      - ../../enterprise-portal/dist:/usr/share/nginx/html/enterprise:ro
       - ../../miniapp/dist/build/h5:/usr/share/nginx/html/miniapp:ro
     ports:
       - "80:80"           # 对外公网访问入口
