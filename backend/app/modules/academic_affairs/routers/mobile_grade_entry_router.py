@@ -5,6 +5,9 @@
 Grade Execution live-owner authority。正式教学班存在时只认 TeachingClassTeacher + 有效周次；
 尚未投影教学班的历史数据才允许 AaTeachingTask 迁移回退。
 
+C-W4 deadline 同样覆盖新旧移动端提交入口：质量报告显式投影逾期状态，真正提交统一经
+GradeTask deadline Authority；MySQL status trigger 是最终原子边界，移动端不直接暴露 DB 异常。
+
 该 extension router 也是 C 线执行 guard 的稳定启动点：只安装 C-owned adapter，
 不改共享 route_registration/services registry。考勤 PRIMARY/CO_TEACHER 的执行+台账+统计、
 工作量正式来源 relation-first 对账、AA_GRADE_ENTRY Todo assignee 同步因此在同一次
@@ -12,7 +15,7 @@ academic-affairs bundle 构建时生效。
 
 老版本客户端仍可能调用 ``/mobile/teacher/academic/grade-tasks/*``。本模块在启动时
 只重绑这些 legacy service 函数到同一 live authority，不删 URL、不复制成绩状态机，
-从而避免兼容入口变成旧教师绕过正式任课关系的后门。
+从而避免兼容入口变成旧教师绕过正式任课关系或 deadline 的后门。
 """
 from __future__ import annotations
 
@@ -27,6 +30,7 @@ from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.academic_affairs.services import academic_affairs_attendance_teacher_relation_guard as attendance_relation_guard
 from app.modules.academic_affairs.services import academic_affairs_attendance_teacher_relation_read_guard as attendance_relation_read_guard
+from app.modules.academic_affairs.services import academic_affairs_grade_deadline_service as deadline_service
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as service
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as read_service
 from app.modules.academic_affairs.services import academic_affairs_grade_teacher_relation_guard as teacher_relation_guard
@@ -91,11 +95,21 @@ def _merged_roster(task_id: int, user) -> dict:
     }
 
 
+def _quality_report_with_deadline(task_id: int, user) -> dict:
+    report = service.teacher_grade_quality_report(task_id, user)
+    deadline = deadline_service.task_deadline_projection(task_id, status=report.get("status"))
+    report.update(deadline)
+    if deadline.get("isOverdue") is True:
+        report["canSubmit"] = False
+        report["summary"] = "成绩录入已超过截止时间，请联系学院/教务延期后再提交"
+    return report
+
+
 def _legacy_teacher_grade_tasks(user, status=None):
     if (user or {}).get("userType") == "STUDENT":
         raise no_permission("该接口仅教职工可用")
-    items, _total = read_service.list_tasks(user, status=status, page=1, page_size=100)
-    return {"items": items, "total": len(items)}
+    items, total = read_service.list_tasks(user, status=status, page=1, page_size=100)
+    return {"items": items, "total": total}
 
 
 def _legacy_teacher_grade_roster(task_id, user) -> dict:
@@ -114,7 +128,7 @@ def _legacy_teacher_grade_enter_score(task_id, user, body) -> dict:
 
 
 def _legacy_teacher_grade_submit_task(task_id, user) -> dict:
-    return service.teacher_submit_task(int(task_id), user)
+    return deadline_service.teacher_submit_task(int(task_id), user)
 
 
 def _install_legacy_live_grade_compat() -> None:
@@ -169,7 +183,7 @@ def mobile_grade_execution_quality_report(
     task_id: int = Path(..., gt=0),
     user=Depends(require_permission("academicAffairs.grade.input")),
 ):
-    return success(service.teacher_grade_quality_report(task_id, user))
+    return success(_quality_report_with_deadline(task_id, user))
 
 
 @router.post("/grade-execution/tasks/{task_id}/submit", summary="教师微信·实时提交成绩进入学院审核")
@@ -177,7 +191,7 @@ def mobile_grade_execution_submit(
     task_id: int = Path(..., gt=0),
     user=Depends(require_permission("academicAffairs.grade.submit")),
 ):
-    report = service.teacher_grade_quality_report(task_id, user)
+    report = _quality_report_with_deadline(task_id, user)
     if not report.get("canSubmit"):
         raise AppException(
             "DATA_CONFLICT",
@@ -185,7 +199,7 @@ def mobile_grade_execution_submit(
             details=report,
             http_status=409,
         )
-    return success(service.teacher_submit_task(task_id, user), message="已提交学院审核")
+    return success(deadline_service.teacher_submit_task(task_id, user), message="已提交学院审核")
 
 
 @router.post("/grade-tasks/{task_id}/batch-save", summary="教师微信·成绩整批事务保存")
@@ -203,4 +217,4 @@ def mobile_grade_quality_report(
     task_id: int = Path(..., gt=0),
     user=Depends(require_permission("academicAffairs.grade.input")),
 ):
-    return success(service.teacher_grade_quality_report(task_id, user))
+    return success(_quality_report_with_deadline(task_id, user))
