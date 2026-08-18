@@ -6,6 +6,7 @@ on:
       - agent/academic-c-teaching-execution
     paths:
       - 'backend/alembic/versions/20260818_aa_grade_task_deadline.py'
+      - 'backend/alembic/versions/20260818_merge_prog_grade_deadline.py'
       - 'backend/app/modules/academic_affairs/routers/grade_core_router.py'
       - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py'
@@ -85,7 +86,7 @@ jobs:
           set -euo pipefail
           heads="$(alembic heads)"
           echo "$heads"
-          echo "$heads" | grep -q '20260818_aa_grade_deadline (head)'
+          echo "$heads" | grep -q '20260818_merge_prog_grade_dl (head)'
           test "$(echo "$heads" | grep -c '(head)')" -eq 1
           alembic upgrade head
           mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse \
