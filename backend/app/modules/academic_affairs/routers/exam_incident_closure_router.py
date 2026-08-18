@@ -1,9 +1,10 @@
 """考务正式扩展路由。
 
-与历史大路由分离，只承载需要独立 fail-closed 证据边界的考场异常闭环与正式打印读取。
+与历史大路由分离，只承载需要独立 fail-closed 证据边界的考场异常闭环与正式打印读取/签发。
 普通 ``/exam/rooms/{roomId}/seats`` 继续服务编排工作区；正式座位表/门贴/准考证必须走
 ``/exam/rooms/{roomId}/formal-print``，由 C-W3 formal print provider 校验发布状态、冻结名单
-与持久化座位全集，禁止把编排草稿伪装成正式文件。
+与持久化座位全集，禁止把编排草稿伪装成正式文件。真正触发浏览器打印前再走
+``/formal-print/issue`` 写 append-only ``EXAM_TICKET_PRINT`` 审计；预览本身不写审计。
 
 本模块加载时安装五类 C-W3 兼容 guard：
 - 发布通知 guard 包装 legacy ``_notify_publish``，让原学生通知继续原样执行，并在同事务把当前
@@ -73,12 +74,36 @@ class IncidentResolveBody(BaseModel):
     disciplineCaseRef: Optional[str] = Field(None, max_length=100)
 
 
+class FormalPrintIssueBody(BaseModel):
+    documentKind: str = Field(..., pattern="^(DOOR_LIST|TICKET)$")
+    studentNo: Optional[str] = Field(default=None, max_length=50)
+    reason: Optional[str] = Field(default=None, max_length=500)
+
+
 @router.get("/exam/rooms/{roomId}/formal-print", summary="正式考场座位表/门贴/准考证打印数据")
 def formal_exam_room_print(
     roomId: int = Path(...),
     user=Depends(require_permission("academicAffairs.exam.view")),
 ):
     return success(print_service.formal_room_print(user, roomId))
+
+
+@router.post("/exam/rooms/{roomId}/formal-print/issue", summary="记录正式打印/补打审计后签发打印动作")
+def issue_formal_exam_room_print(
+    body: FormalPrintIssueBody,
+    roomId: int = Path(...),
+    user=Depends(require_permission("academicAffairs.exam.view")),
+):
+    return success(
+        print_service.record_formal_print(
+            user,
+            roomId,
+            document_kind=body.documentKind,
+            student_no=body.studentNo,
+            reason=body.reason or "",
+        ),
+        message="补打审计已记录" if (body.reason or "").strip() else "打印审计已记录",
+    )
 
 
 @router.get("/exam/incidents/workbench", summary="考场异常全生命周期工作台（含闭环/作废历史）")
