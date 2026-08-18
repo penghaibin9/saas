@@ -8,7 +8,8 @@ TeachingClassTeacher + 有效周次，尚未投影教学班的旧数据才允许
 C-C3 安装 read consumer guards，把遗留学业 API、学生/家长摘要、资助资格、统计总览、挂科预警
 拉回同一 EffectiveGrade ACTIVE-only + 冻结修读策略。
 C-W4 认定/复查运营台账使用有界 SQL 分页；成熟认定/复查裁决命令保持唯一 Authority；人工催录复用
-canonical AA_GRADE_ENTRY UnifiedTodo，不新造第二套任务系统。
+canonical AA_GRADE_ENTRY UnifiedTodo，不新造第二套任务系统。GradeTask deadline 读取持久化 schema，
+延期追加审计且只允许向后延；成绩 XLSX 上传走 #145 shared Path 安全校验，不再整文件聚合进内存。
 遗留 /academic/grades 直接写 projection 的兼容入口保留 URL 但 fail-closed，禁止绕过正式发布/更正链。
 """
 from __future__ import annotations
@@ -26,12 +27,14 @@ from app.modules.academic_affairs.routers import academic_affairs as legacy
 from app.modules.academic_affairs.services import academic_affairs_effective_grade_consumer_guard as effective_consumer_guard
 from app.modules.academic_affairs.services import academic_affairs_effective_grade_external_consumer_guard as effective_external_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_change_live_authority as grade_change_live_authority
+from app.modules.academic_affairs.services import academic_affairs_grade_deadline_service as grade_deadline_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as grade_exec_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_recognition_read_guard as grade_recognition_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_recheck_read_guard as grade_recheck_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_reminder_service as grade_reminder_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as grade_task_read_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_teacher_relation_guard as grade_teacher_relation_guard
+from app.modules.academic_affairs.services import academic_affairs_grade_xlsx_path_service as grade_xlsx_path_svc
 from app.modules.academic_affairs.services import academic_affairs_legacy_grade_write_guard as legacy_grade_write_guard
 from app.modules.academic_affairs.services import academic_affairs_warning_effective_grade_guard as warning_effective_guard
 from app.services import xlsx_util
@@ -64,6 +67,11 @@ class GradeRemindBody(BaseModel):
     reason: str = Field(..., min_length=2, max_length=200)
 
 
+class GradeDeadlineBody(BaseModel):
+    deadlineAt: str = Field(..., min_length=10, max_length=64)
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
 @router.get("/grade-tasks", summary="成绩录入任务列表（按状态筛选，供审核/发布工作台队列）")
 def grade_tasks(
     status: Optional[str] = None,
@@ -84,6 +92,18 @@ def grade_remind(
     return success(
         grade_reminder_svc.remind_grade_entry(taskId, user, body.reason),
         message="已催录",
+    )
+
+
+@router.post("/grade-tasks/{taskId}/extend-deadline", summary="设置/延期成绩录入截止时间")
+def grade_extend_deadline(
+    body: GradeDeadlineBody,
+    taskId: int = Path(...),
+    user=Depends(require_permission("academicAffairs.grade.view")),
+):
+    return success(
+        grade_deadline_svc.extend_deadline(taskId, user, body.deadlineAt, body.reason),
+        message="成绩截止时间已更新",
     )
 
 
@@ -130,14 +150,13 @@ def grade_import_template(
     )
 
 
-@router.post("/grade-tasks/{taskId}/import/xlsx", summary="上传 Excel(.xlsx)·解析并预校验（不写库）")
+@router.post("/grade-tasks/{taskId}/import/xlsx", summary="上传 Excel(.xlsx)·Path 安全解析并预校验（不写库）")
 async def grade_import_xlsx(
     taskId: int = Path(...),
     file: UploadFile = File(...),
     user=Depends(require_permission("academicAffairs.grade.input")),
 ):
-    content = await xlsx_util.read_safe_upload(file)
-    rows = xlsx_util.read_xlsx(content, grade_svc.IMPORT_HEADER_MAP)
+    rows = await grade_xlsx_path_svc.read_grade_upload_path(file, grade_svc.IMPORT_HEADER_MAP)
     return success({**grade_exec_svc.teacher_grade_import_dry_run(taskId, user, rows), "rows": rows})
 
 
@@ -169,12 +188,12 @@ def grade_import_confirm(
     return success(grade_exec_svc.teacher_grade_import_confirm(taskId, user, body.rows), message="导入完成")
 
 
-@router.post("/grade-tasks/{taskId}/submit", summary="提交成绩进入学院审核")
+@router.post("/grade-tasks/{taskId}/submit", summary="提交成绩进入学院审核（逾期须先延期）")
 def grade_submit(
     taskId: int = Path(...),
     user=Depends(require_permission("academicAffairs.grade.submit")),
 ):
-    return success(grade_exec_svc.teacher_submit_task(taskId, user), message="已提交")
+    return success(grade_deadline_svc.teacher_submit_task(taskId, user), message="已提交")
 
 
 @router.post("/grade-tasks/{taskId}/college-review", summary="学院审核成绩（通过/退回）")
