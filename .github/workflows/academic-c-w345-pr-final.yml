@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'backend/alembic/versions/20260818_aa_grade_task_deadline.py'
+      - 'backend/alembic/versions/20260818_merge_prog_grade_deadline.py'
       - 'backend/app/modules/academic_affairs/routers/grade_core_router.py'
       - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py'
@@ -72,7 +73,7 @@ jobs:
           set -euo pipefail
           alembic heads
           test "$(alembic heads | grep -c '(head)')" -eq 1
-          alembic heads | grep -q '20260818_aa_grade_deadline (head)'
+          alembic heads | grep -q '20260818_merge_prog_grade_dl (head)'
           alembic upgrade head
           mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse "SHOW COLUMNS FROM t_aa_grade_task LIKE 'deadline_at'" | grep -q deadline_at
           mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse "SHOW INDEX FROM t_aa_grade_task WHERE Key_name='ix_aa_grade_task_deadline'" | grep -q ix_aa_grade_task_deadline
