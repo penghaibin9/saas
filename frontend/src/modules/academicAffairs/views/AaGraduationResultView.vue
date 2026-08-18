@@ -70,6 +70,7 @@
             :total="pagination.total"
             :page="pagination.page"
             :page-size="pagination.pageSize"
+            :show-size-changer="false"
             @change="onPaginationChange"
           />
         </div>

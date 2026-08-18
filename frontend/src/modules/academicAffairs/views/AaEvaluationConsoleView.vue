@@ -33,6 +33,7 @@
             :total="batchPagination.total"
             :page="batchPagination.page"
             :page-size="batchPagination.pageSize"
+            :show-size-changer="false"
             @change="onBatchPaginationChange"
           />
         </div>
@@ -76,6 +77,7 @@
             :total="batchPagination.total"
             :page="batchPagination.page"
             :page-size="batchPagination.pageSize"
+            :show-size-changer="false"
             @change="onBatchPaginationChange"
           />
         </div>
@@ -118,6 +120,7 @@
             :total="archivePagination.total"
             :page="archivePagination.page"
             :page-size="archivePagination.pageSize"
+            :show-size-changer="false"
             @change="onArchivePaginationChange"
           />
         </div>
@@ -165,6 +168,7 @@
             :total="batchPagination.total"
             :page="batchPagination.page"
             :page-size="batchPagination.pageSize"
+            :show-size-changer="false"
             @change="onBatchPaginationChange"
           />
         </div>
