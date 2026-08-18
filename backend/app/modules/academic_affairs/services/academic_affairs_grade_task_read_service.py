@@ -7,8 +7,8 @@ is used only for not-yet-projected migration data; ``AaGradeTask.teacher_key`` i
 only a final compatibility scope for tasks with no teaching_task_id.
 
 The projection publishes one status/action/authority vocabulary for PC and miniapp.
-C-W4 deadline fields consume the persisted GradeTask deadline schema; they never
-infer ``term.end_date`` as a fake deadline.
+C-W4 deadline fields consume the persisted GradeTask deadline schema in one bounded
+page query; they never infer ``term.end_date`` as a fake deadline or fan out per row.
 """
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ def _base_query():
 
 
 def _formal_teacher_projection(db, teaching_task_ids) -> dict[int, dict]:
-    """Batch-project current formal teachers for one page; no per-row N+1."""
+    """Batch-project current formal teachers for one page; no per-row relation query."""
     from app.models import AaTeachingClass, AaTeachingClassTeacher
 
     ids = sorted({int(value) for value in teaching_task_ids if value})
@@ -218,7 +218,7 @@ def _allowed_actions(task, user, authority_ready: bool) -> list[str]:
 
 
 def list_tasks(user, status=None, page=1, page_size=20):
-    """Return a bounded SQL page and project current formal teacher relations."""
+    """Return a bounded SQL page and batch-project teacher/deadline truth."""
     from app.models import AaGradeTask, AaTeachingTask
 
     page_no = max(1, int(page or 1))
@@ -251,6 +251,10 @@ def list_tasks(user, status=None, page=1, page_size=20):
         projection = _formal_teacher_projection(
             db,
             [task.teaching_task_id for task, _task_teacher in result if task.teaching_task_id],
+        )
+        deadline_projection = _deadline.deadline_projection_map(
+            db,
+            [(int(task.id), str(task.status or "")) for task, _task_teacher in result],
         )
         items = []
         for task, task_teacher_key in result:
@@ -285,6 +289,6 @@ def list_tasks(user, status=None, page=1, page_size=20):
                 authority_ready = bool(task.teacher_key)
             item["teacherAuthorityReady"] = authority_ready
             item["allowedActions"] = _allowed_actions(task, user, authority_ready)
-            item.update(_deadline.deadline_projection(db, int(task.id), status=task.status))
+            item.update(deadline_projection[int(task.id)])
             items.append(item)
         return items, total
