@@ -13,9 +13,9 @@
         </div>
       </div>
       <aside class="graduation-hero__score">
-        <span>学分达成</span>
-        <strong>{{ creditPct }}<small>%</small></strong>
-        <div class="graduation-hero__bar" aria-hidden="true"><i :style="{ width: `${creditPct}%` }"></i></div>
+        <span>{{ creditProgressLabel }}</span>
+        <strong>{{ creditPctText }}<small v-if="creditPct !== null">%</small></strong>
+        <div class="graduation-hero__bar" aria-hidden="true"><i :style="{ width: creditBarWidth }"></i></div>
         <button class="sp-btn sp-btn--ghost sp-btn--sm" type="button" :disabled="loading" @click="refreshAudit">
           {{ loading ? '刷新中…' : '重新核验' }}
         </button>
@@ -147,13 +147,24 @@ const blockingPendingCount = computed(() => progressItems.value.filter((item) =>
   return result !== 'PASS' && !(result === 'UNKNOWN' && ADVISORY_UNKNOWN_ITEMS.has(code))
 }).length)
 const overallPassed = computed(() => String(progress.value.overall || '').toUpperCase() === 'SYSTEM_PASSED')
-const obtainedCredits = computed(() => Number(credits.value.obtainedCredits || 0))
-const requiredCredits = computed(() => Number(credits.value.requiredCredits || 0))
-const requiredCreditsText = computed(() => requiredCredits.value || '—')
+const obtainedCredits = computed(() => {
+  const value = Number(credits.value.obtainedCredits ?? 0)
+  return Number.isFinite(value) ? value : 0
+})
+const requiredCredits = computed(() => {
+  const raw = credits.value.requiredCredits
+  if (raw === null || raw === undefined || raw === '') return null
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : null
+})
+const requiredCreditsText = computed(() => requiredCredits.value === null ? '待核验' : requiredCredits.value)
 const creditPct = computed(() => {
-  if (!requiredCredits.value) return obtainedCredits.value ? 100 : 0
+  if (requiredCredits.value === null) return null
   return Math.max(0, Math.min(100, Math.round(obtainedCredits.value / requiredCredits.value * 100)))
 })
+const creditPctText = computed(() => creditPct.value === null ? '—' : creditPct.value)
+const creditBarWidth = computed(() => `${creditPct.value === null ? 0 : creditPct.value}%`)
+const creditProgressLabel = computed(() => requiredCredits.value === null ? '学分要求待核验' : '学分达成')
 const formalStatusText = computed(() => {
   if (!progress.value.hasAudit) return '尚未纳入正式预审'
   const conclusion = String(progress.value.conclusion || '').toUpperCase()

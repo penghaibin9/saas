@@ -136,7 +136,14 @@
         <template v-else>
           <AppSectionCard title="必修全通过">
             <EmptyState v-if="!courseRequiredRows.length" title="暂无必修数据" description="批次尚未执行预审" />
-            <DataTable v-else :columns="itemColumns" :rows="courseRequiredRows" row-key="resultId">
+            <DataTable
+              v-else
+              :columns="itemColumns"
+              :rows="courseRequiredRows"
+              row-key="resultId"
+              :pagination="courseRequiredPagination"
+              @page-change="onCourseRequiredPageChange"
+            >
               <template #cell-result="{ row }">
                 <AppStatusTag :type="gradItemColor(itemOf(row, 'COURSE_REQUIRED').result)" dot>{{ itemResultLabel(itemOf(row, 'COURSE_REQUIRED').result) }}</AppStatusTag>
               </template>
@@ -148,7 +155,14 @@
           </AppSectionCard>
           <AppSectionCard title="选修学分达标">
             <EmptyState v-if="!courseElectiveRows.length" title="暂无选修数据" description="批次尚未执行预审" />
-            <DataTable v-else :columns="itemColumns" :rows="courseElectiveRows" row-key="resultId">
+            <DataTable
+              v-else
+              :columns="itemColumns"
+              :rows="courseElectiveRows"
+              row-key="resultId"
+              :pagination="courseElectivePagination"
+              @page-change="onCourseElectivePageChange"
+            >
               <template #cell-result="{ row }">
                 <AppStatusTag :type="gradItemColor(itemOf(row, 'COURSE_ELECTIVE').result)" dot>{{ itemResultLabel(itemOf(row, 'COURSE_ELECTIVE').result) }}</AppStatusTag>
               </template>
@@ -200,10 +214,17 @@
         <ErrorState v-if="error" :description="error" @retry="loadReasonTab" />
         <LoadingState v-else-if="loading" />
         <template v-else>
-          <AppSectionCard v-for="g in reasonGroups" :key="g.status" :title="`${g.title}（${g.rows.length}）`">
+          <AppSectionCard v-for="g in reasonGroups" :key="g.status" :title="`${g.title}（${g.total}）`">
             <p class="mp-note">{{ g.hint }}</p>
             <EmptyState v-if="!g.rows.length" :title="`暂无${g.title}学生`" description="批次内暂无该分类学生" />
-            <DataTable v-else :columns="reasonColumns" :rows="g.rows" row-key="resultId">
+            <DataTable
+              v-else
+              :columns="reasonColumns"
+              :rows="g.rows"
+              row-key="resultId"
+              :pagination="g.pagination"
+              @page-change="(p) => onReasonPageChange(g.status, p)"
+            >
               <template #cell-reason="{ row }"><span class="agc-evidence">{{ reasonText(row) }}</span></template>
               <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十一项详情</button></template>
             </DataTable>
@@ -226,7 +247,7 @@
       <template v-else-if="tab === 'archive'">
         <AppSectionCard title="归档操作">
           <p class="mp-note">收敛该批次已终审的「毕业/结业」结果为已归档（ARCHIVED）；延毕滚入下一批次、退回待重初审的结果不在本次归档范围内，需重新走完流程后再归档。</p>
-          <AppButton variant="primary" :disabled="!batchId" :loading="archiving" @click="confirmArchive">执行归档</AppButton>
+          <AppButton variant="primary" :disabled="!batchId || archiving" :loading="archiving" @click="confirmArchive">执行归档</AppButton>
         </AppSectionCard>
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
@@ -272,7 +293,7 @@
         <div v-if="canNormalFinal(detail.row)" class="agc-actions">
           <div class="agc-actions__title">毕业资格终审</div>
           <AppRadioGroup v-model="finalConclusion" :options="conclusionOptions" variant="button" />
-          <AppButton variant="primary" :loading="detailBusy" @click="confirmFinal">确认终审并写学籍</AppButton>
+          <AppButton variant="primary" :loading="detailBusy || finalDlg.submitting" @click="confirmFinal">确认终审并写学籍</AppButton>
         </div>
         <AppInlineAlert
           v-else-if="detail.row.status === 'ACADEMIC_REVIEW' && detail.row.overall === 'SYSTEM_ABNORMAL'"
@@ -348,6 +369,8 @@ const LINK_ITEM = {
   INTERNSHIP: (refId) => `/admin/internship/students/${refId}`
 }
 
+const freshPagination = () => ({ page: 1, pageSize: 20, total: 0 })
+
 export default {
   name: 'AaGraduationAuditConsoleView',
   components: {
@@ -364,10 +387,17 @@ export default {
       tab: 'credit',
       batches: [], loadingBatches: true, batchId: '',
       rows: [], courseRequiredRows: [], courseElectiveRows: [],
+      courseRequiredPagination: freshPagination(),
+      courseElectivePagination: freshPagination(),
       rosterData: null, rosterKeyword: '',
       reasonRows: { SYSTEM_ABNORMAL: [], REJECTED: [], DELAYED: [] },
+      reasonPagination: {
+        SYSTEM_ABNORMAL: freshPagination(),
+        REJECTED: freshPagination(),
+        DELAYED: freshPagination()
+      },
       loading: false, error: '',
-      pagination: { page: 1, pageSize: 20, total: 0 },
+      pagination: freshPagination(),
       detail: { visible: false, row: null }, detailBusy: false,
       finalConclusion: 'GRADUATED',
       finalDlg: { visible: false, submitting: false },
@@ -462,7 +492,12 @@ export default {
       ]
     },
     reasonGroups() {
-      return GRAD_FAIL_GROUPS.map((g) => ({ ...g, rows: this.reasonRows[g.status] || [] }))
+      return GRAD_FAIL_GROUPS.map((g) => ({
+        ...g,
+        rows: this.reasonRows[g.status] || [],
+        pagination: this.reasonPagination[g.status] || freshPagination(),
+        total: Number(this.reasonPagination[g.status]?.total || 0)
+      }))
     }
   },
   async created() {
@@ -471,7 +506,7 @@ export default {
     await this.loadBatches()
     if (q && q.batchId && this.batches.some((b) => b.batchId === q.batchId)) this.batchId = q.batchId
     else if (this.batches.length) this.batchId = (this.batches.find((b) => b.status !== 'ARCHIVED') || this.batches[0]).batchId
-    this.loadTab()
+    await this.loadTab()
   },
   methods: {
     gradItemColor, overallColor,
@@ -497,6 +532,15 @@ export default {
     canCollegeReject(r) { return Boolean(r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
     canCollegeReview(r) { return this.canCollegeApprove(r) || this.canCollegeReject(r) },
     canNormalFinal(r) { return Boolean(r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
+    resetSpecialPagination() {
+      this.courseRequiredPagination = freshPagination()
+      this.courseElectivePagination = freshPagination()
+      this.reasonPagination = {
+        SYSTEM_ABNORMAL: freshPagination(),
+        REJECTED: freshPagination(),
+        DELAYED: freshPagination()
+      }
+    },
     async markFee(row, status) {
       if (!this.batchId || this.feeBusy) return
       const label = status === 'CLEARED' ? '已结清' : '仍欠费'
@@ -511,7 +555,7 @@ export default {
         })
         if (res.code === 0) {
           toast.success('费用结清已勾选')
-          this.loadTab()
+          await this.loadTab()
         } else toast.error(res.message || '勾选失败')
       } catch (e) {
         toast.error((e && e.message) || '勾选失败')
@@ -520,88 +564,151 @@ export default {
       }
     },
     switchTab(k) {
+      if (this.loading || this.detailBusy || this.finalDlg.submitting || this.archiving) return
       this.tab = k
       this.$router.replace({ query: { ...this.$route.query, tab: k } }).catch(() => {})
       this.pagination.page = 1
+      this.resetSpecialPagination()
       this.loadTab()
     },
     onBatchChange() {
       this.$router.replace({ query: { ...this.$route.query, batchId: this.batchId } }).catch(() => {})
       this.pagination.page = 1
+      this.resetSpecialPagination()
       this.loadTab()
     },
     onPageChange(p) { this.pagination.page = p; this.loadTab() },
+    onCourseRequiredPageChange(p) { this.courseRequiredPagination.page = p; this.loadCourseTab() },
+    onCourseElectivePageChange(p) { this.courseElectivePagination.page = p; this.loadCourseTab() },
+    onReasonPageChange(status, p) {
+      if (!this.reasonPagination[status]) return
+      this.reasonPagination[status].page = p
+      this.loadReasonTab()
+    },
     async loadBatches() {
       this.loadingBatches = true
-      const res = await academicAffairsApi.listGradBatches({ pageSize: 100 })
-      this.batches = res.code === 0 ? res.data.list : []
-      this.loadingBatches = false
+      try {
+        const res = await academicAffairsApi.listGradBatches({ pageSize: 100 })
+        if (res.code === 0) this.batches = res.data.list
+        else toast.error(res.message || '毕业审核批次加载失败')
+      } catch (e) {
+        toast.error((e && e.message) || '毕业审核批次加载失败')
+      } finally {
+        this.loadingBatches = false
+      }
     },
     async loadTab() {
-      if (this.tab === 'course') { this.loadCourseTab(); return }
-      if (this.tab === 'roster') { this.loadRosterTab(); return }
-      if (this.tab === 'reason') { this.loadReasonTab(); return }
+      if (this.tab === 'course') { await this.loadCourseTab(); return }
+      if (this.tab === 'roster') { await this.loadRosterTab(); return }
+      if (this.tab === 'reason') { await this.loadReasonTab(); return }
       if (!this.batchId) { this.rows = []; this.pagination.total = 0; return }
       this.loading = true
       this.error = ''
-      const cfg = TAB_CONFIG[this.tab] || {}
-      const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
-      if (cfg.item) params.item = cfg.item
-      if (cfg.status) params.status = cfg.status
-      const res = await academicAffairsApi.getGradResults(this.batchId, params)
-      if (res.code === 0) {
-        this.rows = res.data.list
-        this.pagination.total = res.data.total
-      } else {
-        this.error = res.message
+      try {
+        const cfg = TAB_CONFIG[this.tab] || {}
+        const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
+        if (cfg.item) params.item = cfg.item
+        if (cfg.status) params.status = cfg.status
+        const res = await academicAffairsApi.getGradResults(this.batchId, params)
+        if (res.code === 0) {
+          this.rows = res.data.list
+          this.pagination.total = res.data.total
+        } else this.error = res.message || '毕业审核数据加载失败'
+      } catch (e) {
+        this.error = (e && e.message) || '毕业审核数据加载失败'
+      } finally {
+        this.loading = false
       }
-      this.loading = false
     },
     async loadCourseTab() {
-      if (!this.batchId) { this.courseRequiredRows = []; this.courseElectiveRows = []; return }
+      if (!this.batchId) {
+        this.courseRequiredRows = []
+        this.courseElectiveRows = []
+        this.courseRequiredPagination.total = 0
+        this.courseElectivePagination.total = 0
+        return
+      }
       this.loading = true
       this.error = ''
-      const [req, ele] = await Promise.all([
-        academicAffairsApi.getGradResults(this.batchId, { item: 'COURSE_REQUIRED', pageSize: 100 }),
-        academicAffairsApi.getGradResults(this.batchId, { item: 'COURSE_ELECTIVE', pageSize: 100 })
-      ])
-      if (req.code === 0) this.courseRequiredRows = req.data.list
-      else this.error = req.message
-      if (ele.code === 0) this.courseElectiveRows = ele.data.list
-      else this.error = this.error || ele.message
-      this.loading = false
+      try {
+        const [req, ele] = await Promise.all([
+          academicAffairsApi.getGradResults(this.batchId, {
+            item: 'COURSE_REQUIRED',
+            page: this.courseRequiredPagination.page,
+            pageSize: this.courseRequiredPagination.pageSize
+          }),
+          academicAffairsApi.getGradResults(this.batchId, {
+            item: 'COURSE_ELECTIVE',
+            page: this.courseElectivePagination.page,
+            pageSize: this.courseElectivePagination.pageSize
+          })
+        ])
+        if (req.code === 0) {
+          this.courseRequiredRows = req.data.list
+          this.courseRequiredPagination.total = req.data.total
+        } else this.error = req.message || '必修课程审核加载失败'
+        if (ele.code === 0) {
+          this.courseElectiveRows = ele.data.list
+          this.courseElectivePagination.total = ele.data.total
+        } else this.error = this.error || ele.message || '选修课程审核加载失败'
+      } catch (e) {
+        this.error = (e && e.message) || '课程达成审核加载失败'
+      } finally {
+        this.loading = false
+      }
     },
     async loadRosterTab() {
       if (!this.batchId) { this.rosterData = null; return }
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getGradRosters(this.batchId)
-      if (res.code === 0) this.rosterData = res.data
-      else this.error = res.message
-      this.loading = false
+      try {
+        const res = await academicAffairsApi.getGradRosters(this.batchId)
+        if (res.code === 0) this.rosterData = res.data
+        else this.error = res.message || '毕业名单加载失败'
+      } catch (e) {
+        this.error = (e && e.message) || '毕业名单加载失败'
+      } finally {
+        this.loading = false
+      }
     },
     async loadReasonTab() {
       if (!this.batchId) {
         this.reasonRows = { SYSTEM_ABNORMAL: [], REJECTED: [], DELAYED: [] }
+        Object.values(this.reasonPagination).forEach((p) => { p.total = 0 })
         return
       }
       this.loading = true
       this.error = ''
-      const results = await Promise.all(GRAD_FAIL_GROUPS.map((g) =>
-        academicAffairsApi.getGradResults(this.batchId, { status: g.status, pageSize: 200 })))
-      const next = {}
-      let firstErr = ''
-      GRAD_FAIL_GROUPS.forEach((g, idx) => {
-        const r = results[idx]
-        if (r.code === 0) next[g.status] = r.data.list
-        else {
-          next[g.status] = []
-          firstErr = firstErr || r.message
-        }
-      })
-      this.reasonRows = next
-      this.error = firstErr
-      this.loading = false
+      try {
+        const results = await Promise.all(GRAD_FAIL_GROUPS.map((g) => {
+          const pg = this.reasonPagination[g.status] || freshPagination()
+          return academicAffairsApi.getGradResults(this.batchId, {
+            status: g.status,
+            page: pg.page,
+            pageSize: pg.pageSize
+          })
+        }))
+        const next = {}
+        let firstErr = ''
+        GRAD_FAIL_GROUPS.forEach((g, idx) => {
+          const r = results[idx]
+          const pg = this.reasonPagination[g.status]
+          if (r.code === 0) {
+            next[g.status] = r.data.list
+            if (pg) pg.total = r.data.total
+          } else {
+            next[g.status] = []
+            if (pg) pg.total = 0
+            firstErr = firstErr || r.message || '不通过原因加载失败'
+          }
+        })
+        this.reasonRows = next
+        this.error = firstErr
+      } catch (e) {
+        this.error = (e && e.message) || '不通过原因加载失败'
+      } finally {
+        this.loading = false
+      }
     },
     reasonText(row) {
       const parts = []
@@ -623,63 +730,106 @@ export default {
       }
       this.openDetail(row)
     },
-    openCollegeReject() { this.collegeRejectDlg.visible = true },
-    async doCollegeReject({ reason }) {
+    openCollegeReject() {
+      if (this.detailBusy || !this.canCollegeReject(this.detail.row)) return
+      this.collegeRejectDlg.visible = true
+    },
+    async doCollegeReject({ reason } = {}) {
+      if (this.detailBusy || !this.detail.row) return
+      const note = String(reason || '').trim()
+      if (note.length < 5) { toast.error('退回原因不少于 5 字'); return }
       this.detailBusy = true
-      const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, 'REJECT', reason)
-      this.detailBusy = false
-      if (res.code === 0) {
-        toast.success('已处理')
-        this.collegeRejectDlg.visible = false
-        this.detail.visible = false
-        this.loadTab()
-      } else toast.error(res.message)
+      try {
+        const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, 'REJECT', note)
+        if (res.code === 0) {
+          toast.success('已处理')
+          this.collegeRejectDlg.visible = false
+          this.detail.visible = false
+          await this.loadTab()
+        } else toast.error(res.message || '处理失败')
+      } catch (e) {
+        toast.error((e && e.message) || '处理失败')
+      } finally {
+        this.detailBusy = false
+      }
     },
     async doCollegeReview(action) {
+      if (this.detailBusy || action !== 'APPROVE' || !this.canCollegeApprove(this.detail.row)) return
       this.detailBusy = true
-      const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, action, '')
-      this.detailBusy = false
-      if (res.code === 0) {
-        toast.success('已处理')
-        this.detail.visible = false
-        this.loadTab()
-      } else toast.error(res.message || '处理失败')
+      try {
+        const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, 'APPROVE', '')
+        if (res.code === 0) {
+          toast.success('已处理')
+          this.detail.visible = false
+          await this.loadTab()
+        } else toast.error(res.message || '处理失败')
+      } catch (e) {
+        toast.error((e && e.message) || '处理失败')
+      } finally {
+        this.detailBusy = false
+      }
     },
     confirmFinal() {
-      if (!this.canNormalFinal(this.detail.row)) {
+      if (this.finalDlg.submitting || !this.canNormalFinal(this.detail.row)) {
         toast.error('系统预审仍为异常，禁止打开普通终审确认')
         return
       }
       this.finalDlg.visible = true
     },
     async doFinal() {
+      if (this.finalDlg.submitting || !this.detail.row) return
       if (!this.canNormalFinal(this.detail.row)) {
         this.finalDlg.visible = false
         toast.error('系统预审已变化或仍为异常，请重新加载并治理阻断项')
         return
       }
+      const resultId = this.detail.row.resultId
       this.finalDlg.submitting = true
-      const res = await academicAffairsApi.finalGrad(this.detail.row.resultId, this.finalConclusion, true)
-      this.finalDlg.submitting = false
-      if (res.code === 0) {
-        toast.success('终审完成，已写学籍')
-        this.finalDlg.visible = false
-        this.detail.visible = false
-        this.loadBatches()
-        this.loadTab()
-      } else toast.error(res.message || '终审失败')
+      try {
+        const fresh = await academicAffairsApi.getGradResult(resultId)
+        if (fresh.code !== 0) { toast.error(fresh.message || '终审前状态重读失败'); return }
+        this.detail.row = fresh.data
+        if (!this.canNormalFinal(fresh.data)) {
+          this.finalDlg.visible = false
+          toast.error('终审前状态已变化，请重新核对最新预审结果')
+          await this.loadTab()
+          return
+        }
+        const res = await academicAffairsApi.finalGrad(resultId, this.finalConclusion, true)
+        if (res.code === 0) {
+          toast.success('终审完成，已写学籍')
+          this.finalDlg.visible = false
+          this.detail.visible = false
+          await this.loadBatches()
+          await this.loadTab()
+        } else toast.error(res.message || '终审失败')
+      } catch (e) {
+        toast.error((e && e.message) || '终审失败')
+      } finally {
+        this.finalDlg.submitting = false
+      }
     },
-    confirmArchive() { this.archiveDlg.visible = true },
+    confirmArchive() {
+      if (!this.batchId || this.archiving) return
+      this.archiveDlg.visible = true
+    },
     async doArchive() {
+      if (!this.batchId || this.archiving) return
+      const batchId = this.batchId
       this.archiving = true
-      const res = await academicAffairsApi.archiveGradBatch(this.batchId)
-      this.archiving = false
-      this.archiveDlg.visible = false
-      if (res.code === 0) {
-        toast.success(`已归档 ${res.data.archived} 条`)
-        this.loadBatches()
-        this.loadTab()
-      } else toast.error(res.message || '归档失败')
+      try {
+        const res = await academicAffairsApi.archiveGradBatch(batchId)
+        if (res.code === 0) {
+          toast.success(`已归档 ${res.data.archived} 条`)
+          this.archiveDlg.visible = false
+          await this.loadBatches()
+          await this.loadTab()
+        } else toast.error(res.message || '归档失败')
+      } catch (e) {
+        toast.error((e && e.message) || '归档失败')
+      } finally {
+        this.archiving = false
+      }
     }
   }
 }

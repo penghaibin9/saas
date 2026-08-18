@@ -32,38 +32,48 @@
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" title="暂无预审结果" description="到批次页执行「圈定应届生 + 十一项预审」后再来复核" />
-      <div v-else class="aa-result-list">
-        <AppSectionCard v-for="r in rows" :key="r.resultId" :title="r.realName || ('学生 ' + r.studentId)">
-          <template #header-extra>
-            <AppStatusTag :type="overallColor(r.overall)">{{ overallLabel(r.overall) }}</AppStatusTag>
-            <AppStatusTag :type="r.conclusion ? 'success' : 'default'" dot>{{ statusLabel(r.status) }}</AppStatusTag>
-          </template>
-          <div class="aa-items">
-            <div v-for="it in r.items" :key="it.evidenceHash || it.item" class="aa-item">
-              <div class="aa-item__head">
-                <span class="aa-item__label">{{ itemLabel(it.item) }}</span>
-                <AppStatusTag :type="gradItemColor(it.result)">{{ itemResult(it.result) }}</AppStatusTag>
-                <button v-if="it.drillRoute" class="mp-link aa-item__drill" @click="drillEvidence(it)">核对来源 ›</button>
-              </div>
-              <span v-if="it.evidence" class="aa-item__ev">{{ it.evidence }}</span>
-              <div v-if="it.sourceType || it.evidenceHash" class="aa-item__lineage">
-                <span>来源：{{ sourceLabel(it.sourceType) }}</span>
-                <span v-if="it.sourceIds?.length">主键：{{ it.sourceIds.join('、') }}</span>
-                <span v-if="it.checkedAt">检查：{{ formatTime(it.checkedAt) }}</span>
-                <span v-if="it.evidenceHash" :title="it.evidenceHash">哈希：{{ shortHash(it.evidenceHash) }}</span>
+      <template v-else>
+        <div class="aa-result-list">
+          <AppSectionCard v-for="r in rows" :key="r.resultId" :title="r.realName || ('学生 ' + r.studentId)">
+            <template #header-extra>
+              <AppStatusTag :type="overallColor(r.overall)">{{ overallLabel(r.overall) }}</AppStatusTag>
+              <AppStatusTag :type="r.conclusion ? 'success' : 'default'" dot>{{ statusLabel(r.status) }}</AppStatusTag>
+            </template>
+            <div class="aa-items">
+              <div v-for="it in r.items" :key="it.evidenceHash || it.item" class="aa-item">
+                <div class="aa-item__head">
+                  <span class="aa-item__label">{{ itemLabel(it.item) }}</span>
+                  <AppStatusTag :type="gradItemColor(it.result)">{{ itemResult(it.result) }}</AppStatusTag>
+                  <button v-if="it.drillRoute" class="mp-link aa-item__drill" @click="drillEvidence(it)">核对来源 ›</button>
+                </div>
+                <span v-if="it.evidence" class="aa-item__ev">{{ it.evidence }}</span>
+                <div v-if="it.sourceType || it.evidenceHash" class="aa-item__lineage">
+                  <span>来源：{{ sourceLabel(it.sourceType) }}</span>
+                  <span v-if="it.sourceIds?.length">主键：{{ it.sourceIds.join('、') }}</span>
+                  <span v-if="it.checkedAt">检查：{{ formatTime(it.checkedAt) }}</span>
+                  <span v-if="it.evidenceHash" :title="it.evidenceHash">哈希：{{ shortHash(it.evidenceHash) }}</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="aa-result-actions">
-            <AppButton v-if="canCollegeApprove(r)" variant="primary" :loading="busy" @click="collegeReview(r, 'APPROVE')">学院初审通过</AppButton>
-            <AppButton v-if="canCollegeReject(r)" :disabled="busy" @click="openCollegeReject(r)">学院驳回</AppButton>
-            <span v-if="r.status === 'SYSTEM_ABNORMAL'" class="aa-blocked-tip">系统异常须先治理阻断项并重新预审，不能直接学院通过</span>
-            <AppButton v-if="canNormalFinal(r)" variant="primary" @click="openFinal(r)">教务终审</AppButton>
-            <span v-else-if="r.status === 'ACADEMIC_REVIEW' && r.overall !== 'SYSTEM_PASSED'" class="aa-blocked-tip">系统异常 · 普通教务终审不可用</span>
-            <span v-if="r.conclusion" class="aa-final-tag">终审结论：{{ conclusionLabel(r.conclusion) }}</span>
-          </div>
-        </AppSectionCard>
-      </div>
+            <div class="aa-result-actions">
+              <AppButton v-if="canCollegeApprove(r)" variant="primary" :loading="busy" @click="collegeReview(r, 'APPROVE')">学院初审通过</AppButton>
+              <AppButton v-if="canCollegeReject(r)" :disabled="busy" @click="openCollegeReject(r)">学院驳回</AppButton>
+              <span v-if="r.status === 'SYSTEM_ABNORMAL'" class="aa-blocked-tip">系统异常须先治理阻断项并重新预审，不能直接学院通过</span>
+              <AppButton v-if="canNormalFinal(r)" variant="primary" :disabled="busy" @click="openFinal(r)">教务终审</AppButton>
+              <span v-else-if="r.status === 'ACADEMIC_REVIEW' && r.overall !== 'SYSTEM_PASSED'" class="aa-blocked-tip">系统异常 · 普通教务终审不可用</span>
+              <span v-if="r.conclusion" class="aa-final-tag">终审结论：{{ conclusionLabel(r.conclusion) }}</span>
+            </div>
+          </AppSectionCard>
+        </div>
+        <div class="aa-result-pager">
+          <AppPagination
+            :total="pagination.total"
+            :page="pagination.page"
+            :page-size="pagination.pageSize"
+            @change="onPaginationChange"
+          />
+        </div>
+      </template>
     </div>
 
     <AppConfirmDialog
@@ -98,7 +108,7 @@
 /** 毕业预审结果 + 逐项证据复核（/admin/academic-affairs/graduation/:batchId/results）。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert, AppPagination } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { GRAD_ITEM_LABEL, GRAD_ITEM_RESULT, gradItemColor, OVERALL_LABEL, overallColor, CONCLUSION_LABEL, GRAD_STATUS_LABEL } from '@/modules/academicAffairs/constants/grade-graduation'
 import { toast } from '@/utils/toast'
@@ -112,7 +122,7 @@ const SOURCE_LABELS = {
 
 export default {
   name: 'AaGraduationResultView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert, AppPagination },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -156,9 +166,19 @@ export default {
     canCollegeReject(r) { return Boolean(r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
     canNormalFinal(r) { return Boolean(r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
     search() { this.pagination.page = 1; this.load() },
+    onPaginationChange({ page }) {
+      if (!page || page === this.pagination.page || this.loading) return
+      this.pagination.page = page
+      this.load()
+    },
     async loadRosters() {
-      const res = await academicAffairsApi.getGradRosters(this.batchId)
-      if (res.code === 0) this.rosters = res.data
+      try {
+        const res = await academicAffairsApi.getGradRosters(this.batchId)
+        if (res.code === 0) this.rosters = res.data
+        else toast.error(res.message || '三名单加载失败')
+      } catch (e) {
+        toast.error((e && e.message) || '三名单加载失败')
+      }
     },
     async collegeReview(r, action) {
       if (this.busy || action !== 'APPROVE' || !this.canCollegeApprove(r)) return
@@ -197,7 +217,7 @@ export default {
       }
     },
     openFinal(r) {
-      if (!this.canNormalFinal(r)) {
+      if (!this.canNormalFinal(r) || this.busy) {
         toast.error('当前结果不满足普通教务终审条件，请先重新预审并核对系统结论')
         return
       }
@@ -213,6 +233,14 @@ export default {
       if (this.finalDlg.submitting) return
       this.finalDlg.submitting = true
       try {
+        const fresh = await academicAffairsApi.getGradResult(this.finalDlg.resultId)
+        if (fresh.code !== 0) { toast.error(fresh.message || '终审前状态重读失败'); return }
+        if (!this.canNormalFinal(fresh.data)) {
+          this.finalDlg.visible = false
+          toast.error('终审前状态已变化，请重新加载并核对系统预审')
+          await this.load()
+          return
+        }
         const res = await academicAffairsApi.finalGrad(this.finalDlg.resultId, this.finalDlg.conclusion, true)
         if (res.code === 0) {
           this.finalDlg.visible = false
@@ -229,10 +257,21 @@ export default {
     async load() {
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getGradResults(this.batchId, { overall: this.filters.overall || undefined, page: this.pagination.page, pageSize: this.pagination.pageSize })
-      if (res.code === 0) { this.rows = res.data.list; this.pagination.total = res.data.total }
-      else this.error = res.message
-      this.loading = false
+      try {
+        const res = await academicAffairsApi.getGradResults(this.batchId, {
+          overall: this.filters.overall || undefined,
+          page: this.pagination.page,
+          pageSize: this.pagination.pageSize
+        })
+        if (res.code === 0) {
+          this.rows = res.data.list
+          this.pagination.total = res.data.total
+        } else this.error = res.message || '毕业预审结果加载失败'
+      } catch (e) {
+        this.error = (e && e.message) || '毕业预审结果加载失败'
+      } finally {
+        this.loading = false
+      }
     }
   }
 }
@@ -246,7 +285,9 @@ export default {
 .aa-roster-chip.is-comp { background: var(--fill-100, #f2f3f5); color: var(--text-700, #4e5969); }
 .aa-roster-chip.is-delay { background: var(--warning-50, #fffbeb); color: var(--warning-600, #d97706); }
 .aa-filter { display: flex; gap: 12px; align-items: center; }.aa-filter :deep(.app-select) { width: 220px; }
-.aa-result-list { display: flex; flex-direction: column; gap: 12px; }.aa-items { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 14px; }
+.aa-result-list { display: flex; flex-direction: column; gap: 12px; }
+.aa-result-pager { display: flex; justify-content: flex-end; margin-top: 14px; }
+.aa-items { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 14px; }
 .aa-item { min-width: 0; padding: 10px 12px; border: 1px solid var(--border-200, #e5e7eb); border-radius: 8px; background: var(--fill-50, #fafafa); font-size: 13px; }
 .aa-item__head { display: flex; align-items: center; gap: 8px; min-width: 0; }.aa-item__label { color: var(--text-700, #4e5969); min-width: 64px; font-weight: 600; }.aa-item__drill { margin: 0 0 0 auto; }
 .aa-item__ev { display: block; margin-top: 7px; color: var(--text-600, #64748b); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
@@ -258,5 +299,6 @@ export default {
   .aa-filter :deep(.app-select) { width: 100%; }
   .aa-item__head { align-items: flex-start; flex-wrap: wrap; }
   .aa-item__drill { width: 100%; margin-left: 0; text-align: left; }
+  .aa-result-pager { justify-content: center; overflow-x: auto; }
 }
 </style>
