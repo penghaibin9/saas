@@ -149,10 +149,10 @@ def _admin_special_contract(role: str, body: dict, *, task_id) -> tuple[bool, st
 
 
 def _with_source_type(result: dict) -> dict:
-    """兼容旧行并优先消费已持久化的 source_type。"""
-    persisted = str(result.get("sourceType") or result.get("source_type") or "").strip().upper()
+    """统一输出 sourceType；现有 schema 以 ADMIN_SPECIAL sessionType 区分特殊来源。"""
+    explicit = str(result.get("sourceType") or result.get("source_type") or "").strip().upper()
     legacy_special = str(result.get("sessionType") or "").strip().upper() == _ADMIN_SPECIAL
-    source_type = persisted or (_ADMIN_SPECIAL if legacy_special else "FORMAL_TEACHING")
+    source_type = explicit or (_ADMIN_SPECIAL if legacy_special else "FORMAL_TEACHING")
     is_special = source_type == _ADMIN_SPECIAL
     result["sourceType"] = source_type
     result["sourceLabel"] = "管理员特殊补录" if is_special else "正式课堂"
@@ -171,6 +171,20 @@ def _stats_session_type_condition(model, session_type=None):
         model.session_type.is_(None),
         model.session_type != _ADMIN_SPECIAL,
     )
+
+
+def resolve_versioned_roster(*args, **kwargs):
+    """Stable injectable seam for the authoritative versioned TeachingRoster resolver."""
+    from .academic_affairs_roster_consumer_service import resolve_versioned_roster as resolver
+
+    return resolver(*args, **kwargs)
+
+
+def freeze_consumer_snapshot(*args, **kwargs):
+    """Stable injectable seam for the immutable RosterConsumerSnapshot writer."""
+    from .academic_affairs_roster_consumer_service import freeze_consumer_snapshot as freezer
+
+    return freezer(*args, **kwargs)
 
 
 def create_session(user, body) -> dict:

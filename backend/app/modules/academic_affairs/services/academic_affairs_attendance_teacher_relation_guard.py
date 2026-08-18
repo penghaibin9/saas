@@ -29,11 +29,7 @@ from . import academic_affairs_attendance_public_service as public
 from . import academic_affairs_teacher_relation_authority as teacher_authority
 from . import academic_affairs_teacher_today_service as teacher_today
 from . import mobile_academic_affairs_facade as mobile_facade
-from .academic_affairs_roster_consumer_service import (
-    freeze_consumer_snapshot,
-    get_consumer_snapshot,
-    resolve_versioned_roster,
-)
+from .academic_affairs_roster_consumer_service import get_consumer_snapshot
 
 _ADMIN_SPECIAL = "ADMIN_SPECIAL"
 
@@ -100,8 +96,6 @@ def _relation_scope_in_session(db, attendance_session, user, *, lock: bool = Fal
             week=week,
         )
 
-    # Historical session without a formal roster snapshot: retain the mature stable-key
-    # fallback, but never use names/workload/history to infer access.
     key = str(attendance_session.teacher_key or "").strip()
     keys = teacher_authority.user_keys(user)
     if not key:
@@ -215,7 +209,7 @@ def create_session(user, body) -> dict:
                         week=int(occurrence["weekNo"]),
                     )
 
-            official = resolve_versioned_roster(db, int(task.id))
+            official = public.resolve_versioned_roster(db, int(task.id))
             roster_source = _ADMIN_SPECIAL if is_admin_special else official["source"]
             roster = [{
                 "studentId": item["studentId"],
@@ -274,27 +268,9 @@ def create_session(user, body) -> dict:
                 occurrence=occurrence,
             )
 
-        source_type = _ADMIN_SPECIAL if is_admin_special else "FORMAL_TEACHING"
-        occurrence_identity = occurrence["occurrenceIdentity"] if occurrence else None
-        source_evidence = (
-            special_evidence
-            if is_admin_special
-            else json.dumps(
-                occurrence,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-        )
-
         item = AaAttendanceSession(
             tenant_id=public._tid(),
             class_id=class_id,
-            teaching_task_id=int(task.id) if task else None,
-            occurrence_identity=occurrence_identity,
-            source_type=source_type,
-            source_reason=special_reason if is_admin_special else None,
-            source_evidence=source_evidence,
             course_name=(task.course_name if task else str(body.get("courseName") or "").strip() or None),
             term_code=f"{current_term.year_code}-{current_term.term_no}",
             teacher_key=teacher_key,
@@ -314,7 +290,7 @@ def create_session(user, body) -> dict:
         db.add(item)
         db.flush()
         if task:
-            roster_identity = freeze_consumer_snapshot(
+            roster_identity = public.freeze_consumer_snapshot(
                 db,
                 "ATTENDANCE_SESSION",
                 int(item.id),
@@ -329,6 +305,7 @@ def create_session(user, body) -> dict:
         )
         if occurrence:
             audit_detail += (
+                f";occurrence={occurrence['occurrenceIdentity']}"
                 f";scheduleItem={occurrence['scheduleItemId']}"
                 f";activeBatch={occurrence['activeBatchId']}"
                 f";scope={occurrence['scopeType']}:{occurrence['scopeId']}"
@@ -341,7 +318,15 @@ def create_session(user, body) -> dict:
         result = public._with_source_type(public._row(item))
         result["teachingTaskId"] = str(task.id) if task else None
         result["rosterIdentity"] = roster_identity
-        result["occurrenceEvidence"] = occurrence
+        result["occurrenceEvidence"] = (
+            occurrence
+            if occurrence is not None
+            else (
+                {"sourceType": _ADMIN_SPECIAL, "reason": special_reason, "evidence": special_evidence}
+                if is_admin_special
+                else None
+            )
+        )
         result["teacherAuthority"] = teacher_scope
         return result
 
@@ -380,7 +365,7 @@ def mark_attendance(session_id, user, body) -> dict:
         payload = body or {}
         student_id = str(payload.get("studentId") or "")
         status = str(payload.get("status") or "").upper()
-        if status not in public._canonical._STATUS_OK:
+        if status not in public._STATUS_OK:
             raise AppException("VALIDATION_ERROR", "考勤状态非法")
 
         roster = json.loads(item.roster_json) if item.roster_json else []
@@ -498,17 +483,7 @@ teacher_attendance_class_options._attendance_teacher_relation_guard = True
 
 
 def install() -> None:
-    """Idempotently bind public attendance + mobile picker; no shared registry edits."""
-    for name, replacement in (
-        ("create_session", create_session),
-        ("get_session", get_session),
-        ("mark_attendance", mark_attendance),
-        ("submit_session", submit_session),
-    ):
-        original_name = f"_teacher_relation_guard_original_{name}"
-        if not hasattr(public, original_name):
-            setattr(public, original_name, getattr(public, name))
-        setattr(public, name, replacement)
+    """Compatibility hook: explicit public delegates already own command/read routing."""
     original_picker = getattr(mobile_facade, "teacher_attendance_class_options")
     if not hasattr(mobile_facade, "_teacher_relation_guard_original_attendance_class_options"):
         mobile_facade._teacher_relation_guard_original_attendance_class_options = original_picker

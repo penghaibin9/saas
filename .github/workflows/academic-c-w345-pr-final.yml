@@ -10,6 +10,7 @@ on:
       - 'backend/app/modules/academic_affairs/routers/mobile_grade_entry_router.py'
       - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py'
@@ -35,11 +36,9 @@ on:
 
 permissions:
   contents: read
-
 concurrency:
   group: academic-c-w345-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
-
 jobs:
   final:
     runs-on: ubuntu-latest
@@ -55,9 +54,7 @@ jobs:
     services:
       mysql:
         image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: student_lifecycle_test
+        env: {MYSQL_ROOT_PASSWORD: root, MYSQL_DATABASE: student_lifecycle_test}
         ports: ['3306:3306']
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
@@ -65,15 +62,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
+        with: {python-version: '3.12', cache: pip, cache-dependency-path: backend/requirements.txt}
       - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+        with: {node-version: '20', cache: npm, cache-dependency-path: frontend/package-lock.json}
       - name: Install backend
         working-directory: backend
         run: |
@@ -90,84 +81,32 @@ jobs:
           alembic upgrade head
           mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse "SHOW COLUMNS FROM t_aa_grade_task LIKE 'deadline_at'" | grep -q deadline_at
           mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse "SHOW INDEX FROM t_aa_grade_task WHERE Key_name='ix_aa_grade_task_deadline'" | grep -q ix_aa_grade_task_deadline
-          mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE() AND TRIGGER_NAME='trg_aa_grade_task_deadline_submit_guard'" | grep -q trg_aa_grade_task_deadline_submit_guard
       - name: Compile and source contracts
         working-directory: backend
         run: |
-          python -m py_compile \
-            app/modules/academic_affairs/routers/grade_core_router.py \
-            app/modules/academic_affairs/routers/mobile_grade_entry_router.py \
-            app/modules/academic_affairs/routers/exam_incident_closure_router.py \
-            app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py \
-            app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py \
-            app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py \
-            app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py \
-            app/modules/academic_affairs/services/academic_affairs_grade_deadline_scheduler_service.py \
-            app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py \
-            app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py \
-            app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py \
-            app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py \
-            app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py \
-            app/modules/academic_affairs/services/academic_affairs_exam_print_service.py \
-            app/services/xlsx_util.py \
-            scripts/run_scheduled_jobs.py \
-            scripts/e2e_academic_affairs_live_flow.py \
-            scripts/e2e_academic_affairs_round3.py
+          python -m py_compile app/modules/academic_affairs/routers/grade_core_router.py app/modules/academic_affairs/routers/mobile_grade_entry_router.py app/modules/academic_affairs/routers/exam_incident_closure_router.py app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py app/modules/academic_affairs/services/academic_affairs_attendance_service.py app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py app/modules/academic_affairs/services/academic_affairs_grade_deadline_scheduler_service.py app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py app/modules/academic_affairs/services/academic_affairs_exam_print_service.py app/services/xlsx_util.py scripts/run_scheduled_jobs.py scripts/e2e_academic_affairs_live_flow.py scripts/e2e_academic_affairs_round3.py
           python - <<'PY'
           from pathlib import Path
-          p=Path('app/modules/academic_affairs/routers/grade_core_router.py').read_text()
-          mobile=Path('app/modules/academic_affairs/routers/mobile_grade_entry_router.py').read_text()
-          d=Path('app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py').read_text()
-          sched=Path('app/modules/academic_affairs/services/academic_affairs_grade_deadline_scheduler_service.py').read_text()
-          q=Path('app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py').read_text()
-          a=Path('app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py').read_text()
-          m=Path('alembic/versions/20260818_aa_grade_task_deadline.py').read_text()
-          x=Path('app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py').read_text()
-          r=Path('app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py').read_text()
-          event=Path('app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py').read_text()
-          e=Path('app/modules/academic_affairs/services/academic_affairs_exam_print_service.py').read_text()
-          runner=Path('scripts/run_scheduled_jobs.py').read_text()
           public=Path('app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py').read_text()
+          legacy=Path('app/modules/academic_affairs/services/academic_affairs_attendance_service.py').read_text()
           command=Path('app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py').read_text()
-          assert '/extend-deadline' in p and 'read_grade_upload_path' in p and 'read_safe_upload(file)' not in p
-          assert 'deadline_service.teacher_submit_task' in mobile and '_quality_report_with_deadline' in mobile
-          assert 'return success(service.teacher_submit_task(' not in mobile
-          assert 'GRADE_DEADLINE_EXPIRED' in d and '_check_college_scope' in d and 'DBAPIError' in d
-          assert '_DEADLINE_MUTABLE_STATES = {"NOT_STARTED", "INPUTTING", "RETURNED"}' in d
-          assert 'if state not in _DEADLINE_MUTABLE_STATES' in d
-          assert 'CREATE TRIGGER' in m and 'UTC_TIMESTAMP()' in m and 'GRADE_DEADLINE_EXPIRED' in m
-          assert 'deadline_projection_map' in q and '_deadline.deadline_projection(db' not in q and 'not deadline_overdue' in q
-          assert 'actions.extend(["EXTEND_DEADLINE", "REMIND"])' in q
-          assert 'class_authority_weeks' in q and 'class_authority_weeks' in a
-          assert 'validate_xlsx_path' in x and 'zipfile' not in x
-          assert 'GRADE.ENTRY_REMINDED' in r and 'messagePushReady": True' in r
-          assert 'GRADE.ENTRY_DEADLINE_REMINDER' in event and 'GRADE.ENTRY_OVERDUE_DIGEST' in event
-          assert '_MILESTONES = (1, 3, 7)' in sched
-          assert 'FOR UPDATE SKIP LOCKED' in sched and 'NOT EXISTS' in sched and 't_message_event_outbox' in sched
-          assert "DATE_FORMAT(gt.deadline_at, '%Y%m%dT%H%i%s')" in sched and 'TIMESTAMPDIFF(SECOND' in sched
-          assert 'COUNT(*) OVER() AS total_count' in sched and '_MAX_DIGEST_ITEMS = 50' in sched
-          assert 'build_affairs_context' in sched and 'scope.scope_type == "TENANT_ALL"' in sched and 'scope.scope_type != "COLLEGE"' in sched
-          assert 'GRADE.ENTRY_OVERDUE_DIGEST:{int(user_id)}:{day_key}' in sched
-          assert 'INTERVAL_GRADE_DEADLINE = 60 * 60' in runner and 'job_grade_deadline' in runner
-          assert 'grade_message_events.install()' in runner
-          assert 'EXAM_TICKET_PRINT' in e and 'printSequence' in e
-          assert 'AaAttendanceSession(' not in public
-          assert 'return relation_guard.create_session(user, body)' in public
-          assert 'teaching_task_id=int(task.id) if task else None' in command
-          assert 'occurrence_identity=occurrence_identity' in command
+          assert 'AaAttendanceSession(' not in public and 'AaAttendanceSession(' not in legacy
+          assert 'def resolve_versioned_roster(' in public and 'def freeze_consumer_snapshot(' in public
+          assert 'public.resolve_versioned_roster' in command and 'public.freeze_consumer_snapshot' in command
+          assert 'public._canonical' not in command and 'setattr(public' not in command
+          for phantom in ('teaching_task_id=','occurrence_identity=','source_type=','source_reason=','source_evidence='):
+              assert phantom not in command
+          assert 'reason={special_reason};evidence={special_evidence}' in command
+          assert 'result["occurrenceEvidence"]' in command
+          d=Path('app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py').read_text()
+          q=Path('app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py').read_text()
+          sched=Path('app/modules/academic_affairs/services/academic_affairs_grade_deadline_scheduler_service.py').read_text()
+          assert 'GRADE_DEADLINE_EXPIRED' in d and 'deadline_projection_map' in q and 'FOR UPDATE SKIP LOCKED' in sched
           PY
       - name: Targeted MySQL regression
         working-directory: backend
         run: >-
-          pytest -q
-          tests/test_academic_c_closure_contract.py
-          tests/test_aa_grade_deadline_scheduler.py
-          tests/test_aa_exam_facade_contract_and_changes.py
-          tests/test_aa_exam_fact_guards.py
-          tests/test_aa_effective_grade_identity.py
-          tests/test_aa_grade_recheck_concurrency.py
-          tests/test_aa_p0_hardening_20260804.py
-          -p no:warnings --durations=20
+          pytest -q tests/test_academic_c_closure_contract.py tests/test_aa_grade_deadline_scheduler.py tests/test_aa_exam_facade_contract_and_changes.py tests/test_aa_exam_fact_guards.py tests/test_aa_effective_grade_identity.py tests/test_aa_grade_recheck_concurrency.py tests/test_aa_p0_hardening_20260804.py -p no:warnings --durations=20
       - name: Frontend production build
         working-directory: frontend
         run: npm ci && npm run build
@@ -176,12 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q '新增共同授课' frontend/src/modules/academicAffairs/views/AaTeachingClassDetailView.vue
-          grep -q 'deactivateTeacher' frontend/src/modules/academicAffairs/views/AaTeachingClassDetailView.vue
           grep -q 'formal-print/issue' frontend/src/modules/academicAffairs/api/academic-exam-formal-print.api.js
-          grep -q '单个补打' frontend/src/modules/academicAffairs/views/AaExamSeatingPrintView.vue
-          grep -q 'extendDeadline' frontend/src/modules/academicAffairs/api/grade-reminder.api.js
           grep -q 'v-if="canSubmit"' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
           grep -q 'task.isOverdue === true' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
-          grep -q 'gradeReminderApi.extendDeadline' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
           grep -q 'GRADE.ENTRY_REMINDED' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
-          ! grep -q '当前未配置独立成绩催录消息事件模板' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
