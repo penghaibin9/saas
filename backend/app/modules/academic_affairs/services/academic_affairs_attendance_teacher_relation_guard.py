@@ -268,9 +268,27 @@ def create_session(user, body) -> dict:
                 occurrence=occurrence,
             )
 
+        source_type = _ADMIN_SPECIAL if is_admin_special else "FORMAL_TEACHING"
+        occurrence_identity = occurrence["occurrenceIdentity"] if occurrence else None
+        source_evidence = (
+            special_evidence
+            if is_admin_special
+            else json.dumps(
+                occurrence,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+
         item = AaAttendanceSession(
             tenant_id=public._tid(),
             class_id=class_id,
+            teaching_task_id=int(task.id) if task else None,
+            occurrence_identity=occurrence_identity,
+            source_type=source_type,
+            source_reason=special_reason if is_admin_special else None,
+            source_evidence=source_evidence,
             course_name=(task.course_name if task else str(body.get("courseName") or "").strip() or None),
             term_code=f"{current_term.year_code}-{current_term.term_no}",
             teacher_key=teacher_key,
