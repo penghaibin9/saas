@@ -39,13 +39,25 @@ test('Stage D 毕业审核不得把系统通过冒充最终毕业结论', async 
 test('Stage D 毕业审核保留学院初审、不可逆终审、费用 UNKNOWN 与归档真动作', async () => {
   const source = await readFile(viewUrl, 'utf8')
   for (const token of [
-    "academicAffairsApi.collegeReviewGrad",
-    "academicAffairsApi.finalGrad(this.detail.row.resultId, this.finalConclusion, true)",
-    "academicAffairsApi.archiveGradBatch(this.batchId)",
-    "费用结清默认 UNKNOWN（不阻断）",
-    "涉学籍终态，不可在本页撤销",
-    "GRAD_FAIL_GROUPS"
+    'academicAffairsApi.collegeReviewGrad',
+    'const resultId = this.detail.row.resultId',
+    'const fresh = await academicAffairsApi.getGradResult(resultId)',
+    'this.detail.row = fresh.data',
+    'if (!this.canNormalFinal(fresh.data))',
+    'academicAffairsApi.finalGrad(resultId, this.finalConclusion, true)',
+    'academicAffairsApi.archiveGradBatch(this.batchId)',
+    '费用结清默认 UNKNOWN（不阻断）',
+    '涉学籍终态，不可在本页撤销',
+    'GRAD_FAIL_GROUPS'
   ]) assert.ok(source.includes(token), `missing graduation truth guard: ${token}`)
+
+  const freshReadAt = source.indexOf('const fresh = await academicAffairsApi.getGradResult(resultId)')
+  const freshGuardAt = source.indexOf('if (!this.canNormalFinal(fresh.data))')
+  const finalWriteAt = source.indexOf('academicAffairsApi.finalGrad(resultId, this.finalConclusion, true)')
+  assert.ok(
+    freshReadAt >= 0 && freshGuardAt > freshReadAt && finalWriteAt > freshGuardAt,
+    'graduation final must re-read fresh server truth and re-check SYSTEM_PASSED before irreversible write'
+  )
 })
 
 test('D-W0 ARCHIVE 展示必须指向学工归档语义而非迎新归档', async () => {

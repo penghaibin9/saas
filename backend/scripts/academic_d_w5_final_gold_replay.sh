@@ -58,6 +58,36 @@ declare -A INT_C_HANDOFF_IMPORT_MINI_BLOBS=(
   [miniapp/tests/academic-attendance-source-contract.test.mjs]="a94116cefb269ed9db1c06eaf64cb58b799d31ea"
 )
 
+# B is built on the shared INT Authority while C owns the exact-session reopen.
+# When PRE-GOLD merges B before C, this reviewed overlap can conflict before the
+# later INT layer is reached. Resolve only the exact nine-path reviewed handoff:
+# keep B/INT Authority for backend + descendant-safe Program migration, and keep
+# C for the two C-owned miniapp reopen files. Both conflict stages are blob-pinned.
+B_C_PROGRAM_MIGRATION_PATH="backend/alembic/versions/20260817_aa_prog_expand.py"
+B_C_HANDOFF_PATHS=(
+  "$B_C_PROGRAM_MIGRATION_PATH"
+  "${INT_C_HANDOFF_PATHS[@]}"
+)
+B_C_HANDOFF_TAKE_B=(
+  "$B_C_PROGRAM_MIGRATION_PATH"
+  "${INT_C_HANDOFF_TAKE_INT[@]}"
+)
+B_C_HANDOFF_KEEP_C=(
+  "${INT_C_HANDOFF_KEEP_C[@]}"
+)
+declare -A B_C_HANDOFF_B_BLOBS=(
+  [backend/alembic/versions/20260817_aa_prog_expand.py]="6c8b165767f01c6aaa8e868dcad2bcc343d081b7"
+  [backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py]="2bc151356268eafa7300bddbd78a878f067caa72"
+  [backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py]="4d5dbdcb72a470f0a276b01bfe6559fa62305e0e"
+  [backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py]="6feee794a472525dfe66a4e46231672530598a01"
+  [backend/tests/test_aa_attendance_admin_special_contract.py]="b8782621fe902a684e27cc5c9a0f0ff16080e3a8"
+  [backend/tests/test_aa_attendance_published_occurrence_contract.py]="cf413b96988d4b3fa777dcca2890f5365ad4ff12"
+  [backend/tests/test_aa_attendance_warning_source_contract.py]="4d3664032fba681ba3eef0149cd12dae5bdef234"
+  [miniapp/src/pages/teacher/academic-affairs/attendance.vue]="9df52087dcbe47a37f3bca57b03430fc363d022c"
+  [miniapp/tests/academic-attendance-source-contract.test.mjs]="a94116cefb269ed9db1c06eaf64cb58b799d31ea"
+)
+B_C_PROGRAM_MIGRATION_C_BLOB="7d5217d43f13e4237afd4247328164bb30874eed"
+
 HEAD_MATRIX=/tmp/academic-d-w5-head-matrix.txt
 MERGE_LEDGER=/tmp/academic-d-w5-merge-ledger.txt
 CONTRACT_INVENTORY=/tmp/academic-d-w5-contract-inventory.txt
@@ -181,6 +211,78 @@ git config user.name "academic-d-w5-final-gold"
 git config user.email "academic-d-w5-final-gold@invalid.local"
 git switch --detach "$MAIN_SHA"
 
+verify_b_c_handoff_contract() {
+  if ! git merge-base --is-ancestor "$INT_C1_IMPORT_SHA" "$B_SHA"; then
+    echo "[handoff-drift] B no longer descends from reviewed C-C1 import $INT_C1_IMPORT_SHA" | tee -a "$MERGE_LEDGER"
+    return 1
+  fi
+  if ! git merge-base --is-ancestor "$INT_SOURCE_AUTH_SHA" "$B_SHA"; then
+    echo "[handoff-drift] B no longer descends from reviewed INT source Authority $INT_SOURCE_AUTH_SHA" | tee -a "$MERGE_LEDGER"
+    return 1
+  fi
+
+  local path b_blob c_blob expected_c_blob
+  for path in "${B_C_HANDOFF_PATHS[@]}"; do
+    b_blob="$(git rev-parse "${B_SHA}:${path}")"
+    if [[ "$b_blob" != "${B_C_HANDOFF_B_BLOBS[$path]}" ]]; then
+      echo "[handoff-drift] B blob $path expected=${B_C_HANDOFF_B_BLOBS[$path]} actual=$b_blob" | tee -a "$MERGE_LEDGER"
+      return 1
+    fi
+
+    c_blob="$(git rev-parse "${C_SHA}:${path}")"
+    if [[ "$path" == "$B_C_PROGRAM_MIGRATION_PATH" ]]; then
+      expected_c_blob="$B_C_PROGRAM_MIGRATION_C_BLOB"
+    else
+      expected_c_blob="${INT_C_HANDOFF_C_BLOBS[$path]}"
+    fi
+    if [[ "$c_blob" != "$expected_c_blob" ]]; then
+      echo "[handoff-drift] C blob $path expected=$expected_c_blob actual=$c_blob" | tee -a "$MERGE_LEDGER"
+      return 1
+    fi
+  done
+}
+
+resolve_b_c_handoff_conflicts() {
+  local actual_conflicts expected_conflicts path ours_blob theirs_blob expected_c_blob
+  actual_conflicts="$(git diff --name-only --diff-filter=U | LC_ALL=C sort)"
+  expected_conflicts="$(printf '%s\n' "${B_C_HANDOFF_PATHS[@]}" | LC_ALL=C sort)"
+  if [[ "$actual_conflicts" != "$expected_conflicts" ]]; then
+    echo "[handoff-rejected] C conflict set differs from reviewed B/INT -> C handoff" | tee -a "$MERGE_LEDGER"
+    printf '%s\n' "$actual_conflicts" | tee -a "$MERGE_LEDGER"
+    return 1
+  fi
+
+  if ! verify_b_c_handoff_contract; then
+    return 1
+  fi
+
+  for path in "${B_C_HANDOFF_PATHS[@]}"; do
+    ours_blob="$(git rev-parse ":2:${path}")"
+    theirs_blob="$(git rev-parse ":3:${path}")"
+    if [[ "$ours_blob" != "${B_C_HANDOFF_B_BLOBS[$path]}" ]]; then
+      echo "[handoff-drift] C merge stage-2 blob $path expected=${B_C_HANDOFF_B_BLOBS[$path]} actual=$ours_blob" | tee -a "$MERGE_LEDGER"
+      return 1
+    fi
+    if [[ "$path" == "$B_C_PROGRAM_MIGRATION_PATH" ]]; then
+      expected_c_blob="$B_C_PROGRAM_MIGRATION_C_BLOB"
+    else
+      expected_c_blob="${INT_C_HANDOFF_C_BLOBS[$path]}"
+    fi
+    if [[ "$theirs_blob" != "$expected_c_blob" ]]; then
+      echo "[handoff-drift] C merge stage-3 blob $path expected=$expected_c_blob actual=$theirs_blob" | tee -a "$MERGE_LEDGER"
+      return 1
+    fi
+  done
+
+  git checkout --ours -- "${B_C_HANDOFF_TAKE_B[@]}"
+  git checkout --theirs -- "${B_C_HANDOFF_KEEP_C[@]}"
+  git add -- "${B_C_HANDOFF_PATHS[@]}"
+  test -z "$(git diff --name-only --diff-filter=U)"
+  test -z "$(git ls-files -u)"
+  git commit --no-edit
+  echo "[handoff-resolved] B/INT attendance + descendant-safe Program migration preserved; C exact-session miniapp reopen preserved" | tee -a "$MERGE_LEDGER"
+}
+
 verify_int_c_handoff_contract() {
   git merge-base --is-ancestor "$INT_C1_IMPORT_SHA" "$INT_SHA"
   git merge-base --is-ancestor "$INT_SOURCE_AUTH_SHA" "$INT_SHA"
@@ -249,13 +351,21 @@ merge_layer() {
   if ! git merge --no-ff --no-edit "$sha"; then
     echo "[conflicts] $layer" | tee -a "$MERGE_LEDGER"
     git diff --name-only --diff-filter=U | tee -a "$MERGE_LEDGER"
-    if [[ "$layer" != "INT" ]] || ! resolve_int_c_handoff_conflicts; then
+    if [[ "$layer" == "C" ]]; then
+      if ! resolve_b_c_handoff_conflicts; then
+        exit 1
+      fi
+    elif [[ "$layer" == "INT" ]]; then
+      if ! resolve_int_c_handoff_conflicts; then
+        exit 1
+      fi
+    else
       exit 1
     fi
   fi
   echo "[merged] $layer tree=$(git rev-parse HEAD^{tree}) commit=$(git rev-parse HEAD)" | tee -a "$MERGE_LEDGER"
-  # A successful automatic merge or the single audited C->INT handoff must leave
-  # no unresolved index stages. We do not run a broad historical whitespace audit.
+  # A successful automatic merge or an audited handoff must leave no unresolved
+  # index stages. We do not run a broad historical whitespace audit.
   test -z "$(git diff --name-only --diff-filter=U)"
   test -z "$(git ls-files -u)"
 }
@@ -267,7 +377,8 @@ merge_layer D "$EXACT_D_SHA"
 merge_layer INT "$INT_SHA"
 CURRENT_LAYER=""
 
-test -z "$(git status --porcelain)"
+W5_PHASE="POST_MERGE_WORKTREE_GUARD"
+test -z "$(git status --porcelain --untracked-files=no)"
 
 cd backend
 
