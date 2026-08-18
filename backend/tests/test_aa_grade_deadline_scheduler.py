@@ -232,6 +232,8 @@ def test_grade_deadline_scheduler_teacher_and_scoped_overdue_digest(db_mode):
     upcoming_b_id = int(upcoming_b.id)
     overdue_a_id = int(overdue_a.id)
     overdue_b_id = int(overdue_b.id)
+    class_a_id = int(class_a.id)
+    teacher_a_login = str(teacher_a.login_name)
     teacher_a_id = int(teacher_a.id)
     teacher_b_id = int(teacher_b.id)
     college_admin_a_id = int(college_admin_a.id)
@@ -254,8 +256,32 @@ def test_grade_deadline_scheduler_teacher_and_scoped_overdue_digest(db_mode):
     assert second["teacherReminders"] == 1
     assert third["teacherReminders"] == 0
     assert first["overdueTasks"] >= 2
+    assert first["overdueDigests"] >= 3
     assert second["overdueDigests"] == 0
     assert third["overdueDigests"] == 0
+
+    # A new overdue task on the same UTC day must invalidate only the affected
+    # recipients' digest identity. Unchanged College B must not receive a duplicate.
+    db = get_sessionmaker()()
+    late_overdue_a = _grade_task(
+        db,
+        course_name=f"学院A当日新增逾期-{suffix}",
+        class_id=class_a_id,
+        teacher_key=teacher_a_login,
+        deadline=datetime.utcnow().replace(microsecond=0) - timedelta(minutes=15),
+    )
+    late_overdue_a_id = int(late_overdue_a.id)
+    db.commit()
+    db.close()
+
+    set_tenant({"tenantId": str(TID)})
+    try:
+        fourth = service.scan_grade_deadlines(limit=1)
+    finally:
+        set_tenant(None)
+    assert fourth["teacherReminders"] == 0
+    assert fourth["overdueTasks"] >= 3
+    assert fourth["overdueDigests"] >= 2
 
     db = get_sessionmaker()()
     reminders = db.query(MessageEventOutbox).filter(
@@ -275,22 +301,29 @@ def test_grade_deadline_scheduler_teacher_and_scoped_overdue_digest(db_mode):
         MessageEventOutbox.tenant_id == TID,
         MessageEventOutbox.event_code == "GRADE.ENTRY_OVERDUE_DIGEST",
         MessageEventOutbox.is_deleted.is_(False),
-    ).all()
-    by_recipient = {}
+    ).order_by(MessageEventOutbox.id.asc()).all()
+    by_recipient: dict[int, list] = {}
     expected_admins = {college_admin_a_id, college_admin_b_id, academic_admin_id}
     for row in digests:
         recipients = _recipient_ids(row)
         if len(recipients) == 1:
             uid = next(iter(recipients))
             if uid in expected_admins:
-                by_recipient[uid] = row
+                by_recipient.setdefault(uid, []).append(row)
 
     assert expected_admins.issubset(by_recipient)
+    assert len(by_recipient[college_admin_a_id]) >= 2
+    assert len(by_recipient[academic_admin_id]) >= 2
+    assert len(by_recipient[college_admin_b_id]) == 1
 
-    a_ids = {int(item["gradeTaskId"]) for item in _payload_items(by_recipient[college_admin_a_id])}
-    b_ids = {int(item["gradeTaskId"]) for item in _payload_items(by_recipient[college_admin_b_id])}
-    school_ids = {int(item["gradeTaskId"]) for item in _payload_items(by_recipient[academic_admin_id])}
-    assert overdue_a_id in a_ids and overdue_b_id not in a_ids
-    assert overdue_b_id in b_ids and overdue_a_id not in b_ids
-    assert {overdue_a_id, overdue_b_id}.issubset(school_ids)
+    latest_a = by_recipient[college_admin_a_id][-1]
+    latest_b = by_recipient[college_admin_b_id][-1]
+    latest_school = by_recipient[academic_admin_id][-1]
+    a_ids = {int(item["gradeTaskId"]) for item in _payload_items(latest_a)}
+    b_ids = {int(item["gradeTaskId"]) for item in _payload_items(latest_b)}
+    school_ids = {int(item["gradeTaskId"]) for item in _payload_items(latest_school)}
+    assert {overdue_a_id, late_overdue_a_id}.issubset(a_ids)
+    assert overdue_b_id not in a_ids
+    assert overdue_b_id in b_ids and overdue_a_id not in b_ids and late_overdue_a_id not in b_ids
+    assert {overdue_a_id, overdue_b_id, late_overdue_a_id}.issubset(school_ids)
     db.close()
