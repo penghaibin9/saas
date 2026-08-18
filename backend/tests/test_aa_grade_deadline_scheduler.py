@@ -7,6 +7,7 @@ outbox deduplication. The shared delivery worker is tested elsewhere.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 from sqlalchemy import text
 
@@ -156,6 +157,20 @@ def test_grade_deadline_milestone_days():
     assert service._milestone_days(now + timedelta(hours=12), now) == 1
     assert service._milestone_days(now + timedelta(days=8), now) is None
     assert service._milestone_days(now - timedelta(seconds=1), now) is None
+
+
+def test_grade_deadline_action_freezes_after_submit():
+    from app.modules.academic_affairs.services import academic_affairs_grade_deadline_service as deadline
+    from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as task_read
+
+    admin = {"currentRoleCode": "ACADEMIC_ADMIN", "userType": "TEACHER"}
+    assert deadline._DEADLINE_MUTABLE_STATES == {"NOT_STARTED", "INPUTTING", "RETURNED"}
+    for status in ("NOT_STARTED", "INPUTTING", "RETURNED"):
+        actions = task_read._allowed_actions(SimpleNamespace(status=status), admin, True)
+        assert "EXTEND_DEADLINE" in actions
+    for status in ("SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW", "PUBLISHED", "ARCHIVED"):
+        actions = task_read._allowed_actions(SimpleNamespace(status=status), admin, True)
+        assert "EXTEND_DEADLINE" not in actions
 
 
 def test_grade_deadline_scheduler_teacher_and_scoped_overdue_digest(db_mode):
