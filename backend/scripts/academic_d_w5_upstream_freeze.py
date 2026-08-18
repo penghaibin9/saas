@@ -123,6 +123,7 @@ def evaluate_pr(line: str, payload: dict[str, Any]) -> dict[str, Any]:
     branch = str(head.get("ref") or "")
     sha = str(head.get("sha") or "")
     state = str(payload.get("state") or "").lower()
+    merged = bool(payload.get("merged")) or bool(payload.get("merged_at"))
     owner_final_gold = _owner_final_frozen(line, payload, body)
     contracts = {
         code: _contract_frozen(body, code) or owner_final_gold
@@ -134,13 +135,9 @@ def evaluate_pr(line: str, payload: dict[str, Any]) -> dict[str, Any]:
         and branch == expected["branch"]
         and bool(sha)
     )
-    if line == "A":
-        state_ok = state == "open" or (
-            state == "closed"
-            and (bool(payload.get("merged")) or bool(payload.get("merged_at")))
-        )
-    else:
-        state_ok = state == "open"
+    # A merged upstream PR is structurally stronger than an open PR: its exact
+    # owner head is immutable in the PR record. Closed-but-unmerged remains blocked.
+    state_ok = state == "open" or (state == "closed" and merged)
 
     structural_ok = identity_ok and state_ok
     missing = [code for code, frozen in contracts.items() if not frozen]
@@ -152,7 +149,7 @@ def evaluate_pr(line: str, payload: dict[str, Any]) -> dict[str, Any]:
         "headSha": sha,
         "state": state,
         "draft": bool(payload.get("draft")),
-        "merged": bool(payload.get("merged")) or bool(payload.get("merged_at")),
+        "merged": merged,
         "ownerFinalGold": owner_final_gold,
         "bodySha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
         "contracts": contracts,

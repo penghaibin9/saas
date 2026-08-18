@@ -18,8 +18,9 @@ EXPECTED_INT_SHA="$INT_SHA"
 # persisted source/occurrence Authority. C subsequently promoted the public
 # attendance surface to explicit relation-aware command/read delegates and reduced
 # the historical attendance_service module to a compatibility export. W5 preserves
-# those two final C facades while retaining the reviewed B/INT occurrence, warning,
-# source-contract and exact-session miniapp handoff. Any other conflict fails closed.
+# those two final C facades plus their final relation-aware contracts while retaining
+# the reviewed B/INT occurrence, warning, source-contract and exact-session miniapp
+# handoff. Any other conflict fails closed.
 INT_C1_IMPORT_SHA="93650baec930d7e4efd7b04e9ec851e5887a795b"
 INT_SOURCE_AUTH_SHA="0703ec4fb11cab9b50d6bbaf4eddfbbea8091b62"
 INT_C_HANDOFF_PATHS=(
@@ -28,6 +29,8 @@ INT_C_HANDOFF_PATHS=(
   backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py
   backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py
   backend/tests/test_aa_attendance_admin_special_contract.py
+  backend/tests/test_aa_attendance_class_options_formal_schedule.py
+  backend/tests/test_aa_attendance_expected_schedule_item_contract.py
   backend/tests/test_aa_attendance_published_occurrence_contract.py
   backend/tests/test_aa_attendance_warning_source_contract.py
   miniapp/src/pages/teacher/academic-affairs/attendance.vue
@@ -43,6 +46,8 @@ INT_C_HANDOFF_TAKE_INT=(
 INT_C_HANDOFF_KEEP_C=(
   backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py
   backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py
+  backend/tests/test_aa_attendance_class_options_formal_schedule.py
+  backend/tests/test_aa_attendance_expected_schedule_item_contract.py
   miniapp/src/pages/teacher/academic-affairs/attendance.vue
   miniapp/tests/academic-attendance-source-contract.test.mjs
 )
@@ -56,6 +61,8 @@ declare -A INT_C_HANDOFF_C_BLOBS=(
   [backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py]="bb6bb7a330be2ce08dc763f82e70e2b2d44d2728"
   [backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py]="b442eef7ed496b03196bebb5e56c527d7c7c8fc5"
   [backend/tests/test_aa_attendance_admin_special_contract.py]="66f8fcbfaae184e982b10c2d949e3ff6f135056f"
+  [backend/tests/test_aa_attendance_class_options_formal_schedule.py]="5c6460b57d004df67f785ca50c1197494d217531"
+  [backend/tests/test_aa_attendance_expected_schedule_item_contract.py]="1c837a29070401551af946cf8ac0a32d5cf88ed4"
   [backend/tests/test_aa_attendance_published_occurrence_contract.py]="d2d6b2e70b55d2a5d82427ac16f6c087bc1e6955"
   [backend/tests/test_aa_attendance_warning_source_contract.py]="6c1458a2c967630bf9f1dfc3d5e00b8b62d0305e"
   [miniapp/src/pages/teacher/academic-affairs/attendance.vue]="8153bddd3769309bf387cedf53217eb27b4398c8"
@@ -69,10 +76,11 @@ C_FINAL_RELATION_GUARD_PATH="backend/app/modules/academic_affairs/services/acade
 C_FINAL_RELATION_GUARD_BLOB="e1a4317d03b9575b9626c9957e3dd57805e00a74"
 
 # B is built on the shared INT Authority while C owns the final relation-aware
-# public/compatibility facades plus exact-session reopen. At the reviewed topology,
-# merging C after B yields exactly the nine attendance conflicts below. Program
-# expand no longer conflicts because B is a descendant of the C migration, but its
-# safer descendant blob remains pinned independently and must survive unchanged.
+# public/compatibility facades, their relation-aware contracts, plus exact-session
+# reopen. At the reviewed topology, merging C after B yields exactly the eleven
+# attendance conflicts below. Program expand no longer conflicts because B is a
+# descendant of the C migration, but its safer descendant blob remains pinned
+# independently and must survive unchanged.
 B_C_PROGRAM_MIGRATION_PATH="backend/alembic/versions/20260817_aa_prog_expand.py"
 B_C_HANDOFF_PATHS=(
   "${INT_C_HANDOFF_PATHS[@]}"
@@ -90,6 +98,8 @@ declare -A B_C_HANDOFF_B_BLOBS=(
   [backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py]="a8e08149d8d813e25cb6fe050977ce1c995d1a36"
   [backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py]="6feee794a472525dfe66a4e46231672530598a01"
   [backend/tests/test_aa_attendance_admin_special_contract.py]="b8782621fe902a684e27cc5c9a0f0ff16080e3a8"
+  [backend/tests/test_aa_attendance_class_options_formal_schedule.py]="960b55947993bd3c9eb7d946a62fb9031f56bec6"
+  [backend/tests/test_aa_attendance_expected_schedule_item_contract.py]="7546ba765e4b9dd6e40a10b18dfbd68149a71e41"
   [backend/tests/test_aa_attendance_published_occurrence_contract.py]="cf413b96988d4b3fa777dcca2890f5365ad4ff12"
   [backend/tests/test_aa_attendance_warning_source_contract.py]="4d3664032fba681ba3eef0149cd12dae5bdef234"
   [miniapp/src/pages/teacher/academic-affairs/attendance.vue]="9df52087dcbe47a37f3bca57b03430fc363d022c"
@@ -322,7 +332,7 @@ resolve_b_c_handoff_conflicts() {
   test -z "$(git diff --name-only --diff-filter=U)"
   test -z "$(git ls-files -u)"
   git commit --no-edit
-  echo "[handoff-resolved] B/INT occurrence+warning+source contracts preserved; C final attendance facades and exact-session miniapp reopen preserved; descendant-safe Program migration verified unchanged" | tee -a "$MERGE_LEDGER"
+  echo "[handoff-resolved] B/INT occurrence+warning+source contracts preserved; C final attendance facades, relation-aware contracts and exact-session miniapp reopen preserved; descendant-safe Program migration verified unchanged" | tee -a "$MERGE_LEDGER"
 }
 
 verify_int_c_handoff_contract() {
@@ -354,15 +364,17 @@ verify_int_c_handoff_contract() {
     fi
   done
 
-  # INT still carries the reviewed pre-facade public/compatibility implementation;
-  # final C deliberately supersedes only these two entrypoint modules while the
-  # merged INT source contracts below prove persisted source/occurrence semantics.
+  # INT still carries the reviewed pre-final-C public/compatibility implementation
+  # and the two pre-relation-aware contracts. Final C deliberately supersedes these
+  # four paths while the merged INT source contracts prove persisted source semantics.
   for path in \
     backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py \
-    backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py; do
+    backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py \
+    backend/tests/test_aa_attendance_class_options_formal_schedule.py \
+    backend/tests/test_aa_attendance_expected_schedule_item_contract.py; do
     int_blob="$(git rev-parse "${INT_SHA}:${path}")"
     if [[ "$int_blob" != "${B_C_HANDOFF_B_BLOBS[$path]}" ]]; then
-      echo "[handoff-drift] INT facade blob $path expected=${B_C_HANDOFF_B_BLOBS[$path]} actual=$int_blob" | tee -a "$MERGE_LEDGER"
+      echo "[handoff-drift] INT pre-final-C blob $path expected=${B_C_HANDOFF_B_BLOBS[$path]} actual=$int_blob" | tee -a "$MERGE_LEDGER"
       return 1
     fi
   done
@@ -400,7 +412,7 @@ resolve_int_c_handoff_conflicts() {
   test -z "$(git diff --name-only --diff-filter=U)"
   test -z "$(git ls-files -u)"
   git commit --no-edit
-  echo "[handoff-resolved] INT occurrence+warning+source contracts layered over reviewed C-C1; C final attendance facades and newer miniapp exact-session reopen preserved" | tee -a "$MERGE_LEDGER"
+  echo "[handoff-resolved] INT occurrence+warning+source contracts layered over reviewed C-C1; C final attendance facades, relation-aware contracts and newer miniapp exact-session reopen preserved" | tee -a "$MERGE_LEDGER"
 }
 
 merge_layer() {
