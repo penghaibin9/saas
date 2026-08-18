@@ -3,18 +3,26 @@
 This module does not own schedule truth. It consumes the C-C1/B-C1 formal occurrence
 projection already bound to current ScopeHead active batches and turns it into a teacher-facing
 read model. It never creates ScopeHead, ScheduleItem, TeachingTask, Todo, or Attendance facts.
+
+C15-18 teacher authority:
+- if a formal TeachingClass exists, teacher visibility comes only from ACTIVE
+  AaTeachingClassTeacher relations, including CO_TEACHER and start/end week;
+- schedule patterns are clipped to the authenticated teacher's effective relation windows;
+- AaTeachingTask.teacher_key is used only for not-yet-projected migration data.
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, exists, or_, select
 
 from app.core.affairs_security import _derive_keys
 from app.core.exceptions import AppException, no_permission
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_attendance_occurrence_consumer as occurrence
+from . import academic_affairs_teacher_relation_authority as teacher_authority
 from .academic_affairs_attendance_service import attendance_task_executable
 
 _NO_CLASS_CALENDAR_MESSAGES = {
@@ -62,8 +70,97 @@ def _teacher_keys(user) -> set[str]:
     return keys
 
 
+def _relation_rows_for_term(db, term_id: int, keys: set[str]):
+    from app.models import AaTeachingClass, AaTeachingClassTeacher
+
+    rows = db.execute(
+        select(AaTeachingClassTeacher, AaTeachingClass)
+        .join(
+            AaTeachingClass,
+            and_(
+                AaTeachingClass.id == AaTeachingClassTeacher.teaching_class_id,
+                AaTeachingClass.tenant_id == AaTeachingClassTeacher.tenant_id,
+            ),
+        )
+        .where(
+            AaTeachingClassTeacher.tenant_id == _tid(),
+            AaTeachingClassTeacher.teacher_key.in_(sorted(keys)),
+            AaTeachingClassTeacher.status == "ACTIVE",
+            AaTeachingClassTeacher.is_deleted.is_(False),
+            AaTeachingClass.tenant_id == _tid(),
+            AaTeachingClass.term_id == int(term_id),
+            AaTeachingClass.status == "ACTIVE",
+            AaTeachingClass.is_deleted.is_(False),
+        )
+    ).all()
+    by_task = defaultdict(list)
+    for relation, teaching_class in rows:
+        by_task[int(teaching_class.teaching_task_id)].append((relation, teaching_class))
+    return by_task
+
+
+def _relation_windows(relations, teaching_weeks: int | None) -> list[tuple[int, int]]:
+    """Merge the authenticated teacher's active week windows for one teaching task."""
+    default_end = int(teaching_weeks or 0) or 999
+    raw = []
+    for relation, _teaching_class in relations or []:
+        start = int(relation.start_week) if relation.start_week is not None else 1
+        end = int(relation.end_week) if relation.end_week is not None else default_end
+        if start <= 0 or end <= 0 or end < start:
+            raise AppException(
+                "DATA_CONFLICT",
+                "正式教师关系存在非法有效周次",
+                details={"teacherRelationId": str(relation.id), "startWeek": start, "endWeek": end},
+                http_status=409,
+            )
+        raw.append((start, end))
+    raw.sort()
+    merged: list[list[int]] = []
+    for start, end in raw:
+        if not merged or start > merged[-1][1] + 1:
+            merged.append([start, end])
+        else:
+            merged[-1][1] = max(merged[-1][1], end)
+    return [(start, end) for start, end in merged]
+
+
+def _clip_patterns_to_relations(patterns, relations, teaching_weeks: int | None) -> list[dict]:
+    windows = _relation_windows(relations, teaching_weeks)
+    if not windows:
+        return []
+    result = []
+    seen = set()
+    for pattern in patterns or []:
+        p_start = int(pattern.get("startWeek") or 0)
+        p_end = int(pattern.get("endWeek") or 0)
+        if p_start <= 0 or p_end <= 0 or p_end < p_start:
+            raise AppException(
+                "DATA_CONFLICT",
+                "正式课次存在非法教学周范围",
+                details={"scheduleItemId": str(pattern.get("scheduleItemId") or "")},
+                http_status=409,
+            )
+        for r_start, r_end in windows:
+            start = max(p_start, r_start)
+            end = min(p_end, r_end)
+            if start > end:
+                continue
+            item = {**pattern, "startWeek": start, "endWeek": end}
+            key = (
+                str(item.get("scheduleItemId") or ""),
+                start,
+                end,
+                str(item.get("weekParity") or "ALL"),
+                str(item.get("changeId") or ""),
+            )
+            if key not in seen:
+                seen.add(key)
+                result.append(item)
+    return result
+
+
 def _teacher_schedule_in_session(db, user) -> tuple[dict, object | None]:
-    from app.models import AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch, SchoolClass
+    from app.models import AaScheduleItem, AaTeachingClass, AaTeachingTask, AaTeachingTaskBatch, SchoolClass
 
     keys = _teacher_keys(user)
     term = _current_term(db)
@@ -88,16 +185,31 @@ def _teacher_schedule_in_session(db, user) -> tuple[dict, object | None]:
     batch_by_id = {int(row.id): row for row in task_batches}
     batch_ids = sorted(batch_by_id)
 
+    relations_by_task = _relation_rows_for_term(db, int(term.id), keys)
+    formal_task_ids = sorted(relations_by_task)
     tasks = []
     if batch_ids:
+        projected_class_exists = exists(
+            select(AaTeachingClass.id).where(
+                AaTeachingClass.tenant_id == _tid(),
+                AaTeachingClass.teaching_task_id == AaTeachingTask.id,
+                AaTeachingClass.is_deleted.is_(False),
+            )
+        )
         # Schedule visibility and attendance executability are deliberately separate contracts.
-        # A current PUBLISHED/EFFECTIVE occurrence stays visible even while the task is waiting
-        # for teacher confirmation; only the attendance action is disabled for that row.
+        # A current PUBLISHED/EFFECTIVE occurrence stays visible while task confirmation is pending;
+        # only the attendance action is disabled for that row.
         tasks = db.scalars(select(AaTeachingTask).where(
             AaTeachingTask.tenant_id == _tid(),
             AaTeachingTask.batch_id.in_(batch_ids),
-            AaTeachingTask.teacher_key.in_(sorted(keys)),
             AaTeachingTask.is_deleted.is_(False),
+            or_(
+                AaTeachingTask.id.in_(formal_task_ids or [-1]),
+                and_(
+                    ~projected_class_exists,
+                    AaTeachingTask.teacher_key.in_(sorted(keys)),
+                ),
+            ),
         )).all()
 
     bindings = [
@@ -135,6 +247,7 @@ def _teacher_schedule_in_session(db, user) -> tuple[dict, object | None]:
 
     items = []
     issues = []
+    teaching_weeks = int(term.teaching_weeks or 0) or None
     for task, _task_batch in bindings:
         formal = formal_by_task.get(int(task.id), {
             "status": "CONFLICT",
@@ -149,9 +262,28 @@ def _teacher_schedule_in_session(db, user) -> tuple[dict, object | None]:
                 "message": formal.get("issue") or "当前教学任务没有可消费的正式课次",
             })
             continue
+
+        relations = relations_by_task.get(int(task.id))
+        if relations:
+            patterns = _clip_patterns_to_relations(formal.get("patterns") or [], relations, teaching_weeks)
+            authority_source = "TEACHING_CLASS_TEACHER"
+            ordered_relations = sorted(
+                (relation for relation, _teaching_class in relations),
+                key=lambda row: (0 if str(row.role_type or "").upper() == "PRIMARY" else 1, int(row.id)),
+            )
+            teacher_keys = [str(row.teacher_key) for row in ordered_relations if row.teacher_key]
+            teacher_names = [str(row.teacher_name or "") for row in ordered_relations]
+            relation_ids = [str(row.id) for row in ordered_relations]
+        else:
+            patterns = formal.get("patterns") or []
+            authority_source = "TEACHING_TASK_MIGRATION_FALLBACK"
+            teacher_keys = [str(task.teacher_key)] if task.teacher_key else []
+            teacher_names = [str(task.teacher_name or "")]
+            relation_ids = []
+
         school_class = class_by_id.get(int(task.class_id or 0))
         executable = attendance_task_executable(task.status)
-        for pattern in formal.get("patterns") or []:
+        for pattern in patterns:
             schedule_item_id = int(pattern["scheduleItemId"])
             schedule_row = schedule_item_by_id.get(schedule_item_id)
             if not schedule_row:
@@ -181,8 +313,12 @@ def _teacher_schedule_in_session(db, user) -> tuple[dict, object | None]:
                     or schedule_row.class_name
                     or ""
                 ),
-                "teacherKey": task.teacher_key or "",
-                "teacherName": task.teacher_name or schedule_row.teacher_name or "",
+                "teacherKey": teacher_keys[0] if teacher_keys else "",
+                "teacherName": teacher_names[0] if teacher_names else "",
+                "teacherKeys": teacher_keys,
+                "teacherNames": teacher_names,
+                "teacherAuthoritySource": authority_source,
+                "teacherRelationIds": relation_ids,
                 "weekday": int(pattern["weekday"]),
                 "slotNo": int(pattern["slotNo"]),
                 "startWeek": int(pattern["startWeek"]),
@@ -207,11 +343,11 @@ def _teacher_schedule_in_session(db, user) -> tuple[dict, object | None]:
         "termCode": f"{term.year_code}-{term.term_no}",
         "termStartDate": term_start.isoformat() if term_start else None,
         "termEndDate": term_end.isoformat() if term_end else None,
-        "teachingWeeks": int(term.teaching_weeks or 0) or None,
+        "teachingWeeks": teaching_weeks,
         "hasData": bool(items),
         "items": items,
         "issues": issues,
-        "note": "只消费当前 ScopeHead 正式课表；历史/最近 PUBLISHED 非 Authority 批次不会进入教师视图",
+        "note": "只消费当前 ScopeHead 正式课表；教师范围由正式 TeachingClassTeacher 有效周次裁决，未投影历史任务才回退 TeachingTask",
     }, term
 
 
