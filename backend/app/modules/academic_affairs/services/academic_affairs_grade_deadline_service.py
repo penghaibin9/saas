@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import bindparam, text
+from sqlalchemy.exc import DBAPIError
 
 from app.core.exceptions import AppException
 
@@ -181,7 +182,7 @@ def extend_deadline(task_id: int, user, deadline_at, reason: str) -> dict:
 
 
 def require_submit_within_deadline(task_id: int, user) -> None:
-    """Fail closed after a real deadline; tasks without a configured deadline remain compatible."""
+    """Friendly preflight; MySQL trigger is the final atomic transition guard."""
     with _core.session() as db:
         _grade._load_task(db, int(task_id), lock=True)
         row = _deadline_row(db, int(task_id), lock=True)
@@ -197,4 +198,15 @@ def require_submit_within_deadline(task_id: int, user) -> None:
 
 def teacher_submit_task(task_id: int, user) -> dict:
     require_submit_within_deadline(task_id, user)
-    return _grade_exec.teacher_submit_task(task_id, user)
+    try:
+        return _grade_exec.teacher_submit_task(task_id, user)
+    except DBAPIError as exc:
+        # The MySQL trigger closes the preflight→submit TOCTOU window. Translate
+        # its intentional SIGNAL back into the same stable business contract.
+        if "GRADE_DEADLINE_EXPIRED" in str(getattr(exc, "orig", exc)):
+            raise AppException(
+                "GRADE_DEADLINE_EXPIRED",
+                "成绩录入已超过截止时间，请联系学院/教务延期后再提交",
+                http_status=409,
+            ) from None
+        raise
