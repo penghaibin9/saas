@@ -1,4 +1,4 @@
-"""V2-02 独立教学班及名单版本接口。"""
+"""V2-02 独立教学班、名单版本与正式教师关系接口。"""
 from __future__ import annotations
 
 from typing import Optional
@@ -11,6 +11,7 @@ from app.core.response import paginate, success
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_query_service as query_service
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_admin_service as admin_service
 from app.modules.academic_affairs.services import academic_affairs_teaching_class_change_service as change_service
+from app.modules.academic_affairs.services import academic_affairs_teaching_class_teacher_service as teacher_service
 
 router = APIRouter(prefix="/academic-affairs/teaching-classes", tags=["教务中心-教学班"])
 
@@ -29,6 +30,25 @@ class TeachingClassRosterPreviewBody(BaseModel):
 
 
 class TeachingClassRosterChangeBody(TeachingClassRosterPreviewBody):
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
+class TeachingClassTeacherCreateBody(BaseModel):
+    teacherKey: str = Field(..., min_length=1, max_length=100)
+    roleType: str = Field(default="CO_TEACHER", pattern="^(PRIMARY|CO_TEACHER)$")
+    startWeek: Optional[int] = Field(default=None, ge=1, le=60)
+    endWeek: Optional[int] = Field(default=None, ge=1, le=60)
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
+class TeachingClassTeacherUpdateBody(BaseModel):
+    teacherKey: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    startWeek: Optional[int] = Field(default=None, ge=1, le=60)
+    endWeek: Optional[int] = Field(default=None, ge=1, le=60)
+    reason: str = Field(..., min_length=5, max_length=500)
+
+
+class TeachingClassTeacherDeactivateBody(BaseModel):
     reason: str = Field(..., min_length=5, max_length=500)
 
 
@@ -77,6 +97,67 @@ def teaching_class_roster_version_create(
         user, teaching_class_id, body.studentIds, body.reason,
     )
     return success(result, message="新名单版本已生效")
+
+
+@router.get("/{teaching_class_id}/teachers", summary="正式任课教师关系（PRIMARY/共同授课/有效周次）")
+def teaching_class_teacher_list(
+    teaching_class_id: int = Path(..., gt=0),
+    user=Depends(_VIEW),
+):
+    return success({"items": teacher_service.list_relations(user, teaching_class_id)})
+
+
+@router.post("/{teaching_class_id}/teachers", summary="新增正式任课教师关系")
+def teaching_class_teacher_create(
+    body: TeachingClassTeacherCreateBody,
+    teaching_class_id: int = Path(..., gt=0),
+    user=Depends(_MANAGE),
+):
+    result = teacher_service.create_relation(
+        user,
+        teaching_class_id,
+        teacher_key=body.teacherKey,
+        role_type=body.roleType,
+        start_week=body.startWeek,
+        end_week=body.endWeek,
+        reason=body.reason,
+    )
+    return success(result, message="正式教师关系已生效")
+
+
+@router.put("/{teaching_class_id}/teachers/{relation_id}", summary="调整教师身份或有效周次")
+def teaching_class_teacher_update(
+    body: TeachingClassTeacherUpdateBody,
+    teaching_class_id: int = Path(..., gt=0),
+    relation_id: int = Path(..., gt=0),
+    user=Depends(_MANAGE),
+):
+    result = teacher_service.update_relation(
+        user,
+        teaching_class_id,
+        relation_id,
+        teacher_key=body.teacherKey,
+        start_week=body.startWeek,
+        end_week=body.endWeek,
+        reason=body.reason,
+    )
+    return success(result, message="正式教师关系已更新")
+
+
+@router.post("/{teaching_class_id}/teachers/{relation_id}/deactivate", summary="停用共同授课教师关系")
+def teaching_class_teacher_deactivate(
+    body: TeachingClassTeacherDeactivateBody,
+    teaching_class_id: int = Path(..., gt=0),
+    relation_id: int = Path(..., gt=0),
+    user=Depends(_MANAGE),
+):
+    result = teacher_service.deactivate_relation(
+        user,
+        teaching_class_id,
+        relation_id,
+        reason=body.reason,
+    )
+    return success(result, message="正式教师关系已停用")
 
 
 @router.get("/{teaching_class_id}", summary="教学班详情与名单版本")
