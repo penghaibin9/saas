@@ -26,12 +26,12 @@ concurrency:
 env:
   A_FINAL_GOLD_SHA: 71de7b4a0ac52216df9e8230f8b6ec97a26099be
   A_FORMATION_POLICY_BLOB: 746adabc57ea9ba21d4e49bd503a87272b3c8cbd
-  EXPECTED_INT_SHA: 35d4e485bb96f17ceb0697ec75b506947a89b61f
+  EXPECTED_INTEGRATION_BASE_SHA: 35d4e485bb96f17ceb0697ec75b506947a89b61f
   SEALED_PROVENANCE_SHA: 6bb48f1c055d8fd16fe9563ba4ea64c36ac15f9a
 
 jobs:
   formation-handoff:
-    name: B SelectionCourse + A Final Gold policy + sealed INT provenance
+    name: B SelectionCourse + approved A/INT integration base
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     services:
@@ -63,35 +63,36 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Pin exact B head, A Final Gold policy, and sealed INT provenance runtime
+      - name: Pin exact B head and approved A/INT integration base
         run: |
           set -euo pipefail
           POLICY_PATH=backend/app/modules/academic_affairs/services/academic_affairs_task_formation_policy.py
 
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch origin integration/academic-school-gold --no-tags
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_INTEGRATION_BASE_SHA"
           git fetch origin "$A_FINAL_GOLD_SHA" --no-tags
-          git fetch origin "$EXPECTED_INT_SHA" --no-tags
 
           git cat-file -e "${A_FINAL_GOLD_SHA}^{commit}"
-          git cat-file -e "${EXPECTED_INT_SHA}^{commit}"
+          git cat-file -e "${EXPECTED_INTEGRATION_BASE_SHA}^{commit}"
           git cat-file -e "${SEALED_PROVENANCE_SHA}^{commit}"
-          git merge-base --is-ancestor "$SEALED_PROVENANCE_SHA" "$EXPECTED_INT_SHA"
+          git merge-base --is-ancestor "$SEALED_PROVENANCE_SHA" "$EXPECTED_INTEGRATION_BASE_SHA"
 
           A_POLICY_BLOB="$(git rev-parse "${A_FINAL_GOLD_SHA}:${POLICY_PATH}")"
-          INT_POLICY_BLOB="$(git rev-parse "${EXPECTED_INT_SHA}:${POLICY_PATH}")"
+          BASE_POLICY_BLOB="$(git rev-parse "${EXPECTED_INTEGRATION_BASE_SHA}:${POLICY_PATH}")"
           test "$A_POLICY_BLOB" = "$A_FORMATION_POLICY_BLOB"
-          test "$INT_POLICY_BLOB" = "$A_FORMATION_POLICY_BLOB"
-          test "$A_POLICY_BLOB" = "$INT_POLICY_BLOB"
-          git diff --quiet "$A_FINAL_GOLD_SHA" "$EXPECTED_INT_SHA" -- "$POLICY_PATH"
+          test "$BASE_POLICY_BLOB" = "$A_FORMATION_POLICY_BLOB"
+          test "$A_POLICY_BLOB" = "$BASE_POLICY_BLOB"
+          git diff --quiet "$A_FINAL_GOLD_SHA" "$EXPECTED_INTEGRATION_BASE_SHA" -- "$POLICY_PATH"
           git show "${A_FINAL_GOLD_SHA}:${POLICY_PATH}" | grep -F 'def selection_eligible'
 
-      - name: Ephemeral merge sealed INT into B runner only
+      - name: Form actual PR integration candidate in runner only
         run: |
           set -euo pipefail
           git config user.name "academic-b-w4-handoff"
           git config user.email "academic-b-w4-handoff@invalid.local"
-          git merge --no-commit --no-ff "$EXPECTED_INT_SHA"
-          test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_INT_SHA"
+          git merge --no-commit --no-ff "$EXPECTED_INTEGRATION_BASE_SHA"
+          test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_INTEGRATION_BASE_SHA"
           git diff --check
           test -f backend/app/modules/academic_affairs/services/academic_affairs_task_formation_provenance_service.py
           grep -F 'source_program_course_id' backend/app/models/academic_affairs.py
@@ -104,7 +105,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
-      - name: Install merged backend and migrate clean MySQL
+      - name: Install integrated backend and migrate clean MySQL
         working-directory: backend
         run: |
           set -euo pipefail
