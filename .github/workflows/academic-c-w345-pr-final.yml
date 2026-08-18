@@ -105,7 +105,7 @@ jobs:
           runner=Path('scripts/run_scheduled_jobs.py').read_text()
           assert '/extend-deadline' in p and 'read_grade_upload_path' in p and 'read_safe_upload(file)' not in p
           assert 'deadline_service.teacher_submit_task' in mobile and '_quality_report_with_deadline' in mobile
-          assert 'service.teacher_submit_task(' not in mobile
+          assert 'return success(service.teacher_submit_task(' not in mobile
           assert 'GRADE_DEADLINE_EXPIRED' in d and '_check_college_scope' in d and 'DBAPIError' in d
           assert '_DEADLINE_MUTABLE_STATES = {"NOT_STARTED", "INPUTTING", "RETURNED"}' in d
           assert 'if state not in _DEADLINE_MUTABLE_STATES' in d
