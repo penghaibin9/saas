@@ -11,6 +11,7 @@ import base64
 import io
 import zipfile
 from datetime import datetime
+from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 from app.core.exceptions import AppException
@@ -40,11 +41,28 @@ def _safe_row(values) -> list:
     return [safe_excel_value(value) for value in values]
 
 
-async def read_safe_upload(upload) -> bytes:
-    """Bound upload memory and reject non-xlsx content before workbook parsing."""
+def _upload_limit_message(max_bytes: int) -> str:
+    mb = max(1, int(max_bytes) // (1024 * 1024))
+    return f"Excel 文件不得超过 {mb}MB"
+
+
+async def read_safe_upload(
+    upload,
+    *,
+    max_bytes: int = MAX_UPLOAD_BYTES,
+    too_large_code: str = "VALIDATION_ERROR",
+    too_large_message: str | None = None,
+) -> bytes:
+    """Bound upload memory and reject non-xlsx content before workbook parsing.
+
+    Callers with an already-published larger business limit may pass that exact
+    byte ceiling; package traversal/macro/zip-bomb checks remain the same.
+    """
     filename = (getattr(upload, "filename", "") or "").lower()
     if not filename.endswith(".xlsx"):
         raise AppException("VALIDATION_ERROR", "仅支持 .xlsx 文件")
+    limit = max(1, int(max_bytes))
+    limit_message = too_large_message or _upload_limit_message(limit)
     chunks: list[bytes] = []
     size = 0
     while True:
@@ -52,46 +70,92 @@ async def read_safe_upload(upload) -> bytes:
         if not chunk:
             break
         size += len(chunk)
-        if size > MAX_UPLOAD_BYTES:
-            raise AppException("VALIDATION_ERROR", "Excel 文件不得超过 10MB")
+        if size > limit:
+            raise AppException(too_large_code, limit_message)
         chunks.append(chunk)
     content = b"".join(chunks)
-    validate_xlsx_package(content)
+    validate_xlsx_package(
+        content,
+        max_bytes=limit,
+        too_large_code=too_large_code,
+        too_large_message=limit_message,
+    )
     return content
 
 
-def validate_xlsx_package(file_bytes: bytes) -> None:
+def _validate_xlsx_archive(archive: zipfile.ZipFile) -> None:
+    """Apply one package-security policy to either byte-backed or path-backed XLSX."""
+    members = archive.infolist()
+    if len(members) > MAX_ZIP_ENTRIES:
+        raise AppException("VALIDATION_ERROR", "XLSX 内部文件数量异常")
+    total = 0
+    for member in members:
+        name = member.filename.replace("\\", "/").lower()
+        if name.startswith("/") or ".." in name.split("/"):
+            raise AppException("VALIDATION_ERROR", "XLSX 包含非法路径")
+        total += member.file_size
+        if total > MAX_UNCOMPRESSED_BYTES:
+            raise AppException("VALIDATION_ERROR", "XLSX 解压后体积异常")
+        if member.file_size > 1024 * 1024 and member.compress_size > 0:
+            if member.file_size / member.compress_size > 100:
+                raise AppException("VALIDATION_ERROR", "XLSX 压缩比异常")
+        if (
+            name.endswith(".bin")
+            or "vbaproject" in name
+            or "/embeddings/" in name
+            or "/oleobjects/" in name
+            or "/externallinks/" in name
+        ):
+            raise AppException("VALIDATION_ERROR", "XLSX 不允许宏、嵌入对象或外部链接")
+
+
+def validate_xlsx_package(
+    file_bytes: bytes,
+    *,
+    max_bytes: int = MAX_UPLOAD_BYTES,
+    too_large_code: str = "VALIDATION_ERROR",
+    too_large_message: str | None = None,
+) -> None:
     """Reject zip bombs, path traversal, macros, OLE and external workbook links."""
-    if not file_bytes or len(file_bytes) > MAX_UPLOAD_BYTES:
-        raise AppException("VALIDATION_ERROR", "Excel 文件为空或超过 10MB")
+    limit = max(1, int(max_bytes))
+    if not file_bytes:
+        raise AppException("VALIDATION_ERROR", "Excel 文件为空")
+    if len(file_bytes) > limit:
+        raise AppException(too_large_code, too_large_message or _upload_limit_message(limit))
     stream = io.BytesIO(file_bytes)
     if not zipfile.is_zipfile(stream):
         raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX")
     try:
         with zipfile.ZipFile(stream) as archive:
-            members = archive.infolist()
-            if len(members) > MAX_ZIP_ENTRIES:
-                raise AppException("VALIDATION_ERROR", "XLSX 内部文件数量异常")
-            total = 0
-            for member in members:
-                name = member.filename.replace("\\", "/").lower()
-                if name.startswith("/") or ".." in name.split("/"):
-                    raise AppException("VALIDATION_ERROR", "XLSX 包含非法路径")
-                total += member.file_size
-                if total > MAX_UNCOMPRESSED_BYTES:
-                    raise AppException("VALIDATION_ERROR", "XLSX 解压后体积异常")
-                if member.file_size > 1024 * 1024 and member.compress_size > 0:
-                    if member.file_size / member.compress_size > 100:
-                        raise AppException("VALIDATION_ERROR", "XLSX 压缩比异常")
-                if (
-                    name.endswith(".bin")
-                    or "vbaproject" in name
-                    or "/embeddings/" in name
-                    or "/oleobjects/" in name
-                    or "/externallinks/" in name
-                ):
-                    raise AppException("VALIDATION_ERROR", "XLSX 不允许宏、嵌入对象或外部链接")
+            _validate_xlsx_archive(archive)
     except zipfile.BadZipFile:
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX") from None
+
+
+def validate_xlsx_path(
+    file_path: str | Path,
+    *,
+    max_bytes: int = MAX_UPLOAD_BYTES,
+    too_large_code: str = "VALIDATION_ERROR",
+    too_large_message: str | None = None,
+) -> None:
+    """Validate an XLSX package in-place without materializing the whole file in memory."""
+    limit = max(1, int(max_bytes))
+    path = Path(file_path)
+    try:
+        size = path.stat().st_size
+    except OSError:
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX") from None
+    if size <= 0:
+        raise AppException("VALIDATION_ERROR", "Excel 文件为空")
+    if size > limit:
+        raise AppException(too_large_code, too_large_message or _upload_limit_message(limit))
+    if not zipfile.is_zipfile(path):
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX")
+    try:
+        with zipfile.ZipFile(path) as archive:
+            _validate_xlsx_archive(archive)
+    except (OSError, zipfile.BadZipFile):
         raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX") from None
 
 
