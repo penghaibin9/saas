@@ -96,10 +96,27 @@ test('D-W1 正式归档控制台必须按 result 四态展示，且不存在整�
     "{ key: 'result', title: '归档状态' }",
     '整体强制归档已停用',
     '请处理阻断 / 待治理域后重新执行完整性检查',
-    "api.confirm(this.current.batchId, false)"
+    "api.confirm(batchId, false)"
   ]) assert.ok(source.includes(token), `missing archive console W1 token: ${token}`)
 
   assert.ok(!source.includes("@click=\"doConfirm(true)\""), 'MISSING_ITEMS must not expose force-confirm action')
   assert.ok(!source.includes('>强制归档</AppButton>'), 'legacy force archive CTA must be removed')
   assert.ok(!source.includes("row.present ? 'success' : 'danger'"), 'persisted N/A/UNKNOWN must not be rendered from legacy present boolean')
+})
+
+test('D-W1 正式归档控制台不可逆动作必须防重复提交并在窄屏收成单栏', async () => {
+  const source = await readFile(consoleUrl, 'utf8')
+  for (const token of [
+    ':submitting="actionBusy"',
+    'if (this.actionBusy || !this.pendingAction) return',
+    'const batchId = this.current.batchId',
+    'await this.selectAfterAction(b)',
+    'role="button"',
+    '@keydown.enter.prevent="select(b)"',
+    '@keydown.space.prevent="select(b)"',
+    '.aaar-item:focus-visible',
+    '@media (max-width: 900px)',
+    '.aaar-layout { grid-template-columns: 1fr; }',
+    '@media (max-width: 600px)'
+  ]) assert.ok(source.includes(token), `missing archive console production UI guard: ${token}`)
 })

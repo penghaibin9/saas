@@ -28,6 +28,20 @@ test('non-PASS graduation items remain warning tone and UNKNOWN never becomes gr
   assert.match(view, /itemTone\(item\)[\s\S]*?itemResult\(item\)\s*===\s*['"]PASS['"]\s*\?\s*['"]is-pass['"]\s*:\s*['"]is-pending['"]/)
 })
 
+test('student graduation surface exposes all eleven items without leaking raw FEE or wrong archive semantics', () => {
+  assert.match(view, /ARCHIVE:\s*['"]学工归档['"]/)
+  assert.match(view, /FEE:\s*['"]费用结清['"]/)
+  assert.doesNotMatch(view, /ARCHIVE:\s*['"]档案归档['"]/)
+})
+
+test('advisory UNKNOWN items are shown as hints but never inflate blocking pending count', () => {
+  assert.match(view, /ADVISORY_UNKNOWN_ITEMS\s*=\s*new Set\(\[['"]EMPLOYMENT['"],\s*['"]FEE['"]\]\)/)
+  assert.match(view, /advisoryPendingCount\s*=\s*computed/)
+  assert.match(view, /blockingPendingCount\s*=\s*computed/)
+  assert.match(view, /result !== ['"]PASS['"] && !\(result === ['"]UNKNOWN['"] && ADVISORY_UNKNOWN_ITEMS\.has\(code\)\)/)
+  assert.match(view, /blockingPendingCount \? ['"]请优先处理阻断项['"] : ['"]当前没有阻断项['"]/)
+})
+
 test('manual recheck is wired through an explicit handler to the canonical server-truth loader', () => {
   assert.match(view, /@click=['"]refreshAudit['"]/)
   assert.match(view, /async function refreshAudit\(\)\s*\{\s*await load\(\)\s*\}/)

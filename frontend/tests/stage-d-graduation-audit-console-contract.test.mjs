@@ -80,7 +80,6 @@ test('Stage D 毕业审核详情与首屏均有响应式商业化收口', async 
   assert.match(source, /@media \(max-width: 520px\)/)
 })
 
-
 test('D-W0 SYSTEM_ABNORMAL 不得暴露普通毕业终审动作', async () => {
   const source = await readFile(viewUrl, 'utf8')
   for (const token of [
@@ -104,6 +103,29 @@ test('D-W0 预审结果页学院通过与普通终审都必须绑定完整 SYSTE
     '系统异常 · 普通教务终审不可用'
   ]) assert.ok(source.includes(token), `missing result-view W0 guard token: ${token}`)
   assert.doesNotMatch(source, /v-if="r\.status === 'ACADEMIC_REVIEW'" variant="primary" @click="openFinal\(r\)"/)
+})
+
+test('D-W0 旧预审结果页驳回必须采集真实原因且终审入口二次防守', async () => {
+  const source = await readFile(resultUrl, 'utf8')
+  for (const token of [
+    '@click="openCollegeReject(r)"',
+    'reason-label="驳回原因（≥5字）"',
+    'async doCollegeReject({ reason } = {})',
+    "if (note.length < 5) { toast.error('驳回原因不少于 5 字'); return }",
+    'if (!this.canNormalFinal(r))',
+    'this.rows.find((item) => String(item.resultId) === String(this.finalDlg.resultId))',
+    ':submitting="finalDlg.submitting"'
+  ]) assert.ok(source.includes(token), `missing result-view production guard token: ${token}`)
+  assert.doesNotMatch(source, /action === 'REJECT' \? '学院初审驳回'/)
+})
+
+test('D-W0 旧预审结果页在窄屏不把筛选器与证据操作挤出视口', async () => {
+  const source = await readFile(resultUrl, 'utf8')
+  assert.match(source, /@media \(max-width: 640px\)/)
+  assert.match(source, /\.aa-filter \{ align-items: stretch; flex-direction: column; \}/)
+  assert.match(source, /\.aa-filter :deep\(\.app-select\) \{ width: 100%; \}/)
+  assert.match(source, /\.aa-item__head \{ align-items: flex-start; flex-wrap: wrap; \}/)
+  assert.match(source, /overflow-wrap: anywhere/)
 })
 
 test('D-W0 审核工作台必须与真实十一项毕业证据口径一致', async () => {

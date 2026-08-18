@@ -8,7 +8,8 @@
         <div class="graduation-hero__chips">
           <span>{{ formalStatusText }}</span>
           <span>{{ passedCount }} 项已通过</span>
-          <span v-if="pendingCount">{{ pendingCount }} 项待处理</span>
+          <span v-if="blockingPendingCount">{{ blockingPendingCount }} 项待处理</span>
+          <span v-if="advisoryPendingCount">{{ advisoryPendingCount }} 项提示</span>
         </div>
       </div>
       <aside class="graduation-hero__score">
@@ -41,8 +42,8 @@
         <article class="graduation-metric is-success">
           <span>已通过条件</span><strong>{{ passedCount }}</strong><small>来自共享毕业 evaluator</small>
         </article>
-        <article class="graduation-metric" :class="pendingCount ? 'is-warn' : 'is-success'">
-          <span>待处理条件</span><strong>{{ pendingCount }}</strong><small>{{ pendingCount ? '请优先处理阻断项' : '当前没有待处理项' }}</small>
+        <article class="graduation-metric" :class="blockingPendingCount ? 'is-warn' : 'is-success'">
+          <span>待处理条件</span><strong>{{ blockingPendingCount }}</strong><small>{{ blockingPendingCount ? '请优先处理阻断项' : '当前没有阻断项' }}</small>
         </article>
         <article class="graduation-metric is-blue">
           <span>已获学分</span><strong>{{ obtainedCredits }}</strong><small>应修 {{ requiredCreditsText }} 学分</small>
@@ -59,7 +60,7 @@
             <h2>逐项核对真实业务事实</h2>
             <p>这里只展示共享毕业核验器已经得出的结果，不在页面重新计算毕业资格。</p>
           </div>
-          <div class="graduation-section-head__legend"><span class="is-ok"></span>通过 <span class="is-warn"></span>待处理</div>
+          <div class="graduation-section-head__legend"><span class="is-ok"></span>通过 <span class="is-warn"></span>待处理 / 待核验</div>
         </header>
 
         <div v-if="!progressItems.length" class="graduation-empty">
@@ -123,8 +124,9 @@ const audit = ref({ progress: {}, credits: {}, warnings: {} })
 const ITEM_LABELS = {
   STATUS: '学籍状态', CREDIT: '总学分', COURSE_REQUIRED: '必修课程', COURSE_ELECTIVE: '选修学分',
   PRACTICE: '实践环节', INTERNSHIP: '岗位实习', GRADUATION_DESIGN: '毕业设计', DISCIPLINE: '处分情况',
-  EMPLOYMENT: '就业填报', ARCHIVE: '档案归档'
+  EMPLOYMENT: '就业填报', ARCHIVE: '学工归档', FEE: '费用结清'
 }
+const ADVISORY_UNKNOWN_ITEMS = new Set(['EMPLOYMENT', 'FEE'])
 const FORMAL_STATUS = {
   DRAFT: '尚未正式预审', PENDING: '正式预审待处理', RUNNING: '正式预审中',
   SYSTEM_PASSED: '正式预审通过', SYSTEM_ABNORMAL: '正式预审存在阻断项', PASSED: '正式预审通过', FAILED: '正式预审未通过',
@@ -137,7 +139,13 @@ const progressItems = computed(() => Array.isArray(progress.value.items) ? progr
 const warningItems = computed(() => Array.isArray(audit.value.warnings?.items) ? audit.value.warnings.items : [])
 const warningCount = computed(() => warningItems.value.length)
 const passedCount = computed(() => progressItems.value.filter((item) => itemResult(item) === 'PASS').length)
-const pendingCount = computed(() => progressItems.value.filter((item) => itemResult(item) !== 'PASS').length)
+const advisoryPendingCount = computed(() => progressItems.value.filter((item) =>
+  itemResult(item) === 'UNKNOWN' && ADVISORY_UNKNOWN_ITEMS.has(String(item?.item || '').toUpperCase())).length)
+const blockingPendingCount = computed(() => progressItems.value.filter((item) => {
+  const result = itemResult(item)
+  const code = String(item?.item || '').toUpperCase()
+  return result !== 'PASS' && !(result === 'UNKNOWN' && ADVISORY_UNKNOWN_ITEMS.has(code))
+}).length)
 const overallPassed = computed(() => String(progress.value.overall || '').toUpperCase() === 'SYSTEM_PASSED')
 const obtainedCredits = computed(() => Number(credits.value.obtainedCredits || 0))
 const requiredCredits = computed(() => Number(credits.value.requiredCredits || 0))

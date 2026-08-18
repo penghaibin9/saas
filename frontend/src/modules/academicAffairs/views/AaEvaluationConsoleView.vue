@@ -124,8 +124,8 @@
       <DataTable v-else :columns="appealColumns" :rows="appeals" row-key="appealId">
         <template #cell-status="{ row }"><StatusTag :type="row.status === 'RESOLVED' ? 'success' : row.status === 'REJECTED' ? 'danger' : 'primary'" :label="row.status" dot /></template>
         <template #cell-ops="{ row }">
-          <button v-if="['SUBMITTED','COLLEGE_REVIEW'].includes(row.status)" class="mp-link" @click="approveAppeal(row)">{{ row.status === 'SUBMITTED' ? '学院初审通过' : '教务终审通过' }}</button>
-          <button v-if="['SUBMITTED','COLLEGE_REVIEW'].includes(row.status)" class="mp-link is-danger" @click="rejectAppeal(row.appealId)">驳回</button>
+          <button v-if="['SUBMITTED','COLLEGE_REVIEW'].includes(row.status)" class="mp-link" :disabled="confirmSubmitting" @click="approveAppeal(row)">{{ row.status === 'SUBMITTED' ? '学院初审通过' : '教务终审通过' }}</button>
+          <button v-if="['SUBMITTED','COLLEGE_REVIEW'].includes(row.status)" class="mp-link is-danger" :disabled="confirmSubmitting" @click="rejectAppeal(row.appealId)">驳回</button>
         </template>
       </DataTable>
     </div>
@@ -156,8 +156,16 @@
       </template>
     </AppDrawer>
 
-    <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage"
-                      :require-reason="confirmRequireReason" :reason-label="confirmReasonLabel" @confirm="onConfirm" />
+    <AppConfirmDialog
+      v-model:visible="confirmVisible"
+      :title="confirmTitle"
+      :message="confirmMessage"
+      :confirm-text="confirmText"
+      :require-reason="confirmRequireReason"
+      :reason-label="confirmReasonLabel"
+      :submitting="confirmSubmitting"
+      @confirm="onConfirm"
+    />
   </ModulePageShell>
 </template>
 
@@ -197,8 +205,9 @@ export default {
         { label: '学生评教', value: 'STUDENT' }, { label: '教师自评', value: 'SELF' },
         { label: '同行评价', value: 'PEER' }, { label: '督导评价', value: 'SUPERVISOR' }
       ],
-      saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
-      confirmRequireReason: false, confirmReasonLabel: '', queryTab: ''
+      saving: false,
+      confirmVisible: false, confirmTitle: '', confirmMessage: '', confirmText: '确认操作', pendingAction: null,
+      confirmRequireReason: false, confirmReasonLabel: '', confirmSubmitting: false, queryTab: ''
     }
   },
   computed: {
@@ -234,7 +243,7 @@ export default {
     bType(s) { return s === 'OPEN' ? 'success' : ['ARCHIVED', 'CLOSED'].includes(s) ? 'default' : s === 'RESULT_READY' ? 'warning' : 'primary' },
     lvLabel(l) { return _LV[l] || l || '—' },
     lvType(l) { return l === 'EXCELLENT' ? 'success' : l === 'NEED_IMPROVE' ? 'danger' : 'primary' },
-    switchTab(k) { this.tab = k; this.queryTab = ''; if (k === 'appeals') this.loadAppeals() },
+    switchTab(k) { if (!this.confirmSubmitting) { this.tab = k; this.queryTab = ''; if (k === 'appeals') this.loadAppeals() } },
     async loadBatches() {
       const res = await api.listBatches({ pageSize: 100 })
       this.rows = res.code === 0 ? res.data.list : []
@@ -267,61 +276,106 @@ export default {
     openCreate() { this.form = { batchName: '', termId: '' }; this.formError = ''; this.createVisible = true },
     async submitCreate() {
       if (!this.form.batchName) { this.formError = '批次名称必填'; return }
+      if (this.saving) return
       this.saving = true
-      const res = await api.createBatch({ batchName: this.form.batchName, termId: this.form.termId || undefined,
-        template: { items: [{ q: '教学态度', type: 'scale5' }, { q: '教学效果', type: 'scale5' }] } })
-      this.saving = false
-      if (res.code === 0) { toast.success('已创建'); this.createVisible = false; this.loadBatches() } else this.formError = res.message
+      try {
+        const res = await api.createBatch({ batchName: this.form.batchName, termId: this.form.termId || undefined,
+          template: { items: [{ q: '教学态度', type: 'scale5' }, { q: '教学效果', type: 'scale5' }] } })
+        if (res.code === 0) { toast.success('已创建'); this.createVisible = false; await this.loadBatches() }
+        else this.formError = res.message
+      } finally {
+        this.saving = false
+      }
     },
     openGenTasks() { this.genTaskIds = []; this.genType = this.typeFilter || 'STUDENT'; this.genVisible = true },
     async submitGen() {
       const ids = this.genTaskIds
       if (!ids.length) { toast.error('请选择教学任务'); return }
+      if (this.saving) return
       this.saving = true
-      const res = await api.genTasks(this.current.batchId, ids, this.genType)
-      this.saving = false
-      if (res.code === 0) {
-        toast.success(`已生成 ${res.data.taskCount} 条`); this.genVisible = false
-        if (this.viewMode === 'byType') this.selectTyped(this.current)
-        else this.select(this.current)
-      } else toast.error(res.message)
+      try {
+        const res = await api.genTasks(this.current.batchId, ids, this.genType)
+        if (res.code === 0) {
+          toast.success(`已生成 ${res.data.taskCount} 条`); this.genVisible = false
+          if (this.viewMode === 'byType') await this.selectTyped(this.current)
+          else await this.select(this.current)
+        } else toast.error(res.message)
+      } finally {
+        this.saving = false
+      }
     },
     lc(fn, label) {
+      if (!this.current || this.confirmSubmitting) return
+      const batchId = this.current.batchId
       this.confirmRequireReason = false
-      this.confirmTitle = label; this.confirmMessage = `确认对批次「${this.current.batchName}」执行「${label}」？`
+      this.confirmReasonLabel = ''
+      this.confirmTitle = label
+      this.confirmText = `确认${label}`
+      this.confirmMessage = `确认对批次「${this.current.batchName}」执行「${label}」？`
       this.pendingAction = async () => {
-        const res = await api[fn](this.current.batchId)
-        if (res.code === 0) { toast.success(label + '成功'); await this.loadBatches(); const b = this.rows.find(x => x.batchId === this.current.batchId); if (b) await this.select(b) }
-        else toast.error(res.message)
+        const res = await api[fn](batchId)
+        if (res.code !== 0) { toast.error(res.message); return false }
+        toast.success(label + '成功')
+        await this.loadBatches()
+        const b = this.rows.find((x) => x.batchId === batchId)
+        if (b) await this.select(b)
+        return true
       }
       this.confirmVisible = true
     },
     approveAppeal(row) {
+      if (this.confirmSubmitting) return
       const isCollegeStage = row.status === 'SUBMITTED'
       const stageLabel = isCollegeStage ? '学院初审' : '教务终审'
       this.confirmRequireReason = true
       this.confirmReasonLabel = `${stageLabel}意见（≥5 字）`
       this.confirmTitle = `${stageLabel}通过`
+      this.confirmText = `确认${stageLabel}通过`
       this.confirmMessage = `请填写${stageLabel}意见。审核意见将记入审计，后端仍按当前账号数据范围校验本级审核权限。`
       this.pendingAction = async (reason) => {
-        const note = (reason || '').trim()
-        if (note.length < 5) { toast.error('审核意见不少于 5 字'); return }
+        const note = String(reason || '').trim()
         const res = await api.reviewAppeal(row.appealId, 'RESOLVE', note)
-        if (res.code === 0) { toast.success(`${stageLabel}已通过`); await this.loadAppeals() } else toast.error(res.message)
+        if (res.code !== 0) { toast.error(res.message); return false }
+        toast.success(`${stageLabel}已通过`)
+        await this.loadAppeals()
+        return true
       }
       this.confirmVisible = true
     },
     rejectAppeal(id) {
+      if (this.confirmSubmitting) return
       this.confirmRequireReason = true
       this.confirmReasonLabel = '驳回原因（≥5 字）'
-      this.confirmTitle = '驳回申诉'; this.confirmMessage = '请填写驳回原因，将记入审计并通知申诉人。'
+      this.confirmTitle = '驳回申诉'
+      this.confirmText = '确认驳回申诉'
+      this.confirmMessage = '请填写驳回原因，将记入审计并通知申诉人。'
       this.pendingAction = async (reason) => {
-        const res = await api.reviewAppeal(id, 'REJECT', (reason || '').trim())
-        if (res.code === 0) { toast.success('已驳回'); this.loadAppeals() } else toast.error(res.message)
+        const res = await api.reviewAppeal(id, 'REJECT', String(reason || '').trim())
+        if (res.code !== 0) { toast.error(res.message); return false }
+        toast.success('已驳回')
+        await this.loadAppeals()
+        return true
       }
       this.confirmVisible = true
     },
-    onConfirm(payload = {}) { const a = this.pendingAction; this.pendingAction = null; this.confirmRequireReason = false; if (a) a(payload && payload.reason) }
+    async onConfirm(payload = {}) {
+      if (this.confirmSubmitting || !this.pendingAction) return
+      const action = this.pendingAction
+      this.confirmSubmitting = true
+      try {
+        const ok = await action(payload && payload.reason)
+        if (ok) {
+          this.confirmVisible = false
+          this.pendingAction = null
+          this.confirmRequireReason = false
+          this.confirmReasonLabel = ''
+        }
+      } catch (e) {
+        toast.error((e && e.message) || '操作失败')
+      } finally {
+        this.confirmSubmitting = false
+      }
+    }
   }
 }
 </script>
@@ -331,13 +385,24 @@ export default {
 .aaev-tab { padding: 8px 16px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--text-secondary, #64748b); border-bottom: 2px solid transparent; }
 .aaev-tab.is-active { color: var(--primary-color, #2563eb); border-bottom-color: var(--primary-color, #2563eb); font-weight: 600; }
 .aaev-bar { margin-bottom: 12px; }
-.aaev-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+.aaev-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; }
+.aaev-list, .aaev-detail { min-width: 0; }
 .aaev-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.aaev-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; cursor: pointer; }
+.aaev-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; cursor: pointer; }
 .aaev-item.is-active { border-color: var(--primary-color, #2563eb); background: var(--primary-bg, #eff6ff); }
-.aaev-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-.aaev-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.aaev-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.aaev-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; overflow-wrap: anywhere; }
 .aaev-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .aaev-section-title { font-weight: 500; margin: 14px 0 8px; }
 .aaev-form { display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 900px) {
+  .aaev-layout { grid-template-columns: 1fr; }
+  .aaev-list { max-height: 240px; overflow: auto; }
+}
+@media (max-width: 640px) {
+  .aaev-tabs { overflow-x: auto; }
+  .aaev-tab { flex: 0 0 auto; white-space: nowrap; }
+  .aaev-head { flex-direction: column; }
+  .aaev-actions { width: 100%; }
+}
 </style>
