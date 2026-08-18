@@ -2,10 +2,15 @@
 
 教师申报需增记的课时工作量(教学/监考/阅卷/出卷/其他) → 教务审核(通过/驳回) → 通过后计入
 教务侧工作量统计的「申报工时」。仅供教务参考；绑定职称/薪酬系数的正式核算属人事系统，不在此实现。
+
+C-W4：工作量读侧只做数据库级分页/聚合，不把全租户申报先 materialize 到 Python；
+成绩、监考等正式业务事实仍由各自 canonical 域持有，本服务不复制第二套工作量真值。
 """
 from __future__ import annotations
 
 from datetime import datetime
+
+from sqlalchemy import func, select
 
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
@@ -109,18 +114,35 @@ def my(user):
 
 
 def list_all(user, status=None, term_code=None, page=1, page_size=50):
-    """工作量申报台账（教务处口径，收敛 TENANT_ALL）。"""
+    """工作量申报台账（教务处口径，TENANT_ALL，数据库真分页）。"""
     from app.models import AaWorkloadDeclaration
+
+    page_no = max(1, int(page or 1))
+    limit = max(1, min(int(page_size or 50), 200))
     with session() as db:
         _require_school(user, db)
-        q = db.query(AaWorkloadDeclaration).filter(AaWorkloadDeclaration.tenant_id == _tid(),
-                                                   AaWorkloadDeclaration.is_deleted.is_(False))
+        conditions = [
+            AaWorkloadDeclaration.tenant_id == _tid(),
+            AaWorkloadDeclaration.is_deleted.is_(False),
+        ]
         if status:
-            q = q.filter(AaWorkloadDeclaration.status == status)
+            conditions.append(AaWorkloadDeclaration.status == str(status).upper())
         if term_code:
-            q = q.filter(AaWorkloadDeclaration.term_code == term_code)
-        rows = q.order_by(AaWorkloadDeclaration.id.desc()).all()
-        return [_dto(r) for r in rows[(page - 1) * page_size: page * page_size]], len(rows)
+            conditions.append(AaWorkloadDeclaration.term_code == term_code)
+        total = int(
+            db.scalar(
+                select(func.count()).select_from(AaWorkloadDeclaration).where(*conditions)
+            )
+            or 0
+        )
+        rows = db.scalars(
+            select(AaWorkloadDeclaration)
+            .where(*conditions)
+            .order_by(AaWorkloadDeclaration.id.desc())
+            .offset((page_no - 1) * limit)
+            .limit(limit)
+        ).all()
+        return [_dto(r) for r in rows], total
 
 
 def review(user, decl_id, action, note="") -> dict:
@@ -149,14 +171,26 @@ def review(user, decl_id, action, note="") -> dict:
 
 
 def approved_hours_by_teacher(db, term_code=None) -> dict:
-    """已审核通过的申报工时按教师归集（供工作量统计并入）。返回 {teacher_key: 总课时}。"""
+    """已审核通过申报工时按教师聚合；直接 GROUP BY，不全量拉申报明细。"""
     from app.models import AaWorkloadDeclaration
-    q = db.query(AaWorkloadDeclaration).filter(
-        AaWorkloadDeclaration.tenant_id == _tid(), AaWorkloadDeclaration.status == "APPROVED",
-        AaWorkloadDeclaration.is_deleted.is_(False))
+
+    conditions = [
+        AaWorkloadDeclaration.tenant_id == _tid(),
+        AaWorkloadDeclaration.status == "APPROVED",
+        AaWorkloadDeclaration.is_deleted.is_(False),
+    ]
     if term_code:
-        q = q.filter(AaWorkloadDeclaration.term_code == term_code)
-    out: dict = {}
-    for r in q.all():
-        out[r.teacher_key] = out.get(r.teacher_key, 0.0) + float(r.hours or 0)
-    return out
+        conditions.append(AaWorkloadDeclaration.term_code == term_code)
+    rows = db.execute(
+        select(
+            AaWorkloadDeclaration.teacher_key,
+            func.coalesce(func.sum(AaWorkloadDeclaration.hours), 0),
+        )
+        .where(*conditions)
+        .group_by(AaWorkloadDeclaration.teacher_key)
+    ).all()
+    return {
+        teacher_key: float(hours or 0)
+        for teacher_key, hours in rows
+        if teacher_key
+    }
