@@ -4,18 +4,25 @@
 同源入口，任务列表、名单回显、单生保存、整批保存、质量报告和提交全部统一走
 Grade Execution live-owner authority。这样教师替换后旧教师立即失权，新教师无需改写
 AaGradeTask.teacher_key 历史快照即可继续 canonical 成绩状态机。
+
+老版本客户端仍可能调用 ``/mobile/teacher/academic/grade-tasks/*``。本模块在启动时
+只重绑这些 legacy service 函数到同一 live authority，不删 URL、不复制成绩状态机，
+从而避免兼容入口变成旧教师绕过实时任课关系的后门。
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field
 
+from app.core.exceptions import AppException, no_permission
 from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as service
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as read_service
+from app.modules.academic_affairs.services import mobile_academic_affairs_public_service as mobile_public
 
 router = APIRouter(prefix="/mobile/teacher/academic", tags=["教师移动端-成绩录入"])
 
@@ -64,6 +71,46 @@ def _merged_roster(task_id: int, user) -> dict:
         "finalRatio": records.get("finalRatio", roster.get("finalRatio")),
         "status": records.get("status") or roster.get("status") or "",
     }
+
+
+def _legacy_teacher_grade_tasks(user, status=None):
+    if (user or {}).get("userType") == "STUDENT":
+        raise no_permission("该接口仅教职工可用")
+    items, _total = read_service.list_tasks(user, status=status, page=1, page_size=100)
+    # Legacy contract never exposed real pagination and reported only the returned
+    # teacher-visible rows, so preserve that shape while changing authority only.
+    return {"items": items, "total": len(items)}
+
+
+def _legacy_teacher_grade_roster(task_id, user) -> dict:
+    return _merged_roster(int(task_id), user)
+
+
+def _legacy_teacher_grade_records(task_id, user) -> dict:
+    return service.teacher_list_records(int(task_id), user)
+
+
+def _legacy_teacher_grade_enter_score(task_id, user, body) -> dict:
+    payload = body or {}
+    if not payload.get("studentId"):
+        raise AppException("VALIDATION_ERROR", "studentId 必填")
+    return service.teacher_enter_score(int(task_id), user, SimpleNamespace(**payload))
+
+
+def _legacy_teacher_grade_submit_task(task_id, user) -> dict:
+    return service.teacher_submit_task(int(task_id), user)
+
+
+def _install_legacy_live_grade_compat() -> None:
+    """Keep published legacy mobile URLs but remove their stale snapshot authority."""
+    mobile_public.teacher_grade_tasks = _legacy_teacher_grade_tasks
+    mobile_public.teacher_grade_roster = _legacy_teacher_grade_roster
+    mobile_public.teacher_grade_records = _legacy_teacher_grade_records
+    mobile_public.teacher_grade_enter_score = _legacy_teacher_grade_enter_score
+    mobile_public.teacher_grade_submit_task = _legacy_teacher_grade_submit_task
+
+
+_install_legacy_live_grade_compat()
 
 
 @router.get("/grade-execution/tasks", summary="教师微信·本人实时成绩任务")
@@ -117,8 +164,6 @@ def mobile_grade_execution_submit(
 ):
     report = service.teacher_grade_quality_report(task_id, user)
     if not report.get("canSubmit"):
-        from app.core.exceptions import AppException
-
         raise AppException(
             "DATA_CONFLICT",
             report.get("summary") or "成绩尚未录全，暂不可提交学院审核",
