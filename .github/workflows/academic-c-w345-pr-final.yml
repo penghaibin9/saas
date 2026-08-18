@@ -120,7 +120,7 @@ jobs:
           assert 'FOR UPDATE SKIP LOCKED' in sched and 'NOT EXISTS' in sched and 't_message_event_outbox' in sched
           assert "DATE_FORMAT(gt.deadline_at, '%Y%m%dT%H%i%s')" in sched and 'TIMESTAMPDIFF(SECOND' in sched
           assert 'COUNT(*) OVER() AS total_count' in sched and '_MAX_DIGEST_ITEMS = 50' in sched
-          assert 'build_affairs_context' in sched and 'scope.scope_type == "COLLEGE"' in sched
+          assert 'build_affairs_context' in sched and 'scope.scope_type == "TENANT_ALL"' in sched and 'scope.scope_type != "COLLEGE"' in sched
           assert 'GRADE.ENTRY_OVERDUE_DIGEST:{int(user_id)}:{day_key}' in sched
           assert 'INTERVAL_GRADE_DEADLINE = 60 * 60' in runner and 'job_grade_deadline' in runner
           assert 'grade_message_events.install()' in runner
