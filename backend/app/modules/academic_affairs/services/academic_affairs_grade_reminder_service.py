@@ -1,14 +1,9 @@
-"""C-W4 grade-entry reminder without inventing a second task/message system.
+"""C-W4 grade-entry reminder on canonical Todo + shared message outbox.
 
-Manual 催录 reuses canonical ``AA_GRADE_ENTRY`` UnifiedTodo.  The relation-aware Todo
-projection first synchronizes current PRIMARY/CO_TEACHER assignees, then this command
-bumps only their pending Todo versions so workbench/Teacher Today consumers refresh
-from server truth.  Stale former-teacher Todos are completed by the same sync.
-
-A dedicated grade reminder message-event template is shared/INT-owned and is not yet
-registered in ``message_event_outbox_service``. This C-owned command therefore does
-not misuse WARNING/SCHEDULE event codes merely to simulate push delivery. Response
-explicitly reports ``messagePushReady=False`` until that shared event template lands.
+Manual 催录 first synchronizes current PRIMARY/CO_TEACHER ``AA_GRADE_ENTRY``
+UnifiedTodo assignees, bumps only the current pending Todo versions, and emits one
+``GRADE.ENTRY_REMINDED`` outbox event to those real teacher accounts in the same
+transaction. Delivery/retry/UnifiedMessage materialization remain shared Authority.
 """
 from __future__ import annotations
 
@@ -17,16 +12,21 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission
+from app.services.message_event_outbox_service import emit_message_event
 
 from . import academic_affairs_grade_core_service as grade_core
+from . import academic_affairs_grade_deadline_service as deadline_service
+from . import academic_affairs_grade_message_event_guard as message_event_guard
 from . import academic_affairs_grade_todo_teacher_relation_guard as todo_guard
 
 _REMINDABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 _REMIND_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}
 
+message_event_guard.install()
+
 
 def remind_grade_entry(task_id: int, user, reason: str) -> dict:
-    """Refresh canonical pending grade-entry Todos for the current formal teachers."""
+    """Refresh canonical Todos and enqueue one real message event for current teachers."""
     from app.models import AaGradeTask, UnifiedTodo
 
     role = str((user or {}).get("currentRoleCode") or "").upper()
@@ -56,8 +56,6 @@ def remind_grade_entry(task_id: int, user, reason: str) -> dict:
             )
 
         todo_guard.sync_grade_entry_todos(db, task)
-        # db_service sessions use autoflush=False; materialize newly created current
-        # assignee Todos before selecting/locking the canonical pending set.
         db.flush()
         todos = db.scalars(select(UnifiedTodo).where(
             UnifiedTodo.tenant_id == grade_core._tid(),
@@ -75,26 +73,57 @@ def remind_grade_entry(task_id: int, user, reason: str) -> dict:
                 details={"gradeTaskId": str(task.id)},
                 http_status=409,
             )
-        assignee_ids = []
+
+        assignee_ids: list[int] = []
+        versions: list[int] = []
         for todo in todos:
             todo.version = int(todo.version or 0) + 1
             assignee_ids.append(int(todo.assignee_id))
+            versions.append(int(todo.version))
+        assignee_ids = sorted(set(assignee_ids))
+
+        deadline = deadline_service.deadline_projection(db, int(task.id), status=status)
+        deadline_text = deadline.get("deadline") or "未设置"
+        content = (
+            f"《{task.course_name or '课程'}》成绩仍待录入/重提。"
+            f"截止时间：{deadline_text}。催录说明：{reason_text}。请进入成绩录入任务处理。"
+        )
+        outbox = emit_message_event(
+            db,
+            event_code="GRADE.ENTRY_REMINDED",
+            source_module="academic-affairs",
+            source_biz_type="AA_GRADE_TASK",
+            source_biz_id=int(task.id),
+            recipient_refs=[{"userId": value} for value in assignee_ids],
+            variables={
+                "gradeTaskId": str(task.id),
+                "courseName": task.course_name or "",
+                "deadline": deadline.get("deadline"),
+                "reason": reason_text,
+            },
+            content=content,
+            title=f"成绩录入提醒：{task.course_name or '课程'}",
+            dedup_key=f"GRADE.ENTRY_REMINDED:{task.id}:v{max(versions or [1])}",
+        )
 
         grade_core._audit(
             db,
             "AA_GRADE_TASK",
             int(task.id),
             "GRADE_ENTRY_REMIND",
-            f"assignees={','.join(str(value) for value in sorted(assignee_ids))};reason={reason_text}",
+            f"assignees={','.join(str(value) for value in assignee_ids)};reason={reason_text};outbox={getattr(outbox, 'id', '')}",
         )
         db.commit()
         return {
             "gradeTaskId": str(task.id),
             "status": status,
             "remindedCount": len(assignee_ids),
-            "assigneeIds": [str(value) for value in sorted(assignee_ids)],
+            "assigneeIds": [str(value) for value in assignee_ids],
             "remindedAt": datetime.utcnow().isoformat(),
-            "delivery": "UNIFIED_TODO_REFRESH",
-            "messagePushReady": False,
-            "messagePushBlocker": "INT_GRADE_REMINDER_EVENT_TEMPLATE",
+            "delivery": "UNIFIED_TODO_AND_MESSAGE_OUTBOX",
+            "messagePushReady": True,
+            "messageEventCode": "GRADE.ENTRY_REMINDED",
+            "messageOutboxId": str(getattr(outbox, "id", "") or ""),
+            "deadline": deadline.get("deadline"),
+            "isOverdue": deadline.get("isOverdue"),
         }
