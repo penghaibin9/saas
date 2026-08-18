@@ -218,10 +218,11 @@ export default {
       }
     },
     openFinal(r) {
-      if (!this.canNormalFinal(r) || this.busy) {
+      if (!this.canNormalFinal(r)) {
         toast.error('当前结果不满足普通教务终审条件，请先重新预审并核对系统结论')
         return
       }
+      if (this.busy) return
       this.finalDlg = { visible: true, submitting: false, resultId: r.resultId, conclusion: 'GRADUATED' }
     },
     async doFinal() {
