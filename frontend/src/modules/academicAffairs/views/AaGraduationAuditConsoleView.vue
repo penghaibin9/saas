@@ -588,9 +588,23 @@ export default {
     async loadBatches() {
       this.loadingBatches = true
       try {
-        const res = await academicAffairsApi.listGradBatches({ pageSize: 100 })
-        if (res.code === 0) this.batches = res.data.list
-        else toast.error(res.message || '毕业审核批次加载失败')
+        const pageSize = 100
+        const all = []
+        let page = 1
+        let total = 0
+        do {
+          const res = await academicAffairsApi.listGradBatches({ page, pageSize })
+          if (res.code !== 0) {
+            toast.error(res.message || '毕业审核批次加载失败')
+            return
+          }
+          const list = Array.isArray(res.data?.list) ? res.data.list : []
+          all.push(...list)
+          total = Number(res.data?.total || all.length)
+          if (!list.length) break
+          page += 1
+        } while (all.length < total)
+        this.batches = all
       } catch (e) {
         toast.error((e && e.message) || '毕业审核批次加载失败')
       } finally {
