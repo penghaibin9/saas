@@ -3,6 +3,8 @@
 The tests reuse the canonical Selection LOCK flow and then validate only the missing
 production contracts: LOCKED student set, roster members, member_count and roster_hash
 must agree; a different tenant's SelectionRecord must never contaminate the resolver.
+The integrated fixture also persists the same direct ProgramCourse formation provenance
+required by B-W4 production supply writes; W6 must not bypass that fail-closed guard.
 """
 from __future__ import annotations
 
@@ -46,10 +48,53 @@ def _clear_context() -> None:
     set_tenant(None)
 
 
+def _prove_selectable_formation(task_id: int, ids: dict, *, label: str) -> int:
+    """Persist the real B-W4 selectable provenance required by integrated supply writes."""
+    from app.models import AaProgram, AaProgramCourse, AaTeachingTask
+
+    db = get_sessionmaker()()
+    try:
+        task = db.query(AaTeachingTask).filter(
+            AaTeachingTask.id == int(task_id),
+            AaTeachingTask.tenant_id == TID,
+            AaTeachingTask.is_deleted.is_(False),
+        ).one()
+        program = AaProgram(
+            tenant_id=TID,
+            program_name=f"W6名单对账培养方案-{label}",
+            major_id=int(ids["major"]),
+            grade_year="2024",
+            version=1,
+            status="PUBLISHED",
+        )
+        db.add(program)
+        db.flush()
+        source = AaProgramCourse(
+            tenant_id=TID,
+            program_id=int(program.id),
+            course_id=int(task.course_id),
+            course_name=task.course_name,
+            open_term_no=1,
+            module="MAJOR_CORE",
+            credit_snapshot=2,
+            formation_mode="SELECTABLE",
+        )
+        db.add(source)
+        db.flush()
+        task.source_program_course_id = int(source.id)
+        task.formation_mode = "SELECTABLE"
+        db.commit()
+        return int(source.id)
+    finally:
+        db.close()
+
+
 def _lock_one_student(client, db_mode, *, label: str):
     ids = _suite._seed(db_mode)
     admin = _suite._hdr(client, "school_admin01")
     task_id, _ = _suite._ready_tasks(ids)
+    source_program_course_id = _prove_selectable_formation(task_id, ids, label=label)
+    assert source_program_course_id > 0
     batch_id, selection_course_id = _suite._make_open_batch(
         client,
         admin,
