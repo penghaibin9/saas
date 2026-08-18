@@ -119,6 +119,13 @@ def deadline_projection(db, task_id: int, *, status: str | None = None) -> dict:
     )
 
 
+def task_deadline_projection(task_id: int, *, status: str | None = None) -> dict:
+    """Tenant-scoped single-task read for mobile/detail projections."""
+    with _core.session() as db:
+        task = _grade._load_task(db, int(task_id))
+        return deadline_projection(db, int(task.id), status=status or task.status)
+
+
 def extend_deadline(task_id: int, user, deadline_at, reason: str) -> dict:
     reason = str(reason or "").strip()
     if len(reason) < 5:
