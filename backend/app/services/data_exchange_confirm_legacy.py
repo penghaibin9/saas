@@ -56,9 +56,9 @@ def _finish(job_id: str, lease: str, result: dict, user: dict) -> dict:
             raise AppException("DATA_CONFLICT", "导入任务确认租约已失效")
         row.status = "SUCCEEDED"
         row.confirmed_rows = int(
-            result.get("createdCount")
+            result.get("confirmedRows")
+            or result.get("createdCount")
             or result.get("insertedRows")
-            or result.get("confirmedRows")
             or row.valid_rows
             or 0
         )
@@ -90,6 +90,20 @@ def _release(job_id: str, lease: str, error: Exception, user: dict) -> None:
         db.close()
 
 
+def _assert_program_permission_before_lease(current, user: dict) -> None:
+    """Reject stale/wrong Program authority before any confirm fast-path or lease mutation."""
+    if current.adapter_type != jobs.IMPORT_ADAPTER_EXCEL or current.import_type != "ACADEMIC_PROGRAM":
+        return
+    from app.modules.academic_affairs.services import academic_file_exchange_service as academic
+
+    snapshot = dict(current.source_snapshot_json or {})
+    academic._enforce_program_job_permission(  # noqa: SLF001 - same Academic confirm authority
+        current.import_type,
+        dict(snapshot.get("context") or {}),
+        user,
+    )
+
+
 def confirm_import_job(
     job_id: str,
     *,
@@ -103,6 +117,9 @@ def confirm_import_job(
         current = jobs._owned_import(db, job_id, user)
         adapter_type = current.adapter_type
         import_type = current.import_type
+        # Program exact-phase authority is checked even for idempotent SUCCEEDED
+        # reads; a stale job never becomes a capability after permission revoke.
+        _assert_program_permission_before_lease(current, user)
         if current.status == "SUCCEEDED":
             return jobs._import_row(current)
     finally:
@@ -140,7 +157,11 @@ def confirm_import_job(
             result = migration.confirm(adapter_ref)
             return _finish(job_id, lease, result, user)
         if adapter_type == jobs.IMPORT_ADAPTER_EXCEL and import_type in {
-            "ACADEMIC_ROSTER", "ACADEMIC_GRADE", "ACADEMIC_SCHEDULE",
+            "ACADEMIC_ROSTER",
+            "ACADEMIC_GRADE",
+            "ACADEMIC_SCHEDULE",
+            "ACADEMIC_COURSE_CATALOG",
+            "ACADEMIC_PROGRAM",
         }:
             from app.modules.academic_affairs.services import academic_file_exchange_service as academic
             result = academic.confirm_academic_import(job_id, lease=lease, user=user)

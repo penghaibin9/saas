@@ -10,12 +10,12 @@
         <AppButton variant="ghost" @click="goBack">返回学期列表</AppButton>
         <AppButton variant="ghost" @click="goReadiness">查看学期运行结论</AppButton>
         <AppButton
-          v-if="detail.allowedActions?.publish"
+          v-if="detail.allowedActions?.publish && directCurrentSwitchAllowed"
           variant="primary"
           @click="openAction('PUBLISH')"
         >发布并设为当前</AppButton>
         <AppButton
-          v-if="detail.allowedActions?.setCurrent"
+          v-if="detail.allowedActions?.setCurrent && directCurrentSwitchAllowed"
           variant="primary"
           @click="openAction('SET_CURRENT')"
         >设为当前学期</AppButton>
@@ -39,18 +39,33 @@
         <div>
           <div class="atd-eyebrow">
             <AppStatusTag :status="detail.status" dot>{{ statusLabel(detail.status) }}</AppStatusTag>
-            <AppStatusTag v-if="detail.isCurrent" type="success" dot>当前学期</AppStatusTag>
+            <AppStatusTag v-if="isResolvedCurrent" type="success" dot>当前学期</AppStatusTag>
             <span>版本 {{ detail.version ?? 0 }}</span>
           </div>
           <h2>{{ detail.termName || `${detail.yearCode} 第 ${detail.termNo} 学期` }}</h2>
           <p>{{ detail.yearCode }} · 第 {{ detail.termNo }} 学期 · {{ termRange }}</p>
         </div>
         <div class="atd-hero-metrics">
-          <article><b>{{ detail.teachingWeeks || 0 }}</b><span>教学周</span></article>
+          <article><b>{{ detail.teachingWeeks ?? '未配置' }}</b><span>教学周</span></article>
           <article><b>{{ detail.examWeekStart || '—' }}</b><span>考试周起</span></article>
           <article><b>{{ linkedTotal }}</b><span>关联业务记录</span></article>
         </div>
       </section>
+
+      <div v-if="currentContextError" class="atd-authority is-error">
+        <div>
+          <strong>当前学期 Authority 解析失败</strong>
+          <p>{{ currentContextError }}。为避免误切换，本页已暂停“发布并设当前 / 设为当前”操作。</p>
+        </div>
+        <AppButton variant="ghost" @click="loadCurrentContext">重新解析</AppButton>
+      </div>
+      <div v-else-if="governanceManaged" class="atd-authority">
+        <div>
+          <strong>当前学期由全校统一治理</strong>
+          <p>{{ currentContext.switchHint }}</p>
+        </div>
+        <AppButton variant="ghost" @click="goGovernance">前往学年学期与业务日历</AppButton>
+      </div>
 
       <div class="atd-grid">
         <AppSectionCard title="学期基本信息" :subtitle="editHint">
@@ -247,6 +262,9 @@ export default {
       loading: true,
       error: '',
       detail: {},
+      currentContextLoading: true,
+      currentContextError: '',
+      currentContext: null,
       form: { termName: '', startDate: '', endDate: '', teachingWeeks: null, examWeekStart: null },
       baselineSignature: '',
       previewSignature: '',
@@ -260,6 +278,13 @@ export default {
     termId() { return this.$route.params.termId },
     canEditTimeline() { return Boolean(this.detail.allowedActions?.editBasic) },
     canEditName() { return Boolean(this.detail.allowedActions?.editBasic || this.detail.allowedActions?.editNameOnly) },
+    governanceManaged() { return this.currentContext?.currentAuthority === 'CALENDAR_GOVERNANCE' },
+    directCurrentSwitchAllowed() {
+      return !this.currentContextLoading && !this.currentContextError && this.currentContext?.canDirectSwitch !== false
+    },
+    isResolvedCurrent() {
+      return Boolean(this.currentContext?.termId) && String(this.currentContext.termId) === String(this.termId)
+    },
     termRange() {
       if (this.detail.startDate && this.detail.endDate) return `${this.detail.startDate} 至 ${this.detail.endDate}`
       return '起止日期未完整设置'
@@ -290,7 +315,10 @@ export default {
       ]
     }
   },
-  created() { this.load() },
+  created() {
+    this.loadCurrentContext()
+    this.load()
+  },
   methods: {
     statusLabel(status) { return safeEnumLabel({ value: status, dictionary: STATUS_LABEL, unknownLabel: '状态待确认' }) },
     blockerText(row) { return safeBusinessMessage(row?.message || row?.summary, '当前修改不满足业务校验，请调整后重试') },
@@ -320,6 +348,18 @@ export default {
       }
       this.baselineSignature = JSON.stringify(this.normalizedForm())
       this.invalidatePreview()
+    },
+    async loadCurrentContext() {
+      this.currentContextLoading = true
+      this.currentContextError = ''
+      const res = await academicAffairsApi.getCurrentTerm()
+      if (res.code === 0) {
+        this.currentContext = res.data || null
+      } else {
+        this.currentContext = null
+        this.currentContextError = res.message || '当前学期解析失败'
+      }
+      this.currentContextLoading = false
     },
     async load() {
       this.loading = true
@@ -368,8 +408,13 @@ export default {
     goBack() { this.$router.push('/admin/academic-affairs/terms') },
     goReadiness() { this.$router.push(`/admin/academic-affairs?termId=${this.termId}`) },
     goArchive() { this.$router.push(this.detail.archiveRoute || `/admin/academic-affairs/archive/precheck?termId=${this.termId}`) },
+    goGovernance() { this.$router.push(this.currentContext?.switchRoute || '/admin/system/academic-calendar') },
     goTarget(route) { if (route) this.$router.push(route) },
     openAction(type) {
+      if ((type === 'PUBLISH' || type === 'SET_CURRENT') && !this.directCurrentSwitchAllowed) {
+        toast.warning(this.currentContext?.switchHint || this.currentContextError || '当前学期切换暂不可用')
+        return
+      }
       const labels = {
         PUBLISH: ['发布并设为当前', '发布后学期时间轴将锁定，后续只能更正显示名称。确认继续？'],
         SET_CURRENT: ['设为当前学期', '确认将该学期设为当前学期？系统会取消其它学期的当前标记。'],
@@ -380,6 +425,11 @@ export default {
     },
     async confirmAction() {
       const type = this.actionDialog.type
+      if ((type === 'PUBLISH' || type === 'SET_CURRENT') && !this.directCurrentSwitchAllowed) {
+        this.actionDialog.visible = false
+        toast.warning(this.currentContext?.switchHint || this.currentContextError || '当前学期切换暂不可用')
+        return
+      }
       this.actionDialog.submitting = true
       let res
       if (type === 'PUBLISH') res = await academicAffairsApi.publishTerm(this.termId)
@@ -389,9 +439,11 @@ export default {
       if (res?.code === 0) {
         this.actionDialog.visible = false
         toast.success(`${this.actionDialog.title}成功`)
+        await this.loadCurrentContext()
         this.load()
       } else {
         toast.error(res?.message || `${this.actionDialog.title}失败`)
+        if (type === 'PUBLISH' || type === 'SET_CURRENT') this.loadCurrentContext()
       }
     }
   }
@@ -413,6 +465,10 @@ export default {
 .atd-hero-metrics article { min-width: 92px; padding: 14px; border-radius: 10px; background: var(--fill-50, #f7f8fa); text-align: center; }
 .atd-hero-metrics b { display: block; font-size: 22px; color: var(--text-900, #1d2129); }
 .atd-hero-metrics span { font-size: 12px; color: var(--text-500, #646a73); }
+.atd-authority { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: -4px 0 16px; padding: 13px 16px; border: 1px solid var(--primary-200, #b8d7ff); border-radius: 10px; background: var(--primary-50, #f2f7ff); }
+.atd-authority.is-error { border-color: var(--danger-200, #ffccc7); background: var(--danger-50, #fff0f0); }
+.atd-authority strong { color: var(--text-900, #1d2129); }
+.atd-authority p { margin: 4px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-600, #4e5969); }
 .atd-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, .8fr); gap: 16px; margin-bottom: 16px; }
 .atd-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .atd-form label { display: flex; flex-direction: column; gap: 6px; }
@@ -471,5 +527,6 @@ export default {
   .atd-span-2 { grid-column: span 1; }
   .atd-savebar { align-items: flex-start; flex-direction: column; }
   .atd-change-list article { grid-template-columns: 1fr; }
+  .atd-authority { align-items: stretch; flex-direction: column; }
 }
 </style>

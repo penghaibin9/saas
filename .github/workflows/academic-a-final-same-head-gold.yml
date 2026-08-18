@@ -1,0 +1,241 @@
+name: Academic A Final Same-Head Gold
+
+on:
+  push:
+    branches:
+      - agent/academic-a-semester-core
+    paths:
+      - .github/workflows/academic-a-final-same-head-gold.yml
+      - backend/alembic/versions/20260817_aa_prog_expand.py
+      - backend/app/models/academic_affairs_program_extensions.py
+      - backend/app/modules/academic_affairs/services/academic_affairs_program_course_formation_provenance_inventory_service.py
+      - backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_*.py
+      - backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
+      - backend/app/services/data_exchange_confirm_service.py
+      - backend/app/services/data_exchange_confirm_legacy.py
+      - backend/app/services/xlsx_util.py
+      - backend/tests/test_aa_course_catalog_confirm_permission_toctou.py
+      - backend/tests/test_aa_program_*.py
+      - backend/tests/test_aa_school_setup_program_*.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-a-final-same-head-gold
+  cancel-in-progress: false
+
+env:
+  EXPECTED_MAIN_SHA: 4b706f392bd4213edcf4fbf81e4c292f90028c12
+  EXPECTED_B_GOLD_SHA: 799a82e61c24a52724dbb071e751850450be2e68
+
+jobs:
+  program-final-seal:
+    name: Program + Course confirm IAM Gold
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: academic_a_final_gold
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_a_final_gold?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_a_final_gold?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      SECRET_KEY: academic-a-final-gold-secret-at-least-32-bytes
+      FILE_SCAN_ENABLED: 'false'
+      FILE_SCAN_REQUIRED: 'false'
+
+    steps:
+      - name: Checkout exact A head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Freeze A head and current main
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch origin main --no-tags
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA"
+          git diff --check "$EXPECTED_MAIN_SHA..$GITHUB_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend and migrate clean MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+
+      - name: Run Program + Course confirm IAM contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_aa_course_catalog_confirm_permission_toctou.py \
+            tests/test_aa_program_xlsx_path_source_contract.py \
+            tests/test_aa_school_setup_program_import_adapter_int.py \
+            tests/test_aa_school_setup_program_import_preflight_int.py \
+            tests/test_aa_school_setup_program_preview_service_mysql_int.py \
+            tests/test_aa_school_setup_program_query_budget_int.py \
+            tests/test_aa_school_setup_program_definition_authority_concurrency_mysql_int.py \
+            tests/test_aa_school_setup_program_definition_lock_order_int.py \
+            tests/test_aa_school_setup_program_binding_batch_lock_order_int.py \
+            tests/test_aa_school_setup_program_binding_confirm_mysql_int.py \
+            tests/test_aa_school_setup_program_binding_supersede_mysql_int.py \
+            tests/test_aa_school_setup_program_representative_school_gold_int.py \
+            tests/test_aa_program_file_exchange_shared_mysql_int.py \
+            tests/test_aa_program_course_formation_provenance_inventory_int.py \
+            --timeout=300 \
+            --timeout-method=signal \
+            --maxfail=1 \
+            --junitxml=/tmp/academic-a-program-final-junit.xml
+
+      - name: Upload Program final evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-a-program-final-${{ github.sha }}
+          path: /tmp/academic-a-program-final-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  b-sync-rehearsal:
+    name: B Gold collision + formation handoff rehearsal
+    needs: program-final-seal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: academic_a_b_sync
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_a_b_sync?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_a_b_sync?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      SECRET_KEY: academic-a-b-sync-secret-at-least-32-bytes
+
+    steps:
+      - name: Checkout exact A head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Pin main + immutable B Gold; prove live B descends and zero collision
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch origin main --no-tags
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA"
+          git fetch origin agent/academic-b-schedule-selection --no-tags
+          live_b="$(git rev-parse FETCH_HEAD)"
+          git cat-file -e "$EXPECTED_B_GOLD_SHA^{commit}"
+          git merge-base --is-ancestor "$EXPECTED_B_GOLD_SHA" "$live_b"
+          echo "Pinned B Gold=$EXPECTED_B_GOLD_SHA"
+          echo "Live B head=$live_b"
+          python - <<'PY'
+          import os
+          import subprocess
+
+          def names(base, head):
+              return set(subprocess.check_output(
+                  ["git", "diff", "--name-only", f"{base}..{head}"],
+                  text=True,
+              ).splitlines())
+
+          a_head = os.environ["GITHUB_SHA"]
+          b_head = os.environ["EXPECTED_B_GOLD_SHA"]
+          main = os.environ["EXPECTED_MAIN_SHA"]
+          b_base = subprocess.check_output(
+              ["git", "merge-base", main, b_head],
+              text=True,
+          ).strip()
+          a_paths = names(main, a_head)
+          b_paths = names(b_base, b_head)
+          overlap = sorted(a_paths & b_paths)
+          print("A changed paths=", len(a_paths))
+          print("B Gold changed paths=", len(b_paths))
+          print("direct overlap=", overlap)
+          assert overlap == [], f"A/B Gold direct path collision: {overlap}"
+          PY
+
+      - name: Ephemeral merge pinned B Gold into A runner only
+        run: |
+          set -euo pipefail
+          git config user.name "academic-a-final-rehearsal"
+          git config user.email "academic-a-final-rehearsal@invalid.local"
+          git merge --no-commit --no-ff "$EXPECTED_B_GOLD_SHA"
+          test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_B_GOLD_SHA"
+          git diff --check
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install merged backend and migrate clean MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+
+      - name: Prove A formation provenance feeds pinned B fail-closed consumer
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_aa_program_course_formation_provenance_inventory_int.py \
+            tests/test_aa_program_generation_gate_v2.py \
+            tests/test_aa_task_formation_policy_w3.py \
+            tests/test_aa_selection_formation_dependency_contract.py \
+            tests/test_aa_selection_w4_batch_command.py \
+            --timeout=120 \
+            --timeout-method=signal \
+            --maxfail=1 \
+            --junitxml=/tmp/academic-a-b-sync-junit.xml
+
+      - name: Upload B sync evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-a-b-sync-${{ github.sha }}
+          path: /tmp/academic-a-b-sync-junit.xml
+          if-no-files-found: warn
+          retention-days: 14

@@ -14,15 +14,20 @@
 ``t_aa_term.status``（DRAFT/PUBLISHED/FROZEN/ARCHIVED）和 ``is_current`` 继续由教务维护，
 是教务自己的发布状态；本表的 ``governance_status`` 是**全校统一切换**的治理状态，二者通过
 ``term_id`` 一一对应。教务侧发布与否不直接等于全校已切换——这正是 SYS-12 要收口的问题。
+
+A-C1 加固：``AaTerm.is_current=True`` 与 SYS-12 ``active_key=ACTIVE`` 的 SQLAlchemy
+监听器都在模型加载时安装，并共用 ``app.core.academic_term_authority_lock``。因此 Web API、
+历史导入、脚本、定时激活和独立测试都不再依赖 academic services 包的 import 顺序。
 """
 from __future__ import annotations
 
 from datetime import datetime
 
 from sqlalchemy import (JSON, BigInteger, DateTime, Index, String,
-                        UniqueConstraint)
-from sqlalchemy.orm import Mapped, mapped_column
+                        UniqueConstraint, event)
+from sqlalchemy.orm import Mapped, Session, mapped_column, object_session
 
+from app.models.academic_affairs import AaTerm
 from app.models.base import (AuditTimeMixin, Base, CommonMixin, PKMixin,
                              TenantMixin)
 
@@ -83,6 +88,96 @@ class AcademicCalendarGovernance(PKMixin, TenantMixin, CommonMixin, Base):
         UniqueConstraint("tenant_id", "calendar_type", "active_key", name="uk_calendar_single_active"),
         Index("idx_calendar_governance_status", "tenant_id", "governance_status", "scheduled_at"),
     )
+
+
+def _active_term_authority_on_set(target, value, oldvalue, initiator):
+    """Serialize SYS-12 ACTIVE with the same A-C1 anchor used by AaTerm writers."""
+    if value != ACTIVE_SENTINEL:
+        return value
+    db = object_session(target)
+    if db is None:
+        # Formal SYS-12 transitions mutate a persistent governance row.  DB single-ACTIVE still
+        # protects transient direct model construction, but it is not a supported activation writer.
+        return value
+    from app.core.academic_term_authority_lock import lock_term_authority
+    from app.core.exceptions import AppException
+
+    try:
+        tenant_id = int(target.tenant_id or 0)
+    except (TypeError, ValueError):
+        tenant_id = 0
+    if not lock_term_authority(db, tenant_id):
+        raise AppException(
+            "TENANT_CONTEXT_REQUIRED",
+            "学期治理激活未命中可证明的租户或学期协调行，拒绝继续",
+            details={"tenantId": str(tenant_id)},
+            http_status=409,
+        )
+    return value
+
+
+def _current_term_authority_on_set(target, value, oldvalue, initiator):
+    """Serialize every persistent ``AaTerm.is_current=True`` assignment at model level."""
+    if value is not True:
+        return value
+    db = object_session(target)
+    if db is None:
+        # Transient construction is handled by the Session before_flush fallback below.
+        return value
+    from app.core.academic_term_authority_lock import guard_current_term_target
+
+    guard_current_term_target(db, target)
+    return value
+
+
+def _current_term_authority_before_flush(db: Session, flush_context, instances) -> None:
+    """Protect detached/transient AaTerm writers and reject same-tx multiple current targets."""
+    from app.core.academic_term_authority_lock import guard_current_term_target
+    from app.core.exceptions import AppException
+
+    by_tenant: dict[int, list[AaTerm]] = {}
+    for obj in set(db.new).union(db.dirty):
+        if not isinstance(obj, AaTerm) or obj.is_current is not True:
+            continue
+        try:
+            tenant_id = int(obj.tenant_id or 0)
+        except (TypeError, ValueError):
+            tenant_id = 0
+        if tenant_id > 0:
+            by_tenant.setdefault(tenant_id, []).append(obj)
+
+    for tenant_id, targets in by_tenant.items():
+        if len(targets) > 1:
+            raise AppException(
+                "DATA_CONFLICT",
+                "同一事务试图写入多个当前学期，已拒绝",
+                details={
+                    "tenantId": str(tenant_id),
+                    "termIds": [str(getattr(term, "id", "") or "NEW") for term in targets],
+                },
+                http_status=409,
+            )
+        guard_current_term_target(db, targets[0])
+
+
+if not event.contains(AcademicCalendarGovernance.active_key, "set", _active_term_authority_on_set):
+    event.listen(
+        AcademicCalendarGovernance.active_key,
+        "set",
+        _active_term_authority_on_set,
+        retval=True,
+        active_history=True,
+    )
+if not event.contains(AaTerm.is_current, "set", _current_term_authority_on_set):
+    event.listen(
+        AaTerm.is_current,
+        "set",
+        _current_term_authority_on_set,
+        retval=True,
+        active_history=True,
+    )
+if not event.contains(Session, "before_flush", _current_term_authority_before_flush):
+    event.listen(Session, "before_flush", _current_term_authority_before_flush)
 
 
 class CalendarWindow(PKMixin, TenantMixin, CommonMixin, Base):

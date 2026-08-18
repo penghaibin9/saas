@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Path
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import academic_affairs_course_public_service as course_public_svc
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心"])
 
@@ -51,7 +52,7 @@ _COURSE_MANAGE = legacy._COURSE_MANAGE
 _COURSE_APPROVE = legacy._COURSE_APPROVE
 
 prog_svc = legacy.prog_svc
-course_svc = legacy.course_svc
+course_svc = course_public_svc
 task_svc = legacy.task_svc
 
 

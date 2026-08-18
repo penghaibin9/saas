@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from app.core.exceptions import AppException
+from app.core.permissions import enforce_permission
 from app.services import data_exchange_confirm_legacy as _legacy
+
+_COURSE_CATALOG_CONFIRM_PERMISSION = "academicAffairs.course.manage"
 
 
 def _normalize_identity_source_user_binding(source_file_id: str, user: dict) -> None:
@@ -110,7 +113,8 @@ def confirm_import_job(*args, **kwargs):
     job_id = str(args[0] if args else kwargs.get("job_id") or "")
     from app.services import data_exchange_job_service as jobs
 
-    item = jobs.get_import_job(job_id, user=kwargs.get("user") or {})
+    user = kwargs.get("user") or {}
+    item = jobs.get_import_job(job_id, user=user)
     adapter_type = str(item.get("adapterType") or "")
     import_type = str(item.get("importType") or "")
     if adapter_type in {jobs.IMPORT_ADAPTER_IDENTITY, jobs.PENDING_IDENTITY_ADAPTER}:
@@ -119,7 +123,16 @@ def confirm_import_job(*args, **kwargs):
         "ACADEMIC_ROSTER",
         "ACADEMIC_GRADE",
         "ACADEMIC_SCHEDULE",
+        "ACADEMIC_COURSE_CATALOG",
+        "ACADEMIC_PROGRAM",
     }:
+        # The public Academic router intentionally accepts any Academic import
+        # permission to enter this shared dispatcher.  Job ownership proves only
+        # object visibility; it must never preserve a revoked domain write grant.
+        # Re-check Course Catalog authority at the confirmation instant before the
+        # legacy lease/FileObject path can reach the atomic Course writer.
+        if import_type == "ACADEMIC_COURSE_CATALOG":
+            enforce_permission(user, _COURSE_CATALOG_CONFIRM_PERMISSION)
         return confirm_academic_import_job(*args, **kwargs)
     return _legacy.confirm_import_job(*args, **kwargs)
 

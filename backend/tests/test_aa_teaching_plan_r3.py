@@ -18,6 +18,51 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _ensure_real_major():
+    """给绑定类回归用例提供真实租户学院/专业，不再依赖 phantom majorId=1。"""
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major
+
+    db = get_sessionmaker()()
+    try:
+        major = db.query(Major).filter(
+            Major.tenant_id == TID,
+            Major.status == "ACTIVE",
+            Major.is_deleted.is_(False),
+        ).order_by(Major.id).first()
+        if major:
+            return major.id
+
+        college = db.query(College).filter(
+            College.tenant_id == TID,
+            College.code == "AW2TESTCOL",
+            College.is_deleted.is_(False),
+        ).first()
+        if not college:
+            college = College(
+                tenant_id=TID,
+                college_name="A-W2测试学院",
+                code="AW2TESTCOL",
+                status="ACTIVE",
+            )
+            db.add(college)
+            db.flush()
+
+        major = Major(
+            tenant_id=TID,
+            college_id=college.id,
+            major_name="A-W2测试专业",
+            code="AW2TESTMAJ",
+            status="ACTIVE",
+            enroll_status="ENROLLING",
+        )
+        db.add(major)
+        db.commit()
+        return major.id
+    finally:
+        db.close()
+
+
 def _seed_enabled_course(pid, *, name, credit):
     from app.db.session import get_sessionmaker
     from app.models import AaCourse
@@ -43,8 +88,9 @@ def _seed_enabled_course(pid, *, name, credit):
 
 def _governance_ready_program(client, hdr, name, total=10):
     """构造满足当前正式发布门禁的方案，但保持 DRAFT 供各用例选择后续动作。"""
+    major_id = _ensure_real_major()
     r = client.post(f"{BASE}/programs", headers=hdr, json={
-        "programName": name, "majorId": "1", "gradeYear": "2026", "totalCredits": total})
+        "programName": name, "majorId": str(major_id), "gradeYear": "2026", "totalCredits": total})
     assert r.status_code == 200, r.text
     pid = r.json()["data"]["programId"]
     cid = _seed_enabled_course(pid, name="高等数学", credit=total)
