@@ -5,13 +5,15 @@
 ``/exam/rooms/{roomId}/formal-print``，由 C-W3 formal print provider 校验发布状态、冻结名单
 与持久化座位全集，禁止把编排草稿伪装成正式文件。
 
-本模块加载时安装三类 C-W3 兼容 guard：
+本模块加载时安装四类 C-W3 兼容 guard：
 - 发布通知 guard 包装 legacy ``_notify_publish``，让原学生通知继续原样执行，并在同事务把当前
   canonical 监考行投递给真实教师账号；发布状态机和监考 Assignment 仍由既有 exam facade 唯一持有；
 - legacy ``GET /exam/incidents`` 保留 URL，但读模型重绑到同一个全生命周期 workbench，避免旧入口
   只读 ACTIVE、整表 materialize 后 Python 分页，与新闭环事实产生双口径；
 - 已发布 ``/mobile/academic/exam/*`` 的考试安排/缓考选课/缓考提交重绑到学生正式 seat 事实链，
-  保留原 URL 与缓考审批状态机，不再消费 UTC 判断、失效考场或可猜 examCourseId 的旧实现。
+  保留原 URL 与缓考审批状态机，不再消费 UTC 判断、失效考场或可猜 examCourseId 的旧实现；
+- legacy/PC ``defer_apply`` service 本身也重绑到同一正式 seat 命令，确保 exam_core 与旧大路由
+  不会成为移动端之外的第二条弱校验写入口。
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ from app.modules.academic_affairs.services import academic_affairs_exam_incident
 from app.modules.academic_affairs.services import academic_affairs_exam_service as service
 from app.modules.academic_affairs.services import academic_affairs_exam_print_service as print_service
 from app.modules.academic_affairs.services import academic_affairs_exam_publish_delivery_guard as publish_delivery_guard
+from app.modules.academic_affairs.services import student_exam_legacy_binding_guard as student_exam_legacy_guard
 from app.modules.academic_affairs.services import student_exam_read_service as student_exam_safe
 from app.services.db_service import session
 
@@ -56,6 +59,7 @@ def _install_legacy_incident_read() -> None:
 publish_delivery_guard.install()
 _install_legacy_incident_read()
 student_exam_safe.install_mobile_facade()
+student_exam_legacy_guard.install()
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-考务正式扩展"])
 
