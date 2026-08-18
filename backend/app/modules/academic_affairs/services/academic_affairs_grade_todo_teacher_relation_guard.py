@@ -1,6 +1,6 @@
 """C-W2/C-W5 relation-aware canonical grade-entry Todo projection.
 
-``AA_GRADE_ENTRY`` remains the single mature UnifiedTodo type.  This guard changes
+``AA_GRADE_ENTRY`` remains the single mature UnifiedTodo type. This guard changes
 only its assignee projection:
 
 - formal TeachingClass exists -> all ACTIVE teacher relations covering the current /
@@ -11,8 +11,8 @@ only its assignee projection:
 - teaching-task primary reassignment triggers a resync immediately after the formal
   TeachingClassTeacher relation is updated.
 
-Teacher Today remains read-only; it consumes these canonical todos and never repairs
-them while rendering.
+Teacher Today remains read-only; install() also activates the C-owned stale Todo
+filter so historical bad assignees are hidden without writing during render.
 """
 from __future__ import annotations
 
@@ -140,3 +140,7 @@ def install() -> None:
         if not hasattr(teaching_class_core, "_grade_todo_relation_original_sync_primary"):
             teaching_class_core._grade_todo_relation_original_sync_primary = current_sync
         teaching_class_core._sync_primary_teacher = _sync_primary_teacher
+
+    # Read-only cleanup for pre-existing stale assignees; no Todo writes on Teacher Today render.
+    from . import academic_affairs_teacher_today_grade_todo_guard as today_todo_guard
+    today_todo_guard.install()
