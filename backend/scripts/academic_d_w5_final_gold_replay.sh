@@ -57,7 +57,7 @@ INT_C_HANDOFF_KEEP_C_UNTOUCHED=(
 )
 declare -A INT_C_HANDOFF_C_BLOBS=(
   [backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py]="76f42d0f515fc9881aee87bfbaa1bb49b02b8ae3"
-  [backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py]="29460448ff5bf34154cf5d674f3e790e179d9872"
+  [backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py]="1b1125cfa8d48c72e0efa5f7026a6754b4deec6e"
   [backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py]="bb6bb7a330be2ce08dc763f82e70e2b2d44d2728"
   [backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py]="b442eef7ed496b03196bebb5e56c527d7c7c8fc5"
   [backend/tests/test_aa_attendance_admin_special_contract.py]="66f8fcbfaae184e982b10c2d949e3ff6f135056f"
