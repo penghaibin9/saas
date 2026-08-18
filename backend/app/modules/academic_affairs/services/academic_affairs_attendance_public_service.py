@@ -1,72 +1,112 @@
 """课堂考勤统一公开 Service。
 
-本模块只保留稳定公开入口与跨适配器共享的小型辅助函数。正式考勤写事务唯一由
-``academic_affairs_attendance_teacher_relation_guard`` 持有；关系感知台账/统计唯一由
-``academic_affairs_attendance_teacher_relation_read_guard`` 持有。
+正式考勤写事务唯一由 ``academic_affairs_attendance_teacher_relation_guard`` 持有；
+关系感知台账/统计唯一由 ``academic_affairs_attendance_teacher_relation_read_guard`` 持有。
+本模块只保留稳定公开入口与两类最终 Owner 共享的无状态/小型辅助函数。
 
-注意：canonical attendance service 必须延迟加载。services 包初始化时 eager import 会沿
-TeachingRoster -> TeachingClass 再回到 TeachingRoster，形成 import-time cycle；facade 本身
-不需要在模块导入阶段触碰 canonical runtime。
+历史 ``academic_affairs_attendance_service`` 已降为兼容导出，不再保存第二套考勤事务。
+因此 PC、移动端、旧 import path 与直接 Service 调用都进入同一 Authority。
 """
 from __future__ import annotations
 
-import importlib
 import json
+from datetime import datetime
 
 from sqlalchemy import or_
 
+from app.core.affairs_security import _derive_keys
+from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException
+from app.services.db_service import _iso, _tid, session
 
 from .academic_affairs_attendance_occurrence_consumer import resolve_formal_occurrence
 
+_STATUS_OK = ("PRESENT", "LATE", "ABSENT", "LEAVE")
 _ADMIN_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}
 _ADMIN_SPECIAL = "ADMIN_SPECIAL"
-
-
-def _canonical_service():
-    """Load the mature base service only after package initialization has completed."""
-    return importlib.import_module(
-        ".academic_affairs_attendance_service",
-        package=__package__,
-    )
-
-
-def __getattr__(name):
-    return getattr(_canonical_service(), name)
-
-
-# Guard/read adapters deliberately call these local wrappers so tests can still replace
-# a single public seam without depending on import order.
-def session():
-    return _canonical_service().session()
-
-
-def _tid():
-    return _canonical_service()._tid()
-
-
-def _audit(*args, **kwargs):
-    return _canonical_service()._audit(*args, **kwargs)
-
-
-def _role(user) -> str:
-    return _canonical_service()._role(user)
-
-
-def _teacher_keys(user) -> set[str]:
-    return _canonical_service()._teacher_keys(user)
-
-
-def _primary_teacher_key(user):
-    return _canonical_service()._primary_teacher_key(user)
-
-
-def _row(item) -> dict:
-    return _canonical_service()._row(item)
+ATTENDANCE_TASK_STATUSES = frozenset({"TEACHER_CONFIRMED", "COLLEGE_REVIEW", "APPROVED", "READY"})
+_ATTENDANCE_TASK_STATUSES = ATTENDANCE_TASK_STATUSES
 
 
 def attendance_task_executable(status) -> bool:
-    return _canonical_service().attendance_task_executable(status)
+    """Single executable-state contract shared by attendance read and write paths."""
+    return str(status or "").strip().upper() in ATTENDANCE_TASK_STATUSES
+
+
+def _op():
+    user = get_current_user_ctx() or {}
+    return (user.get("realName") or "系统"), str(user.get("userId") or "")
+
+
+def _audit(db, biz_id, action, detail=""):
+    from app.models import AffairsAuditTrail
+
+    name, uid = _op()
+    db.add(AffairsAuditTrail(
+        tenant_id=_tid(),
+        biz_type="AA_ATTENDANCE",
+        biz_id=int(biz_id) if biz_id else None,
+        action=action,
+        operator=name or uid,
+        detail=(detail or "")[:990],
+        occurred_at=datetime.utcnow(),
+    ))
+
+
+def _role(user) -> str:
+    return str((user or {}).get("currentRoleCode") or "").upper()
+
+
+def _teacher_keys(user) -> set[str]:
+    """工号族标识；不包含 realName，避免同名教师互相命中。"""
+    return set(_derive_keys(user or {}))
+
+
+def _primary_teacher_key(user) -> str | None:
+    """稳定、确定性的当前教师键，仅供管理员特殊补录/历史兼容兜底。"""
+    user = user or {}
+    login = str(user.get("loginName") or "").strip()
+    if login:
+        return login
+    context_id = str(user.get("activeContextId") or "").strip()
+    if context_id.startswith("ctx_") and len(context_id) > 4:
+        return context_id[4:]
+    uid = str(user.get("userId") or "").strip()
+    if uid.startswith("u_") and len(uid) > 2:
+        return uid[2:]
+    return uid or None
+
+
+def _check_owner(attendance_session, user):
+    """历史兼容 helper；正式执行路径使用 relation-aware guard。"""
+    if _role(user) in _ADMIN_ROLES:
+        return
+    if not attendance_session.teacher_key:
+        raise AppException(
+            "NO_DATA_SCOPE",
+            "该历史考勤场次缺少稳定教师工号，归属待教务处修复",
+            http_status=403,
+        )
+    keys = _teacher_keys(user)
+    if not keys or attendance_session.teacher_key not in keys:
+        raise AppException("NO_DATA_SCOPE", "该考勤场次不在您的授课范围内", http_status=403)
+
+
+def _row(item) -> dict:
+    return {
+        "sessionId": str(item.id),
+        "classId": str(item.class_id or ""),
+        "courseName": item.course_name or "",
+        "termCode": item.term_code or "",
+        "sessionDate": item.session_date,
+        "slotNo": item.slot_no,
+        "sessionType": item.session_type or "常规",
+        "totalCount": item.total_count,
+        "presentCount": item.present_count,
+        "absentCount": item.absent_count,
+        "status": item.status,
+        "createdAt": _iso(item.created_at),
+    }
 
 
 def _special_evidence_text(value) -> str:

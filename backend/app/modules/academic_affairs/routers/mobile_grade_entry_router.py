@@ -8,10 +8,10 @@ Grade Execution live-owner authority。正式教学班存在时只认 TeachingCl
 C-W4 deadline 同样覆盖新旧移动端提交入口：质量报告显式投影逾期状态，真正提交统一经
 GradeTask deadline Authority；MySQL status trigger 是最终原子边界，移动端不直接暴露 DB 异常。
 
-该 extension router 也是 C 线执行 guard 的稳定启动点：只安装 C-owned adapter，
-不改共享 route_registration/services registry。考勤 PRIMARY/CO_TEACHER 的执行+台账+统计、
-工作量正式来源 relation-first 对账、AA_GRADE_ENTRY Todo assignee 同步因此在同一次
-academic-affairs bundle 构建时生效。
+该 extension router 也是 C 线执行 guard 的稳定启动点。考勤 command/read 已由 public
+facade 显式委托最终 Owner，不再通过启动顺序 monkey-patch；这里只把移动端考勤 picker
+绑定到同一 relation-first Teacher Today Authority。工作量和成绩 Todo guard 仍按其既有
+兼容安装合同生效。
 
 老版本客户端仍可能调用 ``/mobile/teacher/academic/grade-tasks/*``。本模块在启动时
 只重绑这些 legacy service 函数到同一 live authority，不删 URL、不复制成绩状态机，
@@ -29,20 +29,21 @@ from app.core.exceptions import AppException, no_permission
 from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.academic_affairs.services import academic_affairs_attendance_teacher_relation_guard as attendance_relation_guard
-from app.modules.academic_affairs.services import academic_affairs_attendance_teacher_relation_read_guard as attendance_relation_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_deadline_service as deadline_service
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as service
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as read_service
 from app.modules.academic_affairs.services import academic_affairs_grade_teacher_relation_guard as teacher_relation_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_todo_teacher_relation_guard as grade_todo_relation_guard
 from app.modules.academic_affairs.services import academic_affairs_workload_teacher_relation_guard as workload_relation_guard
+from app.modules.academic_affairs.services import mobile_academic_affairs_facade as mobile_facade
 from app.modules.academic_affairs.services import mobile_academic_affairs_public_service as mobile_public
 
-# This router can be imported before the PC grade router; install the same formal
-# teacher relation primitives locally so runtime execution never depends on router order.
+# This router can be imported before the PC grade router; install the formal grade/workload
+# adapters locally so runtime execution never depends on router order. Attendance command/read
+# already have explicit public delegates; only the mobile picker needs a compatibility binding.
 teacher_relation_guard.install()
-attendance_relation_guard.install()
-attendance_relation_read_guard.install()
+mobile_public.teacher_attendance_class_options = attendance_relation_guard.teacher_attendance_class_options
+mobile_facade.teacher_attendance_class_options = attendance_relation_guard.teacher_attendance_class_options
 workload_relation_guard.install()
 grade_todo_relation_guard.install()
 
