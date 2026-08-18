@@ -340,6 +340,13 @@ def create_session(user, body) -> dict:
             absent_count=0,
             status="DRAFT",
         )
+        # Keep provenance as an explicit ORM invariant before persistence.  Integrated
+        # replay composes model and service expansions from sibling branches; assigning
+        # these fields after construction prevents a partially-expanded constructor
+        # surface from silently degrading ADMIN_SPECIAL/FORMAL_TEACHING truth to NULL.
+        item.source_type = source_type
+        item.source_reason = special_reason if is_admin_special else None
+        item.source_evidence = source_evidence
         db.add(item)
         db.flush()
         if task:
