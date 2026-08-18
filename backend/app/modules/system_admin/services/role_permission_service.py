@@ -35,6 +35,13 @@ def materialize_custom_role_source(db, tenant_id: int, role_code: str) -> dict:
     ).with_for_update()).first()
     if source is None:
         raise AppException("CUSTOM_ROLE_SOURCE_MISSING", f"自定义角色治理源不存在：{role_code}", http_status=409)
+    if source.role_id is None:
+        raise AppException(
+            "CUSTOM_ROLE_BINDING_PENDING",
+            "自定义角色来源尚未完成稳定 Role 绑定，禁止激活",
+            http_status=409,
+            details={"roleCode": source.role_code},
+        )
 
     role = db.scalars(select(Role).where(
         Role.tenant_id == tenant_id,

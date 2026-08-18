@@ -106,7 +106,7 @@
         </section>
 
         <section id="access-explain" class="card explain-card">
-          <header class="section-head"><div><h3>Access Explain</h3><p class="muted">解释“某个学校成员为什么能/不能管理招聘季”，同时展示 RoleTemplate provenance、drift、升级 impact、真实成员分页与 SecurityAuditLog。IAM 通过不等于业务最终允许；学院/批次/关系仍由 Internship Domain Guard 裁决。</p></div></header>
+          <header class="section-head"><div><h3>Access Explain</h3><p class="muted">解释“某个学校成员为什么能/不能访问具体对象”。IAM 通过不等于业务最终允许；Scope Target 与 Resource Context 会交给 canonical Domain Guard 裁决，缺失上下文时后端继续 fail-closed。</p></div></header>
           <form class="explain-form" @submit.prevent="explainAccess">
             <label>学校成员 User ID<input v-model.trim="explain.userId" required inputmode="numeric" placeholder="例如 1024" /></label>
             <label>模块<input v-model.trim="explain.moduleKey" required /></label>
@@ -115,6 +115,18 @@
                 <option v-for="item in explainPermissionOptions" :key="item.permissionCode" :value="item.permissionCode">{{ item.permissionCode }}</option>
               </select>
             </label>
+            <label>Scope Target 类型
+              <select v-model="explain.scopeTargetType" required>
+                <option value="COLLEGE">学院</option><option value="MAJOR">专业</option><option value="CLASS">班级</option><option value="TERMINAL">终端范围</option>
+              </select>
+            </label>
+            <label>Scope Target ID<input v-model.trim="explain.scopeTargetId" required placeholder="学院/专业/班级 ID" /></label>
+            <label>Resource 类型
+              <select v-model="explain.resourceType" required>
+                <option value="STUDENT">学生</option><option value="INTERN_STUDENT">实习学生</option><option value="GRADUATION_STUDENT">毕设学生</option><option value="USER">用户</option><option value="CLASS">班级</option><option value="MAJOR">专业</option><option value="COLLEGE">学院</option><option value="BUILDING">楼栋</option><option value="DORM_BUILDING">宿舍楼</option>
+              </select>
+            </label>
+            <label>Resource ID<input v-model.trim="explain.resourceId" required placeholder="被解释的具体对象 ID" /></label>
             <AppButton variant="primary" type="submit" :loading="explaining">解释访问</AppButton>
           </form>
 
@@ -122,6 +134,11 @@
             <div class="decision-head"><strong>{{ decisionTitle }}</strong><span class="mono">{{ explainResult.reasonCode || '—' }}</span></div>
             <p>{{ explainResult.message || decisionMessage }}</p>
             <p v-if="explainResult.subject" class="muted">成员：{{ explainResult.subject.realName || explainResult.subject.loginName }} · {{ explainResult.subject.loginName }} · {{ explainResult.subject.status }}</p>
+            <div class="context-evidence">
+              <span>最终裁决：<strong>{{ explainResult.finalDecision || '—' }}</strong></span>
+              <span>Scope：<strong>{{ explainResult.scopeTargetType || '—' }}:{{ explainResult.scopeTargetId || '—' }}</strong></span>
+              <span>Resource：<strong>{{ explainResult.resourceType || '—' }}</strong> · {{ explainResult.resourceIdSupplied ? 'ID 已提供' : 'ID 缺失' }}</span>
+            </div>
             <div v-if="explainResult.catalog" class="enterprise-warning">该权限不是学校可分配权限。企业成员授权必须回 EnterpriseMember / AccessGrant。</div>
             <div v-if="explainResult.roles?.length" class="table-wrap">
               <table class="explain-table">
@@ -181,7 +198,10 @@ export default {
     summary: {}, catalog: {}, templates: [], loading: false, error: '', permissionKeyword: '',
     explaining: false, explainResult: null, templateImpact: null, impactLoading: '',
     roleEvidence: null, evidenceLoading: false,
-    explain: { userId: '', moduleKey: 'internship', permissionCode: 'internship.recruitment.manage' },
+    explain: {
+      userId: '', moduleKey: 'internship', permissionCode: 'internship.recruitment.manage',
+      scopeTargetType: 'COLLEGE', scopeTargetId: '', resourceType: 'STUDENT', resourceId: ''
+    },
     surfaces: [
       { key: 'roles', label: '角色', description: '唯一 Role / RolePermission Authority', path: '/admin/system/roles' },
       { key: 'templates', label: '角色模板', description: 'immutable version、provenance、drift 与 impact', path: '/admin/system/roles?tab=templates' },
@@ -309,6 +329,9 @@ export default {
     async explainAccess() {
       const id = Number(this.explain.userId)
       if (!Number.isInteger(id) || id <= 0) return toast.error('请输入有效的学校成员 User ID')
+      if (!this.explain.scopeTargetType || !this.explain.scopeTargetId || !this.explain.resourceType || !this.explain.resourceId) {
+        return toast.error('Access Explain 必须提供完整的 Scope Target 与 Resource Context')
+      }
       this.explaining = true
       const res = await schoolIamApi.accessExplain(id, this.explain)
       this.explaining = false
@@ -321,5 +344,5 @@ export default {
 </script>
 
 <style scoped>
-.iam-page{display:grid;gap:16px}.card{background:var(--surface,#fff);border:1px solid var(--card-b,#e5e6eb);border-radius:12px;padding:18px}.hero,.section-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.eyebrow{margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--primary,#2563eb)}h3{margin:0 0 6px}.muted{color:var(--text-secondary,#646a73)}.metrics,.surface-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.metrics article{display:grid;gap:4px}.metrics strong{font-size:26px}.surface{display:grid;gap:6px;text-align:left;cursor:pointer}.surface strong{font-size:15px}.surface span{color:#646a73;min-height:38px}.surface small{color:#2563eb}.warning{display:grid;gap:5px;border-left:4px solid #d97706;background:#fffbeb}.search{display:grid;gap:5px;font-size:12px}.search input,.explain-form input,.explain-form select{height:36px;border:1px solid var(--card-b,#e5e6eb);border-radius:8px;padding:0 10px}.recruitment-box{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;margin:14px 0;background:#f5f8ff;border-radius:9px}.permission-chip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:4px 7px;background:white;border:1px solid #dbe7ff;border-radius:7px}.danger-text{color:#b42318}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:780px}.explain-table{min-width:1260px}th,td{padding:10px;border-bottom:1px solid var(--card-b,#e5e6eb);text-align:left;vertical-align:top}td small{display:block;margin-top:3px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}.detail{max-width:420px;overflow-wrap:anywhere}.link{border:0;background:transparent;color:#2563eb;cursor:pointer}.actions{white-space:nowrap}.actions .link{margin-right:6px}.impact-summary,.pager{display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:10px 0}.pager{justify-content:flex-end}.explain-form{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr)) auto;gap:10px;align-items:end;margin:14px 0}.explain-form label{display:grid;gap:5px;font-size:13px}.decision{border-radius:10px;padding:14px;border-left:4px solid #dc2626;background:#fff7f7}.decision.pending{border-left-color:#d97706;background:#fffbeb}.decision.allow{border-left-color:#16a34a;background:#f0fdf4}.decision-head{display:flex;justify-content:space-between;gap:12px}.decision p{margin:7px 0}.enterprise-warning{padding:10px;border-radius:8px;background:#fff2f0;color:#b42318}.error{color:#b42318;background:#fff2f0}@media(max-width:900px){.explain-form{grid-template-columns:1fr}.hero,.section-head{display:grid}}
+.iam-page{display:grid;gap:16px}.card{background:var(--surface,#fff);border:1px solid var(--card-b,#e5e6eb);border-radius:12px;padding:18px}.hero,.section-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.eyebrow{margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--primary,#2563eb)}h3{margin:0 0 6px}.muted{color:var(--text-secondary,#646a73)}.metrics,.surface-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.metrics article{display:grid;gap:4px}.metrics strong{font-size:26px}.surface{display:grid;gap:6px;text-align:left;cursor:pointer}.surface strong{font-size:15px}.surface span{color:#646a73;min-height:38px}.surface small{color:#2563eb}.warning{display:grid;gap:5px;border-left:4px solid #d97706;background:#fffbeb}.search{display:grid;gap:5px;font-size:12px}.search input,.explain-form input,.explain-form select{height:36px;border:1px solid var(--card-b,#e5e6eb);border-radius:8px;padding:0 10px}.recruitment-box{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;margin:14px 0;background:#f5f8ff;border-radius:9px}.permission-chip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:4px 7px;background:white;border:1px solid #dbe7ff;border-radius:7px}.danger-text{color:#b42318}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:780px}.explain-table{min-width:1260px}th,td{padding:10px;border-bottom:1px solid var(--card-b,#e5e6eb);text-align:left;vertical-align:top}td small{display:block;margin-top:3px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}.detail{max-width:420px;overflow-wrap:anywhere}.link{border:0;background:transparent;color:#2563eb;cursor:pointer}.actions{white-space:nowrap}.actions .link{margin-right:6px}.impact-summary,.pager,.context-evidence{display:flex;gap:18px;flex-wrap:wrap;align-items:center;padding:10px 0}.context-evidence{margin:8px 0;border-top:1px solid var(--card-b,#e5e6eb);border-bottom:1px solid var(--card-b,#e5e6eb)}.pager{justify-content:flex-end}.explain-form{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:10px;align-items:end;margin:14px 0}.explain-form label{display:grid;gap:5px;font-size:13px}.decision{border-radius:10px;padding:14px;border-left:4px solid #dc2626;background:#fff7f7}.decision.pending{border-left-color:#d97706;background:#fffbeb}.decision.allow{border-left-color:#16a34a;background:#f0fdf4}.decision-head{display:flex;justify-content:space-between;gap:12px}.decision p{margin:7px 0}.enterprise-warning{padding:10px;border-radius:8px;background:#fff2f0;color:#b42318}.error{color:#b42318;background:#fff2f0}@media(max-width:900px){.explain-form{grid-template-columns:1fr}.hero,.section-head{display:grid}}
 </style>

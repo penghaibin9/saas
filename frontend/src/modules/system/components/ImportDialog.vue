@@ -29,9 +29,14 @@
           <span v-if="file" class="imp__filename">已选择：{{ file.name }}</span>
         </label>
         <div v-if="preview" class="imp__result">
-          <div class="imp__stat">
+          <div class="imp__status" :class="{ 'is-processing': preview.processing }">
+            {{ preview.statusLabel || preview.status || '等待服务端状态' }}
+            <span v-if="preview.pollTimedOut"> · 后台仍在处理，可稍后重新查看任务</span>
+          </div>
+          <div v-if="countsReady" class="imp__stat">
             共 <b>{{ preview.total }}</b> 行 · 校验通过 <b class="is-ok">{{ preview.valid }}</b> · 存在错误 <b class="is-err">{{ preview.invalid }}</b>
           </div>
+          <p v-else class="mp-note">服务端尚未形成预检结果；此阶段不会把缺失计数当作 0，也不能进入确认。</p>
           <table v-if="preview.errors?.length" class="mp-audit">
             <thead><tr><th>行号</th><th>字段</th><th>错误原因</th></tr></thead>
             <tbody>
@@ -48,7 +53,7 @@
           <div class="mp-card__body">
             <div class="mp-kv"><span class="mp-kv__k">任务编号</span><span class="mp-kv__v">#{{ preview && (preview.jobId || preview.id || preview.batchNo) }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">写入范围</span><span class="mp-kv__v">仅服务器预检通过的 {{ preview && preview.valid }} 行；前端不回传 rows</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">安全门禁</span><span class="mp-kv__v">原始文件完成安全扫描后才允许确认</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">安全门禁</span><span class="mp-kv__v">任务必须仍为 VALIDATED 且错误行为 0；提交前父级会重新 GET 校验当前版本</span></div>
             <div class="mp-kv"><span class="mp-kv__k">审计留痕</span><span class="mp-kv__v">原始文件、错误回执与初始凭据回执均进入文件中心和任务历史</span></div>
           </div>
         </div>
@@ -59,10 +64,10 @@
       <AppButton v-if="step > 0" variant="ghost" @click="step--">上一步</AppButton>
       <AppButton v-if="step === 0" variant="primary" @click="step = 1">下一步：上传文件</AppButton>
       <AppButton v-else-if="step === 1" variant="primary" :disabled="!file" :loading="checking" @click="runCheck">
-        {{ preview ? '重新校验' : '开始校验' }}
+        {{ preview ? '重新检查状态' : '开始校验' }}
       </AppButton>
-      <AppButton v-if="step === 1 && preview && preview.invalid === 0" variant="primary" @click="step = 2">下一步：确认导入</AppButton>
-      <AppButton v-if="step === 2" variant="primary" :loading="submitting" @click="confirmImport">确认导入 {{ preview && preview.valid }} 行</AppButton>
+      <AppButton v-if="step === 1 && canProceed" variant="primary" @click="step = 2">下一步：确认导入</AppButton>
+      <AppButton v-if="step === 2" variant="primary" :disabled="!canProceed" :loading="submitting" @click="confirmImport">确认导入 {{ preview && preview.valid }} 行</AppButton>
     </template>
   </AppDrawer>
 </template>
@@ -70,12 +75,12 @@
 <script>
 /**
  * ImportDialog — 真实文件三步导入流。
- * runValidate(File) 返回服务端 ImportJob 预检投影；runImport(jobId) 只使用任务编号，
- * 任务版本由父级 API 客户端重新读取后提交，禁止把预检 rows 当作权威输入。
+ * SCANNING/WORKER_CLAIMED/PARSING 只表示后台处理中，绝不能把缺失 totals 映射成可确认的 0 错误。
  */
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { toast } from '@/utils/toast'
+import { canConfirmIdentityImport } from '@/modules/system/utils/identityImportState'
 
 export default {
   name: 'SystemImportDialog',
@@ -97,15 +102,35 @@ export default {
       checking: false,
       submitting: false,
       downloading: false,
-      downloadingErrors: false
+      downloadingErrors: false,
+      validationController: null
+    }
+  },
+  computed: {
+    canProceed() {
+      return canConfirmIdentityImport(this.preview)
+    },
+    countsReady() {
+      return this.preview?.status === 'VALIDATED' || this.preview?.status === 'VALIDATION_FAILED'
     }
   },
   watch: {
     visible(v) {
-      if (v) Object.assign(this, { step: 0, file: null, preview: null })
+      if (v) {
+        Object.assign(this, { step: 0, file: null, preview: null })
+      } else {
+        this.abortValidation()
+      }
     }
   },
+  beforeUnmount() {
+    this.abortValidation()
+  },
   methods: {
+    abortValidation() {
+      if (this.validationController) this.validationController.abort()
+      this.validationController = null
+    },
     async downloadTemplate() {
       this.downloading = true
       try {
@@ -117,6 +142,7 @@ export default {
       }
     },
     selectFile(event) {
+      this.abortValidation()
       const selected = event.target.files && event.target.files[0]
       this.preview = null
       if (!selected) {
@@ -144,16 +170,25 @@ export default {
       }
     },
     async runCheck() {
+      this.abortValidation()
+      this.validationController = new AbortController()
       this.checking = true
       try {
-        const res = await this.runValidate(this.file)
+        const res = await this.runValidate(this.file, { signal: this.validationController.signal })
         if (res.code === 0) this.preview = res.data
         else toast.error(res.message)
+      } catch (error) {
+        if (error?.name !== 'AbortError') toast.error(error?.message || '校验状态检查失败')
       } finally {
         this.checking = false
+        this.validationController = null
       }
     },
     async confirmImport() {
+      if (!this.canProceed) {
+        toast.error('服务端预检尚未满足确认条件，请重新检查任务状态')
+        return
+      }
       this.submitting = true
       try {
         const jobId = this.preview && (this.preview.jobId || this.preview.id || this.preview.batchNo)
@@ -186,6 +221,8 @@ export default {
 .imp__upload { display: flex; flex-direction: column; gap: var(--space-1); }
 .imp__file-input { height: 36px; border: 1px dashed var(--border-base); border-radius: var(--radius-base); padding: 0 var(--space-3); font: inherit; font-size: var(--font-size-sm); background: var(--bg-section-blue); outline: none; }
 .imp__result { display: flex; flex-direction: column; gap: var(--space-2); }
+.imp__status { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); }
+.imp__status.is-processing { color: var(--primary-600); }
 .imp__stat { font-size: var(--font-size-sm); color: var(--text-secondary); }
 .imp__stat .is-ok { color: var(--success-600); }
 .imp__stat .is-err { color: var(--danger-600); }

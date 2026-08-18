@@ -12,6 +12,7 @@ _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
     "PLATFORM_ACCESS_REVIEW_CHANGE",
     "ROLE_TEMPLATE_PUBLISH",
     "PLATFORM_PRODUCT_IAM_PUBLISH",
+    "CUSTOM_ROLE_BINDING_RECONCILE",
 })
 
 from app.services.audit_log_legacy import *  # noqa: F401,F403,E402

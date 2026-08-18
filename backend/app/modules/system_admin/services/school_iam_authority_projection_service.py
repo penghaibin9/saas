@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 import hashlib
 import json
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 
 from app.core.context import current_tenant_id
 from app.core.effective_access import explain_tenant_access
@@ -586,14 +586,20 @@ def workspace_summary() -> dict:
         custom_source_count = int(db.scalar(select(func.count(CustomRoleSource.id)).where(
             CustomRoleSource.tenant_id == tid, CustomRoleSource.is_deleted.is_(False)
         )) or 0)
+        unbound_source_count = int(db.scalar(select(func.count(CustomRoleSource.id)).where(
+            CustomRoleSource.tenant_id == tid,
+            CustomRoleSource.role_id.is_(None),
+            CustomRoleSource.is_deleted.is_(False),
+        )) or 0)
         missing_provenance_count = int(db.scalar(select(func.count(Role.id)).where(
             Role.tenant_id == tid,
             Role.role_type == "CUSTOM",
             Role.is_deleted.is_(False),
-            ~Role.id.in_(select(CustomRoleSource.role_id).where(
-                CustomRoleSource.tenant_id == tid,
+            ~exists().where(
+                CustomRoleSource.tenant_id == Role.tenant_id,
+                CustomRoleSource.role_id == Role.id,
                 CustomRoleSource.is_deleted.is_(False),
-            )),
+            ),
         )) or 0)
         return {
             "tenantId": str(tid),
@@ -601,6 +607,7 @@ def workspace_summary() -> dict:
             "memberCount": member_count,
             "customRoleSourceCount": custom_source_count,
             "customRoleMissingProvenanceCount": missing_provenance_count,
+            "unboundCustomRoleSourceCount": unbound_source_count,
             "systemRoleAuthority": "PUBLISHED_TENANT_ROLE_TEMPLATE",
             "templatePermissionAuthority": "ROLE_TEMPLATE_PERMISSION_NORMALIZED",
             "surfaces": [
