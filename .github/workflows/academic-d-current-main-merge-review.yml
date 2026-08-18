@@ -36,6 +36,22 @@ jobs:
     name: Current main + D focused merge contract
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      FAST_TEST_SCHEMA: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=18
 
     steps:
       - name: Checkout GitHub synthetic merge commit
@@ -96,7 +112,6 @@ jobs:
           APP_ENV: test
           DEPLOYMENT_MODE: development
           DEBUG: "false"
-          DB_ENABLED: "false"
           FIELD_ENCRYPTION_KEY: academic-d-current-main-merge-review-field-key
           JWT_SECRET: academic-d-current-main-merge-review-jwt-secret
         run: |
