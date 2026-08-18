@@ -11,6 +11,7 @@ on:
       - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py'
@@ -95,6 +96,8 @@ jobs:
             "SHOW COLUMNS FROM t_aa_grade_task LIKE 'deadline_updated_at'" | grep -q deadline_updated_at
           mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse \
             "SHOW INDEX FROM t_aa_grade_task WHERE Key_name='ix_aa_grade_task_deadline'" | grep -q ix_aa_grade_task_deadline
+          mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse \
+            "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE() AND TRIGGER_NAME='trg_aa_grade_task_deadline_submit_guard'" | grep -q trg_aa_grade_task_deadline_submit_guard
 
       - name: Compile affected production modules
         working-directory: backend
@@ -104,6 +107,7 @@ jobs:
             app/modules/academic_affairs/routers/exam_incident_closure_router.py \
             app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py \
             app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py \
+            app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py \
             app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py \
             app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py \
             app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py \
@@ -122,6 +126,9 @@ jobs:
           root = Path('.')
           grade_router = (root / 'app/modules/academic_affairs/routers/grade_core_router.py').read_text(encoding='utf-8')
           deadline = (root / 'app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py').read_text(encoding='utf-8')
+          task_read = (root / 'app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py').read_text(encoding='utf-8')
+          teacher_authority = (root / 'app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py').read_text(encoding='utf-8')
+          migration = (root / 'alembic/versions/20260818_aa_grade_task_deadline.py').read_text(encoding='utf-8')
           reminder = (root / 'app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py').read_text(encoding='utf-8')
           event_guard = (root / 'app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py').read_text(encoding='utf-8')
           grade_xlsx = (root / 'app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py').read_text(encoding='utf-8')
@@ -131,8 +138,10 @@ jobs:
           assert 'grade_deadline_svc.teacher_submit_task' in grade_router
           assert 'read_grade_upload_path' in grade_router
           assert 'read_safe_upload(file)' not in grade_router
-          assert 'GRADE_DEADLINE_EXPIRED' in deadline
-          assert '_check_college_scope' in deadline
+          assert 'GRADE_DEADLINE_EXPIRED' in deadline and '_check_college_scope' in deadline and 'DBAPIError' in deadline
+          assert 'CREATE TRIGGER' in migration and 'UTC_TIMESTAMP()' in migration and 'GRADE_DEADLINE_EXPIRED' in migration
+          assert 'deadline_projection_map' in task_read and '_deadline.deadline_projection(db' not in task_read
+          assert 'class_authority_weeks' in task_read and 'class_authority_weeks' in teacher_authority
           assert 'GRADE.ENTRY_REMINDED' in reminder and 'messagePushReady": True' in reminder
           assert 'GRADE.ENTRY_REMINDED' in event_guard
           assert 'validate_xlsx_path' in grade_xlsx and 'zipfile' not in grade_xlsx
