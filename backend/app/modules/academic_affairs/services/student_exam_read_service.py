@@ -1,9 +1,12 @@
 """学生考试自视图与缓考申请安全适配层。
 
-目的：在不重写现有考务编排/审批服务的前提下，统一修复三类生产风险：
+目的：在不重写现有考务编排/审批服务的前提下，统一修复生产风险：
 1. 以学校本地时区判断是否开考，禁止 UTC 与本地文本直接比较；
-2. 学生端历史考试包含正式 FINISHED 状态；
-3. 缓考提交必须再次证明 examCourseId 属于本人考试名单，防止猜 ID 代他人/跨课程申请。
+2. 学生端只消费已越过发布边界的正式考试事实：有效座位 -> ACTIVE room ->
+   CONFIRMED course -> PUBLISHED/FINISHED/ARCHIVED batch + published_at；
+3. 本人考试读取使用单条 join 查询，禁止 seat 列表后逐条 db.get(course/batch/room)；
+4. 缓考提交再次证明 examCourseId 属于本人当前正式考试座位，防止猜 ID、失效考场或
+   非正式课程绕过；进行中申请和审批状态机继续复用考务公开契约。
 
 缓考审批状态机、审计格式继续复用考务公开契约，避免形成第二套规则；本模块不得直接读取
 legacy exam service 的下划线私有状态或审计/DTO 辅助函数。
@@ -11,7 +14,6 @@ legacy exam service 的下划线私有状态或审计/DTO 辅助函数。
 from __future__ import annotations
 
 from datetime import datetime
-from types import SimpleNamespace
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
@@ -70,33 +72,52 @@ def _student(db, user):
     return student
 
 
-def _seat_rows(db, student_id: int):
-    from app.models import AaExamRoomStudent
-    return db.scalars(select(AaExamRoomStudent).where(
-        AaExamRoomStudent.tenant_id == _tid(),
-        AaExamRoomStudent.student_id == int(student_id),
-        AaExamRoomStudent.is_deleted.is_(False),
-    ).order_by(AaExamRoomStudent.id.desc())).all()
+def _formal_exam_rows(db, student_id: int, *, batch_statuses=None):
+    """本人正式考试事实，一条查询跨 seat/room/course/batch，不消费编排草稿。"""
+    from app.models import AaExamBatch, AaExamCourse, AaExamRoom, AaExamRoomStudent
+
+    statuses = sorted(batch_statuses or _VISIBLE_BATCH_STATUSES)
+    return db.execute(
+        select(AaExamRoomStudent, AaExamRoom, AaExamCourse, AaExamBatch)
+        .join(
+            AaExamRoom,
+            (AaExamRoom.id == AaExamRoomStudent.exam_room_id)
+            & (AaExamRoom.tenant_id == AaExamRoomStudent.tenant_id),
+        )
+        .join(
+            AaExamCourse,
+            (AaExamCourse.id == AaExamRoomStudent.exam_course_id)
+            & (AaExamCourse.id == AaExamRoom.exam_course_id)
+            & (AaExamCourse.tenant_id == AaExamRoomStudent.tenant_id),
+        )
+        .join(
+            AaExamBatch,
+            (AaExamBatch.id == AaExamCourse.batch_id)
+            & (AaExamBatch.tenant_id == AaExamCourse.tenant_id),
+        )
+        .where(
+            AaExamRoomStudent.tenant_id == _tid(),
+            AaExamRoomStudent.student_id == int(student_id),
+            AaExamRoomStudent.is_deleted.is_(False),
+            AaExamRoom.status == "ACTIVE",
+            AaExamRoom.is_deleted.is_(False),
+            AaExamCourse.status == "CONFIRMED",
+            AaExamCourse.is_deleted.is_(False),
+            AaExamBatch.status.in_(statuses),
+            AaExamBatch.published_at.is_not(None),
+            AaExamBatch.is_deleted.is_(False),
+        )
+        .order_by(AaExamCourse.exam_date, AaExamCourse.start_time, AaExamRoom.room_seq, AaExamRoomStudent.id)
+    ).all()
 
 
 def exam_my(user) -> dict:
-    """本人已发布/已结束/已归档考试安排，包含座位与本地开考状态。"""
-    from app.models import AaExamBatch, AaExamCourse, AaExamRoom
-
+    """本人已发布/已结束/已归档正式考试安排，包含座位与本地开考状态。"""
     with session() as db:
         student = _student(db, user)
         zone, zone_name = _tenant_timezone(db)
         items = []
-        for seat in _seat_rows(db, student.id):
-            course = db.get(AaExamCourse, int(seat.exam_course_id))
-            if not course or course.is_deleted or course.tenant_id != _tid():
-                continue
-            batch = db.get(AaExamBatch, int(course.batch_id)) if course.batch_id else None
-            if not batch or batch.is_deleted or batch.tenant_id != _tid():
-                continue
-            if str(batch.status or "").upper() not in _VISIBLE_BATCH_STATUSES:
-                continue
-            room = db.get(AaExamRoom, int(seat.exam_room_id)) if seat.exam_room_id else None
+        for seat, room, course, batch in _formal_exam_rows(db, student.id):
             items.append({
                 "examCourseId": str(course.id),
                 "courseName": course.course_name or "",
@@ -104,17 +125,17 @@ def exam_my(user) -> dict:
                 "examDate": course.exam_date or "",
                 "startTime": course.start_time or "",
                 "endTime": course.end_time or "",
-                "classroom": (room.classroom_text if room else "") or "",
+                "classroom": room.classroom_text or "",
                 "seatNo": seat.seat_no,
                 "admissionNo": seat.admission_no or "",
                 "batchName": batch.batch_name or "",
                 "batchStatus": batch.status or "",
+                "publishedAt": batch.published_at.isoformat() if batch.published_at else None,
                 "status": course.status or "",
                 "started": exam_started(course, zone=zone),
                 "timezone": zone_name,
+                "source": "FORMAL_EXAM_SEAT",
             })
-        items.sort(key=lambda x: (x.get("examDate") or "9999-99-99", x.get("startTime") or "99:99",
-                                  x.get("courseName") or ""))
         return {
             "hasData": bool(items), "items": items, "total": len(items), "timezone": zone_name,
             "note": "" if items else "暂无已发布的个人考试安排",
@@ -122,8 +143,8 @@ def exam_my(user) -> dict:
 
 
 def deferrable_courses(user) -> dict:
-    """本人名单内、尚未开考的课程；进行中申请保留用于展示但不暴露写动作。"""
-    from app.models import AaDeferredExam, AaExamBatch, AaExamCourse
+    """本人正式座位内、尚未开考的课程；进行中申请保留用于展示但不暴露写动作。"""
+    from app.models import AaDeferredExam
 
     with session() as db:
         student = _student(db, user)
@@ -135,17 +156,15 @@ def deferrable_courses(user) -> dict:
         )).all()}
         seen = set()
         items = []
-        for seat in _seat_rows(db, student.id):
-            cid = int(seat.exam_course_id)
+        for _seat, _room, course, _batch in _formal_exam_rows(
+            db,
+            student.id,
+            batch_statuses={"PUBLISHED"},
+        ):
+            cid = int(course.id)
             if cid in seen:
                 continue
             seen.add(cid)
-            course = db.get(AaExamCourse, cid)
-            if not course or course.is_deleted or course.tenant_id != _tid() or course.status == "REMOVED":
-                continue
-            batch = db.get(AaExamBatch, int(course.batch_id)) if course.batch_id else None
-            if not batch or batch.is_deleted or batch.tenant_id != _tid() or batch.status != "PUBLISHED":
-                continue
 
             # Read-model boundary is fail-closed: an already-started exam is not an option at all.
             # Malformed/missing local datetime is also omitted because the client must never receive
@@ -160,19 +179,23 @@ def deferrable_courses(user) -> dict:
                 "examDate": course.exam_date or "", "startTime": course.start_time or "",
                 "endTime": course.end_time or "", "hasActiveDefer": has_active,
                 "started": False, "canApply": not has_active,
+                "source": "FORMAL_EXAM_SEAT",
             })
-        items.sort(key=lambda x: (x.get("examDate") or "9999-99-99", x.get("startTime") or "99:99"))
         return {"items": items, "total": len(items), "timezone": zone_name}
 
 
 def defer_apply(user, body: dict) -> dict:
-    """本人申请缓考：名单归属、未开考、无进行中申请、理由完整。"""
-    from app.models import AaDeferredExam, AaExamBatch, AaExamCourse, AaExamRoomStudent
+    """本人申请缓考：正式座位归属、未开考、无进行中申请、理由完整。"""
+    from app.models import AaDeferredExam, AaExamBatch, AaExamCourse, AaExamRoom, AaExamRoomStudent
 
     data = body or {}
     raw_cid = data.get("examCourseId")
     if not raw_cid:
         raise AppException("VALIDATION_ERROR", "请选择本人考试课程")
+    try:
+        course_id = int(raw_cid)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "examCourseId 不合法") from exc
     reason = str(data.get("reason") or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "缓考原因必填且不少于5个字")
@@ -182,21 +205,42 @@ def defer_apply(user, body: dict) -> dict:
 
     with session() as db:
         student = _student(db, user)
-        course = db.get(AaExamCourse, int(raw_cid))
-        if not course or course.is_deleted or course.tenant_id != _tid() or course.status == "REMOVED":
-            raise not_found("考试课程不存在")
-        seat = db.scalars(select(AaExamRoomStudent).where(
-            AaExamRoomStudent.tenant_id == _tid(),
-            AaExamRoomStudent.student_id == student.id,
-            AaExamRoomStudent.exam_course_id == course.id,
-            AaExamRoomStudent.is_deleted.is_(False),
-        )).first()
-        if not seat:
-            raise AppException("NO_DATA_SCOPE", "该考试课程不在您的考试名单内", http_status=403)
-        batch = db.get(AaExamBatch, int(course.batch_id)) if course.batch_id else None
-        if not batch or batch.is_deleted or batch.tenant_id != _tid() or batch.status != "PUBLISHED":
-            raise AppException("DATA_CONFLICT", "仅已发布且尚未开考的考试可以申请缓考", http_status=409)
+        # Lock the student's formal seat so concurrent duplicate submissions serialize
+        # before the active-defer check.  The same command transaction then owns audit/write.
+        formal = db.execute(
+            select(AaExamRoomStudent, AaExamRoom, AaExamCourse, AaExamBatch)
+            .join(AaExamRoom, AaExamRoom.id == AaExamRoomStudent.exam_room_id)
+            .join(AaExamCourse, AaExamCourse.id == AaExamRoomStudent.exam_course_id)
+            .join(AaExamBatch, AaExamBatch.id == AaExamCourse.batch_id)
+            .where(
+                AaExamRoomStudent.tenant_id == _tid(),
+                AaExamRoomStudent.student_id == student.id,
+                AaExamRoomStudent.exam_course_id == course_id,
+                AaExamRoomStudent.is_deleted.is_(False),
+                AaExamRoom.tenant_id == _tid(),
+                AaExamRoom.status == "ACTIVE",
+                AaExamRoom.is_deleted.is_(False),
+                AaExamCourse.tenant_id == _tid(),
+                AaExamCourse.status == "CONFIRMED",
+                AaExamCourse.is_deleted.is_(False),
+                AaExamBatch.tenant_id == _tid(),
+                AaExamBatch.status == "PUBLISHED",
+                AaExamBatch.published_at.is_not(None),
+                AaExamBatch.is_deleted.is_(False),
+            )
+            .with_for_update()
+        ).first()
+        if not formal:
+            raise AppException(
+                "NO_DATA_SCOPE",
+                "该考试课程不是您当前已发布的正式考试安排",
+                http_status=403,
+            )
+        _seat, _room, course, _batch = formal
         zone, _ = _tenant_timezone(db)
+        exam_at = _local_exam_datetime(course, zone)
+        if exam_at is None:
+            raise AppException("DATA_CONFLICT", "考试时间不完整，不可申请缓考", http_status=409)
         if exam_started(course, zone=zone):
             raise AppException("DATA_CONFLICT", "考试已开始，不可申请缓考", http_status=409)
         active = db.scalars(select(AaDeferredExam).where(
