@@ -87,6 +87,8 @@ def extend_deadline(task_id: int, user, deadline_at, reason: str) -> dict:
         }:
             raise AppException("NO_DATA_SCOPE", "仅教务/学院管理员可设置或延长成绩截止时间", http_status=403)
         _core._check_course_scope(task, user)
+        if role == "COLLEGE_ADMIN":
+            _core._check_college_scope(db, task, user)
         if str(task.status or "").upper() in _FINAL_STATES:
             raise AppException("DATA_CONFLICT", "成绩已发布/归档，禁止修改截止时间", http_status=409)
 
@@ -133,7 +135,7 @@ def extend_deadline(task_id: int, user, deadline_at, reason: str) -> dict:
 def require_submit_within_deadline(task_id: int, user) -> None:
     """Fail closed after a real deadline; tasks without a configured deadline remain compatible."""
     with _core.session() as db:
-        task = _grade._load_task(db, int(task_id), lock=True)
+        _grade._load_task(db, int(task_id), lock=True)
         row = _deadline_row(db, int(task_id), lock=True)
         deadline = row.get("deadline_at") if row else None
         if deadline and _now() > deadline:
