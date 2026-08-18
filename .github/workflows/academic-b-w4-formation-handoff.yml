@@ -24,12 +24,14 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  A_FINAL_GOLD_SHA: 71de7b4a0ac52216df9e8230f8b6ec97a26099be
+  A_FORMATION_POLICY_BLOB: 746adabc57ea9ba21d4e49bd503a87272b3c8cbd
   EXPECTED_INT_SHA: 35d4e485bb96f17ceb0697ec75b506947a89b61f
   SEALED_PROVENANCE_SHA: 6bb48f1c055d8fd16fe9563ba4ea64c36ac15f9a
 
 jobs:
   formation-handoff:
-    name: B SelectionCourse + sealed INT formation runtime
+    name: B SelectionCourse + A Final Gold policy + sealed INT provenance
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     services:
@@ -61,14 +63,27 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Pin exact B head and sealed INT provenance runtime
+      - name: Pin exact B head, A Final Gold policy, and sealed INT provenance runtime
         run: |
           set -euo pipefail
+          POLICY_PATH=backend/app/modules/academic_affairs/services/academic_affairs_task_formation_policy.py
+
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch origin "$A_FINAL_GOLD_SHA" --no-tags
           git fetch origin "$EXPECTED_INT_SHA" --no-tags
+
+          git cat-file -e "${A_FINAL_GOLD_SHA}^{commit}"
           git cat-file -e "${EXPECTED_INT_SHA}^{commit}"
           git cat-file -e "${SEALED_PROVENANCE_SHA}^{commit}"
           git merge-base --is-ancestor "$SEALED_PROVENANCE_SHA" "$EXPECTED_INT_SHA"
+
+          A_POLICY_BLOB="$(git rev-parse "${A_FINAL_GOLD_SHA}:${POLICY_PATH}")"
+          INT_POLICY_BLOB="$(git rev-parse "${EXPECTED_INT_SHA}:${POLICY_PATH}")"
+          test "$A_POLICY_BLOB" = "$A_FORMATION_POLICY_BLOB"
+          test "$INT_POLICY_BLOB" = "$A_FORMATION_POLICY_BLOB"
+          test "$A_POLICY_BLOB" = "$INT_POLICY_BLOB"
+          git diff --quiet "$A_FINAL_GOLD_SHA" "$EXPECTED_INT_SHA" -- "$POLICY_PATH"
+          git show "${A_FINAL_GOLD_SHA}:${POLICY_PATH}" | grep -F 'def selection_eligible'
 
       - name: Ephemeral merge sealed INT into B runner only
         run: |
