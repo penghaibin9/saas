@@ -7,6 +7,8 @@ on:
     paths:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py'
       - 'backend/scripts/e2e_seed_academic_b_w4_formation.py'
+      - 'frontend/src/utils/presentationSafety.js'
+      - 'frontend/tests/ui-presentation-safety.test.mjs'
       - 'e2e/specs/academic-b-selection-w4-formation.spec.mjs'
       - '.github/workflows/academic-b-w4-formation-real-click.yml'
       - '.github/workflows/academic-b-w4-formation-handoff.yml'
@@ -186,11 +188,12 @@ jobs:
           python scripts/e2e_reset_graduation_passwords.py
           python scripts/e2e_verify_graduation_accounts.py
 
-      - name: Install, production-build and start staff PC
+      - name: Install, verify presentation contract, production-build and start staff PC
         run: |
           set -euo pipefail
           cd frontend
           npm ci --no-audit --no-fund
+          node --test tests/ui-presentation-safety.test.mjs
           npm run build
           nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
           echo $! > ../e2e/runtime-logs/frontend.pid
