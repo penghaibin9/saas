@@ -1,20 +1,22 @@
 name: Academic B W4 Formation Real Click
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [agent/academic-b-schedule-selection]
+  pull_request:
+    branches:
+      - integration/academic-school-gold
     paths:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py'
       - 'backend/scripts/e2e_seed_academic_b_w4_formation.py'
       - 'e2e/specs/academic-b-selection-w4-formation.spec.mjs'
       - '.github/workflows/academic-b-w4-formation-real-click.yml'
+      - '.github/workflows/academic-b-w4-formation-handoff.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: academic-b-w4-formation-browser-${{ github.ref }}
+  group: academic-b-w4-formation-browser-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -75,15 +77,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Pin exact B head and approved A/INT integration base
         run: |
           set -euo pipefail
           POLICY_PATH=backend/app/modules/academic_affairs/services/academic_affairs_task_formation_policy.py
+          B_HEAD_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
 
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$B_HEAD_SHA"
+          if test "${{ github.event_name }}" = "pull_request"; then
+            test "${{ github.event.pull_request.base.ref }}" = "integration/academic-school-gold"
+            test "${{ github.event.pull_request.base.sha }}" = "$EXPECTED_INTEGRATION_BASE_SHA"
+          fi
+
           git fetch origin integration/academic-school-gold --no-tags
           test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_INTEGRATION_BASE_SHA"
           git fetch origin "$A_FINAL_GOLD_SHA" --no-tags
@@ -196,7 +204,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: academic-b-w4-formation-evidence-${{ github.sha }}
+          name: academic-b-w4-formation-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           path: e2e/test-results/
           if-no-files-found: warn
           retention-days: 14
@@ -205,7 +213,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: academic-b-w4-formation-logs-${{ github.sha }}
+          name: academic-b-w4-formation-logs-${{ github.event.pull_request.head.sha || github.sha }}
           path: e2e/runtime-logs/
           if-no-files-found: warn
           retention-days: 14
