@@ -6,7 +6,8 @@ POST /grade-tasks 继续由 grade_task_create_v2_router 持有稳定课程身份
 C-W5 教师侧名单/回显/录入/导入/提交统一经 grade_execution；正式教学班已投影时教师权限只认
 TeachingClassTeacher + 有效周次，尚未投影教学班的旧数据才允许 AaTeachingTask 迁移回退。
 C-C3 只安装读侧 consumer guard，把遗留学业 API / 统计总览 / 挂科预警拉回同一 EffectiveGrade ACTIVE-only 策略。
-C-W4 复查运营台账只替换为有界 SQL 分页；成熟复查裁决命令保持唯一 Authority。
+C-W4 复查运营台账只替换为有界 SQL 分页；成熟复查裁决命令保持唯一 Authority；人工催录复用
+canonical AA_GRADE_ENTRY UnifiedTodo，不新造第二套任务系统。
 遗留 /academic/grades 直接写 projection 的兼容入口保留 URL 但 fail-closed，禁止绕过正式发布/更正链。
 """
 from __future__ import annotations
@@ -16,6 +17,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Path, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -24,6 +26,7 @@ from app.modules.academic_affairs.services import academic_affairs_effective_gra
 from app.modules.academic_affairs.services import academic_affairs_grade_change_live_authority as grade_change_live_authority
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as grade_exec_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_recheck_read_guard as grade_recheck_read_guard
+from app.modules.academic_affairs.services import academic_affairs_grade_reminder_service as grade_reminder_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as grade_task_read_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_teacher_relation_guard as grade_teacher_relation_guard
 from app.modules.academic_affairs.services import academic_affairs_legacy_grade_write_guard as legacy_grade_write_guard
@@ -52,6 +55,10 @@ grade_svc = legacy.grade_svc
 _XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
+class GradeRemindBody(BaseModel):
+    reason: str = Field(..., min_length=2, max_length=200)
+
+
 @router.get("/grade-tasks", summary="成绩录入任务列表（按状态筛选，供审核/发布工作台队列）")
 def grade_tasks(
     status: Optional[str] = None,
@@ -61,6 +68,18 @@ def grade_tasks(
 ):
     items, total = grade_task_read_svc.list_tasks(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/grade-tasks/{taskId}/remind", summary="成绩催录（刷新当前正式任课教师待录待办）")
+def grade_remind(
+    body: GradeRemindBody,
+    taskId: int = Path(...),
+    user=Depends(require_permission("academicAffairs.grade.view")),
+):
+    return success(
+        grade_reminder_svc.remind_grade_entry(taskId, user, body.reason),
+        message="已催录",
+    )
 
 
 @router.get("/grade-tasks/{taskId}/roster", summary="教学班学生名单（供录入圈定）")
