@@ -14,13 +14,13 @@ from __future__ import annotations
 
 from . import academic_affairs_grade_core_service as _core
 from . import academic_affairs_grade_correction_command as _correction
+from . import academic_affairs_grade_execution_service as _execution
 from . import academic_affairs_grade_service as _public
-from .academic_affairs_grade_execution_service import _canonical_delegate
 
 
 def change_request(task_id: int, record_id: int, user, body) -> dict:
     """Run the canonical append-only correction request under live teacher authority."""
-    with _canonical_delegate(task_id, user, lock_owner=True) as delegated_user:
+    with _execution._canonical_delegate(task_id, user, lock_owner=True) as delegated_user:
         return _correction.change_request(task_id, record_id, delegated_user, body)
 
 
@@ -28,9 +28,16 @@ change_request._grade_live_teacher_authority = True
 
 
 def install() -> None:
-    """Idempotently bind only the teacher correction-request entrypoint."""
+    """Idempotently bind every public teacher correction entry to one wrapper.
+
+    ``academic_affairs_grade_execution_service`` originally exposed a convenience
+    wrapper of its own. Once the public grade service is rebound here, leaving that
+    older wrapper in place would nest two independent live-owner row-lock sessions.
+    Rebinding the execution convenience name to this same function keeps exactly one
+    TeachingTask lock and one canonical correction command invocation.
+    """
     for module in (_core, _public):
         current = getattr(module, "change_request", None)
-        if getattr(current, "_grade_live_teacher_authority", False):
-            continue
-        setattr(module, "change_request", change_request)
+        if not getattr(current, "_grade_live_teacher_authority", False):
+            setattr(module, "change_request", change_request)
+    _execution.teacher_change_request = change_request
