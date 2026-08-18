@@ -5,6 +5,10 @@
 Grade Execution live-owner authority。正式教学班存在时只认 TeachingClassTeacher + 有效周次；
 尚未投影教学班的历史数据才允许 AaTeachingTask 迁移回退。
 
+该 extension router 也是 C 线移动执行 guard 的稳定启动点：它只安装 C-owned adapter，
+不改共享 route_registration/services registry。考勤的 PRIMARY/CO_TEACHER + 有效周次 guard
+因此在同一次 academic-affairs bundle 构建时生效。
+
 老版本客户端仍可能调用 ``/mobile/teacher/academic/grade-tasks/*``。本模块在启动时
 只重绑这些 legacy service 函数到同一 live authority，不删 URL、不复制成绩状态机，
 从而避免兼容入口变成旧教师绕过正式任课关系的后门。
@@ -20,6 +24,7 @@ from pydantic import BaseModel, Field
 from app.core.exceptions import AppException, no_permission
 from app.core.permissions import require_permission
 from app.core.response import success
+from app.modules.academic_affairs.services import academic_affairs_attendance_teacher_relation_guard as attendance_relation_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as service
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as read_service
 from app.modules.academic_affairs.services import academic_affairs_grade_teacher_relation_guard as teacher_relation_guard
@@ -28,6 +33,7 @@ from app.modules.academic_affairs.services import mobile_academic_affairs_public
 # This router can be imported before the PC grade router; install the same formal
 # teacher relation primitive locally so mobile execution never depends on router order.
 teacher_relation_guard.install()
+attendance_relation_guard.install()
 
 router = APIRouter(prefix="/mobile/teacher/academic", tags=["教师移动端-成绩录入"])
 
