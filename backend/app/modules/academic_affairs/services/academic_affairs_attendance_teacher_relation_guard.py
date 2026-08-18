@@ -138,6 +138,52 @@ def _guard_no_duplicate_occurrence(db, model, *, class_id: int, session_date: st
         )
 
 
+def _stable_occurrence_identity(occurrence: dict | None) -> str | None:
+    """Derive one stable identity from the frozen formal-schedule facts C already owns."""
+    if not occurrence:
+        return None
+    explicit = str(occurrence.get("occurrenceIdentity") or "").strip()
+    if explicit:
+        return explicit
+    batch_id = str(occurrence.get("activeBatchId") or "").strip()
+    item_id = str(occurrence.get("scheduleItemId") or "").strip()
+    session_date = str(occurrence.get("sessionDate") or "").strip()
+    slot_no = occurrence.get("slotNo")
+    if not batch_id or not item_id or not session_date or slot_no in (None, ""):
+        raise AppException(
+            "DATA_CONFLICT",
+            "正式课次缺少稳定来源身份，不能创建考勤",
+            details={"occurrence": dict(occurrence)},
+            http_status=409,
+        )
+    return f"{batch_id}:{item_id}:{session_date}:{int(slot_no)}"
+
+
+def _integrated_provenance_kwargs(
+    model,
+    *,
+    task,
+    occurrence_identity,
+    source_type,
+    source_reason,
+    source_evidence,
+) -> dict:
+    """Persist INT-owned provenance only when the integrated ORM exposes those columns.
+
+    C standalone intentionally owns no attendance provenance migration.  Keeping this
+    capability-aware makes the same command safe both before and after the INT schema is
+    present, while never dropping the provenance from audit/output evidence.
+    """
+    values = dict(
+        teaching_task_id=int(task.id) if task else None,
+        occurrence_identity=occurrence_identity,
+        source_type=source_type,
+        source_reason=source_reason,
+        source_evidence=source_evidence,
+    )
+    return {name: value for name, value in values.items() if hasattr(model, name)}
+
+
 def create_session(user, body) -> dict:
     """Create one formal attendance occurrence under effective-week teacher authority."""
     from app.models import AaAttendanceSession, AaTeachingTask, AaTeachingTaskBatch, AaTerm, StudentProfile
@@ -267,6 +313,9 @@ def create_session(user, body) -> dict:
                 slot_no=int(occurrence["slotNo"]),
                 occurrence=occurrence,
             )
+            if not occurrence.get("occurrenceIdentity"):
+                occurrence = dict(occurrence)
+                occurrence["occurrenceIdentity"] = _stable_occurrence_identity(occurrence)
 
         source_type = _ADMIN_SPECIAL if is_admin_special else "FORMAL_TEACHING"
         occurrence_identity = occurrence["occurrenceIdentity"] if occurrence else None
@@ -284,11 +333,6 @@ def create_session(user, body) -> dict:
         item = AaAttendanceSession(
             tenant_id=public._tid(),
             class_id=class_id,
-            teaching_task_id=int(task.id) if task else None,
-            occurrence_identity=occurrence_identity,
-            source_type=source_type,
-            source_reason=special_reason if is_admin_special else None,
-            source_evidence=source_evidence,
             course_name=(task.course_name if task else str(body.get("courseName") or "").strip() or None),
             term_code=f"{current_term.year_code}-{current_term.term_no}",
             teacher_key=teacher_key,
@@ -304,6 +348,14 @@ def create_session(user, body) -> dict:
             present_count=len(roster),
             absent_count=0,
             status="DRAFT",
+            **_integrated_provenance_kwargs(
+                AaAttendanceSession,
+                task=task,
+                occurrence_identity=occurrence_identity,
+                source_type=source_type,
+                source_reason=special_reason if is_admin_special else None,
+                source_evidence=source_evidence,
+            ),
         )
         db.add(item)
         db.flush()
