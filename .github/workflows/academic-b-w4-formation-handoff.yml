@@ -1,9 +1,9 @@
 name: Academic B W4 Formation Handoff
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/academic-b-schedule-selection
+      - integration/academic-school-gold
     paths:
       - .github/workflows/academic-b-w4-formation-handoff.yml
       - .github/workflows/academic-b-w4-formation-real-click.yml
@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: academic-b-w4-formation-handoff
+  group: academic-b-w4-formation-handoff-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -60,15 +60,21 @@ jobs:
       - name: Checkout exact B candidate
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Pin exact B head and approved A/INT integration base
         run: |
           set -euo pipefail
           POLICY_PATH=backend/app/modules/academic_affairs/services/academic_affairs_task_formation_policy.py
+          B_HEAD_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
 
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$B_HEAD_SHA"
+          if test "${{ github.event_name }}" = "pull_request"; then
+            test "${{ github.event.pull_request.base.ref }}" = "integration/academic-school-gold"
+            test "${{ github.event.pull_request.base.sha }}" = "$EXPECTED_INTEGRATION_BASE_SHA"
+          fi
+
           git fetch origin integration/academic-school-gold --no-tags
           test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_INTEGRATION_BASE_SHA"
           git fetch origin "$A_FINAL_GOLD_SHA" --no-tags
@@ -134,7 +140,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: academic-b-w4-formation-handoff-${{ github.sha }}
+          name: academic-b-w4-formation-handoff-${{ github.event.pull_request.head.sha || github.sha }}
           path: /tmp/academic-b-w4-formation-handoff.xml
           if-no-files-found: warn
           retention-days: 14
