@@ -149,7 +149,7 @@ def _db_session():
 
 
 def test_teacher_work_cues_read_existing_invigilation_and_grade_todo(db_mode):
-    from app.models import AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom, UnifiedTodo, User
+    from app.models import AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom, AaGradeTask, UnifiedTodo, User
     from app.modules.academic_affairs.services import academic_affairs_teacher_today_work_service as work
 
     tid = 1000000000000007320
@@ -202,11 +202,19 @@ def test_teacher_work_cues_read_existing_invigilation_and_grade_todo(db_mode):
         confirm_status="CONFIRMED",
     )
     db.add(invigilator)
+    grade_task = AaGradeTask(
+        tenant_id=tid,
+        course_name="数据库原理",
+        teacher_key="CW2-WORK",
+        status="NOT_STARTED",
+    )
+    db.add(grade_task)
+    db.flush()
     todo = UnifiedTodo(
         tenant_id=tid,
         source_module="academic-affairs",
         source_biz_type="AA_GRADE_TASK",
-        source_biz_id=601,
+        source_biz_id=grade_task.id,
         todo_type="AA_GRADE_ENTRY",
         assignee_id=user_row.id,
         title="数据库原理成绩录入",
@@ -218,6 +226,7 @@ def test_teacher_work_cues_read_existing_invigilation_and_grade_todo(db_mode):
     invigilator_id = int(invigilator.id)
     room_id = int(room.id)
     course_id = int(course.id)
+    grade_task_id = int(grade_task.id)
     db.commit()
     db.close()
 
@@ -244,8 +253,8 @@ def test_teacher_work_cues_read_existing_invigilation_and_grade_todo(db_mode):
     }]
     assert len(result["gradeTodos"]) == 1
     assert result["gradeTodos"][0]["todoType"] == "AA_GRADE_ENTRY"
-    assert result["gradeTodos"][0]["gradeTaskId"] == "601"
-    assert result["gradeTodos"][0]["route"] == "/pages/teacher/academic-affairs/grade-entry?id=601"
+    assert result["gradeTodos"][0]["gradeTaskId"] == str(grade_task_id)
+    assert result["gradeTodos"][0]["route"] == f"/pages/teacher/academic-affairs/grade-entry?id={grade_task_id}"
 
 
 def test_teacher_work_cues_reject_unpublished_exam_and_done_grade_todo(db_mode):
