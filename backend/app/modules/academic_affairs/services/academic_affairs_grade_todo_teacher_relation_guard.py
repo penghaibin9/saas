@@ -11,8 +11,9 @@ only its assignee projection:
 - teaching-task primary reassignment triggers a resync immediately after the formal
   TeachingClassTeacher relation is updated.
 
-Teacher Today remains read-only; install() also activates the C-owned stale Todo
-filter so historical bad assignees are hidden without writing during render.
+Teacher Today remains read-only. install() also activates C-owned read guards that
+consume the same teacher-relation authority for stale Todo filtering and PC teacher
+schedule projection; none of those render-time reads repair facts.
 """
 from __future__ import annotations
 
@@ -141,6 +142,7 @@ def install() -> None:
             teaching_class_core._grade_todo_relation_original_sync_primary = current_sync
         teaching_class_core._sync_primary_teacher = _sync_primary_teacher
 
-    # Read-only cleanup for pre-existing stale assignees; no Todo writes on Teacher Today render.
     from . import academic_affairs_teacher_today_grade_todo_guard as today_todo_guard
+    from . import academic_affairs_schedule_teacher_relation_guard as schedule_teacher_guard
     today_todo_guard.install()
+    schedule_teacher_guard.install()
