@@ -1,23 +1,27 @@
 """C-W2/C-W5 relation-aware canonical grade-entry Todo projection.
 
 ``AA_GRADE_ENTRY`` remains the single mature UnifiedTodo type. This guard changes
-only its assignee projection:
+only its assignee projection and protects explicit multi-teacher topology from the
+legacy TeachingTask->PRIMARY auto-sync.
 
-- formal TeachingClass exists -> all ACTIVE teacher relations covering the current /
-  final teaching week are desired assignees (PRIMARY and CO_TEACHER);
+- formal TeachingClass exists -> all ACTIVE teacher relations covering the task-
+  clamped non-occurrence week are desired assignees (PRIMARY and CO_TEACHER);
 - no TeachingClass projection -> GradeTask.teacher_key migration fallback;
-- desired real User IDs are upserted to PENDING;
-- stale PENDING assignees are marked DONE in the same transaction;
-- teaching-task primary reassignment triggers a resync immediately after the formal
-  TeachingClassTeacher relation is updated.
+- desired real User IDs are upserted to PENDING; stale PENDING assignees -> DONE;
+- a simple one-PRIMARY/default-window class remains in legacy auto-sync mode;
+- once CO_TEACHER, split windows, or another explicit topology exists, legacy ensure
+  may refresh metadata but must not rewrite relation windows/status. Changing the
+  compatibility TeachingTask primary through the old endpoint while explicit mode
+  exists is rejected transactionally; the formal relation management API is required.
 
 Teacher Today remains read-only. install() also activates C-owned read guards that
-consume the same teacher-relation authority for stale Todo filtering and PC teacher
-schedule projection; none of those render-time reads repair facts.
+consume the same authority for stale Todo filtering and PC teacher schedule.
 """
 from __future__ import annotations
 
 from sqlalchemy import select
+
+from app.core.exceptions import AppException
 
 from . import academic_affairs_grade_core_service as grade_core
 from . import academic_affairs_teacher_relation_authority as teacher_authority
@@ -111,12 +115,78 @@ def _push_grade_entry_todo(db, task) -> bool:
 _push_grade_entry_todo._grade_todo_teacher_relation_guard = True
 
 
+def _explicit_topology(db, teaching_class, task):
+    """Return (explicit, active_primary, active_relations) for safe legacy sync."""
+    from app.models import AaTeachingClassTeacher
+
+    active = db.scalars(select(AaTeachingClassTeacher).where(
+        AaTeachingClassTeacher.tenant_id == grade_core._tid(),
+        AaTeachingClassTeacher.teaching_class_id == int(teaching_class.id),
+        AaTeachingClassTeacher.status == "ACTIVE",
+        AaTeachingClassTeacher.is_deleted.is_(False),
+    ).order_by(AaTeachingClassTeacher.role_type, AaTeachingClassTeacher.id)).all()
+    primaries = [row for row in active if str(row.role_type or "").upper() == "PRIMARY"]
+    cos = [row for row in active if str(row.role_type or "").upper() == "CO_TEACHER"]
+    if not active:
+        return False, None, active
+    if len(primaries) != 1:
+        return True, None, active
+    primary = primaries[0]
+    task_start = int(task.start_week) if task.start_week is not None else None
+    task_end = int(task.end_week) if task.end_week is not None else None
+    primary_start = int(primary.start_week) if primary.start_week is not None else None
+    primary_end = int(primary.end_week) if primary.end_week is not None else None
+    explicit = bool(
+        cos
+        or str(primary.teacher_key or "") != str(task.teacher_key or "")
+        or primary_start != task_start
+        or primary_end != task_end
+    )
+    return explicit, primary, active
+
+
 def _sync_primary_teacher(db, teaching_class, task) -> None:
-    """Preserve mature relation sync, then repair an existing grade task Todo in-transaction."""
-    _ORIGINAL_SYNC_PRIMARY(db, teaching_class, task)
-    # db_service sessions run with autoflush=False. The relation query used by Todo
-    # synchronization must observe the newly added ACTIVE row / old INACTIVE row now,
-    # not the pre-reassignment database state.
+    """Preserve explicit relation topology; legacy-sync only the simple default case."""
+    explicit, primary, active = _explicit_topology(db, teaching_class, task)
+    if not explicit:
+        _ORIGINAL_SYNC_PRIMARY(db, teaching_class, task)
+    else:
+        primaries = [row for row in active if str(row.role_type or "").upper() == "PRIMARY"]
+        if len(primaries) != 1:
+            raise AppException(
+                "DATA_CONFLICT",
+                "教学班显式教师关系存在 PRIMARY 数量冲突，请先在教师关系管理中修复",
+                details={"teachingClassId": str(teaching_class.id), "activePrimaryCount": len(primaries)},
+                http_status=409,
+            )
+        primary = primaries[0]
+        task_key = str(task.teacher_key or "").strip()
+        primary_key = str(primary.teacher_key or "").strip()
+        if task_key and primary_key != task_key:
+            raise AppException(
+                "DATA_CONFLICT",
+                "教学班已启用显式多教师/分周关系，禁止通过旧教学任务分配入口覆盖 PRIMARY；请使用教师关系管理",
+                details={
+                    "teachingClassId": str(teaching_class.id),
+                    "formalPrimaryTeacherKey": primary_key,
+                    "requestedTaskTeacherKey": task_key,
+                },
+                http_status=409,
+            )
+        if not task_key:
+            task.teacher_key = primary_key
+            task.teacher_id = primary.teacher_id
+            task.teacher_name = primary.teacher_name
+        else:
+            # Metadata may follow the compatibility task, but explicit week windows
+            # and relation status are formal facts and must remain untouched.
+            if task.teacher_id:
+                primary.teacher_id = task.teacher_id
+            if task.teacher_name:
+                primary.teacher_name = task.teacher_name
+
+    # db_service sessions run with autoflush=False. Todo sync must observe the new
+    # relation state produced above in the same transaction.
     db.flush()
     from app.models import AaGradeTask
 
