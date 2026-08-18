@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from app.core.exceptions import AppException
 
@@ -53,21 +53,69 @@ def _deadline_row(db, task_id: int, *, lock: bool = False):
     ).mappings().first()
 
 
-def deadline_projection(db, task_id: int, *, status: str | None = None) -> dict:
-    row = _deadline_row(db, task_id)
-    deadline = row.get("deadline_at") if row else None
-    state = str(status or "").upper()
-    overdue = bool(deadline and state not in _SUBMITTED_STATES and _now() > deadline)
-    remaining_seconds = None
-    if deadline and state not in _SUBMITTED_STATES:
-        remaining_seconds = int((deadline - _now()).total_seconds())
+def _empty_deadline_projection() -> dict:
     return {
-        "deadlineReady": bool(deadline),
-        "deadline": deadline.isoformat() if deadline else None,
-        "deadlineUpdatedAt": row.get("deadline_updated_at").isoformat() if row and row.get("deadline_updated_at") else None,
-        "isOverdue": overdue if deadline else None,
+        "deadlineReady": False,
+        "deadline": None,
+        "deadlineUpdatedAt": None,
+        "isOverdue": None,
+        "deadlineRemainingSeconds": None,
+    }
+
+
+def _project_deadline_row(row, status: str, now: datetime) -> dict:
+    deadline = row.get("deadline_at") if row else None
+    if not deadline:
+        return _empty_deadline_projection()
+    state = str(status or "").upper()
+    open_for_submission = state not in _SUBMITTED_STATES
+    remaining_seconds = int((deadline - now).total_seconds()) if open_for_submission else None
+    return {
+        "deadlineReady": True,
+        "deadline": deadline.isoformat(),
+        "deadlineUpdatedAt": row.get("deadline_updated_at").isoformat() if row.get("deadline_updated_at") else None,
+        "isOverdue": bool(open_for_submission and now > deadline),
         "deadlineRemainingSeconds": remaining_seconds,
     }
+
+
+def deadline_projection_map(db, task_statuses) -> dict[int, dict]:
+    """Project one bounded GradeTask page with a single SQL query.
+
+    ``list_tasks`` may return up to 200 rows. Deadline projection must therefore
+    never issue one SELECT per row; this batch API keeps the read path O(1) in
+    query count while preserving one shared ``now`` instant for overdue results.
+    """
+    statuses: dict[int, str] = {}
+    for task_id, status in task_statuses or []:
+        if task_id is None:
+            continue
+        statuses[int(task_id)] = str(status or "")
+    if not statuses:
+        return {}
+
+    stmt = text(
+        "SELECT id, deadline_at, deadline_updated_at "
+        "FROM t_aa_grade_task "
+        "WHERE tenant_id=:tenant_id AND is_deleted=0 AND id IN :task_ids"
+    ).bindparams(bindparam("task_ids", expanding=True))
+    rows = db.execute(
+        stmt,
+        {"tenant_id": int(_core._tid()), "task_ids": sorted(statuses)},
+    ).mappings().all()
+    by_id = {int(row["id"]): row for row in rows}
+    now = _now()
+    return {
+        task_id: _project_deadline_row(by_id.get(task_id), status, now)
+        for task_id, status in statuses.items()
+    }
+
+
+def deadline_projection(db, task_id: int, *, status: str | None = None) -> dict:
+    """Compatibility wrapper for single-task callers; list reads use the batch API."""
+    return deadline_projection_map(db, [(int(task_id), status or "")]).get(
+        int(task_id), _empty_deadline_projection()
+    )
 
 
 def extend_deadline(task_id: int, user, deadline_at, reason: str) -> dict:
