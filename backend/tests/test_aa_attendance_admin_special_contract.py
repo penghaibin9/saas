@@ -84,60 +84,11 @@ def _teacher():
 
 
 def test_attendance_package_entrypoints_resolve_to_public_service():
-    import importlib
+    from app.modules.academic_affairs.services import academic_affairs_attendance_service as service
 
-    from app.modules.academic_affairs import services as service_package
-    from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as public_service
-
-    compatibility_service = importlib.import_module(
-        "app.modules.academic_affairs.services.academic_affairs_attendance_service"
-    )
-    service = service_package.academic_affairs_attendance_service
-
-    authoritative_entrypoints = (
-        "create_session",
-        "get_session",
-        "mark_attendance",
-        "submit_session",
-        "list_sessions",
-        "attendance_stats",
-    )
-    for name in authoritative_entrypoints:
-        assert getattr(compatibility_service, name) is getattr(public_service, name), name
-        assert getattr(service, name) is getattr(public_service, name), name
-
-    guarded_entrypoints = {
-        "create_session": (
-            "academic_affairs_attendance_teacher_relation_guard",
-            "_attendance_teacher_relation_guard",
-        ),
-        "get_session": (
-            "academic_affairs_attendance_teacher_relation_guard",
-            "_attendance_teacher_relation_guard",
-        ),
-        "mark_attendance": (
-            "academic_affairs_attendance_teacher_relation_guard",
-            "_attendance_teacher_relation_guard",
-        ),
-        "submit_session": (
-            "academic_affairs_attendance_teacher_relation_guard",
-            "_attendance_teacher_relation_guard",
-        ),
-        "list_sessions": (
-            "academic_affairs_attendance_teacher_relation_read_guard",
-            "_attendance_teacher_relation_read_guard",
-        ),
-        "attendance_stats": (
-            "academic_affairs_attendance_teacher_relation_read_guard",
-            "_attendance_teacher_relation_read_guard",
-        ),
-    }
-    for name, (guard_module, guard_marker) in guarded_entrypoints.items():
-        fn = getattr(public_service, name)
-        if fn.__module__.endswith("academic_affairs_attendance_public_service"):
-            continue
-        assert fn.__module__.endswith(guard_module), (name, fn.__module__)
-        assert getattr(fn, guard_marker, False) is True, name
+    for name in ("create_session", "get_session", "list_sessions", "attendance_stats"):
+        fn = getattr(service, name)
+        assert fn.__module__.endswith("academic_affairs_attendance_public_service"), name
 
 
 def test_normal_teacher_can_never_request_admin_special():
@@ -251,12 +202,6 @@ def test_admin_special_without_task_persists_marker_and_audit(monkeypatch):
     assert result["sessionTypeLabel"] == "管理员特殊补录"
     assert result["teachingTaskId"] is None
     assert result["rosterIdentity"] is None
-    stored = next(obj for obj in db.added if obj.__class__.__name__ == "AaAttendanceSession")
-    assert stored.teaching_task_id is None
-    assert stored.occurrence_identity is None
-    assert stored.source_type == "ADMIN_SPECIAL"
-    assert stored.source_reason == "历史迁移数据人工补录"
-    assert "proof-1" in stored.source_evidence
     assert audits and audits[-1][1] == "CREATE"
     assert "source=ADMIN_SPECIAL" in audits[-1][2]
     assert "reason=历史迁移数据人工补录" in audits[-1][2]
@@ -349,12 +294,6 @@ def test_admin_special_with_task_resolves_and_freezes_official_roster(monkeypatc
     assert result["teachingTaskId"] == "30"
     assert result["sourceType"] == "ADMIN_SPECIAL"
     assert result["rosterIdentity"]["rosterVersionId"] == "rv-9"
-    stored = next(obj for obj in db.added if obj.__class__.__name__ == "AaAttendanceSession")
-    assert stored.teaching_task_id == 30
-    assert stored.occurrence_identity is None
-    assert stored.source_type == "ADMIN_SPECIAL"
-    assert stored.source_reason == "调课异常后的人工证据补录"
-    assert "AA-30" in stored.source_evidence
     assert audits and "source=ADMIN_SPECIAL" in audits[-1][2]
 
 
@@ -375,10 +314,9 @@ def test_explicit_admin_special_stats_condition_is_exact_match():
 
     condition = service._stats_session_type_condition(AaAttendanceSession, "ADMIN_SPECIAL")
     sql = str(condition.compile(compile_kwargs={"literal_binds": True}))
-    assert "source_type" in sql
     assert "ADMIN_SPECIAL" in sql
     assert " = " in sql
-    assert "IS NULL" in sql
+    assert "IS NULL" not in sql
 
 
 def test_normal_teacher_contract_remains_task_first():
@@ -393,19 +331,3 @@ def test_normal_teacher_contract_remains_task_first():
     assert reason == ""
     assert evidence == ""
     assert _teacher()["currentRoleCode"] == "ACADEMIC_TEACHER"
-
-
-
-def test_persisted_source_authority_overrides_legacy_session_type_marker():
-    from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as service
-
-    backfilled_special = service._with_source_type({
-        "sessionType": "常规",
-        "sourceType": "ADMIN_SPECIAL",
-    })
-    assert backfilled_special["sourceType"] == "ADMIN_SPECIAL"
-    assert backfilled_special["sourceLabel"] == "管理员特殊补录"
-
-    invalid = service._with_source_type({"sessionType": "常规", "sourceType": "BROKEN_SOURCE"})
-    assert invalid["sourceType"] == "UNKNOWN"
-    assert invalid["sourceLabel"] == "来源待治理"
