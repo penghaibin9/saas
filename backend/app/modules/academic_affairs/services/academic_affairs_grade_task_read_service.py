@@ -177,7 +177,7 @@ def _formal_teacher_projection(db, teaching_task_ids) -> dict[int, dict]:
     return result
 
 
-def _allowed_actions(task, user, authority_ready: bool) -> list[str]:
+def _allowed_actions(task, user, authority_ready: bool, *, deadline_overdue: bool = False) -> list[str]:
     """Status-level actions only; command endpoints still re-check permission + state."""
     status = str(task.status or "").upper()
     role = str((user or {}).get("currentRoleCode") or "").upper()
@@ -210,7 +210,7 @@ def _allowed_actions(task, user, authority_ready: bool) -> list[str]:
         return actions
     if status in _TEACHER_EDITABLE:
         actions.extend(["INPUT", "IMPORT"])
-        if status in {"INPUTTING", "RETURNED"}:
+        if status in {"INPUTTING", "RETURNED"} and not deadline_overdue:
             actions.append("SUBMIT")
     elif status == "PUBLISHED":
         actions.append("REQUEST_CHANGE")
@@ -287,8 +287,14 @@ def list_tasks(user, status=None, page=1, page_size=20):
                 item["authorityWeek"] = None
                 item["teacherAuthorityError"] = ""
                 authority_ready = bool(task.teacher_key)
+            deadline_data = deadline_projection[int(task.id)]
             item["teacherAuthorityReady"] = authority_ready
-            item["allowedActions"] = _allowed_actions(task, user, authority_ready)
-            item.update(deadline_projection[int(task.id)])
+            item["allowedActions"] = _allowed_actions(
+                task,
+                user,
+                authority_ready,
+                deadline_overdue=deadline_data.get("isOverdue") is True,
+            )
+            item.update(deadline_data)
             items.append(item)
         return items, total
