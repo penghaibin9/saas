@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 from app.core.affairs_security import _derive_keys
 from app.core.context import get_current_user_ctx
@@ -101,6 +101,9 @@ def _row(item) -> dict:
         "sessionDate": item.session_date,
         "slotNo": item.slot_no,
         "sessionType": item.session_type or "常规",
+        # INT owns persisted source_type when present; C standalone remains compatible
+        # with the pre-INT model where this column is not yet available.
+        "sourceType": getattr(item, "source_type", None),
         "totalCount": item.total_count,
         "presentCount": item.present_count,
         "absentCount": item.absent_count,
@@ -149,13 +152,27 @@ def _admin_special_contract(role: str, body: dict, *, task_id) -> tuple[bool, st
 
 
 def _with_source_type(result: dict) -> dict:
-    """统一输出 sourceType；现有 schema 以 ADMIN_SPECIAL sessionType 区分特殊来源。"""
-    explicit = str(result.get("sourceType") or result.get("source_type") or "").strip().upper()
-    legacy_special = str(result.get("sessionType") or "").strip().upper() == _ADMIN_SPECIAL
-    source_type = explicit or (_ADMIN_SPECIAL if legacy_special else "FORMAL_TEACHING")
-    is_special = source_type == _ADMIN_SPECIAL
-    result["sourceType"] = source_type
-    result["sourceLabel"] = "管理员特殊补录" if is_special else "正式课堂"
+    """Persisted source Authority wins; historical rows fall back to session_type."""
+    stored_source = str(result.get("sourceType") or result.get("source_type") or "").strip().upper()
+    if stored_source in {"FORMAL_TEACHING", _ADMIN_SPECIAL}:
+        effective_source = stored_source
+    elif stored_source:
+        # A non-empty invalid source is governance debt; never silently reinterpret it as formal.
+        effective_source = "UNKNOWN"
+    else:
+        effective_source = (
+            _ADMIN_SPECIAL
+            if str(result.get("sessionType") or "").strip().upper() == _ADMIN_SPECIAL
+            else "FORMAL_TEACHING"
+        )
+
+    is_special = effective_source == _ADMIN_SPECIAL
+    result["sourceType"] = effective_source
+    result["sourceLabel"] = (
+        "管理员特殊补录"
+        if is_special
+        else ("正式课堂" if effective_source == "FORMAL_TEACHING" else "来源待治理")
+    )
     result["sessionTypeLabel"] = (
         "管理员特殊补录" if is_special else str(result.get("sessionType") or "常规")
     )
@@ -163,13 +180,34 @@ def _with_source_type(result: dict) -> dict:
 
 
 def _stats_session_type_condition(model, session_type=None):
-    """默认课堂统计排除 ADMIN_SPECIAL；只有显式筛选时才进入特殊补录统计。"""
+    """INT source_type 优先；C standalone 无该列时保持 legacy session_type 口径。"""
     requested = str(session_type or "").strip()
+    source_type = getattr(model, "source_type", None)
+
+    if source_type is None:
+        if requested:
+            return model.session_type == requested
+        return or_(
+            model.session_type.is_(None),
+            model.session_type != _ADMIN_SPECIAL,
+        )
+
     if requested:
-        return model.session_type == requested
+        if requested.upper() == _ADMIN_SPECIAL:
+            return or_(
+                source_type == _ADMIN_SPECIAL,
+                and_(source_type.is_(None), model.session_type == _ADMIN_SPECIAL),
+            )
+        return and_(
+            or_(source_type == "FORMAL_TEACHING", source_type.is_(None)),
+            model.session_type == requested,
+        )
     return or_(
-        model.session_type.is_(None),
-        model.session_type != _ADMIN_SPECIAL,
+        source_type == "FORMAL_TEACHING",
+        and_(
+            source_type.is_(None),
+            or_(model.session_type.is_(None), model.session_type != _ADMIN_SPECIAL),
+        ),
     )
 
 
