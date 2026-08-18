@@ -7,8 +7,8 @@ is used only for not-yet-projected migration data; ``AaGradeTask.teacher_key`` i
 only a final compatibility scope for tasks with no teaching_task_id.
 
 The projection publishes one status/action/authority vocabulary for PC and miniapp.
-Deadline fields are intentionally absent until the INT-owned GradeTask deadline
-schema exists; this service never invents ``term.end_date`` as a fake deadline.
+C-W4 deadline fields consume the persisted GradeTask deadline schema; they never
+infer ``term.end_date`` as a fake deadline.
 """
 from __future__ import annotations
 
@@ -17,12 +17,14 @@ from collections import defaultdict
 from sqlalchemy import and_, exists, func, or_, select
 
 from . import academic_affairs_grade_core_service as _core
+from . import academic_affairs_grade_deadline_service as _deadline
 from . import academic_affairs_grade_service as _grade_public
 from . import academic_affairs_teacher_relation_authority as _teacher_authority
 
 _MAX_PAGE_SIZE = 200
 _TEACHER_EDITABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 _REMINDABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
+_FINAL_STATES = {"PUBLISHED", "ARCHIVED"}
 
 
 def _user_relation_task_ids(db, user) -> set[int]:
@@ -185,6 +187,8 @@ def _allowed_actions(task, user, authority_ready: bool) -> list[str]:
         role = "SCHOOL_ADMIN"
 
     if role in {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}:
+        if status not in _FINAL_STATES:
+            actions.append("EXTEND_DEADLINE")
         if status in _REMINDABLE:
             actions.append("REMIND")
         if status == "ACADEMIC_REVIEW":
@@ -194,6 +198,8 @@ def _allowed_actions(task, user, authority_ready: bool) -> list[str]:
         return actions
 
     if role == "COLLEGE_ADMIN":
+        if status not in _FINAL_STATES:
+            actions.append("EXTEND_DEADLINE")
         if status in _REMINDABLE:
             actions.append("REMIND")
         if status == "SUBMITTED":
@@ -279,8 +285,6 @@ def list_tasks(user, status=None, page=1, page_size=20):
                 authority_ready = bool(task.teacher_key)
             item["teacherAuthorityReady"] = authority_ready
             item["allowedActions"] = _allowed_actions(task, user, authority_ready)
-            item["deadlineReady"] = False
-            item["deadline"] = None
-            item["isOverdue"] = None
+            item.update(_deadline.deadline_projection(db, int(task.id), status=task.status))
             items.append(item)
         return items, total
