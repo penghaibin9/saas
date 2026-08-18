@@ -4,24 +4,23 @@ Production scheduling remains owned by ``scripts.run_scheduled_jobs``. This modu
 owns only the tenant-scoped business scan:
 
 - 7 / 3 / 1 day milestones remind current formal grade-entry assignees;
-- overdue tasks are grouped into scoped digests for college/school academic admins;
-- shared MessageEventOutbox provides delivery, retry and deduplication;
-- upcoming and overdue tasks use separate bounded ``FOR UPDATE SKIP LOCKED`` queues,
-  so a large overdue backlog cannot starve deadline-soon teacher reminders;
+- upcoming tasks are locked with ``FOR UPDATE SKIP LOCKED`` so a concurrent deadline
+  extension cannot race a teacher reminder;
+- overdue escalation is not a fixed-row queue: every admin receives a scope-filtered
+  full SQL count plus a bounded oldest-50 sample, once per UTC day;
+- shared MessageEventOutbox provides delivery, retry and durable deduplication;
 - college recipients are resolved through the same ``build_affairs_context``
   fail-closed scope model used by academic-affairs services.
 
-No scheduler state table is added: the outbox dedup key is the durable execution
-proof. Extending a deadline changes the deadline identity and therefore creates a
-new legitimate reminder series while old milestone keys remain historical facts.
+No scheduler state table is added. Extending a deadline changes the milestone dedup
+identity, while overdue digest dedup is recipient+day to avoid hourly notification
+spam from the production scheduler.
 """
 from __future__ import annotations
 
-import hashlib
-from collections import defaultdict
 from datetime import datetime
 
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
 
 from app.core.affairs_security import build_affairs_context
 from app.services.message_event_outbox_service import emit_message_event
@@ -33,7 +32,7 @@ from . import academic_affairs_grade_todo_teacher_relation_guard as todo_guard
 _REMINDABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 _ADMIN_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}
 _MILESTONES = (1, 3, 7)
-_MAX_SCAN = 500
+_MAX_SCAN = 2000
 _MAX_DIGEST_ITEMS = 50
 
 message_event_guard.install()
@@ -83,72 +82,8 @@ def _pending_teacher_ids(db, task) -> list[int]:
     })
 
 
-def _task_college_map(db, tasks) -> dict[int, int | None]:
-    """Resolve one bounded task batch to a college without per-row queries."""
-    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, Major, SchoolClass
-
-    task_list = list(tasks or [])
-    teaching_task_ids = sorted({int(row.teaching_task_id) for row in task_list if row.teaching_task_id})
-    teaching_tasks = db.scalars(select(AaTeachingTask).where(
-        AaTeachingTask.tenant_id == grade_core._tid(),
-        AaTeachingTask.id.in_(teaching_task_ids or [-1]),
-        AaTeachingTask.is_deleted.is_(False),
-    )).all()
-    teaching_by_id = {int(row.id): row for row in teaching_tasks}
-
-    batch_ids = sorted({int(row.batch_id) for row in teaching_tasks if row.batch_id})
-    batches = db.scalars(select(AaTeachingTaskBatch).where(
-        AaTeachingTaskBatch.tenant_id == grade_core._tid(),
-        AaTeachingTaskBatch.id.in_(batch_ids or [-1]),
-        AaTeachingTaskBatch.is_deleted.is_(False),
-    )).all()
-    batch_by_id = {int(row.id): row for row in batches}
-
-    class_ids = sorted({int(row.class_id) for row in task_list if row.class_id})
-    classes = db.scalars(select(SchoolClass).where(
-        SchoolClass.tenant_id == grade_core._tid(),
-        SchoolClass.id.in_(class_ids or [-1]),
-        SchoolClass.is_deleted.is_(False),
-    )).all()
-    class_by_id = {int(row.id): row for row in classes}
-    major_ids = sorted({int(row.major_id) for row in classes if row.major_id})
-    majors = db.scalars(select(Major).where(
-        Major.tenant_id == grade_core._tid(),
-        Major.id.in_(major_ids or [-1]),
-        Major.is_deleted.is_(False),
-    )).all()
-    major_by_id = {int(row.id): row for row in majors}
-
-    course_ids = sorted({int(row.course_id) for row in task_list if row.course_id})
-    courses = db.scalars(select(AaCourse).where(
-        AaCourse.tenant_id == grade_core._tid(),
-        AaCourse.id.in_(course_ids or [-1]),
-        AaCourse.is_deleted.is_(False),
-    )).all()
-    course_by_id = {int(row.id): row for row in courses}
-
-    result: dict[int, int | None] = {}
-    for task in task_list:
-        college_id = None
-        teaching = teaching_by_id.get(int(task.teaching_task_id)) if task.teaching_task_id else None
-        batch = batch_by_id.get(int(teaching.batch_id)) if teaching and teaching.batch_id else None
-        if batch and batch.college_id:
-            college_id = int(batch.college_id)
-        if college_id is None and task.class_id:
-            school_class = class_by_id.get(int(task.class_id))
-            major = major_by_id.get(int(school_class.major_id)) if school_class and school_class.major_id else None
-            if major and major.college_id:
-                college_id = int(major.college_id)
-        if college_id is None and task.course_id:
-            course = course_by_id.get(int(task.course_id))
-            if course and course.owner_college_id:
-                college_id = int(course.owner_college_id)
-        result[int(task.id)] = college_id
-    return result
-
-
-def _admin_visibility(db, tasks, task_colleges: dict[int, int | None]) -> dict[int, set[int]]:
-    """Return recipient user -> visible overdue task ids, fail-closed for college scope."""
+def _admin_scopes(db) -> dict[int, set[int] | None]:
+    """Map recipient user id to college ids; ``None`` means tenant-wide authority."""
     from app.models import Role, User, UserRole
 
     assignments = db.execute(
@@ -170,28 +105,74 @@ def _admin_visibility(db, tasks, task_colleges: dict[int, int | None]) -> dict[i
         .order_by(User.id, Role.id)
     ).all()
 
-    all_task_ids = {int(task.id) for task in tasks}
-    visible: dict[int, set[int]] = defaultdict(set)
+    result: dict[int, set[int] | None] = {}
     for user_row, role_row in assignments:
+        uid = int(user_row.id)
+        if uid in result and result[uid] is None:
+            continue
         role_code = str(role_row.role_code or "").upper()
-        user_ctx = {
-            "userId": f"u_{int(user_row.id)}",
+        scope = build_affairs_context({
+            "userId": f"u_{uid}",
             "loginName": user_row.login_name or "",
             "userType": user_row.user_type or "",
             "currentRoleCode": role_code,
-        }
-        scope = build_affairs_context(user_ctx, db)
+        }, db)
         if scope.scope_type == "TENANT_ALL":
-            visible[int(user_row.id)].update(all_task_ids)
+            result[uid] = None
             continue
         if role_code != "COLLEGE_ADMIN" or scope.scope_type != "COLLEGE" or not scope.college_ids:
             continue
-        allowed = {int(value) for value in scope.college_ids}
-        visible[int(user_row.id)].update({
-            task_id for task_id in all_task_ids
-            if task_colleges.get(task_id) is not None and int(task_colleges[task_id]) in allowed
-        })
-    return visible
+        current = result.setdefault(uid, set())
+        if current is not None:
+            current.update(int(value) for value in scope.college_ids)
+    return result
+
+
+_OVERDUE_FROM = """
+FROM t_aa_grade_task gt
+LEFT JOIN t_aa_teaching_task tt
+  ON tt.id=gt.teaching_task_id AND tt.tenant_id=gt.tenant_id AND tt.is_deleted=0
+LEFT JOIN t_aa_teaching_task_batch ttb
+  ON ttb.id=tt.batch_id AND ttb.tenant_id=gt.tenant_id AND ttb.is_deleted=0
+LEFT JOIN t_class cls
+  ON cls.id=gt.class_id AND cls.tenant_id=gt.tenant_id AND cls.is_deleted=0
+LEFT JOIN t_major maj
+  ON maj.id=cls.major_id AND maj.tenant_id=gt.tenant_id AND maj.is_deleted=0
+LEFT JOIN t_aa_course course
+  ON course.id=gt.course_id AND course.tenant_id=gt.tenant_id AND course.is_deleted=0
+WHERE gt.tenant_id=:tenant_id AND gt.is_deleted=0
+  AND gt.status IN ('NOT_STARTED','INPUTTING','RETURNED')
+  AND gt.deadline_at IS NOT NULL AND gt.deadline_at <= UTC_TIMESTAMP()
+"""
+_COLLEGE_EXPR = "COALESCE(ttb.college_id, maj.college_id, course.owner_college_id)"
+
+
+def _overdue_total(db) -> int:
+    return int(db.scalar(text("SELECT COUNT(*) " + _OVERDUE_FROM), {
+        "tenant_id": int(grade_core._tid()),
+    }) or 0)
+
+
+def _overdue_digest_rows(db, college_ids: set[int] | None) -> tuple[list[dict], int]:
+    where_scope = ""
+    params: dict = {
+        "tenant_id": int(grade_core._tid()),
+        "sample_limit": _MAX_DIGEST_ITEMS,
+    }
+    stmt = text(
+        "SELECT gt.id, gt.course_name, gt.deadline_at, "
+        + _COLLEGE_EXPR + " AS college_id, COUNT(*) OVER() AS total_count "
+        + _OVERDUE_FROM
+        + (f" AND {_COLLEGE_EXPR} IN :college_ids" if college_ids is not None else "")
+        + " ORDER BY gt.deadline_at ASC, gt.id ASC LIMIT :sample_limit"
+    )
+    if college_ids is not None:
+        if not college_ids:
+            return [], 0
+        stmt = stmt.bindparams(bindparam("college_ids", expanding=True))
+        params["college_ids"] = sorted(int(value) for value in college_ids)
+    rows = [dict(row) for row in db.execute(stmt, params).mappings().all()]
+    return rows, int(rows[0].get("total_count") or 0) if rows else 0
 
 
 def _emit_teacher_milestone(db, task, deadline: datetime, milestone_days: int) -> bool:
@@ -231,68 +212,56 @@ def _emit_teacher_milestone(db, task, deadline: datetime, milestone_days: int) -
     return True
 
 
-def _emit_overdue_digests(db, overdue_tasks, deadlines: dict[int, datetime], task_colleges) -> int:
-    task_by_id = {int(task.id): task for task in overdue_tasks}
-    visibility = _admin_visibility(db, overdue_tasks, task_colleges)
+def _emit_overdue_digests(db, now: datetime) -> int:
     emitted = 0
-    for user_id, task_ids in visibility.items():
-        selected = [task_by_id[value] for value in sorted(task_ids) if value in task_by_id]
-        if not selected:
-            continue
-        fingerprint_src = "|".join(
-            f"{task.id}:{_deadline_key(deadlines[int(task.id)])}" for task in selected
-        )
-        digest_hash = hashlib.sha256(fingerprint_src.encode("utf-8")).hexdigest()[:20]
-        key = f"GRADE.ENTRY_OVERDUE_DIGEST:{int(user_id)}:{digest_hash}"
+    day_key = now.strftime("%Y%m%d")
+    for user_id, college_ids in _admin_scopes(db).items():
+        key = f"GRADE.ENTRY_OVERDUE_DIGEST:{int(user_id)}:{day_key}"
         if _outbox_exists(db, key):
             continue
-        preview = selected[:10]
+        rows, total = _overdue_digest_rows(db, college_ids)
+        if total <= 0 or not rows:
+            continue
         preview_text = "；".join(
-            f"{task.course_name or '课程'}(任务#{task.id})" for task in preview
+            f"{row.get('course_name') or '课程'}(任务#{row['id']})" for row in rows[:10]
         )
-        if len(selected) > len(preview):
-            preview_text += f"；另有{len(selected) - len(preview)}项"
-        payload_items = [
-            {
-                "gradeTaskId": str(task.id),
-                "courseName": task.course_name or "",
-                "deadline": deadlines[int(task.id)].isoformat(),
-                "collegeId": str(task_colleges.get(int(task.id)) or ""),
-            }
-            for task in selected[:_MAX_DIGEST_ITEMS]
-        ]
+        if total > 10:
+            preview_text += f"；另有{total - 10}项"
+        items = [{
+            "gradeTaskId": str(row["id"]),
+            "courseName": row.get("course_name") or "",
+            "deadline": row["deadline_at"].isoformat() if row.get("deadline_at") else None,
+            "collegeId": str(row.get("college_id") or ""),
+        } for row in rows]
         emit_message_event(
             db,
             event_code="GRADE.ENTRY_OVERDUE_DIGEST",
             source_module="academic-affairs",
             source_biz_type="AA_GRADE_OVERDUE_DIGEST",
-            source_biz_id=int(selected[0].id),
+            source_biz_id=int(rows[0]["id"]),
             recipient_refs=[{"userId": int(user_id)}],
             variables={
-                "overdueCount": len(selected),
-                "items": payload_items,
-                "truncated": len(selected) > _MAX_DIGEST_ITEMS,
+                "overdueCount": total,
+                "items": items,
+                "truncated": total > len(items),
+                "generatedAt": now.isoformat(),
             },
-            content=f"当前有 {len(selected)} 个成绩任务已逾期未提交：{preview_text}。请进入成绩任务工作台处理。",
-            title=f"成绩录入逾期清单（{len(selected)}项）",
+            content=f"当前有 {total} 个成绩任务已逾期未提交：{preview_text}。请进入成绩任务工作台处理。",
+            title=f"成绩录入逾期清单（{total}项）",
             dedup_key=key,
         )
         emitted += 1
     return emitted
 
 
-def _locked_deadline_rows(db, *, overdue: bool, limit: int):
-    operator = "<=" if overdue else ">"
-    upper = "" if overdue else "AND deadline_at <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 DAY) "
-    order = "DESC" if overdue else "ASC"
+def _locked_upcoming_rows(db, limit: int):
     return db.execute(text(
         "SELECT id, deadline_at, status FROM t_aa_grade_task "
         "WHERE tenant_id=:tenant_id AND is_deleted=0 "
         "AND status IN ('NOT_STARTED','INPUTTING','RETURNED') "
-        "AND deadline_at IS NOT NULL "
-        f"AND deadline_at {operator} UTC_TIMESTAMP() "
-        + upper
-        + f"ORDER BY deadline_at {order}, id ASC LIMIT :limit FOR UPDATE SKIP LOCKED"
+        "AND deadline_at IS NOT NULL AND deadline_at > UTC_TIMESTAMP() "
+        "AND deadline_at <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 DAY) "
+        "ORDER BY deadline_at ASC, id ASC LIMIT :limit FOR UPDATE SKIP LOCKED"
     ), {"tenant_id": int(grade_core._tid()), "limit": int(limit)}).mappings().all()
 
 
@@ -303,56 +272,34 @@ def scan_grade_deadlines(*, limit: int = _MAX_SCAN) -> dict:
     bounded = min(_MAX_SCAN, max(1, int(limit or _MAX_SCAN)))
     now = datetime.utcnow().replace(microsecond=0)
     with grade_core.session() as db:
-        upcoming_rows = _locked_deadline_rows(db, overdue=False, limit=bounded)
-        overdue_rows = _locked_deadline_rows(db, overdue=True, limit=bounded)
-        rows = [*upcoming_rows, *overdue_rows]
-        if not rows:
-            db.rollback()
-            return {
-                "scanned": 0,
-                "upcomingScanned": 0,
-                "overdueScanned": 0,
-                "teacherReminders": 0,
-                "overdueTasks": 0,
-                "overdueDigests": 0,
-            }
-
+        rows = _locked_upcoming_rows(db, bounded)
+        task_ids = [int(row["id"]) for row in rows]
+        tasks = []
+        if task_ids:
+            tasks = db.scalars(select(AaGradeTask).where(
+                AaGradeTask.tenant_id == grade_core._tid(),
+                AaGradeTask.id.in_(task_ids),
+                AaGradeTask.is_deleted.is_(False),
+            ).order_by(AaGradeTask.id)).all()
+            tasks = [task for task in tasks if str(task.status or "").upper() in _REMINDABLE]
         row_by_id = {int(row["id"]): row for row in rows}
-        task_ids = sorted(row_by_id)
-        tasks = db.scalars(select(AaGradeTask).where(
-            AaGradeTask.tenant_id == grade_core._tid(),
-            AaGradeTask.id.in_(task_ids),
-            AaGradeTask.is_deleted.is_(False),
-        ).order_by(AaGradeTask.id)).all()
-        tasks = [task for task in tasks if str(task.status or "").upper() in _REMINDABLE]
-        task_colleges = _task_college_map(db, tasks)
-
         teacher_emitted = 0
-        overdue_tasks = []
-        deadlines: dict[int, datetime] = {}
-        overdue_ids = {int(row["id"]) for row in overdue_rows}
         for task in tasks:
             raw = row_by_id.get(int(task.id))
             deadline = raw.get("deadline_at") if raw else None
             if not isinstance(deadline, datetime):
                 continue
-            deadlines[int(task.id)] = deadline
-            if int(task.id) in overdue_ids or deadline <= now:
-                overdue_tasks.append(task)
-                continue
             milestone = _milestone_days(deadline, now)
             if milestone is not None and _emit_teacher_milestone(db, task, deadline, milestone):
                 teacher_emitted += 1
 
-        overdue_digest_count = _emit_overdue_digests(
-            db, overdue_tasks, deadlines, task_colleges
-        ) if overdue_tasks else 0
+        overdue_total = _overdue_total(db)
+        overdue_digest_count = _emit_overdue_digests(db, now) if overdue_total else 0
         db.commit()
         return {
             "scanned": len(tasks),
-            "upcomingScanned": len(upcoming_rows),
-            "overdueScanned": len(overdue_rows),
+            "upcomingScanned": len(rows),
             "teacherReminders": teacher_emitted,
-            "overdueTasks": len(overdue_tasks),
+            "overdueTasks": overdue_total,
             "overdueDigests": overdue_digest_count,
         }
