@@ -7,7 +7,7 @@ C-W5 教师侧名单/回显/录入/导入/提交统一经 grade_execution；正�
 TeachingClassTeacher + 有效周次，尚未投影教学班的旧数据才允许 AaTeachingTask 迁移回退。
 C-C3 安装 read consumer guards，把遗留学业 API、学生/家长摘要、资助资格、统计总览、挂科预警
 拉回同一 EffectiveGrade ACTIVE-only + 冻结修读策略。
-C-W4 复查运营台账只替换为有界 SQL 分页；成熟复查裁决命令保持唯一 Authority；人工催录复用
+C-W4 认定/复查运营台账使用有界 SQL 分页；成熟认定/复查裁决命令保持唯一 Authority；人工催录复用
 canonical AA_GRADE_ENTRY UnifiedTodo，不新造第二套任务系统。
 遗留 /academic/grades 直接写 projection 的兼容入口保留 URL 但 fail-closed，禁止绕过正式发布/更正链。
 """
@@ -27,6 +27,7 @@ from app.modules.academic_affairs.services import academic_affairs_effective_gra
 from app.modules.academic_affairs.services import academic_affairs_effective_grade_external_consumer_guard as effective_external_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_change_live_authority as grade_change_live_authority
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as grade_exec_svc
+from app.modules.academic_affairs.services import academic_affairs_grade_recognition_read_guard as grade_recognition_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_recheck_read_guard as grade_recheck_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_reminder_service as grade_reminder_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as grade_task_read_svc
@@ -44,6 +45,7 @@ effective_consumer_guard.install()
 effective_external_guard.install()
 legacy_grade_write_guard.install()
 warning_effective_guard.install()
+grade_recognition_read_guard.install()
 grade_recheck_read_guard.install()
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-成绩主链"])
