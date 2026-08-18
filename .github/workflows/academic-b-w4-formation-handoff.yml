@@ -7,9 +7,15 @@ on:
     paths:
       - .github/workflows/academic-b-w4-formation-handoff.yml
       - .github/workflows/academic-b-w4-formation-real-click.yml
+      - backend/alembic/versions/20260816_academic_int_ac4_schema.py
+      - backend/alembic/versions/20260817_aa_prog_expand.py
+      - backend/alembic/versions/20260817_academic_int_program_series.py
+      - backend/alembic/versions/20260818_academic_main_int_merge.py
       - backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py
       - backend/app/modules/academic_affairs/services/academic_affairs_selection_formation_dependency.py
       - backend/scripts/e2e_seed_academic_b_w4_formation.py
+      - backend/tests/test_aa_program_expand_schema_int.py
+      - backend/tests/test_academic_int_main_lineage_convergence.py
       - backend/tests/test_aa_selection_w4_formation_handoff.py
       - backend/tests/test_aa_selection_w4_task_identity.py
       - backend/tests/test_aa_selection_read_production_contract.py
@@ -92,13 +98,17 @@ jobs:
           git diff --quiet "$A_FINAL_GOLD_SHA" "$EXPECTED_INTEGRATION_BASE_SHA" -- "$POLICY_PATH"
           git show "${A_FINAL_GOLD_SHA}:${POLICY_PATH}" | grep -F 'def selection_eligible'
 
-      - name: Form actual PR integration candidate in runner only
+      - name: Materialize exact PR integration candidate when needed
         run: |
           set -euo pipefail
           git config user.name "academic-b-w4-handoff"
           git config user.email "academic-b-w4-handoff@invalid.local"
-          git merge --no-commit --no-ff "$EXPECTED_INTEGRATION_BASE_SHA"
-          test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_INTEGRATION_BASE_SHA"
+          if git merge-base --is-ancestor "$EXPECTED_INTEGRATION_BASE_SHA" HEAD; then
+            echo "sealed INT base is already an ancestor of exact B HEAD"
+          else
+            git merge --no-commit --no-ff "$EXPECTED_INTEGRATION_BASE_SHA"
+            test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_INTEGRATION_BASE_SHA"
+          fi
           git diff --check
           test -f backend/app/modules/academic_affairs/services/academic_affairs_task_formation_provenance_service.py
           grep -F 'source_program_course_id' backend/app/models/academic_affairs.py
@@ -119,11 +129,16 @@ jobs:
           test "$(alembic heads | grep -c '(head)')" -eq 1
           alembic upgrade head
 
-      - name: Run B P1 read closure and W4 formation handoff contracts
+      - name: Run lineage, shared schema and B W4 handoff contracts
         working-directory: backend
         run: |
           set -euo pipefail
           pytest -q -p no:warnings \
+            tests/test_academic_int_main_lineage_convergence.py \
+            tests/test_aa_program_expand_schema_int.py \
+            tests/test_academic_int_ac4_schema_mysql.py \
+            tests/test_academic_int_program_series_schema_red.py \
+            tests/test_academic_int_program_series_mysql.py \
             tests/test_aa_selection_read_production_contract.py \
             tests/test_aa_selection_formation_dependency_contract.py \
             tests/test_aa_selection_w4_formation_handoff.py \

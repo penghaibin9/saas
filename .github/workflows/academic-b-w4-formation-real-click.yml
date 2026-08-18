@@ -5,6 +5,10 @@ on:
     branches:
       - integration/academic-school-gold
     paths:
+      - 'backend/alembic/versions/20260816_academic_int_ac4_schema.py'
+      - 'backend/alembic/versions/20260817_aa_prog_expand.py'
+      - 'backend/alembic/versions/20260817_academic_int_program_series.py'
+      - 'backend/alembic/versions/20260818_academic_main_int_merge.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py'
       - 'backend/scripts/e2e_seed_academic_b_w4_formation.py'
       - 'frontend/src/utils/presentationSafety.js'
@@ -114,13 +118,17 @@ jobs:
           git diff --quiet "$A_FINAL_GOLD_SHA" "$EXPECTED_INTEGRATION_BASE_SHA" -- "$POLICY_PATH"
           git show "${A_FINAL_GOLD_SHA}:${POLICY_PATH}" | grep -F 'def selection_eligible'
 
-      - name: Form actual PR browser integration candidate in runner only
+      - name: Materialize exact PR browser integration candidate when needed
         run: |
           set -euo pipefail
           git config user.name "academic-b-w4-formation-browser"
           git config user.email "academic-b-w4-formation-browser@invalid.local"
-          git merge --no-commit --no-ff "$EXPECTED_INTEGRATION_BASE_SHA"
-          test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_INTEGRATION_BASE_SHA"
+          if git merge-base --is-ancestor "$EXPECTED_INTEGRATION_BASE_SHA" HEAD; then
+            echo "sealed INT base is already an ancestor of exact B HEAD"
+          else
+            git merge --no-commit --no-ff "$EXPECTED_INTEGRATION_BASE_SHA"
+            test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_INTEGRATION_BASE_SHA"
+          fi
           git diff --check
           test -f backend/app/modules/academic_affairs/services/academic_affairs_task_formation_provenance_service.py
           grep -F 'source_program_course_id' backend/app/models/academic_affairs.py
