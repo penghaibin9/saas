@@ -73,7 +73,7 @@ declare -A INT_C_HANDOFF_IMPORT_MINI_BLOBS=(
   [miniapp/tests/academic-attendance-source-contract.test.mjs]="a94116cefb269ed9db1c06eaf64cb58b799d31ea"
 )
 C_FINAL_RELATION_GUARD_PATH="backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py"
-C_FINAL_RELATION_GUARD_BLOB="e1a4317d03b9575b9626c9957e3dd57805e00a74"
+C_FINAL_RELATION_GUARD_BLOB="749194bfcea1299324bcd4d8ce6dd2a4181d0255"
 
 # B is built on the shared INT Authority while C owns the final relation-aware
 # public/compatibility facades, their relation-aware contracts, plus exact-session
@@ -599,6 +599,7 @@ files=(
   tests/test_aa_school_setup_program_post_confirm_pipeline_int.py
   tests/test_academic_int_ac4_schema_mysql.py
   tests/test_academic_int_c1_attendance_backfill_mysql.py
+  tests/test_academic_int_attendance_handoff_contract.py
   tests/test_aa_selection_w6_roster_reconcile_mysql.py
   tests/test_aa_attendance_admin_special_contract.py
   tests/test_aa_attendance_published_occurrence_contract.py
