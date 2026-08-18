@@ -257,11 +257,11 @@ jobs:
 
       - name: Run D-W5 A -> B -> C -> D -> INT pre-Gold replay
         env:
-          MAIN_SHA: 4b706f392bd4213edcf4fbf81e4c292f90028c12
-          A_SHA: a85324f42de675ab3d8178afa8c83517e6d049c7
-          B_SHA: 53189bc9f2ae8cccb3783ea2cac6bd88238c86a5
-          C_SHA: 36e5f15ba987261f9db6a509f53dba2a0ac55d01
-          INT_SHA: c2bc328e51f337629655156b96a6e8fe5130637a
+          MAIN_SHA: 7fcf4f911e5ae8827c13e532e13c61676318b343
+          A_SHA: 71de7b4a0ac52216df9e8230f8b6ec97a26099be
+          B_SHA: 48a4d183e4985befd2ca11299303be897623dd4c
+          C_SHA: 1949036b9e79b3d9ef037c692f1907d0caf65542
+          INT_SHA: 50ec0b9aba564701805d5a3f590b2faa23c2cfc3
           EXACT_D_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
