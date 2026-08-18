@@ -84,11 +84,27 @@ def _teacher():
 
 
 def test_attendance_package_entrypoints_resolve_to_public_service():
+    import importlib
+
     from app.modules.academic_affairs import services as service_package
     from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as public_service
 
+    compatibility_service = importlib.import_module(
+        "app.modules.academic_affairs.services.academic_affairs_attendance_service"
+    )
     service = service_package.academic_affairs_attendance_service
-    assert service is public_service
+
+    authoritative_entrypoints = (
+        "create_session",
+        "get_session",
+        "mark_attendance",
+        "submit_session",
+        "list_sessions",
+        "attendance_stats",
+    )
+    for name in authoritative_entrypoints:
+        assert getattr(compatibility_service, name) is getattr(public_service, name), name
+        assert getattr(service, name) is getattr(public_service, name), name
 
     guarded_entrypoints = {
         "create_session": (
@@ -117,7 +133,7 @@ def test_attendance_package_entrypoints_resolve_to_public_service():
         ),
     }
     for name, (guard_module, guard_marker) in guarded_entrypoints.items():
-        fn = getattr(service, name)
+        fn = getattr(public_service, name)
         if fn.__module__.endswith("academic_affairs_attendance_public_service"):
             continue
         assert fn.__module__.endswith(guard_module), (name, fn.__module__)
