@@ -163,14 +163,16 @@ jobs:
           assert 'public.freeze_consumer_snapshot' in command
           assert 'public._canonical' not in command
           assert 'setattr(public' not in command
-          for phantom in (
+          for persisted in (
               'teaching_task_id=',
               'occurrence_identity=',
               'source_type=',
               'source_reason=',
               'source_evidence=',
           ):
-              assert phantom not in command
+              assert persisted in command
+          assert 'source_type = _ADMIN_SPECIAL if is_admin_special else "FORMAL_TEACHING"' in command
+          assert 'occurrence_identity = occurrence["occurrenceIdentity"] if occurrence else None' in command
           assert 'reason={special_reason};evidence={special_evidence}' in command
           assert 'result["occurrenceEvidence"]' in command
           PY
