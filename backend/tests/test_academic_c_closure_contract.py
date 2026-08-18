@@ -55,14 +55,16 @@ def test_c_attendance_has_one_command_transaction_owner():
     assert "AaAttendanceSession(" in command
     assert "public._canonical" not in command
     assert "setattr(public" not in command
-    for phantom in (
+    for persisted in (
         "teaching_task_id=",
         "occurrence_identity=",
         "source_type=",
         "source_reason=",
         "source_evidence=",
     ):
-        assert phantom not in command
+        assert persisted in command
+    assert 'source_type = _ADMIN_SPECIAL if is_admin_special else "FORMAL_TEACHING"' in command
+    assert 'occurrence_identity = occurrence["occurrenceIdentity"] if occurrence else None' in command
     for needle in (
         "public.resolve_versioned_roster",
         "public.freeze_consumer_snapshot",
