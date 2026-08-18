@@ -1,9 +1,10 @@
 """R10 动态成绩项接口。
 
 C-W5 keeps the mature dynamic-grade state machine intact while installing the same
-live TeachingTask teacher authority used by fixed-score execution.  Teacher
-replacement therefore takes effect immediately for scheme, roster, component score
-and score-read operations without rewriting AaGradeTask.teacher_key history.
+formal TeachingClassTeacher + effective-week authority used by fixed-score
+execution. Teacher replacement / co-teaching therefore takes effect immediately
+for scheme, roster, component score and score-read operations without rewriting
+AaGradeTask.teacher_key history.
 """
 from __future__ import annotations
 
@@ -17,9 +18,12 @@ from app.core.response import success
 from app.modules.academic_affairs.services import academic_affairs_dynamic_grade_live_authority as live_authority
 from app.modules.academic_affairs.services import academic_affairs_dynamic_grade_service as service
 from app.modules.academic_affairs.services import academic_affairs_dynamic_grade_roster_service as roster_service
+from app.modules.academic_affairs.services import academic_affairs_grade_teacher_relation_guard as teacher_relation_guard
 
-# Roster service resolves task scope through ``service._task`` too, so one install
-# closes all dynamic-grade teacher paths.  No shared service registry is modified.
+# Roster service resolves task scope through ``service._task`` too. Install the
+# formal teacher-relation primitive before the mature dynamic-grade adapter so this
+# router is safe even if it is imported before the fixed-score router.
+teacher_relation_guard.install()
 live_authority.install(service)
 
 router = APIRouter(prefix="/academic-affairs/grade-tasks", tags=["教务中心-动态成绩"])
