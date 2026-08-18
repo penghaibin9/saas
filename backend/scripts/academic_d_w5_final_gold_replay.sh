@@ -59,17 +59,15 @@ declare -A INT_C_HANDOFF_IMPORT_MINI_BLOBS=(
 )
 
 # B is built on the shared INT Authority while C owns the exact-session reopen.
-# When PRE-GOLD merges B before C, this reviewed overlap can conflict before the
-# later INT layer is reached. Resolve only the exact nine-path reviewed handoff:
-# keep B/INT Authority for backend + descendant-safe Program migration, and keep
-# C for the two C-owned miniapp reopen files. Both conflict stages are blob-pinned.
+# At the current reviewed topology, merging C after B yields exactly the eight
+# attendance conflicts below. Program expand no longer conflicts because B is a
+# descendant of the C migration, but its safer descendant blob remains pinned
+# independently and must survive the automatic merge unchanged.
 B_C_PROGRAM_MIGRATION_PATH="backend/alembic/versions/20260817_aa_prog_expand.py"
 B_C_HANDOFF_PATHS=(
-  "$B_C_PROGRAM_MIGRATION_PATH"
   "${INT_C_HANDOFF_PATHS[@]}"
 )
 B_C_HANDOFF_TAKE_B=(
-  "$B_C_PROGRAM_MIGRATION_PATH"
   "${INT_C_HANDOFF_TAKE_INT[@]}"
 )
 B_C_HANDOFF_KEEP_C=(
@@ -221,7 +219,18 @@ verify_b_c_handoff_contract() {
     return 1
   fi
 
-  local path b_blob c_blob expected_c_blob
+  local migration_b_blob migration_c_blob path b_blob c_blob
+  migration_b_blob="$(git rev-parse "${B_SHA}:${B_C_PROGRAM_MIGRATION_PATH}")"
+  migration_c_blob="$(git rev-parse "${C_SHA}:${B_C_PROGRAM_MIGRATION_PATH}")"
+  if [[ "$migration_b_blob" != "${B_C_HANDOFF_B_BLOBS[$B_C_PROGRAM_MIGRATION_PATH]}" ]]; then
+    echo "[handoff-drift] B migration blob expected=${B_C_HANDOFF_B_BLOBS[$B_C_PROGRAM_MIGRATION_PATH]} actual=$migration_b_blob" | tee -a "$MERGE_LEDGER"
+    return 1
+  fi
+  if [[ "$migration_c_blob" != "$B_C_PROGRAM_MIGRATION_C_BLOB" ]]; then
+    echo "[handoff-drift] C migration blob expected=$B_C_PROGRAM_MIGRATION_C_BLOB actual=$migration_c_blob" | tee -a "$MERGE_LEDGER"
+    return 1
+  fi
+
   for path in "${B_C_HANDOFF_PATHS[@]}"; do
     b_blob="$(git rev-parse "${B_SHA}:${path}")"
     if [[ "$b_blob" != "${B_C_HANDOFF_B_BLOBS[$path]}" ]]; then
@@ -230,29 +239,33 @@ verify_b_c_handoff_contract() {
     fi
 
     c_blob="$(git rev-parse "${C_SHA}:${path}")"
-    if [[ "$path" == "$B_C_PROGRAM_MIGRATION_PATH" ]]; then
-      expected_c_blob="$B_C_PROGRAM_MIGRATION_C_BLOB"
-    else
-      expected_c_blob="${INT_C_HANDOFF_C_BLOBS[$path]}"
-    fi
-    if [[ "$c_blob" != "$expected_c_blob" ]]; then
-      echo "[handoff-drift] C blob $path expected=$expected_c_blob actual=$c_blob" | tee -a "$MERGE_LEDGER"
+    if [[ "$c_blob" != "${INT_C_HANDOFF_C_BLOBS[$path]}" ]]; then
+      echo "[handoff-drift] C blob $path expected=${INT_C_HANDOFF_C_BLOBS[$path]} actual=$c_blob" | tee -a "$MERGE_LEDGER"
       return 1
     fi
   done
 }
 
 resolve_b_c_handoff_conflicts() {
-  local actual_conflicts expected_conflicts path ours_blob theirs_blob expected_c_blob
+  local actual_conflicts expected_conflicts path ours_blob theirs_blob migration_head_blob migration_worktree_blob
   actual_conflicts="$(git diff --name-only --diff-filter=U | LC_ALL=C sort)"
   expected_conflicts="$(printf '%s\n' "${B_C_HANDOFF_PATHS[@]}" | LC_ALL=C sort)"
   if [[ "$actual_conflicts" != "$expected_conflicts" ]]; then
-    echo "[handoff-rejected] C conflict set differs from reviewed B/INT -> C handoff" | tee -a "$MERGE_LEDGER"
+    echo "[handoff-rejected] C conflict set differs from reviewed B/INT -> C attendance handoff" | tee -a "$MERGE_LEDGER"
     printf '%s\n' "$actual_conflicts" | tee -a "$MERGE_LEDGER"
     return 1
   fi
 
   if ! verify_b_c_handoff_contract; then
+    return 1
+  fi
+
+  # Program expand is no longer a conflict at this topology. Prove the automatic
+  # merge kept the reviewed descendant-safe B/INT version byte-for-byte.
+  migration_head_blob="$(git rev-parse "HEAD:${B_C_PROGRAM_MIGRATION_PATH}")"
+  migration_worktree_blob="$(git hash-object "$B_C_PROGRAM_MIGRATION_PATH")"
+  if [[ "$migration_head_blob" != "${B_C_HANDOFF_B_BLOBS[$B_C_PROGRAM_MIGRATION_PATH]}" || "$migration_worktree_blob" != "${B_C_HANDOFF_B_BLOBS[$B_C_PROGRAM_MIGRATION_PATH]}" ]]; then
+    echo "[handoff-drift] automatic C merge changed reviewed descendant-safe Program migration" | tee -a "$MERGE_LEDGER"
     return 1
   fi
 
@@ -263,13 +276,8 @@ resolve_b_c_handoff_conflicts() {
       echo "[handoff-drift] C merge stage-2 blob $path expected=${B_C_HANDOFF_B_BLOBS[$path]} actual=$ours_blob" | tee -a "$MERGE_LEDGER"
       return 1
     fi
-    if [[ "$path" == "$B_C_PROGRAM_MIGRATION_PATH" ]]; then
-      expected_c_blob="$B_C_PROGRAM_MIGRATION_C_BLOB"
-    else
-      expected_c_blob="${INT_C_HANDOFF_C_BLOBS[$path]}"
-    fi
-    if [[ "$theirs_blob" != "$expected_c_blob" ]]; then
-      echo "[handoff-drift] C merge stage-3 blob $path expected=$expected_c_blob actual=$theirs_blob" | tee -a "$MERGE_LEDGER"
+    if [[ "$theirs_blob" != "${INT_C_HANDOFF_C_BLOBS[$path]}" ]]; then
+      echo "[handoff-drift] C merge stage-3 blob $path expected=${INT_C_HANDOFF_C_BLOBS[$path]} actual=$theirs_blob" | tee -a "$MERGE_LEDGER"
       return 1
     fi
   done
@@ -280,7 +288,7 @@ resolve_b_c_handoff_conflicts() {
   test -z "$(git diff --name-only --diff-filter=U)"
   test -z "$(git ls-files -u)"
   git commit --no-edit
-  echo "[handoff-resolved] B/INT attendance + descendant-safe Program migration preserved; C exact-session miniapp reopen preserved" | tee -a "$MERGE_LEDGER"
+  echo "[handoff-resolved] B/INT attendance Authority preserved; C exact-session miniapp reopen preserved; descendant-safe Program migration verified unchanged" | tee -a "$MERGE_LEDGER"
 }
 
 verify_int_c_handoff_contract() {
