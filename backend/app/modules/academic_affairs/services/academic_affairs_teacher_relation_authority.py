@@ -6,12 +6,13 @@ fallback when no teaching-class projection exists yet. Workload, attendance hist
 grade-task snapshots and names must never be used to infer permission.
 
 Week semantics are explicit:
-- grade/end-of-term execution uses ``authority_week``: before term -> week 1,
-  during term -> current local teaching week, after teaching period -> final week;
-- occurrence execution (attendance) may pass the occurrence's teaching week so a
-  1-8 -> 9-16 handoff is judged against the actual class date, not today's date;
-- unbounded relations cover the whole term;
-- bounded relations require a resolvable term week, otherwise fail closed.
+- occurrence execution (attendance) passes the occurrence's real teaching week;
+- non-occurrence execution (grades/Todos) starts from the current/final term week,
+  then clamps it into the linked TeachingTask ``start_week/end_week`` window. A
+  weeks-1-8 course may therefore finish grading in week 10 without reviving a later
+  teacher relation from some unrelated week;
+- unbounded relations cover the whole applicable task window;
+- bounded relations require a resolvable authority week, otherwise fail closed.
 """
 from __future__ import annotations
 
@@ -77,7 +78,7 @@ def teaching_week_for_date(db, term_id: int, on_date) -> int | None:
 
 
 def authority_week(db, term_id: int) -> int | None:
-    """Current/end-of-term authority week for non-occurrence workflows (e.g. grades)."""
+    """Current/final term week before any task-window clamping."""
     from .student_exam_read_service import _tenant_timezone
 
     term = _term(db, term_id)
@@ -94,6 +95,61 @@ def authority_week(db, term_id: int) -> int | None:
     if teaching_weeks > 0:
         week = min(max(1, week), teaching_weeks)
     return max(1, int(week))
+
+
+def class_authority_week(db, teaching_class) -> int | None:
+    """Non-occurrence authority week clamped into the linked TeachingTask window.
+
+    Grade entry / Todo assignment happen outside a concrete classroom occurrence.
+    Using the raw current term week is wrong for short courses: a weeks-1-8 course
+    graded in week 10 must still resolve to week 8. Conversely, before that course
+    starts we resolve to its first teaching week. Dirty task week ranges fail closed.
+    """
+    from app.models import AaTeachingTask
+
+    base_week = authority_week(db, int(teaching_class.term_id))
+    if base_week is None:
+        return None
+    task = db.scalars(select(AaTeachingTask).where(
+        AaTeachingTask.id == int(teaching_class.teaching_task_id),
+        AaTeachingTask.tenant_id == _tid(),
+        AaTeachingTask.is_deleted.is_(False),
+    )).first()
+    if not task:
+        raise AppException(
+            "DATA_CONFLICT",
+            "正式教学班无法回链教学任务，不能安全裁决教师权限",
+            details={"teachingClassId": str(teaching_class.id)},
+            http_status=409,
+        )
+    term = _term(db, int(teaching_class.term_id))
+    term_weeks = int(getattr(term, "teaching_weeks", 0) or 0) if term else 0
+    start_week = int(task.start_week) if task.start_week is not None else 1
+    end_week = int(task.end_week) if task.end_week is not None else (term_weeks or base_week)
+    if start_week <= 0 or end_week <= 0 or end_week < start_week:
+        raise AppException(
+            "DATA_CONFLICT",
+            "教学任务存在非法有效周次，不能安全裁决教师权限",
+            details={
+                "teachingTaskId": str(task.id),
+                "startWeek": task.start_week,
+                "endWeek": task.end_week,
+            },
+            http_status=409,
+        )
+    if term_weeks > 0 and (start_week > term_weeks or end_week > term_weeks):
+        raise AppException(
+            "DATA_CONFLICT",
+            "教学任务有效周次超出学期教学周，不能安全裁决教师权限",
+            details={
+                "teachingTaskId": str(task.id),
+                "startWeek": start_week,
+                "endWeek": end_week,
+                "teachingWeeks": term_weeks,
+            },
+            http_status=409,
+        )
+    return min(max(int(base_week), start_week), end_week)
 
 
 def relation_covers_week(relation, week: int | None) -> bool:
@@ -137,8 +193,9 @@ def class_authority(db, teaching_task_id: int, *, lock: bool = False):
 def active_relations(db, teaching_class, *, lock: bool = False, week: int | None = None):
     """Return ACTIVE formal teacher relations covering ``week``.
 
-    When week is omitted, use current/end-of-term authority semantics. Callers tied
-    to a concrete occurrence should pass that occurrence's resolved teaching week.
+    Callers tied to a concrete occurrence pass its resolved teaching week. When week
+    is omitted, non-occurrence workflows use ``class_authority_week`` so authority is
+    clamped into the linked TeachingTask's actual teaching window.
     """
     from app.models import AaTeachingClassTeacher
 
@@ -151,7 +208,7 @@ def active_relations(db, teaching_class, *, lock: bool = False, week: int | None
     if lock:
         query = query.with_for_update()
     rows = query.order_by(AaTeachingClassTeacher.role_type, AaTeachingClassTeacher.id).all()
-    resolved_week = authority_week(db, int(teaching_class.term_id)) if week is None else int(week)
+    resolved_week = class_authority_week(db, teaching_class) if week is None else int(week)
     bounded = [row for row in rows if row.start_week is not None or row.end_week is not None]
     if bounded and resolved_week is None:
         raise AppException(
