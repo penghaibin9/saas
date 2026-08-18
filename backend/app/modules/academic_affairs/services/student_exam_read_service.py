@@ -206,7 +206,7 @@ def defer_apply(user, body: dict) -> dict:
     with session() as db:
         student = _student(db, user)
         # Lock the student's formal seat so concurrent duplicate submissions serialize
-        # before the active-defer check.  The same command transaction then owns audit/write.
+        # before the active-defer check. The same command transaction then owns audit/write.
         formal = db.execute(
             select(AaExamRoomStudent, AaExamRoom, AaExamCourse, AaExamBatch)
             .join(AaExamRoom, AaExamRoom.id == AaExamRoomStudent.exam_room_id)
@@ -265,3 +265,42 @@ def defer_apply(user, body: dict) -> dict:
         db.commit()
         db.refresh(row)
         return exam_contract.deferred_exam_dto(row)
+
+
+def _mobile_defer_apply(user, body) -> dict:
+    """Normalize the published mobile facade's dict/object body onto the safe command."""
+    if isinstance(body, dict):
+        data = body
+    else:
+        data = {
+            "examCourseId": getattr(body, "examCourseId", None),
+            "reasonType": getattr(body, "reasonType", None),
+            "reason": getattr(body, "reason", None),
+        }
+    return defer_apply(user, data)
+
+
+_mobile_defer_apply._student_exam_formal_fact_guard = True
+
+
+def install_mobile_facade() -> None:
+    """Bind the published ``/mobile/academic/exam/*`` facade to formal exam facts.
+
+    ``backend/app/api/v1/mobile.py`` imports ``mobile_academic_affairs_service`` as a
+    module and dereferences its functions at request time. Rebinding these three
+    functions therefore hardens the existing public URLs without touching shared
+    route registration. Defer list/resubmit remain on the mature workflow state
+    machine because they do not select or create a new exam fact.
+    """
+    from . import mobile_academic_affairs_service as mobile
+
+    bindings = {
+        "exam_my": exam_my,
+        "exam_defer_options_my": deferrable_courses,
+        "exam_defer_apply_my": _mobile_defer_apply,
+    }
+    for name, replacement in bindings.items():
+        original_name = f"_student_exam_formal_guard_original_{name}"
+        if not hasattr(mobile, original_name):
+            setattr(mobile, original_name, getattr(mobile, name))
+        setattr(mobile, name, replacement)
