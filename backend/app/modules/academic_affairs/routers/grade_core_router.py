@@ -2,7 +2,8 @@
 
 只迁出 legacy 大 Router 仍持有的成绩任务查询、名单、录分、Excel 导入、提交、审核、发布、退回与归档。
 POST /grade-tasks 继续由 grade_task_create_v2_router 持有稳定课程身份请求合同；动态分项成绩、移动端录分、
-成绩更正/复查与成绩读侧视图不在本批迁移范围。DTO、权限和 grade_svc 全部复用 legacy/canonical。
+成绩更正/复查与成绩读侧视图不在本批迁移范围。DTO、权限和 canonical grade_svc 全部复用 legacy。
+C-W5 教师侧名单/回显/录入/导入/提交统一经 grade_execution 实时任课教师 authority；审核发布仍由 canonical service 持有。
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as grade_exec_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as grade_task_read_svc
 from app.services import xlsx_util
 
@@ -46,7 +48,7 @@ def grade_roster(
     taskId: int = Path(...),
     user=Depends(require_permission("academicAffairs.grade.input")),
 ):
-    return success(grade_svc.roster(taskId, user))
+    return success(grade_exec_svc.teacher_roster(taskId, user))
 
 
 @router.get("/grade-tasks/{taskId}/records", summary="成绩录入表当前已录状态（供刷新/批量导入后回显）")
@@ -54,7 +56,7 @@ def grade_records(
     taskId: int = Path(...),
     user=Depends(require_permission("academicAffairs.grade.input")),
 ):
-    return success(grade_svc.list_records(taskId, user))
+    return success(grade_exec_svc.teacher_list_records(taskId, user))
 
 
 @router.post("/grade-tasks/{taskId}/scores", summary="录入平时/期中/期末分（实时合成总评）")
@@ -63,7 +65,7 @@ def grade_enter_score(
     taskId: int = Path(...),
     user=Depends(require_permission("academicAffairs.grade.input")),
 ):
-    return success(grade_svc.enter_score(taskId, user, body), message="已录入")
+    return success(grade_exec_svc.teacher_enter_score(taskId, user, body), message="已录入")
 
 
 @router.get("/grade-tasks/{taskId}/import/template", summary="成绩批量导入·下载 Excel 模板(.xlsx)")
@@ -92,7 +94,7 @@ async def grade_import_xlsx(
 ):
     content = await xlsx_util.read_safe_upload(file)
     rows = xlsx_util.read_xlsx(content, grade_svc.IMPORT_HEADER_MAP)
-    return success({**grade_svc.grade_import_dry_run(taskId, user, rows), "rows": rows})
+    return success({**grade_exec_svc.teacher_grade_import_dry_run(taskId, user, rows), "rows": rows})
 
 
 @router.post("/grade-tasks/{taskId}/import/errors-xlsx", summary="下载错误行 Excel(.xlsx)")
@@ -120,7 +122,7 @@ def grade_import_confirm(
     taskId: int = Path(...),
     user=Depends(require_permission("academicAffairs.grade.input")),
 ):
-    return success(grade_svc.grade_import_confirm(taskId, user, body.rows), message="导入完成")
+    return success(grade_exec_svc.teacher_grade_import_confirm(taskId, user, body.rows), message="导入完成")
 
 
 @router.post("/grade-tasks/{taskId}/submit", summary="提交成绩进入学院审核")
@@ -128,7 +130,7 @@ def grade_submit(
     taskId: int = Path(...),
     user=Depends(require_permission("academicAffairs.grade.submit")),
 ):
-    return success(grade_svc.submit_task(taskId, user), message="已提交")
+    return success(grade_exec_svc.teacher_submit_task(taskId, user), message="已提交")
 
 
 @router.post("/grade-tasks/{taskId}/college-review", summary="学院审核成绩（通过/退回）")
