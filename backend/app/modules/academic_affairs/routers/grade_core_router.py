@@ -4,6 +4,7 @@
 POST /grade-tasks 继续由 grade_task_create_v2_router 持有稳定课程身份请求合同；动态分项成绩、移动端录分、
 成绩更正/复查与成绩读侧视图不在本批迁移范围。DTO、权限和 canonical grade_svc 全部复用 legacy。
 C-W5 教师侧名单/回显/录入/导入/提交统一经 grade_execution 实时任课教师 authority；审核发布仍由 canonical service 持有。
+C-C3 只安装读侧 consumer guard，把遗留学业 API / 统计总览拉回同一 EffectiveGrade ACTIVE-only 策略。
 """
 from __future__ import annotations
 
@@ -16,15 +17,17 @@ from fastapi.responses import StreamingResponse
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import academic_affairs_effective_grade_consumer_guard as effective_consumer_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_change_live_authority as grade_change_live_authority
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as grade_exec_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as grade_task_read_svc
 from app.services import xlsx_util
 
-# shared services/__init__.py first installs the mature append-only correction command.
-# C then narrows only its teacher-facing scope to the current formal TeachingTask owner;
-# no shared service registry file is modified.
+# shared services/__init__.py first installs mature grade/effective-grade extensions.
+# C narrows only teacher write authority and legacy read consumers; no shared registry
+# or canonical EffectiveGrade algorithm is modified here.
 grade_change_live_authority.install()
+effective_consumer_guard.install()
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-成绩主链"])
 
