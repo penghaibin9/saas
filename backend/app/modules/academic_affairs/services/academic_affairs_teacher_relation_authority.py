@@ -1,22 +1,21 @@
-"""C-C1/C-W5 current teaching-teacher authority.
+"""C-C1/C-W5 formal teaching-teacher authority.
 
 For projected teaching classes, ``AaTeachingClassTeacher`` is the formal authority
 for teacher-facing execution. ``AaTeachingTask.teacher_key`` is only a migration
 fallback when no teaching-class projection exists yet. Workload, attendance history,
 grade-task snapshots and names must never be used to infer permission.
 
-Effective-week policy:
-- before term start use week 1;
-- during term use the current local teaching week;
-- after the configured teaching weeks use the final teaching week;
-- unbounded teacher relations (start/end NULL) cover the whole term;
+Week semantics are explicit:
+- grade/end-of-term execution uses ``authority_week``: before term -> week 1,
+  during term -> current local teaching week, after teaching period -> final week;
+- occurrence execution (attendance) may pass the occurrence's teaching week so a
+  1-8 -> 9-16 handoff is judged against the actual class date, not today's date;
+- unbounded relations cover the whole term;
 - bounded relations require a resolvable term week, otherwise fail closed.
-This makes a 1-8 -> 9-16 teacher handoff revoke the former teacher after week 8
-while still allowing the final teacher to complete end-of-term grade execution.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import select
 
@@ -29,21 +28,64 @@ def user_keys(user) -> set[str]:
     return {str(value).strip() for value in (_derive_keys(user or {}) or set()) if str(value).strip()}
 
 
-def authority_week(db, term_id: int) -> int | None:
+def _term(db, term_id: int):
     from app.models import AaTerm
-    from .student_exam_read_service import _tenant_timezone
 
-    term = db.scalars(select(AaTerm).where(
+    return db.scalars(select(AaTerm).where(
         AaTerm.id == int(term_id),
         AaTerm.tenant_id == _tid(),
         AaTerm.is_deleted.is_(False),
     )).first()
-    if not term or not term.start_date:
+
+
+def _as_date(value) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        try:
+            return date.fromisoformat(text[:10])
+        except ValueError:
+            return None
+
+
+def teaching_week_for_date(db, term_id: int, on_date) -> int | None:
+    """Resolve a concrete occurrence date to its 1-based teaching week.
+
+    Dates outside the configured teaching period are not silently clamped: an
+    attendance occurrence outside the term must be rejected by its own calendar /
+    occurrence contract rather than borrowing the first/last teacher relation.
+    """
+    term = _term(db, term_id)
+    target = _as_date(on_date)
+    start = _as_date(getattr(term, "start_date", None)) if term else None
+    if not term or not start or not target or target < start:
+        return None
+    week = ((target - start).days // 7) + 1
+    teaching_weeks = int(getattr(term, "teaching_weeks", 0) or 0)
+    if teaching_weeks > 0 and week > teaching_weeks:
+        return None
+    return max(1, int(week))
+
+
+def authority_week(db, term_id: int) -> int | None:
+    """Current/end-of-term authority week for non-occurrence workflows (e.g. grades)."""
+    from .student_exam_read_service import _tenant_timezone
+
+    term = _term(db, term_id)
+    start = _as_date(getattr(term, "start_date", None)) if term else None
+    if not term or not start:
         return None
     zone, _zone_name = _tenant_timezone(db)
-    now = datetime.now(zone)
-    start = term.start_date.date() if isinstance(term.start_date, datetime) else term.start_date
-    current = now.astimezone(zone).date()
+    current = datetime.now(zone).astimezone(zone).date()
     if current < start:
         week = 1
     else:
@@ -85,14 +127,19 @@ def class_authority(db, teaching_task_id: int, *, lock: bool = False):
     if str(row.status or "").upper() != "ACTIVE":
         raise AppException(
             "DATA_CONFLICT",
-            "成绩任务关联的正式教学班已归档/失效，禁止继续教师写入",
+            "正式教学班已归档/失效，禁止继续教师执行",
             details={"teachingClassId": str(row.id), "status": row.status},
             http_status=409,
         )
     return row
 
 
-def active_relations(db, teaching_class, *, lock: bool = False):
+def active_relations(db, teaching_class, *, lock: bool = False, week: int | None = None):
+    """Return ACTIVE formal teacher relations covering ``week``.
+
+    When week is omitted, use current/end-of-term authority semantics. Callers tied
+    to a concrete occurrence should pass that occurrence's resolved teaching week.
+    """
     from app.models import AaTeachingClassTeacher
 
     query = db.query(AaTeachingClassTeacher).filter(
@@ -104,19 +151,19 @@ def active_relations(db, teaching_class, *, lock: bool = False):
     if lock:
         query = query.with_for_update()
     rows = query.order_by(AaTeachingClassTeacher.role_type, AaTeachingClassTeacher.id).all()
-    week = authority_week(db, int(teaching_class.term_id))
+    resolved_week = authority_week(db, int(teaching_class.term_id)) if week is None else int(week)
     bounded = [row for row in rows if row.start_week is not None or row.end_week is not None]
-    if bounded and week is None:
+    if bounded and resolved_week is None:
         raise AppException(
             "DATA_CONFLICT",
-            "正式教师关系包含有效周次，但学期起始日缺失，无法安全裁决当前教师权限",
+            "正式教师关系包含有效周次，但无法解析教学周，不能安全裁决教师权限",
             details={"teachingClassId": str(teaching_class.id)},
             http_status=409,
         )
-    return [row for row in rows if relation_covers_week(row, week)], week
+    return [row for row in rows if relation_covers_week(row, resolved_week)], resolved_week
 
 
-def require_teacher(db, teaching_task, user, *, lock: bool = False) -> dict:
+def require_teacher(db, teaching_task, user, *, lock: bool = False, week: int | None = None) -> dict:
     """Require formal TeachingClassTeacher; fallback to task only before projection exists."""
     from app.models import AaTeachingTask
 
@@ -126,22 +173,22 @@ def require_teacher(db, teaching_task, user, *, lock: bool = False) -> dict:
 
     teaching_class = class_authority(db, int(teaching_task.id), lock=lock)
     if teaching_class is not None:
-        relations, week = active_relations(db, teaching_class, lock=lock)
+        relations, resolved_week = active_relations(db, teaching_class, lock=lock, week=week)
         if not relations:
             raise AppException(
                 "DATA_CONFLICT",
-                "当前有效周次没有正式任课教师关系，禁止按历史快照继续执行",
-                details={"teachingClassId": str(teaching_class.id), "authorityWeek": week},
+                "该教学周没有正式任课教师关系，禁止按历史快照继续执行",
+                details={"teachingClassId": str(teaching_class.id), "authorityWeek": resolved_week},
                 http_status=409,
             )
         matched = [row for row in relations if str(row.teacher_key or "").strip() in keys]
         if not matched:
             raise AppException(
                 "NO_DATA_SCOPE",
-                "当前账号不在教学班本周正式教师关系中",
+                "当前账号不在该教学周正式教师关系中",
                 details={
                     "teachingClassId": str(teaching_class.id),
-                    "authorityWeek": week,
+                    "authorityWeek": resolved_week,
                     "activeTeacherKeys": [str(row.teacher_key) for row in relations],
                 },
                 http_status=403,
@@ -149,8 +196,9 @@ def require_teacher(db, teaching_task, user, *, lock: bool = False) -> dict:
         return {
             "source": "TEACHING_CLASS_TEACHER",
             "teachingClassId": int(teaching_class.id),
-            "authorityWeek": week,
+            "authorityWeek": resolved_week,
             "teacherKeys": [str(row.teacher_key) for row in relations],
+            "matchedTeacherKeys": [str(row.teacher_key) for row in matched],
             "matchedRelationIds": [int(row.id) for row in matched],
         }
 
@@ -164,7 +212,7 @@ def require_teacher(db, teaching_task, user, *, lock: bool = False) -> dict:
         query = query.with_for_update()
     current = query.first()
     if not current:
-        raise AppException("DATA_CONFLICT", "成绩任务关联的教学任务已失效", http_status=409)
+        raise AppException("DATA_CONFLICT", "教学任务已失效", http_status=409)
     key = str(current.teacher_key or "").strip()
     if not key:
         raise AppException("NO_DATA_SCOPE", "当前教学任务未绑定任课教师，请联系教务处处理", http_status=403)
@@ -173,7 +221,8 @@ def require_teacher(db, teaching_task, user, *, lock: bool = False) -> dict:
     return {
         "source": "TEACHING_TASK_MIGRATION_FALLBACK",
         "teachingClassId": None,
-        "authorityWeek": None,
+        "authorityWeek": week,
         "teacherKeys": [key],
+        "matchedTeacherKeys": [key],
         "matchedRelationIds": [],
     }
