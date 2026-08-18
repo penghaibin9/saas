@@ -77,16 +77,10 @@ def teaching_week_for_date(db, term_id: int, on_date) -> int | None:
     return max(1, int(week))
 
 
-def authority_week(db, term_id: int) -> int | None:
-    """Current/final term week before any task-window clamping."""
-    from .student_exam_read_service import _tenant_timezone
-
-    term = _term(db, term_id)
+def _authority_week_from_term(term, current: date) -> int | None:
     start = _as_date(getattr(term, "start_date", None)) if term else None
     if not term or not start:
         return None
-    zone, _zone_name = _tenant_timezone(db)
-    current = datetime.now(zone).astimezone(zone).date()
     if current < start:
         week = 1
     else:
@@ -97,24 +91,19 @@ def authority_week(db, term_id: int) -> int | None:
     return max(1, int(week))
 
 
-def class_authority_week(db, teaching_class) -> int | None:
-    """Non-occurrence authority week clamped into the linked TeachingTask window.
+def authority_week(db, term_id: int) -> int | None:
+    """Current/final term week before any task-window clamping."""
+    from .student_exam_read_service import _tenant_timezone
 
-    Grade entry / Todo assignment happen outside a concrete classroom occurrence.
-    Using the raw current term week is wrong for short courses: a weeks-1-8 course
-    graded in week 10 must still resolve to week 8. Conversely, before that course
-    starts we resolve to its first teaching week. Dirty task week ranges fail closed.
-    """
-    from app.models import AaTeachingTask
+    term = _term(db, term_id)
+    zone, _zone_name = _tenant_timezone(db)
+    current = datetime.now(zone).astimezone(zone).date()
+    return _authority_week_from_term(term, current)
 
-    base_week = authority_week(db, int(teaching_class.term_id))
+
+def _clamp_task_authority_week(teaching_class, task, term, base_week: int | None) -> int | None:
     if base_week is None:
         return None
-    task = db.scalars(select(AaTeachingTask).where(
-        AaTeachingTask.id == int(teaching_class.teaching_task_id),
-        AaTeachingTask.tenant_id == _tid(),
-        AaTeachingTask.is_deleted.is_(False),
-    )).first()
     if not task:
         raise AppException(
             "DATA_CONFLICT",
@@ -122,7 +111,6 @@ def class_authority_week(db, teaching_class) -> int | None:
             details={"teachingClassId": str(teaching_class.id)},
             http_status=409,
         )
-    term = _term(db, int(teaching_class.term_id))
     term_weeks = int(getattr(term, "teaching_weeks", 0) or 0) if term else 0
     start_week = int(task.start_week) if task.start_week is not None else 1
     end_week = int(task.end_week) if task.end_week is not None else (term_weeks or base_week)
@@ -150,6 +138,52 @@ def class_authority_week(db, teaching_class) -> int | None:
             http_status=409,
         )
     return min(max(int(base_week), start_week), end_week)
+
+
+def class_authority_weeks(db, teaching_classes) -> dict[int, int | None]:
+    """Batch-resolve non-occurrence authority weeks for a bounded class collection.
+
+    Read workbenches may project hundreds of classes. Resolving term, task and tenant
+    timezone per class creates a hidden N+1. This helper keeps that projection bounded:
+    one term query, one task query and one timezone resolution for the whole page.
+    """
+    from app.models import AaTeachingTask, AaTerm
+    from .student_exam_read_service import _tenant_timezone
+
+    classes = [row for row in (teaching_classes or []) if row is not None]
+    if not classes:
+        return {}
+    term_ids = sorted({int(row.term_id) for row in classes if row.term_id})
+    task_ids = sorted({int(row.teaching_task_id) for row in classes if row.teaching_task_id})
+    terms = db.scalars(select(AaTerm).where(
+        AaTerm.id.in_(term_ids or [-1]),
+        AaTerm.tenant_id == _tid(),
+        AaTerm.is_deleted.is_(False),
+    )).all()
+    tasks = db.scalars(select(AaTeachingTask).where(
+        AaTeachingTask.id.in_(task_ids or [-1]),
+        AaTeachingTask.tenant_id == _tid(),
+        AaTeachingTask.is_deleted.is_(False),
+    )).all()
+    terms_by_id = {int(row.id): row for row in terms}
+    tasks_by_id = {int(row.id): row for row in tasks}
+    zone, _zone_name = _tenant_timezone(db)
+    current = datetime.now(zone).astimezone(zone).date()
+
+    result: dict[int, int | None] = {}
+    for teaching_class in classes:
+        term = terms_by_id.get(int(teaching_class.term_id)) if teaching_class.term_id else None
+        task = tasks_by_id.get(int(teaching_class.teaching_task_id)) if teaching_class.teaching_task_id else None
+        base_week = _authority_week_from_term(term, current)
+        result[int(teaching_class.id)] = _clamp_task_authority_week(
+            teaching_class, task, term, base_week
+        )
+    return result
+
+
+def class_authority_week(db, teaching_class) -> int | None:
+    """Non-occurrence authority week clamped into the linked TeachingTask window."""
+    return class_authority_weeks(db, [teaching_class]).get(int(teaching_class.id))
 
 
 def relation_covers_week(relation, week: int | None) -> bool:
