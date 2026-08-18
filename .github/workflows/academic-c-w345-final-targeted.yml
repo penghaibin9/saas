@@ -8,6 +8,7 @@ on:
       - 'backend/alembic/versions/20260818_aa_grade_task_deadline.py'
       - 'backend/alembic/versions/20260818_merge_prog_grade_deadline.py'
       - 'backend/app/modules/academic_affairs/routers/grade_core_router.py'
+      - 'backend/app/modules/academic_affairs/routers/mobile_grade_entry_router.py'
       - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py'
@@ -104,6 +105,7 @@ jobs:
         run: |
           python -m py_compile \
             app/modules/academic_affairs/routers/grade_core_router.py \
+            app/modules/academic_affairs/routers/mobile_grade_entry_router.py \
             app/modules/academic_affairs/routers/exam_incident_closure_router.py \
             app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py \
             app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py \
@@ -125,6 +127,7 @@ jobs:
 
           root = Path('.')
           grade_router = (root / 'app/modules/academic_affairs/routers/grade_core_router.py').read_text(encoding='utf-8')
+          mobile_router = (root / 'app/modules/academic_affairs/routers/mobile_grade_entry_router.py').read_text(encoding='utf-8')
           deadline = (root / 'app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py').read_text(encoding='utf-8')
           task_read = (root / 'app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py').read_text(encoding='utf-8')
           teacher_authority = (root / 'app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py').read_text(encoding='utf-8')
@@ -138,9 +141,11 @@ jobs:
           assert 'grade_deadline_svc.teacher_submit_task' in grade_router
           assert 'read_grade_upload_path' in grade_router
           assert 'read_safe_upload(file)' not in grade_router
+          assert 'deadline_service.teacher_submit_task' in mobile_router and '_quality_report_with_deadline' in mobile_router
+          assert 'service.teacher_submit_task(' not in mobile_router
           assert 'GRADE_DEADLINE_EXPIRED' in deadline and '_check_college_scope' in deadline and 'DBAPIError' in deadline
           assert 'CREATE TRIGGER' in migration and 'UTC_TIMESTAMP()' in migration and 'GRADE_DEADLINE_EXPIRED' in migration
-          assert 'deadline_projection_map' in task_read and '_deadline.deadline_projection(db' not in task_read
+          assert 'deadline_projection_map' in task_read and '_deadline.deadline_projection(db' not in task_read and 'not deadline_overdue' in task_read
           assert 'class_authority_weeks' in task_read and 'class_authority_weeks' in teacher_authority
           assert 'GRADE.ENTRY_REMINDED' in reminder and 'messagePushReady": True' in reminder
           assert 'GRADE.ENTRY_REMINDED' in event_guard
