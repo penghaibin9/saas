@@ -137,8 +137,8 @@ def create_access_review(payload: dict, *, actor: dict) -> dict:
     callers that also need global assignments/elevations must create a separate
     review scope rather than silently widening the campaign.
     """
-    _runtime.assert_recent_platform_auth(actor, require_mfa=False)
     scope = _review_scope(payload)
+    _runtime.assert_recent_platform_auth(actor, require_mfa=False)
     max_items = _review_max_items()
     key = _runtime._base._idempotent_key("review", payload.get("requestId"))
     expected = {
