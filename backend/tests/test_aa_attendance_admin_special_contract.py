@@ -84,11 +84,44 @@ def _teacher():
 
 
 def test_attendance_package_entrypoints_resolve_to_public_service():
-    from app.modules.academic_affairs.services import academic_affairs_attendance_service as service
+    from app.modules.academic_affairs import services as service_package
+    from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as public_service
 
-    for name in ("create_session", "get_session", "list_sessions", "attendance_stats"):
+    service = service_package.academic_affairs_attendance_service
+    assert service is public_service
+
+    guarded_entrypoints = {
+        "create_session": (
+            "academic_affairs_attendance_teacher_relation_guard",
+            "_attendance_teacher_relation_guard",
+        ),
+        "get_session": (
+            "academic_affairs_attendance_teacher_relation_guard",
+            "_attendance_teacher_relation_guard",
+        ),
+        "mark_attendance": (
+            "academic_affairs_attendance_teacher_relation_guard",
+            "_attendance_teacher_relation_guard",
+        ),
+        "submit_session": (
+            "academic_affairs_attendance_teacher_relation_guard",
+            "_attendance_teacher_relation_guard",
+        ),
+        "list_sessions": (
+            "academic_affairs_attendance_teacher_relation_read_guard",
+            "_attendance_teacher_relation_read_guard",
+        ),
+        "attendance_stats": (
+            "academic_affairs_attendance_teacher_relation_read_guard",
+            "_attendance_teacher_relation_read_guard",
+        ),
+    }
+    for name, (guard_module, guard_marker) in guarded_entrypoints.items():
         fn = getattr(service, name)
-        assert fn.__module__.endswith("academic_affairs_attendance_public_service"), name
+        if fn.__module__.endswith("academic_affairs_attendance_public_service"):
+            continue
+        assert fn.__module__.endswith(guard_module), (name, fn.__module__)
+        assert getattr(fn, guard_marker, False) is True, name
 
 
 def test_normal_teacher_can_never_request_admin_special():
