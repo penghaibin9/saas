@@ -4,7 +4,7 @@
 POST /grade-tasks 继续由 grade_task_create_v2_router 持有稳定课程身份请求合同；动态分项成绩、移动端录分、
 成绩更正/复查与成绩读侧视图不在本批迁移范围。DTO、权限和 canonical grade_svc 全部复用 legacy。
 C-W5 教师侧名单/回显/录入/导入/提交统一经 grade_execution 实时任课教师 authority；审核发布仍由 canonical service 持有。
-C-C3 只安装读侧 consumer guard，把遗留学业 API / 统计总览拉回同一 EffectiveGrade ACTIVE-only 策略。
+C-C3 只安装读侧 consumer guard，把遗留学业 API / 统计总览 / 挂科预警拉回同一 EffectiveGrade ACTIVE-only 策略。
 遗留 /academic/grades 直接写 projection 的兼容入口保留 URL 但 fail-closed，禁止绕过正式发布/更正链。
 """
 from __future__ import annotations
@@ -23,6 +23,7 @@ from app.modules.academic_affairs.services import academic_affairs_grade_change_
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as grade_exec_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as grade_task_read_svc
 from app.modules.academic_affairs.services import academic_affairs_legacy_grade_write_guard as legacy_grade_write_guard
+from app.modules.academic_affairs.services import academic_affairs_warning_effective_grade_guard as warning_effective_guard
 from app.services import xlsx_util
 
 # shared services/__init__.py first installs mature grade/effective-grade extensions.
@@ -31,6 +32,7 @@ from app.services import xlsx_util
 grade_change_live_authority.install()
 effective_consumer_guard.install()
 legacy_grade_write_guard.install()
+warning_effective_guard.install()
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-成绩主链"])
 
