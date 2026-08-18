@@ -6,7 +6,7 @@ Grade Execution live-owner authority。正式教学班存在时只认 TeachingCl
 尚未投影教学班的历史数据才允许 AaTeachingTask 迁移回退。
 
 该 extension router 也是 C 线执行 guard 的稳定启动点：只安装 C-owned adapter，
-不改共享 route_registration/services registry。考勤的 PRIMARY/CO_TEACHER + 有效周次 guard、
+不改共享 route_registration/services registry。考勤 PRIMARY/CO_TEACHER 的执行+台账+统计、
 工作量正式来源 relation-first 对账因此在同一次 academic-affairs bundle 构建时生效。
 
 老版本客户端仍可能调用 ``/mobile/teacher/academic/grade-tasks/*``。本模块在启动时
@@ -25,6 +25,7 @@ from app.core.exceptions import AppException, no_permission
 from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.academic_affairs.services import academic_affairs_attendance_teacher_relation_guard as attendance_relation_guard
+from app.modules.academic_affairs.services import academic_affairs_attendance_teacher_relation_read_guard as attendance_relation_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as service
 from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as read_service
 from app.modules.academic_affairs.services import academic_affairs_grade_teacher_relation_guard as teacher_relation_guard
@@ -35,6 +36,7 @@ from app.modules.academic_affairs.services import mobile_academic_affairs_public
 # teacher relation primitives locally so runtime execution never depends on router order.
 teacher_relation_guard.install()
 attendance_relation_guard.install()
+attendance_relation_read_guard.install()
 workload_relation_guard.install()
 
 router = APIRouter(prefix="/mobile/teacher/academic", tags=["教师移动端-成绩录入"])
@@ -90,8 +92,6 @@ def _legacy_teacher_grade_tasks(user, status=None):
     if (user or {}).get("userType") == "STUDENT":
         raise no_permission("该接口仅教职工可用")
     items, _total = read_service.list_tasks(user, status=status, page=1, page_size=100)
-    # Legacy contract never exposed real pagination and reported only the returned
-    # teacher-visible rows, so preserve that shape while changing authority only.
     return {"items": items, "total": len(items)}
 
 
@@ -115,7 +115,6 @@ def _legacy_teacher_grade_submit_task(task_id, user) -> dict:
 
 
 def _install_legacy_live_grade_compat() -> None:
-    """Keep published legacy mobile URLs but remove their stale snapshot authority."""
     mobile_public.teacher_grade_tasks = _legacy_teacher_grade_tasks
     mobile_public.teacher_grade_roster = _legacy_teacher_grade_roster
     mobile_public.teacher_grade_records = _legacy_teacher_grade_records
@@ -186,7 +185,6 @@ def mobile_grade_execution_submit(
     return success(service.teacher_submit_task(task_id, user), message="已提交学院审核")
 
 
-# 兼容已经发布给客户端的 V2 R5 两个补充 URL；内部仍与新 execution 入口同源。
 @router.post("/grade-tasks/{task_id}/batch-save", summary="教师微信·成绩整批事务保存")
 def mobile_grade_batch_save(
     body: MobileGradeBatchSaveBody,
