@@ -1,28 +1,67 @@
 """D8-U2 / C-W5 成绩任务列表只读 SQL 分页。
 
-GET /grade-tasks keeps COUNT + LIMIT/OFFSET in SQL. C-W5 additionally makes a
-linked AaTeachingTask the live teacher authority: after a teacher replacement the
-old teacher loses the task immediately and the new teacher sees it without rewriting
-the historical AaGradeTask.teacher_key snapshot.
+GET /grade-tasks keeps COUNT + LIMIT/OFFSET in SQL. For teacher-facing scope the
+formal authority is ``AaTeachingClassTeacher`` + effective teaching week whenever a
+teaching-class projection exists. ``AaTeachingTask.teacher_key`` is used only for
+not-yet-projected migration data; ``AaGradeTask.teacher_key`` is only a final
+compatibility scope for tasks with no teaching_task_id.
 
-The projection also publishes one status/action vocabulary for PC and miniapp.
+The projection publishes one status/action/authority vocabulary for PC and miniapp.
 Deadline fields are intentionally absent until the INT-owned GradeTask deadline
 schema exists; this service never invents ``term.end_date`` as a fake deadline.
 """
 from __future__ import annotations
 
-from sqlalchemy import and_, func, or_, select
+from collections import defaultdict
+
+from sqlalchemy import and_, exists, func, or_, select
 
 from . import academic_affairs_grade_core_service as _core
 from . import academic_affairs_grade_service as _grade_public
+from . import academic_affairs_teacher_relation_authority as _teacher_authority
 
 _MAX_PAGE_SIZE = 200
 _TEACHER_EDITABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 
 
+def _user_relation_task_ids(db, user) -> set[int]:
+    """Resolve this teacher's formal task IDs using active relation + effective week."""
+    from app.models import AaTeachingClass, AaTeachingClassTeacher
+
+    keys = sorted(_teacher_authority.user_keys(user))
+    if not keys:
+        return set()
+    rows = db.execute(
+        select(AaTeachingClassTeacher, AaTeachingClass)
+        .join(AaTeachingClass, AaTeachingClass.id == AaTeachingClassTeacher.teaching_class_id)
+        .where(
+            AaTeachingClassTeacher.tenant_id == _core._tid(),
+            AaTeachingClassTeacher.teacher_key.in_(keys),
+            AaTeachingClassTeacher.status == "ACTIVE",
+            AaTeachingClassTeacher.is_deleted.is_(False),
+            AaTeachingClass.tenant_id == _core._tid(),
+            AaTeachingClass.status == "ACTIVE",
+            AaTeachingClass.is_deleted.is_(False),
+        )
+    ).all()
+    week_by_term: dict[int, int | None] = {}
+    task_ids: set[int] = set()
+    for relation, teaching_class in rows:
+        term_id = int(teaching_class.term_id)
+        if term_id not in week_by_term:
+            week_by_term[term_id] = _teacher_authority.authority_week(db, term_id)
+        week = week_by_term[term_id]
+        if (relation.start_week is not None or relation.end_week is not None) and week is None:
+            # A bounded relation without a resolvable term week is not safe to expose.
+            continue
+        if _teacher_authority.relation_covers_week(relation, week):
+            task_ids.add(int(teaching_class.teaching_task_id))
+    return task_ids
+
+
 def _scope_conditions(db, user, status=None):
-    """Build the canonical grade-task scope, using live TeachingTask ownership."""
-    from app.models import AaGradeTask, AaTeachingTask
+    """Build canonical grade-task scope with relation-first teacher authority."""
+    from app.models import AaGradeTask, AaTeachingClass, AaTeachingTask
 
     conditions = [
         AaGradeTask.tenant_id == _core._tid(),
@@ -43,11 +82,21 @@ def _scope_conditions(db, user, status=None):
             conditions.append(AaGradeTask.class_id.in_(list(allowed) or [0]))
         return conditions
 
-    keys = list(_core._user_keys(user or {})) or ["__none__"]
+    keys = list(_teacher_authority.user_keys(user)) or ["__none__"]
+    formal_task_ids = sorted(_user_relation_task_ids(db, user))
+    projected_class_exists = exists(
+        select(AaTeachingClass.id).where(
+            AaTeachingClass.tenant_id == _core._tid(),
+            AaTeachingClass.teaching_task_id == AaGradeTask.teaching_task_id,
+            AaTeachingClass.is_deleted.is_(False),
+        )
+    )
     conditions.append(
         or_(
+            AaGradeTask.teaching_task_id.in_(formal_task_ids or [-1]),
             and_(
                 AaGradeTask.teaching_task_id.is_not(None),
+                ~projected_class_exists,
                 AaTeachingTask.id == AaGradeTask.teaching_task_id,
                 AaTeachingTask.tenant_id == _core._tid(),
                 AaTeachingTask.is_deleted.is_(False),
@@ -73,6 +122,61 @@ def _base_query():
             AaTeachingTask.is_deleted.is_(False),
         ),
     )
+
+
+def _formal_teacher_projection(db, teaching_task_ids) -> dict[int, dict]:
+    """Batch-project current formal teachers for one page; no per-row N+1."""
+    from app.models import AaTeachingClass, AaTeachingClassTeacher
+
+    ids = sorted({int(value) for value in teaching_task_ids if value})
+    if not ids:
+        return {}
+    classes = db.scalars(select(AaTeachingClass).where(
+        AaTeachingClass.tenant_id == _core._tid(),
+        AaTeachingClass.teaching_task_id.in_(ids),
+        AaTeachingClass.is_deleted.is_(False),
+    )).all()
+    class_by_id = {int(row.id): row for row in classes}
+    relation_rows = []
+    if class_by_id:
+        relation_rows = db.scalars(select(AaTeachingClassTeacher).where(
+            AaTeachingClassTeacher.tenant_id == _core._tid(),
+            AaTeachingClassTeacher.teaching_class_id.in_(sorted(class_by_id)),
+            AaTeachingClassTeacher.status == "ACTIVE",
+            AaTeachingClassTeacher.is_deleted.is_(False),
+        )).all()
+    relations_by_class = defaultdict(list)
+    for relation in relation_rows:
+        relations_by_class[int(relation.teaching_class_id)].append(relation)
+
+    week_by_term: dict[int, int | None] = {}
+    result: dict[int, dict] = {}
+    for teaching_class in classes:
+        term_id = int(teaching_class.term_id)
+        if term_id not in week_by_term:
+            week_by_term[term_id] = _teacher_authority.authority_week(db, term_id)
+        week = week_by_term[term_id]
+        candidates = []
+        relation_error = False
+        for relation in relations_by_class.get(int(teaching_class.id), []):
+            if relation.start_week is not None or relation.end_week is not None:
+                if week is None:
+                    relation_error = True
+                    continue
+            if _teacher_authority.relation_covers_week(relation, week):
+                candidates.append(relation)
+        candidates.sort(key=lambda row: (0 if str(row.role_type or "").upper() == "PRIMARY" else 1, int(row.id)))
+        result[int(teaching_class.teaching_task_id)] = {
+            "source": "TEACHING_CLASS_TEACHER",
+            "teachingClassId": str(teaching_class.id),
+            "teachingClassStatus": teaching_class.status,
+            "authorityWeek": week,
+            "teacherKeys": [str(row.teacher_key) for row in candidates if row.teacher_key],
+            "teacherNames": [str(row.teacher_name or "") for row in candidates],
+            "authorityReady": str(teaching_class.status or "").upper() == "ACTIVE" and bool(candidates) and not relation_error,
+            "authorityError": "TERM_WEEK_UNRESOLVED" if relation_error else "",
+        }
+    return result
 
 
 def _allowed_actions(task, user, authority_ready: bool) -> list[str]:
@@ -108,7 +212,7 @@ def _allowed_actions(task, user, authority_ready: bool) -> list[str]:
 
 
 def list_tasks(user, status=None, page=1, page_size=20):
-    """Return a bounded SQL page and project the current teacher assignment."""
+    """Return a bounded SQL page and project current formal teacher relations."""
     from app.models import AaGradeTask, AaTeachingTask
 
     page_no = max(1, int(page or 1))
@@ -138,15 +242,40 @@ def list_tasks(user, status=None, page=1, page_size=20):
             .offset((page_no - 1) * size)
             .limit(size)
         ).all()
+        projection = _formal_teacher_projection(
+            db,
+            [task.teaching_task_id for task, _task_teacher in result if task.teaching_task_id],
+        )
         items = []
-        for task, live_teacher_key in result:
+        for task, task_teacher_key in result:
             item = _grade_public._task_row(task)
-            if task.teaching_task_id:
-                # Linked-but-missing teaching task is a broken authority. Do not
-                # silently show the historical snapshot as if it were current.
-                item["teacherKey"] = live_teacher_key or ""
-                authority_ready = bool(live_teacher_key)
+            if task.teaching_task_id and int(task.teaching_task_id) in projection:
+                authority = projection[int(task.teaching_task_id)]
+                teacher_keys = authority["teacherKeys"]
+                item["teacherKey"] = teacher_keys[0] if teacher_keys else ""
+                item["teacherKeys"] = teacher_keys
+                item["teacherNames"] = authority["teacherNames"]
+                item["teacherAuthoritySource"] = authority["source"]
+                item["teachingClassId"] = authority["teachingClassId"]
+                item["authorityWeek"] = authority["authorityWeek"]
+                item["teacherAuthorityError"] = authority["authorityError"]
+                authority_ready = bool(authority["authorityReady"])
+            elif task.teaching_task_id:
+                item["teacherKey"] = task_teacher_key or ""
+                item["teacherKeys"] = [task_teacher_key] if task_teacher_key else []
+                item["teacherNames"] = []
+                item["teacherAuthoritySource"] = "TEACHING_TASK_MIGRATION_FALLBACK"
+                item["teachingClassId"] = None
+                item["authorityWeek"] = None
+                item["teacherAuthorityError"] = ""
+                authority_ready = bool(task_teacher_key)
             else:
+                item["teacherKeys"] = [task.teacher_key] if task.teacher_key else []
+                item["teacherNames"] = []
+                item["teacherAuthoritySource"] = "GRADE_TASK_COMPAT_SCOPE"
+                item["teachingClassId"] = None
+                item["authorityWeek"] = None
+                item["teacherAuthorityError"] = ""
                 authority_ready = bool(task.teacher_key)
             item["teacherAuthorityReady"] = authority_ready
             item["allowedActions"] = _allowed_actions(task, user, authority_ready)
