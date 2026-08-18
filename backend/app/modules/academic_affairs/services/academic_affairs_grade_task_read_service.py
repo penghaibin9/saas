@@ -8,7 +8,8 @@ only a final compatibility scope for tasks with no teaching_task_id.
 
 The projection publishes one status/action/authority vocabulary for PC and miniapp.
 C-W4 deadline fields consume the persisted GradeTask deadline schema in one bounded
-page query; they never infer ``term.end_date`` as a fake deadline or fan out per row.
+page query; teacher authority weeks are batch-resolved for the same page. Neither
+projection fans out per row or invents ``term.end_date`` as a deadline.
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ _FINAL_STATES = {"PUBLISHED", "ARCHIVED"}
 
 
 def _user_relation_task_ids(db, user) -> set[int]:
-    """Resolve this teacher's formal task IDs using task-clamped non-occurrence week."""
+    """Resolve this teacher's formal task IDs with one batch authority-week projection."""
     from app.models import AaTeachingClass, AaTeachingClassTeacher
 
     keys = sorted(_teacher_authority.user_keys(user))
@@ -47,13 +48,11 @@ def _user_relation_task_ids(db, user) -> set[int]:
             AaTeachingClass.is_deleted.is_(False),
         )
     ).all()
+    class_by_id = {int(teaching_class.id): teaching_class for _relation, teaching_class in rows}
+    week_by_class = _teacher_authority.class_authority_weeks(db, class_by_id.values())
     task_ids: set[int] = set()
-    week_by_class: dict[int, int | None] = {}
     for relation, teaching_class in rows:
-        class_id = int(teaching_class.id)
-        if class_id not in week_by_class:
-            week_by_class[class_id] = _teacher_authority.class_authority_week(db, teaching_class)
-        week = week_by_class[class_id]
+        week = week_by_class.get(int(teaching_class.id))
         if (relation.start_week is not None or relation.end_week is not None) and week is None:
             continue
         if _teacher_authority.relation_covers_week(relation, week):
@@ -127,7 +126,7 @@ def _base_query():
 
 
 def _formal_teacher_projection(db, teaching_task_ids) -> dict[int, dict]:
-    """Batch-project current formal teachers for one page; no per-row relation query."""
+    """Batch-project current formal teachers and authority weeks for one page."""
     from app.models import AaTeachingClass, AaTeachingClassTeacher
 
     ids = sorted({int(value) for value in teaching_task_ids if value})
@@ -150,10 +149,11 @@ def _formal_teacher_projection(db, teaching_task_ids) -> dict[int, dict]:
     relations_by_class = defaultdict(list)
     for relation in relation_rows:
         relations_by_class[int(relation.teaching_class_id)].append(relation)
+    week_by_class = _teacher_authority.class_authority_weeks(db, classes)
 
     result: dict[int, dict] = {}
     for teaching_class in classes:
-        week = _teacher_authority.class_authority_week(db, teaching_class)
+        week = week_by_class.get(int(teaching_class.id))
         candidates = []
         relation_error = False
         for relation in relations_by_class.get(int(teaching_class.id), []):
