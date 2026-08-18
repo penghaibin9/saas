@@ -47,6 +47,24 @@ _FREEZE_TOKENS = (
 )
 _CLAUSE_BOUNDARIES = "\n。.!?！？；;"
 
+# Owner PRs may legitimately move past the original per-contract wording once a
+# stronger terminal acceptance exists. These markers are intentionally specific:
+# generic "GREEN" or a closed PR is never enough to promote all contracts.
+_OWNER_FINAL_MARKERS = {
+    "A": (
+        "FINAL SAME-HEAD ACCEPTANCE",
+        "GOLD",
+        "A-C5",
+    ),
+    "C": (
+        "SAME-HEAD C-W2",
+        "C-W3/W4/W5 FINAL",
+        "FINAL JUDGMENT",
+        "GREEN",
+        "MERGE-READY",
+    ),
+}
+
 
 def _normalize(text: object) -> str:
     # Preserve newlines because owner freeze assertions are commonly line-scoped in PR bodies.
@@ -81,6 +99,23 @@ def _contract_frozen(body: str, code: str) -> bool:
     return False
 
 
+def _owner_final_frozen(line: str, payload: dict[str, Any], body: str) -> bool:
+    markers = _OWNER_FINAL_MARKERS.get(line)
+    if not markers:
+        return False
+    upper = body.upper()
+    if not all(marker in upper for marker in markers):
+        return False
+
+    state = str(payload.get("state") or "").lower()
+    if line == "A":
+        merged = bool(payload.get("merged")) or bool(payload.get("merged_at"))
+        return state == "closed" and merged
+    if line == "C":
+        return state == "open" and not bool(payload.get("draft"))
+    return False
+
+
 def evaluate_pr(line: str, payload: dict[str, Any]) -> dict[str, Any]:
     expected = UPSTREAM[line]
     body = _normalize(payload.get("body"))
@@ -88,16 +123,26 @@ def evaluate_pr(line: str, payload: dict[str, Any]) -> dict[str, Any]:
     branch = str(head.get("ref") or "")
     sha = str(head.get("sha") or "")
     state = str(payload.get("state") or "").lower()
+    owner_final_gold = _owner_final_frozen(line, payload, body)
     contracts = {
-        code: _contract_frozen(body, code)
+        code: _contract_frozen(body, code) or owner_final_gold
         for code in expected["contracts"]
     }
-    structural_ok = (
+
+    identity_ok = (
         int(payload.get("number") or 0) == int(expected["pr"])
         and branch == expected["branch"]
         and bool(sha)
-        and state == "open"
     )
+    if line == "A":
+        state_ok = state == "open" or (
+            state == "closed"
+            and (bool(payload.get("merged")) or bool(payload.get("merged_at")))
+        )
+    else:
+        state_ok = state == "open"
+
+    structural_ok = identity_ok and state_ok
     missing = [code for code, frozen in contracts.items() if not frozen]
     return {
         "line": line,
@@ -107,6 +152,8 @@ def evaluate_pr(line: str, payload: dict[str, Any]) -> dict[str, Any]:
         "headSha": sha,
         "state": state,
         "draft": bool(payload.get("draft")),
+        "merged": bool(payload.get("merged")) or bool(payload.get("merged_at")),
+        "ownerFinalGold": owner_final_gold,
         "bodySha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
         "contracts": contracts,
         "missingContracts": missing,
@@ -133,7 +180,7 @@ def build_freeze_matrix(payloads: dict[str, dict[str, Any]], *, api_error: str =
         for code in row["missingContracts"]:
             blockers.append(f"{line}:contract_not_explicitly_frozen:{code}")
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "repository": REPO,
         "allFrozen": all_frozen,
         "lines": lines,

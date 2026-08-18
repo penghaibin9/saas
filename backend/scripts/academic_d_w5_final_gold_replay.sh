@@ -86,6 +86,15 @@ declare -A B_C_HANDOFF_B_BLOBS=(
 )
 B_C_PROGRAM_MIGRATION_C_BLOB="7d5217d43f13e4237afd4247328164bb30874eed"
 
+# Final W5 is an integration rehearsal: the source branches deliberately keep
+# their independent Alembic ownership. Only after all five layers are merged may
+# W5 materialize the one reviewed no-DDL convergence node, and only when the
+# exact unresolved head set is the known B/C sibling pair.
+B_C_DAG_HEAD_A="20260818_acad_main_int_merge"
+B_C_DAG_HEAD_C="20260818_merge_prog_grade_dl"
+B_C_DAG_REVISION="20260818_acad_bc_final"
+B_C_DAG_PATH="backend/alembic/versions/20260818_academic_bc_final_merge.py"
+
 HEAD_MATRIX=/tmp/academic-d-w5-head-matrix.txt
 MERGE_LEDGER=/tmp/academic-d-w5-merge-ledger.txt
 CONTRACT_INVENTORY=/tmp/academic-d-w5-contract-inventory.txt
@@ -105,6 +114,9 @@ TARGETED_CONTRACTS_PROVEN=false
 PERMISSION_NEGATIVE_PROVEN=false
 DATASCOPE_NEGATIVE_PROVEN=false
 CROSS_TENANT_SENTINEL_PROVEN=false
+DAG_CONVERGENCE_PROVEN=false
+DAG_CONVERGENCE_BLOB=""
+DAG_CONVERGENCE_COMMIT=""
 MAIN_ALEMBIC_VERSION=""
 INTEGRATED_ALEMBIC_VERSION=""
 MIGRATED_PROBE_DIGEST=""
@@ -134,6 +146,11 @@ a_commit=${A_SHA:-}
 b_commit=${B_SHA:-}
 c_commit=${C_SHA:-}
 int_commit=${INT_SHA:-}
+dag_convergence_proven=$DAG_CONVERGENCE_PROVEN
+dag_convergence_revision=$B_C_DAG_REVISION
+dag_convergence_parents=$B_C_DAG_HEAD_A,$B_C_DAG_HEAD_C
+dag_convergence_blob=$DAG_CONVERGENCE_BLOB
+dag_convergence_commit=$DAG_CONVERGENCE_COMMIT
 clean_tenant_schema_proven=$CLEAN_SCHEMA_PROVEN
 migrated_tenant_schema_proven=$MIGRATED_TENANT_SCHEMA_PROVEN
 migrated_tenant_contracts_proven=$TARGETED_CONTRACTS_PROVEN
@@ -378,12 +395,77 @@ merge_layer() {
   test -z "$(git ls-files -u)"
 }
 
+materialize_bc_dag_convergence() {
+  CURRENT_LAYER="ALEMBIC_DAG"
+  W5_PHASE="ALEMBIC_DAG_CONVERGENCE"
+
+  if [[ -e "$B_C_DAG_PATH" ]]; then
+    echo "[dag-convergence-rejected] unexpected existing path $B_C_DAG_PATH" | tee -a "$MERGE_LEDGER"
+    return 1
+  fi
+
+  local actual_heads expected_heads
+  actual_heads="$(cd backend && alembic heads | awk '{print $1}' | LC_ALL=C sort)"
+  expected_heads="$(printf '%s\n' "$B_C_DAG_HEAD_A" "$B_C_DAG_HEAD_C" | LC_ALL=C sort)"
+  if [[ "$actual_heads" != "$expected_heads" ]]; then
+    echo "[dag-convergence-rejected] expected exact B/C sibling heads" | tee -a "$MERGE_LEDGER"
+    printf 'expected:\n%s\nactual:\n%s\n' "$expected_heads" "$actual_heads" | tee -a "$MERGE_LEDGER"
+    return 1
+  fi
+
+  grep -F "revision = \"$B_C_DAG_HEAD_A\"" backend/alembic/versions/20260818_academic_main_int_merge.py >/dev/null
+  grep -F "revision = \"$B_C_DAG_HEAD_C\"" backend/alembic/versions/20260818_merge_prog_grade_deadline.py >/dev/null
+
+  cat > "$B_C_DAG_PATH" <<'PY'
+"""Merge Academic B/INT and Academic C final migration heads.
+
+Revision ID: 20260818_acad_bc_final
+Revises: 20260818_acad_main_int_merge, 20260818_merge_prog_grade_dl
+
+Pure W5 integration convergence. Both parent heads are independently reviewed
+additive lineages; this node intentionally performs no DDL and no data rewrite.
+The exact source is emitted as W5 evidence so the final integration owner can
+persist the byte-identical revision once the upstream PR merge order is fixed.
+"""
+from __future__ import annotations
+
+revision = "20260818_acad_bc_final"
+down_revision = (
+    "20260818_acad_main_int_merge",
+    "20260818_merge_prog_grade_dl",
+)
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    pass
+
+
+def downgrade() -> None:
+    pass
+PY
+
+  git add -- "$B_C_DAG_PATH"
+  git diff --cached --check
+  git commit -m "ci(academic): prove B/C Alembic DAG convergence"
+  DAG_CONVERGENCE_COMMIT="$(git rev-parse HEAD)"
+  DAG_CONVERGENCE_BLOB="$(git rev-parse "HEAD:${B_C_DAG_PATH}")"
+
+  test "$(cd backend && alembic heads | awk '{print $1}')" = "$B_C_DAG_REVISION"
+  DAG_CONVERGENCE_PROVEN=true
+  CURRENT_LAYER=""
+  echo "[dag-convergence-proven] revision=$B_C_DAG_REVISION parents=$B_C_DAG_HEAD_A,$B_C_DAG_HEAD_C blob=$DAG_CONVERGENCE_BLOB commit=$DAG_CONVERGENCE_COMMIT" | tee -a "$MERGE_LEDGER"
+}
+
 merge_layer A "$A_SHA"
 merge_layer B "$B_SHA"
 merge_layer C "$C_SHA"
 merge_layer D "$EXACT_D_SHA"
 merge_layer INT "$INT_SHA"
 CURRENT_LAYER=""
+
+materialize_bc_dag_convergence
 
 W5_PHASE="POST_MERGE_WORKTREE_GUARD"
 test -z "$(git status --porcelain --untracked-files=no)"

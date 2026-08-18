@@ -45,7 +45,8 @@ test('Stage D 毕业审核保留学院初审、不可逆终审、费用 UNKNOWN 
     'this.detail.row = fresh.data',
     'if (!this.canNormalFinal(fresh.data))',
     'academicAffairsApi.finalGrad(resultId, this.finalConclusion, true)',
-    'academicAffairsApi.archiveGradBatch(this.batchId)',
+    'const batchId = this.batchId',
+    'academicAffairsApi.archiveGradBatch(batchId)',
     '费用结清默认 UNKNOWN（不阻断）',
     '涉学籍终态，不可在本页撤销',
     'GRAD_FAIL_GROUPS'
@@ -57,6 +58,13 @@ test('Stage D 毕业审核保留学院初审、不可逆终审、费用 UNKNOWN 
   assert.ok(
     freshReadAt >= 0 && freshGuardAt > freshReadAt && finalWriteAt > freshGuardAt,
     'graduation final must re-read fresh server truth and re-check SYSTEM_PASSED before irreversible write'
+  )
+
+  const archiveBindAt = source.indexOf('const batchId = this.batchId')
+  const archiveWriteAt = source.indexOf('academicAffairsApi.archiveGradBatch(batchId)')
+  assert.ok(
+    archiveBindAt >= 0 && archiveWriteAt > archiveBindAt,
+    'archive must bind the currently confirmed batch before the irreversible write'
   )
 })
 
