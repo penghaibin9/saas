@@ -119,6 +119,7 @@ jobs:
           assert 'build_affairs_context' in sched and 'scope.scope_type == "COLLEGE"' in sched
           assert 'GRADE.ENTRY_OVERDUE_DIGEST:{int(user_id)}:{day_key}' in sched
           assert 'INTERVAL_GRADE_DEADLINE = 60 * 60' in runner and 'job_grade_deadline' in runner
+          assert 'grade_message_events.install()' in runner
           assert 'EXAM_TICKET_PRINT' in e and 'printSequence' in e
           PY
       - name: Targeted MySQL regression
