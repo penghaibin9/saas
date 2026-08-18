@@ -5,9 +5,11 @@
 ``/exam/rooms/{roomId}/formal-print``，由 C-W3 formal print provider 校验发布状态、冻结名单
 与持久化座位全集，禁止把编排草稿伪装成正式文件。
 
-本模块加载时只安装 C-W3 发布通知 guard：它包装 legacy ``_notify_publish``，让原学生通知继续
-原样执行，并在同事务把当前 canonical 监考行投递给真实教师账号；发布状态机和监考 Assignment
-仍由既有 exam facade 唯一持有。
+本模块加载时安装两类 C-W3 兼容 guard：
+- 发布通知 guard 包装 legacy ``_notify_publish``，让原学生通知继续原样执行，并在同事务把当前
+  canonical 监考行投递给真实教师账号；发布状态机和监考 Assignment 仍由既有 exam facade 唯一持有；
+- legacy ``GET /exam/incidents`` 保留 URL，但读模型重绑到同一个全生命周期 workbench，避免旧入口
+  只读 ACTIVE、整表 materialize 后 Python 分页，与新闭环事实产生双口径。
 """
 from __future__ import annotations
 
@@ -24,7 +26,32 @@ from app.modules.academic_affairs.services import academic_affairs_exam_print_se
 from app.modules.academic_affairs.services import academic_affairs_exam_publish_delivery_guard as publish_delivery_guard
 from app.services.db_service import session
 
+
+def _legacy_incident_list(user, batch_id=None, page=1, page_size=50):
+    """Published legacy route adapter: same URL, canonical lifecycle workbench truth."""
+    with session() as db:
+        result = incident_workbench.project_incident_workbench(
+            db,
+            user,
+            batch_id=int(batch_id) if batch_id not in (None, "") else None,
+            view="ALL",
+            page=max(1, int(page or 1)),
+            page_size=min(100, max(1, int(page_size or 50))),
+        )
+        return result.get("items") or [], int(result.get("total") or 0)
+
+
+_legacy_incident_list._exam_incident_workbench_compat = True
+
+
+def _install_legacy_incident_read() -> None:
+    if not hasattr(service, "_c_w3_original_list_incidents"):
+        service._c_w3_original_list_incidents = service.list_incidents
+    service.list_incidents = _legacy_incident_list
+
+
 publish_delivery_guard.install()
+_install_legacy_incident_read()
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-考务正式扩展"])
 
