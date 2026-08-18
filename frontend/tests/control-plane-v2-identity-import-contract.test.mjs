@@ -19,7 +19,7 @@ const worker = readRepo('backend/app/workers/identity_import_worker.py')
 const service = readRepo('deploy/systemd/school-lifecycle-identity-import.service')
 
 test('P-01 processing states never masquerade as confirmable zero-error preview', () => {
-  for (const status of ['SCANNING', 'WORKER_CLAIMED', 'PARSING']) assert.match(state, new RegExp(`['\"]${status}['\"]`))
+  for (const status of ['SCANNING', 'WORKER_CLAIMED', 'PARSING']) assert.match(state, new RegExp(`['"]${status}['"]`))
   assert.match(state, /identityImportStatus\(job\) === 'VALIDATED'/)
   assert.match(state, /Number\(job\?\.invalidRows \?\? job\?\.invalid \?\? 0\) === 0/)
   assert.match(state, /Number\(job\?\.validRows \?\? job\?\.valid \?\? 0\) > 0/)
