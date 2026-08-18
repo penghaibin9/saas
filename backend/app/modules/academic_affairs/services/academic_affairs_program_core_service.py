@@ -4,6 +4,7 @@ Tier1 续工（方案制定/方案版本/课程模块/学分要求/毕业要求/
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime
 
 from sqlalchemy import select
@@ -32,10 +33,15 @@ def _row(p) -> dict:
             "status": p.status}
 
 
+def _new_program_series_key() -> str:
+    """Mint a stable identity only for a genuinely new Program root."""
+    return f"PRG-{uuid.uuid4().hex.upper()}"
+
+
 def create_program(body, user) -> dict:
     with session() as db:
         from app.models import AaProgram
-        p = AaProgram(tenant_id=_tid(), program_name=body.programName,
+        p = AaProgram(tenant_id=_tid(), series_key=_new_program_series_key(), program_name=body.programName,
                       major_id=(int(body.majorId) if getattr(body, "majorId", None) else None),
                       grade_year=getattr(body, "gradeYear", None),
                       total_credits=getattr(body, "totalCredits", None),
