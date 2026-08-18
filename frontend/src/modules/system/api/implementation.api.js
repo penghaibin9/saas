@@ -1,6 +1,29 @@
 import { request, requestUpload } from '@/services/http/client'
 
 const root = '/system/implementation'
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function validateImplementationIdentityFile(file) {
+  const stored = await requestUpload(`${root}/identity-import/files`, file)
+  const fileId = stored?.fileId
+  if (!fileId) throw new Error('实施导入文件未返回 fileId')
+
+  // Production Office uploads can be quarantined for ClamAV. Keep the page API
+  // contract simple: upload once, then poll the fail-closed validation endpoint;
+  // only FILE_NOT_READY is retryable. Infected/scan-error files surface at once.
+  for (let attempt = 0; attempt < 90; attempt += 1) {
+    try {
+      return await request(`${root}/identity-import/files/${encodeURIComponent(fileId)}/validate`, { method: 'POST' })
+    } catch (error) {
+      if (error?.bizCode !== 'FILE_NOT_READY') throw error
+      await sleep(1000)
+    }
+  }
+  const error = new Error('文件安全扫描仍未完成，请稍后重试')
+  error.biz = true
+  error.bizCode = 'FILE_NOT_READY'
+  throw error
+}
 
 export const implementationApi = {
   catalog: () => request(`${root}/preset-catalog`),
@@ -9,7 +32,7 @@ export const implementationApi = {
   saveSection: (id, code, body) => request(`${root}/projects/${id}/sections/${code}`, { method: 'PUT', body }),
   preview: (id) => request(`${root}/projects/${id}/preview`, { method: 'POST' }),
   apply: (id, body) => request(`${root}/projects/${id}/apply`, { method: 'POST', body }),
-  validateIdentityFile: (file) => requestUpload('/system/identity-import/validate-file', file),
+  validateIdentityFile: validateImplementationIdentityFile,
   discoverMapping: (id, batchNo) => request(`${root}/projects/${id}/mapping/discover`, { method: 'POST', body: { batchNo } }),
   confirmMapping: (id, body) => request(`${root}/projects/${id}/mapping/decisions`, { method: 'PUT', body }),
   applyMapping: (id, body) => request(`${root}/projects/${id}/mapping/apply`, { method: 'POST', body }),

@@ -9,7 +9,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (BigInteger, Boolean, Computed, DateTime, Integer, String,
-                        UniqueConstraint)
+                        Text, UniqueConstraint, func)
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -43,20 +44,43 @@ class InternshipIntention(PKMixin, TenantMixin, CommonMixin, Base):
     preferred_company_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     preferred_position_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     intention_note: Mapped[str | None] = mapped_column(String(500))
-    # DRAFT / SUBMITTED / WITHDRAWN
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="DRAFT", index=True)
 
 
 class InternshipApplication(PKMixin, TenantMixin, CommonMixin, Base):
-    """Formal internship application ledger, independent from matching intentions."""
-    __tablename__ = "t_internship_application"
-    __table_args__ = (UniqueConstraint("tenant_id", "record_id", "volunteer_no",
-                                       name="uk_intern_application_record_volunteer"),)
+    """Formal internship application ledger, independent from matching intentions.
 
-    record_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    The physical legacy ``record_id`` column is intentionally preserved for N-1 binaries.
+    V3 recruitment rows store their record in ``campaign_record_id`` with physical ``record_id=NULL``.
+    The hybrid ``record_id`` keeps existing canonical service reads source-compatible while SQL
+    predicates compile to COALESCE(legacy record_id, campaign_record_id).
+    """
+    __tablename__ = "t_internship_application"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "record_id", "volunteer_no",
+            name="uk_intern_application_record_volunteer",
+        ),
+        UniqueConstraint(
+            "tenant_id", "campaign_record_id", "campaign_id", "volunteer_no",
+            name="uk_intern_application_campaign_record_volunteer",
+        ),
+    )
+
+    _legacy_record_id: Mapped[int | None] = mapped_column(
+        "record_id", BigInteger, nullable=True, index=True,
+        comment="N-1/legacy physical record key; NULL for V3 campaign rows",
+    )
+    campaign_record_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, index=True,
+        comment="→ t_internship_record.id; V3 campaign namespace",
+    )
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
-    # POSITION / SELF_ARRANGED. SELF_ARRANGED always uses volunteer_no=0.
+    campaign_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True,
+        comment="→ t_internship_recruitment_campaign.id；旧入口/自主实习为 NULL",
+    )
     application_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     volunteer_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     position_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
@@ -67,12 +91,38 @@ class InternshipApplication(PKMixin, TenantMixin, CommonMixin, Base):
     contact_phone: Mapped[str | None] = mapped_column(String(64))
     evidence_file_id: Mapped[str | None] = mapped_column(String(64))
     application_note: Mapped[str | None] = mapped_column(String(500))
+    application_statement: Mapped[str | None] = mapped_column(Text, comment="该志愿岗位专属申请说明")
+    material_snapshot_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True, comment="→ t_internship_application_material_snapshot.id"
+    )
     # DRAFT / PENDING_REVIEW / APPROVED / REJECTED / WITHDRAWN / CANCELLED
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="DRAFT", index=True)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
     reviewed_by_name: Mapped[str | None] = mapped_column(String(100))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     review_comment: Mapped[str | None] = mapped_column(String(500))
+
+    def __init__(self, **kwargs):
+        campaign_id = kwargs.get("campaign_id")
+        record_id = kwargs.get("record_id")
+        if campaign_id is not None and record_id is not None and "campaign_record_id" not in kwargs:
+            kwargs["campaign_record_id"] = record_id
+            kwargs["record_id"] = None
+        super().__init__(**kwargs)
+
+    @hybrid_property
+    def record_id(self) -> int | None:
+        if self._legacy_record_id is not None:
+            return self._legacy_record_id
+        return self.campaign_record_id
+
+    @record_id.setter
+    def record_id(self, value: int | None) -> None:
+        self._legacy_record_id = value
+
+    @record_id.expression
+    def record_id(cls):
+        return func.coalesce(cls._legacy_record_id, cls.campaign_record_id)
 
 
 class InternshipMatch(PKMixin, TenantMixin, CommonMixin, Base):
@@ -83,14 +133,12 @@ class InternshipMatch(PKMixin, TenantMixin, CommonMixin, Base):
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     position_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     company_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
-    # AUTO_MAJOR / AUTO_ENTERPRISE / MANUAL / BATCH
     match_type: Mapped[str] = mapped_column(String(32), nullable=False, default="MANUAL", index=True)
     score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     major_hit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     enterprise_hit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     conflict_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     conflict_reason: Mapped[str | None] = mapped_column(String(500))
-    # RECOMMENDED / PENDING_CONFIRM / CONFIRMED / REJECTED / CONFLICT / CANCELLED
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="RECOMMENDED", index=True)
     confirmed_by: Mapped[str | None] = mapped_column(String(100))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime)

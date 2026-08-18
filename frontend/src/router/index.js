@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { getToken, isPlatformSuperAdmin, request } from '@/services/http/client'
+import { getToken, request } from '@/services/http/client'
 import {
   canEnterRoute,
   ensurePermissionPatterns,
@@ -7,6 +7,11 @@ import {
   getPermissionPatterns,
   getRbacLoadFailed,
 } from '@/security/permissionGate'
+import {
+  ensurePlatformAccessContext,
+  isPlatformPrincipal,
+  resolvePlatformHome,
+} from '@/security/platformAccessGate'
 
 /**
  * 路由表（对齐 docs/frontend/route-freeze.md）：
@@ -137,7 +142,7 @@ const router = createRouter({
       path: '/dev/preview',
       name: 'ui-preview',
       component: () => import('../views/UiPreview.vue'),
-      // P6：生产环境封闭开发预览入口（直链也进不了）；开发态仍可打开
+      // P6：生产环境封闭 /dev/*（组件预览、旧 UI 存档），避免学校环境直链打开开发页
       meta: { title: '旧产品体验页（存档）', requiresDev: true }
     },
     {
@@ -213,47 +218,70 @@ const router = createRouter({
 })
 
 /**
- * P6-SECURITY：平台总控台（老板运营端）路由守卫。
- * 浏览器 accessToken 仅内存保存；刷新后先通过 HttpOnly refresh cookie 静默恢复，再判定路由权限。
- * 后端 /api/v1/platform/* 仍有 403 强校验兜底。
+ * P6-SECURITY / P-02：平台控制面 identity-first + capability-second 路由守卫。
+ * accessToken 只驻留内存；F5 先恢复对应 PLATFORM browser session，再读取 /platform/context。
+ * 前端只做纵深防御和导航收敛，后端 capability dependency 始终是最终安全边界。
  */
 router.beforeEach(async (to, from, next) => {
-  // 登录页与安全错误页（meta.public）除外。私有页在判“未登录”前必须先尝试恢复 HttpOnly 会话，
-  // 否则安全升级成内存 token 后，F5 会被错误地踢回登录页。
   const isPublic = to.path === '/login' || to.meta?.public
+  const isPlatform = to.path === '/admin/platform' || to.path.startsWith('/admin/platform/')
+
   if (!isPublic && !getToken()) {
     try {
       await request('/auth/me')
     } catch {
-      // 没有/失效 cookie 时才由下一段统一跳登录；不在此吞掉真正的业务授权判定。
+      // 没有/失效 cookie 时才由下一段统一跳登录。
     }
   }
   if (!isPublic && !getToken()) {
-    const needsPlatformLogin = to.path === '/admin/platform' || to.path.startsWith('/admin/platform/')
     next({
-      path: needsPlatformLogin ? '/platform-login' : '/login',
+      path: isPlatform ? '/platform-login' : '/login',
       query: to.fullPath !== '/' ? { redirect: to.fullPath } : {}
     })
     return
   }
-  // P6：生产构建封闭 /dev/*（组件预览、旧 UI 存档），避免学校环境直链打开开发页
+
   if (to.meta?.requiresDev && import.meta.env.PROD) {
     next({ path: '/workbench', replace: true })
     return
   }
-  const isPlatform = to.path === '/admin/platform' || to.path.startsWith('/admin/platform/')
-  if (isPlatform && !isPlatformSuperAdmin()) {
-    next({ path: '/platform-login', query: { redirect: to.fullPath, reason: 'platform-owner-only' } })
+
+  if (to.path === '/platform-login' && getToken() && isPlatformPrincipal() && to.query?.forcePasswordChange !== '1') {
+    const context = await ensurePlatformAccessContext({ force: true })
+    next(context ? { path: resolvePlatformHome(context), replace: true } : { path: '/security/403', replace: true })
     return
   }
-  // 平台超管是控制面身份，不属于任何学校租户。除了登录/错误等公开页，
-  // 一律收敛到平台控制台，避免其误进入学校端并把“全平台”误解为“本校”。
-  if (!isPublic && isPlatformSuperAdmin() && !isPlatform) {
-    next({ path: '/admin/platform/overview', replace: true })
+
+  if (isPlatform) {
+    if (!isPlatformPrincipal()) {
+      next({ path: '/platform-login', query: { redirect: to.fullPath, reason: 'platform-principal-required' } })
+      return
+    }
+    const context = await ensurePlatformAccessContext()
+    if (!context) {
+      next({
+        path: '/security/403',
+        query: { from: to.fullPath, reason: 'platform-capability-service', message: getRbacLoadFailed() || '平台主管能力上下文加载失败' }
+      })
+      return
+    }
+    if (to.path === '/admin/platform') {
+      next({ path: resolvePlatformHome(context), replace: true })
+      return
+    }
+  }
+
+  // PLATFORM principal 与学校租户身份严格分离；任何平台职责账号都不能误入学校工作台。
+  if (!isPublic && !isPlatform && isPlatformPrincipal()) {
+    const context = await ensurePlatformAccessContext()
+    next({ path: context ? resolvePlatformHome(context) : '/security/403', replace: true })
     return
   }
-  // 业务中心路由权限门：冷加载先拉 RBAC 再判定，避免先进业务页再等接口 403。
-  if (GUARDED_MODULES.has(to.meta?.moduleCode) && getToken() && !Array.isArray(getPermissionPatterns())) {
+
+  if (
+    !isPlatform && GUARDED_MODULES.has(to.meta?.moduleCode) && getToken() &&
+    !Array.isArray(getPermissionPatterns())
+  ) {
     await ensurePermissionPatterns(request)
   }
   if (!canEnterRoute(to.meta)) {

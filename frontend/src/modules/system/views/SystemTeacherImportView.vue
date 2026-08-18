@@ -52,7 +52,7 @@
 <script>
 /**
  * 系统管理 › 身份与账号 › 教职工导入。
- * 上传后创建统一 ImportJob；确认只传 jobId + expectedVersion，禁止前端回传 rows。
+ * 浏览器只上传、pure-read polling、展示、确认；后台 worker 独占 claim/parse/validation。
  */
 import { ModulePageShell } from '@/components/business'
 import { AppGlobalState } from '@/components/common'
@@ -60,6 +60,10 @@ import { AppButton } from '@/components/ui'
 import ImportDialog from '@/modules/system/components/ImportDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { dataExchangeApi } from '@/modules/system/api/dataExchange.api'
+import {
+  canConfirmIdentityImport,
+  toIdentityPreview
+} from '@/modules/system/utils/identityImportState'
 
 function apiError(error) {
   return { code: error?.code || 1, data: null, message: error?.message || '请求失败' }
@@ -84,31 +88,37 @@ export default {
     }
   },
   methods: {
-    async validateFile(file) {
+    async validateFile(file, { signal } = {}) {
       try {
-        const job = await dataExchangeApi.validateIdentity('teachers', file)
-        const invalid = Number(job.invalidRows || 0)
+        const created = await dataExchangeApi.validateIdentity('teachers', file)
+        const current = await dataExchangeApi.waitIdentityValidation(created.id, { signal })
+        const preview = toIdentityPreview(current)
         return {
           code: 0,
-          data: {
-            ...job,
-            jobId: job.id,
-            total: Number(job.totalRows || 0),
-            valid: Number(job.validRows || 0),
-            invalid,
-            errors: invalid
-              ? [{ row: 0, field: '预检结果', message: `发现 ${invalid} 行错误，完整回执已进入数据交换任务中心` }]
-              : []
-          },
-          message: '教职工名单解析及预检完成'
+          data: preview,
+          message: preview.pollTimedOut
+            ? '教职工名单仍在后台处理，可稍后重新检查状态'
+            : preview.status === 'VALIDATED'
+              ? '教职工名单服务端预检完成'
+              : preview.status === 'VALIDATION_FAILED'
+                ? '教职工名单预检未通过'
+                : preview.statusLabel
         }
       } catch (error) {
+        if (error?.name === 'AbortError') throw error
         return apiError(error)
       }
     },
     async confirmJob(jobId) {
       try {
         const current = await dataExchangeApi.getImport(jobId)
+        if (!canConfirmIdentityImport(current)) {
+          return {
+            code: 1,
+            data: toIdentityPreview(current),
+            message: '服务端预检状态已变化，当前任务不能确认，请重新检查状态'
+          }
+        }
         const data = await dataExchangeApi.confirmImport(jobId, current.version)
         const result = data.result || {}
         const entities = result.entities || {}

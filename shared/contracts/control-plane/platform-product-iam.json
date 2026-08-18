@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "card": "B6",
+  "authority": "PLATFORM_PRODUCT_IAM_RELEASE_GOVERNANCE",
+  "sourceTruth": [
+    "shared/contracts/module-manifest.json",
+    "shared/contracts/permission-catalog.json",
+    "published t_role_template versions"
+  ],
+  "publishedRelease": "immutable exact sourceDigest snapshot",
+  "runtimeArbitraryPermissionCreation": false,
+  "runtimeArbitraryModuleCreation": false,
+  "moduleBoundary": {
+    "internshipModuleKey": "internship",
+    "enterprisePortal": "internship surface",
+    "studentSelection": "internship surface",
+    "forbiddenTopLevelModules": ["recruitment", "recruitmentCenter", "enterpriseRecruitment"]
+  },
+  "publication": {
+    "draft": "idempotent requestId",
+    "publish": "root + recent-auth + MFA + expectedVersion + sourceDigest unchanged + critical audit same transaction",
+    "impact": ["modules", "permissions", "roleTemplateVersions"]
+  },
+  "navigationSource": "module-manifest frontendRoutePrefixes/schoolVisible/platformOnly"
+}

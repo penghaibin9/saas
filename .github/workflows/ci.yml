@@ -97,7 +97,7 @@ jobs:
       - run: node scripts/check/check-graduation-production-gates.mjs
 
   backend:
-    name: 后端 pytest（小 PR 变更感知；大 PR 基线差分；定时全量）
+    name: 后端 pytest（PR/push 变更感知；定时全量）
     runs-on: ubuntu-latest
     timeout-minutes: 90
     defaults:
@@ -140,41 +140,15 @@ jobs:
           TARGETS=$(python ../scripts/check/select_pytest_targets.py)
           echo "targets=$TARGETS" >> "$GITHUB_OUTPUT"
           echo "选中: $TARGETS"
-      - name: 运行 pytest（小 PR 变更感知；大 PR 基线差分；定时全量）
+      - name: 运行 pytest（PR/push 变更感知；定时全量）
         run: |
-          FULL_REGRESSION=0
-          BASELINE_DIFF=0
           if [ "${{ github.event_name }}" = "schedule" ]; then
             echo "定时任务：执行 backend 全量 pytest"
-            FULL_REGRESSION=1
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            CHANGED_COUNT=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" | wc -l | tr -d ' ')
-            echo "PR 变更文件数：$CHANGED_COUNT"
-            if [ "$CHANGED_COUNT" -ge 150 ]; then
-              echo "大 PR（>=150 文件）：执行全量 pytest，并与 main 已知失败基线比较"
-              FULL_REGRESSION=1
-              BASELINE_DIFF=1
-            fi
-          fi
-
-          if [ "$FULL_REGRESSION" = "1" ]; then
-            if [ "$BASELINE_DIFF" = "1" ]; then
-              mkdir -p test-results
-              set +e
-              timeout 80m pytest -q -p no:warnings --durations=30 \
-                --junitxml=test-results/backend-full.xml
-              PYTEST_EXIT=$?
-              set -e
-              python ../scripts/check/compare-pytest-junit-baseline.py \
-                --junit test-results/backend-full.xml \
-                --baseline ../scripts/check/backend-known-failures-main.txt \
-                --base-ref "${{ github.event.pull_request.base.sha }}" \
-                --repo-root .. \
-                --pytest-exit-code "$PYTEST_EXIT"
-            else
-              timeout 80m pytest -q -p no:warnings --durations=30
-            fi
+            timeout 80m pytest -q -p no:warnings --durations=30
           else
+            # PR 的全量回归唯一由 Main canonical release gate 的 4 个
+            # deterministic shards 承担；CI 保持 change-aware，避免同一
+            # HEAD 在单 runner 上重复全量并被 90m job ceiling 取消。
             TARGETS="${{ steps.select.outputs.targets }}"
             echo "PR/push 变更感知：$TARGETS"
             timeout 40m pytest $TARGETS -q -p no:warnings --durations=20

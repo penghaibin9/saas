@@ -9,39 +9,55 @@
     @menu-select="onMenuSelect"
   >
     <ErrorState v-if="error" :description="error" @retry="loadContext" />
-    <LoadingState v-else-if="loading" text="正在校验平台身份与数据范围…" />
+    <LoadingState v-else-if="loading" text="正在校验平台身份与职责能力…" />
     <router-view v-else-if="ctx" :ctx="ctx" />
   </BasePortalLayout>
 </template>
 
 <script>
 /**
- * A5 / P0-07 平台运营父布局。
- * 身份、角色、dataScope 只来自真实 auth/RBAC；平台角色另由 /platform/overview 强校验。
- * 任何请求失败均 fail-closed，禁止构造 PLATFORM_OPS/区域演示身份。
+ * P-02 平台运营父布局。
+ * identity-first：只接受 canonical /platform/context 的 PLATFORM principal；
+ * capability-second：菜单和路由消费同一份 duty→permission pattern，root-only 页面不会
+ * 因为 delegated principal 登录成功而自动放开。后端 capability dependency 仍是安全边界。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { ErrorState, LoadingState } from '@/components/business'
-import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { PLATFORM_MANAGEMENT_CATALOG } from '@/modules/platform/platformManagementCatalog'
+import { canEnterRoute } from '@/security/permissionGate'
+import {
+  ensurePlatformAccessContext,
+  toPlatformUiContext
+} from '@/security/platformAccessGate'
 
-const MENUS = PLATFORM_MANAGEMENT_CATALOG.map((group) => ({
-  key: group.key, label: group.label, icon: group.icon, path: group.items[0].path
+const CONTROL_PLANE_LANDING = Object.freeze({
+  'plt-standards': '/admin/platform/product-iam'
+})
+
+const BASE_MENUS = PLATFORM_MANAGEMENT_CATALOG.map((group) => ({
+  key: group.key,
+  label: group.label,
+  icon: group.icon,
+  path: CONTROL_PLANE_LANDING[group.key] || group.items[0].path
 }))
 
 export default {
   name: 'AdminPlatformLayout',
   components: { BasePortalLayout, ErrorState, LoadingState },
   data() {
-    return { menus: MENUS, ctx: null, loading: true, error: '' }
+    return { ctx: null, loading: true, error: '' }
   },
   computed: {
+    menus() {
+      if (!this.ctx) return []
+      return BASE_MENUS.filter((item) => canEnterRoute(this.$router.resolve(item.path).meta))
+    },
     activeKey() {
       const path = this.$route.path
       const hit = [...this.menus]
         .sort((a, b) => b.path.length - a.path.length)
         .find((m) => path === m.path || path.startsWith(m.path + '/'))
-      return hit ? hit.key : 'plt-command'
+      return hit ? hit.key : (this.menus[0]?.key || '')
     }
   },
   created() {
@@ -52,9 +68,9 @@ export default {
       this.loading = true
       this.error = ''
       this.ctx = null
-      const res = await platformControlApi.getContext()
-      if (res.code === 0) this.ctx = res.data
-      else this.error = res.message || '平台身份校验失败'
+      const context = await ensurePlatformAccessContext({ force: true })
+      if (context) this.ctx = toPlatformUiContext(context)
+      else this.error = '平台身份或职责能力上下文加载失败'
       this.loading = false
     },
     onMenuSelect(item) {

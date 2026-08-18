@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+SYSTEM_IMPL = ROOT / "backend" / "app" / "modules" / "system_admin" / "routers" / "system_bundle.py"
 
 
 def test_module_manifest_validates():
@@ -86,13 +87,13 @@ def test_effective_permission_patterns_builtin():
 
 
 def test_audit_module_not_hardcoded_system():
-    text = (ROOT / "backend" / "app" / "api" / "v1" / "system.py").read_text(encoding="utf-8")
+    text = SYSTEM_IMPL.read_text(encoding="utf-8")
     assert '"module": "SYSTEM", "moduleLabel": "系统管理"' not in text
     assert "_audit_module_of" in text
 
 
 def test_phone_update_uses_encrypt():
-    text = (ROOT / "backend" / "app" / "api" / "v1" / "system.py").read_text(encoding="utf-8")
+    text = SYSTEM_IMPL.read_text(encoding="utf-8")
     assert "encrypt_field(phone)" in text
     assert "account.phone_encrypted = phone\n" not in text
 

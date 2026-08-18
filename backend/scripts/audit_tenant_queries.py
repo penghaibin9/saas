@@ -9,18 +9,64 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
+import json
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1] / "app"
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_ROOT.parent
+ROOT = BACKEND_ROOT / "app"
 EXCLUDED_PARTS = {"migrations", "platform_service.py", "tenant_context.py", "tenant_scoped.py"}
 SAFE_MARKERS = ("tenant_id", "_tid(", "current_tenant_id", "tenant_scope", "tenantId",
                 "tenant_get(", "tenant_select(", "assert_same_tenant(")
-BASELINE = Path(__file__).resolve().parents[1] / "scripts" / "tenant-query-baseline.txt"
+BASELINE = BACKEND_ROOT / "scripts" / "tenant-query-baseline.txt"
+
+# S0 Move-Only aliases are accepted only while the moved bundle's Git blob SHA
+# remains exactly equal to the frozen source snapshot.  This preserves the
+# historical ratchet across a pure path move without creating a broad ignore:
+# change one byte in the bundle and the alias disappears, so new unsafe calls RED.
+MOVE_ONLY_ALIASES = {
+    "modules/system_admin/routers/system_bundle.py": (
+        "api/v1/system.py",
+        REPO_ROOT / "shared/contracts/control-plane/system-route-snapshot.json",
+    ),
+    "modules/platform/routers/platform_bundle.py": (
+        "api/v1/platform.py",
+        REPO_ROOT / "shared/contracts/control-plane/platform-route-snapshot.json",
+    ),
+}
 
 
 def _normalize_location(value: str) -> str:
     """Make baseline locations portable across Windows and Linux runners."""
     return value.strip().replace("\\", "/")
+
+
+def _git_blob_sha(path: Path) -> str:
+    data = path.read_bytes()
+    return hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
+
+
+def _verified_move_aliases() -> dict[str, str]:
+    """Return only byte-proven S0 path aliases; never silently forgive drift."""
+    aliases: dict[str, str] = {}
+    for moved_rel, (legacy_rel, snapshot_path) in MOVE_ONLY_ALIASES.items():
+        moved_path = ROOT / moved_rel
+        if not moved_path.exists() or not snapshot_path.exists():
+            continue
+        try:
+            expected = json.loads(snapshot_path.read_text(encoding="utf-8"))["frozenSourceBlobSha"]
+        except (KeyError, json.JSONDecodeError):
+            continue
+        if _git_blob_sha(moved_path) == str(expected):
+            aliases[_normalize_location(moved_rel)] = _normalize_location(legacy_rel)
+    return aliases
+
+
+def _location(path: Path, line: int, aliases: dict[str, str]) -> str:
+    rel = _normalize_location(path.relative_to(ROOT).as_posix())
+    rel = aliases.get(rel, rel)
+    return f"{rel}:{line}"
 
 
 def _tenant_model_names() -> set[str]:
@@ -30,7 +76,7 @@ def _tenant_model_names() -> set[str]:
     本来就没有 tenant_id，混在一起统计会把信号淹掉，也让门禁无法执行。
     """
     import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(BACKEND_ROOT))
     try:
         from app.db.base import Base  # noqa: WPS433
     except Exception as exc:  # noqa: BLE001
@@ -81,6 +127,7 @@ def _get_model_name(node: ast.Call) -> str:
 def main() -> int:
     args = _args()
     tenant_models = _tenant_model_names()
+    move_aliases = _verified_move_aliases()
     direct_gets: list[str] = []
     candidates: list[str] = []
     for path in sorted(ROOT.rglob("*.py")):
@@ -102,7 +149,7 @@ def main() -> int:
             start = max(0, node.lineno - 1)
             end = min(len(lines), getattr(node, "end_lineno", node.lineno) + 3)
             statement = " ".join(lines[start:end])
-            location = _normalize_location(f"{path.relative_to(ROOT)}:{node.lineno}")
+            location = _location(path, node.lineno, move_aliases)
             if (name == "get" and isinstance(node.func, ast.Attribute)
                     and isinstance(node.func.value, ast.Name)
                     and node.func.value.id.lower() in {"db", "session"}):
@@ -125,6 +172,9 @@ def main() -> int:
                 candidates.append(location)
 
     print(f"direct_session_get={len(direct_gets)} query_review_candidates={len(candidates)}")
+    if move_aliases:
+        print("verified_move_only_aliases=" + ",".join(
+            f"{src}->{dst}" for src, dst in sorted(move_aliases.items())))
 
     if args.write_baseline:
         BASELINE.write_text("\n".join(sorted(direct_gets)) + "\n", encoding="utf-8")

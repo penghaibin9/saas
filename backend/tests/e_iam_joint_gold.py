@@ -1,0 +1,435 @@
+"""E×IAM joint Gold negative matrix.
+
+This file is intentionally NOT named ``test_*.py``. Repository-wide pytest discovery on the
+Control Plane branch must not import E-series modules before PR #132 is temporarily merged.
+The dedicated CI gate runs this file explicitly after a local-only merge of the exact PR #132
+HEAD into the exact PR #133 HEAD.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from types import SimpleNamespace
+from uuid import uuid4
+
+import pytest
+
+from app.core import permissions
+from app.core.exceptions import AppException
+from app.services import module_access_service
+
+
+def _assert_code(exc_info, code: str) -> None:
+    assert getattr(exc_info.value, "code", None) == code, repr(exc_info.value)
+
+
+def test_school_without_internship_entitlement_is_denied_in_real_mysql(db_mode):
+    """A real tenant with internship explicitly unentitled must be rejected by the canonical gate."""
+    from app.db.session import get_sessionmaker
+    from app.models import Tenant
+    from app.services import platform_service as platform
+
+    tenant_id = 6_100_000_000 + (uuid4().int % 500_000_000)
+    db = get_sessionmaker()()
+    try:
+        db.add(
+            Tenant(
+                id=tenant_id,
+                tenant_code=f"e-iam-no-intern-{tenant_id}",
+                school_name=f"E×IAM 未购实习学校 {tenant_id}",
+                status="ACTIVE",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    platform.put_config_json(
+        tenant_id,
+        "TENANT_META",
+        "-",
+        {
+            "status": "active",
+            "packageCode": "professional",
+            "expireAt": (datetime.now() + timedelta(days=365)).isoformat(timespec="seconds"),
+        },
+    )
+    platform.put_config_json(tenant_id, "FEATURES", "-", {"internship": False})
+
+    state = module_access_service.module_access_state(tenant_id, "internship")
+    assert state["entitled"] is False
+    assert state["enabled"] is False
+    assert state["allowed"] is False
+    assert state["reasonCode"] == module_access_service.REASON_NOT_ENTITLED
+    with pytest.raises(AppException) as exc:
+        module_access_service.assert_module_access(tenant_id, "internship", write=False)
+    _assert_code(exc, "NO_PERMISSION")
+
+
+def test_normal_teacher_cannot_manage_recruitment():
+    """A generic academic teacher must not inherit the recruitment writer permission."""
+    user = {
+        "userId": "joint-normal-teacher",
+        "userType": "TEACHER",
+        "tenantId": "991001",
+        "currentRoleCode": "ACADEMIC_TEACHER",
+    }
+    assert permissions.has_permission(user, "internship.recruitment.manage") is False
+    with pytest.raises(AppException) as exc:
+        permissions.enforce_permission(user, "internship.recruitment.manage")
+    _assert_code(exc, "NO_PERMISSION")
+
+
+def test_same_school_cross_college_scope_is_denied(db_mode):
+    """An ALLOW for one college must never bleed into a sibling college in the same tenant."""
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, SchoolClass
+    from app.services import scope_policy_service as scope_svc
+
+    tenant_id = 1000000000000000001
+    suffix = uuid4().hex[:8]
+    db = get_sessionmaker()()
+    try:
+        college_a = College(tenant_id=tenant_id, college_name=f"E-IAM-A-{suffix}", status="ACTIVE")
+        college_b = College(tenant_id=tenant_id, college_name=f"E-IAM-B-{suffix}", status="ACTIVE")
+        db.add_all([college_a, college_b])
+        db.flush()
+        major_a = Major(tenant_id=tenant_id, college_id=college_a.id, major_name=f"A-{suffix}", status="ACTIVE")
+        major_b = Major(tenant_id=tenant_id, college_id=college_b.id, major_name=f"B-{suffix}", status="ACTIVE")
+        db.add_all([major_a, major_b])
+        db.flush()
+        class_a = SchoolClass(
+            tenant_id=tenant_id,
+            major_id=major_a.id,
+            class_name=f"A班-{suffix}",
+            grade="2026",
+            status="ACTIVE",
+        )
+        class_b = SchoolClass(
+            tenant_id=tenant_id,
+            major_id=major_b.id,
+            class_name=f"B班-{suffix}",
+            grade="2026",
+            status="ACTIVE",
+        )
+        db.add_all([class_a, class_b])
+        db.commit()
+        college_a_id = int(college_a.id)
+        class_a_id = int(class_a.id)
+        class_b_id = int(class_b.id)
+    finally:
+        db.close()
+
+    role = "E_IAM_JOINT_COLLEGE_OPERATOR"
+    scope_svc.set_policy(
+        role,
+        effect="ALLOW",
+        target_type="COLLEGE",
+        target_id=str(college_a_id),
+        include_children=True,
+        reason="仅允许本学院",
+        tenant_id=tenant_id,
+    )
+    mine = scope_svc.decide(role, target_type="CLASS", target_id=str(class_a_id), tenant_id=tenant_id)
+    sibling = scope_svc.decide(role, target_type="CLASS", target_id=str(class_b_id), tenant_id=tenant_id)
+    assert mine["decision"] == "ALLOW"
+    assert mine["reasonCode"] == "INHERITED_ALLOW"
+    assert sibling["decision"] == "DENY"
+    assert sibling["reasonCode"] == "DEFAULT_DENY"
+
+
+def test_same_school_cross_major_scope_is_denied(db_mode):
+    """An ALLOW for one major must not bleed into a sibling major under the same college."""
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, SchoolClass
+    from app.services import scope_policy_service as scope_svc
+
+    tenant_id = 1000000000000000001
+    suffix = uuid4().hex[:8]
+    db = get_sessionmaker()()
+    try:
+        college = College(tenant_id=tenant_id, college_name=f"E-IAM-DEPT-{suffix}", status="ACTIVE")
+        db.add(college)
+        db.flush()
+        major_a = Major(tenant_id=tenant_id, college_id=college.id, major_name=f"Dept-A-{suffix}", status="ACTIVE")
+        major_b = Major(tenant_id=tenant_id, college_id=college.id, major_name=f"Dept-B-{suffix}", status="ACTIVE")
+        db.add_all([major_a, major_b])
+        db.flush()
+        class_a = SchoolClass(
+            tenant_id=tenant_id,
+            major_id=major_a.id,
+            class_name=f"Dept-A班-{suffix}",
+            grade="2026",
+            status="ACTIVE",
+        )
+        class_b = SchoolClass(
+            tenant_id=tenant_id,
+            major_id=major_b.id,
+            class_name=f"Dept-B班-{suffix}",
+            grade="2026",
+            status="ACTIVE",
+        )
+        db.add_all([class_a, class_b])
+        db.commit()
+        major_a_id = int(major_a.id)
+        class_a_id = int(class_a.id)
+        class_b_id = int(class_b.id)
+    finally:
+        db.close()
+
+    role = "E_IAM_JOINT_MAJOR_OPERATOR"
+    scope_svc.set_policy(
+        role,
+        effect="ALLOW",
+        target_type="MAJOR",
+        target_id=str(major_a_id),
+        include_children=True,
+        reason="仅允许本专业组织单元",
+        tenant_id=tenant_id,
+    )
+    mine = scope_svc.decide(role, target_type="CLASS", target_id=str(class_a_id), tenant_id=tenant_id)
+    sibling = scope_svc.decide(role, target_type="CLASS", target_id=str(class_b_id), tenant_id=tenant_id)
+    assert mine["decision"] == "ALLOW"
+    assert mine["reasonCode"] == "INHERITED_ALLOW"
+    assert sibling["decision"] == "DENY"
+    assert sibling["reasonCode"] == "DEFAULT_DENY"
+
+
+def test_school_admin_identity_cannot_be_used_as_enterprise_principal():
+    """School RBAC is never an alternate root into enterprise APIs."""
+    from app.modules.internship.services import internship_enterprise_auth_service as auth_svc
+
+    claims = {
+        "userId": "db-1",
+        "userType": "TEACHER",
+        "tenantId": "991001",
+        "currentRoleCode": "SCHOOL_ADMIN",
+        "enterpriseMemberId": "1",
+        "companyId": "1",
+    }
+    with pytest.raises(AppException) as exc:
+        auth_svc.validate_enterprise_claims(claims)
+    _assert_code(exc, "UNAUTHORIZED")
+
+
+def test_enterprise_mentor_cannot_review_recruitment_applications():
+    """MENTOR can collaborate with owned students but cannot become an HR recruitment reviewer."""
+    from app.modules.internship.dependencies import enterprise_context
+
+    principal = enterprise_context.EnterprisePrincipal(
+        tenant_id=991001,
+        tenant_code="joint",
+        user_id=1,
+        member_id=2,
+        company_id=3,
+        member_role="MENTOR",
+        claims={},
+    )
+    dependency = enterprise_context.require_enterprise_permission("internship.application.review")
+    with pytest.raises(AppException) as exc:
+        dependency(principal=principal)
+    _assert_code(exc, "NO_PERMISSION")
+
+
+def test_expired_enterprise_hr_grant_fails_closed_in_real_mysql(db_mode):
+    """An ACTIVE persisted HR grant is still denied once its validity window has expired."""
+    from app.db.session import get_sessionmaker
+    from app.models.internship_enterprise_portal import (
+        InternshipEnterpriseAccessGrant,
+        InternshipEnterpriseMember,
+    )
+    from app.modules.internship.services import internship_enterprise_access_service as access_svc
+
+    now = datetime.utcnow()
+    tenant_id = 8_100_000_000 + (uuid4().int % 500_000_000)
+    company_id = 8_700_000_000 + (uuid4().int % 100_000_000)
+    user_id = 8_800_000_000 + (uuid4().int % 100_000_000)
+    campaign_id = 8_900_000_000 + (uuid4().int % 50_000_000)
+    batch_id = 8_950_000_000 + (uuid4().int % 40_000_000)
+
+    db = get_sessionmaker()()
+    try:
+        member = InternshipEnterpriseMember(
+            tenant_id=tenant_id,
+            company_id=company_id,
+            user_id=user_id,
+            member_role="HR",
+            status="ACTIVE",
+            is_primary=False,
+            accepted_at=now - timedelta(days=10),
+            created_at=now - timedelta(days=10),
+            updated_at=now - timedelta(days=10),
+            is_deleted=False,
+            version=0,
+        )
+        db.add(member)
+        db.flush()
+        grant = InternshipEnterpriseAccessGrant(
+            tenant_id=tenant_id,
+            member_id=member.id,
+            company_id=company_id,
+            grant_type="RECRUITMENT",
+            campaign_id=campaign_id,
+            batch_id=batch_id,
+            valid_from=now - timedelta(days=2),
+            valid_until=now - timedelta(seconds=1),
+            status="ACTIVE",
+            created_at=now - timedelta(days=2),
+            updated_at=now - timedelta(days=2),
+            is_deleted=False,
+            version=0,
+        )
+        db.add(grant)
+        db.commit()
+        member_id = int(member.id)
+        grant_id = int(grant.id)
+    finally:
+        db.close()
+
+    db = get_sessionmaker()()
+    try:
+        stored = db.get(InternshipEnterpriseAccessGrant, grant_id)
+        assert stored is not None
+        assert stored.status == "ACTIVE"
+        assert access_svc.effective_grant_status(stored, now=now) == "EXPIRED"
+        with pytest.raises(AppException) as exc:
+            access_svc.resolve_active_grant_in_tx(
+                db,
+                tenant_id=tenant_id,
+                member_id=member_id,
+                grant_type="RECRUITMENT",
+                campaign_id=campaign_id,
+                batch_id=batch_id,
+                now=now,
+            )
+        _assert_code(exc, "NO_PERMISSION")
+    finally:
+        db.close()
+
+
+def test_wrong_enterprise_resource_is_denied():
+    from app.modules.internship.dependencies import enterprise_context
+
+    context = SimpleNamespace(company_id=2001)
+    with pytest.raises(AppException) as exc:
+        enterprise_context.assert_resource_company(context, 2002)
+    _assert_code(exc, "NO_PERMISSION")
+
+
+def test_mentor_cannot_access_non_owned_student_in_real_mysql(db_mode):
+    """A mentor sees only rows bound to its contact, even inside the same company and batch."""
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord, StudentProfile
+    from app.models.internship_enterprise_portal import InternshipEnterpriseMember
+    from app.modules.internship.services import internship_enterprise_collaboration_service as collab_svc
+
+    now = datetime.utcnow()
+    tenant_id = 7_100_000_000 + (uuid4().int % 500_000_000)
+    company_id = 7_700_000_000 + (uuid4().int % 100_000_000)
+    user_id = 7_800_000_000 + (uuid4().int % 100_000_000)
+    batch_id = 7_900_000_000 + (uuid4().int % 50_000_000)
+    owned_contact_id = 7_950_000_001 + (uuid4().int % 10_000_000)
+    other_contact_id = owned_contact_id + 20_000_000
+    suffix = uuid4().hex[:10]
+
+    db = get_sessionmaker()()
+    try:
+        member = InternshipEnterpriseMember(
+            tenant_id=tenant_id,
+            company_id=company_id,
+            user_id=user_id,
+            contact_id=owned_contact_id,
+            member_role="MENTOR",
+            status="ACTIVE",
+            is_primary=False,
+            accepted_at=now,
+            created_at=now,
+            updated_at=now,
+            is_deleted=False,
+            version=0,
+        )
+        owned_student = StudentProfile(
+            tenant_id=tenant_id,
+            student_no=f"EIAM-OWN-{suffix}",
+            real_name="联合门禁本人学生",
+        )
+        other_student = StudentProfile(
+            tenant_id=tenant_id,
+            student_no=f"EIAM-OTHER-{suffix}",
+            real_name="联合门禁他人学生",
+        )
+        db.add_all([member, owned_student, other_student])
+        db.flush()
+        owned_record = InternshipRecord(
+            tenant_id=tenant_id,
+            student_id=owned_student.id,
+            batch_id=batch_id,
+            enterprise_id=company_id,
+            position_id=7_990_000_001,
+            mentor_contact_id=owned_contact_id,
+            position_name="本人导师岗位",
+            eligibility_status="QUALIFIED",
+            destination_type="ASSIGNED",
+            status="ONBOARD",
+        )
+        other_record = InternshipRecord(
+            tenant_id=tenant_id,
+            student_id=other_student.id,
+            batch_id=batch_id,
+            enterprise_id=company_id,
+            position_id=7_990_000_002,
+            mentor_contact_id=other_contact_id,
+            position_name="其他导师岗位",
+            eligibility_status="QUALIFIED",
+            destination_type="ASSIGNED",
+            status="ONBOARD",
+        )
+        db.add_all([owned_record, other_record])
+        db.commit()
+        member_id = int(member.id)
+        owned_record_id = int(owned_record.id)
+        other_record_id = int(other_record.id)
+    finally:
+        db.close()
+
+    context = SimpleNamespace(
+        tenant_id=tenant_id,
+        company_id=company_id,
+        batch_id=batch_id,
+        member_id=member_id,
+        member_role="MENTOR",
+    )
+    db = get_sessionmaker()()
+    try:
+        result = collab_svc.list_students_in_tx(db, context=context, page=1, page_size=20)
+        assert result["total"] == 1
+        assert [item["internshipId"] for item in result["items"]] == [str(owned_record_id)]
+        owned = collab_svc.get_student_in_tx(db, context=context, internship_id=owned_record_id)
+        assert owned["internshipId"] == str(owned_record_id)
+        with pytest.raises(AppException) as exc:
+            collab_svc.get_student_in_tx(db, context=context, internship_id=other_record_id)
+        _assert_code(exc, "DATA_NOT_FOUND")
+    finally:
+        db.close()
+
+
+def test_e_series_does_not_introduce_a_second_identity_or_school_iam_root():
+    """Enterprise auth reuses t_user + member/grant/context and remains separate from school RBAC."""
+    import inspect
+    import app.models as models
+    from app.modules.internship.dependencies import enterprise_context
+    from app.modules.internship.services import internship_enterprise_auth_service as auth_svc
+    from app.modules.internship.services import internship_enterprise_member_service as member_svc
+
+    assert not hasattr(models, "EnterpriseUser")
+    auth_source = inspect.getsource(auth_svc)
+    member_source = inspect.getsource(member_svc)
+    context_source = inspect.getsource(enterprise_context)
+    assert "from app.models import EmpCompany, Tenant, User" in auth_source
+    assert "select(User)" in auth_source
+    assert "InternshipEnterpriseMember" in auth_source
+    assert "EnterpriseUser" not in auth_source
+    assert "User" in member_source and "InternshipEnterpriseMember" in member_source
+    assert "decode_and_validate_access" in context_source
+    assert "resolve_active_grant_in_tx" in context_source
+    assert "require_staff" not in context_source
+    assert all(code.startswith("internship.") for code in enterprise_context._ENTERPRISE_RECRUITMENT_PERMISSION_ROLES)

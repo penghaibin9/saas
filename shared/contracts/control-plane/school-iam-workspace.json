@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "card": "B7",
+  "workspace": ["roles","templates","members","permissions","dataScopes","delegations","securityChanges","accessExplain"],
+  "schoolPermissionCatalog": "only TENANT + tenantAssignable + ACTIVE",
+  "customRoleEnterprisePermission": "DENY",
+  "recruitmentPermissions": [
+    "internship.recruitment.view",
+    "internship.recruitment.manage",
+    "internship.recruitment.invite",
+    "internship.recruitment.close"
+  ],
+  "accessExplain": {
+    "serverFacts": ["subject status","active roles","RolePermission/runtime patterns","module entitlement","dataScope projection"],
+    "eDomainGuard": "compose canonical data-scope relation + scope-policy guard; never duplicate E business truth",
+    "iamPassWithoutDomainGuard": "RESOURCE_CONTEXT_REQUIRED, finalDecision=DENY, finalAllowed=false"
+  },
+  "enterpriseAdministration": "school administrator cannot grant enterprise.internship.*; enterprise access remains EnterpriseMember + AccessGrant authority"
+}

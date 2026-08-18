@@ -9,6 +9,7 @@ from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.academic_affairs.services import academic_affairs_program_governance_service as quality_svc
 from app.modules.academic_affairs.services import academic_affairs_program_governance_summary_service as summary_svc
+from app.modules.academic_affairs.services import academic_affairs_program_opening_projection_service as opening_svc
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-培养方案质量"])
 _VIEW = require_permission("academicAffairs.program.view")
@@ -32,4 +33,4 @@ def opening_plan_differences(
     status: Optional[str] = None,
     user=Depends(_VIEW),
 ):
-    return success(quality_svc.opening_differences(user, termId, majorId, gradeYear, status))
+    return success(opening_svc.opening_differences(user, termId, majorId, gradeYear, status))

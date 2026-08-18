@@ -2,10 +2,15 @@ import {
   fetchMyAuthContexts,
   getToken,
   request,
-  requestBlob,
-  requestUpload
+  requestBlob
 } from '@/services/http/client'
 import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
+import {
+  isIdentityImportProcessing,
+  isIdentityImportTerminal
+} from '@/modules/system/utils/identityImportState'
+
+const identityUploadKeys = new WeakMap()
 
 function saveBlob(blob, filename) {
   const href = URL.createObjectURL(blob)
@@ -18,11 +23,39 @@ function saveBlob(blob, filename) {
   URL.revokeObjectURL(href)
 }
 
-function createIdempotencyKey(jobId, expectedVersion) {
+function randomKey(prefix) {
   const random = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
-  return `data-exchange-confirm:${jobId}:v${expectedVersion}:${random}`
+  return `${prefix}:${random}`
+}
+
+function createIdempotencyKey(jobId, expectedVersion) {
+  return randomKey(`data-exchange-confirm:${jobId}:v${expectedVersion}`)
+}
+
+function identityUploadKey(kind, file) {
+  let byKind = identityUploadKeys.get(file)
+  if (!byKind) {
+    byKind = new Map()
+    identityUploadKeys.set(file, byKind)
+  }
+  if (!byKind.has(kind)) {
+    byKind.set(kind, randomKey(`identity-upload:${kind}`))
+  }
+  return byKind.get(kind)
+}
+
+function delay(ms, signal) {
+  if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'))
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms)
+    if (!signal) return
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }, { once: true })
+  })
 }
 
 async function governedJsonRequest(path, { method = 'GET', params, body, headers = {} } = {}, retried = false) {
@@ -43,9 +76,40 @@ async function governedJsonRequest(path, { method = 'GET', params, body, headers
     body: body ? JSON.stringify(body) : undefined
   })
   if (response.status === 401 && !retried) {
-    // 复用统一客户端完成 refresh-token 单飞轮换，再用新 access token 重试带幂等头请求。
     await fetchMyAuthContexts()
     return governedJsonRequest(path, { method, params, body, headers }, true)
+  }
+  const payload = await response.json().catch(() => null)
+  if (!payload || typeof payload.code !== 'number') {
+    throw new Error(`响应结构异常（HTTP ${response.status}）`)
+  }
+  if (payload.code !== 0) {
+    const error = new Error(payload.message || `业务错误 ${payload.code}`)
+    error.biz = true
+    error.code = payload.code
+    error.bizCode = payload.bizCode
+    error.traceId = payload.traceId
+    error.details = payload.details
+    throw error
+  }
+  return payload.data
+}
+
+async function governedUploadRequest(path, file, idempotencyKey, retried = false) {
+  const token = getToken()
+  const form = new FormData()
+  form.append('file', file)
+  const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Idempotency-Key': idempotencyKey
+    },
+    body: form
+  })
+  if (response.status === 401 && !retried) {
+    await fetchMyAuthContexts()
+    return governedUploadRequest(path, file, idempotencyKey, true)
   }
   const payload = await response.json().catch(() => null)
   if (!payload || typeof payload.code !== 'number') {
@@ -82,6 +146,35 @@ export const dataExchangeApi = {
       params: visibilityParams(context)
     })
   },
+  async waitIdentityValidation(jobId, {
+    signal,
+    maxWaitMs = 90000,
+    initialDelayMs = 800,
+    maxDelayMs = 4000,
+    context = {}
+  } = {}) {
+    const startedAt = Date.now()
+    let waitMs = Math.max(100, Number(initialDelayMs) || 800)
+    let current = await this.getImport(jobId, context)
+
+    while (isIdentityImportProcessing(current)) {
+      const elapsed = Date.now() - startedAt
+      if (elapsed >= maxWaitMs) {
+        return { ...current, pollTimedOut: true }
+      }
+      await delay(Math.min(waitMs, Math.max(1, maxWaitMs - elapsed)), signal)
+      current = await this.getImport(jobId, context)
+      waitMs = Math.min(maxDelayMs, Math.ceil(waitMs * 1.6))
+    }
+
+    if (!isIdentityImportTerminal(current)) {
+      const error = new Error(`身份导入任务进入未知状态：${current?.status || 'EMPTY'}`)
+      error.bizCode = 'IDENTITY_IMPORT_UNKNOWN_STATUS'
+      error.details = { jobId, status: current?.status || null }
+      throw error
+    }
+    return current
+  },
   getImportErrors(jobId, params = {}) {
     return request(`/data-exchange/imports/${jobId}/errors`, {
       params: { ...visibilityParams(params), page: params.page, pageSize: params.pageSize }
@@ -113,7 +206,12 @@ export const dataExchangeApi = {
     })
   },
   validateIdentity(kind, file) {
-    return requestUpload(`/data-exchange/imports/identity/${kind}/validate-file`, file)
+    const idempotencyKey = identityUploadKey(kind, file)
+    return governedUploadRequest(
+      `/data-exchange/imports/identity/${kind}/validate-file`,
+      file,
+      idempotencyKey
+    )
   },
   async downloadExport(job) {
     const ticket = await request(`/data-exchange/exports/${job.id}/download-ticket`, {

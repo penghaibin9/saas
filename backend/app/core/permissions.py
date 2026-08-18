@@ -30,7 +30,7 @@ from app.core.security import get_current_user
 PLATFORM_SUPER_ADMIN = "PLATFORM_SUPER_ADMIN"
 
 # 角色 → 授予的 permissionCode 模式集合。支持三种模式：
-#   "*"                              全部放行（平台超管 / 学校管理员本校全权；接库后按 t_role_permission 收敛）
+#   "*"                              全部放行（平台超管 / SCHOOL_ADMIN 仅保留 B8 legacy shadow 基线）
 #   "studentAffairs.*" / "audit.*"   前缀通配（"a.b.*" 命中 "a.b.xxx"）
 #   "academicAffairs.grade.publish"  精确匹配
 # 未登记的角色一律得到空集（默认拒绝）。数据范围（本人/班级/学院…）不在此裁定，由 scope 解析器另行收敛。
@@ -53,6 +53,11 @@ _COLLEGE_INTERNSHIP = {
     "internship.student.eligibility.review",
     "internship.batch.view", "internship.batch.manage", "internship.batch.export",
     "internship.enterprise.view", "internship.enterprise.manage", "internship.enterprise.export",
+    # 招聘季（企业协同 V3）：与 internship.enterprise.* 并列的细粒度授权点，
+    # 路由见 routers/internship_recruitment_campaign.py。未注册时只能靠 enterprise.* 兜底，
+    # 学院无法单独收回「邀请企业」而保留「查看企业库」。
+    "internship.recruitment.view", "internship.recruitment.manage",
+    "internship.recruitment.invite", "internship.recruitment.close",
     "internship.position.view", "internship.position.manage", "internship.position.export",
     "internship.application.view", "internship.application.review",
     "internship.match.batch", "internship.match.manual", "internship.match.export",
@@ -113,7 +118,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "platform.audit.view", "platform.access.review",
         "platform.security.view",
     },
-    "SCHOOL_ADMIN": {"*"},                       # 学校管理员：本校全权（接库后再按需收敛）
+    "SCHOOL_ADMIN": {"*"},  # B8 legacy shadow baseline only; runtime _granted() bypasses this wildcard.
     "SYS_ADMIN": {"systemAdmin.*", "audit.*", *_WORKBENCH_SELF},
     "SECURITY_AUDITOR": {"audit.*", "systemAdmin.audit.*", "campusService.audit.view",
                          # 实习督导/审计：只读监督（看板/学生/风险/统计/分配日志/审核台账），不授予任何写操作
@@ -405,12 +410,16 @@ def is_super_admin(user: dict) -> bool:
 
 
 def _granted(role: str) -> set[str]:
-    """角色授予的 permissionCode 集合。接库钩子：DB 模式可在此优先查 t_role_permission。"""
-    return ROLE_PERMISSIONS.get(role, set())
+    """角色授予集合；SCHOOL_ADMIN runtime 已退役 legacy ``*``，改读发布版显式模板。"""
+    normalized = str(role or "").strip().upper()
+    if normalized == "SCHOOL_ADMIN":
+        from app.core.school_admin_permission_resolver import resolve_school_admin_permissions
+        return set(resolve_school_admin_permissions())
+    return ROLE_PERMISSIONS.get(normalized, set())
 
 
 def _db_granted(user: dict) -> set[str] | None:
-    """自定义角色仅从 t_role_permission 取权；内置模板仍由平台基线维护。"""
+    """DB 角色上下文：SYSTEM 只读发布版 RoleTemplate，CUSTOM 只读 t_role_permission。"""
     context_id = str(user.get("activeContextId") or "")
     tenant_id = str(user.get("tenantId") or "")
     if not (context_id.startswith("role:") and context_id[5:].isdigit() and tenant_id.isdigit()):
@@ -426,7 +435,13 @@ def _db_granted(user: dict) -> set[str] | None:
             role = db.scalars(select(Role).where(Role.id == int(context_id[5:]),
                                                  Role.tenant_id == int(tenant_id),
                                                  Role.is_deleted.is_(False))).first()
-            if role is None or str(role.role_type or "").upper() != "CUSTOM":
+            if role is None:
+                return set()
+            role_type = str(role.role_type or "").upper()
+            if role_type == "SYSTEM":
+                from app.services.system_role_shadow_service import published_system_role_permissions
+                return set(published_system_role_permissions(db, str(role.role_code or "").strip().upper()))
+            if role_type != "CUSTOM":
                 return None
             return set(db.scalars(select(Permission.permission_code).join(
                 RolePermission, RolePermission.permission_id == Permission.id).where(
@@ -435,7 +450,7 @@ def _db_granted(user: dict) -> set[str] | None:
         finally:
             db.close()
     except Exception:
-        # 鉴权读取异常默认拒绝自定义角色，绝不回落为更宽的内置授权。
+        # 鉴权 Authority 读取异常默认拒绝，绝不回落为更宽的静态内置授权。
         return set()
 
 
@@ -448,6 +463,16 @@ def _match(code: str, patterns: Iterable[str]) -> bool:
         if p.startswith("*.") and code.endswith(p[1:]):                        # "*.view" → "x.view"
             return True
     return False
+
+
+def _covers_school_permission_universe(patterns: Iterable[str]) -> bool:
+    """Full-school probes mean complete permanent TENANT coverage, not a literal runtime wildcard."""
+    normalized = set(patterns)
+    if "*" in normalized:
+        return True
+    from app.core.school_admin_permission_resolver import catalog_school_admin_permissions
+    universe = catalog_school_admin_permissions()
+    return bool(universe) and all(_match(code, normalized) for code in universe)
 
 
 def get_base_permission_patterns(user: dict) -> list[str]:
@@ -471,6 +496,8 @@ def has_base_permission(user: dict, code: str) -> bool:
         return True
     role = _role_of(user)
     patterns = get_base_permission_patterns(user)
+    if code == "*":
+        return _covers_school_permission_universe(patterns)
     if code in ROLE_PERMISSION_DENY.get(role, ()) and "*" not in patterns:
         from_db = _db_granted(user)
         if from_db is None:
@@ -479,18 +506,45 @@ def has_base_permission(user: dict, code: str) -> bool:
 
 
 def assert_delegable_permission_codes(user: dict | None, permission_codes: Iterable[str]) -> None:
-    """拒绝把操作者基础权限之外的能力固化给其他主体或角色。"""
+    """拒绝把操作者基础权限之外的能力固化给其他主体或角色。
+
+    SYSTEM 角色仍可能以 ``*`` / ``module.*`` / ``*.view`` 表达历史权限模式；
+    永久授权边界必须先把这些模式展开到 canonical TENANT permission universe，
+    再与 actor 一次读取的基础权限比较。这样 SCHOOL_ADMIN runtime 可以完全显式化，
+    又不会把 temporary delegation 当成可再授权的永久上限。
+    """
     if not user:
         from app.core.exceptions import AppException
         raise AppException("NO_PERMISSION", "永久角色授权必须提供明确操作者")
-    codes = sorted({str(code or "").strip() for code in permission_codes if str(code or "").strip()})
-    forbidden = [code for code in codes if not has_base_permission(user, code)]
-    if forbidden:
+
+    raw_codes = sorted({str(code or "").strip() for code in permission_codes if str(code or "").strip()})
+    grantor_patterns = set(get_base_permission_patterns(user))
+    role = _role_of(user)
+    denied = set(ROLE_PERMISSION_DENY.get(role, ()))
+
+    from app.core.school_admin_permission_resolver import catalog_school_admin_permissions
+    universe = set(catalog_school_admin_permissions())
+    expanded: set[str] = set()
+    unresolved_patterns: list[str] = []
+    for code in raw_codes:
+        if code == "*" or code.endswith(".*") or code.startswith("*."):
+            matches = {candidate for candidate in universe if _match(candidate, (code,))}
+            if not matches:
+                unresolved_patterns.append(code)
+            expanded.update(matches)
+        else:
+            expanded.add(code)
+
+    forbidden = sorted({
+        code for code in expanded
+        if (code in denied and "*" not in grantor_patterns) or not _match(code, grantor_patterns)
+    })
+    if unresolved_patterns or forbidden:
         from app.core.exceptions import AppException
         raise AppException(
             "NO_PERMISSION",
             "不能授予当前操作者基础权限之外的权限",
-            {"codes": forbidden[:10]},
+            {"codes": sorted(set(unresolved_patterns + forbidden))[:10]},
         )
 
 
@@ -511,6 +565,10 @@ def has_permission(user: dict, code: str) -> bool:
     """纯判定：当前身份是否拥有指定 permissionCode。默认拒绝。与 get_effective_permission_patterns 同源。"""
     if is_super_admin(user):
         return True
+    # 旧调用把 has_permission("*") 当作“本校全权”。退役后必须由永久基础权限是否
+    # 覆盖完整 TENANT universe 推导；temporary delegation 即使含 "*" 也不得开启此旁路。
+    if code == "*":
+        return has_base_permission(user, "*")
     role = _role_of(user)
     patterns = get_effective_permission_patterns(user)
     if code in ROLE_PERMISSION_DENY.get(role, ()) and "*" not in patterns:

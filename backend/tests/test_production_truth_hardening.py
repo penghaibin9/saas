@@ -25,6 +25,7 @@ from app.core.tenant_identity import (
     WELL_KNOWN_BY_CODE,
 )
 from app.middleware import context as context_middleware
+from app.middleware import context_legacy
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -72,6 +73,7 @@ def test_production_middleware_returns_503_when_default_tenant_truth_is_unavaila
     prod = SimpleNamespace(is_prod=True, DEFAULT_TENANT_CODE="sandbox-school")
     monkeypatch.setattr(tenant_context, "settings", prod)
     monkeypatch.setattr(context_middleware, "settings", prod)
+    monkeypatch.setattr(context_legacy, "settings", prod)
     monkeypatch.setattr("app.db.session.db_enabled", lambda: True)
     monkeypatch.setattr(tenant_context, "_lookup_db_tenant", lambda code: None)
 
@@ -133,6 +135,7 @@ def test_matching_signed_school_identity_passes_middleware_tenant_guard(monkeypa
 def test_staging_enforces_tenant_identity_even_for_non_db_subject(monkeypatch):
     staging = SimpleNamespace(is_prod=False, APP_ENV="staging")
     monkeypatch.setattr(context_middleware, "settings", staging)
+    monkeypatch.setattr(context_legacy, "settings", staging)
     monkeypatch.setattr(
         security,
         "decode_token",
@@ -158,6 +161,7 @@ def test_staging_enforces_tenant_identity_even_for_non_db_subject(monkeypatch):
 def test_test_only_synthetic_token_keeps_fixture_local_numeric_tenant(monkeypatch):
     test_settings = SimpleNamespace(is_prod=False, APP_ENV="test")
     monkeypatch.setattr(context_middleware, "settings", test_settings)
+    monkeypatch.setattr(context_legacy, "settings", test_settings)
     monkeypatch.setattr(
         security,
         "decode_token",

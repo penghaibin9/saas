@@ -25,7 +25,7 @@
           <view class="ec__row"><text class="ec__row-k">企业名称</text><input class="ec__input" v-model="cf.name" placeholder="必填" /></view>
           <view class="ec__row"><text class="ec__row-k">信用代码</text><input class="ec__input" v-model="cf.creditCode" placeholder="必填，统一社会信用代码" /></view>
           <view class="ec__row"><text class="ec__row-k">所属行业</text><input class="ec__input" v-model="cf.industry" placeholder="可选" /></view>
-          <view class="ec__row"><text class="ec__row-k">所在城市</text><input class="ec__input" v-model="cf.city" placeholder="可选" /></view>
+          <view class="ec__row"><text class="ec__row-k">所在城市</text><MobileRegionPicker class="ec__region" v-model="cf.city" placeholder="可选，选择省 / 市 / 区县" /></view>
           <view class="ec__btns">
             <button class="ec__btn-ghost" :disabled="submitting" @click="showCompanyForm = false">取消</button>
             <button class="ec__btn-primary" :disabled="submitting" @click="submitCompany">{{ submitting ? '提交中…' : '确认新增' }}</button>
@@ -216,6 +216,10 @@ export default {
 .ec__row-k { font-size: var(--font-size-sm); color: var(--text-tertiary); width: 64px; flex-shrink: 0; }
 .ec__input { flex: 1; font-size: var(--font-size-base); color: var(--text-primary); text-align: right; }
 .ec__picker { flex: 1; }
+/* 地区选择器与同排 input 对齐：占满剩余宽度，去掉组件自带描边避免行内套框 */
+.ec__region { flex: 1; }
+.ec__region :deep(.mrp) { min-height: 0; padding: 0; border: 0; background: transparent; justify-content: flex-end; }
+.ec__region :deep(.mrp__text) { flex: none; text-align: right; }
 .ec__pick-val { font-size: var(--font-size-base); color: var(--text-primary); text-align: right; }
 .ec__arrow { color: var(--text-tertiary); font-size: var(--font-size-xs); margin-left: 4px; }
 .ec__btns { display: flex; gap: var(--space-2); margin-top: var(--space-3); }

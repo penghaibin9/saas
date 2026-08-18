@@ -54,6 +54,12 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '平台人员职责与受控协助', requiresAuth: true, permissionKey: 'platform.access.review' }
     },
     {
+      path: 'product-iam',
+      name: 'platform-product-iam',
+      component: () => import('@/modules/platform/views/control/PlatformProductIamView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: 'Product IAM', requiresAuth: true, permissionKey: 'platform.productIam.view' }
+    },
+    {
       // PLAT-08：服务目录、依赖与租户影响地图
       path: 'services',
       name: 'platform-services',
@@ -226,8 +232,8 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '学校开通与首次开户', requiresAuth: true, permissionKey: 'platform.onboarding.view', platformCapabilityKey: 'plt-onboarding-check' }
     },
     {
-      path: 'role-templates', name: 'platform-role-templates', redirect: '/admin/platform/access',
-      meta: { moduleCode: 'PLATFORM', title: '平台角色模板（兼容入口）', requiresAuth: true, permissionKey: 'platform.role-template.manage', legacyCapabilityRedirect: true }
+      path: 'role-templates', name: 'platform-role-templates', redirect: '/admin/platform/product-iam',
+      meta: { moduleCode: 'PLATFORM', title: '平台主管角色模板（兼容入口）', requiresAuth: true, permissionKey: 'platform.productIam.view', legacyCapabilityRedirect: true }
     },
     {
       path: 'releases', name: 'platform-releases', redirect: '/admin/platform/changes',

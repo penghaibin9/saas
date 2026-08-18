@@ -1,7 +1,7 @@
 """统一导入导出任务中心模型。
 
-阶段 3 采用 adapter 方式承接现有身份导入、老系统迁移和公共 Excel 作业；
-业务模块继续保留原状态机，公共任务表只作为文件、进度、租约和结果的权威入口。
+公共 ImportJob 负责文件、状态、租约与结果；I3 起身份导入源行进入规范化 staging，
+不再把 20K 行业务 payload 塞进批次 JSON。
 """
 from __future__ import annotations
 
@@ -48,6 +48,38 @@ class ImportJob(PKMixin, TenantMixin, CommonMixin, Base):
         ),
         Index("ix_import_job_list", "tenant_id", "status", "created_at", "id"),
         Index("ix_import_job_owner", "tenant_id", "operator_id", "created_at"),
+    )
+
+
+class IdentityImportStagingRow(PKMixin, TenantMixin, CommonMixin, Base):
+    """I3 normalized staging authority for scanned identity-import source rows."""
+
+    __tablename__ = "t_identity_import_staging_row"
+
+    import_job_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    row_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    natural_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    validation_status: Mapped[str] = mapped_column(String(24), nullable=False, default="PENDING")
+    error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    resolved_student_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    resolved_user_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    row_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "import_job_id", "row_no",
+            name="uk_identity_staging_job_row",
+        ),
+        Index(
+            "ix_identity_staging_job_status_row",
+            "tenant_id", "import_job_id", "validation_status", "row_no",
+        ),
+        Index(
+            "ix_identity_staging_job_entity_key",
+            "tenant_id", "import_job_id", "entity_type", "natural_key",
+        ),
     )
 
 

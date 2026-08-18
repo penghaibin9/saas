@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "cards": ["I1", "I2"],
+  "canonicalEntry": "/api/v1/data-exchange/imports/identity/{students|teachers}/validate-file",
+  "upload": "FileObject PRIVATE/SENSITIVE -> security scan -> ImportJob SCANNING",
+  "createRequestMayParse": false,
+  "getImportJobMayMutate": false,
+  "workerCommand": "/api/v1/data-exchange/imports/{job_id}/process",
+  "retryCommand": "/api/v1/data-exchange/imports/{job_id}/retry",
+  "confirmGate": ["status=VALIDATED", "invalidRows=0", "validRows>0", "FileObject scan still safe", "expectedVersion", "idempotency"],
+  "legacy": {
+    "/system/identity-import/students/validate-file": "THIN_ADAPTER_TO_DATA_EXCHANGE",
+    "/system/identity-import/teachers/validate-file": "THIN_ADAPTER_TO_DATA_EXCHANGE",
+    "/system/identity-import/validate-file": "410_RETIRED_MIXED_DIRECT_PARSER",
+    "confirm-batch": "THIN_ADAPTER_BATCHNO_TO_IMPORTJOB"
+  },
+  "rowLimit": {
+    "current": 2000,
+    "target": 20000,
+    "status": "NOT_GOLD_UNTIL_I3_STAGING_MIGRATION_AND_I4_GATE"
+  },
+  "deferred": ["I3 normalized staging rows", "20K single-job production proof"]
+}

@@ -364,7 +364,7 @@ def test_enterprise_access_required_blocks_assign(client, auth_headers, db_mode)
     iid = _mk_intern(client, h, bid)
     ent = client.post(ENT, headers=h, json={"name": _uniq("企"), "creditCode": _credit()}).json()
     if ent.get("code") != 0:
-        pytest.skip(str(ent))
+        pytest.fail(f"enterprise create failed: {ent}")
     eid = ent["data"]["id"]
     client.post(f"{ENT}/{eid}/review", headers=h, json={"action": "APPROVE"})
     pos = client.post(POS, headers=h, json={
@@ -375,7 +375,7 @@ def test_enterprise_access_required_blocks_assign(client, auth_headers, db_mode)
         "remunerationAmount": 2000, "remunerationCycle": "MONTHLY",
     }).json()
     if pos.get("code") != 0:
-        pytest.skip(str(pos))
+        pytest.fail(f"position create failed: {pos}")
     pid = pos["data"]["id"]
     client.post(f"{POS}/{pid}/status", headers=h, json={"action": "SUBMIT"})
     # 企业未通过准入考察前，岗位连「上架」都应被同一条企业准入规则拦住（比分配更早的门禁）

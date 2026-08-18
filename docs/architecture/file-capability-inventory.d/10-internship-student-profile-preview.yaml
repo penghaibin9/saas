@@ -1,0 +1,23 @@
+entries:
+  - module: internship
+    client: shared
+    route: /profile/preview + /profile/pdf-preview
+    page: backend/app/student_portal/internship_selection_router.py + backend/app/api/v1/mobile_internship_selection.py
+    action: student-current-profile-preview-private-pdf
+    fileCategory: INTERNSHIP_PROFILE_PREVIEW_PDF
+    api: GET /portal/internship/profile/preview + POST /portal/internship/profile/pdf-preview + GET /mobile/internship/profile/preview + POST /mobile/internship/profile/pdf-preview
+    backendService: backend/app/modules/internship/services/internship_student_profile_facade_service.py
+    storageMode: FILE_CENTER_PRIVATE_DERIVED_OBJECT
+    authMode: student-auth+internship-module+file-owner-access
+    dataScope: tenant+self-student+current-recruitment-campaign
+    versioned: true
+    scanGated: true
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: 学生当前实习档案预览复用 canonical Profile/Material Authority；PDF 仅在 materialPreviewHash 与当前预览一致时生成，通过 File Center 以 PRIVATE 派生对象持久化并由受权短时 URL/本地代理交付，不返回 object key；企业投递仍使用独立不可变 ApplicationMaterialSnapshot PDF Authority。
