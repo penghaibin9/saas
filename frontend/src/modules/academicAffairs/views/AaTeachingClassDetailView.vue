@@ -40,10 +40,16 @@
       <AppSectionCard title="教师关系">
         <div class="aa-section-toolbar">
           <div class="mp-cell-sub">PRIMARY 与共同授课教师均按有效周次参与课表、考勤、成绩与工作量权限裁决。</div>
-          <AppButton variant="primary" :disabled="!canManageTeacherRelations" @click="openCreateTeacher">新增共同授课</AppButton>
+          <AppButton v-if="canManageTeacherRelations" variant="primary" @click="openCreateTeacher">新增共同授课</AppButton>
         </div>
         <AppInlineAlert
-          v-if="!canManageTeacherRelations"
+          v-if="!canManageTeachingClass"
+          type="info"
+          title="教师关系只读"
+          description="当前账号没有教学班管理权限；可查看正式教师关系与历史授课周次，但不能新增、调整或停用。"
+        />
+        <AppInlineAlert
+          v-else-if="teachingClass.status !== 'ACTIVE'"
           type="info"
           title="教学班已归档，教师关系只读"
           description="历史教师身份和授课周次继续保留用于审计，不允许覆盖。"
@@ -187,6 +193,8 @@ import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from
 import { AppButton } from '@/components/ui'
 import { AppInlineAlert, AppSectionCard, AppStatusTag, AppStudentPicker, AppTeacherPicker, AppConfirmDialog } from '@/components/common'
 import { teachingClassApi } from '@/modules/academicAffairs/api/teaching-class.api'
+import { getPermissionPatterns } from '@/security/permissionGate'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 function emptyTeacherEditor() {
@@ -212,7 +220,11 @@ export default {
   computed: {
     teachingClassId() { return String(this.$route.query.teachingClassId || this.$route.params.teachingClassId || '') },
     activeTeacher() { return (this.teachingClass?.teachers || []).find(row => row.roleType === 'PRIMARY' && row.status === 'ACTIVE') },
-    canManageTeacherRelations() { return this.teachingClass?.status === 'ACTIVE' },
+    canManageTeachingClass() {
+      const patterns = getPermissionPatterns()
+      return Array.isArray(patterns) && matchPermission(patterns, 'academicAffairs.teachingTask.manage')
+    },
+    canManageTeacherRelations() { return this.canManageTeachingClass && this.teachingClass?.status === 'ACTIVE' },
     canCreateRosterVersion() {
       return Boolean(
         this.rosterImpact?.canCreate
