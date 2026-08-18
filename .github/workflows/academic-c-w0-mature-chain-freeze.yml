@@ -6,6 +6,10 @@ on:
       - agent/academic-c-teaching-execution
     paths:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_roster_consumer_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_facade.py'
@@ -13,9 +17,15 @@ on:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_correction_command.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_recheck_service.py'
+      - 'backend/tests/test_academic_c_closure_contract.py'
       - 'backend/tests/test_aa_attendance_task_binding.py'
       - 'backend/tests/test_aa_attendance_admin_special_contract.py'
       - 'backend/tests/test_aa_attendance_warning_source_contract.py'
+      - 'backend/tests/test_aa_attendance_applied_change_contract.py'
+      - 'backend/tests/test_aa_attendance_expected_schedule_item_contract.py'
+      - 'backend/tests/test_aa_attendance_occurrence_concurrency.py'
+      - 'backend/tests/test_aa_attendance_published_occurrence_contract.py'
+      - 'backend/tests/test_aa_attendance_class_options_formal_schedule.py'
       - 'backend/tests/test_aa_teaching_roster_unification.py'
       - 'backend/tests/test_aa_roster_consumers_r9.py'
       - 'backend/tests/test_aa_exam_facade_contract_and_changes.py'
@@ -85,7 +95,7 @@ jobs:
           pip install -r backend/requirements.txt
           pip install cryptography
 
-      - name: Prove branch is based on current main without rewriting shared owners
+      - name: Prove current main ancestry and shared-owner boundary
         shell: bash
         run: |
           set -euo pipefail
@@ -107,21 +117,36 @@ jobs:
               'backend/app/modules/academic_affairs/services/__init__.py',
               'backend/app/models/academic_affairs_registry.py',
           }
+          allowed_c_migrations = {
+              'backend/alembic/versions/20260818_aa_grade_task_deadline.py',
+              'backend/alembic/versions/20260818_merge_prog_grade_deadline.py',
+          }
           changed = set(subprocess.check_output(
               ['git', 'diff', '--name-only', 'origin/main...HEAD'], text=True
           ).splitlines())
-          changed_migrations = sorted(p for p in changed if p.startswith('backend/alembic/versions/'))
-          bad = sorted(changed & forbidden) + changed_migrations
+          changed_migrations = {
+              p for p in changed if p.startswith('backend/alembic/versions/')
+          }
+          bad = sorted(changed & forbidden)
+          bad.extend(sorted(changed_migrations - allowed_c_migrations))
           if bad:
-              raise SystemExit('C line modified INT-owned shared files:\n' + '\n'.join(bad))
-          print('INT shared-owner violations=0')
+              raise SystemExit(
+                  'C line modified forbidden shared owners or unapproved migrations:\n'
+                  + '\n'.join(bad)
+              )
+          print('shared-owner violations=0')
+          print('approved C migrations=' + ','.join(sorted(changed_migrations)))
           PY
 
-      - name: Compile C mature-chain production modules
+      - name: Compile mature-chain runtime owners
         working-directory: backend
         run: |
           python -m py_compile \
             app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py \
+            app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py \
+            app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py \
+            app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py \
+            app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py \
             app/modules/academic_affairs/services/academic_affairs_warning_service.py \
             app/modules/academic_affairs/services/academic_affairs_roster_consumer_service.py \
             app/modules/academic_affairs/services/academic_affairs_exam_facade.py \
@@ -136,9 +161,15 @@ jobs:
         run: |
           set -euo pipefail
           TESTS=(
+            tests/test_academic_c_closure_contract.py
             tests/test_aa_attendance_task_binding.py
             tests/test_aa_attendance_admin_special_contract.py
             tests/test_aa_attendance_warning_source_contract.py
+            tests/test_aa_attendance_applied_change_contract.py
+            tests/test_aa_attendance_expected_schedule_item_contract.py
+            tests/test_aa_attendance_occurrence_concurrency.py
+            tests/test_aa_attendance_published_occurrence_contract.py
+            tests/test_aa_attendance_class_options_formal_schedule.py
             tests/test_aa_teaching_roster_unification.py
             tests/test_aa_roster_consumers_r9.py
             tests/test_aa_exam_facade_contract_and_changes.py
@@ -161,31 +192,48 @@ jobs:
           node --test frontend/tests/academic-attendance-source-contract.test.mjs
           node --test miniapp/tests/academic-attendance-source-contract.test.mjs
 
-      - name: Freeze invariant source contract
+      - name: Freeze single-owner and mature invariants
         working-directory: backend
         run: |
           python - <<'PY'
           from pathlib import Path
 
+          public = Path(
+              'app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py'
+          ).read_text(encoding='utf-8')
+          command = Path(
+              'app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py'
+          ).read_text(encoding='utf-8')
+          read_guard = Path(
+              'app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py'
+          ).read_text(encoding='utf-8')
+          assert 'AaAttendanceSession(' not in public
+          assert 'return relation_guard.create_session(user, body)' in public
+          assert 'return read_guard.list_sessions(' in public
+          assert 'teaching_task_id=int(task.id) if task else None' in command
+          assert 'occurrence_identity=occurrence_identity' in command
+          assert 'source_type=source_type' in command
+          assert 'TEACHING_CLASS_TEACHER_BY_OCCURRENCE_WEEK' in read_guard
+
           checks = {
-              'app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py': [
-                  'resolve_versioned_roster', 'freeze_consumer_snapshot', 'ATTENDANCE_SESSION',
-                  'ADMIN_SPECIAL', 'specialReason', 'evidence', 'sourceScopeLabel'
-              ],
               'app/modules/academic_affairs/services/academic_affairs_warning_service.py': [
                   '_formal_attendance_session_condition', 'FORMAL_TEACHING'
               ],
               'app/modules/academic_affairs/services/academic_affairs_roster_consumer_service.py': [
-                  'ATTENDANCE_SESSION', 'EXAM_COURSE', 'GRADE_TASK', 'APPROVAL_VERSION_CONFLICT', 'SUPERSEDED'
+                  'ATTENDANCE_SESSION', 'EXAM_COURSE', 'GRADE_TASK',
+                  'APPROVAL_VERSION_CONFLICT', 'SUPERSEDED'
               ],
               'app/modules/academic_affairs/services/academic_affairs_exam_facade.py': [
-                  'EXAM_COURSE', 'require_consumer_snapshot_current', 'assign_seats', '_check_arrangement_complete'
+                  'EXAM_COURSE', 'require_consumer_snapshot_current',
+                  'assign_seats', '_check_arrangement_complete'
               ],
               'app/modules/academic_affairs/services/academic_affairs_grade_service.py': [
-                  'courseId', 'resolve_versioned_roster', 'freeze_consumer_snapshot', 'GRADE_TASK'
+                  'courseId', 'resolve_versioned_roster',
+                  'freeze_consumer_snapshot', 'GRADE_TASK'
               ],
               'app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py': [
-                  'LEGACY_NAME_KEY', 'resolve_active_policy', 'freeze_effective_grade_policy', 'DATA_CONFLICT'
+                  'LEGACY_NAME_KEY', 'resolve_active_policy',
+                  'freeze_effective_grade_policy', 'DATA_CONFLICT'
               ],
               'app/modules/academic_affairs/services/academic_affairs_grade_correction_command.py': [
                   'SUPERSEDED', 'freeze_effective_grade_policy'

@@ -9,6 +9,9 @@ on:
       - 'backend/app/modules/academic_affairs/routers/grade_core_router.py'
       - 'backend/app/modules/academic_affairs/routers/mobile_grade_entry_router.py'
       - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_scheduler_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py'
@@ -19,6 +22,9 @@ on:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_print_service.py'
       - 'backend/app/services/xlsx_util.py'
       - 'backend/scripts/run_scheduled_jobs.py'
+      - 'backend/scripts/e2e_academic_affairs_live_flow.py'
+      - 'backend/scripts/e2e_academic_affairs_round3.py'
+      - 'backend/tests/test_academic_c_closure_contract.py'
       - 'backend/tests/test_aa_grade_deadline_scheduler.py'
       - 'frontend/src/modules/academicAffairs/views/AaTeachingClassDetailView.vue'
       - 'frontend/src/modules/academicAffairs/views/AaExamSeatingPrintView.vue'
@@ -88,7 +94,25 @@ jobs:
       - name: Compile and source contracts
         working-directory: backend
         run: |
-          python -m py_compile app/modules/academic_affairs/routers/grade_core_router.py app/modules/academic_affairs/routers/mobile_grade_entry_router.py app/modules/academic_affairs/routers/exam_incident_closure_router.py app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py app/modules/academic_affairs/services/academic_affairs_grade_deadline_scheduler_service.py app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py app/modules/academic_affairs/services/academic_affairs_exam_print_service.py app/services/xlsx_util.py scripts/run_scheduled_jobs.py
+          python -m py_compile \
+            app/modules/academic_affairs/routers/grade_core_router.py \
+            app/modules/academic_affairs/routers/mobile_grade_entry_router.py \
+            app/modules/academic_affairs/routers/exam_incident_closure_router.py \
+            app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py \
+            app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py \
+            app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_deadline_scheduler_service.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py \
+            app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py \
+            app/modules/academic_affairs/services/academic_affairs_exam_print_service.py \
+            app/services/xlsx_util.py \
+            scripts/run_scheduled_jobs.py \
+            scripts/e2e_academic_affairs_live_flow.py \
+            scripts/e2e_academic_affairs_round3.py
           python - <<'PY'
           from pathlib import Path
           p=Path('app/modules/academic_affairs/routers/grade_core_router.py').read_text()
@@ -103,6 +127,8 @@ jobs:
           event=Path('app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py').read_text()
           e=Path('app/modules/academic_affairs/services/academic_affairs_exam_print_service.py').read_text()
           runner=Path('scripts/run_scheduled_jobs.py').read_text()
+          public=Path('app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py').read_text()
+          command=Path('app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py').read_text()
           assert '/extend-deadline' in p and 'read_grade_upload_path' in p and 'read_safe_upload(file)' not in p
           assert 'deadline_service.teacher_submit_task' in mobile and '_quality_report_with_deadline' in mobile
           assert 'return success(service.teacher_submit_task(' not in mobile
@@ -125,10 +151,23 @@ jobs:
           assert 'INTERVAL_GRADE_DEADLINE = 60 * 60' in runner and 'job_grade_deadline' in runner
           assert 'grade_message_events.install()' in runner
           assert 'EXAM_TICKET_PRINT' in e and 'printSequence' in e
+          assert 'AaAttendanceSession(' not in public
+          assert 'return relation_guard.create_session(user, body)' in public
+          assert 'teaching_task_id=int(task.id) if task else None' in command
+          assert 'occurrence_identity=occurrence_identity' in command
           PY
       - name: Targeted MySQL regression
         working-directory: backend
-        run: pytest -q tests/test_aa_grade_deadline_scheduler.py tests/test_aa_exam_facade_contract_and_changes.py tests/test_aa_exam_fact_guards.py tests/test_aa_effective_grade_identity.py tests/test_aa_grade_recheck_concurrency.py tests/test_aa_p0_hardening_20260804.py -p no:warnings --durations=20
+        run: >-
+          pytest -q
+          tests/test_academic_c_closure_contract.py
+          tests/test_aa_grade_deadline_scheduler.py
+          tests/test_aa_exam_facade_contract_and_changes.py
+          tests/test_aa_exam_fact_guards.py
+          tests/test_aa_effective_grade_identity.py
+          tests/test_aa_grade_recheck_concurrency.py
+          tests/test_aa_p0_hardening_20260804.py
+          -p no:warnings --durations=20
       - name: Frontend production build
         working-directory: frontend
         run: npm ci && npm run build
