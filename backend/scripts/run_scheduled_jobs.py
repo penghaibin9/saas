@@ -187,7 +187,13 @@ def job_delivery_and_outbox() -> None:
     from app.services import password_reset_service as password_reset_svc
     from app.services import message_channel_delivery_service as channel_svc
     from app.services import tenant_effective_state_service as tenant_state
+    from app.modules.academic_affairs.services import academic_affairs_grade_message_event_guard as grade_message_events
     from app.modules.internship.services import internship_audit_service as internship_audit
+
+    # External scheduler may restart with Grade reminder rows already pending. Install
+    # their event contracts before the first outbox drain so category/priority/template
+    # semantics never fall back to generic defaults during startup ordering.
+    grade_message_events.install()
 
     _run_for_tenants(
         "delivery", tenant_state.BACKGROUND_BUSINESS_WRITE,
