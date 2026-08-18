@@ -4,8 +4,9 @@
 ``academic_affairs_attendance_teacher_relation_guard`` 持有；关系感知台账/统计唯一由
 ``academic_affairs_attendance_teacher_relation_read_guard`` 持有。
 
-这样 PC、移动端和直接 Service 调用都落到同一个最终 Authority，避免 public facade 与
-teacher-relation guard 各维护一套 create/list/stats 实现后发生语义漂移。
+注意：canonical attendance service 必须延迟加载。services 包初始化时 eager import 会沿
+TeachingRoster -> TeachingClass 再回到 TeachingRoster，形成 import-time cycle；facade 本身
+不需要在模块导入阶段触碰 canonical runtime。
 """
 from __future__ import annotations
 
@@ -18,26 +19,54 @@ from app.core.exceptions import AppException
 
 from .academic_affairs_attendance_occurrence_consumer import resolve_formal_occurrence
 
-_canonical = importlib.import_module(
-    ".academic_affairs_attendance_service",
-    package=__package__,
-)
-
-# 显式保留 guard / 测试需要的稳定注入点。
-session = _canonical.session
-_tid = _canonical._tid
-_audit = _canonical._audit
-_role = _canonical._role
-_teacher_keys = _canonical._teacher_keys
-_primary_teacher_key = _canonical._primary_teacher_key
-_row = _canonical._row
-_ADMIN_ROLES = _canonical._ADMIN_ROLES
-attendance_task_executable = _canonical.attendance_task_executable
+_ADMIN_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}
 _ADMIN_SPECIAL = "ADMIN_SPECIAL"
 
 
+def _canonical_service():
+    """Load the mature base service only after package initialization has completed."""
+    return importlib.import_module(
+        ".academic_affairs_attendance_service",
+        package=__package__,
+    )
+
+
 def __getattr__(name):
-    return getattr(_canonical, name)
+    return getattr(_canonical_service(), name)
+
+
+# Guard/read adapters deliberately call these local wrappers so tests can still replace
+# a single public seam without depending on import order.
+def session():
+    return _canonical_service().session()
+
+
+def _tid():
+    return _canonical_service()._tid()
+
+
+def _audit(*args, **kwargs):
+    return _canonical_service()._audit(*args, **kwargs)
+
+
+def _role(user) -> str:
+    return _canonical_service()._role(user)
+
+
+def _teacher_keys(user) -> set[str]:
+    return _canonical_service()._teacher_keys(user)
+
+
+def _primary_teacher_key(user):
+    return _canonical_service()._primary_teacher_key(user)
+
+
+def _row(item) -> dict:
+    return _canonical_service()._row(item)
+
+
+def attendance_task_executable(status) -> bool:
+    return _canonical_service().attendance_task_executable(status)
 
 
 def _special_evidence_text(value) -> str:

@@ -31,6 +31,13 @@ def test_c_attendance_has_one_command_transaction_owner():
     assert "return read_guard.list_sessions(" in public
     assert "return read_guard.attendance_stats(" in public
 
+    # The facade must not eagerly import the mature base service during package init;
+    # doing so closes a TeachingRoster -> TeachingClass -> TeachingRoster import cycle.
+    assert "def _canonical_service():" in public
+    assert "_canonical = importlib.import_module(" not in public
+    assert 'return _canonical_service().session()' in public
+    assert 'return _canonical_service().attendance_task_executable(status)' in public
+
     # The sole command owner persists formal occurrence/source provenance.
     assert "AaAttendanceSession(" in command
     for needle in (
