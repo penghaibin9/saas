@@ -108,7 +108,7 @@ def make_router(client: str) -> APIRouter:
                                user=Depends(guard)):
             if _use_real_db():
                 from app.services import workbench_snapshot_service as snapshot_svc
-                return success(snapshot_svc.snapshot(user, page_size=pageSize))
+                return success(snapshot_svc.snapshot(user, page_size=pageSize, client=route_client))
             pending = [t for t in MOCK_TODOS if t["status"] == "PENDING"]
             by_type: dict[str, int] = {}
             for item in pending:
