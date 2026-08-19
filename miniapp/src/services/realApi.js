@@ -131,6 +131,17 @@ export async function studentHomeReal() {
   }
 }
 
+/** V3 §7：我的办理列表（keyset 分页，状态过滤在数据库里做）。 */
+export const studentCases = (statusGroup = 'all', cursor = '', pageSize = 20) =>
+  realRequest(
+    `/mobile/student/cases?statusGroup=${encodeURIComponent(statusGroup)}&pageSize=${pageSize}` +
+    (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '')
+  )
+
+/** V3 §7：单条办理详情与时间线（本人）。 */
+export const studentCaseDetail = (caseId) =>
+  realRequest('/mobile/student/cases/' + encodeURIComponent(caseId))
+
 /** V3 §6：今天/未来 7 天 Agenda（纯读投影）。 */
 export const studentAgenda = (days = 7, cursor = '', pageSize = 20) =>
   realRequest(

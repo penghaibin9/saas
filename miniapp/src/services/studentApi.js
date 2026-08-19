@@ -53,6 +53,8 @@ export const studentApi = {
       () => real.studentHomeReal(),
       () => mockRequest(M.studentHome)),
   getAgenda: (days = 7, cursor = '', pageSize = 20) => real.studentAgenda(days, cursor, pageSize),
+  getCases: (statusGroup = 'all', cursor = '', pageSize = 20) => real.studentCases(statusGroup, cursor, pageSize),
+  getCaseDetail: (caseId) => real.studentCaseDetail(caseId),
   getProfile: () =>
     realFirstStrict('student.profile',
       () => real.enrichProfileReal(),

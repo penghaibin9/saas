@@ -29,6 +29,8 @@
         {"path": "campus-service/mental-survey/index", "style": {"navigationBarTitleText": "心理健康自评", "navigationStyle": "custom"}},
         {"path": "academic/index", "style": {"navigationBarTitleText": "学业进度"}},
         {"path": "agenda/index", "style": {"navigationBarTitleText": "今天 / 未来7天", "navigationStyle": "custom", "enablePullDownRefresh": true}},
+        {"path": "my-work/index", "style": {"navigationBarTitleText": "我的办理", "navigationStyle": "custom", "enablePullDownRefresh": true}},
+        {"path": "my-work/detail", "style": {"navigationBarTitleText": "办理详情", "navigationStyle": "custom"}},
         {"path": "internship/index", "style": {"navigationBarTitleText": "岗位实习"}},
         {"path": "internship/consent/index", "style": {"navigationBarTitleText": "知情确认", "navigationStyle": "custom"}},
         {"path": "internship/consent/detail", "style": {"navigationBarTitleText": "知情书正文", "navigationStyle": "custom"}},

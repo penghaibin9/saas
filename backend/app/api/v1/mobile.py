@@ -15,6 +15,7 @@ from app.modules.academic_affairs.services import mobile_academic_affairs_servic
 from app.services import affairs_activity_service as activity_svc
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_agenda_projection_service as agenda
+from app.services import mobile_case_projection_service as cases
 from app.services import mobile_student_service as stu
 from app.services import mobile_teacher_service as tea
 
@@ -53,6 +54,21 @@ def me_overview(user=Depends(get_current_user)):
 @router.get("/home", summary="学生首页聚合（总览+迎新+批次，一次鉴权）")
 def student_home(user=Depends(get_current_user)):
     return success(stu.home(user))
+
+
+@router.get("/student/cases", summary="学生·我的办理列表（keyset 分页，状态过滤下推数据库）")
+def student_cases(
+    statusGroup: str = Query("all"),
+    cursor: str | None = Query(None),
+    pageSize: int = Query(20, ge=1, le=50),
+    user=Depends(get_current_user),
+):
+    return success(cases.list_my_cases(user, status_group=statusGroup, cursor=cursor, page_size=pageSize))
+
+
+@router.get("/student/cases/{case_id}", summary="学生·办理详情与时间线（本人）")
+def student_case_detail(case_id: str = Path(...), user=Depends(get_current_user)):
+    return success(cases.get_my_case(user, case_id=case_id))
 
 
 @router.get("/student/agenda", summary="学生·今天/未来7天 Agenda（纯读投影，不是新的 deadline 真值）")

@@ -132,7 +132,7 @@ export default {
       })).then(() => {
         localAdd()
         uni.showToast({ title: '提交成功', icon: 'success' })
-        setTimeout(() => { uni.redirectTo({ url: '/pages/student/my-applications/index' }) }, 700)
+        setTimeout(() => { uni.redirectTo({ url: '/pages/student/my-work/index' }) }, 700)
       }).catch((e) => {
         if (e && e.code === 'LOCKED') return
         if (e && e.biz) {

@@ -75,7 +75,7 @@ export default {
         { label: '岗位实习', icon: '💼', route: '/pages/student/internship/index' },
         { label: '毕业设计', icon: '📘', route: '/pages/student/graduation/index' },
         { label: '就业去向', icon: '🎯', route: '/pages/student/employment/index' },
-        { label: '我的申请', icon: '🗂', route: '/pages/student/my-applications/index' },
+        { label: '我的办理', icon: '🗂', route: '/pages/student/my-work/index' },
         { label: '在校服务', icon: '🛎', route: '/pages/student/campus-service/index' }
       ],
       listMenu: [
