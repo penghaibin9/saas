@@ -83,13 +83,13 @@ export APP_ENV=test
 export DEPLOYMENT_MODE=local
 export TRUSTED_PROXY_IPS=127.0.0.1/32
 export DB_ENABLED=true
-export DATABASE_URL='mysql+pymysql://root:root@127.0.0.1:3306/academic_d_w5_browser?charset=utf8mb4'
+export DATABASE_URL='mysql+pymysql://root:root@127.0.0.1:3306/academic_d_w5_browser_e2e?charset=utf8mb4'
 export TEST_DATABASE_URL="$DATABASE_URL"
 export DB_HOST=127.0.0.1
 export DB_PORT=3306
 export DB_USER=root
 export DB_PASSWORD=root
-export DB_NAME=academic_d_w5_browser
+export DB_NAME=academic_d_w5_browser_e2e
 export REDIS_URL=redis://127.0.0.1:6379/13
 export REDIS_KEY_PREFIX=academic-d-w5-integrated-browser
 export REDIS_CONNECT_TIMEOUT=2
@@ -108,8 +108,8 @@ export E2E_EXPECTED_SHA="$EXACT_D_SHA"
 
 BROWSER_PHASE="SCHEMA"
 mysql -h127.0.0.1 -uroot -proot -e '
-  DROP DATABASE IF EXISTS academic_d_w5_browser;
-  CREATE DATABASE academic_d_w5_browser CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+  DROP DATABASE IF EXISTS academic_d_w5_browser_e2e;
+  CREATE DATABASE academic_d_w5_browser_e2e CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 '
 (
   cd backend
