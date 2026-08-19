@@ -124,7 +124,39 @@ def _process_one(row_id: int, worker_id: str) -> bool:
         if not row or row.status!='PROCESSING' or row.locked_by!=worker_id or not row.lease_expires_at or row.lease_expires_at<=now:
             return False
         if row.channel=='WECHAT':
-            row.status='SKIPPED'; row.last_error_code='NOT_CONFIGURED'; row.last_error_message_safe='WECHAT_NOT_CONFIGURED'
+            # V3 §9.3：以前这里无条件 SKIPPED/NOT_CONFIGURED，微信渠道从未真正接通。
+            # 现在接到 provider adapter，并保留既有 claim lease / retry / backoff / DEAD 语义：
+            # 配置缺失、未授权等不可重试原因仍是 SKIPPED（重试没有意义），
+            # provider/网络错误才走可重试分支。
+            from app.services.notification import wechat_subscribe_service as wechat
+            user=db.scalar(select(User).where(
+                User.id==row.receiver_user_id, User.tenant_id==row.tenant_id,
+                User.is_deleted.is_(False),
+            ))
+            if not user or str(user.status or '').upper()!='ACTIVE':
+                row.status='SKIPPED'; row.last_error_code='USER_INACTIVE'
+                row.locked_by=None; row.locked_at=None; row.lease_expires_at=None; db.commit(); return True
+            result=wechat.send_subscribe_message(
+                tenant_id=row.tenant_id,
+                openid=getattr(user, 'wx_openid', None),
+                scene=str(getattr(row, 'scene', '') or 'CASE_RESULT'),
+            )
+            status=str(result.get('status') or 'SKIPPED').upper()
+            reason_code=str(result.get('reasonCode') or '').upper()
+            row.last_error_message_safe=_safe_message(result.get('reason'))
+            if status=='SENT':
+                row.status='SENT'; row.sent_at=_now(); row.last_error_code=None
+            elif bool(result.get('retryable')):
+                # 复用与短信完全一致的 backoff / 上限 / DEAD 语义，不另建一套。
+                if int(row.attempt_count or 0)>=_MAX_ATTEMPTS:
+                    row.status='DEAD'; row.last_error_code=reason_code or 'RETRY_EXHAUSTED'
+                else:
+                    row.status='RETRY_WAIT'; row.last_error_code=reason_code or 'TRANSIENT_PROVIDER'
+                    delay=int(result.get('retryAfter') or _backoff(int(row.attempt_count or 1)))
+                    row.next_retry_at=_now()+timedelta(seconds=max(delay,1))
+            else:
+                # 未配置 / 未授权 / 场景未登记：重试多少次都一样，不消耗重试预算。
+                row.status='SKIPPED'; row.last_error_code=reason_code or 'WECHAT_NOT_CONFIGURED'
             row.locked_by=None; row.locked_at=None; row.lease_expires_at=None; db.commit(); return True
         user=db.scalar(select(User).where(
             User.id==row.receiver_user_id, User.tenant_id==row.tenant_id,

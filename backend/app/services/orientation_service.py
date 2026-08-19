@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (GreenChannelApplication, OrientationArchive, OrientationAuditTrail,
                         OrientationBatch, OrientationCheckinPoint, OrientationException,
                         OrientationExceptionFollowup, OrientationFlowConfig, OrientationMaterial,
@@ -433,7 +434,7 @@ def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=Fals
         elif reason_field == "remark":
             g.remark = (reason or "").strip()
         g.version += 1
-        stu = db.get(OrientationStudent, g.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, g.ori_student_id)
         audit_detail = reason or ""
         if stu:
             if target_status == "APPROVED":
@@ -634,7 +635,7 @@ def approve_material(mid, comment=""):
         m.reviewer = name
         m.review_time = datetime.utcnow()
         m.version += 1
-        stu = db.get(OrientationStudent, m.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
         if stu:
             _refresh_material_status(db, stu)
         _audit(db, "MATERIAL", m.id, "审核通过", comment, before, "APPROVED")
@@ -656,7 +657,7 @@ def return_material(mid, reason):
         m.review_time = datetime.utcnow()
         m.return_reason = reason.strip()
         m.version += 1
-        stu = db.get(OrientationStudent, m.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
         if stu:
             stu.material_status = "RETURNED"
         _audit(db, "MATERIAL", m.id, "退回材料", reason.strip(), before, "RETURNED")
@@ -796,7 +797,7 @@ def list_exceptions(page, page_size, keyword=None, exception_type=None, status=N
         rows = db.scalars(q.order_by(OrientationException.id.desc())).all()
         items = []
         for e in rows:
-            stu = db.get(OrientationStudent, e.ori_student_id)
+            stu = tenant_get(db, OrientationStudent, e.ori_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_exc_row(e, stu))
@@ -808,7 +809,7 @@ def get_exception_detail(eid) -> dict:
         e = db.get(OrientationException, int(eid))
         if not e or e.is_deleted or e.tenant_id != _tid():
             raise not_found("异常记录不存在")
-        stu = db.get(OrientationStudent, e.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, e.ori_student_id)
         fus = db.scalars(select(OrientationExceptionFollowup).where(
             OrientationExceptionFollowup.tenant_id == _tid(),
             OrientationExceptionFollowup.exception_id == e.id).order_by(
@@ -848,7 +849,7 @@ def resolve_exception(eid, note="") -> dict:
             raise not_found("异常记录不存在")
         e.status = "RESOLVED"
         e.version += 1
-        stu = db.get(OrientationStudent, e.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, e.ori_student_id)
         if stu and stu.risk_level == "HIGH":
             stu.risk_level = "MEDIUM"
         _audit(db, "EXCEPTION", e.id, "标记已处理", note)
@@ -866,7 +867,7 @@ def escalate_exception(eid, reason) -> dict:
         e.status = "ESCALATED"
         e.risk_level = "HIGH"
         e.version += 1
-        stu = db.get(OrientationStudent, e.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, e.ori_student_id)
         if stu:
             stu.risk_level = "HIGH"
         _audit(db, "EXCEPTION", e.id, "升级风险", reason.strip())

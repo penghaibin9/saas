@@ -131,6 +131,13 @@ export async function studentHomeReal() {
   }
 }
 
+/** V3 §9.3：微信重要提醒的真实状态（未配置/未授权都如实返回）。 */
+export const wechatSubscribeStatus = () => realRequest('/mobile/me/wechat-subscribe')
+
+/** V3 §9.2：学生受限搜索（仅本人可见范围，服务端 fail-closed）。 */
+export const studentSearch = (keyword, pageSize = 20) =>
+  realRequest(`/mobile/student/search?q=${encodeURIComponent(String(keyword || ''))}&pageSize=${pageSize}`)
+
 /** V3 §7：我的办理列表（keyset 分页，状态过滤在数据库里做）。 */
 export const studentCases = (statusGroup = 'all', cursor = '', pageSize = 20) =>
   realRequest(

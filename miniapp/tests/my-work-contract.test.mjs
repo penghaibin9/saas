@@ -31,18 +31,19 @@ test('S5 我的办理列表与详情都已注册', () => {
 })
 
 test('S5 列表做真网络分页，不在前端切片', () => {
-  assert.match(listPage, /studentApi\.getCases\(this\.tab, '', 20\)/)
-  assert.match(listPage, /studentApi\.getCases\(this\.tab, this\.cursor, 20\)/)
+  // 分页/去重/epoch 失效已统一收敛到共享 networkPager（S7），页面只提供取数函数。
+  assert.match(listPage, /studentApi\.getCases\(tab, cursor, pageSize\)/)
   assert.match(listPage, /nextCursor/)
-  assert.match(listPage, /this\._epoch !== epoch/, '切标签/换账号后过期响应必须丢弃')
-  assert.match(listPage, /seen\.has\(row\.caseId\)/, '翻页必须按 stable id 去重')
+  assert.match(listPage, /createNetworkPager\(/)
+  assert.match(listPage, /idKey: 'caseId'/, '翻页必须按 stable id 去重')
+  assert.match(listPage, /this\._pager\.reset\(\)/, '换分段必须作废旧游标与旧响应')
   // 只禁止「把全量数据拉回来再本地切片」的分页；字符串格式化用的 slice 不在此列。
   assert.doesNotMatch(listPage, /pagedSlice|listPaging/)
   assert.doesNotMatch(listPage, /items\.slice\(|rows\.slice\(/)
 })
 
 test('S5 状态分段由服务端 tabs 驱动，不在前端硬编码状态集合', () => {
-  assert.match(listPage, /this\.tabs = \(data && data\.tabs\) \|\| \[\]/)
+  assert.match(listPage, /this\.tabs = \(data && data\.tabs\) \|\| this\.tabs/)
   assert.doesNotMatch(listPage, /APPROVED|REJECTED|PENDING_REVIEW/, '前端不得复制业务状态枚举')
 })
 

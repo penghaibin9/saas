@@ -16,6 +16,7 @@ from app.services import affairs_activity_service as activity_svc
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_agenda_projection_service as agenda
 from app.services import mobile_case_projection_service as cases
+from app.services import mobile_student_search_service as student_search_svc
 from app.services import mobile_student_service as stu
 from app.services import mobile_teacher_service as tea
 
@@ -54,6 +55,20 @@ def me_overview(user=Depends(get_current_user)):
 @router.get("/home", summary="学生首页聚合（总览+迎新+批次，一次鉴权）")
 def student_home(user=Depends(get_current_user)):
     return success(stu.home(user))
+
+
+@router.get("/me/wechat-subscribe", summary="学生·微信重要提醒的真实状态（未配置/未授权都如实返回）")
+def me_wechat_subscribe(user=Depends(get_current_user)):
+    return success(stu.wechat_subscribe_status(user))
+
+
+@router.get("/student/search", summary="学生·受限搜索（仅本人可见的消息与办理，不做全校检索）")
+def student_search(
+    q: str = Query("", max_length=40),
+    pageSize: int = Query(20, ge=1, le=20),
+    user=Depends(get_current_user),
+):
+    return success(student_search_svc.search(user, keyword=q, page_size=pageSize))
 
 
 @router.get("/student/cases", summary="学生·我的办理列表（keyset 分页，状态过滤下推数据库）")

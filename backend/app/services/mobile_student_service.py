@@ -1671,6 +1671,49 @@ def psy_survey_history(user: dict) -> dict:
 
 # ─────────── 我的申请（聚合本人可查询记录） ───────────
 
+def wechat_subscribe_status(user: dict) -> dict:
+    """V3 §9.3：微信重要提醒的**真实**状态。
+
+    站内消息分类与微信订阅是两条独立渠道，不能用一个开关表示两种东西。
+    provider 未配置或用户未授权时，这里如实返回 false —— 绝不在学生端宣称"已开启"。
+    """
+    u = _require_student(user)
+    from app.services.notification import wechat_subscribe_service as wechat
+
+    status = wechat.provider_status()
+    authorized = False
+    if db_enabled():
+        with _session() as db:
+            from app.models import User
+            uid = _resolve_uid(u)
+            row = tenant_get(db, User, uid) if uid else None
+            authorized = bool(row and getattr(row, "wx_openid", None))
+    return {
+        "channel": "WECHAT",
+        # 学校/运维是否配好了微信订阅能力
+        "configured": bool(status["configured"]),
+        # 本人是否授权过（有 openid）
+        "authorized": authorized,
+        # 只有两者都成立，才算这条渠道真的能收到提醒
+        "effective": bool(status["configured"]) and authorized,
+        "scenes": [
+            {"key": scene, "label": _SUBSCRIBE_SCENE_LABELS.get(scene, scene),
+             "ready": bool(status["templates"].get(scene))}
+            for scene in status["scenes"]
+        ],
+        # 未配置时给出可诊断信息，供管理端排查；学生端只用它决定文案，不展示内部键名
+        "missing": list(status["missing"]),
+    }
+
+
+_SUBSCRIBE_SCENE_LABELS = {
+    "CASE_RETURNED": "退回补材料",
+    "CASE_RESULT": "审批结果",
+    "EXAM_UPCOMING": "考试/答辩临近",
+    "INTERNSHIP_ABNORMAL": "实习异常",
+}
+
+
 def my_applications(user: dict) -> dict:
     u = _require_student(user)
     tabs = [{"key": "all", "label": "全部"}, {"key": "processing", "label": "处理中"},

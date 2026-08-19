@@ -42,6 +42,7 @@
 import { studentApi } from '@/services/studentApi'
 import { canNavigate, runAction } from '@/services/actionRouter'
 import { hasFocusRow, isFocusRow, readFocusId, scrollToFocus } from '@/utils/listFocus.mjs'
+import { createNetworkPager } from '@/utils/networkPager'
 import { toast } from '@/utils/nav'
 import { go } from '@/utils/nav'
 
@@ -80,38 +81,48 @@ export default {
       const key = typeof next === 'string' ? next : (next && next.key)
       if (!key || key === this.tab) return
       this.tab = key
+      // 换分段等于换查询：作废旧 pager，避免上一段的游标与条目串到新分段。
+      if (this._pager) this._pager.reset()
+      this._pager = null
+      this.items = []
       this.refresh()
+    },
+    // V3 §11.3：分页、去重、epoch 失效与单页内存上限全部交给共享 networkPager，
+    // 页面不再各自手写一套（教师端后续复用同一个工具）。
+    pager() {
+      if (!this._pager || this._pagerTab !== this.tab) {
+        this._pagerTab = this.tab
+        const tab = this.tab
+        this._pager = createNetworkPager(
+          (cursor, pageSize) => studentApi.getCases(tab, cursor, pageSize).then((data) => {
+            this.tabs = (data && data.tabs) || this.tabs
+            return { items: (data && data.items) || [], nextCursor: (data && data.nextCursor) || '' }
+          }),
+          { pageSize: 20, idKey: 'caseId' }
+        )
+      }
+      return this._pager
+    },
+    syncFromPager(state) {
+      this.items = state.items
+      this.hasMore = state.hasMore
+      this.loadingMore = state.loading && !state.refreshing
     },
     refresh() {
       this.state = this.items.length ? this.state : 'loading'
-      const epoch = (this._epoch || 0) + 1
-      this._epoch = epoch
-      return studentApi.getCases(this.tab, '', 20)
-        .then((data) => {
-          if (this._epoch !== epoch) return
-          this.tabs = (data && data.tabs) || []
-          this.items = (data && data.items) || []
-          this.cursor = (data && data.nextCursor) || ''
-          this.hasMore = !!this.cursor
+      return this.pager().refresh()
+        .then((state) => {
+          this.syncFromPager(state)
           this.state = 'ready'
           this.applyFocus()
         })
-        .catch(() => { if (this._epoch === epoch) this.state = 'error' })
+        .catch(() => { this.state = 'error' })
     },
     loadMore() {
       if (this.loadingMore || !this.hasMore) return
       this.loadingMore = true
-      const epoch = this._epoch
-      studentApi.getCases(this.tab, this.cursor, 20)
-        .then((data) => {
-          if (this._epoch !== epoch) return
-          const seen = new Set(this.items.map((row) => row.caseId))
-          for (const row of (data && data.items) || []) {
-            if (!seen.has(row.caseId)) this.items.push(row)
-          }
-          this.cursor = (data && data.nextCursor) || ''
-          this.hasMore = !!this.cursor
-        })
+      return this.pager().loadMore()
+        .then((state) => this.syncFromPager(state))
         .catch((e) => toast((e && e.message) || '加载失败'))
         .finally(() => { this.loadingMore = false })
     }
