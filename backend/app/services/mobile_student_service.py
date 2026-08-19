@@ -17,6 +17,7 @@ from app.core.exceptions import AppException
 from app.core.student_lifecycle import student_stage_label
 from app.db.session import db_enabled, get_engine, get_sessionmaker
 from app.services import audit_log
+from app.services import mobile_action_service as _action_svc
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
 from app.services.db_service import _iso, _mask_phone, _org_names, _primary_phone, _tid
 
@@ -608,6 +609,14 @@ def message_get(user: dict, message_id) -> dict:
             "withdrawn": withdrawn,
             "actionKey": getattr(m, "action_key", None),
             "actionParams": getattr(m, "action_params_json", None),
+            # V3 §4.1/§4.2：详情页只消费服务端已解析的 typed action，
+            # 不再在客户端按 actionKey/module/status 猜业务路由。
+            "action": _action_svc.build_message_action(
+                getattr(m, "action_key", None),
+                getattr(m, "action_params_json", None),
+                client=_action_svc.CLIENT_STUDENT_MINI,
+                withdrawn=withdrawn,
+            ),
             "contentVersion": int(getattr(m, "content_version", 1) or 1),
         }
 

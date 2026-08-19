@@ -18,8 +18,10 @@
         </view>
 
         <view class="section-head"><text class="section-head__title">我的奖助记录</text></view>
+        <MobileInlineAlert v-if="focusMissing" type="warning" title="没有找到这条记录"
+          description="消息或待办指向的资助申请不在当前列表里，可能已被处理、撤回或超出本页范围。" />
         <view class="list-group" v-if="d.items && d.items.length">
-          <view v-for="x in d.items" :key="x.applicationId" class="list-row col">
+          <view v-for="x in d.items" :key="x.applicationId" :id="'funding-' + x.applicationId" :class="{ 'is-focus': isFocused(x) }" class="list-row col">
             <view class="row-between"><text class="flex-1 t-md">{{ typeLabel(x.projectType) }}</text><MobileStatusTag :status="x.statusLabel || x.status" /></view>
             <text v-if="x.returnReason" class="hint warn">退回/驳回：{{ x.returnReason }}</text>
             <button v-if="allows(x, 'EDIT_RETURNED') || allows(x, 'RESUBMIT')" class="btn btn-ghost" :disabled="busy" @click="editReturned(x)">修改后重新提交</button>
@@ -43,6 +45,7 @@
 </template>
 
 <script>
+import { hasFocusRow, isFocusRow, readFocusId, scrollToFocus } from '@/utils/listFocus.mjs'
 import { studentApi } from '@/services/studentApi'
 import { affairsFundingAppeal } from '@/services/realApi'
 import { affairsReturnedApi } from '@/services/affairsReturnedApi'
@@ -51,7 +54,7 @@ import { toast } from '@/utils/nav'
 
 export default {
   data() {
-    return {
+    return { focusId: '', focusMissing: false,
       d: null, state: 'loading', busy: false, reasons: {}, batchError: '',
       fundTypes: [{ k: 'SCHOLARSHIP', t: '奖学金' }, { k: 'GRANT', t: '助学金' }], fundType: 'SCHOLARSHIP',
       allBatches: [], batchIndex: 0, form: { reason: '', commit: false },
@@ -63,8 +66,17 @@ export default {
     batchesForType() { return (this.allBatches || []).filter((b) => b.projectType === this.fundType).map((b) => ({ ...b, label: `${b.batchName || b.schoolYear || '批次'}（截止 ${(b.applyEnd || '').slice(0, 10) || '不限'}）` })) }
   },
   watch: { fundType() { this.batchIndex = 0 }, batchesForType() { if (this.batchIndex >= this.batchesForType.length) this.batchIndex = 0 } },
-  onLoad() { this.load() },
+  // V3 §4.4 LIST_FOCUS：待办/消息深链带 recordId 进来时必须定位到那条记录。
+  onLoad(query) { this.focusId = readFocusId(query); this.load() },
   methods: {
+    isFocused(row) { return isFocusRow(row, this.focusId, ['applicationId']) },
+    applyFocus() {
+      if (!this.focusId) return
+      const rows = (this.d && this.d.items) || []
+      this.focusMissing = !hasFocusRow(rows, this.focusId, ['applicationId'])
+      if (this.focusMissing) return
+      this.$nextTick(() => scrollToFocus('#funding-', this.focusId))
+    },
     allows(item, action) { return Array.isArray(item && item.allowedActions) && item.allowedActions.includes(action) },
     typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款', TUITION_REDUCTION: '学费减免', TEMPORARY_AID: '临时补助' })[t] || t || '奖助' },
     showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); return n },
@@ -73,7 +85,7 @@ export default {
       Promise.all([studentApi.getMyFunding(), studentApi.getFundingBatches().catch((e) => ({ __error: normalizeError(e).text || '开放批次加载失败' }))]).then(([d, b]) => {
         this.d = d
         if (b && b.__error) { this.batchError = b.__error; this.allBatches = [] } else this.allBatches = (b && b.items) || []
-        this.state = 'ready'
+        this.state = 'ready'; this.applyFocus()
       }).catch((e) => { this.state = 'error'; this.showError(e, '奖助信息加载失败') })
     },
     onBatch(e) { this.batchIndex = Number(e.detail.value) },
@@ -118,4 +130,5 @@ export default {
 
 <style scoped>
 .col { flex-direction: column; align-items: stretch; gap: 8px; }.row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }.hint { font-size: 12px; color: #6b7280; display: block; }.hint.warn { color: #b45309; }.seg { display: flex; gap: 8px; margin-top: 10px; }.seg__btn { flex: 1; font-size: 13px; background: #f1f5f9; color: #334155; border: none; border-radius: 8px; padding: 8px; }.seg__btn.on { background: #2563eb; color: #fff; }.fld { margin-top: 10px; }.lbl { display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px; }.picker, .ta { width: 100%; box-sizing: border-box; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; font-size: 13px; background: #fff; }.ta { min-height: 72px; }.chk { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; }.chk__box { width: 18px; height: 18px; border: 1px solid #94a3b8; border-radius: 4px; text-align: center; line-height: 16px; font-size: 12px; color: #2563eb; flex-shrink: 0; }.chk__t { font-size: 12px; color: #475569; }.btn { margin-top: 8px; background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 8px 12px; font-size: 13px; }.card-title { display: block; font-weight: 600; margin-bottom: 4px; }.fd__mask { position: fixed; inset: 0; z-index: 1000; background: rgba(15,23,42,.5); display: flex; align-items: flex-end; }.fd__sheet { width: 100%; border-radius: 18px 18px 0 0; padding: 18px; }.fd__actions { display: flex; gap: 10px; margin-top: 12px; }
+.is-focus { outline: 2px solid var(--brand-primary); outline-offset: 2px; border-radius: var(--radius-md); }
 </style>
