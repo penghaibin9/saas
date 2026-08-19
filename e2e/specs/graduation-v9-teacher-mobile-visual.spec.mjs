@@ -1,8 +1,7 @@
 import fs from 'node:fs/promises'
 
 import { test, expect } from '../lib/observability.mjs'
-import { config } from '../lib/config.mjs'
-import { prepareGraduationTeacherMobileGoldFixture } from '../lib/graduation-u8-fixture.mjs'
+import { prepareGraduationTeacherMobileGoldFixture, u8TeacherAccount } from '../lib/graduation-u8-fixture.mjs'
 import { captureGoldCandidate, dynamicTextMasks, goldEnvironment } from '../lib/graduation-gold.mjs'
 
 const miniBase = process.env.E2E_MINIAPP_BASE_URL || 'http://localhost:5188'
@@ -10,10 +9,10 @@ const miniBase = process.env.E2E_MINIAPP_BASE_URL || 'http://localhost:5188'
 async function loginTeacherMini(page) {
   await page.goto(`${miniBase}/#/pages/login/teacher/index`)
   const loginFields = page.getByRole('textbox')
-  await loginFields.nth(0).fill(config.mentor.username)
-  await loginFields.nth(1).fill(config.mentor.password)
+  await loginFields.nth(0).fill(u8TeacherAccount.username)
+  await loginFields.nth(1).fill(u8TeacherAccount.password)
   await page.getByText('填写', { exact: true }).click()
-  await loginFields.nth(2).fill(config.mentor.tenant)
+  await loginFields.nth(2).fill(u8TeacherAccount.tenant)
   await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
   await page.getByText('进入教师工作台', { exact: true }).click()
   await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 10_000 })
@@ -114,12 +113,12 @@ test.describe.serial('V9.2 U8 · teacher miniapp graduation Gold evidence', () =
       card: 'U8',
       head: environment.goldHead,
       goldHead: environment.goldHead,
-      tenant: config.mentor.tenant,
+      tenant: u8TeacherAccount.tenant,
       role: 'GD_MENTOR',
       fixtureBatchId: fixture.batchId,
       selectedBatchId: guideBatchId,
       fixtureVersion: { runId: fixture.runId, gdStudentId: fixture.gdStudentId, studentNo: fixture.studentNo },
-      mentor: config.mentor.username,
+      mentor: u8TeacherAccount.username,
       routes: [
         '#/pages/teacher/graduation-guide/index',
         '#/pages/teacher/graduation-taskbook/index'
