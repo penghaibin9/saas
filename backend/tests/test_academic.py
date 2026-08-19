@@ -64,17 +64,25 @@ def test_students_and_detail(client, auth_headers, db_mode):
     assert det["data"]["credit"]["gap"] == 120
 
 
-def test_grade_update_requires_reason(client, auth_headers, db_mode):
+def test_legacy_grade_update_is_fail_closed(client, auth_headers, db_mode):
     ids = _seed(db_mode)
-    bad = client.put(f"/api/v1/academic/grades/{ids['grade']}", headers=auth_headers,
-                     json={"score": 75, "reason": "x"}).json()
-    assert bad["code"] == 422001
-    ok = client.put(f"/api/v1/academic/grades/{ids['grade']}", headers=auth_headers,
-                    json={"score": 75, "reason": "登分误差已核对更正"}).json()
-    assert ok["code"] == 0
-    # 成绩改为75后 passStatus 应为 PASSED
+    # C-W5 已冻结：旧 /academic/grades 只保留兼容 URL，不再允许直接改正式成绩。
+    # 无论理由长短，都必须明确 409，引导到 GradeTask / correction / recheck 正式链。
+    for reason in ("x", "登分误差已核对更正"):
+        blocked = client.put(
+            f"/api/v1/academic/grades/{ids['grade']}",
+            headers=auth_headers,
+            json={"score": 75, "reason": reason},
+        ).json()
+        assert blocked["code"] == 409001
+        assert blocked["bizCode"] == "DATA_CONFLICT"
+        assert blocked["details"]["reason"] == "NO_DIRECT_ACADEMIC_GRADE_MUTATION"
+
+    # fail-closed 必须同时保证投影没有被旧入口偷偷改写。
     det = client.get(f"/api/v1/academic/students/{ids['student']}", headers=auth_headers).json()
-    assert det["data"]["grades"][0]["passStatus"] == "PASSED"
+    grade = det["data"]["grades"][0]
+    assert grade["score"] == 52
+    assert grade["passStatus"] == "FAILED"
 
 
 def test_makeup_status(client, auth_headers, db_mode):
