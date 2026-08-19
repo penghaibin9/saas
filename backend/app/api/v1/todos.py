@@ -42,6 +42,28 @@ def _use_real_db() -> bool:
     return False
 
 
+def _teacher_v3_page(user: dict, *, status: str | None, todo_type: str | None,
+                     page: int, page_size: int) -> dict:
+    """Teacher V3 T1：复用 canonical Todo read + server-resolved typed target。"""
+    from app.services import teacher_mobile_todo_read_service as teacher_todo
+
+    data = teacher_todo.list_page(
+        user,
+        status=status,
+        todo_type=todo_type,
+        page=page,
+        page_size=page_size,
+    )
+    # 保持冻结 paginate 外形；T1 只新增 typed DTO 字段，不改公共分页合同。
+    return paginate(data["items"], data["total"], data["page"], data["pageSize"])
+
+
+def _teacher_v3_detail(user: dict, todo_id: str) -> dict | None:
+    from app.services import teacher_mobile_todo_read_service as teacher_todo
+
+    return teacher_todo.get_one(user, todo_id)
+
+
 def make_router(client: str) -> APIRouter:
     """client: admin / student-mini / teacher-mobile"""
     router = APIRouter(prefix=f"/{client}", tags=[f"04·待办与消息（{client}）"])
@@ -55,6 +77,11 @@ def make_router(client: str) -> APIRouter:
                    pageSize: int = Query(default=20, ge=1, le=100),
                    user=Depends(guard)):
         if _use_real_db():
+            if client == "teacher-mobile":
+                return success(_teacher_v3_page(
+                    user, status=status, todo_type=todoType,
+                    page=page, page_size=pageSize,
+                ))
             items, total = svc.list_todos(user, status, todoType, page, pageSize, client=route_client)
             return success(paginate(items, total, page, pageSize))
         items = [t for t in MOCK_TODOS
@@ -72,7 +99,7 @@ def make_router(client: str) -> APIRouter:
         by_type: dict[str, int] = {}
         for t in pending:
             by_type[t["todoType"]] = by_type.get(t["todoType"], 0) + 1
-        return success({"total": len(pending), "byType": by_type})
+        return {"total": len(pending), "byType": by_type}
 
     if client != "student-mini":
         @router.get("/workbench-snapshot", summary="教师工作台只读快照",
@@ -103,7 +130,10 @@ def make_router(client: str) -> APIRouter:
     @router.get("/todos/{todo_id}", summary="待办详情", name=f"{client}_todo_detail")
     def todo_detail(todo_id: str, user=Depends(guard)):
         if _use_real_db():
-            d = svc.get_todo(user, todo_id, client=route_client)
+            if client == "teacher-mobile":
+                d = _teacher_v3_detail(user, todo_id)
+            else:
+                d = svc.get_todo(user, todo_id, client=route_client)
             if not d:
                 raise not_found("待办不存在")
             return success(d)
