@@ -7,6 +7,12 @@ const u8StudentAccount = {
   password: process.env.E2E_GRADUATION_U8_STUDENT_PASSWORD || config.student.password,
 }
 
+export const u8TeacherAccount = {
+  tenant: process.env.E2E_GRADUATION_U8_TEACHER_TENANT || config.mentor.tenant,
+  username: process.env.E2E_GRADUATION_U8_TEACHER_USERNAME || 'e2e_advisor_b',
+  password: process.env.E2E_GRADUATION_U8_TEACHER_PASSWORD || config.mentor.password,
+}
+
 async function proposalRows(admin, fixture) {
   const data = await admin.get('/graduation/proposals', {
     batchId: fixture.batchId,
@@ -60,13 +66,13 @@ async function ensureU8StudentFixture(admin, fixture) {
   })
 
   const mentors = items(await admin.get('/graduation/gd-mentors', {
-    keyword: config.mentor.username,
+    keyword: u8TeacherAccount.username,
     page: 1,
     pageSize: 200,
   }))
-  const mentor = mentors.find((row) => String(row.teacherNo || '') === config.mentor.username)
+  const mentor = mentors.find((row) => String(row.teacherNo || '') === u8TeacherAccount.username)
   if (!mentor) {
-    throw new Error(`U8 Gold mentor ${config.mentor.username} is missing.`)
+    throw new Error(`U8 Gold mentor ${u8TeacherAccount.username} is missing.`)
   }
   try {
     await admin.post('/graduation/gd-mentor-assignments/assign', {
@@ -92,7 +98,7 @@ async function ensureU8StudentFixture(admin, fixture) {
       title: topicTitle,
       batchId: fixture.batchId,
       sourceType: 'TEACHER',
-      advisorName: 'E2E指导教师A',
+      advisorName: 'E2E指导教师B',
       category: '软件工程',
       difficulty: 'MEDIUM',
       requirements: '验证教师小程序毕设工作台与任务书真实分页上下文',
@@ -124,7 +130,7 @@ async function ensureU8StudentFixture(admin, fixture) {
   })
   if (!taskbook?.exists) {
     await admin.post(`/graduation/gd-taskbooks/${gdStudent.id}/issue`, {
-      objective: '验证教师小程序毕设工作台与任务书真实分页上下文',
+      objective: '形成一条独立真实的开题待审记录',
       content: '学生签署独立任务书并提交待审开题，供 U8 教师移动端 Gold 使用。',
     }, { batchId: fixture.batchId })
   }
@@ -140,9 +146,9 @@ async function ensureU8StudentFixture(admin, fixture) {
 /**
  * U8 Gold must render one deterministic, real teacher review queue from the
  * exact fixture batch. The lifecycle suite deliberately advances student A's
- * proposal to APPROVED, so U8 uses the separately bootstrapped student B in the
- * same run-scoped batch. This keeps both flows real without mutating an approved
- * proposal backwards or making the production API accept duplicate submission.
+ * proposal to APPROVED, so U8 uses separately bootstrapped student B + mentor B
+ * in the same run-scoped batch. This keeps both flows real without sharing a
+ * mentor queue, mutating an approved proposal backwards, or weakening the API.
  */
 export async function prepareGraduationTeacherMobileGoldFixture() {
   const baseFixture = await prepareGraduationFixture()
