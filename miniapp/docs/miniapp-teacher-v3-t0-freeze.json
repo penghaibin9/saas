@@ -1,30 +1,32 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "wave": "T0",
-  "capturedAt": "2026-08-20T05:27:00+08:00",
+  "capturedAt": "2026-08-20T05:33:00+08:00",
   "authority": "跃科_教师端微信小程序_生产级开发手册_V3.0_2026-08-19",
   "repository": "penghaibin9/saas",
   "branch": "agent/miniapp-teacher-v3-production-20260820",
   "base": {
     "ref": "main",
     "exactSha": "65ad77eb568d562491645fcab39d280f812e8bc0",
-    "latestMerge": "PR #148"
+    "latestMerge": "PR #148",
+    "unchangedSinceT0Start": true
   },
   "dependencies": {
     "pr147": {
       "state": "open",
       "draft": true,
-      "headSha": "9c72f0d03ada7ed7d7e50690ebbbf723a0a8d8b4",
+      "headSha": "49195fa41ba4a9f3eb7a92b1363b5cbd4962ed6e",
+      "headMovedSincePreviousFreeze": true,
       "collision": [
         "backend/app/services/mobile_teacher_service.py"
       ],
-      "rule": "Do not overwrite the file wholesale; avoid the live PR surface until reconciled."
+      "rule": "Do not overwrite the file wholesale; keep mobile_teacher_service.py owner-locked while PR #147 is live."
     },
     "pr148": {
       "state": "merged",
       "mergedIntoMain": true,
       "mergeCommit": "65ad77eb568d562491645fcab39d280f812e8bc0",
-      "rule": "Teacher Today/attendance/grade-entry must consume the implementation now in main."
+      "rule": "Teacher Today/attendance/grade-entry consume the implementation already in main; do not copy pre-merge #148 code."
     },
     "pr180": {
       "state": "open",
@@ -41,9 +43,10 @@
       "state": "open",
       "draft": true,
       "branch": "claude/new-session-au46r1",
-      "headSha": "aa3354ad9e3cb6167f4a6d84e8d9c5a2a6610716",
+      "headSha": "6372af205bef078194139bf27060dae798690f48",
+      "headMovedSincePreviousFreeze": true,
       "handoffReady": false,
-      "currentWaves": ["S0", "S1", "S1.5"],
+      "currentWaves": ["S0", "S1", "S1.5", "S2_IN_PROGRESS"],
       "sharedCollision": [
         "backend/app/services/message_action_registry.py",
         "backend/app/services/mobile_action_service.py",
@@ -56,7 +59,7 @@
         "miniapp/src/pages/teacher/todos/index.vue",
         "miniapp/src/pages/teacher/risk-students/index.vue"
       ],
-      "rule": "Teacher V3 must not create a parallel action router/pager/attachment/bootstrap authority. T8 waits for Student V3 to merge to main and for miniapp-v3-handoff.json machine validation."
+      "rule": "Teacher V3 must not create a parallel action router/pager/attachment/bootstrap authority. T8 waits for Student V3 merge-to-main plus miniapp-v3-handoff.json machine validation."
     }
   },
   "alembic": {
@@ -66,8 +69,21 @@
   },
   "safeStart": {
     "lockedOrder": ["T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10"],
-    "policy": "Proceed only with teacher-owned, non-colliding slices. Shared files remain owner-locked while PR #182 is live; mobile_teacher_service.py remains collision-locked while PR #147 is live.",
+    "policy": "Proceed only with teacher-owned, non-colliding slices. Shared files remain owner-locked while PR #182 is live; mobile_teacher_service.py remains owner-locked while PR #147 is live.",
     "stableTabs": ["工作台", "待办", "消息", "我的"],
     "myStudentsPlacement": "Workbench first-screen high-frequency entry plus independent paginated page"
+  },
+  "t1": {
+    "status": "SAFE_PREHANDOFF_SLICE_ALLOWED",
+    "allowedNow": [
+      "teacher-only DTO projection that only consumes already-resolved workbench todo fields",
+      "contract tests proving no local route map or title/todoType guessing"
+    ],
+    "blockedUntilOwnerReleaseOrT8": [
+      "todo_route_registry.py teacherMini mappings",
+      "mobile_action_service.py integration",
+      "mobile_performance_service.py wiring",
+      "mobile_teacher_service.py wiring while PR #147 remains live"
+    ]
   }
 }
