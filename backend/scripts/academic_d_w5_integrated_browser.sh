@@ -150,7 +150,7 @@ BROWSER_PHASE="CLIENTS_START"
 (
   cd student-portal
   npm ci
-  VITE_BASE=/portal/ VITE_API_BASE_URL=/api/v1 VITE_PROXY_TARGET=http://127.0.0.1:8000 \
+  VITE_BASE=/portal/ VITE_API_BASE_URL=http://127.0.0.1:8000 \
     nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
   echo $! > ../e2e/runtime-logs/student-portal.pid
 )
