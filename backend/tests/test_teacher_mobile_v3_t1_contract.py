@@ -33,6 +33,8 @@ def test_t1_projects_server_resolved_typed_target_without_guessing():
 
     dto = project_teacher_todo(source)
 
+    assert dto["todoId"] == "123"
+    assert dto["bizId"] == "456"
     assert dto["id"] == "123"
     assert dto["sourceBizType"] == "LEAVE"
     assert dto["sourceBizId"] == "456"
@@ -67,6 +69,20 @@ def test_t1_fail_closed_when_upstream_has_no_proven_target():
     assert dto["sourceBizId"] == "99"
     assert dto["action"] is None
     assert dto["expectedVersion"] == 3
+
+
+def test_t1_rejects_cross_client_target_and_preserves_version_zero():
+    dto = project_teacher_todo({
+        "todoId": "18",
+        "bizId": "100",
+        "version": 0,
+        "routeName": "todo-route:cross-client",
+        "routePath": "/pages/student/affairs/leave",
+        "allowedActions": ["OPEN"],
+    })
+    assert dto["todoId"] == "18"
+    assert dto["expectedVersion"] == 0
+    assert dto["action"] is None
 
 
 def test_t1_does_not_create_third_route_authority():
