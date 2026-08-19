@@ -34,31 +34,44 @@ def _seed_class(n_students=3, tenant_id=MAIN):
 
 
 def _seed_teaching_task(class_id, teacher_key, tenant_id=MAIN):
-    """建立当前学期教学任务及其正式LOCKED教学班名单，返回真实 taskId。"""
+    """建立可被正式 occurrence Authority 消费的完整教学任务/名单/课表事实。"""
     import hashlib
     from datetime import datetime
     from app.db.session import get_sessionmaker
     from app.models import (
+        AaCourse, AaScheduleBatch, AaScheduleItem, AaScheduleScopeHead,
         AaTeachingClass, AaTeachingClassMember, AaTeachingClassRosterVersion,
         AaTeachingClassTeacher, AaTeachingTask, AaTeachingTaskBatch, AaTerm,
         StudentProfile,
     )
     db = get_sessionmaker()()
     try:
+        # 2026-07-14/15 均落在第20教学周，weekday 分别为 2/3。
         term = AaTerm(
             tenant_id=tenant_id, year_code="2026-2027", term_no=1,
             term_name="2026-2027学年第一学期",
-            start_date=datetime(2026, 1, 1), end_date=datetime(2026, 12, 31),
+            start_date=datetime(2026, 3, 2), end_date=datetime(2026, 7, 19),
             teaching_weeks=20, is_current=True, status="PUBLISHED")
         db.add(term); db.flush()
+        course = AaCourse(
+            tenant_id=tenant_id,
+            course_code=f"AT-C-{class_id}",
+            course_name="测试课程",
+            credit=2,
+            status="ENABLED",
+        )
+        db.add(course); db.flush()
         batch = AaTeachingTaskBatch(
             tenant_id=tenant_id, term_id=term.id,
             batch_name="考勤测试教学任务批次", status="APPROVED")
         db.add(batch); db.flush()
+        stable_teacher_key = f"u-{teacher_key}"
         task = AaTeachingTask(
-            tenant_id=tenant_id, batch_id=batch.id, course_id=1, class_id=class_id,
-            course_name="测试课程", teacher_key=f"u-{teacher_key}",
-            teacher_name=teacher_key, status="READY")
+            tenant_id=tenant_id, batch_id=batch.id, course_id=course.id,
+            course_code=course.course_code, class_id=class_id,
+            course_name=course.course_name, teacher_key=stable_teacher_key,
+            teacher_name=teacher_key, status="READY",
+            weekly_hours=2, total_hours=40, start_week=1, end_week=20)
         db.add(task); db.flush()
 
         student_ids = [
@@ -85,7 +98,7 @@ def _seed_teaching_task(class_id, teacher_key, tenant_id=MAIN):
             version_no=1, source_type="ADMIN_CLASS", source_id=int(class_id),
             member_count=len(student_ids), roster_hash=digest, status="LOCKED",
             reason="考勤合同测试正式名单", locked_at=datetime.utcnow(),
-            locked_by=f"u-{teacher_key}")
+            locked_by=stable_teacher_key)
         db.add(version); db.flush()
         for student_id in student_ids:
             db.add(AaTeachingClassMember(
@@ -94,12 +107,52 @@ def _seed_teaching_task(class_id, teacher_key, tenant_id=MAIN):
                 source_type="ADMIN_CLASS", source_id=int(class_id), status="ACTIVE"))
         db.add(AaTeachingClassTeacher(
             tenant_id=tenant_id, teaching_class_id=teaching_class.id,
-            teacher_key=f"u-{teacher_key}", teacher_name=teacher_key,
-            role_type="PRIMARY", status="ACTIVE"))
+            teacher_key=stable_teacher_key, teacher_name=teacher_key,
+            role_type="PRIMARY", start_week=1, end_week=20, status="ACTIVE"))
         teaching_class.current_roster_version_id = version.id
         teaching_class.current_roster_version_no = 1
         teaching_class.roster_status = "LOCKED"
         task.expected_students = len(student_ids)
+
+        # 旧测试此前只有 TeachingTask，没有 Published Schedule/ScopeHead。C-W1 后普通
+        # 考勤必须命中当前正式课次，所以这里直接铺两条真实 EFFECTIVE 周二/周三课次。
+        schedule_batch = AaScheduleBatch(
+            tenant_id=tenant_id,
+            term_id=term.id,
+            batch_name="考勤测试正式课表",
+            status="PUBLISHED",
+        )
+        db.add(schedule_batch); db.flush()
+        for weekday in (2, 3):
+            db.add(AaScheduleItem(
+                tenant_id=tenant_id,
+                batch_id=schedule_batch.id,
+                task_id=task.id,
+                course_id=course.id,
+                course_name=course.course_name,
+                teacher_key=stable_teacher_key,
+                teacher_name=teacher_key,
+                class_id=int(class_id),
+                class_name="考勤测2601",
+                weekday=weekday,
+                slot_no=1,
+                start_week=1,
+                end_week=20,
+                week_parity="ALL",
+                classroom_text="AT-101",
+                status="EFFECTIVE",
+            ))
+        db.flush()
+        head = AaScheduleScopeHead(
+            tenant_id=tenant_id,
+            term_id=term.id,
+            scope_type="SCHOOL",
+            scope_id=0,
+            active_batch_id=schedule_batch.id,
+            version=1,
+            published_at=datetime.utcnow(),
+        )
+        db.add(head)
         db.commit()
         return task.id
     finally:
@@ -112,7 +165,8 @@ def test_attendance_full_flow(client, db_mode):
     hdr = _teacher_token("周老师")
     r = client.post(f"{BASE}/sessions", headers=hdr,
                     json={"teachingTaskId": task_id, "classId": cid,
-                          "courseName": "高等数学", "sessionDate": "2026-07-15"}).json()
+                          "courseName": "高等数学", "sessionDate": "2026-07-15",
+                          "slotNo": 1}).json()
     assert r["code"] == 0, r
     sess = r["data"]
     assert sess["totalCount"] == 3 and sess["presentCount"] == 3 and sess["status"] == "DRAFT"
@@ -148,7 +202,8 @@ def test_attendance_other_teacher_cannot_view_or_mark(client, db_mode):
     owner_hdr = _teacher_token("张老师")
     r = client.post(f"{BASE}/sessions", headers=owner_hdr,
                     json={"teachingTaskId": task_id, "classId": cid,
-                          "courseName": "英语", "sessionDate": "2026-07-15"}).json()
+                          "courseName": "英语", "sessionDate": "2026-07-15",
+                          "slotNo": 1}).json()
     assert r["code"] == 0, r
     sid = r["data"]["sessionId"]
 
@@ -188,7 +243,7 @@ def test_attendance_pc_stats_and_type(client, db_mode):
     # 场次1：常规类别（不传=常规），1 人旷课
     s1_payload = client.post(f"{BASE}/sessions", headers=hdr, json={
         "teachingTaskId": task_id, "classId": cid, "courseName": "语文",
-        "termCode": "2026-1", "sessionDate": "2026-07-14"}).json()
+        "termCode": "2026-1", "sessionDate": "2026-07-14", "slotNo": 1}).json()
     assert s1_payload["code"] == 0, s1_payload
     s1 = s1_payload["data"]
     absent_sid = client.get(f"{BASE}/sessions/{s1['sessionId']}", headers=hdr).json()["data"]["items"][0]["studentId"]
@@ -196,10 +251,12 @@ def test_attendance_pc_stats_and_type(client, db_mode):
                 json={"studentId": absent_sid, "status": "ABSENT"})
     client.post(f"{BASE}/sessions/{s1['sessionId']}/submit", headers=hdr)
     # 场次2：实训类别，同一人再旷课
-    s2 = client.post(f"{BASE}/sessions", headers=hdr, json={
+    s2_payload = client.post(f"{BASE}/sessions", headers=hdr, json={
         "teachingTaskId": task_id, "classId": cid, "courseName": "语文",
-        "termCode": "2026-1", "sessionDate": "2026-07-15",
-        "sessionType": "实训"}).json()["data"]
+        "termCode": "2026-1", "sessionDate": "2026-07-15", "slotNo": 1,
+        "sessionType": "实训"}).json()
+    assert s2_payload["code"] == 0, s2_payload
+    s2 = s2_payload["data"]
     assert s2["sessionType"] == "实训"
     client.post(f"{BASE}/sessions/{s2['sessionId']}/mark", headers=hdr,
                 json={"studentId": absent_sid, "status": "ABSENT"})

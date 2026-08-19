@@ -42,11 +42,16 @@ def test_formal_parent_and_dashboard_do_not_use_pure_mock_platform_api():
     layout = _read(FRONT / "views" / "AdminPlatformLayout.vue")
     dashboard = _read(FRONT / "views" / "PlatformDashboardView.vue")
     overview = _read(FRONT / "views" / "control" / "PlatformControlOverview.vue")
+    access_gate = _read(ROOT / "frontend" / "src" / "security" / "platformAccessGate.js")
     for src in (layout, dashboard, overview):
         assert "platform.api" not in src
         assert "platformApi" not in src
-    assert "platformControlApi.getContext()" in layout
+    assert "ensurePlatformAccessContext({ force: true })" in layout
+    assert "toPlatformUiContext(context)" in layout
     assert "ErrorState" in layout and "loadContext" in layout
+    assert "request('/platform/context', { forceProbe: true })" in access_gate
+    assert "String(context?.principalPlane || '').toUpperCase() !== 'PLATFORM'" in access_gate
+    assert "String(context?.subjectId || '') !== subjectId" in access_gate
     assert "PlatformControlOverview" in dashboard
     assert ':ctx="ctx"' in dashboard
     assert "ctx.currentRole.roleName" in overview

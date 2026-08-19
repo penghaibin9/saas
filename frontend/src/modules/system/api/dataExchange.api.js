@@ -5,6 +5,10 @@ import {
   requestBlob
 } from '@/services/http/client'
 import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
+import {
+  isIdentityImportProcessing,
+  isIdentityImportTerminal
+} from '@/modules/system/utils/identityImportState'
 
 const identityUploadKeys = new WeakMap()
 
@@ -40,6 +44,18 @@ function identityUploadKey(kind, file) {
     byKind.set(kind, randomKey(`identity-upload:${kind}`))
   }
   return byKind.get(kind)
+}
+
+function delay(ms, signal) {
+  if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'))
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms)
+    if (!signal) return
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }, { once: true })
+  })
 }
 
 async function governedJsonRequest(path, { method = 'GET', params, body, headers = {} } = {}, retried = false) {
@@ -129,6 +145,35 @@ export const dataExchangeApi = {
     return request(`/data-exchange/imports/${jobId}`, {
       params: visibilityParams(context)
     })
+  },
+  async waitIdentityValidation(jobId, {
+    signal,
+    maxWaitMs = 90000,
+    initialDelayMs = 800,
+    maxDelayMs = 4000,
+    context = {}
+  } = {}) {
+    const startedAt = Date.now()
+    let waitMs = Math.max(100, Number(initialDelayMs) || 800)
+    let current = await this.getImport(jobId, context)
+
+    while (isIdentityImportProcessing(current)) {
+      const elapsed = Date.now() - startedAt
+      if (elapsed >= maxWaitMs) {
+        return { ...current, pollTimedOut: true }
+      }
+      await delay(Math.min(waitMs, Math.max(1, maxWaitMs - elapsed)), signal)
+      current = await this.getImport(jobId, context)
+      waitMs = Math.min(maxDelayMs, Math.ceil(waitMs * 1.6))
+    }
+
+    if (!isIdentityImportTerminal(current)) {
+      const error = new Error(`身份导入任务进入未知状态：${current?.status || 'EMPTY'}`)
+      error.bizCode = 'IDENTITY_IMPORT_UNKNOWN_STATUS'
+      error.details = { jobId, status: current?.status || null }
+      throw error
+    }
+    return current
   },
   getImportErrors(jobId, params = {}) {
     return request(`/data-exchange/imports/${jobId}/errors`, {

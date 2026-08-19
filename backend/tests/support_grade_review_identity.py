@@ -10,7 +10,8 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
+import os
 
 TID = 1000000000000000001
 COLLEGE_REVIEW_PERM = "academicAffairs.grade.collegeReview"
@@ -21,6 +22,75 @@ _ACCOUNTS = {
     "college_admin01": ("张晓明", "SCHOOL_ADMIN", (COLLEGE_REVIEW_PERM, GRADE_CHANGE_REVIEW_PERM)),
     "school_admin01": ("陈校", "SCHOOL_ADMIN", (ACADEMIC_PUBLISH_PERM, GRADE_CHANGE_REVIEW_PERM)),
 }
+
+
+def _ensure_fast_grade_deadline_schema(db):
+    """Bridge additive W4 deadline columns into create_all-backed FAST_TEST_SCHEMA.
+
+    Production still owns these columns through Alembic.  Main's sharded regression
+    intentionally skips migrations in FAST_TEST_SCHEMA, so the shared Grade fixture
+    installs exactly the two additive columns/index before legacy Grade flows exercise
+    the new deadline service.  Normal migrated-schema tests are left untouched.
+    """
+    if os.environ.get("FAST_TEST_SCHEMA") != "1":
+        return
+
+    from sqlalchemy import inspect as sa_inspect, text
+
+    engine = db.get_bind()
+    if engine.dialect.name != "mysql":
+        return
+    with engine.begin() as conn:
+        columns = {row["name"] for row in sa_inspect(conn).get_columns("t_aa_grade_task")}
+        if "deadline_at" not in columns:
+            conn.execute(text(
+                "ALTER TABLE t_aa_grade_task ADD COLUMN deadline_at DATETIME NULL"
+            ))
+        if "deadline_updated_at" not in columns:
+            conn.execute(text(
+                "ALTER TABLE t_aa_grade_task ADD COLUMN deadline_updated_at DATETIME NULL"
+            ))
+        indexes = {row["name"] for row in sa_inspect(conn).get_indexes("t_aa_grade_task")}
+        if "ix_aa_grade_task_deadline" not in indexes:
+            conn.execute(text(
+                "CREATE INDEX ix_aa_grade_task_deadline "
+                "ON t_aa_grade_task (tenant_id, status, deadline_at)"
+            ))
+
+
+def _ensure_current_test_term(db):
+    """Keep the canonical Grade regression term resolvable by live teacher authority."""
+    from app.models import AaTerm
+
+    term = db.query(AaTerm).filter(
+        AaTerm.tenant_id == TID,
+        AaTerm.year_code == "2026-2027",
+        AaTerm.term_no == 1,
+        AaTerm.is_deleted.is_(False),
+    ).first()
+    if term is None:
+        term = AaTerm(
+            tenant_id=TID,
+            year_code="2026-2027",
+            term_no=1,
+            term_name="2026-2027第1学期",
+            teaching_weeks=18,
+            status="PUBLISHED",
+            is_current=True,
+        )
+        db.add(term)
+        db.flush()
+
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())
+    teaching_weeks = int(term.teaching_weeks or 18)
+    term.teaching_weeks = teaching_weeks
+    term.start_date = monday
+    term.end_date = monday + timedelta(weeks=teaching_weeks) - timedelta(days=1)
+    term.status = "PUBLISHED"
+    term.is_current = True
+    db.flush()
+    return term
 
 
 def _ensure_permission(db, code):
@@ -202,6 +272,8 @@ def seed_grade_review_identity(db, *, college_ids=()):
     """种出成绩审核/更正两级真实受理人、学院范围/任职和 ACTIVE BASE 成绩策略。"""
     from app.models import College
 
+    _ensure_fast_grade_deadline_schema(db)
+    _ensure_current_test_term(db)
     users = {name: _ensure_account(db, name) for name in _ACCOUNTS}
     _ensure_base_grade_policy(db)
     college_user = users["college_admin01"]

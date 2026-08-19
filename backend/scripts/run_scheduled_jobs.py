@@ -24,6 +24,7 @@ INTERVAL_STUDENT_AFFAIRS = 60    # 学工补偿租约 + 异步导出 + 审批导
 INTERVAL_ACADEMIC_EFFECTIVE = 60 # Stage C1：已批准的未来生效学籍异动
 INTERVAL_SCHEDULED_MSG = 45     # 定时消息到点发布
 INTERVAL_EXPIRE_NUDGE = 120     # 失效 + 紧急确认催办
+INTERVAL_GRADE_DEADLINE = 60 * 60  # 成绩录入 7/3/1 天提醒 + 逾期升级
 INTERVAL_LEAVE_OVERDUE = 30 * 60
 INTERVAL_STATS = 15 * 60
 INTERVAL_CLEANUP = 24 * 60 * 60
@@ -186,7 +187,13 @@ def job_delivery_and_outbox() -> None:
     from app.services import password_reset_service as password_reset_svc
     from app.services import message_channel_delivery_service as channel_svc
     from app.services import tenant_effective_state_service as tenant_state
+    from app.modules.academic_affairs.services import academic_affairs_grade_message_event_guard as grade_message_events
     from app.modules.internship.services import internship_audit_service as internship_audit
+
+    # External scheduler may restart with Grade reminder rows already pending. Install
+    # their event contracts before the first outbox drain so category/priority/template
+    # semantics never fall back to generic defaults during startup ordering.
+    grade_message_events.install()
 
     _run_for_tenants(
         "delivery", tenant_state.BACKGROUND_BUSINESS_WRITE,
@@ -272,6 +279,18 @@ def job_academic_future_effective() -> None:
     )
 
 
+def job_grade_deadline() -> None:
+    """C-W4 deadline policy: tenant-scoped 7/3/1 reminders + overdue admin digest."""
+    from app.modules.academic_affairs.services import academic_affairs_grade_deadline_scheduler_service as grade_deadline
+    from app.services import tenant_effective_state_service as tenant_state
+
+    _run_for_tenants(
+        "academic_grade_deadline",
+        tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda _tid: grade_deadline.scan_grade_deadlines(limit=500),
+    )
+
+
 def job_leave_overdue() -> None:
     from app.modules.internship.services import internship_leave_service
     from app.services import affairs_leave_service
@@ -335,15 +354,16 @@ def main() -> int:
     if not db_enabled():
         raise RuntimeError("scheduler requires DB_ENABLED=true")
     log.info(
-        "external scheduler started intervals delivery=%ss affairs=%ss academic_effective=%ss scheduled=%ss expire=%ss leave=%ss risk=%ss stats=%ss",
+        "external scheduler started intervals delivery=%ss affairs=%ss academic_effective=%ss grade_deadline=%ss scheduled=%ss expire=%ss leave=%ss risk=%ss stats=%ss",
         INTERVAL_DELIVERY, INTERVAL_STUDENT_AFFAIRS, INTERVAL_ACADEMIC_EFFECTIVE,
-        INTERVAL_SCHEDULED_MSG, INTERVAL_EXPIRE_NUDGE,
+        INTERVAL_GRADE_DEADLINE, INTERVAL_SCHEDULED_MSG, INTERVAL_EXPIRE_NUDGE,
         INTERVAL_LEAVE_OVERDUE, INTERVAL_LEAVE_OVERDUE, INTERVAL_STATS)
     now0 = time.monotonic()
     tickers = [
         _Ticker(INTERVAL_DELIVERY, now0, job_delivery_and_outbox),
         _Ticker(INTERVAL_STUDENT_AFFAIRS, now0, job_student_affairs_background),
         _Ticker(INTERVAL_ACADEMIC_EFFECTIVE, now0, job_academic_future_effective),
+        _Ticker(INTERVAL_GRADE_DEADLINE, now0, job_grade_deadline),
         _Ticker(INTERVAL_SCHEDULED_MSG, now0, job_scheduled_messages),
         _Ticker(INTERVAL_EXPIRE_NUDGE, now0, job_expire_and_nudge),
         _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_leave_overdue),

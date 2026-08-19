@@ -14,32 +14,39 @@ legacy = public._legacy
 
 
 def test_workload_guard_is_installed_behind_public_scope_owner():
-    assert legacy.workload_stats is guard.workload_stats
-    assert legacy.workload_detail is guard.workload_detail
+    public_source = inspect.getsource(public.workload_stats)
+    precheck_source = inspect.getsource(public._precheck)
+    assert "_precheck(user, college_id)" in public_source
+    assert "_resolve_scope" in precheck_source
+    assert "_validate_college_param" in precheck_source
     assert public.workload_detail is guard.public_workload_detail
-    assert getattr(legacy.workload_stats, "_workload_term_sql_guard", False) is True
-    assert getattr(legacy.workload_detail, "_workload_term_sql_guard", False) is True
+    assert getattr(guard.workload_stats, "_workload_term_sql_guard", False) is True
+    assert getattr(guard.workload_detail, "_workload_term_sql_guard", False) is True
     assert getattr(public.workload_detail, "_workload_public_scope_guard", False) is True
 
 
-def test_workload_stats_filter_tasks_by_batch_term_and_aggregate_in_sql():
+def test_workload_stats_filter_tasks_by_batch_term_and_reconcile_formal_sources():
     helper = inspect.getsource(guard._task_conditions)
     source = inspect.getsource(guard.workload_stats)
     assert "batch_ids = select(AaTeachingTaskBatch.id)" in helper
     assert "AaTeachingTaskBatch.term_id == int(term_id)" in helper
     assert "AaTeachingTask.batch_id.in_(batch_ids)" in helper
-    assert "func.sum(AaTeachingTask.total_hours)" in source
-    assert "group_by(AaTeachingTask.teacher_key)" in source
+    assert "select(AaTeachingTask).where(*_task_conditions(term_id, class_ids))" in source
+    assert "_formal_teaching_facts(db, tasks)" in source
+    assert "_formal_invigilation_facts" in source
     assert "rows = db.scalars(q).all()" not in source
 
 
 def test_workload_declared_hours_are_term_scoped_and_sql_grouped():
-    source = inspect.getsource(guard._declared_hours_by_teacher)
-    assert "term_codes = stats._term_codes(db, term_id)" in source
-    assert "AaWorkloadDeclaration.term_code.in_(list(term_codes))" in source
-    assert "func.sum(AaWorkloadDeclaration.hours)" in source
-    assert "group_by(AaWorkloadDeclaration.teacher_key)" in source
-    assert "for r in q.all()" not in source
+    aggregate_source = inspect.getsource(guard._declared_facts_by_teacher)
+    compat_source = inspect.getsource(guard._declared_hours_by_teacher)
+    assert "term_codes = stats._term_codes(db, term_id)" in aggregate_source
+    assert "AaWorkloadDeclaration.term_code.in_(list(term_codes))" in aggregate_source
+    assert "func.sum(AaWorkloadDeclaration.hours)" in aggregate_source
+    # 当前聚合同时保留教师总量和分类明细，因此 SQL 必须按教师+类别分组；
+    # 再由 Python 汇总 approvedHours，不能退回逐行扫描。
+    assert "group_by(AaWorkloadDeclaration.teacher_key, AaWorkloadDeclaration.category)" in aggregate_source
+    assert "_declared_facts_by_teacher" in compat_source
 
 
 @pytest.mark.parametrize(
