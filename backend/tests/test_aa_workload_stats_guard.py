@@ -15,7 +15,10 @@ legacy = public._legacy
 
 def test_workload_guard_is_installed_behind_public_scope_owner():
     public_source = inspect.getsource(public.workload_stats)
-    assert "require_public_scope_authority" in public_source
+    precheck_source = inspect.getsource(public._precheck)
+    assert "_precheck(user, college_id)" in public_source
+    assert "_resolve_scope" in precheck_source
+    assert "_validate_college_param" in precheck_source
     assert public.workload_detail is guard.public_workload_detail
     assert getattr(guard.workload_stats, "_workload_term_sql_guard", False) is True
     assert getattr(guard.workload_detail, "_workload_term_sql_guard", False) is True
@@ -40,7 +43,9 @@ def test_workload_declared_hours_are_term_scoped_and_sql_grouped():
     assert "term_codes = stats._term_codes(db, term_id)" in aggregate_source
     assert "AaWorkloadDeclaration.term_code.in_(list(term_codes))" in aggregate_source
     assert "func.sum(AaWorkloadDeclaration.hours)" in aggregate_source
-    assert "group_by(AaWorkloadDeclaration.teacher_key)" in aggregate_source
+    # 当前聚合同时保留教师总量和分类明细，因此 SQL 必须按教师+类别分组；
+    # 再由 Python 汇总 approvedHours，不能退回逐行扫描。
+    assert "group_by(AaWorkloadDeclaration.teacher_key, AaWorkloadDeclaration.category)" in aggregate_source
     assert "_declared_facts_by_teacher" in compat_source
 
 
