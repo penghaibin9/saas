@@ -115,11 +115,13 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
           cp backend/scripts/academic_d_w5_same_head_matrix.py /tmp/academic_d_w5_same_head_matrix.py
+          cp backend/scripts/academic_d_w5_integrated_browser.sh /tmp/academic_d_w5_integrated_browser.sh
+          chmod +x /tmp/academic_d_w5_integrated_browser.sh
           python -m py_compile \
             /tmp/academic_d_w5_same_head_matrix.py \
             backend/scripts/academic_d_w5_upstream_freeze.py
           bash -n backend/scripts/academic_d_w5_final_gold_replay.sh
-          bash -n backend/scripts/academic_d_w5_integrated_browser.sh
+          bash -n /tmp/academic_d_w5_integrated_browser.sh
 
       - name: Install frozen backend dependencies
         working-directory: backend
@@ -272,7 +274,7 @@ jobs:
         if: success()
         env:
           EXACT_D_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: bash backend/scripts/academic_d_w5_integrated_browser.sh
+        run: bash /tmp/academic_d_w5_integrated_browser.sh
 
       - name: Aggregate D-W5 exact-head matrix
         if: always()
