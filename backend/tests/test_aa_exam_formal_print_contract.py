@@ -199,7 +199,8 @@ def _arranged_room(client, admin, ids):
 def test_formal_print_provider_is_strictly_read_only_and_keeps_historical_roster_identity():
     from app.modules.academic_affairs.services import academic_affairs_exam_print_service as print_service
 
-    source = inspect.getsource(print_service.formal_room_print)
+    wrapper_source = inspect.getsource(print_service.formal_room_print)
+    projection_source = inspect.getsource(print_service._formal_room_print)
     for forbidden in (
         "db.add(",
         "db.flush(",
@@ -208,8 +209,10 @@ def test_formal_print_provider_is_strictly_read_only_and_keeps_historical_roster
         "require_consumer_snapshot_current",
         "freeze_consumer_snapshot",
     ):
-        assert forbidden not in source
-    assert 'get_consumer_snapshot(db, "EXAM_COURSE"' in source
+        assert forbidden not in wrapper_source
+        assert forbidden not in projection_source
+    assert '_formal_room_print(db, user, room_id)' in wrapper_source
+    assert 'get_consumer_snapshot(db, "EXAM_COURSE"' in projection_source
     assert '"PUBLISHED", "FINISHED", "ARCHIVED"' in inspect.getsource(print_service)
 
 
