@@ -27,7 +27,9 @@ export async function prepareGraduationTeacherMobileGoldFixture() {
   const admin = await loginApi(config.sandboxAdmin)
   const student = await loginApi(config.student)
 
-  let taskbook = await admin.get(`/graduation/gd-taskbooks/${fixture.gdStudentId}`)
+  let taskbook = await admin.get(`/graduation/gd-taskbooks/${fixture.gdStudentId}`, {
+    batchId: fixture.batchId,
+  })
   if (!taskbook?.exists) {
     throw new Error(`U8 Gold fixture taskbook missing for gdStudentId=${fixture.gdStudentId}`)
   }
@@ -41,7 +43,9 @@ export async function prepareGraduationTeacherMobileGoldFixture() {
       confirm: true,
       taskbookVersion: studentTaskbook.taskbookVersion,
     })
-    taskbook = await admin.get(`/graduation/gd-taskbooks/${fixture.gdStudentId}`)
+    taskbook = await admin.get(`/graduation/gd-taskbooks/${fixture.gdStudentId}`, {
+      batchId: fixture.batchId,
+    })
     if (String(taskbook.status || '').toUpperCase() !== 'CONFIRMED') {
       throw new Error(`U8 Gold taskbook did not become CONFIRMED: ${JSON.stringify(taskbook)}`)
     }
