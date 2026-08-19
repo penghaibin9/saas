@@ -441,3 +441,10 @@ def review_appeal(user, appeal_id, action, reason=""):
     from . import academic_affairs_evaluation_appeal_service as _appeal
 
     return _appeal.review_appeal(user, appeal_id, action, reason)
+
+
+# D-W3 submit hot-path guard belongs to the evaluation public owner itself. Keeping
+# this installation local avoids changing the shared services package initializer.
+from . import academic_affairs_evaluation_submit_roster_guard as _submit_roster_guard
+
+_submit_roster_guard.install(__import__(__name__, fromlist=["*"]))
