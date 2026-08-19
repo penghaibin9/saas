@@ -32,7 +32,7 @@
 
 <script>
 import { useSessionStore } from '@/stores/session'
-import { studentApi } from '@/services/studentApi'
+import { enrichProfileReal } from '@/services/realApi'
 import { go } from '@/utils/nav'
 
 export default {
@@ -41,7 +41,7 @@ export default {
     const session = useSessionStore()
     this.isStudent = session.side === 'student'
     if (this.isStudent) {
-      studentApi.getProfile().then((p) => {
+      enrichProfileReal().then((p) => {
         this.info = { name: (p.base || {}).name, studentNo: (p.base || {}).studentNo,
           className: (p.org || {}).className, phoneMasked: (p.contact || {}).phone,
           tenantName: (session.mockUser || {}).tenantName }

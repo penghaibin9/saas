@@ -67,12 +67,15 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
+import { ensureStudentPerformanceApi } from '@/services/mobilePerformanceInstaller.student'
 import { fromNow, deadlineText } from '@/utils/format'
 import { toast, go } from '@/utils/nav'
 import { stashDetail, stashSearchPool } from '@/utils/msgStash'
 const TAB_ICON = { todo: '☑', notice: '📢', progress: '⏱', course: '📖' }
 const TAB_GRAD = { todo: 'g1', notice: 'g1', progress: 'g3', course: 'g4' }
 const PAGE_SIZE = 20
+
+ensureStudentPerformanceApi()
 
 export default {
   data() {

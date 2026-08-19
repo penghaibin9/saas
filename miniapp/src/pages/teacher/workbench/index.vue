@@ -134,6 +134,7 @@ import { tenantBrandConfig } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 import { teacherApi } from '@/services/teacherApi'
+import { ensureTeacherPerformanceApi } from '@/services/mobilePerformanceInstaller.teacher'
 import { getTeacherWorkbenchVersion } from '@/utils/viewFreshness'
 import { deadlineText, isOverdue, fromNow } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
@@ -157,6 +158,8 @@ const INTERNSHIP_PERMISSIONS = {
   'internship-application': 'internship.application.view',
   'internship-risk': 'internship.risk.view'
 }
+
+ensureTeacherPerformanceApi()
 
 export default {
   data() {

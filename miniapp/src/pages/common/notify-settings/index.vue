@@ -17,8 +17,10 @@
 
 <script>
 import { useSessionStore } from '@/stores/session'
-import { studentApi } from '@/services/studentApi'
-import { teacherApi } from '@/services/teacherApi'
+import {
+  notifyPreferences, notifySetPreference,
+  teacherNotifyPreferences, teacherNotifySetPreference
+} from '@/services/realApi'
 import { toast } from '@/utils/nav'
 
 export default {
@@ -28,7 +30,11 @@ export default {
     this.load()
   },
   methods: {
-    api() { return this.isStudent ? studentApi : teacherApi },
+    api() {
+      return this.isStudent
+        ? { getNotifyPreferences: notifyPreferences, setNotifyPreference: notifySetPreference }
+        : { getNotifyPreferences: teacherNotifyPreferences, setNotifyPreference: teacherNotifySetPreference }
+    },
     load() {
       this.state = 'loading'
       this.api().getNotifyPreferences().then((d) => {

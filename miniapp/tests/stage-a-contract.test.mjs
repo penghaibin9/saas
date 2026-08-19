@@ -25,7 +25,8 @@ test('student home uses one aggregate request and lightweight message summary', 
 
 test('teacher workbench has TTL checks and one final aggregate HTTP endpoint', () => {
   const page = read('src/pages/teacher/workbench/index.vue')
-  const installer = read('src/services/mobilePerformanceInstaller.js')
+  // V3 S1.5：全局安装器已按端拆分，教师高频接口适配只在教师分包页面显式安装。
+  const installer = read('src/services/mobilePerformanceInstaller.teacher.js')
   assert.doesNotMatch(page, /onShow\(\) \{ this\.load\(\) \}/)
   assert.match(page, /WORKBENCH_TTL_MS = 20_000/)
   assert.match(page, /getTeacherWorkbenchVersion/)
@@ -84,7 +85,10 @@ test('high-frequency message, todo and risk pages use final database pagination 
   const messages = read('src/pages/student/messages/index.vue')
   const todos = read('src/pages/teacher/todos/index.vue')
   const risks = read('src/pages/teacher/risk-students/index.vue')
-  const installer = read('src/services/mobilePerformanceInstaller.js')
+  const installer = [
+    read('src/services/mobilePerformanceInstaller.student.js'),
+    read('src/services/mobilePerformanceInstaller.teacher.js')
+  ].join('\n')
   assert.match(messages, /getMessagesPage/)
   assert.match(todos, /getTodosPage/)
   assert.match(risks, /getRiskStudentsPage/)
@@ -101,7 +105,7 @@ test('high-frequency message, todo and risk pages use final database pagination 
 })
 
 test('mark-all-read collapses synchronous row updates into batched requests capped at the backend limit', () => {
-  const installer = read('src/services/mobilePerformanceInstaller.js')
+  const installer = read('src/services/mobilePerformanceInstaller.student.js')
   assert.match(installer, /let queuedIds = new Set\(\)/)
   assert.match(installer, /Promise\.resolve\(\)\.then\(flushReadBatch\)/)
   assert.match(installer, /\/mobile\/performance\/student\/messages\/read-batch/)
@@ -147,9 +151,12 @@ test('release script never writes an empty appid and can resolve it from .env.pr
 })
 
 test('release build fails at the proactive 1.80 MiB split threshold', () => {
-  const main = read('src/main.js')
   const release = read('scripts/finalize-mp-weixin-release.mjs')
-  assert.match(main, /mobilePerformanceInstaller/)
+  // V3 S1.5：main.js 不再全局安装高频适配（那会把两端 API 与 mock 图重新提升进主包），
+  // 改由各自分包页面显式安装；主包体积门禁本身不变。
+  assert.doesNotMatch(read('src/main.js'), /mobilePerformanceInstaller/)
+  assert.match(read('src/pages/student/messages/index.vue'), /ensureStudentPerformanceApi\(\)/)
+  assert.match(read('src/pages/teacher/workbench/index.vue'), /ensureTeacherPerformanceApi\(\)/)
   assert.match(release, /MAIN_PACKAGE_SPLIT_TRIGGER/)
   assert.match(release, /1\.8 \* 1024 \* 1024/)
   assert.match(release, /达到 1\.80 MiB 主动分包线/)

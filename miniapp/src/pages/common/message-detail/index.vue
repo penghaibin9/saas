@@ -33,7 +33,7 @@
 <script>
 import { popDetail } from '@/utils/msgStash'
 import { go, toast } from '@/utils/nav'
-import { studentApi } from '@/services/studentApi'
+import { ackMessageReceipt, getMessageDetail, markMessageRead } from '@/services/realApi'
 
 const ACTION_ROUTES = {
   STUDENT_AFFAIRS: '/pages/student/affairs/index',
@@ -79,11 +79,11 @@ export default {
     const raw = String(mid || '').replace('msg-', '')
     if (raw && /^\d+$/.test(raw)) {
       this.loading = true
-      studentApi.getMessageDetail(raw).then((d) => {
+      getMessageDetail(raw).then((d) => {
         this.m = d || stashed || { id: raw, messageId: raw }
         // 打开详情后尽力同步已读（不阻塞展示）
         if (this.m && !this.m.read) {
-          studentApi.markMessageRead(raw).catch(() => {})
+          markMessageRead(raw).catch(() => {})
           this.m.read = true
         }
       }).catch(() => {
@@ -121,7 +121,7 @@ export default {
       }
       this.acking = true
       try {
-        await studentApi.ackMessageReceipt(raw)
+        await ackMessageReceipt(raw)
         this.m.acked = true
         this.m.receipt = false
         this.m.read = true
