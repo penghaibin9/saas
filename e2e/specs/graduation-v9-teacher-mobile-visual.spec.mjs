@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
-import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { prepareGraduationTeacherMobileGoldFixture } from '../lib/graduation-u8-fixture.mjs'
 import { captureGoldCandidate, dynamicTextMasks, goldEnvironment } from '../lib/graduation-gold.mjs'
 
 const miniBase = process.env.E2E_MINIAPP_BASE_URL || 'http://localhost:5188'
@@ -72,7 +72,7 @@ test.describe.serial('V9.2 U8 · teacher miniapp graduation Gold evidence', () =
   let fixture
 
   test.beforeAll(async () => {
-    fixture = await prepareGraduationFixture()
+    fixture = await prepareGraduationTeacherMobileGoldFixture()
   })
 
   test('teacher graduation workbench and taskbook fit 390/375 with real paged API batch context', async ({ page }, testInfo) => {
@@ -84,6 +84,7 @@ test.describe.serial('V9.2 U8 · teacher miniapp graduation Gold evidence', () =
     await page.goto(`${miniBase}/#/pages/teacher/graduation-guide/index`)
     const guideResponse = await guideRequest
     const guideBatchId = assertPagedBatchUrl(guideResponse, 'graduation guide')
+    expect(guideBatchId, 'graduation guide must use the deterministic U8 fixture batch').toBe(fixture.batchId)
     await expect(page.getByText('批阅', { exact: false }).first()).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText('中期', { exact: false }).first()).toBeVisible()
     await expect(page.getByText('成绩', { exact: false }).first()).toBeVisible()
