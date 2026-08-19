@@ -5,6 +5,7 @@ import inspect
 from app.api.v1 import todos as todos_api
 from app.services import teacher_mobile_todo_read_service as read_svc
 from app.services import teacher_mobile_todo_projection_service as projection
+from app.services import workbench_snapshot_service as snapshot_svc
 
 
 def test_t1_teacher_mobile_api_wires_canonical_todo_read_without_new_route_map():
@@ -13,6 +14,7 @@ def test_t1_teacher_mobile_api_wires_canonical_todo_read_without_new_route_map()
     assert "teacher_mobile_todo_read_service" in source
     assert "_teacher_v3_page" in source
     assert "_teacher_v3_detail" in source
+    assert "snapshot(user, page_size=pageSize, client=route_client)" in source
     assert "resolve_todo_route" not in inspect.getsource(read_svc)
     assert "message_action_registry" not in inspect.getsource(read_svc)
 
@@ -76,6 +78,7 @@ def test_t1_projection_is_additive_and_fail_closed_for_cross_client_target():
     assert dto["todoId"] == "17"
     assert dto["bizId"] == "88"
     assert dto["sourceBizId"] == "88"
+    assert dto["expectedVersion"] == 0
     assert dto["action"] is None
 
 
@@ -84,3 +87,10 @@ def test_t1_router_keeps_frozen_paginate_shape():
     assert "paginate(" in source
     assert 'data["items"]' in source
     assert 'data["total"]' in source
+
+
+def test_t1_workbench_snapshot_serializes_todos_with_requested_client():
+    source = inspect.getsource(snapshot_svc.snapshot)
+    assert 'client: str = "pc"' in source
+    assert "_todo_dict(item, client=client)" in source
+    assert "client not in _ALLOWED_CLIENTS" in source
