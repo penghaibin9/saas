@@ -500,8 +500,14 @@ def student_submit_collect(sid, phone: str = "", origin: str = "") -> dict:
         return {"id": str(s.id), "reportStatus": s.report_status}
 
 
-def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: str = "") -> dict:
-    """绿色通道申请（学生自助提交，等待辅导员/资助中心审核）。"""
+def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: str = "",
+                                 file_ids=None, actor: dict | None = None) -> dict:
+    """绿色通道申请（学生自助提交，等待辅导员/资助中心审核）。
+
+    V3 §8.1：附件以 TEMP_PRIVATE fileId 传入，正式绑定在本函数的事务里由 canonical
+    file binding 服务完成——校验 owner/tenant/扫描状态/用途后才建 FileBinding。
+    任一附件不可用会让整笔申请回滚，临时文件保持私有等 TTL 回收。
+    """
     apply_type = (apply_type or "").strip()
     if not apply_type:
         raise AppException("VALIDATION_ERROR", "请选择困难类型")
@@ -517,6 +523,20 @@ def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: s
         s.green_channel_status = "SUBMITTED"
         s.version += 1
         db.flush()
+        for file_id in (file_ids or []):
+            from app.services import file_business_binding_service as file_binding_svc
+            file_binding_svc.bind_file_to_business(
+                db,
+                file_id=file_id,
+                biz_type="ORIENTATION_GREEN_CHANNEL",
+                biz_id=g.id,
+                actor=actor or {},
+                subject_type="STUDENT",
+                subject_id=s.id,
+                relation_type="BUSINESS_EVIDENCE",
+                module_code="ORIENTATION",
+                scope={"orientationStudentId": str(s.id), "applyType": apply_type},
+            )
         _audit(db, "GREEN_CHANNEL", g.id, "学生提交绿色通道申请",
               f"{apply_type} ¥{_amt(apply_amount):.0f}")
         db.commit()

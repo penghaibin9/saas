@@ -18,6 +18,7 @@ from app.core.student_lifecycle import student_stage_label
 from app.db.session import db_enabled, get_engine, get_sessionmaker
 from app.core.tenant_scoped import tenant_get
 from app.services import audit_log
+from app.services import file_business_binding_service as file_binding_svc
 from app.services import mobile_action_service as _action_svc
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
 from app.services.db_service import _iso, _mask_phone, _org_names, _primary_phone, _tid
@@ -789,7 +790,10 @@ def orientation_green_channel_submit(user: dict, body: dict) -> dict:
         oid = o.id
     from app.services.orientation_service import student_submit_green_channel
     b = body or {}
-    result = student_submit_green_channel(oid, b.get("applyType", ""), b.get("applyAmount", 0), b.get("remark", ""))
+    result = student_submit_green_channel(
+        oid, b.get("applyType", ""), b.get("applyAmount", 0), b.get("remark", ""),
+        file_ids=_attachment_ids(b), actor=u,
+    )
     invalidate_home_cache(u, "todo", "case")
     audit_log.record("学生提交绿色通道申请", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
     return result
@@ -1726,6 +1730,32 @@ def my_applications(user: dict) -> dict:
 
 # ─────────── 学生写操作：提交服务申请 / 提交实习周报 ───────────
 
+#: 单次业务提交允许携带的附件数上限。客户端 maxCount 只是提示，真正的边界在服务端。
+MAX_ATTACHMENTS_PER_SUBMIT = 5
+
+
+def _attachment_ids(body: dict) -> list[str]:
+    """从业务命令里取出 fileIds 并做形状校验。
+
+    只接受数字 id；数量与格式在服务端再判一次，客户端限制不作数（V3 §6.1）。
+    """
+    raw = (body or {}).get("fileIds") or []
+    if not isinstance(raw, (list, tuple)):
+        raise AppException("VALIDATION_ERROR", "fileIds 必须是数组")
+    ids: list[str] = []
+    for item in raw:
+        value = str(item or "").strip()
+        if not value:
+            continue
+        if not value.isdigit():
+            raise AppException("VALIDATION_ERROR", f"附件标识无效：{value}")
+        if value not in ids:
+            ids.append(value)
+    if len(ids) > MAX_ATTACHMENTS_PER_SUBMIT:
+        raise AppException("VALIDATION_ERROR", f"单次最多携带 {MAX_ATTACHMENTS_PER_SUBMIT} 个附件")
+    return ids
+
+
 def campus_service_apply(user: dict, body: dict) -> dict:
     u = _require_student(user)
     service_key = str(body.get("serviceKey") or body.get("serviceType") or "").strip()
@@ -1796,6 +1826,23 @@ def campus_service_apply(user: dict, body: dict) -> dict:
                                        "time": _iso(_dt.utcnow()), "tone": "processing"}])
         db.add(row)
         db.flush()
+        # V3 §8.1：客户端上传只产出 TEMP_PRIVATE 文件，永远不能自己指定正式绑定。
+        # 这里在**同一个事务**里由 canonical 服务校验 owner/tenant/扫描状态/用途后建 binding；
+        # 任一附件不可用就整笔业务回滚，临时文件保持私有等 TTL 回收。
+        for file_id in _attachment_ids(body):
+            file_binding_svc.bind_file_to_business(
+                db,
+                file_id=file_id,
+                biz_type="CAMPUS_SERVICE_WORKORDER",
+                biz_id=row.id,
+                actor=u,
+                subject_type="STUDENT",
+                subject_id=stu.id,
+                relation_type="BUSINESS_EVIDENCE",
+                module_code="CAMPUS_SERVICE",
+                student_id=stu.id,
+                scope={"studentId": str(stu.id), "serviceKey": service_key},
+            )
         rid, status = row.id, row.status
         db.commit()
     audit_log.record("MOBILE_SERVICE_APPLY", f"campus-service:{service_key}",

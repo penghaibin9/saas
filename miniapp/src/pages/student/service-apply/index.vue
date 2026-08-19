@@ -40,11 +40,17 @@
         <text class="sa__count">{{ reason.length }}/200</text>
 
         <view class="sa__row sa__row--upload">
-          <text class="sa__label">附件材料</text>
-          <view class="sa__upload is-disabled" @click="pickFile">
-            <text class="sa__upload-icon">！</text>
-            <text class="sa__upload-txt">附件上传暂未开放，请携带纸质材料至窗口办理</text>
-          </view>
+          <MobileAttachmentPicker
+            label="附件材料"
+            biz-purpose="CAMPUS_SERVICE_WORKORDER"
+            :file-ids="fileIds"
+            :max-count="3"
+            :max-size-mb="10"
+            :disabled="submitting"
+            @update:fileIds="(ids) => (fileIds = ids)"
+            @update:ready="(value) => (attachmentsReady = value)"
+            @error="onAttachmentError"
+          />
         </view>
       </view>
 
@@ -85,7 +91,10 @@ export default {
       endDate: '',
       reason: '',
       fileName: '',
-      submitting: false
+      submitting: false,
+      // V3 §8.1：fileIds 只是 TEMP_PRIVATE 标识；正式绑定由服务端在业务事务里完成。
+      fileIds: [],
+      attachmentsReady: true
     }
   },
   onLoad(q) {
@@ -103,8 +112,8 @@ export default {
     onStart(e) { this.startDate = e.detail.value },
     onEnd(e) { this.endDate = e.detail.value },
     // 后端服务申请暂无附件存储字段，选完文件也无法真实提交，禁止假装"已选择"误导用户
-    pickFile() {
-      toast('附件上传暂未开放，请携带纸质材料至窗口办理')
+    onAttachmentError(error) {
+      toast((error && error.message) || '附件处理失败，请重试')
     },
     reset() {
       this.typeIndex = 0
@@ -115,6 +124,11 @@ export default {
       if (this.submitting) return
       if (this.reason.trim().length < 5) {
         toast('申请事由至少 5 个字')
+        return
+      }
+      // 还有附件在扫描或被拒绝时不允许提交（readyForBusiness=false）。
+      if (!this.attachmentsReady) {
+        toast('附件尚未通过安全扫描，请稍候再提交')
         return
       }
       const content = this.typeOptions[this.typeIndex] + ' · ' + this.startDate + '~' + this.endDate + ' · ' + this.reason.trim()
@@ -128,9 +142,11 @@ export default {
       submitLock.run(() => studentApi.submitServiceApply({
         serviceKey: isLeave ? 'LEAVE' : this.svcName,
         reason: content, startTime: this.startDate, endTime: this.endDate,
+        fileIds: this.fileIds,
         ...(isLeave ? { leaveType: LEAVE_TYPE_CODE[this.typeOptions[this.typeIndex]] || 'OTHER' } : {})
       })).then(() => {
         localAdd()
+        this.fileIds = []
         uni.showToast({ title: '提交成功', icon: 'success' })
         setTimeout(() => { uni.redirectTo({ url: '/pages/student/my-work/index' }) }, 700)
       }).catch((e) => {
