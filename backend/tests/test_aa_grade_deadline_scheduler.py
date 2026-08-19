@@ -9,9 +9,39 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-from sqlalchemy import text
+from sqlalchemy import inspect as sa_inspect, text
 
 TID = 1000000000000000001
+
+
+def _ensure_grade_deadline_schema() -> None:
+    """Align create_all-backed FAST_TEST_SCHEMA with the additive W4 migration.
+
+    The deadline columns are deliberately migration-owned and are therefore absent
+    from ``metadata.create_all()``.  CI's fast regression schema skips Alembic, so
+    this scheduler contract must install the exact additive columns/index before it
+    writes deadline truth.  Real migrated-schema gates continue to validate the
+    Alembic revision and database trigger independently.
+    """
+    from app.db.session import get_engine
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        columns = {row["name"] for row in sa_inspect(conn).get_columns("t_aa_grade_task")}
+        if "deadline_at" not in columns:
+            conn.execute(text(
+                "ALTER TABLE t_aa_grade_task ADD COLUMN deadline_at DATETIME NULL"
+            ))
+        if "deadline_updated_at" not in columns:
+            conn.execute(text(
+                "ALTER TABLE t_aa_grade_task ADD COLUMN deadline_updated_at DATETIME NULL"
+            ))
+        indexes = {row["name"] for row in sa_inspect(conn).get_indexes("t_aa_grade_task")}
+        if "ix_aa_grade_task_deadline" not in indexes:
+            conn.execute(text(
+                "CREATE INDEX ix_aa_grade_task_deadline "
+                "ON t_aa_grade_task (tenant_id, status, deadline_at)"
+            ))
 
 
 def _role(db, code: str):
@@ -179,6 +209,7 @@ def test_grade_deadline_scheduler_teacher_and_scoped_overdue_digest(db_mode):
     from app.models import MessageEventOutbox
     from app.modules.academic_affairs.services import academic_affairs_grade_deadline_scheduler_service as service
 
+    _ensure_grade_deadline_schema()
     db = get_sessionmaker()()
     suffix = str(int(datetime.utcnow().timestamp() * 1_000_000))
     college_a, class_a = _college(db, f"截止提醒学院A-{suffix}")
