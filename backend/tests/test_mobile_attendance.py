@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 BASE = "/api/v1/mobile/teacher/academic/attendance"
+AA = "/api/v1/academic-affairs"
 MAIN = 1000000000000000001
 DEMO = 1000000000000000003
 
@@ -45,10 +46,13 @@ def _seed_teaching_task(class_id, teacher_key, tenant_id=MAIN):
     )
     db = get_sessionmaker()()
     try:
+        # 2026-07-14/15 均落在第20教学周，且 weekday 分别为 2/3。
+        # 旧 fixture 从 1 月 1 日起算却只声明 20 周，正式 occurrence resolver 会正确判定
+        # 7 月日期超出教学周；这里把测试学期改为真实可解析的 20 周窗口。
         term = AaTerm(
             tenant_id=tenant_id, year_code="2026-2027", term_no=1,
             term_name="2026-2027学年第一学期",
-            start_date=datetime(2026, 1, 1), end_date=datetime(2026, 12, 31),
+            start_date=datetime(2026, 3, 2), end_date=datetime(2026, 7, 19),
             teaching_weeks=20, is_current=True, status="PUBLISHED")
         db.add(term); db.flush()
         batch = AaTeachingTaskBatch(
@@ -106,13 +110,76 @@ def _seed_teaching_task(class_id, teacher_key, tenant_id=MAIN):
         db.close()
 
 
+def _publish_formal_occurrences(client, task_id: int, class_id: int, teacher_name: str) -> str:
+    """给旧移动考勤 E2E 补齐当前正式课表，而不是绕过 occurrence Authority。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
+
+    db = get_sessionmaker()()
+    try:
+        task = db.get(AaTeachingTask, int(task_id))
+        assert task is not None
+        task_batch = db.get(AaTeachingTaskBatch, int(task.batch_id))
+        assert task_batch is not None and task_batch.term_id
+        term_id = int(task_batch.term_id)
+        teacher_key = str(task.teacher_key)
+        course_name = str(task.course_name or "测试课程")
+    finally:
+        db.close()
+
+    admin = _hdr_admin(client)
+    created = client.post(
+        f"{AA}/schedule-batches",
+        headers=admin,
+        json={"termId": str(term_id)},
+    )
+    assert created.status_code == 200, created.text
+    batch_id = created.json()["data"]["batchId"]
+
+    # 2026-07-14 是周二，07-15 是周三；两天都属于本 fixture 的第20教学周。
+    for weekday in (2, 3):
+        item = client.post(
+            f"{AA}/schedule-batches/{batch_id}/items",
+            headers=admin,
+            json={
+                "taskId": str(task_id),
+                "weekday": weekday,
+                "slotNo": 1,
+                "startWeek": 1,
+                "endWeek": 20,
+                "weekParity": "ALL",
+                "teacherKey": teacher_key,
+                "teacherName": teacher_name,
+                "classId": str(class_id),
+                "className": "考勤测2601",
+                "classroom": "AT-101",
+                "courseName": course_name,
+            },
+        )
+        assert item.status_code == 200, item.text
+
+    prepublished = client.post(
+        f"{AA}/schedule-batches/{batch_id}/pre-publish",
+        headers=admin,
+    )
+    assert prepublished.status_code == 200, prepublished.text
+    published = client.post(
+        f"{AA}/schedule-batches/{batch_id}/publish",
+        headers=admin,
+    )
+    assert published.status_code == 200, published.text
+    return str(batch_id)
+
+
 def test_attendance_full_flow(client, db_mode):
     cid = _seed_class(n_students=3)
     task_id = _seed_teaching_task(cid, "周老师")
+    _publish_formal_occurrences(client, task_id, cid, "周老师")
     hdr = _teacher_token("周老师")
     r = client.post(f"{BASE}/sessions", headers=hdr,
                     json={"teachingTaskId": task_id, "classId": cid,
-                          "courseName": "高等数学", "sessionDate": "2026-07-15"}).json()
+                          "courseName": "高等数学", "sessionDate": "2026-07-15",
+                          "slotNo": 1}).json()
     assert r["code"] == 0, r
     sess = r["data"]
     assert sess["totalCount"] == 3 and sess["presentCount"] == 3 and sess["status"] == "DRAFT"
@@ -145,10 +212,12 @@ def test_attendance_other_teacher_cannot_view_or_mark(client, db_mode):
     """teacher_key 归属收敛：非本人创建的场次，另一教师应被拦截。"""
     cid = _seed_class(n_students=2)
     task_id = _seed_teaching_task(cid, "张老师")
+    _publish_formal_occurrences(client, task_id, cid, "张老师")
     owner_hdr = _teacher_token("张老师")
     r = client.post(f"{BASE}/sessions", headers=owner_hdr,
                     json={"teachingTaskId": task_id, "classId": cid,
-                          "courseName": "英语", "sessionDate": "2026-07-15"}).json()
+                          "courseName": "英语", "sessionDate": "2026-07-15",
+                          "slotNo": 1}).json()
     assert r["code"] == 0, r
     sid = r["data"]["sessionId"]
 
@@ -183,12 +252,13 @@ def test_attendance_pc_stats_and_type(client, db_mode):
     """PC 跨堂次统计(正方4.19)+点名类别：教师建2场次点名提交，教务处按学生汇总旷课并可按类别过滤。"""
     cid = _seed_class(n_students=3)
     task_id = _seed_teaching_task(cid, "孙老师")
+    _publish_formal_occurrences(client, task_id, cid, "孙老师")
     hdr = _teacher_token("孙老师")
     PC = "/api/v1/academic-affairs/attendance"
     # 场次1：常规类别（不传=常规），1 人旷课
     s1_payload = client.post(f"{BASE}/sessions", headers=hdr, json={
         "teachingTaskId": task_id, "classId": cid, "courseName": "语文",
-        "termCode": "2026-1", "sessionDate": "2026-07-14"}).json()
+        "termCode": "2026-1", "sessionDate": "2026-07-14", "slotNo": 1}).json()
     assert s1_payload["code"] == 0, s1_payload
     s1 = s1_payload["data"]
     absent_sid = client.get(f"{BASE}/sessions/{s1['sessionId']}", headers=hdr).json()["data"]["items"][0]["studentId"]
@@ -198,7 +268,7 @@ def test_attendance_pc_stats_and_type(client, db_mode):
     # 场次2：实训类别，同一人再旷课
     s2 = client.post(f"{BASE}/sessions", headers=hdr, json={
         "teachingTaskId": task_id, "classId": cid, "courseName": "语文",
-        "termCode": "2026-1", "sessionDate": "2026-07-15",
+        "termCode": "2026-1", "sessionDate": "2026-07-15", "slotNo": 1,
         "sessionType": "实训"}).json()["data"]
     assert s2["sessionType"] == "实训"
     client.post(f"{BASE}/sessions/{s2['sessionId']}/mark", headers=hdr,
