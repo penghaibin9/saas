@@ -104,7 +104,7 @@ def _formal_scholarship_eligibility(db, student_id, project=None) -> dict:
 
     contract = legacy._eligibility_rules("SCHOLARSHIP", project)
     rules = contract["rules"]
-    student = db.get(StudentProfile, int(student_id))
+    student = legacy.tenant_get(db, StudentProfile, int(student_id))
     status_fact = bool(
         student and student.student_status in (None, "NORMAL", "在籍", "ACTIVE")
     )
