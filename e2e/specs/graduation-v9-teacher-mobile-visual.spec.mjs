@@ -34,16 +34,20 @@ async function assertMobileFit(page) {
   expect(fit.bodyWidth, `body overflow at ${fit.width}px`).toBeLessThanOrEqual(fit.width + 1)
 }
 
-async function capture(page, testInfo, name, width, height, goldMasks = []) {
+async function capture(page, testInfo, name, width, height, goldMasks = [], visualErrors = []) {
   await page.setViewportSize({ width, height })
   await settle(page)
   await assertMobileFit(page)
   const path = testInfo.outputPath(`${name}-${width}x${height}.png`)
   await page.screenshot({ path, fullPage: false, animations: 'disabled', caret: 'hide' })
   await testInfo.attach(`${name}-${width}x${height}`, { path, contentType: 'image/png' })
-  await captureGoldCandidate(page, testInfo, {
-    name: name.replace('-B', '-GoldCandidate'), width, height, masks: goldMasks,
-  })
+  try {
+    await captureGoldCandidate(page, testInfo, {
+      name: name.replace('-B', '-GoldCandidate'), width, height, masks: goldMasks,
+    })
+  } catch (error) {
+    visualErrors.push(`${name} ${width}x${height}: ${error?.stack || error?.message || error}`)
+  }
 }
 
 function pagedGraduationResponse(page, suffix) {
@@ -72,6 +76,7 @@ test.describe.serial('V9.2 U8 · teacher miniapp graduation Gold evidence', () =
   })
 
   test('teacher graduation workbench and taskbook fit 390/375 with real paged API batch context', async ({ page }, testInfo) => {
+    const visualErrors = []
     await page.setViewportSize({ width: 390, height: 844 })
     await loginTeacherMini(page)
 
@@ -85,8 +90,8 @@ test.describe.serial('V9.2 U8 · teacher miniapp graduation Gold evidence', () =
     await expect(page.locator('body')).not.toContainText(/真实接口不可用|网络不稳定，开发演示数据/)
 
     const guideMasks = dynamicTextMasks(page, [fixture.runId, fixture.batchName, fixture.topicTitle])
-    await capture(page, testInfo, 'gd-U8-teacher-workbench-B', 390, 844, guideMasks)
-    await capture(page, testInfo, 'gd-U8-teacher-workbench-B', 375, 812, guideMasks)
+    await capture(page, testInfo, 'gd-U8-teacher-workbench-B', 390, 844, guideMasks, visualErrors)
+    await capture(page, testInfo, 'gd-U8-teacher-workbench-B', 375, 812, guideMasks, visualErrors)
 
     const taskbookRequest = pagedGraduationResponse(page, 'taskbooks')
     await page.goto(`${miniBase}/#/pages/teacher/graduation-taskbook/index`)
@@ -98,8 +103,8 @@ test.describe.serial('V9.2 U8 · teacher miniapp graduation Gold evidence', () =
     await expect(page.locator('body')).not.toContainText(/真实接口不可用|网络不稳定，开发演示数据/)
 
     const taskbookMasks = dynamicTextMasks(page, [fixture.runId, fixture.batchName, fixture.topicTitle])
-    await capture(page, testInfo, 'gd-U8-taskbook-B', 390, 844, taskbookMasks)
-    await capture(page, testInfo, 'gd-U8-taskbook-B', 375, 812, taskbookMasks)
+    await capture(page, testInfo, 'gd-U8-taskbook-B', 390, 844, taskbookMasks, visualErrors)
+    await capture(page, testInfo, 'gd-U8-taskbook-B', 375, 812, taskbookMasks, visualErrors)
 
     const environment = await goldEnvironment(page, testInfo)
     const metaPath = testInfo.outputPath('gd-U8-teacher-mobile-B-meta.json')
@@ -127,5 +132,9 @@ test.describe.serial('V9.2 U8 · teacher miniapp graduation Gold evidence', () =
       viewports: [{ width: 390, height: 844 }, { width: 375, height: 812 }]
     }, null, 2), 'utf8')
     await testInfo.attach('gd-U8-teacher-mobile-B-meta', { path: metaPath, contentType: 'application/json' })
+
+    if (visualErrors.length) {
+      throw new Error(`U8 Gold visual mismatches (${visualErrors.length}):\n\n${visualErrors.join('\n\n')}`)
+    }
   })
 })
