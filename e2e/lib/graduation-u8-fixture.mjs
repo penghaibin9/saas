@@ -70,9 +70,29 @@ async function ensureU8StudentFixture(admin, fixture) {
     page: 1,
     pageSize: 200,
   }))
-  const mentor = mentors.find((row) => String(row.teacherNo || '') === u8TeacherAccount.username)
+  let mentor = mentors.find((row) => String(row.teacherNo || '') === u8TeacherAccount.username)
   if (!mentor) {
-    throw new Error(`U8 Gold mentor ${u8TeacherAccount.username} is missing.`)
+    mentor = await admin.post('/graduation/gd-mentors', {
+      teacherNo: u8TeacherAccount.username,
+      teacherName: 'E2E指导教师B',
+      mentorType: 'INTERNAL',
+      title: '讲师',
+      researchDirection: '软件工程测试',
+      maxCapacity: 20,
+      submitReview: true,
+      remark: 'Playwright U8 isolated teacher-mobile fixture',
+    })
+  }
+  const mentorStatus = String(mentor.qualificationStatus || mentor.reviewStatus || '').toUpperCase()
+  if (!['QUALIFIED', 'APPROVED'].includes(mentorStatus)) {
+    try {
+      mentor = await admin.post(`/graduation/gd-mentors/${mentor.id}/review`, {
+        action: 'APPROVE',
+        comment: 'Playwright U8 独立教师移动端 Gold 导师资格通过',
+      })
+    } catch (error) {
+      if (!/已审核|无需审核|状态/.test(error.message)) throw error
+    }
   }
   try {
     await admin.post('/graduation/gd-mentor-assignments/assign', {
