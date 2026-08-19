@@ -14,6 +14,12 @@ async function proposalRows(admin, fixture) {
   )
 }
 
+async function proposalMaterialVersion(student) {
+  const library = await student.get('/mobile/graduation/material-center/library')
+  const material = items(library).find((row) => String(row.materialCode || '') === 'PROPOSAL_REPORT')
+  return Number(material?.version || 0)
+}
+
 /**
  * U8 Gold must render one deterministic, real teacher review queue from the
  * exact fixture batch. The historical U8 Gold source accidentally selected a
@@ -62,6 +68,7 @@ export async function prepareGraduationTeacherMobileGoldFixture() {
       plan: '需求分析、方案设计、实现验证、测试复盘，按真实毕设过程推进。',
       outcome: '形成可运行成果、测试证据与毕业设计文档。',
       attachments: [],
+      expectedVersion: await proposalMaterialVersion(student),
     })
     proposals = await proposalRows(admin, fixture)
     pending = proposals.find((row) => String(row.status || '').toUpperCase() === 'PENDING_REVIEW')
