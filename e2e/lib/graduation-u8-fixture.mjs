@@ -1,15 +1,21 @@
 import { config } from './config.mjs'
 import { items, loginApi, prepareGraduationFixture } from './api-fixture.mjs'
 
+const u8StudentAccount = {
+  tenant: process.env.E2E_GRADUATION_U8_STUDENT_TENANT || config.student.tenant,
+  username: process.env.E2E_GRADUATION_U8_STUDENT_USERNAME || 'E2E20260002',
+  password: process.env.E2E_GRADUATION_U8_STUDENT_PASSWORD || config.student.password,
+}
+
 async function proposalRows(admin, fixture) {
   const data = await admin.get('/graduation/proposals', {
     batchId: fixture.batchId,
-    keyword: config.student.username,
+    keyword: fixture.studentNo,
     page: 1,
     pageSize: 200,
   })
   return items(data).filter((row) =>
-    String(row.studentNo || '') === config.student.username
+    String(row.studentNo || '') === fixture.studentNo
       || String(row.gdStudentId || '') === fixture.gdStudentId
   )
 }
@@ -20,18 +26,128 @@ async function proposalMaterialVersion(student) {
   return Number(material?.version || 0)
 }
 
+async function ensureU8StudentFixture(admin, fixture) {
+  const studentRows = items(await admin.get('/students', {
+    keyword: u8StudentAccount.username,
+    page: 1,
+    pageSize: 50,
+  }))
+  const profile = studentRows.find((row) =>
+    String(row.studentNo || row.loginName || '') === u8StudentAccount.username
+  )
+  if (!profile) {
+    throw new Error(`U8 Gold student ${u8StudentAccount.username} is not visible to the E2E administrator.`)
+  }
+
+  const gdRows = items(await admin.get('/graduation/gd-students', {
+    batchId: fixture.batchId,
+    keyword: u8StudentAccount.username,
+    page: 1,
+    pageSize: 200,
+  }))
+  let gdStudent = gdRows.find((row) => String(row.studentNo || '') === u8StudentAccount.username)
+  if (!gdStudent) {
+    gdStudent = await admin.post('/graduation/gd-students', {
+      studentId: String(profile.id || profile.studentId),
+      batchId: fixture.batchId,
+      remark: 'Playwright U8 isolated teacher-mobile fixture',
+    })
+  }
+  await admin.post(`/graduation/gd-students/${gdStudent.id}/eligibility`, {
+    status: 'QUALIFIED',
+    reason: 'Playwright U8 独立教师移动端 Gold 夹具',
+  })
+
+  const mentors = items(await admin.get('/graduation/gd-mentors', {
+    keyword: config.mentor.username,
+    page: 1,
+    pageSize: 200,
+  }))
+  const mentor = mentors.find((row) => String(row.teacherNo || '') === config.mentor.username)
+  if (!mentor) {
+    throw new Error(`U8 Gold mentor ${config.mentor.username} is missing.`)
+  }
+  try {
+    await admin.post('/graduation/gd-mentor-assignments/assign', {
+      gdStudentId: String(gdStudent.id),
+      mentorId: String(mentor.id),
+      reason: 'Playwright U8 独立教师移动端 Gold 夹具',
+    })
+  } catch (error) {
+    if (!/已分配|已有导师|重复|ACTIVE|存在/.test(error.message)) throw error
+  }
+
+  const topicTitle = `Playwright U8 教师移动端课题 ${fixture.runId}`
+  const topics = items(await admin.get('/graduation/gd-topics', {
+    batchId: fixture.batchId,
+    keyword: topicTitle,
+    archiveView: 'active',
+    page: 1,
+    pageSize: 200,
+  }))
+  let topic = topics.find((row) => String(row.title || '') === topicTitle)
+  if (!topic) {
+    topic = await admin.post('/graduation/gd-topics', {
+      title: topicTitle,
+      batchId: fixture.batchId,
+      sourceType: 'TEACHER',
+      advisorName: 'E2E指导教师A',
+      category: '软件工程',
+      difficulty: 'MEDIUM',
+      requirements: '验证教师小程序毕设工作台与任务书真实分页上下文',
+      outcome: '真实待审开题、任务书和移动端 Gold 证据',
+      capacity: 1,
+      submitReview: true,
+    })
+  }
+  if (String(topic.reviewStatus || '').toUpperCase() !== 'APPROVED') {
+    try {
+      topic = await admin.post(`/graduation/gd-topics/${topic.id}/review`, {
+        action: 'APPROVE',
+        comment: 'Playwright U8 独立教师移动端 Gold 课题审核通过',
+      })
+    } catch (error) {
+      if (!/已审核|无需审核|状态/.test(error.message)) throw error
+    }
+  }
+  try {
+    await admin.post(`/graduation/gd-students/${gdStudent.id}/assign-topic`, {
+      topicId: String(topic.id),
+    })
+  } catch (error) {
+    if (!/已分配|重复|已选|存在/.test(error.message)) throw error
+  }
+
+  const taskbook = await admin.get(`/graduation/gd-taskbooks/${gdStudent.id}`, {
+    batchId: fixture.batchId,
+  })
+  if (!taskbook?.exists) {
+    await admin.post(`/graduation/gd-taskbooks/${gdStudent.id}/issue`, {
+      objective: '验证教师小程序毕设工作台与任务书真实分页上下文',
+      content: '学生签署独立任务书并提交待审开题，供 U8 教师移动端 Gold 使用。',
+    }, { batchId: fixture.batchId })
+  }
+
+  return {
+    ...fixture,
+    gdStudentId: String(gdStudent.id),
+    studentNo: u8StudentAccount.username,
+    topicTitle: topic.title,
+  }
+}
+
 /**
  * U8 Gold must render one deterministic, real teacher review queue from the
- * exact fixture batch. The historical U8 Gold source accidentally selected a
- * different RUNNING batch than prepareGraduationFixture() created, so its
- * screenshot depended on unrelated sandbox residue. This helper advances only
- * the isolated U8 fixture through real APIs: student confirms the taskbook and
- * submits one proposal, which remains PENDING_REVIEW for the teacher surface.
+ * exact fixture batch. The lifecycle suite deliberately advances student A's
+ * proposal to APPROVED, so U8 uses the separately bootstrapped student B in the
+ * same run-scoped batch. This keeps both flows real without mutating an approved
+ * proposal backwards or making the production API accept duplicate submission.
  */
 export async function prepareGraduationTeacherMobileGoldFixture() {
-  const fixture = await prepareGraduationFixture()
+  const baseFixture = await prepareGraduationFixture()
   const admin = await loginApi(config.sandboxAdmin)
-  const student = await loginApi(config.student)
+  const fixture = await ensureU8StudentFixture(admin, baseFixture)
+  const student = await loginApi(u8StudentAccount)
 
   let taskbook = await admin.get(`/graduation/gd-taskbooks/${fixture.gdStudentId}`, {
     batchId: fixture.batchId,
