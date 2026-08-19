@@ -89,6 +89,94 @@ def tok(ln, client="PC"):
     return t
 
 
+def _attendance_candidate_payloads(options, today=None):
+    """Build deterministic candidate coordinates from C-W1 formal schedule patterns.
+
+    The helper does not decide whether a date is currently legal. It only expands the active
+    recurrence pattern. The attendance create API remains the final ScopeHead/calendar/change
+    authority and may reject a candidate (holiday, SWAP source, concurrent change, duplicate).
+    """
+    options = options or {}
+    start_raw = str(options.get("termStartDate") or "").strip()
+    end_raw = str(options.get("termEndDate") or "").strip()
+    try:
+        term_start = date.fromisoformat(start_raw)
+        term_end = date.fromisoformat(end_raw)
+    except ValueError:
+        return []
+    if term_end < term_start:
+        return []
+
+    current = today or date.today()
+    expanded = []
+    seen = set()
+    allowed_task_statuses = {"TEACHER_CONFIRMED", "COLLEGE_REVIEW", "APPROVED", "READY"}
+    for task in options.get("items") or []:
+        if not task.get("formalOccurrenceReady"):
+            continue
+        if str(task.get("taskStatus") or "").upper() not in allowed_task_statuses:
+            continue
+        task_id = str(task.get("teachingTaskId") or "").strip()
+        class_id = str(task.get("classId") or "").strip()
+        if not task_id:
+            continue
+        for pattern in task.get("formalSchedulePatterns") or []:
+            try:
+                schedule_item_id = int(pattern.get("scheduleItemId") or 0)
+                weekday = int(pattern.get("weekday") or 0)
+                slot_no = int(pattern.get("slotNo") or 0)
+                start_week = int(pattern.get("startWeek") or 1)
+                end_week = int(pattern.get("endWeek") or start_week)
+            except (TypeError, ValueError):
+                continue
+            parity = str(pattern.get("weekParity") or "ALL").upper()
+            if schedule_item_id <= 0 or weekday not in range(1, 8) or slot_no <= 0 or start_week <= 0 or end_week < start_week:
+                continue
+            if parity not in {"ALL", "ODD", "EVEN"}:
+                continue
+            for week_no in range(start_week, end_week + 1):
+                if parity == "ODD" and week_no % 2 == 0:
+                    continue
+                if parity == "EVEN" and week_no % 2 == 1:
+                    continue
+                week_chunk_start = term_start + timedelta(days=(week_no - 1) * 7)
+                offset = (weekday - week_chunk_start.isoweekday()) % 7
+                candidate = week_chunk_start + timedelta(days=offset)
+                if candidate < term_start or candidate > term_end:
+                    continue
+                if ((candidate - term_start).days // 7) + 1 != week_no:
+                    continue
+                key = (task_id, candidate.isoformat(), slot_no)
+                if key in seen:
+                    continue
+                seen.add(key)
+                expanded.append({
+                    "payload": {
+                        "teachingTaskId": task_id,
+                        "classId": class_id,
+                        "sessionDate": candidate.isoformat(),
+                        "slotNo": slot_no,
+                        "scheduleItemId": str(schedule_item_id),
+                        "sessionType": "常规",
+                    },
+                    "scheduleItemId": str(schedule_item_id),
+                    "scopeHeadVersion": int(pattern.get("scopeHeadVersion") or 0),
+                    "changeId": pattern.get("changeId"),
+                    "changeType": pattern.get("changeType"),
+                    "candidateDate": candidate,
+                })
+    expanded.sort(key=lambda row: (
+        0 if row["candidateDate"] <= current else 1,
+        abs((current - row["candidateDate"]).days),
+        row["candidateDate"],
+        row["payload"]["teachingTaskId"],
+        row["payload"]["slotNo"],
+    ))
+    for row in expanded:
+        row.pop("candidateDate", None)
+    return expanded
+
+
 def main():
     if CRED.exists():
         CTX["passwords"] = (json.loads(CRED.read_text(encoding="utf-8")).get("passwords") or {})
@@ -268,74 +356,105 @@ def main():
     step("R3.warn_thr_set", put_thr.get("code") == 0, {"rulesCode": rules.get("code"), "put": put_thr})
 
     att_ok = False
-    # 点名创建：优先教师本人行政班；无则用教务管理员身份（服务层对 ACADEMIC_ADMIN 放行）
-    teach_class = None
-    for t in ((tasks.get("data") or {}).get("items") or []):
-        if str(t.get("teacherKey") or "") == "e2e_aa_teacher_a" and t.get("classId"):
-            teach_class = t.get("classId")
-            break
-    if not teach_class:
-        teach_class = class_a1
-    att_actor = teacher_mp
-    if teach_class and teacher_mp:
-        probe = req("POST", f"{MOB}/teacher/academic/attendance/sessions", teacher_mp, {
-            "classId": str(teach_class), "sessionDate": date.today().isoformat(),
-            "slotNo": 9, "sessionType": "常规", "courseName": "R3旷课联动-probe",
-            "termCode": term_code,
-        })
-        if probe.get("code") == 0:
-            # 探测成功则作废不提交，改用正式场次；若已创建则直接用
-            sid_probe = (probe.get("data") or {}).get("sessionId")
+    att_actor = None
+    actor_label = ""
+    candidates = []
+
+    # C-W1：候选课次只从 attendance class-options 暴露的 ScopeHead-active 正式 pattern 获取。
+    # pattern 只负责候选发现；每一次创建仍由生产 create API 重新校验校历/调课/并发/重复场次。
+    if teacher_mp:
+        teacher_options_resp = req("GET", f"{MOB}/teacher/academic/attendance/class-options", teacher_mp)
+        teacher_options = teacher_options_resp.get("data") or {}
+        if teacher_options_resp.get("code") == 0:
+            candidates = _attendance_candidate_payloads(teacher_options)
+        if candidates:
             att_actor = teacher_mp
-            # 下面统一走创建逻辑时若已有 probe 会话可复用
-            CTX["_att_probe"] = sid_probe
-        else:
-            att_actor = tok("e2e_aa_admin", "MINI_PROGRAM") or tok("admin2", "MINI_PROGRAM") or teacher_mp
-            CTX["_att_probe"] = None
-            step("R3.att_teacher_scope_fallback", True, {"probe": probe.get("code"), "msg": probe.get("message")})
-    if att_actor and teach_class:
-        today = date.today().isoformat()
-        sid = CTX.get("_att_probe")
-        if not sid:
-            cre = req("POST", f"{MOB}/teacher/academic/attendance/sessions", att_actor, {
-                "classId": str(teach_class), "sessionDate": today,
-                "slotNo": 10, "sessionType": "常规", "courseName": "R3旷课联动",
-                "termCode": term_code,
-            })
-            sid = (cre.get("data") or {}).get("sessionId")
-            create_code = cre.get("code")
-        else:
-            create_code = 0
-            cre = {"code": 0, "data": {"sessionId": sid}}
-        if sid:
-            detail = req("GET", f"{MOB}/teacher/academic/attendance/sessions/{sid}", att_actor)
-            roster = (detail.get("data") or {}).get("items") or []
-            target = None
-            for it in roster:
-                if str(it.get("studentNo") or "").startswith("E2EAA"):
-                    target = it
-                    break
-            if not target and roster:
-                target = roster[0]
-            if target:
-                req("POST", f"{MOB}/teacher/academic/attendance/sessions/{sid}/mark", att_actor, {
-                    "studentId": target.get("studentId"), "status": "ABSENT",
+            actor_label = "teacher"
+
+    if not candidates:
+        admin_mp = tok("e2e_aa_admin", "MINI_PROGRAM") or tok("admin2", "MINI_PROGRAM")
+        if admin_mp:
+            admin_options_resp = req("GET", f"{MOB}/teacher/academic/attendance/class-options", admin_mp)
+            admin_options = admin_options_resp.get("data") or {}
+            if admin_options_resp.get("code") == 0:
+                candidates = _attendance_candidate_payloads(admin_options)
+            if candidates:
+                att_actor = admin_mp
+                actor_label = "admin-formal-task"
+                step("R3.att_teacher_task_fallback", True, {
+                    "reason": "teacher has no current formal occurrence; admin uses ScopeHead-active formal TeachingTask",
+                    "candidateCount": len(candidates),
                 })
-            sub = req("POST", f"{MOB}/teacher/academic/attendance/sessions/{sid}/submit", att_actor)
-            step("R3.att_submit", sub.get("code") == 0, {
-                "create": create_code, "submit": sub.get("code"), "sid": sid,
-                "classId": teach_class, "actor": "teacher" if att_actor == teacher_mp else "admin",
+
+    sid = None
+    selected = None
+    create_result = None
+    rejected = []
+    if att_actor and candidates:
+        # 限制候选次数，避免脏数据环境下 E2E 无界探测；正式 API 是唯一判真者。
+        for candidate in candidates[:36]:
+            create_result = req(
+                "POST",
+                f"{MOB}/teacher/academic/attendance/sessions",
+                att_actor,
+                candidate["payload"],
+            )
+            sid = (create_result.get("data") or {}).get("sessionId")
+            if sid:
+                selected = candidate
+                break
+            rejected.append({
+                "date": candidate["payload"]["sessionDate"],
+                "slotNo": candidate["payload"]["slotNo"],
+                "taskId": candidate["payload"]["teachingTaskId"],
+                "code": create_result.get("code"),
+                "message": create_result.get("message"),
             })
+
+    if sid and selected:
+        detail = req("GET", f"{MOB}/teacher/academic/attendance/sessions/{sid}", att_actor)
+        roster = (detail.get("data") or {}).get("items") or []
+        target = next((it for it in roster if str(it.get("studentNo") or "").startswith("E2EAA")), None)
+        if not target and roster:
+            target = roster[0]
+        mark = {"code": None, "message": "no roster target"}
+        if target:
+            mark = req("POST", f"{MOB}/teacher/academic/attendance/sessions/{sid}/mark", att_actor, {
+                "studentId": target.get("studentId"), "status": "ABSENT",
+            })
+        sub = req("POST", f"{MOB}/teacher/academic/attendance/sessions/{sid}/submit", att_actor)
+        submit_ok = bool(target) and mark.get("code") == 0 and sub.get("code") == 0
+        step("R3.att_submit", submit_ok, {
+            "create": create_result.get("code") if create_result else None,
+            "mark": mark.get("code"),
+            "submit": sub.get("code"),
+            "sid": sid,
+            "teachingTaskId": selected["payload"]["teachingTaskId"],
+            "classId": selected["payload"].get("classId"),
+            "sessionDate": selected["payload"]["sessionDate"],
+            "slotNo": selected["payload"]["slotNo"],
+            "scheduleItemId": selected.get("scheduleItemId"),
+            "scopeHeadVersion": selected.get("scopeHeadVersion"),
+            "changeId": selected.get("changeId"),
+            "actor": actor_label,
+            "rejectedCandidates": rejected[-5:],
+        })
+        if submit_ok:
+            scan = req("POST", f"{AA}/warnings/scan/attendance", admin)
+            step("R3.att_warn_scan", scan.get("code") == 0, scan)
+            att_ok = scan.get("code") == 0
+            if not att_ok:
+                bug(module="旷课预警", severity="P1", result="OPEN",
+                    expected="scan/attendance 成功", actual=str(scan)[:300])
         else:
-            step("R3.att_submit", False, cre)
-        scan = req("POST", f"{AA}/warnings/scan/attendance", admin)
-        step("R3.att_warn_scan", scan.get("code") == 0, scan)
-        att_ok = scan.get("code") == 0
-        if scan.get("code") != 0:
-            bug(module="旷课预警", severity="P1", result="OPEN",
-                expected="scan/attendance 成功", actual=str(scan)[:300])
+            step("R3.att_warn_scan", False, {"skipped": True, "reason": "attendance mark/submit failed"})
     else:
-        step("R3.att_submit", False, {"actor": bool(att_actor), "classId": teach_class})
+        step("R3.att_submit", False, {
+            "actor": bool(att_actor),
+            "candidateCount": len(candidates),
+            "rejectedCandidates": rejected[-8:],
+            "reason": "no ScopeHead-active formal attendance occurrence accepted by production authority",
+        })
         step("R3.att_warn_scan", False, {"skipped": True})
 
     # 恢复阈值

@@ -1,0 +1,282 @@
+name: Academic C W0 Mature Chain Freeze
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_roster_consumer_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_facade.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_correction_command.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_recheck_service.py'
+      - 'backend/tests/test_academic_c_closure_contract.py'
+      - 'backend/tests/test_aa_attendance_task_binding.py'
+      - 'backend/tests/test_aa_attendance_admin_special_contract.py'
+      - 'backend/tests/test_aa_attendance_warning_source_contract.py'
+      - 'backend/tests/test_aa_attendance_applied_change_contract.py'
+      - 'backend/tests/test_aa_attendance_expected_schedule_item_contract.py'
+      - 'backend/tests/test_aa_attendance_occurrence_concurrency.py'
+      - 'backend/tests/test_aa_attendance_published_occurrence_contract.py'
+      - 'backend/tests/test_aa_attendance_class_options_formal_schedule.py'
+      - 'backend/tests/test_aa_teaching_roster_unification.py'
+      - 'backend/tests/test_aa_roster_consumers_r9.py'
+      - 'backend/tests/test_aa_exam_facade_contract_and_changes.py'
+      - 'backend/tests/test_aa_exam_fact_guards.py'
+      - 'backend/tests/test_aa_effective_grade_identity.py'
+      - 'backend/tests/test_aa_effective_grade_policy_snapshot.py'
+      - 'backend/tests/test_aa_mobile_effective_grade_policy.py'
+      - 'backend/tests/test_aa_grade_recheck_concurrency.py'
+      - 'backend/tests/test_aa_p0_hardening_20260804.py'
+      - 'frontend/tests/academic-attendance-source-contract.test.mjs'
+      - 'miniapp/tests/academic-attendance-source-contract.test.mjs'
+      - '.github/workflows/academic-c-w0-mature-chain-freeze.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-c-w0-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mature-chain-freeze:
+    name: C-W0 Attendance / Exam / Grade / EffectiveGrade freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      APP_ENV: test
+      JWT_SECRET: academic-c-w0-secret-at-least-32-bytes
+      DB_ENABLED: 'true'
+      MOCK_LOGIN_ENABLED: 'true'
+      FAST_TEST_SCHEMA: '1'
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install cryptography
+
+      - name: Prove current main ancestry and shared-owner boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --prune
+          echo "main=$(git rev-parse origin/main)"
+          echo "head=$(git rev-parse HEAD)"
+          echo "merge_base=$(git merge-base origin/main HEAD)"
+          test "$(git rev-list --count HEAD..origin/main)" -eq 0
+          python - <<'PY'
+          import subprocess
+
+          forbidden = {
+              'backend/app/api/v1/route_registration.py',
+              'backend/app/core/permissions.py',
+              'backend/app/core/permission_catalog.py',
+              'backend/app/models/data_exchange.py',
+              'backend/app/services/data_exchange_confirm_service.py',
+              'backend/app/services/identity_import_service.py',
+              'backend/app/modules/academic_affairs/services/__init__.py',
+              'backend/app/models/academic_affairs_registry.py',
+          }
+          allowed_c_migrations = {
+              'backend/alembic/versions/20260818_aa_grade_task_deadline.py',
+              'backend/alembic/versions/20260818_merge_prog_grade_deadline.py',
+          }
+          changed = set(subprocess.check_output(
+              ['git', 'diff', '--name-only', 'origin/main...HEAD'], text=True
+          ).splitlines())
+          changed_migrations = {
+              p for p in changed if p.startswith('backend/alembic/versions/')
+          }
+          bad = sorted(changed & forbidden)
+          bad.extend(sorted(changed_migrations - allowed_c_migrations))
+          if bad:
+              raise SystemExit(
+                  'C line modified forbidden shared owners or unapproved migrations:\n'
+                  + '\n'.join(bad)
+              )
+          print('shared-owner violations=0')
+          print('approved C migrations=' + ','.join(sorted(changed_migrations)))
+          PY
+
+      - name: Compile mature-chain runtime owners
+        working-directory: backend
+        run: |
+          python -m py_compile \
+            app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py \
+            app/modules/academic_affairs/services/academic_affairs_attendance_service.py \
+            app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py \
+            app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py \
+            app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py \
+            app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py \
+            app/modules/academic_affairs/services/academic_affairs_warning_service.py \
+            app/modules/academic_affairs/services/academic_affairs_roster_consumer_service.py \
+            app/modules/academic_affairs/services/academic_affairs_exam_facade.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_service.py \
+            app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_correction_command.py \
+            app/modules/academic_affairs/services/academic_affairs_grade_recheck_service.py
+
+      - name: C-W0 mature-chain targeted regression on MySQL
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          TESTS=(
+            tests/test_academic_c_closure_contract.py
+            tests/test_aa_attendance_task_binding.py
+            tests/test_aa_attendance_admin_special_contract.py
+            tests/test_aa_attendance_warning_source_contract.py
+            tests/test_aa_attendance_applied_change_contract.py
+            tests/test_aa_attendance_expected_schedule_item_contract.py
+            tests/test_aa_attendance_occurrence_concurrency.py
+            tests/test_aa_attendance_published_occurrence_contract.py
+            tests/test_aa_attendance_class_options_formal_schedule.py
+            tests/test_aa_teaching_roster_unification.py
+            tests/test_aa_roster_consumers_r9.py
+            tests/test_aa_exam_facade_contract_and_changes.py
+            tests/test_aa_exam_fact_guards.py
+            tests/test_aa_effective_grade_identity.py
+            tests/test_aa_effective_grade_policy_snapshot.py
+            tests/test_aa_mobile_effective_grade_policy.py
+            tests/test_aa_grade_recheck_concurrency.py
+            tests/test_aa_p0_hardening_20260804.py
+          )
+          for test_file in "${TESTS[@]}"; do
+            test -f "$test_file" || { echo "missing freeze test: $test_file"; exit 1; }
+          done
+          pytest -q "${TESTS[@]}" -p no:warnings --durations=20
+
+      - name: Attendance frontend consumer source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test frontend/tests/academic-attendance-source-contract.test.mjs
+          node --test miniapp/tests/academic-attendance-source-contract.test.mjs
+
+      - name: Freeze single-owner and mature invariants
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          public = Path(
+              'app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py'
+          ).read_text(encoding='utf-8')
+          legacy = Path(
+              'app/modules/academic_affairs/services/academic_affairs_attendance_service.py'
+          ).read_text(encoding='utf-8')
+          command = Path(
+              'app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py'
+          ).read_text(encoding='utf-8')
+          read_guard = Path(
+              'app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py'
+          ).read_text(encoding='utf-8')
+          assert 'AaAttendanceSession(' not in public
+          assert 'AaAttendanceSession(' not in legacy
+          assert 'return relation_guard.create_session(user, body)' in public
+          assert 'return read_guard.list_sessions(' in public
+          assert 'def resolve_versioned_roster(' in public
+          assert 'def freeze_consumer_snapshot(' in public
+          assert 'public.resolve_versioned_roster' in command
+          assert 'public.freeze_consumer_snapshot' in command
+          assert 'public._canonical' not in command
+          assert 'setattr(public' not in command
+          for persisted in (
+              'teaching_task_id=',
+              'occurrence_identity=',
+              'source_type=',
+              'source_reason=',
+              'source_evidence=',
+          ):
+              assert persisted in command
+          assert 'source_type = _ADMIN_SPECIAL if is_admin_special else "FORMAL_TEACHING"' in command
+          assert 'occurrence_identity = occurrence["occurrenceIdentity"] if occurrence else None' in command
+          for needle in (
+              'occurrence={occurrence',
+              'scheduleItem={occurrence',
+              'activeBatch={occurrence',
+              'scope={occurrence',
+              'reason={special_reason};evidence={special_evidence}',
+              'result["occurrenceEvidence"]',
+          ):
+              assert needle in command
+          assert 'TEACHING_CLASS_TEACHER_BY_OCCURRENCE_WEEK' in read_guard
+
+          checks = {
+              'app/modules/academic_affairs/services/academic_affairs_warning_service.py': [
+                  '_formal_attendance_session_condition', 'FORMAL_TEACHING'
+              ],
+              'app/modules/academic_affairs/services/academic_affairs_roster_consumer_service.py': [
+                  'ATTENDANCE_SESSION', 'EXAM_COURSE', 'GRADE_TASK',
+                  'APPROVAL_VERSION_CONFLICT', 'SUPERSEDED'
+              ],
+              'app/modules/academic_affairs/services/academic_affairs_exam_facade.py': [
+                  'EXAM_COURSE', 'require_consumer_snapshot_current',
+                  'assign_seats', '_check_arrangement_complete'
+              ],
+              'app/modules/academic_affairs/services/academic_affairs_grade_service.py': [
+                  'courseId', 'resolve_versioned_roster',
+                  'freeze_consumer_snapshot', 'GRADE_TASK'
+              ],
+              'app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py': [
+                  'LEGACY_NAME_KEY', 'resolve_active_policy',
+                  'freeze_effective_grade_policy', 'DATA_CONFLICT'
+              ],
+              'app/modules/academic_affairs/services/academic_affairs_grade_correction_command.py': [
+                  'SUPERSEDED', 'freeze_effective_grade_policy'
+              ],
+              'app/modules/academic_affairs/services/academic_affairs_grade_recheck_service.py': [
+                  'SUPERSEDED'
+              ],
+          }
+          missing = []
+          for raw, needles in checks.items():
+              text = Path(raw).read_text(encoding='utf-8')
+              for needle in needles:
+                  if needle not in text:
+                      missing.append(f'{raw}: {needle}')
+          if missing:
+              raise SystemExit('C-W0 mature-chain invariant drift:\n' + '\n'.join(missing))
+          print('C-W0 mature-chain invariant drift=0')
+          PY

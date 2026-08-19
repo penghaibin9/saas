@@ -50,6 +50,8 @@ def _seed(db_mode):
 
 def _ensure_term():
     """移动端测试使用可排课的正式学期：稳定 termId + 教学周 + 正式节次。"""
+    from datetime import datetime
+
     from app.db.session import get_sessionmaker
     from app.models import AaTerm, AaTimeSlot
 
@@ -66,6 +68,8 @@ def _ensure_term():
             year_code="2023-2024",
             term_no=1,
             term_name="2023-2024第1学期",
+            start_date=datetime(2023, 9, 1),
+            end_date=datetime(2024, 1, 31),
             teaching_weeks=18,
             status="PUBLISHED",
             is_current=True,
@@ -73,6 +77,8 @@ def _ensure_term():
         db.add(term)
         db.flush()
     else:
+        term.start_date = datetime(2023, 9, 1)
+        term.end_date = datetime(2024, 1, 31)
         term.teaching_weeks = 18
         term.status = "PUBLISHED"
         term.is_current = True

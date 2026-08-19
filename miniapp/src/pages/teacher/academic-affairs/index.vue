@@ -17,15 +17,60 @@
           <text>部分教学数据暂未更新</text><text>点击重试</text>
         </view>
 
-        <view class="ta__today card" @click="go('/pages/teacher/my-schedule/index')">
-          <view class="ta__section-head"><text>今日课表</text><text class="ta__link">完整课表 ›</text></view>
+        <view class="ta__today card">
+          <view class="ta__section-head">
+            <text>今日课表</text>
+            <text class="ta__link" @click="go('/pages/teacher/my-schedule/index')">完整课表 ›</text>
+          </view>
           <view v-if="todayCourses.length" class="ta__course-list">
-            <view v-for="item in todayCourses.slice(0, 3)" :key="item.itemId || item.courseName + item.slotNo" class="ta__course">
+            <view
+              v-for="item in todayCourses.slice(0, 3)"
+              :key="item.scheduleItemId || item.itemId || item.courseName + item.slotNo"
+              class="ta__course"
+              @click="openTodayCourse(item)"
+            >
               <text class="ta__course-slot">第{{ item.slotNo }}节</text>
-              <view class="flex-1"><text class="ta__course-name">{{ item.courseName }}</text><text class="ta__course-sub">{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</text></view>
+              <view class="flex-1">
+                <view class="ta__course-title-row">
+                  <text class="ta__course-name">{{ item.courseName }}</text>
+                  <text v-if="item.changeType === 'ADJUST'" class="ta__change-tag">已调课</text>
+                  <text v-else-if="item.changeType === 'MAKEUP'" class="ta__change-tag">补课</text>
+                </view>
+                <text class="ta__course-sub">{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</text>
+              </view>
+              <text class="ta__course-action" :class="{ 'is-disabled': !item.attendanceRoute }">
+                {{ item.attendanceActionLabel || (item.attendanceRoute ? '去点名' : '暂不可操作') }}{{ item.attendanceRoute ? ' ›' : '' }}
+              </text>
             </view>
           </view>
           <text v-else class="ta__empty">{{ todayEmptyText }}</text>
+        </view>
+
+        <view class="ta__invigilation card">
+          <view class="ta__section-head">
+            <text>我的监考</text>
+            <text class="ta__section-sub">{{ invigilationSummary }}</text>
+          </view>
+          <view v-if="invigilationItems.length" class="ta__invig-list">
+            <view v-for="item in visibleInvigilations" :key="item.inviglatorId || item.invigilatorId" class="ta__invig-row">
+              <view class="ta__invig-time">
+                <text class="ta__invig-date">{{ item.examDate || '日期待定' }}</text>
+                <text class="ta__invig-clock">{{ item.startTime || '--:--' }}-{{ item.endTime || '--:--' }}</text>
+              </view>
+              <view class="flex-1 ta__invig-main">
+                <text class="ta__invig-course">{{ item.courseName || '考试课程' }}</text>
+                <text class="ta__invig-sub">{{ item.className || '教学班' }} · {{ item.classroom || '考场待定' }}</text>
+                <text class="ta__invig-meta">{{ invigilationRoleLabel(item.role) }} · {{ item.confirmStatus === 'CONFIRMED' ? '已确认' : '待确认' }}</text>
+              </view>
+              <text class="ta__invig-status" :class="{ 'is-finished': item.workStatus === 'FINISHED' }">
+                {{ item.workStatus === 'FINISHED' ? '已结束' : '待监考' }}
+              </text>
+            </view>
+            <view v-if="invigilationItems.length > 3" class="ta__invig-toggle" @click="showAllInvigilations = !showAllInvigilations">
+              <text>{{ invigilationToggleText }}</text>
+            </view>
+          </view>
+          <text v-else class="ta__empty">近期暂无正式监考任务</text>
         </view>
 
         <view v-if="taskCues.length" class="ta__tasks card">
@@ -58,7 +103,7 @@
 <script>
 import { teacherApi } from '@/services/teacherApi'
 import { normalizeError } from '@/services/request'
-import { go } from '@/utils/nav'
+import { go, toast } from '@/utils/nav'
 
 const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7']
 const ENTRIES = [
@@ -80,17 +125,6 @@ function listOf(data) {
 }
 function isExpectedForbidden(result) {
   return result.status === 'rejected' && normalizeError(result.reason).kind === 'forbidden'
-}
-function activeInWeek(item, week) {
-  const current = Number(week)
-  if (!Number.isFinite(current) || current < 1) return false
-  const start = Number(item.startWeek || 1)
-  const end = Number(item.endWeek || start)
-  if (current < start || current > end) return false
-  const parity = String(item.weekParity || 'ALL').toUpperCase()
-  if (parity === 'ODD') return current % 2 === 1
-  if (parity === 'EVEN') return current % 2 === 0
-  return true
 }
 function pendingRows(rows) {
   const pending = new Set(['PENDING', 'NOT_STARTED', 'INPUTTING', 'RETURNED', 'PENDING_CONFIRM', 'PROCESSING', 'ESCALATED'])
@@ -129,26 +163,50 @@ export default {
   data() {
     return {
       statusBarHeight: 20, state: 'loading', partialError: false,
-      scheduleItems: [], currentWeek: null, available: { schedule: true }, counts: {}, entries: ENTRIES,
+      scheduleItems: [], todayItems: [], currentWeek: null, calendarSource: '',
+      invigilationWorkbench: { items: [], total: 0, upcomingCount: 0, finishedCount: 0 },
+      showAllInvigilations: false,
+      available: { schedule: true }, counts: {}, entries: ENTRIES,
       taskTargets: {}, taskDetails: {}
     }
   },
   computed: {
     todayCourses() {
-      const day = new Date().getDay() || 7
-      return this.scheduleItems
-        .filter((item) => Number(item.weekday) === day && activeInWeek(item, this.currentWeek))
-        .sort((a, b) => Number(a.slotNo || 0) - Number(b.slotNo || 0))
+      return (this.todayItems || []).slice().sort((a, b) => Number(a.slotNo || 0) - Number(b.slotNo || 0))
+    },
+    invigilationItems() {
+      return Array.isArray(this.invigilationWorkbench && this.invigilationWorkbench.items)
+        ? this.invigilationWorkbench.items : []
+    },
+    visibleInvigilations() {
+      return this.showAllInvigilations ? this.invigilationItems : this.invigilationItems.slice(0, 3)
+    },
+    invigilationSummary() {
+      const upcoming = Number(this.invigilationWorkbench && this.invigilationWorkbench.upcomingCount || 0)
+      const finished = Number(this.invigilationWorkbench && this.invigilationWorkbench.finishedCount || 0)
+      if (upcoming && finished) return `${upcoming} 场待监考 · ${finished} 场已结束`
+      if (upcoming) return `${upcoming} 场待监考`
+      if (finished) return `${finished} 场已结束`
+      return '近期无正式安排'
+    },
+    invigilationToggleText() {
+      return this.showAllInvigilations ? '收起' : `查看全部 ${this.invigilationItems.length} 场`
     },
     todaySummary() {
+      if (this.calendarSource === 'HOLIDAY') return '今日节假日'
+      if (this.calendarSource === 'SWAP_SOURCE') return '今日调休停课'
+      if (this.calendarSource === 'OUT_OF_TERM') return '当前非教学期'
       if (this.currentWeek == null) return '周次待确认'
       if (Number(this.currentWeek) === 0) return '学期未开始'
       return this.todayCourses.length ? `${this.todayCourses.length} 门课程` : '今日无课'
     },
     todayEmptyText() {
-      if (this.currentWeek == null) return '学校校历缺少学期开始日期，暂不判断今日课程。'
+      if (this.calendarSource === 'HOLIDAY') return '今天是学校校历节假日，没有正式课堂点名任务。'
+      if (this.calendarSource === 'SWAP_SOURCE') return '今天是校历调休停课日，正式课程已按调休安排迁移。'
+      if (this.calendarSource === 'OUT_OF_TERM') return '当前日期不在本学期教学范围内，可查看完整课表。'
+      if (this.currentWeek == null) return '学校校历缺少可用时间轴，暂不判断今日课程。'
       if (Number(this.currentWeek) === 0) return '当前学期尚未开始。'
-      return `第${this.currentWeek}周今天暂无课程，可查看完整课表安排。`
+      return `第${this.currentWeek}周今天暂无正式课程，可查看完整课表安排。`
     },
     visibleEntries() { return this.entries.filter((x) => x.always || this.available[x.source]) },
     taskCues() {
@@ -163,11 +221,16 @@ export default {
     headline() {
       if (this.partialError) return '部分待办未完全加载，请点击页面提示重试'
       const total = this.taskCues.reduce((sum, x) => sum + Number(x.count || 0), 0)
+      const invigilation = Number(this.invigilationWorkbench && this.invigilationWorkbench.upcomingCount || 0)
+      if (total && invigilation) return `还有 ${total} 项教务任务 · ${invigilation} 场待监考`
+      if (invigilation) return `还有 ${invigilation} 场正式监考安排`
       return total ? `还有 ${total} 项教务任务需要处理` : '当前没有紧急教务待办'
     }
   },
   onLoad() {
     try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+  },
+  onShow() {
     this.load()
   },
   methods: {
@@ -175,6 +238,15 @@ export default {
     back() { uni.navigateBack({ delta: 1, fail: () => go('/pages/teacher/workbench/index') }) },
     gradClass(i) { return GRAD_CLASSES[i % GRAD_CLASSES.length] },
     countOf(key) { return this.counts[key] || '' },
+    invigilationRoleLabel(role) { return String(role || '').toUpperCase() === 'CHIEF' ? '主监考' : '副监考' },
+    openTodayCourse(item) {
+      if (item && item.attendanceRoute) return go(item.attendanceRoute)
+      if (item && item.attendanceBlockReason) {
+        toast(item.attendanceBlockReason)
+        return
+      }
+      return go('/pages/teacher/my-schedule/index')
+    },
     setResult(key, result, pendingOnly = false) {
       if (result.status !== 'fulfilled') return false
       this.available[key] = true
@@ -211,11 +283,18 @@ export default {
       }
       if (results[0].status === 'fulfilled') {
         this.scheduleItems = listOf(results[0].value)
+        this.todayItems = (results[0].value && results[0].value.todayItems) || []
+        this.calendarSource = String((results[0].value && results[0].value.calendarSource) || '')
         this.currentWeek = results[0].value && results[0].value.currentWeek != null
           ? Number(results[0].value.currentWeek) : null
+        this.invigilationWorkbench = (results[0].value && results[0].value.invigilationWorkbench) ||
+          { items: [], total: 0, upcomingCount: 0, finishedCount: 0 }
       } else {
         this.scheduleItems = []
+        this.todayItems = []
+        this.calendarSource = ''
         this.currentWeek = null
+        this.invigilationWorkbench = { items: [], total: 0, upcomingCount: 0, finishedCount: 0 }
       }
       this.available = { schedule: true }
       this.counts = {}
@@ -230,7 +309,8 @@ export default {
       this.setResult('defer', results[7], true)
       this.setResult('warning', results[8], true)
       this.setResult('workload', results[9], true)
-      this.partialError = results.some((r) => r.status === 'rejected' && !isExpectedForbidden(r)) || this.currentWeek == null
+      const scheduleTimeUnknown = this.currentWeek == null && this.calendarSource !== 'OUT_OF_TERM'
+      this.partialError = results.some((r) => r.status === 'rejected' && !isExpectedForbidden(r)) || scheduleTimeUnknown
       this.state = 'ready'
     }
   }
@@ -248,17 +328,33 @@ export default {
 .ta__summary-sub { display: block; margin-top: 4px; color: rgba(255,255,255,.88); font-size: var(--font-size-xs); }
 .ta__body { padding-top: var(--space-3); }
 .ta__partial { display: flex; justify-content: space-between; margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--warning-50); color: var(--warning-700); font-size: var(--font-size-xs); }
-.ta__today, .ta__tasks, .ta__services { margin-bottom: var(--space-3); }
+.ta__today, .ta__invigilation, .ta__tasks, .ta__services { margin-bottom: var(--space-3); }
 .ta__section-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
 .ta__link { color: var(--teacher-600); font-size: var(--font-size-xs); font-weight: 400; }
 .ta__section-sub { color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; }
 .ta__course-list { margin-top: var(--space-2); }
-.ta__course { display: flex; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border-light); }
+.ta__course { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border-light); }
 .ta__course:last-child { border-bottom: 0; }
 .ta__course-slot { width: 54px; color: var(--teacher-600); font-size: var(--font-size-sm); font-weight: 600; }
-.ta__course-name { display: block; font-weight: 600; }
+.ta__course-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ta__course-name { display: block; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ta__change-tag { flex-shrink: 0; padding: 1px 5px; border-radius: 4px; background: var(--teacher-50); color: var(--teacher-600); font-size: 10px; font-weight: 600; }
 .ta__course-sub, .ta__empty { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.ta__course-action { flex-shrink: 0; color: var(--teacher-600); font-size: var(--font-size-xs); font-weight: 600; }
+.ta__course-action.is-disabled { color: var(--text-tertiary); }
 .ta__empty { padding: var(--space-4) 0 var(--space-2); text-align: center; }
+.ta__invig-list { margin-top: var(--space-2); }
+.ta__invig-row { display: flex; gap: var(--space-3); align-items: center; padding: var(--space-3) 0; border-bottom: 1px solid var(--border-light); }
+.ta__invig-row:last-child { border-bottom: 0; }
+.ta__invig-time { width: 86px; flex-shrink: 0; }
+.ta__invig-date { display: block; color: var(--teacher-700); font-size: var(--font-size-sm); font-weight: 700; }
+.ta__invig-clock { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 10px; }
+.ta__invig-main { min-width: 0; }
+.ta__invig-course { display: block; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ta__invig-sub, .ta__invig-meta { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 10px; }
+.ta__invig-status { flex-shrink: 0; padding: 3px 7px; border-radius: 999px; background: var(--teacher-50); color: var(--teacher-700); font-size: 10px; font-weight: 600; }
+.ta__invig-status.is-finished { background: var(--gray-100, #f1f5f9); color: var(--text-tertiary); }
+.ta__invig-toggle { padding: var(--space-2) 0 0; color: var(--teacher-600); font-size: var(--font-size-xs); text-align: center; }
 .ta__task-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); margin-top: var(--space-3); }
 .ta__task { padding: var(--space-3) var(--space-2); border-radius: var(--radius-md); background: var(--teacher-50); text-align: center; }
 .ta__task-value { display: block; color: var(--teacher-600); font-size: 22px; font-weight: 700; }

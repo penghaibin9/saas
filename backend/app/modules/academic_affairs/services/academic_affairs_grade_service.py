@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from types import SimpleNamespace
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -269,10 +269,23 @@ def list_tasks(user, status=None, page=1, page_size=20):
                 conditions.append(AaGradeTask.class_id.in_(list(allowed) or [0]))
         else:
             conditions.append(AaGradeTask.teacher_key.in_(list(_core._user_keys(user)) or ["__none__"]))
-        rows = db.scalars(select(AaGradeTask).where(*conditions).order_by(AaGradeTask.id.desc())).all()
-        items = [_task_row(row) for row in rows]
-        start = (max(1, int(page)) - 1) * int(page_size)
-        return items[start:start + int(page_size)], len(items)
+        page_no = max(1, int(page))
+        limit = int(page_size)
+        offset = (page_no - 1) * limit
+        total = int(
+            db.scalar(
+                select(func.count()).select_from(AaGradeTask).where(*conditions)
+            )
+            or 0
+        )
+        rows = db.scalars(
+            select(AaGradeTask)
+            .where(*conditions)
+            .order_by(AaGradeTask.id.desc())
+            .offset(offset)
+            .limit(limit)
+        ).all()
+        return [_task_row(row) for row in rows], total
 
 
 def roster(task_id, user) -> dict:

@@ -36,6 +36,22 @@ MOVE_ONLY_ALIASES = {
     ),
 }
 
+# These four locations are the same pre-existing Grade Service direct gets that
+# were frozen in the baseline at 931/1084/1085/1086. Academic-C inserted one
+# bounded SQL pagination block above them, shifting each unchanged call by exactly
+# 13 lines. Keep the ratchet identity stable only for these audited relocations;
+# any different/new location remains a hard gate failure.
+VERIFIED_LINE_RELOCATIONS = {
+    "modules/academic_affairs/services/academic_affairs_grade_service.py:944":
+        "modules/academic_affairs/services/academic_affairs_grade_service.py:931",
+    "modules/academic_affairs/services/academic_affairs_grade_service.py:1097":
+        "modules/academic_affairs/services/academic_affairs_grade_service.py:1084",
+    "modules/academic_affairs/services/academic_affairs_grade_service.py:1098":
+        "modules/academic_affairs/services/academic_affairs_grade_service.py:1085",
+    "modules/academic_affairs/services/academic_affairs_grade_service.py:1099":
+        "modules/academic_affairs/services/academic_affairs_grade_service.py:1086",
+}
+
 
 def _normalize_location(value: str) -> str:
     """Make baseline locations portable across Windows and Linux runners."""
@@ -67,6 +83,12 @@ def _location(path: Path, line: int, aliases: dict[str, str]) -> str:
     rel = _normalize_location(path.relative_to(ROOT).as_posix())
     rel = aliases.get(rel, rel)
     return f"{rel}:{line}"
+
+
+def _baseline_identity(location: str) -> str:
+    """Map only verified line-only relocations back to their frozen identity."""
+    normalized = _normalize_location(location)
+    return VERIFIED_LINE_RELOCATIONS.get(normalized, normalized)
 
 
 def _tenant_model_names() -> set[str]:
@@ -192,8 +214,9 @@ def main() -> int:
                 if line.strip()
             }
         now = set(direct_gets)
-        added = sorted(now - old)
-        removed = len(old - now)
+        now_identities = {_baseline_identity(item) for item in now}
+        added = sorted(item for item in now if _baseline_identity(item) not in old)
+        removed = len(old - now_identities)
         if added:
             print(f"\n新增 {len(added)} 处未做租户校验的裸 Session.get（禁止新增）：")
             for item in added:

@@ -182,3 +182,31 @@ def evaluation_submit_my(user, body) -> dict:
         score_value,
         data.get("comment"),
     )
+
+
+def teacher_schedule_my(user) -> dict:
+    """教师移动课表纯读聚合正式课次、执行状态、完整监考工作台与成绩待办。"""
+    from . import academic_affairs_invigilation_workbench_service as invigilation_workbench
+    from . import academic_affairs_teacher_today_execution_state_service as execution_state
+    from . import academic_affairs_teacher_today_service as teacher_today
+    from . import academic_affairs_teacher_today_work_service as teacher_work
+
+    result = teacher_today.teacher_today_projection(user)
+    with session() as db:
+        enriched = dict(result)
+        enriched["todayItems"] = execution_state.enrich_today_execution_state(
+            db,
+            result.get("todayItems") or [],
+        )
+        work_cues = teacher_work.teacher_work_cues(
+            db,
+            user,
+            exam_date=str(result.get("todayDate") or ""),
+        )
+        enriched.update(work_cues)
+        enriched["invigilationWorkbench"] = invigilation_workbench.project_my_invigilations(
+            db,
+            user,
+            from_date=str(result.get("todayDate") or "") or None,
+        )
+        return enriched

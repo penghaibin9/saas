@@ -1,0 +1,23 @@
+entries:
+  - module: academic-affairs
+    client: backend
+    route: /academic-affairs/grade-tasks/{taskId}/import/xlsx
+    page: backend/app/modules/academic_affairs/routers/grade_core_router.py
+    action: upload+preview+import
+    fileCategory: AA_GRADE_XLSX_IMPORT
+    api: POST /api/v1/academic-affairs/grade-tasks/{taskId}/import/xlsx
+    backendService: backend/app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py::read_grade_upload_path -> backend/app/services/xlsx_util.py::validate_xlsx_path -> backend/app/modules/academic_affairs/services/academic_affairs_grade_execution_service.py::teacher_grade_import_dry_run
+    storageMode: bounded-temporary-file+shared-xlsx-security-validation+no-persistent-file-object
+    authMode: academicAffairs.grade.input+live-teacher-authority
+    dataScope: tenant+grade-task+current-formal-teacher
+    versioned: false
+    scanGated: true
+    preview: true
+    download: false
+    import: true
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 成绩 XLSX 上传按 1MB chunk 写入临时 Path，20MB 上限；先复用 shared validate_xlsx_path 执行 ZIP/宏/外链/体积安全校验，再以 read_only/data_only/keep_links=false 解析，最多 10 sheets、100 列、5000 数据行；本入口仅 dry-run 预校验，不持久化 FileObject，不在读侧修复业务数据。
