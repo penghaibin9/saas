@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "wave": "T0",
+  "capturedAt": "2026-08-20T05:27:00+08:00",
+  "authority": "跃科_教师端微信小程序_生产级开发手册_V3.0_2026-08-19",
+  "repository": "penghaibin9/saas",
+  "branch": "agent/miniapp-teacher-v3-production-20260820",
+  "base": {
+    "ref": "main",
+    "exactSha": "65ad77eb568d562491645fcab39d280f812e8bc0",
+    "latestMerge": "PR #148"
+  },
+  "dependencies": {
+    "pr147": {
+      "state": "open",
+      "draft": true,
+      "headSha": "9c72f0d03ada7ed7d7e50690ebbbf723a0a8d8b4",
+      "collision": [
+        "backend/app/services/mobile_teacher_service.py"
+      ],
+      "rule": "Do not overwrite the file wholesale; avoid the live PR surface until reconciled."
+    },
+    "pr148": {
+      "state": "merged",
+      "mergedIntoMain": true,
+      "mergeCommit": "65ad77eb568d562491645fcab39d280f812e8bc0",
+      "rule": "Teacher Today/attendance/grade-entry must consume the implementation now in main."
+    },
+    "pr180": {
+      "state": "open",
+      "draft": true,
+      "headSha": "14947deea8f56e577d549fd5830cbc203a4dd546",
+      "collision": [
+        "miniapp/src/main.js",
+        "miniapp/src/services/h5BrowserAuthInstaller.js"
+      ],
+      "rule": "Preserve H5 HttpOnly browser-auth initialization; do not overwrite bootstrap wholesale."
+    },
+    "studentV3": {
+      "pr": 182,
+      "state": "open",
+      "draft": true,
+      "branch": "claude/new-session-au46r1",
+      "headSha": "aa3354ad9e3cb6167f4a6d84e8d9c5a2a6610716",
+      "handoffReady": false,
+      "currentWaves": ["S0", "S1", "S1.5"],
+      "sharedCollision": [
+        "backend/app/services/message_action_registry.py",
+        "backend/app/services/mobile_action_service.py",
+        "backend/app/services/mobile_performance_service.py",
+        "backend/app/services/todo_route_registry.py",
+        "miniapp/src/main.js",
+        "miniapp/src/pages.json",
+        "miniapp/src/services/actionRouter.js",
+        "miniapp/src/pages/teacher/workbench/index.vue",
+        "miniapp/src/pages/teacher/todos/index.vue",
+        "miniapp/src/pages/teacher/risk-students/index.vue"
+      ],
+      "rule": "Teacher V3 must not create a parallel action router/pager/attachment/bootstrap authority. T8 waits for Student V3 to merge to main and for miniapp-v3-handoff.json machine validation."
+    }
+  },
+  "alembic": {
+    "observedMainCandidateHead": "20260818_merge_prog_grade_dl",
+    "file": "backend/alembic/versions/20260818_merge_prog_grade_deadline.py",
+    "rule": "Teacher owns no shared Todo/Message/StudentProfile performance migration before Student V3 handoff. Re-read live Alembic head before any revision."
+  },
+  "safeStart": {
+    "lockedOrder": ["T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10"],
+    "policy": "Proceed only with teacher-owned, non-colliding slices. Shared files remain owner-locked while PR #182 is live; mobile_teacher_service.py remains collision-locked while PR #147 is live.",
+    "stableTabs": ["工作台", "待办", "消息", "我的"],
+    "myStudentsPlacement": "Workbench first-screen high-frequency entry plus independent paginated page"
+  }
+}
