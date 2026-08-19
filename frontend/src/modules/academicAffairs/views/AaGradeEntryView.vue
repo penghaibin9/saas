@@ -7,7 +7,7 @@
   >
     <template #actions>
       <AppButton @click="$router.push('/admin/academic-affairs/grade-overview')">成绩总览</AppButton>
-      <AppButton @click="loadTasks">我的录入任务</AppButton>
+      <AppButton @click="loadTasks">{{ isAdminRole ? '成绩任务' : '我的录入任务' }}</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -45,12 +45,16 @@
         <div class="aa-actions"><AppButton variant="primary" :loading="creating" @click="createTask">创建任务</AppButton></div>
 
         <div v-if="myTasks.length" class="aa-my-tasks">
-          <h4>我的录入任务</h4>
+          <h4>{{ isAdminRole ? '成绩任务' : '我的录入任务' }}</h4>
           <ul>
             <li v-for="t in myTasks" :key="t.gradeTaskId" class="aa-my-task-item">
-              <span>{{ t.courseName }}<small v-if="t.courseId"> · 课程ID {{ t.courseId }}</small></span>
+              <span>
+                {{ t.courseName }}<small v-if="t.courseId"> · 课程ID {{ t.courseId }}</small>
+                <small v-if="t.deadline"> · 截止 {{ formatDeadline(t.deadline) }}<strong v-if="t.isOverdue" class="aa-overdue-text"> · 已逾期</strong></small>
+              </span>
               <AppStatusTag :type="statusColor(t.status)" dot>{{ statusLabel(t.status) }}</AppStatusTag>
               <button class="mp-link" @click="openTask(t)">进入</button>
+              <button v-if="canRemind(t)" class="mp-link aa-remind-link" @click.stop="openReminder(t)">催录</button>
             </li>
           </ul>
         </div>
@@ -61,6 +65,8 @@
           <template #header-extra><button class="mp-link" @click="closeTask">返回</button></template>
           <div class="aa-task-head">
             <span>课程ID {{ task.courseId || '待治理' }} · 及格线 {{ task.passLine }}</span>
+            <span v-if="task.deadlineReady">截止 {{ formatDeadline(task.deadline) }}</span>
+            <span v-else>未设置提交截止时间</span>
             <AppStatusTag :type="statusColor(task.status)" dot>{{ statusLabel(task.status) }}</AppStatusTag>
           </div>
           <div class="aa-mode-switch">
@@ -69,6 +75,29 @@
           </div>
           <AppInlineAlert v-if="!task.courseId" type="warning" title="课程身份欠账" description="该历史任务尚未绑定课程库具体版本，不能发布正式成绩。" />
           <AppInlineAlert v-if="task.status === 'RETURNED' && task.returnReason" type="warning" :message="`已被退回：${task.returnReason}，请核对后重新提交`" />
+          <AppInlineAlert
+            v-if="task.isOverdue === true"
+            type="warning"
+            title="已超过成绩提交截止时间"
+            description="可以继续完善成绩，但提交审核已锁定；请联系学院或教务管理员延长截止时间后再提交。"
+          />
+        </AppSectionCard>
+
+        <AppSectionCard v-if="canExtendDeadline" title="成绩提交截止时间">
+          <div class="aa-grid2">
+            <label class="aa-field">
+              <span class="req">新截止时间</span>
+              <input v-model="deadlineForm.deadlineLocal" type="datetime-local" class="aa-input" />
+            </label>
+            <label class="aa-field">
+              <span class="req">设置 / 延期原因</span>
+              <input v-model.trim="deadlineForm.reason" type="text" class="aa-input" maxlength="500" placeholder="不少于5字；延期只能向后调整" />
+            </label>
+          </div>
+          <div class="aa-actions">
+            <AppButton variant="primary" :loading="deadlineSaving" @click="saveDeadline">{{ task.deadlineReady ? '延长截止时间' : '设置截止时间' }}</AppButton>
+            <span class="mp-note">截止时间是 GradeTask 持久化事实；不会拿学期结束时间代替。逾期提交由应用预检 + MySQL 原子门禁双重阻断。</span>
+          </div>
         </AppSectionCard>
 
         <template v-if="!dynamicMode">
@@ -175,7 +204,7 @@
           </AppSectionCard>
         </template>
 
-        <AppSectionCard v-if="editable" title="提交审核">
+        <AppSectionCard v-if="canSubmit" title="提交审核">
           <div class="aa-actions">
             <AppButton variant="primary" :loading="submitting" @click="submit">提交进入学院审核</AppButton>
             <span class="mp-note">提交时冻结正式名单版本；名单换版后必须退回重建，禁止静默替换。</span>
@@ -183,6 +212,22 @@
         </AppSectionCard>
       </template>
     </div>
+
+    <AppConfirmDialog
+      v-model:visible="reminderVisible"
+      title="催录成绩"
+      :message="reminderTask ? `将刷新《${reminderTask.courseName || '课程'}》当前正式任课教师的待录待办，并写入消息中心提醒。` : ''"
+      type="warning"
+      confirm-text="确认催录"
+      require-reason
+      reason-label="催录说明"
+      reason-placeholder="例如：请于本周内完成成绩录入并提交学院审核"
+      :reason-min-length="2"
+      :loading="reminding"
+      @confirm="confirmReminder"
+    >
+      <p class="mp-note">催录会刷新 canonical AA_GRADE_ENTRY 待办，并向当前正式任课教师写入 GRADE.ENTRY_REMINDED 消息事件；短信等外部通道由消息中心投递策略决定。</p>
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -190,7 +235,7 @@
 import { ModulePageShell, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import {
-  AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect,
+  AppSectionCard, AppStatusTag, AppInlineAlert, AppSelect, AppConfirmDialog,
   AppClassPicker, AppStudentPicker, AppTeachingTaskPicker,
   AppCoursePicker, AppTermEntityPicker
 } from '@/components/common'
@@ -198,6 +243,7 @@ import { AppExcelImportDrawer } from '@/components/common/excel'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { gradeIdentityApi } from '@/modules/academicAffairs/api/grade-identity.api'
 import { academicAffairsR10Api } from '@/modules/academicAffairs/api/academic-affairs-r10.api'
+import { gradeReminderApi } from '@/modules/academicAffairs/api/grade-reminder.api'
 import { toast } from '@/utils/toast'
 
 const TASK_STATUS = {
@@ -206,13 +252,22 @@ const TASK_STATUS = {
   RETURNED: '已退回', ARCHIVED: '已归档'
 }
 const EDITABLE_STATUS = new Set(['NOT_STARTED', 'INPUTTING', 'RETURNED'])
-const ADMIN_ROLES = new Set(['SCHOOL_ADMIN', 'ACADEMIC_ADMIN', 'JWC_ADMIN', 'PLATFORM_SUPER_ADMIN'])
+const ADMIN_ROLES = new Set(['SCHOOL_ADMIN', 'ACADEMIC_ADMIN', 'JWC_ADMIN', 'PLATFORM_SUPER_ADMIN', 'COLLEGE_ADMIN'])
+const SUBMITTABLE_STATUS = new Set(['INPUTTING', 'RETURNED'])
+
+function asUtcDate(value) {
+  const text = String(value || '').trim()
+  if (!text) return null
+  const normalized = /(?:Z|[+-]\d\d:\d\d)$/.test(text) ? text : `${text}Z`
+  const parsed = new Date(normalized)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
 
 export default {
   name: 'AaGradeEntryView',
   components: {
     ModulePageShell, EmptyState, LoadingState, ErrorState, AppButton, AppSectionCard,
-    AppStatusTag, AppInlineAlert, AppSelect, AppExcelImportDrawer, AppClassPicker,
+    AppStatusTag, AppInlineAlert, AppSelect, AppConfirmDialog, AppExcelImportDrawer, AppClassPicker,
     AppStudentPicker, AppTeachingTaskPicker, AppCoursePicker, AppTermEntityPicker
   },
   props: { ctx: { type: Object, required: true } },
@@ -226,6 +281,8 @@ export default {
       creating: false, task: null, myTasks: [],
       candidateStudentId: '', loadingRoster: false, rows: [], submitting: false,
       importVisible: false,
+      reminderVisible: false, reminderTask: null, reminding: false,
+      deadlineForm: { deadlineLocal: '', reason: '' }, deadlineSaving: false,
       dynamicMode: false, dynamicLoading: false, dynamicError: '', dynamicData: null,
       schemeDraft: [], schemeSaving: false, dynamicSavingId: ''
     }
@@ -236,6 +293,15 @@ export default {
     isAdminRole() {
       const code = (this.ctx?.currentRole?.roleCode || this.ctx?.currentRoleCode || '').toUpperCase()
       return ADMIN_ROLES.has(code) || this.ctx?.userType === 'PLATFORM_SUPER_ADMIN'
+    },
+    canExtendDeadline() {
+      return this.isAdminRole && Array.isArray(this.task?.allowedActions) && this.task.allowedActions.includes('EXTEND_DEADLINE')
+    },
+    canSubmit() {
+      if (!this.task || this.isAdminRole || !SUBMITTABLE_STATUS.has(this.task.status)) return false
+      if (this.task.isOverdue === true || this.task.teacherAuthorityReady === false) return false
+      const actions = Array.isArray(this.task.allowedActions) ? this.task.allowedActions : []
+      return actions.includes('SUBMIT') || actions.includes('INPUT')
     },
     exceptionOptions() {
       return [
@@ -258,8 +324,71 @@ export default {
       if (['SUBMITTED', 'COLLEGE_REVIEW', 'ACADEMIC_REVIEW'].includes(status)) return 'primary'
       return 'default'
     },
+    formatDeadline(value) {
+      const parsed = asUtcDate(value)
+      if (!parsed) return '—'
+      return parsed.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    },
+    deadlineLocalValue(value) {
+      const parsed = asUtcDate(value)
+      if (!parsed) return ''
+      const shifted = new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60000)
+      return shifted.toISOString().slice(0, 16)
+    },
+    prepareDeadlineForm() {
+      this.deadlineForm = {
+        deadlineLocal: this.deadlineLocalValue(this.task?.deadline),
+        reason: ''
+      }
+    },
+    canRemind(row) {
+      return this.isAdminRole && Array.isArray(row?.allowedActions) && row.allowedActions.includes('REMIND')
+    },
+    openReminder(row) {
+      if (!this.canRemind(row)) return
+      this.reminderTask = row
+      this.reminderVisible = true
+    },
+    async confirmReminder({ reason }) {
+      if (!this.reminderTask || this.reminding) return
+      this.reminding = true
+      const res = await gradeReminderApi.remind(this.reminderTask.gradeTaskId, reason)
+      this.reminding = false
+      if (res.code === 0) {
+        const count = Number(res.data?.remindedCount || 0)
+        toast.success(`已刷新 ${count} 位当前任课教师的待录待办并写入消息提醒`)
+        this.reminderVisible = false
+        this.reminderTask = null
+        await this.loadTasks()
+      } else toast.error(res.message || '催录失败')
+    },
+    async saveDeadline() {
+      if (!this.canExtendDeadline || this.deadlineSaving) return
+      if (!this.deadlineForm.deadlineLocal) { toast.error('请选择新的截止时间'); return }
+      const reason = this.deadlineForm.reason.trim()
+      if (reason.length < 5) { toast.error('设置 / 延期原因不少于5字'); return }
+      const local = new Date(this.deadlineForm.deadlineLocal)
+      if (Number.isNaN(local.getTime())) { toast.error('截止时间格式不合法'); return }
+      this.deadlineSaving = true
+      const res = await gradeReminderApi.extendDeadline(this.task.gradeTaskId, local.toISOString(), reason)
+      this.deadlineSaving = false
+      if (res.code !== 0) { toast.error(res.message || '截止时间更新失败'); return }
+      this.task.deadlineReady = true
+      this.task.deadline = res.data?.deadline || local.toISOString()
+      this.task.isOverdue = false
+      this.deadlineForm.reason = ''
+      this.deadlineForm.deadlineLocal = this.deadlineLocalValue(this.task.deadline)
+      const listRow = this.myTasks.find((row) => String(row.gradeTaskId) === String(this.task.gradeTaskId))
+      if (listRow) {
+        listRow.deadlineReady = true
+        listRow.deadline = this.task.deadline
+        listRow.isOverdue = false
+      }
+      toast.success(res.data?.isExtension ? '成绩提交截止时间已延长' : '成绩提交截止时间已设置')
+    },
     closeTask() {
       this.task = null; this.rows = []; this.dynamicData = null; this.dynamicMode = false
+      this.deadlineForm = { deadlineLocal: '', reason: '' }
     },
     switchMode(value) {
       this.dynamicMode = value
@@ -308,6 +437,7 @@ export default {
     },
     async openTask(row) {
       this.task = { ...row }; this.rows = []; this.dynamicData = null
+      this.prepareDeadlineForm()
       this.dynamicMode = String(this.$route.query.mode || '') === 'dynamic'
       await this.refreshRecords()
       if (this.dynamicMode) await this.loadDynamic()
@@ -408,7 +538,7 @@ export default {
         ? await academicAffairsApi.createGradeTask(payload)
         : await gradeIdentityApi.createGradeTask(payload)
       this.creating = false
-      if (res.code === 0) { this.task = res.data; toast.success('任务已创建，开始录入'); this.loadTasks() }
+      if (res.code === 0) { this.task = res.data; this.prepareDeadlineForm(); toast.success('任务已创建，开始录入'); this.loadTasks() }
       else toast.error(res.message || '创建失败')
     },
     async loadRoster() {
@@ -442,7 +572,7 @@ export default {
       } else toast.error(res.message || '录入失败')
     },
     async submit() {
-      if (this.submitting) return
+      if (!this.canSubmit || this.submitting) return
       this.submitting = true
       const res = await academicAffairsApi.submitGradeTask(this.task.gradeTaskId)
       this.submitting = false
@@ -461,7 +591,7 @@ export default {
 .aa-input { height: 34px; padding: 0 12px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 14px; box-sizing: border-box; }
 .aa-input--grow { flex: 1; }.aa-input--xs { width: 82px; height: 30px; padding: 0 8px; }
 .aa-actions { margin-top: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.aa-reg-search { display: flex; gap: 12px; }
-.aa-task-head { display: flex; align-items: center; gap: 16px; font-size: 14px; color: var(--text-700, #4e5969); margin-bottom: 8px; }
+.aa-task-head { display: flex; align-items: center; gap: 16px; font-size: 14px; color: var(--text-700, #4e5969); margin-bottom: 8px; flex-wrap: wrap; }
 .aa-mode-switch { display: inline-flex; gap: 4px; margin: 8px 0 12px; padding: 4px; border-radius: 8px; background: var(--fill-100, #f2f3f5); }
 .aa-mode { padding: 7px 14px; border: 0; border-radius: 6px; background: transparent; color: var(--text-600, #64748b); cursor: pointer; }
 .aa-mode.is-active { background: #fff; color: var(--primary-600, #2563eb); box-shadow: 0 1px 3px rgba(15,23,42,.12); }
@@ -472,5 +602,6 @@ export default {
 .aa-scheme-list { display: flex; flex-direction: column; gap: 8px; }.aa-scheme-row { display: flex; align-items: center; gap: 10px; }.aa-code { width: 150px; }.aa-name { flex: 1; }.aa-weight { width: 110px; }.aa-required { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; }.is-danger { color: var(--danger-600, #dc2626); }
 .aa-my-tasks { margin-top: 20px; border-top: 1px solid var(--border-100, #f0f1f2); padding-top: 16px; }.aa-my-tasks h4 { margin: 0 0 10px; font-size: 14px; }
 .aa-my-tasks ul { list-style: none; margin: 0; padding: 0; }.aa-my-task-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 14px; }.aa-my-task-item small { color: var(--text-500, #64748b); }
+.aa-remind-link { color: var(--warning-700, #b45309); }.aa-overdue-text { color: var(--danger-600, #dc2626); font-weight: 600; }
 @media (max-width: 760px) { .aa-grid2 { grid-template-columns: 1fr; }.aa-scheme-row { align-items: stretch; flex-direction: column; }.aa-code, .aa-weight { width: 100%; } }
 </style>

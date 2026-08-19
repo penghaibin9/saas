@@ -17,7 +17,7 @@
       <div class="login-card">
         <p class="kicker">平台运营人员登录</p>
         <h2 id="login-title">进入 SaaS 运营平台</h2>
-        <p class="hint">请使用平台超级管理员账号，不使用学校管理员账号。</p>
+        <p class="hint">请使用平台运营人员账号；登录后仅显示当前职责 capability 允许的控制面。</p>
 
         <form @submit.prevent="submit">
           <label>
@@ -44,7 +44,7 @@
           </button>
         </form>
 
-        <p class="security-note">此入口不会提供演示账号或免密登录。首次密码应由平台负责人安全保存并及时修改。</p>
+        <p class="security-note">此入口不会提供演示账号或免密登录。平台职责由服务端统一判定，临时提升仍受 MFA 与到期时间约束。</p>
         <router-link class="school-link" to="/login">返回学校端登录</router-link>
       </div>
     </section>
@@ -52,7 +52,12 @@
 </template>
 
 <script>
-import { clearAuthSession, isPlatformSuperAdmin, issueLoginCaptcha, loginWithPassword } from '@/services/http/client'
+import { clearAuthSession, issueLoginCaptcha, loginWithPassword } from '@/services/http/client'
+import {
+  ensurePlatformAccessContext,
+  isPlatformPrincipal,
+  resolvePlatformHome
+} from '@/security/platformAccessGate'
 import LoginCaptcha from '@/components/auth/LoginCaptcha.vue'
 import ForcePasswordChangeView from '@/views/ForcePasswordChangeView.vue'
 
@@ -103,16 +108,22 @@ export default {
         }
         if (this.captcha.code.length !== 6) { this.error = '请输入图中 6 位验证码'; return }
         const data = await loginWithPassword(loginName, this.form.password, this.form.tenantCode || 'platform', { captchaId: this.captcha.id, captchaCode: this.captcha.code, clientNonce: this.captcha.nonce, clientType: 'PLATFORM_PC' })
-        if (!isPlatformSuperAdmin()) {
+        if (!isPlatformPrincipal()) {
           clearAuthSession()
-          this.error = '此账号不是平台超级管理员，请使用学校端登录。'
+          this.error = '此账号不是 PLATFORM 控制面身份，请使用学校端登录。'
           return
         }
         if (data?.user?.mustChangePassword) {
           await this.$router.replace({ path: '/platform-login', query: { forcePasswordChange: '1' } })
           return
         }
-        await this.$router.push('/admin/platform/overview')
+        const context = await ensurePlatformAccessContext({ force: true })
+        if (!context) {
+          clearAuthSession()
+          this.error = '平台主管能力上下文加载失败，已拒绝进入控制面。'
+          return
+        }
+        await this.$router.push(resolvePlatformHome(context))
       } catch (error) {
         if ((error?.bizCode || '').startsWith('CAPTCHA_') || error?.details?.captchaRequired) await this.refreshCaptcha()
         this.error = error?.message || '登录失败，请检查账号、密码和平台编码。'

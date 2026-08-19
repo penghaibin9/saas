@@ -1,0 +1,82 @@
+name: Academic C W3 Exam Delivery Targeted
+
+on:
+  push:
+    branches:
+      - agent/academic-c-teaching-execution
+    paths:
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_publish_delivery_guard.py'
+      - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
+      - 'backend/tests/test_aa_exam_publish_delivery_contract.py'
+      - '.github/workflows/academic-c-w3-exam-delivery-targeted.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-c-w3-exam-delivery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exam-publish-delivery:
+    name: published invigilation delivery / MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: test
+      JWT_SECRET: academic-c-w3-exam-delivery-secret
+      DB_ENABLED: 'true'
+      MOCK_LOGIN_ENABLED: 'true'
+      FAST_TEST_SCHEMA: '1'
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install cryptography
+      - name: Compile C-W3 exam delivery
+        working-directory: backend
+        run: |
+          python -m py_compile \
+            app/modules/academic_affairs/services/academic_affairs_exam_publish_delivery_guard.py \
+            app/modules/academic_affairs/routers/exam_incident_closure_router.py \
+            tests/test_aa_exam_publish_delivery_contract.py
+      - name: C-W3 published invigilation delivery contract on MySQL
+        working-directory: backend
+        run: pytest -q tests/test_aa_exam_publish_delivery_contract.py -p no:warnings --durations=10
+      - name: Prove delivery guard does not own exam writes
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import inspect
+          from app.modules.academic_affairs.services import academic_affairs_exam_publish_delivery_guard as guard
+          source = inspect.getsource(guard)
+          forbidden = ('legacy.publish_batch =', 'change_invigilator =', 'assign_invigilator =', 'AaExamInvigilator(', 'db.commit(')
+          bad = [value for value in forbidden if value in source]
+          if bad:
+              raise SystemExit('C-W3 exam delivery authority invariant violated: ' + ', '.join(bad))
+          print('C-W3 exam delivery authority invariant=ok')
+          PY

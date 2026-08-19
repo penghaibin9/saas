@@ -101,11 +101,13 @@ def _user(teacher="T001"):
 
 
 def _prepare(monkeypatch, db):
-    from app.modules.academic_affairs.services import academic_affairs_attendance_service as service
+    from app.modules.academic_affairs.services import academic_affairs_archive_service as archive
+    from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as service
 
     monkeypatch.setattr(service, "session", lambda: _session(db))
     monkeypatch.setattr(service, "_tid", lambda: 1)
     monkeypatch.setattr(service, "_audit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(archive, "guard_term_writable", lambda *_args, **_kwargs: None)
     return service
 
 
@@ -136,9 +138,20 @@ def test_assigned_but_unconfirmed_task_is_rejected(monkeypatch):
 
 def test_other_teacher_task_is_rejected(monkeypatch):
     from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_teacher_relation_authority as authority
 
     db = _Db(term=_term(), task=_task(teacher="T002"), batch=_batch())
     service = _prepare(monkeypatch, db)
+    monkeypatch.setattr(
+        service,
+        "resolve_formal_occurrence",
+        lambda *_args, **_kwargs: {"weekNo": 1},
+    )
+
+    def _deny(*_args, **_kwargs):
+        raise AppException("NO_DATA_SCOPE", "该教学任务不在您的正式任课范围内", http_status=403)
+
+    monkeypatch.setattr(authority, "require_teacher", _deny)
     with pytest.raises(AppException) as exc:
         service.create_session(_user("T001"), {
             "teachingTaskId": 30,

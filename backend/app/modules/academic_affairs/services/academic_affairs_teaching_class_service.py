@@ -39,9 +39,42 @@ def _safe_task_snapshot(task, batch) -> str:
         "courseName": task.course_name or "",
         "administrativeClassId": str(task.class_id or ""),
         "administrativeClassName": str(getattr(task, "class_name", None) or ""),
+        "formationMode": _core._explicit_formation(task) or "",
         "merged": bool(task.is_merged),
         "mergedIntoId": str(task.merged_into_id or ""),
     }, ensure_ascii=False, sort_keys=True)
+
+
+def _guard_existing_class_formation(task, teaching_class) -> None:
+    """Fail closed when persisted Task formation disagrees with TeachingClass.
+
+    Legacy tasks without the shared formation snapshot keep compatibility behavior.
+    Once formation is explicit, ordinary production writes must not silently repair
+    migration drift or overwrite B-owned SELECTION semantics.
+    """
+    formation = _core._explicit_formation(task)
+    if not formation:
+        return
+    expected = _core.class_type_for_formation(formation)
+    actual = _core._status(getattr(teaching_class, "class_type", None))
+    if actual == expected:
+        return
+    raise AppException(
+        "DATA_CONFLICT",
+        "教学任务形成方式与现有教学班类型不一致，禁止静默修正；请先完成 formation 对账",
+        details={
+            "blocker": "TEACHING_CLASS_FORMATION_MISMATCH",
+            "teachingTaskId": str(getattr(task, "id", None) or ""),
+            "teachingClassId": str(getattr(teaching_class, "id", None) or ""),
+            "formationMode": formation,
+            "expectedClassType": expected,
+            "actualClassType": actual,
+            "currentRosterVersionId": str(
+                getattr(teaching_class, "current_roster_version_id", None) or ""
+            ),
+        },
+        http_status=409,
+    )
 
 
 def create_roster_version(db, teaching_class, student_ids, *, source_type: str, source_id=None,
@@ -150,6 +183,8 @@ def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=
             details={"conflictTeachingClassId": str(conflict.id)}, http_status=409,
         )
 
+    if teaching_class:
+        _guard_existing_class_formation(task, teaching_class)
     if not teaching_class:
         teaching_class = AaTeachingClass(
             tenant_id=_tid(), teaching_task_id=task.id,
@@ -180,6 +215,7 @@ def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=
 
     if (
         initialize_admin_roster
+        and _core._may_initialize_admin_roster(task, teaching_class)
         and not teaching_class.current_roster_version_id
         and teaching_class.status == "ACTIVE"
     ):

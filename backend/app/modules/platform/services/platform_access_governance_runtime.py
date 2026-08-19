@@ -1,6 +1,6 @@
 """B2 production runtime for Platform Workforce / PAM.
 
-The base canonical service owns storage, validation and atomic writes.  This
+The base canonical service owns storage, validation and atomic writes. This
 runtime layer adds replay-safe creation plus the production-only controls that
 must be checked against live authority data on every use:
 
@@ -10,11 +10,14 @@ must be checked against live authority data on every use:
   reassigning a ticket immediately kills access without waiting for session TTL;
 - optional Incident binding remains an additional constraint, never a substitute
   for the support-ticket authority;
-- requestId replay never creates a second grant.
+- requestId replay never creates a second grant;
+- access-review close requires one explicit decision for every frozen item;
+- support-session self termination is distinct from cross-operator termination.
 """
 from __future__ import annotations
 
 import json
+from collections import Counter
 from datetime import timedelta
 from typing import Any
 
@@ -121,7 +124,7 @@ def _validate_support_ticket(tenant_id: int, ticket_id: object, *, user: dict | 
 
 
 def create_elevation(payload: dict, *, actor: dict | None = None) -> dict:
-    # Privilege elevation is itself a step-up action.  Recent password/SSO auth
+    # Privilege elevation is itself a step-up action. Recent password/SSO auth
     # without a signed MFA ACR/AMR claim is insufficient.
     assert_recent_platform_auth(actor or {}, require_mfa=True)
     key = _base._idempotent_key("elev", payload.get("requestId"))
@@ -253,6 +256,163 @@ def create_access_review(payload: dict, *, actor: dict) -> dict:
         fields=("requestId", "name", "dueAt"),
     )
     return replay or _base.create_access_review(payload, actor=actor)
+
+
+def _review_decisions(payload: dict, expected_keys: set[str]) -> dict[str, str]:
+    raw = payload.get("decisions")
+    if not isinstance(raw, list):
+        raise AppException(
+            "ACCESS_REVIEW_DECISION_SET_INVALID",
+            "访问复核关闭必须提交完整 decisions 列表",
+            http_status=422,
+            details={"missingItemKeys": sorted(expected_keys), "unknownItemKeys": [], "duplicateItemKeys": []},
+        )
+    submitted_keys = [str(item.get("itemKey") or "") if isinstance(item, dict) else "" for item in raw]
+    counts = Counter(submitted_keys)
+    duplicates = sorted(key for key, count in counts.items() if key and count > 1)
+    submitted_set = {key for key in submitted_keys if key}
+    missing = sorted(expected_keys - submitted_set)
+    unknown = sorted(submitted_set - expected_keys)
+    malformed = sum(1 for key in submitted_keys if not key)
+    decisions = {
+        str(item.get("itemKey")): str(item.get("decision") or "").upper()
+        for item in raw if isinstance(item, dict) and str(item.get("itemKey") or "")
+    }
+    invalid = sorted(key for key, value in decisions.items() if value not in {"KEEP", "REVOKE"})
+    if duplicates or missing or unknown or malformed or invalid or len(raw) != len(expected_keys):
+        raise AppException(
+            "ACCESS_REVIEW_DECISION_SET_INVALID",
+            "访问复核必须对冻结快照中的每一项且仅一项提交 KEEP / REVOKE",
+            http_status=422,
+            details={
+                "expectedCount": len(expected_keys),
+                "submittedCount": len(raw),
+                "missingItemKeys": missing[:100],
+                "unknownItemKeys": unknown[:100],
+                "duplicateItemKeys": duplicates[:100],
+                "invalidDecisionItemKeys": invalid[:100],
+                "malformedDecisionCount": malformed,
+            },
+        )
+    return decisions
+
+
+def close_access_review(review_id: str, payload: dict, *, actor: dict) -> dict:
+    """Close one review atomically only with an exact decision set."""
+    assert_recent_platform_auth(actor, require_mfa=True)
+    reason = str(payload.get("reason") or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "关闭访问复核必须填写至少5个字符的原因")
+
+    from app.models import PlatformConfig
+    from app.services import audit_log
+
+    db = get_sessionmaker()()
+    try:
+        campaign = db.scalars(select(PlatformConfig).where(
+            PlatformConfig.tenant_id == 0,
+            PlatformConfig.config_type == _base.REVIEW,
+            PlatformConfig.config_key == str(review_id),
+            PlatformConfig.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if campaign is None:
+            raise AppException("DATA_NOT_FOUND", "访问复核不存在", http_status=404)
+        expected_version = payload.get("expectedVersion")
+        if expected_version is None or int(expected_version) != _base._version(campaign.version):
+            raise AppException("DATA_CONFLICT", "访问复核已变化，请刷新后重试", http_status=409)
+        data = dict(campaign.config_json or {})
+        if str(data.get("status") or "").upper() != "OPEN":
+            raise AppException("DATA_CONFLICT", "访问复核已关闭", http_status=409)
+
+        items = list(data.get("items") or [])
+        expected_keys = {str(item.get("itemKey")) for item in items if str(item.get("itemKey") or "")}
+        if len(expected_keys) != len(items):
+            raise AppException(
+                "ACCESS_REVIEW_SNAPSHOT_INVALID",
+                "访问复核冻结快照包含空或重复 itemKey，拒绝关闭",
+                http_status=409,
+            )
+        decisions = _review_decisions(payload, expected_keys)
+
+        resolved = []
+        for item in items:
+            key = str(item.get("itemKey"))
+            decision = decisions[key]
+            item["decision"] = decision
+            if decision != "REVOKE":
+                continue
+            target = db.scalars(select(PlatformConfig).where(
+                PlatformConfig.tenant_id == int(item.get("tenantId") or 0),
+                PlatformConfig.config_type == item.get("configType"),
+                PlatformConfig.config_key == item.get("recordId"),
+                PlatformConfig.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if target is None:
+                raise AppException("DATA_CONFLICT", f"复核项 {key} 的目标记录已不存在", http_status=409)
+            if _base._version(target.version) != _base._version(item.get("version")):
+                raise AppException("DATA_CONFLICT", f"复核项 {key} 在复核期间已变化", http_status=409)
+            target_data = dict(target.config_json or {})
+            target_data["status"] = "REVOKED"
+            target_data["reviewRevokedBy"] = actor.get("userId")
+            target.config_json = target_data
+            target.enabled = False
+            target.version = _base._version(target.version) + 1
+            resolved.append(key)
+
+        data["items"] = items
+        data["status"] = "CLOSED"
+        data["closedBy"] = actor.get("userId")
+        data["closeReason"] = reason
+        campaign.config_json = data
+        campaign.enabled = False
+        campaign.version = _base._version(campaign.version) + 1
+        audit_log.record_critical_in_session(
+            db,
+            "PLATFORM_ACCESS_REVIEW_CHANGE",
+            f"review:{review_id}",
+            detail={"action": "CLOSE", "revokedItems": resolved, "reason": reason},
+            tenant_id=0,
+            resource_id=str(review_id),
+        )
+        db.commit()
+        db.refresh(campaign)
+        return _base._row_to_dict(campaign)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def terminate_record(
+    config_type: str,
+    record_id: str,
+    *,
+    tenant_id: int,
+    expected_version: int,
+    reason: str,
+    actor: dict,
+) -> dict:
+    """Separate support self-termination from cross-operator emergency termination."""
+    if config_type == _base.SUPPORT:
+        rows = [
+            item for item in _base.list_records(_base.SUPPORT, tenant_id=int(tenant_id))
+            if str(item.get("id")) == str(record_id)
+        ]
+        if not rows:
+            raise AppException("DATA_NOT_FOUND", "受控协助会话不存在", http_status=404)
+        owner_id = str(rows[0].get("operatorUserId") or "")
+        actor_id = str((actor or {}).get("userId") or "")
+        if owner_id != actor_id:
+            _base.assert_platform_capability(actor, "access.manage")
+    return _base.terminate_record(
+        config_type,
+        record_id,
+        tenant_id=int(tenant_id),
+        expected_version=int(expected_version),
+        reason=reason,
+        actor=actor,
+    )
 
 
 # All other canonical service functions/constants pass through unchanged.

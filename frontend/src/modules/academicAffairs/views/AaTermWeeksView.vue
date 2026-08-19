@@ -13,6 +13,8 @@
         </label>
       </div>
 
+      <p v-if="currentError" class="mp-note">当前学期解析失败，未自动猜测“当前”；已保留显式学期选择供历史周次查询。{{ currentError }}</p>
+
       <EmptyState
         v-if="!termsLoading && !terms.length"
         title="还没有学年学期"
@@ -47,7 +49,7 @@
 </template>
 
 <script>
-/** 学期周次（/admin/academic-affairs/terms/weeks）：GET /terms/{id}/weeks（只读计算，来自学期开学日+教学周数+校历）。 */
+/** 学期周次（/admin/academic-affairs/terms/weeks）：历史学期显式可查；默认 term 由 A-C1 /terms/current 决定。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppTermEntityPicker } from '@/components/common'
@@ -67,6 +69,8 @@ export default {
       termsLoading: true,
       terms: [],
       termId: '',
+      currentContext: null,
+      currentError: '',
       loading: false,
       error: '',
       weeks: [],
@@ -82,7 +86,7 @@ export default {
     termOptions() {
       return this.terms.map((t) => ({
         value: t.termId,
-        label: `${t.yearCode} 第 ${t.termNo} 学期${t.isCurrent ? '（当前）' : ''}`
+        label: `${t.yearCode} 第 ${t.termNo} 学期${this.isResolvedCurrent(t) ? '（全校当前）' : ''}`
       }))
     }
   },
@@ -91,13 +95,28 @@ export default {
   },
   methods: {
     typeColor(t) { return TYPE_COLOR[t] || 'default' },
+    isResolvedCurrent(term) {
+      return Boolean(term && this.currentContext?.termId) && String(term.termId) === String(this.currentContext.termId)
+    },
+    async loadCurrentContext() {
+      this.currentError = ''
+      const res = await academicAffairsApi.getCurrentTerm()
+      if (res.code === 0) {
+        this.currentContext = res.data || null
+      } else {
+        this.currentContext = null
+        this.currentError = res.message || '当前学期解析失败'
+      }
+    },
     async refreshTermCatalog() {
       this.termsLoading = true
       try {
         this.terms = await loadAcademicTermCatalog()
-        const cur = this.terms.find((t) => t.isCurrent) || this.terms[0]
-        if (cur) {
-          this.termId = cur.termId
+        await this.loadCurrentContext()
+        const resolved = this.terms.find((t) => this.isResolvedCurrent(t))
+        const selected = resolved || this.terms[0]
+        if (selected) {
+          this.termId = selected.termId
           this.loadWeeks()
         }
       } catch (error) {

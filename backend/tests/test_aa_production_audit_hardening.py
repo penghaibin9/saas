@@ -163,14 +163,38 @@ def test_conflict_route_keeps_d6_owner_and_adds_bounded_pagination():
 
 
 def test_xlsx_routes_keep_existing_owners_and_use_shared_safe_upload_guard():
+    from app.modules.academic_affairs.services import academic_affairs_grade_xlsx_path_service as grade_xlsx_path
+    from app.services import xlsx_util as safe_xlsx
+
     schedule_source = inspect.getsource(scheduling_operations_router.schedule_import_xlsx)
     grade_source = inspect.getsource(grade_core_router.grade_import_xlsx)
     roster_source = inspect.getsource(roster_registration_router.roster_import_xlsx)
-    for source in (schedule_source, grade_source, roster_source):
+
+    # Schedule/roster remain on the shared bounded byte-upload facade.
+    for source in (schedule_source, roster_source):
         assert "read_safe_upload" in source
         assert "file.read(" not in source
+
+    safe_source = inspect.getsource(safe_xlsx.read_safe_upload)
+    assert "upload.read(1024 * 1024)" in safe_source
+    assert "validate_xlsx_package" in safe_source
+
+    # Grade owns a Path-native facade, but it terminates at the same archive-security
+    # policy through validate_xlsx_path rather than duplicating ZIP rules.
+    assert "read_grade_upload_path" in grade_source
+    assert "file.read(" not in grade_source
+    assert "teacher_grade_import_dry_run" in grade_source
+    grade_path_source = inspect.getsource(grade_xlsx_path.read_grade_upload_path)
+    assert "validate_xlsx_path" in grade_path_source
+    assert "upload.read(1024 * 1024)" in grade_path_source
+
+    archive_policy = inspect.getsource(safe_xlsx._validate_xlsx_archive)
+    assert 'name.endswith(".bin")' in archive_policy
+    assert '"vbaproject" in name' in archive_policy
+    assert '"/oleobjects/" in name' in archive_policy
+    assert '"/externallinks/" in name' in archive_policy
+
     assert "sched_svc.import_items" in schedule_source
-    assert "grade_svc.grade_import_dry_run" in grade_source
     assert "svc.roster_import_read" in roster_source
     assert scheduling_operations_router.schedule_import_xlsx.__module__.endswith("scheduling_operations_router")
     assert grade_core_router.grade_import_xlsx.__module__.endswith("grade_core_router")

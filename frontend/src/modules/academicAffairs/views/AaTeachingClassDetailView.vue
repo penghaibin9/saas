@@ -38,12 +38,35 @@
       </AppSectionCard>
 
       <AppSectionCard title="教师关系">
+        <div class="aa-section-toolbar">
+          <div class="mp-cell-sub">PRIMARY 与共同授课教师均按有效周次参与课表、考勤、成绩与工作量权限裁决。</div>
+          <AppButton v-if="canManageTeacherRelations" variant="primary" @click="openCreateTeacher">新增共同授课</AppButton>
+        </div>
+        <AppInlineAlert
+          v-if="!canManageTeachingClass"
+          type="info"
+          title="教师关系只读"
+          description="当前账号没有教学班管理权限；可查看正式教师关系与历史授课周次，但不能新增、调整或停用。"
+        />
+        <AppInlineAlert
+          v-else-if="teachingClass.status !== 'ACTIVE'"
+          type="info"
+          title="教学班已归档，教师关系只读"
+          description="历史教师身份和授课周次继续保留用于审计，不允许覆盖。"
+        />
         <EmptyState v-if="!teachingClass.teachers.length" title="尚未绑定教师" description="请回到教学任务分配稳定教师工号" />
         <DataTable v-else :columns="teacherColumns" :rows="teachingClass.teachers" row-key="teacherRelationId">
           <template #cell-teacher="{ row }"><div class="mp-cell-main">{{ row.teacherName || '—' }}</div><div class="mp-cell-sub">{{ row.teacherKey }}</div></template>
           <template #cell-roleType="{ row }">{{ teacherRoleLabel(row.roleType) }}</template>
           <template #cell-weeks="{ row }">第{{ row.startWeek || '?' }}—{{ row.endWeek || '?' }}周</template>
           <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'ACTIVE' ? 'success' : 'info'" :label="relationStatusLabel(row.status)" /></template>
+          <template #cell-actions="{ row }">
+            <div v-if="row.status === 'ACTIVE' && canManageTeacherRelations" class="aa-row-actions">
+              <button class="mp-link" @click="openEditTeacher(row)">调整</button>
+              <button v-if="row.roleType === 'CO_TEACHER'" class="mp-link is-danger" @click="openDeactivateTeacher(row)">停用</button>
+            </div>
+            <span v-else class="mp-cell-sub">—</span>
+          </template>
         </DataTable>
       </AppSectionCard>
 
@@ -115,26 +138,81 @@
         </DataTable>
       </AppSectionCard>
     </div>
+
+    <AppConfirmDialog
+      v-model:visible="teacherEditor.visible"
+      :title="teacherEditor.mode === 'create' ? '新增共同授课教师' : '调整正式教师关系'"
+      type="primary"
+      :confirm-text="teacherEditor.mode === 'create' ? '确认新增' : '确认调整'"
+      :submitting="teacherEditor.submitting"
+      @confirm="submitTeacherRelation"
+    >
+      <div class="aa-teacher-form">
+        <label>授课教师
+          <AppTeacherPicker v-model="teacherEditor.teacherKey" placeholder="选择正式教师账号" />
+        </label>
+        <label>关系角色
+          <input class="aa-input" :value="teacherRoleLabel(teacherEditor.roleType)" disabled />
+        </label>
+        <label>开始周
+          <input v-model.number="teacherEditor.startWeek" type="number" min="1" max="60" class="aa-input" placeholder="默认教学任务开始周" />
+        </label>
+        <label>结束周
+          <input v-model.number="teacherEditor.endWeek" type="number" min="1" max="60" class="aa-input" placeholder="默认教学任务结束周" />
+        </label>
+        <label class="is-wide">变更原因
+          <textarea v-model.trim="teacherEditor.reason" class="aa-textarea" maxlength="500" placeholder="不少于5字；冲突与周次覆盖由服务端最终校验" />
+        </label>
+      </div>
+    </AppConfirmDialog>
+
+    <AppConfirmDialog
+      v-model:visible="teacherDeactivate.visible"
+      title="停用共同授课教师"
+      type="danger"
+      confirm-text="确认停用"
+      :submitting="teacherDeactivate.submitting"
+      @confirm="deactivateTeacherRelation"
+    >
+      <div class="aa-teacher-form">
+        <AppInlineAlert
+          type="warning"
+          title="停用会立即影响后续授课权限"
+          :description="`${teacherDeactivate.teacherName || '该教师'} 的历史授课关系会保留，但后续课表、考勤、成绩与工作量将按剩余正式关系重新裁决。`"
+        />
+        <label class="is-wide">停用原因
+          <textarea v-model.trim="teacherDeactivate.reason" class="aa-textarea" maxlength="500" placeholder="不少于5字" />
+        </label>
+      </div>
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
 <script>
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppInlineAlert, AppSectionCard, AppStatusTag, AppStudentPicker } from '@/components/common'
+import { AppInlineAlert, AppSectionCard, AppStatusTag, AppStudentPicker, AppTeacherPicker, AppConfirmDialog } from '@/components/common'
 import { teachingClassApi } from '@/modules/academicAffairs/api/teaching-class.api'
+import { getPermissionPatterns } from '@/security/permissionGate'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
+
+function emptyTeacherEditor() {
+  return { visible: false, submitting: false, mode: 'create', relationId: '', roleType: 'CO_TEACHER', teacherKey: '', startWeek: null, endWeek: null, reason: '' }
+}
 
 export default {
   name: 'AaTeachingClassDetailView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppInlineAlert, AppSectionCard, AppStatusTag, AppStudentPicker },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppInlineAlert, AppSectionCard, AppStatusTag, AppStudentPicker, AppTeacherPicker, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', teachingClass: null,
       previewing: false, saving: false, rosterImpact: null,
       rosterForm: { studentIds: [], reason: '' },
-      teacherColumns: [{ key: 'teacher', title: '教师' }, { key: 'roleType', title: '角色' }, { key: 'weeks', title: '授课周次' }, { key: 'status', title: '状态' }],
+      teacherEditor: emptyTeacherEditor(),
+      teacherDeactivate: { visible: false, submitting: false, relationId: '', teacherName: '', reason: '' },
+      teacherColumns: [{ key: 'teacher', title: '教师' }, { key: 'roleType', title: '角色' }, { key: 'weeks', title: '授课周次' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '120px' }],
       memberColumns: [{ key: 'student', title: '学生' }, { key: 'classId', title: '行政班ID' }, { key: 'source', title: '成员来源' }, { key: 'status', title: '状态' }],
       versionColumns: [{ key: 'version', title: '版本' }, { key: 'source', title: '来源' }, { key: 'memberCount', title: '人数' }, { key: 'reason', title: '形成原因' }, { key: 'locked', title: '锁定信息' }, { key: 'status', title: '状态' }]
     }
@@ -142,6 +220,11 @@ export default {
   computed: {
     teachingClassId() { return String(this.$route.query.teachingClassId || this.$route.params.teachingClassId || '') },
     activeTeacher() { return (this.teachingClass?.teachers || []).find(row => row.roleType === 'PRIMARY' && row.status === 'ACTIVE') },
+    canManageTeachingClass() {
+      const patterns = getPermissionPatterns()
+      return Array.isArray(patterns) && matchPermission(patterns, 'academicAffairs.teachingTask.manage')
+    },
+    canManageTeacherRelations() { return this.canManageTeachingClass && this.teachingClass?.status === 'ACTIVE' },
     canCreateRosterVersion() {
       return Boolean(
         this.rosterImpact?.canCreate
@@ -176,6 +259,63 @@ export default {
         this.rosterImpact = null
       } else { this.teachingClass = null; this.error = res.message || '加载教学班失败' }
       this.loading = false
+    },
+    openCreateTeacher() {
+      if (!this.canManageTeacherRelations) return
+      this.teacherEditor = emptyTeacherEditor()
+      this.teacherEditor.visible = true
+    },
+    openEditTeacher(row) {
+      if (!this.canManageTeacherRelations || row.status !== 'ACTIVE') return
+      this.teacherEditor = {
+        visible: true,
+        submitting: false,
+        mode: 'edit',
+        relationId: row.teacherRelationId,
+        roleType: row.roleType,
+        teacherKey: row.teacherKey || '',
+        startWeek: row.startWeek ?? null,
+        endWeek: row.endWeek ?? null,
+        reason: ''
+      }
+    },
+    async submitTeacherRelation() {
+      const form = this.teacherEditor
+      if (!form.teacherKey) { toast.error('请选择授课教师'); return }
+      if (form.reason.trim().length < 5) { toast.error('变更原因不少于5字'); return }
+      if (form.startWeek && form.endWeek && Number(form.startWeek) > Number(form.endWeek)) { toast.error('开始周不能晚于结束周'); return }
+      form.submitting = true
+      const body = {
+        teacherKey: form.teacherKey,
+        startWeek: form.startWeek || undefined,
+        endWeek: form.endWeek || undefined,
+        reason: form.reason.trim()
+      }
+      const res = form.mode === 'create'
+        ? await teachingClassApi.createTeacher(this.teachingClassId, body)
+        : await teachingClassApi.updateTeacher(this.teachingClassId, form.relationId, body)
+      form.submitting = false
+      if (res.code === 0) {
+        form.visible = false
+        toast.success(form.mode === 'create' ? '共同授课教师已生效' : '正式教师关系已更新')
+        await this.load()
+      } else { toast.error(res.message || '教师关系保存失败') }
+    },
+    openDeactivateTeacher(row) {
+      if (!this.canManageTeacherRelations || row.status !== 'ACTIVE' || row.roleType !== 'CO_TEACHER') return
+      this.teacherDeactivate = { visible: true, submitting: false, relationId: row.teacherRelationId, teacherName: row.teacherName || row.teacherKey || '', reason: '' }
+    },
+    async deactivateTeacherRelation() {
+      const form = this.teacherDeactivate
+      if (form.reason.trim().length < 5) { toast.error('停用原因不少于5字'); return }
+      form.submitting = true
+      const res = await teachingClassApi.deactivateTeacher(this.teachingClassId, form.relationId, form.reason.trim())
+      form.submitting = false
+      if (res.code === 0) {
+        form.visible = false
+        toast.success('共同授课教师关系已停用')
+        await this.load()
+      } else { toast.error(res.message || '停用教师关系失败') }
     },
     async previewRoster() {
       if (!this.rosterForm.studentIds.length || this.previewing) return
@@ -215,12 +355,19 @@ export default {
 .aa-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .aa-facts > div { padding: 12px; border: 1px solid var(--border-200, #e5e7eb); border-radius: 6px; }
 .aa-facts span, .aa-facts b { display: block; }.aa-facts span { color: var(--text-500, #64748b); font-size: 12px; }.aa-facts b { margin-top: 4px; }
+.aa-section-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.aa-row-actions { display: flex; gap: 10px; align-items: center; }
+.mp-link.is-danger { color: var(--danger-600, #d54941); }
 .aa-roster-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 14px; align-items: end; margin-top: 14px; }
-.aa-roster-editor label { display: flex; flex-direction: column; gap: 6px; color: var(--text-700, #4e5969); font-size: 13px; }
+.aa-roster-editor label, .aa-teacher-form label { display: flex; flex-direction: column; gap: 6px; color: var(--text-700, #4e5969); font-size: 13px; }
+.aa-teacher-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.aa-teacher-form .is-wide { grid-column: 1 / -1; }
+.aa-input { height: 34px; padding: 0 12px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 14px; box-sizing: border-box; }
 .aa-textarea { min-height: 72px; resize: vertical; padding: 9px 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; font: inherit; }
 .aa-roster-actions { display: flex; gap: 8px; padding-bottom: 1px; }
 .aa-impact-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
 .aa-impact-grid strong { font-size: 20px; }
 @media (max-width: 1000px) { .aa-impact-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .aa-roster-editor { grid-template-columns: 1fr; } }
-@media (max-width: 900px) { .aa-summary-grid, .aa-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .aa-summary-grid, .aa-facts, .aa-teacher-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .aa-section-toolbar { align-items: stretch; flex-direction: column; } .aa-teacher-form { grid-template-columns: 1fr; } .aa-teacher-form .is-wide { grid-column: auto; } }
 </style>

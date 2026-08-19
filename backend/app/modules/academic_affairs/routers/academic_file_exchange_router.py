@@ -1,7 +1,10 @@
 """教务数据交换中心路由（阶段 7 收口）。"""
 from __future__ import annotations
 
+import io
+
 from fastapi import APIRouter, Depends, File, Form, Header, Path, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.v1.file_contract import validated_local_file_response
@@ -13,6 +16,11 @@ from app.modules.academic_affairs.services import academic_file_exchange_service
 from app.services import data_exchange_job_service as jobs
 
 router = APIRouter(prefix="/academic-affairs/file-exchange", tags=["教务中心·数据交换"])
+
+_XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_COURSE_MANAGE_PERMISSION = "academicAffairs.course.manage"
+_PROGRAM_MANAGE_PERMISSION = "academicAffairs.program.manage"
+_PROGRAM_PUBLISH_PERMISSION = "academicAffairs.program.publish"
 
 
 class ConfirmRequest(BaseModel):
@@ -72,6 +80,86 @@ def _created_message(item: dict) -> str:
     if item.get("status") == "VALIDATION_FAILED":
         return "文件已完成安全检查，但服务端预检存在错误"
     return "教务导入任务已创建"
+
+
+@router.get("/course-catalog/import-template", summary="下载课程库权威导入模板")
+def course_catalog_import_template(
+    user=Depends(require_permission(_COURSE_MANAGE_PERMISSION)),
+):
+    _ = user
+    from app.modules.academic_affairs.services.academic_affairs_school_setup_file_exchange_spec import (
+        build_course_catalog_import_template,
+    )
+
+    return StreamingResponse(
+        io.BytesIO(build_course_catalog_import_template()),
+        media_type=_XLSX_MEDIA,
+        headers={"Content-Disposition": "attachment; filename=course_catalog_import.xlsx"},
+    )
+
+
+@router.post("/course-catalog/import-jobs", summary="上传课程库 XLSX 并创建服务端权威 ImportJob")
+async def create_course_catalog_import_job(
+    file: UploadFile = File(...),
+    user=Depends(require_permission(_COURSE_MANAGE_PERMISSION)),
+):
+    item = await _store_import_job(
+        file=file,
+        biz_type="ACADEMIC_COURSE_CATALOG_IMPORT_SOURCE",
+        import_type=exchange.ACADEMIC_COURSE_CATALOG_IMPORT,
+        context={},
+        user=user,
+    )
+    return success(item, message=_created_message(item))
+
+
+@router.get("/programs/import-template", summary="下载培养方案六工作表权威导入模板")
+def program_import_template(
+    user=Depends(require_any_permission(
+        _PROGRAM_MANAGE_PERMISSION,
+        _PROGRAM_PUBLISH_PERMISSION,
+    )),
+):
+    _ = user
+    from app.modules.academic_affairs.services.academic_affairs_school_setup_program_workbook_adapter import (
+        build_program_import_template,
+    )
+
+    return StreamingResponse(
+        io.BytesIO(build_program_import_template()),
+        media_type=_XLSX_MEDIA,
+        headers={"Content-Disposition": "attachment; filename=academic_program_import.xlsx"},
+    )
+
+
+@router.post("/programs/definition/import-jobs", summary="上传培养方案定义 XLSX 并创建服务端权威 ImportJob")
+async def create_program_definition_import_job(
+    file: UploadFile = File(...),
+    user=Depends(require_permission(_PROGRAM_MANAGE_PERMISSION)),
+):
+    item = await _store_import_job(
+        file=file,
+        biz_type="ACADEMIC_PROGRAM_DEFINITION_IMPORT_SOURCE",
+        import_type=exchange.ACADEMIC_PROGRAM_IMPORT,
+        context={"phase": "DEFINITION"},
+        user=user,
+    )
+    return success(item, message=_created_message(item))
+
+
+@router.post("/programs/binding/import-jobs", summary="上传培养方案适用范围 XLSX 并创建服务端权威 ImportJob")
+async def create_program_binding_import_job(
+    file: UploadFile = File(...),
+    user=Depends(require_permission(_PROGRAM_PUBLISH_PERMISSION)),
+):
+    item = await _store_import_job(
+        file=file,
+        biz_type="ACADEMIC_PROGRAM_BINDING_IMPORT_SOURCE",
+        import_type=exchange.ACADEMIC_PROGRAM_IMPORT,
+        context={"phase": "BINDING"},
+        user=user,
+    )
+    return success(item, message=_created_message(item))
 
 
 @router.post("/roster/import-jobs", summary="上传学籍 XLSX 并创建服务端权威 ImportJob")
@@ -135,6 +223,9 @@ def confirm_import(
         "academicAffairs.grade.import",
         "academicAffairs.grade.input",
         "academicAffairs.schedule.import",
+        _COURSE_MANAGE_PERMISSION,
+        _PROGRAM_MANAGE_PERMISSION,
+        _PROGRAM_PUBLISH_PERMISSION,
     )),
 ):
     from app.services.data_exchange_confirm_service import confirm_import_job

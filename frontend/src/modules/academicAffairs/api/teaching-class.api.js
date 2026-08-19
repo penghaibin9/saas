@@ -41,5 +41,24 @@ export const teachingClassApi = {
       method: 'POST',
       body: { studentIds: (studentIds || []).map(Number), reason }
     }))
+  },
+  listTeachers(teachingClassId) {
+    return call(() => request(`${BASE}/${teachingClassId}/teachers`))
+  },
+  createTeacher(teachingClassId, body) {
+    return call(() => request(`${BASE}/${teachingClassId}/teachers`, {
+      method: 'POST',
+      body: { ...body, roleType: 'CO_TEACHER' }
+    }))
+  },
+  updateTeacher(teachingClassId, relationId, body) {
+    return call(() => request(`${BASE}/${teachingClassId}/teachers/${relationId}`, {
+      method: 'PUT', body
+    }))
+  },
+  deactivateTeacher(teachingClassId, relationId, reason) {
+    return call(() => request(`${BASE}/${teachingClassId}/teachers/${relationId}/deactivate`, {
+      method: 'POST', body: { reason }
+    }))
   }
 }

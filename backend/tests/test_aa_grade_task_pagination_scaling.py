@@ -1,7 +1,7 @@
 """D8-U2：成绩任务列表必须由 MySQL 分页，并保持教师 COURSE dataScope。"""
 from __future__ import annotations
 
-from sqlalchemy import event
+from sqlalchemy import event, inspect, text
 
 
 BASE = "/api/v1/academic-affairs"
@@ -16,10 +16,43 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _ensure_grade_deadline_schema() -> None:
+    """Make create_all-backed regression DBs match the additive W4 migration.
+
+    Grade deadline truth is intentionally migration-owned rather than mapped onto the
+    shared AaGradeTask ORM in this C-line branch.  Full-regression FAST_TEST_SCHEMA uses
+    ``metadata.create_all()`` instead of Alembic, so these two additive columns would be
+    absent even though every real migrated installation has them.  Keep the pagination
+    contract focused on pagination by applying the exact additive schema prerequisite in
+    this legacy create_all-backed test database; migrated-schema gates still validate the
+    actual Alembic revision and trigger separately.
+    """
+    from app.db.session import get_engine
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        columns = {row["name"] for row in inspect(conn).get_columns("t_aa_grade_task")}
+        if "deadline_at" not in columns:
+            conn.execute(text(
+                "ALTER TABLE t_aa_grade_task ADD COLUMN deadline_at DATETIME NULL"
+            ))
+        if "deadline_updated_at" not in columns:
+            conn.execute(text(
+                "ALTER TABLE t_aa_grade_task ADD COLUMN deadline_updated_at DATETIME NULL"
+            ))
+        indexes = {row["name"] for row in inspect(conn).get_indexes("t_aa_grade_task")}
+        if "ix_aa_grade_task_deadline" not in indexes:
+            conn.execute(text(
+                "CREATE INDEX ix_aa_grade_task_deadline "
+                "ON t_aa_grade_task (tenant_id, status, deadline_at)"
+            ))
+
+
 def test_grade_task_admin_list_uses_sql_count_limit_offset(client, db_mode):
     from app.db.session import get_engine, get_sessionmaker
     from app.models import AaGradeTask
 
+    _ensure_grade_deadline_schema()
     db = get_sessionmaker()()
     baseline = db.query(AaGradeTask).filter(
         AaGradeTask.tenant_id == TID,
@@ -77,6 +110,7 @@ def test_grade_task_teacher_scope_survives_sql_pagination(client, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import AaGradeTask
 
+    _ensure_grade_deadline_schema()
     db = get_sessionmaker()()
     own_keys = ["academic01", "u_academic01"]
     baseline_own = db.query(AaGradeTask).filter(

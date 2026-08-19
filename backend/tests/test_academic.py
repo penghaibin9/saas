@@ -6,7 +6,7 @@ MAIN_TID = 1000000000000000001
 
 def _seed(_db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import AcademicGrade, AcademicMakeup, AcademicStudent, AcademicWarning
+    from app.models import AaCourse, AcademicGrade, AcademicMakeup, AcademicStudent, AcademicWarning
     db = get_sessionmaker()()
     try:
         s = AcademicStudent(tenant_id=MAIN_TID, name="学业甲", student_no="2023999001", class_id="CL01",
@@ -15,8 +15,31 @@ def _seed(_db_mode):
                             warning_level="HIGH", warning_count=1, academic_status="WARNING")
         db.add(s)
         db.flush()
-        g = AcademicGrade(tenant_id=MAIN_TID, acad_student_id=s.id, course_name="高等数学", term="2025-2026-2",
-                          nature="REQUIRED", credit_value=5, score=52, pass_status="FAILED", exam_type="FINAL")
+        course = AaCourse(
+            tenant_id=MAIN_TID,
+            course_code="ACAD_TEST_MATH",
+            course_name="高等数学",
+            credit=5,
+            version=1,
+            status="ENABLED",
+        )
+        db.add(course)
+        db.flush()
+        g = AcademicGrade(
+            tenant_id=MAIN_TID,
+            acad_student_id=s.id,
+            course_id=course.id,
+            course_code=course.course_code,
+            course_version=course.version,
+            course_name=course.course_name,
+            term="2025-2026-2",
+            nature="REQUIRED",
+            credit_value=5,
+            score=52,
+            pass_status="FAILED",
+            exam_type="FINAL",
+            source="MANUAL",
+        )
         mk = AcademicMakeup(tenant_id=MAIN_TID, acad_student_id=s.id, course_name="高等数学", term="2025-2026-2",
                             origin_score=52, status="PENDING_EXAM")
         w = AcademicWarning(tenant_id=MAIN_TID, code="AW-T-1", acad_student_id=s.id, warn_type="MULTI_FAIL",
@@ -35,20 +58,31 @@ def test_students_and_detail(client, auth_headers, db_mode):
     assert lst["data"]["items"][0]["academicStatusLabel"] == "预警中"
     det = client.get(f"/api/v1/academic/students/{ids['student']}", headers=auth_headers).json()
     assert det["code"] == 0 and len(det["data"]["grades"]) == 1 and len(det["data"]["warnings"]) == 1
-    assert det["data"]["credit"]["gap"] == 80
+    # 详情使用正式 EffectiveGrade 真相，不得拿 AcademicStudent.obtained_credits 历史缓存充当权威。
+    # 当前唯一正式成绩为不及格，因此已获正式学分为 0、缺口为 120。
+    assert det["data"]["credit"]["obtained"] == 0
+    assert det["data"]["credit"]["gap"] == 120
 
 
-def test_grade_update_requires_reason(client, auth_headers, db_mode):
+def test_legacy_grade_update_is_fail_closed(client, auth_headers, db_mode):
     ids = _seed(db_mode)
-    bad = client.put(f"/api/v1/academic/grades/{ids['grade']}", headers=auth_headers,
-                     json={"score": 75, "reason": "x"}).json()
-    assert bad["code"] == 422001
-    ok = client.put(f"/api/v1/academic/grades/{ids['grade']}", headers=auth_headers,
-                    json={"score": 75, "reason": "登分误差已核对更正"}).json()
-    assert ok["code"] == 0
-    # 成绩改为75后 passStatus 应为 PASSED
+    # C-W5 已冻结：旧 /academic/grades 只保留兼容 URL，不再允许直接改正式成绩。
+    # 无论理由长短，都必须明确 409，引导到 GradeTask / correction / recheck 正式链。
+    for reason in ("x", "登分误差已核对更正"):
+        blocked = client.put(
+            f"/api/v1/academic/grades/{ids['grade']}",
+            headers=auth_headers,
+            json={"score": 75, "reason": reason},
+        ).json()
+        assert blocked["code"] == 409001
+        assert blocked["bizCode"] == "DATA_CONFLICT"
+        assert blocked["details"]["reason"] == "NO_DIRECT_ACADEMIC_GRADE_MUTATION"
+
+    # fail-closed 必须同时保证投影没有被旧入口偷偷改写。
     det = client.get(f"/api/v1/academic/students/{ids['student']}", headers=auth_headers).json()
-    assert det["data"]["grades"][0]["passStatus"] == "PASSED"
+    grade = det["data"]["grades"][0]
+    assert grade["score"] == 52
+    assert grade["passStatus"] == "FAILED"
 
 
 def test_makeup_status(client, auth_headers, db_mode):

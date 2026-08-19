@@ -1,5 +1,6 @@
 /** 教师端数据服务：真实后端优先（主链：学生/审批/待办/消息/学生360），失败自动回退 mock。 */
 import { mockRequest, realFirst, realFirstStrict, realRequest } from './request'
+import { academicGradeEntryApi } from './academicGradeEntryApi'
 import * as real from './realApi'
 import * as M from '@/mock'
 
@@ -194,10 +195,10 @@ export const teacherApi = {
   submitAcademicEvaluation: (taskId, body) => real.teacherAcademicEvaluationSubmit(taskId, body),
   getAcademicEvaluationResults: () => real.teacherAcademicEvaluationResults(),
   appealAcademicEvaluation: (resultId, reason) => real.teacherAcademicEvaluationAppeal(resultId, reason),
-  getGradeTasks: (status) => real.teacherGradeTasks(status),
-  getGradeRoster: (taskId) => real.teacherGradeRoster(taskId),
-  enterGradeScore: (taskId, body) => real.teacherGradeEnterScore(taskId, body),
-  submitGradeTask: (taskId) => real.teacherGradeSubmitTask(taskId),
+  getGradeTasks: (status) => academicGradeEntryApi.tasks(status),
+  getGradeRoster: (taskId) => academicGradeEntryApi.roster(taskId),
+  enterGradeScore: (taskId, body) => academicGradeEntryApi.enterScore(taskId, body),
+  submitGradeTask: (taskId) => academicGradeEntryApi.submit(taskId),
   getAttendanceSessions: () => real.teacherAttendanceSessions(),
   getAttendanceClassOptions: () => real.teacherAttendanceClassOptions(),
   createAttendanceSession: (body) => real.teacherAttendanceCreate(body),

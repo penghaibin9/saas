@@ -1,11 +1,16 @@
 <template>
   <ModulePageShell
     title="学期状态"
-    subtitle="管理学期从编制、发布到冻结的状态流转 · 冻结后禁止结构性修改，归档动作请到「学期归档」"
+    subtitle="管理学期从编制、发布到冻结的状态流转 · 当前学期结论统一来自 A-C1"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
+      <AppInlineAlert
+        v-if="currentError"
+        type="warning"
+        :description="`当前学期解析失败，本页不再依据历史 isCurrent 标记猜测“当前”；状态台账与冻结/解冻仍按显式学期执行。${currentError}`"
+      />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" title="还没有学年学期" description="请先到「学年学期」创建一个学期" />
@@ -18,7 +23,8 @@
           <AppStatusTag :type="statusType(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
         </template>
         <template #cell-current="{ row }">
-          <AppStatusTag v-if="row.isCurrent" type="success" dot>当前</AppStatusTag>
+          <AppStatusTag v-if="isResolvedCurrent(row)" type="success" dot>全校当前</AppStatusTag>
+          <span v-else-if="currentError" class="mp-cell-sub">待核对</span>
           <span v-else class="mp-cell-sub">—</span>
         </template>
         <template #cell-actions="{ row }">
@@ -68,7 +74,7 @@
 </template>
 
 <script>
-/** 学期状态（/admin/academic-affairs/terms/status）：POST /terms/{id}/freeze、POST /terms/{id}/unfreeze（SM-01 PUBLISHED⇄FROZEN）。 */
+/** 学期状态（/admin/academic-affairs/terms/status）：状态写操作按显式 term；“当前”展示必须来自 A-C1 /terms/current。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag, AppConfirmDialog, AppFormItem, AppTextarea, AppInlineAlert } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
@@ -88,6 +94,8 @@ export default {
       loading: true,
       error: '',
       rows: [],
+      currentContext: null,
+      currentError: '',
       acting: '',
       freezeDialog: { visible: false, submitting: false, row: null, message: '' },
       unfreezeDrawer: { visible: false, submitting: false, row: null },
@@ -107,10 +115,26 @@ export default {
   methods: {
     statusLabel(s) { return safeEnumLabel({ value: s, dictionary: STATUS_LABEL, unknownLabel: '状态待确认' }) },
     statusType(s) { return STATUS_TYPE[s] || 'default' },
+    isResolvedCurrent(row) {
+      return Boolean(this.currentContext?.termId) && String(row.termId) === String(this.currentContext.termId)
+    },
+    async loadCurrentContext() {
+      this.currentError = ''
+      const res = await academicAffairsApi.getCurrentTerm()
+      if (res.code === 0) {
+        this.currentContext = res.data || null
+      } else {
+        this.currentContext = null
+        this.currentError = res.message || '当前学期解析失败'
+      }
+    },
     async load() {
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getTerms({ page: 1, pageSize: 100 })
+      const [res] = await Promise.all([
+        academicAffairsApi.getTerms({ page: 1, pageSize: 100 }),
+        this.loadCurrentContext()
+      ])
       if (res.code === 0) {
         this.rows = res.data.list
       } else {

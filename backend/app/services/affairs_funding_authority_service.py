@@ -14,7 +14,7 @@ from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 from typing import Any
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, select, text
 
 from app.core.exceptions import AppException, check_version
 from app.services import affairs_funding_service as legacy
@@ -87,6 +87,83 @@ def _body_without_client_amount(body):
 
 def _table_exists(db, table: str) -> bool:
     return inspect(db.get_bind()).has_table(table)
+
+
+def _formal_scholarship_eligibility(db, student_id, project=None) -> dict:
+    """Reassert the project-aware scholarship contract after legacy runtime shims.
+
+    Older compatibility installers may replace ``legacy._check_scholarship`` with a
+    two-argument ``scholarship_eligible`` helper.  Formal funding apply/preflight
+    passes the selected project so tenant config + project overrides can be frozen
+    into the eligibility snapshot.  Package 10 is installed after those shims, so
+    this authority layer restores that contract without weakening the old two-arg
+    callers (``project`` remains optional).
+    """
+    from app.models import (AcademicGrade, AcademicStudent, CsDiscipline,
+                            CsServiceStudent, StudentProfile)
+
+    contract = legacy._eligibility_rules("SCHOLARSHIP", project)
+    rules = contract["rules"]
+    student = legacy.tenant_get(db, StudentProfile, int(student_id))
+    status_fact = bool(
+        student and student.student_status in (None, "NORMAL", "在籍", "ACTIVE")
+    )
+
+    discipline_fact = True
+    cs_student = db.scalars(select(CsServiceStudent).where(
+        CsServiceStudent.tenant_id == _tid(),
+        CsServiceStudent.student_id == int(student_id),
+        CsServiceStudent.is_deleted.is_(False),
+    )).first()
+    if cs_student:
+        active_discipline = db.scalar(select(CsDiscipline.id).where(
+            CsDiscipline.tenant_id == _tid(),
+            CsDiscipline.cs_student_id == cs_student.id,
+            CsDiscipline.record_status == "ACTIVE",
+            CsDiscipline.is_deleted.is_(False),
+        ).limit(1))
+        discipline_fact = active_discipline is None
+
+    grade_fact = True
+    academic_student = db.scalars(select(AcademicStudent).where(
+        AcademicStudent.tenant_id == _tid(),
+        AcademicStudent.student_id == int(student_id),
+        AcademicStudent.is_deleted.is_(False),
+    )).first()
+    if academic_student:
+        failed_grade = db.scalar(select(AcademicGrade.id).where(
+            AcademicGrade.tenant_id == _tid(),
+            AcademicGrade.acad_student_id == academic_student.id,
+            AcademicGrade.pass_status == "FAILED",
+            AcademicGrade.record_status == "ACTIVE",
+            AcademicGrade.is_deleted.is_(False),
+        ).limit(1))
+        grade_fact = failed_grade is None
+
+    status_ok = status_fact or not bool(rules.get("requireActiveStatus", True))
+    discipline_ok = discipline_fact or not bool(
+        rules.get("requireNoActiveDiscipline", True)
+    )
+    grade_ok = grade_fact or not bool(rules.get("requireNoFailedGrade", True))
+    return {
+        "type": "SCHOLARSHIP",
+        "statusOk": status_ok,
+        "disciplineOk": discipline_ok,
+        "gradeOk": grade_ok,
+        "facts": {
+            "activeStatus": status_fact,
+            "noActiveDiscipline": discipline_fact,
+            "noFailedGrade": grade_fact,
+        },
+        "ruleVersion": contract["version"],
+        "ruleSource": contract["source"],
+        "ruleSourceChain": contract["sourceChain"],
+        "projectId": contract["projectId"],
+        "projectOverrides": contract["projectOverrides"],
+        "rules": rules,
+        "evaluatedAt": datetime.utcnow().isoformat(),
+        "ok": status_ok and discipline_ok and grade_ok,
+    }
 
 
 def _project_rule(db, application) -> tuple[Decimal, dict]:
@@ -340,8 +417,11 @@ def install() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
-    for name in ("create_project", "apply", "_grant_one", "_app_row"):
+    for name in ("create_project", "apply", "_grant_one", "_app_row", "_check_scholarship"):
         _ORIGINALS[name] = getattr(legacy, name)
+    # Package 10 is the last funding authority installer. Restore the formal
+    # project-aware scholarship contract after any older two-argument shim.
+    legacy._check_scholarship = _formal_scholarship_eligibility
     legacy.create_project = _create_project
     legacy.apply = _apply
     legacy._grant_one = _grant_one

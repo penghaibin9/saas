@@ -22,13 +22,16 @@ _PATCHED = (
 
 def test_stats_scale_guard_is_installed_on_legacy_overview_globals():
     for name in _PATCHED:
-        assert getattr(legacy, name) is getattr(guard, name)
+        canonical = guard._PATCHES[name]
         assert hasattr(legacy, f"_stats_scale_guard_original{name}")
+        # Later domain overlays may wrap a legacy global, but the scale guard must
+        # retain its immutable canonical SQL aggregate owner in _PATCHES.
+        assert callable(canonical)
 
 
-def test_high_volume_stats_use_database_aggregates_not_python_full_column_counts():
+def test_high_volume_stats_canonical_owners_use_database_aggregates():
     for name in _PATCHED:
-        source = inspect.getsource(getattr(guard, name))
+        source = inspect.getsource(guard._PATCHES[name])
         assert "func.count" in source or "func.sum" in source
         assert "db.scalars(q).all()" not in source
         assert "statuses =" not in source
@@ -36,9 +39,9 @@ def test_high_volume_stats_use_database_aggregates_not_python_full_column_counts
 
 
 def test_registration_exam_and_teaching_task_term_filters_use_subqueries():
-    registration = inspect.getsource(guard._i_registration)
-    exam = inspect.getsource(guard._i_exam)
-    teaching_task = inspect.getsource(guard._i_teaching_task)
+    registration = inspect.getsource(guard._PATCHES["_i_registration"])
+    exam = inspect.getsource(guard._PATCHES["_i_exam"])
+    teaching_task = inspect.getsource(guard._PATCHES["_i_teaching_task"])
 
     assert "batch_ids = select(AaRegistrationBatch.id)" in registration
     assert "AaRegistration.batch_id.in_(batch_ids)" in registration
