@@ -112,7 +112,7 @@ from . import academic_affairs_change_safety_guard
 
 academic_affairs_change_safety_guard.install()
 
-# Stage C1：在包 5 安全层之后再包一层 temporal fact / future-effective 语义；不得绕过原门禁。
+# Stage C1：在包 5 安全层之后叠加 temporal fact / future-effective 语义；不得绕过原门禁。
 from . import academic_affairs_change_temporal_guard
 
 academic_affairs_change_temporal_guard.install()
