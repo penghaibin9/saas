@@ -115,7 +115,7 @@ export default {
     return {
       sessions: [], loaded: false, state: 'loading', showForm: false, creating: false,
       sessionTypes: ['常规', '实训', '晚自习', '其他'],
-      taskOptions: [], taskIndex: 0, patternIndex: -1, taskSelectionInvalid: false, routeSeed: null,
+      taskOptions: [], taskIndex: 0, patternIndex: -1, taskSelectionInvalid: false, routeSeed: null, sessionSeed: null,
       form: { teachingTaskId: '', classId: '', sessionDate: '', slotNo: '', scheduleItemId: '', sessionType: '' },
       active: null, items: [], detailLoading: false, marking: {}, submitting: false, STATUS_OPTS
     }
@@ -164,11 +164,25 @@ export default {
     }
   },
   onLoad(options = {}) {
-    this.routeSeed = this.parseOccurrenceSeed(options)
+    this.sessionSeed = this.parseSessionSeed(options)
+    this.routeSeed = this.sessionSeed ? null : this.parseOccurrenceSeed(options)
     this.load()
     this.loadTasks()
   },
   methods: {
+    parseSessionSeed(options = {}) {
+      const sessionRaw = String(options.sessionId || '').trim()
+      if (!sessionRaw) return null
+      const occurrenceFields = [options.teachingTaskId, options.sessionDate, options.slotNo, options.scheduleItemId]
+      if (occurrenceFields.some((value) => String(value || '').trim())) {
+        return { invalid: true, message: '考勤链接参数冲突，请重新从教师今日课次进入' }
+      }
+      const sessionId = Number(sessionRaw)
+      if (!Number.isInteger(sessionId) || sessionId <= 0) {
+        return { invalid: true, message: '考勤场次链接无效，请重新从教师今日课次进入' }
+      }
+      return { invalid: false, sessionId: String(sessionId) }
+    },
     parseOccurrenceSeed(options = {}) {
       const taskIdRaw = String(options.teachingTaskId || '').trim()
       const sessionDate = String(options.sessionDate || '').trim()
@@ -193,6 +207,16 @@ export default {
         slotNo: String(slotNo),
         scheduleItemId
       }
+    },
+    applySessionSeed() {
+      const seed = this.sessionSeed
+      if (!seed) return
+      this.sessionSeed = null
+      if (seed.invalid) {
+        toast(seed.message)
+        return
+      }
+      this.openSession({ sessionId: seed.sessionId })
     },
     applyOccurrenceSeed() {
       const seed = this.routeSeed
@@ -299,6 +323,7 @@ export default {
         this.sessions = (data && data.items) || []
         this.loaded = true
         this.state = 'ready'
+        this.applySessionSeed()
       }).catch(() => { this.state = 'error' })
     },
     createSession() {

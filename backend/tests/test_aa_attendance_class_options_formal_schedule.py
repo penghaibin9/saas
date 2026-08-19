@@ -209,7 +209,6 @@ def test_attendance_class_options_expose_only_active_formal_schedule_patterns(db
     result = facade.teacher_attendance_class_options(_user())
     by_task = {item["teachingTaskId"]: item for item in result["items"]}
     ready = by_task[str(task_ready.id)]
-    old = by_task[str(task_old.id)]
 
     assert result["termStartDate"] == "2026-03-02"
     assert result["termEndDate"] == "2026-07-05"
@@ -225,7 +224,6 @@ def test_attendance_class_options_expose_only_active_formal_schedule_patterns(db
         "activeBatchId": str(active_batch.id),
         "scopeType": "COLLEGE",
         "scopeId": str(active_batch.college_id),
-        "scopeHeadVersion": 7,
         "weekday": 1,
         "slotNo": 2,
         "startWeek": 1,
@@ -233,25 +231,24 @@ def test_attendance_class_options_expose_only_active_formal_schedule_patterns(db
         "weekParity": "ODD",
         "changeId": None,
         "changeType": None,
-        "changeAppliedAt": None,
     }
 
-    assert old["formalOccurrenceReady"] is False
-    assert old["formalScheduleStatus"] == "NOT_SCHEDULED"
-    assert old["formalSchedulePatterns"] == []
-    assert "当前正式课表" in old["formalScheduleIssue"]
+    assert str(task_old.id) not in by_task
 
 
 def test_attendance_class_options_uses_bounded_batch_projection_not_per_task_gets():
+    from app.modules.academic_affairs.services import academic_affairs_teacher_today_service as today
     from app.modules.academic_affairs.services import mobile_academic_affairs_facade as facade
 
-    source = inspect.getsource(facade.teacher_attendance_class_options)
-    assert "formal_schedule_patterns_for_tasks" in source
-    assert "db.get(AaTeachingTaskBatch" not in source
-    assert "db.get(SchoolClass" not in source
-    assert "AaTeachingTask.batch_id.in_(batch_ids)" in source
-    assert "SchoolClass.id.in_(class_ids)" in source
+    picker_source = inspect.getsource(facade.teacher_attendance_class_options)
+    projection_source = inspect.getsource(today._teacher_schedule_in_session)
 
+    assert "teacher_schedule_projection" in picker_source
+    assert "formal_schedule_patterns_for_tasks" in projection_source
+    assert "db.get(AaTeachingTaskBatch" not in projection_source
+    assert "db.get(SchoolClass" not in projection_source
+    assert "AaTeachingTask.batch_id.in_(batch_ids)" in projection_source
+    assert "SchoolClass.id.in_(class_ids)" in projection_source
 
 
 def test_attendance_class_options_excludes_non_executable_task_even_with_formal_schedule(db_mode):
@@ -271,8 +268,8 @@ def test_attendance_class_options_excludes_non_executable_task_even_with_formal_
 
 def test_attendance_class_options_reuses_canonical_task_execution_guard():
     from app.modules.academic_affairs.services import academic_affairs_attendance_service as attendance
-    from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as public
-    from app.modules.academic_affairs.services import mobile_academic_affairs_facade as facade
+    from app.modules.academic_affairs.services import academic_affairs_attendance_teacher_relation_guard as command
+    from app.modules.academic_affairs.services import academic_affairs_teacher_today_service as today
 
     assert attendance.ATTENDANCE_TASK_STATUSES == frozenset({
         "TEACHER_CONFIRMED", "COLLEGE_REVIEW", "APPROVED", "READY",
@@ -284,11 +281,10 @@ def test_attendance_class_options_reuses_canonical_task_execution_guard():
     assert attendance.attendance_task_executable("ASSIGNED") is False
     assert attendance.attendance_task_executable("PENDING_ASSIGN") is False
 
-    read_source = inspect.getsource(facade.teacher_attendance_class_options)
-    assert "ATTENDANCE_TASK_STATUSES" in read_source
-    assert "AaTeachingTask.status.in_(sorted(ATTENDANCE_TASK_STATUSES))" in read_source
-    assert 'status.notin_(["PENDING_ASSIGN", "REJECTED_BY_TEACHER", "MERGED"])' not in read_source
+    projection_source = inspect.getsource(today._teacher_schedule_in_session)
+    assert "attendance_task_executable(task.status)" in projection_source
+    assert 'status.notin_(["PENDING_ASSIGN", "REJECTED_BY_TEACHER", "MERGED"])' not in projection_source
 
-    write_source = inspect.getsource(public.create_session)
-    assert "attendance_task_executable(task.status)" in write_source
-    assert "task.status or" not in write_source
+    command_source = inspect.getsource(command.create_session)
+    assert "public.attendance_task_executable(task.status)" in command_source
+    assert "task.status or" not in command_source

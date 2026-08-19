@@ -188,8 +188,9 @@ def test_invalid_expected_schedule_item_identity_is_rejected(db_mode):
     db.close()
 
 
-def test_public_attendance_create_forwards_client_schedule_item_identity():
+def test_attendance_command_forwards_client_schedule_item_identity():
     source = (
-        ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py"
+        ROOT
+        / "backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py"
     ).read_text(encoding="utf-8")
-    assert "expected_schedule_item_id=body.get(\"scheduleItemId\")" in source
+    assert 'expected_schedule_item_id=body.get("scheduleItemId")' in source

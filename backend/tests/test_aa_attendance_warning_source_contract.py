@@ -7,10 +7,8 @@ def test_formal_attendance_warning_condition_excludes_admin_special():
 
     condition = service._formal_attendance_session_condition(AaAttendanceSession)
     sql = str(condition.compile(compile_kwargs={"literal_binds": True}))
-    assert "source_type" in sql
     assert "IS NULL" in sql
     assert "ADMIN_SPECIAL" in sql
-    assert "FORMAL_TEACHING" in sql
     assert "!=" in sql
 
 

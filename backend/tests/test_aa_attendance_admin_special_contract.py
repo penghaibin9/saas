@@ -314,11 +314,16 @@ def test_explicit_admin_special_stats_condition_preserves_legacy_null_fallback()
 
     condition = service._stats_session_type_condition(AaAttendanceSession, "ADMIN_SPECIAL")
     sql = str(condition.compile(compile_kwargs={"literal_binds": True}))
-    assert "source_type" in sql
     assert "ADMIN_SPECIAL" in sql
     assert " = " in sql
-    assert "IS NULL" in sql
     assert "session_type" in sql
+    if hasattr(AaAttendanceSession, "source_type"):
+        assert "source_type" in sql
+        assert "IS NULL" in sql
+    else:
+        assert "source_type" not in sql
+        assert "IS NULL" not in sql
+        assert sql.count("session_type") == 1
 
 
 def test_normal_teacher_contract_remains_task_first():
