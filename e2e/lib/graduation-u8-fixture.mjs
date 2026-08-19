@@ -176,8 +176,13 @@ export async function prepareGraduationTeacherMobileGoldFixture() {
   let proposals = await proposalRows(admin, fixture)
   let pending = proposals.find((row) => String(row.status || '').toUpperCase() === 'PENDING_REVIEW')
   if (!pending) {
-    if (proposals.length) {
+    const existingStatuses = proposals.map((row) => String(row.status || '').toUpperCase())
+    const blocking = existingStatuses.filter((status) => status && status !== 'NOT_SUBMITTED')
+    if (blocking.length) {
       throw new Error(`U8 Gold fixture has unexpected existing proposal state: ${JSON.stringify(proposals)}`)
+    }
+    if (proposals.length > 1) {
+      throw new Error(`U8 Gold fixture has duplicate NOT_SUBMITTED proposal projections: ${JSON.stringify(proposals)}`)
     }
     await student.post('/mobile/graduation/proposal', {
       background: `U8 Gold 开题背景 ${fixture.runId}`,
