@@ -49,14 +49,30 @@ test('U10 material notice deep-links to one authorized requirement on all consum
   const registry = read('backend/app/services/message_action_registry.py')
   const view = read('frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue')
   const miniDetail = read('miniapp/src/pages/common/message-detail/index.vue')
+  const miniAdapter = read('backend/app/services/mobile_action_service.py')
+  const miniRouter = read('miniapp/src/services/actionRouterCore.mjs')
+  const miniPage = read('miniapp/src/pages/student/affairs/index.vue')
   assert.match(operations, /action_key="student\.affairs\.material"/)
   assert.match(registry, /"student\.affairs\.material"/)
   assert.match(registry, /"materialRequirementId"/)
   assert.match(view, /requirementId: this\.focusRequirementId/)
+
   // 消息详情是学生端公共页；材料通知只能进入学生自己的材料页，
   // 不能因缓存会话或伪造参数跳转到教师处理入口。
-  assert.match(miniDetail, /pages\/student\/affairs\/index\?materialRequirementId=/)
+  //
+  // 小程序 V3（§4.1/§4.2）把这条约束从「页面里硬编码一条字符串」升级成三道服务端/客户端
+  // 门禁，页面本身不再拼任何业务路由：
+  //   1. registry 登记 studentMini 落点就是学生自己的材料页；
+  //   2. 后端 Adapter 按端前缀白名单裁剪 target；
+  //   3. 前端 canNavigate() 再做一次同样的 fail-closed 兜底。
+  assert.match(registry, /"studentMini": "\/pages\/student\/affairs\/index"/)
+  assert.match(miniAdapter, /CLIENT_STUDENT_MINI: \("\/pages\/student\/", "\/pages\/common\/"\)/)
+  assert.match(miniRouter, /student: \['\/pages\/student\/', '\/pages\/common\/'\]/)
+  assert.match(miniPage, /query\.materialRequirementId/)
+  // 页面不得再自己拼业务路由或跳教师入口。
   assert.doesNotMatch(miniDetail, /pages\/teacher\//)
+  assert.doesNotMatch(miniDetail, /const (ACTION_ROUTES|MODULE_ROUTES)\s*=/)
+  assert.match(miniDetail, /runAction\(/)
 })
 
 test('U11 dashboard priority rows reuse permission-filtered drill paths', () => {

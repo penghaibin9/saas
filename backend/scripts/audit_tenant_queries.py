@@ -50,6 +50,11 @@ VERIFIED_LINE_RELOCATIONS = {
         "modules/academic_affairs/services/academic_affairs_grade_service.py:1085",
     "modules/academic_affairs/services/academic_affairs_grade_service.py:1099":
         "modules/academic_affairs/services/academic_affairs_grade_service.py:1086",
+    # 小程序 V3 S2 在 mobile_student_service.py 顶部加了一行 import，并在 message_get()
+    # 的返回体里加了 8 行 typed action 投影，使其后所有行整体下移 9 行。下面两处
+    # 实习/就业裸取行的代码一字未改（内容与基线 1854/2060 行逐字相同），只是位置搬了家。
+    "services/mobile_student_service.py:1863": "services/mobile_student_service.py:1854",
+    "services/mobile_student_service.py:2069": "services/mobile_student_service.py:2060",
 }
 
 
