@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "wave": "T0",
-  "capturedAt": "2026-08-20T05:33:00+08:00",
+  "capturedAt": "2026-08-20T06:06:00+08:00",
   "authority": "跃科_教师端微信小程序_生产级开发手册_V3.0_2026-08-19",
   "repository": "penghaibin9/saas",
   "branch": "agent/miniapp-teacher-v3-production-20260820",
@@ -15,7 +15,7 @@
     "pr147": {
       "state": "open",
       "draft": true,
-      "headSha": "49195fa41ba4a9f3eb7a92b1363b5cbd4962ed6e",
+      "headSha": "1c5ab850460195a21902611ce6fc0ab7cf045361",
       "headMovedSincePreviousFreeze": true,
       "collision": [
         "backend/app/services/mobile_teacher_service.py"
@@ -43,7 +43,7 @@
       "state": "open",
       "draft": true,
       "branch": "claude/new-session-au46r1",
-      "headSha": "6372af205bef078194139bf27060dae798690f48",
+      "headSha": "3846c5117df5dde0c2e7b594e9d4d0feb21a2746",
       "headMovedSincePreviousFreeze": true,
       "handoffReady": false,
       "currentWaves": ["S0", "S1", "S1.5", "S2_IN_PROGRESS"],
@@ -74,15 +74,19 @@
     "myStudentsPlacement": "Workbench first-screen high-frequency entry plus independent paginated page"
   },
   "t1": {
-    "status": "SAFE_PREHANDOFF_SLICE_ALLOWED",
-    "allowedNow": [
-      "teacher-only DTO projection that only consumes already-resolved workbench todo fields",
+    "status": "SAFE_PREHANDOFF_NETWORK_SLICE_ACTIVE",
+    "implementedNow": [
+      "teacher-only additive DTO projection preserving legacy fields",
+      "teacher-mobile canonical Todo list/detail API wiring through workbench_todo_service",
+      "teacherMini client-aware workbench snapshot Todo serialization",
+      "teacher path prefix fail-closed guard for server-resolved targets",
       "contract tests proving no local route map or title/todoType guessing"
     ],
     "blockedUntilOwnerReleaseOrT8": [
       "todo_route_registry.py teacherMini mappings",
-      "mobile_action_service.py integration",
-      "mobile_performance_service.py wiring",
+      "mobile_action_service.py shared adapter integration",
+      "mobile_performance_service.py shared wiring",
+      "miniapp teacher workbench/todos/risk UI files while PR #182 remains live",
       "mobile_teacher_service.py wiring while PR #147 remains live"
     ]
   }
