@@ -61,16 +61,24 @@ def test_no_live_workflow_task_is_created_with_zero_assignee():
 
 
 def test_grade_correction_command_takes_over_all_entries():
-    """包 1 的接管必须成立，否则上面那条豁免（旧实现是死代码）就不成立。"""
+    """更正命令仍是唯一事实 owner；教师申请额外经过 C-W4 live authority。"""
     from app.modules.academic_affairs.services import (
         academic_affairs_grade_core_service as core,
         academic_affairs_grade_service as public,
     )
 
-    expected = "academic_affairs_grade_correction_command"
+    command_owner = "academic_affairs_grade_correction_command"
+    live_owner = "academic_affairs_grade_change_live_authority"
     for module in (core, public):
-        for name in ("change_request", "change_college_review", "change_academic_review"):
-            assert getattr(module, name).__module__.endswith(expected), (
+        request_entry = getattr(module, "change_request")
+        assert request_entry.__module__.endswith(live_owner), (
+            f"{module.__name__}.change_request 未经过 live teacher authority")
+        assert getattr(request_entry, "_grade_live_teacher_authority", False) is True
+        assert "_correction.change_request" in inspect.getsource(request_entry), (
+            "live authority 必须委托 canonical correction command，不能另写第二套更正事务")
+
+        for name in ("change_college_review", "change_academic_review"):
+            assert getattr(module, name).__module__.endswith(command_owner), (
                 f"{module.__name__}.{name} 未被统一更正命令接管")
 
 
