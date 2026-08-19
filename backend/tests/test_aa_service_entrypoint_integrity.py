@@ -133,7 +133,25 @@ for module_name in {import_order!r}:
 
 services = importlib.import_module('app.modules.academic_affairs.services')
 names = {list(EXPECTED_ENTRYPOINTS)!r}
-print(json.dumps({{name: getattr(services, name).__name__ for name in names}}, sort_keys=True))
+resolved = {{}}
+for name in names:
+    module = getattr(services, name)
+    if name == 'academic_affairs_attendance_service':
+        # Importing a package submodule normally rebinds the package attribute to that
+        # compatibility module.  What matters for the production contract is that every
+        # executable attendance entry remains owned by the single public service, not the
+        # incidental module object stored on the package after importlib side effects.
+        owners = {{
+            getattr(module, fn_name).__module__
+            for fn_name in (
+                'create_session', 'get_session', 'list_sessions', 'attendance_stats',
+                'mark_attendance', 'submit_session',
+            )
+        }}
+        resolved[name] = next(iter(owners)) if len(owners) == 1 else sorted(owners)
+    else:
+        resolved[name] = module.__name__
+print(json.dumps(resolved, sort_keys=True))
 """
     backend_dir = Path(__file__).resolve().parents[1]
     result = subprocess.run(
