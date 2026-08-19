@@ -6,7 +6,7 @@ MAIN_TID = 1000000000000000001
 
 def _seed(_db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import AcademicGrade, AcademicMakeup, AcademicStudent, AcademicWarning
+    from app.models import AaCourse, AcademicGrade, AcademicMakeup, AcademicStudent, AcademicWarning
     db = get_sessionmaker()()
     try:
         s = AcademicStudent(tenant_id=MAIN_TID, name="学业甲", student_no="2023999001", class_id="CL01",
@@ -15,8 +15,31 @@ def _seed(_db_mode):
                             warning_level="HIGH", warning_count=1, academic_status="WARNING")
         db.add(s)
         db.flush()
-        g = AcademicGrade(tenant_id=MAIN_TID, acad_student_id=s.id, course_name="高等数学", term="2025-2026-2",
-                          nature="REQUIRED", credit_value=5, score=52, pass_status="FAILED", exam_type="FINAL")
+        course = AaCourse(
+            tenant_id=MAIN_TID,
+            course_code="ACAD_TEST_MATH",
+            course_name="高等数学",
+            credit=5,
+            version=1,
+            status="ENABLED",
+        )
+        db.add(course)
+        db.flush()
+        g = AcademicGrade(
+            tenant_id=MAIN_TID,
+            acad_student_id=s.id,
+            course_id=course.id,
+            course_code=course.course_code,
+            course_version=course.version,
+            course_name=course.course_name,
+            term="2025-2026-2",
+            nature="REQUIRED",
+            credit_value=5,
+            score=52,
+            pass_status="FAILED",
+            exam_type="FINAL",
+            source="MANUAL",
+        )
         mk = AcademicMakeup(tenant_id=MAIN_TID, acad_student_id=s.id, course_name="高等数学", term="2025-2026-2",
                             origin_score=52, status="PENDING_EXAM")
         w = AcademicWarning(tenant_id=MAIN_TID, code="AW-T-1", acad_student_id=s.id, warn_type="MULTI_FAIL",
@@ -35,7 +58,10 @@ def test_students_and_detail(client, auth_headers, db_mode):
     assert lst["data"]["items"][0]["academicStatusLabel"] == "预警中"
     det = client.get(f"/api/v1/academic/students/{ids['student']}", headers=auth_headers).json()
     assert det["code"] == 0 and len(det["data"]["grades"]) == 1 and len(det["data"]["warnings"]) == 1
-    assert det["data"]["credit"]["gap"] == 80
+    # 详情使用正式 EffectiveGrade 真相，不得拿 AcademicStudent.obtained_credits 历史缓存充当权威。
+    # 当前唯一正式成绩为不及格，因此已获正式学分为 0、缺口为 120。
+    assert det["data"]["credit"]["obtained"] == 0
+    assert det["data"]["credit"]["gap"] == 120
 
 
 def test_grade_update_requires_reason(client, auth_headers, db_mode):
