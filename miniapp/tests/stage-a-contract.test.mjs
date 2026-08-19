@@ -18,9 +18,14 @@ test('student home uses one aggregate request and lightweight message summary', 
   assert.match(page, /HOME_TTL_MS = 20_000/)
   assert.match(page, /_loadEpoch/)
   assert.match(api, /real\.studentHomeReal\(\)/)
-  assert.match(adapter, /quickServices: \[\]/)
-  assert.match(adapter, /todayCourses: \[\]/)
-  assert.doesNotMatch(adapter.match(/export async function studentHomeReal\(\)[\s\S]*?export const enrichHome/)[0], /\.\.\.mock|mockHome/)
+  // 这两个字段原来在适配层里被硬编码成空数组，页面因此永远渲染“暂无常用服务/暂无今日课程”。
+  // V3 §0.1 要求首页只消费 canonical server truth：它们现在原样透传服务端 HomeProjection，
+  // 适配层依然不许自己编造内容（下面的 mock 断言保持不变）。
+  const homeAdapter = adapter.match(/export async function studentHomeReal\(\)[\s\S]*?\n\}/)[0]
+  assert.match(homeAdapter, /quickServices: Array\.isArray\(ov && ov\.quickServices\) \? ov\.quickServices : \[\]/)
+  assert.match(homeAdapter, /today: Array\.isArray\(ov && ov\.today\) \? ov\.today : \[\]/)
+  assert.doesNotMatch(homeAdapter, /quickServices: \[\]\s*,/)
+  assert.doesNotMatch(homeAdapter, /\.\.\.mock|mockHome/)
 })
 
 test('teacher workbench has TTL checks and one final aggregate HTTP endpoint', () => {

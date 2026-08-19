@@ -14,9 +14,12 @@ const manifest = JSON.parse(read('src/pages.json'))
 // 页面总数守恒，且主包只保留 login/common/role-switch。
 const MAIN_PACKAGE_PREFIXES = ['pages/login/', 'pages/common/', 'pages/role-switch/']
 const SUBPACKAGE_ROOTS = ['pages/student', 'pages/teacher']
-const EXPECTED_TOTAL_PAGES = 134
-const EXPECTED_STUDENT_PAGES = 65
-const EXPECTED_TEACHER_PAGES = 57
+// S1 冻结基线：分包重构当时的页面规模。V3 后续波次会新增学生页（Agenda、我的办理…），
+// 所以这里是「不得低于」的下界 + 「每个页面文件恰好注册一次」的守恒，而不是死数字——
+// 死数字既挡不住漏页，也会把正常新增页面误判成回归。
+const S1_BASELINE_TOTAL_PAGES = 134
+const S1_BASELINE_STUDENT_PAGES = 65
+const S1_BASELINE_TEACHER_PAGES = 57
 
 function resolveRoutes() {
   const rows = []
@@ -51,13 +54,32 @@ test('S1-G1 严禁 independent 分包', () => {
   assert.doesNotMatch(read('src/pages.json'), /"independent"/)
 })
 
-test('S1-G1 134 页守恒且无重复、无漏页', () => {
-  assert.equal(routes.length, EXPECTED_TOTAL_PAGES)
-  assert.equal(routeSet.size, EXPECTED_TOTAL_PAGES, '还原后的完整 URL 不允许重复')
+test('S1-G1 页面守恒：无重复、无漏页、不低于 S1 基线', () => {
+  assert.equal(routeSet.size, routes.length, '还原后的完整 URL 不允许重复')
+  assert.ok(routes.length >= S1_BASELINE_TOTAL_PAGES,
+    `页面总数 ${routes.length} 低于 S1 基线 ${S1_BASELINE_TOTAL_PAGES}，说明有页面在分包重构中丢失`)
   const student = routes.filter((route) => route.startsWith('pages/student/'))
   const teacher = routes.filter((route) => route.startsWith('pages/teacher/'))
-  assert.equal(student.length, EXPECTED_STUDENT_PAGES)
-  assert.equal(teacher.length, EXPECTED_TEACHER_PAGES)
+  assert.ok(student.length >= S1_BASELINE_STUDENT_PAGES, `学生页 ${student.length} < ${S1_BASELINE_STUDENT_PAGES}`)
+  assert.ok(teacher.length >= S1_BASELINE_TEACHER_PAGES, `教师页 ${teacher.length} < ${S1_BASELINE_TEACHER_PAGES}`)
+})
+
+test('S1-G1 每个页面文件恰好注册一次（既不漏注册也不重复注册）', () => {
+  const files = []
+  const walk = (dir, prefix) => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) walk(full, `${prefix}${entry}/`)
+      else if (entry.endsWith('.vue')) files.push(`${prefix}${entry.slice(0, -4)}`)
+    }
+  }
+  walk(resolve(root, 'src/pages'), 'pages/')
+  // 页面目录里允许放局部组件（仓库约定：组件文件名 PascalCase，页面文件名小写/kebab）。
+  const isComponent = (file) => /\/[A-Z][A-Za-z0-9]*$/.test(file)
+  const pageFiles = files.filter((file) => !isComponent(file))
+  const unregistered = pageFiles.filter((file) => !routeSet.has(file))
+  assert.deepEqual(unregistered, [], `以下页面文件存在但未注册:\n${unregistered.join('\n')}`)
+  assert.equal(pageFiles.length, routes.length, '页面文件数与注册路由数必须一一对应')
 })
 
 test('S1-G1 每个注册页面都有真实存在的 .vue 文件', () => {

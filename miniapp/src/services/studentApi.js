@@ -52,6 +52,7 @@ export const studentApi = {
     realFirstStrict('student.home',
       () => real.studentHomeReal(),
       () => mockRequest(M.studentHome)),
+  getAgenda: (days = 7, cursor = '', pageSize = 20) => real.studentAgenda(days, cursor, pageSize),
   getProfile: () =>
     realFirstStrict('student.profile',
       () => real.enrichProfileReal(),

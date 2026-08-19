@@ -14,6 +14,7 @@ from app.modules.internship.services import internship_makeup_service as mk
 from app.modules.academic_affairs.services import mobile_academic_affairs_service as aa
 from app.services import affairs_activity_service as activity_svc
 from app.services import mobile_affairs_service as aff
+from app.services import mobile_agenda_projection_service as agenda
 from app.services import mobile_student_service as stu
 from app.services import mobile_teacher_service as tea
 
@@ -52,6 +53,16 @@ def me_overview(user=Depends(get_current_user)):
 @router.get("/home", summary="学生首页聚合（总览+迎新+批次，一次鉴权）")
 def student_home(user=Depends(get_current_user)):
     return success(stu.home(user))
+
+
+@router.get("/student/agenda", summary="学生·今天/未来7天 Agenda（纯读投影，不是新的 deadline 真值）")
+def student_agenda(
+    days: int = Query(7, ge=1, le=14),
+    cursor: str | None = Query(None),
+    pageSize: int = Query(20, ge=1, le=50),
+    user=Depends(get_current_user),
+):
+    return success(agenda.list_student_agenda(user, days=days, cursor=cursor, page_size=pageSize))
 
 
 @router.get("/me/todos", summary="我的待办（本人）")

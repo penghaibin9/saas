@@ -16,6 +16,7 @@ from sqlalchemy import event, func, or_, select
 from app.core.exceptions import AppException
 from app.core.student_lifecycle import student_stage_label
 from app.db.session import db_enabled, get_engine, get_sessionmaker
+from app.core.tenant_scoped import tenant_get
 from app.services import audit_log
 from app.services import mobile_action_service as _action_svc
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
@@ -310,6 +311,13 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
         if include_home:
             result["orientation"] = _orientation_payload(ori)
             result["orientationBatch"] = _orientation_batch_status_db(db)
+            # V3 §5.2 学分完成率的真值来源。acad 已在本 session 内解析，不新增查询。
+            # required_credits 可为空（培养方案未解析）——此时必须保持 None，
+            # 由投影层返回 None、前端显示“—”，不得按 0 或 100 猜。
+            result["credits"] = {
+                "earnedCredits": float(acad.obtained_credits) if acad and acad.obtained_credits is not None else None,
+                "requiredCredits": float(acad.required_credits) if acad and acad.required_credits is not None else None,
+            }
         return result
 
 
@@ -321,12 +329,29 @@ def _home_cache_key(user: dict) -> str:
     没有 studentId 的旧令牌退回 userId（同样稳定），studentNo 不再作为缓存键。
     """
     ident = user.get("studentId") or user.get("userId") or "-"
-    return f"home:student:{user.get('tenantId') or _tid()}:{ident}"
+    # V3 §5.3：cache key 必须带 home schema version，否则灰度期旧结构会被当成新结构读出来。
+    from app.services.mobile_student_home_projection import HOME_VERSION
+    return f"home:student:v{HOME_VERSION}:{user.get('tenantId') or _tid()}:{ident}"
 
 
-def invalidate_home_cache(user: dict) -> None:
+def invalidate_home_cache(user: dict, *projections: str) -> None:
+    """删首页缓存，并按域 bump projectionVersion（V3 §5.4 / 深审 P1-12）。
+
+    只删缓存是不够的：客户端还握着一份 20s 本地 freshness 的旧首页。bump 之后 DTO 里的
+    projectionVersion 会变，客户端必须立刻丢弃旧请求与旧页面结果，而不是等 TTL 到期。
+    """
     from app.core.redis_client import cache_delete
+    from app.services import mobile_freshness_service as freshness
+
     cache_delete(_home_cache_key(user or {}))
+    for projection in projections:
+        try:
+            freshness.bump(user or {}, projection)
+        except ValueError:
+            raise
+        except Exception:  # noqa: BLE001
+            # Redis 不可用时没有服务端缓存，本来就不存在陈旧投影，静默降级。
+            log.debug("freshness bump skipped projection=%s", projection)
 
 
 def home(user: dict) -> dict:
@@ -366,6 +391,17 @@ def home(user: dict) -> dict:
         query_token = _home_query_count.set(0)
     try:
         data = me_overview(u, include_home=True)
+        # V3 §5.2–§5.4：在既有 overview 之上叠加首页投影。投影只读，不复制业务状态机，
+        # 也不复制消息可见性——它复用 message_center / workbench_todo 的 Authority。
+        from app.services.mobile_student_home_projection import build_home_v2
+        from app.services.mobile_agenda_projection_service import today_for_home
+        if data.get("student"):
+            data.update(build_home_v2(
+                u,
+                overview=data,
+                credits=data.get("credits"),
+                today=today_for_home(u),
+            ))
         query_count = int(_home_query_count.get() or 0) if query_token is not None else 0
     finally:
         if query_token is not None:
@@ -651,7 +687,7 @@ def message_mark_read(user: dict, message_id) -> dict:
             m.read_at = _dt.utcnow()
             m.version += 1
             db.commit()
-            invalidate_home_cache(u)
+            invalidate_home_cache(u, "message")
         return {"messageId": str(m.id), "status": "READ"}
 
 
@@ -692,7 +728,7 @@ def message_ack(user: dict, message_id) -> dict:
                 m.read_at = now
             m.version = int(m.version or 0) + 1
             db.commit()
-            invalidate_home_cache(u)
+            invalidate_home_cache(u, "message")
         return {
             "messageId": str(m.id),
             "acked": True,
@@ -736,7 +772,7 @@ def orientation_collect_submit(user: dict, body: dict) -> dict:
         oid = o.id
     from app.services.orientation_service import student_submit_collect
     result = student_submit_collect(oid, phone=(body or {}).get("phone", ""), origin=(body or {}).get("origin", ""))
-    invalidate_home_cache(u)
+    invalidate_home_cache(u, "todo", "case")
     audit_log.record("学生提交预报到信息", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
     return result
 
@@ -754,7 +790,7 @@ def orientation_green_channel_submit(user: dict, body: dict) -> dict:
     from app.services.orientation_service import student_submit_green_channel
     b = body or {}
     result = student_submit_green_channel(oid, b.get("applyType", ""), b.get("applyAmount", 0), b.get("remark", ""))
-    invalidate_home_cache(u)
+    invalidate_home_cache(u, "todo", "case")
     audit_log.record("学生提交绿色通道申请", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
     return result
 
@@ -1860,7 +1896,8 @@ def internship_checkin(user: dict, body: dict) -> dict:
                         "idempotentReplay": True, "message": "打卡请求已成功处理"}
             raise AppException("DATA_CONFLICT", "今日已打卡，请勿重复打卡")
 
-        position = db.get(InternshipPosition, rec.position_id) if rec.position_id else None
+        # 租户收口：实习岗位是带 tenant_id 的业务表，跨租户命中必须表现为“这行不存在”。
+        position = tenant_get(db, InternshipPosition, rec.position_id) if rec.position_id else None
         distance_m = radius_m = None
         if risk_flag != "normal":
             result, exception_type = "MOCK_LOCATION", "MOCK_LOCATION"
@@ -2066,7 +2103,8 @@ def _published_positions(db, batch_id, limit: int = 40) -> list[dict]:
     rows = db.scalars(q.order_by(InternshipPosition.id.desc()).limit(limit)).all()
     out = []
     for p in rows:
-        company = db.get(EmpCompany, p.company_id) if p.company_id else None
+        # 同上：企业档案带 tenant_id，裸 db.get 会把他校企业名带进本校岗位列表。
+        company = tenant_get(db, EmpCompany, p.company_id) if p.company_id else None
         head = p.headcount or 0
         alloc = p.allocated_count or 0
         out.append({

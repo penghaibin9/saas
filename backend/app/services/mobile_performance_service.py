@@ -434,7 +434,7 @@ def read_messages_batch(user, message_ids):
             db.commit()
 
     from app.services import mobile_student_service as student_svc
-    student_svc.invalidate_home_cache(current)
+    student_svc.invalidate_home_cache(current, "message")
     return {
         "requestedCount": len(ids), "affectedCount": affected,
         "updatedAt": _iso(now),

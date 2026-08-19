@@ -77,54 +77,26 @@ export async function studentHomeReal() {
   const stu = (ov && ov.student) || {}
   const stageCode = (ov && ov.stage && ov.stage.code) || stu.stage || ''
   const stageText = (ov && ov.stage && ov.stage.label) || STAGE_TEXT[stageCode] || '当前阶段'
-  const todos = Array.isArray(ov && ov.todos) ? ov.todos.map((t) => ({
-    id: t.id,
-    title: t.title,
-    module: t.module || t.type || '待办',
-    deadline: t.dueAt || '',
-    status: t.status || 'PENDING'
-  })) : []
-  const notices = Array.isArray(ov && ov.notices) ? ov.notices.map((n) => ({
-    id: n.id,
-    title: n.title,
-    source: n.source || '校园通知',
-    important: !!n.important
-  })) : []
-  const blockers = Array.isArray(ov && ov.alerts) ? ov.alerts.map((a, i) => ({
-    id: a.domain || `alert-${i}`,
-    title: a.title || '有事项需要处理',
-    reason: a.title || '',
-    solveText: '去处理',
-    level: a.level || 'MEDIUM'
-  })) : []
+  const summary = (ov && ov.summary) || {}
   const messageSummary = (ov && ov.messageSummary) || {
     unreadCount: Number(ov && ov.unreadCount) || 0,
     emergencyPendingCount: 0,
     latestEmergency: null
   }
-  const firstTodo = todos[0]
-  const firstBlocker = blockers[0]
-  const nextAction = firstBlocker
-    ? {
-        title: firstBlocker.title,
-        desc: firstBlocker.reason || '请尽快处理当前阻断事项',
-        deadline: '',
-        actionText: '去处理',
-        route: '/pages/student/my-applications/index'
-      }
-    : firstTodo
-      ? {
-          title: firstTodo.title,
-          desc: `来自${firstTodo.module}`,
-          deadline: firstTodo.deadline,
-          actionText: '去办理',
-          route: '/pages/student/messages/index'
-        }
-      : null
 
+  // V3 §5.2/§5.4：首页只消费 canonical server truth。
+  // 以前这里把 progress / creditRate 直接写死成 null，quickServices / todayCourses 写死成
+  // 空数组，再由页面渲染出一排“—/0/空”（V3 §0.1）。现在这些字段一律来自 HomeProjection：
+  // 拿不到真值时后端返回 null，页面显示“—”，绝不用 0 或 100% 冒充。
+  //
+  // 所有可点项都携带服务端已解析的 MobileAction（action.target），页面只调用 runAction()，
+  // 不再自己拼 route（V3 深审 P0-02）。
   return {
     realApi: true,
     cacheHit: !!(ov && ov.cacheHit),
+    homeVersion: Number(ov && ov.homeVersion) || 1,
+    asOf: (ov && ov.asOf) || '',
+    projectionVersion: (ov && ov.projectionVersion) || '',
     student: {
       name: stu.name || '',
       studentNo: stu.studentNo || '',
@@ -136,24 +108,35 @@ export async function studentHomeReal() {
       title: `你正处于「${stageText}」阶段`,
       subtitle: '查看当前待办和校园通知',
       stageText,
-      progress: null
+      progress: summary.stageProgress === null || summary.stageProgress === undefined
+        ? null
+        : Number(summary.stageProgress)
     },
     metrics: {
-      unread: Number(messageSummary.unreadCount) || 0,
-      todoCount: todos.length,
-      creditRate: null
+      unread: Number(summary.unreadCount ?? messageSummary.unreadCount) || 0,
+      todoCount: Number(summary.todoCount) || 0,
+      creditRate: summary.creditRate === null || summary.creditRate === undefined
+        ? null
+        : Number(summary.creditRate)
     },
     messageSummary,
-    nextAction,
-    blockers,
-    quickServices: [],
-    todayCourses: [],
-    todos,
-    notices,
+    nextAction: (ov && ov.nextAction) || null,
+    today: Array.isArray(ov && ov.today) ? ov.today : [],
+    blockers: Array.isArray(ov && ov.blockers) ? ov.blockers : [],
+    quickServices: Array.isArray(ov && ov.quickServices) ? ov.quickServices : [],
+    todos: Array.isArray(ov && ov.todos) ? ov.todos : [],
+    notices: Array.isArray(ov && ov.notices) ? ov.notices : [],
     orientation: (ov && ov.orientation) || null,
     orientationBatch: (ov && ov.orientationBatch) || { open: false, daysLeft: 0 }
   }
 }
+
+/** V3 §6：今天/未来 7 天 Agenda（纯读投影）。 */
+export const studentAgenda = (days = 7, cursor = '', pageSize = 20) =>
+  realRequest(
+    `/mobile/student/agenda?days=${days}&pageSize=${pageSize}` +
+    (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '')
+  )
 
 // 兼容旧调用名；不再接受或复制 mock 首页。
 export const enrichHome = () => studentHomeReal()
