@@ -1,8 +1,11 @@
 import http from 'k6/http';
 import { check, group, sleep } from 'k6';
 
-import { authHeaders } from './lib/auth.js';
-import { BASE_URL, options as configuredOptions } from './lib/config.js';
+import { authHeaders, identityDistribution } from './lib/auth.js';
+import {
+  BASE_URL, DATASET, PROFILE, REQUIRED_STUDENT_V3_ROUTES, SCENARIO,
+  options as configuredOptions,
+} from './lib/config.js';
 
 export const options = configuredOptions;
 
@@ -34,6 +37,8 @@ function jitter() {
   sleep(0.2 + Math.random() * 0.8);
 }
 
+const SEARCH_KEYWORD = String(__ENV.SEARCH_KEYWORD || '通知').trim();
+
 export function studentRead() {
   group('student-core-read', () => {
     getJson('student', 'student_home', '/api/v1/mobile/home');
@@ -47,6 +52,14 @@ export function studentRead() {
     );
     jitter();
     getJson('student', 'student_profile', '/api/v1/mobile/me/profile');
+    jitter();
+    // ── V3 新增 P0 链路（§11.6 / 深审 P0-07）──
+    getJson('student', 'student_agenda', '/api/v1/mobile/student/agenda?days=7&pageSize=20');
+    jitter();
+    getJson('student', 'student_cases', '/api/v1/mobile/student/cases?statusGroup=all&pageSize=20');
+    jitter();
+    // 搜索用固定关键词，保证不同 VU 的扫描成本可比；关键词长度必须 ≥2 才会真正查询。
+    getJson('student', 'student_search', `/api/v1/mobile/student/search?q=${encodeURIComponent(SEARCH_KEYWORD)}&pageSize=20`);
   });
   jitter();
 }
@@ -83,26 +96,71 @@ export function mixedRead() {
   else teacherRead();
 }
 
+/** 每条路由的 p95/p99 单独取出，供 Artifact 逐路由判定，而不是只看全局分位。 */
+function routeLatencies(metrics) {
+  const rows = {};
+  for (const [name, metric] of Object.entries(metrics || {})) {
+    const match = /^http_req_duration\{route:([^}]+)\}$/.exec(name);
+    if (!match || !metric || !metric.values) continue;
+    rows[match[1]] = {
+      p95: metric.values['p(95)'],
+      p99: metric.values['p(99)'],
+      count: metric.values.count,
+    };
+  }
+  return rows;
+}
+
 function compactSummary(data) {
   const metrics = data.metrics || {};
   const duration = metrics.http_req_duration && metrics.http_req_duration.values;
   const failed = metrics.http_req_failed && metrics.http_req_failed.values;
   const checks = metrics.checks && metrics.checks.values;
+  const identity = identityDistribution();
+  const routes = routeLatencies(metrics);
+  const missing = REQUIRED_STUDENT_V3_ROUTES.filter((route) => !routes[route]);
   return [
     'Yueke capacity gate',
+    `profile=${PROFILE} scenario=${SCENARIO} dataset=${DATASET}`,
+    `identityMode=${identity.identityMode} uniqueStudentTokens=${identity.uniqueStudentTokens} uniqueTeacherTokens=${identity.uniqueTeacherTokens}`,
     `requests=${(metrics.http_reqs && metrics.http_reqs.values && metrics.http_reqs.values.count) || 0}`,
     `p95_ms=${duration ? duration['p(95)'] : 'n/a'}`,
     `p99_ms=${duration ? duration['p(99)'] : 'n/a'}`,
     `failed_rate=${failed ? failed.rate : 'n/a'}`,
     `check_rate=${checks ? checks.rate : 'n/a'}`,
+    missing.length
+      ? `MISSING_V3_ROUTES=${missing.join(',')}（本次未覆盖 V3 新增链路，不能作为容量证据）`
+      : 'v3_routes=covered',
     '',
   ].join('\n');
 }
 
 export function handleSummary(data) {
   const path = String(__ENV.SUMMARY_PATH || 'performance/results/k6-summary.json');
+  const metrics = data.metrics || {};
+  const routes = routeLatencies(metrics);
+  const identity = identityDistribution();
+  // V3 §11.6：Artifact 必须自带 VU、身份分布、逐路由分位与覆盖结论，
+  // 否则事后无法判断这份数据压的是数据库还是热缓存、有没有覆盖新链路。
+  const artifact = {
+    schema: 'yueke-capacity-artifact/1',
+    profile: PROFILE,
+    scenario: SCENARIO,
+    dataset: DATASET,
+    baseUrl: BASE_URL,
+    identity,
+    routes,
+    requiredStudentV3Routes: REQUIRED_STUDENT_V3_ROUTES,
+    missingStudentV3Routes: REQUIRED_STUDENT_V3_ROUTES.filter((route) => !routes[route]),
+    totals: {
+      requests: (metrics.http_reqs && metrics.http_reqs.values && metrics.http_reqs.values.count) || 0,
+      failedRate: metrics.http_req_failed && metrics.http_req_failed.values.rate,
+      checkRate: metrics.checks && metrics.checks.values.rate,
+    },
+    raw: data,
+  };
   return {
     stdout: compactSummary(data),
-    [path]: JSON.stringify(data, null, 2),
+    [path]: JSON.stringify(artifact, null, 2),
   };
 }

@@ -143,6 +143,12 @@ def _process_one(row_id: int, worker_id: str) -> bool:
             )
             status=str(result.get('status') or 'SKIPPED').upper()
             reason_code=str(result.get('reasonCode') or '').upper()
+            # §13：微信授权/下发结果只记场景与结果码，不记 openid、正文或手机号。
+            from app.services import mobile_observability_service as _obs
+            _obs.record_wechat_delivery(
+                scene=str(getattr(row, 'scene', '') or 'CASE_RESULT'),
+                outcome=reason_code or status,
+            )
             row.last_error_message_safe=_safe_message(result.get('reason'))
             if status=='SENT':
                 row.status='SENT'; row.sent_at=_now(); row.last_error_code=None

@@ -15,6 +15,9 @@
  * fetchPage(cursor, pageSize, { epoch }) 需返回 { items, nextCursor }。
  */
 
+/** 共享分页器契约版本。改变 fetchPage 签名或 state 形状时必须 +1。 */
+export const NETWORK_PAGER_VERSION = '1.0.0'
+
 export const DEFAULT_PAGE_SIZE = 20
 export const DEFAULT_MAX_ITEMS = 100
 

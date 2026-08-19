@@ -8,6 +8,9 @@
  * fail-closed 兜底，真正的租户/权限/数据范围/状态/version 校验仍在后端 canonical service。
  */
 
+/** MobileAction DTO 形状版本。改变 target/focus 字段含义时必须 +1。 */
+export const ACTION_SCHEMA_VERSION = '1.0.0'
+
 export const ALLOWED_PREFIXES = {
   student: ['/pages/student/', '/pages/common/'],
   teacher: ['/pages/teacher/', '/pages/common/']

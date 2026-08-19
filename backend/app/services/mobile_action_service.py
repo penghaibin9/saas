@@ -21,6 +21,7 @@ from typing import Any, Iterable, Optional
 
 from app.core.exceptions import AppException
 from app.services import message_action_registry as _messages
+from app.services import mobile_observability_service as obs
 from app.services.mobile_focus_contract import (
     FOCUS_DETAIL,
     FOCUS_NONE,
@@ -67,8 +68,12 @@ def _blocked(
     reason: str,
     label: Optional[str] = None,
     allowed_actions: Optional[Iterable[str]] = None,
+    client: Optional[str] = None,
+    action_key: Optional[str] = None,
 ) -> dict:
     """有业务对象但当前端没有安全落点：给出可解释的禁用态，不给 target。"""
+    # §13：未解析的 action 必须留痕，否则 P0-02 复发时只能靠用户投诉发现。
+    obs.record_unknown_action(action_key or source_biz_type, client=client or "unknown")
     return {
         "sourceBizType": source_biz_type,
         "sourceBizId": source_biz_id,
@@ -102,6 +107,8 @@ def _descriptor(
     if mode not in (FOCUS_DETAIL, FOCUS_NONE):
         if not focus_key or _clean(query.get(focus_key)) is None:
             mode = FOCUS_NONE
+    # §13：声明了对象聚焦却没能真的聚焦，是 P0-03 复发的早期信号。
+    obs.record_focus_result(route_name=route_name, focused=is_route_exact(mode, path))
     return {
         "sourceBizType": source_biz_type,
         "sourceBizId": source_biz_id,
@@ -150,6 +157,7 @@ def build_todo_action(todo: dict | None, *, client: str = CLIENT_STUDENT_MINI) -
             label=_clean(todo.get("title")),
             # 没有安全落点时不下发 OPEN，避免前端拿着它渲染一个点不动的按钮。
             allowed_actions=[a for a in allowed_actions if a != "OPEN"],
+            client=client, action_key=todo_type,
         )
 
     path = str(route["path"])
@@ -161,6 +169,7 @@ def build_todo_action(todo: dict | None, *, client: str = CLIENT_STUDENT_MINI) -
             reason=_NO_TARGET_REASON,
             label=_clean(todo.get("title")),
             allowed_actions=[a for a in allowed_actions if a != "OPEN"],
+            client=client, action_key=todo_type,
         )
 
     return _descriptor(
@@ -199,7 +208,7 @@ def build_message_action(
     if withdrawn:
         return _blocked(
             source_biz_type=None, source_biz_id=None, record_id=None,
-            reason="该消息已撤回",
+            reason="该消息已撤回", client=client, action_key=key,
         )
 
     try:
@@ -207,7 +216,7 @@ def build_message_action(
     except AppException:
         return _blocked(
             source_biz_type=None, source_biz_id=None, record_id=None,
-            reason=_NO_TARGET_REASON,
+            reason=_NO_TARGET_REASON, client=client, action_key=key,
         )
     if not key:
         return None
@@ -219,7 +228,7 @@ def build_message_action(
         return _blocked(
             source_biz_type=key, source_biz_id=record_id, record_id=record_id,
             reason=route.get("message") or _NO_TARGET_REASON,
-            label=route.get("label"),
+            label=route.get("label"), client=client, action_key=key,
         )
 
     path = str(route["path"])
@@ -227,6 +236,7 @@ def build_message_action(
         return _blocked(
             source_biz_type=key, source_biz_id=record_id, record_id=record_id,
             reason=_NO_TARGET_REASON, label=route.get("label"),
+            client=client, action_key=key,
         )
 
     query = dict(cleaned or {})

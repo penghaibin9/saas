@@ -1,0 +1,23 @@
+{
+  "schema": "miniapp-v3-handoff/1",
+  "generatedAt": "2026-08-19T23:07:53.295Z",
+  "studentMergeSha": "7a59b02fec0ba67d19aa3a3b8ead14efec7941ff",
+  "actionSchemaVersion": "1.0.0",
+  "routeInventoryHash": "8e9bdf2e10a9093639a376d3273e5b45657a74cee04f6346cb2e24644c42e87d",
+  "routeCount": 137,
+  "subpackageHash": "99a738325053e64632958dd73485bd563faf902f5a5c4a93892b12bec6b1473f",
+  "subpackages": [
+    {
+      "root": "pages/student",
+      "pages": 68
+    },
+    {
+      "root": "pages/teacher",
+      "pages": 57
+    }
+  ],
+  "networkPagerVersion": "1.0.0",
+  "attachmentPickerVersion": "1.0.0",
+  "alembicHead": "20260818_merge_prog_grade_dl",
+  "packageReportSha": "d75898be5687ef4d2b39b3b6939e08898c24ffe78ed6fa73139ad46b0ed41bd7"
+}

@@ -43,6 +43,9 @@ import { fileSdk } from '@/services/fileSdk'
  *      owner/tenant/scanStatus/purpose 后创建 FileBinding——客户端永远不能指定绑定；
  *   5. 业务提交失败时临时文件保持私有，由清理任务按 TTL 回收，客户端不提前绑定。
  */
+/** 共享附件组件契约版本。改变 props/emits 时必须 +1。 */
+const ATTACHMENT_PICKER_VERSION = '1.0.0'
+
 const props = defineProps({
   fileIds: { type: Array, default: () => [] },
   bizPurpose: { type: String, required: true },

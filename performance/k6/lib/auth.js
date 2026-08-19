@@ -39,12 +39,52 @@ const teacherFileTokens = new SharedArray('teacher capacity token pool', () =>
   fileArray('K6_TEACHER_TOKENS_FILE', 'K6_TEACHER_TOKENS_FILE'),
 );
 
+/**
+ * V3 §11.6 身份分布（深审 P0-08）。
+ *
+ * 高并发若复用少量 token，请求会集中命中同一份 Redis 缓存与同一个 scope，
+ * 压出来的是"热缓存容量"，不是真实容量。因此分两档：
+ *
+ *   cold  —— 每个 VU 尽量拿到不同身份，覆盖冷启动与真实数据库成本（默认）；
+ *   warm  —— 故意只用少量身份重复访问，单独评价缓存本身的稳定性。
+ *
+ * 两档都必须把实际使用到的 unique token 数写进 Artifact，否则无法判断这次
+ * 压测到底压的是数据库还是缓存。
+ */
+export const IDENTITY_MODE = String(__ENV.IDENTITY_MODE || 'cold').trim().toLowerCase();
+const WARM_POOL_SIZE = Math.max(1, Number(__ENV.WARM_IDENTITY_POOL || 5));
+
+if (!['cold', 'warm'].includes(IDENTITY_MODE)) {
+  throw new Error(`Unknown IDENTITY_MODE=${IDENTITY_MODE}; allowed: cold, warm`);
+}
+
+/** 本次运行实际会用到多少个不同身份——直接决定 Artifact 里的 uniqueTokens。 */
+export function effectivePoolSize(total) {
+  if (!total) return 0;
+  return IDENTITY_MODE === 'warm' ? Math.min(total, WARM_POOL_SIZE) : total;
+}
+
 function selectByVu(items, label) {
   if (!items.length) return null;
-  const index = Math.max(0, (__VU - 1) % items.length);
+  const span = effectivePoolSize(items.length);
+  const index = Math.max(0, (__VU - 1) % span);
   const selected = items[index];
   if (!selected) throw new Error(`${label} contains an empty item at index ${index}`);
   return selected;
+}
+
+/** 供 Artifact 记录：各端 token 池规模与本次实际使用的身份数。 */
+export function identityDistribution() {
+  const studentTotal = studentFileTokens.length || arrayEnv('K6_STUDENT_TOKENS_JSON').length;
+  const teacherTotal = teacherFileTokens.length || arrayEnv('K6_TEACHER_TOKENS_JSON').length;
+  return {
+    identityMode: IDENTITY_MODE,
+    warmPoolSize: IDENTITY_MODE === 'warm' ? WARM_POOL_SIZE : null,
+    studentTokensAvailable: studentTotal,
+    teacherTokensAvailable: teacherTotal,
+    uniqueStudentTokens: effectivePoolSize(studentTotal),
+    uniqueTeacherTokens: effectivePoolSize(teacherTotal),
+  };
 }
 
 function extractAccessToken(payload) {

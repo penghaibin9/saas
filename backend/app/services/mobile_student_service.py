@@ -19,6 +19,7 @@ from app.db.session import db_enabled, get_engine, get_sessionmaker
 from app.core.tenant_scoped import tenant_get
 from app.services import audit_log
 from app.services import file_business_binding_service as file_binding_svc
+from app.services import mobile_observability_service as _obs
 from app.services import mobile_action_service as _action_svc
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
 from app.services.db_service import _iso, _mask_phone, _org_names, _primary_phone, _tid
@@ -369,8 +370,9 @@ def home(user: dict) -> dict:
     cached = cache_get_json(key)
     if isinstance(cached, dict):
         cached["cacheHit"] = True
-        log.info("mobile_home cache_hit=true duration_ms=%.2f query_count=0",
-                 (time.perf_counter() - started) * 1000)
+        duration_ms = (time.perf_counter() - started) * 1000
+        log.info("mobile_home cache_hit=true duration_ms=%.2f query_count=0", duration_ms)
+        _obs.record_home_read(cache_hit=True, query_count=0, duration_ms=duration_ms)
         return cached
 
     lock_state = cache_set_json_if_absent(
@@ -412,12 +414,15 @@ def home(user: dict) -> dict:
     base_ttl = max(1, int(settings.HOME_CACHE_TTL))
     jitter = random.randint(0, max(1, min(5, base_ttl // 4 or 1)))
     cached_ok = cache_set_json(key, data, base_ttl + jitter)
+    duration_ms = (time.perf_counter() - started) * 1000
     log.info(
         "mobile_home cache_hit=false duration_ms=%.2f query_count=%d redis_cached=%s",
-        (time.perf_counter() - started) * 1000,
+        duration_ms,
         query_count,
         cached_ok,
     )
+    # §13 可观测性：只记匿名分桶（命中/未命中、SQL 条数量级、耗时量级）。
+    _obs.record_home_read(cache_hit=False, query_count=query_count, duration_ms=duration_ms)
     return data
 
 
@@ -1872,7 +1877,8 @@ def campus_service_apply(user: dict, body: dict) -> dict:
         # V3 §8.1：客户端上传只产出 TEMP_PRIVATE 文件，永远不能自己指定正式绑定。
         # 这里在**同一个事务**里由 canonical 服务校验 owner/tenant/扫描状态/用途后建 binding；
         # 任一附件不可用就整笔业务回滚，临时文件保持私有等 TTL 回收。
-        for file_id in _attachment_ids(body):
+        attachment_ids = _attachment_ids(body)
+        for file_id in attachment_ids:
             file_binding_svc.bind_file_to_business(
                 db,
                 file_id=file_id,
@@ -1886,6 +1892,8 @@ def campus_service_apply(user: dict, body: dict) -> dict:
                 student_id=stu.id,
                 scope={"studentId": str(stu.id), "serviceKey": service_key},
             )
+        if attachment_ids:
+            _obs.record_file_binding(purpose="CAMPUS_SERVICE_WORKORDER", outcome="bound")
         rid, status = row.id, row.status
         db.commit()
     audit_log.record("MOBILE_SERVICE_APPLY", f"campus-service:{service_key}",
