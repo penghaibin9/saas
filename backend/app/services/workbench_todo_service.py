@@ -126,12 +126,16 @@ def _todo_dict(row, *, client: str = "pc") -> dict:
     allowed_actions = ["COMPLETE"] if row.status == _TODO_PENDING else []
     if route:
         allowed_actions.insert(0, "OPEN")
-    return {
+    version = int(getattr(row, "version", 0) or 0)
+    data = {
         "todoId": str(row.id),
         "todoType": row.todo_type,
         "title": row.title,
+        # Legacy aliases stay during V3 migration; canonical V3 names are below.
         "bizType": row.source_biz_type,
         "bizId": record_id,
+        "sourceBizType": row.source_biz_type,
+        "sourceBizId": record_id,
         # P1-07 typed deep-link DTO：所有客户端只消费这些字段，不再按标题/todoType 猜路由。
         "recordId": record_id,
         "routeName": route.get("routeName") if route else None,
@@ -139,14 +143,23 @@ def _todo_dict(row, *, client: str = "pc") -> dict:
         "query": route.get("query") if route else {},
         "routePath": route.get("path") if route else None,
         "routeExact": bool(route and route.get("exact")),
+        "focusMode": route.get("focusMode") if route else "NONE",
         "allowedActions": allowed_actions,
-        "version": int(getattr(row, "version", 0) or 0),
+        "version": version,
+        "expectedVersion": version if version > 0 else None,
         "sourceModule": row.source_module,
         "priority": _priority(row),
         "status": row.status,
         "dueAt": _iso(row.due_at) if row.due_at else None,
         "createdAt": _iso(row.created_at) if row.created_at else None,
     }
+    # T1 Teacher V3 pass-through: this helper owns no route map.  If the shared
+    # route authority cannot prove a teacherMini target yet, action stays None.
+    if client == "teacherMini":
+        from app.services.teacher_mobile_todo_projection_service import project_teacher_todo
+        projected = project_teacher_todo(data)
+        data["action"] = projected.get("action") if projected else None
+    return data
 
 
 def _msg_dict(row) -> dict:
