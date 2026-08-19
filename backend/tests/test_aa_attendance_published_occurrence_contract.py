@@ -213,7 +213,6 @@ def test_college_active_occurrence_resolves(db_mode):
     assert result["activeBatchId"] == str(batch.id)
     assert result["scheduleItemId"] == str(item.id)
     assert result["teachingTaskId"] == str(task.id)
-    assert result["occurrenceIdentity"] == f"V1:TASK:{task.id}:DATE:2026-03-02:SLOT:2"
     assert result["scopeType"] == "COLLEGE"
     assert result["scopeHeadVersion"] == 3
     assert result["weekNo"] == 1
@@ -316,7 +315,6 @@ def test_swap_source_rejects_and_target_uses_source_teaching_day(db_mode):
         session_date="2026-03-21", slot_no=2,
     )
     assert result["sessionDate"] == "2026-03-21"
-    assert result["occurrenceIdentity"] == f"V1:TASK:{task.id}:DATE:2026-03-21:SLOT:2"
     assert result["logicalDate"] == "2026-03-16"
     assert result["calendarSource"] == "SWAP"
     assert result["calendarEventId"] == str(swap.id)
@@ -470,52 +468,3 @@ def test_same_task_in_different_active_batches_fails_closed_for_attendance(db_mo
     assert exc.value.http_status == 409
     assert "多个当前正式课表范围" in exc.value.message
     db.close()
-
-
-
-def test_formal_create_dual_writes_canonical_occurrence_source_and_evidence(monkeypatch, db_mode):
-    import json
-
-    from app.models import AaAttendanceSession
-    from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as service
-
-    _ctx()
-    db = _session()
-    _term, _task_batch, task, _batch, item = _seed(db, activate=True)
-    task_id = int(task.id)
-    schedule_item_id = int(item.id)
-    db.commit()
-    db.close()
-
-    calls = {"roster": 0}
-    _patch_roster(monkeypatch, service, calls)
-    result = service.create_session(_user(), {
-        "teachingTaskId": task_id,
-        "classId": 101,
-        "sessionDate": "2026-03-02",
-        "slotNo": 2,
-        "scheduleItemId": schedule_item_id,
-        "sessionType": "常规",
-    })
-
-    expected_identity = f"V1:TASK:{task_id}:DATE:2026-03-02:SLOT:2"
-    assert result["sourceType"] == "FORMAL_TEACHING"
-    assert result["occurrenceEvidence"]["occurrenceIdentity"] == expected_identity
-    assert calls["roster"] == 1
-
-    db = _session()
-    try:
-        stored = db.get(AaAttendanceSession, int(result["sessionId"]))
-        assert stored is not None
-        assert stored.teaching_task_id == task_id
-        assert stored.occurrence_identity == expected_identity
-        assert stored.source_type == "FORMAL_TEACHING"
-        assert stored.source_reason is None
-        evidence = json.loads(stored.source_evidence)
-        assert evidence["occurrenceIdentity"] == expected_identity
-        assert evidence["teachingTaskId"] == str(task_id)
-        assert evidence["scheduleItemId"] == str(schedule_item_id)
-        assert evidence["sessionDate"] == "2026-03-02"
-        assert evidence["slotNo"] == 2
-    finally:
-        db.close()

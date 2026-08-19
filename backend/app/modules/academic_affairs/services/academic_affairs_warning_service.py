@@ -429,12 +429,15 @@ def scan_all(user) -> dict:
 
 
 def _formal_attendance_session_condition(model):
-    """标准旷课预警复用 Attendance source Authority；回填后也不能重新污染正式课堂。"""
+    """标准旷课预警只消费正式课堂；管理员特殊补录永不混入该口径。"""
     from app.modules.academic_affairs.services.academic_affairs_attendance_public_service import (
-        _stats_session_type_condition,
+        _ADMIN_SPECIAL,
     )
 
-    return _stats_session_type_condition(model)
+    return or_(
+        model.session_type.is_(None),
+        model.session_type != _ADMIN_SPECIAL,
+    )
 
 
 def scan_attendance_warnings(user) -> dict:
