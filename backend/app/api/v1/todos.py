@@ -99,7 +99,7 @@ def make_router(client: str) -> APIRouter:
         by_type: dict[str, int] = {}
         for t in pending:
             by_type[t["todoType"]] = by_type.get(t["todoType"], 0) + 1
-        return {"total": len(pending), "byType": by_type}
+        return success({"total": len(pending), "byType": by_type})
 
     if client != "student-mini":
         @router.get("/workbench-snapshot", summary="教师工作台只读快照",
