@@ -17,6 +17,7 @@ async function proposalRows(admin, fixture) {
   return items(data).filter((row) =>
     String(row.studentNo || '') === fixture.studentNo
       || String(row.gdStudentId || '') === fixture.gdStudentId
+      || String(row.projectId || '') === fixture.gdStudentId
   )
 }
 
