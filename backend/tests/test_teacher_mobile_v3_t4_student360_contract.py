@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+
 from app.api.v1 import teacher_mobile_students as student_api
+from app.core.exceptions import AppException
+from app.models import StudentProfile
 from app.services import teacher_mobile_student360_projection_service as projection
 
 
@@ -18,6 +22,30 @@ def test_t4_student360_projection_is_sql_scoped_and_read_only_composition():
     assert "PsyReferral" not in source
     assert "mental_flag" in source
     assert "CsDiscipline" in source
+
+
+def test_t4_student360_object_lookup_is_strict_profile_id_not_numeric_student_no_union():
+    source = inspect.getsource(projection._student_lookup_condition)
+    assert "StudentProfile.id == int(raw)" in source
+    assert "StudentProfile.student_no" not in source
+    assert "or_(" not in source
+
+    sql = str(projection._student_lookup_condition(StudentProfile, "17").compile(
+        compile_kwargs={"literal_binds": True}
+    )).lower()
+    assert "t_student_profile.id = 17" in sql
+    with pytest.raises(AppException):
+        projection._student_lookup_condition(StudentProfile, "2026A001")
+    with pytest.raises(AppException):
+        projection._student_lookup_condition(StudentProfile, "0")
+
+
+def test_t4_only_open_workflow_warnings_count_as_active_risk():
+    source = inspect.getsource(projection.get_projection)
+    assert 'AcademicWarning.record_status == "ACTIVE"' in source
+    assert "AcademicWarning.status.in_(_ACTIVE_WARNING_STATUSES)" in source
+    assert set(projection._ACTIVE_WARNING_STATUSES) == {"PENDING_HANDLE", "PROCESSING", "ESCALATED"}
+    assert "CLOSED" not in projection._ACTIVE_WARNING_STATUSES
 
 
 def test_t4_student360_actions_are_object_context_not_new_command_authority():
@@ -51,7 +79,7 @@ def test_t4_projection_version_consumes_shared_freshness_when_handoff_exists():
 
 
 def test_t4_student360_route_is_additive_under_teacher_mobile_students_router():
-    paths = {route.path for route in student_api.router.routes}
+    paths = {route.path for route in student_api.router.routes if getattr(route, "path", None)}
     assert "/students" in paths
     assert "/students/{student_id}/projection" in paths
 

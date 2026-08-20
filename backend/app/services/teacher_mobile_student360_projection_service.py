@@ -1,8 +1,8 @@
 """Teacher Miniapp V3 T4 Student360 read projection.
 
-This is a read-only mobile projection over existing domain facts.  It deliberately does not
+This is a read-only mobile projection over existing domain facts. It deliberately does not
 create new workflow/state-machine authority: talk/family/mental/employment/internship commands
-remain in their mature services.  The projection owns only one-student read composition,
+remain in their mature services. The projection owns only one-student read composition,
 object-action context, sensitive-summary minimisation and freshness metadata.
 
 Scale contract:
@@ -27,6 +27,7 @@ from app.services.db_service import _iso, _tid, session
 from app.services.teacher_student_visibility_service import compile_teacher_student_visibility
 
 _STUDENT360_PROJECTIONS = ("todo", "internship", "graduation", "case")
+_ACTIVE_WARNING_STATUSES = ("PENDING_HANDLE", "PROCESSING", "ESCALATED")
 
 
 def _projection_version(user: dict, student_id: int) -> str:
@@ -38,18 +39,23 @@ def _projection_version(user: dict, student_id: int) -> str:
         scoped["studentId"] = str(student_id)
         return freshness.projection_version(scoped, _STUDENT360_PROJECTIONS)
     except (ImportError, AttributeError):
-        # Before T8 handoff there is no shared freshness module on this branch.  The page reloads
+        # Before T8 handoff there is no shared freshness module on this branch. The page reloads
         # onShow, so a second-level build token is truthful and cannot preserve stale cache.
         return f"t{int(time.time())}"
 
 
 def _student_lookup_condition(StudentProfile, raw_student_id: Any):
+    """Student360 object route accepts only canonical StudentProfile.id.
+
+    Numeric student numbers are common. Treating the same path value as both profile id and
+    student_no makes ``/students/123/projection`` ambiguous and can select a different authorised
+    student depending on query order. MyStudents already carries the canonical profile id, so the
+    object route is intentionally strict and fail-closed.
+    """
     raw = str(raw_student_id or "").strip()
-    if not raw:
-        raise AppException("VALIDATION_ERROR", "studentId 不能为空", http_status=400)
-    if raw.isdigit():
-        return or_(StudentProfile.id == int(raw), StudentProfile.student_no == raw)
-    return StudentProfile.student_no == raw
+    if not raw.isdigit() or int(raw) <= 0:
+        raise AppException("VALIDATION_ERROR", "studentId 必须是有效学生主档ID", http_status=400)
+    return StudentProfile.id == int(raw)
 
 
 def _risk_level(*, warning_count: int, internship_risk: str, affairs_risk: str) -> str:
@@ -136,6 +142,7 @@ def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
                     AcademicWarning.is_deleted.is_(False),
                     AcademicWarning.acad_student_id == academic.id,
                     AcademicWarning.record_status == "ACTIVE",
+                    AcademicWarning.status.in_(_ACTIVE_WARNING_STATUSES),
                 )
             ) or 0)
 
