@@ -14,25 +14,29 @@ test('T6 internship evidence API stays on additive teacher-mobile routes', () =>
   assert.doesNotMatch(api, /\/mobile\/teacher\/internship\/visits\/.*POST/)
 })
 
-test('T6 visit form carries exact plan and record version and never captures teacher location', () => {
+test('T6/T8 visit form carries exact plan/version, shared attachment contract and never captures teacher location', () => {
   const form = read('src/components/teacher/InternshipVisitEvidenceForm.vue')
   assert.match(form, /teacherInternshipEvidenceV3Api\.visitTargets\(\)/)
   assert.match(form, /expectedVersion/)
   assert.match(form, /planId/)
   assert.match(form, /location: null/)
   assert.match(form, /fileIds:/)
-  assert.match(form, /fileSdk\.choose/)
-  assert.match(form, /fileSdk\.upload/)
-  assert.match(form, /readyForBusiness/)
+  assert.match(form, /<MobileAttachmentPicker/)
+  assert.match(form, /biz-purpose="INTERNSHIP_VISIT"/)
+  assert.match(form, /@update:fileIds="evidenceFileIds = \$event"/)
+  assert.match(form, /@update:ready="evidenceReady = \$event"/)
   assert.match(form, /TEMP_PRIVATE/)
+  assert.doesNotMatch(form, /fileSdk\.choose|fileSdk\.upload|fileSdk\.metadata/)
   assert.doesNotMatch(form, /uni\.getLocation|getLocation\(|chooseLocation\(|latitude|longitude|captureLocation/)
 })
 
-test('T6 file evidence is uploaded first but formal binding remains server owned', () => {
+test('T6/T8 file evidence is uploaded first by shared picker but formal binding remains server owned', () => {
   const form = read('src/components/teacher/InternshipVisitEvidenceForm.vue')
-  assert.match(form, /fileSdk\.metadata/)
-  assert.match(form, /等待安全扫描|安全扫描/)
-  assert.match(form, /保存巡访时由后端业务事务正式绑定/)
+  const picker = read('src/components/MobileAttachmentPicker.vue')
+  assert.match(picker, /fileSdk\.upload/)
+  assert.match(picker, /readyForBusiness/)
+  assert.match(picker, /扫描/)
+  assert.match(form, /保存巡访时由后端业务事务正式 FileBinding/)
   assert.doesNotMatch(form, /bindFile|bind_file|\/files\/.*\/bind/)
 })
 

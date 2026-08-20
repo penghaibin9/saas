@@ -43,17 +43,18 @@
     </template>
 
     <view class="ve__field">
-      <view class="row-between"><text class="ve__label">证据附件（最多 1 个）</text><text v-if="evidenceFile" class="ve__file">{{ evidenceFile.fileName || '已上传附件' }}</text></view>
-      <view v-if="evidenceFile" class="ve__file-state">
-        <text>{{ evidenceFile.statusText }}</text>
-        <view class="ve__file-actions">
-          <text v-if="evidenceFile.readyForBusiness" @click="previewFile">预览</text>
-          <text v-else @click="refreshFile">刷新扫描状态</text>
-          <text @click="removeFile">移除</text>
-        </view>
-      </view>
-      <button v-else class="btn btn-ghost" :disabled="submitting || uploading" @click="chooseAndUpload">{{ uploading ? '上传中…' : '选择并上传证据' }}</button>
-      <text class="ve__hint">上传后仅产生 TEMP_PRIVATE；保存巡访时由后端业务事务正式绑定，客户端不改绑文件。</text>
+      <MobileAttachmentPicker
+        :file-ids="evidenceFileIds"
+        biz-purpose="INTERNSHIP_VISIT"
+        label="证据附件"
+        :max-count="1"
+        :max-size-mb="10"
+        :disabled="submitting"
+        @update:fileIds="evidenceFileIds = $event"
+        @update:ready="evidenceReady = $event"
+        @error="attachmentError"
+      />
+      <text class="ve__hint">上传阶段只产生 TEMP_PRIVATE；保存巡访时由后端业务事务正式 FileBinding，客户端不能提前改绑。</text>
     </view>
 
     <view class="ve__actions">
@@ -65,7 +66,6 @@
 
 <script>
 import { teacherInternshipEvidenceV3Api } from '@/services/teacherInternshipEvidenceV3Api'
-import { fileSdk } from '@/services/fileSdk'
 import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
@@ -83,7 +83,7 @@ export default {
       contextState: 'loading', planOptions: [], planIndex: 0,
       methodLabels: ['现场巡访', '线上沟通', '电话沟通', '视频沟通', '其他'], methodIndex: 0,
       riskLabels: ['低风险', '中风险', '高风险'], riskIndex: 1,
-      evidenceFile: null, uploading: false,
+      evidenceFileIds: [], evidenceReady: true,
       form: {
         contactPerson: '', workStatus: '', enterpriseFeedback: '', facts: '', issues: '', advice: '',
         needFollow: false, needRisk: false, riskReason: ''
@@ -96,8 +96,8 @@ export default {
     },
     selectedPlan() { return this.planOptions[this.planIndex] || null },
     submitDisabled() {
-      return this.submitting || this.uploading || this.contextState !== 'ready' || !this.selectedPlan ||
-        !!(this.evidenceFile && !this.evidenceFile.readyForBusiness)
+      return this.submitting || this.contextState !== 'ready' || !this.selectedPlan ||
+        (this.evidenceFileIds.length > 0 && !this.evidenceReady)
     }
   },
   created() { this.loadContext() },
@@ -132,33 +132,7 @@ export default {
     },
     changePlan(e) { this.planIndex = Math.max(0, Math.min(this.planOptions.length - 1, Number(e.detail.value || 0))) },
     changeMethod(e) { this.methodIndex = Math.max(0, Math.min(METHODS.length - 1, Number(e.detail.value || 0))) },
-    async chooseAndUpload() {
-      if (this.uploading || this.submitting) return
-      this.uploading = true
-      try {
-        const picked = await fileSdk.choose({ count: 1 })
-        if (!picked) return
-        const uploaded = await fileSdk.upload(picked, { bizType: 'INTERNSHIP_VISIT', bizId: this.target.internshipId })
-        this.evidenceFile = uploaded
-        toast(uploaded.readyForBusiness ? '证据附件已上传并可使用' : uploaded.statusText || '附件已上传，等待安全扫描')
-      } catch (e) {
-        toast(normalizeError(e).text)
-      } finally {
-        this.uploading = false
-      }
-    },
-    async refreshFile() {
-      if (!this.evidenceFile || !this.evidenceFile.fileId) return
-      try {
-        this.evidenceFile = await fileSdk.metadata(this.evidenceFile.fileId)
-        toast(this.evidenceFile.readyForBusiness ? '附件安全扫描已完成' : this.evidenceFile.statusText)
-      } catch (e) { toast(normalizeError(e).text) }
-    },
-    async previewFile() {
-      if (!this.evidenceFile || !this.evidenceFile.fileId || !this.evidenceFile.readyForBusiness) return
-      try { await fileSdk.open(this.evidenceFile.fileId) } catch (e) { toast(normalizeError(e).text) }
-    },
-    removeFile() { if (!this.submitting) this.evidenceFile = null },
+    attachmentError(e) { toast(normalizeError(e).text) },
     submit() {
       if (this.submitDisabled) return
       const p = this.selectedPlan
@@ -181,7 +155,7 @@ export default {
         needRisk: !!f.needRisk,
         riskLevel: f.needRisk ? RISK_LEVELS[this.riskIndex] : null,
         riskReason: f.needRisk ? f.riskReason.trim() : null,
-        fileIds: this.evidenceFile ? [String(this.evidenceFile.fileId)] : [],
+        fileIds: this.evidenceFileIds.map((id) => String(id)).filter(Boolean).slice(0, 1),
         location: null,
         expectedVersion: p.expectedVersion
       })
@@ -191,5 +165,5 @@ export default {
 </script>
 
 <style scoped>
-.visit-evidence{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3);border:1px solid var(--teacher-200,#bfdbfe)}.ve__head{display:flex;align-items:flex-start;gap:var(--space-2)}.ve__sub{display:block;margin-top:4px;font-size:var(--font-size-xs);color:var(--text-tertiary)}.ve__close{font-size:var(--font-size-sm);color:var(--teacher-700);flex-shrink:0}.ve__field{display:flex;flex-direction:column;gap:6px}.ve__label{display:block;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.ve__hint{display:block;margin-top:2px;font-size:10px;line-height:1.45;color:var(--text-tertiary)}.ve__input,.ve__picker,.ve__textarea{box-sizing:border-box;width:100%;border:1px solid var(--border-base);border-radius:var(--radius-md);background:var(--bg-card);font-size:var(--font-size-base);color:var(--text-primary)}.ve__input,.ve__picker{min-height:var(--touch-target-min);padding:0 12px;display:flex;align-items:center}.ve__textarea{min-height:128px;padding:10px 12px;line-height:1.55}.ve__textarea.is-short{min-height:92px}.ve__toggle{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:10px 0;border-top:1px solid var(--border-light)}.ve__file{max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--success-700)}.ve__file-state{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);padding:10px 12px;background:var(--gray-50);border-radius:var(--radius-md);font-size:var(--font-size-xs);color:var(--text-secondary)}.ve__file-actions{display:flex;gap:12px;color:var(--teacher-700);flex-shrink:0}.ve__actions{display:flex;gap:var(--space-2);padding-top:var(--space-1)}.ve__submit{min-height:var(--touch-target-min);border:0;border-radius:var(--radius-md);background:var(--teacher-600);color:#fff;font-size:var(--font-size-md)}.ve__submit::after{border:0}.ve__submit[disabled]{opacity:.55}
+.visit-evidence{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3);border:1px solid var(--teacher-200,#bfdbfe)}.ve__head{display:flex;align-items:flex-start;gap:var(--space-2)}.ve__sub{display:block;margin-top:4px;font-size:var(--font-size-xs);color:var(--text-tertiary)}.ve__close{font-size:var(--font-size-sm);color:var(--teacher-700);flex-shrink:0}.ve__field{display:flex;flex-direction:column;gap:6px}.ve__label{display:block;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.ve__hint{display:block;margin-top:2px;font-size:10px;line-height:1.45;color:var(--text-tertiary)}.ve__input,.ve__picker,.ve__textarea{box-sizing:border-box;width:100%;border:1px solid var(--border-base);border-radius:var(--radius-md);background:var(--bg-card);font-size:var(--font-size-base);color:var(--text-primary)}.ve__input,.ve__picker{min-height:var(--touch-target-min);padding:0 12px;display:flex;align-items:center}.ve__textarea{min-height:128px;padding:10px 12px;line-height:1.55}.ve__textarea.is-short{min-height:92px}.ve__toggle{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:10px 0;border-top:1px solid var(--border-light)}.ve__actions{display:flex;gap:var(--space-2);padding-top:var(--space-1)}.ve__submit{min-height:var(--touch-target-min);border:0;border-radius:var(--radius-md);background:var(--teacher-600);color:#fff;font-size:var(--font-size-md)}.ve__submit::after{border:0}.ve__submit[disabled]{opacity:.55}
 </style>

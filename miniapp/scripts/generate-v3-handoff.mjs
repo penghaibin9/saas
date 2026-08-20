@@ -5,11 +5,15 @@
  * studentMergeSha 不是“JSON 自己所在提交”的不可实现自指，而是 handoff seal 覆盖的
  * 实现提交。最终 seal 使用专用 commit subject；校验器直接读取当前 commit object 的
  * parent SHA，因此在 actions/checkout 默认 fetch-depth=1 下也无需父提交/父树对象。
+ *
+ * T8 downstream rule: importing this module MUST be read-only. Only an explicit CLI invocation
+ * may generate/verify the handoff file; tests and downstream consumers must never rewrite the
+ * evidence they are about to validate.
  */
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -35,10 +39,7 @@ function gitSha() {
 
 /**
  * 当前 HEAD 若是专用 handoff seal，则从 raw commit object 读取第一父 SHA；`cat-file`
- * 只需要 HEAD 自身对象，在 shallow checkout 下也可靠。普通业务提交直接返回 HEAD，
- * 因而 seal 后任何正常代码提交都会与落盘 studentMergeSha 不一致并 fail-closed。
- * “seal commit 只能改 JSON”由生成 seal 时的 GitHub compare 独立验收，不把父树依赖塞进
- * 运行时验证器。
+ * 只需要 HEAD 自身对象，在 shallow checkout 下也可靠。普通业务提交直接返回 HEAD。
  */
 function implementationSha() {
   const head = gitSha()
@@ -165,10 +166,7 @@ function verify() {
   return 0
 }
 
-const isVerify = process.argv.includes('--verify')
-if (isVerify) {
-  process.exit(verify())
-} else {
+function generate() {
   const handoff = buildHandoff()
   writeFileSync(OUTPUT, `${JSON.stringify(handoff, null, 2)}\n`, 'utf8')
   console.log(`[handoff] 已生成 ${OUTPUT}`)
@@ -176,4 +174,16 @@ if (isVerify) {
   console.log(`  routes=${handoff.routeCount} subpackages=${handoff.subpackages.map((p) => `${p.root}:${p.pages}`).join(' ')}`)
   console.log(`  alembicHead=${handoff.alembicHead}`)
   console.log(`  packageReportSha=${handoff.packageReportSha || '(需先执行 release 构建)'}`)
+}
+
+function isCliEntry() {
+  const entry = process.argv[1]
+  if (!entry) return false
+  return import.meta.url === pathToFileURL(resolve(entry)).href
+}
+
+if (isCliEntry()) {
+  const isVerify = process.argv.includes('--verify')
+  if (isVerify) process.exit(verify())
+  generate()
 }

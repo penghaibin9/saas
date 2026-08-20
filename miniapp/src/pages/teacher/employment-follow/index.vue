@@ -69,12 +69,24 @@
                 <MobileStatusTag :label="m.formalEvidence ? '正式证据' : '缺正式证据'" :type="m.formalEvidence ? 'success' : 'warning'" />
               </view>
               <text v-if="m.legacyFileNameOnly" class="material__warn">历史文件名仅供识别，不能作为核验依据。</text>
-              <view class="ef__actions">
-                <text v-if="m.formalEvidence && m.file" class="ef__btn" @click="previewMaterial(m)">安全预览</text>
-                <text v-else class="ef__btn is-primary" @click="chooseEvidence(m)">上传并绑定证据</text>
-                <text v-if="pendingFiles[m.id] && !pendingFiles[m.id].readyForBusiness" class="ef__btn" @click="refreshEvidence(m)">刷新扫描状态</text>
+              <view v-if="m.formalEvidence && m.file" class="ef__actions">
+                <text class="ef__btn" @click="previewMaterial(m)">安全预览</text>
               </view>
-              <text v-if="pendingFiles[m.id]" class="verify__sub">待绑定：{{ pendingFiles[m.id].fileName || '附件' }} · {{ pendingFiles[m.id].statusText || pendingFiles[m.id].scanStatus }}</text>
+              <view v-else class="material__picker">
+                <MobileAttachmentPicker
+                  :file-ids="pendingEvidenceIds[String(m.id)] || []"
+                  biz-purpose="EMPLOYMENT_MATERIAL"
+                  label="上传正式核验材料"
+                  :max-count="1"
+                  :max-size-mb="10"
+                  :disabled="acting || bindingMaterialId === String(m.id)"
+                  @update:fileIds="setEvidenceFileIds(m, $event)"
+                  @update:ready="setEvidenceReady(m, $event)"
+                  @error="attachmentError"
+                />
+                <text class="verify__sub">上传只产生 TEMP_PRIVATE；扫描通过后由就业材料命令按当前版本创建正式 FileBinding。</text>
+                <text v-if="bindingMaterialId === String(m.id)" class="verify__sub">正在绑定正式材料证据…</text>
+              </view>
             </view>
           </view>
           <MobileGlobalState v-else state="empty" title="暂无就业材料" description="没有材料时不能核验通过。" />
@@ -126,7 +138,9 @@ export default {
       acting: false,
       verification: null,
       verificationStudentId: '',
-      pendingFiles: {},
+      pendingEvidenceIds: {},
+      pendingEvidenceReady: {},
+      bindingMaterialId: '',
       prefillPending: false,
       prefillStudent: null,
       fromStudent360: false
@@ -254,55 +268,63 @@ export default {
     },
     openVerification(s) {
       if (!this.canAct(s, 'verify')) { toast(this.disabledReason(s, 'verify')); return }
-      this.pendingFiles = {}
+      this.pendingEvidenceIds = {}
+      this.pendingEvidenceReady = {}
+      this.bindingMaterialId = ''
       this.fetchVerification(s.id).catch(() => {})
     },
     closeVerification() {
       this.verification = null
       this.verificationStudentId = ''
-      this.pendingFiles = {}
+      this.pendingEvidenceIds = {}
+      this.pendingEvidenceReady = {}
+      this.bindingMaterialId = ''
     },
     previewMaterial(m) {
       if (!m || !m.file || !m.file.fileId) { toast('当前材料没有可预览的正式证据'); return }
       fileSdk.open(m.file.fileId).catch((e) => this.handleError(e))
     },
-    bindReadyEvidence(m, file) {
-      if (!file || !file.readyForBusiness) { toast('文件仍在安全扫描，请稍后刷新状态'); return Promise.resolve() }
+    attachmentError(e) { this.handleError(e, true) },
+    setEvidenceFileIds(m, ids) {
+      const key = String(m && m.id || '')
+      if (!key) return
+      this.pendingEvidenceIds = {
+        ...this.pendingEvidenceIds,
+        [key]: (Array.isArray(ids) ? ids : []).map((id) => String(id)).filter(Boolean).slice(0, 1)
+      }
+      this.maybeBindEvidence(m)
+    },
+    setEvidenceReady(m, ready) {
+      const key = String(m && m.id || '')
+      if (!key) return
+      this.pendingEvidenceReady = { ...this.pendingEvidenceReady, [key]: !!ready }
+      this.maybeBindEvidence(m)
+    },
+    maybeBindEvidence(m) {
+      const key = String(m && m.id || '')
+      const ids = this.pendingEvidenceIds[key] || []
+      if (!key || !ids.length || !this.pendingEvidenceReady[key]) return
+      if (this.acting || this.bindingMaterialId) return
+      this.bindingMaterialId = key
       this.acting = true
-      return teacherEmploymentV3Api.bindMaterialEvidence(m.id, {
-        fileId: String(file.id || file.fileId || ''),
+      teacherEmploymentV3Api.bindMaterialEvidence(m.id, {
+        fileId: String(ids[0]),
         expectedVersion: Number(m.version || 0)
       }).then(() => {
         toast('正式材料证据已绑定')
-        const next = { ...this.pendingFiles }
-        delete next[m.id]
-        this.pendingFiles = next
+        const nextIds = { ...this.pendingEvidenceIds }
+        const nextReady = { ...this.pendingEvidenceReady }
+        delete nextIds[key]
+        delete nextReady[key]
+        this.pendingEvidenceIds = nextIds
+        this.pendingEvidenceReady = nextReady
         return this.fetchVerification(this.verificationStudentId)
       }).then(() => this.load())
         .catch((e) => this.handleError(e, true))
-        .finally(() => { this.acting = false })
-    },
-    chooseEvidence(m) {
-      if (this.acting) return
-      fileSdk.choose({ count: 1 }).then((chosen) => {
-        if (!chosen) return null
-        return fileSdk.upload(chosen, { bizType: 'TEMP_PRIVATE', bizId: '' })
-      }).then((file) => {
-        if (!file) return
-        this.pendingFiles = { ...this.pendingFiles, [m.id]: file }
-        if (file.readyForBusiness) return this.bindReadyEvidence(m, file)
-        toast('文件已上传，待安全扫描完成后再绑定')
-      }).catch((e) => this.handleError(e, true))
-    },
-    refreshEvidence(m) {
-      const current = this.pendingFiles[m.id]
-      const id = current && (current.id || current.fileId)
-      if (!id) return
-      fileSdk.metadata(id).then((file) => {
-        this.pendingFiles = { ...this.pendingFiles, [m.id]: file }
-        if (file.readyForBusiness) return this.bindReadyEvidence(m, file)
-        toast(file.statusText || '文件仍在安全扫描')
-      }).catch((e) => this.handleError(e, true))
+        .finally(() => {
+          this.acting = false
+          this.bindingMaterialId = ''
+        })
     },
     reviewVerification(action) {
       if (!this.verification || this.acting) return
@@ -366,6 +388,7 @@ export default {
 .verify__close { font-size: var(--font-size-sm); color: var(--teacher-700); padding: 6px; }
 .verify__dest { padding: var(--space-3); margin-top: var(--space-3); background: var(--gray-50); border-radius: var(--radius-md); }
 .material { padding: var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); }
+.material__picker { margin-top: var(--space-3); }
 .material__warn { display: block; margin-top: var(--space-2); font-size: var(--font-size-xs); color: var(--warning-700); }
 .history { padding: var(--space-2) 0; border-bottom: 1px solid var(--border-light); }
 .verify__actions { display: flex; gap: var(--space-3); margin-top: var(--space-4); }

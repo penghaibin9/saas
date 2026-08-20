@@ -48,15 +48,17 @@ test('T7 verification removes PC-only fake closure and uses server versioned com
 })
 
 
-test('T7 employment material evidence uses public file SDK and secure preview', () => {
-  assert.match(page, /import \{ fileSdk \} from '@\/services\/fileSdk'/)
-  assert.match(page, /fileSdk\.choose\(/)
-  assert.match(page, /fileSdk\.upload\(chosen, \{ bizType: 'TEMP_PRIVATE'/)
-  assert.match(page, /fileSdk\.metadata\(id\)/)
+test('T7/T8 employment material evidence uses shared picker and preserves secure formal preview', () => {
+  assert.match(page, /<MobileAttachmentPicker/)
+  assert.match(page, /biz-purpose="EMPLOYMENT_MATERIAL"/)
+  assert.match(page, /@update:fileIds="setEvidenceFileIds\(m, \$event\)"/)
+  assert.match(page, /@update:ready="setEvidenceReady\(m, \$event\)"/)
   assert.match(page, /teacherEmploymentV3Api\.bindMaterialEvidence\(m\.id/)
   assert.match(page, /expectedVersion:\s*Number\(m\.version/)
   assert.match(page, /fileSdk\.open\(m\.file\.fileId\)/)
   assert.match(page, /legacyFileNameOnly/)
+  assert.match(page, /TEMP_PRIVATE/)
+  assert.doesNotMatch(page, /fileSdk\.choose|fileSdk\.upload|fileSdk\.metadata/)
   assert.doesNotMatch(page, /uni\.downloadFile|uni\.getLocation|chooseLocation/)
 })
 
