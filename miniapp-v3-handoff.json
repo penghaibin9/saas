@@ -1,7 +1,7 @@
 {
   "schema": "miniapp-v3-handoff/1",
-  "generatedAt": "2026-08-20T03:37:33.106Z",
-  "studentMergeSha": "7dd0e25181e9f23a19f69d58da01a3bf8d919af5",
+  "generatedAt": "2026-08-20T04:20:30.000Z",
+  "studentMergeSha": "772c19bb7f239821495de5b5606725bd76d59723",
   "actionSchemaVersion": "1.0.0",
   "routeInventoryHash": "8e9bdf2e10a9093639a376d3273e5b45657a74cee04f6346cb2e24644c42e87d",
   "routeCount": 137,
