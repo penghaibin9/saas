@@ -34,7 +34,7 @@
                 <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v6h-6" /></svg>
                 刷新
               </button>
-              <button type="button" @click="go('/admin/approval/todos?status=PENDING')">
+              <button type="button" @click="go('/admin/approval/todos')">
                 查看全部待办 <span>→</span>
               </button>
             </div>
@@ -133,7 +133,7 @@
                 </span>
                 <span>
                   <small>{{ c.title }}</small>
-                  <strong>{{ valueOf(c.source) }}</strong>
+                  <strong>{{ valueOf(c.source) === null ? '—' : valueOf(c.source) }}</strong>
                   <em>{{ statHint(c) }}</em>
                 </span>
               </button>
@@ -212,7 +212,7 @@
                 <button
                   type="button"
                   class="wb-v2__text-btn"
-                  @click="go('/admin/approval/todos?status=PENDING')"
+                  @click="go('/admin/approval/todos')"
                 >
                   查看全部待办 →
                 </button>
@@ -315,6 +315,9 @@
             </button>
           </header>
           <p v-if="scheduleLoading" class="wb-v2__empty">日程加载中…</p>
+          <p v-else-if="recipe.showSchedule && scheduleError" class="wb-v2__empty is-error">
+            课表暂不可用，请稍后重试
+          </p>
           <p v-else-if="!contextItems.length" class="wb-v2__empty is-success">今天暂无安排</p>
           <ol v-else>
             <li v-for="(item, index) in contextItems" :key="item.key">
@@ -335,21 +338,24 @@
               <p>按当前数据范围汇总</p>
             </div>
           </header>
-          <button type="button" :class="{ 'is-safe': !riskCount }" @click="go(riskPath)">
+          <button v-if="!riskItems.length" type="button" class="is-safe">
             <span class="wb-v2__risk-icon">!</span>
             <span>
-              <strong v-if="riskCount">有 {{ riskCount }} 条风险需要关注</strong>
-              <strong v-else>当前暂无高风险事项</strong>
-              <small>{{ riskCount ? '建议优先进入台账处理' : '业务运行状态正常' }}</small>
+              <strong>当前暂无高风险事项</strong>
+              <small>业务运行状态正常</small>
             </span>
           </button>
           <button
-            v-if="riskCount"
+            v-for="item in riskItems"
+            :key="item.key"
             type="button"
-            class="wb-v2__text-btn wb-v2__risk-more"
-            @click="go(riskPath)"
+            @click="go(item.path)"
           >
-            查看全部风险 →
+            <span class="wb-v2__risk-icon">!</span>
+            <span>
+              <strong>{{ item.text }}</strong>
+              <small>{{ item.hint }}</small>
+            </span>
           </button>
         </section>
 
@@ -454,6 +460,7 @@ export default {
     return {
       loading: true,
       error: '',
+      statsError: false,
       role: '',
       summary: { ...EMPTY_SUMMARY },
       stats: { ...EMPTY_STATS },
@@ -464,7 +471,8 @@ export default {
       tilePref: { order: [], hidden: [] },
       favPaths: [],
       scheduleItems: [],
-      scheduleLoading: false
+      scheduleLoading: false,
+      scheduleError: false
     }
   },
   computed: {
@@ -568,13 +576,34 @@ export default {
         meta: this.todoMeta(t)
       }))
     },
-    riskCount() {
-      return Number(this.summary.overdue || this.stats.academicWarning || 0)
+    // V3 施工手册 TP-W10：逾期待办与学业预警是两类不同风险，此前用 `||` 只取其一，
+    // 同时存在时会丢掉一类真实风险数字。拆成两个独立条目，都展示、各自可下钻。
+    riskItems() {
+      const items = []
+      const overdue = Number(this.summary.overdue || 0)
+      if (overdue > 0) {
+        items.push({
+          key: 'overdue',
+          count: overdue,
+          text: `有 ${overdue} 项已逾期待办`,
+          hint: '建议优先进入待办台账处理',
+          path: '/admin/approval/todos?urgency=OVERDUE'
+        })
+      }
+      const warning = Number(this.stats.academicWarning || 0)
+      if (warning > 0) {
+        items.push({
+          key: 'academicWarning',
+          count: warning,
+          text: `有 ${warning} 项学业预警在办`,
+          hint: '建议优先进入预警台账处理',
+          path: TODO_TYPE_ROUTES.ACAD_WARNING_HANDLE
+        })
+      }
+      return items
     },
-    riskPath() {
-      return this.summary.overdue
-        ? '/admin/approval/todos?urgency=OVERDUE'
-        : '/admin/academic-affairs/warnings?status=OPEN'
+    riskCount() {
+      return this.riskItems.reduce((sum, item) => sum + item.count, 0)
     }
   },
   created() {
@@ -582,13 +611,21 @@ export default {
   },
   methods: {
     async load() {
+      // V3 施工手册 TP-W08：核心待办/消息与非核心范围内统计（stats.workbench）
+      // 分区加载，用 allSettled 而不是 all——以前统计接口一超时/500，
+      // Promise.all 整体 reject，连正常返回的待办和消息也被 catch 块清空重置成
+      // 假空态，让老师以为自己"今天没有待办"。
       this.loading = true
       this.error = ''
-      try {
-        const needStats = true
-        const reqs = [fetchTodoSummary(), fetchTodoCount(), fetchTodoList(), fetchMessageCount()]
-        if (needStats) reqs.push(fetchSchoolStats())
-        const [summary, count, list, msg, schoolStats] = await Promise.all(reqs)
+      this.statsError = false
+
+      const [coreResult, statsResult] = await Promise.allSettled([
+        Promise.all([fetchTodoSummary(), fetchTodoCount(), fetchTodoList(), fetchMessageCount()]),
+        fetchSchoolStats()
+      ])
+
+      if (coreResult.status === 'fulfilled') {
+        const [summary, count, list, msg] = coreResult.value
         this.role = summary.role || ''
         this.summary = {
           pending: Number(summary.pending) || 0,
@@ -599,42 +636,47 @@ export default {
         this.byType = count.byType && typeof count.byType === 'object' ? { ...count.byType } : {}
         this.todos = Array.isArray(list.items) ? list.items : []
         this.unread = Number(msg.unread) || 0
-        if (schoolStats && typeof schoolStats === 'object') {
-          this.stats = {
-            studentTotal: Number(schoolStats.studentTotal) || 0,
-            pendingApproval: Number(schoolStats.pendingApproval) || 0,
-            academicWarning: Number(schoolStats.academicWarning) || 0,
-            unemployed: Number(schoolStats.unemployed) || 0,
-            orientationPending: Number(schoolStats.orientationPending) || 0,
-            scopeLabel: schoolStats.scopeLabel || ''
-          }
-        } else {
-          this.stats = { ...EMPTY_STATS }
-        }
-        await this.loadPrefsQuiet()
-        if (this.recipe.showSchedule) await this.loadScheduleQuiet()
-      } catch (e) {
+      } else {
         this.role = ''
         this.summary = { ...EMPTY_SUMMARY }
-        this.stats = { ...EMPTY_STATS }
         this.byType = {}
         this.todos = []
         this.unread = 0
-        this.scheduleItems = []
-        this.error = (e && e.message) || '请求失败'
-      } finally {
-        this.loading = false
+        this.error = (coreResult.reason && coreResult.reason.message) || '请求失败'
       }
+
+      const schoolStats = statsResult.status === 'fulfilled' ? statsResult.value : null
+      if (schoolStats && typeof schoolStats === 'object') {
+        this.stats = {
+          studentTotal: Number(schoolStats.studentTotal) || 0,
+          pendingApproval: Number(schoolStats.pendingApproval) || 0,
+          academicWarning: Number(schoolStats.academicWarning) || 0,
+          unemployed: Number(schoolStats.unemployed) || 0,
+          orientationPending: Number(schoolStats.orientationPending) || 0,
+          scopeLabel: schoolStats.scopeLabel || ''
+        }
+      } else {
+        this.stats = { ...EMPTY_STATS }
+        this.statsError = statsResult.status === 'rejected'
+      }
+
+      await this.loadPrefsQuiet()
+      if (this.recipe.showSchedule) await this.loadScheduleQuiet()
+      this.loading = false
     },
     async loadScheduleQuiet() {
       this.scheduleLoading = true
+      this.scheduleError = false
       try {
         const u = currentUserFromToken() || {}
         const key = String(u.loginName || u.userId || '').trim()
         const res = await fetchMyScheduleToday(key)
         this.scheduleItems = Array.isArray(res.items) ? res.items : []
       } catch {
+        // V3 施工手册 TP-W09：故障与"今天真的没课"是两种不同事实，不能都显示
+        // "今天暂无安排"——教务接口故障时必须诚实报错，不能伪装成空。
         this.scheduleItems = []
+        this.scheduleError = true
       } finally {
         this.scheduleLoading = false
       }
@@ -703,7 +745,9 @@ export default {
       const [ns, key] = String(source || '').split('.')
       if (ns === 'summary') return this.summary[key] || 0
       if (ns === 'todoType') return this.byType[key] || 0
-      if (ns === 'stats') return this.stats[key] || 0
+      // V3 施工手册 TP-W08：范围内统计（stats.workbench）故障时诚实返回 null（模板
+      // 显示"—"），不能借 EMPTY_STATS 的兜底 0 冒充"范围内真的是 0"。
+      if (ns === 'stats') return this.statsError ? null : this.stats[key] || 0
       if (ns === 'message') return this.unread || 0
       return 0
     },
@@ -730,16 +774,19 @@ export default {
       if (this.$route.fullPath !== full) this.$router.push(full).catch(() => {})
     },
     openTodo(t) {
+      // V3 施工手册 TP-W06：不再本地猜路由。服务端有 typedRouteTarget 就导航；
+      // 没有就 fail-closed（禁用 + 提示原因），不再拿 TODO_TYPE_ROUTES 或拼
+      // todoType/status 兜底——那两条路径都不保证真的存在对应能力，点了可能
+      // 落进空壳或全量列表，误导成"已处理"。
       const type = t && t.todoType
       const typedTarget = String(t?.typedRouteTarget || '').trim()
-      const path =
-        typedTarget ||
-        (type && TODO_TYPE_ROUTES[type]) ||
-        (type
-          ? `/admin/approval/todos?todoType=${encodeURIComponent(type)}&status=PENDING`
-          : '/admin/approval/todos?status=PENDING')
-      this.trackClick(type || 'todo', path)
-      this.go(path)
+      if (!typedTarget) {
+        this.trackClick(type || 'todo', '')
+        this.$message?.warning?.('该类待办暂未开通工作台直达入口，请前往对应业务模块处理')
+        return
+      }
+      this.trackClick(type || 'todo', typedTarget)
+      this.go(typedTarget)
     },
     scheduleTitle(s) {
       return [s.courseName || s.course || '课程', s.className || s.teachingClassName || '']
@@ -792,6 +839,7 @@ export default {
     },
     statHint(c) {
       const value = this.valueOf(c.source)
+      if (value === null) return '统计暂不可用，请稍后重试'
       if (c.key === 'messages') return value ? '等待你查看' : '暂无未读消息'
       return value ? '点击查看业务明细' : '当前暂无数据'
     },
@@ -1589,6 +1637,9 @@ export default {
   text-align: left;
   cursor: pointer;
 }
+.wb-v2__risk > button:not(.wb-v2__text-btn) + button:not(.wb-v2__text-btn) {
+  margin-top: 8px;
+}
 .wb-v2__risk > button.is-safe {
   border-color: #ccebd8;
   background: #f0faf4;
@@ -1616,10 +1667,6 @@ export default {
   margin-top: 3px;
   color: #9d7b80;
   font-size: 8px;
-}
-.wb-v2__risk-more {
-  margin: 8px 14px 0 auto;
-  display: block;
 }
 .wb-v2__help {
   padding-bottom: 10px;
@@ -1710,6 +1757,9 @@ export default {
 }
 .wb-v2__empty.is-success {
   color: #3d9b66;
+}
+.wb-v2__empty.is-error {
+  color: #d93645;
 }
 
 @media (max-width: 1480px) {

@@ -255,11 +255,12 @@ export default {
     if (urgency && this.ctx.filterOptions.urgencies.some((u) => u.value === urgency)) {
       this.filters.urgency = urgency
     }
-    // UnifiedTodo 分类下钻：approval 列表无 todoType 字段时仍保留 urgency/bizType；
-    // todoType 透传给 load 作为关键词兜底提示（业务页自带 status 筛选更准）。
-    if (this.$route.query.todoType && !this.filters.keyword) {
-      this.filters.keyword = String(this.$route.query.todoType)
-    }
+    // V3 施工手册 TP-W05：todoType 是英文业务分类码（如 LEAVE_APPROVAL），不是给人看
+    // 的关键词——塞进 filters.keyword 会被当全文检索，永远搜不出真实结果，还会让
+    // 用户误以为自己的关键词筛选是空的。UnifiedTodo 分类目前没有对应的 Approval
+    // 端结构化筛选字段，与其伪装成一个不生效的关键词，不如干脆不消费它：该分类的
+    // Workbench 磁贴已经指向各自业务列表的专属路由（TODO_TYPE_ROUTES），不会再
+    // 带着 todoType 落到这个页面。
     this.load()
     this.loadAudits()
   },
