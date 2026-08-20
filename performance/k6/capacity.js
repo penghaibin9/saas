@@ -217,8 +217,11 @@ export function handleSummary(data) {
   const routes = routeLatencies(metrics);
   const identity = identityDistribution();
   const required = requiredRoutes();
+  const missingStudentV3Routes = REQUIRED_STUDENT_V3_ROUTES.filter((route) => !routes[route]);
+  const missingTeacherV3Routes = REQUIRED_TEACHER_V3_ROUTES.filter((route) => !routes[route]);
   const artifact = {
-    schema: 'yueke-capacity-artifact/2',
+    // Keep schema /1 for downstream compatibility; T9 is additive fields, not a breaking artifact change.
+    schema: 'yueke-capacity-artifact/1',
     profile: PROFILE,
     scenario: SCENARIO,
     dataset: DATASET,
@@ -228,6 +231,8 @@ export function handleSummary(data) {
     requiredStudentV3Routes: REQUIRED_STUDENT_V3_ROUTES,
     requiredTeacherV3Routes: REQUIRED_TEACHER_V3_ROUTES,
     requiredRoutes: required,
+    missingStudentV3Routes,
+    missingTeacherV3Routes,
     missingRoutes: required.filter((route) => !routes[route]),
     totals: {
       requests: (metrics.http_reqs && metrics.http_reqs.values && metrics.http_reqs.values.count) || 0,
