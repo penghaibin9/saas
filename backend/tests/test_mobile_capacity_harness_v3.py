@@ -10,6 +10,7 @@ CONFIG_JS = REPO_ROOT / "performance" / "k6" / "lib" / "config.js"
 AUTH_JS = REPO_ROOT / "performance" / "k6" / "lib" / "auth.js"
 SEED_PY = REPO_ROOT / "backend" / "scripts" / "seed_mobile_capacity_school.py"
 LOCAL_SEED_PY = REPO_ROOT / "performance" / "tools" / "seed_local_capacity_env.py"
+EVALUATOR_PY = REPO_ROOT / "performance" / "tools" / "evaluate_capacity_result.py"
 EXPLAIN_PY = REPO_ROOT / "backend" / "scripts" / "explain_mobile_v3_queries.py"
 
 
@@ -82,6 +83,15 @@ def test_artifact_records_unique_tokens_and_role_distribution():
         assert field in auth, f"身份分布缺少 {field}"
     assert "identityDistribution()" in capacity
     assert '"identity": identity' in capacity or "identity," in capacity
+
+
+def test_cold_teacher_capacity_requires_distinct_contexts_for_preissued_tokens():
+    evaluator = EVALUATOR_PY.read_text(encoding="utf-8")
+    assert '"teacherTokensAvailable": int(' in evaluator
+    assert '"uniqueTeacherContexts": int(' in evaluator
+    assert 'actual["teacherTokensAvailable"] > 0' in evaluator
+    assert 'required["uniqueTeacherContexts"] = teacher_contexts_required' in evaluator
+    assert 'actual["uniqueTeacherContexts"] >= teacher_contexts_required' in evaluator
 
 
 def test_artifact_records_profile_scenario_dataset_and_per_route_latency():
