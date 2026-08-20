@@ -257,6 +257,11 @@ def add_course(user, batch_id, body) -> dict:
         if duplicate:
             raise AppException("VALIDATION_ERROR", "该课程(教学班)已在本批次")
 
+        capacity = int(getattr(body, "capacity", 0) or 0)
+        min_capacity = int(getattr(body, "minCapacity", 0) or 0)
+        if min_capacity > capacity:
+            raise AppException("VALIDATION_ERROR", "开班下限不可大于课程容量")
+
         row = AaSelectionCourse(
             tenant_id=_core._tid(),
             batch_id=batch.id,
@@ -266,8 +271,8 @@ def add_course(user, batch_id, body) -> dict:
             teacher_key=task.teacher_key,
             teacher_name=task.teacher_name,
             credit=getattr(course, "credit", None),
-            capacity=int(getattr(body, "capacity", 0) or 0),
-            min_capacity=int(getattr(body, "minCapacity", 0) or 0),
+            capacity=capacity,
+            min_capacity=min_capacity,
             selected_count=0,
             status=_core._COURSE_OPEN,
         )
