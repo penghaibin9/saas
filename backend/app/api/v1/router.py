@@ -27,6 +27,7 @@ from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_route
 from app.api.v1.affairs_student_returned import router as affairs_student_returned_router
 from app.api.v1.auth_browser import router as auth_browser_router
 from app.api.v1.control_plane_auth import router as control_plane_auth_router
+from app.api.v1.control_plane_offboarding import router as control_plane_offboarding_router
 from app.api.v1.data_center import router as data_center_router
 from app.api.v1.help_metrics import router as help_metrics_router
 from app.api.v1.mobile_academic_status import router as mobile_academic_status_router
@@ -111,6 +112,7 @@ api_router.routes[:] = [
 for supplemental_router in (
     sandbox_story_router,
     control_plane_auth_router,
+    control_plane_offboarding_router,
     auth_browser_router,
     affairs_material_center_router,
     affairs_four_end_router,
