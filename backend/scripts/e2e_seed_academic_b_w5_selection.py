@@ -10,7 +10,14 @@ import _mysql_env  # noqa: F401
 from sqlalchemy import select
 
 from app.db.session import get_sessionmaker
-from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm, StudentProfile
+from app.models import (
+    AaCourse,
+    AaProgramCourse,
+    AaTeachingTask,
+    AaTeachingTaskBatch,
+    AaTerm,
+    StudentProfile,
+)
 
 TID = 1000000000000000007
 MAIN_STUDENT_NO = "E2E20260001"
@@ -111,6 +118,18 @@ def main() -> int:
         task_rows = []
         for index, (course, spec) in enumerate(zip(courses, COURSE_SPECS), start=1):
             _code, _name, teacher_name = spec
+            source = AaProgramCourse(
+                tenant_id=TID,
+                program_id=99000500 + index,
+                course_id=course.id,
+                course_name=course.course_name,
+                open_term_no=1,
+                module="MAJOR_CORE",
+                credit_snapshot=getattr(course, "credit", None) or 2,
+                formation_mode="SELECTABLE",
+            )
+            db.add(source)
+            db.flush()
             task = AaTeachingTask(
                 tenant_id=TID,
                 batch_id=task_batch.id,
@@ -126,6 +145,8 @@ def main() -> int:
                 total_hours=32,
                 start_week=1,
                 end_week=16,
+                source_program_course_id=source.id,
+                formation_mode="SELECTABLE",
                 status="READY",
             )
             db.add(task)
