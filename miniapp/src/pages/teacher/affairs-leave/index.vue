@@ -180,11 +180,12 @@ export default {
         return this.load().then(() => this.afterSequentialSuccess(queueId, oldIndex))
       }).catch((e) => {
         const n = this._err(e, label)
-        if (n.kind === 'conflict') {
-          if (this.sequentialMode) this.sequentialConflict = true
-          return this.load().catch(() => {})
+        if (n.kind !== 'conflict') {
+          if (retry) setTimeout(retry, 0)
+          return
         }
-        if (retry) setTimeout(retry, 0)
+        if (this.sequentialMode) this.sequentialConflict = true
+        return this.load().catch(() => {})
       }).finally(() => { this.acting = false })
     },
     promptText({ title, placeholder, initial = '', required = false, max = 300, submit }) {
@@ -249,5 +250,5 @@ export default {
 </script>
 
 <style scoped>
-.al__tabs { display: flex; gap: var(--space-6); padding: var(--space-3) var(--page-padding-mobile) 0; background: var(--bg-card); }.al__tab { position: relative; font-size: var(--font-size-base); color: var(--text-tertiary); font-weight: var(--font-weight-medium); padding-bottom: var(--space-3); }.al__tab.is-on { color: var(--text-primary); font-weight: var(--font-weight-semibold); }.al__tab-u { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: 22px; height: 3px; border-radius: 2px; background: var(--teacher-600); }.al__tab-badge { margin-left: 4px; font-size: 10px; color: #fff; background: var(--danger-500); padding: 1px 5px; border-radius: var(--radius-full); }.al { display: flex; flex-direction: column; gap: var(--space-2); }.al__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }.al__row { display: flex; gap: var(--space-3); }.al__row-k { font-size: var(--font-size-sm); color: var(--text-tertiary); width: 40px; flex-shrink: 0; }.al__actions { display: flex; gap: var(--space-2); margin-top: var(--space-1); }.al__reject { min-height: var(--touch-target-min); border-radius: var(--radius-md); font-size: var(--font-size-md); border: 1px solid var(--danger-500); background: var(--bg-card); color: var(--danger-600); }.al__reject::after { border: none; }.al__approve { min-height: var(--touch-target-min); border-radius: var(--radius-md); font-size: var(--font-size-md); border: 0; background: var(--teacher-600); color: #fff; }.al__approve::after { border: none; }.al__queue-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }.al__queue-note { font-size: var(--font-size-sm); color: var(--text-secondary); }.al__queue-toggle { flex-shrink: 0; font-size: var(--font-size-sm); color: var(--teacher-700); }.al__queue-item { padding: 0; }
+.al__tabs { display: flex; gap: var(--space-6); padding: var(--space-3) var(--page-padding-mobile) 0; background: var(--bg-card); }.al__tab { position: relative; font-size: var(--font-size-base); color: var(--text-tertiary); font-weight: var(--font-weight-medium); padding-bottom: var(--space-3); }.al__tab.is-on { color: var(--text-primary); font-weight: var(--font-weight-semibold); }.al__tab-u { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: 22px; height: 3px; border-radius: 2px; background: var(--teacher-600); }.al__tab-badge { margin-left: 4px; font-size: 10px; color: #fff; background: var(--danger-500); padding: 1px 5px; border-radius: var(--radius-full); }.al { display: flex; flex-direction: column; gap: var(--space-2); }.al__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }.al__row { display: flex; gap: var(--space-3); }.al__row-k { font-size: var(--font-size-sm); color: var(--text-tertiary); width: 40px; flex-shrink: 0; }.al__actions { display: flex; gap: var(--space-2); margin-top: var(--space-1); }.al__reject { min-height: var(--touch-target-min); border-radius: var(--radius-md); font-size: var(--font-size-md); border: 1px solid var(--danger-500); background: var(--bg-card); color: var(--danger-600); }.al__reject::after { border: none; }.al__approve { min-height:var(--touch-target-min); border-radius:var(--radius-md); font-size:var(--font-size-md); border:0; background:var(--teacher-600); color:#fff; }.al__approve::after { border:none; }.al__queue-bar{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);margin-bottom:var(--space-3)}.al__queue-note{font-size:var(--font-size-sm);color:var(--text-secondary)}.al__queue-toggle{flex-shrink:0;font-size:var(--font-size-sm);color:var(--teacher-700)}.al__queue-item{padding:0}
 </style>
