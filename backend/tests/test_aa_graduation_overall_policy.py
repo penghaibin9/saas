@@ -7,41 +7,47 @@ def _item(code: str, result: str):
     return {"item": code, "result": result}
 
 
-def test_all_pass_is_required_for_formal_precheck():
-    rows = [
-        _item("STATUS", "PASS"),
-        _item("CREDIT", "PASS"),
-        _item("COURSE_REQUIRED", "PASS"),
-        _item("COURSE_ELECTIVE", "PASS"),
-        _item("PRACTICE", "PASS"),
-        _item("INTERNSHIP", "PASS"),
-        _item("GRADUATION_DESIGN", "PASS"),
-        _item("DISCIPLINE", "PASS"),
-        _item("EMPLOYMENT", "PASS"),
-        _item("ARCHIVE", "PASS"),
-        _item("FEE", "PASS"),
+def _complete_rows(*, employment="UNKNOWN", fee="UNKNOWN"):
+    required = set(graduation_service._BLOCKING_UNKNOWN_ITEMS) | {"ARCHIVE"}
+    rows = [_item(code, "PASS") for code in sorted(required)]
+    rows.extend([_item("EMPLOYMENT", employment), _item("FEE", fee)])
+    return rows
+
+
+def _replace(rows, code: str, result: str):
+    return [
+        _item(row["item"], result if row["item"] == code else row["result"])
+        for row in rows
     ]
+
+
+def test_required_items_pass_allows_advisory_unknowns():
+    rows = _complete_rows(employment="UNKNOWN", fee="UNKNOWN")
     assert immutable._strict_overall(rows) == "SYSTEM_PASSED"
 
 
-def test_any_unknown_blocks_formal_precheck():
-    assert immutable._strict_overall([_item("STATUS", "PASS"), _item("CREDIT", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
-    assert immutable._strict_overall([_item("STATUS", "PASS"), _item("EMPLOYMENT", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
-    assert immutable._strict_overall([_item("STATUS", "PASS"), _item("ARCHIVE", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
-    assert immutable._strict_overall([_item("STATUS", "PASS"), _item("FEE", "UNKNOWN")]) == "SYSTEM_ABNORMAL"
+def test_required_unknown_still_blocks_formal_precheck():
+    rows = _complete_rows()
+    assert immutable._strict_overall(_replace(rows, "CREDIT", "UNKNOWN")) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall(_replace(rows, "ARCHIVE", "UNKNOWN")) == "SYSTEM_ABNORMAL"
 
 
-def test_any_fail_still_blocks_formal_precheck():
-    assert immutable._strict_overall([_item("STATUS", "PASS"), _item("FEE", "FAIL")]) == "SYSTEM_ABNORMAL"
+def test_known_fail_blocks_even_on_advisory_domain():
+    rows = _complete_rows()
+    assert immutable._strict_overall(_replace(rows, "FEE", "FAIL")) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall(_replace(rows, "EMPLOYMENT", "FAIL")) == "SYSTEM_ABNORMAL"
 
 
-def test_empty_or_missing_result_fails_closed():
+def test_empty_missing_or_malformed_required_evidence_fails_closed():
     assert immutable._strict_overall([]) == "SYSTEM_ABNORMAL"
-    assert immutable._strict_overall([{"item": "STATUS"}]) == "SYSTEM_ABNORMAL"
+    rows = _complete_rows()
+    assert immutable._strict_overall([row for row in rows if row["item"] != "ARCHIVE"]) == "SYSTEM_ABNORMAL"
+    assert immutable._strict_overall(_replace(rows, "CREDIT", "UNSUPPORTED")) == "SYSTEM_ABNORMAL"
 
 
 def test_compat_projection_recompute_uses_same_stage_c3_policy():
-    """费用回填等旧 projection 写入口不得再把 immutable UNKNOWN 重新算成 PASS。"""
+    """费用回填等旧 projection 写入口必须复用 immutable 的同一 overall 边界。"""
     assert graduation_service._overall is immutable._strict_overall
-    rows = [_item("STATUS", "PASS"), _item("ARCHIVE", "UNKNOWN"), _item("FEE", "PASS")]
-    assert graduation_service._overall(rows) == "SYSTEM_ABNORMAL"
+    rows = _complete_rows(employment="UNKNOWN", fee="UNKNOWN")
+    assert graduation_service._overall(rows) == "SYSTEM_PASSED"
+    assert graduation_service._overall(_replace(rows, "ARCHIVE", "UNKNOWN")) == "SYSTEM_ABNORMAL"

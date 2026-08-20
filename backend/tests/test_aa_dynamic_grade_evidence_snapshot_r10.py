@@ -74,7 +74,7 @@ def test_graduation_evidence_hash_is_stable_and_contains_drill_identity():
     assert first["sourceType"] == "ACADEMIC_GRADE"
     assert first["sourceIds"] == ["8"]
     assert first["facts"]["studentId"] == "99"
-    assert first["drillRoute"] == "/admin/academic-affairs/graduation-audit"
+    assert first["drillRoute"] == "/admin/academic-affairs/graduation/audit-console"
     assert first["evidenceHash"] == second["evidenceHash"]
     assert first["checkedAt"] != second["checkedAt"]
 

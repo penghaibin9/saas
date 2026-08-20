@@ -1,0 +1,317 @@
+name: Academic D Evaluation Concurrency One Shot
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/app/modules/academic_affairs/services/__init__.py"
+      - "backend/app/modules/academic_affairs/routers/evaluation_core_router.py"
+      - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_facade.py"
+      - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py"
+      - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_submit_roster_guard.py"
+      - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py"
+      - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_term_facade.py"
+      - "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_appeal_service.py"
+      - "backend/app/services/sandbox_school_academic_quality_seed.py"
+      - "backend/scripts/academic_d_evaluation_concurrency_probe.py"
+      - "backend/scripts/academic_d_evaluation_deadline_burst_probe.py"
+      - "backend/scripts/academic_d_w5_final_gold_replay.sh"
+      - "backend/scripts/academic_d_w5_same_head_matrix.py"
+      - "backend/scripts/academic_d_w5_upstream_freeze.py"
+      - "backend/scripts/academic_d_w5_integrated_browser.sh"
+      - "backend/tests/test_academic_d_w5_same_head_matrix.py"
+      - "backend/tests/test_academic_d_w5_upstream_freeze.py"
+      - "backend/tests/test_aa_evaluation.py"
+      - "backend/tests/test_aa_evaluation_student_anonymity.py"
+      - "backend/tests/test_aa_evaluation_d_w3_close_submit_lock.py"
+      - "backend/tests/test_aa_evaluation_d_w3_submission_fact_authority.py"
+      - "backend/tests/test_aa_evaluation_d_w3_appeal_state.py"
+      - "backend/tests/test_aa_evaluation_d_w3_scope_guard.py"
+      - "backend/tests/test_sandbox_school_academic_quality_truth.py"
+      - "student-portal/src/views/academic/StudentGraduationAuditView.vue"
+      - "student-portal/tests/academic-d-w5-graduation-truth.test.mjs"
+      - "e2e/specs/academic-d-w5-student-graduation.spec.mjs"
+      - ".github/workflows/academic-d-evaluation-concurrency-one-shot.yml"
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: academic-d-evaluation-concurrency-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mysql-evaluation-contention:
+    name: MySQL 8 · Evaluation + W5 exact-head Gold replay
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: development
+      DEBUG: "false"
+      DB_ENABLED: "true"
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      DB_POOL_SIZE: "220"
+      DB_MAX_OVERFLOW: "20"
+      DB_POOL_TIMEOUT: "30"
+      DB_CONNECT_TIMEOUT: "10"
+      DB_READ_TIMEOUT: "60"
+      DB_WRITE_TIMEOUT: "60"
+      FIELD_ENCRYPTION_KEY: academic-d-evaluation-concurrency-field-key-20260816
+      JWT_SECRET: academic-d-evaluation-concurrency-jwt-secret-20260816
+      MOCK_LOGIN_ENABLED: "true"
+      FAST_TEST_SCHEMA: "1"
+      PYTHONUNBUFFERED: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+            miniapp/package-lock.json
+
+      - name: Freeze and syntax-check D-W5 evidence tooling before replay tree switch
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          cp backend/scripts/academic_d_w5_same_head_matrix.py /tmp/academic_d_w5_same_head_matrix.py
+          cp backend/scripts/academic_d_w5_integrated_browser.sh /tmp/academic_d_w5_integrated_browser.sh
+          chmod +x /tmp/academic_d_w5_integrated_browser.sh
+          python -m py_compile \
+            /tmp/academic_d_w5_same_head_matrix.py \
+            backend/scripts/academic_d_w5_upstream_freeze.py
+          bash -n backend/scripts/academic_d_w5_final_gold_replay.sh
+          bash -n /tmp/academic_d_w5_integrated_browser.sh
+
+      - name: Install frozen backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: Test D-W5 evidence and upstream-freeze guards
+        working-directory: backend
+        run: |
+          pytest -q \
+            tests/test_academic_d_w5_same_head_matrix.py \
+            tests/test_academic_d_w5_upstream_freeze.py \
+            -p no:warnings
+
+      - name: Test D-W5 student graduation truth source contract
+        run: node --test student-portal/tests/academic-d-w5-graduation-truth.test.mjs
+
+      - name: Snapshot owner-declared A/B/C contract freezes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/academic_d_w5_upstream_freeze.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --output /tmp/academic-d-w5-upstream-freeze.json
+          cat /tmp/academic-d-w5-upstream-freeze.json
+
+      - name: Upgrade isolated MySQL 8 schema
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          alembic heads
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+
+      - name: Compile D-W3 benchmark and touched runtime services
+        working-directory: backend
+        run: |
+          python -m py_compile \
+            scripts/academic_d_evaluation_concurrency_probe.py \
+            scripts/academic_d_evaluation_deadline_burst_probe.py \
+            app/modules/academic_affairs/routers/evaluation_core_router.py \
+            app/modules/academic_affairs/services/__init__.py \
+            app/modules/academic_affairs/services/academic_affairs_evaluation_facade.py \
+            app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py \
+            app/modules/academic_affairs/services/academic_affairs_evaluation_submit_roster_guard.py \
+            app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py \
+            app/modules/academic_affairs/services/academic_affairs_evaluation_term_facade.py \
+            app/modules/academic_affairs/services/academic_affairs_evaluation_appeal_service.py \
+            app/services/sandbox_school_academic_quality_seed.py \
+            tests/test_aa_evaluation.py \
+            tests/test_aa_evaluation_student_anonymity.py \
+            tests/test_aa_evaluation_d_w3_close_submit_lock.py \
+            tests/test_aa_evaluation_d_w3_submission_fact_authority.py \
+            tests/test_aa_evaluation_d_w3_appeal_state.py \
+            tests/test_aa_evaluation_d_w3_scope_guard.py \
+            tests/test_sandbox_school_academic_quality_truth.py
+
+      - name: Run D-W3 evaluation endpoint, anonymity, truth, lock, submission authority, appeal and scope contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          mkdir -p test-results
+          pytest -q \
+            tests/test_aa_evaluation.py \
+            tests/test_aa_evaluation_student_anonymity.py \
+            tests/test_sandbox_school_academic_quality_truth.py \
+            tests/test_aa_evaluation_d_w3_close_submit_lock.py \
+            tests/test_aa_evaluation_d_w3_submission_fact_authority.py \
+            tests/test_aa_evaluation_d_w3_appeal_state.py \
+            tests/test_aa_evaluation_d_w3_scope_guard.py \
+            -p no:warnings \
+            --junitxml=test-results/academic-d-evaluation-focused-junit.xml
+
+      - name: Run real MySQL evaluation contention and deadline-burst evidence
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python scripts/academic_d_evaluation_deadline_burst_probe.py \
+            --output test-results/academic-d-evaluation-concurrency.json
+
+      - name: Summarize evaluation concurrency evidence
+        if: always()
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("test-results/academic-d-evaluation-concurrency.json")
+          with Path("/tmp/academic-d-evaluation-summary.md").open("w", encoding="utf-8") as out:
+              out.write("## Academic D-W3 Evaluation concurrency\n\n")
+              if not path.exists():
+                  out.write("Evidence JSON was not generated.\n")
+              else:
+                  data = json.loads(path.read_text(encoding="utf-8"))
+                  out.write(f"correctnessPassed: **{data.get('correctnessPassed')}**\n\n")
+                  out.write(f"studentLockProtocol: `{data.get('studentLockProtocol', '')}`\n\n")
+                  out.write("| scenario | concurrency | success | failure/rejected | p50 ms | p95 ms | p99 ms | row lock waits | deadlocks | records | submittedCount | correct |\n")
+                  out.write("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")
+                  for row in data.get("scenarios", []):
+                      locks = row.get("mysqlLockDelta") or {}
+                      out.write(
+                          "| {scenario} | {concurrency} | {success} | {failure} | {p50} | {p95} | {p99} | {waits} | {deadlocks} | {records} | {submitted} | {correct} |\n".format(
+                              scenario=row.get("scenario"),
+                              concurrency=row.get("concurrency", row.get("attempts", "")),
+                              success=row.get("successCount", ""),
+                              failure=row.get("failureCount", row.get("rejectedCount", "")),
+                              p50=row.get("p50Ms", ""),
+                              p95=row.get("p95Ms", ""),
+                              p99=row.get("p99Ms", ""),
+                              waits=locks.get("Innodb_row_lock_waits", 0),
+                              deadlocks=locks.get("Innodb_deadlocks", 0),
+                              records=row.get("recordCount", ""),
+                              submitted=row.get("submittedCount", ""),
+                              correct=row.get("correct"),
+                          )
+                      )
+          PY
+          cat /tmp/academic-d-evaluation-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload D-W3 concurrency evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-d-evaluation-concurrency-${{ github.run_id }}
+          path: |
+            backend/test-results/academic-d-evaluation-focused-junit.xml
+            backend/test-results/academic-d-evaluation-concurrency.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Run D-W5 A -> B -> C -> D -> INT pre-Gold replay
+        env:
+          MAIN_SHA: 7fcf4f911e5ae8827c13e532e13c61676318b343
+          A_SHA: 71de7b4a0ac52216df9e8230f8b6ec97a26099be
+          B_SHA: 48a4d183e4985befd2ca11299303be897623dd4c
+          C_SHA: ab61720cc2ec2c7f96420375e4d87c672432f532
+          INT_SHA: 50ec0b9aba564701805d5a3f590b2faa23c2cfc3
+          EXACT_D_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXACT_D_SHA"
+          bash backend/scripts/academic_d_w5_final_gold_replay.sh
+
+      - name: Run D-W5 integrated management + student + teacher real browser Gold
+        if: success()
+        env:
+          EXACT_D_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash /tmp/academic_d_w5_integrated_browser.sh
+
+      - name: Aggregate D-W5 exact-head matrix
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXACT_D_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python /tmp/academic_d_w5_same_head_matrix.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --sha "$EXACT_D_SHA" \
+            --w5-evidence /tmp/academic-d-w5-evidence.txt \
+            --upstream-freeze /tmp/academic-d-w5-upstream-freeze.json \
+            --output /tmp/academic-d-w5-same-head-matrix.json
+          cat /tmp/academic-d-w5-same-head-matrix.json
+
+      - name: Upload D-W5 pre-Gold evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-d-w5-pre-gold-${{ github.run_id }}
+          path: |
+            /tmp/academic-d-w5-head-matrix.txt
+            /tmp/academic-d-w5-merge-ledger.txt
+            /tmp/academic-d-w5-alembic-current.txt
+            /tmp/academic-d-w5-contract-inventory.txt
+            /tmp/academic-d-w5-targeted.xml
+            /tmp/academic-d-w5-migrated-tenant.txt
+            /tmp/academic-d-w5-migrated-tenant.txt.sha256
+            /tmp/academic-d-w5-upstream-freeze.json
+            /tmp/academic-d-w5-evidence.txt
+            /tmp/academic-d-w5-evidence.txt.sha256
+            /tmp/academic-d-w5-integrated-browser.txt
+            /tmp/academic-d-w5-integrated-browser.txt.sha256
+            /tmp/academic-d-w5-same-head-matrix.json
+            e2e/playwright-report/
+            e2e/test-results/
+            e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 30

@@ -218,7 +218,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p test-results
-          timeout 35m pytest tests/test_graduation*.py -q -p no:warnings --durations=30 \
+          timeout 35m pytest tests/test_graduation*.py tests/test_aa_graduation*.py -q -p no:warnings --durations=30 \
             --junitxml=test-results/graduation.xml 2>&1 | tee test-results/graduation.log
 
       - name: 汇总 Graduation pytest 结果

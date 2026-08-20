@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="学期归档"
-    subtitle="按学期查看归档批次状态（只读联动）· 归档批次创建/9数据域完整性检查/确认封存请到「教务归档」执行"
+    subtitle="按学期查看归档批次状态（只读联动）· 归档批次创建/13数据域完整性检查/确认封存请到「教务归档」执行"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -29,7 +29,7 @@
         </template>
         <template #cell-archivedAt="{ row }">{{ row.archivedAt ? row.archivedAt.replace('T', ' ').slice(0, 16) : '—' }}</template>
       </DataTable>
-      <p class="mp-note">「学期归档」仅提供只读总览；建批次、9 数据域完整性检查、确认归档封存、特批解冻等实际动作统一在「教务归档」执行，避免双写。</p>
+      <p class="mp-note">「学期归档」仅提供只读总览；建批次、13 数据域完整性检查、确认归档封存等实际动作统一在「教务归档」执行，避免双写。归档后发现错误必须走纠错版本链，不普通解冻。</p>
     </div>
   </ModulePageShell>
 </template>

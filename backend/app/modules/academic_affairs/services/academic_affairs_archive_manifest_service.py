@@ -95,7 +95,7 @@ def _live_manifest_parts(db, batch) -> tuple[dict, dict, dict]:
     blocked: list[str] = []
     for code, _label in archive_service._DOMAINS:
         result = archive_service._public_result(code, evaluated[code])
-        if result["result"] != "PASS":
+        if result["result"] in archive_service._BLOCKING_RESULTS:
             blocked.append(f"{code}:{result['ruleCode']}")
         stable = {
             "domain": code,
