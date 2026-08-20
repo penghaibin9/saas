@@ -147,10 +147,35 @@ print(','.join(heads))
   }
 }
 
+/**
+ * 包体报告的内容哈希——必须只反映**包本身**，不能反映"什么时候构建的"。
+ *
+ * 报告里带 generatedAt，直接哈希整份文件的话，同一份产物每构建一次就换一个值，
+ * 这个字段就永远无法被独立复现，T8 拿它比不出任何东西。所以剔掉易变字段并按
+ * 键排序后再哈希：同样的包 → 同样的哈希，包变了才变。
+ */
+const VOLATILE_REPORT_FIELDS = new Set(['generatedAt'])
+
+export function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize)
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().reduce((acc, key) => {
+      if (!VOLATILE_REPORT_FIELDS.has(key)) acc[key] = canonicalize(value[key])
+      return acc
+    }, {})
+  }
+  return value
+}
+
 function packageReportSha() {
   const report = resolve(MINIAPP, 'dist/build/mp-weixin/miniapp-package-report.json')
   if (!existsSync(report)) return ''
-  return sha256(read(report))
+  try {
+    return sha256(JSON.stringify(canonicalize(JSON.parse(read(report)))))
+  } catch (error) {
+    // 报告解析不了就别假装算得出稳定哈希——当作没有报告，由调用方跳过比对。
+    return ''
+  }
 }
 
 export function buildHandoff() {

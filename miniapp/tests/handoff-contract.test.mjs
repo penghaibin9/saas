@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { buildHandoff, resolveSealedSha } from '../scripts/generate-v3-handoff.mjs'
+import { buildHandoff, canonicalize, resolveSealedSha } from '../scripts/generate-v3-handoff.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
@@ -123,4 +123,29 @@ test('S9-G: 浅克隆读不到父对象时报「无法解析」而不是「漂�
   assert.equal(result.unresolved, true)
   assert.equal(result.sha, '')
   assert.match(result.reason, /seal/)
+})
+
+
+// ── 回归：packageReportSha 必须只反映包本身 ──
+//
+// 包体报告里带 generatedAt。直接哈希整份文件的话，同一份产物每构建一次就换一个哈希，
+// 这个字段永远无法被独立复现，Teacher T8 拿它比不出任何东西——字段名说的是"包体报告
+// 的指纹"，实际测的是"构建发生在哪一秒"。
+
+test('S9-G: 包体报告哈希忽略构建时间，同样的包给同样的值', () => {
+  const at = (stamp) => ({ generatedAt: stamp, totalBytes: 123, packages: [{ root: 'pages/student', bytes: 1 }] })
+  assert.equal(
+    JSON.stringify(canonicalize(at('2026-08-20T07:06:03.866Z'))),
+    JSON.stringify(canonicalize(at('2030-01-01T00:00:00.000Z')))
+  )
+})
+
+test('S9-G: 包体报告哈希对键序不敏感，但内容变了必须变', () => {
+  const a = { totalBytes: 1, budgetPass: true }
+  const b = { budgetPass: true, totalBytes: 1 }
+  assert.equal(JSON.stringify(canonicalize(a)), JSON.stringify(canonicalize(b)))
+  assert.notEqual(
+    JSON.stringify(canonicalize({ totalBytes: 1 })),
+    JSON.stringify(canonicalize({ totalBytes: 2 }))
+  )
 })
