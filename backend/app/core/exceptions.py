@@ -6,12 +6,16 @@
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
 
 from app.core.response import fail
+
+_log = logging.getLogger("app.error")
 
 # 业务码 → 默认 HTTP 状态（冻结契约 §三）
 CODE_HTTP = {
@@ -135,7 +139,19 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled_exc(_: Request, exc: Exception):
+    async def _unhandled_exc(request: Request, exc: Exception):
+        # 客户端仍只收到统一 500；服务端按 traceId 保留完整异常栈，便于生产定位。
+        # 不读取/记录 request body、Authorization、Cookie 或任何 PII。
+        try:
+            from app.core.context import get_trace_id
+            trace_id = get_trace_id()
+        except Exception:  # noqa: BLE001
+            trace_id = ""
+        _log.error(
+            "unhandled_exception trace_id=%s method=%s path=%s error=%s",
+            trace_id or "-", request.method, request.url.path, type(exc).__name__,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
         return JSONResponse(
             status_code=500,
             content=fail("SERVER_ERROR", "服务异常，请稍后重试或联系管理员"),

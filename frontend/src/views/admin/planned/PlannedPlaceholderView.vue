@@ -39,7 +39,7 @@
           <div v-if="!mod.children.length" class="pp-empty">该模块为单页模块，无三级子项</div>
         </div>
 
-        <!-- 施工卡（仅 DEV / 学校管理员 / 平台角色可见，与侧栏施工地图开关同一口径） -->
+        <!-- 施工卡仅开发构建可见；生产构建会在 created 阶段直接退出此页面。 -->
         <div v-if="canSeeConstruction && info" class="pp-card pp-card--dev">
           <div class="pp-card__head">
             施工卡
@@ -75,13 +75,11 @@
 
 <script>
 /**
- * PlannedPlaceholderView — 规划占位页（CLAUDE.md §42，2026-07-11 甲方拍板）。
+ * PlannedPlaceholderView — 开发期规划占位页。
  * 路由：/admin/planned/:groupKey/:modKey/:leafIdx?
- * 定位：全系统 planned 菜单项的唯一公共落地页——按 navPlan + constructionMap
- * 展示该模块的规划信息（所属中心、三级清单与真实状态、施工顺序、推进指令）。
+ * 定位：开发环境施工地图的公共落地页；生产环境禁止进入，避免把施工计划、
+ * 内部推进指令或研发工具语言暴露给学校交付账号。
  * 红线：不调用任何业务 API；无假按钮、假数据、假写操作；planned 状态不因本页存在而改变。
- * 施工卡区域（施工包/推进指令）仅 DEV 构建或 SCHOOL_ADMIN / PLATFORM / PLATFORM_SUPER_ADMIN
- * 可见——与 BasePortalLayout.canTogglePlannerMap 同一口径，正式角色只见中性说明。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { NAV_PLAN } from '@/config/navPlan'
@@ -100,6 +98,11 @@ export default {
   components: { BasePortalLayout },
   data() {
     return { auth: getAuthContext(), copied: false, copyTimer: null }
+  },
+  created() {
+    if (import.meta.env && import.meta.env.PROD) {
+      this.$router.replace('/workbench')
+    }
   },
   computed: {
     group() {
@@ -126,8 +129,7 @@ export default {
       return (this.auth.roles && this.auth.roles[0]) || ''
     },
     canSeeConstruction() {
-      if (import.meta.env && import.meta.env.DEV) return true
-      return this.roleType === 'SCHOOL_ADMIN' || this.roleType === 'PLATFORM' || this.roleType === 'PLATFORM_SUPER_ADMIN'
+      return !!(import.meta.env && import.meta.env.DEV)
     },
     ctx() {
       return {

@@ -18,6 +18,7 @@ from app.modules.internship.dependencies.enterprise_context import (
     require_enterprise_permission as require_permission,
     resolve_recruitment_context,
 )
+from app.modules.internship.routers import internship_enterprise_browser_auth as browser_auth
 from app.modules.internship.schemas.internship_recruitment_campaign import (
     EnterpriseInviteAccept,
     EnterpriseInviteInspect,
@@ -38,6 +39,7 @@ from app.services.db_service import session
 install_assignment_snapshot_authority()
 
 router = APIRouter(prefix="/internship/enterprise-portal", tags=["岗位实习-企业协同端"])
+router.include_router(browser_auth.router)
 
 
 class EnterpriseDecisionBody(BaseModel):
