@@ -76,7 +76,7 @@
           <view v-for="event in s.timeline" :key="event.id" class="sd__timeline">
             <view class="sd__dot" />
             <view class="flex-1">
-              <text class="sd__timeline-text">{{ stageText(event.stage) }}{{ event.reason ? ' · ' + event.reason : '' }}</text>
+              <text class="sd__timeline-text">{{ stageText(event.stage) }}</text>
               <text class="sd__timeline-time">{{ formatTime(event.time) }}</text>
             </view>
           </view>
