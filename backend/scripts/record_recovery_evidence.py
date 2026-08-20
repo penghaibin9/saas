@@ -114,6 +114,7 @@ def _restore_payload(path: Path) -> dict:
         raise SystemExit("restore evidence missing backup_set_id/manifest_sha256")
     local_count = int(values.get("local_file_object_count", "0") or 0)
     hashed_count = int(values.get("local_file_object_hashed_count", "0") or 0)
+    file_objects_verified = local_count == 0 or (hashed_count == local_count and hashed_count > 0)
     run_id = f"restore:{backup_set}:{values.get('workflow_run_id','manual')}:{manifest_hash[:12]}"
     return {
         "schemaVersion": 2,
@@ -136,7 +137,7 @@ def _restore_payload(path: Path) -> dict:
             "indexesVerified": int(values.get("index_count", "0") or 0) > 0,
             "foreignKeysVerified": int(values.get("foreign_key_count", "0") or 0) >= 0,
             "uploadsRestored": int(values.get("upload_entry_count", "0") or 0) >= 0,
-            "fileObjectsVerified": local_count == 0 or hashed_count >= 0,
+            "fileObjectsVerified": file_objects_verified,
         },
         "detail": {
             "alembicVersion": values.get("alembic_version"),
