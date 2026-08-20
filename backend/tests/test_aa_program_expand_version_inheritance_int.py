@@ -1,8 +1,8 @@
 """INT write-side compatibility contract for Program expand columns.
 
 Existing proven series/provenance must survive normal new-version creation. Legacy
-NULL evidence must remain NULL: the version writer may inherit facts, never invent
-historical identity or formation provenance during the expand phase.
+NULL evidence must remain unresolved: the version writer may inherit proven facts,
+never invent historical identity or formation provenance during the expand phase.
 """
 from __future__ import annotations
 
@@ -82,6 +82,20 @@ def _assert_successor(program_id: int, *, series_key: str | None, formation_mode
     db.close()
 
 
+def _assert_no_successor(program_id: int) -> None:
+    from app.db.session import get_sessionmaker
+    from app.models import AaProgram
+
+    db = get_sessionmaker()()
+    successors = db.scalars(select(AaProgram).where(
+        AaProgram.tenant_id == TID,
+        AaProgram.prev_version_id == int(program_id),
+        AaProgram.is_deleted.is_(False),
+    )).all()
+    db.close()
+    assert successors == [], "unresolved historical series must never be guessed into a successor"
+
+
 @pytest.mark.usefixtures("db_mode")
 def test_new_version_inherits_proven_identity_and_provenance_without_guessing_null_history(client):
     hdr = _hdr(client)
@@ -101,5 +115,7 @@ def test_new_version_inherits_proven_identity_and_provenance_without_guessing_nu
 
     legacy_id = _seed_program(series_key=None, formation_mode=None)
     legacy = client.post(f"{BASE}/programs/{legacy_id}/new-version", headers=hdr)
-    assert legacy.status_code == 200, legacy.text
-    _assert_successor(legacy_id, series_key=None, formation_mode=None)
+    assert legacy.status_code == 409, legacy.text
+    payload = legacy.json()
+    assert payload["bizCode"] == "PROGRAM_SERIES_UNRESOLVED"
+    _assert_no_successor(legacy_id)

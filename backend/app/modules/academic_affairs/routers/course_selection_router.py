@@ -5,7 +5,12 @@ Selection Final 的四条最终入口（批次发布、学生可选课程、选�
 唯一持有；本 Router 只迁 legacy base 中其余选课管理、课程供给、名单、补选、
 统计、归档与轮次入口。
 
-canonical service、权限、DTO、状态机、TeachingRoster 投影、schema 均保持不变。
+B-W4 起，课程供给写动作由 ``academic_affairs_selection_course_command_service``
+单一持有：新增必须 TeachingTask 必填、READY、same-course、same-term；编辑容量/
+取消开课也必须走 canonical term guard + locking command，不得回落 legacy core 写实现。
+批次创建、规则保存与自动时间迁移由 ``academic_affairs_selection_batch_command_service``
+持有；显式 termId 必须真实可写，OPEN/CLOSE 复用 Final/W1 preflight，不另造生命周期真值。
+其余 canonical service、权限、DTO、状态机、TeachingRoster 投影保持不变。
 """
 from __future__ import annotations
 
@@ -17,6 +22,8 @@ from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
 from app.modules.academic_affairs.services import academic_affairs_production_audit_guard as production_guard
+from app.modules.academic_affairs.services import academic_affairs_selection_batch_command_service as selection_batch_command_svc
+from app.modules.academic_affairs.services import academic_affairs_selection_course_command_service as selection_course_command_svc
 
 # PR #101 production-audit hardening. Idempotent and read-side only: this tightens
 # D6-D8 scope/page-size contracts without changing any canonical write owner.
@@ -47,7 +54,7 @@ selection_round_svc = legacy.selection_round_svc
 # ── 批次（发布由 Selection Final owner 持有） ──
 @router.post("/selection/batches", summary="建选课批次")
 def sel_batch_create(body: SelectionBatchBody, user=Depends(require_permission(_SEL_MANAGE))):
-    return success(selection_svc.create_batch(user, body), message="已创建")
+    return success(selection_batch_command_svc.create_batch(user, body), message="已创建")
 
 
 @router.get("/selection/batches", summary="选课批次列表")
@@ -93,17 +100,17 @@ def sel_rule_save(
     batchId: int = Path(...),
     user=Depends(require_permission(_SEL_RULE)),
 ):
-    return success(selection_svc.save_rule(user, batchId, body.rule), message="已保存")
+    return success(selection_batch_command_svc.save_rule(user, batchId, body.rule), message="已保存")
 
 
 # ── 课程供给 ──
-@router.post("/selection/batches/{batchId}/courses", summary="新增可选课程")
+@router.post("/selection/batches/{batchId}/courses", summary="新增可选课程（TeachingTask-bound）")
 def sel_course_add(
     body: SelectionCourseBody,
     batchId: int = Path(...),
     user=Depends(require_permission(_SEL_MANAGE)),
 ):
-    return success(selection_svc.add_course(user, batchId, body), message="已添加")
+    return success(selection_course_command_svc.add_course(user, batchId, body), message="已添加")
 
 
 @router.get("/selection/batches/{batchId}/courses", summary="批次课程供给列表")
@@ -123,12 +130,12 @@ def sel_course_update(
     courseId: int = Path(...),
     user=Depends(require_permission(_SEL_MANAGE)),
 ):
-    return success(selection_svc.update_course(user, courseId, body), message="已保存")
+    return success(selection_course_command_svc.update_course(user, courseId, body), message="已保存")
 
 
 @router.post("/selection/courses/{courseId}/cancel", summary="人工取消开课（人数不足）")
 def sel_course_cancel(courseId: int = Path(...), user=Depends(require_permission(_SEL_MANAGE))):
-    return success(selection_svc.cancel_course(user, courseId), message="已取消开课")
+    return success(selection_course_command_svc.cancel_course(user, courseId), message="已取消开课")
 
 
 @router.get("/selection/courses/{courseId}/roster", summary="选课名单（教师按授课关系收敛）")
@@ -186,7 +193,7 @@ def sel_conflict_report(
 
 @router.post("/selection/time-tick", summary="定时触发：到点自动开选/截止（供 cron 调度，幂等）")
 def sel_time_tick(user=Depends(require_permission(_SEL_MANAGE))):
-    return success(selection_svc.run_time_tick(user), message="已执行时间触发")
+    return success(selection_batch_command_svc.run_time_tick(user), message="已执行时间触发")
 
 
 # ── 选课归档（导出由 academic_export_compat_router owner 持有） ──

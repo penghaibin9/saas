@@ -1,9 +1,9 @@
-"""Targeted contract for the Program expand-first schema migration."""
+"""Targeted contract for A nullable expand inside the final A × INT schema."""
 from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import String
+from sqlalchemy import String, UniqueConstraint
 
 from app.models import AaProgram, AaProgramCourse
 from app.modules.academic_affairs.services.academic_affairs_school_setup_shared_schema_gate import (
@@ -19,17 +19,20 @@ _MIGRATION = (
 )
 
 
-def test_program_expand_migration_is_pinned_to_real_merge_head_and_nullable_only():
+def test_program_expand_migration_stays_nullable_data_neutral_and_descendant_safe():
     source = _MIGRATION.read_text(encoding="utf-8")
 
     assert 'revision = "20260817_aa_prog_expand"' in source
     assert 'down_revision = "20260816_merge_ctrl_intern_e"' in source
     assert '"series_key"' in source
     assert '"formation_mode"' in source
+    assert "sa.String(length=30)" in source
     assert source.count("nullable=True") == 2
+    assert 'if "series_key" not in _columns("t_aa_program")' in source
+    assert 'if "formation_mode" not in _columns("t_aa_program_course")' in source
 
-    # Expand is intentionally data-neutral. Historical identity/provenance must
-    # come from the inventory/backfill phase, never from migration guesses.
+    # A remains a pure nullable expand. INT owns the later physical tightening and
+    # stable-series uniqueness after lineage convergence.
     assert "server_default" not in source
     assert "op.execute" not in source
     assert "UPDATE " not in source.upper()
@@ -37,7 +40,7 @@ def test_program_expand_migration_is_pinned_to_real_merge_head_and_nullable_only
     assert "alter_column" not in source
 
 
-def test_program_expand_columns_are_registered_in_orm_metadata_without_tightening():
+def test_integrated_orm_reflects_sealed_int_contract_after_a_expand():
     series = AaProgram.__table__.c.series_key
     formation = AaProgramCourse.__table__.c.formation_mode
 
@@ -50,21 +53,26 @@ def test_program_expand_columns_are_registered_in_orm_metadata_without_tightenin
 
     assert hasattr(AaProgramCourse, "formation_mode")
     assert isinstance(formation.type, String)
-    assert formation.type.length == 30
+    assert formation.type.length == 20
     assert formation.nullable is True
     assert formation.default is None
     assert formation.server_default is None
 
-    # Expand-first means metadata must not silently introduce a stricter contract
-    # than the physical migration.  Series/version uniqueness is a later evidence-
-    # gated phase, not an ORM-only constraint.
-    assert not any(
-        getattr(constraint, "name", None) == "uk_aa_program_series_version"
+    series_uniques = [
+        constraint
         for constraint in AaProgram.__table__.constraints
+        if isinstance(constraint, UniqueConstraint)
+        and constraint.name == "uk_aa_program_series_version"
+    ]
+    assert len(series_uniques) == 1
+    assert tuple(column.name for column in series_uniques[0].columns) == (
+        "tenant_id",
+        "series_key",
+        "version",
     )
 
 
-def test_shared_gate_keeps_backfill_and_tightening_out_of_nullable_expand():
+def test_shared_gate_keeps_backfill_and_not_null_tightening_out_of_nullable_expand():
     result = evaluate_shared_program_schema_gate(
         program_series_inventory={
             "migrationPreflightSafe": True,

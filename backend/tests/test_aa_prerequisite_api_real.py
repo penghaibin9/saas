@@ -154,6 +154,61 @@ def _seed(db_mode, prerequisites_json, passed_codes=()):
     return result
 
 
+def _ready_teaching_task(term_id, course_id, n):
+    """Build the formal READY task required by the selection-course producer contract."""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaProgramCourse, AaTeachingTask, AaTeachingTaskBatch
+
+    db = get_sessionmaker()()
+    try:
+        course = db.query(AaCourse).filter(
+            AaCourse.tenant_id == TID,
+            AaCourse.id == int(course_id),
+            AaCourse.is_deleted.is_(False),
+        ).one()
+        task_batch = AaTeachingTaskBatch(
+            tenant_id=TID,
+            term_id=int(term_id),
+            college_id=None,
+            batch_name=f"先修测试教学任务{n}",
+            status="APPROVED",
+        )
+        db.add(task_batch); db.flush()
+        source = AaProgramCourse(
+            tenant_id=TID,
+            program_id=880000 + n,
+            course_id=course.id,
+            course_name=course.course_name,
+            open_term_no=1,
+            module="MAJOR_CORE",
+            credit_snapshot=course.credit,
+            formation_mode="SELECTABLE",
+        )
+        db.add(source); db.flush()
+        task = AaTeachingTask(
+            tenant_id=TID,
+            batch_id=task_batch.id,
+            course_id=course.id,
+            course_code=course.course_code,
+            course_name=course.course_name,
+            teacher_key=f"PREREQ-T{n}",
+            teacher_name="先修测试教师",
+            source_program_course_id=source.id,
+            formation_mode="SELECTABLE",
+            status="READY",
+            weekly_hours=2,
+            total_hours=36,
+            start_week=1,
+            end_week=18,
+        )
+        db.add(task); db.flush()
+        task_id = task.id
+        db.commit()
+        return task_id
+    finally:
+        db.close()
+
+
 def _open_course(client, admin, target_id, n):
     term = client.post(f"{BASE}/terms", headers=admin, json={
         "yearCode": "2031-2032",
@@ -162,6 +217,7 @@ def _open_course(client, admin, target_id, n):
     })
     assert term.status_code == 200, term.text
     term_id = term.json()["data"]["termId"]
+    teaching_task_id = _ready_teaching_task(term_id, target_id, n)
 
     batch = client.post(f"{BASE}/selection/batches", headers=admin, json={
         "batchName": f"先修真实API批次{n}",
@@ -173,7 +229,12 @@ def _open_course(client, admin, target_id, n):
     course = client.post(
         f"{BASE}/selection/batches/{batch_id}/courses",
         headers=admin,
-        json={"courseId": str(target_id), "capacity": 20, "minCapacity": 1},
+        json={
+            "courseId": str(target_id),
+            "teachingTaskId": str(teaching_task_id),
+            "capacity": 20,
+            "minCapacity": 1,
+        },
     )
     assert course.status_code == 200, course.text
     selection_course_id = course.json()["data"]["selectionCourseId"]

@@ -92,7 +92,7 @@ const layoutRoute = {
     { path: 'teaching-tasks/stats', name: 'aa-teaching-task-stats', component: () => import('@/modules/academicAffairs/views/AaTaskStatsView.vue'), meta: meta('academicAffairs.teachingTask.stats', '教学任务统计') },
     { path: 'teaching-tasks/:batchId', name: 'aa-task-detail', component: () => import('@/modules/academicAffairs/views/AaTaskDetailView.vue'), meta: meta('academicAffairs.teachingTask.view', '教学任务明细') },
     { path: 'schedule', name: 'aa-schedule', component: () => import('@/modules/academicAffairs/views/AaScheduleBatchListView.vue'), meta: meta('academicAffairs.schedule.view', '课表管理') },
-    { path: 'schedule/:batchId/edit', name: 'aa-schedule-edit', component: () => import('@/modules/academicAffairs/views/AaScheduleMaintainView.vue'), meta: meta('academicAffairs.schedule.manage', '课表维护') },
+    { path: 'schedule/:batchId/edit', name: 'aa-schedule-edit', component: () => import('@/modules/academicAffairs/views/AaScheduleMaintainView.vue'), meta: meta('academicAffairs.schedule.edit', '课表维护') },
     { path: 'schedule/:batchId/views', name: 'aa-schedule-views', component: () => import('@/modules/academicAffairs/views/AaScheduleViewsView.vue'), meta: meta('academicAffairs.schedule.view', '课表三视图') },
     // ── 课表管理 Tier1 R2：班级/教师/教室独立课表 + 发布 + 导出（自动取当前已发布批次，不需先选批次） ──
     { path: 'schedule/class/:classId?', name: 'aa-schedule-class', component: () => import('@/modules/academicAffairs/views/AaClassScheduleView.vue'), meta: meta('academicAffairs.schedule.view', '班级课表') },

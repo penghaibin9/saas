@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (BigInteger, Boolean, DateTime, Integer, Numeric, String,
+from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Index, Integer, Numeric, String,
                         Text, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -192,11 +192,19 @@ class AaProgram(PKMixin, TenantMixin, CommonMixin, Base):
     grade_year: Mapped[str | None] = mapped_column(String(20), comment="适用年级 如 2026")
     total_credits: Mapped[float | None] = mapped_column(Numeric(4, 1), comment="毕业总学分(支持0.5步长)")
     requirement_json: Mapped[str | None] = mapped_column(String(2000), comment="分模块学分要求")
+    series_key: Mapped[str | None] = mapped_column(
+        String(64), nullable=True,
+        comment="Stable Program series identity; unresolved historical rows stay NULL",
+    )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     prev_version_id: Mapped[int | None] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True,
                                         comment="DRAFT/COLLEGE_REVIEW/ACADEMIC_REVIEW/RETURNED/PUBLISHED/ENABLED/FROZEN/DISABLED")
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "series_key", "version", name="uk_aa_program_series_version"),
+    )
 
 
 class AaProgramCourse(PKMixin, TenantMixin, CommonMixin, Base):
@@ -209,6 +217,17 @@ class AaProgramCourse(PKMixin, TenantMixin, CommonMixin, Base):
     open_term_no: Mapped[int | None] = mapped_column(Integer, comment="第几学期开课")
     module: Mapped[str | None] = mapped_column(String(50), comment="课程模块 公共/专业/实践…")
     credit_snapshot: Mapped[float | None] = mapped_column(Numeric(4, 1), comment="方案课程学分快照(支持0.5步长)")
+    formation_mode: Mapped[str | None] = mapped_column(
+        String(20),
+        comment="INT A-C4: ADMIN_FIXED/SELECTABLE/MERGED/RETAKE/LAYERED; legacy unresolved stays NULL",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "formation_mode IS NULL OR formation_mode IN ('ADMIN_FIXED','SELECTABLE','MERGED','RETAKE','LAYERED')",
+            name="ck_aa_program_course_formation_mode",
+        ),
+    )
 
 
 class AaProgramBinding(PKMixin, TenantMixin, CommonMixin, Base):
@@ -331,9 +350,17 @@ class AaTeachingTaskBatch(PKMixin, TenantMixin, CommonMixin, Base):
     term_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
     college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    editable_scope_key: Mapped[str | None] = mapped_column(
+        String(64),
+        comment="INT A-C4: live DRAFT/RETURNED scope key; non-editable/deleted rows must release to NULL",
+    )
     generate_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
     workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "editable_scope_key", name="uk_aa_task_batch_editable_scope"),
+    )
 
 
 class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
@@ -348,6 +375,14 @@ class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
     course_code: Mapped[str | None] = mapped_column(String(50))
     course_name: Mapped[str | None] = mapped_column(String(200))
     class_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    source_program_course_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True,
+        comment="INT direct provenance: exact t_aa_program_course.id used when this task was generated; legacy unresolved stays NULL",
+    )
+    formation_mode: Mapped[str | None] = mapped_column(
+        String(20),
+        comment="INT A-C4: ADMIN_FIXED/SELECTABLE/MERGED/RETAKE/LAYERED; legacy unresolved stays NULL",
+    )
     teaching_class_code: Mapped[str | None] = mapped_column(String(50), comment="教学班代码")
     teaching_class_name: Mapped[str | None] = mapped_column(String(200), comment="教学班名(可合班)")
     is_merged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否合班(本行为合班后 survivor)")
@@ -368,6 +403,13 @@ class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
     confirm_at: Mapped[datetime | None] = mapped_column(DateTime)
     reject_reason: Mapped[str | None] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_ASSIGN", index=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "formation_mode IS NULL OR formation_mode IN ('ADMIN_FIXED','SELECTABLE','MERGED','RETAKE','LAYERED')",
+            name="ck_aa_teaching_task_formation_mode",
+        ),
+    )
 
 
 # ═══════════ 课表组（13B-P4；三重冲突检测 + 单双周，对齐正方/强智）═══════════
@@ -1625,6 +1667,22 @@ class AaAttendanceSession(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_aa_attendance_session"
 
     class_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="行政班")
+    teaching_task_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        comment="INT C-C1 expand: formal TeachingTask; ADMIN_SPECIAL / unresolved legacy may be NULL",
+    )
+    occurrence_identity: Mapped[str | None] = mapped_column(
+        String(255),
+        comment="INT C-C1 expand: canonical formal occurrence identity; unresolved legacy stays NULL",
+    )
+    source_type: Mapped[str | None] = mapped_column(
+        String(30),
+        comment="INT C-C1 expand: FORMAL_TEACHING / ADMIN_SPECIAL; unresolved legacy stays NULL",
+    )
+    source_reason: Mapped[str | None] = mapped_column(
+        String(500), comment="ADMIN_SPECIAL reason; unresolved legacy stays NULL")
+    source_evidence: Mapped[str | None] = mapped_column(
+        Text, comment="auditable source evidence snapshot; unresolved legacy stays NULL")
     course_name: Mapped[str | None] = mapped_column(String(200))
     term_code: Mapped[str | None] = mapped_column(String(50))
     teacher_key: Mapped[str | None] = mapped_column(String(100), index=True, comment="任课教师归属")
@@ -1637,6 +1695,15 @@ class AaAttendanceSession(PKMixin, TenantMixin, CommonMixin, Base):
     absent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT", index=True,
                                         comment="DRAFT/SUBMITTED")
+
+    # Expand phase only: no CHECK/UNIQUE yet. C-W1 app guards stay authoritative until
+    # writer dual-write + repeatable dirty-data inventory are reconciled and INT lands
+    # the later contract migration.
+    __table_args__ = (
+        Index("ix_aa_attendance_task", "tenant_id", "teaching_task_id"),
+        Index("ix_aa_attendance_source", "tenant_id", "source_type"),
+        Index("ix_aa_attendance_occurrence", "tenant_id", "occurrence_identity"),
+    )
 
 
 # ═══════════ 学院专业班级 Tier1 R2（06 专业方向 / 08 班级调整申请单）═══════════

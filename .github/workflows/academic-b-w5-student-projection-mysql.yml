@@ -1,0 +1,100 @@
+# exact-head evidence trigger after W6-3 round-window fix
+# exact-head evidence trigger after W6-2 bot-authored fix
+name: Academic B W5 Student Projection MySQL
+
+on:
+  push:
+    branches:
+      - agent/academic-b-schedule-selection
+    paths:
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection_read_service.py
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection_read_core_service.py
+      - backend/tests/test_aa_selection_student_projection_contract.py
+      - backend/tests/test_aa_selection_student_projection_mysql.py
+      - backend/tests/test_aa_selection_student_projection_states_mysql.py
+      - backend/tests/test_aa_selection_read_production_contract.py
+      - .github/workflows/academic-b-w5-student-projection-mysql.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-b-w5-mysql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focused-mysql:
+    name: B-C3 projection focused MySQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      MOCK_LOGIN_ENABLED: 'true'
+      JWT_SECRET: academic-b-w5-targeted-secret-at-least-32-bytes
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_b_w5?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_b_w5?charset=utf8mb4
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: academic_b_w5
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Assert exact W5 MySQL head
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend and migrate clean MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+      - name: Recheck W5 source contract at exact MySQL head
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('backend/tests/test_aa_selection_student_projection_contract.py')
+          namespace = {'__file__': str(path), '__name__': 'academic_b_w5_projection_contract'}
+          exec(compile(path.read_text(encoding='utf-8'), str(path), 'exec'), namespace)
+          tests = [namespace[name] for name in sorted(namespace) if name.startswith('test_')]
+          assert tests, 'no W5 contract tests discovered'
+          for test in tests:
+              test()
+          print(f'{len(tests)} W5 projection contract tests passed')
+          PY
+      - name: Run only affected D6 read + W5 projection runtime contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_aa_selection_read_production_contract.py \
+            tests/test_aa_selection_student_projection_mysql.py \
+            tests/test_aa_selection_student_projection_states_mysql.py \
+            --maxfail=1 \
+            --junitxml=w5-projection-junit.xml
+      - name: Upload W5 projection JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-b-w5-projection-junit-${{ github.sha }}
+          path: backend/w5-projection-junit.xml
+          if-no-files-found: error
+          retention-days: 14

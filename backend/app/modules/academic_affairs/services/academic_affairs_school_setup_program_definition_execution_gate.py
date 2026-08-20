@@ -14,7 +14,7 @@ def assert_program_definition_execution_ready() -> dict:
 
     required = (
         (AaProgram, "series_key", 64),
-        (AaProgramCourse, "formation_mode", 30),
+        (AaProgramCourse, "formation_mode", 20),
     )
     evidence = []
     for model, name, length in required:

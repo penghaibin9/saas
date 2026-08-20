@@ -4,16 +4,16 @@
       <div class="selection-hero__copy">
         <div class="selection-hero__eyebrow"><span></span>教务学业 · 网上选课</div>
         <h1>网上选课</h1>
-        <p>先看开放批次和实时余量，再办理选课或退课。所有资格、冲突、容量和时间窗口都由服务器最终校验。</p>
+        <p>先看当前可办理批次和实时余量，再办理选课或退课。正式动作由服务器统一下发，提交时仍会再次校验。</p>
         <div class="selection-hero__trust" aria-label="办理保障">
-          <span>实时余量</span><span>规则校验</span><span>办理后回读</span>
+          <span>服务器动作</span><span>规则校验</span><span>办理后回读</span>
         </div>
       </div>
       <aside class="selection-hero__aside">
         <div class="selection-hero__status">
           <span>当前办理状态</span>
-          <strong>{{ groups.length ? '有开放批次' : '暂无开放批次' }}</strong>
-          <small>{{ groups.length ? `共 ${courseCount} 门课程可查看` : '教务处开放后会自动显示' }}</small>
+          <strong>{{ groups.length ? '有可办理批次' : '暂无可办理批次' }}</strong>
+          <small>{{ groups.length ? `共 ${courseCount} 门课程可查看` : '教务处开放或进入补选后会自动显示' }}</small>
         </div>
         <button class="sp-btn sp-btn--ghost" type="button" :disabled="loading || !!actingId" @click="load">
           {{ loading ? '加载中…' : '刷新实时数据' }}
@@ -21,7 +21,7 @@
       </aside>
     </section>
 
-    <StateBlock v-if="loading" type="loading" text="正在读取开放课程和本人选课记录…" />
+    <StateBlock v-if="loading" type="loading" text="正在读取可办理课程和本人选课记录…" />
     <section v-else-if="error" class="sp-card selection-error">
       <div class="selection-error__mark" aria-hidden="true">!</div>
       <StateBlock type="error" :text="error" />
@@ -38,7 +38,7 @@
       <section class="selection-summary" aria-label="选课概览">
         <article class="summary-card">
           <div class="summary-card__icon is-blue" aria-hidden="true">批</div>
-          <div><span>开放批次</span><b>{{ groups.length }}</b><small>{{ courseCount }} 门课程可查看</small></div>
+          <div><span>可办理批次</span><b>{{ groups.length }}</b><small>{{ courseCount }} 门课程可查看</small></div>
         </article>
         <article class="summary-card">
           <div class="summary-card__icon is-green" aria-hidden="true">选</div>
@@ -52,7 +52,7 @@
 
       <nav class="selection-tabs" aria-label="选课页面">
         <button type="button" :class="{ 'is-active': tab === 'courses' }" @click="tab = 'courses'">
-          <span>可选课程</span><em>{{ courseCount }}</em>
+          <span>可办理课程</span><em>{{ courseCount }}</em>
         </button>
         <button type="button" :class="{ 'is-active': tab === 'mine' }" @click="tab = 'mine'">
           <span>我的选课</span><em>{{ records.length }}</em>
@@ -62,24 +62,24 @@
       <template v-if="tab === 'courses'">
         <section v-if="!groups.length" class="sp-card selection-empty">
           <div class="selection-empty__icon" aria-hidden="true">✓</div>
-          <strong>当前没有开放中的选课批次</strong>
-          <span>无需反复刷新；教务处开放新的选课窗口后会显示在这里。</span>
+          <strong>当前没有可办理的选课批次</strong>
+          <span>无需反复刷新；教务处开放选课或你进入补选资格后会显示在这里。</span>
         </section>
         <section v-else class="batch-list">
           <article v-for="group in groups" :key="group.batch.batchId" class="sp-card batch-card">
             <header class="batch-card__head">
               <div class="batch-card__title">
-                <div class="batch-card__eyebrow">开放批次</div>
+                <div class="batch-card__eyebrow">{{ batchEyebrow(group.batch) }}</div>
                 <strong>{{ group.batch.batchName || '选课批次' }}</strong>
                 <span>{{ windowText(group.batch) }}</span>
               </div>
               <div class="batch-card__meta">
                 <span>{{ group.courses.length }} 门课程</span>
                 <span>{{ openCourseCount(group) }} 门当前可选</span>
-                <StatusTag :text="group.batch.status || '开放中'" tone="primary" />
+                <StatusTag :text="group.batch.status || '待确认'" tone="primary" />
               </div>
             </header>
-            <StateBlock v-if="!group.courses.length" type="empty" text="本批次暂无可选课程" />
+            <StateBlock v-if="!group.courses.length" type="empty" text="本批次暂无可办理课程" />
             <div v-else class="course-table-wrap">
               <table class="sp-table course-table">
                 <thead><tr><th>课程</th><th>教师</th><th>学分</th><th>实时余量</th><th>状态</th><th class="is-action">操作</th></tr></thead>
@@ -88,6 +88,10 @@
                     <td>
                       <strong>{{ course.courseName || '课程名称待补充' }}</strong>
                       <small>{{ course.courseCode || '课程代码待补充' }}</small>
+                      <div v-if="!hasAction(course, 'ENROLL') && !hasAction(course, 'DROP') && (course.reason || course.howToResolve)" class="course-decision-hint">
+                        <span v-if="course.reason">{{ course.reason }}</span>
+                        <small v-if="course.howToResolve">下一步：{{ course.howToResolve }}</small>
+                      </div>
                     </td>
                     <td>{{ course.teacherName || '待定' }}</td>
                     <td><span class="course-credit">{{ course.credit ?? '—' }}</span></td>
@@ -100,19 +104,20 @@
                     <td><StatusTag :text="courseStatusText(course)" :tone="courseStatusTone(course)" /></td>
                     <td class="is-action">
                       <button
-                        v-if="isSelected(course)"
+                        v-if="hasAction(course, 'DROP')"
                         class="sp-btn sp-btn--ghost sp-btn--sm"
                         type="button"
                         :disabled="!!actingId"
                         @click="drop(course)"
                       >{{ actingId === String(course.selectionCourseId) ? '处理中…' : '退课' }}</button>
                       <button
-                        v-else
+                        v-else-if="hasAction(course, 'ENROLL')"
                         class="sp-btn sp-btn--sm"
                         type="button"
-                        :disabled="!!actingId || !canEnroll(course)"
+                        :disabled="!!actingId"
                         @click="enroll(course)"
-                      >{{ actingId === String(course.selectionCourseId) ? '处理中…' : canEnroll(course) ? '立即选课' : '不可选' }}</button>
+                      >{{ actingId === String(course.selectionCourseId) ? '处理中…' : course.reselect ? '立即补选' : '立即选课' }}</button>
+                      <span v-else class="sp-muted">{{ course.statusLabel || '不可办理' }}</span>
                     </td>
                   </tr>
                 </tbody>
@@ -126,7 +131,7 @@
         <section v-if="!records.length" class="sp-card selection-empty">
           <div class="selection-empty__icon" aria-hidden="true">课</div>
           <strong>还没有选课记录</strong>
-          <span>切换到“可选课程”查看当前开放课程并开始办理。</span>
+          <span>切换到“可办理课程”查看服务器当前允许的操作。</span>
         </section>
         <section v-else class="sp-card mine-card">
           <header class="mine-card__head">
@@ -144,7 +149,7 @@
                   <td><StatusTag :text="recordStatusText(record.status)" :tone="recordTone(record.status)" /></td>
                   <td class="is-action">
                     <button
-                      v-if="String(record.status || '').toUpperCase() === 'SELECTED'"
+                      v-if="hasAction(projectionForRecord(record), 'DROP')"
                       class="sp-btn sp-btn--ghost sp-btn--sm"
                       type="button"
                       :disabled="!!actingId"
@@ -161,7 +166,7 @@
 
       <section class="selection-note">
         <div class="selection-note__icon" aria-hidden="true">i</div>
-        <div><strong>办理规则以服务器最终校验为准</strong><span>页面展示的余量用于帮助判断，但真正提交时仍会重新检查时间冲突、课程容量、选退课窗口及培养方案等条件。若未通过，页面会直接给出规则原因和下一步建议。</span></div>
+        <div><strong>正式动作由服务器下发，提交时再次校验</strong><span>实时余量仅帮助你理解当前容量，不作为前端资格判断。页面只展示服务器 allowedActions 允许的选课/退课动作；真正提交时仍会重新检查时间冲突、容量、选退课窗口及培养方案等条件。</span></div>
       </section>
     </template>
   </div>
@@ -188,6 +193,13 @@ const groups = computed(() => normalizeGroups(rawGroups.value))
 const selectedRecords = computed(() => records.value.filter((record) => String(record.status || '').toUpperCase() === 'SELECTED'))
 const selectedCredits = computed(() => selectedRecords.value.reduce((sum, record) => sum + Number(record.credit || 0), 0))
 const courseCount = computed(() => groups.value.reduce((sum, group) => sum + (group.courses?.length || 0), 0))
+const courseProjectionById = computed(() => {
+  const map = new Map()
+  for (const group of groups.value) {
+    for (const course of group.courses || []) map.set(String(course?.selectionCourseId || ''), course)
+  }
+  return map
+})
 
 function normalizeGroups(data) {
   const source = Array.isArray(data) ? data : (data?.items || data?.list || data?.batches || [])
@@ -198,17 +210,27 @@ function normalizeGroups(data) {
   if (source.some((item) => item && Array.isArray(item.courses))) {
     return source.map((item) => ({ batch: item.batch || item, courses: item.courses || [] }))
   }
-  return source.length ? [{ batch: { batchId: 'current', batchName: '当前开放课程', status: 'OPEN' }, courses: source }] : []
+  return source.length ? [{ batch: { batchId: 'current', batchName: '当前可办理课程', status: 'OPEN' }, courses: source }] : []
 }
 function dateText(value) { return String(value || '').slice(0, 10) || '—' }
 function windowText(batch) {
-  const start = dateText(batch.windowStart || batch.startAt)
-  const end = dateText(batch.windowEnd || batch.endAt)
-  return start === '—' && end === '—' ? '开放窗口以教务处设置为准' : `${start} 至 ${end}`
+  const start = dateText(batch.selectStartAt || batch.windowStart || batch.startAt)
+  const end = dateText(batch.selectEndAt || batch.windowEnd || batch.endAt)
+  return start === '—' && end === '—' ? '办理窗口以教务处设置为准' : `${start} 至 ${end}`
+}
+function batchEyebrow(batch) {
+  return String(batch?.status || '').toUpperCase() === 'CLOSED' ? '补选批次' : '开放批次'
+}
+function hasAction(course, action) {
+  const wanted = String(action || '').toUpperCase()
+  return Array.isArray(course?.allowedActions)
+    && course.allowedActions.some((value) => String(value || '').toUpperCase() === wanted)
+}
+function projectionForRecord(record) {
+  return courseProjectionById.value.get(String(record?.selectionCourseId || '')) || null
 }
 function isSelected(course) {
-  const id = String(course.selectionCourseId || '')
-  return selectedRecords.value.some((record) => String(record.selectionCourseId || '') === id)
+  return String(course?.status || '').toUpperCase() === 'SELECTED'
 }
 function remain(course) {
   const explicit = Number(course.remain)
@@ -229,27 +251,21 @@ function availabilityPct(course) {
   if (value == null || !Number.isFinite(capacity) || capacity <= 0) return 0
   return Math.max(0, Math.min(100, Math.round(value / capacity * 100)))
 }
-function canEnroll(course) {
-  if (isSelected(course)) return false
-  const value = remain(course)
-  if (value != null && value <= 0) return false
-  const status = String(course.status || course.courseStatus || 'OPEN').toUpperCase()
-  return !['CLOSED', 'DISABLED', 'FULL'].includes(status)
-}
 function openCourseCount(group) {
-  return (group?.courses || []).filter((course) => canEnroll(course)).length
+  return (group?.courses || []).filter((course) => hasAction(course, 'ENROLL')).length
 }
 function courseStatusText(course) {
-  if (isSelected(course)) return '本人已选'
-  if (!canEnroll(course)) return remain(course) === 0 ? '已满' : '不可选'
-  return '可选'
+  return course?.statusLabel || course?.status || '待确认'
 }
 function courseStatusTone(course) {
-  if (isSelected(course)) return 'success'
-  return canEnroll(course) ? 'primary' : 'danger'
+  const status = String(course?.status || '').toUpperCase()
+  if (status === 'SELECTED') return 'success'
+  if (hasAction(course, 'ENROLL')) return 'primary'
+  if (status === 'BLOCKED' || status === 'COURSE_CANCELLED') return 'danger'
+  return 'default'
 }
 function recordStatusText(status) {
-  const map = { SELECTED: '已选', DROPPED: '已退', CANCELLED: '已取消', REJECTED: '未通过' }
+  const map = { SELECTED: '已选', DROPPED: '已退', CANCELLED: '已取消', COURSE_CANCELLED: '课程已取消', PENDING: '待抽签', PENDING_LOTTERY: '待抽签', LOST: '未中签', LOTTERY_LOST: '未中签', LOCKED: '名单已锁定', REJECTED: '未通过' }
   return map[String(status || '').toUpperCase()] || status || '待确认'
 }
 function recordTone(status) {
@@ -274,12 +290,21 @@ async function load() {
 }
 async function enroll(course) {
   const id = course?.selectionCourseId
-  if (!id || actingId.value || !canEnroll(course)) return
+  if (!id || actingId.value || !hasAction(course, 'ENROLL')) return
   actingId.value = String(id)
   decisionError.value = null
   try {
+    const preflight = await portalApi.academicSelectionPreflight({ selectionCourseId: id })
+    if (!preflight?.allowed) {
+      decisionError.value = {
+        message: preflight?.message || '当前课程未通过选课预检',
+        decisionTrace: preflight?.decisionTrace || null
+      }
+      ui.notify(decisionError.value.message)
+      return
+    }
     await portalApi.academicEnroll({ selectionCourseId: id })
-    ui.notify('选课成功')
+    ui.notify(course?.reselect ? '补选成功' : '选课成功')
     await load()
   } catch (e) {
     if (e?.decisionTrace) decisionError.value = e
@@ -290,8 +315,9 @@ async function enroll(course) {
 }
 async function drop(course) {
   const id = course?.selectionCourseId
-  if (!id || actingId.value || !isSelected(course)) return
-  const confirmed = window.confirm(`确认退选“${course.courseName || '该课程'}”？`)
+  const projection = Array.isArray(course?.allowedActions) ? course : projectionForRecord(course)
+  if (!id || actingId.value || !hasAction(projection, 'DROP')) return
+  const confirmed = window.confirm(`确认退选“${course.courseName || projection?.courseName || '该课程'}”？`)
   if (!confirmed) return
   actingId.value = String(id)
   decisionError.value = null
@@ -382,6 +408,8 @@ onMounted(load)
 .remain-cell > strong { color: var(--t2); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .remain-bar { display: block; width: 78px; height: 5px; overflow: hidden; border-radius: 999px; background: #edf0f4; }
 .remain-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--g1), var(--pri)); }
+.course-decision-hint { display: grid; gap: 2px; max-width: 300px; margin-top: 6px; padding: 6px 8px; border-radius: 8px; background: #fff8f3; color: #9a3412; font-size: 10.5px; line-height: 1.45; }
+.course-decision-hint small { margin: 0; color: #b45309; white-space: normal; }
 .mine-card { padding: 0; overflow: hidden; }
 .mine-card__head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--line2); }
 .mine-card__head > div strong, .mine-card__head > div span { display: block; }

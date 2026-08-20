@@ -119,7 +119,15 @@ jobs:
               'backend/app/models/academic_affairs_registry.py',
           }
           allowed_c_migrations = {
+              'backend/alembic/versions/20260816_academic_int_ac4_schema.py',
+              'backend/alembic/versions/20260816_academic_int_c1_attendance.py',
+              'backend/alembic/versions/20260817_aa_prog_expand.py',
+              'backend/alembic/versions/20260817_academic_int_control_plane_merge.py',
+              'backend/alembic/versions/20260817_academic_int_program_series.py',
               'backend/alembic/versions/20260818_aa_grade_task_deadline.py',
+              'backend/alembic/versions/20260818_academic_bc_final_merge.py',
+              'backend/alembic/versions/20260818_academic_int_task_program_course_provenance.py',
+              'backend/alembic/versions/20260818_academic_main_int_merge.py',
               'backend/alembic/versions/20260818_merge_prog_grade_deadline.py',
           }
           changed = set(subprocess.check_output(

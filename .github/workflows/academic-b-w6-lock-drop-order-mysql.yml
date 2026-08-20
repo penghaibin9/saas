@@ -1,0 +1,80 @@
+# exact-head evidence trigger after W6-3/W6-4 production changes
+name: Academic B W6 LOCK Drop Order MySQL
+
+on:
+  push:
+    branches:
+      - agent/academic-b-schedule-selection
+    paths:
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py
+      - backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_service.py
+      - backend/tests/test_aa_selection_w6_lock_drop_order_mysql.py
+      - .github/workflows/academic-b-w6-lock-drop-order-mysql.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-b-w6-lock-drop-order-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lock-drop-order-mysql:
+    name: LOCK vs drop real MySQL race
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      MOCK_LOGIN_ENABLED: 'true'
+      JWT_SECRET: academic-b-w6-lock-drop-order-secret-at-least-32-bytes
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_b_w6_lock_drop?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_b_w6_lock_drop?charset=utf8mb4
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: academic_b_w6_lock_drop
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Assert exact W6-2 head
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend and migrate clean MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+      - name: Run only W6-2 LOCK drop lock-order contract
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_aa_selection_w6_lock_drop_order_mysql.py \
+            --maxfail=1 \
+            --junitxml=w6-lock-drop-order-junit.xml
+      - name: Upload W6-2 JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-b-w6-lock-drop-order-junit-${{ github.sha }}
+          path: backend/w6-lock-drop-order-junit.xml
+          if-no-files-found: error
+          retention-days: 14

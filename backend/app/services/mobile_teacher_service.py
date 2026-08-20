@@ -12,6 +12,10 @@ from sqlalchemy import func, or_, select
 
 from app.core.exceptions import AppException
 from app.core.security import MOBILE_STAFF_USER_TYPES
+from app.modules.academic_affairs.services.academic_affairs_grade_task_assignee_guard import (
+    SCHEDULE_CHANGE_ACADEMIC_PERM,
+    SCHEDULE_CHANGE_COLLEGE_PERM,
+)
 from app.services import _mobile_teacher_service_impl as _impl
 from app.services import affairs_leave_service
 
@@ -310,6 +314,10 @@ def affairs_academic_evaluation_my_results(user: dict) -> dict:
 if not hasattr(_impl, "_original_resolve_teacher_scope"):
     _impl._original_resolve_teacher_scope = _impl.resolve_teacher_scope
 _impl._ADMIN_ROLES = set(_impl._ADMIN_ROLES) - {"SECURITY_AUDITOR"}
+# 调停课审批权限只取 C/D 共用的 canonical 常量；旧实现保留私有别名以兼容既有函数体，
+# 避免复制字符串后发生权限漂移，也关闭未定义别名导致移动教师工作台 500 的缺口。
+_impl._SC_COLLEGE_PERM = SCHEDULE_CHANGE_COLLEGE_PERM
+_impl._SC_ACADEMIC_PERM = SCHEDULE_CHANGE_ACADEMIC_PERM
 _impl.is_teacher_user = is_teacher_user
 _impl._require_teacher = _require_teacher
 _impl._real_name_is_ambiguous = _strict_real_name_is_ambiguous
