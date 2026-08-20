@@ -8,9 +8,9 @@ from pydantic import BaseModel, Field
 
 from app.core.response import success
 from app.core.security import get_current_user, require_staff
-from app.services import mobile_observability_service as mobile_obs
 from app.services import mobile_performance_service as service
 from app.services import teacher_mobile_messages_v3_service as teacher_messages_v3
+from app.services import teacher_mobile_observability_v3_service as teacher_obs_v3
 from app.services import teacher_mobile_workbench_v3_service as teacher_workbench_v3
 
 
@@ -21,13 +21,8 @@ class MessageReadBatchBody(BaseModel):
     messageIds: list[str] = Field(default_factory=list)
 
 
-def _observe_teacher_message_read(started: float, user: dict) -> None:
-    """T10 anonymous observability; never emit title/content/user identifiers."""
-    mobile_obs.record_latency("pageLatency", (perf_counter() - started) * 1000.0)
-    mobile_obs.record(
-        "scopeMode",
-        "MESSAGE_CONTEXT" if str((user or {}).get("activeContextId") or "").strip() else "MESSAGE_GLOBAL",
-    )
+def _message_scope(user: dict) -> str:
+    return "MESSAGE_CONTEXT" if str((user or {}).get("activeContextId") or "").strip() else "MESSAGE_GLOBAL"
 
 
 @router.get("/teacher/workbench", summary="教师移动工作台单请求快照")
@@ -76,7 +71,11 @@ def teacher_messages_page(
             user, tab=tab, cursor=cursor, page_size=page_size, q=q
         ))
     finally:
-        _observe_teacher_message_read(started, user)
+        teacher_obs_v3.record_page_read(
+            route_key="teacher_messages",
+            scope_mode=_message_scope(user),
+            started=started,
+        )
 
 
 @router.get("/teacher/messages-badges", summary="教师消息未读分类独立聚合")
@@ -85,7 +84,11 @@ def teacher_messages_badges(user=Depends(require_staff)):
     try:
         return success(teacher_messages_v3.unread_badges(user))
     finally:
-        _observe_teacher_message_read(started, user)
+        teacher_obs_v3.record_page_read(
+            route_key="teacher_messages_badges",
+            scope_mode=_message_scope(user),
+            started=started,
+        )
 
 
 @router.get("/teacher/messages/{message_id}", summary="教师消息详情（本人收件箱范围）")
