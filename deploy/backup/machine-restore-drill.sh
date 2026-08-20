@@ -3,7 +3,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-$REPO_ROOT/backend/.venv/bin/python}"
+PYTHON_BIN="${RECOVERY_PYTHON_BIN:-$REPO_ROOT/backend/.venv/bin/python}"
 manifest="${1:?usage: machine-restore-drill.sh <manifest.json> <drill_db_name>}"
 drill_db="${2:?usage: machine-restore-drill.sh <manifest.json> <drill_db_name>}"
 evidence_dir="${RECOVERY_EVIDENCE_DIR:-${TMPDIR:-/tmp}/school-lifecycle-recovery-evidence}"
