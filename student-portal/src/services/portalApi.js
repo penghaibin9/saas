@@ -26,6 +26,8 @@ export const portalApi = {
   todos: () => request('/mobile/me/todos'),
   messages: () => request('/mobile/me/messages'),
   domainMy: (domain) => request(`/mobile/${domain}/my`),
+  // HomeProjection v2：返回 homeVersion/asOf/sections/typed action。
+  // 调用方必须自行处理 reject——首页核心真值失败绝不能被吞成空对象当"暂无待办"。
   homeOverview: () => request('/portal/home/overview'),
 
   profileEnrollment: () => request('/portal/profile/enrollment'),
