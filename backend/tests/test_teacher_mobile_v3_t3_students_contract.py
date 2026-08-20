@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 
 import pytest
+from fastapi import FastAPI
 
 from app.api.v1 import todos as todos_api
 from app.core.exceptions import AppException
@@ -85,13 +86,21 @@ def test_t3_my_students_preserves_direct_counselor_head_teacher_relation_in_sql(
     assert ".all()" not in source
 
 
-def test_t3_teacher_mobile_students_route_is_additive_and_not_mounted_on_other_clients():
-    teacher_paths = {route.path for route in todos_api.make_router("teacher-mobile").routes}
-    admin_paths = {route.path for route in todos_api.make_router("admin").routes}
-    student_paths = {route.path for route in todos_api.make_router("student-mini").routes}
+def _mounted_paths(client: str) -> set[str]:
+    # FastAPI 0.141 keeps include_router entries lazy inside APIRouter. Mounting into a real
+    # application resolves the included router exactly as production startup does.
+    app = FastAPI()
+    app.include_router(todos_api.make_router(client), prefix="/api/v1")
+    return {getattr(route, "path", "") for route in app.routes if getattr(route, "path", None)}
 
-    assert "/teacher-mobile/students" in teacher_paths
-    assert "/teacher-mobile/todos" in teacher_paths
-    assert "/teacher-mobile/todos/continuous" in teacher_paths
-    assert "/admin/students" not in admin_paths
-    assert "/student-mini/students" not in student_paths
+
+def test_t3_teacher_mobile_students_route_is_additive_and_not_mounted_on_other_clients():
+    teacher_paths = _mounted_paths("teacher-mobile")
+    admin_paths = _mounted_paths("admin")
+    student_paths = _mounted_paths("student-mini")
+
+    assert "/api/v1/teacher-mobile/students" in teacher_paths
+    assert "/api/v1/teacher-mobile/todos" in teacher_paths
+    assert "/api/v1/teacher-mobile/todos/continuous" in teacher_paths
+    assert "/api/v1/admin/students" not in admin_paths
+    assert "/api/v1/student-mini/students" not in student_paths

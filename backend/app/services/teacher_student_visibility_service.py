@@ -7,8 +7,8 @@ ADVISOR scope into correlated SQL while reusing the canonical advisor-role set f
 existing teacher-mobile implementation.
 
 Important scale invariant: authorization sets stay small (class names, student numbers,
-college names, advisor identities). We never materialize every visible student and never turn
-``studentIds .all()`` into a large Python ``IN`` list.
+college names, advisor identities). We never materialize the full visible-student population
+into a large Python id collection.
 """
 from __future__ import annotations
 
@@ -52,12 +52,36 @@ def is_advisor_scope(scope: dict | None) -> bool:
     return role in teacher_scope_impl._ADVISOR_ROLES
 
 
-def _advisor_student_scope(scope: dict, StudentProfile, InternshipRecord, GraduationStudent) -> list:
-    """Compile advisor business relations with the same stable-id-first semantics as canonical scope."""
-    tenant_id = _tid()
+def _scope_dimensions(scope: dict) -> dict:
+    """Normalize only the small authorization dimensions before any tenant DB context is needed."""
     advisor_role = is_advisor_scope(scope)
-    advisor_user_ids = _positive_ints(scope.get("advisorUserIds")) if advisor_role else ()
-    advisor_names = _clean_strings(scope.get("advisorNames"))
+    return {
+        "advisorRole": advisor_role,
+        "advisorUserIds": _positive_ints(scope.get("advisorUserIds")) if advisor_role else (),
+        "advisorNames": _clean_strings(scope.get("advisorNames")),
+        "studentNos": _clean_strings(scope.get("studentNos")),
+        "classNames": _class_name_variants(scope.get("classNames")),
+        "collegeNames": _clean_strings(scope.get("collegeNames")),
+    }
+
+
+def _has_effective_scope(dimensions: dict) -> bool:
+    if dimensions["advisorRole"]:
+        return bool(dimensions["advisorUserIds"] or dimensions["advisorNames"])
+    return bool(
+        dimensions["studentNos"]
+        or dimensions["classNames"]
+        or dimensions["collegeNames"]
+        or dimensions["advisorNames"]
+    )
+
+
+def _advisor_student_scope(dimensions: dict, tenant_id: int,
+                           StudentProfile, InternshipRecord, GraduationStudent) -> list:
+    """Compile advisor business relations with canonical stable-id-first semantics."""
+    advisor_role = bool(dimensions["advisorRole"])
+    advisor_user_ids = dimensions["advisorUserIds"]
+    advisor_names = dimensions["advisorNames"]
     predicates = []
 
     internship_advisor = []
@@ -110,7 +134,7 @@ def compile_teacher_student_visibility(user: dict, student_id_column, *, scope: 
     ``ADMIN_TENANT`` is explicitly tenant-wide. Advisor roles are *exclusive* business-
     relation scopes exactly like ``scope_match_row``: class/student/college dimensions cannot
     widen the current advisor role. Other ``SCOPED`` roles use the union of their small resolved
-    dimensions. Unknown modes fail closed.
+    dimensions. Unknown or empty scopes fail closed before opening tenant DB context.
     """
     from app.models import (College, GraduationStudent, InternshipRecord, Major,
                             SchoolClass, StudentProfile)
@@ -122,23 +146,27 @@ def compile_teacher_student_visibility(user: dict, student_id_column, *, scope: 
     if mode != "SCOPED":
         return false()
 
+    dimensions = _scope_dimensions(resolved_scope)
+    if not _has_effective_scope(dimensions):
+        return false()
+
     tenant_id = _tid()
     advisor_scope = _advisor_student_scope(
-        resolved_scope, StudentProfile, InternshipRecord, GraduationStudent
+        dimensions, tenant_id, StudentProfile, InternshipRecord, GraduationStudent
     )
 
     # Canonical hard boundary: when the current role is a mentor/advisor, only the business
     # assignment relation is valid. The same account's class/college/student scopes belong to
     # other roles and must not widen this request.
-    if is_advisor_scope(resolved_scope):
+    if dimensions["advisorRole"]:
         student_scope = advisor_scope
     else:
         student_scope = []
-        student_nos = _clean_strings(resolved_scope.get("studentNos"))
+        student_nos = dimensions["studentNos"]
         if student_nos:
             student_scope.append(StudentProfile.student_no.in_(student_nos))
 
-        class_names = _class_name_variants(resolved_scope.get("classNames"))
+        class_names = dimensions["classNames"]
         if class_names:
             student_scope.append(exists(
                 select(1).select_from(SchoolClass).where(
@@ -149,7 +177,7 @@ def compile_teacher_student_visibility(user: dict, student_id_column, *, scope: 
                 )
             ))
 
-        college_names = _clean_strings(resolved_scope.get("collegeNames"))
+        college_names = dimensions["collegeNames"]
         if college_names:
             # StudentProfile has denormalized college_id/major_id/class_id combinations across
             # historical data. Mirror the canonical fallback order entirely in SQL.
