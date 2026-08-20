@@ -1,0 +1,213 @@
+name: 岗位实习规模夹具与专用负载
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/modules/internship/**"
+      - "backend/app/models/internship.py"
+      - "backend/app/services/mobile_student_service.py"
+      - "backend/app/services/mobile_teacher_service.py"
+      - "backend/app/services/_mobile_teacher_service_impl.py"
+      - "backend/app/services/student_scope_resolver.py"
+      - "backend/scripts/seed_internship_capacity.py"
+      - "backend/tests/test_internship*.py"
+      - "performance/k6/internship.js"
+      - "performance/tools/seed_internship_capacity_env.py"
+      - "scripts/check/check-internship-capacity-gates.mjs"
+      - ".github/workflows/internship-capacity-fixture.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: internship-capacity-fixture-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: 岗位实习规模夹具合同
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 静态校验隔离租户、规模参数与专用 workload
+        run: node scripts/check/check-internship-capacity-gates.mjs
+      - name: 编译容量夹具工具
+        run: |
+          python -m py_compile \
+            backend/scripts/seed_internship_capacity.py \
+            performance/tools/seed_internship_capacity_env.py \
+            backend/tests/test_internship_capacity_seed_contract.py \
+            backend/tests/test_internship_student_dashboard_contract.py
+
+  internship-fixture-smoke:
+    name: MySQL 岗位实习夹具 + 专用 k6 smoke
+    needs: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: development
+      DEBUG: "false"
+      DB_ENABLED: "true"
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      DB_POOL_SIZE: "20"
+      DB_MAX_OVERFLOW: "10"
+      REDIS_URL: redis://127.0.0.1:6379/0
+      JWT_SECRET: internship-capacity-fixture-secret-at-least-32-bytes
+      INTERNAL_OPS_TOKEN: internship-capacity-fixture-ops-token
+      MOCK_LOGIN_ENABLED: "true"
+      SCHEDULER_MODE: external
+      FAST_TEST_SCHEMA: "1"
+      BASE_URL: http://127.0.0.1:8000
+      PROFILE: smoke
+      SCENARIO: mixed
+      STUDENT_SHARE_PERCENT: "65"
+      K6_STUDENT_TOKENS_FILE: /work/performance/secrets/internship/student-tokens.json
+      K6_TEACHER_TOKENS_FILE: /work/performance/secrets/internship/teacher-tokens.json
+      SUMMARY_PATH: /work/performance/results/internship-k6-summary.json
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: 安装后端依赖
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+      - name: 锁定学生实习工作台字段真值
+        working-directory: backend
+        run: pytest tests/test_internship_student_dashboard_contract.py -q
+      - name: 执行 MySQL 真实迁移
+        working-directory: backend
+        run: alembic upgrade head
+      - name: 锁定默认 D20K/D8K 行数计划
+        working-directory: backend
+        run: pytest tests/test_internship_capacity_seed_contract.py -q
+      - name: 生成小规模真实 MySQL 岗位实习夹具
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p performance/results
+          python backend/scripts/seed_internship_capacity.py \
+            --students 500 \
+            --active-interns 200 \
+            --history-batches 2 \
+            --days 14 \
+            --weeks 4 \
+            --tasks 3 \
+            --guidance-per-student 2 \
+            --risk-ratio 0.05 \
+            --manifest performance/results/internship-fixture.json
+          python - <<'PY' >> "$GITHUB_ENV"
+          import json
+          from pathlib import Path
+          doc = json.loads(Path("performance/results/internship-fixture.json").read_text())
+          assert doc["seeded"] is True
+          assert doc["actual"] == doc["expected"]
+          print(f"INTERNSHIP_BATCH_ID={doc['currentBatchId']}")
+          PY
+      - name: 创建与学生主档一一映射的短期 Token 池
+        run: |
+          python performance/tools/seed_internship_capacity_env.py \
+            --manifest performance/results/internship-fixture.json \
+            --out performance/secrets/internship \
+            --token-count 20
+      - name: 启动临时 FastAPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd backend
+            nohup python -m uvicorn app.main:app \
+              --host 127.0.0.1 \
+              --port 8000 \
+              --workers 2 \
+              --no-access-log \
+              --log-config ../performance/uvicorn-capacity-log.json \
+              > ../performance/results/internship-backend.log 2>&1 &
+            echo $! > ../performance/results/internship-backend.pid
+          )
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat performance/results/internship-backend.log
+          exit 1
+      - name: 岗位实习负载前就绪与指标探针
+        run: |
+          python performance/tools/probe_observability.py \
+            --base-url "$BASE_URL" \
+            --samples 3 \
+            --interval 0.2 \
+            --output performance/results/internship-observability-before.json
+      - name: 固定版本 k6 岗位实习 smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod 0777 performance/results
+          docker pull grafana/k6:0.54.0
+          docker run --rm --network host \
+            --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            -e BASE_URL \
+            -e PROFILE \
+            -e SCENARIO \
+            -e STUDENT_SHARE_PERCENT \
+            -e INTERNSHIP_BATCH_ID \
+            -e K6_STUDENT_TOKENS_FILE \
+            -e K6_TEACHER_TOKENS_FILE \
+            -e SUMMARY_PATH \
+            grafana/k6:0.54.0 run performance/k6/internship.js
+      - name: 岗位实习负载后就绪与指标探针
+        if: always()
+        run: |
+          python performance/tools/probe_observability.py \
+            --base-url "$BASE_URL" \
+            --samples 3 \
+            --interval 0.2 \
+            --output performance/results/internship-observability-after.json
+      - name: 上传岗位实习夹具与 smoke 证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-fixture-smoke-${{ github.run_id }}
+          path: performance/results/
+          if-no-files-found: error
+          retention-days: 14

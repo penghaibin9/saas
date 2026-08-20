@@ -15,6 +15,7 @@ PROFILE_MIN_REQUESTS = {
     "p500": 20000,
 }
 LOCAL_DIAGNOSTIC_PROFILES = {"p300", "p500"}
+LATENCY_ASSERTION_KEYS = {"p95Ms", "p99Ms"}
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -169,12 +170,35 @@ def main() -> int:
         },
     ]
 
-    passed = all(item["passed"] for item in assertions if item["enforced"])
+    functional_passed = all(
+        item["passed"] for item in assertions if item["key"] not in LATENCY_ASSERTION_KEYS
+    )
+    latency_passed = all(
+        item["passed"] for item in assertions if item["key"] in LATENCY_ASSERTION_KEYS
+    )
+    release_eligible = not local_high_load
+    release_capacity_passed = bool(release_eligible and functional_passed and latency_passed)
+    execution_passed = functional_passed if local_high_load else release_capacity_passed
+
+    if local_high_load:
+        status = "DIAGNOSTIC_FUNCTIONAL_PASS" if functional_passed else "DIAGNOSTIC_FUNCTIONAL_FAIL"
+    else:
+        status = "CAPACITY_PASS" if release_capacity_passed else "CAPACITY_FAIL"
+
     verdict = {
         "profile": args.profile,
         "mode": verdict_mode,
         "targetMode": target_mode,
-        "passed": passed,
+        "status": status,
+        # `passed` is deliberately release-capacity truth. A local p300/p500 diagnostic may exit 0
+        # when functional checks pass, but it must never serialize `passed=true` while latency is
+        # explicitly not enforced.
+        "passed": release_capacity_passed,
+        "functionalPassed": functional_passed,
+        "executionPassed": execution_passed,
+        "releaseEligible": release_eligible,
+        "releaseCapacityPassed": release_capacity_passed,
+        "diagnosticOnly": local_high_load,
         "latencyGateEnforced": not local_high_load,
         "summary": {
             "requests": request_count,
@@ -189,16 +213,21 @@ def main() -> int:
     args.output.write_text(json.dumps(verdict, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     print(
-        f"capacity_verdict profile={args.profile} mode={verdict_mode} "
-        f"passed={str(passed).lower()} requests={request_count} "
-        f"p95_ms={verdict['summary']['p95Ms']} p99_ms={verdict['summary']['p99Ms']} "
-        f"failed_rate={failed_rate} check_rate={check_rate}"
+        f"capacity_verdict profile={args.profile} mode={verdict_mode} status={status} "
+        f"execution_passed={str(execution_passed).lower()} "
+        f"release_capacity_passed={str(release_capacity_passed).lower()} "
+        f"requests={request_count} p95_ms={verdict['summary']['p95Ms']} "
+        f"p99_ms={verdict['summary']['p99Ms']} failed_rate={failed_rate} check_rate={check_rate}"
     )
     if local_high_load:
-        print("INFO local high-load latency is diagnostic only; HTTPS remote runs enforce full latency gates")
-    if not passed:
+        print(
+            "INFO local high-load result is DIAGNOSTIC_ONLY; latency is not enforced and "
+            "releaseCapacityPassed is always false"
+        )
+    if not execution_passed:
         for item in assertions:
-            if item["enforced"] and not item["passed"]:
+            should_enforce = item["key"] not in LATENCY_ASSERTION_KEYS if local_high_load else True
+            if should_enforce and not item["passed"]:
                 print(f"FAILED {item['key']}: actual={item['actual']} limit={item['limit']}")
         return 1
     return 0
