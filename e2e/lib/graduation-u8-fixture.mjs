@@ -190,7 +190,9 @@ export async function prepareGraduationTeacherMobileGoldFixture() {
     if (!studentTaskbook?.hasData || !studentTaskbook?.taskbookVersion) {
       throw new Error(`U8 Gold student taskbook is not confirmable: ${JSON.stringify(studentTaskbook)}`)
     }
-    await student.post('/mobile/graduation/taskbook/confirm', undefined, {
+    await student.post('/mobile/graduation/taskbook/confirm', {
+      expectedVersion: Number(studentTaskbook.taskbookVersion),
+    }, {
       batchId: fixture.batchId,
     })
     taskbook = await admin.get(`/graduation/gd-taskbooks/${fixture.gdStudentId}`, {
