@@ -1,7 +1,7 @@
 {
   "schema": "miniapp-v3-handoff/1",
-  "generatedAt": "2026-08-20T04:46:00.000Z",
-  "studentMergeSha": "b5533f99e4e277050e5beeb3e364b14298a18048",
+  "generatedAt": "2026-08-20T07:08:59.389Z",
+  "studentMergeSha": "d2bfe9889248873ba32a49a115b87ac2212da3fb",
   "actionSchemaVersion": "1.0.0",
   "routeInventoryHash": "8e9bdf2e10a9093639a376d3273e5b45657a74cee04f6346cb2e24644c42e87d",
   "routeCount": 137,
@@ -19,5 +19,5 @@
   "networkPagerVersion": "1.0.0",
   "attachmentPickerVersion": "1.0.0",
   "alembicHead": "20260818_merge_prog_grade_dl",
-  "packageReportSha": "93a8436297c82e08db7c41b3f25f3b7462d1aaf2a63691653826c554f956faa4"
+  "packageReportSha": "6a96176c6e9270c559313de5b5165bd828caa2f748883483b47a063efc7d6cfb"
 }
