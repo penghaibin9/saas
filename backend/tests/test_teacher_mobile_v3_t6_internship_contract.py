@@ -47,6 +47,17 @@ def test_t6_visit_body_is_strict_versioned_and_location_free():
         route.VisitEvidenceBody(**{**_visit_body(), "unexpected": True})
 
 
+def test_t6_routes_keep_canonical_internship_permissions_not_staff_only():
+    route_source = inspect.getsource(route)
+    sequential_source = inspect.getsource(sequential_route)
+    assert 'require_permission("internship.visit.view")' in route_source
+    assert 'require_permission("internship.report.review")' in route_source
+    assert 'require_permission("internship.visit.manage")' in route_source
+    assert 'require_permission("internship.attendance.review")' in sequential_source
+    assert "require_staff" not in route_source
+    assert "require_staff" not in sequential_source
+
+
 def test_t6_visit_transaction_locks_record_validates_plan_and_advances_version():
     source = inspect.getsource(evidence.create_visit_evidence)
     assert ".with_for_update()" in source
