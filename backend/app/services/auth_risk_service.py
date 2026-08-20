@@ -9,10 +9,11 @@ compatibility callers as a cache/fast-path, but a missing cache value never mean
 from __future__ import annotations
 
 import hashlib
+import time
 from datetime import datetime, timedelta
 
 from sqlalchemy import delete, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.core.config import settings
 from app.core.exceptions import AppException
@@ -25,6 +26,28 @@ PLATFORM_ACCOUNT = "PLATFORM_ACCOUNT"
 PLATFORM_ACCOUNT_IP = "PLATFORM_ACCOUNT_IP"
 PLATFORM_IP = "PLATFORM_IP"
 RATE_LIMIT = "RATE_LIMIT"
+
+# 首次建桶时多个 worker/线程会同时看见“无行”并争抢唯一键；MySQL 在这种瞬时竞争下
+# 可能返回 duplicate key、deadlock(1213) 或 lock wait timeout(1205)。这些都不是存储不可用，
+# 应在很短的有界窗口内重新开启事务读取赢家行。8 次指数退避总等待仍低于数据库故障超时，
+# 既避免正常突发请求误报 503，也不会把真正的 DB 故障长期吞掉。
+_WRITE_RACE_RETRIES = 8
+_RETRYABLE_MYSQL_CODES = {1205, 1213}
+
+
+def _race_backoff(attempt: int) -> None:
+    time.sleep(min(0.005 * (2 ** max(0, attempt)), 0.08))
+
+
+def _retryable_operational_error(exc: OperationalError) -> bool:
+    orig = getattr(exc, "orig", None)
+    args = getattr(orig, "args", ()) or ()
+    if not args:
+        return False
+    try:
+        return int(args[0]) in _RETRYABLE_MYSQL_CODES
+    except (TypeError, ValueError):
+        return False
 
 
 def strict_env() -> bool:
@@ -125,12 +148,13 @@ def record_failure(
 
     The absent-row race is retried after the unique-key winner commits.  MySQL
     row locking then serializes subsequent increments, preventing lost updates
-    across workers.
+    across workers.  Deadlock/lock-wait races are retried in a short bounded
+    window; unrelated operational failures remain fail-closed.
     """
     limit = max(1, int(threshold))
     lock_for = max(1, int(lock_seconds))
     digest = _key_hash(key)
-    for attempt in range(3):
+    for attempt in range(_WRITE_RACE_RETRIES):
         db = _session(required=strict_env())
         if db is None:
             return None
@@ -157,7 +181,8 @@ def record_failure(
                     db.flush()
                 except IntegrityError:
                     db.rollback()
-                    if attempt < 2:
+                    if attempt + 1 < _WRITE_RACE_RETRIES:
+                        _race_backoff(attempt)
                         continue
                     raise
             if row.expires_at is not None and row.expires_at <= now and _remaining(row.locked_until, now) == 0:
@@ -177,10 +202,22 @@ def record_failure(
                 db.rollback()
             except Exception:
                 pass
-            if attempt < 2:
+            if attempt + 1 < _WRITE_RACE_RETRIES:
+                _race_backoff(attempt)
                 continue
             if strict_env() or db_enabled():
                 raise _store_unavailable() from None
+            return None
+        except OperationalError as exc:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            if _retryable_operational_error(exc) and attempt + 1 < _WRITE_RACE_RETRIES:
+                _race_backoff(attempt)
+                continue
+            if strict_env() or db_enabled():
+                raise _store_unavailable() from exc
             return None
         except AppException:
             raise
@@ -223,11 +260,16 @@ def reset_failure(key: str, *, risk_type: str = LOGIN_ACCOUNT, tenant_id: int | 
 
 
 def fixed_window_allow(bucket: str, limit: int, window_seconds: int) -> bool | None:
-    """MySQL fallback for Redis rate limiting; never process-local in strict env."""
+    """MySQL fallback for Redis rate limiting; never process-local in strict env.
+
+    Burst traffic commonly races on the first insert of a bucket.  Treat the
+    unique-key/deadlock race as contention, not a store outage; every retry opens
+    a fresh transaction and converges on the winning row.
+    """
     cap = max(1, int(limit))
     window = max(1, int(window_seconds))
     digest = _key_hash(bucket)
-    for attempt in range(3):
+    for attempt in range(_WRITE_RACE_RETRIES):
         db = _session(required=strict_env())
         if db is None:
             return None
@@ -253,7 +295,8 @@ def fixed_window_allow(bucket: str, limit: int, window_seconds: int) -> bool | N
                     db.flush()
                 except IntegrityError:
                     db.rollback()
-                    if attempt < 2:
+                    if attempt + 1 < _WRITE_RACE_RETRIES:
+                        _race_backoff(attempt)
                         continue
                     raise
             if row.expires_at is None or row.expires_at <= now:
@@ -272,10 +315,22 @@ def fixed_window_allow(bucket: str, limit: int, window_seconds: int) -> bool | N
                 db.rollback()
             except Exception:
                 pass
-            if attempt < 2:
+            if attempt + 1 < _WRITE_RACE_RETRIES:
+                _race_backoff(attempt)
                 continue
             if strict_env() or db_enabled():
                 raise _store_unavailable() from None
+            return None
+        except OperationalError as exc:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            if _retryable_operational_error(exc) and attempt + 1 < _WRITE_RACE_RETRIES:
+                _race_backoff(attempt)
+                continue
+            if strict_env() or db_enabled():
+                raise _store_unavailable() from exc
             return None
         except Exception as exc:  # noqa: BLE001
             try:
