@@ -186,6 +186,7 @@ def discipline_my(user) -> dict:
 def dorm_my(user) -> dict:
     """我的宿舍：当前床位 + 学校自选开关(决定是否显示选床入口)。"""
     from app.models import DormBed, DormBuilding, DormRoom
+    from app.core.tenant_scoped import tenant_get
     from app.services import affairs_dorm_service as dorm
     with session() as db:
         stu = _me(db, user)
@@ -194,8 +195,8 @@ def dorm_my(user) -> dict:
             DormBed.status == "OCCUPIED", DormBed.is_deleted.is_(False))).first()
         my_bed = None
         if bed:
-            b = db.get(DormBuilding, int(bed.building_id))
-            room = db.get(DormRoom, int(bed.room_id))
+            b = tenant_get(db, DormBuilding, int(bed.building_id))
+            room = tenant_get(db, DormRoom, int(bed.room_id))
             my_bed = {"bedId": str(bed.id), "building": b.building_name if b else "",
                       "room": room.room_no if room else "", "bedNo": bed.bed_no,
                       "occupiedAt": _iso(bed.occupied_at)}
