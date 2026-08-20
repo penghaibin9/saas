@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (GreenChannelApplication, OrientationArchive, OrientationAuditTrail,
                         OrientationBatch, OrientationCheckinPoint, OrientationException,
                         OrientationExceptionFollowup, OrientationFlowConfig, OrientationMaterial,
@@ -433,7 +434,7 @@ def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=Fals
         elif reason_field == "remark":
             g.remark = (reason or "").strip()
         g.version += 1
-        stu = db.get(OrientationStudent, g.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, g.ori_student_id)
         audit_detail = reason or ""
         if stu:
             if target_status == "APPROVED":
@@ -500,8 +501,14 @@ def student_submit_collect(sid, phone: str = "", origin: str = "") -> dict:
         return {"id": str(s.id), "reportStatus": s.report_status}
 
 
-def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: str = "") -> dict:
-    """绿色通道申请（学生自助提交，等待辅导员/资助中心审核）。"""
+def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: str = "",
+                                 file_ids=None, actor: dict | None = None) -> dict:
+    """绿色通道申请（学生自助提交，等待辅导员/资助中心审核）。
+
+    V3 §8.1：附件以 TEMP_PRIVATE fileId 传入，正式绑定在本函数的事务里由 canonical
+    file binding 服务完成——校验 owner/tenant/扫描状态/用途后才建 FileBinding。
+    任一附件不可用会让整笔申请回滚，临时文件保持私有等 TTL 回收。
+    """
     apply_type = (apply_type or "").strip()
     if not apply_type:
         raise AppException("VALIDATION_ERROR", "请选择困难类型")
@@ -517,6 +524,20 @@ def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: s
         s.green_channel_status = "SUBMITTED"
         s.version += 1
         db.flush()
+        for file_id in (file_ids or []):
+            from app.services import file_business_binding_service as file_binding_svc
+            file_binding_svc.bind_file_to_business(
+                db,
+                file_id=file_id,
+                biz_type="ORIENTATION_GREEN_CHANNEL",
+                biz_id=g.id,
+                actor=actor or {},
+                subject_type="STUDENT",
+                subject_id=s.id,
+                relation_type="BUSINESS_EVIDENCE",
+                module_code="ORIENTATION",
+                scope={"orientationStudentId": str(s.id), "applyType": apply_type},
+            )
         _audit(db, "GREEN_CHANNEL", g.id, "学生提交绿色通道申请",
               f"{apply_type} ¥{_amt(apply_amount):.0f}")
         db.commit()
@@ -614,7 +635,7 @@ def approve_material(mid, comment=""):
         m.reviewer = name
         m.review_time = datetime.utcnow()
         m.version += 1
-        stu = db.get(OrientationStudent, m.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
         if stu:
             _refresh_material_status(db, stu)
         _audit(db, "MATERIAL", m.id, "审核通过", comment, before, "APPROVED")
@@ -636,7 +657,7 @@ def return_material(mid, reason):
         m.review_time = datetime.utcnow()
         m.return_reason = reason.strip()
         m.version += 1
-        stu = db.get(OrientationStudent, m.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
         if stu:
             stu.material_status = "RETURNED"
         _audit(db, "MATERIAL", m.id, "退回材料", reason.strip(), before, "RETURNED")
@@ -776,7 +797,7 @@ def list_exceptions(page, page_size, keyword=None, exception_type=None, status=N
         rows = db.scalars(q.order_by(OrientationException.id.desc())).all()
         items = []
         for e in rows:
-            stu = db.get(OrientationStudent, e.ori_student_id)
+            stu = tenant_get(db, OrientationStudent, e.ori_student_id)
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
             items.append(_exc_row(e, stu))
@@ -788,7 +809,7 @@ def get_exception_detail(eid) -> dict:
         e = db.get(OrientationException, int(eid))
         if not e or e.is_deleted or e.tenant_id != _tid():
             raise not_found("异常记录不存在")
-        stu = db.get(OrientationStudent, e.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, e.ori_student_id)
         fus = db.scalars(select(OrientationExceptionFollowup).where(
             OrientationExceptionFollowup.tenant_id == _tid(),
             OrientationExceptionFollowup.exception_id == e.id).order_by(
@@ -828,7 +849,7 @@ def resolve_exception(eid, note="") -> dict:
             raise not_found("异常记录不存在")
         e.status = "RESOLVED"
         e.version += 1
-        stu = db.get(OrientationStudent, e.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, e.ori_student_id)
         if stu and stu.risk_level == "HIGH":
             stu.risk_level = "MEDIUM"
         _audit(db, "EXCEPTION", e.id, "标记已处理", note)
@@ -846,7 +867,7 @@ def escalate_exception(eid, reason) -> dict:
         e.status = "ESCALATED"
         e.risk_level = "HIGH"
         e.version += 1
-        stu = db.get(OrientationStudent, e.ori_student_id)
+        stu = tenant_get(db, OrientationStudent, e.ori_student_id)
         if stu:
             stu.risk_level = "HIGH"
         _audit(db, "EXCEPTION", e.id, "升级风险", reason.strip())

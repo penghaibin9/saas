@@ -7,6 +7,7 @@ from sqlalchemy import and_, case, func, literal, or_, select, union_all, update
 
 from app.core.exceptions import AppException
 from app.services import message_center_service as message_svc
+from app.services import mobile_action_service as action_svc
 from app.services import workbench_snapshot_service as snapshot_svc
 from app.services import workbench_todo_service as todo_svc
 from app.services.db_service import _iso, _tid, session
@@ -291,6 +292,7 @@ def _progress_page(user, page, size):
 
 def _message_item(item):
     emergency = bool(item.get("emergency"))
+    withdrawn = bool(item.get("withdrawn"))
     return {
         "id": str(item.get("messageId") or ""),
         "messageId": str(item.get("messageId") or ""),
@@ -303,9 +305,17 @@ def _message_item(item):
         "status": item.get("readStatus"), "link": item.get("actionKey") or "",
         "emergency": emergency,
         "receipt": bool(item.get("requireAck") and not item.get("acked")
-                        and not item.get("withdrawn")),
+                        and not withdrawn),
         "requireAck": bool(item.get("requireAck")),
-        "acked": bool(item.get("acked")), "withdrawn": bool(item.get("withdrawn")),
+        "acked": bool(item.get("acked")), "withdrawn": withdrawn,
+        # V3 §4.1：DTO 必须保留 actionKey/actionParams 与已解析的 typed action，
+        # 不能只剩一个 link 字符串让前端自己猜业务（V3 深审 P0-02）。
+        "actionKey": item.get("actionKey"),
+        "actionParams": item.get("actionParams"),
+        "action": action_svc.build_message_action(
+            item.get("actionKey"), item.get("actionParams"),
+            client=action_svc.CLIENT_STUDENT_MINI, withdrawn=withdrawn,
+        ),
     }
 
 
@@ -319,6 +329,19 @@ def _student_todo_item(item):
         "time": item.get("createdAt"), "deadline": item.get("dueAt"),
         "read": not pending, "status": item.get("status"),
         "link": item.get("sourceModule") or "",
+        # V3 §4.1：workbench_todo_service 已经生成了 typed route/recordId/allowedActions，
+        # 这里必须原样带出，不能丢掉再让页面按 sourceModule 猜路由（V3 深审 P0-02）。
+        "todoId": item.get("todoId"),
+        "todoType": item.get("todoType"),
+        "recordId": item.get("recordId"),
+        "sourceModule": item.get("sourceModule"),
+        "bizType": item.get("bizType"),
+        "routeName": item.get("routeName"),
+        "routePath": item.get("routePath"),
+        "routeExact": bool(item.get("routeExact")),
+        "allowedActions": item.get("allowedActions") or [],
+        "version": item.get("version"),
+        "action": action_svc.build_todo_action(item, client=action_svc.CLIENT_STUDENT_MINI),
     }
 
 
@@ -336,7 +359,8 @@ def student_messages_page(user, tab="todo", page=1, page_size=20):
     if tab not in enabled:
         items, total = [], 0
     elif tab == "todo":
-        rows, total = todo_svc.list_todos(current, page=page, page_size=size)
+        # client=studentMini：typed route 必须按学生小程序解析，否则拿到的是 /admin/... PC 路径。
+        rows, total = todo_svc.list_todos(current, page=page, page_size=size, client="studentMini")
         items = [_student_todo_item(row) for row in rows]
     elif tab == "notice":
         rows, total = message_svc.list_messages(current, page=page, page_size=size)
@@ -410,7 +434,7 @@ def read_messages_batch(user, message_ids):
             db.commit()
 
     from app.services import mobile_student_service as student_svc
-    student_svc.invalidate_home_cache(current)
+    student_svc.invalidate_home_cache(current, "message")
     return {
         "requestedCount": len(ids), "affectedCount": affected,
         "updatedAt": _iso(now),

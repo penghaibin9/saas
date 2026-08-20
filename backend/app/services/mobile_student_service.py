@@ -16,7 +16,11 @@ from sqlalchemy import event, func, or_, select
 from app.core.exceptions import AppException
 from app.core.student_lifecycle import student_stage_label
 from app.db.session import db_enabled, get_engine, get_sessionmaker
+from app.core.tenant_scoped import tenant_get
 from app.services import audit_log
+from app.services import file_business_binding_service as file_binding_svc
+from app.services import mobile_observability_service as _obs
+from app.services import mobile_action_service as _action_svc
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
 from app.services.db_service import _iso, _mask_phone, _org_names, _primary_phone, _tid
 
@@ -309,6 +313,13 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
         if include_home:
             result["orientation"] = _orientation_payload(ori)
             result["orientationBatch"] = _orientation_batch_status_db(db)
+            # V3 §5.2 学分完成率的真值来源。acad 已在本 session 内解析，不新增查询。
+            # required_credits 可为空（培养方案未解析）——此时必须保持 None，
+            # 由投影层返回 None、前端显示“—”，不得按 0 或 100 猜。
+            result["credits"] = {
+                "earnedCredits": float(acad.obtained_credits) if acad and acad.obtained_credits is not None else None,
+                "requiredCredits": float(acad.required_credits) if acad and acad.required_credits is not None else None,
+            }
         return result
 
 
@@ -320,12 +331,29 @@ def _home_cache_key(user: dict) -> str:
     没有 studentId 的旧令牌退回 userId（同样稳定），studentNo 不再作为缓存键。
     """
     ident = user.get("studentId") or user.get("userId") or "-"
-    return f"home:student:{user.get('tenantId') or _tid()}:{ident}"
+    # V3 §5.3：cache key 必须带 home schema version，否则灰度期旧结构会被当成新结构读出来。
+    from app.services.mobile_student_home_projection import HOME_VERSION
+    return f"home:student:v{HOME_VERSION}:{user.get('tenantId') or _tid()}:{ident}"
 
 
-def invalidate_home_cache(user: dict) -> None:
+def invalidate_home_cache(user: dict, *projections: str) -> None:
+    """删首页缓存，并按域 bump projectionVersion（V3 §5.4 / 深审 P1-12）。
+
+    只删缓存是不够的：客户端还握着一份 20s 本地 freshness 的旧首页。bump 之后 DTO 里的
+    projectionVersion 会变，客户端必须立刻丢弃旧请求与旧页面结果，而不是等 TTL 到期。
+    """
     from app.core.redis_client import cache_delete
+    from app.services import mobile_freshness_service as freshness
+
     cache_delete(_home_cache_key(user or {}))
+    for projection in projections:
+        try:
+            freshness.bump(user or {}, projection)
+        except ValueError:
+            raise
+        except Exception:  # noqa: BLE001
+            # Redis 不可用时没有服务端缓存，本来就不存在陈旧投影，静默降级。
+            log.debug("freshness bump skipped projection=%s", projection)
 
 
 def home(user: dict) -> dict:
@@ -342,8 +370,9 @@ def home(user: dict) -> dict:
     cached = cache_get_json(key)
     if isinstance(cached, dict):
         cached["cacheHit"] = True
-        log.info("mobile_home cache_hit=true duration_ms=%.2f query_count=0",
-                 (time.perf_counter() - started) * 1000)
+        duration_ms = (time.perf_counter() - started) * 1000
+        log.info("mobile_home cache_hit=true duration_ms=%.2f query_count=0", duration_ms)
+        _obs.record_home_read(cache_hit=True, query_count=0, duration_ms=duration_ms)
         return cached
 
     lock_state = cache_set_json_if_absent(
@@ -365,6 +394,17 @@ def home(user: dict) -> dict:
         query_token = _home_query_count.set(0)
     try:
         data = me_overview(u, include_home=True)
+        # V3 §5.2–§5.4：在既有 overview 之上叠加首页投影。投影只读，不复制业务状态机，
+        # 也不复制消息可见性——它复用 message_center / workbench_todo 的 Authority。
+        from app.services.mobile_student_home_projection import build_home_v2
+        from app.services.mobile_agenda_projection_service import today_for_home
+        if data.get("student"):
+            data.update(build_home_v2(
+                u,
+                overview=data,
+                credits=data.get("credits"),
+                today=today_for_home(u),
+            ))
         query_count = int(_home_query_count.get() or 0) if query_token is not None else 0
     finally:
         if query_token is not None:
@@ -374,12 +414,15 @@ def home(user: dict) -> dict:
     base_ttl = max(1, int(settings.HOME_CACHE_TTL))
     jitter = random.randint(0, max(1, min(5, base_ttl // 4 or 1)))
     cached_ok = cache_set_json(key, data, base_ttl + jitter)
+    duration_ms = (time.perf_counter() - started) * 1000
     log.info(
         "mobile_home cache_hit=false duration_ms=%.2f query_count=%d redis_cached=%s",
-        (time.perf_counter() - started) * 1000,
+        duration_ms,
         query_count,
         cached_ok,
     )
+    # §13 可观测性：只记匿名分桶（命中/未命中、SQL 条数量级、耗时量级）。
+    _obs.record_home_read(cache_hit=False, query_count=query_count, duration_ms=duration_ms)
     return data
 
 
@@ -608,6 +651,14 @@ def message_get(user: dict, message_id) -> dict:
             "withdrawn": withdrawn,
             "actionKey": getattr(m, "action_key", None),
             "actionParams": getattr(m, "action_params_json", None),
+            # V3 §4.1/§4.2：详情页只消费服务端已解析的 typed action，
+            # 不再在客户端按 actionKey/module/status 猜业务路由。
+            "action": _action_svc.build_message_action(
+                getattr(m, "action_key", None),
+                getattr(m, "action_params_json", None),
+                client=_action_svc.CLIENT_STUDENT_MINI,
+                withdrawn=withdrawn,
+            ),
             "contentVersion": int(getattr(m, "content_version", 1) or 1),
         }
 
@@ -642,7 +693,7 @@ def message_mark_read(user: dict, message_id) -> dict:
             m.read_at = _dt.utcnow()
             m.version += 1
             db.commit()
-            invalidate_home_cache(u)
+            invalidate_home_cache(u, "message")
         return {"messageId": str(m.id), "status": "READ"}
 
 
@@ -683,7 +734,7 @@ def message_ack(user: dict, message_id) -> dict:
                 m.read_at = now
             m.version = int(m.version or 0) + 1
             db.commit()
-            invalidate_home_cache(u)
+            invalidate_home_cache(u, "message")
         return {
             "messageId": str(m.id),
             "acked": True,
@@ -727,7 +778,7 @@ def orientation_collect_submit(user: dict, body: dict) -> dict:
         oid = o.id
     from app.services.orientation_service import student_submit_collect
     result = student_submit_collect(oid, phone=(body or {}).get("phone", ""), origin=(body or {}).get("origin", ""))
-    invalidate_home_cache(u)
+    invalidate_home_cache(u, "todo", "case")
     audit_log.record("学生提交预报到信息", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
     return result
 
@@ -744,8 +795,11 @@ def orientation_green_channel_submit(user: dict, body: dict) -> dict:
         oid = o.id
     from app.services.orientation_service import student_submit_green_channel
     b = body or {}
-    result = student_submit_green_channel(oid, b.get("applyType", ""), b.get("applyAmount", 0), b.get("remark", ""))
-    invalidate_home_cache(u)
+    result = student_submit_green_channel(
+        oid, b.get("applyType", ""), b.get("applyAmount", 0), b.get("remark", ""),
+        file_ids=_attachment_ids(b), actor=u,
+    )
+    invalidate_home_cache(u, "todo", "case")
     audit_log.record("学生提交绿色通道申请", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
     return result
 
@@ -1622,6 +1676,49 @@ def psy_survey_history(user: dict) -> dict:
 
 # ─────────── 我的申请（聚合本人可查询记录） ───────────
 
+def wechat_subscribe_status(user: dict) -> dict:
+    """V3 §9.3：微信重要提醒的**真实**状态。
+
+    站内消息分类与微信订阅是两条独立渠道，不能用一个开关表示两种东西。
+    provider 未配置或用户未授权时，这里如实返回 false —— 绝不在学生端宣称"已开启"。
+    """
+    u = _require_student(user)
+    from app.services.notification import wechat_subscribe_service as wechat
+
+    status = wechat.provider_status()
+    authorized = False
+    if db_enabled():
+        with _session() as db:
+            from app.models import User
+            uid = _resolve_uid(u)
+            row = tenant_get(db, User, uid) if uid else None
+            authorized = bool(row and getattr(row, "wx_openid", None))
+    return {
+        "channel": "WECHAT",
+        # 学校/运维是否配好了微信订阅能力
+        "configured": bool(status["configured"]),
+        # 本人是否授权过（有 openid）
+        "authorized": authorized,
+        # 只有两者都成立，才算这条渠道真的能收到提醒
+        "effective": bool(status["configured"]) and authorized,
+        "scenes": [
+            {"key": scene, "label": _SUBSCRIBE_SCENE_LABELS.get(scene, scene),
+             "ready": bool(status["templates"].get(scene))}
+            for scene in status["scenes"]
+        ],
+        # 未配置时给出可诊断信息，供管理端排查；学生端只用它决定文案，不展示内部键名
+        "missing": list(status["missing"]),
+    }
+
+
+_SUBSCRIBE_SCENE_LABELS = {
+    "CASE_RETURNED": "退回补材料",
+    "CASE_RESULT": "审批结果",
+    "EXAM_UPCOMING": "考试/答辩临近",
+    "INTERNSHIP_ABNORMAL": "实习异常",
+}
+
+
 def my_applications(user: dict) -> dict:
     u = _require_student(user)
     tabs = [{"key": "all", "label": "全部"}, {"key": "processing", "label": "处理中"},
@@ -1680,6 +1777,32 @@ def my_applications(user: dict) -> dict:
 
 
 # ─────────── 学生写操作：提交服务申请 / 提交实习周报 ───────────
+
+#: 单次业务提交允许携带的附件数上限。客户端 maxCount 只是提示，真正的边界在服务端。
+MAX_ATTACHMENTS_PER_SUBMIT = 5
+
+
+def _attachment_ids(body: dict) -> list[str]:
+    """从业务命令里取出 fileIds 并做形状校验。
+
+    只接受数字 id；数量与格式在服务端再判一次，客户端限制不作数（V3 §6.1）。
+    """
+    raw = (body or {}).get("fileIds") or []
+    if not isinstance(raw, (list, tuple)):
+        raise AppException("VALIDATION_ERROR", "fileIds 必须是数组")
+    ids: list[str] = []
+    for item in raw:
+        value = str(item or "").strip()
+        if not value:
+            continue
+        if not value.isdigit():
+            raise AppException("VALIDATION_ERROR", f"附件标识无效：{value}")
+        if value not in ids:
+            ids.append(value)
+    if len(ids) > MAX_ATTACHMENTS_PER_SUBMIT:
+        raise AppException("VALIDATION_ERROR", f"单次最多携带 {MAX_ATTACHMENTS_PER_SUBMIT} 个附件")
+    return ids
+
 
 def campus_service_apply(user: dict, body: dict) -> dict:
     u = _require_student(user)
@@ -1751,6 +1874,26 @@ def campus_service_apply(user: dict, body: dict) -> dict:
                                        "time": _iso(_dt.utcnow()), "tone": "processing"}])
         db.add(row)
         db.flush()
+        # V3 §8.1：客户端上传只产出 TEMP_PRIVATE 文件，永远不能自己指定正式绑定。
+        # 这里在**同一个事务**里由 canonical 服务校验 owner/tenant/扫描状态/用途后建 binding；
+        # 任一附件不可用就整笔业务回滚，临时文件保持私有等 TTL 回收。
+        attachment_ids = _attachment_ids(body)
+        for file_id in attachment_ids:
+            file_binding_svc.bind_file_to_business(
+                db,
+                file_id=file_id,
+                biz_type="CAMPUS_SERVICE_WORKORDER",
+                biz_id=row.id,
+                actor=u,
+                subject_type="STUDENT",
+                subject_id=stu.id,
+                relation_type="BUSINESS_EVIDENCE",
+                module_code="CAMPUS_SERVICE",
+                student_id=stu.id,
+                scope={"studentId": str(stu.id), "serviceKey": service_key},
+            )
+        if attachment_ids:
+            _obs.record_file_binding(purpose="CAMPUS_SERVICE_WORKORDER", outcome="bound")
         rid, status = row.id, row.status
         db.commit()
     audit_log.record("MOBILE_SERVICE_APPLY", f"campus-service:{service_key}",
@@ -1851,7 +1994,8 @@ def internship_checkin(user: dict, body: dict) -> dict:
                         "idempotentReplay": True, "message": "打卡请求已成功处理"}
             raise AppException("DATA_CONFLICT", "今日已打卡，请勿重复打卡")
 
-        position = db.get(InternshipPosition, rec.position_id) if rec.position_id else None
+        # 租户收口：实习岗位是带 tenant_id 的业务表，跨租户命中必须表现为“这行不存在”。
+        position = tenant_get(db, InternshipPosition, rec.position_id) if rec.position_id else None
         distance_m = radius_m = None
         if risk_flag != "normal":
             result, exception_type = "MOCK_LOCATION", "MOCK_LOCATION"
@@ -2057,7 +2201,8 @@ def _published_positions(db, batch_id, limit: int = 40) -> list[dict]:
     rows = db.scalars(q.order_by(InternshipPosition.id.desc()).limit(limit)).all()
     out = []
     for p in rows:
-        company = db.get(EmpCompany, p.company_id) if p.company_id else None
+        # 同上：企业档案带 tenant_id，裸 db.get 会把他校企业名带进本校岗位列表。
+        company = tenant_get(db, EmpCompany, p.company_id) if p.company_id else None
         head = p.headcount or 0
         alloc = p.allocated_count or 0
         out.append({

@@ -22,7 +22,7 @@
     <MobileGlobalState v-else state="empty" title="消息不存在或已过期" description="请返回消息列表重新查看。" />
 
     <MobileSafeAreaBar v-if="m && (canHandle || showAck)">
-      <button v-if="canHandle" class="btn btn-primary flex-1" @click="handle">去处理</button>
+      <button v-if="canHandle" class="btn btn-primary flex-1" @click="handle">{{ handleLabel }}</button>
       <button v-if="showAck" class="btn btn-primary flex-1" :disabled="acking" @click="ack">
         {{ acking ? '提交中…' : '确认已阅' }}
       </button>
@@ -32,58 +32,40 @@
 
 <script>
 import { popDetail } from '@/utils/msgStash'
-import { go, toast } from '@/utils/nav'
-import { studentApi } from '@/services/studentApi'
+import { toast } from '@/utils/nav'
+import { useSessionStore } from '@/stores/session'
+import { canNavigate, disabledReasonOf, runAction } from '@/services/actionRouter'
+import { ackMessageReceipt, getMessageDetail, markMessageRead } from '@/services/realApi'
 
-const ACTION_ROUTES = {
-  STUDENT_AFFAIRS: '/pages/student/affairs/index',
-  STUDENT_AFFAIRS_LEAVE: '/pages/student/affairs/leave',
-  STUDENT_AFFAIRS_AID: '/pages/student/affairs/aid',
-  STUDENT_AFFAIRS_FUNDING: '/pages/student/affairs/funding',
-  STUDENT_AFFAIRS_DISCIPLINE: '/pages/student/affairs/discipline',
-  STUDENT_AFFAIRS_DORM: '/pages/student/affairs/dorm',
-  STUDENT_AFFAIRS_ACTIVITY: '/pages/student/affairs/activity',
-  STUDENT_APPLICATIONS: '/pages/student/my-applications/index',
-  INTERNSHIP: '/pages/student/internship/index',
-  GRADUATION: '/pages/student/graduation/index',
-  ACADEMIC: '/pages/student/academic-affairs/index',
-  ORIENTATION: '/pages/student/orientation/index',
-  EMPLOYMENT: '/pages/student/employment/index'
-}
-
-const MODULE_ROUTES = {
-  'student-affairs': '/pages/student/affairs/index',
-  campusService: '/pages/student/affairs/index',
-  'campus-service': '/pages/student/affairs/index',
-  internship: '/pages/student/internship/index',
-  graduation: '/pages/student/graduation/index',
-  'academic-affairs': '/pages/student/academic-affairs/index',
-  academic: '/pages/student/academic-affairs/index',
-  orientation: '/pages/student/orientation/index',
-  employment: '/pages/student/employment/index'
-}
+// V3 §4.2：本页曾维护 ACTION_ROUTES + MODULE_ROUTES 两张表，按 actionKey / businessType /
+// status / module 逐层猜业务落点，猜不到就退回 /pages/student/affairs/index 这类通用大厅
+// （V3 深审 P0-02）。现在唯一事实源是服务端已解析的 action.target：
+// 后端说得出去哪里才跳，说不出就明确禁用并给出原因，绝不退化到大厅页。
 
 export default {
-  data() { return { m: null, acking: false, loading: false } },
+  data() { return { m: null, acking: false, loading: false, side: 'student' } },
   computed: {
     showAck() {
       if (!this.m) return false
       if (this.m.withdrawn || this.m.acked) return false
       return !!(this.m.receipt || this.m.requireAck)
     },
-    canHandle() { return !!this.resolveTarget() }
+    action() { return (this.m && this.m.action) || null },
+    canHandle() { return canNavigate(this.action, this.side) },
+    handleLabel() { return (this.action && this.action.label) || '去处理' }
   },
   onLoad(query) {
+    this.side = useSessionStore().side === 'teacher' ? 'teacher' : 'student'
     const stashed = popDetail()
     const mid = (query && (query.id || query.messageId)) || (stashed && (stashed.messageId || stashed.id))
     const raw = String(mid || '').replace('msg-', '')
     if (raw && /^\d+$/.test(raw)) {
       this.loading = true
-      studentApi.getMessageDetail(raw).then((d) => {
+      getMessageDetail(raw).then((d) => {
         this.m = d || stashed || { id: raw, messageId: raw }
         // 打开详情后尽力同步已读（不阻塞展示）
         if (this.m && !this.m.read) {
-          studentApi.markMessageRead(raw).catch(() => {})
+          markMessageRead(raw).catch(() => {})
           this.m.read = true
         }
       }).catch(() => {
@@ -95,23 +77,6 @@ export default {
   },
   methods: {
     formatTime(t) { return t ? String(t).slice(0, 16).replace('T', ' ') : '' },
-    resolveTarget() {
-      if (!this.m || this.m.withdrawn) return ''
-      const params = this.m.actionParams && typeof this.m.actionParams === 'object' ? this.m.actionParams : {}
-      const materialRequirementId = params.materialRequirementId || params.requirementId || ''
-      if (materialRequirementId) {
-        return `/pages/student/affairs/index?materialRequirementId=${encodeURIComponent(String(materialRequirementId))}`
-      }
-      const key = String(this.m.actionKey || '').trim().toUpperCase()
-      let route = ACTION_ROUTES[key] || ''
-      const biz = String(params.businessType || params.bizType || '').trim().toUpperCase()
-      if (!route && biz) route = ACTION_ROUTES[`STUDENT_AFFAIRS_${biz}`] || ACTION_ROUTES[biz] || ''
-      if (!route && this.m.status === 'RETURNED') route = ACTION_ROUTES.STUDENT_APPLICATIONS
-      if (!route) route = MODULE_ROUTES[String(this.m.module || '').trim()] || ''
-      const recordId = params.recordId || params.bizId || params.applyId || params.applicationId || params.caseId || params.leaveId || ''
-      if (route && recordId) route += `${route.includes('?') ? '&' : '?'}recordId=${encodeURIComponent(String(recordId))}`
-      return route
-    },
     async ack() {
       if (!this.m || this.acking) return
       const raw = String(this.m.messageId || this.m.id || '').replace('msg-', '')
@@ -121,7 +86,7 @@ export default {
       }
       this.acking = true
       try {
-        await studentApi.ackMessageReceipt(raw)
+        await ackMessageReceipt(raw)
         this.m.acked = true
         this.m.receipt = false
         this.m.read = true
@@ -133,12 +98,12 @@ export default {
       }
     },
     handle() {
-      const target = this.resolveTarget()
-      if (!target) {
-        toast('该消息暂未配置安全的学生端处理入口')
+      // runAction 内部 fail-closed：不可跳转时只提示原因，不做任何本地路由推断。
+      if (!this.canHandle) {
+        toast(disabledReasonOf(this.action))
         return
       }
-      go(target)
+      runAction(this.action, { side: this.side })
     }
   }
 }

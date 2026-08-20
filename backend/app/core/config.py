@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     # ── 微信小程序一键登录（jscode2session）──
     WX_APPID: str = ""                   # 小程序 AppID；未配置则微信登录端点返回"未配置"错误，不影响账号密码登录
     WX_SECRET: str = ""                  # 小程序 AppSecret；仅经 .env/环境变量注入，禁止写进仓库
+
+    # ── 微信订阅消息模板（V3 §9.3）──
+    # 每个高价值场景一个模板 id，缺哪个就是哪个场景发不出去。全部留空 = 该渠道未开通，
+    # 学生端如实显示「学校尚未开通微信提醒」，不会因为点过授权就宣称已开启。
+    WX_SUBSCRIBE_TEMPLATE_CASE_RETURNED: str = ""       # 退回补材料
+    WX_SUBSCRIBE_TEMPLATE_CASE_RESULT: str = ""         # 审批结果
+    WX_SUBSCRIBE_TEMPLATE_EXAM_UPCOMING: str = ""       # 考试/答辩临近
+    WX_SUBSCRIBE_TEMPLATE_INTERNSHIP_ABNORMAL: str = "" # 实习异常
+
     CAPTCHA_TTL_SECONDS: int = 120
     CAPTCHA_AFTER_FAILURES: int = 2
 

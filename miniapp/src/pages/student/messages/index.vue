@@ -35,8 +35,8 @@
               <view v-if="m.receipt" class="msg__sub">待确认回执</view>
               <view v-if="m.deadline" class="msg__sub">截止 {{ deadlineText(m.deadline) }}</view>
               <view v-if="m.status" class="msg__sub"><MobileStatusTag :status="m.status" /></view>
-              <view v-if="m.actionable" class="msg__actions">
-                <text v-if="m.actionable" class="msg__btn is-primary" @click.stop="handle(m)">去处理</text>
+              <view v-if="canRun(m)" class="msg__actions">
+                <text class="msg__btn is-primary" @click.stop="handle(m)">{{ actionLabel(m) }}</text>
               </view>
             </view>
             <view v-if="hasMore" class="msg__paging" @click="loadMore">
@@ -67,12 +67,16 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
+import { ensureStudentPerformanceApi } from '@/services/mobilePerformanceInstaller.student'
 import { fromNow, deadlineText } from '@/utils/format'
 import { toast, go } from '@/utils/nav'
+import { canNavigate, disabledReasonOf, runAction } from '@/services/actionRouter'
 import { stashDetail, stashSearchPool } from '@/utils/msgStash'
 const TAB_ICON = { todo: '☑', notice: '📢', progress: '⏱', course: '📖' }
 const TAB_GRAD = { todo: 'g1', notice: 'g1', progress: 'g3', course: 'g4' }
 const PAGE_SIZE = 20
+
+ensureStudentPerformanceApi()
 
 export default {
   data() {
@@ -202,10 +206,21 @@ export default {
       // 却从未真正持久化，刷新前后不一致（2026-08-04 复审新增发现）。
       studentApi.markMessageRead(raw).catch(() => { message._synced = false; message.read = false })
     },
+    // V3 §4.2：能不能处理、去哪里处理，都由服务端已解析的 action.target 决定。
+    // 此前这里按 status === 'RETURNED' 猜「我的申请」大厅，否则一律丢到「在校服务」大厅，
+    // 学生点完还得自己找那条记录（V3 深审 P0-02/P0-03）。
+    canRun(message) { return canNavigate(message && message.action, 'student') },
+    actionLabel(message) {
+      const action = message && message.action
+      return (action && action.label) || '去处理'
+    },
     handle(message) {
       this._markRead(message)
-      if (message.status === 'RETURNED') return go('/pages/student/my-applications/index')
-      go('/pages/student/campus-service/index')
+      if (!this.canRun(message)) {
+        toast(disabledReasonOf(message && message.action))
+        return
+      }
+      runAction(message.action, { side: 'student' })
     }
   }
 }

@@ -1,0 +1,101 @@
+{
+  "schema": "miniapp-v3-s0-freeze/1",
+  "generatedFor": "student-miniapp-v3.0",
+  "frozenAt": "2026-08-19",
+  "baseline": {
+    "repo": "penghaibin9/saas",
+    "mainExactHead": "65ad77eb568d562491645fcab39d280f812e8bc0",
+    "manualAuditSnapshot": "7fcf4f911e5ae8827c13e532e13c61676318b343",
+    "snapshotIsAncestorOfMain": true,
+    "commitsSinceSnapshot": 50,
+    "note": "Manual V3.0 quotes 7fcf4f91 as an audit snapshot only. Live baseline for S1..S9 is mainExactHead."
+  },
+  "alembic": {
+    "singleHead": true,
+    "head": "20260818_merge_prog_grade_dl",
+    "headFile": "backend/alembic/versions/20260818_merge_prog_grade_deadline.py",
+    "revisionCount": 269,
+    "danglingParents": [],
+    "sharedIndexOwner": "student-miniapp-v3",
+    "rule": "No shared Todo/Message/StudentProfile performance revision may be created by any other line before the Student V3 handoff. Any new revision must re-read the live head first and ship EXPLAIN before/after + rollback."
+  },
+  "pageInventory": {
+    "totalPages": 134,
+    "student": 65,
+    "teacher": 57,
+    "common": 7,
+    "login": 4,
+    "roleSwitch": 1,
+    "subPackagesAtFreeze": 0
+  },
+  "dependencyGates": [
+    {
+      "id": "GATE-180-BOOTSTRAP",
+      "blocks": "S1.5",
+      "pr": 180,
+      "title": "fix: prelaunch source hardening and production verification",
+      "state": "open",
+      "draft": true,
+      "baseShaAtFreeze": "7fcf4f911e5ae8827c13e532e13c61676318b343",
+      "headShaAtFreeze": "14947deea8f56e577d549fd5830cbc203a4dd546",
+      "collidingFiles": [
+        "miniapp/src/main.js",
+        "miniapp/src/services/h5BrowserAuthInstaller.js",
+        "miniapp/tests/h5-browser-auth-contract.test.mjs"
+      ],
+      "status": "OPEN_BLOCKING",
+      "rule": "S1.5 must not rewrite miniapp/src/main.js as a whole file while #180 is open. Student V3 ships the side-first-load installer as NEW files plus an additive de-hoist contract test; the main.js edit lands only after #180's final bootstrap reaches main."
+    },
+    {
+      "id": "GATE-146-SELECTION",
+      "blocks": "SELECTION service entry (section 4.3)",
+      "pr": 174,
+      "title": "chore(academic): premerge A Gold + INT runtime rehearsal",
+      "headBranch": "integration/academic-school-gold",
+      "baseBranch": "integration/academic-a-int-b-premerge-20260818",
+      "state": "open",
+      "inMain": false,
+      "status": "OPEN_BLOCKING",
+      "rule": "Academic Selection is NOT in main. SELECTION stays a dependency gate: no server allowedActions consumption, no copying of the unmerged implementation."
+    },
+    {
+      "id": "GATE-148-ACADEMIC",
+      "blocks": "Agenda exam/course calendar truth (section 6.2)",
+      "pr": 148,
+      "state": "MERGED",
+      "mergeCommit": "65ad77eb568d562491645fcab39d280f812e8bc0",
+      "status": "CLEARED",
+      "rule": "#148 is in main at the freeze baseline. Agenda may consume the academic exam/course truth already present in main; it still must not re-implement week-number math."
+    },
+    {
+      "id": "GATE-147-GRADUATION",
+      "blocks": "none for Student V3",
+      "pr": 147,
+      "title": "D 教务 Graduation/Delivery V2.1 持续施工",
+      "state": "open",
+      "draft": true,
+      "baseShaAtFreeze": "65ad77eb568d562491645fcab39d280f812e8bc0",
+      "status": "OPEN_NON_BLOCKING",
+      "rule": "Graduation student pages are frozen assets for Student V3 (read-only reference). Do not restructure them; only additive attachment/action wiring is allowed, and only in new files."
+    }
+  ],
+  "sharedOwnerLock": [
+    { "path": "miniapp/src/pages.json", "owner": "student-v3", "teacherRule": "forbidden" },
+    { "path": "miniapp/src/services/actionRouter.js", "owner": "student-v3", "teacherRule": "consume-after-merge" },
+    { "path": "miniapp/src/utils/networkPager.js", "owner": "student-v3", "teacherRule": "consume-after-merge" },
+    { "path": "miniapp/src/components/MobileAttachmentPicker.vue", "owner": "student-v3", "teacherRule": "consume-after-merge" },
+    { "path": "miniapp/src/pages/common/**", "owner": "student-v3-shared-shell", "teacherRule": "no-parallel-edit; search shell must stay side-aware" },
+    { "path": "miniapp/src/main.js", "owner": "shared-bootstrap", "teacherRule": "consume-only", "blockedBy": "GATE-180-BOOTSTRAP" },
+    { "path": "backend/app/services/message_action_registry.py", "owner": "student-v3", "teacherRule": "append teacher actionKey only, after main merge" },
+    { "path": "backend/app/services/todo_route_registry.py", "owner": "student-v3", "teacherRule": "append teacher client targets only, after main merge" },
+    { "path": "backend/app/services/mobile_performance_service.py", "owner": "student-v3 for student_*/shared DTO", "teacherRule": "teacher_* functions only" },
+    { "path": "performance/k6/**", "owner": "student-v3", "teacherRule": "append teacher routes after handoff; do not fork harness" },
+    { "path": "miniapp/scripts/finalize-mp-weixin-release.mjs", "owner": "student-v3", "teacherRule": "consume-only" },
+    { "path": "backend/alembic/versions/** (shared mobile perf indexes)", "owner": "student-v3", "teacherRule": "forbidden before handoff" }
+  ],
+  "routeAuthorities": {
+    "todo": "backend/app/services/todo_route_registry.py",
+    "message": "backend/app/services/message_action_registry.py",
+    "adapterMayNotStoreRouteMap": "backend/app/services/mobile_action_service.py"
+  }
+}

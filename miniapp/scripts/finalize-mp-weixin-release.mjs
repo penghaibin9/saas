@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -7,6 +8,7 @@ const OUTPUT_DIR = path.resolve(ROOT, 'dist/build/mp-weixin')
 const APP_JSON = path.join(OUTPUT_DIR, 'app.json')
 const PROJECT_JSON = path.join(OUTPUT_DIR, 'project.config.json')
 const RELEASE_INFO = path.join(OUTPUT_DIR, 'RELEASE_INFO.txt')
+const PACKAGE_REPORT = path.join(OUTPUT_DIR, 'miniapp-package-report.json')
 const ENV_PRODUCTION = path.resolve(ROOT, '.env.production')
 const SRC_MANIFEST = path.resolve(ROOT, 'src/manifest.json')
 const APPID_PATTERN = /^wx[0-9a-fA-F]{16}$/
@@ -16,6 +18,17 @@ const TEXT_EXTENSIONS = new Set(['.js', '.json', '.wxml', '.wxss', '.wxs', '.sjs
 const MAIN_PACKAGE_SPLIT_TRIGGER = Math.floor(1.8 * 1024 * 1024)
 const MAIN_PACKAGE_LIMIT = 2 * 1024 * 1024
 const TOTAL_PACKAGE_LIMIT = 20 * 1024 * 1024
+
+/**
+ * V3 §3.2 内部包体硬预算（不是微信平台上限）。
+ * 超预算必须做依赖追踪，禁止通过抬高这里的数字把 CI 修绿。
+ */
+const V3_PACKAGE_BUDGET = {
+  main: 520 * 1024,
+  'pages/student': 850 * 1024,
+  'pages/teacher': 950 * 1024
+}
+const TOP_FILE_COUNT = 20
 
 function fail(message) {
   throw new Error(`[mp-weixin release] ${message}`)
@@ -168,13 +181,78 @@ async function main() {
     .map((item) => String(item.root || '').replace(/^\/+|\/+$/g, ''))
     .filter(Boolean)
 
+  // V3 S1.5：按包归属逐文件核算，产出机器可读的三包报告，CI 直接读 artifact，禁止人工估算。
+  const packageNames = ['main', ...subPackageRoots]
+  const packages = new Map(packageNames.map((name) => [name, { name, bytes: 0, fileCount: 0, files: [] }]))
+  const digests = new Map()
   let totalBytes = 0
-  let mainPackageBytes = 0
   for (const file of files) {
     const size = (await fs.stat(file)).size
     const relativeFile = normalizeRelative(file)
+    const owner = subPackageRoots.find((root) => relativeFile === root || relativeFile.startsWith(`${root}/`)) || 'main'
+    const bucket = packages.get(owner)
+    bucket.bytes += size
+    bucket.fileCount += 1
+    bucket.files.push({ file: relativeFile, bytes: size })
     totalBytes += size
-    if (!isInsideSubPackage(relativeFile, subPackageRoots)) mainPackageBytes += size
+
+    const digest = createHash('sha256').update(await fs.readFile(file)).digest('hex')
+    if (!digests.has(digest)) digests.set(digest, { bytes: size, copies: [] })
+    digests.get(digest).copies.push({ file: relativeFile, package: owner })
+  }
+  const mainPackageBytes = packages.get('main').bytes
+
+  // 跨包重复的公共资产：同一份内容被打进多个包，是分包后最典型的体积浪费来源。
+  const duplicateAssets = []
+  for (const [digest, entry] of digests) {
+    const owners = new Set(entry.copies.map((copy) => copy.package))
+    if (entry.copies.length < 2 || owners.size < 2) continue
+    duplicateAssets.push({
+      sha256: digest.slice(0, 16),
+      bytes: entry.bytes,
+      wastedBytes: entry.bytes * (entry.copies.length - 1),
+      copies: entry.copies.map((copy) => copy.file)
+    })
+  }
+  duplicateAssets.sort((left, right) => right.wastedBytes - left.wastedBytes)
+
+  const budgetRows = packageNames.map((name) => {
+    const bucket = packages.get(name)
+    const budgetBytes = V3_PACKAGE_BUDGET[name]
+    return {
+      package: name,
+      bytes: bucket.bytes,
+      fileCount: bucket.fileCount,
+      budgetBytes: budgetBytes ?? null,
+      overBudget: budgetBytes != null && bucket.bytes > budgetBytes,
+      topFiles: [...bucket.files].sort((left, right) => right.bytes - left.bytes).slice(0, TOP_FILE_COUNT)
+    }
+  })
+  const overBudget = budgetRows.filter((row) => row.overBudget)
+  const packageReport = {
+    schema: 'miniapp-package-report/1',
+    generatedAt: new Date().toISOString(),
+    totalBytes,
+    packages: budgetRows,
+    duplicateAssets: duplicateAssets.slice(0, TOP_FILE_COUNT),
+    duplicateWastedBytes: duplicateAssets.reduce((sum, item) => sum + item.wastedBytes, 0),
+    budgetPass: overBudget.length === 0,
+    platformLimits: {
+      mainPackageSplitTrigger: MAIN_PACKAGE_SPLIT_TRIGGER,
+      mainPackageLimit: MAIN_PACKAGE_LIMIT,
+      totalPackageLimit: TOTAL_PACKAGE_LIMIT
+    }
+  }
+  await fs.writeFile(PACKAGE_REPORT, `${JSON.stringify(packageReport, null, 2)}\n`, 'utf8')
+
+  if (overBudget.length) {
+    fail(
+      'V3 内部包体预算未通过：' +
+      overBudget
+        .map((row) => `${row.package} ${(row.bytes / 1024).toFixed(1)} KiB > ${(row.budgetBytes / 1024).toFixed(1)} KiB`)
+        .join('；') +
+      '。请做依赖追踪（跨包静态 import、重复大 JSON/图标、非必要组件），禁止抬高预算阈值。'
+    )
   }
 
   if (totalBytes > TOTAL_PACKAGE_LIMIT) {
@@ -203,6 +281,12 @@ async function main() {
     `主包大小: ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB（主动分包线 1.80 MiB / 上限 2 MiB）`,
     `总包大小: ${(totalBytes / 1024 / 1024).toFixed(2)} MiB（上限 20 MiB）`,
     `分包数量: ${subPackages.length}`,
+    ...budgetRows.map((row) => (
+      `  ${row.package}: ${(row.bytes / 1024).toFixed(1)} KiB` +
+      (row.budgetBytes != null ? `（V3 内部预算 ${(row.budgetBytes / 1024).toFixed(1)} KiB）` : '')
+    )),
+    `跨包重复资产浪费: ${(packageReport.duplicateWastedBytes / 1024).toFixed(1)} KiB`,
+    `包体报告: miniapp-package-report.json（budgetPass=${packageReport.budgetPass}）`,
     '学生端入口: pages/login/student/index',
     '教师端入口: pages/login/teacher/index',
     '',

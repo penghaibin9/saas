@@ -59,6 +59,15 @@ def _bounded_list(value, field_name: str, limit: int) -> list:
     return rows
 
 
+def _reject_same_batch_duplicate(existing, label: str) -> None:
+    """模型唯一键是 tenant+batch+student，因此任何历史行都必须在 INSERT 前 fail-closed。"""
+    if existing is not None:
+        raise AppException(
+            "DATA_CONFLICT",
+            f"你在本批次已有{label}记录，请进入原申请继续处理或查看结果，不可重复创建",
+        )
+
+
 def aid_apply(user: dict, body: dict) -> dict:
     from app.models import AidApply, AidBatch, AidFamilyEconomy
     from app.services import affairs_aid_service as aid
@@ -96,14 +105,14 @@ def aid_apply(user: dict, body: dict) -> dict:
             raise not_found("认定批次不存在")
         if batch.status != "OPEN":
             raise AppException("DATA_CONFLICT", "批次未开放或已截止")
+        # t_affairs_aid_apply 的唯一键不包含 is_deleted / status。即便旧记录已终态或软删，
+        # 再 INSERT 仍会撞唯一键；必须在业务层先返回稳定 409，而不是让 MySQL 抛 500。
         duplicate = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(),
             AidApply.batch_id == batch.id,
             AidApply.student_id == student.id,
-            AidApply.is_deleted.is_(False),
         )).first()
-        if duplicate and duplicate.status not in aid._TERMINAL:
-            raise AppException("DATA_CONFLICT", "你在本批次已有在途申请，不可重复提交")
+        _reject_same_batch_duplicate(duplicate, "困难认定申请")
 
         first = aid.AID_NODES[0]
         application = AidApply(
@@ -166,11 +175,16 @@ def aid_apply(user: dict, body: dict) -> dict:
 def funding_apply(user: dict, body: dict) -> dict:
     from app.models import FundingApplication, FundingBatch
     from app.services import affairs_funding_service as funding
+    from app.services import file_business_binding_service as file_binding_svc
+    from app.services.mobile_student_service import _attachment_ids
 
     body = body or {}
     batch_id = str(body.get("batchId") or "").strip()
     statement = str(body.get("statement") or "").strip()
     amount = _optional_non_negative_decimal(body.get("amount"), "申请金额")
+    # V3 §8.1：客户端上传只产出 TEMP_PRIVATE 文件，正式绑定必须由服务端在业务事务里建。
+    # 形状（只收数字 id、去重、数量上限）在这里再判一次，客户端的 maxCount 只是提示。
+    file_ids = _attachment_ids(body)
     if not batch_id:
         raise AppException("VALIDATION_ERROR", "资助批次（batchId）必填")
     if not 5 <= len(statement) <= 1000:
@@ -185,14 +199,15 @@ def funding_apply(user: dict, body: dict) -> dict:
             raise not_found("资助批次不存在")
         if batch.status != "OPEN":
             raise AppException("DATA_CONFLICT", "批次未开放或已截止")
+        # t_affairs_funding_application 的唯一键是 tenant+batch+student，永久覆盖同批次历史。
+        # 旧逻辑只挡非终态且忽略软删，REJECTED/CANCELLED/ARCHIVED 后会继续 INSERT，
+        # 最终由数据库唯一键报错成 500。这里先按 schema 真值 fail-closed 成稳定 409。
         duplicate = db.scalars(select(FundingApplication).where(
             FundingApplication.tenant_id == _tid(),
             FundingApplication.batch_id == batch.id,
             FundingApplication.student_id == student.id,
-            FundingApplication.is_deleted.is_(False),
         )).first()
-        if duplicate and duplicate.status not in funding._TERMINAL:
-            raise AppException("DATA_CONFLICT", "你在本批次已有在途申请，不可重复提交")
+        _reject_same_batch_duplicate(duplicate, "资助申请")
 
         snapshot = (
             funding._check_grant(db, student.id)
@@ -238,9 +253,29 @@ def funding_apply(user: dict, body: dict) -> dict:
             ),
             "confirm": True,
         }, student)
+        # 佐证材料绑定必须在 commit 之前、且在同一事务里：bind_file_to_business 校验
+        # 租户/归属/扫描状态后才建 ACTIVE binding，自己从不 commit，所以任一附件不可用
+        # 就把整笔申请一起回滚，临时文件保持私有等 TTL 回收。
+        # biz_type 用 FUNDING——file_access_resolvers 里已有学工权威 resolver，
+        # 审核老师要按 studentAffairs 权限 + 数据范围才打得开，不是裸绑定。
+        for file_id in file_ids:
+            file_binding_svc.bind_file_to_business(
+                db,
+                file_id=file_id,
+                biz_type="FUNDING",
+                biz_id=application.id,
+                actor=user,
+                subject_type="STUDENT",
+                subject_id=student.id,
+                relation_type="BUSINESS_EVIDENCE",
+                module_code="STUDENT_AFFAIRS",
+                student_id=student.id,
+                scope={"studentId": str(student.id), "batchId": str(batch.id),
+                       "projectType": batch.project_type},
+            )
         funding._audit(
             db, application.id, "APPLY",
-            f"{batch.project_type};confirmation={confirmation['signId']}",
+            f"{batch.project_type};confirmation={confirmation['signId']};files={len(file_ids)}",
         )
         db.commit()
         funding._drain_message_outbox()

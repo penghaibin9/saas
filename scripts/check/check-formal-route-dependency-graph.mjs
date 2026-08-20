@@ -44,7 +44,7 @@ const ENTRY_GRAPHS = [
   },
   {
     phase: 'A1', name: '教师小程序审批正式页', entry: 'miniapp/src/pages/teacher/approval/index.vue',
-    registration: { file: 'miniapp/src/pages.json', needle: '"path": "pages/teacher/approval/index"' },
+    registration: { file: 'miniapp/src/pages.json', miniappRoute: 'pages/teacher/approval/index' },
     requiredReachable: ['miniapp/src/services/approvalApi.js']
   }
 ]
@@ -235,9 +235,28 @@ function assertRegistration(graph, violations) {
     return
   }
   const source = fs.readFileSync(registrationFile, 'utf8')
+  // 小程序自 V3 起使用普通分包：完整 /pages/... URL 由 subPackages[].root + pages[].path 还原，
+  // 因此不能再用 pages.json 原文子串判断注册，必须按分包解析出真实可达 URL 集合。
+  if (graph.registration.miniappRoute) {
+    const routes = resolveMiniappRoutes(source)
+    if (!routes.has(graph.registration.miniappRoute)) {
+      violations.push({ type: 'formal-entry-not-registered', file: graph.registration.file, message: `${graph.entry} 未在 ${graph.registration.file} 以正式入口注册（分包还原后缺少 ${graph.registration.miniappRoute}）`, chain: [graph.entry] })
+    }
+    return
+  }
   if (!source.includes(graph.registration.needle)) {
     violations.push({ type: 'formal-entry-not-registered', file: graph.registration.file, message: `${graph.entry} 未在 ${graph.registration.file} 以正式入口注册（缺少 ${graph.registration.needle}）`, chain: [graph.entry] })
   }
+}
+function resolveMiniappRoutes(source) {
+  const manifest = JSON.parse(source)
+  const routes = new Set()
+  for (const page of manifest.pages || []) routes.add(page.path)
+  for (const pkg of manifest.subPackages || []) {
+    const root = String(pkg.root || '').replace(/\/+$/, '')
+    for (const page of pkg.pages || []) routes.add(`${root}/${page.path}`)
+  }
+  return routes
 }
 function scanGraph(graph) {
   const violations = []

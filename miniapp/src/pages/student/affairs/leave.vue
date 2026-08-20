@@ -4,8 +4,10 @@
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="items">
         <MobileGlobalState v-if="!items.length" state="empty" title="暂无请假记录" description="发起请假后记录会显示在这里。" />
-        <view class="list-group" v-else>
-          <view v-for="x in items" :key="x.leaveId" class="list-row lv__row">
+                <MobileInlineAlert v-if="focusMissing" type="warning" title="没有找到这条记录"
+          description="消息或待办指向的请假记录不在当前列表里，可能已被处理、撤回或超出本页范围。" />
+<view class="list-group" v-else>
+          <view v-for="x in items" :key="x.leaveId" :id="'leave-' + x.leaveId" :class="{ 'is-focus': isFocused(x) }" class="list-row lv__row">
             <view class="flex-1">
               <text class="t-md">{{ typeText(x.leaveType) }}</text>
               <text class="lv__time">{{ (x.startTime || '').slice(0, 10) }} 至 {{ (x.endTime || '').slice(0, 10) }} · {{ x.days }} 天</text>
@@ -78,6 +80,7 @@
 </template>
 
 <script>
+import { hasFocusRow, isFocusRow, readFocusId, scrollToFocus } from '@/utils/listFocus.mjs'
 import { studentApi } from '@/services/studentApi'
 import { affairsContractApi } from '@/services/affairsContractApi'
 import { normalizeError } from '@/services/request'
@@ -92,7 +95,7 @@ const STATUS = {
 
 export default {
   data() {
-    return {
+    return { focusId: '', focusMissing: false,
       items: null, state: 'loading', formVisible: false, editTarget: null, editNotice: '',
       extendVisible: false, extendTarget: {}, extendForm: { newEndTime: '', reason: '' },
       submitting: false, typeIndex: 0,
@@ -117,12 +120,21 @@ export default {
       return !!this.extendForm.newEndTime && this.extendForm.newEndTime > this.originalEnd && reason.length >= 5 && reason.length <= 300
     }
   },
-  onLoad() { this.load() },
+  // V3 §4.4 LIST_FOCUS：待办/消息深链带 recordId 进来时必须定位到那条记录。
+  onLoad(query) { this.focusId = readFocusId(query); this.load() },
   methods: {
+    isFocused(row) { return isFocusRow(row, this.focusId, ['leaveId']) },
+    applyFocus() {
+      if (!this.focusId) return
+      const rows = this.items
+      this.focusMissing = !hasFocusRow(rows, this.focusId, ['leaveId'])
+      if (this.focusMissing) return
+      this.$nextTick(() => scrollToFocus('#leave-', this.focusId))
+    },
     allows(item, action) { return Array.isArray(item && item.allowedActions) && item.allowedActions.includes(action) },
     load() {
       this.state = 'loading'
-      studentApi.getMyLeaves().then((d) => { this.items = (d && d.items) || []; this.state = 'ready' })
+      studentApi.getMyLeaves().then((d) => { this.items = (d && d.items) || []; this.state = 'ready'; this.applyFocus() })
         .catch((e) => { this.state = 'error'; this.showError(e, '请假记录加载失败') })
     },
     today() {
@@ -226,4 +238,5 @@ export default {
 .lv__resubmit { margin-top: 8px; font-size: var(--font-size-sm); }
 .lv__error { display: block; margin-top: 5px; font-size: 12px; color: #dc2626; }
 .lv__counter { display: block; margin-top: 3px; font-size: 11px; text-align: right; color: #94a3b8; }
+.is-focus { outline: 2px solid var(--brand-primary); outline-offset: 2px; border-radius: var(--radius-md); }
 </style>

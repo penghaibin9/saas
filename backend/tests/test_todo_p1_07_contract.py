@@ -57,6 +57,8 @@ def test_unimplemented_detail_route_is_explicitly_non_exact_but_keeps_record_id(
         "routeParams": {"recordId": "55"},
         "query": {"status": "PENDING", "recordId": "55"},
         "path": "/admin/student-affairs/leave",
+        # V3 §4.4：PC 队列页没有对象聚焦能力，focusMode 显式为 NONE，exact 仍是 False。
+        "focusMode": "NONE",
         "exact": False,
     }
 

@@ -77,6 +77,11 @@ function isLocalBaseUrl(baseUrl) {
 export const BASE_URL = normalizeBaseUrl(__ENV.BASE_URL);
 export const PROFILE = String(__ENV.PROFILE || 'smoke').trim();
 export const SCENARIO = String(__ENV.SCENARIO || 'mixed').trim();
+/**
+ * V3 §11.5：数据规模档。10k 数据集与 10k 并发是两件事——
+ * campus-10k-data 表示"上面那些并发档跑在 12k 学生数据集上"，不是 10k VU。
+ */
+export const DATASET = String(__ENV.DATASET || 'unknown').trim();
 
 if (!PROFILES[PROFILE]) {
   throw new Error(`Unknown PROFILE=${PROFILE}; allowed: ${Object.keys(PROFILES).join(', ')}`);
@@ -98,9 +103,23 @@ if (
 const routeThresholds = {
   'http_req_duration{route:student_home}': ['p(95)<1000', 'p(99)<2000'],
   'http_req_duration{route:student_messages}': ['p(95)<1000', 'p(99)<2000'],
+  // V3 §11.6（深审 P0-07）：V3 新增的学生端 P0 链路必须进容量门禁，
+  // 否则 Agenda/我的办理/搜索会绕过所有容量验收直接上线。
+  'http_req_duration{route:student_agenda}': ['p(95)<1000', 'p(99)<2000'],
+  'http_req_duration{route:student_cases}': ['p(95)<1000', 'p(99)<2000'],
+  'http_req_duration{route:student_search}': ['p(95)<1000', 'p(99)<2000'],
   'http_req_duration{route:teacher_workbench}': ['p(95)<1000', 'p(99)<2000'],
   'http_req_duration{route:teacher_todos}': ['p(95)<1000', 'p(99)<2000'],
 };
+
+/** 容量门禁必须覆盖的 V3 学生端路由；缺一个就说明这次压测没压到新链路。 */
+export const REQUIRED_STUDENT_V3_ROUTES = [
+  'student_home',
+  'student_messages',
+  'student_agenda',
+  'student_cases',
+  'student_search',
+];
 
 const fullLatencyThresholds = {
   http_req_duration: ['p(95)<1000', 'p(99)<2000'],
