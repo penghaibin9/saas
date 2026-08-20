@@ -82,6 +82,7 @@ def test_p0_purge_registry_locks_reviewed_exception_semantics():
         "t_support_ticket",
         "t_training_record",
         "t_renewal_task",
+        "t_acad_grade",
     }
 
     assert {name for name in retained if classify_table(name).classification != RETAIN} == set()
@@ -229,5 +230,6 @@ def test_p0_machine_evidence_wrappers_use_production_virtualenv():
     expected_python = 'PYTHON_BIN="${RECOVERY_PYTHON_BIN:-$REPO_ROOT/backend/.venv/bin/python}"'
     assert expected_python in backup
     assert expected_python in restore
-    assert "machine-backup-runner.sh" in service
-    assert "backup-runner.sh" not in service.split("ExecStart=", 1)[-1].splitlines()[0]
+    exec_start = service.split("ExecStart=", 1)[-1].splitlines()[0]
+    assert "/deploy/backup/machine-backup-runner.sh" in exec_start
+    assert "/deploy/backup/backup-runner.sh" not in exec_start
