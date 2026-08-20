@@ -37,7 +37,7 @@
         @click="$emit('action', currentItem, null)"
       >{{ loading ? '处理中…' : actionLabel }}</button>
       <button
-        v-else
+        v-else-if="allowManualNext"
         class="btn btn-ghost"
         :disabled="loading || conflict || currentIndex >= items.length - 1"
         @click="$emit('next')"
@@ -57,6 +57,7 @@ export default {
     currentIndex: { type: Number, default: 0 },
     loading: { type: Boolean, default: false },
     actionLabel: { type: String, default: '' },
+    allowManualNext: { type: Boolean, default: false },
     conflict: { type: Boolean, default: false }
   },
   emits: ['open', 'action', 'next'],
