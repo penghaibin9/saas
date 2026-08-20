@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -88,7 +89,8 @@ def test_t7_pc_material_approval_no_longer_sets_destination_verified():
     assert 'material_runtime.approve_material(mid, body.comment, user=user)' in route
     approve_block = material_authority[material_authority.index('def approve_material'):]
     assert 'emp.material_status = "APPROVED"' in approve_block
-    assert 'emp.verify_status' not in approve_block
+    # Comments may document the forbidden mutation; only executable assignment is disallowed.
+    assert re.search(r'^\s*emp\.verify_status\s*=', approve_block, re.MULTILINE) is None
 
 
 def test_t7_migration_extends_current_single_head_and_metadata_registers_model():
