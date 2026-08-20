@@ -37,6 +37,16 @@ function runFixture(command) {
     env: process.env,
     stdio: 'inherit'
   })
+  if (command === 'seed') {
+    // 普通消息在 UTC+8 22:00–07:00 会被正式治理改成 SCHEDULED。浏览器回放不能因
+    // CI 墙钟时间随机缺消息；测试 helper 只把这一条隔离 E2E campaign 推到到期，
+    // 随后仍走正式 scheduler + delivery worker，并在启动浏览器前验证个人消息已落库。
+    execFileSync('python3', ['scripts/e2e_force_student_v3_ack_delivery.py'], {
+      cwd: backendDir,
+      env: process.env,
+      stdio: 'inherit'
+    })
+  }
 }
 
 function readFixture() {
