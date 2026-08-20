@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 
-REGISTRY_VERSION = "2026-08-20.p0.3"
+REGISTRY_VERSION = "2026-08-20.p0.4"
 REVIEWED_ALEMBIC_HEAD = "20260820_ctrl_offboarding"
 
 PURGE = "PURGE"
@@ -72,7 +72,10 @@ _PURGE_PREFIXES = (
     "t_file_", "t_archive_", "t_export", "t_import", "t_excel_", "t_identity_", "t_shared_",
     "t_platform_config", "t_platform_notice",
     "t_orientation", "t_campus", "t_cs_",
-    "t_academic", "t_aa_",
+    # Academic process is split across legacy t_acad_* and teaching-affairs
+    # t_aa_* families.  Both are tenant business data and must be destroyed
+    # after the reviewed retention/export boundary.
+    "t_acad_", "t_academic", "t_aa_",
     "t_affairs", "t_dorm", "t_aid_", "t_funding_", "t_psy_", "t_discipline_",
     "t_internship", "t_risk_", "t_weekly_",
     "t_graduation", "t_gd_",
