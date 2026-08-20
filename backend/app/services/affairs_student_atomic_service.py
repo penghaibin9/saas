@@ -59,6 +59,15 @@ def _bounded_list(value, field_name: str, limit: int) -> list:
     return rows
 
 
+def _reject_same_batch_duplicate(existing, label: str) -> None:
+    """模型唯一键是 tenant+batch+student，因此任何历史行都必须在 INSERT 前 fail-closed。"""
+    if existing is not None:
+        raise AppException(
+            "DATA_CONFLICT",
+            f"你在本批次已有{label}记录，请进入原申请继续处理或查看结果，不可重复创建",
+        )
+
+
 def aid_apply(user: dict, body: dict) -> dict:
     from app.models import AidApply, AidBatch, AidFamilyEconomy
     from app.services import affairs_aid_service as aid
@@ -96,14 +105,14 @@ def aid_apply(user: dict, body: dict) -> dict:
             raise not_found("认定批次不存在")
         if batch.status != "OPEN":
             raise AppException("DATA_CONFLICT", "批次未开放或已截止")
+        # t_affairs_aid_apply 的唯一键不包含 is_deleted / status。即便旧记录已终态或软删，
+        # 再 INSERT 仍会撞唯一键；必须在业务层先返回稳定 409，而不是让 MySQL 抛 500。
         duplicate = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(),
             AidApply.batch_id == batch.id,
             AidApply.student_id == student.id,
-            AidApply.is_deleted.is_(False),
         )).first()
-        if duplicate and duplicate.status not in aid._TERMINAL:
-            raise AppException("DATA_CONFLICT", "你在本批次已有在途申请，不可重复提交")
+        _reject_same_batch_duplicate(duplicate, "困难认定申请")
 
         first = aid.AID_NODES[0]
         application = AidApply(
@@ -190,14 +199,15 @@ def funding_apply(user: dict, body: dict) -> dict:
             raise not_found("资助批次不存在")
         if batch.status != "OPEN":
             raise AppException("DATA_CONFLICT", "批次未开放或已截止")
+        # t_affairs_funding_application 的唯一键是 tenant+batch+student，永久覆盖同批次历史。
+        # 旧逻辑只挡非终态且忽略软删，REJECTED/CANCELLED/ARCHIVED 后会继续 INSERT，
+        # 最终由数据库唯一键报错成 500。这里先按 schema 真值 fail-closed 成稳定 409。
         duplicate = db.scalars(select(FundingApplication).where(
             FundingApplication.tenant_id == _tid(),
             FundingApplication.batch_id == batch.id,
             FundingApplication.student_id == student.id,
-            FundingApplication.is_deleted.is_(False),
         )).first()
-        if duplicate and duplicate.status not in funding._TERMINAL:
-            raise AppException("DATA_CONFLICT", "你在本批次已有在途申请，不可重复提交")
+        _reject_same_batch_duplicate(duplicate, "资助申请")
 
         snapshot = (
             funding._check_grant(db, student.id)

@@ -2,21 +2,10 @@
 /**
  * V3 §S9 / 深审 P1-15：生成并校验 miniapp-v3-handoff.json。
  *
- * 只交一个 merge SHA 是不够的——Teacher V3 的 Agent 拿到之后仍然要靠猜共享 schema
- * 与组件版本。本脚本把"学生端交出去的到底是什么"固化成机器可校验的合同：
- *
- *   studentMergeSha        本次交付所在的 commit
- *   actionSchemaVersion    MobileAction DTO 形状版本
- *   routeInventoryHash     pages.json 还原出的完整 URL 集合哈希
- *   subpackageHash         分包结构哈希（root + 页数）
- *   networkPagerVersion    共享分页器契约版本
- *   attachmentPickerVersion 共享附件组件契约版本
- *   alembicHead            后端迁移单头
- *   packageReportSha       三包体积报告哈希（需先跑 release 构建）
- *
- * 用法：
- *   node scripts/generate-v3-handoff.mjs            # 生成
- *   node scripts/generate-v3-handoff.mjs --verify   # 机器校验（T8 用）
+ * studentMergeSha 不是“JSON 自己所在提交”的不可实现自指，而是本 handoff seal
+ * 覆盖的实现提交：正常实现提交取 HEAD；若当前 HEAD 只改 handoff JSON，则取 HEAD^。
+ * 因此最终 seal commit 可以机器证明“它封住的就是前一笔 exact implementation HEAD”；
+ * seal 后只要再发生任何业务代码提交，verify 会把当前 HEAD 与存档 SHA 判为漂移。
  */
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
@@ -28,16 +17,37 @@ const here = dirname(fileURLToPath(import.meta.url))
 const MINIAPP = resolve(here, '..')
 const REPO = resolve(MINIAPP, '..')
 const OUTPUT = resolve(REPO, 'miniapp-v3-handoff.json')
+const HANDOFF_PATH = 'miniapp-v3-handoff.json'
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 const read = (path) => readFileSync(path, 'utf8')
 
-function gitSha() {
+function git(...args) {
   try {
-    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO }).toString().trim()
+    return execFileSync('git', args, { cwd: REPO }).toString().trim()
   } catch (error) {
     return ''
   }
+}
+
+function gitSha() {
+  return git('rev-parse', 'HEAD')
+}
+
+/**
+ * handoff seal 不能把自己的 SHA 写进自己的内容（那会无限改变 SHA）。
+ * 约定最终 seal commit 只能改根目录 handoff JSON；此时被封存实现 SHA = HEAD^。
+ * 任何 seal 后业务改动都会让 changedFiles 不再满足条件，于是回到 HEAD 并触发漂移。
+ */
+function implementationSha() {
+  const head = gitSha()
+  if (!head) return ''
+  const changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD')
+    .split('\n').map((row) => row.trim()).filter(Boolean)
+  if (changed.length === 1 && changed[0] === HANDOFF_PATH) {
+    return git('rev-parse', 'HEAD^') || head
+  }
+  return head
 }
 
 /** pages.json 还原成完整 URL 集合 —— 教师端据此确认路由面没有被学生端改动。 */
@@ -64,7 +74,6 @@ function contractVersion(file, marker) {
 function alembicHead() {
   const dir = resolve(REPO, 'backend/alembic/versions')
   if (!existsSync(dir)) return ''
-  // 单头由 CI 的 `alembic heads | wc -l` 保证；这里只记录当前 head 文件名哈希的来源。
   try {
     return execFileSync('python3', ['-c', `
 import ast, os
@@ -106,7 +115,7 @@ export function buildHandoff() {
   return {
     schema: 'miniapp-v3-handoff/1',
     generatedAt: new Date().toISOString(),
-    studentMergeSha: gitSha(),
+    studentMergeSha: implementationSha(),
     actionSchemaVersion: contractVersion('src/services/actionRouterCore.mjs', 'ACTION_SCHEMA_VERSION'),
     routeInventoryHash: sha256(inventory.routes.join('\n')),
     routeCount: inventory.routes.length,
@@ -121,7 +130,8 @@ export function buildHandoff() {
 
 const REQUIRED_FIELDS = [
   'studentMergeSha', 'actionSchemaVersion', 'routeInventoryHash',
-  'subpackageHash', 'networkPagerVersion', 'attachmentPickerVersion', 'alembicHead'
+  'subpackageHash', 'networkPagerVersion', 'attachmentPickerVersion', 'alembicHead',
+  'packageReportSha'
 ]
 
 function verify() {
@@ -137,8 +147,8 @@ function verify() {
       drift.push(`${field} 为空：交付物不完整`)
       continue
     }
-    // studentMergeSha 与 packageReportSha 依赖具体构建，不参与漂移比对。
-    if (field === 'studentMergeSha') continue
+    // packageReportSha 只有 release build 后本地才可重算；有报告时必须一致。
+    if (field === 'packageReportSha' && !current[field]) continue
     if (stored[field] !== current[field]) {
       drift.push(`${field} 漂移：交付=${stored[field]} 实际=${current[field]}`)
     }
@@ -148,7 +158,7 @@ function verify() {
     for (const line of drift) console.error('  -', line)
     return 1
   }
-  console.log(`[handoff] OK routes=${current.routeCount} alembicHead=${current.alembicHead}`)
+  console.log(`[handoff] OK impl=${current.studentMergeSha} routes=${current.routeCount} alembicHead=${current.alembicHead}`)
   return 0
 }
 
@@ -159,6 +169,7 @@ if (isVerify) {
   const handoff = buildHandoff()
   writeFileSync(OUTPUT, `${JSON.stringify(handoff, null, 2)}\n`, 'utf8')
   console.log(`[handoff] 已生成 ${OUTPUT}`)
+  console.log(`  implementationSha=${handoff.studentMergeSha}`)
   console.log(`  routes=${handoff.routeCount} subpackages=${handoff.subpackages.map((p) => `${p.root}:${p.pages}`).join(' ')}`)
   console.log(`  alembicHead=${handoff.alembicHead}`)
   console.log(`  packageReportSha=${handoff.packageReportSha || '(需先执行 release 构建)'}`)

@@ -268,12 +268,7 @@ def _course_items(db, student, start: date, end: date) -> list[dict[str, Any]]:
     return items
 
 
-def _cursor_of(item: dict[str, Any]) -> str:
-    """keyset 游标 = 排序键本身（startAt|eventId），单调且唯一，翻页不漏不重。"""
-    return f"{item.get('startAt') or ''}|{item.get('eventId') or ''}"
-
-
-def _sort_key(item: dict[str, Any]) -> tuple:
+def _sort_key(item: dict[str, Any]) -> tuple[str, int, str]:
     return (
         str(item.get("startAt") or ""),
         _KIND_PRIORITY.get(str(item.get("kind") or "OTHER"), 9),
@@ -281,9 +276,16 @@ def _sort_key(item: dict[str, Any]) -> tuple:
     )
 
 
+def _cursor_of(item: dict[str, Any]) -> str:
+    """keyset 游标必须与完整排序键同构，保证同一时刻跨 kind 翻页不漏不重。"""
+    start_at, kind_priority, event_id = _sort_key(item)
+    # priority 固定两位，确保字符串比较与 (startAt, kindPriority, eventId) 元组比较同序。
+    return f"{start_at}|{int(kind_priority):02d}|{event_id}"
+
+
 def list_student_agenda(user: dict, *, days: int = DEFAULT_DAYS, cursor: str | None = None,
                         page_size: int = PAGE_SIZE_DEFAULT) -> dict[str, Any]:
-    """未来 N 天的纯读时间线。cursor 是上一页最后一条的排序键，避免深 OFFSET。"""
+    """未来 N 天的纯读时间线。cursor 是上一页最后一条的完整排序键，避免深 OFFSET。"""
     from app.db.session import db_enabled
     from app.services.mobile_student_service import _require_student, resolve_student
 
