@@ -1,20 +1,32 @@
-"""Seed only the academic B W1 browser prerequisites in the isolated E2E database.
+"""Seed the Academic B W1 browser prerequisites in the isolated E2E database.
 
-The browser test creates the selection batch and course offerings through production APIs.
-This script only provides stable, authoritative base facts that do not have a public fixture API:
-a published/current term and two enabled course-catalog rows.
+The browser test creates Selection batches and course offerings through production APIs.
+This seed provides stable authoritative base facts that do not have a public fixture API:
+a published/current term, enabled course-catalog rows, and PROVEN SELECTABLE READY
+TeachingTasks whose ProgramCourse provenance satisfies the production Selection contract.
 """
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 from urllib.parse import urlparse
 
 import _mysql_env  # noqa: F401
 from sqlalchemy import select, update
 
 from app.db.session import get_sessionmaker
-from app.models import AaCourse, AaTerm
+from app.models import (
+    AaCourse,
+    AaProgramCourse,
+    AaTeachingTask,
+    AaTeachingTaskBatch,
+    AaTerm,
+    College,
+    Major,
+    SchoolClass,
+)
 
 TID = 1000000000000000007
 YEAR_CODE = "2098-2099"
@@ -22,6 +34,7 @@ COURSES = (
     ("E2E-B-W1-001", "B线W1跨端选课甲"),
     ("E2E-B-W1-002", "B线W1跨端选课乙"),
 )
+FIXTURE_PATH = Path(__file__).resolve().parents[2] / "e2e" / "academic-b-w1-fixture.json"
 
 
 def _assert_safe_target() -> None:
@@ -80,7 +93,7 @@ def main() -> int:
             term.status = "PUBLISHED"
             term.is_deleted = False
 
-        ready = []
+        courses = []
         for code, name in COURSES:
             course = db.scalars(
                 select(AaCourse).where(
@@ -114,13 +127,101 @@ def main() -> int:
                 course.credit = 2
                 course.status = "ENABLED"
                 course.is_deleted = False
-            ready.append(course)
+            courses.append(course)
         db.flush()
-        db.commit()
-        print(
-            "[academic-b-e2e-seed] ready",
-            {"termId": str(term.id), "courseIds": [str(row.id) for row in ready]},
+
+        college = College(
+            tenant_id=TID,
+            college_name="B线W1选课学院",
+            code="E2EBW1",
+            status="ACTIVE",
         )
+        db.add(college)
+        db.flush()
+        major = Major(
+            tenant_id=TID,
+            college_id=college.id,
+            major_name="B线W1选课专业",
+            code="E2EBW101",
+            status="ACTIVE",
+        )
+        db.add(major)
+        db.flush()
+        klass = SchoolClass(
+            tenant_id=TID,
+            major_id=major.id,
+            class_name="B线W1选课2401",
+            class_code="E2E-B-W1-2401",
+            grade="2024",
+            status="ACTIVE",
+        )
+        db.add(klass)
+        db.flush()
+
+        task_batch = AaTeachingTaskBatch(
+            tenant_id=TID,
+            term_id=term.id,
+            college_id=college.id,
+            batch_name="B线W1 SELECTABLE READY教学任务批次",
+            status="APPROVED",
+        )
+        db.add(task_batch)
+        db.flush()
+
+        task_rows = []
+        for index, course in enumerate(courses, start=1):
+            source = AaProgramCourse(
+                tenant_id=TID,
+                program_id=99000100 + index,
+                course_id=course.id,
+                course_name=course.course_name,
+                open_term_no=1,
+                module="MAJOR_CORE",
+                credit_snapshot=getattr(course, "credit", None) or 2,
+                formation_mode="SELECTABLE",
+            )
+            db.add(source)
+            db.flush()
+            task = AaTeachingTask(
+                tenant_id=TID,
+                batch_id=task_batch.id,
+                course_id=course.id,
+                course_code=course.course_code,
+                course_name=course.course_name,
+                class_id=klass.id,
+                teaching_class_name=f"B线W1教学班{index}",
+                teacher_key=f"E2E-W1-T{index:03d}",
+                teacher_name=f"B线W1任课教师{index}",
+                expected_students=30,
+                weekly_hours=2,
+                total_hours=32,
+                start_week=1,
+                end_week=16,
+                source_program_course_id=source.id,
+                formation_mode="SELECTABLE",
+                status="READY",
+            )
+            db.add(task)
+            db.flush()
+            task_rows.append(task)
+
+        db.commit()
+        fixture = {
+            "termId": str(term.id),
+            "taskBatchId": str(task_batch.id),
+            "courses": [
+                {
+                    "courseId": str(course.id),
+                    "courseCode": str(course.course_code),
+                    "courseName": str(course.course_name),
+                    "taskId": str(task.id),
+                }
+                for course, task in zip(courses, task_rows)
+            ],
+        }
+        FIXTURE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        FIXTURE_PATH.write_text(json.dumps(fixture, ensure_ascii=False, indent=2), encoding="utf-8")
+        print("[academic-b-e2e-seed] ready", fixture)
         return 0
     except Exception:
         db.rollback()
