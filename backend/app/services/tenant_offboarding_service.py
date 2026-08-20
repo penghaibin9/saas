@@ -25,6 +25,25 @@ def _session():
     return get_sessionmaker()()
 
 
+def _job_row(db, job_id: int, *, tenant_id: int | None = None, lock: bool = False):
+    """Load an offboarding job without a bare Session.get.
+
+    Destructive retry/finalize paths always pass the already-authoritative
+    tenant_id so an opaque job id can never cross a tenant boundary. Platform
+    detail reads may omit tenant_id because their router is explicitly
+    platform-super-admin scoped, but still use this reviewed query surface.
+    """
+    q = select(TenantOffboardingJob).where(
+        TenantOffboardingJob.id == int(job_id),
+        TenantOffboardingJob.is_deleted.is_(False),
+    )
+    if tenant_id is not None:
+        q = q.where(TenantOffboardingJob.tenant_id == int(tenant_id))
+    if lock:
+        q = q.with_for_update()
+    return db.scalars(q).first()
+
+
 def _meta_row(db, tenant_id: int, *, lock: bool = False, create: bool = False):
     from app.models import PlatformConfig
 
@@ -351,7 +370,7 @@ def approve_and_purge(user: dict, job_id: int, *, expected_version: int, source_
     except Exception as exc:
         db = _session()
         try:
-            job = db.get(TenantOffboardingJob, int(job_id), with_for_update=True)
+            job = _job_row(db, int(job_id), tenant_id=tenant_id, lock=True)
             if job is not None:
                 job.state = "FAILED"
                 job.last_error = str(exc)[:4000]
@@ -364,7 +383,7 @@ def approve_and_purge(user: dict, job_id: int, *, expected_version: int, source_
     evidence = dict(purge["evidence"])
     db = _session()
     try:
-        job = db.get(TenantOffboardingJob, int(job_id), with_for_update=True)
+        job = _job_row(db, int(job_id), tenant_id=tenant_id, lock=True)
         tenant = db.get(Tenant, tenant_id, with_for_update=True)
         now = datetime.utcnow()
         if tenant is None or job is None:
@@ -409,8 +428,8 @@ def approve_and_purge(user: dict, job_id: int, *, expected_version: int, source_
 def get_job(job_id: int) -> dict:
     db = _session()
     try:
-        job = db.get(TenantOffboardingJob, int(job_id))
-        if job is None or job.is_deleted:
+        job = _job_row(db, int(job_id))
+        if job is None:
             raise not_found("退租任务不存在")
         steps = db.scalars(select(TenantOffboardingStep).where(
             TenantOffboardingStep.job_id == int(job.id), TenantOffboardingStep.is_deleted.is_(False)
