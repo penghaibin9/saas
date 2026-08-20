@@ -29,8 +29,6 @@ def _load_revision(filename: str):
 
 
 def test_p0_router_installs_one_canonical_runtime_authority():
-    # conftest imports app.main first, but importing the router again is harmless
-    # and documents the intended single application-startup authority boundary.
     import app.api.v1.router  # noqa: F401
     from app.services import tenant_offboarding_service as offboarding
     from app.services import control_plane_p0_runtime as runtime
@@ -66,6 +64,7 @@ def test_p0_purge_registry_locks_reviewed_exception_semantics():
         "t_change_impact",
         "t_sod_violation",
         "t_emergency_access_session",
+        "t_security_activation",
         "t_tenant_usage_snapshot",
         "t_tenant_fair_use_violation",
     }
@@ -83,6 +82,9 @@ def test_p0_purge_registry_locks_reviewed_exception_semantics():
         "t_training_record",
         "t_renewal_task",
         "t_acad_grade",
+        "t_attendance_exception",
+        "t_class",
+        "t_green_channel_application",
     }
 
     assert {name for name in retained if classify_table(name).classification != RETAIN} == set()
@@ -129,7 +131,6 @@ def test_p0_effective_policy_is_explicit_and_hard_bounded_when_storage_degraded(
 
 
 def test_p0_manual_dr_records_can_never_make_health_green(db_mode):
-    # app.main/router installation makes legacy.governance_overview machine-only.
     from app.db.session import get_sessionmaker
     from app.models.disaster_recovery import BackupEvidence, RestoreDrill
     from app.models.recovery_run import RecoveryRun
