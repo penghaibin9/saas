@@ -56,6 +56,15 @@ def test_v3_routes_have_latency_thresholds():
     assert "REQUIRED_TEACHER_V3_ROUTES" in config
 
 
+def test_local_high_load_keeps_route_submetrics_for_coverage_evidence():
+    config = CONFIG_JS.read_text(encoding="utf-8")
+    assert "const localRouteCoverageThresholds = Object.fromEntries" in config
+    assert "Object.keys(routeThresholds).map" in config
+    assert "[key, ['max>=0']]" in config
+    assert "LOCAL_HIGH_LOAD_DIAGNOSTIC ? localRouteCoverageThresholds : fullLatencyThresholds" in config
+    assert "k6 only materializes tagged sub-metrics" in config
+
+
 def test_artifact_flags_runs_that_missed_the_new_routes():
     capacity = CAPACITY_JS.read_text(encoding="utf-8")
     assert "missingStudentV3Routes" in capacity
