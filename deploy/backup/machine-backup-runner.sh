@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-/var/lib/school-lifecycle-backup}"
-PYTHON_BIN="${PYTHON_BIN:-$REPO_ROOT/backend/.venv/bin/python}"
+PYTHON_BIN="${RECOVERY_PYTHON_BIN:-$REPO_ROOT/backend/.venv/bin/python}"
 
 if [ ! -x "$PYTHON_BIN" ]; then
   echo "backend Python runtime is not executable: $PYTHON_BIN" >&2
