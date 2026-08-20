@@ -10,6 +10,19 @@ BOOTSTRAP_SCRIPT = ROOT / "backend" / "scripts" / "e2e_bootstrap_graduation_acco
 COUNSELOR_BOOTSTRAP = ROOT / "backend" / "scripts" / "e2e_bootstrap_affairs_counselor_ci.py"
 INTERNSHIP_SEED = ROOT / "backend" / "scripts" / "e2e_seed_internship_sandbox.py"
 SCHOOL_IAM_SEED = ROOT / "backend" / "scripts" / "e2e_seed_control_plane_school_iam.py"
+ACADEMIC_B_SEEDS = (
+    "e2e_seed_academic_b_selection.py",
+    "e2e_seed_academic_b_w3_schedule.py",
+    "e2e_seed_academic_b_w4_selection.py",
+    "e2e_seed_academic_b_w4_formation.py",
+    "e2e_seed_academic_b_w5_selection.py",
+)
+ACADEMIC_B_FIXTURES = (
+    "academic-b-w3-fixture.json",
+    "academic-b-w4-fixture.json",
+    "academic-b-w4-formation-fixture.json",
+    "academic-b-w5-fixture.json",
+)
 
 
 def test_playwright_artifacts_never_collect_backend_tmp_wildcards():
@@ -56,6 +69,30 @@ def test_playwright_runs_exact_head_and_real_school_iam_fixture_seed():
     assert '"control-plane-school-iam.json"' in seed
     assert "reconcile_permission_catalog(" in seed
     assert "converge_published_system_templates(" in seed
+
+
+def test_playwright_materializes_all_academic_b_runtime_fixtures_in_dependency_order():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    for seed_name in ACADEMIC_B_SEEDS:
+        assert (ROOT / "backend" / "scripts" / seed_name).is_file()
+        assert f"python scripts/{seed_name}" in workflow
+    for fixture_name in ACADEMIC_B_FIXTURES:
+        assert f"test -s ../e2e/{fixture_name}" in workflow
+
+    base_seed = workflow.index("python scripts/e2e_seed_academic_b_selection.py")
+    w3_seed = workflow.index("python scripts/e2e_seed_academic_b_w3_schedule.py")
+    w4_seed = workflow.index("python scripts/e2e_seed_academic_b_w4_selection.py")
+    formation_seed = workflow.index("python scripts/e2e_seed_academic_b_w4_formation.py")
+    account_bootstrap = workflow.index("python scripts/e2e_bootstrap_graduation_accounts_ci.py")
+    w5_seed = workflow.index("python scripts/e2e_seed_academic_b_w5_selection.py")
+    browser_run = workflow.index("run: npm test")
+
+    assert base_seed < w3_seed < w4_seed < formation_seed
+    # Formation creates the official org rows the canonical account bootstrap discovers.
+    assert formation_seed < account_bootstrap
+    # W5 consumes the official student identities created by that bootstrap.
+    assert account_bootstrap < w5_seed < browser_run
 
 
 def test_internship_seed_only_creates_prerequisites_in_local_e2e_database():
