@@ -36,6 +36,7 @@ if (failures.length === 0) {
   const probe = read('performance/tools/probe_observability.py')
   const localSeed = read('performance/tools/seed_local_capacity_env.py')
   const evaluator = read('performance/tools/evaluate_capacity_result.py')
+  const report = read('performance/capacity-report-template.md')
   const forbiddenLoadPaths = [
     /\/upload(?:\/|\b)/i,
     /\/download(?:\/|\b)/i,
@@ -116,11 +117,41 @@ if (failures.length === 0) {
   if (!workflow.includes('schedule:')) failures.push('nightly schedule is required')
   if (!workflow.includes('grafana/k6:0.54.0')) failures.push('k6 Docker image must be pinned')
   if (!workflow.includes('local-capacity:')) failures.push('self-contained local capacity job is required')
-  if (!workflow.includes('profile: [smoke, baseline, p300, p500]')) {
-    failures.push('local capacity matrix must run smoke, baseline, p300 and p500')
+
+  for (const trigger of [
+    'backend/app/services/teacher_mobile_messages_v3_service.py',
+    'backend/scripts/explain_mobile_v3_queries.py',
+    'backend/scripts/seed_mobile_capacity_school.py',
+    'miniapp/src/pages/teacher/messages/**',
+  ]) {
+    if (!workflow.includes(trigger)) failures.push(`Teacher T9 capacity workflow trigger missing ${trigger}`)
   }
-  if (!workflow.includes('capacity-local-${{ matrix.profile }}-${{ github.run_id }}')) {
-    failures.push('local capacity artifacts must be profile-specific')
+  for (const identityContract of [
+    'identity_mode:',
+    'warm_identity_pool:',
+    'IDENTITY_MODE:',
+    'WARM_IDENTITY_POOL:',
+    'identityMode: cold',
+    'identityMode: warm',
+    '-e IDENTITY_MODE',
+    '-e WARM_IDENTITY_POOL',
+    '--identity-mode "$IDENTITY_MODE"',
+    '--v3 performance/results/k6-summary-v3.json',
+  ]) {
+    if (!workflow.includes(identityContract)) failures.push(`cold/warm workflow contract missing ${identityContract}`)
+  }
+  for (const profile of ['smoke', 'baseline', 'p300', 'p500']) {
+    if (!workflow.includes(`profile: ${profile}`)) failures.push(`local capacity matrix missing ${profile}`)
+  }
+  if (!/profile:\s*baseline\s+identityMode:\s*warm/m.test(workflow)) {
+    failures.push('local capacity matrix must include an explicit baseline warm-cache run')
+  }
+  if (!/profile:\s*p300\s+identityMode:\s*cold/m.test(workflow)
+      || !/profile:\s*p500\s+identityMode:\s*cold/m.test(workflow)) {
+    failures.push('local high-load p300/p500 must remain cold-identity evidence')
+  }
+  if (!workflow.includes('capacity-local-${{ matrix.profile }}-${{ matrix.identityMode }}-${{ github.run_id }}')) {
+    failures.push('local capacity artifacts must be profile+identity-mode specific')
   }
   if (!workflow.includes('evaluate_capacity_result.py')) failures.push('capacity verdict evaluation step is required')
   if (!workflow.includes('capacity-verdict.json')) failures.push('capacity verdict artifact is required')
@@ -163,7 +194,12 @@ if (failures.length === 0) {
   if (/password|accessToken/i.test(localSeed) && /print\([^\n]*(password|token)/i.test(localSeed)) {
     failures.push('local seed must not print credentials or tokens')
   }
-  for (const verdictContract of ['minimumRequests', 'httpFailureRate', 'businessCheckRate', 'p95Ms', 'p99Ms', 'readinessBefore', 'readinessAfter', 'non2xxAfter']) {
+  for (const verdictContract of [
+    'minimumRequests', 'httpFailureRate', 'businessCheckRate', 'p95Ms', 'p99Ms',
+    'readinessBefore', 'readinessAfter', 'non2xxAfter', 'v3RoutesCovered',
+    'identityModeMatches', 'coldIdentityPoolCoverage', 'identityEvidenceEligible',
+    'productionCapacityEvidenceEligible', 'warm-cache-diagnostic',
+  ]) {
     if (!evaluator.includes(verdictContract)) failures.push(`capacity evaluator missing ${verdictContract}`)
   }
   for (const profile of ['"p300": 10000', '"p500": 20000']) {
@@ -176,6 +212,13 @@ if (failures.length === 0) {
   }
   if (!evaluator.includes('target_mode == "local"')) {
     failures.push('only local targets may use functional-only high-load verdicts')
+  }
+
+  for (const reportContract of [
+    '身份模式', 'cold', 'warm', 'teacher_my_students', 'teacher_student360',
+    'teacher_messages', 'teacher_visit', 'teacher_employment_verification',
+  ]) {
+    if (!report.includes(reportContract)) failures.push(`capacity report template missing ${reportContract}`)
   }
 
   const secretLeakPatterns = [
