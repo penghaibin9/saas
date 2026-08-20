@@ -1,11 +1,11 @@
 """Teacher Miniapp V3 T2 continuous Todo keyset reader.
 
 This module is deliberately additive: the legacy page/offset contract remains untouched,
-and teacher-mobile gets a dedicated continuous-list reader.  Route resolution still lives in
+and teacher-mobile gets a dedicated continuous-list reader. Route resolution still lives in
 ``workbench_todo_service`` / ``todo_route_registry``; this file owns only cursor semantics.
 
 Cursor contract (V3 T2):
-- opaque base64url JSON;
+- signed opaque base64url JSON;
 - binds to ``filterHash`` and the current teacher/tenant;
 - freezes ``asOf`` for newly-created rows;
 - carries ``dueBucket + dueAt + id`` as the exact seek tuple;
@@ -15,13 +15,16 @@ Cursor contract (V3 T2):
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
+import hmac
 import json
 from datetime import datetime
 from typing import Any
 
 from sqlalchemy import and_, case, func, or_, select
 
+from app.core.config import settings
 from app.core.exceptions import AppException
 from app.services import workbench_todo_service as todo_svc
 from app.services.db_service import _tid, session
@@ -65,7 +68,7 @@ def _parse_cursor_dt(value: Any, *, field: str, required: bool = True) -> dateti
         parsed = datetime.fromisoformat(str(value))
     except (TypeError, ValueError) as exc:
         raise _validation_error(f"cursor {field} 不合法") from exc
-    # Repository timestamps are naive UTC.  Reject offset-aware cursor values instead of
+    # Repository timestamps are naive UTC. Reject offset-aware cursor values instead of
     # mixing aware/naive comparisons and silently shifting the seek boundary.
     if parsed.tzinfo is not None:
         raise _validation_error(f"cursor {field} 时区格式不合法")
@@ -85,20 +88,41 @@ def _filter_hash(user: dict, *, status: str | None, todo_type: str | None) -> st
     return hashlib.sha256(raw).hexdigest()
 
 
+def _b64encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _b64decode(token: str) -> bytes:
+    padding = "=" * (-len(token) % 4)
+    return base64.urlsafe_b64decode((token + padding).encode("ascii"))
+
+
+def _cursor_signature(raw: bytes) -> bytes:
+    secret = str(settings.JWT_SECRET or "").encode("utf-8")
+    if not secret:
+        raise AppException("SERVER_ERROR", "游标签名密钥未配置", details={"reason": "CURSOR_SIGNING_KEY_MISSING"})
+    return hmac.new(secret, raw, hashlib.sha256).digest()
+
+
 def _encode_cursor(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    return f"{_b64encode(raw)}.{_b64encode(_cursor_signature(raw))}"
 
 
 def _decode_cursor(cursor: str, *, expected_filter_hash: str) -> dict[str, Any]:
     token = str(cursor or "").strip()
-    if not token or len(token) > _MAX_CURSOR_LENGTH:
-        raise _validation_error("cursor 为空或过长")
+    if not token or len(token) > _MAX_CURSOR_LENGTH or token.count(".") != 1:
+        raise _validation_error("cursor 为空、过长或格式不合法")
     try:
-        padding = "=" * (-len(token) % 4)
-        raw = base64.urlsafe_b64decode((token + padding).encode("ascii"))
+        body_token, signature_token = token.split(".", 1)
+        raw = _b64decode(body_token)
+        supplied_signature = _b64decode(signature_token)
+        if not hmac.compare_digest(supplied_signature, _cursor_signature(raw)):
+            raise _validation_error("cursor 签名校验失败")
         payload = json.loads(raw.decode("utf-8"))
-    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except AppException:
+        raise
+    except (ValueError, TypeError, binascii.Error, UnicodeError, json.JSONDecodeError) as exc:
         raise _validation_error("cursor 无法解析") from exc
     if not isinstance(payload, dict) or int(payload.get("v") or 0) != _CURSOR_VERSION:
         raise _validation_error("cursor 版本不兼容")
@@ -124,14 +148,23 @@ def _decode_cursor(cursor: str, *, expected_filter_hash: str) -> dict[str, Any]:
     status_counts = payload.get("statusCounts") or {}
     if not isinstance(status_counts, dict):
         raise _validation_error("cursor 计数快照不合法")
+    validated_counts: dict[str, int] = {}
+    try:
+        for key, value in status_counts.items():
+            name = str(key)
+            if name not in _ALLOWED_STATUS:
+                continue
+            count = int(value or 0)
+            if count < 0:
+                raise ValueError("negative count")
+            validated_counts[name] = count
+    except (TypeError, ValueError) as exc:
+        raise _validation_error("cursor 计数快照不合法") from exc
+
     payload["dueBucket"] = bucket
     payload["id"] = row_id
     payload["total"] = total
-    payload["statusCounts"] = {
-        str(key): max(0, int(value or 0))
-        for key, value in status_counts.items()
-        if str(key) in _ALLOWED_STATUS
-    }
+    payload["statusCounts"] = validated_counts
     return payload
 
 

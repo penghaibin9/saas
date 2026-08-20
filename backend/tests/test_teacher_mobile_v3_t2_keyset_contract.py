@@ -10,7 +10,7 @@ from app.services import teacher_mobile_todo_keyset_service as keyset_svc
 from app.services import teacher_mobile_todo_read_service as read_svc
 
 
-def test_t2_cursor_roundtrip_carries_frozen_seek_contract():
+def _sample_cursor_payload(**overrides):
     payload = {
         "v": 1,
         "filterHash": "abc123",
@@ -21,6 +21,12 @@ def test_t2_cursor_roundtrip_carries_frozen_seek_contract():
         "total": 41,
         "statusCounts": {"PENDING": 30, "DONE": 11},
     }
+    payload.update(overrides)
+    return payload
+
+
+def test_t2_cursor_roundtrip_carries_frozen_seek_contract():
+    payload = _sample_cursor_payload()
     cursor = keyset_svc._encode_cursor(payload)
     decoded = keyset_svc._decode_cursor(cursor, expected_filter_hash="abc123")
 
@@ -31,21 +37,31 @@ def test_t2_cursor_roundtrip_carries_frozen_seek_contract():
     assert decoded["id"] == 99
     assert decoded["total"] == 41
     assert decoded["statusCounts"] == {"PENDING": 30, "DONE": 11}
+    assert cursor.count(".") == 1
 
 
 def test_t2_cursor_rejects_filter_reuse_across_query_shapes():
-    cursor = keyset_svc._encode_cursor({
-        "v": 1,
-        "filterHash": "filter-a",
-        "asOf": "2026-08-20T00:00:00.000000",
-        "dueBucket": 1,
-        "dueAt": None,
-        "id": 17,
-        "total": 3,
-        "statusCounts": {"PENDING": 3},
-    })
+    cursor = keyset_svc._encode_cursor(_sample_cursor_payload(filterHash="filter-a"))
     with pytest.raises(AppException):
         keyset_svc._decode_cursor(cursor, expected_filter_hash="filter-b")
+
+
+def test_t2_cursor_rejects_payload_tampering_and_malformed_base64():
+    cursor = keyset_svc._encode_cursor(_sample_cursor_payload())
+    body, signature = cursor.split(".", 1)
+    replacement = "A" if body[0] != "A" else "B"
+    tampered = replacement + body[1:] + "." + signature
+
+    with pytest.raises(AppException):
+        keyset_svc._decode_cursor(tampered, expected_filter_hash="abc123")
+    with pytest.raises(AppException):
+        keyset_svc._decode_cursor("%%%%.%%%%", expected_filter_hash="abc123")
+
+
+def test_t2_cursor_rejects_invalid_count_snapshot_as_validation_error():
+    cursor = keyset_svc._encode_cursor(_sample_cursor_payload(statusCounts={"PENDING": "bad"}))
+    with pytest.raises(AppException):
+        keyset_svc._decode_cursor(cursor, expected_filter_hash="abc123")
 
 
 def test_t2_keyset_reader_has_no_offset_and_counts_only_first_page_contract():
@@ -64,6 +80,7 @@ def test_t2_keyset_reader_has_no_offset_and_counts_only_first_page_contract():
     assert '"dueBucket"' in module_source
     assert '"dueAt"' in module_source
     assert '"id"' in module_source
+    assert "hmac.compare_digest" in module_source
 
 
 def test_t2_keyset_reader_reuses_canonical_todo_projection_not_third_route_authority():
