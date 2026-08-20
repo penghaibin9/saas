@@ -14,6 +14,8 @@ test('T5 MobileSequentialQueue is windowed and single-object only', () => {
   assert.match(component, /currentItem/)
   assert.match(component, /conflict/)
   assert.match(component, /连续处理已停止/)
+  assert.match(component, /allowManualNext:\s*\{\s*type:\s*Boolean,\s*default:\s*false\s*\}/)
+  assert.match(component, /v-else-if="allowManualNext"/)
   assert.doesNotMatch(component, /Promise\.all/)
   assert.doesNotMatch(component, /itemIds|ids\s*:/)
 })
@@ -72,8 +74,12 @@ test('T5 abnormal queue carries the exact read-snapshot version into the canonic
 })
 
 test('T5 only advances after server reload and cannot auto-advance while conflict is set', () => {
+  const component = read('src/components/teacher/MobileSequentialQueue.vue')
   const leave = read('src/pages/teacher/affairs-leave/index.vue')
   const internship = read('src/pages/teacher/internship-review/index.vue')
+  assert.match(component, /allowManualNext:\s*\{\s*type:\s*Boolean,\s*default:\s*false\s*\}/)
+  assert.doesNotMatch(leave, /:allow-manual-next="true"|allow-manual-next/)
+  assert.doesNotMatch(internship, /:allow-manual-next="true"|allow-manual-next/)
   assert.match(leave, /if \(this\.sequentialConflict \|\| this\.acting\) return/)
   assert.match(internship, /if \(!this\.sequentialConflict && !this\.acting/)
   for (const source of [leave, internship]) {
