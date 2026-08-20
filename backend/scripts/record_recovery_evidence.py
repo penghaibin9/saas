@@ -114,7 +114,16 @@ def _restore_payload(path: Path) -> dict:
         raise SystemExit("restore evidence missing backup_set_id/manifest_sha256")
     local_count = int(values.get("local_file_object_count", "0") or 0)
     hashed_count = int(values.get("local_file_object_hashed_count", "0") or 0)
-    file_objects_verified = local_count == 0 or (hashed_count == local_count and hashed_count > 0)
+    if local_count < 0 or hashed_count < 0 or hashed_count > local_count:
+        raise SystemExit("restore evidence contains invalid FileObject counts")
+    verification_executed = values.get("file_object_verification_executed", "").strip().lower() == "true"
+    # Historical restore-drill defaults emitted 0/0 even when the FileObject
+    # branch was never executed.  Zero is green only when the machine wrapper
+    # explicitly proves the restored DB contains zero active local FileObjects.
+    file_objects_verified = bool(
+        verification_executed
+        and (local_count == 0 or (hashed_count == local_count and hashed_count > 0))
+    )
     run_id = f"restore:{backup_set}:{values.get('workflow_run_id','manual')}:{manifest_hash[:12]}"
     return {
         "schemaVersion": 2,
@@ -148,10 +157,11 @@ def _restore_payload(path: Path) -> dict:
             "uploadEntryCount": int(values.get("upload_entry_count", "0") or 0),
             "localFileObjectCount": local_count,
             "hashedFileObjectCount": hashed_count,
+            "fileObjectVerificationExecuted": verification_executed,
             "workflowRunId": values.get("workflow_run_id"),
             "workflowTriggerSha": values.get("workflow_trigger_sha"),
             "recoveryOperator": values.get("recovery_operator"),
-            "evidenceContractVersion": 2,
+            "evidenceContractVersion": 3,
         },
         "finishedAt": values.get("completed_at_utc") or _utc_iso(),
     }
