@@ -58,6 +58,32 @@ def _teacher_v3_page(user: dict, *, status: str | None, todo_type: str | None,
     return paginate(data["items"], data["total"], data["page"], data["pageSize"])
 
 
+def _teacher_v3_continuous(user: dict, *, status: str | None, todo_type: str | None,
+                           cursor: str | None, page_size: int) -> dict:
+    """Teacher V3 T2：独立连续入口；旧 /todos offset 合同保持不变。"""
+    from app.services import teacher_mobile_todo_read_service as teacher_todo
+
+    data = teacher_todo.list_continuous(
+        user,
+        status=status,
+        todo_type=todo_type,
+        cursor=cursor,
+        page_size=page_size,
+    )
+    page = paginate(
+        data["items"],
+        data["total"],
+        1,
+        data["pageSize"],
+        next_cursor=data.get("nextCursor"),
+        status_counts=data.get("statusCounts"),
+        query_fingerprint=data.get("filterHash"),
+    )
+    page["hasMore"] = bool(data.get("hasMore"))
+    page["asOf"] = data.get("asOf")
+    return page
+
+
 def _teacher_v3_detail(user: dict, todo_id: str) -> dict | None:
     from app.services import teacher_mobile_todo_read_service as teacher_todo
 
@@ -100,6 +126,32 @@ def make_router(client: str) -> APIRouter:
         for t in pending:
             by_type[t["todoType"]] = by_type.get(t["todoType"], 0) + 1
         return success({"total": len(pending), "byType": by_type})
+
+    if client == "teacher-mobile":
+        @router.get("/todos/continuous", summary="教师端待办连续列表（keyset）",
+                    name="teacher_mobile_todos_continuous")
+        def list_todos_continuous(
+            status: Optional[str] = Query(default=None, description="PENDING / DONE / CANCELLED"),
+            todoType: Optional[str] = Query(default=None),
+            cursor: Optional[str] = Query(default=None, max_length=2048),
+            pageSize: int = Query(default=20, ge=1, le=100),
+            user=Depends(guard),
+        ):
+            if _use_real_db():
+                return success(_teacher_v3_continuous(
+                    user,
+                    status=status,
+                    todo_type=todoType,
+                    cursor=cursor,
+                    page_size=pageSize,
+                ))
+            items = [t for t in MOCK_TODOS
+                     if (not status or t["status"] == status)
+                     and (not todoType or t["todoType"] == todoType)]
+            data = paginate(items[:pageSize], len(items), 1, pageSize, next_cursor=None)
+            data["hasMore"] = False
+            data["asOf"] = None
+            return success(data)
 
     if client != "student-mini":
         @router.get("/workbench-snapshot", summary="教师工作台只读快照",
