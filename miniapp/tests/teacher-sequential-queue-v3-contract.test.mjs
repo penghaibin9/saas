@@ -47,6 +47,25 @@ test('T5 internship weekly and abnormal queues stop on conflict and never batch 
   assert.doesNotMatch(page, /handleCheckin\([^\n]*\[/)
 })
 
+test('T5 abnormal queue carries the exact read-snapshot version into the canonical command adapter', () => {
+  const api = read('src/services/teacherApi.js')
+  const adapter = read('src/services/teacherSequentialV3Api.js')
+
+  assert.match(api, /teacherSequentialV3/)
+  assert.match(api, /getWeeklyReports:[\s\S]*teacherSequentialV3\.getInternshipReviewQueue/)
+  assert.match(api, /handleCheckin:[\s\S]*teacherSequentialV3\.handleCheckin/)
+  assert.doesNotMatch(api, /handleCheckin:[^\n]*real\.handleCheckinReal/)
+
+  assert.match(adapter, /const exceptionVersions = new Map\(\)/)
+  assert.match(adapter, /expectedVersion = rememberExceptionVersion\(id, e\.version\)/)
+  assert.match(adapter, /exceptionVersions\.get\(key\)/)
+  assert.match(adapter, /\/teacher-mobile\/internship\/exceptions\/\$\{encodeURIComponent\(key\)\}\/handle/)
+  assert.match(adapter, /data: \{ action, comment: comment \|\| '', expectedVersion \}/)
+  assert.match(adapter, /error\.code = 'DATA_CONFLICT'/)
+  assert.match(adapter, /exceptionVersions\.delete\(key\)/)
+  assert.doesNotMatch(adapter, /localStorage|setStorageSync|Promise\.all|itemIds|exceptionIds/)
+})
+
 test('T5 only advances after server reload and cannot auto-advance while conflict is set', () => {
   const leave = read('src/pages/teacher/affairs-leave/index.vue')
   const internship = read('src/pages/teacher/internship-review/index.vue')

@@ -1,7 +1,8 @@
-"""Teacher Miniapp V3 T3/T4 additive student read API.
+"""Teacher Miniapp V3 additive teacher-mobile slices.
 
-Mounted under the existing ``/teacher-mobile`` surface by ``todos.make_router`` so these
-teacher-only slices can ship without editing #182-owned ``mobile.py`` / ``realApi.js``.
+Mounted under the existing ``/teacher-mobile`` surface by ``todos.make_router`` so teacher-only
+V3 slices can ship without editing #182-owned ``mobile.py`` / ``realApi.js``.  T3/T4 own the
+student read surface; T5 mounts its single-object sequential command adapter as a sibling router.
 """
 from __future__ import annotations
 
@@ -9,12 +10,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
+from app.api.v1.teacher_mobile_sequential import router as sequential_router
 from app.core.response import success
 from app.core.security import require_staff
 from app.services import teacher_mobile_student_keyset_service as student_svc
 from app.services import teacher_mobile_student360_projection_service as student360_svc
 
 router = APIRouter()
+router.include_router(sequential_router)
 
 
 @router.get("/students", summary="教师端我的学生连续列表（keyset）",
