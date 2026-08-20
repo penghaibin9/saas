@@ -33,6 +33,9 @@ class _FakeQuery:
     def join(self, *_args, **_kwargs):
         return self
 
+    def with_for_update(self):
+        return self
+
     def all(self):
         return list(self._rows)
 
@@ -129,7 +132,7 @@ def test_graduation_gate_blocks_current_term_unfinished_batch():
     assert "1 个毕业审核批次未归档" in result["remark"]
 
 
-def test_graduation_gate_does_not_cross_term_when_dates_missing():
+def test_graduation_gate_missing_dates_is_unknown_and_fail_closed():
     from app.modules.academic_affairs.services import academic_affairs_archive_domain_policy as policy
 
     term = SimpleNamespace(id=9, tenant_id=1, start_date=None, end_date=None, is_deleted=False)
@@ -138,8 +141,10 @@ def test_graduation_gate_does_not_cross_term_when_dates_missing():
         9,
     )
 
-    assert result["present"] is True
-    assert "停止使用全校历史" in result["remark"]
+    assert result["present"] is False
+    assert result["result"] == "UNKNOWN"
+    assert result["blockingCount"] >= 1
+    assert "日期" in result["remark"]
 
 
 def test_force_cannot_bypass_missing_archive_gate(monkeypatch):
@@ -160,6 +165,39 @@ def test_force_cannot_bypass_missing_archive_gate(monkeypatch):
 
     with pytest.raises(AppException) as exc:
         core.confirm_archive({"currentRoleCode": "ACADEMIC_ADMIN"}, 1, force=True)
+
+    assert exc.value.http_status == 409
+    assert "整体强制归档已停用" in exc.value.message
+
+
+def test_public_manifest_confirm_also_rejects_force_on_missing_items(monkeypatch):
+    """正式公开 owner 是 Manifest confirm；force=true 也不得绕过 MISSING_ITEMS。"""
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_archive_manifest_service as manifest
+    from app.modules.academic_affairs.services import academic_affairs_archive_service as public
+
+    assert public.confirm_archive is manifest.confirm_archive
+
+    batch = SimpleNamespace(id=1, status="MISSING_ITEMS", missing_count=2)
+
+    class _ManifestDb:
+        def query(self, _model):
+            return _FakeQuery(first=batch)
+
+    fake_db = _ManifestDb()
+    core = public._core
+
+    @contextmanager
+    def fake_session():
+        yield fake_db
+
+    monkeypatch.setattr(core, "session", fake_session)
+    monkeypatch.setattr(core, "_ctx", lambda _user, _db: SimpleNamespace(scope_type="TENANT_ALL"))
+    monkeypatch.setattr(core, "_require_school", lambda _ctx: None)
+    monkeypatch.setattr(manifest, "_actor_id", lambda _db: 9001)
+
+    with pytest.raises(AppException) as exc:
+        public.confirm_archive({"currentRoleCode": "ACADEMIC_ADMIN"}, 1, force=True)
 
     assert exc.value.http_status == 409
     assert "整体强制归档已停用" in exc.value.message

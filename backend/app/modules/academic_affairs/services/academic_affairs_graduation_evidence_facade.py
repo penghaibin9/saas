@@ -15,7 +15,7 @@ _original_run_items = _legacy._run_items
 
 _ROUTES = {
     "STATUS": "/admin/academic-affairs/student-status",
-    "CREDIT": "/admin/academic-affairs/graduation-audit",
+    "CREDIT": "/admin/academic-affairs/graduation/audit-console",
     "COURSE_REQUIRED": "/admin/academic-affairs/grade-records",
     "COURSE_ELECTIVE": "/admin/academic-affairs/grade-records",
     "PRACTICE": "/admin/academic-affairs/programs",
@@ -71,7 +71,7 @@ def normalize_evidence_item(item: dict, *, student_id=None, checked_at=None) -> 
         "sourceType": _SOURCE_TYPES.get(code, "UNKNOWN"),
         "sourceIds": source_ids,
         "facts": facts,
-        "drillRoute": _ROUTES.get(code, "/admin/academic-affairs/graduation-audit"),
+        "drillRoute": _ROUTES.get(code, "/admin/academic-affairs/graduation/audit-console"),
         "checkedAt": checked_at or datetime.utcnow().isoformat(),
         "evidenceHash": _hash(hash_payload),
     }

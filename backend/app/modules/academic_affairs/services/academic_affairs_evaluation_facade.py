@@ -1,6 +1,7 @@
 """教学评价服务兼容入口。
 
-仅覆盖申诉列表的数据范围；其余能力委托既有 service。这样不复制评教状态机，也不依赖前端隐藏。
+申诉列表按真实数据范围裁决；D-W3 管理读通过同一 scoped scale service 收敛。
+写状态机继续委托既有 service，不复制评教业务真值。
 """
 from __future__ import annotations
 
@@ -14,32 +15,33 @@ def __getattr__(name):
     return getattr(_legacy, name)
 
 
-def list_appeals(user, status=None, page=1, page_size=50):
-    """申诉理由按真实业务范围返回。
+def get_batch(user, bid):
+    from . import academic_affairs_evaluation_scale_service as _scale
+    return _scale.get_batch(user, bid)
 
-    - TENANT_ALL：教务处/学校管理员查看全校；
-    - COLLEGE：通过教学任务批次学院归属，只看本学院申诉；
-    - COURSE：只看本人评价结果申诉；
-    - 其它范围：默认拒绝。
-    """
-    from app.models import (
-        AaEvaluationAppeal,
-        AaEvaluationResult,
-        AaTeachingTask,
-        AaTeachingTaskBatch,
-    )
+
+def list_tasks(user, bid, evaluator_type=None):
+    from . import academic_affairs_evaluation_scale_service as _scale
+    return _scale.list_tasks(user, bid, evaluator_type=evaluator_type)
+
+
+def export_evaluation_xlsx(user, bid, domain, purpose):
+    from . import academic_affairs_evaluation_scale_service as _scale
+    return _scale.export_evaluation_xlsx(user, bid, domain, purpose)
+
+
+def list_appeals(user, status=None, page=1, page_size=50):
+    """申诉理由按真实业务范围返回。"""
+    from app.models import AaEvaluationAppeal, AaEvaluationResult, AaTeachingTask, AaTeachingTaskBatch
 
     with session() as db:
         ctx = build_affairs_context(user, db)
         query = db.query(AaEvaluationAppeal).join(
-            AaEvaluationResult,
-            AaEvaluationResult.id == AaEvaluationAppeal.result_id,
+            AaEvaluationResult, AaEvaluationResult.id == AaEvaluationAppeal.result_id,
         ).outerjoin(
-            AaTeachingTask,
-            AaTeachingTask.id == AaEvaluationResult.teaching_task_id,
+            AaTeachingTask, AaTeachingTask.id == AaEvaluationResult.teaching_task_id,
         ).outerjoin(
-            AaTeachingTaskBatch,
-            AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
+            AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
         ).filter(
             AaEvaluationAppeal.tenant_id == _tid(),
             AaEvaluationAppeal.is_deleted.is_(False),

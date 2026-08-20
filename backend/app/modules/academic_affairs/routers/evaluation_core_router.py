@@ -162,10 +162,13 @@ def eval_appeal_submit(body: EvalAppealBody, user=Depends(require_permission("ac
     return success(evaluation_svc.submit_appeal(user, int(body.resultId), body.reason), message="申诉已提交")
 
 
-@router.get("/evaluation/appeals", summary="申诉列表")
+@router.get("/evaluation/appeals", summary="申诉列表（本人/学院/教务按服务层范围收敛）")
 def eval_appeals(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
-                 user=Depends(require_permission(_EVAL_APPEAL))):
-    items, total = evaluation_svc.list_appeals(user, status, page, pageSize)
+                 user=Depends(require_permission(_EVAL_VIEW))):
+    rows = evaluation_svc.list_appeals(user, status)
+    total = len(rows)
+    start = (max(1, page) - 1) * max(1, pageSize)
+    items = rows[start:start + max(1, pageSize)]
     return success(paginate(items, total, page, pageSize))
 
 

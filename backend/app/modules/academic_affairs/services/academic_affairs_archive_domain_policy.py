@@ -45,7 +45,7 @@ ROUTES = {
     "MAKEUP": "/admin/academic-affairs/makeup",
     "EVALUATION": "/admin/academic-affairs/evaluation",
     "TEXTBOOK": "/admin/academic-affairs/textbooks",
-    "GRADUATION": "/admin/academic-affairs/graduation-audit",
+    "GRADUATION": "/admin/academic-affairs/graduation/audit-console",
 }
 
 _ACTIVE_STATUS_CHANGE = {"DRAFT", "SUBMITTED", "IN_REVIEW"}
@@ -65,19 +65,48 @@ def _day_end(value):
     return value if isinstance(value, datetime) else datetime.combine(value, time.max)
 
 
+_ARCHIVE_RESULT_STATES = {"PASS", "BLOCKED", "NOT_APPLICABLE", "UNKNOWN"}
+_BLOCKING_RESULTS = {"BLOCKED", "UNKNOWN"}
+
+
 def _legacy_result(count, passed, remark):
     return _core._result(int(count or 0), bool(passed), str(remark or ""))
+
+
+def _state_result(code, state, remark, *, count=0, blocking_count=None, rule_code=None, evidence=None):
+    state = str(state or "UNKNOWN").upper()
+    if state not in _ARCHIVE_RESULT_STATES:
+        state = "UNKNOWN"
+    if blocking_count is None:
+        blocking_count = 1 if state in _BLOCKING_RESULTS else 0
+    blocking_count = max(1, int(blocking_count or 0)) if state in _BLOCKING_RESULTS else 0
+    return {
+        "recordCount": int(count or 0),
+        "present": state == "PASS",
+        "remark": str(remark or ""),
+        "result": state,
+        "ruleCode": rule_code or f"{code}_SEMANTIC_GATE",
+        "summary": str(remark or ""),
+        "blockingCount": blocking_count,
+        "route": ROUTES.get(code, "/admin/academic-affairs/archive/precheck"),
+        "evidence": list(evidence or []),
+    }
 
 
 def _safe(code, fn):
     try:
         return fn()
     except Exception as exc:
-        return _legacy_result(0, False, f"该域语义检查失败：{type(exc).__name__}")
+        return _state_result(
+            code,
+            "UNKNOWN",
+            f"该域语义检查失败：{type(exc).__name__}",
+            rule_code=f"{code}_EVALUATION_ERROR",
+        )
 
 
 def evaluate_status_change(db, term_id, term_code):
-    """只阻断能归属到本学期的真实在途异动；退回、驳回和已生效均为终态。"""
+    """Only close a term when every status-change record can be scoped or proven terminal."""
     from app.models import AaStatusChange, AaTerm
 
     term = None
@@ -95,7 +124,7 @@ def evaluate_status_change(db, term_id, term_code):
         AaStatusChange.is_deleted.is_(False),
     ).all()
     scoped = []
-    unresolved = 0
+    unresolved = []
     for row in rows:
         row_term = str(getattr(row, "term_code", None) or "").strip()
         if term_code and row_term:
@@ -111,36 +140,75 @@ def evaluate_status_change(db, term_id, term_code):
             if start_at <= occurred_at <= end_at:
                 scoped.append(row)
         elif not row_term:
-            unresolved += 1
+            unresolved.append(row)
 
     active = [
         row for row in scoped
         if str(getattr(row, "status", None) or "").upper() in _ACTIVE_STATUS_CHANGE
     ]
-    passed = not active
-    remark = "本学期无在途学籍异动" if passed else f"本学期仍有 {len(active)} 条学籍异动处于草稿/审批中"
+    if active:
+        return _state_result(
+            "STATUS_CHANGE",
+            "BLOCKED",
+            (
+                f"本学期仍有 {len(active)} 条学籍异动处于草稿/审批中"
+                + (f"；另有 {len(unresolved)} 条异动无法确定学期范围，待迁移补齐" if unresolved else "")
+            ),
+            count=len(scoped),
+            blocking_count=len(active) + len(unresolved),
+            rule_code="STATUS_CHANGE_ACTIVE",
+            evidence=[{"type": "UNRESOLVED_SCOPE", "count": len(unresolved)}] if unresolved else [],
+        )
     if unresolved:
-        remark += f"；另有 {unresolved} 条历史异动缺少学期与可用日期，待迁移补齐"
-    return _legacy_result(len(scoped), passed, remark)
-
+        return _state_result(
+            "STATUS_CHANGE",
+            "UNKNOWN",
+            f"有 {len(unresolved)} 条学籍异动缺少学期与可用日期，无法确定是否属于当前归档范围；待迁移补齐",
+            count=len(scoped),
+            blocking_count=len(unresolved),
+            rule_code="STATUS_CHANGE_SCOPE_UNKNOWN",
+            evidence=[{"type": "UNRESOLVED_SCOPE", "count": len(unresolved)}],
+        )
+    return _state_result(
+        "STATUS_CHANGE",
+        "PASS",
+        "本学期无在途学籍异动",
+        count=len(scoped),
+        rule_code="STATUS_CHANGE_CLOSED",
+    )
 
 def evaluate_graduation(db, term_id):
-    """毕业审核批次没有term_id时只按学期日期窗口核验，禁止用全校历史阻断当前学期。"""
+    """Graduation archive gate is four-state and never promotes missing scope evidence to PASS."""
     from app.models import AaGraduationAuditBatch, AaTerm
 
     if not term_id:
-        return _legacy_result(0, True, "未指定学期；毕业审核批次暂无term_id，本次不跨学期阻断")
+        return _state_result(
+            "GRADUATION",
+            "UNKNOWN",
+            "未指定学期，无法确定毕业审核批次的归档范围",
+            rule_code="GRADUATION_TERM_SCOPE_UNKNOWN",
+        )
     term = db.query(AaTerm).filter(
         AaTerm.id == int(term_id),
         AaTerm.tenant_id == _tid(),
         AaTerm.is_deleted.is_(False),
     ).first()
     if not term:
-        return _legacy_result(0, False, "学期不存在，无法核验毕业审核范围")
+        return _state_result(
+            "GRADUATION",
+            "BLOCKED",
+            "学期不存在，无法核验毕业审核范围",
+            rule_code="GRADUATION_TERM_NOT_FOUND",
+        )
     start_at = _day_start(getattr(term, "start_date", None))
     end_at = _day_end(getattr(term, "end_date", None))
     if not start_at or not end_at:
-        return _legacy_result(0, True, "学期起止日期不完整；已停止使用全校历史毕业批次作阻断")
+        return _state_result(
+            "GRADUATION",
+            "UNKNOWN",
+            "学期起止日期不完整，无法证明毕业审核批次是否属于本学期",
+            rule_code="GRADUATION_TERM_DATES_UNKNOWN",
+        )
 
     rows = []
     for row in db.query(AaGraduationAuditBatch).filter(
@@ -151,12 +219,28 @@ def evaluate_graduation(db, term_id):
         if occurred_at and start_at <= occurred_at <= end_at:
             rows.append(row)
     if not rows:
-        return _legacy_result(0, True, "本学期未发现可按时间归属的毕业审核批次（非毕业学期不阻断）")
+        return _state_result(
+            "GRADUATION",
+            "NOT_APPLICABLE",
+            "本学期未发现可按时间归属的毕业审核批次（非毕业学期不阻断）",
+            rule_code="GRADUATION_NOT_APPLICABLE",
+        )
     unfinished = [row for row in rows if str(row.status or "").upper() != "ARCHIVED"]
-    return _legacy_result(
-        len(rows),
-        not unfinished,
-        "本学期毕业审核批次均已归档" if not unfinished else f"本学期仍有 {len(unfinished)} 个毕业审核批次未归档",
+    if unfinished:
+        return _state_result(
+            "GRADUATION",
+            "BLOCKED",
+            f"本学期仍有 {len(unfinished)} 个毕业审核批次未归档",
+            count=len(rows),
+            blocking_count=len(unfinished),
+            rule_code="GRADUATION_BATCH_UNARCHIVED",
+        )
+    return _state_result(
+        "GRADUATION",
+        "PASS",
+        "本学期毕业审核批次均已归档",
+        count=len(rows),
+        rule_code="GRADUATION_BATCH_ARCHIVED",
     )
 
 
@@ -173,6 +257,11 @@ def _active_round_count(rounds) -> int:
 def evaluate_selection(db, term_id):
     from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord, AaSelectionRound
 
+    if not term_id:
+        return _state_result(
+            "SELECTION", "UNKNOWN", "未指定学期，无法核验选课名单归档范围",
+            rule_code="SELECTION_TERM_SCOPE_UNKNOWN",
+        )
     query = db.query(AaSelectionBatch).filter(
         AaSelectionBatch.tenant_id == _tid(),
         AaSelectionBatch.is_deleted.is_(False),
@@ -181,7 +270,10 @@ def evaluate_selection(db, term_id):
         query = query.filter(AaSelectionBatch.term_id == int(term_id))
     batches = query.all()
     if not batches:
-        return _legacy_result(0, True, "本学期未启用选课批次，不作为归档阻断")
+        return _state_result(
+            "SELECTION", "NOT_APPLICABLE", "本学期未启用选课批次，不作为归档阻断",
+            rule_code="SELECTION_NOT_APPLICABLE",
+        )
     batch_ids = [int(row.id) for row in batches]
     unfinished = [
         row for row in batches
@@ -241,7 +333,10 @@ def evaluate_makeup(db, term_id, term_code):
     from app.models import AaExemption, AaMakeupBatch, AaRetakeApply
 
     if not term_id and not term_code:
-        return _legacy_result(0, False, "未指定学期，无法核验补考重修免修")
+        return _state_result(
+            "MAKEUP", "UNKNOWN", "未指定学期，无法核验补考重修免修",
+            rule_code="MAKEUP_TERM_SCOPE_UNKNOWN",
+        )
     conditions = []
     if term_id:
         conditions.append(AaMakeupBatch.term_id == int(term_id))
@@ -283,14 +378,20 @@ def evaluate_evaluation(db, term_id):
     from app.models import AaEvaluationAppeal, AaEvaluationBatch, AaEvaluationResult, AaEvaluationTask
 
     if not term_id:
-        return _legacy_result(0, False, "未指定学期，无法核验学生评教")
+        return _state_result(
+            "EVALUATION", "UNKNOWN", "未指定学期，无法核验学生评教",
+            rule_code="EVALUATION_TERM_SCOPE_UNKNOWN",
+        )
     batches = db.query(AaEvaluationBatch).filter(
         AaEvaluationBatch.tenant_id == _tid(),
         AaEvaluationBatch.term_id == int(term_id),
         AaEvaluationBatch.is_deleted.is_(False),
     ).all()
     if not batches:
-        return _legacy_result(0, True, "本学期未启用学生评教，不作为归档阻断")
+        return _state_result(
+            "EVALUATION", "NOT_APPLICABLE", "本学期未启用学生评教，不作为归档阻断",
+            rule_code="EVALUATION_NOT_APPLICABLE",
+        )
     batch_ids = [int(row.id) for row in batches]
     unfinished = [
         row for row in batches
@@ -334,7 +435,6 @@ def evaluate_evaluation(db, term_id):
         "评教窗口、结果和申诉均已收口" if not blockers else "；".join(blockers),
     )
 
-
 def evaluate_textbook(db, term_id):
     from app.models import (
         AaTextbookDistributionBatch, AaTextbookDistributionRecord,
@@ -342,14 +442,20 @@ def evaluate_textbook(db, term_id):
     )
 
     if not term_id:
-        return _legacy_result(0, False, "未指定学期，无法核验教材业务")
+        return _state_result(
+            "TEXTBOOK", "UNKNOWN", "未指定学期，无法核验教材业务",
+            rule_code="TEXTBOOK_TERM_SCOPE_UNKNOWN",
+        )
     orders = db.query(AaTextbookOrderBatch).filter(
         AaTextbookOrderBatch.tenant_id == _tid(),
         AaTextbookOrderBatch.term_id == int(term_id),
         AaTextbookOrderBatch.is_deleted.is_(False),
     ).all()
     if not orders:
-        return _legacy_result(0, True, "本学期未启用教材征订，不作为归档阻断")
+        return _state_result(
+            "TEXTBOOK", "NOT_APPLICABLE", "本学期未启用教材征订，不作为归档阻断",
+            rule_code="TEXTBOOK_NOT_APPLICABLE",
+        )
     order_ids = [int(row.id) for row in orders]
     unfinished_orders = [
         row for row in orders if str(row.status or "").upper() not in _ORDER_TERMINAL
@@ -416,7 +522,6 @@ def evaluate_textbook(db, term_id):
         "教材征订、发放和费用均已收口" if not blockers else "；".join(blockers),
     )
 
-
 def apply_effective_grade_policy_debt(db, term_code, result):
     debt = policy_snapshot_debt(db, term=term_code)
     blockers = int(debt.get("missingPolicySnapshot") or 0) + int(debt.get("legacyNameKey") or 0)
@@ -445,7 +550,6 @@ def apply_effective_grade_policy_debt(db, term_code, result):
     })
     result["remark"] = result["summary"]
     return result
-
 
 def evaluate_domains(db, term_id, term_code, college_ids=None) -> dict[str, dict]:
     """十三域唯一编排；任一规则异常都明确阻断，不伪装为无数据或成功。"""

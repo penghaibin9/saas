@@ -32,38 +32,49 @@
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" title="暂无预审结果" description="到批次页执行「圈定应届生 + 十一项预审」后再来复核" />
-      <div v-else class="aa-result-list">
-        <AppSectionCard v-for="r in rows" :key="r.resultId" :title="r.realName || ('学生 ' + r.studentId)">
-          <template #header-extra>
-            <AppStatusTag :type="overallColor(r.overall)">{{ overallLabel(r.overall) }}</AppStatusTag>
-            <AppStatusTag :type="r.conclusion ? 'success' : 'default'" dot>{{ statusLabel(r.status) }}</AppStatusTag>
-          </template>
-          <div class="aa-items">
-            <div v-for="it in r.items" :key="it.evidenceHash || it.item" class="aa-item">
-              <div class="aa-item__head">
-                <span class="aa-item__label">{{ itemLabel(it.item) }}</span>
-                <AppStatusTag :type="gradItemColor(it.result)">{{ itemResult(it.result) }}</AppStatusTag>
-                <button v-if="it.drillRoute" class="mp-link aa-item__drill" @click="drillEvidence(it)">核对来源 ›</button>
-              </div>
-              <span v-if="it.evidence" class="aa-item__ev">{{ it.evidence }}</span>
-              <div v-if="it.sourceType || it.evidenceHash" class="aa-item__lineage">
-                <span>来源：{{ sourceLabel(it.sourceType) }}</span>
-                <span v-if="it.sourceIds?.length">主键：{{ it.sourceIds.join('、') }}</span>
-                <span v-if="it.checkedAt">检查：{{ formatTime(it.checkedAt) }}</span>
-                <span v-if="it.evidenceHash" :title="it.evidenceHash">哈希：{{ shortHash(it.evidenceHash) }}</span>
+      <template v-else>
+        <div class="aa-result-list">
+          <AppSectionCard v-for="r in rows" :key="r.resultId" :title="r.realName || ('学生 ' + r.studentId)">
+            <template #header-extra>
+              <AppStatusTag :type="overallColor(r.overall)">{{ overallLabel(r.overall) }}</AppStatusTag>
+              <AppStatusTag :type="r.conclusion ? 'success' : 'default'" dot>{{ statusLabel(r.status) }}</AppStatusTag>
+            </template>
+            <div class="aa-items">
+              <div v-for="it in r.items" :key="it.evidenceHash || it.item" class="aa-item">
+                <div class="aa-item__head">
+                  <span class="aa-item__label">{{ itemLabel(it.item) }}</span>
+                  <AppStatusTag :type="gradItemColor(it.result)">{{ itemResult(it.result) }}</AppStatusTag>
+                  <button v-if="it.drillRoute" class="mp-link aa-item__drill" @click="drillEvidence(it)">核对来源 ›</button>
+                </div>
+                <span v-if="it.evidence" class="aa-item__ev">{{ it.evidence }}</span>
+                <div v-if="it.sourceType || it.evidenceHash" class="aa-item__lineage">
+                  <span>来源：{{ sourceLabel(it.sourceType) }}</span>
+                  <span v-if="it.sourceIds?.length">主键：{{ it.sourceIds.join('、') }}</span>
+                  <span v-if="it.checkedAt">检查：{{ formatTime(it.checkedAt) }}</span>
+                  <span v-if="it.evidenceHash" :title="it.evidenceHash">哈希：{{ shortHash(it.evidenceHash) }}</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="aa-result-actions">
-            <template v-if="canCollegeReview(r)">
-              <AppButton variant="primary" :loading="busy" @click="collegeReview(r, 'APPROVE')">学院初审通过</AppButton>
-              <AppButton :loading="busy" @click="collegeReview(r, 'REJECT')">学院驳回</AppButton>
-            </template>
-            <AppButton v-if="r.status === 'ACADEMIC_REVIEW'" variant="primary" @click="openFinal(r)">教务终审</AppButton>
-            <span v-if="r.conclusion" class="aa-final-tag">终审结论：{{ conclusionLabel(r.conclusion) }}</span>
-          </div>
-        </AppSectionCard>
-      </div>
+            <div class="aa-result-actions">
+              <AppButton v-if="canCollegeApprove(r)" variant="primary" :loading="busy" @click="collegeReview(r, 'APPROVE')">学院初审通过</AppButton>
+              <AppButton v-if="canCollegeReject(r)" :disabled="busy" @click="openCollegeReject(r)">学院驳回</AppButton>
+              <span v-if="r.status === 'SYSTEM_ABNORMAL'" class="aa-blocked-tip">系统异常须先治理阻断项并重新预审，不能直接学院通过</span>
+              <AppButton v-if="canNormalFinal(r)" variant="primary" :disabled="busy" @click="openFinal(r)">教务终审</AppButton>
+              <span v-else-if="r.status === 'ACADEMIC_REVIEW' && r.overall !== 'SYSTEM_PASSED'" class="aa-blocked-tip">系统异常 · 普通教务终审不可用</span>
+              <span v-if="r.conclusion" class="aa-final-tag">终审结论：{{ conclusionLabel(r.conclusion) }}</span>
+            </div>
+          </AppSectionCard>
+        </div>
+        <div class="aa-result-pager">
+          <AppPagination
+            :total="pagination.total"
+            :page="pagination.page"
+            :page-size="pagination.pageSize"
+            :show-size-changer="false"
+            @change="onPaginationChange"
+          />
+        </div>
+      </template>
     </div>
 
     <AppConfirmDialog
@@ -81,6 +92,16 @@
         </label>
       </div>
     </AppConfirmDialog>
+
+    <AppConfirmDialog
+      v-model:visible="collegeRejectDlg.visible"
+      title="学院初审驳回"
+      type="danger"
+      require-reason
+      reason-label="驳回原因（≥5字）"
+      :submitting="busy"
+      @confirm="doCollegeReject"
+    />
   </ModulePageShell>
 </template>
 
@@ -88,7 +109,7 @@
 /** 毕业预审结果 + 逐项证据复核（/admin/academic-affairs/graduation/:batchId/results）。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert, AppPagination } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { GRAD_ITEM_LABEL, GRAD_ITEM_RESULT, gradItemColor, OVERALL_LABEL, overallColor, CONCLUSION_LABEL, GRAD_STATUS_LABEL } from '@/modules/academicAffairs/constants/grade-graduation'
 import { toast } from '@/utils/toast'
@@ -102,7 +123,7 @@ const SOURCE_LABELS = {
 
 export default {
   name: 'AaGraduationResultView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert, AppPagination },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -110,7 +131,8 @@ export default {
       loading: true, error: '', rows: [], rosters: null, busy: false,
       filters: { overall: '' },
       pagination: { page: 1, pageSize: 50, total: 0 },
-      finalDlg: { visible: false, submitting: false, resultId: '', conclusion: 'GRADUATED' }
+      finalDlg: { visible: false, submitting: false, resultId: '', conclusion: 'GRADUATED' },
+      collegeRejectDlg: { visible: false, row: null }
     }
   },
   computed: {
@@ -139,37 +161,119 @@ export default {
       if (!route.startsWith('/admin/')) { toast.error('证据下钻地址无效'); return }
       this.$router.push(route)
     },
-    canCollegeReview(r) { return ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status) },
+    canCollegeApprove(r) {
+      return Boolean(r && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
+    },
+    canCollegeReject(r) { return Boolean(r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
+    canNormalFinal(r) { return Boolean(r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
     search() { this.pagination.page = 1; this.load() },
+    onPaginationChange({ page }) {
+      if (!page || page === this.pagination.page || this.loading) return
+      this.pagination.page = page
+      this.load()
+    },
     async loadRosters() {
-      const res = await academicAffairsApi.getGradRosters(this.batchId)
-      if (res.code === 0) this.rosters = res.data
+      try {
+        const res = await academicAffairsApi.getGradRosters(this.batchId)
+        if (res.code === 0) this.rosters = res.data
+        else toast.error(res.message || '三名单加载失败')
+      } catch (e) {
+        toast.error((e && e.message) || '三名单加载失败')
+      }
     },
     async collegeReview(r, action) {
-      if (this.busy) return
+      if (this.busy || action !== 'APPROVE' || !this.canCollegeApprove(r)) return
       this.busy = true
-      const res = await academicAffairsApi.collegeReviewGrad(r.resultId, action, action === 'REJECT' ? '学院初审驳回' : '')
-      this.busy = false
-      if (res.code === 0) { toast.success('已处理'); this.load() }
-      else toast.error(res.message || '处理失败')
+      try {
+        const res = await academicAffairsApi.collegeReviewGrad(r.resultId, 'APPROVE', '')
+        if (res.code === 0) { toast.success('学院初审已通过'); await this.load() }
+        else toast.error(res.message || '处理失败')
+      } catch (e) {
+        toast.error((e && e.message) || '处理失败')
+      } finally {
+        this.busy = false
+      }
+    },
+    openCollegeReject(r) {
+      if (!this.canCollegeReject(r) || this.busy) return
+      this.collegeRejectDlg = { visible: true, row: r }
+    },
+    async doCollegeReject({ reason } = {}) {
+      const row = this.collegeRejectDlg.row
+      const note = String(reason || '').trim()
+      if (!row || this.busy) return
+      if (note.length < 5) { toast.error('驳回原因不少于 5 字'); return }
+      this.busy = true
+      try {
+        const res = await academicAffairsApi.collegeReviewGrad(row.resultId, 'REJECT', note)
+        if (res.code === 0) {
+          toast.success('学院初审已驳回')
+          this.collegeRejectDlg = { visible: false, row: null }
+          await this.load()
+        } else toast.error(res.message || '处理失败')
+      } catch (e) {
+        toast.error((e && e.message) || '处理失败')
+      } finally {
+        this.busy = false
+      }
     },
     openFinal(r) {
+      if (!this.canNormalFinal(r)) {
+        toast.error('当前结果不满足普通教务终审条件，请先重新预审并核对系统结论')
+        return
+      }
+      if (this.busy) return
       this.finalDlg = { visible: true, submitting: false, resultId: r.resultId, conclusion: 'GRADUATED' }
     },
     async doFinal() {
+      const row = this.rows.find((item) => String(item.resultId) === String(this.finalDlg.resultId))
+      if (!this.canNormalFinal(row)) {
+        this.finalDlg.visible = false
+        toast.error('当前结果已不满足普通终审条件，请重新加载并核对系统预审')
+        return
+      }
+      if (this.finalDlg.submitting) return
       this.finalDlg.submitting = true
-      const res = await academicAffairsApi.finalGrad(this.finalDlg.resultId, this.finalDlg.conclusion, true)
-      this.finalDlg.submitting = false
-      if (res.code === 0) { this.finalDlg.visible = false; toast.success('终审完成，已写学籍'); this.load(); this.loadRosters() }
-      else toast.error(res.message || '终审失败')
+      try {
+        const fresh = await academicAffairsApi.getGradResult(this.finalDlg.resultId)
+        if (fresh.code !== 0) { toast.error(fresh.message || '终审前状态重读失败'); return }
+        if (!this.canNormalFinal(fresh.data)) {
+          this.finalDlg.visible = false
+          toast.error('终审前状态已变化，请重新加载并核对系统预审')
+          await this.load()
+          return
+        }
+        const res = await academicAffairsApi.finalGrad(this.finalDlg.resultId, this.finalDlg.conclusion, true)
+        if (res.code === 0) {
+          this.finalDlg.visible = false
+          toast.success('终审完成，已写学籍')
+          await this.load()
+          await this.loadRosters()
+        } else toast.error(res.message || '终审失败')
+      } catch (e) {
+        toast.error((e && e.message) || '终审失败')
+      } finally {
+        this.finalDlg.submitting = false
+      }
     },
     async load() {
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getGradResults(this.batchId, { overall: this.filters.overall || undefined, page: this.pagination.page, pageSize: this.pagination.pageSize })
-      if (res.code === 0) { this.rows = res.data.list; this.pagination.total = res.data.total }
-      else this.error = res.message
-      this.loading = false
+      try {
+        const res = await academicAffairsApi.getGradResults(this.batchId, {
+          overall: this.filters.overall || undefined,
+          page: this.pagination.page,
+          pageSize: this.pagination.pageSize
+        })
+        if (res.code === 0) {
+          this.rows = res.data.list
+          this.pagination.total = res.data.total
+        } else this.error = res.message || '毕业预审结果加载失败'
+      } catch (e) {
+        this.error = (e && e.message) || '毕业预审结果加载失败'
+      } finally {
+        this.loading = false
+      }
     }
   }
 }
@@ -177,17 +281,26 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.aa-roster-row { display: flex; gap: 12px; }
+.aa-roster-row { display: flex; flex-wrap: wrap; gap: 12px; }
 .aa-roster-chip { padding: 6px 14px; border-radius: 16px; font-size: 14px; font-weight: 500; }
 .aa-roster-chip.is-grad { background: var(--success-50, #eafff3); color: var(--success-600, #16a34a); }
 .aa-roster-chip.is-comp { background: var(--fill-100, #f2f3f5); color: var(--text-700, #4e5969); }
 .aa-roster-chip.is-delay { background: var(--warning-50, #fffbeb); color: var(--warning-600, #d97706); }
 .aa-filter { display: flex; gap: 12px; align-items: center; }.aa-filter :deep(.app-select) { width: 220px; }
-.aa-result-list { display: flex; flex-direction: column; gap: 12px; }.aa-items { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 14px; }
-.aa-item { padding: 10px 12px; border: 1px solid var(--border-200, #e5e7eb); border-radius: 8px; background: var(--fill-50, #fafafa); font-size: 13px; }
-.aa-item__head { display: flex; align-items: center; gap: 8px; }.aa-item__label { color: var(--text-700, #4e5969); min-width: 64px; font-weight: 600; }.aa-item__drill { margin: 0 0 0 auto; }
-.aa-item__ev { display: block; margin-top: 7px; color: var(--text-600, #64748b); font-size: 12px; line-height: 1.5; }
-.aa-item__lineage { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border-200, #e5e7eb); color: var(--text-400, #8a9099); font-size: 11px; }
-.aa-result-actions { margin-top: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.aa-final-tag { color: var(--success-600, #16a34a); font-size: 13px; }.aa-final-form { display: flex; flex-direction: column; gap: 8px; }.aa-radio { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.aa-result-list { display: flex; flex-direction: column; gap: 12px; }
+.aa-result-pager { display: flex; justify-content: flex-end; margin-top: 14px; }
+.aa-items { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 14px; }
+.aa-item { min-width: 0; padding: 10px 12px; border: 1px solid var(--border-200, #e5e7eb); border-radius: 8px; background: var(--fill-50, #fafafa); font-size: 13px; }
+.aa-item__head { display: flex; align-items: center; gap: 8px; min-width: 0; }.aa-item__label { color: var(--text-700, #4e5969); min-width: 64px; font-weight: 600; }.aa-item__drill { margin: 0 0 0 auto; }
+.aa-item__ev { display: block; margin-top: 7px; color: var(--text-600, #64748b); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.aa-item__lineage { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border-200, #e5e7eb); color: var(--text-400, #8a9099); font-size: 11px; overflow-wrap: anywhere; }
+.aa-result-actions { margin-top: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }.aa-final-tag { color: var(--success-600, #16a34a); font-size: 13px; }.aa-blocked-tip { color: var(--warning-700, #b45309); font-size: 12px; }.aa-final-form { display: flex; flex-direction: column; gap: 8px; }.aa-radio { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 @media (max-width: 900px) { .aa-items { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .aa-filter { align-items: stretch; flex-direction: column; }
+  .aa-filter :deep(.app-select) { width: 100%; }
+  .aa-item__head { align-items: flex-start; flex-wrap: wrap; }
+  .aa-item__drill { width: 100%; margin-left: 0; text-align: left; }
+  .aa-result-pager { justify-content: center; overflow-x: auto; }
+}
 </style>

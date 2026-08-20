@@ -14,9 +14,9 @@ import hashlib
 import json
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.services.db_service import _tid
 
 from . import academic_affairs_graduation_service as graduation_service
@@ -36,16 +36,32 @@ def _hash(payload) -> str:
 
 
 def _strict_overall(items: list[dict]) -> str:
-    """Stage C3 decision is PASS only when every required evidence item is PASS.
+    """Return PASS only when every required graduation evidence item is satisfied.
 
-    The legacy work-queue projection historically treated selected UNKNOWN domains as
-    non-blocking hints. Stage C3 no longer permits that divergence: preview, formal runs,
-    and any later compatibility-projection recomputation must use this same fail-closed
-    result so mutable UI state can never drift away from the immutable evaluation run.
+    ``EMPLOYMENT`` and ``FEE`` remain advisory at the current exact head. ``ARCHIVE`` is
+    different: Stage C3 already freezes its UNKNOWN state as fail-closed historical truth,
+    so D-W0 must not downgrade it to an advisory hint even though the older mutable service
+    list still omits it. FAIL, invalid result values, ARCHIVE UNKNOWN, and UNKNOWN on every
+    other required item all remain SYSTEM_ABNORMAL.
     """
-    if not items:
+    rows = list(items or [])
+    required_unknown_blockers = set(getattr(graduation_service, "_BLOCKING_UNKNOWN_ITEMS", ()) or ())
+    required_unknown_blockers.add("ARCHIVE")
+    if not rows or not required_unknown_blockers or any(not isinstance(item, dict) for item in rows):
         return "SYSTEM_ABNORMAL"
-    return "SYSTEM_PASSED" if all(str(item.get("result") or "").upper() == "PASS" for item in items) else "SYSTEM_ABNORMAL"
+    present_codes = {str(item.get("item") or "").upper() for item in rows}
+    if not required_unknown_blockers.issubset(present_codes):
+        return "SYSTEM_ABNORMAL"
+    for item in rows:
+        code = str(item.get("item") or "").upper()
+        result = str(item.get("result") or "").upper()
+        if result not in {"PASS", "FAIL", "UNKNOWN"}:
+            return "SYSTEM_ABNORMAL"
+        if result == "FAIL":
+            return "SYSTEM_ABNORMAL"
+        if result == "UNKNOWN" and code in required_unknown_blockers:
+            return "SYSTEM_ABNORMAL"
+    return "SYSTEM_PASSED"
 
 
 def _actor_id() -> int | None:
@@ -65,6 +81,48 @@ def _program_id(items: list[dict]) -> int | None:
             except (TypeError, ValueError):
                 return None
     return None
+
+
+def _run_items(run) -> list[dict]:
+    try:
+        payload = json.loads(run.item_results_json or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    return payload if isinstance(payload, list) else []
+
+
+def _run_snapshot(run) -> dict:
+    try:
+        payload = json.loads(run.input_snapshot_json or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _stable_snapshot_hash(snapshot: dict) -> str | None:
+    """Compare business evidence without the evaluation clock itself causing false changes."""
+    if not isinstance(snapshot, dict) or not snapshot:
+        return None
+    stable = dict(snapshot)
+    stable.pop("evaluatedAt", None)
+    return _hash(stable)
+
+
+def _approved_run_is_current(run, result, evaluated: dict) -> bool:
+    """True only when an already college-approved PASS still matches the live evidence basis."""
+    if not run or not result or not isinstance(evaluated, dict):
+        return False
+    if str(run.overall or "").upper() != "SYSTEM_PASSED":
+        return False
+    if str(result.overall or "").upper() != "SYSTEM_PASSED":
+        return False
+    if str(evaluated.get("overall") or "").upper() != "SYSTEM_PASSED":
+        return False
+    if _strict_overall(_run_items(run)) != "SYSTEM_PASSED":
+        return False
+    previous_basis = _stable_snapshot_hash(_run_snapshot(run))
+    current_basis = _stable_snapshot_hash(evaluated.get("inputSnapshot") or {})
+    return bool(previous_basis and current_basis and previous_basis == current_basis)
 
 
 def evaluate_student(db, student, *, evaluated_at: datetime | None = None) -> dict:
@@ -129,7 +187,7 @@ def evaluate_preview(student_id, user) -> dict:
 
 
 def precheck(batch_id, user) -> dict:
-    """Formal precheck: append Run#N, then update only the compatibility projection."""
+    """Append a new formal run when the work-queue row or approved evidence basis changed."""
     graduation_service._require_review_role(user)
     with graduation_service.session() as db:
         from app.models import (
@@ -146,7 +204,9 @@ def precheck(batch_id, user) -> dict:
             select(AaGraduationAuditResult).where(
                 AaGraduationAuditResult.tenant_id == _tid(),
                 AaGraduationAuditResult.batch_id == batch.id,
-                AaGraduationAuditResult.status.in_(["WAIT_PRECHECK", "SYSTEM_PASSED", "SYSTEM_ABNORMAL"]),
+                AaGraduationAuditResult.status.in_([
+                    "WAIT_PRECHECK", "SYSTEM_PASSED", "SYSTEM_ABNORMAL", "ACADEMIC_REVIEW",
+                ]),
                 AaGraduationAuditResult.is_deleted.is_(False),
             ).order_by(AaGraduationAuditResult.id).with_for_update()
         ).all()
@@ -162,13 +222,19 @@ def precheck(batch_id, user) -> dict:
                 )
             evaluated_at = datetime.utcnow()
             evaluated = evaluate_student(db, student, evaluated_at=evaluated_at)
-            current_max = db.scalar(
-                select(func.max(GraduationEvaluationRun.run_no)).where(
-                    GraduationEvaluationRun.tenant_id == _tid(),
-                    GraduationEvaluationRun.result_id == result.id,
-                )
-            ) or 0
-            run_no = int(current_max) + 1
+            latest_run = db.scalars(select(GraduationEvaluationRun).where(
+                GraduationEvaluationRun.tenant_id == _tid(),
+                GraduationEvaluationRun.result_id == result.id,
+            ).order_by(GraduationEvaluationRun.run_no.desc()).limit(1)).first()
+
+            # A stable college-approved PASS must remain approved. Re-evaluate it only when
+            # the business evidence basis changed (grade correction, fee update, academic
+            # fact version, cross-domain evidence, evaluator version, etc.). evaluatedAt is
+            # deliberately excluded from the stable basis so the clock alone never resets it.
+            if result.status == "ACADEMIC_REVIEW" and _approved_run_is_current(latest_run, result, evaluated):
+                continue
+
+            run_no = int(latest_run.run_no) + 1 if latest_run else 1
             run = GraduationEvaluationRun(
                 tenant_id=_tid(),
                 batch_id=batch.id,
@@ -188,7 +254,8 @@ def precheck(batch_id, user) -> dict:
             db.flush()
             run_ids.append(str(run.id))
 
-            # Compatibility/current projection only. Historical readers use the run.
+            # Any evidence change invalidates the old college approval. The mutable row
+            # returns to the fresh SYSTEM_* projection; the old immutable Run stays replayable.
             result.item_results_json = _json(evaluated["items"])
             result.overall = evaluated["overall"]
             result.status = evaluated["overall"]
@@ -214,8 +281,70 @@ def precheck(batch_id, user) -> dict:
         }
 
 
+def college_review(result_id, user, action, note="") -> dict:
+    """Only a complete latest formal PASS may advance into academic final review."""
+    role = (user.get("currentRoleCode") or "").upper()
+    if role not in ({"COLLEGE_ADMIN"} | graduation_service._REVIEW_ROLES) and user.get("userType") != "PLATFORM_SUPER_ADMIN":
+        raise no_permission("仅学院教务员/教务处可执行学院初审")
+
+    action_code = str(action or "").strip().upper()
+    if action_code not in {"APPROVE", "REJECT"}:
+        raise AppException("BAD_REQUEST", "初审动作非法（APPROVE/REJECT）")
+
+    with graduation_service.session() as db:
+        from app.models import AaGraduationAuditResult, GraduationEvaluationRun
+
+        result = db.query(AaGraduationAuditResult).filter(
+            AaGraduationAuditResult.id == int(result_id),
+            AaGraduationAuditResult.tenant_id == _tid(),
+            AaGraduationAuditResult.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not result:
+            raise not_found("预审结果不存在")
+        graduation_service._assert_result_in_scope(db, user, result)
+        if result.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
+
+        if action_code == "APPROVE":
+            run = db.scalars(select(GraduationEvaluationRun).where(
+                GraduationEvaluationRun.tenant_id == _tid(),
+                GraduationEvaluationRun.result_id == result.id,
+            ).order_by(GraduationEvaluationRun.run_no.desc()).limit(1)).first()
+            if not run:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "该毕业结果没有可引用的正式 GraduationEvaluationRun；请先执行正式预审",
+                    http_status=409,
+                )
+            if str(run.overall or "") != str(result.overall or ""):
+                raise AppException(
+                    "APPROVAL_VERSION_CONFLICT",
+                    "毕业预审投影已偏离最新正式评估 Run，请重新预审后再执行学院通过",
+                    http_status=409,
+                )
+            if str(run.overall or "").upper() != "SYSTEM_PASSED" or _strict_overall(_run_items(run)) != "SYSTEM_PASSED":
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "最新正式毕业评估仍异常或必需证据不完整；请先治理阻断项并重新预审。学院通过不能把异常结果推进教务终审",
+                    http_status=409,
+                )
+            result.status = "ACADEMIC_REVIEW"
+            result.review_note = note
+            graduation_service._audit(db, result.id, "COLLEGE_APPROVE")
+        else:
+            if not note or len(note.strip()) < 5:
+                raise AppException("BAD_REQUEST", "退回原因必填且不少于 5 字")
+            result.status = "REJECTED"
+            result.review_note = note.strip()
+            graduation_service._audit(db, result.id, "COLLEGE_REJECT", note.strip())
+
+        db.commit()
+        db.refresh(result)
+        return graduation_service._row(result)
+
+
 def academic_final(result_id, user, conclusion, confirm=False) -> dict:
-    """Final decision must reference the exact immutable evaluation run it used."""
+    """Final decision must reference the exact immutable SYSTEM_PASSED run it used."""
     graduation_service._require_review_role(user)
     conclusion = (conclusion or "").upper()
     if conclusion not in graduation_service._CONCLUSION:
@@ -236,9 +365,6 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
             raise not_found("预审结果不存在")
         if result.status != "ACADEMIC_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅学院初审通过的结果可终审")
-        if result.overall == "SYSTEM_ABNORMAL" and conclusion in ("GRADUATED", "COMPLETED"):
-            if not result.review_note or len(result.review_note.strip()) < 5:
-                raise AppException("DATA_CONFLICT", "存在异常或未知关键项，学院初审必须填写不少于5字的人工核验说明")
 
         run = db.scalars(select(GraduationEvaluationRun).where(
             GraduationEvaluationRun.tenant_id == _tid(),
@@ -254,6 +380,18 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
             raise AppException(
                 "APPROVAL_VERSION_CONFLICT",
                 "毕业预审投影已偏离最新正式评估 Run，请重新预审后再终审",
+                http_status=409,
+            )
+        if str(run.overall or "").upper() != "SYSTEM_PASSED":
+            raise AppException(
+                "DATA_CONFLICT",
+                "最新正式毕业评估仍为 SYSTEM_ABNORMAL；普通教务终审禁止用审核备注覆盖评估结论，请先治理阻断项并重新预审",
+                http_status=409,
+            )
+        if _strict_overall(_run_items(run)) != "SYSTEM_PASSED":
+            raise AppException(
+                "DATA_CONFLICT",
+                "最新正式毕业评估 Run 的必需证据集合不完整或不满足当前 fail-closed 合同，禁止终审；请重新预审生成完整正式 Run",
                 http_status=409,
             )
         existing = db.scalars(select(GraduationDecisionFact).where(
@@ -318,4 +456,5 @@ def install() -> None:
     graduation_service.evaluate_student = evaluate_student
     graduation_service.evaluate_preview = evaluate_preview
     graduation_service.precheck = precheck
+    graduation_service.college_review = college_review
     graduation_service.academic_final = academic_final

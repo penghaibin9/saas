@@ -37,6 +37,7 @@ _local-backup/
 backend/_pfull3.txt
 _pfull*.txt
 backend/scripts/_sec_verify.py
+backend/test-results/
 
 # 运行时产物 / 上传导出 / 打包产物（CI 会拒绝这些被跟踪）
 uploads/
