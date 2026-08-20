@@ -102,9 +102,20 @@ def _passed_contract(evidence: dict) -> None:
         return
     assertions = evidence["assertions"]
     if evidence["runType"] == "BACKUP":
-        required = ("manifestVerified", "databaseShaVerified", "offsiteReadbackVerified")
+        required = (
+            "manifestVerified",
+            "databaseShaVerified",
+            "offsiteReadbackVerified",
+            "immutableRemoteConfirmed",
+        )
     else:
-        required = ("manifestVerified", "databaseRestoreVerified", "schemaVerified")
+        required = (
+            "manifestVerified",
+            "databaseRestoreVerified",
+            "schemaVerified",
+            "indexesVerified",
+            "fileObjectsVerified",
+        )
     missing = [key for key in required if assertions.get(key) is not True]
     if missing:
         raise AppException("VALIDATION_ERROR", f"PASSED 机器证据缺少通过断言：{','.join(missing)}")
