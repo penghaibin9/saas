@@ -1,0 +1,39 @@
+name: Cleanup runs after 2026-08-20 19:00 GMT+8 - worker odd
+
+on:
+  push:
+    branches:
+      - cleanup/actions-after-20260820-1900-worker-odd-r1
+    paths:
+      - .github/workflows/cleanup-actions-after-20260820-1900-worker-odd.yml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    if: github.actor == 'penghaibin9'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Cancel and delete odd workflow run IDs after cutoff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set +e
+          for round in $(seq 1 180); do
+            ids=$(gh api --paginate "repos/$REPO/actions/runs?per_page=100" --jq '.workflow_runs[] | select(.created_at >= "2026-08-20T11:00:00Z") | select(((.head_branch // "") | startswith("cleanup/actions-after-20260820-1900")) == false) | select((.id % 2) == 1) | [.id,.status] | @tsv')
+            [ -z "$ids" ] && break
+            progressed=0
+            while IFS=$'\t' read -r id status; do
+              [ -z "$id" ] && continue
+              if [ "$status" = "completed" ]; then
+                gh api -X DELETE "repos/$REPO/actions/runs/$id" >/dev/null 2>&1 && progressed=1
+              else
+                gh api -X POST "repos/$REPO/actions/runs/$id/cancel" >/dev/null 2>&1 && progressed=1
+              fi
+            done <<< "$ids"
+            if [ "$progressed" -eq 1 ]; then sleep 6; else sleep 12; fi
+          done
