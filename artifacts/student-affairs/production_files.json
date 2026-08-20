@@ -2,137 +2,132 @@
   {
     "surface": "backend",
     "path": "backend/app/affairs_appeal_repair_worker.py",
-    "sha256": "522ccf7337632912ec2988ba8cf4a9ab5725d5cdcd7c50f3f102054a7a4c9735"
+    "sha256": "4b32ca9720c09513e7b5de999008caff82e7979e7aa209439c87d2439d951a81"
   },
   {
     "surface": "backend",
     "path": "backend/app/api/v1/affairs_activity_mobile.py",
-    "sha256": "bb9d65bf41d73ce4bda89467a722fd20663e7fe9e5d00c3a83bca7392d46839b"
+    "sha256": "ad7588d60d52689a3a8f863a77682f22a9b2ed8b943a2629a8f3035128a4b9fe"
   },
   {
     "surface": "backend",
     "path": "backend/app/api/v1/affairs_appeal_mobile.py",
-    "sha256": "a427b0c396f4d544c6c14527fa56cc56f3bfd49b23b697c22f5e7837c7117cb8"
+    "sha256": "8146806d70608f132923fd5b6998445415e1dec75e630bcc5e1fc13b645b6194"
   },
   {
     "surface": "backend",
     "path": "backend/app/api/v1/affairs_appeal_repair_api.py",
-    "sha256": "b72a051215030b8261bfc7c84a10a2743728d629fe645f09aab9c99ba3adb7cc"
+    "sha256": "5fdeaa8aca410ceed8b76e4dc6040ee925b28986ecc2a629fde19dd47912b7da"
   },
   {
     "surface": "backend",
     "path": "backend/app/api/v1/affairs_discipline_integrity_api.py",
-    "sha256": "79ddff78686ae290fdac3eaaa2ad201cc0c523dfb0103e1b6a124d9b220c3073"
+    "sha256": "803ba36ff498fc58808c2bd78d15540e3e127d6217c6e5da903e704e0d2bd6f8"
   },
   {
     "surface": "backend",
     "path": "backend/app/api/v1/affairs_four_end.py",
-    "sha256": "38079c8e932458ae7f71aa04cbad250cb16f1f91b5cba61ddd3c769cd5467717"
+    "sha256": "ad93e9aa43f6e89447a78e32a67db8c828f5933d7a967725b23a904fe2291b05"
   },
   {
     "surface": "backend",
     "path": "backend/app/api/v1/affairs_funding_authority_api.py",
-    "sha256": "0fa721ced2c0444374ba3b919e9c03c7e90a4e05dc18e7129d9f3492200f41ed"
+    "sha256": "3dd0538d8368a7c6b0e1efcdc05543b3951c8f4670784c5104dc62a194cfee30"
   },
   {
     "surface": "backend",
     "path": "backend/app/api/v1/affairs_leave_self_api.py",
-    "sha256": "f695270cad9a0f0f22eda9fe72e3a52d034b2849dc0d2fb3d68764b2bef118cc"
+    "sha256": "4f572440f9e441b0febe5c8b93f18e800f886c6ccc8de73cd39bf15d63da176c"
   },
   {
     "surface": "backend",
     "path": "backend/app/api/v1/affairs_operations_api.py",
-    "sha256": "96ef4e8e3513cc6de0ffef8a6b698bbf833e7e3480766876672d3fd806bcb40c"
+    "sha256": "760ca0e13d4428506dd9c163bfb3b1f67eee210afc569694be442bb3ec65eff4"
   },
   {
     "surface": "backend",
     "path": "backend/app/api/v1/affairs_student_dorm.py",
-    "sha256": "b18bf110bbdccb20ca1844969de9de9bd94a364dbb54a16e6b32d0089e883de8"
+    "sha256": "ed413634b45f2a85abfc580c4506020db78161ea9cb7ea1df93558adad0e19a8"
   },
   {
     "surface": "backend",
     "path": "backend/app/api/v1/affairs_student_returned.py",
-    "sha256": "e671f78bf0be10884372c826a44b09dcda4b93fe372ccf727776aa7c9524ae94"
+    "sha256": "85f232163b32ec7217c5b9b916f83cb4020628490a24fb92058ecbf7b78c5f57"
   },
   {
     "surface": "backend",
     "path": "backend/app/api/v1/student_affairs.py",
-    "sha256": "8b5dc3c7eec431ba816305a97332199187d7dfa468e494341edc1cb04a4f2c40"
+    "sha256": "f1f1d060cac86508de73b5dfc90d6de4efdeceb9252c2d1926630aaa5abe6109"
   },
   {
     "surface": "backend",
     "path": "backend/app/core/affairs_security.py",
-    "sha256": "44b90fd9149d50e6ff361b5b6fb8c92fe0c9d3193e35484a4a6f21a9e4a06dd3"
+    "sha256": "9605d91fa4a0ce85c5ed2eecc7feef80e8ecbe3774a7608bb9706510fb1ef596"
   },
   {
     "surface": "backend",
     "path": "backend/app/core/student_affairs_permission_registry.py",
-    "sha256": "7e9cf4bcd28a832d54f4de02eda5cdb17abfc14d6e9e58cbc5bd243e407c570b"
+    "sha256": "9233fc10b40b62229a13e1c6053cff372fdf8aa3f1935aad64b1ed452827969c"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/academic_affairs.py",
-    "sha256": "2ef32d9cab5fe11e34ef42d65f417d018c3fd352172ca71fef87ee474007d0b8"
+    "sha256": "9a0e4d985bf5fc1e3a6497ec7c259d3fc7fbe7a469f8dd5f1977bbe782cf5433"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/academic_affairs_effective_grade.py",
-    "sha256": "e57c2ae74392c35e8e766b416b20ed2f1ea83a07c3bb01a4149b16f54ab9871c"
+    "sha256": "08d5f55b6a2e1d3a171fa79976a86e1ebe8ccf07aa0d7438ee2a2f0ed9968187"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/academic_affairs_gpa_policy.py",
-    "sha256": "a59d0cd7db1adf3af21a6f14ff3da139636513f3261b0734a9a1d834290a9774"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/models/academic_affairs_program_extensions.py",
-    "sha256": "1042feb0a2a573bb200bed87b18a8db0f36416ebbb767900c660cf263b3a6801"
+    "sha256": "a95bfd89086bb95815f8aed9b00e974841f9812861356bdb975699a7480a91c9"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/academic_affairs_program_transition.py",
-    "sha256": "9eb0c79b6c4c7c2b1e0774323f6b45b8ffdb794e1d05863580a4ff134876e874"
+    "sha256": "d2c139fcaeafc91af146dbca2869437cf86f7e6eae9bea97970029c0479943fb"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/academic_affairs_r10.py",
-    "sha256": "19842156557bd8bb8724c8dc4b883f9aee51ed78dac9c541b49ca76047610aea"
+    "sha256": "4a2ccba78b4aa5f35e3ec4c4fe4efa0bffedd7483e8298135a6e225cb3088290"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/academic_affairs_r11.py",
-    "sha256": "eea733cdf795af3375e26af8995adfac51647ea5816fba1cc200fd6fd869b940"
+    "sha256": "811a9583e386ccf4ba78400c3a705e7864911b9eea6f2d0feadb498a82644ba7"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/academic_affairs_registry.py",
-    "sha256": "9ddfc1516e4bcccf61fd92faa521f68e69c1fe5599425f2e7efb5bef8e3cc067"
+    "sha256": "d86969472968533e32a3572337fa5455424aed80d0caf03ab8212b1101958844"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/academic_affairs_roster_consumer.py",
-    "sha256": "e8a3109df90ada0b3e1abb80c7b3e846420b778c74b1a2a8377ac928860e779a"
+    "sha256": "1b853cda1e7bc340a2f95cf4a089d1e4f364dca01c5191ddaf9706b6dafa1dad"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/academic_affairs_stage_c3.py",
-    "sha256": "ce49876c14235a406cb065efb1b49da480b4de166d437ebce71ddeaf75338471"
+    "sha256": "3ff54760aa710f4a74fe8363d9235616b0f8dbb1c75f9a11d3197293309ccebc"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/academic_affairs_student_fact.py",
-    "sha256": "a0e831c656fb999901c0c848a970c8ea77d884790ad80c4717c5d0aaa29b483f"
+    "sha256": "aa8809b04fba65d455d9377b7ff2712e54cf91e3103e66150bcd5350de104e40"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/academic_affairs_teaching_class.py",
-    "sha256": "c1b70ff51485342526b79238dd24ae7db47d14ce08d63b189e77be7d8e6aaa43"
+    "sha256": "b3047fae884452d60473ac2d63a9de62d308171697d6ee41d2450911fa3f7b56"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/affairs.py",
-    "sha256": "0a32c7cf1b266e93ef14e23b589cfeb33aab7022c0778ad3c44fa61e0ccdeffe"
+    "sha256": "a24874e6935ac6cb87b3f0a4ddfa98d59720f0971e0d9230c4cb98c042becb0f"
   },
   {
     "surface": "backend",
@@ -142,17 +137,17 @@
   {
     "surface": "backend",
     "path": "backend/app/models/affairs_aid.py",
-    "sha256": "4cd0791eb4bd5d8333d2e40e97937c51afb7de449cf77858e9bb2692074698e5"
+    "sha256": "f3cd764cca9fb8a7db77a616e555f39fc000673e5dafe5731b61008d7d8b6b8c"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/affairs_archive.py",
-    "sha256": "ba7c4266d1f686ab9fdf7398c23336ff5030f6710d16abc029dd85318cb3d39b"
+    "sha256": "f79f151d1a17a162701bbe51818f7f3eafcca2fa0939323132f9984bf7881970"
   },
   {
     "surface": "backend",
     "path": "backend/app/models/affairs_attachment.py",
-    "sha256": "b229efa61ff585b7c523702041bbec1640010bc0ccb4f84f362b23efc999461b"
+    "sha256": "ea3debc1d3b8494edf50ee7236d1b59045c61d097f61777e1951e6be639476be"
   },
   {
     "surface": "backend",
@@ -167,7 +162,7 @@
   {
     "surface": "backend",
     "path": "backend/app/models/affairs_counselor_assignment.py",
-    "sha256": "9f8e04e51e896977956293fff16fc305be9558aad2997c95bddf8e268cba0811"
+    "sha256": "0005a89c69ad4077829547900a33d1c83e1b00f5949bbbbecc9eae5e74d07da1"
   },
   {
     "surface": "backend",
@@ -182,7 +177,7 @@
   {
     "surface": "backend",
     "path": "backend/app/models/affairs_discipline_integrity.py",
-    "sha256": "45e9eb617bb2677c1f35cfaa7b10ca89d90ecb04f5a0eb7a8976a05129c9f941"
+    "sha256": "0667c262a0459d1e9db56144e4ad65373a45ef8dfe93347753824d29f7e75fa2"
   },
   {
     "surface": "backend",
@@ -207,7 +202,7 @@
   {
     "surface": "backend",
     "path": "backend/app/models/affairs_operations.py",
-    "sha256": "0e5bed2a617b2dc5fb92bd1d8f88054ba7d3f85e1c8601f8660da73176f48360"
+    "sha256": "bd52602ace5130c5700d1636280a80cca1700dfc6840699356c8e006f1c68959"
   },
   {
     "surface": "backend",
@@ -222,7 +217,7 @@
   {
     "surface": "backend",
     "path": "backend/app/models/affairs_repair_job.py",
-    "sha256": "789b66e4646c9ebec2ee463cfe4a8bf92c2fa29ec114f94cdef3bb40ec355201"
+    "sha256": "1bb90aa8ec1c5010d66faa0bd360727084f92543104935c98c59a38cf5ced301"
   },
   {
     "surface": "backend",
@@ -232,1082 +227,667 @@
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/routers/academic_affairs.py",
-    "sha256": "243655d3de265fec1f861c5b08372418e5393bfb7ca6fdb5e390ec09f21727db"
+    "sha256": "ceef60883780eef0f96824392ea2e7695f78e777c13025bdec110c696487dc27"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/routers/academic_affairs_bundle.py",
-    "sha256": "8d81bf361c4ca3a555150ef63a9afd17fb39c6d51c1758fc578a880a4978da5f"
+    "sha256": "2faa7adae0db7be08393d8f2fe237509c8ef9852d26cb7aa32ff402c272a7761"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_actor_identity.py",
-    "sha256": "8213f4cea4916aefab51300167889d6a987d86adb4c1752a81db3bcfbfdb4597"
+    "sha256": "45fedc973f295348a3286c48baa1f1bc399ca86609f675a2b0c706823d5504df"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_core_semantic_facade.py",
-    "sha256": "de112b620a82b058acb98dcffa1f9800f12884471ed137bc9f979ec837c7ac43"
+    "sha256": "ecc8a980d882c072e509116da804b4ae525984027ff39bf1f377598af825582c"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py",
-    "sha256": "7b36282e760e043f80a79aa668a124bc10b29205fa25a6e4d57d04531355bec6"
+    "sha256": "42665768bad2ed1b45fc74b02e98430bb00015ba7067c047986a08a9c38ba4b5"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_domain_policy.py",
-    "sha256": "b2bbfaf6774a61f00a8e9400119f1b5657f2c2b48c75083e91e4523c6160c113"
+    "sha256": "76b20a9feeee81451059f00f63df36e0f7cd72f36f503ee6655e03793ee4f910"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_evaluation_facade.py",
-    "sha256": "2a896e69e934218e4f60b3a12fcbfc92ddb10a378c24c9ebf605220f3b5d102f"
+    "sha256": "5af7a720fc75ae68e0a5e153c55026260aef00f0ca108ddf3f4b4fc646ed5b04"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_facade.py",
-    "sha256": "396066ab98984dc98ab014c7951e0b48477b22fef83d4845add4d5afc0d25715"
+    "sha256": "18eb0e97a712f7909eeebfb9b50ab971eb45c4d99e86bec5871987d715f25d2d"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_grade_policy_guard.py",
-    "sha256": "882e659d9d023538117b5658e3b485ae0cf0369a305533bd8d1bd23835761ecf"
+    "sha256": "87ba7e4a65a1ff6b9026f1f41dc93b0eb566a9416bd2d84b4bd4cde4566cba98"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_immutable_guard.py",
-    "sha256": "7175d65ab889a8727a961e4db022b2cb8e564c288700e461935f5a4243e1676e"
+    "sha256": "a9bca7e4f1838e46429d0e7fd71405d303f7f0b296f7c90d80a7652e24f9a0ec"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_makeup_facade.py",
-    "sha256": "2e096aabf942fccda0c3be82ed9446c15bcc7ec215ac5ee015da1958c3e4eb52"
+    "sha256": "73f6d0e6c6976ace4d53993112695fa27ce302f791225feb337b0de550473b16"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_manifest_service.py",
-    "sha256": "cc26ddc69ae97543e5da6808d083c029bd26c3f9cf9e970b01890a01e2a6d0b1"
+    "sha256": "dc5f67f7d42e7c2cc4f1b70fc08cfd5ce072bf494b8711363b637eaf8c642581"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_operational_policy.py",
-    "sha256": "cdb242b96f6c7acf89d7f91af5796c6f536760cdee17f2c49683d72b27e8b023"
+    "sha256": "caad6d39d3985b9ed5cd66f96cf89ad58cf510817819a335d20b8f2276886430"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_policy_facade.py",
-    "sha256": "e5b85ad8feafc6ad330f48d6549fe5b4b2a6555347ab007c47ffd471433f2263"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_read_guard.py",
-    "sha256": "2f7cd946f7215a49bc36bb5786e2586f22bf73b6951eb4209f0aba9ea2694f9b"
+    "sha256": "9b5603f07a052136181aa0f47882aa4881a992ffb08c0b52383622c377274dd1"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_rule_evaluator.py",
-    "sha256": "0085e417e8b1e634633244b0d1e0672fc78b04d3d30b3010ec138450db9b498e"
+    "sha256": "1aafcf34af11340ad8525a2553c4cf7ce9276d6215dcf575bda84a0cd21b0f9f"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_selection_facade.py",
-    "sha256": "44069e2f20f43474d7a2e4d6087583119965c86c8ae96506c77da21c193d323f"
+    "sha256": "0b93a562b6880f7a68fdee5aaf62788ec590d51bcedbc37b63667ba981980aac"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_service.py",
-    "sha256": "693d395c33ff7ffd65a374a6e121f95bba216b45c22f1ce1aaa3493f1a82ae9a"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_term_guard.py",
-    "sha256": "2685620f9d9a87a50cf656c5599bd2da09bbea5fa862ecafa8a885cc9f3c3f24"
+    "sha256": "b1968e01a7bac5beba4c4dc7b203b26b9fc76a4e35a106a949d52d1208575fa0"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_term_guard_facade.py",
-    "sha256": "2a83c6f45fe460668c1ab029d75d134e1b181857aa7544ec9f78589418626da0"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_term_scope.py",
-    "sha256": "13638bc033bb85c170179b73c63323b42877888c10561a8e2f49469cd15b0f4f"
+    "sha256": "8b1f27e93f4f0f0ff67e8698af783ee6643d4164cea37c3a55558a057f3b35ab"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_archive_textbook_facade.py",
-    "sha256": "4532986bee86e00bc364736c65c1a47df7056974cfb54e5a1a1148ee26fe49ba"
+    "sha256": "421733901cfceaf8056aa28d71771b20c5c00d3b2f9ae1b359bc5ad9d091e525"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_attendance_facade.py",
-    "sha256": "5258633337e4aec5239870268c0ba4ee336f1a03d252519acb6882492bec83ca"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py",
-    "sha256": "d45659058daf2cd7910b59309ce79ec7fcdbffc7efc967463451981a110f7bd6"
+    "sha256": "71befb88c0328d25076a6f97d821a5b9159ce3a93e83a2d59ea5aa44f4de8aa0"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py",
-    "sha256": "e98b6d4e4c353899f6d2e81aa55e72d4a582be38dceef286cfd8c32222405de6"
+    "sha256": "181d7b5750abff4159ecc9be2606a9fb8d81d08e76379d65db996c822e06cfd5"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_attendance_roster_identity_facade.py",
-    "sha256": "4ab6aea569583352d1c48262ca1a2fbe5d0d562e05a37c0aba7f7998791599cd"
+    "sha256": "3e407b27c4e9a8d28ed482b7a971690e53cd3dd9c52b0329067f311950a0c5e1"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py",
-    "sha256": "4315e731946c1a02e68da87bf3090969165a65478f5db89f4a8dd6090e4e6d8e"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_attendance_swap_teacher_week_guard.py",
-    "sha256": "b0cae77246bf3fc232f1c6efb3b27c1f69c1ab3ae2c1eef9540a08ab0d544c07"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py",
-    "sha256": "7e15074e6c5e62f76e72e8518b5178ce9d6860e2cf396394c4c9324de8e3411d"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py",
-    "sha256": "abdf3a685d52f9faaa261447d7c7407794741cd328f611cd0f331bbc0e538e2d"
+    "sha256": "4f153e6153df1480b0f9b07d47e8f2f258b0a3970774bcbd7341710259f9d181"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_autoexam_service.py",
-    "sha256": "2107c2b70853ff6c173df045a1b1142e2bd6124450aecf6531b4918fcfd813e4"
+    "sha256": "11e714594bcce51d112ba01101d1afff7e38c106bc5e11813ebcd3c6960bf64b"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_autoschedule_final_service.py",
-    "sha256": "03d1cba6e25cf77eb886ae7a7283d66fbcd0bac2cd236cad3d428dc80dae34ac"
+    "sha256": "55356383e4cc03a33890df75c50c5182b2bf48ca28c673c06e1d2b6bc89a9e67"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_autoschedule_service.py",
-    "sha256": "ecabdf4dbe92d1b93dd8f4311114926dc14be3a716f5266e5652c560e390b546"
+    "sha256": "33d03f76fd05a8a5e068d2abaedd00fde2a61eaf4ba8d440f9a5aa47e0d2718b"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_change_safety_guard.py",
-    "sha256": "0a7c10538ec800543d839a9e2fcbbadf99b9ab290f4d1cecaef3d7ebbd801e37"
+    "sha256": "3c44a69d8eb04db2a2088d70accbf6221f045489604afc00c88dcb859cb19326"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_change_service.py",
-    "sha256": "bd12835d97b146e165ab9c52c7ffc7a30f71b7caa4031c90fdbafe8b6dbe1498"
+    "sha256": "8cd8c52704c04201f13c03cf305029d9e0d08d4e6567e52b67266e7e7513e2d0"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_change_temporal_guard.py",
-    "sha256": "57eb04604c215f536ade5ac598c1f34d026e91b10f1598943f7c0702bafabea8"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_course_public_service.py",
-    "sha256": "56c811413f6e80dfeb19092b5d4c45c129c2a4dd6a498c1ed3d083f064e78e98"
+    "sha256": "03acbe745e0aad91668d3ba3773f583b6daf2e6f5a52c92a6bd0bd82fc2775d3"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_course_service.py",
-    "sha256": "fac4b55ef91cc3f9309c7b3ca9ccc143e6134cb375939baad3d4f9bf5fb14791"
+    "sha256": "54de9be07a9b66d74d4eb40dc20c72c0038888dce814feea51aa7949b3dceb4b"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_dashboard_readiness_final_service.py",
-    "sha256": "fe97fae4e3d266a57518dc028c2d14266ba8299a92e62cbcea8733d0412bbd9f"
+    "sha256": "24588be13f6e43218dea7fe6c9a4b0eee2a8f636522c58714fe6112d48bd06c4"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_dashboard_readiness_runtime_guard.py",
-    "sha256": "b614bf2a03773c1622989ec5b0c97dac05ecf5d1461d29cdbfe0e080c7e25942"
+    "sha256": "e86c593ea015e8aa9f0f51c111530313c14740ffe5a96eb1f04899101005d9f7"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_dashboard_readiness_service.py",
-    "sha256": "96737108ca83c031e3954227f5cafa021f72ad219a3dffecbad31055c3a2f1ee"
+    "sha256": "030a5729d17cc4cca9fa42021051a4fceb179eba7a90a4fcb16775753a3a9fa8"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_dashboard_scope_facade.py",
-    "sha256": "cfa736fd0fe19d433f3614a3b15ea3b04d22e4d976279d1543a8a47ee845d7f1"
+    "sha256": "9847c2d7bcbc09200648bdf63b8de43ecf53d883bc08bebc0a8082a47c489dc7"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_decision_trace.py",
-    "sha256": "dd66136a1dbfa559b055a9036b64aa9e3e444fec18e0fc1ada7a588e1df8ea48"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_dynamic_grade_live_authority.py",
-    "sha256": "ac13e0d59e276dd31cb2f8ae381a80414f6a3e86f770d4ce2de783d6054b4183"
+    "sha256": "9c76e27a66b250bd799c554838949486019adf8cccec205f8a774ffba8e0e3a2"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_dynamic_grade_roster_service.py",
-    "sha256": "c65d8576493e5a5ab0eff4cfe927bf061ff98f2550f05ee1bc04291653225ad1"
+    "sha256": "37e8ab70ec5e56cddd218b4f21cee86c2b26e424a2642e2ef08278b7107ef5ae"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_dynamic_grade_service.py",
-    "sha256": "c05aeaeb3a0b91f2d0ae278419853f074b73e839fc3dbc80036e6bf143659525"
+    "sha256": "f95c09edd5c18cad3a67d1a781e5c97a2e2f5f3a9dc7013e65228c5e7deaf8a7"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_active_only.py",
-    "sha256": "80a58ccec7a9ce15ed85bc9bbf433182812fb15bbdda4e7b94c3fc6096fa8d18"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_consumer_guard.py",
-    "sha256": "faa0a15abda077d9e416c4d612d73774003eac6020d14d754e922fdc1bb5b65d"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_external_consumer_guard.py",
-    "sha256": "0e7b8b08f912e8b51570ec036053134466c0cb07f0de9c35b26efec32452ef55"
+    "sha256": "2b67e9da9b71c95aba8ebced02674a495dabfd945a50269702a34210dd7e0d32"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_compat.py",
-    "sha256": "8cda20eaf8965e4a0a84bee5e1e38906ab9582f6ba2ade4b9c3e1c7bf66bf412"
+    "sha256": "afb9b6cf3a0c9cdfbdb02525dcb54d0348888917fb835bea3e75d4a722036299"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_current_term.py",
-    "sha256": "4b053cc5224b2aab5e9b12845e0d076318648376f36739176b395ea8914f16e1"
+    "sha256": "169eae1a4fdf66818315cbc5d52a80c6054734626c3d65db99d9da1303bdc155"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_failclosed.py",
-    "sha256": "63aef58f8ec2230e6ed62762d2791f822e15529ad435c2c932dbeaf09f99b3d0"
+    "sha256": "8d857ee1a053832eeaffc61574134cbe41d0ebcdbd50504a80ced3f8078b1791"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py",
-    "sha256": "8b0039293c021d4a6e47e641bbc6e2449cf5c60c61d55ac35609b192fbaabd2e"
+    "sha256": "ce327b5bbe15ed815dd2e683828c23a5aba765671b50b941c7af2707498af853"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_facade.py",
-    "sha256": "14879ed42a54137b09a2f0eb3af8afecee511f245e7fb332579823453d74ade9"
+    "sha256": "347a618a2d8d0070c9d6128a191ddc13259773ff068b143b52fccc868f0350c4"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py",
-    "sha256": "96ce2ba8cad02d66d81bbac9905c7d94022a5419254e3a9aca9d38307075d19c"
+    "sha256": "21c16c6021c3e00565b3a0defa0c2d931f2daaabc5f6d2b150ec480bc7180b6a"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_service.py",
-    "sha256": "e2ac9278d8419ea3ee0674b9ef1ac0c72c36bd80a450cc7b373c187473822c88"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_student_read_service.py",
-    "sha256": "c6affe851d9e67704c40ac9a5776fead59637b884c2f9f21389ac2398f34de1b"
+    "sha256": "34c9f700f18945533f0ac83215fe48766b8ffcf5cdac8ec1d4c393ac2353c3f3"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_evaluation_term_facade.py",
-    "sha256": "372266145ddfce8b186fac59e0e3e0d81dc1b6c840b815d283c8d6269da458c2"
+    "sha256": "6ba6eea96fdbb47b9751bde6e05e8ab8508ac5c332e5606a4b16328757791f72"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_exam_conflict_service.py",
-    "sha256": "e4e9eb3f87be985fb3c6660aeb9926f14603411d107074f9a6c247d8b29cb394"
+    "sha256": "f75cf1e314eb92681b38f9c1d9a5e266e4d2a3a8403b1873cf0eee47f74a4dde"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_exam_facade.py",
-    "sha256": "596145b77f08e4f597accf1b479c6e3796ceebc03b96ae251acd2f0da299e1f1"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_exam_incident_workbench_service.py",
-    "sha256": "130b4bc8b12fedb6ba0b44b47620893abd539e6160164261c6ac024288932071"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_exam_invigilator_scope_guard.py",
-    "sha256": "ad6a46a69c41f48096f761618cd78042d8a8be6eaf8c61c0e7f2cebfeb790b20"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_exam_print_service.py",
-    "sha256": "13313f9d97ca5890235ec57ae7714acfd8cd8f47bc0294c246f926381d6ecd83"
+    "sha256": "84ea82e539c5664a0b16d39696cf849282f0b819ef84b22b45a639629f752a9d"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_exam_public_contract.py",
-    "sha256": "2997175e0b08cf22316c132a55d1dd04350d4d858b91aa23e1d99d3bbab25621"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_exam_publish_delivery_guard.py",
-    "sha256": "aee690f5edeb796b763e4cac49a728b8a112e6caf3c941eb35b71bfec5f6c420"
+    "sha256": "5eb1661a8e5a62f6cec2d21fdecbda72fb788f8d3b196526c7a1e45d6c08efeb"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_exam_roster_identity_facade.py",
-    "sha256": "69cb1144e9423cab6ca99ad76e32f78c094b6297effdfb0b2eee5fcd304d2a63"
+    "sha256": "b46d0dbd48fc4169cec67a1bff8c4390b6bb8fdf821334a2eabb135b62771ab2"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_exam_service.py",
-    "sha256": "9c4c05cdc2661ed6a022d4b0b461931eafda9b57e8cd3fc22046ae9c007b7afa"
+    "sha256": "fe622f6bc5e813dd50a4884c83350eeac3ec8666c872ce89ff13b4c84184a05b"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_exam_term_facade.py",
-    "sha256": "f4fd3dbad3a9986830607771a794f7c08bcf073483b40bc9aedaad94e97e4ff5"
+    "sha256": "c28fc3f13182045e2d63b2ee207f68613ad31957b65845a81aabef99b2699f5b"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_exemption_evidence_service.py",
-    "sha256": "42e847ccee24921afb452bb2cc0e3a6939dc07e6eab81a631c6ea8a36ab76bad"
+    "sha256": "009bd498935de82d1ecfa1a372ad60f9c54698dcc8ff6149ebc7ec98829d5400"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_fact_reconciliation_service.py",
-    "sha256": "d0caa91a0f5fe26ec737a3e370f25a161330691998cc6f3d1548fb8c9768893f"
+    "sha256": "35ae4faa6243afe7e103a26685fa204761ea0229b38ea2c05ebf0e9f08e68c51"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_gpa_policy_service.py",
-    "sha256": "df35b3bfad065203e3feed8b599c9f402dc206ebf4cf9ef6f6893461788c50d1"
+    "sha256": "b140d14c1ef8918e261b628bdad7f1795ab3a1dd7aa6770a513d7114e503649d"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_audit_scope_guard.py",
-    "sha256": "b12593efc10650ef3a9cabc4d6ada89f05f5543384b709aec7b1b0f061b82db8"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_change_live_authority.py",
-    "sha256": "b08815119696a55d7f4e0dd488b72161811dd9dab770bbfe7a67b4fd04bfd6c2"
+    "sha256": "3616a86c7330cd71ff60e3f47c55a54346b0bda7ef1c37556567ede0b85c3502"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py",
-    "sha256": "65741324d21781f8857b57efc7f4e9a4b7a0a14082a9c2aec63031e499e7a874"
+    "sha256": "5dcde1dab0f02718cd7143c85f2bd4e267eeba3d2022f8569f157a9967a54b8c"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_correction_command.py",
-    "sha256": "e02d91f958a77c2ae0cd0d7173b1e4d9e16ff91c54643f825ee3c5ca3cd88319"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_scheduler_service.py",
-    "sha256": "61a3e01b2468a32cde1307c808112558fe31491d97f599186e4e63d19ac16e18"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py",
-    "sha256": "16e716901f324f6fc0ec9375a5b2eccf4babf481b9ec0fad16c089b6fe014176"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_execution_service.py",
-    "sha256": "92b6fcfe94a316e0effeae28de0d2cd436fd03945376cfd61b09ebb13891e055"
+    "sha256": "1feae4de66955792d1c5ce42b1c3d49b08240540ba19fa5e8f97f36061e555b4"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_facade.py",
-    "sha256": "f8ad2b50f65c9f641a284213f3106c29e9022e2965195e28b61f8cf9627667cb"
+    "sha256": "dcacf108c4e3762c1883658e175238168cb664f3af2443568eb0ed725c2ac318"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_identity_facade.py",
-    "sha256": "b65bdab5c480c0a463f65a97d10ac7ee83e7f530f69b42f5442ab453b99127ea"
+    "sha256": "23afb48b625429e4907baafdaa23fefa5606dc4ac8dbe90845d65123f056d84b"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_identity_service.py",
-    "sha256": "13bedfdc07c926412e61b68b15c8c3eb82c72ff30f7bd85086352dda76661b68"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py",
-    "sha256": "1b35c94cd0694692def6da0b1d6e6ca916148f2c0115e0d920282c6b173c4832"
+    "sha256": "55b0815425d3fa18f4b2cb1eef6df946084d8898fe7caa5e6312b02b87066962"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_policy_facade.py",
-    "sha256": "d4ee45280ecd1505e79fa68af43d1231322c1ac6edc4698d23ef8d8e1e2bb2fa"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_recheck_read_guard.py",
-    "sha256": "03bfa8b259ee72bf577d4be804a0ab03470d3beda78e1282f74446a82704d92f"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_recheck_read_service.py",
-    "sha256": "e637ea2e2135d8b65903f6a3ed3eceefcab114c3274f8c701c1bdca297352930"
+    "sha256": "fb5fc1a62087aafecaa49a1beb4cba63e0eb5719ecbfb3c876cdb43be08d41f0"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_recheck_service.py",
-    "sha256": "81396f2d8d647c0664545b542865c2005782ae803b289364cb2763dbe3a4b141"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_recognition_read_guard.py",
-    "sha256": "96eee458bbac6f5384305371ce13b651950fb385800bd6de5953c81372e21c2f"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py",
-    "sha256": "42943d1b9c65fc60dbf07655601431a5abb1389bca715d7cfcac9bf198a4e2e7"
+    "sha256": "6c6ec31a867fc2fb0083d82ac2e326fb373f416edcaa4fcab2d57b354013e24e"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_roster_facade.py",
-    "sha256": "58b70c5b2b8778f3c68c5d6bd5c3705e91145c978fc0432429f8684606858f8b"
+    "sha256": "583b56bd235c31abde67b416e61903130b24aa6aee00f76d2b84f51c5299d6ba"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_roster_identity_guard.py",
-    "sha256": "8e77cb1d0f342fadd7ad82d11f39d4d4e474bc5e4c86e5172a115971edfb71fe"
+    "sha256": "d667ba34d51e7680db31ab927dc636f438f0c30c2f9c30e29df0712f347c727f"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_service.py",
-    "sha256": "a226c1661e8269ce6a9259e280d5cee9c01fa8c8a7108a64cc992502cc2cc28e"
+    "sha256": "829eb78ef03d3b72a4f97273faf3651008e0fc8ca445fc687a6718fbea6d2766"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_task_assignee_guard.py",
-    "sha256": "54d258d58035ccddfdc486364ae45c3908c404df81a5ae64f1d7870dc7aeddd1"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py",
-    "sha256": "e9f79b4132abf223dade2c322013280de50813bd5813cc2e314c45c6d3fd7fa6"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_teacher_relation_guard.py",
-    "sha256": "7eb2717998d32d0632282992057c6facb2892ceba3581744183c3396620a4be7"
+    "sha256": "c6786e3a88befa5fd38b7a8adf50b19d874c86f2eb980f3ed04207dfbb4af6a8"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_term_facade.py",
-    "sha256": "d76e7ccdee1f5c73a33682a3486c9aef34558b88def4006e906c7a4e5341e154"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_todo_teacher_relation_guard.py",
-    "sha256": "b5dd3e0b887f633542c1de84a66574a371ec7af43f92ef312902dc4bd6ac1a69"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py",
-    "sha256": "b927b4165446b08a58a7a879465ead962996008e98563b7be1a36384927c81aa"
+    "sha256": "34c6494393612209021825d7b008a049337fc9b6e305fb9dac3da4216efcec17"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_graduation_decision_trace.py",
-    "sha256": "8db62d065fbbae978df730317992e3b04bd8b76540ebaa11fd869381c25c0dc8"
+    "sha256": "74d97627b8729f63c3462791c0fd3534df970498b6a6e484af3510bade872035"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_graduation_evidence_facade.py",
-    "sha256": "03f8a03e2030ff6291836e8523990aa80b1dbe1d5d172ea7fc3357ba8f77a132"
+    "sha256": "bf758c00b0f21a979879fb19b3376394a3ff31859640a6c18947456174428bd0"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_graduation_immutable_service.py",
-    "sha256": "1467f932eeb6b426adfef6ffdd1b3b65fc2d8e4055ac172cf265052700e6f052"
+    "sha256": "6e779cfbc24ef1507724ea2bca5da99c716128c1dd57a4ea37be444089320007"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_graduation_service.py",
-    "sha256": "2920fcdc0474f079b185ba78fba30c07f5483064d1467fb296de2d6f6ef26cc5"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_graduation_stats_scale_guard.py",
-    "sha256": "b802d307649ecfac0269e13eba3478d99bdc9b6c8bf359b55d8b7262c16316ef"
+    "sha256": "345baf7a13cc31c4580544d69d1edb57b6ab3867a045bc55cd6448f3295df731"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_graduation_truth_guard.py",
-    "sha256": "5c6765d2d1a6c352d0371435f9dd553109d75ddba2a7cd82b4c6980406ac5233"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_invigilation_workbench_service.py",
-    "sha256": "e8cf3905f2cbe9d757184914bffc37dda471186804044ef194c32b597799c264"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_legacy_grade_write_guard.py",
-    "sha256": "220107c1116ad3b04d032bb2a8546d3ea5f83cb6bc8bf1683b1f8733dcca857a"
+    "sha256": "9ca0cec64d2c8afdf95988d5b7c7098007cef0b82f6b3b54aa11bf4afda49099"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_level_exam_identity_guard.py",
-    "sha256": "7d54f7a5246dd1fea42965661f6b462b02149c3fe5b954a56e585c8572e324e6"
+    "sha256": "95a23907c7d94f5ca49786140b2a49b4c9d14baeec0d2c33d8ce04ad20a11276"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_level_exam_service.py",
-    "sha256": "d2e5716eea02322fb19a15c6be506eb6d62eb156bc2d412bf405990756970851"
+    "sha256": "73734954ef7c07d8a22e36f79156b6afe3fe8869cb8e29fa1d458c92e1d40225"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_major_split_identity_guard.py",
-    "sha256": "ad13f5a59a9ed64d7df90ebea547ee63d76364aefe714fd14198bb306aff53af"
+    "sha256": "9f56c58e5ec549fd34294eaa1f272e95e3f2a19d4c2c7687c6173cd1087a10c5"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_major_split_public_service.py",
-    "sha256": "b43c57a239b78d13846f2e866ac9fd3e1c8148a5079aca9ddaf83a92f4d5df7d"
+    "sha256": "79746132cf5f7b510cee78747175ae35d755e17c8711efa105187cc5d5a67bf7"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_major_split_service.py",
-    "sha256": "82d9ee884d28b1da8697a4080f7264cd9748bf917148509ada11fea1c7c0abe3"
+    "sha256": "49273000d8ca1e8ec6cc5b5608ea78d397e3d2de6dbb896149780b559c156459"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_makeup_core_service.py",
-    "sha256": "addae692793a9fdcf1d36eccb2b156b6267f07c234327fec7b459a7b88601262"
+    "sha256": "f1c0f60c0b8ada08194a6608c41c69076db9fa55129a0419d6befebd440b4b01"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_makeup_course_identity_facade.py",
-    "sha256": "f935a45d73f41fbd7775abfc82966b50718b2b6e0972097e89f29029320e6ac6"
+    "sha256": "98b76cc6a1003c3e1d254e79d76309a13a9b8eb6dde3d5caede40c5659c956bd"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_makeup_course_identity_guard.py",
-    "sha256": "8f8ecb0b2b878145a102f05dd31fb9de13ecf4a72fe9ab33faa143c78e1076ed"
+    "sha256": "5d7e4245d3e89198d0d641cd0b7a9da634acd4601a15ead30a98e1d5f8371844"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_makeup_facade.py",
-    "sha256": "174e1b10acd2aa326cbffb82724e7fb1c6eefd07dc2556b7926aa6eb39d41062"
+    "sha256": "bfc0a33b19692f50bcdf68b64d796cc0c6f7257a21675ad6335063568f68a8d9"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_makeup_grade_identity_facade.py",
-    "sha256": "c70826dba5cff6cd4a056c270d49ab3d909fad503f5bf8f1dbad730eefc0e998"
+    "sha256": "e89cc203b11ae2670594100ad33c0513ceb801181f223d3c09d77a846b461fa7"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_makeup_identity_facade.py",
-    "sha256": "508739f6fef8d4b61bfa1f05de2e0d74935f0edfbecf562dee2765ab67cff989"
+    "sha256": "c238f38d16b664e9724bf97b04b7c118b794ebad5335bff6c8b3701295bb9569"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_makeup_service.py",
-    "sha256": "15da0a187014604ac8f6425dad9afc1580e12e82f7668e96238b0c11aaf0eeb7"
+    "sha256": "4b4c793378f68d92559cac9c40733a2509fd878376c35357ba6dfd7169d4ef40"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_makeup_term_facade.py",
-    "sha256": "5e3661f8628db712769f48b6a2d62a13fcec28a24f76bd311caeed8e9ffea760"
+    "sha256": "0ccfd04d2c384db4acaed05329ce4434b5ab909a8e2ba6a7199c9afb9ae4b3ac"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_object_scope_guard.py",
-    "sha256": "3c1ec8d067ee8413e2b62f1dd1cda651e1eca9637821cbda610e28d9d9a9f11c"
+    "sha256": "386da511bac3ff9467e9f7a74311e1a9d5c3973e01ca27bfcec364e5598c9923"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_org_fact_facade.py",
-    "sha256": "9f4414f3f98726a2cc34b0f013b628b7a369e5a3851b59f173b23211c6bc0e92"
+    "sha256": "7d2c9a8f169fb0271d46abba641bb37c914d1f60dbf7e4cd254299ad157e05f4"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_org_service.py",
-    "sha256": "b98bf349254e634637b1e95440f872b8975591d36424600596879b1c286dc67c"
+    "sha256": "76870718df89f38e305eae1b2388cb0966704881df813a2af7bc7f3a87f3702a"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_post_archive_fact_service.py",
-    "sha256": "a0b8a8c2596ec81ab31f03a91257ab04a4b7204cfaad6032cf59b0af2008e7eb"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_production_audit_guard.py",
-    "sha256": "e474e39daf64ef40cde85c636406f20e8abeb12ac68bf325b906585522f93992"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_activation_service.py",
-    "sha256": "912474cd3f72e1e9959f1caac7a8436dd88416f11614f7c4f8b554d0a97c18d5"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_authority_service.py",
-    "sha256": "69372129cba384310f1ce831de07e414ecbfa52ed7b8626f375207bb797f7db6"
+    "sha256": "76cd369adc14412de4b3d3078f0b9cb38b26328b407a02850cf0a551ac6d532c"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_binding_quality_service.py",
-    "sha256": "39b3cd307e4ce9f5f5ff280b87ce0032a92afeee7655a34c43af75353cb2dacd"
+    "sha256": "2d9d30c2cb3a10d68ebca735642e469f6e2ee3ca8eb578c7dda09ca36f41d287"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_core_service.py",
-    "sha256": "f43ccfcd947c1b3e3196aa2694fda7fb30220051c6ecb7c97b7e28492b0b5c63"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_course_formation_provenance_inventory_service.py",
-    "sha256": "426139da62bd6272b45346cc8f97e246ef89a2a429cfbe96517e715e4a3642b2"
+    "sha256": "ab9adf0660ae789cef0831752b92b64c43e5eafc19f2022f958b3b8dc4e89048"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_governance_service.py",
-    "sha256": "d5b9a1d28e7d1c117206513dbbffec8ca14577dab9fd0dfb5776ba200d340806"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_governance_summary_service.py",
-    "sha256": "fef441c65650f82d9407b54def170f51e0bc8858669a4c40d7ee777ec52fd994"
+    "sha256": "1806cb04f14c81fb7d8210288db0f8d70da570452a172b4059a83bf7ecfd6d0a"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_opening_closure_service.py",
-    "sha256": "4fea1f2b0ed1f0bc9f5b5966abffc09c85db2df5b5637c9e98fbb610fc70980c"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_opening_projection_service.py",
-    "sha256": "0aaeed2b5cbb6c763de4138930e10e18b0fb840d65fda0a07b7071c114887e13"
+    "sha256": "2c05c467f6035b96e6aa0a7ea5442ff424eb440247c3a45adbba04540264d479"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_quality_complete_service.py",
-    "sha256": "7c7317d01e1c8663de2ab16f368046cbe3a4abc685103c2e437e79354c1a4b88"
+    "sha256": "16fed3b87f24cc57f5bb8a96a7c9a175c9ba7d5ddcf5f3e42dca0a58f2336a71"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_quality_facade.py",
-    "sha256": "ba3605fa87eede08aa4f473b676331e065e71f89dc0af78475cf919f86452c4b"
+    "sha256": "c819c1b0f15d1a6581e09ffc8b912500c1783264c244fa3779ea02798fd5397c"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_quality_final_service.py",
-    "sha256": "f80b4ea5dc74a1da63f7159f15f92ad875ca8c7bc8ef6e3536b664060baa7ff2"
+    "sha256": "c63612f22f054193402f72ccd9a1b45e8d8d6390b48ed454ae6c8bf4de534ffd"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_quality_security_service.py",
-    "sha256": "0b0d4d7042712dfc88b5d7e05485a87accd4a19a3a7b0da1a2d4f5c5cd189be0"
+    "sha256": "ec42a4a5173987329985e01e67268e521abd5a54bcab6f4ba3bf665340b966df"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_quality_service.py",
-    "sha256": "c1734482b2cdecb6bceecd415f1832e93feb7ba8e4bfff0a978ed4b9c8ba3c17"
+    "sha256": "c2ed1db81afff3ffc4e9081b556d2ba302a481135c037fb437a29940e73ff895"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_quality_ui_service.py",
-    "sha256": "6dd5ac195748e1ff7e745f3c915df3839c4c67195c4a683cedd0e65a7acb054a"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_series_inventory.py",
-    "sha256": "afabb813faa405223c72b597498405a58ac328d69901627aa620166a0fddae11"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_series_inventory_service.py",
-    "sha256": "db6d625c7ad1577abaf8d85e06ee4b4abc583d0459b6d7f2497da3883a89bae7"
+    "sha256": "d019cd7184d84c1871fdeba73d5eb2ba60f0d8a46a4d2674896d98d934611282"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_service.py",
-    "sha256": "627502394f7d1f34b5a554311803b56d989a7bf34cdea049777ea0c803ad217e"
+    "sha256": "f40344188117d4ae061ae78c28ebcfc62669dfa7d4a8192c4cb9a7c1f282999c"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_program_transition_service.py",
-    "sha256": "fc40172bf8e058b3229efa645a4068e631d9b98438b62185c8ef572de6e0c5c1"
+    "sha256": "f02d99dea4a7f2901dd066bc7eee59cde414cfbcf7ab900b1aa6affce87f6b74"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_quality_service.py",
-    "sha256": "0f6d6f0543f049224c4c2919b03c13af3148b79dcc2e9cecc9a3c4629ba0be95"
+    "sha256": "08b035ba5d0f9c0771543a211a3fe80086faad0c413edca250444c6367636e1e"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_recognition_identity_guard.py",
-    "sha256": "619ce46c461337fbc76b3f0bae67557dcc8f50617d1f88b217e7273b97ca0c93"
+    "sha256": "36adc65de65ed132737986d23815c14c827e0ce6e4c418fcd9750ab5277b350a"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_recognition_public_service.py",
-    "sha256": "da2b4762a27886d7da61c03baea8dfb4997d59973bf147d952e8bf3935702fc0"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_recognition_read_service.py",
-    "sha256": "db28ad4c937bfd6c32a86b23f848677618606b57745735e17a025166f96f5687"
+    "sha256": "b16ac35e03029b1b7866f075d05a58ac0b8eac32aca2e2a0b904f43a1c5a1bc9"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_recognition_service.py",
-    "sha256": "3269c0bc4a44d590aaf9099dc524c7511da39bef10abc2aaf0b1fecbe0fe7f9c"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_registration_read_guard.py",
-    "sha256": "eec753739d79a7545c7d2cbb903814bd73f6aef6ebd333a95bb576b23b9a4db2"
+    "sha256": "6a5ebe7dbd8cfce213aeed524f098e8712fa297ec9c792d12908138d4edcdb58"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_resource_service.py",
-    "sha256": "d7a5b486eeec0482ff0f749eb0ef081922f016d50f54cfc84b158f34ed311f2c"
+    "sha256": "06c1756e53b057bc713b9ee25a2ff91ea08b7b45f7a0984d5d4525007a70b987"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_roster_consumer_service.py",
-    "sha256": "7e61af561626c4f3f1d3c8458174b7b293edba311eb73196a1533633711c0f31"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_roster_correction_read_guard.py",
-    "sha256": "e4b9f396905d0790dd8233ff0302cd367f7019e4eb90593cefcbbf06d68282c0"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_roster_export_guard.py",
-    "sha256": "960e49a7a7dc07b3e6b4419dccfa5c73825c9dfd1651f87fcfe1ffd3d2649eb5"
+    "sha256": "d38592265659e128db7da6d6ce1840612728b67a515e779f1fe22d83f35dbaa7"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_change_service.py",
-    "sha256": "c925b513c3bedcd3cbf17c86c1b74be1456ef17b4a848a7bab0b86927295dcdb"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_conflict_index.py",
-    "sha256": "20dd982f70653fa5afca9daaed13f4cc21083198a0f1a1ff7a5b64a0bb95804e"
+    "sha256": "04fab11a6fdff8a625e01885485ab81731bd55d778582ec6c90a79c81e4c5324"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_facade.py",
-    "sha256": "fa75b4b94b84b995a3a950ac0905435b9a9aecd914c508c8e64187ac714a11e0"
+    "sha256": "2980be36fa10924f0fa806c1a272d1f348fab92de496517649d219fd355b8f94"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_final_service.py",
-    "sha256": "03efcdecba75ec18e7f9d4213670439bd3e4cc9162b480c7318f0b335461a558"
+    "sha256": "cb2cf74b4d6f1c3f1494346548e845d11b007b6731ec9f276e6598bb29fc1a6b"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_gate_service.py",
-    "sha256": "941fb26fe23a9d650162873cc560ad7b883bfdc9c4f38e61e0d369c8c2d4c36e"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_import_preload.py",
-    "sha256": "8cb9eade2b34da4911cbbaf1be5c5501c6fe63b3594e573801c4aabce0c1c188"
+    "sha256": "06ceaa027d40dd5670a9ecbbc698e0332419503e1e2b81170980d6b591c91472"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_policy.py",
-    "sha256": "8e71cff6220be7f78c58e97f6149c067f162e14e43b2ab87c86f1f18ff5b1f8b"
+    "sha256": "466aa3c1b8d8cf81edb629ca8dd44d90b617b46758e8848112a48a8f88490fb6"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_service.py",
-    "sha256": "0aa2b7e4847d824c3caa7735bcfb73e2ab5d44f8ea42974c871c05f949b3f834"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_teacher_relation_guard.py",
-    "sha256": "6cc43d3652ef3610d5ff0a775e0985137065c22a9a9c0337784920549d1ff875"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_teacher_snapshot_guard.py",
-    "sha256": "cd7a1bf963207eacda356575223c795b99de78a0b66466a0604544aa056ffdb1"
+    "sha256": "23021a70d7e19e85c9447df2af5f45f0659cc4ac538f586ba0171df38dd3f5ac"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_truth_service.py",
-    "sha256": "bc43648596a0db8b30e16da6222b8f1b9dfdf44e3fa3b51829f24cf511394153"
+    "sha256": "5e8bdbb6a2adb2a81640804cbc6be0b73da4d0606383db8386fb8f37d34e7a6c"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_scheduling_final_service.py",
-    "sha256": "2377994080f6c38e0d8bac53f9d02c6cd55838c9b8bebc98a768c097424950f7"
+    "sha256": "84beec5142c4bb78dde05195299854ffeac2c55f71f969c3aa5688724bec485c"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_scheduling_public_service.py",
-    "sha256": "1ebbac73b70e811666b93de88f134110ec9b41c69b6364e9c8be8e5027ac39e3"
+    "sha256": "6a6f000a1109a2f193b676826cd86c0a2691e1061df3c3761e5aad57ed198558"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_scheduling_rule_final_facade.py",
-    "sha256": "775f5ea1694fd47dda54cf7d10a2120d3cc6b4196dd5152a3fbdbecd60ed5908"
+    "sha256": "5c96e19320472e2ff2e976116cb78af3158c1070da16b3ee88658f6986fdebd6"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_scheduling_rule_policy.py",
-    "sha256": "d30e675cfc8170d5402966aa1a689952ed4e3571685e70d933ca51e68fb8a1c0"
+    "sha256": "82928553be35304d0fd927b64897f6389187cd2520325fc9933829e53bbd327b"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_scheduling_rule_transport.py",
-    "sha256": "bfb7ddb8a2d526a4d5e8c0e3c6089b6e702d253d019c934d0c769079ebd241d2"
+    "sha256": "11a03b5f39ceeb2d818f4d45842bcdbc77740f2795119e7098dc39358cf2c2fe"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_scheduling_service.py",
-    "sha256": "238462d12d02f0e25a59eb08ce1176fc646768754e9e6dd8f01766b176721bdf"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_course_confirm_service.py",
-    "sha256": "4d8584d481c11ed836a497ef08d7174795d0a1bcc1eb5095a4ec321bc1cbdadb"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_course_preflight_service.py",
-    "sha256": "7a87065a520ea021fd048c4eb95fd0f8582600c4327d18d8ded000331cb3dcef"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_course_write_policy.py",
-    "sha256": "85b695d1c1d4d1d2f3df92c1998c564e893ec52a845e677d0f5081b366b63eaa"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_file_exchange_spec.py",
-    "sha256": "9b40788e86006c8f594863dad524ce23155545fb4c026ead7f8b39ad1f381657"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_import_adapter.py",
-    "sha256": "59d15cbc927dcb50f638a8919fc408a265e690491a9afda1e728d2b3da403e60"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_import_contract.py",
-    "sha256": "dbb7eb2263e45521b21f91fee96ddef218fbb3e8961ede099eef56d2d3468715"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_import_preflight.py",
-    "sha256": "16fd176ed587e4dddb878f2293a73b4845e791a3ba05d4cf0d33cd579594087e"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_baseline_migration_policy.py",
-    "sha256": "c0b4bc2351518bba08837b10b8135da7aa08cbb8e7910e3b5ea98cb1c960ccff"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_binding_confirm_service.py",
-    "sha256": "7a32ffcdb599ce83bb64f7d1075a5a0b60cf3ccd11843577b9b9fb7941e77ba0"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_binding_policy.py",
-    "sha256": "7dced9a64ab8a0d1d9707ec4eb55b6a1335ca43b83d14792e1989ae3ec77c5c2"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_binding_write_plan.py",
-    "sha256": "0a10c7c795e3c2f90964dcc1bfb6777e8fadbd66b0ed9c4fbf237c380e2fcfb9"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_authority_service.py",
-    "sha256": "da0607d835f6851518c137530810629d1a1ceb8ca17d88d1f818eb25d1647fe8"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_confirm_service.py",
-    "sha256": "5daa110477a49a9c12f5efbed445ff0fcfda981762a351028b3bb0945de46884"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_execution_gate.py",
-    "sha256": "1c61c7dfc3fea3afe3df9f539202d5ce7818dfd6973864c1a1e7c66d14211620"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_quality_preflight.py",
-    "sha256": "38adfe208d700be065476f7d8bf7fbc1769e46b554999cc6ef758f51a7cfaa0e"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_reconciliation.py",
-    "sha256": "8443062303d98b6cd3586134239deff93fa137ebbec0391cc35e1f62549b8f85"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_write_plan.py",
-    "sha256": "0ad95b52967a10863ec72c798b7e4e1008612a4ae0bbfd6e0e408c0f7f1662c6"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_file_exchange_spec.py",
-    "sha256": "9480afe9ca177c10e44735e92e47f5356a6096d7737e6961568b91892c5e65e4"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_import_adapter.py",
-    "sha256": "66b2ac734fa316761fab5bcfaab46426d6edc90b5bc7b859a33b8fb5823b7acd"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_import_preflight.py",
-    "sha256": "132fdf8e42f5476d5573a7a404e4334c273552119b261ee08ed7b4e05e53caaa"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_import_receipt.py",
-    "sha256": "e2c19c3c1d26cd7b79bd1c660f6b8208ff6e598730e5da657f8bba35dd77d118"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_post_confirm_pipeline.py",
-    "sha256": "36c8de48aae95df9cbf14dfd95fa1dfea3afe36c420c1958f05510a68f2b167f"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_post_confirm_reconciliation.py",
-    "sha256": "abf4e0e42a86d34955280e832611861d7a6be7cd17dc4c3a890743b5e6ee25aa"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_post_confirm_response_guard.py",
-    "sha256": "925066baa11060aa669e9c525be517f652af81437b38f3c302a5ba0e4c9fc656"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preflight_pipeline.py",
-    "sha256": "ccb60bdd5b742d5ba82f697886ca35fc13b26ecf5fd09bc3cfef9cd1114ff591"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_adapter.py",
-    "sha256": "4d61d1241c12b5723d9ca7b99b28d10ace92e79a60e26264e95dd5f483e1fc08"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_service.py",
-    "sha256": "c04bbc7d2e624faf65d4ccd3665a2a816be360845c42a48d94fb1b99067a92d6"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_reference_preflight.py",
-    "sha256": "fa889de56b1c6073247f10cf19b2ce4c09bd310c46ec6e7b89f3374bb1268e57"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_series_continuity_guard.py",
-    "sha256": "e8a09d7395bf3895fe3a927791ef6374bec8ea971c8356e289783fdd0744337a"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_snapshot_request_plan.py",
-    "sha256": "c02c087caae8940fc09624befb7072b0fb9a8d3c72770982b858ff46d852e2ae"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_snapshot_response_guard.py",
-    "sha256": "ba01e51baf6df79970390b53162277daa354131d3cd032ca283f216cd2c7d89c"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_workbook_adapter.py",
-    "sha256": "8bf74cb150c41284529c54c2c1463cb21955d1b59e78c09b876cbf1ffd75802e"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_shared_schema_gate.py",
-    "sha256": "40c2326a9cf1d2e5b6a3c7cee6edeee1f145b9392cfc793f11b0dc186c2dac89"
+    "sha256": "5a8d8cde397cd8183cfbb10d0c68e3f5f49d97cce34c28d3ac7444130b7242b7"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_core_service.py",
-    "sha256": "4704baa421517dc938a56e99932684d8d5e81e4dfb90307a0c7ce4bcc633f203"
+    "sha256": "71ffc86021e7a1c7b70dce24977fd5d05750a995b41dc7bbe717f766e9839b94"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_decision_trace.py",
-    "sha256": "ffce352281b466f56c0c994308248d5d5166e59ec71252d20de0a7e4f6b78346"
+    "sha256": "295ada2c4c06048c86d0cd0a7ccef40bcb98b42671e0f6186587f64c87052972"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_facade.py",
-    "sha256": "890a60113a8a69994c236dc08ba80ff1f0cb90186502c9fde505106f46219f3b"
+    "sha256": "619263d23fab9bd6b154526622cb4c5b4942def44a86a407a39ba452b5dccf22"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py",
-    "sha256": "afe028831b15e9ad91f2bc567e7b640993115d01717020376f7ebe61ba87b0f0"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_read_service.py",
-    "sha256": "87fc5388a2366c3fa5df4f3762a9152fe233b894a581799ed72b89f8d9c7c7f0"
+    "sha256": "e7b1b75d0aecdbea10e4b5e6d358edeb5f3f5c245983c85179314b4acfaf44ba"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_roster_migration_facade.py",
-    "sha256": "38a81c795ed84aa259ebbba23ee393a69412cdc3bb8790538d7b9bb9717dc58f"
+    "sha256": "9330e17140705504700be75319ed1aaed997e403e4851d1f05fbe908999e0c84"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_roster_projection_service.py",
-    "sha256": "88e4aa9c858492603196793974c27a9b6fe0e015c077e3eda1ae9f78a594ab69"
+    "sha256": "97e4dbd1869754aa05ecff94e32685d4ec2e7a612e62a53766654d575a16cec2"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_round_core_service.py",
-    "sha256": "8c6958272f75a30e74f29afe6635b575a78f4642917351346764aad4793e5958"
+    "sha256": "398bfc628ed05fa8bc7282a28e52638200d22406299e2dd4ab2723fe0f1284c1"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_round_facade.py",
-    "sha256": "f0ed6aa11dce18796b5b44f552db55d610fa81e6a15be77b96564c99420ce163"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_round_read_guard.py",
-    "sha256": "9a5ea9725aacaf82ab145142a190c7a70efbe0d74233263a5f4de220afe1c155"
+    "sha256": "9fb6dd91c94e0fec3b6ef274d5a06df5dddedb326ece36bc89d4ef9893d92182"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_round_service.py",
-    "sha256": "9ceae9c57b66e1c4f3646aa73a22f4ca0a1b99e9f6fd23ec5783e00d85cb9c8c"
+    "sha256": "34e85e7fbbccdf4d731fcd3d14a62a8604741b505e2d113fcce9a6ac16bbb00e"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py",
-    "sha256": "8abf18fea123fe6e5c038f1ea0a7bab0c44a87a4591969143c689a2e691cee3b"
+    "sha256": "b92639bc603185e8964cb7b666c6defe3b7eebb022be3d29ad1ea3d362995027"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_selection_student_guard.py",
-    "sha256": "03994e49194f9afda64074ed4789141115fda58cb934cc53ba1650724a71acd1"
+    "sha256": "9083e208c0be79018f08f502e2bb41901153f45df332c3135a4c7cda697d9022"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_semester_pilot_service.py",
-    "sha256": "ab4061da986c01f04da3d913e8cbb644ec7ee20e13cab2b6daf0b32712d66aba"
+    "sha256": "5d0cc0dd126e8216c2dc23560cbf4369699b1c1b01fe367bbeca35fe57a3b899"
   },
   {
     "surface": "backend",
@@ -1317,32 +897,17 @@
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_stats_contract_facade.py",
-    "sha256": "dcada65327817037aa3f8d6621cb9be2e3388217fec166bb4d5d49ec446753d1"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_stats_detail_scale_guard.py",
-    "sha256": "f03fba8d2f3f15feb90600c7600382d767f704fbb097a30be0c8f9ad6024f8d5"
+    "sha256": "068e59e165af95a9f18fc0c12e0be67ab502939632da4e0fbcfbdad2cfd1e795"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_stats_facade.py",
-    "sha256": "03111cb58abc570b3fa00a2ef00d36ca3b1529580581631f879c756f43a7fa00"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_stats_privacy_guard.py",
-    "sha256": "9a9af9025a17ee5c4451e8e7fe0a0a94c062fab280a47c40c3f41c9cfc0fcb50"
+    "sha256": "d04bcc1ae776d69b68934040fd487f09777143859f19b92528cd860b7aba1eb6"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_stats_public_service.py",
-    "sha256": "483848188e14cf2809256849a0c39b9f69027508bcafa1dbc2e6c610522c85eb"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_stats_scale_guard.py",
-    "sha256": "575ef6a83aa5fed76b9e895b487eaf9ffcef61753acad5732182b75d6deb1154"
+    "sha256": "6f193f94baac54677d6926dd480f5c14b7c4c9dbf1b3a493a1c51ce970beef0c"
   },
   {
     "surface": "backend",
@@ -1352,482 +917,397 @@
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_stats_snapshot_service.py",
-    "sha256": "cda45a70f860ed4691eef25fce05ae35702c39fae52519018d4532de4c51d460"
+    "sha256": "daefc838f5482ba12efffc4aea602b3485a5c0a9c561c6deffbd1752be5431a6"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_status_service.py",
-    "sha256": "7bae569ee65cbf98b6e3ba33b2bd0b51ff52f720d05c1a39114819ea9c1e8c96"
+    "sha256": "86b5c0eb8855f135e2e1615f525138287211f320b8504471f32a3180da65e86e"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_student_fact_service.py",
-    "sha256": "730457f40aa2f6d76f8d6853e5051478cdea2121a9031dd0f309b98844c86e59"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_task_batch_inventory_service.py",
-    "sha256": "dbc47bed55a0f214769401bd33298c726fec3700513594816ec6af7b99bd7d0e"
+    "sha256": "6854e11487062a16c26cc249170612f05d86bd07860f8649f2ddacaac634a11a"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_task_core_service.py",
-    "sha256": "42ede81d168336f5b3b9ebbcb34d134f87109dc3c0ac16359d36385b64f60085"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_task_formation_inventory_service.py",
-    "sha256": "3a2b00e41ad8cca91c318d5ba10ed45d2c8b0a5f7da6515fe3f169d64193991c"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_task_formation_policy.py",
-    "sha256": "e0e4d69289e03a513785a644f0b28cda59e6071313c5fd4ab125ccdeb1d7e30c"
+    "sha256": "21819f184829676a4a34adbbd975b3dd3c967d784cc5e897eee3173f65664a60"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_task_generation_service.py",
-    "sha256": "43b1ab7ba333b8a7adda2249314b0576a2eda1926816bffbad06c1a3888d70dd"
+    "sha256": "ca0442499a9cb732968ccdd13ceed309a875ba6bd347ccae0c393c54b696e20d"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_task_service.py",
-    "sha256": "98e94dc5499453b1a04e09f1aa3ca66f35437ece0f0229595d9fed442a8747d5"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py",
-    "sha256": "692c4510c94b0955abb72910d846af154d1929f2a2951df0290f74fd4e7f1df5"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_execution_state_service.py",
-    "sha256": "27111cff2f419d4289c366e8023cdcea179bc9c899e00a41bf8218e124f69464"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_grade_todo_guard.py",
-    "sha256": "cd3cf83268dbebd0aeaacead9cb7e7948c6c55f104755eb24257d20b47b7542c"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_service.py",
-    "sha256": "8305fe4bfde6157f7834142c47a8d3d381da0f6f405f53d39cf9900c0d6c594a"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py",
-    "sha256": "6fb67c3ea05e93850b3b8ce77bca20c8a6dd1f582058c3d49b8f6be6157d9548"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_active_guard.py",
-    "sha256": "33c5dca27db513023a00820a8ce5f0290677ad30ae94861a02f3319c28abb673"
+    "sha256": "8bc64235030abdd061931fd3087bdd9033c054462353778dc09bc2f603e1130b"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_admin_service.py",
-    "sha256": "438be5b85f8c30e6bd90ae5e174c100cdefdd6e2fbd695e8d9ed0fa9cdaa18f0"
+    "sha256": "ebe8ceb5acbbae06246a7fac8646495e7e59c8ad013be89e5248d575da9bfa36"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_change_final_service.py",
-    "sha256": "f8c75e78c6995e27365c978e8749298e051ba267ee571432e0b9212b24b0c973"
+    "sha256": "b1967d0d407401a7cf5d3832ef86f4d49e22dc03adbc8e748d02d73a4f3085f9"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_change_service.py",
-    "sha256": "d4d2302957be62367c66397cf4c2ad18dfebd275f1a613a628fb6fdb5f877ac1"
+    "sha256": "7fd7d35deadd9ea1ed173b16c29e8a848fe4efe38c10cc3704186e88fbd68b51"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_compat_migration_service.py",
-    "sha256": "c42052287c1c792b9273cb539e36d66c6cdac105c4671ccdb5bf2a896023c37d"
+    "sha256": "3550d49efb676e4d0b21a1a79f69603901df73d15c097a018461abb779345d18"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_core_service.py",
-    "sha256": "de1a39da6185fa46df01353ffacc4042e4290c0d15b4271ed5f8b0f82a7a0f5c"
+    "sha256": "28c6e827b35de24ef573585ec1b68339df152fe100aed99253bc27868d72bc10"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_lock_service.py",
-    "sha256": "bed447e4903b742770c6cd3ca60cb006a33bc3947f545927c3c75f361da9f397"
+    "sha256": "b3318fb6f6b9c55cc6990c18dacd60e96ac1940df196c31a6f32ece17077cec0"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_query_final_service.py",
-    "sha256": "50a552b740e92d91df852a6db6b9c3aadf9fc627c6f709c77f97c44cc45a4f08"
+    "sha256": "920817d532be25ab7318a941e3388558962f702057812fc1d112fcd1815fc9d9"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_query_service.py",
-    "sha256": "0942861a888342d98e7a4f2f7a870cd9bd51b9f1a15869c011f96047cbc4d959"
+    "sha256": "cbc72358d696071429fa7ed6cc286981fee7c88ec7655458ffc4890ae411a7e5"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_runtime_guard.py",
-    "sha256": "8379e32001b3ec7f23643a93002c186dd3870e6693a40698fccc903af8dc6f9a"
+    "sha256": "7d704bea9f49c85ef0507ae62fa8b4e6010fe4499a7de80a67391939943750c4"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_service.py",
-    "sha256": "60774e322695f06c74e35964f547828fcf46c38e6824276a1b4b833bae55c991"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_teacher_scope_guard.py",
-    "sha256": "5a0510f2883cb9d09d29a9339668598819ca011e1caffe7919d1a717cec50765"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_teacher_service.py",
-    "sha256": "bc21ef72c3286251f5801064f094cc87285163fdbbf138028be89e4840500e02"
+    "sha256": "bc4a4710f38c10da3ca7522c95b8f28baabed23de2ac9404f7ca92f6a6a4a747"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_core_service.py",
-    "sha256": "b76d8bce628be1e07ee7b9853ac95cb6b5bb82fc8370236574bff80769dd88f4"
+    "sha256": "4e7c7a0bad47614ea712a46b9a91e6efda271759997e8a8bed70eb91234023db"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_policy.py",
-    "sha256": "657b74a4ff9c76d55c75ce70806f64a42c8e7437fbb16725bb6a176593be59c8"
+    "sha256": "8f021d51963f7901d51bcf1c3a44fefcf0903f823fc5db8b9760d5c5b1c58c4e"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_service.py",
-    "sha256": "cefd2f3412efbefca8874c2d97acf46869cefadb697e93381c328bf8c0ddeac9"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_term_calendar_convenience_service.py",
-    "sha256": "a9f8dc8fdae5b8abb403dd4f6ce09bacdf180c74a3c317ee529e13061a5d6899"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_term_context_service.py",
-    "sha256": "7c5dc4bf544fe50887090be5759615337c990ded242f5976b632478072d73d5e"
+    "sha256": "ec47c4f90eae48bfabde37372583abed96d7890e2eac6d20aa5e8853f46f804c"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_term_workspace_service.py",
-    "sha256": "5085546f62b996e5dc1590cb9b8d47bf9b3f3a7626d56762725e9cd4c6425962"
+    "sha256": "ff2e0f40e1fb263f5bebfa627839ea6872a29253f34bcecdd7c37bc2adbae5cd"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_textbook_final_facade.py",
-    "sha256": "7cbd5c084950cb6c53d876d31332e0bf833fe51dc756101d22b1a04f45a69f24"
+    "sha256": "abdaecf336f7ff8a06a145780802c81f52925245030b80ee3397cfdc86dfc83a"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_textbook_lock_facade.py",
-    "sha256": "5970809412b1669ebb225fb96295267347f742e6402dcfcb4eb198ec449fd868"
+    "sha256": "c605c43416363e680536eacc410a7c254e7f5bdfb05c4c75e479fa9e726180fa"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_textbook_order_guard_facade.py",
-    "sha256": "bc575260fe2a63f9ae48594b4fef79736fd88564301319956692816fd71b7a49"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_textbook_read_service.py",
-    "sha256": "1fa06d054eb98928ecdec7b8a97d43a907dd9f3bf9974416e4c26ba58d5d83c5"
+    "sha256": "0c354834d58f169e4e5be2674a845658be19f99d2d1e147cd211da6c6db49b75"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_textbook_roster_facade.py",
-    "sha256": "91f1cd61e7ac8ed1f0d69277db19f32549f5d350e78e764dbeaa1c490a81dcdf"
+    "sha256": "19985ad2cb091014fa39b308c5324adf1dcf0587cfa0fc6bb95766e391689ec9"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_textbook_service.py",
-    "sha256": "bfbae314a0349f495680f57dd08906bed4de29d695ee3c91787ffc2a55c4943b"
+    "sha256": "6b7dbc3efa8e18fa28928813e184975412e035c816409cc26f916f5ecef7accd"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_textbook_term_facade.py",
-    "sha256": "02b89c3a5a5be9143526e747518519745455e4db0c5ec602c3e3ad841803fc3d"
+    "sha256": "039d943f70ecd4a74079e5125ad5d83530e29a3da9329017476b3b1c7a340884"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_textbook_workbench_service.py",
-    "sha256": "aa51219c4117e82387a2f845b4ed8f2e41dabe64e8484062ca0ec2a1048d9dcd"
+    "sha256": "fbaea8d8ad4ca46d92ef79168cc6951ed255f8c151c3d53a5861f99daa2bc492"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_transcript_historical_facade.py",
-    "sha256": "187093baf792b8098d9d84ea0b52bf94b2d4a24256038060724ed2e4f25d9bd9"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_warning_effective_grade_guard.py",
-    "sha256": "8be5d8b91aed048f9d798379f9e27d925a6289c272d08ed81c52b463b40962e7"
+    "sha256": "d50c319eb59e61498291cba7838f9d0ea26107939fb991f6d121a789c5b00e40"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py",
-    "sha256": "b783dd15701e56eb02ba5ab3a4360945133b0413d9d4c11159a6ef09a4d78c40"
+    "sha256": "31a5fdbc859f0a62eab8431623d63570701df83571c4c80b25223dc1c6717190"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/academic_affairs_workload_service.py",
-    "sha256": "54616830502f8aae4cc39e7b6148b394fbb54b668c69748cf33c10139c416915"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_workload_stats_guard.py",
-    "sha256": "2bce06a7f5fd82d0a0cc48dd66ce5dd7d902402e485447a2a8092772fa51a1a6"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/modules/academic_affairs/services/academic_affairs_workload_teacher_relation_guard.py",
-    "sha256": "4b1f1702a0aafb234b2a19ffe22925947bbeb65ea720e414e637f0343b3fabdb"
+    "sha256": "395a094394a24fe48ae0e4e977a6b640eae21b391f8bc1bcdad4654594c9d4ff"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/mobile_academic_affairs_facade.py",
-    "sha256": "398bba66a75f051e38c09ccf88a4a414ea249ef5855ef72ffa3ff29c8859d0fb"
+    "sha256": "ff16b727e3c92675edab400c11e0536820ce68a862326b391eb25df44b8054b9"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py",
-    "sha256": "5cbe4a870dcff25d895e2c2d17581ef97bbc665d0ecc5d19e59070b182f89774"
+    "sha256": "3872ba9efdb0876e3cf8de1ace40a69141d6822b25f39d181d3b1d21104f7657"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/academic_affairs/services/mobile_academic_affairs_service.py",
-    "sha256": "1bddc3590bce50de8bda9c196928371f234c34b495bffb980011f0e124402d73"
+    "sha256": "02811ca643fe352fe2f1f9f3bd2c439389fc90a82d4ae46d6ced8e5e354ebe7d"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/student_affairs/routers/affairs_material_center.py",
-    "sha256": "a9aa9677d05fcc413ad6d51ac98ddccd49df4154a0b1e77cea925cb31f4d6ba2"
+    "sha256": "2e95d9751d0fe0ec32a87187859fcabc5f7bbbd4af9e69e8a7eaca77042fd5b6"
   },
   {
     "surface": "backend",
     "path": "backend/app/modules/student_affairs/services/affairs_material_center_service.py",
-    "sha256": "0525561426750df6df195bf0b567881c3c5785823dc5a39f3b349934970d91b6"
+    "sha256": "b740ebd50e09c5c3f8533b6448792616c63974bf4d37ea47668acbc548ec8a2d"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_activity_accounting_guard.py",
-    "sha256": "547dce1355b96b4ff9607f015b855ec6e3ad6e82c7fe898f1853193f7c38540e"
+    "sha256": "45eb35e747af69fddf00423b1d54c143825ce63fffe9d8713c54fb3b5f000d2e"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_activity_authority_guard.py",
-    "sha256": "dd11a3d2005279425bf7b52773fe6fbac2efd8fbac14efc600b975efdf06e03b"
+    "sha256": "075f9b550fc96e86798680048684a99aae367da129c83587eaf4b85dcb429ce9"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_activity_code_service.py",
-    "sha256": "faeade3e9cd2de19f8bbd30e6245c98eb293d2490c6e43070bdcddd5e624aca2"
+    "sha256": "399b673f086e190e6d1c69c8021dcbb8e78a35357ddb79abdb8e77e9a35daab3"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_activity_reconfirm_guard.py",
-    "sha256": "be79bd36d57a44c2e5398f15662e4450c70d74c7aa1f2a0478774197479e2298"
+    "sha256": "8aba79888675a49894ccb423f3d045af2724a04c758efc35cd8fa22ee344b46e"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_activity_reliability_service.py",
-    "sha256": "f0744bd7e7d99bde7eebb9efc2a9715b0ce4cb72342c13d84243a82770c059a6"
+    "sha256": "84ca9b3ebf7feb9ce48401230d8765cb162f4c31a96d71ab250055a1ece9b959"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_activity_service.py",
-    "sha256": "265f834a3015daf192f3b699271a14de0f50b5e8956c720004ab6a35fdb8cc74"
+    "sha256": "ede4a8b31a2bca204b96a9cad0fcc7db6a584e8de1453a55883d6b5f77b7d297"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_aid_list_argument_guard.py",
-    "sha256": "d8d0b6adcf3b0670e330602b9b8932b4d442479419ed272badd3b7c09f4d24dd"
+    "sha256": "9f6c1e3f77df261a90f8ada86e5e2db8b3122755e537de14740a08a628706a63"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_aid_service.py",
-    "sha256": "5f1d16b8c7549881606238d74dae272b0964df6efc9ed7146aa9cfc96d33dd89"
+    "sha256": "b58446acb6b901c0a5fc7547eeaf2a7f4234bea4a734f9ebe67834e5b62cc13e"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_appeal_repair_scheduler.py",
-    "sha256": "8ddd7e81956ae6849dfa60092d7d644bdc87f28b7f94f3a75f18e8036d7cc3ed"
+    "sha256": "0a4265cc13a46e24f6278407b65f7b0559db91bf9cafbd6c6c9a62be0938c813"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_appeal_repair_service.py",
-    "sha256": "10f288ec30030a6d3ac8ff8a4140f777c222a70eb6c91ffd506b7ad799c7df61"
+    "sha256": "420e4b31166ae347d91334b2d9a35891819f6697e42a2d61b36c5be4d3294be4"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_appeal_todo_service.py",
-    "sha256": "2ba3cd11676bbe1c020d0e4e584e8a4df6d6e05e949377879de4d9bc3ec112a2"
+    "sha256": "2910bdcc4edd5a569d50cf0ffb770b0dff91ffff89d03eae920d49fd34ea06a4"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_archive_file_guard.py",
-    "sha256": "f36f435f79b1d1513171489f19e98a65fe6763674f37b23d451428a95f434e2e"
+    "sha256": "9745f8e85e6b460acd5d19f547498424d36874c42f0c375024b7a3857545ec6d"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_archive_service.py",
-    "sha256": "b499411aff5f23c3056ad9f1e39a14f8e7bd4836edbbafd2556801b042cb7723"
+    "sha256": "b4704c6a733ebfc7f15f6764034ef01b1792dc3a22b79099f3f3734c2b571cf6"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_assignee_service.py",
-    "sha256": "368769ec9b56757b0d160dfc8928417570a503e72a2938188861818d3f7c78f3"
+    "sha256": "8cbeeaa794924ec349719a929d0c6fd413c44f992fbf3da139d3f68657558187"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_attachment_service.py",
-    "sha256": "44fd3cbab7d004b52f90dc33844de91a9ea03c49bf0005d97e70991409f80301"
+    "sha256": "0ac27bb7a2c3bd738e0abfc604323f12701edeb1e1ffcf540e9ced5f995a91b4"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_batch_job_guard.py",
-    "sha256": "3cd801ddd1e938116e8580875e36823b54b88e00da4f8959a8a2f4c8a4b085c3"
+    "sha256": "ca89b4c94a27cbacf4e0392f6dd907612d876f044ea21c1d44fd75aaab38e191"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_class_service.py",
-    "sha256": "05fcc0e32d338a8ee2aa18fdaad6c465ea8960a22b710ca20e69771ce401dd34"
+    "sha256": "b18466be90efa52e8aa8cb3c5020b575d830d98919c7a77f8189f49d1b3b9963"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_club_service.py",
-    "sha256": "6945c1aac31c8b64c7d8a7fff23ed08fd726c015b32117cd14c1673b02c4c4e6"
+    "sha256": "b1e4a095a4b3d977cbe646d70467c8a208c41adf062471e7d0693dc6c2b51356"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_cockpit_service.py",
-    "sha256": "1afc87850d9650a1d89b1879b9282e0279da54af4d45428bfceeedff82f8b870"
+    "sha256": "b6c7cf5fe7e99c7c323c6ec9608f04902d54ceb087e95a907d1295ff435b2f71"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_counselor_eval_guard.py",
-    "sha256": "7b3e9793cd7147d8aae5b43817055783e0e94a77987759d8f4d0c8272d23ef1a"
+    "sha256": "d276461d6c12988f4572bc7a92622f76c8da2a3e89a8d8ca561893bdca05522d"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_counselor_eval_service.py",
-    "sha256": "05f0be4aa65969fad4aa2b001df31013a6a89d891197dba559ab523696f6cda1"
+    "sha256": "818da64fbdb057d2a5e61a54323dc21ab0412ee480c4e66c7679592c06aaa819"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_counselor_handover_guard.py",
-    "sha256": "a929026fbfd4c4bc99fe3d4775632747ea64afd920bcb466135f5a4cf3ec63eb"
+    "sha256": "c5bf32fa5e2852586d07221d44aab12d843617d7ab213e234205ad5fa0a4f86a"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_counselor_service.py",
-    "sha256": "adf2a948175bee63f40f3f121e87e2028f13d368a8524a1dd627830869b78f85"
+    "sha256": "75e86243a243fae283e8aaec2a0891456a782adcae24a8ba68d31a956131b25b"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_credit_appeal_reliability.py",
-    "sha256": "2de9f65720e02761a1518f4ec872fff43a2ab937612d3ae9c50f4c4fe819965d"
+    "sha256": "2509b2bb9602e25eb60dc10e1927308e5dbe53d25b094b1a21eb844924a9d25d"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_dashboard_service.py",
-    "sha256": "7264e9419f6d7206387b3a6c15179baec8aae7e0166b59f54fa6d965a5643fe6"
+    "sha256": "a1d5c038f0e0896d7b417339f50945b81b29de00d87bc23c135dabe1a4b0d9ae"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_data_integrity_guard.py",
-    "sha256": "eab9d5fc2fd110581b38205544cc83f1f3ab252c10a279d51b1024615df52b87"
+    "sha256": "16591bf1edcb29261b16612fde0d2d1157b87e0aaf3201efe52c97f6109c9baf"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_discipline_integrity_guard.py",
-    "sha256": "d5a502b827e28be7cdfe52d571f20c6ca6eb80dce41631cd534205ba1154b118"
+    "sha256": "a64fd4310e5e6f63d785571664bdaab493a233d767ad3e07a4c5ebff473a0e0a"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_discipline_service.py",
-    "sha256": "477284fbb91820cb4cf81859c559d481eed29167af33fa85930f4a7b29121d45"
+    "sha256": "8b1129c3156915384e7488e1d442087e927849a53f0c5b8f851915db2e26cb2c"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_dorm_checkout_guard.py",
-    "sha256": "e4d47f69f28fc1c2483da4d983ba12460c595b8be830c8040ca91101a0596bac"
+    "sha256": "76001835dea03e206987294e7b133ad0c0801b59b08b42c4f11100e79573d9ec"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_dorm_message_event_guard.py",
-    "sha256": "ab98dc0c1328f998809e663f92c00a3483d3e9952639910ad9fd5a5b7971ac05"
+    "sha256": "e2d77d3ae855aa99da5c9cfb02b9aefeb3f0829ec9e76aee03c1bee1b150a296"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_dorm_node_guard.py",
-    "sha256": "c81506c9e3000313c978fd760f6724295009d094ac09eb5c0a076302172db05e"
+    "sha256": "3d8f7aba981d072b0dd51ed48daaf6abea35bc75037c71d259e1f33095e1e9bc"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_dorm_projection_service.py",
-    "sha256": "ac36b84fc5d0e609fb814ccb1c2601c6899d0f13b7c188473796c19915d05638"
+    "sha256": "5e740e3f939f1c514772b6f0ae38e830326ff2727a67452cb74d1e6d2949d421"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_dorm_reliability_service.py",
-    "sha256": "3766cf5f4b892c9e081c06da667a16243d71cca7507ddb23e98ad669c46bfd09"
+    "sha256": "7a5d34410c6db6150f8a7343e1539025288757f7b5420bb75a09d1d7119a8e69"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_dorm_service.py",
-    "sha256": "0d53ff782983137645764852916130bc73f3a7f4ff232a8ce129b6c97b84ee58"
+    "sha256": "2ff559427f087b331b2ba46aa0158ec3a7449854f9de58f9d0f70b0feac4e3f4"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_dorm_transfer_scope_guard.py",
-    "sha256": "5f8e4cf865ecb3c5190a1e87fc795f68d3ceaff7651d8bfd9347fc78cb387944"
+    "sha256": "2277c546d9a89c04b482e560099faa9b411cb2a7c3435518475f9e98409c5eb8"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_four_end_contract.py",
-    "sha256": "1e0533d6f8a364d22aee445dc891a07ccd1ca38d06c315d12e6ec4445989f5b7"
+    "sha256": "c112bbc460a0516b31a4ce7b8c9310ca08c196973b312671b503240c29830b0d"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_four_end_review_guard.py",
-    "sha256": "93a27289919059d7e254376ec9ad8499b644fddd6aa8a25a0d7702588e83662e"
+    "sha256": "5d83e79a486d8c64e8f28b586a00dd2f4d244690c064f0e0912dad38c65e7e66"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_four_end_terminal_guard.py",
-    "sha256": "52231479dbb8731596e742110b0e6fe700701952f7b9d8c4b995418d04aa22ea"
+    "sha256": "5e902542b7471348b8b24a229b5dc842c420bca01ed1c68cb397cb30d53ac59d"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_funding_authority_service.py",
-    "sha256": "1c4b59899f8197580d7e48f683a90178c73c05e3a55d2b78a5feee23d49e5427"
+    "sha256": "5deddebc5aa6dda16b8ad432d3ef179eebf8ac215a15f56a7b81b623d11efd17"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_funding_ext_guard.py",
-    "sha256": "5eb2266f3e755390da1426028d645f41ee77f556285a60749dcb0ac495e3ed58"
+    "sha256": "4ea87199dbc193f3343826fb62c8df297fdf74bd320766bb0a24a2af59bdc30a"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_funding_ext_service.py",
-    "sha256": "a4a26cb4baeedf64cb06068936f9b405bc72c109b40c1fc3608c5ff3873f8d36"
+    "sha256": "d16d7d53a4a0abbec65cfc6a18f10a93d8feebcf0733024886550d07d926d85f"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_funding_scan_guard.py",
-    "sha256": "b1f45168531d885f23366792d1dea7bd46e9f639d582aeffe7e7760480223841"
+    "sha256": "919a647eb19c6637b5a77ae782f51cf66666937dbd1680668c1d4e51a0b8601b"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_funding_service.py",
-    "sha256": "e7606821a67a266c1f63244b9bec37520f108b1cb234347cb137da8e8295c490"
+    "sha256": "0a402def703aa1a58a38b4a9237a3e308b81558cc6dc6681c0d0b37e9d6e2d70"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_history_dry_run_guard.py",
-    "sha256": "927de77ab047172bfc426e120cd6fb6a52e716a252e537044429bac7e4bada08"
+    "sha256": "c02fcd9108ed641bd369863ddfb6e71fa33e5fda18a890a8435f12f25d1098ea"
   },
   {
     "surface": "backend",
@@ -1837,57 +1317,57 @@
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_history_import_guard.py",
-    "sha256": "5b880e6371467fb1ef4df3ba9f7546d2348d9b7f960593f9e19faf0ca0e0172c"
+    "sha256": "4ea00cb1c85c74cc2449f137fb2d91663071eafa5ce3afd4f9aff51ff6ce2209"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_league_service.py",
-    "sha256": "b8d01c0904e8cdff7e0354f9c32dbd42645e2b845f109d709e9bc808020737a2"
+    "sha256": "3428a4fe472831dc0ec6e9b41bc06f944289dc80c5a4ead51808425606ec4be1"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_leave_date_contract.py",
-    "sha256": "f5677df58f14388c16beaffbe8476bed77f4c7802dbdb1509e6fb30cae3a26d8"
+    "sha256": "b99ded35f7ae89bacbdbd7f95bb28c970fc2721fe125e8cee631900ae9788440"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_leave_export_service.py",
-    "sha256": "f3ed32d783a823342985298ec5ce4298116d54796662bdda4d8587f8fccf02d9"
+    "sha256": "1517a98a6959699d995d0b9531dd4d4baa6e7fdecf0cdfa214ad848b5cd990e3"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_leave_service.py",
-    "sha256": "af16e808527e8587322040a875cee82b80dd002eda133017fa586c75bcd6ee94"
+    "sha256": "8f3217a84f0f4732b5d4d99be0a0afb2ad6cd454092643a7e4c60a338e7a7178"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_list_stats.py",
-    "sha256": "6f492d72b2c11b7d80e969821aea5f74bcbd8c4b7ffd9407b2417ed20bc8c6f9"
+    "sha256": "8406695acb1ff4e0100aaf6856567b26f9954251ec5af179c4519705fb134444"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_mental_service.py",
-    "sha256": "7c33f36ccbc136d4c72c1160ad27c9c58ca80669fe81180c85e3b3a50eb80edf"
+    "sha256": "5aded36d83e22bab6fa903e50d6544b7a11d90259ce858b7de0adfe91c63a26a"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_operations_final_guard.py",
-    "sha256": "da04fc2f74c9caaab6274981f62c8cbe98a7f0ca37c5bc67b5c9697c44779487"
+    "sha256": "51d1d94bfd29d8de6604c7ec48af3d92c5f228a95245839222db0b9db1acee49"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_operations_service.py",
-    "sha256": "4bb53a7c003ac88d72a7ba1e78fc4ed4934e8bde4cbce56aa209bd6a38ec5058"
+    "sha256": "88aeea8e632ba5ed13f776ce36444eff72fe385ab36ad58f78d2398b86270e50"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_org_service.py",
-    "sha256": "8cc0b18f3eebba9009c83cdcad963dba974415d68aae9def7253c786824e67a3"
+    "sha256": "989759e9a4000c582e7846904b6ab36ddf0339b395abc7a6bd2751d37bb9a6ba"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_profile_service.py",
-    "sha256": "d71e9dbeabf322a3c7b12b3daa4c9bc8ef38b3b402e0daebfff67f00c0ae123c"
+    "sha256": "d298a4881364ae9154dfc54edfc0fed57e5c59fdeaa25e7012dc5ad812df62d5"
   },
   {
     "surface": "backend",
@@ -1897,152 +1377,127 @@
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_publicity_guard.py",
-    "sha256": "d2a931efec19f4b62c239a7e1b63317a114eaee06cc8e340b6cc46a819673588"
+    "sha256": "9ebb654971559f55ce33ffe510e9f2a10a6c0ac57a54c3de075c34bf1d3bbed6"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_publicity_rules.py",
-    "sha256": "1f3f117c3f35dfd896852ca53d9f3708ee2acdf5d9907bb9300fa97cd68bd411"
+    "sha256": "ede7c8eb46da1afc10296f9cbba2b524a2040f4379b5f9538073201f0b6d551a"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_returned_view_service.py",
-    "sha256": "9fe1c92a173ad6a8ff45ed90cd827e6c87b066d00e04444bbd17c0cab016f07c"
+    "sha256": "36c5fca50d0dd3603b41716c69aaed83afa28177f150c32163a4ddd03e06afab"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_risk_evidence_guard.py",
-    "sha256": "ec18cd86249156b3b9528df9e269627ee3793fff820604fba12811f28e5e4733"
+    "sha256": "173bf41eac111d31b49ce348f05de5a93531186269c9bee6e58d04caa8e928fe"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_risk_service.py",
-    "sha256": "ddf45c0cfd15ae197d6152fcb8556e67139cdbc6094f7c83a137f6fdb6d32758"
+    "sha256": "69a7e109d117dab2e92dd9ba9324939e831975ef4a0ab814b276b53fad016a8a"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_risk_transfer_guard.py",
-    "sha256": "ec126deb41b5741ebc750a33f1044d9bf8d1843213072ae3373d0812f48fe42b"
+    "sha256": "2c36d2bf3737ef1a816e676a59a11f1b639ca11a302bc3ac54ac8d8cacbfa4ea"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_self_scope_guard.py",
-    "sha256": "46b112cf61216bf8590d83c2b797d48f906839cb971b2135c0e02f9082292476"
+    "sha256": "e9f0b2995bfd83596138bd68f8f838182d77493b0a60451b397625c92e6ee2ba"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_sensitive_audit_guard.py",
-    "sha256": "2324ca649026b11a8e27874619d391de2313fe51304ebf776900d693ce541af5"
+    "sha256": "6e42698ad907fecc14f950038da6c2f5f2906a8eef4a38676adea027d1b8fe4d"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_sla.py",
-    "sha256": "e615f190e13fe9b09d041974f7c41ef77532247568350d5ca7fd9410f15a997a"
+    "sha256": "c9667c8f98e4211af44becdbf91adf3f41ecf90d0eec14e37c7728353ea2c9a2"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_stats_integrity_guard.py",
-    "sha256": "9a9887b3dea9ec65dcf835bd4060986342c57ec0eb0efeab42ea7511d33d739a"
+    "sha256": "cbd81c92c3471271f97bd4d705ae82421f39651490d1f53168143ebf29e0f877"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_student_application_lock.py",
-    "sha256": "9e89204c8024823fe3b18b30404da5c9458b8c24cdb2f02f83ed31495244153f"
+    "sha256": "0d1e9ee3ec8d8e63ebe87b6e580d01f36b30b5bb8c28766102d260d78f181179"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_student_atomic_service.py",
-    "sha256": "e83e8919d48ce36b700b15861fd56bb612a22647a2d4c29af0a1d9742b3ec282"
+    "sha256": "f7b2cf11f4661e10e3c9caa92b19d16bb96c23ce881cea991f0ea6a659c19e69"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_student_contract_security_guard.py",
-    "sha256": "38b075c9318e1b5cb1b77e7b8d133722f451c121cbd5e52e35f776736adac34c"
+    "sha256": "a615aa5ad0a58337a6e9c4463a3207b563c026b1b8880bec6b9323684968decc"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_student_contract_service.py",
-    "sha256": "079479dc9827102e75b07c86f24bb76383d0f7bb0647a11df50c76bbe665a4c5"
+    "sha256": "4bd11bb690bac29415d4b6a01445567dbb157222eeaa4a9c1712b99ad82a905d"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_student_ledger_guard.py",
-    "sha256": "d9527d7ba2e6e73c0ba7f92c3b062640934da86256547a5718146ea278078040"
+    "sha256": "836195306c17b67ae8f6ac4eab44905ba895b1b3bdec1149f11651a0e693da8a"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_talk_guard.py",
-    "sha256": "24d83ae8defd637510b1c0c12a54ec474fc9e0048c066703139e2de0038313c1"
+    "sha256": "7ac1a1408e1761aca5e849f3e2519f27961c2ef29ec6cbcdd7104f3c3433c0e9"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_talk_service.py",
-    "sha256": "68b86f913cf2c1cdc1267e1b3c611e7dc6b23e522aa4fe6a69eac81982613a9d"
+    "sha256": "449d5ca949975afb5c4d14eec0a1882683728ddf1ee615b49933b3a76ad86188"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_teacher_workbench_guard.py",
-    "sha256": "adfb61dd8f39fbc2e287f2c9834fe26f3211ad57bfc15e9b1cf2ae5cf18bc9fc"
+    "sha256": "e7bedf72434e1ef56629f9e389f2fe06a0b550903715c02db7e907bd07a87e8e"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/affairs_teacher_workbench_service.py",
-    "sha256": "b4d67bf18815026ffd4399d21951805cfb1ce4750986548492b922217e0a575c"
+    "sha256": "d0c997bc3c8563e6bec47077558871ed8350224f99043432ad0c3078074bc199"
   },
   {
     "surface": "backend",
     "path": "backend/app/services/mobile_affairs_service.py",
-    "sha256": "d1a3663c68ea8b9b042af55be2fb84b6bd8d3845836bd32487d7c1ac0c3858b8"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/services/sandbox_school_academic_affairs_reconcile.py",
-    "sha256": "93d95b850f8279b83838afc90a54c8d0aa9b033fbc333d10664f8f92799ff5ed"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/services/sandbox_school_academic_affairs_seed.py",
-    "sha256": "0561b7385f6d74914986d00b476978c40c701caceb1c1206c35ffa92675e6e50"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/services/sandbox_school_affairs_counselor_reconcile.py",
-    "sha256": "2c96d26544d3446c97db06286bb519186e3c3943bd0f264b7a676ad62a8d5166"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/services/sandbox_school_affairs_runner.py",
-    "sha256": "d4066256fec11e727a6bf721bf0a07a8c4125423c745d37f40654402f99f461b"
-  },
-  {
-    "surface": "backend",
-    "path": "backend/app/services/sandbox_school_affairs_seed.py",
-    "sha256": "f95540bd9baa543a3bc273fe2002dc912718d4dd398aa51d61924027029c59a2"
+    "sha256": "de105bc970d4addf17e2a2546ce649ed6ea7c04a028ed8b9d3efdd1d1548ba48"
   },
   {
     "surface": "backend",
     "path": "backend/app/student_portal/services/affairs_service.py",
-    "sha256": "5c1b7836bf0178cd0883260abdcffd6c55aa37e381fa2fb6842af24adbb2b2f1"
+    "sha256": "fe5c5173689a137c06cb7d58e9ca27b7e39232bebd4eec14c1965007ade44864"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/api/__tests__/mock-http-client.mjs",
-    "sha256": "e215fde7d3cbe952d9959246be5a1b3466323fe124218ebd3b2b4daf6fdbc924"
+    "sha256": "8e870fafd5009b64ea671836fd5226b3fac76c5bb9b1efc495ee87d3ad1a1b29"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/api/__tests__/mock-http-config.mjs",
-    "sha256": "0e44792cf8910e4834948830c69ddf00d5ba6c42f385b83d3ad4b991179a5baa"
+    "sha256": "076af054bac87bf4438f2fd6cfbce052ee56de52fb0b41dd07cda2a45405cd51"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/api/__tests__/studentAffairs.api.contract.hooks.mjs",
-    "sha256": "62389463a4b8615a3d16cdf65a0a30a7dcd8579cae1a386deb58190db90f32f3"
+    "sha256": "d8db2e795bca3d78bcb20a66c2789f4c327d772b47fb2ec1ea96f1a3d690d6c3"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/api/__tests__/studentAffairs.api.contract.test.js",
-    "sha256": "9473bb442afd8959c2c00d92314ed8b49319e8ee38b02de13926e8e8dcc093e9"
+    "sha256": "8d1b27123fee7b037b9d958882388424bd183a62eab9f30982246c477f7a5ca5"
   },
   {
     "surface": "admin-pc",
@@ -2052,42 +1507,42 @@
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/api/disciplineIntegrity.api.js",
-    "sha256": "ef3532995c37436939186d80f471b61079ca187b7b22fa711202c1f0be3c02cc"
+    "sha256": "5cfc91d00aeed64529512b80a0795ec992d75836896278b879acf38d37bd9977"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/api/dormReliability.api.js",
-    "sha256": "13e4482ad3728a7584c3d12f881b332dcc2a050eb94ac1269af22742ff6ea1fd"
+    "sha256": "f033c32702fd0046ac17c48e5eb88fa93a70dba991f47de1fcddc7adf63f8cfe"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/api/fundingExtensionIntegrity.api.js",
-    "sha256": "728ade468ae5723058b16aa1f5111cc9613f5dc231f17746631f6e2134abbb74"
+    "sha256": "3539f541be6337d45d755c776c0f7ea52b07dc118c03cef96259b6248ad8f0d1"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/api/leave.api.js",
-    "sha256": "32797473093c80ab8fe2698252b6b4c06c774ee97a2a67a4e6465fed85764e91"
+    "sha256": "125c67414b4f8facb1ff8c8a749a1a5e97c351e87a3e5fb752f98f9f3d2fb6fe"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/api/operations.api.js",
-    "sha256": "9e6f3680c0b99411446d8d71e2984d88f1c936387c1e8d5758ff1eaf4c7630ce"
+    "sha256": "c4140c8e094631519d6de1b77eacb33b02ac9f9ffc92e98244ec2802ee28caa5"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/api/studentAffairs.api.js",
-    "sha256": "49d47f8829bb4395adfbb1847ed90e916331a71abac88d369f8300975efaacce"
+    "sha256": "fc65053424c28e6a489eedbfdb4cbe40dc99bf078d5dc4645aad41e4afda3ee6"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/api/studentAffairsB.api.js",
-    "sha256": "a804299ffae1919643ae9219e0c675092a3f4b19ff38ba63743fdc8cf6bcaf23"
+    "sha256": "103a4b156949db8914def693d5196689f3daf9379fdefcdec5acc3c4c606072b"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/components/TaskContextBar.vue",
-    "sha256": "e32611f2a5422fdb9127db3e5f7ecf60de2496b92fb33538c5fdf2da8f47ccdc"
+    "sha256": "fa1356d2a71304351b8a7b0ab6ed5b80c270852b234053957c66fc735562fa1d"
   },
   {
     "surface": "admin-pc",
@@ -2097,167 +1552,77 @@
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/config/permissionCatalog.generated.js",
-    "sha256": "d93200154cf21ffab65d752833816f115b3ff7c9cfa7d448f6e2e00e348a94f0"
+    "sha256": "677c61535cfe57f369ab98dbab5906010a38274f8863db7fe3ccfc91e8226802"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/config/permissionCatalog.js",
-    "sha256": "f5b053c9208a2c0785fbde6a7c3244e897011fed71a724ce769649c5f2efbad7"
+    "sha256": "b2cc02481dc0cf86d7bd247e48e6ea7ea4cb9ffab05934e21390b6e90d75b129"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/pickerAdapters.js",
-    "sha256": "de067f3326f4f744e7615592a423b2f37864b832e3be0002929fa04cb6a8c33d"
+    "sha256": "266cc77efeb02de265f4f5635570c0c42b8828dff7cd027e7e02de9264e9ea8a"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/studentAffairs.routes.js",
-    "sha256": "80cae6ed4a3a9c6185e29d6bdddf80e8376e6c5d1fc96259840af2f417cc62b9"
+    "sha256": "b45b59b73c88b5b4597267387415eaeac0e7488b81de4c6cd96d6d985390ad44"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/styles/usability.css",
-    "sha256": "7f13feecbe95d348abd4af25b8e454123c71b6447cff478da105981893bcb79c"
+    "sha256": "f7aec791848b984e0b0f4ada6c5e289e28e4e10407e93db44dd2e652b0649dc9"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/utils/__tests__/todoFilterSemantics.spec.js",
-    "sha256": "0dc24f400450d289cd5c2632f0148b0f521a49f30f98c14c70949a06056d36de"
+    "sha256": "e9c9689269bd0c9bb471130f6b5ee126458d5b412a57e45bd13df0bfe67b5713"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/utils/todoFilterSemantics.js",
-    "sha256": "768c637adefa88473c58d319e0a8bbc2774c7bd4a0fb079a2cbd8d7909113d84"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/AdminStudentAffairsLayout.vue",
-    "sha256": "25ccb3460eb9470faf2e8c1e8c4cc1d81761e35b8180be995cd6bd3875f40751"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/AidWorkbenchView.vue",
-    "sha256": "9a87b6a207f7deabd53e25f6858b857292cdd44dc541daceb7502108ef056551"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/ArchiveManageView.vue",
-    "sha256": "1a75de3eee6b02cf8ecf6e4ea34b239b9c642e8d2442a92ef191f578ead6082e"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/CounselorWorkbenchView.vue",
-    "sha256": "68793f43ba1eddae87e272d7087c0e2e5115cbd808ac413011ccb7818d6a8f21"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/DisciplineWorkbenchView.vue",
-    "sha256": "c59de9ff619cd1799852097cdd7889126caacaf4ee3b81422a52e2500470d7a7"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/FamilyContactView.vue",
-    "sha256": "4c2f72157f72a99628107c7d407450d286d06951b707ca9b377892cfb5971c25"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/FamilyReceiptView.vue",
-    "sha256": "98ed601436f5899ff9271a97a15114dd835293f1ead8e4ca0c28b97ba824a5b3"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/FundingWorkbenchView.vue",
-    "sha256": "105159c90a6bfe590b9ae741a30650ac87affec3ba423973f4b89d1d2e718c47"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue",
-    "sha256": "52c73cc9ba0c9d9846e097d16b89e446de0742d2130a1dd9c9e2833c50f59261"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsCockpitView.vue",
-    "sha256": "5bd6adc356a29336c1dce9ad601e0d94dcf65476fe22cd4b67f0c9bcb6cba726"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsDashboardView.vue",
-    "sha256": "f2bbc49494555dc0f0234d08c76ad2eede70264ad2ed718406535123efd81d28"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsDormitoryView.vue",
-    "sha256": "a6fa4b507d23f83f1a894e7d70b857d18af7471c7cbfd749b1a0f488492e0d3e"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsProfileDetailView.vue",
-    "sha256": "843a89f9370bbdc09e90052371294cc26eaedc479b016851f14ba06c710a50ae"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsProfileListView.vue",
-    "sha256": "6456861abdf1031581b02750a64c304dd97185fd894a6f06143824a8e92d06fc"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsRiskDetailView.vue",
-    "sha256": "36433f9cfee7c89cf4cdbbce3ad6aeb94c6ccd3ea0545161fea210e652192e54"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsRiskListView.vue",
-    "sha256": "b4a594a0799f16facedd305a790204f1a92c8388f087143d2d2efee24f3977d1"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsStatsView.vue",
-    "sha256": "5e9d1e7420273b9fa98fc83fd6707335cc415193b67fcfc4b51b545b51884d1b"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/StudentArchivePackageView.vue",
-    "sha256": "a1deea8993bc9b8a55b36716c62c4fd245312d5bf0cead639a506e9ce289b927"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/TalkWorkbenchView.vue",
-    "sha256": "b615991054e459a16a732bd3b5ca3383b5793e29623b9b6583b62e90ad76374a"
+    "sha256": "e97e7143b7b10503469acb7a95b1c437fa2c957c0f1d0aedb82cbff9ced243df"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/activity/ActivityStatsView.vue",
-    "sha256": "8af20437dc5c973d51c983af947e8b39c127acd0ef4fb1a6b16932114e9e9889"
+    "sha256": "8dd450095b245c43e461525ae8eb3ad333e991790a3ef9fb1f72e0ba92c6dceb"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/activity/ActivityWorkbenchView.vue",
-    "sha256": "2333c20122d9d4193395eee8c032521c9730e109f5109ae640d268dcc536f2c9"
+    "sha256": "e5cd563f1da20e2bdd26899110d4e9dcbce0474e113fbce5f0437f69eed8ce86"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/activity/CreditAppealView.vue",
-    "sha256": "610d03f30fc982972c6b8601ccb74fe96b7ec1cdc4b3d7c064d58ebaba52ff7f"
+    "sha256": "0caf5646d5764be4b71b3f0f3719888d2b843007fd4638652ef67ef125fbf4fd"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/activity/SecondClassLedgerView.vue",
-    "sha256": "448f5b4e7c8b5f3ef1ea570e9232a3349d2e1d11808d7be307c89b1ef8342ca7"
+    "sha256": "2aac9700047676598efc7a2256e4930c32dc10db3fd291037f2462e0dbc95512"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/activity/VolunteerRecordView.vue",
-    "sha256": "09968389aaa95f7f3a51bda175f9654d8f006bf6fcdc2099172056b404004981"
+    "sha256": "abade880ad79f6822c215adb24d6b72efa5fb4db344c89f931e112a35d387c89"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/AdminStudentAffairsLayout.vue",
+    "sha256": "d4f44e9933844ec356071a7d0b8924be260e12dda58f8f752aa6314c49e2f012"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/aid/AidBatchView.vue",
-    "sha256": "b9403160590eba7c2d0b7d0d4d82b820c5831d3bcdd85758022316b16b350abf"
+    "sha256": "3305660c96ba5fdce47e81502821f7ca55a37f9147d0077e9224cb21cf9b2c34"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/aid/AidLedgerView.vue",
-    "sha256": "2dc508cd58e7a57fa74ef3cc6903b8f2c14fed8699cd134a8d0c678202c9951f"
+    "sha256": "98664c7183a6165aba3eba9d4e29c3fe963cdc1031c534bcbc630244b7b31e7e"
   },
   {
     "surface": "admin-pc",
@@ -2272,12 +1637,22 @@
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/aid/AidStatsView.vue",
-    "sha256": "8a3277b41db104a857b9352c640691d346a75dba8b3c91a481c78d885c4f0720"
+    "sha256": "ef7d92a0f0832050b7df8bdaa3f43a8de29c8fac5a3f0540829bd6199a121a0e"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/aid/DifficultStudentsView.vue",
-    "sha256": "36d00e8c63fb7c635c7879650bc3e662c92b008fe099b51b801c9e4b426dd17a"
+    "sha256": "70721d6c7cf2dfbb0eb1699c695c85a7682e224f476cec9c27d8400e27d3b990"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/AidWorkbenchView.vue",
+    "sha256": "4665f777b7005012c97665f7d8d6e0d47dfb87bd8703876671560da1f069db4e"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/ArchiveManageView.vue",
+    "sha256": "023715f0d5d8e1ccf4889da5573a2bdd40f55693f1112f24de1b0ddd7cbee915"
   },
   {
     "surface": "admin-pc",
@@ -2287,12 +1662,12 @@
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/class/ClassProfileView.vue",
-    "sha256": "92cbc007617b7007964fa447b1833e4874d33d91b7026d83bc905ca8147fd819"
+    "sha256": "3fc48c1d523026ffb713a2fe814e65258a741b09c655ee738afcaed64d8200cc"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/class/CounselorAssignmentView.vue",
-    "sha256": "87b60df2f1ab2fe2b87da264a00c350c70428b37e1c8313a23dcfbfc6f253000"
+    "sha256": "fcc2e911c40635be145f97bd358731014aba4863d73c356ff6403801735e8ba0"
   },
   {
     "surface": "admin-pc",
@@ -2306,83 +1681,103 @@
   },
   {
     "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/CounselorWorkbenchView.vue",
+    "sha256": "39f37a56fcbf16907122777a72bc697792a8d8310632fd1aa6694c54fd10dbb6"
+  },
+  {
+    "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/discipline/DisciplineAppealView.vue",
-    "sha256": "c6f34fcfe27b26466c46f4d432e86e4ea0c383505b6b6ec59e05404635dd2e4c"
+    "sha256": "e6cdbca2959b0d9d7aa9aac13b360edf218fbc0915086da80bf2a03fa191f564"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/discipline/DisciplineLedgerView.vue",
-    "sha256": "cb9631f9b67b66835eae1f7aa085f672997631091024f2ed58b5af90501e8260"
+    "sha256": "05a54884d8a3ec6be060f33c6989f3f7b34471075414c3892bf302abb9060dc7"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/discipline/DisciplineStatsView.vue",
-    "sha256": "1324d86250bd1743b710ff94fa325be1afc6a38a706f3cbab0d10a84902db33f"
+    "sha256": "b14d29f7a55d58a2c3be5ed29cccfb937c54e35388fd0d8552cc4c65891f92e3"
   },
   {
     "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/dorm/DormCheckView.vue",
-    "sha256": "c84bab4f7b968db5cdbf8eb381480c29dbb85382bdd19b15e63436830f55413d"
+    "path": "frontend/src/modules/studentAffairs/views/DisciplineWorkbenchView.vue",
+    "sha256": "1bc0b95557e6a60d288d93111cdf50487e04ac51268825185b5580d32ebdfcd3"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/dorm/DormCheckinView.vue",
-    "sha256": "ae4b9fbcf18ae3a8120c26c14752d460d7c536eae2b69c02202cb492ed38c977"
+    "sha256": "94daa18b3b05869fac2a2bbb1e3dfe0e1fa5813fe84f7f0773fddcf8d29cccca"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/dorm/DormCheckView.vue",
+    "sha256": "e9d6e22b679811c80df0a716e17b941f741348488eea5700e69e6af0a0c99b8d"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/dorm/DormExceptionView.vue",
-    "sha256": "51f3fda1a67128e33ee900efd04fecbfeba1dfd90f450dea29385bcc8aba945b"
+    "sha256": "4b4ae87b693411f08aa76b331faa4d067e0f477074f54e3c1abe82e51f4e6365"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/dorm/DormResourceView.vue",
-    "sha256": "15d2150ea3ef0c63fef7a1c356b0ee7ff364de3fc1a0fe67d22878c9cf117476"
+    "sha256": "32d3c955e23f0a32a59d3e6acc53deba2a2be771a323fa7ddea3fd9ac33bf580"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/dorm/DormStatsView.vue",
-    "sha256": "6973c9d35873ae274686e2743447ad9ca78ea81f355c90623c6919d620b69517"
+    "sha256": "7c6fd1e60290d51461e76f345d3646e410a8fa325c8ac8146ffe47d852e1711c"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/dorm/DormTransferView.vue",
-    "sha256": "44d6d64954b91049d196f95fbdaf73bcc3f1845ec6d6d21f9fff8020db2162ce"
+    "sha256": "7019a7a75502508da64bc7151d319647ffc16743cf142bd8891748dd250fc241"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/eval/CounselorEvalView.vue",
-    "sha256": "9ed573e328c3106151b3eda8a10606f7f2c2c7d1057ef174e3731b21b810f307"
+    "sha256": "fef83700b0d519e16c0bdb129250a15b10cbfffe3524cb8a19b0775d48261527"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/FamilyContactView.vue",
+    "sha256": "73a9818c0912e67b34021e28f37756739e582bb707fe8d550b3d9b900cf6c407"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/FamilyReceiptView.vue",
+    "sha256": "98ed601436f5899ff9271a97a15114dd835293f1ead8e4ca0c28b97ba824a5b3"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/funding/FeeReductionView.vue",
-    "sha256": "a6e527fde5183b3f9722021342bf39f619855a9ecee22f2a187e7c3a67070d1c"
+    "sha256": "d657bad4fc7487200cac90ed32c1e3d1af305ae804de5a0576fdd91df5466c17"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/funding/FundingAppealView.vue",
-    "sha256": "9003c16c37594faff57bac043ecdc8fa5526346bab513061e10f5ba19321b722"
+    "sha256": "2ccff4842c9563e8633e41dd7d25b240dd977148e71d63cd31a2040e42bc22f6"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/funding/FundingBatchView.vue",
-    "sha256": "e5bedb316ec558f939e87b5b86811ddc88b82977f594a559912f233e8289aefe"
+    "sha256": "9b20d15ba1d3801118a3d722dc9a41f3d45f880bc8f60064409f44293bc972f7"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/funding/FundingDisbursementView.vue",
-    "sha256": "5e12bc96aafca837d531e7d9b03df99b5b41a3a153ec0f1ed522ad51e195f753"
+    "sha256": "7da34ac643be50c6cc0547fc76e45d83e5620c35ed52b577dddd81e05aa9d620"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/funding/FundingLedgerView.vue",
-    "sha256": "e0cda0c310e5a8b62419e33e0a6d7aa4d05885f7e68348b3993b5189b3063340"
+    "sha256": "a1abb9111f14d31727391175bc70506bc691748deaeabfe015e7557fe36945e4"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/funding/FundingProjectView.vue",
-    "sha256": "45d1a625ece554aeadba899403cd0594bf45872832933baa93fab5dd22910851"
+    "sha256": "59647c40ed648ae02f98d25fce628cc1872d3d6aa1086b3cad657e0506271d21"
   },
   {
     "surface": "admin-pc",
@@ -2392,77 +1787,132 @@
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/funding/FundingStatsView.vue",
-    "sha256": "9be6ae28fef2c843ac4cedb2afc34fc7426e5588e770549ed9b30f94bf1a8d1e"
+    "sha256": "349632e9c3c36c351490458464c562f22af04879b0e6181f2ce046fd5f28b8b6"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/funding/StudentLoanView.vue",
-    "sha256": "895c669f21210e78338a2d33ab72b7f3583ba20af5675269669dbbfaac69f60d"
+    "sha256": "0ec934c43f368be68de07d2e4e65614d2a985f0342e4f480f76dbef559c03233"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/funding/WorkStudyView.vue",
-    "sha256": "796563dbbee022ddce9ade44aa1f96fb130d380ba25002bef0be559ed85578c5"
+    "sha256": "7ac81162b6a5d8dee44d46cede6bfc376ae8d9b5dac908385a97e8e9e03a35b0"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/FundingWorkbenchView.vue",
+    "sha256": "2f2e829b24226f2dba7cf6e6e9e164d947030c394f24f25eb61eae6818ad5577"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/league/PartyLeagueView.vue",
-    "sha256": "24e1a44fa339ea7ed87edc4d88c2621f75cd8384c7fdcd0a830f2af222c646b9"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/leave/LeaveApprovalWorkbenchView.vue",
-    "sha256": "a178966753d2f553909eb7f758a26dcf2dd054731713f0a6f29be45703a00597"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/leave/LeaveExtensionCancelView.vue",
-    "sha256": "48f5a91cc0a47adff534334afd50cbfac32d8b5042f899892e1696d5af8aa028"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/leave/LeaveLedgerView.vue",
-    "sha256": "8cf7d1cf4ef9bb5a9ffe649d44dc2d5df9b0422952b39091b6ca3d92db27a486"
-  },
-  {
-    "surface": "admin-pc",
-    "path": "frontend/src/modules/studentAffairs/views/leave/LeaveStatsView.vue",
-    "sha256": "e3a336964994b715efeb90ede7c301bf6f9dadf599fbf045db546d31fa237caa"
+    "sha256": "cad7dcdf408d7d32fa195d240a9e2f4acd09c91182bcd63526022efb34bc0673"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/leave/components/DualPaneWorkspace.vue",
-    "sha256": "df7370fefc30745228fb27436757b07bb932844f72f3ba8bac24c012c31ccb0a"
+    "sha256": "3d6e95ce0a45f279bdc1afd3e3014a09d24c0384dafc9bfcecb400d13e6d4067"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/leave/LeaveApprovalWorkbenchView.vue",
+    "sha256": "c5afb0ccba9fd9bea1a6299ac584289b1856d1ce881a72f8ed94934a36e04759"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/leave/LeaveExtensionCancelView.vue",
+    "sha256": "79850ac25f80803113affc115df4859f47c6ddd83770c37a69f23b7160a4f14c"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/leave/LeaveLedgerView.vue",
+    "sha256": "043f4ca25abc4a1c052528b43d3233e489ae53a4f14120c17db01219f1864a91"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/leave/LeaveStatsView.vue",
+    "sha256": "c6ea80c7026b5ab3fb060b1f96ef8ac54cd914397cb72e053b1b0b32b5570e2d"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue",
+    "sha256": "88f916dcd7bfac5d85da715182e8c8ad86ad4a9e4c6f6bcd0e61c299c78988be"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/mental/MentalAttentionListView.vue",
-    "sha256": "31713e23bf554ec9962fa7a25c20d248e07514435b1442eb6d27284da5ef32d1"
+    "sha256": "518e369fac4f85d60bcd16bbb0303f0d289e10d69bbdd80cdd816fa1dc49a030"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/mental/MentalCrisisView.vue",
-    "sha256": "ae8d2dab2002ef94ce33bcccf9ee11f8c6c872e848c63f00de9a1d91bb59e6b7"
+    "sha256": "55cdf31f3d4517f967129112b3a285a3ae40eb34396cd4be8142a932976d8e2b"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/mental/MentalReferralFollowView.vue",
-    "sha256": "8a6f0dd675af6ef1a17a61d9cf6feb9f54506bc24ce06864995271134b3fe46f"
+    "sha256": "fd7be15ffb4c88439b388c32f8fcf6c62174c20ef563dfbdd4c3f01ee7ce8072"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/mental/MentalStatsView.vue",
-    "sha256": "6a6265ead255274fa51cd2c71939c77792993daa216a58df54ff5c30745268c6"
+    "sha256": "98a4f003434f0daf376ece79df2b365ce8d550dc63dbf863f8d9168e1f528d99"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/mental/MentalWarningSummaryView.vue",
-    "sha256": "d2d89b2fc6fefe9065d119ad603872c13ca8c05982c0412791b2a3fee6a62dc9"
+    "sha256": "97fbde23824cb106a5c5b9da27bd4a6dbcc9e9c40eed48382532eefafe80ca6f"
   },
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/org/StudentOrgView.vue",
-    "sha256": "ebd245cf16f629706c48412b23b571855b98ce6af438337aacb695fec96a1a7e"
+    "sha256": "e1a9ab006e78058c328621bcf3bbf0cc51d1037ce2ffc47ac415b947ac8cee82"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsCockpitView.vue",
+    "sha256": "e05d83145e2ba16744f8fb7fe2c7eb747f7af837934fd300ec02cc5efdde787a"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsDashboardView.vue",
+    "sha256": "e3bfd7463e6ec9abf1e2a905f8bd600b614a2321a2793bc879711e9c6a90a7fd"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsDormitoryView.vue",
+    "sha256": "a6fa4b507d23f83f1a894e7d70b857d18af7471c7cbfd749b1a0f488492e0d3e"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsProfileDetailView.vue",
+    "sha256": "162047b078197f1427e6b8cb343a7fa12b5b049bd64eeaef167af7e77c855fa7"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsProfileListView.vue",
+    "sha256": "6456861abdf1031581b02750a64c304dd97185fd894a6f06143824a8e92d06fc"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsRiskDetailView.vue",
+    "sha256": "2b3eecab2690dbc87b4c7c9de3b369a80afba4b4e73dcb494a2ffcc5a18e4398"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsRiskListView.vue",
+    "sha256": "7aaf8c18c181205e362714c50a096cff76e0469487a68b74b8407770c981e247"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/StudentAffairsStatsView.vue",
+    "sha256": "5e9d1e7420273b9fa98fc83fd6707335cc415193b67fcfc4b51b545b51884d1b"
+  },
+  {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/StudentArchivePackageView.vue",
+    "sha256": "e4f667c66ec0567e0b80025b851db8c33a5b4fbecd6c7a3b054c4311da326855"
   },
   {
     "surface": "admin-pc",
@@ -2472,7 +1922,7 @@
   {
     "surface": "admin-pc",
     "path": "frontend/src/modules/studentAffairs/views/talk/TalkLedgerView.vue",
-    "sha256": "dde3b218bd18153f6c7f4809af651cc0fcfdb5c40ffe78787fae7ad1e95311f8"
+    "sha256": "563efaa078c1dce6b0b777167172091350c59909a52df5d17db2eebe85eaebd9"
   },
   {
     "surface": "admin-pc",
@@ -2480,109 +1930,114 @@
     "sha256": "1f0c534f6e36b7df0623ea1c8f36866e48d397ee9803e206058075a637050c93"
   },
   {
+    "surface": "admin-pc",
+    "path": "frontend/src/modules/studentAffairs/views/TalkWorkbenchView.vue",
+    "sha256": "2a5b2ad380df272e14cf2c2ffbd4453fd90808e4b9d8dc9af1dcec85af53d26d"
+  },
+  {
     "surface": "student-pc",
     "path": "student-portal/src/services/affairsFourEndApi.js",
-    "sha256": "a022524a7146452aaa0f307e219be4a85826af7b29b3c8a20828cc88d60c2fd7"
+    "sha256": "9c8c59184f141ff60351baec4acbe12cc304979c0cafa02ff039df3659f6d452"
   },
   {
     "surface": "student-pc",
     "path": "student-portal/src/views/affairs/AffairsFourEndView.vue",
-    "sha256": "c137c927d88242c3acf280eb290eb1e855c6168bd926273d1e006bf57781abc6"
+    "sha256": "be59be1d2b597b399f5af7e1ec6c62abad9c885acf3198337682d0b054ef5844"
   },
   {
     "surface": "student-pc",
     "path": "student-portal/src/views/affairs/MaterialSupplementView.vue",
-    "sha256": "e2c57e3d2d8647d9bbd140079aa7c09b050d03242817dfab774a1845733b027f"
+    "sha256": "9078fe0a0c766a075a49345ee0885c93a9426169c480efcb3426555e4e91ed8f"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/attendance.vue",
-    "sha256": "a6ee83a75e22a11468dcc12e090a149c945319e747fa61bfaaaee338b0edf5cf"
+    "sha256": "7e8903740b3fc9f44755512cd6c184a39b86a97159b3c31e7dfc0b08ad7b5eb8"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/calendar.vue",
-    "sha256": "6597441d9f3dab0599904ca160e1d8bc0fc10e9f0c271f27383e4e29bb58b638"
+    "sha256": "01b522d510f338e014ac5817a0419e1799ab6ed4f130052fe679729bd4052054"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/clearance.vue",
-    "sha256": "631df9bda03a90adad2c6d70cf8213208928dea51d889b025a189751a7c60f89"
+    "sha256": "a03486119d44ba5fe9d1cc0609e0d67b753e0e65e4e916c22727230ae0adcaf0"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/credits.vue",
-    "sha256": "11ab99519eb647b9b3ab7261da4b7788abecec1e479e3081bcb8c4134f6c3b3d"
+    "sha256": "f6af9c0adec5df8bb31c692ad7efa62537957ba25901c248a8421c783e2e0c58"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/evaluation.vue",
-    "sha256": "c6db9bec5d0d27896e73f1b9f4242861f423ade10e4aa3bd1d16577c84dc6a3c"
+    "sha256": "07bb03497c0d66f6fd7e871ef913d05b28a16b2dc1f271def6c9c9f3aa151a3d"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/exam.vue",
-    "sha256": "2bb71777a97110a3bd5cd00b0f92540ccb7b2b0a8b55d1a63ef381e413a4e2d7"
+    "sha256": "f9838d4d732ae24aff982ea8a44effa289339d1a047fc1592823da1ceab2d362"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/graduation.vue",
-    "sha256": "4043a36e72ef0a43c9d4dcbbbde9b472d671009617ceac936f5405cc44b66e3f"
+    "sha256": "26a181ded024f3f1a809717e1f92710f105d0df294609332d91611b06652bc87"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/index.vue",
-    "sha256": "bc42cb3fc9fe0eaa671b65e16843b8cb45e7c7f673b868ad2bfd394b794af11a"
+    "sha256": "de2dadf60fda1ea40b4816c1c7f106bd4445b9a26cd3b2d73243eb215630f29c"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/level-exam.vue",
-    "sha256": "f3292b412793f0961fc44eb886273e105a91fa20556622ed647afb432a73aeab"
+    "sha256": "177149699cb6d14fe9c0ee7c17fd7e34d90f46d9313aaa7031b83cdd0d64e122"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/major-split.vue",
-    "sha256": "addeb8ecc6f53ee056312411a11f518f56842696b5507a660f0e5b71428ff81c"
+    "sha256": "91813c91f47f15aa23914940cb7fd0009cf8066aa02666682c45c8e9c31372f1"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/makeup.vue",
-    "sha256": "beb08c4bbdf41a8d1178f42c8e54c27c512be11549a2aa9f14fa7bc524c2df83"
+    "sha256": "7dfedcf49a9e0613368fe474a7553de649d98f0b46254c3427ad0bd0ba1cda49"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/recheck.vue",
-    "sha256": "1e1fd032a2c4c19358e8f57f796a1028338b6d14de585381b937aea45822bb02"
+    "sha256": "64164847d154f3101d75662191a78b64d8cdaec852cd85dce8b2852c5e89d3a6"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/recognition.vue",
-    "sha256": "1cf9556838d06b058337233ada498e0ccbc45db71f5b0be2aa2f79d5ecc2d819"
+    "sha256": "c4745db627f3c1acf69830fc77bb3cdcb5dced27e7b1c21b2b84906ee150ad6f"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/registration.vue",
-    "sha256": "d567fac938146256da8f954597b4a5dcff080e15ca0812ec3210d71e60685374"
+    "sha256": "c2069b2083672bfe5ea58822ce16ed7a6de78d9bd069777dadce9b28149b7ea1"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/schedule.vue",
-    "sha256": "d6dcf20372739c70d588f062e7749a4e452c607c8d8b6bc38190a974c6eab96b"
+    "sha256": "0daa27cae408ea2b34059d069e26179a328e6caee10bc07e0401503cf8f2c1bc"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/selection.vue",
-    "sha256": "c7a975bad27621df3d4a6d58b26eb23e07c0ce07f13be9772889d37e14cb6efa"
+    "sha256": "4dbb39b17801bcc6f1b74f4c5632e4fe194e1e0126751305a96301564f5f8fb7"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/status.vue",
-    "sha256": "8715127689d4ee84bf1420b90c4c6fc9190f7cfd6f0fdd7c76bb51e86e4e543a"
+    "sha256": "21b75d052b03758bb662af5930798dbed9cf27319004bf2a956508d1506a0c9f"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/academic-affairs/textbook.vue",
-    "sha256": "022baadc92cb350c77209e5a0836549cc599310b89890c46d8a845ff24d3da6a"
+    "sha256": "3cb09b9a450d7ad3544db6fbb4d739ca2d77edf808a10b2612808e3c042aa15a"
   },
   {
     "surface": "miniapp",
@@ -2597,82 +2052,82 @@
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/affairs/activity.vue",
-    "sha256": "a448f30d278a2c0a21288882f2b568cceb264c0ab7642d80e41b35ab6c710113"
+    "sha256": "f4ddfd921a3738b45f772f7608f36ad5738910a05cfc8cccd07256fdd9e752bb"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/affairs/aid.vue",
-    "sha256": "f5a6f1cbbd37d551103e192c55b88d5a7f7517f998a5c194b0744dfe3da8e1ee"
+    "sha256": "40b14151282664eac5581a607324162703c2b1baf76174573e070bbe2037ff03"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/affairs/discipline.vue",
-    "sha256": "98c11c32ae624fbe5508ab5789a9c5dfa905e022812763d70db13f6dd1f4f0fc"
+    "sha256": "9c45e882f63620ba0203d2505ede351c6e72be7eddf2f278070c25ea92a966ed"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/affairs/dorm.vue",
-    "sha256": "015e94958e014655682774a5cfe8bac2ab20562d20c2043fc4771c832b69aa73"
+    "sha256": "0a02a345997a8f0333f7a604126499374f795ea33832f7526bfa9956811a5b6c"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/affairs/funding.vue",
-    "sha256": "acf9b9e625e310d3d00c9e6464de56c1a6f2467cf1d3a06673fb5b559ce0fc4f"
+    "sha256": "2c0e1d0b1d40ef446a2717c1387d5e88c92c7c30032350f17930587e92fb34d4"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/affairs/index.vue",
-    "sha256": "3741cc11f4c2e70e0aece2072a5f8dd02e0720ddb56aa1deaa9b1229b99ef21d"
+    "sha256": "6af77cea0871b1098da9191b244157b70ed0be2056e5e95706c509b018757f70"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/affairs/leave.vue",
-    "sha256": "3035e514c30faa08d1efd7f260a902dd110c4652b9c019fee353ebf57d5ee449"
+    "sha256": "803c472894117ab81685cfdd75f7d770dca4ae40b4c3f663717b2804a8070033"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/student/affairs/talk.vue",
-    "sha256": "1398a9c3d22cc0d675d3e669f88456924c30223cc88882a99388fcb01bc18455"
+    "sha256": "04ea2c215e149aff27889100997e5292b3e9cb0c5c265d67b5118ed5fefa6706"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/teacher/academic-affairs/attendance.vue",
-    "sha256": "7c4985a4f845f7670ea91a6474462ccfa844c3d4db8a8088bfb760adf253e69c"
+    "sha256": "593b4dbbe92ec7f574011ff594d5c5ed7d0b67157df303c8055a15ecda805fb4"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/teacher/academic-affairs/grade-entry.vue",
-    "sha256": "355bf9478083dc50fe22ca535f5c5108a4650f7053f63e93c0d203cfb0a8fd4b"
+    "sha256": "3fd008aa9996f3900baf6bd2f820b07ae8263693c29d2cdeabbc77dc98a15233"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/teacher/academic-affairs/index.vue",
-    "sha256": "47f30a430c3de84ccbd1c40dd203c21a3714aa13d026c524e769fca38881f754"
+    "sha256": "6ca3a1e2f9bfddf02a47d709ad78eaecd3959767450fa9beb8dccf01bcea668e"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/teacher/academic-affairs/schedule-change-review.vue",
-    "sha256": "e1b9965808203fe6af650494951c1a1e14d999e22f05e31d7b18a3cced67e865"
+    "sha256": "6ed7387e67738d22b9a38a008b7f098dfb9c3d48a1f1783f724886ccb493bac7"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/teacher/academic-affairs/status-change-review.vue",
-    "sha256": "b92d6dae6a5665689334bdba4f84c1e4a2562816b56d7768918c21240a9c4d72"
+    "sha256": "1afbc7e0b52bde0153c223ab0ed3fdc05468cd8ea54914e0e855ea454218f406"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/teacher/academic-affairs/workload.vue",
-    "sha256": "413e0a49fbaad1f2454427a0917bf58e69980ed531f745875f5851caca9eeeee"
+    "sha256": "c83c46a5591fd66ca2e937bab4e200cb43eee90094e534498eff164ea5846ad4"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/teacher/affairs/index.vue",
-    "sha256": "7121980d079576d9c1bee8441d2611a4863226bc19f56f63cb229e08093ad51d"
+    "sha256": "a512f60eda0922222b1414b5b63b2beeb10b20378e03160ab324ff4fd9ea9b45"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/teacher/affairs/mental/index.vue",
-    "sha256": "e1295c8b0bf970f23aaecf6b6f8ba5d51d14b39ea4b135020db434208933c457"
+    "sha256": "f343e65861ad2c2f69b91f43613229cfcecd64c1f05f127adcbfc934864c548c"
   },
   {
     "surface": "miniapp",
@@ -2682,31 +2137,31 @@
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/teacher/affairs/talk/index.vue",
-    "sha256": "fa6bf83e2859bde1947155b7f6d038a2644bb4d2211add8657323ec76ae12d5b"
+    "sha256": "8c742c8dd904063dfdd684938a629ad62a7a81ad0caf226de9c7cd429cfc35aa"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/teacher/affairs-leave/index.vue",
-    "sha256": "788e236946234f96b07023a4ddde0110588a9155a822f77403da70c3a4d2bddc"
+    "sha256": "3387e3401781299b6a212e4152f09b25f4ff71dcfac1c3ec443dac04f7b6046f"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/pages/teacher/affairs-review/index.vue",
-    "sha256": "c27c516c6e6830da1aef28b815c52e8730db13d6a3238b41dac4bdd27e09ba30"
+    "sha256": "9c8924980007b01eae3c17e3075311206ce3d12cb49e8f1119751e965e79ac37"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/services/affairsAppealApi.js",
-    "sha256": "a1038ff18e58c71ef463265dd36ce2eae0f3adc0bc142a86eb32789a7a985f6e"
+    "sha256": "131715dc54446cdd9612e1f70d415039d2d2fd575cde33d6a9d8c3abf404d711"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/services/affairsContractApi.js",
-    "sha256": "6f7187abc736665aafdaa2fddbb856e06cd48d4b8135395bec4007977ce073a2"
+    "sha256": "09f00eb3e7c081ca59517d2291f8eaa3b93713d204dbe923270a7b651393aa49"
   },
   {
     "surface": "miniapp",
     "path": "miniapp/src/services/affairsReturnedApi.js",
-    "sha256": "ce696ec9f52a077aa47e2c8b1ad671f9497daebe5a8426f1c0fbe72154c2537b"
+    "sha256": "61fb376c3ad1324b6eec6689a8439d5a722bbabba44c7361adc7e2ded35b3565"
   }
 ]
