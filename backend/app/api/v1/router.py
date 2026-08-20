@@ -60,6 +60,7 @@ from app.services.affairs_student_contract_service import install as install_stu
 from app.services.affairs_student_ledger_guard import install as install_student_ledger_guard
 from app.services.affairs_talk_guard import install as install_talk_guard
 from app.services.control_plane_p0_auth_guard import install as install_control_plane_p0_auth_guard
+from app.services.control_plane_p0_dr_guard import install as install_control_plane_p0_dr_guard
 
 
 def _route_signature(route) -> tuple[str, frozenset[str]]:
@@ -129,10 +130,11 @@ for supplemental_router in (
 ):
     _mount_supplemental_router(api_router, supplemental_router)
 
-# Control-plane authentication authority is installed after all legacy auth
-# modules exist but before the application begins serving requests.  Modules
-# that imported token-store functions by value are rebound by the guard.
+# Control-plane authorities are installed after legacy modules/routes exist but
+# before the application serves requests.  This preserves public contracts while
+# moving enforcement to the production authority implementations.
 install_control_plane_p0_auth_guard()
+install_control_plane_p0_dr_guard()
 
 install_affairs_four_end_contract()
 install_activity_checkin_code()
