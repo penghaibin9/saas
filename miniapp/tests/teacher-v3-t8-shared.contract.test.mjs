@@ -63,11 +63,13 @@ test('T8 handoff import 无副作用且有独立 downstream machine verifier', (
   assert.match(workflow, /verify-v3-handoff-downstream\.mjs/)
 })
 
-test('T8 shared search shell 保持 side-aware，Teacher server search 留到 T9', () => {
+test('T8 shared search shell 保持 side-aware；T9 Teacher provider 已切真服务端搜索', () => {
   const providers = read('miniapp/src/services/searchProviders.js')
   const shell = read('miniapp/src/pages/common/search/index.vue')
   assert.match(providers, /const teacherProvider = \{/)
-  assert.match(providers, /serverSide:\s*false/)
+  assert.match(providers, /serverSide:\s*true/)
+  assert.match(providers, /getTeacherMessagesPage\(\{\s*tab:\s*'all'/)
+  assert.doesNotMatch(providers, /getSearchPool|仅搜索本机/)
   assert.match(providers, /side === 'teacher' \? teacherProvider : studentProvider/)
   assert.doesNotMatch(shell, /teacherApi|studentApi/)
 })
