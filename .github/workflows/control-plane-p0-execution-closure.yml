@@ -18,12 +18,14 @@ on:
       - "backend/app/services/control_plane_p0_runtime.py"
       - "backend/app/services/effective_security_policy_service.py"
       - "backend/app/services/machine_recovery_evidence_service.py"
+      - "backend/app/services/platform_mfa_service.py"
       - "backend/app/services/tenant_offboarding_service.py"
       - "backend/app/services/tenant_purge_registry.py"
       - "backend/app/services/tenant_purge_service.py"
       - "backend/scripts/record_recovery_evidence.py"
       - "backend/alembic/versions/20260820_control_plane_*.py"
       - "backend/tests/test_control_plane_p0_execution_closure.py"
+      - "backend/tests/test_control_plane_p0_review_hardening.py"
       - "backend/tests/test_restore_verification_workflow.py"
       - "deploy/backup/machine-*.sh"
       - "deploy/systemd/school-lifecycle-backup.service"
@@ -46,12 +48,14 @@ on:
       - "backend/app/services/control_plane_p0_runtime.py"
       - "backend/app/services/effective_security_policy_service.py"
       - "backend/app/services/machine_recovery_evidence_service.py"
+      - "backend/app/services/platform_mfa_service.py"
       - "backend/app/services/tenant_offboarding_service.py"
       - "backend/app/services/tenant_purge_registry.py"
       - "backend/app/services/tenant_purge_service.py"
       - "backend/scripts/record_recovery_evidence.py"
       - "backend/alembic/versions/20260820_control_plane_*.py"
       - "backend/tests/test_control_plane_p0_execution_closure.py"
+      - "backend/tests/test_control_plane_p0_review_hardening.py"
       - "backend/tests/test_restore_verification_workflow.py"
       - "deploy/backup/machine-*.sh"
       - "deploy/systemd/school-lifecycle-backup.service"
@@ -149,6 +153,7 @@ jobs:
             app/services/control_plane_p0_runtime.py \
             app/services/effective_security_policy_service.py \
             app/services/machine_recovery_evidence_service.py \
+            app/services/platform_mfa_service.py \
             app/services/tenant_offboarding_service.py \
             app/services/tenant_purge_registry.py \
             app/services/tenant_purge_service.py \
@@ -167,6 +172,7 @@ jobs:
         run: |
           pytest \
             tests/test_control_plane_p0_execution_closure.py \
+            tests/test_control_plane_p0_review_hardening.py \
             tests/test_auth_challenge_service.py \
             tests/test_restore_verification_workflow.py \
             -q -p no:warnings --durations=20
