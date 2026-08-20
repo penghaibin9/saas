@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from pydantic import ValidationError
 
@@ -12,12 +14,24 @@ from app.api.v1.teacher_mobile_employment import (
     VerificationReviewBody,
     router as employment_router,
 )
+from app.core.exceptions import AppException
+from app.services import teacher_mobile_employment_service as employment_service
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def _src(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+class _ScalarDb:
+    def __init__(self, *values):
+        self.values = list(values)
+
+    def scalar(self, _stmt):
+        if not self.values:
+            raise AssertionError("unexpected scalar lookup")
+        return self.values.pop(0)
 
 
 def test_t7_router_is_single_object_strict_and_resolves_expected_paths():
@@ -91,6 +105,41 @@ def test_t7_pc_material_approval_no_longer_sets_destination_verified():
     assert 'emp.material_status = "APPROVED"' in approve_block
     # Comments may document the forbidden mutation; only executable assignment is disallowed.
     assert re.search(r'^\s*emp\.verify_status\s*=', approve_block, re.MULTILINE) is None
+
+
+def test_t7_bound_profile_scope_never_falls_back_to_stale_employment_snapshot(monkeypatch):
+    emp = SimpleNamespace(
+        student_id=42,
+        student_no="20260001",
+        class_name="历史班级",
+        college_name="历史学院",
+    )
+    profile = SimpleNamespace(id=42)
+    db = _ScalarDb(emp, profile)
+
+    monkeypatch.setattr(employment_service, "_tid", lambda: 100)
+    monkeypatch.setattr(
+        employment_service.teacher_guard,
+        "resolve_teacher_scope",
+        lambda _user: {"mode": "CLASS", "classNames": {"历史班级"}},
+    )
+    monkeypatch.setattr(
+        employment_service.teacher_guard,
+        "can_teacher_view_student",
+        lambda _user, _profile, *, scope, db: False,
+    )
+
+    def _must_not_use_legacy_snapshot(*_args, **_kwargs):
+        raise AssertionError("bound StudentProfile must not fall back to employment snapshot scope")
+
+    monkeypatch.setattr(employment_service.teacher_guard, "scope_match_row", _must_not_use_legacy_snapshot)
+
+    with pytest.raises(AppException) as exc_info:
+        employment_service._scope_emp(db, 7, {"userId": "9"})
+
+    assert exc_info.value.code == "NO_PERMISSION"
+    assert exc_info.value.http_status == 403
+    assert db.values == []
 
 
 def test_t7_migration_extends_current_single_head_and_metadata_registers_model():
