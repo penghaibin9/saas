@@ -33,24 +33,68 @@ function gitSha() {
   return git('rev-parse', 'HEAD')
 }
 
-/**
- * 当前 HEAD 若是专用 handoff seal，则从 raw commit object 读取第一父 SHA；`cat-file`
- * 只需要 HEAD 自身对象，在 shallow checkout 下也可靠。普通业务提交直接返回 HEAD，
- * 因而 seal 后任何正常代码提交都会与落盘 studentMergeSha 不一致并 fail-closed。
- * “seal commit 只能改 JSON”由生成 seal 时的 GitHub compare 独立验收，不把父树依赖塞进
- * 运行时验证器。
- */
-function implementationSha() {
-  const head = gitSha()
-  if (!head) return ''
-  const raw = git('cat-file', '-p', 'HEAD')
-  if (!raw) return head
+/** 读一个 commit object，拆出 subject 与全部父 SHA；对象取不到时返回 null。 */
+function commitObject(ref) {
+  const raw = git('cat-file', '-p', ref)
+  if (!raw) return null
   const [headers = '', ...messageParts] = raw.split('\n\n')
   const subject = messageParts.join('\n\n').split('\n', 1)[0].trim()
-  if (subject !== SEAL_SUBJECT) return head
-  const parentLine = headers.split('\n').find((line) => line.startsWith('parent '))
-  const parent = parentLine ? parentLine.slice('parent '.length).trim() : ''
-  return parent || head
+  const parents = headers.split('\n')
+    .filter((line) => line.startsWith('parent '))
+    .map((line) => line.slice('parent '.length).trim())
+    .filter(Boolean)
+  return { subject, parents }
+}
+
+/**
+ * 解析「这份 handoff 封住的实现提交」。
+ *
+ * 手册 §13.1 要求 Teacher T8 **从合入后的 main 上**机器校验，所以三种 HEAD 都要能解析：
+ *
+ *   1. 分支上的 seal 提交本身 → 被封存的实现提交是它的第一父；
+ *   2. main 上把该分支并进来的 merge 提交 → 第二父是被并入的分支尖端，
+ *      若尖端正是 seal 就再取一次它的第一父；
+ *   3. 其他普通提交 → 就是它自己，于是 seal 之后任何业务提交都会漂移并 fail-closed。
+ *
+ * 情况 2 需要读第二父的 commit object。actions/checkout 默认 fetch-depth=1 时该对象不
+ * 存在——那时返回 unresolved 而不是硬套 HEAD：把“看不到”说成“漂移了”是假警报，会让
+ * T8 以为学生端契约变了。校验器据此给出可执行的提示（用完整历史重跑），而不是误判。
+ */
+export function resolveSealedSha(readCommit, head) {
+  if (!head) return { sha: '', unresolved: false }
+  const commit = readCommit(head)
+  if (!commit) return { sha: head, unresolved: false }
+  if (commit.subject === SEAL_SUBJECT) {
+    return { sha: commit.parents[0] || head, unresolved: false }
+  }
+  if ((commit.parents || []).length < 2) return { sha: head, unresolved: false }
+
+  const mergedTip = commit.parents[1]
+  const tip = readCommit(mergedTip)
+  if (!tip) return { sha: '', unresolved: true, reason: `无法读取被并入的分支尖端 ${mergedTip}` }
+  if (tip.subject === SEAL_SUBJECT) {
+    // main 把本线的 PR 并了进来：被并入的尖端是 seal，它封住的是自己的第一父。
+    return { sha: tip.parents[0] || mergedTip, unresolved: false }
+  }
+  // 并进来的不是 seal——典型情形是「我们把 main 合进自己分支」。这时这棵树就是 HEAD
+  // 自己，不能返回 main 的尖端：那是别人的提交，拿它当"本 handoff 封住的实现提交"
+  // 既不真实，也会让紧接着的 seal 与 verify 各算各的、永远对不上。
+  return { sha: head, unresolved: false }
+}
+
+function implementationSha() {
+  return resolveSealedSha((ref) => commitObject(ref), gitSha())
+}
+
+/**
+ * 落盘用的实现 SHA。解析不出来时回落到 HEAD，绝不写空串——交接物里一个空的
+ * studentMergeSha 比一个"不够精确但真实存在"的提交更糟：它看起来像字段缺失，
+ * 下游无从判断到底是没封还是封坏了。真正该报「解析不出来」的地方是 verify()，
+ * 它会明确说是历史深度不够并给出处置。
+ */
+function sealedShaOrHead() {
+  const resolved = implementationSha()
+  return resolved.sha || gitSha()
 }
 
 /** pages.json 还原成完整 URL 集合 —— 教师端据此确认路由面没有被学生端改动。 */
@@ -107,10 +151,35 @@ print(','.join(heads))
   }
 }
 
+/**
+ * 包体报告的内容哈希——必须只反映**包本身**，不能反映"什么时候构建的"。
+ *
+ * 报告里带 generatedAt，直接哈希整份文件的话，同一份产物每构建一次就换一个值，
+ * 这个字段就永远无法被独立复现，T8 拿它比不出任何东西。所以剔掉易变字段并按
+ * 键排序后再哈希：同样的包 → 同样的哈希，包变了才变。
+ */
+const VOLATILE_REPORT_FIELDS = new Set(['generatedAt'])
+
+export function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize)
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().reduce((acc, key) => {
+      if (!VOLATILE_REPORT_FIELDS.has(key)) acc[key] = canonicalize(value[key])
+      return acc
+    }, {})
+  }
+  return value
+}
+
 function packageReportSha() {
   const report = resolve(MINIAPP, 'dist/build/mp-weixin/miniapp-package-report.json')
   if (!existsSync(report)) return ''
-  return sha256(read(report))
+  try {
+    return sha256(JSON.stringify(canonicalize(JSON.parse(read(report)))))
+  } catch (error) {
+    // 报告解析不了就别假装算得出稳定哈希——当作没有报告，由调用方跳过比对。
+    return ''
+  }
 }
 
 export function buildHandoff() {
@@ -118,7 +187,7 @@ export function buildHandoff() {
   return {
     schema: 'miniapp-v3-handoff/1',
     generatedAt: new Date().toISOString(),
-    studentMergeSha: implementationSha(),
+    studentMergeSha: sealedShaOrHead(),
     actionSchemaVersion: contractVersion('src/services/actionRouterCore.mjs', 'ACTION_SCHEMA_VERSION'),
     routeInventoryHash: sha256(inventory.routes.join('\n')),
     routeCount: inventory.routes.length,
@@ -143,6 +212,19 @@ function verify() {
     return 1
   }
   const stored = JSON.parse(read(OUTPUT))
+
+  // 先把「解析不出来」和「真的漂移了」分开报。两者都 fail-closed（T8 不能在无法校验的
+  // 检出上接线），但原因不能说反：浅克隆读不到被并入的分支尖端时说“契约漂移”，
+  // 会让 T8 以为学生端改了东西，实际只是历史深度不够。
+  const resolved = implementationSha()
+  if (resolved.unresolved) {
+    console.error('[handoff] 无法解析被封存的实现提交，因此不能判定契约是否漂移：')
+    console.error(`  - ${resolved.reason}`)
+    console.error('  - 这通常是 actions/checkout 默认 fetch-depth=1 的浅克隆；')
+    console.error('    请用完整历史（fetch-depth: 0）或 git fetch --unshallow 后重跑本校验。')
+    return 1
+  }
+
   const current = buildHandoff()
   const drift = []
   for (const field of REQUIRED_FIELDS) {
@@ -165,6 +247,18 @@ function verify() {
   return 0
 }
 
+/**
+ * 只有「直接执行本脚本」才允许产生副作用。
+ *
+ * handoff-contract.test.mjs 会 `import { buildHandoff }`，而 ESM 的 import 会执行整个模块
+ * 顶层。少了这道判断，`npm test` 本身就会把 miniapp-v3-handoff.json 重写一遍：跑完测试
+ * 工作区凭空变脏，更糟的是在 main 上它会把封存的实现 SHA 覆盖成 merge 提交的 SHA，
+ * 等于测试顺手毁掉交付物。生成/校验只能由命令行触发。
+ */
+const invokedDirectly = process.argv[1]
+  ? resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  : false
+
 function writeHandoffAtomically(handoff) {
   const temp = `${OUTPUT}.${process.pid}.${Date.now()}.tmp`
   writeFileSync(temp, `${JSON.stringify(handoff, null, 2)}\n`, 'utf8')
@@ -172,7 +266,9 @@ function writeHandoffAtomically(handoff) {
 }
 
 const isVerify = process.argv.includes('--verify')
-if (isVerify) {
+if (!invokedDirectly) {
+  // 被 import：只提供 buildHandoff 等纯函数，不读写任何文件。
+} else if (isVerify) {
   process.exit(verify())
 } else {
   const handoff = buildHandoff()

@@ -396,6 +396,7 @@ def _ensure_counselor_assignment(facts: dict, tokens: dict) -> dict:
     for row in ledger.get("items") or []:
         if (str(row.get("userId")) == str(facts["counselorUserId"])
                 and str(row.get("status") or "").upper() == "ACTIVE"):
+            # 复用已有任职（可能是别的夹具建的）：既然不是我们建的，cleanup 也不该动它。
             return {"assignmentId": str(row["id"]), "created": False}
     created = _call("/student-affairs/counselor-assignments", admin, "POST", {
         "classId": str(facts["classId"]),
@@ -404,7 +405,8 @@ def _ensure_counselor_assignment(facts: dict, tokens: dict) -> dict:
         "effectiveFrom": (date.today() - timedelta(days=30)).isoformat() + "T00:00:00",
         "reason": f"{MARK} 真实点击回放需要固定审批人",
     })
-    return {"assignmentId": str(created["id"]), "created": True}
+    return {"assignmentId": str(created["id"]), "created": True,
+            "version": int(created.get("version") or 0)}
 
 
 def seed() -> dict:
@@ -436,12 +438,33 @@ def seed() -> dict:
     return state
 
 
+
+def _end_counselor_assignment_if_created(state: dict) -> None:
+    """只结束本夹具自己建的辅导员任职。
+
+    辅导员任职是学校侧的组织配置，不是本次回放产生的业务数据——夹具改了它就得改回去，
+    否则会把状态泄漏给同一次 CI 里后跑的其他 spec（sandbox-school 是共享租户）。
+    复用别人已有的任职时 created=False，那条一律不碰。
+    """
+    counselor = state.get("counselor") or {}
+    if not counselor.get("created") or not counselor.get("assignmentId"):
+        return
+    try:
+        admin = _login(*ADMIN_LOGIN)
+        _call(f"/student-affairs/counselor-assignments/{counselor['assignmentId']}/end",
+              admin, "POST", {"reason": f"{MARK} 回放结束，撤回夹具建立的临时任职",
+                              "version": int(counselor.get("version") or 0)})
+    except (ApiError, OSError) as exc:
+        # 清理失败不该把整个 cleanup 打断（业务数据还等着删）；说清楚即可。
+        print(f"[s9-rt] 辅导员任职未能自动结束，请人工确认：{exc}")
+
 def cleanup() -> None:
     """只删本夹具打了 MARK 的数据；不按表清空，也不碰其他夹具的账号与组织。"""
     if not STATE_PATH.exists():
         print("[s9-rt] nothing to clean")
         return
     state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    _end_counselor_assignment_if_created(state)
     from app.models import (AaExamBatch, AaExamCourse, AaExamRoom, AaExamRoomStudent,
                             CsLeave, MessageCampaign, UnifiedMessage, UnifiedTodo)
     db = _session()
