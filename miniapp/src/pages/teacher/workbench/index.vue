@@ -135,6 +135,7 @@ import { useSessionStore } from '@/stores/session'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 import { teacherApi } from '@/services/teacherApi'
 import { ensureTeacherPerformanceApi } from '@/services/mobilePerformanceInstaller.teacher'
+import { runAction } from '@/services/actionRouter'
 import { getTeacherWorkbenchVersion } from '@/utils/viewFreshness'
 import { deadlineText, isOverdue, fromNow } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
@@ -375,7 +376,7 @@ export default {
         ? '/pages/teacher/internship-risk/index'
         : '/pages/teacher/affairs-review/index?type=RISK_HANDLE')
     },
-    handleTodo(t) { go('/pages/teacher/todos/index') },
+    handleTodo(t) { return runAction(t && t.action, { side: 'teacher' }) },
     handleRisk(r) {
       const session = useSessionStore()
       if (session.currentRole === 'intern_mentor') return go('/pages/teacher/internship-risk/index')
