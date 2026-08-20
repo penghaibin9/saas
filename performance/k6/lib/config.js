@@ -142,6 +142,14 @@ const fullLatencyThresholds = {
   ...routeThresholds,
 };
 
+// k6 only materializes tagged sub-metrics in handleSummary when a threshold references them.
+// Local p300/p500 intentionally do not enforce latency (runner contention makes it diagnostic),
+// but route-coverage evidence must still exist. These non-relaxing max>=0 thresholds keep every
+// required route sub-metric materialized without turning local diagnostic latency into a gate.
+const localRouteCoverageThresholds = Object.fromEntries(
+  Object.keys(routeThresholds).map((key) => [key, ['max>=0']]),
+);
+
 // GitHub自包含高负载把k6、FastAPI、MySQL、Redis放在同一Runner，只作为功能与稳定性诊断。
 // HTTPS预发/正式环境仍执行完整延迟硬门槛，禁止用本地诊断替代真实容量验收。
 export const LOCAL_HIGH_LOAD_DIAGNOSTIC =
@@ -159,7 +167,7 @@ export const options = {
   thresholds: {
     checks: ['rate>0.995'],
     http_req_failed: ['rate<0.005'],
-    ...(LOCAL_HIGH_LOAD_DIAGNOSTIC ? {} : fullLatencyThresholds),
+    ...(LOCAL_HIGH_LOAD_DIAGNOSTIC ? localRouteCoverageThresholds : fullLatencyThresholds),
   },
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   userAgent: 'Yueke-Capacity-Gate/1.0',
