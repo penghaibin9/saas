@@ -7,6 +7,12 @@ from app.core.exceptions import AppException
 from app.services import teacher_mobile_messages_v3_service as svc
 
 
+def _row(**kw):
+    values = {"category": None, "message_type": None, "priority": None}
+    values.update(kw)
+    return SimpleNamespace(**values)
+
+
 def test_t9_cursor_round_trip_and_signature_tamper(monkeypatch):
     monkeypatch.setattr(svc, "_cursor_signature", lambda raw: (raw[:1] or b"x") * 32)
     payload = {
@@ -30,11 +36,10 @@ def test_t9_cursor_round_trip_and_signature_tamper(monkeypatch):
 
 
 def test_t9_server_classification_has_single_priority_order():
-    row = lambda **kw: SimpleNamespace(category=None, message_type=None, priority=None, **kw)
-    assert svc._classify_row(row(priority="EMERGENCY", category="TODO")) == "risk"
-    assert svc._classify_row(row(message_type="REMINDER")) == "urge"
-    assert svc._classify_row(row(category="BUSINESS")) == "dynamic"
-    assert svc._classify_row(row(message_type="NOTICE")) == "system"
+    assert svc._classify_row(_row(priority="EMERGENCY", category="TODO")) == "risk"
+    assert svc._classify_row(_row(message_type="REMINDER")) == "urge"
+    assert svc._classify_row(_row(category="BUSINESS")) == "dynamic"
+    assert svc._classify_row(_row(message_type="NOTICE")) == "system"
 
 
 def test_t9_filter_contract_rejects_local_scan_inputs():
@@ -53,3 +58,24 @@ def test_t9_keyset_source_has_no_offset_and_uses_page_size_plus_one():
     assert ".limit(size + 1)" in source
     assert "UnifiedMessage.created_at < event_at" in source
     assert "UnifiedMessage.id < row_id" in source
+
+
+def test_t9_staff_identity_does_not_bypass_canonical_message_permission(monkeypatch):
+    calls = []
+    monkeypatch.setattr(svc, "enforce_permission", lambda user, code: calls.append((user["userId"], code)))
+    user = {"userId": "db-7", "userType": "TEACHER"}
+
+    assert svc._require_teacher(user) is user
+    assert svc._require_teacher(user, permission="workbench.message.ack") is user
+    assert calls == [
+        ("db-7", "workbench.message.view"),
+        ("db-7", "workbench.message.ack"),
+    ]
+
+
+def test_t9_student_identity_is_rejected_before_permission_check(monkeypatch):
+    calls = []
+    monkeypatch.setattr(svc, "enforce_permission", lambda user, code: calls.append(code))
+    with pytest.raises(AppException):
+        svc._require_teacher({"userId": "db-8", "userType": "STUDENT"})
+    assert calls == []
