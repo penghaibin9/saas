@@ -119,6 +119,53 @@ def test_p0_manual_dr_records_can_never_make_health_green(db_mode):
     assert board["restoreDrill"]["healthAuthority"] == "MACHINE_ONLY"
 
 
+def test_p0_machine_restore_green_requires_complete_file_hash_verification():
+    from app.services.machine_recovery_evidence_service import _passed_contract
+
+    evidence = {
+        "status": "PASSED",
+        "runType": "RESTORE",
+        "rpoSeconds": 10,
+        "targetRpoSeconds": 20,
+        "rtoSeconds": 30,
+        "targetRtoSeconds": 60,
+        "assertions": {
+            "manifestVerified": True,
+            "databaseRestoreVerified": True,
+            "schemaVerified": True,
+            "indexesVerified": True,
+            "fileObjectsVerified": False,
+        },
+    }
+    with pytest.raises(AppException) as exc:
+        _passed_contract(evidence)
+    assert exc.value.code == "VALIDATION_ERROR"
+    assert "fileObjectsVerified" in str(exc.value.message)
+
+
+def test_p0_machine_backup_green_requires_immutable_remote_confirmation():
+    from app.services.machine_recovery_evidence_service import _passed_contract
+
+    evidence = {
+        "status": "PASSED",
+        "runType": "BACKUP",
+        "rpoSeconds": 10,
+        "targetRpoSeconds": 20,
+        "rtoSeconds": None,
+        "targetRtoSeconds": None,
+        "assertions": {
+            "manifestVerified": True,
+            "databaseShaVerified": True,
+            "offsiteReadbackVerified": True,
+            "immutableRemoteConfirmed": False,
+        },
+    }
+    with pytest.raises(AppException) as exc:
+        _passed_contract(evidence)
+    assert exc.value.code == "VALIDATION_ERROR"
+    assert "immutableRemoteConfirmed" in str(exc.value.message)
+
+
 def test_p0_migrations_form_one_linear_chain_after_academic_final_head():
     auth = _load_revision("20260820_control_plane_auth_risk.py")
     recovery = _load_revision("20260820_control_plane_recovery_evidence.py")
