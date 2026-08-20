@@ -46,8 +46,11 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { ensureTeacherPerformanceApi } from '@/services/mobilePerformanceInstaller.teacher'
 import { go } from '@/utils/nav'
 const PAGE_SIZE = 20
+ensureTeacherPerformanceApi()
+
 export default {
   data() {
     return {

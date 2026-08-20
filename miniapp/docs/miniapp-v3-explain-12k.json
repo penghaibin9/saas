@@ -1,0 +1,92 @@
+{
+  "tenantId": 1000000000000000900,
+  "studentId": 401,
+  "queries": [
+    {
+      "name": "home_todos",
+      "note": "首页/消息页待办：应命中 ix_todo_tenant_student_status_id",
+      "budgetRows": 500,
+      "rowsExamined": 2,
+      "withinBudget": true,
+      "tables": [
+        {
+          "table": "t_unified_todo",
+          "accessType": "index_merge",
+          "key": null,
+          "rowsExaminedPerScan": 2,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        }
+      ]
+    },
+    {
+      "name": "home_todos_by_due",
+      "note": "Agenda 时间窗待办：按 due_at 过滤，验证是否出现 filesort/大量扫描",
+      "budgetRows": 2000,
+      "rowsExamined": 2,
+      "withinBudget": true,
+      "tables": [
+        {
+          "table": "t_unified_todo",
+          "accessType": "index_merge",
+          "key": null,
+          "rowsExaminedPerScan": 2,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        }
+      ]
+    },
+    {
+      "name": "messages_page",
+      "note": "本人消息分页：receiver_user_id + id desc",
+      "budgetRows": 2000,
+      "rowsExamined": 25,
+      "withinBudget": true,
+      "tables": [
+        {
+          "table": "t_unified_message",
+          "accessType": "ref",
+          "key": "ix_t_unified_message_receiver_user_id",
+          "rowsExaminedPerScan": 25,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        }
+      ]
+    },
+    {
+      "name": "cases_keyset",
+      "note": "我的办理 keyset 首页：本人记录按 updated_at 降序",
+      "budgetRows": 2000,
+      "rowsExamined": 5,
+      "withinBudget": true,
+      "tables": [
+        {
+          "table": "t_cs_leave",
+          "accessType": "ref",
+          "key": "ix_t_cs_leave_student_id",
+          "rowsExaminedPerScan": 5,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        }
+      ]
+    },
+    {
+      "name": "search_messages",
+      "note": "受限搜索：本人 + 时间窗 + 标题匹配",
+      "budgetRows": 5000,
+      "rowsExamined": 25,
+      "withinBudget": true,
+      "tables": [
+        {
+          "table": "t_unified_message",
+          "accessType": "ref",
+          "key": "ix_t_unified_message_receiver_user_id",
+          "rowsExaminedPerScan": 25,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        }
+      ]
+    }
+  ],
+  "overBudget": []
+}

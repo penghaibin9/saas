@@ -70,6 +70,15 @@ def _visibility(user: dict):
     return or_(new_path, legacy_path)
 
 
+def visibility_condition(user: dict):
+    """本人可见性的唯一事实源，供其他投影复用。
+
+    V3 深审 P1-11：Home 等投影必须复用这里的 receiver_user_id + activeContext 判定，
+    禁止再复制一套自己的 receiver 可见性——两份规则一旦漂移就是消息可见性事故。
+    """
+    return _visibility(user)
+
+
 def _category_of(row) -> str:
     if row.category:
         return row.category

@@ -33,11 +33,17 @@
             </view>
 
             <view class="gc__field">
-              <text class="gc__label">证明材料</text>
-              <view class="gc__upload" @click="pickFile">
-                <text class="gc__upload-icon">！</text>
-                <text class="gc__upload-txt">附件上传暂未开放，请携带纸质材料至资助中心窗口</text>
-              </view>
+              <MobileAttachmentPicker
+                label="证明材料"
+                biz-purpose="ORIENTATION_GREEN_CHANNEL"
+                :file-ids="fileIds"
+                :max-count="3"
+                :max-size-mb="10"
+                :disabled="submitting"
+                @update:fileIds="(ids) => (fileIds = ids)"
+                @update:ready="(value) => (attachmentsReady = value)"
+                @error="onAttachmentError"
+              />
             </view>
           </view>
 
@@ -72,7 +78,9 @@ export default {
   data() {
     return {
       o: null, state: 'loading', typeOptions: TYPE_OPTIONS,
-      applyType: TYPE_OPTIONS[0], amount: '', remark: '', submitting: false
+      applyType: TYPE_OPTIONS[0], amount: '', remark: '', submitting: false,
+      // V3 §8.1：只保存 TEMP_PRIVATE fileId，正式绑定在服务端业务事务里完成。
+      fileIds: [], attachmentsReady: true
     }
   },
   onLoad() { this.load() },
@@ -89,14 +97,19 @@ export default {
         this.state = 'ready'
       }).catch(() => { this.state = 'error' })
     },
-    pickFile() {
-      toast('附件上传暂未开放，请携带纸质材料至资助中心窗口')
+    onAttachmentError(error) {
+      toast((error && error.message) || '附件处理失败，请重试')
     },
     submit() {
       if (this.submitting) return
+      if (!this.attachmentsReady) {
+        toast('附件尚未通过安全扫描，请稍候再提交')
+        return
+      }
       this.submitting = true
       submitLock.run(() => studentApi.submitOrientationGreenChannel({
-        applyType: this.applyType, applyAmount: Number(this.amount) || 0, remark: this.remark.trim()
+        applyType: this.applyType, applyAmount: Number(this.amount) || 0, remark: this.remark.trim(),
+        fileIds: this.fileIds
       })).then(() => {
         uni.showToast({ title: '提交成功', icon: 'success' })
         setTimeout(() => back(), 700)

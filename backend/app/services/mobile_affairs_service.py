@@ -103,6 +103,9 @@ def funding_my(user) -> dict:
         open_ids = set(db.scalars(select(FundingAppeal.application_id).where(
             FundingAppeal.tenant_id == _tid(), FundingAppeal.student_id == stu.id,
             FundingAppeal.status == "SUBMITTED", FundingAppeal.is_deleted.is_(False))).all())
+        # 学生交了佐证材料就必须看得见它挂在哪一笔申请上，否则提交完像掉进黑洞。
+        # 一次分组查询取全部条数，不逐行查（N+1）。
+        attachment_counts = _funding_attachment_counts(db, [int(x.id) for x in rows])
         items = []
         for x in rows:
             pending = int(x.id) in open_ids
@@ -113,8 +116,36 @@ def funding_my(user) -> dict:
                 "allowedActions": (["EDIT_RETURNED", "RESUBMIT"] if x.status == "RETURNED" else [])
                     + (["SUBMIT_APPEAL"] if x.status == "PUBLICITY" and not pending else []),
                 "hasPendingAppeal": pending,
+                "attachmentCount": attachment_counts.get(int(x.id), 0),
             })
         return {"items": items}
+
+
+def _funding_attachment_counts(db, application_ids: list[int]) -> dict[int, int]:
+    """本人资助申请 → 生效附件数。只数 ACTIVE 且当前版本的绑定。"""
+    if not application_ids:
+        return {}
+    from sqlalchemy import func
+    from app.models.file import FileBinding
+    rows = db.execute(
+        select(FileBinding.biz_id, func.count())
+        .where(
+            FileBinding.tenant_id == _tid(),
+            FileBinding.biz_type == "FUNDING",
+            FileBinding.biz_id.in_([str(item) for item in application_ids]),
+            FileBinding.status == "ACTIVE",
+            FileBinding.is_current.is_(True),
+            FileBinding.is_deleted.is_(False),
+        )
+        .group_by(FileBinding.biz_id)
+    ).all()
+    counts: dict[int, int] = {}
+    for biz_id, total in rows:
+        try:
+            counts[int(biz_id)] = int(total)
+        except (TypeError, ValueError):
+            continue
+    return counts
 
 
 def discipline_my(user) -> dict:
@@ -155,6 +186,7 @@ def discipline_my(user) -> dict:
 def dorm_my(user) -> dict:
     """我的宿舍：当前床位 + 学校自选开关(决定是否显示选床入口)。"""
     from app.models import DormBed, DormBuilding, DormRoom
+    from app.core.tenant_scoped import tenant_get
     from app.services import affairs_dorm_service as dorm
     with session() as db:
         stu = _me(db, user)
@@ -163,8 +195,8 @@ def dorm_my(user) -> dict:
             DormBed.status == "OCCUPIED", DormBed.is_deleted.is_(False))).first()
         my_bed = None
         if bed:
-            b = db.get(DormBuilding, int(bed.building_id))
-            room = db.get(DormRoom, int(bed.room_id))
+            b = tenant_get(db, DormBuilding, int(bed.building_id))
+            room = tenant_get(db, DormRoom, int(bed.room_id))
             my_bed = {"bedId": str(bed.id), "building": b.building_name if b else "",
                       "room": room.room_no if room else "", "bedNo": bed.bed_no,
                       "occupiedAt": _iso(bed.occupied_at)}

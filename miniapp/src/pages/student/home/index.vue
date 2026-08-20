@@ -74,12 +74,12 @@
         <view class="section-head"><text class="section-head__title">下一步该做什么</text></view>
         <MobileActionCard
           v-if="home.nextAction"
-          :title="home.nextAction.title"
-          :description="[home.nextAction.desc, deadlineText(home.nextAction.deadline)].filter(Boolean).join(' · ')"
+          :title="nextActionTitle"
+          :description="nextActionDesc"
           icon="→"
-          :action-text="home.nextAction.actionText"
-          @action="go(home.nextAction.route)"
-          @click="go(home.nextAction.route)"
+          :action-text="nextActionText"
+          @action="runAction(home.nextAction)"
+          @click="runAction(home.nextAction)"
         />
         <MobileGlobalState v-else state="empty" title="当前暂无待办"
           description="有新的审批、材料补交或校园事项时会显示在这里。" />
@@ -94,7 +94,8 @@
             :description="b.reason"
           >
             <template #actions>
-              <text class="home__alert-btn" @click="go('/pages/student/my-applications/index')">{{ b.solveText }}</text>
+              <text v-if="canRun(b.action)" class="home__alert-btn" @click="runAction(b.action)">去处理</text>
+              <text v-else class="home__alert-note">{{ disabledReason(b.action) }}</text>
             </template>
           </MobileInlineAlert>
         </template>
@@ -107,7 +108,7 @@
               v-for="(q, i) in home.quickServices"
               :key="q.key"
               class="icon-grid__item"
-              @click="go(q.route)"
+              @click="runAction(q.action)"
             >
               <view class="icon-grid__badge" :class="gradClass(i)">{{ q.icon }}</view>
               <text class="icon-grid__label">{{ q.label }}</text>
@@ -117,26 +118,27 @@
             description="学校启用可办理服务后会显示在这里。" />
         </view>
 
-        <!-- 今日课程 -->
+        <!-- 今天（课程 / 考试 / 截止，来自 Agenda 纯读投影） -->
         <view class="section-head">
-          <text class="section-head__title">今日课程</text>
-          <text class="section-head__more" @click="go('/pages/student/academic-affairs/index')">学业进度 ›</text>
+          <text class="section-head__title">今天</text>
+          <text class="section-head__more" @click="go('/pages/student/agenda/index')">查看7天 ›</text>
         </view>
         <view class="card stack-sm">
-          <view v-for="c in home.todayCourses" :key="c.id" class="home__course">
-            <view class="home__course-time" :class="{ 'is-now': c.status === 'current' }">
-              <text>{{ c.time.split('-')[0] }}</text>
-              <text class="home__course-dur">{{ c.time.split('-')[1] }}</text>
+          <view v-for="c in home.today" :key="c.eventId" class="home__course"
+            @click="runAction(c.action)">
+            <view class="home__course-time" :class="{ 'is-now': c.status === 'ONGOING' }">
+              <text>{{ clockOf(c.startAt) }}</text>
+              <text class="home__course-dur">{{ clockOf(c.endAt) }}</text>
             </view>
-            <view class="home__course-line" :class="{ 'is-now': c.status === 'current' }" />
+            <view class="home__course-line" :class="{ 'is-now': c.status === 'ONGOING' }" />
             <view class="flex-1">
-              <text class="home__course-name">{{ c.name }}</text>
-              <text class="home__course-place">{{ c.place }}</text>
+              <text class="home__course-name">{{ c.title }}</text>
+              <text class="home__course-place">{{ [kindText(c.kind), c.location].filter(Boolean).join(' · ') }}</text>
             </view>
-            <text v-if="c.status === 'current'" class="home__course-tag">进行中</text>
+            <text v-if="c.status === 'ONGOING'" class="home__course-tag">进行中</text>
           </view>
-          <MobileGlobalState v-if="!home.todayCourses.length" state="empty" title="暂无今日课程"
-            description="当前没有从教务系统获取到今日课程。" />
+          <MobileGlobalState v-if="!home.today.length" state="empty" title="今天没有安排"
+            description="课程、考试与办理截止都会显示在这里。" />
         </view>
 
         <!-- 待办 -->
@@ -152,8 +154,8 @@
             :source-module="t.module"
             :deadline="fmtDeadline(t.deadline)"
             :status="t.status"
-            action-text="去办理"
-            @handle="go('/pages/student/campus-service/index')"
+            :action-text="t.action && t.action.label ? '去办理' : '去办理'"
+            @handle="runAction(t.action)"
           />
           <MobileGlobalState v-if="!home.todos.length" state="empty" title="暂无待办"
             description="当前没有需要你处理的事项。" />
@@ -162,7 +164,7 @@
         <!-- 通知 -->
         <view class="section-head"><text class="section-head__title">校园通知</text></view>
         <view class="card stack-sm">
-          <view v-for="n in home.notices" :key="n.id" class="home__notice">
+          <view v-for="n in home.notices" :key="n.id" class="home__notice" @click="runAction(n.action)">
             <text v-if="n.important" class="home__notice-tag">重要</text>
             <text class="home__notice-title ellipsis flex-1">{{ n.title }}</text>
             <text class="home__notice-src">{{ n.source }}</text>
@@ -190,6 +192,7 @@ import { studentApi } from '@/services/studentApi'
 import { getStudentHomeVersion } from '@/utils/viewFreshness'
 import { deadlineText } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
+import { canNavigate, disabledReasonOf, runAction } from '@/services/actionRouter'
 
 const HOME_TTL_MS = 20_000
 const GRAD_CLASSES = ['g1', 'g3', 'g7', 'g4', 'g5', 'g6', 'g2', 'g8']
@@ -214,7 +217,7 @@ export default {
       brand: tenantBrandConfig, home: null, state: 'loading', user: {}, greeting: '你好',
       statusBarHeight: 20, orientation: null,
       orientationBatch: { open: false, daysLeft: 0 }, emg: null,
-      lastLoadedAt: 0, loadedContextKey: '', loadedFreshnessVersion: -1
+      lastLoadedAt: 0, loadedContextKey: '', loadedFreshnessVersion: -1, loadedProjectionVersion: ''
     }
   },
   computed: {
@@ -225,6 +228,19 @@ export default {
     creditRateText() {
       const value = Number(this.home?.metrics?.creditRate)
       return Number.isFinite(value) ? `${value}%` : '—'
+    },
+    nextActionTitle() {
+      const action = this.home?.nextAction
+      return (action && (action.label || action.sourceBizType)) || '下一步'
+    },
+    nextActionDesc() {
+      const action = this.home?.nextAction
+      if (!action) return ''
+      if (!canNavigate(action, 'student')) return disabledReasonOf(action)
+      return action.target?.routeExact ? '直接进入该业务对象' : '进入对应办理入口'
+    },
+    nextActionText() {
+      return canNavigate(this.home?.nextAction, 'student') ? '去办理' : '暂不可办理'
     },
     isOrientationGuide() {
       return !!(this.orientation && this.orientation.hasData &&
@@ -288,11 +304,22 @@ export default {
       const session = useSessionStore()
       const contextKey = sessionContextKey(session)
       const freshness = getStudentHomeVersion()
+      // V3 §5.4：客户端 20s freshness 只是网络优化。contextKey / 本地 freshness /
+      // 服务端 projectionVersion 任一变化都必须立刻放弃旧结果，不能等 TTL 到期。
       const fresh = this.home &&
         this.loadedContextKey === contextKey &&
         this.loadedFreshnessVersion === freshness &&
+        this.loadedProjectionVersion === (this.home.projectionVersion || '') &&
         Date.now() - this.lastLoadedAt < HOME_TTL_MS
       if (!fresh) this.load()
+    },
+    // V3 §4.2：页面只调用 runAction()，不再自己拼 route。
+    runAction(action) { return runAction(action, { side: 'student' }) },
+    canRun(action) { return canNavigate(action, 'student') },
+    disabledReason(action) { return disabledReasonOf(action) },
+    clockOf(iso) { return iso ? String(iso).slice(11, 16) : '' },
+    kindText(kind) {
+      return { COURSE: '课程', EXAM: '考试', DEADLINE: '办理截止' }[String(kind || '')] || ''
     },
     load({ force = false, done = null } = {}) {
       const session = useSessionStore()
@@ -318,6 +345,9 @@ export default {
           const currentSession = useSessionStore()
           if (!this._pageActive || this._loadEpoch !== epoch ||
               sessionContextKey(currentSession) !== contextKey) return data
+          // 服务端 projectionVersion 变了 = 底层事实变了：立刻记下新版本，
+          // 让下一次 20s 内的短路判断不会再拿旧投影顶着（V3 §5.4 / 深审 P1-12）。
+          this.loadedProjectionVersion = data.projectionVersion || ''
           this.home = data
           this.orientation = data.orientation || null
           this.orientationBatch = data.orientationBatch || { open: false, daysLeft: 0 }

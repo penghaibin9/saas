@@ -11,6 +11,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.mobile_focus_contract import (
+    FOCUS_DETAIL,
+    FOCUS_LIST_FOCUS,
+    FOCUS_NONE,
+    is_route_exact,
+)
+
 
 # PC 管理端已存在真实详情路由的高频待办。
 _PC_EXACT: dict[str, tuple[str, str]] = {
@@ -45,21 +52,24 @@ _PC_LIST: dict[str, tuple[str, str, dict[str, str]]] = {
     "EMPLOYMENT_FOLLOWUP": ("todo-route:employment-followup-queue", "/admin/employment/followups", {"status": "OPEN"}),
 }
 
-# 学生小程序当前真实业务页。query.recordId 用于页面 focus；页面尚未实现 focus 时 exact=False。
-_STUDENT_MINI: dict[str, tuple[str, str]] = {
-    "LEAVE_APPROVAL": ("todo-route:student-mini-leave", "/pages/student/affairs/leave"),
-    "LEAVE_OVERDUE": ("todo-route:student-mini-leave", "/pages/student/affairs/leave"),
-    "LEAVE_CANCEL": ("todo-route:student-mini-leave", "/pages/student/affairs/leave"),
-    "LEAVE_EXTENSION": ("todo-route:student-mini-leave", "/pages/student/affairs/leave"),
-    "AID_APPROVAL": ("todo-route:student-mini-aid", "/pages/student/affairs/aid"),
-    "AID_ADJUST": ("todo-route:student-mini-aid", "/pages/student/affairs/aid"),
-    "FUNDING_APPROVAL": ("todo-route:student-mini-funding", "/pages/student/affairs/funding"),
-    "DISCIPLINE_APPROVAL": ("todo-route:student-mini-discipline", "/pages/student/affairs/discipline"),
-    "DISCIPLINE_REMOVE": ("todo-route:student-mini-discipline", "/pages/student/affairs/discipline"),
-    "ACAD_WARNING_HANDLE": ("todo-route:student-mini-academic", "/pages/student/academic-affairs/index"),
-    "INTERN_WEEKLY_REVIEW": ("todo-route:student-mini-internship", "/pages/student/internship/index"),
-    "INTERN_LEAVE_APPROVAL": ("todo-route:student-mini-internship", "/pages/student/internship/index"),
-    "INTERN_EXCEPTION_HANDLE": ("todo-route:student-mini-internship", "/pages/student/internship/index"),
+# 学生小程序当前真实业务页。query.recordId 用于页面 focus。
+# V3 §4.4：第三项是 focusMode——页面真的会读 recordId 定位对象才写 LIST_FOCUS，
+# 只是个安全入口就写 NONE；exact 由 mobile_focus_contract.is_route_exact() 统一判定，
+# 不再由本表自行宣称。
+_STUDENT_MINI: dict[str, tuple[str, str, str]] = {
+    "LEAVE_APPROVAL": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
+    "LEAVE_OVERDUE": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
+    "LEAVE_CANCEL": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
+    "LEAVE_EXTENSION": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
+    "AID_APPROVAL": ("todo-route:student-mini-aid", "/pages/student/affairs/aid", FOCUS_LIST_FOCUS),
+    "AID_ADJUST": ("todo-route:student-mini-aid", "/pages/student/affairs/aid", FOCUS_LIST_FOCUS),
+    "FUNDING_APPROVAL": ("todo-route:student-mini-funding", "/pages/student/affairs/funding", FOCUS_LIST_FOCUS),
+    "DISCIPLINE_APPROVAL": ("todo-route:student-mini-discipline", "/pages/student/affairs/discipline", FOCUS_NONE),
+    "DISCIPLINE_REMOVE": ("todo-route:student-mini-discipline", "/pages/student/affairs/discipline", FOCUS_NONE),
+    "ACAD_WARNING_HANDLE": ("todo-route:student-mini-academic-warning", "/pages/student/academic-affairs/warning", FOCUS_NONE),
+    "INTERN_WEEKLY_REVIEW": ("todo-route:student-mini-internship", "/pages/student/internship/index", FOCUS_NONE),
+    "INTERN_LEAVE_APPROVAL": ("todo-route:student-mini-internship", "/pages/student/internship/index", FOCUS_NONE),
+    "INTERN_EXCEPTION_HANDLE": ("todo-route:student-mini-internship", "/pages/student/internship/index", FOCUS_NONE),
 }
 
 
@@ -86,6 +96,7 @@ def resolve_todo_route(todo_type: str | None, record_id: Any, *, client: str) ->
                 "routeParams": params,
                 "query": {},
                 "path": template.format(**params),
+                "focusMode": FOCUS_DETAIL,
                 "exact": True,
             }
         fallback = _PC_LIST.get(type_code)
@@ -96,6 +107,7 @@ def resolve_todo_route(todo_type: str | None, record_id: Any, *, client: str) ->
                 "routeParams": {"recordId": rid},
                 "query": {**query, "recordId": rid},
                 "path": path,
+                "focusMode": FOCUS_NONE,
                 "exact": False,
             }
         return None
@@ -104,13 +116,14 @@ def resolve_todo_route(todo_type: str | None, record_id: Any, *, client: str) ->
         target = _STUDENT_MINI.get(type_code)
         if not target:
             return None
-        route_name, path = target
+        route_name, path, focus_mode = target
         return {
             "routeName": route_name,
             "routeParams": {"recordId": rid},
             "query": {"recordId": rid},
             "path": path,
-            "exact": False,
+            "focusMode": focus_mode,
+            "exact": is_route_exact(focus_mode, path),
         }
 
     return None
@@ -121,5 +134,13 @@ def route_contract_snapshot() -> dict[str, dict[str, Any]]:
     return {
         "pcExact": {key: {"routeName": value[0], "pathTemplate": value[1]} for key, value in _PC_EXACT.items()},
         "pcList": {key: {"routeName": value[0], "path": value[1]} for key, value in _PC_LIST.items()},
-        "studentMini": {key: {"routeName": value[0], "path": value[1]} for key, value in _STUDENT_MINI.items()},
+        "studentMini": {
+            key: {
+                "routeName": value[0],
+                "path": value[1],
+                "focusMode": value[2],
+                "exact": is_route_exact(value[2], value[1]),
+            }
+            for key, value in _STUDENT_MINI.items()
+        },
     }

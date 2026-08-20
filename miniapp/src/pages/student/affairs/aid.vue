@@ -26,8 +26,10 @@
         </view>
 
         <view class="section-head"><text class="section-head__title">申请记录</text></view>
+        <MobileInlineAlert v-if="focusMissing" type="warning" title="没有找到这条记录"
+          description="消息或待办指向的困难认定申请不在当前列表里，可能已被处理、撤回或超出本页范围。" />
         <view class="list-group" v-if="d.items && d.items.length">
-          <view v-for="x in d.items" :key="x.applyId" class="list-row col">
+          <view v-for="x in d.items" :key="x.applyId" :id="'aid-' + x.applyId" :class="{ 'is-focus': isFocused(x) }" class="list-row col">
             <view class="row-between">
               <view class="flex-1"><text class="t-md">申请等级：{{ x.applyLevel || '—' }}</text><text class="aid__sub" v-if="x.finalLevel">认定等级：{{ x.finalLevel }}</text><text class="aid__sub aid__return" v-if="x.returnReason">退回意见：{{ x.returnReason }}</text></view>
               <MobileStatusTag :status="x.statusLabel || x.status" />
@@ -61,6 +63,7 @@
 </template>
 
 <script>
+import { hasFocusRow, isFocusRow, readFocusId, scrollToFocus } from '@/utils/listFocus.mjs'
 import { studentApi } from '@/services/studentApi'
 import { affairsAidObjection } from '@/services/realApi'
 import { affairsReturnedApi } from '@/services/affairsReturnedApi'
@@ -73,7 +76,7 @@ const blankEditForm = () => ({ memberCount: '', income: '', debt: '', specialTag
 
 export default {
   data() {
-    return {
+    return { focusId: '', focusMissing: false,
       d: null, state: 'loading', busy: false, reasons: {}, batches: [], batchIndex: 0, batchError: '',
       levels: LEVELS, levelIndex: 0, form: blankForm(),
       editVisible: false, editTarget: {}, editLevelIndex: 0, editForm: blankEditForm(), editNotice: ''
@@ -83,8 +86,17 @@ export default {
     canSubmit() { return this.form.commit && this.validAidForm(this.form) },
     canSaveEdit() { return this.validAidForm(this.editForm) }
   },
-  onLoad() { this.load() },
+  // V3 §4.4 LIST_FOCUS：待办/消息深链带 recordId 进来时必须定位到那条记录。
+  onLoad(query) { this.focusId = readFocusId(query); this.load() },
   methods: {
+    isFocused(row) { return isFocusRow(row, this.focusId, ['applyId']) },
+    applyFocus() {
+      if (!this.focusId) return
+      const rows = (this.d && this.d.items) || []
+      this.focusMissing = !hasFocusRow(rows, this.focusId, ['applyId'])
+      if (this.focusMissing) return
+      this.$nextTick(() => scrollToFocus('#aid-', this.focusId))
+    },
     allows(item, action) { return Array.isArray(item && item.allowedActions) && item.allowedActions.includes(action) },
     showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); return n },
     numberOrNull(value) {
@@ -128,7 +140,7 @@ export default {
         this.d = d
         if (b && b.__error) { this.batchError = b.__error; this.batches = [] }
         else this.batches = ((b && b.items) || []).map((x) => ({ ...x, label: `${x.batchName || x.schoolYear || '认定批次'}（截止 ${(x.applyEnd || '').slice(0, 10) || '不限'}）` }))
-        this.batchIndex = 0; this.state = 'ready'
+        this.batchIndex = 0; this.state = 'ready'; this.applyFocus()
       }).catch((e) => { this.state = 'error'; this.showError(e, '困难认定加载失败') })
     },
     onBatch(e) { this.batchIndex = Number(e.detail.value) }, onLevel(e) { this.levelIndex = Number(e.detail.value) },
@@ -191,4 +203,5 @@ export default {
 
 <style scoped>
 .aid__label { display: block; font-size: var(--font-size-sm); color: var(--text-tertiary); }.aid__level { display: block; font-size: 22px; font-weight: 700; color: var(--brand-primary); margin-top: 4px; }.aid__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }.aid__return { color: #dc2626; }.col { flex-direction: column; align-items: stretch; gap: 8px; }.row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }.hint { font-size: 12px; color: #6b7280; }.fld { margin-top: 10px; }.lbl { display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px; }.picker, .inp, .ta { width: 100%; box-sizing: border-box; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; font-size: 13px; background: #fff; }.ta { min-height: 72px; }.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.req { color: #dc2626; }.counter { display: block; text-align: right; margin-top: 3px; font-size: 11px; color: #94a3b8; }.chk { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; }.chk__box { width: 18px; height: 18px; border: 1px solid #94a3b8; border-radius: 4px; text-align: center; line-height: 16px; font-size: 12px; color: #2563eb; flex-shrink: 0; }.chk__t { font-size: 12px; color: #475569; }.btn { margin-top: 8px; background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 8px 12px; font-size: 13px; }.card-title { display: block; font-weight: 600; margin-bottom: 4px; }.aid__mask { position: fixed; inset: 0; z-index: 1000; background: rgba(15,23,42,.5); display: flex; align-items: flex-end; }.aid__sheet { width: 100%; border-radius: 18px 18px 0 0; padding: 18px; max-height: 88vh; overflow-y: auto; }.aid__actions { display: flex; gap: 10px; margin-top: 12px; }
+.is-focus { outline: 2px solid var(--brand-primary); outline-offset: 2px; border-radius: var(--radius-md); }
 </style>
