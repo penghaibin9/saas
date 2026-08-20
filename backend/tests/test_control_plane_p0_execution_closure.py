@@ -45,13 +45,25 @@ def test_p0_router_installs_all_three_runtime_authorities():
 
 
 def test_p0_purge_registry_classifies_every_current_tenant_table():
-    from app.services.tenant_purge_registry import inventory
+    from app.services.tenant_purge_registry import REVIEWED_ALEMBIC_HEAD, inventory
 
     registry = inventory()
     assert registry["complete"] is True, registry["unknownTables"]
     assert registry["unknownTables"] == []
     assert registry["fileObjectTableCount"] == 1
     assert registry["purgeTableCount"] > 0
+    assert registry["reviewedAlembicHead"] == REVIEWED_ALEMBIC_HEAD == "20260820_ctrl_offboarding"
+
+
+def test_p0_purge_registry_blocks_any_unreviewed_schema_head():
+    from app.services.tenant_purge_registry import REVIEWED_ALEMBIC_HEAD, assert_schema_head_reviewed
+
+    assert_schema_head_reviewed([REVIEWED_ALEMBIC_HEAD])
+    with pytest.raises(AppException) as exc:
+        assert_schema_head_reviewed(["20991231_future_schema"])
+    assert exc.value.code == "TENANT_PURGE_SCHEMA_NOT_REVIEWED"
+    with pytest.raises(AppException):
+        assert_schema_head_reviewed([REVIEWED_ALEMBIC_HEAD, "unexpected_second_head"])
 
 
 def test_p0_auth_risk_fails_closed_without_database_in_strict_env(monkeypatch):
