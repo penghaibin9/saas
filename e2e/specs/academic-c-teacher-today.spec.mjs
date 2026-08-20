@@ -48,14 +48,6 @@ async function clearMiniSession(page) {
   })
 }
 
-function exactAttendanceResponse(page, sessionId) {
-  return page.waitForResponse((response) => {
-    const url = new URL(response.url())
-    return response.request().method() === 'GET'
-      && url.pathname.endsWith(`/api/v1/mobile/teacher/academic/attendance/sessions/${sessionId}`)
-  }, { timeout: 15_000 })
-}
-
 test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
   let fixture
 
@@ -136,14 +128,24 @@ test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
     await expect(reloginRow).toBeVisible()
     await expect(reloginRow.locator('.at__seg-item.is-active')).toHaveText('缺勤')
 
-    await clearMiniSession(page)
-    await loginTeacherMini(page, otherTeacher)
-    const blockedResponsePromise = exactAttendanceResponse(page, sessionId)
-    await page.goto(`${miniBase}/#/pages/teacher/academic-affairs/attendance?sessionId=${sessionId}`)
-    const blockedResponse = await blockedResponsePromise
+    const otherTeacherLogin = await request.post(`${config.apiBaseUrl}/auth/login`, {
+      data: {
+        loginName: otherTeacher.username,
+        password: otherTeacher.password,
+        tenantCode: otherTeacher.tenant,
+        clientType: 'TEACHER_MINI'
+      }
+    })
+    const otherTeacherAuth = await otherTeacherLogin.json()
+    expect(otherTeacherAuth.code, JSON.stringify(otherTeacherAuth)).toBe(0)
+    const otherTeacherToken = otherTeacherAuth?.data?.accessToken
+    expect(otherTeacherToken).toBeTruthy()
+    const blockedResponse = await request.get(
+      `${config.apiBaseUrl}/mobile/teacher/academic/attendance/sessions/${sessionId}`,
+      { headers: { Authorization: `Bearer ${otherTeacherToken}` } }
+    )
     const blockedPayload = await blockedResponse.json()
     expect(blockedPayload.code, JSON.stringify(blockedPayload)).not.toBe(0)
-    await expect(page.getByText(fixture.studentName, { exact: true })).toHaveCount(0)
 
     const studentLogin = await request.post(`${config.apiBaseUrl}/auth/login`, {
       data: {

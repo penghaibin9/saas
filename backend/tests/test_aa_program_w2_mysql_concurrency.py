@@ -63,6 +63,7 @@ def _seed_program_for_versioning():
     suffix = uuid.uuid4().hex[:8]
     program = AaProgram(
         tenant_id=TID,
+        series_key=f"AW2-SERIES-{suffix}",
         program_name=f"A-W2并发版本-{suffix}",
         major_id=952001,
         grade_year="2026",

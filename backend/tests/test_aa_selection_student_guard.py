@@ -8,14 +8,20 @@ SERVICES = ROOT / "backend/app/modules/academic_affairs/services"
 
 def test_selection_student_guard_uses_account_binding_and_course_code():
     canonical = (SERVICES / "academic_affairs_selection_service.py").read_text(encoding="utf-8")
+    core = (SERVICES / "academic_affairs_selection_core_service.py").read_text(encoding="utf-8")
     compatibility = (SERVICES / "academic_affairs_selection_student_guard.py").read_text(encoding="utf-8")
 
     assert "mobile_student_identity_facade import resolve_student" in canonical
     assert "student = resolve_student(db, get_current_user_ctx() or {})" in canonical
-    assert "grade_service.effective_grade_rows(rows)" in canonical
+    assert "academic_affairs_selection_authority_consumer import passed_course_codes" in canonical
+    assert "academic_affairs_selection_authority_consumer import passed_course_names" in core
     assert "source_course = catalog_by_id[int(course.course_id)]" in canonical
     assert "target_code in passed_codes" in canonical
     assert "prerequisites - passed_codes" in canonical
+    assert "AcademicGrade" not in canonical
+    assert "AcademicStudent" not in canonical
+    assert "AcademicGrade" not in core
+    assert "AcademicStudent" not in core
     assert "StudentProfile.student_no ==" not in canonical
     assert "course_name in passed" not in canonical
 
@@ -27,12 +33,14 @@ def test_selection_student_guard_uses_account_binding_and_course_code():
 
 def test_selection_guard_preserves_original_capacity_and_conflict_controls():
     canonical = (SERVICES / "academic_affairs_selection_service.py").read_text(encoding="utf-8")
+    core = (SERVICES / "academic_affairs_selection_core_service.py").read_text(encoding="utf-8")
     final = (SERVICES / "academic_affairs_selection_final_service.py").read_text(encoding="utf-8")
 
     assert "_weeks_overlap" in canonical
     assert "maxCredits" in canonical
     assert "allow_reselect_closed" in canonical
     assert "course.selected_count" in canonical
+    assert "academic_affairs_selection_authority_consumer import task_slots" in core
     # stable-courseCode 的 final write path 必须保留冲突审计后再拒绝。
     assert "_base._core._record_conflict_reject" in final
     assert '"上课时间冲突"' in final

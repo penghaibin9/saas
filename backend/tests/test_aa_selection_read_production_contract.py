@@ -47,12 +47,20 @@ def test_large_selection_lists_page_in_sql():
         assert "rows[(safe_page" not in source
 
 
-def test_student_courses_bulk_loads_supply_without_batch_n_plus_one():
-    source = inspect.getsource(read.student_courses)
-    assert "AaSelectionCourse.batch_id.in_(batch_ids)" in source
-    assert "by_batch" in source
-    assert "db.add(" not in source
-    assert ".update(" not in source
+def test_student_courses_keeps_bulk_projection_and_d6_binding_does_not_downgrade_it():
+    wrapper_source = inspect.getsource(read.student_courses)
+    projection_source = inspect.getsource(read._final_student_courses_projection)
+
+    assert "_final_student_courses_projection" in wrapper_source
+    assert 'status == "OPEN"' in wrapper_source
+    assert 'status == "CLOSED"' in wrapper_source
+    assert 'course.get("reselect")' in wrapper_source
+    assert "AaSelectionCourse.batch_id.in_(batch_ids)" in projection_source
+    assert "courses_by_batch" in projection_source
+    assert "_evaluate_student_course(" in projection_source
+    assert "student_preflight(" not in projection_source
+    assert "db.add(" not in wrapper_source
+    assert ".update(" not in wrapper_source
 
 
 def test_college_scope_reuses_teaching_task_and_existing_affairs_context():

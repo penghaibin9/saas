@@ -16,9 +16,9 @@ def test_selection_trace_is_attached_after_canonical_rule_decision():
     from app.modules.academic_affairs.services import academic_affairs_selection_service as final
     from app.modules.academic_affairs.services import academic_affairs_selection_decision_trace as trace
 
-    source = inspect.getsource(final.student_enroll)
-    # Existing canonical validation remains authoritative and trace attachment is in its
-    # exception path; no DecisionTrace function is allowed to replace _validate_enroll.
+    source = inspect.getsource(final._student_enroll_guarded)
+    # The peak-safe public wrapper delegates to the guarded command. Existing canonical
+    # validation remains authoritative there and trace attachment stays in its exception path.
     assert "_base._validate_enroll(" in source
     assert "except AppException as exc" in source
     assert "selection_trace.attach_selection_trace(" in source

@@ -188,6 +188,7 @@ def _seed_version_snapshot():
     suffix = uuid.uuid4().hex[:8]
     program = AaProgram(
         tenant_id=TID,
+        series_key=f"AW2-SNAPSHOT-SERIES-{suffix}",
         program_name=f"A-W2版本快照-{suffix}",
         major_id=920001,
         grade_year="2026",

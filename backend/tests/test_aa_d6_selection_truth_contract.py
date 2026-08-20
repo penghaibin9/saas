@@ -32,17 +32,23 @@ def test_d6_router_uses_package_level_selection_final_service():
 def test_d6_lock_chain_validates_then_calls_teaching_roster_projection():
     source = inspect.getsource(selection.lock_batch)
 
-    validate = "validation = validate_selection_lock(db, batch)"
+    canonical_import = "from .academic_affairs_teaching_roster_service import ("
+    cached_validation = 'preflight.get("_rosterValidation")'
+    validate_fallback = "validate_selection_lock(db, batch)"
     project = "apply_locked_roster_projection(db, validation)"
-    assert validate in source
+
+    assert canonical_import in source
+    assert cached_validation in source
+    assert validate_fallback in source
     assert project in source
-    assert source.index(validate) < source.index(project)
+    assert source.index(cached_validation) < source.index(project)
+    assert source.index(validate_fallback) < source.index(project)
     assert "batch.status = _base._BATCH_LOCKED" in source
 
 
 def test_d6_teaching_roster_projects_existing_locked_selection_records_only():
-    # package 兼容层会在运行时重绑定同名函数；真值合同必须检查 production owner 文件，
-    # 不能把兼容 wrapper 的函数对象误当成 TeachingRoster 本体。
+    # policy 仅允许兼容别名；真值合同必须检查 production owner 文件，
+    # 不能把历史兼容入口误当成 TeachingRoster 本体。
     roster_source = _source("academic_affairs_teaching_roster_service.py")
     projection_source = _source("academic_affairs_selection_roster_projection_service.py")
 

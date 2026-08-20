@@ -379,6 +379,14 @@ def selection_courses_my(user, batch_id=None):
     return sel.student_courses(user, batch_id)
 
 
+def selection_preflight_my(user, body) -> dict:
+    """本人选课纯读预检；移动端只代理 canonical SelectionPreflight，不复制规则。"""
+    from app.modules.academic_affairs.services import academic_affairs_selection_service as sel
+    if not (body or {}).get("selectionCourseId"):
+        raise AppException("VALIDATION_ERROR", "selectionCourseId 必填")
+    return sel.student_preflight(user, _ns(body))
+
+
 def selection_enroll_my(user, body) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_selection_service as sel
     if not (body or {}).get("selectionCourseId"):

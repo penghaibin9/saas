@@ -131,6 +131,18 @@ jobs:
         working-directory: backend
         run: python scripts/e2e_seed_control_plane_school_iam.py
 
+      - name: Seed Academic B staff-browser fixtures
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_academic_b_selection.py
+          python scripts/e2e_seed_academic_b_w3_schedule.py
+          python scripts/e2e_seed_academic_b_w4_selection.py
+          python scripts/e2e_seed_academic_b_w4_formation.py
+          test -s ../e2e/academic-b-w3-fixture.json
+          test -s ../e2e/academic-b-w4-fixture.json
+          test -s ../e2e/academic-b-w4-formation-fixture.json
+
       - name: Start backend
         run: |
           mkdir -p e2e/runtime-logs
@@ -151,6 +163,13 @@ jobs:
           python scripts/e2e_reset_graduation_passwords.py
           python scripts/e2e_verify_graduation_accounts.py
           python scripts/e2e_bootstrap_affairs_counselor_ci.py
+
+      - name: Seed Academic B student projection fixture
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_academic_b_w5_selection.py
+          test -s ../e2e/academic-b-w5-fixture.json
 
       - name: Seed isolated internship prerequisites
         working-directory: backend

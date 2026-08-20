@@ -1,0 +1,45 @@
+# exact-head evidence trigger after W6-3 round-window fix
+# exact-head evidence trigger after W6-2 bot-authored fix
+name: Academic B W5 Student Projection Contract
+
+on:
+  push:
+    branches:
+      - agent/academic-b-schedule-selection
+    paths:
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection_read_service.py
+      - backend/app/modules/academic_affairs/services/academic_affairs_selection_read_core_service.py
+      - backend/tests/test_aa_selection_student_projection_contract.py
+      - .github/workflows/academic-b-w5-student-projection-contract.yml
+  workflow_dispatch:
+
+concurrency:
+  group: academic-b-w5-student-projection-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  projection-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert exact W5 contract head
+        run: test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run only B-W5 projection source contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/tests/test_aa_selection_student_projection_contract.py')
+          namespace = {'__file__': str(path), '__name__': 'academic_b_w5_projection_contract'}
+          exec(compile(path.read_text(encoding='utf-8'), str(path), 'exec'), namespace)
+          tests = [namespace[name] for name in sorted(namespace) if name.startswith('test_')]
+          assert tests, 'no W5 contract tests discovered'
+          for test in tests:
+              test()
+          print(f'{len(tests)} W5 projection contract tests passed')
+          PY

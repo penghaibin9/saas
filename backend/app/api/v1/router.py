@@ -28,6 +28,7 @@ from app.api.v1.affairs_student_returned import router as affairs_student_return
 from app.api.v1.auth_browser import router as auth_browser_router
 from app.api.v1.data_center import router as data_center_router
 from app.api.v1.help_metrics import router as help_metrics_router
+from app.api.v1.mobile_academic_status import router as mobile_academic_status_router
 from app.api.v1.mobile_performance import router as mobile_performance_router
 from app.modules.student_affairs.routers.affairs_material_center import router as affairs_material_center_router
 from app.services.affairs_activity_authority_guard import install as install_activity_authority_guard
@@ -103,6 +104,7 @@ for supplemental_router in (
     affairs_appeal_repair_router,
     affairs_student_returned_router,
     affairs_leave_self_router,
+    mobile_academic_status_router,
     mobile_performance_router,
     data_center_router,
     help_metrics_router,

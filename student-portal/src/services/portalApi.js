@@ -39,6 +39,7 @@ export const portalApi = {
   academicSchedule: () => request('/portal/academic/schedule'),
   academicSchedulePrint: (body) => request('/portal/academic/schedule/print', { method: 'POST', body }),
   academicCourseSelection: (batchId) => request(`/portal/academic/course-selection${q({ batchId })}`),
+  academicSelectionPreflight: (body) => request('/portal/academic/course-selection/preflight', { method: 'POST', body }),
   academicEnroll: (body) => request('/portal/academic/course-selection/enroll', { method: 'POST', body }),
   academicDrop: (body) => request('/portal/academic/course-selection/drop', { method: 'POST', body }),
   academicSelectionRecords: (batchId) => request(`/portal/academic/course-selection/records${q({ batchId })}`),
