@@ -16,6 +16,7 @@ from sqlalchemy import and_, case, func, not_, or_, select
 
 from app.core.config import settings
 from app.core.exceptions import AppException
+from app.core.permissions import enforce_permission
 from app.core.security import MOBILE_STAFF_USER_TYPES
 from app.services import message_center_service as message_center
 from app.services import mobile_action_service as mobile_actions
@@ -30,10 +31,17 @@ _ALLOWED_TABS = ("system", "dynamic", "risk", "urge")
 _TAB_LABELS = {"system": "系统通知", "dynamic": "学生动态", "risk": "风险预警", "urge": "催办提醒"}
 
 
-def _require_teacher(user: dict | None) -> dict:
+def _require_teacher(user: dict | None, *, permission: str = "workbench.message.view") -> dict:
+    """Teacher identity + canonical message permission gate.
+
+    ``require_staff`` at the HTTP layer is only an identity gate. Custom school roles can be staff
+    without inbox permission, so T9 must not turn the new high-performance endpoint into a bypass
+    around the canonical ``workbench.message.*`` authority.
+    """
     u = user or {}
     if not u.get("userId") or str(u.get("userType") or "").strip().upper() not in MOBILE_STAFF_USER_TYPES:
         raise AppException("NO_PERMISSION", "该接口仅学校教职工移动端可用", http_status=403)
+    enforce_permission(u, permission)
     return u
 
 
@@ -263,5 +271,5 @@ def get_message(user: dict, message_id: str) -> dict:
 
 
 def ack_message(user: dict, message_id: str) -> dict:
-    _require_teacher(user)
+    _require_teacher(user, permission="workbench.message.ack")
     return message_center.ack_message(user, message_id)
