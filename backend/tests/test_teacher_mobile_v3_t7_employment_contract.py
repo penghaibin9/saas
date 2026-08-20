@@ -97,7 +97,7 @@ def test_t7_migration_extends_current_single_head_and_metadata_registers_model()
     migration = _src("backend/alembic/versions/20260820_teacher_emp_recommendation.py")
     metadata = _src("backend/app/db/base.py")
     assert 'revision = "20260820_teacher_emp_reco"' in migration
-    assert 'down_revision = "20260818_merge_prog_grade_dl"' in migration
+    assert 'down_revision = "20260818_acad_bc_final"' in migration
     assert 'op.create_table(' in migration and '"t_emp_recommendation"' in migration
     assert 'employment_recommendation as _employment_recommendation' in metadata
 
