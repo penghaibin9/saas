@@ -73,6 +73,8 @@ def seed_runtime_data(token_count: int) -> tuple[int, int, int]:
             )
         )
         if employment is None:
+            # EmpStudent is a domain model, not a CommonMixin status-bearing row. Keep the seed
+            # aligned to the real ORM contract: lifecycle truth is record_status/verify_status.
             employment = EmpStudent(
                 tenant_id=TENANT_ID,
                 student_id=student.id,
@@ -85,7 +87,6 @@ def seed_runtime_data(token_count: int) -> tuple[int, int, int]:
                 verify_status="PENDING_VERIFY",
                 material_status="SUBMITTED",
                 record_status="ACTIVE",
-                status="ACTIVE",
             )
             db.add(employment)
             db.flush()
