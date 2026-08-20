@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.core.response import success
 from app.core.security import get_current_user, require_staff
 from app.services import mobile_performance_service as service
+from app.services import teacher_mobile_workbench_v3_service as teacher_workbench_v3
 
 
 router = APIRouter(prefix="/mobile/performance", tags=["mobile-performance"])
@@ -21,7 +22,7 @@ def teacher_workbench(
     page_size: int = Query(default=8, alias="pageSize", ge=1, le=20),
     user=Depends(require_staff),
 ):
-    return success(service.teacher_workbench(user, page_size=page_size))
+    return success(teacher_workbench_v3.teacher_workbench(user, page_size=page_size))
 
 
 @router.get("/teacher/todos-page", summary="教师待办数据库分页")
