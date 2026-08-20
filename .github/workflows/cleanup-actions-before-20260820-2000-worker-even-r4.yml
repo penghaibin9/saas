@@ -1,0 +1,103 @@
+name: Cleanup runs before 2026-08-20 20:00 GMT+8 - worker even
+
+on:
+  push:
+    branches:
+      - cleanup/actions-before-20260820-2000-worker-even-r4
+    paths:
+      - .github/workflows/cleanup-actions-before-20260820-2000-worker-even-r4.yml
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor == 'penghaibin9'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Cancel and delete even workflow runs before cutoff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          TEMP_BRANCH: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+          from datetime import datetime
+
+          token = os.environ['GH_TOKEN']
+          repo = os.environ['REPO']
+          current = int(os.environ['CURRENT_RUN_ID'])
+          temp_branch = os.environ['TEMP_BRANCH']
+          cutoff = datetime.fromisoformat('2026-08-20T12:00:00+00:00')
+          api = f'https://api.github.com/repos/{repo}'
+          headers = {
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'actions-cleanup-even',
+          }
+
+          def call(method, url, ok=(200,201,202,204,404,409)):
+              while True:
+                  req = urllib.request.Request(url, method=method, headers=headers)
+                  try:
+                      with urllib.request.urlopen(req, timeout=60) as r:
+                          raw = r.read()
+                          return r.status, json.loads(raw) if raw else None
+                  except urllib.error.HTTPError as e:
+                      if e.code in ok:
+                          raw = e.read()
+                          return e.code, json.loads(raw) if raw else None
+                      if e.code in (403,429):
+                          retry = e.headers.get('Retry-After')
+                          reset = e.headers.get('X-RateLimit-Reset')
+                          wait = int(retry) if retry else max(30, int(reset) - int(time.time()) + 5) if reset else 60
+                          print(f'rate limited; sleeping {wait}s')
+                          time.sleep(min(wait, 3600))
+                          continue
+                      raise
+
+          def list_targets():
+              out=[]; page=1
+              while True:
+                  _, data = call('GET', f'{api}/actions/runs?per_page=100&page={page}', ok=(200,))
+                  runs = data.get('workflow_runs', [])
+                  for r in runs:
+                      if r['id'] == current or r['id'] % 2 != 0:
+                          continue
+                      created = datetime.fromisoformat(r['created_at'].replace('Z','+00:00'))
+                      if created < cutoff:
+                          out.append((r['id'], r.get('status')))
+                  if len(runs) < 100:
+                      break
+                  page += 1
+              return out
+
+          total_deleted=0
+          for round_no in range(1, 721):
+              targets = list_targets()
+              print(f'round={round_no} targets={len(targets)} deleted={total_deleted}')
+              if not targets:
+                  break
+              for run_id, status in targets:
+                  if status == 'completed':
+                      code,_ = call('DELETE', f'{api}/actions/runs/{run_id}', ok=(204,404))
+                      if code == 204:
+                          total_deleted += 1
+                  else:
+                      call('POST', f'{api}/actions/runs/{run_id}/cancel', ok=(202,409))
+                  time.sleep(0.08)
+              time.sleep(8)
+          else:
+              raise RuntimeError('cleanup did not converge before max rounds')
+
+          print(f'cleanup complete; deleted={total_deleted}')
+          try:
+              call('DELETE', f'{api}/git/refs/heads/{temp_branch}', ok=(204,404))
+          except Exception as e:
+              print(f'temp branch cleanup warning: {e}')
+          PY
