@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import inspect
 
+from fastapi import FastAPI
+
 from app.api.v1 import teacher_mobile_sequential as sequential_api
-from app.api.v1 import teacher_mobile_students as teacher_mobile_router
+from app.api.v1 import todos as todos_api
 from app.modules.internship.services import internship_service
 
 
@@ -41,8 +43,22 @@ def test_t5_teacher_mobile_adapter_requires_exact_queue_version_and_delegates_to
     assert "Promise" not in source
 
 
+def _openapi_paths(client: str) -> set[str]:
+    # Validate the same resolved surface production exposes. FastAPI 0.141 keeps nested
+    # APIRouter inclusions as lazy _IncludedRouter entries, so direct `.routes` traversal is
+    # an implementation detail and can raise before the public routing contract is evaluated.
+    app = FastAPI()
+    app.include_router(todos_api.make_router(client), prefix="/api/v1")
+    return set(app.openapi().get("paths", {}))
+
+
 def test_t5_sequential_command_router_is_additive_under_teacher_mobile_only():
-    paths = {route.path for route in teacher_mobile_router.router.routes}
-    assert "/internship/exceptions/{exception_id}/handle" in paths
-    assert "/students" in paths
-    assert "/students/{student_id}/projection" in paths
+    teacher_paths = _openapi_paths("teacher-mobile")
+    admin_paths = _openapi_paths("admin")
+    student_paths = _openapi_paths("student-mini")
+
+    assert "/api/v1/teacher-mobile/internship/exceptions/{exception_id}/handle" in teacher_paths
+    assert "/api/v1/teacher-mobile/students" in teacher_paths
+    assert "/api/v1/teacher-mobile/students/{student_id}/projection" in teacher_paths
+    assert "/api/v1/admin/internship/exceptions/{exception_id}/handle" not in admin_paths
+    assert "/api/v1/student-mini/internship/exceptions/{exception_id}/handle" not in student_paths

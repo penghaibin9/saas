@@ -87,11 +87,12 @@ def test_t3_my_students_preserves_direct_counselor_head_teacher_relation_in_sql(
 
 
 def _mounted_paths(client: str) -> set[str]:
-    # FastAPI 0.141 keeps include_router entries lazy inside APIRouter. Mounting into a real
-    # application resolves the included router exactly as production startup does.
+    # FastAPI 0.141 represents nested APIRouter inclusions with lazy _IncludedRouter entries.
+    # The production contract is the final OpenAPI surface, which resolves those inclusions;
+    # inspecting app.routes directly would incorrectly see only the framework documentation routes.
     app = FastAPI()
     app.include_router(todos_api.make_router(client), prefix="/api/v1")
-    return {getattr(route, "path", "") for route in app.routes if getattr(route, "path", None)}
+    return set(app.openapi().get("paths", {}))
 
 
 def test_t3_teacher_mobile_students_route_is_additive_and_not_mounted_on_other_clients():
