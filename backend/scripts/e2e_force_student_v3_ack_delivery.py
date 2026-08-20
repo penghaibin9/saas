@@ -66,7 +66,9 @@ def main() -> int:
         if tenant is None:
             raise SystemExit(f"tenant {TENANT_CODE} missing")
         tenant_id = int(tenant.id)
-        set_tenant(tenant_id)
+        # context.py 的 canonical tenant context 是 dict；传裸 int 会让 current_tenant_id()
+        # 在 scheduler 内按 .get("tenantId") 读取时崩溃。这里与真实 HTTP 中间件保持同形。
+        set_tenant({"tenantId": str(tenant_id)})
         student_user = db.scalar(select(User).where(
             User.tenant_id == tenant_id,
             User.login_name == student_login,
@@ -93,18 +95,21 @@ def main() -> int:
     finally:
         db.close()
 
-    # process_scheduled_campaigns 会对到期单重算受众并落 DeliveryJob；publish 的正常即时
-    # 路径若已经 PUBLISHING，则只需 drain worker。重复调用均幂等。
-    campaign_svc.process_scheduled_campaigns(limit=200)
-    for _ in range(5):
-        campaign_svc.process_pending_deliveries(limit=200)
-        if _delivered(campaign_id, tenant_id, student_user_id):
-            print(f"[s9-rt] ack campaign delivered campaign={campaign_id} user={student_user_id}")
-            return 0
+    try:
+        # process_scheduled_campaigns 会对到期单重算受众并落 DeliveryJob；publish 的正常即时
+        # 路径若已经 PUBLISHING，则只需 drain worker。重复调用均幂等。
+        campaign_svc.process_scheduled_campaigns(limit=200)
+        for _ in range(5):
+            campaign_svc.process_pending_deliveries(limit=200)
+            if _delivered(campaign_id, tenant_id, student_user_id):
+                print(f"[s9-rt] ack campaign delivered campaign={campaign_id} user={student_user_id}")
+                return 0
 
-    raise SystemExit(
-        f"ack campaign not delivered after scheduler drain: campaign={campaign_id} user={student_user_id}"
-    )
+        raise SystemExit(
+            f"ack campaign not delivered after scheduler drain: campaign={campaign_id} user={student_user_id}"
+        )
+    finally:
+        set_tenant(None)
 
 
 if __name__ == "__main__":
