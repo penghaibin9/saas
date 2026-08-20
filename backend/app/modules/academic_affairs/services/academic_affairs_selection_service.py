@@ -14,6 +14,8 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 
 from sqlalchemy import select
@@ -45,6 +47,23 @@ _REC_LOST = _core._REC_LOST
 _COURSE_OPEN = _core._COURSE_OPEN
 _COURSE_CANCELLED = _core._COURSE_CANCELLED
 
+# Selection Final 的列表/预检会复用同一个业务 guard，但纯读请求不得为了判断
+# term 是否可写而取得 AaTerm 排他锁。ContextVar 只在显式 read wrapper 内生效，
+# 因而并发协程/线程互不污染；所有 command 仍保持 FOR UPDATE 串行化归档竞争。
+_TERM_GUARD_READ_ONLY: ContextVar[bool] = ContextVar(
+    "academic_selection_term_guard_read_only",
+    default=False,
+)
+
+
+@contextmanager
+def selection_readonly_term_guard():
+    token = _TERM_GUARD_READ_ONLY.set(True)
+    try:
+        yield
+    finally:
+        _TERM_GUARD_READ_ONLY.reset(token)
+
 
 def __getattr__(name):
     """未重写的只读列表、统计、冲突报表和归档导出显式复用稳定 core。"""
@@ -52,7 +71,7 @@ def __getattr__(name):
 
 
 def _require_term_reference_writable(db, term_id, *, required=True):
-    """Lock B's referenced term, then defer archive policy to the shared Authority."""
+    """Validate the referenced term; commands lock it, explicit read guards do not."""
     from app.models import AaTerm
     from . import academic_affairs_archive_service as archive_service
 
@@ -70,16 +89,17 @@ def _require_term_reference_writable(db, term_id, *, required=True):
             http_status=409,
         ) from exc
 
-    # The Archive owner ultimately mutates AaTerm.status. Lock the same row before
-    # checking writability so a concurrent archive/unfreeze serializes with every
-    # canonical Selection write instead of racing a stale PUBLISHED observation.
-    term = db.execute(
-        select(AaTerm).where(
-            AaTerm.id == parsed_term_id,
-            AaTerm.tenant_id == _core._tid(),
-            AaTerm.is_deleted.is_(False),
-        ).with_for_update()
-    ).scalar_one_or_none()
+    # The Archive owner ultimately mutates AaTerm.status. Canonical writes lock the
+    # same row before checking writability. Student/admin preflight and projection
+    # use the explicit ContextVar scope above and remain pure non-locking reads.
+    stmt = select(AaTerm).where(
+        AaTerm.id == parsed_term_id,
+        AaTerm.tenant_id == _core._tid(),
+        AaTerm.is_deleted.is_(False),
+    )
+    if not _TERM_GUARD_READ_ONLY.get():
+        stmt = stmt.with_for_update()
+    term = db.execute(stmt).scalar_one_or_none()
     if not term:
         raise AppException(
             "SELECTION_TERM_INVALID",
