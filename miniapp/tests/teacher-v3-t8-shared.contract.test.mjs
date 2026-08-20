@@ -8,6 +8,8 @@ const here = dirname(fileURLToPath(import.meta.url))
 const repo = resolve(here, '..', '..')
 const read = (path) => readFileSync(resolve(repo, path), 'utf8')
 
+// T8 exact-head contracts validate executable wiring, not explanatory source comments.
+
 test('T8 教师待办消费 shared NetworkPager + runAction，不再手写 group 路由表', () => {
   const page = read('miniapp/src/pages/teacher/todos/index.vue')
   assert.match(page, /createNetworkPager/)
