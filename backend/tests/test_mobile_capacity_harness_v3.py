@@ -1,7 +1,4 @@
-"""V3 §11 容量工具链合同：K6 场景覆盖、身份分布、种子安全与 EXPLAIN 门禁。
-
-覆盖 V3 深审 P0-07（新链路未入容量门禁）与 P0-08（复用少量 token 压出假的热缓存容量）。
-"""
+"""V3 §11 / Teacher T9 capacity contracts: routes, identity, seed safety and EXPLAIN."""
 from __future__ import annotations
 
 import re
@@ -12,6 +9,7 @@ CAPACITY_JS = REPO_ROOT / "performance" / "k6" / "capacity.js"
 CONFIG_JS = REPO_ROOT / "performance" / "k6" / "lib" / "config.js"
 AUTH_JS = REPO_ROOT / "performance" / "k6" / "lib" / "auth.js"
 SEED_PY = REPO_ROOT / "backend" / "scripts" / "seed_mobile_capacity_school.py"
+LOCAL_SEED_PY = REPO_ROOT / "performance" / "tools" / "seed_local_capacity_env.py"
 EXPLAIN_PY = REPO_ROOT / "backend" / "scripts" / "explain_mobile_v3_queries.py"
 
 
@@ -28,16 +26,39 @@ def test_v3_student_routes_are_exercised_by_the_capacity_scenario():
         assert path in capacity, f"{route} 没有打真实接口"
 
 
+def test_v3_teacher_t9_routes_are_exercised_by_the_capacity_scenario():
+    capacity = CAPACITY_JS.read_text(encoding="utf-8")
+    for route, path in [
+        ("teacher_my_students", "/api/v1/teacher-mobile/students?pageSize=20"),
+        ("teacher_messages", "/api/v1/mobile/performance/teacher/messages-page"),
+        ("teacher_visit", "/api/v1/teacher-mobile/internship/visit-targets"),
+        ("teacher_employment", "/api/v1/teacher-mobile/employment/overview"),
+    ]:
+        assert f"'{route}'" in capacity, f"{route} 未进入 Teacher T9 容量场景"
+        assert path in capacity, f"{route} 没有打真实接口"
+    assert "teacher_student360" in capacity
+    assert "/students/${encodeURIComponent(studentId)}/projection" in capacity
+    assert "teacher_employment_verification" in capacity
+    assert "/employment/students/${encodeURIComponent(employmentId)}/verification" in capacity
+
+
 def test_v3_routes_have_latency_thresholds():
     config = CONFIG_JS.read_text(encoding="utf-8")
     for route in ("student_agenda", "student_cases", "student_search"):
         assert f"http_req_duration{{route:{route}}}" in config, f"{route} 缺少 route 级阈值"
     assert "REQUIRED_STUDENT_V3_ROUTES" in config
+    for route in (
+        "teacher_my_students", "teacher_student360", "teacher_messages",
+        "teacher_visit", "teacher_employment_verification",
+    ):
+        assert f"http_req_duration{{route:{route}}}" in config, f"{route} 缺少 Teacher T9 route 级阈值"
+    assert "REQUIRED_TEACHER_V3_ROUTES" in config
 
 
 def test_artifact_flags_runs_that_missed_the_new_routes():
     capacity = CAPACITY_JS.read_text(encoding="utf-8")
     assert "missingStudentV3Routes" in capacity
+    assert "missingTeacherV3Routes" in capacity
     assert "MISSING_V3_ROUTES" in capacity, "没覆盖新链路时必须在摘要里显式喊出来"
 
 
@@ -53,8 +74,11 @@ def test_identity_modes_are_explicit_and_validated():
 def test_artifact_records_unique_tokens_and_role_distribution():
     auth = AUTH_JS.read_text(encoding="utf-8")
     capacity = CAPACITY_JS.read_text(encoding="utf-8")
-    for field in ("uniqueStudentTokens", "uniqueTeacherTokens", "studentTokensAvailable",
-                  "teacherTokensAvailable", "identityMode"):
+    for field in (
+        "uniqueStudentTokens", "uniqueTeacherTokens", "studentTokensAvailable",
+        "teacherTokensAvailable", "identityMode", "uniqueTeacherContexts",
+        "teacherRoleCounts", "teacherRoleRatios",
+    ):
         assert field in auth, f"身份分布缺少 {field}"
     assert "identityDistribution()" in capacity
     assert '"identity": identity' in capacity or "identity," in capacity
@@ -71,7 +95,6 @@ def test_artifact_records_profile_scenario_dataset_and_per_route_latency():
 def test_dataset_scale_is_recorded_separately_from_concurrency():
     config = CONFIG_JS.read_text(encoding="utf-8")
     assert "export const DATASET" in config
-    # 数据规模与并发规模必须分开表述，不能把 10k 数据当成 10k VU
     assert "不是 10k VU" in config or "10k 并发是两件事" in config
 
 
@@ -90,7 +113,6 @@ def test_capacity_seed_refuses_to_run_without_confirmation_and_on_unsafe_targets
     assert "ALLOWED_DB_NAME_HINTS" in seed
     for hint in ("capacity", "staging", "test", "ci"):
         assert f'"{hint}"' in seed
-    # 独立 capacity 租户 + 统一前缀，方便整体清理，也保证不混进真实学校
     assert "DEFAULT_CAPACITY_TENANT" in seed
     assert 'STUDENT_PREFIX = "CAP-"' in seed
 
@@ -99,7 +121,6 @@ def test_capacity_seed_purge_is_tenant_scoped():
     seed = SEED_PY.read_text(encoding="utf-8")
     purge = seed[seed.index("def _purge("):seed.index("def _seed_students(")]
     assert "model.tenant_id == tenant_id" in purge
-    # 绝不允许无条件 delete
     assert re.search(r"delete\(model\)\s*\)", purge) is None
 
 
@@ -107,13 +128,20 @@ def test_capacity_seed_defaults_match_the_manual_scale():
     seed = SEED_PY.read_text(encoding="utf-8")
     assert '"--students", type=int, default=12000' in seed
     assert '"--classes", type=int, default=300' in seed
-    # 12000 * 7 = 84k todos, * 25 = 300k messages, * 5 = 60k cases
     assert '"--todos-per-student", type=int, default=7' in seed
     assert '"--messages-per-student", type=int, default=25' in seed
     assert '"--cases-per-student", type=int, default=5' in seed
 
 
-# ── §11.4 EXPLAIN 门禁不得静默通过 ──
+def test_local_capacity_seed_provides_teacher_t9_real_objects():
+    seed = LOCAL_SEED_PY.read_text(encoding="utf-8")
+    for contract in ("EmpStudent", "UnifiedMessage", "receiver_context_key", "TEACHER_MESSAGE_SOURCE"):
+        assert contract in seed
+    assert "teacher_messages=" in seed
+    assert "student_tokens=" in seed and "teacher_tokens=" in seed
+
+
+# ── §11.4 / T9 EXPLAIN 门禁不得静默通过 ──
 
 def test_explain_gate_refuses_to_pass_when_it_cannot_read_row_counts():
     explain = EXPLAIN_PY.read_text(encoding="utf-8")
@@ -124,8 +152,11 @@ def test_explain_gate_refuses_to_pass_when_it_cannot_read_row_counts():
 
 def test_explain_gate_covers_every_v3_hot_path():
     explain = EXPLAIN_PY.read_text(encoding="utf-8")
-    for name in ("home_todos", "home_todos_by_due", "messages_page", "cases_keyset", "search_messages"):
+    for name in (
+        "home_todos", "home_todos_by_due", "messages_page", "cases_keyset", "search_messages",
+        "teacher_messages_page", "teacher_messages_badges",
+    ):
         assert f'"name": "{name}"' in explain, f"EXPLAIN 门禁缺少热路径 {name}"
+    assert "teacherMessageIdentity" in explain
     assert "budget_rows" in explain
-    # 门禁只取证，不自动改 schema
     assert "CREATE INDEX" not in explain.upper()
