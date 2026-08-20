@@ -35,6 +35,11 @@ _MAX_ROUNDS = 12
 _BATCH_LIMIT = 40
 
 
+def _tenant_context(facts: dict) -> dict:
+    """Match the request runtime tenant context shape expected by current_tenant_id()."""
+    return {"tenantId": facts["tenantId"]}
+
+
 def _student_inbox_has_ack(token: str) -> bool:
     data = _call("/student-mini/messages?page=1&pageSize=100", token)
     return any(str(row.get("title") or "") == ACK_TITLE for row in (data.get("items") or []))
@@ -45,7 +50,7 @@ def _diagnostics(facts: dict) -> dict:
     campaign_id = int(((state.get("ackMessage") or {}).get("campaignId") or 0)) or None
     db = _session()
     try:
-        set_tenant(facts["tenantId"])
+        set_tenant(_tenant_context(facts))
         student = db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == facts["tenantId"],
             StudentProfile.student_no == STUDENT_NO,
@@ -86,7 +91,7 @@ def _diagnostics(facts: dict) -> dict:
 def main() -> int:
     assert_safe_target()
     facts = _student_facts()
-    set_tenant(facts["tenantId"])
+    set_tenant(_tenant_context(facts))
     student_token = _login(*STUDENT_LOGIN)
 
     if _student_inbox_has_ack(student_token):
@@ -95,7 +100,7 @@ def main() -> int:
 
     processed = 0
     for round_no in range(1, _MAX_ROUNDS + 1):
-        set_tenant(facts["tenantId"])
+        set_tenant(_tenant_context(facts))
         count = message_delivery_service.claim_and_process_delivery_jobs(
             limit=_BATCH_LIMIT,
             worker_id=f"e2e-student-v3-{round_no}",
