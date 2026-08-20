@@ -167,6 +167,13 @@ def create_new_version(program_id, user, reason=None) -> dict:
         old = _program_for_update(db, int(program_id))
         if old.status not in _VERSIONABLE_STATUSES:
             raise AppException("DATA_CONFLICT", "仅已发布/启用/冻结/停用方案可新建版本（编制/退回态直接编辑即可）")
+        if not str(getattr(old, "series_key", "") or "").strip():
+            raise AppException(
+                "PROGRAM_SERIES_UNRESOLVED",
+                "源培养方案缺少稳定 series_key，禁止创建后继版本；请先完成证据化系列修复",
+                details={"programId": str(old.id), "version": old.version},
+                http_status=409,
+            )
 
         successors = db.scalars(
             select(AaProgram).where(

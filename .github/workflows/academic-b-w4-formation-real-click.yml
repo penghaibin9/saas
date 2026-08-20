@@ -1,0 +1,240 @@
+name: Academic B W4 Formation Real Click
+
+on:
+  pull_request:
+    branches:
+      - integration/academic-school-gold
+    paths:
+      - 'backend/alembic/versions/20260816_academic_int_ac4_schema.py'
+      - 'backend/alembic/versions/20260817_aa_prog_expand.py'
+      - 'backend/alembic/versions/20260817_academic_int_program_series.py'
+      - 'backend/alembic/versions/20260818_academic_main_int_merge.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py'
+      - 'backend/scripts/e2e_seed_academic_b_w4_formation.py'
+      - 'frontend/src/utils/presentationSafety.js'
+      - 'frontend/tests/ui-presentation-safety.test.mjs'
+      - 'e2e/specs/academic-b-selection-w4-formation.spec.mjs'
+      - '.github/workflows/academic-b-w4-formation-real-click.yml'
+      - '.github/workflows/academic-b-w4-formation-handoff.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-b-w4-formation-browser-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+env:
+  A_FINAL_GOLD_SHA: 71de7b4a0ac52216df9e8230f8b6ec97a26099be
+  A_FORMATION_POLICY_BLOB: 746adabc57ea9ba21d4e49bd503a87272b3c8cbd
+  EXPECTED_INTEGRATION_BASE_SHA: 50ec0b9aba564701805d5a3f590b2faa23c2cfc3
+  SEALED_PROVENANCE_SHA: 6bb48f1c055d8fd16fe9563ba4ea64c36ac15f9a
+
+jobs:
+  real-click:
+    name: Selection formation provenance focused browser evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: academic_b_w4_formation_e2e
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_b_w4_formation_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_b_w4_formation_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: academic_b_w4_formation_e2e
+      REDIS_URL: redis://127.0.0.1:6379/13
+      REDIS_KEY_PREFIX: academic-b-w4-formation
+      JWT_SECRET: academic-b-w4-formation-browser-only-not-production
+      JWT_SECRET_KEY: academic-b-w4-formation-browser-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SCHOOL_IAM_AUTHORITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Pin exact B head and approved A/INT integration base
+        run: |
+          set -euo pipefail
+          POLICY_PATH=backend/app/modules/academic_affairs/services/academic_affairs_task_formation_policy.py
+          B_HEAD_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+
+          test "$(git rev-parse HEAD)" = "$B_HEAD_SHA"
+          if test "${{ github.event_name }}" = "pull_request"; then
+            test "${{ github.event.pull_request.base.ref }}" = "integration/academic-school-gold"
+          fi
+
+          git fetch origin integration/academic-school-gold --no-tags
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_INTEGRATION_BASE_SHA"
+          git fetch origin "$A_FINAL_GOLD_SHA" --no-tags
+
+          git cat-file -e "${A_FINAL_GOLD_SHA}^{commit}"
+          git cat-file -e "${EXPECTED_INTEGRATION_BASE_SHA}^{commit}"
+          git cat-file -e "${SEALED_PROVENANCE_SHA}^{commit}"
+          git merge-base --is-ancestor "$SEALED_PROVENANCE_SHA" "$EXPECTED_INTEGRATION_BASE_SHA"
+
+          A_POLICY_BLOB="$(git rev-parse "${A_FINAL_GOLD_SHA}:${POLICY_PATH}")"
+          BASE_POLICY_BLOB="$(git rev-parse "${EXPECTED_INTEGRATION_BASE_SHA}:${POLICY_PATH}")"
+          test "$A_POLICY_BLOB" = "$A_FORMATION_POLICY_BLOB"
+          test "$BASE_POLICY_BLOB" = "$A_FORMATION_POLICY_BLOB"
+          test "$A_POLICY_BLOB" = "$BASE_POLICY_BLOB"
+          git diff --quiet "$A_FINAL_GOLD_SHA" "$EXPECTED_INTEGRATION_BASE_SHA" -- "$POLICY_PATH"
+          git show "${A_FINAL_GOLD_SHA}:${POLICY_PATH}" | grep -F 'def selection_eligible'
+
+      - name: Materialize exact PR browser integration candidate when needed
+        run: |
+          set -euo pipefail
+          git config user.name "academic-b-w4-formation-browser"
+          git config user.email "academic-b-w4-formation-browser@invalid.local"
+          if git merge-base --is-ancestor "$EXPECTED_INTEGRATION_BASE_SHA" HEAD; then
+            echo "sealed INT base is already an ancestor of exact B HEAD"
+          else
+            git merge --no-commit --no-ff "$EXPECTED_INTEGRATION_BASE_SHA"
+            test "$(git rev-parse MERGE_HEAD)" = "$EXPECTED_INTEGRATION_BASE_SHA"
+          fi
+          git diff --check
+          test -f backend/app/modules/academic_affairs/services/academic_affairs_task_formation_provenance_service.py
+          grep -F 'source_program_course_id' backend/app/models/academic_affairs.py
+          grep -F '_guard_selection_formation(db, task_id)' backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install integrated backend and migrate isolated formation browser database
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+
+      - name: Replay production School IAM Authority
+        working-directory: backend
+        run: python scripts/bootstrap_control_plane_school_iam_authority.py
+
+      - name: Seed tenant foundation
+        working-directory: backend
+        run: python scripts/e2e_seed_playwright_tenants.py
+
+      - name: Seed real School IAM runtime fixture
+        working-directory: backend
+        run: python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Seed canonical Selection, org and formation provenance facts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_academic_b_selection.py
+          python scripts/e2e_seed_academic_b_w4_formation.py
+          test -s ../e2e/academic-b-w4-formation-fixture.json
+
+      - name: Start backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Bootstrap and verify academic-admin account against preseeded org
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+
+      - name: Install, verify presentation contract, production-build and start staff PC
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci --no-audit --no-fund
+          node --test tests/ui-presentation-safety.test.mjs
+          npm run build
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:5173/login >/dev/null && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/frontend.log
+          exit 1
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Run only B W4 formation handoff browser seal
+        working-directory: e2e
+        run: npx playwright test specs/academic-b-selection-w4-formation.spec.mjs --reporter=line
+
+      - name: Upload formation screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-b-w4-formation-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: e2e/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload formation service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-b-w4-formation-logs-${{ github.event.pull_request.head.sha || github.sha }}
+          path: e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14

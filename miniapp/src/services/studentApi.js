@@ -223,6 +223,7 @@ export const studentApi = {
   printExamTicket: (reason) => real.acadExamTicketPrint(reason),
   printStatusChange: (body) => real.acadStatusChangePrint(body),
   getSelectionCourses: (batchId) => real.acadSelectionCourses(batchId),
+  preflightSelection: (selectionCourseId) => real.acadSelectionPreflight(selectionCourseId),
   enrollSelection: (selectionCourseId) => real.acadSelectionEnroll(selectionCourseId),
   dropSelection: (selectionCourseId) => real.acadSelectionDrop(selectionCourseId),
   getMySelections: (batchId) => real.acadSelectionMy(batchId),

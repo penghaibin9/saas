@@ -25,7 +25,26 @@ test('SQL、路径、枚举和 JSON 错误不会进入用户文案', () => {
 test('403、409 与可信业务校验保持精确语义', () => {
   assert.equal(normalizeUiError({ message: 'forbidden', code: 403001 }).userMessage, '当前账号没有执行此操作的权限')
   assert.equal(normalizeUiError({ message: 'conflict', code: 409001 }).userMessage, '记录已发生变化，请刷新后重试')
+  assert.equal(
+    normalizeUiError({
+      message: '当前教学任务的正式编班模式不允许进入学生选课供给',
+      code: 409001,
+      bizCode: 'DATA_CONFLICT'
+    }).userMessage,
+    '当前教学任务的正式编班模式不允许进入学生选课供给'
+  )
   assert.equal(normalizeUiError('结束日期不能早于开始日期').userMessage, '结束日期不能早于开始日期')
+})
+
+test('DATA_CONFLICT 仍禁止技术细节穿透 409 保护', () => {
+  assert.equal(
+    normalizeUiError({
+      message: 'IntegrityError: column source_program_course_id cannot be null',
+      code: 409001,
+      bizCode: 'DATA_CONFLICT'
+    }).userMessage,
+    '记录已发生变化，请刷新后重试'
+  )
 })
 
 test('未知枚举与审计字段使用安全 fallback', () => {

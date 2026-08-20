@@ -17,6 +17,7 @@ from app.services.db_service import _tid, session
 
 from . import academic_affairs_program_activation_service as program_activation
 from . import academic_affairs_task_core_service as core
+from .academic_affairs_task_formation_policy import normalize_formation_mode
 
 _MIN_WEEKS = 1
 _MAX_WEEKS = 30
@@ -231,6 +232,23 @@ def _guard_college_editable_batch_integrity(db, batch) -> None:
     )
 
 
+def _snapshot_program_course_formation(program_course) -> str | None:
+    """Copy only the explicit source-row formation; missing legacy truth stays NULL."""
+    try:
+        return normalize_formation_mode(getattr(program_course, "formation_mode", None))
+    except ValueError as exc:
+        raise AppException(
+            "DATA_CONFLICT",
+            "培养方案课程的 formationMode 非法，禁止生成带伪来源的教学任务",
+            details={
+                "blocker": "PROGRAM_COURSE_FORMATION_INVALID",
+                "programCourseId": str(getattr(program_course, "id", "") or ""),
+                "formationMode": str(getattr(program_course, "formation_mode", "") or ""),
+            },
+            http_status=409,
+        ) from exc
+
+
 def generate_batch_tx(db, body, user) -> dict:
     term_id = int(body.termId)
     college_id = int(body.collegeId) if getattr(body, "collegeId", None) else None
@@ -347,6 +365,7 @@ def generate_batch_tx(db, body, user) -> dict:
                     if not course or course.is_deleted or course.tenant_id != _tid():
                         unresolved_program_courses += 1
                         continue
+                    formation_mode = _snapshot_program_course_formation(program_course)
                     total_hours = int(course.hours_total or 0)
                     course_code = course.course_code or ""
                     course_name = course.course_name or ""
@@ -356,6 +375,8 @@ def generate_batch_tx(db, body, user) -> dict:
                         course_id=program_course.course_id,
                         course_code=course_code, course_name=course_name,
                         class_id=school_class.id,
+                        source_program_course_id=program_course.id,
+                        formation_mode=formation_mode,
                         teaching_class_code=core._teaching_class_code(term_id, course_code, school_class.id),
                         teaching_class_name=f"{course_name}({school_class.class_name})",
                         total_hours=total_hours, weekly_hours=weekly_hours,

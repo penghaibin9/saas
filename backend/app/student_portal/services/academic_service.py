@@ -30,6 +30,12 @@ def selection_courses(user: dict, batch_id=None) -> dict:
     return aa.selection_courses_my(user, batch_id)
 
 
+def selection_preflight(user: dict, body: dict) -> dict:
+    """选课·纯读预检；直接代理 canonical SelectionPreflight。"""
+    _require_student(user)
+    return aa.selection_preflight_my(user, body or {})
+
+
 def selection_enroll(user: dict, body: dict) -> dict:
     """选课·选课（selectionCourseId 必填，容量/冲突由教务选课服务校验）。"""
     _require_student(user)

@@ -1002,6 +1002,7 @@ export const academicAffairsSelectionApi = {
   listBatches(params = {}) { return callList(`${BASE}/selection/batches`, params) },
   getBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}`)) },
   createBatch(body) { return call(() => request(`${BASE}/selection/batches`, { method: 'POST', body })) },
+  batchPreflight(id, action) { return call(() => request(`${BASE}/selection/batches/${id}/preflight`, { params: { action } })) },
   publishBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/publish`, { method: 'POST' })) },
   openBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/open`, { method: 'POST' })) },
   closeBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/close`, { method: 'POST' })) },

@@ -66,14 +66,26 @@ def _audit(db, biz_id, action, detail="", before="", after=""):
 
 
 def _rule(db, batch, key, default):
-    """批次规则优先 rule_json，其次 ACAD_RULE 配置，最后显式默认值（不误判未注册开关为已启用）。"""
-    try:
-        if batch.rule_json:
+    """批次规则优先 rule_json；损坏配置必须 fail-closed，禁止回落默认值扩大资格。"""
+    if batch.rule_json:
+        try:
             j = json.loads(batch.rule_json)
-            if key in j and j[key] is not None:
-                return j[key]
-    except (ValueError, TypeError):
-        pass
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次规则JSON损坏，请联系教务管理员修复后再办理",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            ) from exc
+        if not isinstance(j, dict):
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次规则格式错误，必须是对象",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            )
+        if key in j and j[key] is not None:
+            return j[key]
     from app.services.platform_service import get_config_json
     cfg = get_config_json(_tid(), "ACAD_RULE", "selection")
     if isinstance(cfg, dict) and cfg.get(key) is not None:
@@ -419,36 +431,25 @@ def student_courses(user, batch_id=None):
 
 
 def _passed_course_names(db, student):
-    """学生已通过(PASSED)的课程名集合（用于④先修/⑧重修判定）。"""
-    from app.models import AcademicGrade, AcademicStudent
-    acad = db.query(AcademicStudent).filter(AcademicStudent.tenant_id == _tid(),
-                                            AcademicStudent.student_id == student.id).first()
-    if not acad:
-        return set()
-    rows = db.query(AcademicGrade).filter(AcademicGrade.tenant_id == _tid(),
-                                          AcademicGrade.acad_student_id == acad.id,
-                                          AcademicGrade.pass_status == "PASSED",
-                                          AcademicGrade.record_status == "ACTIVE").all()
-    return {r.course_name for r in rows}
+    """历史兼容入口只消费 EffectiveGrade 投影，不再直读成绩存储。"""
+    from .academic_affairs_selection_authority_consumer import passed_course_names
+
+    return passed_course_names(int(student.id), get_current_user_ctx() or {})
 
 
 def _task_slots(db, teaching_task_id):
-    """教学任务在已发布课表中的时段（供⑤课表冲突检测）。"""
-    from app.models import AaScheduleItem
-    if not teaching_task_id:
-        return []
-    rows = db.query(AaScheduleItem).filter(AaScheduleItem.tenant_id == _tid(),
-                                           AaScheduleItem.task_id == teaching_task_id,
-                                           AaScheduleItem.status == "EFFECTIVE",
-                                           AaScheduleItem.is_deleted.is_(False)).all()
-    return [(i.weekday, i.slot_no, i.start_week, i.end_week, i.week_parity) for i in rows]
+    """教学任务冲突只消费 ScopeHead 当前正式课表，不回退历史 EFFECTIVE 行。"""
+    from .academic_affairs_selection_authority_consumer import task_slots
+
+    return task_slots(db, teaching_task_id)
 
 
 def _record_conflict_reject(db, batch, course, student, msg):
-    """⑤课表冲突被拒事件持久化（供「冲突检测」卡批次级报表聚合，见09号卡§8）。
-    独立 commit：即使随后 enroll() 整体因冲突异常回滚，该拒绝事件仍需留痕，
-    不能随请求失败一起丢失（否则报表无数据源）。biz_id=selection_course_id 供按课程聚合，
-    detail 内嵌 studentNo 供「按学号查询」过滤（不新建专属统计表，复用审计基座）。"""
+    """登记⑤课表冲突拒绝证据；只 add，不在 helper 内夺取事务所有权。
+
+    调用 Command 必须在异常出口显式 commit 一次，保证失败请求仍留证据；validator/preflight
+    只做判断，绝不写审计或提交事务。
+    """
     from app.models import AffairsAuditTrail
     db.add(AffairsAuditTrail(
         tenant_id=_tid(), biz_type="AA_SELECTION_CONFLICT", biz_id=course.id,
@@ -456,7 +457,6 @@ def _record_conflict_reject(db, batch, course, student, msg):
         detail=(f"studentNo={student.student_no or ''} studentName={student.real_name or ''} "
                f"courseName={course.course_name or ''} reason={msg}")[:990],
         occurred_at=datetime.utcnow()))
-    db.commit()
 
 
 def _validate_enroll(db, batch, course, student, my_records, add_credit, allow_reselect_closed=False):
@@ -478,8 +478,20 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, allow_r
     if batch.apply_scope_json:
         try:
             scope = json.loads(batch.apply_scope_json)
-        except ValueError:
-            scope = {}
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次适用范围JSON损坏，请联系教务管理员修复后再选课",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            ) from exc
+        if not isinstance(scope, dict):
+            raise AppException(
+                "DATA_CONFLICT",
+                "选课批次适用范围格式错误，必须是对象",
+                details={"batchId": str(getattr(batch, "id", "") or "")},
+                http_status=409,
+            )
         if scope:
             ok_grade = (not scope.get("grades")) or (student.grade in scope["grades"])
             ok_major = (not scope.get("majorIds")) or (str(student.major_id) in [str(x) for x in scope["majorIds"]])
@@ -499,8 +511,20 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, allow_r
     if tb and tb.prerequisite_codes_json:
         try:
             pre_codes = json.loads(tb.prerequisite_codes_json) or []
-        except ValueError:
-            pre_codes = []
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise AppException(
+                "DATA_CONFLICT",
+                "课程先修规则JSON损坏，请联系教务管理员修复后再选课",
+                details={"courseId": str(getattr(tb, "id", "") or "")},
+                http_status=409,
+            ) from exc
+        if not isinstance(pre_codes, list):
+            raise AppException(
+                "DATA_CONFLICT",
+                "课程先修规则格式错误，必须是课程代码数组",
+                details={"courseId": str(getattr(tb, "id", "") or "")},
+                http_status=409,
+            )
         if pre_codes:
             pre_names = {c.course_name for c in db.query(AaCourse).filter(
                 AaCourse.tenant_id == _tid(), AaCourse.course_code.in_([str(x) for x in pre_codes])).all()}
@@ -519,7 +543,6 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, allow_r
                     for (w2, s2, sw2, ew2, p2) in target_slots:
                         if w1 == w2 and s1 == s2 and _weeks_overlap(sw1, ew1, p1, sw2, ew2, p2):
                             msg = f"与已选课程上课时间冲突（周{w1}第{s1}节）"
-                            _record_conflict_reject(db, batch, course, student, msg)
                             raise _conflict(msg)
     # ⑥ 学分上限
     max_credits = _rule(db, batch, "maxCredits", 0)
@@ -552,8 +575,15 @@ def student_enroll(user, body) -> dict:
         # 补选（06号卡）：CLOSED 批次且学生确有待补选(COURSE_CANCELLED)记录才放宽；资格后端独立核验，不信任请求体标志位
         allow_reselect = b.status == _BATCH_CLOSED and any(
             r.status == _REC_COURSE_CANCELLED for r in my)
-        _validate_enroll(db, b, c, student, my, float(c.credit or 0),
-                         allow_reselect_closed=allow_reselect)
+        try:
+            _validate_enroll(db, b, c, student, my, float(c.credit or 0),
+                             allow_reselect_closed=allow_reselect)
+        except AppException as exc:
+            message = str(getattr(exc, "message", "") or str(exc))
+            if "上课时间冲突" in message:
+                _record_conflict_reject(db, b, c, student, message)
+                db.commit()
+            raise
         rnd = _active_round(db, b.id)
         if rnd and not rnd.allow_enroll:
             raise _invalid("本轮次仅可退课，不可选课")

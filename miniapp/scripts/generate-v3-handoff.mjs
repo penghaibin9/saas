@@ -8,7 +8,7 @@
  */
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
@@ -255,6 +255,12 @@ const invokedDirectly = process.argv[1]
   ? resolve(process.argv[1]) === fileURLToPath(import.meta.url)
   : false
 
+function writeHandoffAtomically(handoff) {
+  const temp = `${OUTPUT}.${process.pid}.${Date.now()}.tmp`
+  writeFileSync(temp, `${JSON.stringify(handoff, null, 2)}\n`, 'utf8')
+  renameSync(temp, OUTPUT)
+}
+
 const isVerify = process.argv.includes('--verify')
 if (!invokedDirectly) {
   // 被 import：只提供 buildHandoff 等纯函数，不读写任何文件。
@@ -262,7 +268,7 @@ if (!invokedDirectly) {
   process.exit(verify())
 } else {
   const handoff = buildHandoff()
-  writeFileSync(OUTPUT, `${JSON.stringify(handoff, null, 2)}\n`, 'utf8')
+  writeHandoffAtomically(handoff)
   console.log(`[handoff] 已生成 ${OUTPUT}`)
   console.log(`  implementationSha=${handoff.studentMergeSha}`)
   console.log(`  routes=${handoff.routeCount} subpackages=${handoff.subpackages.map((p) => `${p.root}:${p.pages}`).join(' ')}`)

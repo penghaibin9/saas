@@ -16,6 +16,10 @@ const BUSINESS_CODE_MESSAGES = Object.freeze({
   VERSION_CONFLICT: '记录已发生变化，请刷新后重试'
 })
 
+const SAFE_BACKEND_BUSINESS_MESSAGE_CODES = new Set([
+  'DATA_CONFLICT'
+])
+
 function numericStatus(error) {
   const raw = error && typeof error === 'object' ? (error.status || error.code) : 0
   const value = Number(raw)
@@ -45,6 +49,15 @@ export function normalizeUiError(error, context = {}) {
   const code = supportCode(error)
 
   let userMessage = BUSINESS_CODE_MESSAGES[bizCode] || ''
+  if (
+    !userMessage &&
+    SAFE_BACKEND_BUSINESS_MESSAGE_CODES.has(bizCode) &&
+    rawMessage &&
+    rawMessage.length <= 160 &&
+    !isTechnicalUiMessage(rawMessage)
+  ) {
+    userMessage = rawMessage
+  }
   if (!userMessage && status === 403) userMessage = '当前账号没有执行此操作的权限'
   if (!userMessage && status === 409) userMessage = '记录已发生变化，请刷新后重试'
   if (!userMessage && status >= 500) userMessage = '系统暂时无法完成该操作，请稍后重试'
