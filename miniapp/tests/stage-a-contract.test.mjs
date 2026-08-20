@@ -145,7 +145,7 @@ test('read state is only ever set locally for messages that can actually persist
 
   const teacher = read('src/pages/teacher/messages/index.vue')
   assert.match(teacher, /m\.kind !== 'UNIFIED_MESSAGE'/, 'Teacher T9 只允许 UnifiedMessage 乐观已读')
-  assert.match(teacher, /\^\\d\+\$/.test(raw)/, 'Teacher T9 必须只把稳定数字 messageId 交给持久化接口')
+  assert.ok(teacher.includes("if (!/^\\d+$/.test(raw)) return"), 'Teacher T9 必须只把稳定数字 messageId 交给持久化接口')
   assert.match(teacher, /markTeacherMessageRead\(raw\)/)
   assert.match(teacher, /\.catch\(\(\) => \{ m\.read = false;/, 'Teacher T9 持久化失败必须回滚 read')
   const teacherAssignments = teacher.match(/m\.read = true/g) || []
