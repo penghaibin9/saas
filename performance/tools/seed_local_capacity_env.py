@@ -151,6 +151,11 @@ def _student_token(index: int) -> str:
 
 
 def _teacher_token(index: int) -> str:
+    # Fresh CI databases intentionally do not bootstrap the platform-owned published
+    # SCHOOL_ADMIN RoleTemplate. In DB mode SCHOOL_ADMIN therefore fails closed by design and is
+    # not a valid synthetic capacity identity. LEADER is the least-privileged built-in school
+    # role that legitimately covers this gate's read-only cross-domain V3 routes (`*.view`) plus
+    # the personal message inbox, while resolve_teacher_scope still treats it as tenant-wide.
     return create_access_token(
         {
             "userId": _teacher_user_id(index),
@@ -160,7 +165,7 @@ def _teacher_token(index: int) -> str:
             "tid": "perf-local",
             "tenantId": str(TENANT_ID),
             "activeContextId": _teacher_context(index),
-            "currentRoleCode": "SCHOOL_ADMIN",
+            "currentRoleCode": "LEADER",
             "clientType": "MP",
         },
         expires_in=3600,
