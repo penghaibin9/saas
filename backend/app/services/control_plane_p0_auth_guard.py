@@ -18,6 +18,7 @@ def install() -> None:
     from app.db.session import db_enabled
     from app.core import token_store
     from app.services import auth_challenge_service as captcha
+    from app.services import auth_risk_service as risk_store
     from app.services import auth_service_db
     from app.services import control_plane_auth_service as p0
     from app.services import wx_auth_service
@@ -30,9 +31,37 @@ def install() -> None:
     original_captcha_store = captcha._store
     original_captcha_consume = captcha._consume
     original_captcha_required = captcha.captcha_required
+    original_risk_record_failure = risk_store.record_failure
 
     def use_durable() -> bool:
         return bool(db_enabled() or strict_env())
+
+    def durable_risk_record_failure(
+        key: str,
+        *,
+        threshold: int,
+        lock_seconds: int,
+        risk_type: str = risk_store.LOGIN_ACCOUNT,
+        tenant_id: int | None = None,
+    ):
+        # LOGIN_IP / PLATFORM_IP describe one network source across the whole
+        # relevant authentication plane.  They are deliberately not tenant
+        # business data: assigning the last observed tenant would let tenant
+        # offboarding delete a cross-tenant password-spray signal.
+        if risk_type in {risk_store.LOGIN_IP, risk_store.PLATFORM_IP}:
+            tenant_id = None
+        return original_risk_record_failure(
+            key,
+            threshold=threshold,
+            lock_seconds=lock_seconds,
+            risk_type=risk_type,
+            tenant_id=tenant_id,
+        )
+
+    # Establish the ownership invariant before any bound compatibility caller
+    # can create durable risk rows. control_plane_auth_service keeps a module
+    # reference to auth_risk_service, so it sees this binding as well.
+    risk_store.record_failure = durable_risk_record_failure
 
     def login_locked(key: str) -> int:
         return p0.login_locked_compat(key) if use_durable() else original_login_locked(key)
