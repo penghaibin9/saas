@@ -7,6 +7,7 @@ there is one public handler per method/path and no route-order shadowing.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
 from app.api.v1.auth import (
     CaptchaRequest,
@@ -20,8 +21,17 @@ from app.core.security import get_current_user
 from app.services import auth_challenge_service as captcha_svc
 from app.services import control_plane_auth_service as p0
 from app.services import mock_audit_service as audit
+from app.services import platform_mfa_service as platform_mfa
 
 router = APIRouter(prefix="/auth")
+
+
+class PlatformMfaEnrollmentRequest(BaseModel):
+    password: str | None = None
+
+
+class PlatformMfaCodeRequest(BaseModel):
+    code: str
 
 
 @router.post("/captcha", summary="获取登录图形验证码（跨 Worker 持久一次性状态）")
@@ -74,3 +84,38 @@ def wx_bind(body: WxBindRequest):
     audit.record("微信绑定", method="POST", path="/api/v1/auth/wx-bind",
                  status_code=200, target_type="auth", target_id=result.get("userId", "-"))
     return success(result, message="绑定成功")
+
+
+@router.get("/platform-mfa/status", summary="平台主管 MFA 状态")
+def platform_mfa_status(user=Depends(get_current_user)):
+    return success(platform_mfa.enrollment_status(user))
+
+
+@router.post("/platform-mfa/enroll", summary="平台主管原生 TOTP MFA 绑定开始（需主密码复核）")
+def platform_mfa_enroll(body: PlatformMfaEnrollmentRequest, user=Depends(get_current_user)):
+    out = platform_mfa.start_enrollment(user, password=body.password)
+    audit.record(
+        "PLATFORM_MFA_ENROLL_START", method="POST", path="/api/v1/auth/platform-mfa/enroll",
+        status_code=200, target_type="auth", target_id=str(user.get("userId") or "-"),
+    )
+    return success(out, message="请使用认证器扫描/录入密钥并完成确认")
+
+
+@router.post("/platform-mfa/confirm", summary="确认 TOTP 绑定并签发短时 MFA step-up 令牌")
+def platform_mfa_confirm(body: PlatformMfaCodeRequest, user=Depends(get_current_user)):
+    out = platform_mfa.confirm_enrollment(user, code=body.code)
+    audit.record(
+        "PLATFORM_MFA_ENROLL_CONFIRM", method="POST", path="/api/v1/auth/platform-mfa/confirm",
+        status_code=200, target_type="auth", target_id=str(user.get("userId") or "-"),
+    )
+    return success(out, message="MFA 已启用")
+
+
+@router.post("/platform-mfa/step-up", summary="验证 TOTP 并签发 10 分钟高危操作 MFA 令牌")
+def platform_mfa_step_up(body: PlatformMfaCodeRequest, user=Depends(get_current_user)):
+    out = platform_mfa.step_up(user, code=body.code)
+    audit.record(
+        "PLATFORM_MFA_STEP_UP", method="POST", path="/api/v1/auth/platform-mfa/step-up",
+        status_code=200, target_type="auth", target_id=str(user.get("userId") or "-"),
+    )
+    return success(out, message="MFA 二次认证成功")
