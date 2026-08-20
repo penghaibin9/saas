@@ -14,7 +14,7 @@ def _admin(client):
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm
+    from app.models import AaCourse, AaProgramCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm
     db = get_sessionmaker()()
     try:
         term = AaTerm(tenant_id=TID, year_code="2028-2029", term_no=1, term_name="W1预检学期",
@@ -26,10 +26,22 @@ def _seed(db_mode):
             tenant_id=TID, term_id=term.id, batch_name="W1预检教学任务批次", status="APPROVED",
         )
         db.add(task_batch); db.flush()
+        source = AaProgramCourse(
+            tenant_id=TID,
+            program_id=880101,
+            course_id=course.id,
+            course_name=course.course_name,
+            open_term_no=1,
+            module="MAJOR_CORE",
+            credit_snapshot=course.credit,
+            formation_mode="SELECTABLE",
+        )
+        db.add(source); db.flush()
         task = AaTeachingTask(
             tenant_id=TID, batch_id=task_batch.id, course_id=course.id,
             course_code=course.course_code, course_name=course.course_name,
-            teaching_class_name="W1预检教学班", status="READY",
+            teaching_class_name="W1预检教学班",
+            source_program_course_id=source.id, formation_mode="SELECTABLE", status="READY",
             weekly_hours=2, total_hours=36, start_week=1, end_week=18,
         )
         db.add(task); db.flush()
