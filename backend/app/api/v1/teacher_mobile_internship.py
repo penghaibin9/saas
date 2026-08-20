@@ -10,9 +10,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.permissions import require_module
+from app.core.permissions import require_module, require_permission
 from app.core.response import success
-from app.core.security import require_staff
 from app.services import teacher_mobile_internship_evidence_service as svc
 
 router = APIRouter(
@@ -49,7 +48,7 @@ class VisitEvidenceBody(_StrictBody):
     summary="教师端巡访计划执行目标（含实习记录版本）",
     name="teacher_mobile_v3_visit_targets",
 )
-def visit_targets(user=Depends(require_staff)):
+def visit_targets(user=Depends(require_permission("internship.visit.view"))):
     return success(svc.list_visit_targets(user))
 
 
@@ -58,7 +57,10 @@ def visit_targets(user=Depends(require_staff)):
     summary="教师端逾期周报单学生站内催交",
     name="teacher_mobile_v3_weekly_report_remind",
 )
-def remind_weekly_report(report_id: int, user=Depends(require_staff)):
+def remind_weekly_report(
+    report_id: int,
+    user=Depends(require_permission("internship.report.review")),
+):
     return success(
         svc.remind_overdue_weekly_report(user, report_id),
         message="催交提醒已进入站内消息队列",
@@ -73,7 +75,7 @@ def remind_weekly_report(report_id: int, user=Depends(require_staff)):
 def create_visit_evidence(
     internship_id: int,
     body: VisitEvidenceBody,
-    user=Depends(require_staff),
+    user=Depends(require_permission("internship.visit.manage")),
 ):
     return success(
         svc.create_visit_evidence(user, internship_id, body.model_dump(exclude_none=True)),
