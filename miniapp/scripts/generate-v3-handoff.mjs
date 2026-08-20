@@ -73,9 +73,13 @@ export function resolveSealedSha(readCommit, head) {
   const tip = readCommit(mergedTip)
   if (!tip) return { sha: '', unresolved: true, reason: `无法读取被并入的分支尖端 ${mergedTip}` }
   if (tip.subject === SEAL_SUBJECT) {
+    // main 把本线的 PR 并了进来：被并入的尖端是 seal，它封住的是自己的第一父。
     return { sha: tip.parents[0] || mergedTip, unresolved: false }
   }
-  return { sha: mergedTip, unresolved: false }
+  // 并进来的不是 seal——典型情形是「我们把 main 合进自己分支」。这时这棵树就是 HEAD
+  // 自己，不能返回 main 的尖端：那是别人的提交，拿它当"本 handoff 封住的实现提交"
+  // 既不真实，也会让紧接着的 seal 与 verify 各算各的、永远对不上。
+  return { sha: head, unresolved: false }
 }
 
 function implementationSha() {

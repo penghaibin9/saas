@@ -107,12 +107,15 @@ test('S9-G: seal 之后的普通业务提交必须判为漂移源（返回它自
   assert.deepEqual(resolveSealedSha(read, 'later'), { sha: 'later', unresolved: false })
 })
 
-test('S9-G: 并入的不是 seal 时取分支尖端，仍会与交付值不符', () => {
+test('S9-G: 并进来的不是 seal 时，被封存的就是 HEAD 这棵树本身', () => {
+  // 典型情形：我们把 main 合进自己分支。这时不能返回 main 的尖端——那是别人的提交，
+  // 拿它当「本 handoff 封住的实现提交」既不真实，也会让紧接着的 seal 与 verify
+  // 各算各的、永远对不上（实测踩过：生成时写 main 尖端、校验时算 seal 的父，必然漂移）。
   const read = fakeGraph({
     merge: { subject: 'Merge pull request #999 from y', parents: ['mainBase', 'otherTip'] },
     otherTip: { subject: 'feat: 别的分支', parents: ['x'] }
   })
-  assert.deepEqual(resolveSealedSha(read, 'merge'), { sha: 'otherTip', unresolved: false })
+  assert.deepEqual(resolveSealedSha(read, 'merge'), { sha: 'merge', unresolved: false })
 })
 
 test('S9-G: 浅克隆读不到父对象时报「无法解析」而不是「漂移」', () => {
