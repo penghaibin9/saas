@@ -55,6 +55,37 @@ def test_p0_purge_registry_classifies_every_current_tenant_table():
     assert registry["reviewedAlembicHead"] == REVIEWED_ALEMBIC_HEAD == "20260820_ctrl_offboarding"
 
 
+def test_p0_purge_registry_locks_reviewed_exception_semantics():
+    from app.services.tenant_purge_registry import PURGE, RETAIN, classify_table
+
+    retained = {
+        "t_order",
+        "t_incident_tenant",
+        "t_change_impact",
+        "t_sod_violation",
+        "t_emergency_access_session",
+        "t_tenant_usage_snapshot",
+        "t_tenant_fair_use_violation",
+    }
+    purged = {
+        "t_menu_node",
+        "t_calendar_window",
+        "t_calendar_transition_event",
+        "t_custom_role_source",
+        "t_wildcard_retirement",
+        "t_sod_rule",
+        "t_tenant_storage_quota",
+        "t_tenant_fair_use_limit",
+        "t_provisioning_job",
+        "t_support_ticket",
+        "t_training_record",
+        "t_renewal_task",
+    }
+
+    assert {name for name in retained if classify_table(name).classification != RETAIN} == set()
+    assert {name for name in purged if classify_table(name).classification != PURGE} == set()
+
+
 def test_p0_purge_registry_blocks_any_unreviewed_schema_head():
     from app.services.tenant_purge_registry import REVIEWED_ALEMBIC_HEAD, assert_schema_head_reviewed
 
