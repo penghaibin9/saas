@@ -168,6 +168,10 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+        with:
+          # handoff seal 合同要顺着 merge → seal → 实现提交解析，默认 fetch-depth=1
+          # 在 pull_request 的 merge 提交上只有一个对象，解析不出来。
+          fetch-depth: 5
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
