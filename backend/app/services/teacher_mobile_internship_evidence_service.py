@@ -30,6 +30,9 @@ _RISK_LEVEL_ORDER = {"NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3}
 _ALLOWED_VISIT_TYPES = {"ONSITE", "ONLINE", "PHONE", "VIDEO", "OTHER"}
 _PLAN_ACTIVE = {"PUBLISHED", "IN_PROGRESS"}
 _SCOPE_SPLIT = re.compile(r"[,，、;；\n\r]+")
+_PLAN_SCOPE_COMPOSITE = re.compile(
+    r"^(?P<name>.+?)\s*[\(（]\s*(?P<student_no>[^()（）]+?)\s*[\)）]\s*$"
+)
 
 
 def _op_name(user: dict | None) -> str:
@@ -48,11 +51,21 @@ def _plan_allows_student(plan: InternshipVisitPlan, student: StudentProfile) -> 
     student_no = str(student.student_no or "").strip()
     if name in tokens or student_no in tokens:
         return True
-    # Historical visit plans may freeze a display token such as "张三(20230001)".
-    return any(
-        (name and name in token and student_no and student_no in token)
-        for token in tokens
-    )
+    # Historical plans may freeze a display token such as "张三(20230001)".  This token is an
+    # authorization boundary, so parse and compare both fields exactly; substring guessing can
+    # otherwise authorize 张三 / 20230001 from a different longer display token.
+    for token in tokens:
+        match = _PLAN_SCOPE_COMPOSITE.fullmatch(token)
+        if not match:
+            continue
+        if (
+            name
+            and student_no
+            and match.group("name").strip() == name
+            and match.group("student_no").strip() == student_no
+        ):
+            return True
+    return False
 
 
 def _risk_level_max(current: str | None, requested: str) -> str:
