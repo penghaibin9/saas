@@ -28,15 +28,17 @@ def _load_revision(filename: str):
     return module
 
 
-def test_p0_router_installs_all_three_runtime_authorities():
+def test_p0_router_installs_one_canonical_runtime_authority():
     # conftest imports app.main first, but importing the router again is harmless
-    # and documents the intended application-startup authority boundary.
+    # and documents the intended single application-startup authority boundary.
     import app.api.v1.router  # noqa: F401
     from app.services import tenant_offboarding_service as offboarding
+    from app.services import control_plane_p0_runtime as runtime
     from app.services import control_plane_p0_auth_guard as auth_guard
     from app.services import control_plane_p0_dr_guard as dr_guard
     from app.services import control_plane_p0_offboarding_guard as offboarding_guard
 
+    assert runtime._INSTALLED is True
     assert auth_guard._INSTALLED is True
     assert dr_guard._INSTALLED is True
     assert offboarding_guard._INSTALLED is True
