@@ -40,7 +40,7 @@ export async function getInternshipReviewQueue() {
   return { reports, abnormal, _real: true }
 }
 
-export function handleCheckin(id, action, comment) {
+export function handleCheckin(id, action, comment, riskLevel = null) {
   const key = String(id || '')
   const expectedVersion = exceptionVersions.get(key)
   if (!key || !Number.isInteger(expectedVersion) || expectedVersion < 0) {
@@ -49,13 +49,26 @@ export function handleCheckin(id, action, comment) {
     error.statusCode = 409
     return Promise.reject(error)
   }
-  return realRequest(`/teacher-mobile/internship/exceptions/${encodeURIComponent(key)}/handle`, {
-    method: 'POST',
-    data: { action, comment: comment || '', expectedVersion }
-  }).then((result) => {
+  if (action === 'TO_RISK' && riskLevel !== 'HIGH') {
+    const error = new Error('转风险必须明确确认高风险等级')
+    error.code = 'VALIDATION_ERROR'
+    return Promise.reject(error)
+  }
+  const url = `/teacher-mobile/internship/exceptions/${encodeURIComponent(key)}/handle`
+  const finish = (result) => {
     // The queue page reloads authoritative truth after success. Drop this snapshot immediately so
     // a double tap or a future accidental reuse cannot issue a second command with the old version.
     exceptionVersions.delete(key)
     return result
-  })
+  }
+  if (!riskLevel) {
+    return realRequest(url, {
+      method: 'POST',
+      data: { action, comment: comment || '', expectedVersion }
+    }).then(finish)
+  }
+  return realRequest(url, {
+    method: 'POST',
+    data: { action, comment: comment || '', expectedVersion, riskLevel }
+  }).then(finish)
 }

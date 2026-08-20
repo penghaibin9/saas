@@ -1,15 +1,17 @@
-"""Teacher Miniapp V3 T5 single-object sequential command adapter.
+"""Teacher Miniapp V3 T5/T6 single-object internship command adapter.
 
-This router is additive under the existing ``/teacher-mobile`` surface.  It does not own an
-internship state machine: every mutation delegates to the canonical internship service and
-requires the exact version captured with the queue item.  That keeps 409/DATA_CONFLICT a real
-server-side optimistic-lock signal instead of a UI convention.
+Every mutation delegates to the canonical internship state machine and carries the exact version
+captured with the queue item. T6 only adds a fail-closed risk-confirmation contract; it does not
+create a second exception or risk authority.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from typing import Literal
 
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.core.exceptions import AppException
 from app.core.permissions import require_module
 from app.core.response import success
 from app.core.security import require_staff
@@ -21,9 +23,12 @@ router = APIRouter(
 
 
 class AttendanceExceptionHandleBody(BaseModel):
-    action: str
-    comment: str
-    expectedVersion: int
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["REASONABLE", "ABNORMAL", "TO_RISK"]
+    comment: str = Field(min_length=5, max_length=500)
+    expectedVersion: int = Field(ge=0)
+    riskLevel: Literal["HIGH"] | None = None
 
 
 @router.post(
@@ -36,11 +41,21 @@ def handle_attendance_exception(
     body: AttendanceExceptionHandleBody,
     user=Depends(require_staff),
 ):
+    action = str(body.action or "").upper()
+    comment = str(body.comment or "").strip()
+    if action == "TO_RISK":
+        if body.riskLevel != "HIGH":
+            raise AppException("VALIDATION_ERROR", "转风险必须显式确认 riskLevel=HIGH")
+        if len(comment) < 5:
+            raise AppException("VALIDATION_ERROR", "转风险原因不少于 5 字")
+    elif body.riskLevel is not None:
+        raise AppException("VALIDATION_ERROR", "非转风险操作不得提交 riskLevel")
+
     return success(
         internship_service.handle_attendance_exception(
             exception_id,
-            str(body.action or "").upper(),
-            body.comment or "",
+            action,
+            comment,
             user=user,
             expected_version=body.expectedVersion,
         ),
