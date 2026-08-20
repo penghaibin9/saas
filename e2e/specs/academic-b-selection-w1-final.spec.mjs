@@ -1,8 +1,14 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { items, loginApi } from '../lib/api-fixture.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 
+const here = path.dirname(fileURLToPath(import.meta.url))
+const seeded = JSON.parse(fs.readFileSync(path.resolve(here, '../academic-b-w1-fixture.json'), 'utf8'))
 const MINIAPP_BASE = process.env.E2E_MINIAPP_BASE_URL || 'http://localhost:5188'
 const COURSE_CODES = ['E2E-B-W1-001', 'E2E-B-W1-002']
 
@@ -28,12 +34,19 @@ async function seedSelectionFixture(testInfo) {
   const term = await api.get('/academic-affairs/terms/current')
   const termId = String(term?.termId || term?.id || '')
   expect(termId, `current term missing: ${JSON.stringify(term)}`).toBeTruthy()
+  expect(termId, `W1 seed/current term drift: ${JSON.stringify(seeded)}`).toBe(String(seeded.termId))
 
   const catalog = items(await api.get('/academic-affairs/courses', {
     keyword: 'E2E-B-W1', status: 'ENABLED', page: 1, pageSize: 50
   }))
   const byCode = new Map(catalog.map((row) => [String(row.courseCode || ''), row]))
-  const courses = COURSE_CODES.map((code) => byCode.get(code))
+  const seededByCode = new Map((seeded.courses || []).map((row) => [String(row.courseCode || ''), row]))
+  const courses = COURSE_CODES.map((code) => {
+    const row = byCode.get(code)
+    const task = seededByCode.get(code)
+    expect(task?.taskId, `W1 proven task missing for ${code}: ${JSON.stringify(seeded)}`).toBeTruthy()
+    return row ? { ...row, teachingTaskId: String(task.taskId) } : null
+  })
   expect(courses.filter(Boolean).length, `E2E B courses missing: ${JSON.stringify(catalog)}`).toBe(2)
 
   const suffix = `${String(Date.now()).slice(-7)}-r${testInfo.retry}`
@@ -48,6 +61,7 @@ async function seedSelectionFixture(testInfo) {
   for (const row of courses) {
     await api.post(`/academic-affairs/selection/batches/${ready.batchId}/courses`, {
       courseId: String(row.courseId || row.id),
+      teachingTaskId: row.teachingTaskId,
       capacity: 30,
       minCapacity: 0
     })
@@ -58,7 +72,8 @@ async function seedSelectionFixture(testInfo) {
     courses: courses.map((row) => ({
       id: String(row.courseId || row.id),
       code: String(row.courseCode),
-      name: String(row.courseName)
+      name: String(row.courseName),
+      teachingTaskId: row.teachingTaskId
     }))
   }
 }
