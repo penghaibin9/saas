@@ -24,7 +24,9 @@ def sel_batch_preflight(
     action: str = Query(..., pattern="^(PUBLISH|OPEN|CLOSE|LOCK)$"),
     user=Depends(require_permission(base._SEL_VIEW)),
 ):
-    return base.success(selection_final.batch_preflight(user, batchId, action))
+    with selection_final.selection_readonly_term_guard():
+        result = selection_final.batch_preflight(user, batchId, action)
+    return base.success(result)
 
 
 @router.post("/selection/batches/{batchId}/publish", summary="发布批次（最终服务）")
@@ -48,7 +50,9 @@ def sel_student_preflight(
     body: base.EnrollBody,
     user=Depends(base._require_student),
 ):
-    return base.success(selection_final.student_preflight(user, body))
+    with selection_final.selection_readonly_term_guard():
+        result = selection_final.student_preflight(user, body)
+    return base.success(result)
 
 
 @router.post("/selection/student/enroll", summary="学生选课（最终服务+DecisionTrace）")
