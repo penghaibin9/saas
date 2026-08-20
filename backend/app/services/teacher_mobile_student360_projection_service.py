@@ -287,12 +287,13 @@ def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
         "actions": actions,
         "sections": sections,
         "sensitive": sensitive,
+        # Stage-event free text can contain operator notes or sensitive reasons.  Student360 only
+        # exposes structural lifecycle facts; detailed stage evidence remains behind its source gate.
         "timeline": [
             {
                 "id": str(event.id),
                 "stage": event.to_stage or "",
                 "time": _iso(event.occurred_at),
-                "reason": event.reason or "",
                 "actionKey": None,
             }
             for event in events
