@@ -166,11 +166,16 @@ def aid_apply(user: dict, body: dict) -> dict:
 def funding_apply(user: dict, body: dict) -> dict:
     from app.models import FundingApplication, FundingBatch
     from app.services import affairs_funding_service as funding
+    from app.services import file_business_binding_service as file_binding_svc
+    from app.services.mobile_student_service import _attachment_ids
 
     body = body or {}
     batch_id = str(body.get("batchId") or "").strip()
     statement = str(body.get("statement") or "").strip()
     amount = _optional_non_negative_decimal(body.get("amount"), "申请金额")
+    # V3 §8.1：客户端上传只产出 TEMP_PRIVATE 文件，正式绑定必须由服务端在业务事务里建。
+    # 形状（只收数字 id、去重、数量上限）在这里再判一次，客户端的 maxCount 只是提示。
+    file_ids = _attachment_ids(body)
     if not batch_id:
         raise AppException("VALIDATION_ERROR", "资助批次（batchId）必填")
     if not 5 <= len(statement) <= 1000:
@@ -238,9 +243,29 @@ def funding_apply(user: dict, body: dict) -> dict:
             ),
             "confirm": True,
         }, student)
+        # 佐证材料绑定必须在 commit 之前、且在同一事务里：bind_file_to_business 校验
+        # 租户/归属/扫描状态后才建 ACTIVE binding，自己从不 commit，所以任一附件不可用
+        # 就把整笔申请一起回滚，临时文件保持私有等 TTL 回收。
+        # biz_type 用 FUNDING——file_access_resolvers 里已有学工权威 resolver，
+        # 审核老师要按 studentAffairs 权限 + 数据范围才打得开，不是裸绑定。
+        for file_id in file_ids:
+            file_binding_svc.bind_file_to_business(
+                db,
+                file_id=file_id,
+                biz_type="FUNDING",
+                biz_id=application.id,
+                actor=user,
+                subject_type="STUDENT",
+                subject_id=student.id,
+                relation_type="BUSINESS_EVIDENCE",
+                module_code="STUDENT_AFFAIRS",
+                student_id=student.id,
+                scope={"studentId": str(student.id), "batchId": str(batch.id),
+                       "projectType": batch.project_type},
+            )
         funding._audit(
             db, application.id, "APPLY",
-            f"{batch.project_type};confirmation={confirmation['signId']}",
+            f"{batch.project_type};confirmation={confirmation['signId']};files={len(file_ids)}",
         )
         db.commit()
         funding._drain_message_outbox()

@@ -47,7 +47,7 @@ API_BASE = os.getenv("E2E_API_BASE_URL") or "http://127.0.0.1:8000/api/v1"
 # 夹具自己的标记：cleanup 只删带这些标记的数据，绝不按表清空。
 MARK = "E2E-V3-REALTASK"
 EXAM_BATCH_NAME = f"{MARK} 期末考试批次"
-FUNDING_PROJECT_NAME = f"{MARK} 助学金"
+FUNDING_PROJECT_NAME = f"{MARK} 优秀学生奖学金"
 ACK_TITLE = f"{MARK} 学生证年度注册确认"
 
 
@@ -214,9 +214,13 @@ def _seed_funding_batch(facts: dict, tokens: dict) -> dict:
         None,
     )
     if not project_id:
+        # 用奖学金而不是助学金：助学金（GRANT）的资格硬校验要求学生已通过困难认定，
+        # 那是另一条业务链；本回放要证的是"带附件申请能不能真的提交并绑上"，
+        # 不该顺带把困难认定也造成假数据。奖学金的资格事实（学籍正常、无有效处分、
+        # 无不及格）这个 E2E 学生天然满足。
         project = _call("/student-affairs/funding/projects", admin, "POST", {
             "projectName": FUNDING_PROJECT_NAME,
-            "projectType": "GRANT",
+            "projectType": "SCHOLARSHIP",
             "amount": "2000.00",
             "quota": 50,
         })
@@ -240,6 +244,36 @@ def _seed_funding_batch(facts: dict, tokens: dict) -> dict:
     })
     return {"projectId": project_id, "batchId": str(batch["batchId"])}
 
+
+
+def _clear_in_flight_funding(facts: dict, batch_id: str) -> None:
+    """清掉本学生在本批次的在途申请，让浏览器用例每次都能真的提交一笔。
+
+    服务端禁止同批次重复在途申请（真实业务规则），所以要么复用要么清掉；这里选清掉，
+    因为被测的正是"带附件提交"这个动作本身。只删本夹具批次下本人的申请及其附件绑定，
+    不碰其他批次、其他学生。
+    """
+    from app.models import FundingApplication
+    from app.models.file import FileBinding
+    db = _session()
+    try:
+        set_tenant(facts["tenantId"])
+        rows = db.scalars(select(FundingApplication).where(
+            FundingApplication.tenant_id == facts["tenantId"],
+            FundingApplication.batch_id == int(batch_id),
+            FundingApplication.student_id == facts["studentId"],
+        )).all()
+        for row in rows:
+            for binding in db.scalars(select(FileBinding).where(
+                FileBinding.tenant_id == facts["tenantId"],
+                FileBinding.biz_type == "FUNDING",
+                FileBinding.biz_id == str(row.id),
+            )).all():
+                db.delete(binding)
+            db.delete(row)
+        db.commit()
+    finally:
+        db.close()
 
 # ── 3. 需回执的消息（正式消息中心发布） ──
 
@@ -380,6 +414,8 @@ def seed() -> dict:
         "counselor": _login(*COUNSELOR_LOGIN),
         "student": _login(*STUDENT_LOGIN),
     }
+    funding = _seed_funding_batch(facts, tokens)
+    _clear_in_flight_funding(facts, funding["batchId"])
     state = {
         "mark": MARK,
         "tenantCode": TENANT_CODE,
@@ -388,7 +424,7 @@ def seed() -> dict:
         "classId": facts["classId"],
         "counselor": _ensure_counselor_assignment(facts, tokens),
         "leave": _seed_returned_leave(facts, tokens),
-        "funding": _seed_funding_batch(facts, tokens),
+        "funding": funding,
         "ackMessage": _seed_ack_message(facts, tokens),
         "exam": _seed_exam(facts),
         "seededAt": datetime.now().isoformat(timespec="seconds"),
@@ -437,6 +473,23 @@ def cleanup() -> None:
             leave = db.get(CsLeave, int(leave_id))
             if leave is not None and leave.tenant_id == tenant_id:
                 db.delete(leave)
+
+        batch_id = (state.get("funding") or {}).get("batchId")
+        if batch_id:
+            from app.models import FundingApplication
+            from app.models.file import FileBinding
+            for row in db.scalars(select(FundingApplication).where(
+                FundingApplication.tenant_id == tenant_id,
+                FundingApplication.batch_id == int(batch_id),
+                FundingApplication.student_id == int(state["student"]["studentId"]),
+            )).all():
+                for binding in db.scalars(select(FileBinding).where(
+                    FileBinding.tenant_id == tenant_id,
+                    FileBinding.biz_type == "FUNDING",
+                    FileBinding.biz_id == str(row.id),
+                )).all():
+                    db.delete(binding)
+                db.delete(row)
 
         campaign_id = (state.get("ackMessage") or {}).get("campaignId")
         if campaign_id:

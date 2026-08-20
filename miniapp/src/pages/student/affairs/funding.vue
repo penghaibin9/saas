@@ -12,6 +12,19 @@
           <template v-else-if="!batchError">
             <view class="fld"><text class="lbl">申请批次</text><picker mode="selector" :range="batchesForType" range-key="label" :value="batchIndex" @change="onBatch"><view class="picker">{{ batchesForType[batchIndex].label }}</view></picker></view>
             <view class="fld"><text class="lbl">申请理由</text><textarea class="ta" v-model="form.reason" maxlength="500" placeholder="请说明申请理由（≥5字）" /></view>
+            <view class="fld">
+              <MobileAttachmentPicker
+                label="佐证材料"
+                biz-purpose="FUNDING"
+                :file-ids="fileIds"
+                :max-count="5"
+                :max-size-mb="10"
+                :disabled="busy"
+                @update:fileIds="(ids) => (fileIds = ids)"
+                @update:ready="(value) => (attachmentsReady = value)"
+                @error="onAttachmentError"
+              />
+            </view>
             <label class="chk" @click="form.commit = !form.commit"><text class="chk__box">{{ form.commit ? '✓' : '' }}</text><text class="chk__t">已阅读并确认诚信承诺，系统将记录本人确认、内容哈希与时间</text></label>
             <button class="btn" :disabled="busy" @click="submitApply">提交{{ fundLabel }}申请</button>
           </template>
@@ -24,6 +37,7 @@
           <view v-for="x in d.items" :key="x.applicationId" :id="'funding-' + x.applicationId" :class="{ 'is-focus': isFocused(x) }" class="list-row col">
             <view class="row-between"><text class="flex-1 t-md">{{ typeLabel(x.projectType) }}</text><MobileStatusTag :status="x.statusLabel || x.status" /></view>
             <text v-if="x.returnReason" class="hint warn">退回/驳回：{{ x.returnReason }}</text>
+            <text v-if="x.attachmentCount" class="hint">已附佐证材料 {{ x.attachmentCount }} 份</text>
             <button v-if="allows(x, 'EDIT_RETURNED') || allows(x, 'RESUBMIT')" class="btn btn-ghost" :disabled="busy" @click="editReturned(x)">修改后重新提交</button>
             <text v-if="x.hasPendingAppeal" class="hint">申诉处理中，请等待复核</text>
             <template v-if="allows(x, 'SUBMIT_APPEAL')"><textarea class="ta" v-model="reasons[x.applicationId]" placeholder="对公示结果有异议，请填写申诉理由（≥5字）" /><button class="btn" :disabled="busy" @click="appeal(x)">提交公示申诉</button></template>
@@ -58,7 +72,9 @@ export default {
       d: null, state: 'loading', busy: false, reasons: {}, batchError: '',
       fundTypes: [{ k: 'SCHOLARSHIP', t: '奖学金' }, { k: 'GRANT', t: '助学金' }], fundType: 'SCHOLARSHIP',
       allBatches: [], batchIndex: 0, form: { reason: '', commit: false },
-      editVisible: false, editTarget: {}, editReason: '', editNotice: ''
+      editVisible: false, editTarget: {}, editReason: '', editNotice: '',
+      // V3 §8.1：fileIds 只是 TEMP_PRIVATE 标识；正式绑定由服务端在业务事务里完成。
+      fileIds: [], attachmentsReady: true
     }
   },
   computed: {
@@ -89,11 +105,23 @@ export default {
       }).catch((e) => { this.state = 'error'; this.showError(e, '奖助信息加载失败') })
     },
     onBatch(e) { this.batchIndex = Number(e.detail.value) },
+    onAttachmentError(message) { toast(message || '附件处理失败') },
     async submitApply() {
       if (!this.batchesForType.length || this.busy) return
       const reason = (this.form.reason || '').trim(); if (reason.length < 5) return toast('理由至少5字'); if (!this.form.commit) return toast('请勾选本人确认承诺')
+      // 还有附件在扫描或被拒绝时不允许提交（readyForBusiness=false）。
+      if (!this.attachmentsReady) return toast('附件仍在安全扫描或不可用，请稍候再提交')
       this.busy = true
-      try { await studentApi.applyFunding({ batchId: this.batchesForType[this.batchIndex].batchId, statement: reason, confirm: true }); toast('申请已提交'); this.form = { reason: '', commit: false }; this.load() }
+      try {
+        await studentApi.applyFunding({
+          batchId: this.batchesForType[this.batchIndex].batchId,
+          statement: reason, confirm: true, fileIds: this.fileIds
+        })
+        toast('申请已提交')
+        // 一批临时文件只能绑一次业务，提交成功后清空，避免再被附到第二笔申请上。
+        this.form = { reason: '', commit: false }; this.fileIds = []; this.attachmentsReady = true
+        this.load()
+      }
       catch (e) { this.showError(e, '提交失败') } finally { this.busy = false }
     },
     async editReturned(x) {
@@ -129,6 +157,7 @@ export default {
 </script>
 
 <style scoped>
-.col { flex-direction: column; align-items: stretch; gap: 8px; }.row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }.hint { font-size: 12px; color: #6b7280; display: block; }.hint.warn { color: #b45309; }.seg { display: flex; gap: 8px; margin-top: 10px; }.seg__btn { flex: 1; font-size: 13px; background: #f1f5f9; color: #334155; border: none; border-radius: 8px; padding: 8px; }.seg__btn.on { background: #2563eb; color: #fff; }.fld { margin-top: 10px; }.lbl { display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px; }.picker, .ta { width: 100%; box-sizing: border-box; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; font-size: 13px; background: #fff; }.ta { min-height: 72px; }.chk { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; }.chk__box { width: 18px; height: 18px; border: 1px solid #94a3b8; border-radius: 4px; text-align: center; line-height: 16px; font-size: 12px; color: #2563eb; flex-shrink: 0; }.chk__t { font-size: 12px; color: #475569; }.btn { margin-top: 8px; background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 8px 12px; font-size: 13px; }.card-title { display: block; font-weight: 600; margin-bottom: 4px; }.fd__mask { position: fixed; inset: 0; z-index: 1000; background: rgba(15,23,42,.5); display: flex; align-items: flex-end; }.fd__sheet { width: 100%; border-radius: 18px 18px 0 0; padding: 18px; }.fd__actions { display: flex; gap: 10px; margin-top: 12px; }
+.col { flex-direction: column; align-items: stretch; gap: 8px; }.row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }.hint { font-size: 12px; color: #6b7280; display: block; }.hint.warn { color: #b45309; }.seg { display: flex; gap: 8px; margin-top: 10px; }.seg__btn { flex: 1; font-size: 13px; background: #f1f5f9; color: #334155; border: none; border-radius: 8px; padding: 8px; }.seg__btn.on { background: #2563eb; color: #fff; }.fld { margin-top: 10px; }.lbl { display: block; font-size: 12px; color: #6b7280; margin-bottom: 4px; }.picker, .ta { width: 100%; box-sizing: border-box; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; font-size: 13px; background: #fff; }.ta { min-height: 72px; }.chk { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; }.chk__box { width: 18px; height: 18px; border: 1px solid #94a3b8; border-radius: 4px; text-align: center; line-height: 16px; font-size: 12px; color: #2563eb; flex-shrink: 0; }
+.chk__t { font-size: 12px; color: #475569; }.btn { margin-top: 8px; background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 8px 12px; font-size: 13px; }.card-title { display: block; font-weight: 600; margin-bottom: 4px; }.fd__mask { position: fixed; inset: 0; z-index: 1000; background: rgba(15,23,42,.5); display: flex; align-items: flex-end; }.fd__sheet { width: 100%; border-radius: 18px 18px 0 0; padding: 18px; }.fd__actions { display: flex; gap: 10px; margin-top: 12px; }
 .is-focus { outline: 2px solid var(--brand-primary); outline-offset: 2px; border-radius: var(--radius-md); }
 </style>
