@@ -332,6 +332,8 @@ export default {
         approval: '/pages/teacher/approval/index',
         risk: '/pages/teacher/affairs-review/index?type=RISK_HANDLE',
         follow: '/pages/teacher/employment-follow/index',
+        recommend: '/pages/teacher/employment-follow/index?tab=unemployed',
+        verify: '/pages/teacher/employment-follow/index?tab=verify',
         unemployed: '/pages/teacher/employment-follow/index',
         employmentTransfer: '/pages/teacher/employment-transfer/index',
         employmentCompany: '/pages/teacher/employment-company/index',
