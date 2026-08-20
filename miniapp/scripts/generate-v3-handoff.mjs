@@ -2,10 +2,9 @@
 /**
  * V3 §S9 / 深审 P1-15：生成并校验 miniapp-v3-handoff.json。
  *
- * studentMergeSha 不是“JSON 自己所在提交”的不可实现自指，而是本 handoff seal
- * 覆盖的实现提交：正常实现提交取 HEAD；若当前 HEAD 只改 handoff JSON，则取该提交
- * header 里的第一父 SHA。因此最终 seal commit 可以机器证明“它封住的就是前一笔
- * exact implementation HEAD”；seal 后只要再发生任何业务代码提交，verify 就会漂移。
+ * studentMergeSha 不是“JSON 自己所在提交”的不可实现自指，而是 handoff seal 覆盖的
+ * 实现提交。最终 seal 使用专用 commit subject；校验器直接读取当前 commit object 的
+ * parent SHA，因此在 actions/checkout 默认 fetch-depth=1 下也无需父提交/父树对象。
  */
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
@@ -17,7 +16,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const MINIAPP = resolve(here, '..')
 const REPO = resolve(MINIAPP, '..')
 const OUTPUT = resolve(REPO, 'miniapp-v3-handoff.json')
-const HANDOFF_PATH = 'miniapp-v3-handoff.json'
+const SEAL_SUBJECT = 'chore(miniapp-v3): seal exact-head handoff'
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 const read = (path) => readFileSync(path, 'utf8')
@@ -35,22 +34,23 @@ function gitSha() {
 }
 
 /**
- * handoff seal 不能把自己的 SHA 写进自己的内容（那会无限改变 SHA）。
- * 约定最终 seal commit 只能改根目录 handoff JSON；此时被封存实现 SHA = 第一父 SHA。
- * 父 SHA 直接从当前 commit header 的 %P 读取，不要求父提交对象已被 checkout，因而在
- * actions/checkout 默认 fetch-depth=1 的浅克隆里也可工作。任何 seal 后业务改动都会
- * 让 changedFiles 不再满足条件，于是回到 HEAD 并触发漂移。
+ * 当前 HEAD 若是专用 handoff seal，则从 raw commit object 读取第一父 SHA；`cat-file`
+ * 只需要 HEAD 自身对象，在 shallow checkout 下也可靠。普通业务提交直接返回 HEAD，
+ * 因而 seal 后任何正常代码提交都会与落盘 studentMergeSha 不一致并 fail-closed。
+ * “seal commit 只能改 JSON”由生成 seal 时的 GitHub compare 独立验收，不把父树依赖塞进
+ * 运行时验证器。
  */
 function implementationSha() {
   const head = gitSha()
   if (!head) return ''
-  const changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD')
-    .split('\n').map((row) => row.trim()).filter(Boolean)
-  if (changed.length === 1 && changed[0] === HANDOFF_PATH) {
-    const parent = git('show', '-s', '--format=%P', 'HEAD').split(/\s+/).filter(Boolean)[0]
-    return parent || head
-  }
-  return head
+  const raw = git('cat-file', '-p', 'HEAD')
+  if (!raw) return head
+  const [headers = '', ...messageParts] = raw.split('\n\n')
+  const subject = messageParts.join('\n\n').split('\n', 1)[0].trim()
+  if (subject !== SEAL_SUBJECT) return head
+  const parentLine = headers.split('\n').find((line) => line.startsWith('parent '))
+  const parent = parentLine ? parentLine.slice('parent '.length).trim() : ''
+  return parent || head
 }
 
 /** pages.json 还原成完整 URL 集合 —— 教师端据此确认路由面没有被学生端改动。 */
