@@ -98,7 +98,7 @@ def _b64decode(token: str) -> bytes:
 
 
 def _cursor_signature(raw: bytes) -> bytes:
-    secret = str(settings.JWT_SECRET or "").encode("utf-8")
+    secret = str(settings.jwt_secret or "").encode("utf-8")
     if not secret:
         raise AppException("SERVER_ERROR", "游标签名密钥未配置", details={"reason": "CURSOR_SIGNING_KEY_MISSING"})
     return hmac.new(secret, raw, hashlib.sha256).digest()
