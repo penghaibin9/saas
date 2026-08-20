@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import os
-import time
 from fastapi import APIRouter, Body, Depends
 
 from app.core.exceptions import AppException
+from app.core.platform_assurance import assert_recent_platform_auth
 from app.core.response import success
 from app.modules.platform.routers.platform_bundle import require_platform_super_admin
 from app.services import audit_log
@@ -20,21 +20,8 @@ router = APIRouter(prefix="/platform", tags=["16·平台总控（租户退租销
 
 
 def _require_destructive_assurance(user: dict) -> None:
-    """Use server-verified JWT assurance claims exposed by app.core.security."""
-    raw_time = user.get("authTime") or user.get("tokenIat")
-    try:
-        age = int(time.time()) - int(raw_time)
-    except (TypeError, ValueError):
-        age = 10**9
-    amr = {str(item).lower() for item in (user.get("amr") or [])}
-    acr = str(user.get("acr") or "").lower()
-    if age < 0 or age > 600 or ("mfa" not in amr and "mfa" not in acr):
-        raise AppException(
-            "STEP_UP_REQUIRED",
-            "租户物理销毁需要10分钟内完成的平台多因素重新认证",
-            http_status=403,
-            details={"maxAuthAgeSeconds": 600, "mfaRequired": True},
-        )
+    """Reuse the canonical signed-token assurance policy used by Platform PAM."""
+    assert_recent_platform_auth(user, require_mfa=True, max_age_seconds=600)
 
 
 def _with_version(job: dict | None) -> dict | None:
