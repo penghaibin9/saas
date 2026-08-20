@@ -129,6 +129,18 @@ def _process_one(row_id: int, worker_id: str) -> bool:
             # 配置缺失、未授权等不可重试原因仍是 SKIPPED（重试没有意义），
             # provider/网络错误才走可重试分支。
             from app.services.notification import wechat_subscribe_service as wechat
+            # 先判渠道是否配置：学校根本没开通微信订阅时，收件人是谁并不重要，
+            # 报 NOT_CONFIGURED 比报 USER_INACTIVE 更能指向真正要做的事，
+            # 也省掉一次无意义的用户查询。持久化的错误码沿用历史值，不改既有契约。
+            if not wechat.provider_status()['configured']:
+                row.status='SKIPPED'; row.last_error_code='NOT_CONFIGURED'
+                row.last_error_message_safe='WECHAT_NOT_CONFIGURED'
+                from app.services import mobile_observability_service as _obs
+                _obs.record_wechat_delivery(
+                    scene=str(getattr(row, 'scene', '') or 'CASE_RESULT'),
+                    outcome='NOT_CONFIGURED',
+                )
+                row.locked_by=None; row.locked_at=None; row.lease_expires_at=None; db.commit(); return True
             user=db.scalar(select(User).where(
                 User.id==row.receiver_user_id, User.tenant_id==row.tenant_id,
                 User.is_deleted.is_(False),

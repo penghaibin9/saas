@@ -140,8 +140,12 @@ export function handleSummary(data) {
   const metrics = data.metrics || {};
   const routes = routeLatencies(metrics);
   const identity = identityDistribution();
-  // V3 §11.6：Artifact 必须自带 VU、身份分布、逐路由分位与覆盖结论，
+  // V3 §11.6：Artifact 自带 VU、身份分布、逐路由分位与覆盖结论，
   // 否则事后无法判断这份数据压的是数据库还是热缓存、有没有覆盖新链路。
+  //
+  // 注意：SUMMARY_PATH 必须继续是**原始 k6 summary**——
+  // performance/tools/evaluate_capacity_result.py 直接读它的 metrics 字段做裁决。
+  // V3 的附加信息写到同目录的 sibling 文件，不改既有契约。
   const artifact = {
     schema: 'yueke-capacity-artifact/1',
     profile: PROFILE,
@@ -157,10 +161,13 @@ export function handleSummary(data) {
       failedRate: metrics.http_req_failed && metrics.http_req_failed.values.rate,
       checkRate: metrics.checks && metrics.checks.values.rate,
     },
-    raw: data,
   };
+  const artifactPath = path.replace(/\.json$/, '') + '-v3.json';
   return {
     stdout: compactSummary(data),
-    [path]: JSON.stringify(artifact, null, 2),
+    // 原始 summary：既有裁决工具的输入，形状不变。
+    [path]: JSON.stringify(data, null, 2),
+    // V3 附加取证：身份分布 + 逐路由分位 + 新链路覆盖结论。
+    [artifactPath]: JSON.stringify(artifact, null, 2),
   };
 }
