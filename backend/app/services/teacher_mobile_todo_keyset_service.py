@@ -1,8 +1,9 @@
-"""Teacher Miniapp V3 T2 continuous Todo keyset reader.
+"""Teacher Miniapp V3 T2/T3 continuous Todo keyset reader.
 
 This module is deliberately additive: the legacy page/offset contract remains untouched,
 and teacher-mobile gets a dedicated continuous-list reader. Route resolution still lives in
-``workbench_todo_service`` / ``todo_route_registry``; this file owns only cursor semantics.
+``workbench_todo_service`` / ``todo_route_registry``; this file owns cursor semantics and uses
+the T3 SQL visibility compiler for the continuous teacher-mobile path.
 
 Cursor contract (V3 T2):
 - signed opaque base64url JSON;
@@ -28,6 +29,7 @@ from app.core.config import settings
 from app.core.exceptions import AppException
 from app.services import workbench_todo_service as todo_svc
 from app.services.db_service import _tid, session
+from app.services.teacher_student_visibility_service import compile_teacher_student_visibility
 
 _CURSOR_VERSION = 1
 _MAX_CURSOR_LENGTH = 2048
@@ -197,6 +199,17 @@ def _seek_after(UnifiedTodo, *, bucket_expr, payload: dict[str, Any]):
     )
 
 
+def _teacher_todo_visibility(user: dict, UnifiedTodo):
+    """Self-assigned Todo OR unassigned pool Todo whose student is visible in SQL."""
+    parts = []
+    uid = todo_svc._uid(user)
+    if uid:
+        parts.append(UnifiedTodo.assignee_id == uid)
+    student_visibility = compile_teacher_student_visibility(user, UnifiedTodo.student_id)
+    parts.append(and_(UnifiedTodo.assignee_id == 0, student_visibility))
+    return or_(*parts) if parts else None
+
+
 def list_continuous(
     user: dict,
     *,
@@ -226,7 +239,7 @@ def list_continuous(
         status_counts = dict(cursor_payload.get("statusCounts") or {})
 
     with session() as db:
-        visibility = todo_svc._visibility_cond(db, user)
+        visibility = _teacher_todo_visibility(user, UnifiedTodo)
         if visibility is None:
             return {
                 "items": [],

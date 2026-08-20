@@ -83,9 +83,10 @@ def test_t2_keyset_reader_has_no_offset_and_counts_only_first_page_contract():
     assert "hmac.compare_digest" in module_source
 
 
-def test_t2_keyset_reader_reuses_canonical_todo_projection_not_third_route_authority():
+def test_t2_t3_keyset_reader_reuses_canonical_projection_and_sql_visibility():
     source = inspect.getsource(keyset_svc)
-    assert "todo_svc._visibility_cond" in source
+    assert "compile_teacher_student_visibility" in source
+    assert "todo_svc._visibility_cond" not in source
     assert "todo_svc._todo_dict" in source
     assert "resolve_todo_route" not in source
     assert "message_action_registry" not in source
