@@ -133,24 +133,23 @@ test('mark-all-read collapses synchronous row updates into batched requests capp
 })
 
 test('read state is only ever set locally for messages that can actually persist it', () => {
-  // 「待办/服务进度」「学生动态/风险预警」的已读态由后端派生自真实业务记录，客户端标记
-  // 无法持久化，刷新即回弹。因此每个页面的所有标已读入口（点开/去处理/全部已读）都必须
-  // 统一走 _markRead()，由 _canPersistRead() 把关，不允许任何入口直接写 read = true。
-  // （2026-08-04 复审二次收口：此前只有 markAllRead 做了过滤，open/handle 仍无条件置 true。）
-  for (const page of [
-    'src/pages/student/messages/index.vue',
-    'src/pages/teacher/messages/index.vue'
-  ]) {
-    const source = read(page)
-    assert.match(source, /_canPersistRead\(/, `${page} 必须定义可持久化判定`)
-    assert.match(source, /_markRead\(/, `${page} 必须统一经 _markRead 标已读`)
-    const assignments = source.match(/^\s*(message|m)\.read = true$/gm) || []
-    assert.equal(assignments.length, 1,
-      `${page} 只允许 _markRead() 内部一处写 read = true，实际 ${assignments.length} 处`)
-    // 失败必须回滚乐观状态，否则界面显示已读但服务端仍未读
-    assert.match(source, /_synced = false; (message|m)\.read = false/,
-      `${page} 已读同步失败必须回滚 read`)
-  }
+  // 学生消息页仍混合业务派生项与 UnifiedMessage，所以所有本地已读入口必须经过
+  // _canPersistRead/_markRead。Teacher T9 已切成独立 UnifiedMessage 服务端 inbox，列表本身只
+  // 返回可持久化消息，因此它可以直接调用专用 markTeacherMessageRead，但失败必须回滚。
+  const student = read('src/pages/student/messages/index.vue')
+  assert.match(student, /_canPersistRead\(/)
+  assert.match(student, /_markRead\(/)
+  const studentAssignments = student.match(/^\s*message\.read = true$/gm) || []
+  assert.equal(studentAssignments.length, 1, '学生消息页只允许 _markRead() 内部一处写 read = true')
+  assert.match(student, /_synced = false; message\.read = false/)
+
+  const teacher = read('src/pages/teacher/messages/index.vue')
+  assert.match(teacher, /m\.kind !== 'UNIFIED_MESSAGE'/, 'Teacher T9 只允许 UnifiedMessage 乐观已读')
+  assert.match(teacher, /\^\\d\+\$/.test(raw)/, 'Teacher T9 必须只把稳定数字 messageId 交给持久化接口')
+  assert.match(teacher, /markTeacherMessageRead\(raw\)/)
+  assert.match(teacher, /\.catch\(\(\) => \{ m\.read = false;/, 'Teacher T9 持久化失败必须回滚 read')
+  const teacherAssignments = teacher.match(/m\.read = true/g) || []
+  assert.equal(teacherAssignments.length, 1, 'Teacher T9 只允许 markRead() 内部一处乐观写 read=true')
 })
 
 test('release script never writes an empty appid and can resolve it from .env.production', () => {
