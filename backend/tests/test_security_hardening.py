@@ -35,10 +35,15 @@ def test_logout_invalidates_access_token(client):
 
 
 def test_login_rate_limit_10_per_minute(client):
+    # P0 风控切换到 MySQL authority 后，限流桶会跨测试请求持久存在；本用例必须使用
+    # 独立来源 IP，避免前序 refresh/logout 用例对默认 TestClient IP 的登录计数污染。
+    # 127.0.0.1 是测试环境可信代理，因此 X-Forwarded-For 会成为真实客户端 IP；
+    # 这里仍严格验证同一 IP 在 60 秒内前 10 次放行、第 11 次被限流，不降低生产阈值。
+    headers = {"X-Forwarded-For": "203.0.113.210"}
     for _ in range(10):
-        assert client.post("/api/v1/auth/mock-login",
+        assert client.post("/api/v1/auth/mock-login", headers=headers,
                            json={"loginName": "school_admin01", "password": "x"}).json()["code"] == 0
-    r = client.post("/api/v1/auth/mock-login",
+    r = client.post("/api/v1/auth/mock-login", headers=headers,
                     json={"loginName": "school_admin01", "password": "x"}).json()
     assert r["code"] == 429001 and r["bizCode"] == "RATE_LIMITED"
 
