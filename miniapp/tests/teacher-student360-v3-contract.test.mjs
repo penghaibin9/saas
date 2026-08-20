@@ -67,3 +67,12 @@ test('T4 Student360 sensitive zone contains summaries only', () => {
   assert.match(page, /不展示事由与文书正文/)
   assert.doesNotMatch(page, /phone|手机号|身份证|counselorNote|reasonSummary/)
 })
+
+test('T4 Student360 timeline never renders or projects free-text reason', () => {
+  const page = read('src/pages/teacher/student-detail/index.vue')
+  const projection = read('../backend/app/services/teacher_mobile_student360_projection_service.py')
+  const timelineBlock = projection.slice(projection.indexOf('"timeline": ['), projection.indexOf('"context": {'))
+  assert.match(page, /stageText\(event\.stage\)/)
+  assert.doesNotMatch(page, /event\.reason/)
+  assert.doesNotMatch(timelineBlock, /"reason"\s*:|event\.reason/)
+})
