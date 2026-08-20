@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { buildHandoff } from '../scripts/generate-v3-handoff.mjs'
+import { buildHandoff, resolveSealedSha } from '../scripts/generate-v3-handoff.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
@@ -58,4 +58,69 @@ test('S9 落盘的 handoff 与当前代码一致（漂移即失败）', () => {
     'networkPagerVersion', 'attachmentPickerVersion', 'alembicHead']) {
     assert.equal(stored[field], current[field], `${field} 已漂移，Teacher T8 不得据此接线`)
   }
+})
+
+
+// ── 回归：handoff 交付物只能由命令行生成，import 不得有副作用 ──
+//
+// handoff-contract 本身就 import 这个脚本，而 ESM 的 import 会执行模块顶层。
+// 少了直接执行判断时，`npm test` 会顺手把 miniapp-v3-handoff.json 重写一遍——
+// 在 main 上它会把封存的实现 SHA 覆盖成 merge 提交 SHA，等于测试毁掉交付物。
+
+test('S9-G: 仅 import 生成脚本不得改写 handoff 交付物', async () => {
+  const { execFileSync } = await import('node:child_process')
+  const target = resolve(repo, 'miniapp-v3-handoff.json')
+  if (!existsSync(target)) return
+  const before = readFileSync(target, 'utf8')
+  execFileSync(process.execPath, [
+    '-e', "import('./miniapp/scripts/generate-v3-handoff.mjs').then(() => {})"
+  ], { cwd: repo })
+  assert.equal(readFileSync(target, 'utf8'), before, 'import 生成脚本后交付物被改写了')
+})
+
+// ── 回归：被封存实现 SHA 必须能在合入后的 main 上解析出来 ──
+//
+// 手册 §13.1 要求 Teacher T8 从合入后的 main 机器校验，所以 merge 提交必须能穿过去；
+// 只认「HEAD 就是 seal」的旧实现在 main 上必然误报漂移，等于交付物在唯一该用的地方不可用。
+
+const SEAL = 'chore(miniapp-v3): seal exact-head handoff'
+
+function fakeGraph(entries) {
+  return (ref) => entries[ref] || null
+}
+
+test('S9-G: seal 提交解析成它封住的实现提交', () => {
+  const read = fakeGraph({ seal: { subject: SEAL, parents: ['impl'] } })
+  assert.deepEqual(resolveSealedSha(read, 'seal'), { sha: 'impl', unresolved: false })
+})
+
+test('S9-G: main 上的 merge 提交要穿过 seal 找到实现提交', () => {
+  const read = fakeGraph({
+    merge: { subject: 'Merge pull request #182 from x', parents: ['mainBase', 'seal'] },
+    seal: { subject: SEAL, parents: ['impl'] }
+  })
+  assert.deepEqual(resolveSealedSha(read, 'merge'), { sha: 'impl', unresolved: false })
+})
+
+test('S9-G: seal 之后的普通业务提交必须判为漂移源（返回它自己）', () => {
+  const read = fakeGraph({ later: { subject: 'feat: 新功能', parents: ['seal'] } })
+  assert.deepEqual(resolveSealedSha(read, 'later'), { sha: 'later', unresolved: false })
+})
+
+test('S9-G: 并入的不是 seal 时取分支尖端，仍会与交付值不符', () => {
+  const read = fakeGraph({
+    merge: { subject: 'Merge pull request #999 from y', parents: ['mainBase', 'otherTip'] },
+    otherTip: { subject: 'feat: 别的分支', parents: ['x'] }
+  })
+  assert.deepEqual(resolveSealedSha(read, 'merge'), { sha: 'otherTip', unresolved: false })
+})
+
+test('S9-G: 浅克隆读不到父对象时报「无法解析」而不是「漂移」', () => {
+  const read = fakeGraph({
+    merge: { subject: 'Merge pull request #182 from x', parents: ['mainBase', 'seal'] }
+  })
+  const result = resolveSealedSha(read, 'merge')
+  assert.equal(result.unresolved, true)
+  assert.equal(result.sha, '')
+  assert.match(result.reason, /seal/)
 })
