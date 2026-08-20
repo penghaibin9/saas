@@ -1,7 +1,7 @@
 """Final safety guard for tenant offboarding retry/cancellation semantics."""
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 _INSTALLED = False
 
@@ -23,6 +23,28 @@ def install() -> None:
     # it. FAILED may already be partially destructive and is therefore retry-only.
     offboarding.CANCELLABLE_STATES.add("BLOCKED")
 
+    def revoke_refresh_by_tenant(db, tenant_id: int) -> int:
+        """Revoke every refresh token that can still name a tenant user.
+
+        Soft-deleted users are intentionally included.  Their account row still
+        identifies tenant ownership and an old refresh token must not survive a
+        tenant freeze merely because the user was deactivated before offboarding.
+        """
+        from app.models import AuthRefreshToken, User
+
+        user_ids = [f"db-{int(uid)}" for uid in db.scalars(select(User.id).where(
+            User.tenant_id == int(tenant_id)
+        )).all()]
+        deleted_count = 0
+        for start in range(0, len(user_ids), 500):
+            batch = user_ids[start:start + 500]
+            if not batch:
+                continue
+            result = db.execute(delete(AuthRefreshToken).where(AuthRefreshToken.user_id.in_(batch)))
+            deleted_count += int(result.rowcount or 0)
+        return deleted_count
+
+    offboarding._revoke_refresh_by_tenant = revoke_refresh_by_tenant
     original_approve = offboarding.approve_and_purge
 
     def approve_and_purge(user: dict, job_id: int, *, expected_version: int,
