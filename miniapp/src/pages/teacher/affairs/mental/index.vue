@@ -7,7 +7,8 @@
 
         <view class="section-head"><text class="section-head__title">关注名单</text><text class="section-head__more" @click="toggleForm">{{ showForm ? '收起' : '+ 登记转介' }}</text></view>
         <view class="card stack-sm" v-if="showForm">
-          <picker mode="selector" :range="students" range-key="label" @change="onStudentChange"><view class="mt__input">{{ selectedStudentLabel }}</view></picker>
+          <view v-if="prefillLocked" class="mt__input">已预填：{{ selectedStudentLabel }}</view>
+          <picker v-else mode="selector" :range="students" range-key="label" @change="onStudentChange"><view class="mt__input">{{ selectedStudentLabel }}</view></picker>
           <picker mode="selector" :range="levelOptions" range-key="label" @change="onLevelChange"><view class="mt__input">{{ levelLabel }}</view></picker>
           <textarea class="mt__textarea" v-model="form.reasonSummary" :maxlength="200" placeholder="转介事由摘要（5-200字，不含诊断结论）" placeholder-class="mt__ph" />
           <text class="mt__counter">{{ form.reasonSummary.trim().length }}/200</text>
@@ -74,7 +75,8 @@ export default {
     return {
       state: 'loading', loaded: false, all: [], showForm: false, creating: false,
       form: { studentId: '', level: 'FOCUS', reasonSummary: '' }, students: [],
-      active: null, viewReason: '', actionContent: '', acting: false, levelOptions: LEVEL_OPTS
+      active: null, viewReason: '', actionContent: '', acting: false, levelOptions: LEVEL_OPTS,
+      prefillStudentId: '', prefillLocked: false
     }
   },
   computed: {
@@ -83,7 +85,11 @@ export default {
     selectedStudentLabel() { const s = this.students.find((x) => String(x.studentId) === String(this.form.studentId)); return s ? s.label : '选择授权范围内学生' },
     canCreate() { const n = this.form.reasonSummary.trim().length; return this.form.studentId && n >= 5 && n <= 200 }
   },
-  onLoad() { this.load() },
+  onLoad(q) {
+    this.prefillStudentId = q && q.mode === 'create' ? String(q.studentId || '').trim() : ''
+    if (this.prefillStudentId) { this.showForm = true; this.loadCandidates() }
+    this.load()
+  },
   methods: {
     statusTag(s) { return STATUS_TAG[s] || 'default' },
     canAct(action) {
@@ -95,10 +101,20 @@ export default {
     loadCandidates() {
       affairsContractApi.getStudentCandidates('MENTAL').then((d) => {
         this.students = ((d && d.items) || []).map((x) => ({ ...x, label: `${x.name} · ${x.className || x.studentNo}` }))
-        if (!this.students.length) toast('当前心理专项授权范围内暂无学生')
+        if (this.prefillStudentId) {
+          const matched = this.students.find((x) => String(x.studentId) === this.prefillStudentId)
+          if (matched) {
+            this.form.studentId = String(matched.studentId)
+            this.prefillLocked = true
+          } else {
+            this.form.studentId = ''
+            this.prefillLocked = false
+            toast('当前学生不在心理专项授权范围内')
+          }
+        } else if (!this.students.length) toast('当前心理专项授权范围内暂无学生')
       }).catch((e) => this.showError(e, '候选学生加载失败'))
     },
-    onStudentChange(e) { const s = this.students[Number(e.detail.value)]; this.form.studentId = s ? s.studentId : '' },
+    onStudentChange(e) { if (this.prefillLocked) return; const s = this.students[Number(e.detail.value)]; this.form.studentId = s ? s.studentId : '' },
     onLevelChange(e) { this.form.level = LEVEL_OPTS[e.detail.value].value },
     load() {
       this.state = 'loading'
@@ -109,7 +125,11 @@ export default {
       if (this.creating || !this.canCreate) return
       this.creating = true
       teacherApi.createMentalReferral({ studentId: this.form.studentId, level: this.form.level, reasonSummary: this.form.reasonSummary.trim() })
-        .then(() => { toast('转介已登记'); this.showForm = false; this.form = { studentId: '', level: 'FOCUS', reasonSummary: '' }; this.load() })
+        .then(() => {
+          toast('转介已登记')
+          if (this.prefillLocked) return setTimeout(() => uni.navigateBack(), 300)
+          this.showForm = false; this.form = { studentId: '', level: 'FOCUS', reasonSummary: '' }; this.load()
+        })
         .catch((e) => this.showError(e, '登记失败')).finally(() => { this.creating = false })
     },
     openDetail(r) {

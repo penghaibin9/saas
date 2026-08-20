@@ -2,7 +2,6 @@
   <view class="page-wrap">
     <MobileGlobalState :state="state" @retry="load">
       <view v-if="data">
-        <!-- 就业概览 -->
         <view class="page-pad">
           <view class="ef__stats card">
             <view class="ef__stat"><text class="ef__stat-val">{{ data.stats.rate }}%</text><text class="ef__stat-label">就业率</text></view>
@@ -55,17 +54,32 @@ import { listPaging } from '@/utils/listPaging'
 import { toast } from '@/utils/nav'
 export default {
   mixins: [listPaging(20)],
-  data() { return { data: null, state: 'loading', tab: 'unemployed', acting: false } },
-  onLoad() { this.load() },
-  // onReachBottom 必须写在页面本身，mp-weixin 才会注册
+  data() {
+    return {
+      data: null, state: 'loading', tab: 'unemployed', acting: false,
+      prefillPending: false, prefillStudent: null, fromStudent360: false
+    }
+  },
+  onLoad(q) {
+    const employmentStudentId = q && q.mode === 'follow' ? String(q.employmentStudentId || '').trim() : ''
+    if (employmentStudentId) {
+      this.prefillStudent = {
+        id: employmentStudentId,
+        name: q.studentName ? decodeURIComponent(q.studentName) : '当前学生',
+        contactTimes: 0,
+        last: ''
+      }
+      this.prefillPending = true
+      this.fromStudent360 = true
+    }
+    this.load()
+  },
   onReachBottom() { this.pagedReachBottom() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
   },
-  watch: {
-    tab() { this.pagedReset() }
-  },
+  watch: { tab() { this.pagedReset() } },
   computed: {
     filtered() {
       if (!this.data) return []
@@ -77,11 +91,16 @@ export default {
     load(done) {
       this.state = 'loading'
       this.pagedReset()
-      teacherApi.getEmployment().then((d) => { this.data = d; this.state = 'ready' })
-        .catch(() => { this.state = 'error' })
+      teacherApi.getEmployment().then((d) => {
+        this.data = d; this.state = 'ready'
+        if (this.prefillPending && this.prefillStudent) {
+          const target = ((d && d.list) || []).find((item) => String(item.id) === String(this.prefillStudent.id)) || this.prefillStudent
+          this.prefillPending = false
+          setTimeout(() => this.contact(target), 80)
+        }
+      }).catch(() => { this.state = 'error' })
         .finally(() => { if (done) done() })
     },
-    /** 跟进联系：填写跟进内容 → 真实写入就业跟进记录（后端范围校验 + 审计） */
     contact(s) {
       if (this.acting) return
       uni.showModal({
@@ -89,10 +108,7 @@ export default {
         placeholderText: '填写本次联系内容（如电话沟通就业意向）',
         success: (r) => {
           if (!r.confirm || this.acting) return
-          if (!r.content || r.content.trim().length < 2) {
-            toast('请填写跟进内容')
-            return
-          }
+          if (!r.content || r.content.trim().length < 2) { toast('请填写跟进内容'); return }
           if (!/^\d+$/.test(String(s.id))) {
             toast('当前为离线数据，无法记录跟进，请恢复网络后重试')
             return
@@ -103,16 +119,14 @@ export default {
               s.contactTimes = (s.contactTimes || 0) + 1
               s.last = r.content.trim()
               toast('跟进已记录')
+              if (this.fromStudent360) setTimeout(() => uni.navigateBack(), 300)
             })
             .catch((e) => toast(normalizeError(e).text))
             .finally(() => { this.acting = false })
         }
       })
     },
-    recommend(s) {
-      // 推荐岗位属 PC 端完整流程；移动端引导记录一次“岗位推荐”跟进，不做假成功
-      this.contact(s)
-    },
+    recommend(s) { this.contact(s) },
     verify(s) { toast('去向核验需在 PC 端完成材料核对') }
   }
 }
