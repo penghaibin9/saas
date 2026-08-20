@@ -76,6 +76,12 @@ def _scope_emp(db, emp_id: Any, user: dict, *, lock: bool = False) -> tuple[EmpS
         ))
         if profile and teacher_guard.can_teacher_view_student(user, profile, scope=scope, db=db):
             return emp, profile
+        # Bound rows must be decided by the stable current StudentProfile only.  Falling back to
+        # employment snapshot class/college facts would let a former counselor retain access after
+        # a transfer.  Missing/deleted profiles therefore fail closed as well.
+        raise no_permission("该就业学生不在你的数据范围内")
+
+    # Only truly unbound legacy rows may use frozen employment snapshot facts.
     if teacher_guard.scope_match_row(
         scope,
         student_no=emp.student_no,
