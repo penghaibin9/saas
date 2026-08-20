@@ -5,6 +5,10 @@ This tool is intended only for GitHub Actions/local test environments. It never 
 production credentials and never prints tokens to stdout. Teacher V3 T9 also seeds one
 Student360/employment object plus per-context messages so every newly gated route has a real
 server object to read in self-contained CI.
+
+Teacher test userIds are synthetic positive integers. That is intentional: the production
+message identity resolver can use them directly, so the capacity run measures the inbox query
+instead of paying an artificial User-table lookup/CRC fallback on every request.
 """
 from __future__ import annotations
 
@@ -12,7 +16,6 @@ import argparse
 from datetime import datetime, timedelta
 import json
 import sys
-import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,18 +32,15 @@ from app.models import EmpStudent, StudentProfile, UnifiedMessage
 TENANT_ID = 1000000000000000001
 STUDENT_NO = "PERF-STU-001"
 TEACHER_MESSAGE_SOURCE = "capacity-gate-teacher"
+TEACHER_USER_ID_BASE = 8_500_000_000
 
 
 def _teacher_user_id(index: int) -> str:
-    return f"perf-teacher-{index:04d}"
+    return str(TEACHER_USER_ID_BASE + int(index))
 
 
 def _teacher_context(index: int) -> str:
     return f"perf-teacher-context-{index:04d}"
-
-
-def _stable_message_user_id(raw_user_id: str) -> int:
-    return (zlib.crc32(raw_user_id.encode("utf-8")) & 0x7FFFFFFF) or 1
 
 
 def seed_runtime_data(token_count: int) -> tuple[int, int, int]:
@@ -104,7 +104,7 @@ def seed_runtime_data(token_count: int) -> tuple[int, int, int]:
             ("TODO_NOTICE", "TODO", "IMPORTANT", "催办提醒"),
         )
         for index in range(1, token_count + 1):
-            receiver_uid = _stable_message_user_id(_teacher_user_id(index))
+            receiver_uid = int(_teacher_user_id(index))
             context = _teacher_context(index)
             for offset, (message_type, category, priority, title) in enumerate(specs):
                 db.add(UnifiedMessage(
