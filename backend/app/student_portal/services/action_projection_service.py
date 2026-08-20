@@ -1,4 +1,4 @@
-"""学生 PC 门户 · Action Projection（V3 施工手册 SP-H03 / SP-H06 / SP-M03 前置）。
+"""学生 PC 门户 · Action Projection（V3 施工手册 SP-H03 / SP-H06 / SP-M01 / SP-M04 / SP-M03 前置）。
 
 只复用共享 Authority，不新建第二份业务路由表：
 
@@ -32,12 +32,28 @@ CLIENT_STUDENT_PC = "studentPc"
 _TODO_DISABLED_REASON = "该类待办暂未开通学生 PC 端专属定位入口，请前往消息中心或对应业务模块查看处理"
 _NO_TARGET_REASON = "当前端暂无安全处理入口"
 
+#: 与 mobile_action_service._ALLOWED_PREFIXES 同一防御层级：registry 各 client 字段
+#: 本应各自独立、互不串扰，但仍以真实 student-portal 路由前缀白名单兜底一次——
+#: 未来若有人误把 pc（教师/管理端 `/admin/...`）的值填进 studentPc 字段，这里会
+#: fail-closed 而不是把学生带进管理端页面。与 student-portal/src/router/index.js
+#: 的顶层子路由保持一致，新增顶层模块时需要同步这里。
+_ALLOWED_PATH_PREFIXES: tuple[str, ...] = (
+    "/home", "/profile", "/academic", "/campus-service", "/materials",
+    "/internship", "/employment", "/orientation", "/messages",
+    "/service-hall", "/graduation",
+)
+
 
 def _clean(value: Any) -> Optional[str]:
     if value in (None, ""):
         return None
     text = str(value).strip()
     return text or None
+
+
+def _path_allowed(path: str) -> bool:
+    return any(path == prefix or path.startswith(prefix + "/") or path.startswith(prefix + "?")
+               for prefix in _ALLOWED_PATH_PREFIXES)
 
 
 def _blocked(
@@ -80,7 +96,7 @@ def build_todo_action(todo: dict | None) -> dict | None:
     expected_version = int(expected_version) if isinstance(expected_version, int) else None
 
     route_path = todo.get("routePath")
-    if not route_path:
+    if not route_path or not _path_allowed(str(route_path)):
         return _blocked(
             source_biz_type=source_biz_type, source_biz_id=record_id, record_id=record_id,
             reason=_TODO_DISABLED_REASON, label=label,
@@ -141,7 +157,7 @@ def build_message_action(
     route = messages_registry.resolve_route(key, client=CLIENT_STUDENT_PC)
     focus_key = messages_registry.focus_param_for(key)
     record_id = _clean((cleaned or {}).get(focus_key)) if focus_key else None
-    if not route.get("ok") or not route.get("path"):
+    if not route.get("ok") or not route.get("path") or not _path_allowed(str(route["path"])):
         # registry 的通用兜底文案是写给"跨端"场景的（"请前往教师 PC / 学生 PC 办理"），
         # 对已经身处学生 PC 的用户是自相矛盾的指路。这里换成本端可理解的说明。
         return _blocked(
@@ -150,7 +166,11 @@ def build_message_action(
         )
 
     path = str(route["path"])
-    query = dict(route.get("staticQuery") or {})
+    # query 必须保留 actionParams 的原始参数名（如 materialRequirementId），不能统一
+    # 改写成 "recordId"——之前 MessagesView.vue 本地维护过一份按 actionKey 手工改名的
+    # 表（就是 SP-M01 要删掉的那种第二 Authority），materials 补交页真实按
+    # materialRequirementId/requirementId 读取 query 做对象级聚焦，改名会当场撞坏它。
+    query = {**(route.get("staticQuery") or {}), **(cleaned or {})}
     if record_id:
         query.setdefault("recordId", record_id)
     focus_mode = normalize_focus_mode(route.get("focusMode"))

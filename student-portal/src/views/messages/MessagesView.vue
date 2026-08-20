@@ -11,6 +11,8 @@
       </div>
 
       <StateBlock v-if="loading" type="loading" text="加载中…" />
+      <!-- SP-H02 同理：分区加载失败必须诚实报错，不能显示"暂无消息"。 -->
+      <StateBlock v-else-if="tabError" type="error" :text="tabError" />
       <template v-else-if="tab === 'settings'">
         <div style="padding:16px 14px">
           <div class="sp-muted" style="margin-bottom:14px">设置各类消息的接收开关，退回 / 驳回等高优先级提醒建议保持开启。</div>
@@ -22,79 +24,64 @@
         </div>
       </template>
       <template v-else>
-        <StateBlock v-if="!shownList.length" type="empty" text="暂无消息" />
-        <button v-for="(m, i) in shownList" :key="m.id || i" class="mrow" @click="go(m)">
-          <span class="sp-tag" :class="'sp-tag--' + toneOf(m)" style="flex:none">{{ levelText(m) }}</span>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:14px;color:var(--t1);line-height:1.5" :style="{ fontWeight: m.read ? 400 : 600 }">{{ displayMessageText(m.title) }}</div>
-            <div style="margin-top:4px;font-size:12.5px;color:var(--t4)">
-              {{ modName(m.module) }} · {{ fmt(m.time) }}
-              <span v-if="m.deadline"> · 截止 {{ fmt(m.deadline) }}</span>
-              <span v-if="m.receipt"> · 待确认</span>
+        <StateBlock v-if="!items.length" type="empty" text="暂无消息" />
+        <template v-else>
+          <!-- SP-M01/M04：不再消费本地 ACTION_ROUTES/MODULE_ROUTES 猜路由；
+               每条只消费服务端下发的 typed action，UNIFIED_MESSAGE 点击前还会
+               重验详情，撤回/越权/失效一律原地报错，不导航（fail-closed）。 -->
+          <button v-for="(m, i) in items" :key="m.id || i" class="mrow"
+                  :disabled="itemDisabled(m)" :title="itemDisabled(m) ? (m.withdrawn ? '该消息已撤回' : actionReason(m.action)) : ''"
+                  @click="openItem(m)">
+            <span class="sp-tag" :class="'sp-tag--' + toneOf(m)" style="flex:none">{{ levelText(m) }}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;color:var(--t1);line-height:1.5" :style="{ fontWeight: m.read ? 400 : 600 }">{{ displayMessageText(m.title) }}</div>
+              <div style="margin-top:4px;font-size:12.5px;color:var(--t4)">
+                {{ m.module }} · {{ fmt(m.time) }}
+                <span v-if="m.deadline"> · 截止 {{ fmt(m.deadline) }}</span>
+                <span v-if="m.receipt"> · 待确认</span>
+                <span v-if="m.withdrawn"> · 已撤回</span>
+              </div>
             </div>
+            <span v-if="!m.read" style="flex:none;margin-top:6px;width:8px;height:8px;border-radius:50%;background:var(--pri)" />
+          </button>
+          <div v-if="hasMore" class="mmore">
+            <button class="sp-btn sp-btn--ghost" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? '加载中…' : '加载更多' }}</button>
           </div>
-          <span v-if="!m.read" style="flex:none;margin-top:6px;width:8px;height:8px;border-radius:50%;background:var(--pri)" />
-        </button>
+        </template>
       </template>
     </section>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
 import { portalApi } from '../../services/portalApi'
-import { request } from '../../services/request'
 import { useUiStore } from '../../stores/ui'
-import { MODULES } from '../../platform/moduleRegistry'
-
-const ACTION_ROUTES = {
-  STUDENT_AFFAIRS: '/campus-service',
-  STUDENT_AFFAIRS_LEAVE: '/campus-service?tab=leave',
-  STUDENT_AFFAIRS_AID: '/campus-service?tab=aid',
-  STUDENT_AFFAIRS_FUNDING: '/campus-service?tab=funding',
-  STUDENT_AFFAIRS_DISCIPLINE: '/campus-service?tab=discipline',
-  STUDENT_AFFAIRS_DORM: '/campus-service?tab=dorm',
-  STUDENT_AFFAIRS_ACTIVITY: '/campus-service?tab=activity',
-  STUDENT_APPLICATIONS: '/campus-service?tab=applications',
-  INTERNSHIP: '/internship',
-  GRADUATION: '/graduation',
-  ACADEMIC: '/academic',
-  ORIENTATION: '/orientation',
-  EMPLOYMENT: '/employment'
-}
-
-const MODULE_ROUTES = {
-  'student-affairs': '/campus-service',
-  campusService: '/campus-service',
-  'campus-service': '/campus-service',
-  internship: '/internship',
-  graduation: '/graduation',
-  'academic-affairs': '/academic',
-  academic: '/academic',
-  orientation: '/orientation',
-  employment: '/employment'
-}
 
 const ui = useUiStore()
 const router = useRouter()
+
 const loading = ref(true)
+const loadingMore = ref(false)
 const busy = ref(false)
-const data = ref({})
+const tabError = ref('')
+
+// SP-M05/M07：待办/通知/服务进度是三个独立 Authority，各自真实数据库分页，
+// 不再合并成一份"消息列表"后在前端切片/过滤。
+const tab = ref('todo')
+const tabsMeta = ref([])
+const items = ref([])
+const page = ref(1)
+const PAGE_SIZE = 20
+const hasMore = ref(false)
 const pref = ref({})
-const tab = ref('all')
 
 const allTabs = computed(() => {
-  const t = [{ key: 'all', label: '全部' }]
-  for (const x of (data.value.tabs || [])) t.push({ key: x.key, label: x.label, badge: x.badge })
+  const t = tabsMeta.value.map((x) => ({ key: x.key, label: x.label, badge: x.badge }))
   t.push({ key: 'settings', label: '消息设置' })
   return t
-})
-const shownList = computed(() => {
-  if (tab.value === 'all') return data.value.list || []
-  const g = data.value.groups || {}
-  return g[tab.value] || (data.value.list || [])
 })
 
 const MESSAGE_STATUS_TEXT = { PENDING_REVIEW: '待审核', SUBMITTED: '已提交', RETURNED: '已退回', REJECTED: '未通过', APPROVED: '已通过', PROCESSING: '处理中', COMPLETED: '已完成', CLASS_REVIEW: '班级审核中', COLLEGE_REVIEW: '学院审核中', SCHOOL_REVIEW: '学校审核中' }
@@ -103,7 +90,6 @@ function displayMessageText(value) {
   for (const [key, label] of Object.entries(MESSAGE_STATUS_TEXT)) text = text.replaceAll(key, label)
   return text || '系统通知'
 }
-function modName(key) { return MODULES.find((m) => m.key === key || m.domain === key)?.title || '系统' }
 function toneOf(m) {
   if (m && (m.emergency || m.level === 'high')) return 'danger'
   if (m && m.level === 'mid') return 'warn'
@@ -116,70 +102,111 @@ function levelText(m) {
   return '通知'
 }
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(0, 16) : '' }
-function messageTarget(m) {
-  if (!m || m.withdrawn) return '/messages'
-  const params = m.actionParams && typeof m.actionParams === 'object' ? m.actionParams : {}
-  const materialRequirementId = params.materialRequirementId || params.requirementId || ''
-  if (materialRequirementId) return `/materials?requirementId=${encodeURIComponent(String(materialRequirementId))}`
-  const key = String(m.actionKey || '').trim().toUpperCase()
-  let target = ACTION_ROUTES[key] || ''
-  const biz = String(params.businessType || params.bizType || '').trim().toUpperCase()
-  if (!target && biz) target = ACTION_ROUTES[`STUDENT_AFFAIRS_${biz}`] || ACTION_ROUTES[biz] || ''
-  if (!target && m.status === 'RETURNED') target = ACTION_ROUTES.STUDENT_APPLICATIONS
-  if (!target) target = MODULE_ROUTES[String(m.module || '').trim()] || ''
-  if (!target) {
-    const mod = MODULES.find((x) => x.key === m.link || x.path === m.link || x.domain === m.link)
-    target = mod ? `/${mod.path}` : '/messages'
-  }
-  const recordId = params.recordId || params.bizId || params.applyId || params.applicationId || params.caseId || params.leaveId || ''
-  if (recordId && target !== '/messages') target += `${target.includes('?') ? '&' : '?'}recordId=${encodeURIComponent(String(recordId))}`
-  return target
+
+function canOpen(action) { return !!(action && action.target && action.target.path) }
+function actionReason(action) { return (action && action.disabledReason) || '该事项暂无可直接办理的入口' }
+function itemDisabled(m) {
+  if (m.kind === 'UNIFIED_MESSAGE') return !!m.withdrawn
+  return !canOpen(m.action)
 }
 
-async function load() {
-  loading.value = true
+async function loadTab(key, { page: p = 1, append = false } = {}) {
+  if (key === 'settings') {
+    loading.value = true
+    tabError.value = ''
+    try {
+      pref.value = await portalApi.messagePreferences()
+    } catch (e) {
+      pref.value = {}
+      tabError.value = e?.message || '通知偏好加载失败'
+    } finally {
+      loading.value = false
+    }
+    return
+  }
+  if (append) loadingMore.value = true
+  else { loading.value = true; tabError.value = '' }
   try {
-    data.value = await portalApi.messagesInbox(1, 30)
-    pref.value = await portalApi.messagePreferences().catch(() => ({}))
-  } catch (e) { data.value = {} } finally { loading.value = false }
+    const data = await portalApi.messagesInbox(key, p, PAGE_SIZE)
+    tabsMeta.value = data.tabs || tabsMeta.value
+    items.value = append ? [...items.value, ...(data.list || [])] : (data.list || [])
+    page.value = data.page || p
+    hasMore.value = !!data.hasMore
+  } catch (e) {
+    if (append) {
+      ui.notify(e?.message || '加载更多失败')
+    } else {
+      items.value = []
+      tabError.value = e?.message || '消息加载失败，请稍后重试'
+    }
+  } finally {
+    loading.value = false
+    loadingMore.value = false
+  }
 }
+
+watch(tab, (key) => { loadTab(key, { page: 1 }) })
+
+function loadMore() {
+  if (!hasMore.value || loadingMore.value) return
+  loadTab(tab.value, { page: page.value + 1, append: true })
+}
+
 async function markAll() {
+  busy.value = true
   try {
     const r = await portalApi.messagesReadAll()
-    ui.notify(`已标已读 ${r?.affectedCount ?? ''}`.trim())
-    await load()
+    ui.notify(r?.partial
+      ? `已标记 ${r.affectedCount ?? 0} 条已读，部分历史消息处理失败`
+      : `已标记 ${r?.affectedCount ?? 0} 条已读`)
+    await loadTab(tab.value, { page: 1 })
   } catch (e) {
+    // SP-M06：主 Authority 失败必须真报错，不能假装"全部已读成功"。
     ui.notify(e?.message || '全部已读失败')
+  } finally {
+    busy.value = false
   }
 }
-async function go(m) {
-  const rawId = String(m.messageId || m.id || '')
-  const isUnified = m.kind === 'UNIFIED_MESSAGE' || /^\d+$/.test(rawId) || /^msg-\d+$/.test(rawId)
-  const mid = rawId.replace(/^msg-/, '')
-  if (isUnified && !m.read && /^\d+$/.test(mid)) {
-    try { await portalApi.messageRead(mid); m.read = true } catch (e) { /* ignore */ }
+
+async function openItem(m) {
+  if (m.kind === 'UNIFIED_MESSAGE') {
+    if (m.withdrawn) { ui.notify('该消息已撤回'); return }
+    const mid = String(m.messageId || m.id || '').replace(/^msg-/, '')
+    if (/^\d+$/.test(mid)) {
+      if (!m.read) {
+        try { await portalApi.messageRead(mid); m.read = true } catch (e) { /* 非阻断 */ }
+      }
+      if (m.receipt) {
+        try {
+          await portalApi.messageReceipt(mid)
+          m.receipt = false; m.acked = true
+          ui.notify('已确认回执')
+        } catch (e) { /* 非强制 */ }
+      }
+      // SP-M04：详情重验失败/撤回/越权，一律原地报错，不导航（fail-closed）。
+      let detail
+      try {
+        detail = await portalApi.messageDetail(mid)
+      } catch (e) {
+        ui.notify(e?.message || '消息已失效，无法打开')
+        return
+      }
+      if (detail?.withdrawn) { m.withdrawn = true; ui.notify('该消息已撤回'); return }
+    }
   }
-  if (isUnified && m.receipt && /^\d+$/.test(mid)) {
-    try {
-      await portalApi.messageReceipt(mid)
-      m.receipt = false
-      m.acked = true
-      ui.notify('已确认回执')
-    } catch (e) { /* 非强制 */ }
-  }
-  let detail = m
-  if (isUnified && /^\d+$/.test(mid)) {
-    try { detail = await request(`/mobile/me/messages/${mid}`) } catch (e) { /* 列表数据安全降级 */ }
-  }
-  router.push(messageTarget(detail))
+  if (!canOpen(m.action)) { ui.notify(actionReason(m.action)); return }
+  const { path, query } = m.action.target
+  router.push({ path, query: query && Object.keys(query).length ? { ...query } : undefined })
 }
+
 async function togglePref(p) {
   busy.value = true
   const next = !p.enabled
   try { await portalApi.messageSetPreference({ key: p.key, enabled: next }); p.enabled = next; ui.notify('偏好已更新') }
   catch (e) { ui.notify(e?.message || '设置失败') } finally { busy.value = false }
 }
-onMounted(load)
+
+onMounted(() => loadTab(tab.value, { page: 1 }))
 </script>
 
 <style scoped>
@@ -190,6 +217,8 @@ onMounted(load)
 .linkall { font-size: 13px; color: var(--pri-text, var(--pri)); cursor: pointer; }
 .mrow { all: unset; cursor: pointer; box-sizing: border-box; width: 100%; display: flex; align-items: flex-start; gap: 13px; padding: 15px 14px; border-radius: 10px; }
 .mrow:hover { background: var(--surface-2, #FAFBFC); }
+.mrow:disabled { cursor: not-allowed; opacity: .55; }
+.mmore { display: flex; justify-content: center; padding: 14px 0 6px; }
 .prefrow { display: flex; align-items: center; justify-content: space-between; padding: 13px 4px; border-bottom: 1px solid var(--line2); }
 .switch { all: unset; cursor: pointer; width: 40px; height: 22px; border-radius: 11px; background: #DDE1E8; position: relative; flex: none; transition: background .15s; }
 .switch.on { background: var(--pri); }

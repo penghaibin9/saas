@@ -654,11 +654,12 @@ def home_overview(user=Depends(get_current_user)):
     return success(home.overview(user))
 
 
-# ── 消息通知 PC 视图 ──
-@router.get("/messages", summary="消息中心（本人·分页）")
+# ── 消息通知 PC 视图（V3 SP-M05/M07：三 tab 三 Authority 真分页） ──
+@router.get("/messages", summary="消息中心（本人·按 tab 真分页：todo/notice/progress）")
 def messages_inbox(user=Depends(get_current_user),
-                   page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100)):
-    return success(messages.inbox(user, page, pageSize))
+                   tab: str = Query("todo"),
+                   page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=50)):
+    return success(messages.inbox_page(user, tab, page, pageSize))
 
 
 @router.post("/messages/read-all", summary="全部标为已读（本人）")
@@ -674,6 +675,13 @@ def messages_preferences(user=Depends(get_current_user)):
 @router.post("/messages/preferences", summary="设置通知偏好（本人）")
 def messages_set_preference(user=Depends(get_current_user), body: dict = Body(...)):
     return success(messages.set_preference(user, body))
+
+
+# SP-M04/M08：PC 消息详情 facade，独立于 /messages/preferences 等固定路径注册在前，
+# 避免 {message_id} 通配吞掉字面量路径。不再直接依赖 `/mobile/me/messages/{id}`。
+@router.get("/messages/{message_id}", summary="消息详情（本人·PC facade）")
+def messages_detail(message_id: str, user=Depends(get_current_user)):
+    return success(messages.get_detail(user, message_id))
 
 
 @router.post("/messages/{message_id}/read", summary="标记消息已读（本人）")

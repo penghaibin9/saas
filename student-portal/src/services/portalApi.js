@@ -162,7 +162,10 @@ export const portalApi = {
   orientationGreenChannel: (body) => request('/portal/orientation/green-channel', { method: 'POST', body }),
   orientationPrint: (body) => request('/portal/orientation/print', { method: 'POST', body }),
   serviceHallCatalog: () => request('/portal/service-hall/catalog'),
-  messagesInbox: (page = 1, pageSize = 20) => request(`/portal/messages${q({ page, pageSize })}`),
+  // SP-M05/M07：待办/通知/服务进度是三个独立 Authority，各自真实数据库分页。
+  messagesInbox: (tab = 'todo', page = 1, pageSize = 20) => request(`/portal/messages${q({ tab, page, pageSize })}`),
+  // SP-M04/M08：PC 专属详情 facade，不再直接依赖 /mobile/me/messages/{id}。
+  messageDetail: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}`),
   messageRead: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}/read`, { method: 'POST' }),
   messagesReadAll: () => request('/portal/messages/read-all', { method: 'POST' }),
   messageReceipt: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}/receipt`, { method: 'POST' }),

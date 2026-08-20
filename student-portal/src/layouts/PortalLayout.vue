@@ -201,8 +201,10 @@ onMounted(async () => {
   themeKey.value = window.localStorage.getItem('student-portal-theme') || 'blue'
   window.dispatchEvent(new CustomEvent('student-portal-theme-change', { detail: themeKey.value }))
   try {
-    const data = await portalApi.messagesInbox(1, 1)
-    unread.value = data?.unreadCount || 0
+    // SP-M05/M07：铃铛角标只需要"通知" Authority 的真实未读数，不再依赖旧的
+    // 合并聚合 unreadCount 字段（该字段已随三 tab 真分页改造移除）。
+    const data = await portalApi.messagesInbox('notice', 1, 1)
+    unread.value = data?.tabs?.find((t) => t.key === 'notice')?.badge || 0
   } catch (e) { /* 铃铛角标非关键，失败静默 */ }
 })
 </script>
