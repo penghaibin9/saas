@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 
-REGISTRY_VERSION = "2026-08-20.p0.4"
+REGISTRY_VERSION = "2026-08-20.p0.5"
 REVIEWED_ALEMBIC_HEAD = "20260820_ctrl_offboarding"
 
 PURGE = "PURGE"
@@ -35,6 +35,7 @@ _RETAIN_EXACT = {
     "t_change_impact",  # frozen change impact snapshot
     "t_sod_violation",  # security-governance evidence, user row may later be purged
     "t_emergency_access_session",  # break-glass evidence
+    "t_security_activation",  # applied/rollback security revision evidence
     "t_tenant_usage_snapshot",  # usage/capacity evidence
     "t_tenant_fair_use_violation",  # fair-use enforcement evidence
     "t_tenant_offboarding_job",
@@ -56,6 +57,9 @@ _PURGE_EXACT = {
     "t_support_ticket",
     "t_training_record",
     "t_renewal_task",
+    "t_attendance_exception",  # tenant attendance/business exception record
+    "t_class",  # tenant organization master data
+    "t_green_channel_application",  # orientation business application
 }
 
 _RETAIN_PREFIXES = (
