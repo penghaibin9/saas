@@ -39,5 +39,6 @@ from app.models import tenant_metering as _tenant_metering  # noqa: F401  (PLAT-
 from app.models import disaster_recovery as _disaster_recovery  # noqa: F401  (PLAT-12·备份恢复灾备)
 from app.models import auth_risk as _auth_risk  # noqa: F401  (Control Plane P0·分布式认证风控)
 from app.models import recovery_run as _recovery_run  # noqa: F401  (Control Plane P0·机器灾备证据)
+from app.models import tenant_offboarding as _tenant_offboarding  # noqa: F401  (Control Plane P0·租户退租销毁)
 
 metadata = Base.metadata
