@@ -10,7 +10,16 @@ import _mysql_env  # noqa: F401
 from sqlalchemy import select
 
 from app.db.session import get_sessionmaker
-from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm, College, Major, SchoolClass
+from app.models import (
+    AaCourse,
+    AaProgramCourse,
+    AaTeachingTask,
+    AaTeachingTaskBatch,
+    AaTerm,
+    College,
+    Major,
+    SchoolClass,
+)
 
 TID = 1000000000000000007
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "e2e" / "academic-b-w4-fixture.json"
@@ -78,6 +87,17 @@ def main() -> int:
             status="APPROVED",
         )
         db.add(task_batch); db.flush()
+        source = AaProgramCourse(
+            tenant_id=TID,
+            program_id=99000410,
+            course_id=course.id,
+            course_name=course.course_name,
+            open_term_no=1,
+            module="MAJOR_CORE",
+            credit_snapshot=getattr(course, "credit", None) or 2,
+            formation_mode="SELECTABLE",
+        )
+        db.add(source); db.flush()
         task = AaTeachingTask(
             tenant_id=TID,
             batch_id=task_batch.id,
@@ -93,6 +113,8 @@ def main() -> int:
             total_hours=32,
             start_week=1,
             end_week=16,
+            source_program_course_id=source.id,
+            formation_mode="SELECTABLE",
             status="READY",
         )
         db.add(task); db.flush()
