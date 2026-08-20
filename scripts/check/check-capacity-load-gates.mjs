@@ -55,9 +55,20 @@ if (failures.length === 0) {
     '/api/v1/mobile/performance/teacher/workbench',
     '/api/v1/mobile/performance/teacher/todos-page',
     '/api/v1/mobile/performance/teacher/risk-students-page',
+    '/api/v1/teacher-mobile/students?pageSize=20',
+    '/api/v1/mobile/performance/teacher/messages-page',
+    '/api/v1/teacher-mobile/internship/visit-targets',
+    '/api/v1/teacher-mobile/employment/overview',
   ]
   for (const endpoint of requiredEndpoints) {
     if (!k6.includes(endpoint)) failures.push(`missing core endpoint ${endpoint}`)
+  }
+  const requiredTeacherDynamicContracts = [
+    '/api/v1/teacher-mobile/students/${encodeURIComponent(studentId)}/projection',
+    '/api/v1/teacher-mobile/employment/students/${encodeURIComponent(employmentId)}/verification',
+  ]
+  for (const contract of requiredTeacherDynamicContracts) {
+    if (!k6.includes(contract)) failures.push(`missing Teacher V3 dynamic route ${contract}`)
   }
   for (const profile of ['smoke', 'baseline', 'p300', 'p500', 'p1000', 'p3000']) {
     if (!k6.includes(`${profile}:`)) failures.push(`missing profile ${profile}`)
@@ -78,6 +89,19 @@ if (failures.length === 0) {
   ]
   for (const threshold of requiredThresholds) {
     if (!k6.includes(threshold)) failures.push(`missing threshold/reporting contract ${threshold}`)
+  }
+  for (const teacherContract of [
+    'REQUIRED_TEACHER_V3_ROUTES',
+    'teacher_my_students',
+    'teacher_student360',
+    'teacher_messages',
+    'teacher_visit',
+    'teacher_employment_verification',
+    'IDENTITY_MODE',
+    'uniqueTeacherContexts',
+    'teacherRoleRatios',
+  ]) {
+    if (!k6.includes(teacherContract)) failures.push(`Teacher V3 T9 capacity contract missing ${teacherContract}`)
   }
   if (!k6.includes('LOCAL_HIGH_LOAD_DIAGNOSTIC')) {
     failures.push('local high-load diagnostic mode must be explicit')
@@ -133,6 +157,8 @@ if (failures.length === 0) {
   }
   if (!localSeed.includes('create_access_token')) failures.push('local seed must issue ephemeral signed tokens')
   if (!localSeed.includes('StudentProfile')) failures.push('local seed must create a real student profile')
+  if (!localSeed.includes('EmpStudent')) failures.push('Teacher V3 T9 local seed must create employment verification data')
+  if (!localSeed.includes('UnifiedMessage')) failures.push('Teacher V3 T9 local seed must create teacher-context messages')
   if (!localSeed.includes('--token-count')) failures.push('local seed must support explicit token pool size')
   if (/password|accessToken/i.test(localSeed) && /print\([^\n]*(password|token)/i.test(localSeed)) {
     failures.push('local seed must not print credentials or tokens')
