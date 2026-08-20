@@ -96,6 +96,12 @@ def make_router(client: str) -> APIRouter:
     guard = get_current_user if client == "student-mini" else require_staff
     route_client = "studentMini" if client == "student-mini" else ("teacherMini" if client == "teacher-mobile" else "pc")
 
+    # Teacher V3 T3 owns a dedicated MyStudents router, but mounts it through the existing
+    # teacher-mobile surface so no shared global route-registration file needs a parallel edit.
+    if client == "teacher-mobile":
+        from app.api.v1.teacher_mobile_students import router as teacher_students_router
+        router.include_router(teacher_students_router)
+
     @router.get("/todos", summary="待办列表", name=f"{client}_todos_list")
     def list_todos(status: Optional[str] = Query(default=None, description="PENDING / DONE"),
                    todoType: Optional[str] = Query(default=None, description="APPROVAL/REVIEW/RISK/SUBMIT/CONFIRM"),
