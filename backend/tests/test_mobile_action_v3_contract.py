@@ -196,3 +196,68 @@ def test_adapter_only_reads_from_the_two_existing_authorities():
     source = ADAPTER_SOURCE.read_text(encoding="utf-8")
     assert "from app.services.todo_route_registry import resolve_todo_route" in source
     assert "from app.services import message_action_registry as _messages" in source
+
+
+# ── 学工域 canonical actionKey 必须被消息 Authority 认识 ──
+#
+# 回归来源：Real Task 真实回放。学生请假被辅导员退回后，收到的「请假被退回」消息里
+# 存的是 AFFAIRS_LEAVE——affairs_student_contract_security_guard 在 emit_message_event
+# 上做写时归一，把 student.leave.detail 这类点号键改写成 AFFAIRS_* canonical 键。
+# 本表当时只登记点号键，于是每一条真实学工消息在 Adapter 里都 validate 失败，
+# 降级成 action=null，学生点不进原请假对象，手册 §13 Real Task 第一条链路是断的。
+# 这几条测试锁住"落库的键"与"注册表认识的键"必须是同一套。
+
+def _canonical_affairs_action_keys() -> set[str]:
+    from app.services.affairs_student_contract_security_guard import _CANONICAL_MESSAGE_ACTIONS
+    return set(_CANONICAL_MESSAGE_ACTIONS)
+
+
+def test_every_canonical_affairs_action_key_is_registered():
+    missing = sorted(_canonical_affairs_action_keys() - set(messages.ACTION_REGISTRY))
+    assert not missing, (
+        f"学工域写时归一会把消息 actionKey 落成这些键，但消息注册表不认识：{missing}。"
+        "未登记的键在 Adapter 里 fail-closed，学生消息会变成不可点击的死链。"
+    )
+
+
+def test_legacy_dotted_keys_and_their_canonical_replacements_agree_on_the_target():
+    """legacy 别名与 canonical 键必须落到同一个学生端页面，否则两条链路会漂移。"""
+    from app.services.affairs_student_contract_security_guard import _LEGACY_MESSAGE_ACTIONS
+    for legacy, canonical in _LEGACY_MESSAGE_ACTIONS.items():
+        if legacy not in messages.ACTION_REGISTRY or canonical not in messages.ACTION_REGISTRY:
+            continue
+        assert (messages.ACTION_REGISTRY[legacy]["studentMini"]
+                == messages.ACTION_REGISTRY[canonical]["studentMini"]), legacy
+
+
+def test_returned_leave_message_reaches_the_leave_object():
+    """请假退回通知：真实落库参数 → 请假页 + recordId 聚焦，routeExact 为真。"""
+    action = adapter.build_message_action(
+        "AFFAIRS_LEAVE",
+        {"leaveId": 2, "bizType": "LEAVE_REQUEST", "recordId": "2"},
+        client=adapter.CLIENT_STUDENT_MINI,
+    )
+    target = action["target"]
+    assert target["path"] == "/pages/student/affairs/leave"
+    assert target["query"]["recordId"] == "2"
+    assert target["focusMode"] == FOCUS_LIST_FOCUS
+    assert target["routeExact"] is True
+    assert action["disabledReason"] is None
+
+
+def test_affairs_keys_claiming_list_focus_have_a_focus_ready_page():
+    for key in sorted(_canonical_affairs_action_keys() & set(messages.ACTION_REGISTRY)):
+        spec = messages.ACTION_REGISTRY[key]
+        if messages.focus_mode_for(key, client="studentMini") != FOCUS_LIST_FOCUS:
+            continue
+        path = spec["studentMini"]
+        assert path in FOCUS_READY_PAGES, f"{key} 宣称 LIST_FOCUS，但 {path} 没有登记聚焦参数"
+        assert FOCUS_READY_PAGES[path] == messages.focus_param_for(key)
+
+
+def test_affairs_keys_never_send_students_into_teacher_pages():
+    for key in sorted(_canonical_affairs_action_keys() & set(messages.ACTION_REGISTRY)):
+        path = messages.ACTION_REGISTRY[key].get("studentMini")
+        if not path:
+            continue
+        assert path.startswith(("/pages/student/", "/pages/common/")), f"{key} -> {path}"

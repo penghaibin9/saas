@@ -9,6 +9,23 @@ def _read(relative: str) -> str:
     return (ROOT / relative).read_text(encoding="utf-8")
 
 
+def _miniapp_routes() -> set[str]:
+    """pages.json 的真实路由清单。
+
+    S1 之后学生/教师页进了普通分包，pages.json 里只剩 subPackages[].root + pages[].path
+    两段，整串 "pages/student/affairs/index" 不再以字面量出现。这里按 uni-app 的拼接规则
+    还原完整路由，断言的仍然是"这条页面存在"，而不是"文件里有这个子串"。
+    """
+    import json
+    data = json.loads(_read("miniapp/src/pages.json"))
+    routes = {str(page["path"]) for page in data.get("pages") or []}
+    for package in data.get("subPackages") or []:
+        root = str(package.get("root") or "").strip("/")
+        for page in package.get("pages") or []:
+            routes.add(f"{root}/{str(page['path']).lstrip('/')}")
+    return routes
+
+
 def test_operations_python_sources_are_parseable():
     for relative in (
         "backend/app/models/affairs_operations.py",
@@ -181,8 +198,22 @@ def test_student_miniapp_has_authenticated_upload_versions_and_notice_focus():
     assert "item.version" in page
     assert "version.versionNo" in page
     assert "历史" in page or "版本记录" in page
-    assert "materialRequirementId" in message
-    assert "/pages/student/affairs/index?materialRequirementId=" in message
+    # V3 §4.2（深审 P0-02）：补交材料的对象聚焦不再靠消息详情页自己拼
+    # "/pages/student/affairs/index?materialRequirementId="——那是客户端猜路由。
+    # 现在由服务端 message_action_registry 下发已解析的 target，页面只执行它。
+    # 聚焦能力因此改在真正生效的三处断言：注册表的落点与必需参数、focus 合同登记的
+    # 参数名，以及业务页确实消费了这个参数。
+    from app.services import message_action_registry as registry
+    from app.services.mobile_focus_contract import FOCUS_READY_PAGES
+
+    spec = registry.ACTION_REGISTRY["student.affairs.material"]
+    assert spec["studentMini"] == "/pages/student/affairs/index"
+    assert "materialRequirementId" in spec["requiredParams"]
+    assert FOCUS_READY_PAGES["/pages/student/affairs/index"] == "materialRequirementId"
+    assert "materialRequirementId" in page
+    # 消息详情页只跑服务端 action，不得再出现本地拼接的补交材料路由。
+    assert "/pages/student/affairs/index?materialRequirementId=" not in message
+    assert "runAction(" in message
 
 
 def test_teacher_miniapp_has_inline_review_safe_batch_and_todo_focus():
@@ -197,8 +228,9 @@ def test_teacher_miniapp_has_inline_review_safe_batch_and_todo_focus():
     assert "逐条校验权限、范围、状态和版本" in page
     assert "验收" in page and "退回" in page and "免交" in page
     assert "重试失败项" in page
-    assert "pages/student/affairs/index" in _read("miniapp/src/pages.json")
-    assert "pages/teacher/affairs/index" in _read("miniapp/src/pages.json")
+    routes = _miniapp_routes()
+    assert "pages/student/affairs/index" in routes
+    assert "pages/teacher/affairs/index" in routes
 
 
 def test_temporary_student_affairs_diagnostics_workflow_is_removed():

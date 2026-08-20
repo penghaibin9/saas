@@ -84,6 +84,92 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "focus": {"studentMini": FOCUS_DETAIL, "teacherMini": FOCUS_DETAIL},
         "label": "消息详情",
     },
+    # ── 学工域 canonical 消息动作（AFFAIRS_*） ──
+    #
+    # 这七个不是新造的第三套词汇，而是学工域**真正落库**的 actionKey。
+    # affairs_student_contract_security_guard._secure_message_producers 会在
+    # emit_message_event 上做写时归一：source_module == "student-affairs" 的消息，
+    # 一律把 action_key 改写成 _CANONICAL_MESSAGE_ACTIONS 里的 AFFAIRS_*，
+    # 并补上 bizType/recordId。所以 "student.leave.detail" 只是它的 legacy 别名，
+    # 学生收到的请假退回通知里存的是 AFFAIRS_LEAVE。
+    #
+    # 本表以前只登记点号键，于是每一条真实学工消息在 Adapter 里都 validate 失败，
+    # 降级成 action=null + "当前端暂无安全处理入口"——请假被退回后学生根本点不进原对象，
+    # 手册 §13 Real Task 的第一条链路（请假退回→消息→原请假对象→修改重提）是断的。
+    # 登记它们是让消息 Authority 认识自己域里已经在用的键，不是再加一张路由表。
+    #
+    # focus 只在页面确实消费 recordId 时才写 LIST_FOCUS（见 mobile_focus_contract
+    # 的 FOCUS_READY_PAGES）；其余一律 NONE，宁可只给安全入口也不假装对象级闭环。
+    # 无法确认真实落点的端写 None，由 resolve_route fail-closed，不猜。
+    "AFFAIRS_LEAVE": {
+        "roles": ["STUDENT", "COUNSELOR", "STAFF"],
+        "requiredParams": ["recordId"],
+        "pc": "/admin/student-affairs/leave",
+        "studentPc": "/leave",
+        "studentMini": "/pages/student/affairs/leave",
+        "teacherMini": "/pages/teacher/approval/index",
+        "focus": {"studentMini": FOCUS_LIST_FOCUS},
+        "label": "请假详情",
+    },
+    "AFFAIRS_AID": {
+        "roles": ["STUDENT", "COUNSELOR", "STAFF"],
+        "requiredParams": ["recordId"],
+        "pc": "/admin/student-affairs/aid",
+        "studentPc": None,
+        "studentMini": "/pages/student/affairs/aid",
+        "teacherMini": None,
+        "focus": {"studentMini": FOCUS_LIST_FOCUS},
+        "label": "困难认定",
+    },
+    "AFFAIRS_FUNDING": {
+        "roles": ["STUDENT", "COUNSELOR", "STAFF"],
+        "requiredParams": ["recordId"],
+        "pc": "/admin/student-affairs/funding",
+        "studentPc": None,
+        "studentMini": "/pages/student/affairs/funding",
+        "teacherMini": None,
+        "focus": {"studentMini": FOCUS_LIST_FOCUS},
+        "label": "资助申请",
+    },
+    "AFFAIRS_DISCIPLINE": {
+        "roles": ["STUDENT", "COUNSELOR", "STAFF"],
+        "requiredParams": ["recordId"],
+        "pc": "/admin/student-affairs/discipline",
+        "studentPc": None,
+        # 处分页当前不读 recordId，只能给安全入口；页面实现聚焦后再提升 focusMode。
+        "studentMini": "/pages/student/affairs/discipline",
+        "teacherMini": None,
+        "label": "违纪处分",
+    },
+    "AFFAIRS_DORM": {
+        "roles": ["STUDENT", "COUNSELOR", "STAFF"],
+        "requiredParams": ["recordId"],
+        "pc": None,
+        "studentPc": None,
+        "studentMini": "/pages/student/affairs/dorm",
+        "teacherMini": None,
+        "label": "住宿事务",
+    },
+    "AFFAIRS_ACTIVITY": {
+        "roles": ["STUDENT", "COUNSELOR", "STAFF"],
+        "requiredParams": ["recordId"],
+        "pc": None,
+        "studentPc": None,
+        "studentMini": "/pages/student/affairs/activity",
+        "teacherMini": None,
+        "label": "第二课堂",
+    },
+    "AFFAIRS_APPLICATIONS": {
+        "roles": ["STUDENT", "COUNSELOR", "STAFF"],
+        "requiredParams": ["recordId"],
+        "pc": None,
+        "studentPc": None,
+        # 我的办理按 caseId（source:bizId 复合键）聚焦，与这里的裸 recordId 不同名也不同形，
+        # 所以只给列表入口，不写 LIST_FOCUS 假装能定位到那一条。
+        "studentMini": "/pages/student/my-work/index",
+        "teacherMini": None,
+        "label": "我的办理",
+    },
     "student.warning.detail": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["warningId"],
