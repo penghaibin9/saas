@@ -26,6 +26,7 @@ from app.api.v1.affairs_operations_api import router as affairs_operations_route
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
 from app.api.v1.affairs_student_returned import router as affairs_student_returned_router
 from app.api.v1.auth_browser import router as auth_browser_router
+from app.api.v1.control_plane_auth import router as control_plane_auth_router
 from app.api.v1.data_center import router as data_center_router
 from app.api.v1.help_metrics import router as help_metrics_router
 from app.api.v1.mobile_academic_status import router as mobile_academic_status_router
@@ -58,6 +59,7 @@ from app.services.affairs_student_contract_security_guard import install as inst
 from app.services.affairs_student_contract_service import install as install_student_contract
 from app.services.affairs_student_ledger_guard import install as install_student_ledger_guard
 from app.services.affairs_talk_guard import install as install_talk_guard
+from app.services.control_plane_p0_auth_guard import install as install_control_plane_p0_auth_guard
 
 
 def _route_signature(route) -> tuple[str, frozenset[str]]:
@@ -81,17 +83,33 @@ def _mount_supplemental_router(parent: APIRouter, child: APIRouter) -> None:
 # 此处仍执行一次签名去重再挂载同一 replacement，保证历史导入时序和普通导入时序
 # 最终都只有一个公开 POST 路由。
 _RESET_SANDBOX_PATH = "/platform/tenants/{tenant_id}/reset-sandbox-data"
+_AUTH_P0_REPLACEMENTS = {
+    "/auth/captcha",
+    "/auth/login",
+    "/auth/refresh",
+    "/auth/change-password",
+    "/auth/wx-bind",
+}
 api_router.routes[:] = [
     route for route in api_router.routes
     if not (
         isinstance(route, APIRoute)
-        and str(getattr(route, "path", "")) == _RESET_SANDBOX_PATH
-        and "POST" in {str(x).upper() for x in (getattr(route, "methods", None) or ())}
+        and (
+            (
+                str(getattr(route, "path", "")) == _RESET_SANDBOX_PATH
+                and "POST" in {str(x).upper() for x in (getattr(route, "methods", None) or ())}
+            )
+            or (
+                str(getattr(route, "path", "")) in _AUTH_P0_REPLACEMENTS
+                and "POST" in {str(x).upper() for x in (getattr(route, "methods", None) or ())}
+            )
+        )
     )
 ]
 
 for supplemental_router in (
     sandbox_story_router,
+    control_plane_auth_router,
     auth_browser_router,
     affairs_material_center_router,
     affairs_four_end_router,
@@ -110,6 +128,11 @@ for supplemental_router in (
     help_metrics_router,
 ):
     _mount_supplemental_router(api_router, supplemental_router)
+
+# Control-plane authentication authority is installed after all legacy auth
+# modules exist but before the application begins serving requests.  Modules
+# that imported token-store functions by value are rebound by the guard.
+install_control_plane_p0_auth_guard()
 
 install_affairs_four_end_contract()
 install_activity_checkin_code()
