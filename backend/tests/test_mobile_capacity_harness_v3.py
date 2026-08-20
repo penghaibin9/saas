@@ -141,6 +141,14 @@ def test_local_capacity_seed_provides_teacher_t9_real_objects():
     assert "student_tokens=" in seed and "teacher_tokens=" in seed
 
 
+def test_local_teacher_capacity_identity_uses_direct_numeric_user_id():
+    seed = LOCAL_SEED_PY.read_text(encoding="utf-8")
+    assert "TEACHER_USER_ID_BASE" in seed
+    assert "return str(TEACHER_USER_ID_BASE + int(index))" in seed
+    assert "receiver_uid = int(_teacher_user_id(index))" in seed
+    assert "zlib" not in seed, "容量门禁不应为每次教师消息请求制造 CRC fallback 身份开销"
+
+
 # ── §11.4 / T9 EXPLAIN 门禁不得静默通过 ──
 
 def test_explain_gate_refuses_to_pass_when_it_cannot_read_row_counts():
