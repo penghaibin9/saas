@@ -33,6 +33,7 @@ from app.api.v1.help_metrics import router as help_metrics_router
 from app.api.v1.mobile_academic_status import router as mobile_academic_status_router
 from app.api.v1.mobile_performance import router as mobile_performance_router
 from app.modules.student_affairs.routers.affairs_material_center import router as affairs_material_center_router
+from app.services import control_plane_p0_runtime
 from app.services.affairs_activity_authority_guard import install as install_activity_authority_guard
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
 from app.services.affairs_activity_reliability_service import install as install_activity_reliability
@@ -60,9 +61,6 @@ from app.services.affairs_student_contract_security_guard import install as inst
 from app.services.affairs_student_contract_service import install as install_student_contract
 from app.services.affairs_student_ledger_guard import install as install_student_ledger_guard
 from app.services.affairs_talk_guard import install as install_talk_guard
-from app.services.control_plane_p0_auth_guard import install as install_control_plane_p0_auth_guard
-from app.services.control_plane_p0_dr_guard import install as install_control_plane_p0_dr_guard
-from app.services.control_plane_p0_offboarding_guard import install as install_control_plane_p0_offboarding_guard
 
 
 def _route_signature(route) -> tuple[str, frozenset[str]]:
@@ -133,12 +131,10 @@ for supplemental_router in (
 ):
     _mount_supplemental_router(api_router, supplemental_router)
 
-# Control-plane authorities are installed after legacy modules/routes exist but
-# before the application serves requests.  This preserves public contracts while
-# moving enforcement to the production authority implementations.
-install_control_plane_p0_auth_guard()
-install_control_plane_p0_dr_guard()
-install_control_plane_p0_offboarding_guard()
+# One canonical startup boundary owns the three Control Plane P0 authorities.
+# This keeps the router patch graph at its pre-P0 budget while preserving the
+# independently idempotent auth, DR and offboarding enforcement components.
+control_plane_p0_runtime.install()
 
 install_affairs_four_end_contract()
 install_activity_checkin_code()
