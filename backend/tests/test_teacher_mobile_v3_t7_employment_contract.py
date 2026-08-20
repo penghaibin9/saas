@@ -12,7 +12,7 @@ from app.api.v1.teacher_mobile_employment import (
     router as employment_router,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _src(path: str) -> str:
