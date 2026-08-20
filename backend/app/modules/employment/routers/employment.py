@@ -17,7 +17,6 @@ from app.modules.employment.schemas.employment import (
     JobCreate, MarkDestBody, ReasonBody, StudentCreate, StudentUpdate,
 )
 from app.modules.employment.services import employment_runtime_audit_service as audit_runtime
-from app.modules.employment.services import employment_runtime_material_service as material_runtime
 from app.modules.employment.services import employment_runtime_service as svc
 from app.modules.employment.services import employment_service as raw_svc
 
@@ -136,7 +135,7 @@ def material_approve(mid: str, body: CommentBody = CommentBody(),
     with _idem(user, "employment-material-approve", idempotency_key, payload) as guard:
         if guard.cached is not None:
             return success(guard.cached, message="已通过（幂等重放）")
-        result = material_runtime.approve_material(mid, body.comment, user=user)
+        result = svc.approve_material(mid, body.comment, user=user)
         guard.success(result)
         return success(result, message="已通过")
 
