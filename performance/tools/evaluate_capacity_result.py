@@ -94,6 +94,10 @@ def _identity_pool_assertion(v3: dict[str, Any], *, profile: str, mode: str) -> 
     actual = {
         "scenario": scenario,
         "identityMode": str(identity.get("identityMode") or ""),
+        "studentTokensAvailable": int(_number(identity.get("studentTokensAvailable"), default=0)),
+        "teacherTokensAvailable": int(_number(identity.get("teacherTokensAvailable"), default=0)),
+        "studentCredentialsAvailable": int(_number(identity.get("studentCredentialsAvailable"), default=0)),
+        "teacherCredentialsAvailable": int(_number(identity.get("teacherCredentialsAvailable"), default=0)),
         "uniqueStudentTokens": int(_number(identity.get("uniqueStudentTokens"), default=0)),
         "uniqueTeacherTokens": int(_number(identity.get("uniqueTeacherTokens"), default=0)),
         "uniqueTeacherContexts": int(_number(identity.get("uniqueTeacherContexts"), default=0)),
@@ -107,9 +111,17 @@ def _identity_pool_assertion(v3: dict[str, Any], *, profile: str, mode: str) -> 
     teacher_needed = scenario in {"teacher", "mixed"}
     required["uniqueStudentTokens"] = peak if student_needed else 0
     required["uniqueTeacherTokens"] = peak if teacher_needed else 0
+    # High-load runs are required by auth.js to use pre-issued Teacher tokens. For those runs,
+    # token cardinality alone is insufficient: 500 different JWTs that all point at one active
+    # context would still exercise one hot permission/scope identity. Machine-lock the context
+    # cardinality whenever a Teacher token pool is present. Low-load credential diagnostics keep
+    # their existing behaviour because external credentials may not expose activeContextId metadata.
+    teacher_contexts_required = peak if teacher_needed and actual["teacherTokensAvailable"] > 0 else 0
+    required["uniqueTeacherContexts"] = teacher_contexts_required
     passed = (
         (not student_needed or actual["uniqueStudentTokens"] >= peak)
         and (not teacher_needed or actual["uniqueTeacherTokens"] >= peak)
+        and (teacher_contexts_required == 0 or actual["uniqueTeacherContexts"] >= teacher_contexts_required)
     )
     return passed, actual, required
 
