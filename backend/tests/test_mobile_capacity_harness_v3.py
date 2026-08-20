@@ -156,6 +156,10 @@ def test_local_teacher_capacity_identity_uses_direct_numeric_user_id():
     assert "TEACHER_USER_ID_BASE" in seed
     assert "return str(TEACHER_USER_ID_BASE + int(index))" in seed
     assert "receiver_uid = int(_teacher_user_id(index))" in seed
+    assert '"currentRoleCode": "LEADER"' in seed
+    assert '"currentRoleCode": "SCHOOL_ADMIN"' not in seed, (
+        "fresh CI 未发布 SCHOOL_ADMIN RoleTemplate 时该角色按生产规则 fail-closed，不能冒充可用容量身份"
+    )
     assert "zlib" not in seed, "容量门禁不应为每次教师消息请求制造 CRC fallback 身份开销"
 
 
