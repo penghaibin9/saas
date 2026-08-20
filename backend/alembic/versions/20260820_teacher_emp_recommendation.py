@@ -1,7 +1,12 @@
 """Teacher V3 T7: first-class employment recommendation fact.
 
 Revision ID: 20260820_teacher_emp_reco
-Revises: 20260818_merge_prog_grade_dl
+Revises: 20260818_acad_bc_final
+
+The Teacher branch was originally cut before Academic B/C integration converged. PR #184 is
+now in main and ``20260818_acad_bc_final`` is the canonical single Alembic head, so this still-
+unreleased Teacher migration is rebased onto that head instead of creating a permanent parallel
+lineage/merge node. No deployed database can reference this revision while PR #183 remains Draft.
 """
 from __future__ import annotations
 
@@ -9,7 +14,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260820_teacher_emp_reco"
-down_revision = "20260818_merge_prog_grade_dl"
+down_revision = "20260818_acad_bc_final"
 branch_labels = None
 depends_on = None
 
