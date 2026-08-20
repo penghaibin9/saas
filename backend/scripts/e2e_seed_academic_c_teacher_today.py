@@ -21,6 +21,7 @@ from sqlalchemy import select
 from app.core.context import set_current_user, set_tenant
 from app.db.session import get_sessionmaker
 from app.models import (
+    AaAttendanceSession,
     AaCourse,
     AaScheduleBatch,
     AaScheduleChange,
@@ -92,6 +93,29 @@ def _restore_current_terms(db, state: dict) -> None:
             term.is_current = True
 
 
+def _retire_fixture_attendance(db, state: dict) -> None:
+    """Retire only attendance created from the previous C-W2 fixture teaching task.
+
+    Playwright retries execute ``beforeAll`` again in a fresh worker. The first attempt may have
+    already created a formal attendance session before a later page-observability assertion fails.
+    Teacher Today intentionally identifies a real occurrence by class/date/slot, so leaving that
+    fixture-owned session active makes the retry correctly render ``继续点名`` for the *old* run.
+    Soft-deleting by the integrated ``teaching_task_id`` provenance isolates retries without
+    weakening the production occurrence uniqueness rule or touching unrelated attendance facts.
+    """
+    tenant_id = int(state.get("tenantId") or 0)
+    task_id = int(state.get("teachingTaskId") or 0)
+    if not tenant_id or not task_id or not hasattr(AaAttendanceSession, "teaching_task_id"):
+        return
+    rows = db.scalars(select(AaAttendanceSession).where(
+        AaAttendanceSession.tenant_id == tenant_id,
+        AaAttendanceSession.teaching_task_id == task_id,
+        AaAttendanceSession.is_deleted.is_(False),
+    )).all()
+    for row in rows:
+        row.is_deleted = True
+
+
 def cleanup() -> int:
     assert_safe_target()
     state = _read_state()
@@ -99,6 +123,7 @@ def cleanup() -> int:
         return 0
     db = get_sessionmaker()()
     try:
+        _retire_fixture_attendance(db, state)
         _restore_current_terms(db, state)
         db.commit()
         return 0
@@ -119,6 +144,7 @@ def seed() -> int:
     db = get_sessionmaker()()
     try:
         if previous_state:
+            _retire_fixture_attendance(db, previous_state)
             _restore_current_terms(db, previous_state)
             db.flush()
 
