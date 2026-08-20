@@ -12,9 +12,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.exceptions import AppException
-from app.core.permissions import require_module
+from app.core.permissions import require_module, require_permission
 from app.core.response import success
-from app.core.security import require_staff
 from app.modules.internship.services import internship_service
 from app.services import teacher_mobile_observability_v3_service as teacher_obs_v3
 
@@ -40,7 +39,7 @@ class AttendanceExceptionHandleBody(BaseModel):
 def handle_attendance_exception(
     exception_id: str,
     body: AttendanceExceptionHandleBody,
-    user=Depends(require_staff),
+    user=Depends(require_permission("internship.attendance.review")),
 ):
     action = str(body.action or "").upper()
     comment = str(body.comment or "").strip()
