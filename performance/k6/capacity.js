@@ -3,7 +3,7 @@ import { check, group, sleep } from 'k6';
 
 import { authHeaders, identityDistribution } from './lib/auth.js';
 import {
-  BASE_URL, DATASET, PROFILE, REQUIRED_STUDENT_V3_ROUTES, SCENARIO,
+  BASE_URL, DATASET, PROFILE, REQUIRED_STUDENT_V3_ROUTES, REQUIRED_TEACHER_V3_ROUTES, SCENARIO,
   options as configuredOptions,
 } from './lib/config.js';
 
@@ -33,6 +33,28 @@ function getJson(role, route, path) {
   return response;
 }
 
+function responseData(response) {
+  if (!response || response.status !== 200) return null;
+  try {
+    const body = response.json();
+    if (!body || Number(body.code) !== 0) return null;
+    return body.data === undefined ? body : body.data;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function firstId(data, keys = ['id']) {
+  const list = (data && (data.items || data.list)) || [];
+  if (!Array.isArray(list) || !list.length) return '';
+  const row = list[0] || {};
+  for (const key of keys) {
+    const value = row[key];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+  }
+  return '';
+}
+
 function jitter() {
   sleep(0.2 + Math.random() * 0.8);
 }
@@ -53,12 +75,10 @@ export function studentRead() {
     jitter();
     getJson('student', 'student_profile', '/api/v1/mobile/me/profile');
     jitter();
-    // ── V3 新增 P0 链路（§11.6 / 深审 P0-07）──
     getJson('student', 'student_agenda', '/api/v1/mobile/student/agenda?days=7&pageSize=20');
     jitter();
     getJson('student', 'student_cases', '/api/v1/mobile/student/cases?statusGroup=all&pageSize=20');
     jitter();
-    // 搜索用固定关键词，保证不同 VU 的扫描成本可比；关键词长度必须 ≥2 才会真正查询。
     getJson('student', 'student_search', `/api/v1/mobile/student/search?q=${encodeURIComponent(SEARCH_KEYWORD)}&pageSize=20`);
   });
   jitter();
@@ -85,6 +105,54 @@ export function teacherRead() {
       'teacher_risk_students',
       '/api/v1/mobile/performance/teacher/risk-students-page?level=all&page=1&pageSize=20',
     );
+    jitter();
+
+    // Teacher V3 T9: the capacity gate must cover the real V3 surfaces, not only the old
+    // workbench aggregate. IDs are discovered from server-authoritative lists so the run never
+    // invents cross-scope object ids.
+    const studentsResponse = getJson(
+      'teacher',
+      'teacher_my_students',
+      '/api/v1/teacher-mobile/students?pageSize=20',
+    );
+    const studentId = firstId(responseData(studentsResponse), ['studentId', 'id']);
+    jitter();
+    if (studentId) {
+      getJson(
+        'teacher',
+        'teacher_student360',
+        `/api/v1/teacher-mobile/students/${encodeURIComponent(studentId)}/projection`,
+      );
+      jitter();
+    }
+
+    getJson(
+      'teacher',
+      'teacher_messages',
+      '/api/v1/mobile/performance/teacher/messages-page?tab=system&pageSize=20',
+    );
+    jitter();
+    getJson(
+      'teacher',
+      'teacher_visit',
+      '/api/v1/teacher-mobile/internship/visit-targets',
+    );
+    jitter();
+
+    const employmentResponse = getJson(
+      'teacher',
+      'teacher_employment',
+      '/api/v1/teacher-mobile/employment/overview',
+    );
+    const employmentId = firstId(responseData(employmentResponse), ['id']);
+    jitter();
+    if (employmentId) {
+      getJson(
+        'teacher',
+        'teacher_employment_verification',
+        `/api/v1/teacher-mobile/employment/students/${encodeURIComponent(employmentId)}/verification`,
+      );
+    }
   });
   jitter();
 }
@@ -111,6 +179,12 @@ function routeLatencies(metrics) {
   return rows;
 }
 
+function requiredRoutes() {
+  if (SCENARIO === 'student') return REQUIRED_STUDENT_V3_ROUTES;
+  if (SCENARIO === 'teacher') return REQUIRED_TEACHER_V3_ROUTES;
+  return [...REQUIRED_STUDENT_V3_ROUTES, ...REQUIRED_TEACHER_V3_ROUTES];
+}
+
 function compactSummary(data) {
   const metrics = data.metrics || {};
   const duration = metrics.http_req_duration && metrics.http_req_duration.values;
@@ -118,18 +192,20 @@ function compactSummary(data) {
   const checks = metrics.checks && metrics.checks.values;
   const identity = identityDistribution();
   const routes = routeLatencies(metrics);
-  const missing = REQUIRED_STUDENT_V3_ROUTES.filter((route) => !routes[route]);
+  const required = requiredRoutes();
+  const missing = required.filter((route) => !routes[route]);
   return [
     'Yueke capacity gate',
     `profile=${PROFILE} scenario=${SCENARIO} dataset=${DATASET}`,
-    `identityMode=${identity.identityMode} uniqueStudentTokens=${identity.uniqueStudentTokens} uniqueTeacherTokens=${identity.uniqueTeacherTokens}`,
+    `identityMode=${identity.identityMode} uniqueStudentTokens=${identity.uniqueStudentTokens} uniqueTeacherTokens=${identity.uniqueTeacherTokens} uniqueTeacherContexts=${identity.uniqueTeacherContexts || 0}`,
+    `teacherRoleRatios=${JSON.stringify(identity.teacherRoleRatios || {})}`,
     `requests=${(metrics.http_reqs && metrics.http_reqs.values && metrics.http_reqs.values.count) || 0}`,
     `p95_ms=${duration ? duration['p(95)'] : 'n/a'}`,
     `p99_ms=${duration ? duration['p(99)'] : 'n/a'}`,
     `failed_rate=${failed ? failed.rate : 'n/a'}`,
     `check_rate=${checks ? checks.rate : 'n/a'}`,
     missing.length
-      ? `MISSING_V3_ROUTES=${missing.join(',')}（本次未覆盖 V3 新增链路，不能作为容量证据）`
+      ? `MISSING_V3_ROUTES=${missing.join(',')}（本次未覆盖要求链路，不能作为该场景容量证据）`
       : 'v3_routes=covered',
     '',
   ].join('\n');
@@ -140,14 +216,9 @@ export function handleSummary(data) {
   const metrics = data.metrics || {};
   const routes = routeLatencies(metrics);
   const identity = identityDistribution();
-  // V3 §11.6：Artifact 自带 VU、身份分布、逐路由分位与覆盖结论，
-  // 否则事后无法判断这份数据压的是数据库还是热缓存、有没有覆盖新链路。
-  //
-  // 注意：SUMMARY_PATH 必须继续是**原始 k6 summary**——
-  // performance/tools/evaluate_capacity_result.py 直接读它的 metrics 字段做裁决。
-  // V3 的附加信息写到同目录的 sibling 文件，不改既有契约。
+  const required = requiredRoutes();
   const artifact = {
-    schema: 'yueke-capacity-artifact/1',
+    schema: 'yueke-capacity-artifact/2',
     profile: PROFILE,
     scenario: SCENARIO,
     dataset: DATASET,
@@ -155,7 +226,9 @@ export function handleSummary(data) {
     identity,
     routes,
     requiredStudentV3Routes: REQUIRED_STUDENT_V3_ROUTES,
-    missingStudentV3Routes: REQUIRED_STUDENT_V3_ROUTES.filter((route) => !routes[route]),
+    requiredTeacherV3Routes: REQUIRED_TEACHER_V3_ROUTES,
+    requiredRoutes: required,
+    missingRoutes: required.filter((route) => !routes[route]),
     totals: {
       requests: (metrics.http_reqs && metrics.http_reqs.values && metrics.http_reqs.values.count) || 0,
       failedRate: metrics.http_req_failed && metrics.http_req_failed.values.rate,
@@ -165,9 +238,7 @@ export function handleSummary(data) {
   const artifactPath = path.replace(/\.json$/, '') + '-v3.json';
   return {
     stdout: compactSummary(data),
-    // 原始 summary：既有裁决工具的输入，形状不变。
     [path]: JSON.stringify(data, null, 2),
-    // V3 附加取证：身份分布 + 逐路由分位 + 新链路覆盖结论。
     [artifactPath]: JSON.stringify(artifact, null, 2),
   };
 }
