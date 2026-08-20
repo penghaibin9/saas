@@ -20,10 +20,11 @@ test('S9 handoff seal 必须机器绑定 exact implementation HEAD', () => {
   )
 })
 
-test('S9 verify 不得再跳过 studentMergeSha 漂移', () => {
+test('S9 seal 在浅克隆中也不得跳过 studentMergeSha 漂移', () => {
   const source = readFileSync(resolve(miniapp, 'scripts/generate-v3-handoff.mjs'), 'utf8')
   assert.match(source, /implementationSha\(\)/)
   assert.match(source, /diff-tree/)
-  assert.match(source, /HEAD\^/)
+  assert.match(source, /--format=%P/)
   assert.doesNotMatch(source, /field === ['"]studentMergeSha['"]\) continue/)
+  assert.doesNotMatch(source, /rev-parse['"], ['"]HEAD\^/)
 })

@@ -3,9 +3,9 @@
  * V3 §S9 / 深审 P1-15：生成并校验 miniapp-v3-handoff.json。
  *
  * studentMergeSha 不是“JSON 自己所在提交”的不可实现自指，而是本 handoff seal
- * 覆盖的实现提交：正常实现提交取 HEAD；若当前 HEAD 只改 handoff JSON，则取 HEAD^。
- * 因此最终 seal commit 可以机器证明“它封住的就是前一笔 exact implementation HEAD”；
- * seal 后只要再发生任何业务代码提交，verify 会把当前 HEAD 与存档 SHA 判为漂移。
+ * 覆盖的实现提交：正常实现提交取 HEAD；若当前 HEAD 只改 handoff JSON，则取该提交
+ * header 里的第一父 SHA。因此最终 seal commit 可以机器证明“它封住的就是前一笔
+ * exact implementation HEAD”；seal 后只要再发生任何业务代码提交，verify 就会漂移。
  */
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
@@ -36,8 +36,10 @@ function gitSha() {
 
 /**
  * handoff seal 不能把自己的 SHA 写进自己的内容（那会无限改变 SHA）。
- * 约定最终 seal commit 只能改根目录 handoff JSON；此时被封存实现 SHA = HEAD^。
- * 任何 seal 后业务改动都会让 changedFiles 不再满足条件，于是回到 HEAD 并触发漂移。
+ * 约定最终 seal commit 只能改根目录 handoff JSON；此时被封存实现 SHA = 第一父 SHA。
+ * 父 SHA 直接从当前 commit header 的 %P 读取，不要求父提交对象已被 checkout，因而在
+ * actions/checkout 默认 fetch-depth=1 的浅克隆里也可工作。任何 seal 后业务改动都会
+ * 让 changedFiles 不再满足条件，于是回到 HEAD 并触发漂移。
  */
 function implementationSha() {
   const head = gitSha()
@@ -45,7 +47,8 @@ function implementationSha() {
   const changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD')
     .split('\n').map((row) => row.trim()).filter(Boolean)
   if (changed.length === 1 && changed[0] === HANDOFF_PATH) {
-    return git('rev-parse', 'HEAD^') || head
+    const parent = git('show', '-s', '--format=%P', 'HEAD').split(/\s+/).filter(Boolean)[0]
+    return parent || head
   }
   return head
 }
