@@ -37,7 +37,8 @@ def test_t5_teacher_mobile_adapter_requires_exact_queue_version_and_delegates_to
     assert "internship_service.handle_attendance_exception" in source
     assert "expected_version=body.expectedVersion" in source
     assert "user=user" in source
-    assert "require_staff" in module_source
+    assert 'require_permission("internship.attendance.review")' in module_source
+    assert "require_staff" not in module_source
     assert 'require_module("internship")' in module_source
     assert "for " not in source
     assert "Promise" not in source
