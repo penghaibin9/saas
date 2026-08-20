@@ -47,6 +47,9 @@ def test_evaluation_write_helpers_call_term_guard(monkeypatch):
 
 def test_public_evaluation_and_archive_services_point_to_final_layers():
     from app.modules.academic_affairs import services
+    from app.modules.academic_affairs.services import (
+        academic_affairs_evaluation_submit_roster_guard as submit_guard,
+    )
 
     assert services.academic_affairs_archive_service.__name__.endswith(
         "academic_affairs_archive_service"
@@ -58,11 +61,12 @@ def test_public_evaluation_and_archive_services_point_to_final_layers():
     assert services.academic_affairs_evaluation_service.__name__.endswith(
         "academic_affairs_evaluation_public_service"
     )
-    assert services.academic_affairs_evaluation_service.submit_evaluation.__module__.endswith(
+    assert services.academic_affairs_evaluation_service.submit_evaluation is submit_guard._submit_evaluation
+    assert services.academic_affairs_evaluation_service._d_w3_original_submit_evaluation.__module__.endswith(
         "academic_affairs_evaluation_public_service"
     )
     assert services.academic_affairs_evaluation_service.review_appeal.__module__.endswith(
-        "academic_affairs_evaluation_term_facade"
+        "academic_affairs_evaluation_public_service"
     )
 
 

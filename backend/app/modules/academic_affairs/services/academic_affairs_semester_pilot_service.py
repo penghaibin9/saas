@@ -431,6 +431,20 @@ def _grade_stage(pilot, user) -> dict:
         return _stage("GRADE", "成绩闭环", evidence=evidence, blockers=blockers, warnings=warnings)
 
 
+def _archive_blocking_domain_codes(domains) -> list[str]:
+    """R11 只消费 Archive 四态真值；N/A 非阻断，UNKNOWN 必须 fail-closed。"""
+    from app.modules.academic_affairs.services import academic_affairs_archive_service as archive
+
+    if not isinstance(domains, dict):
+        return ["ARCHIVE_DOMAIN_PAYLOAD_INVALID"]
+    blocked = []
+    for code, row in domains.items():
+        normalized = archive._public_result(str(code), row)
+        if normalized["result"] in archive._BLOCKING_RESULTS:
+            blocked.append(str(code))
+    return blocked
+
+
 def _archive_stage(pilot, user) -> dict:
     from app.models import AaArchiveBatch, AaTerm
     from app.models.academic_affairs_r10 import AaStatsSnapshot
@@ -440,7 +454,7 @@ def _archive_stage(pilot, user) -> dict:
         term = _term(db, pilot.term_id)
         term_code = f"{term.year_code}-{term.term_no}"
         domains = archive._evaluate_domains(db, int(term.id), term_code)
-        failed_domains = [row for row in domains if not bool(row.get("passed"))]
+        failed_domains = _archive_blocking_domain_codes(domains)
         archive_batches = db.query(AaArchiveBatch).filter(
             AaArchiveBatch.tenant_id == _tid(), AaArchiveBatch.term_id == term.id,
             AaArchiveBatch.is_deleted.is_(False),

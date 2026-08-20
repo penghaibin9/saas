@@ -178,7 +178,7 @@ def seed() -> int:
 
         term = AaTerm(
             tenant_id=tenant_id,
-            year_code=f"E2E-CW2-{target_date.year}",
+            year_code=f"CW2-{target_date.year}-{run_key[-6:]}",
             term_no=1,
             term_name=f"E2E C-W2 Teacher Today {run_key}",
             start_date=datetime.combine(term_start_date, datetime.min.time()),

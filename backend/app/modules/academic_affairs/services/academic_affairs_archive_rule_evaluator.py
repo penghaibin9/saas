@@ -39,14 +39,22 @@ def rule_result(code: str, *, passed: bool, record_count=0, blocker_count=0,
 
 def normalize_legacy_result(code: str, result: dict) -> dict:
     source = dict(result or {})
-    passed = bool(source.get("present"))
-    summary = str(source.get("remark") or "")
+    state = str(source.get("result") or ("PASS" if source.get("present") else "BLOCKED")).upper()
+    if state not in {"PASS", "BLOCKED", "NOT_APPLICABLE", "UNKNOWN"}:
+        state = "UNKNOWN"
+    blocking = source.get("blockingCount")
+    if blocking is None:
+        blocking = 1 if state in {"BLOCKED", "UNKNOWN"} else 0
+    blocking = max(1, int(blocking or 0)) if state in {"BLOCKED", "UNKNOWN"} else 0
+    summary = str(source.get("summary") or source.get("remark") or "")
     return {
         **source,
-        "result": source.get("result") or ("PASS" if passed else "BLOCKED"),
+        "present": state == "PASS",
+        "result": state,
         "ruleCode": source.get("ruleCode") or f"{code}_SEMANTIC_GATE",
-        "summary": source.get("summary") or summary,
-        "blockingCount": int(source.get("blockingCount") or (0 if passed else 1)),
+        "summary": summary,
+        "remark": summary,
+        "blockingCount": blocking,
         "route": source.get("route") or _ROUTE.get(code, "/admin/academic-affairs/archive/precheck"),
         "evidence": list(source.get("evidence") or []),
     }

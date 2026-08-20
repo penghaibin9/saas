@@ -211,7 +211,9 @@ def test_my_results_aggregation_and_appeal_ownership_via_mobile(client, db_mode)
         headers=hdr,
         json={"reason": "评分与实际教学情况不符"},
     )
-    assert ok.status_code == 200 and ok.json()["data"]["status"] == "COLLEGE_REVIEW"
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["data"]["status"] == "SUBMITTED"
+    assert ok.json()["data"]["currentNode"] == "COLLEGE"
 
     from app.db.session import get_sessionmaker
     from app.models import AaEvaluationResult

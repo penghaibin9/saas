@@ -29,8 +29,30 @@ def _guard_term(db, term_id):
     guard_term_writable(db, int(term_id))
 
 
-def _writable_batch(db, batch_id):
-    batch = _legacy._get_batch(db, int(batch_id))
+def _writable_batch(db, batch_id, *, lock: str | None = None):
+    """Resolve a writable evaluation batch, optionally holding a transaction-scoped row lock.
+
+    ``lock='share'`` is used by submissions: concurrent evaluators may proceed together, while a
+    close/score transaction cannot pass them. ``lock='update'`` serializes low-frequency batch
+    state transitions and makes waiters re-check the post-lock state before mutating anything.
+    ``populate_existing`` is required so a waiter re-reads the post-lock status instead of reusing
+    an identity-map value observed before another transaction changed the batch.
+    """
+    if lock:
+        from app.models import AaEvaluationBatch
+
+        if lock not in {"share", "update"}:
+            raise ValueError(f"unsupported evaluation batch lock mode: {lock}")
+        query = db.query(AaEvaluationBatch).filter(
+            AaEvaluationBatch.id == int(batch_id),
+            AaEvaluationBatch.tenant_id == _legacy._tid(),
+            AaEvaluationBatch.is_deleted.is_(False),
+        ).populate_existing()
+        batch = query.with_for_update(read=(lock == "share")).first()
+        if not batch:
+            raise not_found("评教批次不存在")
+    else:
+        batch = _legacy._get_batch(db, int(batch_id))
     _guard_term(db, batch.term_id)
     return batch
 
@@ -86,7 +108,7 @@ def generate_tasks(user, bid, teaching_task_ids, evaluator_type="STUDENT"):
         )
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
-        batch = _writable_batch(db, bid)
+        batch = _writable_batch(db, bid, lock="update")
         if batch.status != _legacy._B_DRAFT:
             raise _legacy._invalid("仅 DRAFT 批次可生成应评任务")
         count = 0
@@ -131,7 +153,7 @@ def generate_role_tasks(user, bid, evaluator_type, assignments):
         raise _legacy._bad("非法评价类型，仅支持 SELF/PEER/SUPERVISOR")
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
-        batch = _writable_batch(db, bid)
+        batch = _writable_batch(db, bid, lock="update")
         if batch.status != _legacy._B_DRAFT:
             raise _legacy._invalid("仅 DRAFT 批次可生成应评任务")
         count = 0
@@ -193,12 +215,13 @@ def publish_batch(user, bid):
 
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
-        batch = _writable_batch(db, bid)
+        batch = _writable_batch(db, bid, lock="update")
         if batch.status != _legacy._B_DRAFT:
             raise _legacy._invalid("仅 DRAFT 批次可发布")
         count = db.query(AaEvaluationTask).filter(
             AaEvaluationTask.batch_id == batch.id,
             AaEvaluationTask.tenant_id == _legacy._tid(),
+            AaEvaluationTask.is_deleted.is_(False),
         ).count()
         if not count:
             raise _legacy._bad("批次无应评任务，不可发布")
@@ -211,7 +234,7 @@ def publish_batch(user, bid):
 def open_batch(user, bid):
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
-        batch = _writable_batch(db, bid)
+        batch = _writable_batch(db, bid, lock="update")
         if batch.status != _legacy._B_PUBLISHED:
             raise _legacy._invalid(f"仅 PUBLISHED 批次可OPEN，当前 {batch.status}")
         batch.status = _legacy._B_OPEN
@@ -223,7 +246,7 @@ def open_batch(user, bid):
 def archive_batch(user, bid):
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
-        batch = _writable_batch(db, bid)
+        batch = _writable_batch(db, bid, lock="update")
         if batch.status == _legacy._B_ARCHIVED:
             return _legacy._batch_dto(batch)
         if batch.status != _legacy._B_RESULT:
@@ -239,19 +262,22 @@ def close_and_score(user, bid):
 
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
-        batch = _writable_batch(db, bid)
+        batch = _writable_batch(db, bid, lock="update")
         if batch.status != _legacy._B_OPEN:
             raise _legacy._invalid("仅 OPEN 批次可关闭核算")
         tasks = db.query(AaEvaluationTask).filter(
             AaEvaluationTask.batch_id == batch.id,
             AaEvaluationTask.tenant_id == _legacy._tid(),
+            AaEvaluationTask.is_deleted.is_(False),
         ).all()
         aggregate = {}
         metadata = {}
         for task in tasks:
             records = db.query(AaEvaluationRecord).filter(
                 AaEvaluationRecord.task_id == task.id,
+                AaEvaluationRecord.batch_id == batch.id,
                 AaEvaluationRecord.tenant_id == _legacy._tid(),
+                AaEvaluationRecord.is_deleted.is_(False),
             ).all()
             scores = [float(record.objective_score) for record in records if record.objective_score is not None]
             aggregate.setdefault(task.teaching_task_id, {}).setdefault(task.evaluator_type, []).extend(scores)
@@ -276,6 +302,7 @@ def close_and_score(user, bid):
                 AaEvaluationResult.tenant_id == _legacy._tid(),
                 AaEvaluationResult.batch_id == batch.id,
                 AaEvaluationResult.teaching_task_id == teaching_task_id,
+                AaEvaluationResult.is_deleted.is_(False),
             ).first()
             if not result:
                 result = AaEvaluationResult(
@@ -298,7 +325,6 @@ def close_and_score(user, bid):
             result.composite_score = composite
             result.level = _legacy._level(composite if composite is not None else student_average)
         batch.status = _legacy._B_RESULT
-        batch.result_published_at = datetime.utcnow()
         _legacy._audit(db, batch.id, "EVAL_BATCH_SCORE", f"多来源核算 {len(aggregate)} 门结果")
         db.commit()
         return _legacy._batch_dto(batch)
@@ -309,16 +335,23 @@ def publish_results(user, bid):
 
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
-        batch = _writable_batch(db, bid)
+        batch = _writable_batch(db, bid, lock="update")
         if batch.status != _legacy._B_RESULT:
             raise _legacy._invalid("仅 RESULT_READY 批次可发布结果")
         db.query(AaEvaluationResult).filter(
             AaEvaluationResult.batch_id == batch.id,
             AaEvaluationResult.tenant_id == _legacy._tid(),
+            AaEvaluationResult.is_deleted.is_(False),
         ).update({AaEvaluationResult.published: True}, synchronize_session=False)
+        if batch.result_published_at is None:
+            batch.result_published_at = datetime.utcnow()
         _legacy._audit(db, batch.id, "EVAL_RESULT_PUBLISH", "发布结果")
         db.commit()
-        return {"batchId": str(batch.id), "published": True}
+        return {
+            "batchId": str(batch.id),
+            "published": True,
+            "resultPublishedAt": _legacy._iso(batch.result_published_at),
+        }
 
 
 def submit_evaluation(user, task_id, answers, objective_score, comment=None):
@@ -329,7 +362,8 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
         task = db.query(AaEvaluationTask).filter(
             AaEvaluationTask.id == int(task_id),
             AaEvaluationTask.tenant_id == _legacy._tid(),
-        ).first()
+            AaEvaluationTask.is_deleted.is_(False),
+        ).with_for_update().first()
         if not task:
             raise not_found("应评任务不存在")
         if task.evaluator_type != "STUDENT":
@@ -338,7 +372,7 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
                 raise no_permission("仅本任务指定的评价人本人可提交")
             if task.status == "SUBMITTED":
                 raise _legacy._invalid("该任务已提交，不可重复提交")
-        batch = _writable_batch(db, task.batch_id)
+        batch = _writable_batch(db, task.batch_id, lock="share")
         if batch.status != _legacy._B_OPEN:
             raise _legacy._invalid("评教窗口未开放")
         record = AaEvaluationRecord(

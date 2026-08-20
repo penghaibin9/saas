@@ -125,7 +125,7 @@ def test_other_term_rows_do_not_block_current_term(monkeypatch):
     assert result["recordCount"] == 0
 
 
-def test_unscoped_legacy_rows_are_reported_as_migration_debt(monkeypatch):
+def test_unscoped_legacy_rows_are_unknown_migration_debt(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_archive_facade as service
 
     monkeypatch.setattr(service, "_tid", lambda: 1)
@@ -134,5 +134,8 @@ def test_unscoped_legacy_rows_are_reported_as_migration_debt(monkeypatch):
 
     result = service._evaluate_status_change(_Db(term, [unknown]), 9, "2025-2026-2")
 
-    assert result["present"] is True
+    assert result["present"] is False
+    assert result["result"] == "UNKNOWN"
+    assert result["ruleCode"] == "STATUS_CHANGE_SCOPE_UNKNOWN"
+    assert int(result["blockingCount"]) >= 1
     assert "待迁移补齐" in result["remark"]

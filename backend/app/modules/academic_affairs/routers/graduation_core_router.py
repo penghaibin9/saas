@@ -8,8 +8,13 @@ from pydantic import BaseModel, Field
 
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
+from app.modules.academic_affairs.services import academic_affairs_graduation_scope_guard as _grad_scope_guard
 from app.modules.academic_affairs.services import academic_affairs_graduation_service as grad_svc
 
+
+# The public Graduation router installs a read-side scope projection that consumes the
+# shared affairs security context. Permission grants never imply tenant-wide data scope.
+_grad_scope_guard.install(grad_svc)
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心"])
 

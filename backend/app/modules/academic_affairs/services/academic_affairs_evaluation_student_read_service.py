@@ -1,11 +1,11 @@
 """D9-U 学生评教任务批量读侧。
 
 保持 student_evaluation_router 的正式 owner、稳定学生身份、正式教学班 roster 与匿名 HMAC
-去重语义不变；只把“每个任务再查一次 AaEvaluationRecord”的 N+1 收口为一次批量 SQL。
+去重语义不变；读侧用固定 SQL 批量返回“本人是否已交 + 班级已交数”，不把聚合成本放进提交事务。
 """
 from __future__ import annotations
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from . import academic_affairs_evaluation_public_service as _service
 
@@ -65,7 +65,24 @@ def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
 
         task_ids = [int(task.id) for task, _batch in rows]
         submitted_ids: set[int] = set()
+        submitted_counts: dict[int, int] = {}
         if task_ids:
+            count_rows = db.execute(
+                select(
+                    AaEvaluationRecord.task_id,
+                    func.count(AaEvaluationRecord.id),
+                ).where(
+                    AaEvaluationRecord.tenant_id == _service._tid(),
+                    AaEvaluationRecord.task_id.in_(task_ids),
+                    AaEvaluationRecord.evaluator_type == "STUDENT",
+                    AaEvaluationRecord.is_deleted.is_(False),
+                ).group_by(AaEvaluationRecord.task_id)
+            ).all()
+            submitted_counts = {
+                int(task_id): int(count or 0)
+                for task_id, count in count_rows
+            }
+
             token_predicates = [
                 and_(
                     AaEvaluationRecord.task_id == task_id,
@@ -92,6 +109,7 @@ def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
             "teacherName": task.teacher_name,
             "windowStatus": batch.status,
             "anonymous": True,
+            "submittedCount": submitted_counts.get(int(task.id), 0),
             "submitted": int(task.id) in submitted_ids,
             "canSubmit": batch.status == legacy._B_OPEN and int(task.id) not in submitted_ids,
         } for task, batch in rows]

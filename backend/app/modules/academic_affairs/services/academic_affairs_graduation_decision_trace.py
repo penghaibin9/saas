@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.core.exceptions import AppException
 
+from . import academic_affairs_graduation_service as graduation_service
 from .academic_affairs_decision_trace import build_decision_trace, render_zh_cn
 
 
@@ -73,6 +74,23 @@ def _is_final_status(item: dict) -> bool:
     return any(value in evidence for value in ("GRADUATED", "COMPLETED"))
 
 
+def _is_blocking_item(item: dict) -> bool:
+    """Mirror the evaluator's blocking boundary without recalculating business truth."""
+    code = str(item.get("item") or "").upper()
+    result = str(item.get("result") or "").upper()
+    if result == "PASS":
+        return False
+    if result == "FAIL":
+        return True
+    if result == "UNKNOWN":
+        required_unknown = set(getattr(graduation_service, "_BLOCKING_UNKNOWN_ITEMS", ()) or ())
+        required_unknown.add("ARCHIVE")
+        return code in required_unknown
+    # The immutable evaluator fails closed on malformed/unknown result states; the trace
+    # must not hide that denial merely because the value is outside the known tri-state.
+    return True
+
+
 def _rule_for(item: dict) -> str:
     code = str(item.get("item") or "").upper()
     result = str(item.get("result") or "").upper()
@@ -84,8 +102,8 @@ def _rule_for(item: dict) -> str:
         return "TOTAL_CREDITS_INSUFFICIENT"
     if result == "FAIL" and code in _ITEM_RULE:
         return _ITEM_RULE[code]
-    # UNKNOWN and unsupported legacy/advisory items remain explicit UNKNOWN; Stage C3
-    # already made them fail closed and this explanation layer must not reinterpret them.
+    # UNKNOWN and unsupported legacy items remain explicit UNKNOWN; this explanation layer
+    # only chooses an actual evaluator blocker and never reclassifies advisory UNKNOWN rows.
     return "ACADEMIC_DATA_UNKNOWN"
 
 
@@ -124,15 +142,15 @@ def build_graduation_decision_trace(student, evaluated: dict) -> dict | None:
     if str(evaluated.get("overall") or "").upper() == "SYSTEM_PASSED":
         return None
     items = list(evaluated.get("items") or [])
-    failed = [item for item in items if str(item.get("result") or "").upper() != "PASS"]
-    blocker = failed[0] if failed else {"item": "UNKNOWN", "result": "UNKNOWN"}
+    blockers = [item for item in items if _is_blocking_item(item)]
+    blocker = blockers[0] if blockers else {"item": "UNKNOWN", "result": "UNKNOWN"}
     rule_code = _rule_for(blocker)
     evaluated_at, evaluator_version = _evaluator_identity(evaluated)
 
     safe_failed = [{
         "item": str(item.get("item") or "UNKNOWN"),
         "result": str(item.get("result") or "UNKNOWN"),
-    } for item in failed]
+    } for item in blockers]
     safe_passed = [{
         "item": str(item.get("item") or "UNKNOWN"),
         "result": "PASS",

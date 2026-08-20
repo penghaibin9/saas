@@ -4,12 +4,18 @@ on:
   schedule:
     - cron: '45 18 * * 0'
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "deploy/backup/restore-drill.sh"
+      - ".github/workflows/backup-restore-drill.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: backup-restore-drill-${{ github.ref }}
+  group: backup-restore-drill-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -61,20 +67,28 @@ jobs:
       KEEP_DAYS: '2'
       MIN_LOCAL_BACKUP_SETS: '2'
       UPLOAD_DIR: /tmp/school-lifecycle-upload-drill
+      FILE_STORAGE_BACKEND: local
       REQUIRE_UPLOAD_BACKUP: '1'
       BACKUP_REQUIRE_OFFSITE: 'true'
       BACKUP_RCLONE_REMOTE: /tmp/school-lifecycle-offsite-drill
       BACKUP_REQUIRE_IMMUTABLE_REMOTE: 'false'
       MAX_BACKUP_AGE_SECONDS: '3600'
       MAX_RESTORE_SECONDS: '900'
-      REQUIRED_RESTORE_TABLES: alembic_version,t_tenant,t_import_job,t_export_job
+      REQUIRED_RESTORE_TABLES: alembic_version,t_tenant,t_import_job,t_export_job,t_file_object
       MIN_RESTORE_TABLES: '10'
       MIN_RESTORE_INDEXES: '10'
       MIN_RESTORE_FOREIGN_KEYS: '1'
       MIN_ACTIVE_TENANTS: '2'
+      MIN_RESTORED_LOCAL_FILE_OBJECTS: '1'
+      MIN_RESTORED_HASHED_FILE_OBJECTS: '1'
       RESTORE_EVIDENCE_FILE: /tmp/restore-drill-evidence.txt
+      RESTORE_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact restore head checkout
+        run: test "$(git rev-parse HEAD)" = "$RESTORE_SOURCE_COMMIT"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -101,10 +115,107 @@ jobs:
           EXPECTED="$(mysql -h 127.0.0.1 -uroot -proot -Nse 'SELECT version_num FROM backup_source.alembic_version LIMIT 1')"
           test -n "$EXPECTED"
           echo "EXPECTED_ALEMBIC_VERSION=$EXPECTED" >> "$GITHUB_ENV"
+      - name: Seed canonical local FileObject and verify source bytes
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          rm -rf "$UPLOAD_DIR"
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import os
+          from pathlib import Path
+
+          from sqlalchemy import select
+
+          from app.core.context import set_current_user, set_tenant
+          from app.db.session import get_sessionmaker
+          from app.models import FileObject, Tenant, User
+          from app.services import file_service
+
+          db = get_sessionmaker()()
+          try:
+              tenant = db.scalar(select(Tenant).where(
+                  Tenant.tenant_code == "demo-school",
+                  Tenant.is_deleted.is_(False),
+              ).limit(1))
+              assert tenant is not None, "seeded demo-school tenant missing"
+              actor_row = db.scalar(select(User).where(
+                  User.tenant_id == tenant.id,
+                  User.is_deleted.is_(False),
+              ).order_by(User.id.asc()).limit(1))
+              assert actor_row is not None, "seeded demo-school user missing"
+              tenant_id = int(tenant.id)
+              actor_id = int(actor_row.id)
+          finally:
+              db.close()
+
+          actor = {
+              "tenantId": str(tenant_id),
+              "userId": str(actor_id),
+              "loginName": str(getattr(actor_row, "login_name", "restore-drill") or "restore-drill"),
+          }
+          payload = b"academic-d-fileobject-restore-proof\n"
+          set_tenant({"tenantId": str(tenant_id)})
+          set_current_user(actor)
+          try:
+              meta = file_service.store_bytes(
+                  payload,
+                  "restore-drill-fileobject.txt",
+                  biz_type="ATTACHMENT",
+                  user=actor,
+                  visibility="PRIVATE",
+              )
+          finally:
+              set_current_user(None)
+              set_tenant(None)
+
+          file_id = int(meta["fileId"])
+          db = get_sessionmaker()()
+          try:
+              row = db.get(FileObject, file_id)
+              assert row is not None and not row.is_deleted
+              assert str(row.storage_backend or "").lower() == "local"
+              assert row.file_key == meta["fileKey"]
+              assert int(row.size_bytes or -1) == len(payload)
+              assert str(row.sha256 or "").lower() == hashlib.sha256(payload).hexdigest()
+              file_key = str(row.file_key)
+              size_bytes = int(row.size_bytes)
+              sha256 = str(row.sha256).lower()
+          finally:
+              db.close()
+
+          physical = Path(os.environ["UPLOAD_DIR"]) / file_key
+          assert physical.is_file(), physical
+          assert physical.stat().st_size == size_bytes
+          assert hashlib.sha256(physical.read_bytes()).hexdigest() == sha256
+          Path("/tmp/fileobject-source-evidence.txt").write_text(
+              f"file_id={file_id}\n"
+              f"file_key={file_key}\n"
+              f"size_bytes={size_bytes}\n"
+              f"sha256={sha256}\n",
+              encoding="utf-8",
+          )
+          PY
+          test -s /tmp/fileobject-source-evidence.txt
+          test -n "$(find "$UPLOAD_DIR" -type f -print -quit)"
+      - name: Verify Outbox stale-lease recovery on isolated MySQL
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/academic_d_outbox_restore_test?charset=utf8mb4
+          FAST_TEST_SCHEMA: '1'
+        run: |
+          set -euo pipefail
+          mysql -h 127.0.0.1 -uroot -proot -e "DROP DATABASE IF EXISTS academic_d_outbox_restore_test; CREATE DATABASE academic_d_outbox_restore_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+          pytest -q \
+            tests/test_message_lease_reclaim.py::test_expired_processing_outbox_is_reclaimed \
+            tests/test_message_lease_reclaim.py::test_live_processing_outbox_is_not_stolen \
+            | tee /tmp/academic-d-outbox-recovery.log
       - name: Produce verified offsite backup set
         run: |
-          mkdir -p "$UPLOAD_DIR"
-          printf 'restore-drill-upload-sentinel\n' > "$UPLOAD_DIR/sentinel.txt"
+          set -euo pipefail
+          test -n "$(find "$UPLOAD_DIR" -type f -print -quit)"
           rm -rf "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
           mkdir -p "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
           bash deploy/backup/backup-runner.sh
@@ -174,7 +285,14 @@ jobs:
           PY
       - name: Verify recovery evidence integrity
         run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RESTORE_SOURCE_COMMIT"
+          grep -Fqx "source_commit=$RESTORE_SOURCE_COMMIT" "$RESTORE_EVIDENCE_FILE"
           grep -Eq '^manifest_sha256=[0-9a-f]{64}$' "$RESTORE_EVIDENCE_FILE"
+          grep -Eq '^local_file_object_count=[1-9][0-9]*$' "$RESTORE_EVIDENCE_FILE"
+          grep -Eq '^local_file_object_hashed_count=[1-9][0-9]*$' "$RESTORE_EVIDENCE_FILE"
+          grep -Eq '^file_id=[0-9]+$' /tmp/fileobject-source-evidence.txt
+          grep -Eq '^sha256=[0-9a-f]{64}$' /tmp/fileobject-source-evidence.txt
           cd "$(dirname "$RESTORE_EVIDENCE_FILE")"
           sha256sum -c "$(basename "$RESTORE_EVIDENCE_FILE").sha256"
       - name: Upload recovery evidence
@@ -187,6 +305,8 @@ jobs:
             /tmp/restore-drill-evidence.txt
             /tmp/restore-drill-evidence.txt.sha256
             /tmp/restore-drill-backend.log
+            /tmp/fileobject-source-evidence.txt
+            /tmp/academic-d-outbox-recovery.log
             /tmp/school-lifecycle-offsite-stage/manifest_*.json
             /tmp/school-lifecycle-offsite-stage/manifest_*.json.sha256
             /tmp/school-lifecycle-offsite-stage/*.sha256

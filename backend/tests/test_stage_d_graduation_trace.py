@@ -64,10 +64,22 @@ def test_existing_fail_item_maps_to_frozen_rule_code(item, extra, rule):
 
 def test_unknown_never_becomes_a_specific_pass_or_invented_rule():
     trace = build_graduation_decision_trace(STUDENT, _evaluated([
-        _item("EMPLOYMENT", "UNKNOWN", "该域当前仅人工复核"),
+        _item("CREDIT", "UNKNOWN", "培养方案或成绩证据不足"),
     ]))
     assert trace["ruleCode"] == "ACADEMIC_DATA_UNKNOWN"
     assert trace["decision"] == "DENIED"
+
+
+def test_advisory_unknown_cannot_mask_later_archive_blocker():
+    trace = build_graduation_decision_trace(STUDENT, _evaluated([
+        _item("STATUS", "PASS"),
+        _item("EMPLOYMENT", "UNKNOWN", "就业当前仅作非阻断提醒"),
+        _item("ARCHIVE", "UNKNOWN", "学工归档包未形成正式归档事实"),
+        _item("FEE", "UNKNOWN", "费用当前仅作非阻断提醒"),
+    ]))
+    assert trace["ruleCode"] == "ACADEMIC_DATA_UNKNOWN"
+    assert trace["failedNodes"] == [{"item": "ARCHIVE", "result": "UNKNOWN"}]
+    assert {row["item"] for row in trace["failedNodes"]}.isdisjoint({"EMPLOYMENT", "FEE"})
 
 
 def test_program_unresolved_precedes_credit_result_explanation():
