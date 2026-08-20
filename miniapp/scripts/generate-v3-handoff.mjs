@@ -82,6 +82,17 @@ function implementationSha() {
   return resolveSealedSha((ref) => commitObject(ref), gitSha())
 }
 
+/**
+ * 落盘用的实现 SHA。解析不出来时回落到 HEAD，绝不写空串——交接物里一个空的
+ * studentMergeSha 比一个"不够精确但真实存在"的提交更糟：它看起来像字段缺失，
+ * 下游无从判断到底是没封还是封坏了。真正该报「解析不出来」的地方是 verify()，
+ * 它会明确说是历史深度不够并给出处置。
+ */
+function sealedShaOrHead() {
+  const resolved = implementationSha()
+  return resolved.sha || gitSha()
+}
+
 /** pages.json 还原成完整 URL 集合 —— 教师端据此确认路由面没有被学生端改动。 */
 function routeInventory() {
   const manifest = JSON.parse(read(resolve(MINIAPP, 'src/pages.json')))
@@ -147,7 +158,7 @@ export function buildHandoff() {
   return {
     schema: 'miniapp-v3-handoff/1',
     generatedAt: new Date().toISOString(),
-    studentMergeSha: implementationSha().sha,
+    studentMergeSha: sealedShaOrHead(),
     actionSchemaVersion: contractVersion('src/services/actionRouterCore.mjs', 'ACTION_SCHEMA_VERSION'),
     routeInventoryHash: sha256(inventory.routes.join('\n')),
     routeCount: inventory.routes.length,

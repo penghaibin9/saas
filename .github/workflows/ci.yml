@@ -203,6 +203,12 @@ jobs:
         working-directory: miniapp
     steps:
       - uses: actions/checkout@v4
+        with:
+          # handoff seal 合同（handoff-exact-head-contract）要顺着提交链解析出被封存的
+          # 实现提交：pull_request 事件下 HEAD 是 GitHub 生成的 merge 提交，默认
+          # fetch-depth=1 只有这一个对象，两个父提交都不在，解析不出来就只能误判。
+          # merge → seal → 实现提交共三层，取 5 留一点余量。
+          fetch-depth: 5
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
