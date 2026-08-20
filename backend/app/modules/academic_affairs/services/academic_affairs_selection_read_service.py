@@ -31,7 +31,10 @@ _final_student_courses_projection = _final.student_courses
 
 def student_courses(user, batch_id=None):
     """学生列表只返回 OPEN，或本人真实具备补选资格的 CLOSED B-C3 projection。"""
-    groups = _final_student_courses_projection(user, batch_id) or []
+    # Final evaluator 会复用 canonical term guard。列表只读必须显式切换为 non-locking
+    # term validation，避免大量学生刷新列表时争抢同一 AaTerm 排他锁。
+    with _final.selection_readonly_term_guard():
+        groups = _final_student_courses_projection(user, batch_id) or []
     visible = []
     for group in groups:
         batch = dict(group.get("batch") or {})
