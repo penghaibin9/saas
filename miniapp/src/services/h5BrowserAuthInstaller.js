@@ -135,8 +135,19 @@ if (isH5) {
     rememberApiOrigin(next.url)
     const originalUrl = String(next.url || '')
     const isLogin = /\/api\/v1\/auth\/login(?:\?|$)/.test(originalUrl)
+    const isCaptcha = /\/api\/v1\/auth\/captcha(?:\?|$)/.test(originalUrl)
     const isRefresh = /\/api\/v1\/auth\/refresh(?:\?|$)/.test(originalUrl)
     const isSwitch = /\/api\/v1\/auth\/switch-role(?:\?|$)/.test(originalUrl)
+    if (isCaptcha) {
+      const clientType = String(next.data?.clientType || '').toUpperCase()
+      const scene = String(next.data?.scene || '').toUpperCase()
+      // Password-login CAPTCHA is bound to clientType by the backend. H5 student account login is
+      // transported as STUDENT_PC below, so issue that exact challenge contract too. WX_BIND stays
+      // STUDENT_MINI because its native binding endpoint is not rewritten to browser-login.
+      if (scene === 'PASSWORD_LOGIN' && clientType === 'STUDENT_MINI') {
+        next.data = { ...(next.data || {}), clientType: 'STUDENT_PC' }
+      }
+    }
     if (isLogin) {
       const clientType = String(next.data?.clientType || '').toUpperCase()
       const ch = clientType === 'STUDENT_MINI' || clientType === 'STUDENT_PC' ? 'student' : 'staff'

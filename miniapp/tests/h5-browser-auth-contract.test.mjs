@@ -37,6 +37,13 @@ test('H5 rewrites login refresh switch-role and logout to existing browser sessi
   assert.match(installer,/clientType: 'STUDENT_PC'/)
 })
 
+test('student H5 password CAPTCHA uses the same browser clientType as final login without touching WX_BIND',()=>{
+  assert.ok(installer.includes("const isCaptcha = /\\/api\\/v1\\/auth\\/captcha"))
+  assert.ok(installer.includes("scene === 'PASSWORD_LOGIN' && clientType === 'STUDENT_MINI'"))
+  assert.ok(installer.includes("next.data = { ...(next.data || {}), clientType: 'STUDENT_PC' }"))
+  assert.ok(installer.includes('WX_BIND stays'))
+})
+
 test('native miniapp request implementation remains available and installer is H5 gated',()=>{
   assert.match(installer,/typeof window !== 'undefined'/)
   assert.match(installer,/typeof document !== 'undefined'/)
