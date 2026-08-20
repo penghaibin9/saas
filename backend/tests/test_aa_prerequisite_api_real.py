@@ -157,7 +157,7 @@ def _seed(db_mode, prerequisites_json, passed_codes=()):
 def _ready_teaching_task(term_id, course_id, n):
     """Build the formal READY task required by the selection-course producer contract."""
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    from app.models import AaCourse, AaProgramCourse, AaTeachingTask, AaTeachingTaskBatch
 
     db = get_sessionmaker()()
     try:
@@ -174,6 +174,17 @@ def _ready_teaching_task(term_id, course_id, n):
             status="APPROVED",
         )
         db.add(task_batch); db.flush()
+        source = AaProgramCourse(
+            tenant_id=TID,
+            program_id=880000 + n,
+            course_id=course.id,
+            course_name=course.course_name,
+            open_term_no=1,
+            module="MAJOR_CORE",
+            credit_snapshot=course.credit,
+            formation_mode="SELECTABLE",
+        )
+        db.add(source); db.flush()
         task = AaTeachingTask(
             tenant_id=TID,
             batch_id=task_batch.id,
@@ -182,6 +193,8 @@ def _ready_teaching_task(term_id, course_id, n):
             course_name=course.course_name,
             teacher_key=f"PREREQ-T{n}",
             teacher_name="先修测试教师",
+            source_program_course_id=source.id,
+            formation_mode="SELECTABLE",
             status="READY",
             weekly_hours=2,
             total_hours=36,
