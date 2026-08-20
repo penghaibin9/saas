@@ -14,6 +14,7 @@ _ALLOWED_ROUTES = {
     "teacher_my_students",
     "teacher_messages",
     "teacher_messages_badges",
+    "teacher_sequential_exception",
 }
 _ALLOWED_SCOPES = {
     "ADMIN_TENANT",
@@ -23,6 +24,11 @@ _ALLOWED_SCOPES = {
     "MESSAGE_GLOBAL",
     "UNKNOWN",
     "ERROR",
+}
+_CONFLICT_CODES = {
+    "DATA_CONFLICT",
+    "APPROVAL_VERSION_CONFLICT",
+    "IDEMPOTENCY_CONFLICT",
 }
 
 
@@ -43,3 +49,11 @@ def record_page_read(*, route_key: str, scope_mode: str | None, started: float) 
     scope = _scope(scope_mode)
     mobile_obs.record_latency("pageLatency", elapsed_ms)
     mobile_obs.record("scopeMode", f"{route}:{scope}")
+
+
+def record_conflict(*, route_key: str, error_code: str | None) -> None:
+    """Count only known optimistic/idempotency conflicts using a fixed route label."""
+    code = str(error_code or "").strip().upper()
+    if code not in _CONFLICT_CODES:
+        return
+    mobile_obs.record("conflict409", _route(route_key))
