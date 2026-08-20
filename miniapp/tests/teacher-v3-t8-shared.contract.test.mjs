@@ -73,7 +73,9 @@ test('T8 shared search shell 保持 side-aware，Teacher server search 留到 T9
 test('T8 bootstrap 继续 de-hoist：main 不装教师 API，教师 installer 仅显式消费', () => {
   const main = read('miniapp/src/main.js')
   const installer = read('miniapp/src/services/mobilePerformanceInstaller.teacher.js')
-  assert.doesNotMatch(main, /mobilePerformanceInstaller|ensureTeacherPerformanceApi/)
+  // 注释可以解释 de-hoist 合同；真正禁止的是静态导入或 runtime 调用。
+  assert.doesNotMatch(main, /import\s+.*mobilePerformanceInstaller/)
+  assert.doesNotMatch(main, /\bensureTeacherPerformanceApi\s*\(\s*\)/)
   assert.match(installer, /export function ensureTeacherPerformanceApi\(\)/)
   assert.match(installer, /if \(installed\) return teacherApi/)
 })

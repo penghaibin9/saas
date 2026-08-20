@@ -64,7 +64,8 @@ test('T7/T8 employment material evidence uses shared picker and preserves secure
 
 
 test('T7 writes remain single-object and server-authoritative', () => {
-  assert.doesNotMatch(page, /ids\s*:/)
+  // 只禁止真正的批量命令属性 `ids:`；pendingEvidenceIds/fileIds 等合法字段不能被子串误伤。
+  assert.doesNotMatch(page, /(?:^|[,{]\s*)ids\s*:/m)
   assert.doesNotMatch(page, /Promise\.all\([^)]*(recommend|reviewVerification|bindMaterialEvidence)/)
   assert.match(page, /岗位推荐已记录/)
   assert.match(page, /正式材料证据已绑定/)

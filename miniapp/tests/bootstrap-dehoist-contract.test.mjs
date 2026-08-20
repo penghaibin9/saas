@@ -89,10 +89,9 @@ test('S1.5-G1 侧向安装器只被对应分包页面导入', () => {
   assert.deepEqual(wrong, [], wrong.join('\n'))
 })
 
-test('S1.5-G1 使用高频接口的页面必须先显式安装', () => {
+test('S1.5-G1 仍走 performance adapter 的高频页必须先显式安装；T8 Todo 固定走 shared pager', () => {
   const required = [
     ['src/pages/teacher/workbench/index.vue', 'ensureTeacherPerformanceApi', 'getWorkbench'],
-    ['src/pages/teacher/todos/index.vue', 'ensureTeacherPerformanceApi', 'getTodosPage'],
     ['src/pages/teacher/risk-students/index.vue', 'ensureTeacherPerformanceApi', 'getRiskStudentsPage'],
     ['src/pages/student/messages/index.vue', 'ensureStudentPerformanceApi', 'getMessagesPage']
   ]
@@ -104,6 +103,12 @@ test('S1.5-G1 使用高频接口的页面必须先显式安装', () => {
     assert.ok(installAt > 0, `${file} 缺少 ${installer}() 显式安装`)
     assert.ok(installAt < useAt, `${file} 必须先安装再调用 ${method}`)
   }
+
+  const todoSource = read('src/pages/teacher/todos/index.vue')
+  assert.match(todoSource, /createNetworkPager/)
+  assert.match(todoSource, /teacherTodoT8Api\.list\(\{ group: this\.filter, cursor, pageSize \}\)/)
+  assert.doesNotMatch(todoSource, /getTodosPage\(/)
+  assert.doesNotMatch(todoSource, /ensureTeacherPerformanceApi\(\)/)
 })
 
 test('S1.5-G2 生产构建剥离 mock 数据体', () => {

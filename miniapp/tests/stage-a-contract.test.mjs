@@ -90,21 +90,32 @@ test('high-frequency message, todo and risk pages use final database pagination 
   const messages = read('src/pages/student/messages/index.vue')
   const todos = read('src/pages/teacher/todos/index.vue')
   const risks = read('src/pages/teacher/risk-students/index.vue')
+  const todoApi = read('src/services/teacherTodoT8Api.js')
   const installer = [
     read('src/services/mobilePerformanceInstaller.student.js'),
     read('src/services/mobilePerformanceInstaller.teacher.js')
   ].join('\n')
+
   assert.match(messages, /getMessagesPage/)
-  assert.match(todos, /getTodosPage/)
   assert.match(risks, /getRiskStudentsPage/)
-  for (const source of [messages, todos, risks]) {
+  for (const source of [messages, risks]) {
     assert.match(source, /hasMore/)
     assert.match(source, /_loadEpoch/)
     assert.doesNotMatch(source, /pagedSlice/)
   }
+
+  // T8 Todo 已迁移到 shared NetworkPager + server signed cursor；禁止为了兼容旧合同退回 getTodosPage。
+  assert.match(todos, /createNetworkPager/)
+  assert.match(todos, /teacherTodoT8Api\.list/)
+  assert.match(todos, /pagerState\.hasMore/)
+  assert.match(todos, /this\._pager\.loadMore\(\)/)
+  assert.doesNotMatch(todos, /pagedSlice|getTodosPage/)
+  assert.match(todoApi, /\/teacher-mobile\/todos\/grouped-continuous/)
+  assert.match(todoApi, /cursor=/)
+  assert.match(todoApi, /pageSize=/)
+
   for (const endpoint of [
     '/mobile/performance/student/messages-page',
-    '/mobile/performance/teacher/todos-page',
     '/mobile/performance/teacher/risk-students-page'
   ]) assert.match(installer, new RegExp(endpoint.replaceAll('/', '\\/')))
 })
