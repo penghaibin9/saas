@@ -16,6 +16,7 @@ from app.core.permissions import require_module
 from app.core.response import success
 from app.core.security import require_staff
 from app.modules.internship.services import internship_service
+from app.services import teacher_mobile_observability_v3_service as teacher_obs_v3
 
 router = APIRouter(
     dependencies=[Depends(require_module("internship"))],
@@ -51,13 +52,21 @@ def handle_attendance_exception(
     elif body.riskLevel is not None:
         raise AppException("VALIDATION_ERROR", "非转风险操作不得提交 riskLevel")
 
-    return success(
-        internship_service.handle_attendance_exception(
+    try:
+        result = internship_service.handle_attendance_exception(
             exception_id,
             action,
             comment,
             user=user,
             expected_version=body.expectedVersion,
-        ),
-        message="处理完成",
-    )
+        )
+    except AppException as exc:
+        # T10: the queue already stops and reloads on 409. Record the server-side conflict using
+        # a fixed anonymous route key; never emit exception/student/object identifiers.
+        teacher_obs_v3.record_conflict(
+            route_key="teacher_sequential_exception",
+            error_code=exc.code,
+        )
+        raise
+
+    return success(result, message="处理完成")
