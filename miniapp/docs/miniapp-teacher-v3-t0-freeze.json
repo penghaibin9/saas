@@ -1,26 +1,27 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "wave": "T0",
-  "capturedAt": "2026-08-20T06:06:00+08:00",
+  "capturedAt": "2026-08-20T11:01:00+08:00",
   "authority": "跃科_教师端微信小程序_生产级开发手册_V3.0_2026-08-19",
   "repository": "penghaibin9/saas",
   "branch": "agent/miniapp-teacher-v3-production-20260820",
   "base": {
     "ref": "main",
-    "exactSha": "65ad77eb568d562491645fcab39d280f812e8bc0",
-    "latestMerge": "PR #148",
-    "unchangedSinceT0Start": true
+    "exactSha": "d08e69ee18a153f19140858bfd7712341464eafd",
+    "latestMerge": "PR #147",
+    "unchangedSinceT0Start": false
   },
   "dependencies": {
     "pr147": {
-      "state": "open",
-      "draft": true,
-      "headSha": "1c5ab850460195a21902611ce6fc0ab7cf045361",
-      "headMovedSincePreviousFreeze": true,
-      "collision": [
+      "state": "merged",
+      "draft": false,
+      "headSha": "36647ff098a4414d8481b7765fda6f013d65f739",
+      "mergeCommit": "d08e69ee18a153f19140858bfd7712341464eafd",
+      "ownerLockReleased": true,
+      "releasedCollision": [
         "backend/app/services/mobile_teacher_service.py"
       ],
-      "rule": "Do not overwrite the file wholesale; keep mobile_teacher_service.py owner-locked while PR #147 is live."
+      "rule": "Consume the merged canonical mobile_teacher_service from main; do not restore the former live-PR owner lock."
     },
     "pr148": {
       "state": "merged",
@@ -43,17 +44,21 @@
       "state": "open",
       "draft": true,
       "branch": "claude/new-session-au46r1",
-      "headSha": "3846c5117df5dde0c2e7b594e9d4d0feb21a2746",
+      "headSha": "7abe701de80de3b8b24e2553292f35c67c1815c3",
       "headMovedSincePreviousFreeze": true,
+      "handoffPrepared": true,
       "handoffReady": false,
-      "currentWaves": ["S0", "S1", "S1.5", "S2_IN_PROGRESS"],
+      "handoffGate": "T8 still requires PR #182 merged into main and miniapp-v3-handoff.json validated against that merged exact head.",
+      "currentWaves": ["S0", "S1", "S1.5", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9"],
       "sharedCollision": [
+        "backend/app/api/v1/mobile.py",
         "backend/app/services/message_action_registry.py",
         "backend/app/services/mobile_action_service.py",
         "backend/app/services/mobile_performance_service.py",
         "backend/app/services/todo_route_registry.py",
         "miniapp/src/main.js",
         "miniapp/src/pages.json",
+        "miniapp/src/services/realApi.js",
         "miniapp/src/services/actionRouter.js",
         "miniapp/src/pages/teacher/workbench/index.vue",
         "miniapp/src/pages/teacher/todos/index.vue",
@@ -65,11 +70,12 @@
   "alembic": {
     "observedMainCandidateHead": "20260818_merge_prog_grade_dl",
     "file": "backend/alembic/versions/20260818_merge_prog_grade_deadline.py",
-    "rule": "Teacher owns no shared Todo/Message/StudentProfile performance migration before Student V3 handoff. Re-read live Alembic head before any revision."
+    "pr147AddedMigration": false,
+    "rule": "Teacher owns no shared Todo/Message/StudentProfile performance migration before Student V3 handoff. Re-read live Alembic head before any future revision."
   },
   "safeStart": {
     "lockedOrder": ["T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10"],
-    "policy": "Proceed only with teacher-owned, non-colliding slices. Shared files remain owner-locked while PR #182 is live; mobile_teacher_service.py remains owner-locked while PR #147 is live.",
+    "policy": "Proceed only with teacher-owned, non-colliding slices. PR #147 owner lock is released because it is merged; PR #182 and PR #180 shared files remain owner-locked while those PRs are live.",
     "stableTabs": ["工作台", "待办", "消息", "我的"],
     "myStudentsPlacement": "Workbench first-screen high-frequency entry plus independent paginated page"
   },
@@ -80,14 +86,14 @@
       "teacher-mobile canonical Todo list/detail API wiring through workbench_todo_service",
       "teacherMini client-aware workbench snapshot Todo serialization",
       "teacher path prefix fail-closed guard for server-resolved targets",
-      "contract tests proving no local route map or title/todoType guessing"
+      "contract tests proving no local route map or title/todoType guessing",
+      "PR #147 mobile_teacher_service owner lock released into main"
     ],
     "blockedUntilOwnerReleaseOrT8": [
       "todo_route_registry.py teacherMini mappings",
       "mobile_action_service.py shared adapter integration",
       "mobile_performance_service.py shared wiring",
-      "miniapp teacher workbench/todos/risk UI files while PR #182 remains live",
-      "mobile_teacher_service.py wiring while PR #147 remains live"
+      "miniapp teacher workbench/todos/risk UI files while PR #182 remains live"
     ]
   }
 }

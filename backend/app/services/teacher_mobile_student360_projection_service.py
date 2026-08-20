@@ -132,6 +132,7 @@ def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
         academic = db.scalars(select(AcademicStudent).where(
             AcademicStudent.tenant_id == _tid(),
             AcademicStudent.is_deleted.is_(False),
+            AcademicStudent.record_status == "ACTIVE",
             AcademicStudent.student_no == stu.student_no,
         ).order_by(AcademicStudent.id.desc()).limit(1)).first()
         warning_count = 0
@@ -155,18 +156,21 @@ def get_projection(user: dict, student_id: Any) -> dict[str, Any]:
         graduation = db.scalars(select(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(),
             GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE",
             GraduationStudent.student_no == stu.student_no,
         ).order_by(GraduationStudent.id.desc()).limit(1)).first()
 
         employment = db.scalars(select(EmpStudent).where(
             EmpStudent.tenant_id == _tid(),
             EmpStudent.is_deleted.is_(False),
+            EmpStudent.record_status == "ACTIVE",
             or_(EmpStudent.student_id == stu.id, EmpStudent.student_no == stu.student_no),
         ).order_by(EmpStudent.id.desc()).limit(1)).first()
 
         affairs = db.scalars(select(CsServiceStudent).where(
             CsServiceStudent.tenant_id == _tid(),
             CsServiceStudent.is_deleted.is_(False),
+            CsServiceStudent.record_status == "ACTIVE",
             or_(CsServiceStudent.student_id == stu.id, CsServiceStudent.student_no == stu.student_no),
         ).order_by(CsServiceStudent.id.desc()).limit(1)).first()
 

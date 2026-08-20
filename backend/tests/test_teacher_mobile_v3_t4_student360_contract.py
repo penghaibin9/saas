@@ -40,6 +40,19 @@ def test_t4_student360_object_lookup_is_strict_profile_id_not_numeric_student_no
         projection._student_lookup_condition(StudentProfile, "0")
 
 
+def test_t4_domain_projection_reads_only_active_business_records():
+    source = inspect.getsource(projection.get_projection)
+    # All four domain master projections have an independent business validity flag in addition
+    # to is_deleted. A newer VOID/INACTIVE row must never shadow the latest ACTIVE truth.
+    for clause in (
+        'AcademicStudent.record_status == "ACTIVE"',
+        'GraduationStudent.record_status == "ACTIVE"',
+        'EmpStudent.record_status == "ACTIVE"',
+        'CsServiceStudent.record_status == "ACTIVE"',
+    ):
+        assert clause in source
+
+
 def test_t4_only_open_workflow_warnings_count_as_active_risk():
     source = inspect.getsource(projection.get_projection)
     assert 'AcademicWarning.record_status == "ACTIVE"' in source
