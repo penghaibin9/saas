@@ -15,6 +15,7 @@ on:
       - "backend/app/services/control_plane_p0_auth_guard.py"
       - "backend/app/services/control_plane_p0_dr_guard.py"
       - "backend/app/services/control_plane_p0_offboarding_guard.py"
+      - "backend/app/services/control_plane_p0_runtime.py"
       - "backend/app/services/effective_security_policy_service.py"
       - "backend/app/services/machine_recovery_evidence_service.py"
       - "backend/app/services/tenant_offboarding_service.py"
@@ -42,6 +43,7 @@ on:
       - "backend/app/services/control_plane_p0_auth_guard.py"
       - "backend/app/services/control_plane_p0_dr_guard.py"
       - "backend/app/services/control_plane_p0_offboarding_guard.py"
+      - "backend/app/services/control_plane_p0_runtime.py"
       - "backend/app/services/effective_security_policy_service.py"
       - "backend/app/services/machine_recovery_evidence_service.py"
       - "backend/app/services/tenant_offboarding_service.py"
@@ -144,6 +146,7 @@ jobs:
             app/services/control_plane_p0_auth_guard.py \
             app/services/control_plane_p0_dr_guard.py \
             app/services/control_plane_p0_offboarding_guard.py \
+            app/services/control_plane_p0_runtime.py \
             app/services/effective_security_policy_service.py \
             app/services/machine_recovery_evidence_service.py \
             app/services/tenant_offboarding_service.py \
