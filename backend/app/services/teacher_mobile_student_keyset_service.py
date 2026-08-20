@@ -1,8 +1,9 @@
 """Teacher Miniapp V3 T3 MyStudents keyset/search read service.
 
-This is additive to the legacy ``mobile_teacher_service.my_students`` surface.  It fixes two
-production constraints for the V3 path without editing the #147-owned service:
-- every classId/search request is still intersected with teacher object visibility;
+This is additive to the legacy ``mobile_teacher_service.my_students`` surface. It removes the
+legacy 200-row ceiling for the V3 path while keeping object scope server-authoritative:
+- classId/search only narrow an already-authorized SQL set;
+- advisor roles keep the canonical exclusive business-relation boundary;
 - the list is true keyset pagination, never ``LIMIT 200`` + client-side slicing.
 """
 from __future__ import annotations
@@ -22,7 +23,10 @@ from app.core.config import settings
 from app.core.exceptions import AppException
 from app.services import mobile_teacher_service as teacher_guard
 from app.services.db_service import _tid, session
-from app.services.teacher_student_visibility_service import compile_teacher_student_visibility
+from app.services.teacher_student_visibility_service import (
+    compile_teacher_student_visibility,
+    is_advisor_scope,
+)
 
 _CURSOR_VERSION = 1
 _CURSOR_KIND = "teacherStudents"
@@ -203,14 +207,21 @@ def list_continuous(
 
     student = aliased(StudentProfile, name="visible_student")
     class_row = aliased(SchoolClass, name="student_class")
-    canonical_visibility = compile_teacher_student_visibility(user, student.id)
-    class_owner_visibility = _class_owner_predicate(user, student)
+    scope = teacher_guard.resolve_teacher_scope(user)
+    canonical_visibility = compile_teacher_student_visibility(user, student.id, scope=scope)
+    if is_advisor_scope(scope):
+        # Current advisor role is relation-exclusive. Do not borrow class ownership from another
+        # role attached to the same account.
+        object_visibility = canonical_visibility
+    else:
+        class_owner_visibility = _class_owner_predicate(user, student)
+        object_visibility = or_(canonical_visibility, class_owner_visibility)
 
     conds = [
         student.tenant_id == _tid(),
         student.is_deleted.is_(False),
         student.created_at <= as_of,
-        or_(canonical_visibility, class_owner_visibility),
+        object_visibility,
     ]
     if normalized_class_id is not None:
         # Critical: classId narrows *after* visibility; it can never bypass object scope.
@@ -231,9 +242,7 @@ def list_continuous(
 
     with session() as db:
         if first_page:
-            count_conds = list(conds)
-            # first-page count must not include a seek condition (none exists on first page).
-            total = int(db.scalar(select(func.count()).select_from(student).where(*count_conds)) or 0)
+            total = int(db.scalar(select(func.count()).select_from(student).where(*conds)) or 0)
 
         rows = db.execute(
             select(student, class_row.class_name)

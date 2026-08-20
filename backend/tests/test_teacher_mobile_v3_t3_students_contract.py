@@ -47,9 +47,9 @@ def test_t3_my_students_is_true_keyset_search_and_class_filter_cannot_bypass_sco
 
     assert ".offset(" not in module_source
     assert ".limit(size + 1)" in source
-    assert "compile_teacher_student_visibility" in source
-    assert "class_owner_visibility" in source
-    assert "or_(canonical_visibility, class_owner_visibility)" in source
+    assert "scope = teacher_guard.resolve_teacher_scope(user)" in source
+    assert "compile_teacher_student_visibility(user, student.id, scope=scope)" in source
+    assert "object_visibility" in source
     assert "student.class_id == normalized_class_id" in source
     assert "student.student_no.like" in source
     assert "student.real_name.like" in source
@@ -61,10 +61,20 @@ def test_t3_my_students_is_true_keyset_search_and_class_filter_cannot_bypass_sco
     assert '"filterHash"' in source
     assert '"asOf"' in source
 
-    # V3 does not inherit the old "classId means skip owner check" shape.
-    visibility_pos = source.index("or_(canonical_visibility, class_owner_visibility)")
+    visibility_pos = source.index("object_visibility")
     class_filter_pos = source.index("student.class_id == normalized_class_id")
     assert visibility_pos < class_filter_pos
+
+
+def test_t3_my_students_keeps_advisor_role_relation_exclusive():
+    source = inspect.getsource(student_svc.list_continuous)
+    assert "if is_advisor_scope(scope):" in source
+    assert "object_visibility = canonical_visibility" in source
+    assert "class_owner_visibility = _class_owner_predicate" in source
+    assert "object_visibility = or_(canonical_visibility, class_owner_visibility)" in source
+    advisor_pos = source.index("if is_advisor_scope(scope):")
+    class_owner_pos = source.index("class_owner_visibility = _class_owner_predicate")
+    assert advisor_pos < class_owner_pos
 
 
 def test_t3_my_students_preserves_direct_counselor_head_teacher_relation_in_sql():
