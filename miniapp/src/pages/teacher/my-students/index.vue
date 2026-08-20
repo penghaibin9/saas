@@ -142,9 +142,9 @@ export default {
 </script>
 
 <style scoped>
-.ms__search { margin-bottom: 12px; padding: 12px; border-radius: var(--radius-lg); background: var(--surface-card); }
+.ms__search { margin-bottom: 12px; padding: 12px; border-radius: var(--radius-lg); background: var(--bg-card); }
 .ms__search-row { display: flex; align-items: center; gap: 8px; }
-.ms__search-input { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-page); font-size: var(--font-size-sm); }
+.ms__search-input { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-page); font-size: var(--font-size-sm); }
 .ms__search-btn { flex-shrink: 0; margin: 0; }
 .ms__search-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .ms__clear { color: var(--teacher-700); }
