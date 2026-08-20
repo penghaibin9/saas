@@ -10,11 +10,6 @@ from app.core.response import success
 from app.modules.platform.routers.platform_bundle import require_platform_super_admin
 from app.services import audit_log
 from app.services import tenant_offboarding_service as offboarding
-from app.services.control_plane_p0_offboarding_guard import install as install_offboarding_guard
-
-# Install before handlers are invoked so BLOCKED/FAILED jobs remain one retryable
-# chain instead of allowing a second destructive workflow for the same tenant.
-install_offboarding_guard()
 
 router = APIRouter(prefix="/platform", tags=["16·平台总控（租户退租销毁）"])
 
