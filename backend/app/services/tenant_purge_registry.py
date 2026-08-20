@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 
-REGISTRY_VERSION = "2026-08-20.p0.2"
+REGISTRY_VERSION = "2026-08-20.p0.3"
 REVIEWED_ALEMBIC_HEAD = "20260820_ctrl_offboarding"
 
 PURGE = "PURGE"
@@ -23,19 +23,45 @@ RETAIN = "RETAIN"
 FILE_OBJECT = "FILE_OBJECT"
 UNKNOWN = "UNKNOWN"
 
+# Explicit exceptions are reviewed table-by-table.  Keep this list narrow:
+# broad families live below, while control-plane evidence / oddly named tenant
+# tables must be deliberately classified here so a future schema addition is
+# never made destructible just because its name happens to look familiar.
 _RETAIN_EXACT = {
     "t_security_audit_log",
     "t_audit_outbox",
-    "t_platform_order",
+    "t_order",  # commercial/billing evidence; actual model table is t_order
+    "t_incident_tenant",  # frozen incident impact snapshot
+    "t_change_impact",  # frozen change impact snapshot
+    "t_sod_violation",  # security-governance evidence, user row may later be purged
+    "t_emergency_access_session",  # break-glass evidence
+    "t_tenant_usage_snapshot",  # usage/capacity evidence
+    "t_tenant_fair_use_violation",  # fair-use enforcement evidence
     "t_tenant_offboarding_job",
     "t_tenant_tombstone",
 }
+
+_PURGE_EXACT = {
+    # Current schema exceptions whose names do not belong to the reviewed
+    # business/configuration prefixes below.
+    "t_menu_node",
+    "t_calendar_window",
+    "t_calendar_transition_event",
+    "t_custom_role_source",
+    "t_wildcard_retirement",
+    "t_sod_rule",
+    "t_tenant_storage_quota",
+    "t_tenant_fair_use_limit",
+    "t_provisioning_job",
+    "t_support_ticket",
+    "t_training_record",
+    "t_renewal_task",
+}
+
 _RETAIN_PREFIXES = (
     "t_access_decision_",
     "t_access_review_",
     "t_security_change_",
-    "t_tenant_meter",
-    "t_fair_use_",
 )
 _PURGE_PREFIXES = (
     "t_tenant_brand_", "t_tenant_capability_", "t_tenant_portal_",
@@ -75,8 +101,10 @@ def classify_table(table_name: str) -> RegistryItem:
         return RegistryItem(name, FILE_OBJECT, "physical bytes are deleted by file-storage governance after references")
     if name in _RETAIN_EXACT:
         return RegistryItem(name, RETAIN, "minimum compliance/control-plane evidence retained")
+    if name in _PURGE_EXACT:
+        return RegistryItem(name, PURGE, "reviewed tenant business/configuration data")
     if any(name.startswith(prefix) for prefix in _RETAIN_PREFIXES):
-        return RegistryItem(name, RETAIN, "security/usage evidence retained by policy")
+        return RegistryItem(name, RETAIN, "security evidence retained by policy")
     if any(name.startswith(prefix) for prefix in _PURGE_PREFIXES):
         return RegistryItem(name, PURGE, "tenant business/configuration data")
     return RegistryItem(name, UNKNOWN, "unreviewed tenant-scoped table")
