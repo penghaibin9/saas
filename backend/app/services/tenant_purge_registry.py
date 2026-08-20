@@ -1,14 +1,22 @@
 """Fail-closed registry for tenant-scoped physical purge.
 
 Every table carrying a ``tenant_id`` column must be classified before a tenant
-can enter PURGE_READY.  The registry uses reviewed domain prefixes plus explicit
-retention/special cases; an unfamiliar prefix is UNKNOWN and blocks destruction.
+can enter PURGE_READY.  In production/staging the registry is additionally
+bound to one explicitly reviewed Alembic HEAD: any later schema migration makes
+physical destruction fail closed until this file is reviewed and the recorded
+head/version are deliberately advanced.  This prevents a newly-added table from
+silently inheriting a broad family prefix and becoming destructible by accident.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-REGISTRY_VERSION = "2026-08-20.p0.1"
+from sqlalchemy import text
+
+from app.core.config import settings
+
+REGISTRY_VERSION = "2026-08-20.p0.2"
+REVIEWED_ALEMBIC_HEAD = "20260820_ctrl_offboarding"
 
 PURGE = "PURGE"
 RETAIN = "RETAIN"
@@ -55,6 +63,12 @@ class RegistryItem:
     reason: str
 
 
+def _strict_env() -> bool:
+    app_env = str(getattr(settings, "APP_ENV", "") or "").strip().lower()
+    deployment_mode = str(getattr(settings, "DEPLOYMENT_MODE", "") or "").strip().lower()
+    return app_env in {"production", "staging"} or deployment_mode in {"production", "staging"}
+
+
 def classify_table(table_name: str) -> RegistryItem:
     name = str(table_name)
     if name == "t_file_object":
@@ -79,6 +93,7 @@ def inventory() -> dict:
     unknown = [item.table_name for item in items if item.classification == UNKNOWN]
     return {
         "registryVersion": REGISTRY_VERSION,
+        "reviewedAlembicHead": REVIEWED_ALEMBIC_HEAD,
         "items": [item.__dict__ for item in items],
         "unknownTables": unknown,
         "complete": not unknown,
@@ -86,6 +101,44 @@ def inventory() -> dict:
         "retainTableCount": sum(item.classification == RETAIN for item in items),
         "fileObjectTableCount": sum(item.classification == FILE_OBJECT for item in items),
     }
+
+
+def assert_schema_head_reviewed(actual_heads: list[str] | tuple[str, ...] | set[str]) -> None:
+    """Pure fail-closed schema review guard, kept separately testable."""
+    from app.core.exceptions import AppException
+
+    normalized = sorted({str(value).strip() for value in actual_heads if str(value).strip()})
+    if normalized != [REVIEWED_ALEMBIC_HEAD]:
+        raise AppException(
+            "TENANT_PURGE_SCHEMA_NOT_REVIEWED",
+            "数据库迁移头与租户销毁审计版本不一致，拒绝物理销毁",
+            http_status=409,
+            details={
+                "actualHeads": normalized,
+                "reviewedAlembicHead": REVIEWED_ALEMBIC_HEAD,
+                "registryVersion": REGISTRY_VERSION,
+            },
+        )
+
+
+def _database_alembic_heads() -> list[str]:
+    from app.db.session import get_sessionmaker
+
+    db = get_sessionmaker()()
+    try:
+        rows = db.execute(text("SELECT version_num FROM alembic_version ORDER BY version_num")).all()
+        return [str(row[0]) for row in rows if row and row[0]]
+    except Exception as exc:  # noqa: BLE001
+        from app.core.exceptions import AppException
+
+        raise AppException(
+            "TENANT_PURGE_SCHEMA_UNVERIFIABLE",
+            "无法验证数据库迁移头，拒绝物理销毁",
+            http_status=503,
+            details={"reviewedAlembicHead": REVIEWED_ALEMBIC_HEAD, "registryVersion": REGISTRY_VERSION},
+        ) from exc
+    finally:
+        db.close()
 
 
 def assert_registry_complete() -> dict:
@@ -99,4 +152,9 @@ def assert_registry_complete() -> dict:
             http_status=409,
             details={"unknownTables": result["unknownTables"], "registryVersion": REGISTRY_VERSION},
         )
+    # Production/staging destruction is tied to a deliberately reviewed schema
+    # revision.  Any future migration therefore blocks purge by default even if
+    # its table name happens to match a broad historical family prefix.
+    if _strict_env():
+        assert_schema_head_reviewed(_database_alembic_heads())
     return result
