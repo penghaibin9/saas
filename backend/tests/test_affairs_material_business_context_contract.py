@@ -173,7 +173,7 @@ def test_highly_sensitive_biz_leaks_no_detail_through_projection(client, db_mode
 
 
 def test_projection_is_batched_not_per_row(client, db_mode):
-    """N+1 合同：把材料条数从 3 增到 30，查询次数不得随行数线性增长。"""
+    """N+1 合同：页大小扩大时，查询次数只能有固定开销，不能随材料行数线性增长。"""
     from sqlalchemy import event
     from app.db.session import get_engine, get_sessionmaker
     from app.models.affairs_operations import AffairsMaterialRequirement
@@ -202,11 +202,18 @@ def test_projection_is_batched_not_per_row(client, db_mode):
     engine = get_engine()
     event.listen(engine, "before_cursor_execute", _count)
     try:
-        data = _center(client, hdr, page=1, pageSize=50)
+        small = _center(client, hdr, page=1, pageSize=5)
+        small_selects = counter["n"]
+        counter["n"] = 0
+        large = _center(client, hdr, page=1, pageSize=50)
+        large_selects = counter["n"]
     finally:
         event.remove(engine, "before_cursor_execute", _count)
 
-    assert len(data["items"]) >= 30, len(data["items"])
-    # 逐行 db.get 会让查询数随 30 行线性增长；批量投影应远低于此。
-    assert counter["n"] < 40, (
-        f"材料列表 30 行触发了 {counter['n']} 次 SQL，疑似逐行查询业务记录/学生")
+    assert len(small["items"]) == 5, len(small["items"])
+    assert len(large["items"]) >= 30, len(large["items"])
+    # 批量 projection 可因较大页多做少量固定查询，但不能按新增的 25+ 行逐条放大。
+    assert large_selects <= small_selects + 4, (
+        "材料列表从 5 行扩到 30+ 行时 SQL 从 "
+        f"{small_selects} 增到 {large_selects}，疑似逐行查询业务记录/学生"
+    )

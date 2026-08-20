@@ -71,45 +71,97 @@ def test_non_student_cannot_submit_student_evaluation():
     assert exc.value.http_status == 403
 
 
+class _LockQuery:
+    def __init__(self, result):
+        self.result = result
+
+    def join(self, *_args, **_kwargs):
+        return self
+
+    def filter(self, *_args):
+        return self
+
+    def group_by(self, *_args):
+        return self
+
+    def order_by(self, *_args):
+        return self
+
+    def populate_existing(self):
+        return self
+
+    def with_for_update(self, *_args, **_kwargs):
+        return self
+
+    def first(self):
+        return self.result
+
+
+class _LockDb:
+    def __init__(self, results):
+        self.results = list(results)
+
+    def query(self, *_args):
+        return _LockQuery(self.results.pop(0))
+
+
+def _roster_projection_row(*, source_type="SELECTION_LOCK", source_id=55):
+    return SimpleNamespace(
+        teaching_class_id=20,
+        teaching_task_id=4,
+        term_id=7,
+        roster_version_id=10,
+        roster_version_no=3,
+        roster_source_type=source_type,
+        roster_source_id=source_id,
+        roster_hash="hash-10",
+        member_count=2,
+    )
+
+
 def test_student_must_belong_to_current_official_roster(monkeypatch):
     from app.core.exceptions import AppException
     from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
-    from app.modules.academic_affairs.services import academic_affairs_roster_consumer_service as roster_service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
     from app.services import mobile_student_identity_facade
 
+    profile = SimpleNamespace(id=7)
+    roster = {
+        "teachingClassId": "20",
+        "rosterVersionId": "10",
+        "memberCount": 2,
+    }
+    task = SimpleNamespace(id=3, teaching_task_id=4)
     monkeypatch.setattr(service, "_tid", lambda: 1)
-    monkeypatch.setattr(
-        mobile_student_identity_facade,
-        "resolve_student",
-        lambda _db, _user: SimpleNamespace(id=7),
-    )
-    monkeypatch.setattr(
-        roster_service,
-        "resolve_versioned_roster",
-        lambda _db, _task_id: {"studentIds": [8, 9], "memberCount": 2},
-    )
+    monkeypatch.setattr(mobile_student_identity_facade, "resolve_student", lambda _db, _user: profile)
+    monkeypatch.setattr(roster_guard, "resolve_submit_roster", lambda _db, _task_id: roster)
 
+    resolved_profile, resolved_roster, _token = service._student_submission_context(
+        object(),
+        {"userType": "STUDENT", "currentRoleCode": "STUDENT"},
+        task,
+    )
+    assert resolved_profile is profile
+    assert resolved_roster is roster
+
+    db = _LockDb([SimpleNamespace(id=20), None])
     with pytest.raises(AppException) as exc:
-        service._student_submission_context(
-            object(),
-            {"userType": "STUDENT", "currentRoleCode": "STUDENT"},
-            SimpleNamespace(id=3, teaching_task_id=4),
-        )
+        service._lock_student_roster_member(db, task, profile, roster)
 
     assert exc.value.http_status == 403
-    assert "不在该课程正式教学班名单" in exc.value.message
+    assert "不在该课程当前正式教学班名单" in exc.value.message
 
 
 def test_valid_student_gets_only_pseudonymous_submission_context(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
-    from app.modules.academic_affairs.services import academic_affairs_roster_consumer_service as roster_service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
     from app.services import mobile_student_identity_facade
 
     profile = SimpleNamespace(id=7, student_no="S0007", real_name="张三")
-    roster = {"studentIds": [7, 8], "memberCount": 2, "rosterVersionId": "10"}
+    roster = {"teachingClassId": "20", "memberCount": 2, "rosterVersionId": "10"}
     monkeypatch.setattr(service, "_tid", lambda: 1)
     monkeypatch.setattr(mobile_student_identity_facade, "resolve_student", lambda _db, _user: profile)
-    monkeypatch.setattr(roster_service, "resolve_versioned_roster", lambda _db, _task_id: roster)
+    monkeypatch.setattr(roster_guard, "resolve_submit_roster", lambda _db, _task_id: roster)
 
     resolved_profile, resolved_roster, token = service._student_submission_context(
         object(),
@@ -124,7 +176,127 @@ def test_valid_student_gets_only_pseudonymous_submission_context(monkeypatch):
     assert profile.real_name not in token
 
 
-def test_student_audit_never_uses_current_account_operator():
+def test_stable_student_id_uses_id_only_identity_projection(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    db = _LockDb([(7,)])
+
+    profile = service._resolve_student(
+        db,
+        {"userType": "STUDENT", "currentRoleCode": "STUDENT", "studentId": "7"},
+    )
+
+    assert profile.id == 7
+    assert not hasattr(profile, "student_no")
+
+
+def test_submit_roster_guard_rejects_latest_selection_before_lock(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    db = _LockDb([_roster_projection_row(), (56, "OPEN", 1)])
+
+    with pytest.raises(AppException) as exc:
+        roster_guard.resolve_submit_roster(db, 4)
+
+    assert exc.value.code == "DATA_CONFLICT"
+    assert "尚未锁定正式名单" in exc.value.message
+
+
+def test_submit_roster_guard_rejects_stale_selection_projection(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    db = _LockDb([_roster_projection_row(source_id=55), (56, "LOCKED", 1)])
+
+    with pytest.raises(AppException) as exc:
+        roster_guard.resolve_submit_roster(db, 4)
+
+    assert exc.value.code == "DATA_CONFLICT"
+    assert "名单版本与最新已锁定选课批次不一致" in exc.value.message
+
+
+def test_submit_roster_guard_accepts_matching_locked_selection_projection(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    db = _LockDb([_roster_projection_row(source_id=55), (55, "LOCKED", 1)])
+
+    roster = roster_guard.resolve_submit_roster(db, 4)
+
+    assert roster["teachingClassId"] == "20"
+    assert roster["rosterVersionId"] == "10"
+    assert roster["memberCount"] == 2
+    assert roster["batchIds"] == ["55"]
+
+
+def test_share_batch_hotpath_still_rejects_archived_term(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    batch = SimpleNamespace(id=91, term_id=7)
+    db = _LockDb([(batch, "ARCHIVED")])
+
+    with pytest.raises(AppException) as exc:
+        service._base._writable_batch(db, 91, lock="share")
+
+    assert exc.value.code == "TERM_ARCHIVED"
+    assert "已归档封存" in exc.value.message
+
+
+def test_student_batch_projection_still_rejects_archived_term(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_public_service as service
+    from app.modules.academic_affairs.services import academic_affairs_evaluation_submit_roster_guard as roster_guard
+
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    db = _LockDb([SimpleNamespace(
+        batch_id=91,
+        term_id=7,
+        anonymous=True,
+        status="OPEN",
+        term_status="ARCHIVED",
+    )])
+
+    with pytest.raises(AppException) as exc:
+        roster_guard._share_batch_projection(db, 91)
+
+    assert exc.value.code == "TERM_ARCHIVED"
+    assert "已归档封存" in exc.value.message
+
+
+def test_student_submit_guard_uses_minimal_projection_and_canonical_fallbacks():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    source = (
+        root / "app/modules/academic_affairs/services/academic_affairs_evaluation_submit_roster_guard.py"
+    ).read_text(encoding="utf-8")
+
+    assert "resolve_versioned_roster" not in source
+    assert "ensure_teaching_class_for_task" not in source
+    assert "studentIds" not in source
+    assert "AaTeachingClassRosterVersion.id.label" in source
+    assert "AaSelectionBatch.id.desc()" in source
+    assert "SELECTION_LOCK" in source
+    assert "db.query(AaTeachingClass.id)" in source
+    assert "db.query(AaTeachingClassMember.id)" in source
+    assert "StudentProfile.id" in source
+    assert 'AaEvaluationTask.id.label("task_id")' in source
+    assert "db.query(AaEvaluationRecord.id)" in source
+    assert 'AaEvaluationBatch.id.label("batch_id")' in source
+    assert "_original_submit_evaluation" in source
+    assert "_canonical_resolve_student" in source
+
+
+def test_student_audit_and_lock_contract_remain_fail_closed():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
@@ -134,7 +306,15 @@ def test_student_audit_never_uses_current_account_operator():
 
     assert 'operator="ANONYMOUS_STUDENT"' in source
     assert 'detail="学生匿名评教提交"' in source
-    assert "query.with_for_update()" in source
     assert "answers_json.like(_token_pattern(" in source
+    assert "_lock_student_roster_member" in source
+    assert "AaTeachingClassMember" in source
+    assert ".with_for_update(read=True)" in source
+    assert '"isolation_level": "READ COMMITTED"' in source
+    assert "_active_student_submission_count" not in source
+    assert '"submittedCount": None' in source
+    assert "_increment_student_submission_count" not in source
+    # 非学生 SELF/PEER/SUPERVISOR 仍保留独占 Task 行锁守本人+幂等。
+    assert ".populate_existing().with_for_update().first()" in source
     assert "settings.JWT_SECRET.encode" not in source
     assert "settings.FIELD_ENCRYPTION_KEY" in source

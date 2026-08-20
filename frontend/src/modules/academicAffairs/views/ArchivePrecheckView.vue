@@ -27,7 +27,7 @@
 
       <aside class="aapc-decision">
         <span>当前结论</span>
-        <strong>{{ overallResult === 'PASS' ? '可以进入归档批次' : '必须先处理阻断项' }}</strong>
+        <strong>{{ overallResult === 'PASS' ? '可以进入归档批次' : '必须先处理阻断 / 待治理项' }}</strong>
         <div class="aapc-next">
           <small>建议下一动作</small>
           <b>{{ nextActionText }}</b>
@@ -57,9 +57,9 @@
           <small>当前无需处理</small>
         </article>
         <article :class="{ 'is-risk': blockedDomains > 0 }">
-          <span>阻断域</span>
+          <span>阻断 / 待治理域</span>
           <strong>{{ blockedDomains }}</strong>
-          <small>{{ blockedDomains ? '按阻断数量优先处理' : '当前无阻断域' }}</small>
+          <small>{{ blockedDomains ? 'BLOCKED 与 UNKNOWN 均不得进入正式归档' : '当前无阻断或待治理域' }}</small>
         </article>
         <article :class="{ 'is-risk': blockingCount > 0 }">
           <span>阻断项</span>
@@ -72,10 +72,10 @@
         <header class="aapc-section-head">
           <div>
             <span class="aapc-eyebrow">优先处理</span>
-            <h3>归档阻断域</h3>
-            <p>按阻断项数量从高到低排列；先处理最影响归档闭环的业务域，再重新检查。</p>
+            <h3>归档阻断 / 待治理域</h3>
+            <p>BLOCKED 是已知业务阻断，UNKNOWN 是证据不足待治理；两者都不得绿色放行，处理后再重新检查。</p>
           </div>
-          <span class="aapc-count is-danger">{{ blockedDomainRows.length }} 个阻断域</span>
+          <span class="aapc-count is-danger">{{ blockedDomainRows.length }} 个阻断 / 待治理域</span>
         </header>
         <div class="aapc-grid">
           <article v-for="d in blockedDomainRows" :key="d.domain" class="aapc-card is-missing">
@@ -116,14 +116,14 @@
       <section v-if="passedDomainRows.length" class="aapc-section">
         <header class="aapc-section-head">
           <div>
-            <span class="aapc-eyebrow">完成证据</span>
-            <h3>已通过业务域</h3>
-            <p>这些域已满足当前归档语义门禁，保留业务证据供复核，不与阻断项混排。</p>
+            <span class="aapc-eyebrow">非阻断证据</span>
+            <h3>已满足门禁的业务域</h3>
+            <p>PASS 表示已证明完成；NOT_APPLICABLE 表示本学期明确不适用。两者均非阻断，但不得混成同一个“通过”。</p>
           </div>
-          <span class="aapc-count">{{ passedDomainRows.length }} 个通过域</span>
+          <span class="aapc-count">{{ passedDomainRows.length }} 个非阻断域</span>
         </header>
         <div class="aapc-grid">
-          <article v-for="d in passedDomainRows" :key="d.domain" class="aapc-card is-ok">
+          <article v-for="d in passedDomainRows" :key="d.domain" :class="['aapc-card', d.result === 'NOT_APPLICABLE' ? 'is-na' : 'is-ok']">
             <header class="aapc-card-head">
               <div>
                 <span class="aapc-card-title">{{ d.domainLabel }}</span>
@@ -181,7 +181,7 @@ const FALLBACK_ROUTE = {
   MAKEUP: '/admin/academic-affairs/makeup',
   EVALUATION: '/admin/academic-affairs/evaluation',
   TEXTBOOK: '/admin/academic-affairs/textbooks',
-  GRADUATION: '/admin/academic-affairs/graduation-audit'
+  GRADUATION: '/admin/academic-affairs/graduation/audit-console'
 }
 
 export default {
@@ -206,16 +206,16 @@ export default {
   },
   computed: {
     passedDomains() {
-      return Math.max(this.domains.length - this.blockedDomains, 0)
+      return this.domains.filter((domain) => domain.result === 'PASS').length
     },
     blockedDomainRows() {
       return this.domains
-        .filter((domain) => domain.result !== 'PASS')
+        .filter((domain) => ['BLOCKED', 'UNKNOWN'].includes(domain.result))
         .slice()
         .sort((a, b) => Number(b.blockingCount || 0) - Number(a.blockingCount || 0))
     },
     passedDomainRows() {
-      return this.domains.filter((domain) => domain.result === 'PASS')
+      return this.domains.filter((domain) => ['PASS', 'NOT_APPLICABLE'].includes(domain.result))
     },
     firstBlockingDomain() {
       return this.blockedDomainRows[0] || null
@@ -224,7 +224,7 @@ export default {
       if (this.overallResult === 'PASS') {
         return `共检查 ${this.domains.length} 个业务域，当前全部满足归档语义门禁。进入归档批次后仍按正式归档状态机执行。`
       }
-      return `仍有 ${this.blockedDomains} 个业务域、${this.blockingCount} 个阻断项需要处理；本页展示系统当前检查结果，不写入归档事实。`
+      return `仍有 ${this.blockedDomains} 个阻断 / 待治理业务域、${this.blockingCount} 个阻断项需要处理；UNKNOWN 不会被当成 PASS，本页不写入归档事实。`
     },
     nextActionText() {
       if (!this.firstBlockingDomain) return '进入归档批次继续正式归档流程'
@@ -251,9 +251,11 @@ export default {
         this.domains = Array.isArray(data.domains) ? data.domains : []
         this.scopeNote = data.scopeNote || ''
         this.termCode = data.termCode || ''
-        this.overallResult = data.result || (this.domains.every((d) => d.result === 'PASS') ? 'PASS' : 'BLOCKED')
-        this.blockingCount = Number(data.blockingCount || 0)
-        this.blockedDomains = Number(data.blockedDomains || this.domains.filter((d) => d.result !== 'PASS').length)
+        const states = new Set(this.domains.map((d) => d.result))
+        this.overallResult = data.result || (states.has('BLOCKED') ? 'BLOCKED' : states.has('UNKNOWN') ? 'UNKNOWN' : 'PASS')
+        this.blockingCount = Number(data.blockingCount ?? 0)
+        const fallbackBlockedDomains = this.domains.filter((d) => ['BLOCKED', 'UNKNOWN'].includes(d.result)).length
+        this.blockedDomains = Number(data.blockedDomains ?? fallbackBlockedDomains)
         if (!this.termId && data.termId) this.termId = data.termId
       } catch (err) {
         this.domains = []
@@ -262,8 +264,12 @@ export default {
         this.loading = false
       }
     },
-    tagType(domain) { return domain.result === 'PASS' ? 'success' : 'danger' },
-    tagLabel(domain) { return domain.result === 'PASS' ? '通过' : '阻断' },
+    tagType(domain) {
+      return { PASS: 'success', BLOCKED: 'danger', UNKNOWN: 'warning', NOT_APPLICABLE: 'info' }[domain.result] || 'warning'
+    },
+    tagLabel(domain) {
+      return { PASS: '通过', BLOCKED: '阻断', UNKNOWN: '待治理', NOT_APPLICABLE: '不适用' }[domain.result] || '待确认'
+    },
     evidencePreview(evidence) {
       return (evidence || []).slice(0, 5).map((item) => {
         if (typeof item === 'string') return safeBusinessMessage(item, '已记录一条待复核证据')
@@ -304,100 +310,104 @@ export default {
   background:
     radial-gradient(circle at 90% 12%, rgba(34, 197, 94, .11), transparent 30%),
     linear-gradient(135deg, #fff 0%, #fbfffc 62%, #f0fbf3 100%);
-  box-shadow: 0 20px 48px -40px rgba(22, 163, 74, .4);
+  box-shadow: 0 20px 48px -40px rgba(22, 101, 52, .36);
 }
-.aapc-eyebrow { color: #2b69c9; font-size: 10.5px; font-weight: 750; letter-spacing: .08em; }
-.aapc-hero__main h2 { margin: 8px 0 7px; color: #17233a; font-size: 24px; letter-spacing: -.02em; }
-.aapc-hero__main > p { max-width: 760px; margin: 0; color: #64748b; font-size: 12.5px; line-height: 1.75; }
-.aapc-toolbar { display: flex; align-items: center; gap: 16px; margin-top: 15px; }
-.aapc-scope-note { margin-top: 10px; color: #6f7e91; font-size: 10.8px; line-height: 1.6; }
+.aapc-hero__main h2 { margin: 8px 0 6px; color: #1f2937; font-size: 23px; }
+.aapc-hero__main > p { max-width: 760px; margin: 0; color: #64748b; font-size: 12.5px; line-height: 1.7; }
+.aapc-eyebrow { color: #b45309; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; }
+.aapc-hero.is-pass .aapc-eyebrow { color: #237a43; }
+.aapc-toolbar { width: min(420px, 100%); margin-top: 16px; }
+.aapc-scope-note { margin-top: 10px; color: #8b6a24; font-size: 10px; line-height: 1.5; }
 .aapc-decision {
   display: grid;
   align-content: center;
   gap: 8px;
   padding: 18px;
-  border: 1px solid rgba(225, 166, 166, .65);
+  border: 1px solid #f1c7c7;
   border-radius: 15px;
-  background: rgba(255,255,255,.82);
+  background: rgba(255,255,255,.84);
 }
-.aapc-hero.is-pass .aapc-decision { border-color: #cae8d2; }
-.aapc-decision > span, .aapc-next small { color: #8793a5; font-size: 10px; }
-.aapc-decision > strong { color: #ad3838; font-size: 17px; }
-.aapc-hero.is-pass .aapc-decision > strong { color: #18794e; }
-.aapc-next { display: grid; gap: 3px; padding-top: 9px; border-top: 1px solid #e8edf4; }
-.aapc-next b { color: #27364c; font-size: 11px; line-height: 1.55; }
+.aapc-hero.is-pass .aapc-decision { border-color: #c7e5ce; }
+.aapc-decision > span,
+.aapc-next small { color: #8b96a8; font-size: 10px; }
+.aapc-decision > strong { color: #b42318; font-size: 16px; line-height: 1.45; }
+.aapc-hero.is-pass .aapc-decision > strong { color: #237a43; }
+.aapc-next { display: grid; gap: 4px; padding-top: 9px; border-top: 1px solid #edf0f4; }
+.aapc-next b { color: #354154; font-size: 11px; line-height: 1.5; }
 
 .aapc-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0,1fr));
-  gap: 10px;
   margin-bottom: 14px;
-}
-.aapc-metrics article {
-  padding: 15px 16px;
-  border: 1px solid #e3eaf3;
+  overflow: hidden;
+  border: 1px solid #e3e9f0;
   border-radius: 14px;
   background: #fff;
-  box-shadow: 0 12px 26px -26px rgba(15,23,42,.55);
 }
+.aapc-metrics article { padding: 14px 18px; border-right: 1px solid #edf0f4; }
+.aapc-metrics article:last-child { border-right: 0; }
 .aapc-metrics span, .aapc-metrics strong, .aapc-metrics small { display: block; }
-.aapc-metrics span { color: #78879a; font-size: 10.5px; }
-.aapc-metrics strong { margin-top: 5px; color: #172033; font-size: 22px; font-variant-numeric: tabular-nums; }
-.aapc-metrics small { margin-top: 4px; color: #97a2b2; font-size: 9.8px; line-height: 1.4; }
-.aapc-metrics article.is-pass strong { color: #18794e; }
-.aapc-metrics article.is-risk { border-color: #efc7c7; background: #fffafa; }
-.aapc-metrics article.is-risk strong { color: #b33b3b; }
+.aapc-metrics span { color: #7c8798; font-size: 10px; }
+.aapc-metrics strong { margin-top: 4px; color: #253044; font-size: 22px; font-variant-numeric: tabular-nums; }
+.aapc-metrics small { margin-top: 3px; color: #98a3b3; font-size: 9px; line-height: 1.4; }
+.aapc-metrics article.is-pass strong { color: #237a43; }
+.aapc-metrics article.is-risk { background: #fff9f5; }
+.aapc-metrics article.is-risk strong { color: #b42318; }
 
 .aapc-section {
-  margin-top: 14px;
-  overflow: hidden;
-  border: 1px solid #e3eaf4;
-  border-radius: 18px;
+  margin-bottom: 14px;
+  padding: 18px;
+  border: 1px solid #e5eaf0;
+  border-radius: 15px;
   background: #fff;
-  box-shadow: 0 14px 34px -30px rgba(15,23,42,.38);
 }
-.aapc-section.is-blocker { border-color: #efc7c7; }
-.aapc-section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 18px 20px;
-  border-bottom: 1px solid #edf1f7;
-  background: linear-gradient(180deg,#fff,#fcfdff);
+.aapc-section.is-blocker { border-color: #efcece; background: #fffdfd; }
+.aapc-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.aapc-section-head h3 { margin: 4px 0 3px; color: #263349; font-size: 17px; }
+.aapc-section-head p { margin: 0; color: #7a8698; font-size: 10.5px; line-height: 1.55; }
+.aapc-count { flex: none; color: #557086; font-size: 11px; }
+.aapc-count.is-danger { color: #b42318; }
+.aapc-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+.aapc-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e4e9ef;
+  border-radius: 12px;
+  background: #fbfcfd;
 }
-.aapc-section-head h3 { margin: 4px 0 0; color: #172033; font-size: 16px; }
-.aapc-section-head p { margin: 5px 0 0; color: #718096; font-size: 11px; line-height: 1.6; }
-.aapc-count { flex-shrink: 0; padding: 5px 9px; border-radius: 999px; background: #eef5ff; color: #2468d8; font-size: 10.5px; font-weight: 700; }
-.aapc-count.is-danger { background: #fff0f0; color: #b53d3d; }
-
-.aapc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; padding: 14px; }
-.aapc-card { display: flex; flex-direction: column; min-height: 245px; padding: 16px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 12px; background: #fff; }
-.aapc-card.is-missing { border-color: #efb0b0; background: #fffdfd; }
-.aapc-card.is-ok { border-color: #b9d9c1; }
-.aapc-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-.aapc-card-head > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.aapc-card-title { font-weight: 650; }
-.aapc-card-head small { overflow: hidden; color: #64748b; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.aapc-card-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 14px 0; }
-.aapc-card-metrics div { padding: 9px 10px; border-radius: 8px; background: #f8fafc; }
+.aapc-card.is-missing { border-color: #efcccc; background: #fffafa; }
+.aapc-card.is-ok { border-color: #d7e7dc; background: #fbfefc; }
+.aapc-card.is-na { border-color: #d8e2ef; background: #f8fbff; }
+.aapc-card.is-na .aapc-card-title { color: #405a78; }
+.aapc-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.aapc-card-title { display: block; color: #29364a; font-size: 13px; font-weight: 650; }
+.aapc-card-head small { color: #9aa4b2; font-size: 9px; }
+.aapc-card-metrics { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin: 12px 0 10px; }
+.aapc-card-metrics > div { padding: 8px 10px; border-radius: 8px; background: #f3f6f9; }
 .aapc-card-metrics b, .aapc-card-metrics span { display: block; }
-.aapc-card-metrics b { font-size: 19px; }
-.aapc-card-metrics span { color: #64748b; font-size: 11px; }
-.aapc-card-metrics .danger b { color: #c24141; }
-.aapc-card-note { min-height: 38px; margin: 0; color: #475569; font-size: 12px; line-height: 1.6; }
-.aapc-evidence { margin-top: 12px; color: #475569; font-size: 11px; }
-.aapc-evidence summary { cursor: pointer; }
-.aapc-evidence ul { max-height: 170px; overflow: auto; margin: 8px 0 0; padding: 9px 9px 9px 28px; border-radius: 8px; background: #f8fafc; color: #475569; line-height: 1.7; }
-.aapc-card-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: auto; padding-top: 14px; color: #64748b; font-size: 11px; }
+.aapc-card-metrics b { color: #334155; font-size: 15px; }
+.aapc-card-metrics span { margin-top: 2px; color: #8a95a6; font-size: 9px; }
+.aapc-card-metrics .danger b { color: #b42318; }
+.aapc-card-note { min-height: 34px; margin: 0 0 9px; color: #667085; font-size: 10.5px; line-height: 1.6; }
+.aapc-evidence { margin-top: 7px; color: #697586; font-size: 10px; }
+.aapc-evidence summary { cursor: pointer; color: #475569; }
+.aapc-evidence ul { margin: 6px 0 0; padding-left: 18px; }
+.aapc-evidence li { margin: 3px 0; line-height: 1.55; }
+.aapc-evidence code { display: block; margin-top: 5px; overflow-wrap: anywhere; color: #5c6675; font-size: 9px; }
+.aapc-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 11px; padding-top: 10px; border-top: 1px solid #edf0f3; color: #9aa3af; font-size: 9.5px; }
 
 @media (max-width: 900px) {
-  .aapc-hero { grid-template-columns: 1fr; }
+  .aapc-hero { grid-template-columns: 1fr; padding: 20px; }
   .aapc-metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
 @media (max-width: 600px) {
-  .aapc-hero { padding: 20px; }
+  .aapc-hero { padding: 17px; }
+  .aapc-hero__main h2 { font-size: 19px; }
   .aapc-metrics { grid-template-columns: 1fr; }
-  .aapc-section-head { flex-direction: column; }
+  .aapc-metrics article { border-right: 0; border-bottom: 1px solid #edf0f4; }
+  .aapc-metrics article:last-child { border-bottom: 0; }
+  .aapc-grid { grid-template-columns: 1fr; }
+  .aapc-section { padding: 14px; }
+  .aapc-section-head { align-items: flex-start; flex-direction: column; gap: 6px; }
 }
 </style>

@@ -1,7 +1,7 @@
 """毕业设计移动端高风险精确路由与四端 DTO 安装。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.exceptions import no_permission
 from app.core.response import success
@@ -20,13 +20,24 @@ def _student(user: dict) -> dict:
     return user
 
 
+def _with_batch(user: dict, batch_id: int | None) -> dict:
+    scoped = _student(user)
+    if batch_id in (None, ""):
+        return scoped
+    scoped = dict(scoped)
+    scoped["graduationBatchId"] = str(batch_id)
+    return scoped
+
+
 @router.post("/taskbook/confirm", summary="任务书·本人确认（内容哈希+版本证据）")
 def graduation_taskbook_confirm_evidence(
-    body: dict = Body(default={}), user=Depends(get_current_user),
+    body: dict = Body(default={}),
+    batch_id: int | None = Query(default=None, alias="batchId"),
+    user=Depends(get_current_user),
 ):
     payload = dict(body or {})
     return success(confirm_with_evidence(
-        _student(user),
+        _with_batch(user, batch_id),
         expected_version=payload.get("taskbookVersion") or payload.get("expectedVersion"),
         confirm=True,
     ), message="已确认")

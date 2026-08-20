@@ -16,6 +16,8 @@ MIN_RESTORE_TABLES="${MIN_RESTORE_TABLES:-2}"
 MIN_RESTORE_INDEXES="${MIN_RESTORE_INDEXES:-1}"
 MIN_RESTORE_FOREIGN_KEYS="${MIN_RESTORE_FOREIGN_KEYS:-0}"
 MIN_ACTIVE_TENANTS="${MIN_ACTIVE_TENANTS:-0}"
+MIN_RESTORED_LOCAL_FILE_OBJECTS="${MIN_RESTORED_LOCAL_FILE_OBJECTS:-0}"
+MIN_RESTORED_HASHED_FILE_OBJECTS="${MIN_RESTORED_HASHED_FILE_OBJECTS:-0}"
 RESTORE_EVIDENCE_FILE="${RESTORE_EVIDENCE_FILE:-}"
 
 case "$DB_HOST" in
@@ -30,6 +32,17 @@ case "${DEPLOYMENT_MODE:-local}" in
 esac
 if [[ ! "$drill_db" =~ ^[A-Za-z0-9_]+(_drill|_restore_test|_e2e)$ ]]; then
   echo "restore drill database must end with _drill, _restore_test, or _e2e" >&2
+  exit 2
+fi
+for numeric_name in MIN_RESTORED_LOCAL_FILE_OBJECTS MIN_RESTORED_HASHED_FILE_OBJECTS; do
+  numeric_value="${!numeric_name}"
+  if [[ ! "$numeric_value" =~ ^[0-9]+$ ]]; then
+    echo "$numeric_name must be a non-negative integer" >&2
+    exit 2
+  fi
+done
+if [ "$MIN_RESTORED_HASHED_FILE_OBJECTS" -gt "$MIN_RESTORED_LOCAL_FILE_OBJECTS" ]; then
+  echo "MIN_RESTORED_HASHED_FILE_OBJECTS cannot exceed MIN_RESTORED_LOCAL_FILE_OBJECTS" >&2
   exit 2
 fi
 
@@ -94,29 +107,43 @@ verify_object "$db_name" "$db_hash"
 gzip -t "$db_file"
 
 upload_entry_count=0
+upload_archive_root=""
+upload_restored_root=""
 if [ -n "$upload_name" ]; then
   verify_object "$upload_name" "$upload_hash"
-  python3 - "$backup_dir/$upload_name" <<'PY'
+  upload_archive_root="$(python3 - "$backup_dir/$upload_name" <<'PY'
 import sys
 import tarfile
 from pathlib import PurePosixPath
 
 archive_path = sys.argv[1]
+roots = set()
 with tarfile.open(archive_path, "r:gz") as archive:
     members = archive.getmembers()
     if not members:
         raise SystemExit("upload archive is empty")
     for member in members:
         path = PurePosixPath(member.name)
-        if path.is_absolute() or ".." in path.parts:
+        parts = tuple(part for part in path.parts if part not in {"", "."})
+        if not parts or path.is_absolute() or ".." in parts:
             raise SystemExit(f"unsafe upload archive member path: {member.name!r}")
         if not (member.isfile() or member.isdir()):
             raise SystemExit(f"unsafe upload archive member type: {member.name!r}")
+        roots.add(parts[0])
+if len(roots) != 1:
+    raise SystemExit(f"upload archive must contain exactly one top-level root, got {sorted(roots)!r}")
+print(next(iter(roots)))
 PY
+)"
   upload_restore_dir="$(mktemp -d "${TMPDIR:-/tmp}/school-lifecycle-upload-restore.XXXXXX")"
   trap 'rm -rf -- "$upload_restore_dir"' EXIT
   tar --no-same-owner --no-same-permissions -xzf "$backup_dir/$upload_name" -C "$upload_restore_dir"
-  upload_entry_count="$(find "$upload_restore_dir" -mindepth 1 -print | wc -l | tr -d ' ')"
+  upload_restored_root="$upload_restore_dir/$upload_archive_root"
+  if [ ! -d "$upload_restored_root" ]; then
+    echo "upload archive root was not restored: $upload_archive_root" >&2
+    exit 1
+  fi
+  upload_entry_count="$(find "$upload_restored_root" -mindepth 1 -print | wc -l | tr -d ' ')"
   if [ "$upload_entry_count" -lt 1 ]; then
     echo "upload archive restored no entries" >&2
     exit 1
@@ -187,6 +214,88 @@ if [ "$MIN_ACTIVE_TENANTS" -gt 0 ]; then
   fi
 fi
 
+local_file_object_count=0
+local_file_object_hashed_count=0
+if [ "$MIN_RESTORED_LOCAL_FILE_OBJECTS" -gt 0 ] || [ "$MIN_RESTORED_HASHED_FILE_OBJECTS" -gt 0 ]; then
+  if [ -z "$upload_restored_root" ]; then
+    echo "FileObject verification requires a restored upload archive" >&2
+    exit 1
+  fi
+  file_table_exists="$("${MYSQL[@]}" -Nse "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${drill_db}' AND table_name='t_file_object'")"
+  if [ "$file_table_exists" != "1" ]; then
+    echo "FileObject verification requires restored t_file_object" >&2
+    exit 1
+  fi
+  file_object_rows="$upload_restore_dir/fileobjects.tsv"
+  "${MYSQL[@]}" --batch --raw --skip-column-names -e "
+    SELECT id, file_key, COALESCE(size_bytes, ''), COALESCE(sha256, '')
+      FROM \`${drill_db}\`.t_file_object
+     WHERE is_deleted=0
+       AND LOWER(COALESCE(NULLIF(storage_backend, ''), 'local'))='local'
+     ORDER BY id
+  " > "$file_object_rows"
+  read -r local_file_object_count local_file_object_hashed_count < <(
+    python3 - "$upload_restored_root" "$file_object_rows" "$MIN_RESTORED_LOCAL_FILE_OBJECTS" "$MIN_RESTORED_HASHED_FILE_OBJECTS" <<'PY'
+import hashlib
+import re
+import sys
+from pathlib import Path, PurePosixPath
+
+root = Path(sys.argv[1]).resolve()
+rows_file = Path(sys.argv[2])
+min_local = int(sys.argv[3])
+min_hashed = int(sys.argv[4])
+count = 0
+hashed = 0
+for line_no, raw in enumerate(rows_file.read_text(encoding="utf-8").splitlines(), start=1):
+    parts = raw.split("\t")
+    if len(parts) != 4:
+        raise SystemExit(f"invalid FileObject row at line {line_no}")
+    file_id, key, expected_size, expected_sha = parts
+    if not key or "\\" in key:
+        raise SystemExit(f"unsafe FileObject file_key id={file_id}: {key!r}")
+    posix = PurePosixPath(key)
+    if posix.is_absolute() or ".." in posix.parts or "." in posix.parts:
+        raise SystemExit(f"unsafe FileObject file_key id={file_id}: {key!r}")
+    target = root.joinpath(*posix.parts).resolve()
+    if target == root or root not in target.parents:
+        raise SystemExit(f"FileObject escaped restored upload root id={file_id}: {key!r}")
+    if not target.is_file():
+        raise SystemExit(f"restored FileObject bytes missing id={file_id}: {key!r}")
+    actual_size = target.stat().st_size
+    if expected_size:
+        try:
+            size_value = int(expected_size)
+        except ValueError as exc:
+            raise SystemExit(f"invalid FileObject size id={file_id}: {expected_size!r}") from exc
+        if actual_size != size_value:
+            raise SystemExit(
+                f"restored FileObject size mismatch id={file_id}: expected={size_value} actual={actual_size}"
+            )
+    if expected_sha:
+        expected_sha = expected_sha.lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", expected_sha):
+            raise SystemExit(f"invalid FileObject sha256 id={file_id}: {expected_sha!r}")
+        digest = hashlib.sha256()
+        with target.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        actual_sha = digest.hexdigest()
+        if actual_sha != expected_sha:
+            raise SystemExit(
+                f"restored FileObject sha256 mismatch id={file_id}: expected={expected_sha} actual={actual_sha}"
+            )
+        hashed += 1
+    count += 1
+if count < min_local:
+    raise SystemExit(f"restored local FileObject count below contract: expected>={min_local} actual={count}")
+if hashed < min_hashed:
+    raise SystemExit(f"restored hashed FileObject count below contract: expected>={min_hashed} actual={hashed}")
+print(count, hashed)
+PY
+  )
+fi
+
 if [ -n "$RESTORE_EVIDENCE_FILE" ]; then
   mkdir -p "$(dirname "$RESTORE_EVIDENCE_FILE")"
   cat > "$RESTORE_EVIDENCE_FILE" <<EVIDENCE
@@ -203,9 +312,12 @@ index_count=$index_count
 foreign_key_count=$foreign_key_count
 active_tenant_count=$tenant_rows
 upload_entry_count=$upload_entry_count
+local_file_object_count=$local_file_object_count
+local_file_object_hashed_count=$local_file_object_hashed_count
 recovery_host=$(hostname)
 recovery_operator=${RECOVERY_OPERATOR:-${USER:-unknown}}
-source_commit=${GITHUB_SHA:-unknown}
+source_commit=${RESTORE_SOURCE_COMMIT:-${GITHUB_SHA:-unknown}}
+workflow_trigger_sha=${GITHUB_SHA:-unknown}
 workflow_run_id=${GITHUB_RUN_ID:-manual}
 completed_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EVIDENCE
@@ -216,4 +328,4 @@ EVIDENCE
 fi
 
 unset MYSQL_PWD
-echo "restore drill complete: db=${drill_db} tables=${table_count} indexes=${index_count} foreign_keys=${foreign_key_count} tenants=${tenant_rows} uploads=${upload_entry_count} restore_seconds=${restore_seconds} backup_age_seconds=${backup_age_seconds}"
+echo "restore drill complete: db=${drill_db} tables=${table_count} indexes=${index_count} foreign_keys=${foreign_key_count} tenants=${tenant_rows} uploads=${upload_entry_count} local_file_objects=${local_file_object_count} hashed_file_objects=${local_file_object_hashed_count} restore_seconds=${restore_seconds} backup_age_seconds=${backup_age_seconds}"
