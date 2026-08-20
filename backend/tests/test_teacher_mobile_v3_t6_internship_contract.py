@@ -80,6 +80,15 @@ def test_t6_plan_scope_accepts_only_frozen_target_student():
     assert not evidence._plan_allows_student(plan, SimpleNamespace(real_name="赵六", student_no="20260003"))
 
 
+def test_t6_historical_composite_scope_token_requires_exact_name_and_student_no():
+    plan = SimpleNamespace(student_scope="张三(20260001)，李四（20260002）")
+    assert evidence._plan_allows_student(plan, SimpleNamespace(real_name="张三", student_no="20260001"))
+    assert evidence._plan_allows_student(plan, SimpleNamespace(real_name="李四", student_no="20260002"))
+    assert not evidence._plan_allows_student(plan, SimpleNamespace(real_name="张三", student_no="202600010"))
+    assert not evidence._plan_allows_student(plan, SimpleNamespace(real_name="小张三", student_no="20260001"))
+    assert not evidence._plan_allows_student(plan, SimpleNamespace(real_name="李四", student_no="20260001"))
+
+
 def test_t6_file_chain_reuses_existing_internship_visit_binding_and_acl():
     binding_source = inspect.getsource(file_business_binding_service._spec_for)
     acl_source = inspect.getsource(file_public_acl_guard.install)
