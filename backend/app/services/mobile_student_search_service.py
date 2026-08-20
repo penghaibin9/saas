@@ -75,10 +75,11 @@ def search(user: dict, *, keyword: str, page_size: int = PAGE_SIZE_DEFAULT) -> d
                     visibility,
                     UnifiedMessage.withdrawn_at.is_(None),
                     UnifiedMessage.created_at >= since,
-                    # 前缀优先；仅在窗口内的本人消息上才允许包含匹配，扫描量已被时间窗与
-                    # receiver 条件收敛，不是全表 contains。
-                    or_(UnifiedMessage.title.like(prefix, escape="\\"),
-                        UnifiedMessage.title.like(pattern, escape="\\")),
+                    # 只在"本人可见 + 时间窗内"的行上做标题包含匹配：扫描范围已被
+                    # receiver 条件与 created_at 窗口收敛，不是全表 contains。
+                    # （这里不再额外 OR 一个前缀匹配——%x% 本就包含 x%，多写一条
+                    #  只会让人误以为走了前缀索引。）
+                    UnifiedMessage.title.like(pattern, escape="\\"),
                 ).order_by(UnifiedMessage.id.desc()).limit(size)
             ).all()
             for row in rows:
