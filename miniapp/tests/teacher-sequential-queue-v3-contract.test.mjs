@@ -26,8 +26,13 @@ test('T5 leave queue uses canonical single-record commands and reloads truth bef
   assert.match(page, /affairsContractApi\.rejectLeave\(x\.id/)
   assert.match(page, /affairsContractApi\.returnLeave\(x\.id/)
   assert.match(page, /return this\.load\(\)\.then\(\(\) => this\.afterSequentialSuccess/)
-  assert.match(page, /if \(n\.kind === 'conflict'\)/)
+  // The conflict branch may be expressed directly (`===`) or by a complementary non-conflict
+  // guard (`!==`). The production contract is behavioral: 409 never reopens stale input, while
+  // a non-conflict failure preserves the typed draft and offers a retry.
+  assert.match(page, /if \(n\.kind !== 'conflict'\)/)
+  assert.match(page, /if \(retry\) setTimeout\(retry, 0\)/)
   assert.match(page, /this\.sequentialConflict = true/)
+  assert.match(page, /return this\.load\(\)\.catch\(\(\) => \{\}\)/)
   assert.doesNotMatch(page, /approveLeave\([^\n]*\[/)
   assert.doesNotMatch(page, /rejectLeave\([^\n]*\[/)
 })
