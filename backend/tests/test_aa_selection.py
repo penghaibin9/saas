@@ -116,7 +116,8 @@ def _ready_tasks(ids, *, with_conflict_slots=False):
     """名单锁定与冲突判断必须回链同学期 READY 教学任务和 ScopeHead 当前正式课表。"""
     from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaScheduleBatch, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch, SchoolClass
+    from app.models import (AaCourse, AaProgramCourse, AaScheduleBatch, AaScheduleItem,
+                            AaTeachingTask, AaTeachingTaskBatch, SchoolClass)
     from app.modules.academic_affairs.services import academic_affairs_schedule_truth_service as schedule_truth
 
     db = get_sessionmaker()()
@@ -133,12 +134,19 @@ def _ready_tasks(ids, *, with_conflict_slots=False):
     db.add(batch); db.flush()
     tasks = []
     for idx, course in enumerate((c1, c2), start=1):
+        program_course = AaProgramCourse(
+            tenant_id=TID, program_id=int(ids["major"]), course_id=course.id,
+            course_name=course.course_name, open_term_no=1, module="MAJOR_ELECTIVE",
+            credit_snapshot=course.credit, formation_mode="SELECTABLE",
+        )
+        db.add(program_course); db.flush()
         task = AaTeachingTask(
             tenant_id=TID, batch_id=batch.id, course_id=course.id,
             course_code=course.course_code, course_name=course.course_name,
             class_id=int(ids["class"]), teaching_class_name=klass.class_name,
             teacher_key=f"selection_teacher_{idx}", teacher_name=f"选课教师{idx}",
             status="READY", weekly_hours=2, total_hours=36, start_week=1, end_week=18,
+            source_program_course_id=int(program_course.id), formation_mode="SELECTABLE",
         )
         db.add(task); db.flush()
         tasks.append(task)
@@ -345,6 +353,7 @@ def test_s12_time_tick_auto_open_close(client, db_mode):
     add = client.post(f"{BASE}/selection/batches/{bid}/courses", headers=admin,
                       json={"courseId": str(ids["course1"]), "teachingTaskId": str(ids["task1"]), "capacity": 5, "minCapacity": 1})
     assert add.status_code == 200, add.text
+    scid = add.json()["data"]["selectionCourseId"]
     publish = client.post(f"{BASE}/selection/batches/{bid}/publish", headers=admin)
     assert publish.status_code == 200, publish.text
     db = get_sessionmaker()()
