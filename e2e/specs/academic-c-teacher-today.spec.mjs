@@ -42,10 +42,21 @@ async function loginTeacherMini(page, account) {
 }
 
 async function clearMiniSession(page) {
-  await page.evaluate(() => {
-    localStorage.clear()
-    sessionStorage.clear()
-  })
+  const browserSession = await page.evaluate(() => ({
+    channel: String(sessionStorage.getItem('gx_h5_browser_channel_v1') || ''),
+    sessionId: String(sessionStorage.getItem('gx_h5_browser_session_id_v1') || '')
+  }))
+  if (browserSession.channel && browserSession.sessionId) {
+    const logout = await page.context().request.post(`${config.apiBaseUrl}/auth/browser-logout`, {
+      headers: {
+        'X-Browser-Session': browserSession.channel,
+        'X-Browser-Session-Id': browserSession.sessionId
+      }
+    })
+    expect(logout.ok(), `H5 browser logout HTTP ${logout.status()}`).toBeTruthy()
+  }
+  await page.context().clearCookies()
+  await page.goto('about:blank')
 }
 
 test.describe.serial('Academic C-W2 · Teacher Today real browser seal', () => {
