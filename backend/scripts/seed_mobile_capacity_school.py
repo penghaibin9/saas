@@ -1,25 +1,22 @@
 #!/usr/bin/env python3
-"""V3 §11.1 容量数据种子：12k 学生规模的移动端压测数据集。
+"""V3 §11.1 / Teacher T9 capacity seed for a 12k-student school.
 
-**只用于 staging / CI 容量环境。** 脚本自带三重保护，禁止误灌生产：
+**Only for staging / CI capacity databases.** Three hard guards prevent accidental production use:
+1. ``--confirm`` is mandatory;
+2. the database name must contain capacity/staging/test/ci;
+3. every generated row is tenant-scoped to a dedicated capacity tenant and uses ``CAP-`` labels.
 
-1. 必须显式传 ``--confirm``；
-2. 目标库名必须命中 :data:`ALLOWED_DB_NAME_HINTS`（capacity/staging/test/ci），
-   否则直接拒绝；
-3. 所有生成记录都挂在独立的 capacity 租户上（``--tenant-id``，默认与主租户不同），
-   并统一带 ``CAP-`` 前缀，便于整体清理。
+Default scale:
+    StudentProfile              12,000 / 300 classes
+    UnifiedTodo                 84,000
+    student UnifiedMessage     300,000
+    teacher message identities     500 active contexts
+    teacher UnifiedMessage      50,000 (100/context, same >300k table)
+    business cases              60,000
 
-生成的规模对齐 §11.1：
-
-    StudentProfile   12,000 学生 / 300 班
-    教职工            500（多角色 context）
-    UnifiedTodo      ≥ 80,000（学生/教师待办，due_at 分布不同）
-    UnifiedMessage   ≥ 300,000（按学生分布，含紧急与需回执）
-    业务办理          ≥ 50,000（历史 + 进行中）
-
-用法：
-    python scripts/seed_mobile_capacity_school.py --confirm
-    python scripts/seed_mobile_capacity_school.py --confirm --students 12000 --purge
+Teacher identities are deterministic *message receiver identities*, not login credentials. Real p1000/p3000
+runs still require a pre-issued teacher token pool from the staging identity system; this script never prints or
+commits secrets. EXPLAIN can discover the seeded STAFF receiver/context directly.
 """
 from __future__ import annotations
 
@@ -28,17 +25,15 @@ import random
 import sys
 from datetime import datetime, timedelta
 
-import _mysql_env  # noqa: F401  强制 DB_ENABLED=true 并加载连接参数
+import _mysql_env  # noqa: F401
 
 from sqlalchemy import delete, func, select
 
-#: 只允许在名字里带这些片段的库上执行。生产库名不含它们，因此永远命不中。
 ALLOWED_DB_NAME_HINTS = ("capacity", "staging", "test", "ci")
-
-#: 容量租户与主租户隔离，保证种子数据不会混进任何真实学校。
 DEFAULT_CAPACITY_TENANT = 1000000000000000900
-
 STUDENT_PREFIX = "CAP-"
+TEACHER_PREFIX = "CAP-TEACHER-"
+TEACHER_USER_ID_BASE = 9_000_000_000
 BATCH = 2000
 
 
@@ -64,7 +59,7 @@ def _assert_safe_target() -> str:
 
 
 def _purge(db, tenant_id: int) -> None:
-    """只清本 capacity 租户的数据，绝不触碰其他租户。"""
+    """Only delete rows owned by the capacity tenant."""
     from app.models import CsLeave, StudentProfile, UnifiedMessage, UnifiedTodo
 
     for model in (UnifiedMessage, UnifiedTodo, CsLeave, StudentProfile):
@@ -108,7 +103,6 @@ def _seed_students(db, tenant_id: int, total: int, classes: int) -> list[int]:
 
 
 def _seed_todos(db, tenant_id: int, student_ids: list[int], per_student: int) -> int:
-    """due_at 刻意分散：过期 / 24h 内 / 未来 / 无截止，覆盖排序与分页的各种分支。"""
     from app.models import UnifiedTodo
 
     now = datetime.utcnow()
@@ -118,9 +112,7 @@ def _seed_todos(db, tenant_id: int, student_ids: list[int], per_student: int) ->
     for position, student_id in enumerate(student_ids):
         for slot in range(per_student):
             offset = (position + slot) % 7
-            due = None
-            if offset != 6:
-                due = now + timedelta(hours=(offset - 2) * 18)
+            due = None if offset == 6 else now + timedelta(hours=(offset - 2) * 18)
             rows.append(UnifiedTodo(
                 tenant_id=tenant_id,
                 source_module="student-affairs",
@@ -159,8 +151,11 @@ def _seed_messages(db, tenant_id: int, student_ids: list[int], per_student: int)
                 tenant_id=tenant_id,
                 receiver_id=student_id,
                 receiver_user_id=student_id,
+                receiver_type="STUDENT",
                 receiver_context_key="GLOBAL",
                 message_type="EMERGENCY" if emergency else "NOTICE",
+                category="EMERGENCY" if emergency else "SYSTEM",
+                priority="EMERGENCY" if emergency else "NORMAL",
                 title=f"容量通知 {position}-{slot}",
                 content="容量压测正文，不含任何真实学生信息。",
                 status="UNREAD" if slot % 4 else "READ",
@@ -173,16 +168,66 @@ def _seed_messages(db, tenant_id: int, student_ids: list[int], per_student: int)
                 db.add_all(rows)
                 db.commit()
                 rows = []
-                print(f"[capacity-seed] messages {made}")
+                print(f"[capacity-seed] student messages {made}")
     if rows:
         db.add_all(rows)
         db.commit()
-    print(f"[capacity-seed] messages done: {made}")
+    print(f"[capacity-seed] student messages done: {made}")
+    return made
+
+
+def _teacher_identity(index: int) -> tuple[int, str]:
+    return TEACHER_USER_ID_BASE + index, f"{TEACHER_PREFIX}CTX-{index:04d}"
+
+
+def _seed_teacher_messages(db, tenant_id: int, contexts: int, per_context: int) -> int:
+    """Seed T9 message rows across many receiver/context identities on the 300k+ message table."""
+    from app.models import UnifiedMessage
+
+    now = datetime.utcnow()
+    made = 0
+    rows = []
+    specs = (
+        ("SYSTEM", "SYSTEM", "NORMAL", "系统通知"),
+        ("BUSINESS", "BUSINESS", "NORMAL", "学生动态"),
+        ("EMERGENCY", "EMERGENCY", "EMERGENCY", "风险预警"),
+        ("TODO_NOTICE", "TODO", "IMPORTANT", "催办提醒"),
+    )
+    for index in range(contexts):
+        receiver_uid, context = _teacher_identity(index)
+        for slot in range(per_context):
+            message_type, category, priority, title = specs[(index + slot) % len(specs)]
+            rows.append(UnifiedMessage(
+                tenant_id=tenant_id,
+                receiver_id=receiver_uid,
+                receiver_user_id=receiver_uid,
+                receiver_type="STAFF",
+                receiver_context_key=context,
+                message_type=message_type,
+                category=category,
+                priority=priority,
+                title=f"{TEACHER_PREFIX}{title}-{index:04d}-{slot:03d}",
+                content="Teacher V3 T9 容量压测正文，不含任何真实教师或学生信息。",
+                status="UNREAD" if slot % 5 else "READ",
+                require_ack=category == "EMERGENCY",
+                source_module="capacity-teacher-v3",
+                delivered_at=now - timedelta(seconds=(index * per_context + slot) % 86400),
+                created_at=now - timedelta(seconds=(index * per_context + slot) % 86400),
+            ))
+            made += 1
+            if len(rows) >= BATCH:
+                db.add_all(rows)
+                db.commit()
+                rows = []
+                print(f"[capacity-seed] teacher messages {made}/{contexts * per_context}")
+    if rows:
+        db.add_all(rows)
+        db.commit()
+    print(f"[capacity-seed] teacher messages done: {made} contexts={contexts}")
     return made
 
 
 def _seed_cases(db, tenant_id: int, student_ids: list[int], per_student: int) -> int:
-    """办理记录：状态覆盖四个分段，updated_at 分散以便验证 keyset 翻页。"""
     from app.models import CsLeave
 
     now = datetime.utcnow()
@@ -192,7 +237,7 @@ def _seed_cases(db, tenant_id: int, student_ids: list[int], per_student: int) ->
     for position, student_id in enumerate(student_ids):
         for slot in range(per_student):
             status = statuses[(position + slot) % len(statuses)]
-            row = CsLeave(
+            rows.append(CsLeave(
                 tenant_id=tenant_id,
                 student_id=student_id,
                 leave_type="PERSONAL",
@@ -202,8 +247,7 @@ def _seed_cases(db, tenant_id: int, student_ids: list[int], per_student: int) ->
                 apply_time=now - timedelta(hours=(position + slot) % 4000),
                 reviewer="容量辅导员" if status != "DRAFT" else None,
                 return_reason="材料不全，请补充" if status == "RETURNED" else None,
-            )
-            rows.append(row)
+            ))
             made += 1
             if len(rows) >= BATCH:
                 db.add_all(rows)
@@ -225,6 +269,8 @@ def main() -> int:
     parser.add_argument("--classes", type=int, default=300)
     parser.add_argument("--todos-per-student", type=int, default=7)
     parser.add_argument("--messages-per-student", type=int, default=25)
+    parser.add_argument("--teacher-contexts", type=int, default=500)
+    parser.add_argument("--teacher-messages-per-context", type=int, default=100)
     parser.add_argument("--cases-per-student", type=int, default=5)
     parser.add_argument("--purge", action="store_true", help="先清空本 capacity 租户旧数据")
     parser.add_argument("--seed", type=int, default=20260819)
@@ -232,6 +278,10 @@ def main() -> int:
 
     if not args.confirm:
         _fail("缺少 --confirm。大规模种子必须显式确认。")
+    if args.students < 1 or args.classes < 1 or args.teacher_contexts < 1:
+        _fail("students/classes/teacher-contexts 必须大于 0")
+    if args.teacher_messages_per_context < 1:
+        _fail("teacher-messages-per-context 必须大于 0")
     name = _assert_safe_target()
     random.seed(args.seed)
 
@@ -250,14 +300,18 @@ def main() -> int:
 
         student_ids = _seed_students(db, args.tenant_id, args.students, args.classes)
         todos = _seed_todos(db, args.tenant_id, student_ids, args.todos_per_student)
-        messages = _seed_messages(db, args.tenant_id, student_ids, args.messages_per_student)
+        student_messages = _seed_messages(db, args.tenant_id, student_ids, args.messages_per_student)
+        teacher_messages = _seed_teacher_messages(
+            db, args.tenant_id, args.teacher_contexts, args.teacher_messages_per_context
+        )
         cases = _seed_cases(db, args.tenant_id, student_ids, args.cases_per_student)
     finally:
         db.close()
 
     print(
         "[capacity-seed] 完成："
-        f"students={len(student_ids)} todos={todos} messages={messages} cases={cases}"
+        f"students={len(student_ids)} todos={todos} studentMessages={student_messages} "
+        f"teacherContexts={args.teacher_contexts} teacherMessages={teacher_messages} cases={cases}"
     )
     return 0
 
