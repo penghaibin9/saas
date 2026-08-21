@@ -122,7 +122,11 @@ import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, Modul
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
 
-const iso = (value) => value ? new Date(value).toISOString() : ''
+const localDateTime = (value) => {
+  if (!value) return ''
+  const raw = String(value).trim()
+  return raw.length === 16 ? `${raw}:00` : raw.slice(0, 19)
+}
 const newTraining = () => ({ tenantId: '', topic: '', scheduledAt: '', trainerName: '' })
 const newRenewal = () => ({ tenantId: '', dueAt: '', ownerName: '', note: '' })
 
@@ -191,7 +195,7 @@ export default {
     },
     async createTraining() {
       if (!this.trainingForm.tenantId || !this.trainingForm.topic || !this.trainingForm.scheduledAt) return toast.error('租户、培训主题和计划时间必填')
-      const res = await platformControlApi.createTraining({ ...this.trainingForm, scheduledAt: iso(this.trainingForm.scheduledAt) })
+      const res = await platformControlApi.createTraining({ ...this.trainingForm, scheduledAt: localDateTime(this.trainingForm.scheduledAt) })
       if (res.code !== 0) return toast.error(res.message)
       toast.success('培训计划已登记')
       this.trainingForm = newTraining()
@@ -210,7 +214,7 @@ export default {
     },
     async createRenewal() {
       if (!this.renewalForm.tenantId || !this.renewalForm.dueAt) return toast.error('租户和跟进截止时间必填')
-      const res = await platformControlApi.createRenewalTask({ ...this.renewalForm, dueAt: iso(this.renewalForm.dueAt) })
+      const res = await platformControlApi.createRenewalTask({ ...this.renewalForm, dueAt: localDateTime(this.renewalForm.dueAt) })
       if (res.code !== 0) return toast.error(res.message)
       toast.success('续费任务已创建')
       this.renewalForm = newRenewal()
