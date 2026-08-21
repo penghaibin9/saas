@@ -112,6 +112,7 @@ import {
 } from '@/components/business'
 import { AppConfirmDialog } from '@/components/common'
 import { approvalApi } from '@/modules/approval/api/approval.api'
+import { buildDetailQuery, pickFilters } from '@/modules/approval/utils/queueContext'
 import { toast } from '@/utils/toast'
 
 const EMPTY_DONE_FILTERS = () => ({ result: '', bizType: '', keyword: '', actedFrom: '', actedTo: '' })
@@ -191,6 +192,23 @@ export default {
     }
   },
   created() {
+    // TP-A09：从审批详情"返回列表"时，qctx 会把 tab/筛选/分页铺平进 query，
+    // 一并采纳才能真正回到用户离开时的 已办/抄送 tab 与那一页，而不是永远回到
+    // done tab 第一页。
+    const tab = this.$route.query.tab === 'cc' ? 'cc' : 'done'
+    this.activeTab = tab
+    const q = this.$route.query
+    if (tab === 'done') {
+      if (q.result) this.filters.result = String(q.result)
+      if (q.bizType) this.filters.bizType = String(q.bizType)
+      if (q.actedFrom) this.filters.actedFrom = String(q.actedFrom)
+      if (q.actedTo) this.filters.actedTo = String(q.actedTo)
+    } else if (q.readStatus) {
+      this.filters.readStatus = String(q.readStatus)
+    }
+    if (q.keyword) this.filters.keyword = String(q.keyword)
+    const page = Number(q.page)
+    if (Number.isInteger(page) && page > 0) this.pagination.page = page
     this.load()
   },
   methods: {
@@ -200,25 +218,44 @@ export default {
       this.filters = key === 'done' ? EMPTY_DONE_FILTERS() : EMPTY_CC_FILTERS()
       this.pagination.page = 1
       this.load()
+      this.syncQueryFromState()
     },
     onPageChange(page) {
       this.pagination.page = page
       this.load()
+      this.syncQueryFromState()
+    },
+    goDetail(taskId) {
+      // TP-A02/A09：PcQueueContext v1——把当前 tab（done/cc）+ 筛选 + 分页铺平进
+      // 详情页 route.query，"返回列表"才能回到同一个 tab/同一页/同一筛选。
+      const query = buildDetailQuery({
+        filters: this.filters,
+        page: this.pagination.page,
+        pageSize: this.pagination.pageSize,
+        returnTo: '/admin/approval/done',
+        tab: this.activeTab
+      })
+      this.$router.push({ path: '/admin/approval/todos/' + taskId, query })
+    },
+    syncQueryFromState() {
+      const q = pickFilters(this.filters)
+      q.tab = this.activeTab
+      if (this.pagination.page > 1) q.page = String(this.pagination.page)
+      this.$router.replace({ path: '/admin/approval/done', query: q }).catch(() => {})
     },
     search() {
       this.pagination.page = 1
       this.load()
+      this.syncQueryFromState()
     },
     reset() {
       this.filters = this.activeTab === 'done' ? EMPTY_DONE_FILTERS() : EMPTY_CC_FILTERS()
       this.pagination.page = 1
       this.load()
+      this.syncQueryFromState()
     },
     onToolbar(key) {
       if (key === 'exportRecords') this.exportDialog = true
-    },
-    goDetail(taskId) {
-      this.$router.push('/admin/approval/todos/' + taskId)
     },
     async doExport() {
       this.submitting = true

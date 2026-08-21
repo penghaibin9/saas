@@ -5,7 +5,11 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
-    <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
+    <template #actions>
+      <button class="mp-link" @click="goBackToList">← 返回列表</button>
+    </template>
+
+    <ErrorState v-if="error" :description="error" @retry="load" @back="goBackToList" />
     <LoadingState v-else-if="loading" />
     <div v-else-if="task" class="mp-grid-2">
       <div class="mp-stack">
@@ -131,6 +135,7 @@ import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from
 import { AppConfirmDialog } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { approvalApi } from '@/modules/approval/api/approval.api'
+import { buildReturnQuery, returnPath } from '@/modules/approval/utils/queueContext'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -200,7 +205,13 @@ export default {
       if (res.code === 0 && res.data) {
         await this.$router.replace({ path: '/admin/approval/todos/' + res.data.taskId, query: { ...q } }); await this.load(); return
       }
-      await this.$router.push('/admin/approval/todos')
+      // 同队列已经处理完：回到来源列表，保留原筛选/分页（PcQueueContext v1），
+      // 不再无条件推到无筛选的待办首页。
+      this.goBackToList()
+    },
+    goBackToList() {
+      const q = this.$route.query || {}
+      this.$router.push({ path: returnPath(q), query: buildReturnQuery(q) })
     },
     async finishAction(res, message) {
       if (res.code !== 0) { await this.actionFailed(res); return false }

@@ -172,6 +172,7 @@ import {
 import { AppConfirmDialog } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { approvalApi } from '@/modules/approval/api/approval.api'
+import { buildDetailQuery } from '@/modules/approval/utils/queueContext'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ bizType: '', urgency: '', keyword: '', submitDate: '' })
@@ -240,8 +241,11 @@ export default {
   watch: {
     '$route.query.bizType'(value) {
       if (this.$route.path !== '/admin/approval/todos') return
-      this.filters.bizType =
-        value && this.ctx.filterOptions.bizTypes.some((b) => b.value === value) ? value : ''
+      const next = value && this.ctx.filterOptions.bizTypes.some((b) => b.value === value) ? value : ''
+      // syncQueryFromState() 会把当前 bizType 写回本页 URL；同值变化不需要重新
+      // load()，只有真的来自外部导航（比如 Workbench 磁贴带 ?bizType=）才处理。
+      if (next === this.filters.bizType) return
+      this.filters.bizType = next
       this.pagination.page = 1
       this.load()
     }
@@ -251,10 +255,20 @@ export default {
     if (bizType && this.ctx.filterOptions.bizTypes.some((b) => b.value === bizType)) {
       this.filters.bizType = bizType
     }
+    // TP-A01：非法 urgency 不能静默降级成"全部"——那样用户点了带筛选的入口，
+    // 却看到未筛选列表，还以为筛选生效了。合法值正常采纳；非法值显式提示并丢弃。
     const urgency = this.$route.query.urgency
     if (urgency && this.ctx.filterOptions.urgencies.some((u) => u.value === urgency)) {
       this.filters.urgency = urgency
+    } else if (urgency) {
+      toast.error(`链接携带的紧急度筛选值“${urgency}”不受支持，已忽略该条件`)
     }
+    // TP-A02：从审批详情"返回列表"时，qctx 会把关键词/提交日期/分页也铺平进
+    // query，一并采纳才能真正回到用户离开时的那个队列，而不是只恢复 bizType。
+    if (this.$route.query.keyword) this.filters.keyword = String(this.$route.query.keyword)
+    if (this.$route.query.submitDate) this.filters.submitDate = String(this.$route.query.submitDate)
+    const page = Number(this.$route.query.page)
+    if (Number.isInteger(page) && page > 0) this.pagination.page = page
     // V3 施工手册 TP-W05：todoType 是英文业务分类码（如 LEAVE_APPROVAL），不是给人看
     // 的关键词——塞进 filters.keyword 会被当全文检索，永远搜不出真实结果，还会让
     // 用户误以为自己的关键词筛选是空的。UnifiedTodo 分类目前没有对应的 Approval
@@ -284,25 +298,42 @@ export default {
     onPageChange(page) {
       this.pagination.page = page
       this.load()
+      this.syncQueryFromState()
     },
     goDetail(taskId) {
-      // TP-A02/A09：把当前生效的筛选带进详情页 route.query，详情页「下一条」才能按
-      // 用户实际在看的队列做服务端 seek，而不是丢光筛选、退化成"队首第一条"。
+      // TP-A02/A09：把当前生效的筛选 + 分页 + 来源列表铺平进详情页 route.query
+      // （PcQueueContext v1，见 queueContext.js），详情页「下一条」才能按用户实际
+      // 在看的队列做服务端 seek，「返回列表」才能回到同一 page/筛选，而不是丢光
+      // 上下文、退化成"队首第一条"或空筛选首页。
+      const query = buildDetailQuery({
+        filters: this.filters,
+        page: this.pagination.page,
+        pageSize: this.pagination.pageSize,
+        returnTo: '/admin/approval/todos'
+      })
+      this.$router.push({ path: '/admin/approval/todos/' + taskId, query })
+    },
+    // 把当前筛选/分页同步进本页 URL：既让浏览器前进/后退和收藏夹可用，也让
+    // goDetail() 之外——比如直接搜索后再点浏览器后退——的场景状态一致。
+    syncQueryFromState() {
       const q = {}
       if (this.filters.bizType) q.bizType = this.filters.bizType
       if (this.filters.urgency) q.urgency = this.filters.urgency
       if (this.filters.keyword) q.keyword = this.filters.keyword
       if (this.filters.submitDate) q.submitDate = this.filters.submitDate
-      this.$router.push({ path: '/admin/approval/todos/' + taskId, query: q })
+      if (this.pagination.page > 1) q.page = String(this.pagination.page)
+      this.$router.replace({ path: '/admin/approval/todos', query: q }).catch(() => {})
     },
     search() {
       this.pagination.page = 1
       this.load()
+      this.syncQueryFromState()
     },
     reset() {
       this.filters = EMPTY_FILTERS()
       this.pagination.page = 1
       this.load()
+      this.syncQueryFromState()
     },
     onToolbar(key) {
       if (key === 'exportRecords') this.exportDialog = true

@@ -13,6 +13,11 @@ frontend/src/modules/approval/api/approval.api.js，不碰 #183 owner 的共享�
   bizType 单一维度扩到 keyword/bizType/urgency/submitDate 全量透传。
 - TP-A02（局部）：待办列表跳转详情时把当前生效筛选写入 route.query，详情页
   才有真实上下文可以透传给 seek，不会一进详情就丢光筛选退化成"队首"。
+- TP-A02/TP-A09 PcQueueContext v1：新增 queueContext.js，列表→详情→返回列表
+  的导航态（bizType/urgency/keyword/submitDate/result/actedFrom/actedTo/
+  readStatus/page/pageSize/source/tab）铺平进 route.query，覆盖待办、已办、
+  抄送三类队列；qctx 不参与授权，returnTo 只认内部 allowlist。
+- TP-A01：非法 urgency 不再静默降级成"全部"，改为显式提示并丢弃该条件。
 
 本轮未联通真实 MySQL 验证（沙箱环境 docker daemon 不可用，见施工记录），
 以下测试均为源码契约测试（字符串/结构断言），不建立数据库连接、不冒充集成测试。
@@ -128,7 +133,52 @@ def test_todo_list_view_carries_active_filters_into_detail_route():
     否则详情页永远只能拿到空筛选，seek 退化成"整个待办队列"而不是"用户实际在看的队列"。"""
     src = _read("frontend/src/views/admin/approval/ApprovalTodoListView.vue")
     assert "goDetail(taskId) {" in src
-    assert "if (this.filters.urgency) q.urgency = this.filters.urgency" in src
-    assert "if (this.filters.keyword) q.keyword = this.filters.keyword" in src
-    assert "if (this.filters.submitDate) q.submitDate = this.filters.submitDate" in src
+    assert "buildDetailQuery({" in src
     assert "@click=\"goDetail(row.taskId)\"" in src
+
+
+# ---------------------------------------------------------------------------
+# TP-A02/TP-A09：PcQueueContext v1（列表→详情→返回列表导航态）
+# ---------------------------------------------------------------------------
+
+def test_queue_context_module_defines_allowlist_and_never_authorizes():
+    src = _read("frontend/src/modules/approval/utils/queueContext.js")
+    assert "export const RETURN_ALLOWLIST" in src
+    assert "'/admin/approval/todos'" in src
+    assert "'/admin/approval/done'" in src
+    # 手册 14.3 明示的安全规则必须在源码里留痕，不能只在文档里说。
+    assert "qctx 永远不参与服务端授权" in src
+    assert "export function buildDetailQuery(" in src
+    assert "export function buildReturnQuery(" in src
+    assert "export function returnPath(" in src
+
+
+def test_done_list_view_restores_tab_filters_and_page_from_query():
+    """TP-A09：Done/CC 详情返回列表要恢复原 tab（done/cc）+ 筛选 + 分页，
+    不能永远回到 done tab 第一页。"""
+    src = _read("frontend/src/views/admin/approval/ApprovalDoneListView.vue")
+    assert "const tab = this.$route.query.tab === 'cc' ? 'cc' : 'done'" in src
+    assert "this.activeTab = tab" in src
+    assert "goDetail(taskId) {" in src
+    assert "returnTo: '/admin/approval/done'," in src
+    assert "tab: this.activeTab" in src
+    assert "syncQueryFromState()" in src
+
+
+def test_detail_view_has_allowlisted_back_to_list_and_goNext_falls_back_to_it():
+    """详情页"返回列表"必须走 queueContext 的 allowlist，且 seek 队列耗尽时的
+    兜底也要用同一条路径回到原列表 + 原筛选，不能无条件推到无筛选待办首页。"""
+    src = _read("frontend/src/views/admin/approval/ApprovalDetailView.vue")
+    assert "goBackToList() {" in src
+    assert "returnPath(q)" in src
+    assert "buildReturnQuery(q)" in src
+    assert "this.goBackToList()" in src
+
+
+def test_todo_list_view_rejects_illegal_urgency_with_explicit_notice():
+    """TP-A01：非法 urgency 必须显式提示并丢弃，不能静默降级成"全部"让用户误以为
+    筛选生效了。"""
+    src = _read("frontend/src/views/admin/approval/ApprovalTodoListView.vue")
+    assert "} else if (urgency) {" in src
+    assert "toast.error(" in src
+    assert "不受支持，已忽略该条件" in src
