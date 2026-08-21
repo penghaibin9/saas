@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (
     FileObject,
     GraduationFinal,
@@ -15,15 +15,18 @@ from app.models import (
 )
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.modules.graduation.services.graduation_command_service import _conflict_guard
+from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
 from app.services.db_service import _iso, _tid, session
 from app.services.file_content_security import is_downloadable_status
+from app.services.storage import get_backend
+
 
 def _version_number(value) -> int:
     match = re.search(r"(\d+)", str(value or ""))
     return max(1, int(match.group(1))) if match else 1
 
 
-def _final_attachments(db, final: GraduationFinal | None) -> list[dict]:
+def _attachment_ids(final: GraduationFinal | None) -> list[int]:
     if not final:
         return []
     ids: list[int] = []
@@ -31,6 +34,11 @@ def _final_attachments(db, final: GraduationFinal | None) -> list[dict]:
         value = (raw.get("fileId") or raw.get("id")) if isinstance(raw, dict) else raw
         if str(value or "").isdigit() and int(value) not in ids:
             ids.append(int(value))
+    return ids
+
+
+def _final_attachments(db, final: GraduationFinal | None) -> list[dict]:
+    ids = _attachment_ids(final)
     if not ids:
         return []
     rows = db.scalars(select(FileObject).where(
@@ -100,6 +108,51 @@ def peer_row(db, peer: GraduationPeerReview) -> dict:
         "reviewedAt": _iso(peer.reviewed_at),
         "updatedAt": _iso(peer.updated_at),
     }
+
+
+def resolve_peer_preview(peer_id, file_id, user):
+    """解析互查任务绑定的冻结定稿文件，仅允许任务双方读取对应附件。
+
+    该入口不复用“学生本人材料”授权，也不按裸 fileId 扩大范围：peerId、gd_final_id、
+    final.attachments_json、当前学生身份和租户必须同时匹配。返回本地路径后由公共
+    validated_local_file_response 负责安全响应头、inline 语义与审计。
+    """
+    if str((user or {}).get("userType") or "").strip().upper() != "STUDENT":
+        raise no_permission("成果互查文件仅学生任务双方可访问")
+    if not str(peer_id or "").isdigit() or not str(file_id or "").isdigit():
+        raise not_found("互查材料不存在或无权访问")
+
+    with session() as db:
+        current = resolve_current_gd_student(db, user)
+        if not current:
+            raise not_found("互查材料不存在或无权访问")
+        peer = db.scalars(select(GraduationPeerReview).where(
+            GraduationPeerReview.id == int(peer_id),
+            GraduationPeerReview.tenant_id == _tid(),
+            GraduationPeerReview.is_deleted.is_(False),
+        )).first()
+        if not peer or int(current.id) not in {int(peer.gd_student_id), int(peer.reviewer_gd_student_id)}:
+            raise not_found("互查材料不存在或无权访问")
+
+        final = _bound_final(db, peer)
+        target_file_id = int(file_id)
+        if target_file_id not in _attachment_ids(final):
+            raise not_found("互查材料不存在或无权访问")
+        file_row = db.scalars(select(FileObject).where(
+            FileObject.id == target_file_id,
+            FileObject.tenant_id == _tid(),
+            FileObject.is_deleted.is_(False),
+            FileObject.biz_type == "GRADUATION_MATERIAL",
+        )).first()
+        if not file_row or not is_downloadable_status(file_row.status):
+            raise not_found("互查材料不存在或暂不可预览")
+        file_key = file_row.file_key
+        filename = file_row.file_name or f"毕业设计定稿-{target_file_id}"
+
+    path = get_backend().fetch_local(file_key)
+    if not path or not path.exists():
+        raise not_found("互查材料文件不存在或暂不可预览")
+    return path, filename
 
 
 @_conflict_guard
