@@ -1,4 +1,4 @@
-import { downloadFile, request, uploadFile } from './request'
+import { downloadFile, fetchFileBlob, request, uploadFile } from './request'
 
 export const FILE_STATUS_TEXT = Object.freeze({
   NOT_REQUIRED: '无需扫描',
@@ -36,6 +36,16 @@ function authorizedPath(ticket = {}) {
   return value.startsWith('/api/v1/') ? value.slice('/api/v1'.length) : value
 }
 
+async function fetchPresignedBlob(url, { signal } = {}) {
+  const res = await fetch(url, { method: 'GET', signal })
+  if (!res.ok) {
+    const error = new Error('文件预览读取失败')
+    error.status = res.status
+    throw error
+  }
+  return res.blob()
+}
+
 export const fileSdk = {
   statusText: FILE_STATUS_TEXT,
   normalize: normalizeFile,
@@ -57,6 +67,18 @@ export const fileSdk = {
   async authorizedUrl(fileId) {
     return request(`/files/${enc(fileId)}/url`)
   },
+  async fetchPreviewBlob(fileId, options = {}) {
+    const auth = await this.authorizedUrl(fileId)
+    if (auth?.delivery === 'COS_PRESIGNED' && /^https:\/\//i.test(auth.url || '')) {
+      return fetchPresignedBlob(auth.url, options)
+    }
+    return this.fetchPreviewBlobFrom(auth, options)
+  },
+  async fetchPreviewBlobFrom(ticket, options = {}) {
+    const path = typeof ticket === 'string' ? ticket : authorizedPath(ticket)
+    if (!path || !String(path).startsWith('/')) throw new Error('服务端未返回有效文件预览授权路径')
+    return fetchFileBlob(path, options)
+  },
   async download(fileId, fileName = '附件') {
     return downloadFile(`/files/download/${enc(fileId)}`, fileName)
   },
@@ -65,11 +87,11 @@ export const fileSdk = {
     if (!path || !String(path).startsWith('/')) throw new Error('服务端未返回有效文件授权路径')
     return downloadFile(path, fileName)
   },
-  async preview(fileId, fileName = '附件') {
-    return this.download(fileId, fileName)
+  async preview(fileId, _fileName = '附件', options = {}) {
+    return this.fetchPreviewBlob(fileId, options)
   },
-  async previewFrom(ticket, fileName = '附件') {
-    return this.downloadFrom(ticket, fileName)
+  async previewFrom(ticket, _fileName = '附件', options = {}) {
+    return this.fetchPreviewBlobFrom(ticket, options)
   }
 }
 
