@@ -130,7 +130,6 @@ if (!studentWorkbench.includes('查看当前版')
   throw new Error('student graduation workbench is missing current-version Reader or submit preflight')
 }
 for (const marker of [
-  '互查文件只允许走任务专用授权',
   'openPeerReader(',
   'fileSdk.fetchPeerPreviewBlob(file.peerId, file.fileId, options)'
 ]) {
