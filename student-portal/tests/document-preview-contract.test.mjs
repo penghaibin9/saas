@@ -1,0 +1,75 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import test from 'node:test'
+import { fileURLToPath } from 'node:url'
+
+const root = fileURLToPath(new URL('../', import.meta.url))
+const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
+
+const sdk = read('src/services/fileSdk.js')
+const request = read('src/services/request.js')
+const compatibility = read('src/components/file/FilePreviewer.vue')
+const viewer = read('src/components/file/viewer/StudentDocumentViewer.vue')
+const session = read('src/components/file/viewer/useStudentPreviewSession.js')
+const materials = read('src/views/graduation/GraduationMaterialsView.vue')
+const workbench = read('src/views/graduation/GraduationWorkbenchView.vue')
+
+test('W3 student File SDK separates preview bytes from download side effects', () => {
+  assert.match(request, /export async function fetchFileBlob\(/)
+  assert.match(request, /credentials: 'include', signal/)
+  assert.match(request, /if \(error\?\.name === 'AbortError'\) throw error/)
+  assert.match(request, /await refreshOnce\(\)/)
+  assert.match(sdk, /async fetchPreviewBlob\(/)
+  assert.match(sdk, /async fetchPreviewBlobFrom\(/)
+  assert.match(sdk, /async preview\([^)]*\)[\s\S]*?return this\.fetchPreviewBlob\(/)
+  assert.match(sdk, /async previewFrom\([^)]*\)[\s\S]*?return this\.fetchPreviewBlobFrom\(/)
+  assert.doesNotMatch(sdk, /async preview\([^)]*\)[\s\S]{0,180}?this\.download\(/)
+  assert.doesNotMatch(sdk, /async previewFrom\([^)]*\)[\s\S]{0,180}?this\.downloadFrom\(/)
+})
+
+test('W3 compatibility FilePreviewer routes into the in-site reader without owning transport primitives', () => {
+  assert.match(compatibility, /StudentDocumentViewer/)
+  assert.match(compatibility, />站内查看</)
+  for (const forbidden of ['window.open(', 'URL.createObjectURL(', "request('/files", 'document.createElement']) {
+    assert.equal(compatibility.includes(forbidden), false, `FilePreviewer must not own ${forbidden}`)
+  }
+})
+
+test('W3 StudentDocumentViewer stays presentation-only and fences Blob lifecycle by canonical file identity', () => {
+  assert.match(viewer, /useStudentPreviewSession/)
+  assert.match(viewer, /item\.fileVersionId \|\| item\.versionId/)
+  assert.match(viewer, /selectedFile\.value\?\.isCurrent === false/)
+  for (const forbidden of ['portalApi', 'issueGraduationMaterialTicket', '/material-center/', 'downloadGraduationMaterial', 'window.open(']) {
+    assert.equal(viewer.includes(forbidden), false, `Viewer must not own business transport: ${forbidden}`)
+  }
+  assert.match(session, /file\.fileId/)
+  assert.match(session, /file\.fileVersionId \|\| file\.versionId/)
+  assert.match(session, /file\.sourceSha256 \|\| file\.sha256/)
+  assert.match(session, /new AbortController\(\)/)
+  assert.match(session, /URL\.revokeObjectURL\(objectUrl\.value\)/)
+  assert.match(session, /currentGeneration !== generation/)
+})
+
+test('W3 graduation materials use audited business preview tickets for bound current and immutable history versions', () => {
+  assert.match(materials, /查看当前版/)
+  assert.match(materials, /查看历史版/)
+  assert.match(materials, /历史版本 · 只读|历史只读/)
+  assert.match(materials, /预览我将提交的文件/)
+  assert.match(materials, /issueGraduationMaterialTicket\(file\.fileId, 'preview'\)/)
+  assert.match(materials, /fileSdk\.fetchPreviewBlobFrom\(ticket, options\)/)
+  assert.match(materials, /fileVersionId: material\.currentVersion\.fileVersionId \|\| material\.currentVersionId/)
+  assert.match(materials, /temporaryPreview: true/)
+})
+
+test('W3 graduation workbench separates current-version viewing/download and requires safe pending bytes before submit', () => {
+  assert.match(workbench, />查看当前版</)
+  assert.match(workbench, /@click="downloadMaterial\(file\)"/)
+  assert.match(workbench, /预览我将提交的文件/)
+  assert.match(workbench, /canPreviewPending\(attachments\.proposal\[0\]\)/)
+  assert.match(workbench, /!attachments\.final\[0\]\.readyForBusiness/)
+  assert.match(workbench, /issueGraduationMaterialTicket\(file\.fileId, 'preview'\)/)
+  assert.match(workbench, /fileSdk\.fetchPreviewBlobFrom\(ticket, options\)/)
+  assert.match(workbench, /互查文件只允许走任务专用授权/)
+  assert.doesNotMatch(workbench, /openMaterialReader\(file\)[\s\S]{0,220}成果互查/)
+})
