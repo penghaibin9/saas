@@ -36,9 +36,7 @@ test('W3 student File SDK separates preview bytes from download side effects', (
 test('W3 compatibility FilePreviewer routes into the in-site reader without owning transport primitives', () => {
   assert.match(compatibility, /StudentDocumentViewer/)
   assert.match(compatibility, />站内查看</)
-  for (const forbidden of ['window.open(', 'URL.createObjectURL(', "request('/files", 'document.createElement']) {
-    assert.equal(compatibility.includes(forbidden), false, `FilePreviewer must not own ${forbidden}`)
-  }
+  for (const forbidden of ['window.open(', 'URL.createObjectURL(', "request('/files", 'document.createElement']) assert.equal(compatibility.includes(forbidden), false, `FilePreviewer must not own ${forbidden}`)
 })
 
 test('W3 StudentDocumentViewer stays presentation-only and fences Blob lifecycle by canonical file identity', () => {
@@ -46,9 +44,7 @@ test('W3 StudentDocumentViewer stays presentation-only and fences Blob lifecycle
   assert.match(versionBar, /item\.fileVersionId \|\| item\.versionId \|\| item\.fileId/)
   assert.match(viewer, /selectedFile\.value\?\.isCurrent === false/)
   assert.match(viewer, /只读冻结版本/)
-  for (const forbidden of ['portalApi', 'issueGraduationMaterialTicket', '/material-center/', 'downloadGraduationMaterial', 'window.open(']) {
-    assert.equal(viewer.includes(forbidden), false, `Viewer must not own business transport: ${forbidden}`)
-  }
+  for (const forbidden of ['portalApi', 'issueGraduationMaterialTicket', '/material-center/', 'downloadGraduationMaterial', 'window.open(']) assert.equal(viewer.includes(forbidden), false, `Viewer must not own business transport: ${forbidden}`)
   assert.match(session, /file\.fileId/)
   assert.match(session, /file\.fileVersionId \|\| file\.versionId/)
   assert.match(session, /file\.sourceSha256 \|\| file\.sha256/)
@@ -90,6 +86,8 @@ test('W6 student PC renders DOCX locally from authorized bytes without widening 
   assert.match(session, /const blob = shallowRef\(null\)/)
   assert.match(session, /25 \* 1024 \* 1024/)
   assert.match(docxRenderer, /DecompressionStream\('deflate-raw'\)/)
+  assert.match(docxRenderer, /const reader = stream\.getReader\(\)/)
+  assert.match(docxRenderer, /reader\.cancel\(/)
   assert.match(docxRenderer, /MAX_TOTAL_UNCOMPRESSED = 80 \* 1024 \* 1024/)
   assert.match(docxRenderer, /MAX_RENDER_NODES = 50000/)
   assert.match(docxRenderer, /actualDecodedTotal/)

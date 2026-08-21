@@ -13,14 +13,7 @@ const adapter = read('src/components/file/viewer/adapters/DocxViewerAdapter.vue'
 const session = read('src/components/file/viewer/usePreviewSession.js')
 
 test('W6 PreviewDescriptor recognizes DOCX without widening other Office formats', () => {
-  const docx = buildPreviewDescriptorFromFile({
-    fileId: 9,
-    fileVersionId: 42,
-    sourceSha256: 'sha-docx',
-    fileName: '毕业设计说明书.docx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    allowedActions: ['preview']
-  })
+  const docx = buildPreviewDescriptorFromFile({ fileId: 9, fileVersionId: 42, sourceSha256: 'sha-docx', fileName: '毕业设计说明书.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', allowedActions: ['preview'] })
   assert.equal(docx.previewKind, 'DOCX')
   assert.equal(docx.preview.kind, 'DOCX')
   assert.equal(buildPreviewDescriptorFromFile({ fileName: '成绩表.xlsx', allowedActions: ['preview'] }).previewKind, 'UNSUPPORTED')
@@ -31,6 +24,9 @@ test('W6 PC DOCX renderer is local, bounded, read-only and never opens a public 
   assert.match(viewer, /DocxViewerAdapter/)
   assert.match(viewer, /previewKind === 'DOCX'/)
   assert.match(renderer, /DecompressionStream\('deflate-raw'\)/)
+  assert.match(renderer, /const reader = stream\.getReader\(\)/)
+  assert.match(renderer, /reader\.cancel\(/)
+  assert.match(renderer, /maxOutputBytes/)
   assert.match(renderer, /MAX_SOURCE_BYTES = 25 \* 1024 \* 1024/)
   assert.match(renderer, /MAX_TOTAL_UNCOMPRESSED = 80 \* 1024 \* 1024/)
   assert.match(renderer, /MAX_RENDER_NODES = 50000/)

@@ -43,6 +43,38 @@ function findEocd(bytes) {
   fail('PREVIEW_DOCX_MALFORMED', 'DOCX 压缩目录无效')
 }
 
+async function inflateBounded(compressed, maxOutputBytes) {
+  const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+  const reader = stream.getReader()
+  const chunks = []
+  let total = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value?.byteLength) continue
+      total += value.byteLength
+      if (total > maxOutputBytes) {
+        await reader.cancel('DOCX output exceeds bounded preview limit').catch(() => {})
+        fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 解压输出超过安全渲染上限')
+      }
+      chunks.push(value)
+    }
+  } catch (error) {
+    if (error instanceof DocxPreviewError) throw error
+    fail('PREVIEW_DOCX_MALFORMED', 'DOCX 内容解压失败')
+  } finally {
+    try { reader.releaseLock() } catch { /* stream already closed */ }
+  }
+  const output = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    output.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return output
+}
+
 class DocxArchive {
   constructor(bytes) {
     this.bytes = bytes
@@ -109,14 +141,11 @@ class DocxArchive {
     if (entry.method === 0) return this.track(name, compressed.slice())
     if (entry.method !== 8) fail('PREVIEW_DOCX_MALFORMED', 'DOCX 使用了不支持的压缩方式')
     if (typeof DecompressionStream !== 'function') fail('PREVIEW_DOCX_DECOMPRESSION_UNSUPPORTED', '当前浏览器不支持安全 DOCX 解压，请升级 Chrome/Edge 后重试')
-    let output
-    try {
-      const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
-      output = new Uint8Array(await new Response(stream).arrayBuffer())
-    } catch {
-      fail('PREVIEW_DOCX_MALFORMED', 'DOCX 内容解压失败')
-    }
-    if (output.byteLength > Math.max(entry.uncompressedSize * 2 + 4096, entry.uncompressedSize + 4096)) fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 解压内容与目录声明不一致')
+    const remaining = MAX_TOTAL_UNCOMPRESSED - this.actualDecodedTotal
+    const ratioBound = Math.max(entry.uncompressedSize * 2 + 4096, entry.uncompressedSize + 4096)
+    const maxOutput = Math.min(MAX_ENTRY_BYTES, remaining, ratioBound)
+    if (maxOutput <= 0) fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 实际解压内容超过安全渲染上限')
+    const output = await inflateBounded(compressed, maxOutput)
     return this.track(name, output)
   }
 
