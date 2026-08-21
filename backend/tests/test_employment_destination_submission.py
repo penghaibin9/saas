@@ -10,6 +10,9 @@
 - reject → 提交 REJECTED，EmpStudent 不受影响；
 - return → 提交 RETURNED（终态）+ 原因落库，学生可重新提交一条新记录；
 - approval_business_context_service 的 EMPLOYMENT_DESTINATION adapter 返回真实字段。
+
+真实账号 token 不再由测试手拼。db-* 会执行生产级租户身份与岗位复核，因此这里直接
+复用 auth_service_db.build_login_result() 生成与正式密码登录完全同形的 claims。
 """
 from __future__ import annotations
 
@@ -17,24 +20,39 @@ PORTAL = "/api/v1/portal/employment"
 TID = 1000000000000000001
 
 
+def _ensure_student_role(db, user):
+    from app.models import Role, UserRole
+
+    role = db.query(Role).filter_by(tenant_id=TID, role_code="STUDENT").first()
+    if role is None:
+        role = Role(tenant_id=TID, role_code="STUDENT", role_name="学生",
+                    role_type="SYSTEM", status="ACTIVE")
+        db.add(role)
+        db.flush()
+    link = db.query(UserRole).filter_by(
+        tenant_id=TID, user_id=user.id, role_id=role.id).first()
+    if link is None:
+        db.add(UserRole(tenant_id=TID, user_id=user.id, role_id=role.id, status="ACTIVE"))
+    else:
+        link.status = "ACTIVE"
+        link.is_deleted = False
+    db.flush()
+
+
 def _stu_token(real_name, student_no):
-    from app.core.security import create_access_token
     from app.db.session import get_sessionmaker
-    from app.models import StudentProfile, User
+    from app.models import User
+    from app.services import auth_service_db
 
     db = get_sessionmaker()()
     try:
         user = db.query(User).filter_by(tenant_id=TID, login_name=student_no).first()
-        student = db.query(StudentProfile).filter_by(tenant_id=TID, student_no=student_no).first()
-        assert user is not None and student is not None
-        uid, sid = int(user.id), int(student.id)
+        assert user is not None
+        result = auth_service_db.build_login_result(db, user, client_type="PC")
+        token = result["accessToken"]
     finally:
         db.close()
-    return {"Authorization": "Bearer " + create_access_token({
-        "userId": f"db-{uid}", "loginName": student_no, "studentId": str(sid),
-        "realName": real_name, "studentNo": student_no,
-        "userType": "STUDENT", "tid": "x", "tenantId": str(TID),
-        "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "PC"})}
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _hdr(client, login_name="employment01"):
@@ -80,6 +98,7 @@ def _seed_student(no, name, *, user_id=None):
                     password_hash="test-only", user_type="STUDENT", status="ACTIVE")
         db.add(user)
         db.flush()
+        _ensure_student_role(db, user)
         row = StudentProfile(tenant_id=TID, student_no=no, real_name=name, gender="F", grade="2021",
                              current_stage="EMPLOYMENT", student_status="NORMAL", status="ACTIVE")
         db.add(row)
@@ -111,6 +130,16 @@ def _register(client, no, name, **fields):
     return client.post(f"{PORTAL}/destination", headers=h, json=body).json()
 
 
+def _action_body(client, task_id, headers, **fields):
+    """模拟真实审批详情→动作：sourceVersion 必须来自用户实际读到的 Context 快照。"""
+    detail = client.get(f"/api/v1/approvals/tasks/{task_id}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    data = detail.json()["data"]
+    source_version = data["businessContext"]["sourceVersion"]
+    return {"version": int(data.get("version") or 0),
+            "expectedSourceVersion": source_version, **fields}
+
+
 def test_submit_rejects_invalid_destination_type(client, db_mode):
     _seed_student("SUB-000", "提交零")
     r = _register(client, "SUB-000", "提交零", destinationType="NOT_A_CODE")
@@ -131,9 +160,8 @@ def test_submit_and_duplicate_active_conflict(client, db_mode):
 
 def test_submit_opens_real_workflow_and_todo_with_user_applicant(client, db_mode):
     teacher_id = _seed_teacher()
-    sid = _seed_student("SUB-002", "提交二", user_id=9000002)
+    sid = _seed_student("SUB-002", "提交二")
     student_user_id = _student_user_id("SUB-002")
-    assert student_user_id == 9000002
     assert student_user_id != sid
     ok = _register(client, "SUB-002", "提交二")["data"]
 
@@ -169,26 +197,25 @@ def test_submit_opens_real_workflow_and_todo_with_user_applicant(client, db_mode
 def test_submit_fails_closed_without_active_account_link(client, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import StudentProfile, User
-    from app.core.security import create_access_token
+    from app.services import auth_service_db
 
     _seed_teacher()
     db = get_sessionmaker()()
     try:
-        user = User(id=9000003, tenant_id=TID, login_name="SUB-NOLINK", real_name="无绑定学生",
+        user = User(tenant_id=TID, login_name="SUB-NOLINK", real_name="无绑定学生",
                     password_hash="test-only", user_type="STUDENT", status="ACTIVE")
         student = StudentProfile(tenant_id=TID, student_no="SUB-NOLINK", real_name="无绑定学生",
                                  gender="F", grade="2021", current_stage="EMPLOYMENT",
                                  student_status="NORMAL", status="ACTIVE")
         db.add_all([user, student])
+        db.flush()
+        _ensure_student_role(db, user)
         db.commit()
         sid = int(student.id)
+        token = auth_service_db.build_login_result(db, user, client_type="PC")["accessToken"]
     finally:
         db.close()
 
-    token = create_access_token({
-        "userId": "db-9000003", "loginName": "SUB-NOLINK", "studentId": str(sid),
-        "realName": "无绑定学生", "studentNo": "SUB-NOLINK", "userType": "STUDENT",
-        "tenantId": str(TID), "currentRoleCode": "STUDENT", "clientType": "PC"})
     r = client.post(f"{PORTAL}/destination", headers={"Authorization": f"Bearer {token}"},
                     json={"destinationType": "SIGNED", "companyName": "甲公司"})
     assert r.status_code == 409, r.text
@@ -204,7 +231,7 @@ def test_approve_creates_emp_student_atomically(client, db_mode):
 
     headers = _hdr(client)
     resp = client.post(f"/api/v1/approvals/tasks/{task_id}/approve",
-                       json={"comment": "同意", "version": 0}, headers=headers)
+                       json=_action_body(client, task_id, headers, comment="同意"), headers=headers)
     assert resp.status_code == 200, resp.text
 
     from app.db.session import get_sessionmaker
@@ -258,7 +285,7 @@ def test_approve_changed_facts_invalidates_previous_verification(client, db_mode
 
     headers = _hdr(client)
     resp = client.post(f"/api/v1/approvals/tasks/{task_id}/approve",
-                       json={"comment": "同意", "version": 0}, headers=headers)
+                       json=_action_body(client, task_id, headers, comment="同意"), headers=headers)
     assert resp.status_code == 200, resp.text
 
     db = get_sessionmaker()()
@@ -291,8 +318,10 @@ def test_approve_identical_facts_preserves_current_verification(client, db_mode)
 
     row = _register(client, "SUB-004-SAME", "提交四同事实",
                     companyName="甲公司", jobTitle="后端工程师")["data"]
+    headers = _hdr(client)
     resp = client.post(f"/api/v1/approvals/tasks/{row['currentTaskId']}/approve",
-                       json={"comment": "事实未变化", "version": 0}, headers=_hdr(client))
+                       json=_action_body(client, row["currentTaskId"], headers,
+                                         comment="事实未变化"), headers=headers)
     assert resp.status_code == 200, resp.text
 
     db = get_sessionmaker()()
@@ -312,7 +341,8 @@ def test_reject_leaves_emp_student_untouched(client, db_mode):
 
     headers = _hdr(client)
     resp = client.post(f"/api/v1/approvals/tasks/{task_id}/reject",
-                       json={"reason": "提交材料不属实", "version": 0}, headers=headers)
+                       json=_action_body(client, task_id, headers, reason="提交材料不属实"),
+                       headers=headers)
     assert resp.status_code == 200, resp.text
 
     from app.db.session import get_sessionmaker
@@ -330,7 +360,7 @@ def test_reject_leaves_emp_student_untouched(client, db_mode):
 
 def test_return_is_terminal_and_allows_resubmission(client, db_mode):
     _seed_teacher()
-    sid = _seed_student("SUB-006", "提交六", user_id=9000006)
+    sid = _seed_student("SUB-006", "提交六")
     student_user_id = _student_user_id("SUB-006")
     assert sid != student_user_id
     row = _register(client, "SUB-006", "提交六")["data"]
@@ -338,7 +368,8 @@ def test_return_is_terminal_and_allows_resubmission(client, db_mode):
 
     headers = _hdr(client)
     resp = client.post(f"/api/v1/approvals/tasks/{task_id}/return",
-                       json={"reason": "请补充三方协议", "version": 0}, headers=headers)
+                       json=_action_body(client, task_id, headers, reason="请补充三方协议"),
+                       headers=headers)
     assert resp.status_code == 200, resp.text
 
     from app.db.session import get_sessionmaker
