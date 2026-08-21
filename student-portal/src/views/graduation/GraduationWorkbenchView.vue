@@ -167,17 +167,18 @@
 
       <section v-if="hasPeerWork" class="gd-peer sp-panel">
         <h2>成果互查</h2>
-        <p class="sp-muted">任务绑定学校确认的正式定稿。互查文件只允许走任务专用授权；未取得任务授权时不会复用本人材料预览权限。</p>
+        <p class="sp-muted">任务绑定学校确认的正式定稿。站内查看只走 peerId + 冻结定稿 + 附件 fileId 的任务专用授权，不复用本人材料权限。</p>
         <div v-for="p in (peer.toReview || [])" :key="'r-' + p.id" class="gd-peer__item">
           <header><strong>待互查 · {{ p.studentName || '同学' }}</strong><StatusTag :text="p.statusLabel || '待互查'" tone="warn" /></header>
           <p class="sp-muted">评阅材料：{{ p.finalType || '定稿' }} {{ p.finalVersion || '版本未绑定' }}</p>
           <p v-if="p.taskValid === false" class="gd-step__comment">{{ p.taskError || '任务未绑定有效正式定稿，请联系管理员重新分配。' }}</p>
           <div v-if="p.attachmentsList?.length" class="gd-files">
-            <button v-for="file in p.attachmentsList" :key="file.fileId" class="gd-file" :disabled="busy" @click="downloadMaterial(file)">
-              下载 {{ file.fileName || '定稿材料' }}
-            </button>
+            <span v-for="file in p.attachmentsList" :key="file.fileId" class="gd-file-actions">
+              <button class="gd-file" :disabled="busy" @click="openPeerReader(p, file)">查看任务定稿</button>
+              <button class="gd-file gd-file--download" :disabled="busy" @click="downloadMaterial(file)">下载</button>
+            </span>
           </div>
-          <p v-else-if="p.taskValid !== false" class="gd-step__comment">该任务暂未下发专用文件授权，不会使用本人材料权限绕过访问边界。</p>
+          <p v-else-if="p.taskValid !== false" class="gd-step__comment">该任务没有可访问的冻结定稿附件，请联系管理员核对任务绑定。</p>
           <label>互查意见<textarea v-model.trim="peerOpinions[p.id]" placeholder="互查意见（至少 5 字）" maxlength="500" /></label>
           <button class="sp-btn" :disabled="busy || p.taskValid === false || !p.attachmentsList?.length || (peerOpinions[p.id] || '').trim().length < 5" @click="submitPeer(p.id)">提交互查意见</button>
         </div>
@@ -186,9 +187,10 @@
           <p class="sp-muted">对应材料：{{ p.finalType || '定稿' }} {{ p.finalVersion || '版本未绑定' }}</p>
           <p v-if="p.taskValid === false" class="gd-step__comment">{{ p.taskError || '任务未绑定有效正式定稿，请联系管理员重新分配。' }}</p>
           <div v-if="p.attachmentsList?.length" class="gd-files">
-            <button v-for="file in p.attachmentsList" :key="file.fileId" class="gd-file" :disabled="busy" @click="downloadMaterial(file)">
-              下载 {{ file.fileName || '定稿材料' }}
-            </button>
+            <span v-for="file in p.attachmentsList" :key="file.fileId" class="gd-file-actions">
+              <button class="gd-file" :disabled="busy" @click="openPeerReader(p, file)">查看冻结定稿</button>
+              <button class="gd-file gd-file--download" :disabled="busy" @click="downloadMaterial(file)">下载</button>
+            </span>
           </div>
           <p v-if="p.opinion" class="gd-step__comment">互查意见：{{ p.opinion }}</p>
           <label>整改说明<textarea v-model.trim="peerNotes[p.id]" placeholder="整改说明（至少 5 字）" maxlength="500" /></label>
@@ -202,6 +204,7 @@
       v-if="readerFile"
       :file="readerFile"
       :load-preview="loadReaderPreview"
+      :read-only="Boolean(readerFile?.peerId)"
       @download="downloadReaderFile"
       @close="closeReader"
     />
@@ -523,11 +526,25 @@ function openPendingReader(file) {
   readerFile.value = { ...file, temporaryPreview: true, isCurrent: true, versionNo: '待提交' }
 }
 
+function openPeerReader(task, file) {
+  if (!task?.id || !file?.fileId || task.taskValid === false || busy.value) return
+  readerFile.value = {
+    ...file,
+    peerId: String(task.id),
+    isCurrent: true,
+    versionNo: task.finalVersion || '任务定稿',
+    statusText: '成果互查冻结定稿',
+    canPreview: true,
+    canDownload: true
+  }
+}
+
 function closeReader() {
   readerFile.value = null
 }
 
 async function loadReaderPreview(file, options) {
+  if (file?.peerId) return fileSdk.fetchPeerPreviewBlob(file.peerId, file.fileId, options)
   if (file?.temporaryPreview || file?.temporary) return fileSdk.fetchPreviewBlob(file.fileId, options)
   const ticket = await portalApi.issueGraduationMaterialTicket(file.fileId, 'preview')
   return fileSdk.fetchPreviewBlobFrom(ticket, options)
