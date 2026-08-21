@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell title="客户健康、工单、培训与续费" subtitle="健康分实时判定 · 工单 · 培训 · 续费跟进"
-                   role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
+                   role-name="客户成功平台主管" data-scope-name="跨租户客户运营">
     <template #actions>
       <ModuleToolbar :actions="[{ key: 'refresh', label: '刷新' }]" @action="load" />
     </template>
