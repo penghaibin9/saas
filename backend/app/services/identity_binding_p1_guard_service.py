@@ -7,11 +7,17 @@ read semantics or unrelated batch callers.
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 
 from app.core.context import current_tenant_id
 from app.core.exceptions import AppException
 from app.db.session import get_sessionmaker
+
+
+def _now() -> datetime:
+    return datetime.utcnow().replace(microsecond=0)
 
 
 def _tenant_id() -> int:
@@ -115,8 +121,11 @@ def repair_binding(
         if before is not None and int(before.student_id) == int(profile.id):
             raise AppException("VALIDATION_ERROR", "该账号已绑定到此学籍，无需修复")
         previous_student_id = str(before.student_id) if before is not None else ""
+        now = _now()
         if before is not None:
             before.link_status = "REVOKED"
+            before.unbound_at = now
+            before.remark = reason[:500]
             before.updated_by = actor_id
             before.version = int(before.version or 0) + 1
             db.flush()
@@ -129,6 +138,8 @@ def repair_binding(
             source="MANUAL",
             bound_login_name=account.login_name,
             bound_student_no=profile.student_no,
+            bound_at=now,
+            remark=reason[:500],
             created_by=actor_id,
             updated_by=actor_id,
         )
@@ -148,6 +159,7 @@ def repair_binding(
                 "moduleCode": "systemAdmin",
                 "expectedVersion": current_version,
                 "newVersion": int(account.version or 0),
+                "boundAt": now.isoformat(),
             },
             tenant_id=tenant_id,
             resource_id=str(account.id),
@@ -193,7 +205,10 @@ def unbind(
             raise AppException("DATA_NOT_FOUND", "该账号当前没有有效绑定", http_status=404)
 
         student_id = int(link.student_id)
+        now = _now()
         link.link_status = "REVOKED"
+        link.unbound_at = now
+        link.remark = reason[:500]
         link.updated_by = actor_id
         link.version = int(link.version or 0) + 1
         account.version = current_version + 1
@@ -210,6 +225,7 @@ def unbind(
                 "moduleCode": "systemAdmin",
                 "expectedVersion": current_version,
                 "newVersion": int(account.version or 0),
+                "unboundAt": now.isoformat(),
             },
             tenant_id=tenant_id,
             resource_id=str(account.id),
