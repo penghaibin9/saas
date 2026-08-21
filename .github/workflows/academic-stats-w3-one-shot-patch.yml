@@ -1,0 +1,46 @@
+name: Academic Stats W3 One Shot Host Patch
+
+on:
+  push:
+    branches:
+      - fix/academic-stats-snapshot-w3-20260821
+    paths:
+      - '.github/workflows/academic-stats-w3-one-shot-patch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-stats-w3-one-shot-host
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/academic-stats-snapshot-w3-20260821
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply exact host patch
+        run: python scripts/check/apply-academic-stats-w3-owner-patch.py
+      - name: Verify mount
+        run: |
+          set -euo pipefail
+          grep -q "{ key: 'snapshot', label: '统计快照' }" frontend/src/modules/academicAffairs/views/AaStatsOverviewView.vue
+          grep -q '<AaStatsSnapshotWorkspace :context-filters="filters" />' frontend/src/modules/academicAffairs/views/AaStatsOverviewView.vue
+          grep -q "tab !== 'snapshot'" frontend/src/modules/academicAffairs/views/AaStatsOverviewView.vue
+      - name: Commit host and remove one-shot files
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/academic-stats-w3-one-shot-patch.yml scripts/check/apply-academic-stats-w3-owner-patch.py
+          git add frontend/src/modules/academicAffairs/views/AaStatsOverviewView.vue
+          git commit -m 'feat(academic): mount W3 stats snapshot workspace [host-patch]'
+          git push origin HEAD:fix/academic-stats-snapshot-w3-20260821
