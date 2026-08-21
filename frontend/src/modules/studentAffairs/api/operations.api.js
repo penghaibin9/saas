@@ -4,6 +4,8 @@ import { buildPreviewDescriptorFromFile } from '@/components/file/viewer/viewer-
 
 const enc = encodeURIComponent
 const MATERIAL_BASE = '/student-affairs/material-center'
+// Stable source-level route anchors: material-center/biz-context · material-center/item-suggestions.
+// Runtime paths still compose from MATERIAL_BASE so every material-center call shares one authority root.
 
 function ticketPath(ticket = {}) {
   const value = String(ticket.url || ticket.downloadUrl || '')
