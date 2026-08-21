@@ -32,6 +32,7 @@ from app.api.v1.data_center import router as data_center_router
 from app.api.v1.help_metrics import router as help_metrics_router
 from app.api.v1.mobile_academic_status import router as mobile_academic_status_router
 from app.api.v1.mobile_performance import router as mobile_performance_router
+from app.api.v1.platform_p1_closure import router as platform_p1_closure_router
 from app.api.v1.system_p1_closure import router as system_p1_closure_router
 from app.modules.student_affairs.routers.affairs_material_center import router as affairs_material_center_router
 from app.services import control_plane_p0_runtime
@@ -92,12 +93,40 @@ _AUTH_P0_REPLACEMENTS = {
     "/auth/change-password",
     "/auth/wx-bind",
 }
+
+# P1 production review replacements. These routes existed before the seven UI closures,
+# but their old contracts did not enforce the new server-side security boundaries. Remove
+# exactly those method/path signatures, then mount the guarded endpoints below.
+def _sig(path: str, method: str) -> tuple[str, frozenset[str]]:
+    return path, frozenset({method.upper()})
+
+
+_P1_REPLACEMENTS = {
+    _sig("/system/context", "GET"),
+    _sig("/system/effective-config", "GET"),
+    _sig("/system/config-overrides", "PUT"),
+    _sig("/system/config-history/{config_key}", "GET"),
+    _sig("/system/accounts/{user_id}/effective-identity", "GET"),
+    _sig("/system/role-assignments", "POST"),
+    _sig("/system/role-assignments/{assignment_id}/revoke", "POST"),
+    _sig("/system/role-assignments/{assignment_id}/transfer", "POST"),
+    _sig("/system/org-nodes/{org_type}/{node_id}/impact", "GET"),
+    _sig("/system/org-nodes/{node_id}/status", "PUT"),
+    _sig("/platform/tenants/{tenant_id}", "PUT"),
+    _sig("/platform/support-tickets/{ticket_id}/transition", "POST"),
+    _sig("/platform/trainings", "POST"),
+    _sig("/platform/trainings/{training_id}/complete", "POST"),
+    _sig("/platform/renewal-tasks", "POST"),
+    _sig("/platform/renewal-tasks/{task_id}/transition", "POST"),
+}
+
 api_router.routes[:] = [
     route for route in api_router.routes
     if not (
         isinstance(route, APIRoute)
         and (
-            (
+            _route_signature(route) in _P1_REPLACEMENTS
+            or (
                 str(getattr(route, "path", "")) == _RESET_SANDBOX_PATH
                 and "POST" in {str(x).upper() for x in (getattr(route, "methods", None) or ())}
             )
@@ -115,6 +144,7 @@ for supplemental_router in (
     control_plane_offboarding_router,
     auth_browser_router,
     system_p1_closure_router,
+    platform_p1_closure_router,
     affairs_material_center_router,
     affairs_four_end_router,
     affairs_operations_router,
