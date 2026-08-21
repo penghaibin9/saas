@@ -1,0 +1,236 @@
+name: Academic Exam Incident W2
+
+on:
+  push:
+    branches:
+      - fix/academic-exam-incident-w2-20260821
+    paths:
+      - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_incident_lifecycle_service.py'
+      - 'backend/tests/test_aa_exam_incident_lifecycle.py'
+      - 'backend/tests/test_aa_exam_incident_concurrency.py'
+      - 'backend/tests/test_aa_exam_incident_workbench_contract.py'
+      - 'backend/tests/test_aa_exam_fact_guards.py'
+      - 'backend/tests/test_aa_exam_formal_print_contract.py'
+      - 'backend/tests/test_aa_exam_formal_print_wiring_contract.py'
+      - 'backend/scripts/e2e_seed_academic_exam_incident_w2.py'
+      - 'frontend/src/modules/academicAffairs/api/academic-exam-incident.api.js'
+      - 'frontend/src/modules/academicAffairs/components/AaExamIncidentWorkbench.vue'
+      - 'frontend/src/modules/academicAffairs/views/AaExamConsoleView.vue'
+      - 'frontend/tests/academic-exam-incident-w2-contract.test.mjs'
+      - 'frontend/tests/academic-exam-formal-print-source-contract.test.mjs'
+      - 'e2e/specs/academic-exam-incident-w2.spec.mjs'
+      - '.github/workflows/academic-exam-incident-w2.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_incident_lifecycle_service.py'
+      - 'backend/tests/test_aa_exam_incident_lifecycle.py'
+      - 'backend/tests/test_aa_exam_incident_concurrency.py'
+      - 'backend/tests/test_aa_exam_incident_workbench_contract.py'
+      - 'backend/tests/test_aa_exam_fact_guards.py'
+      - 'backend/tests/test_aa_exam_formal_print_contract.py'
+      - 'backend/tests/test_aa_exam_formal_print_wiring_contract.py'
+      - 'backend/scripts/e2e_seed_academic_exam_incident_w2.py'
+      - 'frontend/src/modules/academicAffairs/api/academic-exam-incident.api.js'
+      - 'frontend/src/modules/academicAffairs/components/AaExamIncidentWorkbench.vue'
+      - 'frontend/src/modules/academicAffairs/views/AaExamConsoleView.vue'
+      - 'frontend/tests/academic-exam-incident-w2-contract.test.mjs'
+      - 'frontend/tests/academic-exam-formal-print-source-contract.test.mjs'
+      - 'e2e/specs/academic-exam-incident-w2.spec.mjs'
+      - '.github/workflows/academic-exam-incident-w2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-exam-incident-w2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  w2-closure:
+    name: Backend + frontend + real browser W2 seal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      W2_EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:w2_root@127.0.0.1:3306/academic_exam_w2_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:w2_root@127.0.0.1:3306/academic_exam_w2_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: w2_root
+      DB_NAME: academic_exam_w2_e2e
+      REDIS_URL: redis://127.0.0.1:6379/13
+      REDIS_KEY_PREFIX: academic-exam-w2
+      JWT_SECRET: academic-exam-w2-browser-only-not-production
+      JWT_SECRET_KEY: academic-exam-w2-browser-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: w2_root
+          MYSQL_DATABASE: academic_exam_w2_e2e
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pw2_root --silent"
+          --health-interval=8s
+          --health-timeout=5s
+          --health-retries=15
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.W2_EXPECTED_SHA }}
+          fetch-depth: 0
+
+      - name: Assert exact W2 branch head
+        run: test "$(git rev-parse HEAD)" = "$W2_EXPECTED_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend and verify current main migration topology
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+          python -m py_compile \
+            app/modules/academic_affairs/services/academic_affairs_exam_incident_lifecycle_service.py \
+            app/modules/academic_affairs/routers/exam_incident_closure_router.py \
+            scripts/e2e_seed_academic_exam_incident_w2.py
+
+      - name: Run W2 lifecycle permission tenant concurrency idempotency and legacy exam regressions
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_aa_exam_incident_lifecycle.py \
+            tests/test_aa_exam_incident_concurrency.py \
+            tests/test_aa_exam_incident_workbench_contract.py \
+            tests/test_aa_exam_fact_guards.py \
+            tests/test_aa_exam_closure.py
+
+      - name: Prove formal print contract is unaffected
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_aa_exam_formal_print_contract.py \
+            tests/test_aa_exam_formal_print_wiring_contract.py
+
+      - name: Run W2 PC API contract and production build
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          node --test tests/academic-exam-incident-w2-contract.test.mjs
+          node --test tests/academic-exam-formal-print-source-contract.test.mjs
+          npm run build
+
+      - name: Seed isolated browser authority and W2 exam facts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_playwright_tenants.py
+          python - <<'PY'
+          from app.services.school_iam_authority_service import converge_school_iam_authority
+          converge_school_iam_authority(
+              source='w2-browser-exact-head',
+              source_commit_sha='${{ env.W2_EXPECTED_SHA }}',
+              actor_user_id=None,
+          )
+          print('[w2] school IAM authority converged')
+          PY
+          python scripts/e2e_seed_academic_exam_incident_w2.py
+          test -s ../e2e/academic-exam-incident-w2-fixture.json
+
+      - name: Start backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend-w2.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend-w2.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend-w2.log
+          exit 1
+
+      - name: Start staff PC from production-build-verified source
+        run: |
+          set -euo pipefail
+          cd frontend
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend-w2.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend-w2.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:5173/login >/dev/null && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/frontend-w2.log
+          exit 1
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Run real browser W2 CLOSE HANDOFF VOID history seal
+        working-directory: e2e
+        run: npx playwright test specs/academic-exam-incident-w2.spec.mjs --reporter=line
+
+      - name: Upload W2 browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-exam-incident-w2-evidence-${{ env.W2_EXPECTED_SHA }}
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+            e2e/academic-exam-incident-w2-fixture.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload W2 runtime logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-exam-incident-w2-logs-${{ env.W2_EXPECTED_SHA }}
+          path: e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
