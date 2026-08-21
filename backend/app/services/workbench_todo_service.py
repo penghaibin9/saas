@@ -16,7 +16,10 @@
      None=本租户全量（TENANT_ALL，如校级管理员）；空集=fail-closed（未配范围一律看不到）。
   注意与 `mobile_teacher_service._filter_by_assignee_todos` 的差异：移动端那支在 COLLEGE 分支下
   放行了全部 `assignee_id==0`（不校验学生归属），本服务按学生范围收紧，避免跨学院可见。
-学生（student-mini）：只看本人——`assignee_id == 本人` 或 `student_id == 本人学籍档案`。
+学生（student-mini）：**只按 `assignee_id == 当前 User.id` 判断收件人**。
+  `student_id` 永远只是“这条业务待办处理的是哪名学生”的 subject，不是 audience；老师审批
+  学生请假/资助/违纪时同样会填 student_id，绝不能因此把老师的待办暴露给该学生。
+  真正需要学生处理的待办，生产者必须通过正式账号绑定把 `assignee_id` 写成学生 User.id。
 
 `uid` 无法解析为正整数时（演示/异常令牌）绝不回落成 `assignee_id == 0`，否则会把
 全部池待办暴露给身份不明的调用方；此时按 fail-closed 返回空。
@@ -102,7 +105,7 @@ def _is_student(user: dict | None) -> bool:
 
 
 def _self_student_id(db, user: dict | None) -> int:
-    """学生本人学籍档案 ID（按令牌 studentNo 在本租户内解析；租户内学号唯一）。"""
+    """学生本人学籍档案 ID（仅供其它需要 subject 身份的调用；不参与 todo audience 判定）。"""
     from app.models import StudentProfile
     sn = str((user or {}).get("studentNo") or "").strip()
     if not sn:
@@ -120,13 +123,9 @@ def _visibility_cond(db, user: dict):
     uid = _uid(user)
 
     if _is_student(user):
-        sid = _self_student_id(db, user)
-        parts = []
-        if uid:
-            parts.append(UnifiedTodo.assignee_id == uid)
-        if sid:
-            parts.append(UnifiedTodo.student_id == sid)
-        return or_(*parts) if parts else None
+        # P1 audience hardening：student_id 是 subject，不是 recipient。
+        # 只有显式指派给当前学生 User.id 的待办才属于“我的待办”。
+        return UnifiedTodo.assignee_id == uid if uid else None
 
     # 教职工：本人指派 + 范围内池待办
     from app.core.affairs_security import build_affairs_context
