@@ -109,17 +109,14 @@
             </div>
           </AppSectionCard>
 
-          <AppExcelImportDrawer
+          <AaAuthoritativeImportDrawer
             v-if="task"
             v-model:visible="importVisible"
-            title="导入成绩（学号/平时/期中/期末/异常标记）"
+            title="成绩权威 XLSX 导入"
             template-name="成绩导入模板.xlsx"
-            :required-fields="['学号']"
             :preview-fields="['studentNo', 'studentName', 'usualScore', 'midtermScore', 'finalScore', 'exceptionFlag']"
             :download-template-fn="() => academicAffairsApi.downloadGradeImportTemplate(task.gradeTaskId)"
-            :upload-fn="(file) => academicAffairsApi.uploadGradeImportXlsx(task.gradeTaskId, file)"
-            :confirm-fn="({ rows }) => academicAffairsApi.confirmGradeImport(task.gradeTaskId, rows)"
-            :download-errors-fn="({ rows, errors }) => academicAffairsApi.downloadGradeImportErrors(task.gradeTaskId, rows, errors)"
+            :upload-fn="(file) => academicFileExchangeApi.uploadGradeImport(task.gradeTaskId, file)"
             @imported="onImported"
           />
 
@@ -239,8 +236,9 @@ import {
   AppClassPicker, AppStudentPicker, AppTeachingTaskPicker,
   AppCoursePicker, AppTermEntityPicker
 } from '@/components/common'
-import { AppExcelImportDrawer } from '@/components/common/excel'
+import AaAuthoritativeImportDrawer from '@/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicFileExchangeApi } from '@/modules/academicAffairs/api/academic-file-exchange.api'
 import { gradeIdentityApi } from '@/modules/academicAffairs/api/grade-identity.api'
 import { academicAffairsR10Api } from '@/modules/academicAffairs/api/academic-affairs-r10.api'
 import { gradeReminderApi } from '@/modules/academicAffairs/api/grade-reminder.api'
@@ -267,12 +265,13 @@ export default {
   name: 'AaGradeEntryView',
   components: {
     ModulePageShell, EmptyState, LoadingState, ErrorState, AppButton, AppSectionCard,
-    AppStatusTag, AppInlineAlert, AppSelect, AppConfirmDialog, AppExcelImportDrawer, AppClassPicker,
+    AppStatusTag, AppInlineAlert, AppSelect, AppConfirmDialog, AaAuthoritativeImportDrawer, AppClassPicker,
     AppStudentPicker, AppTeachingTaskPicker, AppCoursePicker, AppTermEntityPicker
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      academicFileExchangeApi,
       form: {
         teachingTaskId: '', courseId: '', courseName: '', termId: '', termCode: '',
         credit: null, classId: '', usualRatio: 30, midtermRatio: 0, finalRatio: 70,

@@ -6,11 +6,20 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
+      <AppButton @click="importChooserVisible = !importChooserVisible">Excel导入</AppButton>
       <AppButton @click="$router.push('/admin/academic-affairs/programs/opening-plan')">开课差异</AppButton>
       <AppButton variant="primary" @click="showCreate = !showCreate">＋ 新建方案</AppButton>
     </template>
 
     <div class="mp-stack">
+      <AppSectionCard v-if="importChooserVisible" title="培养方案 Excel 导入阶段" subtitle="同一六工作表模板，阶段由操作者明确选择；浏览器不推断写入顺序">
+        <AppInlineAlert type="info" description="先导入方案定义并确认，再按实施进度导入适用范围绑定；两个阶段分别形成独立 ImportJob 与审计证据。" />
+        <div class="aa-actions">
+          <AppButton variant="primary" @click="openProgramImport('DEFINITION')">1. 方案定义</AppButton>
+          <AppButton @click="openProgramImport('BINDING')">2. 适用范围绑定</AppButton>
+          <AppButton variant="ghost" @click="downloadProgramTemplate">下载六工作表模板</AppButton>
+        </div>
+      </AppSectionCard>
       <div v-if="summary" class="aa-summary-grid">
         <div class="aa-summary-card"><strong>{{ summary.totalPrograms }}</strong><span>方案总数</span></div>
         <div class="aa-summary-card is-ok"><strong>{{ summary.readyPrograms }}</strong><span>校验可提交</span></div>
@@ -65,6 +74,17 @@
         </template>
       </DataTable>
     </div>
+
+    <AaAuthoritativeImportDrawer
+      v-model:visible="importVisible"
+      title="培养方案六工作表权威导入"
+      template-name="培养方案六工作表权威导入模板.xlsx"
+      :phase-label="programImportPhase === 'DEFINITION' ? '1. 方案定义（DEFINITION）' : '2. 适用范围绑定（BINDING）'"
+      :preview-fields="['sheetName', 'rowNo', 'programCode', 'programName', 'majorCode', 'gradeYear', 'courseCode']"
+      :download-template-fn="academicFileExchangeApi.downloadProgramTemplate"
+      :upload-fn="uploadProgramFile"
+      @imported="onProgramImported"
+    />
   </ModulePageShell>
 </template>
 
@@ -74,12 +94,14 @@ import { AppButton } from '@/components/ui'
 import { AppInlineAlert, AppSectionCard, AppStatusTag, AppMajorPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { programQualityApi } from '@/modules/academicAffairs/api/program-quality.api'
+import { academicFileExchangeApi } from '@/modules/academicAffairs/api/academic-file-exchange.api'
+import AaAuthoritativeImportDrawer from '@/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue'
 import { REVIEW_STATUS, reviewStatusColor } from '@/modules/academicAffairs/constants/course-program'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaProgramListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppInlineAlert, AppSectionCard, AppStatusTag, AppMajorPicker },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppInlineAlert, AppSectionCard, AppStatusTag, AppMajorPicker, AaAuthoritativeImportDrawer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -88,6 +110,8 @@ export default {
       rows: [],
       allRows: [],
       summary: null,
+      academicFileExchangeApi,
+      importChooserVisible: false, importVisible: false, programImportPhase: 'DEFINITION',
       showCreate: false,
       creating: false,
       draft: { programName: '', majorId: '', gradeYear: '', totalCredits: null },
@@ -112,6 +136,23 @@ export default {
   methods: {
     reviewStatusColor,
     statusLabel(value) { return REVIEW_STATUS[value] || value || '' },
+    openProgramImport(phase) {
+      this.programImportPhase = phase === 'BINDING' ? 'BINDING' : 'DEFINITION'
+      this.importChooserVisible = false
+      this.importVisible = true
+    },
+    uploadProgramFile(file) {
+      return this.programImportPhase === 'BINDING'
+        ? academicFileExchangeApi.uploadProgramBindingImport(file)
+        : academicFileExchangeApi.uploadProgramDefinitionImport(file)
+    },
+    async downloadProgramTemplate() {
+      const res = await academicFileExchangeApi.downloadProgramTemplate()
+      if (res.code !== 0) { toast.error(res.message || '培养方案模板下载失败'); return }
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a'); a.href = url; a.download = '培养方案六工作表权威导入模板.xlsx'; a.click(); URL.revokeObjectURL(url)
+    },
+    async onProgramImported() { toast.success('培养方案权威导入已完成'); this.importVisible = false; await this.load() },
     applyPage() {
       const start = (this.pagination.page - 1) * this.pagination.pageSize
       this.rows = this.allRows.slice(start, start + this.pagination.pageSize)
@@ -166,6 +207,7 @@ export default {
 .aa-summary-card.is-ok { border-color: var(--success-200, #a7f3d0); }
 .aa-summary-card.is-warning { border-color: var(--warning-200, #fde68a); }
 .aa-summary-card.is-danger { border-color: var(--danger-200, #fecaca); }
+.aa-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
 .aa-cal-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .aa-cal-form__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-cal-form__item--grow { flex: 1; min-width: 240px; }

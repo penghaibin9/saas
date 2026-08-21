@@ -6,16 +6,8 @@
 与持久化座位全集，禁止把编排草稿伪装成正式文件。真正触发浏览器打印前再走
 ``/formal-print/issue`` 写 append-only ``EXAM_TICKET_PRINT`` 审计；预览本身不写审计。
 
-本模块加载时安装五类 C-W3 兼容 guard：
-- 发布通知 guard 包装 legacy ``_notify_publish``，让原学生通知继续原样执行，并在同事务把当前
-  canonical 监考行投递给真实教师账号；发布状态机和监考 Assignment 仍由既有 exam facade 唯一持有；
-- legacy ``GET /exam/incidents`` 保留 URL，但读模型重绑到同一个全生命周期 workbench，避免旧入口
-  只读 ACTIVE、整表 materialize 后 Python 分页，与新闭环事实产生双口径；
-- 监考教师登记异常的 scope 只认当前未删除 Assignment + ACTIVE room，软删旧行/失效考场不再保留写权限；
-- 已发布 ``/mobile/academic/exam/*`` 的考试安排/缓考选课/缓考提交重绑到学生正式 seat 事实链，
-  保留原 URL 与缓考审批状态机，不再消费 UTC 判断、失效考场或可猜 examCourseId 的旧实现；
-- legacy/PC ``defer_apply`` service 本身也重绑到同一正式 seat 命令，确保 exam_core 与旧大路由
-  不会成为移动端之外的第二条弱校验写入口。
+W2 将考场异常正式闭环绑定到 append-only resolution fact：风险通知本身不再等价于 CLOSE；
+HANDOFF/CLOSE/VOID 均须形成正式处置审计，重复/并发终态写 fail-closed，结束/归档门禁消费同一事实。
 """
 from __future__ import annotations
 
@@ -26,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
 from app.core.response import success
-from app.modules.academic_affairs.services import academic_affairs_exam_incident_workbench_service as incident_workbench
+from app.modules.academic_affairs.services import academic_affairs_exam_incident_lifecycle_service as incident_lifecycle
 from app.modules.academic_affairs.services import academic_affairs_exam_invigilator_scope_guard as invigilator_scope_guard
 from app.modules.academic_affairs.services import academic_affairs_exam_service as service
 from app.modules.academic_affairs.services import academic_affairs_exam_print_service as print_service
@@ -39,7 +31,7 @@ from app.services.db_service import session
 def _legacy_incident_list(user, batch_id=None, page=1, page_size=50):
     """Published legacy route adapter: same URL, canonical lifecycle workbench truth."""
     with session() as db:
-        result = incident_workbench.project_incident_workbench(
+        result = incident_lifecycle.project_incident_workbench(
             db,
             user,
             batch_id=int(batch_id) if batch_id not in (None, "") else None,
@@ -61,6 +53,7 @@ def _install_legacy_incident_read() -> None:
 
 publish_delivery_guard.install()
 invigilator_scope_guard.install()
+incident_lifecycle.install()
 _install_legacy_incident_read()
 student_exam_safe.install_mobile_facade()
 student_exam_legacy_guard.install()
@@ -70,7 +63,7 @@ router = APIRouter(prefix="/academic-affairs", tags=["教务中心-考务正式�
 
 class IncidentResolveBody(BaseModel):
     action: str = Field(..., description="HANDOFF/CLOSE/VOID")
-    reason: Optional[str] = Field(None, max_length=500)
+    reason: str = Field(..., min_length=5, max_length=500)
     disciplineCaseRef: Optional[str] = Field(None, max_length=100)
 
 
@@ -110,17 +103,23 @@ def issue_formal_exam_room_print(
 def exam_incident_workbench(
     batchId: Optional[int] = Query(None),
     view: str = Query("ALL", pattern="^(ALL|OPEN|CLOSED|VOIDED)$"),
+    incidentType: Optional[str] = Query(None, pattern="^(ABSENT|DISCIPLINE|DISCIPLINE_VIOLATION|CHEAT|OTHER)$"),
+    keyword: Optional[str] = Query(None, max_length=100),
+    examDate: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     page: int = Query(1, ge=1),
     pageSize: int = Query(50, ge=1, le=100),
     user=Depends(require_permission("academicAffairs.exam.view")),
 ):
     with session() as db:
         return success(
-            incident_workbench.project_incident_workbench(
+            incident_lifecycle.project_incident_workbench(
                 db,
                 user,
                 batch_id=batchId,
                 view=view,
+                incident_type=incidentType,
+                keyword=keyword,
+                exam_date=examDate,
                 page=page,
                 page_size=pageSize,
             )
@@ -134,11 +133,11 @@ def resolve_exam_incident(
     user=Depends(require_permission("academicAffairs.exam.recordAbnormal")),
 ):
     return success(
-        service.resolve_incident(
+        incident_lifecycle.resolve_incident(
             user,
             incidentId,
             body.action,
-            body.reason or "",
+            body.reason,
             body.disciplineCaseRef or "",
         ),
         message="考场异常已处理",

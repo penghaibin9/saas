@@ -173,8 +173,13 @@ def test_d01_finished_and_archived_schedule_change_rejected(client, db_mode):
     bid, cid = _confirmed_course(client, admin, ids)
     rid = _publish(client, admin, bid, cid, ids)
     # 收口后结束批次
-    client.post(f"{BASE}/exam/incidents", headers=admin,
-                json={"examCourseId": str(cid), "studentId": str(ids["s1"]), "incidentType": "ABSENT"})
+    incident = client.post(
+        f"{BASE}/exam/incidents",
+        headers=admin,
+        json={"examCourseId": str(cid), "studentId": str(ids["s1"]), "incidentType": "ABSENT"},
+    )
+    assert incident.status_code == 200, incident.text
+    incident_id = incident.json()["data"]["incidentId"]
     seats = client.get(f"{BASE}/exam/rooms/{rid}/seats", headers=admin).json()["data"]["items"]
     assert any(s["attendanceStatus"] == "ABSENT" for s in seats)
     from app.db.session import get_sessionmaker
@@ -185,6 +190,15 @@ def test_d01_finished_and_archived_schedule_change_rejected(client, db_mode):
         AaExamRoomStudent.attendance_status == "NOT_STARTED",
     ).update({"attendance_status": "PRESENT"}, synchronize_session=False)
     db.commit(); db.close()
+    close_incident = client.post(
+        f"{BASE}/exam/incidents/{incident_id}/resolve",
+        headers=admin,
+        json={
+            "action": "CLOSE",
+            "reason": "缺考风险已联动完成，正式确认考务异常闭环后再结束批次",
+        },
+    )
+    assert close_incident.status_code == 200, close_incident.text
     assert client.post(f"{BASE}/exam/batches/{bid}/finish", headers=admin).status_code == 200
     assert client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
                       json={"examDate": "2027-07-01"}).status_code == 409

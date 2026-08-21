@@ -79,71 +79,46 @@
       </div>
     </AppConfirmDialog>
 
-    <AppExcelImportDrawer
+    <AaAuthoritativeImportDrawer
       v-model:visible="importVisible"
-      title="批量导入课表"
+      title="排课权威 XLSX 导入"
       template-name="排课结果导入模板.xlsx"
-      :required-fields="['教学任务ID', '星期', '节次']"
+      show-import-mode
       :preview-fields="['taskId', 'courseName', 'teacherName', 'className', 'weekday', 'slotNo', 'startWeek', 'endWeek', 'weekParity', 'classroom']"
       :download-template-fn="() => academicAffairsApi.downloadScheduleImportTemplate()"
-      :upload-fn="uploadAuthoritative"
-      :confirm-fn="confirmAuthoritative"
+      :upload-fn="(file, mode) => academicFileExchangeApi.uploadScheduleImport(batchId, file, mode)"
       @imported="onImported"
     />
   </ModulePageShell>
 </template>
 
 <script>
-/** 课表维护：班级视图保持不变；新增写入改为 READY TeachingTask-first，批量导入改走 File Exchange。 */
+/** 课表维护：班级视图保持不变；新增写入改为 READY TeachingTask-first，批量导入由统一权威 ImportJob Drawer 接管。 */
 import { ModulePageShell, LoadingState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect, AppClassPicker, AppClassroomPicker } from '@/components/common'
-import { AppExcelImportDrawer } from '@/components/common/excel'
+import AaAuthoritativeImportDrawer from '@/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicFileExchangeApi } from '@/modules/academicAffairs/api/academic-file-exchange.api'
 import { toast } from '@/utils/toast'
 
-const IMPORT_TERMINAL = new Set(['VALIDATED', 'VALIDATION_FAILED', 'FAILED', 'EXPIRED', 'SUCCEEDED'])
-const delay = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
-
-function previewResponse(item, message) {
-  const preview = item.preview || {}
-  const invalidRows = preview.invalidRows ?? item.invalidRows ?? 0
-  const validated = item.status === 'VALIDATED'
-  return {
-    code: validated || item.status === 'VALIDATION_FAILED' ? 0 : 1,
-    message: message || item.errorMessage || '导入任务尚未完成安全扫描与服务端预检',
-    data: {
-      total: preview.totalRows ?? item.totalRows ?? 0,
-      validRows: preview.validRows ?? item.validRows ?? 0,
-      invalidRows,
-      passed: validated && invalidRows === 0,
-      rows: preview.rows || [],
-      errors: preview.errors || [],
-      jobId: item.id,
-      expectedVersion: item.version,
-      status: item.status
-    }
-  }
-}
-
 export default {
   name: 'AaScheduleMaintainView',
   components: {
     ModulePageShell, LoadingState, AppButton, AppSectionCard, AppConfirmDialog, AppInlineAlert,
-    AppSelect, AppClassPicker, AppClassroomPicker, AppExcelImportDrawer, AaScheduleGrid
+    AppSelect, AppClassPicker, AppClassroomPicker, AaAuthoritativeImportDrawer, AaScheduleGrid
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      academicAffairsApi,
+      academicAffairsApi, academicFileExchangeApi,
       loading: false,
       slots: [], items: [], classId: '', className: '',
       conflictCell: null, lastConflict: '',
       readyTasks: [], taskBatchIds: new Set(), taskLoading: false, taskLoadError: '',
       scheduleBatch: null,
-      importVisible: false, currentImportJob: null,
+      importVisible: false,
       add: {
         visible: false, submitting: false, weekday: 1, slotNo: 1,
         taskId: '', classroomId: '', classroom: '',
@@ -291,45 +266,6 @@ export default {
         this.lastConflict = res.message || '排课冲突'
         toast.error(res.message || '排课冲突')
       }
-    },
-    async waitForImportJob(initial) {
-      let item = initial
-      for (let attempt = 0; attempt < 60 && !IMPORT_TERMINAL.has(item.status); attempt += 1) {
-        await delay(1500)
-        const detail = await academicFileExchangeApi.getImportJob(item.id)
-        if (detail.code !== 0) return detail
-        item = detail.data
-        this.currentImportJob = { id: item.id, version: item.version, status: item.status }
-      }
-      if (!IMPORT_TERMINAL.has(item.status)) {
-        return { code: 1, data: null, message: '文件仍在后台安全扫描；扫描完成前不会开放确认' }
-      }
-      return { code: 0, data: item, message: item.errorMessage || '服务端预检已完成' }
-    },
-    async uploadAuthoritative(file) {
-      const res = await academicFileExchangeApi.uploadScheduleImport(this.batchId, file)
-      if (res.code !== 0) return res
-      this.currentImportJob = { id: res.data.id, version: res.data.version, status: res.data.status }
-      const terminal = IMPORT_TERMINAL.has(res.data.status)
-        ? { code: 0, data: res.data, message: res.message }
-        : await this.waitForImportJob(res.data)
-      if (terminal.code !== 0) return terminal
-      this.currentImportJob = { id: terminal.data.id, version: terminal.data.version, status: terminal.data.status }
-      return previewResponse(terminal.data, terminal.message)
-    },
-    async confirmAuthoritative() {
-      if (!this.currentImportJob?.id) return { code: 1, message: '导入任务已丢失，请重新上传预检' }
-      if (this.currentImportJob.status !== 'VALIDATED') {
-        const detail = await academicFileExchangeApi.getImportJob(this.currentImportJob.id)
-        if (detail.code !== 0) return detail
-        this.currentImportJob = { id: detail.data.id, version: detail.data.version, status: detail.data.status }
-        if (detail.data.status !== 'VALIDATED') {
-          return { code: 1, message: '安全扫描或服务端预检尚未通过，禁止确认导入' }
-        }
-      }
-      const res = await academicFileExchangeApi.confirmImport(this.currentImportJob.id, this.currentImportJob.version)
-      if (res.code === 0) this.currentImportJob = null
-      return res
     },
     onImported(data) {
       const result = data?.result || data || {}
