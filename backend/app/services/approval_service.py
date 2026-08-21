@@ -70,12 +70,14 @@ def _matches(row: dict, keyword: str | None = None, biz_type: str | None = None)
     return kw in haystack.lower()
 
 
-def _parse_day(raw: str | None, field_label: str) -> datetime | None:
+def _parse_day_bounds(raw: str | None, field_label: str) -> tuple[datetime | None, datetime | None]:
+    """API 的 YYYY-MM-DD 按租户本地自然日解释，再换成数据库 UTC-naive 区间。"""
     text = str(raw or "").strip()
     if not text:
-        return None
+        return None, None
     try:
-        return datetime.strptime(text, "%Y-%m-%d")
+        from app.core.timeutil import local_day_bounds_utc
+        return local_day_bounds_utc(text)
     except ValueError as exc:
         raise AppException("VALIDATION_ERROR", f"{field_label} 必须为 YYYY-MM-DD") from exc
 
@@ -112,13 +114,11 @@ def _db_list(
     if requested_urgency and requested_urgency not in {"OVERDUE", "NEAR_DEADLINE", "NORMAL"}:
         raise AppException("VALIDATION_ERROR", "不支持的审批紧急度筛选")
 
-    date_start = _parse_day(submit_date, "submitDate")
-    date_end = date_start + timedelta(days=1) if date_start is not None else None
-    # TP-A05：已办列表按办结时间（acted_at）筛选区间，与待办的 submitDate（created_at）
-    # 是两个不同字段，互不复用——已办列表不消费 submitDate，待办列表不消费 acted 区间。
-    acted_start = _parse_day(acted_from, "actedFrom")
-    acted_end_day = _parse_day(acted_to, "actedTo")
-    acted_end = acted_end_day + timedelta(days=1) if acted_end_day is not None else None
+    date_start, date_end = _parse_day_bounds(submit_date, "submitDate")
+    # TP-A05/P2-04：已办列表按办结时间筛选，但日期字符串仍是租户本地日历语义。
+    # actedFrom 取该日本地零点对应 UTC；actedTo 取该日“次日零点”对应 UTC，形成 [start,end)。
+    acted_start, _ = _parse_day_bounds(acted_from, "actedFrom")
+    _, acted_end = _parse_day_bounds(acted_to, "actedTo")
     if acted_start is not None and acted_end is not None and acted_start >= acted_end:
         raise AppException("VALIDATION_ERROR", "actedFrom 不能晚于 actedTo")
 
@@ -246,8 +246,7 @@ def next_pending_task(
     requested_urgency = str(urgency or "").strip().upper()
     if requested_urgency and requested_urgency not in {"OVERDUE", "NEAR_DEADLINE", "NORMAL"}:
         raise AppException("VALIDATION_ERROR", "不支持的审批紧急度筛选")
-    date_start = _parse_day(submit_date, "submitDate")
-    date_end = date_start + timedelta(days=1) if date_start is not None else None
+    date_start, date_end = _parse_day_bounds(submit_date, "submitDate")
 
     try:
         anchor_id = int(anchor_task_id)
@@ -291,6 +290,8 @@ def next_pending_task(
 
         # 锚点任务本身此刻很可能已经不是 PENDING（刚被本次动作办结），所以锚点单独按
         # id 查，不套上面的业务筛选，只用来取它的 created_at/id 定位队列位置。
+        # 对外 API 在进入本函数前已通过 runtime.get_task() 校验 anchor 的存在性与调用者可见性；
+        # 这里保持纯 seek 职责，不再把 anchor 缺失当成“从队首开始”。
         anchor = None
         if anchor_id:
             anchor = db.scalars(select(WorkflowTask).where(
