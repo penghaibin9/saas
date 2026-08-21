@@ -11,7 +11,7 @@ from __future__ import annotations
 import importlib
 from datetime import datetime
 
-from sqlalchemy import case, exists, func, select
+from sqlalchemy import case, exists, func, or_, select
 
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _iso, _tid
@@ -31,6 +31,7 @@ _RESOLUTION_ACTIONS = {
     "EXAM_INCIDENT_VOID": "VOIDED",
 }
 _WRITES_ALLOWED_BATCH_STATUSES = {"PUBLISHED", "FINISHED"}
+_INCIDENT_TYPES = {"ABSENT", "DISCIPLINE", "DISCIPLINE_VIOLATION", "CHEAT", "OTHER"}
 
 
 def _resolution_reason(value: str) -> str:
@@ -113,9 +114,12 @@ def project_incident_workbench(
     view: str = "ALL",
     page: int = 1,
     page_size: int = 50,
+    incident_type: str | None = None,
+    keyword: str | None = None,
+    exam_date: str | None = None,
 ) -> dict:
-    """Canonical workbench: only a persisted resolution event moves OPEN to terminal."""
-    from app.models import AaExamAuditTrail, AaExamIncident
+    """Canonical workbench: SQL filter/page + persisted resolution-event lifecycle."""
+    from app.models import AaExamAuditTrail, AaExamCourse, AaExamIncident, AaExamRoom
 
     requested_view = str(view or "ALL").strip().upper()
     if requested_view not in {"ALL", "OPEN", "CLOSED", "VOIDED"}:
@@ -124,6 +128,28 @@ def project_incident_workbench(
     page_size = min(100, max(1, int(page_size or 50)))
 
     scoped = _scoped_query(db, user, batch_id=batch_id)
+    normalized_type = str(incident_type or "").strip().upper()
+    if normalized_type:
+        if normalized_type not in _INCIDENT_TYPES:
+            raise AppException("VALIDATION_ERROR", f"非法考场异常类型：{incident_type}")
+        scoped = scoped.where(func.upper(AaExamIncident.incident_type) == normalized_type)
+    normalized_date = str(exam_date or "").strip()
+    if normalized_date:
+        scoped = scoped.where(AaExamCourse.exam_date == normalized_date)
+    normalized_keyword = str(keyword or "").strip()
+    if normalized_keyword:
+        if len(normalized_keyword) > 100:
+            raise AppException("VALIDATION_ERROR", "异常查询关键字最多100字")
+        like = f"%{normalized_keyword}%"
+        scoped = scoped.where(or_(
+            AaExamIncident.student_no.like(like),
+            AaExamIncident.student_name.like(like),
+            AaExamIncident.description.like(like),
+            AaExamCourse.course_name.like(like),
+            AaExamCourse.class_name.like(like),
+            AaExamRoom.classroom_text.like(like),
+        ))
+
     closure = _closure_sql(AaExamIncident, AaExamAuditTrail)
     scoped_subquery = scoped.with_only_columns(
         AaExamIncident.id.label("incident_id"),
