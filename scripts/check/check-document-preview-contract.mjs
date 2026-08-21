@@ -99,4 +99,50 @@ for (const relative of walk(viewerRoot)) {
   }
 }
 
-console.log('W0 document-preview-contract/v1 owner, transport and high-sensitivity boundaries passed')
+const studentSdk = read('student-portal/src/services/fileSdk.js')
+const studentRequest = read('student-portal/src/services/request.js')
+const studentMaterials = read('student-portal/src/views/graduation/GraduationMaterialsView.vue')
+const studentWorkbench = read('student-portal/src/views/graduation/GraduationWorkbenchView.vue')
+
+if (!studentRequest.includes('export async function fetchFileBlob(')) {
+  throw new Error('student PC request layer is missing authenticated preview Blob transport')
+}
+if (!studentRequest.includes("error?.name === 'AbortError'")) {
+  throw new Error('student PC preview Blob transport must preserve AbortError cancellation')
+}
+if (!studentSdk.includes('async fetchPreviewBlob(') || !studentSdk.includes('async fetchPreviewBlobFrom(')) {
+  throw new Error('student PC File SDK must expose preview-only Blob methods')
+}
+if (/async preview\([^)]*\)[\s\S]{0,180}?this\.download\(/.test(studentSdk)
+    || /async previewFrom\([^)]*\)[\s\S]{0,180}?this\.downloadFrom\(/.test(studentSdk)) {
+  throw new Error('student PC preview regressed to download side effect')
+}
+if (!studentMaterials.includes("issueGraduationMaterialTicket(file.fileId, 'preview')")
+    || !studentMaterials.includes('预览我将提交的文件')
+    || !studentMaterials.includes('查看历史版')) {
+  throw new Error('student graduation material library is missing audited current/history/pending Reader flow')
+}
+if (!studentWorkbench.includes('查看当前版')
+    || !studentWorkbench.includes('预览我将提交的文件')
+    || !studentWorkbench.includes("issueGraduationMaterialTicket(file.fileId, 'preview')")) {
+  throw new Error('student graduation workbench is missing current-version Reader or submit preflight')
+}
+if (!studentWorkbench.includes('互查文件只允许走任务专用授权')) {
+  throw new Error('student peer-review file boundary must remain fail-closed until task-bound authorization exists')
+}
+
+const studentViewerRoot = 'student-portal/src/components/file/viewer'
+const studentViewerFiles = walk(studentViewerRoot)
+if (!studentViewerFiles.length) throw new Error('student PC Reader implementation is missing')
+for (const relative of studentViewerFiles) {
+  const source = read(relative)
+  for (const token of ['portalApi', 'issueGraduationMaterialTicket', '/material-center/', 'downloadGraduationMaterial', 'window.open(']) {
+    if (source.includes(token)) throw new Error(`${relative} bypasses student Viewer presentation boundary: ${token}`)
+  }
+}
+const studentSession = read('student-portal/src/components/file/viewer/useStudentPreviewSession.js')
+for (const marker of ['file.fileId', 'file.fileVersionId || file.versionId', 'file.sourceSha256 || file.sha256', 'new AbortController()', 'URL.revokeObjectURL(objectUrl.value)']) {
+  if (!studentSession.includes(marker)) throw new Error(`student Reader session lifecycle drift: missing ${marker}`)
+}
+
+console.log('W0-W3 document-preview-contract/v1 owner, transport, student Reader and high-sensitivity boundaries passed')
