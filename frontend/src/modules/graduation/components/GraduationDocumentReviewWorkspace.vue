@@ -49,7 +49,7 @@
         <div><span>当前状态</span><b>{{ currentRecord?.statusLabel || currentRecord?.status || '—' }}</b></div>
         <div v-if="currentRecord?.plagiarismRate"><span>查重</span><b>{{ currentRecord.plagiarismRate }}</b></div>
       </div>
-      <FileEvidencePanel :versions="versions" :canonical-file-version-id="canonicalFileVersionId" :review-ready="reviewReady" :version-conflict="versionConflict" />
+      <FileEvidencePanel :versions="evidenceVersions.length ? evidenceVersions : files" :canonical-file-version-id="canonicalFileVersionId" :review-ready="reviewReady" :version-conflict="versionConflict" />
       <label class="gd-review-workspace__auto"><input :checked="autoNext" type="checkbox" @change="$emit('update:autoNext', $event.target.checked)" /> 批阅成功后自动下一条</label>
       <slot name="review" />
       <button type="button" class="gd-review-workspace__dossier" @click="$emit('openStudentDossier', currentRecord)">查看学生完整档案 →</button>
@@ -63,7 +63,7 @@ import FileEvidencePanel from './FileEvidencePanel.vue'
 
 defineProps({
   queue: { type: Array, default: () => [] }, currentIndex: { type: Number, default: 0 }, currentRecord: { type: Object, default: null }, detail: { type: Object, default: null },
-  files: { type: Array, default: () => [] }, versions: { type: Array, default: () => [] }, canonicalFileVersionId: { type: [String, Number], default: null },
+  files: { type: Array, default: () => [] }, versions: { type: Array, default: () => [] }, evidenceVersions: { type: Array, default: () => [] }, canonicalFileVersionId: { type: [String, Number], default: null },
   reviewReady: { type: Boolean, default: false }, expectedVersion: { type: [String, Number], default: null }, comment: { type: String, default: '' }, submitting: { type: Boolean, default: false }, autoNext: { type: Boolean, default: true }, mode: { type: String, default: 'final' },
   provider: { type: Object, default: null }, descriptor: { type: Object, default: null }, activeFileKey: { type: [String, Number], default: null }, activeVersionId: { type: [String, Number], default: null },
   versionConflict: { type: Object, default: null }, allowDownload: { type: Boolean, default: false }, narrow: { type: Boolean, default: false }
