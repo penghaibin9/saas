@@ -21,6 +21,7 @@ on:
       - "backend/tests/file_access_mysql_acceptance.py"
       - "frontend/src/services/file/**"
       - "frontend/src/components/file/**"
+      - "frontend/tests/document-preview-w6-docx-contract.test.mjs"
       - "student-portal/src/services/fileSdk.js"
       - "student-portal/src/services/request.js"
       - "student-portal/src/components/file/**"
@@ -122,6 +123,8 @@ jobs:
         run: node scripts/check/check-file-client-contract.mjs
       - name: Document preview contract and bypass freeze
         run: node scripts/check/check-document-preview-contract.mjs
+      - name: W6 PC DOCX Reader source contract
+        run: node --test frontend/tests/document-preview-w6-docx-contract.test.mjs
       - name: Student PC Reader source contract
         run: node --test student-portal/tests/document-preview-contract.test.mjs
       - name: W4 miniapp native preview context contract
