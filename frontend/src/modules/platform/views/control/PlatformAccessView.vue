@@ -44,8 +44,8 @@
           <h3>受控学校协助</h3>
           <label>学校租户 ID<input v-model.trim="supportForm.tenantId" required inputmode="numeric" /></label>
           <label>SupportTicket 数字 ID<input v-model.trim="supportForm.ticketId" required inputmode="numeric" /></label>
-          <label>批准范围<input v-model.trim="supportForm.scopes" required placeholder="tenant.context.read, tenant.audit.read" /></label>
-          <p class="hint">本工作区当前只消费 tenant.context.read / tenant.audit.read；审计读取额外要求 MFA step-up。</p>
+          <label>批准范围<input v-model.trim="supportForm.scopes" required placeholder="tenant.context.read, tenant.audit.read, file.metadata.read" /></label>
+          <p class="hint">可批准 Scope 包含 tenant.context.read / tenant.audit.read / identity.metadata.read / file.metadata.read / sensitive.identity.read；默认仅申请本工作区直接消费的 context/audit 最小权限，审计读取额外要求 MFA step-up。</p>
           <label>协助原因<input v-model.trim="supportForm.reason" required minlength="5" /></label>
           <label>有效分钟<input v-model.number="supportForm.durationMinutes" type="number" min="1" max="120" required /></label>
           <AppButton variant="primary" :loading="saving === 'support'" type="submit">创建协助会话</AppButton>
