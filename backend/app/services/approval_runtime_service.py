@@ -36,8 +36,6 @@ _BIZ_TYPE_LABELS: dict[str, str] = {
     "AA_SCHEDULE_CHANGE": "调停课审批",
     "MESSAGE_CAMPAIGN": "消息任务审批",
     "PROFILE_CORRECTION": "信息更正",
-    # SP-E02/E04：employment_destination_submission_service.submit() 新增的真实
-    # workflow——正是 TP-A10 设想的"新增业务后只改这一份字典"的场景。
     "EMPLOYMENT_DESTINATION": "就业去向登记",
 }
 
@@ -211,7 +209,6 @@ def get_task(task_id: str, *, user=None) -> dict:
         )).first()
         if not task:
             raise not_found("审批任务不存在")
-        # 复用既有审批安全策略：assignee + approval.manage + SYS-14 节点动作策略。
         db_service._assert_task_assignee(db, task, user)
         inst = db.scalars(select(WorkflowInstance).where(
             WorkflowInstance.id == task.instance_id,
@@ -246,30 +243,26 @@ def get_task(task_id: str, *, user=None) -> dict:
             "createdAt": x.created_at.isoformat(timespec="seconds") if x.created_at else None,
             "actedAt": x.acted_at.isoformat(timespec="seconds") if x.acted_at else None,
         } for x in history]
-        # TP-A06：业务 Context 由 adapter 从各业务域真实记录解析，不再硬编码空数组。
-        # 未接入的业务类型返回 UNSUPPORTED 并说明原因，而不是让老师以为"这条申请
-        # 本来就没有内容"。单域读取失败标 ERROR，不拖垮整个审批详情。
         from app.services import approval_business_context_service as ctx_svc
 
         context = ctx_svc.resolve_context(db, inst)
         row["businessContext"] = context
         row["attachments"] = context.get("attachments") or []
-        # diff（字段前后对比）需要业务域提供变更前快照，目前各域均未持久化该快照，
-        # 因此保持为空并如实说明，不用当前值伪造一份"变更对比"。
         row["diff"] = []
         row["diffNote"] = "各业务域暂未持久化变更前快照，审批详情不展示字段对比"
         return row
 
 
 def summary(*, user=None) -> dict:
-    """待办统计全部由数据库聚合；仅展示型 overdueList 限制 10 行。"""
+    """待办统计全部由数据库聚合；“今日”统一按租户本地自然日，展示型 overdueList 限 10 行。"""
     _require_db()
     from sqlalchemy import case, func, select
     from app.models import WorkflowInstance, WorkflowTask
+    from app.core.timeutil import local_today_bounds_utc
     from app.services import db_service
 
     now = datetime.utcnow()
-    start = datetime(now.year, now.month, now.day)
+    today_start, today_end = local_today_bounds_utc()
     near_until = now + timedelta(hours=24)
     cond = [
         WorkflowTask.tenant_id == _tid(),
@@ -291,16 +284,18 @@ def summary(*, user=None) -> dict:
             ) or 0)
 
         total = _count()
-        today = _count(WorkflowTask.created_at >= start)
+        today = _count(
+            WorkflowTask.created_at >= today_start,
+            WorkflowTask.created_at < today_end,
+        )
         overdue_count = _count(WorkflowTask.deadline_at < now)
         near_count = _count(
             WorkflowTask.deadline_at >= now,
             WorkflowTask.deadline_at <= near_until,
         )
-        # TP-W03：Workbench「今日已完成」卡片跳的是本 Approval Done 队列，数字必须来自
-        # 同一张表、同一个可见性口径，不能借用 UnifiedTodo 的 doneToday（那是另一个 Authority，
-        # 会把非审批类待办也计进去，点开列表却看不到）。口径与本函数既有的 today（todayNew）
-        # 一致复用 UTC 自然日边界，不引入第三套「今天」定义。
+        # TP-W03/P2-04：Workbench「今日已完成」卡片与 todayNew 共用同一个租户本地
+        # 日历边界，再换算成 UTC-naive 比较数据库列。凌晨 00:00–08:00（UTC+8）不再
+        # 把本地“今天”误切成 UTC 的昨天/今天。
         done_cond = [
             WorkflowTask.tenant_id == _tid(),
             WorkflowTask.is_deleted.is_(False),
@@ -308,7 +303,8 @@ def summary(*, user=None) -> dict:
             WorkflowInstance.tenant_id == _tid(),
             WorkflowInstance.is_deleted.is_(False),
             WorkflowTask.acted_at.is_not(None),
-            WorkflowTask.acted_at >= start,
+            WorkflowTask.acted_at >= today_start,
+            WorkflowTask.acted_at < today_end,
         ]
         if not db_service._can_manage_all_approvals(user):
             done_cond.append(WorkflowTask.assignee_id == db_service._approval_actor_id(user))
@@ -439,7 +435,6 @@ def return_for_revision(task_id, reason, *, user=None, version=None, expected_so
         inst.current_node = "APPLICANT_RESUBMIT"
         inst.version = int(inst.version or 0) + 1
 
-        # 去重键不包含 is_deleted：必须连软删记录一起查，存在则原位恢复，禁止插入碰唯一键。
         todo = db.scalars(select(UnifiedTodo).where(
             UnifiedTodo.tenant_id == _tid(),
             UnifiedTodo.source_module == inst.source_module,
@@ -492,9 +487,6 @@ def return_for_revision(task_id, reason, *, user=None, version=None, expected_so
             },
             remark="RETURNED",
         ))
-        # EMPLOYMENT_DESTINATION 的领域合同是“RETURNED 终态，新建下一条 submission”，
-        # apply_return_in_db() 会在本事务 commit 前把 instance 置 RETURNED/current_node=None，
-        # 取消并软删上面的通用 resubmit todo，并把消息改成不可点击的普通业务通知。
         if (inst.source_biz_type or "") == "EMPLOYMENT_DESTINATION":
             from app.modules.employment.services import employment_destination_submission_service as emp_dest_svc
             emp_dest_svc.apply_return_in_db(db, inst, reason=reason.strip())
@@ -831,7 +823,6 @@ def list_returned(page, page_size, *, user=None, keyword=None, rectify_status=No
     if rectify_status:
         wanted = str(rectify_status).upper()
         rows = [x for x in rows if x["rectifyStatus"] == wanted]
-        # 过滤发生在服务端返回的真实页内；total 不冒充全库命中数。
         total = len(rows)
     return rows, total
 
