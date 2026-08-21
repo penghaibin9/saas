@@ -65,6 +65,30 @@ def _audit(db, snapshot_id, action, detail=""):
     ))
 
 
+def _creation_reasons(db, snapshot_ids) -> dict[int, str]:
+    """Read freeze reason from the existing append-only CREATE audit; snapshot schema stays immutable."""
+    from app.models import AffairsAuditTrail
+
+    ids = sorted({int(value) for value in snapshot_ids if value})
+    if not ids:
+        return {}
+    rows = db.query(AffairsAuditTrail).filter(
+        AffairsAuditTrail.tenant_id == _tid(),
+        AffairsAuditTrail.biz_type == "AA_STATS_SNAPSHOT",
+        AffairsAuditTrail.biz_id.in_(ids),
+        AffairsAuditTrail.action == "STATS_SNAPSHOT_CREATE",
+    ).order_by(AffairsAuditTrail.id.asc()).all()
+    result: dict[int, str] = {}
+    marker = ";reason="
+    for audit in rows:
+        if not audit.biz_id or int(audit.biz_id) in result:
+            continue
+        detail = str(audit.detail or "")
+        reason = detail.split(marker, 1)[1].strip() if marker in detail else ""
+        result[int(audit.biz_id)] = reason
+    return result
+
+
 def create_snapshot(user, *, term_id=None, college_id=None, major_id=None,
                     snapshot_type="OVERVIEW", reason="") -> dict:
     """先按当前用户真实数据范围计算，再冻结完整结果；原因用于审计而非口径。"""
@@ -125,7 +149,7 @@ def create_snapshot(user, *, term_id=None, college_id=None, major_id=None,
         )
         db.commit()
         db.refresh(row)
-        return _row(row, include_payload=True)
+        return _row(row, include_payload=True, reason=reason_text)
 
 
 def _snapshot_scope(db, user, *, write=False):
@@ -157,7 +181,7 @@ def _loads(raw, fallback):
         return fallback
 
 
-def _row(row, *, include_payload=False) -> dict:
+def _row(row, *, include_payload=False, reason="") -> dict:
     result = {
         "snapshotId": str(row.id),
         "snapshotType": row.snapshot_type,
@@ -172,6 +196,7 @@ def _row(row, *, include_payload=False) -> dict:
         "generatedBy": row.generated_by or "",
         "status": row.status,
         "immutable": True,
+        "reason": str(reason or ""),
     }
     if include_payload:
         result["payload"] = _loads(row.payload_json, {})
@@ -198,7 +223,8 @@ def list_snapshots(user, *, term_id=None, snapshot_type=None, page=1, page_size=
             query = query.filter(AaStatsSnapshot.snapshot_type == str(snapshot_type).upper())
         total = query.count()
         rows = query.order_by(AaStatsSnapshot.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
-        return [_row(row) for row in rows], total
+        reasons = _creation_reasons(db, [row.id for row in rows])
+        return [_row(row, reason=reasons.get(int(row.id), "")) for row in rows], total
 
 
 def get_snapshot(user, snapshot_id) -> dict:
@@ -226,6 +252,7 @@ def get_snapshot(user, snapshot_id) -> dict:
                 details={"snapshotId": str(row.id)},
                 http_status=409,
             )
+        reason = _creation_reasons(db, [row.id]).get(int(row.id), "")
         _audit(db, row.id, "STATS_SNAPSHOT_READ", f"hash={row.payload_hash}")
         db.commit()
-        return _row(row, include_payload=True)
+        return _row(row, include_payload=True, reason=reason)
