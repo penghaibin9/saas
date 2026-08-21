@@ -150,7 +150,7 @@ const nav = computed(() => {
 const TITLES = {
   home: '首页工作台', profile: '我的档案', academic: '教务学业', graduation: '毕业设计',
   internship: '岗位实习', employment: '就业服务', 'campus-service': '学工事务',
-  orientation: '迎新报到', messages: '消息通知', 'service-hall': '办事大厅'
+  orientation: '迎新报到', departure: '离校手续', messages: '消息通知', 'service-hall': '办事大厅'
 }
 const SPECIAL_TITLES = {
   'material-supplement': '材料补交中心',

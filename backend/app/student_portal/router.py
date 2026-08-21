@@ -12,6 +12,7 @@ from app.core.security import get_current_user
 from app.student_portal.services import academic_service as academic
 from app.student_portal.services import affairs_service as affairs
 from app.student_portal.services import common_service as common
+from app.student_portal.services import departure_service as departure
 from app.student_portal.services import employment_service as employment
 from app.student_portal.services import graduation_service as graduation
 from app.student_portal.services import guardian_service as guardian
@@ -603,6 +604,12 @@ def internship_agreement_print(user=Depends(get_current_user), body: dict = Body
 @router.post("/internship/score/appeal", summary="实习成绩申诉（本人）")
 def internship_score_appeal(user=Depends(get_current_user), body: dict = Body(...)):
     return success(internship.score_appeal(user, body))
+
+
+# ── 离校（SP-D01~SP-D04）：跨域只读清单，不复制各域真值表 ──
+@router.get("/departure/my", summary="我的离校清单（本人，跨域只读投影）")
+def departure_my(user=Depends(get_current_user)):
+    return success(departure.my(user))
 
 
 # ── 就业服务（第5期）：我的就业 + 去向登记 + 打印 ──

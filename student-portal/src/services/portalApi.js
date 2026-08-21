@@ -154,6 +154,7 @@ export const portalApi = {
   internshipEnterprises: (city = '') => request(`/portal/internship/enterprises${city ? `?city=${encodeURIComponent(city)}` : ''}`),
   internshipHelp: (body) => request('/portal/internship/help', { method: 'POST', body }),
 
+  departureMy: () => request('/portal/departure/my'),
   employmentMy: () => request('/portal/employment/my'),
   employmentDestinationOptions: () => request('/portal/employment/destination/options'),
   employmentDestination: (body) => request('/portal/employment/destination', { method: 'POST', body }),
