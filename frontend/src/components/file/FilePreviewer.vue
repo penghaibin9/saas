@@ -8,7 +8,8 @@ const props = defineProps({
   file: { type: Object, default: null },
   inline: { type: Boolean, default: false },
   provider: { type: Object, default: null },
-  allowDownload: { type: Boolean, default: true }
+  allowDownload: { type: Boolean, default: true },
+  downloadHandler: { type: Function, default: null }
 })
 const emit = defineEmits(['error', 'download'])
 const busy = ref(false)
@@ -25,7 +26,8 @@ async function run(action) {
   }
   busy.value = true
   try {
-    await fileSdk[action](props.file.fileId, props.file.fileName)
+    if (action === 'download' && props.downloadHandler) await props.downloadHandler(props.file)
+    else await fileSdk[action](props.file.fileId, props.file.fileName)
     if (action === 'download') emit('download', props.file)
   } catch (error) {
     emit('error', error)
