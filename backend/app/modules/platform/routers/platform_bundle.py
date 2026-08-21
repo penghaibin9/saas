@@ -286,7 +286,7 @@ def features_put(tenant_id: int, body: dict = Body(...), user=Depends(require_pl
 
 # ── §六 规则中心 ──
 
-@router.get("/rules/defaults", summary="平台默认规则（10 组）")
+@router.get("/rules/defaults", summary="平台默认规则（9 组）")
 def rules_defaults(user=Depends(require_platform_super_admin)):
     return success({"rules": D.DEFAULT_RULES})
 
