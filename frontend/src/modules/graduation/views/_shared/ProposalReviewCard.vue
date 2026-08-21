@@ -22,6 +22,15 @@
           </div>
 
           <template v-if="detail.status === 'PENDING_REVIEW'">
+            <div v-if="hasCarriedDraft" class="prc-draft-carry" data-testid="proposal-carried-draft">
+              <strong>上一版本未提交草稿</strong>
+              <p>{{ carriedDraft.comment }}</p>
+              <small>来源：开题记录 {{ carriedDraft.fromProposalId }} · FileVersion {{ carriedDraft.fromFileVersionId || '—' }}。该意见不会自动成为当前版本的有效批阅意见。</small>
+              <div class="prc-draft-carry__actions">
+                <button type="button" @click="applyCarriedDraft">带入到当前版本</button>
+                <button type="button" @click="discardCarriedDraft">清除旧草稿</button>
+              </div>
+            </div>
             <div v-if="!canReview" class="prc-blocked">{{ reviewReason }}（以下操作已置灰）</div>
             <label class="mp-note">批阅意见（驳回时必填，≥5 字）</label>
             <textarea v-model="comment" class="mp-textarea" rows="5" placeholder="批注将随批阅结果同步学生端…" @input="saveDraft"></textarea>
@@ -85,6 +94,8 @@ import { formatDateTime } from '@/utils/dateUtils'
 
 const REJECT_REASON_CHIPS = ['材料不完整，请补充', '内容质量不达标，需修改', '格式不符合学校规范', '与选题方向不符']
 const DEFENSE_COMMENT_CHIPS = ['选题有实际意义，完成度高', '回答问题思路清晰', '论文结构完整，工作量饱满', '部分问题回答不够深入']
+const CONFLICT_CARRY_KEY = 'gd-proposal-review-conflict-carry:v1'
+const CONFLICT_CARRY_TTL_MS = 2 * 60 * 60 * 1000
 
 export default {
   name: 'ProposalReviewCard',
@@ -96,7 +107,8 @@ export default {
       REJECT_REASON_CHIPS, DEFENSE_COMMENT_CHIPS,
       previewProvider: graduationMaterialCenterApi.createPreviewProvider(),
       loading: true, error: '', detail: null, versionHistory: [], comment: '', formError: '', submitting: false, defenseComment: '',
-      activePreviewFileKey: null, activePreviewVersionId: null, conflictPreviewFile: null, versionConflict: null, previewDraftKey: '', draftFileVersionId: null
+      activePreviewFileKey: null, activePreviewVersionId: null, conflictPreviewFile: null, versionConflict: null, previewDraftKey: '', draftFileVersionId: null,
+      carriedDraft: null
     }
   },
   computed: {
@@ -122,6 +134,13 @@ export default {
     },
     previewDescriptor() { return this.activePreviewFile ? graduationMaterialCenterApi.previewDescriptor(this.activePreviewFile) : null },
     trailRecords() { return (this.detail?.trail || []).map((t, i) => ({ id: i, action: t.action, actor: t.who, at: this.fmtTime(t.time), target: t.affected })) },
+    hasCarriedDraft() {
+      return Boolean(
+        this.carriedDraft?.comment && this.detail?.projectId &&
+        String(this.carriedDraft.projectId) === String(this.detail.projectId) &&
+        String(this.carriedDraft.fromProposalId) !== String(this.detail.id)
+      )
+    },
     canReview() {
       const pa = this.ctx.permissionActions.reviewProposal
       return !!(pa && pa.visible && pa.allowed && this.detail?.reviewReady && !this.versionConflict && this.activePreviewFile && this.activePreviewFile.isCurrent !== false)
@@ -155,6 +174,42 @@ export default {
       try { this.comment = sessionStorage.getItem(this.previewDraftKey) || fallback } catch { this.comment = fallback }
     },
     clearDraft() { if (this.previewDraftKey) { try { sessionStorage.removeItem(this.previewDraftKey) } catch { /* ignore */ } }; this.previewDraftKey = '' },
+    readConflictCarry() {
+      try {
+        const payload = JSON.parse(sessionStorage.getItem(CONFLICT_CARRY_KEY) || 'null')
+        if (!payload || !payload.at || Date.now() - Number(payload.at) > CONFLICT_CARRY_TTL_MS) {
+          sessionStorage.removeItem(CONFLICT_CARRY_KEY)
+          this.carriedDraft = null
+          return
+        }
+        this.carriedDraft = payload
+      } catch { this.carriedDraft = null }
+    },
+    stashConflictCarry(comment) {
+      const text = String(comment || '').trim()
+      if (!text || !this.detail?.projectId || !this.detail?.id) return
+      const payload = {
+        projectId: String(this.detail.projectId),
+        fromProposalId: String(this.detail.id),
+        fromFileVersionId: this.canonicalFileVersionId != null ? String(this.canonicalFileVersionId) : '',
+        comment: text,
+        at: Date.now()
+      }
+      try { sessionStorage.setItem(CONFLICT_CARRY_KEY, JSON.stringify(payload)) } catch { /* unavailable */ }
+      this.carriedDraft = payload
+    },
+    clearConflictCarry() {
+      try { sessionStorage.removeItem(CONFLICT_CARRY_KEY) } catch { /* unavailable */ }
+      this.carriedDraft = null
+    },
+    applyCarriedDraft() {
+      if (!this.hasCarriedDraft) return
+      this.comment = this.carriedDraft.comment
+      this.saveDraft()
+      this.formError = '已带入上一版本草稿；该意见最初记录于旧版本，请确认适用于当前版本后再提交。'
+      this.clearConflictCarry()
+    },
+    discardCarriedDraft() { this.clearConflictCarry() },
     appendComment(text) { this.comment = this.comment ? `${this.comment}\n${text}` : text; this.saveDraft() },
     appendDefense(text) { this.defenseComment = this.defenseComment ? `${this.defenseComment}\n${text}` : text },
     selectPreviewFile(item) {
@@ -219,6 +274,7 @@ export default {
           this.activePreviewFileKey = active ? this.fileKey(active) : null
           this.restoreDraft(drafts?.comment ?? oldDraft)
         }
+        this.readConflictCarry()
       } else {
         this.versionHistory = []
         this.error = graduationActionErrorMessage(res, '开题详情加载失败，请稍后重试')
@@ -235,9 +291,15 @@ export default {
       const res = await graduationApi.reviewProposal(this.detail.id, { action, comment: draft, expectedVersion: this.detail.materialVersion, fileVersionId: this.detail.fileVersionId })
       this.submitting = false
       if (res.code === 0) {
-        this.clearDraft(); this.comment = ''; await this.load(); toast.success('批阅完成：' + res.data.statusLabel + '，已锁定 canonical FileVersion 并同步学生端'); this.$emit('reviewed', res.data)
+        this.clearDraft(); this.clearConflictCarry(); this.comment = ''; await this.load(); toast.success('批阅完成：' + res.data.statusLabel + '，已锁定 canonical FileVersion 并同步学生端'); this.$emit('reviewed', res.data)
       } else if (isGraduationConflictResponse(res)) {
-        const conflictMessage = graduationConflictMessage(res); await this.load({ preserveDraft: true }); this.comment = draft; this.saveDraft(); this.formError = conflictMessage; this.$emit('conflict', res)
+        const conflictMessage = graduationConflictMessage(res)
+        this.stashConflictCarry(draft)
+        await this.load({ preserveDraft: true })
+        this.comment = draft
+        this.saveDraft()
+        this.formError = conflictMessage
+        this.$emit('conflict', { response: res, projectId: this.detail?.projectId, draftPreserved: Boolean(draft) })
       } else { this.formError = graduationActionErrorMessage(res, '批阅未完成，请稍后重试'); this.saveDraft() }
     },
     async submitDefense(result) {
@@ -255,5 +317,5 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.prc{min-width:0}.prc-conflict{margin:0 0 10px;padding:10px 12px;border-radius:8px;background:var(--warning-50);color:var(--warning-700)}.prc-content{display:grid;gap:8px;padding:8px;border-radius:8px;background:var(--gray-50,#f8fafc);font-size:13px;color:var(--text-secondary);line-height:1.6}.prc-content p{margin:0}.prc-content b{color:var(--text-primary)}.prc-blocked{padding:8px;border-radius:8px;background:var(--warning-50,#fffbeb);color:var(--warning-700,#a16207);font-size:12px}.prc-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.prc-actions>*{width:100%}.prc-bottom{margin-top:12px}.prc-bottom.is-compact{grid-template-columns:1fr}.mp-textarea{width:100%;resize:vertical}
+.prc{min-width:0}.prc-conflict{margin:0 0 10px;padding:10px 12px;border-radius:8px;background:var(--warning-50);color:var(--warning-700)}.prc-content{display:grid;gap:8px;padding:8px;border-radius:8px;background:var(--gray-50,#f8fafc);font-size:13px;color:var(--text-secondary);line-height:1.6}.prc-content p{margin:0}.prc-content b{color:var(--text-primary)}.prc-blocked{padding:8px;border-radius:8px;background:var(--warning-50,#fffbeb);color:var(--warning-700,#a16207);font-size:12px}.prc-draft-carry{display:grid;gap:7px;padding:10px;border:1px solid #f6c453;border-radius:9px;background:#fff9e8;color:#7a4d00;font-size:12px}.prc-draft-carry p{margin:0;padding:7px;border-radius:7px;background:#fff;white-space:pre-wrap;color:var(--text-primary)}.prc-draft-carry small{line-height:1.5}.prc-draft-carry__actions{display:flex;gap:7px}.prc-draft-carry__actions button{border:1px solid #e3b341;border-radius:7px;background:#fff;padding:5px 8px;color:#7a4d00;cursor:pointer}.prc-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.prc-actions>*{width:100%}.prc-bottom{margin-top:12px}.prc-bottom.is-compact{grid-template-columns:1fr}.mp-textarea{width:100%;resize:vertical}
 </style>

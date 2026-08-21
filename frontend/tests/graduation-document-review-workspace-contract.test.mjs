@@ -61,6 +61,18 @@ test('W2 proposal reuses the same workspace and preserves proposal, audit and de
   assert.doesNotMatch(proposalSource, /ProposalPdfViewer|SecureFileList|previewVersion\(/)
 })
 
+test('W2 proposal stale-review conflict preserves the old draft but requires explicit carry into the new business version', () => {
+  assert.match(proposalSource, /gd-proposal-review-conflict-carry:v1/)
+  assert.match(proposalSource, /fromProposalId/)
+  assert.match(proposalSource, /fromFileVersionId/)
+  assert.match(proposalSource, /String\(this\.carriedDraft\.projectId\) === String\(this\.detail\.projectId\)/)
+  assert.match(proposalSource, /上一版本未提交草稿/)
+  assert.match(proposalSource, /不会自动成为当前版本的有效批阅意见/)
+  assert.match(proposalSource, /applyCarriedDraft\(\)/)
+  assert.match(proposalSource, /discardCarriedDraft\(\)/)
+  assert.match(proposalSource, /this\.stashConflictCarry\(draft\)[\s\S]*this\.\$emit\('conflict'/)
+})
+
 test('W2 material center stays a management table and opens exact versions in the same-page fullscreen Reader', () => {
   for (const marker of ['mc-summary', 'mc-tabs', 'mc-filters', 'mc-table-wrap', 'mc-pagebar', 'AppConfirmDialog', 'FileVersionTimeline']) {
     assert.match(materialCenterSource, new RegExp(marker))
