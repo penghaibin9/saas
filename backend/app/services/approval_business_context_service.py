@@ -1,4 +1,4 @@
-"""审批业务 Context 解析（V3 施工手册 TP-A06）。
+"""审批业务 Context 解析（V3 施工手册 TP-A06/TP-A07）。
 
 问题
 ────────────────────────────────────────────────────────────
@@ -9,8 +9,15 @@
 定位
 ────────────────────────────────────────────────────────────
 本模块是 **adapter 层**：按 `WorkflowInstance.source_biz_type` 找到对应业务域的
-真实记录，把它投影成审批端能读的 Context。**不复制业务状态、不做判定、不写任何
-数据**；业务域仍是自己的权威。
+真实记录，把它投影成审批端能读的 Context。**不复制业务状态、不做业务判定、不写
+业务数据**；业务域仍是自己的权威。
+
+TP-A07 动作锁
+────────────────────────────────────────────────────────────
+详情展示只做普通一致性读取；真正执行 approve/return/reject 时，调用方必须以
+``for_update=True`` 重新解析 Context。已接入 adapter 的源业务行会在同一事务里
+``SELECT ... FOR UPDATE``，从 sourceVersion 比对一直锁到审批 task/instance 与业务
+副作用提交，关闭“比对后、落库前源事实又被并发修改”的 TOCTOU 窗口。
 
 诚实原则（与 SP-D03 同一条）
 ────────────────────────────────────────────────────────────
@@ -31,6 +38,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from app.core.exceptions import AppException
 from app.services.db_service import _iso, _tid
 
 CONTEXT_VERSION = 1
@@ -64,6 +72,24 @@ def _section(title: str, fields: list[dict]) -> dict:
 def _completeness(fields: list[dict], required: list[str]) -> str:
     have = {f["label"] for f in fields if f["value"] and not f["masked"]}
     return FULL if all(r in have for r in required) else PARTIAL
+
+
+def _source_row(db, model, source_biz_id: Any, *, for_update: bool = False):
+    """租户内读取源业务行；审批动作模式下锁行直到调用方事务提交。
+
+    不使用 ``db.get``：这里既需要强制 tenant/is_deleted 条件，也需要可选 FOR UPDATE。
+    所有 adapter 共用这一入口，避免只有部分业务类型真正锁源事实。
+    """
+    from sqlalchemy import select
+
+    stmt = select(model).where(
+        model.id == int(source_biz_id),
+        model.tenant_id == _tid(),
+        model.is_deleted.is_(False),
+    )
+    if for_update:
+        stmt = stmt.with_for_update()
+    return db.scalars(stmt).first()
 
 
 def _attachments(db, biz_type: str, biz_id: Any) -> list[dict]:
@@ -100,11 +126,11 @@ def _attachments(db, biz_type: str, biz_id: Any) -> list[dict]:
 # employment_destination_submission_service.submit() 会创建
 # WorkflowInstance(source_biz_type="EMPLOYMENT_DESTINATION")，第 5 个 adapter。
 
-def _leave_context(db, instance) -> dict:
+def _leave_context(db, instance, *, for_update: bool = False) -> dict:
     from app.models import CsLeave
 
-    row = db.get(CsLeave, int(instance.source_biz_id))
-    if not row or row.is_deleted or int(row.tenant_id) != _tid():
+    row = _source_row(db, CsLeave, instance.source_biz_id, for_update=for_update)
+    if not row:
         return {"completeness": MISSING, "summary": "请假记录不存在或已删除",
                 "sections": [], "attachments": [], "sourceVersion": None}
     fields = [
@@ -126,11 +152,11 @@ def _leave_context(db, instance) -> dict:
     }
 
 
-def _status_change_context(db, instance) -> dict:
+def _status_change_context(db, instance, *, for_update: bool = False) -> dict:
     from app.models import AaStatusChange
 
-    row = db.get(AaStatusChange, int(instance.source_biz_id))
-    if not row or row.is_deleted or int(row.tenant_id) != _tid():
+    row = _source_row(db, AaStatusChange, instance.source_biz_id, for_update=for_update)
+    if not row:
         return {"completeness": MISSING, "summary": "学籍异动记录不存在或已删除",
                 "sections": [], "attachments": [], "sourceVersion": None}
     fields = [
@@ -147,11 +173,11 @@ def _status_change_context(db, instance) -> dict:
     }
 
 
-def _aid_context(db, instance) -> dict:
+def _aid_context(db, instance, *, for_update: bool = False) -> dict:
     from app.models import AidApply
 
-    row = db.get(AidApply, int(instance.source_biz_id))
-    if not row or row.is_deleted or int(row.tenant_id) != _tid():
+    row = _source_row(db, AidApply, instance.source_biz_id, for_update=for_update)
+    if not row:
         return {"completeness": MISSING, "summary": "困难认定申请不存在或已删除",
                 "sections": [], "attachments": [], "sourceVersion": None}
     fields = [
@@ -172,11 +198,11 @@ def _aid_context(db, instance) -> dict:
     }
 
 
-def _discipline_context(db, instance) -> dict:
+def _discipline_context(db, instance, *, for_update: bool = False) -> dict:
     from app.models import DisciplineCase
 
-    row = db.get(DisciplineCase, int(instance.source_biz_id))
-    if not row or row.is_deleted or int(row.tenant_id) != _tid():
+    row = _source_row(db, DisciplineCase, instance.source_biz_id, for_update=for_update)
+    if not row:
         return {"completeness": MISSING, "summary": "违纪记录不存在或已删除",
                 "sections": [], "attachments": [], "sourceVersion": None}
     fields = [
@@ -195,12 +221,12 @@ def _discipline_context(db, instance) -> dict:
     }
 
 
-def _employment_destination_context(db, instance) -> dict:
+def _employment_destination_context(db, instance, *, for_update: bool = False) -> dict:
     from app.models import EmpDestinationSubmission
     from app.modules.employment.services.employment_service import L_DEST
 
-    row = db.get(EmpDestinationSubmission, int(instance.source_biz_id))
-    if not row or row.is_deleted or int(row.tenant_id) != _tid():
+    row = _source_row(db, EmpDestinationSubmission, instance.source_biz_id, for_update=for_update)
+    if not row:
         return {"completeness": MISSING, "summary": "就业去向登记提交不存在或已删除",
                 "sections": [], "attachments": [], "sourceVersion": None}
     dest_label = L_DEST.get(row.destination_type, row.destination_type)
@@ -238,14 +264,50 @@ def supported_biz_types() -> list[str]:
     return sorted(_ADAPTERS)
 
 
-def resolve_context(db, instance) -> dict:
-    """把一条 WorkflowInstance 解析成审批端可读的业务 Context。"""
+def assert_action_context(context: dict, expected_source_version) -> None:
+    """TP-A07 动作硬门：supported Context 必须完整且携带用户实际看过的 sourceVersion。
+
+    ``expected_source_version`` 不能由服务端动作时临时回填当前值，否则“乐观锁”会退化为
+    自己和自己比较。调用方必须把详情/批量预检读到的快照原样带回。
+    """
+    context = context or {}
+    biz_type = str(context.get("sourceBizType") or "").upper()
+    if biz_type not in _ADAPTERS:
+        return
+    completeness = context.get("completeness")
+    if completeness != FULL:
+        raise AppException(
+            "APPROVAL_CONTEXT_INCOMPLETE",
+            f"业务记录不完整或无法读取（{completeness}），暂不能执行审批动作，请刷新后重试",
+            http_status=409,
+        )
+    if expected_source_version is None:
+        raise AppException(
+            "APPROVAL_CONTEXT_VERSION_REQUIRED",
+            "当前审批需要业务版本快照，请刷新审批详情后重试",
+            http_status=409,
+        )
+    actual = context.get("sourceVersion")
+    if actual is None or int(expected_source_version) != int(actual):
+        raise AppException(
+            "APPROVAL_CONTEXT_VERSION_CONFLICT",
+            "业务记录内容已发生变化，请刷新后重试",
+            http_status=409,
+        )
+
+
+def resolve_context(db, instance, *, for_update: bool = False) -> dict:
+    """把一条 WorkflowInstance 解析成审批端可读的业务 Context。
+
+    ``for_update=True`` 仅供审批动作事务使用：adapter 会锁住源业务行直到事务提交。
+    """
     biz_type = str(getattr(instance, "source_biz_type", "") or "").upper()
     base = {
         "contextVersion": CONTEXT_VERSION,
         "sourceBizType": biz_type,
         "sourceBizId": str(getattr(instance, "source_biz_id", "") or ""),
         "sourceVersion": None,
+        "versionGuardRequired": biz_type in _ADAPTERS,
         "completeness": UNSUPPORTED,
         "summary": "",
         "sections": [],
@@ -260,7 +322,7 @@ def resolve_context(db, instance) -> dict:
         )
         return base
     try:
-        result = adapter(db, instance)
+        result = adapter(db, instance, for_update=for_update)
     except Exception as exc:  # noqa: BLE001 —— 单域故障不得拖垮整个审批详情
         base["completeness"] = ERROR
         base["note"] = f"业务信息读取失败（{type(exc).__name__}），请稍后重试"
