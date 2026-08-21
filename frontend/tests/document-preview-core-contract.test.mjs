@@ -50,6 +50,15 @@ test('W1 Viewer is presentation-only and never owns approve/reject', () => {
   assert.doesNotMatch(combined, /submitReview|reviewProposal|reviewFinal|@approve|@reject/)
 })
 
+test('W1 legacy FilePreviewer can delegate inline rendering without owning transport', () => {
+  const source = read('src/components/file/FilePreviewer.vue')
+  assert.match(source, /AppDocumentViewer/)
+  assert.match(source, /provider:/)
+  assert.match(source, /canInlinePreview/)
+  assert.match(source, /buildPreviewDescriptorFromFile/)
+  assert.doesNotMatch(source, /window\.open\(|URL\.createObjectURL\(|request\('\/files/)
+})
+
 test('W2 workspace does not own ticket or file transport', () => {
   const source = read('src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue')
   assert.doesNotMatch(source, /issueMaterialTicket|fileSdk|material-center\/files/)
