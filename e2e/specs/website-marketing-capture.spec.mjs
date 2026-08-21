@@ -126,18 +126,21 @@ async function miniLogin(page, role, account) {
   const loginPath = role === 'student' ? '/#/pages/login/student/index' : '/#/pages/login/teacher/index'
   await page.goto(`${base}${loginPath}`, { waitUntil: 'domcontentloaded', timeout: 30_000 })
   await settle(page)
-  const loginPlaceholder = role === 'student' ? '学号 / 手机号' : '工号 / 手机号'
-  await page.getByPlaceholder(loginPlaceholder).fill(account.username)
-  await page.getByPlaceholder('密码').fill(account.password)
-  const tenantBox = page.getByText('学校编码', { exact: true }).first()
-  if (await tenantBox.isVisible({ timeout: 1_000 }).catch(() => false)) await tenantBox.click()
-  const tenantInput = page.getByPlaceholder('请输入学校编码')
-  if (await tenantInput.isVisible({ timeout: 1_000 }).catch(() => false)) await tenantInput.fill(account.tenant)
-  const agree = page.locator('.agreement__box').first()
-  if (await agree.isVisible({ timeout: 1_000 }).catch(() => false)) await agree.click()
+
+  // Reuse the exact selector strategy already proven by the repository's
+  // student-v3 and graduation teacher-mobile Playwright suites. uni-app H5
+  // does not expose its input placeholder consistently to Playwright.
+  const fields = page.getByRole('textbox')
+  await fields.nth(0).fill(account.username)
+  await fields.nth(1).fill(account.password)
+  await page.getByText('填写', { exact: true }).click()
+  await fields.nth(2).fill(account.tenant)
+  await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
+
   const buttonText = role === 'student' ? '进入学生首页' : '进入教师工作台'
-  await page.getByRole('button', { name: buttonText }).click()
-  await page.waitForTimeout(1_500)
+  await page.getByText(buttonText, { exact: true }).click()
+  const targetUrl = role === 'student' ? /pages\/student\/home\/index/ : /pages\/teacher\/workbench\/index/
+  await page.waitForURL(targetUrl, { timeout: 20_000 })
   await settle(page)
   return base
 }
