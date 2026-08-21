@@ -22,7 +22,7 @@ from datetime import datetime
 TID = 1000000000000000001
 
 
-def _hdr(client, login_name="approver01"):
+def _hdr(client, login_name="counselor01"):
     data = client.post("/api/v1/auth/mock-login",
                        json={"loginName": login_name, "password": "any"}).json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
@@ -292,9 +292,14 @@ def test_get_task_wires_business_context_into_response(db_mode, client):
 
     db = get_sessionmaker()()
     try:
-        user = db.query(User).filter_by(tenant_id=TID, login_name="approver01").first()
+        # "counselor01" 是 mock-login 内置演示账号（mock_auth_service.DEMO_USERS）；
+        # 真实 assignee 校验走 resolve_message_user_id() 的登录名回查（token 的
+        # userId 是字符串 "u_counselor01"，回查本租户同名 User 行取真实数字 id），
+        # 所以这里必须真建一行同名 User，而不是任意起名——任意起名会命中
+        # mock-login 的 userType 兜底分支，登进另一个演示身份，assignee 对不上。
+        user = db.query(User).filter_by(tenant_id=TID, login_name="counselor01").first()
         if user is None:
-            user = User(tenant_id=TID, login_name="approver01", real_name="审批员",
+            user = User(tenant_id=TID, login_name="counselor01", real_name="审批员",
                        password_hash="test-hash", user_type="TEACHER", status="ACTIVE")
             db.add(user)
             db.flush()
@@ -325,7 +330,7 @@ def test_get_task_wires_business_context_into_response(db_mode, client):
     finally:
         db.close()
 
-    headers = _hdr(client, "approver01")
+    headers = _hdr(client, "counselor01")
     resp = client.get(f"/api/v1/approvals/tasks/{task_id}", headers=headers)
     assert resp.status_code == 200, resp.text
     body = resp.json()["data"]
