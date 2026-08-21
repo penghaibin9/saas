@@ -84,9 +84,15 @@ def gd_review_assign(body: ReviewAssignRequest, user=Depends(get_current_user)):
     return success(result, message="已分配")
 
 
-@router.post("/gd-reviews/{rid}/submit", summary="提交评阅（评分+意见）")
+@router.post("/gd-reviews/{rid}/submit", summary="提交评阅（评分+意见+exact FileVersion）")
 def gd_review_submit(rid: str, body: ReviewSubmitRequest, user=Depends(get_current_user)):
-    result = svc.submit_review(rid, body.score, body.opinion)
+    result = svc.submit_review(
+        rid,
+        body.score,
+        body.opinion,
+        expected_version=body.expectedVersion,
+        file_version_id=body.fileVersionId,
+    )
     return success(result, message="已提交")
 
 
