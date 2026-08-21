@@ -7,6 +7,9 @@ on:
     paths:
       - '.github/workflows/yueke-framer-reference-capture.yml'
       - '.yueke-framer-reference-trigger'
+  pull_request:
+    paths:
+      - '.yueke-framer-reference-trigger'
   workflow_dispatch:
 
 permissions:
@@ -20,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/yueke-official-site-framer-style-20260821
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -96,6 +99,7 @@ jobs:
           EOF
 
       - name: Persist reference capture to branch
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
@@ -111,7 +115,7 @@ jobs:
       - name: Upload reference capture
         uses: actions/upload-artifact@v4
         with:
-          name: yueke-framer-reference-${{ github.sha }}
+          name: yueke-framer-reference-${{ github.event.pull_request.head.sha || github.sha }}
           path: e2e/reference-capture/
           if-no-files-found: error
           retention-days: 14
