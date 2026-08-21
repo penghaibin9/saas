@@ -1,30 +1,35 @@
 """W2 canonical lifecycle for post-exam incidents.
 
-The observed incident row stays the immutable-ish occurrence fact. Formal resolution is
-an append-only ``AaExamAuditTrail`` event (HANDOFF/CLOSE/VOID) written in the same
+The observed incident row stays the occurrence fact. Formal resolution is an
+append-only ``AaExamAuditTrail`` event (HANDOFF/CLOSE/VOID) written in the same
 transaction as the minimal incident projection update (discipline ref / VOID marker).
-This keeps legacy schema compatibility while making OPEN -> terminal transitions
-explicit, idempotent and concurrency-safe.
+This keeps the existing schema while making OPEN -> terminal transitions explicit,
+idempotent and concurrency-safe.
 """
 from __future__ import annotations
 
+import importlib
 from datetime import datetime
 
 from sqlalchemy import case, exists, func, select
 
-from app.core.affairs_security import _derive_keys, no_data_scope
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _iso, _tid
 
 from . import academic_affairs_exam_incident_workbench_service as legacy_workbench
-from . import academic_affairs_exam_service as legacy_service
+
+# ``services.__init__`` publishes ``academic_affairs_exam_service`` as the facade.
+# This W2 module needs the raw helpers (_ctx/_get_course/_audit/session) just like the
+# existing workbench does, so resolve the concrete submodule explicitly.
+legacy_service = importlib.import_module(
+    "app.modules.academic_affairs.services.academic_affairs_exam_service"
+)
 
 _RESOLUTION_ACTIONS = {
     "EXAM_INCIDENT_HANDOFF": "CASE_LINKED",
     "EXAM_INCIDENT_CLOSE": "RISK_TRANSFERRED",
     "EXAM_INCIDENT_VOID": "VOIDED",
 }
-_FORMAL_BATCH_STATUSES = {"PUBLISHED", "FINISHED", "ARCHIVED"}
 _WRITES_ALLOWED_BATCH_STATUSES = {"PUBLISHED", "FINISHED"}
 
 
@@ -54,7 +59,7 @@ def _latest_resolution_query(db, incident_id: int, *, lock: bool = False):
 def _resolution_status(incident, audit=None) -> str:
     if audit is not None:
         return _RESOLUTION_ACTIONS.get(str(audit.action or ""), "OPEN")
-    # A VOID projection without its audit is inconsistent, not a valid reusable OPEN fact.
+    # A VOID projection without its audit is inconsistent, not a reusable OPEN fact.
     if str(incident.status or "").upper() == "VOIDED":
         return "INCONSISTENT"
     return "OPEN"
@@ -95,16 +100,8 @@ def _closure_sql(AaExamIncident, AaExamAuditTrail):
     )
 
 
-def _audit_detail(detail: str | None) -> dict[str, str]:
-    return legacy_workbench._audit_detail(detail)
-
-
-def _invigilated_course_ids(db, teacher_keys: set[str]) -> set[int]:
-    return legacy_workbench._invigilated_course_ids(db, teacher_keys)
-
-
 def _scoped_query(db, user, *, batch_id=None):
-    """Reuse the existing production data-scope query instead of inventing a second scope."""
+    """Reuse the existing production data-scope query; W2 does not invent new scope."""
     return legacy_workbench._scoped_query(db, user, batch_id=batch_id)
 
 
@@ -117,7 +114,7 @@ def project_incident_workbench(
     page: int = 1,
     page_size: int = 50,
 ) -> dict:
-    """Canonical workbench: only a persisted resolution event can move OPEN to CLOSED."""
+    """Canonical workbench: only a persisted resolution event moves OPEN to terminal."""
     from app.models import AaExamAuditTrail, AaExamIncident
 
     requested_view = str(view or "ALL").strip().upper()
@@ -178,7 +175,7 @@ def project_incident_workbench(
     for incident, course, batch, room in rows:
         audit = latest_audit.get(int(incident.id))
         closure_status = _resolution_status(incident, audit)
-        detail = _audit_detail(audit.detail if audit else "")
+        detail = legacy_workbench._audit_detail(audit.detail if audit else "")
         evidence_consistent = True
         if audit:
             if audit.action == "EXAM_INCIDENT_VOID":
