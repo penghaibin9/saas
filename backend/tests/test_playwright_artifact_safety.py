@@ -129,3 +129,34 @@ def test_counselor_bootstrap_uses_canonical_teacher_identity_pipeline():
     assert 'idempotency_namespace: str = "e2e-graduation"' in canonical
     assert 'upload_key = f"{namespace}-{kind}-canonical-v3"' in canonical
     assert 'f"{namespace}-{kind}-confirm-v3"' in canonical
+
+
+def test_document_preview_e2e_sources_are_synthetic_and_never_embed_secrets():
+    """W0 safety contract activates automatically when Viewer browser specs/fixtures appear."""
+    roots = (ROOT / "e2e", ROOT / "frontend" / "tests")
+    candidates = []
+    for base in roots:
+        if not base.exists():
+            continue
+        candidates.extend(
+            path for path in base.rglob("*")
+            if path.is_file()
+            and "document-preview" in path.name.lower()
+            and path.suffix.lower() in {".js", ".mjs", ".ts", ".json", ".html"}
+        )
+
+    forbidden = (
+        "Authorization: Bearer ",
+        '"authorization": "Bearer ',
+        "X-Amz-Signature=",
+        "X-Cos-Security-Token=",
+        "preview?ticket=",
+        '"ticket": "',
+        "studentNameReal",
+        "studentNoReal",
+    )
+    for path in candidates:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        assert "YUEKE E2E SYNTHETIC DOCUMENT" in text, path
+        for marker in forbidden:
+            assert marker not in text, f"{path} persists forbidden Viewer artifact data: {marker}"

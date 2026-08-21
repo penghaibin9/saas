@@ -23,7 +23,10 @@ on:
       - "miniapp/src/services/fileApi.js"
       - "miniapp/src/services/fileSdk.js"
       - "miniapp/src/components/file/**"
+      - "docs/architecture/document-preview-contract.md"
+      - "docs/architecture/file-capability-inventory.d/10-document-preview-platform.yaml"
       - "scripts/check/check-file-client-contract.mjs"
+      - "scripts/check/check-document-preview-contract.mjs"
       - ".github/workflows/file-center-access-clients.yml"
 
 permissions:
@@ -104,3 +107,5 @@ jobs:
         run: python tests/file_access_mysql_acceptance.py
       - name: Four-client SDK and component contract
         run: node scripts/check/check-file-client-contract.mjs
+      - name: Document preview contract and bypass freeze
+        run: node scripts/check/check-document-preview-contract.mjs

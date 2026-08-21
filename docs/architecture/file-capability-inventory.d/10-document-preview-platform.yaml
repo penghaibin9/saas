@@ -1,0 +1,23 @@
+entries:
+  - module: file-center
+    client: shared
+    route: document-preview-contract/v1
+    page: docs/architecture/document-preview-contract.md
+    action: preview
+    fileCategory: ALL_PREVIEWABLE
+    api: EXISTING_DOMAIN_PROVIDER_OR_FILE_CENTER_AUTHORIZED_BYTES
+    backendService: backend/app/api/v1/file_contract.py
+    storageMode: existing-authorized-bytes-only
+    authMode: file-center-object+domain-provider
+    dataScope: tenant+object-relation+domain-scope+batch+scan
+    versioned: true
+    scanGated: true
+    preview: true
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: planned
+    risk: P0
+    targetPhase: '10'
+    notes: W0 freezes document-preview-contract/v1. Preview is a presentation capability above File Center and is intentionally distinct from download. Graduation material keeps its audited business-ticket boundary; Viewer never becomes authorization or review truth.
