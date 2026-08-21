@@ -26,10 +26,18 @@ SUBMITTED → APPROVED（原子写回 EmpStudent）
 
 与 T5/#183 的证据门槛保持分层
 ────────────────────────────────────────────────────────────
-本模块批准的是"去向登记的结构化事实"，不是"去向已核验"——不触碰
-`EmpStudent.verify_status`。核验仍必须走独立的
+本模块批准的是"去向登记的结构化事实"，不是"去向已核验"。核验仍必须走独立的
 `employment_destination_verification_service`（TP-E02，要求正式材料证据 +
-乐观锁），批准提交只是让核验有一份可核验的结构化底稿，不是核验本身。
+乐观锁）。但如果批准后的 canonical 去向事实相对上一次已核验事实发生变化，旧核验
+必须立即失效并回到 `PENDING_VERIFY`；不能让单位 A 的 VERIFIED 自动继承给单位 B。
+若本次批准并没有改变 canonical 事实，则不无意义推进 EmpStudent.version，也不破坏
+仍然对应当前事实的已有核验结果。
+
+身份边界
+────────────────────────────────────────────────────────────
+`student_id` 永远是 `StudentProfile.id`（学籍主体），`applicant_id` 永远是
+`User.id`（登录账号主体）。两者只能通过 `StudentAccountLink` ACTIVE 稳定绑定，
+写入路径不接受 login_name/student_no legacy fallback，也不接受两个自增主键碰巧相等。
 
 city/contact 没有 EmpStudent 对应列（canonical 台账从未建过），因此不写回台账，
 只落在本表——字段不再像旧工单文本那样被截断丢失，如实标注，不假装已建立新台账列。
@@ -151,6 +159,29 @@ def _open_workflow(db, submission_id, applicant_id, title, assignee_id):
     return inst, task
 
 
+def _require_applicant_user_id(db, student_id: int) -> int:
+    """把当前登录学生证明为该 StudentProfile 的 ACTIVE 登录账号。
+
+    employment submit 是写入路径，因此严格执行 student_account_link_service 的约定：
+    只认真实 ACTIVE StudentAccountLink，不走 login_name == student_no legacy fallback。
+    同时要求 token 中的正式数据库账号 id 与绑定 user_id 一致，防止旧 token / 错绑账号
+    替另一名学生创建 workflow，进而把退回消息和 resubmit 权限写给错误的人。
+    """
+    from app.services import student_account_link_service as link_svc
+    from app.services.mobile_student_service import _real_account_id
+
+    actor_user_id = _real_account_id(get_current_user_ctx() or {})
+    linked_user_id = link_svc.get_user_id_by_student(
+        db, tenant_id=_tid(), student_id=int(student_id))
+    if not actor_user_id or not linked_user_id or int(actor_user_id) != int(linked_user_id):
+        raise AppException(
+            "IDENTITY_LINK_REQUIRED",
+            "当前学生账号与学籍主档缺少有效绑定，请联系管理员修复身份绑定后重试",
+            http_status=409,
+        )
+    return int(linked_user_id)
+
+
 def submit(*, student_id: int, student_name: str,
            destination_type: str, company_name: str = "", job_title: str = "",
            city: str = "", contact: str = "", remark: str = "") -> dict:
@@ -160,6 +191,7 @@ def submit(*, student_id: int, student_name: str,
     if dt not in L_DEST:
         raise AppException("VALIDATION_ERROR", "非法的就业去向类型")
     with session() as db:
+        applicant_user_id = _require_applicant_user_id(db, int(student_id))
         dup = db.scalars(select(EmpDestinationSubmission).where(
             EmpDestinationSubmission.tenant_id == _tid(),
             EmpDestinationSubmission.student_id == int(student_id),
@@ -170,7 +202,7 @@ def submit(*, student_id: int, student_name: str,
             raise AppException("DATA_CONFLICT", "已有一条就业去向登记正在审核中，请等待处理结果")
 
         x = EmpDestinationSubmission(
-            tenant_id=_tid(), student_id=int(student_id), applicant_id=int(student_id),
+            tenant_id=_tid(), student_id=int(student_id), applicant_id=applicant_user_id,
             destination_type=dt, company_name=(company_name or "").strip() or None,
             job_title=(job_title or "").strip() or None, city=(city or "").strip() or None,
             contact=(contact or "").strip() or None, remark=(remark or "").strip() or None,
@@ -187,7 +219,7 @@ def submit(*, student_id: int, student_name: str,
         # 不在本次改共享函数扩大范围。
         assignee_id = require_assignee_id(db, REVIEW_NODE, student_id=int(student_id))
 
-        inst, task = _open_workflow(db, x.id, student_id,
+        inst, task = _open_workflow(db, x.id, applicant_user_id,
                                     f"{student_name} 就业去向登记待审", assignee_id)
         x.workflow_instance_id = inst.id
         x.current_task_id = task.id
@@ -218,20 +250,49 @@ def list_my_submissions(student_id: int, *, page=1, page_size=20) -> tuple[list[
 
 
 def _apply_to_emp_student_in_tx(db, x: EmpDestinationSubmission) -> EmpStudent:
-    """原子写回：批准的结构化事实进 canonical EmpStudent，不动 verify_status
-    （核验门槛独立，见模块 docstring）。与调用方共用同一事务/同一个 commit。"""
+    """原子写回批准后的 canonical 就业事实。
+
+    去向核验是独立业务动作，但核验结论必须绑定它当时对应的事实：一旦
+    destination_type/company_name/job_title 任何一个实际发生变化，旧 VERIFIED/RETURNED
+    都不能继续描述新事实，统一回到 PENDING_VERIFY；完全相同的重复事实则不推进版本、
+    不破坏仍有效的核验。
+    """
+    from app.modules.employment.services import employment_service as emp_base
     from app.modules.employment.services.employment_service import create_student
 
     existing = db.scalar(select(EmpStudent).where(
         EmpStudent.tenant_id == _tid(), EmpStudent.student_id == x.student_id,
         EmpStudent.is_deleted.is_(False)))
     if existing:
+        target_company = x.company_name if x.company_name else existing.company_name
+        target_job_title = x.job_title if x.job_title else existing.job_title
+        before_fact = (
+            str(existing.destination_type or ""),
+            str(existing.company_name or ""),
+            str(existing.job_title or ""),
+        )
+        after_fact = (
+            str(x.destination_type or ""),
+            str(target_company or ""),
+            str(target_job_title or ""),
+        )
+        facts_changed = before_fact != after_fact
+
         existing.destination_type = x.destination_type
         if x.company_name:
             existing.company_name = x.company_name
         if x.job_title:
             existing.job_title = x.job_title
-        existing.version = int(existing.version or 0) + 1
+
+        if facts_changed:
+            verify_before = str(existing.verify_status or "PENDING_VERIFY").upper()
+            existing.verify_status = "PENDING_VERIFY"
+            existing.version = int(existing.version or 0) + 1
+            if verify_before != "PENDING_VERIFY":
+                emp_base._audit(
+                    db, "VERIFICATION", existing.id, "去向事实变更，旧核验失效",
+                    "结构化去向登记批准后 canonical 就业事实发生变化，必须重新核验",
+                    verify_before, "PENDING_VERIFY")
         emp = existing
     else:
         result = create_student({
@@ -266,13 +327,13 @@ def apply_workflow_decision_in_db(db, inst, *, approved: bool, reason: str | Non
         emp = _apply_to_emp_student_in_tx(db, x)
         _audit(db, x.id, "APPROVED", f"写回 EmpStudent#{emp.id}")
         _todo_done(db, x.id)
-        _msg(db, x.student_id, "就业去向登记已通过",
+        _msg(db, x.applicant_id, "就业去向登记已通过",
              "你的就业去向登记已通过审核", "EMPLOYMENT_DESTINATION.APPROVED", x.id)
     else:
         x.status = "REJECTED"
         _audit(db, x.id, "REJECTED", reason or "")
         _todo_done(db, x.id)
-        _msg(db, x.student_id, "就业去向登记未通过",
+        _msg(db, x.applicant_id, "就业去向登记未通过",
              reason or "你的就业去向登记未通过审核", "EMPLOYMENT_DESTINATION.REJECTED", x.id)
     db.flush()
     return _row(x)
