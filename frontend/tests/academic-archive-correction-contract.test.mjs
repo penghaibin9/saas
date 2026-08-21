@@ -60,4 +60,6 @@ test('review UI consumes server facts and requires formal high-risk confirmation
   assert.match(workspace, /:require-reason="true"/)
   assert.match(workspace, /reason-label="驳回原因"/)
   assert.match(workspace, /未生成正式事实，也未生成新 Manifest/)
+  assert.match(workspace, /app-confirm-dialog__mask/)
+  assert.match(workspace, /z-index: calc\(var\(--z-modal\) \+ 1\)/)
 })
