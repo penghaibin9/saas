@@ -7,7 +7,15 @@
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
-    <router-view v-if="ctx" :ctx="ctx" />
+    <template v-if="ctx">
+      <SystemP1ClosurePanel
+        v-if="showP1Closure"
+        :key="$route.path"
+        :ctx="ctx"
+        @refresh-child="childKey += 1"
+      />
+      <router-view :key="childKey" :ctx="ctx" />
+    </template>
     <ErrorState v-else-if="contextError" :description="contextError" @retry="retryContext" />
     <LoadingState v-else text="正在加载系统管理中心…" />
   </BasePortalLayout>
@@ -21,6 +29,7 @@
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState, ErrorState } from '@/components/business'
+import SystemP1ClosurePanel from '@/modules/system/components/SystemP1ClosurePanel.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { SYSTEM_MANAGEMENT_CATALOG } from '@/modules/system/systemManagementCatalog'
 
@@ -36,11 +45,18 @@ const MENUS = SYSTEM_MANAGEMENT_CATALOG.map((group) => ({
   path: CONTROL_PLANE_LANDING[group.key] || group.items[0].path
 }))
 
+const P1_CLOSURE_PATHS = new Set([
+  '/admin/system/role-assignments',
+  '/admin/system/login-policy',
+  '/admin/system/account-exceptions',
+  '/admin/system/org'
+])
+
 export default {
   name: 'AdminSystemLayout',
-  components: { BasePortalLayout, LoadingState, ErrorState },
+  components: { BasePortalLayout, LoadingState, ErrorState, SystemP1ClosurePanel },
   data() {
-    return { menus: MENUS, ctx: null, contextError: '' }
+    return { menus: MENUS, ctx: null, contextError: '', childKey: 0 }
   },
   computed: {
     brandTitle() {
@@ -53,6 +69,9 @@ export default {
         .sort((a, b) => b.path.length - a.path.length)
         .find((m) => path === m.path || path.startsWith(m.path + '/'))
       return hit ? hit.key : 'sys-overview'
+    },
+    showP1Closure() {
+      return P1_CLOSURE_PATHS.has(this.$route.path)
     }
   },
   async created() {
