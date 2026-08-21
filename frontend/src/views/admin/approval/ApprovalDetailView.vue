@@ -86,7 +86,7 @@
                 <AppButton variant="danger" :disabled="!canAction('rejectTask', 'REJECT') || submitting" @click="rejectDialog = true">✕ 驳回终止</AppButton>
                 <AppButton variant="secondary" :disabled="!canAction('transferTask', 'TRANSFER') || submitting" @click="openTransfer">⇄ 转办</AppButton>
               </div>
-              <p class="mp-note dv-hint">退回修改会生成申请人重提待办；驳回终止结束原流程，两者不会互换。</p>
+              <p class="mp-note dv-hint">{{ returnHint }}</p>
             </template>
             <EmptyState v-else :title="readonlyTitle" :description="readonlyDesc" />
           </div>
@@ -97,7 +97,7 @@
     <AppConfirmDialog
       v-model:visible="returnDialog"
       title="退回修改确认"
-      :message="task ? '退回后「' + task.title + '」仍保持流程运行，并给申请人生成修改重提待办。' : ''"
+      :message="returnDialogMessage"
       type="primary"
       confirm-text="确认退回修改"
       require-reason
@@ -172,6 +172,22 @@ export default {
       }
       return map[ctx.completeness] || ''
     },
+    isTerminalReturn() {
+      return this.task?.bizType === 'EMPLOYMENT_DESTINATION'
+    },
+    returnHint() {
+      if (this.isTerminalReturn) {
+        return '就业去向登记退回后，本次提交终止；学生需重新发起一条新登记，不会生成原流程重提待办。驳回同样终止原流程。'
+      }
+      return '退回修改会生成申请人重提待办；驳回终止结束原流程，两者不会互换。'
+    },
+    returnDialogMessage() {
+      if (!this.task) return ''
+      if (this.isTerminalReturn) {
+        return `退回后「${this.task.title}」本次登记将结束，不生成原流程重提待办；学生需按要求重新发起一条新的就业去向登记。`
+      }
+      return `退回后「${this.task.title}」仍保持流程运行，并给申请人生成修改重提待办。`
+    },
     canHandle() { return !!(this.task && this.task.status === 'PENDING_REVIEW' && this.task.allowedActions?.length) },
     readonlyTitle() {
       if (!this.task) return '任务不可操作'
@@ -183,6 +199,9 @@ export default {
     },
     readonlyDesc() {
       if (!this.task) return ''
+      if (this.task.status === 'RETURNED' && this.isTerminalReturn) {
+        return '本次就业去向登记已经结束；学生如需继续申报，应按退回要求重新发起一条新的登记。'
+      }
       if (this.task.status === 'RETURNED') return '流程仍在运行，申请人可按退回要求修改并重新提交。'
       if (this.task.status === 'REJECTED') return '原流程已经终止；如需再次申请，应重新发起新流程。'
       return '本页仅展示服务端已持久化的处理结果与流转记录。'
@@ -246,9 +265,15 @@ export default {
     },
     async submitReturn({ reason }) {
       this.submitting = true
+      const terminal = this.isTerminalReturn
       const res = await approvalApi.returnTask(this.task.taskId, { reason, version: this.task.version })
       this.submitting = false; this.returnDialog = false
-      await this.finishAction(res, '已退回修改：申请人修改重提待办已生成，正在进入下一条待办')
+      await this.finishAction(
+        res,
+        terminal
+          ? '已退回：本次就业去向登记已结束，学生需重新发起新登记；正在进入下一条待办'
+          : '已退回修改：申请人修改重提待办已生成，正在进入下一条待办'
+      )
     },
     async submitReject({ reason }) {
       this.submitting = true
