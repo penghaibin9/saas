@@ -1,0 +1,95 @@
+name: Yueke Official Site Assets
+
+on:
+  push:
+    branches:
+      - agent/yueke-official-site-framer-style-20260821
+    paths:
+      - '.github/workflows/yueke-site-assets.yml'
+      - '.yueke-site-assets-trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: yueke-official-site-assets
+  cancel-in-progress: true
+
+jobs:
+  materialize:
+    name: Materialize real product screenshots
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/yueke-official-site-framer-style-20260821
+          fetch-depth: 0
+
+      - name: Download real screenshot evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp-site-assets/pc .tmp-site-assets/mobile frontend/public/official-site
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' \
+            https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/9436700875/zip \
+            -o .tmp-site-assets/pc.zip
+          unzip -q .tmp-site-assets/pc.zip -d .tmp-site-assets/pc
+
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' \
+            https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/9429739014/zip \
+            -o .tmp-site-assets/mobile.zip
+          unzip -q .tmp-site-assets/mobile.zip -d .tmp-site-assets/mobile
+
+      - name: Resolve exact evidence files
+        run: |
+          set -euo pipefail
+          resolve_one() {
+            local root="$1" pattern="$2" out="$3"
+            local found
+            found="$(find "$root" -type f -path "$pattern" -print -quit)"
+            if [ -z "$found" ]; then
+              echo "Missing evidence: $pattern" >&2
+              exit 1
+            fi
+            cp "$found" "$out"
+          }
+
+          resolve_one .tmp-site-assets/pc '*/screenshots/workbench/workbench.png' .tmp-site-assets/workbench.png
+          resolve_one .tmp-site-assets/pc '*/screenshots/internship/overview.png' .tmp-site-assets/internship.png
+          resolve_one .tmp-site-assets/pc '*/screenshots/academic-affairs/overview.png' .tmp-site-assets/academic.png
+          resolve_one .tmp-site-assets/pc '*/screenshots/student-portal/home.png' .tmp-site-assets/student-portal.png
+
+          resolve_one .tmp-site-assets/mobile '*/w1-miniapp-selected-390x844.png' .tmp-site-assets/student-selection.png
+          resolve_one .tmp-site-assets/mobile '*/gd-U8-teacher-workbench-B-390x844.png' .tmp-site-assets/teacher-graduation.png
+          resolve_one .tmp-site-assets/mobile '*/gd-U8-taskbook-B-390x844.png' .tmp-site-assets/teacher-taskbook.png
+
+      - name: Optimize screenshots to WebP
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq webp
+          cwebp -quiet -q 84 -resize 1280 0 .tmp-site-assets/workbench.png -o frontend/public/official-site/workbench.webp
+          cwebp -quiet -q 84 -resize 1280 0 .tmp-site-assets/internship.png -o frontend/public/official-site/internship.webp
+          cwebp -quiet -q 84 -resize 1280 0 .tmp-site-assets/academic.png -o frontend/public/official-site/academic.webp
+          cwebp -quiet -q 84 -resize 1280 0 .tmp-site-assets/student-portal.png -o frontend/public/official-site/student-portal.webp
+          cwebp -quiet -q 86 .tmp-site-assets/student-selection.png -o frontend/public/official-site/student-selection.webp
+          cwebp -quiet -q 86 .tmp-site-assets/teacher-graduation.png -o frontend/public/official-site/teacher-graduation.webp
+          cwebp -quiet -q 86 .tmp-site-assets/teacher-taskbook.png -o frontend/public/official-site/teacher-taskbook.webp
+          ls -lh frontend/public/official-site
+
+      - name: Commit website assets only
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- frontend/public/official-site/
+          if git diff --cached --quiet; then
+            echo 'Website assets already current.'
+            exit 0
+          fi
+          git commit -m 'feat(site): add real product screenshots for public homepage'
+          git push origin HEAD:agent/yueke-official-site-framer-style-20260821
