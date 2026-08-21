@@ -131,7 +131,7 @@
 
             <div class="top__ops">
               <AppButton variant="danger" :loading="working" :disabled="!canExecutePurge" @click="approvePurge">永久销毁租户数据</AppButton>
-              <span class="top__hint">MFA step-up Token 不写入任何浏览器持久存储，提交销毁后立即从页面内存清除。</span>
+              <span class="top__hint">MFA step-up Token 不写入任何浏览器持久存储，到期或提交销毁后立即从页面内存清除。</span>
             </div>
           </template>
 
@@ -184,6 +184,7 @@ export default {
       cancelReason: '',
       mfaCode: '',
       mfaGrant: null,
+      mfaExpiryTimer: null,
       confirmText: ''
     }
   },
@@ -199,7 +200,7 @@ export default {
     },
     retentionExpired() {
       if (!this.job?.retentionUntil) return false
-      return new Date(this.job.retentionUntil).getTime() <= Date.now()
+      return this.serverUtcEpoch(this.job.retentionUntil) <= Date.now()
     },
     purgeStageVisible() {
       return !!this.job && ['RETENTION', 'PURGE_READY', 'BLOCKED', 'FAILED', 'PURGING', 'PURGED'].includes(this.job.state)
@@ -243,8 +244,16 @@ export default {
     stepLabel(code) {
       return STEP_LABELS[code] || code
     },
+    serverUtcEpoch(value) {
+      if (!value) return NaN
+      const raw = String(value)
+      const normalized = /(Z|[+-]\d{2}:\d{2})$/i.test(raw) ? raw : `${raw}Z`
+      return new Date(normalized).getTime()
+    },
     fmt(value) {
-      return value ? String(value).replace('T', ' ').slice(0, 16) : ''
+      const epoch = this.serverUtcEpoch(value)
+      if (!Number.isFinite(epoch)) return ''
+      return new Date(epoch).toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
     },
     formatBytes(value) {
       if (value === null || value === undefined) return '—'
@@ -254,6 +263,8 @@ export default {
       return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GiB`
     },
     clearMfaGrant() {
+      if (this.mfaExpiryTimer) clearTimeout(this.mfaExpiryTimer)
+      this.mfaExpiryTimer = null
       this.mfaGrant = null
       this.mfaCode = ''
     },
@@ -279,8 +290,8 @@ export default {
     },
     async refreshAfterChange(message) {
       if (message) toast.success(message)
-      this.$emit('changed')
       await this.load()
+      this.$emit('changed')
     },
     async requestOffboarding() {
       if (this.requestForm.reason.length < 10) return toast.error('退租原因至少 10 个字符')
@@ -330,14 +341,18 @@ export default {
     async stepUpMfa() {
       if (!/^\d{6}$/.test(this.mfaCode)) return toast.error('请输入 6 位动态码')
       this.mfaWorking = true
-      this.mfaGrant = null
+      this.clearMfaGrant()
       try {
         const grant = await platformSecurityOpsApi.stepUpMfa(this.mfaCode)
+        const ttlSeconds = Number(grant.expiresIn || 600)
         this.mfaGrant = {
           accessToken: grant.accessToken,
-          expiresAt: Date.now() + Number(grant.expiresIn || 600) * 1000
+          expiresAt: Date.now() + ttlSeconds * 1000
         }
-        this.mfaCode = ''
+        this.mfaExpiryTimer = setTimeout(() => {
+          this.mfaGrant = null
+          this.mfaExpiryTimer = null
+        }, ttlSeconds * 1000)
         toast.success('MFA 二次认证通过；临时授权只保存在本页内存中')
       } catch (error) {
         toast.error(error.message || 'MFA 二次认证失败')
