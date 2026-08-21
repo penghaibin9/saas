@@ -6,11 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppExportButton
-        v-if="exportPerm.visible"
-        :export-fn="exportFinalsFn"
-        :has-permission="exportPerm.allowed"
-      >导出成果清单</AppExportButton>
+      <AppExportButton v-if="exportPerm.visible" :export-fn="exportFinalsFn" :has-permission="exportPerm.allowed">导出成果清单</AppExportButton>
     </template>
 
     <div class="mp-stack fr-workbench-stack">
@@ -20,190 +16,87 @@
         </button>
       </div>
 
-      <AdvancedFilter class="fr-empty-filter" v-if="hasBatch" v-model="filters" :fields="filterFields" @search="onFilterSearch" @reset="onFilterReset" />
-
-      <div class="fr-split" :class="{ 'is-narrow': isNarrow }">
-        <aside v-if="!isNarrow || !selectedRow" class="fr-list">
-          <AppSearchBox v-if="hasBatch" v-model="filters.keyword" placeholder="搜索学生 / 学号 / 课题" @search="onFilterSearch" />
-          <ErrorState v-if="error" :description="error" @retry="load" />
-          <LoadingState v-else-if="loading" />
-          <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc" />
-          <ul v-else class="fr-rows">
-            <li
-              v-for="(row, i) in rows"
-              :key="rowKey(row)"
-              class="fr-row"
-              :class="{ 'is-active': rowKey(row) === selKey }"
-              tabindex="0"
-              role="button"
-              @click="select(row)"
-              @keydown.enter.prevent="select(row)"
-              @keydown.space.prevent="select(row)"
-            >
-              <div class="fr-row__main">
-                <span class="fr-row__name">{{ row.studentName }}</span>
-                <span class="fr-row__cls">{{ row.className }}</span>
-                <StatusTag :status="row.status === 'NOT_SUBMITTED' ? 'PENDING_SUBMIT' : row.status" :label="row.statusLabel" dot />
-              </div>
-              <div class="fr-row__sub" :title="row.topicTitle">{{ row.topicTitle }}</div>
-              <div class="fr-row__meta">
-                <span>{{ row.type || '—' }} {{ row.version || '' }}</span>
-                <span v-if="row.plagiarismRate" :class="{ 'fr-over': row.plagiarismTone === 'danger' }">查重 {{ row.plagiarismRate }}</span>
-                <span class="fr-row__idx">{{ pageStartIndex + i + 1 }}</span>
-              </div>
-            </li>
-          </ul>
-          <div class="fr-list__foot">
-            <AppPagination :total="total" :page="page" :page-size="pageSize" :show-size-changer="false" @update:page="turnPage" />
-          </div>
-        </aside>
-
-        <section v-if="!isNarrow || selectedRow" class="fr-pane">
-          <div class="fr-pane__bar">
-            <button v-if="isNarrow" class="mp-link" @click="clearSelection">← 返回列表</button>
-            <span class="fr-pane__pos">本页第 {{ selIndex + 1 }} / {{ rows.length }} 条 · 共 {{ total }} 条</span>
-            <label class="fr-pane__auto"><input v-model="autoNext" type="checkbox" /> 处理后自动进入下一条待审</label>
-            <span class="fr-pane__nav">
-              <button class="mp-link" :disabled="selIndex <= 0" @click="step(-1)">← 上一条</button>
-              <button class="mp-link" :disabled="!hasNext" @click="step(1)">下一条 →</button>
-            </span>
-          </div>
-
-          <EmptyState v-if="!selectedRow" title="从左侧选择一条成果记录" description="↑↓ 方向键可快速切换，处理后自动进入下一条待审" />
-          <div v-else class="mp-stack fr-detail-grid">
-            <section class="mp-card fr-summary-card">
-              <div class="mp-card__head">
-                <span class="mp-card__title">{{ selectedRow.type || '成果' }} {{ selectedRow.version || '' }}</span>
-                <button class="mp-link" @click="openDossier(selectedRow)">查看学生完整档案 →</button>
-              </div>
-              <div class="mp-card__body fr-summary-grid">
-                <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ selectedRow.studentName }} · {{ selectedRow.className }}</span></div>
-                <div class="mp-kv fr-summary-topic"><span class="mp-kv__k">课题</span><span class="mp-kv__v">{{ selectedRow.topicTitle }}</span></div>
-                <div class="mp-kv"><span class="mp-kv__k">指导教师</span><span class="mp-kv__v">{{ selectedRow.advisorName || '—' }}</span></div>
-                <div class="mp-kv"><span class="mp-kv__k">提交时间</span>
-                  <span class="mp-kv__v"><AppDateDisplay :value="selectedRow.submitAt" mode="datetime" empty-text="未提交" /></span>
-                </div>
-                <div class="mp-kv"><span class="mp-kv__k">当前状态</span>
-                  <span class="mp-kv__v"><StatusTag :status="selectedRow.status === 'NOT_SUBMITTED' ? 'PENDING_SUBMIT' : selectedRow.status" :label="selectedRow.statusLabel" dot /></span>
-                </div>
-                <div class="mp-kv"><span class="mp-kv__k">查重</span>
-                  <span class="mp-kv__v">
-                    <StatusTag v-if="selectedRow.plagiarismRate" :type="selectedRow.plagiarismTone === 'danger' ? 'danger' : 'success'" :label="selectedRow.plagiarismRate + ' · ' + selectedRow.plagiarismStatus" />
-                    <span v-else>{{ selectedRow.plagiarismStatus || '未检测' }}</span>
-                  </span>
-                </div>
-                <p v-if="selectedRow.plagiarismTone === 'danger'" class="mp-note fr-summary-alert">
-                  查重率超标（&gt;30%），系统将拦截「通过」，须退回修改后由学生重交。
-                </p>
-              </div>
-            </section>
-
-            <section v-if="selectedRow.status !== 'NOT_SUBMITTED'" class="mp-card fr-security-card">
-              <div class="mp-card__head">
-                <span class="mp-card__title">当前安全版本（本次审核锁定）</span>
-                <StatusTag
-                  :type="finalDetail?.reviewReady ? 'success' : 'warning'"
-                  :label="finalDetail?.reviewReady ? `安全门通过 · ${secureVersionFiles.length} 个版本` : '暂不可审核'"
-                />
-              </div>
-              <div class="mp-card__body">
-                <LoadingState v-if="detailLoading" />
-                <ErrorState v-else-if="detailError" :description="detailError" @retry="loadSelectedDetail" />
-                <template v-else>
-                  <div v-if="finalDetail?.migrationRequired" class="version-warning">
-                    该历史成果尚未完成公共版本回填。正式审核前后端会执行安全回填；回填失败时禁止通过。
-                  </div>
-                  <div v-else-if="!finalDetail?.reviewReady" class="version-warning">
-                    当前成果仍在扫描、扫描失败或版本关系已变化。请刷新详情，系统不会绕过安全门审核。
-                  </div>
-                  <div v-if="secureVersionFiles.length" class="fr-security-keyline">
-                    <span class="fr-security-keyline__label">SHA-256</span>
-                    <code class="mono hash" :title="secureVersionFiles[0].sha256">{{ shortHash(secureVersionFiles[0].sha256) }}</code>
-                  </div>
-                  <SecureFileList
-                    :items="secureVersionFiles"
-                    :loading="detailLoading"
-                    empty-text="尚无可审核的安全文件版本"
-                    @preview="previewVersion"
-                    @download="downloadVersion"
-                    @refresh="loadSelectedDetail"
-                  />
-                  <div v-if="secureVersionFiles.length" class="version-table-wrap">
-                    <table class="version-table">
-                      <thead>
-                        <tr><th>材料</th><th>版本</th><th>versionId</th><th>扫描</th><th>审核态</th><th>SHA-256</th></tr>
-                      </thead>
-                      <tbody>
-                        <tr v-for="item in secureVersionFiles" :key="item.versionId">
-                          <td>{{ item.materialName || item.fileName }}</td>
-                          <td>v{{ item.versionNo }}</td>
-                          <td class="mono">{{ item.versionId }}</td>
-                          <td>{{ item.scanStatus }}</td>
-                          <td>{{ item.versionStatus }}</td>
-                          <td class="mono hash" :title="item.sha256">{{ shortHash(item.sha256) }}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  <p class="mp-note" style="margin-top: var(--space-2)">
-                    通过或退回时，服务端会重新锁定这些 versionId，核验 FileObject、扫描结论与 SHA-256 后再改变业务状态。
-                  </p>
-                </template>
-              </div>
-            </section>
-
-            <section v-if="selectedRow.status === 'NOT_SUBMITTED'" class="mp-card fr-result-card">
-              <div class="mp-card__head"><span class="mp-card__title">尚未提交成果</span></div>
-              <div class="mp-card__body">
-                <AppButton variant="primary" :loading="reminding" @click="remind(selectedRow)">发送成果催交提醒</AppButton>
-                <p class="mp-note" style="margin-top: var(--space-2)">本操作会创建真实站内消息并写入催办留痕；学生提交后将进入「待审阅」页签。</p>
-              </div>
-            </section>
-
-            <section v-else-if="selectedRow.status === 'PENDING_REVIEW'" class="mp-card fr-review-card">
-              <div class="mp-card__head"><span class="mp-card__title">批阅</span></div>
-              <div class="mp-card__body">
-                <div v-if="!canReview" class="mp-note" style="margin-bottom: var(--space-2); color: var(--warning-600)">
-                  {{ reviewReason }}（以下操作已置灰）
-                </div>
-                <label class="mp-note" style="display: block; margin-bottom: var(--space-1)">批阅意见（退回时必填，≥5 字）</label>
-                <textarea v-model="comment" class="mp-textarea" :disabled="!canReview" rows="3" placeholder="批阅意见将同步学生端…"></textarea>
-                <AppTemplateChips v-if="canReview" size="compact" :options="REJECT_REASON_CHIPS" @pick="(t) => (comment = comment ? comment + '\n' + t : t)" />
-                <p v-if="formError" class="mp-form-err">{{ formError }}</p>
-                <div class="fr-review-actions">
-                  <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" style="flex: 1" @click="submitReview('APPROVE')">✓ 通过当前版本</AppPermissionButton>
-                  <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" style="flex: 1" @click="submitReview('REJECT')">↩ 退回当前版本</AppPermissionButton>
-                </div>
-                <p class="mp-note fr-review-note">批阅结果同时写入业务留痕与公共文件版本状态；学生重交会生成新的 FileVersion。</p>
-              </div>
-            </section>
-
-            <section v-else class="mp-card fr-result-card">
-              <div class="mp-card__head"><span class="mp-card__title">批阅结果</span></div>
-              <div class="mp-card__body">
-                <div class="mp-kv"><span class="mp-kv__k">结果</span><span class="mp-kv__v">{{ selectedRow.statusLabel }}</span></div>
-                <p class="mp-note" style="margin-top: var(--space-2)">
-                  已批阅版本继续保留追溯；已退回成果待学生重交后会出现新的待审记录和新的 FileVersion。
-                </p>
-              </div>
-            </section>
-          </div>
-        </section>
+      <div v-if="hasBatch" class="fr-filter-row">
+        <AppSearchBox v-model="filters.keyword" placeholder="搜索学生 / 学号 / 课题" @search="onFilterSearch" />
       </div>
 
-      <p class="mp-note">初稿 / 定稿顺序、查重超标和文件安全门均由后端真实状态机校验；筛选默认「全部时间」。</p>
+      <ErrorState v-if="error" :description="error" @retry="load" />
+      <LoadingState v-else-if="loading" />
+      <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc" />
+
+      <GraduationDocumentReviewWorkspace
+        v-else
+        :queue="rows"
+        :current-index="Math.max(selIndex, 0)"
+        :current-record="selectedRow"
+        :detail="finalDetail"
+        :files="secureVersionFiles"
+        :versions="secureVersionFiles"
+        :canonical-file-version-id="canonicalFileVersionId"
+        :review-ready="Boolean(finalDetail?.reviewReady) && !versionConflict"
+        :expected-version="finalDetail?.materialVersion"
+        :comment="comment"
+        :submitting="submitting"
+        :auto-next="autoNext"
+        mode="final"
+        :provider="previewProvider"
+        :descriptor="previewDescriptor"
+        :active-file-key="activePreviewFileKey"
+        :active-version-id="activePreviewVersionId"
+        :version-conflict="versionConflict"
+        :allow-download="Boolean(activePreviewFile?.canDownload)"
+        :narrow="isNarrow"
+        @select="select"
+        @previous="step(-1)"
+        @next="step(1)"
+        @update:auto-next="autoNext = $event"
+        @select-file="selectPreviewFile"
+        @select-version="selectPreviewVersion"
+        @download="downloadActivePreview"
+        @reload="loadSelectedDetail"
+        @open-student-dossier="openDossier"
+      >
+        <template #queue-footer>
+          <div class="fr-list__foot"><AppPagination :total="total" :page="page" :page-size="pageSize" :show-size-changer="false" @update:page="turnPage" /></div>
+        </template>
+
+        <template #review>
+          <LoadingState v-if="detailLoading" />
+          <ErrorState v-else-if="detailError" :description="detailError" @retry="loadSelectedDetail" />
+          <template v-else-if="selectedRow?.status === 'NOT_SUBMITTED'">
+            <AppButton variant="primary" :loading="reminding" @click="remind(selectedRow)">发送成果催交提醒</AppButton>
+            <p class="mp-note">本操作会创建真实站内消息并写入催办留痕。</p>
+          </template>
+          <template v-else-if="selectedRow?.status === 'PENDING_REVIEW'">
+            <div v-if="!canReview" class="fr-review-blocked">{{ reviewReason }}（以下操作已置灰）</div>
+            <label class="mp-note">批阅意见（退回时必填，≥5 字）</label>
+            <textarea v-model="comment" class="mp-textarea" rows="5" placeholder="批阅意见将同步学生端…" @input="saveCommentDraft"></textarea>
+            <AppTemplateChips v-if="canReview" size="compact" :options="REJECT_REASON_CHIPS" @pick="appendComment" />
+            <p v-if="formError" class="mp-form-err">{{ formError }}</p>
+            <div class="fr-review-actions">
+              <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" @click="submitReview('APPROVE')">✓ 通过当前版本</AppPermissionButton>
+              <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" @click="submitReview('REJECT')">↩ 退回当前版本</AppPermissionButton>
+            </div>
+            <p class="mp-note">提交 payload 始终锁定服务端 canonical <code>expectedVersion + fileVersionId</code>；Viewer 展示形式不会改变审核源版本。</p>
+          </template>
+          <template v-else>
+            <div class="mp-kv"><span class="mp-kv__k">批阅结果</span><span class="mp-kv__v">{{ selectedRow?.statusLabel || '—' }}</span></div>
+            <p class="mp-note">已批阅版本继续保留追溯；学生重交后会生成新的 FileVersion。</p>
+          </template>
+        </template>
+      </GraduationDocumentReviewWorkspace>
+
+      <p class="mp-note">初稿 / 定稿顺序、查重超标、文件安全门和 canonical FileVersion 均由后端真实状态校验；历史版本只读。</p>
     </div>
     <AppPageGuide guide-key="graduation.gd-final-review" />
   </ModulePageShell>
 </template>
 
 <script>
-/** 成果检查：连续双栏批阅 + 公共 FileVersion 安全证据。 */
-import { ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppTemplateChips, AppPageGuide } from '@/components/common'
-import { AppDateDisplay } from '@/components/common/date'
-import SecureFileList from '@/components/file/SecureFileList.vue'
+import GraduationDocumentReviewWorkspace from '@/modules/graduation/components/GraduationDocumentReviewWorkspace.vue'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { graduationMaterialCenterApi } from '@/modules/graduation/api/graduation-material-center.api'
@@ -218,15 +111,16 @@ const REJECT_REASON_CHIPS = ['材料不完整，请补充', '内容质量不达�
 export default {
   name: 'FinalSubmissionListView',
   components: {
-    AppPageGuide, ModulePageShell, AdvancedFilter, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppDateDisplay,
-    AppTemplateChips, SecureFileList
+    AppPageGuide, ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppButton,
+    AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppTemplateChips,
+    GraduationDocumentReviewWorkspace
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       REJECT_REASON_CHIPS,
       batchStore: useGraduationBatchStore(),
+      previewProvider: graduationMaterialCenterApi.createPreviewProvider(),
       loading: true,
       error: '',
       rows: [],
@@ -246,6 +140,11 @@ export default {
       detailLoading: false,
       detailError: '',
       detailRequestKey: '',
+      activePreviewFileKey: null,
+      activePreviewVersionId: null,
+      readerMode: 'embedded',
+      previewDraftKey: '',
+      versionConflict: null,
       tabs: [
         { value: 'PENDING_REVIEW', label: '待审阅' },
         { value: 'APPROVED', label: '已通过' },
@@ -260,28 +159,31 @@ export default {
     pageSubtitle() {
       if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
       const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
-      const s = this.stats
-      if (!s) return `${batch}初稿 / 定稿连续批阅 · 审核前锁定当前安全文件版本`
-      return `${batch}待审阅 ${this.statusCount('PENDING_REVIEW')} · 查重超标 ${s.plagiarismOver ?? 0} · 安全版本审核`
+      if (!this.stats) return `${batch}左队列 → 中文档 → 右审核 · canonical FileVersion 锁定`
+      return `${batch}待审阅 ${this.statusCount('PENDING_REVIEW')} · 查重超标 ${this.stats.plagiarismOver ?? 0} · 安全版本审核`
     },
     emptyTitle() { return this.hasBatch ? '当前页签暂无成果提交' : '请先选择或创建毕设批次' },
-    emptyDesc() { return this.hasBatch ? '可切换页签或调整筛选' : '顶部批次条选择当前工作批次后，再批阅成果材料。' },
+    emptyDesc() { return this.hasBatch ? '可切换页签或调整搜索条件' : '顶部批次条选择当前工作批次后，再批阅成果材料。' },
     exportPerm() {
       const patterns = this.ctx.permissionPatterns
-      return {
-        visible: this.hasBatch,
-        allowed: Array.isArray(patterns) && matchPermission(patterns, 'graduationDesign.final.export')
-      }
+      return { visible: this.hasBatch, allowed: Array.isArray(patterns) && matchPermission(patterns, 'graduationDesign.final.export') }
     },
-    secureVersionFiles() {
-      return graduationMaterialCenterApi.normalizeVersions(this.finalDetail?.currentSafeVersions || [])
+    secureVersionFiles() { return graduationMaterialCenterApi.normalizeVersions(this.finalDetail?.currentSafeVersions || []) },
+    canonicalFileVersionId() { return this.finalDetail?.fileVersionId ?? null },
+    activePreviewFile() {
+      if (!this.secureVersionFiles.length) return null
+      return this.secureVersionFiles.find((item) => String(this.fileKey(item)) === String(this.activePreviewFileKey))
+        || this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId))
+        || this.secureVersionFiles[0]
     },
+    previewDescriptor() { return this.activePreviewFile ? graduationMaterialCenterApi.previewDescriptor(this.activePreviewFile) : null },
     canReview() {
       const pa = this.ctx.permissionActions.reviewFinal
       return !!(
         pa && pa.visible && pa.allowed && this.ctx.writeEnabled !== false &&
         this.selectedRow?.status === 'PENDING_REVIEW' && !this.detailLoading &&
-        this.finalDetail?.reviewReady
+        this.finalDetail?.reviewReady && !this.versionConflict &&
+        String(this.activePreviewVersionId ?? '') === String(this.canonicalFileVersionId ?? '')
       )
     },
     reviewReason() {
@@ -292,16 +194,14 @@ export default {
       if (this.detailError) return '成果安全版本详情加载失败'
       if (this.finalDetail?.migrationRequired) return '历史材料尚未完成公共版本回填'
       if (!this.finalDetail?.reviewReady) return '当前材料版本未通过安全门禁'
+      if (this.versionConflict) return '学生已提交新版本，请切换最新版本后重新核验'
+      if (String(this.activePreviewVersionId ?? '') !== String(this.canonicalFileVersionId ?? '')) return '当前正在阅读历史版本，历史版本只读不可批阅'
       return ''
     },
-    filterFields() { return [] },
     pageStartIndex() { return (this.page - 1) * this.pageSize },
     selectedRow() { return this.rows.find((row) => this.rowKey(row) === this.selKey) || null },
     selIndex() { return this.rows.findIndex((row) => this.rowKey(row) === this.selKey) },
-    hasNext() {
-      if (this.selIndex < this.rows.length - 1) return true
-      return this.page * this.pageSize < this.total
-    }
+    hasNext() { return this.selIndex < this.rows.length - 1 || this.page * this.pageSize < this.total }
   },
   created() {
     const qTab = (this.$route.query.tab || '').toString()
@@ -312,6 +212,7 @@ export default {
   },
   watch: {
     'batchStore.selectedBatchId'() {
+      this.saveCommentDraft()
       this.page = 1
       this.selKey = ''
       this.resetDetail()
@@ -326,46 +227,68 @@ export default {
     this._mq.addEventListener ? this._mq.addEventListener('change', this._onMq) : this._mq.addListener(this._onMq)
     this._onKey = (event) => {
       if (this.isNarrow) return
-      const tag = (event.target && event.target.tagName) || ''
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      const tag = event.target?.tagName || ''
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return
       if (event.key === 'ArrowDown') { event.preventDefault(); this.step(1) }
       if (event.key === 'ArrowUp') { event.preventDefault(); this.step(-1) }
     }
     window.addEventListener('keydown', this._onKey)
   },
   beforeUnmount() {
+    this.saveCommentDraft()
     if (this._mq) this._mq.removeEventListener ? this._mq.removeEventListener('change', this._onMq) : this._mq.removeListener(this._onMq)
     window.removeEventListener('keydown', this._onKey)
   },
   methods: {
-    rowKey(row) { return row.id != null ? String(row.id) : `ns-${row.gdStudentId}` },
-    shortHash(value) {
-      const text = String(value || '')
-      return text.length > 16 ? `${text.slice(0, 8)}…${text.slice(-8)}` : (text || '—')
-    },
-    statusCount(status) {
-      const stat = (this.stats?.byStatus || []).find((item) => item.status === status)
-      return stat ? stat.count : 0
-    },
-    tabCount(value) {
-      if (!this.stats || value === '' || value === 'NOT_SUBMITTED') return null
-      return this.statusCount(value)
-    },
+    rowKey(row) { return row?.id != null ? String(row.id) : `ns-${row?.gdStudentId}` },
+    versionKey(item) { return item?.fileVersionId ?? item?.versionId ?? item?.id ?? null },
+    fileKey(item) { return item?.fileKey ?? item?.fileId ?? this.versionKey(item) },
+    statusCount(status) { const stat = (this.stats?.byStatus || []).find((item) => item.status === status); return stat ? stat.count : 0 },
+    tabCount(value) { if (!this.stats || value === '' || value === 'NOT_SUBMITTED') return null; return this.statusCount(value) },
     resetDetail() {
       this.finalDetail = null
       this.detailLoading = false
       this.detailError = ''
       this.detailRequestKey = ''
+      this.activePreviewFileKey = null
+      this.activePreviewVersionId = null
+      this.previewDraftKey = ''
+      this.versionConflict = null
     },
+    draftKey(row = this.selectedRow, fileVersionId = this.canonicalFileVersionId) {
+      if (!row?.id || fileVersionId == null) return ''
+      return `gd-final-review-draft:${row.id}:${fileVersionId}`
+    },
+    saveCommentDraft() {
+      const key = this.previewDraftKey || this.draftKey()
+      if (!key) return
+      try {
+        if (this.comment) sessionStorage.setItem(key, this.comment)
+        else sessionStorage.removeItem(key)
+      } catch { /* sessionStorage unavailable */ }
+    },
+    restoreCommentDraft() {
+      this.previewDraftKey = this.draftKey()
+      if (!this.previewDraftKey) return
+      try { this.comment = sessionStorage.getItem(this.previewDraftKey) || '' } catch { this.comment = '' }
+    },
+    clearCommentDraft() {
+      const key = this.previewDraftKey || this.draftKey()
+      if (key) { try { sessionStorage.removeItem(key) } catch { /* ignore */ } }
+      this.previewDraftKey = ''
+    },
+    appendComment(text) { this.comment = this.comment ? `${this.comment}\n${text}` : text; this.saveCommentDraft() },
     async loadStats() {
       if (!this.batchStore.selectedBatchId) { this.stats = null; return }
       const res = await graduationMoreApi.getFinalStats({ batchId: this.batchStore.selectedBatchId })
       if (res.code === 0) this.stats = res.data
     },
     switchTab(value) {
+      this.saveCommentDraft()
       this.filters.status = value
       this.page = 1
       this.selKey = ''
+      this.comment = ''
       this.resetDetail()
       const query = { ...this.$route.query, tab: value || undefined }
       delete query.sel
@@ -373,13 +296,10 @@ export default {
       this.load()
     },
     onFilterSearch() { this.page = 1; this.load() },
-    onFilterReset() {
-      this.filters = { ...this.filters, keyword: '', dateStart: '', dateEnd: '' }
-      this.page = 1
-      this.load()
-    },
-    turnPage(page) { this.page = page; this.load() },
+    turnPage(page) { this.saveCommentDraft(); this.page = page; this.selKey = ''; this.comment = ''; this.resetDetail(); this.load() },
     select(row) {
+      if (!row) return
+      this.saveCommentDraft()
       this.selKey = this.rowKey(row)
       this.comment = ''
       this.formError = ''
@@ -387,89 +307,69 @@ export default {
       this.$router.replace({ query: { ...this.$route.query, sel: this.selKey } })
       this.loadSelectedDetail()
     },
-    clearSelection() {
-      this.selKey = ''
-      this.resetDetail()
-      const query = { ...this.$route.query }
-      delete query.sel
-      this.$router.replace({ query })
-    },
     async loadSelectedDetail() {
       const row = this.selectedRow
-      if (!row || row.status === 'NOT_SUBMITTED' || !row.id) {
-        this.resetDetail()
-        return
-      }
-      const requestKey = `${row.id}:${this.batchStore.selectedBatchId}`
+      if (!row || row.status === 'NOT_SUBMITTED' || !row.id) { this.resetDetail(); return }
+      const oldCanonicalVersionId = this.canonicalFileVersionId
+      const oldActiveVersionId = this.activePreviewVersionId
+      const requestKey = `${row.id}:${this.batchStore.selectedBatchId}:${Date.now()}`
       this.detailRequestKey = requestKey
       this.detailLoading = true
       this.detailError = ''
       const res = await graduationApi.getFinalDetail(row.id, { batchId: this.batchStore.selectedBatchId })
       if (this.detailRequestKey !== requestKey) return
       this.detailLoading = false
-      if (res.code === 0) this.finalDetail = res.data
-      else {
+      if (res.code !== 0) {
         this.finalDetail = null
         this.detailError = res.message || '成果安全版本详情加载失败'
+        return
       }
+      this.finalDetail = res.data
+      const latest = this.canonicalFileVersionId
+      if (oldCanonicalVersionId != null && latest != null && String(oldCanonicalVersionId) !== String(latest)) {
+        this.versionConflict = { old: oldCanonicalVersionId, latest }
+        this.activePreviewVersionId = oldActiveVersionId ?? oldCanonicalVersionId
+      } else {
+        this.versionConflict = null
+        this.activePreviewVersionId = latest
+      }
+      const active = this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId)) || this.secureVersionFiles[0] || null
+      this.activePreviewFileKey = active ? this.fileKey(active) : null
+      this.restoreCommentDraft()
     },
-    async previewVersion(item) {
-      try { await graduationMaterialCenterApi.previewMaterial(item) } catch (error) { toast.error(error?.message || '预览失败') }
+    selectPreviewFile(item) {
+      if (!item) return
+      this.activePreviewFileKey = this.fileKey(item)
+      this.activePreviewVersionId = this.versionKey(item)
+      if (this.versionConflict && String(this.activePreviewVersionId) === String(this.canonicalFileVersionId) && this.finalDetail?.reviewReady) this.versionConflict = null
     },
-    async downloadVersion(item) {
-      try { await graduationMaterialCenterApi.downloadMaterial(item) } catch (error) { toast.error(error?.message || '下载失败') }
+    selectPreviewVersion(item) { this.selectPreviewFile(item) },
+    async downloadActivePreview() {
+      if (!this.activePreviewFile?.canDownload) return
+      try { await graduationMaterialCenterApi.downloadMaterial(this.activePreviewFile) } catch (error) { toast.error(error?.message || '下载失败') }
     },
     step(delta) {
       const target = this.selIndex + delta
       if (target >= 0 && target < this.rows.length) { this.select(this.rows[target]); return }
-      if (delta > 0 && this.page * this.pageSize < this.total) {
-        this.turnPage(this.page + 1)
-      } else if (delta < 0 && this.page > 1) {
-        this._selectLastAfterLoad = true
-        this.turnPage(this.page - 1)
-      }
-    },
-    nextPending() {
-      const from = this.selIndex
-      for (let index = from + 1; index < this.rows.length; index++) {
-        if (this.rows[index].status === 'PENDING_REVIEW') { this.select(this.rows[index]); return }
-      }
-      for (let index = 0; index < from; index++) {
-        if (this.rows[index].status === 'PENDING_REVIEW') { this.select(this.rows[index]); return }
-      }
-      if (this.page * this.pageSize < this.total) {
-        this._selectPendingAfterLoad = true
-        this.turnPage(this.page + 1)
-      } else toast.success('本页待审成果已全部处理完')
+      if (delta > 0 && this.page * this.pageSize < this.total) { this._selectIndexAfterLoad = 0; this.turnPage(this.page + 1) }
+      else if (delta < 0 && this.page > 1) { this._selectLastAfterLoad = true; this.turnPage(this.page - 1) }
     },
     ensureSelection() {
       if (this.selectedRow) { this.loadSelectedDetail(); return }
-      if (!this.rows.length) {
-        this.selKey = ''
-        this._selectIndexAfterLoad = null
-        this.resetDetail()
-        return
-      }
+      if (!this.rows.length) { this.selKey = ''; this.resetDetail(); return }
       let target = null
-      if (Number.isInteger(this._selectIndexAfterLoad)) {
-        target = this.rows[Math.min(this._selectIndexAfterLoad, this.rows.length - 1)]
-      } else if (this._selectLastAfterLoad) target = this.rows[this.rows.length - 1]
+      if (Number.isInteger(this._selectIndexAfterLoad)) target = this.rows[Math.min(this._selectIndexAfterLoad, this.rows.length - 1)]
+      else if (this._selectLastAfterLoad) target = this.rows[this.rows.length - 1]
       else target = this.rows.find((row) => row.status === 'PENDING_REVIEW') || this.rows[0]
       this._selectIndexAfterLoad = null
       this._selectLastAfterLoad = false
-      this._selectPendingAfterLoad = false
       if (target && !this.isNarrow) this.select(target)
     },
-    openDossier(row) {
-      if (row.projectId) this.$router.push(`/admin/graduation/students/${row.projectId}`)
-    },
+    openDossier(row) { if (row?.projectId) this.$router.push(`/admin/graduation/students/${row.projectId}`) },
     exportFinalsFn() {
       const hint = exportFilenameHint(this.batchStore.selectedBatchName, '成果提交')
       const params = buildMaterialQuery(this.filters, { batchId: this.batchStore.selectedBatchId })
-      return graduationApi.exportFinals(params).then((res) => {
-        if (res.code === 0 && res.data) res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }
-        return res
-      })
+      return graduationApi.exportFinals(params).then((res) => { if (res.code === 0 && res.data) res.data = { ...res.data, filename: res.data.filename || `${hint}.xlsx` }; return res })
     },
     async refreshSelectedConflictTruth(response, draft) {
       const selectedKey = this.selKey
@@ -477,12 +377,8 @@ export default {
       if (this.selKey !== selectedKey) return
       await this.loadSelectedDetail()
       if (this.selKey !== selectedKey) return
-      const row = this.selectedRow
-      if (row && this.finalDetail?.status) {
-        row.status = this.finalDetail.status
-        row.statusLabel = this.finalDetail.statusLabel || row.statusLabel
-      }
       this.comment = draft
+      this.saveCommentDraft()
       const message = graduationConflictMessage(response)
       this.formError = message
       toast.error(message)
@@ -490,51 +386,40 @@ export default {
     async submitReview(action) {
       if (!this.canReview || !this.selectedRow) return
       this.formError = ''
-      if (action === 'REJECT' && (!this.comment || this.comment.trim().length < 5)) {
-        this.formError = '退回原因必填且不少于 5 个字'
-        return
-      }
+      if (action === 'REJECT' && (!this.comment || this.comment.trim().length < 5)) { this.formError = '退回原因必填且不少于 5 个字'; return }
       const reviewedIndex = Math.max(0, this.selIndex)
       const pendingQueue = this.filters.status === 'PENDING_REVIEW'
+      const draft = this.comment
       this.submitting = true
       const res = await graduationApi.reviewFinal(this.selectedRow.id, {
         action,
-        comment: this.comment,
+        comment: draft,
         expectedVersion: this.finalDetail.materialVersion,
         fileVersionId: this.finalDetail.fileVersionId
       })
       this.submitting = false
       if (res.code === 0) {
-        toast.success(`批阅完成：${res.data.statusLabel}，已锁定当前安全版本并同步学生端`)
-        const row = this.selectedRow
+        this.clearCommentDraft()
         this.comment = ''
-
+        toast.success(`批阅完成：${res.data.statusLabel}，服务端已锁定 canonical FileVersion`)
+        await this.loadStats()
         if (!this.autoNext || !pendingQueue) {
-          if (row) {
-            row.status = res.data.status
-            row.statusLabel = res.data.statusLabel
-          }
-          await this.loadStats()
+          if (this.selectedRow) { this.selectedRow.status = res.data.status; this.selectedRow.statusLabel = res.data.statusLabel }
           await this.loadSelectedDetail()
-          if (this.autoNext) this.nextPending()
           return
         }
-
         this.selKey = ''
         this.resetDetail()
-        await this.loadStats()
         this._selectIndexAfterLoad = reviewedIndex
         await this.load()
-        if (!this.rows.length && this.page > 1) {
-          this.page -= 1
-          this._selectIndexAfterLoad = this.pageSize - 1
-          await this.load()
-        }
+        if (!this.rows.length && this.page > 1) { this.page -= 1; this._selectIndexAfterLoad = this.pageSize - 1; await this.load() }
         if (!this.rows.length) toast.success('待审成果已全部处理完')
       } else if (isGraduationConflictResponse(res)) {
-        const draft = this.comment
         await this.refreshSelectedConflictTruth(res, draft)
-      } else this.formError = graduationActionErrorMessage(res, '成果批阅未完成，请稍后重试')
+      } else {
+        this.formError = graduationActionErrorMessage(res, '成果批阅未完成，请稍后重试')
+        this.saveCommentDraft()
+      }
     },
     async remind(row) {
       this.reminding = true
@@ -545,29 +430,13 @@ export default {
     },
     async load() {
       if (!this.batchStore.selectedBatchId) {
-        this.loading = false
-        this.error = ''
-        this.rows = []
-        this.total = 0
-        this.selKey = ''
-        this.resetDetail()
-        return
+        this.loading = false; this.error = ''; this.rows = []; this.total = 0; this.selKey = ''; this.resetDetail(); return
       }
       this.loading = true
       this.error = ''
-      const res = await graduationApi.getFinalSubmissions(buildMaterialQuery(this.filters, {
-        page: this.page,
-        pageSize: this.pageSize,
-        batchId: this.batchStore.selectedBatchId
-      }))
-      if (res.code === 0) {
-        this.rows = res.data.list
-        this.total = res.data.total
-        this.ensureSelection()
-      } else {
-        this.error = res.message
-        this.resetDetail()
-      }
+      const res = await graduationApi.getFinalSubmissions(buildMaterialQuery(this.filters, { page: this.page, pageSize: this.pageSize, batchId: this.batchStore.selectedBatchId }))
+      if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total; this.ensureSelection() }
+      else { this.error = res.message; this.resetDetail() }
       this.loading = false
     }
   }
@@ -576,77 +445,5 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.fr-tab-count { margin-left: 4px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.mp-tab.is-active .fr-tab-count { color: inherit; }
-.mp-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
-.fr-workbench-stack { gap: var(--space-2); }
-.fr-empty-filter { display: none; }
-.fr-split { display: flex; gap: var(--space-2); align-items: flex-start; }
-.fr-list { width: 280px; flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
-.fr-split.is-narrow .fr-list { width: 100%; }
-.fr-pane { flex: 1; min-width: 0; padding: var(--space-2); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
-.fr-split.is-narrow .fr-pane { width: 100%; }
-.fr-rows { list-style: none; margin: 0; padding: 0; max-height: 640px; overflow-y: auto; border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); }
-.fr-row { padding: 8px 10px; border-bottom: 1px solid var(--border-light, #eef1f6); cursor: pointer; transition: background .12s ease, box-shadow .12s ease; }
-.fr-row:last-child { border-bottom: none; }
-.fr-row:hover { background: var(--gray-50, #f8fafc); }
-.fr-row.is-active { background: var(--primary-50, #eff6ff); box-shadow: inset 2px 0 0 var(--brand-primary, #2563eb); }
-.fr-row:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--primary-400, #60a5fa); outline-offset: -2px; }
-.fr-row__main { display: flex; align-items: center; gap: var(--space-2); }
-.fr-row__name { font-weight: var(--font-weight-medium, 500); color: var(--text-primary); }
-.fr-row__cls { font-size: var(--font-size-xs); color: var(--text-tertiary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fr-row__sub { margin-top: 2px; font-size: var(--font-size-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fr-row__meta { margin-top: 2px; display: flex; gap: var(--space-2); font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.fr-row__idx { margin-left: auto; }
-.fr-over { color: var(--danger, #dc2626); }
-.fr-list__foot { display: flex; justify-content: center; }
-.fr-pane__bar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: 6px var(--space-2); margin-bottom: var(--space-2); background: var(--gray-50, #f8fafc); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); font-size: var(--font-size-sm); }
-.fr-pane__pos { color: var(--text-secondary); }
-.fr-pane__auto { color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.fr-pane__nav { margin-left: auto; display: inline-flex; gap: var(--space-2); }
-.fr-pane__nav .mp-link:disabled { opacity: 0.4; cursor: not-allowed; }
-.fr-detail-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(250px, .8fr); gap: var(--space-2); }
-.fr-summary-card { grid-column: 1 / -1; grid-row: 2; }
-.fr-security-card { grid-column: 1; grid-row: 1; min-width: 0; }
-.fr-review-card, .fr-result-card { grid-column: 2; grid-row: 1; min-width: 0; align-self: start; }
-.fr-detail-grid > .fr-summary-card > .mp-card__head,
-.fr-detail-grid > .fr-security-card > .mp-card__head,
-.fr-detail-grid > .fr-review-card > .mp-card__head,
-.fr-detail-grid > .fr-result-card > .mp-card__head { padding: 6px 10px; }
-.fr-detail-grid > .fr-summary-card > .fr-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 var(--space-3); padding: 6px 10px; }
-.fr-summary-grid .mp-kv { min-width: 0; flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 0; }
-.fr-summary-grid .mp-kv__v { max-width: 100%; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fr-summary-topic { grid-column: auto; }
-.fr-summary-alert { grid-column: 1 / -1; margin: 4px 0 0; color: var(--danger, #dc2626); }
-.fr-detail-grid > .fr-security-card > .mp-card__body,
-.fr-detail-grid > .fr-review-card > .mp-card__body,
-.fr-detail-grid > .fr-result-card > .mp-card__body { padding: var(--space-2) 10px; }
-.fr-security-card .mp-card__body { max-height: 220px; overflow: auto; }
-.fr-security-card .mp-card__body { display: flex; flex-direction: column; }
-.fr-security-card .version-warning { order: -2; }
-.fr-security-keyline { order: -1; display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px 0 6px; font-size: 12px; }
-.fr-security-keyline__label { flex: none; color: var(--text-tertiary); font-weight: 600; }
-.fr-security-keyline .hash { max-width: none; color: var(--text-primary); }
-.fr-security-card .version-table-wrap { order: -1; margin-top: 0; margin-bottom: 6px; }
-.fr-review-card .mp-card__body { display: flex; flex-direction: column; }
-.fr-review-card .mp-textarea { min-height: 54px; }
-.fr-review-actions { order: -2; display: flex; gap: var(--space-2); margin: 0 0 var(--space-2); }
-.fr-review-note { text-align: center; margin: 6px 0 0; line-height: 1.35; }
-.version-warning { margin-bottom: var(--space-2); padding: 8px 10px; border-radius: 8px; background: var(--warning-50); color: var(--warning-700); font-size: 13px; }
-.version-table-wrap { margin-top: 6px; overflow-x: auto; }
-.version-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.version-table th, .version-table td { padding: 5px 7px; border-bottom: 1px solid var(--border-light); text-align: left; white-space: nowrap; }
-.version-table th { color: var(--text-tertiary); font-weight: 600; }
-.version-table th:last-child,
-.version-table td:last-child { position: sticky; right: 0; z-index: 1; background: var(--card, #fff); box-shadow: -8px 0 12px -12px rgba(15, 23, 42, .45); }
-.version-table th:last-child { z-index: 2; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.hash { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
-.mp-tab { padding: 6px 10px; }
-@media (max-width: 1100px) {
-  .fr-pane { padding: var(--space-3); }
-  .fr-detail-grid { grid-template-columns: 1fr; }
-  .fr-summary-card, .fr-security-card, .fr-review-card, .fr-result-card { grid-column: 1; grid-row: auto; }
-  .fr-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
+.fr-workbench-stack{gap:var(--space-2)}.mp-tabs{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-1)}.mp-tab{padding:6px 10px}.fr-tab-count{margin-left:4px;font-size:var(--font-size-xs);color:var(--text-tertiary)}.mp-tab.is-active .fr-tab-count{color:inherit}.fr-filter-row{display:flex;max-width:420px}.fr-list__foot{padding:8px;display:flex;justify-content:center}.fr-review-blocked{padding:8px;border-radius:8px;background:var(--warning-50,#fffbeb);color:var(--warning-700,#a16207);font-size:12px}.fr-review-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.fr-review-actions>*{width:100%}.mp-textarea{width:100%;resize:vertical;min-height:96px}.mp-note code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 </style>
