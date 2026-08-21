@@ -59,6 +59,12 @@ test('W1 legacy FilePreviewer can delegate inline rendering without owning trans
   assert.doesNotMatch(source, /window\.open\(|URL\.createObjectURL\(|request\('\/files/)
 })
 
+test('W2 graduation provider sends ticket action as the actual HTTP request body', () => {
+  const source = read('src/modules/graduation/api/graduation-material-center.api.js')
+  assert.match(source, /files\/\$\{encodeURIComponent\(fileId\)\}\/ticket[\s\S]*method:\s*'POST',\s*body:\s*\{ action \}/)
+  assert.doesNotMatch(source, /files\/\$\{encodeURIComponent\(fileId\)\}\/ticket[^\n]*data:\s*\{ action \}/)
+})
+
 test('W2 workspace does not own ticket or file transport', () => {
   const source = read('src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue')
   assert.doesNotMatch(source, /issueMaterialTicket|fileSdk|material-center\/files/)
