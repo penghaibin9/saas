@@ -211,8 +211,18 @@ def get_task(task_id: str, *, user=None) -> dict:
             "createdAt": x.created_at.isoformat(timespec="seconds") if x.created_at else None,
             "actedAt": x.acted_at.isoformat(timespec="seconds") if x.acted_at else None,
         } for x in history]
-        row["attachments"] = []
+        # TP-A06：业务 Context 由 adapter 从各业务域真实记录解析，不再硬编码空数组。
+        # 未接入的业务类型返回 UNSUPPORTED 并说明原因，而不是让老师以为"这条申请
+        # 本来就没有内容"。单域读取失败标 ERROR，不拖垮整个审批详情。
+        from app.services import approval_business_context_service as ctx_svc
+
+        context = ctx_svc.resolve_context(db, inst)
+        row["businessContext"] = context
+        row["attachments"] = context.get("attachments") or []
+        # diff（字段前后对比）需要业务域提供变更前快照，目前各域均未持久化该快照，
+        # 因此保持为空并如实说明，不用当前值伪造一份"变更对比"。
         row["diff"] = []
+        row["diffNote"] = "各业务域暂未持久化变更前快照，审批详情不展示字段对比"
         return row
 
 

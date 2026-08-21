@@ -390,13 +390,25 @@ export const approvalApi = {
     const d = await request(`/approvals/tasks/${encodeURIComponent(taskId)}`)
     const task = taskRow(d)
     todoVersions.set(task.taskId, task.version)
+    // TP-A06：业务事实来自服务端 adapter 解析出的 businessContext，
+    // 不再只给一行"业务记录 {id}"。completeness 让页面能如实区分
+    // FULL/PARTIAL/MISSING/UNSUPPORTED/ERROR，而不是把"没接入"显示成"没内容"。
+    const ctx = d.businessContext || null
+    const contextFields = ctx
+      ? (ctx.sections || []).flatMap((s) => (s.fields || []).map((f) => ({ ...f, section: s.title })))
+      : []
     return {
       task,
       detail: {
-        fields: d.sourceBizId ? [{ label: '业务记录', value: d.sourceBizId, masked: false }] : [],
+        // sourceBizId 仍保留一行，便于对账定位；业务字段追加在后面。
+        fields: [
+          ...(d.sourceBizId ? [{ label: '业务记录', value: d.sourceBizId, masked: false }] : []),
+          ...contextFields
+        ],
         applyNote: '',
         attachments: Array.isArray(d.attachments) ? d.attachments : []
       },
+      businessContext: ctx,
       timeline: (d.history || []).map(timelineRow),
       suggestions: []
     }

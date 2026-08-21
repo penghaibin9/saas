@@ -13,6 +13,7 @@ from sqlalchemy import and_, func, or_, select
 
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (College, EmpAuditTrail, EmpFollowup, EmpMaterial, EmpStudent,
                         Major, SchoolClass, StudentProfile)
 from app.modules.employment.services import employment_material_evidence_service as base_ev
@@ -101,7 +102,9 @@ def _assert_emp_student(db, emp: EmpStudent | None, user: dict) -> EmpStudent:
 
 def _assert_emp_id(db, sid, user: dict) -> EmpStudent:
     try:
-        emp = db.get(EmpStudent, int(sid))
+        # tenant_get：跨租户 sid 直接当不存在处理，不再依赖 _assert_emp_student
+        # 里那道二次校验单独兜底（两层校验对同一事实互为冗余，不冲突）。
+        emp = tenant_get(db, EmpStudent, int(sid))
     except (TypeError, ValueError):
         raise not_found("就业记录不存在或不在当前数据范围内")
     return _assert_emp_student(db, emp, user)

@@ -37,7 +37,15 @@
             </div>
             <div class="mp-kv"><span class="mp-kv__k">提交时间</span><span class="mp-kv__v">{{ task.submitTime || '—' }}</span></div>
             <div v-if="task.deadline" class="mp-kv"><span class="mp-kv__k">办理期限</span><span class="mp-kv__v">{{ task.deadline }}</span></div>
-            <div v-for="(f, i) in detail.fields" :key="i" class="mp-kv"><span class="mp-kv__k">{{ f.label }}</span><span class="mp-kv__v">{{ f.value }}</span></div>
+            <div v-for="(f, i) in detail.fields" :key="i" class="mp-kv">
+              <span class="mp-kv__k">{{ f.label }}</span>
+              <span class="mp-kv__v" :class="{ 'is-masked': f.masked }">{{ f.value || '—' }}</span>
+            </div>
+          </div>
+          <!-- TP-A06：业务上下文不完整时必须说清楚是"没接入/查不到/读失败"，
+               而不是让老师看到一片空白就以为这条申请本来就没内容。 -->
+          <div v-if="contextNotice" class="mp-form-err" style="margin: 0 var(--space-4) var(--space-3)">
+            {{ contextNotice }}
           </div>
         </section>
 
@@ -145,7 +153,7 @@ export default {
   data() {
     return {
       loading: true, error: '', task: null,
-      detail: { fields: [], attachments: [], applyNote: '' }, timeline: [], suggestions: [],
+      detail: { fields: [], attachments: [], applyNote: '' }, businessContext: null, timeline: [], suggestions: [],
       comment: '', formError: '', submitting: false,
       returnDialog: false, rejectDialog: false, transferDrawer: false,
       transferTargets: [], transferTargetsLoading: false,
@@ -153,6 +161,17 @@ export default {
     }
   },
   computed: {
+    contextNotice() {
+      const ctx = this.businessContext
+      if (!ctx) return ''
+      const map = {
+        UNSUPPORTED: ctx.note || '该业务类型尚未接入审批业务上下文，本页无法展示原始业务事实。',
+        ERROR: ctx.note || '业务信息读取失败，请稍后重试。',
+        MISSING: '关联的业务记录已不存在或已被删除，请核实后再处理。',
+        PARTIAL: '业务信息不完整，关键字段缺失，请谨慎判断或要求补充材料。'
+      }
+      return map[ctx.completeness] || ''
+    },
     canHandle() { return !!(this.task && this.task.status === 'PENDING_REVIEW' && this.task.allowedActions?.length) },
     readonlyTitle() {
       if (!this.task) return '任务不可操作'
@@ -183,6 +202,7 @@ export default {
       const res = await approvalApi.getApprovalDetail(this.$route.params.taskId)
       if (res.code === 0) {
         this.task = res.data.task; this.detail = res.data.detail; this.timeline = res.data.timeline; this.suggestions = res.data.suggestions
+        this.businessContext = res.data.businessContext || null
       } else this.error = res.message
       this.loading = false
     },
@@ -272,4 +292,5 @@ export default {
 .dv-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-3); }
 .dv-hint { margin: var(--space-2) 0 0; text-align: center; line-height: 1.6; }
 @media (max-width: 900px) { .dv-actions { grid-template-columns: 1fr; } }
+.mp-kv__v.is-masked { color: var(--text-3, #909399); font-style: italic; }
 </style>

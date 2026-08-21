@@ -9,6 +9,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (EmpAuditTrail, EmpCompany, EmpFollowup, EmpJob, EmpMaterial, EmpStudent)
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
+from app.core.tenant_scoped import tenant_get
 from app.modules.employment.services import employment_material_evidence_service as ev
 from app.services import shadow_student_service as shadow
 from app.services.db_service import _iso, _tid, session
@@ -54,7 +55,8 @@ def _get_stu(db, sid) -> EmpStudent:
 
 
 def _stu_of(db, sid):
-    return db.get(EmpStudent, sid)
+    # tenant_get：跨租户 sid 一律当不存在处理，不把他校学生行悄悄改字段。
+    return tenant_get(db, EmpStudent, sid)
 
 
 def _emp_students_by_ids(db, rows, attr="emp_student_id"):
