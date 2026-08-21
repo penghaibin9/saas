@@ -44,6 +44,13 @@ test('W2 workbench exposes full lifecycle, server filters and authoritative refr
   assert.doesNotMatch(workbench, /splice\([^)]*closure/i)
 })
 
+test('W2 workbench consumes the unified HTTP client unwrapped data contract', () => {
+  assert.match(workbench, /const data = await academicExamIncidentApi\.workbench\(/)
+  assert.match(workbench, /await academicExamIncidentApi\.resolve\(/)
+  assert.doesNotMatch(workbench, /res\.code/)
+  assert.doesNotMatch(workbench, /res\.data/)
+})
+
 test('high-risk decisions require explicit reason confirmation', () => {
   assert.match(workbench, /AppConfirmDialog/)
   assert.match(workbench, /:require-reason="true"/)
