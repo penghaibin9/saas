@@ -114,7 +114,7 @@ def _msg(db, receiver_id, title, content, event_code, sub_id):
     emit_receiver_notice(
         db, event_code=event_code, source_module=SOURCE_MODULE, source_biz_type=SOURCE_BIZ_TYPE,
         source_biz_id=int(sub_id), receiver_id=receiver_id, title=title, content=content,
-        receiver_as="student", dedup_extra=event_code,
+        receiver_as="user", dedup_extra=event_code,
     )
 
 
