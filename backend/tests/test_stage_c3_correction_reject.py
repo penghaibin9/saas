@@ -296,7 +296,9 @@ def test_competing_approve_and_reject_are_serialized_to_one_terminal_decision():
             set_tenant(None)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = [pool.submit(approve_worker).result(), pool.submit(reject_worker).result()]
+        approve_future = pool.submit(approve_worker)
+        reject_future = pool.submit(reject_worker)
+        results = [approve_future.result(timeout=30), reject_future.result(timeout=30)]
 
     terminal = [result for result in results if result[1] in {"APPLIED", "REJECTED"}]
     conflicts = [result for result in results if result[1] == "APPROVAL_VERSION_CONFLICT"]
