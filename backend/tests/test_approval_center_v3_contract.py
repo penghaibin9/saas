@@ -182,3 +182,25 @@ def test_todo_list_view_rejects_illegal_urgency_with_explicit_notice():
     assert "} else if (urgency) {" in src
     assert "toast.error(" in src
     assert "不受支持，已忽略该条件" in src
+
+
+# ---------------------------------------------------------------------------
+# TP-A08：permissionActions.single 不能被误当成对象级许可
+# ---------------------------------------------------------------------------
+
+def test_single_action_meta_is_documented_as_role_capability_only():
+    src = _read("frontend/src/modules/approval/api/approval.api.js")
+    assert "roleCapabilities" in src
+    assert "objectAllowedActions" in src
+    assert "const single = actionMeta(true, true)" in src
+
+
+def test_detail_view_can_action_requires_both_role_and_object_level_permission():
+    """禁止仅凭 roleCapabilities（permissionActions[key].allowed）就执行业务对象
+    动作——必须同时命中该任务自己的 allowedActions（对象级、按节点角色/数据范围/
+    状态算出）。这是 canAction() 唯一合法的调用形态。"""
+    src = _read("frontend/src/views/admin/approval/ApprovalDetailView.vue")
+    assert (
+        "return !!(pa && pa.visible && pa.allowed && this.task?.allowedActions?.includes(action))"
+        in src
+    )

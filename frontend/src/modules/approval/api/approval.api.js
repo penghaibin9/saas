@@ -302,6 +302,12 @@ async function getContextRaw() {
   const currentRole = authCtx.currentRole || {}
   const dataScope = authCtx.dataScope || {}
   latestTransferTargets = []
+  // TP-A08：approveTask/returnTask/rejectTask/transferTask 这四个 key 只表达
+  // "当前角色具备办理审批的能力"（roleCapabilities），不是"当前这条任务允许这个
+  // 动作"（objectAllowedActions）——真正的对象级许可来自 task.allowedActions
+  // （由 approval_runtime_service 按节点角色 + 数据范围 + 任务状态算出）。任何
+  // 消费方都必须两者取交集，绝不能只凭这里的 allowed=true 就渲染/执行业务动作；
+  // 详情页 canAction() 已经这样做，新增页面复制这个模式时不要漏掉后半句。
   const single = actionMeta(true, true)
   const batch = actionMeta(true, manage, '批量办理仅限具备 approval.manage 的管理角色')
   const adminOnly = actionMeta(true, manage, '当前身份缺少 approval.manage 权限')
