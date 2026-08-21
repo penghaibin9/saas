@@ -3,13 +3,16 @@
 以 Asia/Shanghai (+08:00) 的 2026-08-22 为例，本地自然日对应数据库 UTC-naive：
 [2026-08-21 16:00:00, 2026-08-22 16:00:00)。
 真实 MySQL 故意在边界两侧各放记录，锁死 submitDate / actedFrom+actedTo / summary。
+
+本测试使用独立 tenant_id，避免全量回归共享 MySQL 中其它审批用例的“今日”记录污染
+summary/list 总数。token 是非 db-* 的测试身份，不会绕过任何生产租户身份校验逻辑。
 """
 from __future__ import annotations
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-TID = 1000000000000000001
+TID = 1000000000000000190
 DAY = "2026-08-22"
 START = datetime(2026, 8, 21, 16, 0, 0)
 END = datetime(2026, 8, 22, 16, 0, 0)
@@ -23,7 +26,7 @@ def _headers():
         "loginName": "timezone_school_admin",
         "realName": "时区测试管理员",
         "userType": "ADMIN",
-        "tid": "demo",
+        "tid": "tz-test",
         "tenantId": str(TID),
         "activeContextId": "ctx_school_admin",
         "currentRoleCode": "SCHOOL_ADMIN",
