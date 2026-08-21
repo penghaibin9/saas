@@ -11,8 +11,8 @@ class ApprovalActionRequest(BaseModel):
     version: int = Field(..., ge=0, description="乐观锁版本，必填")
     expectedSourceVersion: Optional[int] = Field(
         None, ge=0,
-        description="TP-A07：详情页读到的业务对象 sourceVersion 快照（GET task 时下发的 "
-                    "businessContext.sourceVersion）；不传则跳过版本比对，只做 completeness 硬门。")
+        description="TP-A07：详情页读到的业务对象 sourceVersion 快照；当 businessContext."
+                    "versionGuardRequired=true 时必传，缺失或过期均由后端 fail-closed。")
 
 
 class ApprovalRejectRequest(BaseModel):
@@ -43,6 +43,9 @@ class ApprovalResubmitRequest(BaseModel):
 class ApprovalBatchItem(BaseModel):
     taskId: str = Field(..., min_length=1)
     version: int = Field(..., ge=0)
+    expectedSourceVersion: Optional[int] = Field(
+        None, ge=0,
+        description="批量办理逐条业务事实快照；supported Context 必须携带，TRANSFER 不使用。")
 
 
 class ApprovalBatchRequest(BaseModel):
