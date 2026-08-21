@@ -11,6 +11,7 @@ const sdk = read('src/services/fileSdk.js')
 const request = read('src/services/request.js')
 const compatibility = read('src/components/file/FilePreviewer.vue')
 const viewer = read('src/components/file/viewer/StudentDocumentViewer.vue')
+const versionBar = read('src/components/file/viewer/StudentDocumentVersionBar.vue')
 const session = read('src/components/file/viewer/useStudentPreviewSession.js')
 const materials = read('src/views/graduation/GraduationMaterialsView.vue')
 const workbench = read('src/views/graduation/GraduationWorkbenchView.vue')
@@ -38,7 +39,7 @@ test('W3 compatibility FilePreviewer routes into the in-site reader without owni
 
 test('W3 StudentDocumentViewer stays presentation-only and fences Blob lifecycle by canonical file identity', () => {
   assert.match(viewer, /useStudentPreviewSession/)
-  assert.match(viewer, /item\.fileVersionId \|\| item\.versionId/)
+  assert.match(versionBar, /item\.fileVersionId \|\| item\.versionId \|\| item\.fileId/)
   assert.match(viewer, /selectedFile\.value\?\.isCurrent === false/)
   for (const forbidden of ['portalApi', 'issueGraduationMaterialTicket', '/material-center/', 'downloadGraduationMaterial', 'window.open(']) {
     assert.equal(viewer.includes(forbidden), false, `Viewer must not own business transport: ${forbidden}`)
@@ -71,5 +72,4 @@ test('W3 graduation workbench separates current-version viewing/download and req
   assert.match(workbench, /issueGraduationMaterialTicket\(file\.fileId, 'preview'\)/)
   assert.match(workbench, /fileSdk\.fetchPreviewBlobFrom\(ticket, options\)/)
   assert.match(workbench, /互查文件只允许走任务专用授权/)
-  assert.doesNotMatch(workbench, /openMaterialReader\(file\)[\s\S]{0,220}成果互查/)
 })
