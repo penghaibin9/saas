@@ -67,11 +67,7 @@ const miniappLegacyNativeOpen = new Set([
 for (const relative of walk('miniapp/src')) {
   const source = read(relative)
   const ownsNativeOpen = source.includes('uni.openDocument(') || source.includes('uni.previewImage(')
-  if (
-    ownsNativeOpen &&
-    relative !== 'miniapp/src/services/fileSdk.js' &&
-    !miniappLegacyNativeOpen.has(relative)
-  ) {
+  if (ownsNativeOpen && relative !== 'miniapp/src/services/fileSdk.js' && !miniappLegacyNativeOpen.has(relative)) {
     throw new Error(`${relative} adds a native preview bypass; route through miniapp File SDK`)
   }
   if (source.includes('uni.downloadFile(') && relative !== 'miniapp/src/services/request.js') {
@@ -95,13 +91,11 @@ if (!graduationRouter.includes('/material-center/files/{file_id}/preview')) {
   throw new Error('graduation audited preview byte endpoint is missing')
 }
 
-const viewerRoot = 'frontend/src/components/file/DocumentViewer'
+const viewerRoot = 'frontend/src/components/file/viewer'
 for (const relative of walk(viewerRoot)) {
   const source = read(relative)
-  for (const token of ['realRequest(', "request('/graduation", '/material-center/files/']) {
-    if (source.includes(token)) {
-      throw new Error(`${relative} bypasses Preview Provider boundary: ${token}`)
-    }
+  for (const token of ['realRequest(', "request('/graduation", '/material-center/files/', 'submitReview(', 'reviewFinal(', 'reviewProposal(']) {
+    if (source.includes(token)) throw new Error(`${relative} bypasses Viewer presentation boundary: ${token}`)
   }
 }
 
