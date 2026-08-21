@@ -1,7 +1,5 @@
 """SP-E08：就业去向登记表/协议的真实文件生成（不是打印审计留痕）。
 
-问题
-────────────────────────────────────────────────────────────
 `student_portal/services/employment_service.py::destination_print()` 此前只调用
 `common.print_log()` 写一条 PORTAL_PRINT 审计，**没有**生成任何真实文件——用户点
 "打印"拿不到可下载的 PDF、没有 fileId、没有内容哈希，审计留痕不能代替文档。
@@ -54,7 +52,16 @@ _CJK_FONT = "STSong-Light"
 
 @register_file_resolver(DOC_BIZ_TYPE)
 def _employment_destination_document_resolver(db, file_obj, bindings, user, action) -> bool:
-    """本人 + 具备就业模块权限的教职工可读；不做全局文件管理员放行。"""
+    """学生本人或同时满足 employment 权限 + authoritative dataScope 的教职工可读。
+
+    文件权限不能把 `employment.student.view` 当作“全校就业数据”授权。正式 PC 的就业详情
+    已统一由 `employment_runtime_service._assert_emp_student` 裁决 TENANT_ALL / CLASS /
+    COLLEGE / STUDENT 等范围；文件 resolver 必须复用同一事实源，否则会出现“页面看不到
+    该学生，但猜到 fileId 却能下载 PDF”的横向越权。
+
+    resolver 只返回 bool，任何 scope 失败都 fail-closed 为 False，由 File Center 外层统一
+    映射为 404，避免用 403 暴露文件或学生是否存在。
+    """
     if db is None:
         return False
     from app.core.permissions import has_permission
@@ -72,8 +79,17 @@ def _employment_destination_document_resolver(db, file_obj, bindings, user, acti
         EmpStudent.is_deleted.is_(False)))
     if not emp:
         return False
+
+    # W3/P1：permission 只是“能不能使用就业学生查看能力”，dataScope 才决定“能看谁”。
+    # 两者必须同时成立。直接复用正式就业 PC 的详情权威，禁止在文件域复制一份范围算法。
     if has_permission(user, "employment.student.view") or has_permission(user, "*"):
-        return True
+        try:
+            from app.modules.employment.services import employment_runtime_service as runtime
+            runtime._assert_emp_student(db, emp, user)  # noqa: SLF001 - canonical scope authority
+            return True
+        except Exception:  # resolver 契约：任何授权/范围异常都统一 fail-closed → 外层 404
+            return False
+
     if str((user or {}).get("userType") or "").upper() != "STUDENT":
         return False
     # 学生只能读自己的登记表——用与 departure_projection_service 同一条 canonical 身份
