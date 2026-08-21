@@ -76,8 +76,8 @@
             <StatusTag :type="row.status === 'OPEN' ? 'danger' : (row.status === 'IN_PROGRESS' ? 'warning' : 'success')" :label="row.status" />
           </template>
           <template #cell-ops="{ row }">
-            <button v-if="row.status !== 'CLOSED'" class="mp-link" @click="transitionTicket(row, 'IN_PROGRESS')">处理中</button>
-            <button v-if="row.status !== 'CLOSED'" class="mp-link" @click="transitionTicket(row, 'RESOLVED')">已解决</button>
+            <button v-if="['OPEN','RESOLVED'].includes(row.status)" class="mp-link" @click="transitionTicket(row, 'IN_PROGRESS')">处理中</button>
+            <button v-if="['OPEN','IN_PROGRESS'].includes(row.status)" class="mp-link" @click="transitionTicket(row, 'RESOLVED')">已解决</button>
             <button v-if="row.status === 'RESOLVED'" class="mp-link" @click="transitionTicket(row, 'CLOSED')">关闭</button>
           </template>
         </DataTable>
@@ -86,6 +86,7 @@
       <AppCard class="pcs__panel">
         <AppSectionHeader title="培训计划与完成记录" />
         <DataTable :columns="trainingColumns" :rows="trainings" row-key="id">
+          <template #cell-scheduledAt="{ row }">{{ displayServerUtc(row.scheduledAt) }}</template>
           <template #cell-status="{ row }">
             <StatusTag :type="row.status === 'COMPLETED' ? 'success' : row.status === 'CANCELLED' ? 'default' : 'warning'" :label="row.status" />
           </template>
@@ -99,6 +100,7 @@
       <AppCard class="pcs__panel">
         <AppSectionHeader title="续费跟进任务" />
         <DataTable :columns="renewalColumns" :rows="renewals" row-key="id">
+          <template #cell-dueAt="{ row }">{{ displayServerUtc(row.dueAt) }}</template>
           <template #cell-status="{ row }">
             <StatusTag :type="renewalTone(row.status)" :label="row.status" />
           </template>
@@ -116,16 +118,19 @@
 </template>
 
 <script>
-/** PLAT-05 客户成功：健康分 + 工单 + 培训 + 续费全部消费真实后端 Authority。 */
+/** PLAT-05 客户成功：浏览器输入按本地时区转 UTC；后端用 UTC-naive MySQL DATETIME 判定。 */
 import { AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
 
-const localDateTime = (value) => {
-  if (!value) return ''
+const toUtcIso = (value) => value ? new Date(value).toISOString() : ''
+const utcEpoch = (value) => {
+  if (!value) return null
   const raw = String(value).trim()
-  return raw.length === 16 ? `${raw}:00` : raw.slice(0, 19)
+  const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw) ? raw : `${raw}Z`
+  const epoch = Date.parse(zoned)
+  return Number.isFinite(epoch) ? epoch : null
 }
 const newTraining = () => ({ tenantId: '', topic: '', scheduledAt: '', trainerName: '' })
 const newRenewal = () => ({ tenantId: '', dueAt: '', ownerName: '', note: '' })
@@ -135,13 +140,9 @@ export default {
   components: { AppCard, AppSectionHeader, DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag },
   data() {
     return {
-      loading: true,
-      error: '',
-      ov: null,
-      tickets: [], trainings: [], renewals: [],
+      loading: true, error: '', ov: null, tickets: [], trainings: [], renewals: [],
       ticketForm: { tenantId: '', title: '', severity: 'P2', reporterName: '' },
-      trainingForm: newTraining(),
-      renewalForm: newRenewal(),
+      trainingForm: newTraining(), renewalForm: newRenewal(),
       ticketColumns: [
         { key: 'title', title: '标题' }, { key: 'tenantId', title: '租户' }, { key: 'severity', title: '优先级' },
         { key: 'status', title: '状态' }, { key: 'reporterName', title: '反馈人' }, { key: 'ops', title: '操作' }
@@ -158,6 +159,11 @@ export default {
   },
   created() { this.load() },
   methods: {
+    displayServerUtc(value) {
+      const epoch = utcEpoch(value)
+      if (epoch == null) return value || '—'
+      return new Date(epoch).toLocaleString('zh-CN', { hour12: false })
+    },
     renewalTone(status) {
       return { PENDING: 'warning', CONTACTED: 'processing', COMMITTED: 'processing', RENEWED: 'success', CHURNED: 'danger' }[status] || 'default'
     },
@@ -165,10 +171,8 @@ export default {
       this.loading = true
       this.error = ''
       const [ovRes, ticketsRes, trainingsRes, renewalsRes] = await Promise.all([
-        platformControlApi.getCustomerSuccessOverview(),
-        platformControlApi.listSupportTickets(),
-        platformControlApi.listTrainings(),
-        platformControlApi.listRenewalTasks()
+        platformControlApi.getCustomerSuccessOverview(), platformControlApi.listSupportTickets(),
+        platformControlApi.listTrainings(), platformControlApi.listRenewalTasks()
       ])
       this.loading = false
       const failed = [ovRes, ticketsRes, trainingsRes, renewalsRes].find((res) => res.code !== 0)
@@ -195,7 +199,7 @@ export default {
     },
     async createTraining() {
       if (!this.trainingForm.tenantId || !this.trainingForm.topic || !this.trainingForm.scheduledAt) return toast.error('租户、培训主题和计划时间必填')
-      const res = await platformControlApi.createTraining({ ...this.trainingForm, scheduledAt: localDateTime(this.trainingForm.scheduledAt) })
+      const res = await platformControlApi.createTraining({ ...this.trainingForm, scheduledAt: toUtcIso(this.trainingForm.scheduledAt) })
       if (res.code !== 0) return toast.error(res.message)
       toast.success('培训计划已登记')
       this.trainingForm = newTraining()
@@ -214,7 +218,7 @@ export default {
     },
     async createRenewal() {
       if (!this.renewalForm.tenantId || !this.renewalForm.dueAt) return toast.error('租户和跟进截止时间必填')
-      const res = await platformControlApi.createRenewalTask({ ...this.renewalForm, dueAt: localDateTime(this.renewalForm.dueAt) })
+      const res = await platformControlApi.createRenewalTask({ ...this.renewalForm, dueAt: toUtcIso(this.renewalForm.dueAt) })
       if (res.code !== 0) return toast.error(res.message)
       toast.success('续费任务已创建')
       this.renewalForm = newRenewal()
