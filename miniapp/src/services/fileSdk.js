@@ -10,6 +10,8 @@ export const FILE_STATUS_TEXT = Object.freeze({
 })
 
 const enc = encodeURIComponent
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
+const DOCUMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])
 
 export function normalizeFile(file = {}) {
   const scanStatus = String(file.scanStatus || 'NOT_REQUIRED').toUpperCase()
@@ -23,6 +25,13 @@ export function normalizeFile(file = {}) {
     canPreview: allowedActions.includes('preview'),
     canDownload: allowedActions.includes('download')
   }
+}
+
+export function previewIdentity(file = {}) {
+  const fileId = String(file.fileId || file.id || '').trim()
+  const fileVersionId = String(file.fileVersionId || file.versionId || '').trim()
+  const sourceSha = String(file.sourceSha256 || file.sourceSha || file.sha256 || '').trim()
+  return [fileId, fileVersionId, sourceSha].join(':')
 }
 
 export function chooseSingleFile({ count = 1 } = {}) {
@@ -55,17 +64,37 @@ function fileExtension(fileName) {
   return index >= 0 ? name.slice(index + 1) : ''
 }
 
+function nativePreviewKind(fileName = '') {
+  const ext = fileExtension(fileName)
+  if (IMAGE_EXTENSIONS.has(ext)) return 'image'
+  if (!ext || DOCUMENT_EXTENSIONS.has(ext)) return 'document'
+  return 'unsupported'
+}
+
+function assertNativePreviewSupported(fileName = '') {
+  const kind = nativePreviewKind(fileName)
+  if (kind === 'unsupported') {
+    throw {
+      code: 'PREVIEW_UNSUPPORTED',
+      biz: true,
+      message: '当前文件类型不支持小程序内预览，请使用 PC 端查看或下载'
+    }
+  }
+  return kind
+}
+
 function openDownloaded(downloaded, fileName = '') {
   const ext = fileExtension(fileName)
+  const kind = assertNativePreviewSupported(fileName)
   return new Promise((resolve, reject) => {
-    if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
+    if (kind === 'image') {
       uni.previewImage({ urls: [downloaded.tempFilePath], current: downloaded.tempFilePath, success: resolve, fail: reject })
       return
     }
     uni.openDocument({
       filePath: downloaded.tempFilePath, fileType: ext || undefined, showMenu: true,
       success: resolve,
-      fail: (error) => reject({ code: 'PREVIEW_FAILED', message: error?.errMsg || '当前文件无法预览，请在 PC 端查看' })
+      fail: (error) => reject({ code: 'PREVIEW_FAILED', biz: true, message: error?.errMsg || '当前文件无法预览，请在 PC 端查看' })
     })
   })
 }
@@ -77,6 +106,7 @@ export async function openBusinessFile(fileId) {
   if (!meta.canPreview && !meta.canDownload) {
     throw { code: 404001, biz: true, message: '附件不存在或尚未通过安全扫描' }
   }
+  assertNativePreviewSupported(meta.fileName)
   const downloaded = await realDownload(`/files/download/${enc(id)}`)
   await openDownloaded(downloaded, meta.fileName)
   return meta
@@ -85,6 +115,7 @@ export async function openBusinessFile(fileId) {
 export const fileSdk = {
   statusText: FILE_STATUS_TEXT,
   normalize: normalizeFile,
+  identity: previewIdentity,
   choose: chooseSingleFile,
   async upload(file, options = {}) {
     const filePath = file?.path || file?.tempFilePath
@@ -97,15 +128,44 @@ export const fileSdk = {
       }
     }))
   },
-  async openAuthorized({ fileId, ticketPath, openPath, action = 'preview', fileName = '' }) {
+  async openAuthorized({
+    fileId,
+    fileVersionId = '',
+    sourceSha = '',
+    ticketPath,
+    openPath,
+    action = 'preview',
+    fileName = ''
+  }) {
     const id = String(fileId || '').trim()
     if (!id) throw { code: 'FILE_REQUIRED', biz: true, message: '附件不存在' }
+    const nativeKind = assertNativePreviewSupported(fileName)
+    const descriptor = {
+      fileId: id,
+      fileVersionId: String(fileVersionId || ''),
+      sourceSha: String(sourceSha || ''),
+      action,
+      surface: 'MINIAPP',
+      nativeKind
+    }
+    descriptor.identity = previewIdentity(descriptor)
+
     const ticket = await realRequest(ticketPath, { method: 'POST', data: { action } })
     const raw = encodeURIComponent(String(ticket?.ticket || ''))
-    if (!raw) throw { code: 404001, biz: true, message: '文件票据不存在或已失效' }
+    if (!raw) throw { code: 'PREVIEW_TICKET_MISSING', biz: true, message: '文件票据不存在或已失效' }
     const downloaded = await realDownload(`${openPath}?ticket=${raw}`)
     await openDownloaded(downloaded, fileName)
-    return ticket
+    return {
+      ...ticket,
+      previewDescriptor: descriptor,
+      telemetry: {
+        event: 'document_preview_return',
+        surface: 'MINIAPP',
+        action,
+        identity: descriptor.identity,
+        nativeKind
+      }
+    }
   },
   async list({ bizType, bizId }) {
     const data = await realRequest(`/files?bizType=${enc(bizType)}&bizId=${enc(bizId)}`)
