@@ -92,8 +92,10 @@ async function openCorrectionDetail(page, targetRef, reason) {
     .first()
   await expect(row).toBeVisible()
   await row.getByRole('button', { name: '查看 / 复核' }).click()
-  await expect(page.getByText('原事实与新事实对比', { exact: true })).toBeVisible()
-  await expect(page.getByText(reason, { exact: true })).toBeVisible()
+  const detail = page.getByRole('dialog').filter({ hasText: '原事实与新事实对比' }).first()
+  await expect(detail).toBeVisible()
+  await expect(detail.getByText('原事实与新事实对比', { exact: true })).toBeVisible()
+  await expect(detail.getByText(reason, { exact: true })).toBeVisible()
 }
 
 async function capture(page, testInfo, name) {
