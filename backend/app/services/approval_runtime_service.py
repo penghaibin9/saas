@@ -362,53 +362,38 @@ def summary(*, user=None) -> dict:
 
 
 def _assert_context_gate(context: dict, expected_source_version) -> None:
-    """TP-A07：高风险业务动作前重新校验业务 Context——不完整/读取失败一律拦截；
-    源对象版本与详情页读到的不一致时 409，不让人拿旧页面继续审批已经变了的业务事实。
-
-    只对已接入 approval_business_context_service 的 biz_type 生效（目前 LEAVE/
-    AA_STATUS_CHANGE/AID/DISCIPLINE）。UNSUPPORTED 类型没有可比对的业务 Context，
-    继续放行——否则会把 TP-A06 之前就能正常审批的全部其它业务类型全部拦死，属于
-    没有事实依据的收紧。
-    """
+    """TP-A07 compatibility wrapper；真实规则统一在 Context adapter 服务。"""
     from app.services import approval_business_context_service as ctx_svc
-
-    context = context or {}
-    biz_type = str(context.get("sourceBizType") or "").upper()
-    if biz_type not in ctx_svc.supported_biz_types():
-        return
-    completeness = context.get("completeness")
-    if completeness != ctx_svc.FULL:
-        raise AppException(
-            "APPROVAL_CONTEXT_INCOMPLETE",
-            f"业务记录不完整或无法读取（{completeness}），暂不能执行审批动作，请刷新后重试",
-            http_status=409,
-        )
-    if expected_source_version is not None:
-        actual = context.get("sourceVersion")
-        if actual is None or int(expected_source_version) != int(actual):
-            raise AppException(
-                "APPROVAL_CONTEXT_VERSION_CONFLICT",
-                "业务记录内容已发生变化，请刷新后重试",
-                http_status=409,
-            )
+    ctx_svc.assert_action_context(context, expected_source_version)
 
 
 def approve(task_id, comment, *, user=None, version=None, expected_source_version=None):
+    """通过：Context/sourceVersion 校验与 task/instance/业务副作用在同一事务。"""
     _require_db()
-    detail = get_task(task_id, user=user)
-    _assert_context_gate(detail.get("businessContext"), expected_source_version)
-    return _contract(base.approve(task_id, comment, user=user, version=version))
+    from app.services import db_service
+
+    return _contract(db_service.act_task(
+        task_id, "APPROVED", comment, user=user, version=version,
+        enforce_context_gate=True,
+        expected_source_version=expected_source_version,
+    ))
 
 
 def reject(task_id, reason, *, user=None, version=None, expected_source_version=None):
+    """驳回终止：与通过共用同事务 sourceVersion 硬门。"""
     _require_db()
-    detail = get_task(task_id, user=user)
-    _assert_context_gate(detail.get("businessContext"), expected_source_version)
-    return _contract(base.reject(task_id, reason, user=user, version=version))
+    base._check_reject_reason(reason)
+    from app.services import db_service
+
+    return _contract(db_service.act_task(
+        task_id, "REJECTED", reason, user=user, version=version,
+        enforce_context_gate=True,
+        expected_source_version=expected_source_version,
+    ))
 
 
 def return_for_revision(task_id, reason, *, user=None, version=None, expected_source_version=None):
-    """退回不是驳回：实例继续 RUNNING，并真实生成申请人重提待办 + 站内消息。"""
+    """退回：通用流程进入申请人重提；领域可在同事务内把 RETURN 覆盖为终态。"""
     _require_db()
     base._check_return_reason(reason)
     from sqlalchemy import select
@@ -436,7 +421,10 @@ def return_for_revision(task_id, reason, *, user=None, version=None, expected_so
             raise not_found("审批实例不存在")
 
         from app.services import approval_business_context_service as ctx_svc
-        _assert_context_gate(ctx_svc.resolve_context(db, inst), expected_source_version)
+        _assert_context_gate(
+            ctx_svc.resolve_context(db, inst, for_update=True),
+            expected_source_version,
+        )
 
         atomic_versioned_update(
             db, WorkflowTask, entity_id=int(task_id), tenant_id=_tid(),
@@ -504,11 +492,9 @@ def return_for_revision(task_id, reason, *, user=None, version=None, expected_so
             },
             remark="RETURNED",
         ))
-        # SP-E02/E04：就业去向登记提交被退回是终态（同 AaStatusChange 的既有约定——退回
-        # 不是"这条记录原地编辑重开"，是"这次没过，请重新提交一条新的"）。这里只同步本域
-        # 状态，不依赖上面刚创建的通用 APPLICANT_RESUBMIT 待办——学生端走 submit() 发起新
-        # 提交，不会去认领那个待办，它会一直挂在那里不再被消费。与 AaStatusChange 自建
-        # 专属审批端点、完全不 touch 这条通用退回路径的效果一致，只是复用了通用入口。
+        # EMPLOYMENT_DESTINATION 的领域合同是“RETURNED 终态，新建下一条 submission”，
+        # apply_return_in_db() 会在本事务 commit 前把 instance 置 RETURNED/current_node=None，
+        # 取消并软删上面的通用 resubmit todo，并把消息改成不可点击的普通业务通知。
         if (inst.source_biz_type or "") == "EMPLOYMENT_DESTINATION":
             from app.modules.employment.services import employment_destination_submission_service as emp_dest_svc
             emp_dest_svc.apply_return_in_db(db, inst, reason=reason.strip())
@@ -524,21 +510,32 @@ def return_for_revision(task_id, reason, *, user=None, version=None, expected_so
                 "instanceId": str(inst.id),
                 "todoId": str(todo.id),
                 "reason": reason.strip(),
+                "instanceStatus": inst.status,
             },
             db=db,
         )
         db.commit()
+
+        next_todo = None
+        if (
+            inst.status == "RUNNING"
+            and inst.current_node == "APPLICANT_RESUBMIT"
+            and not bool(todo.is_deleted)
+            and todo.status == "PENDING"
+        ):
+            next_todo = {
+                "todoId": str(todo.id),
+                "status": "PENDING",
+                "action": "RESUBMIT",
+                "sourceBizId": str(inst.source_biz_id),
+            }
         return _contract({
             "taskId": str(task_id),
             "status": "RETURNED",
-            "instanceStatus": "RUNNING",
+            "instanceStatus": inst.status,
+            "currentNode": inst.current_node or "",
             "version": int(version) + 1,
-        }, {
-            "todoId": str(todo.id),
-            "status": "PENDING",
-            "action": "RESUBMIT",
-            "sourceBizId": str(inst.source_biz_id),
-        })
+        }, next_todo)
 
 
 def resubmit(instance_id, *, user=None, version=None, comment=None):
@@ -741,13 +738,23 @@ def batch_process(items, action, *, user=None, reason=None, target_user_id=None,
     for item in items:
         task_id = str(item.get("taskId") or "")
         version = item.get("version")
+        expected_source_version = item.get("expectedSourceVersion")
         try:
             if action == "APPROVE":
-                value = approve(task_id, comment, user=user, version=version)
+                value = approve(
+                    task_id, comment, user=user, version=version,
+                    expected_source_version=expected_source_version,
+                )
             elif action == "RETURN":
-                value = return_for_revision(task_id, reason or "", user=user, version=version)
+                value = return_for_revision(
+                    task_id, reason or "", user=user, version=version,
+                    expected_source_version=expected_source_version,
+                )
             elif action == "REJECT":
-                value = reject(task_id, reason or "", user=user, version=version)
+                value = reject(
+                    task_id, reason or "", user=user, version=version,
+                    expected_source_version=expected_source_version,
+                )
             else:
                 value = transfer(task_id, target_user_id or "", comment, user=user, version=version)
             results.append({"id": task_id, "result": "SUCCESS", "errorCode": None, "newVersion": value.get("version")})
