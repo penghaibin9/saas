@@ -340,10 +340,11 @@ export default {
     },
     async stepUpMfa() {
       if (!/^\d{6}$/.test(this.mfaCode)) return toast.error('请输入 6 位动态码')
+      const code = this.mfaCode
       this.mfaWorking = true
       this.clearMfaGrant()
       try {
-        const grant = await platformSecurityOpsApi.stepUpMfa(this.mfaCode)
+        const grant = await platformSecurityOpsApi.stepUpMfa(code)
         const ttlSeconds = Number(grant.expiresIn || 600)
         this.mfaGrant = {
           accessToken: grant.accessToken,
