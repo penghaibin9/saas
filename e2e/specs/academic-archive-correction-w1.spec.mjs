@@ -92,7 +92,7 @@ async function openCorrectionDetail(page, targetRef, reason) {
     .first()
   await expect(row).toBeVisible()
   await row.getByRole('button', { name: '查看 / 复核' }).click()
-  await expect(page.getByText('原事实与申请修正对比', { exact: true })).toBeVisible()
+  await expect(page.getByText('原事实与新事实对比', { exact: true })).toBeVisible()
   await expect(page.getByText(reason, { exact: true })).toBeVisible()
 }
 
@@ -130,6 +130,7 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
   })
   const approveCaseId = created.caseId
   await openCorrectionDetail(page, approvalTarget, approveReason)
+  await expect(page.getByText('拟形成事实（非正式）', { exact: true })).toBeVisible()
   await expect(page.getByText('申请人本人执行二审会被服务端拒绝', { exact: false })).toBeVisible()
 
   await page.getByRole('button', { name: '二审通过并生成新正式事实' }).click()
@@ -140,11 +141,12 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
       response.request().method() === 'POST',
     { timeout: 20_000 }
   )
-  await creatorDialog.getByRole('button', { name: '确认' }).click()
+  await creatorDialog.getByRole('button', { name: '确认批准并生成新事实' }).click()
   const denied = await deniedPromise
   expect(denied.status()).toBe(403)
   const deniedPayload = await denied.json()
   expect(deniedPayload.code).not.toBe(0)
+  await expect(creatorDialog).toBeVisible()
   await creatorDialog.getByRole('button', { name: '取消' }).click()
   await expect(page.getByText('待二审', { exact: true }).first()).toBeVisible()
   await capture(page, testInfo, 'w1-same-requester-second-review-denied')
@@ -165,13 +167,14 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
         response.request().method() === 'POST',
       { timeout: 20_000 }
     )
-    await approveDialog.getByRole('button', { name: '确认' }).click()
+    await approveDialog.getByRole('button', { name: '确认批准并生成新事实' }).click()
     const approvedResponse = await approvePromise
     expect(approvedResponse.status()).toBe(200)
     const approvedPayload = await approvedResponse.json()
     expect(approvedPayload.code).toBe(0)
     expect(approvedPayload.data.status).toBe('APPLIED')
     expect(approvedPayload.data.manifestVersion).toBe(initialLatestVersion + 1)
+    await expect(reviewerPage.getByText('新正式事实', { exact: true })).toBeVisible()
     await expect(reviewerPage.getByText('已形成正式事实', { exact: false })).toBeVisible()
     await capture(reviewerPage, testInfo, 'w1-second-reviewer-approved')
 
@@ -179,6 +182,10 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
     expect(appliedDetail.status).toBe('APPLIED')
     expect(appliedDetail.officialFactId).toBeTruthy()
     expect(appliedDetail.resultingManifestId).toBeTruthy()
+    expect(appliedDetail.originalOfficialFact.factId).toBe(String(approvalTarget))
+    expect(appliedDetail.resultingOfficialFact.factId).toBe(appliedDetail.officialFactId)
+    expect(appliedDetail.resultingOfficialFact.sourceBizType).toBe('POST_ARCHIVE')
+    expect(appliedDetail.resultingOfficialFact.sourceBizId).toBe(String(approveCaseId))
 
     const afterApproveManifest = await reviewerApi.get(`/academic-affairs/archive/batches/${fixture.batchId}/manifest/verify`)
     expect(afterApproveManifest.ok).toBeTruthy()
@@ -201,13 +208,16 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
     await openCorrectionTab(reviewerPage)
     await openCorrectionDetail(reviewerPage, rejectTarget, rejectReason)
     const rejectDecisionReason = `二审驳回 ${suffix}：材料证据不能支持正式历史事实变更`
-    await reviewerPage.getByLabel('驳回原因（仅驳回时必填）').fill(rejectDecisionReason)
+    await reviewerPage.getByRole('button', { name: '驳回', exact: true }).click()
+    const rejectDialog = reviewerPage.getByRole('dialog').filter({ hasText: '确认驳回归档后纠错' }).first()
+    await expect(rejectDialog).toBeVisible()
+    await rejectDialog.getByLabel('驳回原因').fill(rejectDecisionReason)
     const rejectPromise = reviewerPage.waitForResponse(
       (response) => response.url().includes(`/api/v1/academic-affairs/archive/corrections/${rejectCaseId}/reject`) &&
         response.request().method() === 'POST',
       { timeout: 20_000 }
     )
-    await reviewerPage.getByRole('button', { name: '驳回' }).click()
+    await rejectDialog.getByRole('button', { name: '确认驳回' }).click()
     const rejectedResponse = await rejectPromise
     expect(rejectedResponse.status()).toBe(200)
     const rejectedPayload = await rejectedResponse.json()
@@ -224,6 +234,7 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
     expect(rejectedDetail.rejectedBy).toBe(fixture.reviewerUserId)
     expect(rejectedDetail.officialFactId).toBeNull()
     expect(rejectedDetail.resultingManifestId).toBeNull()
+    expect(rejectedDetail.resultingOfficialFact).toBeNull()
 
     const afterRejectManifest = await reviewerApi.get(`/academic-affairs/archive/batches/${fixture.batchId}/manifest/verify`)
     expect(afterRejectManifest.ok).toBeTruthy()
