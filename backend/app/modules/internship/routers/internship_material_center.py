@@ -9,12 +9,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, Query
 
+from app.api.v1.file_contract import validated_local_file_response
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.internship.services import internship_agreement_service as agreement_svc
 from app.modules.internship.services import internship_archive_service as archive_svc
 from app.modules.internship.services import internship_insurance_service as insurance_svc
 from app.modules.internship.services import internship_material_center_compat as material_svc
+from app.modules.internship.services import internship_material_preview_access as material_tickets
 from app.modules.internship.services import internship_process_report_service as report_svc
 from app.services import audit_log
 
@@ -65,6 +67,49 @@ def material_center_manifest(
     user=Depends(require_permission("internship.archive.view")),
 ):
     return success(material_svc.get_manifest(internship_id, user=user))
+
+
+@router.post("/material-center/files/{file_id}/ticket", summary="签发实习材料预览/下载短时票据")
+def material_file_ticket(
+    file_id: int,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.archive.view")),
+):
+    action = str((body or {}).get("action") or "preview")
+    return success(material_tickets.issue_ticket(file_id, action, user))
+
+
+@router.get("/material-center/files/{file_id}/preview", summary="使用业务票据站内预览当前安全实习材料")
+def preview_material(
+    file_id: int,
+    ticket: str = Query(...),
+    user=Depends(require_permission("internship.archive.view")),
+):
+    path, filename = material_tickets.consume_ticket(file_id, "preview", ticket, user)
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        audit_action="INTERNSHIP_VERSIONED_MATERIAL_PREVIEW",
+        audit_target=f"internship-file:{file_id}",
+        inline=True,
+        audit_detail={"fileId": str(file_id), "surface": "STAFF_PC", "businessTicket": True},
+    )
+
+
+@router.get("/material-center/files/{file_id}/download", summary="使用一次性业务票据下载当前安全实习材料")
+def download_material(
+    file_id: int,
+    ticket: str = Query(...),
+    user=Depends(require_permission("internship.archive.view")),
+):
+    path, filename = material_tickets.consume_ticket(file_id, "download", ticket, user)
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        audit_action="INTERNSHIP_VERSIONED_MATERIAL_DOWNLOAD",
+        audit_target=f"internship-file:{file_id}",
+        audit_detail={"fileId": str(file_id), "surface": "STAFF_PC", "businessTicket": True},
+    )
 
 
 # ── 安全优先覆盖：必须位于旧路由之前 ─────────────────────────────
