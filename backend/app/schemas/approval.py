@@ -9,16 +9,24 @@ from pydantic import BaseModel, Field
 class ApprovalActionRequest(BaseModel):
     comment: Optional[str] = Field(None, description="审批意见（通过时可选）")
     version: int = Field(..., ge=0, description="乐观锁版本，必填")
+    expectedSourceVersion: Optional[int] = Field(
+        None, ge=0,
+        description="TP-A07：详情页读到的业务对象 sourceVersion 快照（GET task 时下发的 "
+                    "businessContext.sourceVersion）；不传则跳过版本比对，只做 completeness 硬门。")
 
 
 class ApprovalRejectRequest(BaseModel):
     reason: str = Field(..., min_length=1, description="驳回原因（必填；最小长度由平台规则中心决定）")
     version: int = Field(..., ge=0, description="乐观锁版本，必填")
+    expectedSourceVersion: Optional[int] = Field(
+        None, ge=0, description="TP-A07：同 ApprovalActionRequest.expectedSourceVersion。")
 
 
 class ApprovalReturnRequest(BaseModel):
     reason: str = Field(..., min_length=1, description="退回修改原因（必填；与驳回终止语义严格区分）")
     version: int = Field(..., ge=0, description="乐观锁版本，必填")
+    expectedSourceVersion: Optional[int] = Field(
+        None, ge=0, description="TP-A07：同 ApprovalActionRequest.expectedSourceVersion。")
 
 
 class ApprovalTransferRequest(BaseModel):

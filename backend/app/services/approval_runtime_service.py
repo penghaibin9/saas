@@ -10,6 +10,38 @@ from app.db.session import db_enabled
 from app.services import approval_service as base
 from app.services.message_identity import resolve_message_user_id
 
+# TP-A10：审批业务类型字典的唯一服务端权威。前端此前自己维护一份完整枚举
+# （含 COMPANY_CHANGE / MATERIAL_VERIFY 两个全仓 grep 不到任何创建点的臆造类型），
+# 新增一种审批就必须记得同步改前端常量，忘改就会出现"能审批但列表筛选不出来"。
+#
+# 曾经考虑直接复用 WorkflowDefinition.source_biz_type（该表已有 workflow_name 可当
+# 标签），但核实后发现那张表的预置 `biz` 字段（如 STATUS_CHANGE）与各业务域实际写在
+# WorkflowInstance.source_biz_type 上的真实值（如 AA_STATUS_CHANGE）本身就不一致——
+# 这是 runtime_preset_install_service 预置数据自己的既有漂移，不是本项能顺手修的范围，
+# 直接借用只会把这个漂移进一步暴露到审批筛选器上。因此改为维护一份与各业务域真实
+# `WorkflowInstance(source_biz_type=...)` 写入值逐个核对过的静态字典：
+#   LEAVE/AID/FUNDING/DISCIPLINE/DISCIPLINE_REMOVE ← affairs_*_service.py
+#   AA_STATUS_CHANGE/AA_GRADE_TASK/AA_GRADE_CHANGE/AA_SCHEDULE_CHANGE ← academic_affairs 模块
+#   MESSAGE_CAMPAIGN ← message_campaign_service.py；PROFILE_CORRECTION ← 体验沙箱种子
+# 缺一个映射时各处已有 `label || bizType` 兜底显示原始 code，不伪造标签也不阻塞页面。
+_BIZ_TYPE_LABELS: dict[str, str] = {
+    "LEAVE": "请假审批",
+    "AID": "困难认定",
+    "FUNDING": "奖助评定",
+    "DISCIPLINE": "违纪认定",
+    "DISCIPLINE_REMOVE": "违纪解除",
+    "AA_STATUS_CHANGE": "学籍异动",
+    "AA_GRADE_TASK": "成绩审核",
+    "AA_GRADE_CHANGE": "成绩更正",
+    "AA_SCHEDULE_CHANGE": "调停课审批",
+    "MESSAGE_CAMPAIGN": "消息任务审批",
+    "PROFILE_CORRECTION": "信息更正",
+}
+
+
+def biz_type_options() -> list[dict]:
+    return [{"value": k, "label": v} for k, v in _BIZ_TYPE_LABELS.items()]
+
 
 def _require_db() -> None:
     if not db_enabled():
@@ -326,19 +358,53 @@ def summary(*, user=None) -> dict:
         }
 
 
-def approve(task_id, comment, *, user=None, version=None):
+def _assert_context_gate(context: dict, expected_source_version) -> None:
+    """TP-A07：高风险业务动作前重新校验业务 Context——不完整/读取失败一律拦截；
+    源对象版本与详情页读到的不一致时 409，不让人拿旧页面继续审批已经变了的业务事实。
+
+    只对已接入 approval_business_context_service 的 biz_type 生效（目前 LEAVE/
+    AA_STATUS_CHANGE/AID/DISCIPLINE）。UNSUPPORTED 类型没有可比对的业务 Context，
+    继续放行——否则会把 TP-A06 之前就能正常审批的全部其它业务类型全部拦死，属于
+    没有事实依据的收紧。
+    """
+    from app.services import approval_business_context_service as ctx_svc
+
+    context = context or {}
+    biz_type = str(context.get("sourceBizType") or "").upper()
+    if biz_type not in ctx_svc.supported_biz_types():
+        return
+    completeness = context.get("completeness")
+    if completeness != ctx_svc.FULL:
+        raise AppException(
+            "APPROVAL_CONTEXT_INCOMPLETE",
+            f"业务记录不完整或无法读取（{completeness}），暂不能执行审批动作，请刷新后重试",
+            http_status=409,
+        )
+    if expected_source_version is not None:
+        actual = context.get("sourceVersion")
+        if actual is None or int(expected_source_version) != int(actual):
+            raise AppException(
+                "APPROVAL_CONTEXT_VERSION_CONFLICT",
+                "业务记录内容已发生变化，请刷新后重试",
+                http_status=409,
+            )
+
+
+def approve(task_id, comment, *, user=None, version=None, expected_source_version=None):
     _require_db()
-    get_task(task_id, user=user)
+    detail = get_task(task_id, user=user)
+    _assert_context_gate(detail.get("businessContext"), expected_source_version)
     return _contract(base.approve(task_id, comment, user=user, version=version))
 
 
-def reject(task_id, reason, *, user=None, version=None):
+def reject(task_id, reason, *, user=None, version=None, expected_source_version=None):
     _require_db()
-    get_task(task_id, user=user)
+    detail = get_task(task_id, user=user)
+    _assert_context_gate(detail.get("businessContext"), expected_source_version)
     return _contract(base.reject(task_id, reason, user=user, version=version))
 
 
-def return_for_revision(task_id, reason, *, user=None, version=None):
+def return_for_revision(task_id, reason, *, user=None, version=None, expected_source_version=None):
     """退回不是驳回：实例继续 RUNNING，并真实生成申请人重提待办 + 站内消息。"""
     _require_db()
     base._check_return_reason(reason)
@@ -365,6 +431,9 @@ def return_for_revision(task_id, reason, *, user=None, version=None):
         ).with_for_update()).first()
         if not inst:
             raise not_found("审批实例不存在")
+
+        from app.services import approval_business_context_service as ctx_svc
+        _assert_context_gate(ctx_svc.resolve_context(db, inst), expected_source_version)
 
         atomic_versioned_update(
             db, WorkflowTask, entity_id=int(task_id), tenant_id=_tid(),

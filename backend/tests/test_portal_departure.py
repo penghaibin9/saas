@@ -192,3 +192,35 @@ def test_discipline_is_reported_but_not_blocking_by_default(client, db_mode):
 
 def test_non_student_rejected(client, db_mode):
     assert client.get(f"{PORTAL}/my", headers=_admin(client)).json()["code"] == 403001
+
+
+def test_tenant_configured_discipline_blocks_departure(client, db_mode):
+    """校本配置：学校把 departure.disciplineBlocks 显式配成 True 后，未解除的违纪处分
+    必须真正阻断离校（不再是恒定 blocking=False 的保守默认），policySource 如实标注
+    这是租户已配置的规则，不是系统自己拍板的默认值。"""
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import DisciplineCase
+    from app.services.platform_service import put_config_json
+
+    sid = _seed_student("DEP-008", "离校八")
+    db = get_sessionmaker()()
+    try:
+        db.add(DisciplineCase(tenant_id=TID, student_id=sid, disc_type="WARNING",
+                              reason="测试违纪二", status="REGISTERED",
+                              decide_date=datetime.utcnow()))
+        db.commit()
+    finally:
+        db.close()
+
+    put_config_json(TID, "RULES", "-", {"departure": {"disciplineBlocks": True}})
+    try:
+        data, by_key = _items(client, _stu_token("离校八", "DEP-008", sid))
+        disc = by_key["discipline"]
+        assert disc["result"] == "MANUAL_PENDING"
+        assert disc["blocking"] is True, "学校已配置阻断，未解除违纪必须计入 blocking 项"
+        assert data["policySource"] == "tenant_configured"
+        assert data["readiness"] == "NOT_READY"
+    finally:
+        # 不残留跨测试污染：其它用例假定默认 disciplineBlocks=False。
+        put_config_json(TID, "RULES", "-", {"departure": {"disciplineBlocks": False}})

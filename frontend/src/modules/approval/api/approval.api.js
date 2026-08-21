@@ -4,22 +4,29 @@
  */
 import { request } from '@/services/http/client'
 
-const BIZ_TYPES = [
-  ['PROFILE_CORRECTION', '信息更正'],
-  ['COMPANY_CHANGE', '实习变更'],
-  ['MATERIAL_VERIFY', '材料核验'],
-  ['LEAVE', '请假审批'],
-  ['AID', '困难认定'],
-  ['FUNDING', '奖助评定'],
-  ['DISCIPLINE', '违纪认定'],
-  ['DISCIPLINE_REMOVE', '违纪解除'],
-  ['AA_STATUS_CHANGE', '学籍异动'],
-  ['AA_GRADE_TASK', '成绩审核'],
-  ['AA_GRADE_CHANGE', '成绩更正'],
-  ['AA_SCHEDULE_CHANGE', '调停课审批']
-].map(([value, label]) => ({ value, label }))
+// TP-A10：业务类型字典由服务端 GET /approvals/biz-types 权威下发（见
+// approval_runtime_service.biz_type_options()），前端不再自己拷贝一份完整枚举——
+// 旧版本这里硬编码过 COMPANY_CHANGE/MATERIAL_VERIFY 两个全仓找不到任何创建点的
+// 类型，新增一种真实审批也常常忘记同步改这份常量。ensureBizTypeOptions() 在
+// getContext() 里被 await 一次；在它落地前，各处已有的 `BIZ_LABEL[x] || x` 兜底
+// 只显示原始 code，不伪造标签，也不会阻塞页面渲染。
+let BIZ_TYPES = []
+let BIZ_LABEL = {}
+let bizTypesLoaded = false
 
-const BIZ_LABEL = Object.fromEntries(BIZ_TYPES.map((x) => [x.value, x.label]))
+async function ensureBizTypeOptions() {
+  if (bizTypesLoaded) return
+  try {
+    const rows = await request('/approvals/biz-types')
+    const list = Array.isArray(rows) ? rows : []
+    BIZ_TYPES = list.map((x) => ({ value: x.value, label: x.label }))
+    BIZ_LABEL = Object.fromEntries(BIZ_TYPES.map((x) => [x.value, x.label]))
+    bizTypesLoaded = true
+  } catch {
+    // 拿不到字典时保持空数组/空表，不用旧的本地静态清单顶替——那正是本项要去掉的东西。
+  }
+}
+
 const ROLE_LABEL = {
   COUNSELOR: '辅导员',
   COLLEGE_ADMIN: '学院管理员',
@@ -29,8 +36,11 @@ const ROLE_LABEL = {
   SCHOOL_ADMIN: '学校管理员'
 }
 
+// bizTypes 不在这里固定引用 BIZ_TYPES——ensureBizTypeOptions() resolve 后会重新赋值
+// BIZ_TYPES 这个绑定本身（不是原地 splice），静态对象字面量此时捕获的还是旧引用。
+// getContextRaw() 每次都重新展开一份 { ...FILTER_OPTIONS, bizTypes: BIZ_TYPES }，
+// 拿到的才是 await ensureBizTypeOptions() 之后的最新值。
 const FILTER_OPTIONS = {
-  bizTypes: BIZ_TYPES,
   urgencies: [
     { value: 'OVERDUE', label: '已超时' },
     { value: 'NEAR_DEADLINE', label: '临期' },
@@ -61,6 +71,9 @@ const BATCH_ACTIONS = [
 ]
 
 const todoVersions = new Map()
+// TP-A07：详情页读到的业务对象 sourceVersion 快照，approve/return/reject 时原样带回去，
+// 后端据此判断"你审批的还是不是你刚才看到的那份业务事实"，不一致就 409。
+const contextVersions = new Map()
 const templateVersions = new Map()
 const pendingIdempotencyKeys = new Map()
 let latestTransferTargets = []
@@ -295,7 +308,8 @@ async function loadTransferTargets(taskIds = []) {
 async function getContextRaw() {
   const [brand, authCtx] = await Promise.all([
     request('/tenant/brand'),
-    request('/rbac/current-context')
+    request('/rbac/current-context'),
+    ensureBizTypeOptions()
   ])
   const patterns = Array.isArray(authCtx.permissionPatterns) ? authCtx.permissionPatterns : []
   const manage = hasPattern(patterns, 'approval.manage') || hasPattern(patterns, '*')
@@ -342,7 +356,7 @@ async function getContextRaw() {
       exportTemplates: adminOnly,
       viewAuditLog: adminOnly
     },
-    filterOptions: FILTER_OPTIONS,
+    filterOptions: { ...FILTER_OPTIONS, bizTypes: BIZ_TYPES },
     batchActions: BATCH_ACTIONS,
     transferTargets: [],
     realApi: true
@@ -390,6 +404,11 @@ export const approvalApi = {
     const d = await request(`/approvals/tasks/${encodeURIComponent(taskId)}`)
     const task = taskRow(d)
     todoVersions.set(task.taskId, task.version)
+    if (d.businessContext && d.businessContext.sourceVersion != null) {
+      contextVersions.set(task.taskId, d.businessContext.sourceVersion)
+    } else {
+      contextVersions.delete(task.taskId)
+    }
     // TP-A06：业务事实来自服务端 adapter 解析出的 businessContext，
     // 不再只给一行"业务记录 {id}"。completeness 让页面能如实区分
     // FULL/PARTIAL/MISSING/UNSUPPORTED/ERROR，而不是把"没接入"显示成"没内容"。
@@ -419,21 +438,30 @@ export const approvalApi = {
   approveTask: (taskId, payload = {}) => safe(async () =>
     request(`/approvals/tasks/${encodeURIComponent(taskId)}/approve`, {
       method: 'POST',
-      body: { comment: payload.comment || '', version: payload.version }
+      body: {
+        comment: payload.comment || '', version: payload.version,
+        expectedSourceVersion: contextVersions.get(String(taskId))
+      }
     })
   ),
 
   returnTask: (taskId, payload = {}) => safe(async () =>
     request(`/approvals/tasks/${encodeURIComponent(taskId)}/return`, {
       method: 'POST',
-      body: { reason: payload.reason || '', version: payload.version }
+      body: {
+        reason: payload.reason || '', version: payload.version,
+        expectedSourceVersion: contextVersions.get(String(taskId))
+      }
     })
   ),
 
   rejectTask: (taskId, payload = {}) => safe(async () =>
     request(`/approvals/tasks/${encodeURIComponent(taskId)}/reject`, {
       method: 'POST',
-      body: { reason: payload.reason || '', version: payload.version }
+      body: {
+        reason: payload.reason || '', version: payload.version,
+        expectedSourceVersion: contextVersions.get(String(taskId))
+      }
     })
   ),
 

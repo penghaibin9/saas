@@ -45,6 +45,11 @@ def approval_summary(user=Depends(require_staff)):
     return success(runtime.summary(user=user))
 
 
+@router.get("/biz-types", summary="审批业务类型字典（TP-A10：服务端唯一权威）")
+def approval_biz_types(user=Depends(require_staff)):
+    return success(runtime.biz_type_options())
+
+
 @router.get("/tasks", summary="待我审批任务列表")
 def list_tasks(
     page: int = Query(1, ge=1),
@@ -290,7 +295,8 @@ def get_task(task_id: str, user=Depends(require_staff)):
 @router.post("/tasks/{task_id}/approve", summary="通过（真实状态机 + 审计）")
 def approve(task_id: str, body: ApprovalActionRequest, user=Depends(require_staff)):
     return success(
-        runtime.approve(task_id, body.comment, user=user, version=body.version),
+        runtime.approve(task_id, body.comment, user=user, version=body.version,
+                        expected_source_version=body.expectedSourceVersion),
         message="已通过",
     )
 
@@ -302,7 +308,8 @@ def return_for_revision(
     user=Depends(require_staff),
 ):
     return success(
-        runtime.return_for_revision(task_id, body.reason, user=user, version=body.version),
+        runtime.return_for_revision(task_id, body.reason, user=user, version=body.version,
+                                    expected_source_version=body.expectedSourceVersion),
         message="已退回修改",
     )
 
@@ -310,7 +317,8 @@ def return_for_revision(
 @router.post("/tasks/{task_id}/reject", summary="驳回终止（不可重提原流程）")
 def reject(task_id: str, body: ApprovalRejectRequest, user=Depends(require_staff)):
     return success(
-        runtime.reject(task_id, body.reason, user=user, version=body.version),
+        runtime.reject(task_id, body.reason, user=user, version=body.version,
+                       expected_source_version=body.expectedSourceVersion),
         message="已驳回并终止",
     )
 

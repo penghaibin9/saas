@@ -29,10 +29,15 @@
 
 阻断策略的边界
 ────────────────────────────────────────────────────────────
-「哪些环节阻断离校」本质是学校制度，不同学校不同。本模块只给出保守默认：
-学业类结论（毕设/实习/就业）阻断，纪律类交由学校人工判定（MANUAL_PENDING）。
-真正的校本策略配置尚未建立，这一点在 DTO 的 ``policySource`` 里如实标注，
-不假装这是学校已确认的规则。
+「哪些环节阻断离校」本质是学校制度，不同学校不同。学业类结论（毕设/实习/就业）
+不可配置，始终阻断；纪律类（违纪是否阻断离校）读取平台规则中心的
+``departure.disciplineBlocks``（见 app/services/platform_defaults.py），
+默认 False（保守默认，MANUAL_PENDING 交由学校人工判定，不阻断）。学校通过
+平台规则中心（PUT /platform/tenants/{tenantId}/rules）把它配成 True 后，
+未解除的违纪处分才会真正阻断 READY。DTO 的 ``policySource`` 如实区分
+``tenant_configured``（该租户已显式配置过这一项）与 ``default_conservative``
+（仍在吃保守默认），不管哪种都不冒充"这是系统自己判定的结论"——违纪本身是否
+构成离校障碍，责任仍在学校，系统只负责按学校配置的口径正确聚合。
 """
 from __future__ import annotations
 
@@ -214,8 +219,23 @@ def _internship_item(db, student) -> dict:
                  detail="实习总评合格", action=action)
 
 
-def _discipline_item(db, student) -> dict:
-    """违纪处理：是否阻断离校属于校本制度，系统不替学校下结论。"""
+def _departure_policy() -> dict:
+    """读取平台规则中心的校本离校阻断策略（目前只有 disciplineBlocks 一项可配置）。"""
+    from app.services.platform_service import get_config_json, safe_rule
+
+    tid = _tid()
+    override = get_config_json(tid, "RULES") or {}
+    configured = isinstance(override.get("departure"), dict) and \
+        "disciplineBlocks" in override["departure"]
+    return {
+        "disciplineBlocks": bool(safe_rule(tid, "departure", "disciplineBlocks")),
+        "source": "tenant_configured" if configured else "default_conservative",
+    }
+
+
+def _discipline_item(db, student, *, blocking: bool) -> dict:
+    """违纪处理：结论本身（是否已解除）系统能判定，但"未解除是否阻断离校"是校本制度，
+    由 departure.disciplineBlocks 规则驱动，系统不替学校下这一层结论。"""
     from sqlalchemy import select
     from app.models import DisciplineCase
 
@@ -228,11 +248,14 @@ def _discipline_item(db, student) -> dict:
               and str(r.status or "").upper() not in ("REMOVED", "VOIDED", "REJECTED")]
     if not active:
         return _item("discipline", "违纪处理", "affairs:DisciplineCase",
-                     result=PASS, blocking=False, detail="无未解除的违纪处分")
+                     result=PASS, blocking=blocking, detail="无未解除的违纪处分")
     latest = active[0]
+    detail = f"存在 {len(active)} 条未解除的违纪处分，" + (
+        "按学校配置的离校规则将阻断离校，请先处理或申诉" if blocking
+        else "是否影响离校由学校按制度人工判定")
     return _item("discipline", "违纪处理", "affairs:DisciplineCase",
-                 result=MANUAL_PENDING, blocking=False, evidence_version=latest.version,
-                 detail=f"存在 {len(active)} 条未解除的违纪处分，是否影响离校由学校按制度判定",
+                 result=MANUAL_PENDING, blocking=blocking, evidence_version=latest.version,
+                 detail=detail,
                  action={"client": "studentPc", "path": "/campus-service",
                          "query": {"tab": "discipline"}, "label": "查看违纪与申诉"})
 
@@ -241,7 +264,6 @@ _BUILDERS: tuple[tuple[str, str, str, bool, Callable], ...] = (
     ("graduation", "毕业设计", "graduation:GraduationGrade", True, _graduation_item),
     ("internship", "岗位实习", "internship:InternshipFinalScore", True, _internship_item),
     ("employment", "就业去向登记", "employment:EmpStudent", True, _employment_item),
-    ("discipline", "违纪处理", "affairs:DisciplineCase", False, _discipline_item),
 )
 
 
@@ -263,21 +285,35 @@ def build_my_departure(user: dict) -> dict:
                 "policySource": "default_conservative",
             }
 
+        policy = _departure_policy()
         items = [
             _safe(lambda b=builder: b(db, student), key=key, title=title, source=source, blocking=blocking)
             for key, title, source, blocking, builder in _BUILDERS
         ]
+        items.append(_safe(
+            lambda: _discipline_item(db, student, blocking=policy["disciplineBlocks"]),
+            key="discipline", title="违纪处理", source="affairs:DisciplineCase",
+            blocking=policy["disciplineBlocks"],
+        ))
 
     blocking_items = [x for x in items if x["blocking"]]
     unresolved = [x for x in blocking_items if x["result"] not in _CLEARED]
     readiness = "READY" if not unresolved else "NOT_READY"
+    note = (
+        "违纪未解除是否阻断离校由学校配置驱动，当前配置为"
+        + ("阻断" if policy["disciplineBlocks"] else "不阻断（人工判定）") + "；"
+        + ("该配置已由学校/平台显式设置" if policy["source"] == "tenant_configured"
+           else "学校尚未显式配置，沿用系统保守默认")
+        + "。毕设/实习/就业三项阻断口径固定，不可配置。"
+    )
     return {
         "departureVersion": DEPARTURE_VERSION,
         "hasData": True,
         "readiness": readiness,
         "items": items,
         "blockingCount": len(unresolved),
-        # 如实标注：阻断策略目前是本模块的保守默认，不是学校已配置的校本规则。
-        "policySource": "default_conservative",
-        "policyNote": "当前离校阻断口径为系统保守默认；学校自定义离校环节与阻断规则尚未开放配置。",
+        # SP-D + 校本配置：如实区分"学校已显式配置过"与"仍在吃保守默认"，不管哪种都不
+        # 冒充这是系统自己判定的业务结论。
+        "policySource": policy["source"],
+        "policyNote": note,
     }
