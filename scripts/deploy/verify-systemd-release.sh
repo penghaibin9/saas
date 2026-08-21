@@ -33,6 +33,8 @@ nginx -t >/dev/null 2>&1 && pass "nginx -t" || failure "nginx 配置错误"
 nginx_dump="$(nginx -T 2>/dev/null || true)"
 printf '%s' "$nginx_dump" | grep -Eq 'location[[:space:]]+(\^~[[:space:]]+)?/portal/' \
   && pass "Nginx 学生 PC /portal/ 已启用" || failure "Nginx 实际配置缺少 /portal/"
+printf '%s' "$nginx_dump" | grep -Eq 'location[[:space:]]+(\^~[[:space:]]+)?/enterprise/' \
+  && pass "Nginx 企业协同 /enterprise/ 已启用" || failure "Nginx 实际配置缺少 /enterprise/"
 printf '%s' "$nginx_dump" | grep -Eq 'location[[:space:]]+(\^~[[:space:]]+)?/uploads/' \
   && pass "Nginx 包含 uploads 保护规则" || failure "Nginx 缺少 /uploads/ 保护规则"
 printf '%s' "$nginx_dump" | grep -Eq 'location[[:space:]]+(\^~[[:space:]]+)?/exports/' \
@@ -72,7 +74,8 @@ fi
 for entry in \
   "$APP_ROOT/current/frontend/dist/index.html:管理 PC" \
   "$APP_ROOT/current/miniapp/dist/build/h5/index.html:小程序 H5" \
-  "$APP_ROOT/current/student-portal/dist/index.html:学生 PC"; do
+  "$APP_ROOT/current/student-portal/dist/index.html:学生 PC" \
+  "$APP_ROOT/current/enterprise-portal/dist/index.html:企业协同 PC"; do
   path="${entry%%:*}"; name="${entry#*:}"
   [ -f "$path" ] && pass "$name 构建产物存在" || failure "$name 构建产物缺失"
 done
@@ -80,11 +83,12 @@ done
 for link in \
   /var/www/school-lifecycle/pc \
   /var/www/school-lifecycle/miniapp \
-  /var/www/school-lifecycle/portal; do
+  /var/www/school-lifecycle/portal \
+  /var/www/school-lifecycle/enterprise; do
   [ -L "$link" ] && [ -e "$link/index.html" ] && pass "$link 原子静态链接正常" || failure "$link 静态链接异常"
 done
 
-# 不能只看 nginx -T：真实 TLS 虚拟主机必须能返回三端页面、安全头和文件拒绝规则。
+# 不能只看 nginx -T：真实 TLS 虚拟主机必须能返回四端页面、安全头和文件拒绝规则。
 # --resolve 强制从本机 127.0.0.1 命中正式 server_name，同时仍按真实域名校验证书/SNI。
 if [[ "$public_base" == https://* ]]; then
   read -r public_host public_port < <(python3 - "$public_base" <<'PY'
@@ -98,12 +102,12 @@ PY
   ) || true
   if [ -n "${public_host:-}" ] && [ -n "${public_port:-}" ]; then
     resolve_arg="${public_host}:${public_port}:127.0.0.1"
-    for path in / /portal/ /miniapp/; do
+    for path in / /portal/ /miniapp/ /enterprise/; do
       code="$(curl -sS --max-time 10 --resolve "$resolve_arg" -o /dev/null -w '%{http_code}' "${public_base}${path}" 2>/dev/null || true)"
       [ "$code" = "200" ] && pass "公网 TLS ${path} HTTP 200" || failure "公网 TLS ${path} HTTP=$code"
     done
 
-    for path in / /portal/index.html; do
+    for path in / /portal/index.html /enterprise/index.html; do
       headers="$(curl -sS --max-time 10 --resolve "$resolve_arg" -D - -o /dev/null "${public_base}${path}" 2>/dev/null || true)"
       for header in strict-transport-security content-security-policy x-frame-options x-content-type-options; do
         printf '%s\n' "$headers" | grep -qi "^${header}:" \

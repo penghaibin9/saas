@@ -27,8 +27,18 @@ def get_trace_id() -> str:
 
 
 # ── 当前租户 ──
-def set_tenant(tenant: Optional[dict]) -> None:
-    _tenant.set(tenant)
+def set_tenant(tenant: Optional[dict | int | str]) -> None:
+    """设置规范租户上下文，并兼容历史脚本直接传 tenant_id 的调用。"""
+    if tenant is None:
+        _tenant.set(None)
+        return
+    if isinstance(tenant, dict):
+        _tenant.set(tenant)
+        return
+    if isinstance(tenant, (int, str)):
+        _tenant.set({"tenantId": str(tenant)})
+        return
+    raise TypeError(f"unsupported tenant context type: {type(tenant).__name__}")
 
 
 def get_tenant() -> Optional[dict]:

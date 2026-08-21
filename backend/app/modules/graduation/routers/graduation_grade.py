@@ -9,6 +9,7 @@ from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.core.permissions import require_permission
 from app.modules.graduation.schemas.graduation_grade import GradeCalculateRequest, GradeReviewRequest, GradeWithdrawRequest
+from app.modules.graduation.services import graduation_grade_read_service as grade_read_svc
 from app.modules.graduation.services import graduation_grade_service as svc
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-成绩评定"])
@@ -24,7 +25,8 @@ def gd_grade_stats(batchId: int | None = Query(default=None, ge=1),
 def gd_grades(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
              keyword: Optional[str] = None, status: Optional[str] = None, batchId: Optional[str] = None,
              user=Depends(get_current_user)):
-    items, total = svc.list_grades(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
+    items, total = grade_read_svc.list_grades(
+        page, pageSize, keyword=keyword, status=status, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 

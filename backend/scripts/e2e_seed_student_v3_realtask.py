@@ -277,11 +277,26 @@ def _clear_in_flight_funding(facts: dict, batch_id: str) -> None:
 
 # ── 3. 需回执的消息（正式消息中心发布） ──
 
+def _past_non_quiet_delivery_slot() -> str:
+    """返回一个已经到期、且按 UTC+8 不落在 22:00–07:00 静默窗的正式预约时间。
+
+    真实产品必须保留静默规则；浏览器回放只需要消除墙钟时间依赖。把预约时间固定到
+    “前一天本地 12:00”，服务端仍完整执行 scheduled/quiet-hours 生产逻辑，但因为该时间
+    已到期且不在静默窗，会进入正常投递而不是被当前凌晨时刻再次顺延。
+    """
+    local_now = datetime.utcnow() + timedelta(hours=8)
+    local_slot = (local_now - timedelta(days=1)).replace(
+        hour=12, minute=0, second=0, microsecond=0
+    )
+    return (local_slot - timedelta(hours=8)).isoformat()
+
+
 def _seed_ack_message(facts: dict, tokens: dict) -> dict:
-    """走完整的正式发布流程：草稿 → 受众预览 → 发布。
+    """走完整的正式发布流程：草稿 → 受众预览 → 发布 → 正式 delivery worker。
 
     publish 需要预览产生的 previewToken + audienceFingerprint + version，这是消息中心
-    防"受众漂移后照发"的真实约束，夹具照走，不绕开。
+    防"受众漂移后照发"的真实约束，夹具照走，不绕开。回放可能在 22:00–07:00 静默窗
+    执行，因此用一个已经到期的非静默预约时间消除墙钟依赖；生产静默规则本身完全不改。
     """
     admin = tokens["admin"]
     audiences = [{"type": "CLASS", "includeOrExclude": "INCLUDE",
@@ -293,22 +308,47 @@ def _seed_ack_message(facts: dict, tokens: dict) -> dict:
         "category": "ANNOUNCEMENT",
         "priority": "IMPORTANT",
         "requireAck": True,
-        "publishMode": "IMMEDIATE",
+        "publishMode": "SCHEDULED",
+        "scheduledAt": _past_non_quiet_delivery_slot(),
         "audiences": audiences,
         "channels": ["IN_APP"],
-        "idempotencyKey": f"{MARK}-ack-{facts['classId']}",
+        "idempotencyKey": f"{MARK}-ack-v2-{facts['classId']}",
     })
     campaign_id = str(draft["campaignId"])
     if str(draft.get("status") or "").upper() == "DRAFT":
         preview = _call("/admin/message-campaigns/audience-preview", admin, "POST",
                         {"audiences": audiences})
-        _call(f"/admin/message-campaigns/{campaign_id}/publish", admin, "POST", {
+        if int(preview.get("recipientCount") or 0) <= 0:
+            raise SystemExit("S9-RT ack audience resolved to zero recipients")
+        published = _call(f"/admin/message-campaigns/{campaign_id}/publish", admin, "POST", {
             "previewToken": preview["previewToken"],
             "audienceFingerprint": preview["audienceFingerprint"],
             "version": int(draft.get("version") or 0),
             "requestId": f"{MARK}-ack-publish-{campaign_id}",
         })
-    return {"campaignId": campaign_id, "title": ACK_TITLE}
+        if int(published.get("recipientCount") or 0) <= 0:
+            raise SystemExit("S9-RT ack publish accepted zero recipients")
+        if str(published.get("status") or "").upper() == "SCHEDULED":
+            raise SystemExit("S9-RT ack campaign unexpectedly remained scheduled")
+
+    # HTTP publish 只负责受理；用正式 delivery worker 确定性排空当前租户作业，再以学生
+    # 收件箱 server truth 作为 seed 成功条件。这样不依赖 workflow 里 worker 的抢占时序。
+    from app.services import message_delivery_service as delivery_svc
+    set_tenant(facts["tenantId"])
+    for _ in range(20):
+        delivery_svc.claim_and_process_delivery_jobs(limit=40, worker_id="e2e-s9-rt")
+        inbox = _call("/student-mini/messages?page=1&pageSize=50", tokens["student"])
+        item = next(
+            (row for row in (inbox.get("items") or []) if row.get("title") == ACK_TITLE),
+            None,
+        )
+        if item:
+            return {
+                "campaignId": campaign_id,
+                "messageId": str(item.get("messageId") or ""),
+                "title": ACK_TITLE,
+            }
+    raise SystemExit("S9-RT ack message was not materialized into the student inbox")
 
 
 # ── 4. Agenda 考试（ORM 直插，原因见下） ──
