@@ -5,6 +5,9 @@
   不会留下 APPLICANT_RESUBMIT 僵尸待办/可点击消息，实例真实终结且不可 resubmit；
 - 并发从 `employment_destination_submission_service.submit()` 真实服务入口发起两个事务，
   证明 per-student StudentProfile 行锁把“active-check + workflow/todo 创建”串行化。
+
+HTTP 链路的学生 token 直接由生产 auth_service_db 生成；不固定 User 主键，避免全量回归
+共享 MySQL 时与其它测试碰撞。RETURN 也先读取审批详情取得 sourceVersion 快照再提交。
 """
 from __future__ import annotations
 
@@ -64,14 +67,40 @@ def _seed_teacher(login_name="employment01") -> int:
         db.close()
 
 
-def _seed_student(no: str, name: str, *, user_id: int) -> tuple[int, int]:
+def _ensure_student_role(db, user) -> None:
+    from app.models import Role, UserRole
+
+    role = db.query(Role).filter_by(tenant_id=TID, role_code="STUDENT").first()
+    if role is None:
+        role = Role(
+            tenant_id=TID,
+            role_code="STUDENT",
+            role_name="学生",
+            role_type="SYSTEM",
+            status="ACTIVE",
+        )
+        db.add(role)
+        db.flush()
+    relation = db.query(UserRole).filter_by(
+        tenant_id=TID, user_id=user.id, role_id=role.id
+    ).first()
+    if relation is None:
+        db.add(UserRole(
+            tenant_id=TID, user_id=user.id, role_id=role.id, status="ACTIVE"
+        ))
+    else:
+        relation.status = "ACTIVE"
+        relation.is_deleted = False
+    db.flush()
+
+
+def _seed_student(no: str, name: str) -> tuple[int, int]:
     from app.models import StudentProfile, User
     from app.services import student_account_link_service as link_svc
 
     db = get_sessionmaker()()
     try:
         user = User(
-            id=user_id,
             tenant_id=TID,
             login_name=no,
             real_name=name,
@@ -81,6 +110,7 @@ def _seed_student(no: str, name: str, *, user_id: int) -> tuple[int, int]:
         )
         db.add(user)
         db.flush()
+        _ensure_student_role(db, user)
         student = StudentProfile(
             tenant_id=TID,
             student_no=no,
@@ -130,12 +160,18 @@ def _activate_student(no: str, name: str, sid: int, uid: int) -> dict:
     return ctx
 
 
-def _student_headers(no: str, name: str, sid: int, uid: int) -> dict:
-    from app.core.security import create_access_token
+def _student_headers(no: str) -> dict:
+    from app.models import User
+    from app.services import auth_service_db
 
-    ctx = _student_ctx(no, name, sid, uid)
-    ctx.update({"tid": "x", "activeContextId": "ctx"})
-    return {"Authorization": "Bearer " + create_access_token(ctx)}
+    db = get_sessionmaker()()
+    try:
+        user = db.query(User).filter_by(tenant_id=TID, login_name=no).first()
+        assert user is not None
+        token = auth_service_db.build_login_result(db, user, client_type="PC")["accessToken"]
+    finally:
+        db.close()
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _teacher_headers(client, login_name="employment01") -> dict:
@@ -146,11 +182,23 @@ def _teacher_headers(client, login_name="employment01") -> dict:
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _return_body(client, task_id: str, headers: dict) -> dict:
+    detail = client.get(f"/api/v1/approvals/tasks/{task_id}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    data = detail.json()["data"]
+    return {
+        "reason": "请补充正式三方协议",
+        "version": int(data.get("version") or 0),
+        "expectedSourceVersion": data["businessContext"]["sourceVersion"],
+    }
+
+
 @pytest.mark.usefixtures("db_mode")
 def test_two_concurrent_submits_create_exactly_one_active_workflow():
     """W2/P1：两事务同时提交同一学生，必须 1 success + 1 DATA_CONFLICT。"""
     _seed_teacher()
-    sid, uid = _seed_student("W2-CON-001", "并发就业一", user_id=9200001)
+    sid, uid = _seed_student("W2-CON-001", "并发就业一")
+    assert sid != uid
     barrier = Barrier(2)
 
     def submit(index: int):
@@ -217,8 +265,9 @@ def test_two_concurrent_submits_create_exactly_one_active_workflow():
 def test_return_terminalizes_workflow_and_leaves_no_resubmit_artifact(client):
     """W2/P1：就业 RETURN 提交后，数据库和 HTTP 都不得宣称原流程还能 resubmit。"""
     _seed_teacher()
-    sid, uid = _seed_student("W2-RET-001", "退回就业一", user_id=9200002)
-    student_headers = _student_headers("W2-RET-001", "退回就业一", sid, uid)
+    sid, uid = _seed_student("W2-RET-001", "退回就业一")
+    assert sid != uid
+    student_headers = _student_headers("W2-RET-001")
 
     created = client.post(
         f"{PORTAL}/destination",
@@ -228,10 +277,11 @@ def test_return_terminalizes_workflow_and_leaves_no_resubmit_artifact(client):
     assert created["code"] == 0, created
     sub_data = created["data"]
 
+    teacher_headers = _teacher_headers(client)
     returned = client.post(
         f"/api/v1/approvals/tasks/{sub_data['currentTaskId']}/return",
-        headers=_teacher_headers(client),
-        json={"reason": "请补充正式三方协议", "version": 0},
+        headers=teacher_headers,
+        json=_return_body(client, sub_data["currentTaskId"], teacher_headers),
     )
     assert returned.status_code == 200, returned.text
     payload = returned.json()
