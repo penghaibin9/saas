@@ -10,9 +10,13 @@ const customer = read('src/modules/platform/views/control/PlatformCustomerSucces
 const tenantProfile = read('src/modules/platform/components/TenantProfileEditor.vue')
 const platformP1Api = read('src/modules/platform/api/platformP1Closure.api.js')
 const platformLayout = read('src/modules/platform/views/AdminPlatformLayout.vue')
+const platformRoutes = read('src/modules/platform/platform.routes.js')
+const platformCatalog = read('src/modules/platform/platformManagementCatalog.js')
 const systemPanel = read('src/modules/system/components/SystemP1ClosurePanel.vue')
 const systemLayout = read('src/modules/system/views/AdminSystemLayout.vue')
 const systemClosureApi = read('src/modules/system/api/systemP1Closure.api.js')
+const roleAssignments = read('src/modules/system/views/SystemRoleAssignmentView.vue')
+const accountExceptions = read('src/modules/system/views/SystemAccountExceptionView.vue')
 
 test('controlled support workspace uses scoped reads and actively expires volatile MFA grants', () => {
   assert.match(pamApi, /getSupportTenantContext/)
@@ -44,6 +48,13 @@ test('customer success sends aware UTC timestamps and mirrors terminal state-mac
   assert.match(customer, /!\['RENEWED','CHURNED'\]\.includes\(row\.status\)/)
 })
 
+test('customer success menu and route use the canonical delegated duty instead of super-admin control', () => {
+  assert.match(platformRoutes, /path:\s*'customer-success'[\s\S]*platform\.customerSuccess\.manage/)
+  assert.match(platformCatalog, /plt-customer-success[\s\S]*platform\.customerSuccess\.manage/)
+  assert.match(customer, /role-name="客户成功平台主管"/)
+  assert.doesNotMatch(customer, /role-name="平台超级管理员"/)
+})
+
 test('tenant detail profile uses a dedicated optimistic audited API and keeps environment read-only', () => {
   assert.match(platformLayout, /TenantProfileEditor/)
   assert.match(platformLayout, /platform-tenant-detail/)
@@ -52,6 +63,8 @@ test('tenant detail profile uses a dedicated optimistic audited API and keeps en
   assert.match(tenantProfile, /expectedVersion:\s*this\.tenant\.version/)
   assert.match(tenantProfile, /变更原因（必填）/)
   assert.match(tenantProfile, /运行环境（只读）/)
+  assert.match(tenantProfile, /tenant\?\.canEdit/)
+  assert.match(tenantProfile, /当前职责仅可查看/)
   assert.doesNotMatch(tenantProfile, /v-model="form\.environment"/)
 })
 
@@ -64,6 +77,10 @@ test('formal role UI is immediate-only and hides writes without grant authority'
   assert.match(systemPanel, /systemAdmin\.role\.config/)
   assert.match(systemPanel, /expiresAt/)
   assert.doesNotMatch(systemPanel, /roleForm\.effectiveAt/)
+  assert.match(roleAssignments, /canManageAssignments/)
+  assert.match(roleAssignments, /v-if="canManageAssignments" class="mp-link" @click="ask\('transfer'/)
+  assert.match(roleAssignments, /v-if="canManageAssignments" class="mp-link" @click="ask\('revoke'/)
+  assert.match(roleAssignments, /当前角色无到期回收权限/)
 })
 
 test('security config restores the complete tenant override chain atomically', () => {
@@ -76,13 +93,17 @@ test('security config restores the complete tenant override chain atomically', (
   assert.match(systemPanel, /canRestoreConfig/)
 })
 
-test('identity exception view separates read authority from destructive unbind authority', () => {
+test('identity exception surfaces separate read authority from binding mutation authority', () => {
   assert.match(systemPanel, /getEffectiveIdentity/)
   assert.match(systemPanel, /unbindIdentity/)
   assert.match(systemPanel, /identitySource/)
   assert.match(systemPanel, /canUnbindIdentity/)
   assert.match(systemPanel, /systemAdmin\.user\.bind/)
   assert.match(systemPanel, /错误绑定已解除/)
+  assert.match(accountExceptions, /canRepairIdentity/)
+  assert.match(accountExceptions, /systemAdmin\.user\.bind/)
+  assert.match(accountExceptions, /只读排查/)
+  assert.match(accountExceptions, /当前角色只有身份异常查看权限/)
 })
 
 test('organization deprecation carries a signed preview receipt to the server write boundary', () => {
