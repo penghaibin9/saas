@@ -115,7 +115,6 @@ def test_review_global_ip_risk_bucket_is_not_owned_by_last_tenant(db_mode):
 
 
 def test_review_tenant_freeze_revokes_refresh_for_soft_deleted_users(db_mode):
-    import app.api.v1.router  # noqa: F401
     from app.core.security import hash_password
     from app.db.session import get_sessionmaker
     from app.models import AuthRefreshToken, User
@@ -227,3 +226,113 @@ def test_review_native_platform_totp_reaches_signed_mfa_assurance(db_mode):
     # The same TOTP time-step may not be replayed for a second elevation token.
     with pytest.raises(AppException):
         mfa.step_up(principal, code=code)
+
+
+def test_review_machine_passed_evidence_requires_sha_and_measured_objectives():
+    from app.services.machine_recovery_evidence_service import canonical_evidence, _passed_contract
+
+    backup = {
+        "runId": "review-backup-metrics",
+        "runType": "BACKUP",
+        "source": "MACHINE",
+        "status": "PASSED",
+        "manifestSha256": "a" * 64,
+        "finishedAt": "2026-08-21T00:00:00Z",
+        "assertions": {
+            "manifestVerified": True,
+            "databaseShaVerified": True,
+            "offsiteReadbackVerified": True,
+            "immutableRemoteConfirmed": True,
+        },
+    }
+    with pytest.raises(AppException):
+        _passed_contract(canonical_evidence(backup))
+
+    with pytest.raises(AppException):
+        canonical_evidence({**backup, "manifestSha256": "not-a-sha256"})
+
+    restore = {
+        "runId": "review-restore-metrics",
+        "runType": "RESTORE",
+        "source": "MACHINE",
+        "status": "PASSED",
+        "manifestSha256": "b" * 64,
+        "finishedAt": "2026-08-21T00:00:00Z",
+        "rpoSeconds": 10,
+        "targetRpoSeconds": 20,
+        "assertions": {
+            "manifestVerified": True,
+            "databaseRestoreVerified": True,
+            "schemaVerified": True,
+            "indexesVerified": True,
+            "fileObjectsVerified": True,
+        },
+    }
+    with pytest.raises(AppException):
+        _passed_contract(canonical_evidence(restore))
+
+
+def test_review_machine_health_red_dominates_unknown(db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models.recovery_run import RecoveryRun
+    from app.services.machine_recovery_evidence_service import machine_health, record_machine_evidence
+
+    db = get_sessionmaker()()
+    try:
+        db.execute(delete(RecoveryRun))
+        db.commit()
+    finally:
+        db.close()
+
+    record_machine_evidence({
+        "runId": "review-known-failed-backup",
+        "runType": "BACKUP",
+        "source": "MACHINE",
+        "status": "FAILED",
+        "assertions": {},
+        "detail": {"error": "review failure"},
+        "finishedAt": datetime.utcnow().isoformat(),
+    })
+    health = machine_health()
+    assert health["backup"]["status"] == "RED"
+    assert health["restore"]["status"] == "UNKNOWN"
+    assert health["status"] == "RED"
+
+
+def test_review_purge_finalize_failure_is_retryable_but_irreversible(db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models.tenant_offboarding import TenantOffboardingJob
+    from app.services import tenant_offboarding_service as offboarding
+
+    tenant_id = 987654323
+    db = get_sessionmaker()()
+    try:
+        job = TenantOffboardingJob(
+            tenant_id=tenant_id,
+            state="PURGING",
+            reason="review finalization retry contract",
+            expected_tenant_version=0,
+            preview_json={},
+            result_json={},
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        job_id = int(job.id)
+    finally:
+        db.close()
+
+    evidence = {"evidenceSha256": "c" * 64, "deletedRowCount": 7}
+    offboarding._mark_purge_failed(
+        job_id,
+        tenant_id,
+        RuntimeError("final tombstone transaction failed"),
+        evidence=evidence,
+    )
+
+    out = offboarding.get_job(job_id)
+    assert out["state"] == "FAILED"
+    assert out["cancellable"] is False
+    assert out["irreversible"] is True
+    assert out["result"]["purgeEvidence"] == evidence
+    assert "final tombstone transaction failed" in out["lastError"]
