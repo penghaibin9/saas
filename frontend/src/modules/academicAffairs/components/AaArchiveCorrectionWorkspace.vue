@@ -5,13 +5,11 @@
         v-for="tab in tabs"
         :key="tab.key"
         type="button"
-        :class="['aacw-tab', { 'is-active': activeTab === tab.key }]"
         role="tab"
         :aria-selected="activeTab === tab.key"
+        :class="['aacw-tab', { 'is-active': activeTab === tab.key }]"
         @click="activeTab = tab.key"
-      >
-        {{ tab.label }}
-      </button>
+      >{{ tab.label }}</button>
     </div>
 
     <LoadingState v-if="loading" />
@@ -102,7 +100,7 @@
         <label class="aacw-field">
           <span>目标正式事实 ID</span>
           <input v-model.trim="createForm.targetRef" :disabled="saving" inputmode="numeric" placeholder="填写正式成绩 / 毕业决定事实 ID" />
-          <small>提交的是稳定正式事实引用；服务端在应用时再次校验租户、学期与当前正式事实状态。</small>
+          <small>稳定正式事实引用；服务端应用时再次校验租户、归档批次与当前正式事实。</small>
         </label>
         <label class="aacw-field">
           <span>纠错原因</span>
@@ -125,10 +123,7 @@
             <option value="LOW">LOW</option>
           </select>
         </label>
-        <AppInlineAlert
-          type="warning"
-          description="此操作不会修改或解冻原归档版本。提交后必须由另一名具有教务归档管理权限的操作人二次审批。"
-        />
+        <AppInlineAlert type="warning" description="提交不修改或解冻原归档版本；必须由另一名有归档管理权限的操作人二次复核。" />
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
@@ -155,53 +150,47 @@
         </div>
         <div class="aacw-reason"><span>申请原因</span><p>{{ detail.reason }}</p></div>
 
-        <div class="aacw-section-title">原事实与申请修正对比</div>
+        <div class="aacw-section-title">原事实与新事实对比</div>
         <div class="aacw-compare">
           <div class="aacw-compare-card">
             <h4>原正式事实</h4>
             <pre>{{ pretty(detail.originalOfficialFact) }}</pre>
           </div>
           <div class="aacw-compare-card">
-            <h4>申请修正</h4>
-            <pre>{{ pretty(detail.correction) }}</pre>
-          </div>
-          <div class="aacw-compare-card">
-            <h4>拟形成事实</h4>
-            <pre>{{ pretty(detail.proposedOfficialFact) }}</pre>
+            <h4>{{ detail.status === 'APPLIED' ? '新正式事实' : '拟形成事实（非正式）' }}</h4>
+            <pre>{{ pretty(detail.status === 'APPLIED' ? detail.resultingOfficialFact : detail.proposedOfficialFact) }}</pre>
           </div>
         </div>
 
-        <div class="aacw-section-title">证据 Manifest</div>
-        <pre class="aacw-json">{{ pretty(detail.evidenceManifest) }}</pre>
+        <div class="aacw-section-title">申请修正与证据</div>
+        <div class="aacw-compare">
+          <div class="aacw-compare-card"><h4>申请修正</h4><pre>{{ pretty(detail.correction) }}</pre></div>
+          <div class="aacw-compare-card"><h4>证据 Manifest</h4><pre>{{ pretty(detail.evidenceManifest) }}</pre></div>
+        </div>
 
         <AppInlineAlert
           v-if="detail.status === 'APPLIED'"
           type="success"
-          :description="`已形成正式事实 ${detail.officialFactType || ''}#${detail.officialFactId || ''}，Resulting Manifest #${detail.resultingManifestId || ''}。原事实和旧 Manifest 仍保留。`"
+          :description="`已形成正式事实 ${detail.officialFactType || ''}#${detail.officialFactId || ''}，Resulting Manifest #${detail.resultingManifestId || ''}。原事实和旧 Manifest 永久保留。`"
         />
         <AppInlineAlert
           v-else-if="detail.status === 'REJECTED'"
           type="warning"
           :description="`已驳回：${detail.rejectReason || '未提供原因'}。该申请未生成正式事实，也未生成新 Manifest。`"
         />
-        <template v-else>
-          <AppInlineAlert
-            type="warning"
-            description="批准后将追加正式纠错事实并生成 Manifest V(N+1)，原 Manifest 永久保留；申请人本人执行二审会被服务端拒绝。"
-          />
-          <label class="aacw-field reject-field">
-            <span>驳回原因（仅驳回时必填）</span>
-            <textarea v-model.trim="rejectReason" :disabled="busy" rows="3" maxlength="500" placeholder="至少 5 个字" />
-          </label>
-        </template>
+        <AppInlineAlert
+          v-else
+          type="warning"
+          description="批准后将追加正式纠错事实并生成 Manifest V(N+1)，原 Manifest 永久保留；申请人本人执行二审会被服务端拒绝。"
+        />
       </template>
       <template #footer>
         <AppButton variant="ghost" :disabled="busy" @click="closeDetail">关闭</AppButton>
         <AppButton
           v-if="detail?.status === 'PENDING_SECOND_APPROVAL'"
           variant="ghost"
-          :disabled="busy || rejectReason.length < 5"
-          @click="submitReject"
+          :disabled="busy"
+          @click="askReject"
         >驳回</AppButton>
         <AppButton
           v-if="detail?.status === 'PENDING_SECOND_APPROVAL'"
@@ -216,8 +205,23 @@
       v-model:visible="approveConfirmVisible"
       title="确认二次审批通过"
       message="批准后将追加正式纠错事实并生成新的 Manifest 版本；原事实和旧 Manifest 永久保留。确认继续？"
+      confirm-text="确认批准并生成新事实"
       :submitting="busy"
       @confirm="submitApprove"
+    />
+
+    <AppConfirmDialog
+      v-model:visible="rejectConfirmVisible"
+      title="确认驳回归档后纠错"
+      message="驳回后状态固定为 REJECTED，不生成正式事实，也不生成新的 Manifest 版本。"
+      type="danger"
+      confirm-text="确认驳回"
+      :require-reason="true"
+      reason-label="驳回原因"
+      reason-placeholder="请说明证据不足、事实不成立或其他驳回依据"
+      :reason-min-length="5"
+      :submitting="busy"
+      @confirm="submitReject"
     />
   </section>
 </template>
@@ -229,11 +233,7 @@ import { AppConfirmDialog, AppInlineAlert } from '@/components/common'
 import { academicArchiveCorrectionApi as api } from '@/modules/academicAffairs/api/academic-archive-correction.api'
 import { toast } from '@/utils/toast'
 
-const STATUS_LABEL = {
-  PENDING_SECOND_APPROVAL: '待二审',
-  APPLIED: '已应用',
-  REJECTED: '已拒绝'
-}
+const STATUS_LABEL = { PENDING_SECOND_APPROVAL: '待二审', APPLIED: '已应用', REJECTED: '已拒绝' }
 const FACT_LABEL = { PASS: '通过', BLOCKED: '阻断', UNKNOWN: '待治理', NOT_APPLICABLE: '不适用' }
 const FACT_TYPE = { PASS: 'success', BLOCKED: 'danger', UNKNOWN: 'warning', NOT_APPLICABLE: 'info' }
 
@@ -252,39 +252,23 @@ export default {
         { key: 'corrections', label: '归档后纠错' },
         { key: 'manifest', label: 'Manifest版本链' }
       ],
-      activeTab: 'facts',
-      loading: false,
-      verifyBusy: false,
-      busy: false,
-      corrections: [],
-      manifest: null,
-      createVisible: false,
-      saving: false,
-      formError: '',
-      createForm: this.emptyCreateForm(),
-      detailVisible: false,
-      detailLoading: false,
-      detail: null,
-      rejectReason: '',
-      approveConfirmVisible: false,
+      activeTab: 'facts', loading: false, verifyBusy: false, busy: false,
+      corrections: [], manifest: null,
+      createVisible: false, saving: false, formError: '', createForm: this.emptyCreateForm(),
+      detailVisible: false, detailLoading: false, detail: null,
+      approveConfirmVisible: false, rejectConfirmVisible: false,
       factColumns: [
-        { key: 'domain', title: '数据域' },
-        { key: 'recordCount', title: '记录数' },
-        { key: 'result', title: '归档状态' },
-        { key: 'remark', title: '备注' }
+        { key: 'domain', title: '数据域' }, { key: 'recordCount', title: '记录数' },
+        { key: 'result', title: '归档状态' }, { key: 'remark', title: '备注' }
       ],
       correctionColumns: [
-        { key: 'correctionNo', title: '纠错号' },
-        { key: 'businessType', title: '业务类型' },
-        { key: 'targetRef', title: '目标事实' },
-        { key: 'riskLevel', title: '风险' },
-        { key: 'reason', title: '申请原因' },
-        { key: 'status', title: '状态' },
+        { key: 'correctionNo', title: '纠错号' }, { key: 'businessType', title: '业务类型' },
+        { key: 'targetRef', title: '目标事实' }, { key: 'riskLevel', title: '风险' },
+        { key: 'reason', title: '申请原因' }, { key: 'status', title: '状态' },
         { key: 'actions', title: '操作' }
       ],
       manifestColumns: [
-        { key: 'versionNo', title: '版本' },
-        { key: 'hash', title: 'Manifest Hash' },
+        { key: 'versionNo', title: '版本' }, { key: 'hash', title: 'Manifest Hash' },
         { key: 'supersedesId', title: '上一个 Manifest' }
       ]
     }
@@ -299,12 +283,8 @@ export default {
         return acc
       }, { pending: 0, applied: 0, rejected: 0 })
     },
-    manifestVersions() {
-      return Array.isArray(this.manifest?.versions) ? this.manifest.versions : []
-    },
-    latestManifest() {
-      return this.manifestVersions.length ? this.manifestVersions[this.manifestVersions.length - 1] : null
-    }
+    manifestVersions() { return Array.isArray(this.manifest?.versions) ? this.manifest.versions : [] },
+    latestManifest() { return this.manifestVersions.length ? this.manifestVersions[this.manifestVersions.length - 1] : null }
   },
   watch: {
     batchId: {
@@ -320,17 +300,15 @@ export default {
   methods: {
     emptyCreateForm() {
       return {
-        businessType: 'GRADE',
-        targetRef: '',
-        reason: '',
+        businessType: 'GRADE', targetRef: '', reason: '',
         correctionText: '{\n  "score": 60\n}',
         evidenceText: '{\n  "kind": "MANUAL_REVIEW",\n  "refs": []\n}',
         riskLevel: 'HIGH'
       }
     },
-    businessLabel(value) { return value === 'GRADE' ? '成绩' : value === 'GRADUATION' ? '毕业结论' : value },
-    statusLabel(value) { return STATUS_LABEL[value] || value },
-    statusType(value) { return value === 'APPLIED' ? 'success' : value === 'REJECTED' ? 'warning' : 'primary' },
+    businessLabel(v) { return v === 'GRADE' ? '成绩' : v === 'GRADUATION' ? '毕业结论' : v },
+    statusLabel(v) { return STATUS_LABEL[v] || v },
+    statusType(v) { return v === 'APPLIED' ? 'success' : v === 'REJECTED' ? 'warning' : 'primary' },
     factState(row) { return String(row?.result || (row?.present ? 'PASS' : 'BLOCKED')).toUpperCase() },
     factLabel(row) { return FACT_LABEL[this.factState(row)] || '待确认' },
     factType(row) { return FACT_TYPE[this.factState(row)] || 'warning' },
@@ -341,8 +319,7 @@ export default {
       this.loading = true
       try {
         const [queue, verified] = await Promise.all([
-          api.list(this.batchId, { page: 1, pageSize: 100 }),
-          api.verifyManifest(this.batchId)
+          api.list(this.batchId, { page: 1, pageSize: 100 }), api.verifyManifest(this.batchId)
         ])
         if (queue.code === 0) this.corrections = Array.isArray(queue.data?.items) ? queue.data.items : []
         else toast.error(queue.message || '纠错列表加载失败')
@@ -350,9 +327,7 @@ export default {
         else toast.error(verified.message || 'Manifest 校验失败')
       } catch (error) {
         toast.error(error?.message || '归档纠错工作区加载失败')
-      } finally {
-        this.loading = false
-      }
+      } finally { this.loading = false }
     },
     async verifyNow() {
       if (!this.batchId || this.verifyBusy) return
@@ -361,33 +336,16 @@ export default {
         const res = await api.verifyManifest(this.batchId)
         if (res.code === 0) {
           this.manifest = res.data
-          if (res.data?.ok) toast.success('Manifest 版本链校验通过')
-          else toast.error(`Manifest 校验异常：${res.data?.reason || '未知异常'}`)
+          res.data?.ok ? toast.success('Manifest 版本链校验通过') : toast.error(`Manifest 校验异常：${res.data?.reason || '未知异常'}`)
         } else toast.error(res.message || 'Manifest 校验失败')
-      } finally {
-        this.verifyBusy = false
-      }
+      } finally { this.verifyBusy = false }
     },
-    openCreate() {
-      this.createForm = this.emptyCreateForm()
-      this.formError = ''
-      this.createVisible = true
-    },
-    closeCreate() {
-      if (this.saving) return
-      this.createVisible = false
-      this.formError = ''
-    },
+    openCreate() { this.createForm = this.emptyCreateForm(); this.formError = ''; this.createVisible = true },
+    closeCreate() { if (!this.saving) { this.createVisible = false; this.formError = '' } },
     parseObject(text, label) {
       let value
-      try {
-        value = JSON.parse(text)
-      } catch {
-        throw new Error(`${label}必须是合法 JSON`)
-      }
-      if (!value || Array.isArray(value) || typeof value !== 'object' || !Object.keys(value).length) {
-        throw new Error(`${label}不能为空对象`)
-      }
+      try { value = JSON.parse(text) } catch { throw new Error(`${label}必须是合法 JSON`) }
+      if (!value || Array.isArray(value) || typeof value !== 'object' || !Object.keys(value).length) throw new Error(`${label}不能为空对象`)
       return value
     },
     async submitCreate() {
@@ -395,24 +353,16 @@ export default {
       this.formError = ''
       if (!this.createForm.targetRef) { this.formError = '请填写目标正式事实 ID'; return }
       if (this.createForm.reason.length < 5) { this.formError = '纠错原因至少 5 个字'; return }
-      let correction
-      let evidenceManifest
+      let correction, evidenceManifest
       try {
         correction = this.parseObject(this.createForm.correctionText, '修正内容')
         evidenceManifest = this.parseObject(this.createForm.evidenceText, '证据清单')
-      } catch (error) {
-        this.formError = error.message
-        return
-      }
+      } catch (error) { this.formError = error.message; return }
       this.saving = true
       try {
         const res = await api.create(this.batchId, {
-          businessType: this.createForm.businessType,
-          targetRef: this.createForm.targetRef,
-          reason: this.createForm.reason,
-          correction,
-          evidenceManifest,
-          riskLevel: this.createForm.riskLevel
+          businessType: this.createForm.businessType, targetRef: this.createForm.targetRef,
+          reason: this.createForm.reason, correction, evidenceManifest, riskLevel: this.createForm.riskLevel
         })
         if (res.code !== 0) { this.formError = res.message || '提交失败'; return }
         const caseId = res.data?.caseId
@@ -420,36 +370,30 @@ export default {
         this.createVisible = false
         this.activeTab = 'corrections'
         await this.authoritativeRefresh(caseId)
-      } catch (error) {
-        this.formError = error?.message || '提交失败'
-      } finally {
-        this.saving = false
-      }
+      } catch (error) { this.formError = error?.message || '提交失败' }
+      finally { this.saving = false }
     },
     async openDetail(row) {
       const caseId = row?.caseId || row
       if (!caseId) return
       this.detailVisible = true
       this.detailLoading = true
-      this.rejectReason = ''
       try {
         const res = await api.detail(caseId)
         if (res.code === 0) this.detail = res.data
         else { toast.error(res.message || '纠错详情加载失败'); this.detailVisible = false }
-      } finally {
-        this.detailLoading = false
-      }
+      } finally { this.detailLoading = false }
     },
     closeDetail() {
       if (this.busy) return
-      this.detailVisible = false
-      this.detail = null
-      this.rejectReason = ''
-      this.approveConfirmVisible = false
+      this.detailVisible = false; this.detail = null
+      this.approveConfirmVisible = false; this.rejectConfirmVisible = false
     },
     askApprove() {
-      if (!this.detail || this.detail.status !== 'PENDING_SECOND_APPROVAL' || this.busy) return
-      this.approveConfirmVisible = true
+      if (this.detail?.status === 'PENDING_SECOND_APPROVAL' && !this.busy) this.approveConfirmVisible = true
+    },
+    askReject() {
+      if (this.detail?.status === 'PENDING_SECOND_APPROVAL' && !this.busy) this.rejectConfirmVisible = true
     },
     async submitApprove() {
       if (!this.detail || this.busy) return
@@ -458,26 +402,24 @@ export default {
       try {
         const res = await api.approve(caseId)
         if (res.code !== 0) { toast.error(res.message || '二次审批失败'); return }
-        toast.success(`已应用正式纠错事实并生成 Manifest V${res.data?.manifestVersion || '(N+1)'}`)
         this.approveConfirmVisible = false
+        toast.success(`已应用正式纠错事实并生成 Manifest V${res.data?.manifestVersion || '(N+1)'}`)
         await this.authoritativeRefresh(caseId)
-      } finally {
-        this.busy = false
-      }
+      } finally { this.busy = false }
     },
-    async submitReject() {
+    async submitReject(payload = {}) {
       if (!this.detail || this.detail.status !== 'PENDING_SECOND_APPROVAL' || this.busy) return
-      if (this.rejectReason.length < 5) { toast.error('驳回原因至少 5 个字'); return }
+      const reason = String(payload?.reason || '').trim()
+      if (reason.length < 5) { toast.error('驳回原因至少 5 个字'); return }
       const caseId = this.detail.caseId
       this.busy = true
       try {
-        const res = await api.reject(caseId, this.rejectReason)
+        const res = await api.reject(caseId, reason)
         if (res.code !== 0) { toast.error(res.message || '驳回失败'); return }
+        this.rejectConfirmVisible = false
         toast.success('已驳回；未生成正式事实或新的 Manifest')
         await this.authoritativeRefresh(caseId)
-      } finally {
-        this.busy = false
-      }
+      } finally { this.busy = false }
     },
     async authoritativeRefresh(caseId) {
       await this.refreshAll()
@@ -519,18 +461,10 @@ export default {
 .aacw-reason { margin-top: 12px; }
 .aacw-reason span { font-size: 12px; color: var(--text-secondary, #64748b); }
 .aacw-reason p { margin: 5px 0 0; white-space: pre-wrap; }
-.aacw-compare { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.aacw-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .aacw-compare-card { min-width: 0; border: 1px solid var(--border-color, #e5e7eb); border-radius: 9px; overflow: hidden; }
 .aacw-compare-card h4 { margin: 0; padding: 9px 10px; background: var(--fill-light, #f8fafc); font-size: 13px; }
-.aacw-compare-card pre, .aacw-json { margin: 0; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.55; max-height: 320px; overflow: auto; }
-.aacw-json { border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; }
-.reject-field { margin-top: 12px; }
-@media (max-width: 980px) {
-  .aacw-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .aacw-meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .aacw-compare { grid-template-columns: 1fr; }
-}
-@media (max-width: 600px) {
-  .aacw-kpis, .aacw-meta-grid { grid-template-columns: 1fr; }
-}
+.aacw-compare-card pre { margin: 0; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.55; max-height: 320px; overflow: auto; }
+@media (max-width: 980px) { .aacw-kpis, .aacw-meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .aacw-kpis, .aacw-meta-grid, .aacw-compare { grid-template-columns: 1fr; } }
 </style>
