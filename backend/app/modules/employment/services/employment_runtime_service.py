@@ -15,6 +15,7 @@ from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.exceptions import AppException, not_found
 from app.models import (College, EmpAuditTrail, EmpFollowup, EmpMaterial, EmpStudent,
                         Major, SchoolClass, StudentProfile)
+from app.modules.employment.services import employment_material_evidence_service as base_ev
 from app.modules.employment.services import employment_service as base
 from app.services import shadow_student_service as shadow
 from app.services.db_service import _iso, _tid, session
@@ -192,7 +193,7 @@ def get_student_detail(sid, *, user: dict) -> dict:
         profiles = shadow.load_profiles(db, [student])
         return {
             "student": base._stu_row(student, db=db, profiles=profiles),
-            "materials": [base._mat_row(item, student) for item in materials],
+            "materials": base._mat_rows(db, materials, {int(student.id): student} if student else None),
             "followUps": [base._fu_row(item, student) for item in followups],
             "auditLogs": [base._log_row(item) for item in logs],
         }
@@ -280,7 +281,7 @@ def list_materials(page, ps, *, user: dict, keyword=None, status=None, material_
         count_stmt = select(func.count()).select_from(EmpMaterial).join(EmpStudent, join_cond).where(*cond)
         rows, total = _page_query(db, stmt, count_stmt, page, ps)
         students = base._emp_students_by_ids(db, rows)
-        return [base._mat_row(m, students.get(int(m.emp_student_id))) for m in rows], total
+        return base._mat_rows(db, rows, students), total
 
 
 def get_material_detail(mid, *, user: dict) -> dict:
@@ -292,29 +293,32 @@ def get_material_detail(mid, *, user: dict) -> dict:
             EmpAuditTrail.biz_id == str(material.id),
         ).order_by(EmpAuditTrail.id.desc()).limit(30)).all()
         profiles = shadow.load_profiles(db, [emp])
+        # TP-E03：材料详情必须给出正式文件描述符（fileId/bindingId/scanStatus/
+        # fileVersion），老师才可能在审核前看到正式原文；没有正式绑定时
+        # file=None + legacyFileNameOnly=True，页面据此标注"历史文本记录"。
+        facts = base_ev.resolve_evidence(db, [material.id])
         return {
-            "material": base._mat_row(material, emp),
+            "material": base._mat_row(material, emp, facts.get(int(material.id))),
             "student": base._stu_row(emp, db=db, profiles=profiles),
             "auditLogs": [base._log_row(x) for x in logs],
         }
 
 
 def approve_material(mid, comment="", *, user: dict) -> dict:
-    with session() as db:
-        material, emp = _assert_material(db, mid, user)
-        if material.status == "APPROVED":
-            raise AppException("DATA_CONFLICT", "该材料已通过")
-        before = material.status
-        operator, _ = base._op()
-        material.status = "APPROVED"
-        material.reviewer = operator
-        material.review_time = datetime.utcnow()
-        material.version = int(material.version or 0) + 1
-        emp.material_status = "APPROVED"
-        emp.verify_status = "VERIFIED"
-        base._audit(db, "MATERIAL", material.id, "审核通过", comment, before, "APPROVED")
-        db.commit()
-        return {"id": str(material.id), "status": "APPROVED"}
+    """材料审核通过 —— 委派给唯一权威 `employment_runtime_material_service`。
+
+    PR #183 把 PC 材料审核的权威搬到了 `employment_runtime_material_service`
+    （正式路由 `routers/employment.py` 已改调那一支），本函数就此失去调用方，
+    但仍留着一份逐字重复的实现。留着重复实现的风险是真实的：将来任何人把它
+    接回去，就会绕过那份带显式说明的兼容契约（材料通过同时置
+    `verify_status=VERIFIED`），两条路径一旦漂移就是端间事实分叉。
+
+    这里不删除符号（保持向后兼容，可能有动态调用），改为委派，保证无论走哪条
+    路径，行为都由同一个权威决定。
+    """
+    from app.modules.employment.services import employment_runtime_material_service
+
+    return employment_runtime_material_service.approve_material(mid, comment, user=user)
 
 
 def return_material(mid, reason, *, user: dict) -> dict:

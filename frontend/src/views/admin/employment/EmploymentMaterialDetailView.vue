@@ -16,10 +16,26 @@
                 <StatusTag :type="materialTagType[detail.material.status] || 'default'" :label="labelOf('materialStatus', detail.material.status)" dot style="margin-left: 8px" />
               </h3>
             </div>
-            <div class="emp-preview">
-              <span class="emp-preview__icon">▤</span>
-              <b>{{ detail.material.fileName }}</b>
-              <span>提交于 {{ detail.material.submitTime }} · 演示环境为材料预览占位</span>
+            <!-- TP-E03/TP-E05：老师必须能一眼分清「正式安全文件」和「历史文件名文本」。
+                 正式证据 = 已建立 EMPLOYMENT_MATERIAL 正式绑定 + 文件可用 + 安全扫描通过，
+                 服务端已给出 fileId/bindingId/scanStatus/fileVersion；只有历史 file_name
+                 的记录不是证据，不能显示成"可核验"。 -->
+            <div class="emp-preview" :class="{ 'is-legacy': detail.material.legacyFileNameOnly }">
+              <span class="emp-preview__icon">{{ detail.material.formalEvidence ? '▤' : '⚠' }}</span>
+              <b>{{ detail.material.file?.fileName || detail.material.fileName || '（未提供文件）' }}</b>
+              <template v-if="detail.material.formalEvidence">
+                <span>
+                  提交于 {{ detail.material.submitTime }} ·
+                  正式材料（文件 #{{ detail.material.file.fileId }} · 第 {{ detail.material.file.fileVersion }} 版 ·
+                  安全扫描 {{ scanText(detail.material.file.scanStatus) }}）
+                </span>
+              </template>
+              <template v-else-if="detail.material.legacyFileNameOnly">
+                <span>提交于 {{ detail.material.submitTime }} · 历史文本记录，未建立正式文件绑定，<b>不可作为核验凭据</b></span>
+              </template>
+              <template v-else>
+                <span>提交于 {{ detail.material.submitTime }} · 尚未上传正式材料文件</span>
+              </template>
             </div>
             <div v-if="detail.material.returnReason" class="emp-return-box">
               最近退回原因：{{ detail.material.returnReason }}
@@ -58,7 +74,7 @@
       <AppConfirmDialog
         v-model:visible="approveVisible"
         title="审核通过"
-        :message="`确认通过《${detail.material.fileName}》？通过后学生就业记录将标记为已核验并计入就业统计。`"
+        :message="approveMessage"
         type="primary"
         confirm-text="确认通过"
         :submitting="submitting"
@@ -126,6 +142,20 @@ export default {
     operateTip() {
       if (!['SUBMITTED', 'REVIEWING'].includes(this.detail?.material?.status)) return '该材料已完成审核'
       return this.reviewPerm && !this.reviewPerm.allowed ? this.reviewPerm.reason : ''
+    },
+    approveMessage() {
+      const m = this.detail?.material || {}
+      const name = m.file?.fileName || m.fileName || '该材料'
+      // 后端（employment_runtime_material_service.approve_material）确实在材料通过的
+      // 同一事务里把 verify_status 置为 VERIFIED —— 这是 PC 端既有的闭环契约，并有
+      // 契约测试锁定，所以文案照实说。但证据强弱必须讲清楚：只有历史文件名文本时，
+      // 老师是在没有正式安全文件的情况下完成核验，确认框要显式警示。
+      const base = `确认通过《${name}》？通过后学生就业记录将标记为已核验并计入就业统计。`
+      if (m.formalEvidence) return base
+      if (m.legacyFileNameOnly) {
+        return `${base}\n注意：该材料只有历史文件名文本，没有正式文件绑定与安全扫描记录，不构成可核验的正式证据。`
+      }
+      return `${base}\n注意：该材料尚未上传正式文件，没有可复核的原文证据。`
     }
   },
   created() {
@@ -134,6 +164,9 @@ export default {
   methods: {
     labelOf(dict, value) {
       return this.labelMaps[dict]?.[value] || value || '—'
+    },
+    scanText(status) {
+      return { CLEAN: '已通过', NOT_REQUIRED: '无需扫描', PENDING: '待扫描', INFECTED: '未通过' }[status] || status || '未知'
     },
     async load() {
       this.loading = true
@@ -201,4 +234,5 @@ export default {
   display: flex;
   gap: var(--space-2);
 }
+.emp-preview.is-legacy { border-color: var(--warning-6, #e6a23c); background: var(--warning-1, #fdf6ec); }
 </style>

@@ -9,6 +9,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.models import (EmpAuditTrail, EmpCompany, EmpFollowup, EmpJob, EmpMaterial, EmpStudent)
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
+from app.modules.employment.services import employment_material_evidence_service as ev
 from app.services import shadow_student_service as shadow
 from app.services.db_service import _iso, _tid, session
 
@@ -195,7 +196,7 @@ def get_student_detail(sid) -> dict:
         logs = db.scalars(select(EmpAuditTrail).where(EmpAuditTrail.tenant_id == _tid(),
                           EmpAuditTrail.biz_id == str(s.id)).order_by(EmpAuditTrail.id.desc()).limit(20)).all()
         return {"student": _stu_row(s, db=db, profiles=shadow.load_profiles(db, [s])),
-                "materials": [_mat_row(m, s) for m in mats],
+                "materials": _mat_rows(db, mats, {int(s.id): s}),
                 "followUps": [_fu_row(f, s) for f in fus],
                 "auditLogs": [_log_row(x) for x in logs]}
 
@@ -286,13 +287,33 @@ def batch_mark_destination(ids, destination_type) -> dict:
 
 # ═══ 材料 ═══
 
-def _mat_row(m: EmpMaterial, stu=None) -> dict:
-    return {"id": str(m.id), "studentId": str(m.emp_student_id), "name": stu.name if stu else "",
-            "className": stu.class_name if stu else "", "materialType": m.material_type,
-            "materialTypeLabel": L_MATTYPE.get(m.material_type, m.material_type), "fileName": m.file_name or "",
-            "submitTime": _iso(m.submit_time) or "", "status": m.status,
-            "statusLabel": L_MAT.get(m.status, m.status), "reviewer": m.reviewer or "",
-            "reviewTime": _iso(m.review_time) or "", "returnReason": m.return_reason or ""}
+def _mat_row(m: EmpMaterial, stu=None, evidence: dict | None = None) -> dict:
+    """教师 PC 材料 DTO。
+
+    TP-E05：`evidence` 传入时附带正式证据字段（formalEvidence/legacyFileNameOnly/
+    file），老师才能区分「正式安全文件」与「历史文件名文本」。判定规则来自
+    `employment_material_evidence_service`（与 #183 教师端小程序同一权威），
+    这里只做投影。不传 evidence 的老调用点按 fail-closed 处理：不声称有正式证据。
+    """
+    row = {"id": str(m.id), "studentId": str(m.emp_student_id), "name": stu.name if stu else "",
+           "className": stu.class_name if stu else "", "materialType": m.material_type,
+           "materialTypeLabel": L_MATTYPE.get(m.material_type, m.material_type), "fileName": m.file_name or "",
+           "submitTime": _iso(m.submit_time) or "", "status": m.status,
+           "statusLabel": L_MAT.get(m.status, m.status), "reviewer": m.reviewer or "",
+           "reviewTime": _iso(m.review_time) or "", "returnReason": m.return_reason or ""}
+    row.update(ev.evidence_fields(m, evidence))
+    return row
+
+
+def _mat_rows(db, materials, students_by_id=None) -> list[dict]:
+    """批量投影材料 DTO，一次解析全部正式证据（避免逐条查绑定造成 N+1）。"""
+    materials = list(materials or [])
+    facts = ev.resolve_evidence(db, [m.id for m in materials])
+    students_by_id = students_by_id or {}
+    return [
+        _mat_row(m, students_by_id.get(int(m.emp_student_id)), facts.get(int(m.id)))
+        for m in materials
+    ]
 
 
 def list_materials(page, ps, keyword=None, status=None, material_type=None):
@@ -304,12 +325,13 @@ def list_materials(page, ps, keyword=None, status=None, material_type=None):
             q = q.where(EmpMaterial.material_type == material_type)
         rows = db.scalars(q.order_by(EmpMaterial.id.desc())).all()
         students = _emp_students_by_ids(db, rows)
+        facts = ev.resolve_evidence(db, [m.id for m in rows])
         items = []
         for m in rows:
             stu = students.get(int(m.emp_student_id)) if m.emp_student_id else None
             if keyword and (not stu or keyword.strip() not in (stu.name or "")):
                 continue
-            items.append(_mat_row(m, stu))
+            items.append(_mat_row(m, stu, facts.get(int(m.id))))
         return _page(items, page, ps)
 
 

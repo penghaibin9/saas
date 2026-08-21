@@ -41,7 +41,23 @@
               <tbody>
                 <tr v-for="m in detail.materials" :key="m.id">
                   <td>{{ labelOf('materialType', m.materialType) }}</td>
-                  <td>{{ m.fileName }}</td>
+                  <!-- TP-E05：正式证据 vs 历史文件名文本必须在列表上就能区分，
+                       否则老师只看到一个文件名，无从判断这份材料能不能作为核验凭据。 -->
+                  <td>
+                    {{ m.file?.fileName || m.fileName || '—' }}
+                    <StatusTag
+                      v-if="m.formalEvidence"
+                      type="success"
+                      label="正式材料"
+                      style="margin-left: 6px"
+                    />
+                    <StatusTag
+                      v-else-if="m.legacyFileNameOnly"
+                      type="warning"
+                      label="历史文本记录"
+                      style="margin-left: 6px"
+                    />
+                  </td>
                   <td>{{ m.submitTime }}</td>
                   <td><StatusTag :type="materialTagType[m.status] || 'default'" :label="labelOf('materialStatus', m.status)" /></td>
                   <td class="emp-inline-note">{{ m.returnReason || m.remark || '—' }}</td>

@@ -29,6 +29,13 @@
           <BatchActionBar :actions="batchBarActions" @action="onBatch" />
         </template>
         <template #cell-materialType="{ row }">{{ labelOf('materialType', row.materialType) }}</template>
+        <!-- TP-E05：列表上就要区分正式证据与历史文件名文本，老师不能只看到一个文件名
+             就去批量通过。判定来自服务端 formalEvidence（正式绑定 + 安全扫描通过）。 -->
+        <template #cell-fileName="{ row }">
+          {{ row.file?.fileName || row.fileName || '—' }}
+          <StatusTag v-if="row.formalEvidence" type="success" label="正式材料" style="margin-left: 6px" />
+          <StatusTag v-else-if="row.legacyFileNameOnly" type="warning" label="历史文本记录" style="margin-left: 6px" />
+        </template>
         <template #cell-status="{ row }">
           <StatusTag :type="materialTagType[row.status] || 'default'" :label="labelOf('materialStatus', row.status)" dot />
         </template>
