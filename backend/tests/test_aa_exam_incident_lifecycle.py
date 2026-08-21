@@ -169,7 +169,7 @@ def test_risk_delivery_is_not_formal_close_and_finish_gate_waits_for_resolution(
     admin = _admin_headers(client)
 
     before = _workbench(client, admin, ids["batch"])
-    assert before["source"] == "CANONICAL_EXAM_INCIDENT_LIFECYCLE"
+    assert before["source"] == "CANONICAL_EXAM_INCIDENT_FACTS"
     assert before["openCount"] == 3
     assert before["closedCount"] == 0
     assert before["voidedCount"] == 0

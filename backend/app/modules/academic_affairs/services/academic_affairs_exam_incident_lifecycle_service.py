@@ -40,7 +40,7 @@ def _resolution_reason(value: str) -> str:
         raise AppException("VALIDATION_ERROR", "处置原因必填且不少于5字")
     if len(reason) > 500:
         raise AppException("VALIDATION_ERROR", "处置原因最多500字")
-    return reason
+    return ' '.join(reason.split()).replace(';', '；')
 
 
 def _latest_resolution_query(db, incident_id: int, *, lock: bool = False):
@@ -256,7 +256,7 @@ def project_incident_workbench(
         "openCount": open_count,
         "closedCount": closed_count,
         "voidedCount": voided_count,
-        "source": "CANONICAL_EXAM_INCIDENT_LIFECYCLE",
+        "source": "CANONICAL_EXAM_INCIDENT_FACTS",
     }
 
 
@@ -337,8 +337,8 @@ def resolve_incident(user, incident_id: int, action: str, reason: str = "", disc
             incident.status = "VOIDED"
             closure = "VOIDED"
         elif action == "HANDOFF":
-            if incident_type == "ABSENT":
-                raise AppException("VALIDATION_ERROR", "缺考异常应执行 CLOSE，不使用处分线索移交")
+            if incident_type not in {"DISCIPLINE", "DISCIPLINE_VIOLATION", "CHEAT"}:
+                raise AppException("VALIDATION_ERROR", "仅违纪类异常可 HANDOFF 到处分/后续处理线索")
             if len(case_ref) < 3:
                 raise AppException("VALIDATION_ERROR", "处分/后续处理线索编号必填且不少于3字")
             incident.discipline_case_ref = case_ref
