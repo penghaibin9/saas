@@ -3,7 +3,8 @@
 我的就业查看 / 去向登记(校验+提交) / 打印回执 / 非学生拒绝。
 
 W1/P0 身份契约：会产生 workflow 的写入用例必须使用正式 User + StudentProfile +
-ACTIVE StudentAccountLink；token 同生产登录一样同时携带 `db-<User.id>` 与 studentId。
+ACTIVE StudentAccountLink；token 直接复用生产 auth_service_db.build_login_result()，不再
+手拼 db-* claims，确保 tenant code / activeContextId / permissionVersion 与真实登录一致。
 只读用例也统一复用同一夹具，避免测试继续依赖 login_name == student_no 的历史兜底。
 """
 from __future__ import annotations
@@ -12,24 +13,38 @@ PORTAL = "/api/v1/portal/employment"
 TID = 1000000000000000001
 
 
+def _ensure_student_role(db, user):
+    from app.models import Role, UserRole
+
+    role = db.query(Role).filter_by(tenant_id=TID, role_code="STUDENT").first()
+    if role is None:
+        role = Role(tenant_id=TID, role_code="STUDENT", role_name="学生",
+                    role_type="SYSTEM", status="ACTIVE")
+        db.add(role)
+        db.flush()
+    link = db.query(UserRole).filter_by(
+        tenant_id=TID, user_id=user.id, role_id=role.id).first()
+    if link is None:
+        db.add(UserRole(tenant_id=TID, user_id=user.id, role_id=role.id, status="ACTIVE"))
+    else:
+        link.status = "ACTIVE"
+        link.is_deleted = False
+    db.flush()
+
+
 def _stu_token(real_name, student_no):
-    from app.core.security import create_access_token
     from app.db.session import get_sessionmaker
-    from app.models import StudentProfile, User
+    from app.models import User
+    from app.services import auth_service_db
 
     db = get_sessionmaker()()
     try:
         user = db.query(User).filter_by(tenant_id=TID, login_name=student_no).first()
-        student = db.query(StudentProfile).filter_by(tenant_id=TID, student_no=student_no).first()
-        assert user is not None and student is not None
-        uid, sid = int(user.id), int(student.id)
+        assert user is not None
+        token = auth_service_db.build_login_result(db, user, client_type="PC")["accessToken"]
     finally:
         db.close()
-    return {"Authorization": "Bearer " + create_access_token({
-        "userId": f"db-{uid}", "loginName": student_no, "studentId": str(sid),
-        "realName": real_name, "studentNo": student_no,
-        "userType": "STUDENT", "tid": "x", "tenantId": str(TID),
-        "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "PC"})}
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _admin(client):
@@ -49,6 +64,7 @@ def _seed(no, name):
                     password_hash="test-only", user_type="STUDENT", status="ACTIVE")
         db.add(user)
         db.flush()
+        _ensure_student_role(db, user)
         row = StudentProfile(tenant_id=TID, student_no=no, real_name=name, gender="F", grade="2021",
                              current_stage="EMPLOYMENT", student_status="NORMAL", status="ACTIVE")
         db.add(row)
