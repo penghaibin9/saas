@@ -1,5 +1,7 @@
 <template>
-  <ModulePageShell title="安全策略" subtitle="登录锁定 / 令牌时长 / 限流 / 跨域，越界值将被后端拒绝（不允许不设防）" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
+  <ModulePageShell title="安全策略" subtitle="登录锁定 / 令牌时长 / 限流 / 跨域 / 平台高危操作 MFA，越界值将被后端拒绝（不允许不设防）" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
+    <PlatformMfaPanel />
+
     <LoadingState v-if="loading" text="正在加载安全参数…" />
     <AppCard v-else class="pcs__panel">
       <AppSectionHeader title="全局安全参数" />
@@ -22,12 +24,13 @@
 <script>
 import { AppButton, AppCard, AppSectionHeader } from '@/components/ui'
 import { LoadingState, ModulePageShell } from '@/components/business'
+import PlatformMfaPanel from '@/modules/platform/components/PlatformMfaPanel.vue'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'PlatformControlSecurity',
-  components: { AppButton, AppCard, AppSectionHeader, LoadingState, ModulePageShell },
+  components: { AppButton, AppCard, AppSectionHeader, LoadingState, ModulePageShell, PlatformMfaPanel },
   data() {
     return {
       loading: true,
