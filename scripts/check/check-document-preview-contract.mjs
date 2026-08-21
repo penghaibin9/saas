@@ -103,6 +103,8 @@ const studentSdk = read('student-portal/src/services/fileSdk.js')
 const studentRequest = read('student-portal/src/services/request.js')
 const studentMaterials = read('student-portal/src/views/graduation/GraduationMaterialsView.vue')
 const studentWorkbench = read('student-portal/src/views/graduation/GraduationWorkbenchView.vue')
+const peerPreviewRouter = read('backend/app/api/v1/mobile_graduation_material_center.py')
+const peerPreviewService = read('backend/app/modules/graduation/services/graduation_peer_consistency.py')
 
 if (!studentRequest.includes('export async function fetchFileBlob(')) {
   throw new Error('student PC request layer is missing authenticated preview Blob transport')
@@ -127,8 +129,36 @@ if (!studentWorkbench.includes('查看当前版')
     || !studentWorkbench.includes("issueGraduationMaterialTicket(file.fileId, 'preview')")) {
   throw new Error('student graduation workbench is missing current-version Reader or submit preflight')
 }
-if (!studentWorkbench.includes('互查文件只允许走任务专用授权')) {
-  throw new Error('student peer-review file boundary must remain fail-closed until task-bound authorization exists')
+for (const marker of [
+  '互查文件只允许走任务专用授权',
+  'openPeerReader(',
+  'fileSdk.fetchPeerPreviewBlob(file.peerId, file.fileId, options)'
+]) {
+  if (!studentWorkbench.includes(marker)) throw new Error(`student peer-review Reader contract drift: missing ${marker}`)
+}
+if (!studentSdk.includes('async fetchPeerPreviewBlob(peerId, fileId, options = {})')
+    || !studentSdk.includes('/mobile/graduation/peer/${enc(peerId)}/files/${enc(fileId)}/preview')) {
+  throw new Error('student peer-review preview transport must stay task-bound to peerId + fileId')
+}
+for (const marker of [
+  '/peer/{peer_id}/files/{file_id}/preview',
+  'peer_files.resolve_peer_preview(peer_id, file_id, user)',
+  'STUDENT_GRADUATION_PEER_MATERIAL_PREVIEW',
+  '"taskBound": True'
+]) {
+  if (!peerPreviewRouter.includes(marker)) throw new Error(`peer-review preview route drift: missing ${marker}`)
+}
+for (const marker of [
+  'def resolve_peer_preview(peer_id, file_id, user):',
+  'resolve_current_gd_student(db, user)',
+  'int(current.id) not in {int(peer.gd_student_id), int(peer.reviewer_gd_student_id)}',
+  'final = _bound_final(db, peer)',
+  'target_file_id not in _attachment_ids(final)',
+  'FileObject.tenant_id == _tid()',
+  'FileObject.biz_type == "GRADUATION_MATERIAL"',
+  'is_downloadable_status(file_row.status)'
+]) {
+  if (!peerPreviewService.includes(marker)) throw new Error(`peer-review preview authorization drift: missing ${marker}`)
 }
 
 const studentViewerRoot = 'student-portal/src/components/file/viewer'
@@ -145,4 +175,4 @@ for (const marker of ['file.fileId', 'file.fileVersionId || file.versionId', 'fi
   if (!studentSession.includes(marker)) throw new Error(`student Reader session lifecycle drift: missing ${marker}`)
 }
 
-console.log('W0-W3 document-preview-contract/v1 owner, transport, student Reader and high-sensitivity boundaries passed')
+console.log('W0-W4 document-preview-contract/v1 owner, transport, task-bound Reader and high-sensitivity boundaries passed')
