@@ -126,8 +126,9 @@ DEFAULT_DICTIONARIES = {
 }
 
 DEFAULT_SECURITY = {
-    "loginFailMaxTimes": 5, "loginFailLockMinutes": 15, "accessTokenExpireMinutes": 120,
-    "refreshTokenExpireDays": 7,
+    "loginFailMaxTimes": 5, "loginFailLockMinutes": 15,
+    "passwordMinLength": 8, "captchaAfterFailures": 2,
+    "accessTokenExpireMinutes": 120, "refreshTokenExpireDays": 7,
     "corsAllowedOrigins": "http://localhost:5173,http://localhost:5188,http://localhost:5199,http://localhost:5200,http://127.0.0.1:5173,http://127.0.0.1:5199,http://127.0.0.1:5200",
     "uploadMaxSizeMb": 50, "exportRateLimitPerMinute": 5, "uploadRateLimitPerMinute": 20,
     "normalApiRateLimitPerMinute": 300, "docsEnabledInProduction": False,
@@ -142,6 +143,7 @@ DEFAULT_BRAND = {
 # 安全设置合法范围（保存校验：不允许放开为不设防）
 SECURITY_BOUNDS = {
     "loginFailMaxTimes": (3, 10), "loginFailLockMinutes": (5, 120),
+    "passwordMinLength": (6, 32), "captchaAfterFailures": (1, 10),
     "accessTokenExpireMinutes": (15, 720), "refreshTokenExpireDays": (1, 30),
     "uploadMaxSizeMb": (1, 200), "exportRateLimitPerMinute": (1, 60),
     "uploadRateLimitPerMinute": (1, 120), "normalApiRateLimitPerMinute": (30, 3000),

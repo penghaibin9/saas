@@ -42,6 +42,17 @@ export const platformPamApi = Object.freeze({
     `/platform/support-sessions/${encodeURIComponent(id)}/terminate`,
     { method: 'POST', body: { tenantId, expectedVersion, reason } }
   ),
+  getSupportTenantContext: (tenantId) => real(
+    '读取受控学校上下文',
+    `/platform/support/tenants/${encodeURIComponent(tenantId)}/context`
+  ),
+  getSupportTenantAudit: (tenantId, params = {}, mfaAccessToken = '') => real(
+    '读取受控学校审计',
+    `/platform/support/tenants/${encodeURIComponent(tenantId)}/audit`,
+    mfaAccessToken
+      ? { params, auth: false, headers: { Authorization: `Bearer ${mfaAccessToken}` } }
+      : { params }
+  ),
 
   listReviews: () => real('读取访问复核', '/platform/access-reviews'),
   createReview: (body) => real('创建访问复核', '/platform/access-reviews', { method: 'POST', body }),

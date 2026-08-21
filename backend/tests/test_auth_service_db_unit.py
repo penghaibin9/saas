@@ -10,6 +10,7 @@ import pytest
 
 from app.core.exceptions import AppException
 from app.services import auth_service_db as svc
+from app.services import control_plane_auth_service as p0
 
 
 class _FakeSession:
@@ -46,6 +47,17 @@ def _user(**overrides):
 
 def _ctx(role_id=10, code="COUNSELOR"):
     return svc._public_context(role_id, code, "辅导员")
+
+
+def _login_policy():
+    return {
+        "loginFailMaxTimes": 5,
+        "loginFailLockMinutes": 15,
+        "captchaAfterFailures": 3,
+        "passwordMinLength": 8,
+        "policyRevision": "test-policy",
+        "dataQuality": "TEST",
+    }
 
 
 def test_context_id_is_stable_and_scope_comes_from_role_policy():
@@ -94,17 +106,20 @@ def test_platform_super_admin_is_not_bound_to_school_tenant_status():
 
 
 def test_login_without_active_role_is_fail_closed(monkeypatch):
+    """P0 guard 已把公开 login 符号切到 canonical service；测试必须 patch 真正函数的 globals。"""
     fake_db = _FakeSession()
     user = _user()
-    monkeypatch.setattr(svc, "db_enabled", lambda: True)
-    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: fake_db)
+    monkeypatch.setattr(p0, "db_enabled", lambda: True)
+    monkeypatch.setattr(p0, "get_sessionmaker", lambda: lambda: fake_db)
     monkeypatch.setattr(svc, "_find_login_user", lambda db, login, tenant: user)
-    monkeypatch.setattr(svc, "verify_password", lambda plain, stored: True)
+    monkeypatch.setattr(p0, "resolve_login_policy", lambda **kwargs: _login_policy())
+    monkeypatch.setattr(p0, "_remaining_lock", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(p0, "verify_password", lambda plain, stored: True)
     monkeypatch.setattr(svc, "_role_contexts", lambda db, value: [])
     monkeypatch.setattr("app.services.audit_log.record", lambda *a, **k: None)
 
     with pytest.raises(AppException) as exc:
-        svc.login_with_password("teacher01", "correct", "school-a")
+        p0.login_with_password("teacher01", "correct", "school-a")
     assert exc.value.code == "NO_PERMISSION"
 
 
@@ -113,17 +128,20 @@ def test_login_passes_tenant_code_to_account_resolution(monkeypatch):
     user = _user()
     seen = {}
     contexts = [_ctx()]
-    monkeypatch.setattr(svc, "db_enabled", lambda: True)
-    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: fake_db)
+    monkeypatch.setattr(p0, "db_enabled", lambda: True)
+    monkeypatch.setattr(p0, "get_sessionmaker", lambda: lambda: fake_db)
     monkeypatch.setattr(
         svc, "_find_login_user",
         lambda db, login, tenant: seen.update({"login": login, "tenant": tenant}) or user)
-    monkeypatch.setattr(svc, "verify_password", lambda plain, stored: True)
+    monkeypatch.setattr(p0, "resolve_login_policy", lambda **kwargs: _login_policy())
+    monkeypatch.setattr(p0, "_remaining_lock", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(p0, "verify_password", lambda plain, stored: True)
     monkeypatch.setattr(svc, "_role_contexts", lambda db, value: contexts)
     monkeypatch.setattr(svc, "_ensure_tenant_login_allowed", lambda *a, **k: None)
-    monkeypatch.setattr(svc, "_login_result", lambda *a, **k: {"ok": True})
+    monkeypatch.setattr(p0, "_reset_account_risk", lambda *a, **k: None)
+    monkeypatch.setattr(p0, "_login_result", lambda *a, **k: {"ok": True})
 
-    assert svc.login_with_password(" teacher01 ", "correct", " school-a ") == {"ok": True}
+    assert p0.login_with_password(" teacher01 ", "correct", " school-a ") == {"ok": True}
     assert seen == {"login": "teacher01", "tenant": "school-a"}
 
 
@@ -173,13 +191,14 @@ def test_change_own_password_forces_revalidation_before_commit(monkeypatch):
             calls.append("commit")
 
     fake_db = _PasswordChangeSession()
-    monkeypatch.setattr(svc, "db_enabled", lambda: True)
-    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: fake_db)
+    monkeypatch.setattr(p0, "db_enabled", lambda: True)
+    monkeypatch.setattr(p0, "get_sessionmaker", lambda: lambda: fake_db)
+    monkeypatch.setattr(p0, "resolve_login_policy", lambda **kwargs: _login_policy())
+    monkeypatch.setattr(p0.risk, "login_locked", lambda *a, **k: 0)
     monkeypatch.setattr(svc, "_load_token_user", lambda db, ctx: user)
-    monkeypatch.setattr(svc, "verify_password", lambda plain, stored: True)
-    monkeypatch.setattr(svc, "hash_password", lambda plain: "new-hash")
-    monkeypatch.setattr(svc, "login_locked", lambda key: 0)
-    monkeypatch.setattr(svc, "reset_login_failures", lambda key: None)
+    monkeypatch.setattr(p0, "verify_password", lambda plain, stored: True)
+    monkeypatch.setattr(p0.risk, "reset_failure", lambda *a, **k: True)
+    monkeypatch.setattr(p0, "hash_password", lambda plain: "new-hash")
     monkeypatch.setattr(
         svc, "force_subject_revalidation",
         lambda uid, tenant_id: calls.append(("force", uid, tenant_id)),
@@ -189,12 +208,11 @@ def test_change_own_password_forces_revalidation_before_commit(monkeypatch):
         lambda uid, tenant_id, context_id=None: calls.append(("invalidate", uid, tenant_id)),
     )
     monkeypatch.setattr(
-        svc, "revoke_refresh_by_user", lambda uid: calls.append(("revoke", uid))
+        "app.core.token_store.revoke_refresh_by_user", lambda uid: calls.append(("revoke", uid))
     )
-    monkeypatch.setattr("app.services.system_config_service.get_int", lambda *a, **k: 8)
     monkeypatch.setattr("app.services.audit_log.record", lambda *a, **k: None)
 
-    result = svc.change_own_password(
+    result = p0.change_own_password(
         {"userId": "db-7", "tenantId": "1001", "activeContextId": "role:10"},
         "old-password",
         "new-password",
