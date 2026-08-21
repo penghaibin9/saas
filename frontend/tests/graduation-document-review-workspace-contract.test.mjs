@@ -8,6 +8,7 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 const finalSource = read('src/modules/graduation/views/FinalSubmissionListView.vue')
 const proposalSource = read('src/modules/graduation/views/_shared/ProposalReviewCard.vue')
 const workspaceSource = read('src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue')
+const versionBarSource = read('src/components/file/viewer/AppDocumentVersionBar.vue')
 
 test('W2 final Gold reuses mature business flow and locks canonical fileVersion', () => {
   for (const marker of ['load()', 'select(row)', 'step(delta)', 'turnPage(page)', 'submitReview(action)', 'remind(row)', 'exportFinalsFn()']) {
@@ -23,14 +24,22 @@ test('W2 final Gold reuses mature business flow and locks canonical fileVersion'
   assert.doesNotMatch(finalSource, /SecureFileList|previewVersion\(|window\.open\(/)
 })
 
+test('W2 final separates current attachments, true asset history and review draft identity', () => {
+  assert.match(finalSource, /finalVersions\(recordId\)/)
+  assert.match(finalSource, /versionHistory\.filter\(\(item\) => String\(item\.assetId/)
+  assert.match(finalSource, /:files="secureVersionFiles"/)
+  assert.match(finalSource, /:versions="activeVersionHistory"/)
+  assert.match(finalSource, /:evidence-versions="secureVersionFiles"/)
+  assert.match(finalSource, /draftKey\(row = this\.selectedRow, fileVersionId = this\.draftFileVersionId \?\? this\.canonicalFileVersionId\)/)
+  assert.match(finalSource, /activePreviewFile\.isCurrent !== false/)
+})
+
 test('W2 final conflicts pin the old descriptor, fail closed and reload server truth before auto-next', () => {
-  assert.match(finalSource, /String\(this\.activePreviewVersionId[\s\S]*String\(this\.canonicalFileVersionId/)
   assert.match(finalSource, /oldCanonicalVersionId[\s\S]*versionConflict = \{ old: oldCanonicalVersionId, latest \}/)
+  assert.match(finalSource, /draftFileVersionId = oldCanonicalVersionId/)
   assert.match(finalSource, /conflictPreviewFile = oldActiveFile/)
   assert.match(finalSource, /return this\.versionConflict \? null : \(this\.secureVersionFiles\[0\]/)
-  assert.match(finalSource, /draftKey\(row = this\.selectedRow, fileVersionId = this\.activePreviewVersionId \?\? this\.canonicalFileVersionId\)/)
   assert.match(finalSource, /isGraduationConflictResponse\(res\)[\s\S]*refreshSelectedConflictTruth/)
-  assert.match(finalSource, /await this\.loadStats\(\)/)
   assert.match(finalSource, /this\._selectIndexAfterLoad = reviewedIndex[\s\S]*await this\.load\(\)/)
 })
 
@@ -44,15 +53,23 @@ test('W2 proposal reuses the same workspace and preserves proposal, audit and de
   assert.match(proposalSource, /reviewProposal/)
   assert.match(proposalSource, /expectedVersion:\s*this\.detail\.materialVersion/)
   assert.match(proposalSource, /fileVersionId:\s*this\.detail\.fileVersionId/)
+  assert.match(proposalSource, /proposalVersions\(recordId\)/)
   assert.match(proposalSource, /gd-proposal-review-draft:\$\{this\.detail\.id\}:\$\{fileVersionId\}/)
+  assert.match(proposalSource, /draftFileVersionId = oldCanonical/)
   assert.match(proposalSource, /conflictPreviewFile = oldActiveFile/)
-  assert.match(proposalSource, /return this\.versionConflict \? null : \(this\.secureVersionFiles\[0\]/)
   assert.doesNotMatch(proposalSource, /ProposalPdfViewer|SecureFileList|previewVersion\(/)
+})
+
+test('W2 version bar labels history from server isCurrent rather than treating sibling attachments as history', () => {
+  assert.match(versionBarSource, /item\.isCurrent === false/)
+  assert.match(versionBarSource, /当前附件/)
+  assert.match(versionBarSource, /本次审核/)
 })
 
 test('W2 workspace keeps transport and domain commands outside the public Viewer', () => {
   assert.match(workspaceSource, /grid-template-columns:272px minmax\(680px,1fr\) 340px/)
   assert.match(workspaceSource, /AppDocumentViewer/)
   assert.match(workspaceSource, /FileEvidencePanel/)
+  assert.match(workspaceSource, /evidenceVersions/)
   assert.doesNotMatch(workspaceSource, /issueMaterialTicket|fileSdk|reviewFinal|reviewProposal|submitReview|material-center\/files/)
 })
