@@ -237,7 +237,7 @@ def _discipline_remove_context(db, instance, *, for_update: bool = False) -> dic
 
 def _grade_task_context(db, instance, *, for_update: bool = False) -> dict:
     """成绩任务审批展示任务规则和真实录入汇总；不把大量逐生成绩塞进通用详情。"""
-    from sqlalchemy import func, select
+    from sqlalchemy import case, func, select
     from app.models import AaGradeRecord, AaGradeTask
 
     row = _source_row(db, AaGradeTask, instance.source_biz_id, for_update=for_update)
@@ -246,9 +246,9 @@ def _grade_task_context(db, instance, *, for_update: bool = False) -> dict:
                 "sections": [], "attachments": [], "sourceVersion": None}
     aggregate = db.execute(select(
         func.count(AaGradeRecord.id),
-        func.sum(func.if_(AaGradeRecord.total_score.is_not(None), 1, 0)),
-        func.sum(func.if_(AaGradeRecord.pass_status == "PASSED", 1, 0)),
-        func.sum(func.if_(AaGradeRecord.pass_status == "FAILED", 1, 0)),
+        func.sum(case((AaGradeRecord.total_score.is_not(None), 1), else_=0)),
+        func.sum(case((AaGradeRecord.pass_status == "PASSED", 1), else_=0)),
+        func.sum(case((AaGradeRecord.pass_status == "FAILED", 1), else_=0)),
     ).where(
         AaGradeRecord.tenant_id == _tid(),
         AaGradeRecord.task_id == row.id,
@@ -282,32 +282,84 @@ def _grade_task_context(db, instance, *, for_update: bool = False) -> dict:
 
 
 def _grade_change_context(db, instance, *, for_update: bool = False) -> dict:
-    from app.models import AaGradeChangeRequest
+    """成绩更正兼容两条真实生产链，但 sourceBizId 始终是 AaGradeRecord.id。
 
-    row = _source_row(db, AaGradeChangeRequest, instance.source_biz_id, for_update=for_update)
-    if not row:
-        return {"completeness": MISSING, "summary": "成绩更正申请不存在或已删除",
+    新命令 AaGradeChangeRequest 通过 workflow_instance_id 回链本实例；旧流程没有命令行，
+    直接把 prev_* + 当前分项写在 AaGradeRecord。不能把 sourceBizId 当 changeRequest.id，
+    否则旧流程会 MISSING，数值 ID 恰好碰撞时还可能展示另一条申请。
+
+    sourceVersion 统一使用 AaGradeRecord.version_no：它正是成绩域用于判断正式事实是否被
+    其它入口改写的版本号；新命令自身的 proposed/before/reason 在 PENDING 生命周期内
+    不允许编辑。动作模式先锁 request（若有）再锁 record，与正式更正命令的锁顺序一致。
+    """
+    from sqlalchemy import select
+    from app.models import AaGradeRecord, AaGradeTask
+    from app.models.academic_affairs_effective_grade import AaGradeChangeRequest
+
+    request_stmt = select(AaGradeChangeRequest).where(
+        AaGradeChangeRequest.tenant_id == _tid(),
+        AaGradeChangeRequest.workflow_instance_id == int(instance.id),
+        AaGradeChangeRequest.is_deleted.is_(False),
+    )
+    if for_update:
+        request_stmt = request_stmt.with_for_update()
+    request = db.scalars(request_stmt).first()
+
+    record = _source_row(db, AaGradeRecord, instance.source_biz_id, for_update=for_update)
+    if not record:
+        return {"completeness": MISSING, "summary": "成绩更正对应的成绩明细不存在或已删除",
                 "sections": [], "attachments": [], "sourceVersion": None}
-    fields = [
-        _field("学生ID", row.student_id),
-        _field("更正理由", row.reason),
-        _field("更正前平时分", row.before_usual_score),
-        _field("更正前期中分", row.before_midterm_score),
-        _field("更正前期末分", row.before_final_score),
-        _field("更正前总评", row.before_total_score),
-        _field("拟改平时分", row.proposed_usual_score),
-        _field("拟改期中分", row.proposed_midterm_score),
-        _field("拟改期末分", row.proposed_final_score),
-        _field("拟改总评", row.proposed_total_score),
-        _field("拟改及格状态", row.proposed_pass_status),
-        _field("当前状态", row.status),
-    ]
+    if request and int(request.grade_record_id or 0) != int(record.id):
+        return {"completeness": ERROR, "summary": "成绩更正来源关联不一致",
+                "sections": [], "attachments": [], "sourceVersion": None,
+                "note": "更正命令与工作流 sourceBizId 不一致，已阻止审批"}
+
+    task = _source_row(db, AaGradeTask, record.task_id, for_update=False) if record.task_id else None
+    if request:
+        fields = [
+            _field("课程", getattr(task, "course_name", None)),
+            _field("学生ID", request.student_id),
+            _field("更正理由", request.reason),
+            _field("更正前平时分", request.before_usual_score),
+            _field("更正前期中分", request.before_midterm_score),
+            _field("更正前期末分", request.before_final_score),
+            _field("更正前总评", request.before_total_score),
+            _field("拟改平时分", request.proposed_usual_score),
+            _field("拟改期中分", request.proposed_midterm_score),
+            _field("拟改期末分", request.proposed_final_score),
+            _field("拟改总评", request.proposed_total_score),
+            _field("拟改及格状态", request.proposed_pass_status),
+            _field("当前状态", request.status),
+        ]
+        reason = request.reason
+        student_id = request.student_id
+        mode = "正式更正命令"
+    else:
+        fields = [
+            _field("课程", getattr(task, "course_name", None)),
+            _field("学生ID", record.student_id),
+            _field("更正理由", record.change_reason),
+            _field("更正前平时分", record.prev_usual_score),
+            _field("更正前期中分", record.prev_midterm_score),
+            _field("更正前期末分", record.prev_final_score),
+            _field("更正前总评", record.prev_total_score),
+            _field("拟改平时分", record.usual_score),
+            _field("拟改期中分", record.midterm_score),
+            _field("拟改期末分", record.final_score),
+            _field("拟改总评", record.total_score),
+            _field("拟改及格状态", record.pass_status),
+            _field("当前状态", "CHANGE_REVIEW"),
+        ]
+        reason = record.change_reason
+        student_id = record.student_id
+        mode = "兼容记录级流程"
+
     return {
         "completeness": _completeness(fields, ["学生ID", "更正理由", "当前状态"]),
-        "summary": f"成绩更正 · 学生 {row.student_id}",
+        "summary": f"成绩更正 · 学生 {student_id} · {mode}",
         "sections": [_section("成绩更正", fields)],
         "attachments": [],
-        "sourceVersion": int(row.version or 0),
+        "sourceVersion": int(record.version_no or 1),
     }
 
 
