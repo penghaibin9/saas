@@ -94,7 +94,7 @@
 </template>
 
 <script>
-import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppTemplateChips, AppPageGuide } from '@/components/common'
 import GraduationDocumentReviewWorkspace from '@/modules/graduation/components/GraduationDocumentReviewWorkspace.vue'
@@ -112,7 +112,7 @@ const REJECT_REASON_CHIPS = ['材料不完整，请补充', '内容质量不达�
 export default {
   name: 'FinalSubmissionListView',
   components: {
-    AppPageGuide, ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppButton,
+    AppPageGuide, ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton,
     AppExportButton, AppSearchBox, AppPagination, AppPermissionButton, AppTemplateChips,
     GraduationDocumentReviewWorkspace
   },

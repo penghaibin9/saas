@@ -24,7 +24,7 @@ function walk(relative, output = []) {
 const contract = read('docs/architecture/document-preview-contract.md')
 for (const marker of [
   'document-preview-contract/v1',
-  'preview permission **is not** `download` permission',
+  '`preview` permission **is not** `download` permission',
   'GRADUATION_MATERIAL',
   'BUSINESS_TICKET',
   'fileVersionId',
