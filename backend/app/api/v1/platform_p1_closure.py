@@ -1,21 +1,22 @@
 """Production route replacements for Platform P1 closure work.
 
-Keeps basic tenant-profile edits non-operational and optimistic, and makes customer
-success time/state contracts deterministic even when callers bypass the UI.
+The platform plane already owns canonical workforce capabilities. This module makes the
+seven UI closures consume those authorities instead of silently falling back to root-only
+access, while preserving optimistic locks, audit evidence and deterministic state machines.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
+from app.core.platform_principal import require_platform_principal
 from app.core.response import success
 from app.db.session import get_sessionmaker
 from app.models import PlatformConfig, Tenant
 from app.models.customer_success import RenewalTask, SupportTicket, TrainingRecord
-from app.modules.platform.routers.platform_bundle import require_platform_super_admin
 
 router = APIRouter(prefix="/platform", tags=["平台总控·P1生产闭环"])
 
@@ -28,6 +29,23 @@ _PROFILE_FIELDS = {
     "contactWechat": 64,
     "remark": 1000,
 }
+
+
+def require_platform_capability(capability: str):
+    """Use the same Platform Workforce authority as the canonical platform router."""
+    def _dep(user=Depends(require_platform_principal)):
+        from app.services import platform_access_governance_service as pam
+        return pam.assert_platform_capability(user, capability)
+    return _dep
+
+
+def _has_platform_capability(user: dict, capability: str) -> bool:
+    try:
+        from app.services import platform_access_governance_service as pam
+        pam.assert_platform_capability(user, capability)
+        return True
+    except Exception:
+        return False
 
 
 def _tenant_meta_row(db, tenant_id: int, *, lock: bool = False):
@@ -48,7 +66,7 @@ def _tenant_meta_row(db, tenant_id: int, *, lock: bool = False):
     return tenant, row
 
 
-def _profile_payload(tenant: Tenant, row: PlatformConfig | None) -> dict:
+def _profile_payload(tenant: Tenant, row: PlatformConfig | None, *, can_edit: bool = False) -> dict:
     meta = dict((row.config_json or {}) if row else {})
     return {
         "tenantId": str(tenant.id),
@@ -64,6 +82,7 @@ def _profile_payload(tenant: Tenant, row: PlatformConfig | None) -> dict:
         # Environment changes state/destruction semantics and is intentionally read-only here.
         "environment": meta.get("environment", "production"),
         "version": int(row.version or 1) if row else 0,
+        "canEdit": bool(can_edit),
     }
 
 
@@ -142,7 +161,7 @@ def _save_profile(tenant_id: int, body: dict, user: dict) -> dict:
         )
         db.commit()
         db.refresh(row)
-        result = _profile_payload(tenant, row)
+        result = _profile_payload(tenant, row, can_edit=True)
     except Exception:
         db.rollback()
         raise
@@ -157,26 +176,28 @@ def _save_profile(tenant_id: int, body: dict, user: dict) -> dict:
     return result
 
 
-@router.get("/tenants/{tenant_id}/profile", summary="租户基础资料（环境只读）")
-def tenant_profile(tenant_id: int, user=Depends(require_platform_super_admin)):
+@router.get("/tenants/{tenant_id}/profile", summary="租户基础资料（tenant.view，只读环境）")
+def tenant_profile(
+    tenant_id: int,
+    user=Depends(require_platform_capability("tenant.view")),
+):
     db = get_sessionmaker()()
     try:
         tenant, row = _tenant_meta_row(db, tenant_id)
-        return success(_profile_payload(tenant, row))
+        return success(_profile_payload(
+            tenant,
+            row,
+            can_edit=_has_platform_capability(user, "customerSuccess.manage"),
+        ))
     finally:
         db.close()
 
 
-@router.put("/tenants/{tenant_id}/profile", summary="安全修改租户基础资料")
+@router.put("/tenants/{tenant_id}/profile", summary="安全修改租户基础资料（customerSuccess.manage）")
 def tenant_profile_update(
-    tenant_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)
-):
-    return success(_save_profile(tenant_id, body, user), message="租户基础资料已保存")
-
-
-@router.put("/tenants/{tenant_id}", summary="租户基础信息修改（兼容入口，执行同一生产约束）")
-def tenant_update_compat(
-    tenant_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)
+    tenant_id: int,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("customerSuccess.manage")),
 ):
     return success(_save_profile(tenant_id, body, user), message="租户基础资料已保存")
 
@@ -211,9 +232,64 @@ def _current_row(model, row_id: int):
         db.close()
 
 
+# ── PLAT-05: one canonical delegated authority for read and write surfaces. ──
+@router.get("/customer-success/overview", summary="客户健康、工单、培训与续费首屏结论")
+def customer_success_overview(user=Depends(require_platform_capability("customerSuccess.manage"))):
+    from app.services import customer_health_service as cs
+    return success(cs.governance_overview())
+
+
+@router.get("/tenants/{tenant_id}/health-score", summary="单校健康分（实时判定，不落表）")
+def tenant_health_score(
+    tenant_id: int,
+    user=Depends(require_platform_capability("customerSuccess.manage")),
+):
+    from app.services import customer_health_service as cs
+    _ensure_tenant(tenant_id)
+    return success(cs.health_score(tenant_id))
+
+
+@router.get("/support-tickets", summary="客户成功工单列表")
+def support_tickets_list(
+    tenantId: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    user=Depends(require_platform_capability("customerSuccess.manage")),
+):
+    from app.services import customer_health_service as cs
+    items = cs.list_tickets(tenant_id=int(tenantId) if tenantId else None, status=status)
+    return success({"items": items, "total": len(items)})
+
+
+@router.post("/support-tickets", summary="创建客户成功工单")
+def support_ticket_create(
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("customerSuccess.manage")),
+):
+    from app.modules.platform.routers.platform_bundle import _audit
+    from app.services import customer_health_service as cs
+    try:
+        tenant_id = int((body or {}).get("tenantId") or 0)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "tenantId 必须是正整数") from None
+    if tenant_id <= 0:
+        raise AppException("VALIDATION_ERROR", "必须指定 tenantId")
+    _ensure_tenant(tenant_id)
+    out = cs.create_ticket(
+        tenant_id=tenant_id,
+        title=(body or {}).get("title") or "",
+        description=(body or {}).get("description") or "",
+        severity=str((body or {}).get("severity") or "P2").upper(),
+        reporter_name=(body or {}).get("reporterName") or "",
+    )
+    _audit("PLATFORM_SUPPORT_TICKET_CREATE", out["id"], out, tenant_id=tenant_id)
+    return success(out, message="工单已创建")
+
+
 @router.post("/support-tickets/{ticket_id}/transition", summary="流转客户工单（状态机）")
 def support_ticket_transition(
-    ticket_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)
+    ticket_id: int,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("customerSuccess.manage")),
 ):
     from app.modules.platform.routers.platform_bundle import _audit, _expected_version
     from app.services import customer_health_service as cs
@@ -238,8 +314,21 @@ def support_ticket_transition(
     return success(out, message="工单状态已更新")
 
 
+@router.get("/trainings", summary="客户培训记录列表")
+def trainings_list(
+    tenantId: str | None = Query(default=None),
+    user=Depends(require_platform_capability("customerSuccess.manage")),
+):
+    from app.services import customer_health_service as cs
+    items = cs.list_trainings(tenant_id=int(tenantId) if tenantId else None)
+    return success({"items": items, "total": len(items)})
+
+
 @router.post("/trainings", summary="登记客户培训计划（UTC 契约）")
-def training_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+def training_create(
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("customerSuccess.manage")),
+):
     from app.modules.platform.routers.platform_bundle import _audit
     from app.services import customer_health_service as cs
     tenant_id = int((body or {}).get("tenantId") or 0)
@@ -257,7 +346,9 @@ def training_create(body: dict = Body(...), user=Depends(require_platform_super_
 
 @router.post("/trainings/{training_id}/complete", summary="完成客户培训（仅 SCHEDULED 可完成）")
 def training_complete(
-    training_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)
+    training_id: int,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("customerSuccess.manage")),
 ):
     from app.modules.platform.routers.platform_bundle import _audit, _expected_version
     from app.services import customer_health_service as cs
@@ -281,8 +372,22 @@ def training_complete(
     return success(out, message="培训已标记完成")
 
 
+@router.get("/renewal-tasks", summary="续费跟进任务列表")
+def renewal_tasks_list(
+    tenantId: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    user=Depends(require_platform_capability("customerSuccess.manage")),
+):
+    from app.services import customer_health_service as cs
+    items = cs.list_renewal_tasks(tenant_id=int(tenantId) if tenantId else None, status=status)
+    return success({"items": items, "total": len(items)})
+
+
 @router.post("/renewal-tasks", summary="创建续费跟进（UTC 契约）")
-def renewal_create(body: dict = Body(...), user=Depends(require_platform_super_admin)):
+def renewal_create(
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("customerSuccess.manage")),
+):
     from app.modules.platform.routers.platform_bundle import _audit
     from app.services import customer_health_service as cs
     tenant_id = int((body or {}).get("tenantId") or 0)
@@ -300,7 +405,9 @@ def renewal_create(body: dict = Body(...), user=Depends(require_platform_super_a
 
 @router.post("/renewal-tasks/{task_id}/transition", summary="流转续费任务（终态不可逆）")
 def renewal_transition(
-    task_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)
+    task_id: int,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("customerSuccess.manage")),
 ):
     from app.modules.platform.routers.platform_bundle import _audit, _expected_version
     from app.services import customer_health_service as cs
