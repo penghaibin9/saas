@@ -3,6 +3,7 @@ const MAX_ENTRY_BYTES = 32 * 1024 * 1024
 const MAX_TOTAL_UNCOMPRESSED = 80 * 1024 * 1024
 const MAX_ENTRIES = 2048
 const XML_MAX_BYTES = 6 * 1024 * 1024
+const MAX_RENDER_NODES = 50000
 
 class DocxPreviewError extends Error {
   constructor(code, message) {
@@ -47,6 +48,8 @@ class DocxArchive {
     this.bytes = bytes
     this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
     this.entries = new Map()
+    this.cache = new Map()
+    this.actualDecodedTotal = 0
     this.parseDirectory()
   }
 
@@ -56,7 +59,7 @@ class DocxArchive {
     const centralOffset = u32(this.view, eocd + 16)
     if (!count || count > MAX_ENTRIES) fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 文件结构过于复杂，无法安全站内预览')
     let offset = centralOffset
-    let total = 0
+    let declaredTotal = 0
     const decoder = new TextDecoder('utf-8')
     for (let index = 0; index < count; index += 1) {
       if (offset + 46 > this.bytes.byteLength || u32(this.view, offset) !== 0x02014b50) fail('PREVIEW_DOCX_MALFORMED', 'DOCX 中央目录损坏')
@@ -70,18 +73,29 @@ class DocxArchive {
       const localOffset = u32(this.view, offset + 42)
       if (flags & 0x1) fail('PREVIEW_DOCX_MALFORMED', '加密 DOCX 不支持站内预览')
       if (uncompressedSize > MAX_ENTRY_BYTES) fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 单个内容块超过安全渲染上限')
-      total += uncompressedSize
-      if (total > MAX_TOTAL_UNCOMPRESSED) fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 解压后内容超过安全渲染上限')
+      declaredTotal += uncompressedSize
+      if (declaredTotal > MAX_TOTAL_UNCOMPRESSED) fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 解压后内容超过安全渲染上限')
       const nameStart = offset + 46
       const nameEnd = nameStart + nameLength
-      if (nameEnd > this.bytes.byteLength) fail('PREVIEW_DOCX_MALFORMED', 'DOCX 文件名目录损坏')
+      const nextOffset = nameEnd + extraLength + commentLength
+      if (nameEnd > this.bytes.byteLength || nextOffset > this.bytes.byteLength) fail('PREVIEW_DOCX_MALFORMED', 'DOCX 文件目录越界')
       const name = decoder.decode(this.bytes.subarray(nameStart, nameEnd)).replace(/\\/g, '/')
+      if (!name || this.entries.has(name)) fail('PREVIEW_DOCX_MALFORMED', 'DOCX 包含重复或空文件项')
       this.entries.set(name, { method, compressedSize, uncompressedSize, localOffset })
-      offset = nameEnd + extraLength + commentLength
+      offset = nextOffset
     }
   }
 
+  track(name, bytes) {
+    if (bytes.byteLength > MAX_ENTRY_BYTES) fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 单个内容块超过安全渲染上限')
+    this.actualDecodedTotal += bytes.byteLength
+    if (this.actualDecodedTotal > MAX_TOTAL_UNCOMPRESSED) fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 实际解压内容超过安全渲染上限')
+    this.cache.set(name, bytes)
+    return bytes
+  }
+
   async read(name) {
+    if (this.cache.has(name)) return this.cache.get(name)
     const entry = this.entries.get(name)
     if (!entry) return null
     const offset = entry.localOffset
@@ -90,9 +104,9 @@ class DocxArchive {
     const extraLength = u16(this.view, offset + 28)
     const start = offset + 30 + nameLength + extraLength
     const end = start + entry.compressedSize
-    if (end > this.bytes.byteLength) fail('PREVIEW_DOCX_MALFORMED', 'DOCX 内容块越界')
+    if (start > this.bytes.byteLength || end > this.bytes.byteLength) fail('PREVIEW_DOCX_MALFORMED', 'DOCX 内容块越界')
     const compressed = this.bytes.subarray(start, end)
-    if (entry.method === 0) return compressed.slice()
+    if (entry.method === 0) return this.track(name, compressed.slice())
     if (entry.method !== 8) fail('PREVIEW_DOCX_MALFORMED', 'DOCX 使用了不支持的压缩方式')
     if (typeof DecompressionStream !== 'function') fail('PREVIEW_DOCX_DECOMPRESSION_UNSUPPORTED', '当前浏览器不支持安全 DOCX 解压，请升级 Chrome/Edge 后重试')
     let output
@@ -102,8 +116,8 @@ class DocxArchive {
     } catch {
       fail('PREVIEW_DOCX_MALFORMED', 'DOCX 内容解压失败')
     }
-    if (output.byteLength > MAX_ENTRY_BYTES || output.byteLength > Math.max(entry.uncompressedSize * 2 + 4096, entry.uncompressedSize + 4096)) fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 解压内容异常，已停止渲染')
-    return output
+    if (output.byteLength > Math.max(entry.uncompressedSize * 2 + 4096, entry.uncompressedSize + 4096)) fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 解压内容与目录声明不一致')
+    return this.track(name, output)
   }
 
   async text(name) {
@@ -125,14 +139,18 @@ function parseXml(text, label) {
 function attr(node, localName) { return Array.from(node?.attributes || []).find((item) => item.localName === localName)?.value || '' }
 function first(node, localName) { return node?.getElementsByTagNameNS?.('*', localName)?.[0] || null }
 function direct(node, localName) { return Array.from(node?.children || []).filter((item) => item.localName === localName) }
+function countNode(context, amount = 1) {
+  context.renderedNodes += amount
+  if (context.renderedNodes > MAX_RENDER_NODES) fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 可视内容节点过多，已停止渲染')
+}
 
 function normalizeWordTarget(target) {
   const raw = String(target || '').replace(/\\/g, '/').replace(/^\/+/, '')
-  const parts = ['word']
+  const parts = raw.startsWith('word/') ? [] : ['word']
   for (const part of raw.split('/')) {
     if (!part || part === '.') continue
     if (part === '..') {
-      if (parts.length <= 1) return ''
+      if (!parts.length || (parts.length === 1 && parts[0] === 'word')) return ''
       parts.pop()
     } else parts.push(part)
   }
@@ -189,7 +207,7 @@ function applyRunStyle(run, element) {
 
 function imageMime(path) {
   const ext = String(path || '').split('.').pop().toLowerCase()
-  return ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml' })[ext] || 'application/octet-stream'
+  return ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp' })[ext] || ''
 }
 
 async function appendRunContent(node, target, context) {
@@ -201,13 +219,14 @@ async function appendRunContent(node, target, context) {
     else if (name === 'br' || name === 'cr') target.append(document.createElement('br'))
     else if (name === 'drawing' || name === 'pict') {
       const blip = first(child, 'blip')
-      const relId = attr(blip, 'embed')
-      const relation = context.rels.get(relId)
+      const relation = context.rels.get(attr(blip, 'embed'))
       if (!relation || relation.external || !relation.target) continue
+      const mime = imageMime(relation.target)
+      if (!mime) continue
       const bytes = await context.archive.read(relation.target)
       if (!bytes) continue
-      const blob = new Blob([bytes], { type: imageMime(relation.target) })
-      const url = URL.createObjectURL(blob)
+      countNode(context)
+      const url = URL.createObjectURL(new Blob([bytes], { type: mime }))
       context.objectUrls.push(url)
       const img = document.createElement('img')
       img.src = url
@@ -220,6 +239,7 @@ async function appendRunContent(node, target, context) {
 }
 
 async function renderParagraph(paragraph, context) {
+  countNode(context)
   const level = headingLevel(paragraph, context.styles)
   const element = document.createElement(level ? `h${level}` : 'p')
   element.className = level ? `docx-local-preview__heading is-h${level}` : 'docx-local-preview__paragraph'
@@ -234,11 +254,13 @@ async function renderParagraph(paragraph, context) {
   }
   for (const child of Array.from(paragraph.children || [])) {
     if (child.localName === 'r') {
+      countNode(context)
       const span = document.createElement('span')
       applyRunStyle(child, span)
       await appendRunContent(child, span, context)
       element.append(span)
     } else if (child.localName === 'hyperlink') {
+      countNode(context)
       const span = document.createElement('span')
       span.className = 'docx-local-preview__hyperlink-text'
       await appendRunContent(child, span, context)
@@ -250,12 +272,15 @@ async function renderParagraph(paragraph, context) {
 }
 
 async function renderTable(tableNode, context) {
+  countNode(context)
   const table = document.createElement('table')
   table.className = 'docx-local-preview__table'
   const body = document.createElement('tbody')
   for (const rowNode of direct(tableNode, 'tr')) {
+    countNode(context)
     const row = document.createElement('tr')
     for (const cellNode of direct(rowNode, 'tc')) {
+      countNode(context)
       const cell = document.createElement('td')
       for (const child of Array.from(cellNode.children || [])) {
         if (child.localName === 'p') cell.append(await renderParagraph(child, context))
@@ -269,6 +294,8 @@ async function renderTable(tableNode, context) {
   return table
 }
 
+function revokeUrls(urls) { urls.splice(0).forEach((url) => URL.revokeObjectURL(url)) }
+
 export async function buildDocxPreview(source) {
   const bytes = await sourceBytes(source)
   const archive = new DocxArchive(bytes)
@@ -277,17 +304,30 @@ export async function buildDocxPreview(source) {
   const relsXml = parseXml(await archive.text('word/_rels/document.xml.rels'), 'document relationships')
   const stylesXml = parseXml(await archive.text('word/styles.xml'), 'word/styles.xml')
   const objectUrls = []
-  const context = { archive, objectUrls, rels: relationships(relsXml), styles: paragraphStyles(stylesXml) }
-  const shell = document.createElement('article')
-  shell.className = 'docx-local-preview'
-  const page = document.createElement('section')
-  page.className = 'docx-local-preview__page'
-  shell.append(page)
-  const body = first(documentXml, 'body')
-  if (!body) fail('PREVIEW_DOCX_MALFORMED', 'DOCX 缺少正文节点')
-  for (const child of Array.from(body.children || [])) {
-    if (child.localName === 'p') page.append(await renderParagraph(child, context))
-    else if (child.localName === 'tbl') page.append(await renderTable(child, context))
+  const context = { archive, objectUrls, rels: relationships(relsXml), styles: paragraphStyles(stylesXml), renderedNodes: 0 }
+  try {
+    const shell = document.createElement('article')
+    shell.className = 'docx-local-preview'
+    const page = document.createElement('section')
+    page.className = 'docx-local-preview__page'
+    shell.append(page)
+    const body = first(documentXml, 'body')
+    if (!body) fail('PREVIEW_DOCX_MALFORMED', 'DOCX 缺少正文节点')
+    for (const child of Array.from(body.children || [])) {
+      if (child.localName === 'p') page.append(await renderParagraph(child, context))
+      else if (child.localName === 'tbl') page.append(await renderTable(child, context))
+    }
+    return { element: shell, dispose() { revokeUrls(objectUrls) } }
+  } catch (error) {
+    revokeUrls(objectUrls)
+    throw error
   }
-  return { element: shell, dispose() { objectUrls.splice(0).forEach((url) => URL.revokeObjectURL(url)) } }
 }
+
+export const DOCX_PREVIEW_LIMITS = Object.freeze({
+  maxSourceBytes: MAX_SOURCE_BYTES,
+  maxEntryBytes: MAX_ENTRY_BYTES,
+  maxTotalUncompressed: MAX_TOTAL_UNCOMPRESSED,
+  maxEntries: MAX_ENTRIES,
+  maxRenderNodes: MAX_RENDER_NODES
+})
