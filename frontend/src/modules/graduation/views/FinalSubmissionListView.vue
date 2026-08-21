@@ -142,6 +142,7 @@ export default {
       detailRequestKey: '',
       activePreviewFileKey: null,
       activePreviewVersionId: null,
+      conflictPreviewFile: null,
       readerMode: 'embedded',
       previewDraftKey: '',
       versionConflict: null,
@@ -171,10 +172,14 @@ export default {
     secureVersionFiles() { return graduationMaterialCenterApi.normalizeVersions(this.finalDetail?.currentSafeVersions || []) },
     canonicalFileVersionId() { return this.finalDetail?.fileVersionId ?? null },
     activePreviewFile() {
-      if (!this.secureVersionFiles.length) return null
-      return this.secureVersionFiles.find((item) => String(this.fileKey(item)) === String(this.activePreviewFileKey))
+      if (
+        this.versionConflict && this.conflictPreviewFile &&
+        String(this.versionKey(this.conflictPreviewFile)) === String(this.activePreviewVersionId)
+      ) return this.conflictPreviewFile
+      const exact = this.secureVersionFiles.find((item) => String(this.fileKey(item)) === String(this.activePreviewFileKey))
         || this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId))
-        || this.secureVersionFiles[0]
+      if (exact) return exact
+      return this.versionConflict ? null : (this.secureVersionFiles[0] || null)
     },
     previewDescriptor() { return this.activePreviewFile ? graduationMaterialCenterApi.previewDescriptor(this.activePreviewFile) : null },
     canReview() {
@@ -252,10 +257,11 @@ export default {
       this.detailRequestKey = ''
       this.activePreviewFileKey = null
       this.activePreviewVersionId = null
+      this.conflictPreviewFile = null
       this.previewDraftKey = ''
       this.versionConflict = null
     },
-    draftKey(row = this.selectedRow, fileVersionId = this.canonicalFileVersionId) {
+    draftKey(row = this.selectedRow, fileVersionId = this.activePreviewVersionId ?? this.canonicalFileVersionId) {
       if (!row?.id || fileVersionId == null) return ''
       return `gd-final-review-draft:${row.id}:${fileVersionId}`
     },
@@ -267,10 +273,10 @@ export default {
         else sessionStorage.removeItem(key)
       } catch { /* sessionStorage unavailable */ }
     },
-    restoreCommentDraft() {
+    restoreCommentDraft(fallback = '') {
       this.previewDraftKey = this.draftKey()
-      if (!this.previewDraftKey) return
-      try { this.comment = sessionStorage.getItem(this.previewDraftKey) || '' } catch { this.comment = '' }
+      if (!this.previewDraftKey) { this.comment = fallback; return }
+      try { this.comment = sessionStorage.getItem(this.previewDraftKey) || fallback } catch { this.comment = fallback }
     },
     clearCommentDraft() {
       const key = this.previewDraftKey || this.draftKey()
@@ -312,6 +318,9 @@ export default {
       if (!row || row.status === 'NOT_SUBMITTED' || !row.id) { this.resetDetail(); return }
       const oldCanonicalVersionId = this.canonicalFileVersionId
       const oldActiveVersionId = this.activePreviewVersionId
+      const oldActiveFile = this.activePreviewFile ? { ...this.activePreviewFile } : null
+      const oldDraft = this.comment
+      this.saveCommentDraft()
       const requestKey = `${row.id}:${this.batchStore.selectedBatchId}:${Date.now()}`
       this.detailRequestKey = requestKey
       this.detailLoading = true
@@ -329,19 +338,28 @@ export default {
       if (oldCanonicalVersionId != null && latest != null && String(oldCanonicalVersionId) !== String(latest)) {
         this.versionConflict = { old: oldCanonicalVersionId, latest }
         this.activePreviewVersionId = oldActiveVersionId ?? oldCanonicalVersionId
-      } else {
-        this.versionConflict = null
-        this.activePreviewVersionId = latest
+        this.conflictPreviewFile = oldActiveFile
+        this.activePreviewFileKey = oldActiveFile ? this.fileKey(oldActiveFile) : null
+        this.restoreCommentDraft(oldDraft)
+        return
       }
+      this.versionConflict = null
+      this.conflictPreviewFile = null
+      this.activePreviewVersionId = latest
       const active = this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId)) || this.secureVersionFiles[0] || null
       this.activePreviewFileKey = active ? this.fileKey(active) : null
-      this.restoreCommentDraft()
+      this.restoreCommentDraft(oldDraft)
     },
     selectPreviewFile(item) {
       if (!item) return
+      const carriedDraft = this.comment
+      this.saveCommentDraft()
       this.activePreviewFileKey = this.fileKey(item)
       this.activePreviewVersionId = this.versionKey(item)
+      this.conflictPreviewFile = null
       if (this.versionConflict && String(this.activePreviewVersionId) === String(this.canonicalFileVersionId) && this.finalDetail?.reviewReady) this.versionConflict = null
+      this.restoreCommentDraft(carriedDraft)
+      this.saveCommentDraft()
     },
     selectPreviewVersion(item) { this.selectPreviewFile(item) },
     async downloadActivePreview() {
