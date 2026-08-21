@@ -16,6 +16,7 @@ from app.core.exceptions import AppException, no_permission, not_found
 from app.models import EmpAuditTrail, EmpFollowup, EmpJob, EmpMaterial, EmpStudent, StudentProfile
 from app.models.employment_recommendation import EmpRecommendation
 from app.models.file import FileBinding, FileObject
+from app.modules.employment.services import employment_destination_verification_service as verification_authority
 from app.modules.employment.services import employment_material_evidence_service as evidence_authority
 from app.modules.employment.services import employment_runtime_service as runtime
 from app.modules.employment.services import employment_service as base
@@ -471,36 +472,18 @@ def review_verification(user: dict, verification_id: Any, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "退回必须填写不少于 5 字的可执行补正意见")
 
     with session() as db:
+        # 授权用本端（移动教师端）自己的范围权威；核验的业务规则交给共享 domain
+        # 命令，保证 PC 与小程序对"什么证据足以支撑 VERIFIED"给出同一答案。
         emp, _profile = _scope_emp(db, verification_id, user, lock=True)
-        _assert_version(emp, body.get("expectedVersion"), "去向核验")
-        before = str(emp.verify_status or "PENDING_VERIFY").upper()
-        if action == "VERIFY":
-            if str(emp.destination_type or "").upper() == "UNEMPLOYED":
-                raise AppException("DATA_CONFLICT", "未就业学生没有可核验去向", http_status=409)
-            _materials, approved_ready = _material_evidence(db, emp)
-            if approved_ready <= 0:
-                raise AppException(
-                    "DATA_CONFLICT",
-                    "至少需要 1 份已审核通过且具有正式 FileBinding 的安全材料才能核验通过",
-                    http_status=409,
-                )
-            if before == "VERIFIED":
-                raise AppException("DATA_CONFLICT", "该去向已经核验通过，请刷新", http_status=409)
-            after = "VERIFIED"
-        else:
-            if before == "RETURNED":
-                raise AppException("DATA_CONFLICT", "该去向已退回补正，请等待学生更新材料", http_status=409)
-            after = "RETURNED"
-        emp.verify_status = after
-        emp.version = int(emp.version or 0) + 1
-        base._audit(db, "VERIFICATION", emp.id, "去向核验通过" if action == "VERIFY" else "去向核验退回",
-                    comment, before, after)
+        emp.verify_status = str(emp.verify_status or "PENDING_VERIFY").upper()
+        result = verification_authority.review(
+            db, emp,
+            action=action,
+            comment=comment,
+            expected_version=body.get("expectedVersion"),
+        )
         db.commit()
-        return {
-            "verificationId": str(emp.id),
-            "status": after,
-            "version": int(emp.version or 0),
-        }
+        return result
 
 
 @register_file_resolver(_FORMAL_BIZ_TYPE)

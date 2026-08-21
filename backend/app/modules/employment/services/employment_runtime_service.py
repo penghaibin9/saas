@@ -284,6 +284,70 @@ def list_materials(page, ps, *, user: dict, keyword=None, status=None, material_
         return base._mat_rows(db, rows, students), total
 
 
+def get_destination_verification(sid, *, user: dict) -> dict:
+    """教师 PC 去向核验工作区数据（TP-E02）。
+
+    授权走 PC 自己的数据范围权威 `_assert_emp_id`；证据判定与门槛复用共享
+    domain 权威，保证与教师小程序看到的是同一套结论。
+    """
+    from app.modules.employment.services import employment_destination_verification_service as verify_authority
+
+    with session() as db:
+        emp = _assert_emp_id(db, sid, user)
+        materials = db.scalars(select(EmpMaterial).where(
+            EmpMaterial.tenant_id == _tid(),
+            EmpMaterial.emp_student_id == emp.id,
+            EmpMaterial.is_deleted.is_(False),
+        ).order_by(EmpMaterial.id.desc())).all()
+        formal_approved = verify_authority.count_formal_approved_materials(db, emp)
+        verify_status = str(emp.verify_status or "PENDING_VERIFY").upper()
+        can_verify = (
+            formal_approved > 0
+            and verify_status != "VERIFIED"
+            and str(emp.destination_type or "").upper() != "UNEMPLOYED"
+        )
+        profiles = shadow.load_profiles(db, [emp])
+        return {
+            "student": base._stu_row(emp, db=db, profiles=profiles),
+            "materials": base._mat_rows(db, materials, {int(emp.id): emp}),
+            "verifyStatus": verify_status,
+            "verifyStatusLabel": base.L_VERIFY.get(verify_status, verify_status),
+            "formalApprovedCount": formal_approved,
+            "expectedVersion": int(emp.version or 0),
+            "allowedActions": (["VERIFY"] if can_verify else []) + (
+                ["RETURN"] if verify_status != "RETURNED" else []),
+            # 不能操作时给出可执行的原因，而不是只把按钮置灰。
+            "blockedReason": (
+                "" if can_verify else
+                "该学生去向为未就业，没有可核验去向"
+                if str(emp.destination_type or "").upper() == "UNEMPLOYED" else
+                "该去向已核验通过" if verify_status == "VERIFIED" else
+                "至少需要 1 份已审核通过且具有正式 FileBinding 的安全材料才能核验通过"
+            ),
+        }
+
+
+def review_destination_verification(sid, body: dict, *, user: dict) -> dict:
+    """教师 PC 执行去向核验 / 退回补正（TP-E02）。
+
+    与教师小程序共用同一 domain 命令：状态机、证据门槛、乐观锁、审计完全一致，
+    差别只在授权用各自端的数据范围权威。
+    """
+    from app.modules.employment.services import employment_destination_verification_service as verify_authority
+
+    body = body or {}
+    with session() as db:
+        emp = _assert_emp_id(db, sid, user)
+        result = verify_authority.review(
+            db, emp,
+            action=body.get("action"),
+            comment=body.get("comment") or "",
+            expected_version=body.get("expectedVersion"),
+        )
+        db.commit()
+        return result
+
+
 def get_material_detail(mid, *, user: dict) -> dict:
     with session() as db:
         material, emp = _assert_material(db, mid, user)

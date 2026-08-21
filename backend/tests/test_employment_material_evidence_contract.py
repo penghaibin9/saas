@@ -92,3 +92,54 @@ def test_no_duplicate_material_approval_implementation():
     # 重复的状态机赋值必须消失
     assert 'emp.verify_status = "VERIFIED"' not in block
     assert 'material.status = "APPROVED"' not in block
+
+
+# ---------------------------------------------------------------------------
+# TP-E02：教师 PC 独立核验命令与教师小程序共用同一 domain 权威
+# ---------------------------------------------------------------------------
+
+def test_verification_authority_owns_rules_but_not_authorization():
+    """核验的业务规则收敛到共享权威；授权必须留在各端自己的范围权威。
+
+    把某一端的 scope 解析套到另一端，就会出现误放行/误拒绝——所以共享权威
+    显式声明自己不做授权，并要求调用方传入已授权的 EmpStudent。
+    """
+    src = _src("backend/app/modules/employment/services/employment_destination_verification_service.py")
+    assert "**本模块不做授权判定。**" in src
+    assert "def review(db, emp, *, action: str" in src
+    assert "def count_formal_approved_materials(" in src
+    assert "def material_is_formal_evidence(" in src
+    assert "def assert_expected_version(" in src
+    # 共享权威不得自己 commit：调用方要能把核验与其他写操作放进同一事务
+    assert "db.commit()" not in src
+
+
+def test_pc_and_mini_both_delegate_to_the_same_verification_command():
+    pc = _src("backend/app/modules/employment/services/employment_runtime_service.py")
+    mini = _src("backend/app/services/teacher_mobile_employment_service.py")
+    # PC：本端授权 + 共享命令
+    assert "emp = _assert_emp_id(db, sid, user)" in pc
+    assert "verify_authority.review(" in pc
+    # Mini：本端授权 + 共享命令
+    assert "_scope_emp(db, verification_id, user, lock=True)" in mini
+    assert "verification_authority.review(" in mini
+
+
+def test_pc_verification_routes_require_optimistic_lock():
+    router = _src("backend/app/modules/employment/routers/employment.py")
+    schema = _src("backend/app/modules/employment/schemas/employment.py")
+    assert '@router.get("/students/{sid}/verification"' in router
+    assert '@router.post("/students/{sid}/verification"' in router
+    assert "class DestinationVerifyBody" in schema
+    assert 'action: str = Field(..., pattern="^(VERIFY|RETURN)$")' in schema
+    assert "expectedVersion: int = Field(..., ge=0)" in schema
+
+
+def test_pc_material_approve_copy_follows_real_backend_result():
+    """前端不得再一律宣称"已核验"——必须跟随服务端回传的 destinationVerified。"""
+    detail = _src("frontend/src/views/admin/employment/EmploymentMaterialDetailView.vue")
+    listing = _src("frontend/src/views/admin/employment/EmploymentMaterialListView.vue")
+    assert "res.data?.destinationVerified" in detail
+    assert "res.data?.destinationVerified" in listing
+    assert "去向核验状态未变更" in detail
+    assert "去向核验状态未变更" in listing

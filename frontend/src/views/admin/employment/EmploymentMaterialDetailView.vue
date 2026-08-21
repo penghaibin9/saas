@@ -146,16 +146,15 @@ export default {
     approveMessage() {
       const m = this.detail?.material || {}
       const name = m.file?.fileName || m.fileName || '该材料'
-      // 后端（employment_runtime_material_service.approve_material）确实在材料通过的
-      // 同一事务里把 verify_status 置为 VERIFIED —— 这是 PC 端既有的闭环契约，并有
-      // 契约测试锁定，所以文案照实说。但证据强弱必须讲清楚：只有历史文件名文本时，
-      // 老师是在没有正式安全文件的情况下完成核验，确认框要显式警示。
-      const base = `确认通过《${name}》？通过后学生就业记录将标记为已核验并计入就业统计。`
-      if (m.formalEvidence) return base
-      if (m.legacyFileNameOnly) {
-        return `${base}\n注意：该材料只有历史文件名文本，没有正式文件绑定与安全扫描记录，不构成可核验的正式证据。`
+      // TP-E04：材料审核的闭环只在证据成立时才会顺带完成去向核验，文案必须与
+      // 后端实际会发生的事一致，不能一律宣称"标记为已核验"。
+      if (m.formalEvidence) {
+        return `确认通过《${name}》？该材料具备正式文件绑定与安全扫描记录，通过后将同时完成去向核验并计入就业统计，全程留痕。`
       }
-      return `${base}\n注意：该材料尚未上传正式文件，没有可复核的原文证据。`
+      const why = m.legacyFileNameOnly
+        ? '该材料只有历史文件名文本，没有正式文件绑定与安全扫描记录'
+        : '该材料尚未上传正式文件'
+      return `确认通过《${name}》？${why}，不构成可核验的正式证据——通过后只会记录「材料已通过」，去向核验状态保持不变，需在学生详情页的「去向核验」中单独处理。`
     }
   },
   created() {
@@ -192,7 +191,11 @@ export default {
       try {
         const res = await api.approveMaterial(this.detail.material.id, {})
         if (res.code === 0) {
-          toast.success('材料审核通过，已写入留痕')
+          // 服务端如实回传这一步到底做成了什么（destinationVerified），前端照抄，
+          // 不再把"材料通过"一律说成"已核验"。
+          toast.success(res.data?.destinationVerified
+            ? '材料审核通过，去向核验已同步完成，已写入留痕'
+            : '材料审核通过，已写入留痕；因缺少正式证据，去向核验状态未变更')
           this.approveVisible = false
           this.load()
         } else toast.error(res.message)

@@ -415,6 +415,20 @@ export function approveMaterial(id, { comment = '' } = {}) {
   }), '材料审核通过失败')
 }
 
+// TP-E02：教师 PC 去向核验。与教师小程序共用同一 domain 命令（证据门槛 / 状态机 /
+// 乐观锁 / 审计一致），差别只在授权走各自端的数据范围权威。
+export function getDestinationVerification(studentId) {
+  return call(() => request(`/employment/students/${studentId}/verification`),
+    '去向核验信息加载失败')
+}
+
+export function reviewDestinationVerification(studentId, { action, comment = '', expectedVersion }) {
+  const body = { action, comment, expectedVersion }
+  return call(() => request(`/employment/students/${studentId}/verification`, {
+    method: 'POST', body, headers: idempotencyHeaders('destination-verification', { studentId, ...body })
+  }), action === 'VERIFY' ? '去向核验失败' : '去向退回失败')
+}
+
 export function returnMaterial(id, { reason }) {
   const body = { reason }
   return call(() => request(`/employment/materials/${id}/return`, {

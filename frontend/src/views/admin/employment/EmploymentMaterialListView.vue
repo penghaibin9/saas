@@ -284,7 +284,11 @@ export default {
     async doApprove(row) {
       const res = await api.approveMaterial(row.id, {})
       if (res.code === 0) {
-        toast.success(`已通过《${row.fileName}》，学生就业记录标记为已核验`)
+        // TP-E04：只有材料真的构成正式证据时后端才会顺带完成去向核验，
+        // 提示语必须跟随服务端的真实结果。
+        toast.success(res.data?.destinationVerified
+          ? `已通过《${row.fileName}》，去向核验已同步完成`
+          : `已通过《${row.fileName}》；因缺少正式证据，去向核验状态未变更`)
         this.load()
       } else toast.error(res.message)
     },
