@@ -28,15 +28,15 @@
     </template>
 
     <template v-else-if="mode === 'config'">
-      <div v-if="!configOverrides.length && !loading" class="p1-empty">当前 SECURITY 域没有可撤销的有效覆盖，全部继承平台/套餐/历史配置。</div>
+      <div v-if="!configOverrides.length && !loading" class="p1-empty">当前 SECURITY 域没有可撤销的学校层覆盖，全部继承平台/套餐/历史配置。</div>
       <div v-else class="p1-table-wrap">
         <table>
-          <thead><tr><th>配置</th><th>当前覆盖</th><th>层级</th><th>生效时间</th><th>操作</th></tr></thead>
+          <thead><tr><th>配置</th><th>当前/计划值</th><th>覆盖链</th><th>当前生效时间</th><th>操作</th></tr></thead>
           <tbody>
-            <tr v-for="item in configOverrides" :key="item.overrideId">
+            <tr v-for="item in configOverrides" :key="item.configKey">
               <td><b>{{ item.configName }}</b><small>{{ item.configKey }}</small></td>
-              <td>{{ displayValue(item.value) }}</td>
-              <td>{{ item.scopeType }}{{ item.scopeId ? ` · ${item.scopeId}` : '' }}</td>
+              <td>{{ displayValue(item.value) }}<small v-if="item.isScheduledOnly">仅有未来计划覆盖</small></td>
+              <td>{{ item.overrideCount }} 条学校覆盖<small v-if="item.scheduledCount">其中 {{ item.scheduledCount }} 条待生效</small></td>
               <td>{{ fmt(item.effectiveAt) }}</td>
               <td><AppButton variant="secondary" @click="selectOverride(item)">恢复继承</AppButton></td>
             </tr>
@@ -44,7 +44,10 @@
         </table>
       </div>
       <div v-if="selectedOverride" class="p1-confirm">
-        <div><b>撤销 {{ selectedOverride.configName }} 的 {{ selectedOverride.scopeType }} 覆盖？</b><p>撤销后不会写死一个“默认值”，而是重新走后端 Resolver 继承上层有效值。</p></div>
+        <div>
+          <b>撤销 {{ selectedOverride.configName }} 的全部学校层覆盖？</b>
+          <p>将按每条记录的 expectedVersion 逐条撤销 {{ selectedOverride.overrideCount }} 条当前/计划覆盖；完成后重新走后端 Resolver 继承上层有效值。</p>
+        </div>
         <input v-model.trim="overrideReason" placeholder="撤销原因，至少 5 个字" />
         <div class="p1-actions">
           <AppButton variant="ghost" @click="selectedOverride = null">取消</AppButton>
@@ -171,7 +174,7 @@ export default {
     subtitle() {
       return {
         role: '在既有角色治理页直接创建带来源、起止时间和审计原因的正式授权。',
-        config: '撤销本层覆盖后恢复后端 Resolver 继承，不手填“默认值”。',
+        config: '撤销学校层当前与计划覆盖后恢复后端 Resolver 继承，不手填“默认值”。',
         identity: '按稳定 userId/studentId 解释账号是谁；错误绑定可留痕解除。',
         org: '移动/停用/作废前先计算专业、班级、学生和任职影响，并作为真实写操作前置门。'
       }[this.mode] || ''
@@ -232,13 +235,23 @@ export default {
     async revokeOverride() {
       if (!this.selectedOverride) return
       if (this.overrideReason.trim().length < 5) return toast.error('撤销原因不少于 5 个字')
+      const chain = this.selectedOverride.overrideChain || [{
+        overrideId: this.selectedOverride.overrideId,
+        version: this.selectedOverride.version
+      }]
       this.saving = true
-      const res = await systemApi.revokeConfigOverride(this.selectedOverride.overrideId, {
-        reason: this.overrideReason.trim(), expectedVersion: this.selectedOverride.version
-      })
+      for (const row of chain) {
+        const res = await systemApi.revokeConfigOverride(row.overrideId, {
+          reason: this.overrideReason.trim(), expectedVersion: row.version
+        })
+        if (res.code !== 0) {
+          this.saving = false
+          await this.load()
+          return toast.error(`恢复继承未完成：${res.message}`)
+        }
+      }
       this.saving = false
-      if (res.code !== 0) return toast.error(res.message)
-      toast.success('本层覆盖已撤销，当前值已恢复继承')
+      toast.success(`已撤销 ${chain.length} 条学校层覆盖，当前值恢复继承`)
       this.selectedOverride = null
       await this.load()
       this.$emit('refresh-child')
