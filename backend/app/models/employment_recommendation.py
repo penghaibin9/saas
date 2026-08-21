@@ -1,7 +1,8 @@
 """Teacher V3 T7 first-class employment recommendation fact.
 
-A recommendation is not a follow-up row. It has its own stable identity,
-job/student/teacher provenance and outcome lifecycle.
+A recommendation is not a follow-up row.  It has its own stable identity, job/student/teacher
+provenance and outcome lifecycle; EmpFollowup may only be written as a secondary audit-friendly
+side effect by the recommendation command.
 """
 from __future__ import annotations
 
