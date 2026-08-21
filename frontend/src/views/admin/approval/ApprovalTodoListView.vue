@@ -354,31 +354,46 @@ export default {
         else this.transferError = res.message
       }
     },
+    batchResultMessage(data, actionLabel, successSuffix = '') {
+      const succeeded = Number(data?.succeeded || 0)
+      const failed = Number(data?.failed || 0)
+      const skipped = Number(data?.skipped || 0)
+      const results = Array.isArray(data?.results) ? data.results : []
+      const stale = results.filter((x) => {
+        const code = String(x.errorCode || '')
+        return code.includes('VERSION') || code.includes('CONTEXT') || code.includes('CONFLICT')
+      }).length
+      const counts = `成功 ${succeeded} 条${failed ? `，失败 ${failed} 条` : ''}${skipped ? `，跳过 ${skipped} 条` : ''}`
+      const staleHint = stale ? `；其中 ${stale} 条审批事实已变化或缺少版本快照，请刷新列表/详情后重试` : ''
+      return `${actionLabel}：${counts}${successSuffix}${staleHint}`
+    },
+    handleBatchResponse(res, actionLabel, successSuffix = '') {
+      if (res.code !== 0) {
+        toast.error(res.message)
+        return false
+      }
+      const failed = Number(res.data?.failed || 0)
+      const message = this.batchResultMessage(res.data, actionLabel, successSuffix)
+      if (failed > 0) toast.error(message)
+      else toast.success(message)
+      // batch 是逐条事务，部分成功也已经真实落库；无论全绿还是部分失败都必须刷新，
+      // 不能保留一份把“已办”和“仍待办”混在一起的旧选择集。
+      this.afterMutate()
+      return failed === 0
+    },
     async doBatchApprove() {
       this.submitting = true
       const res = await approvalApi.batchApprove([...this.selected])
       this.submitting = false
       this.approveDialog = false
-      if (res.code === 0) {
-        toast.success(
-          '批量通过完成：成功 ' + res.data.succeeded + ' 条' + (res.data.skipped ? '，跳过 ' + res.data.skipped + ' 条' : '') + '，已留痕并同步申请人'
-        )
-        this.afterMutate()
-      } else {
-        toast.error(res.message)
-      }
+      this.handleBatchResponse(res, '批量通过完成', '，成功项已留痕并同步申请人')
     },
     async doBatchReturn({ reason }) {
       this.submitting = true
       const res = await approvalApi.batchReturn([...this.selected], { reason })
       this.submitting = false
       this.returnDialog = false
-      if (res.code === 0) {
-        toast.success('批量退回完成：成功 ' + res.data.succeeded + ' 条，退回原因已同步申请人并写入退回记录')
-        this.afterMutate()
-      } else {
-        toast.error(res.message)
-      }
+      this.handleBatchResponse(res, '批量退回完成', '，成功项已写入真实退回记录')
     },
     async doBatchTransfer() {
       this.transferError = ''
@@ -396,13 +411,9 @@ export default {
         note: this.transferForm.note
       })
       this.submitting = false
-      if (res.code === 0) {
-        this.transferDrawer = false
-        toast.success('批量转交完成：' + res.data.succeeded + ' 条已转交给 ' + res.data.transferredTo + '，原任务留痕并生成新待办')
-        this.afterMutate()
-      } else {
-        this.transferError = res.message
-      }
+      if (res.code === 0) this.transferDrawer = false
+      const target = res.data?.transferredTo || this.transferForm.targetUserId
+      this.handleBatchResponse(res, '批量转交完成', `，成功项已转交给 ${target} 并保留原任务留痕`)
     },
     async doExport() {
       this.submitting = true
