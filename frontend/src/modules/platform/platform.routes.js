@@ -81,11 +81,11 @@ const platformRoutes = {
       meta: { moduleCode: 'PLATFORM', title: '数据治理、集成目录与合规证据', requiresAuth: true, permissionKey: 'platform.control.view' }
     },
     {
-      // PLAT-05：客户健康、工单、培训与续费
+      // PLAT-05：客户健康、工单、培训与续费；与 Platform Workforce customerSuccess.manage 同源。
       path: 'customer-success',
       name: 'platform-customer-success',
       component: () => import('@/modules/platform/views/control/PlatformCustomerSuccessView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '客户健康、工单、培训与续费', requiresAuth: true, permissionKey: 'platform.control.view' }
+      meta: { moduleCode: 'PLATFORM', title: '客户健康、工单、培训与续费', requiresAuth: true, permissionKey: 'platform.customerSuccess.manage' }
     },
     {
       path: 'tenant-migration',

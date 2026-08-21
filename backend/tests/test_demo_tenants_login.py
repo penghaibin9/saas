@@ -117,11 +117,15 @@ def test_mock_login_403_in_production(client, two_tenants, monkeypatch):
     assert r.status_code == 403
     assert "accessToken" not in (r.json().get("data") or {})
 
+    # production 的安全合同是关闭 mock-login；真实数据库账号密码登录必须继续可用，
+    # 且 P0 runtime 会把 refresh/risk state 持久化，不能把“生产”误断言成认证存储不可用。
     real = client.post("/api/v1/auth/login",
                        json={"loginName": "student", "password": "123456"})
-    assert real.status_code == 503
-    assert real.json()["bizCode"] == "AUTH_STORE_UNAVAILABLE"
-    assert "accessToken" not in (real.json().get("data") or {})
+    body = real.json()
+    assert real.status_code == 200
+    assert body["code"] == 0
+    assert body["data"]["accessToken"]
+    assert body["data"]["refreshToken"]
 
 
 def test_tenant_isolation_both_ways(client, two_tenants):

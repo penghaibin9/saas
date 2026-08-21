@@ -1,5 +1,5 @@
 [Unit]
-Description=School Lifecycle verified offsite backup
+Description=School Lifecycle verified offsite backup with machine evidence
 After=network-online.target mysql.service
 Wants=network-online.target
 
@@ -16,7 +16,7 @@ Environment=REQUIRE_UPLOAD_BACKUP=1
 Environment=BACKUP_REQUIRE_OFFSITE=true
 Environment=BACKUP_REQUIRE_IMMUTABLE_REMOTE=true
 Environment=RCLONE_CONFIG=/etc/school-lifecycle/rclone.conf
-ExecStart=/usr/bin/bash /opt/school-lifecycle/current/deploy/backup/backup-runner.sh
+ExecStart=/usr/bin/bash /opt/school-lifecycle/current/deploy/backup/machine-backup-runner.sh
 # A hung network/rclone call must never block the next 6-hour recovery-point window forever.
 # Five hours leaves one hour for failure visibility and operator intervention before the next slot.
 TimeoutStartSec=5h

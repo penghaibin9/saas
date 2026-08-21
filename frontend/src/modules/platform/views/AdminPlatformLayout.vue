@@ -10,7 +10,14 @@
   >
     <ErrorState v-if="error" :description="error" @retry="loadContext" />
     <LoadingState v-else-if="loading" text="正在校验平台身份与职责能力…" />
-    <router-view v-else-if="ctx" :ctx="ctx" />
+    <template v-else-if="ctx">
+      <TenantProfileEditor
+        v-if="showTenantProfileEditor"
+        :tenant-id="$route.params.tenantId"
+        @saved="contentKey += 1"
+      />
+      <router-view :key="contentKey" :ctx="ctx" />
+    </template>
   </BasePortalLayout>
 </template>
 
@@ -23,6 +30,7 @@
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { ErrorState, LoadingState } from '@/components/business'
+import TenantProfileEditor from '@/modules/platform/components/TenantProfileEditor.vue'
 import { PLATFORM_MANAGEMENT_CATALOG } from '@/modules/platform/platformManagementCatalog'
 import { canEnterRoute } from '@/security/permissionGate'
 import {
@@ -43,9 +51,9 @@ const BASE_MENUS = PLATFORM_MANAGEMENT_CATALOG.map((group) => ({
 
 export default {
   name: 'AdminPlatformLayout',
-  components: { BasePortalLayout, ErrorState, LoadingState },
+  components: { BasePortalLayout, ErrorState, LoadingState, TenantProfileEditor },
   data() {
-    return { ctx: null, loading: true, error: '' }
+    return { ctx: null, loading: true, error: '', contentKey: 0 }
   },
   computed: {
     menus() {
@@ -58,6 +66,9 @@ export default {
         .sort((a, b) => b.path.length - a.path.length)
         .find((m) => path === m.path || path.startsWith(m.path + '/'))
       return hit ? hit.key : (this.menus[0]?.key || '')
+    },
+    showTenantProfileEditor() {
+      return this.$route.name === 'platform-tenant-detail' && Boolean(this.$route.params.tenantId)
     }
   },
   created() {
