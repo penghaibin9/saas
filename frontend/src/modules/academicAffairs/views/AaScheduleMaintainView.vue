@@ -79,15 +79,14 @@
       </div>
     </AppConfirmDialog>
 
-    <AppExcelImportDrawer
+    <AaAuthoritativeImportDrawer
       v-model:visible="importVisible"
-      title="批量导入课表"
+      title="排课权威 XLSX 导入"
       template-name="排课结果导入模板.xlsx"
-      :required-fields="['教学任务ID', '星期', '节次']"
+      show-import-mode
       :preview-fields="['taskId', 'courseName', 'teacherName', 'className', 'weekday', 'slotNo', 'startWeek', 'endWeek', 'weekParity', 'classroom']"
       :download-template-fn="() => academicAffairsApi.downloadScheduleImportTemplate()"
-      :upload-fn="uploadAuthoritative"
-      :confirm-fn="confirmAuthoritative"
+      :upload-fn="(file, mode) => academicFileExchangeApi.uploadScheduleImport(batchId, file, mode)"
       @imported="onImported"
     />
   </ModulePageShell>
@@ -98,7 +97,7 @@
 import { ModulePageShell, LoadingState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppConfirmDialog, AppInlineAlert, AppSelect, AppClassPicker, AppClassroomPicker } from '@/components/common'
-import { AppExcelImportDrawer } from '@/components/common/excel'
+import AaAuthoritativeImportDrawer from '@/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicFileExchangeApi } from '@/modules/academicAffairs/api/academic-file-exchange.api'
@@ -132,12 +131,12 @@ export default {
   name: 'AaScheduleMaintainView',
   components: {
     ModulePageShell, LoadingState, AppButton, AppSectionCard, AppConfirmDialog, AppInlineAlert,
-    AppSelect, AppClassPicker, AppClassroomPicker, AppExcelImportDrawer, AaScheduleGrid
+    AppSelect, AppClassPicker, AppClassroomPicker, AaAuthoritativeImportDrawer, AaScheduleGrid
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      academicAffairsApi,
+      academicAffairsApi, academicFileExchangeApi,
       loading: false,
       slots: [], items: [], classId: '', className: '',
       conflictCell: null, lastConflict: '',

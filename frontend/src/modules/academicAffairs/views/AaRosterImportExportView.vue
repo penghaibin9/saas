@@ -62,16 +62,13 @@
       </AppSectionCard>
     </div>
 
-    <AppExcelImportDrawer
+    <AaAuthoritativeImportDrawer
       v-model:visible="importVisible"
-      title="导入学籍名册"
+      title="学籍名册权威 XLSX 导入"
       template-name="学籍导入模板.xlsx"
-      :required-fields="['学号', '姓名', '班级']"
       :preview-fields="['studentNo', 'realName', 'className', 'initialStatus']"
       :download-template-fn="() => academicAffairsApi.downloadRosterImportTemplate()"
-      :upload-fn="uploadAuthoritative"
-      :confirm-fn="confirmAuthoritative"
-      :download-errors-fn="({ rows, errors }) => academicAffairsApi.downloadRosterImportErrors(rows, errors)"
+      :upload-fn="academicFileExchangeApi.uploadRosterImport"
       @imported="onImported"
     />
 
@@ -88,7 +85,7 @@
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppConfirmDialog, AppSelect } from '@/components/common'
-import { AppExcelImportDrawer } from '@/components/common/excel'
+import AaAuthoritativeImportDrawer from '@/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicFileExchangeApi } from '@/modules/academicAffairs/api/academic-file-exchange.api'
 import { toast } from '@/utils/toast'
@@ -135,7 +132,7 @@ function previewResponse(item, message) {
 
 export default {
   name: 'AaRosterImportExportView',
-  components: { ModulePageShell, AppButton, AppSectionCard, AppExcelImportDrawer, AppConfirmDialog, AppSelect },
+  components: { ModulePageShell, AppButton, AppSectionCard, AaAuthoritativeImportDrawer, AppConfirmDialog, AppSelect },
   props: { ctx: { type: Object, required: true } },
   computed: {
     statusOptions() {
@@ -144,7 +141,7 @@ export default {
   },
   data() {
     return {
-      academicAffairsApi,
+      academicAffairsApi, academicFileExchangeApi,
       importVisible: false,
       currentImportJob: null,
       exporting: false,
