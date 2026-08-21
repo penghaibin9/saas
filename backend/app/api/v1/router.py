@@ -30,6 +30,7 @@ from app.api.v1.control_plane_auth import router as control_plane_auth_router
 from app.api.v1.control_plane_offboarding import router as control_plane_offboarding_router
 from app.api.v1.data_center import router as data_center_router
 from app.api.v1.help_metrics import router as help_metrics_router
+from app.api.v1.identity_p1_closure import router as identity_p1_closure_router
 from app.api.v1.mobile_academic_status import router as mobile_academic_status_router
 from app.api.v1.mobile_performance import router as mobile_performance_router
 from app.api.v1.platform_p1_closure import router as platform_p1_closure_router
@@ -107,6 +108,8 @@ _P1_REPLACEMENTS = {
     _sig("/system/config-overrides", "PUT"),
     _sig("/system/config-history/{config_key}", "GET"),
     _sig("/system/accounts/{user_id}/effective-identity", "GET"),
+    _sig("/system/accounts/{user_id}/repair-binding", "POST"),
+    _sig("/system/accounts/{user_id}/unbind", "POST"),
     _sig("/system/role-assignments", "POST"),
     _sig("/system/role-assignments/{assignment_id}/revoke", "POST"),
     _sig("/system/role-assignments/{assignment_id}/transfer", "POST"),
@@ -152,6 +155,7 @@ for supplemental_router in (
     control_plane_offboarding_router,
     auth_browser_router,
     system_p1_closure_router,
+    identity_p1_closure_router,
     platform_p1_closure_router,
     affairs_material_center_router,
     affairs_four_end_router,
