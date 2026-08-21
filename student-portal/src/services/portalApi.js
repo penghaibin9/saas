@@ -1,7 +1,7 @@
 /**
  * 学生 PC 门户 · API 门面。只暴露门户允许调用的接口（严格边界）。
  */
-import { downloadFile, request, uploadFile } from './request'
+import { request, uploadFile } from './request'
 import fileSdk from './fileSdk'
 
 const q = (obj) => {
@@ -160,8 +160,10 @@ export const portalApi = {
   employmentDestination: (body) => request('/portal/employment/destination', { method: 'POST', body }),
   employmentDestinationPrint: (body) => request('/portal/employment/destination/print', { method: 'POST', body }),
   // SP-E08：打印现在真实生成 PDF，fileId 来自 employmentDestinationPrint() 的响应。
+  // 走公共 fileSdk（而不是拼 /files/download/ 原始 URL）：下载路径统一在 fileSdk.js
+  // 这一个边界文件里收口，业务代码不得各自绕过。
   employmentDestinationDocumentDownload: (fileId, fileName = '就业去向登记表') =>
-    downloadFile(`/files/download/${encodeURIComponent(fileId)}`, fileName),
+    fileSdk.download(fileId, fileName),
   orientationMy: () => request('/portal/orientation/my'),
   orientationCollect: (body) => request('/portal/orientation/collect', { method: 'POST', body }),
   orientationGreenChannel: (body) => request('/portal/orientation/green-channel', { method: 'POST', body }),
