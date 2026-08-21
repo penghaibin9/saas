@@ -1,26 +1,53 @@
 import { expect } from '../lib/observability.mjs'
 
-function buildSyntheticPdf(label = 'YUEKE E2E SYNTHETIC DOCUMENT') {
-  const safeLabel = String(label).replace(/[()\\]/g, '')
-  const stream = `BT /F1 18 Tf 72 720 Td (${safeLabel}) Tj ET\n`
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    `<< /Length ${Buffer.byteLength(stream, 'ascii')} >>\nstream\n${stream}endstream`
-  ]
-  let body = '%PDF-1.4\n%YUEKE E2E SYNTHETIC DOCUMENT\n'
+const SYNTHETIC_MARKER = 'YUEKE E2E SYNTHETIC DOCUMENT'
+
+function serializePdfObjects(objects) {
+  let body = `%PDF-1.4\n%${SYNTHETIC_MARKER}\n`
   const offsets = [0]
-  for (let index = 0; index < objects.length; index += 1) {
-    offsets.push(Buffer.byteLength(body, 'ascii'))
-    body += `${index + 1} 0 obj\n${objects[index]}\nendobj\n`
+  for (let id = 1; id < objects.length; id += 1) {
+    offsets[id] = Buffer.byteLength(body, 'ascii')
+    body += `${id} 0 obj\n${objects[id]}\nendobj\n`
   }
   const xrefOffset = Buffer.byteLength(body, 'ascii')
-  body += `xref\n0 ${objects.length + 1}\n`
+  body += `xref\n0 ${objects.length}\n`
   body += '0000000000 65535 f \n'
-  for (const offset of offsets.slice(1)) body += `${String(offset).padStart(10, '0')} 00000 n \n`
-  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  for (let id = 1; id < objects.length; id += 1) {
+    body += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`
+  }
+  body += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  return body
+}
+
+function buildSyntheticPdf({ label = SYNTHETIC_MARKER, pages = 1, targetBytes = 0 } = {}) {
+  const pageCount = Math.max(1, Math.floor(Number(pages) || 1))
+  const safeLabel = String(label).replace(/[()\\]/g, '')
+  const objects = [null]
+  const pageIds = []
+
+  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>'
+  objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
+
+  for (let pageNo = 1; pageNo <= pageCount; pageNo += 1) {
+    const pageId = 4 + (pageNo - 1) * 2
+    const contentId = pageId + 1
+    pageIds.push(pageId)
+    const pageText = `${SYNTHETIC_MARKER} ${safeLabel} PAGE ${pageNo}/${pageCount}`
+    const stream = `BT /F1 14 Tf 54 720 Td (${pageText}) Tj ET\n`
+    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`
+    objects[contentId] = `<< /Length ${Buffer.byteLength(stream, 'ascii')} >>\nstream\n${stream}endstream`
+  }
+  objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageCount} >>`
+
+  let body = serializePdfObjects(objects)
+  const wantedBytes = Math.max(0, Math.floor(Number(targetBytes) || 0))
+  if (wantedBytes > Buffer.byteLength(body, 'ascii')) {
+    const paddingId = objects.length
+    const paddingBytes = Math.max(1, wantedBytes - Buffer.byteLength(body, 'ascii'))
+    const padding = 'X'.repeat(paddingBytes)
+    objects[paddingId] = `<< /Length ${paddingBytes} >>\nstream\n${padding}\nendstream`
+    body = serializePdfObjects(objects)
+  }
   return Buffer.from(body, 'ascii')
 }
 
@@ -81,7 +108,7 @@ export class StudentGraduationPage {
     }
   }
 
-  async submitProposal({ suffix, fileName }) {
+  async submitProposal({ suffix, fileName, pages = 1, targetBytes = 0 }) {
     const step = this.step('开题')
     await expect(step).toBeVisible()
     const action = step.getByRole('button').filter({ hasText: /填写|修改|重交|提交开题|完善/ }).first()
@@ -96,10 +123,12 @@ export class StudentGraduationPage {
     const outcome = this.page.getByLabel('预期成果', { exact: true })
     if (await outcome.count()) await outcome.fill(`Playwright 成果 ${suffix}：保留完整证据链。`)
 
+    const pdf = buildSyntheticPdf({ label: String(suffix), pages, targetBytes })
+    if (targetBytes) expect(pdf.length, 'large PDF fixture must meet the requested byte floor').toBeGreaterThanOrEqual(targetBytes)
     await this.page.locator('input[type=file]').setInputFiles({
       name: fileName,
       mimeType: 'application/pdf',
-      buffer: buildSyntheticPdf(`YUEKE E2E SYNTHETIC DOCUMENT ${suffix}`)
+      buffer: pdf
     })
 
     const [response] = await Promise.all([
@@ -151,13 +180,13 @@ export class StaffGraduationPage {
     await this.dismissGuideIfPresent()
   }
 
-  async selectStudent() {
+  async selectStudent(expectedPages = 1) {
     await this.dismissGuideIfPresent()
 
     const detail = this.page.locator('.prc')
     if (await detail.count() && await detail.isVisible()) {
       await expect(detail).toContainText(this.fixture.topicTitle)
-      await this.expectDocumentViewer()
+      await this.expectDocumentViewer(expectedPages)
       return
     }
 
@@ -167,13 +196,24 @@ export class StaffGraduationPage {
     await row.click()
     await expect(detail).toBeVisible()
     await expect(detail).toContainText(this.fixture.topicTitle)
-    await this.expectDocumentViewer()
+    await this.expectDocumentViewer(expectedPages)
   }
 
-  async expectDocumentViewer() {
+  async expectDocumentViewer(expectedPages = 1) {
     await expect(this.page.locator('.gd-review-workspace')).toBeVisible()
-    await expect(this.page.locator('[data-preview-adapter="pdf"]')).toBeVisible()
-    await expect(this.page.locator('[data-preview-adapter="pdf"] canvas').first()).toBeVisible()
+    const adapter = this.page.locator('[data-preview-adapter="pdf"]')
+    await expect(adapter).toBeVisible()
+    await expect(adapter.locator('canvas')).toHaveCount(expectedPages)
+    await expect(adapter.locator('canvas[data-zoom]').first()).toBeVisible()
+    await expect(this.page.locator('.dv-toolbar')).toContainText(`1 / ${expectedPages}`)
+
+    if (expectedPages >= 60) {
+      const initiallyRendered = await adapter.locator('canvas[data-zoom]').count()
+      expect(initiallyRendered, `${expectedPages}-page PDF must not eagerly render the whole document`).toBeLessThan(20)
+      const lastPage = adapter.locator(`[data-page="${expectedPages}"]`)
+      await lastPage.scrollIntoViewIfNeeded()
+      await expect(lastPage.locator('canvas')).toHaveAttribute('data-zoom', /.+/)
+    }
   }
 
   async waitForPendingQueueReload() {
