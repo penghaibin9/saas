@@ -19,7 +19,11 @@ on:
       - "frontend/src/services/file/**"
       - "frontend/src/components/file/**"
       - "student-portal/src/services/fileSdk.js"
+      - "student-portal/src/services/request.js"
       - "student-portal/src/components/file/**"
+      - "student-portal/src/views/graduation/GraduationMaterialsView.vue"
+      - "student-portal/src/views/graduation/GraduationWorkbenchView.vue"
+      - "student-portal/tests/document-preview-contract.test.mjs"
       - "miniapp/src/services/fileApi.js"
       - "miniapp/src/services/fileSdk.js"
       - "miniapp/src/components/file/**"
@@ -109,3 +113,5 @@ jobs:
         run: node scripts/check/check-file-client-contract.mjs
       - name: Document preview contract and bypass freeze
         run: node scripts/check/check-document-preview-contract.mjs
+      - name: Student PC Reader source contract
+        run: node --test student-portal/tests/document-preview-contract.test.mjs
