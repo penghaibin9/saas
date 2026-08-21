@@ -1,8 +1,9 @@
 """Version-bound preview/download authority for Student Affairs material evidence.
 
-The business resolver deliberately supports historical immutable FileVersion rows while
-keeping every byte read behind the existing Student Affairs permission/scope predicates
-and File Center object authorization.
+Historical immutable FileVersion reads are validated here, while business object access
+continues to use the single authoritative MATERIAL_REQUIREMENT resolver registered by the
+shared File Center. This keeps every byte read behind Student Affairs scope predicates and
+File Center object authorization without duplicate resolver registration.
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from app.core.exceptions import AppException, not_found
 from app.models.file import FileBinding, FileObject, FileVersion
 from app.modules.student_affairs.services import affairs_material_center_service as center
 from app.services.db_service import _tid, session
-from app.services.file_access_service import register_file_resolver, require_file_access
+from app.services.file_access_service import require_file_access
 from app.services.message_identity import resolve_message_user_id
 from app.services.storage import get_backend
 from app.core.redis_client import cache_set_json_if_absent
@@ -78,35 +79,6 @@ def _requirement_for_binding(db, binding: FileBinding):
     if not requirement:
         raise not_found("学工材料不存在")
     return requirement
-
-
-@register_file_resolver("MATERIAL_REQUIREMENT")
-def affairs_material_file_resolver(db, file_obj, bindings, user: dict, action: str) -> bool:
-    """Preserve Student self access and apply the same staff scope as the material center.
-
-    Historical SUPERSEDED bindings remain legitimate read evidence; this resolver does not
-    make them current again. Exact FileVersion membership is verified by resolve_material().
-    """
-    if db is None:
-        return False
-    valid = [
-        binding for binding in bindings
-        if not binding.is_deleted
-        and str(binding.module_code or "").lower() == center.MODULE_CODE
-        and str(binding.relation_type or "").upper() == "MATERIAL_SUBMISSION"
-        and str(binding.status or "").upper() in BINDING_STATUS
-        and binding.version_id and binding.asset_id
-    ]
-    requirement_ids = {str(binding.biz_id or "").strip() for binding in valid}
-    if len(requirement_ids) != 1:
-        return False
-    try:
-        requirement = _requirement_for_binding(db, valid[0])
-        if _student_self(db, requirement, user or {}):
-            return True
-        return bool(center._staff_can_enumerate(db, requirement, user or {}))
-    except Exception:
-        return False
 
 
 def resolve_material(file_id: int, file_version_id: int, user: dict, *, action: str) -> tuple[FileObject, FileVersion, Path]:
@@ -215,4 +187,4 @@ def consume_ticket(file_id: int, action: str, ticket: str, user: dict) -> tuple[
     return path, file_obj.file_name, int(version.id)
 
 
-__all__ = ["affairs_material_file_resolver", "consume_ticket", "issue_ticket", "resolve_material"]
+__all__ = ["consume_ticket", "issue_ticket", "resolve_material"]
