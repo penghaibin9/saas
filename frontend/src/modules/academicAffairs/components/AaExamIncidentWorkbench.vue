@@ -313,7 +313,7 @@ export default {
       this.loading = true
       this.error = ''
       try {
-        const res = await academicExamIncidentApi.workbench({
+        const data = await academicExamIncidentApi.workbench({
           batchId: this.batchId,
           view: this.view,
           page: this.pagination.page,
@@ -322,8 +322,6 @@ export default {
           keyword: this.appliedFilters.keyword || undefined,
           examDate: this.appliedFilters.examDate || undefined
         })
-        if (res.code !== 0) throw new Error(res.message || '异常工作台加载失败')
-        const data = res.data || {}
         this.rows = Array.isArray(data.items) ? data.items : []
         this.pagination.total = Number(data.total || 0)
         this.summary = {
@@ -393,12 +391,11 @@ export default {
       const action = this.pendingAction
       this.busy = true
       try {
-        const res = await academicExamIncidentApi.resolve(incidentId, {
+        await academicExamIncidentApi.resolve(incidentId, {
           action,
           reason,
           disciplineCaseRef: action === 'HANDOFF' ? this.disciplineCaseRef : undefined
         })
-        if (res.code !== 0) throw new Error(res.message || '异常处置失败')
         this.decisionVisible = false
         this.pendingAction = ''
         this.detailVisible = false
