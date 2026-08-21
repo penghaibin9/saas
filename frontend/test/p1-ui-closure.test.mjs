@@ -24,6 +24,7 @@ test('controlled support workspace uses scoped reads and actively expires volati
   assert.match(access, /进入协助/)
   assert.match(access, /tenant\.context\.read/)
   assert.match(access, /tenant\.audit\.read/)
+  assert.match(access, /file\.metadata\.read/)
   assert.match(access, /stepUpMfa/)
   assert.match(access, /mfaExpiryTimer/)
   assert.match(access, /token\.expiresIn/)
