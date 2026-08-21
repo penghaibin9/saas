@@ -1,4 +1,4 @@
-"""Seed isolated W2 exam-incident browser facts in the Playwright demo tenant."""
+"""Seed isolated W2 exam-incident browser facts in the writable Playwright sandbox tenant."""
 from __future__ import annotations
 
 import json
@@ -13,8 +13,9 @@ from sqlalchemy import delete, select
 from app.db.session import get_sessionmaker
 from app.models import AaExamAuditTrail, AaExamBatch, AaExamCourse, AaExamIncident, AaExamRoom, Tenant, User
 
-TENANT_ID = 1000000000000000003
-TENANT_CODE = "demo-school"
+TENANT_ID = 1000000000000000007
+TENANT_CODE = "sandbox-school"
+ADMIN_LOGIN = "admin2"
 BATCH_NAME = "W2考务异常浏览器验收批次"
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "e2e" / "academic-exam-incident-w2-fixture.json"
 
@@ -43,11 +44,11 @@ def main() -> int:
             raise SystemExit("run e2e_seed_playwright_tenants.py before W2 seed")
         admin = db.scalar(select(User).where(
             User.tenant_id == TENANT_ID,
-            User.login_name == "admin",
+            User.login_name == ADMIN_LOGIN,
             User.is_deleted.is_(False),
         ))
         if admin is None:
-            raise SystemExit("demo-school admin missing")
+            raise SystemExit("sandbox-school admin missing")
 
         previous_batches = db.scalars(select(AaExamBatch.id).where(
             AaExamBatch.tenant_id == TENANT_ID,
@@ -185,14 +186,14 @@ def main() -> int:
         db.commit()
         fixture = {
             "tenant": TENANT_CODE,
-            "username": "admin",
+            "username": ADMIN_LOGIN,
             "password": "123456",
             "batchId": str(batch.id),
             "batchName": BATCH_NAME,
             "attempts": attempts,
         }
         FIXTURE_PATH.write_text(json.dumps(fixture, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"[w2-e2e-seed] batch={batch.id} attempts={len(attempts)} fixture={FIXTURE_PATH}")
+        print(f"[w2-e2e-seed] tenant={TENANT_CODE} batch={batch.id} attempts={len(attempts)} fixture={FIXTURE_PATH}")
         return 0
     except Exception:
         db.rollback()
