@@ -51,11 +51,12 @@ class EmpStudent(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 # W1/P0：verify_status 是“当前去向事实是否已核验”的状态，不是一个可跨事实版本永久继承
-# 的标签。只要 destination_type/company_name/job_title 任一 canonical 核验事实发生 ORM
-# 更新，旧 VERIFIED/RETURNED 必须 fail-closed 回到 PENDING_VERIFY。把这一条放在 Session
-# flush invariant，而不是只散落在某一个 API/service 里，可同时覆盖教师 PC 编辑、批量更新、
-# 学生结构化提交写回及后续新增 ORM 写入口，避免以后再出现“新单位继承旧单位 VERIFIED”。
-_EMP_VERIFICATION_FACT_FIELDS = ("destination_type", "company_name", "job_title")
+# 的标签。只要登记表中会被学校核验/对外呈现的 canonical 去向事实发生 ORM 更新，旧
+# VERIFIED/RETURNED 必须 fail-closed 回到 PENDING_VERIFY。把这一条放在 Session flush
+# invariant，而不是只散落在某一个 API/service 里，可同时覆盖教师 PC 编辑、批量更新、
+# 学生结构化提交写回及后续新增 ORM 写入口，避免以后再出现“新事实继承旧 VERIFIED”。
+# sign_date 同样进入登记表 PDF，因此不能在修改签约日期后保留旧核验结论。
+_EMP_VERIFICATION_FACT_FIELDS = ("destination_type", "company_name", "job_title", "sign_date")
 
 
 @event.listens_for(Session, "before_flush")
@@ -66,6 +67,11 @@ def _invalidate_emp_verification_on_fact_change(session, _flush_context, _instan
         state = inspect(obj)
         if not any(state.attrs[name].history.has_changes() for name in _EMP_VERIFICATION_FACT_FIELDS):
             continue
+        # 绝大多数正式 command 已显式推进 version；模型不重复加。但若未来新增 ORM 写入口
+        # 忘记维护乐观锁版本，这里仍保证事实版本至少前进一步，使历史 PDF sourceVersion
+        # 与当前事实自然失配，不能继续被复用成“最新登记表”。
+        if not state.attrs.version.history.has_changes():
+            obj.version = int(obj.version or 0) + 1
         obj.verify_status = "PENDING_VERIFY"
 
 
