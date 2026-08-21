@@ -112,9 +112,18 @@ _P1_REPLACEMENTS = {
     _sig("/system/role-assignments/{assignment_id}/transfer", "POST"),
     _sig("/system/org-nodes/{org_type}/{node_id}/impact", "GET"),
     _sig("/system/org-nodes/{node_id}/status", "PUT"),
+    # PLAT-05 used to be root-only even though Platform Workforce already defines
+    # PLATFORM_CUSTOMER_SUCCESS -> customerSuccess.manage. Replace the whole family
+    # so one delegated authority governs both the page reads and its writes.
+    _sig("/platform/customer-success/overview", "GET"),
+    _sig("/platform/tenants/{tenant_id}/health-score", "GET"),
+    _sig("/platform/support-tickets", "GET"),
+    _sig("/platform/support-tickets", "POST"),
     _sig("/platform/support-tickets/{ticket_id}/transition", "POST"),
+    _sig("/platform/trainings", "GET"),
     _sig("/platform/trainings", "POST"),
     _sig("/platform/trainings/{training_id}/complete", "POST"),
+    _sig("/platform/renewal-tasks", "GET"),
     _sig("/platform/renewal-tasks", "POST"),
     _sig("/platform/renewal-tasks/{task_id}/transition", "POST"),
 }
