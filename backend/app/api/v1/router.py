@@ -28,6 +28,7 @@ from app.api.v1.affairs_student_returned import router as affairs_student_return
 from app.api.v1.auth_browser import router as auth_browser_router
 from app.api.v1.control_plane_auth import router as control_plane_auth_router
 from app.api.v1.control_plane_offboarding import router as control_plane_offboarding_router
+from app.api.v1.customer_success_p1_closure import router as customer_success_p1_closure_router
 from app.api.v1.data_center import router as data_center_router
 from app.api.v1.help_metrics import router as help_metrics_router
 from app.api.v1.identity_p1_closure import router as identity_p1_closure_router
@@ -156,6 +157,9 @@ for supplemental_router in (
     auth_browser_router,
     system_p1_closure_router,
     identity_p1_closure_router,
+    # Mount the locked write router before the broader Platform P1 router. The
+    # signature de-duplicator then keeps these six mutations as the only public writes.
+    customer_success_p1_closure_router,
     platform_p1_closure_router,
     affairs_material_center_router,
     affairs_four_end_router,
