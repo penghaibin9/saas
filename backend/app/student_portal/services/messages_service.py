@@ -8,7 +8,7 @@ V3 深审发现：以前这里叫 ``stu.my_messages()`` 拿到一份最多 30+40
 对称：待办/通知/服务进度是三个不同的业务 Authority，各自独立做真实数据库分页，
 不再合并成一份"消息列表"再切片：
 
-- 待办 tab  → :func:`app.services.workbench_todo_service.list_todos`（typed reader）
+- 待办 tab  → :func:`app.services.workbench_todo_service.list_todos`（typed reader；仅 PENDING）
 - 通知 tab  → :func:`app.services.message_center_service.list_messages`（本人可见性 Authority）
 - 进度 tab  → 复用 :func:`app.services.mobile_performance_service._progress_page`
               （CsLeave/CsWorkOrder 真实 UNION 分页；不重写第二份服务进度查询）
@@ -18,6 +18,8 @@ V3 深审发现：以前这里叫 ``stu.my_messages()`` 拿到一份最多 30+40
 
 typed action 一律走 :mod:`app.student_portal.services.action_projection_service`
 （client=studentPc），不在这里另建 actionKey/todoType → 路由的第二份映射表。
+撤回/过期消息在列表和详情都必须投影为不可导航；详情是点击前最新事实，前端不得继续
+沿用列表旧快照中的 action。
 """
 from __future__ import annotations
 
@@ -52,6 +54,7 @@ def _todo_item(row: dict) -> dict:
 def _notice_item(row: dict) -> dict:
     emergency = bool(row.get("emergency"))
     withdrawn = bool(row.get("withdrawn"))
+    expired = bool(row.get("expired"))
     return {
         "id": str(row.get("messageId") or ""),
         "messageId": str(row.get("messageId") or ""),
@@ -65,13 +68,15 @@ def _notice_item(row: dict) -> dict:
         "read": str(row.get("readStatus") or "").upper() == "READ",
         "status": row.get("readStatus"),
         "emergency": emergency,
-        "receipt": bool(row.get("requireAck") and not row.get("acked") and not withdrawn),
+        "receipt": bool(row.get("requireAck") and not row.get("acked") and not withdrawn and not expired),
         "requireAck": bool(row.get("requireAck")),
         "acked": bool(row.get("acked")),
         "withdrawn": withdrawn,
+        "expired": expired,
         "contentVersion": row.get("contentVersion"),
         "action": action_proj.build_message_action(
-            row.get("actionKey"), row.get("actionParams"), withdrawn=withdrawn,
+            row.get("actionKey"), row.get("actionParams"),
+            withdrawn=withdrawn, expired=expired,
         ),
     }
 
@@ -127,8 +132,11 @@ def inbox_page(user: dict, tab: str = "todo", page: int = 1, page_size: int = 20
     if key not in enabled:
         items, total = [], 0
     elif key == "todo":
+        # P2-01："待办" tab 与 badge 使用同一个 PENDING Authority。
+        # DONE 是历史完成记录，不得混进待处理列表导致 tab total 与 badge 数字分叉。
         rows, total = todo_svc.list_todos(
-            user, page=page, page_size=page_size, client=action_proj.CLIENT_STUDENT_PC
+            user, status="PENDING", page=page, page_size=page_size,
+            client=action_proj.CLIENT_STUDENT_PC,
         )
         items = [_todo_item(row) for row in rows]
     elif key == "notice":
@@ -172,14 +180,25 @@ def inbox_page(user: dict, tab: str = "todo", page: int = 1, page_size: int = 20
 
 
 def get_detail(user: dict, message_id: str) -> dict:
-    """PC 消息详情 facade（SP-M04/M08）：走 message_center canonical reader，
-    不再直接依赖 `/mobile/me/messages/{id}` 这个 Mini surface。撤回/越权/不存在
-    统一 404，不泄露存在性；由调用方（router）决定 404 的错误码。"""
+    """PC 消息详情 facade（SP-M04/M08）：走 message_center canonical reader。
+
+    详情是点击前最新事实：除原始 actionKey/actionParams 外，还必须重新按当前
+    withdrawn/expired 状态投影 action。这样列表加载后消息若被撤回/过期，前端拿到的
+    detail.action 会变成 target=None，而不是继续沿用旧列表 action 导航。
+    """
     stu._require_student(user)
     detail = message_svc.get_message(user, message_id)
     if detail is None:
         raise AppException("DATA_NOT_FOUND", "消息不存在")
-    return detail
+    withdrawn = bool(detail.get("withdrawn"))
+    expired = bool(detail.get("expired"))
+    return {
+        **detail,
+        "action": action_proj.build_message_action(
+            detail.get("actionKey"), detail.get("actionParams"),
+            withdrawn=withdrawn, expired=expired,
+        ),
+    }
 
 
 def mark_read(user: dict, message_id) -> dict:
