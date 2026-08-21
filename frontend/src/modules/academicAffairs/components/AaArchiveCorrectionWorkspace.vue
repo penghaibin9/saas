@@ -431,6 +431,10 @@ export default {
 </script>
 
 <style scoped>
+/* A confirmation opened from the teleported modal drawer must stay above it. */
+.aacw :deep(.app-confirm-dialog__mask) {
+  z-index: calc(var(--z-modal) + 1);
+}
 .aacw { margin-top: 14px; min-width: 0; }
 .aacw-tabs { display: flex; gap: 6px; padding: 4px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 10px; background: var(--fill-light, #f8fafc); overflow-x: auto; }
 .aacw-tab { border: 0; border-radius: 8px; background: transparent; padding: 8px 14px; white-space: nowrap; cursor: pointer; color: var(--text-secondary, #475569); font: inherit; }
