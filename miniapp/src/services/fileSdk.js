@@ -83,9 +83,10 @@ function assertNativePreviewSupported(fileName = '') {
   return kind
 }
 
-function openDownloaded(downloaded, fileName = '') {
+function openDownloaded(downloaded, fileName = '', { strictNative = false } = {}) {
   const ext = fileExtension(fileName)
-  const kind = assertNativePreviewSupported(fileName)
+  const detected = nativePreviewKind(fileName)
+  const kind = strictNative ? assertNativePreviewSupported(fileName) : detected
   return new Promise((resolve, reject) => {
     if (kind === 'image') {
       uni.previewImage({ urls: [downloaded.tempFilePath], current: downloaded.tempFilePath, success: resolve, fail: reject })
@@ -106,7 +107,6 @@ export async function openBusinessFile(fileId) {
   if (!meta.canPreview && !meta.canDownload) {
     throw { code: 404001, biz: true, message: '附件不存在或尚未通过安全扫描' }
   }
-  assertNativePreviewSupported(meta.fileName)
   const downloaded = await realDownload(`/files/download/${enc(id)}`)
   await openDownloaded(downloaded, meta.fileName)
   return meta
@@ -154,7 +154,7 @@ export const fileSdk = {
     const raw = encodeURIComponent(String(ticket?.ticket || ''))
     if (!raw) throw { code: 'PREVIEW_TICKET_MISSING', biz: true, message: '文件票据不存在或已失效' }
     const downloaded = await realDownload(`${openPath}?ticket=${raw}`)
-    await openDownloaded(downloaded, fileName)
+    await openDownloaded(downloaded, fileName, { strictNative: true })
     return {
       ...ticket,
       previewDescriptor: descriptor,
