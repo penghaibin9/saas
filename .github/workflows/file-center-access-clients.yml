@@ -6,7 +6,9 @@ on:
       - "backend/app/api/v1/file.py"
       - "backend/app/api/v1/files.py"
       - "backend/app/api/v1/file_contract.py"
+      - "backend/app/api/v1/mobile_graduation_material_center.py"
       - "backend/app/models/file.py"
+      - "backend/app/modules/graduation/services/graduation_peer_consistency.py"
       - "backend/app/services/affairs_archive_file_guard.py"
       - "backend/app/services/affairs_archive_service.py"
       - "backend/app/services/file_access_service.py"
@@ -15,6 +17,7 @@ on:
       - "backend/app/services/file_version_service.py"
       - "backend/alembic/versions/0146_file_center_access_and_clients.py"
       - "backend/tests/test_file_access_service.py"
+      - "backend/tests/test_graduation_peer_preview_contract.py"
       - "backend/tests/file_access_mysql_acceptance.py"
       - "frontend/src/services/file/**"
       - "frontend/src/components/file/**"
@@ -95,7 +98,9 @@ jobs:
             backend/app/api/v1/file.py \
             backend/app/api/v1/files.py \
             backend/app/api/v1/file_contract.py \
+            backend/app/api/v1/mobile_graduation_material_center.py \
             backend/app/models/file.py \
+            backend/app/modules/graduation/services/graduation_peer_consistency.py \
             backend/app/services/affairs_archive_file_guard.py \
             backend/app/services/affairs_archive_service.py \
             backend/app/services/file_access_service.py \
@@ -105,7 +110,8 @@ jobs:
             backend/alembic/versions/0146_file_center_access_and_clients.py
       - name: Resolver and status unit tests
         working-directory: backend
-        run: pytest -q tests/test_file_access_service.py -p no:warnings
+        run: |
+          pytest -q tests/test_file_access_service.py tests/test_graduation_peer_preview_contract.py -p no:warnings
       - name: Real MySQL cross-scope acceptance
         working-directory: backend
         run: python tests/file_access_mysql_acceptance.py
