@@ -6,13 +6,18 @@ on:
       - fix/academic-stats-snapshot-w3-20260821
     paths:
       - '.github/workflows/academic-stats-w3-one-shot-patch.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/academic-stats-w3-one-shot-patch.yml'
+      - 'scripts/check/apply-academic-stats-w3-owner-patch.py'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: academic-stats-w3-one-shot-host
+  group: academic-stats-w3-one-shot-host-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
