@@ -27,7 +27,7 @@
       <section class="mc-panel">
         <div v-if="loading" class="mc-empty">正在加载真实材料数据…</div>
         <div v-else-if="!rows.length" class="mc-empty">当前筛选下没有数据。</div>
-        <div v-else class="mc-table-wrap">
+        <div v-else ref="tableWrap" class="mc-table-wrap">
           <table v-if="tab !== 'students'">
             <thead><tr><th>学生 / 学号</th><th>学院 / 专业 / 班级</th><th>指导教师</th><th>阶段 / 材料</th><th>文件</th><th>版本</th><th>上传人 / 时间</th><th>大小</th><th>扫描</th><th>审核</th><th>归档</th><th>操作</th></tr></thead>
             <tbody><tr v-for="row in rows" :key="row.materialId">
@@ -40,7 +40,7 @@
               <td><span>{{ row.uploader || '-' }}</span><small>{{ row.uploadedAt || '-' }}</small></td>
               <td>{{ sizeText(row.sizeBytes) }}</td><td><b :class="tone(row.scanStatus)">{{ row.scanStatus }}</b></td>
               <td>{{ row.reviewStatus }}</td><td>{{ row.archiveStatus }}</td>
-              <td class="actions"><button v-if="row.readyForBusiness" type="button" @click="preview(row)">预览</button><button v-if="row.readyForBusiness" type="button" @click="download(row)">下载</button><button type="button" @click="history(row)">版本</button><button v-if="row.allowedActions?.includes('review')" type="button" @click="openReview(row)">通过</button><button v-if="row.allowedActions?.includes('review')" type="button" @click="openReject(row)">退回</button></td>
+              <td class="actions"><button v-if="row.readyForBusiness" type="button" @click="openReader(row)">安全预览</button><button v-if="row.readyForBusiness" type="button" @click="download(row)">下载</button><button type="button" @click="history(row)">版本</button><button v-if="row.allowedActions?.includes('review')" type="button" @click="openReview(row)">通过</button><button v-if="row.allowedActions?.includes('review')" type="button" @click="openReject(row)">退回</button></td>
             </tr></tbody>
           </table>
           <table v-else>
@@ -52,16 +52,56 @@
       </section>
     </template>
 
-    <div v-if="historyVisible" class="mc-modal-mask" @click.self="historyVisible = false"><section class="mc-modal" role="dialog" aria-modal="true"><header><div><strong>{{ historyTitle }}</strong><span>不可变文件版本时间线</span></div><button type="button" @click="historyVisible = false">关闭</button></header><FileVersionTimeline :items="historyItems" @select="preview($event.file)" /></section></div>
+    <div v-if="historyVisible" class="mc-modal-mask" @click.self="historyVisible = false">
+      <section class="mc-modal" role="dialog" aria-modal="true">
+        <header><div><strong>{{ historyTitle }}</strong><span>不可变文件版本时间线</span></div><button type="button" @click="historyVisible = false">关闭</button></header>
+        <FileVersionTimeline :items="historyItems" @select="openHistoryVersion" />
+      </section>
+    </div>
+
+    <div v-if="readerState.visible" class="mc-reader" role="dialog" aria-modal="true" aria-label="毕业设计材料站内阅读器">
+      <header class="mc-reader__head">
+        <button type="button" class="mc-reader__back" @click="closeReader">← 返回材料中心</button>
+        <div class="mc-reader__identity">
+          <strong>{{ readerState.row?.studentName || '—' }} / {{ readerState.row?.materialName || readerState.file?.fileName || '材料' }} / v{{ readerState.file?.versionNo || readerState.row?.currentVersion || '—' }}</strong>
+          <span>{{ readerState.file?.scanStatus || readerState.row?.scanStatus || 'UNKNOWN' }}</span>
+          <span>{{ readerState.row?.reviewStatus || 'UNKNOWN' }}</span>
+          <b v-if="readerIsHistorical">历史版本 v{{ readerState.file?.versionNo || '—' }} · 只读追溯</b>
+          <b v-else>当前版本 · 安全阅读</b>
+        </div>
+        <button v-if="readerState.file?.canDownload" type="button" @click="downloadReaderFile">下载当前阅读版</button>
+      </header>
+      <div v-if="readerState.error" class="mc-reader__error">{{ readerState.error }}</div>
+      <main class="mc-reader__body">
+        <AppDocumentViewer
+          v-if="readerDescriptor"
+          :descriptor="readerDescriptor"
+          :provider="previewProvider"
+          :versions="readerState.versions"
+          :files="[]"
+          :active-version-id="readerVersionId"
+          :canonical-version-id="readerState.row?.currentVersionId || null"
+          :allow-download="Boolean(readerState.file?.canDownload)"
+          :show-version-bar="readerState.versions.length > 1"
+          :show-file-switcher="false"
+          @select-version="selectReaderVersion"
+          @download="downloadReaderFile"
+          @preview-error="onReaderError"
+        />
+        <div v-else class="mc-reader__empty">当前版本未通过安全门，不能站内预览。</div>
+      </main>
+    </div>
+
     <AppConfirmDialog v-model:visible="reviewVisible" title="审核当前材料版本" :message="reviewMessage" confirm-text="通过当前版本" cancel-text="取消" :submitting="reviewing" @confirm="confirmReview('APPROVE', $event)" />
     <AppConfirmDialog v-model:visible="rejectVisible" title="退回当前材料版本" :message="reviewMessage" danger require-reason reason-label="退回原因" confirm-text="退回材料" :submitting="reviewing" @confirm="confirmReview('REJECT', $event)" />
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
 import FileVersionTimeline from '@/components/file/FileVersionTimeline.vue'
 import { normalizeFile } from '@/services/file/fileSdk'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
@@ -75,8 +115,11 @@ const tab = ref(tabs.some(x => x.key === route.query.tab) ? route.query.tab : 'f
 const loading = ref(false); const error = ref(''); const result = ref({ items: [], total: 0 }); const summary = ref({ filteredSummary: {}, archiveSummary: {} })
 const page = ref(Math.max(1, Number(route.query.page || 1))); const pageSize = 20
 const filters = reactive({ keyword: String(route.query.keyword || ''), stage: String(route.query.stage || ''), reviewStatus: String(route.query.reviewStatus || ''), scanStatus: String(route.query.scanStatus || '') })
-const historyVisible = ref(false); const historyTitle = ref(''); const historyItems = ref([])
+const tableWrap = ref(null)
+const historyVisible = ref(false); const historyTitle = ref(''); const historyItems = ref([]); const historyRow = ref(null); const historyVersions = ref([])
 const reviewVisible = ref(false); const rejectVisible = ref(false); const reviewRow = ref(null); const reviewing = ref(false)
+const previewProvider = api.createPreviewProvider()
+const readerState = reactive({ visible: false, row: null, file: null, versions: [], filterSnapshot: null, scrollSnapshot: null, error: '', bodyOverflow: '' })
 const rows = computed(() => result.value.items || [])
 const effective = computed(() => ({ ...filters, reviewStatus: tab.value === 'pending' ? 'PENDING' : filters.reviewStatus, scanStatus: tab.value === 'security' ? 'ABNORMAL' : filters.scanStatus }))
 const cards = computed(() => { const f = summary.value.filteredSummary || {}; const a = summary.value.archiveSummary || {}; return [
@@ -85,6 +128,12 @@ const cards = computed(() => { const f = summary.value.filteredSummary || {}; co
   { label: '全规则可归档', value: a.archiveReadyStudents || 0, hint: '不受材料筛选污染' }, { label: '已归档', value: a.archivedStudents || 0, hint: '完整冻结规则口径' }
 ] })
 const reviewMessage = computed(() => reviewRow.value ? `${reviewRow.value.studentName} · ${reviewRow.value.materialName} · v${reviewRow.value.currentVersion}` : '')
+const readerVersionId = computed(() => readerState.file?.fileVersionId ?? readerState.file?.versionId ?? null)
+const readerDescriptor = computed(() => readerState.file?.canPreview ? api.previewDescriptor(readerState.file) : null)
+const readerIsHistorical = computed(() => Boolean(readerState.file && (
+  readerState.file.isCurrent === false ||
+  (readerState.row?.currentVersionId && String(readerVersionId.value) !== String(readerState.row.currentVersionId))
+)))
 
 function params() { return { batchId: batchId.value, page: page.value, pageSize, ...effective.value } }
 function syncUrl() { router.replace({ query: { tab: tab.value, page: page.value > 1 ? page.value : undefined, keyword: filters.keyword || undefined, stage: filters.stage || undefined, reviewStatus: filters.reviewStatus || undefined, scanStatus: filters.scanStatus || undefined } }) }
@@ -95,17 +144,107 @@ function reset() { Object.assign(filters, { keyword: '', stage: '', reviewStatus
 function goto(value) { page.value = value; load() }
 function sizeText(value) { const n = Number(value || 0); return n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B` }
 function tone(value) { return ['CLEAN','PASSED','NOT_REQUIRED'].includes(String(value).toUpperCase()) ? 'ok' : 'danger' }
-function fileRow(row) { return normalizeFile({ fileId: row.fileId, fileName: row.fileName, sizeBytes: row.sizeBytes, scanStatus: row.scanStatus, readyForBusiness: row.readyForBusiness, allowedActions: row.allowedActions || [] }) }
-async function preview(row) { try { await api.previewMaterial(row.file ? row.file : fileRow(row)) } catch (e) { error.value = e?.message || '预览失败' } }
+function versionKey(file) { return file?.fileVersionId ?? file?.versionId ?? file?.id ?? null }
+function fileRow(row) { return normalizeFile({ fileId: row.fileId, fileName: row.fileName, assetId: row.assetId, versionId: row.currentVersionId, fileVersionId: row.currentVersionId, versionNo: row.currentVersion, isCurrent: true, sizeBytes: row.sizeBytes, scanStatus: row.scanStatus, readyForBusiness: row.readyForBusiness, allowedActions: row.allowedActions || [] }) }
+async function materialVersions(row) {
+  const library = await api.studentLibrary(row.gdStudentId, true)
+  const material = (library.items || []).find(item => String(item.materialId || '') === String(row.materialId || ''))
+  const versions = api.normalizeVersions(material?.versions || [])
+  return versions.length ? versions : [fileRow(row)]
+}
+function captureReaderContext() {
+  return {
+    filterSnapshot: { tab: tab.value, page: page.value, filters: { ...filters } },
+    scrollSnapshot: { windowY: window.scrollY || 0, tableTop: tableWrap.value?.scrollTop || 0, tableLeft: tableWrap.value?.scrollLeft || 0 }
+  }
+}
+async function openReader(row, exactFile = null, knownVersions = null) {
+  if (!row) return
+  const context = readerState.visible ? { filterSnapshot: readerState.filterSnapshot, scrollSnapshot: readerState.scrollSnapshot } : captureReaderContext()
+  try {
+    const versions = knownVersions || await materialVersions(row)
+    const exactId = versionKey(exactFile)
+    const currentId = row.currentVersionId
+    const target = exactFile
+      ? (versions.find(item => String(versionKey(item)) === String(exactId)) || normalizeFile(exactFile))
+      : (versions.find(item => String(versionKey(item)) === String(currentId)) || versions.find(item => item.isCurrent) || versions[0])
+    if (!target?.canPreview) {
+      error.value = target?.statusText ? `该版本${target.statusText}，不能预览` : '该版本未通过安全门，不能预览'
+      return
+    }
+    readerState.row = { ...row }
+    readerState.file = target
+    readerState.versions = versions
+    readerState.filterSnapshot = context.filterSnapshot
+    readerState.scrollSnapshot = context.scrollSnapshot
+    readerState.error = ''
+    readerState.bodyOverflow = document.body.style.overflow
+    readerState.visible = true
+    document.body.style.overflow = 'hidden'
+  } catch (e) {
+    error.value = e?.message || '材料版本读取失败'
+  }
+}
+function selectReaderVersion(file) {
+  const target = normalizeFile(file || {})
+  if (!target.canPreview) {
+    readerState.error = target.statusText ? `该历史版本${target.statusText}，不能预览` : '该历史版本未通过安全门，不能预览'
+    return
+  }
+  readerState.file = target
+  readerState.error = ''
+}
+function onReaderError(payload) { readerState.error = payload?.message || payload?.error?.message || '材料预览失败，请重试' }
+async function closeReader() {
+  const filterSnapshot = readerState.filterSnapshot
+  const scrollSnapshot = readerState.scrollSnapshot
+  document.body.style.overflow = readerState.bodyOverflow || ''
+  readerState.visible = false
+  readerState.row = null
+  readerState.file = null
+  readerState.versions = []
+  readerState.error = ''
+  if (filterSnapshot) {
+    tab.value = filterSnapshot.tab
+    page.value = filterSnapshot.page
+    Object.assign(filters, filterSnapshot.filters)
+    syncUrl()
+  }
+  await nextTick()
+  window.requestAnimationFrame(() => {
+    if (tableWrap.value && scrollSnapshot) {
+      tableWrap.value.scrollTop = scrollSnapshot.tableTop
+      tableWrap.value.scrollLeft = scrollSnapshot.tableLeft
+    }
+    if (scrollSnapshot) window.scrollTo(0, scrollSnapshot.windowY)
+  })
+}
 async function download(row) { try { await api.downloadMaterial(fileRow(row)) } catch (e) { error.value = e?.message || '下载失败' } }
-async function history(row) { try { const library = await api.studentLibrary(row.gdStudentId, true); const material = (library.items || []).find(item => item.materialId === row.materialId); historyTitle.value = `${row.studentName} · ${row.materialName}`; historyItems.value = (material?.versions || []).map(v => ({ bindingId: v.bindingId || v.versionId, versionNo: v.versionNo, isCurrent: v.isCurrent, boundAt: v.submittedAt, file: normalizeFile(v) })); historyVisible.value = true } catch (e) { error.value = e?.message || '版本历史加载失败' } }
+async function downloadReaderFile() { if (!readerState.file?.canDownload) return; try { await api.downloadMaterial(readerState.file) } catch (e) { readerState.error = e?.message || '下载失败' } }
+async function history(row) {
+  try {
+    const versions = await materialVersions(row)
+    historyRow.value = row
+    historyVersions.value = versions
+    historyTitle.value = `${row.studentName} · ${row.materialName}`
+    historyItems.value = versions.map(v => ({ bindingId: v.bindingId || versionKey(v), versionNo: v.versionNo, isCurrent: v.isCurrent, boundAt: v.submittedAt, file: v }))
+    historyVisible.value = true
+  } catch (e) { error.value = e?.message || '版本历史加载失败' }
+}
+async function openHistoryVersion(item) {
+  const row = historyRow.value
+  const file = item?.file
+  historyVisible.value = false
+  await openReader(row, file, historyVersions.value)
+}
 function openReview(row) { reviewRow.value = row; reviewVisible.value = true }
 function openReject(row) { reviewRow.value = row; rejectVisible.value = true }
 async function confirmReview(action, payload) { if (!reviewRow.value) return; reviewing.value = true; try { await api.reviewMaterial(reviewRow.value.materialId, { fileVersionId: reviewRow.value.currentVersionId, expectedVersion: reviewRow.value.version, action, comment: payload?.reason || '' }); reviewVisible.value = false; rejectVisible.value = false; await load() } catch (e) { error.value = e?.message || '审核失败' } finally { reviewing.value = false } }
 watch(batchId, () => { page.value = 1; load() })
+onBeforeUnmount(() => { if (readerState.visible) document.body.style.overflow = readerState.bodyOverflow || '' })
 onMounted(async () => { await batchStore.ensureLoaded(); await load() })
 </script>
 
 <style scoped>
-.mc-page{display:grid;gap:16px;min-width:0}.mc-hero,.mc-panel,.mc-filters{background:#fff;border:1px solid #dfe7f3;border-radius:14px}.mc-hero{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;background:linear-gradient(135deg,#f7fbff,#eef5ff)}.mc-hero span{color:#1769e0;font-size:12px;font-weight:700;letter-spacing:.1em}.mc-hero h2{margin:5px 0}.mc-hero p{margin:0;color:#69768b}.mc-page button{border:1px solid #ccd8e8;border-radius:8px;background:#fff;color:#29415f;padding:7px 11px;cursor:pointer}.mc-page button:disabled{opacity:.45}.mc-page .primary{background:#1769e0;border-color:#1769e0;color:#fff}.mc-error,.mc-empty{padding:24px;text-align:center;color:#69768b}.mc-error{display:flex;gap:12px;align-items:center;text-align:left;border-radius:12px;background:#fff1f1;color:#a61b1b}.mc-error button{margin-left:auto}.mc-summary{display:grid;grid-template-columns:repeat(6,minmax(110px,1fr));gap:10px}.mc-summary article{display:grid;gap:4px;padding:14px;border:1px solid #e2e8f2;border-radius:12px;background:#fff}.mc-summary strong{font-size:24px}.mc-summary small,td small{display:block;color:#7b8798}.mc-tabs{display:flex;gap:4px;border-bottom:1px solid #dfe7f3}.mc-tabs button{border:0;border-radius:8px 8px 0 0;padding:10px 18px}.mc-tabs button.active{background:#1769e0;color:#fff}.mc-filters{display:grid;grid-template-columns:1.6fr repeat(3,1fr) auto;gap:12px;align-items:end;padding:14px}.mc-filters label{display:grid;gap:5px;color:#526176;font-size:13px}.mc-filters input,.mc-filters select{min-width:0;border:1px solid #ccd8e8;border-radius:8px;padding:8px;background:#fff}.mc-filters>div{display:flex;gap:7px}.mc-panel{overflow:hidden}.mc-table-wrap{overflow:auto;max-height:66vh}table{width:100%;min-width:1480px;border-collapse:collapse}th,td{padding:10px 12px;border-bottom:1px solid #edf1f7;text-align:left;vertical-align:top;font-size:13px}th{position:sticky;top:0;z-index:1;background:#f7f9fc;color:#526176;white-space:nowrap}td strong,td span{display:block}.actions{white-space:nowrap}.actions button{border:0;padding:4px 6px;color:#1769e0}.ok,.warn,.danger{display:inline-block!important;padding:2px 7px;border-radius:999px}.ok{color:#137a43;background:#eafaf1}.warn{color:#9a5b00;background:#fff7df}.danger{color:#b42318;background:#fff0f0}.mc-pagebar{display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:12px 16px}.mc-pagebar span{margin-right:auto;color:#69768b}.mc-modal-mask{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.42)}.mc-modal{width:min(680px,100%);max-height:80vh;overflow:auto;padding:20px;border-radius:14px;background:#fff;box-shadow:0 18px 60px rgba(15,23,42,.2)}.mc-modal>header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}.mc-modal>header div{display:grid;gap:4px}.mc-modal>header span{color:#69768b;font-size:13px}@media(max-width:1100px){.mc-summary{grid-template-columns:repeat(3,1fr)}.mc-filters{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.mc-hero{display:grid;gap:12px}.mc-summary{grid-template-columns:repeat(2,1fr)}.mc-filters{grid-template-columns:1fr}.mc-tabs{overflow:auto}}
+.mc-page{display:grid;gap:16px;min-width:0}.mc-hero,.mc-panel,.mc-filters{background:#fff;border:1px solid #dfe7f3;border-radius:14px}.mc-hero{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;background:linear-gradient(135deg,#f7fbff,#eef5ff)}.mc-hero span{color:#1769e0;font-size:12px;font-weight:700;letter-spacing:.1em}.mc-hero h2{margin:5px 0}.mc-hero p{margin:0;color:#69768b}.mc-page button{border:1px solid #ccd8e8;border-radius:8px;background:#fff;color:#29415f;padding:7px 11px;cursor:pointer}.mc-page button:disabled{opacity:.45}.mc-page .primary{background:#1769e0;border-color:#1769e0;color:#fff}.mc-error,.mc-empty{padding:24px;text-align:center;color:#69768b}.mc-error{display:flex;gap:12px;align-items:center;text-align:left;border-radius:12px;background:#fff1f1;color:#a61b1b}.mc-error button{margin-left:auto}.mc-summary{display:grid;grid-template-columns:repeat(6,minmax(110px,1fr));gap:10px}.mc-summary article{display:grid;gap:4px;padding:14px;border:1px solid #e2e8f2;border-radius:12px;background:#fff}.mc-summary strong{font-size:24px}.mc-summary small,td small{display:block;color:#7b8798}.mc-tabs{display:flex;gap:4px;border-bottom:1px solid #dfe7f3}.mc-tabs button{border:0;border-radius:8px 8px 0 0;padding:10px 18px}.mc-tabs button.active{background:#1769e0;color:#fff}.mc-filters{display:grid;grid-template-columns:1.6fr repeat(3,1fr) auto;gap:12px;align-items:end;padding:14px}.mc-filters label{display:grid;gap:5px;color:#526176;font-size:13px}.mc-filters input,.mc-filters select{min-width:0;border:1px solid #ccd8e8;border-radius:8px;padding:8px;background:#fff}.mc-filters>div{display:flex;gap:7px}.mc-panel{overflow:hidden}.mc-table-wrap{overflow:auto;max-height:66vh}table{width:100%;min-width:1480px;border-collapse:collapse}th,td{padding:10px 12px;border-bottom:1px solid #edf1f7;text-align:left;vertical-align:top;font-size:13px}th{position:sticky;top:0;z-index:1;background:#f7f9fc;color:#526176;white-space:nowrap}td strong,td span{display:block}.actions{white-space:nowrap}.actions button{border:0;padding:4px 6px;color:#1769e0}.ok,.warn,.danger{display:inline-block!important;padding:2px 7px;border-radius:999px}.ok{color:#137a43;background:#eafaf1}.warn{color:#9a5b00;background:#fff7df}.danger{color:#b42318;background:#fff0f0}.mc-pagebar{display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:12px 16px}.mc-pagebar span{margin-right:auto;color:#69768b}.mc-modal-mask{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.42)}.mc-modal{width:min(680px,100%);max-height:80vh;overflow:auto;padding:20px;border-radius:14px;background:#fff;box-shadow:0 18px 60px rgba(15,23,42,.2)}.mc-modal>header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}.mc-modal>header div{display:grid;gap:4px}.mc-modal>header span{color:#69768b;font-size:13px}.mc-reader{position:fixed;inset:0;z-index:1200;display:grid;grid-template-rows:auto auto minmax(0,1fr);background:#f4f7fb}.mc-reader__head{display:flex;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid #dfe7f3;background:#fff;box-shadow:0 2px 10px rgba(15,23,42,.06)}.mc-reader__back{flex:none}.mc-reader__identity{min-width:0;display:flex;align-items:center;gap:8px;flex:1}.mc-reader__identity strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mc-reader__identity span,.mc-reader__identity b{flex:none;padding:3px 7px;border-radius:999px;background:#eef4ff;color:#315986;font-size:12px}.mc-reader__identity b{background:#fff7df;color:#8a5b00}.mc-reader__error{padding:7px 14px;background:#fff1f1;color:#a61b1b;font-size:13px}.mc-reader__body{min-height:0;padding:12px;overflow:hidden}.mc-reader__body :deep(.document-viewer){height:100%}.mc-reader__body :deep(.document-viewer__body){min-height:0}.mc-reader__empty{height:100%;display:grid;place-items:center;border:1px dashed #ccd8e8;border-radius:12px;background:#fff;color:#69768b}@media(max-width:1100px){.mc-summary{grid-template-columns:repeat(3,1fr)}.mc-filters{grid-template-columns:repeat(2,1fr)}.mc-reader__identity{flex-wrap:wrap}.mc-reader__identity strong{width:100%}}@media(max-width:700px){.mc-hero{display:grid;gap:12px}.mc-summary{grid-template-columns:repeat(2,1fr)}.mc-filters{grid-template-columns:1fr}.mc-tabs{overflow:auto}.mc-reader__head{align-items:flex-start;flex-wrap:wrap}.mc-reader__identity{order:3;width:100%}}
 </style>

@@ -7,6 +7,7 @@ const root = path.resolve(new URL('..', import.meta.url).pathname)
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 const finalSource = read('src/modules/graduation/views/FinalSubmissionListView.vue')
 const proposalSource = read('src/modules/graduation/views/_shared/ProposalReviewCard.vue')
+const materialCenterSource = read('src/modules/graduation/views/GraduationMaterialCenterView.vue')
 const workspaceSource = read('src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue')
 const versionBarSource = read('src/components/file/viewer/AppDocumentVersionBar.vue')
 
@@ -58,6 +59,31 @@ test('W2 proposal reuses the same workspace and preserves proposal, audit and de
   assert.match(proposalSource, /draftFileVersionId = oldCanonical/)
   assert.match(proposalSource, /conflictPreviewFile = oldActiveFile/)
   assert.doesNotMatch(proposalSource, /ProposalPdfViewer|SecureFileList|previewVersion\(/)
+})
+
+test('W2 material center stays a management table and opens exact versions in the same-page fullscreen Reader', () => {
+  for (const marker of ['mc-summary', 'mc-tabs', 'mc-filters', 'mc-table-wrap', 'mc-pagebar', 'AppConfirmDialog', 'FileVersionTimeline']) {
+    assert.match(materialCenterSource, new RegExp(marker))
+  }
+  assert.match(materialCenterSource, /AppDocumentViewer/)
+  assert.match(materialCenterSource, /readerState = reactive\(\{ visible: false, row: null, file: null, versions: \[\], filterSnapshot: null, scrollSnapshot: null/)
+  assert.match(materialCenterSource, /filterSnapshot: \{ tab: tab\.value, page: page\.value, filters: \{ \.\.\.filters \} \}/)
+  assert.match(materialCenterSource, /tableTop: tableWrap\.value\?\.scrollTop/)
+  assert.match(materialCenterSource, /tableLeft: tableWrap\.value\?\.scrollLeft/)
+  assert.match(materialCenterSource, /Object\.assign\(filters, filterSnapshot\.filters\)/)
+  assert.match(materialCenterSource, /tableWrap\.value\.scrollTop = scrollSnapshot\.tableTop/)
+  assert.doesNotMatch(materialCenterSource, /api\.previewMaterial\(|window\.open\(/)
+})
+
+test('W2 material center historical timeline opens the exact selected FileVersion and never substitutes current', () => {
+  assert.match(materialCenterSource, /historyItems\.value = versions\.map/)
+  assert.match(materialCenterSource, /async function openHistoryVersion\(item\)/)
+  assert.match(materialCenterSource, /await openReader\(row, file, historyVersions\.value\)/)
+  assert.match(materialCenterSource, /const exactId = versionKey\(exactFile\)/)
+  assert.match(materialCenterSource, /versions\.find\(item => String\(versionKey\(item\)\) === String\(exactId\)\)/)
+  assert.match(materialCenterSource, /readerIsHistorical/)
+  assert.match(materialCenterSource, /历史版本 v\{\{ readerState\.file\?\.versionNo/)
+  assert.match(materialCenterSource, /readerState\.file\.isCurrent === false/)
 })
 
 test('W2 version bar labels history from server isCurrent rather than treating sibling attachments as history', () => {
