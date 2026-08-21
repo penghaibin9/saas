@@ -123,6 +123,11 @@ def next_todo(
     submitDate: str | None = Query(None, max_length=10),
     user=Depends(require_staff),
 ):
+    # P2-03：anchor 是 seek 的安全边界，不是可选提示。
+    # 它此刻可以已经办结，所以只按 get_task 的“存在 + 当前调用者可见”合同校验，
+    # 不要求仍是 PENDING；非法、缺失、他人任务统一 404。绝不把无效 anchor
+    # 当成 None 后退化成“返回队首第一条”，否则可被构造为越权队列探测器。
+    runtime.get_task(task_id, user=user)
     return success(runtime.next_task(
         task_id, user=user, keyword=keyword, biz_type=bizType,
         urgency=urgency, submit_date=submitDate,
