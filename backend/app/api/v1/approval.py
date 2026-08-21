@@ -301,17 +301,27 @@ def approve(task_id: str, body: ApprovalActionRequest, user=Depends(require_staf
     )
 
 
-@router.post("/tasks/{task_id}/return", summary="退回修改（可修改后重提）")
+@router.post("/tasks/{task_id}/return", summary="退回（按业务域策略重提或终止）")
 def return_for_revision(
     task_id: str,
     body: ApprovalReturnRequest,
     user=Depends(require_staff),
 ):
-    return success(
-        runtime.return_for_revision(task_id, body.reason, user=user, version=body.version,
-                                    expected_source_version=body.expectedSourceVersion),
-        message="已退回修改",
+    result = runtime.return_for_revision(
+        task_id, body.reason, user=user, version=body.version,
+        expected_source_version=body.expectedSourceVersion,
     )
+
+    # W2：runtime 的基础返回值描述的是通用“可重提”策略，但领域回调可能在同一事务
+    # 把实例收成真正终态（如 EMPLOYMENT_DESTINATION）。动作提交后回读权威状态，响应
+    # 必须与已提交数据库事实一致；只有实例仍处于 APPLICANT_RESUBMIT 才暴露 nextTodo。
+    actual = runtime.get_task(task_id, user=user)
+    actual_status = str(actual.get("instanceStatus") or result.get("instanceStatus") or "")
+    actual_node = str(actual.get("currentInstanceNode") or "")
+    result["instanceStatus"] = actual_status
+    if actual_status.upper() != "RUNNING" or actual_node.upper() != "APPLICANT_RESUBMIT":
+        result["nextTodo"] = None
+    return success(result, message="已退回")
 
 
 @router.post("/tasks/{task_id}/reject", summary="驳回终止（不可重提原流程）")
