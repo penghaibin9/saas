@@ -49,9 +49,15 @@ def _has_platform_capability(user: dict, capability: str) -> bool:
 
 
 def _tenant_meta_row(db, tenant_id: int, *, lock: bool = False):
-    tenant = db.scalars(select(Tenant).where(
+    # Lock the tenant authority row first when writing. This serializes the very first
+    # TENANT_META create as well as later updates; locking only PlatformConfig is not
+    # sufficient when that row does not exist yet.
+    tenant_stmt = select(Tenant).where(
         Tenant.id == int(tenant_id), Tenant.is_deleted.is_(False),
-    )).first()
+    )
+    if lock:
+        tenant_stmt = tenant_stmt.with_for_update()
+    tenant = db.scalars(tenant_stmt).first()
     if tenant is None:
         raise AppException("DATA_NOT_FOUND", "租户不存在", http_status=404)
     stmt = select(PlatformConfig).where(
