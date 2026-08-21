@@ -23,10 +23,11 @@ test('W2 API consumes canonical workbench and formal resolve command', () => {
   assert.match(api, /disciplineCaseRef/)
 })
 
-test('existing exam console mounts W2 workbench without a duplicate menu or route', () => {
+test('existing exam console mounts W2 workbench as its single incident consumer', () => {
   assert.match(consoleView, /AaExamIncidentWorkbench/)
   assert.match(consoleView, /<AaExamIncidentWorkbench/)
   assert.doesNotMatch(consoleView, /v-for="i in incidents"/)
+  assert.doesNotMatch(consoleView, /api\.listIncidents\(/)
 })
 
 test('W2 workbench exposes full lifecycle, server filters and authoritative refresh', () => {
