@@ -92,16 +92,18 @@ def _assert_not_last_school_admin(db, tenant_id: int, user_id: int, role: Role) 
         UserRole.status == "ACTIVE",
         UserRole.is_deleted.is_(False),
     ).with_for_update()).all())
-    active_holders = 0
-    target_is_holder = False
-    for link in links:
-        account = db.get(User, int(link.user_id))
-        if account is None or account.is_deleted or str(account.status or "").upper() != "ACTIVE":
-            continue
-        active_holders += 1
-        if int(link.user_id) == int(user_id):
-            target_is_holder = True
-    if target_is_holder and active_holders <= 1:
+    holder_ids = {int(link.user_id) for link in links}
+    accounts = list(db.scalars(select(User).where(
+        User.tenant_id == tenant_id,
+        User.id.in_(holder_ids),
+        User.is_deleted.is_(False),
+    ).with_for_update()).all()) if holder_ids else []
+    active_holder_ids = {
+        int(account.id)
+        for account in accounts
+        if str(account.status or "").upper() == "ACTIVE"
+    }
+    if int(user_id) in active_holder_ids and len(active_holder_ids) <= 1:
         raise AppException("VALIDATION_ERROR", "不能回收本校最后一名启用中的学校管理员")
 
 
