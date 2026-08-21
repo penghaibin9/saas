@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Evaluate k6 and observability artifacts into a machine-readable capacity verdict."""
+"""Evaluate k6 + V3 identity/route artifacts into a machine-readable capacity verdict.
+
+Teacher V3 T9 distinguishes two different questions:
+- ``cold``: enough distinct identities/tokens to make a capacity claim without a tiny hot cache pool;
+- ``warm``: deliberately reuse a small identity pool to observe cache behaviour. A warm run may pass its
+  latency/error gates, but it is never eligible to prove user-scale capacity.
+"""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +19,14 @@ PROFILE_MIN_REQUESTS = {
     "baseline": 1000,
     "p300": 10000,
     "p500": 20000,
+}
+PROFILE_PEAK_VUS = {
+    "smoke": 2,
+    "baseline": 20,
+    "p300": 300,
+    "p500": 500,
+    "p1000": 1000,
+    "p3000": 3000,
 }
 LOCAL_DIAGNOSTIC_PROFILES = {"p300", "p500"}
 
@@ -73,16 +87,58 @@ def _metric_values(summary: dict[str, Any], key: str) -> dict[str, Any]:
     return values if isinstance(values, dict) else {}
 
 
+def _identity_pool_assertion(v3: dict[str, Any], *, profile: str, mode: str) -> tuple[bool, dict[str, Any], dict[str, Any]]:
+    identity = v3.get("identity") or {}
+    scenario = str(v3.get("scenario") or "mixed").strip().lower()
+    peak = int(PROFILE_PEAK_VUS.get(profile, 1))
+    actual = {
+        "scenario": scenario,
+        "identityMode": str(identity.get("identityMode") or ""),
+        "studentTokensAvailable": int(_number(identity.get("studentTokensAvailable"), default=0)),
+        "teacherTokensAvailable": int(_number(identity.get("teacherTokensAvailable"), default=0)),
+        "studentCredentialsAvailable": int(_number(identity.get("studentCredentialsAvailable"), default=0)),
+        "teacherCredentialsAvailable": int(_number(identity.get("teacherCredentialsAvailable"), default=0)),
+        "uniqueStudentTokens": int(_number(identity.get("uniqueStudentTokens"), default=0)),
+        "uniqueTeacherTokens": int(_number(identity.get("uniqueTeacherTokens"), default=0)),
+        "uniqueTeacherContexts": int(_number(identity.get("uniqueTeacherContexts"), default=0)),
+        "teacherRoleRatios": identity.get("teacherRoleRatios") or {},
+    }
+    required: dict[str, Any] = {"peakVUs": peak, "scenario": scenario}
+    if mode != "cold":
+        return True, actual, {**required, "eligible": False, "reason": "warm-cache diagnostic"}
+
+    student_needed = scenario in {"student", "mixed"}
+    teacher_needed = scenario in {"teacher", "mixed"}
+    required["uniqueStudentTokens"] = peak if student_needed else 0
+    required["uniqueTeacherTokens"] = peak if teacher_needed else 0
+    # High-load runs are required by auth.js to use pre-issued Teacher tokens. For those runs,
+    # token cardinality alone is insufficient: 500 different JWTs that all point at one active
+    # context would still exercise one hot permission/scope identity. Machine-lock the context
+    # cardinality whenever a Teacher token pool is present. Low-load credential diagnostics keep
+    # their existing behaviour because external credentials may not expose activeContextId metadata.
+    teacher_contexts_required = peak if teacher_needed and actual["teacherTokensAvailable"] > 0 else 0
+    required["uniqueTeacherContexts"] = teacher_contexts_required
+    passed = (
+        (not student_needed or actual["uniqueStudentTokens"] >= peak)
+        and (not teacher_needed or actual["uniqueTeacherTokens"] >= peak)
+        and (teacher_contexts_required == 0 or actual["uniqueTeacherContexts"] >= teacher_contexts_required)
+    )
+    return passed, actual, required
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", required=True)
+    parser.add_argument("--identity-mode", choices=("cold", "warm"), default="cold")
     parser.add_argument("--summary", type=Path, required=True)
+    parser.add_argument("--v3", type=Path, help="k6-summary-v3.json with route + identity evidence")
     parser.add_argument("--before", type=Path, required=True)
     parser.add_argument("--after", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
     summary = _load(args.summary)
+    v3 = _load(args.v3) if args.v3 else {}
     before = _load(args.before)
     after = _load(args.after)
 
@@ -101,7 +157,17 @@ def main() -> int:
     non_2xx = _status_failures(after)
     target_mode = str(before.get("targetMode") or after.get("targetMode") or "unknown")
     local_high_load = target_mode == "local" and args.profile in LOCAL_DIAGNOSTIC_PROFILES
-    verdict_mode = "local-functional" if local_high_load else "full-capacity"
+
+    artifact_identity_mode = str(((v3.get("identity") or {}).get("identityMode")) or "")
+    missing_routes = list(v3.get("missingRoutes") or []) if v3 else []
+    identity_pool_passed, identity_actual, identity_limit = _identity_pool_assertion(
+        v3, profile=args.profile, mode=args.identity_mode
+    ) if v3 else (False, {}, {})
+
+    if args.identity_mode == "warm":
+        verdict_mode = "warm-cache-diagnostic"
+    else:
+        verdict_mode = "local-functional" if local_high_load else "full-capacity"
 
     assertions = [
         {
@@ -167,21 +233,61 @@ def main() -> int:
             "actual": non_2xx,
             "limit": {},
         },
+        {
+            "key": "v3ArtifactPresent",
+            "passed": bool(v3),
+            "enforced": args.v3 is not None,
+            "actual": bool(v3),
+            "limit": True,
+        },
+        {
+            "key": "v3RoutesCovered",
+            "passed": bool(v3) and not missing_routes,
+            "enforced": args.v3 is not None,
+            "actual": missing_routes,
+            "limit": [],
+        },
+        {
+            "key": "identityModeMatches",
+            "passed": bool(v3) and artifact_identity_mode == args.identity_mode,
+            "enforced": args.v3 is not None,
+            "actual": artifact_identity_mode or None,
+            "limit": args.identity_mode,
+        },
+        {
+            "key": "coldIdentityPoolCoverage",
+            "passed": identity_pool_passed,
+            "enforced": args.v3 is not None and args.identity_mode == "cold",
+            "actual": identity_actual,
+            "limit": identity_limit,
+        },
     ]
 
     passed = all(item["passed"] for item in assertions if item["enforced"])
+    identity_evidence_eligible = args.identity_mode == "cold" and identity_pool_passed
+    production_capacity_evidence_eligible = bool(
+        passed
+        and identity_evidence_eligible
+        and target_mode == "remote"
+        and not local_high_load
+    )
     verdict = {
         "profile": args.profile,
+        "identityMode": args.identity_mode,
         "mode": verdict_mode,
         "targetMode": target_mode,
         "passed": passed,
         "latencyGateEnforced": not local_high_load,
+        "identityEvidenceEligible": identity_evidence_eligible,
+        "productionCapacityEvidenceEligible": production_capacity_evidence_eligible,
         "summary": {
             "requests": request_count,
             "p95Ms": None if not math.isfinite(p95) else round(p95, 3),
             "p99Ms": None if not math.isfinite(p99) else round(p99, 3),
             "httpFailureRate": failed_rate,
             "businessCheckRate": check_rate,
+            "missingRoutes": missing_routes,
+            "identity": identity_actual,
         },
         "assertions": assertions,
     }
@@ -189,12 +295,15 @@ def main() -> int:
     args.output.write_text(json.dumps(verdict, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     print(
-        f"capacity_verdict profile={args.profile} mode={verdict_mode} "
+        f"capacity_verdict profile={args.profile} identity_mode={args.identity_mode} mode={verdict_mode} "
         f"passed={str(passed).lower()} requests={request_count} "
         f"p95_ms={verdict['summary']['p95Ms']} p99_ms={verdict['summary']['p99Ms']} "
-        f"failed_rate={failed_rate} check_rate={check_rate}"
+        f"failed_rate={failed_rate} check_rate={check_rate} "
+        f"production_capacity_evidence={str(production_capacity_evidence_eligible).lower()}"
     )
-    if local_high_load:
+    if args.identity_mode == "warm":
+        print("INFO warm-cache runs are diagnostic and can never prove identity-scale capacity")
+    elif local_high_load:
         print("INFO local high-load latency is diagnostic only; HTTPS remote runs enforce full latency gates")
     if not passed:
         for item in assertions:

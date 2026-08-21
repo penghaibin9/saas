@@ -1,0 +1,28 @@
+name: Teacher Miniapp V3 T8 Handoff
+
+on:
+  pull_request:
+    paths:
+      - 'miniapp/**'
+      - 'miniapp-v3-handoff.json'
+      - 'backend/alembic/versions/**'
+      - '.github/workflows/miniapp-teacher-v3-t8-handoff.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  downstream-handoff:
+    name: Teacher T8 shared handoff downstream verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify Student V3 seal ancestry and shared contract drift
+        working-directory: miniapp
+        run: node scripts/verify-v3-handoff-downstream.mjs

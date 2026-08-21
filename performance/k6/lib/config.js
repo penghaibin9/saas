@@ -103,16 +103,20 @@ if (
 const routeThresholds = {
   'http_req_duration{route:student_home}': ['p(95)<1000', 'p(99)<2000'],
   'http_req_duration{route:student_messages}': ['p(95)<1000', 'p(99)<2000'],
-  // V3 §11.6（深审 P0-07）：V3 新增的学生端 P0 链路必须进容量门禁，
-  // 否则 Agenda/我的办理/搜索会绕过所有容量验收直接上线。
   'http_req_duration{route:student_agenda}': ['p(95)<1000', 'p(99)<2000'],
   'http_req_duration{route:student_cases}': ['p(95)<1000', 'p(99)<2000'],
   'http_req_duration{route:student_search}': ['p(95)<1000', 'p(99)<2000'],
   'http_req_duration{route:teacher_workbench}': ['p(95)<1000', 'p(99)<2000'],
   'http_req_duration{route:teacher_todos}': ['p(95)<1000', 'p(99)<2000'],
+  'http_req_duration{route:teacher_risk_students}': ['p(95)<1000', 'p(99)<2000'],
+  'http_req_duration{route:teacher_my_students}': ['p(95)<1000', 'p(99)<2000'],
+  'http_req_duration{route:teacher_student360}': ['p(95)<1000', 'p(99)<2000'],
+  'http_req_duration{route:teacher_messages}': ['p(95)<1000', 'p(99)<2000'],
+  'http_req_duration{route:teacher_visit}': ['p(95)<1000', 'p(99)<2000'],
+  'http_req_duration{route:teacher_employment}': ['p(95)<1000', 'p(99)<2000'],
+  'http_req_duration{route:teacher_employment_verification}': ['p(95)<1000', 'p(99)<2000'],
 };
 
-/** 容量门禁必须覆盖的 V3 学生端路由；缺一个就说明这次压测没压到新链路。 */
 export const REQUIRED_STUDENT_V3_ROUTES = [
   'student_home',
   'student_messages',
@@ -121,10 +125,30 @@ export const REQUIRED_STUDENT_V3_ROUTES = [
   'student_search',
 ];
 
+/** T9 Teacher V3 hard gate: legacy workbench/todo/risk plus the five newly required real paths. */
+export const REQUIRED_TEACHER_V3_ROUTES = [
+  'teacher_workbench',
+  'teacher_todos',
+  'teacher_risk_students',
+  'teacher_my_students',
+  'teacher_student360',
+  'teacher_messages',
+  'teacher_visit',
+  'teacher_employment_verification',
+];
+
 const fullLatencyThresholds = {
   http_req_duration: ['p(95)<1000', 'p(99)<2000'],
   ...routeThresholds,
 };
+
+// k6 only materializes tagged sub-metrics in handleSummary when a threshold references them.
+// Local p300/p500 intentionally do not enforce latency (runner contention makes it diagnostic),
+// but route-coverage evidence must still exist. These non-relaxing max>=0 thresholds keep every
+// required route sub-metric materialized without turning local diagnostic latency into a gate.
+const localRouteCoverageThresholds = Object.fromEntries(
+  Object.keys(routeThresholds).map((key) => [key, ['max>=0']]),
+);
 
 // GitHub自包含高负载把k6、FastAPI、MySQL、Redis放在同一Runner，只作为功能与稳定性诊断。
 // HTTPS预发/正式环境仍执行完整延迟硬门槛，禁止用本地诊断替代真实容量验收。
@@ -143,7 +167,7 @@ export const options = {
   thresholds: {
     checks: ['rate>0.995'],
     http_req_failed: ['rate<0.005'],
-    ...(LOCAL_HIGH_LOAD_DIAGNOSTIC ? {} : fullLatencyThresholds),
+    ...(LOCAL_HIGH_LOAD_DIAGNOSTIC ? localRouteCoverageThresholds : fullLatencyThresholds),
   },
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   userAgent: 'Yueke-Capacity-Gate/1.0',

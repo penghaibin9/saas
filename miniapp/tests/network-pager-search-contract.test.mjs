@@ -116,12 +116,13 @@ test('S7 搜索壳不绑定任何一端 API', () => {
   assert.doesNotMatch(searchPage, /\/mobile\/student\//, '共享壳不得硬编码某一端接口路径')
 })
 
-test('S7 provider 按 side 分流，且教师端不冒充服务端检索', () => {
+test('S7 provider 按 side 分流；T9 教师端升级为真实服务端检索', () => {
   assert.match(providers, /side === 'teacher' \? teacherProvider : studentProvider/)
-  assert.match(providers, /serverSide: true/)
-  assert.match(providers, /serverSide: false/)
-  assert.match(providers, /仅搜索本机已加载的消息/, '教师端必须说明它只搜本地已加载数据')
-  // 主包页面引用它，因此不能拖入某一端 API 与 mock 图（S1.5）
+  assert.match(providers, /const studentProvider = \{[\s\S]*?serverSide: true/)
+  assert.match(providers, /const teacherProvider = \{[\s\S]*?serverSide: true/)
+  assert.match(providers, /getTeacherMessagesPage\(\{ tab: 'all', q: keyword, pageSize: 20 \}\)/)
+  assert.doesNotMatch(providers, /仅搜索本机已加载的消息|getSearchPool/)
+  // shared shell 仍不得绑定旧 studentApi/teacherApi 大图；T9 只接专用轻量 Teacher Messages client。
   assert.doesNotMatch(providers, /from '@\/services\/(studentApi|teacherApi)'/)
 })
 

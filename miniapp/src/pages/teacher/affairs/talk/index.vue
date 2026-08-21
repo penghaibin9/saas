@@ -8,10 +8,11 @@
         <view class="card stack-sm" v-if="showForm">
           <picker mode="selector" :range="topicOptions" range-key="label" @change="onTopicChange"><view class="tk__input">{{ topicLabel }}</view></picker>
           <input class="tk__input" v-model="form.topic" maxlength="100" placeholder="谈话主题（2-100字，如：期中学业关心）" placeholder-class="tk__ph" />
-          <picker mode="selector" :range="students" range-key="label" @change="onStudentChange"><view class="tk__input">{{ selectedStudentLabel }}</view></picker>
+          <view v-if="prefillLocked" class="tk__input">已预填：{{ selectedStudentLabel }}</view>
+          <picker v-else mode="selector" :range="students" range-key="label" @change="onStudentChange"><view class="tk__input">{{ selectedStudentLabel }}</view></picker>
           <view class="tk__selected" v-if="form.studentIds.length">
-            <text v-for="s in selectedStudents" :key="s.studentId" class="tk__chip" @click.stop="removeStudent(s.studentId)">{{ s.name }} · {{ s.className || s.studentNo }} ×</text>
-            <text class="tk__clear" @click="form.studentIds = []">清空</text>
+            <text v-for="s in selectedStudents" :key="s.studentId" class="tk__chip" @click.stop="removeStudent(s.studentId)">{{ s.name }} · {{ s.className || s.studentNo }}{{ prefillLocked ? '' : ' ×' }}</text>
+            <text v-if="!prefillLocked" class="tk__clear" @click="form.studentIds = []">清空</text>
           </view>
           <button class="btn btn-primary" :disabled="creating || !canCreate" @click="createPlan">{{ creating ? '创建中…' : '创建谈话计划' }}</button>
         </view>
@@ -83,7 +84,7 @@ export default {
   data() {
     return {
       state: 'loading', loaded: false, all: [], filter: 'all', showForm: false, creating: false,
-      form: { talkType: 'DAILY', topic: '', studentIds: [] }, students: [],
+      form: { talkType: 'DAILY', topic: '', studentIds: [] }, students: [], prefillLocked: false,
       active: null, recordForm: { content: '', result: '', needFollow: false },
       recording: false, acting: false, followContent: '', topicOptions: TYPE_OPTS, filters: FILTERS
     }
@@ -97,28 +98,48 @@ export default {
       return this.all.filter((t) => t.status === this.filter)
     },
     selectedStudents() { const ids = new Set(this.form.studentIds.map(String)); return this.students.filter((s) => ids.has(String(s.studentId))) },
-    selectedStudentLabel() { return this.form.studentIds.length ? `已选择 ${this.form.studentIds.length} 人，继续点击可添加或移除` : '选择学生（可连续添加）' },
+    selectedStudentLabel() {
+      if (this.prefillLocked && this.students[0]) return this.students[0].label
+      return this.form.studentIds.length ? `已选择 ${this.form.studentIds.length} 人，继续点击可添加或移除` : '选择学生（可连续添加）'
+    },
     canCreate() { const len = this.form.topic.trim().length; return len >= 2 && len <= 100 && this.form.studentIds.length > 0 },
     availableActions() { return Array.isArray(this.active && this.active.allowedActions) ? this.active.allowedActions : (FALLBACK_ACTIONS[(this.active && this.active.status) || ''] || []) }
   },
-  onLoad() { this.load() },
+  onLoad(q) { this.applyPrefill(q || {}); this.load() },
   methods: {
+    applyPrefill(q) {
+      const studentId = String(q.studentId || '').trim()
+      if (q.mode !== 'create' || !studentId) return
+      const student = {
+        studentId,
+        name: q.studentName ? decodeURIComponent(q.studentName) : '当前学生',
+        studentNo: q.studentNo ? decodeURIComponent(q.studentNo) : '',
+        className: q.className ? decodeURIComponent(q.className) : ''
+      }
+      student.label = `${student.name} · ${student.className || student.studentNo || '当前学生'}`
+      this.students = [student]
+      this.form.studentIds = [studentId]
+      this.showForm = true
+      this.prefillLocked = true
+    },
     typeLabel(t) { return TYPE_LABEL[t] || t }, statusTag(s) { return STATUS_TAG[s] || 'default' }, canAct(a) { return this.availableActions.includes(a) },
     onTopicChange(e) { this.form.talkType = TYPE_OPTS[e.detail.value].value },
     toggleCreate() { this.showForm = !this.showForm; if (this.showForm && !this.students.length) this.loadStudents() },
     loadStudents() {
+      if (this.prefillLocked) return
       teacherApi.getMyStudents().then((d) => {
         this.students = ((d && d.items) || []).map((s) => ({ ...s, label: `${s.name} · ${s.className || s.studentNo}` }))
         if (!this.students.length) toast('当前数据范围内暂无可选择学生')
       }).catch((e) => this.showError(e, '学生名单加载失败'))
     },
     onStudentChange(e) {
+      if (this.prefillLocked) return
       const student = this.students[Number(e.detail.value)]; if (!student) return
       const id = String(student.studentId)
       if (!this.form.studentIds.map(String).includes(id)) this.form.studentIds.push(id)
       else this.removeStudent(id)
     },
-    removeStudent(id) { this.form.studentIds = this.form.studentIds.filter((x) => String(x) !== String(id)) },
+    removeStudent(id) { if (!this.prefillLocked) this.form.studentIds = this.form.studentIds.filter((x) => String(x) !== String(id)) },
     load() {
       this.state = 'loading'
       teacherApi.getTalkList().then((d) => { this.all = (d && d.items) || []; this.loaded = true; this.state = 'ready' })
@@ -129,7 +150,11 @@ export default {
       if (this.creating || !this.canCreate) return
       this.creating = true
       teacherApi.createTalk({ talkType: this.form.talkType, topic: this.form.topic.trim(), studentIds: this.form.studentIds })
-        .then(() => { toast('谈话计划已创建'); this.showForm = false; this.form = { talkType: 'DAILY', topic: '', studentIds: [] }; this.load() })
+        .then(() => {
+          toast('谈话计划已创建')
+          if (this.prefillLocked) return setTimeout(() => uni.navigateBack(), 300)
+          this.showForm = false; this.form = { talkType: 'DAILY', topic: '', studentIds: [] }; this.load()
+        })
         .catch((e) => this.showError(e, '创建失败')).finally(() => { this.creating = false })
     },
     openTalk(t) {

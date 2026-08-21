@@ -1,0 +1,23 @@
+entries:
+  - module: internship
+    client: backend
+    route: /teacher-mobile/internship/visits/{internship_id}
+    page: backend/app/services/teacher_mobile_internship_evidence_service.py
+    action: validate-ready-temp-private-and-bind-visit-evidence
+    fileCategory: INTERNSHIP_VISIT
+    api: POST /api/v1/teacher-mobile/internship/visits/{internship_id}
+    backendService: backend/app/services/teacher_mobile_internship_evidence_service.py; app.services.file_service.get_file_meta; app.services.file_business_binding_service
+    storageMode: PUBLIC_FILE_CENTER_TEMP_PRIVATE_TO_BIZ_SCOPED
+    authMode: require_staff+internship-module+teacher-plan-scope+file-owner
+    dataScope: tenant+teacher-visit-plan+student+internship-record+formal-file-binding
+    versioned: true
+    scanGated: true
+    preview: true
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: Teacher V3 T6 only reads public file metadata to require a ready, unbound TEMP_PRIVATE object owned by the actor. The business write persists InternshipVisit.file_id and the existing file_business_binding_service transaction hook promotes it to canonical INTERNSHIP_VISIT BIZ_SCOPED binding in the same transaction; no second uploader, storage path, binding authority, ACL bypass, or teacher geolocation is introduced.

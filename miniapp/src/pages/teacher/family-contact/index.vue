@@ -13,7 +13,6 @@
     </view>
 
     <MobileGlobalState :state="state" @retry="load">
-      <!-- 列表 -->
       <view class="page-pad" v-if="tab === 'list'">
         <MobileGlobalState v-if="!list || !list.length" state="empty" title="暂无家校联系记录"
           description="登记的家校联系会出现在这里。" />
@@ -37,14 +36,14 @@
         </view>
       </view>
 
-      <!-- 登记 -->
       <view class="page-pad" v-if="tab === 'create'">
         <MobileGlobalState v-if="!students.length" state="empty" title="暂无可登记学生"
-          description="仅可为本人负责班级学生登记家校联系。" />
+          description="仅可为本人负责范围学生登记家校联系。" />
         <view class="card fc__form" v-else>
           <view class="fc__row fc__row--field">
             <text class="fc__row-k">联系学生</text>
-            <picker class="fc__picker" mode="selector" :range="studentLabels" :value="studentIndex" @change="(e) => studentIndex = Number(e.detail.value)">
+            <view v-if="prefillLocked" class="fc__picker"><view class="fc__pick-val">{{ studentLabels[0] }}</view></view>
+            <picker v-else class="fc__picker" mode="selector" :range="studentLabels" :value="studentIndex" @change="(e) => studentIndex = Number(e.detail.value)">
               <view class="fc__pick-val">{{ studentLabels[studentIndex] || '请选择' }}<text class="fc__arrow">▾</text></view>
             </picker>
           </view>
@@ -87,18 +86,34 @@ export default {
     return {
       tab: 'list', list: null, state: 'loading', acting: false,
       students: [], studentIndex: 0, typeLabels: TYPES.map((t) => t.label), typeIndex: 0,
-      reason: '', result: '', submitting: false
+      reason: '', result: '', submitting: false, prefillLocked: false
     }
   },
-  onLoad() { this.load() },
+  onLoad(q) { this.applyPrefill(q || {}); this.load() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
   },
   computed: {
-    studentLabels() { return this.students.map((s) => `${s.name}（${s.studentNo}）· ${s.className || ''}`) }
+    studentLabels() { return this.students.map((s) => `${s.name}（${s.studentNo || '—'}）· ${s.className || ''}`) }
   },
   methods: {
+    applyPrefill(q) {
+      const studentId = String(q.studentId || '').trim()
+      if (q.mode !== 'create' || !studentId) return
+      this.students = [{
+        studentId,
+        name: q.studentName ? decodeURIComponent(q.studentName) : '当前学生',
+        studentNo: q.studentNo ? decodeURIComponent(q.studentNo) : '',
+        className: q.className ? decodeURIComponent(q.className) : ''
+      }]
+      const type = String(q.contactType || '').toUpperCase()
+      const idx = TYPES.findIndex((item) => item.key === type)
+      if (idx >= 0) this.typeIndex = idx
+      this.studentIndex = 0
+      this.tab = 'create'
+      this.prefillLocked = true
+    },
     typeLabel(k) { return (TYPES.find((t) => t.key === k) || {}).label || k },
     load(done) {
       this.state = 'loading'
@@ -109,6 +124,7 @@ export default {
     },
     onCreateTab() {
       this.tab = 'create'
+      if (this.prefillLocked) return
       if (!this.students.length) {
         teacherApi.getFamilyContactStudents().then((d) => { this.students = (d && d.list) || [] }).catch(() => {})
       }
@@ -141,6 +157,7 @@ export default {
       })).then(() => {
         uni.showToast({ title: '已登记', icon: 'success' })
         this.reason = ''; this.result = ''
+        if (this.prefillLocked) return setTimeout(() => uni.navigateBack(), 300)
         this.tab = 'list'; this.load()
       }).catch((e) => {
         if (e && e.code === 'LOCKED') return
