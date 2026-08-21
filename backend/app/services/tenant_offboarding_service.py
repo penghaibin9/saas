@@ -11,8 +11,8 @@ from app.core.exceptions import AppException, not_found
 from app.db.session import get_sessionmaker
 from app.models.tenant_offboarding import TenantOffboardingJob, TenantOffboardingStep, TenantTombstone
 
-ACTIVE_STATES = {"REQUESTED", "PRECHECK", "FROZEN_READONLY", "FINAL_EXPORT_READY", "RETENTION", "PURGE_READY", "PURGING"}
-CANCELLABLE_STATES = {"REQUESTED", "PRECHECK", "FROZEN_READONLY", "FINAL_EXPORT_READY", "RETENTION"}
+ACTIVE_STATES = {"REQUESTED", "PRECHECK", "FROZEN_READONLY", "FINAL_EXPORT_READY", "RETENTION", "PURGE_READY", "PURGING", "BLOCKED", "FAILED"}
+CANCELLABLE_STATES = {"REQUESTED", "PRECHECK", "FROZEN_READONLY", "FINAL_EXPORT_READY", "RETENTION", "BLOCKED"}
 
 
 def _actor_id(user: dict | None) -> int | None:
@@ -87,11 +87,33 @@ def _set_step(db, job_id: int, code: str, status: str, *, result: dict | None = 
         row.finished_at = now
 
 
+def _mark_purge_failed(job_id: int, tenant_id: int, exc: Exception, *, evidence: dict | None = None) -> None:
+    """Make any post-boundary purge failure retryable without downgrading PURGED."""
+    db = _session()
+    try:
+        job = _job_row(db, int(job_id), tenant_id=int(tenant_id), lock=True)
+        if job is None or job.state == "PURGED":
+            return
+        message = str(exc)[:4000]
+        job.state = "FAILED"
+        job.last_error = message
+        if evidence is not None:
+            job.result_json = {**dict(job.result_json or {}), "purgeEvidence": dict(evidence)}
+        _set_step(db, job.id, "PURGE", "FAILED", result=evidence, error=message)
+        db.commit()
+    finally:
+        db.close()
+
+
 def _revoke_refresh_by_tenant(db, tenant_id: int) -> int:
     from app.models import AuthRefreshToken, User
 
+    # Revoke every token ever issued to a tenant subject, including users that
+    # are already soft-deleted. Offboarding must not leave a historical refresh
+    # token usable merely because its owner row stopped appearing in active-user
+    # queries before the tenant freeze happened.
     user_ids = [f"db-{int(uid)}" for uid in db.scalars(select(User.id).where(
-        User.tenant_id == int(tenant_id), User.is_deleted.is_(False)
+        User.tenant_id == int(tenant_id)
     )).all()]
     deleted_count = 0
     for start in range(0, len(user_ids), 500):
@@ -368,60 +390,64 @@ def approve_and_purge(user: dict, job_id: int, *, expected_version: int, source_
     try:
         purge = execute_tenant_purge(tenant_id, source_commit=source_commit)
     except Exception as exc:
-        db = _session()
         try:
-            job = _job_row(db, int(job_id), tenant_id=tenant_id, lock=True)
-            if job is not None:
-                job.state = "FAILED"
-                job.last_error = str(exc)[:4000]
-                _set_step(db, job.id, "PURGE", "FAILED", error=str(exc)[:4000])
-                db.commit()
-        finally:
-            db.close()
+            _mark_purge_failed(int(job_id), tenant_id, exc)
+        except Exception:  # noqa: BLE001
+            pass
         raise
 
     evidence = dict(purge["evidence"])
-    db = _session()
     try:
-        job = _job_row(db, int(job_id), tenant_id=tenant_id, lock=True)
-        tenant = db.get(Tenant, tenant_id, with_for_update=True)
-        now = datetime.utcnow()
-        if tenant is None or job is None:
-            raise AppException("TENANT_PURGE_FINALIZE_FAILED", "销毁完成但控制面记录缺失，需人工处置", http_status=500)
-        original_code = str(tenant_snapshot["tenantCode"])
-        original_name = str(tenant_snapshot["tenantName"])
-        code_hash = hashlib.sha256(original_code.encode("utf-8")).hexdigest()
-        tombstone = db.scalars(select(TenantTombstone).where(TenantTombstone.tenant_id == tenant_id).with_for_update()).first()
-        if tombstone is None:
-            tombstone = TenantTombstone(
-                tenant_id=tenant_id,
-                tenant_code_hash=code_hash,
-                tenant_name_snapshot=original_name,
-                offboarding_job_id=int(job.id),
-                reason=job.reason,
-                final_export_sha256=str(job.final_export_sha256),
-                purge_evidence_sha256=str(evidence["evidenceSha256"]),
-                purged_at=now,
-                evidence_json=evidence,
-            )
-            db.add(tombstone)
-        tenant.status = "ARCHIVED"
-        tenant.tenant_code = f"purged-{tenant_id}-{code_hash[:8]}"
-        tenant.school_name = "已销毁租户"
-        tenant.short_name = None
-        tenant.region_code = None
-        tenant.contact_name = None
-        tenant.contact_phone_encrypted = None
-        tenant.version = int(tenant.version or 0) + 1
-        job.state = "PURGED"
-        job.purge_evidence_sha256 = str(evidence["evidenceSha256"])
-        job.result_json = {"purgeEvidence": evidence}
-        job.last_error = None
-        job.finished_at = now
-        _set_step(db, job.id, "PURGE", "SUCCEEDED", result=evidence)
-        db.commit()
-    finally:
-        db.close()
+        db = _session()
+        try:
+            job = _job_row(db, int(job_id), tenant_id=tenant_id, lock=True)
+            tenant = db.get(Tenant, tenant_id, with_for_update=True)
+            now = datetime.utcnow()
+            if tenant is None or job is None:
+                raise AppException("TENANT_PURGE_FINALIZE_FAILED", "销毁完成但控制面记录缺失，需人工处置", http_status=500)
+            original_code = str(tenant_snapshot["tenantCode"])
+            original_name = str(tenant_snapshot["tenantName"])
+            code_hash = hashlib.sha256(original_code.encode("utf-8")).hexdigest()
+            tombstone = db.scalars(select(TenantTombstone).where(TenantTombstone.tenant_id == tenant_id).with_for_update()).first()
+            if tombstone is None:
+                tombstone = TenantTombstone(
+                    tenant_id=tenant_id,
+                    tenant_code_hash=code_hash,
+                    tenant_name_snapshot=original_name,
+                    offboarding_job_id=int(job.id),
+                    reason=job.reason,
+                    final_export_sha256=str(job.final_export_sha256),
+                    purge_evidence_sha256=str(evidence["evidenceSha256"]),
+                    purged_at=now,
+                    evidence_json=evidence,
+                )
+                db.add(tombstone)
+            tenant.status = "ARCHIVED"
+            tenant.tenant_code = f"purged-{tenant_id}-{code_hash[:8]}"
+            tenant.school_name = "已销毁租户"
+            tenant.short_name = None
+            tenant.region_code = None
+            tenant.contact_name = None
+            tenant.contact_phone_encrypted = None
+            tenant.version = int(tenant.version or 0) + 1
+            job.state = "PURGED"
+            job.purge_evidence_sha256 = str(evidence["evidenceSha256"])
+            job.result_json = {"purgeEvidence": evidence}
+            job.last_error = None
+            job.finished_at = now
+            _set_step(db, job.id, "PURGE", "SUCCEEDED", result=evidence)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        # Physical deletion may already be complete here. Never strand the job
+        # in PURGING: FAILED remains the only retryable, still-unique workflow
+        # and execute_tenant_purge is deliberately idempotent for that retry.
+        try:
+            _mark_purge_failed(int(job_id), tenant_id, exc, evidence=evidence)
+        except Exception:  # noqa: BLE001
+            pass
+        raise
     return get_job(int(job_id))
 
 
@@ -444,7 +470,7 @@ def get_job(job_id: int) -> dict:
             "preview": job.preview_json or {}, "result": job.result_json or {},
             "lastError": job.last_error,
             "cancellable": job.state in CANCELLABLE_STATES,
-            "irreversible": job.state in {"PURGE_READY", "PURGING", "PURGED"},
+            "irreversible": job.state in {"PURGE_READY", "PURGING", "FAILED", "PURGED"},
             "steps": [
                 {"stepCode": s.step_code, "status": s.status, "attempts": int(s.attempts or 0),
                  "result": s.result_json or {}, "lastError": s.last_error}
