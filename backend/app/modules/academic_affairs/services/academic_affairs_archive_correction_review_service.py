@@ -1,14 +1,13 @@
 """W1 post-archive correction review completion.
 
-The immutable Stage C3 approval path remains the canonical owner for APPROVE.  This
-module only fills the missing formal REJECT decision and enriches correction detail
-with the persisted reject decision plus the server-authoritative original/proposed
-fact snapshot.  ARCHIVED is never reopened and REJECT never creates an official fact
-or ArchiveManifest revision.
+The immutable Stage C3 approval path remains the canonical owner for APPROVE. This
+module fills the missing formal REJECT decision and enriches correction detail with
+persisted review evidence plus server-authoritative original/proposed/resulting fact
+snapshots. ARCHIVED is never reopened and REJECT never creates an official fact or
+ArchiveManifest revision.
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime
 
 from app.core.exceptions import AppException, not_found
@@ -37,11 +36,13 @@ def _target_id(value) -> int | None:
     return parsed if parsed > 0 else None
 
 
-def _original_fact_snapshot(db, case) -> dict | None:
-    target_id = _target_id(case.target_ref)
+def _fact_snapshot(db, business_type: str, fact_id) -> dict | None:
+    """Read one immutable/current formal fact under the active tenant scope."""
+    target_id = _target_id(fact_id)
     if target_id is None:
         return None
-    if case.business_type == "GRADE":
+
+    if business_type == "GRADE":
         from app.models import AcademicGrade
 
         row = db.query(AcademicGrade).filter(
@@ -64,8 +65,11 @@ def _original_fact_snapshot(db, case) -> dict | None:
             "recordStatus": row.record_status,
             "attemptNo": getattr(row, "attempt_no", None),
             "passLine": getattr(row, "pass_line_snapshot", None),
+            "sourceBizType": getattr(row, "source_biz_type", None),
+            "sourceBizId": str(row.source_biz_id) if getattr(row, "source_biz_id", None) is not None else None,
         }
-    if case.business_type == "GRADUATION":
+
+    if business_type == "GRADUATION":
         from app.models import GraduationDecisionFact
 
         row = db.query(GraduationDecisionFact).filter(
@@ -83,23 +87,27 @@ def _original_fact_snapshot(db, case) -> dict | None:
             "evaluationRunId": str(row.evaluation_run_id),
             "conclusion": row.conclusion,
             "supersedesId": str(row.supersedes_id) if row.supersedes_id else None,
+            "correctionCaseId": str(row.correction_case_id) if row.correction_case_id else None,
             "decisionAt": row.decision_at.isoformat() if row.decision_at else None,
         }
     return None
 
 
 def _proposed_fact_snapshot(original: dict | None, correction: dict | None) -> dict | None:
+    """Display-only proposal before approval; never treated as an official fact."""
     if not isinstance(correction, dict):
         return original
     if original is None:
         return dict(correction)
     proposed = dict(original)
     proposed.update(correction)
+    proposed["factId"] = None
+    proposed["recordStatus"] = "PROPOSED"
     return proposed
 
 
 def get_correction_case(user, case_id) -> dict:
-    """Return immutable service detail plus formal review and fact-comparison data."""
+    """Return review detail with exact original and resulting official facts."""
     base = archive_service.get_correction_case(user, case_id)
     from app.models import PostArchiveCorrectionCase
 
@@ -113,14 +121,26 @@ def get_correction_case(user, case_id) -> dict:
         ).first()
         if not case:
             raise not_found("归档后纠错单不存在")
-        original = _original_fact_snapshot(db, case)
+
+        original = _fact_snapshot(db, case.business_type, case.target_ref)
         correction = base.get("correction") if isinstance(base, dict) else None
+        resulting = None
+        if case.status == "APPLIED" and case.official_fact_id is not None:
+            resulting = _fact_snapshot(db, case.business_type, case.official_fact_id)
+            if resulting is None:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "已应用纠错单引用的正式事实不存在或不在当前租户，证据链不完整",
+                    http_status=409,
+                )
+
         base.update({
             "rejectedBy": str(case.rejected_by) if case.rejected_by is not None else None,
             "rejectedAt": case.rejected_at.isoformat() if case.rejected_at else None,
             "rejectReason": case.reject_reason,
             "originalOfficialFact": original,
-            "proposedOfficialFact": _proposed_fact_snapshot(original, correction),
+            "proposedOfficialFact": _proposed_fact_snapshot(original, correction) if case.status == _PENDING else None,
+            "resultingOfficialFact": resulting,
         })
         return base
 
@@ -129,7 +149,7 @@ def reject_correction_case(user, case_id, *, reason: str) -> dict:
     """Reject a pending correction under the same two-person/tenant/lock discipline.
 
     This transition intentionally has no call to the official-fact command and no
-    ArchiveManifest INSERT.  A repeated reject/approve-after-reject therefore fails on
+    ArchiveManifest INSERT. A repeated reject/approve-after-reject therefore fails on
     the locked current status instead of replaying side effects.
     """
     from app.models import AaArchiveBatch, PostArchiveCorrectionCase
