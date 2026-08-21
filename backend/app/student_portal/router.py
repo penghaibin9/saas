@@ -611,6 +611,11 @@ def employment_my(user=Depends(get_current_user)):
     return success(employment.my(user))
 
 
+@router.get("/employment/destination/options", summary="就业去向登记可选项（canonical 字典）")
+def employment_destination_options(user=Depends(get_current_user)):
+    return success(employment.destination_options(user))
+
+
 @router.post("/employment/destination", summary="就业去向登记（本人）")
 def employment_destination(user=Depends(get_current_user), body: dict = Body(...)):
     return success(employment.destination_register(user, body))

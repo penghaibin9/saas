@@ -155,6 +155,7 @@ export const portalApi = {
   internshipHelp: (body) => request('/portal/internship/help', { method: 'POST', body }),
 
   employmentMy: () => request('/portal/employment/my'),
+  employmentDestinationOptions: () => request('/portal/employment/destination/options'),
   employmentDestination: (body) => request('/portal/employment/destination', { method: 'POST', body }),
   employmentDestinationPrint: (body) => request('/portal/employment/destination/print', { method: 'POST', body }),
   orientationMy: () => request('/portal/orientation/my'),
