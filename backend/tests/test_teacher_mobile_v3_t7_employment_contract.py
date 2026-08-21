@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -96,15 +95,17 @@ def test_t7_verification_requires_formal_file_binding_and_optimistic_lock():
     assert 'if action == "RETURN" and len(comment) < 5' in service
 
 
-def test_t7_pc_material_approval_no_longer_sets_destination_verified():
+def test_t7_pc_material_approval_preserves_established_verified_transition():
     route = _src("backend/app/modules/employment/routers/employment.py")
     material_authority = _src("backend/app/modules/employment/services/employment_runtime_material_service.py")
     assert 'employment_runtime_material_service as material_runtime' in route
     assert 'material_runtime.approve_material(mid, body.comment, user=user)' in route
     approve_block = material_authority[material_authority.index('def approve_material'):]
     assert 'emp.material_status = "APPROVED"' in approve_block
-    # Comments may document the forbidden mutation; only executable assignment is disallowed.
-    assert re.search(r'^\s*emp\.verify_status\s*=', approve_block, re.MULTILINE) is None
+    assert 'emp.verify_status = "VERIFIED"' in approve_block
+    # Teacher V3 may add its own explicit verification endpoint, but it must not silently
+    # break the pre-existing production PC closed-loop contract.
+    assert 'emp.verify_status = after' in _src("backend/app/services/teacher_mobile_employment_service.py")
 
 
 def test_t7_bound_profile_scope_never_falls_back_to_stale_employment_snapshot(monkeypatch):
