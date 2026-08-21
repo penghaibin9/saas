@@ -47,3 +47,10 @@ test('MFA and offboarding controls are mounted in existing platform workspaces',
   assert.match(tenantView, /<TenantOffboardingPanel/)
   assert.match(tenantView, /v-else-if="tab === 'offboarding'"/)
 })
+
+test('effective login policy parameters are editable from platform security UI', () => {
+  assert.match(securityView, /key:\s*'passwordMinLength'/)
+  assert.match(securityView, /key:\s*'captchaAfterFailures'/)
+  assert.match(securityView, /密码最小长度/)
+  assert.match(securityView, /连续失败后启用验证码/)
+})
