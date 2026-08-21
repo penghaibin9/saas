@@ -12,6 +12,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import './config/helpCenterRuntime'
+import { OFFICIAL_SALES_PAGES } from './config/officialSalesPages'
 import { installDirtyFormGuard } from './router/dirtyFormGuard'
 import { toast } from './utils/toast'
 
@@ -33,6 +34,18 @@ if (!router.hasRoute('official-product')) {
     name: 'official-product',
     component: () => import('./views/official-site/OfficialProductView.vue'),
     meta: { public: true, title: '跃科产品中心' }
+  })
+}
+
+// 官网其余销售页全部消费 officialSalesPages 唯一口径，避免路由、SEO 和页面内容各维护一份。
+for (const page of OFFICIAL_SALES_PAGES.filter((item) => item.type !== 'product')) {
+  const routeName = `official-sales-${page.key}`
+  if (router.hasRoute(routeName)) continue
+  router.addRoute({
+    path: page.path,
+    name: routeName,
+    component: () => import('./views/official-site/OfficialSalesPageView.vue'),
+    meta: { public: true, title: page.navTitle || page.title, officialSalesPage: true }
   })
 }
 
