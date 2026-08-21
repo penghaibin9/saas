@@ -1,5 +1,13 @@
-import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { request } from '@/services/http/client'
 import fileSdk from '@/services/file/fileSdk'
+
+const enc = encodeURIComponent
+
+function ticketPath(ticket = {}) {
+  const value = String(ticket.url || ticket.downloadUrl || '')
+  if (!value.startsWith('/api/v1/')) return value
+  return value.slice('/api/v1'.length)
+}
 
 function abortError() {
   const error = new DOMException('预览已切换', 'AbortError')
@@ -17,59 +25,55 @@ function raceAbort(promise, signal) {
   })
 }
 
-function unavailableMaterial(material, message = '附件当前不可预览') {
+function normalizeMaterial(item = {}) {
+  const allowedActions = Array.isArray(item.allowedActions) ? item.allowedActions : []
   return {
-    ...material,
-    fileId: String(material.fileId || ''),
-    fileName: material.fileName || material.title || '课程材料',
-    scanStatus: 'ERROR',
-    statusText: message,
-    readyForBusiness: false,
-    allowedActions: [],
-    canPreview: false,
-    canDownload: false
+    ...item,
+    fileId: String(item.fileId || ''),
+    materialId: String(item.materialId || item.id || ''),
+    fileName: item.fileName || item.title || '课程材料',
+    canPreview: allowedActions.includes('preview'),
+    canDownload: allowedActions.includes('download')
   }
 }
 
 /**
  * 教务课程材料 Reader adapter。
- * 课程业务页只负责“读哪份材料”；文件元数据、扫描态、allowedActions 与字节授权仍由 File Center 决定。
+ * 业务关系由 courseId + materialId 锁定；预览/下载只消费后端签发的课程材料短时票据，
+ * 不把课程附件降级成 generic File Center URL。
  */
 export const courseMaterialReaderApi = {
   async list(courseId) {
-    const res = await academicAffairsApi.getCourseMaterials(courseId)
-    if (res.code !== 0) throw Object.assign(new Error(res.message || '课程材料加载失败'), { code: res.code })
-
-    const materials = (res.data?.list || []).filter((item) => item.fileId)
-    return Promise.all(materials.map(async (material) => {
-      try {
-        const meta = await fileSdk.metadata(material.fileId)
-        return {
-          ...meta,
-          materialId: material.id,
-          materialType: material.materialType,
-          materialTypeLabel: material.materialTypeLabel,
-          title: material.title,
-          remark: material.remark,
-          uploader: material.uploader,
-          createdAt: material.createdAt,
-          fileId: String(material.fileId),
-          fileName: material.fileName || meta.fileName || material.title || '课程材料'
-        }
-      } catch (error) {
-        return unavailableMaterial(material, error?.message || '附件当前不可预览')
-      }
-    }))
+    const data = await request(`/academic-affairs/courses/${enc(courseId)}/materials/reader`)
+    return (data?.items || []).map(normalizeMaterial)
   },
 
-  createPreviewProvider() {
+  issueTicket(courseId, materialId, action = 'preview') {
+    return request(`/academic-affairs/courses/${enc(courseId)}/materials/${enc(materialId)}/ticket`, {
+      method: 'POST',
+      body: { action }
+    })
+  },
+
+  createPreviewProvider(courseId) {
     return {
       async fetchBytes(descriptor, { signal } = {}) {
         if (signal?.aborted) throw abortError()
-        return raceAbort(fileSdk.blob(descriptor.fileId), signal)
+        if (!descriptor?.materialId) throw new Error('课程材料缺少 materialId，拒绝越过业务关系预览')
+        const ticket = await raceAbort(
+          courseMaterialReaderApi.issueTicket(courseId, descriptor.materialId, 'preview'),
+          signal
+        )
+        return raceAbort(fileSdk.blobFrom(ticketPath(ticket)), signal)
       },
       dispose() {}
     }
+  },
+
+  async download(courseId, material = {}) {
+    if (!material?.materialId) throw new Error('课程材料缺少 materialId，拒绝越过业务关系下载')
+    const ticket = await this.issueTicket(courseId, material.materialId, 'download')
+    return fileSdk.downloadFrom(ticketPath(ticket), material.fileName || '课程材料')
   }
 }
 
