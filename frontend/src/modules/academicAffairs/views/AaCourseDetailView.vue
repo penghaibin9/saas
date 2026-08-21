@@ -43,11 +43,12 @@
               inline
               :provider="materialPreviewProvider"
               :allow-download="material.canDownload"
+              :download-handler="downloadCourseMaterial"
               @error="onMaterialPreviewError"
             />
           </div>
         </div>
-        <p class="mp-note">Reader 只消费文件中心授权后的字节；预览与下载分别按 allowedActions 判定，不从页面状态猜权限。</p>
+        <p class="mp-note">Reader 只消费课程业务票据授权后的字节；预览与下载分别按 allowedActions 判定，不从页面状态猜权限，也不打开公共存储 URL。</p>
       </AppSectionCard>
 
       <AppSectionCard title="审核操作">
@@ -95,7 +96,7 @@
 <script>
 /** 课程详情 + 两级审核 + 停用管理（/admin/academic-affairs/courses/:id）。
  * Tier1「课程停用」续工：新增启用/停用按钮 + 被引用查询（停用被拦截时提示具体方案）。
- * W5 Document Preview：课程材料统一接 FilePreviewer inline Reader；文件中心仍是权限/扫描/字节唯一事实源。 */
+ * W5 Document Preview：课程材料统一接 FilePreviewer inline Reader；courseId+materialId 业务票据锁住附件关系。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppDescriptionList } from '@/components/common'
@@ -113,7 +114,7 @@ export default {
     return {
       loading: true, error: '', course: null, acting: false, loadingRefs: false, references: null,
       materialsLoading: false, materialsError: '', materials: [],
-      materialPreviewProvider: courseMaterialReaderApi.createPreviewProvider(),
+      materialPreviewProvider: null,
       dlg: { visible: false, title: '', type: 'primary', confirmText: '确认', requireReason: false, submitting: false, action: '' }
     }
   },
@@ -146,7 +147,10 @@ export default {
       ]
     }
   },
-  created() { this.load() },
+  created() {
+    this.materialPreviewProvider = courseMaterialReaderApi.createPreviewProvider(this.courseId)
+    this.load()
+  },
   methods: {
     reviewStatusColor, inReview, canSubmit,
     statusLabel(s) { return REVIEW_STATUS[s] || s || '' },
@@ -193,6 +197,9 @@ export default {
       } finally {
         this.materialsLoading = false
       }
+    },
+    downloadCourseMaterial(material) {
+      return courseMaterialReaderApi.download(this.courseId, material)
     },
     onMaterialPreviewError(error) {
       toast.error(error?.message || '课程材料预览失败')
