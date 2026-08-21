@@ -157,12 +157,18 @@ def test_staff_with_view_permission_can_read_only_in_scope_destination_pdf(db_mo
 
 
 def test_staff_with_view_permission_but_no_scope_is_denied(db_mode):
-    """有就业模块权限但未配置任何 scope，不得退化成全校可读。"""
+    """有就业模块权限但未配置任何 scope，不得退化成全校可读。
+
+    activeContextId 也参与 affairs_security._derive_keys() 的稳定身份派生；构造“无范围老师”
+    时必须同步切换，不能只改 loginName/userId 却遗留旧 ctx_employment_scope01，否则测试
+    本身会继续命中 employment_scope01 的 TeacherStudentScope，实际上仍是有范围身份。
+    """
     set_tenant({"tenantId": str(TID), "tenantCode": "demo"})
     emp_a, _ = _seed_scope_fixture()
     user = _teacher_user()
     user["loginName"] = "employment_unscoped01"
     user["userId"] = "u_employment_unscoped01"
+    user["activeContextId"] = "ctx_employment_unscoped01"
 
     db = get_sessionmaker()()
     try:
