@@ -5,23 +5,33 @@
       <span>当前学校 SLA</span>
       <small>服务器生效口径 · 只读</small>
     </div>
-    <div v-if="kind === 'risk'" class="sa-sla__items">
-      <span v-for="level in riskLevels" :key="level.key">
-        <strong>{{ level.label }}</strong>{{ display(level.value) }}
-      </span>
+
+    <div v-if="kind !== 'leave'" class="sa-sla__group">
+      <strong>风险处置</strong>
+      <div class="sa-sla__items">
+        <span v-for="level in riskLevels" :key="level.key">
+          <b>{{ level.label }}</b>{{ display(level.value) }}
+        </span>
+      </div>
     </div>
-    <div v-else class="sa-sla__items">
-      <span v-for="item in leaveItems" :key="item.key">
-        <strong>{{ item.label }}</strong>{{ display(item.value) }}
-      </span>
+
+    <div v-if="kind !== 'risk'" class="sa-sla__group">
+      <strong>请假审批</strong>
+      <div class="sa-sla__items">
+        <span v-for="item in leaveItems" :key="item.key">
+          <b>{{ item.label }}</b>{{ display(item.value) }}
+        </span>
+        <span v-if="!leaveItems.length">未配置</span>
+      </div>
     </div>
-    <p>页面不自行计算超时；列表的 dueAt / overdue 等状态以后端事实为准。</p>
+
+    <p>页面不自行计算超时；dueAt / overdue / 升级等状态以后端事实为准。</p>
   </section>
 </template>
 
 <script>
 import { AppInlineAlert } from '@/components/common'
-import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
+import { request } from '@/services/http/client'
 
 function titleCase(key) {
   return String(key || '').replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase()).trim()
@@ -31,7 +41,7 @@ export default {
   name: 'StudentAffairsSlaStrip',
   components: { AppInlineAlert },
   props: {
-    kind: { type: String, default: 'risk', validator: (v) => ['risk', 'leave'].includes(v) }
+    kind: { type: String, default: 'both', validator: (v) => ['risk', 'leave', 'both'].includes(v) }
   },
   data() { return { loaded: false, error: '', config: { risk: {}, leave: {} } } },
   computed: {
@@ -52,10 +62,12 @@ export default {
   created() { this.load() },
   methods: {
     async load() {
-      const res = await studentAffairsApi.getSlaConfig()
-      if (res.code !== 0) { this.error = res.message || '当前学校 SLA 读取失败'; return }
-      this.config = res.data || { risk: {}, leave: {} }
-      this.loaded = true
+      try {
+        this.config = await request('/student-affairs/sla-config') || { risk: {}, leave: {} }
+        this.loaded = true
+      } catch (error) {
+        this.error = error?.message || '当前学校 SLA 读取失败'
+      }
     },
     display(value) {
       if (value == null || value === '') return '未配置'
@@ -73,8 +85,10 @@ export default {
 .sa-sla__head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .sa-sla__head span { font-weight: 700; color: var(--text-primary, #0f172a); }
 .sa-sla__head small, .sa-sla p { color: var(--text-tertiary, #64748b); font-size: 12px; }
+.sa-sla__group { display: grid; gap: 5px; }
+.sa-sla__group > strong { color: var(--text-secondary, #475569); font-size: 12px; }
 .sa-sla__items { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; }
 .sa-sla__items span { display: inline-flex; gap: 5px; }
-.sa-sla__items strong { color: var(--text-secondary, #475569); }
+.sa-sla__items b { color: var(--text-secondary, #475569); }
 .sa-sla p { margin: 0; }
 </style>
