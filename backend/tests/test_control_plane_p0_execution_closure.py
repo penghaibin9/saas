@@ -1,7 +1,7 @@
 """Regression contracts for the four control-plane P0 closures.
 
 These tests intentionally focus on safety authorities and wiring rather than
-retesting every legacy control-plane screen.  They fail loudly when a future
+retesting every legacy control-plane screen. They fail loudly when a future
 refactor restores process-local auth safety, lets manual DR evidence turn green,
 leaves a tenant table unclassified, or forgets the offboarding retry guard.
 """
@@ -52,7 +52,7 @@ def test_p0_purge_registry_classifies_every_current_tenant_table():
     assert registry["unknownTables"] == []
     assert registry["fileObjectTableCount"] == 1
     assert registry["purgeTableCount"] > 0
-    assert registry["reviewedAlembicHead"] == REVIEWED_ALEMBIC_HEAD == "20260820_ctrl_offboarding"
+    assert registry["reviewedAlembicHead"] == REVIEWED_ALEMBIC_HEAD == "20260821_ctrl_teacher_merge"
 
 
 def test_p0_purge_registry_locks_reviewed_exception_semantics():
@@ -85,6 +85,7 @@ def test_p0_purge_registry_locks_reviewed_exception_semantics():
         "t_attendance_exception",
         "t_class",
         "t_green_channel_application",
+        "t_emp_recommendation",
     }
 
     assert {name for name in retained if classify_table(name).classification != RETAIN} == set()
@@ -213,14 +214,18 @@ def test_p0_machine_backup_green_requires_immutable_remote_confirmation():
     assert "immutableRemoteConfirmed" in str(exc.value.message)
 
 
-def test_p0_migrations_form_one_linear_chain_after_academic_final_head():
+def test_p0_migrations_keep_control_plane_linear_and_merge_teacher_head_explicitly():
     auth = _load_revision("20260820_control_plane_auth_risk.py")
     recovery = _load_revision("20260820_control_plane_recovery_evidence.py")
     offboarding = _load_revision("20260820_control_plane_tenant_offboarding.py")
+    teacher = _load_revision("20260820_teacher_emp_recommendation.py")
+    merge = _load_revision("20260821_merge_ctrl_teacher_heads.py")
 
     assert auth.down_revision == "20260818_acad_bc_final"
     assert recovery.down_revision == auth.revision
     assert offboarding.down_revision == recovery.revision
+    assert teacher.down_revision == "20260818_acad_bc_final"
+    assert set(merge.down_revision) == {offboarding.revision, teacher.revision}
 
 
 def test_p0_machine_evidence_wrappers_use_production_virtualenv():
