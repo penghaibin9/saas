@@ -71,8 +71,8 @@ const BATCH_ACTIONS = [
 ]
 
 const todoVersions = new Map()
-// TP-A07：详情页读到的业务对象 sourceVersion 快照，approve/return/reject 时原样带回去，
-// 后端据此判断"你审批的还是不是你刚才看到的那份业务事实"，不一致就 409。
+// TP-A07：详情页/批量预检读到的业务对象 sourceVersion 快照，approve/return/reject
+// 时原样带回去；后端在同一事务内锁源事实并比对，不一致就 409。
 const contextVersions = new Map()
 const templateVersions = new Map()
 const pendingIdempotencyKeys = new Map()
@@ -272,19 +272,51 @@ function templateRow(t = {}) {
   return mapped
 }
 
-async function resolveBatchItems(selected = []) {
-  const out = []
-  for (const value of selected) {
-    const taskId = String(typeof value === 'object' ? (value.taskId || value.id || '') : value)
-    if (!taskId) continue
-    let version = typeof value === 'object' ? value.version : todoVersions.get(taskId)
-    if (version === undefined || version === null) {
-      const detail = await request(`/approvals/tasks/${encodeURIComponent(taskId)}`)
-      version = detail.version
-      todoVersions.set(taskId, version)
+async function resolveBatchItems(selected = [], { includeSourceVersion = true } = {}) {
+  const refs = (Array.isArray(selected) ? selected : [])
+    .map((value) => ({
+      value,
+      taskId: String(typeof value === 'object' ? (value.taskId || value.id || '') : value)
+    }))
+    .filter((x) => x.taskId)
+  if (!refs.length) return []
+
+  const out = new Array(refs.length)
+  let cursor = 0
+  async function worker() {
+    while (true) {
+      const index = cursor++
+      if (index >= refs.length) return
+      const { value, taskId } = refs[index]
+      let version = typeof value === 'object' ? value.version : todoVersions.get(taskId)
+      const needDetail = version === undefined || version === null
+        || (includeSourceVersion && !contextVersions.has(taskId))
+      if (needDetail) {
+        // TP-A07 batch preflight：列表只有 task version，没有业务事实 sourceVersion。
+        // supported Context 的批量动作必须先读取真实详情快照；最多 8 并发，避免一次
+        // 选 100 条时瞬间打 100 个请求。若用户此前看过详情，保留当时快照，让后端
+        // 对后续事实变化返回 409，而不是动作前偷偷刷新成“永远匹配”的当前版本。
+        const detail = await request(`/approvals/tasks/${encodeURIComponent(taskId)}`)
+        if (version === undefined || version === null) {
+          version = detail.version
+          todoVersions.set(taskId, version)
+        }
+        if (includeSourceVersion && !contextVersions.has(taskId)) {
+          const ctx = detail.businessContext || null
+          if (ctx && ctx.sourceVersion != null) {
+            contextVersions.set(taskId, ctx.sourceVersion)
+          }
+        }
+      }
+      const item = { taskId, version: Number(version) }
+      if (includeSourceVersion && contextVersions.has(taskId)) {
+        item.expectedSourceVersion = Number(contextVersions.get(taskId))
+      }
+      out[index] = item
     }
-    out.push({ taskId, version: Number(version) })
   }
+  const concurrency = Math.min(8, refs.length)
+  await Promise.all(Array.from({ length: concurrency }, () => worker()))
   return out
 }
 
@@ -489,7 +521,8 @@ export const approvalApi = {
   }),
 
   batchTransfer: (selected = [], payload = {}) => safe(async () => {
-    const items = await resolveBatchItems(selected)
+    // TRANSFER 不裁决业务事实，不需要额外预取 sourceVersion；只保留 task 乐观锁。
+    const items = await resolveBatchItems(selected, { includeSourceVersion: false })
     const body = {
       action: 'TRANSFER',
       items,
