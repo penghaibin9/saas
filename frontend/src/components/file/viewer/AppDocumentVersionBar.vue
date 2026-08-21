@@ -3,14 +3,15 @@
     <span class="dv-version-bar__label">业务版本</span>
     <button
       v-for="item in versions"
-      :key="String(item.fileVersionId ?? item.versionId ?? item.id)"
+      :key="String(versionKey(item))"
       type="button"
       :class="{ 'is-active': String(versionKey(item)) === String(activeVersionId) }"
       @click="$emit('select', item)"
     >
       v{{ item.versionNo ?? item.version ?? '—' }}
-      <small v-if="String(versionKey(item)) !== String(canonicalVersionId)">历史只读</small>
-      <small v-else>本次审核</small>
+      <small v-if="item.isCurrent === false">历史只读</small>
+      <small v-else-if="String(versionKey(item)) === String(canonicalVersionId)">本次审核</small>
+      <small v-else>当前附件</small>
     </button>
   </div>
 </template>
