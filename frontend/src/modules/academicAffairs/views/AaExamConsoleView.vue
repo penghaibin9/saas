@@ -141,14 +141,7 @@
             </template>
           </DataTable>
 
-          <div class="aaexam-section-title">考场异常记录</div>
-          <EmptyState v-if="!incidents.length" title="暂无异常" description="发布后监考教师可登记缺考/违纪" />
-          <ul v-else class="aaexam-incidents">
-            <li v-for="i in incidents" :key="i.incidentId">
-              <span>{{ i.studentName }} · {{ i.incidentType === 'ABSENT' ? '缺考' : i.incidentType === 'DISCIPLINE_VIOLATION' ? '违纪' : '其他' }}</span>
-              <span class="mp-cell-sub">{{ i.description || '' }}</span>
-            </li>
-          </ul>
+          <AaExamIncidentWorkbench :batch="current" />
         </template>
       </div>
     </div>
@@ -307,6 +300,7 @@ import { AppButton, AppDrawer } from '@/components/ui'
 import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppCheckboxGroup, AppTermEntityPicker, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsExamApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicAffairsExamConvenienceApi as convenienceApi } from '@/modules/academicAffairs/api/exam-convenience.api'
+import AaExamIncidentWorkbench from '@/modules/academicAffairs/components/AaExamIncidentWorkbench.vue'
 import { toast } from '@/utils/toast'
 
 const _L = { DRAFT: '草稿', COURSE_CONFIRMED: '课程已确认', ARRANGED: '已编排', PUBLISHED: '已发布', FINISHED: '已结束', ARCHIVED: '已归档' }
@@ -314,7 +308,7 @@ const _L = { DRAFT: '草稿', COURSE_CONFIRMED: '课程已确认', ARRANGED: '�
 export default {
   name: 'AaExamConsoleView',
   components: {
-    ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
+    ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AaExamIncidentWorkbench,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert,
     AppCheckboxGroup, AppTermEntityPicker, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker
   },
@@ -322,7 +316,7 @@ export default {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
       loading: true, error: '', rows: [], pagination: { page: 1, pageSize: 50, total: 0 },
-      current: null, courses: [], stats: null, incidents: [], readiness: null, readinessError: '',
+      current: null, courses: [], stats: null, readiness: null, readinessError: '',
       createVisible: false, form: { batchName: '', termId: '' }, formError: '',
       courseVisible: false, candidateLoading: false, candidateKeyword: '', courseCandidates: [], selectedTaskIds: [], coursePreview: null, courseError: '',
       autoPlanVisible: false, autoPlanError: '', autoPlan: { dates: [''], sessions: [{ start: '', end: '' }], maxPerDayPerClass: 1 },
@@ -380,15 +374,13 @@ export default {
     async select(b) { this.current = b; this.autoResult = null; await this.refresh() },
     async refresh() {
       if (!this.current) return
-      const [cs, st, inc, ready] = await Promise.all([
+      const [cs, st, ready] = await Promise.all([
         api.listCourses(this.current.batchId, { pageSize: 200 }),
         api.batchStats(this.current.batchId),
-        api.listIncidents({ batchId: this.current.batchId, pageSize: 100 }),
         convenienceApi.getReadiness(this.current.batchId)
       ])
       this.courses = cs.code === 0 ? cs.data.list : []
       this.stats = st.code === 0 ? st.data : null
-      this.incidents = inc.code === 0 ? inc.data.list : []
       this.readiness = ready.code === 0 ? ready.data : null
       this.readinessError = ready.code === 0 ? '' : ready.message
     },
