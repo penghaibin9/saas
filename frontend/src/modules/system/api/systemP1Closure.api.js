@@ -17,5 +17,18 @@ export const systemP1ClosureApi = Object.freeze({
         }))
       }
     }
+  ),
+  deprecateOrgNodeWithPreview: (nodeId, { type, reason, previewToken, expectedVersion }) => request(
+    `/system/org-nodes/${encodeURIComponent(nodeId)}/status`,
+    {
+      method: 'PUT',
+      body: {
+        type,
+        action: 'DISABLE',
+        reason,
+        previewToken,
+        expectedVersion
+      }
+    }
   )
 })
