@@ -31,7 +31,7 @@ test('ARCHIVED batch stays inside the existing archive console with three W1 wor
   assert.match(workspace, /归档事实/)
   assert.match(workspace, /归档后纠错/)
   assert.match(workspace, /Manifest版本链/)
-  assert.match(workspace, /原事实与申请修正对比/)
+  assert.match(workspace, /原事实与新事实对比/)
   assert.match(workspace, /二审通过并生成新正式事实/)
   assert.match(workspace, /驳回/)
   assert.doesNotMatch(workspace, /解冻归档|恢复归档|reopen/i)
@@ -48,10 +48,16 @@ test('mutations always reread correction, manifest and parent batch state from s
   assert.match(consoleView, /api\.getBatch\(batchId\)/)
 })
 
-test('review UI consumes server-provided original/proposed facts and rejection evidence', () => {
+test('review UI consumes server facts and requires formal high-risk confirmation', () => {
   assert.match(workspace, /detail\.originalOfficialFact/)
   assert.match(workspace, /detail\.proposedOfficialFact/)
+  assert.match(workspace, /detail\.resultingOfficialFact/)
+  assert.match(workspace, /新正式事实/)
   assert.match(workspace, /detail\.rejectReason/)
   assert.match(workspace, /detail\.rejectedBy/)
-  assert.match(workspace, /未生成正式事实或新的 Manifest/)
+  assert.match(workspace, /title="确认驳回归档后纠错"/)
+  assert.match(workspace, /confirm-text="确认驳回"/)
+  assert.match(workspace, /:require-reason="true"/)
+  assert.match(workspace, /reason-label="驳回原因"/)
+  assert.match(workspace, /未生成正式事实，也未生成新 Manifest/)
 })
