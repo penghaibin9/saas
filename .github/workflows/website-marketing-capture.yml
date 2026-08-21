@@ -215,26 +215,44 @@ jobs:
           npm install --no-audit --no-fund
           npx playwright install --with-deps chromium
 
-      - name: Capture website marketing screenshots
+      - id: capture_shots
+        name: Capture website marketing screenshots
         working-directory: e2e
         run: npx playwright test specs/website-marketing-capture.spec.mjs --reporter=line
 
-      - name: Persist website assets to capture branch
+      - name: Persist capture result to branch
         if: always()
+        env:
+          CAPTURE_OUTCOME: ${{ steps.capture_shots.outcome }}
         run: |
           set -euo pipefail
           SRC='e2e/test-results/website-assets'
-          if [ ! -d "$SRC" ]; then
-            echo '::warning::No website assets directory was produced.'
-            exit 0
-          fi
           rm -rf website-assets
-          cp -R "$SRC" website-assets
+          mkdir -p website-assets
+          if [ -d "$SRC" ]; then
+            cp -R "$SRC"/. website-assets/
+          fi
+          {
+            echo '# Website Marketing Capture Run'
+            echo
+            echo "- workflow_sha: ${GITHUB_SHA}"
+            echo "- branch: ${GITHUB_REF_NAME}"
+            echo "- capture_step: ${CAPTURE_OUTCOME:-unknown}"
+            echo "- persisted_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo '- data_source: isolated E2E MySQL only; production DB not used'
+          } > website-assets/run-status.md
+          if [ -d e2e/runtime-logs ]; then
+            mkdir -p website-assets/diagnostics
+            for f in e2e/runtime-logs/*.log; do
+              [ -f "$f" ] || continue
+              tail -n 200 "$f" > "website-assets/diagnostics/$(basename "$f")" || true
+            done
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add website-assets
           if git diff --cached --quiet; then
-            echo 'No website asset changes to commit.'
+            echo 'No website capture status changes to commit.'
             exit 0
           fi
           git commit -m 'chore: persist website marketing captures [skip ci]'
