@@ -154,12 +154,35 @@ export default {
       return ''
     }
   },
-  watch: { proposalId: { immediate: true, handler() { this.load() } } },
+  watch: {
+    proposalId: {
+      immediate: true,
+      handler(nextId, previousId) {
+        if (previousId != null && String(nextId) !== String(previousId)) this.resetForProposalChange()
+        this.load()
+      }
+    }
+  },
   beforeUnmount() { this.saveDraft() },
   methods: {
     fmtTime(s) { return formatDateTime(s, '') },
     versionKey(item) { return item?.fileVersionId ?? item?.versionId ?? item?.id ?? null },
     fileKey(item) { return item?.fileKey ?? item?.fileId ?? this.versionKey(item) },
+    resetForProposalChange() {
+      this.saveDraft()
+      this.detail = null
+      this.versionHistory = []
+      this.comment = ''
+      this.formError = ''
+      this.defenseComment = ''
+      this.activePreviewFileKey = null
+      this.activePreviewVersionId = null
+      this.conflictPreviewFile = null
+      this.versionConflict = null
+      this.previewDraftKey = ''
+      this.draftFileVersionId = null
+      this.carriedDraft = null
+    },
     draftKey(fileVersionId = this.draftFileVersionId ?? this.canonicalFileVersionId) {
       return this.detail?.id && fileVersionId != null ? `gd-proposal-review-draft:${this.detail.id}:${fileVersionId}` : ''
     },

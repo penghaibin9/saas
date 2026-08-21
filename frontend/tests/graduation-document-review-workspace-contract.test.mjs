@@ -61,6 +61,12 @@ test('W2 proposal reuses the same workspace and preserves proposal, audit and de
   assert.doesNotMatch(proposalSource, /ProposalPdfViewer|SecureFileList|previewVersion\(/)
 })
 
+test('W2 proposal business-object switch never silently inherits the previous textarea draft', () => {
+  assert.match(proposalSource, /handler\(nextId, previousId\)[\s\S]*resetForProposalChange\(\)/)
+  assert.match(proposalSource, /resetForProposalChange\(\)[\s\S]*this\.saveDraft\(\)[\s\S]*this\.detail = null[\s\S]*this\.comment = ''/)
+  assert.match(proposalSource, /this\.previewDraftKey = ''[\s\S]*this\.draftFileVersionId = null/)
+})
+
 test('W2 proposal stale-review conflict preserves the old draft but requires explicit carry into the new business version', () => {
   assert.match(proposalSource, /gd-proposal-review-conflict-carry:v1/)
   assert.match(proposalSource, /fromProposalId/)
