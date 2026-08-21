@@ -46,7 +46,7 @@
       <div v-if="selectedOverride" class="p1-confirm">
         <div>
           <b>撤销 {{ selectedOverride.configName }} 的全部学校层覆盖？</b>
-          <p>将按每条记录的 expectedVersion 逐条撤销 {{ selectedOverride.overrideCount }} 条当前/计划覆盖；完成后重新走后端 Resolver 继承上层有效值，并逐条写入安全审计。</p>
+          <p>后端会锁住并校验 {{ selectedOverride.overrideCount }} 条当前/计划覆盖的完整链与每条 version，单事务撤销并写高危审计；任何并发变化都会整笔拒绝，不会出现撤了一半。</p>
         </div>
         <input v-model.trim="overrideReason" placeholder="撤销原因，至少 5 个字" />
         <div class="p1-actions">
@@ -235,21 +235,21 @@ export default {
     async revokeOverride() {
       if (!this.selectedOverride) return
       if (this.overrideReason.trim().length < 5) return toast.error('撤销原因不少于 5 个字')
-      const chain = this.selectedOverride.overrideChain || [{ overrideId: this.selectedOverride.overrideId, version: this.selectedOverride.version }]
+      const selected = this.selectedOverride
       this.saving = true
       try {
-        for (const row of chain) {
-          await systemP1ClosureApi.revokeActiveConfigOverride(row.overrideId, {
-            reason: this.overrideReason.trim(), expectedVersion: row.version
-          })
-        }
+        await systemP1ClosureApi.restoreConfigInheritance(
+          selected.configKey,
+          selected.overrideChain || [],
+          this.overrideReason.trim()
+        )
       } catch (error) {
         this.saving = false
         await this.load()
-        return toast.error(`恢复继承未完成：${error.message || '并发版本冲突，请刷新重试'}`)
+        return toast.error(`恢复继承失败：${error.message || '并发版本冲突，请刷新重试'}`)
       }
       this.saving = false
-      toast.success(`已撤销 ${chain.length} 条学校层覆盖，当前值恢复继承`)
+      toast.success(`已原子撤销 ${selected.overrideCount} 条学校层覆盖，当前值恢复继承`)
       this.selectedOverride = null
       await this.load()
       this.$emit('refresh-child')
