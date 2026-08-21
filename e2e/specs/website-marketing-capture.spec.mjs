@@ -4,7 +4,7 @@ import { test } from '@playwright/test'
 import { config } from '../lib/config.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 
-const ROOT = path.resolve(process.cwd(), '..', 'website-assets')
+const ROOT = path.resolve(process.cwd(), 'test-results', 'website-assets')
 const SCREENSHOT_ROOT = path.join(ROOT, 'screenshots')
 const manifest = []
 
@@ -16,14 +16,21 @@ function safeName(value) {
   return String(value).replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
+function failed(group, key, label, route, error) {
+  manifest.push({
+    group, key, label, route, status: 'FAILED',
+    error: String(error?.message || error).slice(0, 800),
+    capturedAt: new Date().toISOString()
+  })
+}
+
 async function dismissGuides(page) {
   const guide = page.getByRole('dialog', { name: '页面操作引导' })
   if (await guide.isVisible({ timeout: 600 }).catch(() => false)) {
     const skip = guide.getByRole('button', { name: '跳过引导' })
     if (await skip.isVisible({ timeout: 600 }).catch(() => false)) await skip.click()
   }
-  const genericButtons = ['知道了', '以后再说', '关闭']
-  for (const label of genericButtons) {
+  for (const label of ['知道了', '以后再说', '关闭']) {
     const button = page.getByRole('button', { name: label }).first()
     if (await button.isVisible({ timeout: 250 }).catch(() => false)) await button.click().catch(() => {})
   }
@@ -90,8 +97,12 @@ async function captureStaff(page) {
   ]
 
   for (const [group, key, label, route] of pages) {
-    await gotoStaff(page, login, route)
-    await recordShot(page, { group, key, label, route })
+    try {
+      await gotoStaff(page, login, route)
+      await recordShot(page, { group, key, label, route })
+    } catch (error) {
+      failed(group, key, label, route, error)
+    }
   }
 }
 
@@ -102,11 +113,9 @@ async function captureStudentPortal(browser) {
     const login = new StudentLoginPage(page, config.studentBaseUrl)
     await login.login(config.student)
     await settle(page)
-    await recordShot(page, {
-      group: 'student-portal', key: 'home', label: '学生PC门户首页', route: page.url()
-    })
+    await recordShot(page, { group: 'student-portal', key: 'home', label: '学生PC门户首页', route: page.url() })
   } catch (error) {
-    manifest.push({ group: 'student-portal', key: 'home', label: '学生PC门户首页', status: 'FAILED', error: String(error?.message || error).slice(0, 800), capturedAt: new Date().toISOString() })
+    failed('student-portal', 'home', '学生PC门户首页', '/portal', error)
   } finally {
     await context.close()
   }
@@ -134,26 +143,60 @@ async function miniLogin(page, role, account) {
 }
 
 async function captureMiniappRole(browser, role, account, targets) {
+  const group = role === 'student' ? 'student-mobile' : 'teacher-mobile'
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 })
   const page = await context.newPage()
   try {
     const base = await miniLogin(page, role, account)
-    for (const target of targets) {
-      const [key, label, route] = target
-      await page.goto(`${base}/#${route}`, { waitUntil: 'domcontentloaded', timeout: 30_000 })
-      await settle(page)
-      await recordShot(page, { group: role === 'student' ? 'student-mobile' : 'teacher-mobile', key, label, route, viewport: true })
+    for (const [key, label, route] of targets) {
+      try {
+        await page.goto(`${base}/#${route}`, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+        await settle(page)
+        await recordShot(page, { group, key, label, route, viewport: true })
+      } catch (error) {
+        failed(group, key, label, route, error)
+      }
     }
   } catch (error) {
-    manifest.push({ group: role === 'student' ? 'student-mobile' : 'teacher-mobile', key: 'capture', status: 'FAILED', error: String(error?.message || error).slice(0, 800), capturedAt: new Date().toISOString() })
+    failed(group, 'login', `${role}移动端登录`, '', error)
   } finally {
     await context.close()
   }
 }
 
+function writeManifest() {
+  ensureDir(ROOT)
+  fs.writeFileSync(path.join(ROOT, 'capture-manifest.json'), JSON.stringify({
+    baseCommit: process.env.E2E_EXPECTED_SHA || '',
+    branch: process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || '',
+    capturedAt: new Date().toISOString(),
+    items: manifest
+  }, null, 2))
+
+  const lines = [
+    '# 跃科官网真实产品截图采集清单',
+    '',
+    `- 基线：${process.env.E2E_EXPECTED_SHA || 'unknown'}`,
+    `- 分支：${process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || 'unknown'}`,
+    `- 采集时间：${new Date().toISOString()}`,
+    '- 环境：GitHub Actions / isolated MySQL / real FastAPI / real Vue / Chromium',
+    '- 数据：仅 E2E 沙箱测试数据，不连接生产数据库',
+    '',
+    '| 状态 | 分组 | 素材 | 文件 | 路由 |',
+    '|---|---|---|---|---|',
+    ...manifest.map((item) => `| ${item.status} | ${item.group} | ${item.label || item.key} | ${item.file || '-'} | ${item.route || item.finalUrl || '-'} |`),
+    ''
+  ]
+  fs.writeFileSync(path.join(ROOT, 'README.md'), lines.join('\n'))
+}
+
 test('capture website marketing assets from isolated real stack', async ({ page, browser }) => {
   ensureDir(SCREENSHOT_ROOT)
-  await captureStaff(page)
+  try {
+    await captureStaff(page)
+  } catch (error) {
+    failed('staff-pc', 'login', '教师/管理PC登录', '/login', error)
+  }
   await captureStudentPortal(browser)
   await captureMiniappRole(browser, 'student', config.student, [
     ['home', '学生移动端首页', '/pages/student/home/index'],
@@ -166,28 +209,5 @@ test('capture website marketing assets from isolated real stack', async ({ page,
     ['todos', '教师今日待办', '/pages/teacher/todos/index'],
     ['internship-review', '教师实习周报批阅', '/pages/teacher/internship-review/index']
   ])
-
-  ensureDir(ROOT)
-  fs.writeFileSync(path.join(ROOT, 'capture-manifest.json'), JSON.stringify({
-    baseCommit: process.env.E2E_EXPECTED_SHA || '',
-    branch: process.env.GITHUB_REF_NAME || '',
-    capturedAt: new Date().toISOString(),
-    items: manifest
-  }, null, 2))
-
-  const lines = [
-    '# 跃科官网真实产品截图采集清单',
-    '',
-    `- 基线：${process.env.E2E_EXPECTED_SHA || 'unknown'}`,
-    `- 分支：${process.env.GITHUB_REF_NAME || 'unknown'}`,
-    `- 采集时间：${new Date().toISOString()}`,
-    '- 环境：GitHub Actions / isolated MySQL / real FastAPI / real Vue / Chromium',
-    '- 数据：仅 E2E 沙箱测试数据，不连接生产数据库',
-    '',
-    '| 状态 | 分组 | 素材 | 文件 | 路由 |',
-    '|---|---|---|---|---|',
-    ...manifest.map((item) => `| ${item.status} | ${item.group} | ${item.label || item.key} | ${item.file || '-'} | ${item.route || item.finalUrl || '-'} |`),
-    ''
-  ]
-  fs.writeFileSync(path.join(ROOT, 'README.md'), lines.join('\n'))
+  writeManifest()
 })
