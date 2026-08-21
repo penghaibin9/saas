@@ -48,10 +48,13 @@ async function inflateBounded(compressed, maxOutputBytes) {
   const reader = stream.getReader()
   const chunks = []
   let total = 0
+  let streamDone = false
   try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+    while (!streamDone) {
+      const result = await reader.read()
+      streamDone = result.done
+      if (streamDone) break
+      const value = result.value
       if (!value?.byteLength) continue
       total += value.byteLength
       if (total > maxOutputBytes) {
