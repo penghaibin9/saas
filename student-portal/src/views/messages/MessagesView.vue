@@ -28,9 +28,9 @@
         <template v-else>
           <!-- SP-M01/M04：不再消费本地 ACTION_ROUTES/MODULE_ROUTES 猜路由；
                每条只消费服务端下发的 typed action，UNIFIED_MESSAGE 点击前还会
-               重验详情，撤回/越权/失效一律原地报错，不导航（fail-closed）。 -->
+               重验详情，撤回/过期/越权/失效一律原地报错，不导航（fail-closed）。 -->
           <button v-for="(m, i) in items" :key="m.id || i" class="mrow"
-                  :disabled="itemDisabled(m)" :title="itemDisabled(m) ? (m.withdrawn ? '该消息已撤回' : actionReason(m.action)) : ''"
+                  :disabled="itemDisabled(m)" :title="itemDisabled(m) ? itemDisabledReason(m) : ''"
                   @click="openItem(m)">
             <span class="sp-tag" :class="'sp-tag--' + toneOf(m)" style="flex:none">{{ levelText(m) }}</span>
             <div style="flex:1;min-width:0">
@@ -40,6 +40,7 @@
                 <span v-if="m.deadline"> · 截止 {{ fmt(m.deadline) }}</span>
                 <span v-if="m.receipt"> · 待确认</span>
                 <span v-if="m.withdrawn"> · 已撤回</span>
+                <span v-else-if="m.expired"> · 已过期</span>
               </div>
             </div>
             <span v-if="!m.read" style="flex:none;margin-top:6px;width:8px;height:8px;border-radius:50%;background:var(--pri)" />
@@ -106,8 +107,13 @@ function fmt(t) { return t ? String(t).replace('T', ' ').slice(0, 16) : '' }
 function canOpen(action) { return !!(action && action.target && action.target.path) }
 function actionReason(action) { return (action && action.disabledReason) || '该事项暂无可直接办理的入口' }
 function itemDisabled(m) {
-  if (m.kind === 'UNIFIED_MESSAGE') return !!m.withdrawn
+  if (m.kind === 'UNIFIED_MESSAGE') return !!(m.withdrawn || m.expired)
   return !canOpen(m.action)
+}
+function itemDisabledReason(m) {
+  if (m.withdrawn) return '该消息已撤回'
+  if (m.expired) return '该消息已过期'
+  return actionReason(m.action)
 }
 
 async function loadTab(key, { page: p = 1, append = false } = {}) {
@@ -169,21 +175,14 @@ async function markAll() {
 }
 
 async function openItem(m) {
+  let action = m.action
   if (m.kind === 'UNIFIED_MESSAGE') {
     if (m.withdrawn) { ui.notify('该消息已撤回'); return }
+    if (m.expired) { ui.notify('该消息已过期'); return }
     const mid = String(m.messageId || m.id || '').replace(/^msg-/, '')
     if (/^\d+$/.test(mid)) {
-      if (!m.read) {
-        try { await portalApi.messageRead(mid); m.read = true } catch (e) { /* 非阻断 */ }
-      }
-      if (m.receipt) {
-        try {
-          await portalApi.messageReceipt(mid)
-          m.receipt = false; m.acked = true
-          ui.notify('已确认回执')
-        } catch (e) { /* 非强制 */ }
-      }
-      // SP-M04：详情重验失败/撤回/越权，一律原地报错，不导航（fail-closed）。
+      // P2-02：先读取详情重验“当前事实”，再做已读/回执/导航。
+      // 不能先拿列表旧快照确认回执，最后才发现消息已经被撤回或过期。
       let detail
       try {
         detail = await portalApi.messageDetail(mid)
@@ -191,11 +190,37 @@ async function openItem(m) {
         ui.notify(e?.message || '消息已失效，无法打开')
         return
       }
-      if (detail?.withdrawn) { m.withdrawn = true; ui.notify('该消息已撤回'); return }
+      if (detail?.withdrawn) {
+        m.withdrawn = true
+        m.action = detail.action
+        ui.notify('该消息已撤回')
+        return
+      }
+      if (detail?.expired) {
+        m.expired = true
+        m.action = detail.action
+        ui.notify('该消息已过期')
+        return
+      }
+      // 导航只认详情当前重新投影的 action；列表 action 到这里已经是旧快照。
+      action = detail?.action
+      m.action = action
+
+      if (!m.read) {
+        try { await portalApi.messageRead(mid); m.read = true } catch (e) { /* 非阻断 */ }
+      }
+      const needsReceipt = !!(detail?.requireAck && !detail?.acked)
+      if (needsReceipt) {
+        try {
+          await portalApi.messageReceipt(mid)
+          m.receipt = false; m.acked = true
+          ui.notify('已确认回执')
+        } catch (e) { /* 非强制 */ }
+      }
     }
   }
-  if (!canOpen(m.action)) { ui.notify(actionReason(m.action)); return }
-  const { path, query } = m.action.target
+  if (!canOpen(action)) { ui.notify(actionReason(action)); return }
+  const { path, query } = action.target
   router.push({ path, query: query && Object.keys(query).length ? { ...query } : undefined })
 }
 
