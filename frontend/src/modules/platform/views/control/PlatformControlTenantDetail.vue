@@ -135,6 +135,14 @@
         </DataTable>
         <EmptyState v-if="!users.length" text="该学校暂无账号" compact />
       </AppCard>
+
+      <TenantOffboardingPanel
+        v-else-if="tab === 'offboarding'"
+        :tenant-id="tid"
+        :tenant="tenant"
+        :tenant360="tenant360"
+        @changed="load"
+      />
     </template>
     <ErrorState v-else :text="error || '租户不存在'" @retry="load" />
   </ModulePageShell>
@@ -145,13 +153,17 @@ import { AppButton, AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import StudentPortalConfigPanel from '@/modules/platform/components/StudentPortalConfigPanel.vue'
+import TenantOffboardingPanel from '@/modules/platform/components/TenantOffboardingPanel.vue'
 import { toast } from '@/utils/toast'
 
 const STATUS = { trial: ['warning', '试用中'], active: ['success', '正式'], expired: ['danger', '已到期'], disabled: ['default', '已停用'] }
 
 export default {
   name: 'PlatformControlTenantDetail',
-  components: { AppButton, AppCard, AppSectionHeader, DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag, StudentPortalConfigPanel },
+  components: {
+    AppButton, AppCard, AppSectionHeader, DataTable, EmptyState, ErrorState, LoadingState,
+    ModulePageShell, StatusTag, StudentPortalConfigPanel, TenantOffboardingPanel
+  },
   data() {
     return {
       loading: true,
@@ -167,7 +179,8 @@ export default {
         { key: 'workflows', label: '审批流' },
         { key: 'brand', label: '品牌' },
         { key: 'users', label: '账号' },
-        { key: 'studentPortal', label: '学生PC门户' }
+        { key: 'studentPortal', label: '学生PC门户' },
+        { key: 'offboarding', label: '退租与数据销毁' }
       ],
       quota: { maxStudents: 0, maxUsers: 0, storageLimitMb: 0 },
       features: {},
