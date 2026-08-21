@@ -28,6 +28,11 @@ test('offboarding UI keeps the irreversible confirmation and volatile MFA bounda
   assert.doesNotMatch(offboarding, /localStorage|sessionStorage|indexedDB/i)
 })
 
+test('offboarding UI can submit an orphan PURGING job to the crash-resume authority', () => {
+  assert.match(offboarding, /'BLOCKED', 'FAILED', 'PURGING'/)
+  assert.match(offboarding, /approveTenantPurge/)
+})
+
 test('retention UI interprets backend naive timestamps as UTC', () => {
   assert.match(offboarding, /serverUtcEpoch/)
   assert.match(offboarding, /`\$\{raw\}Z`/)
