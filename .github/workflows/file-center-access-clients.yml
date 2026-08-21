@@ -30,6 +30,9 @@ on:
       - "miniapp/src/services/fileApi.js"
       - "miniapp/src/services/fileSdk.js"
       - "miniapp/src/components/file/**"
+      - "miniapp/src/pages/student/graduation/index.vue"
+      - "miniapp/src/pages/teacher/graduation-guide/index.vue"
+      - "miniapp/tests/document-preview-w4-contract.test.mjs"
       - "docs/architecture/document-preview-contract.md"
       - "docs/architecture/file-capability-inventory.d/10-document-preview-platform.yaml"
       - "scripts/check/check-file-client-contract.mjs"
@@ -121,3 +124,5 @@ jobs:
         run: node scripts/check/check-document-preview-contract.mjs
       - name: Student PC Reader source contract
         run: node --test student-portal/tests/document-preview-contract.test.mjs
+      - name: W4 miniapp native preview context contract
+        run: node --test miniapp/tests/document-preview-w4-contract.test.mjs
