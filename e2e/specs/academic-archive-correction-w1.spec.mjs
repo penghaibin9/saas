@@ -213,7 +213,9 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
     await reviewerPage.getByRole('button', { name: '驳回', exact: true }).click()
     const rejectDialog = reviewerPage.getByRole('dialog').filter({ hasText: '确认驳回归档后纠错' }).first()
     await expect(rejectDialog).toBeVisible()
-    await rejectDialog.getByLabel('驳回原因').fill(rejectDecisionReason)
+    const rejectReasonInput = rejectDialog.locator('textarea.app-confirm-dialog__textarea')
+    await expect(rejectReasonInput).toBeVisible()
+    await rejectReasonInput.fill(rejectDecisionReason)
     const rejectPromise = reviewerPage.waitForResponse(
       (response) => response.url().includes(`/api/v1/academic-affairs/archive/corrections/${rejectCaseId}/reject`) &&
         response.request().method() === 'POST',
