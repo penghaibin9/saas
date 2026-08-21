@@ -6,11 +6,11 @@
   已在该表登记，本文件只把它归一成 StudentPcActionDescriptor 形状）。
 - 待办动作：复用 :func:`app.services.workbench_todo_service.list_todos` 产出的
   typed todo DTO（内部经 :mod:`app.services.todo_route_registry` 解析路由）。
-  该 registry 目前尚未登记 ``studentPc`` client（Owner：PR #183 合并后的共享
-  registry owner 统一补齐，见二级模块施工包 SP-M03），因此 routePath 恒为
-  ``None``——本函数据此 fail-closed：只给禁用态 + 可解释 disabledReason，
-  不在这里另起一张 todoType→路由映射去抢работ。todo_route_registry 一旦补上
-  ``studentPc`` 分支，本函数无需改动即自动生效。
+  V3 施工手册 S3：``todo_route_registry`` 已登记 ``studentPc`` client（PR #183
+  合并后补齐，见二级模块施工包 SP-M03），只覆盖当前 Student PC 真实存在分 tab
+  的业务类型（leave/aid/funding/discipline/学业预警/实习）；未登记的 todoType
+  (routePath 仍为 None) 继续 fail-closed：只给禁用态 + 可解释 disabledReason，
+  不在这里另起一张 todoType→路由映射去抢权威。
 
 DTO 形状固定为 §14.1 StudentPcActionDescriptor：
 ``{sourceBizType, sourceBizId, recordId, target, allowedActions,
@@ -103,8 +103,11 @@ def build_todo_action(todo: dict | None) -> dict | None:
             allowed_actions=[], action_key=todo.get("todoType"),
         )
 
-    focus_mode = normalize_focus_mode(FOCUS_NONE)
-    focused = is_route_exact(focus_mode, route_path)
+    # S3：todo_route_registry 现在真的登记了 studentPc 分支，focusMode/routeExact
+    # 必须原样消费它算出的结论，不能再固定成 NONE——那样即便以后某个 tab 真的实现
+    # 了 LIST_FOCUS 并登记进 FOCUS_READY_PAGES，这里也会把它悄悄压回 NONE。
+    focus_mode = normalize_focus_mode(todo.get("focusMode"))
+    focused = bool(todo.get("routeExact"))
     obs.record_focus_result(route_name=todo.get("routeName"), focused=focused)
     return {
         "sourceBizType": source_biz_type,
