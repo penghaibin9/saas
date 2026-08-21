@@ -134,6 +134,8 @@ jobs:
 
       - name: Run W2 lifecycle permission tenant concurrency idempotency and legacy exam regressions
         working-directory: backend
+        env:
+          MOCK_LOGIN_ENABLED: 'true'
         run: |
           set -euo pipefail
           pytest -q \
@@ -145,6 +147,8 @@ jobs:
 
       - name: Prove formal print contract is unaffected
         working-directory: backend
+        env:
+          MOCK_LOGIN_ENABLED: 'true'
         run: |
           set -euo pipefail
           pytest -q \
