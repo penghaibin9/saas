@@ -17,7 +17,7 @@ entries:
     import: false
     export: false
     archive: false
-    status: planned
+    status: partial
     risk: P0
     targetPhase: '10'
-    notes: W0 freezes document-preview-contract/v1. Preview is a presentation capability above File Center and is intentionally distinct from download. Graduation material keeps its audited business-ticket boundary; Viewer never becomes authorization or review truth.
+    notes: W0 freezes document-preview-contract/v1. W1 delivers Admin/Teacher PC AppDocumentViewer with PDF/Image adapters, lazy rendering, bounded ticket refresh, generation cancellation and resource cleanup. W2 delivers the first Graduation Teacher PC Gold integration for final and proposal review through the existing graduation business-ticket boundary, canonical FileVersion lock, version-conflict fail-closed and per-version comment drafts. Student PC, miniapp reader-return and later Office/DOCX waves remain outside this partial status.
