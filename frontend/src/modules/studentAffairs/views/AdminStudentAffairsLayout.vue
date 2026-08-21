@@ -12,10 +12,10 @@
       @retry="goLogin"
     />
     <div v-else-if="ctx" class="student-affairs-ui-scope">
-      <div class="sa-ops-stack">
-        <StudentAffairsSlaStrip kind="both" />
+      <div v-if="showSla || showTempExpiry" class="sa-ops-stack">
+        <StudentAffairsSlaStrip v-if="showSla" kind="both" />
         <CounselorTempExpiryPanel
-          v-if="$route.name === 'student-affairs-counselor-assignments'"
+          v-if="showTempExpiry"
           :ctx="ctx"
         />
       </div>
@@ -31,7 +31,7 @@
  * 2026-07-12：从硬编码横向 tab 改为 navPlan 驱动（对齐 AdminInternshipLayout），
  * 侧栏二级/三级由 BasePortalLayout + navPlan.js「学工中心」组统一渲染，让学工中心 14 二级真正显示；
  * 禁止在此硬编码业务菜单。品牌名 / 角色 / 数据范围来自 studentAffairsApi.getContext()，ctx 下发给子路由。
- * W5：父布局统一展示服务器 SLA 真值；责任台账页额外挂临时代班到期幂等同步兜底，不改业务菜单。
+ * W5：看板/风险/请假按权限展示服务器 SLA 真值；责任台账页额外挂临时代班到期幂等同步兜底，不改业务菜单。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState, ErrorState } from '@/components/business'
@@ -39,6 +39,7 @@ import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.a
 import { studentAffairsPickerAdapters } from '@/modules/studentAffairs/pickerAdapters'
 import StudentAffairsSlaStrip from '@/modules/studentAffairs/components/StudentAffairsSlaStrip.vue'
 import CounselorTempExpiryPanel from '@/modules/studentAffairs/components/CounselorTempExpiryPanel.vue'
+import { matchPermission } from '@/config/navPlan'
 import router from '@/router'
 
 export default {
@@ -54,6 +55,18 @@ export default {
     brandTitle() {
       if (!this.ctx) return '管理端'
       return this.ctx.tenantBrandConfig.schoolName + ' · 管理端'
+    },
+    permissionPatterns() {
+      return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : []
+    },
+    showSla() {
+      const path = String(this.$route.path || '')
+      const operationalPage = path === '/admin/student-affairs/dashboard' || path.startsWith('/admin/student-affairs/risk') || path.startsWith('/admin/student-affairs/leave')
+      if (!operationalPage) return false
+      return matchPermission(this.permissionPatterns, 'studentAffairs.stats.view') || matchPermission(this.permissionPatterns, 'studentAffairs.dashboard.view')
+    },
+    showTempExpiry() {
+      return this.$route.name === 'student-affairs-counselor-assignments'
     }
   },
   async created() {
