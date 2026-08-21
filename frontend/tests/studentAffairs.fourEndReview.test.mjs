@@ -114,7 +114,8 @@ test('student clients preserve the real error after refreshing an expired token'
   assert.match(portal, /async function refreshOnce\(\)/)
   assert.match(portal, /return request\(path, \{ method, body, auth, params, query, _retried: true \}\)/)
   assert.match(portal, /return uploadFile\(path, file, \{ auth, _retried: true \}\)/)
-  assert.match(portal, /return downloadFile\(path, fallbackName, true\)/)
+  assert.match(portal, /return fetchFileBlob\(path, \{ auth, _retried: true, signal \}\)/)
+  assert.match(portal, /const blob = await fetchFileBlob\(path, \{ _retried \}\)/)
 })
 
 test('both student clients reject empty or non-positive credit claims', () => {
