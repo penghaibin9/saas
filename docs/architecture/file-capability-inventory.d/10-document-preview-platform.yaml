@@ -70,15 +70,15 @@ entries:
 
   - module: academic-affairs
     client: admin-pc
-    route: /admin/academic-affairs/courses/:id
+    route: /api/v1/academic-affairs/courses/{course_id}/materials/{material_id}/{action}
     page: frontend/src/modules/academicAffairs/views/AaCourseDetailView.vue; frontend/src/modules/academicAffairs/api/course-material-reader.api.js
     action: preview+download
     fileCategory: COURSE_MATERIAL
-    api: FILE_CENTER_METADATA_AND_AUTHORIZED_BYTES
-    backendService: backend/app/api/v1/file_contract.py; backend/app/services/file_access_service.py
-    storageMode: file-center-authorized-bytes
-    authMode: file-center-object+academic-course-view
-    dataScope: tenant+course+file-object+scan
+    api: /api/v1/academic-affairs/courses/{course_id}/materials/reader; /api/v1/academic-affairs/courses/{course_id}/materials/{material_id}/ticket; /api/v1/academic-affairs/courses/{course_id}/materials/{material_id}/preview; /api/v1/academic-affairs/courses/{course_id}/materials/{material_id}/download
+    backendService: backend/app/modules/academic_affairs/services/academic_affairs_course_material_preview_access.py; backend/app/modules/academic_affairs/routers/course_material_preview_router.py
+    storageMode: course-business-ticket-local-proxy
+    authMode: academic-course-view+material-relation+file-object
+    dataScope: tenant+course+material+file-object+scan
     versioned: false
     scanGated: true
     preview: true
@@ -87,9 +87,9 @@ entries:
     export: false
     archive: false
     status: active
-    risk: P1
+    risk: P0
     targetPhase: '10'
-    notes: W5 course material Reader. FilePreviewer inline mode consumes File Center metadata/allowedActions and provider bytes; the business page never opens a public storage URL.
+    notes: W5 course material Reader. courseId + materialId is the authoritative business relation, including legacy TEMP_PRIVATE attachments that never had a generic FileBinding; preview/download are separate business tickets and the browser never opens a generic/public file URL.
 
   - module: approval
     client: admin-pc
