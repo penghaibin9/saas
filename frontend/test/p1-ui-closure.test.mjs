@@ -23,9 +23,10 @@ test('controlled support session can enter a real scoped workspace', () => {
   assert.match(access, /stepUpMfa/)
   assert.match(pamApi, /auth:\s*false/)
   assert.match(pamApi, /Authorization:\s*`Bearer \$\{mfaAccessToken\}`/)
+  assert.doesNotMatch(access, /localStorage|sessionStorage|indexedDB/i)
 })
 
-test('customer success consumes training and renewal write APIs', () => {
+test('customer success consumes training and renewal write APIs without timezone shifting local schedules', () => {
   assert.match(customer, /listTrainings/)
   assert.match(customer, /createTraining/)
   assert.match(customer, /completeTraining/)
@@ -34,6 +35,8 @@ test('customer success consumes training and renewal write APIs', () => {
   assert.match(customer, /transitionRenewalTask/)
   assert.match(customer, /培训计划与完成记录/)
   assert.match(customer, /续费跟进任务/)
+  assert.match(customer, /localDateTime/)
+  assert.doesNotMatch(customer, /toISOString\(\)/)
 })
 
 test('tenant detail route exposes real base profile maintenance without a new menu', () => {
@@ -44,17 +47,21 @@ test('tenant detail route exposes real base profile maintenance without a new me
   assert.match(tenantProfile, /schoolType/)
 })
 
-test('role assignment route can create a governed role grant', () => {
+test('role assignment route can create a governed role grant using the backend datetime contract', () => {
   assert.match(systemLayout, /SystemP1ClosurePanel/)
   assert.match(systemPanel, /grantRoleAssignment/)
+  assert.match(systemPanel, /toBackendDateTime/)
   assert.match(systemPanel, /effectiveAt/)
   assert.match(systemPanel, /expiresAt/)
   assert.match(systemPanel, /正式角色授权/)
+  assert.doesNotMatch(systemPanel, /new Date\(this\.roleForm\.(effectiveAt|expiresAt)\)\.toISOString/)
 })
 
-test('security config can revoke an active override and restore inheritance', () => {
+test('security config restores the complete tenant override chain through audited optimistic locks', () => {
   assert.match(systemClosureApi, /effective-config-overrides/)
-  assert.match(systemPanel, /revokeConfigOverride/)
+  assert.match(systemClosureApi, /revokeActiveConfigOverride/)
+  assert.match(systemPanel, /overrideChain/)
+  assert.match(systemPanel, /revokeActiveConfigOverride/)
   assert.match(systemPanel, /恢复继承/)
   assert.match(systemPanel, /expectedVersion/)
 })
