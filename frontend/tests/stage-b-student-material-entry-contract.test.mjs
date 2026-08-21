@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const main = fs.readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')
 const page = fs.readFileSync(new URL('../src/modules/internship/views/InternshipStudentMaterialEntryView.vue', import.meta.url), 'utf8')
+const api = fs.readFileSync(new URL('../src/modules/internship/api/material-center.api.js', import.meta.url), 'utf8')
 
 test('Stage B high-frequency workflow registers a stable per-student material deep link', () => {
   assert.match(main, /path:\s*'\/admin\/internship\/students\/:id\/materials'/)
@@ -11,11 +12,15 @@ test('Stage B high-frequency workflow registers a stable per-student material de
   assert.match(main, /permissionKey:\s*'internship\.archive\.view'/)
 })
 
-test('student material entry reads the authoritative material center, not local fake data', () => {
+test('student material entry reads the authoritative material center through shared Reader', () => {
   assert.match(page, /internshipMaterialCenterApi\.detail\(this\.internshipId\)/)
   assert.match(page, /internshipMaterialCenterApi\.sync\(this\.internshipId\)/)
-  assert.match(page, /fileSdk\.preview/)
-  assert.match(page, /fileSdk\.download/)
+  assert.match(page, /AppDocumentViewer/)
+  assert.match(page, /internshipMaterialCenterApi\.createPreviewProvider\(\)/)
+  assert.match(page, /internshipMaterialCenterApi\.downloadMaterial\(item\)/)
+  assert.match(api, /issueMaterialTicket\(descriptor\.fileId, 'preview'\)/)
+  assert.match(api, /fileSdk\.blobFrom\(ticketPath\(ticket\)\)/)
+  assert.doesNotMatch(page, /fileSdk\.preview|fileSdk\.download/)
   assert.doesNotMatch(page, /mock|fixture|fakeData/i)
 })
 
