@@ -87,7 +87,7 @@ export const graduationMaterialCenterApi = {
     return items.map((item) => normalizeFile({ ...item, statusText: item.readyForBusiness ? '安全可用' : (item.scanStatus || item.status || '暂不可使用') }))
   },
   issueMaterialTicket(fileId, action = 'preview') {
-    return request(`/graduation/material-center/files/${encodeURIComponent(fileId)}/ticket`, { method: 'POST', data: { action } })
+    return request(`/graduation/material-center/files/${encodeURIComponent(fileId)}/ticket`, { method: 'POST', body: { action } })
   },
   previewDescriptor(item = {}) {
     return buildPreviewDescriptorFromFile({
