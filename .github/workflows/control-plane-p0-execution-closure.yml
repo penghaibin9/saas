@@ -7,9 +7,11 @@ on:
       - "backend/app/api/v1/control_plane_auth.py"
       - "backend/app/api/v1/control_plane_offboarding.py"
       - "backend/app/api/v1/router.py"
+      - "backend/app/db/base.py"
       - "backend/app/models/auth_risk.py"
       - "backend/app/models/recovery_run.py"
       - "backend/app/models/tenant_offboarding.py"
+      - "backend/app/models/employment_recommendation.py"
       - "backend/app/services/auth_risk_service.py"
       - "backend/app/services/control_plane_auth_service.py"
       - "backend/app/services/control_plane_p0_auth_guard.py"
@@ -24,6 +26,8 @@ on:
       - "backend/app/services/tenant_purge_service.py"
       - "backend/scripts/record_recovery_evidence.py"
       - "backend/alembic/versions/20260820_control_plane_*.py"
+      - "backend/alembic/versions/20260820_teacher_emp_recommendation.py"
+      - "backend/alembic/versions/20260821_merge_ctrl_teacher_heads.py"
       - "backend/tests/test_control_plane_p0_execution_closure.py"
       - "backend/tests/test_control_plane_p0_review_hardening.py"
       - "backend/tests/test_restore_verification_workflow.py"
@@ -37,9 +41,11 @@ on:
       - "backend/app/api/v1/control_plane_auth.py"
       - "backend/app/api/v1/control_plane_offboarding.py"
       - "backend/app/api/v1/router.py"
+      - "backend/app/db/base.py"
       - "backend/app/models/auth_risk.py"
       - "backend/app/models/recovery_run.py"
       - "backend/app/models/tenant_offboarding.py"
+      - "backend/app/models/employment_recommendation.py"
       - "backend/app/services/auth_risk_service.py"
       - "backend/app/services/control_plane_auth_service.py"
       - "backend/app/services/control_plane_p0_auth_guard.py"
@@ -54,6 +60,8 @@ on:
       - "backend/app/services/tenant_purge_service.py"
       - "backend/scripts/record_recovery_evidence.py"
       - "backend/alembic/versions/20260820_control_plane_*.py"
+      - "backend/alembic/versions/20260820_teacher_emp_recommendation.py"
+      - "backend/alembic/versions/20260821_merge_ctrl_teacher_heads.py"
       - "backend/tests/test_control_plane_p0_execution_closure.py"
       - "backend/tests/test_control_plane_p0_review_hardening.py"
       - "backend/tests/test_restore_verification_workflow.py"
@@ -145,6 +153,7 @@ jobs:
             app/models/auth_risk.py \
             app/models/recovery_run.py \
             app/models/tenant_offboarding.py \
+            app/models/employment_recommendation.py \
             app/services/auth_risk_service.py \
             app/services/control_plane_auth_service.py \
             app/services/control_plane_p0_auth_guard.py \
@@ -157,6 +166,8 @@ jobs:
             app/services/tenant_offboarding_service.py \
             app/services/tenant_purge_registry.py \
             app/services/tenant_purge_service.py \
+            alembic/versions/20260820_teacher_emp_recommendation.py \
+            alembic/versions/20260821_merge_ctrl_teacher_heads.py \
             scripts/record_recovery_evidence.py
           bash -n ../deploy/backup/machine-backup-runner.sh
           bash -n ../deploy/backup/machine-restore-drill.sh
@@ -166,7 +177,7 @@ jobs:
           mapfile -t HEADS < <(alembic heads | awk '{print $1}')
           printf 'heads=%s\n' "${HEADS[*]}"
           test "${#HEADS[@]}" -eq 1
-          test "${HEADS[0]}" = "20260820_ctrl_offboarding"
+          test "${HEADS[0]}" = "20260821_ctrl_teacher_merge"
 
       - name: Four P0 authority regression
         run: |
