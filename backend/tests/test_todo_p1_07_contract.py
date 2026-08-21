@@ -46,7 +46,10 @@ def test_typed_todo_dto_contains_record_route_actions_and_version():
     assert dto["routeParams"] == {"recordId": "88"}
     assert dto["query"] == {}
     assert dto["routeExact"] is True
-    assert dto["allowedActions"] == ["OPEN", "COMPLETE"]
+    # TP-W12：RISK_HANDLE 是 DOMAIN_COMMAND 类型（真实完成路径在
+    # affairs_risk_service，风险处置动作完成时才回写 UnifiedTodo），generic
+    # complete 不适用，allowedActions 不应包含 COMPLETE。
+    assert dto["allowedActions"] == ["OPEN"]
     assert dto["version"] == 7
 
 
@@ -137,7 +140,8 @@ def test_student_pc_typed_todo_dto_carries_real_target_via_todo_dict():
     assert dto["query"] == {"tab": "leave", "recordId": "9001"}
     assert dto["routeExact"] is False
     assert dto["focusMode"] == "NONE"
-    assert dto["allowedActions"] == ["OPEN", "COMPLETE"]
+    # TP-W12：LEAVE_APPROVAL 是 DOMAIN_COMMAND 类型，generic complete 不适用。
+    assert dto["allowedActions"] == ["OPEN"]
 
 
 def test_student_pc_route_contract_snapshot_registered():
@@ -175,6 +179,43 @@ def test_action_projection_build_todo_action_consumes_registry_focus_result():
     assert action["target"]["routeExact"] is False
     assert action["focusMode"] == "NONE"
     assert action["allowedActions"] == ["OPEN"]
+
+
+def test_completion_mode_snapshot_marks_known_business_types_as_domain_command():
+    """TP-W12：LEAVE/RISK/GRADE 等已知业务待办必须归为 DOMAIN_COMMAND——它们各自
+    模块都有真实的完成同步路径（approve/reject/handle 时回写 UnifiedTodo），
+    generic complete 不是它们的完成入口。"""
+    from app.services.workbench_todo_service import todo_completion_mode_snapshot
+
+    snapshot = todo_completion_mode_snapshot()
+    for todo_type in ("LEAVE_APPROVAL", "RISK_HANDLE", "AA_GRADE_ENTRY",
+                      "AID_APPROVAL", "FUNDING_APPROVAL", "DISCIPLINE_APPROVAL",
+                      "GD_FINAL_REVIEW", "INTERN_WEEKLY_REVIEW"):
+        assert snapshot[todo_type] == "DOMAIN_COMMAND", todo_type
+
+
+def test_completion_mode_defaults_unknown_type_to_domain_command():
+    """未登记的 todoType 也必须默认 DOMAIN_COMMAND（fail-closed）——不能因为
+    实现遗漏就意外落进允许 generic complete 的一侧。"""
+    from app.services.workbench_todo_service import _completion_mode
+
+    assert _completion_mode("SOME_BRAND_NEW_TODO_TYPE_NOT_YET_REGISTERED") == "DOMAIN_COMMAND"
+    assert _completion_mode(None) == "DOMAIN_COMMAND"
+
+
+def test_todo_dict_does_not_offer_complete_action_for_domain_command_todo():
+    """TP-W12：_todo_dict() 的 allowedActions 不能对 DOMAIN_COMMAND 类型给出
+    COMPLETE——那是一个点了必被 complete_todo() 拒绝的按钮。"""
+    from app.services.workbench_todo_service import _todo_dict
+
+    row = SimpleNamespace(
+        id=401, todo_type="LEAVE_APPROVAL", title="请假审批",
+        source_biz_type="LEAVE", source_biz_id=9001, source_module="student-affairs",
+        due_at=None, created_at=datetime(2026, 8, 8, 8, 0, 0), status="PENDING", version=1,
+    )
+    dto = _todo_dict(row, client="pc")
+    assert "COMPLETE" not in dto["allowedActions"]
+    assert dto["allowedActions"] == ["OPEN"]
 
 
 def test_action_projection_build_todo_action_still_fails_closed_without_route():
