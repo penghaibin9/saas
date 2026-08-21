@@ -6,7 +6,7 @@
       <p v-if="formError" class="mp-form-err prc-conflict">{{ formError }}</p>
       <GraduationDocumentReviewWorkspace
         :queue="[detail]" :current-index="0" :current-record="detail" :detail="detail"
-        :files="secureVersionFiles" :versions="secureVersionFiles" :canonical-file-version-id="canonicalFileVersionId"
+        :files="secureVersionFiles" :versions="activeVersionHistory" :evidence-versions="secureVersionFiles" :canonical-file-version-id="canonicalFileVersionId"
         :review-ready="Boolean(detail.reviewReady) && !versionConflict" :expected-version="detail.materialVersion"
         :comment="comment" :submitting="submitting" :auto-next="false" mode="proposal"
         :provider="previewProvider" :descriptor="previewDescriptor" :active-file-key="activePreviewFileKey"
@@ -95,8 +95,8 @@ export default {
     return {
       REJECT_REASON_CHIPS, DEFENSE_COMMENT_CHIPS,
       previewProvider: graduationMaterialCenterApi.createPreviewProvider(),
-      loading: true, error: '', detail: null, comment: '', formError: '', submitting: false, defenseComment: '',
-      activePreviewFileKey: null, activePreviewVersionId: null, conflictPreviewFile: null, versionConflict: null, previewDraftKey: ''
+      loading: true, error: '', detail: null, versionHistory: [], comment: '', formError: '', submitting: false, defenseComment: '',
+      activePreviewFileKey: null, activePreviewVersionId: null, conflictPreviewFile: null, versionConflict: null, previewDraftKey: '', draftFileVersionId: null
     }
   },
   computed: {
@@ -107,23 +107,31 @@ export default {
         this.versionConflict && this.conflictPreviewFile &&
         String(this.versionKey(this.conflictPreviewFile)) === String(this.activePreviewVersionId)
       ) return this.conflictPreviewFile
-      const exact = this.secureVersionFiles.find((item) => String(this.fileKey(item)) === String(this.activePreviewFileKey))
+      const current = this.secureVersionFiles.find((item) => String(this.fileKey(item)) === String(this.activePreviewFileKey))
         || this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId))
-      if (exact) return exact
+      if (current) return current
+      const historical = this.versionHistory.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId))
+      if (historical) return historical
       return this.versionConflict ? null : (this.secureVersionFiles[0] || null)
+    },
+    activeVersionHistory() {
+      const assetId = this.activePreviewFile?.assetId
+      if (assetId == null) return this.activePreviewFile ? [this.activePreviewFile] : []
+      const rows = this.versionHistory.filter((item) => String(item.assetId ?? '') === String(assetId))
+      return rows.length ? rows : [this.activePreviewFile]
     },
     previewDescriptor() { return this.activePreviewFile ? graduationMaterialCenterApi.previewDescriptor(this.activePreviewFile) : null },
     trailRecords() { return (this.detail?.trail || []).map((t, i) => ({ id: i, action: t.action, actor: t.who, at: this.fmtTime(t.time), target: t.affected })) },
     canReview() {
       const pa = this.ctx.permissionActions.reviewProposal
-      return !!(pa && pa.visible && pa.allowed && this.detail?.reviewReady && !this.versionConflict && String(this.activePreviewVersionId ?? '') === String(this.canonicalFileVersionId ?? ''))
+      return !!(pa && pa.visible && pa.allowed && this.detail?.reviewReady && !this.versionConflict && this.activePreviewFile && this.activePreviewFile.isCurrent !== false)
     },
     reviewReason() {
       if (this.detail && !this.detail.reviewReady) return this.detail.migrationRequired ? '历史材料尚未完成公共版本回填' : '当前材料版本未通过安全门禁'
       const pa = this.ctx.permissionActions.reviewProposal
       if (pa && !pa.allowed) return pa.reason || '当前角色无开题批阅权限'
-      if (this.versionConflict) return '学生已重交新版本，请切换最新版本后重新核验'
-      if (String(this.activePreviewVersionId ?? '') !== String(this.canonicalFileVersionId ?? '')) return '当前正在阅读历史版本，历史版本只读不可批阅'
+      if (this.versionConflict) return '学生已重交新版本，请切换最新 canonical version 后重新核验'
+      if (this.activePreviewFile?.isCurrent === false) return '当前正在阅读历史版本，历史版本只读不可批阅'
       return ''
     }
   },
@@ -133,7 +141,7 @@ export default {
     fmtTime(s) { return formatDateTime(s, '') },
     versionKey(item) { return item?.fileVersionId ?? item?.versionId ?? item?.id ?? null },
     fileKey(item) { return item?.fileKey ?? item?.fileId ?? this.versionKey(item) },
-    draftKey(fileVersionId = this.activePreviewVersionId ?? this.canonicalFileVersionId) {
+    draftKey(fileVersionId = this.draftFileVersionId ?? this.canonicalFileVersionId) {
       return this.detail?.id && fileVersionId != null ? `gd-proposal-review-draft:${this.detail.id}:${fileVersionId}` : ''
     },
     saveDraft() {
@@ -152,18 +160,34 @@ export default {
     selectPreviewFile(item) {
       if (!item) return
       const carriedDraft = this.comment
+      const previousDraftKey = this.draftKey()
       this.saveDraft()
       this.activePreviewFileKey = this.fileKey(item)
       this.activePreviewVersionId = this.versionKey(item)
       this.conflictPreviewFile = null
-      if (this.versionConflict && String(this.activePreviewVersionId) === String(this.canonicalFileVersionId) && this.detail?.reviewReady) this.versionConflict = null
-      this.restoreDraft(carriedDraft)
-      this.saveDraft()
+      if (this.versionConflict && String(this.activePreviewVersionId) === String(this.canonicalFileVersionId) && this.detail?.reviewReady) {
+        this.versionConflict = null
+        this.draftFileVersionId = this.canonicalFileVersionId
+      }
+      if (this.draftKey() !== previousDraftKey) {
+        this.restoreDraft(carriedDraft)
+        this.saveDraft()
+      } else {
+        this.comment = carriedDraft
+      }
     },
     selectPreviewVersion(item) { this.selectPreviewFile(item) },
     async downloadActivePreview() {
       if (!this.activePreviewFile?.canDownload) return
       try { await graduationMaterialCenterApi.downloadMaterial(this.activePreviewFile) } catch (error) { toast.error(error?.message || '下载失败') }
+    },
+    async loadVersionHistory(recordId) {
+      try {
+        const data = await graduationMaterialCenterApi.proposalVersions(recordId)
+        this.versionHistory = graduationMaterialCenterApi.normalizeVersions(data?.items || [])
+      } catch {
+        this.versionHistory = [...this.secureVersionFiles]
+      }
     },
     async load({ preserveDraft = false } = {}) {
       const drafts = preserveDraft ? { comment: this.comment, defenseComment: this.defenseComment } : null
@@ -177,9 +201,11 @@ export default {
       const res = await graduationApi.getProposalReviewDetail(this.proposalId)
       if (res.code === 0) {
         this.detail = res.data
+        await this.loadVersionHistory(this.proposalId)
         const latest = this.canonicalFileVersionId
         if (oldCanonical != null && latest != null && String(oldCanonical) !== String(latest)) {
           this.versionConflict = { old: oldCanonical, latest }
+          this.draftFileVersionId = oldCanonical
           this.activePreviewVersionId = oldActive ?? oldCanonical
           this.conflictPreviewFile = oldActiveFile
           this.activePreviewFileKey = oldActiveFile ? this.fileKey(oldActiveFile) : null
@@ -187,12 +213,16 @@ export default {
         } else {
           this.versionConflict = null
           this.conflictPreviewFile = null
+          this.draftFileVersionId = latest
           this.activePreviewVersionId = latest
           const active = this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId)) || this.secureVersionFiles[0] || null
           this.activePreviewFileKey = active ? this.fileKey(active) : null
           this.restoreDraft(drafts?.comment ?? oldDraft)
         }
-      } else this.error = graduationActionErrorMessage(res, '开题详情加载失败，请稍后重试')
+      } else {
+        this.versionHistory = []
+        this.error = graduationActionErrorMessage(res, '开题详情加载失败，请稍后重试')
+      }
       if (drafts) { this.comment = drafts.comment; this.defenseComment = drafts.defenseComment; this.saveDraft() }
       this.loading = false
     },
