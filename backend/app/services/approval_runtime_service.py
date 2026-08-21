@@ -262,6 +262,24 @@ def summary(*, user=None) -> dict:
             WorkflowTask.deadline_at >= now,
             WorkflowTask.deadline_at <= near_until,
         )
+        # TP-W03：Workbench「今日已完成」卡片跳的是本 Approval Done 队列，数字必须来自
+        # 同一张表、同一个可见性口径，不能借用 UnifiedTodo 的 doneToday（那是另一个 Authority，
+        # 会把非审批类待办也计进去，点开列表却看不到）。口径与本函数既有的 today（todayNew）
+        # 一致复用 UTC 自然日边界，不引入第三套「今天」定义。
+        done_cond = [
+            WorkflowTask.tenant_id == _tid(),
+            WorkflowTask.is_deleted.is_(False),
+            WorkflowTask.status.in_(["APPROVED", "REJECTED", "RETURNED", "TRANSFERRED"]),
+            WorkflowInstance.tenant_id == _tid(),
+            WorkflowInstance.is_deleted.is_(False),
+            WorkflowTask.acted_at.is_not(None),
+            WorkflowTask.acted_at >= start,
+        ]
+        if not db_service._can_manage_all_approvals(user):
+            done_cond.append(WorkflowTask.assignee_id == db_service._approval_actor_id(user))
+        done_today = int(db.scalar(
+            select(func.count()).select_from(join_from).where(*done_cond)
+        ) or 0)
         grouped = db.execute(
             select(
                 WorkflowInstance.source_biz_type,
@@ -293,6 +311,7 @@ def summary(*, user=None) -> dict:
             "todayNew": today,
             "overdue": overdue_count,
             "nearDeadline": near_count,
+            "doneToday": done_today,
             "byBizType": [
                 {
                     "bizType": biz_type or "GENERAL",
