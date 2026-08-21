@@ -23,6 +23,8 @@ test('W3 student File SDK separates preview bytes from download side effects', (
   assert.match(request, /await refreshOnce\(\)/)
   assert.match(sdk, /async fetchPreviewBlob\(/)
   assert.match(sdk, /async fetchPreviewBlobFrom\(/)
+  assert.match(sdk, /async fetchPeerPreviewBlob\(peerId, fileId, options = \{\}\)/)
+  assert.match(sdk, /\/mobile\/graduation\/peer\/\$\{enc\(peerId\)\}\/files\/\$\{enc\(fileId\)\}\/preview/)
   assert.match(sdk, /async preview\([^)]*\)[\s\S]*?return this\.fetchPreviewBlob\(/)
   assert.match(sdk, /async previewFrom\([^)]*\)[\s\S]*?return this\.fetchPreviewBlobFrom\(/)
   assert.doesNotMatch(sdk, /async preview\([^)]*\)[\s\S]{0,180}?this\.download\(/)
@@ -41,6 +43,7 @@ test('W3 StudentDocumentViewer stays presentation-only and fences Blob lifecycle
   assert.match(viewer, /useStudentPreviewSession/)
   assert.match(versionBar, /item\.fileVersionId \|\| item\.versionId \|\| item\.fileId/)
   assert.match(viewer, /selectedFile\.value\?\.isCurrent === false/)
+  assert.match(viewer, /只读冻结版本/)
   for (const forbidden of ['portalApi', 'issueGraduationMaterialTicket', '/material-center/', 'downloadGraduationMaterial', 'window.open(']) {
     assert.equal(viewer.includes(forbidden), false, `Viewer must not own business transport: ${forbidden}`)
   }
@@ -71,5 +74,9 @@ test('W3 graduation workbench separates current-version viewing/download and req
   assert.match(workbench, /!attachments\.final\[0\]\.readyForBusiness/)
   assert.match(workbench, /issueGraduationMaterialTicket\(file\.fileId, 'preview'\)/)
   assert.match(workbench, /fileSdk\.fetchPreviewBlobFrom\(ticket, options\)/)
-  assert.match(workbench, /互查文件只允许走任务专用授权/)
+  assert.match(workbench, /peerId \+ 冻结定稿 \+ 附件 fileId/)
+  assert.match(workbench, /openPeerReader\(p, file\)/)
+  assert.match(workbench, /peerId: String\(task\.id\)/)
+  assert.match(workbench, /fileSdk\.fetchPeerPreviewBlob\(file\.peerId, file\.fileId, options\)/)
+  assert.match(workbench, /:read-only="Boolean\(readerFile\?\.peerId\)"/)
 })
