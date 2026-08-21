@@ -205,9 +205,15 @@ def batch_process(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
     idempotency_key = _require_idempotency_key(idempotency_key)
+    # TP-A07：sourceVersion 是批次业务语义的一部分，必须进入幂等指纹。
+    # 否则同一 Idempotency-Key 在源事实版本变化后仍可能命中旧指纹/旧结果，掩盖版本冲突。
     payload = {
         "action": body.action,
-        "items": [{"taskId": x.taskId, "version": x.version} for x in body.items],
+        "items": [{
+            "taskId": x.taskId,
+            "version": x.version,
+            "expectedSourceVersion": x.expectedSourceVersion,
+        } for x in body.items],
         "targetUserId": body.targetUserId,
         "reason": body.reason,
         "comment": body.comment,
