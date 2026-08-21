@@ -79,10 +79,13 @@ def done_tasks(
     keyword: str | None = Query(None, max_length=100),
     bizType: str | None = Query(None, max_length=100),
     result: str | None = Query(None, max_length=30),
+    actedFrom: str | None = Query(None, max_length=10),
+    actedTo: str | None = Query(None, max_length=10),
     user=Depends(require_staff),
 ):
     items, total = runtime.list_processed(
-        page, pageSize, user=user, keyword=keyword, biz_type=bizType, result=result
+        page, pageSize, user=user, keyword=keyword, biz_type=bizType, result=result,
+        acted_from=actedFrom, acted_to=actedTo,
     )
     return success(paginate(items, total, page, pageSize))
 
@@ -104,6 +107,21 @@ def returned_tasks(
 @router.get("/tasks/{task_id}/transfer-targets", summary="当前任务可转办教职工")
 def transfer_targets(task_id: str, user=Depends(require_staff)):
     return success(runtime.transfer_targets(task_id, user=user))
+
+
+@router.get("/tasks/{task_id}/next", summary="按当前筛选队列取真实下一条待办（服务端 seek）")
+def next_todo(
+    task_id: str,
+    keyword: str | None = Query(None, max_length=100),
+    bizType: str | None = Query(None, max_length=100),
+    urgency: str | None = Query(None, max_length=30),
+    submitDate: str | None = Query(None, max_length=10),
+    user=Depends(require_staff),
+):
+    return success(runtime.next_task(
+        task_id, user=user, keyword=keyword, biz_type=bizType,
+        urgency=urgency, submit_date=submitDate,
+    ))
 
 
 @router.get("/templates", summary="审批模板列表（真实流程定义）")
@@ -333,9 +351,12 @@ def processed(
     keyword: str | None = Query(None, max_length=100),
     bizType: str | None = Query(None, max_length=100),
     result: str | None = Query(None, max_length=30),
+    actedFrom: str | None = Query(None, max_length=10),
+    actedTo: str | None = Query(None, max_length=10),
     user=Depends(require_staff),
 ):
     items, total = runtime.list_processed(
-        page, pageSize, user=user, keyword=keyword, biz_type=bizType, result=result
+        page, pageSize, user=user, keyword=keyword, biz_type=bizType, result=result,
+        acted_from=actedFrom, acted_to=actedTo,
     )
     return success(paginate(items, total, page, pageSize))

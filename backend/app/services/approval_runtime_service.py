@@ -136,12 +136,26 @@ def list_tasks(
     return _enrich_rows(rows, user=user), total
 
 
-def list_processed(page, page_size, *, user=None, keyword=None, biz_type=None, result=None):
+def list_processed(page, page_size, *, user=None, keyword=None, biz_type=None, result=None,
+                   acted_from=None, acted_to=None):
     _require_db()
     rows, total = base.list_processed(
-        page, page_size, user=user, keyword=keyword, biz_type=biz_type, result=result
+        page, page_size, user=user, keyword=keyword, biz_type=biz_type, result=result,
+        acted_from=acted_from, acted_to=acted_to,
     )
     return _enrich_rows(rows, user=user), total
+
+
+def next_task(anchor_task_id, *, user=None, keyword=None, biz_type=None, urgency=None, submit_date=None):
+    """TP-A03/A04：真实服务端 seek，取当前筛选队列里锚点任务之后的下一条待办。"""
+    _require_db()
+    row = base.next_pending_task(
+        anchor_task_id, user=user, keyword=keyword, biz_type=biz_type,
+        urgency=urgency, submit_date=submit_date,
+    )
+    if row is None:
+        return None
+    return _enrich_rows([row], user=user)[0]
 
 
 def get_task(task_id: str, *, user=None) -> dict:

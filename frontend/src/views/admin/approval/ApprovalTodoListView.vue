@@ -54,7 +54,7 @@
           <StatusTag :type="urgencyTone(row.urgency)" :label="row.urgencyLabel" dot />
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push('/admin/approval/todos/' + row.taskId)">办理</button>
+          <button class="mp-link" @click="goDetail(row.taskId)">办理</button>
         </template>
       </DataTable>
 
@@ -284,6 +284,16 @@ export default {
     onPageChange(page) {
       this.pagination.page = page
       this.load()
+    },
+    goDetail(taskId) {
+      // TP-A02/A09：把当前生效的筛选带进详情页 route.query，详情页「下一条」才能按
+      // 用户实际在看的队列做服务端 seek，而不是丢光筛选、退化成"队首第一条"。
+      const q = {}
+      if (this.filters.bizType) q.bizType = this.filters.bizType
+      if (this.filters.urgency) q.urgency = this.filters.urgency
+      if (this.filters.keyword) q.keyword = this.filters.keyword
+      if (this.filters.submitDate) q.submitDate = this.filters.submitDate
+      this.$router.push({ path: '/admin/approval/todos/' + taskId, query: q })
     },
     search() {
       this.pagination.page = 1

@@ -187,12 +187,18 @@ export default {
       if (field === 'transfer') this.transferError = res.message; else this.formError = res.message
     },
     async goNext() {
-      const queue = await approvalApi.getTodos({ page: 1, pageSize: 1, bizType: this.$route.query.bizType || '' })
-      if (queue.code === 0 && queue.data.list.length) {
-        const next = queue.data.list[0]
-        if (String(next.taskId) !== String(this.task?.taskId)) {
-          await this.$router.replace({ path: '/admin/approval/todos/' + next.taskId, query: { ...this.$route.query } }); await this.load(); return
-        }
+      // TP-A03/A04：真实服务端 seek，按当前进入详情页时携带的完整筛选（业务类型/
+      // 紧急度/关键词/提交日期）取队列里锚点任务之后的下一条，不再用 pageSize=1
+      // 重新查第一页去猜"下一条=队首"，也不再只保留 bizType 一个筛选维度。
+      const q = this.$route.query || {}
+      const res = await approvalApi.getNextTodo(this.task?.taskId, {
+        keyword: q.keyword || '',
+        bizType: q.bizType || '',
+        urgency: q.urgency || '',
+        submitDate: q.submitDate || ''
+      })
+      if (res.code === 0 && res.data) {
+        await this.$router.replace({ path: '/admin/approval/todos/' + res.data.taskId, query: { ...q } }); await this.load(); return
       }
       await this.$router.push('/admin/approval/todos')
     },

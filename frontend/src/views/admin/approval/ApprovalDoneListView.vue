@@ -114,7 +114,7 @@ import { AppConfirmDialog } from '@/components/common'
 import { approvalApi } from '@/modules/approval/api/approval.api'
 import { toast } from '@/utils/toast'
 
-const EMPTY_DONE_FILTERS = () => ({ result: '', bizType: '', keyword: '' })
+const EMPTY_DONE_FILTERS = () => ({ result: '', bizType: '', keyword: '', actedFrom: '', actedTo: '' })
 const EMPTY_CC_FILTERS = () => ({ readStatus: '', keyword: '' })
 
 export default {
@@ -171,7 +171,11 @@ export default {
         return [
           { key: 'result', label: '办理结果', type: 'select', options: o.doneResults },
           { key: 'bizType', label: '业务类型', type: 'select', options: o.bizTypes },
-          { key: 'keyword', label: '关键词', type: 'text', placeholder: '标题 / 申请人' }
+          { key: 'keyword', label: '关键词', type: 'text', placeholder: '标题 / 申请人' },
+          // TP-A05：已办列表按真实办结时间（acted_at）筛选区间，服务端已支持
+          // actedFrom/actedTo，与待办列表的提交日期是两个不同字段。
+          { key: 'actedFrom', label: '办结日期起', type: 'date' },
+          { key: 'actedTo', label: '办结日期止', type: 'date' }
         ]
       }
       return [

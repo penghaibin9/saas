@@ -70,6 +70,16 @@ def _matches(row: dict, keyword: str | None = None, biz_type: str | None = None)
     return kw in haystack.lower()
 
 
+def _parse_day(raw: str | None, field_label: str) -> datetime | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, "%Y-%m-%d")
+    except ValueError as exc:
+        raise AppException("VALIDATION_ERROR", f"{field_label} 必须为 YYYY-MM-DD") from exc
+
+
 def _db_list(
     page: int,
     page_size: int,
@@ -81,6 +91,8 @@ def _db_list(
     result: str | None = None,
     urgency: str | None = None,
     submit_date: str | None = None,
+    acted_from: str | None = None,
+    acted_to: str | None = None,
 ) -> tuple[list[dict], int]:
     """审批列表真实服务端查询。所有筛选必须在 COUNT / OFFSET / LIMIT 前进入 SQL。"""
     from sqlalchemy import func, or_, select
@@ -100,14 +112,15 @@ def _db_list(
     if requested_urgency and requested_urgency not in {"OVERDUE", "NEAR_DEADLINE", "NORMAL"}:
         raise AppException("VALIDATION_ERROR", "不支持的审批紧急度筛选")
 
-    date_start = date_end = None
-    raw_date = str(submit_date or "").strip()
-    if raw_date:
-        try:
-            date_start = datetime.strptime(raw_date, "%Y-%m-%d")
-        except ValueError as exc:
-            raise AppException("VALIDATION_ERROR", "submitDate 必须为 YYYY-MM-DD") from exc
-        date_end = date_start + timedelta(days=1)
+    date_start = _parse_day(submit_date, "submitDate")
+    date_end = date_start + timedelta(days=1) if date_start is not None else None
+    # TP-A05：已办列表按办结时间（acted_at）筛选区间，与待办的 submitDate（created_at）
+    # 是两个不同字段，互不复用——已办列表不消费 submitDate，待办列表不消费 acted 区间。
+    acted_start = _parse_day(acted_from, "actedFrom")
+    acted_end_day = _parse_day(acted_to, "actedTo")
+    acted_end = acted_end_day + timedelta(days=1) if acted_end_day is not None else None
+    if acted_start is not None and acted_end is not None and acted_start >= acted_end:
+        raise AppException("VALIDATION_ERROR", "actedFrom 不能晚于 actedTo")
 
     with db_service.session() as db:
         statuses = ["APPROVED", "REJECTED", "RETURNED", "TRANSFERRED"] if processed else ["PENDING"]
@@ -148,6 +161,10 @@ def _db_list(
                 cond.append(or_(WorkflowTask.deadline_at.is_(None), WorkflowTask.deadline_at > near_until))
         if not processed and date_start is not None and date_end is not None:
             cond.extend((WorkflowTask.created_at >= date_start, WorkflowTask.created_at < date_end))
+        if processed and acted_start is not None:
+            cond.append(WorkflowTask.acted_at >= acted_start)
+        if processed and acted_end is not None:
+            cond.append(WorkflowTask.acted_at < acted_end)
 
         base = (select(WorkflowTask, WorkflowInstance)
                 .join(WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id)
@@ -193,6 +210,111 @@ def list_tasks(
     if submit_date:
         rows = [r for r in rows if str(r.get("submittedAt") or "").startswith(str(submit_date))]
     return page_slice(rows, page, page_size), len(rows)
+
+
+def next_pending_task(
+    anchor_task_id: str,
+    *,
+    user: dict | None = None,
+    keyword: str | None = None,
+    biz_type: str | None = None,
+    urgency: str | None = None,
+    submit_date: str | None = None,
+) -> dict | None:
+    """TP-A03/A04：按当前待办队列真实排序（created_at ASC, id ASC）做 seek 查询，
+    取锚点任务之后的下一条。不是拿 pageSize=1 重新查第一页去猜"下一条=队首"。"""
+    if not db_enabled():
+        rows, _ = list_tasks(1, 1, user=user, keyword=keyword, biz_type=biz_type,
+                             urgency=urgency, submit_date=submit_date)
+        if rows and str(rows[0].get("taskId")) != str(anchor_task_id):
+            return rows[0]
+        return None
+
+    from sqlalchemy import and_, or_, select
+    from app.models import WorkflowInstance, WorkflowTask
+    from app.services import db_service
+
+    try:
+        tenant_id = int(current_tenant_id() or 0)
+    except (TypeError, ValueError):
+        tenant_id = 0
+    if not tenant_id:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文")
+
+    now = datetime.utcnow()
+    near_until = now + timedelta(hours=24)
+    requested_urgency = str(urgency or "").strip().upper()
+    if requested_urgency and requested_urgency not in {"OVERDUE", "NEAR_DEADLINE", "NORMAL"}:
+        raise AppException("VALIDATION_ERROR", "不支持的审批紧急度筛选")
+    date_start = _parse_day(submit_date, "submitDate")
+    date_end = date_start + timedelta(days=1) if date_start is not None else None
+
+    try:
+        anchor_id = int(anchor_task_id)
+    except (TypeError, ValueError):
+        anchor_id = 0
+
+    with db_service.session() as db:
+        cond = [
+            WorkflowTask.tenant_id == tenant_id,
+            WorkflowTask.is_deleted.is_(False),
+            WorkflowTask.status == "PENDING",
+            WorkflowInstance.tenant_id == tenant_id,
+            WorkflowInstance.is_deleted.is_(False),
+        ]
+        if not db_service._can_manage_all_approvals(user):
+            cond.append(WorkflowTask.assignee_id == db_service._approval_actor_id(user))
+        if biz_type:
+            cond.append(WorkflowInstance.source_biz_type == biz_type)
+        kw = (keyword or "").strip()
+        if kw:
+            like = f"%{kw}%"
+            search_cond = [
+                WorkflowInstance.title.like(like),
+                WorkflowInstance.remark.like(like),
+                WorkflowInstance.source_biz_type.like(like),
+                WorkflowTask.node_code.like(like),
+                WorkflowTask.remark.like(like),
+            ]
+            if kw.isdigit():
+                search_cond.append(WorkflowTask.id == int(kw))
+            cond.append(or_(*search_cond))
+        if requested_urgency:
+            if requested_urgency == "OVERDUE":
+                cond.append(WorkflowTask.deadline_at < now)
+            elif requested_urgency == "NEAR_DEADLINE":
+                cond.extend((WorkflowTask.deadline_at >= now, WorkflowTask.deadline_at <= near_until))
+            else:
+                cond.append(or_(WorkflowTask.deadline_at.is_(None), WorkflowTask.deadline_at > near_until))
+        if date_start is not None and date_end is not None:
+            cond.extend((WorkflowTask.created_at >= date_start, WorkflowTask.created_at < date_end))
+
+        # 锚点任务本身此刻很可能已经不是 PENDING（刚被本次动作办结），所以锚点单独按
+        # id 查，不套上面的业务筛选，只用来取它的 created_at/id 定位队列位置。
+        anchor = None
+        if anchor_id:
+            anchor = db.scalars(select(WorkflowTask).where(
+                WorkflowTask.id == anchor_id,
+                WorkflowTask.tenant_id == tenant_id,
+                WorkflowTask.is_deleted.is_(False),
+            )).first()
+        if anchor is not None:
+            cond.append(or_(
+                WorkflowTask.created_at > anchor.created_at,
+                and_(WorkflowTask.created_at == anchor.created_at, WorkflowTask.id > anchor.id),
+            ))
+
+        row = db.execute(
+            select(WorkflowTask, WorkflowInstance)
+            .join(WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id)
+            .where(*cond)
+            .order_by(WorkflowTask.created_at.asc(), WorkflowTask.id.asc())
+            .limit(1)
+        ).first()
+        if not row:
+            return None
+        task, inst = row
+        return db_service._task_row(task, inst)
 
 
 def biz_type_summary(user: dict | None = None) -> list[dict]:
@@ -347,13 +469,19 @@ def transfer(task_id: str, target_user_id: str, comment: str | None,
 
 def list_processed(page: int, page_size: int, user: dict | None = None,
                    keyword: str | None = None, biz_type: str | None = None,
-                   result: str | None = None) -> tuple[list[dict], int]:
+                   result: str | None = None, acted_from: str | None = None,
+                   acted_to: str | None = None) -> tuple[list[dict], int]:
     if db_enabled():
         return _db_list(page, page_size, user=user, processed=True,
-                        keyword=keyword, biz_type=biz_type, result=result)
+                        keyword=keyword, biz_type=biz_type, result=result,
+                        acted_from=acted_from, acted_to=acted_to)
     rows = [r for r in _visible(_PROCESSED, user) if _matches(r, keyword, biz_type)]
     if result:
         rows = [r for r in rows if r.get("status") == str(result).strip().upper()]
+    if acted_from:
+        rows = [r for r in rows if str(r.get("actedAt") or "") >= str(acted_from)]
+    if acted_to:
+        rows = [r for r in rows if str(r.get("actedAt") or "")[:10] <= str(acted_to)]
     return page_slice(rows, page, page_size), len(rows)
 
 

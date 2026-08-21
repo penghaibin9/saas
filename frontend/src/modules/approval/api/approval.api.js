@@ -462,10 +462,25 @@ export const approvalApi = {
         pageSize: params.pageSize || 10,
         keyword: params.keyword,
         bizType: params.bizType,
-        result: params.result
+        result: params.result,
+        actedFrom: params.actedFrom,
+        actedTo: params.actedTo
       }
     })
     return { list: (d.items || []).map(doneRow), total: Number(d.total || 0) }
+  }),
+
+  // TP-A03/A04：真实服务端 seek 取"下一条待办"，不是拿 pageSize=1 重新查第一页猜。
+  getNextTodo: (taskId, params = {}) => safe(async () => {
+    const d = await request(`/approvals/tasks/${encodeURIComponent(taskId)}/next`, {
+      params: {
+        keyword: params.keyword,
+        bizType: params.bizType,
+        urgency: params.urgency,
+        submitDate: params.submitDate
+      }
+    })
+    return d ? taskRow(d) : null
   }),
 
   getCcItems: (params = {}) => safe(async () => {
