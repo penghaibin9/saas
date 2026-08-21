@@ -96,7 +96,7 @@
               <td><AppButton v-if="isActive(item)" @click="beginAction('elevation', item)">撤销</AppButton></td>
             </tr>
             <tr v-for="item in sessions" :key="`s-${item.id}`">
-              <td>受控协助</td><td>{{ item.operatorUserId }}</td><td>{{ item.tenantId }} · {{ (item.scopes || []).join(' / ') }}</td><td>Ticket #{{ item.ticketId }}</td><td>{{ item.expiresAt }}</td><td>{{ item.status }}</td>
+              <td>受控协助</td><td>{{ item.operatorUserId }}</td><td>{{ item.tenantId }} · {{ (item.scopes || []).join(' / ') }}</td><td>Ticket #{{ item.ticketId }}</td><td>{{ item.expiresAt }}</td><td>{{ isActive(item) ? item.status : 'EXPIRED' }}</td>
               <td class="access-ops">
                 <AppButton v-if="canOpenSupport(item)" variant="primary" @click="openSupportWorkspace(item)">进入协助</AppButton>
                 <AppButton v-if="isActive(item)" @click="beginAction('support', item)">终止</AppButton>
@@ -127,7 +127,7 @@
 
           <div v-if="supportHasScope('tenant.audit.read')" class="support-audit">
             <div class="support-audit__head">
-              <div><h3>学校审计摘要</h3><p class="hint">属于更敏感的支持数据，必须使用 10 分钟 request-scoped MFA Token。</p></div>
+              <div><h3>学校审计摘要</h3><p class="hint">属于更敏感的支持数据，必须使用短时 request-scoped MFA Token；令牌只保存在本组件内存并按服务端 TTL 主动清除。</p></div>
               <div v-if="!supportWorkspace.mfaToken" class="support-mfa">
                 <input v-model.trim="supportWorkspace.mfaCode" inputmode="numeric" maxlength="6" placeholder="6 位 MFA 动态码" />
                 <AppButton variant="primary" :loading="saving === 'support-mfa'" @click="stepUpAndLoadAudit">MFA 验证并读取</AppButton>
@@ -192,7 +192,13 @@ const newAssignment = () => ({ requestId: requestId(), userId: '', dutyCode: 'PL
 const newElevation = () => ({ requestId: requestId(), userId: '', capabilities: '', durationMinutes: 60, reason: '' })
 const newSupport = () => ({ requestId: requestId(), tenantId: '', ticketId: '', scopes: 'tenant.context.read, tenant.audit.read', reason: '', durationMinutes: 60 })
 const newReview = () => ({ requestId: requestId(), name: '季度平台访问复核', dueAt: '' })
-const emptyWorkspace = () => ({ session: null, context: null, audits: [], loading: false, error: '', mfaCode: '', mfaToken: '' })
+const emptyWorkspace = () => ({ session: null, context: null, audits: [], loading: false, error: '', mfaCode: '', mfaToken: '', mfaExpiresAt: 0 })
+const serverUtcEpoch = (value) => {
+  if (!value) return null
+  const raw = String(value).trim()
+  const epoch = Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw) ? raw : `${raw}Z`)
+  return Number.isFinite(epoch) ? epoch : null
+}
 
 export default {
   name: 'PlatformAccessView',
@@ -201,7 +207,7 @@ export default {
     return {
       assignments: [], elevations: [], sessions: [], reviews: [], error: '', saving: '',
       actionType: '', actionTarget: null, actionReason: '', selectedReview: null, reviewDecisions: {}, reviewCloseReason: '',
-      supportWorkspace: emptyWorkspace(),
+      supportWorkspace: emptyWorkspace(), mfaExpiryTimer: null,
       dutyOptions: [
         { value: 'PLATFORM_COMMERCIAL', label: '商务' }, { value: 'PLATFORM_DELIVERY', label: '交付' },
         { value: 'PLATFORM_CUSTOMER_SUCCESS', label: '客户成功' }, { value: 'PLATFORM_OPERATIONS', label: '运维' },
@@ -217,10 +223,23 @@ export default {
     actionTitle() { return this.actionType === 'support' ? '终止受控协助' : this.actionType === 'elevation' ? '撤销临时提升' : '撤销平台职责' }
   },
   created() { this.load() },
+  beforeUnmount() { this.closeSupportWorkspace() },
   methods: {
-    isActive(item) { return String(item?.status || 'ACTIVE').toUpperCase() === 'ACTIVE' },
+    isActive(item) {
+      if (String(item?.status || 'ACTIVE').toUpperCase() !== 'ACTIVE') return false
+      const expiry = serverUtcEpoch(item?.expiresAt)
+      return expiry == null || expiry > Date.now()
+    },
     canOpenSupport(item) { return this.isActive(item) && (item.scopes || []).includes('tenant.context.read') },
     supportHasScope(scope) { return (this.supportWorkspace.session?.scopes || []).includes(scope) },
+    clearSupportMfaGrant() {
+      if (this.mfaExpiryTimer) clearTimeout(this.mfaExpiryTimer)
+      this.mfaExpiryTimer = null
+      this.supportWorkspace.mfaToken = ''
+      this.supportWorkspace.mfaExpiresAt = 0
+      this.supportWorkspace.mfaCode = ''
+      this.supportWorkspace.audits = []
+    },
     async load() {
       this.error = ''
       const [a, e, s, r] = await Promise.all([platformPamApi.listAssignments(), platformPamApi.listElevations(), platformPamApi.listSupportSessions(), platformPamApi.listReviews()])
@@ -248,23 +267,32 @@ export default {
       if (res.code !== 0) return toast.error(res.message); this.supportForm = newSupport(); await this.load(); toast.success('受控协助已创建')
     },
     async openSupportWorkspace(item) {
+      this.closeSupportWorkspace()
       this.supportWorkspace = { ...emptyWorkspace(), session: item, loading: true }
       const res = await platformPamApi.getSupportTenantContext(item.tenantId)
       this.supportWorkspace.loading = false
       if (res.code !== 0) { this.supportWorkspace.error = res.message; return }
       this.supportWorkspace.context = res.data
     },
-    closeSupportWorkspace() { this.supportWorkspace = emptyWorkspace() },
+    closeSupportWorkspace() {
+      this.clearSupportMfaGrant()
+      this.supportWorkspace = emptyWorkspace()
+    },
     async stepUpAndLoadAudit() {
       if (!/^\d{6}$/.test(this.supportWorkspace.mfaCode)) return toast.error('请输入 6 位 MFA 动态码')
+      const code = this.supportWorkspace.mfaCode
+      this.clearSupportMfaGrant()
       this.saving = 'support-mfa'
       try {
-        const token = await platformSecurityOpsApi.stepUpMfa(this.supportWorkspace.mfaCode)
+        const token = await platformSecurityOpsApi.stepUpMfa(code)
+        const ttl = Math.max(1, Number(token.expiresIn || 600))
         this.supportWorkspace.mfaToken = token.accessToken || ''
-        this.supportWorkspace.mfaCode = ''
+        this.supportWorkspace.mfaExpiresAt = Date.now() + ttl * 1000
         if (!this.supportWorkspace.mfaToken) return toast.error('MFA step-up 未返回访问令牌')
+        this.mfaExpiryTimer = setTimeout(() => this.clearSupportMfaGrant(), ttl * 1000)
         await this.loadSupportAudit()
       } catch (error) {
+        this.clearSupportMfaGrant()
         toast.error(error.message || 'MFA 二次认证失败')
       } finally {
         this.saving = ''
@@ -273,9 +301,13 @@ export default {
     async loadSupportAudit() {
       const session = this.supportWorkspace.session
       if (!session || !this.supportWorkspace.mfaToken) return
+      if (this.supportWorkspace.mfaExpiresAt && this.supportWorkspace.mfaExpiresAt <= Date.now()) {
+        this.clearSupportMfaGrant()
+        return toast.error('MFA 临时授权已过期，请重新验证')
+      }
       const res = await platformPamApi.getSupportTenantAudit(session.tenantId, { page: 1, pageSize: 20 }, this.supportWorkspace.mfaToken)
       if (res.code !== 0) {
-        if (res.bizCode === 'AUTH_REQUIRED' || res.bizCode === 'TOKEN_EXPIRED') this.supportWorkspace.mfaToken = ''
+        if (/AUTH|TOKEN|MFA/i.test(String(res.bizCode || ''))) this.clearSupportMfaGrant()
         return toast.error(res.message)
       }
       this.supportWorkspace.audits = res.data.list || res.data.items || []
