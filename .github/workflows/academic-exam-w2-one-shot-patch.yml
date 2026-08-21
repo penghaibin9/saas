@@ -1,0 +1,49 @@
+name: Academic Exam W2 One Shot Owner Patch
+
+on:
+  push:
+    branches:
+      - fix/academic-exam-incident-w2-20260821
+    paths:
+      - '.github/workflows/academic-exam-w2-one-shot-patch.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: academic-exam-w2-one-shot-owner-patch
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/academic-exam-incident-w2-20260821
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply exact minimal owner patches
+        run: python scripts/check/apply-academic-exam-w2-one-shot.py
+
+      - name: Verify patch shape
+        run: |
+          set -euo pipefail
+          grep -q 'AaExamIncidentWorkbench' frontend/src/modules/academicAffairs/views/AaExamConsoleView.vue
+          ! grep -q 'v-for="i in incidents"' frontend/src/modules/academicAffairs/views/AaExamConsoleView.vue
+          grep -q 'incident_id}/resolve' backend/tests/test_aa_exam_fact_guards.py
+
+      - name: Commit patched owners and remove one-shot helper
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/academic-exam-w2-one-shot-patch.yml scripts/check/apply-academic-exam-w2-one-shot.py
+          git add frontend/src/modules/academicAffairs/views/AaExamConsoleView.vue backend/tests/test_aa_exam_fact_guards.py
+          git commit -m 'feat(academic): mount W2 exam incident workbench [owner-patch]'
+          git push origin HEAD:fix/academic-exam-incident-w2-20260821
