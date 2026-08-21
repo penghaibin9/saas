@@ -5,16 +5,20 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const viewPath = path.resolve(here, '../src/modules/graduation/views/FinalSubmissionListView.vue')
-const source = fs.readFileSync(viewPath, 'utf8')
+const read = (rel) => fs.readFileSync(path.resolve(here, rel), 'utf8')
+const source = read('../src/modules/graduation/views/FinalSubmissionListView.vue')
+const workspace = read('../src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue')
+const evidence = read('../src/modules/graduation/components/FileEvidencePanel.vue')
 
 test('U3 keeps the final review split workspace, keyboard navigation, and responsive fallback', () => {
-  assert.match(source, /class="fr-split"/)
-  assert.match(source, /class="fr-list"/)
-  assert.match(source, /class="fr-pane"/)
+  assert.match(source, /GraduationDocumentReviewWorkspace/)
+  assert.match(workspace, /gd-review-workspace__queue/)
+  assert.match(workspace, /gd-review-workspace__document/)
+  assert.match(workspace, /gd-review-workspace__review/)
   assert.match(source, /event\.key === 'ArrowDown'/)
   assert.match(source, /event\.key === 'ArrowUp'/)
-  assert.match(source, /处理后自动进入下一条待审/)
+  assert.match(workspace, /批阅成功后自动下一条/)
+  assert.match(workspace, /@media\(max-width:1100px\)/)
 })
 
 test('U3 pending review reloads the same server page before selecting the next final', () => {
@@ -26,22 +30,22 @@ test('U3 pending review reloads the same server page before selecting the next f
   assert.match(source, /Number\.isInteger\(this\._selectIndexAfterLoad\)/)
 })
 
-test('U3 preserves the secure FileVersion review gate', () => {
+test('U3 preserves the secure canonical FileVersion review gate', () => {
   assert.match(source, /finalDetail\?\.reviewReady/)
-  assert.match(source, /expectedVersion: this\.finalDetail\.materialVersion/)
-  assert.match(source, /fileVersionId: this\.finalDetail\.fileVersionId/)
-  assert.match(source, /SHA-256/)
+  assert.match(source, /expectedVersion \+ fileVersionId/)
+  assert.match(source, /canonicalFileVersionId/)
+  assert.match(source, /versionConflict/)
+  assert.match(workspace, /FileEvidencePanel/)
+  assert.match(evidence, /canonical/i)
 })
 
-test('U3 keeps the five-second decision surface above the fold without changing shared shells', () => {
+test('U3 keeps the five-second decision surface in the shared Reader workspace', () => {
   assert.match(source, /class="mp-stack fr-workbench-stack"/)
-  assert.match(source, /class="mp-card__body fr-summary-grid"/)
-  assert.match(source, /class="mp-card fr-security-card"/)
-  assert.match(source, /class="mp-card fr-review-card"/)
-  assert.match(source, /class="fr-empty-filter"/)
   assert.match(source, /size="compact"/)
-  assert.match(source, /\.fr-empty-filter \{ display: none; \}/)
-  assert.match(source, /\.fr-detail-grid \{ display: grid; grid-template-columns:/)
-  assert.match(source, /\.fr-security-card \.mp-card__body \{ max-height: 220px; overflow: auto; \}/)
-  assert.match(source, /@media \(max-width: 1100px\)[\s\S]*\.fr-detail-grid \{ grid-template-columns: 1fr; \}/)
+  assert.match(workspace, /gd-review-workspace__summary/)
+  assert.match(workspace, /gd-review-workspace__business-bar/)
+  assert.match(workspace, /gd-review-workspace__conflict/)
+  assert.match(workspace, /FileEvidencePanel/)
+  assert.match(workspace, /grid-template-columns:272px minmax\(680px,1fr\) 340px/)
+  assert.match(workspace, /gd-review-workspace\.is-narrow\{grid-template-columns:1fr\}/)
 })
