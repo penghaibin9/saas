@@ -112,7 +112,6 @@ _P1_REPLACEMENTS = {
     _sig("/system/role-assignments/{assignment_id}/transfer", "POST"),
     _sig("/system/org-nodes/{org_type}/{node_id}/impact", "GET"),
     _sig("/system/org-nodes/{node_id}/status", "PUT"),
-    _sig("/platform/tenants/{tenant_id}", "PUT"),
     _sig("/platform/support-tickets/{ticket_id}/transition", "POST"),
     _sig("/platform/trainings", "POST"),
     _sig("/platform/trainings/{training_id}/complete", "POST"),
