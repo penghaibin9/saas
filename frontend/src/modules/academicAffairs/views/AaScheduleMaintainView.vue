@@ -81,7 +81,7 @@
 
     <AaAuthoritativeImportDrawer
       v-model:visible="importVisible"
-      title="排课权威 XLSX 导入"
+      title="批量导入课表"
       template-name="排课结果导入模板.xlsx"
       show-import-mode
       :preview-fields="['taskId', 'courseName', 'teacherName', 'className', 'weekday', 'slotNo', 'startWeek', 'endWeek', 'weekParity', 'classroom']"
