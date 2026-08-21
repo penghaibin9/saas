@@ -211,9 +211,15 @@ async function submit() {
 }
 async function printDoc() {
   busy.value = true
-  // SP-E08 欠账：后端目前只写打印审计留痕，不产出真实 PDF/fileId，文案如实说明。
-  try { await portalApi.employmentDestinationPrint({}); ui.notify('已生成打印留痕（暂未生成可下载文件）') }
-  catch (e) { ui.notify(e?.message || '打印失败（演示租户为只读）') } finally { busy.value = false }
+  // SP-E08：打印现在真实生成 PDF 并落 File Center，fileId/sha256 来自响应，
+  // 不再只是一条打印审计留痕；没有 fileId 就不能宣称成功。
+  try {
+    const res = await portalApi.employmentDestinationPrint({})
+    const fileId = res?.fileId
+    if (!fileId) throw new Error('登记表生成失败：未取得文件编号')
+    await portalApi.employmentDestinationDocumentDownload(fileId, '就业去向登记表.pdf')
+    ui.notify('就业去向登记表已生成并开始下载')
+  } catch (e) { ui.notify(e?.message || '打印失败（演示租户为只读）') } finally { busy.value = false }
 }
 onMounted(() => { load(); loadOptions() })
 </script>

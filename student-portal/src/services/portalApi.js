@@ -159,6 +159,9 @@ export const portalApi = {
   employmentDestinationOptions: () => request('/portal/employment/destination/options'),
   employmentDestination: (body) => request('/portal/employment/destination', { method: 'POST', body }),
   employmentDestinationPrint: (body) => request('/portal/employment/destination/print', { method: 'POST', body }),
+  // SP-E08：打印现在真实生成 PDF，fileId 来自 employmentDestinationPrint() 的响应。
+  employmentDestinationDocumentDownload: (fileId, fileName = '就业去向登记表') =>
+    downloadFile(`/files/download/${encodeURIComponent(fileId)}`, fileName),
   orientationMy: () => request('/portal/orientation/my'),
   orientationCollect: (body) => request('/portal/orientation/collect', { method: 'POST', body }),
   orientationGreenChannel: (body) => request('/portal/orientation/green-channel', { method: 'POST', body }),

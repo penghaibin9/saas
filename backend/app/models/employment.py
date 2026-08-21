@@ -43,6 +43,11 @@ class EmpStudent(PKMixin, TenantMixin, CommonMixin, Base):
     unemployed_reason: Mapped[str | None] = mapped_column(String(500))
     last_follow_up_time: Mapped[datetime | None] = mapped_column(DateTime)
     follow_up_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # SP-E08：登记表/协议真实文件指针 + 生成时的事实版本快照。source_version 与生成时
+    # 不一致就说明去向事实又变了，服务层据此判断是复用旧文件还是重新生成，不是每次
+    # 点击都无脑重渲染，也不会在事实已变后继续把旧文件当最新的发出去。
+    destination_document_file_id: Mapped[int | None] = mapped_column(BigInteger)
+    destination_document_source_version: Mapped[int | None] = mapped_column(Integer)
 
 
 class EmpMaterial(PKMixin, TenantMixin, CommonMixin, Base):

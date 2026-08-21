@@ -26,10 +26,13 @@ def _seed(no, name):
     from app.db.session import get_sessionmaker
     from app.models import StudentProfile
     db = get_sessionmaker()()
-    db.add(StudentProfile(tenant_id=TID, student_no=no, real_name=name, gender="F", grade="2021",
-                          current_stage="EMPLOYMENT", student_status="NORMAL", status="ACTIVE"))
+    row = StudentProfile(tenant_id=TID, student_no=no, real_name=name, gender="F", grade="2021",
+                         current_stage="EMPLOYMENT", student_status="NORMAL", status="ACTIVE")
+    db.add(row)
     db.commit()
+    sid = int(row.id)
     db.close()
+    return sid
 
 
 def test_my_view(client, db_mode):
@@ -177,10 +180,24 @@ def test_my_view_returns_separate_verify_and_material_facts(client, db_mode):
 
 
 def test_print(client, db_mode):
-    _seed("EM-003", "就业三")
+    # SP-E08：登记表打印现在真实生成 PDF，前提是先有 EmpStudent（不是这里测的
+    # /destination 提交本身——那条通道目前是通用 CsWorkOrder 工单，不落 EmpStudent，
+    # 是 SP-E02/E04 仍未关闭的欠账，见 test_employment_destination_document.py）。
+    sid = _seed("EM-003", "就业三")
+    from app.db.session import get_sessionmaker
+    from app.models import EmpStudent
+    db = get_sessionmaker()()
+    db.add(EmpStudent(tenant_id=TID, student_id=sid, student_no="EM-003", name="就业三",
+                      destination_type="SIGNED", company_name="某科技公司",
+                      verify_status="PENDING_VERIFY", record_status="ACTIVE"))
+    db.commit()
+    db.close()
+
     h = _stu_token("就业三", "EM-003")
     r = client.post(f"{PORTAL}/destination/print", headers=h, json={"bizId": "E1"}).json()
-    assert r["code"] == 0 and r["data"]["watermark"] == "就业三"
+    assert r["code"] == 0, r
+    assert r["data"]["watermark"] == "就业三"
+    assert r["data"]["fileId"] and r["data"]["fileId"].isdigit()
 
 
 def test_non_student_rejected(client, db_mode):

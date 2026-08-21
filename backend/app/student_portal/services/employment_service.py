@@ -25,7 +25,7 @@ Authority 边界
 """
 from __future__ import annotations
 
-from app.core.exceptions import AppException
+from app.core.exceptions import AppException, not_found
 from app.modules.employment.services import employment_service as canonical
 from app.services import mobile_student_service as stu
 from app.services.mobile_student_service import _require_student
@@ -192,14 +192,38 @@ def destination_register(user: dict, body: dict) -> dict:
 
 
 def destination_print(user: dict, body: dict) -> dict:
-    """打印就业协议/回执（PORTAL_PRINT + 水印）。
+    """就业去向登记表：生成真实 PDF（File Center fileId + sha256），并保留原有
+    PORTAL_PRINT 审计留痕（两者不是互斥关系，审计证明"谁在什么时候打印过"，
+    文件本身才是"打印了什么"）。
 
-    SP-E08 欠账：这里目前只写审计留痕，**没有**生成真实文件（无 fileId/hash）。
-    真实文档生成需要业务域的 document generation service + File Center 落盘，
-    不在本轮范围内；路由层与前端文案必须如实说"已生成打印留痕"，不得宣称
-    已经拿到可下载的登记表/协议文件。
+    SP-E08：此前这里只写审计留痕，没有生成任何真实文件——按钮"成功"却拿不到
+    fileId/hash，不能证明文档确实存在。现在必须先建立就业档案（EmpStudent）
+    才能生成登记表；文档内容如实打印当前核验状态，未核验不冒充已核验。
     """
-    _require_student(user)
-    return common.print_log(user, {"bizType": "EMPLOYMENT",
-                                   "bizId": str((body or {}).get("bizId") or ""),
-                                   "docName": "就业协议/回执"})
+    u = _require_student(user)
+    from app.models import EmpStudent
+    from app.modules.employment.services.employment_destination_document_service import (
+        ensure_destination_document_in_tx,
+    )
+
+    with stu._session() as db:
+        student = stu.resolve_student(db, u)
+        if not student:
+            raise not_found("尚未建立你的学生档案，无法生成登记表")
+        emp = stu._resolve_domain_student(db, EmpStudent, student)
+        if not emp:
+            raise not_found("尚未登记就业去向，请先完成登记后再生成登记表")
+        file_obj = ensure_destination_document_in_tx(db, emp)
+        result = {
+            "fileId": str(file_obj.id),
+            "fileName": file_obj.file_name,
+            "sha256": file_obj.sha256,
+            "sizeBytes": int(file_obj.size_bytes or 0),
+            "sourceVersion": int(emp.destination_document_source_version or 0),
+        }
+        db.commit()
+
+    log = common.print_log(user, {"bizType": "EMPLOYMENT",
+                                  "bizId": str((body or {}).get("bizId") or result["fileId"]),
+                                  "docName": "就业去向登记表"})
+    return {**log, **result}
