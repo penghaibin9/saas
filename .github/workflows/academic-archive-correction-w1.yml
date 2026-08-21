@@ -1,0 +1,206 @@
+name: Academic Archive Correction W1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/academic-archive-correction-w1-20260821
+    paths:
+      - 'backend/alembic/versions/20260821_aa_archive_correction_review.py'
+      - 'backend/app/models/academic_affairs_stage_c3.py'
+      - 'backend/app/modules/academic_affairs/routers/archive_correction_router.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_archive_correction_review_service.py'
+      - 'backend/tests/test_stage_c3_correction_router_contract.py'
+      - 'backend/tests/test_stage_c3_correction_end_to_end.py'
+      - 'backend/tests/test_stage_c3_correction_reject.py'
+      - 'backend/scripts/e2e_seed_academic_archive_correction_w1.py'
+      - 'frontend/src/modules/academicAffairs/api/academic-archive-correction.api.js'
+      - 'frontend/src/modules/academicAffairs/components/AaArchiveCorrectionWorkspace.vue'
+      - 'frontend/src/modules/academicAffairs/views/AaArchiveConsoleView.vue'
+      - 'frontend/tests/academic-archive-correction-contract.test.mjs'
+      - 'e2e/specs/academic-archive-correction-w1.spec.mjs'
+      - '.github/workflows/academic-archive-correction-w1.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/alembic/versions/20260821_aa_archive_correction_review.py'
+      - 'backend/app/models/academic_affairs_stage_c3.py'
+      - 'backend/app/modules/academic_affairs/routers/archive_correction_router.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_archive_correction_review_service.py'
+      - 'backend/tests/test_stage_c3_correction_router_contract.py'
+      - 'backend/tests/test_stage_c3_correction_end_to_end.py'
+      - 'backend/tests/test_stage_c3_correction_reject.py'
+      - 'backend/scripts/e2e_seed_academic_archive_correction_w1.py'
+      - 'frontend/src/modules/academicAffairs/api/academic-archive-correction.api.js'
+      - 'frontend/src/modules/academicAffairs/components/AaArchiveCorrectionWorkspace.vue'
+      - 'frontend/src/modules/academicAffairs/views/AaArchiveConsoleView.vue'
+      - 'frontend/tests/academic-archive-correction-contract.test.mjs'
+      - 'e2e/specs/academic-archive-correction-w1.spec.mjs'
+      - '.github/workflows/academic-archive-correction-w1.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: academic-archive-correction-w1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  w1-closure:
+    name: Backend + frontend + real browser W1 seal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: academic_archive_w1_e2e
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_archive_w1_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_archive_w1_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: academic_archive_w1_e2e
+      REDIS_URL: redis://127.0.0.1:6379/12
+      REDIS_KEY_PREFIX: academic-archive-w1
+      JWT_SECRET: academic-archive-w1-browser-only-not-production
+      JWT_SECRET_KEY: academic-archive-w1-browser-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact W1 head
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend and verify single Alembic head
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+
+      - name: Run W1 backend service router permission tenant concurrency idempotency tests
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_stage_c3_correction_router_contract.py \
+            tests/test_stage_c3_correction_end_to_end.py \
+            tests/test_stage_c3_correction_reject.py
+
+      - name: Run W1 frontend API contract and production build
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          node --test tests/academic-archive-correction-contract.test.mjs
+          npm run build
+
+      - name: Seed isolated W1 browser tenant and archived facts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_academic_archive_correction_w1.py
+          test -s ../e2e/academic-archive-correction-w1-fixture.json
+
+      - name: Start backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Start staff PC from production-build-verified source
+        run: |
+          set -euo pipefail
+          cd frontend
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:5173/login >/dev/null && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/frontend.log
+          exit 1
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Run W1 real browser two-person approve and reject seal
+        working-directory: e2e
+        run: npx playwright test specs/academic-archive-correction-w1.spec.mjs --reporter=line
+
+      - name: Upload W1 browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-archive-correction-w1-evidence-${{ github.sha }}
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+            e2e/academic-archive-correction-w1-fixture.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload W1 service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-archive-correction-w1-logs-${{ github.sha }}
+          path: e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
