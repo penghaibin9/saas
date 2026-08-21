@@ -39,6 +39,13 @@ SUBMITTED → APPROVED（原子写回 EmpStudent）
 `User.id`（登录账号主体）。两者只能通过 `StudentAccountLink` ACTIVE 稳定绑定，
 写入路径不接受 login_name/student_no legacy fallback，也不接受两个自增主键碰巧相等。
 
+并发边界
+────────────────────────────────────────────────────────────
+同一学生同一时刻只允许一条 SUBMITTED。不能只做“先查再插”：两个 MySQL 事务会同时
+看到空集。提交事务先 `FOR UPDATE` 锁住稳定存在的 `StudentProfile` 行，把“检查 active
+submission + 创建 workflow/todo”串行化；后来的事务拿到锁后会重新看到第一条已提交记录
+并返回 DATA_CONFLICT。这样不依赖脆弱的应用内锁，也不把 MySQL gap-lock 行为当业务合同。
+
 city/contact 没有 EmpStudent 对应列（canonical 台账从未建过），因此不写回台账，
 只落在本表——字段不再像旧工单文本那样被截断丢失，如实标注，不假装已建立新台账列。
 """
@@ -50,7 +57,7 @@ from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.models import EmpDestinationSubmission, EmpStudent
+from app.models import EmpDestinationSubmission, EmpStudent, StudentProfile
 from app.modules.employment.services.employment_service import L_DEST
 from app.services.db_service import _tid, session
 
@@ -159,6 +166,23 @@ def _open_workflow(db, submission_id, applicant_id, title, assignee_id):
     return inst, task
 
 
+def _lock_student_submission_slot(db, student_id: int) -> None:
+    """串行化同一学生的就业去向 submit 事务。
+
+    `EmpDestinationSubmission` 在“尚无 active 行”时没有可锁对象，不能靠对空集
+    `SELECT ... FOR UPDATE` 建立稳定业务互斥。StudentProfile 是每次提交都必然存在的
+    canonical 主体，因此锁它作为 per-student transaction mutex；锁只持有到本次
+    submit commit/rollback，不改变学籍事实本身。
+    """
+    row = db.scalars(select(StudentProfile).where(
+        StudentProfile.id == int(student_id),
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False),
+    ).with_for_update()).first()
+    if not row:
+        raise not_found("学生主档不存在")
+
+
 def _require_applicant_user_id(db, student_id: int) -> int:
     """把当前登录学生证明为该 StudentProfile 的 ACTIVE 登录账号。
 
@@ -191,6 +215,9 @@ def submit(*, student_id: int, student_name: str,
     if dt not in L_DEST:
         raise AppException("VALIDATION_ERROR", "非法的就业去向类型")
     with session() as db:
+        # W2/P1：必须先锁稳定主体，再做 active-check。否则两个并发事务都可能在空集上
+        # 通过“无在途提交”检查，各自创建一套 submission/workflow/task/todo。
+        _lock_student_submission_slot(db, int(student_id))
         applicant_user_id = _require_applicant_user_id(db, int(student_id))
         dup = db.scalars(select(EmpDestinationSubmission).where(
             EmpDestinationSubmission.tenant_id == _tid(),
@@ -340,15 +367,21 @@ def apply_workflow_decision_in_db(db, inst, *, approved: bool, reason: str | Non
 
 
 def apply_return_in_db(db, inst, *, reason: str) -> dict | None:
-    """由通用审批 `approval_runtime_service.return_for_revision()` 在同一事务内回调
-    （该函数是真正被 `/tasks/{id}/return` 路由调用的实现，不是 `approval_service.py`
-    里同名但无调用方的旧实现）。退回是终态（与 AaStatusChange 的既有约定一致）：学生
-    需重新调用 submit() 发起新的一条提交，不在这条记录上原地编辑重开——同一份记录
-    改字段又能重新流转，会让"审批过的历史事实"变得可变，这不是本模块要建的语义。
+    """把就业去向 RETURN 收成真正终态，并在通用退回事务提交前消除 resubmit 假象。
 
-    不在这里重复发通知：调用方已经对 `inst.applicant_id` 插入一条通用 UnifiedMessage
-    退回提醒，本域再发一条会变成同一件事收到两条推送。
+    `approval_runtime_service.return_for_revision()` 的通用语义是“退回后原流程可修改重提”，
+    因此会先把 instance 置为 RUNNING/APPLICANT_RESUBMIT，并创建 APPROVAL_RESUBMIT 待办和
+    可点击消息。就业去向的领域合同相反：RETURNED 是终态，学生必须新建一条 submission。
+
+    本回调与通用退回处于**同一数据库事务**，因此在 commit 前完成三件事：
+    1. domain submission → RETURNED；
+    2. WorkflowInstance → RETURNED/current_node=None；
+    3. 通用 resubmit todo 软删+取消，通用消息改成无重提 action 的普通业务通知。
+
+    这样数据库提交后从未存在一个对外可见的“僵尸重提待办”，又保留一条真实退回通知。
     """
+    from app.models import UnifiedMessage, UnifiedTodo
+
     x = db.scalars(select(EmpDestinationSubmission).where(
         EmpDestinationSubmission.tenant_id == _tid(),
         EmpDestinationSubmission.workflow_instance_id == int(inst.id),
@@ -356,10 +389,47 @@ def apply_return_in_db(db, inst, *, reason: str) -> dict | None:
     ).with_for_update()).first()
     if not x:
         return None
+
     x.status = "RETURNED"
     x.return_reason = reason
     x.decision_version = int(x.decision_version or 0) + 1
     x.current_task_id = None
+
+    # W2/P1：通用 runtime 已经把 instance 暂时推进到 APPLICANT_RESUBMIT；本域是终态，
+    # 同一事务内覆盖成模型正式支持的 RETURNED，不再允许 /instances/{id}/resubmit。
+    inst.status = "RETURNED"
+    inst.current_node = None
+
+    resubmit_todo = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(),
+        UnifiedTodo.source_module == SOURCE_MODULE,
+        UnifiedTodo.source_biz_id == int(x.id),
+        UnifiedTodo.todo_type == "APPROVAL_RESUBMIT",
+        UnifiedTodo.assignee_id == int(x.applicant_id),
+    ).with_for_update()).first()
+    if resubmit_todo:
+        resubmit_todo.status = "CANCELLED"
+        resubmit_todo.is_deleted = True
+        resubmit_todo.version = int(resubmit_todo.version or 0) + 1
+
+    resubmit_message = db.scalars(select(UnifiedMessage).where(
+        UnifiedMessage.tenant_id == _tid(),
+        UnifiedMessage.source_module == SOURCE_MODULE,
+        UnifiedMessage.source_biz_id == int(x.id),
+        UnifiedMessage.receiver_user_id == int(x.applicant_id),
+        UnifiedMessage.action_key == "APPROVAL_RESUBMIT",
+        UnifiedMessage.is_deleted.is_(False),
+    ).order_by(UnifiedMessage.id.desc()).with_for_update()).first()
+    if resubmit_message:
+        resubmit_message.title = "就业去向登记已退回"
+        resubmit_message.content = reason
+        resubmit_message.message_type = "BUSINESS"
+        resubmit_message.category = "BUSINESS"
+        resubmit_message.action_key = None
+        resubmit_message.action_params_json = None
+        resubmit_message.remark = "RETURNED_TERMINAL"
+        resubmit_message.version = int(resubmit_message.version or 0) + 1
+
     _audit(db, x.id, "RETURNED", reason)
     _todo_done(db, x.id)
     db.flush()
