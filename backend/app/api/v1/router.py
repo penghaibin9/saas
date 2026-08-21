@@ -32,6 +32,7 @@ from app.api.v1.data_center import router as data_center_router
 from app.api.v1.help_metrics import router as help_metrics_router
 from app.api.v1.mobile_academic_status import router as mobile_academic_status_router
 from app.api.v1.mobile_performance import router as mobile_performance_router
+from app.api.v1.system_p1_closure import router as system_p1_closure_router
 from app.modules.student_affairs.routers.affairs_material_center import router as affairs_material_center_router
 from app.services import control_plane_p0_runtime
 from app.services.affairs_activity_authority_guard import install as install_activity_authority_guard
@@ -113,6 +114,7 @@ for supplemental_router in (
     control_plane_auth_router,
     control_plane_offboarding_router,
     auth_browser_router,
+    system_p1_closure_router,
     affairs_material_center_router,
     affairs_four_end_router,
     affairs_operations_router,
