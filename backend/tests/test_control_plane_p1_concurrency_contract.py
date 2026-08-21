@@ -17,7 +17,12 @@ def test_customer_success_mutations_use_locked_guard_before_broad_router():
 
     assert "customer_success_p1_closure_router" in router
     assert router.index("customer_success_p1_closure_router,") < router.index("platform_p1_closure_router,")
-    assert guard.count("with_for_update()") >= 3
+    # All three state-changing operations share one canonical row-lock helper.
+    # Count helper call sites rather than duplicated with_for_update() syntax so
+    # extracting the lock into a common function cannot create a false red gate.
+    assert "def _lock_row(" in guard
+    assert ".with_for_update()" in guard
+    assert guard.count("_lock_row(db,") >= 3
     assert guard.count("record_critical_in_session") >= 6
     assert '"CLOSED": set()' in guard
     assert '"RENEWED": set()' in guard
