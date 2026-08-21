@@ -336,3 +336,13 @@ def test_review_purge_finalize_failure_is_retryable_but_irreversible(db_mode):
     assert out["irreversible"] is True
     assert out["result"]["purgeEvidence"] == evidence
     assert "final tombstone transaction failed" in out["lastError"]
+
+
+def test_review_purge_runtime_mutex_survives_worker_crash_contract():
+    source = (ROOT / "app" / "services" / "control_plane_p0_offboarding_guard.py").read_text(encoding="utf-8")
+    assert "SELECT GET_LOCK(:lock_name, 0)" in source
+    assert "SELECT RELEASE_LOCK(:lock_name)" in source
+    assert "TENANT_PURGE_ALREADY_RUNNING" in source
+    assert 'job.state == "PURGING"' in source
+    assert 'job.state = "FAILED"' in source
+    assert "resuming idempotently" in source
