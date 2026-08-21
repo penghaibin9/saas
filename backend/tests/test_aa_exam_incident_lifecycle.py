@@ -50,10 +50,23 @@ def _seed(db_mode):
     from datetime import datetime
 
     from app.db.session import get_sessionmaker
-    from app.models import AaExamBatch, AaExamCourse, AaExamIncident, AaExamRoom
+    from app.models import AaExamBatch, AaExamCourse, AaExamIncident, AaExamRoom, Tenant
 
     db = get_sessionmaker()()
     try:
+        other_tenant_id = TID + 99
+        if db.get(Tenant, other_tenant_id) is None:
+            db.add(Tenant(
+                id=other_tenant_id,
+                tenant_code="w2-other-tenant",
+                school_name="W2跨租户隔离学校",
+                short_name="W2隔离校",
+                deploy_mode="SAAS",
+                db_mode="SHARED",
+                status="ACTIVE",
+            ))
+            db.flush()
+
         batch = AaExamBatch(
             tenant_id=TID,
             batch_name="W2考务异常闭环验收",
