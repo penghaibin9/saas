@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import test from 'node:test'
+
+const root = path.resolve(new URL('..', import.meta.url).pathname)
+const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
+const finalSource = read('src/modules/graduation/views/FinalSubmissionListView.vue')
+const proposalSource = read('src/modules/graduation/views/_shared/ProposalReviewCard.vue')
+const workspaceSource = read('src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue')
+
+test('W2 final Gold reuses mature business flow and locks canonical fileVersion', () => {
+  for (const marker of ['load()', 'select(row)', 'step(delta)', 'turnPage(page)', 'submitReview(action)', 'remind(row)', 'exportFinalsFn()']) {
+    assert.match(finalSource, new RegExp(marker.replace(/[()]/g, '\\$&')))
+  }
+  assert.match(finalSource, /GraduationDocumentReviewWorkspace/)
+  assert.match(finalSource, /expectedVersion:\s*this\.finalDetail\.materialVersion/)
+  assert.match(finalSource, /fileVersionId:\s*this\.finalDetail\.fileVersionId/)
+  assert.match(finalSource, /activePreviewVersionId/)
+  assert.match(finalSource, /canonicalFileVersionId/)
+  assert.match(finalSource, /versionConflict/)
+  assert.match(finalSource, /gd-final-review-draft:\$\{row\.id\}:\$\{fileVersionId\}/)
+  assert.doesNotMatch(finalSource, /SecureFileList|previewVersion\(|window\.open\(/)
+})
+
+test('W2 final conflicts fail closed and successful review reloads server truth before selection continues', () => {
+  assert.match(finalSource, /String\(this\.activePreviewVersionId[\s\S]*String\(this\.canonicalFileVersionId/)
+  assert.match(finalSource, /oldCanonicalVersionId[\s\S]*versionConflict = \{ old: oldCanonicalVersionId, latest \}/)
+  assert.match(finalSource, /isGraduationConflictResponse\(res\)[\s\S]*refreshSelectedConflictTruth/)
+  assert.match(finalSource, /await this\.loadStats\(\)/)
+  assert.match(finalSource, /this\._selectIndexAfterLoad = reviewedIndex[\s\S]*await this\.load\(\)/)
+})
+
+test('W2 proposal reuses the same workspace and preserves proposal, audit and defense authorities', () => {
+  assert.match(proposalSource, /GraduationDocumentReviewWorkspace/)
+  assert.match(proposalSource, /选题背景/)
+  assert.match(proposalSource, /研究方案与进度/)
+  assert.match(proposalSource, /预期成果/)
+  assert.match(proposalSource, /AppAuditTrail/)
+  assert.match(proposalSource, /holdProposalDefense/)
+  assert.match(proposalSource, /reviewProposal/)
+  assert.match(proposalSource, /expectedVersion:\s*this\.detail\.materialVersion/)
+  assert.match(proposalSource, /fileVersionId:\s*this\.detail\.fileVersionId/)
+  assert.match(proposalSource, /gd-proposal-review-draft:\$\{this\.detail\.id\}:\$\{fileVersionId\}/)
+  assert.doesNotMatch(proposalSource, /ProposalPdfViewer|SecureFileList|previewVersion\(/)
+})
+
+test('W2 workspace keeps transport and domain commands outside the public Viewer', () => {
+  assert.match(workspaceSource, /grid-template-columns:272px minmax\(680px,1fr\) 340px/)
+  assert.match(workspaceSource, /AppDocumentViewer/)
+  assert.match(workspaceSource, /FileEvidencePanel/)
+  assert.doesNotMatch(workspaceSource, /issueMaterialTicket|fileSdk|reviewFinal|reviewProposal|submitReview|material-center\/files/)
+})
