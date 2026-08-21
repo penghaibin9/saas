@@ -96,16 +96,21 @@ export default {
       REJECT_REASON_CHIPS, DEFENSE_COMMENT_CHIPS,
       previewProvider: graduationMaterialCenterApi.createPreviewProvider(),
       loading: true, error: '', detail: null, comment: '', formError: '', submitting: false, defenseComment: '',
-      activePreviewFileKey: null, activePreviewVersionId: null, versionConflict: null, previewDraftKey: ''
+      activePreviewFileKey: null, activePreviewVersionId: null, conflictPreviewFile: null, versionConflict: null, previewDraftKey: ''
     }
   },
   computed: {
     secureVersionFiles() { return graduationMaterialCenterApi.normalizeVersions(this.detail?.currentSafeVersions || []) },
     canonicalFileVersionId() { return this.detail?.fileVersionId ?? null },
     activePreviewFile() {
-      return this.secureVersionFiles.find((item) => String(this.fileKey(item)) === String(this.activePreviewFileKey))
+      if (
+        this.versionConflict && this.conflictPreviewFile &&
+        String(this.versionKey(this.conflictPreviewFile)) === String(this.activePreviewVersionId)
+      ) return this.conflictPreviewFile
+      const exact = this.secureVersionFiles.find((item) => String(this.fileKey(item)) === String(this.activePreviewFileKey))
         || this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId))
-        || this.secureVersionFiles[0] || null
+      if (exact) return exact
+      return this.versionConflict ? null : (this.secureVersionFiles[0] || null)
     },
     previewDescriptor() { return this.activePreviewFile ? graduationMaterialCenterApi.previewDescriptor(this.activePreviewFile) : null },
     trailRecords() { return (this.detail?.trail || []).map((t, i) => ({ id: i, action: t.action, actor: t.who, at: this.fmtTime(t.time), target: t.affected })) },
@@ -128,25 +133,32 @@ export default {
     fmtTime(s) { return formatDateTime(s, '') },
     versionKey(item) { return item?.fileVersionId ?? item?.versionId ?? item?.id ?? null },
     fileKey(item) { return item?.fileKey ?? item?.fileId ?? this.versionKey(item) },
-    draftKey(fileVersionId = this.canonicalFileVersionId) { return this.detail?.id && fileVersionId != null ? `gd-proposal-review-draft:${this.detail.id}:${fileVersionId}` : '' },
+    draftKey(fileVersionId = this.activePreviewVersionId ?? this.canonicalFileVersionId) {
+      return this.detail?.id && fileVersionId != null ? `gd-proposal-review-draft:${this.detail.id}:${fileVersionId}` : ''
+    },
     saveDraft() {
       const key = this.previewDraftKey || this.draftKey()
       if (!key) return
       try { if (this.comment) sessionStorage.setItem(key, this.comment); else sessionStorage.removeItem(key) } catch { /* unavailable */ }
     },
-    restoreDraft() {
+    restoreDraft(fallback = '') {
       this.previewDraftKey = this.draftKey()
-      if (!this.previewDraftKey) return
-      try { this.comment = sessionStorage.getItem(this.previewDraftKey) || this.comment || '' } catch { /* unavailable */ }
+      if (!this.previewDraftKey) { this.comment = fallback; return }
+      try { this.comment = sessionStorage.getItem(this.previewDraftKey) || fallback } catch { this.comment = fallback }
     },
     clearDraft() { if (this.previewDraftKey) { try { sessionStorage.removeItem(this.previewDraftKey) } catch { /* ignore */ } }; this.previewDraftKey = '' },
     appendComment(text) { this.comment = this.comment ? `${this.comment}\n${text}` : text; this.saveDraft() },
     appendDefense(text) { this.defenseComment = this.defenseComment ? `${this.defenseComment}\n${text}` : text },
     selectPreviewFile(item) {
       if (!item) return
+      const carriedDraft = this.comment
+      this.saveDraft()
       this.activePreviewFileKey = this.fileKey(item)
       this.activePreviewVersionId = this.versionKey(item)
+      this.conflictPreviewFile = null
       if (this.versionConflict && String(this.activePreviewVersionId) === String(this.canonicalFileVersionId) && this.detail?.reviewReady) this.versionConflict = null
+      this.restoreDraft(carriedDraft)
+      this.saveDraft()
     },
     selectPreviewVersion(item) { this.selectPreviewFile(item) },
     async downloadActivePreview() {
@@ -157,7 +169,9 @@ export default {
       const drafts = preserveDraft ? { comment: this.comment, defenseComment: this.defenseComment } : null
       const oldCanonical = this.canonicalFileVersionId
       const oldActive = this.activePreviewVersionId
-      if (!preserveDraft) this.saveDraft()
+      const oldActiveFile = this.activePreviewFile ? { ...this.activePreviewFile } : null
+      const oldDraft = this.comment
+      this.saveDraft()
       this.loading = true; this.error = ''; this.formError = ''
       if (!preserveDraft) { this.comment = ''; this.defenseComment = '' }
       const res = await graduationApi.getProposalReviewDetail(this.proposalId)
@@ -167,13 +181,17 @@ export default {
         if (oldCanonical != null && latest != null && String(oldCanonical) !== String(latest)) {
           this.versionConflict = { old: oldCanonical, latest }
           this.activePreviewVersionId = oldActive ?? oldCanonical
+          this.conflictPreviewFile = oldActiveFile
+          this.activePreviewFileKey = oldActiveFile ? this.fileKey(oldActiveFile) : null
+          this.restoreDraft(drafts?.comment ?? oldDraft)
         } else {
           this.versionConflict = null
+          this.conflictPreviewFile = null
           this.activePreviewVersionId = latest
+          const active = this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId)) || this.secureVersionFiles[0] || null
+          this.activePreviewFileKey = active ? this.fileKey(active) : null
+          this.restoreDraft(drafts?.comment ?? oldDraft)
         }
-        const active = this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId)) || this.secureVersionFiles[0] || null
-        this.activePreviewFileKey = active ? this.fileKey(active) : null
-        this.restoreDraft()
       } else this.error = graduationActionErrorMessage(res, '开题详情加载失败，请稍后重试')
       if (drafts) { this.comment = drafts.comment; this.defenseComment = drafts.defenseComment; this.saveDraft() }
       this.loading = false
