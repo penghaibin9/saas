@@ -96,11 +96,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Assert exact W1 head
-        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - name: Assert exact W1 branch head
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
 
       - uses: actions/setup-python@v5
         with:
@@ -188,7 +188,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: academic-archive-correction-w1-evidence-${{ github.sha }}
+          name: academic-archive-correction-w1-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             e2e/test-results/
             e2e/playwright-report/
@@ -200,7 +200,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: academic-archive-correction-w1-logs-${{ github.sha }}
+          name: academic-archive-correction-w1-logs-${{ github.event.pull_request.head.sha || github.sha }}
           path: e2e/runtime-logs/
           if-no-files-found: warn
           retention-days: 14
