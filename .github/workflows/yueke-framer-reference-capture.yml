@@ -1,0 +1,99 @@
+name: Yueke Framer Reference Capture
+
+on:
+  push:
+    branches:
+      - agent/yueke-official-site-framer-style-20260821
+    paths:
+      - '.github/workflows/yueke-framer-reference-capture.yml'
+      - '.yueke-framer-reference-trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Chromium reference capture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Capture Framer reference
+        working-directory: e2e
+        env:
+          REFERENCE_URL: https://penghaibin.framer.website/
+        run: |
+          node --input-type=module <<'EOF'
+          import { chromium } from '@playwright/test'
+          import fs from 'node:fs'
+          import path from 'node:path'
+
+          const out = path.resolve('reference-capture')
+          fs.mkdirSync(out, { recursive: true })
+          const browser = await chromium.launch({ headless: true })
+          const captures = [
+            ['desktop', 1440, 1100],
+            ['mobile', 390, 844]
+          ]
+          const report = { url: process.env.REFERENCE_URL, capturedAt: new Date().toISOString(), captures: {} }
+
+          for (const [name, width, height] of captures) {
+            const context = await browser.newContext({ viewport: { width, height }, locale: 'zh-CN' })
+            const page = await context.newPage()
+            await page.goto(process.env.REFERENCE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 })
+            await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {})
+            await page.waitForTimeout(2500)
+            await page.screenshot({ path: path.join(out, `${name}.png`), fullPage: true, animations: 'disabled' })
+
+            const data = await page.evaluate(() => {
+              const visible = (el) => {
+                const r = el.getBoundingClientRect(); const s = getComputedStyle(el)
+                return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'
+              }
+              const pick = (selector, limit = 30) => [...document.querySelectorAll(selector)].filter(visible).slice(0, limit).map((el) => {
+                const s = getComputedStyle(el); const r = el.getBoundingClientRect()
+                return {
+                  tag: el.tagName.toLowerCase(), text: (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 180),
+                  fontFamily: s.fontFamily, fontSize: s.fontSize, fontWeight: s.fontWeight, lineHeight: s.lineHeight,
+                  color: s.color, background: s.backgroundColor, borderRadius: s.borderRadius,
+                  border: s.border, boxShadow: s.boxShadow, letterSpacing: s.letterSpacing,
+                  padding: s.padding, margin: s.margin, width: Math.round(r.width), height: Math.round(r.height)
+                }
+              })
+              const body = getComputedStyle(document.body)
+              return {
+                title: document.title,
+                body: { fontFamily: body.fontFamily, color: body.color, background: body.backgroundColor },
+                h1: pick('h1', 5), h2: pick('h2', 10), paragraphs: pick('p', 18),
+                buttons: pick('button,a', 30), sections: pick('section,main > div', 18),
+                text: document.body.innerText.replace(/\n{3,}/g, '\n\n').slice(0, 14000)
+              }
+            })
+            report.captures[name] = data
+            await context.close()
+          }
+          await browser.close()
+          fs.writeFileSync(path.join(out, 'reference-style.json'), JSON.stringify(report, null, 2))
+          EOF
+
+      - name: Upload reference capture
+        uses: actions/upload-artifact@v4
+        with:
+          name: yueke-framer-reference-${{ github.sha }}
+          path: e2e/reference-capture/
+          if-no-files-found: error
+          retention-days: 14
