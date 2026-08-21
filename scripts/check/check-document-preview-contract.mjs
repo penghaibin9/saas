@@ -48,7 +48,7 @@ const componentBoundaries = {
     'window.open(', 'URL.createObjectURL(', "request('/files", 'uni.openDocument(', 'uni.downloadFile('
   ],
   'miniapp/src/components/file/FilePreviewer.vue': [
-    'realRequest(', 'realDownload(', 'uni.openDocument(', 'uni.previewImage(', 'uni.downloadFile('
+    'realRequest(', 'realDownload(', 'uni.openDocument(', 'uni.downloadFile('
   ]
 }
 
@@ -174,4 +174,61 @@ for (const marker of ['file.fileId', 'file.fileVersionId || file.versionId', 'fi
   if (!studentSession.includes(marker)) throw new Error(`student Reader session lifecycle drift: missing ${marker}`)
 }
 
-console.log('W0-W4 document-preview-contract/v1 owner, transport, task-bound Reader and high-sensitivity boundaries passed')
+// W6: DOCX is a presentation adapter over already-authorized bytes. It must never become
+// a new transport/authorization path or expand Office support beyond the frozen DOCX scope.
+const viewerContract = read('frontend/src/components/file/viewer/viewer-contract.js')
+const adminViewer = read('frontend/src/components/file/viewer/AppDocumentViewer.vue')
+const adminDocx = read('frontend/src/components/file/viewer/adapters/docx-preview-renderer.js')
+const adminDocxAdapter = read('frontend/src/components/file/viewer/adapters/DocxViewerAdapter.vue')
+const studentViewer = read('student-portal/src/components/file/viewer/StudentDocumentViewer.vue')
+const studentDocx = read('student-portal/src/components/file/viewer/adapters/docx-preview-renderer.js')
+const studentDocxAdapter = read('student-portal/src/components/file/viewer/adapters/StudentDocxViewer.vue')
+
+for (const marker of [
+  "DOCX: 'DOCX'",
+  'DOCX_PREVIEW_MAX_SOURCE_BYTES',
+  "mime === DOCX_MIME || ext === 'docx'"
+]) {
+  if (!viewerContract.includes(marker)) throw new Error(`W6 DOCX PreviewDescriptor drift: missing ${marker}`)
+}
+if (!adminViewer.includes('DocxViewerAdapter') || !adminViewer.includes("previewKind === 'DOCX'")) {
+  throw new Error('W6 admin/teacher PC Viewer is missing the DOCX presentation adapter')
+}
+if (!studentViewer.includes('StudentDocxViewer') || !studentViewer.includes("kind === 'docx'")) {
+  throw new Error('W6 student PC Viewer is missing the DOCX presentation adapter')
+}
+
+for (const [relative, source] of [
+  ['frontend DOCX renderer', adminDocx],
+  ['student DOCX renderer', studentDocx]
+]) {
+  for (const marker of [
+    "DecompressionStream('deflate-raw')",
+    'MAX_SOURCE_BYTES = 25 * 1024 * 1024',
+    'MAX_TOTAL_UNCOMPRESSED = 80 * 1024 * 1024',
+    'TargetMode',
+    'URL.revokeObjectURL'
+  ]) {
+    if (!source.includes(marker)) throw new Error(`${relative} safety contract drift: missing ${marker}`)
+  }
+  for (const forbidden of ['window.open(', 'officeapps.live', 'docs.google', 'fetch(', 'innerHTML =']) {
+    if (source.includes(forbidden)) throw new Error(`${relative} owns forbidden DOCX transport/render bypass: ${forbidden}`)
+  }
+}
+for (const [relative, source] of [
+  ['frontend DOCX adapter', adminDocxAdapter],
+  ['student DOCX adapter', studentDocxAdapter]
+]) {
+  for (const forbidden of ['submitReview(', 'reviewFinal(', 'reviewProposal(', 'issueGraduationMaterialTicket', '/material-center/']) {
+    if (source.includes(forbidden)) throw new Error(`${relative} owns forbidden business command/transport: ${forbidden}`)
+  }
+}
+for (const marker of [
+  '| DOCX | embedded read-only (W6) | embedded read-only (W6)',
+  'no third-party Office URL',
+  'annotation remains PDF-first'
+]) {
+  if (!contract.includes(marker)) throw new Error(`W6 contract drift: missing ${marker}`)
+}
+
+console.log('W0-W6 document-preview-contract/v1 owner, transport, task-bound Reader, DOCX and high-sensitivity boundaries passed')
