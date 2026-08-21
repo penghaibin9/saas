@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="安全策略" subtitle="登录锁定 / 令牌时长 / 限流 / 跨域 / 平台高危操作 MFA，越界值将被后端拒绝（不允许不设防）" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
+  <ModulePageShell title="安全策略" subtitle="登录锁定 / 密码与验证码策略 / 令牌时长 / 限流 / 跨域 / 平台高危操作 MFA，越界值将被后端拒绝（不允许不设防）" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
     <PlatformMfaPanel />
 
     <LoadingState v-if="loading" text="正在加载安全参数…" />
@@ -15,7 +15,7 @@
       </div>
       <div class="pcs__ops">
         <AppButton variant="primary" :loading="saving" @click="save">保存安全参数</AppButton>
-        <span class="pcs__tip">保存即生效；参数越界会被拒绝并提示合法范围</span>
+        <span class="pcs__tip">保存即生效；密码、验证码、锁定和令牌参数会直接进入登录 runtime，越界值由后端拒绝。</span>
       </div>
     </AppCard>
   </ModulePageShell>
@@ -40,6 +40,8 @@ export default {
       fields: [
         { key: 'loginFailMaxTimes', label: '登录失败锁定次数', type: 'number' },
         { key: 'loginFailLockMinutes', label: '锁定时长（分钟）', type: 'number' },
+        { key: 'passwordMinLength', label: '密码最小长度', type: 'number' },
+        { key: 'captchaAfterFailures', label: '连续失败后启用验证码（次）', type: 'number' },
         { key: 'accessTokenExpireMinutes', label: 'AccessToken 有效期（分钟）', type: 'number' },
         { key: 'refreshTokenExpireDays', label: 'RefreshToken 有效期（天）', type: 'number' },
         { key: 'uploadMaxSizeMb', label: '上传大小上限（MB）', type: 'number' },
