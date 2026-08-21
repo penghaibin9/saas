@@ -4,7 +4,7 @@
       <section class="hero">
         <div>
           <h3>平台人员不再共用超级管理员</h3>
-          <p>职责、临时提升、受控协助和访问复核统一走后端 Authority；撤销/终止必须带当前 version 与原因，访问复核必须逐项 KEEP / REVOKE。</p>
+          <p>职责、临时提升、受控协助和访问复核统一走后端 Authority；受控协助只能读取会话批准的学校上下文与审计摘要。</p>
         </div>
         <AppButton @click="load">刷新</AppButton>
       </section>
@@ -44,8 +44,8 @@
           <h3>受控学校协助</h3>
           <label>学校租户 ID<input v-model.trim="supportForm.tenantId" required inputmode="numeric" /></label>
           <label>SupportTicket 数字 ID<input v-model.trim="supportForm.ticketId" required inputmode="numeric" /></label>
-          <label>批准范围<input v-model.trim="supportForm.scopes" required placeholder="tenant.context.read, tenant.audit.read, file.metadata.read" /></label>
-          <p class="hint">权威范围：tenant.context.read / tenant.audit.read / identity.metadata.read / file.metadata.read / sensitive.identity.read</p>
+          <label>批准范围<input v-model.trim="supportForm.scopes" required placeholder="tenant.context.read, tenant.audit.read" /></label>
+          <p class="hint">本工作区当前只消费 tenant.context.read / tenant.audit.read；审计读取额外要求 MFA step-up。</p>
           <label>协助原因<input v-model.trim="supportForm.reason" required minlength="5" /></label>
           <label>有效分钟<input v-model.number="supportForm.durationMinutes" type="number" min="1" max="120" required /></label>
           <AppButton variant="primary" :loading="saving === 'support'" type="submit">创建协助会话</AppButton>
@@ -97,11 +97,55 @@
             </tr>
             <tr v-for="item in sessions" :key="`s-${item.id}`">
               <td>受控协助</td><td>{{ item.operatorUserId }}</td><td>{{ item.tenantId }} · {{ (item.scopes || []).join(' / ') }}</td><td>Ticket #{{ item.ticketId }}</td><td>{{ item.expiresAt }}</td><td>{{ item.status }}</td>
-              <td><AppButton v-if="isActive(item)" @click="beginAction('support', item)">终止</AppButton></td>
+              <td class="access-ops">
+                <AppButton v-if="canOpenSupport(item)" variant="primary" @click="openSupportWorkspace(item)">进入协助</AppButton>
+                <AppButton v-if="isActive(item)" @click="beginAction('support', item)">终止</AppButton>
+              </td>
             </tr>
             <tr v-if="!elevations.length && !sessions.length"><td colspan="7">暂无临时提升或受控协助会话</td></tr>
           </tbody>
         </table>
+      </section>
+
+      <section v-if="supportWorkspace.session" class="panel support-workspace">
+        <div class="review-head">
+          <div>
+            <h3>受控协助工作区 · Ticket #{{ supportWorkspace.session.ticketId }}</h3>
+            <p class="hint">仅展示本次会话批准的只读数据；会话到期或终止后后端立即拒绝访问。</p>
+          </div>
+          <AppButton @click="closeSupportWorkspace">关闭工作区</AppButton>
+        </div>
+        <div v-if="supportWorkspace.loading" class="hint">正在读取学校支持上下文…</div>
+        <div v-else-if="supportWorkspace.error" class="error">{{ supportWorkspace.error }}</div>
+        <template v-else-if="supportWorkspace.context">
+          <div class="support-summary">
+            <article><span>学校</span><strong>{{ supportWorkspace.context.tenantName }}</strong><small>{{ supportWorkspace.context.tenantCode }}</small></article>
+            <article><span>状态</span><strong>{{ supportWorkspace.context.status }}</strong><small>到期 {{ supportWorkspace.context.expireAt || '—' }}</small></article>
+            <article><span>学生</span><strong>{{ supportWorkspace.context.studentCount }}</strong><small>只读统计</small></article>
+            <article><span>账号</span><strong>{{ supportWorkspace.context.userCount }}</strong><small>只读统计</small></article>
+          </div>
+
+          <div v-if="supportHasScope('tenant.audit.read')" class="support-audit">
+            <div class="support-audit__head">
+              <div><h3>学校审计摘要</h3><p class="hint">属于更敏感的支持数据，必须使用 10 分钟 request-scoped MFA Token。</p></div>
+              <div v-if="!supportWorkspace.mfaToken" class="support-mfa">
+                <input v-model.trim="supportWorkspace.mfaCode" inputmode="numeric" maxlength="6" placeholder="6 位 MFA 动态码" />
+                <AppButton variant="primary" :loading="saving === 'support-mfa'" @click="stepUpAndLoadAudit">MFA 验证并读取</AppButton>
+              </div>
+              <AppButton v-else @click="loadSupportAudit">刷新审计</AppButton>
+            </div>
+            <table v-if="supportWorkspace.mfaToken">
+              <thead><tr><th>时间</th><th>动作</th><th>对象</th><th>操作人</th><th>结果</th></tr></thead>
+              <tbody>
+                <tr v-for="row in supportWorkspace.audits" :key="row.auditId || row.id">
+                  <td>{{ row.occurredAt || row.time || '—' }}</td><td>{{ row.action }}</td><td>{{ row.resource || row.target || '—' }}</td><td>{{ row.operatorName || row.who || '—' }}</td><td>{{ row.result || '—' }}</td>
+                </tr>
+                <tr v-if="!supportWorkspace.audits.length"><td colspan="5">当前没有审计记录</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="hint">本次会话未批准 tenant.audit.read，因此不展示学校审计摘要。</p>
+        </template>
       </section>
 
       <section class="panel table-panel">
@@ -139,14 +183,16 @@
 import { AppButton } from '@/components/ui'
 import { ModulePageShell } from '@/components/business'
 import { platformPamApi } from '@/modules/platform/api/platformPam.api'
+import { platformSecurityOpsApi } from '@/modules/platform/api/platformSecurityOps.api'
 import { toast } from '@/utils/toast'
 
 const splitValues = (value) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean)
 const requestId = () => globalThis.crypto?.randomUUID?.() || `pam-${Date.now()}-${Math.random().toString(16).slice(2)}`
 const newAssignment = () => ({ requestId: requestId(), userId: '', dutyCode: 'PLATFORM_COMMERCIAL', reason: '' })
 const newElevation = () => ({ requestId: requestId(), userId: '', capabilities: '', durationMinutes: 60, reason: '' })
-const newSupport = () => ({ requestId: requestId(), tenantId: '', ticketId: '', scopes: '', reason: '', durationMinutes: 60 })
+const newSupport = () => ({ requestId: requestId(), tenantId: '', ticketId: '', scopes: 'tenant.context.read, tenant.audit.read', reason: '', durationMinutes: 60 })
 const newReview = () => ({ requestId: requestId(), name: '季度平台访问复核', dueAt: '' })
+const emptyWorkspace = () => ({ session: null, context: null, audits: [], loading: false, error: '', mfaCode: '', mfaToken: '' })
 
 export default {
   name: 'PlatformAccessView',
@@ -155,6 +201,7 @@ export default {
     return {
       assignments: [], elevations: [], sessions: [], reviews: [], error: '', saving: '',
       actionType: '', actionTarget: null, actionReason: '', selectedReview: null, reviewDecisions: {}, reviewCloseReason: '',
+      supportWorkspace: emptyWorkspace(),
       dutyOptions: [
         { value: 'PLATFORM_COMMERCIAL', label: '商务' }, { value: 'PLATFORM_DELIVERY', label: '交付' },
         { value: 'PLATFORM_CUSTOMER_SUCCESS', label: '客户成功' }, { value: 'PLATFORM_OPERATIONS', label: '运维' },
@@ -172,12 +219,19 @@ export default {
   created() { this.load() },
   methods: {
     isActive(item) { return String(item?.status || 'ACTIVE').toUpperCase() === 'ACTIVE' },
+    canOpenSupport(item) { return this.isActive(item) && (item.scopes || []).includes('tenant.context.read') },
+    supportHasScope(scope) { return (this.supportWorkspace.session?.scopes || []).includes(scope) },
     async load() {
       this.error = ''
       const [a, e, s, r] = await Promise.all([platformPamApi.listAssignments(), platformPamApi.listElevations(), platformPamApi.listSupportSessions(), platformPamApi.listReviews()])
       const failed = [a, e, s, r].find((item) => item.code !== 0)
       if (failed) { this.error = failed.message; return }
       this.assignments = a.data.items || []; this.elevations = e.data.items || []; this.sessions = s.data.items || []; this.reviews = r.data.items || []
+      if (this.supportWorkspace.session) {
+        const fresh = this.sessions.find((item) => item.id === this.supportWorkspace.session.id)
+        if (!fresh || !this.isActive(fresh)) this.closeSupportWorkspace()
+        else this.supportWorkspace.session = fresh
+      }
     },
     async saveAssignment() {
       this.saving = 'assignment'; const res = await platformPamApi.saveAssignment({ ...this.assignmentForm, status: 'ACTIVE' }); this.saving = ''
@@ -192,6 +246,39 @@ export default {
       if (!Number.isInteger(tenantId) || tenantId <= 0 || !Number.isInteger(ticketId) || ticketId <= 0) return toast.error('请输入有效租户 ID 与 SupportTicket ID')
       this.saving = 'support'; const res = await platformPamApi.createSupportSession({ ...this.supportForm, tenantId, ticketId, scopes: splitValues(this.supportForm.scopes) }); this.saving = ''
       if (res.code !== 0) return toast.error(res.message); this.supportForm = newSupport(); await this.load(); toast.success('受控协助已创建')
+    },
+    async openSupportWorkspace(item) {
+      this.supportWorkspace = { ...emptyWorkspace(), session: item, loading: true }
+      const res = await platformPamApi.getSupportTenantContext(item.tenantId)
+      this.supportWorkspace.loading = false
+      if (res.code !== 0) { this.supportWorkspace.error = res.message; return }
+      this.supportWorkspace.context = res.data
+    },
+    closeSupportWorkspace() { this.supportWorkspace = emptyWorkspace() },
+    async stepUpAndLoadAudit() {
+      if (!/^\d{6}$/.test(this.supportWorkspace.mfaCode)) return toast.error('请输入 6 位 MFA 动态码')
+      this.saving = 'support-mfa'
+      try {
+        const token = await platformSecurityOpsApi.stepUpMfa(this.supportWorkspace.mfaCode)
+        this.supportWorkspace.mfaToken = token.accessToken || ''
+        this.supportWorkspace.mfaCode = ''
+        if (!this.supportWorkspace.mfaToken) return toast.error('MFA step-up 未返回访问令牌')
+        await this.loadSupportAudit()
+      } catch (error) {
+        toast.error(error.message || 'MFA 二次认证失败')
+      } finally {
+        this.saving = ''
+      }
+    },
+    async loadSupportAudit() {
+      const session = this.supportWorkspace.session
+      if (!session || !this.supportWorkspace.mfaToken) return
+      const res = await platformPamApi.getSupportTenantAudit(session.tenantId, { page: 1, pageSize: 20 }, this.supportWorkspace.mfaToken)
+      if (res.code !== 0) {
+        if (res.bizCode === 'AUTH_REQUIRED' || res.bizCode === 'TOKEN_EXPIRED') this.supportWorkspace.mfaToken = ''
+        return toast.error(res.message)
+      }
+      this.supportWorkspace.audits = res.data.list || res.data.items || []
     },
     async createReview() {
       this.saving = 'review'; const res = await platformPamApi.createReview({ ...this.reviewForm, dueAt: this.reviewForm.dueAt || undefined }); this.saving = ''
@@ -209,6 +296,7 @@ export default {
           : await platformPamApi.terminateSupportSession(item.id, Number(item.tenantId), item.version, this.actionReason)
       this.saving = ''
       if (res.code !== 0) return toast.error(res.message)
+      if (this.actionType === 'support' && this.supportWorkspace.session?.id === item.id) this.closeSupportWorkspace()
       this.cancelAction(); await this.load(); toast.success('访问治理动作已执行')
     },
     editReview(review) {
@@ -232,13 +320,19 @@ export default {
 <style scoped>
 .access-page { display: grid; gap: 16px; }
 .hero, .panel, .metrics article { background: var(--surface,#fff); border: 1px solid var(--card-b,#e5e6eb); border-radius: 12px; padding: 18px; }
-.hero, .review-head, .actions { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.hero, .review-head, .actions, .support-audit__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .hero h3, .panel h3 { margin: 0 0 6px; }.hero p, .hint { margin: 0; color: var(--text-secondary,#646a73); }.hint { font-size: 12px; line-height: 1.6; }
 .metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 12px; }.metrics article { display: grid; gap: 4px; }.metrics strong { font-size: 26px; }
 .forms { display: grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap: 12px; }.panel { display: grid; gap: 12px; }
 label { display: grid; gap: 5px; color: var(--text-secondary,#646a73); font-size: 13px; } input, select { height: 36px; border: 1px solid var(--card-b,#e5e6eb); border-radius: 8px; padding: 0 10px; background: #fff; }
 .action-panel { border-color: #a9c6ff; }.table-panel { overflow-x: auto; } table { width: 100%; border-collapse: collapse; min-width: 760px; } th, td { padding: 10px; border-bottom: 1px solid var(--card-b,#e5e6eb); text-align: left; vertical-align: top; }
+.access-ops { display: flex; gap: 6px; flex-wrap: wrap; }
 .review-editor { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--card-b,#e5e6eb); border-radius: 10px; background: #f8fafc; }.review-item { display: grid; grid-template-columns: minmax(0,1fr) 130px; gap: 12px; align-items: center; }.review-item code { overflow-wrap: anywhere; }
+.support-workspace { border-color: #86aef7; background: linear-gradient(180deg,rgba(37,99,235,.04),#fff 120px); }
+.support-summary { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 10px; }
+.support-summary article { display: grid; gap: 3px; padding: 12px; border: 1px solid var(--card-b,#e5e6eb); border-radius: 10px; background: #fff; }
+.support-summary span, .support-summary small { color: var(--text-secondary,#646a73); font-size: 12px; }.support-summary strong { font-size: 18px; }
+.support-audit { display: grid; gap: 10px; padding-top: 6px; border-top: 1px solid var(--card-b,#e5e6eb); }.support-mfa { display: flex; gap: 8px; flex-wrap: wrap; }.support-mfa input { width: 150px; letter-spacing: .14em; }
 .error { padding: 12px; border-radius: 8px; background: #fff2f0; color: #b42318; }
-@media (max-width:760px) { .hero, .review-head, .actions { display: grid; }.forms { grid-template-columns: 1fr; }.review-item { grid-template-columns: 1fr; } }
+@media (max-width:760px) { .hero, .review-head, .actions, .support-audit__head { display: grid; }.forms { grid-template-columns: 1fr; }.review-item { grid-template-columns: 1fr; } }
 </style>
