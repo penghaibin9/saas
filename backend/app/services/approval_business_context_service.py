@@ -1,38 +1,14 @@
 """审批业务 Context 解析（V3 施工手册 TP-A06/TP-A07）。
 
-问题
-────────────────────────────────────────────────────────────
-`approval_runtime_service.get_task()` 之前把 `attachments` 与 `diff` 硬编码成空
-数组，审批详情里唯一的业务信息就是一句 "业务记录 {sourceBizId}"。老师在审批
-请假、学籍异动、困难认定、违纪时，看不到任何足以支撑判断的事实，却要点通过。
+本模块是审批中心与各业务域之间的只读 adapter 层。审批详情必须展示真实源业务事实；
+approve/return/reject 时还必须在同一事务以 ``for_update=True`` 锁住源业务行，并用
+``sourceVersion`` 校验用户实际看过的快照，避免“看的是 A，批准时已变成 B”。
 
-定位
-────────────────────────────────────────────────────────────
-本模块是 **adapter 层**：按 `WorkflowInstance.source_biz_type` 找到对应业务域的
-真实记录，把它投影成审批端能读的 Context。**不复制业务状态、不做业务判定、不写
-业务数据**；业务域仍是自己的权威。
-
-TP-A07 动作锁
-────────────────────────────────────────────────────────────
-详情展示只做普通一致性读取；真正执行 approve/return/reject 时，调用方必须以
-``for_update=True`` 重新解析 Context。已接入 adapter 的源业务行会在同一事务里
-``SELECT ... FOR UPDATE``，从 sourceVersion 比对一直锁到审批 task/instance 与业务
-副作用提交，关闭“比对后、落库前源事实又被并发修改”的 TOCTOU 窗口。
-
-诚实原则（与 SP-D03 同一条）
-────────────────────────────────────────────────────────────
-- ``FULL``        找到业务记录且关键字段齐全。
-- ``PARTIAL``     找到记录但关键字段缺失，不足以支撑完整判断。
-- ``MISSING``     业务记录查不到（可能已被删除/软删）——审批对象已经不在了。
-- ``UNSUPPORTED`` 该业务类型尚未接入 adapter。**明确说明"还没接"**，而不是返回
-                  一个空 Context 让人以为"这条申请本来就没有内容"。
-- ``ERROR``       读取业务域时真的出错。与 MISSING/UNSUPPORTED 严格区分。
-
-敏感字段
-────────────────────────────────────────────────────────────
-困难认定的家庭情况说明等属于强敏感内容（模型注释已标注）。本模块默认只给出
-`masked=True` 的占位，不把原文带进审批详情——明文查看必须走独立的授权与审计
-通道，不能因为"老师在审批"就默认放行。
+生产规则：
+- ``FULL``：源记录存在且关键事实齐全；动作可在版本匹配时继续。
+- ``PARTIAL/MISSING/ERROR``：信息不足、记录失效或读取失败；动作 fail-closed。
+- ``UNSUPPORTED``：只允许尚未接入生产 workflow 的未知类型或显式沙箱豁免出现；
+  正式审批字典中的生产类型必须全部登记 adapter，并由合同测试锁死覆盖率。
 """
 from __future__ import annotations
 
@@ -49,7 +25,6 @@ MISSING = "MISSING"
 UNSUPPORTED = "UNSUPPORTED"
 ERROR = "ERROR"
 
-#: 强敏感字段的统一占位，不返回原文。
 _MASKED_PLACEHOLDER = "（敏感内容，需单独授权查看）"
 
 
@@ -75,11 +50,7 @@ def _completeness(fields: list[dict], required: list[str]) -> str:
 
 
 def _source_row(db, model, source_biz_id: Any, *, for_update: bool = False):
-    """租户内读取源业务行；审批动作模式下锁行直到调用方事务提交。
-
-    不使用 ``db.get``：这里既需要强制 tenant/is_deleted 条件，也需要可选 FOR UPDATE。
-    所有 adapter 共用这一入口，避免只有部分业务类型真正锁源事实。
-    """
+    """租户内读取源业务行；动作模式下锁行直到调用方事务提交。"""
     from sqlalchemy import select
 
     stmt = select(model).where(
@@ -93,11 +64,7 @@ def _source_row(db, model, source_biz_id: Any, *, for_update: bool = False):
 
 
 def _attachments(db, biz_type: str, biz_id: Any) -> list[dict]:
-    """读取学工域通用附件表的真实附件。
-
-    只投影展示所需的最小信息；是否可预览由公共文件中心的 ACL 决定，本模块不
-    发放任何访问权限。
-    """
+    """学工域通用附件只投影最小元数据；真实预览仍由文件中心 ACL 裁定。"""
     from sqlalchemy import select
     from app.models import AffairsAttachment
 
@@ -117,15 +84,6 @@ def _attachments(db, biz_type: str, biz_id: Any) -> list[dict]:
 
 
 # ── 各业务域 adapter ──────────────────────────────────────
-# 只登记仓库里**真实会创建 WorkflowInstance** 的 source_biz_type。
-# 手册点名的 COMPANY_CHANGE 目前全仓没有任何地方以该值建实例，为它写 adapter
-# 等于为不存在的业务造代码，因此不登记——一旦将来真的接入 workflow，这里返回
-# UNSUPPORTED 会明确提示需要补 adapter，而不是静默空白。
-#
-# EMPLOYMENT_DESTINATION（SP-E02/E04）已经是真实业务：
-# employment_destination_submission_service.submit() 会创建
-# WorkflowInstance(source_biz_type="EMPLOYMENT_DESTINATION")，第 5 个 adapter。
-
 def _leave_context(db, instance, *, for_update: bool = False) -> dict:
     from app.models import CsLeave
 
@@ -163,6 +121,9 @@ def _status_change_context(db, instance, *, for_update: bool = False) -> dict:
         _field("异动类型", row.change_type),
         _field("原学籍状态", row.from_status),
         _field("目标学籍状态", row.to_status),
+        _field("异动原因", row.reason),
+        _field("生效日期", row.effective_date),
+        _field("当前状态", row.status),
     ]
     return {
         "completeness": _completeness(fields, ["异动类型", "目标学籍状态"]),
@@ -185,7 +146,6 @@ def _aid_context(db, instance, *, for_update: bool = False) -> dict:
         _field("辅导员建议等级", row.suggest_level),
         _field("班级评议得分", row.class_review_score),
         _field("班级评议排名", row.class_review_rank),
-        # statement 在模型上被标注为「强敏感」，审批详情一律不带原文。
         _field("困难情况说明", row.statement, masked=True),
         _field("当前状态", row.status),
     ]
@@ -194,6 +154,34 @@ def _aid_context(db, instance, *, for_update: bool = False) -> dict:
         "summary": f"困难认定 · 申请等级 {row.apply_level or '—'}",
         "sections": [_section("认定信息", fields)],
         "attachments": _attachments(db, "AID", row.id),
+        "sourceVersion": int(row.version or 0),
+    }
+
+
+def _funding_context(db, instance, *, for_update: bool = False) -> dict:
+    """奖助评定申请。资格明细快照可能含敏感跨域信息，不在通用 Context 展开原文。"""
+    from app.models import FundingApplication
+
+    row = _source_row(db, FundingApplication, instance.source_biz_id, for_update=for_update)
+    if not row:
+        return {"completeness": MISSING, "summary": "奖助申请不存在或已删除",
+                "sections": [], "attachments": [], "sourceVersion": None}
+    amount = getattr(row, "requested_amount", None)
+    if amount is None:
+        amount = getattr(row, "amount", None)
+    fields = [
+        _field("资助类型", row.project_type),
+        _field("申请来源", row.apply_source),
+        _field("申请金额", amount),
+        _field("申请理由", row.statement),
+        _field("资格校验快照", getattr(row, "check_snapshot_json", None), masked=True),
+        _field("当前状态", row.status),
+    ]
+    return {
+        "completeness": _completeness(fields, ["资助类型", "当前状态"]),
+        "summary": f"奖助评定 · {row.project_type or '—'}",
+        "sections": [_section("奖助申请", fields)],
+        "attachments": _attachments(db, "FUNDING", row.id),
         "sourceVersion": int(row.version or 0),
     }
 
@@ -221,6 +209,169 @@ def _discipline_context(db, instance, *, for_update: bool = False) -> dict:
     }
 
 
+def _discipline_remove_context(db, instance, *, for_update: bool = False) -> dict:
+    from app.models import DisciplineCase, DisciplineRemoveApply
+
+    row = _source_row(db, DisciplineRemoveApply, instance.source_biz_id, for_update=for_update)
+    if not row:
+        return {"completeness": MISSING, "summary": "处分解除申请不存在或已删除",
+                "sections": [], "attachments": [], "sourceVersion": None}
+    case = _source_row(db, DisciplineCase, row.case_id, for_update=False) if row.case_id else None
+    fields = [
+        _field("处分单ID", row.case_id),
+        _field("原处分类型", getattr(case, "disc_type", None)),
+        _field("原处分文号", getattr(case, "doc_no", None)),
+        _field("解除理由", row.apply_reason),
+        _field("最短期限校验", "通过" if row.min_months_check else "未通过"),
+        _field("当前节点", row.current_node),
+        _field("当前状态", row.status),
+    ]
+    return {
+        "completeness": _completeness(fields, ["处分单ID", "解除理由", "当前状态"]),
+        "summary": f"处分解除 · {getattr(case, 'disc_type', '') or row.case_id}",
+        "sections": [_section("解除申请", fields)],
+        "attachments": _attachments(db, "DISCIPLINE_REMOVE", row.id),
+        "sourceVersion": int(row.version or 0),
+    }
+
+
+def _grade_task_context(db, instance, *, for_update: bool = False) -> dict:
+    """成绩任务审批展示任务规则和真实录入汇总；不把大量逐生成绩塞进通用详情。"""
+    from sqlalchemy import func, select
+    from app.models import AaGradeRecord, AaGradeTask
+
+    row = _source_row(db, AaGradeTask, instance.source_biz_id, for_update=for_update)
+    if not row:
+        return {"completeness": MISSING, "summary": "成绩任务不存在或已删除",
+                "sections": [], "attachments": [], "sourceVersion": None}
+    aggregate = db.execute(select(
+        func.count(AaGradeRecord.id),
+        func.sum(func.if_(AaGradeRecord.total_score.is_not(None), 1, 0)),
+        func.sum(func.if_(AaGradeRecord.pass_status == "PASSED", 1, 0)),
+        func.sum(func.if_(AaGradeRecord.pass_status == "FAILED", 1, 0)),
+    ).where(
+        AaGradeRecord.tenant_id == _tid(),
+        AaGradeRecord.task_id == row.id,
+        AaGradeRecord.is_deleted.is_(False),
+    )).first()
+    total_rows = int((aggregate[0] if aggregate else 0) or 0)
+    completed_rows = int((aggregate[1] if aggregate else 0) or 0)
+    passed_rows = int((aggregate[2] if aggregate else 0) or 0)
+    failed_rows = int((aggregate[3] if aggregate else 0) or 0)
+    fields = [
+        _field("课程", row.course_name),
+        _field("学期", row.term_code),
+        _field("任课教师", row.teacher_key),
+        _field("平时占比", f"{row.usual_ratio}%"),
+        _field("期中占比", f"{getattr(row, 'midterm_ratio', 0) or 0}%"),
+        _field("期末占比", f"{row.final_ratio}%"),
+        _field("及格线", row.pass_line),
+        _field("成绩明细数", total_rows),
+        _field("已录完整", completed_rows),
+        _field("及格人数", passed_rows),
+        _field("不及格人数", failed_rows),
+        _field("当前状态", row.status),
+    ]
+    return {
+        "completeness": _completeness(fields, ["课程", "当前状态"]),
+        "summary": f"成绩审核 · {row.course_name or '课程'} · {completed_rows}/{total_rows} 已录完整",
+        "sections": [_section("成绩任务", fields)],
+        "attachments": [],
+        "sourceVersion": int(row.version or 0),
+    }
+
+
+def _grade_change_context(db, instance, *, for_update: bool = False) -> dict:
+    from app.models import AaGradeChangeRequest
+
+    row = _source_row(db, AaGradeChangeRequest, instance.source_biz_id, for_update=for_update)
+    if not row:
+        return {"completeness": MISSING, "summary": "成绩更正申请不存在或已删除",
+                "sections": [], "attachments": [], "sourceVersion": None}
+    fields = [
+        _field("学生ID", row.student_id),
+        _field("更正理由", row.reason),
+        _field("更正前平时分", row.before_usual_score),
+        _field("更正前期中分", row.before_midterm_score),
+        _field("更正前期末分", row.before_final_score),
+        _field("更正前总评", row.before_total_score),
+        _field("拟改平时分", row.proposed_usual_score),
+        _field("拟改期中分", row.proposed_midterm_score),
+        _field("拟改期末分", row.proposed_final_score),
+        _field("拟改总评", row.proposed_total_score),
+        _field("拟改及格状态", row.proposed_pass_status),
+        _field("当前状态", row.status),
+    ]
+    return {
+        "completeness": _completeness(fields, ["学生ID", "更正理由", "当前状态"]),
+        "summary": f"成绩更正 · 学生 {row.student_id}",
+        "sections": [_section("成绩更正", fields)],
+        "attachments": [],
+        "sourceVersion": int(row.version or 0),
+    }
+
+
+def _schedule_change_context(db, instance, *, for_update: bool = False) -> dict:
+    from app.models import AaScheduleChange
+
+    row = _source_row(db, AaScheduleChange, instance.source_biz_id, for_update=for_update)
+    if not row:
+        return {"completeness": MISSING, "summary": "调停课申请不存在或已删除",
+                "sections": [], "attachments": [], "sourceVersion": None}
+    fields = [
+        _field("变更类型", row.change_type),
+        _field("课程", row.course_name),
+        _field("班级", row.class_name),
+        _field("教师", row.teacher_name or row.teacher_key),
+        _field("原星期", row.origin_weekday),
+        _field("原节次", row.origin_slot_no),
+        _field("原教室", row.origin_classroom),
+        _field("目标星期", row.target_weekday),
+        _field("目标节次", row.target_slot_no),
+        _field("目标教室", row.target_classroom),
+        _field("变更原因", row.reason),
+        _field("补课安排", row.makeup_plan),
+        _field("当前状态", row.status),
+    ]
+    return {
+        "completeness": _completeness(fields, ["变更类型", "课程", "变更原因", "当前状态"]),
+        "summary": f"{row.change_type or '调停课'} · {row.course_name or '课程'}",
+        "sections": [_section("调停课申请", fields)],
+        "attachments": [],
+        "sourceVersion": int(row.version or 0),
+    }
+
+
+def _message_campaign_context(db, instance, *, for_update: bool = False) -> dict:
+    from app.models import MessageCampaign
+
+    row = _source_row(db, MessageCampaign, instance.source_biz_id, for_update=for_update)
+    if not row:
+        return {"completeness": MISSING, "summary": "消息发布单不存在或已删除",
+                "sections": [], "attachments": [], "sourceVersion": None}
+    fields = [
+        _field("标题", row.title),
+        _field("摘要", row.summary),
+        _field("分类", row.category),
+        _field("优先级", row.priority),
+        _field("紧急消息", "是" if row.emergency else "否"),
+        _field("需要确认回执", "是" if row.require_ack else "否"),
+        _field("发布模式", row.publish_mode),
+        _field("定时发布时间", row.scheduled_at),
+        _field("过期时间", row.expire_at),
+        _field("预计接收人数", row.recipient_count),
+        _field("发布人", row.sender_name_snapshot),
+        _field("当前状态", row.status),
+    ]
+    return {
+        "completeness": _completeness(fields, ["标题", "当前状态"]),
+        "summary": f"消息审核 · {row.title or '未命名消息'}",
+        "sections": [_section("发布单", fields)],
+        "attachments": [],
+        "sourceVersion": int(row.version or 0),
+    }
+
+
 def _employment_destination_context(db, instance, *, for_update: bool = False) -> dict:
     from app.models import EmpDestinationSubmission
     from app.modules.employment.services.employment_service import L_DEST
@@ -243,9 +394,6 @@ def _employment_destination_context(db, instance, *, for_update: bool = False) -
         "completeness": _completeness(fields, ["去向类型"]),
         "summary": f"就业去向登记 · {dest_label}",
         "sections": [_section("登记信息", fields)],
-        # 本域提交流程不收附件（city/contact 等字段是结构化文本，不是文件材料）；
-        # 就业材料的正式证据由 EMPLOYMENT_MATERIAL FileBinding 单独承载（T5），
-        # 不在这条提交记录上，如实返回空而不是伪造附件列表。
         "attachments": [],
         "sourceVersion": int(row.version or 0),
     }
@@ -255,8 +403,21 @@ _ADAPTERS: dict[str, Callable] = {
     "LEAVE": _leave_context,
     "AA_STATUS_CHANGE": _status_change_context,
     "AID": _aid_context,
+    "FUNDING": _funding_context,
     "DISCIPLINE": _discipline_context,
+    "DISCIPLINE_REMOVE": _discipline_remove_context,
+    "AA_GRADE_TASK": _grade_task_context,
+    "AA_GRADE_CHANGE": _grade_change_context,
+    "AA_SCHEDULE_CHANGE": _schedule_change_context,
+    "MESSAGE_CAMPAIGN": _message_campaign_context,
     "EMPLOYMENT_DESTINATION": _employment_destination_context,
+}
+
+# PROFILE_CORRECTION 只由 sandbox_service / demo seed 创建，仓库无生产 command 创建点。
+# 不能为了让覆盖率数字好看而给不存在的正式业务造 adapter；但豁免必须显式、带理由，
+# 并进入 coverage contract，未来一旦生产化就必须删除豁免并补正式 adapter。
+_NON_PRODUCTION_CONTEXT_EXEMPTIONS: dict[str, str] = {
+    "PROFILE_CORRECTION": "仅体验沙箱/演示学校种子创建，不存在生产业务 command",
 }
 
 
@@ -264,12 +425,19 @@ def supported_biz_types() -> list[str]:
     return sorted(_ADAPTERS)
 
 
-def assert_action_context(context: dict, expected_source_version) -> None:
-    """TP-A07 动作硬门：supported Context 必须完整且携带用户实际看过的 sourceVersion。
+def non_production_exemptions() -> dict[str, str]:
+    return dict(_NON_PRODUCTION_CONTEXT_EXEMPTIONS)
 
-    ``expected_source_version`` 不能由服务端动作时临时回填当前值，否则“乐观锁”会退化为
-    自己和自己比较。调用方必须把详情/批量预检读到的快照原样带回。
-    """
+
+def context_coverage_snapshot() -> dict:
+    return {
+        "supported": supported_biz_types(),
+        "nonProductionExemptions": non_production_exemptions(),
+    }
+
+
+def assert_action_context(context: dict, expected_source_version) -> None:
+    """supported Context 必须完整且携带用户实际看过的 sourceVersion。"""
     context = context or {}
     biz_type = str(context.get("sourceBizType") or "").upper()
     if biz_type not in _ADAPTERS:
@@ -297,10 +465,7 @@ def assert_action_context(context: dict, expected_source_version) -> None:
 
 
 def resolve_context(db, instance, *, for_update: bool = False) -> dict:
-    """把一条 WorkflowInstance 解析成审批端可读的业务 Context。
-
-    ``for_update=True`` 仅供审批动作事务使用：adapter 会锁住源业务行直到事务提交。
-    """
+    """把 WorkflowInstance 解析成审批端 Context；动作事务可锁源业务行。"""
     biz_type = str(getattr(instance, "source_biz_type", "") or "").upper()
     base = {
         "contextVersion": CONTEXT_VERSION,
@@ -316,10 +481,16 @@ def resolve_context(db, instance, *, for_update: bool = False) -> dict:
     }
     adapter = _ADAPTERS.get(biz_type)
     if not adapter:
-        base["note"] = (
-            f"业务类型 {biz_type or '（空）'} 尚未接入审批业务上下文，"
-            "详情页无法展示原始业务事实；这不代表该申请没有内容。"
-        )
+        if biz_type in _NON_PRODUCTION_CONTEXT_EXEMPTIONS:
+            base["note"] = (
+                f"业务类型 {biz_type} 为非生产审批类型："
+                f"{_NON_PRODUCTION_CONTEXT_EXEMPTIONS[biz_type]}"
+            )
+        else:
+            base["note"] = (
+                f"业务类型 {biz_type or '（空）'} 尚未接入审批业务上下文，"
+                "详情页无法展示原始业务事实；这不代表该申请没有内容。"
+            )
         return base
     try:
         result = adapter(db, instance, for_update=for_update)
