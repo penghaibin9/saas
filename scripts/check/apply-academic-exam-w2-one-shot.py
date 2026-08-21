@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""One-shot exact-text patch for two large existing owner files on the W2 branch.
+"""One-shot exact-text patch for W2 large owners and compatibility constants.
 
 The final branch removes this helper and its workflow; it exists only because the
-GitHub contents API replaces whole files and these two owners are intentionally kept
-as minimal diffs instead of being rewritten wholesale.
+GitHub contents API replaces whole files and the existing owners are intentionally
+kept as minimal diffs instead of being rewritten wholesale.
 """
 from pathlib import Path
 
@@ -59,7 +59,23 @@ def patch_existing_regression() -> None:
     )
 
 
+def preserve_public_source_contract() -> None:
+    service = Path("backend/app/modules/academic_affairs/services/academic_affairs_exam_incident_lifecycle_service.py")
+    replace_once(
+        service,
+        '"source": "CANONICAL_EXAM_INCIDENT_LIFECYCLE",',
+        '"source": "CANONICAL_EXAM_INCIDENT_FACTS",',
+    )
+    test = Path("backend/tests/test_aa_exam_incident_lifecycle.py")
+    replace_once(
+        test,
+        'assert before["source"] == "CANONICAL_EXAM_INCIDENT_LIFECYCLE"',
+        'assert before["source"] == "CANONICAL_EXAM_INCIDENT_FACTS"',
+    )
+
+
 if __name__ == "__main__":
     patch_console()
     patch_existing_regression()
-    print("W2 one-shot owner patch applied")
+    preserve_public_source_contract()
+    print("W2 one-shot owner/compatibility patch applied")
