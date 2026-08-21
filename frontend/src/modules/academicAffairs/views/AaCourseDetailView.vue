@@ -21,6 +21,35 @@
         </AppDescriptionList>
       </AppSectionCard>
 
+      <AppSectionCard title="课程材料 Reader">
+        <LoadingState v-if="materialsLoading" />
+        <ErrorState v-else-if="materialsError" :description="materialsError" @retry="loadMaterials" />
+        <EmptyState
+          v-else-if="!materials.length"
+          title="暂无可在线阅读的课程材料"
+          description="课程材料附件会在通过文件中心安全校验后显示；无附件的登记项仍在课程材料控制台维护。"
+        />
+        <div v-else class="aa-material-reader-list">
+          <div v-for="material in materials" :key="material.materialId || material.fileId" class="aa-material-reader-item">
+            <div class="aa-material-reader-meta">
+              <div>
+                <strong>{{ material.title || material.fileName }}</strong>
+                <span>{{ material.materialTypeLabel || '课程材料' }}<template v-if="material.uploader"> · {{ material.uploader }}</template></span>
+              </div>
+              <AppStatusTag :type="material.canPreview ? 'success' : 'default'" dot>{{ material.statusText || '状态未知' }}</AppStatusTag>
+            </div>
+            <FilePreviewer
+              :file="material"
+              inline
+              :provider="materialPreviewProvider"
+              :allow-download="material.canDownload"
+              @error="onMaterialPreviewError"
+            />
+          </div>
+        </div>
+        <p class="mp-note">Reader 只消费文件中心授权后的字节；预览与下载分别按 allowedActions 判定，不从页面状态猜权限。</p>
+      </AppSectionCard>
+
       <AppSectionCard title="审核操作">
         <div class="aa-review-btns">
           <AppButton v-if="canSubmit(course.status)" variant="primary" :loading="acting" @click="doSubmit">提交审核</AppButton>
@@ -65,21 +94,26 @@
 
 <script>
 /** 课程详情 + 两级审核 + 停用管理（/admin/academic-affairs/courses/:id）。
- * Tier1「课程停用」续工：新增启用/停用按钮 + 被引用查询（停用被拦截时提示具体方案）。 */
+ * Tier1「课程停用」续工：新增启用/停用按钮 + 被引用查询（停用被拦截时提示具体方案）。
+ * W5 Document Preview：课程材料统一接 FilePreviewer inline Reader；文件中心仍是权限/扫描/字节唯一事实源。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppDescriptionList } from '@/components/common'
+import FilePreviewer from '@/components/file/FilePreviewer.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { courseMaterialReaderApi } from '@/modules/academicAffairs/api/course-material-reader.api'
 import { REVIEW_STATUS, EXAM_MODE, reviewStatusColor, inReview, canSubmit } from '@/modules/academicAffairs/constants/course-program'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaCourseDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDescriptionList },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDescriptionList, FilePreviewer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', course: null, acting: false, loadingRefs: false, references: null,
+      materialsLoading: false, materialsError: '', materials: [],
+      materialPreviewProvider: courseMaterialReaderApi.createPreviewProvider(),
       dlg: { visible: false, title: '', type: 'primary', confirmText: '确认', requireReason: false, submitting: false, action: '' }
     }
   },
@@ -148,6 +182,21 @@ export default {
       if (res.code === 0) this.references = res.data.items || []
       else toast.error(res.message || '查询失败')
     },
+    async loadMaterials() {
+      this.materialsLoading = true
+      this.materialsError = ''
+      try {
+        this.materials = await courseMaterialReaderApi.list(this.courseId)
+      } catch (error) {
+        this.materials = []
+        this.materialsError = error?.message || '课程材料加载失败'
+      } finally {
+        this.materialsLoading = false
+      }
+    },
+    onMaterialPreviewError(error) {
+      toast.error(error?.message || '课程材料预览失败')
+    },
     openReview(action) {
       this.dlg = {
         visible: true, action,
@@ -170,8 +219,13 @@ export default {
       this.error = ''
       this.references = null
       const res = await academicAffairsApi.getCourse(this.courseId)
-      if (res.code === 0) { this.course = res.data }
-      else { this.error = res.message }
+      if (res.code === 0) {
+        this.course = res.data
+        await this.loadMaterials()
+      } else {
+        this.error = res.message
+        this.materials = []
+      }
       this.loading = false
     }
   }
@@ -190,4 +244,10 @@ export default {
 .aa-refs { margin-top: 12px; }
 .aa-refs ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .aa-refs li { font-size: 13px; color: var(--text-700, #4e5969); padding: 6px 0; border-bottom: 1px solid var(--border-100, #f0f1f2); }
+.aa-material-reader-list { display: grid; gap: 14px; }
+.aa-material-reader-item { display: grid; gap: 8px; }
+.aa-material-reader-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.aa-material-reader-meta > div { min-width: 0; display: grid; gap: 3px; }
+.aa-material-reader-meta strong { color: var(--text-900, #1f2329); font-size: 14px; }
+.aa-material-reader-meta span { color: var(--text-500, #646a73); font-size: 12px; }
 </style>
