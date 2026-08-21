@@ -41,9 +41,10 @@
           </div>
         </template>
         <template #cell-ops="{ row }">
-          <button v-if="row.identitySource !== 'STUDENT_ACCOUNT_LINK'" class="mp-link"
+          <button v-if="canRepairIdentity && row.identitySource !== 'STUDENT_ACCOUNT_LINK'" class="mp-link"
                   @click="askRepair(row)">修复绑定</button>
-          <span v-else class="mp-cell-sub">已结构化绑定</span>
+          <span v-else-if="row.identitySource === 'STUDENT_ACCOUNT_LINK'" class="mp-cell-sub">已结构化绑定</span>
+          <span v-else class="mp-cell-sub">只读排查</span>
         </template>
       </DataTable>
     </div>
@@ -73,6 +74,13 @@ import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyS
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+
+const permissionMatches = (patterns = [], code = '') => (patterns || []).some((pattern) => {
+  if (pattern === '*' || pattern === code) return true
+  if (pattern.endsWith('.*')) return code.startsWith(pattern.slice(0, -1))
+  if (pattern.startsWith('*.')) return code.endsWith(pattern.slice(1))
+  return false
+})
 
 export default {
   name: 'SystemAccountExceptionView',
@@ -106,6 +114,11 @@ export default {
     }
   },
   computed: {
+    canRepairIdentity() {
+      const patterns = this.ctx?.permissionPatterns || []
+      return permissionMatches(patterns, 'systemAdmin.user.bind')
+        || permissionMatches(patterns, 'systemAdmin.user.manage')
+    },
     emptyTitle() {
       return this.accountType === 'BINDING' ? '暂无身份绑定异常' : '暂无异常账号'
     },
@@ -139,12 +152,17 @@ export default {
       this.load()
     },
     askRepair(row) {
+      if (!this.canRepairIdentity) return toast.error('当前角色只有身份异常查看权限')
       this.repairTarget = row
       this.repairStudentId = ''
       this.repairOpen = true
     },
     async doRepair({ reason }) {
       if (!this.repairTarget) return
+      if (!this.canRepairIdentity) {
+        this.repairOpen = false
+        return toast.error('当前角色无身份绑定修复权限')
+      }
       if (!/^\d+$/.test(this.repairStudentId)) {
         toast.error('请填写学籍主档 ID（纯数字主键）')
         return
@@ -178,8 +196,7 @@ export default {
         })
         : await systemApi.listAccountExceptions({
           accountType: this.accountType,
-          page: this.pagination.page,
-          pageSize: this.pagination.pageSize
+          page: this.pagination.page, pageSize: this.pagination.pageSize
         })
       if (res.code === 0) {
         const list = res.data.list || []
