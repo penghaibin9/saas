@@ -8,30 +8,46 @@ const API_PREFIX = '/api/v1'
 const ENTERPRISE_AUTH_ROOT = '/internship/enterprise-portal'
 const CAMPAIGN_KEY = 'ep_campaign_id_v1'
 const TENANT_CODE_KEY = 'ep_tenant_code_v1'
+const BROWSER_SESSION_KEY = 'ep_browser_session_id_v1'
 let accessToken = ''
-let refreshToken = ''
 let refreshing = null
 
 function sessionGet(key){ try{return sessionStorage.getItem(key)||''}catch{return ''} }
 function sessionSet(key,value){ try{if(value)sessionStorage.setItem(key,String(value));else sessionStorage.removeItem(key)}catch{/* memory-only browser */} }
-
-export function setAuthTokens(data={}){
-  accessToken=String(data.accessToken||'')
-  refreshToken=String(data.refreshToken||'')
+function newBrowserSessionId(){return globalThis.crypto?.randomUUID?.()||`enterprise-${Date.now()}-${Math.random()}`}
+function browserSessionId(){
+  let value=sessionGet(BROWSER_SESSION_KEY)
+  if(!value){value=newBrowserSessionId();sessionSet(BROWSER_SESSION_KEY,value)}
+  return value
 }
-export function setAccessToken(token){ accessToken=String(token||'') }
-export function clearAccessToken(){ accessToken='';refreshToken='' }
-export function hasEnterpriseAuth(){ return Boolean(accessToken||refreshToken) }
-export function setSelectedCampaignId(value){ sessionSet(CAMPAIGN_KEY,value) }
-export function getSelectedCampaignId(){ return sessionGet(CAMPAIGN_KEY) }
-export function setTenantCode(value){ sessionSet(TENANT_CODE_KEY,value) }
-export function getTenantCode(){ return sessionGet(TENANT_CODE_KEY) }
-export function clearEnterpriseSession(){
+function browserHeaders(){return {'X-Browser-Session':'enterprise','X-Browser-Session-Id':browserSessionId()}}
+
+export function setAuthTokens(data={}){accessToken=String(data.accessToken||'')}
+export function setAccessToken(token){accessToken=String(token||'')}
+export function clearAccessToken(){accessToken=''}
+export function hasEnterpriseAuth(){return Boolean(accessToken)}
+export function setSelectedCampaignId(value){sessionSet(CAMPAIGN_KEY,value)}
+export function getSelectedCampaignId(){return sessionGet(CAMPAIGN_KEY)}
+export function setTenantCode(value){sessionSet(TENANT_CODE_KEY,value)}
+export function getTenantCode(){return sessionGet(TENANT_CODE_KEY)}
+function clearLocalEnterpriseSession(){
   clearAccessToken()
   setSelectedCampaignId('')
 }
+function revokeBrowserCookieBestEffort(){
+  const token=accessToken
+  try{
+    void fetch(`${API_BASE}${API_PREFIX}${ENTERPRISE_AUTH_ROOT}/auth/browser-logout`,{
+      method:'POST',headers:{'Content-Type':'application/json',...browserHeaders(),...(token?{Authorization:`Bearer ${token}`}:{})},credentials:'include',keepalive:true,
+    }).catch(()=>{})
+  }catch{/* local session clearing must never be blocked by the network */}
+}
+export function clearEnterpriseSession(){
+  revokeBrowserCookieBestEffort()
+  clearLocalEnterpriseSession()
+}
 
-async function readPayload(response){ try{return await response.json()}catch{return null} }
+async function readPayload(response){try{return await response.json()}catch{return null}}
 function businessError(payload,response){
   const error=new Error(payload?.message||`业务错误 ${payload?.code??response.status}`)
   error.status=response.status;error.code=payload?.code;error.bizCode=payload?.bizCode;error.details=payload?.details
@@ -41,17 +57,16 @@ function authExpired(payload,response){
   return response.status===401||payload?.code===401001||payload?.bizCode==='UNAUTHORIZED'
 }
 function invalidateEnterpriseAuth(message='企业登录已失效，请重新登录'){
-  clearEnterpriseSession()
+  clearLocalEnterpriseSession()
   const error=new Error(message);error.status=401;return error
 }
 async function refreshOnce(){
   if(refreshing)return refreshing
-  if(!refreshToken)throw invalidateEnterpriseAuth()
   refreshing=(async()=>{
     let response
     try{
-      response=await fetch(`${API_BASE}${API_PREFIX}${ENTERPRISE_AUTH_ROOT}/auth/refresh`,{
-        method:'POST',headers:{'Content-Type':'application/json','X-Browser-Session':'enterprise'},credentials:'include',body:JSON.stringify({refreshToken}),
+      response=await fetch(`${API_BASE}${API_PREFIX}${ENTERPRISE_AUTH_ROOT}/auth/browser-refresh`,{
+        method:'POST',headers:{'Content-Type':'application/json',...browserHeaders()},credentials:'include',
       })
     }catch{
       const error=new Error('网络不可达，暂时无法刷新企业登录状态');error.network=true;throw error
@@ -69,6 +84,21 @@ async function refreshOnce(){
   return refreshing
 }
 
+export async function restoreEnterpriseSession(){
+  if(accessToken)return accessToken
+  return refreshOnce()
+}
+
+export async function logoutEnterpriseSession(){
+  const token=accessToken
+  try{
+    await fetch(`${API_BASE}${API_PREFIX}${ENTERPRISE_AUTH_ROOT}/auth/browser-logout`,{
+      method:'POST',headers:{'Content-Type':'application/json',...browserHeaders(),...(token?{Authorization:`Bearer ${token}`}:{})},credentials:'include',
+    })
+  }catch{/* local session is still cleared below */}
+  clearLocalEnterpriseSession()
+}
+
 function requestSuffix(path,params){
   const query=new URLSearchParams()
   Object.entries(params||{}).forEach(([key,value])=>{
@@ -81,7 +111,7 @@ function requestSuffix(path,params){
 
 export async function request(path,{method='GET',body,params,auth=true,_retried=false}={}){
   const suffix=requestSuffix(path,params)
-  const headers={'Content-Type':'application/json','X-Browser-Session':'enterprise'}
+  const headers={'Content-Type':'application/json',...browserHeaders()}
   if(auth&&accessToken)headers.Authorization=`Bearer ${accessToken}`
   let response
   try{
@@ -94,7 +124,7 @@ export async function request(path,{method='GET',body,params,auth=true,_retried=
     const error=new Error(`响应结构异常（HTTP ${response.status}）`);error.status=response.status;throw error
   }
   if(authExpired(payload,response)){
-    if(auth&&!_retried&&refreshToken){await refreshOnce();return request(path,{method,body,params,auth,_retried:true})}
+    if(auth&&!_retried){await refreshOnce();return request(path,{method,body,params,auth,_retried:true})}
     throw invalidateEnterpriseAuth(payload.message)
   }
   if(payload.code!==0)throw businessError(payload,response)
@@ -113,7 +143,7 @@ function downloadFilename(disposition){
 
 export async function requestBinary(path,{params,auth=true,_retried=false}={}){
   const suffix=requestSuffix(path,params)
-  const headers={'X-Browser-Session':'enterprise','Accept':'application/pdf,application/octet-stream'}
+  const headers={...browserHeaders(),'Accept':'application/pdf,application/octet-stream'}
   if(auth&&accessToken)headers.Authorization=`Bearer ${accessToken}`
   let response
   try{
@@ -125,7 +155,7 @@ export async function requestBinary(path,{params,auth=true,_retried=false}={}){
   if(contentType.includes('application/json')||response.status===401||response.status>=400){
     const payload=await readPayload(response)
     if(authExpired(payload,response)){
-      if(auth&&!_retried&&refreshToken){await refreshOnce();return requestBinary(path,{params,auth,_retried:true})}
+      if(auth&&!_retried){await refreshOnce();return requestBinary(path,{params,auth,_retried:true})}
       throw invalidateEnterpriseAuth(payload?.message)
     }
     if(payload&&typeof payload.code==='number')throw businessError(payload,response)
@@ -146,7 +176,7 @@ export async function uploadTemporaryFile(file,{bizType='INTERNSHIP_ENTERPRISE_P
   const form=new FormData()
   form.append('file',file,file.name)
   form.append('bizType',bizType)
-  const headers={'X-Browser-Session':'enterprise'}
+  const headers={...browserHeaders()}
   if(accessToken)headers.Authorization=`Bearer ${accessToken}`
   let response
   try{
@@ -159,7 +189,7 @@ export async function uploadTemporaryFile(file,{bizType='INTERNSHIP_ENTERPRISE_P
     const error=new Error(`文件上传响应结构异常（HTTP ${response.status}）`);error.status=response.status;throw error
   }
   if(authExpired(payload,response)){
-    if(!_retried&&refreshToken){await refreshOnce();return uploadTemporaryFile(file,{bizType,_retried:true})}
+    if(!_retried){await refreshOnce();return uploadTemporaryFile(file,{bizType,_retried:true})}
     throw invalidateEnterpriseAuth(payload.message)
   }
   if(payload.code!==0)throw businessError(payload,response)

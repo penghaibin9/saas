@@ -99,7 +99,7 @@ ENV_RUNNER="$RELEASE_DIR/scripts/deploy/run-with-envfile.py"
 python3 -m venv "$RELEASE_DIR/backend/.venv"
 "$RELEASE_DIR/backend/.venv/bin/pip" install --disable-pip-version-check -r "$RELEASE_DIR/backend/requirements.txt"
 
-# 三个客户端必须属于同一个 release；禁止只更新管理端/小程序而漏掉学生 PC。
+# 四个客户端必须属于同一个 release；禁止只更新管理端/小程序/学生 PC 而漏掉企业协同端。
 if command -v npm >/dev/null 2>&1; then
   (cd "$RELEASE_DIR/frontend" && NODE_OPTIONS=--max-old-space-size=1536 npm ci && npm run build)
   # miniapp/.env* 故意不复制进 release；生产 H5 必须由权威 PUBLIC_BASE_URL 显式注入，
@@ -108,21 +108,29 @@ if command -v npm >/dev/null 2>&1; then
     && VITE_API_BASE_URL="$PUBLIC_BASE_URL_VALUE" VITE_USE_MOCK=false npm run build:h5)
   (cd "$RELEASE_DIR/student-portal" && NODE_OPTIONS=--max-old-space-size=1536 npm ci \
     && VITE_BASE=/portal/ VITE_API_BASE_URL= npm run build)
+  (cd "$RELEASE_DIR/enterprise-portal" && NODE_OPTIONS=--max-old-space-size=1536 npm ci \
+    && VITE_BASE=/enterprise/ VITE_API_BASE_URL= npm run build)
 else
   # git checkout 的 prebuilt dist 通常是未跟踪文件，无法证明属于 SOURCE_COMMIT，禁止拿来发布。
   [ "$SOURCE_IS_GIT" != "1" ] || { echo "Node/npm is required for git-backed production releases." >&2; exit 1; }
   [ -f "$SOURCE_ROOT/frontend/dist/index.html" ] \
     && [ -f "$SOURCE_ROOT/miniapp/dist/build/h5/index.html" ] \
     && [ -f "$SOURCE_ROOT/student-portal/dist/index.html" ] \
+    && [ -f "$SOURCE_ROOT/enterprise-portal/dist/index.html" ] \
     || { echo "Node missing and one or more trusted offline prebuilt dist outputs are missing" >&2; exit 1; }
   rsync -a "$SOURCE_ROOT/frontend/dist/" "$RELEASE_DIR/frontend/dist/"
   rsync -a "$SOURCE_ROOT/miniapp/dist/build/h5/" "$RELEASE_DIR/miniapp/dist/build/h5/"
   rsync -a "$SOURCE_ROOT/student-portal/dist/" "$RELEASE_DIR/student-portal/dist/"
+  rsync -a "$SOURCE_ROOT/enterprise-portal/dist/" "$RELEASE_DIR/enterprise-portal/dist/"
 fi
 
 # 无论现场构建还是使用预构建产物，正式 H5 都不得携带 localhost API 地址。
 if grep -RIlE 'https?://(localhost|127\.0\.0\.1)(:[0-9]+)?' "$RELEASE_DIR/miniapp/dist/build/h5" >/dev/null 2>&1; then
   echo "miniapp H5 contains a localhost API origin; release aborted." >&2
+  exit 1
+fi
+if grep -RIlE 'https?://(localhost|127\.0\.0\.1)(:[0-9]+)?' "$RELEASE_DIR/enterprise-portal/dist" >/dev/null 2>&1; then
+  echo "enterprise portal contains a localhost API origin; release aborted." >&2
   exit 1
 fi
 
@@ -291,7 +299,8 @@ ACTIVATED=1
 for static_path in \
   /var/www/school-lifecycle/pc \
   /var/www/school-lifecycle/miniapp \
-  /var/www/school-lifecycle/portal; do
+  /var/www/school-lifecycle/portal \
+  /var/www/school-lifecycle/enterprise; do
   if [ -e "$static_path" ] && [ ! -L "$static_path" ]; then
     mv -- "$static_path" "${static_path}.pre_systemd_${RELEASE_ID}"
   fi
@@ -299,6 +308,7 @@ done
 ln -sfnT "$APP_ROOT/current/frontend/dist" /var/www/school-lifecycle/pc
 ln -sfnT "$APP_ROOT/current/miniapp/dist/build/h5" /var/www/school-lifecycle/miniapp
 ln -sfnT "$APP_ROOT/current/student-portal/dist" /var/www/school-lifecycle/portal
+ln -sfnT "$APP_ROOT/current/enterprise-portal/dist" /var/www/school-lifecycle/enterprise
 chown -R "$SERVICE_USER:$SERVICE_USER" "$RELEASE_DIR" "$APP_ROOT/shared"
 
 install -m 644 "$RELEASE_DIR/deploy/systemd/school-lifecycle-backend.service" /etc/systemd/system/

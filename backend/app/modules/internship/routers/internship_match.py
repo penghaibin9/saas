@@ -22,6 +22,8 @@ from app.modules.internship.schemas.internship_match import (BatchMatchBody, Int
                                           IntentionImportErrors, IntentionUpdate, ManualMatchBody,
                                           MatchActionBody)
 from app.services import audit_log
+from app.modules.internship.services import internship_intention_read_service as intention_read_svc
+from app.modules.internship.services import internship_major_match_run_service as major_match_run_svc
 from app.modules.internship.services import internship_match_service as svc
 from app.services import xlsx_util
 
@@ -51,7 +53,8 @@ def _int_row_values(r: dict) -> list:
 def intentions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                keyword: Optional[str] = None, status: Optional[str] = None,
                batchId: Optional[str] = None, user=Depends(require_permission(_P_INT_VIEW))):
-    items, total = svc.list_intentions(page, pageSize, keyword=keyword, status=status, batch_id=batchId, user=user)
+    items, total = intention_read_svc.list_intentions(
+        user, page=page, page_size=pageSize, keyword=keyword, status=status, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -137,7 +140,7 @@ def withdraw_intention(intention_id: str, user=Depends(require_permission(_P_INT
 
 @router.post("/run/major", summary="跑专业匹配（规则推荐）")
 def run_major(batchId: Optional[str] = None, user=Depends(require_permission(_P_MANUAL))):
-    result = svc.run_major_match(batch_id=batchId, user=user)
+    result = major_match_run_svc.run_major_match(batch_id=batchId, user=user)
     audit_log.record("跑专业匹配", "internship-match:run:major", detail=result)
     return success(result, message=f"已生成/更新 {result['created']} 条")
 

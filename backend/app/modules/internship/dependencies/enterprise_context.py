@@ -21,6 +21,7 @@ from app.models.internship_enterprise_portal import InternshipCampaignEnterprise
 from app.modules.internship.services import internship_enterprise_access_service as access_svc
 from app.modules.internship.services import internship_enterprise_auth_service as auth_svc
 from app.modules.internship.services.internship_recruitment_campaign_service import _get_campaign
+from app.services.browser_auth_session_blocklist import auth_session_blocked
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,13 @@ def _bearer(authorization: Optional[str]) -> str:
 
 def get_enterprise_principal(authorization: Optional[str] = Header(default=None)) -> EnterprisePrincipal:
     claims, tenant, user, member = auth_svc.decode_and_validate_access(_bearer(authorization))
+    # Browser enterprise access tokens belong to one auth-session family. Logout tombstones that
+    # family so every access token issued before/after a refresh is rejected immediately. Legacy
+    # enterprise JSON tokens carry no authSessionId and keep their existing JTI-only semantics.
+    auth_session_id = str(claims.get("authSessionId") or "").strip()
+    if auth_session_id and auth_session_blocked(auth_session_id):
+        raise unauthorized("企业浏览器会话已登出失效，请重新登录")
+
     db = get_sessionmaker()()
     try:
         company = db.scalar(
@@ -110,6 +118,7 @@ def get_enterprise_principal(authorization: Optional[str] = Header(default=None)
         "memberRole": principal.member_role,
         "tokenJti": claims.get("jti"),
         "tokenExp": claims.get("exp"),
+        "authSessionId": auth_session_id or None,
     })
     return principal
 
