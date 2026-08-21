@@ -7,17 +7,25 @@ on:
     paths:
       - frontend/package.json
       - .github/workflows/document-preview-lockgen.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - frontend/package.json
+      - .github/workflows/document-preview-lockgen.yml
 
 permissions:
   contents: write
 
 jobs:
   generate-lock:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -30,6 +38,8 @@ jobs:
           node -e "const p=require('./package-lock.json'); const v=p.packages?.['node_modules/pdfjs-dist']?.version; if(v!=='6.2.108') throw new Error('pdfjs-dist lock mismatch: '+v)"
           git diff --exit-code -- package.json
       - name: Commit lock and self-remove generator
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
         run: |
           set -euo pipefail
           git config user.name 'yueke-preview-lock-bot'
@@ -37,4 +47,4 @@ jobs:
           git add frontend/package-lock.json
           git rm .github/workflows/document-preview-lockgen.yml
           git commit -m 'chore(file-preview): lock pdfjs-dist 6.2.108'
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${HEAD_BRANCH}"
