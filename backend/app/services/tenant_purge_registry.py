@@ -15,8 +15,8 @@ from sqlalchemy import text
 
 from app.core.config import settings
 
-REGISTRY_VERSION = "2026-08-20.p0.5"
-REVIEWED_ALEMBIC_HEAD = "20260820_ctrl_offboarding"
+REGISTRY_VERSION = "2026-08-21.p0.6"
+REVIEWED_ALEMBIC_HEAD = "20260821_ctrl_teacher_merge"
 
 PURGE = "PURGE"
 RETAIN = "RETAIN"
@@ -60,6 +60,10 @@ _PURGE_EXACT = {
     "t_attendance_exception",  # tenant attendance/business exception record
     "t_class",  # tenant organization master data
     "t_green_channel_application",  # orientation business application
+    # Teacher V3 recommendation fact is tenant business data.  Keep it explicit
+    # even though the t_emp_ family below would also classify it: advancing the
+    # reviewed schema head is a deliberate destructive-data review decision.
+    "t_emp_recommendation",
 }
 
 _RETAIN_PREFIXES = (
