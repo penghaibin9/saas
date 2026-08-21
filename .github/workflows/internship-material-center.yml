@@ -15,6 +15,7 @@ on:
       - 'frontend/src/components/file/viewer/**'
       - 'frontend/src/modules/internship/api/material-center.api.js'
       - 'frontend/src/modules/internship/views/InternshipMaterialCenterView.vue'
+      - 'frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue'
       - 'frontend/src/modules/internship/routes.js'
       - 'frontend/tests/document-preview-w5-internship-contract.test.mjs'
       - '.github/workflows/internship-material-center.yml'
@@ -34,6 +35,7 @@ on:
       - 'frontend/src/components/file/viewer/**'
       - 'frontend/src/modules/internship/api/material-center.api.js'
       - 'frontend/src/modules/internship/views/InternshipMaterialCenterView.vue'
+      - 'frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue'
       - 'frontend/src/modules/internship/routes.js'
       - 'frontend/tests/document-preview-w5-internship-contract.test.mjs'
       - '.github/workflows/internship-material-center.yml'
@@ -174,11 +176,14 @@ jobs:
       - name: Verify material center production contract
         run: |
           test -f frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
+          test -f frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue
           test -f frontend/src/modules/internship/api/material-center.api.js
           test -f frontend/tests/document-preview-w5-internship-contract.test.mjs
           grep -q "material-center" frontend/src/modules/internship/routes.js
           grep -q "AppDocumentViewer" frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
+          grep -q "AppDocumentViewer" frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue
           grep -q "createPreviewProvider" frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
           grep -q "versionId" frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
           grep -q "manifestSha256" frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
           ! grep -q "fileSdk.preview(" frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
+          ! grep -q "fileSdk.preview(" frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue
