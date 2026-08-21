@@ -112,6 +112,11 @@ let rawDeprecateOrgNode = null
 let guardUsers = 0
 
 function orgPermitKey(type, id) { return `${String(type || '').toUpperCase()}:${String(id)}` }
+function toBackendDateTime(value) {
+  if (!value) return null
+  const raw = String(value).trim().replace('T', ' ')
+  return raw.length === 16 ? `${raw}:00` : raw.slice(0, 19)
+}
 function installOrgGuard() {
   guardUsers += 1
   if (rawDeprecateOrgNode) return
@@ -142,6 +147,7 @@ export default {
   name: 'SystemP1ClosurePanel',
   components: { AppButton },
   props: { ctx: { type: Object, required: true } },
+  emits: ['refresh-child'],
   data() {
     return {
       loading: false, saving: false, error: '', roles: [], roleForm: emptyRole(),
@@ -208,13 +214,13 @@ export default {
       if (!/^\d+$/.test(this.roleForm.userId)) return toast.error('userId 必须是数字主键')
       if (!this.roleForm.roleCode) return toast.error('请选择角色')
       if (this.roleForm.reason.trim().length < 5) return toast.error('授权原因不少于 5 个字')
-      if (this.roleForm.effectiveAt && this.roleForm.expiresAt && new Date(this.roleForm.expiresAt) <= new Date(this.roleForm.effectiveAt)) return toast.error('到期时间必须晚于生效时间')
+      if (this.roleForm.effectiveAt && this.roleForm.expiresAt && this.roleForm.expiresAt <= this.roleForm.effectiveAt) return toast.error('到期时间必须晚于生效时间')
       this.saving = true
       const res = await systemApi.grantRoleAssignment({
         userId: Number(this.roleForm.userId), roleCode: this.roleForm.roleCode,
         reason: this.roleForm.reason.trim(), sourceType: 'MANUAL',
-        effectiveAt: this.roleForm.effectiveAt ? new Date(this.roleForm.effectiveAt).toISOString() : null,
-        expiresAt: this.roleForm.expiresAt ? new Date(this.roleForm.expiresAt).toISOString() : null
+        effectiveAt: toBackendDateTime(this.roleForm.effectiveAt),
+        expiresAt: toBackendDateTime(this.roleForm.expiresAt)
       })
       this.saving = false
       if (res.code !== 0) return toast.error(res.message)
