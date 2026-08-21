@@ -40,9 +40,10 @@
             <p v-if="step.reviewComment" class="gd-step__comment">审核/整改意见：{{ step.reviewComment }}</p>
             <div v-if="step.files?.length" class="gd-files">
               <span>论文材料：</span>
-              <button v-for="file in step.files" :key="file.fileId" class="gd-file" :disabled="busy" @click="downloadMaterial(file)">
-                下载 {{ file.fileName || '论文材料' }}（可打开打印）
-              </button>
+              <span v-for="file in step.files" :key="file.fileId" class="gd-file-actions">
+                <button class="gd-file" :disabled="busy" @click="openMaterialReader(file)">查看当前版</button>
+                <button class="gd-file gd-file--download" :disabled="busy" @click="downloadMaterial(file)">下载</button>
+              </span>
             </div>
             <ul v-if="step.checklist?.length" class="gd-checklist">
               <li v-for="item in step.checklist" :key="item.item" :class="{ 'is-missing': !item.present }">
@@ -137,7 +138,11 @@
                 <label>预期成果<textarea v-model.trim="proposalForm.outcome" placeholder="可填写预期成果、交付形式等" /></label>
                 <label>开题主文档（PDF / Word / ZIP，仅 1 份）<input type="file" accept=".pdf,.doc,.docx,.zip" @change="pickFiles('proposal', $event)" /></label>
                 <p class="sp-muted">{{ attachmentText('proposal') }}</p>
-                <button class="sp-btn" :disabled="busy || !proposalForm.background || !proposalForm.plan" @click="submitProposal">提交开题报告</button>
+                <div v-if="attachments.proposal[0]" class="gd-submit-preflight">
+                  <span>安全状态：{{ attachments.proposal[0].statusText || attachments.proposal[0].scanStatus || '待确认' }}</span>
+                  <button v-if="canPreviewPending(attachments.proposal[0])" class="sp-btn sp-btn--ghost" :disabled="busy" @click="openPendingReader(attachments.proposal[0])">预览我将提交的文件</button>
+                </div>
+                <button class="sp-btn" :disabled="busy || !proposalForm.background || !proposalForm.plan || (attachments.proposal[0] && !attachments.proposal[0].readyForBusiness)" @click="submitProposal">提交开题报告</button>
               </template>
 
               <template v-else-if="step.key === 'midterm'">
@@ -149,7 +154,11 @@
                 <p class="sp-muted">本次将提交：{{ final.canSubmitFinal ? '定稿' : '初稿' }}。文件上传后由系统生成材料记录，查重结果不能由学生自行填写。</p>
                 <label>论文主文档（PDF / Word / ZIP，仅 1 份）<input type="file" accept=".pdf,.doc,.docx,.zip" @change="pickFiles('final', $event)" /></label>
                 <p class="sp-muted">{{ attachmentText('final') }}</p>
-                <button class="sp-btn" :disabled="busy || !attachments.final.length" @click="submitFinal">提交论文成果</button>
+                <div v-if="attachments.final[0]" class="gd-submit-preflight">
+                  <span>安全状态：{{ attachments.final[0].statusText || attachments.final[0].scanStatus || '待确认' }}</span>
+                  <button v-if="canPreviewPending(attachments.final[0])" class="sp-btn sp-btn--ghost" :disabled="busy" @click="openPendingReader(attachments.final[0])">预览我将提交的文件</button>
+                </div>
+                <button class="sp-btn" :disabled="busy || !attachments.final.length || !attachments.final[0].readyForBusiness" @click="submitFinal">提交论文成果</button>
               </template>
             </div>
           </article>
@@ -158,7 +167,7 @@
 
       <section v-if="hasPeerWork" class="gd-peer sp-panel">
         <h2>成果互查</h2>
-        <p class="sp-muted">任务绑定学校确认的正式定稿。请先下载并阅读材料，再提交互查意见。</p>
+        <p class="sp-muted">任务绑定学校确认的正式定稿。互查文件只允许走任务专用授权；未取得任务授权时不会复用本人材料预览权限。</p>
         <div v-for="p in (peer.toReview || [])" :key="'r-' + p.id" class="gd-peer__item">
           <header><strong>待互查 · {{ p.studentName || '同学' }}</strong><StatusTag :text="p.statusLabel || '待互查'" tone="warn" /></header>
           <p class="sp-muted">评阅材料：{{ p.finalType || '定稿' }} {{ p.finalVersion || '版本未绑定' }}</p>
@@ -168,7 +177,7 @@
               下载 {{ file.fileName || '定稿材料' }}
             </button>
           </div>
-          <p v-else-if="p.taskValid !== false" class="gd-step__comment">该定稿暂无可下载附件，请联系管理员核对文件状态。</p>
+          <p v-else-if="p.taskValid !== false" class="gd-step__comment">该任务暂未下发专用文件授权，不会使用本人材料权限绕过访问边界。</p>
           <label>互查意见<textarea v-model.trim="peerOpinions[p.id]" placeholder="互查意见（至少 5 字）" maxlength="500" /></label>
           <button class="sp-btn" :disabled="busy || p.taskValid === false || !p.attachmentsList?.length || (peerOpinions[p.id] || '').trim().length < 5" @click="submitPeer(p.id)">提交互查意见</button>
         </div>
@@ -188,6 +197,14 @@
       </section>
       </template>
     </template>
+
+    <StudentDocumentViewer
+      v-if="readerFile"
+      :file="readerFile"
+      :load-preview="loadReaderPreview"
+      @download="downloadReaderFile"
+      @close="closeReader"
+    />
   </div>
 </template>
 
@@ -195,6 +212,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
+import StudentDocumentViewer from '../../components/file/viewer/StudentDocumentViewer.vue'
+import { fileSdk } from '../../services/fileSdk'
 import { portalApi } from '../../services/portalApi'
 import { useUiStore } from '../../stores/ui'
 
@@ -227,6 +246,7 @@ const showAppeal = ref(false)
 const appealReason = ref('')
 const attachments = reactive({ proposal: [], final: [] })
 const proposalForm = reactive({ background: '', plan: '', outcome: '' })
+const readerFile = ref(null)
 
 const CHOICE_STATUS = { PENDING: '待处理', MATCHED: '已匹配', UNMATCHED: '未录取', CONFIRMED: '已确认', REJECTED: '已驳回' }
 
@@ -485,8 +505,42 @@ async function pickFiles(kind, event) {
   try {
     const uploaded = await portalApi.uploadGraduationMaterial(file)
     attachments[kind].splice(0, attachments[kind].length, uploaded)
-    ui.notify('主文档已上传；重新选择会替换本次待提交文件')
+    ui.notify(uploaded.readyForBusiness ? '主文档已上传，可以先预览确认后再提交' : '主文档已上传，等待安全扫描完成后再提交')
   } catch (e) { ui.notify(e?.message || '主文档上传失败') } finally { busy.value = false; event.target.value = '' }
+}
+
+function canPreviewPending(file) {
+  return Boolean(file?.fileId && file?.readyForBusiness && file?.canPreview)
+}
+
+function openMaterialReader(file) {
+  if (!file?.fileId || busy.value) return
+  readerFile.value = { ...file, isCurrent: true }
+}
+
+function openPendingReader(file) {
+  if (!canPreviewPending(file) || busy.value) return
+  readerFile.value = { ...file, temporaryPreview: true, isCurrent: true, versionNo: '待提交' }
+}
+
+function closeReader() {
+  readerFile.value = null
+}
+
+async function loadReaderPreview(file, options) {
+  if (file?.temporaryPreview || file?.temporary) return fileSdk.fetchPreviewBlob(file.fileId, options)
+  const ticket = await portalApi.issueGraduationMaterialTicket(file.fileId, 'preview')
+  return fileSdk.fetchPreviewBlobFrom(ticket, options)
+}
+
+async function downloadReaderFile(file) {
+  if (!file?.fileId) return
+  if (file.temporaryPreview || file.temporary) {
+    busy.value = true
+    try { await fileSdk.download(file.fileId, file.fileName) } catch (e) { ui.notify(e?.message || '材料下载失败') } finally { busy.value = false }
+    return
+  }
+  return downloadMaterial(file)
 }
 
 async function submitProposal() {
@@ -579,7 +633,8 @@ onMounted(load)
 .gd-readonly { display:grid; gap:10px; margin-bottom:8px; }.gd-readonly > div { padding:10px 12px; background:#fff; border:1px solid #edf0f3; border-radius:6px; }.gd-readonly span { display:block; color:#86909c; font-size:12px; margin-bottom:6px; }.gd-readonly p { margin:0; color:#1d2129; font-size:13px; line-height:1.65; white-space:pre-wrap; }
 .gd-check { display:flex !important; align-items:center; gap:8px; cursor:pointer; }.gd-check input { margin:0; }
 .gd-change-list { margin:12px 0; display:grid; gap:8px; }.gd-change-item { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:8px 10px; background:#fff; border:1px solid #edf0f3; border-radius:6px; font-size:13px; color:#4e5969; }.gd-change-item em { font-style:normal; color:var(--sp-primary); flex-shrink:0; }
-.gd-files { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; color:#4e5969; font-size:13px; }.gd-file { border:0; padding:5px 8px; border-radius:5px; color:var(--sp-primary); background:rgba(22,119,255,.08); cursor:pointer; font-size:12px; }.gd-file:disabled { cursor:not-allowed; opacity:.6; }.gd-checklist { display:flex; flex-wrap:wrap; gap:7px 14px; margin:12px 0 0; padding:0; list-style:none; color:#4e5969; font-size:12px; }.gd-checklist li { color:#00a33a; }.gd-checklist li.is-missing { color:#f53f3f; }
+.gd-files { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; color:#4e5969; font-size:13px; }.gd-file-actions{display:inline-flex;gap:4px}.gd-file { border:0; padding:5px 8px; border-radius:5px; color:var(--sp-primary); background:rgba(22,119,255,.08); cursor:pointer; font-size:12px; }.gd-file--download{color:#53647a;background:#f2f4f7}.gd-file:disabled { cursor:not-allowed; opacity:.6; }.gd-checklist { display:flex; flex-wrap:wrap; gap:7px 14px; margin:12px 0 0; padding:0; list-style:none; color:#4e5969; font-size:12px; }.gd-checklist li { color:#00a33a; }.gd-checklist li.is-missing { color:#f53f3f; }
+.gd-submit-preflight{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 10px;padding:9px 10px;border:1px solid #dce8f7;border-radius:7px;background:#f5f9ff;color:#53647a;font-size:12px}.gd-submit-preflight .sp-btn{margin:0}
 .gd-topic-list { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; margin:12px 0; }.gd-topic { position:relative; min-height:72px; padding:10px; text-align:left; cursor:pointer; background:#fff; border:1px solid #e5e6eb; border-radius:7px; }.gd-topic.is-picked { border-color:var(--sp-primary); background:rgba(22,119,255,.05); }.gd-topic b { position:absolute; right:8px; top:8px; color:var(--sp-primary); font-size:11px; }.gd-topic strong,.gd-topic span { display:block; padding-right:44px; }.gd-topic strong { font-size:13px; }.gd-topic span { color:#86909c; font-size:12px; margin-top:5px; }
 .gd-grade-box { margin-top:12px; padding:12px 14px; border-radius:8px; background:#f7fafc; border:1px solid #edf0f3; }.gd-grade-score { margin:0 0 6px; font-size:14px; color:#1d2129; }.gd-grade-score strong { font-size:20px; color:var(--sp-primary); }.gd-grade-box .sp-btn { margin-top:10px; }.gd-grade-box label { display:block; margin-top:10px; color:#4e5969; font-size:13px; }.gd-grade-box textarea { display:block; width:100%; min-height:72px; margin-top:6px; padding:9px 10px; font:inherit; border:1px solid #dcdfe6; border-radius:6px; resize:vertical; }
 .gd-peer { margin-top:16px; padding:16px 18px; }.gd-peer h2 { margin:0 0 6px; font-size:16px; }.gd-peer__item { margin-top:14px; padding-top:14px; border-top:1px solid #edf0f3; }.gd-peer__item header { display:flex; justify-content:space-between; gap:12px; align-items:center; }.gd-peer__item label { display:block; margin:10px 0; color:#4e5969; font-size:13px; }.gd-peer__item textarea { display:block; width:100%; min-height:72px; margin-top:6px; padding:9px 10px; font:inherit; border:1px solid #dcdfe6; border-radius:6px; resize:vertical; }
