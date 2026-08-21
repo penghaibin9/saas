@@ -80,12 +80,15 @@ def test_export_unknown_domain(client, auth_headers, db_mode):
     assert bad["code"] == 422001
 
 
-def test_export_all_six_domains(client, auth_headers, db_mode):
-    # 岗位实习必须显式携带批次；其余域空数据也应成功导出（0 行 + 表头 + 水印）。
-    from app.core.token_store import reset_all_for_tests
+def test_export_all_six_domains(client, auth_headers, db_mode, monkeypatch):
+    # 本用例验证六域内容/格式覆盖，不重复验证“5 次/分钟”限流；P0 后限流权威已迁到
+    # MySQL，旧 reset_all_for_tests() 只清进程内存，继续调用会让第六域被真实限流误伤。
+    # 只在本用例隔离 API limiter，不抬生产阈值；限流本身由独立安全测试锁定。
+    from app.api.v1 import import_export as import_export_api
+    monkeypatch.setattr(import_export_api, "_limit_operation", lambda *a, **k: None)
+
     seeded = _seed_intern(db_mode)
     for d in ("internship", "orientation", "campus-service", "academic", "graduation", "employment"):
-        reset_all_for_tests()  # 逐个重置导出限流窗口（限流本身另有用例覆盖）
         body = {"purpose": f"{d} 台账合规导出"}
         if d == "internship":
             body["batchId"] = str(seeded["batchId"])

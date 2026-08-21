@@ -17,7 +17,9 @@ SCHOOL_PERMISSION_GROUPS: list[dict] = [
             {"code": "systemAdmin.dashboard.view", "label": "系统概览", "actions": []},
             {"code": "systemAdmin.user.view", "label": "师生账号", "actions": [
                 ("systemAdmin.user.manage", "停用/启用/重置密码"),
-                ("systemAdmin.user.assign-role", "分配角色"),
+                ("systemAdmin.user.assign-role", "分配账号角色"),
+                ("systemAdmin.user.assign", "正式角色授权（有效期/来源）"),
+                ("systemAdmin.user.bind", "身份绑定修复/解绑"),
                 ("systemAdmin.user.import", "导入师生"),
                 ("systemAdmin.user.export", "导出账号"),
                 ("systemAdmin.user.exception.view", "账号异常查看"),

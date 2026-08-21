@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="备份恢复验证与灾备" subtitle="按类型看最近一次成功备份 · 恢复演练是否过期 · 只读结构自检"
+  <ModulePageShell title="备份恢复验证与灾备" subtitle="机器证据唯一决定生产健康 · 人工登记仅作运维备注"
                    role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
     <template #actions>
       <ModuleToolbar :actions="[{ key: 'schema-check', label: '运行结构自检' }, { key: 'refresh', label: '刷新' }]"
@@ -9,16 +9,29 @@
     <LoadingState v-if="loading" text="正在加载灾备证据…" />
     <ErrorState v-else-if="error" :text="error" @retry="load" />
     <template v-else-if="ov">
+      <AppCard class="pdr__health" :class="`pdr__health--${(ov.machineHealth?.status || 'UNKNOWN').toLowerCase()}`">
+        <div>
+          <div class="pdr__health-title">生产灾备健康：{{ ov.machineHealth?.status || 'UNKNOWN' }}</div>
+          <div class="pdr__health-sub">健康权威：MACHINE_ONLY。人工备份/人工恢复记录不会把本页判成 GREEN。</div>
+        </div>
+        <div class="pdr__health-grid">
+          <span>机器备份：{{ ov.machineHealth?.backup?.status || 'UNKNOWN' }}</span>
+          <span>机器恢复：{{ ov.machineHealth?.restore?.status || 'UNKNOWN' }}</span>
+          <span>备份新鲜度：{{ ov.machineHealth?.backupFreshnessHours ?? '—' }}h</span>
+          <span>恢复演练窗口：{{ ov.machineHealth?.restoreFreshnessDays ?? '—' }}d</span>
+        </div>
+      </AppCard>
+
       <div class="pdr__grid">
         <AppCard v-for="(info, type) in ov.byType" :key="type" class="pdr__stat" :class="{ 'pdr__stat--warn': info.stale }">
           <div class="pdr__stat-num">{{ info.daysSinceLastSuccess === null ? '—' : info.daysSinceLastSuccess + ' 天前' }}</div>
           <div class="pdr__stat-label">{{ typeLabel(type) }}</div>
-          <div class="pdr__stat-sub">{{ info.stale ? `已超过 ${info.thresholdDays} 天阈值` : '在阈值内' }}</div>
+          <div class="pdr__stat-sub">{{ info.stale ? `已超过 ${info.thresholdDays} 天阈值` : '证据在阈值内（仅辅助观察）' }}</div>
         </AppCard>
         <AppCard class="pdr__stat" :class="{ 'pdr__stat--warn': ov.restoreDrill.stale }">
           <div class="pdr__stat-num">{{ ov.restoreDrill.daysSinceLastPassed === null ? '从未' : ov.restoreDrill.daysSinceLastPassed + ' 天前' }}</div>
-          <div class="pdr__stat-label">最近一次通过的恢复演练</div>
-          <div class="pdr__stat-sub">{{ ov.restoreDrill.stale ? `已超过 ${ov.restoreDrill.thresholdDays} 天阈值` : '在阈值内' }}</div>
+          <div class="pdr__stat-label">机器恢复演练健康</div>
+          <div class="pdr__stat-sub">{{ ov.restoreDrill.stale ? '无有效机器恢复证据或已过期' : '机器恢复证据在有效期内' }}</div>
         </AppCard>
       </div>
 
@@ -32,8 +45,8 @@
       </AppCard>
 
       <AppCard class="pdr__panel">
-        <AppSectionHeader title="人工登记备份证据" />
-        <p class="pdr__note">用于登记本系统之外真实发生的备份（比如云数据库自带的自动备份、运维手动跑的 mysqldump）——本页不会替你执行备份，只记录"确实发生过"这件事。</p>
+        <AppSectionHeader title="人工备份备注（不参与 GREEN）" />
+        <p class="pdr__note">用于记录云厂商工单、人工 mysqldump 等外部事实，方便审计与交接；这些记录不会改变生产灾备健康结论。真正的 GREEN 只来自部署 runner 的机器证据。</p>
         <div class="pdr__form">
           <select v-model="evidenceForm.backupType" class="pdr__input">
             <option value="DATABASE_DUMP">数据库备份</option>
@@ -50,12 +63,12 @@
             <option value="FAILED">失败</option>
           </select>
           <input v-model.trim="evidenceForm.locationRef" class="pdr__input" placeholder="存放位置/备份ID（成功必填）" />
-          <button class="mp-link" @click="submitEvidence">登记</button>
+          <button class="mp-link" @click="submitEvidence">登记备注</button>
         </div>
       </AppCard>
 
       <AppCard class="pdr__panel">
-        <AppSectionHeader title="备份证据列表" />
+        <AppSectionHeader title="备份备注列表" />
         <DataTable :columns="evidenceColumns" :rows="evidenceList" row-key="id">
           <template #cell-status="{ row }">
             <StatusTag :type="row.status === 'SUCCEEDED' ? 'success' : 'danger'" :label="row.status" />
@@ -64,15 +77,15 @@
       </AppCard>
 
       <AppCard class="pdr__panel">
-        <AppSectionHeader title="人工登记恢复演练" />
-        <p class="pdr__note">真的在隔离环境用备份做过一次恢复、核对过数据之后，登记在这里——这是唯一能证明"备份真的能用"的证据，光有备份文件不算。</p>
+        <AppSectionHeader title="人工恢复演练备注（不参与 GREEN）" />
+        <p class="pdr__note">人工记录保留用于复盘，但不会作为健康权威。请在隔离环境运行 deploy/backup/machine-restore-drill.sh，由恢复脚本真实校验 RPO/RTO、Alembic、表/索引/FK 与文件后自动写入机器证据。</p>
         <div class="pdr__form">
           <select v-model="drillForm.status" class="pdr__input">
             <option value="PASSED">通过</option>
             <option value="FAILED">未通过</option>
           </select>
-          <input v-model.trim="drillForm.targetDescription" class="pdr__input" placeholder="演练说明（如：在测试服恢复2026-08备份并核对学生数）" />
-          <button class="mp-link" @click="submitDrill">登记</button>
+          <input v-model.trim="drillForm.targetDescription" class="pdr__input" placeholder="人工说明" />
+          <button class="mp-link" @click="submitDrill">登记备注</button>
         </div>
         <ul class="pdr__list">
           <li v-for="d in drillList" :key="d.id">
@@ -85,15 +98,14 @@
 </template>
 
 <script>
-/** PLAT-12 备份恢复验证与灾备：证据登记 + 只读结构自检，不执行真实备份/恢复动作。 */
 import { AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
 
 const TYPE_LABELS = {
-  DATABASE_DUMP: '数据库备份', SCHEMA_INTEGRITY: '表结构自检',
-  FILE_STORAGE_SYNC: '文件存储同步', CLOUD_MANAGED: '云厂商托管备份'
+  DATABASE_DUMP: '数据库备份备注', SCHEMA_INTEGRITY: '表结构自检',
+  FILE_STORAGE_SYNC: '文件存储同步备注', CLOUD_MANAGED: '云厂商托管备注'
 }
 
 export default {
@@ -145,7 +157,7 @@ export default {
       const res = await platformControlApi.runSchemaIntegrityCheck()
       if (res.code === 0) {
         toast[res.data.status === 'SUCCEEDED' ? 'success' : 'error'](
-          res.data.status === 'SUCCEEDED' ? '结构自检通过' : `结构自检未通过：${res.data.errorMessage}`
+          res.data.status === 'SUCCEEDED' ? '结构自检通过（辅助证据）' : `结构自检未通过：${res.data.errorMessage}`
         )
         this.load()
       } else toast.error(res.message)
@@ -157,7 +169,7 @@ export default {
       }
       const res = await platformControlApi.createBackupEvidence({ ...this.evidenceForm })
       if (res.code === 0) {
-        toast.success('已登记')
+        toast.success('人工备注已登记，不影响机器健康结论')
         this.evidenceForm.locationRef = ''
         this.load()
       } else toast.error(res.message)
@@ -167,7 +179,7 @@ export default {
         drillType: 'MANUAL_CONFIRMED', ...this.drillForm
       })
       if (res.code === 0) {
-        toast.success('已登记')
+        toast.success('人工演练备注已登记，不影响机器健康结论')
         this.drillForm.targetDescription = ''
         this.load()
       } else toast.error(res.message)
@@ -178,62 +190,30 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.pdr__health {
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+  border-width: 2px;
+}
+.pdr__health--green { border-color: var(--color-success, #16a34a); }
+.pdr__health--red { border-color: var(--color-danger, #dc2626); }
+.pdr__health--unknown { border-color: var(--color-warning, #d97706); }
+.pdr__health-title { font-size: 20px; font-weight: var(--font-weight-bold); color: var(--t1); }
+.pdr__health-sub { margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
+.pdr__health-grid { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-3); font-size: 13px; color: var(--text-secondary); }
 .pdr__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: var(--space-3);
 }
-.pdr__stat {
-  padding: var(--space-4);
-}
-.pdr__stat--warn {
-  border-color: var(--color-warning, #d97706);
-}
-.pdr__stat-num {
-  font-size: 22px;
-  font-weight: var(--font-weight-bold);
-  color: var(--t1);
-}
-.pdr__stat-label {
-  margin-top: 2px;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-.pdr__stat-sub {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-.pdr__panel {
-  margin-top: var(--space-3);
-  padding: var(--space-4);
-}
-.pdr__note {
-  margin-top: var(--space-2);
-  font-size: 12px;
-  color: var(--text-tertiary);
-  line-height: 1.6;
-}
-.pdr__form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-.pdr__input {
-  padding: 6px 10px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm, 4px);
-  font-size: var(--font-size-sm);
-}
-.pdr__list {
-  list-style: none;
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
+.pdr__stat { padding: var(--space-4); }
+.pdr__stat--warn { border-color: var(--color-warning, #d97706); }
+.pdr__stat-num { font-size: 22px; font-weight: var(--font-weight-bold); color: var(--t1); }
+.pdr__stat-label { margin-top: 2px; font-size: var(--font-size-sm); color: var(--text-secondary); }
+.pdr__stat-sub { margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }
+.pdr__panel { margin-top: var(--space-3); padding: var(--space-4); }
+.pdr__note { margin-top: var(--space-2); font-size: 12px; color: var(--text-tertiary); line-height: 1.6; }
+.pdr__form { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.pdr__input { padding: 6px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-sm, 4px); font-size: var(--font-size-sm); }
+.pdr__list { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--font-size-sm); color: var(--text-secondary); }
 </style>

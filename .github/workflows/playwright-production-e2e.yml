@@ -74,7 +74,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_MINIAPP_BASE_URL: http://localhost:5188
+      E2E_MINIAPP_BASE_URL: http://127.0.0.1:5188
       E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
@@ -156,6 +156,13 @@ jobs:
           cat ../e2e/runtime-logs/backend.log
           exit 1
 
+      - name: Start isolated message delivery worker
+        run: |
+          set -euo pipefail
+          cd backend
+          nohup python -c "import time; from scripts.run_scheduled_jobs import job_delivery_and_outbox; exec('while True:\\n    job_delivery_and_outbox()\\n    time.sleep(2)')" > ../e2e/runtime-logs/message-delivery.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/message-delivery.pid
+
       - name: Import and normalize dedicated interaction accounts
         working-directory: backend
         run: |
@@ -200,12 +207,12 @@ jobs:
         run: |
           cd miniapp
           npm ci
-          nohup npm run dev:h5 > ../e2e/runtime-logs/miniapp.log 2>&1 &
+          nohup npm run dev:h5 -- --host 127.0.0.1 --port 5188 > ../e2e/runtime-logs/miniapp.log 2>&1 &
           echo $! > ../e2e/runtime-logs/miniapp.pid
 
       - name: Wait for browser applications
         run: |
-          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://localhost:5188/; do
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://127.0.0.1:5188/; do
             ok=''
             for i in {1..60}; do
               if curl -fsS "$url" >/dev/null; then ok=1; break; fi

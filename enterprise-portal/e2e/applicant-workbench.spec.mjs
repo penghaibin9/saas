@@ -3,22 +3,29 @@ import { test, expect } from '@playwright/test'
 const ok = (data) => ({ code: 0, message: 'ok', data })
 
 async function installEnterpriseApi(page,{recruitmentWrite=true}={}) {
-  const state={legacyRequests:0,contextCampaignIds:[],memberRole:'HR',listRequests:[],snapshotRequests:0,pdfRequests:0,contactRequests:0,campaignRequests:0,companyRequests:0,dashboardRequests:0,positionRequests:0}
+  const state={legacyRequests:0,contextCampaignIds:[],memberRole:'HR',listRequests:[],snapshotRequests:0,pdfRequests:0,contactRequests:0,campaignRequests:0,companyRequests:0,dashboardRequests:0,positionRequests:0,refreshRequests:0}
   const handler = async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     const path = url.pathname
 
-    if (path.endsWith('/internship/enterprise-portal/auth/login')) {
-      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({accessToken:'browser-evidence-access',refreshToken:'browser-evidence-refresh',tokenType:'Bearer',expiresIn:1800,context:{tenantId:'1',tenantCode:'CSZY',memberId:'11',memberRole:'HR',companyId:'21'}}))})
+    if (path.endsWith('/internship/enterprise-portal/auth/browser-login')) {
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({accessToken:'browser-evidence-access',tokenType:'Bearer',expiresIn:1800,context:{tenantId:'1',tenantCode:'CSZY',memberId:'11',memberRole:'HR',companyId:'21'}}))})
+    }
+    if (path.endsWith('/internship/enterprise-portal/auth/browser-refresh')) {
+      state.refreshRequests+=1
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({accessToken:`browser-evidence-refresh-${state.refreshRequests}`,tokenType:'Bearer',expiresIn:1800}))})
+    }
+    if (path.endsWith('/internship/enterprise-portal/auth/browser-logout')) {
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({invalidated:true}))})
     }
     if (path.endsWith('/internship/enterprise-portal/auth/invite/inspect')) {
       let body={};try{body=request.postDataJSON()||{}}catch{}
       state.memberRole=String(body.token||'').includes('.mentor.')?'MENTOR':'HR'
       return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({tenantId:'1',tenantCode:'CSZY',schoolName:'长沙职业技术学院',campaignId:'2027',campaignName:'2027届春季岗位实习双选季',companyId:'21',companyName:'中联重科股份有限公司',inviteeName:state.memberRole==='MENTOR'?'企业导师':'企业HR',phoneMasked:'138****5678',memberRole:state.memberRole,expiresAt:'2027-03-31T23:59:59'}))})
     }
-    if (path.endsWith('/internship/enterprise-portal/auth/invite/accept')) {
-      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({accessToken:'invite-access',refreshToken:'invite-refresh',tokenType:'Bearer',expiresIn:1800,user:{userId:'db-101',realName:state.memberRole==='MENTOR'?'企业导师':'企业HR',userType:'ENTERPRISE_MENTOR'},context:{tenantId:'1',tenantCode:'CSZY',schoolName:'长沙职业技术学院',memberId:'11',companyId:'21',memberRole:state.memberRole}}))})
+    if (path.endsWith('/internship/enterprise-portal/auth/browser-invite/accept')) {
+      return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({accessToken:'invite-access',tokenType:'Bearer',expiresIn:1800,user:{userId:'db-101',realName:state.memberRole==='MENTOR'?'企业导师':'企业HR',userType:'ENTERPRISE_MENTOR'},context:{tenantId:'1',tenantCode:'CSZY',schoolName:'长沙职业技术学院',memberId:'11',companyId:'21',memberRole:state.memberRole}}))})
     }
     if (path.endsWith('/internship/enterprise-portal/campaigns') && request.method()==='GET') {
       state.campaignRequests+=1
@@ -87,7 +94,7 @@ async function navigateSpa(page,path){
   await page.evaluate(async target=>{const app=document.querySelector('#app')?.__vue_app__;const router=app?.config?.globalProperties?.$router;if(!router)throw new Error('Vue Router unavailable in mounted enterprise portal');await router.push(target)},path)
 }
 
-test('A02 normal login reads the frozen Campaign list and enters a server-authorized recruitment context', async ({ page }) => {
+test('A02 normal login reads the frozen Campaign list and survives F5 through browser refresh', async ({ page }) => {
   const state=await installEnterpriseApi(page)
   await page.goto('login')
   await page.getByLabel('学校编码').fill('CSZY')
@@ -101,6 +108,11 @@ test('A02 normal login reads the frozen Campaign list and enters a server-author
   await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
   expect(state.campaignRequests).toBeGreaterThanOrEqual(1)
   expect(state.contextCampaignIds).toEqual(['2027'])
+  expect(state.legacyRequests).toBe(0)
+
+  await page.reload()
+  await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
+  expect(state.refreshRequests).toBe(1)
   expect(state.legacyRequests).toBe(0)
 })
 

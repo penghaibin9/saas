@@ -137,6 +137,9 @@ def test_wx_bind_request_preserves_and_accepts_client_type():
 def test_dev_code_never_leaks_when_deployment_is_strict(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "test")
     monkeypatch.setattr(settings, "DEPLOYMENT_MODE", "production")
+    # This test isolates response secrecy.  Strict risk-store fail-closed is a
+    # separate P0 contract and must not be bypassed in production code.
+    monkeypatch.setattr(svc, "rate_limit", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(svc, "_store", lambda *_args, **_kwargs: None)
 
     data = svc.issue_captcha(svc.PASSWORD_LOGIN, "school", "teacher", "nonce", "PC")

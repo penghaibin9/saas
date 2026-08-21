@@ -17,7 +17,7 @@ function inviteKey(value){return String(value||'')}
 export const enterpriseAuthApi={
   login: async ({tenantCode,loginName,password,memberId}) => {
     validatedInvite=null
-    const data=await request(`${ROOT}/auth/login`,{method:'POST',auth:false,body:{tenantCode,loginName,password,...(memberId?{memberId}:{})}})
+    const data=await request(`${ROOT}/auth/browser-login`,{method:'POST',auth:false,body:{tenantCode,loginName,password,...(memberId?{memberId}:{})}})
     if(!data?.accessToken)throw new Error('企业登录响应缺少 accessToken')
     return captureAuth(data,tenantCode)
   },
@@ -35,7 +35,7 @@ export const enterpriseAuthApi={
       throw new Error('请先重新校验当前企业邀请后再接受')
     }
     const campaignId=validatedInvite.campaignId
-    const data=await request(`${ROOT}/auth/invite/accept`,{method:'POST',auth:false,body:{tenantCode,token,phone,password}})
+    const data=await request(`${ROOT}/auth/browser-invite/accept`,{method:'POST',auth:false,body:{tenantCode,token,phone,password}})
     if(!data?.accessToken)throw new Error('企业邀请激活响应缺少 accessToken')
     validatedInvite=null
     return captureAuth(data,tenantCode,campaignId)
