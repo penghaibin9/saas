@@ -26,6 +26,16 @@ if (!router.hasRoute('public-help')) {
   })
 }
 
+// 官网四大产品公开二级页：和业务系统路由分离，只承载可索引产品介绍与真实截图证据。
+if (!router.hasRoute('official-product')) {
+  router.addRoute({
+    path: '/products/:slug(academic-affairs|student-affairs|graduation|internship)',
+    name: 'official-product',
+    component: () => import('./views/official-site/OfficialProductView.vue'),
+    meta: { public: true, title: '跃科产品中心' }
+  })
+}
+
 // Stage B 高频工作流：给“某个实习学生的材料”一个稳定真实深链。
 // 页面直接读取 /internship/material-center/{internshipId} 的真实版本链，不造第二份材料数据。
 if (!router.hasRoute('internship-student-materials')) {
