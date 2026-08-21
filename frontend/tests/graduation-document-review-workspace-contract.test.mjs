@@ -23,9 +23,12 @@ test('W2 final Gold reuses mature business flow and locks canonical fileVersion'
   assert.doesNotMatch(finalSource, /SecureFileList|previewVersion\(|window\.open\(/)
 })
 
-test('W2 final conflicts fail closed and successful review reloads server truth before selection continues', () => {
+test('W2 final conflicts pin the old descriptor, fail closed and reload server truth before auto-next', () => {
   assert.match(finalSource, /String\(this\.activePreviewVersionId[\s\S]*String\(this\.canonicalFileVersionId/)
   assert.match(finalSource, /oldCanonicalVersionId[\s\S]*versionConflict = \{ old: oldCanonicalVersionId, latest \}/)
+  assert.match(finalSource, /conflictPreviewFile = oldActiveFile/)
+  assert.match(finalSource, /return this\.versionConflict \? null : \(this\.secureVersionFiles\[0\]/)
+  assert.match(finalSource, /draftKey\(row = this\.selectedRow, fileVersionId = this\.activePreviewVersionId \?\? this\.canonicalFileVersionId\)/)
   assert.match(finalSource, /isGraduationConflictResponse\(res\)[\s\S]*refreshSelectedConflictTruth/)
   assert.match(finalSource, /await this\.loadStats\(\)/)
   assert.match(finalSource, /this\._selectIndexAfterLoad = reviewedIndex[\s\S]*await this\.load\(\)/)
@@ -42,6 +45,8 @@ test('W2 proposal reuses the same workspace and preserves proposal, audit and de
   assert.match(proposalSource, /expectedVersion:\s*this\.detail\.materialVersion/)
   assert.match(proposalSource, /fileVersionId:\s*this\.detail\.fileVersionId/)
   assert.match(proposalSource, /gd-proposal-review-draft:\$\{this\.detail\.id\}:\$\{fileVersionId\}/)
+  assert.match(proposalSource, /conflictPreviewFile = oldActiveFile/)
+  assert.match(proposalSource, /return this\.versionConflict \? null : \(this\.secureVersionFiles\[0\]/)
   assert.doesNotMatch(proposalSource, /ProposalPdfViewer|SecureFileList|previewVersion\(/)
 })
 
