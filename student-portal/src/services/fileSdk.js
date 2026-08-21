@@ -79,6 +79,10 @@ export const fileSdk = {
     if (!path || !String(path).startsWith('/')) throw new Error('服务端未返回有效文件预览授权路径')
     return fetchFileBlob(path, options)
   },
+  async fetchPeerPreviewBlob(peerId, fileId, options = {}) {
+    if (!peerId || !fileId) throw new Error('互查任务或文件标识缺失')
+    return fetchFileBlob(`/mobile/graduation/peer/${enc(peerId)}/files/${enc(fileId)}/preview`, options)
+  },
   async download(fileId, fileName = '附件') {
     return downloadFile(`/files/download/${enc(fileId)}`, fileName)
   },
