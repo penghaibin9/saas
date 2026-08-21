@@ -56,12 +56,21 @@
             type="info"
             description="该学期已经形成正式归档事实，普通解冻入口已关闭。后续发现错误时必须走归档后纠错，保留原归档版本、纠错原因和新版本审计链。"
           />
-          <div class="aaar-section-title">数据域完整性</div>
-          <EmptyState v-if="!items.length" title="未检查" description="点击「完整性检查」聚合各数据域" />
-          <DataTable v-else :columns="itemColumns" :rows="items" row-key="domain">
-            <template #cell-domain="{ row }">{{ row.domainLabel }}</template>
-            <template #cell-result="{ row }"><StatusTag :type="itemType(row)" :label="itemLabel(row)" dot /></template>
-          </DataTable>
+
+          <AaArchiveCorrectionWorkspace
+            v-if="current.status === 'ARCHIVED'"
+            :batch="current"
+            :items="items"
+            @refresh-batch="refreshCurrentFromServer"
+          />
+          <template v-else>
+            <div class="aaar-section-title">数据域完整性</div>
+            <EmptyState v-if="!items.length" title="未检查" description="点击「完整性检查」聚合各数据域" />
+            <DataTable v-else :columns="itemColumns" :rows="items" row-key="domain">
+              <template #cell-domain="{ row }">{{ row.domainLabel }}</template>
+              <template #cell-result="{ row }"><StatusTag :type="itemType(row)" :label="itemLabel(row)" dot /></template>
+            </DataTable>
+          </template>
         </template>
       </div>
     </div>
@@ -94,6 +103,7 @@ import { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState } from 
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import AaArchiveCorrectionWorkspace from '@/modules/academicAffairs/components/AaArchiveCorrectionWorkspace.vue'
 import { toast } from '@/utils/toast'
 
 const _SL = { DRAFT: '草稿', CHECKING: '检查中', READY: '完整可归档', MISSING_ITEMS: '有阻断', ARCHIVED: '已归档', CANCELLED: '已取消' }
@@ -102,7 +112,7 @@ const _IT = { PASS: 'success', BLOCKED: 'danger', UNKNOWN: 'warning', NOT_APPLIC
 
 export default {
   name: 'AaArchiveConsoleView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermEntityPicker },
+  components: { ModulePageShell, DataTable, StatusTag, LoadingState, EmptyState, AppButton, AppDrawer, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermEntityPicker, AaArchiveCorrectionWorkspace },
   data() {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
@@ -156,6 +166,16 @@ export default {
       const res = await api.getBatch(b.batchId)
       if (res.code === 0) { this.current = res.data; this.items = res.data.items || [] }
       else toast.error(res.message || '归档批次加载失败')
+    },
+    async refreshCurrentFromServer() {
+      if (!this.current?.batchId || this.actionBusy) return
+      const batchId = this.current.batchId
+      const res = await api.getBatch(batchId)
+      if (res.code === 0) {
+        this.current = res.data
+        this.items = res.data.items || []
+        await this.load()
+      } else toast.error(res.message || '归档批次刷新失败')
     },
     openCreate() { if (!this.actionBusy) { this.form = { termId: '' }; this.formError = ''; this.createVisible = true } },
     async submitCreate() {
