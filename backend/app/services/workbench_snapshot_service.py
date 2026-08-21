@@ -14,9 +14,15 @@ from app.services.db_service import _tid, session
 from app.services import workbench_todo_service as todo_svc
 
 
-def snapshot(user: dict, page_size: int = 8) -> dict:
+_ALLOWED_CLIENTS = {"pc", "teacherMini"}
+
+
+def snapshot(user: dict, page_size: int = 8, *, client: str = "pc") -> dict:
     from app.models import UnifiedTodo
     from app.services import message_center_service as message_svc
+
+    if client not in _ALLOWED_CLIENTS:
+        raise AppException("VALIDATION_ERROR", "不支持的工作台客户端")
 
     size = max(1, min(20, int(page_size or 8)))
     now = todo_svc._utc_now()
@@ -61,7 +67,7 @@ def snapshot(user: dict, page_size: int = 8) -> dict:
                               .order_by(UnifiedTodo.due_at.is_(None).asc(),
                                         UnifiedTodo.due_at.asc(), UnifiedTodo.id.desc())
                               .limit(size)).all()
-            items = [todo_svc._todo_dict(item) for item in rows]
+            items = [todo_svc._todo_dict(item, client=client) for item in rows]
 
     try:
         messages = message_svc.count_messages(user)

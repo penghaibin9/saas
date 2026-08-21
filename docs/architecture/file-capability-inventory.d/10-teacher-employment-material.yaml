@@ -1,0 +1,23 @@
+entries:
+  - module: employment
+    client: backend
+    route: /teacher-mobile/employment/materials/{material_id}/evidence
+    page: backend/app/services/teacher_mobile_employment_service.py; miniapp/src/pages/teacher/employment-follow/index.vue
+    action: bind-and-preview-formal-employment-material-evidence
+    fileCategory: EMPLOYMENT_MATERIAL
+    api: POST /api/v1/teacher-mobile/employment/materials/{material_id}/evidence; GET /api/v1/teacher-mobile/employment/students/{student_id}/verification; public /files metadata+download
+    backendService: backend/app/services/teacher_mobile_employment_service.py; app.services.file_business_binding_service.bind_file_to_business; app.services.file_access_service.register_file_resolver
+    storageMode: PUBLIC_FILE_CENTER_TEMP_PRIVATE_TO_BIZ_SCOPED
+    authMode: require_staff+employment-module+teacher-student-scope; student-own-subject for file ACL
+    dataScope: tenant+EmpStudent+stable StudentProfile+EmpMaterial+ACTIVE FileBinding
+    versioned: true
+    scanGated: true
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: Teacher V3 T7 treats legacy EmpMaterial.file_name as display-only. Formal verification evidence requires one ready public FileObject bound as EMPLOYMENT_MATERIAL to the exact EmpMaterial and stable student subject. The miniapp previews through fileSdk/public file ACL; no new storage path or raw object URL is exposed.

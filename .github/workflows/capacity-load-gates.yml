@@ -5,6 +5,13 @@ on:
     paths:
       - "performance/**"
       - "scripts/check/check-capacity-load-gates.mjs"
+      - "backend/app/api/v1/mobile_performance.py"
+      - "backend/app/services/teacher_mobile_messages_v3_service.py"
+      - "backend/scripts/explain_mobile_v3_queries.py"
+      - "backend/scripts/seed_mobile_capacity_school.py"
+      - "backend/tests/test_mobile_capacity_harness_v3.py"
+      - "miniapp/src/pages/teacher/messages/**"
+      - "miniapp/src/services/teacherMessagesV3Api.js"
       - ".github/workflows/capacity-load-gates.yml"
   workflow_dispatch:
     inputs:
@@ -33,6 +40,23 @@ on:
           - student
           - teacher
           - mixed
+      identity_mode:
+        description: "cold=容量身份分布证据；warm=小池复用缓存诊断（不可证明容量）"
+        required: true
+        default: cold
+        type: choice
+        options:
+          - cold
+          - warm
+      warm_identity_pool:
+        description: "warm 模式复用的身份池大小"
+        required: true
+        default: "5"
+        type: choice
+        options:
+          - "5"
+          - "10"
+          - "20"
   schedule:
     # 北京时间每天 02:30；远程任务仅在已配置目标与Secrets时运行。
     - cron: "30 18 * * *"
@@ -68,7 +92,7 @@ jobs:
             performance/tools/evaluate_capacity_result.py
 
   local-capacity:
-    name: 临时MySQL与Redis自包含 ${{ matrix.profile }}
+    name: 临时MySQL与Redis ${{ matrix.profile }} / ${{ matrix.identityMode }}
     needs: contract
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -76,7 +100,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: [smoke, baseline, p300, p500]
+        include:
+          - profile: smoke
+            identityMode: cold
+          - profile: baseline
+            identityMode: cold
+          - profile: baseline
+            identityMode: warm
+          - profile: p300
+            identityMode: cold
+          - profile: p500
+            identityMode: cold
     env:
       APP_ENV: test
       DEPLOYMENT_MODE: development
@@ -95,6 +129,8 @@ jobs:
       BASE_URL: http://127.0.0.1:8000
       PROFILE: ${{ matrix.profile }}
       SCENARIO: mixed
+      IDENTITY_MODE: ${{ matrix.identityMode }}
+      WARM_IDENTITY_POOL: "5"
       STUDENT_SHARE_PERCENT: "75"
       K6_ALLOW_HIGH_LOAD: "true"
       K6_STUDENT_TOKENS_FILE: /work/performance/secrets/student-tokens.json
@@ -168,6 +204,8 @@ jobs:
           export WEB_CONCURRENCY="$workers"
           {
             echo "profile=$PROFILE"
+            echo "identity_mode=$IDENTITY_MODE"
+            echo "warm_identity_pool=$WARM_IDENTITY_POOL"
             echo "cpu_count=$(nproc)"
             echo "workers=$workers"
             echo "db_pool_size=$DB_POOL_SIZE"
@@ -193,7 +231,7 @@ jobs:
           done
           cat performance/results/local-backend.log
           exit 1
-      - name: 校验临时Token池规模
+      - name: 校验临时Token池规模与身份模式
         shell: bash
         run: |
           python - <<'PY'
@@ -205,16 +243,21 @@ jobs:
           for role in ("student", "teacher"):
               values = json.loads(Path(f"performance/secrets/{role}-tokens.json").read_text())
               assert len(values) == expected, (role, len(values), expected)
-          print(f"token_pool_verified={expected}")
+          mode = os.environ["IDENTITY_MODE"]
+          assert mode in {"cold", "warm"}, mode
+          if mode == "warm":
+              pool = int(os.environ["WARM_IDENTITY_POOL"])
+              assert 1 <= pool <= expected, (pool, expected)
+          print(f"token_pool_verified={expected} identity_mode={mode}")
           PY
-      - name: ${{ matrix.profile }} 前就绪与指标探针
+      - name: ${{ matrix.profile }} / ${{ matrix.identityMode }} 前就绪与指标探针
         run: |
           python performance/tools/probe_observability.py \
             --base-url "$BASE_URL" \
             --samples 3 \
             --interval 0.2 \
             --output performance/results/observability-before.json
-      - name: 运行固定版本 k6 ${{ matrix.profile }}
+      - name: 运行固定版本 k6 ${{ matrix.profile }} / ${{ matrix.identityMode }}
         shell: bash
         run: |
           set -euo pipefail
@@ -227,13 +270,15 @@ jobs:
             -e BASE_URL \
             -e PROFILE \
             -e SCENARIO \
+            -e IDENTITY_MODE \
+            -e WARM_IDENTITY_POOL \
             -e STUDENT_SHARE_PERCENT \
             -e K6_ALLOW_HIGH_LOAD \
             -e K6_STUDENT_TOKENS_FILE \
             -e K6_TEACHER_TOKENS_FILE \
             -e SUMMARY_PATH \
             grafana/k6:0.54.0 run performance/k6/capacity.js
-      - name: ${{ matrix.profile }} 后就绪与指标探针
+      - name: ${{ matrix.profile }} / ${{ matrix.identityMode }} 后就绪与指标探针
         if: always()
         run: |
           python performance/tools/probe_observability.py \
@@ -241,12 +286,14 @@ jobs:
             --samples 3 \
             --interval 0.2 \
             --output performance/results/observability-after.json
-      - name: 生成 ${{ matrix.profile }} 容量裁决
+      - name: 生成 ${{ matrix.profile }} / ${{ matrix.identityMode }} 容量裁决
         if: always()
         run: |
           python performance/tools/evaluate_capacity_result.py \
             --profile "$PROFILE" \
+            --identity-mode "$IDENTITY_MODE" \
             --summary performance/results/k6-summary.json \
+            --v3 performance/results/k6-summary-v3.json \
             --before performance/results/observability-before.json \
             --after performance/results/observability-after.json \
             --output performance/results/capacity-verdict.json
@@ -254,7 +301,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: capacity-local-${{ matrix.profile }}-${{ github.run_id }}
+          name: capacity-local-${{ matrix.profile }}-${{ matrix.identityMode }}-${{ github.run_id }}
           path: performance/results/
           if-no-files-found: error
           retention-days: 14
@@ -272,6 +319,8 @@ jobs:
       BASE_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.target_base_url || vars.PERF_BASE_URL }}
       PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'smoke' }}
       SCENARIO: ${{ github.event_name == 'workflow_dispatch' && inputs.scenario || 'mixed' }}
+      IDENTITY_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.identity_mode || vars.PERF_IDENTITY_MODE || 'cold' }}
+      WARM_IDENTITY_POOL: ${{ github.event_name == 'workflow_dispatch' && inputs.warm_identity_pool || vars.PERF_WARM_IDENTITY_POOL || '5' }}
       STUDENT_SHARE_PERCENT: "75"
       K6_ALLOW_HIGH_LOAD: ${{ vars.PERF_ALLOW_HIGH_LOAD }}
       K6_ALLOW_PRODUCTION_HIGH_LOAD: ${{ vars.PERF_ALLOW_PRODUCTION_HIGH_LOAD }}
@@ -294,6 +343,12 @@ jobs:
             https://*) ;;
             *) echo "远程压测仅允许 HTTPS"; exit 1 ;;
           esac
+          case "$IDENTITY_MODE" in
+            cold|warm) ;;
+            *) echo "非法 IDENTITY_MODE=$IDENTITY_MODE"; exit 1 ;;
+          esac
+          [[ "$WARM_IDENTITY_POOL" =~ ^[0-9]+$ ]] || { echo "WARM_IDENTITY_POOL 必须是正整数"; exit 1; }
+          (( WARM_IDENTITY_POOL > 0 )) || { echo "WARM_IDENTITY_POOL 必须大于0"; exit 1; }
           test -n "$INTERNAL_OPS_TOKEN" || { echo "缺少 PERF_INTERNAL_OPS_TOKEN"; exit 1; }
           student_auth=false
           teacher_auth=false
@@ -325,6 +380,9 @@ jobs:
                 ;;
             esac
           fi
+          if [[ "$IDENTITY_MODE" == "warm" ]]; then
+            echo "INFO warm-cache 仅用于缓存诊断，不可作为身份规模/并发容量证明"
+          fi
           mkdir -p performance/results
           chmod 0777 performance/results
       - name: 压测前就绪与指标探针
@@ -346,6 +404,8 @@ jobs:
             -e BASE_URL \
             -e PROFILE \
             -e SCENARIO \
+            -e IDENTITY_MODE \
+            -e WARM_IDENTITY_POOL \
             -e STUDENT_SHARE_PERCENT \
             -e K6_ALLOW_HIGH_LOAD \
             -e K6_ALLOW_PRODUCTION_HIGH_LOAD \
@@ -368,7 +428,9 @@ jobs:
         run: |
           python performance/tools/evaluate_capacity_result.py \
             --profile "$PROFILE" \
+            --identity-mode "$IDENTITY_MODE" \
             --summary performance/results/k6-summary.json \
+            --v3 performance/results/k6-summary-v3.json \
             --before performance/results/observability-before.json \
             --after performance/results/observability-after.json \
             --output performance/results/capacity-verdict.json
@@ -376,7 +438,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: capacity-${{ env.PROFILE }}-${{ env.SCENARIO }}-${{ github.run_id }}
+          name: capacity-${{ env.PROFILE }}-${{ env.SCENARIO }}-${{ env.IDENTITY_MODE }}-${{ github.run_id }}
           path: performance/results/
           if-no-files-found: warn
           retention-days: 30

@@ -1,6 +1,7 @@
 /** 教师端数据服务：真实后端优先（主链：学生/审批/待办/消息/学生360），失败自动回退 mock。 */
 import { mockRequest, realFirst, realFirstStrict, realRequest } from './request'
 import { academicGradeEntryApi } from './academicGradeEntryApi'
+import * as teacherSequentialV3 from './teacherSequentialV3Api'
 import * as real from './realApi'
 import * as M from '@/mock'
 
@@ -22,7 +23,7 @@ export const teacherApi = {
   reviewProposal: (id, action, comment, expectedVersion, fileVersionId) =>
     real.reviewProposalReal(id, action, comment, expectedVersion, fileVersionId),
   handleWarning: (id, action, note) => real.handleWarningReal(id, action, note),
-  handleCheckin: (id, action, comment) => real.handleCheckinReal(id, action, comment),
+  handleCheckin: (id, action, comment) => teacherSequentialV3.handleCheckin(id, action, comment),
   remindWeekly: (id) => real.remindWeeklyReal(id),
   createFollowup: (body) => real.createFollowupReal(body),
   getAffairs: (page = 1, pageSize = 20) => real.teacherAffairs(page, pageSize),
@@ -51,7 +52,7 @@ export const teacherApi = {
   setNotifyPreference: (key, enabled) => real.teacherNotifySetPreference(key, enabled),
   publishNotice: (body) => real.teacherNotifyPublish(body),
   getDashboard: () => real.teacherDashboard(),
-  getWeeklyReports: () => realFirstStrict('teacher.internship', () => real.teacherInternshipReal(), () => mockRequest({ reports: M.weeklyReports, abnormal: M.abnormalCheckins })),
+  getWeeklyReports: () => realFirstStrict('teacher.internship', () => teacherSequentialV3.getInternshipReviewQueue(), () => mockRequest({ reports: M.weeklyReports, abnormal: M.abnormalCheckins })),
   getWeeklyDetail: (id) => real.teacherWeeklyDetail(id),
   getGdStudents: () => realFirst('teacher.graduation', () => real.teacherGraduationReal(), () => mockRequest({ list: M.gdStudents, detail: M.gdReviewDetail })),
   createGuidance: (gdStudentId, body) => real.teacherGraduationGuidanceCreate(gdStudentId, body),

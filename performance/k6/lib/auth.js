@@ -1,5 +1,6 @@
 import http from 'k6/http';
 import { check } from 'k6';
+import encoding from 'k6/encoding';
 import { SharedArray } from 'k6/data';
 
 const cache = { student: null, teacher: null };
@@ -41,15 +42,7 @@ const teacherFileTokens = new SharedArray('teacher capacity token pool', () =>
 
 /**
  * V3 §11.6 身份分布（深审 P0-08）。
- *
- * 高并发若复用少量 token，请求会集中命中同一份 Redis 缓存与同一个 scope，
- * 压出来的是"热缓存容量"，不是真实容量。因此分两档：
- *
- *   cold  —— 每个 VU 尽量拿到不同身份，覆盖冷启动与真实数据库成本（默认）；
- *   warm  —— 故意只用少量身份重复访问，单独评价缓存本身的稳定性。
- *
- * 两档都必须把实际使用到的 unique token 数写进 Artifact，否则无法判断这次
- * 压测到底压的是数据库还是缓存。
+ * cold = 尽量一 VU 一身份；warm = 有意复用小池，二者必须分开裁决。
  */
 export const IDENTITY_MODE = String(__ENV.IDENTITY_MODE || 'cold').trim().toLowerCase();
 const WARM_POOL_SIZE = Math.max(1, Number(__ENV.WARM_IDENTITY_POOL || 5));
@@ -58,7 +51,6 @@ if (!['cold', 'warm'].includes(IDENTITY_MODE)) {
   throw new Error(`Unknown IDENTITY_MODE=${IDENTITY_MODE}; allowed: cold, warm`);
 }
 
-/** 本次运行实际会用到多少个不同身份——直接决定 Artifact 里的 uniqueTokens。 */
 export function effectivePoolSize(total) {
   if (!total) return 0;
   return IDENTITY_MODE === 'warm' ? Math.min(total, WARM_POOL_SIZE) : total;
@@ -73,17 +65,81 @@ function selectByVu(items, label) {
   return selected;
 }
 
-/** 供 Artifact 记录：各端 token 池规模与本次实际使用的身份数。 */
+function decodeJwtClaims(token) {
+  const raw = String(token || '').trim();
+  const parts = raw.split('.');
+  if (parts.length !== 3) return {};
+  try {
+    return JSON.parse(encoding.b64decode(parts[1], 'rawurl', 's'));
+  } catch (_error) {
+    return {};
+  }
+}
+
+function roleBucket(value) {
+  const role = String(value || '').trim().toUpperCase();
+  if (!role) return 'unknown';
+  if (role.includes('COUNSELOR')) return 'counselor';
+  if (role.includes('COLLEGE')) return 'college';
+  if (role.includes('ADVISOR') || role === 'TEACHER') return 'advisor';
+  if (role.includes('ADMIN')) return 'admin';
+  return 'other';
+}
+
+function ratioMap(counts, total) {
+  const keys = ['counselor', 'college', 'advisor', 'admin', 'other', 'unknown'];
+  const ratios = {};
+  for (const key of keys) ratios[key] = total ? Number(((counts[key] || 0) / total).toFixed(4)) : 0;
+  return ratios;
+}
+
+function teacherIdentityEvidence(tokens, credentials) {
+  const tokenSpan = effectivePoolSize(tokens.length);
+  const credentialSpan = tokenSpan ? 0 : effectivePoolSize(credentials.length);
+  const total = tokenSpan || credentialSpan;
+  const roleCounts = { counselor: 0, college: 0, advisor: 0, admin: 0, other: 0, unknown: 0 };
+  const contexts = new Set();
+
+  if (tokenSpan) {
+    for (let index = 0; index < tokenSpan; index += 1) {
+      const claims = decodeJwtClaims(tokens[index]);
+      roleCounts[roleBucket(claims.currentRoleCode || claims.roleCode || claims.role)] += 1;
+      const context = String(claims.activeContextId || '').trim();
+      if (context) contexts.add(context);
+    }
+  } else {
+    for (let index = 0; index < credentialSpan; index += 1) {
+      const credential = credentials[index] || {};
+      roleCounts[roleBucket(credential.currentRoleCode || credential.roleCode || credential.role)] += 1;
+      const context = String(credential.activeContextId || '').trim();
+      if (context) contexts.add(context);
+    }
+  }
+
+  return {
+    uniqueTeacherContexts: contexts.size,
+    teacherRoleCounts: roleCounts,
+    teacherRoleRatios: ratioMap(roleCounts, total),
+  };
+}
+
+/** Artifact 取证：真实池规模、cold/warm 实际身份数、教师 context/角色构成。 */
 export function identityDistribution() {
-  const studentTotal = studentFileTokens.length || arrayEnv('K6_STUDENT_TOKENS_JSON').length;
-  const teacherTotal = teacherFileTokens.length || arrayEnv('K6_TEACHER_TOKENS_JSON').length;
+  const studentTokens = studentFileTokens.length ? studentFileTokens : arrayEnv('K6_STUDENT_TOKENS_JSON');
+  const teacherTokens = teacherFileTokens.length ? teacherFileTokens : arrayEnv('K6_TEACHER_TOKENS_JSON');
+  const studentCredentials = arrayEnv('K6_STUDENT_CREDENTIALS_JSON');
+  const teacherCredentials = arrayEnv('K6_TEACHER_CREDENTIALS_JSON');
+  const teacherEvidence = teacherIdentityEvidence(teacherTokens, teacherCredentials);
   return {
     identityMode: IDENTITY_MODE,
     warmPoolSize: IDENTITY_MODE === 'warm' ? WARM_POOL_SIZE : null,
-    studentTokensAvailable: studentTotal,
-    teacherTokensAvailable: teacherTotal,
-    uniqueStudentTokens: effectivePoolSize(studentTotal),
-    uniqueTeacherTokens: effectivePoolSize(teacherTotal),
+    studentTokensAvailable: studentTokens.length,
+    teacherTokensAvailable: teacherTokens.length,
+    studentCredentialsAvailable: studentCredentials.length,
+    teacherCredentialsAvailable: teacherCredentials.length,
+    uniqueStudentTokens: effectivePoolSize(studentTokens.length || studentCredentials.length),
+    uniqueTeacherTokens: effectivePoolSize(teacherTokens.length || teacherCredentials.length),
+    ...teacherEvidence,
   };
 }
 
@@ -115,7 +171,7 @@ function loginWithCredential(role, credential, baseUrl) {
   let payload;
   try {
     payload = response.json();
-  } catch (error) {
+  } catch (_error) {
     throw new Error(`${role} login returned non-JSON response`);
   }
   if (payload && payload.code !== undefined && Number(payload.code) !== 0) {

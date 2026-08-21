@@ -1,8 +1,8 @@
 <template>
   <view class="page-wrap">
     <MobileNavBar variant="teacher" title="移动待办" :subtitle="scopeText" />
-    <MobileGlobalState :state="state" @retry="load">
-      <view v-if="data">
+    <MobileGlobalState :state="state" @retry="refresh">
+      <view>
         <view class="td__filters page-pad">
           <MobileSegmented :items="filtersWithBadge" v-model="filter" />
         </view>
@@ -11,24 +11,19 @@
           <view v-else class="stack-sm">
             <MobileTodoCard
               v-for="t in list"
-              :key="t.id"
+              :key="t.todoId || t.id"
               :title="t.title"
-              :source-module="t.module"
-              :student-name="t.student"
-              :deadline="deadlineText(t.deadline)"
-              :status="t.status"
-              :overdue="isOverdue(t.deadline) && t.status !== 'COMPLETED'"
-              :action-text="t.status === 'COMPLETED' ? '查看' : '去处理'"
+              :source-module="t.sourceModule || ''"
+              :student-name="''"
+              :deadline="deadlineText(t.dueAt || t.deadline)"
+              :status="displayStatus(t.status)"
+              :overdue="isOverdue(t.dueAt || t.deadline) && t.status !== 'DONE'"
+              :action-text="t.status === 'DONE' ? '查看' : '去处理'"
               @handle="handle(t)"
               @view="handle(t)"
-            >
-              <template v-if="t.status !== 'COMPLETED'" #actions>
-                <button class="td__btn" @click.stop="quickDone(t)">快速处理</button>
-                <button class="td__btn is-primary" @click.stop="handle(t)">去处理</button>
-              </template>
-            </MobileTodoCard>
-            <view v-if="hasMore" class="td__paging" @click="loadMore">
-              {{ loadingMore ? '加载中…' : '上拉加载更多' }}
+            />
+            <view v-if="pagerState.hasMore" class="td__paging" @click="loadMore">
+              {{ pagerState.loading ? '加载中…' : '继续加载' }}
             </view>
             <view v-else class="td__paging is-end">没有更多了</view>
           </view>
@@ -41,98 +36,87 @@
 
 <script>
 import { useSessionStore } from '@/stores/session'
-import { teacherApi } from '@/services/teacherApi'
-import { ensureTeacherPerformanceApi } from '@/services/mobilePerformanceInstaller.teacher'
+import { teacherTodoT8Api, TEACHER_TODO_PAGE_SIZE } from '@/services/teacherTodoT8Api'
+import { runAction } from '@/services/actionRouter'
+import { createNetworkPager } from '@/utils/networkPager'
 import { deadlineText, isOverdue } from '@/utils/format'
-import { go } from '@/utils/nav'
-const PAGE_SIZE = 20
-ensureTeacherPerformanceApi()
 
 export default {
   data() {
     return {
-      data: { filters: [], list: [] }, state: 'loading', filter: 'all', scopeText: '',
-      page: 1, hasMore: false, loadingMore: false
+      filters: [],
+      filter: 'all',
+      pendingCount: 0,
+      total: 0,
+      scopeText: '',
+      state: 'loading',
+      pagerState: {
+        items: [], cursor: '', hasMore: false, loading: false,
+        refreshing: false, requestEpoch: 0, error: null
+      }
     }
-  },
-  onLoad() {
-    this._pageActive = true
-    this.scopeText = useSessionStore().dataScopeText
-    this.load({ reset: true })
-  },
-  onShow() { this._pageActive = true },
-  onHide() { this._pageActive = false; this._loadEpoch = (this._loadEpoch || 0) + 1 },
-  onUnload() { this._pageActive = false; this._loadEpoch = (this._loadEpoch || 0) + 1 },
-  onReachBottom() { this.loadMore() },
-  watch: {
-    filter() { this.load({ reset: true }) }
   },
   computed: {
-    list() { return this.data.list || [] },
-    pendingCount() { return Number(this.data.pendingCount) || 0 },
+    list() { return this.pagerState.items || [] },
     filtersWithBadge() {
-      return (this.data.filters || []).map((item) => ({
-        ...item,
-        badge: Number(item.badge) || 0
-      }))
+      return (this.filters || []).map((item) => ({ ...item, badge: Number(item.badge) || 0 }))
     }
   },
+  watch: {
+    filter() { this.refresh() }
+  },
+  onLoad() {
+    this.scopeText = useSessionStore().dataScopeText
+    this._pager = createNetworkPager(async (cursor, pageSize) => {
+      const result = await teacherTodoT8Api.list({ group: this.filter, cursor, pageSize })
+      this.filters = (result && result.filters) || []
+      this.pendingCount = Number((result && result.pendingCount) || 0)
+      this.total = Number((result && result.total) || 0)
+      return {
+        items: (result && result.items) || [],
+        nextCursor: (result && result.nextCursor) || ''
+      }
+    }, {
+      pageSize: TEACHER_TODO_PAGE_SIZE,
+      maxItems: 100,
+      idKey: (item) => item && (item.todoId || item.id)
+    })
+    this.pagerState = this._pager.state
+    this.refresh()
+  },
+  onReachBottom() { this.loadMore() },
+  onUnload() { if (this._pager) this._pager.reset() },
   methods: {
-    deadlineText, isOverdue,
-    loadMore() {
-      if (!this.hasMore || this.loadingMore) return
-      this.load({ reset: false })
+    deadlineText,
+    isOverdue,
+    displayStatus(status) { return status === 'DONE' ? 'COMPLETED' : status },
+    async refresh() {
+      if (!this._pager) return
+      this.state = 'loading'
+      try {
+        await this._pager.refresh()
+        this.state = 'ready'
+      } catch (error) {
+        this.state = 'error'
+      }
     },
-    load({ reset = true } = {}) {
-      if (this._todosPromise) return this._todosPromise
-      const requestedFilter = this.filter
-      const requestedPage = reset ? 1 : this.page + 1
-      const epoch = (this._loadEpoch || 0) + 1
-      this._loadEpoch = epoch
-      if (reset) this.state = 'loading'
-      else this.loadingMore = true
-      const pending = teacherApi.getTodosPage(requestedFilter, requestedPage, PAGE_SIZE)
-        .then((result) => {
-          if (!this._pageActive || this._loadEpoch !== epoch || this.filter !== requestedFilter) return result
-          this.data = {
-            ...result,
-            list: reset ? (result.list || []) : [...this.list, ...(result.list || [])]
-          }
-          this.page = Number(result.page) || requestedPage
-          this.hasMore = !!result.hasMore
-          this.state = 'ready'
-          return result
-        })
-        .catch((error) => {
-          if (this._pageActive && this._loadEpoch === epoch && reset) this.state = 'error'
-          throw error
-        })
-        .finally(() => {
-          if (this._todosPromise === pending) this._todosPromise = null
-          this.loadingMore = false
-        })
-      this._todosPromise = pending
-      return pending
+    async loadMore() {
+      if (!this._pager || this.pagerState.loading || !this.pagerState.hasMore) return
+      try {
+        await this._pager.loadMore()
+      } catch (error) {
+        // Keep already loaded rows visible; shared pager retains the error for retry/telemetry.
+      }
     },
     handle(todo) {
-      const map = {
-        review: todo.module.includes('毕业') ? '/pages/teacher/graduation-guide/index?tab=review' : '/pages/teacher/internship-review/index',
-        approve: '/pages/teacher/approval/index',
-        risk: '/pages/teacher/risk-students/index',
-        contact: '/pages/teacher/risk-students/index',
-        confirm: '/pages/teacher/internship-review/index'
-      }
-      go(map[todo.group] || '/pages/teacher/approval/index')
-    },
-    quickDone(todo) { this.handle(todo) }
+      runAction(todo && todo.action, { side: 'teacher' })
+    }
   }
 }
 </script>
 
 <style scoped>
 .td__filters { padding-bottom: var(--space-3); }
-.td__btn { min-height: 34px; line-height: 34px; padding: 0 var(--space-3); border-radius: var(--radius-md); font-size: var(--font-size-sm); border: 1px solid var(--border-base); background: var(--bg-card); color: var(--text-secondary); }
-.td__btn.is-primary { background: var(--teacher-600); color: #fff; border-color: var(--teacher-600); }
 .td__paging { text-align: center; padding: var(--space-3) 0; font-size: var(--font-size-sm); color: var(--teacher-700); }
 .td__paging.is-end { color: var(--text-tertiary); }
 </style>

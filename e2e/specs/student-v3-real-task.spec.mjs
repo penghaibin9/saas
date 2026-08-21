@@ -19,7 +19,8 @@ import { config } from '../lib/config.mjs'
  * 不认 toast（手册 §13.1：禁止 toast 成功但服务器未落状态）。
  *
  * 前置事实由 backend/scripts/e2e_seed_student_v3_realtask.py 用正式 API 造，
- * 见该脚本的说明。
+ * 见该脚本的说明。消息发布是正式异步投递；Playwright 明确运行在 external scheduler
+ * 模式，因此夹具发布后还要执行一次与生产相同的 delivery worker，再开始浏览器断言。
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -33,6 +34,14 @@ const ONE_PIXEL_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADU
 
 function runFixture(command) {
   execFileSync('python3', ['scripts/e2e_seed_student_v3_realtask.py', command], {
+    cwd: backendDir,
+    env: process.env,
+    stdio: 'inherit'
+  })
+}
+
+function drainFixtureMessageDelivery() {
+  execFileSync('python3', ['scripts/e2e_drain_student_v3_message_delivery.py'], {
     cwd: backendDir,
     env: process.env,
     stdio: 'inherit'
@@ -78,6 +87,7 @@ test.describe.serial('Student V3 · Real Task 真实点击回放', () => {
 
   test.beforeAll(() => {
     runFixture('seed')
+    drainFixtureMessageDelivery()
     fixture = readFixture()
   })
 
@@ -132,6 +142,14 @@ test.describe.serial('Student V3 · Real Task 真实点击回放', () => {
   })
 
   test('需回执的消息：点开详情确认已阅后服务端 acked 为真', async ({ page, request }) => {
+    // 先证明 external scheduler 已把正式发布单真正物化成当前学生的个人消息。
+    // 这样若投递链回归，失败点会落在真实 server truth，而不是 20 秒后才表现成 DOM 找不到卡片。
+    const seededInbox = await serverTruth(request, '/student-mini/messages?page=1&pageSize=100')
+    const seededMessage = (seededInbox.items || []).find((item) => item.title === fixture.ackMessage.title)
+    expect(seededMessage, `seeded acknowledgement missing: ${fixture.ackMessage.title}`).toBeTruthy()
+    expect(seededMessage.requireAck).toBe(true)
+    expect(seededMessage.acked).toBe(false)
+
     await loginStudentMini(page)
     await page.goto(`${miniBase}/#/pages/student/messages/index`)
     await page.getByText('通知', { exact: true }).first().click()

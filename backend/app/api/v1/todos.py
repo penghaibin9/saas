@@ -42,11 +42,65 @@ def _use_real_db() -> bool:
     return False
 
 
+def _teacher_v3_page(user: dict, *, status: str | None, todo_type: str | None,
+                     page: int, page_size: int) -> dict:
+    """Teacher V3 T1：复用 canonical Todo read + server-resolved typed target。"""
+    from app.services import teacher_mobile_todo_read_service as teacher_todo
+
+    data = teacher_todo.list_page(
+        user,
+        status=status,
+        todo_type=todo_type,
+        page=page,
+        page_size=page_size,
+    )
+    # 保持冻结 paginate 外形；T1 只新增 typed DTO 字段，不改公共分页合同。
+    return paginate(data["items"], data["total"], data["page"], data["pageSize"])
+
+
+def _teacher_v3_continuous(user: dict, *, status: str | None, todo_type: str | None,
+                           cursor: str | None, page_size: int) -> dict:
+    """Teacher V3 T2：独立连续入口；旧 /todos offset 合同保持不变。"""
+    from app.services import teacher_mobile_todo_read_service as teacher_todo
+
+    data = teacher_todo.list_continuous(
+        user,
+        status=status,
+        todo_type=todo_type,
+        cursor=cursor,
+        page_size=page_size,
+    )
+    page = paginate(
+        data["items"],
+        data["total"],
+        1,
+        data["pageSize"],
+        next_cursor=data.get("nextCursor"),
+        status_counts=data.get("statusCounts"),
+        query_fingerprint=data.get("filterHash"),
+    )
+    page["hasMore"] = bool(data.get("hasMore"))
+    page["asOf"] = data.get("asOf")
+    return page
+
+
+def _teacher_v3_detail(user: dict, todo_id: str) -> dict | None:
+    from app.services import teacher_mobile_todo_read_service as teacher_todo
+
+    return teacher_todo.get_one(user, todo_id)
+
+
 def make_router(client: str) -> APIRouter:
     """client: admin / student-mini / teacher-mobile"""
     router = APIRouter(prefix=f"/{client}", tags=[f"04·待办与消息（{client}）"])
     guard = get_current_user if client == "student-mini" else require_staff
     route_client = "studentMini" if client == "student-mini" else ("teacherMini" if client == "teacher-mobile" else "pc")
+
+    # Teacher V3 T3 owns a dedicated MyStudents router, but mounts it through the existing
+    # teacher-mobile surface so no shared global route-registration file needs a parallel edit.
+    if client == "teacher-mobile":
+        from app.api.v1.teacher_mobile_students import router as teacher_students_router
+        router.include_router(teacher_students_router)
 
     @router.get("/todos", summary="待办列表", name=f"{client}_todos_list")
     def list_todos(status: Optional[str] = Query(default=None, description="PENDING / DONE"),
@@ -55,6 +109,11 @@ def make_router(client: str) -> APIRouter:
                    pageSize: int = Query(default=20, ge=1, le=100),
                    user=Depends(guard)):
         if _use_real_db():
+            if client == "teacher-mobile":
+                return success(_teacher_v3_page(
+                    user, status=status, todo_type=todoType,
+                    page=page, page_size=pageSize,
+                ))
             items, total = svc.list_todos(user, status, todoType, page, pageSize, client=route_client)
             return success(paginate(items, total, page, pageSize))
         items = [t for t in MOCK_TODOS
@@ -74,6 +133,32 @@ def make_router(client: str) -> APIRouter:
             by_type[t["todoType"]] = by_type.get(t["todoType"], 0) + 1
         return success({"total": len(pending), "byType": by_type})
 
+    if client == "teacher-mobile":
+        @router.get("/todos/continuous", summary="教师端待办连续列表（keyset）",
+                    name="teacher_mobile_todos_continuous")
+        def list_todos_continuous(
+            status: Optional[str] = Query(default=None, description="PENDING / DONE / CANCELLED"),
+            todoType: Optional[str] = Query(default=None),
+            cursor: Optional[str] = Query(default=None, max_length=2048),
+            pageSize: int = Query(default=20, ge=1, le=100),
+            user=Depends(guard),
+        ):
+            if _use_real_db():
+                return success(_teacher_v3_continuous(
+                    user,
+                    status=status,
+                    todo_type=todoType,
+                    cursor=cursor,
+                    page_size=pageSize,
+                ))
+            items = [t for t in MOCK_TODOS
+                     if (not status or t["status"] == status)
+                     and (not todoType or t["todoType"] == todoType)]
+            data = paginate(items[:pageSize], len(items), 1, pageSize, next_cursor=None)
+            data["hasMore"] = False
+            data["asOf"] = None
+            return success(data)
+
     if client != "student-mini":
         @router.get("/workbench-snapshot", summary="教师工作台只读快照",
                     name=f"{client}_workbench_snapshot")
@@ -81,7 +166,7 @@ def make_router(client: str) -> APIRouter:
                                user=Depends(guard)):
             if _use_real_db():
                 from app.services import workbench_snapshot_service as snapshot_svc
-                return success(snapshot_svc.snapshot(user, page_size=pageSize))
+                return success(snapshot_svc.snapshot(user, page_size=pageSize, client=route_client))
             pending = [t for t in MOCK_TODOS if t["status"] == "PENDING"]
             by_type: dict[str, int] = {}
             for item in pending:
@@ -103,7 +188,10 @@ def make_router(client: str) -> APIRouter:
     @router.get("/todos/{todo_id}", summary="待办详情", name=f"{client}_todo_detail")
     def todo_detail(todo_id: str, user=Depends(guard)):
         if _use_real_db():
-            d = svc.get_todo(user, todo_id, client=route_client)
+            if client == "teacher-mobile":
+                d = _teacher_v3_detail(user, todo_id)
+            else:
+                d = svc.get_todo(user, todo_id, client=route_client)
             if not d:
                 raise not_found("待办不存在")
             return success(d)

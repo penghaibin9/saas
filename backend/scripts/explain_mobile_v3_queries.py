@@ -1,21 +1,17 @@
 #!/usr/bin/env python3
-"""V3 §11.4 EXPLAIN 门禁：证明移动端热路径查询没有全表扫描/失控排序。
+"""V3 §11.4 / Teacher T9 EXPLAIN gate for mobile hot paths.
 
-规则来自手册：
-  - 分页查询禁止 ``.all()`` → Python slice，深页必须 keyset；
-  - 只有 EXPLAIN 真的证明有问题，才允许新增索引——不为"看起来快"加冗余索引；
-  - 加索引必须附 migration + rollback + EXPLAIN 前后对比。
+Rules:
+  - pagination must stay server-bounded; deep pages use keyset, never Python slicing;
+  - add a targeted index only after EXPLAIN proves the existing index is insufficient;
+  - any new index requires migration + rollback + before/after evidence.
 
-本脚本只做"量"的取证，不自动改 schema。用法：
-
-    DATABASE_URL=mysql+pymysql://.../saas_capacity_test \\
-      python scripts/explain_mobile_v3_queries.py --tenant-id 1000000000000000900
-
-退出码 1 表示有查询突破预算，需要人来看 EXPLAIN 结果再决定加不加索引。
+This script only captures query plans and budgets. It never mutates schema.
 """
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta
 import json
 import sys
 
@@ -23,7 +19,6 @@ import _mysql_env  # noqa: F401
 
 from sqlalchemy import text
 
-#: 每条热路径的行扫描预算。超了不代表必须加索引，代表必须有人看一眼。
 QUERIES = [
     {
         "name": "home_todos",
@@ -49,12 +44,37 @@ QUERIES = [
     },
     {
         "name": "messages_page",
-        "note": "本人消息分页：receiver_user_id + id desc",
+        "note": "学生本人消息分页：receiver_user_id + id desc",
         "budget_rows": 2000,
         "sql": """
             SELECT id, title, status FROM t_unified_message
             WHERE tenant_id = :tid AND is_deleted = 0 AND receiver_user_id = :sid
             ORDER BY id DESC LIMIT 20
+        """,
+    },
+    {
+        "name": "teacher_messages_page",
+        "note": "Teacher T9 eventAt/id keyset：user + activeContext + created_at/id desc",
+        "budget_rows": 2000,
+        "sql": """
+            SELECT id, title, status, created_at FROM t_unified_message
+            WHERE tenant_id = :tid AND is_deleted = 0
+              AND receiver_user_id = :teacher_uid
+              AND receiver_context_key IN ('GLOBAL', :teacher_ctx)
+              AND created_at IS NOT NULL
+            ORDER BY created_at DESC, id DESC LIMIT 21
+        """,
+    },
+    {
+        "name": "teacher_messages_badges",
+        "note": "Teacher T9 独立未读 badge 聚合：user + activeContext + UNREAD",
+        "budget_rows": 2000,
+        "sql": """
+            SELECT COUNT(*) FROM t_unified_message
+            WHERE tenant_id = :tid AND is_deleted = 0
+              AND receiver_user_id = :teacher_uid
+              AND receiver_context_key IN ('GLOBAL', :teacher_ctx)
+              AND status = 'UNREAD' AND withdrawn_at IS NULL
         """,
     },
     {
@@ -82,14 +102,12 @@ QUERIES = [
 ]
 
 
-def _explain(conn, sql: str, params: dict) -> list[dict]:
+def _explain(conn, sql: str, params: dict) -> dict:
     rows = conn.execute(text("EXPLAIN FORMAT=JSON " + sql), params).fetchall()
     payload = rows[0][0]
     return json.loads(payload) if isinstance(payload, str) else payload
 
 
-#: MySQL 8 与 MariaDB 的 EXPLAIN JSON 用不同的键表示扫描行数。
-#: 两个都读不到时必须报错——否则门禁会安静地按 0 行通过，等于没有门禁。
 _ROWS_KEYS = ("rows_examined_per_scan", "rows")
 
 
@@ -107,7 +125,6 @@ def _rows_of(table: dict, label: str) -> int:
 
 
 def _walk(node, out):
-    """把 EXPLAIN JSON 里所有 table 节点摊平，逐个看访问方式与扫描行数。"""
     if isinstance(node, dict):
         table = node.get("table")
         if isinstance(table, dict):
@@ -120,15 +137,33 @@ def _walk(node, out):
     return out
 
 
+def _teacher_identity(conn, tenant_id: int, requested_uid: int, requested_context: str) -> tuple[int, str, str]:
+    if requested_uid > 0:
+        return requested_uid, requested_context or "GLOBAL", "cli"
+    row = conn.execute(text("""
+        SELECT receiver_user_id, receiver_context_key
+        FROM t_unified_message
+        WHERE tenant_id=:tid AND is_deleted=0 AND receiver_user_id IS NOT NULL
+          AND receiver_type='STAFF'
+        ORDER BY id LIMIT 1
+    """), {"tid": tenant_id}).first()
+    if row:
+        return int(row[0]), str(row[1] or "GLOBAL"), "dataset"
+    # Legacy student-only capacity datasets can still explain the access shape. T9 Gold should pass
+    # an explicit teacher id/context or seed STAFF messages so evidenceSource is not fallback.
+    return 1, "GLOBAL", "fallback-no-staff-row"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="移动端 V3 热路径 EXPLAIN 取证")
     parser.add_argument("--tenant-id", type=int, required=True)
     parser.add_argument("--student-id", type=int, default=0, help="留空则取该租户第一名学生")
+    parser.add_argument("--teacher-user-id", type=int, default=0, help="Teacher T9 消息 receiver_user_id")
+    parser.add_argument("--teacher-context", default="", help="Teacher T9 activeContextId")
     parser.add_argument("--json-out", default="", help="把结果写到文件，供 CI 作为 artifact")
     args = parser.parse_args()
 
     from app.db.session import get_engine
-    from datetime import datetime, timedelta
 
     engine = get_engine()
     with engine.connect() as conn:
@@ -142,9 +177,15 @@ def main() -> int:
                 return 2
             sid = int(row[0])
 
+        teacher_uid, teacher_ctx, teacher_source = _teacher_identity(
+            conn, args.tenant_id, args.teacher_user_id, args.teacher_context
+        )
         now = datetime.utcnow()
         params = {
-            "tid": args.tenant_id, "sid": sid,
+            "tid": args.tenant_id,
+            "sid": sid,
+            "teacher_uid": teacher_uid,
+            "teacher_ctx": teacher_ctx,
             "from_at": now - timedelta(days=180),
             "to_at": now + timedelta(days=7),
             "prefix": "容量%",
@@ -172,8 +213,10 @@ def main() -> int:
                     "usingTemporaryTable": bool(table.get("using_temporary_table")),
                 })
             entry = {
-                "name": spec["name"], "note": spec["note"],
-                "budgetRows": spec["budget_rows"], "rowsExamined": scanned,
+                "name": spec["name"],
+                "note": spec["note"],
+                "budgetRows": spec["budget_rows"],
+                "rowsExamined": scanned,
                 "withinBudget": scanned <= spec["budget_rows"],
                 "tables": details,
             }
@@ -181,21 +224,35 @@ def main() -> int:
             if not entry["withinBudget"]:
                 over_budget.append(entry)
             flag = "OK " if entry["withinBudget"] else "OVER"
-            print(f"[explain] {flag} {spec['name']:<20} rows={scanned:<8} budget={spec['budget_rows']}")
+            print(f"[explain] {flag} {spec['name']:<26} rows={scanned:<8} budget={spec['budget_rows']}")
             for detail in details:
-                print(f"          table={detail['table']} type={detail['accessType']} key={detail['key']}"
-                      f" filesort={detail['usingFilesort']}")
+                print(
+                    f"          table={detail['table']} type={detail['accessType']} key={detail['key']}"
+                    f" filesort={detail['usingFilesort']}"
+                )
 
-    payload = {"tenantId": args.tenant_id, "studentId": sid, "queries": results,
-               "overBudget": [entry["name"] for entry in over_budget]}
+    payload = {
+        "tenantId": args.tenant_id,
+        "studentId": sid,
+        "teacherMessageIdentity": {
+            "receiverUserId": teacher_uid,
+            "context": teacher_ctx,
+            "evidenceSource": teacher_source,
+        },
+        "queries": results,
+        "overBudget": [entry["name"] for entry in over_budget],
+    }
     if args.json_out:
         with open(args.json_out, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
         print(f"[explain] 结果已写入 {args.json_out}")
 
     if over_budget:
-        print("\n[explain] 以下查询超出扫描预算，请看 EXPLAIN 后再决定是否加 targeted index："
-              + ", ".join(entry["name"] for entry in over_budget), file=sys.stderr)
+        print(
+            "\n[explain] 以下查询超出扫描预算，请看 EXPLAIN 后再决定是否加 targeted index："
+            + ", ".join(entry["name"] for entry in over_budget),
+            file=sys.stderr,
+        )
         return 1
     print("\n[explain] 全部热路径在扫描预算内，无需新增索引。")
     return 0

@@ -72,11 +72,57 @@ _STUDENT_MINI: dict[str, tuple[str, str, str]] = {
     "INTERN_EXCEPTION_HANDLE": ("todo-route:student-mini-internship", "/pages/student/internship/index", FOCUS_NONE),
 }
 
+# Teacher V3 T8: only point at real teacher pages. Until a page actually consumes recordId
+# and is registered in mobile_focus_contract, focusMode stays NONE and routeExact remains false.
+# This is intentional: a safe business queue is better than pretending a list page is object-exact.
+_TEACHER_MINI: dict[str, tuple[str, str, str]] = {
+    "LEAVE_APPROVAL": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
+    "LEAVE_OVERDUE": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
+    "LEAVE_CANCEL": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
+    "LEAVE_EXTENSION": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
+    "DISCIPLINE_APPROVAL": ("todo-route:teacher-mini-affairs", "/pages/teacher/affairs-review/index", FOCUS_NONE),
+    "DISCIPLINE_REMOVE": ("todo-route:teacher-mini-affairs", "/pages/teacher/affairs-review/index", FOCUS_NONE),
+    "AID_APPROVAL": ("todo-route:teacher-mini-affairs", "/pages/teacher/affairs-review/index", FOCUS_NONE),
+    "AID_ADJUST": ("todo-route:teacher-mini-affairs", "/pages/teacher/affairs-review/index", FOCUS_NONE),
+    "FUNDING_APPROVAL": ("todo-route:teacher-mini-affairs", "/pages/teacher/affairs-review/index", FOCUS_NONE),
+    "RISK_HANDLE": ("todo-route:teacher-mini-risk", "/pages/teacher/risk-students/index", FOCUS_NONE),
+    "ACAD_WARNING_HANDLE": ("todo-route:teacher-mini-academic-warning", "/pages/teacher/academic-warning/index", FOCUS_NONE),
+    "AA_SCHEDULE_CHANGE_APPROVAL": ("todo-route:teacher-mini-schedule-change", "/pages/teacher/academic-affairs/schedule-change-review", FOCUS_NONE),
+    "AA_STATUS_APPROVAL": ("todo-route:teacher-mini-status-change", "/pages/teacher/academic-affairs/status-change-review", FOCUS_NONE),
+    "AA_GRADE_ENTRY": ("todo-route:teacher-mini-grade-entry", "/pages/teacher/academic-affairs/grade-entry", FOCUS_NONE),
+    "GD_PROPOSAL_REVIEW": ("todo-route:teacher-mini-graduation-topics", "/pages/teacher/graduation-topics/index", FOCUS_NONE),
+    "GD_TOPIC_CHANGE_REVIEW": ("todo-route:teacher-mini-graduation-topics", "/pages/teacher/graduation-topics/index", FOCUS_NONE),
+    "GD_FINAL_REVIEW": ("todo-route:teacher-mini-graduation-guide", "/pages/teacher/graduation-guide/index", FOCUS_NONE),
+    "GD_DEFENSE_SCORE": ("todo-route:teacher-mini-defense-score", "/pages/teacher/defense-score/index", FOCUS_NONE),
+    "INTERN_WEEKLY_REVIEW": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
+    "INTERN_EXCEPTION_HANDLE": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
+    "INTERN_LEAVE_APPROVAL": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
+    "INTERN_VISIT_RECTIFY": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
+    "DORM_TRANSFER": ("todo-route:teacher-mini-dorm", "/pages/teacher/dorm-review/index", FOCUS_NONE),
+    "DORM_EXCEPTION": ("todo-route:teacher-mini-dorm", "/pages/teacher/dorm-review/index", FOCUS_NONE),
+    "EMPLOYMENT_FOLLOWUP": ("todo-route:teacher-mini-employment", "/pages/teacher/employment-follow/index", FOCUS_NONE),
+}
+
 
 def _record_id(value: Any) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
+
+
+def _mini_target(mapping: dict[str, tuple[str, str, str]], type_code: str, rid: str) -> dict | None:
+    target = mapping.get(type_code)
+    if not target:
+        return None
+    route_name, path, focus_mode = target
+    return {
+        "routeName": route_name,
+        "routeParams": {"recordId": rid},
+        "query": {"recordId": rid},
+        "path": path,
+        "focusMode": focus_mode,
+        "exact": is_route_exact(focus_mode, path),
+    }
 
 
 def resolve_todo_route(todo_type: str | None, record_id: Any, *, client: str) -> dict | None:
@@ -113,18 +159,10 @@ def resolve_todo_route(todo_type: str | None, record_id: Any, *, client: str) ->
         return None
 
     if client == "studentMini":
-        target = _STUDENT_MINI.get(type_code)
-        if not target:
-            return None
-        route_name, path, focus_mode = target
-        return {
-            "routeName": route_name,
-            "routeParams": {"recordId": rid},
-            "query": {"recordId": rid},
-            "path": path,
-            "focusMode": focus_mode,
-            "exact": is_route_exact(focus_mode, path),
-        }
+        return _mini_target(_STUDENT_MINI, type_code, rid)
+
+    if client == "teacherMini":
+        return _mini_target(_TEACHER_MINI, type_code, rid)
 
     return None
 
@@ -142,5 +180,14 @@ def route_contract_snapshot() -> dict[str, dict[str, Any]]:
                 "exact": is_route_exact(value[2], value[1]),
             }
             for key, value in _STUDENT_MINI.items()
+        },
+        "teacherMini": {
+            key: {
+                "routeName": value[0],
+                "path": value[1],
+                "focusMode": value[2],
+                "exact": is_route_exact(value[2], value[1]),
+            }
+            for key, value in _TEACHER_MINI.items()
         },
     }
