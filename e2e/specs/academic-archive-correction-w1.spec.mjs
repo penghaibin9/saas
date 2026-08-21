@@ -247,7 +247,7 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
     expect(afterRejectManifest.versions.length).toBe(manifestCountAfterApprove)
     expect(afterRejectManifest.versions[0].hash).toBe(fixture.manifestV1Hash)
 
-    await rejectedDetailDialog.getByRole('button', { name: '关闭', exact: true }).click()
+    await rejectedDetailDialog.getByText('关闭', { exact: true }).click()
     await reviewerPage.getByRole('tab', { name: 'Manifest版本链' }).click()
     await expect(reviewerPage.getByText('Manifest 版本链', { exact: true })).toBeVisible()
     await expect(reviewerPage.getByText('V1', { exact: true })).toBeVisible()
