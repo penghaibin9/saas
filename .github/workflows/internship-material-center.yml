@@ -5,14 +5,18 @@ on:
     paths:
       - 'backend/app/models/file.py'
       - 'backend/app/modules/internship/services/internship_material_center_*.py'
+      - 'backend/app/modules/internship/services/internship_material_preview_access.py'
       - 'backend/app/modules/internship/routers/internship_material_center.py'
       - 'backend/app/api/v1/route_registration.py'
       - 'backend/alembic/versions/0148_internship_material_center.py'
       - 'backend/tests/test_internship_material_center.py'
+      - 'backend/tests/test_internship_material_preview_contract.py'
       - 'backend/tests/internship_material_center_mysql_acceptance.py'
+      - 'frontend/src/components/file/viewer/**'
       - 'frontend/src/modules/internship/api/material-center.api.js'
       - 'frontend/src/modules/internship/views/InternshipMaterialCenterView.vue'
       - 'frontend/src/modules/internship/routes.js'
+      - 'frontend/tests/document-preview-w5-internship-contract.test.mjs'
       - '.github/workflows/internship-material-center.yml'
   push:
     branches:
@@ -20,14 +24,18 @@ on:
     paths:
       - 'backend/app/models/file.py'
       - 'backend/app/modules/internship/services/internship_material_center_*.py'
+      - 'backend/app/modules/internship/services/internship_material_preview_access.py'
       - 'backend/app/modules/internship/routers/internship_material_center.py'
       - 'backend/app/api/v1/route_registration.py'
       - 'backend/alembic/versions/0148_internship_material_center.py'
       - 'backend/tests/test_internship_material_center.py'
+      - 'backend/tests/test_internship_material_preview_contract.py'
       - 'backend/tests/internship_material_center_mysql_acceptance.py'
+      - 'frontend/src/components/file/viewer/**'
       - 'frontend/src/modules/internship/api/material-center.api.js'
       - 'frontend/src/modules/internship/views/InternshipMaterialCenterView.vue'
       - 'frontend/src/modules/internship/routes.js'
+      - 'frontend/tests/document-preview-w5-internship-contract.test.mjs'
       - '.github/workflows/internship-material-center.yml'
 
 concurrency:
@@ -36,7 +44,7 @@ concurrency:
 
 jobs:
   mysql-contract:
-    name: MySQL 资产版本 + 归档清单 + 安全优先路由
+    name: MySQL 资产版本 + 归档清单 + 业务票据 Reader
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
@@ -76,21 +84,23 @@ jobs:
         run: |
           test "$(alembic heads | wc -l | tr -d ' ')" = "1"
           alembic upgrade head
-      - name: Compile phase 4 backend
+      - name: Compile phase 4 backend and W5 ticket authority
         working-directory: backend
         run: |
           python -m py_compile \
             app/models/file.py \
             app/modules/internship/services/internship_material_center_service.py \
             app/modules/internship/services/internship_material_center_facade.py \
+            app/modules/internship/services/internship_material_preview_access.py \
             app/modules/internship/routers/internship_material_center.py \
             app/api/v1/route_registration.py \
             alembic/versions/0148_internship_material_center.py \
             tests/test_internship_material_center.py \
+            tests/test_internship_material_preview_contract.py \
             tests/internship_material_center_mysql_acceptance.py
-      - name: Static frozen contracts
+      - name: Static frozen contracts and W5 ticket authority
         working-directory: backend
-        run: pytest tests/test_internship_material_center.py -q -p no:warnings
+        run: pytest tests/test_internship_material_center.py tests/test_internship_material_preview_contract.py -q -p no:warnings
       - name: Real MySQL asset version and manifest acceptance
         working-directory: backend
         run: PYTHONPATH=. python tests/internship_material_center_mysql_acceptance.py
@@ -123,6 +133,9 @@ jobs:
               '/internship/archive/{internship_id}/archive',
               '/internship/archive/{internship_id}/package',
               '/internship/archive/{internship_id}/revoke',
+              '/internship/material-center/files/{file_id}/ticket',
+              '/internship/material-center/files/{file_id}/preview',
+              '/internship/material-center/files/{file_id}/download',
           }
           matching = [
               (route.path, sorted(route.methods or []), route.endpoint.__module__)
@@ -134,11 +147,11 @@ jobs:
               first_by_path.setdefault(path, module)
           assert set(first_by_path) == target_paths, (target_paths - set(first_by_path), matching)
           assert all(module.endswith('internship_material_center') for module in first_by_path.values()), first_by_path
-          print('Stage 4 safety-first routing verified')
+          print('Stage 4 + W5 safety-first routing verified')
           PY
 
   frontend-contract:
-    name: 管理 PC 材料与证据中心
+    name: 管理 PC 材料与证据中心 + Embedded Reader
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -151,6 +164,8 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+      - name: W5 internship Reader source contract
+        run: node --test frontend/tests/document-preview-w5-internship-contract.test.mjs
       - name: Lint and build
         working-directory: frontend
         run: |
@@ -160,7 +175,10 @@ jobs:
         run: |
           test -f frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
           test -f frontend/src/modules/internship/api/material-center.api.js
+          test -f frontend/tests/document-preview-w5-internship-contract.test.mjs
           grep -q "material-center" frontend/src/modules/internship/routes.js
-          grep -q "fileSdk" frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
+          grep -q "AppDocumentViewer" frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
+          grep -q "createPreviewProvider" frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
           grep -q "versionId" frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
           grep -q "manifestSha256" frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
+          ! grep -q "fileSdk.preview(" frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
