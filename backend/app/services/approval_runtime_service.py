@@ -36,6 +36,9 @@ _BIZ_TYPE_LABELS: dict[str, str] = {
     "AA_SCHEDULE_CHANGE": "调停课审批",
     "MESSAGE_CAMPAIGN": "消息任务审批",
     "PROFILE_CORRECTION": "信息更正",
+    # SP-E02/E04：employment_destination_submission_service.submit() 新增的真实
+    # workflow——正是 TP-A10 设想的"新增业务后只改这一份字典"的场景。
+    "EMPLOYMENT_DESTINATION": "就业去向登记",
 }
 
 
@@ -501,6 +504,14 @@ def return_for_revision(task_id, reason, *, user=None, version=None, expected_so
             },
             remark="RETURNED",
         ))
+        # SP-E02/E04：就业去向登记提交被退回是终态（同 AaStatusChange 的既有约定——退回
+        # 不是"这条记录原地编辑重开"，是"这次没过，请重新提交一条新的"）。这里只同步本域
+        # 状态，不依赖上面刚创建的通用 APPLICANT_RESUBMIT 待办——学生端走 submit() 发起新
+        # 提交，不会去认领那个待办，它会一直挂在那里不再被消费。与 AaStatusChange 自建
+        # 专属审批端点、完全不 touch 这条通用退回路径的效果一致，只是复用了通用入口。
+        if (inst.source_biz_type or "") == "EMPLOYMENT_DESTINATION":
+            from app.modules.employment.services import employment_destination_submission_service as emp_dest_svc
+            emp_dest_svc.apply_return_in_db(db, inst, reason=reason.strip())
         audit.record_critical(
             "审批退回修改",
             method="POST",

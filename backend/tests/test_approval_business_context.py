@@ -281,7 +281,8 @@ def test_error_isolated_from_unsupported_and_missing(db_mode, monkeypatch):
 
 def test_supported_biz_types_only_lists_real_adapters():
     from app.services import approval_business_context_service as svc
-    assert svc.supported_biz_types() == ["AA_STATUS_CHANGE", "AID", "DISCIPLINE", "LEAVE"]
+    assert svc.supported_biz_types() == [
+        "AA_STATUS_CHANGE", "AID", "DISCIPLINE", "EMPLOYMENT_DESTINATION", "LEAVE"]
 
 
 def test_get_task_wires_business_context_into_response(db_mode, client):

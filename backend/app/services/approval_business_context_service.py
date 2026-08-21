@@ -92,9 +92,13 @@ def _attachments(db, biz_type: str, biz_id: Any) -> list[dict]:
 
 # ── 各业务域 adapter ──────────────────────────────────────
 # 只登记仓库里**真实会创建 WorkflowInstance** 的 source_biz_type。
-# 手册点名的 COMPANY_CHANGE / EMPLOYMENT_DESTINATION 目前全仓没有任何地方以这两个
-# 值建实例，为它们写 adapter 等于为不存在的业务造代码，因此不登记——一旦将来真的
-# 接入 workflow，这里返回 UNSUPPORTED 会明确提示需要补 adapter，而不是静默空白。
+# 手册点名的 COMPANY_CHANGE 目前全仓没有任何地方以该值建实例，为它写 adapter
+# 等于为不存在的业务造代码，因此不登记——一旦将来真的接入 workflow，这里返回
+# UNSUPPORTED 会明确提示需要补 adapter，而不是静默空白。
+#
+# EMPLOYMENT_DESTINATION（SP-E02/E04）已经是真实业务：
+# employment_destination_submission_service.submit() 会创建
+# WorkflowInstance(source_biz_type="EMPLOYMENT_DESTINATION")，第 5 个 adapter。
 
 def _leave_context(db, instance) -> dict:
     from app.models import CsLeave
@@ -191,11 +195,42 @@ def _discipline_context(db, instance) -> dict:
     }
 
 
+def _employment_destination_context(db, instance) -> dict:
+    from app.models import EmpDestinationSubmission
+    from app.modules.employment.services.employment_service import L_DEST
+
+    row = db.get(EmpDestinationSubmission, int(instance.source_biz_id))
+    if not row or row.is_deleted or int(row.tenant_id) != _tid():
+        return {"completeness": MISSING, "summary": "就业去向登记提交不存在或已删除",
+                "sections": [], "attachments": [], "sourceVersion": None}
+    dest_label = L_DEST.get(row.destination_type, row.destination_type)
+    fields = [
+        _field("去向类型", dest_label),
+        _field("单位/去向", row.company_name),
+        _field("岗位", row.job_title),
+        _field("城市", row.city),
+        _field("联系方式", row.contact),
+        _field("说明", row.remark),
+        _field("当前状态", row.status),
+    ]
+    return {
+        "completeness": _completeness(fields, ["去向类型"]),
+        "summary": f"就业去向登记 · {dest_label}",
+        "sections": [_section("登记信息", fields)],
+        # 本域提交流程不收附件（city/contact 等字段是结构化文本，不是文件材料）；
+        # 就业材料的正式证据由 EMPLOYMENT_MATERIAL FileBinding 单独承载（T5），
+        # 不在这条提交记录上，如实返回空而不是伪造附件列表。
+        "attachments": [],
+        "sourceVersion": int(row.version or 0),
+    }
+
+
 _ADAPTERS: dict[str, Callable] = {
     "LEAVE": _leave_context,
     "AA_STATUS_CHANGE": _status_change_context,
     "AID": _aid_context,
     "DISCIPLINE": _discipline_context,
+    "EMPLOYMENT_DESTINATION": _employment_destination_context,
 }
 
 

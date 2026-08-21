@@ -61,6 +61,14 @@
       <template v-else-if="tab === 'destination'">
         <section class="sp-card" style="max-width:760px">
           <div class="sp-panel__head">就业去向登记</div>
+          <!-- SP-E02/E04：现在是真实结构化提交 + 单节点审批，提交后有独立状态可查，
+               不是"提交完就不知道后续"的黑盒。 -->
+          <div v-if="latestSubmission" class="sp-muted" style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:var(--pri-50)">
+            <template v-if="latestSubmission.status === 'SUBMITTED'">最近一次登记（{{ latestSubmission.destinationLabel }}）正在等待就业老师审核。</template>
+            <template v-else-if="latestSubmission.status === 'RETURNED'">最近一次登记被退回：{{ latestSubmission.returnReason || '未说明原因' }}。请核对后在下方重新提交。</template>
+            <template v-else-if="latestSubmission.status === 'REJECTED'">最近一次登记未通过审核，如有疑问请联系就业老师。</template>
+            <template v-else-if="latestSubmission.status === 'APPROVED'">最近一次登记（{{ latestSubmission.destinationLabel }}）已通过审核并计入就业台账。</template>
+          </div>
           <StateBlock v-if="optionsError" type="error" :text="optionsError" />
           <template v-else>
             <div class="sp-fieldlabel">去向类型</div>
@@ -148,6 +156,7 @@ const form = reactive({ destinationType: '', companyName: '', jobTitle: '', city
 const options = ref({ destinationTypes: [], verifyStatuses: [], materialStatuses: [], helpLevels: [] })
 const optionsError = ref('')
 
+const latestSubmission = computed(() => my.value.latestSubmission || null)
 const destTypes = computed(() => options.value.destinationTypes || [])
 const currentDest = computed(
   () => destTypes.value.find((d) => d.code === form.destinationType) || null
@@ -202,9 +211,10 @@ async function submit() {
   busy.value = true
   try {
     await portalApi.employmentDestination({ ...form })
-    // SP-E07：后端此刻只生成了一张待处理的事务申请工单，去向既没入 canonical
-    // 台账、更没核验。说"已登记"会让学生以为流程结束。
-    ui.notify('去向信息已提交学校核验，请留意审核结果')
+    // SP-E02/E04：现在是真实结构化提交 + 单节点审批（就业老师审核），批准后
+    // 才会原子写入就业台账。说"已登记"会让学生以为流程结束；这里的"审核"指
+    // 提交审批，不是台账 verifyStatus 的正式核验（两者是不同事实，见 SP-E09）。
+    ui.notify('去向信息已提交，等待就业老师审核')
     tab.value = 'overview'
     load()
   } catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }

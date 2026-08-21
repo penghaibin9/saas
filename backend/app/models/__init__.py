@@ -89,7 +89,8 @@ from app.models.graduation_material import (  # noqa: F401
     GraduationStudentMaterial,
     GraduationTemplateAssetPolicy,
 )
-from app.models.employment import (EmpAuditTrail, EmpCompany, EmpFollowup,  # noqa: F401
+from app.models.employment import (EmpAuditTrail, EmpCompany,  # noqa: F401
+                                     EmpDestinationSubmission, EmpFollowup,
                                      EmpJob, EmpMaterial, EmpStudent,
                                      InternshipEnterpriseContact)
 from app.models.teacher_scope import TeacherStudentScope  # noqa: F401

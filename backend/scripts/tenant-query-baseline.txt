@@ -289,9 +289,9 @@ services\affairs_aid_service.py:417
 services\affairs_aid_service.py:576
 services\affairs_aid_service.py:873
 services\affairs_aid_service.py:960
-services\affairs_assignee_service.py:50
-services\affairs_assignee_service.py:53
-services\affairs_assignee_service.py:55
+services\affairs_assignee_service.py:54
+services\affairs_assignee_service.py:57
+services\affairs_assignee_service.py:59
 services\affairs_batch_job_guard.py:153
 services\affairs_batch_job_guard.py:183
 services\affairs_class_service.py:621

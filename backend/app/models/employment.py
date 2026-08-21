@@ -163,3 +163,43 @@ class EmpAuditTrail(PKMixin, TenantMixin, AuditTimeMixin, Base):
     before_val: Mapped[str | None] = mapped_column(String(200))
     after_val: Mapped[str | None] = mapped_column(String(200))
     occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class EmpDestinationSubmission(PKMixin, TenantMixin, CommonMixin, Base):
+    """SP-E02/E04：结构化就业去向提交。
+
+    学生 PC 此前把 jobTitle/city/contact 拼进 CsWorkOrder 自由文本工单（S4 一期只
+    修了 companyName 丢失和 canonical 枚举漂移），既没有字段级 schema，也没有
+    workflow/审批，`emp_student_id` 更是完全空白——批准之后无法原子写回
+    canonical `EmpStudent`。本表是这条提交的真实结构化事实源，通过
+    `t_workflow_instance/task`（source_biz_type=EMPLOYMENT_DESTINATION）走真实
+    单节点审批（就业老师核准），批准后原子写回 EmpStudent（company_name/
+    job_title/destination_type）。
+
+    city/contact 目前没有对应的 EmpStudent 列（canonical 台账从未建过这两列），
+    因此只落在本表——字段不再像旧工单文本那样被截断丢失，但也不假装已经把它们
+    同步进了台账；如需台账收字段是后续独立变更，不在本次范围内。
+    """
+    __tablename__ = "t_emp_destination_submission"
+    __table_args__ = (
+        Index("ix_emp_dest_sub_tenant_student_status", "tenant_id", "student_id", "status", "is_deleted"),
+    )
+
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    applicant_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="申请人 user_id")
+    emp_student_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
+                                                        comment="批准后写回的 canonical EmpStudent.id")
+    destination_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    company_name: Mapped[str | None] = mapped_column(String(200))
+    job_title: Mapped[str | None] = mapped_column(String(100))
+    city: Mapped[str | None] = mapped_column(String(100))
+    contact: Mapped[str | None] = mapped_column(String(100))
+    remark: Mapped[str | None] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="SUBMITTED",
+                                        comment="SUBMITTED/RETURNED/APPROVED/REJECTED")
+    return_reason: Mapped[str | None] = mapped_column(String(500))
+    workflow_instance_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    current_task_id: Mapped[int | None] = mapped_column(BigInteger)
+    # 审批乐观锁：与 WorkflowTask.version 分开维护，前端拿它回传即可拒绝过期审批决定，
+    # 与 AaStatusChange.decision_version 同一约定。
+    decision_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

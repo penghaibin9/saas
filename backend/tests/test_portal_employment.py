@@ -35,6 +35,35 @@ def _seed(no, name):
     return sid
 
 
+def _seed_teacher(login_name="employment01"):
+    """SP-E02/E04：/destination 现在真实开一条单节点审批，受理人按 EMPLOYMENT_TEACHER
+    角色候选池解析；没有真实受理人时 submit() fail-closed（ASSIGNEE_NOT_CONFIGURED），
+    与 AID/AA_STATUS_CHANGE 等既有域一致，测试必须像它们一样先建真实 User/Role/UserRole。"""
+    from app.db.session import get_sessionmaker
+    from app.models import Role, User, UserRole
+    db = get_sessionmaker()()
+    try:
+        user = db.query(User).filter_by(tenant_id=TID, login_name=login_name).first()
+        if user is None:
+            user = User(tenant_id=TID, login_name=login_name, real_name="就业老师",
+                       password_hash="test-only", user_type="TEACHER", status="ACTIVE")
+            db.add(user)
+            db.flush()
+        role = db.query(Role).filter_by(tenant_id=TID, role_code="EMPLOYMENT_TEACHER").first()
+        if role is None:
+            role = Role(tenant_id=TID, role_code="EMPLOYMENT_TEACHER", role_name="就业老师",
+                       role_type="SYSTEM", status="ACTIVE")
+            db.add(role)
+            db.flush()
+        if not db.query(UserRole).filter_by(tenant_id=TID, user_id=user.id, role_id=role.id).first():
+            db.add(UserRole(tenant_id=TID, user_id=user.id, role_id=role.id, status="ACTIVE"))
+        db.commit()
+        uid = int(user.id)
+    finally:
+        db.close()
+    return uid
+
+
 def test_my_view(client, db_mode):
     _seed("EM-001", "就业一")
     h = _stu_token("就业一", "EM-001")
@@ -42,6 +71,7 @@ def test_my_view(client, db_mode):
 
 
 def test_destination_register(client, db_mode):
+    _seed_teacher()
     _seed("EM-002", "就业二")
     h = _stu_token("就业二", "EM-002")
     # 缺去向类型 → 校验失败
@@ -69,12 +99,14 @@ def test_destination_register_rejects_non_canonical_type(client, db_mode):
 
 
 def test_destination_register_persists_every_submitted_field(client, db_mode):
-    """SP-E01/SP-E02：旧实现读 unitName（前端发的却是 companyName）→ 单位被静默
-    丢弃；jobTitle/city/contact 更是完全没有进入提交内容。逐字段回读证明不再丢。"""
+    """SP-E01/SP-E02：结构化 `EmpDestinationSubmission` 每个字段落自己的真实列，不再
+    靠自由文本工单拼接"尽量不丢"（旧实现读 unitName，前端发的却是 companyName，
+    单位被静默丢弃；jobTitle/city/contact 更是完全没有进入提交内容）。"""
     from app.db.session import get_sessionmaker
-    from app.models import CsWorkOrder
+    from app.models import EmpDestinationSubmission
 
-    _seed("EM-005", "就业五")
+    _seed_teacher()
+    sid = _seed("EM-005", "就业五")
     h = _stu_token("就业五", "EM-005")
     ok = client.post(f"{PORTAL}/destination", headers=h,
                      json={"destinationType": "SIGNED", "companyName": "回读单位",
@@ -84,19 +116,25 @@ def test_destination_register_persists_every_submitted_field(client, db_mode):
 
     db = get_sessionmaker()()
     try:
-        row = db.query(CsWorkOrder).filter(
-            CsWorkOrder.tenant_id == TID,
-            CsWorkOrder.title == "EMPLOYMENT_DESTINATION",
-        ).order_by(CsWorkOrder.id.desc()).first()
-        text = (row.detail or "") if row else ""
+        row = db.query(EmpDestinationSubmission).filter(
+            EmpDestinationSubmission.tenant_id == TID,
+            EmpDestinationSubmission.student_id == sid,
+        ).order_by(EmpDestinationSubmission.id.desc()).first()
     finally:
         db.close()
-    for value in ("回读单位", "回读岗位", "回读城市", "回读联系方式", "回读说明", "SIGNED"):
-        assert value in text, (value, text)
+    assert row is not None
+    assert row.destination_type == "SIGNED"
+    assert row.company_name == "回读单位"
+    assert row.job_title == "回读岗位"
+    assert row.city == "回读城市"
+    assert row.contact == "回读联系方式"
+    assert row.remark == "回读说明"
+    assert row.status == "SUBMITTED"
 
 
 def test_destination_register_accepts_legacy_unit_name_alias(client, db_mode):
     """unitName 作为 deprecated 兼容别名仍可用，但 canonical 名是 companyName。"""
+    _seed_teacher()
     _seed("EM-006", "就业六")
     h = _stu_token("就业六", "EM-006")
     ok = client.post(f"{PORTAL}/destination", headers=h,
@@ -106,6 +144,7 @@ def test_destination_register_accepts_legacy_unit_name_alias(client, db_mode):
 
 def test_destination_register_enforces_required_company(client, db_mode):
     """服务端按 requiredFields 校验：签约必须有单位，入伍/自由职业不要求。"""
+    _seed_teacher()
     _seed("EM-007", "就业七")
     h = _stu_token("就业七", "EM-007")
     missing = client.post(f"{PORTAL}/destination", headers=h,
@@ -180,9 +219,9 @@ def test_my_view_returns_separate_verify_and_material_facts(client, db_mode):
 
 
 def test_print(client, db_mode):
-    # SP-E08：登记表打印现在真实生成 PDF，前提是先有 EmpStudent（不是这里测的
-    # /destination 提交本身——那条通道目前是通用 CsWorkOrder 工单，不落 EmpStudent，
-    # 是 SP-E02/E04 仍未关闭的欠账，见 test_employment_destination_document.py）。
+    # SP-E08：登记表打印真实生成 PDF，前提是先有 EmpStudent。这里直接建
+    # EmpStudent 验证打印本身；/destination 提交到批准后原子写回 EmpStudent 的
+    # 完整链路见 test_employment_destination_submission.py。
     sid = _seed("EM-003", "就业三")
     from app.db.session import get_sessionmaker
     from app.models import EmpStudent

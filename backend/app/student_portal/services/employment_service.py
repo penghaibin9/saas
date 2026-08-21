@@ -7,20 +7,26 @@ Authority 边界
 本文件只做「学生 PC 视角的投影 + 学生自助提交入口」，不另建第二套业务枚举、
 不另建第二张表、不自己解释状态含义。
 
-本轮（SP-E01/E03/E07/E09/E10）关闭的问题
+本轮（SP-E01/E02/E03/E04/E07/E08/E09/E10）关闭的问题
 ────────────────────────────────────────────────────────────
 - SP-E01 学生表单发 `companyName`，旧实现却读 `unitName` → 单位名被静默丢弃。
   现在 canonical 字段是 `companyName`，`unitName` 仅作为 deprecated 兼容别名。
-- SP-E02（部分）`jobTitle/city/contact` 之前完全没有进入提交内容 → 真实数据损失。
-  现在逐字段进入结构化提交正文。**注意**：这一轮仍走通用事务申请通道
-  （CsWorkOrder 文本），尚未建立 `EmpDestinationSubmission` 结构化模型与
-  workflow 原子 apply，因此 SP-E02/E04 只算部分关闭，字段级 schema/退回重填/
-  expectedVersion 仍是欠账，不得据此宣称 S4 已完成。
+- SP-E02/E04 `destination_register()` 改走结构化
+  `app.modules.employment.services.employment_destination_submission_service`
+  （`EmpDestinationSubmission` 模型 + 真实单节点 workflow：就业老师审核）。
+  jobTitle/city/contact 现在是类型化列，不再靠拼文本+逐字段截断勉强不丢；
+  批准后在**同一事务**内原子写回 canonical `EmpStudent`
+  （destination_type/company_name/job_title）。city/contact 目前没有对应
+  EmpStudent 列，如实只落在提交记录里，不假装已建台账新列。
 - SP-E03 学生 PC 之前硬编码 `FURTHER/MILITARY`，与 canonical
   `FURTHER_STUDY/ENLISTED` 漂移，且缺 `STARTUP/FREELANCE`。现在改为服务端
   下发 canonical 选项，非 canonical code 一律 422 拒绝。
+- SP-E08 `destination_print()` 真实生成 PDF（File Center fileId + sha256），
+  不再只写打印审计留痕。
 - SP-E09 `materialStatus`（材料审核）与 `verifyStatus`（去向核验）是两个独立
-  事实，DTO 同时下发、各自带 label，前端不得互推。
+  事实，DTO 同时下发、各自带 label，前端不得互推；提交/审批批准同样不动
+  `verify_status`——核验仍必须走独立的
+  `employment_destination_verification_service`（要求正式材料证据）。
 - SP-E10 状态字典由服务端下发，前端只做 tone 映射，不再本地维护业务枚举。
 """
 from __future__ import annotations
@@ -90,6 +96,22 @@ def destination_options(user: dict) -> dict:
     }
 
 
+def _latest_submission_summary(user: dict) -> dict | None:
+    """SP-E02/E04：批准前 EmpStudent 可能根本不存在（原子写回只在批准那一刻发生），
+    所以"我的就业"必须独立于 canonical 台账查一次最近一条提交——否则学生刚提交、
+    甚至被退回，首页仍然显示"暂无就业记录"，看不出自己到底做没做过这件事。"""
+    from app.modules.employment.services.employment_destination_submission_service import (
+        list_my_submissions)
+
+    with stu._session() as db:
+        student = stu.resolve_student(db, user)
+        if not student:
+            return None
+        sid = int(student.id)
+    rows, _total = list_my_submissions(sid, page=1, page_size=1)
+    return rows[0] if rows else None
+
+
 def my(user: dict) -> dict:
     """我的就业（本人：去向/核验状态/材料/回访）。
 
@@ -97,8 +119,10 @@ def my(user: dict) -> dict:
     `verifyStatus`（去向核验）与 `materialStatus`（材料审核）两个独立事实——
     #183 之后教师端有独立的去向核验命令，学生端更不能拿材料状态去推核验状态。
     """
+    latest_submission = _latest_submission_summary(user)
     data = stu.employment_my(user) or {}
     if not data.get("hasData"):
+        data["latestSubmission"] = latest_submission
         return data
 
     destination_type = data.get("destinationType") or ""
@@ -122,6 +146,7 @@ def my(user: dict) -> dict:
         {**f, "wayLabel": canonical.L_WAY.get(f.get("way") or "", f.get("way") or "")}
         for f in (data.get("followUps") or [])
     ]
+    data["latestSubmission"] = latest_submission
     return data
 
 
@@ -143,18 +168,20 @@ def _field_text(value: str) -> str:
 def destination_register(user: dict, body: dict) -> dict:
     """就业去向登记（本人）。
 
-    仍经通用事务申请通道提交给就业管理端处理（未建 EmpDestinationSubmission
-    结构化模型，见模块 docstring 的欠账说明），但本轮修正两处真实数据问题：
+    SP-E02/E04：改走结构化 `EmpDestinationSubmission` 模型 + 真实单节点审批
+    （`employment_destination_submission_service`），不再拼自由文本工单——
+    jobTitle/city/contact 现在是真正的类型化列，不再靠逐字段截断"尽量不丢"；
+    批准后在同一事务原子写回 canonical `EmpStudent`。
 
+    本轮同时修正的真实数据问题：
     - SP-E01：canonical 字段名是 `companyName`；旧 `unitName` 只作兼容别名，
       不再出现"学生填了单位、后端读不到"的静默丢失。
-    - SP-E02（部分）：`jobTitle/city/contact` 逐字段写进提交正文，不再被丢弃。
     - SP-E03：`destinationType` 必须是 canonical code，未知值直接拒绝，
       不再让学生端提交出管理端无法识别的 `FURTHER`/`MILITARY`。
     """
     # 权限必须先于入参校验：否则非学生调用者会拿到 VALIDATION_ERROR / allowed 枚举，
     # 等于把 canonical 去向字典泄漏给无权访问的人，还把 403 降级成 422。
-    _require_student(user)
+    u = _require_student(user)
     body = body or {}
     dtype = _clean(body.get("destinationType"))
     if not dtype:
@@ -178,16 +205,18 @@ def destination_register(user: dict, body: dict) -> dict:
         label = _COMPANY_LABELS.get(dtype, "单位名称")
         raise AppException("VALIDATION_ERROR", f"{canonical.L_DEST[dtype]}必须填写{label}")
 
-    # 结构化正文：每个学生真实填写过的字段都要出现，缺一项就是数据丢失。
-    # 逐字段截断（而不是最后整体截断）：正文最终落在 CsWorkOrder.detail
-    # （String(1000)），超长时整体截断会把排在后面的字段整段吃掉，逐字段截断至少
-    # 保证每一项都还在、且能看出被截断过。
-    parts = [f"就业去向登记｜类型:{canonical.L_DEST[dtype]}({dtype})"]
-    for label, value in (("单位", company), ("岗位", job_title), ("城市", city),
-                         ("联系方式", contact), ("说明", remark)):
-        parts.append(f"{label}:{_field_text(value)}")
-    return stu.campus_service_apply(
-        user, {"serviceKey": "EMPLOYMENT_DESTINATION", "reason": "｜".join(parts)}
+    from app.modules.employment.services.employment_destination_submission_service import submit
+
+    with stu._session() as db:
+        student = stu.resolve_student(db, u)
+        if not student:
+            raise not_found("尚未建立你的学生档案，无法登记就业去向")
+        student_id, student_name = int(student.id), student.real_name
+
+    return submit(
+        student_id=student_id, student_name=student_name, destination_type=dtype,
+        company_name=company or "", job_title=job_title or "", city=city or "",
+        contact=contact or "", remark=remark or "",
     )
 
 

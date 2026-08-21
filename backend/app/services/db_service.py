@@ -546,6 +546,13 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
                 db, actor, campaign_id=msg_campaign_id,
                 approved=(action == "APPROVED"), comment=reason,
                 skip_workflow_close=True)
+        # SP-E02/E04：就业去向登记结构化提交批准/驳回时，在同一事务内原子写回 canonical
+        # EmpStudent——同 MESSAGE_CAMPAIGN 写法，act_task() 已经做完鉴权/乐观锁/状态流转，
+        # 这里只做本域副作用，不重复校验，也不 commit。
+        if inst and (inst.source_biz_type or "") == "EMPLOYMENT_DESTINATION" and action in ("APPROVED", "REJECTED"):
+            from app.modules.employment.services import employment_destination_submission_service as emp_dest_svc
+            emp_dest_svc.apply_workflow_decision_in_db(
+                db, inst, approved=(action == "APPROVED"), reason=reason)
         if action in ("APPROVED", "REJECTED"):
             audit.record_critical(
                 "审批通过" if action == "APPROVED" else "审批驳回",
