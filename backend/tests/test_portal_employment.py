@@ -1,6 +1,10 @@
 """学生 PC 门户 · 就业服务（第5期）测试（MySQL 真库 via db_mode）：
 
 我的就业查看 / 去向登记(校验+提交) / 打印回执 / 非学生拒绝。
+
+W1/P0 身份契约：会产生 workflow 的写入用例必须使用正式 User + StudentProfile +
+ACTIVE StudentAccountLink；token 同生产登录一样同时携带 `db-<User.id>` 与 studentId。
+只读用例也统一复用同一夹具，避免测试继续依赖 login_name == student_no 的历史兜底。
 """
 from __future__ import annotations
 
@@ -10,8 +14,20 @@ TID = 1000000000000000001
 
 def _stu_token(real_name, student_no):
     from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import StudentProfile, User
+
+    db = get_sessionmaker()()
+    try:
+        user = db.query(User).filter_by(tenant_id=TID, login_name=student_no).first()
+        student = db.query(StudentProfile).filter_by(tenant_id=TID, student_no=student_no).first()
+        assert user is not None and student is not None
+        uid, sid = int(user.id), int(student.id)
+    finally:
+        db.close()
     return {"Authorization": "Bearer " + create_access_token({
-        "userId": f"u-{student_no}", "realName": real_name, "studentNo": student_no,
+        "userId": f"db-{uid}", "loginName": student_no, "studentId": str(sid),
+        "realName": real_name, "studentNo": student_no,
         "userType": "STUDENT", "tid": "x", "tenantId": str(TID),
         "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "PC"})}
 
@@ -24,14 +40,27 @@ def _admin(client):
 
 def _seed(no, name):
     from app.db.session import get_sessionmaker
-    from app.models import StudentProfile
+    from app.models import StudentProfile, User
+    from app.services import student_account_link_service as link_svc
+
     db = get_sessionmaker()()
-    row = StudentProfile(tenant_id=TID, student_no=no, real_name=name, gender="F", grade="2021",
-                         current_stage="EMPLOYMENT", student_status="NORMAL", status="ACTIVE")
-    db.add(row)
-    db.commit()
-    sid = int(row.id)
-    db.close()
+    try:
+        user = User(tenant_id=TID, login_name=no, real_name=name,
+                    password_hash="test-only", user_type="STUDENT", status="ACTIVE")
+        db.add(user)
+        db.flush()
+        row = StudentProfile(tenant_id=TID, student_no=no, real_name=name, gender="F", grade="2021",
+                             current_stage="EMPLOYMENT", student_status="NORMAL", status="ACTIVE")
+        db.add(row)
+        db.flush()
+        link_svc.bind_in_session(
+            db, tenant_id=TID, student_id=int(row.id), user_id=int(user.id),
+            source="IDENTITY_IMPORT", login_name=no, student_no=no,
+            remark="portal employment test stable identity")
+        db.commit()
+        sid = int(row.id)
+    finally:
+        db.close()
     return sid
 
 
