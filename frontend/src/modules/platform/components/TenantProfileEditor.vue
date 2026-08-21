@@ -5,7 +5,8 @@
         <strong>学校基础资料维护</strong>
         <p>联系人、地区、学校类型属于基础资料；运行环境只读，不能从这里把 production 改成 demo。</p>
       </div>
-      <AppButton v-if="!editing" variant="secondary" @click="editing = true">编辑基础资料</AppButton>
+      <AppButton v-if="tenant?.canEdit && !editing" variant="secondary" @click="editing = true">编辑基础资料</AppButton>
+      <span v-else-if="tenant && !tenant.canEdit" class="tenant-profile__readonly">当前职责仅可查看</span>
     </div>
 
     <div v-if="loading" class="tenant-profile__muted">正在读取学校基础资料…</div>
@@ -71,6 +72,10 @@ export default {
       try {
         this.tenant = await platformP1ClosureApi.getTenantProfile(this.tenantId)
         this.form = pickForm(this.tenant)
+        if (!this.tenant?.canEdit) {
+          this.editing = false
+          this.reason = ''
+        }
       } catch (error) {
         this.error = error.message || '学校基础资料加载失败'
       } finally {
@@ -79,6 +84,7 @@ export default {
     },
     cancel() { this.form = pickForm(this.tenant); this.reason = ''; this.editing = false },
     async save() {
+      if (!this.tenant?.canEdit) return toast.error('当前平台主管职责仅可查看学校基础资料')
       if (!this.form.schoolType.trim()) return toast.error('学校类型不能为空')
       if (this.reason.trim().length < 5) return toast.error('变更原因不少于 5 个字')
       this.saving = true
@@ -109,6 +115,7 @@ export default {
 .tenant-profile { margin-bottom: 14px; padding: 14px 16px; border: 1px solid var(--card-b,#e5e6eb); border-radius: 12px; background: linear-gradient(180deg,rgba(37,99,235,.035),#fff 90px); }
 .tenant-profile__head { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
 .tenant-profile__head strong { color:var(--t1); font-size:15px; }.tenant-profile__head p { margin:4px 0 0; color:var(--text-secondary); font-size:12px; }
+.tenant-profile__readonly { padding:6px 9px; border-radius:8px; background:var(--fill-secondary,#f3f4f6); color:var(--text-secondary); font-size:12px; white-space:nowrap; }
 .tenant-profile__summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin-top:12px; }
 .tenant-profile__summary span { display:grid; gap:3px; padding:9px 10px; border:1px solid var(--card-b,#e5e6eb); border-radius:9px; color:var(--text-secondary); font-size:12px; background:#fff; }.tenant-profile__summary b { color:var(--t1); }
 .tenant-profile__form { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:12px; }
