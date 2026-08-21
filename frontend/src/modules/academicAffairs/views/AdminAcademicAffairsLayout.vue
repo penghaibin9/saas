@@ -15,7 +15,7 @@
         <button v-else type="button" @click="closeSemesterPilot">返回教务归档</button>
       </div>
       <AaSemesterPilotView v-if="isSemesterPilot && canManageArchive" />
-      <router-view v-else :ctx="ctx" />
+      <router-view v-if="ctx && !(isSemesterPilot && canManageArchive)" :ctx="ctx" />
     </template>
     <ErrorState
       v-else-if="error"
