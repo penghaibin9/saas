@@ -4,8 +4,18 @@ export const systemP1ClosureApi = Object.freeze({
   listActiveConfigOverrides: (domain = 'SECURITY') => request('/system/effective-config-overrides', {
     params: { domain }
   }),
-  revokeActiveConfigOverride: (overrideId, body) => request(
-    `/system/effective-config-overrides/${encodeURIComponent(overrideId)}/revoke`,
-    { method: 'POST', body }
+  restoreConfigInheritance: (configKey, overrideChain, reason) => request(
+    '/system/effective-config-overrides/restore-inheritance',
+    {
+      method: 'POST',
+      body: {
+        configKey,
+        reason,
+        overrides: (overrideChain || []).map((item) => ({
+          overrideId: item.overrideId,
+          expectedVersion: item.version
+        }))
+      }
+    }
   )
 })
