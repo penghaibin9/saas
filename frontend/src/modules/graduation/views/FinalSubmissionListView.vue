@@ -31,7 +31,8 @@
         :current-record="selectedRow"
         :detail="finalDetail"
         :files="secureVersionFiles"
-        :versions="secureVersionFiles"
+        :versions="activeVersionHistory"
+        :evidence-versions="secureVersionFiles"
         :canonical-file-version-id="canonicalFileVersionId"
         :review-ready="Boolean(finalDetail?.reviewReady) && !versionConflict"
         :expected-version="finalDetail?.materialVersion"
@@ -77,7 +78,7 @@
               <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" @click="submitReview('APPROVE')">✓ 通过当前版本</AppPermissionButton>
               <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" @click="submitReview('REJECT')">↩ 退回当前版本</AppPermissionButton>
             </div>
-            <p class="mp-note">提交 payload 始终锁定服务端 canonical <code>expectedVersion + fileVersionId</code>；Viewer 展示形式不会改变审核源版本。</p>
+            <p class="mp-note">提交 payload 始终锁定服务端 canonical <code>expectedVersion + fileVersionId</code>；切换当前附件不会改变审核源版本，历史版本只读。</p>
           </template>
           <template v-else>
             <div class="mp-kv"><span class="mp-kv__k">批阅结果</span><span class="mp-kv__v">{{ selectedRow?.statusLabel || '—' }}</span></div>
@@ -86,7 +87,7 @@
         </template>
       </GraduationDocumentReviewWorkspace>
 
-      <p class="mp-note">初稿 / 定稿顺序、查重超标、文件安全门和 canonical FileVersion 均由后端真实状态校验；历史版本只读。</p>
+      <p class="mp-note">初稿 / 定稿顺序、查重超标、文件安全门和 canonical FileVersion 均由后端真实状态校验；历史版本来自公共版本时间线，不由前端伪造。</p>
     </div>
     <AppPageGuide guide-key="graduation.gd-final-review" />
   </ModulePageShell>
@@ -137,6 +138,7 @@ export default {
       stats: null,
       isNarrow: false,
       finalDetail: null,
+      versionHistory: [],
       detailLoading: false,
       detailError: '',
       detailRequestKey: '',
@@ -145,6 +147,7 @@ export default {
       conflictPreviewFile: null,
       readerMode: 'embedded',
       previewDraftKey: '',
+      draftFileVersionId: null,
       versionConflict: null,
       tabs: [
         { value: 'PENDING_REVIEW', label: '待审阅' },
@@ -176,10 +179,18 @@ export default {
         this.versionConflict && this.conflictPreviewFile &&
         String(this.versionKey(this.conflictPreviewFile)) === String(this.activePreviewVersionId)
       ) return this.conflictPreviewFile
-      const exact = this.secureVersionFiles.find((item) => String(this.fileKey(item)) === String(this.activePreviewFileKey))
+      const current = this.secureVersionFiles.find((item) => String(this.fileKey(item)) === String(this.activePreviewFileKey))
         || this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId))
-      if (exact) return exact
+      if (current) return current
+      const historical = this.versionHistory.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId))
+      if (historical) return historical
       return this.versionConflict ? null : (this.secureVersionFiles[0] || null)
+    },
+    activeVersionHistory() {
+      const assetId = this.activePreviewFile?.assetId
+      if (assetId == null) return this.activePreviewFile ? [this.activePreviewFile] : []
+      const rows = this.versionHistory.filter((item) => String(item.assetId ?? '') === String(assetId))
+      return rows.length ? rows : [this.activePreviewFile]
     },
     previewDescriptor() { return this.activePreviewFile ? graduationMaterialCenterApi.previewDescriptor(this.activePreviewFile) : null },
     canReview() {
@@ -187,8 +198,7 @@ export default {
       return !!(
         pa && pa.visible && pa.allowed && this.ctx.writeEnabled !== false &&
         this.selectedRow?.status === 'PENDING_REVIEW' && !this.detailLoading &&
-        this.finalDetail?.reviewReady && !this.versionConflict &&
-        String(this.activePreviewVersionId ?? '') === String(this.canonicalFileVersionId ?? '')
+        this.finalDetail?.reviewReady && !this.versionConflict && this.activePreviewFile && this.activePreviewFile.isCurrent !== false
       )
     },
     reviewReason() {
@@ -199,8 +209,8 @@ export default {
       if (this.detailError) return '成果安全版本详情加载失败'
       if (this.finalDetail?.migrationRequired) return '历史材料尚未完成公共版本回填'
       if (!this.finalDetail?.reviewReady) return '当前材料版本未通过安全门禁'
-      if (this.versionConflict) return '学生已提交新版本，请切换最新版本后重新核验'
-      if (String(this.activePreviewVersionId ?? '') !== String(this.canonicalFileVersionId ?? '')) return '当前正在阅读历史版本，历史版本只读不可批阅'
+      if (this.versionConflict) return '学生已提交新版本，请切换最新 canonical version 后重新核验'
+      if (this.activePreviewFile?.isCurrent === false) return '当前正在阅读历史版本，历史版本只读不可批阅'
       return ''
     },
     pageStartIndex() { return (this.page - 1) * this.pageSize },
@@ -252,6 +262,7 @@ export default {
     tabCount(value) { if (!this.stats || value === '' || value === 'NOT_SUBMITTED') return null; return this.statusCount(value) },
     resetDetail() {
       this.finalDetail = null
+      this.versionHistory = []
       this.detailLoading = false
       this.detailError = ''
       this.detailRequestKey = ''
@@ -259,9 +270,10 @@ export default {
       this.activePreviewVersionId = null
       this.conflictPreviewFile = null
       this.previewDraftKey = ''
+      this.draftFileVersionId = null
       this.versionConflict = null
     },
-    draftKey(row = this.selectedRow, fileVersionId = this.activePreviewVersionId ?? this.canonicalFileVersionId) {
+    draftKey(row = this.selectedRow, fileVersionId = this.draftFileVersionId ?? this.canonicalFileVersionId) {
       if (!row?.id || fileVersionId == null) return ''
       return `gd-final-review-draft:${row.id}:${fileVersionId}`
     },
@@ -313,6 +325,15 @@ export default {
       this.$router.replace({ query: { ...this.$route.query, sel: this.selKey } })
       this.loadSelectedDetail()
     },
+    async loadVersionHistory(recordId, requestKey) {
+      try {
+        const data = await graduationMaterialCenterApi.finalVersions(recordId)
+        if (this.detailRequestKey !== requestKey) return
+        this.versionHistory = graduationMaterialCenterApi.normalizeVersions(data?.items || [])
+      } catch {
+        if (this.detailRequestKey === requestKey) this.versionHistory = [...this.secureVersionFiles]
+      }
+    },
     async loadSelectedDetail() {
       const row = this.selectedRow
       if (!row || row.status === 'NOT_SUBMITTED' || !row.id) { this.resetDetail(); return }
@@ -330,13 +351,17 @@ export default {
       this.detailLoading = false
       if (res.code !== 0) {
         this.finalDetail = null
+        this.versionHistory = []
         this.detailError = res.message || '成果安全版本详情加载失败'
         return
       }
       this.finalDetail = res.data
+      await this.loadVersionHistory(row.id, requestKey)
+      if (this.detailRequestKey !== requestKey) return
       const latest = this.canonicalFileVersionId
       if (oldCanonicalVersionId != null && latest != null && String(oldCanonicalVersionId) !== String(latest)) {
         this.versionConflict = { old: oldCanonicalVersionId, latest }
+        this.draftFileVersionId = oldCanonicalVersionId
         this.activePreviewVersionId = oldActiveVersionId ?? oldCanonicalVersionId
         this.conflictPreviewFile = oldActiveFile
         this.activePreviewFileKey = oldActiveFile ? this.fileKey(oldActiveFile) : null
@@ -345,6 +370,7 @@ export default {
       }
       this.versionConflict = null
       this.conflictPreviewFile = null
+      this.draftFileVersionId = latest
       this.activePreviewVersionId = latest
       const active = this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId)) || this.secureVersionFiles[0] || null
       this.activePreviewFileKey = active ? this.fileKey(active) : null
@@ -353,13 +379,21 @@ export default {
     selectPreviewFile(item) {
       if (!item) return
       const carriedDraft = this.comment
+      const previousDraftKey = this.draftKey()
       this.saveCommentDraft()
       this.activePreviewFileKey = this.fileKey(item)
       this.activePreviewVersionId = this.versionKey(item)
       this.conflictPreviewFile = null
-      if (this.versionConflict && String(this.activePreviewVersionId) === String(this.canonicalFileVersionId) && this.finalDetail?.reviewReady) this.versionConflict = null
-      this.restoreCommentDraft(carriedDraft)
-      this.saveCommentDraft()
+      if (this.versionConflict && String(this.activePreviewVersionId) === String(this.canonicalFileVersionId) && this.finalDetail?.reviewReady) {
+        this.versionConflict = null
+        this.draftFileVersionId = this.canonicalFileVersionId
+      }
+      if (this.draftKey() !== previousDraftKey) {
+        this.restoreCommentDraft(carriedDraft)
+        this.saveCommentDraft()
+      } else {
+        this.comment = carriedDraft
+      }
     },
     selectPreviewVersion(item) { this.selectPreviewFile(item) },
     async downloadActivePreview() {
