@@ -211,7 +211,7 @@ export default {
         this.retentionExpired &&
         Number(this.preview?.counts?.legalHoldFileCount || 0) === 0 &&
         this.preview?.registry?.complete &&
-        ['RETENTION', 'PURGE_READY', 'BLOCKED', 'FAILED'].includes(this.job.state)
+        ['RETENTION', 'PURGE_READY', 'BLOCKED', 'FAILED', 'PURGING'].includes(this.job.state)
       )
     },
     mfaGrantValid() {
