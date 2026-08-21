@@ -17,7 +17,7 @@ entries:
     import: false
     export: false
     archive: false
-    status: partial
+    status: needs-verification
     risk: P0
     targetPhase: '10'
-    notes: W0 freezes document-preview-contract/v1. W1 delivers Admin/Teacher PC AppDocumentViewer with PDF/Image adapters, lazy rendering, bounded ticket refresh, generation cancellation and resource cleanup. W2 delivers the first Graduation Teacher PC Gold integration for final and proposal review through the existing graduation business-ticket boundary, canonical FileVersion lock, version-conflict fail-closed and per-version comment drafts. Student PC, miniapp reader-return and later Office/DOCX waves remain outside this partial status.
+    notes: W0 freezes document-preview-contract/v1. W1 delivers Admin/Teacher PC AppDocumentViewer with PDF/Image adapters, lazy rendering, bounded ticket refresh, generation cancellation and resource cleanup. W2 delivers Graduation Teacher PC Gold integrations for final review, proposal review and the same-page Material Center fullscreen Reader through the existing graduation business-ticket boundary, canonical FileVersion lock, exact historical FileVersion reading, version-conflict fail-closed and per-version comment drafts. The shared four-client platform remains needs-verification until Student PC W3 and miniapp reader-return W4 are completed; later Office/DOCX waves also remain outside this status.
