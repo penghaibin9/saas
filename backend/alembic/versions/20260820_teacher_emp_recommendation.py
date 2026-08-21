@@ -3,8 +3,10 @@
 Revision ID: 20260820_teacher_emp_reco
 Revises: 20260818_acad_bc_final
 
-Copied from the already-merged Teacher V3 line so this PR can reconcile both
-unreleased schema branches before it is merged into main.
+The Teacher branch was originally cut before Academic B/C integration converged. PR #184 is
+now in main and ``20260818_acad_bc_final`` is the canonical single Alembic head, so this still-
+unreleased Teacher migration is rebased onto that head instead of creating a permanent parallel
+lineage/merge node. No deployed database can reference this revision while PR #183 remains Draft.
 """
 from __future__ import annotations
 
