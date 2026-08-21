@@ -131,12 +131,15 @@ def build_todo_action(todo: dict | None) -> dict | None:
 
 
 def build_message_action(
-    action_key: Optional[str], action_params: Optional[dict] = None, *, withdrawn: bool = False
+    action_key: Optional[str], action_params: Optional[dict] = None, *,
+    withdrawn: bool = False, expired: bool = False,
 ) -> dict | None:
     """把消息 actionKey + actionParams 归一成 StudentPcActionDescriptor。
 
     未登记 key / 缺必需参数由 message_action_registry.validate_action() 判定，这里
     转成 fail-closed 的禁用态，而不是让前端拿着一个猜出来的路由乱跳（SP-H06）。
+    撤回与过期都属于“消息当前已失效”：即使列表旧快照曾经有合法 target，详情重验
+    后也必须投影成无 target 的禁用 action，防止 TOCTOU 导航。
     """
     key = _clean(action_key)
     if not key:
@@ -145,6 +148,11 @@ def build_message_action(
         return _blocked(
             source_biz_type=None, source_biz_id=None, record_id=None,
             reason="该消息已撤回", action_key=key,
+        )
+    if expired:
+        return _blocked(
+            source_biz_type=None, source_biz_id=None, record_id=None,
+            reason="该消息已过期", action_key=key,
         )
 
     try:
