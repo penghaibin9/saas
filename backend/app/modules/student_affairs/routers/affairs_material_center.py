@@ -1,15 +1,17 @@
-"""阶段 5 学工材料总览、旧数据回填与真实档案 Manifest API。"""
+"""阶段 5 学工材料总览、旧数据回填、版本化 Reader 与真实档案 Manifest API。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, Path, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.core.exceptions import not_found
+from app.api.v1.file_contract import validated_local_file_response
+from app.core.exceptions import AppException, not_found
 from app.core.permissions import has_permission
 from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.student_affairs.services import affairs_material_center_service as center
+from app.services import affairs_material_preview_access as material_tickets
 from app.services.db_service import _tid, session
 
 router = APIRouter(tags=["学工中心·公共材料与档案"])
@@ -57,6 +59,62 @@ def material_item_suggestions(
 @router.post("/student-affairs/material-center/backfill", summary="幂等回填旧学工材料与附件")
 def material_backfill(body: BackfillBody, user=Depends(get_current_user)):
     return success(center.backfill_legacy(user, limit=body.limit), message="学工材料回填批次已完成")
+
+
+@router.post("/student-affairs/material-center/files/{file_id}/ticket", summary="签发学工材料版本绑定预览/下载票据")
+def material_file_ticket(
+    file_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    raw_version_id = str((body or {}).get("fileVersionId") or "").strip()
+    if not raw_version_id.isdigit():
+        raise AppException("VALIDATION_ERROR", "fileVersionId 不能为空")
+    action = str((body or {}).get("action") or "preview")
+    return success(material_tickets.issue_ticket(file_id, int(raw_version_id), action, user))
+
+
+@router.get("/student-affairs/material-center/files/{file_id}/preview", summary="按不可变 FileVersion 站内预览学工材料")
+def preview_material(
+    file_id: int,
+    ticket: str = Query(...),
+    user=Depends(get_current_user),
+):
+    path, filename, version_id = material_tickets.consume_ticket(file_id, "preview", ticket, user)
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        audit_action="STUDENT_AFFAIRS_VERSIONED_MATERIAL_PREVIEW",
+        audit_target=f"student-affairs-file:{file_id}:version:{version_id}",
+        inline=True,
+        audit_detail={
+            "fileId": str(file_id),
+            "fileVersionId": str(version_id),
+            "surface": "STAFF_PC",
+            "businessTicket": True,
+        },
+    )
+
+
+@router.get("/student-affairs/material-center/files/{file_id}/download", summary="按不可变 FileVersion 下载学工材料")
+def download_material(
+    file_id: int,
+    ticket: str = Query(...),
+    user=Depends(get_current_user),
+):
+    path, filename, version_id = material_tickets.consume_ticket(file_id, "download", ticket, user)
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        audit_action="STUDENT_AFFAIRS_VERSIONED_MATERIAL_DOWNLOAD",
+        audit_target=f"student-affairs-file:{file_id}:version:{version_id}",
+        audit_detail={
+            "fileId": str(file_id),
+            "fileVersionId": str(version_id),
+            "surface": "STAFF_PC",
+            "businessTicket": True,
+        },
+    )
 
 
 @router.get("/student-affairs/material-center/students/{student_id}/manifest", summary="查看学生最新真实档案清单")
