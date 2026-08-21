@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -86,8 +87,10 @@ def canonical_evidence(payload: dict) -> dict:
     }
     if status == "PASSED" and not result["finishedAt"]:
         raise AppException("VALIDATION_ERROR", "PASSED 机器证据必须有 finishedAt")
-    if status == "PASSED" and run_type in {"BACKUP", "RESTORE", "PITR"} and not result["manifestSha256"]:
-        raise AppException("VALIDATION_ERROR", "PASSED 机器证据必须包含 manifestSha256")
+    if status == "PASSED" and run_type in {"BACKUP", "RESTORE", "PITR"}:
+        digest = str(result["manifestSha256"] or "")
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise AppException("VALIDATION_ERROR", "PASSED 机器证据必须包含64位 manifest SHA256")
     return result
 
 
@@ -95,6 +98,17 @@ def evidence_sha256(payload: dict) -> str:
     canonical = canonical_evidence(payload)
     raw = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _require_metric(evidence: dict, actual_key: str, target_key: str, label: str) -> None:
+    actual = evidence.get(actual_key)
+    target = evidence.get(target_key)
+    if actual is None or target is None:
+        raise AppException("VALIDATION_ERROR", f"PASSED 机器证据必须包含 {label} 实际值与目标值")
+    if int(actual) < 0 or int(target) <= 0:
+        raise AppException("VALIDATION_ERROR", f"PASSED 机器证据的 {label} 数值无效")
+    if int(actual) > int(target):
+        raise AppException("VALIDATION_ERROR", f"PASSED 证据的 {label} 实际值超过目标")
 
 
 def _passed_contract(evidence: dict) -> None:
@@ -119,12 +133,12 @@ def _passed_contract(evidence: dict) -> None:
     missing = [key for key in required if assertions.get(key) is not True]
     if missing:
         raise AppException("VALIDATION_ERROR", f"PASSED 机器证据缺少通过断言：{','.join(missing)}")
-    if evidence["rpoSeconds"] is not None and evidence["targetRpoSeconds"] is not None:
-        if evidence["rpoSeconds"] > evidence["targetRpoSeconds"]:
-            raise AppException("VALIDATION_ERROR", "PASSED 证据的 RPO 实际值超过目标")
-    if evidence["rtoSeconds"] is not None and evidence["targetRtoSeconds"] is not None:
-        if evidence["rtoSeconds"] > evidence["targetRtoSeconds"]:
-            raise AppException("VALIDATION_ERROR", "PASSED 证据的 RTO 实际值超过目标")
+
+    # GREEN is meaningful only when freshness/recovery objectives were actually
+    # measured. Missing metrics must never be interpreted as "no breach".
+    _require_metric(evidence, "rpoSeconds", "targetRpoSeconds", "RPO")
+    if evidence["runType"] in {"RESTORE", "PITR"}:
+        _require_metric(evidence, "rtoSeconds", "targetRtoSeconds", "RTO")
 
 
 def record_machine_evidence(payload: dict) -> dict:
@@ -208,12 +222,14 @@ def machine_health() -> dict:
         pitr = _state(pitr_row, freshness=RESTORE_FRESHNESS, now=now) if pitr_row else {
             "status": "UNKNOWN", "stale": True, "lastRun": None,
         }
-    if backup["status"] == "GREEN" and restore["status"] == "GREEN":
-        overall = "GREEN"
-    elif backup["status"] == "UNKNOWN" or restore["status"] == "UNKNOWN":
-        overall = "UNKNOWN"
-    else:
+    # A known failed/stale authority must dominate missing evidence. UNKNOWN is
+    # reserved for the case where no dimension is RED but evidence is incomplete.
+    if backup["status"] == "RED" or restore["status"] == "RED":
         overall = "RED"
+    elif backup["status"] == "GREEN" and restore["status"] == "GREEN":
+        overall = "GREEN"
+    else:
+        overall = "UNKNOWN"
     return {
         "status": overall,
         "authority": "MACHINE_ONLY",
