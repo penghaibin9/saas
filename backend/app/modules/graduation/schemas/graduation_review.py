@@ -34,6 +34,11 @@ class ReviewAssignRequest(BaseModel):
 class ReviewSubmitRequest(BaseModel):
     score: int = Field(..., ge=0, le=100)
     opinion: str = Field(..., min_length=2, max_length=2000)
+    # W7.1 transition contract: active legacy callers may omit these temporarily, but whenever
+    # supplied the service performs exact optimistic-version/FileVersion validation.  All tasks,
+    # including legacy callers, are still verified against the server-frozen snapshot.
+    expectedVersion: Optional[int] = Field(default=None, ge=0)
+    fileVersionId: Optional[int] = Field(default=None, ge=1)
 
 
 class ReviewReturnRequest(BaseModel):
