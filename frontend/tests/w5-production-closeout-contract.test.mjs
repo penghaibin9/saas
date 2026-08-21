@@ -39,8 +39,14 @@ test('W5 semester pilot is server-authoritative, real-data-only and six-stage', 
   assert.doesNotMatch(semesterService, /create_fake|seed_mock|generate_demo/i)
 })
 
-test('W5 SLA transparency reads one backend truth and does not invent browser due logic', () => {
-  assert.match(studentLayout, /StudentAffairsSlaStrip kind="both"/)
+test('W5 SLA transparency reads one backend truth, is permission-scoped, and does not invent browser due logic', () => {
+  assert.match(studentLayout, /StudentAffairsSlaStrip/)
+  assert.match(studentLayout, /v-if="showSla"/)
+  assert.match(studentLayout, /kind="both"/)
+  assert.match(studentLayout, /studentAffairs\.stats\.view/)
+  assert.match(studentLayout, /studentAffairs\.dashboard\.view/)
+  assert.match(studentLayout, /startsWith\('\/admin\/student-affairs\/risk'\)/)
+  assert.match(studentLayout, /startsWith\('\/admin\/student-affairs\/leave'\)/)
   assert.match(slaStrip, /request\('\/student-affairs\/sla-config'\)/)
   assert.match(slaStrip, /dueAt \/ overdue \/ 升级等状态以后端事实为准/)
   assert.doesNotMatch(slaStrip, /Date\.now\(|new Date\([^)]*due|setTimeout\(/)
