@@ -181,6 +181,10 @@
                 <text class="rv__att-dl">安全预览</text>
               </view>
               <text v-if="!detail.reviewReady" class="rv__warn">文件仍在扫描、已隔离或版本已变化，当前不能审核通过</text>
+              <view v-if="previewReturnPending" class="rv__preview-confirm">
+                <text class="rv__warn">原生预览已打开。返回批阅页后需重新确认当前服务端版本，确认完成前审核按钮保持锁定。</text>
+                <button class="rv__confirm" :disabled="acting" @click.stop="revalidatePreviewContext()">确认当前版本</button>
+              </view>
               <text v-if="previewVersionConflict" class="rv__warn rv__preview-conflict">{{ previewVersionMessage || '预览期间材料版本已变化，已阻止旧版审核，请重新查看最新版本。' }}</text>
             </view>
             <view v-else-if="detail.attachmentsList && detail.attachmentsList.length" class="rv__block">
@@ -251,7 +255,7 @@ export default {
       loaded: { midterm: false, peer: false, defense: false, grade: false },
       mode: 'list', reviewKind: '', queue: [], queueIndex: 0, detail: null, detailState: 'loading',
       peerScore: '', peerOpinion: '',
-      previewVersionConflict: false, previewVersionMessage: '', previewContext: null,
+      previewVersionConflict: false, previewVersionMessage: '', previewContext: null, previewReturnPending: false,
       _bootKind: ''
     }
   },
@@ -263,7 +267,13 @@ export default {
     this.load()
     if (this.tab !== 'review') this.switchTab(this.tab)
   },
-  onShow() { if (this._entered) { if (this.mode === 'list') this.reloadTab() } this._entered = true },
+  onShow() {
+    if (this._entered) {
+      if (this.mode === 'list') this.reloadTab()
+      else if (this.previewReturnPending) this.revalidatePreviewContext()
+    }
+    this._entered = true
+  },
   onPullDownRefresh() {
     if (this.state === 'loading' || this.mode !== 'list') { uni.stopPullDownRefresh(); return }
     this.reloadTab(() => uni.stopPullDownRefresh())
@@ -297,7 +307,7 @@ export default {
     canAct() {
       const needsSafeVersion = this.reviewKind === 'proposal' || this.reviewKind === 'final'
       return !this.acting && !!this.detail && this.detailState === 'ready'
-        && (!needsSafeVersion || (this.detail.reviewReady === true && !this.previewVersionConflict))
+        && (!needsSafeVersion || (this.detail.reviewReady === true && !this.previewVersionConflict && !this.previewReturnPending))
     }
   },
   methods: {
@@ -404,7 +414,7 @@ export default {
     exitReview() {
       this.mode = 'list'; this.detail = null; this.detailState = 'loading'
       this.peerScore = ''; this.peerOpinion = ''
-      this.previewVersionConflict = false; this.previewVersionMessage = ''; this.previewContext = null
+      this.previewVersionConflict = false; this.previewVersionMessage = ''; this.previewContext = null; this.previewReturnPending = false
       this.reloadTab()
     },
     pickPeerOpinionChip(t) { this.peerOpinion = this.peerOpinion ? this.peerOpinion + '\n' + t : t },
@@ -427,7 +437,7 @@ export default {
       const it = this.current
       if (!it) { this.detailState = 'empty'; return }
       this.peerScore = ''; this.peerOpinion = ''
-      this.previewVersionConflict = false; this.previewVersionMessage = ''; this.previewContext = null
+      this.previewVersionConflict = false; this.previewVersionMessage = ''; this.previewContext = null; this.previewReturnPending = false
       if (this.reviewKind === 'peer') {
         this.detail = { ...it }
         if (it.status === 'RETURNED') { this.peerScore = it.score != null ? String(it.score) : ''; this.peerOpinion = it.opinion || '' }
@@ -532,6 +542,44 @@ export default {
         .then(() => { toast('评阅已提交'); this.afterAction() })
         .catch((e) => { toast(normalizeError(e).text) }).finally(() => { this.acting = false })
     },
+    async revalidatePreviewContext() {
+      const context = this.previewContext
+      if (!context) { this.previewReturnPending = false; return }
+      if (context.kind !== 'proposal' && context.kind !== 'final') { this.previewReturnPending = false; return }
+      if (this.reviewKind !== context.kind || this.queueIndex !== context.queueIndex || String(this.curId() || '') !== context.recordId) {
+        this.previewVersionConflict = true
+        this.previewVersionMessage = '预览返回时审核上下文已变化，已阻止提交，请重新进入当前待办。'
+        this.previewReturnPending = false
+        toast(this.previewVersionMessage)
+        return
+      }
+      const api = this.detailApi(context.kind, this.current)
+      if (!api) {
+        this.previewVersionConflict = true
+        this.previewVersionMessage = '无法确认当前材料版本，审核保持锁定。'
+        this.previewReturnPending = false
+        return
+      }
+      try {
+        const fresh = await api()
+        const freshIdentity = reviewIdentity(context.kind, context.recordId, fresh || {})
+        this.detail = fresh
+        if (freshIdentity !== context.beforeIdentity || fresh.reviewReady !== true) {
+          this.previewVersionConflict = true
+          this.previewVersionMessage = '预览期间学生已提交新版本或文件状态变化，旧版审核已锁定，请重新查看最新版本。'
+          toast(this.previewVersionMessage)
+        } else {
+          this.previewVersionConflict = false
+          this.previewVersionMessage = ''
+        }
+      } catch (e) {
+        this.previewVersionConflict = true
+        this.previewVersionMessage = '预览返回后未能确认当前服务端版本，审核保持锁定，请重试确认。'
+        toast(this.previewVersionMessage)
+      } finally {
+        this.previewReturnPending = false
+      }
+    },
     async openVersion(item) {
       const fileId = item && item.fileId
       if (!fileId) { toast('附件无效'); return }
@@ -545,6 +593,7 @@ export default {
         sourceSha: item.sourceSha256 || item.sourceSha || item.sha256
       })
       this.previewContext = { kind, recordId, queueIndex, beforeIdentity, selectedIdentity }
+      this.previewReturnPending = kind === 'proposal' || kind === 'final'
       try {
         await fileSdk.openAuthorized({
           fileId,
@@ -555,27 +604,15 @@ export default {
           openPath: `/mobile/graduation/material-center/files/${encodeURIComponent(fileId)}/preview`,
           action: 'preview'
         })
-        if (kind !== 'proposal' && kind !== 'final') return
-        if (this.reviewKind !== kind || this.queueIndex !== queueIndex || String(this.curId() || '') !== recordId) {
-          this.previewVersionConflict = true
-          this.previewVersionMessage = '预览返回时审核上下文已变化，已阻止提交，请重新进入当前待办。'
-          toast(this.previewVersionMessage)
-          return
+        if (kind !== 'proposal' && kind !== 'final') {
+          this.previewReturnPending = false
+          this.previewContext = null
         }
-        const api = this.detailApi(kind, this.current)
-        if (!api) return
-        const fresh = await api()
-        const freshIdentity = reviewIdentity(kind, recordId, fresh || {})
-        this.detail = fresh
-        if (freshIdentity !== beforeIdentity || fresh.reviewReady !== true) {
-          this.previewVersionConflict = true
-          this.previewVersionMessage = '预览期间学生已提交新版本或文件状态变化，旧版审核已锁定，请重新查看最新版本。'
-          toast(this.previewVersionMessage)
-          return
-        }
-        this.previewVersionConflict = false
-        this.previewVersionMessage = ''
-      } catch (e) { toast(normalizeError(e).text || '材料尚未通过安全扫描或无权限') }
+      } catch (e) {
+        this.previewReturnPending = false
+        this.previewContext = null
+        toast(normalizeError(e).text || '材料尚未通过安全扫描或无权限')
+      }
     },
     downloadAtt(a) { return this.openVersion(a) },
     addGuidance(g) {
@@ -643,6 +680,9 @@ export default {
 .rv__text { display: block; font-size: var(--font-size-base); color: var(--text-primary); line-height: 1.6; white-space: pre-wrap; }
 .rv__text--warn { color: var(--danger-600); }
 .rv__warn { display: block; color: var(--danger-600); }
+.rv__preview-confirm { margin-top: var(--space-2); padding: var(--space-2); border-radius: var(--radius-sm); background: var(--warning-50); }
+.rv__confirm { min-height: 36px; margin-top: var(--space-2); padding: 0 var(--space-3); border: 1px solid var(--teacher-300, var(--border-base)); border-radius: var(--radius-md); background: var(--bg-card); color: var(--teacher-700); font-size: var(--font-size-sm); }
+.rv__confirm::after { border: none; }
 .rv__preview-conflict { margin-top: var(--space-2); padding: var(--space-2); border-radius: var(--radius-sm); background: var(--danger-50); }
 .rv__ver { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 3px; line-height: 1.5; }
 .rv__input { height: 44px; border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 0 var(--space-3); font-size: var(--font-size-base); box-sizing: border-box; }
