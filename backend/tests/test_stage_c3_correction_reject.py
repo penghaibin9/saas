@@ -1,7 +1,9 @@
 """W1 formal reject path for immutable post-archive corrections."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from threading import Barrier
 
 import pytest
 
@@ -135,6 +137,13 @@ def test_reject_requires_different_reviewer_and_creates_no_fact_or_manifest():
     created = _create_case(service, creator, batch_id, grade_id)
     case_id = int(created["caseId"])
 
+    pending_detail = review.get_correction_case(creator, case_id)
+    assert pending_detail["originalOfficialFact"]["factId"] == str(grade_id)
+    assert pending_detail["originalOfficialFact"]["score"] == 72
+    assert pending_detail["proposedOfficialFact"]["score"] == 78
+    assert pending_detail["proposedOfficialFact"]["factId"] is None
+    assert pending_detail["resultingOfficialFact"] is None
+
     _activate(creator)
     with pytest.raises(AppException) as same_actor:
         review.reject_correction_case(creator, case_id, reason="申请人不能驳回自己的纠错申请")
@@ -157,7 +166,8 @@ def test_reject_requires_different_reviewer_and_creates_no_fact_or_manifest():
     assert "补充材料" in detail["rejectReason"]
     assert detail["originalOfficialFact"]["factId"] == str(grade_id)
     assert detail["originalOfficialFact"]["score"] == 72
-    assert detail["proposedOfficialFact"]["score"] == 78
+    assert detail["proposedOfficialFact"] is None
+    assert detail["resultingOfficialFact"] is None
 
     verified = service.verify_manifest(reviewer, batch_id)
     assert verified["ok"] is True
@@ -234,6 +244,93 @@ def test_reject_is_tenant_scoped_and_cross_tenant_case_id_is_invisible():
         assert case.status == "PENDING_SECOND_APPROVAL"
         assert case.rejected_by is None and case.reject_reason is None
         assert len(manifests) == 1
+    finally:
+        db.close()
+        set_current_user(None)
+        set_tenant(None)
+
+
+@pytest.mark.usefixtures("db_mode")
+def test_competing_approve_and_reject_are_serialized_to_one_terminal_decision():
+    """SELECT FOR UPDATE makes approve-vs-reject a single-winner state transition."""
+    from app.models import AcademicGrade, ArchiveManifest, PostArchiveCorrectionCase
+    from app.modules.academic_affairs.services import academic_affairs_archive_correction_review_service as review
+    from app.modules.academic_affairs.services import academic_affairs_archive_service as service
+
+    creator = _user(43001, "stage_c3_concurrent_creator")
+    approver = _user(43002, "stage_c3_concurrent_approver")
+    rejecter = _user(43003, "stage_c3_concurrent_rejecter")
+    _activate(creator)
+    batch_id, old_grade_id, _manifest_id, _manifest_hash = _seed_grade_archive()
+    created = _create_case(service, creator, batch_id, old_grade_id)
+    case_id = int(created["caseId"])
+    barrier = Barrier(2)
+
+    def approve_worker():
+        _activate(approver)
+        barrier.wait(timeout=10)
+        try:
+            return ("APPROVE", service.approve_correction_case(approver, case_id)["status"])
+        except AppException as exc:
+            return ("APPROVE_ERROR", exc.code)
+        finally:
+            set_current_user(None)
+            set_tenant(None)
+
+    def reject_worker():
+        _activate(rejecter)
+        barrier.wait(timeout=10)
+        try:
+            return (
+                "REJECT",
+                review.reject_correction_case(
+                    rejecter,
+                    case_id,
+                    reason="并发二审竞争：本复核人决定驳回且不得覆盖另一终态",
+                )["status"],
+            )
+        except AppException as exc:
+            return ("REJECT_ERROR", exc.code)
+        finally:
+            set_current_user(None)
+            set_tenant(None)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = [pool.submit(approve_worker).result(), pool.submit(reject_worker).result()]
+
+    terminal = [result for result in results if result[1] in {"APPLIED", "REJECTED"}]
+    conflicts = [result for result in results if result[1] == "APPROVAL_VERSION_CONFLICT"]
+    assert len(terminal) == 1, results
+    assert len(conflicts) == 1, results
+
+    _activate(approver)
+    db = get_sessionmaker()()
+    try:
+        case = db.get(PostArchiveCorrectionCase, case_id)
+        old_grade = db.get(AcademicGrade, old_grade_id)
+        grades = db.query(AcademicGrade).filter(
+            AcademicGrade.tenant_id == TID,
+            AcademicGrade.acad_student_id == old_grade.acad_student_id,
+        ).order_by(AcademicGrade.id).all()
+        manifests = db.query(ArchiveManifest).filter(
+            ArchiveManifest.tenant_id == TID,
+            ArchiveManifest.archive_batch_id == batch_id,
+        ).order_by(ArchiveManifest.version_no).all()
+
+        assert case.status in {"APPLIED", "REJECTED"}
+        if case.status == "APPLIED":
+            assert case.second_approved_by == 43002
+            assert case.rejected_by is None and case.reject_reason is None
+            assert case.official_fact_id is not None and case.resulting_manifest_id is not None
+            assert len(grades) == 2
+            assert len(manifests) == 2
+            assert manifests[1].supersedes_id == manifests[0].id
+        else:
+            assert case.rejected_by == 43003 and case.reject_reason
+            assert case.second_approved_by is None and case.official_fact_id is None
+            assert case.resulting_manifest_id is None
+            assert len(grades) == 1 and grades[0].record_status == "ACTIVE"
+            assert len(manifests) == 1
     finally:
         db.close()
         set_current_user(None)
