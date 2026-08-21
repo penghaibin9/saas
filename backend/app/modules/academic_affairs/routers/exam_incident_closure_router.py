@@ -103,6 +103,9 @@ def issue_formal_exam_room_print(
 def exam_incident_workbench(
     batchId: Optional[int] = Query(None),
     view: str = Query("ALL", pattern="^(ALL|OPEN|CLOSED|VOIDED)$"),
+    incidentType: Optional[str] = Query(None, pattern="^(ABSENT|DISCIPLINE|DISCIPLINE_VIOLATION|CHEAT|OTHER)$"),
+    keyword: Optional[str] = Query(None, max_length=100),
+    examDate: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     page: int = Query(1, ge=1),
     pageSize: int = Query(50, ge=1, le=100),
     user=Depends(require_permission("academicAffairs.exam.view")),
@@ -114,6 +117,9 @@ def exam_incident_workbench(
                 user,
                 batch_id=batchId,
                 view=view,
+                incident_type=incidentType,
+                keyword=keyword,
+                exam_date=examDate,
                 page=page,
                 page_size=pageSize,
             )
