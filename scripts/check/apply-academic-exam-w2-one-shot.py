@@ -74,8 +74,40 @@ def preserve_public_source_contract() -> None:
     )
 
 
+def tighten_handoff_semantics() -> None:
+    service = Path("backend/app/modules/academic_affairs/services/academic_affairs_exam_incident_lifecycle_service.py")
+    replace_once(
+        service,
+        "    return reason\n",
+        "    return ' '.join(reason.split()).replace(';', '；')\n",
+    )
+    replace_once(
+        service,
+        '''        elif action == "HANDOFF":\n            if incident_type == "ABSENT":\n                raise AppException("VALIDATION_ERROR", "缺考异常应执行 CLOSE，不使用处分线索移交")''',
+        '''        elif action == "HANDOFF":\n            if incident_type not in {"DISCIPLINE", "DISCIPLINE_VIOLATION", "CHEAT"}:\n                raise AppException("VALIDATION_ERROR", "仅违纪类异常可 HANDOFF 到处分/后续处理线索")''',
+    )
+
+    component = Path("frontend/src/modules/academicAffairs/components/AaExamIncidentWorkbench.vue")
+    replace_once(
+        component,
+        '''          <label v-if="detail.incidentType !== 'ABSENT' && canWriteCurrent" class="aeiw-field handoff-ref">''',
+        '''          <label v-if="isDiscipline(detail.incidentType) && canWriteCurrent" class="aeiw-field handoff-ref">''',
+    )
+    replace_once(
+        component,
+        '''            v-if="detail.incidentType !== 'ABSENT'"''',
+        '''            v-if="isDiscipline(detail.incidentType)"''',
+    )
+    replace_once(
+        component,
+        '''  methods: {\n    incidentTypeLabel(value) { return TYPE_LABEL[String(value || '').toUpperCase()] || value || '其他' },''',
+        '''  methods: {\n    isDiscipline(value) { return ['DISCIPLINE', 'DISCIPLINE_VIOLATION', 'CHEAT'].includes(String(value || '').toUpperCase()) },\n    incidentTypeLabel(value) { return TYPE_LABEL[String(value || '').toUpperCase()] || value || '其他' },''',
+    )
+
+
 if __name__ == "__main__":
     patch_console()
     patch_existing_regression()
     preserve_public_source_contract()
+    tighten_handoff_semantics()
     print("W2 one-shot owner/compatibility patch applied")
