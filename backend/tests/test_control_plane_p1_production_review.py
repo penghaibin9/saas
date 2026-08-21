@@ -2,8 +2,9 @@
 
 These tests focus on the security boundaries discovered during pre-merge review rather
 than page cosmetics: identity type separation, final-admin protection, future-grant
-fail-closed behavior, legacy duplicate authority, profile field safety, signed org
-preview receipts, and deterministic route replacement declarations.
+fail-closed behavior, legacy duplicate authority, profile field safety, delegated
+customer-success authority, serializable identity writes, signed org preview receipts,
+and deterministic route replacement declarations.
 """
 from __future__ import annotations
 
@@ -208,21 +209,35 @@ def test_org_preview_receipt_is_actor_bound_and_expires():
     assert "超过 5 分钟" in exc.value.message
 
 
-def test_router_source_replaces_sensitive_p1_routes_but_preserves_legacy_tenant_edit():
+def test_router_source_replaces_all_p1_authorities_without_hijacking_legacy_tenant_update():
     source = Path("app/api/v1/router.py").read_text(encoding="utf-8")
     assert '_sig("/system/context", "GET")' in source
+    assert '_sig("/system/accounts/{user_id}/repair-binding", "POST")' in source
+    assert '_sig("/system/accounts/{user_id}/unbind", "POST")' in source
     assert '_sig("/system/role-assignments", "POST")' in source
     assert '_sig("/system/org-nodes/{node_id}/status", "PUT")' in source
-    assert '_sig("/platform/trainings", "POST")' in source
-    assert '_sig("/platform/renewal-tasks/{task_id}/transition", "POST")' in source
+    for signature in (
+        '_sig("/platform/customer-success/overview", "GET")',
+        '_sig("/platform/tenants/{tenant_id}/health-score", "GET")',
+        '_sig("/platform/support-tickets", "GET")',
+        '_sig("/platform/support-tickets", "POST")',
+        '_sig("/platform/trainings", "GET")',
+        '_sig("/platform/trainings", "POST")',
+        '_sig("/platform/renewal-tasks", "GET")',
+        '_sig("/platform/renewal-tasks", "POST")',
+    ):
+        assert signature in source
+    assert "identity_p1_closure_router" in source
     # The old tenant-list editor owns region/CS owner/trial expiry. P1 base-profile edits use
     # the dedicated /profile endpoint and must not hijack the legacy operational PUT.
     assert '_sig("/platform/tenants/{tenant_id}", "PUT")' not in source
 
 
-def test_production_route_sources_keep_atomic_and_signed_guards():
+def test_production_route_sources_keep_atomic_signed_and_delegated_guards():
     system_source = Path("app/api/v1/system_p1_closure.py").read_text(encoding="utf-8")
     platform_source = Path("app/api/v1/platform_p1_closure.py").read_text(encoding="utf-8")
+    identity_source = Path("app/services/identity_binding_p1_guard_service.py").read_text(encoding="utf-8")
+    identity_router = Path("app/api/v1/identity_p1_closure.py").read_text(encoding="utf-8")
     role_source = Path("app/services/role_assignment_p1_guard_service.py").read_text(encoding="utf-8")
 
     assert ".with_for_update()" in system_source
@@ -233,13 +248,35 @@ def test_production_route_sources_keep_atomic_and_signed_guards():
     assert "expectedVersion" in system_source
 
     assert "environment" not in platform_source.split("_PROFILE_FIELDS =", 1)[1].split("}", 1)[0]
-    assert "expectedVersion" in platform_source
+    assert "tenant_stmt = tenant_stmt.with_for_update()" in platform_source
+    assert 'require_platform_capability("tenant.view")' in platform_source
+    assert 'require_platform_capability("customerSuccess.manage")' in platform_source
+    assert "canEdit" in platform_source
     assert "record_critical_in_session" in platform_source
     assert '"RENEWED": set()' in platform_source
     assert '"CHURNED": set()' in platform_source
     assert '"CLOSED": set()' in platform_source
 
+    assert "_account_for_update" in identity_source
+    assert "_active_link_for_update" in identity_source
+    assert "StudentProfile.id == int(student_id)" in identity_source
+    assert identity_source.count("with_for_update()") >= 3
+    assert identity_source.count("record_critical_in_session") >= 2
+    assert "db.commit()" in identity_source
+    assert "expectedVersion" in identity_router
+    assert "identity_binding_p1_guard_service" in identity_router
+
     assert "未来排期" in role_source
     assert "学生账号固定绑定 STUDENT" in role_source
     assert "最后一名启用中的学校管理员" in role_source
     assert "_active_role_link_for" in role_source
+
+
+def test_customer_success_authority_is_the_platform_workforce_canonical_capability():
+    legacy = Path("app/modules/platform/services/platform_access_governance_legacy.py").read_text(encoding="utf-8")
+    platform_source = Path("app/api/v1/platform_p1_closure.py").read_text(encoding="utf-8")
+
+    assert '"PLATFORM_CUSTOMER_SUCCESS"' in legacy
+    assert '"customerSuccess.manage"' in legacy
+    assert platform_source.count('require_platform_capability("customerSuccess.manage")') >= 10
+    assert "require_platform_super_admin" not in platform_source
