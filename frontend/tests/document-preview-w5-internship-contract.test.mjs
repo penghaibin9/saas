@@ -8,7 +8,8 @@ const root = path.resolve(fileURLToPath(new URL('../', import.meta.url)))
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 
 const api = read('src/modules/internship/api/material-center.api.js')
-const view = read('src/modules/internship/views/InternshipMaterialCenterView.vue')
+const center = read('src/modules/internship/views/InternshipMaterialCenterView.vue')
+const student = read('src/modules/internship/views/InternshipStudentMaterialEntryView.vue')
 
 test('W5 internship material API uses business tickets and Viewer Blob provider', () => {
   assert.match(api, /issueMaterialTicket\(fileId, action = 'preview'\)/)
@@ -24,18 +25,19 @@ test('W5 internship material API uses business tickets and Viewer Blob provider'
   assert.doesNotMatch(api, /fileSdk\.preview\(/)
 })
 
-test('W5 internship material center embeds the shared Reader without generic preview fallback', () => {
-  assert.match(view, /import AppDocumentViewer from '@\/components\/file\/viewer\/AppDocumentViewer\.vue'/)
-  assert.match(view, /<AppDocumentViewer/)
-  assert.match(view, /:descriptor="previewDescriptor"/)
-  assert.match(view, /:provider="previewProvider"/)
-  assert.match(view, /:files="previewFiles"/)
-  assert.match(view, /:active-version-id="activePreviewFile\.versionId"/)
-  assert.match(view, /previewProvider: internshipMaterialCenterApi\.createPreviewProvider\(\)/)
-  assert.match(view, /previewFile\(item\)/)
-  assert.match(view, /this\.activePreviewFileId = String\(item\.fileId\)/)
-  assert.match(view, /internshipMaterialCenterApi\.downloadMaterial\(item\)/)
-  assert.match(view, /当前材料尚未通过安全门禁，不能预览/)
-  assert.doesNotMatch(view, /fileSdk\.preview\(/)
-  assert.doesNotMatch(view, /window\.open\(/)
-})
+for (const [label, source] of [['material center', center], ['student material page', student]]) {
+  test(`W5 internship ${label} embeds the shared Reader without generic preview fallback`, () => {
+    assert.match(source, /import AppDocumentViewer from '@\/components\/file\/viewer\/AppDocumentViewer\.vue'/)
+    assert.match(source, /<AppDocumentViewer/)
+    assert.match(source, /:descriptor="previewDescriptor"/)
+    assert.match(source, /:provider="previewProvider"/)
+    assert.match(source, /:files="previewFiles"/)
+    assert.match(source, /:active-version-id="activePreviewFile\.versionId"/)
+    assert.match(source, /previewProvider: internshipMaterialCenterApi\.createPreviewProvider\(\)/)
+    assert.match(source, /this\.activePreviewFileId = String\(item\.fileId\)/)
+    assert.match(source, /internshipMaterialCenterApi\.downloadMaterial\(item\)/)
+    assert.match(source, /当前材料尚未通过安全门禁，不能预览/)
+    assert.doesNotMatch(source, /fileSdk\.preview\(/)
+    assert.doesNotMatch(source, /window\.open\(/)
+  })
+}
