@@ -47,7 +47,7 @@ const props = defineProps({
   showVersionBar: { type: Boolean, default: true }, showFileSwitcher: { type: Boolean, default: true },
   restoreKey: { type: String, default: '' }, watermarkPolicy: { type: Object, default: null }
 })
-defineEmits(['select-version', 'select-file', 'download', 'preview-error'])
+const emit = defineEmits(['select-version', 'select-file', 'download', 'preview-error'])
 const normalizedDescriptor = computed(() => props.descriptor ? normalizePreviewDescriptor(props.descriptor) : null)
 const identity = computed(() => normalizedDescriptor.value ? previewIdentity(normalizedDescriptor.value) : '')
 const { state, source, load, retry } = usePreviewSession(props.provider)
@@ -59,6 +59,7 @@ function setPage(value) { page.value = Math.min(Math.max(Number(value) || 1, 1),
 function onPdfReady({ pageCount: count }) { pageCount.value = Number(count || 0); setPage(Math.min(page.value, pageCount.value || 1)) }
 function onRenderError(error) { state.status = 'ERROR'; state.error = { code: error?.code || 'PREVIEW_RENDER_FAILED', message: error?.message || '文档渲染失败，请重试', retryable: true } }
 watch(identity, () => { page.value = 1; pageCount.value = 0; zoom.value = 1; load(normalizedDescriptor.value) }, { immediate: true })
+watch(() => state.status, (status) => { if (status === 'ERROR' && state.error) emit('preview-error', state.error) })
 </script>
 
 <style scoped>
