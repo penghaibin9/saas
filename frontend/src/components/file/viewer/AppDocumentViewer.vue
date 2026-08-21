@@ -5,7 +5,7 @@
       <AppDocumentFileSwitcher v-if="showFileSwitcher" :files="files" :active-file-key="activeFileKey" @select="$emit('select-file', $event)" />
       <AppDocumentToolbar
         :page="page" :page-count="pageCount" :zoom="zoom" :fullscreen="fullscreen"
-        :allow-download="downloadAllowed"
+        :allow-download="downloadAllowed" :show-page-navigation="normalizedDescriptor?.previewKind === 'PDF'"
         @page="setPage" @zoom="zoom = $event" @fullscreen="fullscreen = !fullscreen" @download="$emit('download', normalizedDescriptor)"
       />
       <div class="document-viewer__body">
@@ -15,6 +15,11 @@
           v-else-if="normalizedDescriptor?.previewKind === 'PDF' && source"
           ref="pdfViewer" :source="source" :generation="state.generation" :page="page" :zoom="zoom"
           @ready="onPdfReady" @page-change="page = $event" @error="onRenderError"
+        />
+        <DocxViewerAdapter
+          v-else-if="normalizedDescriptor?.previewKind === 'DOCX' && source"
+          :source="source" :generation="state.generation" :zoom="zoom"
+          @ready="pageCount = 0" @error="onRenderError"
         />
         <ImageViewerAdapter
           v-else-if="normalizedDescriptor?.previewKind === 'IMAGE' && source"
@@ -33,6 +38,7 @@ import AppDocumentVersionBar from './AppDocumentVersionBar.vue'
 import AppDocumentFileSwitcher from './AppDocumentFileSwitcher.vue'
 import AppDocumentState from './AppDocumentState.vue'
 import PdfViewerAdapter from './adapters/PdfViewerAdapter.vue'
+import DocxViewerAdapter from './adapters/DocxViewerAdapter.vue'
 import ImageViewerAdapter from './adapters/ImageViewerAdapter.vue'
 import UnsupportedViewerAdapter from './adapters/UnsupportedViewerAdapter.vue'
 import { normalizePreviewDescriptor, previewIdentity } from './viewer-contract'
@@ -57,7 +63,7 @@ const downloadAllowed = computed(() => Boolean(props.allowDownload && normalized
 
 function setPage(value) { page.value = Math.min(Math.max(Number(value) || 1, 1), pageCount.value || 1); pdfViewer.value?.goToPage?.(page.value) }
 function onPdfReady({ pageCount: count }) { pageCount.value = Number(count || 0); setPage(Math.min(page.value, pageCount.value || 1)) }
-function onRenderError(error) { state.status = 'ERROR'; state.error = { code: error?.code || 'PREVIEW_RENDER_FAILED', message: error?.message || '文档渲染失败，请重试', retryable: true } }
+function onRenderError(error) { state.status = 'ERROR'; state.error = { code: error?.code || 'PREVIEW_RENDER_FAILED', message: error?.message || '文档渲染失败，请重试', retryable: error?.retryable !== false } }
 watch(identity, () => { page.value = 1; pageCount.value = 0; zoom.value = 1; load(normalizedDescriptor.value) }, { immediate: true })
 watch(() => state.status, (status) => { if (status === 'ERROR' && state.error) emit('preview-error', state.error) })
 </script>

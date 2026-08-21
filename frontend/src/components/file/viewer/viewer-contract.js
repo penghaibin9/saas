@@ -7,17 +7,20 @@ export const PREVIEW_SESSION_STATE = Object.freeze({
   DESTROYED: 'DESTROYED'
 })
 
-export const PREVIEW_KIND = Object.freeze({ PDF: 'PDF', IMAGE: 'IMAGE', UNSUPPORTED: 'UNSUPPORTED' })
+export const PREVIEW_KIND = Object.freeze({ PDF: 'PDF', IMAGE: 'IMAGE', DOCX: 'DOCX', UNSUPPORTED: 'UNSUPPORTED' })
+export const DOCX_PREVIEW_MAX_SOURCE_BYTES = 25 * 1024 * 1024
 
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'])
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
 export function inferPreviewKind(descriptor = {}) {
-  const explicit = String(descriptor.previewKind || '').toUpperCase()
-  if (explicit === PREVIEW_KIND.PDF || explicit === PREVIEW_KIND.IMAGE) return explicit
+  const explicit = String(descriptor.preview?.kind || descriptor.previewKind || '').toUpperCase()
+  if ([PREVIEW_KIND.PDF, PREVIEW_KIND.IMAGE, PREVIEW_KIND.DOCX].includes(explicit)) return explicit
   const mime = String(descriptor.mimeType || '').toLowerCase()
   const ext = String(descriptor.ext || descriptor.fileName || '').split('.').pop().toLowerCase()
   if (mime === 'application/pdf' || ext === 'pdf') return PREVIEW_KIND.PDF
   if (mime.startsWith('image/') || IMAGE_EXT.has(ext)) return PREVIEW_KIND.IMAGE
+  if (mime === DOCX_MIME || ext === 'docx') return PREVIEW_KIND.DOCX
   return PREVIEW_KIND.UNSUPPORTED
 }
 
@@ -31,12 +34,18 @@ export function previewIdentity(descriptor = {}) {
 
 export function normalizePreviewDescriptor(input = {}) {
   const allowedActions = Array.isArray(input.allowedActions) ? input.allowedActions : []
+  const previewKind = inferPreviewKind(input)
+  const preview = Object.freeze({
+    ...(input.preview || {}),
+    kind: previewKind
+  })
   return Object.freeze({
     ...input,
     fileId: input.fileId == null ? null : String(input.fileId),
     fileVersionId: input.fileVersionId ?? input.versionId ?? null,
     sourceSha256: input.sourceSha256 || input.sha256 || '',
-    previewKind: inferPreviewKind(input),
+    preview,
+    previewKind,
     allowedActions,
     canPreview: input.canPreview !== false && (allowedActions.length === 0 || allowedActions.includes('preview')),
     canDownload: input.canDownload === true || allowedActions.includes('download')
@@ -56,7 +65,11 @@ export function normalizePreviewError(error) {
   return {
     code,
     message: error?.message || '文件预览失败，请重试',
-    retryable: !['NO_PERMISSION', 'FILE_INFECTED', 'PREVIEW_UNSUPPORTED'].includes(code)
+    retryable: ![
+      'NO_PERMISSION', 'FILE_INFECTED', 'PREVIEW_UNSUPPORTED', 'PREVIEW_UNSUPPORTED_TYPE',
+      'PREVIEW_TOO_LARGE', 'PREVIEW_DOCX_MALFORMED', 'PREVIEW_DOCX_TOO_COMPLEX',
+      'PREVIEW_DOCX_DECOMPRESSION_UNSUPPORTED'
+    ].includes(code)
   }
 }
 

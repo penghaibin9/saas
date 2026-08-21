@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, ref, shallowRef } from 'vue'
 
 function identity(file = {}) {
   return [file.fileId || '', file.fileVersionId || file.versionId || '', file.sourceSha256 || file.sha256 || ''].join(':')
@@ -7,6 +7,7 @@ function identity(file = {}) {
 export function useStudentPreviewSession(loadPreview) {
   const status = ref('idle')
   const objectUrl = ref('')
+  const blob = shallowRef(null)
   const error = ref('')
   const mimeType = ref('')
   const activeIdentity = ref('')
@@ -18,6 +19,7 @@ export function useStudentPreviewSession(loadPreview) {
     controller = null
     if (objectUrl.value) URL.revokeObjectURL(objectUrl.value)
     objectUrl.value = ''
+    blob.value = null
     mimeType.value = ''
   }
 
@@ -32,15 +34,21 @@ export function useStudentPreviewSession(loadPreview) {
       error.value = '缺少有效文件或预览授权提供器'
       return
     }
+    if (String(file.fileName || '').toLowerCase().endsWith('.docx') && Number(file.sizeBytes || 0) > 25 * 1024 * 1024) {
+      status.value = 'error'
+      error.value = 'DOCX 超过 25MB 站内阅读上限，请下载原文查看'
+      return
+    }
     status.value = 'loading'
     controller = new AbortController()
     try {
       const result = await loadPreview(file, { signal: controller.signal })
-      const blob = result instanceof Blob ? result : result?.blob
-      if (!(blob instanceof Blob)) throw new Error('预览服务未返回有效文件内容')
+      const previewBlob = result instanceof Blob ? result : result?.blob
+      if (!(previewBlob instanceof Blob)) throw new Error('预览服务未返回有效文件内容')
       if (currentGeneration !== generation) return
-      objectUrl.value = URL.createObjectURL(blob)
-      mimeType.value = blob.type || file.mimeType || ''
+      blob.value = previewBlob
+      objectUrl.value = URL.createObjectURL(previewBlob)
+      mimeType.value = previewBlob.type || file.mimeType || ''
       status.value = 'ready'
     } catch (e) {
       if (e?.name === 'AbortError' || currentGeneration !== generation) return
@@ -56,5 +64,5 @@ export function useStudentPreviewSession(loadPreview) {
     release()
   })
 
-  return { status, objectUrl, error, mimeType, activeIdentity, open, retry, release }
+  return { status, objectUrl, blob, error, mimeType, activeIdentity, open, retry, release }
 }

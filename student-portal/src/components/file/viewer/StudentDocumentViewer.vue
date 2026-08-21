@@ -3,6 +3,7 @@ import { computed, shallowRef, watch } from 'vue'
 import StudentDocumentState from './StudentDocumentState.vue'
 import StudentDocumentToolbar from './StudentDocumentToolbar.vue'
 import StudentDocumentVersionBar from './StudentDocumentVersionBar.vue'
+import StudentDocxViewer from './adapters/StudentDocxViewer.vue'
 import StudentImageViewer from './adapters/StudentImageViewer.vue'
 import StudentPdfViewer from './adapters/StudentPdfViewer.vue'
 import StudentUnsupportedViewer from './adapters/StudentUnsupportedViewer.vue'
@@ -39,6 +40,7 @@ const effectiveMime = computed(() => String(session.mimeType.value || selectedFi
 const kind = computed(() => {
   if (effectiveMime.value.includes('pdf') || extension.value === 'pdf') return 'pdf'
   if (effectiveMime.value.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(extension.value)) return 'image'
+  if (effectiveMime.value === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || extension.value === 'docx') return 'docx'
   return 'unsupported'
 })
 
@@ -61,6 +63,7 @@ function selectVersion(item) {
         <StudentDocumentState v-if="session.status.value !== 'ready'" :status="session.status.value" :error="session.error.value" @retry="session.retry(selectedFile)" />
         <StudentPdfViewer v-else-if="kind === 'pdf'" :url="session.objectUrl.value" :title="selectedFile.fileName" />
         <StudentImageViewer v-else-if="kind === 'image'" :url="session.objectUrl.value" :alt="selectedFile.fileName" />
+        <StudentDocxViewer v-else-if="kind === 'docx'" :source="session.blob.value" />
         <StudentUnsupportedViewer v-else :file-name="selectedFile.fileName" :can-download="canDownload" @download="emit('download', selectedFile)" />
       </main>
       <footer v-if="isReadOnly" class="student-document-reader__readonly">你正在查看只读冻结版本；阅读器不会修改、替换或推进该业务文件。</footer>

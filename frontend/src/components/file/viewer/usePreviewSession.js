@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import {
+  DOCX_PREVIEW_MAX_SOURCE_BYTES,
   PREVIEW_KIND,
   PREVIEW_SESSION_STATE,
   isTicketExpiredError,
@@ -49,6 +50,14 @@ export function usePreviewSession(provider) {
     if (!descriptor.canPreview) {
       state.status = PREVIEW_SESSION_STATE.ERROR
       state.error = { code: 'NO_PERMISSION', message: '当前文件没有预览权限', retryable: false }
+      return
+    }
+    if (
+      descriptor.previewKind === PREVIEW_KIND.DOCX &&
+      Number(descriptor.sizeBytes || 0) > DOCX_PREVIEW_MAX_SOURCE_BYTES
+    ) {
+      state.status = PREVIEW_SESSION_STATE.ERROR
+      state.error = { code: 'PREVIEW_TOO_LARGE', message: 'DOCX 超过 25MB 站内阅读上限，请下载原文查看', retryable: false }
       return
     }
     if (descriptor.previewKind === PREVIEW_KIND.UNSUPPORTED) {

@@ -1,9 +1,12 @@
 <template>
   <div class="dv-toolbar">
     <div class="dv-toolbar__group">
-      <button type="button" :disabled="page <= 1" @click="$emit('page', page - 1)">上一页</button>
-      <span>{{ page }} / {{ pageCount || '—' }}</span>
-      <button type="button" :disabled="!pageCount || page >= pageCount" @click="$emit('page', page + 1)">下一页</button>
+      <template v-if="showPageNavigation">
+        <button type="button" :disabled="page <= 1" @click="$emit('page', page - 1)">上一页</button>
+        <span>{{ page }} / {{ pageCount || '—' }}</span>
+        <button type="button" :disabled="!pageCount || page >= pageCount" @click="$emit('page', page + 1)">下一页</button>
+      </template>
+      <span v-else>连续阅读</span>
     </div>
     <div class="dv-toolbar__group">
       <button type="button" :disabled="zoom <= 0.6" @click="$emit('zoom', Math.max(0.6, zoom - 0.1))">−</button>
@@ -15,7 +18,11 @@
   </div>
 </template>
 <script setup>
-defineProps({ page: { type: Number, default: 1 }, pageCount: { type: Number, default: 0 }, zoom: { type: Number, default: 1 }, fullscreen: { type: Boolean, default: false }, allowDownload: { type: Boolean, default: false } })
+defineProps({
+  page: { type: Number, default: 1 }, pageCount: { type: Number, default: 0 }, zoom: { type: Number, default: 1 },
+  fullscreen: { type: Boolean, default: false }, allowDownload: { type: Boolean, default: false },
+  showPageNavigation: { type: Boolean, default: true }
+})
 defineEmits(['page', 'zoom', 'fullscreen', 'download'])
 </script>
 <style scoped>

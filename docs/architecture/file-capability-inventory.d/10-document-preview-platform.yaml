@@ -17,10 +17,10 @@ entries:
     import: false
     export: false
     archive: false
-    status: needs-verification
+    status: active
     risk: P0
     targetPhase: '10'
-    notes: W0 freezes document-preview-contract/v1. W1 delivers Admin/Teacher PC PDF/Image Viewer core. W2 Graduation Teacher PC Gold, W3 Student PC and W4 miniapp reader-return are closed. W5 domain readers are registered below; the shared platform stays needs-verification until W6 DOCX closes.
+    notes: W0-W6 document-preview-contract/v1 is implemented. W6 adds bounded read-only DOCX rendering on both PC clients while File Center/domain providers remain the only authorization and byte authority; annotation remains PDF-first.
 
   - module: internship
     client: admin-pc
@@ -113,3 +113,49 @@ entries:
     risk: P0
     targetPhase: '10'
     notes: W5 generic approval attachment Reader. Every ticket is bound to tenant, task, file, actor and action; download is single-use and preview is inline/no-store.
+
+  - module: file-center
+    client: admin-pc
+    route: document-preview-contract/v1#docx
+    page: frontend/src/components/file/viewer/adapters/DocxViewerAdapter.vue; frontend/src/components/file/viewer/adapters/docx-preview-renderer.js
+    action: preview
+    fileCategory: DOCX
+    api: EXISTING_AUTHORIZED_PREVIEW_PROVIDER_BYTES
+    backendService: no-new-backend-route
+    storageMode: local-in-browser-rendering
+    authMode: inherited-provider-authorization
+    dataScope: inherited-provider-tenant+business+scan
+    versioned: true
+    scanGated: true
+    preview: true
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: W6 read-only DOCX adapter. Source/ZIP size is bounded, external DOCX relationships are not navigated, embedded image object URLs are revoked, and XLSX/PPTX remain unsupported.
+
+  - module: file-center
+    client: student-pc
+    route: document-preview-contract/v1#docx-student
+    page: student-portal/src/components/file/viewer/StudentDocumentViewer.vue; student-portal/src/components/file/viewer/adapters/StudentDocxViewer.vue
+    action: preview
+    fileCategory: DOCX
+    api: EXISTING_STUDENT_AUTHORIZED_PREVIEW_PROVIDER_BYTES
+    backendService: no-new-backend-route
+    storageMode: local-in-browser-rendering
+    authMode: inherited-student-provider-authorization
+    dataScope: inherited-provider-tenant+student+business+scan
+    versioned: true
+    scanGated: true
+    preview: true
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: W6 Student PC mirrors the read-only DOCX renderer over authorized Blob bytes; immutable historical versions remain read-only and no business command is added to the renderer.

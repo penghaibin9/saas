@@ -15,6 +15,8 @@ const versionBar = read('src/components/file/viewer/StudentDocumentVersionBar.vu
 const session = read('src/components/file/viewer/useStudentPreviewSession.js')
 const materials = read('src/views/graduation/GraduationMaterialsView.vue')
 const workbench = read('src/views/graduation/GraduationWorkbenchView.vue')
+const docxRenderer = read('src/components/file/viewer/adapters/docx-preview-renderer.js')
+const docxViewer = read('src/components/file/viewer/adapters/StudentDocxViewer.vue')
 
 test('W3 student File SDK separates preview bytes from download side effects', () => {
   assert.match(request, /export async function fetchFileBlob\(/)
@@ -79,4 +81,17 @@ test('W3 graduation workbench separates current-version viewing/download and req
   assert.match(workbench, /peerId: String\(task\.id\)/)
   assert.match(workbench, /fileSdk\.fetchPeerPreviewBlob\(file\.peerId, file\.fileId, options\)/)
   assert.match(workbench, /:read-only="Boolean\(readerFile\?\.peerId\)"/)
+})
+
+test('W6 student PC renders DOCX locally from authorized bytes without widening XLSX/PPTX', () => {
+  assert.match(viewer, /StudentDocxViewer/)
+  assert.match(viewer, /kind === 'docx'/)
+  assert.match(viewer, /wordprocessingml\.document/)
+  assert.match(session, /const blob = shallowRef\(null\)/)
+  assert.match(session, /25 \* 1024 \* 1024/)
+  assert.match(docxRenderer, /DecompressionStream\('deflate-raw'\)/)
+  assert.match(docxRenderer, /MAX_TOTAL_UNCOMPRESSED = 80 \* 1024 \* 1024/)
+  assert.match(docxRenderer, /TargetMode/)
+  assert.doesNotMatch(docxRenderer, /window\.open|officeapps\.live|docs\.google|fetch\(/i)
+  assert.doesNotMatch(docxViewer, /portalApi|issueGraduationMaterialTicket|annotation|批注/i)
 })

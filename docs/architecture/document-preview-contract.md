@@ -70,11 +70,12 @@ export interface PreviewDescriptorV1 {
 
 Rules:
 
-1. `preview.kind` is rendering capability, not a blind extension check.
+1. `preview.kind` is rendering capability, not a blind extension check. W6 normalizes legacy MIME/extension inputs into this field only at the Viewer boundary; business permission still comes from `allowedActions`.
 2. `delivery` is backend/provider truth; business pages must not guess transport.
 3. `fileVersionId` and `sourceSha256` identify the source being reviewed.
 4. A rendition is read-only presentation evidence; review commands always lock the source `FileVersion`.
 5. `allowedActions` comes from the authoritative backend response.
+6. PC DOCX rendering consumes the same already-authorized bytes as PDF/Image. It never sends a protected file URL to Microsoft/Google/third-party Office viewers.
 
 ## 4. Provider boundary
 
@@ -120,6 +121,7 @@ IDLE
 - Late completion from an old generation must not overwrite the current file UI.
 - Destroying a session releases Blob/Object URL/render resources.
 - A render failure never changes the business review readiness by itself.
+- DOCX additionally caps source bytes, ZIP entry count and total uncompressed bytes before presenting content; over-limit/corrupt/encrypted files fail closed with an explicit Reader error.
 
 ## 6. Mobile Reader Return Contract
 
@@ -161,6 +163,9 @@ PREVIEW_FETCH_FAILED
 PREVIEW_RENDER_FAILED
 PREVIEW_UNSUPPORTED_TYPE
 PREVIEW_TOO_LARGE
+PREVIEW_DOCX_MALFORMED
+PREVIEW_DOCX_TOO_COMPLEX
+PREVIEW_DOCX_DECOMPRESSION_UNSUPPORTED
 PREVIEW_VERSION_CHANGED
 PREVIEW_OFFLINE
 ```
@@ -169,12 +174,12 @@ User-facing errors must flow through the existing `presentationSafety` owner on 
 
 ## 8. Type matrix
 
-| Type | Admin/Teacher PC P0 | Student PC P0 | Miniapp | Policy |
+| Type | Admin/Teacher PC | Student PC | Miniapp | Policy |
 |---|---|---|---|---|
-| PDF | embedded | embedded | native open | primary review format |
-| JPG/JPEG/PNG/WEBP | embedded | embedded | native image preview | P0 |
-| DOCX | fallback until W6 | fallback until W6 | native open where supported | adapter only after PDF Gold |
-| XLSX/PPTX | unsupported/download policy | unsupported/download policy | native/fallback by product rule | no P0 renderer |
+| PDF | embedded | embedded | native open | primary review/annotation format |
+| JPG/JPEG/PNG/WEBP | embedded | embedded | native image preview | read-only preview |
+| DOCX | embedded read-only (W6) | embedded read-only (W6) | native open where supported | source bytes only; no third-party Office URL; annotation remains PDF-first |
+| XLSX/PPTX | unsupported/download policy | unsupported/download policy | native/fallback by product rule | no W6 renderer |
 | ZIP/RAR/7z/source/CAD/PSD | unsupported | unsupported | PC/download handoff | never force renderer |
 
 Unsupported must be explicit and must never auto-download without user intent.
@@ -186,6 +191,7 @@ Unsupported must be explicit and must never auto-download without user intent.
 - `frontend/src/components/common/AppFilePreview.vue`: legacy attachment list only; new business code must not add transport logic here.
 - Student PC mirrors the DTO/state/provider contract with a thin local SFC implementation; W0/W1 does not introduce a cross-Vite SFC package.
 - `miniapp/src/components/file/FilePreviewer.vue`: delegates to File SDK/native open; it does not own `uni.openDocument`, `uni.previewImage` or `uni.downloadFile`.
+- W6 DOCX adapters are presentation-only. They parse the already-authorized Blob locally, ignore external relationships, create object URLs only for embedded document images, and revoke them on switch/unmount.
 
 ## 10. CI source-boundary freeze
 
@@ -197,6 +203,7 @@ W0 freezes these boundaries before business migration:
 - `uni.downloadFile` is centralized in the miniapp request transport.
 - Graduation generic URL bypass remains prohibited by backend contract.
 - future DocumentViewer code must consume a provider rather than call a domain API directly.
+- DOCX renderers must not call a remote Office viewer, issue tickets, or own business commands.
 
 Legacy bypasses discovered on the W0 live scan are debt, not patterns to copy. W5 removes them domain-by-domain; W0 must not expand their set.
 
@@ -221,7 +228,7 @@ Fixtures use fictitious identities only. Test screenshots/video/trace/logs must 
 - W2: Graduation Teacher PC Gold.
 - W3: Student PC; re-read latest `portalApi.js` after PR #190 convergence before editing it.
 - W4: Miniapp Reader Return Contract.
-- W5: domain migration.
-- W6: DOCX adapter only after PDF Gold.
+- W5: domain migration; exact-head `528a9caf5731e01014052cd904c11a73848b0051` GREEN on the file-center/domain acceptance gates.
+- W6: DOCX PreviewDescriptor + read-only Admin/Teacher PC and Student PC local rendering. No XLSX/PPTX renderer, no miniapp renderer, no DOCX annotation; review/annotation remains PDF-first.
 
-No migration is created for W0/W1 unless a later live requirement proves persistent server state is necessary.
+No migration is created for W0-W6; DOCX rendering introduces no persistent server state.
