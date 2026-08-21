@@ -229,7 +229,9 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
     expect(rejectedPayload.data.status).toBe('REJECTED')
     expect(rejectedPayload.data.officialFactId).toBeNull()
     expect(rejectedPayload.data.resultingManifestId).toBeNull()
-    await expect(reviewerPage.getByText('未生成正式事实，也未生成新 Manifest', { exact: false })).toBeVisible()
+    const rejectedDetailDialog = reviewerPage.getByRole('dialog', { name: '归档后纠错详情 / 二次复核' })
+    await expect(rejectedDetailDialog.getByText(`已驳回：${rejectDecisionReason}`, { exact: false })).toBeVisible()
+    await expect(rejectedDetailDialog.getByText('未生成正式事实，也未生成新 Manifest', { exact: false })).toBeVisible()
     await capture(reviewerPage, testInfo, 'w1-second-reviewer-rejected')
 
     const rejectedDetail = await reviewerApi.get(`/academic-affairs/archive/corrections/${rejectCaseId}`)
