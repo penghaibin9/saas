@@ -63,7 +63,7 @@ function selectVersion(item) {
         <StudentImageViewer v-else-if="kind === 'image'" :url="session.objectUrl.value" :alt="selectedFile.fileName" />
         <StudentUnsupportedViewer v-else :file-name="selectedFile.fileName" :can-download="canDownload" @download="emit('download', selectedFile)" />
       </main>
-      <footer v-if="isReadOnly" class="student-document-reader__readonly">你正在查看历史冻结版本；该版本只读，不代表当前待提交/待审核版本。</footer>
+      <footer v-if="isReadOnly" class="student-document-reader__readonly">你正在查看只读冻结版本；阅读器不会修改、替换或推进该业务文件。</footer>
     </div>
   </div>
 </template>
