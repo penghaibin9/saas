@@ -113,6 +113,20 @@ function observePages() {
   root.value?.querySelectorAll('.pdf-page').forEach((el) => observer.observe(el))
 }
 
+function resetInitialPosition(pageNo) {
+  const viewer = root.value
+  if (!viewer) return
+  // Vue reuses the same scroll container when a new FileVersion replaces the old one. Without
+  // resetting it before observation, a 60-page document left at its tail can make a new 121-page
+  // document start around page 60 and overwrite the caller's canonical page=1 state.
+  if (pageNo === 1) {
+    viewer.scrollTop = 0
+    viewer.scrollLeft = 0
+    return
+  }
+  viewer.querySelector(`[data-page="${pageNo}"]`)?.scrollIntoView({ block: 'start', behavior: 'auto' })
+}
+
 async function loadPdf() {
   const token = ++loadToken
   await destroyPdf()
@@ -125,9 +139,11 @@ async function loadPdf() {
     pdfDoc = doc
     pages.value = Array.from({ length: doc.numPages }, (_, i) => i + 1)
     await nextTick()
+    const initialPage = Math.min(Math.max(Number(props.page) || 1, 1), doc.numPages)
+    resetInitialPosition(initialPage)
     observePages()
     emit('ready', { pageCount: doc.numPages })
-    renderPage(Math.min(Math.max(props.page, 1), doc.numPages))
+    renderPage(initialPage)
   } catch (error) {
     if (token === loadToken) emit('error', error)
   }

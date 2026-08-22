@@ -35,6 +35,15 @@ test('W1 PDF renderer is local-worker lazy rendering with cancellable resources'
   assert.match(source, /token === loadToken &&[\s\S]*renderReservations\.get\(pageNo\) === reservation[\s\S]*emit\('error', error\)/)
 })
 
+test('W1 PDF generation reset preserves the canonical page before observation', () => {
+  const source = read('src/components/file/viewer/adapters/PdfViewerAdapter.vue')
+  assert.match(source, /function resetInitialPosition\(pageNo\)/)
+  assert.match(source, /viewer\.scrollTop = 0/)
+  assert.match(source, /viewer\.scrollLeft = 0/)
+  assert.match(source, /resetInitialPosition\(initialPage\)\s*\n\s*observePages\(\)/)
+  assert.match(source, /renderPage\(initialPage\)/)
+})
+
 test('W1 preview session changes generation, aborts old work and bounds ticket refresh to one', () => {
   const source = read('src/components/file/viewer/usePreviewSession.js')
   assert.match(source, /state\.generation = generation/)
