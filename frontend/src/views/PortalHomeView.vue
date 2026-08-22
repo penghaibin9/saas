@@ -14,10 +14,10 @@
           <a href="#products">四大产品</a>
           <a href="#devices">多端协同</a>
           <a href="#access">进入系统</a>
-          <a v-if="supportContact" href="#contact">联系跃科</a>
+          <router-link to="/contact">联系跃科</router-link>
         </nav>
 
-        <a v-if="teacherLoginUrl" class="yk-nav-cta" href="#access">选择入口</a>
+        <router-link class="yk-nav-cta" to="/contact">预约产品演示</router-link>
 
         <button class="yk-menu-button" type="button" :aria-expanded="menuOpen ? 'true' : 'false'" aria-label="打开导航菜单" @click="menuOpen = !menuOpen">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
@@ -28,7 +28,7 @@
         <a href="#products" @click="menuOpen = false">四大产品</a>
         <a href="#devices" @click="menuOpen = false">多端协同</a>
         <a href="#access" @click="menuOpen = false">进入系统</a>
-        <a v-if="supportContact" href="#contact" @click="menuOpen = false">联系跃科</a>
+        <router-link to="/contact" @click="menuOpen = false">联系跃科</router-link>
       </div>
     </header>
 
@@ -40,7 +40,8 @@
           <p class="yk-hero-lead">从学校管理 PC、教师工作台，到学生 PC / 移动端与企业协同端，把流程、待办、风险与业务证据汇聚为可执行、可追踪、可审计的业务闭环。</p>
           <div class="yk-hero-actions">
             <a class="yk-button yk-button-primary" href="#products">查看四大产品 <span aria-hidden="true">→</span></a>
-            <a class="yk-button yk-button-ghost" href="#access">进入系统</a>
+            <router-link class="yk-button yk-button-ghost" to="/contact">预约产品演示</router-link>
+            <a class="yk-button yk-button-ghost" :href="contact.phoneHref">{{ contact.phone }}</a>
           </div>
 
           <div class="yk-product-stage" aria-label="跃科真实产品界面">
@@ -96,6 +97,7 @@
                 <ul><li v-for="stage in product.previewStages" :key="stage">{{ stage }}</li></ul>
                 <div class="yk-product-links">
                   <router-link class="yk-detail-link" :to="`/products/${product.slug}`">查看{{ product.name }}详情 <span aria-hidden="true">→</span></router-link>
+                  <router-link to="/contact">预约产品演示</router-link>
                   <button type="button" @click="openFlow(product)">流程概览</button>
                   <a v-if="product.relationMap" :href="product.relationMap" target="_blank" rel="noopener noreferrer">关系图</a>
                 </div>
@@ -140,14 +142,17 @@
       <section id="contact" class="yk-final-cta">
         <div class="yk-shell yk-final-inner">
           <p class="yk-final-kicker">职业院校学生全生命周期数字化平台</p>
-          <h2>让客户先看懂产品，再进入真实系统体验</h2>
-          <p>官网负责讲清楚产品价值、真实界面和业务闭环；教师、学生、企业继续进入各自正式系统，不把宣传页和业务系统混在一起。</p>
-          <div class="yk-final-actions"><a class="yk-button yk-button-light" href="#products">查看四大产品</a><span v-if="supportContact" class="yk-contact-text">商务 / 技术联系：{{ supportContact }}</span></div>
+          <h2>想进一步了解？留下学校和电话即可</h2>
+          <p>预约表单会把学校、联系人、电话、意向产品和留言摘要直接短信通知跃科，不把访客资料写入业务数据库。</p>
+          <div class="yk-final-actions">
+            <router-link class="yk-button yk-button-light" to="/contact">预约产品演示</router-link>
+            <a class="yk-button yk-button-ghost" :href="contact.phoneHref">拨打 {{ contact.phone }}</a>
+          </div>
         </div>
       </section>
     </main>
 
-    <footer class="yk-footer"><div class="yk-shell yk-footer-inner"><div><strong>{{ companyName }}</strong><span>职业院校学生全生命周期数字化平台</span></div><div class="yk-footer-links"><a v-for="item in footerLinks" :key="item.label" :href="item.url" target="_blank" rel="noopener noreferrer">{{ item.label }}</a><a v-if="icpNumber" :href="icpQueryUrl" target="_blank" rel="noopener noreferrer">{{ icpNumber }}</a><span>© {{ year }}</span></div></div></footer>
+    <footer class="yk-footer"><div class="yk-shell yk-footer-inner"><div><strong>{{ companyName }}</strong><span>职业院校学生全生命周期数字化平台</span></div><div class="yk-footer-links"><a :href="contact.phoneHref">{{ contact.phone }}</a><a v-for="item in footerLinks" :key="item.label" :href="item.url" target="_blank" rel="noopener noreferrer">{{ item.label }}</a><a v-if="icpNumber" :href="icpQueryUrl" target="_blank" rel="noopener noreferrer">{{ icpNumber }}</a><span>© {{ year }}</span></div></div></footer>
 
     <div v-if="modal" class="yk-modal-backdrop" role="presentation" @click.self="closeModal">
       <section class="yk-modal" role="dialog" aria-modal="true" :aria-label="modal.title">
@@ -164,10 +169,11 @@
 import { API_BASE_URL, API_PREFIX } from '../services/http/config'
 import { HELP_FLOWS } from '../config/helpContent'
 import { OFFICIAL_PRODUCT_LIST } from '../config/officialProducts'
+import { OFFICIAL_SITE_CONTACT } from '../config/officialSalesPages'
 import {
   COMPANY_NAME, DEFAULT_PLATFORM_NAME, DEFAULT_PLATFORM_SUBTITLE, ENTERPRISE_LOGIN_URL,
   ICP_NUMBER, ICP_QUERY_URL, PORTAL_MODULES, PRIVACY_URL, STUDENT_LOGIN_URL,
-  STUDENT_MINIPROGRAM_QR, SUPPORT_CONTACT, SUPPORT_URL, TEACHER_LOGIN_URL,
+  STUDENT_MINIPROGRAM_QR, SUPPORT_URL, TEACHER_LOGIN_URL,
   TEACHER_MINIPROGRAM_QR, TERMS_URL
 } from '../config/portalConfig'
 import '../styles/official-site.css'
@@ -186,7 +192,7 @@ export default {
     return {
       menuOpen: false, modal: null, qrBroken: false, lastFocused: null, brand: null,
       companyName: COMPANY_NAME, icpNumber: ICP_NUMBER, icpQueryUrl: ICP_QUERY_URL,
-      supportContact: SUPPORT_CONTACT, teacherLoginUrl: TEACHER_LOGIN_URL,
+      teacherLoginUrl: TEACHER_LOGIN_URL,
       studentLoginUrl: STUDENT_LOGIN_URL, enterpriseLoginUrl: ENTERPRISE_LOGIN_URL,
       heroScreens: [
         { src: '/official-site/workbench.webp', label: '统一工作台', alt: '跃科统一工作台真实产品界面' },
@@ -209,6 +215,7 @@ export default {
   },
   computed: {
     year() { return new Date().getFullYear() },
+    contact() { return OFFICIAL_SITE_CONTACT },
     platformName() { return (this.brand && this.brand.platformName) || DEFAULT_PLATFORM_NAME },
     platformSubtitle() { return (this.brand && this.brand.platformSubtitle) || DEFAULT_PLATFORM_SUBTITLE },
     products() {
