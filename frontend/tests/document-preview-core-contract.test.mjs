@@ -25,6 +25,9 @@ test('W1 PDF renderer is local-worker lazy rendering with cancellable resources'
   assert.match(source, /pageNo \+ 2/)
   assert.match(source, /task\.cancel\(\)/)
   assert.match(source, /doc\.destroy\(\)/)
+  assert.match(source, /renderReservations\.has\(pageNo\)/)
+  assert.match(source, /renderReservations\.set\(pageNo, reservation\)/)
+  assert.match(source, /renderReservations\.get\(pageNo\) !== reservation/)
 })
 
 test('W1 preview session changes generation, aborts old work and bounds ticket refresh to one', () => {
@@ -65,9 +68,12 @@ test('W2 graduation provider sends ticket action as the actual HTTP request body
   assert.doesNotMatch(source, /files\/\$\{encodeURIComponent\(fileId\)\}\/ticket[^\n]*data:\s*\{ action \}/)
 })
 
-test('W2 workspace does not own ticket or file transport', () => {
-  const source = read('src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue')
-  assert.doesNotMatch(source, /issueMaterialTicket|fileSdk|material-center\/files/)
-  assert.match(source, /AppDocumentViewer/)
-  assert.match(source, /FileEvidencePanel/)
+test('W2 workspace keeps transport outside and renderer failures inside the Viewer', () => {
+  const workspace = read('src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue')
+  const viewer = read('src/components/file/viewer/AppDocumentViewer.vue')
+  assert.doesNotMatch(workspace, /issueMaterialTicket|fileSdk|material-center\/files/)
+  assert.match(workspace, /AppDocumentViewer/)
+  assert.match(workspace, /FileEvidencePanel/)
+  assert.doesNotMatch(workspace, /@preview-error=[^\n]*reload/)
+  assert.match(viewer, /AppDocumentState[\s\S]*@retry="retry"/)
 })

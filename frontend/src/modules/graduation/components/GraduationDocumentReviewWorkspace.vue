@@ -37,7 +37,7 @@
         :descriptor="descriptor" :provider="provider" :files="files" :versions="versions"
         :active-file-key="activeFileKey" :active-version-id="activeVersionId" :canonical-version-id="canonicalFileVersionId"
         :allow-download="allowDownload" :show-version-bar="true" :show-file-switcher="true"
-        @select-file="$emit('select-file', $event)" @select-version="$emit('select-version', $event)" @download="$emit('download', $event)" @preview-error="$emit('reload')"
+        @select-file="$emit('select-file', $event)" @select-version="$emit('select-version', $event)" @download="$emit('download', $event)"
       />
       <div v-else class="gd-review-workspace__empty">当前记录没有可站内预览的安全文件版本。</div>
     </main>

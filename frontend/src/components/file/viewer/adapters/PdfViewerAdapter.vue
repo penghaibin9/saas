@@ -25,6 +25,8 @@ const root = ref(null)
 const pages = ref([])
 const canvases = new Map()
 const renderTasks = new Map()
+const renderReservations = new Map()
+let renderReservationSeq = 0
 let pdfDoc = null
 let observer = null
 let loadToken = 0
@@ -41,6 +43,7 @@ async function bytesFrom(source) {
 function cancelRenderTasks() {
   for (const task of renderTasks.values()) { try { task.cancel() } catch { /* PDF.js render task may already be complete */ } }
   renderTasks.clear()
+  renderReservations.clear()
 }
 
 async function destroyPdf() {
@@ -55,11 +58,14 @@ async function destroyPdf() {
 async function renderPage(pageNo) {
   if (!pdfDoc || pageNo < 1 || pageNo > pdfDoc.numPages) return
   const canvas = canvases.get(pageNo)
-  if (!canvas || canvas.dataset.zoom === String(props.zoom) || renderTasks.has(pageNo)) return
+  if (!canvas || canvas.dataset.zoom === String(props.zoom) || renderReservations.has(pageNo)) return
   const token = loadToken
+  const reservation = ++renderReservationSeq
+  renderReservations.set(pageNo, reservation)
+  let task = null
   try {
     const page = await pdfDoc.getPage(pageNo)
-    if (token !== loadToken || !pdfDoc) return
+    if (token !== loadToken || !pdfDoc || renderReservations.get(pageNo) !== reservation) return
     const viewport = page.getViewport({ scale: props.zoom })
     const outputScale = Math.min(globalThis.devicePixelRatio || 1, 2)
     const context = canvas.getContext('2d', { alpha: false })
@@ -67,14 +73,15 @@ async function renderPage(pageNo) {
     canvas.height = Math.max(1, Math.floor(viewport.height * outputScale))
     canvas.style.width = `${Math.floor(viewport.width)}px`
     canvas.style.height = `${Math.floor(viewport.height)}px`
-    const task = page.render({ canvasContext: context, viewport, transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0] })
+    task = page.render({ canvasContext: context, viewport, transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0] })
     renderTasks.set(pageNo, task)
     await task.promise
-    if (token === loadToken) canvas.dataset.zoom = String(props.zoom)
+    if (token === loadToken && renderReservations.get(pageNo) === reservation) canvas.dataset.zoom = String(props.zoom)
   } catch (error) {
     if (error?.name !== 'RenderingCancelledException') emit('error', error)
   } finally {
-    renderTasks.delete(pageNo)
+    if (task && renderTasks.get(pageNo) === task) renderTasks.delete(pageNo)
+    if (renderReservations.get(pageNo) === reservation) renderReservations.delete(pageNo)
   }
 }
 
