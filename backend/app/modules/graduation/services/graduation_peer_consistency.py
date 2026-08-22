@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     FileObject,
     GraduationFinal,
@@ -18,12 +19,19 @@ from app.modules.graduation.services.graduation_command_service import _conflict
 from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
 from app.services.db_service import _iso, _tid, session
 from app.services.file_content_security import is_downloadable_status
+from app.services.file_scan_constants import READY_SCAN_STATES, SCAN_NOT_REQUIRED
 from app.services.storage import get_backend
 
 
 def _version_number(value) -> int:
     match = re.search(r"(\d+)", str(value or ""))
     return max(1, int(match.group(1))) if match else 1
+
+
+def _file_ready(file_row: FileObject | None) -> bool:
+    if not file_row or file_row.is_deleted or not is_downloadable_status(file_row.status):
+        return False
+    return str(file_row.scan_status or SCAN_NOT_REQUIRED).upper() in READY_SCAN_STATES
 
 
 def _attachment_ids(final: GraduationFinal | None) -> list[int]:
@@ -47,7 +55,7 @@ def _final_attachments(db, final: GraduationFinal | None) -> list[dict]:
         FileObject.is_deleted.is_(False),
         FileObject.biz_type == "GRADUATION_MATERIAL",
     )).all()
-    by_id = {int(row.id): row for row in rows if is_downloadable_status(row.status)}
+    by_id = {int(row.id): row for row in rows if _file_ready(row)}
     return [{
         "fileId": str(file_id),
         "fileName": by_id[file_id].file_name or f"材料-{file_id}",
@@ -77,11 +85,13 @@ def _bound_final(db, peer: GraduationPeerReview, *, lock=False) -> GraduationFin
 
 
 def peer_row(db, peer: GraduationPeerReview) -> dict:
-    target = db.get(GraduationStudent, peer.gd_student_id)
-    reviewer = db.get(GraduationStudent, peer.reviewer_gd_student_id)
-    final = db.get(GraduationFinal, peer.gd_final_id) if peer.gd_final_id else None
+    # Historical/corrupt peer references must never turn a tenant-scoped peer row into
+    # a cross-tenant name/student-number disclosure.
+    target = tenant_get(db, GraduationStudent, peer.gd_student_id)
+    reviewer = tenant_get(db, GraduationStudent, peer.reviewer_gd_student_id)
+    final = tenant_get(db, GraduationFinal, peer.gd_final_id) if peer.gd_final_id else None
     final_valid = bool(
-        final and not final.is_deleted and final.tenant_id == _tid()
+        final and not final.is_deleted
         and final.gd_student_id == peer.gd_student_id
         and final.final_type == "定稿" and final.status == "APPROVED"
     )
@@ -144,7 +154,9 @@ def resolve_peer_preview(peer_id, file_id, user):
             FileObject.is_deleted.is_(False),
             FileObject.biz_type == "GRADUATION_MATERIAL",
         )).first()
-        if not file_row or not is_downloadable_status(file_row.status):
+        # Peer Reader is a business-specific authority, but it must still honor the
+        # shared File Center availability + malware-scan gate before serving bytes.
+        if not _file_ready(file_row):
             raise not_found("互查材料不存在或暂不可预览")
         file_key = file_row.file_key
         filename = file_row.file_name or f"毕业设计定稿-{target_file_id}"
