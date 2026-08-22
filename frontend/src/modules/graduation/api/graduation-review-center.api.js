@@ -15,6 +15,16 @@ function required(value, message) {
   return value
 }
 
+function canonicalWrite(path, options) {
+  return request(path, options).catch((error) => {
+    // Unified HTTP client keeps the stable business code in bizCode and the numeric envelope
+    // code in code. W7.4 needs the stable code to refresh canonical facts on optimistic-lock /
+    // FileVersion conflicts without weakening the backend fail-closed decision.
+    if (error?.bizCode) error.code = error.bizCode
+    throw error
+  })
+}
+
 export const graduationReviewCenterApi = {
   summary(params = {}) {
     return request(`${CENTER}/summary`, { params: batchParams(params) })
@@ -50,32 +60,35 @@ export const graduationReviewCenterApi = {
       const rows = Array.isArray(data?.items) ? data.items : []
       const row = rows.find((item) => String(item.id) === String(recordId))
       if (!row) throw new Error('正式评阅任务已变化或不在当前数据范围，请刷新队列')
+      if (row.version == null || row.fileVersionId == null) {
+        throw new Error('正式评阅任务缺少 W7 冻结版本或乐观锁版本，请刷新或治理历史任务')
+      }
       return { kind: 'FORMAL_REVIEW', ...row }
     }
     throw new Error(`不支持的评阅类型：${type || 'UNKNOWN'}`)
   },
 
   reviewProposal(recordId, { action, comment, expectedVersion, fileVersionId } = {}) {
-    return request(`${PROPOSAL}/${encodeURIComponent(recordId)}/review`, {
+    return canonicalWrite(`${PROPOSAL}/${encodeURIComponent(recordId)}/review`, {
       method: 'POST', params: batchParams(), body: { action, comment, expectedVersion, fileVersionId }
     })
   },
 
   reviewFinal(recordId, { action, comment, expectedVersion, fileVersionId } = {}) {
-    return request(`${FINAL}/${encodeURIComponent(recordId)}/review`, {
+    return canonicalWrite(`${FINAL}/${encodeURIComponent(recordId)}/review`, {
       method: 'POST', params: batchParams(), body: { action, comment, expectedVersion, fileVersionId }
     })
   },
 
   submitFormal(recordId, { score, opinion, expectedVersion, fileVersionId, categories = [], issues = [] } = {}) {
-    return request(`${FORMAL}/${encodeURIComponent(recordId)}/submit`, {
+    return canonicalWrite(`${FORMAL}/${encodeURIComponent(recordId)}/submit`, {
       method: 'POST', params: batchParams(),
       body: { score, opinion, expectedVersion, fileVersionId, categories, issues }
     })
   },
 
   returnFormal(recordId, reason) {
-    return request(`${FORMAL}/${encodeURIComponent(recordId)}/return`, {
+    return canonicalWrite(`${FORMAL}/${encodeURIComponent(recordId)}/return`, {
       method: 'POST', params: batchParams(), body: { reason }
     })
   }

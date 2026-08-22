@@ -62,3 +62,17 @@ def test_w74_review_center_is_read_only_projection_and_writes_stay_canonical():
     assert "categories" in api and "issues" in api
     assert "@router.post" not in backend
     assert "All mutations intentionally stay on the canonical" in backend
+
+
+def test_w74_formal_read_context_exposes_w7_lock_fields_and_conflict_code():
+    api = text("frontend/src/modules/graduation/api/graduation-review-center.api.js")
+    overlay = text("backend/app/modules/graduation/routers/graduation_review_w7_router.py")
+    read_service = text("backend/app/modules/graduation/services/graduation_review_read_service.py")
+
+    assert "review_read.list_reviews" in overlay
+    assert "closure._row(db, row" in read_service
+    for token in ("version", "materialId", "fileVersionId", "sourceSha256"):
+        assert token in read_service or token in api
+    assert "row.version == null || row.fileVersionId == null" in api
+    assert "function canonicalWrite" in api
+    assert "error?.bizCode" in api and "error.code = error.bizCode" in api

@@ -1,7 +1,8 @@
-"""W7 formal review write overlay.
+"""W7 formal review read/write overlay.
 
 These routes deliberately keep the existing /graduation/gd-reviews paths and permission
-identity while replacing only the formal review write contract with W7 evidence locking.
+identity. Reads expose the W7 frozen FileVersion/version DTO; writes keep the W7 evidence
+locking authority in graduation_review_closure_service.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from app.models import GraduationReview
 from app.modules.graduation.routers.graduation_sensitive_router import _record_batch, _student_batch
 from app.modules.graduation.schemas.graduation_review import ReviewAssignRequest, ReviewReturnRequest, ReviewSubmitRequest
 from app.modules.graduation.services import graduation_review_closure_service as review
+from app.modules.graduation.services import graduation_review_read_service as review_read
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-W7评阅证据"])
 
@@ -39,8 +41,8 @@ def review_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=2
                 user=Depends(get_current_user)):
     if gdStudentId:
         _student_batch(gdStudentId, batchId)
-    items, total = review.list_reviews(page, pageSize, gd_student_id=gdStudentId,
-                                       reviewer_name=reviewerName, status=status, batch_id=batchId)
+    items, total = review_read.list_reviews(page, pageSize, gd_student_id=gdStudentId,
+                                            reviewer_name=reviewerName, status=status, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 
