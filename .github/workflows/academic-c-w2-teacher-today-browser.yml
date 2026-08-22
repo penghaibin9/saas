@@ -80,6 +80,8 @@ jobs:
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
       E2E_MINIAPP_BASE_URL: http://localhost:5188
+      E2E_EXPECTED_SHA: ${{ github.sha }}
+      SCHOOL_IAM_AUTHORITY_EXPECTED_SHA: ${{ github.sha }}
 
     steps:
       - uses: actions/checkout@v4
@@ -110,9 +112,17 @@ jobs:
         working-directory: backend
         run: alembic upgrade head
 
+      - name: Replay production School IAM Authority
+        working-directory: backend
+        run: python scripts/bootstrap_control_plane_school_iam_authority.py
+
       - name: Seed isolated tenant and teacher identities
         working-directory: backend
         run: python scripts/e2e_seed_playwright_tenants.py
+
+      - name: Seed real School IAM runtime fixture
+        working-directory: backend
+        run: python scripts/e2e_seed_control_plane_school_iam.py
 
       - name: Start backend
         run: |
