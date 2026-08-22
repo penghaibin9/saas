@@ -3,6 +3,7 @@
 The queue CTE remains the single projection truth. Summary endpoints must not materialize
 an entire school batch in Python just to count statuses or processing time; the database
 returns only aggregate rows while preserving the same tenant/data-scope and deadline rules.
+W7.4 may additionally bind the aggregate to one stable formal-review reviewer identity.
 """
 from __future__ import annotations
 
@@ -23,7 +24,13 @@ def _deadline_flags(deadlines: dict[str, datetime | None], now: datetime) -> dic
     }
 
 
-def summary(batch_id: int) -> dict:
+def _projection_where(reviewer_mentor_id: int | None) -> str:
+    if reviewer_mentor_id is None:
+        return ""
+    return " WHERE case_type='FORMAL_REVIEW' AND reviewer_mentor_id=:reviewer_mentor_id"
+
+
+def summary(batch_id: int, *, reviewer_mentor_id: int | None = None) -> dict:
     """Return bounded aggregate metrics without hydrating the full projected queue."""
     with session() as db:
         scope_ids = accessible_student_ids(db, int(_tid()), batch_id=int(batch_id))
@@ -38,6 +45,9 @@ def summary(batch_id: int) -> dict:
             "today_start": today_start,
             "tomorrow_start": tomorrow_start,
         }
+        if reviewer_mentor_id is not None:
+            params["reviewer_mentor_id"] = int(reviewer_mentor_id)
+        projection_where = _projection_where(reviewer_mentor_id)
 
         aggregate_sql = q._CTE + r"""
 SELECT
@@ -63,7 +73,7 @@ SELECT
         ELSE NULL
       END) AS avg_hours
 FROM projected
-"""
+""" + projection_where
         aggregate_stmt = text(aggregate_sql).bindparams(bindparam("scope_ids", expanding=True))
         aggregate = dict(db.execute(aggregate_stmt, params).mappings().one())
 
@@ -76,8 +86,7 @@ SELECT case_type,
   SUM(CASE WHEN status_group='DONE' THEN 1 ELSE 0 END) AS done,
   SUM(CASE WHEN status_group='BLOCKED' THEN 1 ELSE 0 END) AS blocked
 FROM projected
-GROUP BY case_type
-"""
+""" + projection_where + "\nGROUP BY case_type\n"
         by_type_stmt = text(by_type_sql).bindparams(bindparam("scope_ids", expanding=True))
         raw_by_type = {
             str(row["case_type"]): dict(row)

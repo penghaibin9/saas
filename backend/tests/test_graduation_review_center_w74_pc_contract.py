@@ -76,3 +76,34 @@ def test_w74_formal_read_context_exposes_w7_lock_fields_and_conflict_code():
     assert "row.version == null || row.fileVersionId == null" in api
     assert "function canonicalWrite" in api
     assert "error?.bizCode" in api and "error.code = error.bizCode" in api
+
+
+def test_w74_backend_allowed_actions_and_reviewer_scope_are_actor_authoritative():
+    contract = text("backend/app/modules/graduation/services/graduation_review_center_contract_service.py")
+    summary = text("backend/app/modules/graduation/services/graduation_review_center_summary_service.py")
+
+    # Write affordances are projected from backend permission authority, not guessed by the PC.
+    for code in (
+        "graduationDesign.proposal.review",
+        "graduationDesign.final.review",
+        "graduationDesign.review.submit",
+        "graduationDesign.review.return",
+    ):
+        assert f'has_permission(user, "{code}")' in contract
+    assert 'result["allowedActions"] = _allowed_actions(result, actor)' in contract
+    assert 'status in {"ASSIGNED", "REVIEWING", "RETURNED"}' in contract
+    assert 'and _formal_submit_owned(item, actor)' in contract
+    assert 'return ["SUBMIT"]' in contract
+    assert 'return ["RETURN"]' in contract
+    assert '"START"' not in contract
+
+    # GD_REVIEWER is task-scoped. Stable reviewerMentorId is mandatory for list/summary/detail;
+    # relation to the same student must not expose another reviewer's task or other case types.
+    assert 'if actor["role"] == "GD_REVIEWER":' in contract
+    assert 'reviewer_only = True' in contract
+    assert 'return [], 0' in contract
+    assert "_assert_reviewer_detail_scope" in contract
+    assert 'raise not_found("评阅任务不存在或不在当前数据范围内")' in contract
+    assert 'summary_query.summary(batch_id, reviewer_mentor_id=reviewer_id)' in contract
+    assert "reviewer_mentor_id=:reviewer_mentor_id" in summary
+    assert "WHERE case_type='FORMAL_REVIEW'" in summary
