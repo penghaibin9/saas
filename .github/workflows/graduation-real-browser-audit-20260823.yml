@@ -1,0 +1,330 @@
+name: Graduation exact-head real browser audit 20260823
+
+on:
+  push:
+    branches:
+      - audit/graduation-real-browser-20260823
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graduation-real-browser-audit-20260823
+  cancel-in-progress: true
+
+jobs:
+  graduation-audit:
+    name: exact product SHA / Chromium / real MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: graduation-audit-20260823
+      REDIS_CONNECT_TIMEOUT: '2'
+      REDIS_SOCKET_TIMEOUT: '2'
+      JWT_SECRET: graduation-audit-only-not-production
+      JWT_SECRET_KEY: graduation-audit-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_EXPECTED_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+
+    steps:
+      - name: Checkout product exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+          fetch-depth: 0
+
+      - name: Assert product exact HEAD
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "1c69336ea0728c5c6713c0c85b7275b06fca9ae1"
+          echo "PRODUCT_EXACT_HEAD=$(git rev-parse HEAD)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+
+      - name: Install backend
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Migrate isolated real MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          alembic heads
+          alembic upgrade head
+          alembic current
+
+      - name: Seed production IAM and two isolated tenants
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs e2e/test-results
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Start isolated message delivery worker
+        run: |
+          set -euo pipefail
+          cd backend
+          nohup python -c "import time; from scripts.run_scheduled_jobs import job_delivery_and_outbox; exec('while True:\\n    job_delivery_and_outbox()\\n    time.sleep(2)')" > ../e2e/runtime-logs/message-delivery.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/message-delivery.pid
+
+      - name: Bootstrap real graduation accounts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+
+      - name: Start staff PC
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+
+      - name: Start student PC
+        env:
+          VITE_BASE: /portal/
+          VITE_API_BASE_URL: /
+          VITE_PROXY_TARGET: http://127.0.0.1:8000
+        run: |
+          set -euo pipefail
+          cd student-portal
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/student-portal.pid
+
+      - name: Wait for browser applications
+        run: |
+          set -euo pipefail
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
+            ok=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            test -n "$ok"
+          done
+
+      - name: Runtime-only audit data prefix patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          replacements = {
+              Path('e2e/lib/api-fixture.mjs'): {
+                  '`PW-E2E-${runId}`': '`E2E-AUDIT-20260823-${runId}`',
+                  '`Playwright 毕设交互测试 ${runId}`': '`E2E-AUDIT-20260823 毕设批次 ${runId}`',
+                  '`Playwright 交互测试课题 ${runId}`': '`E2E-AUDIT-20260823 课题 ${runId}`',
+              },
+              Path('e2e/pages/graduation.page.mjs'): {
+                  '`Playwright 背景 ${suffix}：验证真实浏览器交互和数据持久化。`': '`E2E-AUDIT-20260823 背景 ${suffix}：验证真实浏览器交互和数据持久化。`',
+                  '`Playwright 计划 ${suffix}：学生提交、导师审核、管理员复核。`': '`E2E-AUDIT-20260823 计划 ${suffix}：学生提交、导师审核、管理员复核。`',
+                  '`Playwright 成果 ${suffix}：保留完整证据链。`': '`E2E-AUDIT-20260823 成果 ${suffix}：保留完整证据链。`',
+              },
+              Path('e2e/specs/graduation-lifecycle.spec.mjs'): {
+                  '`proposal-${fixture.runId}.pdf`': '`E2E-AUDIT-20260823-proposal-${fixture.runId}.pdf`',
+                  '`proposal-resubmit-${fixture.runId}.pdf`': '`E2E-AUDIT-20260823-proposal-resubmit-${fixture.runId}.pdf`',
+              },
+          }
+          for path, mapping in replacements.items():
+              text = path.read_text(encoding='utf-8')
+              for before, after in mapping.items():
+                  if before not in text:
+                      raise SystemExit(f'missing expected audit harness token in {path}: {before}')
+                  text = text.replace(before, after)
+              path.write_text(text, encoding='utf-8')
+          PY
+          bad="$(git diff --name-only | grep -v '^e2e/' || true)"
+          test -z "$bad"
+          echo 'Runtime harness modified only e2e/**; product source remains exact HEAD.'
+          git diff --name-only
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run focused graduation Browser First journeys
+        id: pw
+        continue-on-error: true
+        working-directory: e2e
+        run: |
+          npx playwright test \
+            specs/graduation-lifecycle.spec.mjs \
+            specs/graduation-v9-final-review-visual.spec.mjs \
+            specs/graduation-v9-process-visual.spec.mjs \
+            specs/graduation-v9-archive-visual.spec.mjs \
+            specs/graduation-v9-dashboard-visual.spec.mjs
+
+      - name: Direct MySQL and audit evidence
+        if: always()
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import date, datetime
+          from decimal import Decimal
+          from pathlib import Path
+          import pymysql
+
+          def clean(value):
+              if isinstance(value, (datetime, date)):
+                  return value.isoformat()
+              if isinstance(value, Decimal):
+                  return str(value)
+              if isinstance(value, bytes):
+                  return value.decode('utf-8', 'replace')
+              return value
+
+          conn = pymysql.connect(
+              host='127.0.0.1', port=3306, user='root', password='e2e_root',
+              database='student_lifecycle_e2e', charset='utf8mb4',
+              cursorclass=pymysql.cursors.DictCursor,
+          )
+          with conn.cursor() as cur:
+              cur.execute("""
+                  SELECT id, tenant_id, gd_student_id, version, is_resubmit, status,
+                         reviewer, review_comment, submit_at, review_time, active_key
+                  FROM t_gd_proposal ORDER BY id
+              """)
+              proposals = cur.fetchall()
+              cur.execute("""
+                  SELECT id, tenant_id, gd_student_id, final_type, version, status,
+                         submit_at, active_key
+                  FROM t_gd_final ORDER BY id
+              """)
+              finals = cur.fetchall()
+              cur.execute("""
+                  SELECT id, tenant_id, biz_type, biz_id, action, operator, role_name,
+                         before_val, after_val, occurred_at, request_id, request_path,
+                         actor_user_id, role_code, permission_code, before_json, after_json
+                  FROM t_gd_audit_trail
+                  WHERE biz_type IN ('PROPOSAL', 'FINAL')
+                  ORDER BY id
+              """)
+              audits = cur.fetchall()
+
+          for row in proposals + finals + audits:
+              for key, value in list(row.items()):
+                  row[key] = clean(value)
+
+          evidence = {
+              'productExactHead': '1c69336ea0728c5c6713c0c85b7275b06fca9ae1',
+              'proposals': proposals,
+              'finals': finals,
+              'audits': audits,
+          }
+          target = Path('../e2e/test-results/graduation-db-audit.json')
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(evidence, ensure_ascii=False, indent=2))
+
+          assert any(r['status'] == 'REJECTED' for r in proposals), 'missing rejected proposal version'
+          assert any(r['status'] == 'APPROVED' for r in proposals), 'missing approved proposal version'
+          proposal_reviews = [r for r in audits if r['biz_type'] == 'PROPOSAL' and str(r['action']).startswith('批阅开题-')]
+          assert len(proposal_reviews) >= 2, f'missing proposal review audit chain: {proposal_reviews}'
+          assert any(r['after_val'] == 'REJECTED' and r['before_val'] == 'PENDING_REVIEW' for r in proposal_reviews)
+          assert any(r['after_val'] == 'APPROVED' and r['before_val'] == 'PENDING_REVIEW' for r in proposal_reviews)
+          for row in proposal_reviews:
+              assert row['tenant_id']
+              assert row['operator']
+              assert row['role_name']
+              assert row['occurred_at']
+          if finals:
+              assert any(r['status'] == 'PENDING_REVIEW' for r in finals)
+              assert any(r['biz_type'] == 'FINAL' and str(r['action']).startswith('提交成果-') for r in audits)
+          PY
+
+      - name: Fail if focused Playwright failed
+        if: always()
+        env:
+          PW_OUTCOME: ${{ steps.pw.outcome }}
+        run: |
+          echo "focused_playwright_outcome=$PW_OUTCOME"
+          test "$PW_OUTCOME" = "success"
+
+      - name: Upload focused browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-real-browser-evidence-${{ github.run_id }}
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
