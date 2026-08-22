@@ -220,14 +220,23 @@ jobs:
           out.parent.mkdir(parents=True, exist_ok=True)
           out.write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
           print(json.dumps(evidence, ensure_ascii=False, indent=2))
-          assert any(r['status']=='REJECTED' for r in proposals), proposals
-          assert any(r['status']=='APPROVED' for r in proposals), proposals
-          reviews = [r for r in audits if str(r['action']).startswith('批阅开题-')]
+          rejected = [r for r in proposals if r['status']=='REJECTED']
+          approved = [r for r in proposals if r['status']=='APPROVED']
+          assert rejected and approved, proposals
+          assert any(r['is_resubmit'] in (1, True) and r['status']=='APPROVED' for r in proposals), proposals
+          submits = [r for r in audits if str(r['action']) == '提交开题报告']
+          reviews = [r for r in audits if str(r['action']) == '审核开题报告']
+          assert len(submits) >= 2, submits
           assert len(reviews) >= 2, reviews
+          assert all(r['after_val']=='PENDING_REVIEW' for r in submits[-2:]), submits
           assert any(r['before_val']=='PENDING_REVIEW' and r['after_val']=='REJECTED' for r in reviews)
           assert any(r['before_val']=='PENDING_REVIEW' and r['after_val']=='APPROVED' for r in reviews)
-          for r in reviews:
-            assert r['tenant_id'] and r['operator'] and r['role_name'] and r['occurred_at']
+          tenant_ids = {r['tenant_id'] for r in proposals}
+          assert len(tenant_ids) == 1, tenant_ids
+          for r in submits + reviews:
+            assert r['tenant_id'] in tenant_ids
+            assert r['operator'] and r['role_name'] and r['occurred_at'] and r['request_id'] and r['request_path']
+          assert all(str(r['request_path']).endswith('/review') for r in reviews), reviews
           PY
       - name: Enforce browser and DB evidence gates
         if: always()
