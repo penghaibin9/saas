@@ -50,7 +50,7 @@ def resolve_judge_assignee_id(db, score_row) -> int:
 
 def todo_upsert(db, *, biz_type: str, biz_id, todo_type: str, assignee_id: int,
                 student_id, title: str) -> bool:
-    """创建或复活 PENDING 待办；完全一致时 no-op，返回本次是否真实写入。"""
+    """创建或复活 PENDING 待办；完全一致时 no-op，但仍返回幂等操作成功。"""
     from app.models import UnifiedTodo
     aid = int(assignee_id or 0)
     if aid <= 0 or not biz_id:
@@ -68,7 +68,7 @@ def todo_upsert(db, *, biz_type: str, biz_id, todo_type: str, assignee_id: int,
             and str(row.source_biz_type or "") == str(biz_type or "")
         )
         if unchanged:
-            return False
+            return True
         row.title = title
         row.status = "PENDING"
         row.student_id = student_id
