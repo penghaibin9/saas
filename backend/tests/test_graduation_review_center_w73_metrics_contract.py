@@ -36,12 +36,16 @@ def test_w73_queue_defaults_to_business_priority_not_latest_only():
     assert '"PROPOSAL": 4' in service
 
 
-def test_w73_deadline_summary_projection_is_conservative_scoped_and_read_only():
+def test_w73_deadline_summary_projection_is_conservative_scoped_local_day_and_read_only():
     service = _read("app/modules/graduation/services/graduation_review_center_summary_service.py")
     assert "q._batch_deadlines" in service
     assert "deadlines[case] < now" in service
     assert "status_group IN ('WAITING','IN_REVIEW','RETURNED','BLOCKED')" in service
     assert "q._base_params" in service
+    assert "local_today_bounds_utc" in service
+    assert "today_start, tomorrow_start = local_today_bounds_utc(now)" in service
+    assert "utc_now()" in service
+    assert "datetime(now.year, now.month, now.day)" not in service
     for forbidden in ("db.add(", "db.commit(", "update(", "insert(", "delete("):
         assert forbidden not in service
 

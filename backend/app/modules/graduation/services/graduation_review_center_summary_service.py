@@ -6,10 +6,11 @@ returns only aggregate rows while preserving the same tenant/data-scope and dead
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 from sqlalchemy import bindparam, text
 
+from app.core.timeutil import local_today_bounds_utc, utc_now
 from app.modules.graduation.services import graduation_review_center_query_service as q
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
 from app.services.db_service import _tid, session
@@ -27,9 +28,10 @@ def summary(batch_id: int) -> dict:
     with session() as db:
         scope_ids = accessible_student_ids(db, int(_tid()), batch_id=int(batch_id))
         deadlines = q._batch_deadlines(db, int(batch_id))
-        now = datetime.now(timezone.utc)
-        today_start = datetime(now.year, now.month, now.day)
-        tomorrow_start = today_start + timedelta(days=1)
+        now = utc_now()
+        # "今日" is a tenant-local calendar concept. DB timestamps are UTC-naive,
+        # so query using the canonical tenant-local-day -> UTC-naive bounds.
+        today_start, tomorrow_start = local_today_bounds_utc(now)
         params = {
             **q._base_params(int(batch_id), scope_ids),
             **_deadline_flags(deadlines, now),
