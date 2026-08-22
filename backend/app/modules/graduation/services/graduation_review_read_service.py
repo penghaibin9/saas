@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from sqlalchemy import func, select
 
+from app.core.tenant_scoped import tenant_get
 from app.models import GraduationReview, GraduationStudent
 from app.modules.graduation.services import graduation_review_closure_service as closure
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
@@ -42,4 +43,7 @@ def list_reviews(page: int, page_size: int, gd_student_id=None, reviewer_name=No
             .offset((max(1, page) - 1) * page_size)
             .limit(page_size)
         ).all()
-        return [closure._row(db, row, db.get(GraduationStudent, row.gd_student_id)) for row in rows], total
+        return [
+            closure._row(db, row, tenant_get(db, GraduationStudent, row.gd_student_id))
+            for row in rows
+        ], total
