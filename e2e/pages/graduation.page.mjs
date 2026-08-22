@@ -151,11 +151,14 @@ export class StudentGraduationPage {
       const noticeTab = this.page.locator('.mtab').filter({ hasText: /通知/ }).first()
       await expect(noticeTab).toBeVisible()
       await noticeTab.click()
-      await this.page.waitForTimeout(350)
       matched = this.page.locator('.mrow').filter({ hasText: '开题报告退回整改' })
-      observedCount = await matched.count()
+
+      for (let probe = 0; probe < 8 && Date.now() < deadline; probe += 1) {
+        await this.page.waitForTimeout(500)
+        observedCount = await matched.count()
+        if (observedCount >= minimumCount) break
+      }
       if (observedCount >= minimumCount) break
-      await this.page.waitForTimeout(1300)
     }
 
     expect(

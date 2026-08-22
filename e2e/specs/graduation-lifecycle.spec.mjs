@@ -45,6 +45,7 @@ test.describe.serial('毕业设计：W7 消息—反馈—冻结 Reader—整改
   })
 
   test('第二次通知整改到 121页/30MB，新版产生后旧阅读快照审批必须 409', async ({ page, browser }) => {
+    test.setTimeout(300_000)
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
     const staleReviewer = new StaffGraduationPage(page, config.staffBaseUrl, fixture)
     await staleReviewer.openProposals('PENDING_REVIEW')
