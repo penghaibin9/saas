@@ -1,0 +1,43 @@
+name: Cleanup runs before 2026-08-22 08:10 GMT+8 - worker even
+
+on:
+  push:
+    branches:
+      - cleanup/actions-before-20260822-0810-worker-even-r1
+    paths:
+      - .github/workflows/cleanup-actions-before-20260822-0810-worker-even-r1.yml
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor == 'penghaibin9'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Cancel and delete even workflow runs before cutoff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          TEMP_BRANCH: ${{ github.ref_name }}
+        run: |
+          set +e
+          cutoff='2026-08-22T00:10:00Z'
+          for round in $(seq 1 720); do
+            ids=$(gh api --paginate "repos/$REPO/actions/runs?per_page=100" --jq ".workflow_runs[] | select(.id != $CURRENT_RUN_ID) | select(.created_at < \"$cutoff\") | select((.id % 2) == 0) | [.id,.status] | @tsv")
+            [ -z "$ids" ] && break
+            progressed=0
+            while IFS=$'\t' read -r id status; do
+              [ -z "$id" ] && continue
+              if [ "$status" = "completed" ]; then
+                gh api -X DELETE "repos/$REPO/actions/runs/$id" >/dev/null 2>&1 && progressed=1
+              else
+                gh api -X POST "repos/$REPO/actions/runs/$id/cancel" >/dev/null 2>&1 && progressed=1
+              fi
+            done <<< "$ids"
+            if [ "$progressed" -eq 1 ]; then sleep 5; else sleep 12; fi
+          done
+          gh api -X DELETE "repos/$REPO/git/refs/heads/$TEMP_BRANCH" >/dev/null 2>&1 || true
