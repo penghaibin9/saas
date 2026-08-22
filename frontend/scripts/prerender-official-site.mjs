@@ -30,6 +30,11 @@ function escapeHtml(value = '') {
     .replaceAll("'", '&#39;')
 }
 
+function absoluteAssetUrl(assetPath = '') {
+  const normalized = String(assetPath || '').startsWith('/') ? assetPath : `/${assetPath}`
+  return `${OFFICIAL_SITE_CONTACT.canonicalOrigin}${normalized}`
+}
+
 function setTitle(html, title) {
   if (/<title>[\s\S]*?<\/title>/i.test(html)) {
     return html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtml(title)}</title>`)
@@ -46,6 +51,7 @@ function injectSeoHead(html, route) {
   const canonical = officialCanonicalUrl(route.path)
   const page = OFFICIAL_SALES_PAGE_MAP[route.path]
   const keywords = page?.keywords?.join(',') || '职业院校,学生全生命周期,SaaS,教务,学工,毕业设计,岗位实习'
+  const socialImage = absoluteAssetUrl(page?.screenshots?.[0] || '/official-site/workbench.webp')
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': route.path === '/contact' ? 'ContactPage' : 'WebPage',
@@ -53,6 +59,10 @@ function injectSeoHead(html, route) {
     description: route.description,
     url: canonical,
     inLanguage: 'zh-CN',
+    primaryImageOfPage: {
+      '@type': 'ImageObject',
+      url: socialImage
+    },
     isPartOf: {
       '@type': 'WebSite',
       name: '跃科职业院校学生全生命周期平台',
@@ -63,7 +73,13 @@ function injectSeoHead(html, route) {
       '@type': 'Organization',
       name: OFFICIAL_SITE_CONTACT.company,
       url: OFFICIAL_SITE_CONTACT.canonicalOrigin,
-      telephone: OFFICIAL_SITE_CONTACT.phone.replaceAll(' ', '')
+      telephone: OFFICIAL_SITE_CONTACT.phone.replaceAll(' ', ''),
+      contactPoint: {
+        '@type': 'ContactPoint',
+        contactType: 'sales',
+        telephone: OFFICIAL_SITE_CONTACT.phone.replaceAll(' ', ''),
+        availableLanguage: ['zh-CN']
+      }
     }
   }
 
@@ -82,6 +98,22 @@ function injectSeoHead(html, route) {
     '<meta property="og:type" content="website">')
   next = upsertHeadTag(next, /<meta\s+property=["']og:url["'][^>]*>/i,
     `<meta property="og:url" content="${escapeHtml(canonical)}">`)
+  next = upsertHeadTag(next, /<meta\s+property=["']og:site_name["'][^>]*>/i,
+    '<meta property="og:site_name" content="跃科职业院校学生全生命周期平台">')
+  next = upsertHeadTag(next, /<meta\s+property=["']og:locale["'][^>]*>/i,
+    '<meta property="og:locale" content="zh_CN">')
+  next = upsertHeadTag(next, /<meta\s+property=["']og:image["'][^>]*>/i,
+    `<meta property="og:image" content="${escapeHtml(socialImage)}">`)
+  next = upsertHeadTag(next, /<meta\s+property=["']og:image:alt["'][^>]*>/i,
+    `<meta property="og:image:alt" content="${escapeHtml(`${page?.navTitle || '跃科'}真实产品界面`)}">`)
+  next = upsertHeadTag(next, /<meta\s+name=["']twitter:card["'][^>]*>/i,
+    '<meta name="twitter:card" content="summary_large_image">')
+  next = upsertHeadTag(next, /<meta\s+name=["']twitter:title["'][^>]*>/i,
+    `<meta name="twitter:title" content="${escapeHtml(route.title)}">`)
+  next = upsertHeadTag(next, /<meta\s+name=["']twitter:description["'][^>]*>/i,
+    `<meta name="twitter:description" content="${escapeHtml(route.description)}">`)
+  next = upsertHeadTag(next, /<meta\s+name=["']twitter:image["'][^>]*>/i,
+    `<meta name="twitter:image" content="${escapeHtml(socialImage)}">`)
   next = next.replace('</head>', `  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>\n</head>`)
   return next
 }
