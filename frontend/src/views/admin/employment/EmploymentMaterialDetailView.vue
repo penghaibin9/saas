@@ -16,10 +16,26 @@
                 <StatusTag :type="materialTagType[detail.material.status] || 'default'" :label="labelOf('materialStatus', detail.material.status)" dot style="margin-left: 8px" />
               </h3>
             </div>
-            <div class="emp-preview">
-              <span class="emp-preview__icon">▤</span>
-              <b>{{ detail.material.fileName }}</b>
-              <span>提交于 {{ detail.material.submitTime }} · 演示环境为材料预览占位</span>
+            <!-- TP-E03/TP-E05：老师必须能一眼分清「正式安全文件」和「历史文件名文本」。
+                 正式证据 = 已建立 EMPLOYMENT_MATERIAL 正式绑定 + 文件可用 + 安全扫描通过，
+                 服务端已给出 fileId/bindingId/scanStatus/fileVersion；只有历史 file_name
+                 的记录不是证据，不能显示成"可核验"。 -->
+            <div class="emp-preview" :class="{ 'is-legacy': detail.material.legacyFileNameOnly }">
+              <span class="emp-preview__icon">{{ detail.material.formalEvidence ? '▤' : '⚠' }}</span>
+              <b>{{ detail.material.file?.fileName || detail.material.fileName || '（未提供文件）' }}</b>
+              <template v-if="detail.material.formalEvidence">
+                <span>
+                  提交于 {{ detail.material.submitTime }} ·
+                  正式材料（文件 #{{ detail.material.file.fileId }} · 第 {{ detail.material.file.fileVersion }} 版 ·
+                  安全扫描 {{ scanText(detail.material.file.scanStatus) }}）
+                </span>
+              </template>
+              <template v-else-if="detail.material.legacyFileNameOnly">
+                <span>提交于 {{ detail.material.submitTime }} · 历史文本记录，未建立正式文件绑定，<b>不可作为核验凭据</b></span>
+              </template>
+              <template v-else>
+                <span>提交于 {{ detail.material.submitTime }} · 尚未上传正式材料文件</span>
+              </template>
             </div>
             <div v-if="detail.material.returnReason" class="emp-return-box">
               最近退回原因：{{ detail.material.returnReason }}
@@ -58,7 +74,7 @@
       <AppConfirmDialog
         v-model:visible="approveVisible"
         title="审核通过"
-        :message="`确认通过《${detail.material.fileName}》？通过后学生就业记录将标记为已核验并计入就业统计。`"
+        :message="approveMessage"
         type="primary"
         confirm-text="确认通过"
         :submitting="submitting"
@@ -126,6 +142,19 @@ export default {
     operateTip() {
       if (!['SUBMITTED', 'REVIEWING'].includes(this.detail?.material?.status)) return '该材料已完成审核'
       return this.reviewPerm && !this.reviewPerm.allowed ? this.reviewPerm.reason : ''
+    },
+    approveMessage() {
+      const m = this.detail?.material || {}
+      const name = m.file?.fileName || m.fileName || '该材料'
+      // TP-E04：材料审核的闭环只在证据成立时才会顺带完成去向核验，文案必须与
+      // 后端实际会发生的事一致，不能一律宣称"标记为已核验"。
+      if (m.formalEvidence) {
+        return `确认通过《${name}》？该材料具备正式文件绑定与安全扫描记录，通过后将同时完成去向核验并计入就业统计，全程留痕。`
+      }
+      const why = m.legacyFileNameOnly
+        ? '该材料只有历史文件名文本，没有正式文件绑定与安全扫描记录'
+        : '该材料尚未上传正式文件'
+      return `确认通过《${name}》？${why}，不构成可核验的正式证据——通过后只会记录「材料已通过」，去向核验状态保持不变，需在学生详情页的「去向核验」中单独处理。`
     }
   },
   created() {
@@ -134,6 +163,9 @@ export default {
   methods: {
     labelOf(dict, value) {
       return this.labelMaps[dict]?.[value] || value || '—'
+    },
+    scanText(status) {
+      return { CLEAN: '已通过', NOT_REQUIRED: '无需扫描', PENDING: '待扫描', INFECTED: '未通过' }[status] || status || '未知'
     },
     async load() {
       this.loading = true
@@ -159,7 +191,11 @@ export default {
       try {
         const res = await api.approveMaterial(this.detail.material.id, {})
         if (res.code === 0) {
-          toast.success('材料审核通过，已写入留痕')
+          // 服务端如实回传这一步到底做成了什么（destinationVerified），前端照抄，
+          // 不再把"材料通过"一律说成"已核验"。
+          toast.success(res.data?.destinationVerified
+            ? '材料审核通过，去向核验已同步完成，已写入留痕'
+            : '材料审核通过，已写入留痕；因缺少正式证据，去向核验状态未变更')
           this.approveVisible = false
           this.load()
         } else toast.error(res.message)
@@ -201,4 +237,5 @@ export default {
   display: flex;
   gap: var(--space-2);
 }
+.emp-preview.is-legacy { border-color: var(--warning-6, #e6a23c); background: var(--warning-1, #fdf6ec); }
 </style>

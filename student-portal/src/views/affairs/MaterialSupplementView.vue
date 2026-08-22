@@ -82,7 +82,9 @@ const filter = ref('open')
 const submitting = ref('')
 const selectedFiles = reactive({})
 const notes = reactive({})
-const focusId = computed(() => String(route.query.requirementId || ''))
+// SP-M01：深链现在完全由服务端 action_projection_service 生成，query 里保留的是
+// actionParams 原始参数名 materialRequirementId；requirementId 只作兼容旧外链保留。
+const focusId = computed(() => String(route.query.materialRequirementId || route.query.requirementId || ''))
 
 const openStates = new Set(['MISSING', 'RETURNED', 'PENDING_REVIEW'])
 const filters = computed(() => [

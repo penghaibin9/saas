@@ -81,31 +81,71 @@ def test_t7_recommendation_is_first_class_fact_not_followup_alias():
 
 
 def test_t7_verification_requires_formal_file_binding_and_optimistic_lock():
+    """核验的证据门槛与乐观锁仍然成立，但实现位置已上移。
+
+    V3 施工手册 TP-E02：核验的业务规则（状态机 / 证据门槛 / 乐观锁 / 审计）
+    原本只写在教师小程序服务里，导致教师 PC 走的是另一套更弱的门槛。现已收敛到
+    共享 domain 命令 `employment_destination_verification_service`，两个端共用。
+    因此这些不变量改为在共享权威上断言；小程序服务只保留「本端授权 + 委派」。
+    """
     service = _src("backend/app/services/teacher_mobile_employment_service.py")
+    authority = _src(
+        "backend/app/modules/employment/services/employment_destination_verification_service.py")
+
+    # 文件证据侧的绑定/ACL 仍归小程序服务自己实现
     assert '_FORMAL_BIZ_TYPE = "EMPLOYMENT_MATERIAL"' in service
     assert 'bind_file_to_business(' in service
     assert 'module_code=_FORMAL_MODULE' in service
     assert 'subject_type="STUDENT"' in service
     assert '@register_file_resolver(_FORMAL_BIZ_TYPE)' in service
     assert 'legacyFileNameOnly' in service
-    assert 'approved_ready > 0' in service
-    assert '至少需要 1 份已审核通过且具有正式 FileBinding' in service
-    assert '_assert_version(emp, body.get("expectedVersion"), "去向核验")' in service
-    assert 'emp.verify_status = after' in service
-    assert 'if action == "RETURN" and len(comment) < 5' in service
+
+    # 授权仍必须由本端范围权威完成（不得让 PC 口径顶替移动端口径，反之亦然）
+    assert '_scope_emp(db, verification_id, user, lock=True)' in service
+    assert 'verification_authority.review(' in service
+
+    # 核验业务规则在共享权威上仍然成立
+    assert '至少需要 1 份已审核通过且具有正式 FileBinding' in authority
+    assert 'count_formal_approved_materials(db, emp) <= 0' in authority
+    assert 'def assert_expected_version(' in authority
+    assert '缺少 expectedVersion' in authority
+    assert 'emp.verify_status = after' in authority
+    assert 'if action == RETURN and len(text) < _MIN_RETURN_COMMENT' in authority
+    # 共享权威明确声明自己不做授权，避免以后有人拿它当授权层用
+    assert '**本模块不做授权判定。**' in authority
 
 
-def test_t7_pc_material_approval_preserves_established_verified_transition():
+def test_t7_pc_material_approval_closed_loop_now_requires_formal_evidence():
+    """PC 材料审核的闭环保留，但证据门槛已与教师小程序拉齐（TP-E04 决断）。
+
+    #183 保留了「PC 材料通过即完成去向核验」这条既有闭环。问题在于：小程序侧
+    要求正式 FileBinding + 安全扫描才允许 VERIFIED，而 PC 侧只要点一下材料通过
+    就行，哪怕那份材料只有历史 file_name 文本。同一 canonical 状态两条门槛，
+    老师用哪个端操作决定证据强度——这是端间事实分叉。
+
+    本轮决断：不拆闭环（真实上传过材料的正常流程完全不受影响），而是给 PC 这条
+    路径加上同一道证据门槛。证据不足时材料照常 APPROVED（材料审核是独立的业务
+    行为），但 verify_status 不再被隐式推进。
+    """
     route = _src("backend/app/modules/employment/routers/employment.py")
     material_authority = _src("backend/app/modules/employment/services/employment_runtime_material_service.py")
     assert 'employment_runtime_material_service as material_runtime' in route
     assert 'material_runtime.approve_material(mid, body.comment, user=user)' in route
+
     approve_block = material_authority[material_authority.index('def approve_material'):]
+    # 材料审核本身仍然完成
     assert 'emp.material_status = "APPROVED"' in approve_block
+    # 闭环仍在，但被证据门槛守住
+    assert 'formal = verification.material_is_formal_evidence(db, material)' in approve_block
+    assert 'if formal and verify_before != "VERIFIED":' in approve_block
     assert 'emp.verify_status = "VERIFIED"' in approve_block
-    # Teacher V3 may add its own explicit verification endpoint, but it must not silently
-    # break the pre-existing production PC closed-loop contract.
-    assert 'emp.verify_status = after' in _src("backend/app/services/teacher_mobile_employment_service.py")
+    # 结果如实回传，前端不得再统一宣称"已核验"
+    assert '"destinationVerified": verified_now' in approve_block
+    assert '"formalEvidence": formal' in approve_block
+
+    # 教师小程序侧仍走同一共享 domain 命令，两端结论一致
+    mini = _src("backend/app/services/teacher_mobile_employment_service.py")
+    assert 'verification_authority.review(' in mini
 
 
 def test_t7_bound_profile_scope_never_falls_back_to_stale_employment_snapshot(monkeypatch):

@@ -10,12 +10,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import EmpAuditTrail, EmpFollowup, EmpJob, EmpMaterial, EmpStudent, StudentProfile
 from app.models.employment_recommendation import EmpRecommendation
 from app.models.file import FileBinding, FileObject
+from app.modules.employment.services import employment_destination_verification_service as verification_authority
+from app.modules.employment.services import employment_material_evidence_service as evidence_authority
 from app.modules.employment.services import employment_runtime_service as runtime
 from app.modules.employment.services import employment_service as base
 from app.services import mobile_teacher_service as teacher_guard
@@ -24,19 +26,18 @@ from app.services.file_access_service import register_file_resolver
 from app.services.file_business_binding_service import bind_file_to_business
 from app.services.message_identity import resolve_message_user_id
 
-_READY_FILE_STATUS = {"AVAILABLE", "STORED"}
-_READY_SCAN_STATUS = {"CLEAN", "NOT_REQUIRED"}
+# TP-E05：正式证据口径的单一权威在 employment_material_evidence_service，
+# 这里只做别名，保证教师 PC 与教师小程序永远用同一套状态集合与判定函数。
+_READY_FILE_STATUS = evidence_authority.READY_FILE_STATUS
+_READY_SCAN_STATUS = evidence_authority.READY_SCAN_STATUS
 _FORMAL_BIZ_TYPE = "EMPLOYMENT_MATERIAL"
-_FORMAL_MODULE = "EMPLOYMENT"
+_FORMAL_MODULE = evidence_authority.FORMAL_MODULE
+
+assert _FORMAL_BIZ_TYPE == evidence_authority.FORMAL_BIZ_TYPE
 
 
 def _ready_file(file_obj: FileObject | None) -> bool:
-    return bool(
-        file_obj
-        and str(file_obj.status or "").upper() in _READY_FILE_STATUS
-        and str(file_obj.scan_status or "NOT_REQUIRED").upper() in _READY_SCAN_STATUS
-        and not file_obj.is_deleted
-    )
+    return evidence_authority.is_ready_file(file_obj)
 
 
 def _scope_emp(db, emp_id: Any, user: dict, *, lock: bool = False) -> tuple[EmpStudent, StudentProfile | None]:
@@ -263,44 +264,27 @@ def create_recommendation(user: dict, emp_student_id: Any, body: dict) -> dict:
 
 
 def _material_evidence(db, emp: EmpStudent) -> tuple[list[dict], int]:
+    """本模块的教师小程序材料投影。
+
+    TP-E05：「什么算正式证据」的判定已抽到
+    `employment_material_evidence_service`，教师 PC 与教师小程序共用同一权威，
+    本函数只负责小程序自己的 DTO 形状——不再各持一份判定规则，否则 PC 与
+    小程序对同一份材料可能给出不同结论。
+    """
     materials = db.scalars(select(EmpMaterial).where(
         EmpMaterial.tenant_id == _tid(),
         EmpMaterial.emp_student_id == emp.id,
         EmpMaterial.is_deleted.is_(False),
     ).order_by(EmpMaterial.id.desc())).all()
-    material_ids = [int(row.id) for row in materials]
-    bindings: dict[int, FileBinding] = {}
-    files: dict[int, FileObject] = {}
-    if material_ids:
-        rows = db.scalars(select(FileBinding).where(
-            FileBinding.tenant_id == _tid(),
-            FileBinding.biz_type == _FORMAL_BIZ_TYPE,
-            FileBinding.biz_id.in_([str(mid) for mid in material_ids]),
-            FileBinding.module_code == _FORMAL_MODULE,
-            FileBinding.status == "ACTIVE",
-            FileBinding.is_current.is_(True),
-            FileBinding.is_deleted.is_(False),
-        ).order_by(FileBinding.id.desc())).all()
-        for item in rows:
-            raw = str(item.biz_id or "")
-            if raw.isdigit() and int(raw) not in bindings:
-                bindings[int(raw)] = item
-        file_ids = {int(item.file_id) for item in bindings.values() if item.file_id}
-        if file_ids:
-            files = {
-                int(row.id): row
-                for row in db.scalars(select(FileObject).where(
-                    FileObject.tenant_id == _tid(),
-                    FileObject.id.in_(file_ids),
-                    FileObject.is_deleted.is_(False),
-                )).all()
-            }
+    facts = evidence_authority.resolve_evidence(db, [row.id for row in materials])
+
     result = []
     approved_ready = 0
     for material in materials:
-        binding = bindings.get(int(material.id))
-        file_obj = files.get(int(binding.file_id)) if binding and binding.file_id else None
-        formal = bool(binding and _ready_file(file_obj))
+        fact = facts.get(int(material.id)) or {}
+        binding = fact.get("binding")
+        file_obj = fact.get("file")
+        formal = bool(fact.get("formal"))
         if formal and str(material.status or "").upper() == "APPROVED":
             approved_ready += 1
         result.append({
@@ -488,36 +472,18 @@ def review_verification(user: dict, verification_id: Any, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "退回必须填写不少于 5 字的可执行补正意见")
 
     with session() as db:
+        # 授权用本端（移动教师端）自己的范围权威；核验的业务规则交给共享 domain
+        # 命令，保证 PC 与小程序对"什么证据足以支撑 VERIFIED"给出同一答案。
         emp, _profile = _scope_emp(db, verification_id, user, lock=True)
-        _assert_version(emp, body.get("expectedVersion"), "去向核验")
-        before = str(emp.verify_status or "PENDING_VERIFY").upper()
-        if action == "VERIFY":
-            if str(emp.destination_type or "").upper() == "UNEMPLOYED":
-                raise AppException("DATA_CONFLICT", "未就业学生没有可核验去向", http_status=409)
-            _materials, approved_ready = _material_evidence(db, emp)
-            if approved_ready <= 0:
-                raise AppException(
-                    "DATA_CONFLICT",
-                    "至少需要 1 份已审核通过且具有正式 FileBinding 的安全材料才能核验通过",
-                    http_status=409,
-                )
-            if before == "VERIFIED":
-                raise AppException("DATA_CONFLICT", "该去向已经核验通过，请刷新", http_status=409)
-            after = "VERIFIED"
-        else:
-            if before == "RETURNED":
-                raise AppException("DATA_CONFLICT", "该去向已退回补正，请等待学生更新材料", http_status=409)
-            after = "RETURNED"
-        emp.verify_status = after
-        emp.version = int(emp.version or 0) + 1
-        base._audit(db, "VERIFICATION", emp.id, "去向核验通过" if action == "VERIFY" else "去向核验退回",
-                    comment, before, after)
+        emp.verify_status = str(emp.verify_status or "PENDING_VERIFY").upper()
+        result = verification_authority.review(
+            db, emp,
+            action=action,
+            comment=comment,
+            expected_version=body.get("expectedVersion"),
+        )
         db.commit()
-        return {
-            "verificationId": str(emp.id),
-            "status": after,
-            "version": int(emp.version or 0),
-        }
+        return result
 
 
 @register_file_resolver(_FORMAL_BIZ_TYPE)

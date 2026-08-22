@@ -54,7 +54,7 @@
           <StatusTag :type="urgencyTone(row.urgency)" :label="row.urgencyLabel" dot />
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push('/admin/approval/todos/' + row.taskId)">办理</button>
+          <button class="mp-link" @click="goDetail(row.taskId)">办理</button>
         </template>
       </DataTable>
 
@@ -172,6 +172,7 @@ import {
 import { AppConfirmDialog } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { approvalApi } from '@/modules/approval/api/approval.api'
+import { buildDetailQuery } from '@/modules/approval/utils/queueContext'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ bizType: '', urgency: '', keyword: '', submitDate: '' })
@@ -240,8 +241,11 @@ export default {
   watch: {
     '$route.query.bizType'(value) {
       if (this.$route.path !== '/admin/approval/todos') return
-      this.filters.bizType =
-        value && this.ctx.filterOptions.bizTypes.some((b) => b.value === value) ? value : ''
+      const next = value && this.ctx.filterOptions.bizTypes.some((b) => b.value === value) ? value : ''
+      // syncQueryFromState() 会把当前 bizType 写回本页 URL；同值变化不需要重新
+      // load()，只有真的来自外部导航（比如 Workbench 磁贴带 ?bizType=）才处理。
+      if (next === this.filters.bizType) return
+      this.filters.bizType = next
       this.pagination.page = 1
       this.load()
     }
@@ -251,15 +255,26 @@ export default {
     if (bizType && this.ctx.filterOptions.bizTypes.some((b) => b.value === bizType)) {
       this.filters.bizType = bizType
     }
+    // TP-A01：非法 urgency 不能静默降级成"全部"——那样用户点了带筛选的入口，
+    // 却看到未筛选列表，还以为筛选生效了。合法值正常采纳；非法值显式提示并丢弃。
     const urgency = this.$route.query.urgency
     if (urgency && this.ctx.filterOptions.urgencies.some((u) => u.value === urgency)) {
       this.filters.urgency = urgency
+    } else if (urgency) {
+      toast.error(`链接携带的紧急度筛选值“${urgency}”不受支持，已忽略该条件`)
     }
-    // UnifiedTodo 分类下钻：approval 列表无 todoType 字段时仍保留 urgency/bizType；
-    // todoType 透传给 load 作为关键词兜底提示（业务页自带 status 筛选更准）。
-    if (this.$route.query.todoType && !this.filters.keyword) {
-      this.filters.keyword = String(this.$route.query.todoType)
-    }
+    // TP-A02：从审批详情"返回列表"时，qctx 会把关键词/提交日期/分页也铺平进
+    // query，一并采纳才能真正回到用户离开时的那个队列，而不是只恢复 bizType。
+    if (this.$route.query.keyword) this.filters.keyword = String(this.$route.query.keyword)
+    if (this.$route.query.submitDate) this.filters.submitDate = String(this.$route.query.submitDate)
+    const page = Number(this.$route.query.page)
+    if (Number.isInteger(page) && page > 0) this.pagination.page = page
+    // V3 施工手册 TP-W05：todoType 是英文业务分类码（如 LEAVE_APPROVAL），不是给人看
+    // 的关键词——塞进 filters.keyword 会被当全文检索，永远搜不出真实结果，还会让
+    // 用户误以为自己的关键词筛选是空的。UnifiedTodo 分类目前没有对应的 Approval
+    // 端结构化筛选字段，与其伪装成一个不生效的关键词，不如干脆不消费它：该分类的
+    // Workbench 磁贴已经指向各自业务列表的专属路由（TODO_TYPE_ROUTES），不会再
+    // 带着 todoType 落到这个页面。
     this.load()
     this.loadAudits()
   },
@@ -283,15 +298,42 @@ export default {
     onPageChange(page) {
       this.pagination.page = page
       this.load()
+      this.syncQueryFromState()
+    },
+    goDetail(taskId) {
+      // TP-A02/A09：把当前生效的筛选 + 分页 + 来源列表铺平进详情页 route.query
+      // （PcQueueContext v1，见 queueContext.js），详情页「下一条」才能按用户实际
+      // 在看的队列做服务端 seek，「返回列表」才能回到同一 page/筛选，而不是丢光
+      // 上下文、退化成"队首第一条"或空筛选首页。
+      const query = buildDetailQuery({
+        filters: this.filters,
+        page: this.pagination.page,
+        pageSize: this.pagination.pageSize,
+        returnTo: '/admin/approval/todos'
+      })
+      this.$router.push({ path: '/admin/approval/todos/' + taskId, query })
+    },
+    // 把当前筛选/分页同步进本页 URL：既让浏览器前进/后退和收藏夹可用，也让
+    // goDetail() 之外——比如直接搜索后再点浏览器后退——的场景状态一致。
+    syncQueryFromState() {
+      const q = {}
+      if (this.filters.bizType) q.bizType = this.filters.bizType
+      if (this.filters.urgency) q.urgency = this.filters.urgency
+      if (this.filters.keyword) q.keyword = this.filters.keyword
+      if (this.filters.submitDate) q.submitDate = this.filters.submitDate
+      if (this.pagination.page > 1) q.page = String(this.pagination.page)
+      this.$router.replace({ path: '/admin/approval/todos', query: q }).catch(() => {})
     },
     search() {
       this.pagination.page = 1
       this.load()
+      this.syncQueryFromState()
     },
     reset() {
       this.filters = EMPTY_FILTERS()
       this.pagination.page = 1
       this.load()
+      this.syncQueryFromState()
     },
     onToolbar(key) {
       if (key === 'exportRecords') this.exportDialog = true
@@ -312,31 +354,46 @@ export default {
         else this.transferError = res.message
       }
     },
+    batchResultMessage(data, actionLabel, successSuffix = '') {
+      const succeeded = Number(data?.succeeded || 0)
+      const failed = Number(data?.failed || 0)
+      const skipped = Number(data?.skipped || 0)
+      const results = Array.isArray(data?.results) ? data.results : []
+      const stale = results.filter((x) => {
+        const code = String(x.errorCode || '')
+        return code.includes('VERSION') || code.includes('CONTEXT') || code.includes('CONFLICT')
+      }).length
+      const counts = `成功 ${succeeded} 条${failed ? `，失败 ${failed} 条` : ''}${skipped ? `，跳过 ${skipped} 条` : ''}`
+      const staleHint = stale ? `；其中 ${stale} 条审批事实已变化或缺少版本快照，请刷新列表/详情后重试` : ''
+      return `${actionLabel}：${counts}${successSuffix}${staleHint}`
+    },
+    handleBatchResponse(res, actionLabel, successSuffix = '') {
+      if (res.code !== 0) {
+        toast.error(res.message)
+        return false
+      }
+      const failed = Number(res.data?.failed || 0)
+      const message = this.batchResultMessage(res.data, actionLabel, successSuffix)
+      if (failed > 0) toast.error(message)
+      else toast.success(message)
+      // batch 是逐条事务，部分成功也已经真实落库；无论全绿还是部分失败都必须刷新，
+      // 不能保留一份把“已办”和“仍待办”混在一起的旧选择集。
+      this.afterMutate()
+      return failed === 0
+    },
     async doBatchApprove() {
       this.submitting = true
       const res = await approvalApi.batchApprove([...this.selected])
       this.submitting = false
       this.approveDialog = false
-      if (res.code === 0) {
-        toast.success(
-          '批量通过完成：成功 ' + res.data.succeeded + ' 条' + (res.data.skipped ? '，跳过 ' + res.data.skipped + ' 条' : '') + '，已留痕并同步申请人'
-        )
-        this.afterMutate()
-      } else {
-        toast.error(res.message)
-      }
+      this.handleBatchResponse(res, '批量通过完成', '，成功项已留痕并同步申请人')
     },
     async doBatchReturn({ reason }) {
       this.submitting = true
       const res = await approvalApi.batchReturn([...this.selected], { reason })
       this.submitting = false
       this.returnDialog = false
-      if (res.code === 0) {
-        toast.success('批量退回完成：成功 ' + res.data.succeeded + ' 条，退回原因已同步申请人并写入退回记录')
-        this.afterMutate()
-      } else {
-        toast.error(res.message)
-      }
+      this.handleBatchResponse(res, '批量退回完成', '，成功项已写入真实退回记录')
     },
     async doBatchTransfer() {
       this.transferError = ''
@@ -354,13 +411,9 @@ export default {
         note: this.transferForm.note
       })
       this.submitting = false
-      if (res.code === 0) {
-        this.transferDrawer = false
-        toast.success('批量转交完成：' + res.data.succeeded + ' 条已转交给 ' + res.data.transferredTo + '，原任务留痕并生成新待办')
-        this.afterMutate()
-      } else {
-        this.transferError = res.message
-      }
+      if (res.code === 0) this.transferDrawer = false
+      const target = res.data?.transferredTo || this.transferForm.targetUserId
+      this.handleBatchResponse(res, '批量转交完成', `，成功项已转交给 ${target} 并保留原任务留痕`)
     },
     async doExport() {
       this.submitting = true

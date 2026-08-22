@@ -501,8 +501,15 @@ def get_task(task_id, user: dict | None = None) -> dict:
 
 
 def act_task(task_id, action: str, reason: str | None = None, target: str | None = None,
-             user: dict | None = None, version=None) -> dict:
-    """审批动作与消息副作用、高危审计同事务；副作用失败则整体回滚，禁止假成功。"""
+             user: dict | None = None, version=None, *, enforce_context_gate: bool = False,
+             expected_source_version=None) -> dict:
+    """审批动作与消息副作用、高危审计同事务；副作用失败则整体回滚，禁止假成功。
+
+    ``enforce_context_gate`` 仅由审批中心对 approve/reject 显式开启；其它业务域直接复用
+    act_task() 时保持原合同。开启后会在同一事务内锁 task、instance 和已接入 adapter 的
+    源业务行，完成 completeness/sourceVersion 比对后才允许推进 task，关闭 TP-A07 的
+    跨事务 TOCTOU 窗口。
+    """
     from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
     from app.services import mock_audit_service as audit
     require_expected_version(version)
@@ -512,10 +519,22 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
     with session() as db:
         t = db.scalars(select(WorkflowTask).where(
             WorkflowTask.id == int(task_id), WorkflowTask.tenant_id == _tid(),
-            WorkflowTask.is_deleted.is_(False))).first()
+            WorkflowTask.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not t:
             raise not_found("审批任务不存在")
         _assert_task_assignee(db, t, user)
+        inst = db.scalars(select(WorkflowInstance).where(
+            WorkflowInstance.id == t.instance_id, WorkflowInstance.tenant_id == _tid(),
+            WorkflowInstance.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not inst:
+            raise not_found("审批实例不存在")
+        if enforce_context_gate:
+            from app.services import approval_business_context_service as ctx_svc
+            context = ctx_svc.resolve_context(db, inst, for_update=True)
+            ctx_svc.assert_action_context(context, expected_source_version)
+
         values = {
             "status": action,
             "acted_at": datetime.utcnow(),
@@ -527,12 +546,9 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
         atomic_versioned_update(
             db, WorkflowTask, entity_id=int(task_id), tenant_id=_tid(),
             expected_version=version, values=values, expected_status="PENDING")
-        inst = db.scalars(select(WorkflowInstance).where(
-            WorkflowInstance.id == t.instance_id, WorkflowInstance.tenant_id == _tid(),
-            WorkflowInstance.is_deleted.is_(False))).first()
-        if inst and action in ("APPROVED", "REJECTED"):
+        if action in ("APPROVED", "REJECTED"):
             inst.status = action
-        if inst and (inst.source_biz_type or "") == "MESSAGE_CAMPAIGN" and action in ("APPROVED", "REJECTED"):
+        if (inst.source_biz_type or "") == "MESSAGE_CAMPAIGN" and action in ("APPROVED", "REJECTED"):
             msg_campaign_id = int(inst.source_biz_id or 0)
             from app.core.context import get_current_user_ctx
             from app.services import message_campaign_service as camp_svc
@@ -546,6 +562,13 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
                 db, actor, campaign_id=msg_campaign_id,
                 approved=(action == "APPROVED"), comment=reason,
                 skip_workflow_close=True)
+        # SP-E02/E04：就业去向登记结构化提交批准/驳回时，在同一事务内原子写回 canonical
+        # EmpStudent——同 MESSAGE_CAMPAIGN 写法，act_task() 已经做完鉴权/乐观锁/状态流转，
+        # 这里只做本域副作用，不重复校验，也不 commit。
+        if (inst.source_biz_type or "") == "EMPLOYMENT_DESTINATION" and action in ("APPROVED", "REJECTED"):
+            from app.modules.employment.services import employment_destination_submission_service as emp_dest_svc
+            emp_dest_svc.apply_workflow_decision_in_db(
+                db, inst, approved=(action == "APPROVED"), reason=reason)
         if action in ("APPROVED", "REJECTED"):
             audit.record_critical(
                 "审批通过" if action == "APPROVED" else "审批驳回",
@@ -558,7 +581,7 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
                 db=db)
         db.commit()
         result = {"taskId": str(task_id), "status": action, "actedAt": _iso(datetime.utcnow()),
-                  "instanceStatus": inst.status if inst else "RUNNING",
+                  "instanceStatus": inst.status,
                   "version": int(version) + 1}
         if msg_campaign_id:
             result["messageCampaignId"] = str(msg_campaign_id)

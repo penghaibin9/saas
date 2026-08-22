@@ -56,12 +56,21 @@ const COCKPIT = '/admin/data-center'
 const AUDIT_LOGS = '/admin/system/logs'
 const SYSTEM_HOME = '/admin/system'
 
-/** 通用汇总磁贴（含 B5 临近截止；下钻带 urgency 筛选） */
+/** 通用汇总磁贴（含 B5 临近截止；下钻带 urgency 筛选）。
+ *
+ * V3 施工手册 TP-W01/TP-W04：
+ * - urgency 合法值以 approval.api.js 的 FILTER_OPTIONS.urgencies 为准，此前误写
+ *   `NEAR`，Approval 页校验不通过会静默忽略该筛选，卡片数字与点开后的列表对不上。
+ * - ApprovalTodoListView 当前没有 status 筛选字段（"我的待办"本身就是 pending 语义），
+ *   `?status=PENDING` 是从未被消费过的装饰参数；`?status=DONE` 更是把"已完成"筛选
+ *   套在一个语义就是"待办"的列表上。pending 直接用列表固有语义，doneToday 改跳
+ *   真实的已办列表（/admin/approval/done），不再附假参数。
+ */
 const SUMMARY_CUES = [
-  { key: 'pending', title: '待我处理', source: 'summary.pending', accent: 'primary', to: `${TODO_ALL}?status=PENDING` },
+  { key: 'pending', title: '待我处理', source: 'summary.pending', accent: 'primary', to: TODO_ALL },
   { key: 'overdue', title: '已逾期', source: 'summary.overdue', accent: 'risk', to: `${TODO_ALL}?urgency=OVERDUE` },
-  { key: 'nearDeadline', title: '24小时内到期', source: 'summary.nearDeadline', accent: 'warning', to: `${TODO_ALL}?urgency=NEAR` },
-  { key: 'doneToday', title: '今日已完成', source: 'summary.doneToday', accent: 'success', to: `${TODO_ALL}?status=DONE` }
+  { key: 'nearDeadline', title: '24小时内到期', source: 'summary.nearDeadline', accent: 'warning', to: `${TODO_ALL}?urgency=NEAR_DEADLINE` },
+  { key: 'doneToday', title: '今日已完成', source: 'summary.doneToday', accent: 'success', to: '/admin/approval/done' }
 ]
 
 function withTodoType(path, todoType) {
@@ -126,14 +135,14 @@ const GD_MENTOR_TYPE_CUES = [
 ]
 
 const SCOPE_STUDENT_STATS = [
-  statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`),
+  statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
   statsCue('studentTotal', '范围内学生', 'primary', '/admin/campus-service/classes'),
   statsCue('academicWarning', '学业预警在办', 'warning', TODO_TYPE_ROUTES.ACAD_WARNING_HANDLE),
   statsCue('orientationPending', '迎新待报到', 'primary', '/admin/orientation/students?status=PENDING')
 ]
 
 const SCHOOL_STATS = [
-  statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`),
+  statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
   // 旧「在校服务·学生服务台账」已退役，在册学生统一进学生主档列表
   statsCue('studentTotal', '在册学生', 'primary', '/admin/student/list'),
   statsCue('academicWarning', '学业预警在办', 'warning', TODO_TYPE_ROUTES.ACAD_WARNING_HANDLE),
@@ -186,7 +195,7 @@ export const RECIPES = {
     headline: pendingHeadline('今日无待办，一切正常'),
     summaryCues: SUMMARY_CUES,
     statsCues: [
-      statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`),
+      statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL),
       statsCue('academicWarning', '学业预警在办', 'warning', TODO_TYPE_ROUTES.ACAD_WARNING_HANDLE),
       statsCue('studentTotal', '范围内学生', 'primary', '/admin/academic-affairs/roster')
     ],
@@ -283,7 +292,7 @@ export const RECIPES = {
     label: '团学工作台',
     headline: pendingHeadline('本条线今日无待办，可去发布活动或管理社团'),
     summaryCues: SUMMARY_CUES,
-    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`)],
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
     typeCues: [],
     capabilityNote: '团学活动以发布与管理为主，暂无分类待办写入；数字来自通用待办汇总。',
     quickLinks: [
@@ -301,7 +310,7 @@ export const RECIPES = {
     label: '宿舍管理工作台',
     headline: pendingHeadline('负责楼栋今日无待办，可去检查或处理异常'),
     summaryCues: SUMMARY_CUES,
-    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`)],
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
     typeCues: [
       typeCue('DORM_TRANSFER', '调宿待审', 'primary'),
       typeCue('DORM_EXCEPTION', '宿舍异常待处置', 'risk')
@@ -430,7 +439,7 @@ export const RECIPES = {
     statsCues: [
       statsCue('unemployed', '未就业学生', 'warning', '/admin/employment/unemployed?status=UNEMPLOYED'),
       statsCue('studentTotal', '范围内学生', 'primary', '/admin/employment/students'),
-      statsCue('pendingApproval', '待我审批', 'primary', `${TODO_ALL}?status=PENDING`)
+      statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)
     ],
     typeCues: [typeCue('EMPLOYMENT_FOLLOWUP', '就业跟进待办', 'warning')],
     quickLinks: [

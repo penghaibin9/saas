@@ -4,22 +4,29 @@
  */
 import { request } from '@/services/http/client'
 
-const BIZ_TYPES = [
-  ['PROFILE_CORRECTION', '信息更正'],
-  ['COMPANY_CHANGE', '实习变更'],
-  ['MATERIAL_VERIFY', '材料核验'],
-  ['LEAVE', '请假审批'],
-  ['AID', '困难认定'],
-  ['FUNDING', '奖助评定'],
-  ['DISCIPLINE', '违纪认定'],
-  ['DISCIPLINE_REMOVE', '违纪解除'],
-  ['AA_STATUS_CHANGE', '学籍异动'],
-  ['AA_GRADE_TASK', '成绩审核'],
-  ['AA_GRADE_CHANGE', '成绩更正'],
-  ['AA_SCHEDULE_CHANGE', '调停课审批']
-].map(([value, label]) => ({ value, label }))
+// TP-A10：业务类型字典由服务端 GET /approvals/biz-types 权威下发（见
+// approval_runtime_service.biz_type_options()），前端不再自己拷贝一份完整枚举——
+// 旧版本这里硬编码过 COMPANY_CHANGE/MATERIAL_VERIFY 两个全仓找不到任何创建点的
+// 类型，新增一种真实审批也常常忘记同步改这份常量。ensureBizTypeOptions() 在
+// getContext() 里被 await 一次；在它落地前，各处已有的 `BIZ_LABEL[x] || x` 兜底
+// 只显示原始 code，不伪造标签，也不会阻塞页面渲染。
+let BIZ_TYPES = []
+let BIZ_LABEL = {}
+let bizTypesLoaded = false
 
-const BIZ_LABEL = Object.fromEntries(BIZ_TYPES.map((x) => [x.value, x.label]))
+async function ensureBizTypeOptions() {
+  if (bizTypesLoaded) return
+  try {
+    const rows = await request('/approvals/biz-types')
+    const list = Array.isArray(rows) ? rows : []
+    BIZ_TYPES = list.map((x) => ({ value: x.value, label: x.label }))
+    BIZ_LABEL = Object.fromEntries(BIZ_TYPES.map((x) => [x.value, x.label]))
+    bizTypesLoaded = true
+  } catch {
+    // 拿不到字典时保持空数组/空表，不用旧的本地静态清单顶替——那正是本项要去掉的东西。
+  }
+}
+
 const ROLE_LABEL = {
   COUNSELOR: '辅导员',
   COLLEGE_ADMIN: '学院管理员',
@@ -29,8 +36,11 @@ const ROLE_LABEL = {
   SCHOOL_ADMIN: '学校管理员'
 }
 
+// bizTypes 不在这里固定引用 BIZ_TYPES——ensureBizTypeOptions() resolve 后会重新赋值
+// BIZ_TYPES 这个绑定本身（不是原地 splice），静态对象字面量此时捕获的还是旧引用。
+// getContextRaw() 每次都重新展开一份 { ...FILTER_OPTIONS, bizTypes: BIZ_TYPES }，
+// 拿到的才是 await ensureBizTypeOptions() 之后的最新值。
 const FILTER_OPTIONS = {
-  bizTypes: BIZ_TYPES,
   urgencies: [
     { value: 'OVERDUE', label: '已超时' },
     { value: 'NEAR_DEADLINE', label: '临期' },
@@ -61,6 +71,9 @@ const BATCH_ACTIONS = [
 ]
 
 const todoVersions = new Map()
+// TP-A07：详情页/批量预检读到的业务对象 sourceVersion 快照，approve/return/reject
+// 时原样带回去；后端在同一事务内锁源事实并比对，不一致就 409。
+const contextVersions = new Map()
 const templateVersions = new Map()
 const pendingIdempotencyKeys = new Map()
 let latestTransferTargets = []
@@ -259,19 +272,51 @@ function templateRow(t = {}) {
   return mapped
 }
 
-async function resolveBatchItems(selected = []) {
-  const out = []
-  for (const value of selected) {
-    const taskId = String(typeof value === 'object' ? (value.taskId || value.id || '') : value)
-    if (!taskId) continue
-    let version = typeof value === 'object' ? value.version : todoVersions.get(taskId)
-    if (version === undefined || version === null) {
-      const detail = await request(`/approvals/tasks/${encodeURIComponent(taskId)}`)
-      version = detail.version
-      todoVersions.set(taskId, version)
+async function resolveBatchItems(selected = [], { includeSourceVersion = true } = {}) {
+  const refs = (Array.isArray(selected) ? selected : [])
+    .map((value) => ({
+      value,
+      taskId: String(typeof value === 'object' ? (value.taskId || value.id || '') : value)
+    }))
+    .filter((x) => x.taskId)
+  if (!refs.length) return []
+
+  const out = new Array(refs.length)
+  let cursor = 0
+  async function worker() {
+    while (true) {
+      const index = cursor++
+      if (index >= refs.length) return
+      const { value, taskId } = refs[index]
+      let version = typeof value === 'object' ? value.version : todoVersions.get(taskId)
+      const needDetail = version === undefined || version === null
+        || (includeSourceVersion && !contextVersions.has(taskId))
+      if (needDetail) {
+        // TP-A07 batch preflight：列表只有 task version，没有业务事实 sourceVersion。
+        // supported Context 的批量动作必须先读取真实详情快照；最多 8 并发，避免一次
+        // 选 100 条时瞬间打 100 个请求。若用户此前看过详情，保留当时快照，让后端
+        // 对后续事实变化返回 409，而不是动作前偷偷刷新成“永远匹配”的当前版本。
+        const detail = await request(`/approvals/tasks/${encodeURIComponent(taskId)}`)
+        if (version === undefined || version === null) {
+          version = detail.version
+          todoVersions.set(taskId, version)
+        }
+        if (includeSourceVersion && !contextVersions.has(taskId)) {
+          const ctx = detail.businessContext || null
+          if (ctx && ctx.sourceVersion != null) {
+            contextVersions.set(taskId, ctx.sourceVersion)
+          }
+        }
+      }
+      const item = { taskId, version: Number(version) }
+      if (includeSourceVersion && contextVersions.has(taskId)) {
+        item.expectedSourceVersion = Number(contextVersions.get(taskId))
+      }
+      out[index] = item
     }
-    out.push({ taskId, version: Number(version) })
   }
+  const concurrency = Math.min(8, refs.length)
+  await Promise.all(Array.from({ length: concurrency }, () => worker()))
   return out
 }
 
@@ -295,13 +340,20 @@ async function loadTransferTargets(taskIds = []) {
 async function getContextRaw() {
   const [brand, authCtx] = await Promise.all([
     request('/tenant/brand'),
-    request('/rbac/current-context')
+    request('/rbac/current-context'),
+    ensureBizTypeOptions()
   ])
   const patterns = Array.isArray(authCtx.permissionPatterns) ? authCtx.permissionPatterns : []
   const manage = hasPattern(patterns, 'approval.manage') || hasPattern(patterns, '*')
   const currentRole = authCtx.currentRole || {}
   const dataScope = authCtx.dataScope || {}
   latestTransferTargets = []
+  // TP-A08：approveTask/returnTask/rejectTask/transferTask 这四个 key 只表达
+  // "当前角色具备办理审批的能力"（roleCapabilities），不是"当前这条任务允许这个
+  // 动作"（objectAllowedActions）——真正的对象级许可来自 task.allowedActions
+  // （由 approval_runtime_service 按节点角色 + 数据范围 + 任务状态算出）。任何
+  // 消费方都必须两者取交集，绝不能只凭这里的 allowed=true 就渲染/执行业务动作；
+  // 详情页 canAction() 已经这样做，新增页面复制这个模式时不要漏掉后半句。
   const single = actionMeta(true, true)
   const batch = actionMeta(true, manage, '批量办理仅限具备 approval.manage 的管理角色')
   const adminOnly = actionMeta(true, manage, '当前身份缺少 approval.manage 权限')
@@ -336,7 +388,7 @@ async function getContextRaw() {
       exportTemplates: adminOnly,
       viewAuditLog: adminOnly
     },
-    filterOptions: FILTER_OPTIONS,
+    filterOptions: { ...FILTER_OPTIONS, bizTypes: BIZ_TYPES },
     batchActions: BATCH_ACTIONS,
     transferTargets: [],
     realApi: true
@@ -384,13 +436,30 @@ export const approvalApi = {
     const d = await request(`/approvals/tasks/${encodeURIComponent(taskId)}`)
     const task = taskRow(d)
     todoVersions.set(task.taskId, task.version)
+    if (d.businessContext && d.businessContext.sourceVersion != null) {
+      contextVersions.set(task.taskId, d.businessContext.sourceVersion)
+    } else {
+      contextVersions.delete(task.taskId)
+    }
+    // TP-A06：业务事实来自服务端 adapter 解析出的 businessContext，
+    // 不再只给一行"业务记录 {id}"。completeness 让页面能如实区分
+    // FULL/PARTIAL/MISSING/UNSUPPORTED/ERROR，而不是把"没接入"显示成"没内容"。
+    const ctx = d.businessContext || null
+    const contextFields = ctx
+      ? (ctx.sections || []).flatMap((s) => (s.fields || []).map((f) => ({ ...f, section: s.title })))
+      : []
     return {
       task,
       detail: {
-        fields: d.sourceBizId ? [{ label: '业务记录', value: d.sourceBizId, masked: false }] : [],
+        // sourceBizId 仍保留一行，便于对账定位；业务字段追加在后面。
+        fields: [
+          ...(d.sourceBizId ? [{ label: '业务记录', value: d.sourceBizId, masked: false }] : []),
+          ...contextFields
+        ],
         applyNote: '',
         attachments: Array.isArray(d.attachments) ? d.attachments : []
       },
+      businessContext: ctx,
       timeline: (d.history || []).map(timelineRow),
       suggestions: []
     }
@@ -401,21 +470,30 @@ export const approvalApi = {
   approveTask: (taskId, payload = {}) => safe(async () =>
     request(`/approvals/tasks/${encodeURIComponent(taskId)}/approve`, {
       method: 'POST',
-      body: { comment: payload.comment || '', version: payload.version }
+      body: {
+        comment: payload.comment || '', version: payload.version,
+        expectedSourceVersion: contextVersions.get(String(taskId))
+      }
     })
   ),
 
   returnTask: (taskId, payload = {}) => safe(async () =>
     request(`/approvals/tasks/${encodeURIComponent(taskId)}/return`, {
       method: 'POST',
-      body: { reason: payload.reason || '', version: payload.version }
+      body: {
+        reason: payload.reason || '', version: payload.version,
+        expectedSourceVersion: contextVersions.get(String(taskId))
+      }
     })
   ),
 
   rejectTask: (taskId, payload = {}) => safe(async () =>
     request(`/approvals/tasks/${encodeURIComponent(taskId)}/reject`, {
       method: 'POST',
-      body: { reason: payload.reason || '', version: payload.version }
+      body: {
+        reason: payload.reason || '', version: payload.version,
+        expectedSourceVersion: contextVersions.get(String(taskId))
+      }
     })
   ),
 
@@ -443,7 +521,8 @@ export const approvalApi = {
   }),
 
   batchTransfer: (selected = [], payload = {}) => safe(async () => {
-    const items = await resolveBatchItems(selected)
+    // TRANSFER 不裁决业务事实，不需要额外预取 sourceVersion；只保留 task 乐观锁。
+    const items = await resolveBatchItems(selected, { includeSourceVersion: false })
     const body = {
       action: 'TRANSFER',
       items,
@@ -462,10 +541,25 @@ export const approvalApi = {
         pageSize: params.pageSize || 10,
         keyword: params.keyword,
         bizType: params.bizType,
-        result: params.result
+        result: params.result,
+        actedFrom: params.actedFrom,
+        actedTo: params.actedTo
       }
     })
     return { list: (d.items || []).map(doneRow), total: Number(d.total || 0) }
+  }),
+
+  // TP-A03/A04：真实服务端 seek 取"下一条待办"，不是拿 pageSize=1 重新查第一页猜。
+  getNextTodo: (taskId, params = {}) => safe(async () => {
+    const d = await request(`/approvals/tasks/${encodeURIComponent(taskId)}/next`, {
+      params: {
+        keyword: params.keyword,
+        bizType: params.bizType,
+        urgency: params.urgency,
+        submitDate: params.submitDate
+      }
+    })
+    return d ? taskRow(d) : null
   }),
 
   getCcItems: (params = {}) => safe(async () => {

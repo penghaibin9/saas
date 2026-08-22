@@ -57,6 +57,13 @@ WORKFLOW_PRESETS = (
      "starters": ["STUDENT"], "nodes": [_node("MENTOR_REVIEW", "导师审核", "GD_MENTOR", "GD_STUDENTS", 72), _node("MAJOR_REVIEW", "专业审核", "GD_MAJOR_ADMIN", "MAJOR", 72)]},
     {"code": "GD_FINAL_APPROVAL", "name": "毕设成果与答辩资格审核", "module": "GRADUATION", "biz": "GD_FINAL",
      "starters": ["STUDENT", "GD_MENTOR"], "nodes": [_node("MENTOR_REVIEW", "导师审核", "GD_MENTOR", "GD_STUDENTS", 72), _node("COLLEGE_REVIEW", "学院终审", "GD_COLLEGE_ADMIN", "COLLEGE", 72)]},
+    # SP-E02/E04：就业去向登记结构化提交单节点审核。"biz" 字段与
+    # employment_destination_submission_service 真实写在 WorkflowInstance.source_biz_type
+    # 上的值必须逐字一致（EMPLOYMENT_DESTINATION）——不复用本文件其它预设里 STATUS_CHANGE
+    # 之类与业务域实际写入值不一致的既有漂移写法。
+    {"code": "EMPLOYMENT_DESTINATION_REVIEW", "name": "就业去向登记审核", "module": "EMPLOYMENT",
+     "biz": "EMPLOYMENT_DESTINATION", "starters": ["STUDENT"],
+     "nodes": [_node("EMPLOYMENT_TEACHER_REVIEW", "就业老师审核", "EMPLOYMENT_TEACHER", "SCHOOL", 72)]},
 )
 
 
