@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   strict-seal:
-    name: exact-head browser + direct MySQL + audit seal
+    name: repaired-head browser + direct MySQL + audit seal
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
@@ -60,16 +60,21 @@ jobs:
       E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
-      TARGET_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+      TARGET_SHA: 3ca83f8512a5b3a2ed0f9b6bf039d87de5e48b22
+      BASELINE_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+          ref: 3ca83f8512a5b3a2ed0f9b6bf039d87de5e48b22
           fetch-depth: 0
 
-      - name: Assert audited exact HEAD
-        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - name: Assert repaired exact HEAD and baseline ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git merge-base --is-ancestor "$BASELINE_SHA" "$TARGET_SHA"
+          git merge-base --is-ancestor 843bb02f93b52412e29f37b7e1a938ef6a96be05 "$TARGET_SHA"
 
       - uses: actions/setup-python@v5
         with:
@@ -83,7 +88,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install backend and migrate exact-head isolated MySQL
+      - name: Install backend and migrate isolated MySQL
         working-directory: backend
         run: |
           set -euo pipefail
@@ -91,7 +96,7 @@ jobs:
           test "$(alembic heads | grep -c '(head)')" -eq 1
           alembic upgrade head
 
-      - name: Run existing W1 regression suite
+      - name: Run repaired MySQL regression suite
         working-directory: backend
         run: |
           pytest -q \
@@ -99,21 +104,21 @@ jobs:
             tests/test_stage_c3_correction_end_to_end.py \
             tests/test_stage_c3_correction_reject.py
 
-      - name: Build exact-head staff PC
+      - name: Build staff PC
         working-directory: frontend
         run: |
           npm ci --no-audit --no-fund
           node --test tests/academic-archive-correction-contract.test.mjs
           npm run build
 
-      - name: Seed only isolated prerequisite facts
+      - name: Seed isolated prerequisite facts
         working-directory: backend
         run: |
           python scripts/e2e_seed_playwright_tenants.py
           python scripts/e2e_seed_academic_archive_correction_w1.py
           test -s ../e2e/academic-archive-correction-w1-fixture.json
 
-      - name: Start exact-head backend
+      - name: Start backend
         run: |
           mkdir -p e2e/runtime-logs
           cd backend
@@ -125,7 +130,7 @@ jobs:
           cat ../e2e/runtime-logs/archive-strict-backend.log
           exit 1
 
-      - name: Start exact-head staff PC
+      - name: Start staff PC
         run: |
           cd frontend
           nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/archive-strict-frontend.log 2>&1 &
@@ -173,7 +178,6 @@ jobs:
               applied = next((c for c in cases if c.status == 'APPLIED'), None)
               rejected = next((c for c in cases if c.status == 'REJECTED'), None)
               assert applied is not None and rejected is not None, [(c.id, c.status) for c in cases]
-
               assert applied.tenant_id == tid
               assert applied.created_by is not None and applied.updated_by is not None
               assert applied.second_approved_by is not None and applied.second_approved_by != applied.created_by
@@ -181,7 +185,6 @@ jobs:
               assert applied.official_fact_type == 'ACADEMIC_GRADE'
               assert applied.official_fact_id is not None
               assert applied.resulting_manifest_id is not None
-
               assert rejected.tenant_id == tid
               assert rejected.created_by is not None and rejected.updated_by is not None
               assert rejected.rejected_by is not None and rejected.rejected_by != rejected.created_by
@@ -225,9 +228,11 @@ jobs:
                   assert t.operator, f'audit operator missing: action={t.action} case={matched_case}'
                   assert t.role_name, f'audit role missing: action={t.action} case={matched_case}'
                   assert t.occurred_at is not None
-                  # Production acceptance requires explicit before/after facts, not only an opaque detail string.
                   assert t.before_val is not None, f'audit before missing: action={t.action} case={matched_case}'
                   assert t.after_val is not None, f'audit after missing: action={t.action} case={matched_case}'
+                  before = json.loads(t.before_val)
+                  after = json.loads(t.after_val)
+                  assert 'status' in before and 'status' in after
 
               assert by_case[int(applied.id)] == {'POST_ARCHIVE_CORRECTION_CREATE', 'POST_ARCHIVE_CORRECTION_APPLY'}, by_case
               assert by_case[int(rejected.id)] == {'POST_ARCHIVE_CORRECTION_CREATE', 'POST_ARCHIVE_CORRECTION_REJECT'}, by_case
@@ -235,18 +240,12 @@ jobs:
                   'tenantId': tid,
                   'batchId': batch_id,
                   'browserRunId': run_id,
-                  'cases': [{
-                      'id': int(c.id), 'status': c.status, 'createdBy': c.created_by,
-                      'updatedBy': c.updated_by, 'secondApprovedBy': c.second_approved_by,
-                      'rejectedBy': c.rejected_by, 'officialFactId': c.official_fact_id,
-                      'resultingManifestId': c.resulting_manifest_id,
-                  } for c in cases],
+                  'cases': [{'id': int(c.id), 'status': c.status, 'createdBy': c.created_by, 'updatedBy': c.updated_by,
+                             'secondApprovedBy': c.second_approved_by, 'rejectedBy': c.rejected_by,
+                             'officialFactId': c.official_fact_id, 'resultingManifestId': c.resulting_manifest_id} for c in cases],
                   'manifestVersions': [m.version_no for m in manifests],
-                  'audit': [{
-                      'id': int(t.id), 'action': t.action, 'operator': t.operator,
-                      'role': t.role_name, 'hasBefore': t.before_val is not None,
-                      'hasAfter': t.after_val is not None,
-                  } for t in relevant],
+                  'audit': [{'id': int(t.id), 'action': t.action, 'operator': t.operator, 'role': t.role_name,
+                             'hasBefore': t.before_val is not None, 'hasAfter': t.after_val is not None} for t in relevant],
               }, ensure_ascii=False))
           finally:
               db.close()
@@ -270,6 +269,6 @@ jobs:
         env:
           JOB_STATUS: ${{ job.status }}
         run: |
-          printf '## Archive W1 strict DB/audit seal\n\nRun: `%s`\nProduct exact HEAD: `%s`\nStatus: **%s**\nURL: https://github.com/%s/actions/runs/%s\n' \
-            '${{ github.run_id }}' "$TARGET_SHA" "$JOB_STATUS" '${{ github.repository }}' '${{ github.run_id }}' > /tmp/archive-strict.md
-          gh issue comment 200 --repo '${{ github.repository }}' --body-file /tmp/archive-strict.md
+          printf '## Archive W1 repaired strict DB/audit seal\n\nRun: `%s`\nBaseline main: `%s`\nRepair exact HEAD: `%s`\nStatus: **%s**\nURL: https://github.com/%s/actions/runs/%s\n' \
+            '${{ github.run_id }}' "$BASELINE_SHA" "$TARGET_SHA" "$JOB_STATUS" '${{ github.repository }}' '${{ github.run_id }}' > /tmp/archive-strict.md
+          gh issue comment 205 --repo '${{ github.repository }}' --body-file /tmp/archive-strict.md
