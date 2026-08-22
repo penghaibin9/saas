@@ -22,9 +22,27 @@ function decorateLeaveReviewFeedback(data) {
   return data
 }
 
+function decorateApplicationReviewFeedback(data) {
+  const decorate = (item) => {
+    if (!item || item.status !== 'REJECTED') return item
+    const reviewComment = String(item.reviewComment || '').trim()
+    if (!reviewComment) return item
+    const note = String(item.applicationNote || '').trim()
+    return {
+      ...item,
+      applicationNote: `${note}${note ? ' · ' : ''}驳回原因：${reviewComment}`
+    }
+  }
+  if (Array.isArray(data)) return data.map(decorate)
+  if (Array.isArray(data?.items)) return { ...data, items: data.items.map(decorate) }
+  if (Array.isArray(data?.list)) return { ...data, list: data.list.map(decorate) }
+  return data
+}
+
 export const internshipCoreApi = {
-  applications(context) {
-    return request(`/portal/internship/context/applications${contextQuery(context)}`)
+  async applications(context) {
+    const data = await request(`/portal/internship/context/applications${contextQuery(context)}`)
+    return decorateApplicationReviewFeedback(data)
   },
   saveApplication(body) {
     return request('/portal/internship/context/applications', { method: 'PUT', body })
