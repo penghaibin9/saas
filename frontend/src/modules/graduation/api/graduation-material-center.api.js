@@ -9,7 +9,8 @@ function ticketPath(ticket = {}) {
 }
 
 function abortError() {
-  const error = new DOMException('预览已切换', 'AbortError')
+  const error = new Error('预览已切换')
+  error.name = 'AbortError'
   error.code = 'PREVIEW_ABORTED'
   return error
 }

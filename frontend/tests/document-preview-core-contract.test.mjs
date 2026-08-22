@@ -71,6 +71,14 @@ test('W2 graduation provider sends ticket action as the actual HTTP request body
   assert.doesNotMatch(source, /files\/\$\{encodeURIComponent\(fileId\)\}\/ticket[^\n]*data:\s*\{ action \}/)
 })
 
+test('W2 preview cancellation uses a mutable AbortError instead of writing DOMException code', () => {
+  const source = read('src/modules/graduation/api/graduation-material-center.api.js')
+  assert.match(source, /const error = new Error\('预览已切换'\)/)
+  assert.match(source, /error\.name = 'AbortError'/)
+  assert.match(source, /error\.code = 'PREVIEW_ABORTED'/)
+  assert.doesNotMatch(source, /new DOMException\('预览已切换', 'AbortError'\)/)
+})
+
 test('W2 workspace keeps transport outside and renderer failures inside the Viewer', () => {
   const workspace = read('src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue')
   const viewer = read('src/components/file/viewer/AppDocumentViewer.vue')
