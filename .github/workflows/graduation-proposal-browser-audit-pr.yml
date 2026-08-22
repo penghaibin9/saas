@@ -2,8 +2,7 @@ name: Graduation proposal Browser First audit
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths:
       - '.github/workflows/graduation-proposal-browser-audit-pr.yml'
   workflow_dispatch:
@@ -26,22 +25,15 @@ jobs:
         env:
           MYSQL_ROOT_PASSWORD: e2e_root
           MYSQL_DATABASE: student_lifecycle_e2e
-        ports:
-          - 3306:3306
+        ports: ['3306:3306']
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=12
+          --health-interval=10s --health-timeout=5s --health-retries=12
       redis:
         image: redis:7-alpine
-        ports:
-          - 6379:6379
+        ports: ['6379:6379']
         options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=5s
-          --health-timeout=3s
-          --health-retries=20
+          --health-cmd="redis-cli ping" --health-interval=5s --health-timeout=3s --health-retries=20
     env:
       CI: 'true'
       PYTHONPATH: .
@@ -94,7 +86,7 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             student-portal/package-lock.json
-      - name: Install backend and migrate real MySQL
+      - name: Install backend, migrate MySQL, seed IAM and tenants
         working-directory: backend
         run: |
           set -euo pipefail
@@ -102,16 +94,9 @@ jobs:
           alembic heads
           alembic upgrade head
           alembic current
-      - name: Seed production IAM, two tenants, graduation accounts
-        working-directory: backend
-        run: |
-          set -euo pipefail
           python scripts/bootstrap_control_plane_school_iam_authority.py
           python scripts/e2e_seed_playwright_tenants.py
           python scripts/e2e_seed_control_plane_school_iam.py
-          python scripts/e2e_bootstrap_graduation_accounts_ci.py
-          python scripts/e2e_reset_graduation_passwords.py
-          python scripts/e2e_verify_graduation_accounts.py
       - name: Start real backend
         run: |
           set -euo pipefail
@@ -125,6 +110,13 @@ jobs:
           done
           cat ../e2e/runtime-logs/backend.log
           exit 1
+      - name: Bootstrap graduation accounts through real HTTP import
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
       - name: Start staff PC
         run: |
           set -euo pipefail
@@ -210,13 +202,11 @@ jobs:
           from decimal import Decimal
           from pathlib import Path
           import pymysql
-
           def cv(v):
             if isinstance(v, (datetime, date)): return v.isoformat()
             if isinstance(v, Decimal): return str(v)
             if isinstance(v, bytes): return v.decode('utf-8', 'replace')
             return v
-
           conn = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', database='student_lifecycle_e2e', charset='utf8mb4', cursorclass=pymysql.cursors.DictCursor)
           with conn.cursor() as cur:
             cur.execute("SELECT id,tenant_id,gd_student_id,version,is_resubmit,status,reviewer,review_comment,submit_at,review_time,active_key FROM t_gd_proposal ORDER BY id")
