@@ -7,6 +7,10 @@ on:
     paths:
       - 'audit-tests/student-affairs-leave-browser-audit.spec.mjs'
       - '.github/workflows/student-affairs-browser-audit-exact-head.yml'
+  pull_request:
+    paths:
+      - 'audit-tests/student-affairs-leave-browser-audit.spec.mjs'
+      - '.github/workflows/student-affairs-browser-audit-exact-head.yml'
 
 permissions:
   contents: read
