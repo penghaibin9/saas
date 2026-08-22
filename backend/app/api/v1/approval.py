@@ -1,10 +1,7 @@
 """审批任务 API：正式路由只连接真实数据库服务。"""
 from __future__ import annotations
 
-from typing import Literal
-
 from fastapi import APIRouter, Depends, Header, Query
-from pydantic import BaseModel
 
 from app.api.v1.file_contract import validated_local_file_response
 from app.core.exceptions import AppException
@@ -24,17 +21,12 @@ from app.schemas.approval import (
     ApprovalTemplateVoidRequest,
     ApprovalTransferRequest,
 )
-from app.services import approval_attachment_preview_service as attachmentsvc
 from app.services import approval_export_service as exportsvc
 from app.services import approval_returned_service as returnedsvc
 from app.services import approval_runtime_service as runtime
 from app.services import approval_template_service as adminsvc
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
-
-
-class ApprovalAttachmentTicketRequest(BaseModel):
-    action: Literal["preview", "download"]
 
 
 def _require_idempotency_key(value: str | None) -> str:
@@ -51,6 +43,11 @@ def _require_idempotency_key(value: str | None) -> str:
 @router.get("/summary", summary="审批中心待办统计（真实服务端）")
 def approval_summary(user=Depends(require_staff)):
     return success(runtime.summary(user=user))
+
+
+@router.get("/biz-types", summary="审批业务类型字典（TP-A10：服务端唯一权威）")
+def approval_biz_types(user=Depends(require_staff)):
+    return success(runtime.biz_type_options())
 
 
 @router.get("/tasks", summary="待我审批任务列表")
@@ -87,10 +84,13 @@ def done_tasks(
     keyword: str | None = Query(None, max_length=100),
     bizType: str | None = Query(None, max_length=100),
     result: str | None = Query(None, max_length=30),
+    actedFrom: str | None = Query(None, max_length=10),
+    actedTo: str | None = Query(None, max_length=10),
     user=Depends(require_staff),
 ):
     items, total = runtime.list_processed(
-        page, pageSize, user=user, keyword=keyword, biz_type=bizType, result=result
+        page, pageSize, user=user, keyword=keyword, biz_type=bizType, result=result,
+        acted_from=actedFrom, acted_to=actedTo,
     )
     return success(paginate(items, total, page, pageSize))
 
@@ -112,6 +112,26 @@ def returned_tasks(
 @router.get("/tasks/{task_id}/transfer-targets", summary="当前任务可转办教职工")
 def transfer_targets(task_id: str, user=Depends(require_staff)):
     return success(runtime.transfer_targets(task_id, user=user))
+
+
+@router.get("/tasks/{task_id}/next", summary="按当前筛选队列取真实下一条待办（服务端 seek）")
+def next_todo(
+    task_id: str,
+    keyword: str | None = Query(None, max_length=100),
+    bizType: str | None = Query(None, max_length=100),
+    urgency: str | None = Query(None, max_length=30),
+    submitDate: str | None = Query(None, max_length=10),
+    user=Depends(require_staff),
+):
+    # P2-03：anchor 是 seek 的安全边界，不是可选提示。
+    # 它此刻可以已经办结，所以只按 get_task 的“存在 + 当前调用者可见”合同校验，
+    # 不要求仍是 PENDING；非法、缺失、他人任务统一 404。绝不把无效 anchor
+    # 当成 None 后退化成“返回队首第一条”，否则可被构造为越权队列探测器。
+    runtime.get_task(task_id, user=user)
+    return success(runtime.next_task(
+        task_id, user=user, keyword=keyword, biz_type=bizType,
+        urgency=urgency, submit_date=submitDate,
+    ))
 
 
 @router.get("/templates", summary="审批模板列表（真实流程定义）")
@@ -190,9 +210,15 @@ def batch_process(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
     idempotency_key = _require_idempotency_key(idempotency_key)
+    # TP-A07：sourceVersion 是批次业务语义的一部分，必须进入幂等指纹。
+    # 否则同一 Idempotency-Key 在源事实版本变化后仍可能命中旧指纹/旧结果，掩盖版本冲突。
     payload = {
         "action": body.action,
-        "items": [{"taskId": x.taskId, "version": x.version} for x in body.items],
+        "items": [{
+            "taskId": x.taskId,
+            "version": x.version,
+            "expectedSourceVersion": x.expectedSourceVersion,
+        } for x in body.items],
         "targetUserId": body.targetUserId,
         "reason": body.reason,
         "comment": body.comment,
@@ -272,58 +298,6 @@ def download_export(
     )
 
 
-@router.get("/tasks/{task_id}/attachments", summary="审批任务附件清单（任务范围 + 文件中心安全态）")
-def approval_attachments(task_id: str, user=Depends(require_staff)):
-    return success({"items": attachmentsvc.list_attachments(task_id, user)})
-
-
-@router.post("/tasks/{task_id}/files/{file_id}/ticket", summary="签发审批附件预览/下载短时票据")
-def approval_attachment_ticket(
-    task_id: str,
-    file_id: int,
-    body: ApprovalAttachmentTicketRequest,
-    user=Depends(require_staff),
-):
-    return success(attachmentsvc.issue_ticket(task_id, file_id, body.action, user))
-
-
-@router.get("/tasks/{task_id}/files/{file_id}/preview", summary="使用任务票据读取审批附件")
-def preview_approval_attachment(
-    task_id: str,
-    file_id: int,
-    ticket: str = Query(..., min_length=20),
-    user=Depends(require_staff),
-):
-    path, filename, mime_type = attachmentsvc.consume_ticket(task_id, file_id, "preview", ticket, user)
-    return validated_local_file_response(
-        path,
-        filename=filename,
-        inline=True,
-        media_type=mime_type,
-        audit_action="APPROVAL_ATTACHMENT_PREVIEW",
-        audit_target=f"approval-task:{task_id}:file:{file_id}",
-        audit_detail={"taskId": task_id, "fileId": str(file_id)},
-    )
-
-
-@router.get("/tasks/{task_id}/files/{file_id}/download", summary="使用一次性任务票据下载审批附件")
-def download_approval_attachment(
-    task_id: str,
-    file_id: int,
-    ticket: str = Query(..., min_length=20),
-    user=Depends(require_staff),
-):
-    path, filename, mime_type = attachmentsvc.consume_ticket(task_id, file_id, "download", ticket, user)
-    return validated_local_file_response(
-        path,
-        filename=filename,
-        media_type=mime_type,
-        audit_action="APPROVAL_ATTACHMENT_DOWNLOAD",
-        audit_target=f"approval-task:{task_id}:file:{file_id}",
-        audit_detail={"taskId": task_id, "fileId": str(file_id)},
-    )
-
-
 @router.get("/tasks/{task_id}", summary="审批任务详情与真实时间线")
 def get_task(task_id: str, user=Depends(require_staff)):
     return success(runtime.get_task(task_id, user=user))
@@ -332,27 +306,40 @@ def get_task(task_id: str, user=Depends(require_staff)):
 @router.post("/tasks/{task_id}/approve", summary="通过（真实状态机 + 审计）")
 def approve(task_id: str, body: ApprovalActionRequest, user=Depends(require_staff)):
     return success(
-        runtime.approve(task_id, body.comment, user=user, version=body.version),
+        runtime.approve(task_id, body.comment, user=user, version=body.version,
+                        expected_source_version=body.expectedSourceVersion),
         message="已通过",
     )
 
 
-@router.post("/tasks/{task_id}/return", summary="退回修改（可修改后重提）")
+@router.post("/tasks/{task_id}/return", summary="退回（按业务域策略重提或终止）")
 def return_for_revision(
     task_id: str,
     body: ApprovalReturnRequest,
     user=Depends(require_staff),
 ):
-    return success(
-        runtime.return_for_revision(task_id, body.reason, user=user, version=body.version),
-        message="已退回修改",
+    result = runtime.return_for_revision(
+        task_id, body.reason, user=user, version=body.version,
+        expected_source_version=body.expectedSourceVersion,
     )
+
+    # W2：runtime 的基础返回值描述的是通用“可重提”策略，但领域回调可能在同一事务
+    # 把实例收成真正终态（如 EMPLOYMENT_DESTINATION）。动作提交后回读权威状态，响应
+    # 必须与已提交数据库事实一致；只有实例仍处于 APPLICANT_RESUBMIT 才暴露 nextTodo。
+    actual = runtime.get_task(task_id, user=user)
+    actual_status = str(actual.get("instanceStatus") or result.get("instanceStatus") or "")
+    actual_node = str(actual.get("currentInstanceNode") or "")
+    result["instanceStatus"] = actual_status
+    if actual_status.upper() != "RUNNING" or actual_node.upper() != "APPLICANT_RESUBMIT":
+        result["nextTodo"] = None
+    return success(result, message="已退回")
 
 
 @router.post("/tasks/{task_id}/reject", summary="驳回终止（不可重提原流程）")
 def reject(task_id: str, body: ApprovalRejectRequest, user=Depends(require_staff)):
     return success(
-        runtime.reject(task_id, body.reason, user=user, version=body.version),
+        runtime.reject(task_id, body.reason, user=user, version=body.version,
+                       expected_source_version=body.expectedSourceVersion),
         message="已驳回并终止",
     )
 
@@ -393,9 +380,12 @@ def processed(
     keyword: str | None = Query(None, max_length=100),
     bizType: str | None = Query(None, max_length=100),
     result: str | None = Query(None, max_length=30),
+    actedFrom: str | None = Query(None, max_length=10),
+    actedTo: str | None = Query(None, max_length=10),
     user=Depends(require_staff),
 ):
     items, total = runtime.list_processed(
-        page, pageSize, user=user, keyword=keyword, biz_type=bizType, result=result
+        page, pageSize, user=user, keyword=keyword, biz_type=bizType, result=result,
+        acted_from=actedFrom, acted_to=actedTo,
     )
     return success(paginate(items, total, page, pageSize))

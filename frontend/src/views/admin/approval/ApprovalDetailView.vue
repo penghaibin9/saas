@@ -5,7 +5,11 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
-    <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
+    <template #actions>
+      <button class="mp-link" @click="goBackToList">← 返回列表</button>
+    </template>
+
+    <ErrorState v-if="error" :description="error" @retry="load" @back="goBackToList" />
     <LoadingState v-else-if="loading" />
     <div v-else-if="task" class="mp-grid-2">
       <div class="mp-stack">
@@ -33,49 +37,23 @@
             </div>
             <div class="mp-kv"><span class="mp-kv__k">提交时间</span><span class="mp-kv__v">{{ task.submitTime || '—' }}</span></div>
             <div v-if="task.deadline" class="mp-kv"><span class="mp-kv__k">办理期限</span><span class="mp-kv__v">{{ task.deadline }}</span></div>
-            <div v-for="(f, i) in detail.fields" :key="i" class="mp-kv"><span class="mp-kv__k">{{ f.label }}</span><span class="mp-kv__v">{{ f.value }}</span></div>
+            <div v-for="(f, i) in detail.fields" :key="i" class="mp-kv">
+              <span class="mp-kv__k">{{ f.label }}</span>
+              <span class="mp-kv__v" :class="{ 'is-masked': f.masked }">{{ f.value || '—' }}</span>
+            </div>
+          </div>
+          <!-- TP-A06：业务上下文不完整时必须说清楚是"没接入/查不到/读失败"，
+               而不是让老师看到一片空白就以为这条申请本来就没内容。 -->
+          <div v-if="contextNotice" class="mp-form-err" style="margin: 0 var(--space-4) var(--space-3)">
+            {{ contextNotice }}
           </div>
         </section>
 
         <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">附件材料 Reader</span><span class="mp-note">共 {{ detail.attachments.length }} 份</span></div>
+          <div class="mp-card__head"><span class="mp-card__title">附件材料</span><span class="mp-note">共 {{ detail.attachments.length }} 份</span></div>
           <div class="mp-card__body">
-            <p v-if="attachmentsLoading" class="mp-note">正在核验任务附件与文件安全状态…</p>
-            <div v-else-if="attachmentsError" class="dv-attachment-error">
-              <span class="mp-form-err">{{ attachmentsError }}</span>
-              <button type="button" class="mp-link" @click="loadAttachments(task.taskId)">重试</button>
-            </div>
-            <p v-else-if="!detail.attachments.length" class="mp-note">申请人未上传附件</p>
-            <template v-else>
-              <div class="dv-attachments">
-                <div v-for="a in detail.attachments" :key="a.fileId" class="dv-attachment-row" :class="{ 'is-active': String(activeAttachmentId) === String(a.fileId) }">
-                  <div class="dv-attachment-main">
-                    <strong>{{ a.fileName || '未命名附件' }}</strong>
-                    <span>{{ a.statusText || '状态未知' }}<template v-if="a.sizeBytes"> · {{ humanSize(a.sizeBytes) }}</template></span>
-                  </div>
-                  <div class="dv-attachment-actions">
-                    <button v-if="a.canPreview" type="button" class="mp-link" @click="openAttachment(a)">{{ String(activeAttachmentId) === String(a.fileId) ? '收起预览' : '在线预览' }}</button>
-                    <button v-if="a.canDownload" type="button" class="mp-link" @click="downloadAttachment(a)">下载</button>
-                    <span v-if="!a.canPreview && !a.canDownload" class="mp-note">暂不可读取</span>
-                  </div>
-                </div>
-              </div>
-              <AppDocumentViewer
-                v-if="activeAttachment && activeAttachmentDescriptor && attachmentPreviewProvider"
-                class="dv-attachment-viewer"
-                :descriptor="activeAttachmentDescriptor"
-                :provider="attachmentPreviewProvider"
-                :files="detail.attachments"
-                :active-file-key="activeAttachment.fileId"
-                :active-version-id="activeAttachment.fileVersionId || null"
-                :canonical-version-id="activeAttachment.fileVersionId || null"
-                :allow-download="activeAttachment.canDownload"
-                :show-version-bar="false"
-                :show-file-switcher="false"
-                @download="downloadAttachment(activeAttachment)"
-              />
-              <p class="mp-note dv-reader-hint">附件 Reader 以当前审批任务为授权边界；预览票据短时有效，下载票据单次使用，页面不接触公共存储 URL。</p>
-            </template>
+            <p v-if="!detail.attachments.length" class="mp-note">申请人未上传附件</p>
+            <div v-else class="dv-attachments"><StatusTag v-for="a in detail.attachments" :key="a" type="info" :label="'📎 ' + a" /></div>
           </div>
         </section>
       </div>
@@ -108,7 +86,7 @@
                 <AppButton variant="danger" :disabled="!canAction('rejectTask', 'REJECT') || submitting" @click="rejectDialog = true">✕ 驳回终止</AppButton>
                 <AppButton variant="secondary" :disabled="!canAction('transferTask', 'TRANSFER') || submitting" @click="openTransfer">⇄ 转办</AppButton>
               </div>
-              <p class="mp-note dv-hint">退回修改会生成申请人重提待办；驳回终止结束原流程，两者不会互换。</p>
+              <p class="mp-note dv-hint">{{ returnHint }}</p>
             </template>
             <EmptyState v-else :title="readonlyTitle" :description="readonlyDesc" />
           </div>
@@ -119,7 +97,7 @@
     <AppConfirmDialog
       v-model:visible="returnDialog"
       title="退回修改确认"
-      :message="task ? '退回后「' + task.title + '」仍保持流程运行，并给申请人生成修改重提待办。' : ''"
+      :message="returnDialogMessage"
       type="primary"
       confirm-text="确认退回修改"
       require-reason
@@ -163,21 +141,19 @@
 <script>
 import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppConfirmDialog } from '@/components/common'
-import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { approvalApi } from '@/modules/approval/api/approval.api'
-import { approvalAttachmentsApi } from '@/modules/approval/api/approval-attachments.api'
+import { buildReturnQuery, returnPath } from '@/modules/approval/utils/queueContext'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'ApprovalDetailView',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDocumentViewer, AppButton, AppDrawer },
+  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppButton, AppDrawer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', task: null,
-      detail: { fields: [], attachments: [], applyNote: '' }, timeline: [], suggestions: [],
-      attachmentsLoading: false, attachmentsError: '', activeAttachmentId: '', attachmentPreviewProvider: null,
+      detail: { fields: [], attachments: [], applyNote: '' }, businessContext: null, timeline: [], suggestions: [],
       comment: '', formError: '', submitting: false,
       returnDialog: false, rejectDialog: false, transferDrawer: false,
       transferTargets: [], transferTargetsLoading: false,
@@ -185,13 +161,34 @@ export default {
     }
   },
   computed: {
+    contextNotice() {
+      const ctx = this.businessContext
+      if (!ctx) return ''
+      const map = {
+        UNSUPPORTED: ctx.note || '该业务类型尚未接入审批业务上下文，本页无法展示原始业务事实。',
+        ERROR: ctx.note || '业务信息读取失败，请稍后重试。',
+        MISSING: '关联的业务记录已不存在或已被删除，请核实后再处理。',
+        PARTIAL: '业务信息不完整，关键字段缺失，请谨慎判断或要求补充材料。'
+      }
+      return map[ctx.completeness] || ''
+    },
+    isTerminalReturn() {
+      return this.task?.bizType === 'EMPLOYMENT_DESTINATION'
+    },
+    returnHint() {
+      if (this.isTerminalReturn) {
+        return '就业去向登记退回后，本次提交终止；学生需重新发起一条新登记，不会生成原流程重提待办。驳回同样终止原流程。'
+      }
+      return '退回修改会生成申请人重提待办；驳回终止结束原流程，两者不会互换。'
+    },
+    returnDialogMessage() {
+      if (!this.task) return ''
+      if (this.isTerminalReturn) {
+        return `退回后「${this.task.title}」本次登记将结束，不生成原流程重提待办；学生需按要求重新发起一条新的就业去向登记。`
+      }
+      return `退回后「${this.task.title}」仍保持流程运行，并给申请人生成修改重提待办。`
+    },
     canHandle() { return !!(this.task && this.task.status === 'PENDING_REVIEW' && this.task.allowedActions?.length) },
-    activeAttachment() {
-      return this.detail.attachments.find((item) => String(item.fileId) === String(this.activeAttachmentId)) || null
-    },
-    activeAttachmentDescriptor() {
-      return this.activeAttachment ? approvalAttachmentsApi.previewDescriptor(this.activeAttachment) : null
-    },
     readonlyTitle() {
       if (!this.task) return '任务不可操作'
       if (this.task.status === 'APPROVED') return '该任务已办结（通过）'
@@ -202,6 +199,9 @@ export default {
     },
     readonlyDesc() {
       if (!this.task) return ''
+      if (this.task.status === 'RETURNED' && this.isTerminalReturn) {
+        return '本次就业去向登记已经结束；学生如需继续申报，应按退回要求重新发起一条新的登记。'
+      }
       if (this.task.status === 'RETURNED') return '流程仍在运行，申请人可按退回要求修改并重新提交。'
       if (this.task.status === 'REJECTED') return '原流程已经终止；如需再次申请，应重新发起新流程。'
       return '本页仅展示服务端已持久化的处理结果与流转记录。'
@@ -216,50 +216,12 @@ export default {
     urgencyTone(v) { return v === 'OVERDUE' ? 'danger' : (v === 'NEAR_DEADLINE' || v === 'URGENT') ? 'warning' : 'default' },
     toneClass(tone) { const t = tone === 'processing' ? 'warning' : tone; return 'is-' + (['success', 'warning', 'danger', 'default'].includes(t) ? t : 'default') },
     maskNo(v) { return v ? v.slice(0, -4) + '**' + v.slice(-2) : '' },
-    humanSize(size) {
-      const n = Number(size || 0)
-      if (!n) return ''
-      if (n < 1024) return `${n} B`
-      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-      return `${(n / 1024 / 1024).toFixed(1)} MB`
-    },
-    async loadAttachments(taskId) {
-      this.attachmentsLoading = true
-      this.attachmentsError = ''
-      this.activeAttachmentId = ''
-      try {
-        const files = await approvalAttachmentsApi.list(taskId)
-        this.detail.attachments = files.map((item) => ({
-          ...item,
-          canPreview: Array.isArray(item.allowedActions) && item.allowedActions.includes('preview'),
-          canDownload: Array.isArray(item.allowedActions) && item.allowedActions.includes('download')
-        }))
-      } catch (error) {
-        this.detail.attachments = []
-        this.attachmentsError = error?.message || '审批附件加载失败'
-      } finally {
-        this.attachmentsLoading = false
-      }
-    },
-    openAttachment(file) {
-      if (!file?.canPreview) return
-      this.activeAttachmentId = String(this.activeAttachmentId) === String(file.fileId) ? '' : String(file.fileId)
-    },
-    async downloadAttachment(file) {
-      if (!file?.canDownload) return
-      try {
-        await approvalAttachmentsApi.download(this.task.taskId, file)
-      } catch (error) {
-        toast.error(error?.message || '附件下载失败')
-      }
-    },
     async load() {
       this.loading = true; this.error = ''
       const res = await approvalApi.getApprovalDetail(this.$route.params.taskId)
       if (res.code === 0) {
         this.task = res.data.task; this.detail = res.data.detail; this.timeline = res.data.timeline; this.suggestions = res.data.suggestions
-        this.attachmentPreviewProvider = approvalAttachmentsApi.createPreviewProvider(this.task.taskId)
-        await this.loadAttachments(this.task.taskId)
+        this.businessContext = res.data.businessContext || null
       } else this.error = res.message
       this.loading = false
     },
@@ -269,14 +231,26 @@ export default {
       if (field === 'transfer') this.transferError = res.message; else this.formError = res.message
     },
     async goNext() {
-      const queue = await approvalApi.getTodos({ page: 1, pageSize: 1, bizType: this.$route.query.bizType || '' })
-      if (queue.code === 0 && queue.data.list.length) {
-        const next = queue.data.list[0]
-        if (String(next.taskId) !== String(this.task?.taskId)) {
-          await this.$router.replace({ path: '/admin/approval/todos/' + next.taskId, query: { ...this.$route.query } }); await this.load(); return
-        }
+      // TP-A03/A04：真实服务端 seek，按当前进入详情页时携带的完整筛选（业务类型/
+      // 紧急度/关键词/提交日期）取队列里锚点任务之后的下一条，不再用 pageSize=1
+      // 重新查第一页去猜"下一条=队首"，也不再只保留 bizType 一个筛选维度。
+      const q = this.$route.query || {}
+      const res = await approvalApi.getNextTodo(this.task?.taskId, {
+        keyword: q.keyword || '',
+        bizType: q.bizType || '',
+        urgency: q.urgency || '',
+        submitDate: q.submitDate || ''
+      })
+      if (res.code === 0 && res.data) {
+        await this.$router.replace({ path: '/admin/approval/todos/' + res.data.taskId, query: { ...q } }); await this.load(); return
       }
-      await this.$router.push('/admin/approval/todos')
+      // 同队列已经处理完：回到来源列表，保留原筛选/分页（PcQueueContext v1），
+      // 不再无条件推到无筛选的待办首页。
+      this.goBackToList()
+    },
+    goBackToList() {
+      const q = this.$route.query || {}
+      this.$router.push({ path: returnPath(q), query: buildReturnQuery(q) })
     },
     async finishAction(res, message) {
       if (res.code !== 0) { await this.actionFailed(res); return false }
@@ -291,9 +265,15 @@ export default {
     },
     async submitReturn({ reason }) {
       this.submitting = true
+      const terminal = this.isTerminalReturn
       const res = await approvalApi.returnTask(this.task.taskId, { reason, version: this.task.version })
       this.submitting = false; this.returnDialog = false
-      await this.finishAction(res, '已退回修改：申请人修改重提待办已生成，正在进入下一条待办')
+      await this.finishAction(
+        res,
+        terminal
+          ? '已退回：本次就业去向登记已结束，学生需重新发起新登记；正在进入下一条待办'
+          : '已退回修改：申请人修改重提待办已生成，正在进入下一条待办'
+      )
     },
     async submitReject({ reason }) {
       this.submitting = true
@@ -332,18 +312,10 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.dv-attachments { display: grid; gap: var(--space-2); }
-.dv-attachment-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-base); background: var(--bg-card); }
-.dv-attachment-row.is-active { border-color: var(--primary-200, #bfdbfe); background: var(--primary-50, #eff6ff); }
-.dv-attachment-main { min-width: 0; display: grid; gap: 3px; }
-.dv-attachment-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: var(--font-size-sm); }
-.dv-attachment-main span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.dv-attachment-actions { flex: none; display: flex; align-items: center; gap: var(--space-2); }
-.dv-attachment-viewer { min-height: 560px; margin-top: var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-base); overflow: hidden; }
-.dv-reader-hint { margin: var(--space-2) 0 0; line-height: 1.6; }
-.dv-attachment-error { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.dv-attachments { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .dv-label { display: block; margin: var(--space-3) 0 var(--space-1); }
 .dv-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-3); }
 .dv-hint { margin: var(--space-2) 0 0; text-align: center; line-height: 1.6; }
-@media (max-width: 900px) { .dv-actions { grid-template-columns: 1fr; } .dv-attachment-row { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 900px) { .dv-actions { grid-template-columns: 1fr; } }
+.mp-kv__v.is-masked { color: var(--text-3, #909399); font-style: italic; }
 </style>
