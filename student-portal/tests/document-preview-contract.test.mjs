@@ -73,10 +73,15 @@ test('W3 graduation workbench separates current-version viewing/download and req
   assert.match(workbench, /issueGraduationMaterialTicket\(file\.fileId, 'preview'\)/)
   assert.match(workbench, /fileSdk\.fetchPreviewBlobFrom\(ticket, options\)/)
   assert.match(workbench, /peerId \+ 冻结定稿 \+ 附件 fileId/)
+  assert.match(workbench, /仅支持站内查看，不提供跨学生下载/)
   assert.match(workbench, /openPeerReader\(p, file\)/)
   assert.match(workbench, /peerId: String\(task\.id\)/)
+  assert.match(workbench, /canDownload: false/)
+  assert.match(workbench, /if \(file\?\.peerId\)[\s\S]{0,160}?return/)
   assert.match(workbench, /fileSdk\.fetchPeerPreviewBlob\(file\.peerId, file\.fileId, options\)/)
   assert.match(workbench, /:read-only="Boolean\(readerFile\?\.peerId\)"/)
+  const peerSection = workbench.slice(workbench.indexOf('<section v-if="hasPeerWork"'), workbench.indexOf('</section>', workbench.indexOf('<section v-if="hasPeerWork"')) + 10)
+  assert.doesNotMatch(peerSection, /@click="downloadMaterial\(file\)"/)
 })
 
 test('W6 student PC renders DOCX locally from authorized bytes without widening XLSX/PPTX', () => {

@@ -167,15 +167,14 @@
 
       <section v-if="hasPeerWork" class="gd-peer sp-panel">
         <h2>成果互查</h2>
-        <p class="sp-muted">任务绑定学校确认的正式定稿。站内查看只走 peerId + 冻结定稿 + 附件 fileId 的任务专用授权，不复用本人材料权限。</p>
+        <p class="sp-muted">任务绑定学校确认的正式定稿。站内查看只走 peerId + 冻结定稿 + 附件 fileId 的任务专用授权，不复用本人材料权限；仅支持站内查看，不提供跨学生下载。</p>
         <div v-for="p in (peer.toReview || [])" :key="'r-' + p.id" class="gd-peer__item">
           <header><strong>待互查 · {{ p.studentName || '同学' }}</strong><StatusTag :text="p.statusLabel || '待互查'" tone="warn" /></header>
           <p class="sp-muted">评阅材料：{{ p.finalType || '定稿' }} {{ p.finalVersion || '版本未绑定' }}</p>
           <p v-if="p.taskValid === false" class="gd-step__comment">{{ p.taskError || '任务未绑定有效正式定稿，请联系管理员重新分配。' }}</p>
           <div v-if="p.attachmentsList?.length" class="gd-files">
             <span v-for="file in p.attachmentsList" :key="file.fileId" class="gd-file-actions">
-              <button class="gd-file" :disabled="busy" @click="openPeerReader(p, file)">查看任务定稿</button>
-              <button class="gd-file gd-file--download" :disabled="busy" @click="downloadMaterial(file)">下载</button>
+              <button class="gd-file" :disabled="busy || file.canPreview === false" @click="openPeerReader(p, file)">查看任务定稿</button>
             </span>
           </div>
           <p v-else-if="p.taskValid !== false" class="gd-step__comment">该任务没有可访问的冻结定稿附件，请联系管理员核对任务绑定。</p>
@@ -188,8 +187,7 @@
           <p v-if="p.taskValid === false" class="gd-step__comment">{{ p.taskError || '任务未绑定有效正式定稿，请联系管理员重新分配。' }}</p>
           <div v-if="p.attachmentsList?.length" class="gd-files">
             <span v-for="file in p.attachmentsList" :key="file.fileId" class="gd-file-actions">
-              <button class="gd-file" :disabled="busy" @click="openPeerReader(p, file)">查看冻结定稿</button>
-              <button class="gd-file gd-file--download" :disabled="busy" @click="downloadMaterial(file)">下载</button>
+              <button class="gd-file" :disabled="busy || file.canPreview === false" @click="openPeerReader(p, file)">查看冻结定稿</button>
             </span>
           </div>
           <p v-if="p.opinion" class="gd-step__comment">互查意见：{{ p.opinion }}</p>
@@ -527,7 +525,7 @@ function openPendingReader(file) {
 }
 
 function openPeerReader(task, file) {
-  if (!task?.id || !file?.fileId || task.taskValid === false || busy.value) return
+  if (!task?.id || !file?.fileId || file.canPreview === false || task.taskValid === false || busy.value) return
   readerFile.value = {
     ...file,
     peerId: String(task.id),
@@ -535,7 +533,7 @@ function openPeerReader(task, file) {
     versionNo: task.finalVersion || '任务定稿',
     statusText: '成果互查冻结定稿',
     canPreview: true,
-    canDownload: true
+    canDownload: false
   }
 }
 
@@ -552,6 +550,10 @@ async function loadReaderPreview(file, options) {
 
 async function downloadReaderFile(file) {
   if (!file?.fileId) return
+  if (file?.peerId) {
+    ui.notify('成果互查文件仅支持站内查看，不提供跨学生下载')
+    return
+  }
   if (file.temporaryPreview || file.temporary) {
     busy.value = true
     try { await fileSdk.download(file.fileId, file.fileName) } catch (e) { ui.notify(e?.message || '材料下载失败') } finally { busy.value = false }
