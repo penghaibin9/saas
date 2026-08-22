@@ -18,7 +18,9 @@ test('W1 descriptor locks fileVersion and source SHA independently from renderer
 
 test('W1 PDF renderer is local-worker lazy rendering with cancellable resources', () => {
   const source = read('src/components/file/viewer/adapters/PdfViewerAdapter.vue')
-  assert.match(source, /pdf\.worker\.min\.mjs\?url/)
+  assert.match(source, /pdfjs-dist\/legacy\/build\/pdf\.mjs/)
+  assert.match(source, /pdfjs-dist\/legacy\/build\/pdf\.worker\.min\.mjs\?url/)
+  assert.doesNotMatch(source, /from 'pdfjs-dist\/build\/pdf\.mjs'/)
   assert.match(source, /IntersectionObserver/)
   assert.match(source, /rootMargin:\s*'900px 0px'/)
   assert.match(source, /pageNo - 2/)
@@ -28,6 +30,7 @@ test('W1 PDF renderer is local-worker lazy rendering with cancellable resources'
   assert.match(source, /renderReservations\.has\(pageNo\)/)
   assert.match(source, /renderReservations\.set\(pageNo, reservation\)/)
   assert.match(source, /renderReservations\.get\(pageNo\) !== reservation/)
+  assert.match(source, /token === loadToken &&[\s\S]*renderReservations\.get\(pageNo\) === reservation[\s\S]*emit\('error', error\)/)
 })
 
 test('W1 preview session changes generation, aborts old work and bounds ticket refresh to one', () => {

@@ -9,8 +9,8 @@
 
 <script setup>
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs'
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
@@ -78,7 +78,11 @@ async function renderPage(pageNo) {
     await task.promise
     if (token === loadToken && renderReservations.get(pageNo) === reservation) canvas.dataset.zoom = String(props.zoom)
   } catch (error) {
-    if (error?.name !== 'RenderingCancelledException') emit('error', error)
+    if (
+      error?.name !== 'RenderingCancelledException' &&
+      token === loadToken &&
+      renderReservations.get(pageNo) === reservation
+    ) emit('error', error)
   } finally {
     if (task && renderTasks.get(pageNo) === task) renderTasks.delete(pageNo)
     if (renderReservations.get(pageNo) === reservation) renderReservations.delete(pageNo)

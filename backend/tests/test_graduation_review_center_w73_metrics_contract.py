@@ -14,7 +14,7 @@ def test_w73_summary_exposes_manual_required_metrics_and_aggregates_in_mysql():
     for field in ("pending", "inReview", "returned", "doneToday", "overdue", "avgHours", "byType"):
         assert f'"{field}"' in facade or f'"{field}"' in service
     assert "graduation_review_center_summary_service as summary_query" in facade
-    assert "summary_query.summary(batch_id)" in facade
+    assert "summary_query.summary(batch_id, reviewer_mentor_id=reviewer_id)" in facade
     assert "q._CTE" in service
     assert "accessible_student_ids" in service
     assert "COUNT(*) AS total" in service

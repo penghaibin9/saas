@@ -166,7 +166,8 @@ def test_w74_reviewer_scope_is_set_based_and_detail_hydrates_proven_batch():
     assert 'row = {**dict(raw), "batch_id": int(batch_id)}' in detail
     assert 'where += " AND reviewer_mentor_id=:reviewer_mentor_id"' in detail
     assert "graduation_review_center_detail_service as detail_query" in contract
-    assert "query.detail(" not in contract
+    assert "detail_query.detail(" in contract
+    assert "graduation_review_center_query_service as query" not in contract
 
 
 def test_w74_pc_consumes_backend_allowed_actions_and_mutations_fail_closed_by_case():
