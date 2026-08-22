@@ -14,6 +14,7 @@ import router from './router'
 import './config/helpCenterRuntime'
 import { OFFICIAL_SALES_PAGES } from './config/officialSalesPages'
 import { installDirtyFormGuard } from './router/dirtyFormGuard'
+import { installOfficialWechatRuntime } from './services/officialWechatRuntime'
 import { toast } from './utils/toast'
 
 // 小程序 WebView / 售后二维码共用的公开只读帮助页。
@@ -89,3 +90,7 @@ app.config.globalProperties.$message = toast
 app.use(createPinia())
 app.use(router)
 app.mount('#app')
+
+// PC 官网、手机 H5、微信公众号微官网共用一套公开路由。
+// 只有微信内置浏览器才会尝试 JS-SDK；未配置公众号时保持普通官网完整可用。
+installOfficialWechatRuntime(router)
