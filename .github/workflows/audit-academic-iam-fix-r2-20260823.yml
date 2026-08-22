@@ -20,51 +20,69 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPO: penghaibin9/saas
       FIX_REF: fix/academic-e2e-school-iam-bootstrap-20260823
-      EXPECTED_SHA: 3ca83f8512a5b3a2ed0f9b6bf039d87de5e48b22
       AUDITED_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+      ARCHIVE_REPAIR_SHA: 843bb02f93b52412e29f37b7e1a938ef6a96be05
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.FIX_REF }}
           fetch-depth: 0
 
-      - name: Assert expected repair head and archive patch ancestry
+      - name: Assert safe repair ancestry and scope
+        id: base
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          git merge-base --is-ancestor 843bb02f93b52412e29f37b7e1a938ef6a96be05 HEAD
+          CURRENT_SHA="$(git rev-parse HEAD)"
+          echo "current_sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
+          git merge-base --is-ancestor "$AUDITED_SHA" HEAD
+          git merge-base --is-ancestor "$ARCHIVE_REPAIR_SHA" HEAD
+          files="$(git diff --name-only "$AUDITED_SHA"...HEAD)"
+          printf '%s\n' "$files"
+          printf '%s\n' "$files" | while read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              .github/workflows/academic-b-w3-schedule-real-click.yml|\
+              .github/workflows/academic-b-w4-selection-real-click.yml|\
+              .github/workflows/academic-c-w2-teacher-today-browser.yml|\
+              .github/workflows/academic-b-w5-student-projection-real-click.yml|\
+              .github/workflows/audit-academic-h5-samesite-fix-20260823.yml|\
+              backend/scripts/bootstrap_control_plane_school_iam_authority.py|\
+              backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py|\
+              backend/app/modules/academic_affairs/services/academic_affairs_archive_manifest_service.py|\
+              backend/app/modules/academic_affairs/services/academic_affairs_archive_correction_review_service.py|\
+              backend/tests/test_stage_c3_correction_end_to_end.py|\
+              backend/tests/test_stage_c3_correction_reject.py) ;;
+              *) echo "Unexpected repair-scope file: $f"; exit 1 ;;
+            esac
+          done
 
       - name: Keep H5 browser refresh same-site without weakening cookies
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-
           targets = [
               Path('.github/workflows/academic-c-w2-teacher-today-browser.yml'),
               Path('.github/workflows/academic-b-w5-student-projection-real-click.yml'),
           ]
           for path in targets:
               text = path.read_text(encoding='utf-8')
-              replacements = [
-                  ('E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1',
-                   'E2E_API_BASE_URL: http://localhost:8000/api/v1'),
-                  ('VITE_API_BASE_URL: http://127.0.0.1:8000',
-                   'VITE_API_BASE_URL: http://localhost:8000'),
+              pairs = [
+                  ('E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1', 'E2E_API_BASE_URL: http://localhost:8000/api/v1'),
+                  ('VITE_API_BASE_URL: http://127.0.0.1:8000', 'VITE_API_BASE_URL: http://localhost:8000'),
               ]
-              for old, new in replacements:
-                  count = text.count(old)
-                  if count != 1:
-                      raise SystemExit(f'{path}: expected exactly one {old!r}, got {count}')
+              for old, new in pairs:
+                  if text.count(old) != 1 or text.count(new) != 0:
+                      raise SystemExit(f'{path}: unsafe replacement state for {old!r}')
                   text = text.replace(old, new, 1)
               path.write_text(text, encoding='utf-8')
           PY
           git diff --check
-          git diff -- .github/workflows/academic-c-w2-teacher-today-browser.yml .github/workflows/academic-b-w5-student-projection-real-click.yml
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = 2
           grep -q 'E2E_MINIAPP_BASE_URL: http://localhost:5188' .github/workflows/academic-c-w2-teacher-today-browser.yml
           grep -q 'E2E_MINIAPP_BASE_URL: http://localhost:5188' .github/workflows/academic-b-w5-student-projection-real-click.yml
-          ! grep -q 'E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1' .github/workflows/academic-c-w2-teacher-today-browser.yml
-          ! grep -q 'E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1' .github/workflows/academic-b-w5-student-projection-real-click.yml
+          grep -q 'E2E_API_BASE_URL: http://localhost:8000/api/v1' .github/workflows/academic-c-w2-teacher-today-browser.yml
+          grep -q 'E2E_API_BASE_URL: http://localhost:8000/api/v1' .github/workflows/academic-b-w5-student-projection-real-click.yml
 
       - name: Commit harness-only origin alignment
         id: commit
@@ -79,7 +97,6 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch Teacher and Student real browser reruns
-        id: dispatch
         env:
           FIX_SHA: ${{ steps.commit.outputs.sha }}
         run: |
@@ -102,13 +119,15 @@ jobs:
         if: always()
         env:
           FIX_SHA: ${{ steps.commit.outputs.sha }}
+          START_SHA: ${{ steps.base.outputs.current_sha }}
         run: |
           set +e
           {
             echo '## H5 SameSite R3 真实浏览器复验'
             echo
             echo "Audited product base: \`$AUDITED_SHA\`"
-            echo "Repair SHA: \`${FIX_SHA:-MISSING}\`"
+            echo "Repair start SHA: \`${START_SHA:-MISSING}\`"
+            echo "Repair result SHA: \`${FIX_SHA:-MISSING}\`"
             echo 'Security invariant: backend SameSite=Strict unchanged; only E2E host topology aligned.'
             echo
             echo '| Workflow | Run | Conclusion | Head | URL |'
