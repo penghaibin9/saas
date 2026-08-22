@@ -56,5 +56,5 @@ jobs:
               echo "| $wf | audit/academic-real-browser-20260823 | $id | $st | ${co:--} | \`$hd\` | $url |" >> /tmp/status.md
             fi
           done
-          gh issue comment 200 --repo "$REPO" --body-file /tmp/status.md
+          gh issue comment 205 --repo "$REPO" --body-file /tmp/status.md
           cat /tmp/status.md
