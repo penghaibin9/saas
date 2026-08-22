@@ -79,3 +79,24 @@ def test_w76_communication_registry_owns_review_event_and_todo_types():
         assert todos[todo_type]["ownerModule"] == "graduation"
     assert todos["GD_FORMAL_REVIEW"]["slaHours"] is None
     assert "review-tasks" in todos["GD_FORMAL_REVIEW"]["deepLinkPattern"]
+
+
+def test_w76_gate_regressions_keep_batch_scope_and_upgrade_only_legacy_test_evidence():
+    priority = text("backend/app/modules/graduation/services/graduation_review_center_priority_service.py")
+    legacy = text("backend/tests/graduation_legacy_review_archive_plugin.py")
+    closure = text("backend/app/modules/graduation/services/graduation_review_closure_service.py")
+
+    # W7.3 page rows remain SQL batch-scoped and carry the proven batch into the DTO.
+    assert '"batch_id": int(batch_id)' in priority
+    assert "_base_params(batch_id, scope_ids)" in priority
+    assert "Python never reorders a paged subset" in priority
+
+    # Old graduation_client fixtures are upgraded through the real material-center writers;
+    # production W7.1 must keep requiring canonical FileVersion evidence.
+    assert "_prepare_formal_review_evidence" in legacy
+    assert "adopt_legacy_file_in_session" in legacy
+    assert "prepare_all" in legacy
+    assert 'material_code == "THESIS_FINAL"' in closure
+    assert "material.current_version_id" in closure
+    assert "FileVersion.asset_id == int(material.asset_id)" in closure
+    assert 'str(version.status or "").upper() != "APPROVED"' in closure
