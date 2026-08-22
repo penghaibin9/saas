@@ -24,7 +24,7 @@
             <td>{{ s.courseName }}</td>
             <td>{{ s.examDate || '待补充' }}</td>
             <td>{{ s.startTime ? `${s.startTime}-${s.endTime || ''}` : '待补充' }}</td>
-            <td>{{ s.status }}</td>
+            <td>{{ academicStatusLabel(s.status) }}</td>
           </tr>
         </tbody>
       </table>
@@ -38,6 +38,7 @@
 import { LoadingState, ErrorState } from '@/components/business'
 import { AppPrintButton } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 
 export default {
   name: 'AaMakeupPrintView',
@@ -51,6 +52,7 @@ export default {
     this.load()
   },
   methods: {
+    academicStatusLabel,
     doPrint() { window.print() },
     async load() {
       const batchId = this.$route.params.id

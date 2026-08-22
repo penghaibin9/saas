@@ -671,12 +671,11 @@ export const NAV_PLAN = [
     mod('in-batch-rules', '批次与规则', '/admin/internship/batches', [
       I('批次列表', '/admin/internship/batches?panel=list', 'internship.batch.view', 'WORKBENCH'),
       H('批次详情', '/admin/internship/batches?panel=list', 'internship.batch.view', 'DETAIL'),
-      I('阶段配置', '/admin/internship/batches?panel=timeline', 'internship.batch.stage.manage', 'CONFIG_VIEW'),
-      I('打卡规则', '/admin/internship/batches?panel=rules&rule=checkin', 'internship.batch.rule.checkin.manage', 'CONFIG_VIEW'),
-      I('周报规则', '/admin/internship/batches?panel=rules&rule=report', 'internship.batch.rule.report.manage', 'CONFIG_VIEW'),
-      I('指导规则', '/admin/internship/batches?panel=rules&rule=guidance', 'internship.batch.rule.guidance.manage', 'CONFIG_VIEW'),
-      I('评价规则', '/admin/internship/batches?panel=rules&rule=evaluation', 'internship.batch.rule.evaluation.manage', 'CONFIG_VIEW'),
-      I('成绩规则', '/admin/internship/batches?panel=rules&rule=score', 'internship.batch.rule.score.manage', 'CONFIG_VIEW')
+      // 后端真实权限只提供 batch.view/manage/export。阶段与五类规则均是批次编辑能力，
+      // 不得再绑定不存在的细分权限码，否则学校管理员会被误判为无权并隐藏菜单。
+      // 同时把同一编辑页上的六组表单收敛成一个真实入口，避免“六个菜单点到同一页”。
+      I('参与学生配置', '/admin/internship/batches?panel=participants', 'internship.batch.manage', 'CONFIG_VIEW'),
+      I('阶段与规则配置', '/admin/internship/batches?panel=configuration', 'internship.batch.manage', 'CONFIG_VIEW')
     ]),
     mod('in-students', '实习学生', '/admin/internship/students', [
       I('实习名单', '/admin/internship/students?panel=roster', 'internship.student.view', 'WORKBENCH'),

@@ -18,9 +18,9 @@
 
       <section class="mc-filters">
         <label>关键词<input v-model.trim="filters.keyword" placeholder="姓名、学号、题目或文件名" @keyup.enter="search" /></label>
-        <label>材料阶段<select v-model="filters.stage"><option value="">全部</option><option v-for="stage in stages" :key="stage" :value="stage">{{ stage }}</option></select></label>
+        <label>材料阶段<select v-model="filters.stage"><option value="">全部</option><option v-for="stage in stages" :key="stage.value" :value="stage.value">{{ stage.label }}</option></select></label>
         <label>审核状态<select v-model="filters.reviewStatus" :disabled="tab === 'pending'"><option value="">全部</option><option value="PENDING">待审核</option><option value="RETURNED">已退回</option><option value="APPROVED">已通过</option><option value="NOT_REQUIRED">无需审核</option></select></label>
-        <label>扫描状态<select v-model="filters.scanStatus" :disabled="tab === 'security'"><option value="">全部</option><option value="CLEAN">安全</option><option value="PENDING">待扫描</option><option value="ERROR">失败</option><option value="INFECTED">感染</option></select></label>
+        <label>扫描状态<select v-model="filters.scanStatus" :disabled="tab === 'security'"><option value="">全部</option><option value="CLEAN">安全</option><option value="PENDING">待扫描</option><option value="ERROR">扫描失败</option><option value="INFECTED">发现安全风险</option></select></label>
         <div><button type="button" class="primary" @click="search">查询</button><button type="button" @click="reset">重置</button></div>
       </section>
 
@@ -34,12 +34,12 @@
               <td><strong>{{ row.studentName }}</strong><small>{{ row.studentNo }}</small></td>
               <td><span>{{ row.collegeId || '-' }} / {{ row.majorId || '-' }}</span><small>{{ row.className || row.classId || '-' }}</small></td>
               <td>{{ row.advisorName || '-' }}</td>
-              <td><span>{{ row.stage }}</span><strong>{{ row.materialName }}</strong><small>{{ row.materialCode }}</small></td>
+              <td><span>{{ graduationMaterialStageLabel(row.stage) }}</span><strong>{{ row.materialName }}</strong></td>
               <td :title="row.fileName">{{ row.fileName || '尚未提交' }}</td>
               <td><strong>v{{ row.currentVersion || 0 }}</strong><small>历史 {{ row.historyVersionCount || 0 }}</small></td>
               <td><span>{{ row.uploader || '-' }}</span><small>{{ row.uploadedAt || '-' }}</small></td>
-              <td>{{ sizeText(row.sizeBytes) }}</td><td><b :class="tone(row.scanStatus)">{{ row.scanStatus }}</b></td>
-              <td>{{ row.reviewStatus }}</td><td>{{ row.archiveStatus }}</td>
+              <td>{{ sizeText(row.sizeBytes) }}</td><td><b :class="tone(row.scanStatus)">{{ graduationScanStatusLabel(row.scanStatus) }}</b></td>
+              <td>{{ graduationReviewStatusLabel(row.reviewStatus) }}</td><td>{{ graduationArchiveStatusLabel(row.archiveStatus) }}</td>
               <td class="actions"><button v-if="row.readyForBusiness" type="button" @click="preview(row)">预览</button><button v-if="row.readyForBusiness" type="button" @click="download(row)">下载</button><button type="button" @click="history(row)">版本</button><button v-if="row.allowedActions?.includes('review')" type="button" @click="openReview(row)">通过</button><button v-if="row.allowedActions?.includes('review')" type="button" @click="openReject(row)">退回</button></td>
             </tr></tbody>
           </table>
@@ -66,11 +66,18 @@ import FileVersionTimeline from '@/components/file/FileVersionTimeline.vue'
 import { normalizeFile } from '@/services/file/fileSdk'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { graduationMaterialCenterApi as api } from '@/modules/graduation/api/graduation-material-center.api'
+import {
+  GD_MATERIAL_STAGES,
+  graduationArchiveStatusLabel,
+  graduationMaterialStageLabel,
+  graduationReviewStatusLabel,
+  graduationScanStatusLabel
+} from '@/modules/graduation/constants/graduation-material.constants'
 
 const route = useRoute(); const router = useRouter(); const batchStore = useGraduationBatchStore()
 const batchId = computed(() => batchStore.selectedBatchId)
 const tabs = [{ key: 'files', label: '全部材料' }, { key: 'students', label: '学生完整性' }, { key: 'pending', label: '待审核' }, { key: 'security', label: '安全异常' }]
-const stages = ['TOPIC','TASKBOOK','PROPOSAL','GUIDANCE','MIDTERM','FINAL_DRAFT','FINAL_APPROVED','PLAGIARISM','REVIEW','DEFENSE','GRADE','ARCHIVE']
+const stages = GD_MATERIAL_STAGES
 const tab = ref(tabs.some(x => x.key === route.query.tab) ? route.query.tab : 'files')
 const loading = ref(false); const error = ref(''); const result = ref({ items: [], total: 0 }); const summary = ref({ filteredSummary: {}, archiveSummary: {} })
 const page = ref(Math.max(1, Number(route.query.page || 1))); const pageSize = 20

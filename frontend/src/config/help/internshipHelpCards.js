@@ -24,8 +24,8 @@ export const INTERNSHIP_HELP_CARDS = [
       '进入「批次与规则」，在「批次列表」页签点右上角「新建批次」。',
       '填写批次名称、批次编号、学年学期、实习起止时间、报名时间、计划人数。',
       '在规则说明里写清本批次的实习要求（如打卡频率、周报周期）。',
-      '保存后批次为「未开始/进行中」，再到「阶段配置」「规则配置」补齐细则。',
-      '确认无误后开放报名，学生端即可看到该批次。'
+      '保存后进入「参与学生配置」，按班级圈定学生并预览名单。',
+      '再到「阶段与规则配置」补齐过程规则；确认无误后冻结名单并启用批次。'
     ],
     fields: [
       '批次名称：如「2026 届数控专业顶岗实习」',
@@ -42,7 +42,7 @@ export const INTERNSHIP_HELP_CARDS = [
       { q: '起止时间填错了怎么改？', a: '在批次列表点开该批次进入编辑，修改后保存即可，历史数据不受影响。' }
     ],
     related: [
-      { label: '配置打卡/周报/成绩等规则', route: '/admin/internship/batches?panel=rules&rule=checkin' },
+      { label: '配置打卡/周报/成绩等规则', route: '/admin/internship/batches?panel=configuration' },
       { label: '维护实习学生名单', route: '/admin/internship/students?panel=roster' }
     ]
   },
@@ -51,12 +51,12 @@ export const INTERNSHIP_HELP_CARDS = [
     module: '岗位实习中心',
     title: '如何配置打卡、周报、指导、评价和成绩规则',
     roles: ['学院管理员', '实习管理员'],
-    route: '/admin/internship/batches?panel=rules&rule=checkin',
-    entry: '岗位实习中心 → 批次与规则 → 进入批次后切换「打卡/周报/指导/评价/成绩规则」页签',
+    route: '/admin/internship/batches?panel=configuration',
+    entry: '岗位实习中心 → 批次与规则 → 阶段与规则配置 → 选择草稿批次编辑',
     keywords: ['实习规则', '打卡规则', '周报规则', '指导规则', '评价规则', '成绩规则', '规则配置', '打卡频率', '成绩比例'],
     summary: '规则决定学生怎么打卡、多久交一次周报、老师怎么评价、成绩怎么算。规则挂在批次下，同一批次统一执行。',
     steps: [
-      '进入「批次与规则」，打开目标批次的「规则配置」。',
+      '进入「阶段与规则配置」，选择目标草稿批次并点击「编辑阶段与规则」。',
       '在「打卡规则」设置打卡方式、每天次数、打卡时段与定位要求。',
       '在「周报规则」设置周报/日报/月报周期与提交截止。',
       '在「指导规则」「评价规则」设置指导频次、评价维度。',

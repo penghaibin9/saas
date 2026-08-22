@@ -65,7 +65,7 @@
                 <td @click.stop><input type="checkbox" :disabled="!canRemind(row)" :checked="selected.has(row.requirementId)" @change="toggle(row)" /></td>
                 <td><strong>{{ studentLine(row) }}</strong><small>{{ bizTitleLine(row) }}</small><small class="tech-trace">{{ bizLabel(row.bizType) }} #{{ row.bizId }} · 学生 #{{ row.studentId }} · asset {{ row.assetId || '待回填' }}</small></td>
                 <td><strong>{{ row.itemName }}</strong><small>{{ row.requirementReason || row.itemCode }}</small><span class="sensitivity" :class="sensitivityClass(row.sensitivityLevel)">{{ sensitivityText(row.sensitivityLevel) }}</span></td>
-                <td><span class="status" :class="statusClass(row.status)">{{ row.statusLabel || row.status }}</span><small :class="{ overdue: row.overdue }">{{ row.dueAt ? `截止 ${fmt(row.dueAt)}` : '未设截止时间' }}</small></td>
+                <td><span class="status" :class="statusClass(row.status)">{{ row.statusLabel || materialStatusText(row.status) }}</span><small :class="{ overdue: row.overdue }">{{ row.dueAt ? `截止 ${fmt(row.dueAt)}` : '未设截止时间' }}</small></td>
                 <td>
                   <template v-if="row.currentSubmission">
                     <strong>v{{ row.currentSubmission.versionNo }} · {{ row.currentSubmission.fileName }}</strong>
@@ -107,18 +107,18 @@
           <div v-else-if="manifestError" class="empty">{{ manifestError }}</div>
           <div v-else-if="!manifest" class="empty">该学生尚未完成档案冻结，或当前角色无档案查看权限</div>
           <template v-else>
-            <dl class="manifest-meta"><div><dt>Manifest ID</dt><dd>{{ manifest.manifestId }}</dd></div><div><dt>Revision</dt><dd>{{ manifest.revision }}</dd></div><div><dt>状态</dt><dd>{{ manifest.status }}</dd></div><div><dt>SHA-256</dt><dd class="mono">{{ manifest.manifestSha256 }}</dd></div></dl>
-            <div class="table-wrap"><table><thead><tr><th>材料</th><th>versionId</th><th>文件</th><th>扫描</th><th>审核</th><th>SHA-256</th></tr></thead><tbody><tr v-for="item in manifest.items || []" :key="`${item.materialCode}-${item.versionId}`"><td>{{ item.materialCode }}</td><td class="mono">{{ item.versionId }}</td><td>{{ item.fileName }}</td><td>{{ item.scanResult }}</td><td>{{ item.reviewStatus }}</td><td class="mono">{{ shortHash(item.sha256) }}</td></tr></tbody></table></div>
+            <dl class="manifest-meta"><div><dt>Manifest ID</dt><dd>{{ manifest.manifestId }}</dd></div><div><dt>Revision</dt><dd>{{ manifest.revision }}</dd></div><div><dt>状态</dt><dd>{{ materialStatusText(manifest.status) }}</dd></div><div><dt>SHA-256</dt><dd class="mono">{{ manifest.manifestSha256 }}</dd></div></dl>
+            <div class="table-wrap"><table><thead><tr><th>材料</th><th>versionId</th><th>文件</th><th>扫描</th><th>审核</th><th>SHA-256</th></tr></thead><tbody><tr v-for="item in manifest.items || []" :key="`${item.materialCode}-${item.versionId}`"><td>{{ item.materialCode }}</td><td class="mono">{{ item.versionId }}</td><td>{{ item.fileName }}</td><td>{{ materialStatusText(item.scanResult) }}</td><td>{{ materialStatusText(item.reviewStatus) }}</td><td class="mono">{{ shortHash(item.sha256) }}</td></tr></tbody></table></div>
           </template>
         </AppSectionCard>
       </div>
 
       <AppSectionCard title="安全批次与逐条结果">
         <div class="batch-grid">
-          <article v-for="job in batchJobs" :key="job.batchJobId" class="batch-card" :class="{ active: activeBatch?.batchJobId === job.batchJobId }" @click="openBatch(job)"><div><strong>{{ job.batchNo }}</strong><small>{{ job.statusLabel || job.status }} · 成功 {{ job.successCount }} / 失败 {{ job.failureCount }}</small></div><button v-if="(job.allowedActions || []).includes('RETRY_FAILED')" class="secondary small" :disabled="acting === `retry-${job.batchJobId}`" @click.stop="retry(job)">重试失败项</button></article>
+          <article v-for="job in batchJobs" :key="job.batchJobId" class="batch-card" :class="{ active: activeBatch?.batchJobId === job.batchJobId }" @click="openBatch(job)"><div><strong>{{ job.batchNo }}</strong><small>{{ job.statusLabel || materialStatusText(job.status) }} · 成功 {{ job.successCount }} / 失败 {{ job.failureCount }}</small></div><button v-if="(job.allowedActions || []).includes('RETRY_FAILED')" class="secondary small" :disabled="acting === `retry-${job.batchJobId}`" @click.stop="retry(job)">重试失败项</button></article>
           <p v-if="!batchJobs.length" class="empty">暂无批次记录</p>
         </div>
-        <div v-if="activeBatch" class="batch-detail"><h4>{{ activeBatch.batchNo }} · {{ activeBatch.statusLabel }}</h4><table><thead><tr><th>记录</th><th>动作</th><th>结果</th><th>尝试次数</th><th>失败原因</th></tr></thead><tbody><tr v-for="item in activeBatch.items || []" :key="item.itemId"><td>{{ item.itemKey }}</td><td>{{ item.action }}</td><td><span class="status" :class="statusClass(item.status)">{{ item.status }}</span></td><td>{{ item.attemptCount }}</td><td>{{ item.errorMessage || '—' }}</td></tr></tbody></table></div>
+        <div v-if="activeBatch" class="batch-detail"><h4>{{ activeBatch.batchNo }} · {{ activeBatch.statusLabel || materialStatusText(activeBatch.status) }}</h4><table><thead><tr><th>记录</th><th>动作</th><th>结果</th><th>尝试次数</th><th>失败原因</th></tr></thead><tbody><tr v-for="item in activeBatch.items || []" :key="item.itemId"><td>{{ item.itemKey }}</td><td>{{ batchActionText(item.action) }}</td><td><span class="status" :class="statusClass(item.status)">{{ materialStatusText(item.status) }}</span></td><td>{{ item.attemptCount }}</td><td>{{ item.errorMessage || '—' }}</td></tr></tbody></table></div>
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
@@ -168,6 +168,18 @@ export default {
     '$route.query'() { this.applyRouteFocus(); this.applyRouteBizContext() }
   },
   methods: {
+    materialStatusText(value) {
+      return {
+        MISSING: '待补交', PENDING_REVIEW: '待审核', ACCEPTED: '已验收', RETURNED: '已退回', WAIVED: '已免交',
+        SUBMITTED: '已提交', SUPERSEDED: '历史版本', ACTIVE: '当前有效', PREPARED: '已准备', FROZEN: '已冻结',
+        PACKAGED: '已打包', REVOKED: '已撤销', ABORTED: '已终止', PENDING: '待执行', RUNNING: '执行中',
+        SUCCESS: '成功', SUCCEEDED: '已完成', FAILED: '失败', PARTIAL_SUCCESS: '部分成功', CLEAN: '安全',
+        PASSED: '已通过', SCANNING: '扫描中', INFECTED: '发现安全风险', APPROVED: '已通过', REJECTED: '已驳回'
+      }[value] || (value ? '状态待确认' : '—')
+    },
+    batchActionText(value) {
+      return { REMIND: '发送补交提醒', RETRY: '重试', ACCEPT: '验收', RETURN: '退回', WAIVE: '免交' }[value] || '业务处理'
+    },
     fmt(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' },
     applyRouteFocus() {
       const q = this.$route.query || {}

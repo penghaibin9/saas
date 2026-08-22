@@ -71,7 +71,7 @@
         <AppSectionHeader title="备份备注列表" />
         <DataTable :columns="evidenceColumns" :rows="evidenceList" row-key="id">
           <template #cell-status="{ row }">
-            <StatusTag :type="row.status === 'SUCCEEDED' ? 'success' : 'danger'" :label="row.status" />
+            <StatusTag :type="row.status === 'SUCCEEDED' ? 'success' : 'danger'" :label="platformStatusLabel(row.status)" />
           </template>
         </DataTable>
       </AppCard>
@@ -89,7 +89,7 @@
         </div>
         <ul class="pdr__list">
           <li v-for="d in drillList" :key="d.id">
-            <StatusTag :type="d.status === 'PASSED' ? 'success' : 'danger'" :label="d.status" /> {{ d.targetDescription || '（无说明）' }}
+            <StatusTag :type="d.status === 'PASSED' ? 'success' : 'danger'" :label="platformStatusLabel(d.status)" /> {{ d.targetDescription || '（无说明）' }}
           </li>
         </ul>
       </AppCard>
@@ -101,6 +101,7 @@
 import { AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
+import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
 const TYPE_LABELS = {
@@ -132,6 +133,7 @@ export default {
     this.load()
   },
   methods: {
+    platformStatusLabel,
     typeLabel(type) {
       return TYPE_LABELS[type] || type
     },

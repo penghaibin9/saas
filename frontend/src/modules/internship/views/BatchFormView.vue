@@ -370,7 +370,7 @@ export default {
       if (this.isEdit) {
         return this.detail ? `${this.detail.batchName}（${this.detail.batchNo}）` : ''
       }
-      return '创建后为草稿态，可配置阶段时间轴与打卡 / 周报 / 指导 / 评价 / 成绩规则，启用后实习流程正式开放'
+      return '先创建批次并配置业务规则，保存后继续选择参与班级与学生，预览名单无误后再启用'
     },
     formRules() {
       const rules = {
@@ -657,8 +657,13 @@ export default {
           ? await internshipApi.updateBatch(this.$route.params.id, body)
           : await internshipApi.createBatch(body)
         if (res.code === 0) {
-          toast.success(this.isEdit ? '已保存修改' : '已新建批次（草稿态）')
-          this.goBack()
+          if (this.isEdit) {
+            toast.success('已保存修改')
+            this.goBack()
+          } else {
+            toast.success('批次已创建，请继续选择参与班级与学生')
+            this.$router.push(`/admin/internship/batches/${res.data.id}?setup=participants`)
+          }
         } else {
           toast.error(res.message || '保存失败')
           // 版本冲突：只刷新 version，保留用户已填表单便于立刻再提交

@@ -36,7 +36,7 @@
             <div class="pin__cell-sub">{{ row.severity }} · {{ row.affectedServiceCodes.join('、') }}</div>
           </template>
           <template #cell-status="{ row }">
-            <StatusTag :type="statusTone(row.status)" :label="row.status" dot />
+            <StatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot />
           </template>
         </DataTable>
       </AppCard>
@@ -45,7 +45,7 @@
         <AppSectionHeader :title="`事件详情：${selected.title}`" />
         <div class="pin__form">
           <select v-model="nextStatus" class="pin__input">
-            <option v-for="s in statusOptions" :key="s" :value="s">{{ s }}</option>
+            <option v-for="s in statusOptions" :key="s" :value="s">{{ statusLabel(s) }}</option>
           </select>
           <button class="mp-link" @click="advanceStatus">推进状态</button>
           <button v-if="selected.status === 'RESOLVED'" class="mp-link" @click="requestProblem">申请转Problem</button>
@@ -70,7 +70,7 @@
         </div>
         <ul class="pin__list">
           <li v-for="u in selected.updates" :key="u.updateId">
-            #{{ u.updateSeq }} {{ u.statusAtUpdate }} · {{ u.externalMessage }}
+            #{{ u.updateSeq }} {{ statusLabel(u.statusAtUpdate) }} · {{ u.externalMessage }}
             <StatusTag :type="u.published ? 'success' : 'default'" :label="u.published ? '已发布' : '草稿'" dot />
             <button v-if="!u.published" class="mp-link" @click="publishUpdate(u)">发布并通知</button>
             <span v-if="u.notificationResult" class="pin__note">
@@ -90,6 +90,9 @@ import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
 
 const STATUS_ORDER = ['DETECTED', 'ACKNOWLEDGED', 'MITIGATING', 'MONITORING', 'RESOLVED']
+const STATUS_LABELS = {
+  DETECTED: '已发现', ACKNOWLEDGED: '已确认', MITIGATING: '处置中', MONITORING: '观察中', RESOLVED: '已解决'
+}
 
 export default {
   name: 'PlatformIncidentView',
@@ -120,6 +123,9 @@ export default {
   },
   created() { this.load() },
   methods: {
+    statusLabel(status) {
+      return STATUS_LABELS[status] || '状态待确认'
+    },
     statusTone(s) {
       return { DETECTED: 'danger', ACKNOWLEDGED: 'warning', MITIGATING: 'warning', MONITORING: 'warning', RESOLVED: 'success' }[s] || 'default'
     },

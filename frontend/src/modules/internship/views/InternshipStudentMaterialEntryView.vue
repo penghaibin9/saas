@@ -62,8 +62,8 @@
                 <td>{{ item.categoryLabel || item.materialCode }}</td>
                 <td>v{{ item.versionNo }}</td>
                 <td class="mono">{{ item.versionId }}</td>
-                <td>{{ item.scanStatus }}</td>
-                <td>{{ item.reviewStatus || '—' }}</td>
+                <td>{{ scanStatusText(item.scanStatus) }}</td>
+                <td>{{ reviewStatusText(item.reviewStatus) }}</td>
                 <td>{{ item.fileName }}</td>
               </tr>
               <tr v-if="!(detail.items || []).length"><td colspan="6" class="ism-empty">暂无真实文件版本</td></tr>
@@ -103,6 +103,12 @@ export default {
   },
   created() { this.load() },
   methods: {
+    scanStatusText(value) {
+      return { CLEAN: '安全', PASSED: '安全', READY: '安全可用', PENDING: '待扫描', UPLOADED: '待扫描', SCANNING: '扫描中', FAILED: '扫描失败', ERROR: '扫描失败', INFECTED: '发现安全风险' }[value] || (value ? '扫描状态待确认' : '—')
+    },
+    reviewStatusText(value) {
+      return { PENDING: '待审核', PENDING_REVIEW: '待审核', APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', NOT_REQUIRED: '无需审核' }[value] || (value ? '审核状态待确认' : '—')
+    },
     async load() {
       this.loading = true
       this.error = ''

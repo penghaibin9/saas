@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="实习批次设置"
+    :title="pageTitle"
     :subtitle="pageSubtitle"
     :role-name="roleName"
     :data-scope-name="dataScopeName"
@@ -79,15 +79,22 @@ import { formatDate } from '@/utils/dateUtils'
 const EMPTY_FILTERS = () => ({ keyword: '', status: '' })
 const BATCH_PANEL_PRESETS = {
   list: () => EMPTY_FILTERS(),
-  timeline: () => ({ ...EMPTY_FILTERS(), status: 'RUNNING' }),
-  rules: () => ({ ...EMPTY_FILTERS(), status: 'DRAFT' }),
+  participants: () => ({ ...EMPTY_FILTERS(), status: 'DRAFT' }),
+  configuration: () => ({ ...EMPTY_FILTERS(), status: 'DRAFT' }),
   export: () => ({ ...EMPTY_FILTERS(), status: 'ARCHIVED' })
 }
 const BATCH_PANEL_HINTS = {
   list: '组织岗位实习的时间轴与规则骨架（草稿 → 进行中 → 已结束 → 已归档）',
-  timeline: '进行中批次 · 点击行「详情」查看阶段时间轴，新建/编辑可配 stagesJson',
-  rules: '草稿批次 · 新建/编辑时可编辑 rulesJson（打卡/周报/指导/评价/成绩）',
+  participants: '选择草稿批次，按班级圈定学生，预览无误后冻结名单并启用',
+  configuration: '选择草稿批次，统一维护阶段、打卡、周报、指导、评价和成绩规则',
   export: '已归档批次台账 · 可用右上角「导出 Excel 台账」'
+}
+const BATCH_PANEL_ALIASES = { timeline: 'configuration', rules: 'configuration' }
+const BATCH_PANEL_TITLES = {
+  list: '实习批次设置',
+  participants: '参与学生配置',
+  configuration: '阶段与规则配置',
+  export: '实习批次归档台账'
 }
 const STATUS_OPTIONS = [
   { value: 'DRAFT', label: '草稿' },
@@ -161,9 +168,6 @@ export default {
     },
     confirmConf() {
       const r = this.confirmRow
-      if (this.confirmMode === 'activate') {
-        return { title: '启用批次', message: r ? `将「${r.batchName}」置为「进行中」，实习流程正式开放。` : '', type: 'primary', confirmText: '确认启用', requireReason: false }
-      }
       if (this.confirmMode === 'close') {
         return { title: '结束批次', message: r ? `将「${r.batchName}」置为「已结束」，结束后才可归档。` : '', type: 'danger', confirmText: '确认结束', requireReason: false }
       }
@@ -178,6 +182,9 @@ export default {
     pageSubtitle() {
       const hint = BATCH_PANEL_HINTS[this.activePanel] || BATCH_PANEL_HINTS.list
       return `创建和管理实习批次，并设置打卡、周报、指导、评价和成绩规则 · ${hint}`
+    },
+    pageTitle() {
+      return BATCH_PANEL_TITLES[this.activePanel] || BATCH_PANEL_TITLES.list
     },
     summaryMetrics() {
       if (this.loading || this.error) return []
@@ -201,7 +208,8 @@ export default {
   },
   methods: {
     applyPanel(panel) {
-      const key = BATCH_PANEL_PRESETS[panel] ? panel : 'list'
+      const normalized = BATCH_PANEL_ALIASES[panel] || panel
+      const key = BATCH_PANEL_PRESETS[normalized] ? normalized : 'list'
       this.activePanel = key
       this.filters = (BATCH_PANEL_PRESETS[key] || BATCH_PANEL_PRESETS.list)()
       this.page = 1
@@ -227,7 +235,7 @@ export default {
       this.load()
     },
     reset() {
-      this.filters = EMPTY_FILTERS()
+      this.filters = (BATCH_PANEL_PRESETS[this.activePanel] || BATCH_PANEL_PRESETS.list)()
       this.page = 1
       this.load()
     },
@@ -254,10 +262,24 @@ export default {
       this.$router.push(`/admin/internship/batches/${row.id}`)
     },
     rowActions(row) {
+      if (this.activePanel === 'participants') {
+        return [
+          { key: 'participants', label: '配置参与学生', disabled: row.status !== 'DRAFT', disabledReason: '仅草稿可配置参与学生' },
+          { key: 'detail', label: '查看批次详情' },
+          { key: 'edit', label: '编辑阶段与规则', disabled: row.status !== 'DRAFT', disabledReason: '仅草稿批次可编辑' }
+        ]
+      }
+      if (this.activePanel === 'configuration') {
+        return [
+          { key: 'edit', label: '编辑阶段与规则', disabled: row.status !== 'DRAFT', disabledReason: '仅草稿批次可编辑' },
+          { key: 'participants', label: '配置参与学生', disabled: row.status !== 'DRAFT', disabledReason: '仅草稿可配置参与学生' },
+          { key: 'detail', label: '查看批次详情' }
+        ]
+      }
       return [
         { key: 'detail', label: '详情' },
         { key: 'edit', label: '编辑', disabled: row.status !== 'DRAFT', disabledReason: '仅草稿批次可编辑' },
-        { key: 'activate', label: '启用', disabled: row.status !== 'DRAFT', disabledReason: '仅草稿可启用' },
+        { key: 'participants', label: '配置学生', disabled: row.status !== 'DRAFT', disabledReason: '仅草稿可配置参与学生' },
         { key: 'close', label: '结束', disabled: row.status !== 'RUNNING', disabledReason: '仅进行中可结束' },
         { key: 'archive', label: '归档', disabled: row.status !== 'CLOSED', disabledReason: '仅已结束可归档' },
         { key: 'void', label: '作废', danger: true, disabled: row.status !== 'DRAFT', disabledReason: '仅草稿可作废' }
@@ -266,6 +288,7 @@ export default {
     onRowAction(key, row) {
       if (key === 'detail') return this.openDetail(row)
       if (key === 'edit') return this.openEdit(row)
+      if (key === 'participants') return this.$router.push(`/admin/internship/batches/${row.id}?setup=participants`)
       this.confirmMode = key
       this.confirmRow = row
       this.confirmVisible = true
@@ -275,8 +298,7 @@ export default {
       if (!row) return
       const reason = (payload && payload.reason) || ''
       let res
-      if (this.confirmMode === 'activate') res = await internshipApi.activateBatch(row.id, { expectedVersion: row.version })
-      else if (this.confirmMode === 'close') res = await internshipApi.closeBatch(row.id, { expectedVersion: row.version })
+      if (this.confirmMode === 'close') res = await internshipApi.closeBatch(row.id, { expectedVersion: row.version })
       else if (this.confirmMode === 'archive') res = await internshipApi.archiveBatch(row.id, { expectedVersion: row.version })
       else if (this.confirmMode === 'void') res = await internshipApi.voidBatch(row.id, {
         reason, expectedVersion: row.version

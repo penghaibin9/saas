@@ -58,7 +58,7 @@
       </template>
       <template #cell-operator="{ row }"><span class="assw-mono">{{ row.generatedBy || '—' }}</span></template>
       <template #cell-hash="{ row }"><span class="assw-hash" :title="row.payloadHash">{{ shortHash(row.payloadHash) }}</span></template>
-      <template #cell-status="{ row }"><StatusTag type="success" :label="row.status === 'FROZEN' ? '已冻结' : row.status" dot /></template>
+      <template #cell-status="{ row }"><StatusTag type="success" :label="academicStatusLabel(row.status)" dot /></template>
       <template #cell-integrity="{ row }">
         <StatusTag
           :type="verified[row.snapshotId] ? 'success' : 'default'"
@@ -131,7 +131,7 @@
           <div><span>筛选范围</span><strong>{{ scopeLabel(detail) }} · {{ filterLabel(detail) }}</strong></div>
           <div><span>操作人标识</span><strong class="assw-mono">{{ detail.generatedBy || '—' }}</strong></div>
           <div><span>冻结原因</span><strong>{{ detail.reason || '历史记录未回填原因' }}</strong></div>
-          <div><span>状态</span><strong>{{ detail.status }}</strong></div>
+          <div><span>状态</span><strong>{{ academicStatusLabel(detail.status) }}</strong></div>
         </div>
 
         <div class="assw-section">
@@ -163,6 +163,7 @@ import { DataTable, EmptyState, ErrorState, LoadingState, StatusTag } from '@/co
 import { matchPermission } from '@/config/navPlan.js'
 import { getPermissionPatterns } from '@/security/permissionGate.js'
 import { academicStatsSnapshotApi } from '@/modules/academicAffairs/api/academic-stats-snapshot.api.js'
+import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants.js'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -218,6 +219,7 @@ export default {
     if (this.canView) this.load()
   },
   methods: {
+    academicStatusLabel,
     snapshotTypeLabel(value) { return String(value || '').toUpperCase() === 'OVERVIEW' ? '教务总览' : (value || '—') },
     formatTime(value) {
       if (!value) return '—'

@@ -1,5 +1,9 @@
 import { request } from '@/services/http/client'
 import fileSdk, { normalizeFile } from '@/services/file/fileSdk'
+import {
+  graduationFileVersionStatusLabel,
+  graduationScanStatusLabel
+} from '@/modules/graduation/constants/graduation-material.constants'
 
 function ticketPath(ticket = {}) {
   const value = String(ticket.url || ticket.downloadUrl || '')
@@ -117,7 +121,13 @@ export const graduationMaterialCenterApi = {
   normalizeVersions(items = []) {
     return items.map((item) => normalizeFile({
       ...item,
-      statusText: item.readyForBusiness ? '安全可用' : (item.scanStatus || item.status || '暂不可使用')
+      statusText: item.readyForBusiness
+        ? '安全可用'
+        : item.scanStatus
+          ? graduationScanStatusLabel(item.scanStatus)
+          : item.status
+            ? graduationFileVersionStatusLabel(item.status)
+            : '暂不可使用'
     }))
   },
   issueMaterialTicket(fileId, action = 'preview') {

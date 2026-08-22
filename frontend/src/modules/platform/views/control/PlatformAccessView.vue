@@ -92,7 +92,7 @@
           <thead><tr><th>类型</th><th>操作人</th><th>学校 / 能力</th><th>工单 / 原因</th><th>到期</th><th>状态</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="item in elevations" :key="`e-${item.id}`">
-              <td>临时提升</td><td>{{ item.userId }}</td><td>{{ (item.capabilities || []).join(' / ') }}</td><td>{{ item.reason }}</td><td>{{ item.expiresAt }}</td><td>{{ item.status }}</td>
+              <td>临时提升</td><td>{{ item.userId }}</td><td>{{ (item.capabilities || []).join(' / ') }}</td><td>{{ item.reason }}</td><td>{{ item.expiresAt }}</td><td>{{ platformStatusLabel(item.status) }}</td>
               <td><AppButton v-if="isActive(item)" @click="beginAction('elevation', item)">撤销</AppButton></td>
             </tr>
             <tr v-for="item in sessions" :key="`s-${item.id}`">
@@ -120,7 +120,7 @@
         <template v-else-if="supportWorkspace.context">
           <div class="support-summary">
             <article><span>学校</span><strong>{{ supportWorkspace.context.tenantName }}</strong><small>{{ supportWorkspace.context.tenantCode }}</small></article>
-            <article><span>状态</span><strong>{{ supportWorkspace.context.status }}</strong><small>到期 {{ supportWorkspace.context.expireAt || '—' }}</small></article>
+            <article><span>状态</span><strong>{{ platformStatusLabel(supportWorkspace.context.status) }}</strong><small>到期 {{ supportWorkspace.context.expireAt || '—' }}</small></article>
             <article><span>学生</span><strong>{{ supportWorkspace.context.studentCount }}</strong><small>只读统计</small></article>
             <article><span>账号</span><strong>{{ supportWorkspace.context.userCount }}</strong><small>只读统计</small></article>
           </div>
@@ -166,7 +166,7 @@
           <thead><tr><th>复核</th><th>状态</th><th>项目数</th><th>到期</th><th>版本</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="item in reviews" :key="item.id">
-              <td>{{ item.name || item.id }}</td><td>{{ item.status }}</td><td>{{ item.items?.length || 0 }}</td><td>{{ item.dueAt || '—' }}</td><td>{{ item.version }}</td>
+              <td>{{ item.name || item.id }}</td><td>{{ platformStatusLabel(item.status) }}</td><td>{{ item.items?.length || 0 }}</td><td>{{ item.dueAt || '—' }}</td><td>{{ item.version }}</td>
               <td><AppButton v-if="String(item.status).toUpperCase() === 'OPEN'" @click="editReview(item)">逐项复核</AppButton></td>
             </tr>
             <tr v-if="!reviews.length"><td colspan="6">暂无访问复核记录</td></tr>
@@ -184,6 +184,7 @@ import { AppButton } from '@/components/ui'
 import { ModulePageShell } from '@/components/business'
 import { platformPamApi } from '@/modules/platform/api/platformPam.api'
 import { platformSecurityOpsApi } from '@/modules/platform/api/platformSecurityOps.api'
+import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
 const splitValues = (value) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean)
@@ -225,6 +226,7 @@ export default {
   created() { this.load() },
   beforeUnmount() { this.closeSupportWorkspace() },
   methods: {
+    platformStatusLabel,
     isActive(item) {
       if (String(item?.status || 'ACTIVE').toUpperCase() !== 'ACTIVE') return false
       const expiry = serverUtcEpoch(item?.expiresAt)

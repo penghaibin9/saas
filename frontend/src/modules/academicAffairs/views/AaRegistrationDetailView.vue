@@ -27,7 +27,7 @@
           @page-change="onPageChange"
         >
           <template #cell-status="{ row }">
-            <AppStatusTag type="success" dot>{{ row.status === 'REGISTERED' ? '已注册' : row.status }}</AppStatusTag>
+            <AppStatusTag type="success" dot>{{ academicStatusLabel(row.status) }}</AppStatusTag>
           </template>
         </DataTable>
       </AppSectionCard>
@@ -42,6 +42,7 @@ import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag } from '@/components/common'
 import AaRegistrationBulkPanel from '@/modules/academicAffairs/components/AaRegistrationBulkPanel.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 
 export default {
   name: 'AaRegistrationDetailView',
@@ -79,6 +80,7 @@ export default {
     this.load()
   },
   methods: {
+    academicStatusLabel,
     onPageChange(page) {
       this.pagination.page = page
       this.load()

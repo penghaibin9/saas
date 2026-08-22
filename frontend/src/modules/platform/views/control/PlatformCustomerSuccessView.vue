@@ -73,7 +73,7 @@
         <AppSectionHeader title="工单列表" />
         <DataTable :columns="ticketColumns" :rows="tickets" row-key="id">
           <template #cell-status="{ row }">
-            <StatusTag :type="row.status === 'OPEN' ? 'danger' : (row.status === 'IN_PROGRESS' ? 'warning' : 'success')" :label="row.status" />
+            <StatusTag :type="row.status === 'OPEN' ? 'danger' : (row.status === 'IN_PROGRESS' ? 'warning' : 'success')" :label="platformStatusLabel(row.status)" />
           </template>
           <template #cell-ops="{ row }">
             <button v-if="['OPEN','RESOLVED'].includes(row.status)" class="mp-link" @click="transitionTicket(row, 'IN_PROGRESS')">处理中</button>
@@ -88,7 +88,7 @@
         <DataTable :columns="trainingColumns" :rows="trainings" row-key="id">
           <template #cell-scheduledAt="{ row }">{{ displayServerUtc(row.scheduledAt) }}</template>
           <template #cell-status="{ row }">
-            <StatusTag :type="row.status === 'COMPLETED' ? 'success' : row.status === 'CANCELLED' ? 'default' : 'warning'" :label="row.status" />
+            <StatusTag :type="row.status === 'COMPLETED' ? 'success' : row.status === 'CANCELLED' ? 'default' : 'warning'" :label="platformStatusLabel(row.status)" />
           </template>
           <template #cell-ops="{ row }">
             <button v-if="row.status === 'SCHEDULED'" class="mp-link" @click="completeTraining(row)">登记完成</button>
@@ -102,7 +102,7 @@
         <DataTable :columns="renewalColumns" :rows="renewals" row-key="id">
           <template #cell-dueAt="{ row }">{{ displayServerUtc(row.dueAt) }}</template>
           <template #cell-status="{ row }">
-            <StatusTag :type="renewalTone(row.status)" :label="row.status" />
+            <StatusTag :type="renewalTone(row.status)" :label="platformStatusLabel(row.status)" />
           </template>
           <template #cell-ops="{ row }">
             <button v-if="row.status === 'PENDING'" class="mp-link" @click="transitionRenewal(row, 'CONTACTED')">已联系</button>
@@ -122,6 +122,7 @@
 import { AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
+import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
 const toUtcIso = (value) => value ? new Date(value).toISOString() : ''
@@ -159,6 +160,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    platformStatusLabel,
     displayServerUtc(value) {
       const epoch = utcEpoch(value)
       if (epoch == null) return value || '—'

@@ -12,7 +12,7 @@
       @retry="goLogin"
     />
     <div v-else-if="ctx" class="student-affairs-ui-scope">
-      <div v-if="showSla || showTempExpiry" class="sa-ops-stack">
+      <div v-if="showSla || showTempExpiry" class="sa-context-stack">
         <StudentAffairsSlaStrip v-if="showSla" kind="both" />
         <CounselorTempExpiryPanel
           v-if="showTempExpiry"
@@ -96,5 +96,11 @@ export default {
 
 <style src="@/modules/studentAffairs/styles/usability.css"></style>
 <style scoped>
-.sa-ops-stack { display: grid; gap: 10px; margin-bottom: 12px; }
+.sa-context-stack {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 12px;
+  margin-bottom: 16px;
+}
 </style>

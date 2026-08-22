@@ -226,7 +226,7 @@ export const studentAffairsApi = {
 
   /** 风险列表（服务端支持 source/status/riskLevel/studentId 过滤；心理来源明细按角色脱敏）。 */
   getRisks({ source = '', status = '', riskLevel = '', studentId = '', page = 1, pageSize = 100,
-             priority = '', overdueOnly = false, unassignedOnly = false, ownerId = '' } = {}) {
+             priority = '', overdueOnly = false, unassignedOnly = false, ownerId = '', forceProbe = true } = {}) {
     const params = { page, pageSize }
     if (source) params.source = source
     if (status) params.status = status
@@ -239,7 +239,14 @@ export const studentAffairsApi = {
     if (overdueOnly) params.overdueOnly = true
     if (unassignedOnly) params.unassignedOnly = true
     if (ownerId) params.ownerId = ownerId
-    return callStrict(() => request('/student-affairs/risk/records', { params }))
+    // 风险页只接受真实后端数据，不提供 mock 回退。即使其他普通读取刚触发全局离线冷却，
+    // 进入风险页或点击重试也应主动探测，避免后端已恢复却继续显示“离线”。
+    return callStrict(() => request('/student-affairs/risk/records', {
+      params,
+      forceProbe,
+      // 风险列表需要聚合多业务来源，不能沿用普通探测请求的 2 秒快速失败阈值。
+      timeoutMs: 10000
+    }))
   },
 
   /** 风险详情（含 allowedActions + handles）。 */

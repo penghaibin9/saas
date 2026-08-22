@@ -52,7 +52,7 @@
             <div class="pch__cell-sub">{{ changeTypeLabel(row.changeType) }} · {{ row.affectedServiceCodes.join('、') }}</div>
           </template>
           <template #cell-status="{ row }">
-            <StatusTag :type="statusTone(row.status)" :label="row.status" dot />
+            <StatusTag :type="statusTone(row.status)" :label="platformStatusLabel(row.status)" dot />
           </template>
         </DataTable>
       </AppCard>
@@ -80,7 +80,7 @@
         <ul class="pch__list">
           <li v-for="w in selected.waves || []" :key="w.waveNo">
             第{{ w.waveNo }}批 · {{ w.tenantIds.join('、') }} ·
-            <StatusTag :type="w.status === 'SUCCEEDED' ? 'success' : (w.status === 'FAILED' ? 'danger' : 'warning')" :label="w.status" dot />
+            <StatusTag :type="w.status === 'SUCCEEDED' ? 'success' : (w.status === 'FAILED' ? 'danger' : 'warning')" :label="platformStatusLabel(w.status)" dot />
             <button v-if="w.status === 'RUNNING'" class="mp-link" @click="reportWave(w, 'SUCCEEDED')">上报成功</button>
             <button v-if="w.status === 'RUNNING'" class="mp-link" @click="reportWave(w, 'FAILED')">上报失败</button>
           </li>
@@ -94,6 +94,7 @@
 import { AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
+import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -118,6 +119,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    platformStatusLabel,
     /** 变更类型中文名；与上方下拉选项同一口径，未收录取值原样显示 */
     changeTypeLabel(t) {
       return ({

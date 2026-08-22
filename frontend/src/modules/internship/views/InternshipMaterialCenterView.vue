@@ -111,8 +111,8 @@
                     <td>v{{ item.versionNo }}</td>
                     <td class="mono">{{ item.versionId }}</td>
                     <td :title="item.fileName">{{ item.fileName }}</td>
-                    <td><AppStatusTag :type="item.readyForBusiness ? 'success' : 'danger'" size="sm">{{ item.scanStatus }}</AppStatusTag></td>
-                    <td>{{ item.reviewStatus || '-' }}</td>
+                    <td><AppStatusTag :type="item.readyForBusiness ? 'success' : 'danger'" size="sm">{{ scanStatusText(item.scanStatus) }}</AppStatusTag></td>
+                    <td>{{ reviewStatusText(item.reviewStatus) }}</td>
                     <td class="mono hash" :title="item.sha256">{{ shortHash(item.sha256) }}</td>
                   </tr>
                   <tr v-if="!selected.items.length"><td colspan="7" class="empty-cell">暂无文件版本</td></tr>
@@ -125,7 +125,7 @@
             <div class="section-title">
               <div><strong>归档 Manifest</strong><span>归档时冻结文件名、大小、哈希、扫描结论和真实版本号</span></div>
               <AppStatusTag v-if="selected.manifest" :type="manifestTone(selected.manifest.status)">
-                {{ selected.manifest.status }}
+                {{ manifestStatusText(selected.manifest.status) }}
               </AppStatusTag>
             </div>
             <div v-if="!selected.manifest" class="state compact">尚未生成归档版本清单</div>
@@ -140,7 +140,7 @@
                 <div v-for="item in selected.manifest.items" :key="`${item.versionId}-${item.materialCode}`">
                   <span>{{ item.materialCode }}</span>
                   <strong>v{{ item.versionId }}</strong>
-                  <small>{{ item.scanResult }} · {{ shortHash(item.sha256) }}</small>
+                  <small>{{ scanStatusText(item.scanResult) }} · {{ shortHash(item.sha256) }}</small>
                 </div>
               </div>
             </template>
@@ -253,7 +253,16 @@ export default {
       return text ? `${text.slice(0, 10)}…${text.slice(-8)}` : '-'
     },
     statusText(value) {
-      return { READY: '安全可用', UNSAFE: '存在待处理', NOT_SYNCED: '尚未同步' }[value] || value || '未知'
+      return { READY: '安全可用', UNSAFE: '存在待处理', NOT_SYNCED: '尚未同步' }[value] || (value ? '状态待确认' : '未知')
+    },
+    scanStatusText(value) {
+      return { CLEAN: '安全', PASSED: '安全', READY: '安全可用', PENDING: '待扫描', UPLOADED: '待扫描', SCANNING: '扫描中', FAILED: '扫描失败', ERROR: '扫描失败', INFECTED: '发现安全风险' }[value] || (value ? '扫描状态待确认' : '—')
+    },
+    reviewStatusText(value) {
+      return { PENDING: '待审核', PENDING_REVIEW: '待审核', APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', NOT_REQUIRED: '无需审核' }[value] || (value ? '审核状态待确认' : '—')
+    },
+    manifestStatusText(value) {
+      return { PREPARED: '已准备', FROZEN: '已冻结', PACKAGED: '已打包', SUPERSEDED: '历史版本', REVOKED: '已撤销', ABORTED: '已终止' }[value] || '归档状态待确认'
     },
     statusTone(value) {
       return { READY: 'success', UNSAFE: 'danger', NOT_SYNCED: 'default' }[value] || 'default'

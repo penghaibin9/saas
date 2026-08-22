@@ -138,8 +138,8 @@
                           <td>{{ item.materialName || item.fileName }}</td>
                           <td>v{{ item.versionNo }}</td>
                           <td class="mono">{{ item.versionId }}</td>
-                          <td>{{ item.scanStatus }}</td>
-                          <td>{{ item.versionStatus }}</td>
+                          <td>{{ graduationScanStatusLabel(item.scanStatus) }}</td>
+                          <td>{{ graduationFileVersionStatusLabel(item.versionStatus) }}</td>
                           <td class="mono hash" :title="item.sha256">{{ shortHash(item.sha256) }}</td>
                         </tr>
                       </tbody>
@@ -212,6 +212,10 @@ import { buildMaterialQuery, exportFilenameHint } from '@/modules/graduation/uti
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
+import {
+  graduationFileVersionStatusLabel,
+  graduationScanStatusLabel
+} from '@/modules/graduation/constants/graduation-material.constants'
 
 const REJECT_REASON_CHIPS = ['材料不完整，请补充', '内容质量不达标，需修改', '格式不符合学校规范', '与选题方向不符']
 
@@ -338,6 +342,8 @@ export default {
     window.removeEventListener('keydown', this._onKey)
   },
   methods: {
+    graduationFileVersionStatusLabel,
+    graduationScanStatusLabel,
     rowKey(row) { return row.id != null ? String(row.id) : `ns-${row.gdStudentId}` },
     shortHash(value) {
       const text = String(value || '')

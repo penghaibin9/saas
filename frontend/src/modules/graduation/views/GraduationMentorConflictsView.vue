@@ -14,10 +14,10 @@
       <ul v-else class="gm-stu-list"><li v-for="m in conflicts.overCapacity" :key="m.mentorId">{{ m.teacherName }}：{{ m.current }}/{{ m.capacity }}</li></ul>
       <div class="gm-section-title" style="margin-top: var(--space-3)">进入指导阶段却无导师（{{ conflicts.advancedNoMentor.length }}）</div>
       <EmptyState v-if="!conflicts.advancedNoMentor.length" title="无此类学生" />
-      <ul v-else class="gm-stu-list"><li v-for="s in conflicts.advancedNoMentor" :key="s.gdStudentId">{{ s.name }}（{{ s.className }}）· {{ s.stage }}</li></ul>
+      <ul v-else class="gm-stu-list"><li v-for="s in conflicts.advancedNoMentor" :key="s.gdStudentId">{{ s.name }}（{{ s.className }}）· {{ stageLabel(s.stage) }}</li></ul>
       <div class="gm-section-title" style="margin-top: var(--space-3)">学生导师非「已认证」（{{ conflicts.unqualifiedMentor.length }}）</div>
       <EmptyState v-if="!conflicts.unqualifiedMentor.length" title="无此类学生" />
-      <ul v-else class="gm-stu-list"><li v-for="s in conflicts.unqualifiedMentor" :key="s.gdStudentId">{{ s.name }} → {{ s.mentorName }}（{{ s.mentorStatus }}）</li></ul>
+      <ul v-else class="gm-stu-list"><li v-for="s in conflicts.unqualifiedMentor" :key="s.gdStudentId">{{ s.name }} → {{ s.mentorName }}（{{ graduationMentorStatusLabel(s.mentorStatus) }}）</li></ul>
     </template>
     <template #footer>
       <button type="button" class="mp-btn" @click="$router.push('/admin/graduation/mentors')">返回导师列表</button>
@@ -29,6 +29,10 @@
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
+import { GD_STAGE } from '@/modules/graduation/constants/graduation-student.constants'
+import { graduationMentorStatusLabel } from '@/modules/graduation/constants/graduation-material.constants'
+
+const STAGE_LABELS = Object.fromEntries(GD_STAGE.map((item) => [item.value, item.label]))
 
 export default {
   name: 'GraduationMentorConflictsView',
@@ -39,6 +43,8 @@ export default {
   },
   created() { this.load() },
   methods: {
+    graduationMentorStatusLabel,
+    stageLabel(value) { return STAGE_LABELS[value] || '其他毕业设计阶段' },
     async load() {
       this.loading = true
       this.error = ''

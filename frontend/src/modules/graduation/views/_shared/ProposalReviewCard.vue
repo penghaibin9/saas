@@ -52,8 +52,8 @@
                 <td>{{ item.materialName || item.fileName }}</td>
                 <td>v{{ item.versionNo }}</td>
                 <td class="mono">{{ item.versionId }}</td>
-                <td>{{ item.scanStatus }}</td>
-                <td>{{ item.versionStatus }}</td>
+                <td>{{ graduationScanStatusLabel(item.scanStatus) }}</td>
+                <td>{{ graduationFileVersionStatusLabel(item.versionStatus) }}</td>
                 <td class="mono hash" :title="item.sha256">{{ shortHash(item.sha256) }}</td>
               </tr>
             </tbody>
@@ -142,6 +142,10 @@ import {
 } from '@/modules/graduation/utils/form-state'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
+import {
+  graduationFileVersionStatusLabel,
+  graduationScanStatusLabel
+} from '@/modules/graduation/constants/graduation-material.constants'
 
 const REJECT_REASON_CHIPS = ['材料不完整，请补充', '内容质量不达标，需修改', '格式不符合学校规范', '与选题方向不符']
 const DEFENSE_COMMENT_CHIPS = ['选题有实际意义，完成度高', '回答问题思路清晰', '论文结构完整，工作量饱满', '部分问题回答不够深入']
@@ -197,6 +201,8 @@ export default {
     proposalId: { immediate: true, handler() { this.load() } }
   },
   methods: {
+    graduationFileVersionStatusLabel,
+    graduationScanStatusLabel,
     fmtTime(s) { return formatDateTime(s, '') },
     shortHash(value) {
       const text = String(value || '')
