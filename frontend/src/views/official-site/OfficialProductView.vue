@@ -17,7 +17,7 @@
           <a href="#access">进入系统</a>
         </nav>
 
-        <router-link class="yk-nav-cta" to="/contact">预约产品演示</router-link>
+        <router-link class="yk-nav-cta" :to="contactRoute">预约产品演示</router-link>
       </div>
     </header>
 
@@ -40,7 +40,7 @@
 
             <div class="yk-hero-actions yk-detail-actions">
               <a class="yk-button yk-button-primary" href="#screens">看真实系统界面 <span aria-hidden="true">→</span></a>
-              <router-link class="yk-button yk-button-ghost" to="/contact">预约产品演示</router-link>
+              <router-link class="yk-button yk-button-ghost" :to="contactRoute">预约产品演示</router-link>
               <a class="yk-button yk-button-ghost" :href="contact.phoneHref">电话 {{ contact.phone }}</a>
             </div>
           </div>
@@ -174,7 +174,7 @@
 
           <div class="yk-detail-secondary-actions">
             <router-link to="/">返回四大产品</router-link>
-            <router-link to="/contact">预约产品演示</router-link>
+            <router-link :to="contactRoute">预约产品演示</router-link>
             <a v-if="product.relationMap" :href="product.relationMap" target="_blank" rel="noopener noreferrer">查看{{ product.name }}关系图</a>
           </div>
         </div>
@@ -186,7 +186,7 @@
           <h2>想把这套能力落到学校真实业务里？</h2>
           <p>填写学校和联系电话即可预约产品演示；表单只用于把本次咨询短信通知给跃科商务联系人，不进入业务数据库。</p>
           <div class="yk-final-actions">
-            <router-link class="yk-button yk-button-light" to="/contact">预约产品演示</router-link>
+            <router-link class="yk-button yk-button-light" :to="contactRoute">预约产品演示</router-link>
             <a class="yk-button yk-button-ghost" :href="contact.phoneHref">拨打 {{ contact.phone }}</a>
           </div>
         </div>
@@ -240,6 +240,9 @@ export default {
     },
     contact() {
       return OFFICIAL_SITE_CONTACT
+    },
+    contactRoute() {
+      return { path: '/contact', query: { product: this.product?.slug || '' } }
     },
     year() {
       return new Date().getFullYear()
