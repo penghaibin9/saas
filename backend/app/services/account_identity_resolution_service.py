@@ -250,6 +250,7 @@ def repair_binding(user_id: int, *, student_id: int, reason: str,
                    user: dict | None = None) -> dict:
     """把账号绑定到指定学籍主体（新建或改绑），旧绑定留痕为 REVOKED。"""
     from app.models import StudentAccountLink, StudentProfile
+    from app.services import audit_log
 
     reason = str(reason or "").strip()
     if len(reason) < 5:
@@ -290,12 +291,27 @@ def repair_binding(user_id: int, *, student_id: int, reason: str,
         )
         db.add(link)
         account.version = int(account.version or 0) + 1
-        db.commit()
         payload = {
             "userId": str(account.id), "studentId": str(profile.id),
             "previousStudentId": str(before.student_id) if before is not None else "",
         }
+        # Critical identity evidence must commit atomically with the binding fact.  The
+        # explicit tenant id is the already-validated target school, so direct/batch
+        # service callers do not depend on ambient request context for audit ownership.
+        db.flush()
+        audit_log.record_critical_in_session(
+            db,
+            "ACCOUNT_BINDING_REPAIR",
+            f"账号 {payload['userId']} 绑定学籍 {payload['studentId']}",
+            detail={"reason": reason, **payload, "moduleCode": "systemAdmin"},
+            tenant_id=tid,
+            resource_id=payload["userId"],
+        )
+        db.commit()
     except AppException:
+        db.rollback()
+        raise
+    except audit_log.AuditPersistenceError:
         db.rollback()
         raise
     except Exception as exc:
@@ -304,10 +320,6 @@ def repair_binding(user_id: int, *, student_id: int, reason: str,
     finally:
         db.close()
 
-    from app.services import audit_log
-
-    audit_log.record("ACCOUNT_BINDING_REPAIR", f"账号 {payload['userId']} 绑定学籍 {payload['studentId']}",
-                     detail={"reason": reason, **payload, "moduleCode": "systemAdmin"})
     # 绑定变化会改写数据范围解析结果，必须让下一次请求重新计算
     try:
         from app.services.auth_service_db import invalidate_subject_cache
@@ -321,6 +333,8 @@ def repair_binding(user_id: int, *, student_id: int, reason: str,
 def unbind(user_id: int, *, reason: str, expected_version: int | None = None,
            tenant_id: int | None = None, user: dict | None = None) -> dict:
     """解除绑定：历史行保留为 REVOKED，不物理删除。"""
+    from app.services import audit_log
+
     reason = str(reason or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "解绑原因不少于 5 个字")
@@ -340,18 +354,30 @@ def unbind(user_id: int, *, reason: str, expected_version: int | None = None,
         link.updated_by = actor_id
         link.version = int(link.version or 0) + 1
         account.version = int(account.version or 0) + 1
+        detail = {"reason": reason, "userId": str(user_id),
+                  "studentId": str(student_id), "moduleCode": "systemAdmin"}
+        db.flush()
+        audit_log.record_critical_in_session(
+            db,
+            "ACCOUNT_BINDING_REVOKE",
+            f"账号 {user_id} 解除学籍绑定 {student_id}",
+            detail=detail,
+            tenant_id=tid,
+            resource_id=str(user_id),
+        )
         db.commit()
     except AppException:
+        db.rollback()
+        raise
+    except audit_log.AuditPersistenceError:
+        db.rollback()
+        raise
+    except Exception:
         db.rollback()
         raise
     finally:
         db.close()
 
-    from app.services import audit_log
-
-    audit_log.record("ACCOUNT_BINDING_REVOKE", f"账号 {user_id} 解除学籍绑定 {student_id}",
-                     detail={"reason": reason, "userId": str(user_id),
-                             "studentId": str(student_id), "moduleCode": "systemAdmin"})
     try:
         from app.services.auth_service_db import invalidate_subject_cache
 

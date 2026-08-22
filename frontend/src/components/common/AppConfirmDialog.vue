@@ -164,7 +164,7 @@ export default {
   position: fixed;
   inset: 0;
   background: var(--bg-mask);
-  z-index: var(--z-modal);
+  z-index: calc(var(--z-modal) + 10);
   display: flex;
   align-items: center;
   justify-content: center;

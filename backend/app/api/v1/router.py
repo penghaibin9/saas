@@ -26,11 +26,18 @@ from app.api.v1.affairs_operations_api import router as affairs_operations_route
 from app.api.v1.affairs_student_dorm import router as affairs_student_dorm_router
 from app.api.v1.affairs_student_returned import router as affairs_student_returned_router
 from app.api.v1.auth_browser import router as auth_browser_router
+from app.api.v1.control_plane_auth import router as control_plane_auth_router
+from app.api.v1.control_plane_offboarding import router as control_plane_offboarding_router
+from app.api.v1.customer_success_p1_closure import router as customer_success_p1_closure_router
 from app.api.v1.data_center import router as data_center_router
 from app.api.v1.help_metrics import router as help_metrics_router
+from app.api.v1.identity_p1_closure import router as identity_p1_closure_router
 from app.api.v1.mobile_academic_status import router as mobile_academic_status_router
 from app.api.v1.mobile_performance import router as mobile_performance_router
+from app.api.v1.platform_p1_closure import router as platform_p1_closure_router
+from app.api.v1.system_p1_closure import router as system_p1_closure_router
 from app.modules.student_affairs.routers.affairs_material_center import router as affairs_material_center_router
+from app.services import control_plane_p0_runtime
 from app.services.affairs_activity_authority_guard import install as install_activity_authority_guard
 from app.services.affairs_activity_code_service import install as install_activity_checkin_code
 from app.services.affairs_activity_reliability_service import install as install_activity_reliability
@@ -81,18 +88,79 @@ def _mount_supplemental_router(parent: APIRouter, child: APIRouter) -> None:
 # 此处仍执行一次签名去重再挂载同一 replacement，保证历史导入时序和普通导入时序
 # 最终都只有一个公开 POST 路由。
 _RESET_SANDBOX_PATH = "/platform/tenants/{tenant_id}/reset-sandbox-data"
+_AUTH_P0_REPLACEMENTS = {
+    "/auth/captcha",
+    "/auth/login",
+    "/auth/refresh",
+    "/auth/change-password",
+    "/auth/wx-bind",
+}
+
+# P1 production review replacements. These routes existed before the seven UI closures,
+# but their old contracts did not enforce the new server-side security boundaries. Remove
+# exactly those method/path signatures, then mount the guarded endpoints below.
+def _sig(path: str, method: str) -> tuple[str, frozenset[str]]:
+    return path, frozenset({method.upper()})
+
+
+_P1_REPLACEMENTS = {
+    _sig("/system/context", "GET"),
+    _sig("/system/effective-config", "GET"),
+    _sig("/system/config-overrides", "PUT"),
+    _sig("/system/config-history/{config_key}", "GET"),
+    _sig("/system/accounts/{user_id}/effective-identity", "GET"),
+    _sig("/system/accounts/{user_id}/repair-binding", "POST"),
+    _sig("/system/accounts/{user_id}/unbind", "POST"),
+    _sig("/system/role-assignments", "POST"),
+    _sig("/system/role-assignments/{assignment_id}/revoke", "POST"),
+    _sig("/system/role-assignments/{assignment_id}/transfer", "POST"),
+    _sig("/system/org-nodes/{org_type}/{node_id}/impact", "GET"),
+    _sig("/system/org-nodes/{node_id}/status", "PUT"),
+    # PLAT-05 used to be root-only even though Platform Workforce already defines
+    # PLATFORM_CUSTOMER_SUCCESS -> customerSuccess.manage. Replace the whole family
+    # so one delegated authority governs both the page reads and its writes.
+    _sig("/platform/customer-success/overview", "GET"),
+    _sig("/platform/tenants/{tenant_id}/health-score", "GET"),
+    _sig("/platform/support-tickets", "GET"),
+    _sig("/platform/support-tickets", "POST"),
+    _sig("/platform/support-tickets/{ticket_id}/transition", "POST"),
+    _sig("/platform/trainings", "GET"),
+    _sig("/platform/trainings", "POST"),
+    _sig("/platform/trainings/{training_id}/complete", "POST"),
+    _sig("/platform/renewal-tasks", "GET"),
+    _sig("/platform/renewal-tasks", "POST"),
+    _sig("/platform/renewal-tasks/{task_id}/transition", "POST"),
+}
+
 api_router.routes[:] = [
     route for route in api_router.routes
     if not (
         isinstance(route, APIRoute)
-        and str(getattr(route, "path", "")) == _RESET_SANDBOX_PATH
-        and "POST" in {str(x).upper() for x in (getattr(route, "methods", None) or ())}
+        and (
+            _route_signature(route) in _P1_REPLACEMENTS
+            or (
+                str(getattr(route, "path", "")) == _RESET_SANDBOX_PATH
+                and "POST" in {str(x).upper() for x in (getattr(route, "methods", None) or ())}
+            )
+            or (
+                str(getattr(route, "path", "")) in _AUTH_P0_REPLACEMENTS
+                and "POST" in {str(x).upper() for x in (getattr(route, "methods", None) or ())}
+            )
+        )
     )
 ]
 
 for supplemental_router in (
     sandbox_story_router,
+    control_plane_auth_router,
+    control_plane_offboarding_router,
     auth_browser_router,
+    system_p1_closure_router,
+    identity_p1_closure_router,
+    # Mount the locked write router before the broader Platform P1 router. The
+    # signature de-duplicator then keeps these six mutations as the only public writes.
+    customer_success_p1_closure_router,
+    platform_p1_closure_router,
     affairs_material_center_router,
     affairs_four_end_router,
     affairs_operations_router,
@@ -110,6 +178,11 @@ for supplemental_router in (
     help_metrics_router,
 ):
     _mount_supplemental_router(api_router, supplemental_router)
+
+# One canonical startup boundary owns the three Control Plane P0 authorities.
+# This keeps the router patch graph at its pre-P0 budget while preserving the
+# independently idempotent auth, DR and offboarding enforcement components.
+control_plane_p0_runtime.install()
 
 install_affairs_four_end_contract()
 install_activity_checkin_code()

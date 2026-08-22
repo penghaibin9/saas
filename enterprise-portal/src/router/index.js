@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { hasEnterpriseAuth } from '../services/request'
+import { hasEnterpriseAuth, restoreEnterpriseSession } from '../services/request'
 
 const routes = [
   { path: '/login', name: 'enterprise-login', component: () => import('../views/EnterpriseLoginView.vue'), meta: { public: true } },
@@ -26,9 +26,15 @@ const routes = [
 ]
 
 const router=createRouter({ history: createWebHistory(import.meta.env.BASE_URL), routes })
-router.beforeEach(to=>{
+router.beforeEach(async to=>{
   if(to.meta.public||hasEnterpriseAuth())return true
-  return {path:'/login',query:{reason:'session-required'}}
+  try{
+    await restoreEnterpriseSession()
+    if(hasEnterpriseAuth())return true
+  }catch{
+    // Missing/expired HttpOnly cookie falls through to the explicit login page.
+  }
+  return {path:'/login',query:{reason:'session-required',redirect:to.fullPath}}
 })
 
 export default router

@@ -6,10 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar
-        :actions="[{ key: 'sweep', label: '立即回收到期授权', variant: 'primary' }, { key: 'refresh', label: '刷新' }]"
-        @action="onAction"
-      />
+      <ModuleToolbar :actions="toolbarActions" @action="onAction" />
     </template>
 
     <div class="mp-stack">
@@ -60,8 +57,8 @@
           <template #cell-ops="{ row }">
             <template v-if="row.assignmentId">
               <button class="mp-link" @click="ask('review', row)">复核</button>
-              <button class="mp-link" @click="ask('transfer', row)">转交</button>
-              <button class="mp-link" @click="ask('revoke', row)">回收</button>
+              <button v-if="canManageAssignments" class="mp-link" @click="ask('transfer', row)">转交</button>
+              <button v-if="canManageAssignments" class="mp-link" @click="ask('revoke', row)">回收</button>
             </template>
             <span v-else class="mp-cell-sub">历史授权，先补登记</span>
           </template>
@@ -140,6 +137,13 @@ const BUCKET_LABELS = {
   HIGH_PRIV_MULTI: '多人持有高权角色'
 }
 
+const permissionMatches = (patterns = [], code = '') => (patterns || []).some((pattern) => {
+  if (pattern === '*' || pattern === code) return true
+  if (pattern.endsWith('.*')) return code.startsWith(pattern.slice(0, -1))
+  if (pattern.startsWith('*.')) return code.endsWith(pattern.slice(1))
+  return false
+})
+
 export default {
   name: 'SystemRoleAssignmentView',
   components: {
@@ -179,6 +183,18 @@ export default {
     }
   },
   computed: {
+    canManageAssignments() {
+      const patterns = this.ctx?.permissionPatterns || []
+      return permissionMatches(patterns, 'systemAdmin.user.assign')
+        || permissionMatches(patterns, 'systemAdmin.role.config')
+    },
+    toolbarActions() {
+      const actions = [{ key: 'refresh', label: '刷新' }]
+      if (this.canManageAssignments) {
+        actions.unshift({ key: 'sweep', label: '立即回收到期授权', variant: 'primary' })
+      }
+      return actions
+    },
     bucketList() {
       return Object.keys(BUCKET_LABELS).map((key) => ({
         key, label: BUCKET_LABELS[key], count: this.summary[key] || 0
@@ -216,6 +232,9 @@ export default {
       this.load()
     },
     ask(action, row) {
+      if ((action === 'transfer' || action === 'revoke') && !this.canManageAssignments) {
+        return toast.error('当前角色只有查看权限，不能转交或回收授权')
+      }
       this.pendingAction = action
       this.pendingRow = row
       this.transferTo = ''
@@ -223,6 +242,7 @@ export default {
       this.dialogOpen = true
     },
     async sweep() {
+      if (!this.canManageAssignments) return toast.error('当前角色无到期回收权限')
       const res = await systemApi.sweepExpiredAssignments()
       if (res.code === 0) {
         toast.success(`已回收 ${res.data.count} 个账号的到期授权`)
@@ -231,6 +251,10 @@ export default {
     },
     async submit({ reason }) {
       if (!this.pendingRow) return
+      if ((this.pendingAction === 'transfer' || this.pendingAction === 'revoke') && !this.canManageAssignments) {
+        this.dialogOpen = false
+        return toast.error('当前角色无角色授权写权限')
+      }
       const id = this.pendingRow.assignmentId
       this.submitting = true
       let res

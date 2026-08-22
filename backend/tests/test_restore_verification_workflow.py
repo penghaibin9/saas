@@ -142,8 +142,10 @@ def test_t04b_restore_drill_without_backup_link_is_allowed(db_mode):
     })
     assert out["status"] == "PASSED"
     board = dr.governance_overview()
-    assert board["restoreDrill"]["hasPassedDrill"] is True
-    assert board["restoreDrill"]["stale"] is False
+    # Manual history is still recordable without a backup link, but after the
+    # P0 cutover it can never authorize production recovery health.
+    assert board["restoreDrill"]["hasPassedDrill"] is False
+    assert board["restoreDrill"]["healthAuthority"] == "MACHINE_ONLY"
 
 
 # ── HTTP：仅平台超管可访问 ──────────────────────────────────────────────

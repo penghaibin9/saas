@@ -17,7 +17,7 @@ jobs:
   targeted:
     name: A02 targeted test + lint + build + browser
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: enterprise-portal
@@ -67,9 +67,9 @@ jobs:
         run: npm run build
       - name: Scan fixed demo credentials
         run: node ../scripts/check/scan-fixed-demo-credentials.mjs dist
-      - name: Install Chromium headless shell
-        timeout-minutes: 8
-        run: npx playwright install --with-deps --only-shell chromium
+      - name: Install Chromium
+        timeout-minutes: 15
+        run: npx playwright install --with-deps chromium
       - name: A02 targeted browser evidence
         run: npm run test:e2e
       - name: Upload browser evidence

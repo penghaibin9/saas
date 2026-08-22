@@ -48,6 +48,22 @@ server {
     location ~ ^/(docs|redoc|openapi.json) { return 404; }
     location ~ ^/(uploads|exports)/ { return 404; }
 
+    # 企业协同端与本次 release 原子切换到 /var/www/school-lifecycle/enterprise。
+    location ^~ /enterprise/assets/ {
+        root /var/www/school-lifecycle;
+        try_files $uri =404;
+        expires 1y;
+        access_log off;
+    }
+    location ^~ /enterprise/ {
+        root /var/www/school-lifecycle;
+        try_files $uri $uri/ /enterprise/index.html;
+    }
+    location = /enterprise/index.html {
+        root /var/www/school-lifecycle;
+        expires -1;
+    }
+
     # 小程序 H5。
     location ^~ /miniapp/ {
         root /var/www/school-lifecycle;

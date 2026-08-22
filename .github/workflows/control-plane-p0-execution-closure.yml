@@ -1,0 +1,192 @@
+name: Control Plane P0 Execution Closure
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "backend/app/api/v1/control_plane_auth.py"
+      - "backend/app/api/v1/control_plane_offboarding.py"
+      - "backend/app/api/v1/router.py"
+      - "backend/app/db/base.py"
+      - "backend/app/models/auth_risk.py"
+      - "backend/app/models/recovery_run.py"
+      - "backend/app/models/tenant_offboarding.py"
+      - "backend/app/models/employment_recommendation.py"
+      - "backend/app/services/auth_risk_service.py"
+      - "backend/app/services/control_plane_auth_service.py"
+      - "backend/app/services/control_plane_p0_auth_guard.py"
+      - "backend/app/services/control_plane_p0_dr_guard.py"
+      - "backend/app/services/control_plane_p0_offboarding_guard.py"
+      - "backend/app/services/control_plane_p0_runtime.py"
+      - "backend/app/services/effective_security_policy_service.py"
+      - "backend/app/services/machine_recovery_evidence_service.py"
+      - "backend/app/services/platform_mfa_service.py"
+      - "backend/app/services/tenant_offboarding_service.py"
+      - "backend/app/services/tenant_purge_registry.py"
+      - "backend/app/services/tenant_purge_service.py"
+      - "backend/scripts/record_recovery_evidence.py"
+      - "backend/alembic/versions/20260820_control_plane_*.py"
+      - "backend/alembic/versions/20260820_teacher_emp_recommendation.py"
+      - "backend/alembic/versions/20260821_merge_ctrl_teacher_heads.py"
+      - "backend/tests/test_control_plane_p0_execution_closure.py"
+      - "backend/tests/test_control_plane_p0_review_hardening.py"
+      - "backend/tests/test_restore_verification_workflow.py"
+      - "deploy/backup/machine-*.sh"
+      - "deploy/systemd/school-lifecycle-backup.service"
+      - "frontend/src/modules/platform/views/control/PlatformDisasterRecoveryView.vue"
+      - ".github/workflows/control-plane-p0-execution-closure.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/app/api/v1/control_plane_auth.py"
+      - "backend/app/api/v1/control_plane_offboarding.py"
+      - "backend/app/api/v1/router.py"
+      - "backend/app/db/base.py"
+      - "backend/app/models/auth_risk.py"
+      - "backend/app/models/recovery_run.py"
+      - "backend/app/models/tenant_offboarding.py"
+      - "backend/app/models/employment_recommendation.py"
+      - "backend/app/services/auth_risk_service.py"
+      - "backend/app/services/control_plane_auth_service.py"
+      - "backend/app/services/control_plane_p0_auth_guard.py"
+      - "backend/app/services/control_plane_p0_dr_guard.py"
+      - "backend/app/services/control_plane_p0_offboarding_guard.py"
+      - "backend/app/services/control_plane_p0_runtime.py"
+      - "backend/app/services/effective_security_policy_service.py"
+      - "backend/app/services/machine_recovery_evidence_service.py"
+      - "backend/app/services/platform_mfa_service.py"
+      - "backend/app/services/tenant_offboarding_service.py"
+      - "backend/app/services/tenant_purge_registry.py"
+      - "backend/app/services/tenant_purge_service.py"
+      - "backend/scripts/record_recovery_evidence.py"
+      - "backend/alembic/versions/20260820_control_plane_*.py"
+      - "backend/alembic/versions/20260820_teacher_emp_recommendation.py"
+      - "backend/alembic/versions/20260821_merge_ctrl_teacher_heads.py"
+      - "backend/tests/test_control_plane_p0_execution_closure.py"
+      - "backend/tests/test_control_plane_p0_review_hardening.py"
+      - "backend/tests/test_restore_verification_workflow.py"
+      - "deploy/backup/machine-*.sh"
+      - "deploy/systemd/school-lifecycle-backup.service"
+      - "frontend/src/modules/platform/views/control/PlatformDisasterRecoveryView.vue"
+      - ".github/workflows/control-plane-p0-execution-closure.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-p0-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  p0-closure:
+    name: P0 auth / DR / tenant destruction
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: "true"
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: control-plane-p0
+      JWT_SECRET: control-plane-p0-ci-only-secret-20260820-at-least-32
+      FAST_TEST_SCHEMA: "1"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Exact branch HEAD assertion
+        working-directory: .
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: Python and shell syntax gate
+        run: |
+          python -m compileall -q \
+            app/api/v1/control_plane_auth.py \
+            app/api/v1/control_plane_offboarding.py \
+            app/models/auth_risk.py \
+            app/models/recovery_run.py \
+            app/models/tenant_offboarding.py \
+            app/models/employment_recommendation.py \
+            app/services/auth_risk_service.py \
+            app/services/control_plane_auth_service.py \
+            app/services/control_plane_p0_auth_guard.py \
+            app/services/control_plane_p0_dr_guard.py \
+            app/services/control_plane_p0_offboarding_guard.py \
+            app/services/control_plane_p0_runtime.py \
+            app/services/effective_security_policy_service.py \
+            app/services/machine_recovery_evidence_service.py \
+            app/services/platform_mfa_service.py \
+            app/services/tenant_offboarding_service.py \
+            app/services/tenant_purge_registry.py \
+            app/services/tenant_purge_service.py \
+            alembic/versions/20260820_teacher_emp_recommendation.py \
+            alembic/versions/20260821_merge_ctrl_teacher_heads.py \
+            scripts/record_recovery_evidence.py
+          bash -n ../deploy/backup/machine-backup-runner.sh
+          bash -n ../deploy/backup/machine-restore-drill.sh
+
+      - name: Alembic single-head contract
+        run: |
+          mapfile -t HEADS < <(alembic heads | awk '{print $1}')
+          printf 'heads=%s\n' "${HEADS[*]}"
+          test "${#HEADS[@]}" -eq 1
+          test "${HEADS[0]}" = "20260821_aa_ctrl_merge"
+
+      - name: Four P0 authority regression
+        run: |
+          pytest \
+            tests/test_control_plane_p0_execution_closure.py \
+            tests/test_control_plane_p0_review_hardening.py \
+            tests/test_auth_challenge_service.py \
+            tests/test_restore_verification_workflow.py \
+            -q -p no:warnings --durations=20
+
+      - name: Tenant query isolation ratchet
+        run: python scripts/audit_tenant_queries.py --gate

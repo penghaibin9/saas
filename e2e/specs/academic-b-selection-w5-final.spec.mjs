@@ -67,7 +67,7 @@ async function miniappLogin(page) {
   await agreement.click()
   await expect(agreement).toHaveClass(/\bon\b/)
   const loginResponse = page.waitForResponse((response) =>
-    response.url().includes('/api/v1/auth/login') && response.request().method() === 'POST'
+    response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
   )
   await authCard.locator('.account-button').first().click()
   expect((await loginResponse).ok()).toBeTruthy()

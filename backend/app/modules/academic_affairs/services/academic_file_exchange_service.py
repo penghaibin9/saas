@@ -389,11 +389,24 @@ def _parse_and_validate(import_row, source_path: Path, user: dict) -> tuple[list
 def _detail(row, errors: list[dict] | None = None, rows: list[dict] | None = None) -> dict:
     result = jobs._import_row(row)
     snapshot = dict(row.source_snapshot_json or {})
+    context = dict(snapshot.get("context") or {})
+    import_mode = str(context.get("importMode") or "ATOMIC").strip().upper()
+    partial_schedule = (
+        row.import_type == ACADEMIC_SCHEDULE_IMPORT
+        and import_mode == "PARTIAL"
+        and int(row.valid_rows or 0) > 0
+        and row.status in {"VALIDATED", "VALIDATION_FAILED"}
+    )
     result["preview"] = {
         **dict(snapshot.get("preview") or {}),
         "errors": errors or [],
         "rows": _redacted_rows(rows or []),
     }
+    result["importMode"] = import_mode if row.import_type == ACADEMIC_SCHEDULE_IMPORT else None
+    result["canConfirm"] = bool(
+        (row.status == "VALIDATED" and int(row.invalid_rows or 0) == 0 and int(row.valid_rows or 0) > 0)
+        or partial_schedule
+    )
     return result
 
 
@@ -559,7 +572,12 @@ def confirm_academic_import(job_id: str, *, lease: str, user: dict) -> dict:
     if snapshot.get("rowDigest") and snapshot["rowDigest"] != digest:
         raise AppException("DATA_CONFLICT", "导入文件解析结果已变化，请重新上传预检")
     _total, _valid, invalid = _preview_counts(rows, preview)
-    if invalid:
+    partial_schedule = (
+        import_type == ACADEMIC_SCHEDULE_IMPORT
+        and str(context.get("importMode") or "ATOMIC").strip().upper() == "PARTIAL"
+        and int(_valid or 0) > 0
+    )
+    if invalid and not partial_schedule:
         raise AppException("VALIDATION_ERROR", "确认前重新预检发现错误，请重新上传修正后的文件")
 
     if import_type == ACADEMIC_ROSTER_IMPORT:
@@ -589,7 +607,10 @@ def confirm_academic_import(job_id: str, *, lease: str, user: dict) -> dict:
     if not isinstance(result, dict):
         result = {"result": result}
     result = dict(result)
-    result.setdefault("confirmedRows", len(rows))
+    if import_type == ACADEMIC_SCHEDULE_IMPORT:
+        result.setdefault("confirmedRows", int(result.get("imported") or 0))
+    else:
+        result.setdefault("confirmedRows", len(rows))
     return result
 
 
