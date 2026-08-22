@@ -54,12 +54,15 @@ export const graduationReviewCenterApi = {
       return { kind: type, ...data }
     }
     if (type === 'FORMAL_REVIEW') {
-      const data = await request(FORMAL, {
-        params: batchParams({ page: 1, pageSize: 200, gdStudentId: task.gdStudentId })
+      // Formal review lock/evidence comes from the same task-scoped Review Center detail.
+      // Never widen back to a student-level /gd-reviews list just to recover write fields.
+      const data = await request(`${CENTER}/tasks/${encodeURIComponent(type)}/${encodeURIComponent(recordId)}`, {
+        params: batchParams()
       })
-      const rows = Array.isArray(data?.items) ? data.items : []
-      const row = rows.find((item) => String(item.id) === String(recordId))
-      if (!row) throw new Error('正式评阅任务已变化或不在当前数据范围，请刷新队列')
+      const row = data?.case
+      if (!row || String(row.recordId) !== String(recordId)) {
+        throw new Error('正式评阅任务已变化或不在当前数据范围，请刷新队列')
+      }
       if (row.version == null || row.fileVersionId == null) {
         throw new Error('正式评阅任务缺少 W7 冻结版本或乐观锁版本，请刷新或治理历史任务')
       }

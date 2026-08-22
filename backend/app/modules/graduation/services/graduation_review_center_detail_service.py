@@ -1,17 +1,18 @@
 """W7.4 production Review Center detail hydration.
 
 This keeps the same Review Center CTE/FileVersion/feedback projection as the queue while
-fixing two detail-path invariants: the proven batch id is hydrated into the DTO before
-``_public`` consumes it, and reviewer requests can use a stable task-scoped student set
-instead of the generic per-student relation walk.
+fixing detail-path invariants: the proven batch id is hydrated into the DTO before
+``_public`` consumes it, reviewer requests use stable task-scoped student sets, and formal
+review detail exposes the optimistic-lock version from the same tenant/reviewer task.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import bindparam, text
+from sqlalchemy import bindparam, select, text
 
 from app.core.exceptions import AppException, not_found
+from app.models import GraduationReview
 from app.modules.graduation.services import graduation_review_center_query_service as q
 from app.modules.graduation.services import graduation_review_feedback_service as feedback
 from app.modules.graduation.services.graduation_review_center_scope_service import reviewer_student_ids
@@ -59,6 +60,21 @@ def detail(*, batch_id: int, case_type: str, record_id: int,
         history = histories.get((stage, str(record_id)), [])
         latest = history[-1] if history else None
         case = q._public(row, deadlines, now, latest)
+
+        if case_type == "FORMAL_REVIEW":
+            version_stmt = select(GraduationReview.id, GraduationReview.version).where(
+                GraduationReview.tenant_id == _tid(),
+                GraduationReview.id == int(record_id),
+                GraduationReview.is_deleted.is_(False),
+            )
+            if reviewer_mentor_id is not None:
+                version_stmt = version_stmt.where(
+                    GraduationReview.reviewer_mentor_id == int(reviewer_mentor_id)
+                )
+            version_row = db.execute(version_stmt.limit(1)).first()
+            if version_row is None:
+                raise not_found("评阅任务不存在或不在当前数据范围内")
+            case["version"] = int(version_row.version or 0)
 
         versions = []
         if row.get("asset_id"):

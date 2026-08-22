@@ -68,14 +68,44 @@ def test_w74_formal_read_context_exposes_w7_lock_fields_and_conflict_code():
     api = text("frontend/src/modules/graduation/api/graduation-review-center.api.js")
     overlay = text("backend/app/modules/graduation/routers/graduation_review_w7_router.py")
     read_service = text("backend/app/modules/graduation/services/graduation_review_read_service.py")
+    detail_service = text("backend/app/modules/graduation/services/graduation_review_center_detail_service.py")
 
     assert "review_read.list_reviews" in overlay
     assert "closure._row(db, row" in read_service
     for token in ("version", "materialId", "fileVersionId", "sourceSha256"):
-        assert token in read_service or token in api
+        assert token in read_service or token in api or token in detail_service
+    assert "GraduationReview.version" in detail_service
+    assert 'case["version"] = int(version_row.version or 0)' in detail_service
     assert "row.version == null || row.fileVersionId == null" in api
     assert "function canonicalWrite" in api
     assert "error?.bizCode" in api and "error.code = error.bizCode" in api
+
+
+def test_w74_legacy_formal_read_is_stable_reviewer_task_scoped():
+    read_service = text("backend/app/modules/graduation/services/graduation_review_read_service.py")
+
+    assert 'reviewer_role = _role() == "GD_REVIEWER"' in read_service
+    assert "mentor = gid.current_user_mentor(db)" in read_service
+    assert "if mentor is None:" in read_service and "return [], 0" in read_service
+    assert "GraduationReview.reviewer_mentor_id == int(mentor.id)" in read_service
+    assert "GraduationStudent.tenant_id == GraduationReview.tenant_id" in read_service
+    assert 'GraduationStudent.record_status == "ACTIVE"' in read_service
+    # Real-name compatibility filters may narrow an explicit admin query, but reviewer
+    # ownership must never fall back to reviewer_name.
+    reviewer_branch = read_service.split("if reviewer_role:", 1)[1].split("else:", 1)[0]
+    assert "reviewer_name" not in reviewer_branch
+
+
+def test_w74_formal_write_context_uses_task_scoped_detail_not_student_wide_list():
+    api = text("frontend/src/modules/graduation/api/graduation-review-center.api.js")
+    formal = api.split("if (type === 'FORMAL_REVIEW') {", 1)[1].split("throw new Error(`不支持的评阅类型", 1)[0]
+
+    assert "pageSize: 200" not in formal
+    assert "gdStudentId: task.gdStudentId" not in formal
+    assert "request(FORMAL" not in formal
+    assert "`${CENTER}/tasks/${encodeURIComponent(type)}/${encodeURIComponent(recordId)}`" in formal
+    assert "const row = data?.case" in formal
+    assert "String(row.recordId) !== String(recordId)" in formal
 
 
 def test_w74_backend_allowed_actions_and_reviewer_scope_are_actor_authoritative():

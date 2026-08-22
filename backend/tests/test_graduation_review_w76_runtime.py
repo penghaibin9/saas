@@ -212,3 +212,86 @@ def test_w76_student_rejected_feedback_writes_one_outbox_not_direct_message(db_m
             db.close()
     finally:
         set_tenant(None)
+
+
+def test_w74_formal_review_read_returns_only_current_stable_reviewer_task(db_mode):
+    from app.core.context import set_current_user, set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMentor, GraduationReview, GraduationStudent
+    from app.modules.graduation.services import graduation_review_read_service as review_read
+
+    set_tenant({"tenantId": str(TID)})
+    db = get_sessionmaker()()
+    try:
+        mine = GraduationMentor(
+            tenant_id=TID,
+            teacher_no="GD-W74-SCOPE-ME",
+            teacher_name="W74评阅教师甲",
+            qualification_status="QUALIFIED",
+            max_capacity=10,
+        )
+        other = GraduationMentor(
+            tenant_id=TID,
+            teacher_no="GD-W74-SCOPE-OTHER",
+            teacher_name="W74评阅教师乙",
+            qualification_status="QUALIFIED",
+            max_capacity=10,
+        )
+        db.add_all([mine, other])
+        db.flush()
+        student = GraduationStudent(
+            tenant_id=TID,
+            student_id=976201,
+            student_no="GD-W74-SCOPE-STU",
+            name="W74范围学生",
+            stage="FINAL_REVIEW",
+            eligibility_status="QUALIFIED",
+        )
+        db.add(student)
+        db.flush()
+        my_review = GraduationReview(
+            tenant_id=TID,
+            gd_student_id=student.id,
+            gd_final_id=976201,
+            reviewer_name=mine.teacher_name,
+            reviewer_mentor_id=mine.id,
+            status="ASSIGNED",
+            assigned_at=datetime.utcnow(),
+        )
+        other_review = GraduationReview(
+            tenant_id=TID,
+            gd_student_id=student.id,
+            gd_final_id=976201,
+            reviewer_name=other.teacher_name,
+            reviewer_mentor_id=other.id,
+            status="ASSIGNED",
+            assigned_at=datetime.utcnow(),
+        )
+        db.add_all([my_review, other_review])
+        db.commit()
+        student_id = int(student.id)
+        my_review_id = int(my_review.id)
+        other_review_id = int(other_review.id)
+    finally:
+        db.close()
+
+    set_current_user({
+        "tenantId": str(TID),
+        "currentRoleCode": "GD_REVIEWER",
+        "userType": "TEACHER",
+        "loginName": "GD-W74-SCOPE-ME",
+        "realName": "W74评阅教师甲",
+    })
+    try:
+        rows, total = review_read.list_reviews(
+            page=1,
+            page_size=20,
+            gd_student_id=student_id,
+        )
+        ids = {int(row["id"]) for row in rows}
+        assert total == 1
+        assert ids == {my_review_id}
+        assert other_review_id not in ids
+    finally:
+        set_current_user(None)
+        set_tenant(None)
