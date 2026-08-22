@@ -2,6 +2,8 @@
 
 This is business evidence bound to the exact reviewed FileVersion. AuditTrail remains
 separate technical audit evidence. No update/delete API is intentionally provided.
+W7.6 student rejection notices are emitted transactionally from newly appended,
+student-visible REJECTED evidence; delivery still belongs to the shared message outbox.
 """
 from __future__ import annotations
 
@@ -14,6 +16,9 @@ from sqlalchemy import text
 
 from app.core.context import get_current_user_ctx
 from app.services.db_service import _tid
+
+
+_STAGE_LABELS = {"PROPOSAL": "开题报告", "FINAL": "论文成果", "FORMAL": "正式评阅"}
 
 
 def _json(value: Any, default):
@@ -89,6 +94,43 @@ def find_by_idempotency(db, idempotency_key: str | None) -> dict | None:
     return dict(row) if row else None
 
 
+def _emit_student_rejected_notice(
+    db, *, gd_student_id: int, stage: str, source_record_id: int, file_version_id: int,
+    round_no: int, summary: str, visible_to_student: bool,
+) -> None:
+    if not visible_to_student:
+        return
+    student_profile_id = db.execute(text(
+        "SELECT student_id FROM t_gd_student "
+        "WHERE tenant_id=:tenant_id AND id=:gd_student_id AND is_deleted=0 LIMIT 1"
+    ), {"tenant_id": int(_tid()), "gd_student_id": int(gd_student_id)}).scalar()
+    try:
+        receiver_id = int(student_profile_id or 0)
+    except (TypeError, ValueError):
+        receiver_id = 0
+    if receiver_id <= 0:
+        return
+
+    from app.modules.graduation.services import graduation_review_message_event_guard as message_guard
+    from app.services.message_event_outbox_service import emit_receiver_notice
+
+    message_guard.install()
+    label = _STAGE_LABELS.get(str(stage).upper(), "毕业设计材料")
+    reason = str(summary or "").strip() or "请查看评阅反馈并按要求完成整改后重新提交。"
+    emit_receiver_notice(
+        db,
+        event_code=message_guard.EVENT_REVIEW_REJECTED,
+        source_module="graduation",
+        source_biz_type=f"GD_{str(stage).upper()}_REVIEW",
+        source_biz_id=int(source_record_id),
+        receiver_id=receiver_id,
+        title=f"{label}退回整改",
+        content=reason,
+        receiver_as="student",
+        dedup_extra=f"fv:{int(file_version_id)}:round:{int(round_no)}",
+    )
+
+
 def append_feedback_in_session(
     db, *, batch_id: int | None, gd_student_id: int, stage: str, source_record_id: int,
     material_id: int, file_version_id: int, source_sha256: str, result: str,
@@ -131,6 +173,17 @@ def append_feedback_in_session(
         "reviewer_mentor_id": int(reviewer_mentor_id) if reviewer_mentor_id is not None else current_reviewer_mentor_id(db),
         "visible_to_student": 1 if visible_to_student else 0, "idempotency_key": key, "created_at": created_at,
     })
+    if result == "REJECTED":
+        _emit_student_rejected_notice(
+            db,
+            gd_student_id=int(gd_student_id),
+            stage=stage,
+            source_record_id=int(source_record_id),
+            file_version_id=int(file_version_id),
+            round_no=round_no,
+            summary=str(summary or ""),
+            visible_to_student=bool(visible_to_student),
+        )
     return find_by_idempotency(db, key) or {"idempotency_key": key, "round_no": round_no}
 
 

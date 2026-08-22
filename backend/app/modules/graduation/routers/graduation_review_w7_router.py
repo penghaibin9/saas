@@ -2,7 +2,8 @@
 
 These routes deliberately keep the existing /graduation/gd-reviews paths and permission
 identity. Reads expose the W7 frozen FileVersion/version DTO; writes keep the W7 evidence
-locking authority in graduation_review_closure_service.
+locking authority in graduation_review_closure_service while W7.6 synchronizes derivative
+UnifiedTodo lifecycle and reuses Review Center overdue/processing-time metrics.
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from app.core.security import get_current_user
 from app.models import GraduationReview
 from app.modules.graduation.routers.graduation_sensitive_router import _record_batch, _student_batch
 from app.modules.graduation.schemas.graduation_review import ReviewAssignRequest, ReviewReturnRequest, ReviewSubmitRequest
-from app.modules.graduation.services import graduation_review_closure_service as review
+from app.modules.graduation.services import graduation_review_w76_lifecycle_service as review
 from app.modules.graduation.services import graduation_review_read_service as review_read
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-W7评阅证据"])
