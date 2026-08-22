@@ -9,16 +9,17 @@ const busy = ref(false)
 const readerOpen = ref(false)
 
 function openFile() {
-  if (!props.file?.fileId || busy.value || !props.file?.canPreview) return
+  if (!props.file?.fileId || busy.value || props.file?.canPreview !== true) return
   readerOpen.value = true
 }
 
 async function loadPreview(file, options) {
+  if (!file?.fileId || file?.canPreview !== true) throw new Error('当前文件未授予站内预览权限')
   return fileSdk.fetchPreviewBlob(file.fileId, options)
 }
 
 async function downloadFile(file = props.file) {
-  if (!file?.fileId || busy.value) return
+  if (!file?.fileId || busy.value || file?.canDownload !== true) return
   busy.value = true
   try { await fileSdk.download(file.fileId, file.fileName) } catch (error) { emit('error', error) } finally { busy.value = false }
 }

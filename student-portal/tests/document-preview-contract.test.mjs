@@ -36,6 +36,9 @@ test('W3 student File SDK separates preview bytes from download side effects', (
 test('W3 compatibility FilePreviewer routes into the in-site reader without owning transport primitives', () => {
   assert.match(compatibility, /StudentDocumentViewer/)
   assert.match(compatibility, />站内查看</)
+  assert.match(compatibility, /props\.file\?\.canPreview !== true/)
+  assert.match(compatibility, /file\?\.canPreview !== true/)
+  assert.match(compatibility, /file\?\.canDownload !== true/)
   for (const forbidden of ['window.open(', 'URL.createObjectURL(', "request('/files", 'document.createElement']) assert.equal(compatibility.includes(forbidden), false, `FilePreviewer must not own ${forbidden}`)
 })
 
