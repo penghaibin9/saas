@@ -10,6 +10,7 @@ on:
       - 'backend/tests/test_graduation_review_w7*.py'
       - 'backend/tests/test_graduation_student_feedback_w75_pc_contract.py'
       - 'backend/tests/graduation_legacy_review_archive_plugin.py'
+      - 'backend/tests/graduation_legacy_review_submit_plugin.py'
       - 'backend/alembic/versions/**gd_review**'
       - 'student-portal/src/views/graduation/**'
       - 'student-portal/src/views/messages/**'
@@ -148,6 +149,9 @@ jobs:
         working-directory: backend
         env:
           TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_w77_pytest?charset=utf8mb4
+          # These legacy pytest fixtures obtain school_admin01 via /auth/mock-login.
+          # Keep the browser/runtime job default false; only this test process may use it.
+          MOCK_LOGIN_ENABLED: 'true'
         run: |
           pytest \
             tests/test_graduation_e2e_acceptance_gates.py::test_assign_review_sod_uses_topic_advisor_when_student_advisor_blank \
@@ -161,6 +165,9 @@ jobs:
         working-directory: backend
         env:
           TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_w77_pytest?charset=utf8mb4
+          # Runtime authority tests may reuse the canonical pytest auth_headers fixture.
+          # This override ends with the step; real browser login remains non-mock.
+          MOCK_LOGIN_ENABLED: 'true'
         run: |
           pytest \
             tests/test_graduation_review_w71_w73_mysql.py \
@@ -173,6 +180,7 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
+          test "$MOCK_LOGIN_ENABLED" = 'false'
           python -m alembic current
           python ../scripts/check/check-migrated-schema-parity.py
 
