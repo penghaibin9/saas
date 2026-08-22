@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 const SIGN_ENDPOINT = '**/api/v1/notification/website-wechat-signature?*'
 const LEAD_ENDPOINT = '**/api/v1/notification/website-lead'
-const WECHAT_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 MicroMessenger/8.0.60 NetType/WIFI Language/zh_CN'
+const WECHAT_IOS_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 MicroMessenger/8.0.60 NetType/WIFI Language/zh_CN'
 
 async function expectNoOverflow(page, width) {
   await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1)
@@ -38,12 +38,13 @@ async function installWxMock(context) {
 }
 
 test.describe('official website WeChat micro-site closure', () => {
-  test('375/390/430 WeChat WebView stays usable and configures share cards', async ({ browser }) => {
-    const context = await browser.newContext({ userAgent: WECHAT_UA, viewport: { width: 375, height: 812 } })
+  test('iOS WeChat SPA keeps entry URL for signature while sharing the current product page', async ({ browser }) => {
+    const context = await browser.newContext({ userAgent: WECHAT_IOS_UA, viewport: { width: 375, height: 812 } })
     await installWxMock(context)
+    const signedUrls = []
     await context.route(SIGN_ENDPOINT, async (route) => {
       const signedUrl = new URL(route.request().url()).searchParams.get('url')
-      expect(signedUrl).toMatch(/^http:\/\/127\.0\.0\.1:5173\//)
+      signedUrls.push(signedUrl)
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -60,27 +61,46 @@ test.describe('official website WeChat micro-site closure', () => {
     })
 
     const page = await context.newPage()
+    await page.goto('/')
+    await expect(page.locator('.yk-mobile-site-dock')).toBeVisible()
+    await expect(page.locator('.yk-mobile-site-dock a')).toHaveCount(4)
+    await expectNoOverflow(page, 375)
+    await expect.poll(async () => page.evaluate(() => window.__wxCalls.some((item) => item.type === 'friend'))).toBe(true)
+
+    await page.locator('a[aria-label="查看岗位实习详情"]').click()
+    await expect(page).toHaveURL(/\/products\/internship$/)
+
     for (const width of [375, 390, 430]) {
       await page.setViewportSize({ width, height: 844 })
-      await page.goto('/products/internship')
       await expect(page.locator('.yk-mobile-site-dock')).toBeVisible()
-      await expect(page.locator('.yk-mobile-site-dock a')).toHaveCount(4)
       await expectNoOverflow(page, width)
     }
 
+    await expect.poll(async () => page.evaluate(() => {
+      const friends = window.__wxCalls.filter((item) => item.type === 'friend')
+      return friends.at(-1)?.payload?.title || ''
+    })).toContain('岗位实习')
+
+    expect(signedUrls.length).toBeGreaterThanOrEqual(2)
+    const entryPath = new URL(signedUrls[0]).pathname
+    expect(entryPath).toBe('/')
+    for (const signedUrl of signedUrls) expect(new URL(signedUrl).pathname).toBe('/')
+
+    const share = await page.evaluate(() => {
+      const friends = window.__wxCalls.filter((item) => item.type === 'friend')
+      return friends.at(-1)?.payload
+    })
+    expect(share.link).toBe('https://hnyueke.com/products/internship')
+    expect(share.imgUrl).toMatch(/^https:\/\/hnyueke\.com\/official-site\//)
     await expect.poll(async () => page.evaluate(() => window.__wxCalls.map((item) => item.type))).toEqual(
       expect.arrayContaining(['config', 'friend', 'timeline'])
     )
-    const share = await page.evaluate(() => window.__wxCalls.find((item) => item.type === 'friend')?.payload)
-    expect(share.title).toContain('岗位实习')
-    expect(share.link).toBe('https://hnyueke.com/products/internship')
-    expect(share.imgUrl).toMatch(/^https:\/\/hnyueke\.com\/official-site\//)
 
     await context.close()
   })
 
-  test('WeChat product context flows through dock into inquiry payload', async ({ browser }) => {
-    const context = await browser.newContext({ userAgent: WECHAT_UA, viewport: { width: 390, height: 844 } })
+  test('WeChat product context flows through dock into inquiry payload when JSSDK is not configured', async ({ browser }) => {
+    const context = await browser.newContext({ userAgent: WECHAT_IOS_UA, viewport: { width: 390, height: 844 } })
     await installWxMock(context)
     await context.route(SIGN_ENDPOINT, (route) => route.fulfill({
       status: 200,

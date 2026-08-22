@@ -9,18 +9,35 @@ const PRODUCT_PATH = /^\/products\/(academic-affairs|student-affairs|graduation|
 const OFFICIAL_PATHS = new Set(OFFICIAL_SALES_PAGES.map((item) => item.path))
 const PRODUCT_BY_PATH = new Map(OFFICIAL_PRODUCT_LIST.map((item) => [`/products/${item.slug}`, item]))
 const FALLBACK_SHARE_IMAGE = '/official-site/workbench.webp'
+const WECHAT_ENTRY_URL = typeof window !== 'undefined' ? window.location.href.split('#')[0] : ''
 
 let sdkPromise = null
 let installed = false
 let dock = null
-let lastConfiguredSignatureUrl = ''
+let lastConfiguredShareKey = ''
+let shareQueue = Promise.resolve()
 
 export function isWechatBrowser(userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
   return /MicroMessenger/i.test(String(userAgent || ''))
 }
 
+export function isIosWechat(userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
+  const ua = String(userAgent || '')
+  return isWechatBrowser(ua) && /iPhone|iPad|iPod/i.test(ua)
+}
+
 export function isOfficialSitePath(path = '') {
   return path === '/' || PRODUCT_PATH.test(path) || OFFICIAL_PATHS.has(path)
+}
+
+export function resolveWechatSignatureUrl(
+  currentUrl = typeof window !== 'undefined' ? window.location.href : '',
+  userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+) {
+  const current = String(currentUrl || '').split('#')[0]
+  // iOS 微信的 history-SPA 验签仍可能绑定首次落地 URL；Android 使用当前地址。
+  // 分享出去的 link 仍始终使用当前业务页 canonical URL，不使用入口 URL。
+  return isIosWechat(userAgent) ? (WECHAT_ENTRY_URL || current) : current
 }
 
 function absoluteUrl(value) {
@@ -104,8 +121,9 @@ export async function configureOfficialWechatShare(path = window.location.pathna
     return { status: 'not-applicable' }
   }
 
-  const signatureUrl = window.location.href.split('#')[0]
-  if (signatureUrl === lastConfiguredSignatureUrl) return { status: 'already-configured' }
+  const signatureUrl = resolveWechatSignatureUrl()
+  const shareKey = `${signatureUrl}|${path}`
+  if (shareKey === lastConfiguredShareKey) return { status: 'already-configured' }
 
   try {
     const signed = await requestSignature(signatureUrl)
@@ -136,7 +154,7 @@ export async function configureOfficialWechatShare(path = window.location.pathna
             link: share.link,
             imgUrl: share.imgUrl
           })
-          lastConfiguredSignatureUrl = signatureUrl
+          lastConfiguredShareKey = shareKey
           finish('ready')
         } catch {
           finish('share-api-error')
@@ -170,7 +188,8 @@ function buildDock(router) {
     <a href="${OFFICIAL_SITE_CONTACT.phoneHref}" data-key="phone"><span aria-hidden="true">☎</span><b>电话</b></a>
   `
   dock.addEventListener('click', (event) => {
-    const link = event.target.closest('a[data-route]')
+    const target = event.target instanceof Element ? event.target : null
+    const link = target?.closest('a[data-route]')
     if (!link) return
     event.preventDefault()
     router.push(link.dataset.route)
@@ -207,7 +226,8 @@ function syncRoute(router, path) {
   updateDock(router, path)
   dock.hidden = false
   if (isWechatBrowser()) {
-    window.setTimeout(() => { void configureOfficialWechatShare(path) }, 30)
+    // 串行配置，避免 router.isReady 与 afterEach 在首屏同时触发 wx.config 造成竞态。
+    shareQueue = shareQueue.then(() => configureOfficialWechatShare(path)).catch(() => ({ status: 'unavailable' }))
   }
 }
 
