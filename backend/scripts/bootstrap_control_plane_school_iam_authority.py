@@ -3,6 +3,15 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+from pathlib import Path
+
+# Keep this bootstrap executable directly as `python scripts/...` from backend/, which
+# is how several isolated real-browser gates invoke it. Do not rely on caller-specific
+# PYTHONPATH; only add the repository backend root that contains the `app` package.
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
 
 from app.services.school_iam_authority_service import converge_school_iam_authority
 
