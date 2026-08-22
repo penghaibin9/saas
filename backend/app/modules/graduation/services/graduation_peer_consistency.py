@@ -56,12 +56,18 @@ def _final_attachments(db, final: GraduationFinal | None) -> list[dict]:
         FileObject.biz_type == "GRADUATION_MATERIAL",
     )).all()
     by_id = {int(row.id): row for row in rows if _file_ready(row)}
+    # Peer review is deliberately preview-only. Possession of a peer task must not be
+    # promoted into the target student's normal material download capability.
     return [{
         "fileId": str(file_id),
         "fileName": by_id[file_id].file_name or f"材料-{file_id}",
         "ext": by_id[file_id].ext or "",
         "size": int(by_id[file_id].size_bytes or 0),
-        "downloadUrl": f"/api/v1/mobile/graduation/materials/{file_id}/download",
+        "scanStatus": str(by_id[file_id].scan_status or SCAN_NOT_REQUIRED).upper(),
+        "readyForBusiness": True,
+        "allowedActions": ["viewMetadata", "preview"],
+        "canPreview": True,
+        "canDownload": False,
     } for file_id in ids if file_id in by_id]
 
 

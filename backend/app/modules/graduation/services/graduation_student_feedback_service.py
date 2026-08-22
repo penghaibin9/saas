@@ -16,6 +16,8 @@ from app.models.graduation_material import GraduationStudentMaterial
 from app.modules.graduation.services import graduation_review_feedback_service as feedback
 from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
 from app.services.db_service import _tid, session
+from app.services.file_content_security import is_downloadable_status
+from app.services.file_scan_constants import READY_SCAN_STATES, SCAN_NOT_REQUIRED
 
 
 _STAGE_LABELS = {
@@ -34,6 +36,12 @@ _PREVIEWABLE_EXTS = {"pdf", "png", "jpg", "jpeg", "gif", "webp", "docx"}
 def _require_student(user: dict):
     if str((user or {}).get("userType") or "").upper() != "STUDENT":
         raise not_found("毕业设计评阅反馈不存在")
+
+
+def _file_ready(file_object: FileObject | None) -> bool:
+    if not file_object or file_object.is_deleted or not is_downloadable_status(file_object.status):
+        return False
+    return str(file_object.scan_status or SCAN_NOT_REQUIRED).upper() in READY_SCAN_STATES
 
 
 def _reviewed_file(db, row: dict, student_id: int) -> dict | None:
@@ -65,8 +73,18 @@ def _reviewed_file(db, row: dict, student_id: int) -> dict | None:
     source_sha = str(row.get("source_sha256") or "").lower()
     object_sha = str(file_object.sha256 or "").lower()
     evidence_locked = bool(source_sha and object_sha and source_sha == object_sha)
+    scan_status = str(file_object.scan_status or SCAN_NOT_REQUIRED).upper()
+    ready = bool(evidence_locked and _file_ready(file_object))
+    allowed_actions = ["viewMetadata"]
+    if ready and ext in _PREVIEWABLE_EXTS:
+        allowed_actions.append("preview")
+    if ready:
+        allowed_actions.append("download")
     return {
-        "fileId": str(file_object.id) if evidence_locked else None,
+        # Keep immutable version/hash evidence visible even when bytes are no longer safe to serve.
+        # FileObject id is transport capability and is withheld unless both evidence and File Center
+        # safety state are valid.
+        "fileId": str(file_object.id) if ready else None,
         "fileVersionId": str(version.id),
         "versionNo": int(version.version_no or 0),
         "fileName": file_object.file_name,
@@ -77,9 +95,12 @@ def _reviewed_file(db, row: dict, student_id: int) -> dict | None:
         "immutable": True,
         "evidenceLocked": evidence_locked,
         "sha256": row.get("source_sha256") or file_object.sha256,
+        "scanStatus": scan_status,
+        "readyForBusiness": ready,
+        "allowedActions": allowed_actions,
         "statusText": f"评阅冻结版本 v{int(version.version_no or 0)}",
-        "canPreview": bool(evidence_locked and ext in _PREVIEWABLE_EXTS),
-        "canDownload": evidence_locked,
+        "canPreview": bool("preview" in allowed_actions),
+        "canDownload": bool("download" in allowed_actions),
     }
 
 

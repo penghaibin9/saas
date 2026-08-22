@@ -23,6 +23,25 @@ def test_w75_student_feedback_is_read_only_projection_of_append_only_evidence():
         assert forbidden not in service
 
 
+def test_w75_reviewed_file_capability_is_sha_and_file_center_scan_fail_closed():
+    service = text("backend/app/modules/graduation/services/graduation_student_feedback_service.py")
+
+    for marker in (
+        "is_downloadable_status",
+        "READY_SCAN_STATES",
+        "SCAN_NOT_REQUIRED",
+        "def _file_ready(",
+        "evidence_locked and _file_ready(file_object)",
+        '"scanStatus": scan_status',
+        '"readyForBusiness": ready',
+        '"allowedActions": allowed_actions',
+        '"fileId": str(file_object.id) if ready else None',
+    ):
+        assert marker in service
+    assert '"canPreview": bool("preview" in allowed_actions)' in service
+    assert '"canDownload": bool("download" in allowed_actions)' in service
+
+
 def test_w75_derives_resubmit_closure_from_canonical_business_records():
     service = text("backend/app/modules/graduation/services/graduation_student_feedback_service.py")
 

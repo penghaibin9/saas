@@ -52,3 +52,15 @@ def test_peer_projection_tenant_scopes_historical_references_and_attachment_list
     assert "tenant_get(db, GraduationFinal, peer.gd_final_id)" in peer_row
     assert "db.get(" not in peer_row
     assert "_file_ready(row)" in attachments
+    assert '"scanStatus"' in attachments
+    assert '"readyForBusiness": True' in attachments
+
+
+def test_peer_projection_is_preview_only_and_never_promotes_peer_task_to_download_right():
+    source = _read("backend/app/modules/graduation/services/graduation_peer_consistency.py")
+    attachments = source[source.index("def _final_attachments"):source.index("def _bound_final")]
+
+    assert '"allowedActions": ["viewMetadata", "preview"]' in attachments
+    assert '"canPreview": True' in attachments
+    assert '"canDownload": False' in attachments
+    assert "downloadUrl" not in attachments
