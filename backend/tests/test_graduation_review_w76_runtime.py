@@ -73,6 +73,24 @@ def test_w76_formal_review_todo_done_and_returned_reopen(db_mode):
             ).one()
             assert row.status == "PENDING"
             assert "正式评阅待处理" in row.title
+            initial_version = int(row.version or 0)
+        finally:
+            db.close()
+
+        # Review Center reconciliation may run on read. Replaying an already-correct
+        # projection must be a true no-op: no UPDATE and no artificial version drift.
+        assert w76._sync_formal_todo(review_id) is False
+        db = get_sessionmaker()()
+        try:
+            row = db.query(UnifiedTodo).filter_by(
+                tenant_id=TID,
+                source_module="graduation",
+                source_biz_id=review_id,
+                todo_type=w76.TODO_FORMAL_REVIEW,
+                assignee_id=reviewer_uid,
+            ).one()
+            assert int(row.version or 0) == initial_version
+            assert row.status == "PENDING"
         finally:
             db.close()
 
