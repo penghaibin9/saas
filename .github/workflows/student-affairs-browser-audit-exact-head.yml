@@ -1,0 +1,230 @@
+name: Student Affairs strict browser audit exact head
+
+on:
+  push:
+    branches:
+      - audit/student-affairs-browser-runner-20260823
+    paths:
+      - 'audit-tests/student-affairs-leave-browser-audit.spec.mjs'
+      - '.github/workflows/student-affairs-browser-audit-exact-head.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  leave-browser-audit:
+    name: exact-head leave journey / Chromium / MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: student-affairs-browser-audit
+      JWT_SECRET: student-affairs-browser-audit-only
+      JWT_SECRET_KEY: student-affairs-browser-audit-only
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_TARGET_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+
+    steps:
+      - name: Checkout audit runner only
+        uses: actions/checkout@v4
+        with:
+          ref: audit/student-affairs-browser-runner-20260823
+          path: runner
+          fetch-depth: 1
+
+      - name: Checkout immutable application exact head
+        uses: actions/checkout@v4
+        with:
+          ref: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+          path: app
+          fetch-depth: 0
+
+      - name: Assert tested application exact head
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git -C app rev-parse HEAD)"
+          echo "tested_app_head=$ACTUAL"
+          test "$ACTUAL" = "$E2E_TARGET_SHA"
+          test -z "$(git -C app status --porcelain)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: app/backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            app/frontend/package-lock.json
+            app/student-portal/package-lock.json
+
+      - name: Install backend and migrate isolated MySQL
+        working-directory: app/backend
+        run: |
+          pip install -r requirements.txt
+          alembic upgrade head
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start real backend
+        run: |
+          mkdir -p app/e2e/runtime-logs
+          cd app/backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Bootstrap only official student and counselor identities
+        working-directory: app/backend
+        run: |
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+          python scripts/e2e_bootstrap_affairs_counselor_ci.py
+
+      - name: Start real staff PC and student PC
+        run: |
+          cd app/frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          cd ../student-portal
+          npm ci
+          VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+
+      - name: Wait for real browser applications
+        run: |
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
+            ok=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ok" ]; then
+              echo "Application not ready: $url"
+              cat app/e2e/runtime-logs/*.log
+              exit 1
+            fi
+          done
+
+      - name: Install Chromium and inject audit spec outside application commit
+        run: |
+          cp runner/audit-tests/student-affairs-leave-browser-audit.spec.mjs app/e2e/specs/student-affairs-leave-browser-audit.spec.mjs
+          cd app/e2e
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run strict Browser First leave journey
+        working-directory: app/e2e
+        run: npx playwright test specs/student-affairs-leave-browser-audit.spec.mjs --project=desktop-chrome
+
+      - name: Verify persisted MySQL row and append-only audit chain
+        working-directory: app/backend
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pymysql
+
+          evidence = json.loads(Path('../e2e/student-affairs-audit-evidence.json').read_text(encoding='utf-8'))
+          leave_id = int(evidence['leaveId'])
+          conn = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', database='student_lifecycle_e2e', charset='utf8mb4')
+          with conn.cursor() as cur:
+              cur.execute('''
+                  SELECT id, tenant_id, student_id, affairs_status, status, version,
+                         created_by, updated_by, created_at, updated_at, reason
+                  FROM t_cs_leave WHERE id=%s
+              ''', (leave_id,))
+              row = cur.fetchone()
+              assert row, f'leave {leave_id} missing from MySQL'
+              print('[DB]', row)
+              assert row[3] == 'CLOSED', row
+              assert row[4] == 'APPROVED', row
+              assert row[5] >= 5, row
+              assert row[10] == evidence['revisedReason'], (row[10], evidence['revisedReason'])
+
+              cur.execute('''
+                  SELECT action, operator, role_name, detail, before_val, after_val, occurred_at
+                  FROM t_affairs_audit_trail
+                  WHERE biz_type='LEAVE' AND biz_id=%s
+                  ORDER BY id
+              ''', (leave_id,))
+              trail = cur.fetchall()
+              for item in trail:
+                  print('[AUDIT]', item)
+              assert len(trail) >= 5, trail
+              actions = {str(item[0]).upper() for item in trail}
+              assert any('RETURN' in x for x in actions), actions
+              assert any('RESUBMIT' in x for x in actions), actions
+              assert any('APPROV' in x for x in actions), actions
+              assert any('CANCEL' in x or 'CLOSE' in x for x in actions), actions
+          conn.close()
+          print('[EVIDENCE]', json.dumps(evidence, ensure_ascii=False))
+          PY
+
+      - name: Reassert tested app source stayed immutable
+        if: always()
+        run: |
+          echo "tested_app_head=$(git -C app rev-parse HEAD)"
+          git -C app status --short
+          test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
+
+      - name: Upload strict audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-strict-browser-audit-${{ github.run_id }}
+          path: |
+            app/e2e/playwright-report/
+            app/e2e/test-results/
+            app/e2e/student-affairs-audit-evidence.json
+            app/e2e/runtime-logs/
+          if-no-files-found: ignore
+          retention-days: 7
