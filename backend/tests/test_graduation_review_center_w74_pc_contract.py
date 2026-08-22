@@ -107,3 +107,28 @@ def test_w74_backend_allowed_actions_and_reviewer_scope_are_actor_authoritative(
     assert 'summary_query.summary(batch_id, reviewer_mentor_id=reviewer_id)' in contract
     assert "reviewer_mentor_id=:reviewer_mentor_id" in summary
     assert "WHERE case_type='FORMAL_REVIEW'" in summary
+
+
+def test_w74_pc_consumes_backend_allowed_actions_and_mutations_fail_closed_by_case():
+    view = text("frontend/src/modules/graduation/views/GraduationReviewCenterView.vue")
+
+    # Backend allowedActions is the action authority. The page must not independently
+    # reconstruct permissionCode decisions and drift from the server projection.
+    assert "matchPermission" not in view
+    assert "permissionPatterns()" not in view
+    assert "writePermission()" not in view
+    assert "hasWritePermission()" not in view
+    assert "allowedActions()" in view
+    assert "this.allowedActions.includes('REVIEW')" in view
+    assert "this.allowedActions.includes('SUBMIT')" in view
+    assert "this.allowedActions.includes('RETURN')" in view
+    assert 'v-if="canSubmitFormal"' in view
+    assert 'v-else-if="canReviewBusiness"' in view
+    assert 'v-if="canReturnFormalAction"' in view
+
+    # Method-level guards prevent a stale/incorrect event binding from crossing case types.
+    assert "if (!this.canReviewBusiness || !this.canSubmitCurrent || this.submitting) return" in view
+    assert "if (!['APPROVE', 'REJECT'].includes(action))" in view
+    assert "if (!['PROPOSAL', 'FINAL', 'FINAL_DRAFT'].includes(type)) return" in view
+    assert "if (!this.canSubmitFormal || !this.canSubmitCurrent || this.submitting) return" in view
+    assert "if (!this.canReturnFormal || this.submitting) return" in view

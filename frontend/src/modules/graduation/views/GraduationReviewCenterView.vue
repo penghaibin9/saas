@@ -115,16 +115,16 @@
               <textarea v-model="form.opinion" rows="5" placeholder="写明结论、主要问题和修改建议…" @input="saveDraft"></textarea>
             </label>
 
-            <div v-if="activeTask.caseType === 'FORMAL_REVIEW' && activeTask.allowedActions?.includes('SUBMIT')" class="w74-actions">
+            <div v-if="canSubmitFormal" class="w74-actions">
               <button type="button" class="w74-primary" :disabled="!canSubmitCurrent || submitting" @click="submitFormal">提交正式评阅</button>
             </div>
-            <div v-else-if="activeTask.caseType !== 'FORMAL_REVIEW' && activeTask.allowedActions?.includes('REVIEW')" class="w74-actions w74-actions--two">
+            <div v-else-if="canReviewBusiness" class="w74-actions w74-actions--two">
               <button type="button" class="w74-primary" :disabled="!canSubmitCurrent || submitting" @click="submitBusiness('APPROVE')">通过当前版本</button>
               <button type="button" class="w74-warning" :disabled="!canSubmitCurrent || submitting" @click="submitBusiness('REJECT')">退回修改</button>
             </div>
           </section>
 
-          <section v-if="activeTask.caseType === 'FORMAL_REVIEW' && activeTask.allowedActions?.includes('RETURN')" class="w74-return-form">
+          <section v-if="canReturnFormalAction" class="w74-return-form">
             <div class="w74-section-title"><strong>退回重评</strong><span>仅已完成正式评阅</span></div>
             <label class="w74-field"><span>退回原因</span><textarea v-model="form.returnReason" rows="3" placeholder="至少 5 个字" @input="saveDraft"></textarea></label>
             <button type="button" class="w74-warning" :disabled="!canReturnFormal || submitting" @click="returnFormal">退回重评</button>
@@ -153,7 +153,6 @@
 </template>
 
 <script>
-import { matchPermission } from '@/config/navPlan'
 import GraduationDocumentReviewWorkspace from '@/modules/graduation/components/GraduationDocumentReviewWorkspace.vue'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationMaterialCenterApi } from '@/modules/graduation/api/graduation-material-center.api'
@@ -242,28 +241,23 @@ export default {
       return this.activeVersionId != null && this.targetFileVersionId != null && String(this.activeVersionId) === String(this.targetFileVersionId)
     },
     taskReviewReady() { return Boolean(this.activeTask?.reviewReady && !this.versionConflict && this.targetVersionSelected) },
-    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
-    writePermission() {
-      const type = this.activeTask?.caseType
-      if (type === 'PROPOSAL') return 'graduationDesign.proposal.review'
-      if (type === 'FINAL' || type === 'FINAL_DRAFT') return 'graduationDesign.final.review'
-      return 'graduationDesign.review.submit'
+    allowedActions() { return Array.isArray(this.activeTask?.allowedActions) ? this.activeTask.allowedActions : [] },
+    canReviewBusiness() {
+      const type = String(this.activeTask?.caseType || '')
+      return ['PROPOSAL', 'FINAL', 'FINAL_DRAFT'].includes(type) && this.allowedActions.includes('REVIEW')
     },
-    hasWritePermission() {
-      return Boolean(this.ctx?.writeEnabled && matchPermission(this.permissionPatterns, this.writePermission))
+    canSubmitFormal() {
+      return this.activeTask?.caseType === 'FORMAL_REVIEW' && this.allowedActions.includes('SUBMIT')
     },
-    canShowWriteForm() {
-      if (!this.activeTask) return false
-      return this.activeTask.allowedActions?.some((item) => item === 'REVIEW' || item === 'SUBMIT')
+    canReturnFormalAction() {
+      return this.activeTask?.caseType === 'FORMAL_REVIEW' && this.allowedActions.includes('RETURN')
     },
+    canShowWriteForm() { return this.canReviewBusiness || this.canSubmitFormal },
     canSubmitCurrent() {
-      return Boolean(this.hasWritePermission && this.taskReviewReady && this.writeContext && this.canShowWriteForm)
+      return Boolean(this.taskReviewReady && this.writeContext && this.canShowWriteForm)
     },
     canReturnFormal() {
-      return Boolean(
-        this.ctx?.writeEnabled && matchPermission(this.permissionPatterns, 'graduationDesign.review.return')
-        && String(this.form.returnReason || '').trim().length >= 5
-      )
+      return Boolean(this.canReturnFormalAction && String(this.form.returnReason || '').trim().length >= 5)
     }
   },
   watch: {
@@ -413,7 +407,10 @@ export default {
       await this.loadAll()
     },
     async submitBusiness(action) {
-      if (!this.canSubmitCurrent || this.submitting) return
+      if (!this.canReviewBusiness || !this.canSubmitCurrent || this.submitting) return
+      if (!['APPROVE', 'REJECT'].includes(action)) { this.formError = '不支持的批阅动作'; return }
+      const type = String(this.activeTask?.caseType || '')
+      if (!['PROPOSAL', 'FINAL', 'FINAL_DRAFT'].includes(type)) return
       const comment = this.structuredComment()
       if (action === 'REJECT' && comment.trim().length < 5) { this.formError = '退回修改必须填写不少于 5 个字的批阅意见'; return }
       this.submitting = true; this.formError = ''
@@ -422,14 +419,14 @@ export default {
           action, comment, expectedVersion: this.expectedVersion,
           fileVersionId: Number(this.targetFileVersionId)
         }
-        if (this.activeTask.caseType === 'PROPOSAL') await graduationReviewCenterApi.reviewProposal(this.activeTask.recordId, payload)
+        if (type === 'PROPOSAL') await graduationReviewCenterApi.reviewProposal(this.activeTask.recordId, payload)
         else await graduationReviewCenterApi.reviewFinal(this.activeTask.recordId, payload)
         await this.afterMutation(action === 'APPROVE' ? '当前版本已通过，证据已绑定' : '已退回学生修改')
       } catch (error) { await this.handleMutationError(error) }
       finally { this.submitting = false }
     },
     async submitFormal() {
-      if (!this.canSubmitCurrent || this.submitting) return
+      if (!this.canSubmitFormal || !this.canSubmitCurrent || this.submitting) return
       const score = Number(this.form.score)
       const opinion = String(this.form.opinion || '').trim()
       if (!Number.isFinite(score) || score < 0 || score > 100) { this.formError = '正式评阅评分必须为 0–100'; return }
