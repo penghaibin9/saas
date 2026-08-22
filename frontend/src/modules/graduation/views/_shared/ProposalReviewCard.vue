@@ -101,14 +101,15 @@ export default {
   name: 'ProposalReviewCard',
   components: { LoadingState, ErrorState, AppButton, AppPermissionButton, AppAuditTrail, AppSectionCard, AppTemplateChips, GraduationDocumentReviewWorkspace },
   props: { ctx: { type: Object, required: true }, proposalId: { type: [String, Number], required: true }, compact: { type: Boolean, default: false } },
-  emits: ['reviewed', 'conflict'],
+  emits: ['reviewed', 'conflict', 'submitting-change'],
   data() {
     return {
       REJECT_REASON_CHIPS, DEFENSE_COMMENT_CHIPS,
       previewProvider: graduationMaterialCenterApi.createPreviewProvider(),
       loading: true, error: '', detail: null, versionHistory: [], comment: '', formError: '', submitting: false, defenseComment: '',
       activePreviewFileKey: null, activePreviewVersionId: null, conflictPreviewFile: null, versionConflict: null, previewDraftKey: '', draftFileVersionId: null,
-      carriedDraft: null
+      carriedDraft: null,
+      loadToken: 0
     }
   },
   computed: {
@@ -163,12 +164,24 @@ export default {
       }
     }
   },
-  beforeUnmount() { this.saveDraft() },
+  beforeUnmount() {
+    ++this.loadToken
+    if (this.submitting) this.$emit('submitting-change', false)
+    this.saveDraft()
+  },
   methods: {
     fmtTime(s) { return formatDateTime(s, '') },
     versionKey(item) { return item?.fileVersionId ?? item?.versionId ?? item?.id ?? null },
     fileKey(item) { return item?.fileKey ?? item?.fileId ?? this.versionKey(item) },
+    setSubmitting(value) {
+      this.submitting = Boolean(value)
+      this.$emit('submitting-change', this.submitting)
+    },
+    sameTask(proposalId, detailId) {
+      return String(this.proposalId) === String(proposalId) && String(this.detail?.id ?? '') === String(detailId ?? '')
+    },
     resetForProposalChange() {
+      ++this.loadToken
       this.saveDraft()
       this.detail = null
       this.versionHistory = []
@@ -236,7 +249,7 @@ export default {
     appendComment(text) { this.comment = this.comment ? `${this.comment}\n${text}` : text; this.saveDraft() },
     appendDefense(text) { this.defenseComment = this.defenseComment ? `${this.defenseComment}\n${text}` : text },
     selectPreviewFile(item) {
-      if (!item) return
+      if (!item || this.submitting) return
       const carriedDraft = this.comment
       const previousDraftKey = this.draftKey()
       this.saveDraft()
@@ -259,15 +272,20 @@ export default {
       if (!this.activePreviewFile?.canDownload) return
       try { await graduationMaterialCenterApi.downloadMaterial(this.activePreviewFile) } catch (error) { toast.error(error?.message || '下载失败') }
     },
-    async loadVersionHistory(recordId) {
+    async loadVersionHistory(recordId, token) {
       try {
         const data = await graduationMaterialCenterApi.proposalVersions(recordId)
+        if (token !== this.loadToken || String(recordId) !== String(this.proposalId)) return false
         this.versionHistory = graduationMaterialCenterApi.normalizeVersions(data?.items || [])
       } catch {
+        if (token !== this.loadToken || String(recordId) !== String(this.proposalId)) return false
         this.versionHistory = [...this.secureVersionFiles]
       }
+      return true
     },
     async load({ preserveDraft = false } = {}) {
+      const proposalId = this.proposalId
+      const token = ++this.loadToken
       const drafts = preserveDraft ? { comment: this.comment, defenseComment: this.defenseComment } : null
       const oldCanonical = this.canonicalFileVersionId
       const oldActive = this.activePreviewVersionId
@@ -276,63 +294,111 @@ export default {
       this.saveDraft()
       this.loading = true; this.error = ''; this.formError = ''
       if (!preserveDraft) { this.comment = ''; this.defenseComment = '' }
-      const res = await graduationApi.getProposalReviewDetail(this.proposalId)
-      if (res.code === 0) {
-        this.detail = res.data
-        await this.loadVersionHistory(this.proposalId)
-        const latest = this.canonicalFileVersionId
-        if (oldCanonical != null && latest != null && String(oldCanonical) !== String(latest)) {
-          this.versionConflict = { old: oldCanonical, latest }
-          this.draftFileVersionId = oldCanonical
-          this.activePreviewVersionId = oldActive ?? oldCanonical
-          this.conflictPreviewFile = oldActiveFile
-          this.activePreviewFileKey = oldActiveFile ? this.fileKey(oldActiveFile) : null
-          this.restoreDraft(drafts?.comment ?? oldDraft)
+      try {
+        const res = await graduationApi.getProposalReviewDetail(proposalId)
+        if (token !== this.loadToken || String(proposalId) !== String(this.proposalId)) return false
+        if (res.code === 0) {
+          this.detail = res.data
+          const versionReady = await this.loadVersionHistory(proposalId, token)
+          if (!versionReady || token !== this.loadToken || String(proposalId) !== String(this.proposalId)) return false
+          const latest = this.canonicalFileVersionId
+          if (oldCanonical != null && latest != null && String(oldCanonical) !== String(latest)) {
+            this.versionConflict = { old: oldCanonical, latest }
+            this.draftFileVersionId = oldCanonical
+            this.activePreviewVersionId = oldActive ?? oldCanonical
+            this.conflictPreviewFile = oldActiveFile
+            this.activePreviewFileKey = oldActiveFile ? this.fileKey(oldActiveFile) : null
+            this.restoreDraft(drafts?.comment ?? oldDraft)
+          } else {
+            this.versionConflict = null
+            this.conflictPreviewFile = null
+            this.draftFileVersionId = latest
+            this.activePreviewVersionId = latest
+            const active = this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId)) || this.secureVersionFiles[0] || null
+            this.activePreviewFileKey = active ? this.fileKey(active) : null
+            this.restoreDraft(drafts?.comment ?? oldDraft)
+          }
+          this.readConflictCarry()
         } else {
-          this.versionConflict = null
-          this.conflictPreviewFile = null
-          this.draftFileVersionId = latest
-          this.activePreviewVersionId = latest
-          const active = this.secureVersionFiles.find((item) => String(this.versionKey(item)) === String(this.activePreviewVersionId)) || this.secureVersionFiles[0] || null
-          this.activePreviewFileKey = active ? this.fileKey(active) : null
-          this.restoreDraft(drafts?.comment ?? oldDraft)
+          this.versionHistory = []
+          this.error = graduationActionErrorMessage(res, '开题详情加载失败，请稍后重试')
         }
-        this.readConflictCarry()
-      } else {
-        this.versionHistory = []
-        this.error = graduationActionErrorMessage(res, '开题详情加载失败，请稍后重试')
+        if (drafts) { this.comment = drafts.comment; this.defenseComment = drafts.defenseComment; this.saveDraft() }
+        return res.code === 0
+      } catch (error) {
+        if (token === this.loadToken && String(proposalId) === String(this.proposalId)) {
+          this.error = error?.message || '开题详情加载失败，请稍后重试'
+        }
+        return false
+      } finally {
+        if (token === this.loadToken && String(proposalId) === String(this.proposalId)) this.loading = false
       }
-      if (drafts) { this.comment = drafts.comment; this.defenseComment = drafts.defenseComment; this.saveDraft() }
-      this.loading = false
     },
     async submit(action) {
-      if (!this.canReview) return
+      if (!this.canReview || this.submitting) return
       this.formError = ''
       if (action === 'REJECT' && (!this.comment || this.comment.trim().length < 5)) { this.formError = '驳回原因必填且不少于 5 个字'; return }
+      const proposalId = this.proposalId
+      const detailId = this.detail.id
       const draft = this.comment
-      this.submitting = true
-      const res = await graduationApi.reviewProposal(this.detail.id, { action, comment: draft, expectedVersion: this.detail.materialVersion, fileVersionId: this.detail.fileVersionId })
-      this.submitting = false
-      if (res.code === 0) {
-        this.clearDraft(); this.clearConflictCarry(); this.comment = ''; await this.load(); toast.success('批阅完成：' + res.data.statusLabel + '，已锁定 canonical FileVersion 并同步学生端'); this.$emit('reviewed', res.data)
-      } else if (isGraduationConflictResponse(res)) {
-        const conflictMessage = graduationConflictMessage(res)
-        this.stashConflictCarry(draft)
-        await this.load({ preserveDraft: true })
-        this.comment = draft
-        this.saveDraft()
-        this.formError = conflictMessage
-        this.$emit('conflict', { response: res, projectId: this.detail?.projectId, draftPreserved: Boolean(draft) })
-      } else { this.formError = graduationActionErrorMessage(res, '批阅未完成，请稍后重试'); this.saveDraft() }
+      this.setSubmitting(true)
+      try {
+        const res = await graduationApi.reviewProposal(detailId, { action, comment: draft, expectedVersion: this.detail.materialVersion, fileVersionId: this.detail.fileVersionId })
+        if (!this.sameTask(proposalId, detailId)) return
+        if (res.code === 0) {
+          this.clearDraft(); this.clearConflictCarry(); this.comment = ''
+          await this.load()
+          if (!this.sameTask(proposalId, detailId)) return
+          toast.success('批阅完成：' + res.data.statusLabel + '，已锁定 canonical FileVersion 并同步学生端')
+          this.$emit('reviewed', res.data)
+        } else if (isGraduationConflictResponse(res)) {
+          const conflictMessage = graduationConflictMessage(res)
+          this.stashConflictCarry(draft)
+          await this.load({ preserveDraft: true })
+          if (!this.sameTask(proposalId, detailId)) return
+          this.comment = draft
+          this.saveDraft()
+          this.formError = conflictMessage
+          this.$emit('conflict', { response: res, projectId: this.detail?.projectId, draftPreserved: Boolean(draft) })
+        } else {
+          this.formError = graduationActionErrorMessage(res, '批阅未完成，请稍后重试')
+          this.saveDraft()
+        }
+      } catch (error) {
+        if (this.sameTask(proposalId, detailId)) {
+          this.formError = error?.message || '批阅未完成，请稍后重试'
+          this.saveDraft()
+        }
+      } finally {
+        this.setSubmitting(false)
+      }
     },
     async submitDefense(result) {
+      if (this.submitting || !this.detail?.id) return
       if (result === 'FAIL' && (!this.defenseComment || this.defenseComment.trim().length < 5)) { toast.error('开题答辩不通过时评语必填且不少于 5 字'); return }
-      this.submitting = true
-      const res = await graduationMoreApi.holdProposalDefense(this.detail.id, result, this.defenseComment)
-      this.submitting = false
-      if (res.code === 0) { toast.success('开题答辩已录入'); this.defenseComment = ''; await this.load({ preserveDraft: true }) }
-      else if (isGraduationConflictResponse(res)) { const conflictMessage = graduationConflictMessage(res); await this.load({ preserveDraft: true }); this.formError = conflictMessage }
-      else this.formError = graduationActionErrorMessage(res, '开题答辩录入失败，请稍后重试')
+      const proposalId = this.proposalId
+      const detailId = this.detail.id
+      this.setSubmitting(true)
+      try {
+        const res = await graduationMoreApi.holdProposalDefense(detailId, result, this.defenseComment)
+        if (!this.sameTask(proposalId, detailId)) return
+        if (res.code === 0) {
+          toast.success('开题答辩已录入')
+          this.defenseComment = ''
+          await this.load({ preserveDraft: true })
+        } else if (isGraduationConflictResponse(res)) {
+          const conflictMessage = graduationConflictMessage(res)
+          await this.load({ preserveDraft: true })
+          if (!this.sameTask(proposalId, detailId)) return
+          this.formError = conflictMessage
+        } else {
+          this.formError = graduationActionErrorMessage(res, '开题答辩录入失败，请稍后重试')
+        }
+      } catch (error) {
+        if (this.sameTask(proposalId, detailId)) this.formError = error?.message || '开题答辩录入失败，请稍后重试'
+      } finally {
+        this.setSubmitting(false)
+      }
     }
   }
 }

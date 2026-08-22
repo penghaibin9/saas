@@ -15,7 +15,7 @@
 
     <div class="mp-stack">
       <div class="mp-tabs">
-        <button v-for="t in tabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
+        <button v-for="t in tabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" :disabled="reviewSubmitting" @click="switchTab(t.value)">
           {{ t.label }}<span v-if="tabCount(t.value) !== null" class="pr-tab-count">{{ tabCount(t.value) }}</span>
         </button>
       </div>
@@ -25,7 +25,7 @@
       <!-- 连续批阅双栏：左队列 + 右批阅卡；窄屏自动降级为整页列表（点击进独立详情页） -->
       <div class="pr-split" :class="{ 'is-narrow': isNarrow }">
         <aside class="pr-list">
-          <AppSearchBox v-if="hasBatch" v-model="filters.keyword" placeholder="搜索学生 / 学号 / 课题" @search="onFilterSearch" />
+          <AppSearchBox v-if="hasBatch" v-model="filters.keyword" :disabled="reviewSubmitting" placeholder="搜索学生 / 学号 / 课题" @search="onFilterSearch" />
           <ErrorState v-if="error" :description="error" @retry="load" />
           <LoadingState v-else-if="loading" />
           <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc" />
@@ -34,8 +34,9 @@
               v-for="(row, i) in rows"
               :key="rowKey(row)"
               class="pr-row"
-              :class="{ 'is-active': rowKey(row) === selKey }"
-              tabindex="0"
+              :class="{ 'is-active': rowKey(row) === selKey, 'is-disabled': reviewSubmitting }"
+              :tabindex="reviewSubmitting ? -1 : 0"
+              :aria-disabled="reviewSubmitting"
               role="button"
               @click="select(row)"
               @keydown.enter.prevent="select(row)"
@@ -63,10 +64,10 @@
         <section v-if="!isNarrow" class="pr-pane">
           <div class="pr-pane__bar">
             <span class="pr-pane__pos">本页第 {{ selIndex + 1 }} / {{ rows.length }} 条 · 共 {{ total }} 条</span>
-            <label class="pr-pane__auto"><input v-model="autoNext" type="checkbox" /> 批阅后自动进入下一条待审</label>
+            <label class="pr-pane__auto"><input v-model="autoNext" type="checkbox" :disabled="reviewSubmitting" /> 批阅后自动进入下一条待审</label>
             <span class="pr-pane__nav">
-              <button class="mp-link" :disabled="selIndex <= 0" @click="step(-1)">← 上一条</button>
-              <button class="mp-link" :disabled="!hasNext" @click="step(1)">下一条 →</button>
+              <button class="mp-link" :disabled="reviewSubmitting || selIndex <= 0" @click="step(-1)">← 上一条</button>
+              <button class="mp-link" :disabled="reviewSubmitting || !hasNext" @click="step(1)">下一条 →</button>
             </span>
           </div>
 
@@ -94,11 +95,12 @@
             compact
             @reviewed="onReviewed"
             @conflict="onConflict"
+            @submitting-change="onReviewSubmittingChange"
           />
         </section>
       </div>
 
-      <p class="mp-note">筛选默认「全部时间」，空日期不会导致查无数据；窄屏下点击列表将进入整页批阅详情。</p>
+      <p class="mp-note">筛选默认「全部时间」，空日期不会导致查无数据；窄屏下点击列表将进入整页批阅详情页。</p>
     </div>
     <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
     <AppPageGuide guide-key="graduation.gd-proposal" />
@@ -144,6 +146,9 @@ export default {
       selKey: '',
       autoNext: true,
       reminding: false,
+      reviewSubmitting: false,
+      loadToken: 0,
+      statsToken: 0,
       stats: null,
       isNarrow: false,
       tabs: [
@@ -202,6 +207,9 @@ export default {
   },
   watch: {
     'batchStore.selectedBatchId'() {
+      ++this.loadToken
+      ++this.statsToken
+      this.reviewSubmitting = false
       this.page = 1
       this.selKey = ''
       this.loadStats()
@@ -214,7 +222,7 @@ export default {
     this._onMq = (e) => { this.isNarrow = e.matches }
     this._mq.addEventListener ? this._mq.addEventListener('change', this._onMq) : this._mq.addListener(this._onMq)
     this._onKey = (e) => {
-      if (this.isNarrow) return
+      if (this.isNarrow || this.reviewSubmitting) return
       const tag = (e.target && e.target.tagName) || ''
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
       if (e.key === 'ArrowDown') { e.preventDefault(); this.step(1) }
@@ -223,6 +231,8 @@ export default {
     window.addEventListener('keydown', this._onKey)
   },
   beforeUnmount() {
+    ++this.loadToken
+    ++this.statsToken
     if (this._mq) { this._mq.removeEventListener ? this._mq.removeEventListener('change', this._onMq) : this._mq.removeListener(this._onMq) }
     window.removeEventListener('keydown', this._onKey)
   },
@@ -240,15 +250,28 @@ export default {
       if (v === 'NOT_SUBMITTED') return this.stats.notSubmitted ?? 0
       return this.statusCount(v)
     },
+    onReviewSubmittingChange(value) {
+      this.reviewSubmitting = Boolean(value)
+    },
     async loadStats() {
-      if (!this.batchStore.selectedBatchId) {
+      const batchId = this.batchStore.selectedBatchId
+      const token = ++this.statsToken
+      if (!batchId) {
         this.stats = null
-        return
+        return false
       }
-      const res = await graduationMoreApi.getProposalStats({ batchId: this.batchStore.selectedBatchId })
-      if (res.code === 0) this.stats = res.data
+      try {
+        const res = await graduationMoreApi.getProposalStats({ batchId })
+        if (token !== this.statsToken || String(batchId) !== String(this.batchStore.selectedBatchId)) return false
+        if (res.code === 0) this.stats = res.data
+        return res.code === 0
+      } catch {
+        if (token === this.statsToken && String(batchId) === String(this.batchStore.selectedBatchId)) this.stats = null
+        return false
+      }
     },
     switchTab(v) {
+      if (this.reviewSubmitting) return
       this.filters.status = v
       this.page = 1
       this.selKey = ''
@@ -257,14 +280,20 @@ export default {
       this.$router.replace({ query: q })
       this.load()
     },
-    onFilterSearch() { this.page = 1; this.load() },
+    onFilterSearch() { if (this.reviewSubmitting) return; this.page = 1; this.load() },
     onFilterReset() {
+      if (this.reviewSubmitting) return
       this.filters = { ...this.filters, keyword: '', dateStart: '', dateEnd: '' }
       this.page = 1
       this.load()
     },
-    turnPage(p) { this.page = p; this.load() },
-    select(row) {
+    turnPage(p, { force = false } = {}) {
+      if (this.reviewSubmitting && !force) return
+      this.page = p
+      this.load()
+    },
+    select(row, { force = false } = {}) {
+      if (this.reviewSubmitting && !force) return
       if (this.isNarrow) {
         if (row.status !== 'NOT_SUBMITTED' && row.id != null) this.$router.push('/admin/graduation/proposals/' + row.id)
         return
@@ -273,6 +302,7 @@ export default {
       this.$router.replace({ query: { ...this.$route.query, sel: this.selKey } })
     },
     step(delta) {
+      if (this.reviewSubmitting) return
       const i = this.selIndex
       const target = i + delta
       if (target >= 0 && target < this.rows.length) {
@@ -295,7 +325,7 @@ export default {
       if (row) { row.status = payload.status; row.statusLabel = payload.statusLabel }
       await this.loadStats()
       if (!this.autoNext) return
-      if (!pendingQueue) { this.nextPending(); return }
+      if (!pendingQueue) { this.nextPending({ force: true }); return }
 
       this.selKey = ''
       this._selectIndexAfterLoad = reviewedIndex
@@ -312,17 +342,18 @@ export default {
       this.loadStats()
       this.load()
     },
-    nextPending() {
+    nextPending({ force = false } = {}) {
+      if (this.reviewSubmitting && !force) return
       const from = this.selIndex
       for (let i = from + 1; i < this.rows.length; i++) {
-        if (this.rows[i].status === 'PENDING_REVIEW') { this.select(this.rows[i]); return }
+        if (this.rows[i].status === 'PENDING_REVIEW') { this.select(this.rows[i], { force }); return }
       }
       for (let i = 0; i < from; i++) {
-        if (this.rows[i].status === 'PENDING_REVIEW') { this.select(this.rows[i]); return }
+        if (this.rows[i].status === 'PENDING_REVIEW') { this.select(this.rows[i], { force }); return }
       }
       if (this.page * this.pageSize < this.total) {
         this._selectPendingAfterLoad = true
-        this.turnPage(this.page + 1)
+        this.turnPage(this.page + 1, { force })
       } else {
         toast.success('本页待审记录已全部处理完')
       }
@@ -344,7 +375,7 @@ export default {
       this._selectFirstAfterLoad = false
       this._selectLastAfterLoad = false
       this._selectPendingAfterLoad = false
-      if (target && !this.isNarrow) this.select(target)
+      if (target && !this.isNarrow) this.select(target, { force: true })
     },
     exportProposalsFn() {
       const hint = exportFilenameHint(this.batchStore.selectedBatchName, '开题材料')
@@ -357,36 +388,54 @@ export default {
       })
     },
     async remind(row) {
+      if (this.reminding) return
       this.reminding = true
-      const res = await graduationApi.remindProposal(row.projectId || row.gdStudentId)
-      this.reminding = false
-      if (res.code === 0) toast.success('已向 ' + row.studentName + ' 发送开题催交站内消息并记录催办留痕')
-      else toast.error(res.message || '催交失败')
+      try {
+        const res = await graduationApi.remindProposal(row.projectId || row.gdStudentId)
+        if (res.code === 0) toast.success('已向 ' + row.studentName + ' 发送开题催交站内消息并记录催办留痕')
+        else toast.error(res.message || '催交失败')
+      } catch (error) {
+        toast.error(error?.message || '催交失败')
+      } finally {
+        this.reminding = false
+      }
     },
     async load() {
-      if (!this.batchStore.selectedBatchId) {
+      const batchId = this.batchStore.selectedBatchId
+      const token = ++this.loadToken
+      if (!batchId) {
         this.loading = false
         this.error = ''
         this.rows = []
         this.total = 0
         this.selKey = ''
-        return
+        return false
       }
       this.loading = true
       this.error = ''
-      const res = await graduationApi.getProposals(buildMaterialQuery(this.filters, {
-        page: this.page,
-        pageSize: this.pageSize,
-        batchId: this.batchStore.selectedBatchId
-      }))
-      if (res.code === 0) {
-        this.rows = res.data.list
-        this.total = res.data.total
-        this.ensureSelection()
-      } else {
-        this.error = res.message
+      try {
+        const res = await graduationApi.getProposals(buildMaterialQuery(this.filters, {
+          page: this.page,
+          pageSize: this.pageSize,
+          batchId
+        }))
+        if (token !== this.loadToken || String(batchId) !== String(this.batchStore.selectedBatchId)) return false
+        if (res.code === 0) {
+          this.rows = res.data.list
+          this.total = res.data.total
+          this.ensureSelection()
+        } else {
+          this.error = res.message
+        }
+        return res.code === 0
+      } catch (error) {
+        if (token === this.loadToken && String(batchId) === String(this.batchStore.selectedBatchId)) {
+          this.error = error?.message || '开题列表加载失败，请稍后重试'
+        }
+        return false
+      } finally {
+        if (token === this.loadToken && String(batchId) === String(this.batchStore.selectedBatchId)) this.loading = false
       }
-      this.loading = false
     }
   }
 }
@@ -413,6 +462,7 @@ export default {
 .pr-row:last-child { border-bottom: none; }
 .pr-row:hover { background: var(--gray-50, #f8fafc); }
 .pr-row.is-active { background: var(--primary-50, #eff6ff); box-shadow: inset 2px 0 0 var(--brand-primary, #2563eb); }
+.pr-row.is-disabled { cursor: not-allowed; opacity: .72; }
 .pr-row:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--primary-400, #60a5fa); outline-offset: -2px; }
 .pr-row__main { display: flex; align-items: center; gap: var(--space-2); }
 .pr-row__name { font-weight: var(--font-weight-medium, 500); color: var(--text-primary); }
