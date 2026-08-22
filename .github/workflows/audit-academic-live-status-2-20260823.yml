@@ -1,0 +1,58 @@
+name: Audit Academic Live Status 2 20260823
+
+on:
+  push:
+    branches:
+      - audit/academic-real-browser-20260823
+    paths:
+      - '.github/workflows/audit-academic-live-status-2-20260823.yml'
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  status:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: penghaibin9/saas
+      FIX_REF: fix/academic-e2e-school-iam-bootstrap-20260823
+      FIX_SHA: 933ba073e8e41f13faaef8a1cd3c4c49737b6cc9
+    steps:
+      - name: Publish live status
+        run: |
+          set -euo pipefail
+          sleep 8
+          {
+            echo '## 教务审计第二轮即时状态'
+            echo
+            echo '| Workflow | Branch | Run | Status | Conclusion | Head | URL |'
+            echo '|---|---|---:|---|---|---|---|'
+          } > /tmp/status.md
+          workflows=(
+            academic-b-w3-schedule-real-click.yml
+            academic-b-w4-selection-real-click.yml
+            academic-c-w2-teacher-today-browser.yml
+            academic-b-w5-student-projection-real-click.yml
+          )
+          for wf in "${workflows[@]}"; do
+            row="$(gh run list --repo "$REPO" --workflow "$wf" --branch "$FIX_REF" --event workflow_dispatch --limit 10 --json databaseId,status,conclusion,headSha,url --jq ".[] | select(.headSha == \"$FIX_SHA\") | [.databaseId,.status,(.conclusion // \"\"),.headSha,.url] | @tsv" | head -n1)"
+            if [ -z "$row" ]; then
+              echo "| $wf | $FIX_REF | - | NOT_FOUND | - | - | - |" >> /tmp/status.md
+            else
+              id="$(printf '%s' "$row" | cut -f1)"; st="$(printf '%s' "$row" | cut -f2)"; co="$(printf '%s' "$row" | cut -f3)"; hd="$(printf '%s' "$row" | cut -f4)"; url="$(printf '%s' "$row" | cut -f5)"
+              echo "| $wf | $FIX_REF | $id | $st | ${co:--} | \`$hd\` | $url |" >> /tmp/status.md
+            fi
+          done
+          formation="$(gh run list --repo "$REPO" --workflow audit-academic-formation-exact-head-20260823.yml --branch audit/academic-real-browser-20260823 --limit 10 --json databaseId,status,conclusion,headSha,url --jq '.[] | [.databaseId,.status,(.conclusion // ""),.headSha,.url] | @tsv' | head -n1)"
+          if [ -n "$formation" ]; then
+            id="$(printf '%s' "$formation" | cut -f1)"; st="$(printf '%s' "$formation" | cut -f2)"; co="$(printf '%s' "$formation" | cut -f3)"; hd="$(printf '%s' "$formation" | cut -f4)"; url="$(printf '%s' "$formation" | cut -f5)"
+            echo "| audit formation exact-head | audit/academic-real-browser-20260823 | $id | $st | ${co:--} | \`$hd\` | $url |" >> /tmp/status.md
+          else
+            echo '| audit formation exact-head | audit/academic-real-browser-20260823 | - | NOT_FOUND | - | - | - |' >> /tmp/status.md
+          fi
+          gh issue comment 200 --repo "$REPO" --body-file /tmp/status.md
+          cat /tmp/status.md
