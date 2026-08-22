@@ -1,0 +1,80 @@
+name: Audit Academic H5 SameSite Harness Fix 20260823
+
+on:
+  push:
+    branches:
+      - fix/academic-e2e-school-iam-bootstrap-20260823
+    paths:
+      - '.github/workflows/audit-academic-h5-samesite-fix-20260823.yml'
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+jobs:
+  patch-and-rerun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/academic-e2e-school-iam-bootstrap-20260823
+          fetch-depth: 0
+
+      - name: Assert audited fix ancestry
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 843bb02f93b52412e29f37b7e1a938ef6a96be05 HEAD
+
+      - name: Align H5 browser and API site without weakening cookie policy
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              Path('.github/workflows/academic-c-w2-teacher-today-browser.yml'),
+              Path('.github/workflows/academic-b-w5-student-projection-real-click.yml'),
+          ]
+          for path in paths:
+              text = path.read_text()
+              old_api = 'E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1'
+              old_vite = 'VITE_API_BASE_URL: http://127.0.0.1:8000'
+              if text.count(old_api) != 1:
+                  raise SystemExit(f'{path}: expected exactly one E2E_API_BASE_URL match, got {text.count(old_api)}')
+              if text.count(old_vite) != 1:
+                  raise SystemExit(f'{path}: expected exactly one VITE_API_BASE_URL match, got {text.count(old_vite)}')
+              text = text.replace(old_api, 'E2E_API_BASE_URL: http://localhost:8000/api/v1')
+              text = text.replace(old_vite, 'VITE_API_BASE_URL: http://localhost:8000')
+              path.write_text(text)
+          PY
+          git diff --check
+          git diff -- .github/workflows/academic-c-w2-teacher-today-browser.yml .github/workflows/academic-b-w5-student-projection-real-click.yml
+
+      - name: Commit exact harness-only fix
+        id: commit
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/academic-c-w2-teacher-today-browser.yml .github/workflows/academic-b-w5-student-projection-real-click.yml
+          test -n "$(git diff --cached --name-only)"
+          git commit -m 'test(academic): keep H5 refresh E2E same-site'
+          git push origin HEAD:fix/academic-e2e-school-iam-bootstrap-20260823
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch Teacher and Student browser reruns
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run academic-c-w2-teacher-today-browser.yml --ref fix/academic-e2e-school-iam-bootstrap-20260823
+          gh workflow run academic-b-w5-student-projection-real-click.yml --ref fix/academic-e2e-school-iam-bootstrap-20260823
+
+      - name: Report patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          gh issue comment 205 --body "## H5 SameSite E2E harness fix\n\nStatus: **patched and reruns dispatched**\nHarness/product-fix SHA: \`$SHA\`\nChange: keep backend SameSite=Strict; align H5 API host to localhost for same-site browser refresh testing."
