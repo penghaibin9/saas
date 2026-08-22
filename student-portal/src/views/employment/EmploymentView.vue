@@ -15,20 +15,23 @@
               <div style="font-size:18px;font-weight:600">我的就业进度</div>
               <div class="sp-muted" style="margin-top:8px">按学校要求完成生源核对与去向登记，是顺利办理离校手续的前提。</div>
             </div>
-            <span class="statepill" :class="{ warn: !isSigned }"><span class="dot" />{{ destText(my.destinationType) }}</span>
+            <span class="statepill" :class="{ warn: !isSigned }"><span class="dot" />{{ destText() }}</span>
           </div>
           <FlowSteps :steps="flowSteps" style="margin-top:22px" />
         </section>
         <section class="sp-card">
           <div class="sp-panel__head">就业信息</div>
           <dl class="desc">
-            <div><dt>去向类型</dt><dd>{{ destText(my.destinationType) }}</dd></div>
+            <div><dt>去向类型</dt><dd>{{ destText() }}</dd></div>
             <div><dt>单位</dt><dd>{{ my.companyName || '—' }}</dd></div>
             <div><dt>岗位</dt><dd>{{ my.jobTitle || '—' }}</dd></div>
-            <div><dt>核验状态</dt><dd><StatusTag :text="verifyText(my.verifyStatus)" :tone="my.verifyStatus==='VERIFIED'?'success':'warn'" /></dd></div>
-            <div><dt>材料状态</dt><dd><StatusTag :text="matText(my.materialStatus)" :tone="my.materialStatus==='APPROVED'?'success':'warn'" /></dd></div>
-            <div><dt>帮扶级别</dt><dd>{{ helpText(my.helpLevel) }}</dd></div>
+            <div><dt>材料审核</dt><dd><StatusTag :text="matText()" :tone="my.materialStatus==='APPROVED'?'success':'warn'" /></dd></div>
+            <div><dt>去向核验</dt><dd><StatusTag :text="verifyText()" :tone="my.verifyStatus==='VERIFIED'?'success':'warn'" /></dd></div>
+            <div><dt>帮扶级别</dt><dd>{{ helpText() }}</dd></div>
           </dl>
+          <p v-if="my.materialStatus === 'APPROVED' && my.verifyStatus !== 'VERIFIED'" class="sp-muted" style="margin-top:14px">
+            材料已通过审核，但学校尚未完成<strong>去向核验</strong>；两者是相互独立的两步，核验完成后本页才会显示「已核验」。
+          </p>
         </section>
         <section class="sp-card">
           <div class="sp-panel__head">就业政策与提醒</div>
@@ -43,12 +46,12 @@
       <!-- 生源核对 -->
       <template v-else-if="tab === 'source'">
         <section class="sp-card" style="max-width:720px">
-          <div class="sp-panel__head">生源信息核对 <StatusTag :text="my.verifyStatus==='VERIFIED'?'已核对':'待核对'" :tone="my.verifyStatus==='VERIFIED'?'success':'warn'" /></div>
+          <div class="sp-panel__head">生源信息核对</div>
           <dl class="desc">
             <div><dt>姓名</dt><dd>{{ studentName }}</dd></div>
             <div><dt>就业单位</dt><dd>{{ my.companyName || '待登记' }}</dd></div>
             <div><dt>岗位</dt><dd>{{ my.jobTitle || '待登记' }}</dd></div>
-            <div><dt>去向类型</dt><dd>{{ destText(my.destinationType) }}</dd></div>
+            <div><dt>去向类型</dt><dd>{{ destText() }}</dd></div>
           </dl>
           <p class="sp-muted" style="margin-top:14px">生源信息来自学籍档案，如有误请在「我的档案 · 申请更正联系方式」发起更正；确认无误后在「去向登记」提交去向。</p>
         </section>
@@ -58,23 +61,35 @@
       <template v-else-if="tab === 'destination'">
         <section class="sp-card" style="max-width:760px">
           <div class="sp-panel__head">就业去向登记</div>
-          <div class="sp-fieldlabel">去向类型</div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-            <button v-for="d in destTypes" :key="d.k" class="chipbtn" :class="{ on: form.destinationType === d.k }" @click="form.destinationType = d.k">{{ d.t }}</button>
+          <!-- SP-E02/E04：现在是真实结构化提交 + 单节点审批，提交后有独立状态可查，
+               不是"提交完就不知道后续"的黑盒。 -->
+          <div v-if="latestSubmission" class="sp-muted" style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:var(--pri-50)">
+            <template v-if="latestSubmission.status === 'SUBMITTED'">最近一次登记（{{ latestSubmission.destinationLabel }}）正在等待就业老师审核。</template>
+            <template v-else-if="latestSubmission.status === 'RETURNED'">最近一次登记被退回：{{ latestSubmission.returnReason || '未说明原因' }}。请核对后在下方重新提交。</template>
+            <template v-else-if="latestSubmission.status === 'REJECTED'">最近一次登记未通过审核，如有疑问请联系就业老师。</template>
+            <template v-else-if="latestSubmission.status === 'APPROVED'">最近一次登记（{{ latestSubmission.destinationLabel }}）已通过审核并计入就业台账。</template>
           </div>
-          <template v-if="form.destinationType === 'SIGNED'">
-            <div class="two">
-              <div><div class="sp-fieldlabel">签约单位</div><input v-model.trim="form.companyName" class="sp-inp" placeholder="就业单位" /></div>
-              <div><div class="sp-fieldlabel">岗位/职务</div><input v-model.trim="form.jobTitle" class="sp-inp" placeholder="岗位" /></div>
-              <div><div class="sp-fieldlabel">工作城市</div><ChinaRegionPicker v-model="form.city" /></div>
-              <div><div class="sp-fieldlabel">联系电话</div><input v-model.trim="form.contact" class="sp-inp" placeholder="单位联系方式" /></div>
+          <StateBlock v-if="optionsError" type="error" :text="optionsError" />
+          <template v-else>
+            <div class="sp-fieldlabel">去向类型</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+              <button v-for="d in destTypes" :key="d.code" class="chipbtn" :class="{ on: form.destinationType === d.code }" @click="form.destinationType = d.code">{{ d.label }}</button>
             </div>
+            <div class="two">
+              <div v-if="needsCompany"><div class="sp-fieldlabel">{{ companyLabel }}</div><input v-model.trim="form.companyName" class="sp-inp" :placeholder="companyLabel" /></div>
+              <div><div class="sp-fieldlabel">岗位/职务</div><input v-model.trim="form.jobTitle" class="sp-inp" placeholder="岗位（可选）" /></div>
+              <div><div class="sp-fieldlabel">所在城市</div><ChinaRegionPicker v-model="form.city" /></div>
+              <div><div class="sp-fieldlabel">联系电话</div><input v-model.trim="form.contact" class="sp-inp" placeholder="联系方式（可选）" /></div>
+            </div>
+            <p v-if="requiredMaterials.length" class="sp-muted" style="margin-top:12px">
+              该去向需提交：{{ requiredMaterials.map((m) => m.label).join('、') }}。请在提交后按学校通知上传材料。
+            </p>
           </template>
           <div class="sp-fieldlabel" style="margin-top:14px">备注</div>
           <textarea v-model.trim="form.remark" class="sp-inp" placeholder="补充说明（可选）" />
           <div style="display:flex;gap:10px;margin-top:16px">
             <button class="sp-btn sp-btn--ghost" :disabled="busy" @click="printDoc">打印去向登记表</button>
-            <button class="sp-btn" :disabled="busy || !form.destinationType" @click="submit">提交登记</button>
+            <button class="sp-btn" :disabled="busy || !form.destinationType || !!optionsError" @click="submit">提交登记</button>
           </div>
         </section>
       </template>
@@ -109,18 +124,17 @@ import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
 const session = useSessionStore()
-const MATERIAL_TYPE = Object.freeze({
-  OFFER: '录用证明', STUDY_PROOF: '升学证明', STARTUP_PROOF: '创业证明', AGREEMENT: '就业协议'
-})
+// SP-E10：材料类型/审核状态/回访方式的 label 全部由服务端 canonical 下发
+// （typeLabel/statusLabel/wayLabel），本页不再维护第二份业务字典——旧的本地
+// MATERIAL_TYPE 就漏了 CONTRACT/ENLIST_PROOF/OTHER，一律显示成"其他就业材料"。
 const MATERIAL_COLS = [
-  { key: 'type', label: '材料类型', formatter: (value) => MATERIAL_TYPE[String(value || '').toUpperCase()] || '其他就业材料' },
+  { key: 'typeLabel', label: '材料类型' },
   { key: 'fileName', label: '文件名称' },
-  { key: 'status', label: '审核状态' }
+  { key: 'statusLabel', label: '审核状态' }
 ]
-const FOLLOW_UP_WAY = Object.freeze({ PHONE: '电话联系', FACE: '面谈', RECOMMEND: '岗位推荐', VISIT: '走访' })
 const FOLLOW_UP_COLS = [
   { key: 'time', label: '回访时间' },
-  { key: 'way', label: '跟进方式', formatter: (value) => FOLLOW_UP_WAY[String(value || '').toUpperCase()] || '其他方式' },
+  { key: 'wayLabel', label: '跟进方式' },
   { key: 'content', label: '回访内容' }
 ]
 const tabs = [
@@ -132,28 +146,45 @@ const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
 const my = ref({})
-const form = reactive({ destinationType: 'SIGNED', companyName: '', jobTitle: '', city: '', contact: '', remark: '' })
-const destTypes = [
-  { k: 'SIGNED', t: '签约就业' }, { k: 'FLEXIBLE', t: '灵活就业' }, { k: 'FURTHER', t: '升学' },
-  { k: 'MILITARY', t: '参军' }, { k: 'UNEMPLOYED', t: '暂未就业' }
-]
+const form = reactive({ destinationType: '', companyName: '', jobTitle: '', city: '', contact: '', remark: '' })
+
+// SP-E03/SP-E10：去向类型与状态字典全部由服务端 canonical 下发，本页不再维护
+// 任何业务枚举——旧实现硬编码的 FURTHER/MILITARY 与管理端 canonical 的
+// FURTHER_STUDY/ENLISTED 根本不是同一套 code，学生提交的去向管理端识别不了；
+// 状态字典也漏了 PENDING_VERIFY/SUBMITTED/REVIEWING/RETURNED，界面会直接显示
+// 英文原始码。本地只保留 tone（视觉）映射，不解释业务含义。
+const options = ref({ destinationTypes: [], verifyStatuses: [], materialStatuses: [], helpLevels: [] })
+const optionsError = ref('')
+
+const latestSubmission = computed(() => my.value.latestSubmission || null)
+const destTypes = computed(() => options.value.destinationTypes || [])
+const currentDest = computed(
+  () => destTypes.value.find((d) => d.code === form.destinationType) || null
+)
+// 服务端按去向类型下发 requiredFields：签约要单位、升学要院校、入伍/自由职业不要求，
+// 不再是"只有 SIGNED 才显示单位输入框"这种前端自己拍的规则。
+const needsCompany = computed(() => (currentDest.value?.requiredFields || []).includes('companyName'))
+const companyLabel = computed(() => currentDest.value?.companyLabel || '单位名称')
+const requiredMaterials = computed(() => currentDest.value?.requiredMaterials || [])
+
 const studentName = computed(() => session.user?.realName || '同学')
 const isSigned = computed(() => my.value.destinationType === 'SIGNED')
-const DEST = { SIGNED: '已签约', FLEXIBLE: '灵活就业', FURTHER: '升学', MILITARY: '参军', UNEMPLOYED: '暂未就业' }
-const VERIFY = { VERIFIED: '已核验', PENDING: '待核验', REJECTED: '已退回' }
-const MAT = { APPROVED: '已通过', PENDING: '待审核', REJECTED: '已退回', NONE: '未提交' }
-const HELP = { NORMAL: '普通', KEY: '重点帮扶', SPECIAL: '专项帮扶' }
-function destText(s) { return DEST[s] || s || '待登记' }
-function verifyText(s) { return VERIFY[s] || s || '—' }
-function matText(s) { return MAT[s] || s || '—' }
-function helpText(s) { return HELP[s] || s || '—' }
+
+// 状态文案一律用服务端下发的 label；服务端没给才回落原始码，绝不本地编译语义。
+function destText() { return my.value.destinationLabel || my.value.destinationType || '待登记' }
+function verifyText() { return my.value.verifyStatusLabel || my.value.verifyStatus || '—' }
+function matText() { return my.value.materialStatusLabel || my.value.materialStatus || '—' }
+function helpText() { return my.value.helpLevelLabel || my.value.helpLevel || '—' }
 
 const flowSteps = computed(() => {
-  const order = ['生源核对', '去向登记', '签约材料', '离校归档']
+  // SP-E09：materialStatus（材料审核）与 verifyStatus（去向核验）是两个独立事实，
+  // 进度条按"登记 → 材料 → 核验"的真实先后顺序推进，不再拿去向核验状态去冒充
+  // 第一步"生源核对"的完成度（那一步根本没有对应的后端事实）。
+  const order = ['去向登记', '材料审核', '去向核验', '离校归档']
   let cur = 0
-  if (my.value.verifyStatus === 'VERIFIED') cur = 1
-  if (my.value.destinationType && my.value.destinationType !== 'UNSET') cur = 2
-  if (my.value.materialStatus === 'APPROVED') cur = 3
+  if (my.value.destinationType) cur = 1
+  if (my.value.materialStatus === 'APPROVED') cur = 2
+  if (my.value.verifyStatus === 'VERIFIED') cur = 3
   return order.map((name, i) => ({ name, state: i < cur ? 'done' : i === cur ? 'current' : 'todo' }))
 })
 
@@ -162,17 +193,45 @@ async function load() {
   try { my.value = await portalApi.employmentMy() || {} }
   catch (e) { error.value = e?.message || '就业信息加载失败' } finally { loading.value = false }
 }
+async function loadOptions() {
+  // 字典加载失败必须显式报错并禁用提交：没有 canonical 选项时让学生"随便选一个"
+  // 提交，等于又回到旧的 code 漂移问题。
+  optionsError.value = ''
+  try {
+    options.value = await portalApi.employmentDestinationOptions() || {}
+    if (!form.destinationType && destTypes.value.length) {
+      form.destinationType = destTypes.value[0].code
+    }
+  } catch (e) {
+    optionsError.value = e?.message || '去向选项加载失败，暂时无法提交登记'
+  }
+}
 async function submit() {
+  if (!form.destinationType) return
   busy.value = true
-  try { await portalApi.employmentDestination({ ...form }); ui.notify('就业去向已登记'); tab.value = 'overview'; load() }
-  catch (e) { ui.notify(e?.message || '登记失败（演示租户为只读）') } finally { busy.value = false }
+  try {
+    await portalApi.employmentDestination({ ...form })
+    // SP-E02/E04：现在是真实结构化提交 + 单节点审批（就业老师审核），批准后
+    // 才会原子写入就业台账。说"已登记"会让学生以为流程结束；这里的"审核"指
+    // 提交审批，不是台账 verifyStatus 的正式核验（两者是不同事实，见 SP-E09）。
+    ui.notify('去向信息已提交，等待就业老师审核')
+    tab.value = 'overview'
+    load()
+  } catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 async function printDoc() {
   busy.value = true
-  try { await portalApi.employmentDestinationPrint({}); ui.notify('已生成打印留痕') }
-  catch (e) { ui.notify(e?.message || '打印失败（演示租户为只读）') } finally { busy.value = false }
+  // SP-E08：打印现在真实生成 PDF 并落 File Center，fileId/sha256 来自响应，
+  // 不再只是一条打印审计留痕；没有 fileId 就不能宣称成功。
+  try {
+    const res = await portalApi.employmentDestinationPrint({})
+    const fileId = res?.fileId
+    if (!fileId) throw new Error('登记表生成失败：未取得文件编号')
+    await portalApi.employmentDestinationDocumentDownload(fileId, '就业去向登记表.pdf')
+    ui.notify('就业去向登记表已生成并开始下载')
+  } catch (e) { ui.notify(e?.message || '打印失败（演示租户为只读）') } finally { busy.value = false }
 }
-onMounted(load)
+onMounted(() => { load(); loadOptions() })
 </script>
 
 <style scoped>

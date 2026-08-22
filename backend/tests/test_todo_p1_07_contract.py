@@ -46,7 +46,10 @@ def test_typed_todo_dto_contains_record_route_actions_and_version():
     assert dto["routeParams"] == {"recordId": "88"}
     assert dto["query"] == {}
     assert dto["routeExact"] is True
-    assert dto["allowedActions"] == ["OPEN", "COMPLETE"]
+    # TP-W12：RISK_HANDLE 是 DOMAIN_COMMAND 类型（真实完成路径在
+    # affairs_risk_service，风险处置动作完成时才回写 UnifiedTodo），generic
+    # complete 不适用，allowedActions 不应包含 COMPLETE。
+    assert dto["allowedActions"] == ["OPEN"]
     assert dto["version"] == 7
 
 
@@ -66,3 +69,167 @@ def test_unimplemented_detail_route_is_explicitly_non_exact_but_keeps_record_id(
 def test_unknown_todo_type_does_not_invent_a_route():
     assert resolve_todo_route("UNKNOWN_NEW_TODO", 1, client="pc") is None
     assert resolve_todo_route("UNKNOWN_NEW_TODO", 1, client="studentMini") is None
+    assert resolve_todo_route("UNKNOWN_NEW_TODO", 1, client="studentPc") is None
+
+
+# ---------------------------------------------------------------------------
+# S3：Student PC typed todo target（V3 施工手册 Lane S / S3，PR #183 合并后补齐）
+# ---------------------------------------------------------------------------
+
+def test_student_pc_todo_route_targets_real_campus_service_tab():
+    """LEAVE_APPROVAL 之前在 studentPc client 下恒为 None（fail-closed）；
+    现在必须落到 AffairsFourEndView.vue 真实存在的 leave 分 tab。"""
+    route = resolve_todo_route("LEAVE_APPROVAL", 55, client="studentPc")
+    assert route == {
+        "routeName": "todo-route:student-pc-leave",
+        "routeParams": {"recordId": "55"},
+        "query": {"tab": "leave", "recordId": "55"},
+        "path": "/campus-service",
+        # AffairsFourEndView.vue 目前不读 recordId 定位具体那条，诚实标 NONE/False，
+        # 不能因为 Mini 端同类型已经是 LIST_FOCUS 就跟着假装 PC 端也精确。
+        "focusMode": "NONE",
+        "exact": False,
+    }
+
+
+def test_student_pc_todo_route_covers_affairs_and_academic_and_internship():
+    """S3 覆盖的业务类型必须都落在 Student PC 真实存在的路由上，不多不少。"""
+    cases = {
+        "AID_APPROVAL": ("/campus-service", "aid"),
+        "FUNDING_APPROVAL": ("/campus-service", "funding"),
+        "DISCIPLINE_APPROVAL": ("/campus-service", "discipline"),
+        "ACAD_WARNING_HANDLE": ("/academic", "warning"),
+    }
+    for todo_type, (path, tab) in cases.items():
+        route = resolve_todo_route(todo_type, 1, client="studentPc")
+        assert route["path"] == path, todo_type
+        assert route["query"]["tab"] == tab, todo_type
+        assert route["focusMode"] == "NONE"
+        assert route["exact"] is False
+
+    for todo_type in ("INTERN_WEEKLY_REVIEW", "INTERN_LEAVE_APPROVAL", "INTERN_EXCEPTION_HANDLE"):
+        route = resolve_todo_route(todo_type, 1, client="studentPc")
+        assert route["path"] == "/internship", todo_type
+        assert "tab" not in route["query"]
+
+
+def test_student_pc_todo_route_does_not_leak_staff_only_todo_types():
+    """RISK_HANDLE/AA_GRADE_ENTRY/GD_* 等是教职工处理的待办，不是学生本人的待办；
+    studentPc 分支不得替它们发明一个学生端目标。"""
+    for todo_type in ("RISK_HANDLE", "AA_GRADE_ENTRY", "GD_PROPOSAL_REVIEW",
+                      "GD_FINAL_REVIEW", "AA_SCHEDULE_CHANGE_APPROVAL",
+                      "EMPLOYMENT_FOLLOWUP", "DORM_TRANSFER"):
+        assert resolve_todo_route(todo_type, 1, client="studentPc") is None, todo_type
+
+
+def test_student_pc_typed_todo_dto_carries_real_target_via_todo_dict():
+    row = SimpleNamespace(
+        id=201,
+        todo_type="LEAVE_APPROVAL",
+        title="请假审批",
+        source_biz_type="LEAVE",
+        source_biz_id=9001,
+        source_module="student-affairs",
+        due_at=None,
+        created_at=datetime(2026, 8, 8, 8, 0, 0),
+        status="PENDING",
+        version=1,
+    )
+    dto = _todo_dict(row, client="studentPc")
+    assert dto["routePath"] == "/campus-service"
+    assert dto["query"] == {"tab": "leave", "recordId": "9001"}
+    assert dto["routeExact"] is False
+    assert dto["focusMode"] == "NONE"
+    # TP-W12：LEAVE_APPROVAL 是 DOMAIN_COMMAND 类型，generic complete 不适用。
+    assert dto["allowedActions"] == ["OPEN"]
+
+
+def test_student_pc_route_contract_snapshot_registered():
+    snapshot = route_contract_snapshot()
+    assert "studentPc" in snapshot
+    assert snapshot["studentPc"]["LEAVE_APPROVAL"]["path"] == "/campus-service"
+    assert snapshot["studentPc"]["LEAVE_APPROVAL"]["query"] == {"tab": "leave"}
+
+
+def test_action_projection_build_todo_action_consumes_registry_focus_result():
+    """S3 顺带修复：build_todo_action() 之前把 focusMode 恒定写死成 NONE、routeExact
+    重新用写死的 NONE 计算一遍——即便 todo_route_registry 已经算出真实结论也会被
+    悄悄压回 NONE/False。现在必须原样消费 todo 字典里 registry 已经算出的
+    focusMode/routeExact，不能再自己重新判断一遍。"""
+    from app.student_portal.services.action_projection_service import build_todo_action
+
+    todo = {
+        "todoId": "301",
+        "todoType": "LEAVE_APPROVAL",
+        "title": "请假审批",
+        "bizType": "LEAVE",
+        "recordId": "9001",
+        "routeName": "todo-route:student-pc-leave",
+        "routePath": "/campus-service",
+        "query": {"tab": "leave", "recordId": "9001"},
+        "routeExact": False,
+        "focusMode": "NONE",
+        "allowedActions": ["OPEN", "COMPLETE"],
+        "version": 1,
+    }
+    action = build_todo_action(todo)
+    assert action["disabledReason"] is None
+    assert action["target"]["path"] == "/campus-service"
+    assert action["target"]["query"] == {"tab": "leave", "recordId": "9001"}
+    assert action["target"]["routeExact"] is False
+    assert action["focusMode"] == "NONE"
+    assert action["allowedActions"] == ["OPEN"]
+
+
+def test_completion_mode_snapshot_marks_known_business_types_as_domain_command():
+    """TP-W12：LEAVE/RISK/GRADE 等已知业务待办必须归为 DOMAIN_COMMAND——它们各自
+    模块都有真实的完成同步路径（approve/reject/handle 时回写 UnifiedTodo），
+    generic complete 不是它们的完成入口。"""
+    from app.services.workbench_todo_service import todo_completion_mode_snapshot
+
+    snapshot = todo_completion_mode_snapshot()
+    for todo_type in ("LEAVE_APPROVAL", "RISK_HANDLE", "AA_GRADE_ENTRY",
+                      "AID_APPROVAL", "FUNDING_APPROVAL", "DISCIPLINE_APPROVAL",
+                      "GD_FINAL_REVIEW", "INTERN_WEEKLY_REVIEW"):
+        assert snapshot[todo_type] == "DOMAIN_COMMAND", todo_type
+
+
+def test_completion_mode_defaults_unknown_type_to_domain_command():
+    """未登记的 todoType 也必须默认 DOMAIN_COMMAND（fail-closed）——不能因为
+    实现遗漏就意外落进允许 generic complete 的一侧。"""
+    from app.services.workbench_todo_service import _completion_mode
+
+    assert _completion_mode("SOME_BRAND_NEW_TODO_TYPE_NOT_YET_REGISTERED") == "DOMAIN_COMMAND"
+    assert _completion_mode(None) == "DOMAIN_COMMAND"
+
+
+def test_todo_dict_does_not_offer_complete_action_for_domain_command_todo():
+    """TP-W12：_todo_dict() 的 allowedActions 不能对 DOMAIN_COMMAND 类型给出
+    COMPLETE——那是一个点了必被 complete_todo() 拒绝的按钮。"""
+    from app.services.workbench_todo_service import _todo_dict
+
+    row = SimpleNamespace(
+        id=401, todo_type="LEAVE_APPROVAL", title="请假审批",
+        source_biz_type="LEAVE", source_biz_id=9001, source_module="student-affairs",
+        due_at=None, created_at=datetime(2026, 8, 8, 8, 0, 0), status="PENDING", version=1,
+    )
+    dto = _todo_dict(row, client="pc")
+    assert "COMPLETE" not in dto["allowedActions"]
+    assert dto["allowedActions"] == ["OPEN"]
+
+
+def test_action_projection_build_todo_action_still_fails_closed_without_route():
+    """未登记的 todoType（routePath 仍为 None）必须继续 fail-closed，不能因为
+    上面那个修复就意外开始猜路由。"""
+    from app.student_portal.services.action_projection_service import build_todo_action
+
+    todo = {
+        "todoId": "302", "todoType": "AA_GRADE_ENTRY", "title": "录入成绩",
+        "bizType": "AA_GRADE_ENTRY", "recordId": "9002",
+        "routeName": None, "routePath": None, "query": {},
+        "routeExact": False, "focusMode": "NONE",
+        "allowedActions": [], "version": 1,
+    }
+    action = build_todo_action(todo)
+    assert action["target"] is None
+    assert action["disabledReason"]

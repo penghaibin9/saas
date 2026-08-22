@@ -4,13 +4,31 @@
  * 权限与数据范围仍由后端统一裁定。
  */
 import { request } from '@/services/http'
-import { getToken } from '@/services/http/client'
+import { currentUserFromToken, getToken } from '@/services/http/client'
 import { invalidateAdminQueries, runAdminQuery } from '@/services/performance/queryCoordinator'
 import { adaptTypedTodoPage } from '../config/todoTypedRouteBridge'
 
+/**
+ * TP-W11：旧实现只用 `token.slice(-32)` 做去重 key。/auth/browser-switch-role 切角色时会签发
+ * 全新 accessToken（旧 refresh token 全部撤销），所以纯 token 切片理论上会跟着变——但那是
+ * "同一次真实切换" 才成立的隐含前提，一旦有调用点复用旧变量名却忘了替换新 token（或未来
+ * 出现"同 token 换 activeContext"这种不经过 browser-switch-role 的路径），5 秒 dedupe 窗口
+ * 就会悄悄把上一个角色/租户的工作台快照当成当前身份的答案返回。
+ *
+ * 直接把 JWT payload 里已经签发的 tenantId/userId/currentRoleCode/activeContextId 解出来拼进
+ * key（纯本地解码，不发请求），身份维度变化时 key 必然变化，不再依赖"token 恰好也变了"这个
+ * 间接推论；token 尾部仍保留一段，兜底同身份维度但 token 刷新（如权限热更新后重签）的场景。
+ */
 function identityKey() {
   const token = String(getToken() || '')
-  return token ? token.slice(-32) : 'anonymous'
+  const claims = currentUserFromToken()
+  if (!claims) return token ? token.slice(-32) : 'anonymous'
+  const dims = [
+    claims.tenantId || '', claims.userId || '',
+    claims.currentRoleCode || '', claims.activeContextId || '',
+    token.slice(-16)
+  ]
+  return dims.join(':')
 }
 
 function stable(value) {

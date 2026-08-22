@@ -329,6 +329,23 @@ _EVENT_TEMPLATES: dict[str, dict[str, Any]] = {
         "title": "实习周报提醒",
         "require_ack": False,
     },
+    # SP-E02/E04：就业去向登记单节点审批结果通知。
+    "EMPLOYMENT_DESTINATION.APPROVED": {
+        "source_module": "employment",
+        "category": "BUSINESS",
+        "priority": "NORMAL",
+        "message_type": "WORKFLOW_RESULT",
+        "title": "就业去向登记已通过",
+        "require_ack": False,
+    },
+    "EMPLOYMENT_DESTINATION.REJECTED": {
+        "source_module": "employment",
+        "category": "BUSINESS",
+        "priority": "IMPORTANT",
+        "message_type": "WORKFLOW_RESULT",
+        "title": "就业去向登记未通过",
+        "require_ack": False,
+    },
 }
 
 _MAX_ATTEMPTS = 8

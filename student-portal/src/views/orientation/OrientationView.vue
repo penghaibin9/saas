@@ -70,8 +70,12 @@
           </div>
         </section>
         <section class="sp-card">
-          <StateBlock type="empty" text="离校清单待学校启用后开放" />
-          <div class="notebox">离校环节由学校在毕业季统一开启；开启后此处显示图书馆 / 宿舍 / 财务 / 教务 / 团组织 / 就业等各环节办理状态与打印入口。</div>
+          <!-- SP-D04：离校已有独立页面 /departure（跨域真实清单）。这里保留为兼容入口，
+               不删除历史路径，只引导过去，避免把毕业离校继续藏在迎新业务语义里。 -->
+          <div class="notebox">
+            离校手续已迁移至独立的「离校」页面，清单由毕业设计 / 岗位实习 / 就业去向 / 违纪处理等各环节的真实结论汇总生成。
+          </div>
+          <button class="sp-btn" style="margin-top:14px" @click="$router.push('/departure')">前往离校清单</button>
         </section>
       </template>
     </template>
