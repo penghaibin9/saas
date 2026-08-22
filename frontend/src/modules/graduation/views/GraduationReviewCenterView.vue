@@ -28,7 +28,7 @@
       <div class="w74-toolbar__search">
         <input v-model.trim="filters.keyword" type="search" placeholder="学生 / 学号 / 班级 / 课题" @input="scheduleReload" />
         <label><input v-model="filters.reviewerOnly" type="checkbox" @change="reloadFromFirstPage" /> 只看分配给我的正式评阅</label>
-        <button type="button" class="w74-refresh" :disabled="loading" @click="loadAll({ preserveSelection: true })">刷新</button>
+        <button type="button" class="w74-refresh" :disabled="loading || submitting" @click="loadAll({ preserveSelection: true })">刷新</button>
       </div>
     </section>
 
@@ -57,9 +57,9 @@
     >
       <template #queue-footer>
         <div class="w74-pagination">
-          <button type="button" :disabled="page <= 1" @click="changePage(page - 1)">上一页</button>
+          <button type="button" :disabled="submitting || page <= 1" @click="changePage(page - 1)">上一页</button>
           <span>{{ page }} / {{ pageCount }} · {{ total }} 条</span>
-          <button type="button" :disabled="page >= pageCount" @click="changePage(page + 1)">下一页</button>
+          <button type="button" :disabled="submitting || page >= pageCount" @click="changePage(page + 1)">下一页</button>
         </div>
       </template>
 
@@ -318,17 +318,28 @@ export default {
       else this.form.categories.push(item)
       this.saveDraft()
     },
-    setCaseType(value) { this.filters.caseType = value; this.reloadFromFirstPage() },
-    setStatusGroup(value) { this.filters.statusGroup = value; this.reloadFromFirstPage() },
+    setCaseType(value) {
+      if (this.submitting) return
+      this.filters.caseType = value; this.reloadFromFirstPage()
+    },
+    setStatusGroup(value) {
+      if (this.submitting) return
+      this.filters.statusGroup = value; this.reloadFromFirstPage()
+    },
     applySummaryCard(card) {
+      if (this.submitting) return
       if (card.status) this.filters.statusGroup = card.status
       this.reloadFromFirstPage()
     },
     scheduleReload() {
+      if (this.submitting) return
       if (this.searchTimer) clearTimeout(this.searchTimer)
       this.searchTimer = setTimeout(() => this.reloadFromFirstPage(), 300)
     },
-    reloadFromFirstPage() { this.page = 1; this.loadAll() },
+    reloadFromFirstPage() {
+      if (this.submitting) return
+      this.page = 1; this.loadAll()
+    },
     async loadSummary(token = this.loadToken) {
       const data = await graduationReviewCenterApi.summary()
       if (token !== this.loadToken) return false
@@ -352,6 +363,7 @@ export default {
       return token === this.loadToken
     },
     async loadAll({ preserveSelection = false } = {}) {
+      if (this.submitting) return
       const token = ++this.loadToken
       ++this.selectionToken
       this.loading = true; this.error = ''
@@ -402,25 +414,26 @@ export default {
         if (token === this.selectionToken) this.loadingDetail = false
       }
     },
-    async reloadCurrent({ preserveDraft = false } = {}) {
-      if (!this.activeTask) return
+    async reloadCurrent({ preserveDraft = false, force = false } = {}) {
+      if ((!force && this.submitting) || !this.activeTask) return
       if (preserveDraft) this.saveDraft()
       const task = this.activeTask
       await this.selectTask(task)
     },
     move(step) {
+      if (this.submitting) return
       const index = this.activeIndex + step
       if (index >= 0 && index < this.queue.length) this.selectTask(this.queue[index])
     },
     selectPreview(item) {
-      if (!item) return
+      if (this.submitting || !item) return
       this.saveDraft()
       this.activeVersionId = this.versionKey(item)
       this.activeFileKey = this.fileKey(item)
       this.restoreDraft()
     },
     async changePage(next) {
-      if (next < 1 || next > this.pageCount || next === this.page) return
+      if (this.submitting || next < 1 || next > this.pageCount || next === this.page) return
       this.page = next
       await this.loadAll()
     },
@@ -473,8 +486,11 @@ export default {
       const code = String(error?.code || error?.data?.code || '')
       const conflict = code.includes('VERSION') || code.includes('CONFLICT') || code.includes('REVIEW_TARGET')
       if (conflict) {
-        await this.reloadCurrent({ preserveDraft: true })
-        this.formError = '任务或 FileVersion 已变化，系统已刷新 canonical 事实；草稿仍保留，请重新核验后提交。'
+        const task = this.activeTask
+        await this.reloadCurrent({ preserveDraft: true, force: true })
+        if (this.activeTask?.caseKey === task?.caseKey) {
+          this.formError = '任务或 FileVersion 已变化，系统已刷新 canonical 事实；草稿仍保留，请重新核验后提交。'
+        }
       } else this.formError = errorMessage(error)
     },
     async afterMutation(message) {
@@ -504,6 +520,7 @@ export default {
       await this.selectTask(target)
     },
     async openStudentDossier(record) {
+      if (this.submitting) return
       const studentId = record?.gdStudentId || this.activeTask?.gdStudentId
       if (!studentId) return
       const token = ++this.dossierToken
