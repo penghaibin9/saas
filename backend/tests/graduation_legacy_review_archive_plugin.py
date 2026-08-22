@@ -1,6 +1,7 @@
 """Narrow adapters for explicit legacy graduation review/archive tests only."""
 from __future__ import annotations
 
+import hashlib
 import re
 from urllib.parse import parse_qsl, urlsplit
 
@@ -13,6 +14,7 @@ _MOBILE_REVIEW = re.compile(
     r"^/api/v1/mobile/teacher/graduation/(proposal|final)/(\d+)/review$"
 )
 _STUDENT_FILE = re.compile(r"^/api/v1/graduation/gd-archives/(\d+)/file$")
+_FORMAL_REVIEW_ASSIGN = "/api/v1/graduation/gd-reviews/assign"
 _BATCH_ACTIONS = {
     "/api/v1/graduation/gd-archives/batch-generate",
     "/api/v1/graduation/gd-archives/batch-file",
@@ -170,6 +172,105 @@ def _prepare_single_archive_evidence(gd_student_id: int, kwargs: dict) -> None:
         set_tenant(previous_tenant)
 
 
+def _formal_review_evidence_ready(gd_student_id: int) -> bool:
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationFinal
+    from app.models.graduation_material import GraduationStudentMaterial
+
+    db = get_sessionmaker()()
+    try:
+        final = db.scalars(select(GraduationFinal).where(
+            GraduationFinal.tenant_id == MAIN_TENANT_ID,
+            GraduationFinal.gd_student_id == int(gd_student_id),
+            GraduationFinal.final_type == "定稿",
+            GraduationFinal.status == "APPROVED",
+            GraduationFinal.is_deleted.is_(False),
+        ).order_by(GraduationFinal.id.desc()).limit(1)).first()
+        if not final:
+            return False
+        material = db.scalars(select(GraduationStudentMaterial).where(
+            GraduationStudentMaterial.tenant_id == MAIN_TENANT_ID,
+            GraduationStudentMaterial.gd_student_id == int(gd_student_id),
+            GraduationStudentMaterial.material_code == "THESIS_FINAL",
+            GraduationStudentMaterial.source_record_type == "FINAL",
+            GraduationStudentMaterial.source_record_id == str(final.id),
+            GraduationStudentMaterial.current_version_id.is_not(None),
+            GraduationStudentMaterial.asset_id.is_not(None),
+            GraduationStudentMaterial.is_deleted.is_(False),
+        ).limit(1)).first()
+        return material is not None
+    finally:
+        db.close()
+
+
+def _ensure_legacy_final_file(gd_student_id: int) -> None:
+    """Give old ORM-only final fixtures one real FileObject before real V2 adoption."""
+    from app.db.session import get_sessionmaker
+    from app.models import FileObject, GraduationFinal
+
+    db = get_sessionmaker()()
+    try:
+        final = db.scalars(select(GraduationFinal).where(
+            GraduationFinal.tenant_id == MAIN_TENANT_ID,
+            GraduationFinal.gd_student_id == int(gd_student_id),
+            GraduationFinal.final_type == "定稿",
+            GraduationFinal.status == "APPROVED",
+            GraduationFinal.is_deleted.is_(False),
+        ).order_by(GraduationFinal.id.desc()).limit(1)).first()
+        if not final:
+            return
+        for raw in (final.attachments_json or []):
+            value = raw.get("fileId") if isinstance(raw, dict) else raw
+            if str(value or "").isdigit():
+                existing = db.scalars(select(FileObject).where(
+                    FileObject.tenant_id == MAIN_TENANT_ID,
+                    FileObject.id == int(value),
+                    FileObject.is_deleted.is_(False),
+                ).limit(1)).first()
+                if existing:
+                    return
+        digest = hashlib.sha256(f"w7-legacy-review:{gd_student_id}:{final.id}".encode()).hexdigest()
+        file_obj = FileObject(
+            tenant_id=MAIN_TENANT_ID,
+            file_key=f"test/graduation/w7-review/{gd_student_id}/{final.id}.pdf",
+            file_name=f"w7-review-{gd_student_id}.pdf",
+            ext="pdf",
+            mime_type="application/pdf",
+            size_bytes=128,
+            sha256=digest,
+            biz_type="GRADUATION_FINAL",
+            biz_id=str(final.id),
+            visibility="BIZ_SCOPED",
+            status="AVAILABLE",
+            scan_required=False,
+            scan_status="NOT_REQUIRED",
+        )
+        db.add(file_obj)
+        db.flush()
+        final.attachments_json = [str(file_obj.id)]
+        db.commit()
+    finally:
+        db.close()
+
+
+def _prepare_formal_review_evidence(client, path: str, kwargs: dict) -> None:
+    if path != _FORMAL_REVIEW_ASSIGN:
+        return
+    body = _body(kwargs)
+    raw_student_id = body.get("gdStudentId")
+    if raw_student_id in (None, ""):
+        return
+    # Reuse the existing legacy adapter to translate reviewerName -> stable reviewerMentorId
+    # and to create the approved legacy final. Then upgrade only its evidence chain through
+    # the real V2 material-center writers; production W7.1 remains fail-closed.
+    client._prepare_stable_identity("POST", path, kwargs)
+    gd_student_id = int(raw_student_id)
+    if _formal_review_evidence_ready(gd_student_id):
+        return
+    _ensure_legacy_final_file(gd_student_id)
+    _prepare_single_archive_evidence(gd_student_id, kwargs)
+
+
 def _legacy_archive_response(response, gd_student_id: int):
     if response.status_code != 200:
         return response
@@ -217,6 +318,7 @@ def _explicit_graduation_review_archive_contract(request):
     def request_with_contract(method, url, **kwargs):
         path = urlsplit(str(url)).path or str(url)
         if str(method).upper() == "POST":
+            _prepare_formal_review_evidence(client, path, kwargs)
             _inject_mobile_review(path, kwargs)
             _inject_archive_version(path, kwargs)
             single = _STUDENT_FILE.match(path)

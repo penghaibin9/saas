@@ -58,7 +58,12 @@ def list_tasks(*, batch_id: int, page: int, page_size: int, case_type=None, stat
         page_size = max(1, min(200, int(page_size))); page = max(1, int(page))
         params.update({"limit": page_size, "offset": (page - 1) * page_size})
         page_stmt = text(q._CTE + "SELECT * FROM projected" + where + order + " LIMIT :limit OFFSET :offset").bindparams(bindparam("scope_ids", expanding=True))
-        rows = [dict(row) for row in db.execute(page_stmt, params).mappings().all()]
+        # The SQL is strictly scoped to one batch via :batch_id; hydrate that proven scope
+        # into the public DTO without widening the CTE or reordering a paged subset.
+        rows = [
+            {**dict(row), "batch_id": int(batch_id)}
+            for row in db.execute(page_stmt, params).mappings().all()
+        ]
         keys = [("PROPOSAL" if row["case_type"] == "PROPOSAL" else "FORMAL" if row["case_type"] == "FORMAL_REVIEW" else "FINAL", int(row["record_id"])) for row in rows]
         latest = feedback.feedback_for_sources(db, keys)
         items = [q._public(row, deadlines, now, latest.get((keys[idx][0], str(keys[idx][1])))) for idx, row in enumerate(rows)]
