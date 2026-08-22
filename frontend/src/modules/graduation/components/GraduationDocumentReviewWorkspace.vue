@@ -2,7 +2,7 @@
   <div class="gd-review-workspace" :class="{ 'is-narrow': narrow }">
     <aside class="gd-review-workspace__queue">
       <div class="gd-review-workspace__queue-head">
-        <strong>{{ mode === 'proposal' ? '开题队列' : '成果队列' }}</strong>
+        <strong>{{ queueTitle || (mode === 'proposal' ? '开题队列' : '成果队列') }}</strong>
         <span>{{ currentIndex + 1 }} / {{ queue.length }}</span>
       </div>
       <button
@@ -64,12 +64,12 @@ import FileEvidencePanel from './FileEvidencePanel.vue'
 defineProps({
   queue: { type: Array, default: () => [] }, currentIndex: { type: Number, default: 0 }, currentRecord: { type: Object, default: null }, detail: { type: Object, default: null },
   files: { type: Array, default: () => [] }, versions: { type: Array, default: () => [] }, evidenceVersions: { type: Array, default: () => [] }, canonicalFileVersionId: { type: [String, Number], default: null },
-  reviewReady: { type: Boolean, default: false }, expectedVersion: { type: [String, Number], default: null }, comment: { type: String, default: '' }, submitting: { type: Boolean, default: false }, autoNext: { type: Boolean, default: true }, mode: { type: String, default: 'final' },
+  reviewReady: { type: Boolean, default: false }, expectedVersion: { type: [String, Number], default: null }, comment: { type: String, default: '' }, submitting: { type: Boolean, default: false }, autoNext: { type: Boolean, default: true }, mode: { type: String, default: 'final' }, queueTitle: { type: String, default: '' },
   provider: { type: Object, default: null }, descriptor: { type: Object, default: null }, activeFileKey: { type: [String, Number], default: null }, activeVersionId: { type: [String, Number], default: null },
   versionConflict: { type: Object, default: null }, allowDownload: { type: Boolean, default: false }, narrow: { type: Boolean, default: false }
 })
 defineEmits(['select', 'previous', 'next', 'update:comment', 'update:autoNext', 'approve', 'reject', 'reload', 'openStudentDossier', 'select-file', 'select-version', 'download'])
-const queueKey = (item, index) => String(item?.id ?? item?.gdStudentId ?? index)
+const queueKey = (item, index) => String(item?.caseKey ?? item?.id ?? item?.gdStudentId ?? index)
 </script>
 
 <style scoped>
