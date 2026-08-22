@@ -11,10 +11,14 @@ from app.modules.graduation.services.graduation_package9_guard import (
 from app.modules.graduation.services.graduation_mentor_subject_guard import (
     install as install_graduation_mentor_subject_guard,
 )
+from app.modules.graduation.services.graduation_review_message_event_guard import (
+    install as install_graduation_review_message_guard,
+)
 
 register_graduation_permission_extensions()
 install_graduation_package9_guard()
 install_graduation_mentor_subject_guard()
+install_graduation_review_message_guard()
 
 
 def _install_w7_formal_review_overlay() -> None:
