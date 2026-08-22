@@ -29,6 +29,11 @@ export function useStudentPreviewSession(loadPreview) {
     release()
     error.value = ''
     activeIdentity.value = identity(file)
+    if (file?.canPreview !== true) {
+      status.value = 'error'
+      error.value = '当前文件未授予站内预览权限'
+      return
+    }
     if (!file?.fileId || typeof loadPreview !== 'function') {
       status.value = 'error'
       error.value = '缺少有效文件或预览授权提供器'

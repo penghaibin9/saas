@@ -42,12 +42,13 @@ def test_w75_reviewed_file_capability_is_sha_and_file_center_scan_fail_closed():
     assert '"canDownload": bool("download" in allowed_actions)' in service
 
 
-def test_w75_derives_resubmit_closure_from_canonical_business_records():
+def test_w75_derives_resubmit_closure_from_canonical_business_records_and_missing_source_fails_closed():
     service = text("backend/app/modules/graduation/services/graduation_student_feedback_service.py")
 
     assert "GraduationProposal.id > int(source.id)" in service
     assert "GraduationFinal.id > int(source.id)" in service
     assert "GraduationFinal.final_type == source.final_type" in service
+    assert service.count('{"sourceExists": False, "resubmitTarget": None, "resubmission": None}') >= 2
     assert '"resubmission"' in service
     assert '"actionRequired"' in service
     assert '"resubmitTarget"' in service
@@ -76,6 +77,21 @@ def test_w75_student_pc_shows_frozen_feedback_timeline_and_uses_canonical_submit
     assert "graduationW75Api.issueTicket" in view
     assert "window.open" not in view
     assert "target=\"_blank\"" not in view
+
+
+def test_w75_student_pc_consumes_file_capabilities_and_resubmit_target_fail_closed_at_method_layer():
+    view = text("student-portal/src/views/graduation/GraduationFeedbackResubmitView.vue")
+
+    assert 'v-if="actionable.reviewedFile.canPreview"' in view
+    assert 'v-if="item.reviewedFile.canPreview"' in view
+    assert 'v-if="item.reviewedFile.canDownload"' in view
+    assert "file?.canPreview !== true" in view
+    assert "file?.canDownload !== true" in view
+    assert "target?.kind !== 'FINAL' || !target.finalType" in view
+    assert "const finalType = target.finalType" in view
+    assert "final.value.canSubmitFinal" not in view
+    assert "busy.value || !actionable.value" in view
+    assert "proposalUpload.value && !proposalUpload.value.readyForBusiness" in view
 
 
 def test_w75_is_visible_on_primary_student_graduation_workbench_and_has_direct_route():

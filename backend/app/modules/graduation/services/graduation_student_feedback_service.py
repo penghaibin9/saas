@@ -110,7 +110,8 @@ def _proposal_context(db, student_id: int, source_id: int) -> dict:
         GraduationProposal.gd_student_id == int(student_id), GraduationProposal.is_deleted.is_(False),
     )).first()
     if not source:
-        return {"sourceExists": False, "resubmitTarget": {"kind": "PROPOSAL"}}
+        # Broken historical source linkage must not manufacture a new write affordance.
+        return {"sourceExists": False, "resubmitTarget": None, "resubmission": None}
     nxt = db.scalars(select(GraduationProposal).where(
         GraduationProposal.tenant_id == _tid(), GraduationProposal.gd_student_id == int(student_id),
         GraduationProposal.id > int(source.id), GraduationProposal.is_deleted.is_(False),
@@ -132,7 +133,9 @@ def _final_context(db, student_id: int, source_id: int) -> dict:
         GraduationFinal.gd_student_id == int(student_id), GraduationFinal.is_deleted.is_(False),
     )).first()
     if not source:
-        return {"sourceExists": False, "resubmitTarget": {"kind": "FINAL", "finalType": None}}
+        # In particular, never infer 初稿/定稿 from mutable current state when the reviewed
+        # source record is missing. The feedback remains visible but remediation is fail-closed.
+        return {"sourceExists": False, "resubmitTarget": None, "resubmission": None}
     nxt = db.scalars(select(GraduationFinal).where(
         GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == int(student_id),
         GraduationFinal.final_type == source.final_type, GraduationFinal.id > int(source.id),

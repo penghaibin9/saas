@@ -34,7 +34,7 @@ function versionFile(item = {}) {
 
 const normalizedVersions = computed(() => props.versions.map(versionFile).filter((item) => item.fileId))
 const isReadOnly = computed(() => props.readOnly || selectedFile.value?.isCurrent === false)
-const canDownload = computed(() => selectedFile.value?.canDownload !== false)
+const canDownload = computed(() => selectedFile.value?.canDownload === true)
 const extension = computed(() => String(selectedFile.value?.fileName || '').toLowerCase().split('.').pop() || '')
 const effectiveMime = computed(() => String(session.mimeType.value || selectedFile.value?.mimeType || '').toLowerCase())
 const kind = computed(() => {

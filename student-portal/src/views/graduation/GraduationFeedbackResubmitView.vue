@@ -30,7 +30,7 @@
             <span>{{ actionable.reviewedFile.fileName }} · 文件版本 v{{ actionable.reviewedFile.versionNo }}</span>
             <small>FileVersion {{ actionable.reviewedFile.fileVersionId }} · SHA-256 {{ shortHash(actionable.reviewedFile.sha256) }}</small>
           </div>
-          <button class="sp-btn sp-btn--ghost" :disabled="busy" @click="openReviewed(actionable.reviewedFile)">查看被评版本</button>
+          <button v-if="actionable.reviewedFile.canPreview" class="sp-btn sp-btn--ghost" :disabled="busy" @click="openReviewed(actionable.reviewedFile)">查看被评版本</button>
         </div>
 
         <div v-if="actionable.resubmitTarget?.kind === 'PROPOSAL'" class="w75__form">
@@ -46,13 +46,13 @@
           </button>
         </div>
 
-        <div v-else-if="actionable.resubmitTarget?.kind === 'FINAL'" class="w75__form">
-          <h3>整改后重交{{ actionable.resubmitTarget.finalType || '论文成果' }}</h3>
+        <div v-else-if="actionable.resubmitTarget?.kind === 'FINAL' && actionable.resubmitTarget.finalType" class="w75__form">
+          <h3>整改后重交{{ actionable.resubmitTarget.finalType }}</h3>
           <p>必须上传修改后的新文件；系统会生成新的不可变 FileVersion，原被评版本继续留在反馈时间线中。</p>
           <label>修改后主文档<input type="file" accept=".pdf,.doc,.docx,.zip" @change="pickFile('final', $event)" /></label>
           <UploadState v-if="finalUpload" :file="finalUpload" @preview="openPending(finalUpload)" />
           <button class="sp-btn" :disabled="busy || !finalUpload?.readyForBusiness" @click="resubmitFinal">
-            整改完成，重新提交{{ actionable.resubmitTarget.finalType || '论文成果' }}
+            整改完成，重新提交{{ actionable.resubmitTarget.finalType }}
           </button>
         </div>
       </div>
@@ -86,8 +86,8 @@
               <span :class="item.reviewedFile.evidenceLocked ? 'is-locked' : 'is-warning'">
                 {{ item.reviewedFile.evidenceLocked ? 'SHA-256 已锁定' : '证据哈希需治理' }}
               </span>
-              <button class="w75__link" :disabled="busy" @click="openReviewed(item.reviewedFile)">查看该版</button>
-              <button class="w75__link" :disabled="busy" @click="downloadReviewed(item.reviewedFile)">下载</button>
+              <button v-if="item.reviewedFile.canPreview" class="w75__link" :disabled="busy" @click="openReviewed(item.reviewedFile)">查看该版</button>
+              <button v-if="item.reviewedFile.canDownload" class="w75__link" :disabled="busy" @click="downloadReviewed(item.reviewedFile)">下载</button>
             </div>
             <div v-if="item.resubmission" class="w75__resolved">
               已整改重交 → {{ item.resubmission.finalType ? `${item.resubmission.finalType} ` : '' }}{{ item.resubmission.version || '新版本' }} · {{ submissionStatus(item.resubmission.status) }}
@@ -182,7 +182,7 @@ async function load() {
 
 async function pickFile(kind, event) {
   const file = Array.from(event.target.files || [])[0]
-  if (!file) return
+  if (!file || busy.value) return
   busy.value = true
   try {
     const uploaded = await graduationW75Api.upload(file)
@@ -198,7 +198,11 @@ async function pickFile(kind, event) {
 }
 
 async function resubmitProposal() {
-  if (!actionable.value || actionable.value.resubmitTarget?.kind !== 'PROPOSAL') return
+  if (
+    busy.value || !actionable.value || actionable.value.resubmitTarget?.kind !== 'PROPOSAL' ||
+    !proposalForm.background || !proposalForm.plan ||
+    (proposalUpload.value && !proposalUpload.value.readyForBusiness)
+  ) return
   busy.value = true
   try {
     await graduationW75Api.submitProposal({
@@ -220,8 +224,8 @@ async function resubmitProposal() {
 
 async function resubmitFinal() {
   const target = actionable.value?.resubmitTarget
-  if (target?.kind !== 'FINAL' || !finalUpload.value?.readyForBusiness) return
-  const finalType = target.finalType || (final.value.canSubmitFinal ? '定稿' : '初稿')
+  if (busy.value || target?.kind !== 'FINAL' || !target.finalType || !finalUpload.value?.readyForBusiness) return
+  const finalType = target.finalType
   busy.value = true
   try {
     await graduationW75Api.submitFinal({
@@ -240,29 +244,30 @@ async function resubmitFinal() {
 }
 
 function openReviewed(file) {
-  if (!file?.fileId || busy.value) return
+  if (!file?.fileId || file?.canPreview !== true || busy.value) return
   readerFile.value = { ...file, isCurrent: Boolean(file.isCurrent), statusText: file.statusText || '评阅冻结版本' }
 }
 
 function openPending(file) {
-  if (!file?.fileId || !file?.readyForBusiness || busy.value) return
+  if (!file?.fileId || !file?.readyForBusiness || file?.canPreview !== true || busy.value) return
   readerFile.value = { ...file, temporary: true, isCurrent: true, versionNo: '待重交', statusText: '整改后待提交文件' }
 }
 
 async function loadReaderPreview(file, options) {
-  if (file?.temporary) return fileSdk.fetchPreviewBlob(file.fileId, options)
+  if (!file?.fileId || file?.canPreview !== true) throw new Error('当前文件未授予站内预览权限')
+  if (file.temporary) return fileSdk.fetchPreviewBlob(file.fileId, options)
   const ticket = await graduationW75Api.issueTicket(file.fileId, 'preview')
   return fileSdk.fetchPreviewBlobFrom(ticket, options)
 }
 
 async function downloadReaderFile(file) {
-  if (!file?.fileId) return
+  if (!file?.fileId || file?.canDownload !== true) return
   if (file.temporary) return fileSdk.download(file.fileId, file.fileName)
   return downloadReviewed(file)
 }
 
 async function downloadReviewed(file) {
-  if (!file?.fileId || busy.value) return
+  if (!file?.fileId || file?.canDownload !== true || busy.value) return
   busy.value = true
   try {
     await graduationW75Api.download(file.fileId, file.fileName)
