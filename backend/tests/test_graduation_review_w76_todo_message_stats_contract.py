@@ -57,15 +57,31 @@ def test_w76_resubmit_reuses_canonical_proposal_final_todos():
 
 def test_w76_overdue_and_average_processing_time_reuse_review_center_projection():
     query = text("backend/app/modules/graduation/services/graduation_review_center_query_service.py")
+    summary = text("backend/app/modules/graduation/services/graduation_review_center_summary_service.py")
     lifecycle = text("backend/app/modules/graduation/services/graduation_review_w76_lifecycle_service.py")
 
     assert "_batch_deadlines" in query and "stage_config" in query and "batch.end_date" in query
-    assert '"overdue": overdue' in query
-    assert '"avgHours": round(sum(durations)/len(durations),2) if durations else None' in query
+    assert "q._batch_deadlines" in summary
+    assert "COUNT(*) AS total" in summary
+    assert "overdue_count" in summary
+    assert "TIMESTAMPDIFF" in summary and "AVG(CASE" in summary
+    assert "GROUP BY case_type" in summary
     assert "review_center.summary" in lifecycle
     assert '"overdue"' in lifecycle and '"avgHours"' in lifecycle
     for forbidden in ("teacherRanking", "performanceRanking", "aiScore", "automaticScore"):
         assert forbidden not in lifecycle
+
+
+def test_w76_w7_router_batch_guard_is_tenant_scoped_before_student_metadata():
+    router = text("backend/app/modules/graduation/routers/graduation_review_w7_router.py")
+
+    assert "def _review_batch(review_id, batch_id)" in router
+    assert "GraduationReview.tenant_id == _tid()" in router
+    assert "GraduationStudent.tenant_id == _tid()" in router
+    assert "GraduationStudent.record_status == \"ACTIVE\"" in router
+    assert "assert_student_batch(student, batch_id)" in router
+    assert "_review_batch(rid, batchId)" in router
+    assert "_record_batch" not in router
 
 
 def test_w76_communication_registry_owns_review_event_and_todo_types():

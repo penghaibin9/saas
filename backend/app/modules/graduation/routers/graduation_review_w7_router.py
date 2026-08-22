@@ -10,14 +10,18 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 
+from app.core.exceptions import not_found
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.models import GraduationReview
-from app.modules.graduation.routers.graduation_sensitive_router import _record_batch, _student_batch
+from app.models import GraduationReview, GraduationStudent
+from app.modules.graduation.routers.graduation_sensitive_router import _student_batch
 from app.modules.graduation.schemas.graduation_review import ReviewAssignRequest, ReviewReturnRequest, ReviewSubmitRequest
 from app.modules.graduation.services import graduation_review_w76_lifecycle_service as review
 from app.modules.graduation.services import graduation_review_read_service as review_read
+from app.modules.graduation.services.graduation_batch_context import assert_student_batch
+from app.services.db_service import _tid, session
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-W7评阅证据"])
 
@@ -26,6 +30,30 @@ def _sensitive_identity(fn):
     # Keep require_graduation_request_permission mapped to the already-frozen permission keys.
     fn.__module__ = "app.modules.graduation.routers.graduation_sensitive_router"
     return fn
+
+
+def _review_batch(review_id, batch_id) -> int:
+    """Fail closed on tenant before exposing any student/batch metadata from a review reference."""
+    try:
+        rid = int(review_id)
+    except (TypeError, ValueError):
+        raise not_found("评阅任务不存在") from None
+    with session() as db:
+        row = db.scalars(select(GraduationReview).where(
+            GraduationReview.id == rid,
+            GraduationReview.tenant_id == _tid(),
+            GraduationReview.is_deleted.is_(False),
+        )).first()
+        if not row:
+            raise not_found("评阅任务不存在")
+        student = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == int(row.gd_student_id),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.record_status == "ACTIVE",
+            GraduationStudent.is_deleted.is_(False),
+        )).first()
+        assert_student_batch(student, batch_id)
+        return int(student.id)
 
 
 @router.get("/gd-reviews/stats")
@@ -58,7 +86,7 @@ def review_assign(body: ReviewAssignRequest, batchId: int = Query(..., ge=1), us
 @router.post("/gd-reviews/{rid}/submit")
 @_sensitive_identity
 def review_submit(rid: str, body: ReviewSubmitRequest, batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    _record_batch(GraduationReview, rid, batchId)
+    _review_batch(rid, batchId)
     return success(review.submit_review(
         rid, body.score, body.opinion, expected_version=body.expectedVersion,
         file_version_id=body.fileVersionId, categories=body.categories, issues=body.issues,
@@ -69,5 +97,5 @@ def review_submit(rid: str, body: ReviewSubmitRequest, batchId: int = Query(...,
 @router.post("/gd-reviews/{rid}/return")
 @_sensitive_identity
 def review_return(rid: str, body: ReviewReturnRequest, batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    _record_batch(GraduationReview, rid, batchId)
+    _review_batch(rid, batchId)
     return success(review.return_review(rid, body.reason), message="已退回")
