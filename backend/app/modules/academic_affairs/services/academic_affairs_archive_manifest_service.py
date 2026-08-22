@@ -479,8 +479,28 @@ def create_correction_case(user, batch_id, *, business_type, target_ref, reason,
         )
         db.add(case)
         db.flush()
-        core._audit(db, batch.id, "POST_ARCHIVE_CORRECTION_CREATE",
-                    f"caseId={case.id};type={business_type};target={target_ref};requester={requester}")
+        core._audit(
+            db,
+            batch.id,
+            "POST_ARCHIVE_CORRECTION_CREATE",
+            f"caseId={case.id};type={business_type};target={target_ref};requester={requester}",
+            before_val=_json({
+                "caseId": str(case.id),
+                "status": None,
+                "officialFactId": None,
+                "resultingManifestId": None,
+            }),
+            after_val=_json({
+                "caseId": str(case.id),
+                "status": "PENDING_SECOND_APPROVAL",
+                "businessType": business_type,
+                "targetRef": target_ref,
+                "riskLevel": case.risk_level,
+                "requestedBy": int(requester),
+                "officialFactId": None,
+                "resultingManifestId": None,
+            }),
+        )
         db.commit()
         return _case_dto(case)
 
@@ -604,6 +624,25 @@ def approve_correction_case(user, case_id) -> dict:
                 f"{official['factId']};manifestV={version_no};manifestId={manifest.id};"
                 f"requester={case.created_by};secondApprover={actor}"
             ),
+            before_val=_json({
+                "caseId": str(case.id),
+                "status": "PENDING_SECOND_APPROVAL",
+                "requestedBy": int(case.created_by),
+                "previousManifestId": str(previous.id),
+                "previousManifestVersion": int(previous.version_no),
+                "officialFactHash": official["beforeHash"],
+            }),
+            after_val=_json({
+                "caseId": str(case.id),
+                "status": "APPLIED",
+                "secondApprovedBy": int(actor),
+                "officialFactType": official["factType"],
+                "officialFactId": str(official["factId"]),
+                "officialFactHash": official["afterHash"],
+                "resultingManifestId": str(manifest.id),
+                "manifestVersion": int(version_no),
+                "supersedesId": str(previous.id),
+            }),
         )
         db.commit()
         return {

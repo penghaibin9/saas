@@ -49,11 +49,12 @@ def _role():
     return str(ctx.get("currentRoleCode") or "")
 
 
-def _audit(db, biz_id, action, detail=""):
+def _audit(db, biz_id, action, detail="", *, before_val=None, after_val=None):
     from app.models import AffairsAuditTrail
     db.add(AffairsAuditTrail(
         tenant_id=_tid(), biz_type="AA_ARCHIVE", biz_id=biz_id, action=action,
-        operator=_op(), role_name=_role(), detail=detail[:990], occurred_at=datetime.utcnow(),
+        operator=_op(), role_name=_role(), detail=detail[:990],
+        before_val=before_val, after_val=after_val, occurred_at=datetime.utcnow(),
     ))
 
 

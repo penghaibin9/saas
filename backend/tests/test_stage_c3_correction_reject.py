@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from threading import Barrier
 
+import json
 import pytest
 
 from app.core.context import set_current_user, set_tenant
@@ -126,7 +127,7 @@ def _create_case(service, creator: dict, batch_id: int, grade_id: int):
 
 @pytest.mark.usefixtures("db_mode")
 def test_reject_requires_different_reviewer_and_creates_no_fact_or_manifest():
-    from app.models import AaArchiveBatch, AcademicGrade, ArchiveManifest, PostArchiveCorrectionCase
+    from app.models import AaArchiveBatch, AcademicGrade, AffairsAuditTrail, ArchiveManifest, PostArchiveCorrectionCase
     from app.modules.academic_affairs.services import academic_affairs_archive_correction_review_service as review
     from app.modules.academic_affairs.services import academic_affairs_archive_service as service
 
@@ -195,6 +196,12 @@ def test_reject_requires_different_reviewer_and_creates_no_fact_or_manifest():
             AcademicGrade.tenant_id == TID,
             AcademicGrade.acad_student_id == grade.acad_student_id,
         ).all()
+        reject_audit = db.query(AffairsAuditTrail).filter(
+            AffairsAuditTrail.tenant_id == TID,
+            AffairsAuditTrail.biz_type == "AA_ARCHIVE",
+            AffairsAuditTrail.biz_id == batch_id,
+            AffairsAuditTrail.action == "POST_ARCHIVE_CORRECTION_REJECT",
+        ).one()
         assert case.status == "REJECTED"
         assert case.rejected_by == 41002 and case.rejected_at is not None
         assert case.second_approved_by is None and case.applied_at is None
@@ -205,6 +212,15 @@ def test_reject_requires_different_reviewer_and_creates_no_fact_or_manifest():
         assert len(manifests) == 1
         assert manifests[0].id == manifest_v1_id
         assert manifests[0].manifest_hash == manifest_v1_hash
+        assert reject_audit.operator and reject_audit.role_name
+        assert reject_audit.before_val and reject_audit.after_val
+        reject_before = json.loads(reject_audit.before_val)
+        reject_after = json.loads(reject_audit.after_val)
+        assert reject_before["status"] == "PENDING_SECOND_APPROVAL"
+        assert reject_after["status"] == "REJECTED"
+        assert reject_after["rejectedBy"] == 41002
+        assert reject_after["officialFactId"] is None
+        assert reject_after["resultingManifestId"] is None
     finally:
         db.close()
         set_current_user(None)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import json
 import pytest
 
 from app.core.context import set_current_user, set_tenant
@@ -130,7 +131,7 @@ def _create_case(service, creator: dict, batch_id: int, grade_id: int):
 
 @pytest.mark.usefixtures("db_mode")
 def test_post_archive_grade_correction_public_flow_appends_fact_and_manifest_v2():
-    from app.models import AaArchiveBatch, AcademicGrade, ArchiveManifest, PostArchiveCorrectionCase
+    from app.models import AaArchiveBatch, AcademicGrade, AffairsAuditTrail, ArchiveManifest, PostArchiveCorrectionCase
     from app.modules.academic_affairs.services import academic_affairs_archive_service as service
 
     creator = _user(31001, "stage_c3_creator")
@@ -175,6 +176,15 @@ def test_post_archive_grade_correction_public_flow_appends_fact_and_manifest_v2(
             ArchiveManifest.tenant_id == TID,
             ArchiveManifest.archive_batch_id == batch_id,
         ).order_by(ArchiveManifest.version_no).all()
+        audits = db.query(AffairsAuditTrail).filter(
+            AffairsAuditTrail.tenant_id == TID,
+            AffairsAuditTrail.biz_type == "AA_ARCHIVE",
+            AffairsAuditTrail.biz_id == batch_id,
+            AffairsAuditTrail.action.in_([
+                "POST_ARCHIVE_CORRECTION_CREATE",
+                "POST_ARCHIVE_CORRECTION_APPLY",
+            ]),
+        ).order_by(AffairsAuditTrail.id).all()
         assert old.record_status == "SUPERSEDED" and old.score == 58
         assert new.record_status == "ACTIVE" and new.score == 65 and new.pass_status == "PASSED"
         assert new.source_biz_type == "POST_ARCHIVE" and new.source_biz_id == case_id
@@ -183,6 +193,17 @@ def test_post_archive_grade_correction_public_flow_appends_fact_and_manifest_v2(
         assert batch.status == "ARCHIVED"
         assert len(manifests) == 2 and manifests[1].supersedes_id == manifests[0].id
         assert manifests[0].id == manifest_v1_id
+        assert [row.action for row in audits] == [
+            "POST_ARCHIVE_CORRECTION_CREATE",
+            "POST_ARCHIVE_CORRECTION_APPLY",
+        ]
+        assert all(row.operator and row.role_name and row.before_val and row.after_val for row in audits)
+        create_before, create_after = json.loads(audits[0].before_val), json.loads(audits[0].after_val)
+        apply_before, apply_after = json.loads(audits[1].before_val), json.loads(audits[1].after_val)
+        assert create_before["status"] is None and create_after["status"] == "PENDING_SECOND_APPROVAL"
+        assert apply_before["status"] == "PENDING_SECOND_APPROVAL" and apply_after["status"] == "APPLIED"
+        assert apply_after["officialFactId"] == str(new_grade_id)
+        assert apply_after["resultingManifestId"] == str(manifests[1].id)
     finally:
         db.close()
         set_current_user(None)

@@ -226,6 +226,21 @@ def reject_correction_case(user, case_id, *, reason: str) -> dict:
                 f"caseId={case.id};type={case.business_type};requester={case.created_by};"
                 f"reviewer={actor};reason={audit_reason}"
             ),
+            before_val=immutable_service._json({
+                "caseId": str(case.id),
+                "status": _PENDING,
+                "requestedBy": int(case.created_by),
+                "officialFactId": None,
+                "resultingManifestId": None,
+            }),
+            after_val=immutable_service._json({
+                "caseId": str(case.id),
+                "status": "REJECTED",
+                "rejectedBy": int(actor),
+                "rejectReason": reason,
+                "officialFactId": None,
+                "resultingManifestId": None,
+            }),
         )
         db.commit()
         return {
