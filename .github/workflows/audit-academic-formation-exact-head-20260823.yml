@@ -1,0 +1,187 @@
+name: Audit Academic Formation Exact Head 20260823
+
+on:
+  push:
+    branches:
+      - audit/academic-real-browser-20260823
+    paths:
+      - '.github/workflows/audit-academic-formation-exact-head-20260823.yml'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  formation-real-click:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: academic_b_w4_formation_exact_head_e2e
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_b_w4_formation_exact_head_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_b_w4_formation_exact_head_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: academic_b_w4_formation_exact_head_e2e
+      REDIS_URL: redis://127.0.0.1:6379/13
+      REDIS_KEY_PREFIX: academic-b-w4-formation-exact-head
+      JWT_SECRET: academic-b-w4-formation-exact-head-browser-only-not-production
+      JWT_SECRET_KEY: academic-b-w4-formation-exact-head-browser-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_EXPECTED_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+      SCHOOL_IAM_AUTHORITY_EXPECTED_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+      TARGET_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+          fetch-depth: 0
+
+      - name: Assert current exact-head formation source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test -f backend/app/modules/academic_affairs/services/academic_affairs_task_formation_provenance_service.py
+          grep -F 'source_program_course_id' backend/app/models/academic_affairs.py
+          grep -F '_guard_selection_formation(db, task_id)' backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py
+          grep -F 'def selection_eligible' backend/app/modules/academic_affairs/services/academic_affairs_task_formation_policy.py
+          git diff --check
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend and migrate isolated formation database
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+
+      - name: Replay production School IAM Authority
+        working-directory: backend
+        run: python scripts/bootstrap_control_plane_school_iam_authority.py
+
+      - name: Seed tenant foundation
+        working-directory: backend
+        run: python scripts/e2e_seed_playwright_tenants.py
+
+      - name: Seed real School IAM runtime fixture
+        working-directory: backend
+        run: python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Seed canonical Selection, org and formation provenance facts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_academic_b_selection.py
+          python scripts/e2e_seed_academic_b_w4_formation.py
+          test -s ../e2e/academic-b-w4-formation-fixture.json
+
+      - name: Start backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/formation-exact-backend.log 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/formation-exact-backend.log
+          exit 1
+
+      - name: Bootstrap and verify academic-admin account against preseeded org
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+
+      - name: Install, production-build and start staff PC
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci --no-audit --no-fund
+          node --test tests/ui-presentation-safety.test.mjs
+          npm run build
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/formation-exact-frontend.log 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:5173/login >/dev/null && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/formation-exact-frontend.log
+          exit 1
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Run exact-head formation real browser seal
+        working-directory: e2e
+        run: npx playwright test specs/academic-b-selection-w4-formation.spec.mjs --reporter=line
+
+      - name: Upload exact-head formation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-b-w4-formation-exact-head-evidence-${{ env.TARGET_SHA }}
+          path: |
+            e2e/test-results/
+            e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish formation audit status
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          printf '## Formation exact-head rerun\n\nRun: `%s`\nTarget: `%s`\nJob status: **%s**\nURL: https://github.com/%s/actions/runs/%s\n' \
+            '${{ github.run_id }}' "$TARGET_SHA" "$JOB_STATUS" '${{ github.repository }}' '${{ github.run_id }}' > /tmp/formation-status.md
+          gh issue comment 200 --repo '${{ github.repository }}' --body-file /tmp/formation-status.md
