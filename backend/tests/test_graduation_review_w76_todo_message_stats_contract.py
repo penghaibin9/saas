@@ -78,15 +78,21 @@ def test_w76_overdue_and_average_processing_time_reuse_review_center_projection(
         assert forbidden not in lifecycle
 
 
-def test_w76_w7_router_batch_guard_is_tenant_scoped_before_student_metadata():
+def test_w76_w7_router_batch_and_reviewer_guards_fail_closed_before_metadata():
     router = text("backend/app/modules/graduation/routers/graduation_review_w7_router.py")
 
-    assert "def _review_batch(review_id, batch_id)" in router
+    assert "def _review_batch(review_id, batch_id, *, require_assigned_reviewer: bool = False)" in router
     assert "GraduationReview.tenant_id == _tid()" in router
     assert "GraduationStudent.tenant_id == _tid()" in router
     assert "GraduationStudent.record_status == \"ACTIVE\"" in router
     assert "assert_student_batch(student, batch_id)" in router
-    assert "_review_batch(rid, batchId)" in router
+    assert "if require_assigned_reviewer and not has_full_scope():" in router
+    assert "gid.current_user_mentor(db)" in router
+    assert "reviewer_mentor_id" in router
+    assert 'raise no_permission("无权提交他人评阅任务")' in router
+    guard = router[router.index("def _review_batch"):router.index("@router.get")]
+    assert guard.index("if require_assigned_reviewer") < guard.index("student = db.scalars")
+    assert "_review_batch(rid, batchId, require_assigned_reviewer=True)" in router
     assert "_record_batch" not in router
 
 
