@@ -1,0 +1,62 @@
+name: Academic Real Browser Audit Status 20260823
+
+on:
+  push:
+    branches:
+      - audit/academic-real-browser-20260823
+    paths:
+      - '.github/workflows/audit-academic-status-20260823.yml'
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  status:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      REPO: penghaibin9/saas
+      TARGET_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+      AUDIT_ISSUE: '200'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Snapshot exact-head academic workflow-dispatch runs
+        run: |
+          set -euo pipefail
+          sleep 5
+          {
+            echo '## 教务真实浏览器 Gate 即时状态'
+            echo
+            echo "Target exact HEAD: \`$TARGET_SHA\`"
+            echo
+            echo '| Workflow | Run ID | Status | Conclusion | Head | URL |'
+            echo '|---|---:|---|---|---|---|'
+          } > /tmp/status.md
+          workflows=(
+            academic-archive-correction-w1.yml
+            academic-b-w3-schedule-real-click.yml
+            academic-b-w4-selection-real-click.yml
+            academic-b-w4-formation-real-click.yml
+            academic-exam-incident-w2.yml
+            academic-c-w2-teacher-today-browser.yml
+            academic-b-w5-student-projection-real-click.yml
+          )
+          for wf in "${workflows[@]}"; do
+            row="$(gh run list --repo "$REPO" --workflow "$wf" --branch main --event workflow_dispatch --limit 20 \
+              --json databaseId,headSha,status,conclusion,url,createdAt \
+              --jq ".[] | select(.headSha == \"$TARGET_SHA\") | [.databaseId,.status,(.conclusion // \"\"),.headSha,.url,.createdAt] | @tsv" | head -n1)"
+            if [ -z "$row" ]; then
+              echo "| $wf | - | NOT_FOUND | - | - | - |" >> /tmp/status.md
+            else
+              run_id="$(printf '%s' "$row" | cut -f1)"
+              status="$(printf '%s' "$row" | cut -f2)"
+              conclusion="$(printf '%s' "$row" | cut -f3)"
+              head_sha="$(printf '%s' "$row" | cut -f4)"
+              url="$(printf '%s' "$row" | cut -f5)"
+              echo "| $wf | $run_id | $status | ${conclusion:--} | \`$head_sha\` | $url |" >> /tmp/status.md
+            fi
+          done
+          gh issue comment "$AUDIT_ISSUE" --repo "$REPO" --body-file /tmp/status.md
+          cat /tmp/status.md
