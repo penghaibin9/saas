@@ -61,12 +61,16 @@ def test_w73_detail_contains_version_history_feedback_plagiarism_and_blockers():
     assert "PLAGIARISM_BLOCKED" in service
 
 
-def test_w73_router_is_attached_under_sensitive_graduation_gate():
+def test_w73_router_is_attached_once_under_sensitive_graduation_gate():
     init_source = _read("app/modules/graduation/routers/__init__.py")
     permissions = _read("app/modules/graduation/services/graduation_permission_extensions.py")
     assert "graduation_sensitive_router" in init_source
     assert "graduation_review_center" in init_source
-    assert "graduation_sensitive_router.router.include_router(graduation_review_center.router)" in init_source
+    assert "target.include_router(graduation_review_center.router)" in init_source
+    assert 'marker = "_w7_formal_review_overlay_installed"' in init_source
+    assert 'marker = "_w73_review_center_projection_installed"' in init_source
+    assert "if getattr(target, marker, False):" in init_source
+    assert "setattr(target, marker, True)" in init_source
     assert 'module = "graduation_review_center"' in permissions
     assert '"graduationDesign.review.view"' in permissions
     for endpoint in ("review_center_summary", "review_center_tasks", "review_center_detail"):

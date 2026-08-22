@@ -22,19 +22,29 @@ install_graduation_review_message_guard()
 
 
 def _install_w7_formal_review_overlay() -> None:
-    """W7 write routes prepend existing sensitive routes while preserving path/name/permission identity."""
+    """Prepend W7 writes once while preserving the frozen path/name/permission identity."""
     from app.modules.graduation.routers import graduation_sensitive_router
     from app.modules.graduation.routers import graduation_review_w7_router
 
-    graduation_sensitive_router.router.routes[0:0] = list(graduation_review_w7_router.router.routes)
+    target = graduation_sensitive_router.router
+    marker = "_w7_formal_review_overlay_installed"
+    if getattr(target, marker, False):
+        return
+    target.routes[0:0] = list(graduation_review_w7_router.router.routes)
+    setattr(target, marker, True)
 
 
 def _install_review_center_projection() -> None:
-    """把 W7.3 纯读投影挂到现有敏感 Router，继承同一毕业设计安全门禁。"""
+    """Attach the W7.3 read projection once under the existing sensitive graduation gate."""
     from app.modules.graduation.routers import graduation_review_center
     from app.modules.graduation.routers import graduation_sensitive_router
 
-    graduation_sensitive_router.router.include_router(graduation_review_center.router)
+    target = graduation_sensitive_router.router
+    marker = "_w73_review_center_projection_installed"
+    if getattr(target, marker, False):
+        return
+    target.include_router(graduation_review_center.router)
+    setattr(target, marker, True)
 
 
 _install_w7_formal_review_overlay()
