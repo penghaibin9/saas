@@ -42,6 +42,11 @@ def test_w76_student_reject_message_is_transactional_projection_of_append_only_f
     assert "message_event_outbox_service" in guard
     assert "UnifiedMessage" not in feedback
 
+    # Production JWT userId is db-<id>; W7 evidence must use the same canonical
+    # resolver as messages/files instead of silently dropping reviewer_user_id.
+    assert "resolve_message_user_id" in feedback
+    assert "resolve_message_user_id(get_current_user_ctx() or {})" in feedback
+
 
 def test_w76_resubmit_reuses_canonical_proposal_final_todos():
     records = text("backend/app/modules/graduation/materials/record_service.py")
@@ -66,6 +71,7 @@ def test_w76_overdue_and_average_processing_time_reuse_review_center_projection(
     assert "overdue_count" in summary
     assert "TIMESTAMPDIFF" in summary and "AVG(CASE" in summary
     assert "GROUP BY case_type" in summary
+    assert "local_today_bounds_utc" in summary
     assert "review_center.summary" in lifecycle
     assert '"overdue"' in lifecycle and '"avgHours"' in lifecycle
     for forbidden in ("teacherRanking", "performanceRanking", "aiScore", "automaticScore"):

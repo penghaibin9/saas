@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 from app.core.context import get_current_user_ctx
 from app.services.db_service import _tid
+from app.services.message_identity import resolve_message_user_id
 
 
 _STAGE_LABELS = {"PROPOSAL": "开题报告", "FINAL": "论文成果", "FORMAL": "正式评阅"}
@@ -67,11 +68,8 @@ def current_reviewer_mentor_id(db) -> int | None:
 
 
 def _user_id() -> int | None:
-    raw = (get_current_user_ctx() or {}).get("userId")
-    try:
-        return int(raw) if raw not in (None, "") else None
-    except (TypeError, ValueError):
-        return None
+    value = resolve_message_user_id(get_current_user_ctx() or {})
+    return int(value) if value else None
 
 
 def make_idempotency_key(*, stage: str, source_record_id: int, file_version_id: int,
