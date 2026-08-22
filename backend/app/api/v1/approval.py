@@ -1,7 +1,10 @@
 """审批任务 API：正式路由只连接真实数据库服务。"""
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Header, Query
+from pydantic import BaseModel
 
 from app.api.v1.file_contract import validated_local_file_response
 from app.core.exceptions import AppException
@@ -21,12 +24,17 @@ from app.schemas.approval import (
     ApprovalTemplateVoidRequest,
     ApprovalTransferRequest,
 )
+from app.services import approval_attachment_preview_service as attachmentsvc
 from app.services import approval_export_service as exportsvc
 from app.services import approval_returned_service as returnedsvc
 from app.services import approval_runtime_service as runtime
 from app.services import approval_template_service as adminsvc
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
+
+
+class ApprovalAttachmentTicketRequest(BaseModel):
+    action: Literal["preview", "download"]
 
 
 def _require_idempotency_key(value: str | None) -> str:
@@ -295,6 +303,58 @@ def download_export(
         audit_action="APPROVAL_EXPORT_DOWNLOAD",
         audit_target=f"approval-export:{task_id}",
         audit_detail={"taskId": task_id},
+    )
+
+
+@router.get("/tasks/{task_id}/attachments", summary="审批任务附件清单（任务范围 + 文件中心安全态）")
+def approval_attachments(task_id: str, user=Depends(require_staff)):
+    return success({"items": attachmentsvc.list_attachments(task_id, user)})
+
+
+@router.post("/tasks/{task_id}/files/{file_id}/ticket", summary="签发审批附件预览/下载短时票据")
+def approval_attachment_ticket(
+    task_id: str,
+    file_id: int,
+    body: ApprovalAttachmentTicketRequest,
+    user=Depends(require_staff),
+):
+    return success(attachmentsvc.issue_ticket(task_id, file_id, body.action, user))
+
+
+@router.get("/tasks/{task_id}/files/{file_id}/preview", summary="使用任务票据读取审批附件")
+def preview_approval_attachment(
+    task_id: str,
+    file_id: int,
+    ticket: str = Query(..., min_length=20),
+    user=Depends(require_staff),
+):
+    path, filename, mime_type = attachmentsvc.consume_ticket(task_id, file_id, "preview", ticket, user)
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        inline=True,
+        media_type=mime_type,
+        audit_action="APPROVAL_ATTACHMENT_PREVIEW",
+        audit_target=f"approval-task:{task_id}:file:{file_id}",
+        audit_detail={"taskId": task_id, "fileId": str(file_id)},
+    )
+
+
+@router.get("/tasks/{task_id}/files/{file_id}/download", summary="使用一次性任务票据下载审批附件")
+def download_approval_attachment(
+    task_id: str,
+    file_id: int,
+    ticket: str = Query(..., min_length=20),
+    user=Depends(require_staff),
+):
+    path, filename, mime_type = attachmentsvc.consume_ticket(task_id, file_id, "download", ticket, user)
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        media_type=mime_type,
+        audit_action="APPROVAL_ATTACHMENT_DOWNLOAD",
+        audit_target=f"approval-task:{task_id}:file:{file_id}",
+        audit_detail={"taskId": task_id, "fileId": str(file_id)},
     )
 
 
