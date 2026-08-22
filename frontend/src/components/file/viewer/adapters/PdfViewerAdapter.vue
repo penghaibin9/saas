@@ -116,15 +116,17 @@ function observePages() {
 function resetInitialPosition(pageNo) {
   const viewer = root.value
   if (!viewer) return
-  // Vue reuses the same scroll container when a new FileVersion replaces the old one. Without
-  // resetting it before observation, a 60-page document left at its tail can make a new 121-page
-  // document start around page 60 and overwrite the caller's canonical page=1 state.
-  if (pageNo === 1) {
-    viewer.scrollTop = 0
-    viewer.scrollLeft = 0
-    return
-  }
-  viewer.querySelector(`[data-page="${pageNo}"]`)?.scrollIntoView({ block: 'start', behavior: 'auto' })
+  // A long document can leave both this scroller and the browser viewport anchored near its
+  // tail. Reset the local scroller, then synchronously align the new generation's canonical page
+  // before IntersectionObserver is attached. Otherwise a stale visible page can win the first
+  // observer callback and overwrite page=1.
+  const previousScrollBehavior = viewer.style.scrollBehavior
+  viewer.style.scrollBehavior = 'auto'
+  viewer.scrollTop = 0
+  viewer.scrollLeft = 0
+  const target = viewer.querySelector(`[data-page="${pageNo}"]`)
+  target?.scrollIntoView({ block: 'start', behavior: 'auto' })
+  viewer.style.scrollBehavior = previousScrollBehavior
 }
 
 async function loadPdf() {
