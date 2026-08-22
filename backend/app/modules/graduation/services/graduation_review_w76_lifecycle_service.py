@@ -12,7 +12,7 @@ import logging
 from sqlalchemy import select
 
 from app.core.exceptions import not_found
-from app.models import GraduationMentor, GraduationReview, GraduationStudent, User
+from app.models import GraduationMentor, GraduationReview, GraduationStudent, UnifiedTodo, User
 from app.modules.graduation.services import graduation_review_center_contract_service as review_center
 from app.modules.graduation.services import graduation_review_closure_service as core
 from app.modules.graduation.services import graduation_review_read_service as review_read
@@ -67,6 +67,14 @@ def _reviewer_user_id(db, review: GraduationReview) -> int:
 
 
 def _upsert_formal_todo(db, review: GraduationReview, student: GraduationStudent) -> bool:
+    """Reconcile one formal-review todo and report whether the projection changed.
+
+    ``graduation_todo_helper.todo_upsert`` intentionally reports an idempotent upsert as
+    successful even when the stored row is already identical. Review Center reconciliation
+    has a stricter contract: its boolean/counts describe an actual projection repair. Keep
+    that distinction local to W7.6 so read-time reconciliation never reports false repairs
+    or causes artificial version drift.
+    """
     assignee_id = _reviewer_user_id(db, review)
     if assignee_id <= 0:
         # Stable mentor identity without an active account must never create a ghost assignee=0 todo.
@@ -75,15 +83,35 @@ def _upsert_formal_todo(db, review: GraduationReview, student: GraduationStudent
             review.id, review.reviewer_mentor_id,
         )
         return False
+
     prefix = "正式评阅退回重评" if str(review.status or "").upper() == "RETURNED" else "正式评阅待处理"
+    title = f"{prefix}：{student.name or '学生'}"
+    student_id = getattr(student, "student_id", None)
+
+    existing = db.scalars(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(),
+        UnifiedTodo.source_module == todo.SRC_MODULE,
+        UnifiedTodo.source_biz_id == int(review.id),
+        UnifiedTodo.todo_type == TODO_FORMAL_REVIEW,
+        UnifiedTodo.assignee_id == int(assignee_id),
+        UnifiedTodo.is_deleted.is_(False),
+    )).first()
+    if existing and (
+        str(existing.title or "") == title
+        and str(existing.status or "").upper() == "PENDING"
+        and str(existing.student_id or "") == str(student_id or "")
+        and str(existing.source_biz_type or "") == "GD_FORMAL_REVIEW"
+    ):
+        return False
+
     return todo.todo_upsert(
         db,
         biz_type="GD_FORMAL_REVIEW",
         biz_id=review.id,
         todo_type=TODO_FORMAL_REVIEW,
         assignee_id=assignee_id,
-        student_id=getattr(student, "student_id", None),
-        title=f"{prefix}：{student.name or '学生'}",
+        student_id=student_id,
+        title=title,
     )
 
 
