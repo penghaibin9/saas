@@ -1,0 +1,62 @@
+name: Academic Real Browser Audit Dispatcher 20260823
+
+on:
+  push:
+    branches:
+      - audit/academic-real-browser-20260823
+    paths:
+      - '.github/workflows/audit-academic-real-browser-20260823.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Lock audited main exact HEAD
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq .object.sha)"
+          echo "target=$TARGET_SHA actual=$ACTUAL_SHA"
+          test "$ACTUAL_SHA" = "$TARGET_SHA"
+
+      - name: Dispatch existing real-browser academic gates on main exact HEAD
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          workflows=(
+            academic-archive-correction-w1.yml
+            academic-b-w3-schedule-real-click.yml
+            academic-b-w4-selection-real-click.yml
+            academic-b-w4-formation-real-click.yml
+            academic-exam-incident-w2.yml
+            academic-c-w2-teacher-today-browser.yml
+            academic-b-w5-student-projection-real-click.yml
+          )
+          failed=0
+          for wf in "${workflows[@]}"; do
+            echo "=== dispatch $wf @ main ==="
+            if gh workflow run "$wf" --repo "${{ github.repository }}" --ref main; then
+              echo "DISPATCHED $wf"
+            else
+              echo "DISPATCH_FAILED $wf"
+              failed=$((failed + 1))
+            fi
+          done
+          echo "dispatch_failures=$failed"
+          test "$failed" -eq 0
+
+      - name: Snapshot dispatched runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sleep 8
+          gh run list --repo "${{ github.repository }}" --branch main --event workflow_dispatch --limit 30 \
+            --json databaseId,workflowName,headSha,status,conclusion,createdAt,url
