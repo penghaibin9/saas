@@ -292,6 +292,12 @@ def test_w74_formal_review_read_returns_only_current_stable_reviewer_task(db_mod
         assert total == 1
         assert ids == {my_review_id}
         assert other_review_id not in ids
+
+        stats = review_read.review_stats()
+        by_status = {row["status"]: row["count"] for row in stats["byStatus"]}
+        assert stats["total"] == 1
+        assert by_status["ASSIGNED"] == 1
+        assert sum(by_status.values()) == 1
     finally:
         set_current_user(None)
         set_tenant(None)

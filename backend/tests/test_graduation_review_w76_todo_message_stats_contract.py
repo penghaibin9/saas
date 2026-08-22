@@ -78,6 +78,17 @@ def test_w76_overdue_and_average_processing_time_reuse_review_center_projection(
         assert forbidden not in lifecycle
 
 
+def test_w76_formal_review_stats_share_exact_reader_task_scope():
+    lifecycle = text("backend/app/modules/graduation/services/graduation_review_w76_lifecycle_service.py")
+    reader = text("backend/app/modules/graduation/services/graduation_review_read_service.py")
+
+    assert "def _base_review_query" in reader
+    assert "def review_stats(batch_id=None)" in reader
+    assert "GraduationReview.reviewer_mentor_id == int(mentor.id)" in reader
+    assert "base = review_read.review_stats(batch_id=batch_id)" in lifecycle
+    assert "review_center.summary(int(batch_id))" in lifecycle
+
+
 def test_w76_w7_router_batch_and_reviewer_guards_fail_closed_before_metadata():
     router = text("backend/app/modules/graduation/routers/graduation_review_w7_router.py")
 

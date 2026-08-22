@@ -15,6 +15,7 @@ from app.core.exceptions import not_found
 from app.models import GraduationMentor, GraduationReview, GraduationStudent, User
 from app.modules.graduation.services import graduation_review_center_contract_service as review_center
 from app.modules.graduation.services import graduation_review_closure_service as core
+from app.modules.graduation.services import graduation_review_read_service as review_read
 from app.modules.graduation.services import graduation_todo_helper as todo
 from app.services.db_service import _tid, session
 
@@ -179,7 +180,10 @@ def return_review(rid, reason: str) -> dict:
 
 
 def review_stats(batch_id=None) -> dict:
-    base = core.review_stats(batch_id=batch_id)
+    # Legacy-shaped total/byStatus must come from the same actor/task scope as the W7
+    # list endpoint. Using core.review_stats here would widen GD_REVIEWER back to every
+    # review attached to a student for whom they have any review relation.
+    base = review_read.review_stats(batch_id=batch_id)
     if batch_id is None:
         return base
     reconcile_formal_todos(int(batch_id))
