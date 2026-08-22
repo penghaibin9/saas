@@ -59,6 +59,7 @@ jobs:
       REDIS_KEY_PREFIX: student-affairs-browser-audit
       JWT_SECRET: student-affairs-browser-audit-only
       JWT_SECRET_KEY: student-affairs-browser-audit-only
+      PYTHONPATH: .
       MOCK_LOGIN_ENABLED: 'false'
       SMS_ENABLED: 'false'
       SCHEDULER_MODE: external
