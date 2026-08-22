@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.modules.graduation.services import graduation_review_center_service as center
+from app.modules.graduation.services import graduation_review_center_contract_service as center
 from app.modules.graduation.services.graduation_batch_context import require_batch_id
 
 router = APIRouter(prefix="/review-center", tags=["毕业设计-评阅中心"])
@@ -33,7 +33,7 @@ def review_center_tasks(
     statusGroup: Optional[str] = Query(default=None),
     keyword: Optional[str] = Query(default=None, max_length=100),
     reviewerOnly: bool = Query(default=False),
-    sort: Optional[str] = Query(default="LATEST"),
+    sort: Optional[str] = Query(default="PRIORITY"),
     user=Depends(get_current_user),
 ):
     batch_id = require_batch_id(batchId)
