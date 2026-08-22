@@ -1,0 +1,258 @@
+name: Graduation W7.7 Exact-Head E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/app/modules/graduation/**'
+      - 'backend/app/api/v1/student_portal_graduation_guard.py'
+      - 'backend/app/models/graduation_review_evidence.py'
+      - 'backend/tests/test_graduation_review_w7*.py'
+      - 'backend/tests/test_graduation_student_feedback_w75_pc_contract.py'
+      - 'backend/tests/graduation_legacy_review_archive_plugin.py'
+      - 'backend/alembic/versions/**gd_review**'
+      - 'student-portal/src/views/graduation/**'
+      - 'student-portal/src/views/messages/**'
+      - 'student-portal/src/services/graduationW75Api.js'
+      - 'student-portal/src/components/file/viewer/**'
+      - 'e2e/pages/graduation.page.mjs'
+      - 'e2e/specs/graduation-lifecycle.spec.mjs'
+      - 'e2e/lib/**'
+      - '.github/workflows/graduation-w77-exact-head-e2e.yml'
+
+concurrency:
+  group: graduation-w77-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  exact-head-graduation-e2e:
+    name: W7.7 / real MySQL / real browser / exact head
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: graduation-w77-e2e
+      REDIS_CONNECT_TIMEOUT: '2'
+      REDIS_SOCKET_TIMEOUT: '2'
+      JWT_SECRET: graduation-w77-e2e-only-not-production
+      JWT_SECRET_KEY: graduation-w77-e2e-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Exact branch HEAD assertion
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+
+      - name: Install backend
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Enforce E2E artifact safety contract
+        working-directory: backend
+        run: pytest tests/test_playwright_artifact_safety.py -q -p no:warnings
+
+      - name: Assert single Alembic head and migrate isolated MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          HEADS=$(python -m alembic heads | grep -c '(head)')
+          python -m alembic heads
+          test "$HEADS" = '1'
+          mysql -h 127.0.0.1 -uroot -pe2e_root -e \
+            "ALTER DATABASE student_lifecycle_e2e CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+          python -m alembic upgrade head
+          python -m alembic current
+
+      - name: Assert migrated schema equals ORM metadata
+        working-directory: backend
+        run: python ../scripts/check/check-migrated-schema-parity.py
+
+      - name: W7.1-W7.6 authority and contract proof on migrated MySQL
+        working-directory: backend
+        run: |
+          pytest \
+            tests/test_graduation_review_w71_w73_mysql.py \
+            tests/test_graduation_student_feedback_w75_pc_contract.py \
+            tests/test_graduation_review_w76_runtime.py \
+            tests/test_graduation_review_w76_todo_message_stats_contract.py \
+            -q -p no:warnings --durations=20
+
+      - name: Replay production School IAM Authority
+        working-directory: backend
+        run: python scripts/bootstrap_control_plane_school_iam_authority.py
+
+      - name: Seed minimal isolated E2E tenants
+        working-directory: backend
+        run: python scripts/e2e_seed_playwright_tenants.py
+
+      - name: Seed real School IAM runtime fixture
+        working-directory: backend
+        run: python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start backend
+        run: |
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Start isolated message delivery worker
+        run: |
+          set -euo pipefail
+          cd backend
+          nohup python -c "import time; from scripts.run_scheduled_jobs import job_delivery_and_outbox; exec('while True:\\n    job_delivery_and_outbox()\\n    time.sleep(2)')" > ../e2e/runtime-logs/message-delivery.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/message-delivery.pid
+
+      - name: Import and normalize dedicated graduation accounts
+        working-directory: backend
+        run: |
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+
+      - name: Install and start staff PC
+        run: |
+          cd frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+
+      - name: Install and start student PC
+        env:
+          VITE_BASE: /portal/
+          VITE_API_BASE_URL: /
+          VITE_PROXY_TARGET: http://127.0.0.1:8000
+        run: |
+          cd student-portal
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/student-portal.pid
+
+      - name: Wait for staff and student applications
+        run: |
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
+            ok=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ok" ]; then
+              echo "Application not ready: $url"
+              cat e2e/runtime-logs/*.log
+              exit 1
+            fi
+          done
+
+      - name: Install Playwright Chromium
+        working-directory: e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run Graduation W7.7 browser chain
+        working-directory: e2e
+        run: npm run test:graduation
+
+      - name: Upload W7.7 Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-w77-html-${{ github.run_id }}
+          path: e2e/playwright-report/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload W7.7 screenshots, video, traces and redacted API logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-w77-evidence-${{ github.run_id }}
+          path: e2e/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload W7.7 service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-w77-service-logs-${{ github.run_id }}
+          path: e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
