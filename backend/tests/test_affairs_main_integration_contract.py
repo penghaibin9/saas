@@ -30,7 +30,11 @@ def test_student_portal_request_keeps_internship_context_and_single_flight_refre
     assert "student_portal_internship_batch_v1" in request
     assert "async function refreshOnce" in request
     assert "return uploadFile(path, file, { auth, _retried: true })" in request
-    assert "return downloadFile(path, fallbackName, true)" in request
+    # Download is now intentionally layered on the same abort-aware byte reader instead of
+    # duplicating a second 401/refresh recursion. The byte reader itself owns the single retry.
+    assert "const blob = await fetchFileBlob(path, { _retried })" in request
+    assert "return fetchFileBlob(path, { auth, _retried: true, signal })" in request
+    assert "await refreshOnce()" in request
 
 
 def test_temporary_integration_workflow_is_removed():

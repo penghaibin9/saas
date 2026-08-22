@@ -2,6 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ACCESS = (ROOT / "app/services/affairs_material_preview_access.py").read_text(encoding="utf-8")
+RESOLVERS = (ROOT / "app/services/file_access_resolvers.py").read_text(encoding="utf-8")
 ROUTER = (ROOT / "app/modules/student_affairs/routers/affairs_material_center.py").read_text(encoding="utf-8")
 
 
@@ -20,15 +21,28 @@ def test_affairs_material_ticket_is_file_version_tenant_actor_and_action_bound()
         assert marker in ACCESS, marker
 
 
-def test_affairs_material_resolver_keeps_sensitive_staff_scope_and_student_self_scope():
+def test_affairs_material_resolver_keeps_single_shared_resolver_and_preview_rechecks_business_scope():
+    # MATERIAL_REQUIREMENT business authority is registered once in the shared File Center.
+    # The versioned preview service must not register a competing resolver; instead it resolves
+    # the exact requirement/binding and then calls require_file_access, which replays that shared
+    # resolver before any bytes are served.
     for marker in [
         '@register_file_resolver("MATERIAL_REQUIREMENT")',
-        'str(binding.module_code or "").lower() == center.MODULE_CODE',
-        'str(binding.relation_type or "").upper() == "MATERIAL_SUBMISSION"',
-        'str(binding.status or "").upper() in BINDING_STATUS',
-        'if _student_self(db, requirement, user or {}):',
-        'center._staff_can_enumerate(db, requirement, user or {})',
+        'def material_requirement_resolver',
+        'center._has_biz_permission(user or {}, requirement.biz_type)',
+        'center._psy_scope_allows(db, requirement.student_id, user or {})',
+        'center._require_student_scope(db, requirement.student_id, user or {}, hide=True)',
+    ]:
+        assert marker in RESOLVERS, marker
+    assert '@register_file_resolver("MATERIAL_REQUIREMENT")' not in ACCESS
+
+    for marker in [
+        'FileBinding.module_code == center.MODULE_CODE',
+        'FileBinding.relation_type == "MATERIAL_SUBMISSION"',
+        'FileBinding.status.in_(BINDING_STATUS)',
+        '_student_self(db, requirement, user)',
         'center._staff_can_enumerate(db, requirement, user)',
+        'require_file_access(str(target_file_id), user=user, action=normalized)',
     ]:
         assert marker in ACCESS, marker
 
