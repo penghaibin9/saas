@@ -19,6 +19,8 @@ def test_w76_formal_review_todo_uses_shared_unified_todo_and_stable_reviewer_ide
     assert "todo.todo_upsert" in lifecycle
     assert "todo.todo_done" in lifecycle
     assert "正式评阅退回重评" in lifecycle
+    assert "reconcile_formal_todos" in lifecycle
+    assert "reviewer_account_unresolved" in lifecycle
     assert "graduation_review_w76_lifecycle_service as review" in router
 
 
@@ -32,7 +34,11 @@ def test_w76_student_reject_message_is_transactional_projection_of_append_only_f
     assert "SELECT student_id FROM t_gd_student" in feedback
     assert "emit_receiver_notice" in feedback
     assert "receiver_as=\"student\"" in feedback
+    assert "ACTION_STUDENT_REVIEW_FEEDBACK" in feedback
     assert "GRADUATION_DESIGN.REVIEW_REJECTED" in guard
+    assert "student.graduation.review-feedback" in guard
+    assert '"studentPc": "/graduation/feedback"' in guard
+    assert '"studentMini": None' in guard
     assert "message_event_outbox_service" in guard
     assert "UnifiedMessage" not in feedback
 

@@ -127,6 +127,7 @@ def _emit_student_rejected_notice(
         title=f"{label}退回整改",
         content=reason,
         receiver_as="student",
+        action_key=message_guard.ACTION_STUDENT_REVIEW_FEEDBACK,
         dedup_extra=f"fv:{int(file_version_id)}:round:{int(round_no)}",
     )
 
