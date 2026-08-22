@@ -129,6 +129,8 @@ jobs:
               'backend/alembic/versions/20260818_academic_int_task_program_course_provenance.py',
               'backend/alembic/versions/20260818_academic_main_int_merge.py',
               'backend/alembic/versions/20260818_merge_prog_grade_deadline.py',
+              'backend/alembic/versions/20260821_aa_archive_correction_review.py',
+              'backend/alembic/versions/20260821_merge_aa_archive_ctrl_teacher.py',
           }
           changed = set(subprocess.check_output(
               ['git', 'diff', '--name-only', 'origin/main...HEAD'], text=True

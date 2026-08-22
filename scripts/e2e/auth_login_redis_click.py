@@ -4,17 +4,20 @@ Browser security contract:
 - login must use the dedicated browser endpoint;
 - refreshToken is never exposed to JavaScript and lives only in HttpOnly cookie;
 - accessToken is memory-only and must not survive in local/session storage;
-- successful authenticated navigation plus Redis one-time challenge consumption proves the live
-  browser session without weakening the storage boundary.
+- successful authenticated navigation plus MySQL-authoritative one-time captcha consumption proves
+  the live browser session without weakening the storage boundary;
+- Redis remains a required production shared-service dependency and is verified independently.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import traceback
 from pathlib import Path
 
+import pymysql
 import redis
 from playwright.sync_api import Page, expect, sync_playwright
 
@@ -23,6 +26,12 @@ STUDENT_BASE_URL = os.environ.get("E2E_STUDENT_BASE_URL", "http://127.0.0.1:5199
 REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/15")
 ARTIFACT_DIR = Path(os.environ.get("E2E_ARTIFACT_DIR", "artifacts/auth-login-e2e"))
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+
+DB_HOST = os.environ.get("DB_HOST", "127.0.0.1")
+DB_PORT = int(os.environ.get("DB_PORT", "3306"))
+DB_NAME = os.environ.get("DB_NAME", "auth_login_e2e")
+DB_USER = os.environ.get("DB_USER", "root")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
 
 
 def is_login(response) -> bool:
@@ -74,7 +83,33 @@ def wait_captcha_ready(page: Page, trigger) -> None:
         expect(image).to_have_attribute("src", re.compile(r"^data:image/png;base64,"), timeout=10_000)
 
 
-def fresh_captcha(page: Page, trigger, redis_client) -> tuple[str, str]:
+def _challenge_digest(captcha_id: str) -> str:
+    return hashlib.sha256(captcha_id.encode("utf-8")).hexdigest()
+
+
+def _challenge_row(captcha_id: str):
+    connection = pymysql.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
+        charset="utf8mb4",
+        autocommit=True,
+    )
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT consumed_at, expires_at FROM t_auth_challenge_state "
+                "WHERE challenge_id_hash=%s LIMIT 1",
+                (_challenge_digest(captcha_id),),
+            )
+            return cursor.fetchone()
+    finally:
+        connection.close()
+
+
+def fresh_captcha(page: Page, trigger) -> tuple[str, str]:
     wait_captcha_ready(page, trigger)
     with page.expect_response(is_captcha, timeout=15_000) as info:
         trigger.click()
@@ -85,9 +120,12 @@ def fresh_captcha(page: Page, trigger, redis_client) -> tuple[str, str]:
     code = str(data.get("devCode") or "")
     if not captcha_id or len(code) != 6 or not code.isdigit():
         raise AssertionError("测试环境未返回 6 位 devCode")
-    keys = list(redis_client.scan_iter(match=f"*auth:captcha:{captcha_id}"))
-    if len(keys) != 1:
-        raise AssertionError(f"验证码提交前 Redis 挑战键异常：{keys!r}")
+    row = _challenge_row(captcha_id)
+    if row is None:
+        raise AssertionError("验证码提交前 MySQL Authority 中不存在挑战记录")
+    consumed_at, _expires_at = row
+    if consumed_at is not None:
+        raise AssertionError("验证码提交前已被异常消费")
     # 网络响应到达后，给 Vue/uni-app 一个事件循环把 captchaId 写入组件状态。
     page.wait_for_timeout(150)
     return captcha_id, code
@@ -101,9 +139,13 @@ def fill_and_sync(page: Page, selector: str, value: str) -> None:
     page.wait_for_timeout(150)
 
 
-def assert_consumed(redis_client, captcha_id: str) -> None:
-    if list(redis_client.scan_iter(match=f"*auth:captcha:{captcha_id}")):
-        raise AssertionError("验证码提交后仍存在于 Redis")
+def assert_consumed(captcha_id: str) -> None:
+    row = _challenge_row(captcha_id)
+    if row is None:
+        raise AssertionError("验证码提交后 MySQL Authority 挑战记录丢失")
+    consumed_at, _expires_at = row
+    if consumed_at is None:
+        raise AssertionError("验证码提交后 MySQL Authority 仍标记为未消费")
 
 
 def assert_no_browser_token_persistence(page: Page, keys: list[str]) -> None:
@@ -137,7 +179,7 @@ def teacher_pc(browser, redis_client) -> dict:
     captcha_input = page.locator("#login-captcha")
     expect(captcha_input).to_be_visible(timeout=10_000)
     trigger = page.locator('button[title="点击换一张"]')
-    captcha_id, code = fresh_captcha(page, trigger, redis_client)
+    captcha_id, code = fresh_captcha(page, trigger)
     fill_and_sync(page, "#login-captcha", code)
     fill_and_sync(page, "#staff-password", "123456")
     page.screenshot(path=str(ARTIFACT_DIR / "teacher-pc-before-submit.png"), full_page=True)
@@ -147,7 +189,7 @@ def teacher_pc(browser, redis_client) -> dict:
         raise AssertionError(f"管理 PC 登录失败：{result!r}")
     page.wait_for_url("**/workbench**", timeout=15_000)
     assert_no_browser_token_persistence(page, ["gx_pc_token_v1", "gx_pc_refresh_v1"])
-    assert_consumed(redis_client, captcha_id)
+    assert_consumed(captcha_id)
     page.screenshot(path=str(ARTIFACT_DIR / "teacher-pc-success.png"), full_page=True)
     page.close()
     return {"ok": True, "wrongAttemptBizCodes": wrong}
@@ -163,7 +205,7 @@ def platform_pc(browser, redis_client) -> dict:
     expect(page.locator("#platform-captcha")).to_be_visible(timeout=10_000)
     fill_and_sync(page, 'input[autocomplete="current-password"]', "123456")
     trigger = page.locator('button[title="点击换一张"]')
-    captcha_id, code = fresh_captcha(page, trigger, redis_client)
+    captcha_id, code = fresh_captcha(page, trigger)
     fill_and_sync(page, "#platform-captcha", code)
     page.screenshot(path=str(ARTIFACT_DIR / "platform-pc-before-submit.png"), full_page=True)
 
@@ -172,7 +214,7 @@ def platform_pc(browser, redis_client) -> dict:
         raise AssertionError(f"平台 PC 登录失败：{result!r}")
     page.wait_for_url("**/admin/platform/overview**", timeout=15_000)
     assert_no_browser_token_persistence(page, ["gx_pc_token_v1", "gx_pc_refresh_v1"])
-    assert_consumed(redis_client, captcha_id)
+    assert_consumed(captcha_id)
     page.screenshot(path=str(ARTIFACT_DIR / "platform-pc-success.png"), full_page=True)
     page.close()
     return {"ok": True}
@@ -197,7 +239,7 @@ def student_pc(browser, redis_client) -> dict:
     captcha_input = page.locator("#student-login-captcha")
     expect(captcha_input).to_be_visible(timeout=10_000)
     trigger = page.locator('button[title="点击换一张"]')
-    captcha_id, code = fresh_captcha(page, trigger, redis_client)
+    captcha_id, code = fresh_captcha(page, trigger)
     fill_and_sync(page, "#student-login-captcha", code)
     fill_and_sync(page, "#student-password", "123456")
     page.screenshot(path=str(ARTIFACT_DIR / "student-pc-before-submit.png"), full_page=True)
@@ -207,7 +249,7 @@ def student_pc(browser, redis_client) -> dict:
         raise AssertionError(f"学生 PC 登录失败：{result!r}")
     page.wait_for_url("**/portal/home**", timeout=20_000)
     assert_no_browser_token_persistence(page, ["sp_token_v1", "sp_refresh_v1"])
-    assert_consumed(redis_client, captcha_id)
+    assert_consumed(captcha_id)
     page.screenshot(path=str(ARTIFACT_DIR / "student-pc-success.png"), full_page=True)
     page.close()
     return {"ok": True, "wrongAttemptBizCodes": wrong}

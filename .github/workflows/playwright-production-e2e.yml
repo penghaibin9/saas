@@ -143,6 +143,24 @@ jobs:
           test -s ../e2e/academic-b-w4-fixture.json
           test -s ../e2e/academic-b-w4-formation-fixture.json
 
+      - name: Seed Academic W1 and W2 browser fixtures
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_academic_archive_correction_w1.py
+          python - <<'PY'
+          from app.services.school_iam_authority_service import converge_school_iam_authority
+          converge_school_iam_authority(
+              source='playwright-production-e2e-w2',
+              source_commit_sha='${{ github.event.pull_request.head.sha || github.sha }}',
+              actor_user_id=None,
+          )
+          print('[playwright-e2e] school IAM authority converged for W2')
+          PY
+          python scripts/e2e_seed_academic_exam_incident_w2.py
+          test -s ../e2e/academic-archive-correction-w1-fixture.json
+          test -s ../e2e/academic-exam-incident-w2-fixture.json
+
       - name: Start backend
         run: |
           mkdir -p e2e/runtime-logs

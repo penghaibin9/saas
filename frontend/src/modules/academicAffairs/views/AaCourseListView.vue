@@ -6,6 +6,8 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
+      <AppButton @click="downloadCourseTemplate">下载导入模板</AppButton>
+      <AppButton @click="importVisible = true">批量导入</AppButton>
       <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/courses/new')">＋ 新建课程</AppButton>
     </template>
 
@@ -31,6 +33,16 @@
         </template>
       </DataTable>
     </div>
+
+    <AaAuthoritativeImportDrawer
+      v-model:visible="importVisible"
+      title="课程库权威 XLSX 导入"
+      template-name="课程库权威导入模板.xlsx"
+      :preview-fields="['courseCode', 'courseName', 'version', 'credit', 'category', 'nature']"
+      :download-template-fn="academicFileExchangeApi.downloadCourseCatalogTemplate"
+      :upload-fn="academicFileExchangeApi.uploadCourseCatalogImport"
+      @imported="onCourseImported"
+    />
   </ModulePageShell>
 </template>
 
@@ -40,16 +52,19 @@ import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, Advan
 import { AppButton } from '@/components/ui'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicFileExchangeApi } from '@/modules/academicAffairs/api/academic-file-exchange.api'
+import AaAuthoritativeImportDrawer from '@/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue'
+import { toast } from '@/utils/toast'
 import { COURSE_CATEGORY, COURSE_NATURE, REVIEW_STATUS, reviewStatusColor } from '@/modules/academicAffairs/constants/course-program'
 
 export default {
   name: 'AaCourseListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AdvancedFilter },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AdvancedFilter, AaAuthoritativeImportDrawer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      COURSE_CATEGORY, COURSE_NATURE, REVIEW_STATUS,
-      loading: true, error: '', rows: [],
+      COURSE_CATEGORY, COURSE_NATURE, REVIEW_STATUS, academicFileExchangeApi,
+      loading: true, error: '', rows: [], importVisible: false,
       filters: { keyword: '', category: '', nature: '', status: '' },
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
@@ -78,6 +93,13 @@ export default {
     onPageChange(p) { this.pagination.page = p; this.load() },
     search() { this.pagination.page = 1; this.load() },
     reset() { this.filters = { keyword: '', category: '', nature: '', status: '' }; this.search() },
+    async downloadCourseTemplate() {
+      const res = await academicFileExchangeApi.downloadCourseCatalogTemplate()
+      if (res.code !== 0) { toast.error(res.message || '课程导入模板下载失败'); return }
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a'); a.href = url; a.download = '课程库权威导入模板.xlsx'; a.click(); URL.revokeObjectURL(url)
+    },
+    async onCourseImported() { toast.success('课程库权威导入已完成'); this.importVisible = false; await this.load() },
     async load() {
       this.loading = true
       this.error = ''

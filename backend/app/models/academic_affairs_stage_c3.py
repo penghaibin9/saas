@@ -101,7 +101,8 @@ class PostArchiveCorrectionCase(PKMixin, TenantMixin, CommonMixin, Base):
     ``GRADUATION``. Applying a case appends a new official domain fact and a new
     ArchiveManifest version; it never reopens the archived term. ``official_fact_*``
     closes the evidence chain from the correction workflow row to the exact fact it
-    produced.
+    produced. A rejected case persists its reviewer/time/reason independently from the
+    applicant reason and never produces an official fact or Manifest version.
     """
 
     __tablename__ = "t_aa_post_archive_correction_case"
@@ -120,6 +121,9 @@ class PostArchiveCorrectionCase(PKMixin, TenantMixin, CommonMixin, Base):
     risk_level: Mapped[str] = mapped_column(String(20), nullable=False, default="HIGH")
     second_approved_by: Mapped[int | None] = mapped_column(BigInteger)
     applied_at: Mapped[datetime | None] = mapped_column(DateTime)
+    rejected_by: Mapped[int | None] = mapped_column(BigInteger)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reject_reason: Mapped[str | None] = mapped_column(String(500))
     official_fact_type: Mapped[str | None] = mapped_column(String(50))
     official_fact_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     resulting_manifest_id: Mapped[int | None] = mapped_column(BigInteger, index=True)

@@ -12,7 +12,7 @@
     <div class="mp-stack">
       <!-- 多维筛选栏（导出报表 Tab 使用自己的表单，不复用此栏；教学资源为校级共享资产，
            无学期/学院维度，见 resource_stats 后端注释，本栏对该 Tab 不适用） -->
-      <div v-if="tab !== 'export' && tab !== 'resource'" class="aa-filter">
+      <div v-if="tab !== 'export' && tab !== 'resource' && tab !== 'snapshot'" class="aa-filter">
         <label class="aa-filter__item">学期
           <AppTermEntityPicker v-model="filters.termId" placeholder="全部学期" />
         </label>
@@ -275,6 +275,11 @@
           <button class="mp-link" @click="openDetail">查看待审核预约 →</button>
         </template>
 
+        <!-- ══ 统计冻结快照（W3）══ -->
+        <template v-else-if="tab === 'snapshot'">
+          <AaStatsSnapshotWorkspace :context-filters="filters" />
+        </template>
+
         <!-- ══ 导出报表（15）══ -->
         <template v-else-if="tab === 'export'">
           <div class="aa-export-form">
@@ -330,6 +335,7 @@ import {
 import { AppButton } from '@/components/ui'
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import AaStatsSnapshotWorkspace from '@/modules/academicAffairs/components/AaStatsSnapshotWorkspace.vue'
 import { toast } from '@/utils/toast'
 
 const TABS = [
@@ -346,6 +352,7 @@ const TABS = [
   { key: 'graduation', label: '毕业资格统计' },
   { key: 'workload', label: '教师工作量统计' },
   { key: 'resource', label: '教学资源统计' },
+  { key: 'snapshot', label: '统计快照' },
   { key: 'export', label: '导出报表' }
 ]
 
@@ -500,7 +507,7 @@ export default {
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton,
     AppInlineAlert, AppMetricCard, AppG2Chart, AppSelect, AppTermEntityPicker,
-    AppCollegePicker, AppMajorPicker, AppGraduationBatchPicker
+    AppCollegePicker, AppMajorPicker, AppGraduationBatchPicker, AaStatsSnapshotWorkspace
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -584,7 +591,7 @@ export default {
         await this.loadOverview()
       } else if (this.tab === 'workload') {
         await this.loadWorkload()
-      } else if (this.tab === 'export') {
+      } else if (this.tab === 'export' || this.tab === 'snapshot') {
         this.loading = false
       } else {
         await this.loadSummaryTab()

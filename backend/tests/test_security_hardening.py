@@ -34,7 +34,14 @@ def test_logout_invalidates_access_token(client):
     assert r["code"] == 401001
 
 
-def test_login_rate_limit_10_per_minute(client):
+def test_login_rate_limit_10_per_minute(client, monkeypatch):
+    # P0 风控切换到 MySQL authority 后，限流桶会跨请求持久存在；前序 refresh/logout
+    # 用例也会真实经过 mock-login。这个测试只固定自身 request meta 的来源 IP，从而得到
+    # 独立的持久化 bucket；限流实现仍走真实 Redis/MySQL authority。代理/XFF 信任边界由
+    # 下方独立安全合同覆盖，禁止通过伪造 X-Forwarded-For 来隔离本用例。
+    from app.api.v1 import auth as auth_api
+    monkeypatch.setattr(auth_api, "get_request_meta", lambda: {"ip": "203.0.113.210"})
+
     for _ in range(10):
         assert client.post("/api/v1/auth/mock-login",
                            json={"loginName": "school_admin01", "password": "x"}).json()["code"] == 0
