@@ -28,6 +28,39 @@
             </div>
           </section>
 
+          <!-- TP-E02：教师 PC 独立的去向核验工作区。之前 PC 只能靠"材料审核"隐式
+               完成核验，老师看不到证据是否成立，也没有单独的退回补正入口。 -->
+          <section v-if="verification" class="emp-section" style="margin-top: var(--space-4)">
+            <div class="emp-section__head">
+              <h3 class="emp-section__title">
+                去向核验
+                <StatusTag
+                  :type="verification.verifyStatus === 'VERIFIED' ? 'success' : verification.verifyStatus === 'RETURNED' ? 'warning' : 'default'"
+                  :label="verification.verifyStatusLabel"
+                  dot
+                  style="margin-left: 8px"
+                />
+              </h3>
+            </div>
+            <p class="emp-verify__evidence">
+              可用正式证据：<b>{{ verification.formalApprovedCount }}</b> 份（已审核通过且完成正式文件绑定与安全扫描）
+            </p>
+            <p v-if="verification.blockedReason" class="emp-verify__blocked">{{ verification.blockedReason }}</p>
+            <div class="emp-review-ops">
+              <AppButton
+                variant="primary"
+                :disabled="!canVerify || submitting"
+                :title="verification.blockedReason"
+                @click="verifyVisible = true"
+              >核验通过</AppButton>
+              <AppButton
+                variant="danger"
+                :disabled="!canReturnVerification || submitting"
+                @click="verifyReturnVisible = true"
+              >退回补正</AppButton>
+            </div>
+          </section>
+
           <section class="emp-section" style="margin-top: var(--space-4)">
             <div class="emp-section__head">
               <h3 class="emp-section__title">就业材料</h3>
@@ -41,7 +74,23 @@
               <tbody>
                 <tr v-for="m in detail.materials" :key="m.id">
                   <td>{{ labelOf('materialType', m.materialType) }}</td>
-                  <td>{{ m.fileName }}</td>
+                  <!-- TP-E05：正式证据 vs 历史文件名文本必须在列表上就能区分，
+                       否则老师只看到一个文件名，无从判断这份材料能不能作为核验凭据。 -->
+                  <td>
+                    {{ m.file?.fileName || m.fileName || '—' }}
+                    <StatusTag
+                      v-if="m.formalEvidence"
+                      type="success"
+                      label="正式材料"
+                      style="margin-left: 6px"
+                    />
+                    <StatusTag
+                      v-else-if="m.legacyFileNameOnly"
+                      type="warning"
+                      label="历史文本记录"
+                      style="margin-left: 6px"
+                    />
+                  </td>
                   <td>{{ m.submitTime }}</td>
                   <td><StatusTag :type="materialTagType[m.status] || 'default'" :label="labelOf('materialStatus', m.status)" /></td>
                   <td class="emp-inline-note">{{ m.returnReason || m.remark || '—' }}</td>
@@ -83,6 +132,27 @@
         :submitting="submitting"
         @confirm="onVoidConfirm"
       />
+      <AppConfirmDialog
+        v-model:visible="verifyVisible"
+        title="去向核验通过"
+        :message="`确认核验通过「${detail.student.name}」的就业去向？核验依据为 ${verification ? verification.formalApprovedCount : 0} 份正式材料证据，结果将计入就业统计并全程留痕。`"
+        type="primary"
+        confirm-text="确认核验"
+        :submitting="submitting"
+        @confirm="submitVerification('VERIFY', '')"
+      />
+      <AppConfirmDialog
+        v-model:visible="verifyReturnVisible"
+        title="去向核验退回补正"
+        :message="`退回「${detail.student.name}」的去向核验，学生将收到补正通知。`"
+        type="danger"
+        confirm-text="确认退回"
+        require-reason
+        reason-label="补正意见"
+        reason-placeholder="请写明需要补交/更正的具体内容（不少于 5 字）"
+        :submitting="submitting"
+        @confirm="({ reason }) => submitVerification('RETURN', reason)"
+      />
     </template>
   </ModulePageShell>
 </template>
@@ -90,6 +160,8 @@
 <script>
 /** 页面 3：/admin/employment/students/:id 学生就业详情（材料 / 跟进 / 留痕一体）。 */
 import { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
+import { AppConfirmDialog } from '@/components/common'
+import { AppButton } from '@/components/ui'
 import { EditDrawer, DeleteConfirmDialog, AuditTrailPanel } from '@/modules/employment/components'
 import * as api from '@/modules/employment/api/employment.api'
 import { DESTINATION_TAG_TYPE, MATERIAL_TAG_TYPE, FOLLOWUP_TAG_TYPE, toLabelMap } from '@/modules/employment/constants/employment.constants'
@@ -97,7 +169,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'EmploymentStudentDetailView',
-  components: { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, EmptyState, LoadingState, ErrorState, EditDrawer, DeleteConfirmDialog, AuditTrailPanel },
+  components: { ModulePageShell, ModuleToolbar, StatusTag, RiskTag, EmptyState, LoadingState, ErrorState, EditDrawer, DeleteConfirmDialog, AuditTrailPanel, AppConfirmDialog, AppButton },
   data() {
     return {
       ctx: null,
@@ -109,12 +181,21 @@ export default {
       filterOptions: {},
       editVisible: false,
       voidVisible: false,
+      verification: null,
+      verifyVisible: false,
+      verifyReturnVisible: false,
       destinationTagType: DESTINATION_TAG_TYPE,
       materialTagType: MATERIAL_TAG_TYPE,
       followTagType: FOLLOWUP_TAG_TYPE
     }
   },
   computed: {
+    canVerify() {
+      return !!this.verification && (this.verification.allowedActions || []).includes('VERIFY')
+    },
+    canReturnVerification() {
+      return !!this.verification && (this.verification.allowedActions || []).includes('RETURN')
+    },
     roleName() {
       return this.ctx?.currentRole?.roleName || ''
     },
@@ -188,15 +269,19 @@ export default {
       this.loading = true
       this.error = ''
       try {
-        const [ctx, status, detail] = await Promise.all([
+        // 核验工作区与主详情分开处理：核验接口故障不应让整个学生详情打不开，
+        // 但也不能静默吞掉——拿不到就不渲染核验区块，而不是渲染一个空壳。
+        const [ctx, status, detail, verification] = await Promise.all([
           api.getEmploymentContext(),
           api.getStatusOptions(),
-          api.getEmploymentStudentDetail(this.$route.params.studentId)
+          api.getEmploymentStudentDetail(this.$route.params.studentId),
+          api.getDestinationVerification(this.$route.params.studentId)
         ])
         if (ctx.code === 0) this.ctx = ctx.data
         if (status.code === 0) this.statusOptions = status.data
         if (detail.code === 0) this.detail = detail.data
         else this.error = detail.message
+        this.verification = verification.code === 0 ? verification.data : null
       } catch (e) {
         this.error = e.message || '加载失败'
       } finally {
@@ -206,6 +291,26 @@ export default {
     onToolbar(key) {
       if (key === 'edit') this.editVisible = true
       if (key === 'void') this.voidVisible = true
+    },
+    async submitVerification(action, comment) {
+      this.submitting = true
+      try {
+        const res = await api.reviewDestinationVerification(this.detail.student.id, {
+          action,
+          comment,
+          // 乐观锁版本必须来自服务端刚返回的核验工作区，不能自己攒——
+          // 版本过期时服务端会 409，前端刷新后重试。
+          expectedVersion: this.verification.expectedVersion
+        })
+        if (res.code === 0) {
+          toast.success(action === 'VERIFY' ? '去向已核验，已写入留痕' : '已退回补正，原因已留痕')
+          this.verifyVisible = false
+          this.verifyReturnVisible = false
+          this.load()
+        } else toast.error(res.message)
+      } finally {
+        this.submitting = false
+      }
     },
     async onEditSubmit(form) {
       this.submitting = true
@@ -275,4 +380,6 @@ export default {
   margin-top: var(--space-1);
   font-size: var(--font-size-sm);
 }
+.emp-verify__evidence { margin: 0 0 var(--space-2); font-size: 13px; color: var(--text-2, #606266); }
+.emp-verify__blocked { margin: 0 0 var(--space-2); font-size: 13px; color: var(--warning-6, #e6a23c); }
 </style>

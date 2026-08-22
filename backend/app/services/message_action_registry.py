@@ -34,7 +34,12 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["leaveId"],
         "pc": "/admin/student-affairs/leave",
-        "studentPc": "/leave",
+        # V3 施工手册 SP-M02：student-portal 路由里从未存在过 /leave，此前这条深链
+        # 落到 `:module` 通配符模板页而不是业务对象。真实请假页是 /campus-service 的
+        # leave 分 tab（AffairsFourEndView.vue），改指向它，并用 studentPcQuery 声明
+        # 要打开哪个 tab（该页面已支持从 route.query.tab 初始化）。
+        "studentPc": "/campus-service",
+        "studentPcQuery": {"tab": "leave"},
         # V3 §4.3：请假是专用 Authority，深链必须回请假页本身，
         # 不再落到“我的申请”这种通用大厅（旧值 /pages/student/my-applications/index）。
         "studentMini": "/pages/student/affairs/leave",
@@ -57,7 +62,10 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "roles": ["STUDENT"],
         "requiredParams": ["examId"],
         "pc": None,
-        "studentPc": "/exams",
+        # SP-M02：student-portal 从未有过 /exams 路由，此前落到通配符模板页。
+        # 真实考试信息在 /academic 的 exam 分 tab（AcademicView.vue）。
+        "studentPc": "/academic",
+        "studentPcQuery": {"tab": "exam"},
         # 旧值 /pages/student/campus-service/index 是“在校服务”大厅，跟考试无关；
         # 教务考试页才是真实落点。
         "studentMini": "/pages/student/academic-affairs/exam",
@@ -105,7 +113,9 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["recordId"],
         "pc": "/admin/student-affairs/leave",
-        "studentPc": "/leave",
+        # SP-M02：与 student.leave.detail 同一落点修复，见上方注释。
+        "studentPc": "/campus-service",
+        "studentPcQuery": {"tab": "leave"},
         "studentMini": "/pages/student/affairs/leave",
         "teacherMini": "/pages/teacher/approval/index",
         "focus": {"studentMini": FOCUS_LIST_FOCUS},
@@ -174,7 +184,10 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["warningId"],
         "pc": "/admin/academic/warnings",
-        "studentPc": "/warnings",
+        # SP-M02：student-portal 从未有过 /warnings 路由，此前落到通配符模板页。
+        # 真实学业预警信息在 /academic 的 warning 分 tab（AcademicView.vue）。
+        "studentPc": "/academic",
+        "studentPcQuery": {"tab": "warning"},
         # 同上：旧值指向“在校服务”大厅，学业预警页才是真实落点。
         "studentMini": "/pages/student/academic-affairs/warning",
         "teacherMini": "/pages/teacher/risk-students/index",
@@ -276,4 +289,7 @@ def resolve_route(action_key: str, *, client: str) -> dict:
         "focusMode": focus_mode,
         "focusParam": focus_param_for(action_key),
         "exact": is_route_exact(focus_mode, path),
+        # 该端固定附带的 query（例如 PC 落到多 tab 页面时指定 tab）。可选字段，
+        # 未登记的 client/actionKey 返回空 dict；消费方按需合并，不影响其余端。
+        "staticQuery": dict(spec.get(f"{client}Query") or {}),
     }

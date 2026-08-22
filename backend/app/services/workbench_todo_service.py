@@ -16,7 +16,10 @@
      None=本租户全量（TENANT_ALL，如校级管理员）；空集=fail-closed（未配范围一律看不到）。
   注意与 `mobile_teacher_service._filter_by_assignee_todos` 的差异：移动端那支在 COLLEGE 分支下
   放行了全部 `assignee_id==0`（不校验学生归属），本服务按学生范围收紧，避免跨学院可见。
-学生（student-mini）：只看本人——`assignee_id == 本人` 或 `student_id == 本人学籍档案`。
+学生（student-mini）：**只按 `assignee_id == 当前 User.id` 判断收件人**。
+  `student_id` 永远只是“这条业务待办处理的是哪名学生”的 subject，不是 audience；老师审批
+  学生请假/资助/违纪时同样会填 student_id，绝不能因此把老师的待办暴露给该学生。
+  真正需要学生处理的待办，生产者必须通过正式账号绑定把 `assignee_id` 写成学生 User.id。
 
 `uid` 无法解析为正整数时（演示/异常令牌）绝不回落成 `assignee_id == 0`，否则会把
 全部池待办暴露给身份不明的调用方；此时按 fail-closed 返回空。
@@ -35,6 +38,60 @@ from app.services.todo_route_registry import resolve_todo_route
 _TODO_DONE = "DONE"
 _TODO_PENDING = "PENDING"
 
+# TP-W12：generic complete（本文件 complete_todo + /todos/{id}/complete）之前对任意
+# 可见的 PENDING UnifiedTodo 都直接翻成 DONE——LEAVE_APPROVAL 这类待办可以被"标记
+# 完成"，但真实 WorkflowTask/Leave 仍然 PENDING，业务对象与待办列表口径分叉。
+#
+# 已核实：下面枚举的每个 todo_type 都由各自业务模块在真实审批/处理动作完成时，
+# 用自己的 `_todo_done()`/`todo_done()` 帮助函数同步 UnifiedTodo → DONE（
+# affairs_leave_service/affairs_aid_service/affairs_risk_service/
+# affairs_discipline_service/affairs_funding_service/affairs_dorm_service/
+# academic_affairs_change_service/academic_affairs_grade_core_service/
+# academic_affairs_schedule_change_service/academic_affairs_warning_service/
+# employment_service/graduation_todo_helper/internship_todo_helper/
+# affairs_operations_service），完全不经过这里——generic complete 从未是它们的
+# 真实完成路径。因此这些 todo_type 归为 DOMAIN_COMMAND：只能由对应业务动作完成，
+# generic complete 一律拒绝。未在下表登记的 todo_type 默认也是 DOMAIN_COMMAND
+# （fail-closed）；只有显式登记为 ACK_ONLY 的类型才允许 generic complete——
+# 目前没有真正的纯确认类待办，`GENERIC_ACK` 只是测试/未来占位，不代表已有生产
+# 类型属于这一类。
+_COMPLETION_MODE_DOMAIN_COMMAND = "DOMAIN_COMMAND"
+_COMPLETION_MODE_ACK_ONLY = "ACK_ONLY"
+
+_DOMAIN_COMMAND_TODO_TYPES: frozenset[str] = frozenset({
+    "LEAVE_APPROVAL", "LEAVE_OVERDUE", "LEAVE_CANCEL", "LEAVE_EXTENSION",
+    "AID_APPROVAL", "AID_ADJUST",
+    "FUNDING_APPROVAL",
+    "DISCIPLINE_APPROVAL", "DISCIPLINE_REMOVE",
+    "DORM_TRANSFER", "DORM_EXCEPTION",
+    "RISK_HANDLE",
+    "AA_STATUS_APPROVAL", "AA_SCHEDULE_CHANGE_APPROVAL", "AA_GRADE_ENTRY",
+    "ACAD_WARNING_HANDLE",
+    "EMPLOYMENT_FOLLOWUP",
+    "GD_PROPOSAL_REVIEW", "GD_TOPIC_CHANGE_REVIEW", "GD_FINAL_REVIEW", "GD_DEFENSE_SCORE",
+    "INTERN_WEEKLY_REVIEW", "INTERN_LEAVE_APPROVAL", "INTERN_EXCEPTION_HANDLE",
+    "INTERN_VISIT_RECTIFY",
+    "MATERIAL_REVIEW",
+})
+
+#: 显式允许 generic complete 的 ACK_ONLY 类型——当前没有真实生产类型进入这个集合。
+_ACK_ONLY_TODO_TYPES: frozenset[str] = frozenset()
+
+
+def _completion_mode(todo_type: str | None) -> str:
+    tt = str(todo_type or "").strip().upper()
+    if tt in _ACK_ONLY_TODO_TYPES:
+        return _COMPLETION_MODE_ACK_ONLY
+    return _COMPLETION_MODE_DOMAIN_COMMAND
+
+
+def todo_completion_mode_snapshot() -> dict[str, str]:
+    """供 CI/合同测试枚举：新增业务 todo_type 时如果忘了登记进
+    `_DOMAIN_COMMAND_TODO_TYPES`，运行时默认值已经 fail-closed 成
+    DOMAIN_COMMAND（安全），但这份快照仍然把"已知业务类型"显式列出来，
+    方便测试直接断言 LEAVE/RISK/GRADE 等具体类型，而不是只测默认行为。"""
+    return {tt: _COMPLETION_MODE_DOMAIN_COMMAND for tt in sorted(_DOMAIN_COMMAND_TODO_TYPES)}
+
 
 def _uid(user: dict | None) -> int:
     """使用全系统统一身份映射解析待办办理人；无法解析时继续 fail-closed。"""
@@ -48,7 +105,7 @@ def _is_student(user: dict | None) -> bool:
 
 
 def _self_student_id(db, user: dict | None) -> int:
-    """学生本人学籍档案 ID（按令牌 studentNo 在本租户内解析；租户内学号唯一）。"""
+    """学生本人学籍档案 ID（仅供其它需要 subject 身份的调用；不参与 todo audience 判定）。"""
     from app.models import StudentProfile
     sn = str((user or {}).get("studentNo") or "").strip()
     if not sn:
@@ -66,13 +123,9 @@ def _visibility_cond(db, user: dict):
     uid = _uid(user)
 
     if _is_student(user):
-        sid = _self_student_id(db, user)
-        parts = []
-        if uid:
-            parts.append(UnifiedTodo.assignee_id == uid)
-        if sid:
-            parts.append(UnifiedTodo.student_id == sid)
-        return or_(*parts) if parts else None
+        # P1 audience hardening：student_id 是 subject，不是 recipient。
+        # 只有显式指派给当前学生 User.id 的待办才属于“我的待办”。
+        return UnifiedTodo.assignee_id == uid if uid else None
 
     # 教职工：本人指派 + 范围内池待办
     from app.core.affairs_security import build_affairs_context
@@ -84,13 +137,16 @@ def _visibility_cond(db, user: dict):
     if allowed is None:
         parts.append(UnifiedTodo.assignee_id == 0)          # 校级：池待办全可见
     elif allowed:
-        stu_ids = list(db.scalars(select(StudentProfile.id).where(
+        # TP-W13：范围内学生 ID 不再整批拉回 Python 再拼 IN 字面量列表——万人学院会
+        # 把这条 SQL 文本、网络往返和 Python 内存都拉大。改成把 StudentProfile 查询
+        # 作为子查询直接交给数据库做 `student_id IN (SELECT id FROM ...)`，范围内
+        # 零个学生时子查询天然不命中任何行，不需要再单独判断空列表。
+        stu_id_subquery = select(StudentProfile.id).where(
             StudentProfile.tenant_id == _tid(),
-            StudentProfile.class_id.in_(list(allowed)),
-            StudentProfile.is_deleted.is_(False))).all())
-        if stu_ids:
-            parts.append(and_(UnifiedTodo.assignee_id == 0,
-                              UnifiedTodo.student_id.in_(stu_ids)))
+            StudentProfile.class_id.in_(allowed),
+            StudentProfile.is_deleted.is_(False))
+        parts.append(and_(UnifiedTodo.assignee_id == 0,
+                          UnifiedTodo.student_id.in_(stu_id_subquery)))
     # allowed == set() → 未配范围，只保留「明确指派给我的」，不放行任何池待办
     return or_(*parts) if parts else None
 
@@ -123,7 +179,14 @@ def _priority(row) -> str:
 def _todo_dict(row, *, client: str = "pc") -> dict:
     record_id = str(row.source_biz_id) if row.source_biz_id else None
     route = resolve_todo_route(row.todo_type, record_id, client=client)
-    allowed_actions = ["COMPLETE"] if row.status == _TODO_PENDING else []
+    # TP-W12：COMPLETE 只在 generic complete 真的会被接受时才出现在 allowedActions
+    # 里——DOMAIN_COMMAND 类型点了也会被 complete_todo() 拒绝，与其让前端露出一个
+    # 注定失败的按钮，不如干脆不给这个动作；这类待办只能靠 OPEN 去业务页真实处理。
+    allowed_actions = (
+        ["COMPLETE"] if row.status == _TODO_PENDING
+        and _completion_mode(row.todo_type) == _COMPLETION_MODE_ACK_ONLY
+        else []
+    )
     if route:
         allowed_actions.insert(0, "OPEN")
     version = int(getattr(row, "version", 0) or 0)
@@ -261,12 +324,26 @@ def get_todo(user: dict, todo_id: str, *, client: str = "pc") -> dict | None:
         if not row:
             return None
         d = _todo_dict(row, client=client)
-        d["actions"] = ["COMPLETE"] if row.status == _TODO_PENDING else []
+        # TP-W12：与 _todo_dict() 的 allowedActions 同一口径，不能各算各的——
+        # 否则详情页的 actions 字段又会把 DOMAIN_COMMAND 类型的 COMPLETE 露出来。
+        d["actions"] = (
+            ["COMPLETE"] if row.status == _TODO_PENDING
+            and _completion_mode(row.todo_type) == _COMPLETION_MODE_ACK_ONLY
+            else []
+        )
         return d
 
 
 def complete_todo(user: dict, todo_id: str, comment: str | None = None) -> tuple[dict | None, str | None]:
-    """完成待办。返回 (数据, 错误码)；错误码 NOT_FOUND / ALREADY_DONE 由路由层转对应异常。"""
+    """完成待办。返回 (数据, 错误码)；错误码 NOT_FOUND / ALREADY_DONE /
+    DOMAIN_COMMAND_REQUIRED 由路由层转对应异常。
+
+    TP-W12：这是唯一一处"generic complete"入口。DOMAIN_COMMAND 类型的待办
+    （LEAVE_APPROVAL/RISK_HANDLE/AA_GRADE_ENTRY 等，见
+    `_DOMAIN_COMMAND_TODO_TYPES`）必须由各自业务模块的真实审批/处理动作
+    同步完成，这里直接拒绝——否则待办列表会显示"已完成"，但背后的
+    WorkflowTask/Leave/Risk 等真实业务对象仍然 PENDING，两边口径分叉。
+    """
     from app.models import UnifiedTodo
     with session() as db:
         vis = _visibility_cond(db, user)
@@ -283,6 +360,8 @@ def complete_todo(user: dict, todo_id: str, comment: str | None = None) -> tuple
             return None, "NOT_FOUND"
         if row.status == _TODO_DONE:
             return None, "ALREADY_DONE"
+        if _completion_mode(row.todo_type) != _COMPLETION_MODE_ACK_ONLY:
+            return None, "DOMAIN_COMMAND_REQUIRED"
         row.status = _TODO_DONE
         if comment:
             row.remark = (comment or "")[:500]

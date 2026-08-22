@@ -209,6 +209,15 @@ def make_router(client: str) -> APIRouter:
             if err == "ALREADY_DONE":
                 raise AppException("DATA_CONFLICT", "待办已完成，请勿重复操作",
                                    details={"reason": "TODO_ALREADY_COMPLETED"})
+            if err == "DOMAIN_COMMAND_REQUIRED":
+                # TP-W12：这类待办由业务模块自己的审批/处理动作完成，通用「标记完成」
+                # 不能替它签字——否则待办显示已完成，真实业务对象仍是 PENDING。
+                raise AppException(
+                    "TODO_DOMAIN_COMMAND_REQUIRED",
+                    "该待办需要在对应业务模块完成真实处理动作后才会标记完成，不支持直接标记完成",
+                    http_status=409,
+                    details={"reason": "DOMAIN_COMMAND_REQUIRED"},
+                )
             return success(data)
         todo = next((t for t in MOCK_TODOS if t["todoId"] == todo_id), None)
         if not todo:

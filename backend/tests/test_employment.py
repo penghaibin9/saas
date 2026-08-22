@@ -51,7 +51,35 @@ def test_void_and_mark_destination(client, auth_headers, db_mode):
     assert md["code"] == 0 and md["data"]["count"] == 1
 
 
-def test_material_closed_loop(client, auth_headers, db_mode):
+def _bind_formal_evidence(material_id):
+    """给材料建立正式 FileBinding + 可用且扫描通过的 FileObject。"""
+    from app.db.session import get_sessionmaker
+    from app.models.file import FileBinding, FileObject
+
+    db = get_sessionmaker()()
+    try:
+        fo = FileObject(tenant_id=MAIN_TID, file_key="k/offer.pdf", file_name="录用通知.pdf",
+                        status="AVAILABLE", scan_status="CLEAN")
+        db.add(fo)
+        db.flush()
+        db.add(FileBinding(
+            tenant_id=MAIN_TID, file_id=fo.id, biz_type="EMPLOYMENT_MATERIAL",
+            biz_id=str(material_id), module_code="EMPLOYMENT", relation_type="ATTACHMENT",
+            subject_type="STUDENT", version_no=1, is_current=True, status="ACTIVE"))
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_material_approve_without_formal_evidence_does_not_verify(client, auth_headers, db_mode):
+    """V3 施工手册 TP-E04：材料审核的闭环需要正式证据支撑。
+
+    本用例原本断言"材料通过 → verifyStatus 必为 VERIFIED"，而它播的材料只有一个
+    历史 file_name 文本，既没有正式 FileBinding 也没有安全扫描记录。那正是问题
+    本身：教师小程序要求正式证据才允许核验，PC 却只要点一下材料通过即可，同一个
+    canonical 状态两条门槛。现在两端拉齐——证据不成立时材料照常 APPROVED
+    （材料审核是独立业务行为），但去向核验状态不被隐式推进。
+    """
     ids = _seed(db_mode)
     bad = client.post(f"/api/v1/employment/materials/{ids['material']}/return", headers=auth_headers,
                       json={"reason": "x"}).json()
@@ -59,7 +87,23 @@ def test_material_closed_loop(client, auth_headers, db_mode):
     ok = client.post(f"/api/v1/employment/materials/{ids['material']}/approve", headers=auth_headers,
                      json={}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
-    # 通过后学生核验状态 VERIFIED
+    assert ok["data"]["formalEvidence"] is False, ok
+    assert ok["data"]["destinationVerified"] is False, ok
+
+    det = client.get(f"/api/v1/employment/students/{ids['student']}", headers=auth_headers).json()
+    assert det["data"]["student"]["verifyStatus"] == "PENDING_VERIFY", det["data"]["student"]
+
+
+def test_material_closed_loop_with_formal_evidence(client, auth_headers, db_mode):
+    """有正式证据时既有闭环保持不变：材料通过的同时完成去向核验。"""
+    ids = _seed(db_mode)
+    _bind_formal_evidence(ids["material"])
+    ok = client.post(f"/api/v1/employment/materials/{ids['material']}/approve", headers=auth_headers,
+                     json={}).json()
+    assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
+    assert ok["data"]["formalEvidence"] is True, ok
+    assert ok["data"]["destinationVerified"] is True, ok
+
     det = client.get(f"/api/v1/employment/students/{ids['student']}", headers=auth_headers).json()
     assert det["data"]["student"]["verifyStatus"] == "VERIFIED"
 

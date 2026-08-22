@@ -140,13 +140,51 @@ def test_count_matches_list(client, db_mode):
     assert sum(cnt["data"]["byType"].values()) == cnt["data"]["total"]
 
 
-def test_complete_todo_persists_and_is_idempotent(client, db_mode):
-    """完成待办真实落库；重复完成返回冲突而不是静默成功。"""
+def test_domain_command_todo_rejects_generic_complete_and_stays_pending(client, db_mode):
+    """TP-W12：LEAVE_APPROVAL 这类待办真实完成路径在各自业务模块（审批通过/退回/
+    驳回时同步 UnifiedTodo），generic complete 必须拒绝，不能把它标记成"已完成"而
+    背后的 WorkflowTask/Leave 仍然 PENDING——那样待办列表口径会跟真实业务对象分叉。
+    """
     _seed(db_mode)
     h = _token(CA_UID, "counselorA")
     lst = client.get("/api/v1/admin/todos", headers=h, params={"status": "PENDING"}).json()
     tid = next(x["todoId"] for x in lst["data"]["items"] if x["title"].startswith("A班池待办"))
 
+    rejected = client.post(f"/api/v1/admin/todos/{tid}/complete", headers=h, json={})
+    assert rejected.status_code == 409, rejected.text
+    body = rejected.json()
+    assert body["code"] != 0
+    assert body.get("details", {}).get("reason") == "DOMAIN_COMMAND_REQUIRED", body
+
+    still = client.get("/api/v1/admin/todos", headers=h, params={"status": "PENDING"}).json()
+    assert tid in [x["todoId"] for x in still["data"]["items"]], "被拒绝的完成请求不应改动待办状态"
+
+    detail = client.get(f"/api/v1/admin/todos/{tid}", headers=h).json()
+    assert "COMPLETE" not in (detail["data"].get("actions") or []), \
+        "DOMAIN_COMMAND 类型不应该在详情里露出一个注定被拒绝的 COMPLETE 按钮"
+    assert "COMPLETE" not in (detail["data"].get("allowedActions") or [])
+
+
+def test_ack_only_todo_complete_persists_and_is_idempotent(client, db_mode, monkeypatch):
+    """真正的 ACK_ONLY 待办（当前生产没有这个类型，这里用 monkeypatch 现造一个来验证
+    机制本身：完成后真实落库，重复完成返回冲突而不是静默成功）——不能因为生产还没有
+    这个类型，就让 complete_todo() 的持久化/幂等逻辑失去测试覆盖。"""
+    from app.services import workbench_todo_service as svc
+    from app.models import UnifiedTodo
+    from app.db.session import get_sessionmaker
+
+    monkeypatch.setattr(svc, "_ACK_ONLY_TODO_TYPES", frozenset({"TEST_ACK_ONLY"}))
+
+    db = get_sessionmaker()()
+    todo = UnifiedTodo(tenant_id=MAIN, source_module="student-affairs", source_biz_type="TEST",
+                       source_biz_id=9099, todo_type="TEST_ACK_ONLY", assignee_id=CA_UID,
+                       title="纯确认类测试待办", status="PENDING")
+    db.add(todo)
+    db.commit()
+    tid = str(todo.id)
+    db.close()
+
+    h = _token(CA_UID, "counselorA")
     ok = client.post(f"/api/v1/admin/todos/{tid}/complete", headers=h, json={}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "DONE", ok
 

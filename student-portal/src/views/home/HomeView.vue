@@ -1,6 +1,8 @@
 <template>
   <div class="sp-page sp-home-v5">
     <StateBlock v-if="loading" type="loading" text="正在加载工作台…" />
+    <!-- SP-H02：核心首页真值失败必须诚实报错，不能伪装成"暂无待办"的空首页。 -->
+    <StateBlock v-else-if="homeError" type="error" :text="`首页加载失败：${homeError}`" />
     <template v-else>
       <section class="home-hero">
         <div class="home-hero__orb home-hero__orb--one" />
@@ -28,7 +30,9 @@
             <strong>{{ focusItem ? focusTitle : '今天暂无紧急事项' }}</strong>
             <small>{{ focusItem ? focusMeta : '可以查看课表、消息或继续关注成长进度。' }}</small>
           </div>
-          <button v-if="focusItem && ctaModule" type="button" class="home-focus__button" @click="goTarget(ctaModule)">{{ ctaText }}</button>
+          <!-- SP-H03：只消费服务端 nextAction，拿不到可执行 target 就不出按钮，
+               不再拼一个指向大厅的假按钮。 -->
+          <button v-if="canOpen(nextAction)" type="button" class="home-focus__button" @click="openAction(nextAction)">{{ ctaText }}</button>
         </div>
       </section>
 
@@ -47,7 +51,7 @@
         </div>
         <div class="home-journey__track">
           <button v-for="(item, index) in journey" :key="item.key" type="button" class="home-journey__item"
-                  :class="{ 'is-done': item.done, 'is-current': item.current }" @click="goTarget(item.key)">
+                  :class="{ 'is-done': item.done, 'is-current': item.current }" @click="router.push(item.path)">
             <span class="home-journey__node">{{ item.done ? '✓' : index + 1 }}</span>
             <strong>{{ item.label }}</strong>
             <small>{{ item.state }}</small>
@@ -61,16 +65,20 @@
             <div><h2>我的下一步</h2><p>等我提交、确认、补充或整改的真实事项。</p></div>
             <span>{{ todos.length }} 项待办</span>
           </div>
-          <StateBlock v-if="!todos.length" type="empty" text="暂无待办，一切就绪" />
+          <StateBlock v-if="todoState === 'ERROR'" type="error" text="待办加载失败，请稍后重试" />
+          <StateBlock v-else-if="!todos.length" type="empty" text="暂无待办，一切就绪" />
           <div v-else class="home-todo-list">
-            <button v-for="(t, index) in todos" :key="t.id || `${t.title}-${index}`" type="button" class="home-todo" @click="goTarget(t.route || t.link || t.module)">
+            <!-- SP-H03/H06：只消费 t.action，未落地的类型 disabled + 给出原因，不猜路由。 -->
+            <button v-for="(t, index) in todos" :key="t.id || `${t.title}-${index}`" type="button" class="home-todo"
+                    :disabled="!canOpen(t.action)" :title="!canOpen(t.action) ? actionReason(t.action) : ''"
+                    @click="openAction(t.action)">
               <span class="home-todo__index">{{ String(index + 1).padStart(2, '0') }}</span>
               <span class="home-todo__main">
                 <b>{{ t.title }}</b>
                 <small>{{ modName(t.module) }} · {{ t.dueAt ? `截止 ${fmt(t.dueAt)}` : '待办理' }}</small>
               </span>
-              <span class="home-todo__go">去处理
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
+              <span class="home-todo__go">{{ canOpen(t.action) ? '去处理' : '暂不可办' }}
+                <svg v-if="canOpen(t.action)" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6" /></svg>
               </span>
             </button>
           </div>
@@ -82,13 +90,16 @@
               <div><h2>消息速览</h2><p>重要通知与业务结果。</p></div>
               <button type="button" class="home-link" @click="goMsg">全部消息</button>
             </div>
-            <StateBlock v-if="!msgs.length" type="empty" text="暂无新消息" />
+            <StateBlock v-if="messageState === 'ERROR'" type="error" text="消息加载失败，请稍后重试" />
+            <StateBlock v-else-if="!msgs.length" type="empty" text="暂无新消息" />
             <div v-else class="home-message-list">
-              <button v-for="m in msgs" :key="m.id" type="button" class="home-message" @click="goTarget(m.link || m.module)">
+              <button v-for="m in msgs" :key="m.id" type="button" class="home-message"
+                      :disabled="!canOpen(m.action)" :title="!canOpen(m.action) ? actionReason(m.action) : ''"
+                      @click="openAction(m.action)">
                 <span class="home-message__dot" :class="{ 'is-read': m.read }" />
                 <span class="home-message__main">
                   <b :class="{ 'is-read': m.read }">{{ messageTitle(m.title) }}</b>
-                  <small>{{ modName(m.module) }} · {{ fmt(m.time) }}</small>
+                  <small>{{ m.source }} · {{ fmt(m.time) }}</small>
                 </span>
               </button>
             </div>
@@ -114,8 +125,10 @@
         <div class="home-card__head">
           <div><h2>快捷服务</h2><p>直接进入高频模块，不必逐层寻找。</p></div>
         </div>
-        <div class="home-quick">
-          <button v-for="q in quick" :key="q.key" type="button" class="home-quick__item" @click="goTarget(q.key)">
+        <StateBlock v-if="!quick.length" type="empty" text="暂无已开通的快捷服务" />
+        <div v-else class="home-quick">
+          <!-- SP-H05：可见性与落点完全来自服务端 quickServices（已按租户开通模块过滤）。 -->
+          <button v-for="q in quick" :key="q.key" type="button" class="home-quick__item" @click="openAction(q.action)">
             <span class="home-quick__icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path :d="q.d1" /><path :d="q.d2" /></svg>
             </span>
@@ -133,7 +146,7 @@ import { useRouter } from 'vue-router'
 import { useSessionStore } from '../../stores/session'
 import { portalApi } from '../../services/portalApi'
 import { localizeStatusSuffixText } from '../../services/visibleEnumLocalization'
-import { MODULES, moduleByKey } from '../../platform/moduleRegistry'
+import { moduleByKey } from '../../platform/moduleRegistry'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 
@@ -142,13 +155,30 @@ const session = useSessionStore()
 const loading = ref(true)
 const home = ref({})
 const audit = ref({})
-const msgs = ref([])
+// SP-H02：核心首页真值自己的失败状态。ERROR ≠ EMPTY —— 服务 500 时必须显示"加载失败"，
+// 绝不能显示"暂无待办/暂无新消息"，否则学校现场会把系统故障误判成"学生没有事项"。
+const homeError = ref('')
+const auditError = ref('')
+
+// SP-H07：分区状态由服务端下发（DATA / EMPTY / ERROR），前端不再自己按数组长度猜。
+const sections = computed(() => home.value.sections || {})
+function sectionState(key) {
+  if (homeError.value) return 'ERROR'
+  return sections.value[key]?.state || 'EMPTY'
+}
+const todoState = computed(() => sectionState('todo'))
+const messageState = computed(() => sectionState('message'))
 
 const studentName = computed(() => home.value.student?.name || session.user?.realName || '同学')
 const stageLabel = computed(() => home.value.stage?.label || '在校')
 const todos = computed(() => home.value.todos || [])
+const msgs = computed(() => home.value.notices || [])
 const alerts = computed(() => home.value.alerts || [])
 const domains = computed(() => home.value.domains || [])
+const lifecycle = computed(() => home.value.lifecycle || [])
+// SP-H03：第一优先卡只接服务端 typed action，拿不到可执行 action 就不出按钮，
+// 不再给一个指向模块大厅的假按钮。
+const nextAction = computed(() => home.value.nextAction || null)
 const topAlert = computed(() => alerts.value[0] || null)
 const focusItem = computed(() => topAlert.value || todos.value[0] || null)
 const focusTitle = computed(() => focusItem.value?.title || '')
@@ -173,36 +203,74 @@ const identity = computed(() => {
   ].filter((c) => c.value !== '—')
 })
 
+// SP-H08：null = unknown（权限失败/服务未接入），只有查询成功的空结果才是真实 0。
+// 因此不再统一 `?? 0` —— unknown 显示"—"并附说明，绝不冒充"真实没有"。
+function metricValue(value) { return value === null || value === undefined ? '—' : value }
+
 const metrics = computed(() => {
   const c = audit.value.credits || {}
+  const summary = home.value.summary || {}
+  const auditUnavailable = !!auditError.value
   return [
-    { title: '已修学分', value: c.obtainedCredits ?? 0, unit: '', sub: `培养要求 ${c.requiredCredits ?? '—'}`, color: 'var(--t1)' },
-    { title: '平均绩点 GPA', value: c.gpa ?? '—', unit: '', sub: '截至最新学期', color: 'var(--t1)' },
-    { title: '待办事项', value: todos.value.length, unit: '项', sub: '待我处理', color: todos.value.length ? 'var(--pri-text, var(--pri))' : 'var(--t1)' },
-    { title: '预警提醒', value: alerts.value.length, unit: '项', sub: '需跟进', color: alerts.value.length ? 'var(--danger-fg)' : 'var(--ok-fg)' }
+    { title: '已修学分',
+      value: auditUnavailable ? '—' : metricValue(c.obtainedCredits),
+      unit: '',
+      sub: auditUnavailable ? '暂不可用' : `培养要求 ${c.requiredCredits ?? '—'}`,
+      color: 'var(--t1)' },
+    { title: '平均绩点 GPA',
+      value: auditUnavailable ? '—' : metricValue(c.gpa),
+      unit: '',
+      sub: auditUnavailable ? '暂不可用' : '截至最新学期',
+      color: 'var(--t1)' },
+    { title: '待办事项',
+      value: metricValue(summary.todoCount),
+      unit: summary.todoCount === null || summary.todoCount === undefined ? '' : '项',
+      sub: todoState.value === 'ERROR' ? '暂不可用' : '待我处理',
+      color: summary.todoCount ? 'var(--pri-text, var(--pri))' : 'var(--t1)' },
+    { title: '未读消息',
+      value: metricValue(summary.unreadCount),
+      unit: summary.unreadCount === null || summary.unreadCount === undefined ? '' : '条',
+      sub: messageState.value === 'ERROR' ? '暂不可用' : '未读通知',
+      color: summary.unreadCount ? 'var(--danger-fg)' : 'var(--ok-fg)' }
   ]
 })
 
-const ctaModule = computed(() => topAlert.value?.route || topAlert.value?.domain || todos.value[0]?.route || todos.value[0]?.module || null)
 const ctaText = computed(() => (topAlert.value ? '立即处理' : todos.value.length ? '去办理' : ''))
-const quick = computed(() => MODULES.filter((m) => m.key !== 'dashboard').slice(0, 8))
+// SP-H05：可见性与落点由服务端 quickServices 决定（已按本租户模块开通过滤）；
+// 本地 MODULES 只提供 icon/theme，不再自行 filter 出入口，避免租户禁用模块后仍展示。
+const quick = computed(() => (home.value.quickServices || []).map((entry) => {
+  const mod = moduleByKey(entry.key) || {}
+  return { ...entry, d1: mod.d1, d2: mod.d2 }
+}))
 
 const STATUS_LABELS = { CHECKED_IN: '已报到', ONBOARD: '进行中', DONE: '已完成', NORMAL: '正常', SIGNED: '已签约', WARNING: '预警', PENDING: '待处理', PROCESSING: '进行中', APPROVED: '已通过', VERIFIED: '已核验', UNEMPLOYED: '暂未就业', EMPLOYED: '已就业', JOB_SEEKING: '求职中', NOT_STARTED: '尚未开始' }
-const DONE_STATES = new Set(['DONE', 'APPROVED', 'VERIFIED', 'CHECKED_IN', 'SIGNED'])
+// SP-H04：跨域生命周期由服务端归一，前端只认这 6 个统一值，不再本地维护
+// DONE_STATES 把 DONE/APPROVED/VERIFIED/CHECKED_IN/SIGNED 一刀切当"已完成"——
+// SIGNED 只是就业去向类型，不能推出毕业或离校完成。
+const LIFECYCLE_LABELS = {
+  NOT_STARTED: '尚未开始', IN_PROGRESS: '进行中', BLOCKED: '需处理',
+  COMPLETED: '已完成', UNKNOWN: '状态待同步', ERROR: '暂不可用'
+}
 const journey = computed(() => {
+  // SP-H06：航线的 6 个节点固定对应门户已注册的真实模块根路径（与 moduleRegistry
+  // 完全一致），不是从服务端字符串拼出来的猜测路径。
   const defs = [
-    { key: 'orientation', aliases: ['orientation'], label: '迎新入学' },
-    { key: 'academic', aliases: ['academic', 'academic-affairs'], label: '学习生活' },
-    { key: 'campusService', aliases: ['campusService', 'campus-service', 'student-affairs'], label: '成长事务' },
-    { key: 'internship', aliases: ['internship'], label: '岗位实习' },
-    { key: 'graduation', aliases: ['graduation'], label: '毕业设计' },
-    { key: 'employment', aliases: ['employment'], label: '就业离校' }
+    { key: 'orientation', aliases: ['orientation'], label: '迎新入学', path: '/orientation' },
+    { key: 'academic', aliases: ['academic', 'academic-affairs'], label: '学习生活', path: '/academic' },
+    { key: 'campusService', aliases: ['campusService', 'campus-service', 'student-affairs'], label: '成长事务', path: '/campus-service' },
+    { key: 'internship', aliases: ['internship'], label: '岗位实习', path: '/internship' },
+    { key: 'graduation', aliases: ['graduation'], label: '毕业设计', path: '/graduation' },
+    { key: 'employment', aliases: ['employment'], label: '就业离校', path: '/employment' }
   ]
   return defs.map((def) => {
-    const domain = domains.value.find((item) => def.aliases.includes(item.key) || def.aliases.includes(item.domain)) || {}
-    const done = !!domain.hasData && DONE_STATES.has(String(domain.status || '').toUpperCase())
-    const current = !!domain.hasData && !done
-    return { ...def, done, current, state: domain.hasData ? statusLabel(domain.status) : '状态待同步' }
+    const item = lifecycle.value.find((row) => def.aliases.includes(row.key)) || {}
+    const status = String(item.status || 'UNKNOWN').toUpperCase()
+    return {
+      ...def,
+      done: status === 'COMPLETED',
+      current: status === 'IN_PROGRESS' || status === 'BLOCKED',
+      state: LIFECYCLE_LABELS[status] || '状态待同步'
+    }
   })
 })
 
@@ -216,31 +284,43 @@ function statusLabel(s) {
 function messageTitle(value) { return localizeStatusSuffixText(value || '系统通知') }
 function modName(key) { return moduleByKey(key)?.title || (String(key || '').includes('academic') ? '教务学业' : key ? '系统' : '') }
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(5, 16) : '' }
-function goTarget(target) {
-  const raw = String(target || 'home').trim()
-  if (raw.startsWith('/')) {
-    router.push(raw)
-    return
-  }
-  const mod = MODULES.find((m) => m.key === raw || m.path === raw)
-  router.push('/' + (mod ? mod.path : raw.replace(/^\/+/, '')))
+
+// SP-H06：业务动作只允许消费服务端 ActionDescriptor。
+// 以前 goTarget() 在找不到已知模块时会把任意字符串拼成 `/${raw}`，而 student router
+// 存在 `/:module` 通配符 —— 坏 action 会落进模板页并"渲染成功"，形成路由假绿。
+// 现在：没有 target 就不生成 URL，按钮直接禁用并给出业务原因。
+function canOpen(action) { return !!(action && action.target && action.target.path) }
+function actionReason(action) { return (action && action.disabledReason) || '该事项暂无可直接办理的入口' }
+function openAction(action) {
+  if (!canOpen(action)) return
+  const { path, query } = action.target
+  router.push({ path, query: query && Object.keys(query).length ? { ...query } : undefined })
 }
 function goMsg() { router.push('/messages') }
 
 async function load() {
   loading.value = true
-  try {
-    const [h, a, m] = await Promise.all([
-      portalApi.homeOverview().catch(() => ({})),
-      portalApi.academicGraduationAudit().catch(() => ({})),
-      portalApi.messagesInbox(1, 4).catch(() => ({}))
-    ])
-    home.value = h || {}
-    audit.value = a || {}
-    msgs.value = (m && m.list) ? m.list.slice(0, 4) : []
-  } finally {
-    loading.value = false
+  homeError.value = ''
+  auditError.value = ''
+  // SP-H02/H07：首页核心真值与可选的教务学分卡片分开处理。
+  // 核心失败 = 整页 ERROR（不伪装空）；学分卡片失败只让该卡片 unknown，不拖垮首页。
+  const [h, a] = await Promise.allSettled([
+    portalApi.homeOverview(),
+    portalApi.academicGraduationAudit()
+  ])
+  if (h.status === 'fulfilled') {
+    home.value = h.value || {}
+  } else {
+    home.value = {}
+    homeError.value = h.reason?.message || '首页数据加载失败，请稍后重试'
   }
+  if (a.status === 'fulfilled') {
+    audit.value = a.value || {}
+  } else {
+    audit.value = {}
+    auditError.value = a.reason?.message || '学业数据暂不可用'
+  }
+  loading.value = false
 }
 onMounted(load)
 </script>
@@ -298,6 +378,8 @@ onMounted(load)
 .home-side { display:flex; flex-direction:column; gap:16px; }
 .home-todo-list { display:flex; flex-direction:column; }
 .home-todo { all:unset; box-sizing:border-box; cursor:pointer; width:100%; padding:13px 0; display:grid; grid-template-columns:42px 1fr auto; align-items:center; gap:12px; border-top:1px solid var(--line2); }
+.home-todo:disabled,.home-message:disabled { cursor:not-allowed; opacity:.55; }
+.home-todo:disabled .home-todo__go { background:var(--line2); color:var(--t4); }
 .home-todo:first-child { border-top:0; }
 .home-todo:hover .home-todo__go { background:var(--pri); color:#fff; }
 .home-todo__index { width:38px; height:38px; display:grid; place-items:center; border-radius:12px; background:var(--pri-50); color:var(--pri); font-size:12px; font-weight:800; }

@@ -13,8 +13,8 @@ from app.core.idempotency import idempotency_guard
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.employment.schemas.employment import (
-    AssignTeacherBody, CommentBody, CompanyCreate, FollowUpCreate, IdsBody,
-    JobCreate, MarkDestBody, ReasonBody, StudentCreate, StudentUpdate,
+    AssignTeacherBody, CommentBody, CompanyCreate, DestinationVerifyBody, FollowUpCreate,
+    IdsBody, JobCreate, MarkDestBody, ReasonBody, StudentCreate, StudentUpdate,
 )
 from app.modules.employment.services import employment_runtime_audit_service as audit_runtime
 from app.modules.employment.services import employment_runtime_material_service as material_runtime
@@ -113,6 +113,28 @@ def mark_destination(body: MarkDestBody,
 
 
 # 材料
+# 去向核验（TP-E02）：教师 PC 与教师小程序共用同一 domain 命令，
+# 授权各走本端数据范围权威。
+@router.get("/students/{sid}/verification", summary="去向核验工作区（材料证据 + 可执行动作）")
+def destination_verification(sid: str,
+                             user=Depends(require_permission("employment.student.view"))):
+    return success(svc.get_destination_verification(sid, user=user))
+
+
+@router.post("/students/{sid}/verification", summary="去向核验通过 / 退回补正（乐观锁）")
+def destination_verification_review(sid: str, body: DestinationVerifyBody,
+                                    user=Depends(require_permission("employment.material.approve")),
+                                    idempotency_key: str | None = Header(None, alias="Idempotency-Key")):
+    payload = {"sid": sid, "action": body.action, "comment": body.comment or "",
+               "expectedVersion": body.expectedVersion}
+    with _idem(user, "employment-destination-verification", idempotency_key, payload) as guard:
+        if guard.cached is not None:
+            return success(guard.cached, message="已处理（幂等重放）")
+        result = svc.review_destination_verification(sid, payload, user=user)
+        guard.success(result)
+        return success(result, message="去向已核验" if body.action == "VERIFY" else "已退回补正")
+
+
 @router.get("/materials", summary="就业材料列表")
 def materials(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
               keyword: Optional[str] = None, status: Optional[str] = None,

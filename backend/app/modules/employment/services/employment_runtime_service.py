@@ -13,8 +13,10 @@ from sqlalchemy import and_, func, or_, select
 
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (College, EmpAuditTrail, EmpFollowup, EmpMaterial, EmpStudent,
                         Major, SchoolClass, StudentProfile)
+from app.modules.employment.services import employment_material_evidence_service as base_ev
 from app.modules.employment.services import employment_service as base
 from app.services import shadow_student_service as shadow
 from app.services.db_service import _iso, _tid, session
@@ -100,7 +102,9 @@ def _assert_emp_student(db, emp: EmpStudent | None, user: dict) -> EmpStudent:
 
 def _assert_emp_id(db, sid, user: dict) -> EmpStudent:
     try:
-        emp = db.get(EmpStudent, int(sid))
+        # tenant_get：跨租户 sid 直接当不存在处理，不再依赖 _assert_emp_student
+        # 里那道二次校验单独兜底（两层校验对同一事实互为冗余，不冲突）。
+        emp = tenant_get(db, EmpStudent, int(sid))
     except (TypeError, ValueError):
         raise not_found("就业记录不存在或不在当前数据范围内")
     return _assert_emp_student(db, emp, user)
@@ -192,7 +196,7 @@ def get_student_detail(sid, *, user: dict) -> dict:
         profiles = shadow.load_profiles(db, [student])
         return {
             "student": base._stu_row(student, db=db, profiles=profiles),
-            "materials": [base._mat_row(item, student) for item in materials],
+            "materials": base._mat_rows(db, materials, {int(student.id): student} if student else None),
             "followUps": [base._fu_row(item, student) for item in followups],
             "auditLogs": [base._log_row(item) for item in logs],
         }
@@ -280,7 +284,71 @@ def list_materials(page, ps, *, user: dict, keyword=None, status=None, material_
         count_stmt = select(func.count()).select_from(EmpMaterial).join(EmpStudent, join_cond).where(*cond)
         rows, total = _page_query(db, stmt, count_stmt, page, ps)
         students = base._emp_students_by_ids(db, rows)
-        return [base._mat_row(m, students.get(int(m.emp_student_id))) for m in rows], total
+        return base._mat_rows(db, rows, students), total
+
+
+def get_destination_verification(sid, *, user: dict) -> dict:
+    """教师 PC 去向核验工作区数据（TP-E02）。
+
+    授权走 PC 自己的数据范围权威 `_assert_emp_id`；证据判定与门槛复用共享
+    domain 权威，保证与教师小程序看到的是同一套结论。
+    """
+    from app.modules.employment.services import employment_destination_verification_service as verify_authority
+
+    with session() as db:
+        emp = _assert_emp_id(db, sid, user)
+        materials = db.scalars(select(EmpMaterial).where(
+            EmpMaterial.tenant_id == _tid(),
+            EmpMaterial.emp_student_id == emp.id,
+            EmpMaterial.is_deleted.is_(False),
+        ).order_by(EmpMaterial.id.desc())).all()
+        formal_approved = verify_authority.count_formal_approved_materials(db, emp)
+        verify_status = str(emp.verify_status or "PENDING_VERIFY").upper()
+        can_verify = (
+            formal_approved > 0
+            and verify_status != "VERIFIED"
+            and str(emp.destination_type or "").upper() != "UNEMPLOYED"
+        )
+        profiles = shadow.load_profiles(db, [emp])
+        return {
+            "student": base._stu_row(emp, db=db, profiles=profiles),
+            "materials": base._mat_rows(db, materials, {int(emp.id): emp}),
+            "verifyStatus": verify_status,
+            "verifyStatusLabel": base.L_VERIFY.get(verify_status, verify_status),
+            "formalApprovedCount": formal_approved,
+            "expectedVersion": int(emp.version or 0),
+            "allowedActions": (["VERIFY"] if can_verify else []) + (
+                ["RETURN"] if verify_status != "RETURNED" else []),
+            # 不能操作时给出可执行的原因，而不是只把按钮置灰。
+            "blockedReason": (
+                "" if can_verify else
+                "该学生去向为未就业，没有可核验去向"
+                if str(emp.destination_type or "").upper() == "UNEMPLOYED" else
+                "该去向已核验通过" if verify_status == "VERIFIED" else
+                "至少需要 1 份已审核通过且具有正式 FileBinding 的安全材料才能核验通过"
+            ),
+        }
+
+
+def review_destination_verification(sid, body: dict, *, user: dict) -> dict:
+    """教师 PC 执行去向核验 / 退回补正（TP-E02）。
+
+    与教师小程序共用同一 domain 命令：状态机、证据门槛、乐观锁、审计完全一致，
+    差别只在授权用各自端的数据范围权威。
+    """
+    from app.modules.employment.services import employment_destination_verification_service as verify_authority
+
+    body = body or {}
+    with session() as db:
+        emp = _assert_emp_id(db, sid, user)
+        result = verify_authority.review(
+            db, emp,
+            action=body.get("action"),
+            comment=body.get("comment") or "",
+            expected_version=body.get("expectedVersion"),
+        )
+        db.commit()
+        return result
 
 
 def get_material_detail(mid, *, user: dict) -> dict:
@@ -292,29 +360,32 @@ def get_material_detail(mid, *, user: dict) -> dict:
             EmpAuditTrail.biz_id == str(material.id),
         ).order_by(EmpAuditTrail.id.desc()).limit(30)).all()
         profiles = shadow.load_profiles(db, [emp])
+        # TP-E03：材料详情必须给出正式文件描述符（fileId/bindingId/scanStatus/
+        # fileVersion），老师才可能在审核前看到正式原文；没有正式绑定时
+        # file=None + legacyFileNameOnly=True，页面据此标注"历史文本记录"。
+        facts = base_ev.resolve_evidence(db, [material.id])
         return {
-            "material": base._mat_row(material, emp),
+            "material": base._mat_row(material, emp, facts.get(int(material.id))),
             "student": base._stu_row(emp, db=db, profiles=profiles),
             "auditLogs": [base._log_row(x) for x in logs],
         }
 
 
 def approve_material(mid, comment="", *, user: dict) -> dict:
-    with session() as db:
-        material, emp = _assert_material(db, mid, user)
-        if material.status == "APPROVED":
-            raise AppException("DATA_CONFLICT", "该材料已通过")
-        before = material.status
-        operator, _ = base._op()
-        material.status = "APPROVED"
-        material.reviewer = operator
-        material.review_time = datetime.utcnow()
-        material.version = int(material.version or 0) + 1
-        emp.material_status = "APPROVED"
-        emp.verify_status = "VERIFIED"
-        base._audit(db, "MATERIAL", material.id, "审核通过", comment, before, "APPROVED")
-        db.commit()
-        return {"id": str(material.id), "status": "APPROVED"}
+    """材料审核通过 —— 委派给唯一权威 `employment_runtime_material_service`。
+
+    PR #183 把 PC 材料审核的权威搬到了 `employment_runtime_material_service`
+    （正式路由 `routers/employment.py` 已改调那一支），本函数就此失去调用方，
+    但仍留着一份逐字重复的实现。留着重复实现的风险是真实的：将来任何人把它
+    接回去，就会绕过那份带显式说明的兼容契约（材料通过同时置
+    `verify_status=VERIFIED`），两条路径一旦漂移就是端间事实分叉。
+
+    这里不删除符号（保持向后兼容，可能有动态调用），改为委派，保证无论走哪条
+    路径，行为都由同一个权威决定。
+    """
+    from app.modules.employment.services import employment_runtime_material_service
+
+    return employment_runtime_material_service.approve_material(mid, comment, user=user)
 
 
 def return_material(mid, reason, *, user: dict) -> dict:
