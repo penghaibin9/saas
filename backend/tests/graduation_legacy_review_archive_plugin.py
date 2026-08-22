@@ -211,8 +211,49 @@ def _formal_review_evidence_ready(gd_student_id: int) -> bool:
         db.close()
 
 
+def _ensure_fixture_file_access(db, file_obj, final, user: dict) -> None:
+    """Add only the missing relationship metadata that old fixtures never modeled."""
+    from app.models.file import FileBinding
+
+    actor_id = _fixture_actor_id(user)
+    if not actor_id:
+        return
+    if actor_id.isdigit() and not file_obj.owner_user_id and not file_obj.created_by:
+        file_obj.owner_user_id = int(actor_id)
+
+    relation = "W7_LEGACY_FIXTURE"
+    binding = db.scalars(select(FileBinding).where(
+        FileBinding.tenant_id == MAIN_TENANT_ID,
+        FileBinding.file_id == int(file_obj.id),
+        FileBinding.biz_type == "GRADUATION_FINAL",
+        FileBinding.biz_id == str(final.id),
+        FileBinding.relation_type == relation,
+        FileBinding.is_deleted.is_(False),
+    ).limit(1)).first()
+    if binding is None:
+        binding = FileBinding(
+            tenant_id=MAIN_TENANT_ID,
+            file_id=int(file_obj.id),
+            biz_type="GRADUATION_FINAL",
+            biz_id=str(final.id),
+            relation_type=relation,
+            subject_type="USER",
+            subject_id=actor_id,
+            version_no=1,
+            is_current=True,
+            status="ACTIVE",
+            scope_json={"source": "legacy-graduation-review-test-adapter"},
+        )
+        db.add(binding)
+    else:
+        binding.subject_type = "USER"
+        binding.subject_id = actor_id
+        binding.is_current = True
+        binding.status = "ACTIVE"
+
+
 def _ensure_legacy_final_file(gd_student_id: int, user: dict) -> None:
-    """Give old ORM-only final fixtures one real, caller-owned FileObject before V2 adoption."""
+    """Give old ORM-only final fixtures one real, explicitly authorized FileObject before V2 adoption."""
     from app.db.session import get_sessionmaker
     from app.models import FileObject, GraduationFinal
 
@@ -238,11 +279,8 @@ def _ensure_legacy_final_file(gd_student_id: int, user: dict) -> None:
                     FileObject.is_deleted.is_(False),
                 ).limit(1)).first()
                 if existing:
-                    # Old tests predate File Center authorization metadata. Only fill an empty
-                    # fixture owner; never overwrite a real owner and never relax production auth.
-                    if numeric_actor_id is not None and not existing.owner_user_id and not existing.created_by:
-                        existing.owner_user_id = numeric_actor_id
-                        db.commit()
+                    _ensure_fixture_file_access(db, existing, final, user)
+                    db.commit()
                     return
         digest = hashlib.sha256(f"w7-legacy-review:{gd_student_id}:{final.id}".encode()).hexdigest()
         file_obj = FileObject(
@@ -263,6 +301,7 @@ def _ensure_legacy_final_file(gd_student_id: int, user: dict) -> None:
         )
         db.add(file_obj)
         db.flush()
+        _ensure_fixture_file_access(db, file_obj, final, user)
         final.attachments_json = [str(file_obj.id)]
         db.commit()
     finally:
