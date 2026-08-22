@@ -76,7 +76,7 @@ jobs:
       SMS_ENABLED: 'false'
       SCHEDULER_MODE: external
       E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
-      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_API_BASE_URL: http://localhost:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
       E2E_MINIAPP_BASE_URL: http://localhost:5188
@@ -146,7 +146,7 @@ jobs:
       - name: Install and start teacher miniapp H5
         env:
           VITE_USE_MOCK: 'false'
-          VITE_API_BASE_URL: http://127.0.0.1:8000
+          VITE_API_BASE_URL: http://localhost:8000
         run: |
           cd miniapp
           npm ci
