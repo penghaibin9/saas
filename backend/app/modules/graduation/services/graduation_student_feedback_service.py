@@ -12,6 +12,7 @@ from sqlalchemy import select, text
 from app.core.exceptions import not_found
 from app.models import GraduationFinal, GraduationProposal
 from app.models.file import FileObject, FileVersion
+from app.models.graduation_material import GraduationStudentMaterial
 from app.modules.graduation.services import graduation_review_feedback_service as feedback
 from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
 from app.services.db_service import _tid, session
@@ -35,15 +36,22 @@ def _require_student(user: dict):
         raise not_found("毕业设计评阅反馈不存在")
 
 
-def _reviewed_file(db, row: dict) -> dict | None:
-    raw_version_id = row.get("file_version_id")
+def _reviewed_file(db, row: dict, student_id: int) -> dict | None:
     try:
-        version_id = int(raw_version_id)
+        version_id = int(row.get("file_version_id"))
+        material_id = int(row.get("material_id"))
     except (TypeError, ValueError):
+        return None
+    material = db.scalars(select(GraduationStudentMaterial).where(
+        GraduationStudentMaterial.tenant_id == _tid(), GraduationStudentMaterial.id == material_id,
+        GraduationStudentMaterial.gd_student_id == int(student_id),
+        GraduationStudentMaterial.is_deleted.is_(False),
+    )).first()
+    if not material or material.asset_id is None:
         return None
     version = db.scalars(select(FileVersion).where(
         FileVersion.tenant_id == _tid(), FileVersion.id == version_id,
-        FileVersion.is_deleted.is_(False),
+        FileVersion.asset_id == int(material.asset_id), FileVersion.is_deleted.is_(False),
     )).first()
     if not version:
         return None
@@ -56,8 +64,9 @@ def _reviewed_file(db, row: dict) -> dict | None:
     ext = str(file_object.ext or "").lower().lstrip(".")
     source_sha = str(row.get("source_sha256") or "").lower()
     object_sha = str(file_object.sha256 or "").lower()
+    evidence_locked = bool(source_sha and object_sha and source_sha == object_sha)
     return {
-        "fileId": str(file_object.id),
+        "fileId": str(file_object.id) if evidence_locked else None,
         "fileVersionId": str(version.id),
         "versionNo": int(version.version_no or 0),
         "fileName": file_object.file_name,
@@ -66,11 +75,11 @@ def _reviewed_file(db, row: dict) -> dict | None:
         "ext": ext,
         "isCurrent": bool(version.is_current),
         "immutable": True,
-        "evidenceLocked": bool(source_sha and object_sha and source_sha == object_sha),
+        "evidenceLocked": evidence_locked,
         "sha256": row.get("source_sha256") or file_object.sha256,
         "statusText": f"评阅冻结版本 v{int(version.version_no or 0)}",
-        "canPreview": ext in _PREVIEWABLE_EXTS,
-        "canDownload": True,
+        "canPreview": bool(evidence_locked and ext in _PREVIEWABLE_EXTS),
+        "canDownload": evidence_locked,
     }
 
 
@@ -153,7 +162,7 @@ def student_feedback_timeline(user: dict) -> dict:
                 **public,
                 "stageLabel": _STAGE_LABELS.get(stage, stage or "评阅反馈"),
                 "resultLabel": _RESULT_LABELS.get(str(public.get("result") or "").upper(), public.get("result") or ""),
-                "reviewedFile": _reviewed_file(db, row),
+                "reviewedFile": _reviewed_file(db, row, int(student.id)),
                 "actionRequired": action_required,
                 **context,
             })
