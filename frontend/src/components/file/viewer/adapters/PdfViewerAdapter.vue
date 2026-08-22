@@ -102,7 +102,14 @@ function observePages() {
     }
     visible.sort((a, b) => b.ratio - a.ratio)
     if (visible[0]?.pageNo) emit('page-change', visible[0].pageNo)
-  }, { root: root.value, rootMargin: '900px 0px', threshold: [0.01, 0.25, 0.6] })
+  }, {
+    // Use the browser viewport as the observer root. IntersectionObserver still clips through
+    // overflow ancestors, while an auto-height viewer cannot accidentally make every page
+    // intersect at once and eagerly render an entire long document.
+    root: null,
+    rootMargin: '900px 0px',
+    threshold: [0.01, 0.25, 0.6]
+  })
   root.value?.querySelectorAll('.pdf-page').forEach((el) => observer.observe(el))
 }
 

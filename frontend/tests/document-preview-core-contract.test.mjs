@@ -22,6 +22,8 @@ test('W1 PDF renderer is local-worker lazy rendering with cancellable resources'
   assert.match(source, /pdfjs-dist\/legacy\/build\/pdf\.worker\.min\.mjs\?url/)
   assert.doesNotMatch(source, /from 'pdfjs-dist\/build\/pdf\.mjs'/)
   assert.match(source, /IntersectionObserver/)
+  assert.match(source, /root:\s*null/)
+  assert.doesNotMatch(source, /root:\s*root\.value/)
   assert.match(source, /rootMargin:\s*'900px 0px'/)
   assert.match(source, /pageNo - 2/)
   assert.match(source, /pageNo \+ 2/)
