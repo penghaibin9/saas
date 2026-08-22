@@ -111,7 +111,10 @@ test('W2 version bar labels history from server isCurrent rather than treating s
 })
 
 test('W2 workspace keeps transport and domain commands outside the public Viewer', () => {
-  assert.match(workspaceSource, /grid-template-columns:272px minmax\(680px,1fr\) 340px/)
+  assert.match(workspaceSource, /grid-template-columns:272px minmax\(0,1fr\) 340px/)
+  assert.match(workspaceSource, /grid-template-columns:220px minmax\(0,1fr\) 290px/)
+  assert.match(workspaceSource, /@media\(max-width:1279px\)/)
+  assert.match(workspaceSource, /max-width:100%/)
   assert.match(workspaceSource, /AppDocumentViewer/)
   assert.match(workspaceSource, /FileEvidencePanel/)
   assert.match(workspaceSource, /evidenceVersions/)
