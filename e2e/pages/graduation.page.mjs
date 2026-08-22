@@ -141,6 +141,91 @@ export class StudentGraduationPage {
     await expect(this.step('开题')).toContainText(/待审核|待审阅|已提交/)
   }
 
+  async openFeedbackFromRejectMessage({ minimumCount = 1, timeout = 30000 } = {}) {
+    const deadline = Date.now() + timeout
+    let matched = null
+    let observedCount = 0
+
+    while (Date.now() < deadline) {
+      await this.page.goto(`${this.baseUrl}/messages`)
+      const noticeTab = this.page.locator('.mtab').filter({ hasText: /通知/ }).first()
+      await expect(noticeTab).toBeVisible()
+      await noticeTab.click()
+      await this.page.waitForTimeout(350)
+      matched = this.page.locator('.mrow').filter({ hasText: '开题报告退回整改' })
+      observedCount = await matched.count()
+      if (observedCount >= minimumCount) break
+      await this.page.waitForTimeout(1300)
+    }
+
+    expect(
+      observedCount,
+      `学生通知中心应至少出现 ${minimumCount} 条“开题报告退回整改”，用于证明共享消息投影已送达`
+    ).toBeGreaterThanOrEqual(minimumCount)
+
+    await Promise.all([
+      this.page.waitForURL((url) => url.pathname.endsWith('/graduation/feedback'), { timeout: 10000 }),
+      matched.first().click()
+    ])
+    await expect(this.page.getByRole('heading', { name: '评阅反馈与整改重交', exact: true })).toBeVisible()
+  }
+
+  async expectActionableFeedback(reason) {
+    const action = this.page.locator('.w75__action')
+    await expect(action).toBeVisible()
+    await expect(action).toContainText('当前需要整改')
+    await expect(action).toContainText(reason)
+    const frozen = action.locator('.w75__frozen')
+    await expect(frozen).toBeVisible()
+    await expect(frozen).toContainText(/FileVersion\s+\d+/)
+    await expect(frozen).toContainText(/SHA-256\s+[0-9a-f]{12}…[0-9a-f]{8}/i)
+    await expect(this.page.locator('.w75__timeline')).toContainText('SHA-256 已锁定')
+  }
+
+  async verifyFrozenReviewedReader() {
+    const action = this.page.locator('.w75__action')
+    await action.getByRole('button', { name: '查看被评版本', exact: true }).click()
+    const reader = this.page.getByRole('dialog', { name: '站内文件阅读器', exact: true })
+    await expect(reader).toBeVisible()
+    await expect(reader).toContainText('历史版本 · 只读')
+    await expect(reader).toContainText('你正在查看只读冻结版本；阅读器不会修改、替换或推进该业务文件。')
+    await reader.getByRole('button', { name: '关闭阅读器', exact: true }).click()
+    await expect(reader).toBeHidden()
+  }
+
+  async resubmitProposalFromFeedback({ suffix, fileName, pages = 1, targetBytes = 0 }) {
+    const action = this.page.locator('.w75__action')
+    await expect(action).toBeVisible()
+    const background = action.getByLabel('选题背景与研究依据', { exact: true })
+    const plan = action.getByLabel('研究方案与进度计划', { exact: true })
+    const outcome = action.getByLabel('预期成果', { exact: true })
+    await background.fill(`Playwright W7.5 背景 ${suffix}：整改后从反馈页 canonical 重交。`)
+    await plan.fill(`Playwright W7.5 计划 ${suffix}：保留冻结证据并生成新 FileVersion。`)
+    if (await outcome.count()) await outcome.fill(`Playwright W7.5 成果 ${suffix}：消息、反馈、Reader、重交闭环。`)
+
+    const pdf = buildSyntheticPdf({ label: String(suffix), pages, targetBytes })
+    if (targetBytes) expect(pdf.length, 'large PDF fixture must meet the requested byte floor').toBeGreaterThanOrEqual(targetBytes)
+    await action.locator('input[type=file]').setInputFiles({
+      name: fileName,
+      mimeType: 'application/pdf',
+      buffer: pdf
+    })
+    await expect(action.locator('.w75__upload')).toContainText(fileName, { timeout: 30000 })
+
+    const submit = action.getByRole('button', { name: '整改完成，重新提交开题报告', exact: true })
+    await expect(submit).toBeEnabled({ timeout: 30000 })
+    const [response] = await Promise.all([
+      this.page.waitForResponse((r) =>
+        new URL(r.url()).pathname.endsWith('/portal/graduation/proposal/submit')
+        && r.request().method() === 'POST'
+      ),
+      submit.click()
+    ])
+    await expectSuccessfulResponse(response, 'W7.5 学生整改重交开题报告')
+    await expect(this.page.locator('.w75__ok')).toContainText('当前没有待整改的评阅意见', { timeout: 15000 })
+    await expect(this.page.locator('.w75__timeline')).toContainText('已整改重交')
+  }
+
   async expectRejected(reason) {
     const step = this.step('开题')
     await expect(step).toContainText(/驳回|退回|修改/)
