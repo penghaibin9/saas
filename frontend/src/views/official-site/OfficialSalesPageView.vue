@@ -186,6 +186,13 @@ const TYPE_COPY = Object.freeze({
   contact: { title: '把需求说清楚，比先选一堆功能更重要', lead: '可以直接从学校当前最难推进的一条流程开始，先判断角色、状态、数据和部署边界，再讨论产品组合。' }
 })
 
+const PRODUCT_INTEREST_BY_SLUG = Object.freeze({
+  'academic-affairs': '教务系统',
+  'student-affairs': '学工中心',
+  graduation: '毕业设计',
+  internship: '岗位实习'
+})
+
 export default {
   name: 'OfficialSalesPageView',
   data() {
@@ -194,7 +201,7 @@ export default {
         schoolName: '',
         contactName: '',
         phone: '',
-        interest: '岗位实习',
+        interest: '学生全生命周期平台',
         message: '',
         website: ''
       },
@@ -218,7 +225,14 @@ export default {
     }
   },
   watch: {
-    '$route.path': { immediate: true, handler() { this.syncHead() } }
+    '$route.path': { immediate: true, handler() { this.syncHead() } },
+    '$route.query.product': {
+      immediate: true,
+      handler(slug) {
+        const interest = PRODUCT_INTEREST_BY_SLUG[String(slug || '').trim()]
+        if (interest) this.leadForm.interest = interest
+      }
+    }
   },
   methods: {
     evidenceCaption(index) {
@@ -247,7 +261,7 @@ export default {
             interest: this.leadForm.interest,
             message: this.leadForm.message,
             website: this.leadForm.website,
-            source_path: this.$route.path
+            source_path: String(this.$route.fullPath || this.$route.path).slice(0, 120)
           })
         })
         const body = await response.json().catch(() => ({}))
