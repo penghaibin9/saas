@@ -41,7 +41,7 @@ export const assessmentApi = {
   collect(pid) { return call(() => request(`${B}/counselor-assessment/periods/${pid}/collect`, { method: 'POST' })) },
   assessments(pid) { return call(() => request(`${B}/counselor-assessment/periods/${pid}/assessments`)) },
   score(aid, body) { return call(() => request(`${B}/counselor-assessment/assessments/${aid}/score`, { method: 'POST', body })) },
-  publish(pid) { return call(() => request(`${B}/counselor-assessment/periods/${pid}/publish`, { method: 'POST' })) }
+  publish(pid, version) { return call(() => request(`${B}/counselor-assessment/periods/${pid}/publish`, { method: 'POST', body: { version } })) }
 }
 
 export const counselorAssignmentApi = {

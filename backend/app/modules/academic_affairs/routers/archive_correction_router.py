@@ -1,9 +1,9 @@
 """Stage C3 immutable archive correction API.
 
 ARCHIVED remains permanent. These endpoints never reopen a term: they create/list a
-PostArchiveCorrectionCase, let a different second operator approve it, append Manifest
-V2+, and expose manifest verification. First production scope is intentionally limited
-to GRADE/GRADUATION by the service layer.
+PostArchiveCorrectionCase, let a different second operator approve or reject it, append
+Manifest V2+ only on approval, and expose manifest verification. First production
+scope is intentionally limited to GRADE/GRADUATION by the service layer.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.academic_affairs.services import academic_affairs_archive_service as archive_service
+from app.modules.academic_affairs.services import academic_affairs_archive_correction_review_service as review_service
 
 router = APIRouter(prefix="/academic-affairs/archive", tags=["教务归档-归档后纠错"])
 
@@ -26,6 +27,10 @@ class PostArchiveCorrectionCreateBody(BaseModel):
     correction: dict[str, Any]
     evidenceManifest: dict[str, Any]
     riskLevel: str = Field(default="HIGH", min_length=3, max_length=20)
+
+
+class PostArchiveCorrectionRejectBody(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=500)
 
 
 @router.get("/batches/{batch_id}/manifest/verify", summary="验证不可变归档 Manifest 版本链")
@@ -52,7 +57,7 @@ def get_post_archive_correction(
     case_id: int = Path(..., gt=0),
     user=Depends(require_permission("academicAffairs.archive.manage")),
 ):
-    return success(archive_service.get_correction_case(user, case_id))
+    return success(review_service.get_correction_case(user, case_id))
 
 
 @router.post("/batches/{batch_id}/corrections", summary="发起归档后纠错；不解冻、不改旧 Manifest")
@@ -84,4 +89,16 @@ def approve_post_archive_correction(
     return success(
         archive_service.approve_correction_case(user, case_id),
         message="归档后纠错已应用并生成新的正式事实与 Manifest 版本",
+    )
+
+
+@router.post("/corrections/{case_id}/reject", summary="二次复核驳回；不生成正式事实或新 Manifest")
+def reject_post_archive_correction(
+    body: PostArchiveCorrectionRejectBody,
+    case_id: int = Path(..., gt=0),
+    user=Depends(require_permission("academicAffairs.archive.manage")),
+):
+    return success(
+        review_service.reject_correction_case(user, case_id, reason=body.reason),
+        message="归档后纠错已驳回，未生成正式事实或新的 Manifest 版本",
     )

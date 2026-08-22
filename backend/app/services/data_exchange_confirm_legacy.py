@@ -13,6 +13,18 @@ from app.db.session import get_sessionmaker
 from app.services import data_exchange_job_service as jobs
 
 
+def _allows_partial_schedule(row) -> bool:
+    if row.import_type != "ACADEMIC_SCHEDULE":
+        return False
+    snapshot = dict(row.source_snapshot_json or {})
+    context = dict(snapshot.get("context") or {})
+    return (
+        str(context.get("importMode") or "ATOMIC").strip().upper() == "PARTIAL"
+        and int(row.valid_rows or 0) > 0
+        and row.status in {"VALIDATED", "VALIDATION_FAILED"}
+    )
+
+
 def _begin_adapter_confirm(job_id: str, expected_version: int, user: dict) -> tuple[str, str, str]:
     lease = secrets.token_hex(32)
     db = get_sessionmaker()()
@@ -27,12 +39,13 @@ def _begin_adapter_confirm(job_id: str, expected_version: int, user: dict) -> tu
             raise AppException("DATA_CONFLICT", "导入任务已过期，请重新上传预检")
         if int(row.version or 0) != int(expected_version):
             raise AppException("DATA_CONFLICT", "任务版本已变化，请刷新后重试")
-        if row.invalid_rows or row.status == "VALIDATION_FAILED":
+        partial_schedule = _allows_partial_schedule(row)
+        if (row.invalid_rows or row.status == "VALIDATION_FAILED") and not partial_schedule:
             raise AppException("VALIDATION_ERROR", "该任务存在预检错误，禁止确认导入")
         if row.status == "CONFIRMING" and row.lease_started_at \
                 and row.lease_started_at > jobs._now() - timedelta(seconds=jobs.LEASE_STALE_SECONDS):
             raise AppException("DATA_CONFLICT", "该任务正在另一服务实例确认，请稍后刷新")
-        if row.status not in {"VALIDATED", "CONFIRMING"}:
+        if row.status not in {"VALIDATED", "CONFIRMING"} and not partial_schedule:
             raise AppException("DATA_CONFLICT", f"当前任务状态 {row.status} 不允许确认")
         row.status = "CONFIRMING"
         row.lease_token = lease
@@ -80,7 +93,7 @@ def _release(job_id: str, lease: str, error: Exception, user: dict) -> None:
     try:
         row = jobs._owned_import(db, job_id, user, lock=True)
         if row.lease_token == lease:
-            row.status = "VALIDATED"
+            row.status = "VALIDATION_FAILED" if int(row.invalid_rows or 0) > 0 else "VALIDATED"
             row.lease_token = None
             row.lease_started_at = None
             row.error_message = str(error)[:4000]
