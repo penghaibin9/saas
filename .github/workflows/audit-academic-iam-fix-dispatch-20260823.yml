@@ -1,0 +1,90 @@
+name: Audit Academic IAM Fix Dispatch 20260823
+
+on:
+  push:
+    branches:
+      - audit/academic-real-browser-20260823
+    paths:
+      - '.github/workflows/audit-academic-iam-fix-dispatch-20260823.yml'
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  rerun:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: penghaibin9/saas
+      FIX_REF: fix/academic-e2e-school-iam-bootstrap-20260823
+      FIX_SHA: 933ba073e8e41f13faaef8a1cd3c4c49737b6cc9
+    steps:
+      - name: Assert fix branch only contains workflow harness changes
+        run: |
+          set -euo pipefail
+          actual="$(gh api repos/$REPO/git/ref/heads/$FIX_REF --jq .object.sha)"
+          test "$actual" = "$FIX_SHA"
+          files="$(gh api repos/$REPO/compare/1c69336ea0728c5c6713c0c85b7275b06fca9ae1...$FIX_SHA --jq '.files[].filename')"
+          printf '%s\n' "$files"
+          test "$(printf '%s\n' "$files" | grep -vc '^\.github/workflows/' || true)" -eq 0
+
+      - name: Dispatch fixed real-browser gates
+        run: |
+          set -euo pipefail
+          start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          : > /tmp/runs.tsv
+          workflows=(
+            academic-b-w3-schedule-real-click.yml
+            academic-b-w4-selection-real-click.yml
+            academic-c-w2-teacher-today-browser.yml
+            academic-b-w5-student-projection-real-click.yml
+          )
+          for wf in "${workflows[@]}"; do
+            gh workflow run "$wf" --repo "$REPO" --ref "$FIX_REF"
+            id=''
+            for _ in {1..30}; do
+              id="$(gh run list --repo "$REPO" --workflow "$wf" --branch "$FIX_REF" --event workflow_dispatch --limit 20 --json databaseId,headSha,createdAt --jq ".[] | select(.headSha == \"$FIX_SHA\" and .createdAt >= \"$start\") | .databaseId" | head -n1)"
+              [ -n "$id" ] && break
+              sleep 2
+            done
+            echo "$wf|${id:-MISSING}" >> /tmp/runs.tsv
+          done
+          cat /tmp/runs.tsv
+
+      - name: Wait and publish fixed gate results
+        if: always()
+        run: |
+          set +e
+          {
+            echo '## School IAM bootstrap 修复后真实浏览器重跑'
+            echo
+            echo "Fix harness SHA: \`$FIX_SHA\` (product source differs from audited HEAD only under .github/workflows/)"
+            echo
+            echo '| Workflow | Run | Status | Head | URL |'
+            echo '|---|---:|---|---|---|'
+          } > /tmp/result.md
+          overall=0
+          if [ ! -s /tmp/runs.tsv ]; then overall=1; fi
+          while IFS='|' read -r wf id; do
+            if [ "$id" = MISSING ]; then
+              echo "| $wf | - | MISSING | - | - |" >> /tmp/result.md
+              overall=1
+              continue
+            fi
+            gh run watch "$id" --repo "$REPO" --exit-status >/tmp/watch-$id.log 2>&1
+            rc=$?
+            row="$(gh run view "$id" --repo "$REPO" --json conclusion,status,headSha,url --jq '[.conclusion,.status,.headSha,.url] | @tsv')"
+            conclusion="$(printf '%s' "$row" | cut -f1)"
+            status="$(printf '%s' "$row" | cut -f2)"
+            head="$(printf '%s' "$row" | cut -f3)"
+            url="$(printf '%s' "$row" | cut -f4)"
+            state="${conclusion:-$status}"
+            [ "$rc" -eq 0 ] && [ "$state" = success ] || overall=1
+            echo "| $wf | $id | $state | \`$head\` | $url |" >> /tmp/result.md
+          done < /tmp/runs.tsv
+          gh issue comment 200 --repo "$REPO" --body-file /tmp/result.md
+          cat /tmp/result.md
+          exit "$overall"
