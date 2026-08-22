@@ -31,9 +31,10 @@ async function expectBrowserApiSuccess(response, action) {
 async function expectDecisionAboveFold(page) {
   const viewport = page.viewportSize()
   expect(viewport).toBeTruthy()
+  const review = page.locator('.gd-review-workspace__review')
   const targets = [
-    ['安全版本', page.locator('.fr-security-card .mp-card__head')],
-    ['SHA-256', page.locator('.fr-security-card .hash').first()],
+    ['安全版本', review.getByText('当前安全版本', { exact: true })],
+    ['SHA', review.getByText(/SHA=/).first()],
     ['通过当前版本', page.getByRole('button', { name: /通过当前版本/ })],
     ['退回当前版本', page.getByRole('button', { name: /退回当前版本/ })]
   ]
@@ -161,12 +162,16 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     await dismissGuide(page)
 
     await expect(page.getByRole('heading', { name: '成果检查', exact: true })).toBeVisible()
-    await expect(page.locator('.fr-split')).toBeVisible()
-    await expect(page.locator('.fr-list')).toContainText(fixture.topicTitle)
-    await expect(page.locator('.fr-pane')).toContainText(fixture.topicTitle)
-    await expect(page.locator('.fr-pane')).toContainText('当前安全版本')
-    await expect(page.locator('.fr-pane')).toContainText(/SHA-256|安全门/)
-    await expect(page.locator('.fr-pane')).toContainText('查重')
+    const workspace = page.locator('.gd-review-workspace')
+    const queue = workspace.locator('.gd-review-workspace__queue')
+    const document = workspace.locator('.gd-review-workspace__document')
+    const review = workspace.locator('.gd-review-workspace__review')
+    await expect(workspace).toBeVisible()
+    await expect(queue).toContainText(fixture.topicTitle)
+    await expect(document).toContainText(fixture.topicTitle)
+    await expect(review).toContainText('当前安全版本')
+    await expect(review).toContainText(/SHA=|安全门/)
+    await expect(review).toContainText('查重')
     await expect(page.getByRole('button', { name: /通过当前版本/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /退回当前版本/ })).toBeVisible()
 
