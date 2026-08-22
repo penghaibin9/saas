@@ -168,7 +168,7 @@ jobs:
 
       - name: Run strict Browser First leave journey
         working-directory: app/e2e
-        run: npx playwright test specs/student-affairs-leave-browser-audit.spec.mjs --project=desktop-chrome
+        run: npx playwright test specs/student-affairs-leave-browser-audit.spec.mjs
 
       - name: Verify persisted MySQL row and append-only audit chain
         working-directory: app/backend
