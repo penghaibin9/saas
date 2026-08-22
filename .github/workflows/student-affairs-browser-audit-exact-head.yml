@@ -127,13 +127,27 @@ jobs:
           cat ../e2e/runtime-logs/backend.log
           exit 1
 
-      - name: Bootstrap only official student and counselor identities
+      - name: Bootstrap official identities and formal counselor assignment
         working-directory: app/backend
         run: |
           python scripts/e2e_bootstrap_graduation_accounts_ci.py
           python scripts/e2e_reset_graduation_passwords.py
           python scripts/e2e_verify_graduation_accounts.py
           python scripts/e2e_bootstrap_affairs_counselor_ci.py
+          python - <<'PY'
+          from scripts.e2e_bootstrap_student_affairs_accounts import (
+              CLASS_A,
+              ensure_counselor_assignment,
+              ensure_org,
+              login_admin,
+          )
+
+          token = login_admin()
+          org = ensure_org(token)
+          result = ensure_counselor_assignment(token, int(org["classIds"][CLASS_A]))
+          print("[strict-audit] counselor-assignment:", result)
+          assert result.get("configured") is True, result
+          PY
 
       - name: Start real staff PC and student PC
         run: |
