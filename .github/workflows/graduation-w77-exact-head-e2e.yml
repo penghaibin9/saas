@@ -138,8 +138,16 @@ jobs:
         working-directory: backend
         run: python ../scripts/check/check-migrated-schema-parity.py
 
+      - name: Create isolated pytest schema without touching migrated browser DB
+        run: |
+          set -euo pipefail
+          mysql -h 127.0.0.1 -uroot -pe2e_root -e \
+            "CREATE DATABASE IF NOT EXISTS student_lifecycle_w77_pytest CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+
       - name: Replay the five W7.6 historical blockers
         working-directory: backend
+        env:
+          TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_w77_pytest?charset=utf8mb4
         run: |
           pytest \
             tests/test_graduation_e2e_acceptance_gates.py::test_assign_review_sod_uses_topic_advisor_when_student_advisor_blank \
@@ -149,8 +157,10 @@ jobs:
             tests/test_graduation_stable_identity.py::test_sod_review_uses_mentor_id_not_same_name \
             -q -p no:warnings --durations=10
 
-      - name: W7.1-W7.6 authority and contract proof on migrated MySQL
+      - name: W7.1-W7.6 authority and contract proof on isolated MySQL
         working-directory: backend
+        env:
+          TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_w77_pytest?charset=utf8mb4
         run: |
           pytest \
             tests/test_graduation_review_w71_w73_mysql.py \
@@ -158,6 +168,13 @@ jobs:
             tests/test_graduation_review_w76_runtime.py \
             tests/test_graduation_review_w76_todo_message_stats_contract.py \
             -q -p no:warnings --durations=20
+
+      - name: Reassert browser DB still carries exact Alembic head after pytest isolation
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m alembic current
+          python ../scripts/check/check-migrated-schema-parity.py
 
       - name: Replay production School IAM Authority
         working-directory: backend
