@@ -89,3 +89,12 @@ def register_graduation_permission_extensions() -> None:
     _register(module, "graduationDesign.defense.notify", "defense_notify")
     _register(module, "graduationDesign.defense.view", "defense_export")
     _register(module, "graduationDesign.audit.view", "audit_logs")
+
+    module = "graduation_review_center"
+    _register(
+        module,
+        "graduationDesign.review.view",
+        "review_center_summary",
+        "review_center_tasks",
+        "review_center_detail",
+    )
