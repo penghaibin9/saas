@@ -10,27 +10,34 @@ on:
 permissions:
   actions: write
   contents: read
+  issues: write
 
 jobs:
-  dispatch:
+  audit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 90
+    env:
+      REPO: penghaibin9/saas
+      TARGET_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+      AUDIT_ISSUE: '200'
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Lock audited main exact HEAD
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
         run: |
           set -euo pipefail
-          ACTUAL_SHA="$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq .object.sha)"
+          ACTUAL_SHA="$(gh api repos/$REPO/git/ref/heads/main --jq .object.sha)"
           echo "target=$TARGET_SHA actual=$ACTUAL_SHA"
-          test "$ACTUAL_SHA" = "$TARGET_SHA"
+          if [ "$ACTUAL_SHA" != "$TARGET_SHA" ]; then
+            printf '## Audit dispatcher blocked\n\nExpected main exact HEAD `%s`, but current main is `%s`. No child gates were dispatched.\n' "$TARGET_SHA" "$ACTUAL_SHA" > /tmp/audit-blocked.md
+            gh issue comment "$AUDIT_ISSUE" --repo "$REPO" --body-file /tmp/audit-blocked.md
+            exit 1
+          fi
 
-      - name: Dispatch existing real-browser academic gates on main exact HEAD
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Dispatch and capture exact-head real-browser gates
         run: |
-          set -u
+          set -euo pipefail
+          AUDIT_START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          : > /tmp/academic-runs.tsv
           workflows=(
             academic-archive-correction-w1.yml
             academic-b-w3-schedule-real-click.yml
@@ -40,23 +47,73 @@ jobs:
             academic-c-w2-teacher-today-browser.yml
             academic-b-w5-student-projection-real-click.yml
           )
-          failed=0
           for wf in "${workflows[@]}"; do
             echo "=== dispatch $wf @ main ==="
-            if gh workflow run "$wf" --repo "${{ github.repository }}" --ref main; then
-              echo "DISPATCHED $wf"
+            gh workflow run "$wf" --repo "$REPO" --ref main
+            run_id=""
+            for _ in {1..30}; do
+              run_id="$(gh run list --repo "$REPO" --workflow "$wf" --branch main --event workflow_dispatch --limit 20 \
+                --json databaseId,headSha,createdAt \
+                --jq ".[] | select(.headSha == \"$TARGET_SHA\" and .createdAt >= \"$AUDIT_START\") | .databaseId" | head -n1)"
+              if [ -n "$run_id" ]; then break; fi
+              sleep 2
+            done
+            if [ -z "$run_id" ]; then
+              echo "$wf|MISSING" >> /tmp/academic-runs.tsv
             else
-              echo "DISPATCH_FAILED $wf"
-              failed=$((failed + 1))
+              echo "$wf|$run_id" >> /tmp/academic-runs.tsv
             fi
           done
-          echo "dispatch_failures=$failed"
-          test "$failed" -eq 0
+          cat /tmp/academic-runs.tsv
 
-      - name: Snapshot dispatched runs
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Wait for gates and publish conclusions
+        if: always()
         run: |
-          sleep 8
-          gh run list --repo "${{ github.repository }}" --branch main --event workflow_dispatch --limit 30 \
-            --json databaseId,workflowName,headSha,status,conclusion,createdAt,url
+          set +e
+          {
+            echo '## 教务真实浏览器审计 Gate 回传'
+            echo
+            echo "Audited exact HEAD: \`$TARGET_SHA\`"
+            echo
+            echo '| Workflow | Run ID | Head | Conclusion | URL |'
+            echo '|---|---:|---|---|---|'
+          } > /tmp/academic-summary.md
+
+          overall=0
+          if [ ! -s /tmp/academic-runs.tsv ]; then
+            echo '| dispatcher | - | - | BLOCKED | no run ids captured |' >> /tmp/academic-summary.md
+            overall=1
+          else
+            while IFS='|' read -r wf run_id; do
+              if [ "$run_id" = 'MISSING' ]; then
+                echo "| $wf | - | - | BLOCKED | run id not captured |" >> /tmp/academic-summary.md
+                overall=1
+                continue
+              fi
+              gh run watch "$run_id" --repo "$REPO" --exit-status >/tmp/watch-$run_id.log 2>&1
+              watch_rc=$?
+              view="$(gh run view "$run_id" --repo "$REPO" --json headSha,conclusion,status,url --jq '[.headSha,.conclusion,.status,.url] | @tsv' 2>/dev/null)"
+              head_sha="$(printf '%s' "$view" | cut -f1)"
+              conclusion="$(printf '%s' "$view" | cut -f2)"
+              status="$(printf '%s' "$view" | cut -f3)"
+              url="$(printf '%s' "$view" | cut -f4)"
+              [ -n "$conclusion" ] || conclusion="$status"
+              if [ "$head_sha" != "$TARGET_SHA" ]; then
+                conclusion="HEAD_MISMATCH:$conclusion"
+                overall=1
+              elif [ "$watch_rc" -ne 0 ] || [ "$conclusion" != 'success' ]; then
+                overall=1
+              fi
+              echo "| $wf | $run_id | \`$head_sha\` | $conclusion | $url |" >> /tmp/academic-summary.md
+            done < /tmp/academic-runs.tsv
+          fi
+
+          echo >> /tmp/academic-summary.md
+          if [ "$overall" -eq 0 ]; then
+            echo '**Dispatcher verdict: all selected exact-head browser gates succeeded.**' >> /tmp/academic-summary.md
+          else
+            echo '**Dispatcher verdict: one or more selected exact-head browser gates failed or were blocked.**' >> /tmp/academic-summary.md
+          fi
+          gh issue comment "$AUDIT_ISSUE" --repo "$REPO" --body-file /tmp/academic-summary.md
+          cat /tmp/academic-summary.md
+          exit "$overall"
