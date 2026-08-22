@@ -42,7 +42,7 @@ export const graduationReviewCenterApi = {
     })
   },
 
-  async writeContext(task = {}) {
+  async writeContext(task = {}, detailData = null) {
     const type = String(task.caseType || '').toUpperCase()
     const recordId = required(task.recordId, '缺少评阅记录标识')
     if (type === 'PROPOSAL') {
@@ -55,10 +55,12 @@ export const graduationReviewCenterApi = {
     }
     if (type === 'FORMAL_REVIEW') {
       // Formal review lock/evidence comes from the same task-scoped Review Center detail.
-      // Never widen back to a student-level /gd-reviews list just to recover write fields.
-      const data = await request(`${CENTER}/tasks/${encodeURIComponent(type)}/${encodeURIComponent(recordId)}`, {
-        params: batchParams()
-      })
+      // selectTask may pass the already-authorized response so this path never hydrates
+      // the same sensitive detail twice.
+      const data = detailData || await request(
+        `${CENTER}/tasks/${encodeURIComponent(type)}/${encodeURIComponent(recordId)}`,
+        { params: batchParams() }
+      )
       const row = data?.case
       if (!row || String(row.recordId) !== String(recordId)) {
         throw new Error('正式评阅任务已变化或不在当前数据范围，请刷新队列')

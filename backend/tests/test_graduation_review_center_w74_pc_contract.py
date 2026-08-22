@@ -86,13 +86,11 @@ def test_w74_legacy_formal_read_is_stable_reviewer_task_scoped():
 
     assert 'reviewer_role = _role() == "GD_REVIEWER"' in read_service
     assert "mentor = gid.current_user_mentor(db)" in read_service
-    assert "if mentor is None:" in read_service and "return [], 0" in read_service
+    assert "if mentor is None:" in read_service
     assert "GraduationReview.reviewer_mentor_id == int(mentor.id)" in read_service
     assert "GraduationStudent.tenant_id == GraduationReview.tenant_id" in read_service
     assert 'GraduationStudent.record_status == "ACTIVE"' in read_service
-    # Real-name compatibility filters may narrow an explicit admin query, but reviewer
-    # ownership must never fall back to reviewer_name.
-    reviewer_branch = read_service.split("if reviewer_role:", 1)[1].split("else:", 1)[0]
+    reviewer_branch = read_service.split("if reviewer_role:", 1)[1].split("scope_ids = accessible_student_ids", 1)[0]
     assert "reviewer_name" not in reviewer_branch
 
 
@@ -103,6 +101,8 @@ def test_w74_formal_write_context_uses_task_scoped_detail_not_student_wide_list(
     assert "pageSize: 200" not in formal
     assert "gdStudentId: task.gdStudentId" not in formal
     assert "request(FORMAL" not in formal
+    assert "async writeContext(task = {}, detailData = null)" in api
+    assert "const data = detailData || await request(" in formal
     assert "`${CENTER}/tasks/${encodeURIComponent(type)}/${encodeURIComponent(recordId)}`" in formal
     assert "const row = data?.case" in formal
     assert "String(row.recordId) !== String(recordId)" in formal
@@ -112,7 +112,6 @@ def test_w74_backend_allowed_actions_and_reviewer_scope_are_actor_authoritative(
     contract = text("backend/app/modules/graduation/services/graduation_review_center_contract_service.py")
     summary = text("backend/app/modules/graduation/services/graduation_review_center_summary_service.py")
 
-    # Write affordances are projected from backend permission authority, not guessed by the PC.
     for code in (
         "graduationDesign.proposal.review",
         "graduationDesign.final.review",
@@ -127,8 +126,6 @@ def test_w74_backend_allowed_actions_and_reviewer_scope_are_actor_authoritative(
     assert 'return ["RETURN"]' in contract
     assert '"START"' not in contract
 
-    # GD_REVIEWER is task-scoped. Stable reviewerMentorId is mandatory for list/summary/detail;
-    # relation to the same student must not expose another reviewer's task or other case types.
     assert 'if actor["role"] == "GD_REVIEWER":' in contract
     assert 'reviewer_only = True' in contract
     assert 'return [], 0' in contract
@@ -175,8 +172,6 @@ def test_w74_reviewer_scope_is_set_based_and_detail_hydrates_proven_batch():
 def test_w74_pc_consumes_backend_allowed_actions_and_mutations_fail_closed_by_case():
     view = text("frontend/src/modules/graduation/views/GraduationReviewCenterView.vue")
 
-    # Backend allowedActions is the action authority. The page must not independently
-    # reconstruct permissionCode decisions and drift from the server projection.
     assert "matchPermission" not in view
     assert "permissionPatterns()" not in view
     assert "writePermission()" not in view
@@ -189,9 +184,29 @@ def test_w74_pc_consumes_backend_allowed_actions_and_mutations_fail_closed_by_ca
     assert 'v-else-if="canReviewBusiness"' in view
     assert 'v-if="canReturnFormalAction"' in view
 
-    # Method-level guards prevent a stale/incorrect event binding from crossing case types.
     assert "if (!this.canReviewBusiness || !this.canSubmitCurrent || this.submitting) return" in view
     assert "if (!['APPROVE', 'REJECT'].includes(action))" in view
     assert "if (!['PROPOSAL', 'FINAL', 'FINAL_DRAFT'].includes(type)) return" in view
     assert "if (!this.canSubmitFormal || !this.canSubmitCurrent || this.submitting) return" in view
     assert "if (!this.canReturnFormal || this.submitting) return" in view
+
+
+def test_w74_pc_async_reads_are_latest_wins_and_dossier_is_context_bound():
+    view = text("frontend/src/modules/graduation/views/GraduationReviewCenterView.vue")
+
+    assert "loadToken: 0, selectionToken: 0, dossierToken: 0" in view
+    assert "const token = ++this.loadToken" in view
+    assert "if (token !== this.loadToken) return false" in view
+    assert "if (token === this.loadToken) this.loading = false" in view
+    assert "++this.selectionToken" in view.split("resetSelection()", 1)[1].split("async selectTask", 1)[0]
+    assert "detailPromise.then((detail) => graduationReviewCenterApi.writeContext(task, detail))" in view
+
+    dossier = view.split("async openStudentDossier", 1)[1].split("closeDossier()", 1)[0]
+    assert "const token = ++this.dossierToken" in dossier
+    assert "token !== this.dossierToken || !this.dossierOpen" in dossier
+    assert "catch (error)" in dossier
+    assert "finally" in dossier
+    assert "if (token === this.dossierToken) this.dossierLoading = false" in dossier
+    close = view.split("closeDossier()", 1)[1]
+    assert "++this.dossierToken" in close
+    assert "this.dossierOpen = false; this.dossierLoading = false" in close

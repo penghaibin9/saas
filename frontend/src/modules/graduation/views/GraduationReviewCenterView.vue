@@ -188,7 +188,8 @@ export default {
       activeIndex: 0, activeTask: null, detail: null, writeContext: null,
       activeFileKey: null, activeVersionId: null,
       previewProvider: graduationMaterialCenterApi.createPreviewProvider(),
-      autoNext: true, submitting: false, selectionToken: 0, searchTimer: null,
+      autoNext: true, submitting: false,
+      loadToken: 0, selectionToken: 0, dossierToken: 0, searchTimer: null,
       form: { score: '', opinion: '', categories: [], issuesText: '', returnReason: '' },
       dossierOpen: false, dossierLoading: false, dossierError: '', dossier: null
     }
@@ -269,6 +270,7 @@ export default {
   beforeUnmount() {
     this.saveDraft()
     if (this.searchTimer) clearTimeout(this.searchTimer)
+    ++this.loadToken; ++this.selectionToken; ++this.dossierToken
     this.previewProvider?.dispose?.()
   },
   methods: {
@@ -327,49 +329,65 @@ export default {
       this.searchTimer = setTimeout(() => this.reloadFromFirstPage(), 300)
     },
     reloadFromFirstPage() { this.page = 1; this.loadAll() },
-    async loadSummary() {
-      this.summary = await graduationReviewCenterApi.summary()
+    async loadSummary(token = this.loadToken) {
+      const data = await graduationReviewCenterApi.summary()
+      if (token !== this.loadToken) return false
+      this.summary = data
+      return true
     },
-    async loadQueue({ select = true, preserveSelection = false } = {}) {
+    async loadQueue({ select = true, preserveSelection = false, token = this.loadToken } = {}) {
       const oldKey = preserveSelection ? this.activeTask?.caseKey : null
       const data = await graduationReviewCenterApi.tasks({
         page: this.page, pageSize: this.pageSize, caseType: this.filters.caseType || undefined,
         statusGroup: this.filters.statusGroup || undefined, keyword: this.filters.keyword || undefined,
         reviewerOnly: this.filters.reviewerOnly, sort: 'PRIORITY'
       })
+      if (token !== this.loadToken) return false
       this.queue = Array.isArray(data?.items) ? data.items : []
       this.total = Number(data?.total || 0)
-      if (!select) return
-      if (!this.queue.length) { this.resetSelection(); return }
+      if (!select) return true
+      if (!this.queue.length) { this.resetSelection(); return true }
       const target = oldKey ? this.queue.find((item) => item.caseKey === oldKey) : null
       await this.selectTask(target || this.queue[0])
+      return token === this.loadToken
     },
     async loadAll({ preserveSelection = false } = {}) {
+      const token = ++this.loadToken
+      ++this.selectionToken
       this.loading = true; this.error = ''
       try {
-        await Promise.all([this.loadSummary(), this.loadQueue({ preserveSelection })])
+        await Promise.all([
+          this.loadSummary(token),
+          this.loadQueue({ preserveSelection, token })
+        ])
       } catch (error) {
-        this.error = errorMessage(error, '评阅中心数据加载失败')
-      } finally { this.loading = false }
+        if (token === this.loadToken) this.error = errorMessage(error, '评阅中心数据加载失败')
+      } finally {
+        if (token === this.loadToken) this.loading = false
+      }
     },
     resetSelection() {
+      ++this.selectionToken
       this.saveDraft()
       this.activeTask = null; this.detail = null; this.writeContext = null
       this.activeIndex = 0; this.activeFileKey = null; this.activeVersionId = null
       this.formError = ''
+      if (this.dossierOpen) this.closeDossier()
     },
     async selectTask(task) {
       if (!task) return
       this.saveDraft()
+      if (this.dossierOpen) this.closeDossier()
       const token = ++this.selectionToken
       this.activeTask = task
       this.activeIndex = Math.max(0, this.queue.findIndex((item) => item.caseKey === task.caseKey))
       this.loadingDetail = true; this.formError = ''; this.detail = null; this.writeContext = null
       try {
-        const [detail, writeContext] = await Promise.all([
-          graduationReviewCenterApi.detail(task.caseType, task.recordId),
-          graduationReviewCenterApi.writeContext(task)
-        ])
+        const detailPromise = graduationReviewCenterApi.detail(task.caseType, task.recordId)
+        const writeContextPromise = String(task.caseType || '').toUpperCase() === 'FORMAL_REVIEW'
+          ? detailPromise.then((detail) => graduationReviewCenterApi.writeContext(task, detail))
+          : graduationReviewCenterApi.writeContext(task)
+        const [detail, writeContext] = await Promise.all([detailPromise, writeContextPromise])
         if (token !== this.selectionToken) return
         this.detail = detail
         this.activeTask = detail?.case ? { ...task, ...detail.case } : task
@@ -462,10 +480,20 @@ export default {
     async afterMutation(message) {
       const oldKey = this.activeTask?.caseKey
       const oldIndex = this.activeIndex
+      const token = ++this.loadToken
+      ++this.selectionToken
       this.clearDraft()
       toast.success(message)
-      await this.loadSummary()
-      await this.loadQueue({ select: false })
+      try {
+        await Promise.all([
+          this.loadSummary(token),
+          this.loadQueue({ select: false, token })
+        ])
+      } catch (error) {
+        if (token === this.loadToken) this.formError = errorMessage(error, '操作已完成，但评阅队列刷新失败，请手动刷新')
+        return
+      }
+      if (token !== this.loadToken) return
       if (!this.queue.length) { this.resetSelection(); return }
       const sameIndex = this.queue.findIndex((item) => item.caseKey === oldKey)
       let target
@@ -478,13 +506,26 @@ export default {
     async openStudentDossier(record) {
       const studentId = record?.gdStudentId || this.activeTask?.gdStudentId
       if (!studentId) return
+      const token = ++this.dossierToken
       this.dossierOpen = true; this.dossierLoading = true; this.dossierError = ''; this.dossier = null
-      const res = await graduationApi.getStudentDetail(studentId)
-      if (res.code === 0) this.dossier = res.data
-      else this.dossierError = res.message || '学生档案读取失败'
-      this.dossierLoading = false
+      try {
+        const res = await graduationApi.getStudentDetail(studentId)
+        if (token !== this.dossierToken || !this.dossierOpen) return
+        if (res.code === 0) this.dossier = res.data
+        else this.dossierError = res.message || '学生档案读取失败'
+      } catch (error) {
+        if (token === this.dossierToken && this.dossierOpen) {
+          this.dossierError = errorMessage(error, '学生档案读取失败')
+        }
+      } finally {
+        if (token === this.dossierToken) this.dossierLoading = false
+      }
     },
-    closeDossier() { this.dossierOpen = false; this.dossier = null; this.dossierError = '' }
+    closeDossier() {
+      ++this.dossierToken
+      this.dossierOpen = false; this.dossierLoading = false
+      this.dossier = null; this.dossierError = ''
+    }
   }
 }
 </script>
