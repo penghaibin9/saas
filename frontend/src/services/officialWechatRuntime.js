@@ -140,8 +140,7 @@ export async function configureOfficialWechatShare(path = window.location.pathna
         settled = true
         resolve({ status })
       }
-
-      wx.ready(() => {
+      const onReady = () => {
         try {
           wx.updateAppMessageShareData?.({
             title: share.title,
@@ -159,8 +158,10 @@ export async function configureOfficialWechatShare(path = window.location.pathna
         } catch {
           finish('share-api-error')
         }
-      })
+      }
+
       wx.error?.(() => finish('config-error'))
+      // 按微信标准顺序先注入 config，再注册 ready；重复配置时也不会误用上一条路由的 ready 状态。
       wx.config({
         debug: false,
         appId: signed.appId,
@@ -169,6 +170,7 @@ export async function configureOfficialWechatShare(path = window.location.pathna
         signature: signed.signature,
         jsApiList: ['updateAppMessageShareData', 'updateTimelineShareData']
       })
+      wx.ready(onReady)
       window.setTimeout(() => finish('timeout'), 6500)
     })
   } catch {
