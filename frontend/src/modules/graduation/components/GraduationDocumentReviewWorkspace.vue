@@ -69,7 +69,7 @@ defineProps({
   provider: { type: Object, default: null }, descriptor: { type: Object, default: null }, activeFileKey: { type: [String, Number], default: null }, activeVersionId: { type: [String, Number], default: null },
   versionConflict: { type: Object, default: null }, allowDownload: { type: Boolean, default: false }, narrow: { type: Boolean, default: false }
 })
-defineEmits(['select', 'previous', 'next', 'update:comment', 'update:auto-next', 'approve', 'reject', 'reload', 'openStudentDossier', 'select-file', 'select-version', 'download'])
+defineEmits(['select', 'previous', 'next', 'update:comment', 'update:autoNext', 'approve', 'reject', 'reload', 'openStudentDossier', 'select-file', 'select-version', 'download'])
 const queueKey = (item, index) => String(item?.caseKey ?? item?.id ?? item?.gdStudentId ?? index)
 </script>
 
