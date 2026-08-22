@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
@@ -201,5 +202,15 @@ test.describe('岗位实习审计：请假驳回—反馈可见—重交—再�
     expect((finalData.auditTrail || []).map((item) => item.action)).toEqual(
       expect.arrayContaining(['APPLY', 'REVIEW_APPROVE', 'RETURN_VERSIONED'])
     )
+  })
+
+  test('浏览器闭环完成后只读核验 MySQL 持久化与审计记录', async () => {
+    const output = execFileSync('python', ['../backend/scripts/e2e_verify_internship_leave_audit.py'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: { ...process.env, E2E_INTERNSHIP_AUDIT_PREFIX: PREFIX }
+    })
+    expect(output).toContain('DB_EVIDENCE_OK')
+    console.log(output.trim())
   })
 })
