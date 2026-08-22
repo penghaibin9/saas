@@ -115,6 +115,14 @@ def _claims(kwargs: dict) -> dict:
         return {}
 
 
+def _fixture_actor_id(user: dict) -> str:
+    """Mirror the production actor resolver without weakening production file auth."""
+    from app.services.message_identity import resolve_message_user_id
+
+    value = resolve_message_user_id(user or {}) or user.get("userId") or user.get("id") or ""
+    return str(value).strip()
+
+
 def _prepare_single_archive_evidence(gd_student_id: int, kwargs: dict) -> None:
     """Complete explicit old ORM fixtures through real V2 snapshot/backfill writers."""
     user = _claims(kwargs)
@@ -203,11 +211,13 @@ def _formal_review_evidence_ready(gd_student_id: int) -> bool:
         db.close()
 
 
-def _ensure_legacy_final_file(gd_student_id: int) -> None:
-    """Give old ORM-only final fixtures one real FileObject before real V2 adoption."""
+def _ensure_legacy_final_file(gd_student_id: int, user: dict) -> None:
+    """Give old ORM-only final fixtures one real, caller-owned FileObject before V2 adoption."""
     from app.db.session import get_sessionmaker
     from app.models import FileObject, GraduationFinal
 
+    actor_id = _fixture_actor_id(user)
+    numeric_actor_id = int(actor_id) if actor_id.isdigit() else None
     db = get_sessionmaker()()
     try:
         final = db.scalars(select(GraduationFinal).where(
@@ -228,6 +238,11 @@ def _ensure_legacy_final_file(gd_student_id: int) -> None:
                     FileObject.is_deleted.is_(False),
                 ).limit(1)).first()
                 if existing:
+                    # Old tests predate File Center authorization metadata. Only fill an empty
+                    # fixture owner; never overwrite a real owner and never relax production auth.
+                    if numeric_actor_id is not None and not existing.owner_user_id and not existing.created_by:
+                        existing.owner_user_id = numeric_actor_id
+                        db.commit()
                     return
         digest = hashlib.sha256(f"w7-legacy-review:{gd_student_id}:{final.id}".encode()).hexdigest()
         file_obj = FileObject(
@@ -240,6 +255,7 @@ def _ensure_legacy_final_file(gd_student_id: int) -> None:
             sha256=digest,
             biz_type="GRADUATION_FINAL",
             biz_id=str(final.id),
+            owner_user_id=numeric_actor_id,
             visibility="BIZ_SCOPED",
             status="AVAILABLE",
             scan_required=False,
@@ -267,7 +283,10 @@ def _prepare_formal_review_evidence(client, path: str, kwargs: dict) -> None:
     gd_student_id = int(raw_student_id)
     if _formal_review_evidence_ready(gd_student_id):
         return
-    _ensure_legacy_final_file(gd_student_id)
+    user = _claims(kwargs)
+    if not user:
+        return
+    _ensure_legacy_final_file(gd_student_id, user)
     _prepare_single_archive_evidence(gd_student_id, kwargs)
 
 
