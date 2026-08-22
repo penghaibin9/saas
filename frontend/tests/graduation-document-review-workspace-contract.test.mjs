@@ -120,3 +120,12 @@ test('W2 workspace keeps transport and domain commands outside the public Viewer
   assert.match(workspaceSource, /evidenceVersions/)
   assert.doesNotMatch(workspaceSource, /issueMaterialTicket|fileSdk|reviewFinal|reviewProposal|submitReview|material-center\/files/)
 })
+
+test('W2 workspace puts security evidence and review controls before secondary summary chrome', () => {
+  const evidence = workspaceSource.indexOf('<FileEvidencePanel')
+  const review = workspaceSource.indexOf('<slot name="review" />')
+  const summary = workspaceSource.indexOf('<div class="gd-review-workspace__summary">')
+  assert.ok(evidence >= 0 && review > evidence && summary > review)
+  assert.match(workspaceSource, /gd-page-intro:has\(\+ \.gd-business-view \.gd-review-workspace\)/)
+  assert.match(workspaceSource, /gd-business-view:has\(\.gd-review-workspace\)>\.gd-scope-alert\.app-inline-alert/)
+})
