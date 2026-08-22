@@ -412,6 +412,12 @@ def apply_return_in_db(db, inst, *, reason: str) -> dict | None:
         resubmit_todo.is_deleted = True
         resubmit_todo.version = int(resubmit_todo.version or 0) + 1
 
+    # approval runtime 刚刚 db.add() 的通用重提消息在当前 Session 中仍可能是 pending。
+    # 该 Session 为显式 flush 模式，下面的 SELECT 不保证先把 pending message 写入数据库；
+    # 因此必须在同一事务内先 flush，随后才能可靠锁定并改写它，避免提交后遗留
+    # APPROVAL_RESUBMIT action。flush 不会对外可见，真正提交仍由外层 runtime 统一完成。
+    db.flush()
+
     resubmit_message = db.scalars(select(UnifiedMessage).where(
         UnifiedMessage.tenant_id == _tid(),
         UnifiedMessage.source_module == SOURCE_MODULE,
