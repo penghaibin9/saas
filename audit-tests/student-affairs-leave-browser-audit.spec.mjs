@@ -40,8 +40,28 @@ function exactPath(response, suffix, method = 'POST') {
   }
 }
 
+async function readClosedMetric(page) {
+  const responsePromise = page.waitForResponse((response) => {
+    try {
+      const url = new URL(response.url())
+      return url.pathname.endsWith('/api/v1/student-affairs/leave/stats') && response.request().method() === 'GET'
+    } catch {
+      return false
+    }
+  })
+  await page.goto(`${config.staffBaseUrl}/admin/student-affairs/leave/stats`)
+  const response = await responsePromise
+  expect(response.ok(), `leave stats HTTP ${response.status()}`).toBeTruthy()
+  const envelope = await response.json()
+  expect(envelope.code).toBe(0)
+  const closed = (envelope.data?.metrics || []).find((item) => item.key === 'closed')
+  expect(closed, 'leave stats must expose closed metric').toBeTruthy()
+  await expect(page.getByText('已销假', { exact: true }).first()).toBeVisible()
+  return Number(closed.value || 0)
+}
+
 test.describe.serial('Student Affairs strict browser audit · leave lifecycle', () => {
-  test('student create -> counselor return -> student edit/resubmit -> counselor approve -> student cancel -> counselor confirm -> tenant isolation', async ({ page }, testInfo) => {
+  test('student create -> counselor return -> student edit/resubmit -> counselor approve -> student cancel -> counselor confirm -> stats -> tenant isolation', async ({ page }, testInfo) => {
     test.setTimeout(180_000)
 
     const runMark = `${Date.now()}-${process.pid}`
@@ -54,6 +74,9 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
     const api500 = []
     const consoleErrors = []
     let initialSubmitCount = 0
+    let leaveId = ''
+    let closedBefore = 0
+    let closedAfter = 0
 
     page.on('response', (response) => {
       if (response.url().includes('/api/') && response.status() >= 500) {
@@ -73,6 +96,12 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
           initialSubmitCount += 1
         }
       } catch {}
+    })
+
+    await test.step('capture counselor scoped statistics baseline in real browser', async () => {
+      const staffLogin = await freshStaffLogin(page, counselor)
+      expect(staffLogin.lastAccessToken).toBeTruthy()
+      closedBefore = await readClosedMetric(page)
     })
 
     await test.step('student browser login and real leave submission', async () => {
@@ -95,7 +124,9 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
       const envelope = await response.json()
       expect(envelope.code).toBe(0)
       const data = envelope.data || {}
-      testInfo.annotations.push({ type: 'leave-id', description: String(data.leaveId || data.id || '') })
+      leaveId = String(data.leaveId || data.id || '')
+      expect(leaveId, 'leave id must come from the browser submit network response').toBeTruthy()
+      testInfo.annotations.push({ type: 'leave-id', description: leaveId })
       await page.waitForTimeout(400)
       expect(initialSubmitCount, 'rapid double-click must create only one POST').toBe(1)
 
@@ -105,7 +136,6 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
       await expect(record).toContainText(/辅导员审批|审批中|已提交/)
     })
 
-    let leaveId = ''
     await test.step('counselor browser login, scoped queue, return for resubmit and audit trail', async () => {
       const staffLogin = await freshStaffLogin(page, counselor)
       expect(staffLogin.lastAccessToken).toBeTruthy()
@@ -120,14 +150,6 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
       await queueItem.click()
       await expect(page.locator('.lv-main')).toContainText(initialReason)
 
-      const detailResponse = await page.waitForResponse((response) =>
-        response.url().includes('/api/v1/student-affairs/leave/') && response.request().method() === 'GET' && response.ok()
-      ).catch(() => null)
-      if (detailResponse) {
-        const env = await detailResponse.json().catch(() => null)
-        leaveId = String(env?.data?.id || env?.id || '')
-      }
-
       const returnResponsePromise = page.waitForResponse((response) =>
         response.url().includes('/api/v1/student-affairs/leave/') && response.url().endsWith('/return') && response.request().method() === 'POST'
       )
@@ -140,8 +162,6 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
       expect(returned.ok(), `return HTTP ${returned.status()}`).toBeTruthy()
       const returnedEnv = await returned.json()
       expect(returnedEnv.code).toBe(0)
-      leaveId = String(returnedEnv.data?.id || returnedEnv.data?.leaveId || leaveId || '')
-      expect(leaveId, 'leave id must be recoverable from browser network evidence').toBeTruthy()
     })
 
     await test.step('student browser sees reason, edits and resubmits', async () => {
@@ -243,6 +263,12 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
       await expect(record).toContainText('已销假')
     })
 
+    await test.step('counselor statistics reflects exactly one newly closed leave', async () => {
+      await freshStaffLogin(page, counselor)
+      closedAfter = await readClosedMetric(page)
+      expect(closedAfter).toBe(closedBefore + 1)
+    })
+
     await test.step('Tenant B real browser cannot see Tenant A record and direct detail fails closed', async () => {
       const demoLogin = await freshStaffLogin(page, config.demoAdmin)
       await page.goto(`${config.staffBaseUrl}/admin/student-affairs/leave/followup`)
@@ -271,6 +297,8 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
       returnedReason,
       revisedReason,
       initialSubmitCount,
+      closedBefore,
+      closedAfter,
       finalUiState: 'CLOSED',
       tenantIsolation: 'PASS'
     }, null, 2), 'utf8')
