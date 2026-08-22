@@ -7,15 +7,18 @@ formal-review ownership are projected here before any client sees a write afford
 """
 from __future__ import annotations
 
+from sqlalchemy import and_, select
+
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import not_found
 from app.core.permissions import has_permission
+from app.models import GraduationReview, GraduationStudent
 from app.modules.graduation.services import graduation_identity as gid
 from app.modules.graduation.services import graduation_review_center_priority_service as priority
 from app.modules.graduation.services import graduation_review_center_query_service as query
 from app.modules.graduation.services import graduation_review_center_summary_service as summary_query
 from app.modules.graduation.services.graduation_scope_service import has_full_scope
-from app.services.db_service import session
+from app.services.db_service import _tid, session
 
 PRIORITY_SORT = "PRIORITY"
 _CASE_PRIORITY = {"FINAL": 2, "FINAL_DRAFT": 2, "FORMAL_REVIEW": 3, "PROPOSAL": 4}
@@ -90,6 +93,43 @@ def _project_actor_actions(item: dict, actor: dict) -> dict:
     return result
 
 
+def _deny_reviewer_detail() -> None:
+    raise not_found("评阅任务不存在或不在当前数据范围内")
+
+
+def _preflight_reviewer_detail_scope(*, batch_id: int, case_type: str, record_id: int, actor: dict) -> None:
+    """Authorize GD_REVIEWER at task level before hydrating sensitive Review Center detail."""
+    if actor["role"] != "GD_REVIEWER":
+        return
+    reviewer_id = actor.get("reviewerId")
+    if str(case_type or "").upper() != "FORMAL_REVIEW" or reviewer_id is None:
+        _deny_reviewer_detail()
+
+    with session() as db:
+        hit = db.scalar(
+            select(GraduationReview.id)
+            .join(
+                GraduationStudent,
+                and_(
+                    GraduationStudent.id == GraduationReview.gd_student_id,
+                    GraduationStudent.tenant_id == GraduationReview.tenant_id,
+                ),
+            )
+            .where(
+                GraduationReview.tenant_id == _tid(),
+                GraduationReview.id == int(record_id),
+                GraduationReview.reviewer_mentor_id == int(reviewer_id),
+                GraduationReview.is_deleted.is_(False),
+                GraduationStudent.batch_id == int(batch_id),
+                GraduationStudent.record_status == "ACTIVE",
+                GraduationStudent.is_deleted.is_(False),
+            )
+            .limit(1)
+        )
+    if hit is None:
+        _deny_reviewer_detail()
+
+
 def _assert_reviewer_detail_scope(result: dict, actor: dict) -> None:
     if actor["role"] != "GD_REVIEWER":
         return
@@ -99,9 +139,9 @@ def _assert_reviewer_detail_scope(result: dict, actor: dict) -> None:
         or actor.get("reviewerId") is None
         or str(case.get("reviewerMentorId") or "") != str(actor["reviewerId"])
     ):
-        # Do not reveal whether another review/proposal/final exists for a student the
-        # reviewer can see through some different assigned task.
-        raise not_found("评阅任务不存在或不在当前数据范围内")
+        # Defense in depth: query.detail must not be trusted to widen task ownership if
+        # its projection changes in a later refactor.
+        _deny_reviewer_detail()
 
 
 def summary(batch_id: int) -> dict:
@@ -142,6 +182,12 @@ def list_tasks(*, batch_id: int, page: int, page_size: int, case_type=None,
 
 def detail(*, batch_id: int, case_type: str, record_id: int) -> dict:
     actor = _actor_state()
+    _preflight_reviewer_detail_scope(
+        batch_id=batch_id,
+        case_type=case_type,
+        record_id=record_id,
+        actor=actor,
+    )
     result = query.detail(batch_id=batch_id, case_type=case_type, record_id=record_id)
     _assert_reviewer_detail_scope(result, actor)
     case = _project_actor_actions(result.get("case") or {}, actor)

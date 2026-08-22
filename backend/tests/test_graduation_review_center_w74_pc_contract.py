@@ -103,10 +103,23 @@ def test_w74_backend_allowed_actions_and_reviewer_scope_are_actor_authoritative(
     assert 'reviewer_only = True' in contract
     assert 'return [], 0' in contract
     assert "_assert_reviewer_detail_scope" in contract
-    assert 'raise not_found("评阅任务不存在或不在当前数据范围内")' in contract
+    assert '_deny_reviewer_detail()' in contract
     assert 'summary_query.summary(batch_id, reviewer_mentor_id=reviewer_id)' in contract
     assert "reviewer_mentor_id=:reviewer_mentor_id" in summary
     assert "WHERE case_type='FORMAL_REVIEW'" in summary
+
+
+def test_w74_reviewer_detail_authorizes_before_sensitive_hydration():
+    contract = text("backend/app/modules/graduation/services/graduation_review_center_contract_service.py")
+
+    assert "def _preflight_reviewer_detail_scope" in contract
+    assert "GraduationReview.reviewer_mentor_id == int(reviewer_id)" in contract
+    assert "GraduationStudent.batch_id == int(batch_id)" in contract
+    assert 'GraduationStudent.record_status == "ACTIVE"' in contract
+    assert "GraduationStudent.tenant_id == GraduationReview.tenant_id" in contract
+    detail_body = contract.split("def detail(*,", 1)[1]
+    assert detail_body.index("_preflight_reviewer_detail_scope(") < detail_body.index("query.detail(")
+    assert detail_body.index("query.detail(") < detail_body.index("_assert_reviewer_detail_scope(")
 
 
 def test_w74_pc_consumes_backend_allowed_actions_and_mutations_fail_closed_by_case():
