@@ -50,10 +50,44 @@
         </section>
 
         <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">附件材料</span><span class="mp-note">共 {{ detail.attachments.length }} 份</span></div>
+          <div class="mp-card__head"><span class="mp-card__title">附件材料 Reader</span><span class="mp-note">共 {{ detail.attachments.length }} 份</span></div>
           <div class="mp-card__body">
-            <p v-if="!detail.attachments.length" class="mp-note">申请人未上传附件</p>
-            <div v-else class="dv-attachments"><StatusTag v-for="a in detail.attachments" :key="a" type="info" :label="'📎 ' + a" /></div>
+            <p v-if="attachmentsLoading" class="mp-note">正在核验任务附件与文件安全状态…</p>
+            <div v-else-if="attachmentsError" class="dv-attachment-error">
+              <span class="mp-form-err">{{ attachmentsError }}</span>
+              <button type="button" class="mp-link" @click="loadAttachments(task.taskId)">重试</button>
+            </div>
+            <p v-else-if="!detail.attachments.length" class="mp-note">申请人未上传附件</p>
+            <template v-else>
+              <div class="dv-attachments">
+                <div v-for="a in detail.attachments" :key="a.fileId" class="dv-attachment-row" :class="{ 'is-active': String(activeAttachmentId) === String(a.fileId) }">
+                  <div class="dv-attachment-main">
+                    <strong>{{ a.fileName || '未命名附件' }}</strong>
+                    <span>{{ a.statusText || '状态未知' }}<template v-if="a.sizeBytes"> · {{ humanSize(a.sizeBytes) }}</template></span>
+                  </div>
+                  <div class="dv-attachment-actions">
+                    <button v-if="a.canPreview" type="button" class="mp-link" @click="openAttachment(a)">{{ String(activeAttachmentId) === String(a.fileId) ? '收起预览' : '在线预览' }}</button>
+                    <button v-if="a.canDownload" type="button" class="mp-link" @click="downloadAttachment(a)">下载</button>
+                    <span v-if="!a.canPreview && !a.canDownload" class="mp-note">暂不可读取</span>
+                  </div>
+                </div>
+              </div>
+              <AppDocumentViewer
+                v-if="activeAttachment && activeAttachmentDescriptor && attachmentPreviewProvider"
+                class="dv-attachment-viewer"
+                :descriptor="activeAttachmentDescriptor"
+                :provider="attachmentPreviewProvider"
+                :files="detail.attachments"
+                :active-file-key="activeAttachment.fileId"
+                :active-version-id="activeAttachment.fileVersionId || null"
+                :canonical-version-id="activeAttachment.fileVersionId || null"
+                :allow-download="activeAttachment.canDownload"
+                :show-version-bar="false"
+                :show-file-switcher="false"
+                @download="downloadAttachment(activeAttachment)"
+              />
+              <p class="mp-note dv-reader-hint">附件 Reader 以当前审批任务为授权边界；预览票据短时有效，下载票据单次使用，页面不接触公共存储 URL。</p>
+            </template>
           </div>
         </section>
       </div>
@@ -141,19 +175,22 @@
 <script>
 import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppConfirmDialog } from '@/components/common'
+import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { approvalApi } from '@/modules/approval/api/approval.api'
+import { approvalAttachmentsApi } from '@/modules/approval/api/approval-attachments.api'
 import { buildReturnQuery, returnPath } from '@/modules/approval/utils/queueContext'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'ApprovalDetailView',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppButton, AppDrawer },
+  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDocumentViewer, AppButton, AppDrawer },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', task: null,
       detail: { fields: [], attachments: [], applyNote: '' }, businessContext: null, timeline: [], suggestions: [],
+      attachmentsLoading: false, attachmentsError: '', activeAttachmentId: '', attachmentPreviewProvider: null,
       comment: '', formError: '', submitting: false,
       returnDialog: false, rejectDialog: false, transferDrawer: false,
       transferTargets: [], transferTargetsLoading: false,
@@ -189,6 +226,12 @@ export default {
       return `退回后「${this.task.title}」仍保持流程运行，并给申请人生成修改重提待办。`
     },
     canHandle() { return !!(this.task && this.task.status === 'PENDING_REVIEW' && this.task.allowedActions?.length) },
+    activeAttachment() {
+      return this.detail.attachments.find((item) => String(item.fileId) === String(this.activeAttachmentId)) || null
+    },
+    activeAttachmentDescriptor() {
+      return this.activeAttachment ? approvalAttachmentsApi.previewDescriptor(this.activeAttachment) : null
+    },
     readonlyTitle() {
       if (!this.task) return '任务不可操作'
       if (this.task.status === 'APPROVED') return '该任务已办结（通过）'
@@ -216,12 +259,51 @@ export default {
     urgencyTone(v) { return v === 'OVERDUE' ? 'danger' : (v === 'NEAR_DEADLINE' || v === 'URGENT') ? 'warning' : 'default' },
     toneClass(tone) { const t = tone === 'processing' ? 'warning' : tone; return 'is-' + (['success', 'warning', 'danger', 'default'].includes(t) ? t : 'default') },
     maskNo(v) { return v ? v.slice(0, -4) + '**' + v.slice(-2) : '' },
+    humanSize(size) {
+      const n = Number(size || 0)
+      if (!n) return ''
+      if (n < 1024) return `${n} B`
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+      return `${(n / 1024 / 1024).toFixed(1)} MB`
+    },
+    async loadAttachments(taskId) {
+      this.attachmentsLoading = true
+      this.attachmentsError = ''
+      this.activeAttachmentId = ''
+      try {
+        const files = await approvalAttachmentsApi.list(taskId)
+        this.detail.attachments = files.map((item) => ({
+          ...item,
+          canPreview: Array.isArray(item.allowedActions) && item.allowedActions.includes('preview'),
+          canDownload: Array.isArray(item.allowedActions) && item.allowedActions.includes('download')
+        }))
+      } catch (error) {
+        this.detail.attachments = []
+        this.attachmentsError = error?.message || '审批附件加载失败'
+      } finally {
+        this.attachmentsLoading = false
+      }
+    },
+    openAttachment(file) {
+      if (!file?.canPreview) return
+      this.activeAttachmentId = String(this.activeAttachmentId) === String(file.fileId) ? '' : String(file.fileId)
+    },
+    async downloadAttachment(file) {
+      if (!file?.canDownload) return
+      try {
+        await approvalAttachmentsApi.download(this.task.taskId, file)
+      } catch (error) {
+        toast.error(error?.message || '附件下载失败')
+      }
+    },
     async load() {
       this.loading = true; this.error = ''
       const res = await approvalApi.getApprovalDetail(this.$route.params.taskId)
       if (res.code === 0) {
         this.task = res.data.task; this.detail = res.data.detail; this.timeline = res.data.timeline; this.suggestions = res.data.suggestions
         this.businessContext = res.data.businessContext || null
+        this.attachmentPreviewProvider = approvalAttachmentsApi.createPreviewProvider(this.task.taskId)
+        await this.loadAttachments(this.task.taskId)
       } else this.error = res.message
       this.loading = false
     },
@@ -312,10 +394,19 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.dv-attachments { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.dv-attachments { display: grid; gap: var(--space-2); }
+.dv-attachment-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-base); background: var(--bg-card); }
+.dv-attachment-row.is-active { border-color: var(--primary-200, #bfdbfe); background: var(--primary-50, #eff6ff); }
+.dv-attachment-main { min-width: 0; display: grid; gap: 3px; }
+.dv-attachment-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: var(--font-size-sm); }
+.dv-attachment-main span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.dv-attachment-actions { flex: none; display: flex; align-items: center; gap: var(--space-2); }
+.dv-attachment-viewer { min-height: 560px; margin-top: var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-base); overflow: hidden; }
+.dv-reader-hint { margin: var(--space-2) 0 0; line-height: 1.6; }
+.dv-attachment-error { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .dv-label { display: block; margin: var(--space-3) 0 var(--space-1); }
 .dv-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-3); }
 .dv-hint { margin: var(--space-2) 0 0; text-align: center; line-height: 1.6; }
-@media (max-width: 900px) { .dv-actions { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .dv-actions { grid-template-columns: 1fr; } .dv-attachment-row { align-items: flex-start; flex-direction: column; } }
 .mp-kv__v.is-masked { color: var(--text-3, #909399); font-style: italic; }
 </style>
