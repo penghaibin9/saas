@@ -138,6 +138,17 @@ jobs:
         working-directory: backend
         run: python ../scripts/check/check-migrated-schema-parity.py
 
+      - name: Replay the five W7.6 historical blockers
+        working-directory: backend
+        run: |
+          pytest \
+            tests/test_graduation_e2e_acceptance_gates.py::test_assign_review_sod_uses_topic_advisor_when_student_advisor_blank \
+            tests/test_graduation_mobile_teacher_views.py::test_review_assign_sod_and_submit \
+            tests/test_graduation_review.py::test_review_assign_rejects_advisor_conflict_and_submit_return \
+            tests/test_graduation_review.py::test_submit_review_rejects_non_assigned_reviewer \
+            tests/test_graduation_stable_identity.py::test_sod_review_uses_mentor_id_not_same_name \
+            -q -p no:warnings --durations=10
+
       - name: W7.1-W7.6 authority and contract proof on migrated MySQL
         working-directory: backend
         run: |
