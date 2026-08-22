@@ -1,0 +1,98 @@
+name: Audit Academic IAM Fix R2 20260823
+
+on:
+  push:
+    branches:
+      - audit/academic-real-browser-20260823
+    paths:
+      - '.github/workflows/audit-academic-iam-fix-r2-20260823.yml'
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  rerun:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: penghaibin9/saas
+      FIX_REF: fix/academic-e2e-school-iam-bootstrap-20260823
+      FIX_SHA: fc0791c79475184b264803c818bbf4ab92d845aa
+      AUDITED_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+    steps:
+      - name: Assert fix scope
+        run: |
+          set -euo pipefail
+          actual="$(gh api repos/$REPO/git/ref/heads/$FIX_REF --jq .object.sha)"
+          test "$actual" = "$FIX_SHA"
+          files="$(gh api repos/$REPO/compare/$AUDITED_SHA...$FIX_SHA --jq '.files[].filename')"
+          printf '%s\n' "$files"
+          printf '%s\n' "$files" | while read -r f; do
+            case "$f" in
+              .github/workflows/academic-b-w3-schedule-real-click.yml|\
+              .github/workflows/academic-b-w4-selection-real-click.yml|\
+              .github/workflows/academic-c-w2-teacher-today-browser.yml|\
+              .github/workflows/academic-b-w5-student-projection-real-click.yml|\
+              backend/scripts/bootstrap_control_plane_school_iam_authority.py) ;;
+              *) echo "Unexpected fix-scope file: $f"; exit 1 ;;
+            esac
+          done
+
+      - name: Dispatch all four fixed browser gates
+        run: |
+          set -euo pipefail
+          start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          : > /tmp/runs.tsv
+          workflows=(
+            academic-b-w3-schedule-real-click.yml
+            academic-b-w4-selection-real-click.yml
+            academic-c-w2-teacher-today-browser.yml
+            academic-b-w5-student-projection-real-click.yml
+          )
+          for wf in "${workflows[@]}"; do
+            gh workflow run "$wf" --repo "$REPO" --ref "$FIX_REF"
+            id=''
+            for _ in {1..40}; do
+              id="$(gh run list --repo "$REPO" --workflow "$wf" --branch "$FIX_REF" --event workflow_dispatch --limit 30 --json databaseId,headSha,createdAt --jq ".[] | select(.headSha == \"$FIX_SHA\" and .createdAt >= \"$start\") | .databaseId" | head -n1)"
+              [ -n "$id" ] && break
+              sleep 2
+            done
+            echo "$wf|${id:-MISSING}" >> /tmp/runs.tsv
+          done
+          cat /tmp/runs.tsv
+
+      - name: Wait and report
+        if: always()
+        run: |
+          set +e
+          {
+            echo '## School IAM bootstrap R2 后真实浏览器重跑'
+            echo
+            echo "Audited product base: \`$AUDITED_SHA\`"
+            echo "Harness-fix SHA: \`$FIX_SHA\`"
+            echo
+            echo '| Workflow | Run | Conclusion | Head | URL |'
+            echo '|---|---:|---|---|---|'
+          } > /tmp/result.md
+          overall=0
+          if [ ! -s /tmp/runs.tsv ]; then overall=1; fi
+          while IFS='|' read -r wf id; do
+            if [ "$id" = MISSING ]; then
+              echo "| $wf | - | MISSING | - | - |" >> /tmp/result.md
+              overall=1
+              continue
+            fi
+            gh run watch "$id" --repo "$REPO" --exit-status >/tmp/watch-$id.log 2>&1
+            rc=$?
+            row="$(gh run view "$id" --repo "$REPO" --json conclusion,status,headSha,url --jq '[.conclusion,.status,.headSha,.url] | @tsv')"
+            co="$(printf '%s' "$row" | cut -f1)"; st="$(printf '%s' "$row" | cut -f2)"; hd="$(printf '%s' "$row" | cut -f3)"; url="$(printf '%s' "$row" | cut -f4)"
+            state="${co:-$st}"
+            [ "$rc" -eq 0 ] && [ "$state" = success ] || overall=1
+            echo "| $wf | $id | $state | \`$hd\` | $url |" >> /tmp/result.md
+          done < /tmp/runs.tsv
+          gh issue comment 200 --repo "$REPO" --body-file /tmp/result.md
+          cat /tmp/result.md
+          exit "$overall"
