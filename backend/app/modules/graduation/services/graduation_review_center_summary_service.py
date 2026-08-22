@@ -13,6 +13,7 @@ from sqlalchemy import bindparam, text
 
 from app.core.timeutil import local_today_bounds_utc, utc_now
 from app.modules.graduation.services import graduation_review_center_query_service as q
+from app.modules.graduation.services.graduation_review_center_scope_service import reviewer_student_ids
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
 from app.services.db_service import _tid, session
 
@@ -33,7 +34,14 @@ def _projection_where(reviewer_mentor_id: int | None) -> str:
 def summary(batch_id: int, *, reviewer_mentor_id: int | None = None) -> dict:
     """Return bounded aggregate metrics without hydrating the full projected queue."""
     with session() as db:
-        scope_ids = accessible_student_ids(db, int(_tid()), batch_id=int(batch_id))
+        if reviewer_mentor_id is None:
+            scope_ids = accessible_student_ids(db, int(_tid()), batch_id=int(batch_id))
+        else:
+            scope_ids = reviewer_student_ids(
+                db,
+                batch_id=int(batch_id),
+                reviewer_mentor_id=int(reviewer_mentor_id),
+            )
         deadlines = q._batch_deadlines(db, int(batch_id))
         now = utc_now()
         # "今日" is a tenant-local calendar concept. DB timestamps are UTC-naive,

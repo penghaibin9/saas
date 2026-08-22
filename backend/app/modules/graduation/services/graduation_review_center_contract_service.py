@@ -14,8 +14,8 @@ from app.core.exceptions import not_found
 from app.core.permissions import has_permission
 from app.models import GraduationReview, GraduationStudent
 from app.modules.graduation.services import graduation_identity as gid
+from app.modules.graduation.services import graduation_review_center_detail_service as detail_query
 from app.modules.graduation.services import graduation_review_center_priority_service as priority
-from app.modules.graduation.services import graduation_review_center_query_service as query
 from app.modules.graduation.services import graduation_review_center_summary_service as summary_query
 from app.modules.graduation.services.graduation_scope_service import has_full_scope
 from app.services.db_service import _tid, session
@@ -139,8 +139,8 @@ def _assert_reviewer_detail_scope(result: dict, actor: dict) -> None:
         or actor.get("reviewerId") is None
         or str(case.get("reviewerMentorId") or "") != str(actor["reviewerId"])
     ):
-        # Defense in depth: query.detail must not be trusted to widen task ownership if
-        # its projection changes in a later refactor.
+        # Defense in depth: detail projection must not widen task ownership if its
+        # implementation changes in a later refactor.
         _deny_reviewer_detail()
 
 
@@ -188,7 +188,13 @@ def detail(*, batch_id: int, case_type: str, record_id: int) -> dict:
         record_id=record_id,
         actor=actor,
     )
-    result = query.detail(batch_id=batch_id, case_type=case_type, record_id=record_id)
+    reviewer_id = actor.get("reviewerId") if actor["role"] == "GD_REVIEWER" else None
+    result = detail_query.detail(
+        batch_id=batch_id,
+        case_type=case_type,
+        record_id=record_id,
+        reviewer_mentor_id=reviewer_id,
+    )
     _assert_reviewer_detail_scope(result, actor)
     case = _project_actor_actions(result.get("case") or {}, actor)
     result = dict(result)

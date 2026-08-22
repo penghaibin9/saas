@@ -11,6 +11,7 @@ from sqlalchemy import bindparam, text
 
 from app.modules.graduation.services import graduation_review_center_query_service as q
 from app.modules.graduation.services import graduation_review_feedback_service as feedback
+from app.modules.graduation.services.graduation_review_center_scope_service import reviewer_student_ids
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
 from app.services.db_service import _tid, session
 
@@ -22,8 +23,15 @@ def list_tasks(*, batch_id: int, page: int, page_size: int, case_type=None, stat
         from app.core.exceptions import AppException
         raise AppException("VALIDATION_ERROR", "sort 不支持")
     with session() as db:
-        scope_ids = accessible_student_ids(db, int(_tid()), batch_id=int(batch_id))
         reviewer_id, reviewer_name = q._current_reviewer(db)
+        if reviewer_only and reviewer_id is not None:
+            scope_ids = reviewer_student_ids(
+                db,
+                batch_id=int(batch_id),
+                reviewer_mentor_id=int(reviewer_id),
+            )
+        else:
+            scope_ids = accessible_student_ids(db, int(_tid()), batch_id=int(batch_id))
         where, extra = q._filters(case_type, status_group, keyword, reviewer_only, reviewer_id, reviewer_name)
         deadlines = q._batch_deadlines(db, int(batch_id))
         now = datetime.now(timezone.utc)

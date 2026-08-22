@@ -118,8 +118,28 @@ def test_w74_reviewer_detail_authorizes_before_sensitive_hydration():
     assert 'GraduationStudent.record_status == "ACTIVE"' in contract
     assert "GraduationStudent.tenant_id == GraduationReview.tenant_id" in contract
     detail_body = contract.split("def detail(*,", 1)[1]
-    assert detail_body.index("_preflight_reviewer_detail_scope(") < detail_body.index("query.detail(")
-    assert detail_body.index("query.detail(") < detail_body.index("_assert_reviewer_detail_scope(")
+    assert detail_body.index("_preflight_reviewer_detail_scope(") < detail_body.index("detail_query.detail(")
+    assert detail_body.index("detail_query.detail(") < detail_body.index("_assert_reviewer_detail_scope(")
+
+
+def test_w74_reviewer_scope_is_set_based_and_detail_hydrates_proven_batch():
+    scope = text("backend/app/modules/graduation/services/graduation_review_center_scope_service.py")
+    detail = text("backend/app/modules/graduation/services/graduation_review_center_detail_service.py")
+    priority = text("backend/app/modules/graduation/services/graduation_review_center_priority_service.py")
+    summary = text("backend/app/modules/graduation/services/graduation_review_center_summary_service.py")
+    contract = text("backend/app/modules/graduation/services/graduation_review_center_contract_service.py")
+
+    assert "def reviewer_student_ids" in scope
+    assert "GraduationReview.reviewer_mentor_id == reviewer_id" in scope
+    assert "GraduationReview.gd_student_id == GraduationStudent.id" in scope
+    assert ".distinct()" in scope
+    assert "reviewer_student_ids(" in priority
+    assert "reviewer_student_ids(" in summary
+    assert "reviewer_student_ids(" in detail
+    assert 'row = {**dict(raw), "batch_id": int(batch_id)}' in detail
+    assert 'where += " AND reviewer_mentor_id=:reviewer_mentor_id"' in detail
+    assert "graduation_review_center_detail_service as detail_query" in contract
+    assert "query.detail(" not in contract
 
 
 def test_w74_pc_consumes_backend_allowed_actions_and_mutations_fail_closed_by_case():
