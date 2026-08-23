@@ -94,9 +94,9 @@ async function chooseMentor(field, query, visibleName) {
   await option.click()
 }
 
-async function openScoring(page, account, fixture, octet) {
+async function openDefensePanel(page, account, fixture, octet, routePath) {
   await loginStaff(page, account, octet)
-  const url = new URL(`${config.staffBaseUrl}/admin/graduation/defense-scoring`)
+  const url = new URL(`${config.staffBaseUrl}${routePath}`)
   url.searchParams.set('batchId', fixture.batchId)
   url.searchParams.set('studentId', fixture.gdStudentId)
   url.searchParams.set('panel', 'defense')
@@ -117,6 +117,14 @@ async function openScoring(page, account, fixture, octet) {
 
   await expect(context).toContainText(fixture.studentNo)
   await expect(page.getByRole('button', { name: '答辩评分', exact: true })).toBeVisible()
+}
+
+async function openScoring(page, account, fixture, octet) {
+  await openDefensePanel(page, account, fixture, octet, '/admin/graduation/defense-scoring')
+}
+
+async function openConfirmation(page, fixture, octet) {
+  await openDefensePanel(page, accounts.secretary, fixture, octet, '/admin/graduation/defense-confirmation')
 }
 
 async function enterOwnScore(page, fixture, account, person, score, roundNo, octet) {
@@ -142,7 +150,7 @@ async function enterOwnScore(page, fixture, account, person, score, roundNo, oct
 }
 
 async function confirmRound(page, fixture, roundNo, octet) {
-  await openScoring(page, accounts.secretary, fixture, octet)
+  await openConfirmation(page, fixture, octet)
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith(`/graduation/gd-defense-scores/${fixture.gdStudentId}/confirm`)),
     page.getByRole('button', { name: '确认本轮成绩', exact: true }).click(),
@@ -231,7 +239,7 @@ test.describe.serial('毕业设计答辩 Browser First · 建组发布/专家评
     await enterOwnScore(page, fixture, accounts.expertB, people.expertB, 89, 1, 63)
     await confirmRound(page, fixture, 1, 64)
 
-    await openScoring(page, accounts.secretary, fixture, 65)
+    await openConfirmation(page, fixture, 65)
     await page.getByRole('button', { name: '发起二次答辩', exact: true }).click()
     await expect(page.getByRole('heading', { name: '创建二次答辩', exact: true })).toBeVisible()
     await page.locator('form.ie-form textarea').fill('E2E-AUDIT-20260823 首轮答辩需进一步验证异常路径与现场问答完整性。')
