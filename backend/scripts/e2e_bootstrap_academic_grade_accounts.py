@@ -135,6 +135,61 @@ def _find_user(token: str, login_name: str) -> dict | None:
     return None
 
 
+def _ensure_college_review_assignment(token: str, college_id: int | str) -> dict:
+    """Create the production School-IAM affiliation required by Grade approval.
+
+    Teacher identity import intentionally owns account/role/data-scope facts only.  A Grade
+    COLLEGE_REVIEW assignee is a stronger organization fact: the reviewer must be an active
+    SECRETARY/LEADER StaffAssignment for the course college.  The Browser-First fixture must
+    therefore create that fact through the same public System API a school administrator uses,
+    rather than inserting StaffAssignment rows directly in MySQL or weakening the production
+    resolver to accept every COLLEGE_ADMIN account.
+    """
+    reviewer = _find_user(token, "e2e_aa_college_a")
+    if not reviewer:
+        raise SystemExit("grade college reviewer account not found after canonical teacher import")
+    user_id = reviewer.get("id") or reviewer.get("userId")
+    if not str(user_id or "").isdigit():
+        raise SystemExit("grade college reviewer has no stable numeric user id")
+    if not str(college_id or "").isdigit():
+        raise SystemExit("grade college fixture has no stable numeric college id")
+
+    current = _req(
+        "GET",
+        f"/system/staff-assignments?userId={user_id}&orgType=COLLEGE&orgNodeId={college_id}",
+        token=token,
+    )
+    if current.get("code") != 0:
+        raise SystemExit("grade reviewer affiliation lookup failed: " + json.dumps(current, ensure_ascii=False))
+    for item in (current.get("data") or {}).get("items") or []:
+        if (
+            str(item.get("assignmentType") or "").upper() in {"SECRETARY", "LEADER"}
+            and str(item.get("status") or "").upper() == "ACTIVE"
+            and bool(item.get("effectiveNow"))
+        ):
+            return item
+
+    created = _req(
+        "POST",
+        "/system/staff-assignments",
+        token=token,
+        body={
+            "userId": int(user_id),
+            "orgType": "COLLEGE",
+            "orgNodeId": int(college_id),
+            "assignmentType": "SECRETARY",
+            "isPrimary": True,
+            "reason": "Academic C Browser-First：学院成绩审核真实受理人",
+        },
+    )
+    if created.get("code") != 0:
+        raise SystemExit("grade reviewer affiliation create failed: " + json.dumps(created, ensure_ascii=False))
+    item = dict(created.get("data") or {})
+    if str(item.get("assignmentType") or "").upper() != "SECRETARY" or not bool(item.get("effectiveNow")):
+        raise SystemExit("grade reviewer affiliation was created but is not effective: " + json.dumps(item, ensure_ascii=False))
+    return item
+
+
 def _normalize_password(token: str, login_name: str, index: int) -> dict:
     user = _find_user(token, login_name)
     if not user:
@@ -181,6 +236,8 @@ def main() -> int:
     print("org:", json.dumps(org, ensure_ascii=False))
     teacher_receipt = _canonical_import(token, kind="teachers", content=_workbook(build_teacher_template(), TEACHERS))
     student_receipt = _canonical_import(token, kind="students", content=_workbook(build_student_template(), STUDENTS))
+    review_assignment = _ensure_college_review_assignment(token, org["collegeAId"])
+    print("grade review assignment:", json.dumps(review_assignment, ensure_ascii=False))
     results = [_normalize_password(token, login_name, idx) for idx, login_name in enumerate(REQUIRED_LOGINS)]
     print("account verification:", json.dumps(results, ensure_ascii=False, indent=2))
     ok_logins = {item["loginName"] for item in results if item.get("ok")}
@@ -194,6 +251,13 @@ def main() -> int:
                 "canonicalImport": {
                     "teachers": str(teacher_receipt.get("id") or teacher_receipt.get("jobId") or "confirmed"),
                     "students": str(student_receipt.get("id") or student_receipt.get("jobId") or "confirmed"),
+                },
+                "gradeReviewAssignment": {
+                    "assignmentId": str(review_assignment.get("assignmentId") or ""),
+                    "userId": str(review_assignment.get("userId") or ""),
+                    "orgNodeId": str(review_assignment.get("orgNodeId") or ""),
+                    "assignmentType": review_assignment.get("assignmentType"),
+                    "effectiveNow": bool(review_assignment.get("effectiveNow")),
                 },
             },
             ensure_ascii=False,
