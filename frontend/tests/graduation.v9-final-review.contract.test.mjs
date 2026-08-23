@@ -18,7 +18,8 @@ test('U3 keeps the final review split workspace, keyboard navigation, and respon
   assert.match(source, /event\.key === 'ArrowDown'/)
   assert.match(source, /event\.key === 'ArrowUp'/)
   assert.match(workspace, /批阅成功后自动下一条/)
-  assert.match(workspace, /@media\(max-width:1100px\)/)
+  assert.match(workspace, /@media\(max-width:1599px\)/)
+  assert.match(workspace, /@media\(max-width:1279px\)/)
 })
 
 test('U3 pending review reloads the same server page before selecting the next final', () => {
@@ -46,6 +47,7 @@ test('U3 keeps the five-second decision surface in the shared Reader workspace',
   assert.match(workspace, /gd-review-workspace__business-bar/)
   assert.match(workspace, /gd-review-workspace__conflict/)
   assert.match(workspace, /FileEvidencePanel/)
-  assert.match(workspace, /grid-template-columns:272px minmax\(680px,1fr\) 340px/)
+  assert.match(workspace, /grid-template-columns:272px minmax\(0,1fr\) 340px/)
+  assert.match(workspace, /grid-template-columns:220px minmax\(0,1fr\) 290px/)
   assert.match(workspace, /gd-review-workspace\.is-narrow\{grid-template-columns:1fr\}/)
 })
