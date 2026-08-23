@@ -9,7 +9,6 @@ on:
       - 'audit-tests/student-affairs-discipline-browser-audit.spec.mjs'
       - '.github/workflows/student-affairs-discipline-browser-audit-exact-head.yml'
   pull_request:
-    branches: [main]
     paths:
       - 'audit-tests/student-affairs-discipline-browser-audit.spec.mjs'
       - '.github/workflows/student-affairs-discipline-browser-audit-exact-head.yml'
