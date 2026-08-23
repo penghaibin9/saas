@@ -33,9 +33,20 @@ export const disciplineIntegrityApi = {
     }))
   },
 
-  reviewAppeal(appealId, { result, opinion, version, revisedDiscType = '' }) {
+  reviewAppeal(appealId, {
+    result,
+    opinion,
+    version,
+    revisedDiscType = '',
+    revisedReason = '',
+    revisedDocNo = ''
+  }) {
     const body = { result, opinion, version }
-    if (result === 'REVISED') body.revisedDiscType = revisedDiscType
+    if (result === 'REVISED') {
+      body.revisedDiscType = revisedDiscType
+      body.revisedReason = revisedReason
+      body.revisedDocNo = revisedDocNo
+    }
     return callStrict(() => request(`/student-affairs/discipline/appeals/${appealId}/review`, {
       method: 'POST',
       body
