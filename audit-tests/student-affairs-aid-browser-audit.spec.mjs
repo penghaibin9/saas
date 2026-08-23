@@ -209,7 +209,7 @@ test.describe.serial('Student Affairs strict browser audit · aid / difficulty r
       await page.goto(`${config.studentBaseUrl}/campus-service?tab=aid`)
       const record = page.locator('article.record').filter({ hasText: returnReason }).first()
       await expect(record).toBeVisible()
-      await expect(record).toContainText('草稿')
+      await expect(record).toContainText('已退回待修改')
       await record.getByRole('button', { name: '修改后重提', exact: true }).click()
       const modal = page.locator('section.sp-card.modal')
       await expect(modal).toBeVisible()
