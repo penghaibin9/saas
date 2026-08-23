@@ -91,8 +91,7 @@ test.describe('official website production closure', () => {
       phone: '13800138000',
       interest: '毕业设计',
       message: '官网上线收口自动化验证',
-      website: '',
-      source_path: '/contact?product=graduation'
+      website: ''
     })
   })
 
@@ -106,7 +105,7 @@ test.describe('official website production closure', () => {
     await expect(form.locator('select')).toHaveValue('岗位实习')
     await form.getByRole('button', { name: '提交并短信通知跃科' }).click()
 
-    await expect(page.getByRole('alert')).toContainText('在线咨询暂时不可用，请直接电话联系 135 4966 6867')
+    await expect(page.getByRole('alert')).toContainText('提交失败，请直接电话联系 135 4966 6867')
     await expect(page.getByRole('status')).toHaveCount(0)
   })
 })
