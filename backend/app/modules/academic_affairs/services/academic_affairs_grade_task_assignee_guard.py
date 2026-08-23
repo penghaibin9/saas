@@ -27,7 +27,6 @@ from app.modules.academic_affairs.services.academic_affairs_grade_correction_com
     _conflict,
     _permission_holder_ids,
     _task_college_id,
-    _unique_assignee,
 )
 
 COLLEGE_NODE = "COLLEGE_REVIEW"
@@ -38,6 +37,26 @@ ACADEMIC_PERM = "academicAffairs.grade.publish"
 # 调停课走同名的两个节点，但有自己的一套权限码。
 SCHEDULE_CHANGE_COLLEGE_PERM = "academicAffairs.scheduleChange.collegeReview"
 SCHEDULE_CHANGE_ACADEMIC_PERM = "academicAffairs.scheduleChange.academicReview"
+
+
+def _unique_subject_assignee(candidates, node: str, subject: str) -> int:
+    """Resolve one concrete assignee without leaking correction-specific wording.
+
+    The Grade task and Schedule Change flows intentionally reuse the correction
+    resolver primitives for candidate discovery, but their failure message must
+    identify the business object that actually failed.  Otherwise a normal Grade
+    submission reports a false "成绩更正" blocker and sends operators down the
+    wrong repair path.
+    """
+    unique = sorted({int(value) for value in candidates if int(value) > 0})
+    if len(unique) != 1:
+        raise _conflict(
+            f"{subject}审批节点没有唯一真实受理人，禁止生成无人或人人可抢的待审任务",
+            node=node,
+            subject=subject,
+            candidateUserIds=[str(value) for value in unique],
+        )
+    return unique[0]
 
 
 def resolve_grade_task_assignee(db, node: str, task, *, college_perm: str = COLLEGE_PERM,
@@ -51,7 +70,9 @@ def resolve_grade_task_assignee(db, node: str, task, *, college_perm: str = COLL
     if node == ACADEMIC_NODE:
         candidates = _permission_holder_ids(db, academic_perm)
         college_bound = _college_bound_user_ids(db)
-        return _unique_assignee([uid for uid in candidates if uid not in college_bound], node)
+        return _unique_subject_assignee(
+            [uid for uid in candidates if uid not in college_bound], node, subject
+        )
 
     from sqlalchemy import or_, select
 
@@ -84,4 +105,4 @@ def resolve_grade_task_assignee(db, node: str, task, *, college_perm: str = COLL
     ).order_by(StaffAssignment.is_primary.desc(), StaffAssignment.user_id)).all()
     allowed = [int(uid) for uid in assigned
                if int(uid) in candidates and _active_user(db, int(uid))]
-    return _unique_assignee(allowed, node)
+    return _unique_subject_assignee(allowed, node, subject)
