@@ -69,13 +69,13 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_EXPECTED_SHA: 6c9eecd690eb47feac355522518eb9bd1763b5aa
+      E2E_EXPECTED_SHA: af2306db738d7f35e720fda3ea95f64adf74733e
 
     steps:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: 6c9eecd690eb47feac355522518eb9bd1763b5aa
+          ref: af2306db738d7f35e720fda3ea95f64adf74733e
           fetch-depth: 0
 
       - name: Assert exact product HEAD
@@ -83,7 +83,7 @@ jobs:
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           echo "PRODUCT_EXACT_HEAD=$actual"
-          test "$actual" = "6c9eecd690eb47feac355522518eb9bd1763b5aa"
+          test "$actual" = "af2306db738d7f35e720fda3ea95f64adf74733e"
 
       - name: Checkout audit harness only
         uses: actions/checkout@v4
@@ -114,8 +114,8 @@ jobs:
           cp audit-harness/e2e/scripts/graduation-grade-db-audit.py e2e/scripts/
           cp audit-harness/e2e/scripts/graduation-specialist-accounts.py e2e/scripts/
           rm -rf audit-harness
-          grep -rl '63195a6dc9d25fa3805563910fb699ec163b552a' e2e/scripts | xargs -r sed -i 's/63195a6dc9d25fa3805563910fb699ec163b552a/6c9eecd690eb47feac355522518eb9bd1763b5aa/g'
-          test "$(git rev-parse HEAD)" = "6c9eecd690eb47feac355522518eb9bd1763b5aa"
+          grep -rl '63195a6dc9d25fa3805563910fb699ec163b552a' e2e/scripts | xargs -r sed -i 's/63195a6dc9d25fa3805563910fb699ec163b552a/af2306db738d7f35e720fda3ea95f64adf74733e/g'
+          test "$(git rev-parse HEAD)" = "af2306db738d7f35e720fda3ea95f64adf74733e"
           bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
           test -z "$bad"
           git status --short
@@ -313,27 +313,11 @@ jobs:
         working-directory: e2e
         run: python scripts/graduation-grade-db-audit.py
 
-      - name: Enforce final, review, defense and grade evidence gates
+      - name: Enforce JUnit and direct MySQL evidence gates
         if: always()
-        env:
-          FINAL_PW: ${{ steps.finalpw.outcome }}
-          REVIEW_PW: ${{ steps.reviewpw.outcome }}
-          REVIEW_DB: ${{ steps.reviewdb.outcome }}
-          DEFENSE_PW: ${{ steps.defensepw.outcome }}
-          DEFENSE_DB: ${{ steps.defensedb.outcome }}
-          GRADE_PW: ${{ steps.gradepw.outcome }}
-          GRADE_DB: ${{ steps.gradedb.outcome }}
         working-directory: e2e
         run: |
           set -euo pipefail
-          echo "final=$FINAL_PW review=$REVIEW_PW review_db=$REVIEW_DB defense=$DEFENSE_PW defense_db=$DEFENSE_DB grade=$GRADE_PW grade_db=$GRADE_DB"
-          test "$FINAL_PW" = success
-          test "$REVIEW_PW" = success
-          test "$REVIEW_DB" = success
-          test "$DEFENSE_PW" = success
-          test "$DEFENSE_DB" = success
-          test "$GRADE_PW" = success
-          test "$GRADE_DB" = success
           python - <<'PY'
           import xml.etree.ElementTree as ET
           from pathlib import Path
@@ -355,6 +339,9 @@ jobs:
               assert tests > 0, name
               assert failures == 0 and errors == 0 and skipped == 0, name
           PY
+          python scripts/graduation-review-db-audit.py
+          python scripts/graduation-defense-db-audit.py
+          python scripts/graduation-grade-db-audit.py
 
       - name: Upload defense and grade audit evidence
         if: always()
