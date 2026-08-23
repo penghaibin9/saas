@@ -1,7 +1,7 @@
 /**
  * 学生 PC 门户 · API 门面。只暴露门户允许调用的接口（严格边界）。
  */
-import { downloadFile, request, uploadFile } from './request'
+import { request, uploadFile } from './request'
 import fileSdk from './fileSdk'
 
 const q = (obj) => {
@@ -26,6 +26,8 @@ export const portalApi = {
   todos: () => request('/mobile/me/todos'),
   messages: () => request('/mobile/me/messages'),
   domainMy: (domain) => request(`/mobile/${domain}/my`),
+  // HomeProjection v2：返回 homeVersion/asOf/sections/typed action。
+  // 调用方必须自行处理 reject——首页核心真值失败绝不能被吞成空对象当"暂无待办"。
   homeOverview: () => request('/portal/home/overview'),
 
   profileEnrollment: () => request('/portal/profile/enrollment'),
@@ -152,15 +154,25 @@ export const portalApi = {
   internshipEnterprises: (city = '') => request(`/portal/internship/enterprises${city ? `?city=${encodeURIComponent(city)}` : ''}`),
   internshipHelp: (body) => request('/portal/internship/help', { method: 'POST', body }),
 
+  departureMy: () => request('/portal/departure/my'),
   employmentMy: () => request('/portal/employment/my'),
+  employmentDestinationOptions: () => request('/portal/employment/destination/options'),
   employmentDestination: (body) => request('/portal/employment/destination', { method: 'POST', body }),
   employmentDestinationPrint: (body) => request('/portal/employment/destination/print', { method: 'POST', body }),
+  // SP-E08：打印现在真实生成 PDF，fileId 来自 employmentDestinationPrint() 的响应。
+  // 走公共 fileSdk（而不是拼 /files/download/ 原始 URL）：下载路径统一在 fileSdk.js
+  // 这一个边界文件里收口，业务代码不得各自绕过。
+  employmentDestinationDocumentDownload: (fileId, fileName = '就业去向登记表') =>
+    fileSdk.download(fileId, fileName),
   orientationMy: () => request('/portal/orientation/my'),
   orientationCollect: (body) => request('/portal/orientation/collect', { method: 'POST', body }),
   orientationGreenChannel: (body) => request('/portal/orientation/green-channel', { method: 'POST', body }),
   orientationPrint: (body) => request('/portal/orientation/print', { method: 'POST', body }),
   serviceHallCatalog: () => request('/portal/service-hall/catalog'),
-  messagesInbox: (page = 1, pageSize = 20) => request(`/portal/messages${q({ page, pageSize })}`),
+  // SP-M05/M07：待办/通知/服务进度是三个独立 Authority，各自真实数据库分页。
+  messagesInbox: (tab = 'todo', page = 1, pageSize = 20) => request(`/portal/messages${q({ tab, page, pageSize })}`),
+  // SP-M04/M08：PC 专属详情 facade，不再直接依赖 /mobile/me/messages/{id}。
+  messageDetail: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}`),
   messageRead: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}/read`, { method: 'POST' }),
   messagesReadAll: () => request('/portal/messages/read-all', { method: 'POST' }),
   messageReceipt: (messageId) => request(`/portal/messages/${encodeURIComponent(messageId)}/receipt`, { method: 'POST' }),

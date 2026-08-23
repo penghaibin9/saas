@@ -29,6 +29,13 @@
           <BatchActionBar :actions="batchBarActions" @action="onBatch" />
         </template>
         <template #cell-materialType="{ row }">{{ labelOf('materialType', row.materialType) }}</template>
+        <!-- TP-E05：列表上就要区分正式证据与历史文件名文本，老师不能只看到一个文件名
+             就去批量通过。判定来自服务端 formalEvidence（正式绑定 + 安全扫描通过）。 -->
+        <template #cell-fileName="{ row }">
+          {{ row.file?.fileName || row.fileName || '—' }}
+          <StatusTag v-if="row.formalEvidence" type="success" label="正式材料" style="margin-left: 6px" />
+          <StatusTag v-else-if="row.legacyFileNameOnly" type="warning" label="历史文本记录" style="margin-left: 6px" />
+        </template>
         <template #cell-status="{ row }">
           <StatusTag :type="materialTagType[row.status] || 'default'" :label="labelOf('materialStatus', row.status)" dot />
         </template>
@@ -277,7 +284,11 @@ export default {
     async doApprove(row) {
       const res = await api.approveMaterial(row.id, {})
       if (res.code === 0) {
-        toast.success(`已通过《${row.fileName}》，学生就业记录标记为已核验`)
+        // TP-E04：只有材料真的构成正式证据时后端才会顺带完成去向核验，
+        // 提示语必须跟随服务端的真实结果。
+        toast.success(res.data?.destinationVerified
+          ? `已通过《${row.fileName}》，去向核验已同步完成`
+          : `已通过《${row.fileName}》；因缺少正式证据，去向核验状态未变更`)
         this.load()
       } else toast.error(res.message)
     },

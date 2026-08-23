@@ -1,7 +1,7 @@
 """统一时间处理：API 边界带时区，库内存 UTC naive（兼容现有 DateTime 列）。"""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -35,6 +35,40 @@ def to_utc_naive(dt: datetime) -> datetime:
         # 无时区输入按租户本地时区解释，再转 UTC（禁止当 UTC）
         dt = dt.replace(tzinfo=tenant_tz())
     return dt.astimezone(UTC).replace(tzinfo=None)
+
+
+def local_day_bounds_utc(value: date | datetime | str) -> tuple[datetime, datetime]:
+    """把“租户本地自然日”转换成数据库可比较的 UTC-naive ``[start, end)``。
+
+    API 的 ``YYYY-MM-DD``、工作台“今日新增/今日已办”都属于人的本地日历语义，
+    不能直接拿 UTC 00:00 切日。使用 IANA ``tenant_tz()`` 构造本地零点后再转 UTC，
+    也兼容将来存在夏令时的租户时区，不把“一天”硬编码成 UTC 固定边界。
+    """
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            day = value.date()
+        else:
+            day = value.astimezone(tenant_tz()).date()
+    elif isinstance(value, date):
+        day = value
+    else:
+        day = datetime.strptime(str(value).strip(), "%Y-%m-%d").date()
+    tz = tenant_tz()
+    local_start = datetime.combine(day, time.min, tzinfo=tz)
+    local_end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=tz)
+    return (
+        local_start.astimezone(UTC).replace(tzinfo=None),
+        local_end.astimezone(UTC).replace(tzinfo=None),
+    )
+
+
+def local_today_bounds_utc(now: datetime | None = None) -> tuple[datetime, datetime]:
+    """当前租户“今天”的 UTC-naive ``[start, end)``，供数据库统计统一复用。"""
+    current = now or utc_now()
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    local_day = current.astimezone(tenant_tz()).date()
+    return local_day_bounds_utc(local_day)
 
 
 def parse_api_datetime(raw) -> Optional[datetime]:

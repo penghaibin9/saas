@@ -75,7 +75,7 @@ def test_implementation_snapshot_and_readiness_blocker(client, auth_headers, db_
     from app.services.runtime_preset_install_service import ensure_workflow_enabled
     from app.services.saas_role_service import ensure_builtin_roles, ensure_user_roles
     db = get_sessionmaker()()
-    assert len(db.scalars(select(WorkflowDefinition)).all()) == 24
+    assert len(db.scalars(select(WorkflowDefinition)).all()) == 25
     assert len(db.scalars(select(RoleWorkbenchConfig)).all()) == 12
     assert len(db.scalars(select(NotificationTemplate)).all()) == 16
     try:
@@ -98,7 +98,7 @@ def test_implementation_snapshot_and_readiness_blocker(client, auth_headers, db_
         json={"reason": "学校集中确认首批流程责任与时限", "confirmText": "确认启用学校流程政策"},
     ).json()
     assert policy["code"] == 0
-    assert policy["data"]["enabled"] == 24
+    assert policy["data"]["enabled"] == 25
 
     db = get_sessionmaker()()
     ensure_workflow_enabled(db, 1000000000000000001, "AFFAIRS_LEAVE")

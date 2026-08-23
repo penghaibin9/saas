@@ -221,7 +221,7 @@ def install(runtime_module):
         )
         return value
 
-    def guarded_reject(task_id, reason, *, user=None, version=None):
+    def guarded_reject(task_id, reason, *, user=None, version=None, expected_source_version=None):
         runtime_module._require_db()
         from sqlalchemy import select
         from app.models import WorkflowInstance, WorkflowTask
@@ -247,7 +247,8 @@ def install(runtime_module):
             definition, node = _load_policy(db, task, inst, tenant_id)
             if not _action_flags(definition, node)["REJECT"]:
                 raise no_permission("当前流程已禁止驳回终止")
-        return original_reject(task_id, reason, user=user, version=version)
+        return original_reject(task_id, reason, user=user, version=version,
+                               expected_source_version=expected_source_version)
 
     def guarded_transfer(task_id, target_user_id, comment, *, user=None, version=None):
         """Atomic transfer with workflow switch + node role/scope target authorization."""

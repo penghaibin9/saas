@@ -57,12 +57,21 @@ def test_student_pc_has_task_home_and_independent_academic_routes():
 
 
 def test_student_pc_home_prefers_exact_todo_route():
+    """V3 施工手册 SP-H03/H06 之后：首页不再本地猜路由（``t.route || t.link ||
+    t.module`` 这种字符串拼接一旦遇到未登记 module 就会落进 ``:module`` 通配符
+    模板页，渲染"成功"但根本不是业务对象）。现在首页待办/消息/下一步卡片只
+    消费服务端 home_projection_service 下发的 typed action，拿不到可执行
+    target 就禁用按钮，不再本地拼 URL。"""
     root = Path(__file__).resolve().parents[2]
     home = (root / "student-portal/src/views/home/HomeView.vue").read_text(encoding="utf-8")
 
-    assert "t.route || t.link || t.module" in home
-    assert "topAlert.value?.route" in home
-    assert "function goTarget" in home
+    assert "t.route || t.link || t.module" not in home
+    assert "function goTarget" not in home
+    assert "topAlert.value?.route" not in home
+    # 只消费服务端 action，未落地一律 fail-closed 禁用，不猜路由。
+    assert "openAction(" in home
+    assert "canOpen(" in home
+    assert "home.value.nextAction" in home
 
 
 def test_teacher_and_student_wechat_academic_homes_are_task_oriented():

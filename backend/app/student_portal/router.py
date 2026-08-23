@@ -12,6 +12,7 @@ from app.core.security import get_current_user
 from app.student_portal.services import academic_service as academic
 from app.student_portal.services import affairs_service as affairs
 from app.student_portal.services import common_service as common
+from app.student_portal.services import departure_service as departure
 from app.student_portal.services import employment_service as employment
 from app.student_portal.services import graduation_service as graduation
 from app.student_portal.services import guardian_service as guardian
@@ -605,10 +606,21 @@ def internship_score_appeal(user=Depends(get_current_user), body: dict = Body(..
     return success(internship.score_appeal(user, body))
 
 
+# ── 离校（SP-D01~SP-D04）：跨域只读清单，不复制各域真值表 ──
+@router.get("/departure/my", summary="我的离校清单（本人，跨域只读投影）")
+def departure_my(user=Depends(get_current_user)):
+    return success(departure.my(user))
+
+
 # ── 就业服务（第5期）：我的就业 + 去向登记 + 打印 ──
 @router.get("/employment/my", summary="我的就业（本人）")
 def employment_my(user=Depends(get_current_user)):
     return success(employment.my(user))
+
+
+@router.get("/employment/destination/options", summary="就业去向登记可选项（canonical 字典）")
+def employment_destination_options(user=Depends(get_current_user)):
+    return success(employment.destination_options(user))
 
 
 @router.post("/employment/destination", summary="就业去向登记（本人）")
@@ -654,11 +666,12 @@ def home_overview(user=Depends(get_current_user)):
     return success(home.overview(user))
 
 
-# ── 消息通知 PC 视图 ──
-@router.get("/messages", summary="消息中心（本人·分页）")
+# ── 消息通知 PC 视图（V3 SP-M05/M07：三 tab 三 Authority 真分页） ──
+@router.get("/messages", summary="消息中心（本人·按 tab 真分页：todo/notice/progress）")
 def messages_inbox(user=Depends(get_current_user),
-                   page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100)):
-    return success(messages.inbox(user, page, pageSize))
+                   tab: str = Query("todo"),
+                   page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=50)):
+    return success(messages.inbox_page(user, tab, page, pageSize))
 
 
 @router.post("/messages/read-all", summary="全部标为已读（本人）")
@@ -674,6 +687,13 @@ def messages_preferences(user=Depends(get_current_user)):
 @router.post("/messages/preferences", summary="设置通知偏好（本人）")
 def messages_set_preference(user=Depends(get_current_user), body: dict = Body(...)):
     return success(messages.set_preference(user, body))
+
+
+# SP-M04/M08：PC 消息详情 facade，独立于 /messages/preferences 等固定路径注册在前，
+# 避免 {message_id} 通配吞掉字面量路径。不再直接依赖 `/mobile/me/messages/{id}`。
+@router.get("/messages/{message_id}", summary="消息详情（本人·PC facade）")
+def messages_detail(message_id: str, user=Depends(get_current_user)):
+    return success(messages.get_detail(user, message_id))
 
 
 @router.post("/messages/{message_id}/read", summary="标记消息已读（本人）")

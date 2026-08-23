@@ -72,6 +72,28 @@ _STUDENT_MINI: dict[str, tuple[str, str, str]] = {
     "INTERN_EXCEPTION_HANDLE": ("todo-route:student-mini-internship", "/pages/student/internship/index", FOCUS_NONE),
 }
 
+# Student PC 当前真实业务页。query.tab 定位到 AffairsFourEndView/AcademicView
+# 的分 tab；recordId 仍然下发供以后实现聚焦时用，但这些 PC 分 tab 页面目前都不读
+# recordId 去定位/展开具体那一条，所以诚实标 FOCUS_NONE——不能因为 Mini 端某些
+# tab（如 leave/aid/funding）已经实现了 LIST_FOCUS，就假装 PC 端也一样。
+# 第三项是该目标的静态 query（如 {"tab": "leave"}）。
+_STUDENT_PC: dict[str, tuple[str, str, dict[str, str], str]] = {
+    "LEAVE_APPROVAL": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
+    "LEAVE_OVERDUE": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
+    "LEAVE_CANCEL": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
+    "LEAVE_EXTENSION": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
+    "AID_APPROVAL": ("todo-route:student-pc-aid", "/campus-service", {"tab": "aid"}, FOCUS_NONE),
+    "AID_ADJUST": ("todo-route:student-pc-aid", "/campus-service", {"tab": "aid"}, FOCUS_NONE),
+    "FUNDING_APPROVAL": ("todo-route:student-pc-funding", "/campus-service", {"tab": "funding"}, FOCUS_NONE),
+    "DISCIPLINE_APPROVAL": ("todo-route:student-pc-discipline", "/campus-service", {"tab": "discipline"}, FOCUS_NONE),
+    "DISCIPLINE_REMOVE": ("todo-route:student-pc-discipline", "/campus-service", {"tab": "discipline"}, FOCUS_NONE),
+    "ACAD_WARNING_HANDLE": ("todo-route:student-pc-academic-warning", "/academic", {"tab": "warning"}, FOCUS_NONE),
+    "INTERN_WEEKLY_REVIEW": ("todo-route:student-pc-internship", "/internship", {}, FOCUS_NONE),
+    "INTERN_LEAVE_APPROVAL": ("todo-route:student-pc-internship", "/internship", {}, FOCUS_NONE),
+    "INTERN_EXCEPTION_HANDLE": ("todo-route:student-pc-internship", "/internship", {}, FOCUS_NONE),
+}
+
+
 # Teacher V3 T8: only point at real teacher pages. Until a page actually consumes recordId
 # and is registered in mobile_focus_contract, focusMode stays NONE and routeExact remains false.
 # This is intentional: a safe business queue is better than pretending a list page is object-exact.
@@ -108,6 +130,23 @@ def _record_id(value: Any) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
+
+
+def _student_pc_target(type_code: str, rid: str) -> dict | None:
+    target = _STUDENT_PC.get(type_code)
+    if not target:
+        return None
+    route_name, path, static_query, focus_mode = target
+    return {
+        "routeName": route_name,
+        "routeParams": {"recordId": rid},
+        # 仍下发 recordId：不把分 tab 页伪装成详情页，但保留给以后实现聚焦时用，
+        # 与 _PC_LIST 的 fallback 分支同一约定。
+        "query": {**static_query, "recordId": rid},
+        "path": path,
+        "focusMode": focus_mode,
+        "exact": is_route_exact(focus_mode, path),
+    }
 
 
 def _mini_target(mapping: dict[str, tuple[str, str, str]], type_code: str, rid: str) -> dict | None:
@@ -164,6 +203,9 @@ def resolve_todo_route(todo_type: str | None, record_id: Any, *, client: str) ->
     if client == "teacherMini":
         return _mini_target(_TEACHER_MINI, type_code, rid)
 
+    if client == "studentPc":
+        return _student_pc_target(type_code, rid)
+
     return None
 
 
@@ -180,6 +222,16 @@ def route_contract_snapshot() -> dict[str, dict[str, Any]]:
                 "exact": is_route_exact(value[2], value[1]),
             }
             for key, value in _STUDENT_MINI.items()
+        },
+        "studentPc": {
+            key: {
+                "routeName": value[0],
+                "path": value[1],
+                "query": value[2],
+                "focusMode": value[3],
+                "exact": is_route_exact(value[3], value[1]),
+            }
+            for key, value in _STUDENT_PC.items()
         },
         "teacherMini": {
             key: {

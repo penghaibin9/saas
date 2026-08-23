@@ -147,6 +147,11 @@ def test_router_mounts_authoritative_material_center_before_legacy_operations_ap
 
 
 def test_student_portal_has_real_material_upload_versions_and_notice_deep_link():
+    """SP-M01 之后：补交材料的深链落点不再由 MessagesView.vue 本地拼接
+    `/materials?requirementId=`，而是服务端 message_action_registry 的
+    student.affairs.material 条目 + action_projection_service 透传原始
+    actionParams（materialRequirementId），页面端同时兼容 requirementId 旧参数名。
+    """
     api = _read("student-portal/src/services/affairsFourEndApi.js")
     page = _read("student-portal/src/views/affairs/MaterialSupplementView.vue")
     routes = _read("student-portal/src/router/index.js")
@@ -160,8 +165,14 @@ def test_student_portal_has_real_material_upload_versions_and_notice_deep_link()
     assert "历史版本不会被覆盖" in page
     assert "path: 'materials'" in routes
     assert "材料补交" in hall
-    assert "materialRequirementId" in messages
-    assert "/materials?requirementId=" in messages
+    assert "materialRequirementId" in page
+    # 页面自己不再拼接这条深链——路由决策已经在服务端，页面只消费 query。
+    assert "/materials?requirementId=" not in messages
+
+    from app.services import message_action_registry as registry
+    spec = registry.ACTION_REGISTRY["student.affairs.material"]
+    assert spec["studentPc"] == "/materials"
+    assert "materialRequirementId" in spec["requiredParams"]
 
 
 def test_teacher_pc_has_material_queue_review_and_failed_only_batch_retry():

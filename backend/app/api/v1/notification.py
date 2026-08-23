@@ -1,15 +1,66 @@
-"""通知中心 API（/api/v1/notification/*）。教职工可用；短信默认关闭（记录 SKIPPED）。"""
+"""通知中心 API（/api/v1/notification/*）。
+
+教职工通知仍使用既有持久化短信编排；官网 website-lead 是匿名公开入口，
+只做校验/防滥用并把本次表单直接短信转发给商务联系人，不写销售线索或通知日志表。
+"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
+from app.core.context import get_request_meta
 from app.core.response import success
 from app.core.security import require_staff
 from app.db.session import db_enabled, get_sessionmaker
 from app.services.db_service import _iso, _tid
 from app.services.notification import send_sms
+from app.services.notification.official_wechat import (
+    OfficialWechatUpstreamError,
+    build_js_sdk_signature,
+    official_wechat_enabled,
+)
+from app.services.notification.website_lead import (
+    WebsiteLeadRequest,
+    allow_website_lead,
+    send_website_lead_sms,
+)
 
 router = APIRouter(prefix="/notification", tags=["通知中心"])
+
+
+@router.get("/website-wechat-signature", summary="官网微信微官网：JS-SDK 分享签名")
+def website_wechat_signature(url: str):
+    # 公众号尚未接入时返回显式 disabled；前端继续按普通 PC/手机官网运行，不白屏、不阻断。
+    if not official_wechat_enabled():
+        return success({"enabled": False})
+    try:
+        signed = build_js_sdk_signature(url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except OfficialWechatUpstreamError as exc:
+        raise HTTPException(status_code=503, detail="微信分享暂时不可用，请稍后重试") from exc
+    return success({"enabled": True, **signed})
+
+
+@router.post("/website-lead", summary="官网商务咨询：短信通知跃科，不落业务数据库")
+def website_lead(body: WebsiteLeadRequest, request: Request):
+    # 蜜罐命中时对机器人仍返回通用成功，避免暴露反滥用策略；不会发送短信。
+    if body.website:
+        return success({"accepted": True})
+
+    request_meta = get_request_meta()
+    client_ip = str(request_meta.get("ip") or (request.client.host if request.client else "") or "unknown")
+    allowed, reason = allow_website_lead(client_ip)
+    if not allowed:
+        if reason == "RATE_LIMITED":
+            raise HTTPException(status_code=429, detail="提交过于频繁，请稍后再试或直接电话联系")
+        raise HTTPException(status_code=503, detail="在线咨询暂时不可用，请直接电话联系 135 4966 6867")
+
+    result = send_website_lead_sms(body)
+    if result.get("status") == "SENT":
+        return success({"accepted": True})
+    if result.get("status") == "IGNORED_BOT":
+        return success({"accepted": True})
+    raise HTTPException(status_code=503, detail="在线咨询暂时不可用，请直接电话联系 135 4966 6867")
 
 
 @router.post("/send-test", summary="发送测试短信（受 SMS_ENABLED 控制，默认只记录不发）")

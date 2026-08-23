@@ -156,7 +156,7 @@ const nav = computed(() => {
 const TITLES = {
   home: '首页工作台', profile: '我的档案', academic: '教务学业', graduation: '毕业设计',
   internship: '岗位实习', employment: '就业服务', 'campus-service': '学工事务',
-  orientation: '迎新报到', messages: '消息通知', 'service-hall': '办事大厅'
+  orientation: '迎新报到', departure: '离校手续', messages: '消息通知', 'service-hall': '办事大厅'
 }
 const SPECIAL_TITLES = {
   'material-supplement': '材料补交中心',
@@ -203,8 +203,10 @@ onMounted(async () => {
   themeKey.value = window.localStorage.getItem('student-portal-theme') || 'blue'
   window.dispatchEvent(new CustomEvent('student-portal-theme-change', { detail: themeKey.value }))
   try {
-    const data = await portalApi.messagesInbox(1, 1)
-    unread.value = data?.unreadCount || 0
+    // SP-M05/M07：铃铛角标只需要"通知" Authority 的真实未读数，不再依赖旧的
+    // 合并聚合 unreadCount 字段（该字段已随三 tab 真分页改造移除）。
+    const data = await portalApi.messagesInbox('notice', 1, 1)
+    unread.value = data?.tabs?.find((t) => t.key === 'notice')?.badge || 0
   } catch (e) { /* 铃铛角标非关键，失败静默 */ }
 })
 </script>

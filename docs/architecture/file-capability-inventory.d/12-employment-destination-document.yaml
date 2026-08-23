@@ -1,0 +1,29 @@
+entries:
+  - module: employment
+    client: student-pc
+    route: backend/app/student_portal/router.py
+    page: student-portal/src/views/employment/EmploymentView.vue
+    action: student-destination-registration-document
+    fileCategory: EMPLOYMENT_DESTINATION_REGISTRATION_PDF
+    api: POST /api/v1/portal/employment/destination/print
+    backendService: backend/app/modules/employment/services/employment_destination_document_service.py
+    storageMode: FILE_CENTER_SYSTEM_BYTES_BUSINESS_BINDING
+    authMode: student-self+own-emp-student-record
+    dataScope: tenant+student+own-emp-student
+    versioned: true
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: >-
+      SP-E08：登记表 PDF 是从 canonical EmpStudent 派生的系统生成文档（不是用户上传），
+      走 file_service.store_bytes() 落 File Center 并用 upsert_file_binding() 建业务绑定。
+      destination_document_file_id/destination_document_source_version 记录"上次生成
+      时对应的事实版本"，事实（EmpStudent.version）未变时复用同一份文件，不重复生成；
+      系统生成文件 upload_source=SYSTEM，无需异步安全扫描（scanGated=false）。学生只能
+      为本人的 EmpStudent 记录生成/下载，不接受调用方传入 fileId。
