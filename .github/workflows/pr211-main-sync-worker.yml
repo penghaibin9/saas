@@ -6,41 +6,230 @@ on:
       - tmp/pr211-main-sync-20260823
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-merge:
+  guarded-merge:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Diagnose merge against latest main
+
+      - name: Merge latest main and resolve reviewed overlaps
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
+          TARGET_BRANCH="codex/daily-frontend-ux-20260822"
           TARGET_SHA="c915c1f151e2c7a1b75b6a9a2708c9f1d2a7c5b9"
-          git fetch origin main codex/daily-frontend-ux-20260822
-          CURRENT_TARGET="$(git rev-parse origin/codex/daily-frontend-ux-20260822)"
-          echo "target_expected=$TARGET_SHA"
-          echo "target_actual=$CURRENT_TARGET"
-          echo "main=$(git rev-parse origin/main)"
-          test "$CURRENT_TARGET" = "$TARGET_SHA"
+          MAIN_SHA="72a742f991c4b6bf2e8d80af48c3742ab5395233"
+
+          git fetch origin main "$TARGET_BRANCH"
+          test "$(git rev-parse origin/$TARGET_BRANCH)" = "$TARGET_SHA"
+          test "$(git rev-parse origin/main)" = "$MAIN_SHA"
           git checkout --detach "$TARGET_SHA"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           set +e
-          git merge --no-commit --no-ff origin/main
-          rc=$?
+          git merge --no-commit --no-ff "$MAIN_SHA"
+          merge_rc=$?
           set -e
-          if [ "$rc" -eq 0 ]; then
-            echo "MERGE_CLEAN=1"
-            git status --short
-            exit 0
-          fi
-          echo "MERGE_CLEAN=0"
-          echo "CONFLICT_FILES_BEGIN"
-          git diff --name-only --diff-filter=U
-          echo "CONFLICT_FILES_END"
-          echo "CONFLICT_DETAIL_BEGIN"
-          git diff --cc --no-ext-diff
-          echo "CONFLICT_DETAIL_END"
-          exit 1
+
+          mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+          printf 'conflicts=%s\n' "${conflicts[*]:-none}"
+
+          allowed_conflicts=(
+            ".github/workflows/control-plane-p0-execution-closure.yml"
+            "frontend/src/main.js"
+            "frontend/src/modules/graduation/api/graduation-material-center.api.js"
+            "frontend/src/modules/graduation/views/FinalSubmissionListView.vue"
+            "frontend/src/modules/graduation/views/GraduationMaterialCenterView.vue"
+            "frontend/src/modules/graduation/views/_shared/ProposalReviewCard.vue"
+            "frontend/src/modules/internship/views/InternshipMaterialCenterView.vue"
+            "frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue"
+            "frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue"
+          )
+
+          for conflict in "${conflicts[@]}"; do
+            ok=0
+            for allowed in "${allowed_conflicts[@]}"; do
+              if [ "$conflict" = "$allowed" ]; then ok=1; break; fi
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "UNREVIEWED_CONFLICT=$conflict"
+              exit 41
+            fi
+            # Start from latest main for every reviewed conflict. Product-specific
+            # PR211 behavior is re-applied below, so PR191 Reader/FileVersion work wins.
+            git checkout --theirs -- "$conflict"
+            git add "$conflict"
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def text(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, value):
+              Path(path).write_text(value, encoding='utf-8')
+
+          def replace_once(path, old, new, marker=None):
+              value = text(path)
+              if marker and marker in value:
+                  return
+              if new in value:
+                  return
+              if old not in value:
+                  raise SystemExit(f'expected merge anchor missing: {path}: {old[:80]!r}')
+              value = value.replace(old, new, 1)
+              write(path, value)
+
+          # Official site: keep PR191 workbench bootstrap and PR211 legal-page renderer.
+          path = 'frontend/src/main.js'
+          if 'OfficialPolicyView.vue' not in text(path):
+              replace_once(
+                  path,
+                  "    component: page.path === '/platform'\n      ? () => import('./views/official-site/OfficialPlatformCapabilityView.vue')\n      : () => import('./views/official-site/OfficialSalesPageView.vue'),",
+                  "    component: page.path === '/platform'\n      ? () => import('./views/official-site/OfficialPlatformCapabilityView.vue')\n      : page.type === 'legal'\n        ? () => import('./views/official-site/OfficialPolicyView.vue')\n        : () => import('./views/official-site/OfficialSalesPageView.vue'),"
+              )
+
+          # Graduation material API: preserve PR191 bounded Reader provider and add PR211 localized status text.
+          path = 'frontend/src/modules/graduation/api/graduation-material-center.api.js'
+          value = text(path)
+          status_import = "import {\n  graduationFileVersionStatusLabel,\n  graduationScanStatusLabel\n} from '@/modules/graduation/constants/graduation-material.constants'\n"
+          if "graduationScanStatusLabel" not in value:
+              anchor = "import fileSdk, { normalizeFile } from '@/services/file/fileSdk'\n"
+              if anchor not in value:
+                  raise SystemExit('graduation api import anchor missing')
+              value = value.replace(anchor, anchor + status_import, 1)
+          old = "    return items.map((item) => normalizeFile({ ...item, statusText: item.readyForBusiness ? '安全可用' : (item.scanStatus || item.status || '暂不可使用') }))"
+          new = "    return items.map((item) => normalizeFile({\n      ...item,\n      statusText: item.readyForBusiness\n        ? '安全可用'\n        : item.scanStatus\n          ? graduationScanStatusLabel(item.scanStatus)\n          : item.status\n            ? graduationFileVersionStatusLabel(item.status)\n            : '暂不可使用'\n    }))"
+          if old in value:
+              value = value.replace(old, new, 1)
+          elif 'graduationFileVersionStatusLabel(item.status)' not in value:
+              raise SystemExit('graduation api normalizeVersions anchor missing')
+          write(path, value)
+
+          # Graduation center: keep PR191 Reader and layer PR211 Chinese status/stage vocabulary.
+          path = 'frontend/src/modules/graduation/views/GraduationMaterialCenterView.vue'
+          substitutions = [
+              ('<option v-for="stage in stages" :key="stage" :value="stage">{{ stage }}</option>', '<option v-for="stage in stages" :key="stage.value" :value="stage.value">{{ stage.label }}</option>'),
+              ('<option value="ERROR">失败</option><option value="INFECTED">感染</option>', '<option value="ERROR">扫描失败</option><option value="INFECTED">发现安全风险</option>'),
+              ("<td><span>{{ row.stage }}</span><strong>{{ row.materialName }}</strong><small>{{ row.materialCode }}</small></td>", "<td><span>{{ graduationMaterialStageLabel(row.stage) }}</span><strong>{{ row.materialName }}</strong></td>"),
+              ('<td>{{ sizeText(row.sizeBytes) }}</td><td><b :class="tone(row.scanStatus)">{{ row.scanStatus }}</b></td>\n              <td>{{ row.reviewStatus }}</td><td>{{ row.archiveStatus }}</td>', '<td>{{ sizeText(row.sizeBytes) }}</td><td><b :class="tone(row.scanStatus)">{{ graduationScanStatusLabel(row.scanStatus) }}</b></td>\n              <td>{{ graduationReviewStatusLabel(row.reviewStatus) }}</td><td>{{ graduationArchiveStatusLabel(row.archiveStatus) }}</td>'),
+              ("const stages = ['TOPIC','TASKBOOK','PROPOSAL','GUIDANCE','MIDTERM','FINAL_DRAFT','FINAL_APPROVED','PLAGIARISM','REVIEW','DEFENSE','GRADE','ARCHIVE']", 'const stages = GD_MATERIAL_STAGES'),
+          ]
+          value = text(path)
+          if "graduationMaterialStageLabel" not in value:
+              anchor = "import { graduationMaterialCenterApi as api } from '@/modules/graduation/api/graduation-material-center.api'\n"
+              imports = "import {\n  GD_MATERIAL_STAGES,\n  graduationArchiveStatusLabel,\n  graduationMaterialStageLabel,\n  graduationReviewStatusLabel,\n  graduationScanStatusLabel\n} from '@/modules/graduation/constants/graduation-material.constants'\n"
+              if anchor not in value:
+                  raise SystemExit('graduation center import anchor missing')
+              value = value.replace(anchor, anchor + imports, 1)
+          for old, new in substitutions:
+              if new in value:
+                  continue
+              if old not in value:
+                  raise SystemExit(f'graduation center anchor missing: {old[:70]!r}')
+              value = value.replace(old, new, 1)
+          write(path, value)
+
+          # Internship teacher center: keep PR191 in-page Reader; localize persisted backend enums.
+          path = 'frontend/src/modules/internship/views/InternshipMaterialCenterView.vue'
+          value = text(path)
+          replacements = [
+              ("{{ item.scanStatus }}", "{{ scanStatusText(item.scanStatus) }}"),
+              ("{{ item.reviewStatus || '-' }}", "{{ reviewStatusText(item.reviewStatus) }}"),
+              ("{{ selected.manifest.status }}", "{{ manifestStatusText(selected.manifest.status) }}"),
+              ("{{ item.scanResult }} · {{ shortHash(item.sha256) }}", "{{ scanStatusText(item.scanResult) }} · {{ shortHash(item.sha256) }}"),
+              ("return { READY: '安全可用', UNSAFE: '存在待处理', NOT_SYNCED: '尚未同步' }[value] || value || '未知'", "return { READY: '安全可用', UNSAFE: '存在待处理', NOT_SYNCED: '尚未同步' }[value] || (value ? '状态待确认' : '未知')"),
+          ]
+          for old, new in replacements:
+              if new in value:
+                  continue
+              if old not in value:
+                  raise SystemExit(f'internship center anchor missing: {old!r}')
+              value = value.replace(old, new)
+          if 'scanStatusText(value)' not in value:
+              anchor = "    statusTone(value) {\n"
+              methods = "    scanStatusText(value) {\n      return { CLEAN: '安全', PASSED: '安全', READY: '安全可用', PENDING: '待扫描', UPLOADED: '待扫描', SCANNING: '扫描中', FAILED: '扫描失败', ERROR: '扫描失败', INFECTED: '发现安全风险' }[value] || (value ? '扫描状态待确认' : '—')\n    },\n    reviewStatusText(value) {\n      return { PENDING: '待审核', PENDING_REVIEW: '待审核', APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', NOT_REQUIRED: '无需审核' }[value] || (value ? '审核状态待确认' : '—')\n    },\n    manifestStatusText(value) {\n      return { PREPARED: '已准备', FROZEN: '已冻结', PACKAGED: '已打包', SUPERSEDED: '历史版本', REVOKED: '已撤销', ABORTED: '已终止' }[value] || '归档状态待确认'\n    },\n"
+              if anchor not in value:
+                  raise SystemExit('internship center method anchor missing')
+              value = value.replace(anchor, methods + anchor, 1)
+          write(path, value)
+
+          # Internship student entry: keep Reader and localize raw scan/review enums.
+          path = 'frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue'
+          value = text(path)
+          value = value.replace('{{ item.scanStatus }}', '{{ scanStatusText(item.scanStatus) }}')
+          value = value.replace("{{ item.reviewStatus || '—' }}", '{{ reviewStatusText(item.reviewStatus) }}')
+          if 'scanStatusText(value)' not in value:
+              anchor = '  methods: {\n'
+              methods = "    scanStatusText(value) {\n      return { CLEAN: '安全', PASSED: '安全', READY: '安全可用', PENDING: '待扫描', UPLOADED: '待扫描', SCANNING: '扫描中', FAILED: '扫描失败', ERROR: '扫描失败', INFECTED: '发现安全风险' }[value] || (value ? '扫描状态待确认' : '—')\n    },\n    reviewStatusText(value) {\n      return { PENDING: '待审核', PENDING_REVIEW: '待审核', APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', NOT_REQUIRED: '无需审核' }[value] || (value ? '审核状态待确认' : '—')\n    },\n"
+              if anchor not in value:
+                  raise SystemExit('internship entry methods anchor missing')
+              value = value.replace(anchor, anchor + methods, 1)
+          write(path, value)
+
+          # Student Affairs material ops: preserve PR191 Reader and restore PR211 customer-facing labels.
+          path = 'frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue'
+          value = text(path)
+          replacements = [
+              ('{{ row.statusLabel || row.status }}', '{{ row.statusLabel || materialStatusText(row.status) }}'),
+              ('<dt>状态</dt><dd>{{ manifest.status }}</dd>', '<dt>状态</dt><dd>{{ materialStatusText(manifest.status) }}</dd>'),
+              ('<td>{{ item.scanResult }}</td><td>{{ item.reviewStatus }}</td>', '<td>{{ materialStatusText(item.scanResult) }}</td><td>{{ materialStatusText(item.reviewStatus) }}</td>'),
+              ('{{ job.statusLabel || job.status }} · 成功', '{{ job.statusLabel || materialStatusText(job.status) }} · 成功'),
+              ('<h4>{{ activeBatch.batchNo }} · {{ activeBatch.statusLabel }}</h4>', '<h4>{{ activeBatch.batchNo }} · {{ activeBatch.statusLabel || materialStatusText(activeBatch.status) }}</h4>'),
+              ('<td>{{ item.itemKey }}</td><td>{{ item.action }}</td><td><span class="status" :class="statusClass(item.status)">{{ item.status }}</span></td>', '<td>{{ item.itemKey }}</td><td>{{ batchActionText(item.action) }}</td><td><span class="status" :class="statusClass(item.status)">{{ materialStatusText(item.status) }}</span></td>'),
+          ]
+          for old, new in replacements:
+              if new in value:
+                  continue
+              if old not in value:
+                  raise SystemExit(f'material ops anchor missing: {old[:70]!r}')
+              value = value.replace(old, new)
+          if 'materialStatusText(value)' not in value:
+              anchor = "    fmt(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' },\n"
+              methods = "    materialStatusText(value) {\n      return {\n        MISSING: '待补交', PENDING_REVIEW: '待审核', ACCEPTED: '已验收', RETURNED: '已退回', WAIVED: '已免交',\n        SUBMITTED: '已提交', SUPERSEDED: '历史版本', ACTIVE: '当前有效', PREPARED: '已准备', FROZEN: '已冻结',\n        PACKAGED: '已打包', REVOKED: '已撤销', ABORTED: '已终止', PENDING: '待执行', RUNNING: '执行中',\n        SUCCESS: '成功', SUCCEEDED: '已完成', FAILED: '失败', PARTIAL_SUCCESS: '部分成功', CLEAN: '安全',\n        PASSED: '已通过', SCANNING: '扫描中', INFECTED: '发现安全风险', APPROVED: '已通过', REJECTED: '已驳回'\n      }[value] || (value ? '状态待确认' : '—')\n    },\n    batchActionText(value) {\n      return { REMIND: '发送补交提醒', RETRY: '重试', ACCEPT: '验收', RETURN: '退回', WAIVE: '免交' }[value] || '业务处理'\n    },\n"
+              if anchor not in value:
+                  raise SystemExit('material ops method anchor missing')
+              value = value.replace(anchor, methods + anchor, 1)
+          write(path, value)
+          PY
+
+          # Mark semantic patches and verify no conflict markers survive.
+          git add \
+            frontend/src/main.js \
+            frontend/src/modules/graduation/api/graduation-material-center.api.js \
+            frontend/src/modules/graduation/views/GraduationMaterialCenterView.vue \
+            frontend/src/modules/internship/views/InternshipMaterialCenterView.vue \
+            frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue \
+            frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue
+
+          test -z "$(git diff --name-only --diff-filter=U)"
+          ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- '*.js' '*.vue' '*.yml' '*.yaml'
+
+          # Sanity guards: PR191 Reader capability and PR211 UX contracts must coexist.
+          grep -q 'installGraduationW76Workbench' frontend/src/main.js
+          grep -q 'OfficialPolicyView.vue' frontend/src/main.js
+          grep -q 'createPreviewProvider' frontend/src/modules/graduation/api/graduation-material-center.api.js
+          grep -q 'graduationScanStatusLabel' frontend/src/modules/graduation/api/graduation-material-center.api.js
+          grep -q 'AppDocumentViewer' frontend/src/modules/graduation/views/GraduationMaterialCenterView.vue
+          grep -q 'graduationMaterialStageLabel' frontend/src/modules/graduation/views/GraduationMaterialCenterView.vue
+          grep -q 'AppDocumentViewer' frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
+          grep -q 'scanStatusText' frontend/src/modules/internship/views/InternshipMaterialCenterView.vue
+          grep -q 'AppDocumentViewer' frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue
+          grep -q 'materialStatusText' frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue
+
+          # Build an explicit two-parent merge commit rooted at the original PR211 head.
+          tree_sha="$(git write-tree)"
+          merge_sha="$(printf '%s\n' 'merge: sync latest main into PR #211' | git commit-tree "$tree_sha" -p "$TARGET_SHA" -p "$MAIN_SHA")"
+          echo "merge_sha=$merge_sha"
+
+          # Race guard: never overwrite a branch that changed while this worker ran.
+          git fetch origin "$TARGET_BRANCH"
+          test "$(git rev-parse origin/$TARGET_BRANCH)" = "$TARGET_SHA"
+          git push origin "$merge_sha:refs/heads/$TARGET_BRANCH"
