@@ -134,7 +134,7 @@ test.describe.serial('Student Affairs strict browser audit · aid / difficulty r
     await test.step('student uses real portal form and rapid double-click creates only one application', async () => {
       await freshStudentLogin(page)
       await page.goto(`${config.studentBaseUrl}/campus-service?tab=aid`)
-      await expect(page.getByText('家庭经济困难认定', { exact: true }).first()).toBeVisible()
+      await expect(page.locator('.sp-panel__head').filter({ hasText: '家庭经济困难认定' }).first()).toBeVisible()
       await page.getByLabel('开放批次').selectOption(batchId)
       await page.getByLabel('申请等级').selectOption('DIFFICULT')
       await page.getByLabel('家庭成员数（1-30）').fill('4')
