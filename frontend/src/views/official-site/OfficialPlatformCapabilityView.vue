@@ -1,5 +1,5 @@
 <template>
-  <div class="yk-site yk-story-site yk-capability-page">
+  <div class="yk-site yk-story-site yk-platform-highlight-page">
     <header class="yk-header">
       <div class="yk-shell yk-nav">
         <router-link class="yk-brand" to="/" aria-label="返回跃科官网首页">
@@ -18,211 +18,166 @@
     </header>
 
     <main>
-      <section class="yk-cap-hero" aria-labelledby="platform-capability-title">
-        <div class="yk-shell yk-cap-hero-grid">
-          <div class="yk-cap-hero-copy">
-            <div class="yk-cap-status"><span></span> 平台能力持续构建</div>
-            <p class="yk-kicker">跃科学生全生命周期平台</p>
-            <h1 id="platform-capability-title">让学校真正看见每一名学生，<br />也真正管清每一件事。</h1>
-            <p class="yk-cap-lead">
-              覆盖岗位实习、毕业设计、学工、教务等核心场景，连接材料、审批、证据、待办与学生成长轨迹，
-              构建职业院校学生全生命周期数字化工作平台。
+      <section class="yk-highlight-hero" aria-labelledby="platform-highlight-title">
+        <div class="yk-shell yk-highlight-hero-grid">
+          <div>
+            <div class="yk-highlight-status"><i></i> 平台八大特色 · 已具备能力与持续演进清晰区分</div>
+            <p class="yk-kicker">跃科平台能力</p>
+            <h1 id="platform-highlight-title">把企业级数字工作平台能力，真正带进职业院校学生管理。</h1>
+            <p class="yk-highlight-lead">
+              不只管理学生信息，更连接学生成长过程；不只提交业务材料，更管理真实文件版本；
+              不只完成线上审批，更让办理依据、责任和下一动作清楚可追踪。
             </p>
-            <div class="yk-cap-tags" aria-label="平台能力关键词">
+            <div class="yk-highlight-pill-row" aria-label="平台关键词">
               <span v-for="tag in heroTags" :key="tag">{{ tag }}</span>
             </div>
             <div class="yk-hero-actions">
-              <a class="yk-button yk-button-primary" href="#capability-matrix">了解产品能力</a>
+              <a class="yk-button yk-button-primary" href="#eight-highlights">看八大特色</a>
+              <a class="yk-button yk-button-ghost" href="#current-foundation">看当前能力底座</a>
               <router-link class="yk-button yk-button-ghost" to="/contact">预约产品演示</router-link>
             </div>
-            <p class="yk-cap-truth-note">
-              本页同时展示现有平台底座与正在建设的平台化能力。未完成生产封板的能力统一标注“持续构建”，
-              具体可交付范围以项目合同、正式版本与上线验收为准。
+            <p class="yk-highlight-truth">
+              本页只把已经进入当前产品代码与真实业务入口的能力标记为“当前具备”；尚未完成生产封板的能力统一标记为“持续演进”。
+              具体交付范围以项目合同、正式版本与上线验收为准。
             </p>
           </div>
 
-          <div class="yk-cap-hero-visual" aria-label="跃科统一工作方式示意">
-            <figure class="yk-cap-main-shot">
+          <div class="yk-highlight-visual" aria-label="跃科统一工作方式真实界面">
+            <figure class="yk-highlight-main-shot">
               <img src="/official-site/workbench.webp" alt="跃科统一工作台真实运行界面" decoding="async" />
-              <figcaption>真实运行界面 · 隔离测试数据</figcaption>
+              <figcaption>真实运行界面 · 隔离测试数据 · 不作为真实客户运营数据</figcaption>
             </figure>
-            <div class="yk-cap-floating yk-cap-floating-one">
-              <span>今日工作</span><strong>先看待办与风险</strong><small>工作台统一入口</small>
-            </div>
-            <div class="yk-cap-floating yk-cap-floating-two">
-              <span>学生主线</span><strong>跨业务连续追踪</strong><small>从入校到毕业就业</small>
-            </div>
+            <div class="yk-highlight-float yk-highlight-float-one"><span>围绕一个学生</span><strong>跨业务看状态与风险</strong><small>学生 360° 工作方式</small></div>
+            <div class="yk-highlight-float yk-highlight-float-two"><span>围绕一件事</span><strong>待办 · 审批 · 材料 · 证据</strong><small>统一业务上下文</small></div>
           </div>
         </div>
       </section>
 
-      <section class="yk-cap-connect">
+      <section class="yk-highlight-positioning">
         <div class="yk-shell">
-          <div class="yk-section-heading">
-            <p class="yk-kicker">不是再多一个校园管理系统</p>
-            <h2>而是让原本分散的校园业务真正连接起来。</h2>
-            <p>公共平台不替代业务模块做专业判断，而是把文件、规则、证据、查询、协作、异常与轨迹连接起来。</p>
+          <p class="yk-kicker">跃科的差异化，不是菜单更多</p>
+          <h2>从“把流程搬到线上”，继续走向“把学校业务变成可信、连续、可协同的数字工作”。</h2>
+          <p>教务、学工、岗位实习、毕业设计继续保有各自的专业规则；平台把学生、文件、审批、Excel、任务、帮助、搜索和证据等共性能力连接起来。</p>
+          <div class="yk-highlight-position-lines">
+            <span>不只管理学生信息，更连接学生成长过程</span>
+            <span>不只上传附件，更管理真实文件版本</span>
+            <span>不只完成审批，更保留办理依据与上下文</span>
+            <span>不只展示待办数量，更让老师直达那件事</span>
+            <span>不只把模块放一起，更形成连续业务主线</span>
           </div>
-          <div class="yk-cap-principles">
-            <article v-for="item in principles" :key="item.title">
-              <span class="yk-cap-principle-mark">{{ item.mark }}</span>
+        </div>
+      </section>
+
+      <section id="current-foundation" class="yk-section yk-highlight-foundation-section">
+        <div class="yk-shell">
+          <div class="yk-section-heading yk-section-heading-left">
+            <p class="yk-kicker">已经进入当前产品的能力底座</p>
+            <h2>不是等 ABCD 做完以后才有平台能力。</h2>
+            <p>当前产品已经存在一批可直接支撑销售、实施和学校日常运行的平台化能力；后续演进是在这个底座上继续加深，而不是从零开始。</p>
+          </div>
+          <div class="yk-highlight-foundation-grid">
+            <article v-for="item in currentFoundation" :key="item.title" class="yk-highlight-foundation-card">
+              <div class="yk-highlight-card-top"><span class="yk-highlight-mark">{{ item.mark }}</span><b class="yk-highlight-badge is-live">当前具备</b></div>
               <h3>{{ item.title }}</h3>
               <p>{{ item.desc }}</p>
+              <strong>{{ item.value }}</strong>
             </article>
           </div>
         </div>
       </section>
 
-      <section id="capability-matrix" class="yk-section yk-cap-matrix-section">
+      <section id="eight-highlights" class="yk-section yk-highlight-feature-section">
         <div class="yk-shell">
           <div class="yk-section-heading yk-section-heading-left">
-            <p class="yk-kicker">ABCD · 四组平台级公共能力</p>
-            <h2>从“业务模块集合”升级为“校园业务操作平台”</h2>
-            <p>四组能力分别解决可信、规则、智能与协同问题。它们服务于教务、学工、实习、毕设等业务，但不建立第二套业务 Authority。</p>
+            <p class="yk-kicker">跃科平台八大特色</p>
+            <h2>围绕学生、材料、审批、证据与协同，形成真正能被学校感知的平台深度。</h2>
+            <p>八项能力统一用学校用户能理解的业务价值表达，不用“功能数量”替代产品深度；当前具备和持续演进明确分开。</p>
           </div>
-          <div class="yk-cap-matrix">
-            <article v-for="group in capabilityGroups" :key="group.key" :class="`yk-cap-group yk-cap-group-${group.key.toLowerCase()}`">
-              <div class="yk-cap-group-head">
-                <span>{{ group.key }}</span>
-                <div><small>{{ group.label }}</small><h3>{{ group.title }}</h3></div>
+          <div class="yk-highlight-feature-grid">
+            <article v-for="item in highlights" :key="item.no" class="yk-highlight-feature-card" :class="{ 'is-evolving': item.status === '持续演进' }">
+              <div class="yk-highlight-feature-top">
+                <span class="yk-highlight-mark">{{ item.no }}</span>
+                <b class="yk-highlight-badge" :class="item.status === '当前具备' ? 'is-live' : 'is-evolving'">{{ item.status }}</b>
               </div>
-              <p>{{ group.problem }}</p>
-              <ul><li v-for="point in group.points" :key="point">{{ point }}</li></ul>
-              <strong>{{ group.outcome }}</strong>
+              <h3>{{ item.title }}</h3>
+              <p>{{ item.summary }}</p>
+              <div class="yk-highlight-feature-meta">
+                <div><span>学校痛点</span><strong>{{ item.pain }}</strong></div>
+                <div><span>平台价值</span><strong>{{ item.value }}</strong></div>
+              </div>
             </article>
           </div>
         </div>
       </section>
 
-      <section class="yk-section yk-capabilities-section">
+      <section class="yk-section yk-highlight-proof-section">
         <div class="yk-shell">
           <div class="yk-section-heading yk-section-heading-left">
-            <p class="yk-kicker">七项重点能力</p>
-            <h2>能查、能比、能验、能追、能证、能协同</h2>
-            <p>不是堆技术名词，而是把学校每天真实发生的材料检查、整改重交、归档复核、学生跟踪与多人办理变得更清楚。</p>
+            <p class="yk-kicker">真实产品证据</p>
+            <h2>先展示已经运行的能力，不用概念图冒充生产事实。</h2>
+            <p>以下截图来自当前仓库真实代码和隔离浏览器环境，用于证明现有工作台、审批、学生业务和材料评阅界面；持续演进能力不会借这些截图伪装成“已全面上线”。</p>
           </div>
+          <div class="yk-highlight-proof-grid">
+            <figure v-for="proof in proofs" :key="proof.image" class="yk-highlight-proof-card">
+              <img :src="proof.image" :alt="proof.alt" loading="lazy" decoding="async" />
+              <figcaption><strong>{{ proof.title }}</strong><span>{{ proof.desc }}</span></figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
 
-          <div class="yk-capability-list">
-            <article v-for="(item, index) in capabilities" :key="item.no" class="yk-capability-detail" :class="{ 'yk-capability-detail-reverse': index % 2 === 1 }">
-              <div class="yk-capability-copy">
-                <div class="yk-capability-meta">
-                  <span>{{ item.no }}</span>
-                  <b>{{ item.status }}</b>
-                </div>
-                <p class="yk-kicker">{{ item.eyebrow }}</p>
-                <h3>{{ item.title }}</h3>
-                <p class="yk-capability-summary">{{ item.summary }}</p>
-                <div class="yk-capability-question">{{ item.question }}</div>
-                <ul><li v-for="point in item.points" :key="point">{{ point }}</li></ul>
-                <div class="yk-capability-result"><span>老师最终得到</span><strong>{{ item.result }}</strong></div>
-              </div>
-
-              <div class="yk-capability-demo" :aria-label="`${item.title}能力说明示意`">
-                <div class="yk-demo-window">
-                  <div class="yk-demo-toolbar"><i></i><i></i><i></i><span>{{ item.demoTitle }}</span></div>
-                  <div class="yk-demo-body">
-                    <template v-if="item.kind === 'evidence'">
-                      <div class="yk-demo-record"><span>归档对象</span><strong>毕业设计 · 张三 · 终稿</strong></div>
-                      <div class="yk-demo-check" v-for="row in ['业务快照已冻结', '文件版本已锁定', '审核状态已记录', 'SHA-256 已生成']" :key="row"><b>✓</b><span>{{ row }}</span></div>
-                      <div class="yk-demo-package">最终证据包 <strong>可核验</strong></div>
-                    </template>
-                    <template v-else-if="item.kind === 'compliance'">
-                      <div class="yk-demo-score"><strong>92%</strong><span>材料完整度</span></div>
-                      <div class="yk-demo-alert is-danger"><b>1</b><span>项必须整改</span></div>
-                      <div class="yk-demo-alert"><b>2</b><span>项需要关注</span></div>
-                      <div class="yk-demo-alert is-ok"><b>5</b><span>项满足当前规则</span></div>
-                    </template>
-                    <template v-else-if="item.kind === 'form'">
-                      <label class="yk-demo-field"><span>是否属于特殊备案情形</span><strong>是</strong></label>
-                      <label class="yk-demo-field active"><span>情形类型</span><strong>请选择</strong></label>
-                      <label class="yk-demo-field active"><span>情况说明</span><strong>填写说明</strong></label>
-                      <label class="yk-demo-field active"><span>证明材料</span><strong>上传文件</strong></label>
-                      <small>字段按学校/批次规则出现，提交后仍进入正式业务流程</small>
-                    </template>
-                    <template v-else-if="item.kind === 'diff'">
-                      <div class="yk-demo-version"><span>V3</span><b>对比</b><span>V4</span></div>
-                      <div class="yk-demo-diff removed">- 删除：原方案采用线下登记……</div>
-                      <div class="yk-demo-diff added">+ 新增：改为线上全过程留痕……</div>
-                      <div class="yk-demo-diff changed">~ 修改：指导记录由每周一次调整为……</div>
-                      <div class="yk-demo-stat">共发现 <strong>7</strong> 个变化位置</div>
-                    </template>
-                    <template v-else-if="item.kind === 'timeline'">
-                      <div v-for="event in timelineDemo" :key="event.time" class="yk-demo-timeline">
-                        <time>{{ event.time }}</time><i></i><span>{{ event.text }}</span>
-                      </div>
-                    </template>
-                    <template v-else-if="item.kind === 'search'">
-                      <div class="yk-demo-search">⌕&nbsp;&nbsp;张三</div>
-                      <div class="yk-demo-search-result"><small>学生</small><strong>张三 · 软件技术 2301</strong></div>
-                      <div class="yk-demo-search-result"><small>我的待办</small><strong>张三 · 毕业设计终稿待评阅</strong></div>
-                      <div class="yk-demo-search-result"><small>岗位实习</small><strong>张三 · 风险处置记录</strong></div>
-                    </template>
-                    <template v-else>
-                      <div class="yk-demo-workload">
-                        <span><strong>7</strong>今日新增</span><span><strong>3</strong>24h 内到期</span><span><strong>2</strong>已超期</span>
-                      </div>
-                      <div class="yk-demo-pool"><span>学院公共任务池</span><strong>9 条待认领</strong></div>
-                      <div class="yk-demo-task"><span>毕业设计材料复核 · 张三</span><button type="button">认领办理</button></div>
-                      <div class="yk-demo-task"><span>实习风险复核 · 李四</span><b>李老师代王老师办理</b></div>
-                    </template>
-                  </div>
-                </div>
-                <p>能力说明示意 · 不作为未封板功能的已上线界面证明</p>
-              </div>
+      <section class="yk-section yk-highlight-evolution-section">
+        <div class="yk-shell">
+          <div class="yk-section-heading yk-section-heading-left">
+            <p class="yk-kicker">ABCD · 下一阶段平台演进</p>
+            <h2>从成熟智慧校园能力，继续向企业级数字工作平台深度推进。</h2>
+            <p>ABCD 不是另起炉灶，而是在现有学生、文件、审批、待办和任务底座上继续补强可信、规则、智能与协同四类公共能力。</p>
+          </div>
+          <div class="yk-highlight-evolution-grid">
+            <article v-for="group in evolutionGroups" :key="group.key" class="yk-highlight-evolution-card">
+              <span>{{ group.key }}</span><small>{{ group.label }}</small><h3>{{ group.title }}</h3><p>{{ group.desc }}</p><strong>{{ group.points }}</strong>
             </article>
           </div>
         </div>
       </section>
 
-      <section class="yk-section yk-cap-day-section">
+      <section class="yk-section yk-highlight-work-section">
         <div class="yk-shell">
           <div class="yk-section-heading">
-            <p class="yk-kicker">目标工作方式 · 一位老师的一天</p>
+            <p class="yk-kicker">老师真正感知到的变化</p>
             <h2>系统越大，不应该让老师越难用。</h2>
-            <p>以下场景用于说明这些平台能力组合后的目标工作方式，其中包含持续建设能力，不代表全部场景已经生产封板。</p>
+            <p>平台能力最终要落到“少找入口、少重复检查、少来回下载、少靠人工记忆”，而不是只增加后台配置项。</p>
           </div>
-          <div class="yk-day-track">
-            <article v-for="item in teacherDay" :key="item.time">
-              <time>{{ item.time }}</time>
-              <div class="yk-day-dot"></div>
-              <div><small>{{ item.label }}</small><h3>{{ item.title }}</h3><p>{{ item.desc }}</p><strong v-if="item.callout">{{ item.callout }}</strong></div>
+          <div class="yk-highlight-work-grid">
+            <article v-for="item in workWays" :key="item.title" class="yk-highlight-work-card">
+              <span>{{ item.label }}</span><h3>{{ item.title }}</h3><p>{{ item.desc }}</p>
             </article>
           </div>
         </div>
       </section>
 
-      <section class="yk-section yk-cap-platform-section">
-        <div class="yk-shell yk-cap-platform-grid">
+      <section class="yk-highlight-layer-section">
+        <div class="yk-shell yk-highlight-layer-grid">
           <div>
             <p class="yk-kicker">最终形成什么</p>
-            <h2>从“很多功能做在一起”，跨越到“所有业务在同一套平台能力上协同运行”。</h2>
-            <p>
-              毕业设计依然决定什么叫“评阅通过”，岗位实习依然决定什么叫“实习完成”，
-              学工和教务也继续保有自己的正式业务责任。公共平台负责连接共同能力，而不是抢走业务 Authority。
-            </p>
-            <div class="yk-cap-platform-tags">
-              <span v-for="item in platformLayers" :key="item">{{ item }}</span>
-            </div>
+            <h2>跃科构建的是一套职业院校学生全生命周期数字工作平台。</h2>
+            <p>业务模块负责专业规则与正式状态；公共平台负责把文件、规则、审批、证据、查询、任务、异常和学生轨迹连接起来。这样平台越扩展，共性能力越统一，而不是每个模块重新造一套。</p>
+            <div class="yk-highlight-layer-tags"><span v-for="item in platformLayers" :key="item">{{ item }}</span></div>
           </div>
-          <div class="yk-cap-authority-card">
-            <span>公共平台负责</span>
-            <strong>文件 · 规则 · 证据 · 查询 · 协作 · 异常 · 轨迹</strong>
+          <aside class="yk-highlight-authority">
+            <span>公共平台负责</span><strong>学生上下文 · 文件版本 · 审批工作 · Excel 治理 · 任务协作 · 帮助知识 · 证据与查询</strong>
             <hr />
-            <span>业务模块继续负责</span>
-            <strong>专业规则 · 正式状态 · 业务审批 · 最终 Authority</strong>
-          </div>
+            <span>业务模块继续负责</span><strong>教务规则 · 学工规则 · 岗位实习状态机 · 毕业设计评审 · 正式业务 Authority</strong>
+          </aside>
         </div>
       </section>
 
-      <section class="yk-cap-closing">
+      <section class="yk-highlight-closing">
         <div class="yk-shell">
-          <p>每一份材料都有版本</p>
-          <p>每一次办理都有依据</p>
-          <p>每一个任务都有责任人</p>
-          <p>每一名学生都有连续轨迹</p>
-          <h2>让学生工作更清楚，让教师工作更高效，让学校管理更可信。</h2>
+          <p>一个学生有连续上下文</p><p>一份材料有真实版本</p><p>一次办理有明确依据</p><p>一个任务有责任与下一步</p>
+          <h2>让学校看到的不只是“功能很多”，而是一套能持续承载真实业务的数字工作平台。</h2>
           <div class="yk-hero-actions">
-            <router-link class="yk-button yk-button-light" to="/contact">预约产品演示</router-link>
+            <router-link class="yk-button yk-button-primary" to="/contact">预约产品演示</router-link>
             <router-link class="yk-button yk-button-ghost" to="/products">查看四大核心产品</router-link>
           </div>
         </div>
@@ -232,144 +187,84 @@
     <footer class="yk-footer">
       <div class="yk-shell yk-footer-inner">
         <div><strong>{{ contact.company }}</strong><span>职业院校学生全生命周期数字化平台</span></div>
-        <div class="yk-footer-links">
-          <router-link to="/products">产品中心</router-link>
-          <router-link to="/about">关于跃科</router-link>
-          <a :href="contact.phoneHref">{{ contact.phone }}</a>
-          <span>© {{ year }}</span>
-        </div>
+        <div class="yk-footer-links"><router-link to="/products">产品中心</router-link><router-link to="/about">关于跃科</router-link><a :href="contact.phoneHref">{{ contact.phone }}</a><span>© {{ year }}</span></div>
       </div>
     </footer>
   </div>
 </template>
 
 <script>
-import { OFFICIAL_SALES_PAGE_MAP, OFFICIAL_SITE_CONTACT } from '@/config/officialSalesPages'
+import { OFFICIAL_SITE_CONTACT } from '@/config/officialSalesPages'
+import { syncOfficialSeo } from '@/services/officialSeoRuntime'
 import '@/styles/official-site.css'
 import '@/styles/official-site-story.css'
 import '@/styles/official-platform-capabilities.css'
+import '@/styles/official-platform-highlights.css'
 
-const HERO_TAGS = Object.freeze(['材料自动检查', '文档版本比对', '可信电子归档', '学生成长轨迹', '全局业务搜索', '协同任务办理'])
+const HERO_TAGS = Object.freeze(['学生 360°', '可信文件版本', '统一审批', '业务待办直达', '可信 Excel', '在线批阅', '电子证据', '协同工作台'])
 
-const PRINCIPLES = Object.freeze([
-  { mark: '信', title: '可信', desc: '业务全过程留痕，重要材料版本冻结，归档结果可核验。' },
-  { mark: '效', title: '高效', desc: '材料自动预检、版本智能比对，让老师少做重复检查。' },
-  { mark: '续', title: '连续', desc: '跨越学业、学工、实习、毕设与就业，看见完整学生成长轨迹。' },
-  { mark: '协', title: '协同', desc: '全局搜索、公共任务池、认领、转办、代理，让跨部门工作真正流动起来。' }
+const CURRENT_FOUNDATION = Object.freeze([
+  { mark: '360', title: '学生 360° 成长工作台', desc: '跨越学业、学工、实习、毕业设计与就业，把学生关键状态、风险摘要和下一步动作放到同一授权上下文里。', value: '从“查多个系统”转向“围绕一个学生开展工作”' },
+  { mark: 'FILE', title: '统一安全文件与版本中心', desc: '文件对象、逻辑资产、不可覆盖版本、业务绑定、SHA-256、安全等级、扫描状态、保留期限和归档清单统一治理。', value: '附件从“上传文件”升级为可治理的业务资产' },
+  { mark: 'APP', title: '跨业务统一审批中心', desc: '批准、退回修改、驳回、转办等办理动作由服务端按真实权限给出，待办携带业务对象、节点、期限和上下文。', value: '不同模块的审批进入统一工作方式' },
+  { mark: 'GO', title: '业务待办一键直达', desc: '待办区分真实详情、列表聚焦和安全入口；不能证明存在真实详情页时，不伪造深链。', value: '点击待办直接去真正需要办理的位置' },
+  { mark: 'XLSX', title: '可信 Excel 数据交换中心', desc: '标准模板、字段规则、重复检查、错误行回传、预校验与确认写入形成统一导入底座，高风险导入还能锁定确认上下文。', value: '大批量数据也做到先检查、再落库、错误可定位' },
+  { mark: 'HELP', title: '内置业务知识与操作帮助中心', desc: '业务说明、流程图和高频任务卡与真实前端入口一起维护，没有真实页面的能力不写帮助、不制造假入口。', value: '降低培训成本，让老师在办理现场就能找到答案' },
+  { mark: 'JOB', title: '统一后台任务与批处理中心', desc: '导入、导出、文件和批处理任务统一观察状态、发起人、范围快照、幂等、失败、积压、重试与取消。', value: '把长任务从“黑盒等待”变成可观察、可治理的后台工作' },
+  { mark: 'BASE', title: '多租户、权限、数据范围与审计底座', desc: '学校租户、角色权限、数据范围、敏感访问和关键操作审计作为所有业务模块共同的生产边界。', value: '平台能力扩展时，安全边界不被各模块重复实现' }
 ])
 
-const CAPABILITY_GROUPS = Object.freeze([
-  { key: 'A', label: 'TRUST', title: '可信证据链', problem: '解决“办完以后无法证明、跨系统异常难发现”。', points: ['冻结业务快照与真实文件版本', '归档清单、哈希与审核状态可复核', '跨系统异常主动巡检'], outcome: '每项重要业务都有可验证证据' },
-  { key: 'B', label: 'RULES', title: '规则与表单引擎', problem: '解决“材料靠人工检查、学校差异频繁定制”。', points: ['材料完整性与合规预检', '动态字段与条件显示', '配置最终落回正式业务流程'], outcome: '系统先预检，老师做判断' },
-  { key: 'C', label: 'INTELLIGENCE', title: '文档与事实智能', problem: '解决“重交重新通读、学生经历彼此割裂”。', points: ['文件版本差异定位', '跨业务学生事实流', '全过程时间轴与事实来源'], outcome: '看变化、看轨迹、看全过程' },
-  { key: 'D', label: 'WORK', title: '搜索与协同工作台', problem: '解决“系统越大越难找、多人协作容易重复”。', points: ['搜人搜事直接到业务', '公共任务池与并发认领', '安全转办、临时代理与紧迫度'], outcome: '直接找到事，真正协同办' }
+const HIGHLIGHTS = Object.freeze([
+  { no: '01', status: '当前具备', title: '学生 360° 成长工作台', summary: '一个页面理解学生是谁、现在处于什么状态、有哪些风险、老师下一步该做什么。', pain: '学生信息散落在教务、学工、实习、毕设与就业。', value: '围绕学生统一上下文，不再围绕模块来回找数据。' },
+  { no: '02', status: '当前具备', title: '统一安全文件与版本中心', summary: '重要业务材料统一进入文件中心，版本不可覆盖，文件哈希、安全状态、业务绑定与归档清单可追踪。', pain: '附件被覆盖后无法证明当时审核的是哪一版。', value: '把材料变成有版本、有边界、有证据属性的业务资产。' },
+  { no: '03', status: '持续演进', title: '四端在线文档预览与批阅', summary: '目标是在管理/教师 PC、学生 PC、教师与学生移动端形成一致的安全预览工作方式，并把预览权限与下载权限分离。', pain: '老师反复下载材料，重交以后容易“看旧稿、批新稿”。', value: '站内查看、锁定真实文件版本，返回业务页后重新核验版本真相。' },
+  { no: '04', status: '当前具备', title: '跨业务统一审批中心', summary: '请假、奖助、学籍异动、成绩审核等业务进入统一审批工作区，动作、权限、期限和上下文由服务端统一约束。', pain: '老师在多个模块之间寻找审批入口，办理动作口径不一。', value: '把审批从“每个模块各做一套”收敛成统一工作方式。' },
+  { no: '05', status: '持续演进', title: '材料合规智能检查', summary: '把缺材料、格式、版本、安全扫描和业务规则中的机械检查前置，让老师先看必须整改项和关注项。', pain: '老师大量时间花在重复确认“附件有没有齐”。', value: '系统先预检，老师把时间留给真正需要专业判断的内容。' },
+  { no: '06', status: '持续演进', title: '可信电子证据链', summary: '目标是把业务快照、真实文件版本、哈希、审核状态和归档清单一起冻结，形成可复核电子业务证据。', pain: '业务显示“已完成”，但事后难说明当时依据和材料版本。', value: '回答“当时发生了什么、依据什么、谁办理”的审计问题。' },
+  { no: '07', status: '持续演进', title: '全局业务搜索', summary: '目标是跨学生、我的待办和有权限的业务对象统一搜索，并由服务端返回真实可达目标。', pain: '系统越大，老师越难记住某件事藏在哪个二级菜单。', value: '不先想模块，直接搜索人和事，再去真实业务位置。' },
+  { no: '08', status: '持续演进', title: '协同工作台', summary: '在现有统一工作台和待办基础上继续加入任务池、原子认领、安全转办、临时代理、临期与超期管理。', pain: '多人共同办理时容易重复处理、责任不清、积压不可见。', value: '让任务真正流动起来，并清楚知道谁负责、何时到期。' }
 ])
 
-const CAPABILITIES = Object.freeze([
-  {
-    no: '01', status: '持续构建', eyebrow: '可信电子证据链', title: '业务办完之后，不只留下“状态已完成”。',
-    summary: '把关键业务事实与真实文件版本冻结下来，形成可复核、可校验、可追溯的正式电子业务证据。',
-    question: '它为什么算办完？当时依据哪一版材料？谁提交、谁审核？历史证据后来有没有被污染？',
-    points: ['业务快照 + 文件版本 + 文件哈希 + 审核状态', '扫描状态 + 归档清单 + 最终证据包', '归档异常、任务状态与业务状态不一致主动巡检'],
-    result: '一份能明确回答“当时发生了什么”的电子业务档案。', demoTitle: '电子证据包', kind: 'evidence'
-  },
-  {
-    no: '02', status: '持续构建', eyebrow: '材料合规智能检查', title: '从“老师人工翻材料”，升级为“系统先检查，老师做判断”。',
-    summary: '提交前完成机械性规则检查，把缺材料、版本错误、格式问题和安全扫描状态提前暴露。',
-    question: '老师真正需要做的是业务判断，而不是重复确认“附件有没有传齐”。',
-    points: ['必交材料、类型、大小、最新版检查', '安全扫描、人工审核要求与状态门禁', '必须整改与提示性风险分级展示'],
-    result: '先看到完整度、必须整改项和关注项，再决定是否进入下一环节。', demoTitle: '材料预检', kind: 'compliance'
-  },
-  {
-    no: '03', status: '持续构建', eyebrow: '动态业务表单', title: '学校业务规则变化，不必每一次都重新开发一套页面。',
-    summary: '把部分高频、规则明确的业务字段配置化，让学校、专业、批次差异以受控规则进入正式流程。',
-    question: '灵活不是再造一套“万能数据”，而是在明确 Authority 边界内减少重复定制。',
-    points: ['条件字段按答案动态出现', '字段校验、证明材料与补充信息可配置', '最终提交仍进入实习、毕设、学工、教务正式流程'],
-    result: '更低成本适配学校差异，同时不形成第二套影子数据。', demoTitle: '规则驱动表单', kind: 'form'
-  },
-  {
-    no: '04', status: '持续构建', eyebrow: '文档版本智能比对', title: '学生重新提交以后，老师一眼看见“到底改了什么”。',
-    summary: '对有权限查看的两个文件版本生成差异结果，让评阅、整改与二次审核先看变化，再看全文。',
-    question: '老师想知道的不是“又传了一份 60 页文档”，而是“这次改了哪 7 个位置”。',
-    points: ['新增、删除、修改内容定位', '变化段落与差异统计', '比对权限继承原文件访问权限'],
-    result: '从重新通读全文，变成优先检查发生变化的位置。', demoTitle: 'V3 ↔ V4 版本比对', kind: 'diff'
-  },
-  {
-    no: '05', status: '持续构建', eyebrow: '学生全生命周期事实流', title: '不只看一张学生档案，而是看见几年里“发生过什么”。',
-    summary: '把已经发生的学业、学工、实习、毕设与就业相关事实投影到统一学生主线，为学生 360 与风险研判提供连续上下文。',
-    question: '学生主档告诉老师“他是谁”，事实流继续告诉老师“他经历了什么”。',
-    points: ['事实保留时间、来源与业务对象', '跨模块只做投影，不反写原业务 Authority', '为学生 360、辅导员工作台和离校审计提供统一主线'],
-    result: '打开一个学生，就能沿时间轴理解关键经历和处置结果。', demoTitle: '张三 · 成长轨迹', kind: 'timeline'
-  },
-  {
-    no: '06', status: '持续构建', eyebrow: '全局业务搜索', title: '不再先想“我要去哪个模块”，直接搜索我要处理的人和事。',
-    summary: '把学生、我的待办和有权限的业务结果聚合到统一搜索入口，由服务端返回真实目标页面。',
-    question: '功能越来越多时，老师不应该先记住“这个功能在第几个二级菜单”。',
-    points: ['搜学生、待办与有权限的业务对象', '结果携带服务端确定的真实目标', '搜索继续服从租户、角色、权限与数据范围'],
-    result: '搜人或搜事，然后直达真正需要办理的位置。', demoTitle: '全局业务搜索', kind: 'search'
-  },
-  {
-    no: '07', status: '持续构建', eyebrow: '协同待办 2.0', title: '从“给我一张任务列表”，升级为“真正支持多人协作的工作队列”。',
-    summary: '面向学院多人共同办理场景，支持公共任务池、原子认领、安全转办、临时代理与负载紧迫度。',
-    question: '300 条待审核不等于先平均分给 3 个老师，也不应该让 3 个人同时处理同一条。',
-    points: ['公共池任务可认领，同一任务只允许一个人成功', '转办只展示真正有资格接手的人', '代理保留真实操作人与原责任人的历史关系', '工作台突出新增、临期、超期、已认领与公共池'],
-    result: '打开工作台第一眼就知道今天先处理什么、谁在负责。', demoTitle: '协同工作队列', kind: 'work'
-  }
+const PROOFS = Object.freeze([
+  { image: '/official-site/workbench.webp', title: '统一工作台', alt: '跃科统一工作台真实运行界面', desc: '跨业务待办、风险、进度与下一动作汇到老师日常工作的第一入口。' },
+  { image: '/official-site/approval-center.webp', title: '统一审批中心', alt: '跃科审批中心真实运行界面', desc: '审批待办、已办、退回记录等形成统一办理入口。' },
+  { image: '/official-site/student-affairs-master.webp', title: '学生主档与学生工作', alt: '跃科学生主档真实运行界面', desc: '围绕学生建立跨事务上下文，为学生 360° 工作方式提供真实业务入口。' },
+  { image: '/official-site/graduation-final-review.webp', title: '毕业设计成果评阅', alt: '跃科毕业设计成果评阅真实运行界面', desc: '长周期材料提交、评阅与整改场景为文件版本和在线批阅演进提供真实业务承载点。' }
 ])
 
-const TIMELINE_DEMO = Object.freeze([
-  { time: '03月', text: '进入岗位实习阶段' },
-  { time: '04月', text: '企业变更申请完成' },
-  { time: '05月', text: '风险预警 → 指导教师完成处置' },
-  { time: '06月', text: '毕业设计开题通过' },
-  { time: '08月', text: '终稿提交并进入正式评阅' }
+const EVOLUTION_GROUPS = Object.freeze([
+  { key: 'A', label: 'TRUST', title: '可信与一致性', desc: '让重要业务完成以后仍然能证明，并主动发现跨系统状态不一致。', points: '可信电子证据链 · 跨业务一致性巡检' },
+  { key: 'B', label: 'RULES', title: '规则与材料智能', desc: '把高频机械检查和学校差异配置化，同时保持正式业务 Authority 不被旁路。', points: '材料合规检查 · 动态业务表单' },
+  { key: 'C', label: 'INTELLIGENCE', title: '文档与学生事实', desc: '让老师先看版本变化，也沿时间轴理解学生几年里发生过什么。', points: '文档版本比对 · 学生生命周期事实流' },
+  { key: 'D', label: 'WORK', title: '搜索与协同工作', desc: '让老师直接找到人和事，并支持多人安全认领、转办、代理和期限管理。', points: '全局业务搜索 · 任务池 / 认领 / 转办 / 代理 / SLA' }
 ])
 
-const TEACHER_DAY = Object.freeze([
-  { time: '08:20', label: '打开工作台', title: '先看今天最需要处理什么', desc: '目标工作台聚合新增、即将超期、已超期与公共池事项。', callout: '今天新增待办 7 · 即将超期 3 · 公共池待认领 4' },
-  { time: '08:25', label: '搜索学生', title: '直接输入“张三”', desc: '学生、毕业设计待评阅、岗位实习归档和当前待处理事项在同一结果里出现。' },
-  { time: '08:27', label: '评阅重交', title: '先看 V4 相比 V3 改了哪里', desc: '系统先给出差异位置，再由老师结合完整文档做专业判断。', callout: '本次为 V4 · 相比 V3 修改 7 个位置' },
-  { time: '09:10', label: '材料审核', title: '先看系统预检结果', desc: '机械性材料规则先检查，老师聚焦真正需要判断或退回的内容。', callout: '6 项材料中 5 项符合要求 · 1 项证明材料缺失' },
-  { time: '10:30', label: '共同办理', title: '从学院公共池认领任务', desc: '并发认领只允许一个人成功，避免重复办理和责任不清。' },
-  { time: '16:00', label: '异常巡检', title: '在问题影响师生之前发现不一致', desc: '目标异常中心发现业务完成但任务未闭环、归档对象缺证据包等跨系统问题。' },
-  { time: '17:00', label: '学生 360', title: '沿事实流理解一名学生的连续经历', desc: '从入学、学业、学工、实习到毕业设计，关键事实沿时间轴呈现。' }
+const WORK_WAYS = Object.freeze([
+  { label: '围绕人', title: '打开一个学生，先看完整上下文', desc: '学生主档、关键业务状态、风险摘要和下一动作集中呈现，减少跨模块逐个查询。' },
+  { label: '围绕材料', title: '先看版本，再做专业判断', desc: '文件中心保留真实版本；在线预览、批阅与版本差异能力持续在这个版本底座上演进。' },
+  { label: '围绕事', title: '待办直接去办理，不先找菜单', desc: '统一待办和审批中心携带真实业务上下文，后续全局搜索与协同队列继续缩短路径。' },
+  { label: '围绕治理', title: 'Excel、帮助和后台任务也有统一底座', desc: '数据导入、错误回传、任务状态和操作帮助被平台化管理，实施交付不再依赖零散脚本与口头培训。' }
 ])
 
-const PLATFORM_LAYERS = Object.freeze(['统一文件版本', '统一材料规则', '统一电子证据', '统一业务搜索', '统一任务协作', '统一学生事实流', '统一异常巡检', '统一权限与审计'])
+const PLATFORM_LAYERS = Object.freeze(['学生 360°', '统一文件版本', '统一审批', '业务直达待办', '可信 Excel', '业务帮助中心', '后台任务治理', '可信电子证据', '全局搜索', '协同工作台'])
 
 export default {
   name: 'OfficialPlatformCapabilityView',
   data() {
     return {
       heroTags: HERO_TAGS,
-      principles: PRINCIPLES,
-      capabilityGroups: CAPABILITY_GROUPS,
-      capabilities: CAPABILITIES,
-      timelineDemo: TIMELINE_DEMO,
-      teacherDay: TEACHER_DAY,
+      currentFoundation: CURRENT_FOUNDATION,
+      highlights: HIGHLIGHTS,
+      proofs: PROOFS,
+      evolutionGroups: EVOLUTION_GROUPS,
+      workWays: WORK_WAYS,
       platformLayers: PLATFORM_LAYERS
     }
   },
   computed: {
-    page() { return OFFICIAL_SALES_PAGE_MAP['/platform'] },
     contact() { return OFFICIAL_SITE_CONTACT },
     year() { return new Date().getFullYear() }
   },
-  mounted() {
-    this.syncHead()
-  },
-  methods: {
-    syncHead() {
-      document.title = '跃科平台能力｜可信证据、材料规则、学生事实与协同工作台'
-      const description = '跃科持续构建可信电子证据链、材料合规检查、动态表单、文档版本比对、学生全生命周期事实流、全局业务搜索与协同待办等平台级公共能力。'
-      let meta = document.querySelector('meta[name="description"]')
-      if (!meta) {
-        meta = document.createElement('meta')
-        meta.setAttribute('name', 'description')
-        document.head.appendChild(meta)
-      }
-      meta.setAttribute('content', description)
-    }
-  }
+  mounted() { syncOfficialSeo('/platform') }
 }
 </script>
