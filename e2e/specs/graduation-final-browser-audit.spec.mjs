@@ -113,8 +113,8 @@ async function submitStudentFinal(page, fixture, marker) {
   return { uploaded: uploadBody.data, submitted: submitBody.data }
 }
 
-async function openPendingFinal(page, fixture) {
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+async function openPendingFinal(page, fixture, { login = true } = {}) {
+  if (login) await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
   await page.goto(`${config.staffBaseUrl}/admin/graduation/finals?batchId=${encodeURIComponent(fixture.batchId)}&tab=PENDING_REVIEW`)
   await dismissGuide(page)
   await expect(page.getByRole('heading', { name: '成果检查', exact: true })).toBeVisible()
@@ -240,14 +240,14 @@ test.describe.serial('毕业设计成果+查重 Browser First · 退回/重交/�
   })
 
   test('真实前置 → 初稿退回重交 → 定稿 → 查重超标 → 复查 → 复查合格 → 定稿通过', async ({ page }) => {
+    await page.context().setExtraHTTPHeaders({ 'X-Forwarded-For': '10.251.0.50' })
     await reachFinalCheckThroughUi(page, fixture)
 
     const first = await submitStudentFinal(page, fixture, 'draft-v1')
-    const firstStaff = await openPendingFinal(page, fixture)
+    const firstStaff = await openPendingFinal(page, fixture, { login: false })
     const firstVersionEvidence = firstStaff.versionEvidence
     await reviewCurrentFinal(page, 'REJECT', 'E2E-AUDIT-20260823 初稿退回：补齐异常场景说明、测试证据和论文格式。')
 
-    await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
     const student = new StudentGraduationPage(page, config.studentBaseUrl)
     await student.open()
     const rejectedStep = finalStep(page)
@@ -256,17 +256,16 @@ test.describe.serial('毕业设计成果+查重 Browser First · 退回/重交/�
 
     const second = await submitStudentFinal(page, fixture, 'draft-v2')
     expect(String(second.uploaded.fileId)).not.toBe(String(first.uploaded.fileId))
-    const secondStaff = await openPendingFinal(page, fixture)
+    const secondStaff = await openPendingFinal(page, fixture, { login: false })
     expect(secondStaff.versionEvidence).not.toBe(firstVersionEvidence)
     await reviewCurrentFinal(page, 'APPROVE')
 
-    await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
     await student.open()
     await expect(finalStep(page)).toContainText(/初稿.*通过|已通过/)
 
     const finalSubmit = await submitStudentFinal(page, fixture, 'final-v1')
     expect(String(finalSubmit.uploaded.fileId)).not.toBe(String(second.uploaded.fileId))
-    const beforePlagiarism = await openPendingFinal(page, fixture)
+    const beforePlagiarism = await openPendingFinal(page, fixture, { login: false })
     expect(beforePlagiarism.versionEvidence).not.toBe(secondStaff.versionEvidence)
 
     // 定稿未完成查重时禁止通过是产品正确门禁；通过完整复查后再回到同一审批动作。
@@ -275,7 +274,6 @@ test.describe.serial('毕业设计成果+查重 Browser First · 退回/重交/�
     await openPendingFinal(page, fixture)
     await reviewCurrentFinal(page, 'APPROVE')
 
-    await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
     await student.open()
     const completed = finalStep(page)
     await expect(completed).toContainText(/定稿.*通过|定稿已通过|已通过/)
