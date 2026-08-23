@@ -6,10 +6,12 @@ on:
       - audit/student-affairs-browser-runner-20260823
     paths:
       - 'audit-tests/student-affairs-leave-browser-audit.spec.mjs'
+      - 'audit-tests/student-affairs-leave-browser-hardening.spec.mjs'
       - '.github/workflows/student-affairs-browser-audit-exact-head.yml'
   pull_request:
     paths:
       - 'audit-tests/student-affairs-leave-browser-audit.spec.mjs'
+      - 'audit-tests/student-affairs-leave-browser-hardening.spec.mjs'
       - '.github/workflows/student-affairs-browser-audit-exact-head.yml'
 
 permissions:
@@ -19,7 +21,7 @@ jobs:
   leave-browser-audit:
     name: exact-head leave journey / Chromium / MySQL
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     services:
       mysql:
         image: mysql:8.4
@@ -127,7 +129,7 @@ jobs:
           cat ../e2e/runtime-logs/backend.log
           exit 1
 
-      - name: Bootstrap official identities and formal counselor assignment
+      - name: Bootstrap official identities and formal counselor assignments
         working-directory: app/backend
         run: |
           python scripts/e2e_bootstrap_graduation_accounts_ci.py
@@ -135,19 +137,71 @@ jobs:
           python scripts/e2e_verify_graduation_accounts.py
           python scripts/e2e_bootstrap_affairs_counselor_ci.py
           python - <<'PY'
+          import scripts.e2e_bootstrap_affairs_counselor_ci as ci
+          from scripts.e2e_bootstrap_student_affairs_accounts import CLASS_B
+
+          ci.LOGIN_NAME = 'e2e_counselor_b'
+          ci.DISPLAY_NAME = 'E2E辅导员B'
+          ci.CLASS = CLASS_B
+
+          def import_counselor_b(token: str) -> None:
+              receipt = ci._canonical_import(
+                  token,
+                  kind='teachers',
+                  content=ci.build_counselor_xlsx(),
+                  idempotency_namespace='e2e-affairs-counselor-b',
+              )
+              print('[strict-audit] counselor-b identity import:', receipt.get('id') or receipt.get('jobId') or 'confirmed')
+
+          ci.import_counselor = import_counselor_b
+          assert ci.main() == 0
+          PY
+          python - <<'PY'
           from scripts.e2e_bootstrap_student_affairs_accounts import (
               CLASS_A,
+              CLASS_B,
+              _req,
               ensure_counselor_assignment,
               ensure_org,
+              list_users,
               login_admin,
           )
 
           token = login_admin()
           org = ensure_org(token)
-          result = ensure_counselor_assignment(token, int(org["classIds"][CLASS_A]))
-          print("[strict-audit] counselor-assignment:", result)
-          assert result.get("configured") is True, result
+          result = ensure_counselor_assignment(token, int(org['classIds'][CLASS_A]))
+          print('[strict-audit] counselor-a assignment:', result)
+          assert result.get('configured') is True, result
+
+          users = list_users(token)
+          counselor_b = users.get('e2e_counselor_b')
+          assert counselor_b, users.keys()
+          class_b_id = int(org['classIds'][CLASS_B])
+          listed = _req(
+              'GET', '/student-affairs/counselor-assignments', token=token,
+              params={'classId': class_b_id, 'pageSize': 100},
+          )
+          items = ((listed.get('data') or {}).get('items') or [])
+          active = next((x for x in items if x.get('status') == 'ACTIVE'
+                         and x.get('dutyType') == 'PRIMARY'
+                         and int(x.get('userId') or 0) == int(counselor_b['id'])), None)
+          if not active:
+              created = _req('POST', '/student-affairs/counselor-assignments', token=token, body={
+                  'classId': class_b_id,
+                  'userId': int(counselor_b['id']),
+                  'dutyType': 'PRIMARY',
+                  'reason': 'E2E严格验收：同租户错误辅导员数据范围攻击基线',
+              })
+              assert created.get('code') == 0, created
+          print('[strict-audit] counselor-b formal assignment configured for CLASS_B')
           PY
+
+      - name: Start official external scheduler
+        run: |
+          cd app/backend
+          nohup python scripts/run_scheduled_jobs.py > ../e2e/runtime-logs/scheduler.log 2>&1 &
+          sleep 2
+          test -s ../e2e/runtime-logs/scheduler.log || true
 
       - name: Start real staff PC and student PC
         run: |
@@ -173,9 +227,10 @@ jobs:
             fi
           done
 
-      - name: Install Chromium and inject audit spec outside application commit
+      - name: Install Chromium and inject audit specs outside application commit
         run: |
           cp runner/audit-tests/student-affairs-leave-browser-audit.spec.mjs app/e2e/specs/student-affairs-leave-browser-audit.spec.mjs
+          cp runner/audit-tests/student-affairs-leave-browser-hardening.spec.mjs app/e2e/specs/student-affairs-leave-browser-hardening.spec.mjs
           cd app/e2e
           npm install
           npx playwright install --with-deps chromium
@@ -228,6 +283,87 @@ jobs:
           print('[EVIDENCE]', json.dumps(evidence, ensure_ascii=False))
           PY
 
+      - name: Run leave production hardening attacks and real XLSX journey
+        working-directory: app/e2e
+        run: npx playwright test specs/student-affairs-leave-browser-hardening.spec.mjs
+
+      - name: Open and verify downloaded XLSX plus hardening persistence
+        working-directory: app/backend
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pymysql
+          from openpyxl import load_workbook
+
+          main = json.loads(Path('../e2e/student-affairs-audit-evidence.json').read_text(encoding='utf-8'))
+          hard = json.loads(Path('../e2e/student-affairs-leave-hardening-evidence.json').read_text(encoding='utf-8'))
+          main_id = int(hard['mainLeaveId'])
+          scope_id = int(hard['scopeLeaveId'])
+          job_id = str(hard['exportJobId'])
+
+          conn = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', database='student_lifecycle_e2e', charset='utf8mb4')
+          with conn.cursor() as cur:
+              cur.execute('SELECT affairs_status, version, reason FROM t_cs_leave WHERE id=%s', (main_id,))
+              main_row = cur.fetchone()
+              print('[HARDEN-DB main]', main_row)
+              assert main_row and main_row[0] == 'CLOSED', main_row
+              assert int(main_row[1]) == int(hard['mainVersionBefore']) == int(hard['mainVersionAfter']), (main_row, hard)
+              assert main_row[2] == main['revisedReason'], main_row
+
+              cur.execute('SELECT affairs_status, reason FROM t_cs_leave WHERE id=%s', (scope_id,))
+              scope_row = cur.fetchone()
+              print('[HARDEN-DB scope]', scope_row)
+              assert scope_row and scope_row[0] == 'REJECTED', scope_row
+              assert scope_row[1] == hard['scopeReason'], scope_row
+
+              cur.execute("SELECT action, detail FROM t_affairs_audit_trail WHERE biz_type='LEAVE' AND biz_id=%s ORDER BY id", (main_id,))
+              main_actions = cur.fetchall()
+              print('[HARDEN-AUDIT main]', main_actions)
+              assert main_actions and str(main_actions[-1][0]).upper() == 'CLOSED', main_actions
+
+              cur.execute("SELECT action, detail FROM t_affairs_audit_trail WHERE biz_type='LEAVE' AND biz_id=%s ORDER BY id", (scope_id,))
+              scope_actions = cur.fetchall()
+              print('[HARDEN-AUDIT scope]', scope_actions)
+              action_names = [str(x[0]).upper() for x in scope_actions]
+              assert any('APPLY' in x for x in action_names), action_names
+              assert any('REJECT' in x for x in action_names), action_names
+
+              cur.execute("SELECT action, detail FROM t_affairs_audit_trail WHERE action='EXPORT_REQUESTED' AND detail LIKE %s ORDER BY id", (f'%jobId={job_id}%',))
+              export_audit = cur.fetchall()
+              print('[HARDEN-AUDIT export]', export_audit)
+              assert export_audit, job_id
+          conn.close()
+
+          xlsx = Path('../e2e/student-affairs-leave-ledger.xlsx')
+          assert xlsx.exists() and xlsx.stat().st_size > 1000, xlsx
+          wb = load_workbook(xlsx, read_only=True, data_only=True)
+          ws = wb.active
+          watermark = [ws.cell(1, c).value for c in range(1, 4)]
+          print('[XLSX watermark]', watermark)
+          assert str(watermark[0] or '').startswith('导出人：'), watermark
+          assert 'E2E辅导员A' in str(watermark[0]), watermark
+          assert str(watermark[1] or '').startswith('租户：'), watermark
+          assert str(watermark[2] or '').startswith('导出时间：'), watermark
+          expected_headers = ['学号', '姓名', '班级', '请假类型', '天数', '开始时间', '结束时间', '应返校时间', '实际返校时间', '状态', '事由']
+          headers = [ws.cell(2, c).value for c in range(1, len(expected_headers) + 1)]
+          print('[XLSX headers]', headers)
+          assert headers == expected_headers, headers
+          rows = list(ws.iter_rows(min_row=3, max_col=len(expected_headers), values_only=True))
+          print('[XLSX rows]', rows)
+          assert len(rows) == int(hard['exportRowCount']), (len(rows), hard['exportRowCount'])
+          assert rows, rows
+          assert all(str(r[0]) == main['studentNo'] for r in rows), rows
+          reasons = {str(r[10]) for r in rows}
+          assert main['revisedReason'] in reasons, reasons
+          assert hard['scopeReason'] in reasons, reasons
+          statuses = {str(r[9]) for r in rows}
+          assert '已销假' in statuses, statuses
+          assert '已驳回' in statuses, statuses
+          wb.close()
+          print('[HARDEN-EVIDENCE]', json.dumps(hard, ensure_ascii=False))
+          PY
+
       - name: Reassert tested app source stayed immutable
         if: always()
         run: |
@@ -244,6 +380,8 @@ jobs:
             app/e2e/playwright-report/
             app/e2e/test-results/
             app/e2e/student-affairs-audit-evidence.json
+            app/e2e/student-affairs-leave-hardening-evidence.json
+            app/e2e/student-affairs-leave-ledger.xlsx
             app/e2e/runtime-logs/
           if-no-files-found: ignore
           retention-days: 7
