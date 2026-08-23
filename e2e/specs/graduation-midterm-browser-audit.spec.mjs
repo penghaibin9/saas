@@ -105,6 +105,10 @@ async function studentSubmitRectification(page, text) {
   await expect(step).toContainText(/待复核|已提交|整改/)
 }
 
+// 这是会真实写 MySQL 的有状态 Journey；失败后不能在同一外部 fixture 上自动重跑，
+// 否则第一次已提交的数据会污染第二次并制造假红灯。新的 workflow run 会得到全新 MySQL service。
+test.describe.configure({ retries: 0 })
+
 test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭环', () => {
   let fixture
 
@@ -121,9 +125,14 @@ test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭�
     await expect(page.getByRole('button', { name: '发起中期检查', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '发起中期检查', exact: true }).click()
     await expect(page.getByText('发起中期检查', { exact: true }).first()).toBeVisible()
-    await page.locator('select').first().selectOption('RECTIFY')
-    await page.getByRole('button', { name: '7 天后 23:59', exact: true }).click()
-    await page.locator('textarea').first().fill('E2E-AUDIT-20260823 中期进度偏慢，要求补齐异常场景、测试证据与阶段说明')
+
+    // 页面壳还有一个“选择毕设批次”的 <select>；必须把结论和意见严格限定在真实业务表单，
+    // 否则 Playwright 会误操作批次下拉并把 harness 错误伪装成业务失败。
+    const midtermForm = page.locator('form.ie-form')
+    await expect(midtermForm).toBeVisible()
+    await midtermForm.locator('select').selectOption('RECTIFY')
+    await midtermForm.getByRole('button', { name: '7 天后 23:59', exact: true }).click()
+    await midtermForm.locator('textarea').fill('E2E-AUDIT-20260823 中期进度偏慢，要求补齐异常场景、测试证据与阶段说明')
     const [checkResponse] = await Promise.all([
       page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith(`/graduation/gd-midterms/${fixture.gdStudentId}/check`)),
       page.getByRole('button', { name: '保存', exact: true }).click()
