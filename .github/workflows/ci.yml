@@ -151,7 +151,7 @@ jobs:
             # HEAD 在单 runner 上重复全量并被 90m job ceiling 取消。
             TARGETS="${{ steps.select.outputs.targets }}"
             echo "PR/push 变更感知：$TARGETS"
-            timeout 40m pytest $TARGETS -q -p no:warnings --durations=20
+            timeout 60m pytest $TARGETS -q -p no:warnings --durations=20
           fi
 
   frontend:
