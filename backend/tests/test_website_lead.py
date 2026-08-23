@@ -4,8 +4,10 @@ from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from app.api.v1 import notification as notification_api
+from app.core.tenant_context import resolve_tenant_code
 from app.services.notification import website_lead as lead_service
 
 
@@ -13,6 +15,32 @@ def _app():
     app = FastAPI()
     app.include_router(notification_api.router, prefix="/api/v1")
     return app
+
+
+def _request(path: str) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "https",
+            "path": path,
+            "raw_path": path.encode("utf-8"),
+            "query_string": b"",
+            "headers": [],
+            "client": ("127.0.0.1", 12345),
+            "server": ("hnyueke.com", 443),
+        }
+    )
+
+
+def test_public_website_notification_paths_are_tenant_neutral():
+    for path in (
+        "/api/v1/notification/website-lead",
+        "/api/v1/notification/website-wechat-signature",
+    ):
+        assert resolve_tenant_code(_request(path)) == ""
+        assert resolve_tenant_code(_request(f"{path}/")) == ""
 
 
 def test_website_lead_public_endpoint_forwards_expected_fields_without_db(monkeypatch):
