@@ -1,0 +1,354 @@
+name: Student Affairs strict discipline browser audit exact head
+
+on:
+  push:
+    branches:
+      - audit/student-affairs-browser-runner-20260823
+    paths:
+      - 'audit-tests/student-affairs-discipline-browser-audit.spec.mjs'
+      - '.github/workflows/student-affairs-discipline-browser-audit-exact-head.yml'
+  pull_request:
+    paths:
+      - 'audit-tests/student-affairs-discipline-browser-audit.spec.mjs'
+      - '.github/workflows/student-affairs-discipline-browser-audit-exact-head.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  discipline-browser-audit:
+    name: exact-head discipline journey / Chromium / MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: student-affairs-discipline-browser-audit
+      JWT_SECRET: student-affairs-discipline-browser-audit-only
+      JWT_SECRET_KEY: student-affairs-discipline-browser-audit-only
+      PYTHONPATH: .
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_TARGET_SHA: 2d9400edaf94a95348c7066a6acd9c645236f9bd
+
+    steps:
+      - name: Checkout audit runner only
+        uses: actions/checkout@v4
+        with:
+          ref: audit/student-affairs-browser-runner-20260823
+          path: runner
+          fetch-depth: 1
+
+      - name: Checkout immutable application exact head
+        uses: actions/checkout@v4
+        with:
+          ref: 2d9400edaf94a95348c7066a6acd9c645236f9bd
+          path: app
+          fetch-depth: 0
+
+      - name: Assert tested application exact head
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git -C app rev-parse HEAD)"
+          echo "tested_app_head=$ACTUAL"
+          test "$ACTUAL" = "$E2E_TARGET_SHA"
+          test -z "$(git -C app status --porcelain)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: app/backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            app/frontend/package-lock.json
+            app/student-portal/package-lock.json
+
+      - name: Install backend, run discipline regressions and migrate isolated MySQL
+        working-directory: app/backend
+        run: |
+          pip install -r requirements.txt
+          pytest -q tests/test_affairs_discipline_appeal.py tests/test_affairs_appeal_result_message_events.py tests/test_auth_shared_nat_login_rate_guard.py
+          alembic upgrade head
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Run frontend revised-discipline contract
+        working-directory: app/frontend
+        run: node --test tests/studentAffairs.disciplineAppealRevision.contract.test.mjs
+
+      - name: Start real backend
+        run: |
+          mkdir -p app/e2e/runtime-logs
+          cd app/backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Bootstrap canonical Student Affairs identities and counselor relations
+        working-directory: app/backend
+        run: |
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+          python - <<'PY'
+          from app.services.identity_import_file_service import build_teacher_template
+          from scripts.e2e_bootstrap_graduation_accounts_ci import _canonical_import, _workbook_with_rows
+          import scripts.e2e_bootstrap_affairs_counselor_ci as ci
+          from scripts.e2e_bootstrap_student_affairs_accounts import (
+              CLASS_A, CLASS_B, COLLEGE, _req, ensure_counselor_assignment,
+              ensure_org, list_users, login_admin,
+          )
+
+          token = login_admin()
+          org = ensure_org(token)
+          assert CLASS_A in org.get('classIds', {}) and CLASS_B in org.get('classIds', {}), org
+          rows = [
+              ['e2e_sa_admin', 'E2E学工处管理员', '学工处', '学工处管理员', 'STUDENT_AFFAIRS_ADMIN', '', ''],
+              ['e2e_college_admin', 'E2E学院管理员', COLLEGE, '学院管理员', 'COLLEGE_ADMIN', 'COLLEGE', COLLEGE],
+              ['e2e_counselor_a', 'E2E辅导员A', COLLEGE, '辅导员', 'COUNSELOR', 'CLASS', CLASS_A],
+              ['e2e_counselor_b', 'E2E辅导员B', COLLEGE, '辅导员', 'COUNSELOR', 'CLASS', CLASS_B],
+          ]
+          _canonical_import(
+              token, kind='teachers',
+              content=_workbook_with_rows(build_teacher_template(), rows),
+              idempotency_namespace='e2e-affairs-discipline-roles',
+          )
+          for login_name in ('e2e_sa_admin', 'e2e_college_admin', 'e2e_counselor_a', 'e2e_counselor_b'):
+              ci.LOGIN_NAME = login_name
+              ci.normalize_password(token)
+
+          result = ensure_counselor_assignment(token, int(org['classIds'][CLASS_A]))
+          assert result.get('configured') is True, result
+          users = list_users(token)
+          counselor_b = users.get('e2e_counselor_b')
+          assert counselor_b, users.keys()
+          class_b_id = int(org['classIds'][CLASS_B])
+          listed = _req('GET', '/student-affairs/counselor-assignments', token=token, params={'classId': class_b_id, 'pageSize': 100})
+          items = ((listed.get('data') or {}).get('items') or [])
+          active = next((x for x in items if x.get('status') == 'ACTIVE' and x.get('dutyType') == 'PRIMARY' and int(x.get('userId') or 0) == int(counselor_b['id'])), None)
+          if not active:
+              created = _req('POST', '/student-affairs/counselor-assignments', token=token, body={
+                  'classId': class_b_id, 'userId': int(counselor_b['id']), 'dutyType': 'PRIMARY',
+                  'reason': 'E2E严格验收：处分同租户错误辅导员攻击基线',
+              })
+              assert created.get('code') == 0, created
+          PY
+
+      - name: Start real staff PC and student PC
+        run: |
+          cd app/frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          cd ../student-portal
+          npm ci
+          VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+
+      - name: Wait for real browser applications
+        run: |
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
+            ok=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ok" ]; then
+              echo "Application not ready: $url"
+              cat app/e2e/runtime-logs/*.log
+              exit 1
+            fi
+          done
+
+      - name: Install Chromium and inject strict discipline spec outside application commit
+        run: |
+          cp runner/audit-tests/student-affairs-discipline-browser-audit.spec.mjs app/e2e/specs/student-affairs-discipline-browser-audit.spec.mjs
+          cd app/e2e
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run strict Browser First discipline journey
+        working-directory: app/e2e
+        run: npx playwright test specs/student-affairs-discipline-browser-audit.spec.mjs
+
+      - name: Verify discipline MySQL projection, decision versions, appeal, removal, messages and audit
+        working-directory: app/backend
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pymysql
+
+          e = json.loads(Path('../e2e/student-affairs-discipline-audit-evidence.json').read_text(encoding='utf-8'))
+          case_id = int(e['caseId'])
+          appeal_id = int(e['appealId']) if str(e.get('appealId') or '').isdigit() else 0
+          findings = {'caseId': case_id, 'appealId': appeal_id}
+          conn = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', database='student_lifecycle_e2e', charset='utf8mb4')
+          with conn.cursor() as cur:
+              cur.execute('SELECT student_id,disc_type,reason,doc_no,status,effective_at,removed_at,cs_discipline_id FROM t_affairs_discipline_case WHERE id=%s', (case_id,))
+              case = cur.fetchone()
+              print('[DISC-DB case]', case)
+              assert case, case_id
+              student_id = int(case[0])
+              assert case[1] == 'SERIOUS_WARNING', case
+              assert case[2] == e['revisedReason'], (case[2], e['revisedReason'])
+              assert case[3] == e['revisedDocNo'], (case[3], e['revisedDocNo'])
+              assert case[4] == 'REMOVED', case
+              assert case[5] is not None and case[6] is not None and case[7] is not None, case
+
+              cur.execute('SELECT id,disc_type,reason,doc_no,status,record_status,revoke_date,revoke_reason FROM t_cs_discipline WHERE source_case_id=%s AND is_deleted=0 ORDER BY id', (case_id,))
+              projections = cur.fetchall()
+              print('[DISC-DB projection]', projections)
+              assert len(projections) == 1, projections
+              p = projections[0]
+              assert p[1] == 'SERIOUS_WARNING' and p[2] == e['revisedReason'] and p[3] == e['revisedDocNo'], p
+              assert p[5] == 'REVOKED' and p[6] is not None, p
+              assert e['removeReason'] in str(p[7] or ''), p
+
+              cur.execute('SELECT id,version_no,decision_kind,previous_version_id,disc_type,reason,doc_no,source_type,source_id FROM t_affairs_discipline_decision_version WHERE case_id=%s AND is_deleted=0 ORDER BY version_no', (case_id,))
+              versions = cur.fetchall()
+              print('[DISC-DB decision versions]', versions)
+              assert len(versions) == 2, versions
+              assert versions[0][1] == 1 and versions[0][2] == 'ORIGINAL' and versions[0][4] == 'WARNING', versions
+              assert versions[1][1] == 2 and versions[1][2] == 'REVISED' and versions[1][4] == 'SERIOUS_WARNING', versions
+              assert int(versions[1][3]) == int(versions[0][0]), versions
+              assert versions[1][5] == e['revisedReason'] and versions[1][6] == e['revisedDocNo'], versions
+              assert versions[1][7] == 'APPEAL', versions
+              findings['decisionVersions'] = [row[2] for row in versions]
+
+              cur.execute('SELECT id,status,result,reason,review_opinion,reviewed_at FROM t_affairs_discipline_appeal WHERE case_id=%s AND is_deleted=0 ORDER BY id', (case_id,))
+              appeals = cur.fetchall()
+              print('[DISC-DB appeals]', appeals)
+              assert len(appeals) == 1, appeals
+              assert appeals[0][1] == 'REVISED' and appeals[0][2] == 'REVISED', appeals
+              assert appeals[0][3] == e['appealReason'] and appeals[0][4] == e['reviewOpinion'] and appeals[0][5] is not None, appeals
+              if appeal_id: assert int(appeals[0][0]) == appeal_id, appeals
+              else: appeal_id = int(appeals[0][0])
+
+              cur.execute('SELECT id,status,current_node,apply_reason FROM t_affairs_discipline_remove_apply WHERE case_id=%s AND is_deleted=0 ORDER BY id', (case_id,))
+              removals = cur.fetchall()
+              print('[DISC-DB removal]', removals)
+              assert len(removals) == 1 and removals[0][1] == 'APPROVED', removals
+              assert removals[0][3] == e['removeReason'], removals
+
+              cur.execute("SELECT to_stage,reason FROM t_student_stage_event WHERE student_id=%s AND source_module='student-affairs' AND is_deleted=0 ORDER BY id", (student_id,))
+              stages = cur.fetchall()
+              print('[DISC-DB stages]', stages)
+              stage_codes = [str(row[0]) for row in stages]
+              for expected in ('DISCIPLINE_EFFECTIVE','DISCIPLINE_REVISED','DISCIPLINE_REMOVED'):
+                  assert expected in stage_codes, (expected, stage_codes)
+              findings['stageEvents'] = stage_codes
+
+              cur.execute("SELECT action,operator,role_name,detail FROM t_affairs_audit_trail WHERE biz_type='DISCIPLINE' AND biz_id=%s ORDER BY id", (case_id,))
+              trail = cur.fetchall()
+              print('[DISC-AUDIT trail]')
+              for row in trail: print(row)
+              actions = [str(row[0]).upper() for row in trail]
+              for expected in ('REGISTER','SUBMIT','EFFECTIVE','DISCIPLINE_DELIVER','DISCIPLINE_APPEAL_SUBMIT','DISCIPLINE_APPEAL_REVIEW','REMOVE_SUBMIT','REMOVED'):
+                  assert expected in actions, (expected, actions)
+              assert actions.count('REVIEW_STEP') >= 1, actions
+              assert actions.count('REMOVE_STEP') >= 2, actions
+              findings['auditActions'] = actions
+
+              cur.execute("SELECT event_code,status,campaign_id FROM t_message_event_outbox WHERE source_biz_type='discipline_appeal' AND source_biz_id=%s AND event_code='DISCIPLINE_APPEAL.RESULT' AND is_deleted=0 ORDER BY id", (appeal_id,))
+              outbox = cur.fetchall()
+              print('[DISC-DB appeal outbox]', outbox)
+              assert len(outbox) == 1 and outbox[0][1] == 'SUCCEEDED' and outbox[0][2] is not None, outbox
+              campaign_id = int(outbox[0][2])
+              cur.execute('SELECT status,source_biz_type,source_biz_id,delivered_count FROM t_message_campaign WHERE id=%s', (campaign_id,))
+              campaign = cur.fetchone()
+              print('[DISC-DB appeal campaign]', campaign)
+              assert campaign and campaign[0] == 'PUBLISHED' and int(campaign[2]) == appeal_id and int(campaign[3] or 0) >= 1, campaign
+              cur.execute('SELECT COUNT(*) FROM t_unified_message WHERE campaign_id=%s AND is_deleted=0 AND delivery_status=\'DELIVERED\'', (campaign_id,))
+              assert int(cur.fetchone()[0]) >= 1
+
+              cur.execute("SELECT todo_type,status FROM t_unified_todo WHERE source_module='student-affairs' AND source_biz_id=%s AND is_deleted=0 ORDER BY id", (case_id,))
+              todos = cur.fetchall()
+              print('[DISC-DB todos]', todos)
+              assert todos and all(str(row[1]).upper() == 'DONE' for row in todos), todos
+          conn.close()
+          Path('../e2e/student-affairs-discipline-db-findings.json').write_text(json.dumps(findings, ensure_ascii=False, indent=2), encoding='utf-8')
+          print('[DISC-FINDINGS]', json.dumps(findings, ensure_ascii=False))
+          print('[DISC-EVIDENCE]', json.dumps(e, ensure_ascii=False))
+          PY
+
+      - name: Assert discipline message and runtime chain did not degrade silently
+        run: |
+          set -euo pipefail
+          ! grep -E 'AFFAIRS_APPEAL_SYNC_FAILED|student-affairs appeal sync failed|RATE_LIMITED|Traceback' app/e2e/runtime-logs/backend.log
+
+      - name: Record production dependency audit without mutating locks
+        if: always()
+        run: |
+          mkdir -p app/e2e/dependency-audit
+          (cd app/frontend && npm audit --omit=dev --json > ../e2e/dependency-audit/frontend-production.json) || true
+          (cd app/student-portal && npm audit --omit=dev --json > ../e2e/dependency-audit/student-portal-production.json) || true
+
+      - name: Reassert tested app source stayed immutable
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
+          git -C app status --porcelain
+          test -z "$(git -C app status --porcelain --untracked-files=no)"
+
+      - name: Upload strict discipline audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-strict-discipline-audit-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            app/e2e/student-affairs-discipline-audit-evidence.json
+            app/e2e/student-affairs-discipline-db-findings.json
+            app/e2e/test-results/
+            app/e2e/playwright-report/
+            app/e2e/runtime-logs/
+            app/e2e/dependency-audit/
+          retention-days: 14
