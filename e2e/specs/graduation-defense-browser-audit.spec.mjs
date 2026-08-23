@@ -250,7 +250,7 @@ test.describe.serial('毕业设计答辩 Browser First · 建组发布/专家评
     expect(second.ok(), `second defense HTTP ${second.status()}`).toBeTruthy()
     const secondBody = await second.json()
     expect(secondBody.code, JSON.stringify(secondBody)).toBe(0)
-    expect(Number(secondBody.data?.roundNo)).toBe(2)
+    expect(Number(secondBody.data?.newRound)).toBe(2)
 
     await enterOwnScore(page, fixture, accounts.expertA, people.expertA, 94, 2, 66)
     await enterOwnScore(page, fixture, accounts.expertB, people.expertB, 92, 2, 67)
