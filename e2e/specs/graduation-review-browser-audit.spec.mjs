@@ -63,7 +63,18 @@ async function openReviewWorkspace(page, account, fixture) {
   await page.goto(url.toString())
   await dismissGuide(page)
   await expect(page.getByRole('heading', { name: '答辩与成绩', exact: true })).toBeVisible()
-  await expect(page.locator('.gp-context')).toContainText(fixture.studentNo)
+
+  const context = page.locator('.gp-context')
+  if (!(await context.isVisible().catch(() => false))) {
+    const search = page.getByPlaceholder('搜索学生姓名/学号')
+    await expect(search).toBeVisible()
+    await search.fill(fixture.studentNo)
+    const student = page.locator('.gp-stu-item').filter({ hasText: fixture.studentNo }).first()
+    await expect(student).toBeVisible()
+    await student.click()
+  }
+
+  await expect(context).toContainText(fixture.studentNo)
   await expect(page.getByRole('button', { name: '教师评阅', exact: true })).toBeVisible()
 }
 
