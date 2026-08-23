@@ -222,7 +222,8 @@ test.describe.serial('Student Affairs strict browser audit · aid / difficulty r
       const resubmitted = await resubmitPromise
       expect(resubmitted.ok(), `aid resubmit HTTP ${resubmitted.status()}`).toBeTruthy()
       expect((await jsonBody(resubmitted)).code).toBe(0)
-      await expect(record).toContainText('班级评议', { timeout: 15_000 })
+      const resubmittedRecord = page.locator('article.record').filter({ hasText: '班级评议' }).first()
+      await expect(resubmittedRecord).toBeVisible({ timeout: 15_000 })
     })
 
     await test.step('assigned counselor completes class review and counselor initial review via real workbench', async () => {
