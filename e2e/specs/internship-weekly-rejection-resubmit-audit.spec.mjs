@@ -155,7 +155,7 @@ test.describe('岗位实习审计：周报真实退回—反馈—版本化重�
     const detail = await jsonBody(await detailPromise, '导师读取整改周报')
     expect(detail.data?.status).toBe('PENDING_REVIEW')
     expect(detail.data?.content?.work).toBe(finalWork)
-    expect(Number(detail.data?.reportVersion || 0)).toBeGreaterThanOrEqual(2)
+    expect(Number.parseInt(String(detail.data?.reportVersion || '0').replace(/^v/i, ''), 10)).toBeGreaterThanOrEqual(2)
     await expect(page.getByText(finalWork, { exact: false })).toBeVisible()
 
     const historyToggle = page.getByRole('button', { name: '查看该版正文' }).first()
