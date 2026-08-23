@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pymysql
 
-PRODUCT_EXACT_HEAD = "1c69336ea0728c5c6713c0c85b7275b06fca9ae1"
+PRODUCT_EXACT_HEAD = "63195a6dc9d25fa3805563910fb699ec163b552a"
 
 
 def cv(value):
@@ -29,23 +29,24 @@ conn = pymysql.connect(
 )
 with conn.cursor() as cur:
     cur.execute("SELECT * FROM t_gd_review ORDER BY id")
-    reviews = cur.fetchall()
+    reviews = list(cur.fetchall())
     cur.execute(
         "SELECT id,tenant_id,biz_type,biz_id,action,operator,role_name,detail,"
         "before_val,after_val,occurred_at,request_id,request_path,role_code,permission_code "
         "FROM t_gd_audit_trail WHERE biz_type='REVIEW' ORDER BY id"
     )
-    audits = cur.fetchall()
+    audits = list(cur.fetchall())
     cur.execute(
         "SELECT id,tenant_id,gd_student_id,final_type,version,status,plagiarism_rate,plagiarism_status "
         "FROM t_gd_final WHERE final_type='定稿' ORDER BY id"
     )
-    finals = cur.fetchall()
+    finals = list(cur.fetchall())
     cur.execute(
         "SELECT id,tenant_id,gd_student_id,gd_final_id,status,rate,threshold,over_threshold,recheck_of_id "
         "FROM t_gd_plagiarism WHERE status='DONE' ORDER BY id"
     )
-    plagiarism = cur.fetchall()
+    plagiarism = list(cur.fetchall())
+conn.close()
 
 for row in reviews + audits + finals + plagiarism:
     for key, value in list(row.items()):
