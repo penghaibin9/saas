@@ -5,8 +5,11 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/graduation-defense-browser-audit-pr.yml'
+      - 'e2e/specs/graduation-final-browser-audit.spec.mjs'
+      - 'e2e/specs/graduation-review-browser-audit.spec.mjs'
       - 'e2e/specs/graduation-defense-browser-audit.spec.mjs'
       - 'e2e/specs/graduation-grade-browser-audit.spec.mjs'
+      - 'e2e/scripts/graduation-review-db-audit.py'
       - 'e2e/scripts/graduation-defense-db-audit.py'
       - 'e2e/scripts/graduation-grade-db-audit.py'
       - 'e2e/scripts/graduation-specialist-accounts.py'
@@ -66,13 +69,13 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_EXPECTED_SHA: 63195a6dc9d25fa3805563910fb699ec163b552a
+      E2E_EXPECTED_SHA: 6c9eecd690eb47feac355522518eb9bd1763b5aa
 
     steps:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: 63195a6dc9d25fa3805563910fb699ec163b552a
+          ref: 6c9eecd690eb47feac355522518eb9bd1763b5aa
           fetch-depth: 0
 
       - name: Assert exact product HEAD
@@ -80,7 +83,7 @@ jobs:
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           echo "PRODUCT_EXACT_HEAD=$actual"
-          test "$actual" = "63195a6dc9d25fa3805563910fb699ec163b552a"
+          test "$actual" = "6c9eecd690eb47feac355522518eb9bd1763b5aa"
 
       - name: Checkout audit harness only
         uses: actions/checkout@v4
@@ -111,7 +114,8 @@ jobs:
           cp audit-harness/e2e/scripts/graduation-grade-db-audit.py e2e/scripts/
           cp audit-harness/e2e/scripts/graduation-specialist-accounts.py e2e/scripts/
           rm -rf audit-harness
-          test "$(git rev-parse HEAD)" = "63195a6dc9d25fa3805563910fb699ec163b552a"
+          grep -rl '63195a6dc9d25fa3805563910fb699ec163b552a' e2e/scripts | xargs -r sed -i 's/63195a6dc9d25fa3805563910fb699ec163b552a/6c9eecd690eb47feac355522518eb9bd1763b5aa/g'
+          test "$(git rev-parse HEAD)" = "6c9eecd690eb47feac355522518eb9bd1763b5aa"
           bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
           test -z "$bad"
           git status --short
@@ -245,14 +249,24 @@ jobs:
         id: finalpw
         continue-on-error: true
         working-directory: e2e
-        run: npx playwright test specs/graduation-final-browser-audit.spec.mjs
+        run: |
+          set +e
+          npx playwright test specs/graduation-final-browser-audit.spec.mjs
+          rc=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/graduation-final-prerequisite-junit.xml
+          exit $rc
 
       - name: Real browser independent review prerequisite
         id: reviewpw
         if: always()
         continue-on-error: true
         working-directory: e2e
-        run: npx playwright test specs/graduation-review-browser-audit.spec.mjs
+        run: |
+          set +e
+          npx playwright test specs/graduation-review-browser-audit.spec.mjs
+          rc=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/graduation-review-junit.xml
+          exit $rc
 
       - name: Direct MySQL review prerequisite verification
         id: reviewdb
@@ -266,7 +280,12 @@ jobs:
         if: always()
         continue-on-error: true
         working-directory: e2e
-        run: npx playwright test specs/graduation-defense-browser-audit.spec.mjs
+        run: |
+          set +e
+          npx playwright test specs/graduation-defense-browser-audit.spec.mjs
+          rc=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/graduation-defense-junit.xml
+          exit $rc
 
       - name: Direct MySQL defense and audit verification
         id: defensedb
@@ -280,7 +299,12 @@ jobs:
         if: always()
         continue-on-error: true
         working-directory: e2e
-        run: npx playwright test specs/graduation-grade-browser-audit.spec.mjs
+        run: |
+          set +e
+          npx playwright test specs/graduation-grade-browser-audit.spec.mjs
+          rc=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/graduation-grade-junit.xml
+          exit $rc
 
       - name: Direct MySQL grade and appeal audit verification
         id: gradedb
@@ -299,7 +323,9 @@ jobs:
           DEFENSE_DB: ${{ steps.defensedb.outcome }}
           GRADE_PW: ${{ steps.gradepw.outcome }}
           GRADE_DB: ${{ steps.gradedb.outcome }}
+        working-directory: e2e
         run: |
+          set -euo pipefail
           echo "final=$FINAL_PW review=$REVIEW_PW review_db=$REVIEW_DB defense=$DEFENSE_PW defense_db=$DEFENSE_DB grade=$GRADE_PW grade_db=$GRADE_DB"
           test "$FINAL_PW" = success
           test "$REVIEW_PW" = success
@@ -308,6 +334,27 @@ jobs:
           test "$DEFENSE_DB" = success
           test "$GRADE_PW" = success
           test "$GRADE_DB" = success
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          files = [
+              'graduation-final-prerequisite-junit.xml',
+              'graduation-review-junit.xml',
+              'graduation-defense-junit.xml',
+              'graduation-grade-junit.xml',
+          ]
+          for name in files:
+              path = Path('test-results') / name
+              assert path.exists(), f'missing junit: {name}'
+              root = ET.parse(path).getroot()
+              tests = int(root.attrib.get('tests', 0))
+              failures = int(root.attrib.get('failures', 0))
+              errors = int(root.attrib.get('errors', 0))
+              skipped = int(root.attrib.get('skipped', 0))
+              print(name, {'tests': tests, 'failures': failures, 'errors': errors, 'skipped': skipped})
+              assert tests > 0, name
+              assert failures == 0 and errors == 0 and skipped == 0, name
+          PY
 
       - name: Upload defense and grade audit evidence
         if: always()
