@@ -1,0 +1,250 @@
+name: Audit Academic C Grade PR Runner 20260823
+
+on:
+  pull_request:
+    branches:
+      - audit/grade-runner-base-20260823
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-academic-c-grade-pr-runner-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  grade-browser:
+    name: exact repair real staff + student browser / MySQL truth seal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: academic_c_grade_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha }}
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_c_grade_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_c_grade_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: academic_c_grade_e2e
+      REDIS_URL: redis://127.0.0.1:6379/13
+      REDIS_KEY_PREFIX: academic-c-grade-browser
+      REDIS_CONNECT_TIMEOUT: '2'
+      REDIS_SOCKET_TIMEOUT: '2'
+      JWT_SECRET: academic-c-grade-browser-only-not-production
+      JWT_SECRET_KEY: academic-c-grade-browser-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://localhost:8000/api/v1
+      E2E_STAFF_BASE_URL: http://localhost:5173
+      E2E_STUDENT_BASE_URL: http://localhost:5199/portal
+      E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+      SCHOOL_IAM_AUTHORITY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+
+      - name: Assert exact repair head and audited ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git merge-base --is-ancestor 1c69336ea0728c5c6713c0c85b7275b06fca9ae1 "$TARGET_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+            e2e/package-lock.json
+
+      - name: Fast grade browser preflight
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            backend/app/modules/academic_affairs/services/academic_affairs_grade_audit_evidence_guard.py \
+            backend/app/modules/academic_affairs/services/academic_affairs_grade_audit_scope_guard.py \
+            backend/scripts/e2e_bootstrap_academic_grade_accounts.py \
+            backend/scripts/e2e_seed_academic_c_grade_browser.py \
+            backend/scripts/e2e_assert_academic_c_grade_browser.py
+          node --check e2e/specs/academic-c-grade-full-browser.spec.mjs
+          python - <<'PY'
+          from pathlib import Path
+          s = Path('backend/app/modules/academic_affairs/services/academic_affairs_grade_audit_scope_guard.py').read_text(encoding='utf-8')
+          assert 'academic_affairs_grade_audit_evidence_guard.install()' in s
+          g = Path('backend/app/modules/academic_affairs/services/academic_affairs_grade_audit_evidence_guard.py').read_text(encoding='utf-8')
+          for action in ('SUBMIT','COLLEGE_RETURN','COLLEGE_APPROVE','PUBLISH','ACADEMIC_RETURN','ARCHIVE','CHANGE_APPLY','CHANGE_STEP','CHANGE_APPROVE','CHANGE_REJECT'):
+              assert f'"{action}"' in g, action
+          PY
+
+      - name: Install backend and migrate isolated MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+
+      - name: Replay production School IAM Authority
+        working-directory: backend
+        run: python scripts/bootstrap_control_plane_school_iam_authority.py
+
+      - name: Seed isolated tenant
+        working-directory: backend
+        run: python scripts/e2e_seed_playwright_tenants.py
+
+      - name: Seed real School IAM runtime fixture
+        working-directory: backend
+        run: python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start real backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend-grade.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend-grade.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend-grade.log
+          exit 1
+
+      - name: Bootstrap real academic-affairs grade identities
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_academic_grade_accounts.py
+          test -s tmp/e2e_academic_affairs_credentials.local.json
+
+      - name: Seed only authoritative grade prerequisites
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_academic_c_grade_browser.py
+          test -s ../e2e/academic-c-grade-browser-fixture.json
+          python - <<'PY'
+          import json
+          p = json.load(open('../e2e/academic-c-grade-browser-fixture.json', encoding='utf-8'))
+          assert p['teachingTaskId'] and p['teachingClassId'] and p['courseName']
+          print(p)
+          PY
+
+      - name: Install, production-build and start staff PC same-site
+        env:
+          VITE_USE_MOCK: 'false'
+          VITE_API_BASE_URL: /api/v1
+          VITE_PROXY_TARGET: http://127.0.0.1:8000
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci --no-audit --no-fund
+          npm run build
+          nohup npm run dev -- --host 0.0.0.0 --port 5173 > ../e2e/runtime-logs/frontend-grade.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend-grade.pid
+
+      - name: Install, production-build and start Student PC same-site
+        env:
+          VITE_BASE: /portal/
+          VITE_API_BASE_URL: /
+          VITE_PROXY_TARGET: http://127.0.0.1:8000
+        run: |
+          set -euo pipefail
+          cd student-portal
+          npm ci --no-audit --no-fund
+          npm run build
+          nohup npm run dev -- --host 0.0.0.0 --port 5199 > ../e2e/runtime-logs/student-grade.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/student-grade.pid
+
+      - name: Wait for both browser surfaces
+        run: |
+          set -euo pipefail
+          for url in http://localhost:5173/login http://localhost:5199/portal/login; do
+            ok=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ok" ]; then
+              echo "Surface not ready: $url"
+              cat e2e/runtime-logs/*.log
+              exit 1
+            fi
+          done
+
+      - name: Install Playwright Chromium
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Execute complete grade lifecycle through real browser buttons
+        working-directory: e2e
+        run: npx playwright test specs/academic-c-grade-full-browser.spec.mjs --workers=1 --retries=0 --reporter=line
+
+      - name: Direct MySQL projection todo and audit seal
+        working-directory: backend
+        run: python scripts/e2e_assert_academic_c_grade_browser.py
+
+      - name: Upload grade browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-c-grade-browser-evidence-${{ env.TARGET_SHA }}
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+            e2e/academic-c-grade-browser-fixture.json
+            backend/tmp/e2e_academic_c_grade_browser_db_evidence.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload grade runtime logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-c-grade-browser-logs-${{ env.TARGET_SHA }}
+          path: e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
