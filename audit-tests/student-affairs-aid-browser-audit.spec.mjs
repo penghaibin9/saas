@@ -111,7 +111,7 @@ test.describe.serial('Student Affairs strict browser audit · aid / difficulty r
       await expect(page.getByText('认定批次管理', { exact: true }).first()).toBeVisible()
       await page.getByRole('button', { name: '建批次', exact: true }).click()
       await page.getByPlaceholder('如：2025-2026 学年家庭经济困难认定').fill(batchName)
-      await page.getByPlaceholder('如：2025-2026').fill(schoolYear)
+      await page.getByPlaceholder('如：2025-2026', { exact: true }).fill(schoolYear)
       await page.locator('input[type="number"]').first().fill('1')
       const publish = page.getByText('立即发布（开放受理）', { exact: true }).locator('..').locator('input[type="checkbox"]')
       if (!(await publish.isChecked())) await publish.check()
