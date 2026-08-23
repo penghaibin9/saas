@@ -56,6 +56,7 @@ test.describe('岗位实习审计：请假真实 XLSX 导出与统计一致性',
     const login = new StaffLoginPage(page, config.staffBaseUrl)
     await login.login(config.mentor)
     await login.switchRole(/实习指导教师|实习导师|INTERN_MENTOR/)
+    await expect.poll(() => login.currentRoleText()).toMatch(/实习指导教师|实习导师|INTERN_MENTOR/)
     const staff = new StaffInternshipLeavePage(page, config.staffBaseUrl, fixture)
     await staff.openPending()
     await staff.selectLeave(rejectedLeaveId)
@@ -90,6 +91,7 @@ test.describe('岗位实习审计：请假真实 XLSX 导出与统计一致性',
     const login = new StaffLoginPage(page, config.staffBaseUrl)
     await login.login(config.mentor)
     await login.switchRole(/实习指导教师|实习导师|INTERN_MENTOR/)
+    await expect.poll(() => login.currentRoleText()).toMatch(/实习指导教师|实习导师|INTERN_MENTOR/)
     const staff = new StaffInternshipLeavePage(page, config.staffBaseUrl, fixture)
     await staff.approve({ leaveId: returnedLeaveId, reason: secondReason })
 
