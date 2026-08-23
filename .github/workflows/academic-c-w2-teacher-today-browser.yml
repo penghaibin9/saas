@@ -4,11 +4,13 @@ on:
   push:
     branches:
       - agent/academic-c-teaching-execution
+      - fix/academic-e2e-school-iam-bootstrap-20260823
     paths:
       - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_execution_state_service.py'
       - 'backend/app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py'
       - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py'
+      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py'
       - 'backend/scripts/e2e_seed_academic_c_teacher_today.py'
       - 'miniapp/src/pages/teacher/academic-affairs/index.vue'
       - 'miniapp/src/pages/teacher/academic-affairs/attendance.vue'
@@ -18,13 +20,85 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: academic-c-w2-browser-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  patch-grade-audit:
+    if: github.ref == 'refs/heads/fix/academic-e2e-school-iam-bootstrap-20260823'
+    name: patch grade high-risk audit evidence atomically
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch only grade service when needed
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py')
+          text = path.read_text(encoding='utf-8')
+          if 'before_val=_snapshot(before_val)' in text and 'after_val=_snapshot(after_val)' in text:
+              print('grade audit evidence already patched')
+              raise SystemExit(0)
+
+          def once(old, new):
+              global text
+              n = text.count(old)
+              if n != 1:
+                  raise SystemExit(f'expected exactly one match, got {n}: {old[:120]!r}')
+              text = text.replace(old, new, 1)
+
+          once('from datetime import datetime\n\nfrom sqlalchemy import and_, func, select\n',
+               'from datetime import datetime\nimport json\n\nfrom sqlalchemy import and_, func, select\n')
+          once(
+              '''def _audit(db, biz_type, biz_id, action, detail=""):\n    from app.models import AffairsAuditTrail\n    n, r, uid = _op()\n    db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=int(biz_id) if biz_id else None,\n                             action=action, operator=n or uid, role_name=r, detail=detail,\n                             occurred_at=datetime.utcnow()))\n''',
+              '''def _audit(db, biz_type, biz_id, action, detail="", *, before_val=None, after_val=None):\n    from app.models import AffairsAuditTrail\n    n, r, uid = _op()\n\n    def _snapshot(value):\n        if value is None or isinstance(value, str):\n            return value\n        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)\n\n    db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=int(biz_id) if biz_id else None,\n                             action=action, operator=n or uid, role_name=r, detail=detail,\n                             before_val=_snapshot(before_val), after_val=_snapshot(after_val),\n                             occurred_at=datetime.utcnow()))\n''')
+          once(
+              '''        # CAS：仅 INPUTTING/RETURNED 可抢占为 SUBMITTED，防并发双提交产生孤儿工作流\n        claim = db.query(AaGradeTask).filter(\n''',
+              '''        # CAS：仅 INPUTTING/RETURNED 可抢占为 SUBMITTED，防并发双提交产生孤儿工作流\n        before_status = t.status\n        claim = db.query(AaGradeTask).filter(\n''')
+          once(
+              '''        _todo_done_grade_entry(db, t.id)\n        _audit(db, "AA_GRADE_TASK", t.id, "SUBMIT")\n''',
+              '''        _todo_done_grade_entry(db, t.id)\n        _audit(\n            db, "AA_GRADE_TASK", t.id, "SUBMIT",\n            before_val={"status": before_status, "workflowInstanceId": None},\n            after_val={"status": "SUBMITTED", "workflowInstanceId": str(inst.id),\n                       "submittedAt": t.submitted_at},\n        )\n''')
+          once(
+              '''            t.status, t.return_reason = "RETURNED", reason.strip()\n            _push_grade_entry_todo(db, t)\n            _audit(db, "AA_GRADE_TASK", t.id, "COLLEGE_RETURN", reason.strip())\n''',
+              '''            t.status, t.return_reason = "RETURNED", reason.strip()\n            _push_grade_entry_todo(db, t)\n            _audit(\n                db, "AA_GRADE_TASK", t.id, "COLLEGE_RETURN", reason.strip(),\n                before_val={"status": "SUBMITTED", "returnReason": None},\n                after_val={"status": "RETURNED", "returnReason": reason.strip(),\n                           "reviewerId": int(uid) if uid.isdigit() else None},\n            )\n''')
+          once(
+              '''            t.college_reviewed_at = datetime.utcnow()\n            t.college_reviewer_id = int(uid) if uid.isdigit() else None\n            t.status = "ACADEMIC_REVIEW"\n            _audit(db, "AA_GRADE_TASK", t.id, "COLLEGE_APPROVE")\n''',
+              '''            t.college_reviewed_at = datetime.utcnow()\n            t.college_reviewer_id = int(uid) if uid.isdigit() else None\n            t.status = "ACADEMIC_REVIEW"\n            _audit(\n                db, "AA_GRADE_TASK", t.id, "COLLEGE_APPROVE",\n                before_val={"status": "SUBMITTED", "collegeReviewerId": None},\n                after_val={"status": "ACADEMIC_REVIEW",\n                           "collegeReviewerId": t.college_reviewer_id,\n                           "collegeReviewedAt": t.college_reviewed_at},\n            )\n''')
+          once(
+              '''        t.academic_reviewed_at = datetime.utcnow()\n        n, r2, uid = _op()\n        t.academic_reviewer_id = int(uid) if uid.isdigit() else None\n        _audit(db, "AA_GRADE_TASK", t.id, "PUBLISH", f"projected={projected},fail={fail_count}")\n''',
+              '''        t.academic_reviewed_at = datetime.utcnow()\n        n, r2, uid = _op()\n        t.academic_reviewer_id = int(uid) if uid.isdigit() else None\n        _audit(\n            db, "AA_GRADE_TASK", t.id, "PUBLISH", f"projected={projected},fail={fail_count}",\n            before_val={"status": "ACADEMIC_REVIEW", "publishAt": None,\n                        "academicReviewerId": None},\n            after_val={"status": "PUBLISHED", "publishAt": t.publish_at,\n                       "academicReviewedAt": t.academic_reviewed_at,\n                       "academicReviewerId": t.academic_reviewer_id,\n                       "projected": projected, "failCount": fail_count},\n        )\n''')
+          once(
+              '''        t.status, t.return_reason = "RETURNED", reason.strip()\n        _push_grade_entry_todo(db, t)\n        _audit(db, "AA_GRADE_TASK", t.id, "ACADEMIC_RETURN", reason.strip())\n''',
+              '''        t.status, t.return_reason = "RETURNED", reason.strip()\n        _push_grade_entry_todo(db, t)\n        _audit(\n            db, "AA_GRADE_TASK", t.id, "ACADEMIC_RETURN", reason.strip(),\n            before_val={"status": "ACADEMIC_REVIEW", "returnReason": None},\n            after_val={"status": "RETURNED", "returnReason": reason.strip()},\n        )\n''')
+          once(
+              '''        t.status = "ARCHIVED"\n        # 明确保留 teaching_task_id，归档不释放终身唯一占用\n        _audit(db, "AA_GRADE_TASK", t.id, "ARCHIVE")\n''',
+              '''        t.status = "ARCHIVED"\n        # 明确保留 teaching_task_id，归档不释放终身唯一占用\n        _audit(\n            db, "AA_GRADE_TASK", t.id, "ARCHIVE",\n            before_val={"status": "PUBLISHED", "teachingTaskId": str(t.teaching_task_id or "")},\n            after_val={"status": "ARCHIVED", "teachingTaskId": str(t.teaching_task_id or "")},\n        )\n''')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          git diff --check
+          python -m py_compile backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py
+          changed="$(git diff --name-only)"
+          if [ -z "$changed" ]; then
+            echo 'No patch commit required.'
+            exit 0
+          fi
+          test "$changed" = 'backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py
+          git commit -m 'fix(academic): persist grade high-risk audit before-after evidence'
+          git push origin HEAD:${GITHUB_REF_NAME}
+
   teacher-today-browser:
     name: real miniapp / real API / isolated MySQL
     runs-on: ubuntu-latest
