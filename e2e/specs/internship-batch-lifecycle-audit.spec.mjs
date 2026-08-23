@@ -32,7 +32,8 @@ async function expectBusinessOk(response, action) {
 }
 
 function formItem(page, label) {
-  return page.locator('.app-form-item').filter({ has: page.getByText(label, { exact: true }) }).first()
+  const labelLocator = page.locator('.app-form-item__label').filter({ hasText: label })
+  return page.locator('.app-form-item').filter({ has: labelLocator }).first()
 }
 
 async function fillText(page, label, value) {
