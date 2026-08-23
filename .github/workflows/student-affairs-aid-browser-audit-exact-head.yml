@@ -67,7 +67,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_TARGET_SHA: d1fd3a94732614a6c74d6a4969b2e08ecf4db47f
+      E2E_TARGET_SHA: 5cb5063c9728252d4693615c5afcfccdb0353882
 
     steps:
       - name: Checkout audit runner only
@@ -80,7 +80,7 @@ jobs:
       - name: Checkout immutable application exact head
         uses: actions/checkout@v4
         with:
-          ref: d1fd3a94732614a6c74d6a4969b2e08ecf4db47f
+          ref: 5cb5063c9728252d4693615c5afcfccdb0353882
           path: app
           fetch-depth: 0
 
@@ -110,7 +110,7 @@ jobs:
         working-directory: app/backend
         run: |
           pip install -r requirements.txt
-          pytest -q tests/test_affairs_aid_draft_resubmit_contract.py
+          pytest -q tests/test_affairs_aid_draft_resubmit_contract.py tests/test_affairs_aid_detail_projection_contract.py
           alembic upgrade head
           python scripts/bootstrap_control_plane_school_iam_authority.py
           python scripts/e2e_seed_playwright_tenants.py
@@ -273,7 +273,7 @@ jobs:
               findings['auditKeyCollision'] = bool(batch_id == aid_id and 'BATCH_CREATE' in actions)
               findings['mixedActions'] = actions
 
-              cur.execute("SELECT action,resource,result,detail FROM t_security_audit_log WHERE action='SENSITIVE_VIEW' AND resource LIKE 'aid_family_economy:%' ORDER BY id")
+              cur.execute("SELECT action,resource,result,detail FROM t_security_audit_log WHERE action='SENSITIVE_VIEW' AND (resource='aid_family_economy' OR resource LIKE 'aid_family_economy:%') ORDER BY id")
               sensitive = cur.fetchall()
               print('[AID-SENSITIVE-AUDIT]', sensitive)
               assert any(str(x[2]).upper() == 'SUCCESS' and e['revealReason'] in str(x[3]) for x in sensitive), sensitive
