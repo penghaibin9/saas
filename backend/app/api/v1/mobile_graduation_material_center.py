@@ -17,6 +17,7 @@ from app.modules.graduation.materials import access_service as tickets
 from app.modules.graduation.materials import query_service as queries
 from app.modules.graduation.materials import record_service as records
 from app.modules.graduation.schemas.graduation import MaterialSubmitBody, MaterialTicketBody, ReviewBody
+from app.modules.graduation.services import graduation_peer_consistency as peer_files
 
 router = APIRouter(
     prefix="/mobile/graduation",
@@ -116,6 +117,24 @@ def preview_material(file_id: int, ticket: str = Query(...), user=Depends(get_cu
         audit_target=f"graduation-file:{file_id}",
         inline=True,
         audit_detail={"fileId": str(file_id), "surface": "MOBILE"},
+    )
+
+
+@router.get("/peer/{peer_id}/files/{file_id}/preview", summary="成果互查·站内预览任务绑定正式定稿")
+def preview_peer_material(peer_id: int, file_id: int, user=Depends(get_current_user)):
+    path, filename = peer_files.resolve_peer_preview(peer_id, file_id, user)
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        audit_action="STUDENT_GRADUATION_PEER_MATERIAL_PREVIEW",
+        audit_target=f"graduation-peer:{peer_id}:file:{file_id}",
+        inline=True,
+        audit_detail={
+            "peerId": str(peer_id),
+            "fileId": str(file_id),
+            "taskBound": True,
+            "surface": "STUDENT_PC",
+        },
     )
 
 

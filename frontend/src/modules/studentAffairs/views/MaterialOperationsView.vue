@@ -26,6 +26,28 @@
         description="心理与困难认定材料不会先拉全量再前端隐藏；无专项权限或学生范围时，后端列表、总数、文件和 Manifest 均不可枚举。"
       />
 
+      <AppSectionCard v-if="activePreviewVersion" title="站内材料 Reader">
+        <div class="reader-head">
+          <div>
+            <strong>{{ activePreviewVersion.fileName }}</strong>
+            <small>
+              v{{ activePreviewVersion.versionNo }} · FileVersion {{ activePreviewVersion.fileVersionId }} ·
+              {{ activePreviewVersion.current ? '当前公共版本' : '历史不可变版本' }}
+            </small>
+          </div>
+          <span class="reader-lock">只读 · 版本绑定授权</span>
+        </div>
+        <AppDocumentViewer
+          :descriptor="previewDescriptor"
+          :provider="previewProvider"
+          :allow-download="activePreviewVersion.downloadable !== false"
+          :show-version-bar="false"
+          :show-file-switcher="false"
+          @download="downloadPreview"
+          @preview-error="previewError"
+        />
+      </AppSectionCard>
+
       <AppSectionCard title="登记材料缺项">
         <div v-if="bizContext" class="biz-context">
           <div>
@@ -70,7 +92,7 @@
                   <template v-if="row.currentSubmission">
                     <strong>v{{ row.currentSubmission.versionNo }} · {{ row.currentSubmission.fileName }}</strong>
                     <small>versionId {{ row.currentSubmission.fileVersionId || '待回填' }} · {{ row.currentSubmission.statusLabel }}</small>
-                    <div class="inline-actions"><button class="text-btn" @click.stop="preview(row.currentSubmission)">预览</button><button class="text-btn" @click.stop="download(row.currentSubmission)">下载</button></div>
+                    <div class="inline-actions"><button class="text-btn" @click.stop="preview(row.currentSubmission)">站内预览</button><button class="text-btn" @click.stop="download(row.currentSubmission)">下载</button></div>
                   </template>
                   <span v-else>尚未提交</span>
                 </td>
@@ -95,10 +117,10 @@
       <div v-if="activeRequirement" class="detail-grid">
         <AppSectionCard title="历史版本（不可覆盖）">
           <div v-if="!activeRequirement.versions?.length" class="empty">暂无提交版本</div>
-          <article v-for="version in activeRequirement.versions || []" :key="version.submissionId" class="version-card">
+          <article v-for="version in activeRequirement.versions || []" :key="version.submissionId" class="version-card" :class="{ previewing: previewIdentity(version) === previewIdentity(activePreviewVersion) }">
             <div><strong>v{{ version.versionNo }} · {{ version.fileName }}</strong><small>submission {{ version.submissionId }} · fileVersion {{ version.fileVersionId || '待回填' }}</small></div>
             <div><span class="status" :class="statusClass(version.status)">{{ version.statusLabel }}</span><small>{{ fmt(version.submittedAt) }}</small></div>
-            <div class="inline-actions"><button class="text-btn" @click="preview(version)">预览</button><button class="text-btn" @click="download(version)">下载</button></div>
+            <div class="inline-actions"><button class="text-btn" @click="preview(version)">站内预览</button><button class="text-btn" @click="download(version)">下载</button></div>
           </article>
         </AppSectionCard>
 
@@ -126,16 +148,19 @@
 
 <script>
 import { AppGlobalState, AppInlineAlert, AppPageShell, AppPagination, AppSectionCard } from '@/components/common'
+import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
 import { affairsOperationsApi } from '@/modules/studentAffairs/api/operations.api'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'MaterialOperationsView',
-  components: { AppGlobalState, AppInlineAlert, AppPageShell, AppPagination, AppSectionCard },
+  components: { AppDocumentViewer, AppGlobalState, AppInlineAlert, AppPageShell, AppPagination, AppSectionCard },
   data() {
     return {
       loading: true, acting: '', errorMessage: '', requirements: [], batchJobs: [], activeBatch: null,
-      activeRequirement: null, manifest: null, manifestLoading: false, manifestError: '', selected: new Set(),
+      activeRequirement: null, activePreviewVersion: null,
+      previewProvider: affairsOperationsApi.createPreviewProvider(),
+      manifest: null, manifestLoading: false, manifestError: '', selected: new Set(),
       statusFilter: '', sensitivityFilter: '',
       pagination: { page: 1, pageSize: 20 }, focusRequirementId: '',
       bizContext: null, bizContextError: '', itemSuggestions: [],
@@ -151,6 +176,9 @@ export default {
   },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
+    previewDescriptor() {
+      return this.activePreviewVersion ? affairsOperationsApi.previewDescriptor(this.activePreviewVersion) : null
+    },
     bizContextStudentLine() {
       const c = (this.bizContext && this.bizContext.businessContext) || {}
       return [c.studentName, c.studentNo, c.className].filter(Boolean).join(' · ') || '未识别学生'
@@ -164,11 +192,14 @@ export default {
   },
   mounted() { this.applyRouteFocus(); this.load(); this.applyRouteBizContext() },
   watch: {
-    // 从不同业务详情反复跳进来时要重新解析，否则会停在上一笔业务的上下文。
     '$route.query'() { this.applyRouteFocus(); this.applyRouteBizContext() }
   },
   methods: {
     fmt(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' },
+    previewIdentity(version) {
+      if (!version?.fileId || !version?.fileVersionId) return ''
+      return `${version.fileId}:${version.fileVersionId}`
+    },
     applyRouteFocus() {
       const q = this.$route.query || {}
       this.focusRequirementId = String(q.materialRequirementId || q.requirementId || '')
@@ -186,16 +217,12 @@ export default {
       this.focusRequirementId = ''
       this.pagination.page = 1
       this.activeRequirement = null
+      this.activePreviewVersion = null
       this.$router.replace({ query }).catch(() => {})
       return this.loadRequirements()
     },
     shortHash(value) { const text = String(value || ''); return text ? `${text.slice(0, 10)}…${text.slice(-8)}` : '-' },
     bizLabel(value) { return this.bizTypes.find((x) => x.value === value)?.label || value },
-    /**
-     * 业务语言优先：老师第一眼看到的应是"张三 · 202600123 · 软件2401"和
-     * "2026-03-01 ~ 2026-03-05 请假申请"，而不是 #123 / #456。
-     * 后端未下发 businessContext 时退回原有可读信息，不留空白。
-     */
     studentLine(row) {
       const c = row.businessContext || {}
       const parts = [c.studentName, c.studentNo, c.className].filter(Boolean)
@@ -212,12 +239,6 @@ export default {
     sensitivityText(value) { return { PERSONAL: '个人', SENSITIVE: '敏感', HIGHLY_SENSITIVE: '强敏感' }[value] || value || '敏感' },
     sensitivityClass(value) { return value === 'HIGHLY_SENSITIVE' ? 'high' : (value === 'SENSITIVE' ? 'sensitive' : '') },
     async load() { this.loading = true; this.errorMessage = ''; try { await Promise.all([this.loadRequirements(), this.loadBatches()]) } catch (e) { this.errorMessage = e?.message || '材料工作台加载失败' } finally { this.loading = false } },
-    /** 筛选条件变化必须回到第一页，否则会停在新条件下不存在的页码上。 */
-    /**
-     * 「业务详情 → 要求补材料」深链入口：URL 带 bizType+bizId 时由服务端解析出
-     * 这是哪一笔业务、哪个学生，老师不必再从申请详情复制数据库主键粘过来。
-     * 解析走与登记材料完全相同的授权与范围校验，越权按不存在处理。
-     */
     async applyRouteBizContext() {
       const q = this.$route.query || {}
       const bizType = String(q.bizType || '').trim().toUpperCase()
@@ -245,23 +266,31 @@ export default {
     applyFilters() { this.pagination.page = 1; return this.loadRequirements() },
     onPageChange({ page }) { this.pagination.page = page; return this.loadRequirements() },
     async loadRequirements() {
-      // 服务端分页：此前固定 page=1&pageSize=100，第 101 条以后的材料在本工作台
-      // 完全无法翻到，也就无法处置。summary 由后端按同一 scope/filter 全量聚合。
       const data = await affairsOperationsApi.listCenter({ status: this.statusFilter || undefined, sensitivityLevel: this.sensitivityFilter || undefined, requirementId: this.focusRequirementId || undefined, page: this.pagination.page, pageSize: this.pagination.pageSize })
       this.requirements = data?.items || []; this.summary = { ...this.summary, ...(data?.summary || {}), total: Number(data?.total || 0) }
-      // 处理完本页最后一条后当前页会变空：回退一页，避免停在空白页。
       if (!this.requirements.length && this.summary.total > 0 && this.pagination.page > 1) {
         this.pagination.page -= 1
         return this.loadRequirements()
       }
       const visible = new Set(this.requirements.map((x) => x.requirementId)); this.selected = new Set([...this.selected].filter((id) => visible.has(id)))
-      if (this.activeRequirement) this.activeRequirement = this.requirements.find((x) => x.requirementId === this.activeRequirement.requirementId) || null
+      if (this.activeRequirement) {
+        this.activeRequirement = this.requirements.find((x) => x.requirementId === this.activeRequirement.requirementId) || null
+        if (this.activePreviewVersion && this.activeRequirement) {
+          const replacement = (this.activeRequirement.versions || []).find((version) => this.previewIdentity(version) === this.previewIdentity(this.activePreviewVersion))
+          this.activePreviewVersion = replacement || null
+        }
+      }
       const focused = this.requirements.find((x) => String(x.requirementId) === this.focusRequirementId)
       if (focused) { this.activeRequirement = focused; this.scrollToFocusedRequirement() }
     },
     async loadBatches() { const data = await affairsOperationsApi.listBatchJobs({ page: 1, pageSize: 50 }); this.batchJobs = data?.items || [] },
     toggle(row) { const next = new Set(this.selected); next.has(row.requirementId) ? next.delete(row.requirementId) : next.add(row.requirementId); this.selected = next },
-    async openRequirement(row) { this.activeRequirement = row; this.manifest = null; this.manifestError = ''; this.manifestLoading = true; try { const data = await affairsOperationsApi.getLatestManifest(row.studentId); this.manifest = data?.manifest || null } catch (e) { this.manifestError = e?.message || '档案清单不可见' } finally { this.manifestLoading = false } },
+    async openRequirement(row) {
+      this.activeRequirement = row
+      if (this.activePreviewVersion && !(row.versions || []).some((version) => this.previewIdentity(version) === this.previewIdentity(this.activePreviewVersion))) this.activePreviewVersion = null
+      this.manifest = null; this.manifestError = ''; this.manifestLoading = true
+      try { const data = await affairsOperationsApi.getLatestManifest(row.studentId); this.manifest = data?.manifest || null } catch (e) { this.manifestError = e?.message || '档案清单不可见' } finally { this.manifestLoading = false }
+    },
     async createRequirement() {
       if (!this.createValid) return toast.warning('请填写有效业务记录、材料编码、名称和缺项说明')
       this.acting = 'create'
@@ -280,15 +309,21 @@ export default {
     },
     async openBatch(job) { try { this.activeBatch = await affairsOperationsApi.getBatchJob(job.batchJobId) } catch (e) { toast.error(e?.message || '批次详情加载失败') } },
     async retry(job) { this.acting = `retry-${job.batchJobId}`; try { const result = await affairsOperationsApi.retryFailed(job.batchJobId); toast.success(`重试完成：成功 ${result.successCount}，失败 ${result.failureCount}`); this.activeBatch = result; await this.loadBatches() } catch (e) { toast.error(e?.message || '失败项重试失败') } finally { this.acting = '' } },
-    async preview(version) { try { await affairsOperationsApi.previewMaterial(version.fileId) } catch (e) { toast.error(e?.message || '材料预览失败') } },
-    async download(version) { try { await affairsOperationsApi.downloadMaterial(version.fileId, version.fileName) } catch (e) { toast.error(e?.message || '材料下载失败') } }
+    preview(version) {
+      if (!version?.fileId || !version?.fileVersionId) return toast.warning('该材料尚未建立不可变 FileVersion，不能站内预览')
+      this.activePreviewVersion = { ...version }
+      this.$nextTick(() => document.querySelector('.reader-head')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    },
+    async download(version) { try { await affairsOperationsApi.downloadMaterial(version) } catch (e) { toast.error(e?.message || '材料下载失败') } },
+    downloadPreview() { if (this.activePreviewVersion) return this.download(this.activePreviewVersion) },
+    previewError(error) { toast.error(error?.message || '材料预览失败，请刷新版本后重试') }
   }
 }
 </script>
 
 <style scoped>
-.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.metric{padding:16px;border:1px solid #e7ebf1;border-radius:12px;background:#fff}.metric span,.metric strong{display:block}.metric span{font-size:12px;color:#667085}.metric strong{font-size:26px;margin-top:5px}.form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.form-grid label span{display:block;font-size:12px;color:#667085;margin-bottom:5px}.form-grid input,.form-grid select,.form-grid textarea,.filters select{box-sizing:border-box;width:100%;min-height:38px;border:1px solid #d9dee7;border-radius:8px;padding:8px 10px;background:#fff}.form-grid textarea{min-height:82px}.wide{grid-column:1/-1}.toolbar{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:14px}.filters{justify-content:flex-start}.filters select{width:190px}.primary,.secondary,.danger{border:0;border-radius:8px;padding:9px 14px;cursor:pointer}.primary{background:#315efb;color:#fff}.secondary{background:#eef2f7;color:#344054}.danger{background:#fee4e2;color:#b42318}.small{padding:6px 9px;font-size:12px}.primary:disabled,.secondary:disabled,.danger:disabled{opacity:.5;cursor:not-allowed}.table-wrap{overflow:auto;margin-top:12px}.pager{display:flex;justify-content:center;padding-top:12px;border-top:1px solid #edf0f4;margin-top:12px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:11px 9px;border-bottom:1px solid #edf0f4;vertical-align:top}td strong,td small{display:block}td small{color:#667085;margin-top:4px}.check-col{width:34px}.ops-col{min-width:185px}.row-actions,.inline-actions{display:flex;gap:7px;flex-wrap:wrap}.status,.sensitivity{display:inline-block;padding:3px 7px;border-radius:6px;background:#eef2f7;margin-top:5px}.status.ok{background:#dcfae6;color:#067647}.status.wait{background:#eaf0ff;color:#1d4ed8}.status.warn{background:#fff3d6;color:#b54708}.status.bad,.sensitivity.high{background:#fee4e2;color:#b42318}.status.muted{color:#667085}.sensitivity.sensitive{background:#fff3d6;color:#b54708}.overdue{color:#b42318}.tech-trace{color:#98a2b3;font-size:11px}.biz-context{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;margin-bottom:12px;border:1px solid #d6e0ff;border-radius:10px;background:#f5f8ff}.biz-context strong,.biz-context small{display:block}.biz-context small{color:#667085;margin-top:3px}.text-btn{all:unset;color:#315efb;cursor:pointer}.empty{text-align:center;color:#98a2b3;padding:24px}.selectedRow{background:#f7f9ff}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.version-card{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:12px;border-bottom:1px solid #edf0f4}.version-card strong,.version-card small{display:block}.version-card small{color:#667085;margin-top:4px}.manifest-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manifest-meta div{padding:10px;border:1px solid #edf0f4;border-radius:8px}.manifest-meta dt{font-size:12px;color:#667085}.manifest-meta dd{margin:5px 0 0;word-break:break-all}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.batch-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.batch-card{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:12px;border:1px solid #e7ebf1;border-radius:10px;cursor:pointer}.batch-card.active{border-color:#315efb;background:#f5f7ff}.batch-card strong,.batch-card small{display:block}.batch-card small{margin-top:4px;color:#667085}.batch-detail{margin-top:16px;overflow:auto}
-@media(max-width:1000px){.metrics,.form-grid,.batch-grid,.detail-grid{grid-template-columns:1fr 1fr}}@media(max-width:680px){.metrics,.form-grid,.batch-grid,.detail-grid{grid-template-columns:1fr}.wide{grid-column:auto}.filters{align-items:stretch;flex-direction:column}.filters select{width:100%}.version-card{grid-template-columns:1fr}}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.metric{padding:16px;border:1px solid #e7ebf1;border-radius:12px;background:#fff}.metric span,.metric strong{display:block}.metric span{font-size:12px;color:#667085}.metric strong{font-size:26px;margin-top:5px}.form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.form-grid label span{display:block;font-size:12px;color:#667085;margin-bottom:5px}.form-grid input,.form-grid select,.form-grid textarea,.filters select{box-sizing:border-box;width:100%;min-height:38px;border:1px solid #d9dee7;border-radius:8px;padding:8px 10px;background:#fff}.form-grid textarea{min-height:82px}.wide{grid-column:1/-1}.toolbar{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:14px}.filters{justify-content:flex-start}.filters select{width:190px}.primary,.secondary,.danger{border:0;border-radius:8px;padding:9px 14px;cursor:pointer}.primary{background:#315efb;color:#fff}.secondary{background:#eef2f7;color:#344054}.danger{background:#fee4e2;color:#b42318}.small{padding:6px 9px;font-size:12px}.primary:disabled,.secondary:disabled,.danger:disabled{opacity:.5;cursor:not-allowed}.table-wrap{overflow:auto;margin-top:12px}.pager{display:flex;justify-content:center;padding-top:12px;border-top:1px solid #edf0f4;margin-top:12px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:11px 9px;border-bottom:1px solid #edf0f4;vertical-align:top}td strong,td small{display:block}td small{color:#667085;margin-top:4px}.check-col{width:34px}.ops-col{min-width:185px}.row-actions,.inline-actions{display:flex;gap:7px;flex-wrap:wrap}.status,.sensitivity{display:inline-block;padding:3px 7px;border-radius:6px;background:#eef2f7;margin-top:5px}.status.ok{background:#dcfae6;color:#067647}.status.wait{background:#eaf0ff;color:#1d4ed8}.status.warn{background:#fff3d6;color:#b54708}.status.bad,.sensitivity.high{background:#fee4e2;color:#b42318}.status.muted{color:#667085}.sensitivity.sensitive{background:#fff3d6;color:#b54708}.overdue{color:#b42318}.tech-trace{color:#98a2b3;font-size:11px}.biz-context{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;margin-bottom:12px;border:1px solid #d6e0ff;border-radius:10px;background:#f5f8ff}.biz-context strong,.biz-context small{display:block}.biz-context small{color:#667085;margin-top:3px}.text-btn{all:unset;color:#315efb;cursor:pointer}.empty{text-align:center;color:#98a2b3;padding:24px}.selectedRow{background:#f7f9ff}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.version-card{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:12px;border-bottom:1px solid #edf0f4}.version-card.previewing{background:#f5f8ff;box-shadow:inset 3px 0 0 #315efb}.version-card strong,.version-card small{display:block}.version-card small{color:#667085;margin-top:4px}.manifest-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manifest-meta div{padding:10px;border:1px solid #edf0f4;border-radius:8px}.manifest-meta dt{font-size:12px;color:#667085}.manifest-meta dd{margin:5px 0 0;word-break:break-all}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.batch-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.batch-card{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:12px;border:1px solid #e7ebf1;border-radius:10px;cursor:pointer}.batch-card.active{border-color:#315efb;background:#f5f7ff}.batch-card strong,.batch-card small{display:block}.batch-card small{margin-top:4px;color:#667085}.batch-detail{margin-top:16px;overflow:auto}.reader-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:12px}.reader-head strong,.reader-head small{display:block}.reader-head small{margin-top:5px;color:#667085}.reader-lock{flex:none;border:1px solid #b7e4c7;border-radius:999px;padding:5px 10px;background:#effaf3;color:#067647;font-size:12px;font-weight:600}.reader-head+*{min-height:560px}
+@media(max-width:1000px){.metrics,.form-grid,.batch-grid,.detail-grid{grid-template-columns:1fr 1fr}}@media(max-width:680px){.metrics,.form-grid,.batch-grid,.detail-grid{grid-template-columns:1fr}.wide{grid-column:auto}.filters{align-items:stretch;flex-direction:column}.filters select{width:100%}.version-card{grid-template-columns:1fr}.reader-head{align-items:flex-start;flex-direction:column}}
 .focusRow { background: #fff8e8; box-shadow: inset 4px 0 0 #f59e0b; }
 .focus-return { border: 1px solid #f6c75b; border-radius: 999px; padding: 8px 13px; color: #92400e; background: #fff8e8; cursor: pointer; font-weight: 600; }
 </style>

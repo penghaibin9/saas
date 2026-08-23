@@ -6,7 +6,9 @@ on:
       - "backend/app/api/v1/file.py"
       - "backend/app/api/v1/files.py"
       - "backend/app/api/v1/file_contract.py"
+      - "backend/app/api/v1/mobile_graduation_material_center.py"
       - "backend/app/models/file.py"
+      - "backend/app/modules/graduation/services/graduation_peer_consistency.py"
       - "backend/app/services/affairs_archive_file_guard.py"
       - "backend/app/services/affairs_archive_service.py"
       - "backend/app/services/file_access_service.py"
@@ -15,15 +17,27 @@ on:
       - "backend/app/services/file_version_service.py"
       - "backend/alembic/versions/0146_file_center_access_and_clients.py"
       - "backend/tests/test_file_access_service.py"
+      - "backend/tests/test_graduation_peer_preview_contract.py"
       - "backend/tests/file_access_mysql_acceptance.py"
       - "frontend/src/services/file/**"
       - "frontend/src/components/file/**"
+      - "frontend/tests/document-preview-w6-docx-contract.test.mjs"
       - "student-portal/src/services/fileSdk.js"
+      - "student-portal/src/services/request.js"
       - "student-portal/src/components/file/**"
+      - "student-portal/src/views/graduation/GraduationMaterialsView.vue"
+      - "student-portal/src/views/graduation/GraduationWorkbenchView.vue"
+      - "student-portal/tests/document-preview-contract.test.mjs"
       - "miniapp/src/services/fileApi.js"
       - "miniapp/src/services/fileSdk.js"
       - "miniapp/src/components/file/**"
+      - "miniapp/src/pages/student/graduation/index.vue"
+      - "miniapp/src/pages/teacher/graduation-guide/index.vue"
+      - "miniapp/tests/document-preview-w4-contract.test.mjs"
+      - "docs/architecture/document-preview-contract.md"
+      - "docs/architecture/file-capability-inventory.d/10-document-preview-platform.yaml"
       - "scripts/check/check-file-client-contract.mjs"
+      - "scripts/check/check-document-preview-contract.mjs"
       - ".github/workflows/file-center-access-clients.yml"
 
 permissions:
@@ -88,7 +102,9 @@ jobs:
             backend/app/api/v1/file.py \
             backend/app/api/v1/files.py \
             backend/app/api/v1/file_contract.py \
+            backend/app/api/v1/mobile_graduation_material_center.py \
             backend/app/models/file.py \
+            backend/app/modules/graduation/services/graduation_peer_consistency.py \
             backend/app/services/affairs_archive_file_guard.py \
             backend/app/services/affairs_archive_service.py \
             backend/app/services/file_access_service.py \
@@ -98,9 +114,18 @@ jobs:
             backend/alembic/versions/0146_file_center_access_and_clients.py
       - name: Resolver and status unit tests
         working-directory: backend
-        run: pytest -q tests/test_file_access_service.py -p no:warnings
+        run: |
+          pytest -q tests/test_file_access_service.py tests/test_graduation_peer_preview_contract.py -p no:warnings
       - name: Real MySQL cross-scope acceptance
         working-directory: backend
         run: python tests/file_access_mysql_acceptance.py
       - name: Four-client SDK and component contract
         run: node scripts/check/check-file-client-contract.mjs
+      - name: Document preview contract and bypass freeze
+        run: node scripts/check/check-document-preview-contract.mjs
+      - name: W6 PC DOCX Reader source contract
+        run: node --test frontend/tests/document-preview-w6-docx-contract.test.mjs
+      - name: Student PC Reader source contract
+        run: node --test student-portal/tests/document-preview-contract.test.mjs
+      - name: W4 miniapp native preview context contract
+        run: node --test miniapp/tests/document-preview-w4-contract.test.mjs
