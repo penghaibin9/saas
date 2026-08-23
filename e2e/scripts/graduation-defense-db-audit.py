@@ -80,7 +80,18 @@ for round_no, expected in ((1, {"E2E答辩专家A": 91, "E2E答辩专家B": 89})
         assert row.get("judge_mentor_id"), row
 
 actions = [row["action"] for row in audits]
-assert actions.count("录入答辩评分") >= 4, actions
+round1_score_ids = {str(row["id"]) for row in by_round[1]}
+round2_score_ids = {str(row["id"]) for row in by_round[2]}
+round1_recorded_ids = {
+    str(row.get("biz_id")) for row in audits if row.get("action") == "录入答辩评分"
+}
+round2_updated_ids = {
+    str(row.get("biz_id")) for row in audits if row.get("action") == "更新答辩评分"
+}
+assert round1_score_ids <= round1_recorded_ids, (round1_score_ids, round1_recorded_ids, audits)
+assert round2_score_ids <= round2_updated_ids, (round2_score_ids, round2_updated_ids, audits)
+assert actions.count("录入答辩评分") >= 2, actions
+assert actions.count("更新答辩评分") >= 2, actions
 assert actions.count("确认答辩成绩") >= 2, actions
 assert any("二次答辩" in str(action) for action in actions), actions
 for row in audits:
