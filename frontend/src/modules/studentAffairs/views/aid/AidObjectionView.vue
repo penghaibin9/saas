@@ -79,6 +79,7 @@ import {
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
+import { request } from '@/services/http/client'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 
@@ -106,6 +107,22 @@ const OBJECTION_COLUMNS = [
   { key: 'actions', title: '操作', align: 'right', width: '100px' }
 ]
 
+async function reviewAidObjectionVersioned(objectionId, result, opinion, version) {
+  try {
+    const data = await request(`/student-affairs/aid/objections/${objectionId}/review`, {
+      method: 'POST', body: { result, opinion, version }
+    })
+    return { code: 0, data, message: 'ok' }
+  } catch (e) {
+    return {
+      code: e?.code || 1,
+      bizCode: e?.bizCode || '',
+      data: null,
+      message: e?.message || '复核失败'
+    }
+  }
+}
+
 export default {
   name: 'AidObjectionView',
   props: { ctx: { type: Object, default: null } },
@@ -119,7 +136,7 @@ export default {
       objectionColumns: OBJECTION_COLUMNS,
       loading: true, acting: '', errorMessage: '', publicity: [], objections: [], statusCounts: null, objStatus: '', statusFilters: STATUS_FILTERS,
       objDlg: { visible: false, applyId: '', who: '', objectorName: '' },
-      revDlg: { visible: false, objectionId: '', result: 'OVERRULED' }
+      revDlg: { visible: false, objectionId: '', result: 'OVERRULED', version: 0 }
     }
   },
   computed: {
@@ -163,12 +180,17 @@ export default {
       if (res.code === 0) { d.visible = false; toast.success('异议已提交'); this.load() } else toast.error(res.message || '提交失败')
     },
     review(o) {
-      this.revDlg = { visible: true, objectionId: o.objectionId, result: 'OVERRULED' }
+      this.revDlg = {
+        visible: true,
+        objectionId: o.objectionId,
+        result: 'OVERRULED',
+        version: Number(o.version || 0)
+      }
     },
     async submitReview({ reason }) {
       const d = this.revDlg
       this.acting = d.objectionId
-      const res = await studentAffairsApi.reviewAidObjection(d.objectionId, d.result, reason.trim())
+      const res = await reviewAidObjectionVersioned(d.objectionId, d.result, reason.trim(), d.version)
       this.acting = ''
       if (res.code === 0) { d.visible = false; toast.success('已复核'); this.load() } else toast.error(res.message || '复核失败')
     },
