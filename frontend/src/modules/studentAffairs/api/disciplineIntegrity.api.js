@@ -47,7 +47,7 @@ export const disciplineIntegrityApi = {
       body.revisedReason = revisedReason
       body.revisedDocNo = revisedDocNo
     }
-    return callStrict(() => request(`/student-affairs/discipline/appeals/${appealId}/review`, {
+    return callStrict(() => request(`/student-affairs/discipline/appeals/${appealId}/decision-review`, {
       method: 'POST',
       body
     }))
