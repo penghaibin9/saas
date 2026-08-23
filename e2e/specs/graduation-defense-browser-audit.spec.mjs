@@ -15,6 +15,31 @@ const people = {
   secretary: { teacherNo: 'e2e_defense_secretary', teacherName: 'E2E答辩秘书', title: '讲师' },
 }
 
+function isoDay(offset) {
+  const date = new Date()
+  date.setUTCHours(0, 0, 0, 0)
+  date.setUTCDate(date.getUTCDate() + offset)
+  return date.toISOString().slice(0, 10)
+}
+
+async function openDefensePhase(admin, batchId) {
+  const stages = [
+    { code: 'TOPIC', name: '选题', startDate: isoDay(-140), endDate: isoDay(-121) },
+    { code: 'PROPOSAL', name: '开题', startDate: isoDay(-120), endDate: isoDay(-101) },
+    { code: 'MIDTERM', name: '中期', startDate: isoDay(-100), endDate: isoDay(-81) },
+    { code: 'SUBMISSION', name: '成果', startDate: isoDay(-80), endDate: isoDay(-61) },
+    { code: 'PLAGIARISM', name: '查重', startDate: isoDay(-60), endDate: isoDay(-41) },
+    { code: 'REVIEW', name: '评阅', startDate: isoDay(-40), endDate: isoDay(-2) },
+    { code: 'DEFENSE', name: '答辩', startDate: isoDay(-1), endDate: isoDay(1) },
+    { code: 'GRADE', name: '成绩', startDate: isoDay(2), endDate: isoDay(21) },
+  ]
+  const updated = await admin.post(`/graduation/batches/${batchId}/stages`, { stages })
+  const defense = (updated?.stages || []).find((stage) => String(stage.code || '').toUpperCase() === 'DEFENSE')
+  expect(defense, 'defense audit must explicitly open the authoritative batch DEFENSE phase').toBeTruthy()
+  expect(defense.startDate).toBe(isoDay(-1))
+  expect(defense.endDate).toBe(isoDay(1))
+}
+
 async function dismissGuide(page) {
   for (const mask of [page.locator('.app-step-guide__mask'), page.locator('.tour-mask')]) {
     if (await mask.isVisible().catch(() => false)) {
@@ -142,6 +167,7 @@ test.describe.serial('毕业设计答辩 Browser First · 建组发布/专家评
     const student = await admin.get(`/graduation/gd-students/${fixture.gdStudentId}`)
     fixture.studentName = String(student?.name || '')
     expect(fixture.studentName, 'defense fixture must resolve the real student name').toBeTruthy()
+    await openDefensePhase(admin, fixture.batchId)
     await ensureMentor(admin, people.expertA)
     await ensureMentor(admin, people.expertB)
     await ensureMentor(admin, people.secretary)
