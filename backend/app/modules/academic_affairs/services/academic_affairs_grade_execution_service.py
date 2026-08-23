@@ -43,9 +43,9 @@ def _require_live_teacher(db, task, user, *, lock_owner: bool = False):
     never a reason to fall back to the stale grade-task snapshot.
 
     ``lock_owner`` pins the teaching-task row for the surrounding transaction.
-    The execution adapter uses it while delegating writes to the canonical grade
-    service, preventing a teacher replacement from racing between live-owner
-    validation and the canonical score/status mutation.
+    Writes use a shared row lock: concurrent teacher-assignment UPDATE remains
+    blocked, while the canonical grade transaction may still read the same row.
+    This avoids cross-session self-blocking without reopening the ownership race.
     """
     if _is_scope_admin(user):
         return None
@@ -63,7 +63,7 @@ def _require_live_teacher(db, task, user, *, lock_owner: bool = False):
         AaTeachingTask.is_deleted.is_(False),
     )
     if lock_owner:
-        query = query.with_for_update()
+        query = query.with_for_update(read=True)
     teaching_task = query.first()
     if not teaching_task:
         raise AppException(
