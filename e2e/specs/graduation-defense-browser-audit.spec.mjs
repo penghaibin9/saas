@@ -139,6 +139,9 @@ test.describe.serial('毕业设计答辩 Browser First · 建组发布/专家评
     fixture = await prepareGraduationFixture()
     groupName = `E2E-AUDIT-20260823 答辩组 ${fixture.runId}`
     const admin = await loginApi(config.sandboxAdmin)
+    const student = await admin.get(`/graduation/gd-students/${fixture.gdStudentId}`)
+    fixture.studentName = String(student?.name || '')
+    expect(fixture.studentName, 'defense fixture must resolve the real student name').toBeTruthy()
     await ensureMentor(admin, people.expertA)
     await ensureMentor(admin, people.expertB)
     await ensureMentor(admin, people.secretary)
@@ -169,7 +172,6 @@ test.describe.serial('毕业设计答辩 Browser First · 建组发布/专家评
     await expect(page).toHaveURL(/\/admin\/graduation\/defense\/groups\/[^/]+\/edit/)
 
     const search = page.getByPlaceholder('搜索姓名')
-    expect(fixture.studentName, 'fixture must expose the real student name used by defense candidate search').toBeTruthy()
     await search.fill(fixture.studentName)
     const candidate = page.locator('.dg-row--pick').filter({ hasText: fixture.studentName }).first()
     await expect(candidate).toBeVisible()
