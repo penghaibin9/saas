@@ -17,9 +17,9 @@ concurrency:
 
 jobs:
   final-browser-audit:
-    name: exact SHA final reject-resubmit-approve / Chromium / MySQL
+    name: exact SHA final reject-resubmit-plagiarism-recheck-approve / Chromium / MySQL
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     services:
       mysql:
         image: mysql:8.4
@@ -214,13 +214,13 @@ jobs:
           npm install
           npx playwright install --with-deps chromium
 
-      - name: Real browser final reject-resubmit-approve journey
+      - name: Real browser final + plagiarism recheck journey
         id: pw
         continue-on-error: true
         working-directory: e2e
         run: npx playwright test specs/graduation-final-browser-audit.spec.mjs
 
-      - name: Direct MySQL final, file-version and audit verification
+      - name: Direct MySQL final, plagiarism, file-version and audit verification
         id: db
         if: always()
         continue-on-error: true
@@ -245,21 +245,29 @@ jobs:
               cursorclass=pymysql.cursors.DictCursor,
           )
           with conn.cursor() as cur:
-              cur.execute("SELECT id,tenant_id,gd_student_id,final_type,version,status,attachments_json,reviewer,review_comment,submit_at,review_time,active_key FROM t_gd_final ORDER BY id")
+              cur.execute("SELECT id,tenant_id,gd_student_id,final_type,version,status,attachments_json,reviewer,review_comment,plagiarism_rate,plagiarism_status,submit_at,review_time,active_key FROM t_gd_final ORDER BY id")
               finals = cur.fetchall()
               cur.execute("SELECT id,tenant_id,biz_type,biz_id,action,operator,role_name,detail,before_val,after_val,occurred_at,request_id,request_path,role_code FROM t_gd_audit_trail WHERE biz_type='FINAL' ORDER BY id")
-              audits = cur.fetchall()
+              final_audits = cur.fetchall()
+              cur.execute("SELECT * FROM t_gd_plagiarism ORDER BY id")
+              plagiarism = cur.fetchall()
+              cur.execute("SELECT id,tenant_id,biz_type,biz_id,action,operator,role_name,detail,before_val,after_val,occurred_at,request_id,request_path,role_code FROM t_gd_audit_trail WHERE biz_type='PLAGIARISM' ORDER BY id")
+              plagiarism_audits = cur.fetchall()
               cur.execute("SELECT id,tenant_id,file_name,sha256,biz_type,status,scan_status FROM t_file_object WHERE biz_type='GRADUATION_MATERIAL' ORDER BY id")
               files = cur.fetchall()
               cur.execute("SELECT id,tenant_id,file_id,biz_type,biz_id,asset_id,version_id,version_no,is_current,status FROM t_file_binding WHERE biz_type LIKE 'GRADUATION%%' ORDER BY id")
               bindings = cur.fetchall()
               cur.execute("SELECT id,tenant_id,asset_id,file_object_id,version_no,status,is_current FROM t_file_version ORDER BY id")
               versions = cur.fetchall()
-          for row in finals + audits + files + bindings + versions:
-              for k, v in list(row.items()): row[k] = cv(v)
+          groups = [finals, final_audits, plagiarism, plagiarism_audits, files, bindings, versions]
+          for group in groups:
+              for row in group:
+                  for k, v in list(row.items()): row[k] = cv(v)
           evidence = {
               'productExactHead': '1c69336ea0728c5c6713c0c85b7275b06fca9ae1',
-              'finals': finals, 'audits': audits, 'files': files, 'bindings': bindings, 'versions': versions,
+              'finals': finals, 'finalAudits': final_audits,
+              'plagiarism': plagiarism, 'plagiarismAudits': plagiarism_audits,
+              'files': files, 'bindings': bindings, 'versions': versions,
           }
           out = Path('../e2e/test-results/graduation-final-db-audit.json')
           out.parent.mkdir(parents=True, exist_ok=True)
@@ -276,14 +284,37 @@ jobs:
           assert draft2 and draft2['status'] == 'APPROVED', rows
           assert final1 and final1['status'] == 'APPROVED', rows
           assert draft1['review_comment'] and 'E2E-AUDIT-20260823' in draft1['review_comment'], draft1
+          assert final1['plagiarism_status'] == '已检测', final1
+          assert str(final1['plagiarism_rate']).startswith('12'), final1
           assert not any(f.get('active_key') for f in (draft1, draft2, final1)), rows
 
-          actions = [a['action'] for a in audits]
+          actions = [a['action'] for a in final_audits]
           assert actions.count('提交成果-初稿') >= 2, actions
-          assert '批阅成果-退回修改' in actions, actions
-          assert actions.count('批阅成果-通过') >= 2, actions
+          assert actions.count('审核成果') >= 3, actions
           assert '提交成果-定稿' in actions, actions
-          for a in audits:
+          assert any(a['action'] == '审核成果' and a['before_val'] == 'PENDING_REVIEW' and a['after_val'] == 'REJECTED' for a in final_audits), final_audits
+          assert sum(1 for a in final_audits if a['action'] == '审核成果' and a['before_val'] == 'PENDING_REVIEW' and a['after_val'] == 'APPROVED') >= 2, final_audits
+          for a in final_audits:
+              assert a['tenant_id'] and a['operator'] and a['role_name'] and a['occurred_at'], a
+              assert a['request_id'] and a['request_path'] and a['role_code'], a
+
+          checks = [p for p in plagiarism if int(p.get('gd_student_id') or 0) == int(sid) and not p.get('is_deleted')]
+          assert len(checks) == 2, checks
+          original = next((p for p in checks if not p.get('recheck_of_id')), None)
+          recheck = next((p for p in checks if p.get('recheck_of_id')), None)
+          assert original and recheck, checks
+          assert original['status'] == 'DONE' and bool(original['over_threshold']), original
+          assert str(original['rate']).startswith('45'), original
+          assert original['dispute_status'] == 'APPROVED', original
+          assert int(recheck['recheck_of_id']) == int(original['id']), (original, recheck)
+          assert recheck['status'] == 'DONE' and not bool(recheck['over_threshold']), recheck
+          assert str(recheck['rate']).startswith('12'), recheck
+          assert not original.get('active_key') and not recheck.get('active_key'), checks
+          plag_actions = [a['action'] for a in plagiarism_audits]
+          for expected in ['发起查重', '申请复查', '复查审核-通过']:
+              assert expected in plag_actions, plag_actions
+          assert plag_actions.count('查重结果回填') >= 2, plag_actions
+          for a in plagiarism_audits:
               assert a['tenant_id'] and a['operator'] and a['role_name'] and a['occurred_at'], a
               assert a['request_id'] and a['request_path'] and a['role_code'], a
 
@@ -303,7 +334,7 @@ jobs:
           version_ids = {int(b['version_id']) for b in bound if b.get('version_id')}
           version_rows = [v for v in versions if int(v['id']) in version_ids]
           assert len(version_rows) >= 3, version_rows
-          assert any(v['status'] == 'REJECTED' for v in version_rows), version_rows
+          assert any(v['status'] == 'INVALIDATED' for v in version_rows), version_rows
           assert sum(1 for v in version_rows if v['status'] == 'APPROVED') >= 2, version_rows
           PY
 
