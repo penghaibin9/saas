@@ -26,6 +26,31 @@
         <article><span>安全结论</span><strong class="is-small">{{ detail.summary?.unsafe ? '存在待处理项' : '材料安全门通过' }}</strong></article>
       </section>
 
+      <section v-if="activePreviewFile" class="ism-card ism-reader-card">
+        <header>
+          <div>
+            <h3>站内材料 Reader</h3>
+            <p>{{ activePreviewFile.categoryLabel || activePreviewFile.title }} · 当前 v{{ activePreviewFile.versionNo }} · FileVersion {{ activePreviewFile.versionId }}</p>
+          </div>
+          <AppStatusTag type="success">只读当前安全版本</AppStatusTag>
+        </header>
+        <AppDocumentViewer
+          :descriptor="previewDescriptor"
+          :provider="previewProvider"
+          :files="previewFiles"
+          :versions="[activePreviewFile]"
+          :active-file-key="activePreviewFile.fileId"
+          :active-version-id="activePreviewFile.versionId"
+          :canonical-version-id="activePreviewFile.versionId"
+          :allow-download="Boolean(activePreviewFile.canDownload)"
+          :show-version-bar="false"
+          :show-file-switcher="previewFiles.length > 1"
+          @select-file="preview"
+          @download="downloadPreview"
+          @preview-error="previewError"
+        />
+      </section>
+
       <section class="ism-card">
         <header>
           <div>
@@ -62,8 +87,8 @@
                 <td>{{ item.categoryLabel || item.materialCode }}</td>
                 <td>v{{ item.versionNo }}</td>
                 <td class="mono">{{ item.versionId }}</td>
-                <td>{{ scanStatusText(item.scanStatus) }}</td>
-                <td>{{ reviewStatusText(item.reviewStatus) }}</td>
+                <td>{{ item.scanStatus }}</td>
+                <td>{{ item.reviewStatus || '—' }}</td>
                 <td>{{ item.fileName }}</td>
               </tr>
               <tr v-if="!(detail.items || []).length"><td colspan="6" class="ism-empty">暂无真实文件版本</td></tr>
@@ -79,18 +104,21 @@
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag } from '@/components/common'
+import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
 import SecureFileList from '@/components/file/SecureFileList.vue'
-import { fileSdk } from '@/services/file/fileSdk'
 import { internshipMaterialCenterApi } from '@/modules/internship/api/material-center.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'InternshipStudentMaterialEntryView',
-  components: { ModulePageShell, AppButton, AppStatusTag, SecureFileList },
+  components: { ModulePageShell, AppButton, AppStatusTag, AppDocumentViewer, SecureFileList },
   props: { ctx: { type: Object, default: null } },
   data() {
-    return { detail: null, loading: false, syncing: false, error: '' }
+    return {
+      detail: null, loading: false, syncing: false, error: '', activePreviewFileId: '',
+      previewProvider: internshipMaterialCenterApi.createPreviewProvider()
+    }
   },
   computed: {
     internshipId() { return String(this.$route.params.id || '') },
@@ -99,23 +127,31 @@ export default {
       return this.detail
         ? `${this.detail.studentName || '学生'} · ${this.detail.studentNo || '—'} · 真实材料版本链`
         : `实习记录 #${this.internshipId}`
+    },
+    previewFiles() {
+      return (this.detail?.items || []).filter((item) => item.canPreview && item.readyForBusiness)
+    },
+    activePreviewFile() {
+      return this.previewFiles.find((item) => String(item.fileId) === String(this.activePreviewFileId)) || null
+    },
+    previewDescriptor() {
+      return this.activePreviewFile ? internshipMaterialCenterApi.previewDescriptor(this.activePreviewFile) : null
     }
   },
   created() { this.load() },
   methods: {
-    scanStatusText(value) {
-      return { CLEAN: '安全', PASSED: '安全', READY: '安全可用', PENDING: '待扫描', UPLOADED: '待扫描', SCANNING: '扫描中', FAILED: '扫描失败', ERROR: '扫描失败', INFECTED: '发现安全风险' }[value] || (value ? '扫描状态待确认' : '—')
-    },
-    reviewStatusText(value) {
-      return { PENDING: '待审核', PENDING_REVIEW: '待审核', APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', NOT_REQUIRED: '无需审核' }[value] || (value ? '审核状态待确认' : '—')
-    },
     async load() {
       this.loading = true
       this.error = ''
       try {
         this.detail = await internshipMaterialCenterApi.detail(this.internshipId)
+        const available = (this.detail?.items || []).filter((item) => item.canPreview && item.readyForBusiness)
+        if (!available.some((item) => String(item.fileId) === String(this.activePreviewFileId))) {
+          this.activePreviewFileId = String(available[0]?.fileId || '')
+        }
       } catch (error) {
         this.detail = null
+        this.activePreviewFileId = ''
         this.error = error?.message || '无权访问、记录不存在或服务异常'
       } finally {
         this.loading = false
@@ -137,10 +173,21 @@ export default {
       }
     },
     preview(item) {
-      fileSdk.preview(item.fileId).catch((error) => toast.error(error?.message || '文件预览失败'))
+      if (!item?.fileId || !item?.canPreview || !item?.readyForBusiness) {
+        toast.warning('当前材料尚未通过安全门禁，不能预览')
+        return
+      }
+      this.activePreviewFileId = String(item.fileId)
+    },
+    downloadPreview(descriptor) {
+      const item = (this.detail?.items || []).find((row) => String(row.fileId) === String(descriptor?.fileId))
+      if (item) this.download(item)
     },
     download(item) {
-      fileSdk.download(item.fileId, item.fileName).catch((error) => toast.error(error?.message || '文件下载失败'))
+      internshipMaterialCenterApi.downloadMaterial(item).catch((error) => toast.error(error?.message || '文件下载失败'))
+    },
+    previewError(error) {
+      toast.error(error?.message || '站内预览失败，请刷新材料状态后重试')
     }
   }
 }
@@ -159,6 +206,7 @@ export default {
 .ism-card header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
 .ism-card h3 { margin: 0 0 5px; color: #0f172a; }
 .ism-card p { margin: 0; color: #64748b; font-size: 13px; }
+.ism-reader-card :deep(.document-viewer__body) { min-height: 560px; }
 .ism-table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; min-width: 760px; }
 th, td { padding: 11px 10px; border-bottom: 1px solid #edf2f7; text-align: left; font-size: 13px; }

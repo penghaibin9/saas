@@ -13,10 +13,14 @@ import App from './App.vue'
 import router from './router'
 import './config/helpCenterRuntime'
 import { OFFICIAL_SALES_PAGES } from './config/officialSalesPages'
+import { installGraduationW76Workbench } from './modules/workbench/config/graduationW76Workbench'
 import { installDirtyFormGuard } from './router/dirtyFormGuard'
 import { installOfficialSeoRuntime } from './services/officialSeoRuntime'
 import { installOfficialWechatRuntime } from './services/officialWechatRuntime'
 import { toast } from './utils/toast'
+
+// W7.6：只扩展既有 T9 评阅人工作台配方，复用 UnifiedTodo 与统一评阅中心，不新增工作台状态。
+installGraduationW76Workbench()
 
 // 小程序 WebView / 售后二维码共用的公开只读帮助页。
 // 与 /admin/help 分离：不暴露管理端导航，不要求管理端 token，也没有业务写入口。
@@ -49,9 +53,7 @@ for (const page of OFFICIAL_SALES_PAGES.filter((item) => item.type !== 'product'
     name: routeName,
     component: page.path === '/platform'
       ? () => import('./views/official-site/OfficialPlatformCapabilityView.vue')
-      : page.type === 'legal'
-        ? () => import('./views/official-site/OfficialPolicyView.vue')
-        : () => import('./views/official-site/OfficialSalesPageView.vue'),
+      : () => import('./views/official-site/OfficialSalesPageView.vue'),
     meta: { public: true, title: page.navTitle || page.title, officialSalesPage: true }
   })
 }

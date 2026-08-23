@@ -84,9 +84,34 @@
             </AppStatusTag>
           </header>
 
+          <section v-if="activePreviewFile" class="section-card reader-card">
+            <div class="section-title">
+              <div>
+                <strong>站内材料 Reader</strong>
+                <span>{{ activePreviewFile.categoryLabel || activePreviewFile.title }} · 当前 v{{ activePreviewFile.versionNo }} · FileVersion {{ activePreviewFile.versionId }}</span>
+              </div>
+              <AppStatusTag type="success" size="sm">只读当前安全版本</AppStatusTag>
+            </div>
+            <AppDocumentViewer
+              :descriptor="previewDescriptor"
+              :provider="previewProvider"
+              :files="previewFiles"
+              :versions="[activePreviewFile]"
+              :active-file-key="activePreviewFile.fileId"
+              :active-version-id="activePreviewFile.versionId"
+              :canonical-version-id="activePreviewFile.versionId"
+              :allow-download="Boolean(activePreviewFile.canDownload)"
+              :show-version-bar="false"
+              :show-file-switcher="previewFiles.length > 1"
+              @select-file="previewFile"
+              @download="downloadPreview"
+              @preview-error="previewError"
+            />
+          </section>
+
           <section class="section-card">
             <div class="section-title">
-              <div><strong>安全文件</strong><span>仅扫描通过且当前版本有效的材料允许预览或下载</span></div>
+              <div><strong>安全文件</strong><span>仅扫描通过且当前版本有效的材料允许站内预览或独立下载</span></div>
             </div>
             <SecureFileList
               :items="selected.items"
@@ -111,8 +136,8 @@
                     <td>v{{ item.versionNo }}</td>
                     <td class="mono">{{ item.versionId }}</td>
                     <td :title="item.fileName">{{ item.fileName }}</td>
-                    <td><AppStatusTag :type="item.readyForBusiness ? 'success' : 'danger'" size="sm">{{ scanStatusText(item.scanStatus) }}</AppStatusTag></td>
-                    <td>{{ reviewStatusText(item.reviewStatus) }}</td>
+                    <td><AppStatusTag :type="item.readyForBusiness ? 'success' : 'danger'" size="sm">{{ item.scanStatus }}</AppStatusTag></td>
+                    <td>{{ item.reviewStatus || '-' }}</td>
                     <td class="mono hash" :title="item.sha256">{{ shortHash(item.sha256) }}</td>
                   </tr>
                   <tr v-if="!selected.items.length"><td colspan="7" class="empty-cell">暂无文件版本</td></tr>
@@ -125,7 +150,7 @@
             <div class="section-title">
               <div><strong>归档 Manifest</strong><span>归档时冻结文件名、大小、哈希、扫描结论和真实版本号</span></div>
               <AppStatusTag v-if="selected.manifest" :type="manifestTone(selected.manifest.status)">
-                {{ manifestStatusText(selected.manifest.status) }}
+                {{ selected.manifest.status }}
               </AppStatusTag>
             </div>
             <div v-if="!selected.manifest" class="state compact">尚未生成归档版本清单</div>
@@ -140,7 +165,7 @@
                 <div v-for="item in selected.manifest.items" :key="`${item.versionId}-${item.materialCode}`">
                   <span>{{ item.materialCode }}</span>
                   <strong>v{{ item.versionId }}</strong>
-                  <small>{{ scanStatusText(item.scanResult) }} · {{ shortHash(item.sha256) }}</small>
+                  <small>{{ item.scanResult }} · {{ shortHash(item.sha256) }}</small>
                 </div>
               </div>
             </template>
@@ -155,20 +180,22 @@
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSearchBox, AppStatusTag } from '@/components/common'
+import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
 import SecureFileList from '@/components/file/SecureFileList.vue'
-import { fileSdk } from '@/services/file/fileSdk'
 import { internshipMaterialCenterApi } from '@/modules/internship/api/material-center.api'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'InternshipMaterialCenterView',
-  components: { ModulePageShell, AppButton, AppSearchBox, AppStatusTag, SecureFileList },
+  components: { ModulePageShell, AppButton, AppSearchBox, AppStatusTag, AppDocumentViewer, SecureFileList },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20,
       keyword: '', safetyStatus: '', loading: false, detailLoading: false,
-      syncing: false, error: '', selectedId: '', selected: null
+      syncing: false, error: '', selectedId: '', selected: null,
+      activePreviewFileId: '',
+      previewProvider: internshipMaterialCenterApi.createPreviewProvider()
     }
   },
   computed: {
@@ -176,6 +203,15 @@ export default {
     pageCount() { return Math.max(1, Math.ceil(this.total / this.pageSize)) },
     summary() {
       return this.selected?.summary || { ready: 0, unsafe: 0, versionCount: 0 }
+    },
+    previewFiles() {
+      return (this.selected?.items || []).filter((item) => item.canPreview && item.readyForBusiness)
+    },
+    activePreviewFile() {
+      return this.previewFiles.find((item) => String(item.fileId) === String(this.activePreviewFileId)) || null
+    },
+    previewDescriptor() {
+      return this.activePreviewFile ? internshipMaterialCenterApi.previewDescriptor(this.activePreviewFile) : null
     }
   },
   watch: {
@@ -183,6 +219,7 @@ export default {
       this.page = 1
       this.selectedId = ''
       this.selected = null
+      this.activePreviewFileId = ''
       this.load()
     }
   },
@@ -203,6 +240,7 @@ export default {
         if (this.selectedId && !this.rows.some((row) => row.internshipId === this.selectedId)) {
           this.selectedId = ''
           this.selected = null
+          this.activePreviewFileId = ''
         }
       } catch (error) {
         this.error = error?.message || '材料与证据中心加载失败'
@@ -214,6 +252,7 @@ export default {
     changePage(page) { this.page = page; this.load() },
     async openStudent(row) {
       this.selectedId = row.internshipId
+      this.activePreviewFileId = ''
       await this.refreshDetail()
     },
     async refreshDetail() {
@@ -221,6 +260,10 @@ export default {
       this.detailLoading = true
       try {
         this.selected = await internshipMaterialCenterApi.detail(this.selectedId)
+        const available = (this.selected?.items || []).filter((item) => item.canPreview && item.readyForBusiness)
+        if (!available.some((item) => String(item.fileId) === String(this.activePreviewFileId))) {
+          this.activePreviewFileId = String(available[0]?.fileId || '')
+        }
       } catch (error) {
         toast.error(error?.message || '学生材料详情加载失败')
       } finally {
@@ -243,26 +286,28 @@ export default {
       }
     },
     previewFile(item) {
-      fileSdk.preview(item.fileId).catch((error) => toast.error(error?.message || '文件预览失败'))
+      if (!item?.fileId || !item?.canPreview || !item?.readyForBusiness) {
+        toast.warning('当前材料尚未通过安全门禁，不能预览')
+        return
+      }
+      this.activePreviewFileId = String(item.fileId)
+    },
+    downloadPreview(descriptor) {
+      const item = (this.selected?.items || []).find((row) => String(row.fileId) === String(descriptor?.fileId))
+      if (item) this.downloadFile(item)
     },
     downloadFile(item) {
-      fileSdk.download(item.fileId, item.fileName).catch((error) => toast.error(error?.message || '文件下载失败'))
+      internshipMaterialCenterApi.downloadMaterial(item).catch((error) => toast.error(error?.message || '文件下载失败'))
+    },
+    previewError(error) {
+      toast.error(error?.message || '站内预览失败，请刷新材料状态后重试')
     },
     shortHash(value) {
       const text = String(value || '')
       return text ? `${text.slice(0, 10)}…${text.slice(-8)}` : '-'
     },
     statusText(value) {
-      return { READY: '安全可用', UNSAFE: '存在待处理', NOT_SYNCED: '尚未同步' }[value] || (value ? '状态待确认' : '未知')
-    },
-    scanStatusText(value) {
-      return { CLEAN: '安全', PASSED: '安全', READY: '安全可用', PENDING: '待扫描', UPLOADED: '待扫描', SCANNING: '扫描中', FAILED: '扫描失败', ERROR: '扫描失败', INFECTED: '发现安全风险' }[value] || (value ? '扫描状态待确认' : '—')
-    },
-    reviewStatusText(value) {
-      return { PENDING: '待审核', PENDING_REVIEW: '待审核', APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', NOT_REQUIRED: '无需审核' }[value] || (value ? '审核状态待确认' : '—')
-    },
-    manifestStatusText(value) {
-      return { PREPARED: '已准备', FROZEN: '已冻结', PACKAGED: '已打包', SUPERSEDED: '历史版本', REVOKED: '已撤销', ABORTED: '已终止' }[value] || '归档状态待确认'
+      return { READY: '安全可用', UNSAFE: '存在待处理', NOT_SYNCED: '尚未同步' }[value] || value || '未知'
     },
     statusTone(value) {
       return { READY: 'success', UNSAFE: 'danger', NOT_SYNCED: 'default' }[value] || 'default'
@@ -299,6 +344,8 @@ export default {
 .detail-head > div { display: grid; gap: 6px; }
 .detail-head span { color: #758197; font-size: 13px; }
 .section-card { margin-top: 14px; padding: 15px; border: 1px solid #dfe7f1; border-radius: 12px; background: #fff; }
+.reader-card { padding: 12px; }
+.reader-card :deep(.document-viewer__body) { min-height: 560px; }
 .section-title { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 12px; }
 .section-title > div { display: grid; gap: 4px; }
 .section-title span { color: #758197; font-size: 12px; }
