@@ -11,6 +11,7 @@ TENANT_ALL(教务处/学校管理员)。成绩发布/退回/归档超高危动�
 from __future__ import annotations
 
 from datetime import datetime
+import json
 
 from sqlalchemy import and_, func, select
 
@@ -48,11 +49,18 @@ def _op():
     return (u.get("realName") or "系统"), (u.get("currentRoleCode") or "").upper(), str(u.get("userId") or "")
 
 
-def _audit(db, biz_type, biz_id, action, detail=""):
+def _audit(db, biz_type, biz_id, action, detail="", *, before_val=None, after_val=None):
     from app.models import AffairsAuditTrail
     n, r, uid = _op()
+
+    def _snapshot(value):
+        if value is None or isinstance(value, str):
+            return value
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+
     db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=int(biz_id) if biz_id else None,
                              action=action, operator=n or uid, role_name=r, detail=detail,
+                             before_val=_snapshot(before_val), after_val=_snapshot(after_val),
                              occurred_at=datetime.utcnow()))
 
 
@@ -814,6 +822,7 @@ def submit_task(task_id, user) -> dict:
         if incomplete:
             raise AppException("DATA_CONFLICT", f"仍有 {len(incomplete)} 名学生成绩未录全，不可提交")
         # CAS：仅 INPUTTING/RETURNED 可抢占为 SUBMITTED，防并发双提交产生孤儿工作流
+        before_status = t.status
         claim = db.query(AaGradeTask).filter(
             AaGradeTask.id == t.id, AaGradeTask.tenant_id == _tid(),
             AaGradeTask.status.in_(["INPUTTING", "RETURNED"])).update(
@@ -842,7 +851,12 @@ def submit_task(task_id, user) -> dict:
         t.workflow_instance_id = inst.id
         t.submitted_at = datetime.utcnow()
         _todo_done_grade_entry(db, t.id)
-        _audit(db, "AA_GRADE_TASK", t.id, "SUBMIT")
+        _audit(
+            db, "AA_GRADE_TASK", t.id, "SUBMIT",
+            before_val={"status": before_status, "workflowInstanceId": None},
+            after_val={"status": "SUBMITTED", "workflowInstanceId": str(inst.id),
+                       "submittedAt": t.submitted_at},
+        )
         db.commit()
         db.refresh(t)
         return {"gradeTaskId": str(t.id), "status": t.status}
@@ -874,7 +888,12 @@ def college_review(task_id, user, action, reason="") -> dict:
                 inst.status = "RETURNED"
             t.status, t.return_reason = "RETURNED", reason.strip()
             _push_grade_entry_todo(db, t)
-            _audit(db, "AA_GRADE_TASK", t.id, "COLLEGE_RETURN", reason.strip())
+            _audit(
+                db, "AA_GRADE_TASK", t.id, "COLLEGE_RETURN", reason.strip(),
+                before_val={"status": "SUBMITTED", "returnReason": None},
+                after_val={"status": "RETURNED", "returnReason": reason.strip(),
+                           "reviewerId": int(uid) if uid.isdigit() else None},
+            )
         elif action == "APPROVE":
             if wtask:
                 wtask.status, wtask.acted_at = "APPROVED", datetime.utcnow()
@@ -890,7 +909,13 @@ def college_review(task_id, user, action, reason="") -> dict:
             t.college_reviewed_at = datetime.utcnow()
             t.college_reviewer_id = int(uid) if uid.isdigit() else None
             t.status = "ACADEMIC_REVIEW"
-            _audit(db, "AA_GRADE_TASK", t.id, "COLLEGE_APPROVE")
+            _audit(
+                db, "AA_GRADE_TASK", t.id, "COLLEGE_APPROVE",
+                before_val={"status": "SUBMITTED", "collegeReviewerId": None},
+                after_val={"status": "ACADEMIC_REVIEW",
+                           "collegeReviewerId": t.college_reviewer_id,
+                           "collegeReviewedAt": t.college_reviewed_at},
+            )
         else:
             raise AppException("VALIDATION_ERROR", "无效操作")
         db.commit()
@@ -1017,7 +1042,15 @@ def publish_grades(task_id, user) -> dict:
         t.academic_reviewed_at = datetime.utcnow()
         n, r2, uid = _op()
         t.academic_reviewer_id = int(uid) if uid.isdigit() else None
-        _audit(db, "AA_GRADE_TASK", t.id, "PUBLISH", f"projected={projected},fail={fail_count}")
+        _audit(
+            db, "AA_GRADE_TASK", t.id, "PUBLISH", f"projected={projected},fail={fail_count}",
+            before_val={"status": "ACADEMIC_REVIEW", "publishAt": None,
+                        "academicReviewerId": None},
+            after_val={"status": "PUBLISHED", "publishAt": t.publish_at,
+                       "academicReviewedAt": t.academic_reviewed_at,
+                       "academicReviewerId": t.academic_reviewer_id,
+                       "projected": projected, "failCount": fail_count},
+        )
         db.commit()
     warning_scan_ok = True
     warning_scan_error = None
@@ -1049,7 +1082,11 @@ def return_task(task_id, user, reason="") -> dict:
             raise AppException("DATA_CONFLICT", "当前状态不可退回")
         t.status, t.return_reason = "RETURNED", reason.strip()
         _push_grade_entry_todo(db, t)
-        _audit(db, "AA_GRADE_TASK", t.id, "ACADEMIC_RETURN", reason.strip())
+        _audit(
+            db, "AA_GRADE_TASK", t.id, "ACADEMIC_RETURN", reason.strip(),
+            before_val={"status": "ACADEMIC_REVIEW", "returnReason": None},
+            after_val={"status": "RETURNED", "returnReason": reason.strip()},
+        )
         db.commit()
         db.refresh(t)
         return {"gradeTaskId": str(t.id), "status": t.status}
@@ -1071,7 +1108,11 @@ def archive_task(task_id, user) -> dict:
             raise AppException("DATA_CONFLICT", "仅已发布任务可归档")
         t.status = "ARCHIVED"
         # 明确保留 teaching_task_id，归档不释放终身唯一占用
-        _audit(db, "AA_GRADE_TASK", t.id, "ARCHIVE")
+        _audit(
+            db, "AA_GRADE_TASK", t.id, "ARCHIVE",
+            before_val={"status": "PUBLISHED", "teachingTaskId": str(t.teaching_task_id or "")},
+            after_val={"status": "ARCHIVED", "teachingTaskId": str(t.teaching_task_id or "")},
+        )
         db.commit()
         db.refresh(t)
         return {"gradeTaskId": str(t.id), "status": t.status,
