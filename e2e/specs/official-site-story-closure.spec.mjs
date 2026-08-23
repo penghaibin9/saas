@@ -31,4 +31,25 @@ test.describe('Official website P0 sales-story closure', () => {
     await expect(page.locator('img[src="/official-site/orientation-overview.webp"]').first()).toBeVisible()
     await expect(page.locator('img[src="/official-site/orientation-progress.webp"]').first()).toBeVisible()
   })
+
+  test('platform page presents eight highlights with truthful current and evolving states', async ({ page }) => {
+    await page.goto(`${config.staffBaseUrl}/platform`)
+    await expect(page.getByRole('heading', { level: 1, name: /企业级数字工作平台能力/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /跃科平台八大特色/ })).toBeVisible()
+    await expect(page.getByText('学生 360° 成长工作台', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('统一安全文件与版本中心', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('跨业务统一审批中心', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('四端在线文档预览与批阅', { exact: true })).toBeVisible()
+    await expect(page.getByText('持续演进', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('当前具备', { exact: true }).first()).toBeVisible()
+    await expect(page.locator('img[src="/official-site/approval-center.webp"]')).toBeVisible()
+  })
+
+  test('platform page remains readable on a 390px phone', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(`${config.staffBaseUrl}/platform`)
+    const metrics = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1)
+    await expect(page.locator('#eight-highlights')).toBeVisible()
+  })
 })
