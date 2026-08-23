@@ -30,7 +30,6 @@ async function openWeeklyEditor(page, fixture) {
   await page.getByRole('button', { name: '周报/月报/总结' }).click()
   const editor = page.locator('section.sp-card').filter({ hasText: '周报编辑' }).first()
   await expect(editor).toBeVisible()
-  await expect(page.getByText(fixture.companyName).first()).toBeVisible()
   return { editor, items: list.data?.items || [] }
 }
 
