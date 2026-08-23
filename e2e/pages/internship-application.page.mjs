@@ -119,6 +119,10 @@ export class StaffInternshipApplicationPage {
     return `${this.baseUrl}/admin/internship/applications?${query}`
   }
 
+  applicationDrawer() {
+    return this.page.getByRole('dialog').filter({ hasText: this.fixture.studentName }).last()
+  }
+
   async openPending() {
     await this.page.goto(this.url())
     await expect(this.page.getByText('实习申请审核').first()).toBeVisible()
@@ -136,8 +140,9 @@ export class StaffInternshipApplicationPage {
     await row.getByRole('button', { name: /审核|查看/ }).click()
     const body = await expectSuccessfulResponse(await detailResponse, '教师打开自主实习申请详情')
     expect(String(body?.data?.id || '')).toBe(String(appId))
-    const drawer = this.page.locator('[class*="drawer"]').filter({ hasText: this.fixture.studentName }).last()
-    await expect(this.page.getByText('自主实习证明材料', { exact: true })).toBeVisible()
+    const drawer = this.applicationDrawer()
+    await expect(drawer).toBeVisible()
+    await expect(drawer.getByRole('heading', { name: '自主实习证明材料', exact: true })).toBeVisible()
     return body?.data || {}
   }
 
@@ -147,7 +152,7 @@ export class StaffInternshipApplicationPage {
       && response.request().method() === 'GET'
     )
     const downloadPromise = this.page.waitForEvent('download').catch(() => null)
-    await this.page.getByRole('button', { name: '下载' }).last().click()
+    await this.applicationDrawer().getByRole('button', { name: '下载' }).click()
     const response = await responsePromise
     expect(response.ok(), `证明材料下载 HTTP ${response.status()}`).toBeTruthy()
     const download = await downloadPromise
@@ -156,10 +161,11 @@ export class StaffInternshipApplicationPage {
 
   async reject(appId, reason) {
     const detail = await this.openApplication(appId)
-    const reject = this.page.getByRole('button', { name: '驳回' }).last()
+    const drawer = this.applicationDrawer()
+    const reject = drawer.getByRole('button', { name: '驳回' })
     await expect(reject).toBeEnabled()
     await reject.click()
-    const dialog = this.page.getByRole('dialog')
+    const dialog = this.page.getByRole('dialog').last()
     await expect(dialog).toBeVisible()
     await dialog.locator('textarea').fill(reason)
     const responsePromise = this.page.waitForResponse((response) =>
@@ -174,10 +180,11 @@ export class StaffInternshipApplicationPage {
 
   async approve(appId) {
     const detail = await this.openApplication(appId)
-    const approve = this.page.getByRole('button', { name: '通过并落实去向' }).last()
+    const drawer = this.applicationDrawer()
+    const approve = drawer.getByRole('button', { name: '通过并落实去向' })
     await expect(approve).toBeEnabled()
     await approve.click()
-    const dialog = this.page.getByRole('dialog')
+    const dialog = this.page.getByRole('dialog').last()
     await expect(dialog).toBeVisible()
     const responsePromise = this.page.waitForResponse((response) =>
       apiPath(response) === `/api/v1/internship/applications/${appId}/review`
