@@ -72,3 +72,9 @@ def list_grade_audit(user, biz_type=None, page=1, page_size=50):
 def install() -> None:
     _core.list_grade_audit = list_grade_audit
     _public.list_grade_audit = list_grade_audit
+
+    # High-risk grade state transitions share the same production audit boundary.
+    # Install structured before/after evidence here so HTTP, scripts and internal callers
+    # all get the same rule without changing authorization, workflow routing or statuses.
+    from . import academic_affairs_grade_audit_evidence_guard
+    academic_affairs_grade_audit_evidence_guard.install()
