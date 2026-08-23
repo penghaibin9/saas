@@ -67,7 +67,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_TARGET_SHA: 5cb5063c9728252d4693615c5afcfccdb0353882
+      E2E_TARGET_SHA: 79892b3f894d9c31a90714e401951dcd7edc4ac0
 
     steps:
       - name: Checkout audit runner only
@@ -80,7 +80,7 @@ jobs:
       - name: Checkout immutable application exact head
         uses: actions/checkout@v4
         with:
-          ref: 5cb5063c9728252d4693615c5afcfccdb0353882
+          ref: 79892b3f894d9c31a90714e401951dcd7edc4ac0
           path: app
           fetch-depth: 0
 
@@ -110,7 +110,7 @@ jobs:
         working-directory: app/backend
         run: |
           pip install -r requirements.txt
-          pytest -q tests/test_affairs_aid_draft_resubmit_contract.py tests/test_affairs_aid_detail_projection_contract.py
+          pytest -q tests/test_affairs_aid_draft_resubmit_contract.py tests/test_affairs_aid_detail_projection_contract.py tests/test_affairs_aid_audit_namespace_contract.py
           alembic upgrade head
           python scripts/bootstrap_control_plane_school_iam_authority.py
           python scripts/e2e_seed_playwright_tenants.py
@@ -267,11 +267,20 @@ jobs:
               print('[AID-AUDIT trail]')
               for t in trail: print(t)
               actions = [str(t[0]).upper() for t in trail]
-              for expected in ('APPLY','RETURNED','RESUBMIT','TO_PUBLICITY','AID_OBJECTION_SUBMIT','AID_OBJECTION_REVIEW'):
+              for expected in ('APPLY','RETURNED','STUDENT_EDIT_RETURNED','STUDENT_RESUBMIT','TO_PUBLICITY','AID_OBJECTION_SUBMIT','AID_OBJECTION_REVIEW'):
                   assert expected in actions, (expected, actions)
               assert actions.count('REVIEW_STEP') >= 3, actions
-              findings['auditKeyCollision'] = bool(batch_id == aid_id and 'BATCH_CREATE' in actions)
-              findings['mixedActions'] = actions
+              assert 'BATCH_CREATE' not in actions, actions
+
+              cur.execute("SELECT action,operator,role_name,detail,occurred_at FROM t_affairs_audit_trail WHERE biz_type='AID_BATCH' AND biz_id=%s ORDER BY id", (batch_id,))
+              batch_trail = cur.fetchall()
+              print('[AID-BATCH-AUDIT trail]')
+              for t in batch_trail: print(t)
+              batch_actions = [str(t[0]).upper() for t in batch_trail]
+              assert 'BATCH_CREATE' in batch_actions, batch_actions
+              findings['auditKeyCollision'] = False
+              findings['applicationActions'] = actions
+              findings['batchActions'] = batch_actions
 
               cur.execute("SELECT action,resource,result,detail FROM t_security_audit_log WHERE action='SENSITIVE_VIEW' AND (resource='aid_family_economy' OR resource LIKE 'aid_family_economy:%') ORDER BY id")
               sensitive = cur.fetchall()
