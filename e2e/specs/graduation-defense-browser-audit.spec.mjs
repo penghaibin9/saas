@@ -79,7 +79,18 @@ async function openScoring(page, account, fixture, octet) {
   await page.goto(url.toString())
   await dismissGuide(page)
   await expect(page.getByRole('heading', { name: '答辩与成绩', exact: true })).toBeVisible()
-  await expect(page.locator('.gp-context')).toContainText(fixture.studentNo)
+
+  const context = page.locator('.gp-context')
+  if (!(await context.isVisible().catch(() => false))) {
+    const search = page.getByPlaceholder('搜索学生姓名/学号')
+    await expect(search).toBeVisible()
+    await search.fill(fixture.studentNo)
+    const student = page.locator('.gp-stu-item').filter({ hasText: fixture.studentNo }).first()
+    await expect(student).toBeVisible()
+    await student.click()
+  }
+
+  await expect(context).toContainText(fixture.studentNo)
   await expect(page.getByRole('button', { name: '答辩评分', exact: true })).toBeVisible()
 }
 
@@ -158,9 +169,11 @@ test.describe.serial('毕业设计答辩 Browser First · 建组发布/专家评
     await expect(page).toHaveURL(/\/admin\/graduation\/defense\/groups\/[^/]+\/edit/)
 
     const search = page.getByPlaceholder('搜索姓名')
-    await search.fill(fixture.studentNo)
-    await expect(page.locator('.dg-row--pick').first()).toBeVisible()
-    await page.locator('.dg-row--pick').first().click()
+    expect(fixture.studentName, 'fixture must expose the real student name used by defense candidate search').toBeTruthy()
+    await search.fill(fixture.studentName)
+    const candidate = page.locator('.dg-row--pick').filter({ hasText: fixture.studentName }).first()
+    await expect(candidate).toBeVisible()
+    await candidate.click()
     const [assigned] = await Promise.all([
       page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.includes('/graduation/defense-groups/') && new URL(r.url()).pathname.endsWith('/assign')),
       page.getByRole('button', { name: /分配所选/ }).click(),
