@@ -1,17 +1,17 @@
 """AA-05 teacher grade write transaction guard.
 
-The teacher execution adapter validates the *live* AaTeachingTask owner.  Older
-code delegated the actual score write to ``academic_affairs_grade_service`` while
-still holding a row lock in a different Session.  Canonical roster resolution may
-synchronise teaching-class facts, so the nested Session can wait on the outer
-transaction until the browser request times out.
+The teacher execution adapter validates the *live* AaTeachingTask owner. Older code delegated the
+actual score/submit write to ``academic_affairs_grade_service`` while still holding a row lock in a
+different Session. Canonical roster resolution may synchronise teaching-class facts, so the nested
+Session can wait on the outer transaction until the browser request times out.
 
-This guard keeps the existing permission/state/roster rules but performs a single
-row score write in one MySQL transaction: GradeTask lock -> term guard -> live
-teacher pin -> canonical snapshot-scope compatibility -> authoritative roster ->
-GradeRecord mutation -> audit -> commit.
+This guard keeps the existing permission/state/roster/workflow rules but performs teacher score writes
+and ordinary teaching-task submits in one MySQL transaction. It does not relax authorization, deadline,
+roster, workflow, audit or browser timeout rules.
 """
 from __future__ import annotations
+
+from datetime import datetime
 
 from sqlalchemy import select
 
@@ -144,10 +144,150 @@ def _enter_score_single_session(task_id: int, user, body) -> dict:
         }
 
 
+def _submit_task_single_session(task_id: int, user) -> dict:
+    """Submit one teacher-owned grade task without a nested Session.
+
+    The canonical submit semantics are intentionally kept in lock-step with
+    ``academic_affairs_grade_service.submit_task``. The only execution-layer addition is the live
+    teacher pin and canonical-scope compatibility inside the *same* Session as roster freezing and the
+    workflow transition.
+    """
+    from app.models import AaGradeRecord, AaGradeTask, WorkflowInstance, WorkflowTask
+    from app.modules.academic_affairs.services.academic_affairs_archive_service import (
+        guard_term_writable,
+    )
+    from app.modules.academic_affairs.services.academic_affairs_grade_task_assignee_guard import (
+        resolve_grade_task_assignee,
+    )
+    from app.services.runtime_preset_install_service import ensure_workflow_enabled
+
+    with _core.session() as db:
+        task = _grade._load_task(db, int(task_id), lock=True)
+        guard_term_writable(db, task.term_id)
+        _exec._require_live_teacher(db, task, user, lock_owner=True)
+        delegated_user = _exec._canonical_scope_user(task, user)
+        _core._check_course_scope(task, delegated_user)
+
+        if task.status not in {"INPUTTING", "RETURNED"}:
+            raise AppException("DATA_CONFLICT", "当前状态不可提交")
+        was_returned = task.status == "RETURNED"
+        if not task.teaching_task_id:
+            raise AppException(
+                "DATA_CONFLICT",
+                "管理员特殊补录不可走普通教学任务提交链；请使用补录复核专用流程",
+                http_status=409,
+            )
+
+        data = _grade.resolve_versioned_roster(db, int(task.teaching_task_id))
+        roster_ids = {int(value) for value in data.get("studentIds") or []}
+        if not roster_ids:
+            raise AppException("DATA_CONFLICT", "正式教学名单为空，不可提交成绩任务", http_status=409)
+
+        records = db.scalars(
+            select(AaGradeRecord).where(
+                AaGradeRecord.tenant_id == _core._tid(),
+                AaGradeRecord.task_id == task.id,
+                AaGradeRecord.is_deleted.is_(False),
+            )
+        ).all()
+        record_ids = {int(row.student_id) for row in records}
+        missing = sorted(roster_ids - record_ids)
+        extra = sorted(record_ids - roster_ids)
+        if missing or extra:
+            raise AppException(
+                "DATA_CONFLICT",
+                f"成绩名单不一致：未录 {len(missing)} 人，名单外记录 {len(extra)} 人",
+                details={
+                    "rosterSource": data.get("source"),
+                    "rosterVersionId": str(data.get("rosterVersionId") or ""),
+                    "missingStudentIds": [str(value) for value in missing],
+                    "extraStudentIds": [str(value) for value in extra],
+                },
+                http_status=409,
+            )
+        incomplete = [
+            row
+            for row in records
+            if row.total_score is None and str(row.exception_flag or "NORMAL").upper() == "NORMAL"
+        ]
+        if incomplete:
+            raise AppException("DATA_CONFLICT", f"仍有 {len(incomplete)} 名学生成绩未录全，不可提交")
+
+        snapshot = _grade.freeze_consumer_snapshot(
+            db,
+            "GRADE_TASK",
+            int(task.id),
+            int(task.teaching_task_id),
+            roster=data,
+            allow_replace=was_returned,
+            replace_reason="成绩任务退回后按当前正式名单重新提交" if was_returned else "",
+        )
+        claimed = (
+            db.query(AaGradeTask)
+            .filter(
+                AaGradeTask.id == task.id,
+                AaGradeTask.tenant_id == _core._tid(),
+                AaGradeTask.status.in_(["INPUTTING", "RETURNED"]),
+            )
+            .update({AaGradeTask.status: "SUBMITTED"}, synchronize_session=False)
+        )
+        if not claimed:
+            db.rollback()
+            raise AppException("APPROVAL_VERSION_CONFLICT", "成绩任务已提交或状态已变化", http_status=409)
+        task.status = "SUBMITTED"
+
+        _name, _role, user_id = _core._op()
+        ensure_workflow_enabled(db, _core._tid(), _core._WF_SUBMIT)
+        instance = WorkflowInstance(
+            tenant_id=_core._tid(),
+            workflow_code=_core._WF_SUBMIT,
+            source_module="academic-affairs",
+            source_biz_type="AA_GRADE_TASK",
+            source_biz_id=task.id,
+            applicant_id=int(user_id) if str(user_id).isdigit() else 0,
+            title=f"{task.course_name or ''} 成绩审核",
+            status="RUNNING",
+            current_node="COLLEGE_REVIEW",
+        )
+        db.add(instance)
+        db.flush()
+        db.add(
+            WorkflowTask(
+                tenant_id=_core._tid(),
+                instance_id=instance.id,
+                node_code="COLLEGE_REVIEW",
+                assignee_id=resolve_grade_task_assignee(db, "COLLEGE_REVIEW", task),
+                status="PENDING",
+            )
+        )
+        task.workflow_instance_id = instance.id
+        task.submitted_at = datetime.utcnow()
+        _core._todo_done_grade_entry(db, task.id)
+        _core._audit(
+            db,
+            "AA_GRADE_TASK",
+            task.id,
+            "SUBMIT",
+            (
+                f"students={len(roster_ids)};teachingClassId={snapshot['teachingClassId']};"
+                f"rosterVersionId={snapshot['rosterVersionId']};snapshotVersion={snapshot['snapshotVersion']}"
+            ),
+        )
+        db.commit()
+        return {
+            "gradeTaskId": str(task.id),
+            "status": "SUBMITTED",
+            "studentCount": len(roster_ids),
+            "rosterIdentity": snapshot,
+        }
+
+
 def install() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
     _exec.teacher_enter_score = _enter_score_single_session
     _enter_score_single_session.__grade_single_session_guard__ = True
+    _exec.teacher_submit_task = _submit_task_single_session
+    _submit_task_single_session.__grade_single_session_guard__ = True
     _INSTALLED = True
