@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="处分送达与申诉"
-    subtitle="已生效处分的送达登记与申诉复核；变更处分必须明确新的处分类型，所有写操作携带当前版本。"
+    subtitle="已生效处分的送达登记与申诉复核；变更处分必须明确新的处分类型与事实，所有写操作携带当前版本。"
     role-name="学工处 / 学院"
     data-scope-name="学院本院 / 学工处全校"
     watermark-purpose="处分送达与申诉复核"
@@ -19,7 +19,7 @@
             {{ pendingAppealCount === '—' ? '正在核对处分送达与申诉待办' : `待复核申诉 ${pendingAppealCount} 件，本页待送达 ${pageUndelivered} 件` }}
           </h2>
           <p class="sa-summary-strip__text">
-            先完成处分决定送达，再受理学生申诉。复核时必须核对原处分、学生理由和证据；选择“变更处分”后会真实更新处分及有效投影。
+            先完成处分决定送达，再受理学生申诉。复核时必须核对原处分、学生理由和证据；选择“变更处分”后会真实更新处分类型、事实依据及有效投影。
           </p>
         </div>
       </section>
@@ -175,12 +175,25 @@
       <AppFormItem label="复核结论" required>
         <AppSelect v-model="revDlg.result" :options="RESULT_OPTIONS" />
       </AppFormItem>
-      <AppFormItem v-if="revDlg.result === 'REVISED'" label="变更后的处分类型" required>
-        <AppSelect v-model="revDlg.revisedDiscType" :options="DISC_OPTIONS" />
-      </AppFormItem>
-      <p v-if="revDlg.result === 'REVISED'" class="ap-hint">
-        “变更处分”不是只改申诉状态；提交后会真实更新原处分及其有效投影。
-      </p>
+      <template v-if="revDlg.result === 'REVISED'">
+        <AppFormItem label="变更后的处分类型" required>
+          <AppSelect v-model="revDlg.revisedDiscType" :options="DISC_OPTIONS" />
+        </AppFormItem>
+        <AppFormItem label="变更后的处分事实（5-1000字）" required>
+          <AppTextarea
+            v-model="revDlg.revisedReason"
+            :rows="3"
+            maxlength="1000"
+            placeholder="请填写变更决定采用的完整事实依据，不得用复核意见代替"
+          />
+        </AppFormItem>
+        <AppFormItem label="变更后的文号">
+          <AppTextInput v-model="revDlg.revisedDocNo" placeholder="选填；如文号不变可保留原文号" />
+        </AppFormItem>
+        <p class="ap-hint">
+          “变更处分”会真实更新处分类型、事实依据、文号（如有）及有效投影，并追加不可变决定版本；复核意见另行保留。
+        </p>
+      </template>
     </AppConfirmDialog>
   </AppPageShell>
 </template>
@@ -188,7 +201,7 @@
 <script>
 import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell,
-  AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag
+  AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppTextarea, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
@@ -225,7 +238,7 @@ export default {
   props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell,
-    AppPermissionButton, AppSectionCard, AppSelect, StatusTag: AppStatusTag, DataTable
+    AppPermissionButton, AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextarea, AppTextInput, DataTable
   },
   data() {
     return {
@@ -244,7 +257,10 @@ export default {
       appealPagination: { page: 1, pageSize: 50, total: 0 },
       delDlg: { visible: false, caseId: '', method: 'DIRECT', version: null },
       apDlg: { visible: false, caseId: '' },
-      revDlg: { visible: false, appealId: '', version: null, result: 'UPHELD', revisedDiscType: '' }
+      revDlg: {
+        visible: false, appealId: '', caseId: '', version: null,
+        result: 'UPHELD', revisedDiscType: '', revisedReason: '', revisedDocNo: ''
+      }
     }
   },
   computed: {
@@ -349,25 +365,41 @@ export default {
     },
     review(row) {
       if (!this.canReview(row) || !this.hasVersion(row)) return
+      const currentCase = this.effectiveCases.find((item) => String(item.caseId) === String(row.caseId)) || {}
       this.revDlg = {
-        visible: true, appealId: row.appealId, version: row.version,
-        result: 'UPHELD', revisedDiscType: ''
+        visible: true,
+        appealId: row.appealId,
+        caseId: row.caseId || '',
+        version: row.version,
+        result: 'UPHELD',
+        revisedDiscType: currentCase.discType || '',
+        revisedReason: currentCase.reason || '',
+        revisedDocNo: currentCase.docNo || ''
       }
     },
     async submitReview({ reason }) {
       const dialog = this.revDlg
       const opinion = (reason || '').trim()
       if (opinion.length < 5 || opinion.length > 1000) { toast.error('复核意见需5-1000字'); return }
-      if (dialog.result === 'REVISED' && !dialog.revisedDiscType) {
-        toast.error('变更处分必须选择新的处分类型')
-        return
+      if (dialog.result === 'REVISED') {
+        if (!dialog.revisedDiscType) {
+          toast.error('变更处分必须选择新的处分类型')
+          return
+        }
+        const revisedReason = (dialog.revisedReason || '').trim()
+        if (revisedReason.length < 5 || revisedReason.length > 1000) {
+          toast.error('变更后的处分事实需5-1000字')
+          return
+        }
       }
       this.acting = dialog.appealId
       const response = await disciplineIntegrityApi.reviewAppeal(dialog.appealId, {
         result: dialog.result,
         opinion,
         version: dialog.version,
-        revisedDiscType: dialog.revisedDiscType
+        revisedDiscType: dialog.revisedDiscType,
+        revisedReason: (dialog.revisedReason || '').trim(),
+        revisedDocNo: (dialog.revisedDocNo || '').trim()
       })
       this.acting = ''
       if (response.code === 0) {
