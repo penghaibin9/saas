@@ -132,7 +132,12 @@ export default {
     this.searchStudents()
   },
   watch: {
-    '$route.query.panel'(p) { if (['plagiarism', 'review', 'defense', 'grade'].includes(p) && p !== this.tab) this.tab = p },
+    async '$route.query.panel'(p) {
+      if (['plagiarism', 'review', 'defense', 'grade'].includes(p) && p !== this.tab) {
+        this.tab = p
+        if (this.current) await this.loadAll()
+      }
+    },
     async '$route.query.studentId'(sid) { if (sid && String(this.current?.id || '') !== String(sid)) await this.restoreStudentFromRoute() },
     'batchStore.selectedBatchId'(batchId) { this.current = null; this.studentOptions = []; this.batch.loaded = false; this.$router.replace({ query: { ...this.$route.query, batchId: batchId || undefined, studentId: undefined } }); this.searchStudents(); if (this.mode === 'batch') this.loadGrades() }
   },
@@ -145,11 +150,33 @@ export default {
     setMode(m) { this.mode = m; if (m === 'batch') { this.syncBatchRoute(); if (!this.batch.loaded) this.loadGrades() } else this.$router.replace({ query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId || undefined, studentId: this.current?.id || this.$route.query.studentId || undefined, panel: this.tab, view: undefined, queue: this.$route.query.queue || 'ledger' } }) },
     async loadGrades() { const B = this.batch; B.loading = true; B.error = ''; if (!this.batchStore.selectedBatchId) { B.rows = []; B.total = 0; B.loading = false; return } const q = this.activeBatchQueue(); const res = await graduationDefenseGradeApi.getGrades({ keyword: B.keyword, status: q.status || undefined, missingType: q.missingType || undefined, batchId: this.batchStore.selectedBatchId, page: B.page, pageSize: B.pageSize }); if (res.code === 0) { B.rows = res.data.list; B.total = res.data.total; B.loaded = true } else { B.rows = []; B.total = 0; B.error = res.message || '加载失败' } B.loading = false },
     openFromBatch(row) { const q = this.activeBatchQueue(); this.mode = 'single'; this.tab = 'grade'; this.current = { id: row.gdStudentId, name: row.studentName, studentNo: row.studentNo, advisorName: row.advisorName }; this.$router.replace({ query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId, studentId: row.gdStudentId, panel: 'grade', view: undefined, queue: q.missingType ? 'grade-missing' : 'ledger', missingType: q.missingType || undefined, status: q.status || undefined } }); this.loadAll() },
-    switchTab(t) { this.tab = t; let routeName = PANEL_ROUTES[t]; if (t === 'defense' && this.$route.name === 'graduation-defense-confirmation') routeName = this.$route.name; this.$router.replace({ name: routeName, query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId || undefined, studentId: this.current?.id || this.$route.query.studentId || undefined, panel: t, view: undefined, queue: this.$route.query.queue || 'ledger' } }) },
+    switchTab(t) { this.tab = t; let routeName = PANEL_ROUTES[t]; if (t === 'defense' && this.$route.name === 'graduation-defense-confirmation') routeName = this.$route.name; this.$router.replace({ name: routeName, query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId || undefined, studentId: this.current?.id || this.$route.query.studentId || undefined, panel: t, view: undefined, queue: this.$route.query.queue || 'ledger' } }); this.loadAll() },
     async searchStudents() { this.sideError = ''; if (!this.batchStore.selectedBatchId) { this.studentOptions = []; return } const res = await gdStudentApi.getStudents({ keyword: this.studentKeyword, batchId: this.batchStore.selectedBatchId, pageSize: 20 }); if (res.code === 0) this.studentOptions = res.data.list; else { this.studentOptions = []; this.sideError = res.message || '学生列表加载失败' } },
-    async restoreStudentFromRoute() { const sid = this.$route.query.studentId; if (!sid || !this.batchStore.selectedBatchId) return; const res = await graduationDefenseGradeApi.getGrade(sid); if (res.code !== 0) { this.current = null; this.sideError = res.message || '学生上下文加载失败'; return } this.current = { id: String(sid), name: res.data.studentName || '', studentNo: res.data.studentNo || '', advisorName: res.data.advisorName || '' }; await this.loadAll() },
+    async restoreStudentFromRoute() {
+      const sid = this.$route.query.studentId
+      if (!sid || !this.batchStore.selectedBatchId) return
+      const res = await gdStudentApi.getStudentDetail(sid)
+      if (res.code !== 0) { this.current = null; this.sideError = res.message || '学生上下文加载失败'; return }
+      const student = res.data?.student || res.data || {}
+      const routeBatchId = String(this.$route.query.batchId || this.batchStore.selectedBatchId || '')
+      const studentBatchId = String(student.batchId || '')
+      if (routeBatchId && studentBatchId && routeBatchId !== studentBatchId) {
+        this.current = null
+        this.sideError = '当前批次与学生上下文不一致，请返回后重新选择学生'
+        return
+      }
+      this.current = { id: String(sid), name: student.name || '', studentNo: student.studentNo || '', advisorName: student.advisorName || '', mentorId: student.mentorId || null }
+      await this.loadAll()
+    },
     selectStudent(s) { this.current = s; this.$router.replace({ query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId, studentId: s.id, panel: this.tab, view: undefined, queue: this.$route.query.queue || 'ledger' } }); this.loadAll() },
-    async loadAll() { this.loadError = ''; await Promise.all([this.loadPlagiarism(), this.loadReview(), this.loadScores(), this.loadGrade()]) },
+    async loadAll() {
+      this.loadError = ''
+      if (!this.current) return
+      if (this.tab === 'plagiarism') await this.loadPlagiarism()
+      else if (this.tab === 'review') await this.loadReview()
+      else if (this.tab === 'defense') await this.loadScores()
+      else if (this.tab === 'grade') await this.loadGrade()
+    },
     async loadPlagiarism() { const res = await graduationDefenseGradeApi.getPlagiarismList({ gdStudentId: this.current.id, batchId: this.batchStore.selectedBatchId, pageSize: 50 }); if (res.code === 0) this.plagiarismList = res.data.list; else { this.plagiarismList = []; this.loadError = res.message || '查重记录加载失败' } },
     async loadReview() { const res = await graduationDefenseGradeApi.getReviewList({ gdStudentId: this.current.id, batchId: this.batchStore.selectedBatchId, pageSize: 50 }); if (res.code === 0) this.reviewList = res.data.list; else { this.reviewList = []; this.loadError = res.message || '评阅记录加载失败' } },
     async loadScores() { const res = await graduationDefenseGradeApi.getScoreList({ gdStudentId: this.current.id, batchId: this.batchStore.selectedBatchId, pageSize: 50 }); if (res.code === 0) this.scoreList = res.data.list; else { this.scoreList = []; this.loadError = res.message || '评分记录加载失败' } },
@@ -180,7 +207,8 @@ export default {
 .gp-layout { display: flex; gap: var(--space-4); align-items: flex-start; }.gp-side { width: 280px; flex: none; padding: var(--space-3); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }.gp-main { flex: 1; min-width: 0; padding: var(--space-4); border: 1px solid var(--border-light, #e2e8f0); border-radius: var(--radius-md, 8px); background: var(--card, #fff); box-shadow: 0 1px 2px rgba(15, 23, 42, .03); }
 .gp-stu-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; max-height: 560px; overflow-y: auto; }.gp-stu-item { padding: 9px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: background .12s ease, border-color .12s ease; }.gp-stu-item:hover { background: var(--bg2, #f8fafc); }.gp-stu-item.is-active { background: var(--pri-bg, #eff6ff); border-color: var(--pri, #2563eb); }
 .gp-context { display: flex; align-items: center; gap: var(--space-3); padding: 0 0 var(--space-3); margin-bottom: var(--space-1); border-bottom: 1px solid var(--border-light, #e2e8f0); }.gp-context__avatar { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border-radius: var(--radius-full); background: var(--primary-50, #eff6ff); color: var(--primary-700, #1d4ed8); font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); }.gp-context__identity { display: grid; gap: 2px; min-width: 0; }.gp-context__identity strong { color: var(--text-primary); font-size: var(--font-size-md); }.gp-context__identity span { overflow: hidden; color: var(--text-tertiary); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }.gp-context__hint { margin-left: auto; max-width: 235px; color: var(--text-tertiary); font-size: var(--font-size-xs); line-height: 1.5; text-align: right; }
-.gp-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); flex-wrap: wrap; }.gp-tabs__item { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }.gp-tabs__item.is-active { color: var(--pri, #2563eb); border-bottom-color: var(--pri, #2563eb); font-weight: 600; }.gp-panel { font-size: 13px; }.gp-kv { display: flex; gap: var(--space-3); padding: 6px 0; border-bottom: 1px dashed var(--line, #eef1f6); }.gp-kv > span:first-child { width: 90px; flex: none; color: var(--t3, #64748b); }.gp-timeline { list-style: none; margin: 0; padding: 0; }.gp-timeline-item { padding: 10px 0; border-bottom: 1px dashed var(--line, #eef1f6); }
+.gp-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); flex-wrap: wrap; }.gp-tabs__item { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }.gp-tabs__item.is-active { color: var(--pri, #2563eb); border-bottom-color: var(--pri, #2563eb); font-weight: 600; }
+.gp-panel { font-size: 13px; }.gp-kv { display: flex; gap: var(--space-3); padding: 6px 0; border-bottom: 1px dashed var(--line, #eef1f6); }.gp-kv > span:first-child { width: 90px; flex: none; color: var(--t3, #64748b); }.gp-timeline { list-style: none; margin: 0; padding: 0; }.gp-timeline-item { padding: 10px 0; border-bottom: 1px dashed var(--line, #eef1f6); }
 .mp-link--danger { color: var(--danger, #dc2626); }.ie-in { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; box-sizing: border-box; }.ie-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }.mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }.mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 @media (max-width: 960px) { .gp-layout { flex-direction: column; } .gp-side, .gp-main { width: 100%; box-sizing: border-box; } .gp-stu-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); max-height: 260px; gap: var(--space-1); } } @media (max-width: 640px) { .gp-context__hint { display: none; } .gp-main { padding: var(--space-3); } }
 </style>
