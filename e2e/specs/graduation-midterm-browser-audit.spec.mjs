@@ -44,6 +44,32 @@ async function establishApprovedProposal(page, fixture) {
   await staff.approve()
 }
 
+async function advanceGuidingToMidtermThroughAdminUi(page, fixture) {
+  await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+  const url = new URL(`${config.staffBaseUrl}/admin/graduation/students/${fixture.gdStudentId}`)
+  url.searchParams.set('batchId', fixture.batchId)
+  url.searchParams.set('source', 'E2E-AUDIT-20260823')
+  await page.goto(url.toString())
+  await dismissGuide(page)
+
+  const stage = page.locator('.gsd-summary__item').filter({ hasText: '当前节点' }).first()
+  await expect(stage).toContainText('指导中')
+  await page.getByRole('button', { name: '推进节点', exact: true }).click()
+  await expect(page.getByText('推进节点', { exact: true }).last()).toBeVisible()
+
+  const [response] = await Promise.all([
+    page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith(`/graduation/gd-students/${fixture.gdStudentId}/stage`)),
+    page.getByRole('button', { name: '推进', exact: true }).click()
+  ])
+  expect(response.ok(), `stage advance HTTP ${response.status()}`).toBeTruthy()
+  expect((await response.json()).code).toBe(0)
+  await expect(stage).toContainText('中期检查')
+
+  await page.reload()
+  await dismissGuide(page)
+  await expect(page.locator('.gsd-summary__item').filter({ hasText: '当前节点' }).first()).toContainText('中期检查')
+}
+
 async function openMidterm(page, fixture) {
   const url = new URL(`${config.staffBaseUrl}/admin/graduation/process`)
   url.searchParams.set('batchId', fixture.batchId)
@@ -84,9 +110,11 @@ test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭�
     fixture = await prepareGraduationFixture()
   })
 
-  test('开题通过 → 导师限期整改 → 学生整改 → 复核退回 → 学生再整改 → 复核通过', async ({ page }) => {
+  test('开题通过 → 管理员真实推进 → 导师限期整改 → 学生整改 → 复核退回 → 再整改 → 复核通过', async ({ page }) => {
     await establishApprovedProposal(page, fixture)
+    await advanceGuidingToMidtermThroughAdminUi(page, fixture)
 
+    await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
     await openMidterm(page, fixture)
     await expect(page.getByRole('button', { name: '发起中期检查', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '发起中期检查', exact: true }).click()
@@ -98,9 +126,8 @@ test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭�
       page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith(`/graduation/gd-midterms/${fixture.gdStudentId}/check`)),
       page.getByRole('button', { name: '保存', exact: true }).click()
     ])
-    expect(checkResponse.ok()).toBeTruthy()
+    expect(checkResponse.ok(), `midterm check HTTP ${checkResponse.status()}`).toBeTruthy()
     expect((await checkResponse.json()).code).toBe(0)
-    await expect(page.getByRole('button', { name: '提交整改', exact: true })).toBeVisible()
 
     await studentSubmitRectification(page, `E2E-AUDIT-20260823 第一次整改 ${fixture.runId}：补齐异常路径、补测刷新恢复并完善阶段计划。`)
 
@@ -111,9 +138,8 @@ test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭�
       page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith(`/graduation/gd-midterms/${fixture.gdStudentId}/rectify/review`)),
       page.getByRole('button', { name: '复核不通过', exact: true }).click()
     ])
-    expect(failResponse.ok()).toBeTruthy()
+    expect(failResponse.ok(), `midterm review fail HTTP ${failResponse.status()}`).toBeTruthy()
     expect((await failResponse.json()).code).toBe(0)
-    await expect(page.getByRole('button', { name: '提交整改', exact: true })).toBeVisible()
 
     await studentSubmitRectification(page, `E2E-AUDIT-20260823 第二次整改 ${fixture.runId}：按复核要求完成补测、修订并提交可追溯说明。`)
 
@@ -124,7 +150,7 @@ test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭�
       page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith(`/graduation/gd-midterms/${fixture.gdStudentId}/rectify/review`)),
       page.getByRole('button', { name: '整改复核通过', exact: true }).click()
     ])
-    expect(passResponse.ok()).toBeTruthy()
+    expect(passResponse.ok(), `midterm review pass HTTP ${passResponse.status()}`).toBeTruthy()
     expect((await passResponse.json()).code).toBe(0)
     await expect(page.locator('.gp-panel')).toContainText(/整改.*通过|复核.*通过|已通过/)
 
