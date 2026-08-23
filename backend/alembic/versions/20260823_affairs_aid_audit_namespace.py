@@ -22,7 +22,7 @@ def upgrade() -> None:
     op.execute(sa.text(
         "UPDATE t_affairs_audit_trail "
         "SET biz_type = 'AID_BATCH' "
-        "WHERE biz_type = 'AID' AND action LIKE 'BATCH\\_%' ESCAPE '\\\\'"
+        "WHERE biz_type = 'AID' AND LEFT(action, 6) = 'BATCH_'"
     ))
 
 
@@ -30,5 +30,5 @@ def downgrade() -> None:
     op.execute(sa.text(
         "UPDATE t_affairs_audit_trail "
         "SET biz_type = 'AID' "
-        "WHERE biz_type = 'AID_BATCH' AND action LIKE 'BATCH\\_%' ESCAPE '\\\\'"
+        "WHERE biz_type = 'AID_BATCH' AND LEFT(action, 6) = 'BATCH_'"
     ))
