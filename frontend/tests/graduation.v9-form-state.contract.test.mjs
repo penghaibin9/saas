@@ -7,6 +7,7 @@ import { validateFiles } from '../../scripts/check/check-graduation-v9-scope.mjs
 const helper = fs.readFileSync(new URL('../src/modules/graduation/utils/form-state.js', import.meta.url), 'utf8')
 const proposal = fs.readFileSync(new URL('../src/modules/graduation/views/_shared/ProposalReviewCard.vue', import.meta.url), 'utf8')
 const grade = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationDefenseGradeFormView.vue', import.meta.url), 'utf8')
+const workspace = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationDefenseGradeView.vue', import.meta.url), 'utf8')
 const processAction = fs.readFileSync(new URL('../src/modules/graduation/views/GraduationProcessActionBaseView.vue', import.meta.url), 'utf8')
 const finalReview = fs.readFileSync(new URL('../src/modules/graduation/views/FinalSubmissionListView.vue', import.meta.url), 'utf8')
 
@@ -42,6 +43,13 @@ test('U9 specialist review/defense forms do not require unrelated grade read per
   assert.match(grade, /routeBatchId[\s\S]*studentBatchId[\s\S]*当前批次与学生上下文不一致/)
 })
 
+test('U9 specialist workspace restores student context without grade permission and only reads the active panel', () => {
+  assert.match(workspace, /async restoreStudentFromRoute\(\)[\s\S]*gdStudentApi\.getStudentDetail\(sid\)/)
+  assert.doesNotMatch(workspace, /async restoreStudentFromRoute\(\)[\s\S]{0,500}graduationDefenseGradeApi\.getGrade\(sid\)/)
+  assert.match(workspace, /async loadAll\(\)[\s\S]*this\.tab === 'plagiarism'[\s\S]*this\.loadPlagiarism\(\)[\s\S]*this\.tab === 'review'[\s\S]*this\.loadReview\(\)[\s\S]*this\.tab === 'defense'[\s\S]*this\.loadScores\(\)[\s\S]*this\.tab === 'grade'[\s\S]*this\.loadGrade\(\)/)
+  assert.doesNotMatch(workspace, /Promise\.all\(\[this\.loadPlagiarism\(\), this\.loadReview\(\), this\.loadScores\(\), this\.loadGrade\(\)\]\)/)
+})
+
 test('U9 final review keeps the selected teacher draft and refreshes only current server truth on conflict', () => {
   assert.match(finalReview, /isGraduationConflictResponse/)
   assert.match(finalReview, /const draft = this\.comment/)
@@ -60,6 +68,7 @@ test('U9 scope stays module-local and keeps shared foundations denied', () => {
     'frontend/src/modules/graduation/utils/form-state.js',
     'frontend/src/modules/graduation/views/_shared/ProposalReviewCard.vue',
     'frontend/src/modules/graduation/views/GraduationDefenseGradeFormView.vue',
+    'frontend/src/modules/graduation/views/GraduationDefenseGradeView.vue',
     'frontend/src/modules/graduation/views/GraduationProcessActionBaseView.vue',
     'frontend/src/modules/graduation/views/FinalSubmissionListView.vue',
     'frontend/tests/graduation.v9-form-state.contract.test.mjs',
