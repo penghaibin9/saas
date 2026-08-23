@@ -140,7 +140,7 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
             InternshipCheckin.internship_id.in_(onsite_ids),
             InternshipCheckin.result.in_(["NORMAL", "RECORDED", "LEAVE"]))) or 0
         leave_total = _cnt(InternshipLeave)
-        leave_ok = _cnt(InternshipLeave, InternshipLeave.status == "APPROVED")
+        leave_ok = _cnt(InternshipLeave, InternshipLeave.status.in_(["APPROVED", "RETURNED"]))
         # ── 周报 ──
         weekly_total = _cnt(WeeklyReport)
         weekly_reviewed = _cnt(WeeklyReport, WeeklyReport.status.in_(["APPROVED", "RETURNED"]))
