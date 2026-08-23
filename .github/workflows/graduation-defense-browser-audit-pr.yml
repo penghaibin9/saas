@@ -69,13 +69,13 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_EXPECTED_SHA: af2306db738d7f35e720fda3ea95f64adf74733e
+      E2E_EXPECTED_SHA: 0194c13187af9ae69b9e1f6a25db1604a558dcb4
 
     steps:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: af2306db738d7f35e720fda3ea95f64adf74733e
+          ref: 0194c13187af9ae69b9e1f6a25db1604a558dcb4
           fetch-depth: 0
 
       - name: Assert exact product HEAD
@@ -83,7 +83,7 @@ jobs:
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           echo "PRODUCT_EXACT_HEAD=$actual"
-          test "$actual" = "af2306db738d7f35e720fda3ea95f64adf74733e"
+          test "$actual" = "0194c13187af9ae69b9e1f6a25db1604a558dcb4"
 
       - name: Checkout audit harness only
         uses: actions/checkout@v4
@@ -114,8 +114,8 @@ jobs:
           cp audit-harness/e2e/scripts/graduation-grade-db-audit.py e2e/scripts/
           cp audit-harness/e2e/scripts/graduation-specialist-accounts.py e2e/scripts/
           rm -rf audit-harness
-          grep -rl '63195a6dc9d25fa3805563910fb699ec163b552a' e2e/scripts | xargs -r sed -i 's/63195a6dc9d25fa3805563910fb699ec163b552a/af2306db738d7f35e720fda3ea95f64adf74733e/g'
-          test "$(git rev-parse HEAD)" = "af2306db738d7f35e720fda3ea95f64adf74733e"
+          grep -rl '63195a6dc9d25fa3805563910fb699ec163b552a' e2e/scripts | xargs -r sed -i 's/63195a6dc9d25fa3805563910fb699ec163b552a/0194c13187af9ae69b9e1f6a25db1604a558dcb4/g'
+          test "$(git rev-parse HEAD)" = "0194c13187af9ae69b9e1f6a25db1604a558dcb4"
           bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
           test -z "$bad"
           git status --short
