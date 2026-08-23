@@ -6,7 +6,9 @@ on:
     paths:
       - '.github/workflows/graduation-defense-browser-audit-pr.yml'
       - 'e2e/specs/graduation-defense-browser-audit.spec.mjs'
+      - 'e2e/specs/graduation-grade-browser-audit.spec.mjs'
       - 'e2e/scripts/graduation-defense-db-audit.py'
+      - 'e2e/scripts/graduation-grade-db-audit.py'
       - 'e2e/scripts/graduation-specialist-accounts.py'
   workflow_dispatch:
 
@@ -19,9 +21,9 @@ concurrency:
 
 jobs:
   defense-browser-audit:
-    name: exact SHA final-review-defense-second-round / Chromium / MySQL
+    name: exact SHA final-review-defense-grade / Chromium / MySQL
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 60
     services:
       mysql:
         image: mysql:8.4
@@ -89,8 +91,10 @@ jobs:
             e2e/specs/graduation-final-browser-audit.spec.mjs
             e2e/specs/graduation-review-browser-audit.spec.mjs
             e2e/specs/graduation-defense-browser-audit.spec.mjs
+            e2e/specs/graduation-grade-browser-audit.spec.mjs
             e2e/scripts/graduation-review-db-audit.py
             e2e/scripts/graduation-defense-db-audit.py
+            e2e/scripts/graduation-grade-db-audit.py
             e2e/scripts/graduation-specialist-accounts.py
           sparse-checkout-cone-mode: false
 
@@ -100,9 +104,11 @@ jobs:
           cp audit-harness/e2e/specs/graduation-final-browser-audit.spec.mjs e2e/specs/
           cp audit-harness/e2e/specs/graduation-review-browser-audit.spec.mjs e2e/specs/
           cp audit-harness/e2e/specs/graduation-defense-browser-audit.spec.mjs e2e/specs/
+          cp audit-harness/e2e/specs/graduation-grade-browser-audit.spec.mjs e2e/specs/
           mkdir -p e2e/scripts
           cp audit-harness/e2e/scripts/graduation-review-db-audit.py e2e/scripts/
           cp audit-harness/e2e/scripts/graduation-defense-db-audit.py e2e/scripts/
+          cp audit-harness/e2e/scripts/graduation-grade-db-audit.py e2e/scripts/
           cp audit-harness/e2e/scripts/graduation-specialist-accounts.py e2e/scripts/
           rm -rf audit-harness
           test "$(git rev-parse HEAD)" = "63195a6dc9d25fa3805563910fb699ec163b552a"
@@ -269,7 +275,21 @@ jobs:
         working-directory: e2e
         run: python scripts/graduation-defense-db-audit.py
 
-      - name: Enforce final, review and defense evidence gates
+      - name: Real browser grade calculation, review, publish, appeal and withdrawal
+        id: gradepw
+        if: always()
+        continue-on-error: true
+        working-directory: e2e
+        run: npx playwright test specs/graduation-grade-browser-audit.spec.mjs
+
+      - name: Direct MySQL grade and appeal audit verification
+        id: gradedb
+        if: always()
+        continue-on-error: true
+        working-directory: e2e
+        run: python scripts/graduation-grade-db-audit.py
+
+      - name: Enforce final, review, defense and grade evidence gates
         if: always()
         env:
           FINAL_PW: ${{ steps.finalpw.outcome }}
@@ -277,15 +297,19 @@ jobs:
           REVIEW_DB: ${{ steps.reviewdb.outcome }}
           DEFENSE_PW: ${{ steps.defensepw.outcome }}
           DEFENSE_DB: ${{ steps.defensedb.outcome }}
+          GRADE_PW: ${{ steps.gradepw.outcome }}
+          GRADE_DB: ${{ steps.gradedb.outcome }}
         run: |
-          echo "final=$FINAL_PW review=$REVIEW_PW review_db=$REVIEW_DB defense=$DEFENSE_PW defense_db=$DEFENSE_DB"
+          echo "final=$FINAL_PW review=$REVIEW_PW review_db=$REVIEW_DB defense=$DEFENSE_PW defense_db=$DEFENSE_DB grade=$GRADE_PW grade_db=$GRADE_DB"
           test "$FINAL_PW" = success
           test "$REVIEW_PW" = success
           test "$REVIEW_DB" = success
           test "$DEFENSE_PW" = success
           test "$DEFENSE_DB" = success
+          test "$GRADE_PW" = success
+          test "$GRADE_DB" = success
 
-      - name: Upload defense audit evidence
+      - name: Upload defense and grade audit evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
