@@ -7,10 +7,10 @@ test.describe('Official website P0 sales-story closure', () => {
     await expect(page.getByRole('heading', { level: 1, name: /把学生从入校到就业/ })).toBeVisible()
     await expect(page.getByRole('heading', { name: /选择身份，直接进入系统/ })).toBeVisible()
     await expect(page.locator('#login .yk-login-card')).toHaveCount(3)
-    await expect(page.getByRole('heading', { name: /把分散的工作/ })).toBeVisible()
     await expect(page.getByRole('heading', { name: /从迎新到就业/ })).toBeVisible()
     await expect(page.getByRole('heading', { name: /覆盖学校最重/ })).toBeVisible()
     await expect(page.locator('#products .yk-home-product-card')).toHaveCount(4)
+    await expect(page.getByRole('heading', { name: /不从一张功能清单开始/ })).toBeVisible()
     await expect(page.getByRole('heading', { name: /统一工作、协同与治理/ })).toBeVisible()
     await expect(page.getByRole('heading', { name: /四步完成部署与落地/ })).toBeVisible()
     await expect(page.locator('#faq details')).toHaveCount(6)
@@ -36,11 +36,11 @@ test.describe('Official website P0 sales-story closure', () => {
     await expect(page.locator('img[src="/official-site/orientation-progress.webp"]').first()).toBeVisible()
   })
 
-  test('platform page presents eight highlights with truthful current and evolving states', async ({ page }) => {
+  test('platform page presents six core capabilities with truthful current and evolving states', async ({ page }) => {
     await page.goto(`${config.staffBaseUrl}/platform`)
     await expect(page.getByRole('heading', { level: 1, name: /企业级数字工作平台能力/ })).toBeVisible()
     await expect(page.locator('#eight-highlights')).toBeVisible()
-    await expect(page.getByText('跃科平台八大特色', { exact: true })).toBeVisible()
+    await expect(page.getByText('六项核心能力', { exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: /围绕学生、材料、审批、证据与协同/ })).toBeVisible()
     await expect(page.getByText('学生 360° 成长工作台', { exact: true }).first()).toBeVisible()
     await expect(page.getByText('统一安全文件与版本中心', { exact: true }).first()).toBeVisible()
