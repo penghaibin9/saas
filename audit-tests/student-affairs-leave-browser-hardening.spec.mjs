@@ -216,8 +216,10 @@ test.describe.serial('Student Affairs strict browser audit · leave production h
       const search = page.getByPlaceholder('学生姓名 / 学号')
       await search.fill(config.student.username)
       await search.press('Enter')
-      await expect(page.getByText(mainEvidence.revisedReason, { exact: true }).first()).toBeVisible()
-      await expect(page.getByText(scopeReason, { exact: true }).first()).toBeVisible()
+      const ledgerRows = page.locator('tbody tr').filter({ hasText: config.student.username })
+      await expect(ledgerRows).toHaveCount(2)
+      await expect(ledgerRows.filter({ hasText: '已销假' })).toHaveCount(1)
+      await expect(ledgerRows.filter({ hasText: '已驳回' })).toHaveCount(1)
 
       const createPromise = page.waitForResponse((response) => {
         try {
