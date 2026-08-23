@@ -35,7 +35,9 @@ test.describe('Official website P0 sales-story closure', () => {
   test('platform page presents eight highlights with truthful current and evolving states', async ({ page }) => {
     await page.goto(`${config.staffBaseUrl}/platform`)
     await expect(page.getByRole('heading', { level: 1, name: /企业级数字工作平台能力/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /跃科平台八大特色/ })).toBeVisible()
+    await expect(page.locator('#eight-highlights')).toBeVisible()
+    await expect(page.getByText('跃科平台八大特色', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /围绕学生、材料、审批、证据与协同/ })).toBeVisible()
     await expect(page.getByText('学生 360° 成长工作台', { exact: true }).first()).toBeVisible()
     await expect(page.getByText('统一安全文件与版本中心', { exact: true }).first()).toBeVisible()
     await expect(page.getByText('跨业务统一审批中心', { exact: true }).first()).toBeVisible()
