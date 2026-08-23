@@ -3,6 +3,8 @@ import { getToken, request } from '@/services/http/client'
 import fileSdk, { normalizeFile } from '@/services/file/fileSdk'
 import { buildPreviewDescriptorFromFile, previewSourceByteLimit } from '@/components/file/viewer/viewer-contract'
 
+const PREVIEW_FETCH_TIMEOUT_MS = 15000
+
 function ticketPath(ticket = {}) {
   const value = String(ticket.url || ticket.downloadUrl || '')
   if (!value.startsWith('/api/v1/')) return value
@@ -27,7 +29,33 @@ function raceAbort(promise, signal) {
 }
 
 function previewError(code, message, extra = {}) {
-  return Object.assign(new Error(message), { code, bizCode: extra.bizCode, details: extra.details, retryable: false })
+  return Object.assign(new Error(message), {
+    code,
+    bizCode: extra.bizCode,
+    details: extra.details,
+    retryable: extra.retryable ?? false
+  })
+}
+
+function createPreviewFetchScope(externalSignal) {
+  const controller = new AbortController()
+  let timedOut = false
+  const onAbort = () => controller.abort()
+  if (externalSignal?.aborted) controller.abort()
+  else externalSignal?.addEventListener('abort', onAbort, { once: true })
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, PREVIEW_FETCH_TIMEOUT_MS)
+  return {
+    signal: controller.signal,
+    timedOut: () => timedOut,
+    externalAborted: () => Boolean(externalSignal?.aborted),
+    cleanup() {
+      clearTimeout(timer)
+      externalSignal?.removeEventListener('abort', onAbort)
+    }
+  }
 }
 
 async function readBoundedPreviewBlob(response, descriptor, signal) {
@@ -71,32 +99,40 @@ async function fetchPreviewBlob(path, descriptor, signal, retried = false) {
     throw previewError('INVALID_AUTHORIZED_FILE_PATH', '服务端未返回有效文件授权路径')
   }
   if (signal?.aborted) throw abortError()
+  const fetchScope = createPreviewFetchScope(signal)
   const token = getToken()
-  let response
   try {
-    response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
+    const response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
       method: 'GET',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       credentials: 'include',
-      signal
+      signal: fetchScope.signal
     })
+    if (response.status === 401 && !retried) {
+      try { await response.body?.cancel() } catch { /* best effort */ }
+      await raceAbort(request('/auth/me'), fetchScope.signal)
+      return fetchPreviewBlob(path, descriptor, signal, true)
+    }
+    if (!response.ok) {
+      const payload = await response.clone().json().catch(() => null)
+      throw previewError(payload?.code || response.status, payload?.message || `预览读取失败（HTTP ${response.status}）`, {
+        bizCode: payload?.bizCode,
+        details: payload?.details
+      })
+    }
+    return await readBoundedPreviewBlob(response, descriptor, fetchScope.signal)
   } catch (error) {
-    if (signal?.aborted || error?.name === 'AbortError') throw abortError()
+    if (signal?.aborted || fetchScope.externalAborted()) throw abortError()
+    if (fetchScope.timedOut()) {
+      throw previewError('PREVIEW_FETCH_TIMEOUT', '预览读取超时，请重试', { retryable: true })
+    }
+    if (error?.name === 'AbortError') {
+      throw previewError('PREVIEW_FETCH_INTERRUPTED', '预览读取被浏览器中断，请重试', { retryable: true })
+    }
     throw error
+  } finally {
+    fetchScope.cleanup()
   }
-  if (response.status === 401 && !retried) {
-    try { await response.body?.cancel() } catch { /* best effort */ }
-    await raceAbort(request('/auth/me'), signal)
-    return fetchPreviewBlob(path, descriptor, signal, true)
-  }
-  if (!response.ok) {
-    const payload = await response.clone().json().catch(() => null)
-    throw previewError(payload?.code || response.status, payload?.message || `预览读取失败（HTTP ${response.status}）`, {
-      bizCode: payload?.bizCode,
-      details: payload?.details
-    })
-  }
-  return readBoundedPreviewBlob(response, descriptor, signal)
 }
 
 export const graduationMaterialCenterApi = {
