@@ -189,7 +189,8 @@ export default {
       const trail = (this.detail && this.detail.auditTrail) || []
       return trail.map((t) => ({
         id: t.id,
-        action: ACTION_LABEL[t.action] || t.action,
+        action: t.action,
+        actionLabel: ACTION_LABEL[t.action] || t.action,
         actor: t.operator,
         at: t.time,
         reason: t.detail
