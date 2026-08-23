@@ -1,3 +1,4 @@
+# registered-trigger: grade-evidence-r2
 name: Audit Patch Grade High Risk Evidence 20260823
 
 on:
