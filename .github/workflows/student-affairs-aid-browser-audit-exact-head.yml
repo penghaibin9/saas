@@ -282,10 +282,10 @@ jobs:
               findings['applicationActions'] = actions
               findings['batchActions'] = batch_actions
 
-              cur.execute("SELECT action,resource,result,detail FROM t_security_audit_log WHERE action='SENSITIVE_VIEW' AND (resource='aid_family_economy' OR resource LIKE 'aid_family_economy:%') ORDER BY id")
+              cur.execute("SELECT action,resource,result,JSON_UNQUOTE(JSON_EXTRACT(detail_json, '$.reason')) AS reason FROM t_security_audit_log WHERE action='SENSITIVE_VIEW' AND (resource='aid_family_economy' OR resource LIKE 'aid_family_economy:%') ORDER BY id")
               sensitive = cur.fetchall()
               print('[AID-SENSITIVE-AUDIT]', sensitive)
-              assert any(str(x[2]).upper() == 'SUCCESS' and e['revealReason'] in str(x[3]) for x in sensitive), sensitive
+              assert any(str(x[2]).upper() == 'SUCCESS' and x[3] == e['revealReason'] for x in sensitive), sensitive
           conn.close()
           Path('../e2e/student-affairs-aid-db-findings.json').write_text(json.dumps(findings, ensure_ascii=False, indent=2), encoding='utf-8')
           print('[AID-FINDINGS]', json.dumps(findings, ensure_ascii=False))
