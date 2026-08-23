@@ -66,7 +66,7 @@ export const GRADUATION_WORKSPACES = [
       { label: '毕设材料中心', path: '/admin/graduation/material-center', permissionKey: 'graduationDesign.student.view', entryType: 'WORKBENCH' },
       { label: '查重记录', path: '/admin/graduation/plagiarism-ledger', permissionKey: 'graduationDesign.plagiarism.view', entryType: 'TASK_QUEUE' },
       { label: '教师评阅', path: '/admin/graduation/review-tasks', permissionKey: 'graduationDesign.review.view', entryType: 'TASK_QUEUE' },
-      { label: '成果互查整改', path: '/admin/graduation/more?panel=peer', permissionKey: 'graduationDesign.more.manage', entryType: 'TASK_QUEUE' }
+      { label: '成果互查整改', path: '/admin/graduation/more?panel=peer', permissionKey: 'graduationDesign.review.view', entryType: 'TASK_QUEUE' }
     ]
   },
   {
@@ -78,8 +78,8 @@ export const GRADUATION_WORKSPACES = [
       { label: '答辩秘书确认', path: '/admin/graduation/defense-confirmation', permissionKey: 'graduationDesign.defense.scoreConfirm', entryType: 'TASK_QUEUE' },
       { label: '成绩台账', path: '/admin/graduation/grade-ledger', permissionKey: 'graduationDesign.grade.view', entryType: 'TASK_QUEUE' },
       { label: '优秀成果认定', path: '/admin/graduation?extension=excellent', permissionKey: 'graduationDesign.grade.view', entryType: 'TASK_QUEUE' },
-      { label: '答辩专家库', path: '/admin/graduation/more?panel=experts', permissionKey: 'graduationDesign.more.manage', entryType: 'CONFIG_VIEW' },
-      { label: '成绩更正申诉', path: '/admin/graduation/more?panel=appeals', permissionKey: 'graduationDesign.more.manage', entryType: 'TASK_QUEUE' }
+      { label: '答辩专家库', path: '/admin/graduation/more?panel=experts', permissionKey: 'graduationDesign.defense.groupManage', entryType: 'CONFIG_VIEW' },
+      { label: '成绩更正申诉', path: '/admin/graduation/more?panel=appeals', permissionKey: 'graduationDesign.grade.appealReview', entryType: 'TASK_QUEUE' }
     ]
   },
   {
