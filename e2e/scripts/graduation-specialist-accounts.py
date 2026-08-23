@@ -7,6 +7,7 @@ and verify their passwords. No plaintext credential receipt is written to disk.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from scripts.e2e_bootstrap_graduation_accounts_ci import (  # noqa: E402
     _workbook_with_rows,
 )
 
+PRODUCT_EXACT_HEAD = "63195a6dc9d25fa3805563910fb699ec163b552a"
 STABLE_PWD = "E2eTest@2026"
 SPECIALISTS = (
     ("e2e_defense_secretary", "E2E答辩秘书", "答辩秘书", "GD_DEFENSE_SECRETARY"),
@@ -80,6 +82,16 @@ def _normalize_password(token: str, login_name: str, index: int) -> dict:
 
 
 def main() -> int:
+    expected = str(os.environ.get("E2E_EXPECTED_SHA") or "").strip()
+    if expected != PRODUCT_EXACT_HEAD:
+        print(json.dumps({
+            "ok": False,
+            "message": "audit harness exact-head drift",
+            "expectedEnv": expected,
+            "productExactHead": PRODUCT_EXACT_HEAD,
+        }, ensure_ascii=False))
+        return 2
+
     token = login()
     ensure_org(token)
     _canonical_import(
@@ -89,8 +101,8 @@ def main() -> int:
         idempotency_namespace="e2e-graduation-specialists-20260823",
     )
     results = [_normalize_password(token, row[0], i) for i, row in enumerate(SPECIALISTS)]
-    expected = {row[0]: row[3] for row in SPECIALISTS}
-    ok = all(item.get("ok") and item.get("role") == expected[item["loginName"]] for item in results)
+    expected_roles = {row[0]: row[3] for row in SPECIALISTS}
+    ok = all(item.get("ok") and item.get("role") == expected_roles[item["loginName"]] for item in results)
     print(json.dumps(results, ensure_ascii=False, indent=2))
     return 0 if ok else 1
 
