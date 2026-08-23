@@ -67,7 +67,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_TARGET_SHA: 8736c9b3278429c6c68c059f4a16b949e086d08e
+      E2E_TARGET_SHA: b93750af35dada5c0f5808812fb275be20f49eb3
 
     steps:
       - name: Checkout audit runner only
@@ -80,7 +80,7 @@ jobs:
       - name: Checkout immutable application exact head
         uses: actions/checkout@v4
         with:
-          ref: 8736c9b3278429c6c68c059f4a16b949e086d08e
+          ref: b93750af35dada5c0f5808812fb275be20f49eb3
           path: app
           fetch-depth: 0
 
@@ -110,7 +110,7 @@ jobs:
         working-directory: app/backend
         run: |
           pip install -r requirements.txt
-          pytest -q tests/test_affairs_aid_draft_resubmit_contract.py tests/test_affairs_aid_detail_projection_contract.py tests/test_affairs_aid_audit_namespace_contract.py
+          pytest -q tests/test_affairs_aid_draft_resubmit_contract.py tests/test_affairs_aid_detail_projection_contract.py tests/test_affairs_aid_audit_namespace_contract.py tests/test_auth_shared_nat_login_rate_guard.py
           alembic upgrade head
           python scripts/bootstrap_control_plane_school_iam_authority.py
           python scripts/e2e_seed_playwright_tenants.py
