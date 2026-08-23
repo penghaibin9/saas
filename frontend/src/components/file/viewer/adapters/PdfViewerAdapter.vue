@@ -11,6 +11,12 @@
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
+import {
+  PDF_PREVIEW_MAX_CANVAS_DIMENSION,
+  PDF_PREVIEW_MAX_CANVAS_PIXELS,
+  PDF_PREVIEW_MAX_PAGES,
+  PDF_PREVIEW_MAX_SOURCE_BYTES
+} from '../viewer-contract'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
@@ -31,13 +37,22 @@ let pdfDoc = null
 let observer = null
 let loadToken = 0
 
+function previewError(code, message) {
+  return Object.assign(new Error(message), { code, retryable: false })
+}
+
 function setCanvas(page, el) { if (el) canvases.set(page, el); else canvases.delete(page) }
 
 async function bytesFrom(source) {
-  if (source instanceof Uint8Array) return source
-  if (source instanceof ArrayBuffer) return new Uint8Array(source)
-  if (source instanceof Blob) return new Uint8Array(await source.arrayBuffer())
-  throw Object.assign(new Error('PDF 预览源必须是 Blob 或 ArrayBuffer'), { code: 'PREVIEW_SOURCE_INVALID' })
+  let data
+  if (source instanceof Uint8Array) data = source
+  else if (source instanceof ArrayBuffer) data = new Uint8Array(source)
+  else if (source instanceof Blob) {
+    if (source.size > PDF_PREVIEW_MAX_SOURCE_BYTES) throw previewError('PREVIEW_TOO_LARGE', 'PDF 超过 50MB 站内阅读上限，请下载原文查看')
+    data = new Uint8Array(await source.arrayBuffer())
+  } else throw previewError('PREVIEW_SOURCE_INVALID', 'PDF 预览源必须是 Blob 或 ArrayBuffer')
+  if (data.byteLength > PDF_PREVIEW_MAX_SOURCE_BYTES) throw previewError('PREVIEW_TOO_LARGE', 'PDF 超过 50MB 站内阅读上限，请下载原文查看')
+  return data
 }
 
 function cancelRenderTasks() {
@@ -58,7 +73,7 @@ async function destroyPdf() {
 async function renderPage(pageNo) {
   if (!pdfDoc || pageNo < 1 || pageNo > pdfDoc.numPages) return
   const canvas = canvases.get(pageNo)
-  if (!canvas || canvas.dataset.zoom === String(props.zoom) || renderReservations.has(pageNo)) return
+  if (!canvas || canvas.dataset.previewBlocked === 'true' || canvas.dataset.zoom === String(props.zoom) || renderReservations.has(pageNo)) return
   const token = loadToken
   const reservation = ++renderReservationSeq
   renderReservations.set(pageNo, reservation)
@@ -68,9 +83,20 @@ async function renderPage(pageNo) {
     if (token !== loadToken || !pdfDoc || renderReservations.get(pageNo) !== reservation) return
     const viewport = page.getViewport({ scale: props.zoom })
     const outputScale = Math.min(globalThis.devicePixelRatio || 1, 2)
+    const pixelWidth = Math.max(1, Math.ceil(viewport.width * outputScale))
+    const pixelHeight = Math.max(1, Math.ceil(viewport.height * outputScale))
+    if (
+      !Number.isFinite(pixelWidth) || !Number.isFinite(pixelHeight)
+      || pixelWidth > PDF_PREVIEW_MAX_CANVAS_DIMENSION
+      || pixelHeight > PDF_PREVIEW_MAX_CANVAS_DIMENSION
+      || pixelWidth * pixelHeight > PDF_PREVIEW_MAX_CANVAS_PIXELS
+    ) {
+      canvas.dataset.previewBlocked = 'true'
+      throw previewError('PREVIEW_TOO_COMPLEX', 'PDF 单页解码像素超过安全预览上限，请下载原文查看')
+    }
     const context = canvas.getContext('2d', { alpha: false })
-    canvas.width = Math.max(1, Math.floor(viewport.width * outputScale))
-    canvas.height = Math.max(1, Math.floor(viewport.height * outputScale))
+    canvas.width = pixelWidth
+    canvas.height = pixelHeight
     canvas.style.width = `${Math.floor(viewport.width)}px`
     canvas.style.height = `${Math.floor(viewport.height)}px`
     task = page.render({ canvasContext: context, viewport, transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0] })
@@ -138,6 +164,10 @@ async function loadPdf() {
     const task = pdfjsLib.getDocument({ data, isEvalSupported: false })
     const doc = await task.promise
     if (token !== loadToken) { await doc.destroy(); return }
+    if (doc.numPages > PDF_PREVIEW_MAX_PAGES) {
+      await doc.destroy()
+      throw previewError('PREVIEW_TOO_COMPLEX', `PDF 超过 ${PDF_PREVIEW_MAX_PAGES} 页站内阅读上限，请下载原文查看`)
+    }
     pdfDoc = doc
     pages.value = Array.from({ length: doc.numPages }, (_, i) => i + 1)
     await nextTick()
@@ -162,7 +192,10 @@ watch(() => [props.source, props.generation], loadPdf, { immediate: true })
 watch(() => props.page, goToPage)
 watch(() => props.zoom, async () => {
   cancelRenderTasks()
-  for (const canvas of canvases.values()) delete canvas.dataset.zoom
+  for (const canvas of canvases.values()) {
+    delete canvas.dataset.zoom
+    delete canvas.dataset.previewBlocked
+  }
   await nextTick()
   goToPage(props.page)
 })

@@ -1,6 +1,7 @@
-import { request } from '@/services/http/client'
+import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
+import { getToken, request } from '@/services/http/client'
 import fileSdk, { normalizeFile } from '@/services/file/fileSdk'
-import { buildPreviewDescriptorFromFile } from '@/components/file/viewer/viewer-contract'
+import { buildPreviewDescriptorFromFile, previewSourceByteLimit } from '@/components/file/viewer/viewer-contract'
 
 function ticketPath(ticket = {}) {
   const value = String(ticket.url || ticket.downloadUrl || '')
@@ -23,6 +24,79 @@ function raceAbort(promise, signal) {
     signal.addEventListener('abort', onAbort, { once: true })
     Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
   })
+}
+
+function previewError(code, message, extra = {}) {
+  return Object.assign(new Error(message), { code, bizCode: extra.bizCode, details: extra.details, retryable: false })
+}
+
+async function readBoundedPreviewBlob(response, descriptor, signal) {
+  const limit = previewSourceByteLimit(descriptor)
+  const declared = Number(response.headers.get('content-length') || 0)
+  if (limit && declared > limit) {
+    try { await response.body?.cancel() } catch { /* best effort */ }
+    throw previewError('PREVIEW_TOO_LARGE', '文件超过站内阅读大小上限，请下载原文查看')
+  }
+  if (!response.body?.getReader || !limit) return response.blob()
+  const reader = response.body.getReader()
+  const chunks = []
+  let total = 0
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        await reader.cancel('preview aborted').catch(() => {})
+        throw abortError()
+      }
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value?.byteLength) continue
+      total += value.byteLength
+      if (total > limit) {
+        await reader.cancel('preview byte budget exceeded').catch(() => {})
+        throw previewError('PREVIEW_TOO_LARGE', '文件超过站内阅读大小上限，请下载原文查看')
+      }
+      chunks.push(value)
+    }
+  } catch (error) {
+    if (signal?.aborted || error?.name === 'AbortError') throw abortError()
+    throw error
+  } finally {
+    try { reader.releaseLock() } catch { /* stream already closed */ }
+  }
+  return new Blob(chunks, { type: response.headers.get('content-type') || 'application/octet-stream' })
+}
+
+async function fetchPreviewBlob(path, descriptor, signal, retried = false) {
+  if (!path || typeof path !== 'string' || !path.startsWith('/')) {
+    throw previewError('INVALID_AUTHORIZED_FILE_PATH', '服务端未返回有效文件授权路径')
+  }
+  if (signal?.aborted) throw abortError()
+  const token = getToken()
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'include',
+      signal
+    })
+  } catch (error) {
+    if (signal?.aborted || error?.name === 'AbortError') throw abortError()
+    throw error
+  }
+  if (response.status === 401 && !retried) {
+    try { await response.body?.cancel() } catch { /* best effort */ }
+    await raceAbort(request('/auth/me'), signal)
+    return fetchPreviewBlob(path, descriptor, signal, true)
+  }
+  if (!response.ok) {
+    const payload = await response.clone().json().catch(() => null)
+    throw previewError(payload?.code || response.status, payload?.message || `预览读取失败（HTTP ${response.status}）`, {
+      bizCode: payload?.bizCode,
+      details: payload?.details
+    })
+  }
+  return readBoundedPreviewBlob(response, descriptor, signal)
 }
 
 export const graduationMaterialCenterApi = {
@@ -103,7 +177,7 @@ export const graduationMaterialCenterApi = {
       async fetchBytes(descriptor, { signal } = {}) {
         if (signal?.aborted) throw abortError()
         const ticket = await raceAbort(graduationMaterialCenterApi.issueMaterialTicket(descriptor.fileId, 'preview'), signal)
-        return raceAbort(fileSdk.blobFrom(ticketPath(ticket)), signal)
+        return fetchPreviewBlob(ticketPath(ticket), descriptor, signal)
       },
       dispose() {}
     }

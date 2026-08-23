@@ -175,7 +175,8 @@ def test_pr_ci_stays_change_aware_while_main_owns_full_regression():
     assert 'github.event_name }}" = "schedule"' in ci_workflow
     assert "timeout 80m pytest -q" in ci_workflow
     assert "select_pytest_targets.py" in ci_workflow
-    assert "timeout 40m pytest $TARGETS" in ci_workflow
+    # 40m 已在 PR #191 的真实变更感知回归中误杀完成测试；60m 仍低于 90m job ceiling，保留快速门禁属性。
+    assert "timeout 60m pytest $TARGETS" in ci_workflow
     assert "CHANGED_COUNT" not in ci_workflow
     assert "compare-pytest-junit-baseline.py" not in ci_workflow
 

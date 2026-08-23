@@ -1,13 +1,31 @@
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import {
-  DOCX_PREVIEW_MAX_SOURCE_BYTES,
   PREVIEW_KIND,
   PREVIEW_SESSION_STATE,
   isTicketExpiredError,
   normalizePreviewDescriptor,
   normalizePreviewError,
-  previewIdentity
+  previewIdentity,
+  previewSourceByteLimit
 } from './viewer-contract'
+
+function sourceByteLength(value) {
+  if (value instanceof Blob) return Number(value.size || 0)
+  if (value instanceof ArrayBuffer) return value.byteLength
+  if (ArrayBuffer.isView(value)) return value.byteLength
+  return 0
+}
+
+function tooLargeError(descriptor, limit) {
+  const label = descriptor.previewKind === PREVIEW_KIND.DOCX
+    ? 'DOCX'
+    : descriptor.previewKind === PREVIEW_KIND.PDF ? 'PDF' : '图片'
+  const mb = Math.max(1, Math.floor(limit / (1024 * 1024)))
+  const error = new Error(`${label} 超过 ${mb}MB 站内阅读上限，请下载原文查看`)
+  error.code = 'PREVIEW_TOO_LARGE'
+  error.retryable = false
+  return error
+}
 
 export function usePreviewSession(provider) {
   const state = reactive({
@@ -52,12 +70,10 @@ export function usePreviewSession(provider) {
       state.error = { code: 'NO_PERMISSION', message: '当前文件没有预览权限', retryable: false }
       return
     }
-    if (
-      descriptor.previewKind === PREVIEW_KIND.DOCX &&
-      Number(descriptor.sizeBytes || 0) > DOCX_PREVIEW_MAX_SOURCE_BYTES
-    ) {
+    const sourceLimit = previewSourceByteLimit(descriptor)
+    if (sourceLimit && Number(descriptor.sizeBytes || 0) > sourceLimit) {
       state.status = PREVIEW_SESSION_STATE.ERROR
-      state.error = { code: 'PREVIEW_TOO_LARGE', message: 'DOCX 超过 25MB 站内阅读上限，请下载原文查看', retryable: false }
+      state.error = normalizePreviewError(tooLargeError(descriptor, sourceLimit))
       return
     }
     if (descriptor.previewKind === PREVIEW_KIND.UNSUPPORTED) {
@@ -82,6 +98,7 @@ export function usePreviewSession(provider) {
         bytes = await provider.fetchBytes(descriptor, { signal: controller.signal, refresh: true })
       }
       if (generation !== state.generation || controller.signal.aborted) return
+      if (sourceLimit && sourceByteLength(bytes) > sourceLimit) throw tooLargeError(descriptor, sourceLimit)
       source.value = bytes
       state.status = PREVIEW_SESSION_STATE.READY
     } catch (error) {

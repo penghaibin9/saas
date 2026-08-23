@@ -8,6 +8,7 @@
 <script setup>
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { buildDocxPreview } from './docx-preview-renderer'
+import { validateDocxImageBudget } from './docx-image-budget'
 
 const props = defineProps({
   source: { type: [Blob, ArrayBuffer, Uint8Array], required: true },
@@ -36,6 +37,8 @@ async function render() {
   host.value?.replaceChildren()
   await nextTick()
   try {
+    await validateDocxImageBudget(props.source)
+    if (renderId !== activeRender || !host.value) return
     const result = await buildDocxPreview(props.source)
     if (renderId !== activeRender || !host.value) {
       result.dispose()

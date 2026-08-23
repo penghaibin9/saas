@@ -9,6 +9,14 @@ export const PREVIEW_SESSION_STATE = Object.freeze({
 
 export const PREVIEW_KIND = Object.freeze({ PDF: 'PDF', IMAGE: 'IMAGE', DOCX: 'DOCX', UNSUPPORTED: 'UNSUPPORTED' })
 export const DOCX_PREVIEW_MAX_SOURCE_BYTES = 25 * 1024 * 1024
+export const PDF_PREVIEW_MAX_SOURCE_BYTES = 50 * 1024 * 1024
+export const PDF_PREVIEW_MAX_PAGES = 500
+export const PDF_PREVIEW_MAX_CANVAS_PIXELS = 12_000_000
+export const PDF_PREVIEW_MAX_CANVAS_DIMENSION = 16384
+export const IMAGE_PREVIEW_MAX_SOURCE_BYTES = 20 * 1024 * 1024
+export const IMAGE_PREVIEW_MAX_PIXELS = 32_000_000
+export const DOCX_PREVIEW_MAX_IMAGE_PIXELS = 16_000_000
+export const DOCX_PREVIEW_MAX_TOTAL_IMAGE_PIXELS = 32_000_000
 
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'])
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -22,6 +30,14 @@ export function inferPreviewKind(descriptor = {}) {
   if (mime.startsWith('image/') || IMAGE_EXT.has(ext)) return PREVIEW_KIND.IMAGE
   if (mime === DOCX_MIME || ext === 'docx') return PREVIEW_KIND.DOCX
   return PREVIEW_KIND.UNSUPPORTED
+}
+
+export function previewSourceByteLimit(descriptor = {}) {
+  const kind = typeof descriptor === 'string' ? descriptor : inferPreviewKind(descriptor)
+  if (kind === PREVIEW_KIND.DOCX) return DOCX_PREVIEW_MAX_SOURCE_BYTES
+  if (kind === PREVIEW_KIND.PDF) return PDF_PREVIEW_MAX_SOURCE_BYTES
+  if (kind === PREVIEW_KIND.IMAGE) return IMAGE_PREVIEW_MAX_SOURCE_BYTES
+  return 0
 }
 
 export function previewIdentity(descriptor = {}) {
@@ -67,7 +83,7 @@ export function normalizePreviewError(error) {
     message: error?.message || '文件预览失败，请重试',
     retryable: ![
       'NO_PERMISSION', 'FILE_INFECTED', 'PREVIEW_UNSUPPORTED', 'PREVIEW_UNSUPPORTED_TYPE',
-      'PREVIEW_TOO_LARGE', 'PREVIEW_DOCX_MALFORMED', 'PREVIEW_DOCX_TOO_COMPLEX',
+      'PREVIEW_TOO_LARGE', 'PREVIEW_TOO_COMPLEX', 'PREVIEW_IMAGE_MALFORMED', 'PREVIEW_DOCX_MALFORMED', 'PREVIEW_DOCX_TOO_COMPLEX',
       'PREVIEW_DOCX_DECOMPRESSION_UNSUPPORTED'
     ].includes(code)
   }

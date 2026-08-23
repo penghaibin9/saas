@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
-import { buildPreviewDescriptorFromFile } from '../src/components/file/viewer/viewer-contract.js'
+import {
+  buildPreviewDescriptorFromFile,
+  DOCX_PREVIEW_MAX_IMAGE_PIXELS,
+  DOCX_PREVIEW_MAX_TOTAL_IMAGE_PIXELS
+} from '../src/components/file/viewer/viewer-contract.js'
 
 const root = path.resolve(new URL('..', import.meta.url).pathname)
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
@@ -10,6 +14,8 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 const viewer = read('src/components/file/viewer/AppDocumentViewer.vue')
 const renderer = read('src/components/file/viewer/adapters/docx-preview-renderer.js')
 const adapter = read('src/components/file/viewer/adapters/DocxViewerAdapter.vue')
+const imageBudget = read('src/components/file/viewer/adapters/docx-image-budget.js')
+const imageDimensions = read('src/components/file/viewer/adapters/image-dimensions.js')
 const session = read('src/components/file/viewer/usePreviewSession.js')
 
 test('W6 PreviewDescriptor recognizes DOCX without widening other Office formats', () => {
@@ -43,9 +49,24 @@ test('W6 PC DOCX renderer is local, bounded, read-only and never opens a public 
   assert.match(adapter, /result\.dispose\(\)/)
 })
 
+test('W6 DOCX rejects decompression-safe but decode-hostile embedded images before renderer URLs', () => {
+  assert.equal(DOCX_PREVIEW_MAX_IMAGE_PIXELS, 16_000_000)
+  assert.equal(DOCX_PREVIEW_MAX_TOTAL_IMAGE_PIXELS, 32_000_000)
+  assert.match(adapter, /await validateDocxImageBudget\(props\.source\)/)
+  assert.match(imageBudget, /word\/media\//)
+  assert.match(imageBudget, /MAX_MEDIA_ENTRIES = 128/)
+  assert.match(imageBudget, /reader\.cancel\('DOCX embedded image exceeds preview byte budget'\)/)
+  assert.match(imageBudget, /detectImageDimensions\(image\)/)
+  assert.match(imageBudget, /dimensions\.pixels > DOCX_PREVIEW_MAX_IMAGE_PIXELS/)
+  assert.match(imageBudget, /totalPixels > DOCX_PREVIEW_MAX_TOTAL_IMAGE_PIXELS/)
+  assert.match(imageDimensions, /JPEG_SOF/)
+  assert.match(imageDimensions, /VP8X/)
+  assert.doesNotMatch(imageBudget + imageDimensions, /createImageBitmap\(|new Image\(/)
+})
+
 test('W6 DOCX keeps annotation PDF-first and fails large documents before byte fetch', () => {
-  assert.match(session, /descriptor\.previewKind === PREVIEW_KIND\.DOCX/)
-  assert.match(session, /DOCX_PREVIEW_MAX_SOURCE_BYTES/)
+  assert.match(session, /previewSourceByteLimit\(descriptor\)/)
+  assert.match(session, /sourceByteLength\(bytes\) > sourceLimit/)
   assert.match(session, /PREVIEW_TOO_LARGE/)
   const combined = viewer + renderer + adapter
   assert.doesNotMatch(combined, /annotation|批注|comment-layer|saveComment/i)
