@@ -88,7 +88,7 @@ async function studentSubmitRectification(page, text) {
   await student.open()
   const step = page.locator('.gd-step').filter({ has: page.getByRole('heading', { name: '中期检查', exact: true }) }).first()
   await expect(step).toBeVisible()
-  const openRectify = step.getByRole('button', { name: '提交整改', exact: true }).first()
+  const openRectify = step.getByRole('button', { name: '提交整改说明', exact: true }).first()
   await expect(openRectify).toBeVisible()
   await openRectify.click()
   const textarea = step.getByPlaceholder('逐项说明已采取的整改措施')
@@ -126,8 +126,6 @@ test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭�
     await page.getByRole('button', { name: '发起中期检查', exact: true }).click()
     await expect(page.getByText('发起中期检查', { exact: true }).first()).toBeVisible()
 
-    // 页面壳还有一个“选择毕设批次”的 <select>；必须把结论和意见严格限定在真实业务表单，
-    // 否则 Playwright 会误操作批次下拉并把 harness 错误伪装成业务失败。
     const midtermForm = page.locator('form.ie-form')
     await expect(midtermForm).toBeVisible()
     await midtermForm.locator('select').selectOption('RECTIFY')
@@ -174,6 +172,6 @@ test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭�
     await student.open()
     const midtermStep = page.locator('.gd-step').filter({ has: page.getByRole('heading', { name: '中期检查', exact: true }) }).first()
     await expect(midtermStep).toContainText(/通过/)
-    await expect(midtermStep.getByRole('button', { name: '提交整改', exact: true })).toHaveCount(0)
+    await expect(midtermStep.getByRole('button', { name: '提交整改说明', exact: true })).toHaveCount(0)
   })
 })
