@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     FileObject,
     GraduationFinal,
@@ -15,15 +16,25 @@ from app.models import (
 )
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.modules.graduation.services.graduation_command_service import _conflict_guard
+from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
 from app.services.db_service import _iso, _tid, session
 from app.services.file_content_security import is_downloadable_status
+from app.services.file_scan_constants import READY_SCAN_STATES, SCAN_NOT_REQUIRED
+from app.services.storage import get_backend
+
 
 def _version_number(value) -> int:
     match = re.search(r"(\d+)", str(value or ""))
     return max(1, int(match.group(1))) if match else 1
 
 
-def _final_attachments(db, final: GraduationFinal | None) -> list[dict]:
+def _file_ready(file_row: FileObject | None) -> bool:
+    if not file_row or file_row.is_deleted or not is_downloadable_status(file_row.status):
+        return False
+    return str(file_row.scan_status or SCAN_NOT_REQUIRED).upper() in READY_SCAN_STATES
+
+
+def _attachment_ids(final: GraduationFinal | None) -> list[int]:
     if not final:
         return []
     ids: list[int] = []
@@ -31,6 +42,11 @@ def _final_attachments(db, final: GraduationFinal | None) -> list[dict]:
         value = (raw.get("fileId") or raw.get("id")) if isinstance(raw, dict) else raw
         if str(value or "").isdigit() and int(value) not in ids:
             ids.append(int(value))
+    return ids
+
+
+def _final_attachments(db, final: GraduationFinal | None) -> list[dict]:
+    ids = _attachment_ids(final)
     if not ids:
         return []
     rows = db.scalars(select(FileObject).where(
@@ -39,13 +55,19 @@ def _final_attachments(db, final: GraduationFinal | None) -> list[dict]:
         FileObject.is_deleted.is_(False),
         FileObject.biz_type == "GRADUATION_MATERIAL",
     )).all()
-    by_id = {int(row.id): row for row in rows if is_downloadable_status(row.status)}
+    by_id = {int(row.id): row for row in rows if _file_ready(row)}
+    # Peer review is deliberately preview-only. Possession of a peer task must not be
+    # promoted into the target student's normal material download capability.
     return [{
         "fileId": str(file_id),
         "fileName": by_id[file_id].file_name or f"材料-{file_id}",
         "ext": by_id[file_id].ext or "",
         "size": int(by_id[file_id].size_bytes or 0),
-        "downloadUrl": f"/api/v1/mobile/graduation/materials/{file_id}/download",
+        "scanStatus": str(by_id[file_id].scan_status or SCAN_NOT_REQUIRED).upper(),
+        "readyForBusiness": True,
+        "allowedActions": ["viewMetadata", "preview"],
+        "canPreview": True,
+        "canDownload": False,
     } for file_id in ids if file_id in by_id]
 
 
@@ -69,11 +91,13 @@ def _bound_final(db, peer: GraduationPeerReview, *, lock=False) -> GraduationFin
 
 
 def peer_row(db, peer: GraduationPeerReview) -> dict:
-    target = db.get(GraduationStudent, peer.gd_student_id)
-    reviewer = db.get(GraduationStudent, peer.reviewer_gd_student_id)
-    final = db.get(GraduationFinal, peer.gd_final_id) if peer.gd_final_id else None
+    # Historical/corrupt peer references must never turn a tenant-scoped peer row into
+    # a cross-tenant name/student-number disclosure.
+    target = tenant_get(db, GraduationStudent, peer.gd_student_id)
+    reviewer = tenant_get(db, GraduationStudent, peer.reviewer_gd_student_id)
+    final = tenant_get(db, GraduationFinal, peer.gd_final_id) if peer.gd_final_id else None
     final_valid = bool(
-        final and not final.is_deleted and final.tenant_id == _tid()
+        final and not final.is_deleted
         and final.gd_student_id == peer.gd_student_id
         and final.final_type == "定稿" and final.status == "APPROVED"
     )
@@ -100,6 +124,53 @@ def peer_row(db, peer: GraduationPeerReview) -> dict:
         "reviewedAt": _iso(peer.reviewed_at),
         "updatedAt": _iso(peer.updated_at),
     }
+
+
+def resolve_peer_preview(peer_id, file_id, user):
+    """解析互查任务绑定的冻结定稿文件，仅允许任务双方读取对应附件。
+
+    该入口不复用“学生本人材料”授权，也不按裸 fileId 扩大范围：peerId、gd_final_id、
+    final.attachments_json、当前学生身份和租户必须同时匹配。返回本地路径后由公共
+    validated_local_file_response 负责安全响应头、inline 语义与审计。
+    """
+    if str((user or {}).get("userType") or "").strip().upper() != "STUDENT":
+        raise no_permission("成果互查文件仅学生任务双方可访问")
+    if not str(peer_id or "").isdigit() or not str(file_id or "").isdigit():
+        raise not_found("互查材料不存在或无权访问")
+
+    with session() as db:
+        current = resolve_current_gd_student(db, user)
+        if not current:
+            raise not_found("互查材料不存在或无权访问")
+        peer = db.scalars(select(GraduationPeerReview).where(
+            GraduationPeerReview.id == int(peer_id),
+            GraduationPeerReview.tenant_id == _tid(),
+            GraduationPeerReview.is_deleted.is_(False),
+        )).first()
+        if not peer or int(current.id) not in {int(peer.gd_student_id), int(peer.reviewer_gd_student_id)}:
+            raise not_found("互查材料不存在或无权访问")
+
+        final = _bound_final(db, peer)
+        target_file_id = int(file_id)
+        if target_file_id not in _attachment_ids(final):
+            raise not_found("互查材料不存在或无权访问")
+        file_row = db.scalars(select(FileObject).where(
+            FileObject.id == target_file_id,
+            FileObject.tenant_id == _tid(),
+            FileObject.is_deleted.is_(False),
+            FileObject.biz_type == "GRADUATION_MATERIAL",
+        )).first()
+        # Peer Reader is a business-specific authority, but it must still honor the
+        # shared File Center availability + malware-scan gate before serving bytes.
+        if not _file_ready(file_row):
+            raise not_found("互查材料不存在或暂不可预览")
+        file_key = file_row.file_key
+        filename = file_row.file_name or f"毕业设计定稿-{target_file_id}"
+
+    path = get_backend().fetch_local(file_key)
+    if not path or not path.exists():
+        raise not_found("互查材料文件不存在或暂不可预览")
+    return path, filename
 
 
 @_conflict_guard
