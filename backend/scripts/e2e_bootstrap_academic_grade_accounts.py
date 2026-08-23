@@ -183,12 +183,13 @@ def main() -> int:
     student_receipt = _canonical_import(token, kind="students", content=_workbook(build_student_template(), STUDENTS))
     results = [_normalize_password(token, login_name, idx) for idx, login_name in enumerate(REQUIRED_LOGINS)]
     print("account verification:", json.dumps(results, ensure_ascii=False, indent=2))
+    ok_logins = {item["loginName"] for item in results if item.get("ok")}
     CRED_PATH.write_text(
         json.dumps(
             {
                 "tenantCode": TENANT,
                 "stablePassword": STABLE_PWD,
-                "passwords": {login_name: STABLE_PWD for login_name in REQUIRED_LOGINS if next((x.get("ok") for x in results if x["loginName"] == login_name), False)},
+                "passwords": {login_name: STABLE_PWD for login_name in REQUIRED_LOGINS if login_name in ok_logins},
                 "loginResults": results,
                 "canonicalImport": {
                     "teachers": str(teacher_receipt.get("id") or teacher_receipt.get("jobId") or "confirmed"),
@@ -200,7 +201,7 @@ def main() -> int:
         ),
         encoding="utf-8",
     )
-    return 0 if all(item.get("ok") for item in results) else 1
+    return 0 if len(ok_logins) == len(REQUIRED_LOGINS) else 1
 
 
 if __name__ == "__main__":
