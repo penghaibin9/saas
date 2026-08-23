@@ -1,4 +1,4 @@
-export const OFFICIAL_CONTENT_UPDATED_AT = '2026-08-22'
+export const OFFICIAL_CONTENT_UPDATED_AT = '2026-08-23'
 export const OFFICIAL_FACT_AUDIT_DATE = '2026-08-21'
 
 export const HOME_PAIN_POINTS = Object.freeze([
@@ -10,7 +10,7 @@ export const HOME_PAIN_POINTS = Object.freeze([
 
 export const LIFECYCLE_STAGES = Object.freeze([
   { key: 'orientation', stage: '新生入校', title: '数字迎新', desc: '预报到、资格与材料核验、绿色通道、宿舍、现场核验、异常与统计归档。', route: '/solutions/orientation', proof: '/official-site/orientation-overview.webp' },
-  { key: 'campus', stage: '在校成长', title: '学生主档 · 学工 · 服务', desc: '围绕一人一档组织请假、宿舍、资助、活动、关怀、风险与学生自助办理。', route: '/products/student-affairs', proof: '/official-site/student-affairs-master.webp' },
+  { key: 'campus', stage: '在校成长', title: '学生主档 · 学工 · 服务', desc: '围绕一人一档组织请假、宿舍、资助、活动、关怀、风险与学生自助办理。', route: '/products/student-affairs', proof: '/official-site/student-affairs-master.png' },
   { key: 'academic', stage: '教学运行', title: '教务 · 学业', desc: '培养方案、课程任务、排课选课、考试成绩、学籍学业、质量与毕业资格持续衔接。', route: '/products/academic-affairs', proof: '/official-site/academic.webp' },
   { key: 'internship', stage: '实践教学', title: '岗位实习', desc: '企业岗位、学生匹配、申请协议、过程监管、指导巡访、风险、评价成绩与归档。', route: '/products/internship', proof: '/official-site/internship.webp' },
   { key: 'graduation', stage: '毕业阶段', title: '毕业设计', desc: '批次、选题、开题、任务书、指导、中期、成果评阅、答辩、成绩与材料归档。', route: '/products/graduation', proof: '/official-site/graduation-dashboard.webp' },
@@ -50,7 +50,7 @@ export const HOME_FAQS = Object.freeze([
   { q: '跃科到底是一套什么系统？', a: '跃科是一套面向职业院校的学生全生命周期数字化管理与服务平台，以岗位实习、毕业设计、学工、教务为重点业务中心，并连接数字迎新、学生服务、多端协同、权限审计与实施交付底座。' },
   { q: '是不是只有四个独立模块？', a: '不是。四个重点产品可以独立介绍和组合采购，但共享学生、组织、身份、权限、数据范围、工作台、审批、消息、统计和审计等平台能力。' },
   { q: '老师和学生一定要一直用电脑吗？', a: '不需要。复杂配置、审核与治理主要放在 PC；学生和教师高频事项进入学生门户、微信小程序或 H5，并与 PC 端共享业务状态。' },
-  { q: '官网截图是真实系统还是概念图？', a: '官网优先使用仓库真实代码在隔离 E2E / Playwright 环境运行得到的界面截图。测试数据只用于证明产品能力与页面结构，不包装成真实学校客户案例或运营数据。' },
+  { q: '官网截图是真实系统还是概念图？', a: '官网展示的是产品运行界面，页面中的数据均为演示数据，不包含真实学生及学校敏感信息。' },
   { q: '支持 SaaS 还是私有化？', a: '产品具备多学校 SaaS 底座，也可以根据学校基础设施、数据部署边界和集成要求设计私有化交付方案；具体范围以项目方案与实际环境为准。' },
   { q: '学校已有历史数据怎么办？', a: '系统已经考虑学生、教职工等基础数据导入，以及数据交换任务、确认、回执和失败重试。具体迁移范围需要结合学校现有数据质量和接口情况确认。' }
 ])
@@ -90,7 +90,7 @@ export const SALES_STORIES = Object.freeze({
     heading: '实施不是“装好系统就走”，而是一条从初始化到后续升级的可追踪过程',
     lead: '从学校情况、主数据、用户角色、模块配置、历史数据，到联调、上线检查、验收与升级逐步推进。',
     process: IMPLEMENTATION_STEPS.map((item) => item.title),
-    facts: ['学校级系统管理把实施与验收作为独立工作区。', '数据导入、角色权限、业务配置、上线检查与变更升级都有对应产品入口。', '官网只描述已有产品能力，不虚构已服务学校数量或项目成果。'],
+    facts: ['学校级系统管理把实施与验收作为独立工作区。', '数据导入、角色权限、业务配置、上线检查与变更升级都有对应产品入口。', '具体启用模块、数据迁移和交付范围以双方确认的实施方案为准。'],
     faqs: [
       { q: '历史数据是上线后手工重新录吗？', a: '不是。产品已考虑历史数据导入、批量任务、确认、回执和失败重试；实际迁移方案需结合源数据质量确认。' },
       { q: '后续学校规则变化怎么办？', a: '系统已经考虑已安装配置、变更与升级等工作区，用于承接学校配置和版本变化。' }

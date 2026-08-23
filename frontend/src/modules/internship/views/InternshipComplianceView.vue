@@ -209,7 +209,7 @@
           <section class="mp-card">
             <div class="mp-card__head"><strong>课程配置</strong><span class="mp-note">{{ workbench.safetyCourses?.length || 0 }} 门</span></div>
             <div class="table-wrap"><table class="mp-table"><thead><tr><th>课程</th><th>版本</th><th>状态</th><th>时长</th><th>及格线</th><th>最大次数</th><th>承诺</th></tr></thead><tbody>
-              <tr v-for="row in workbench.safetyCourses || []" :key="row.id"><td>{{ row.title }}</td><td>{{ row.courseVersion }}</td><td>{{ row.status }}</td><td>{{ row.requiredMinutes }}分钟</td><td>{{ row.passingScore }}</td><td>{{ row.maxAttempts }}</td><td>{{ row.requireCommitment ? '必需' : '否' }}</td></tr>
+              <tr v-for="row in workbench.safetyCourses || []" :key="row.id"><td>{{ row.title }}</td><td>{{ row.courseVersion }}</td><td>{{ complianceStatusText(row.status) }}</td><td>{{ row.requiredMinutes }}分钟</td><td>{{ row.passingScore }}</td><td>{{ row.maxAttempts }}</td><td>{{ row.requireCommitment ? '必需' : '否' }}</td></tr>
               <tr v-if="showEmpty(workbench.safetyCourses)"><td colspan="7" class="empty-cell">当前批次未配置课程；启用安全门禁时将被判为配置错误</td></tr>
             </tbody></table></div>
           </section>
@@ -217,7 +217,7 @@
             <div class="mp-card__head"><strong>学生学习与审核</strong></div>
             <div class="table-wrap"><table class="mp-table"><thead><tr><th>学生</th><th>课程</th><th>记录/当前版本</th><th>状态</th><th>时长</th><th>分数</th><th>尝试</th><th>版本</th><th>审核</th></tr></thead><tbody>
               <tr v-for="row in workbench.safetyCompletions || []" :key="row.id">
-                <td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ row.courseTitle }}</td><td>{{ row.courseVersion }} / {{ row.currentCourseVersion }}</td><td>{{ row.status }}</td><td>{{ row.studiedMinutes }}分钟</td><td>{{ row.score ?? '-' }}</td><td>{{ row.attemptCount }}</td><td>{{ row.version }}</td>
+                <td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ row.courseTitle }}</td><td>{{ row.courseVersion }} / {{ row.currentCourseVersion }}</td><td>{{ complianceStatusText(row.status) }}</td><td>{{ row.studiedMinutes }}分钟</td><td>{{ row.score ?? '-' }}</td><td>{{ row.attemptCount }}</td><td>{{ row.version }}</td>
                 <td class="action-cell"><template v-if="row.status === 'PENDING_REVIEW' && can('internship.safety.manage')"><button type="button" class="mp-link" @click="openAction('safety-review', row, 'APPROVE')">通过</button><button type="button" class="danger-link" @click="openAction('safety-review', row, 'REJECT')">退回</button></template></td>
               </tr><tr v-if="showEmpty(workbench.safetyCompletions)"><td colspan="9" class="empty-cell">暂无学生学习记录</td></tr>
             </tbody></table></div>
@@ -239,7 +239,7 @@
             <AppButton :disabled="acting || !filingFormValid" @click="createFiling">创建并提交学院审核</AppButton>
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>特殊备案台账</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>学生</th><th>类型</th><th>状态</th><th>原因</th><th>学院/学校意见</th><th>附件</th><th>版本</th><th>操作</th></tr></thead><tbody>
-            <tr v-for="row in workbench.filings || []" :key="row.id"><td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ filingTypeText(row.filingType) }}</td><td>{{ row.status }}</td><td>{{ row.triggerReason }}</td><td>{{ row.collegeComment || '-' }} / {{ row.schoolComment || '-' }}</td><td>{{ row.fileIds?.length || 0 }}</td><td>{{ row.version }}</td><td class="action-cell">
+            <tr v-for="row in workbench.filings || []" :key="row.id"><td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ filingTypeText(row.filingType) }}</td><td>{{ complianceStatusText(row.status) }}</td><td>{{ row.triggerReason }}</td><td>{{ row.collegeComment || '-' }} / {{ row.schoolComment || '-' }}</td><td>{{ row.fileIds?.length || 0 }}</td><td>{{ row.version }}</td><td class="action-cell">
               <button v-if="row.status === 'DRAFT' && can('internship.filing.review')" type="button" class="mp-link" @click="filingAction(row, 'COLLEGE', 'submit')">提交</button>
               <template v-if="row.status === 'PENDING_COLLEGE' && can('internship.filing.review')"><button type="button" class="mp-link" @click="openAction('filing-review', row, 'APPROVE', 'COLLEGE')">学院通过</button><button type="button" class="danger-link" @click="openAction('filing-review', row, 'REJECT', 'COLLEGE')">学院退回</button></template>
               <template v-if="row.status === 'PENDING_SCHOOL' && can('internship.filing.review')"><button type="button" class="mp-link" @click="openAction('filing-review', row, 'APPROVE', 'SCHOOL')">学校通过</button><button type="button" class="danger-link" @click="openAction('filing-review', row, 'REJECT', 'SCHOOL')">学校退回</button></template>
@@ -264,7 +264,7 @@
             <AppButton :disabled="acting || !incidentFormValid" @click="reportIncident">提交事故报告</AppButton>
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>事故处置台账</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>编号</th><th>学生</th><th>等级</th><th>状态</th><th>摘要</th><th>附件</th><th>版本</th><th>合法下一步</th></tr></thead><tbody>
-            <tr v-for="row in workbench.incidents || []" :key="row.id"><td>{{ row.incidentNo }}</td><td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ row.severity }}</td><td>{{ row.status }}</td><td>{{ row.summary }}</td><td>{{ row.fileIds?.length || 0 }}</td><td>{{ row.version }}</td><td class="action-cell"><button v-for="target in incidentTargets(row)" :key="target" type="button" class="mp-link" @click="openAction('incident-transition', row, target)">{{ incidentTargetText(target) }}</button></td></tr>
+            <tr v-for="row in workbench.incidents || []" :key="row.id"><td>{{ row.incidentNo }}</td><td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ severityText(row.severity) }}</td><td>{{ complianceStatusText(row.status) }}</td><td>{{ row.summary }}</td><td>{{ row.fileIds?.length || 0 }}</td><td>{{ row.version }}</td><td class="action-cell"><button v-for="target in incidentTargets(row)" :key="target" type="button" class="mp-link" @click="openAction('incident-transition', row, target)">{{ incidentTargetText(target) }}</button></td></tr>
             <tr v-if="showEmpty(workbench.incidents)"><td colspan="8" class="empty-cell">暂无事故记录</td></tr>
           </tbody></table></div></section>
 
@@ -282,7 +282,7 @@
             <AppButton :disabled="acting || !emergencyFormValid" @click="createEmergency">创建并提交审核</AppButton>
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>应急预案</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>名称</th><th>责任人</th><th>联系电话</th><th>状态</th><th>附件</th><th>版本</th><th>操作</th></tr></thead><tbody>
-            <tr v-for="row in workbench.emergencyPlans || []" :key="row.id"><td>{{ row.planName }}</td><td>{{ row.responsiblePerson }}</td><td>{{ row.emergencyContact }}</td><td>{{ row.status }}</td><td>{{ row.fileIds?.length || 0 }}</td><td>{{ row.version }}</td><td class="action-cell"><button v-if="row.status === 'DRAFT' && can('internship.incident.handle')" type="button" class="mp-link" @click="emergencyAction(row, 'SUBMIT')">提交审核</button><template v-if="row.status === 'PENDING_REVIEW' && can('internship.incident.handle')"><button type="button" class="mp-link" @click="openAction('emergency-review', row, 'APPROVE')">通过</button><button type="button" class="danger-link" @click="openAction('emergency-review', row, 'REJECT')">退回</button></template></td></tr>
+            <tr v-for="row in workbench.emergencyPlans || []" :key="row.id"><td>{{ row.planName }}</td><td>{{ row.responsiblePerson }}</td><td>{{ row.emergencyContact }}</td><td>{{ complianceStatusText(row.status) }}</td><td>{{ row.fileIds?.length || 0 }}</td><td>{{ row.version }}</td><td class="action-cell"><button v-if="row.status === 'DRAFT' && can('internship.incident.handle')" type="button" class="mp-link" @click="emergencyAction(row, 'SUBMIT')">提交审核</button><template v-if="row.status === 'PENDING_REVIEW' && can('internship.incident.handle')"><button type="button" class="mp-link" @click="openAction('emergency-review', row, 'APPROVE')">通过</button><button type="button" class="danger-link" @click="openAction('emergency-review', row, 'REJECT')">退回</button></template></td></tr>
             <tr v-if="showEmpty(workbench.emergencyPlans)"><td colspan="7" class="empty-cell">暂无应急预案</td></tr>
           </tbody></table></div></section>
         </template>
@@ -300,7 +300,7 @@
             <AppButton :disabled="acting || !exemptionFormValid" @click="requestExemption">提交豁免申请</AppButton>
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>豁免台账</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>学生</th><th>检查项</th><th>原因</th><th>有效期</th><th>状态</th><th>申请/审批人</th><th>版本</th><th>操作</th></tr></thead><tbody>
-            <tr v-for="row in workbench.exemptions || []" :key="row.id"><td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ exemptionCheckText(row.checkCode) }}</td><td>{{ row.reason }}</td><td>{{ fmt(row.validUntil) }}</td><td>{{ row.status }}</td><td>{{ row.requestedByName || '-' }} / {{ row.reviewedByName || '-' }}</td><td>{{ row.version }}</td><td class="action-cell"><template v-if="row.status === 'PENDING_REVIEW' && can('internship.compliance.exempt.approve')"><button type="button" class="mp-link" @click="openAction('exemption-review', row, 'APPROVE')">批准</button><button type="button" class="danger-link" @click="openAction('exemption-review', row, 'REJECT')">拒绝</button></template></td></tr>
+            <tr v-for="row in workbench.exemptions || []" :key="row.id"><td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ exemptionCheckText(row.checkCode) }}</td><td>{{ row.reason }}</td><td>{{ fmt(row.validUntil) }}</td><td>{{ complianceStatusText(row.status) }}</td><td>{{ row.requestedByName || '-' }} / {{ row.reviewedByName || '-' }}</td><td>{{ row.version }}</td><td class="action-cell"><template v-if="row.status === 'PENDING_REVIEW' && can('internship.compliance.exempt.approve')"><button type="button" class="mp-link" @click="openAction('exemption-review', row, 'APPROVE')">批准</button><button type="button" class="danger-link" @click="openAction('exemption-review', row, 'REJECT')">拒绝</button></template></td></tr>
             <tr v-if="showEmpty(workbench.exemptions)"><td colspan="8" class="empty-cell">暂无豁免记录</td></tr>
           </tbody></table></div></section>
         </template>
@@ -315,7 +315,7 @@
             <AppButton v-if="can('internship.evidence.export')" :disabled="acting || !packageFormValid" @click="generatePackage">生成版本化证据包</AppButton>
           </section>
           <section class="mp-card"><div class="mp-card__head"><strong>证据包历史</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>类型</th><th>目标</th><th>版本</th><th>状态</th><th>文件/缺失</th><th>SHA-256</th><th>生成人</th><th>时间</th><th>下载</th></tr></thead><tbody>
-            <tr v-for="row in workbench.evidencePackages || []" :key="row.id"><td>{{ row.packageType }}</td><td>{{ row.targetId }}</td><td>v{{ row.packageVersion }}</td><td>{{ row.status }}</td><td>{{ row.fileCount }} / {{ row.missingCount }}</td><td class="hash-cell">{{ row.packageSha256 || '-' }}</td><td>{{ row.generatedByName }}</td><td>{{ fmt(row.generatedAt) }}</td><td><button v-if="['READY','READY_WITH_MISSING'].includes(row.status) && can('internship.evidence.export')" type="button" class="mp-link" @click="downloadPackage(row)">下载ZIP</button></td></tr>
+            <tr v-for="row in workbench.evidencePackages || []" :key="row.id"><td>{{ packageTypeText(row.packageType) }}</td><td>{{ row.targetId }}</td><td>v{{ row.packageVersion }}</td><td>{{ complianceStatusText(row.status) }}</td><td>{{ row.fileCount }} / {{ row.missingCount }}</td><td class="hash-cell">{{ row.packageSha256 || '-' }}</td><td>{{ row.generatedByName }}</td><td>{{ fmt(row.generatedAt) }}</td><td><button v-if="['READY','READY_WITH_MISSING'].includes(row.status) && can('internship.evidence.export')" type="button" class="mp-link" @click="downloadPackage(row)">下载ZIP</button></td></tr>
             <tr v-if="showEmpty(workbench.evidencePackages)"><td colspan="9" class="empty-cell">暂无证据包</td></tr>
           </tbody></table></div></section>
         </template>
@@ -369,6 +369,14 @@ const EXEMPTION_CHECKS = [
   { value: 'specialFiling', label: '特殊备案' }, { value: 'positionRights', label: '岗位权益' },
   { value: 'emergencyPlan', label: '应急预案' }
 ]
+const COMPLIANCE_STATUS_LABELS = {
+  DRAFT: '草稿', ACTIVE: '已启用', RETIRED: '已停用', PENDING: '待完成', PASSED: '已通过', FAILED: '未通过',
+  EXPIRED: '已过期', NOT_REQUIRED: '无需备案', PENDING_COLLEGE: '待学院审核', PENDING_SCHOOL: '待学校审核',
+  APPROVED: '已通过', REJECTED: '已驳回', WITHDRAWN: '已撤回', SUPERSEDED: '已被新版本替代',
+  REPORTED: '已上报', EMERGENCY_HANDLING: '应急处置中', INVESTIGATING: '调查中', RECTIFYING: '整改中',
+  PENDING_REVIEW: '待复核', CLOSED: '已关闭', REVOKED: '已撤销', READY: '可导出',
+  READY_WITH_MISSING: '可导出（有缺项）', INVALIDATED: '已失效', LEGACY_SUMMARY: '历史汇总'
+}
 
 function freshForms() {
   return {
@@ -473,13 +481,16 @@ export default {
     fmt(value) { return value ? String(value).replace('T', ' ').replace('Z', '').slice(0, 16) : '-' },
     fileText(ids) { return ids?.length ? `已上传 ${ids.length} 个文件` : '尚未上传' },
     blockerText(items) { return items?.length ? items.map((item) => `${item.label}：${item.reason}`).join('；') : '无' },
-    filingTypeText(value) { return FILING_TYPES.find((item) => item.value === value)?.label || value || '-' },
-    exemptionCheckText(value) { return EXEMPTION_CHECKS.find((item) => item.value === value)?.label || value || '-' },
-    consentStatusText(value) { return ({ PENDING: '待确认', VALID: '已确认', REJECTED: '已拒绝', EXPIRED: '已过期', SUPERSEDED: '已被新版本替代', REVOKED: '已作废', NOT_APPLICABLE: '无需确认' })[value] || value || '-' },
-    deliveryStatusText(value) { return ({ SENT: '已发送', SKIPPED: '未发送', FAILED: '发送失败', NOT_SENT: '尚未发送', NOT_REQUIRED: '无需发送' })[String(value || '').toUpperCase()] || value || '尚未发送' },
+    filingTypeText(value) { return FILING_TYPES.find((item) => item.value === value)?.label || (value ? '其他备案类型' : '-') },
+    exemptionCheckText(value) { return EXEMPTION_CHECKS.find((item) => item.value === value)?.label || (value ? '其他检查项' : '-') },
+    complianceStatusText(value) { return COMPLIANCE_STATUS_LABELS[value] || (value ? '状态待确认' : '-') },
+    severityText(value) { return ({ LOW: '一般', MEDIUM: '较大', HIGH: '重大', CRITICAL: '特别重大' })[value] || '程度待确认' },
+    packageTypeText(value) { return ({ BATCH: '批次包', STUDENT: '学生包' })[value] || '其他证据包' },
+    consentStatusText(value) { return ({ PENDING: '待确认', VALID: '已确认', REJECTED: '已拒绝', EXPIRED: '已过期', SUPERSEDED: '已被新版本替代', REVOKED: '已作废', NOT_APPLICABLE: '无需确认' })[value] || (value ? '确认状态待核实' : '-') },
+    deliveryStatusText(value) { return ({ SENT: '已发送', SKIPPED: '未发送', FAILED: '发送失败', NOT_SENT: '尚未发送', NOT_REQUIRED: '无需发送' })[String(value || '').toUpperCase()] || (value ? '发送状态待确认' : '尚未发送') },
     deliveryTone(value) { const status = String(value || '').toUpperCase(); return status === 'SENT' ? 'is-success' : ['SKIPPED', 'FAILED'].includes(status) ? 'is-danger' : 'is-muted' },
     stateTone(value) { return value === 'VALID' || value === 'APPROVED' ? 'is-success' : ['REJECTED', 'REVOKED', 'EXPIRED'].includes(value) ? 'is-danger' : value === 'PENDING' ? 'is-warn' : 'is-muted' },
-    incidentTargetText(value) { return ({ EMERGENCY_HANDLING: '进入应急处置', INVESTIGATING: '进入调查', RECTIFYING: '进入整改', PENDING_REVIEW: '提交复核', CLOSED: '关闭事故' })[value] || value },
+    incidentTargetText(value) { return ({ EMERGENCY_HANDLING: '进入应急处置', INVESTIGATING: '进入调查', RECTIFYING: '进入整改', PENDING_REVIEW: '提交复核', CLOSED: '关闭事故' })[value] || '更新事故状态' },
     /** 首屏：只拉批次统计 + 工作台 summary（6 项数字走 SQL COUNT），不拉任何分组明细。
      * 明细列表改为按 Tab 懒加载，见 ensureGroupLoaded。
      *

@@ -42,6 +42,14 @@
 .yk-nav-links { display: flex; align-items: center; gap: 28px; }
 .yk-nav-links a { color: var(--yk-muted); font-size: 14px; font-weight: 500; transition: color .18s ease; }
 .yk-nav-links a:hover { color: var(--yk-ink); }
+.yk-nav-home {
+  min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 14px; white-space: nowrap; border: 1px solid #c9dbf2; border-radius: 10px;
+  background: #fff; color: var(--yk-ink) !important; font-size: 13px; font-weight: 700;
+  transition: color .18s ease, border-color .18s ease, background .18s ease, transform .18s ease;
+}
+.yk-nav-home span { color: var(--yk-blue); font-size: 17px; line-height: 1; transform: translateY(-1px); }
+.yk-nav-home:hover { color: var(--yk-blue) !important; border-color: #9cc0f2; background: #f7faff; transform: translateY(-1px); }
 .yk-nav-cta {
   min-height: 38px; display: inline-flex; align-items: center; justify-content: center;
   padding: 0 17px; border-radius: 10px; background: var(--yk-blue); color: #fff !important;
@@ -75,7 +83,7 @@
 .yk-button:hover { transform: translateY(-1px); }
 .yk-button-primary { color: #fff !important; background: var(--yk-blue); box-shadow: 0 8px 24px rgba(22, 103, 232, .18); }
 .yk-button-primary:hover { background: var(--yk-blue-dark); }
-.yk-button-ghost { color: var(--yk-ink); background: #fff; border: 1px solid var(--yk-line); }
+.yk-site .yk-button-ghost { color: var(--yk-ink); background: #fff; border: 1px solid var(--yk-line); }
 .yk-button-light { color: var(--yk-ink) !important; background: #fff; box-shadow: 0 10px 30px rgba(0, 0, 0, .12); }
 
 .yk-product-stage {
@@ -270,6 +278,8 @@
   .yk-brand-copy small, .yk-nav-links, .yk-nav-cta { display: none; }
   .yk-brand-copy strong { max-width: 250px; font-size: 12px; }
   .yk-brand-dot { width: 26px; height: 26px; border-radius: 8px; font-size: 12px; }
+  .yk-nav-home { min-height: 34px; padding: 0 11px; font-size: 12px; }
+  .yk-nav-home span { font-size: 15px; }
   .yk-menu-button { display: grid; place-items: center; }
   .yk-mobile-nav { display: grid; padding: 0 0 12px; }
   .yk-mobile-nav a { padding: 11px 2px; border-top: 1px solid #edf2f8; color: var(--yk-muted); font-size: 13px; }

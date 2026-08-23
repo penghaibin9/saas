@@ -81,7 +81,7 @@
                 <span v-else>{{ row.versionStrategy }}</span>
               </template>
               <template #cell-status="{ row }">
-                <StatusTag :type="statusTone(row.status)" :label="row.status" dot />
+                <StatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot />
               </template>
               <template #cell-ops="{ row }">
                 <button v-if="row.status === 'DRAFT'" class="mp-link" @click="submit(row)">提交复核</button>
@@ -183,6 +183,9 @@ export default {
   },
   created() { this.load() },
   methods: {
+    statusLabel(status) {
+      return { DRAFT: '草稿', PENDING_REVIEW: '待复核', ACTIVE: '已启用', RETIRED: '已下线' }[status] || '状态待确认'
+    },
     statusTone(s) {
       return { DRAFT: 'default', PENDING_REVIEW: 'warning', ACTIVE: 'success', RETIRED: 'default' }[s] || 'default'
     },

@@ -40,7 +40,7 @@ function clearOfflineState() {
 
 /** 冷却期内跳过真实 fetch，供 mock 层立即回退（不再重复等待超时） */
 function throwOfflineSkip(method) {
-  const err = new Error('后端离线冷却中')
+  const err = new Error('服务连接正在恢复，请点击重试')
   err.offlineSkip = true
   if (!canUseMockFallback() || isWriteMethod(method)) {
     err.biz = true
@@ -93,6 +93,20 @@ function strictFailure(label, e) {
   return err
 }
 
+/**
+ * 网络层异常可能是 DOMException（AbortError），其 message 在部分浏览器中是只读属性。
+ * 永远创建新的可写 Error 承载用户文案和业务元数据，禁止直接改写浏览器原生异常对象。
+ */
+function transportFailure(source, { message, code, biz = false, bizCode = '' } = {}) {
+  const err = new Error(message || source?.message || '网络请求失败')
+  if (biz) err.biz = true
+  if (code !== undefined) err.code = code
+  if (bizCode) err.bizCode = bizCode
+  if (source?.name) err.transportErrorName = source.name
+  err.cause = source
+  return err
+}
+
 function markOffline() {
   state.offlineUntil = Date.now() + OFFLINE_COOLDOWN_MS
   if (!state.notified) {
@@ -106,7 +120,8 @@ function markOffline() {
 }
 
 async function rawRequest(path, {
-  method = 'GET', params, body, auth = true, forceProbe = false, headers: extraHeaders = {}
+  method = 'GET', params, body, auth = true, forceProbe = false,
+  timeoutMs = REQUEST_TIMEOUT_MS, headers: extraHeaders = {}
 } = {}) {
   const methodUp = String(method || 'GET').toUpperCase()
   if (!forceProbe && isBackendOffline() && canUseMockFallback() && !isWriteMethod(methodUp)) {
@@ -122,7 +137,10 @@ async function rawRequest(path, {
   const headers = { 'Content-Type': 'application/json', ...(extraHeaders || {}) }
   if (auth && state.token) headers.Authorization = `Bearer ${state.token}`
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const normalizedTimeoutMs = Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+    ? Number(timeoutMs)
+    : REQUEST_TIMEOUT_MS
+  const timer = setTimeout(() => controller.abort(), normalizedTimeoutMs)
   try {
     const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}${qs}`, {
       method,
@@ -154,14 +172,30 @@ async function rawRequest(path, {
     clearOfflineState()
     return payload.data
   } catch (e) {
-    if (e.offlineSkip) throw e
-    if (!e.biz) {
-      markOffline()
-      if (!canUseMockFallback() || isWriteMethod(method)) {
-        e.biz = true
-        e.code = isWriteMethod(method) ? 503002 : 503001
-        e.message = isWriteMethod(method) ? '真实接口不可用，写操作禁止 mock 成功' : '真实接口不可用，生产环境已禁用 mock fallback'
-      }
+    if (e?.offlineSkip) throw e
+    if (e?.biz) throw e
+
+    const timedOut = ['AbortError', 'TimeoutError'].includes(e?.name) || /abort/i.test(String(e?.message || ''))
+    const failClosed = !canUseMockFallback() || isWriteMethod(method)
+    markOffline()
+
+    if (timedOut) {
+      throw transportFailure(e, {
+        message: '请求超时，请点击重试',
+        code: failClosed ? (isWriteMethod(method) ? 503002 : 503001) : 'REQUEST_TIMEOUT',
+        biz: failClosed,
+        bizCode: 'REQUEST_TIMEOUT'
+      })
+    }
+
+    if (failClosed) {
+      throw transportFailure(e, {
+        message: isWriteMethod(method)
+          ? '真实接口不可用，写操作禁止 mock 成功'
+          : '真实接口不可用，生产环境已禁用 mock fallback',
+        code: isWriteMethod(method) ? 503002 : 503001,
+        biz: true
+      })
     }
     throw e
   } finally {
@@ -511,13 +545,14 @@ export async function requestUpload(path, file, fieldName = 'file') {
     }
     return payload.data
   } catch (e) {
-    if (!e.biz) {
-      markOffline()
-      e.biz = true
-      e.code = 503002
-      e.message = '真实接口不可用，写操作禁止 mock 成功'
-    }
-    throw e
+    if (e?.biz) throw e
+    markOffline()
+    throw transportFailure(e, {
+      message: '真实接口不可用，写操作禁止 mock 成功',
+      code: 503002,
+      biz: true,
+      bizCode: ['AbortError', 'TimeoutError'].includes(e?.name) ? 'REQUEST_TIMEOUT' : ''
+    })
   } finally {
     clearTimeout(timer)
   }
@@ -568,13 +603,14 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
       }
       return await res.blob()
     } catch (e) {
-      if (!e.biz) {
-        markOffline()
-        e.biz = true
-        e.code = 503001
-        e.message = '真实接口不可用，下载失败'
-      }
-      throw e
+      if (e?.biz) throw e
+      markOffline()
+      throw transportFailure(e, {
+        message: '真实接口不可用，下载失败',
+        code: 503001,
+        biz: true,
+        bizCode: ['AbortError', 'TimeoutError'].includes(e?.name) ? 'REQUEST_TIMEOUT' : ''
+      })
     } finally {
       clearTimeout(timer)
     }

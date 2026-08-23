@@ -35,7 +35,7 @@
         <EmptyState v-if="!rows.length" title="暂无重修申请" description="学生报名后在此审批" />
         <DataTable v-else :columns="retakeColumns" :rows="rows" row-key="applyId">
           <template #cell-student="{ row }">{{ row.studentName }}（{{ row.courseName }}·第{{ row.retakeCount }}次）</template>
-          <template #cell-status="{ row }"><StatusTag :type="rtType(row.status)" :label="row.status" dot /></template>
+          <template #cell-status="{ row }"><StatusTag :type="rtType(row.status)" :label="academicStatusLabel(row.status)" dot /></template>
           <template #cell-ops="{ row }">
             <button v-if="row.status === 'SUBMITTED'" class="mp-link" @click="review('retakeReview', row.applyId, 'APPROVE')">通过</button>
             <button v-if="row.status === 'SUBMITTED'" class="mp-link is-danger" @click="reject('retakeReview', row.applyId)">驳回</button>
@@ -49,7 +49,7 @@
         <EmptyState v-if="!rows.length" title="暂无免修申请" description="学生申请后三级审批" />
         <DataTable v-else :columns="exemptionColumns" :rows="rows" row-key="exemptionId">
           <template #cell-student="{ row }">{{ row.studentName }}（{{ row.courseName }}）</template>
-          <template #cell-status="{ row }"><StatusTag :type="exType(row.status)" :label="row.status" dot /></template>
+          <template #cell-status="{ row }"><StatusTag :type="exType(row.status)" :label="academicStatusLabel(row.status)" dot /></template>
           <template #cell-ops="{ row }">
             <button v-if="canReviewEx(row.status)" class="mp-link" @click="review('exemptionReview', row.exemptionId, 'APPROVE')">通过</button>
             <button v-if="canReviewEx(row.status)" class="mp-link" @click="returnEx(row.exemptionId)">退回</button>
@@ -224,6 +224,7 @@ import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyS
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermCodePicker, AppMakeupBatchPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 import { toast } from '@/utils/toast'
 
 const _MBL = { DRAFT: '草稿', ARRANGED: '已编排', PUBLISHED: '已发布', SCORING: '录入中', REVIEWED: '学院已审', FINISHED: '已结束' }
@@ -278,7 +279,8 @@ export default {
     this.reload()
   },
   methods: {
-    mbLabel(s) { return _MBL[s] || s },
+    academicStatusLabel,
+    mbLabel(s) { return _MBL[s] || academicStatusLabel(s) },
     mbType(s) { return s === 'PUBLISHED' ? 'success' : s === 'FINISHED' ? 'default' : 'primary' },
     rtType(s) { return ['APPROVED', 'ENROLLED', 'FINISHED'].includes(s) ? 'success' : s === 'REJECTED' ? 'danger' : 'primary' },
     exType(s) { return s === 'APPROVED' ? 'success' : s === 'REJECTED' ? 'danger' : 'primary' },

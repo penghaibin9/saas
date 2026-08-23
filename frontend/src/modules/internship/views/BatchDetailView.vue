@@ -12,7 +12,15 @@
 
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
-    <div v-else-if="detail" class="mp-grid-2">
+    <div v-else-if="detail" class="mp-stack">
+      <BatchParticipantScope
+        ref="participantScope"
+        :batch-id="detail.id"
+        :batch-status="detail.status"
+        @frozen="load"
+      />
+
+      <div class="mp-grid-2">
       <!-- 左：批次信息 + 阶段时间轴 + 规则配置 -->
       <div class="mp-stack">
         <section class="mp-card">
@@ -57,7 +65,7 @@
             <p v-if="detail.transitionReason" class="bdv-reason">作废原因：{{ detail.transitionReason }}</p>
             <div class="bdv-actions">
               <AppButton v-if="detail.status === 'DRAFT'" variant="secondary" @click="goEdit">编辑</AppButton>
-              <AppButton v-if="detail.status === 'DRAFT'" variant="primary" @click="openConfirm('activate')">启用</AppButton>
+              <AppButton v-if="detail.status === 'DRAFT'" variant="primary" @click="focusParticipants">选择学生并启用</AppButton>
               <AppButton v-if="detail.status === 'RUNNING'" variant="danger" @click="openConfirm('close')">结束</AppButton>
               <AppButton v-if="detail.status === 'CLOSED'" variant="danger" @click="openConfirm('archive')">归档</AppButton>
               <AppButton v-if="detail.status === 'DRAFT'" variant="danger" @click="openConfirm('void')">作废</AppButton>
@@ -74,6 +82,7 @@
             <AppAuditTrail :records="auditRecords" :show-ip="false" empty-text="暂无操作记录" />
           </div>
         </section>
+      </div>
       </div>
     </div>
 
@@ -104,6 +113,7 @@ import { AppStatusTag, AppConfirmDialog, AppTimeline, AppAuditTrail, AppDescript
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
 import { formatDate, formatDateTime } from '@/utils/dateUtils'
+import BatchParticipantScope from './components/BatchParticipantScope.vue'
 
 const ACTION_LABEL = { CREATE: '新建批次', UPDATE: '编辑批次', ACTIVATE: '启用批次', CLOSE: '结束批次', ARCHIVE: '归档批次', VOID: '作废批次' }
 
@@ -111,7 +121,8 @@ export default {
   name: 'BatchDetailView',
   components: {
     ModulePageShell, LoadingState, ErrorState, AppButton,
-    AppStatusTag, AppConfirmDialog, AppTimeline, AppAuditTrail, AppDescriptionList
+    AppStatusTag, AppConfirmDialog, AppTimeline, AppAuditTrail, AppDescriptionList,
+    BatchParticipantScope
   },
   data() {
     return {
@@ -200,9 +211,6 @@ export default {
     },
     confirmConf() {
       const name = this.detail ? this.detail.batchName : ''
-      if (this.confirmMode === 'activate') {
-        return { title: '启用批次', message: `将「${name}」置为「进行中」，实习流程正式开放。`, type: 'primary', confirmText: '确认启用', requireReason: false }
-      }
       if (this.confirmMode === 'close') {
         return { title: '结束批次', message: `将「${name}」置为「已结束」，结束后才可归档。`, type: 'danger', confirmText: '确认结束', requireReason: false }
       }
@@ -247,6 +255,9 @@ export default {
     goEdit() {
       this.$router.push(`/admin/internship/batches/${this.detail.id}/edit`)
     },
+    focusParticipants() {
+      this.$refs.participantScope?.focus()
+    },
     async load() {
       this.loading = true
       this.error = ''
@@ -270,8 +281,7 @@ export default {
       const reason = (payload && payload.reason) || ''
       this.confirmSubmitting = true
       let res
-      if (this.confirmMode === 'activate') res = await internshipApi.activateBatch(d.id, { expectedVersion: d.version })
-      else if (this.confirmMode === 'close') res = await internshipApi.closeBatch(d.id, { expectedVersion: d.version })
+      if (this.confirmMode === 'close') res = await internshipApi.closeBatch(d.id, { expectedVersion: d.version })
       else if (this.confirmMode === 'archive') res = await internshipApi.archiveBatch(d.id, { expectedVersion: d.version })
       else if (this.confirmMode === 'void') res = await internshipApi.voidBatch(d.id, {
         reason, expectedVersion: d.version

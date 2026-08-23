@@ -175,6 +175,30 @@ export const internshipApi = {
     return call(() => request(`/internship/batches/${id}`, { method: 'PUT', body }))
   },
 
+  getBatchParticipantRule(id) {
+    return call(() => request(`/internship/batches/${id}/participants/rule`))
+  },
+
+  previewBatchParticipants(id, rule) {
+    return call(() => request(`/internship/batches/${id}/participants/preview`, {
+      method: 'POST', body: rule, timeoutMs: 10000
+    }))
+  },
+
+  freezeBatchParticipants(id, rule) {
+    return call(() => request(`/internship/batches/${id}/participants/freeze`, {
+      method: 'POST', body: { rule }, timeoutMs: 15000
+    }))
+  },
+
+  getBatchParticipants(id, params = {}) {
+    return callList(`/internship/batches/${id}/participants`, params)
+  },
+
+  getBatchParticipantSummary(id) {
+    return call(() => request(`/internship/batches/${id}/participants/summary`))
+  },
+
   activateBatch(id, { expectedVersion, version } = {}) {
     return call(() => request(`/internship/batches/${id}/activate`, {
       method: 'POST', body: { expectedVersion: expectedVersion ?? version }

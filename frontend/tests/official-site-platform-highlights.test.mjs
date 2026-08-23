@@ -24,9 +24,9 @@ test('platform page promotes current foundation capabilities without reducing th
   }
 })
 
-test('platform eight highlights keep live and evolving states explicit', () => {
+test('platform highlights keep live and evolving states explicit', () => {
   for (const marker of [
-    '跃科平台八大特色',
+    '六项核心能力',
     '四端在线文档预览与批阅',
     '材料合规智能检查',
     '可信电子证据链',
@@ -34,7 +34,7 @@ test('platform eight highlights keep live and evolving states explicit', () => {
     '协同工作台',
     "status: '当前具备'",
     "status: '持续演进'",
-    '尚未完成生产封板的能力统一标记为“持续演进”'
+    '具体交付范围以项目合同、正式版本与上线验收为准'
   ]) {
     assert.ok(pageSource.includes(marker), `missing truthful highlight marker: ${marker}`)
   }
@@ -42,19 +42,15 @@ test('platform eight highlights keep live and evolving states explicit', () => {
   assert.ok(!pageSource.includes('全部已上线'))
 })
 
-test('ABCD evolution remains visible as the next platform layer', () => {
-  for (const marker of [
-    'ABCD · 下一阶段平台演进',
-    '可信电子证据链 · 跨业务一致性巡检',
-    '材料合规检查 · 动态业务表单',
-    '文档版本比对 · 学生生命周期事实流',
-    '全局业务搜索 · 任务池 / 认领 / 转办 / 代理 / SLA'
-  ]) {
-    assert.ok(pageSource.includes(marker), `missing ABCD marker: ${marker}`)
-  }
+test('platform evolution stays customer-facing without exposing internal roadmap framing', () => {
+  assert.ok(pageSource.includes('当前能力与演进方向清晰区分'))
+  assert.ok(pageSource.includes('“持续演进”表示产品方向'))
+  assert.ok(!pageSource.includes('ABCD · 下一阶段平台演进'))
+  assert.ok(!pageSource.includes('当前产品代码'))
+  assert.ok(!pageSource.includes('隔离浏览器环境'))
 })
 
-test('platform eight-highlight page ships responsive dedicated styling', () => {
+test('platform highlight page ships responsive dedicated styling', () => {
   for (const marker of [
     '.yk-highlight-hero',
     '.yk-highlight-foundation-grid',
@@ -63,6 +59,6 @@ test('platform eight-highlight page ships responsive dedicated styling', () => {
     '.yk-highlight-evolution-grid',
     '@media (max-width: 720px)'
   ]) {
-    assert.ok(styleSource.includes(marker), `missing eight-highlight style: ${marker}`)
+    assert.ok(styleSource.includes(marker), `missing platform highlight style: ${marker}`)
   }
 })

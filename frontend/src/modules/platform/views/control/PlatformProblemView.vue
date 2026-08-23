@@ -29,7 +29,7 @@
         <AppSectionHeader title="问题列表" />
         <DataTable :columns="listColumns" :rows="problems" row-key="id" row-clickable @row-click="selectProblem">
           <template #cell-status="{ row }">
-            <StatusTag :type="statusTone(row.status)" :label="row.status" dot />
+            <StatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot />
             <StatusTag v-if="row.knownErrorPublished" type="warning" label="已知错误" />
           </template>
         </DataTable>
@@ -44,7 +44,7 @@
         </div>
         <div class="ppb__form">
           <select v-model="nextStatus" class="ppb__input">
-            <option v-for="s in statusOptions" :key="s" :value="s">{{ s }}</option>
+            <option v-for="s in statusOptions" :key="s" :value="s">{{ statusLabel(s) }}</option>
           </select>
           <button class="mp-link" @click="advanceStatus">流转状态</button>
         </div>
@@ -87,6 +87,9 @@ const STATUS_TRANSITIONS = {
   RESOLVED: ['CLOSED', 'INVESTIGATING'],
   CLOSED: []
 }
+const STATUS_LABELS = {
+  OPEN: '待处理', INVESTIGATING: '调查中', KNOWN_ERROR: '已知错误', RESOLVED: '已解决', CLOSED: '已关闭'
+}
 
 export default {
   name: 'PlatformProblemView',
@@ -120,6 +123,9 @@ export default {
     this.load()
   },
   methods: {
+    statusLabel(status) {
+      return STATUS_LABELS[status] || '状态待确认'
+    },
     statusTone(status) {
       if (status === 'CLOSED' || status === 'RESOLVED') return 'success'
       if (status === 'KNOWN_ERROR') return 'warning'

@@ -142,8 +142,12 @@ test('getRisks 传递 studentId', async () => {
   const call = lastCall()
   assert.equal(call.path, '/student-affairs/risk/records')
   assert.equal(call.params.studentId, '99')
+  assert.equal(call.forceProbe, true)
+  assert.equal(call.timeoutMs, 10000)
 
   clearCalls()
   await compat.listRiskRecords({ studentId: '99', page: 1, pageSize: 20 })
   assert.equal(lastCall().params.studentId, '99')
+  assert.equal(lastCall().forceProbe, true)
+  assert.equal(lastCall().timeoutMs, 10000)
 })

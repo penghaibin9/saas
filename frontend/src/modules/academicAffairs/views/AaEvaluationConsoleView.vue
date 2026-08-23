@@ -46,7 +46,7 @@
             </div>
             <EmptyState v-if="!tasks.length" :title="'暂无' + typeViewLabel + '任务'" description="请在「评教批次」生成对应来源的应评任务" />
             <DataTable v-else :columns="taskColumns" :rows="tasks" row-key="taskId">
-              <template #cell-status="{ row }"><StatusTag :type="row.status === 'SUBMITTED' ? 'success' : 'primary'" :label="row.status" dot /></template>
+              <template #cell-status="{ row }"><StatusTag :type="row.status === 'SUBMITTED' ? 'success' : 'primary'" :label="academicStatusLabel(row.status)" dot /></template>
             </DataTable>
           </template>
         </div>
@@ -189,7 +189,7 @@
             <div class="aaev-section-title">应评任务</div>
             <EmptyState v-if="!tasks.length" title="未生成应评任务" description="DRAFT 阶段从教学任务生成" />
             <DataTable v-else :columns="taskColumns" :rows="tasks" row-key="taskId">
-              <template #cell-status="{ row }"><StatusTag :type="row.status === 'SUBMITTED' ? 'success' : 'primary'" :label="row.status" dot /></template>
+              <template #cell-status="{ row }"><StatusTag :type="row.status === 'SUBMITTED' ? 'success' : 'primary'" :label="academicStatusLabel(row.status)" dot /></template>
             </DataTable>
             <template v-if="results.length">
               <div class="aaev-section-title">评价结果</div>
@@ -218,7 +218,7 @@
         :pagination="appealPagination"
         @page-change="onAppealPageChange"
       >
-        <template #cell-status="{ row }"><StatusTag :type="row.status === 'RESOLVED' ? 'success' : row.status === 'REJECTED' ? 'danger' : 'primary'" :label="row.status" dot /></template>
+        <template #cell-status="{ row }"><StatusTag :type="row.status === 'RESOLVED' ? 'success' : row.status === 'REJECTED' ? 'danger' : 'primary'" :label="academicStatusLabel(row.status)" dot /></template>
         <template #cell-ops="{ row }">
           <button v-if="['SUBMITTED','COLLEGE_REVIEW'].includes(row.status)" class="mp-link" :disabled="confirmSubmitting" @click="approveAppeal(row)">{{ row.status === 'SUBMITTED' ? '学院初审通过' : '教务终审通过' }}</button>
           <button v-if="['SUBMITTED','COLLEGE_REVIEW'].includes(row.status)" class="mp-link is-danger" :disabled="confirmSubmitting" @click="rejectAppeal(row.appealId)">驳回</button>
@@ -271,6 +271,7 @@ import { ModulePageShell, DataTable, StatusTag, EmptyState } from '@/components/
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppTextInput, AppFormItem, AppSelect, AppConfirmDialog, AppInlineAlert, AppTermEntityPicker, AppTeachingTaskPicker, AppPagination } from '@/components/common'
 import { academicAffairsApi, academicAffairsEvaluationApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 import { toast } from '@/utils/toast'
 
 const _BL = { DRAFT: '草稿', PUBLISHED: '已发布', OPEN: '评教中', CLOSED: '已关闭', RESULT_READY: '结果就绪', ARCHIVED: '已归档' }
@@ -340,7 +341,8 @@ export default {
     if (this.tab === 'appeals') await this.loadAppeals()
   },
   methods: {
-    bLabel(s) { return _BL[s] || s },
+    academicStatusLabel,
+    bLabel(s) { return _BL[s] || academicStatusLabel(s) },
     bType(s) { return s === 'OPEN' ? 'success' : ['ARCHIVED', 'CLOSED'].includes(s) ? 'default' : s === 'RESULT_READY' ? 'warning' : 'primary' },
     lvLabel(l) { return _LV[l] || l || '—' },
     lvType(l) { return l === 'EXCELLENT' ? 'success' : l === 'NEED_IMPROVE' ? 'danger' : 'primary' },

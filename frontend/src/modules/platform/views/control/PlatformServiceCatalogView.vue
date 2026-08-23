@@ -31,7 +31,7 @@
             <div class="psc__cell-sub">{{ row.serviceCode }} · {{ row.tier }}</div>
           </template>
           <template #cell-status="{ row }">
-            <StatusTag :type="statusTone(row.status)" :label="row.status" dot />
+            <StatusTag :type="statusTone(row.status)" :label="platformStatusLabel(row.status)" dot />
             <StatusTag v-if="row.releaseBlocked" type="danger" label="发布阻断：缺owner/runbook" />
           </template>
           <template #cell-owner="{ row }">
@@ -92,6 +92,7 @@
 import { AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
+import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -121,6 +122,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    platformStatusLabel,
     statusTone(s) {
       return { ACTIVE: 'success', DEGRADED: 'warning', DEPRECATED: 'default' }[s] || 'default'
     },

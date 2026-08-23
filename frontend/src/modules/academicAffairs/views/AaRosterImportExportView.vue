@@ -39,8 +39,8 @@
         <div v-else class="aa-task-list">
           <article v-for="item in jobs.list" :key="`${item.jobType}-${item.id}`" class="aa-task-card">
             <div>
-              <strong>{{ item.jobType === 'IMPORT' ? '导入' : '导出' }} · {{ item.importType || item.exportType }}</strong>
-              <p class="mp-note">状态 {{ item.status }} · 任务 #{{ item.id }} · {{ item.createdAt || '-' }}</p>
+              <strong>{{ item.jobType === 'IMPORT' ? '导入' : '导出' }} · {{ academicExchangeTypeLabel(item.importType || item.exportType) }}</strong>
+              <p class="mp-note">状态 {{ academicStatusLabel(item.status) }} · 任务 #{{ item.id }} · {{ item.createdAt || '-' }}</p>
               <p v-if="item.status === 'SCANNING'" class="mp-note">安全扫描进行中，文件不会被提前解析。</p>
               <p v-else-if="item.status === 'PARSING'" class="mp-note">安全扫描已通过，服务端正在预检。</p>
               <p v-if="item.errorMessage" class="aa-task-error">{{ item.errorMessage }}</p>
@@ -88,6 +88,7 @@ import { AppSectionCard, AppConfirmDialog, AppSelect } from '@/components/common
 import AaAuthoritativeImportDrawer from '@/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicFileExchangeApi } from '@/modules/academicAffairs/api/academic-file-exchange.api'
+import { academicExchangeTypeLabel, academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 import { toast } from '@/utils/toast'
 
 const STATUS_LABEL = {
@@ -154,6 +155,8 @@ export default {
     this.loadJobs()
   },
   methods: {
+    academicExchangeTypeLabel,
+    academicStatusLabel,
     async waitForImportJob(initial) {
       let item = initial
       for (let attempt = 0; attempt < 60 && !IMPORT_TERMINAL.has(item.status); attempt += 1) {

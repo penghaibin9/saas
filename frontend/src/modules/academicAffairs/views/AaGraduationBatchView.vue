@@ -18,7 +18,7 @@
       <template v-else>
         <AppSectionCard :title="`批次：${batch.batchName}`">
           <div class="aa-batch-actions">
-            <AppStatusTag type="primary">{{ batch.status }}</AppStatusTag>
+            <AppStatusTag type="primary">{{ academicStatusLabel(batch.status) }}</AppStatusTag>
             <AppButton :loading="busy" :disabled="busy" @click="generate">圈定应届生</AppButton>
             <AppButton :loading="busy" :disabled="busy" @click="precheck">执行十一项预审</AppButton>
             <AppButton variant="primary" :disabled="busy" @click="$router.push(`/admin/academic-affairs/graduation/${batch.batchId}/results`)">查看结果 / 复核</AppButton>
@@ -41,7 +41,7 @@
           :pagination="batchPagination"
           @page-change="onBatchPageChange"
         >
-          <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'ARCHIVED' ? 'default' : 'primary'" dot>{{ row.status }}</AppStatusTag></template>
+          <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'ARCHIVED' ? 'default' : 'primary'" dot>{{ academicStatusLabel(row.status) }}</AppStatusTag></template>
           <template #cell-ops="{ row }">
             <router-link class="mp-link" :to="`/admin/academic-affairs/graduation/audit-console?batchId=${row.batchId}&tab=results`">进入审核工作台</router-link>
           </template>
@@ -57,6 +57,7 @@ import { ModulePageShell, DataTable, LoadingState, EmptyState } from '@/componen
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppInlineAlert, AppMajorPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -79,6 +80,7 @@ export default {
   },
   created() { this.loadBatches() },
   methods: {
+    academicStatusLabel,
     async loadBatches() {
       this.loadingList = true
       try {

@@ -13,20 +13,26 @@ const salesSource = fs.readFileSync(path.join(root, 'src/views/official-site/Off
 const prerenderSource = fs.readFileSync(path.join(root, 'scripts/prerender-official-site.mjs'), 'utf8')
 const publicAsset = (url) => path.join(root, 'public', url.replace(/^\//, ''))
 
-test('homepage P0 story has real pain, lifecycle, work hub, platform, implementation and FAQ layers', () => {
+test('homepage keeps a concise sales narrative, visible system access and GEO answer layers', () => {
   assert.equal(HOME_PAIN_POINTS.length, 4)
   assert.equal(LIFECYCLE_STAGES.length, 6)
   assert.equal(WORK_HUB_PROOFS.length, 3)
   assert.ok(PLATFORM_FOUNDATION.length >= 8)
   assert.equal(IMPLEMENTATION_STEPS.length, 9)
   assert.ok(HOME_FAQS.length >= 5)
-  for (const marker of ['id="pain"', 'id="lifecycle"', 'id="work-hub"', 'id="orientation"', 'id="platform"', 'id="delivery"', 'id="faq"']) {
+  for (const marker of ['id="login"', 'id="lifecycle"', 'id="products"', 'yk-home-trust-section', 'id="platform"', 'id="delivery"', 'id="faq"']) {
     assert.ok(homeSource.includes(marker), `missing homepage story section: ${marker}`)
+  }
+  for (const marker of ['登录系统', '进入管理工作台', '进入学生门户', '企业注册 / 登录', '<time :datetime="contentUpdatedAt">']) {
+    assert.ok(homeSource.includes(marker), `missing homepage sales/GEO marker: ${marker}`)
+  }
+  for (const removedSection of ['id="pain"', 'id="work-hub"', 'id="orientation"', 'id="devices"', 'id="access"']) {
+    assert.ok(!homeSource.includes(removedSection), `homepage should route detail content away from ${removedSection}`)
   }
 })
 
 test('official sales information architecture includes product center, orientation, platform and company pages', () => {
-  for (const route of ['/products', '/solutions/orientation', '/platform', '/about']) {
+  for (const route of ['/products', '/solutions/orientation', '/platform', '/about', '/privacy', '/terms', '/support']) {
     assert.ok(OFFICIAL_SALES_PAGE_MAP[route], `missing official sales route ${route}`)
     assert.ok(OFFICIAL_SEO_ROUTES.some((item) => item.path === route), `missing SEO route ${route}`)
   }
@@ -37,7 +43,8 @@ test('official sales information architecture includes product center, orientati
 test('new P0 evidence images are real public assets, not remote or generated placeholders', () => {
   const required = [
     '/official-site/approval-center.webp', '/official-site/message-center.webp', '/official-site/orientation-overview.webp',
-    '/official-site/orientation-progress.webp', '/official-site/leadership-cockpit.webp'
+    '/official-site/orientation-progress.webp', '/official-site/leadership-cockpit.webp',
+    '/official-site/student-affairs-dashboard.png', '/official-site/student-affairs-master.png'
   ]
   for (const asset of required) {
     assert.ok(fs.existsSync(publicAsset(asset)), `missing real official-site evidence ${asset}`)

@@ -14,7 +14,7 @@
         <EmptyState v-if="!rows.length" title="暂无免修申请材料" description="学生免修申请审批后在此归档" />
         <DataTable v-else :columns="columns" :rows="rows" row-key="exemptionId">
           <template #cell-student="{ row }">{{ row.studentName }}（{{ row.courseName }}）</template>
-          <template #cell-status="{ row }"><StatusTag :type="exType(row.status)" :label="row.status" dot /></template>
+          <template #cell-status="{ row }"><StatusTag :type="exType(row.status)" :label="academicStatusLabel(row.status)" dot /></template>
           <template #cell-archiveStatus="{ row }">
             <StatusTag :type="row.archiveStatus === 'ARCHIVED' ? 'success' : 'default'"
                       :label="row.archiveStatus === 'ARCHIVED' ? '已归档' : '未归档'" dot />
@@ -44,6 +44,7 @@ import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyS
 import { AppDrawer } from '@/components/ui'
 import { AppFileList } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 import { toast } from '@/utils/toast'
 
 const _TERMINAL = ['APPROVED', 'REJECTED', 'CANCELLED']
@@ -80,6 +81,7 @@ export default {
     this.reload()
   },
   methods: {
+    academicStatusLabel,
     resetFilters() { this.filters.term = ''; this.filters.status = ''; this.reload() },
     exType(s) { return s === 'APPROVED' ? 'success' : s === 'REJECTED' ? 'danger' : 'primary' },
     canArchive(row) { return _TERMINAL.includes(row.status) && row.archiveStatus !== 'ARCHIVED' },

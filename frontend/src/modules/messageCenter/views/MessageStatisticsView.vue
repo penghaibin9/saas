@@ -31,14 +31,14 @@
         <div class="mc-panel">
           <h3>按状态</h3>
           <div v-for="r in data.byStatus || []" :key="r.status" class="mc-row">
-            <span>{{ r.status }}</span><strong>{{ r.count }}</strong>
+            <span>{{ messageCampaignStatusLabel(r.status) }}</span><strong>{{ r.count }}</strong>
           </div>
           <EmptyState v-if="!(data.byStatus || []).length" title="暂无发布单" />
         </div>
         <div class="mc-panel">
           <h3>按类型</h3>
           <div v-for="r in data.byCategory || []" :key="r.category" class="mc-row">
-            <span>{{ r.category }}</span><strong>{{ r.count }}</strong>
+            <span>{{ messageCategoryLabel(r.category) }}</span><strong>{{ r.count }}</strong>
           </div>
         </div>
       </div>
@@ -47,7 +47,7 @@
         <div v-for="c in data.channels || []" :key="c.channel" class="mc-row">
           <span>{{ c.label }}</span>
           <strong :class="{ 'is-warn': c.status === 'NOT_CONFIGURED' }">
-            {{ c.status === 'READY' ? '已就绪' : c.status === 'NOT_CONFIGURED' ? '未配置' : c.status }}
+            {{ messageChannelStatusLabel(c.status) }}
           </strong>
         </div>
       </div>
@@ -61,6 +61,11 @@
 <script>
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { fetchCampaignStatistics } from '@/modules/messageCenter/api/message-campaign.api'
+import {
+  messageCampaignStatusLabel,
+  messageCategoryLabel,
+  messageChannelStatusLabel
+} from '@/modules/messageCenter/constants/message-center.constants'
 
 export default {
   name: 'MessageStatisticsView',
@@ -90,6 +95,9 @@ export default {
   },
   created() { this.load() },
   methods: {
+    messageCampaignStatusLabel,
+    messageCategoryLabel,
+    messageChannelStatusLabel,
     async load() {
       this.loading = true
       this.error = ''

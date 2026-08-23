@@ -40,7 +40,7 @@ export const OFFICIAL_SALES_PAGES = Object.freeze([
     title: '学工中心｜学生主档、资助、宿舍、风险关怀与辅导员工作', navTitle: '学工中心', eyebrow: '学生事务与关怀协同',
     description: '围绕学生主档与学生 360，连接学工处、辅导员、二级学院和学生的日常事务、奖助资助、宿舍、风险关怀与材料归档。',
     hero: '以学生为共同上下文，让学工事务、风险发现与辅导员跟进真正连起来',
-    screenshots: ['/official-site/student-affairs-master.webp', '/official-site/student-affairs-risk.webp', '/official-site/student-affairs-talk.webp', '/official-site/student-affairs-dormitory.webp'],
+    screenshots: ['/official-site/student-affairs-dashboard.png', '/official-site/student-affairs-master.png', '/official-site/student-affairs-risk.webp', '/official-site/student-affairs-talk.webp', '/official-site/student-affairs-dormitory.webp'],
     keywords: ['职业院校学工系统', '学生工作管理', '辅导员工作台', '学生主档', '学生风险预警']
   },
   {
@@ -146,6 +146,27 @@ export const OFFICIAL_SALES_PAGES = Object.freeze([
     hero: '从学生生命周期出发，把学校每天真实发生的工作做成可持续运行的产品',
     screenshots: ['/official-site/workbench.webp', '/official-site/student-portal.webp'],
     keywords: ['湖南跃科信息工程有限公司', '跃科', '职业院校数字化', '学生全生命周期']
+  },
+  {
+    key: 'privacy', path: '/privacy', type: 'legal', contentUpdatedAt: updated,
+    title: '隐私政策｜跃科职业院校学生全生命周期平台', navTitle: '隐私政策', eyebrow: '信息保护与透明说明',
+    description: '说明跃科官网在预约产品演示、访问与技术支持场景中的信息处理方式、使用范围和用户权利。',
+    hero: '清楚说明官网会收集什么、为什么使用以及如何保护', screenshots: [],
+    keywords: ['跃科隐私政策', '官网个人信息保护', '预约演示信息保护']
+  },
+  {
+    key: 'terms', path: '/terms', type: 'legal', contentUpdatedAt: updated,
+    title: '用户协议｜跃科职业院校学生全生命周期平台', navTitle: '用户协议', eyebrow: '官网与产品使用规则',
+    description: '说明跃科官网公开内容、系统访问、知识产权、服务边界与责任限制等基本使用规则。',
+    hero: '以明确边界保障官网访问和系统使用', screenshots: [],
+    keywords: ['跃科用户协议', '官网使用条款', '系统使用规则']
+  },
+  {
+    key: 'support', path: '/support', type: 'legal', contentUpdatedAt: updated,
+    title: '技术支持｜跃科职业院校学生全生命周期平台', navTitle: '技术支持', eyebrow: '问题受理与服务协同',
+    description: '提供跃科产品咨询、系统访问、问题反馈、实施交付与售后支持的联系入口和信息准备说明。',
+    hero: '让问题带着必要上下文进入支持流程', screenshots: [],
+    keywords: ['跃科技术支持', '职业院校软件售后', '系统问题反馈']
   },
   {
     key: 'contact-sales', path: '/contact', type: 'contact', contentUpdatedAt: updated,

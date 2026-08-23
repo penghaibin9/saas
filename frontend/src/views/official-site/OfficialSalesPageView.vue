@@ -3,6 +3,7 @@
     <header class="yk-header"><div class="yk-shell yk-nav">
       <router-link class="yk-brand" to="/" aria-label="返回跃科官网首页"><span class="yk-brand-dot" aria-hidden="true">跃</span><span class="yk-brand-copy"><strong>跃科</strong><small>职业院校学生全生命周期平台</small></span></router-link>
       <nav class="yk-nav-links" aria-label="销售页面导航"><router-link to="/products">产品</router-link><router-link to="/solutions/student-lifecycle">学生生命周期</router-link><router-link to="/platform">平台能力</router-link><router-link to="/solutions/deployment">部署与服务</router-link><router-link to="/contact">联系跃科</router-link></nav>
+      <router-link class="yk-nav-home" to="/" aria-label="返回跃科官网首页"><span aria-hidden="true">⌂</span> 返回首页</router-link>
       <router-link class="yk-nav-cta" to="/contact">预约产品演示</router-link>
     </div></header>
 
@@ -10,9 +11,9 @@
       <section class="yk-sales-hero"><div class="yk-shell yk-sales-hero-grid">
         <div class="yk-sales-copy"><p class="yk-kicker">{{ page.eyebrow }}</p><h1>{{ page.hero }}</h1><p class="yk-sales-lead">{{ page.description }}</p>
           <div class="yk-hero-actions"><router-link v-if="page.path !== '/contact'" class="yk-button yk-button-primary" to="/contact">预约产品演示</router-link><a class="yk-button yk-button-ghost" :href="contact.phoneHref">电话咨询 {{ contact.phone }}</a><router-link class="yk-button yk-button-ghost" to="/">返回官网</router-link></div>
-          <div class="yk-sales-trust-row"><span>真实产品截图</span><span>真实业务代码</span><span>不伪造客户数据</span><span>口径核验 {{ factAuditDate }}</span></div>
+          <div class="yk-sales-trust-row"><span>产品运行界面</span><span>演示数据不含真实学生信息</span><span>支持 SaaS 与私有化方案</span><span>内容更新 {{ page.contentUpdatedAt }}</span></div>
         </div>
-        <figure v-if="page.screenshots?.[0]" class="yk-sales-hero-shot"><img :src="page.screenshots[0]" :alt="`${page.navTitle}真实产品界面`" decoding="async" /><figcaption>真实运行界面 · 业务数据来自隔离测试环境</figcaption></figure>
+        <figure v-if="page.screenshots?.[0]" class="yk-sales-hero-shot"><OfficialImageZoom :src="page.screenshots[0]" :alt="`${page.navTitle}产品运行界面`" loading="eager" :caption="`${page.navTitle}产品运行界面`" /><figcaption>产品运行界面 · 页面内容为演示数据</figcaption></figure>
       </div></section>
 
       <section v-if="page.path === '/contact'" class="yk-section yk-lead-section"><div class="yk-shell yk-lead-grid">
@@ -33,12 +34,12 @@
         <ol v-if="storyProcess.length" class="yk-sales-process"><li v-for="step in storyProcess" :key="step">{{ step }}</li></ol>
         <div v-else class="yk-value-grid"><article v-for="item in valuePoints" :key="item.title" class="yk-value-card"><span class="yk-icon-tile" aria-hidden="true">{{ item.mark }}</span><h3>{{ item.title }}</h3><p>{{ item.desc }}</p></article></div>
         <ul v-if="storyFacts.length" class="yk-sales-facts"><li v-for="fact in storyFacts" :key="fact">{{ fact }}</li></ul>
-        <p class="yk-story-fact">公开口径最近更新：<time :datetime="page.contentUpdatedAt">{{ page.contentUpdatedAt }}</time>。产品事实核验基线：{{ factAuditDate }}。页面只描述当前能够回到代码、帮助中心或真实浏览器证据的能力。</p>
+        <p class="yk-story-fact">公开内容最近更新：<time :datetime="page.contentUpdatedAt">{{ page.contentUpdatedAt }}</time>。具体启用模块、数据迁移、系统集成与交付范围，以双方确认的实施方案为准。</p>
       </div></section>
 
       <section v-if="page.screenshots?.length" class="yk-section yk-products-section"><div class="yk-shell">
-        <div class="yk-section-heading"><p class="yk-kicker">真实产品证据</p><h2>客户看到的是已经运行的系统界面，不是概念效果图</h2><p>截图来自仓库真实代码和隔离 Playwright / E2E 环境，仅用于说明产品能力与界面结构，不代表真实学校运营规模或客户案例。</p></div>
-        <div class="yk-sales-evidence-grid"><figure v-for="(shot, index) in page.screenshots" :key="shot" class="yk-sales-evidence-card"><img :src="shot" :alt="`${page.navTitle}真实产品截图 ${index + 1}`" loading="lazy" decoding="async" /><figcaption>{{ evidenceCaption(index) }}</figcaption></figure></div>
+        <div class="yk-section-heading"><p class="yk-kicker">产品运行界面</p><h2>从界面直接理解角色、流程和下一步动作</h2><p>页面中的学校、人员和业务数据均为演示数据，不包含真实学生及学校敏感信息。</p></div>
+        <div class="yk-sales-evidence-grid"><figure v-for="(shot, index) in page.screenshots" :key="shot" class="yk-sales-evidence-card"><OfficialImageZoom :src="shot" :alt="`${page.navTitle}产品截图 ${index + 1}`" :caption="evidenceCaption(index)" /><figcaption>{{ evidenceCaption(index) }}</figcaption></figure></div>
       </div></section>
 
       <section v-if="storyFaqs.length" class="yk-section yk-story-section"><div class="yk-shell"><div class="yk-section-heading"><p class="yk-kicker">直接回答采购和老师常问的问题</p><h2>{{ page.navTitle }}常见问题</h2></div><div class="yk-product-faq"><details v-for="item in storyFaqs" :key="item.q"><summary>{{ item.q }}</summary><p>{{ item.a }}</p></details></div></div></section>
@@ -48,13 +49,14 @@
       <section class="yk-final-cta"><div class="yk-shell yk-final-inner"><p class="yk-final-kicker">湖南跃科信息工程有限公司</p><h2>{{ page.path === '/contact' ? '从真实业务问题开始沟通' : '需要把这套能力落到学校真实流程里？' }}</h2><p>可直接沟通教务、学工、毕业设计、岗位实习、数字迎新、部署方式与系统集成。我们优先从学校当前的业务流程、角色和数据边界出发。</p><div class="yk-final-actions"><a class="yk-button yk-button-light" :href="contact.phoneHref">拨打 {{ contact.phone }}</a><router-link v-if="page.path !== '/contact'" class="yk-button yk-button-ghost" to="/contact">预约产品演示</router-link></div></div></section>
     </main>
 
-    <footer class="yk-footer"><div class="yk-shell yk-footer-inner"><div><strong>{{ contact.company }}</strong><span>职业院校学生全生命周期数字化平台</span></div><div class="yk-footer-links"><router-link to="/products">产品中心</router-link><router-link to="/about">关于跃科</router-link><a :href="contact.phoneHref">{{ contact.phone }}</a><span>© {{ year }}</span></div></div></footer>
+    <footer class="yk-footer"><div class="yk-shell yk-footer-inner"><div><strong>{{ contact.company }}</strong><span>职业院校学生全生命周期数字化平台</span></div><div class="yk-footer-links"><router-link to="/products">产品中心</router-link><router-link to="/about">关于跃科</router-link><router-link to="/privacy">隐私政策</router-link><router-link to="/terms">用户协议</router-link><router-link to="/support">技术支持</router-link><a :href="contact.phoneHref">{{ contact.phone }}</a><span>© {{ year }}</span></div></div></footer>
   </div>
 </template>
 
 <script>
 import { OFFICIAL_SALES_PAGE_MAP, OFFICIAL_SALES_PAGES, OFFICIAL_SITE_CONTACT } from '@/config/officialSalesPages'
-import { OFFICIAL_FACT_AUDIT_DATE, SALES_STORIES } from '@/config/officialWebsiteStory'
+import OfficialImageZoom from '@/components/official-site/OfficialImageZoom.vue'
+import { SALES_STORIES } from '@/config/officialWebsiteStory'
 import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
 import '@/styles/official-site.css'
 import '@/styles/official-site-story.css'
@@ -77,7 +79,8 @@ function safeServerLeadMessage(payload, fallback) {
 
 export default {
   name: 'OfficialSalesPageView',
-  data() { return { leadForm: { schoolName: '', contactName: '', phone: '', interest: '学生全生命周期平台', message: '', website: '' }, leadSubmitting: false, leadSubmitted: false, leadError: '', factAuditDate: OFFICIAL_FACT_AUDIT_DATE, valuePoints: DEFAULT_POINTS } },
+  components: { OfficialImageZoom },
+  data() { return { leadForm: { schoolName: '', contactName: '', phone: '', interest: '学生全生命周期平台', message: '', website: '' }, leadSubmitting: false, leadSubmitted: false, leadError: '', valuePoints: DEFAULT_POINTS } },
   computed: {
     page() { return OFFICIAL_SALES_PAGE_MAP[this.$route.path] || null }, contact() { return OFFICIAL_SITE_CONTACT }, year() { return new Date().getFullYear() },
     story() { return SALES_STORIES[this.page?.path] || null },
@@ -87,7 +90,7 @@ export default {
     relatedPages() {
       const priority = ['/products/academic-affairs', '/products/student-affairs', '/products/graduation', '/products/internship']
       if (this.page?.path === '/products') return priority.map((path) => OFFICIAL_SALES_PAGE_MAP[path]).filter(Boolean)
-      if (this.page?.type === 'product') return OFFICIAL_SALES_PAGES.filter((item) => item.type !== 'product' && item.path !== '/contact').slice(0, 4)
+      if (this.page?.type === 'product') return OFFICIAL_SALES_PAGES.filter((item) => !['product', 'legal'].includes(item.type) && item.path !== '/contact').slice(0, 4)
       return priority.map((path) => OFFICIAL_SALES_PAGE_MAP[path]).filter(Boolean)
     }
   },
@@ -96,7 +99,7 @@ export default {
     '$route.query.product': { immediate: true, handler(slug) { const interest = PRODUCT_INTEREST_BY_SLUG[String(slug || '').trim()]; if (interest) this.leadForm.interest = interest } }
   },
   methods: {
-    evidenceCaption(index) { return index === 0 ? `${this.page.navTitle}核心工作区 · 真实运行界面` : `${this.page.navTitle}真实业务界面 ${index + 1} · 隔离测试数据` },
+    evidenceCaption(index) { return index === 0 ? `${this.page.navTitle}核心工作区 · 产品运行界面` : `${this.page.navTitle}业务界面 ${index + 1} · 演示数据` },
     async submitLead() {
       this.leadError = ''
       const phone = String(this.leadForm.phone || '').replace(/\D/g, '')

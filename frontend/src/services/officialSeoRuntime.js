@@ -95,6 +95,45 @@ function buildPageJsonLd(route, page, canonical, socialImage) {
   }
 }
 
+function buildOrganizationJsonLd() {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: OFFICIAL_SITE_CONTACT.company,
+    alternateName: OFFICIAL_SITE_CONTACT.brand,
+    url: OFFICIAL_SITE_CONTACT.canonicalOrigin,
+    telephone: OFFICIAL_SITE_CONTACT.phone.replaceAll(' ', ''),
+    contactPoint: { '@type': 'ContactPoint', contactType: 'sales and support', telephone: OFFICIAL_SITE_CONTACT.phone.replaceAll(' ', ''), availableLanguage: ['zh-CN'] }
+  }
+}
+
+function buildBreadcrumbJsonLd(route, page) {
+  if (route.path === '/') return null
+  const items = [{ name: '官网首页', url: officialCanonicalUrl('/') }]
+  if (route.path.startsWith('/products/')) items.push({ name: '产品中心', url: officialCanonicalUrl('/products') })
+  items.push({ name: page?.navTitle || route.title.split('｜')[0], url: officialCanonicalUrl(route.path) })
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.name, item: item.url }))
+  }
+}
+
+function buildProductJsonLd(page, canonical, socialImage) {
+  if (page?.type !== 'product') return null
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: `跃科${page.navTitle}`,
+    description: page.description,
+    url: canonical,
+    image: [socialImage],
+    category: '职业院校学生管理软件',
+    brand: { '@type': 'Brand', name: OFFICIAL_SITE_CONTACT.brand },
+    manufacturer: { '@type': 'Organization', name: OFFICIAL_SITE_CONTACT.company }
+  }
+}
+
 export function syncOfficialSeo(path = '/') {
   if (typeof document === 'undefined') return false
   const route = SEO_ROUTE_MAP.get(path)
@@ -124,6 +163,11 @@ export function syncOfficialSeo(path = '/') {
 
   removeOfficialJsonLd()
   appendJsonLd(buildPageJsonLd(route, page, canonical, socialImage), 'page')
+  appendJsonLd(buildOrganizationJsonLd(), 'organization')
+  const breadcrumb = buildBreadcrumbJsonLd(route, page)
+  if (breadcrumb) appendJsonLd(breadcrumb, 'breadcrumb')
+  const product = buildProductJsonLd(page, canonical, socialImage)
+  if (product) appendJsonLd(product, 'product')
   const faqs = pageFaqs(route.path, page)
   if (faqs.length) {
     appendJsonLd({

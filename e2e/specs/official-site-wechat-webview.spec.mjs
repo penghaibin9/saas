@@ -67,7 +67,7 @@ test.describe('official website WeChat micro-site closure', () => {
     await expectNoOverflow(page, 375)
     await expect.poll(async () => page.evaluate(() => window.__wxCalls.some((item) => item.type === 'friend'))).toBe(true)
 
-    await page.locator('a[aria-label="查看岗位实习详情"]').click()
+    await page.locator('a[aria-label="查看岗位实习"]').click()
     await expect(page).toHaveURL(/\/products\/internship$/)
 
     for (const width of [375, 390, 430]) {

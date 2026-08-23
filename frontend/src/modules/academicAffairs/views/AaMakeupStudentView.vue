@@ -53,7 +53,7 @@
           <div class="mp-cell-main">{{ row.courseName }}</div>
           <div class="mp-cell-sub">{{ row.termCode || '' }}<template v-if="row.retakeCount"> · 第{{ row.retakeCount }}次重修</template></div>
         </div>
-        <StatusTag :type="stType(row.status)" :label="row.status" dot />
+        <StatusTag :type="stType(row.status)" :label="academicStatusLabel(row.status)" dot />
       </li>
     </ul>
   </ModulePageShell>
@@ -65,6 +65,7 @@ import { AppButton } from '@/components/ui'
 import { AppTextarea, AppInlineAlert, AppSectionCard } from '@/components/common'
 import { academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { gradeIdentityApi } from '@/modules/academicAffairs/api/grade-identity.api'
+import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -85,6 +86,7 @@ export default {
   },
   created() { this.reload(); this.loadOptions() },
   methods: {
+    academicStatusLabel,
     stType(status) { return ['APPROVED', 'ENROLLED', 'FINISHED'].includes(status) ? 'success' : status === 'REJECTED' ? 'danger' : 'primary' },
     optionLabel(item, includeAttempt) {
       const identity = `${item.courseCode || '无代码'} v${item.courseVersion || '?'}`

@@ -104,7 +104,7 @@
               <tbody>
                 <tr v-for="item in releases" :key="item.id">
                   <td><span class="mono">{{ item.id }}</span><small>v{{ item.version }}</small></td>
-                  <td><span class="badge" :class="item.status === 'PUBLISHED' ? 'published' : 'draft'">{{ item.status }}</span></td>
+                  <td><span class="badge" :class="item.status === 'PUBLISHED' ? 'published' : 'draft'">{{ platformStatusLabel(item.status) }}</span></td>
                   <td class="mono muted">{{ item.sourceCommitSha || '—' }}</td><td>{{ item.reason || '—' }}</td>
                   <td class="actions">
                     <button class="link" @click="loadImpact(item)">影响</button>
@@ -135,6 +135,7 @@
 import { AppButton } from '@/components/ui'
 import { ModulePageShell } from '@/components/business'
 import { productIamApi } from '@/modules/platform/api/productIam.api'
+import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -161,6 +162,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    platformStatusLabel,
     join(items) { return (items || []).length ? items.join('、') : '无' },
     routePrefixes(moduleKey) {
       const row = (this.source.navigation || []).find((item) => item.moduleKey === moduleKey)

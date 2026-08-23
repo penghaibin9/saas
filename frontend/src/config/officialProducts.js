@@ -21,26 +21,26 @@ export const OFFICIAL_PRODUCTS = {
       {
         src: '/official-site/academic.webp',
         title: '教务工作台',
-        tag: '管理 PC · A级素材',
-        desc: '真实教务工作台按业务阻断和责任工作组织首屏，让教务人员先看到要处理的事情，而不是先看到一排统计卡。'
+        tag: '管理 PC · 产品界面',
+        desc: '教务工作台按业务阻断和责任工作组织首屏，让教务人员先看到要处理的事情，而不是先看到一排统计卡。'
       },
       {
         src: '/official-site/academic-schedule.webp',
         title: '排课与课表维护',
-        tag: '管理 PC · 真实浏览器证据',
-        desc: '真实排课工作区展示教学任务进入课表后的结果与维护上下文，演示数据来自隔离 Playwright 环境。'
+        tag: '管理 PC · 产品界面',
+        desc: '排课工作区展示教学任务进入课表后的结果与维护上下文，帮助老师连续处理课表调整。'
       },
       {
         src: '/official-site/academic-registration.webp',
         title: '学生注册名单',
-        tag: '管理 PC · 真实浏览器证据',
-        desc: '通过真实名单、状态与批量办理入口展示学籍注册工作区，体现教务不是静态看板，而是可执行的业务台账。'
+        tag: '管理 PC · 产品界面',
+        desc: '通过名单、状态与批量办理入口展示学籍注册工作区，体现教务不是静态看板，而是可执行的业务台账。'
       },
       {
         src: '/official-site/academic-quality.webp',
         title: '教学质量',
-        tag: '管理 PC · B级素材',
-        desc: '用于展示教学质量模块的页面结构、指标入口与业务导航；截图来自隔离 E2E 环境，不把测试数据包装成学校运营结果。'
+        tag: '管理 PC · 产品界面',
+        desc: '展示教学质量模块的指标入口与业务导航，帮助学校从教学运行进入质量分析。'
       }
     ],
     devices: [
@@ -70,34 +70,40 @@ export const OFFICIAL_PRODUCTS = {
     workflow: ['学生主档', '日常事务', '奖助资助', '宿舍与活动', '风险识别', '关怀跟进', '材料与归档'],
     screenshots: [
       {
-        src: '/official-site/student-affairs-master.webp',
-        title: '学生主档',
-        tag: '管理 PC · A级素材',
-        desc: '真实学生主档页面包含筛选、身份信息、风险提示与学生 360 入口，是学工业务跨模块协同的核心入口。'
+        src: '/official-site/student-affairs-dashboard.png',
+        title: '学工看板',
+        tag: '管理 PC · 产品界面',
+        desc: '学工看板集中呈现办理时限、待办、风险与跨系统入口，让管理人员先判断当前最需要处理的工作。'
+      },
+      {
+        src: '/official-site/student-affairs-master.png',
+        title: '学生主档与学生 360',
+        tag: '管理 PC · 产品界面',
+        desc: '学生 360 页面集中呈现基础信息、在校状态、学业、实习、毕设、就业、风险与跟进，是围绕一名学生开展工作的共同上下文。'
       },
       {
         src: '/official-site/student-affairs-risk.webp',
         title: '风险预警工作区',
-        tag: '管理 PC · 真实浏览器证据',
+        tag: '管理 PC · 产品界面',
         desc: '真实演示数据下的风险预警工作区同时呈现风险分类、待处理对象与处置入口，适合说明“发现—跟进—留痕”的闭环。'
       },
       {
         src: '/official-site/student-affairs-talk.webp',
         title: '谈心谈话台账',
-        tag: '辅导员 PC · 真实浏览器证据',
+        tag: '辅导员 PC · 产品界面',
         desc: '谈心谈话台账展示学生、责任人、状态与记录入口，证明学工日常工作不是只停留在统计层。'
       },
       {
         src: '/official-site/student-affairs-dormitory.webp',
         title: '宿舍管理',
-        tag: '管理 PC · 真实浏览器证据',
+        tag: '管理 PC · 产品界面',
         desc: '宿舍工作区展示房间、入住、空床等真实业务结构，数据为隔离演示数据，不代表真实学校规模。'
       }
     ],
     devices: [
       { label: '学工 / 辅导员 PC', title: '学生工作主战场', desc: '承载学生主档、审批、风险、关怀、资助与材料等高频管理工作。' },
       { label: '学生 PC', title: '个人服务与办理入口', desc: '学生服务门户承接个人待办、材料、状态查询与生命周期服务。', image: '/official-site/student-portal.webp' },
-      { label: '移动端', title: '高频事项随时办理', desc: '移动端作为学生和教师高频任务入口，与 PC 端共享同一业务状态；当前没有学工专用移动截图，因此官网不伪造。' }
+      { label: '移动端', title: '高频事项随时办理', desc: '移动端作为学生和教师高频任务入口，与 PC 端共享同一业务状态。' }
     ],
     relationMap: '/help/student-affairs-relationship-overview.html'
   },
@@ -123,19 +129,19 @@ export const OFFICIAL_PRODUCTS = {
       {
         src: '/official-site/graduation-dashboard.webp',
         title: '毕业设计工作台',
-        tag: '管理 PC · 真实浏览器证据',
-        desc: '真实演示批次下的毕设工作台同时呈现阶段结论、待办与异常，让老师先看到本批次现在要处理什么。'
+        tag: '管理 PC · 产品界面',
+        desc: '毕业设计工作台同时呈现阶段结论、待办与异常，让老师先看到本批次现在要处理什么。'
       },
       {
         src: '/official-site/graduation-final-review.webp',
         title: '成果评阅工作区',
-        tag: '教师 PC · 真实浏览器证据',
+        tag: '教师 PC · 产品界面',
         desc: '成果评阅页展示学生、版本、材料与审核动作，是毕业设计“材料—评阅—结果”闭环的直接证据。'
       },
       {
         src: '/official-site/graduation-process.webp',
         title: '过程指导',
-        tag: '指导教师 PC · 真实浏览器证据',
+        tag: '指导教师 PC · 产品界面',
         desc: '过程指导页展示学生队列、当前学生上下文与真实指导记录，体现指导工作可持续跟进并保留过程证据。'
       }
     ],
@@ -168,37 +174,37 @@ export const OFFICIAL_PRODUCTS = {
       {
         src: '/official-site/internship.webp',
         title: '岗位实习总览',
-        tag: '管理 PC · A级素材',
-        desc: '真实岗位实习总览把批次、流程、进度与风险放在同一首屏，是官网展示实习闭环最强的产品证据。'
+        tag: '管理 PC · 产品界面',
+        desc: '岗位实习总览把批次、流程、进度与风险放在同一首屏，直观展示实习闭环。'
       },
       {
         src: '/official-site/internship-risk.webp',
         title: '风险处置看板',
-        tag: '管理 PC · 真实浏览器证据',
+        tag: '管理 PC · 产品界面',
         desc: '真实演示数据下的风险处置看板展示风险类型、学生对象、责任人与处置入口，适合解释实习过程监管如何落到具体事项。'
       },
       {
         src: '/official-site/internship-guidance.webp',
         title: '指导巡访管理',
-        tag: '指导教师 PC · 真实浏览器证据',
+        tag: '指导教师 PC · 产品界面',
         desc: '指导巡访工作区展示学生队列、指导记录与当前实习上下文，证明系统不仅记录结果，也覆盖持续指导过程。'
       },
       {
         src: '/official-site/internship-students.webp',
         title: '学生实习台账',
-        tag: '管理 PC · 真实浏览器证据',
-        desc: '学生实习台账展示学生、企业、岗位、状态与业务操作入口，数据来自隔离 Playwright 演示租户。'
+        tag: '管理 PC · 产品界面',
+        desc: '学生实习台账展示学生、企业、岗位、状态与业务操作入口，便于持续跟踪每名学生的实习进度。'
       },
       {
         src: '/official-site/internship-enterprises.webp',
         title: '企业库',
-        tag: '管理 PC · B级素材',
-        desc: '展示企业信息与实习业务协同入口，企业数据来自隔离测试环境，不作为真实客户案例。'
+        tag: '管理 PC · 产品界面',
+        desc: '展示企业信息、合作状态与实习业务协同入口。'
       }
     ],
     devices: [
       { label: '教师 / 管理 PC', title: '监管与指导工作台', desc: '批次、企业、学生、协议、过程、风险、评价与归档集中在正式管理工作区。' },
-      { label: '学生 PC / 移动端', title: '实习过程办理', desc: '学生围绕个人实习关系办理高频过程事项；当前没有实习移动专图，因此此处只陈述真实能力，不放假图。' },
+      { label: '学生 PC / 移动端', title: '实习过程办理', desc: '学生围绕个人实习关系办理申请、材料、周报与过程反馈等高频事项。' },
       { label: '企业 PC', title: '企业注册 / 登录', desc: '企业端承接岗位、协同与评价。首次注册由学校邀请激活，不提供开放式自由注册。', enterprise: true }
     ],
     relationMap: '/help/internship-module-relationship-map.html'

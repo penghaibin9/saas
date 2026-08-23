@@ -60,7 +60,14 @@
         </AppSectionCard>
       </div>
 
-      <div class="sa-grid sa-grid--metrics">
+      <div class="sa-dashboard-section-head">
+        <div>
+          <h2>核心业务指标</h2>
+          <p>点击有权限的指标卡，可直接进入对应业务台账。</p>
+        </div>
+      </div>
+
+      <div class="sa-dashboard-metrics" aria-label="学工核心业务指标">
         <AppMetricCard
           v-for="card in metricCards"
           :key="card.key"
@@ -74,42 +81,44 @@
         />
       </div>
 
-      <div class="sa-grid sa-grid--two">
-        <AppSectionCard title="常用学工业务">
-          <div class="sa-actions">
-            <AppPermissionButton :allowed="canBtn('studentAffairs.leave.view')" code="studentAffairs.leave.view" variant="secondary" @click="go('/admin/student-affairs/leave')">
-              请假审批
-            </AppPermissionButton>
-            <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="go('/admin/student-affairs/dorm/exception')">
-              宿舍异常
-            </AppPermissionButton>
-            <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
-              风险预警
-            </AppPermissionButton>
-          </div>
-        </AppSectionCard>
+      <div class="sa-dashboard-workspace">
+        <div class="sa-dashboard-services">
+          <AppSectionCard class="sa-dashboard-panel" title="常用学工业务" subtitle="高频工作直接进入对应台账">
+            <div class="sa-dashboard-actions">
+              <AppPermissionButton :allowed="canBtn('studentAffairs.leave.view')" code="studentAffairs.leave.view" variant="secondary" @click="go('/admin/student-affairs/leave')">
+                请假审批
+              </AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="go('/admin/student-affairs/dorm/exception')">
+                宿舍异常
+              </AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
+                风险预警
+              </AppPermissionButton>
+            </div>
+          </AppSectionCard>
 
-        <AppSectionCard title="数字迎新摘要">
-          <div class="sa-bridge">
-            <p>查看迎新批次、报到进度和异常学生等相关业务。</p>
-            <AppPermissionButton :allowed="canBtn('orientation.dashboard.view') || canBtn('studentAffairs.orientation.view')" code="studentAffairs.orientation.view" variant="secondary" @click="go('/admin/orientation')">
-              打开数字迎新
-            </AppPermissionButton>
-          </div>
-        </AppSectionCard>
+          <AppSectionCard class="sa-dashboard-panel" title="数字迎新" subtitle="新生报到与异常情况汇总">
+            <div class="sa-dashboard-bridge">
+              <p>查看迎新批次、报到进度和异常学生，快速进入迎新工作区。</p>
+              <AppPermissionButton :allowed="canBtn('orientation.dashboard.view') || canBtn('studentAffairs.orientation.view')" code="studentAffairs.orientation.view" variant="secondary" @click="go('/admin/orientation')">
+                打开数字迎新
+              </AppPermissionButton>
+            </div>
+          </AppSectionCard>
 
-        <AppSectionCard title="跨中心风险入口">
-          <div class="sa-actions">
-            <AppPermissionButton :allowed="canBtn('internship.risk.view')" code="internship.risk.view" variant="secondary" @click="go('/admin/internship/risks')">
-              岗位实习风险
-            </AppPermissionButton>
-            <AppPermissionButton :allowed="canBtn('graduation.risk.view')" code="graduation.risk.view" variant="secondary" @click="go('/admin/graduation/risk-archive?panel=risk')">
-              毕业设计风险
-            </AppPermissionButton>
-          </div>
-        </AppSectionCard>
+          <AppSectionCard class="sa-dashboard-panel" title="跨中心风险" subtitle="集中查看其他中心的学生风险">
+            <div class="sa-dashboard-actions">
+              <AppPermissionButton :allowed="canBtn('internship.risk.view')" code="internship.risk.view" variant="secondary" @click="go('/admin/internship/risks')">
+                岗位实习风险
+              </AppPermissionButton>
+              <AppPermissionButton :allowed="canBtn('graduation.risk.view')" code="graduation.risk.view" variant="secondary" @click="go('/admin/graduation/risk-archive?panel=risk')">
+                毕业设计风险
+              </AppPermissionButton>
+            </div>
+          </AppSectionCard>
+        </div>
 
-        <AppSectionCard title="操作审计入口">
+        <AppSectionCard class="sa-dashboard-panel sa-dashboard-panel--audit" title="最近操作记录" subtitle="当前权限范围内的真实操作留痕">
           <AppAuditTrail :records="auditLogs" compact empty-text="暂无可展示审计记录" />
         </AppSectionCard>
       </div>
@@ -276,15 +285,72 @@ export default {
   display: grid;
   gap: var(--space-4);
 }
-.sa-grid--metrics {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-}
 .sa-grid--priority {
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
   margin-bottom: var(--space-4);
 }
-.sa-grid--two {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+.sa-dashboard-section-head { margin: 4px 0 10px; }
+.sa-dashboard-section-head h2 { margin: 0; color: var(--text-primary); font-size: 17px; line-height: 1.4; }
+.sa-dashboard-section-head p { margin: 3px 0 0; color: var(--text-tertiary); font-size: 12px; line-height: 1.5; }
+.sa-dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.sa-dashboard-metrics > :deep(.app-metric-card) {
+  min-height: 108px;
+  max-height: none;
+  padding: 15px 16px;
+  border-radius: 13px;
+  box-shadow: none;
+}
+.sa-dashboard-metrics :deep(.app-metric-card__title) { min-height: 18px; font-size: 12px; }
+.sa-dashboard-metrics :deep(.app-metric-card__value) { font-size: 32px; }
+.sa-dashboard-metrics :deep(.app-metric-card__unit) { font-size: 13px; }
+.sa-dashboard-metrics :deep(.app-metric-card__footer) { min-height: 4px; }
+.sa-dashboard-metrics > :deep(.is-accent-warning) {
+  background: linear-gradient(150deg, #fff 66%, color-mix(in srgb, var(--warning-50, #fffaeb) 74%, #fff));
+}
+.sa-dashboard-metrics > :deep(.is-accent-risk) {
+  background: linear-gradient(150deg, #fff 66%, color-mix(in srgb, var(--danger-50, #fef3f2) 76%, #fff));
+}
+.sa-dashboard-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 0.34fr);
+  align-items: stretch;
+  gap: 16px;
+}
+.sa-dashboard-services {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 16px;
+  min-width: 0;
+}
+.sa-dashboard-panel {
+  height: 100%;
+  overflow: hidden;
+  border-radius: 14px;
+  box-shadow: none;
+}
+.sa-dashboard-panel :deep(.app-section-card__head) { padding: 14px 16px 12px; }
+.sa-dashboard-panel :deep(.app-section-card__title) { font-size: 15px; }
+.sa-dashboard-panel :deep(.app-section-card__body) { padding: 16px; }
+.sa-dashboard-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  gap: 8px;
+}
+.sa-dashboard-actions :deep(.app-perm-btn),
+.sa-dashboard-actions :deep(.app-button) { width: 100%; }
+.sa-dashboard-bridge { display: grid; align-content: space-between; gap: 14px; min-height: 88px; }
+.sa-dashboard-bridge p { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.65; }
+.sa-dashboard-bridge :deep(.app-perm-btn) { justify-self: start; }
+.sa-dashboard-panel--audit :deep(.app-section-card__body) {
+  max-height: 205px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .sa-list {
   list-style: none;
@@ -315,9 +381,7 @@ export default {
   color: var(--text-tertiary);
   margin-top: 2px;
 }
-.sa-risk-row,
-.sa-actions,
-.sa-bridge {
+.sa-risk-row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -327,12 +391,6 @@ export default {
   margin-bottom: var(--space-3);
   line-height: 1.6;
 }
-.sa-bridge p {
-  flex-basis: 100%;
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
 .sa-updated-hint {
   display: inline-flex;
   align-items: center;
@@ -340,7 +398,23 @@ export default {
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
 }
+@media (max-width: 1500px) {
+  .sa-dashboard-workspace { grid-template-columns: 1fr; }
+  .sa-dashboard-panel--audit :deep(.app-section-card__body) { max-height: 260px; }
+}
+@media (max-width: 1120px) and (min-width: 961px) {
+  .sa-dashboard-services { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sa-dashboard-services > :last-child { grid-column: 1 / -1; }
+}
 @media (max-width: 960px) {
   .sa-grid--priority { grid-template-columns: 1fr; }
+  .sa-dashboard-services { grid-template-columns: 1fr; }
+  .sa-dashboard-panel--audit :deep(.app-section-card__body) { max-height: 280px; }
+}
+@media (max-width: 720px) {
+  .sa-dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 460px) {
+  .sa-dashboard-metrics { grid-template-columns: 1fr; }
 }
 </style>

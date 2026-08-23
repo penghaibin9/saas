@@ -50,7 +50,7 @@
             <div class="mp-cell-sub">{{ row.reason || '—' }}</div>
           </template>
           <template #cell-status="{ row }">
-            <StatusTag :type="statusTone(row.status)" :label="row.status" dot />
+            <StatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot />
             <div v-if="row.lastReviewedAt" class="mp-cell-sub">复核 {{ row.lastReviewedTerm }}</div>
             <div v-else class="mp-cell-sub">未复核</div>
           </template>
@@ -215,6 +215,9 @@ export default {
   },
   created() { this.load() },
   methods: {
+    statusLabel(status) {
+      return { ACTIVE: '生效中', EXPIRED: '已过期', REVOKED: '已撤销' }[status] || '状态待确认'
+    },
     statusTone(s) {
       return { ACTIVE: 'success', EXPIRED: 'warning', REVOKED: 'default' }[s] || 'default'
     },

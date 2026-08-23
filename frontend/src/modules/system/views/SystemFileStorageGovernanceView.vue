@@ -67,7 +67,7 @@
           <header><div><h3>保留策略</h3><p>优先级越小越先匹配；法律保留始终覆盖自动清理。</p></div></header>
           <div class="policy-form">
             <input v-model.trim="policy.policyCode" placeholder="策略编码，如 EXPORT_7D">
-            <select v-model="policy.storageZone"><option value="">全部分区</option><option v-for="zone in zones" :key="zone" :value="zone">{{ zone }}</option></select>
+            <select v-model="policy.storageZone"><option value="">全部分区</option><option v-for="zone in zones" :key="zone.value" :value="zone.value">{{ zone.label }}</option></select>
             <input v-model.trim="policy.bizType" placeholder="业务类型（可空）">
             <input v-model.number="policy.retentionDays" type="number" min="0" max="36500" placeholder="保留天数">
             <input v-model.number="policy.priority" type="number" min="0" max="10000" placeholder="优先级">
@@ -77,8 +77,8 @@
             <table><thead><tr><th>策略</th><th>匹配范围</th><th>保留</th><th>动作</th><th>状态</th></tr></thead>
               <tbody><tr v-for="item in policies" :key="item.id">
                 <td>{{ item.policyCode }}<div class="muted">优先级 {{ item.priority }}</div></td>
-                <td>{{ [item.moduleCode, item.bizType, item.storageZone].filter(Boolean).join(' / ') || '全局' }}</td>
-                <td>{{ item.retentionDays }} 天</td><td>{{ item.cleanupAction }}</td><td>{{ item.active ? '启用' : '停用' }}</td>
+                <td>{{ policyScopeLabel(item) }}</td>
+                <td>{{ item.retentionDays }} 天</td><td>{{ cleanupActionLabel(item.cleanupAction) }}</td><td>{{ item.active ? '启用' : '停用' }}</td>
               </tr><tr v-if="!policies.length"><td colspan="5">未配置自定义策略，将使用平台安全默认值。</td></tr></tbody>
             </table>
           </div>
@@ -127,7 +127,12 @@ export default {
       moduleQuotaRows: [],
       policy: { policyCode: '', storageZone: '', bizType: '', retentionDays: 7, priority: 100, expectedVersion: 0 },
       hold: { fileId: '', expectedVersion: 1, reason: '' },
-      zones: ['QUARANTINE', 'CLEAN', 'PREVIEW', 'ARCHIVE', 'EXPORT', 'REJECTED', 'TEMP']
+      zones: [
+        { value: 'QUARANTINE', label: '安全隔离区' }, { value: 'CLEAN', label: '安全文件区' },
+        { value: 'PREVIEW', label: '预览文件区' }, { value: 'ARCHIVE', label: '归档文件区' },
+        { value: 'EXPORT', label: '导出文件区' }, { value: 'REJECTED', label: '风险文件区' },
+        { value: 'TEMP', label: '临时文件区' }
+      ]
     }
   },
   computed: {
@@ -151,6 +156,15 @@ export default {
   },
   created() { this.load() },
   methods: {
+    storageZoneLabel(value) {
+      return this.zones.find(item => item.value === value)?.label || (value ? '其他存储分区' : '')
+    },
+    cleanupActionLabel(value) {
+      return { DELETE_BYTES: '删除到期文件内容', KEEP_METADATA: '仅保留元数据' }[value] || '按安全策略清理'
+    },
+    policyScopeLabel(item) {
+      return [item.moduleCode, item.bizType, this.storageZoneLabel(item.storageZone)].filter(Boolean).join(' / ') || '全局'
+    },
     formatGiB(value) { return `${(Number(value || 0) / GIB).toFixed(2)} GiB` },
     async load() {
       this.loading = true; this.error = ''

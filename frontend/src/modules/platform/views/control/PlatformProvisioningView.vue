@@ -46,7 +46,7 @@
             <div class="psc__cell-sub">{{ row.jobId }} · 当前步骤 {{ row.currentStep || '—' }}</div>
           </template>
           <template #cell-status="{ row }">
-            <StatusTag :type="statusTone(row.status)" :label="row.status" dot />
+            <StatusTag :type="statusTone(row.status)" :label="platformStatusLabel(row.status)" dot />
           </template>
         </DataTable>
       </AppCard>
@@ -56,7 +56,7 @@
         <p v-if="selected.lastError" class="pcp__error">最近错误：{{ selected.lastError }}</p>
         <DataTable :columns="stepColumns" :rows="selected.steps" row-key="stepCode">
           <template #cell-status="{ row }">
-            <StatusTag :type="stepStatusTone(row.status)" :label="row.status" dot />
+            <StatusTag :type="stepStatusTone(row.status)" :label="platformStatusLabel(row.status)" dot />
           </template>
           <template #cell-ops="{ row }">
             <button v-if="row.status === 'FAILED'" class="mp-link" @click="retryStep(row)">重试</button>
@@ -77,6 +77,7 @@
 import { AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
+import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -107,6 +108,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    platformStatusLabel,
     statusTone(s) {
       return { RUNNING: 'warning', SUCCEEDED: 'success', FAILED: 'danger', COMPENSATING: 'warning', CANCELLED: 'default', PENDING: 'default', WAITING_INPUT: 'warning' }[s] || 'default'
     },

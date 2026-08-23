@@ -58,6 +58,15 @@ test('SPA runtime refreshes the complete route-specific SEO payload and hash tar
   assert.match(mainSource, /installOfficialSeoRuntime\(router\)/)
 })
 
+test('official SEO includes organization, product and breadcrumb structured data', () => {
+  for (const marker of ['Organization', 'Product', 'BreadcrumbList', 'buildOrganizationJsonLd', 'buildProductJsonLd', 'buildBreadcrumbJsonLd']) {
+    assert.ok(runtimeSource.includes(marker), `missing structured data marker: ${marker}`)
+  }
+  for (const marker of ['organizationLd', 'productLd', 'breadcrumbLd']) {
+    assert.ok(prerenderSource.includes(marker), `missing prerender structured data marker: ${marker}`)
+  }
+})
+
 test('social preview images use absolute hnyueke.com URLs', () => {
   assert.match(prerenderSource, /absoluteAssetUrl/)
   assert.match(prerenderSource, /OFFICIAL_SITE_CONTACT\.canonicalOrigin/)

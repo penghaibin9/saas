@@ -67,7 +67,7 @@
               <tbody>
                 <tr v-if="!detail.proposals.length"><td colspan="5" class="mp-note">暂无开题记录</td></tr>
                 <tr v-for="p in detail.proposals" :key="p.id">
-                  <td class="is-who">{{ p.type }}</td>
+                  <td class="is-who">{{ graduationMaterialStageLabel(p.type) }}</td>
                   <td>{{ p.version }}</td>
                   <td>{{ p.submitAt }}</td>
                   <td><StatusTag :status="p.status" dot /></td>
@@ -80,7 +80,7 @@
               <tbody>
                 <tr v-if="!detail.finals.length"><td colspan="5" class="mp-note">暂无成果提交</td></tr>
                 <tr v-for="f in detail.finals" :key="f.id">
-                  <td class="is-who">{{ f.type }}</td>
+                  <td class="is-who">{{ graduationMaterialStageLabel(f.type) }}</td>
                   <td>{{ f.version }}</td>
                   <td>{{ f.submitAt }}</td>
                   <td><StatusTag :status="f.status" dot /></td>
@@ -95,7 +95,7 @@
                 <tr v-for="p in detail.plagiarisms" :key="p.id">
                   <td class="is-who">{{ p.version }}</td>
                   <td>{{ p.rate }}</td>
-                  <td>{{ p.status }}</td>
+                  <td>{{ graduationPlagiarismStatusLabel(p.status) }}</td>
                   <td>{{ p.time }}</td>
                 </tr>
               </tbody>
@@ -228,6 +228,10 @@ import { ModulePageShell, ModuleToolbar, StatusTag, LoadingState, ErrorState } f
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppSensitiveText, AppAuditTrail, AppSectionCard, AppDescriptionList } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import {
+  graduationMaterialStageLabel,
+  graduationPlagiarismStatusLabel
+} from '@/modules/graduation/constants/graduation-material.constants'
 import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskbook.api'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
@@ -313,6 +317,8 @@ export default {
     this.ensureTabData(this.tab)
   },
   methods: {
+    graduationMaterialStageLabel,
+    graduationPlagiarismStatusLabel,
     fmtTime(s) { return formatDateTime(s, '') },
     switchTab(k) {
       this.tab = k

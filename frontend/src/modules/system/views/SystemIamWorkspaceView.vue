@@ -167,7 +167,7 @@
           <div class="table-wrap">
             <table v-if="roleEvidence.type === 'members'">
               <thead><tr><th>User ID</th><th>姓名</th><th>登录名</th><th>状态</th></tr></thead>
-              <tbody><tr v-for="item in roleEvidence.items" :key="item.id"><td class="mono">{{ item.id }}</td><td>{{ item.name }}</td><td class="mono">{{ item.loginName }}</td><td>{{ item.status }}</td></tr></tbody>
+              <tbody><tr v-for="item in roleEvidence.items" :key="item.id"><td class="mono">{{ item.id }}</td><td>{{ item.name }}</td><td class="mono">{{ item.loginName }}</td><td>{{ memberStatusLabel(item.status) }}</td></tr></tbody>
             </table>
             <table v-else>
               <thead><tr><th>时间</th><th>操作</th><th>操作者</th><th>结果</th><th>traceId</th><th>detail</th></tr></thead>
@@ -245,6 +245,9 @@ export default {
   },
   created() { this.load() },
   methods: {
+    memberStatusLabel(status) {
+      return { ACTIVE: '正常', DISABLED: '已停用', LOCKED: '已锁定', EXPIRED: '已过期' }[status] || '状态待确认'
+    },
     listText(items) { return (items || []).length ? items.join('、') : '无' },
     compactJson(value) {
       try { return JSON.stringify(value || {}) } catch { return '{}' }

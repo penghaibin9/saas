@@ -44,7 +44,7 @@ if (!router.hasRoute('official-product')) {
 }
 
 // 官网其余销售页全部消费 officialSalesPages 唯一口径，避免路由、SEO 和页面内容各维护一份。
-// /platform 使用专门的平台能力叙事页，其 SEO / sitemap 仍复用 officialSalesPages 的唯一口径。
+// /platform 使用专门的平台能力叙事页；隐私/条款/支持使用专用政策页，其 SEO / sitemap 仍复用 officialSalesPages 的唯一口径。
 for (const page of OFFICIAL_SALES_PAGES.filter((item) => item.type !== 'product')) {
   const routeName = `official-sales-${page.key}`
   if (router.hasRoute(routeName)) continue
@@ -53,7 +53,9 @@ for (const page of OFFICIAL_SALES_PAGES.filter((item) => item.type !== 'product'
     name: routeName,
     component: page.path === '/platform'
       ? () => import('./views/official-site/OfficialPlatformCapabilityView.vue')
-      : () => import('./views/official-site/OfficialSalesPageView.vue'),
+      : page.type === 'legal'
+        ? () => import('./views/official-site/OfficialPolicyView.vue')
+        : () => import('./views/official-site/OfficialSalesPageView.vue'),
     meta: { public: true, title: page.navTitle || page.title, officialSalesPage: true }
   })
 }

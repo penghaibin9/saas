@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="发布详情" :subtitle="camp ? camp.status : ''">
+  <ModulePageShell title="发布详情" :subtitle="camp ? statusLabel : ''">
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <div v-else-if="camp" class="mc-detail">
@@ -83,7 +83,7 @@
             <tr v-for="r in recipients" :key="r.messageId">
               <td>{{ r.realName || '-' }}</td>
               <td>{{ r.loginName || r.userId }}</td>
-              <td>{{ r.status }}</td>
+              <td>{{ messageDeliveryStatusLabel(r.status) }}</td>
               <td>{{ r.ackAt || (r.requireAck ? '未确认' : '-') }}</td>
             </tr>
           </tbody>
@@ -103,16 +103,10 @@ import {
   returnCampaign,
   withdrawCampaign
 } from '@/modules/messageCenter/api/message-campaign.api'
-
-const STATUS_LABEL = {
-  DRAFT: '草稿',
-  PENDING_REVIEW: '待审核',
-  RETURNED: '已退回',
-  PUBLISHING: '投递中',
-  PUBLISHED: '已发布',
-  PARTIAL_FAILED: '部分失败',
-  WITHDRAWN: '已撤回'
-}
+import {
+  messageCampaignStatusLabel,
+  messageDeliveryStatusLabel
+} from '@/modules/messageCenter/constants/message-center.constants'
 
 export default {
   name: 'MessageCampaignDetailView',
@@ -127,7 +121,7 @@ export default {
   computed: {
     statusLabel() {
       if (!this.camp) return ''
-      return STATUS_LABEL[this.camp.status] || this.camp.status
+      return messageCampaignStatusLabel(this.camp.status)
     },
     canWithdraw() {
       return this.camp && ['PUBLISHED', 'PUBLISHING', 'PARTIAL_FAILED'].includes(this.camp.status)
@@ -150,6 +144,7 @@ export default {
     this.load()
   },
   methods: {
+    messageDeliveryStatusLabel,
     async load() {
       this.loading = true
       this.error = ''

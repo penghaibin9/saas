@@ -1,7 +1,7 @@
 /** 学工 API 契约测试用 mock http client（由 registerHooks 劫持 @/services/http/client） */
 const calls = globalThis.__SA_API_CONTRACT_CALLS__ || (globalThis.__SA_API_CONTRACT_CALLS__ = [])
 
-export async function request(path, { method = 'GET', body, params } = {}) {
+export async function request(path, { method = 'GET', body, params, forceProbe = false, timeoutMs } = {}) {
   const throwSpec = globalThis.__SA_API_CONTRACT_THROW__
   if (throwSpec) {
     const err = new Error(throwSpec.message || 'biz error')
@@ -14,7 +14,9 @@ export async function request(path, { method = 'GET', body, params } = {}) {
     path,
     method: String(method || 'GET').toUpperCase(),
     body: body == null ? undefined : { ...body },
-    params: params == null ? undefined : { ...params }
+    params: params == null ? undefined : { ...params },
+    forceProbe,
+    timeoutMs
   })
   return { ok: true, items: [], total: 0 }
 }
