@@ -127,30 +127,58 @@ jobs:
           cat ../e2e/runtime-logs/backend.log
           exit 1
 
-      - name: Bootstrap official Student Affairs multi-role identities and counselor relation
+      - name: Bootstrap canonical Student Affairs identities and counselor relations
         working-directory: app/backend
         run: |
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
           python - <<'PY'
-          import time
+          from app.services.identity_import_file_service import build_teacher_template
+          from scripts.e2e_bootstrap_graduation_accounts_ci import _canonical_import, _workbook_with_rows
+          import scripts.e2e_bootstrap_affairs_counselor_ci as ci
           from scripts.e2e_bootstrap_student_affairs_accounts import (
-              CLASS_A, activate_passwords, ensure_counselor_assignment, ensure_org,
-              import_accounts, login_admin,
+              CLASS_A, CLASS_B, COLLEGE, _req, ensure_counselor_assignment,
+              ensure_org, list_users, login_admin,
           )
+
           token = login_admin()
           org = ensure_org(token)
-          print('[aid-audit] org:', org)
-          imported = import_accounts(token)
-          print('[aid-audit] identity import confirmed:', imported.get('confirmed'))
-          assert imported.get('confirmed') is True, imported
-          time.sleep(2)
-          token = login_admin()
-          assignment = ensure_counselor_assignment(token, int(org['classIds'][CLASS_A]))
-          print('[aid-audit] counselor assignment:', assignment)
-          assert assignment.get('configured') is True, assignment
-          passwords = activate_passwords(token)
-          required = {'e2e_sa_admin','e2e_college_admin','e2e_counselor_a','e2e_counselor_b','E2E20260001'}
-          missing = sorted(required - set(passwords))
-          assert not missing, missing
+          print('[aid-audit] full affairs org:', org)
+          assert CLASS_A in org.get('classIds', {}) and CLASS_B in org.get('classIds', {}), org
+          rows = [
+              ['e2e_sa_admin', 'E2E学工处管理员', '学工处', '学工处管理员', 'STUDENT_AFFAIRS_ADMIN', '', ''],
+              ['e2e_college_admin', 'E2E学院管理员', COLLEGE, '学院管理员', 'COLLEGE_ADMIN', 'COLLEGE', COLLEGE],
+              ['e2e_counselor_a', 'E2E辅导员A', COLLEGE, '辅导员', 'COUNSELOR', 'CLASS', CLASS_A],
+              ['e2e_counselor_b', 'E2E辅导员B', COLLEGE, '辅导员', 'COUNSELOR', 'CLASS', CLASS_B],
+          ]
+          receipt = _canonical_import(
+              token, kind='teachers',
+              content=_workbook_with_rows(build_teacher_template(), rows),
+              idempotency_namespace='e2e-affairs-aid-roles',
+          )
+          print('[aid-audit] canonical role import:', receipt.get('id') or receipt.get('jobId') or 'confirmed')
+          for login_name in ('e2e_sa_admin', 'e2e_college_admin', 'e2e_counselor_a', 'e2e_counselor_b'):
+              ci.LOGIN_NAME = login_name
+              ci.normalize_password(token)
+
+          result = ensure_counselor_assignment(token, int(org['classIds'][CLASS_A]))
+          print('[aid-audit] counselor-a assignment:', result)
+          assert result.get('configured') is True, result
+          users = list_users(token)
+          counselor_b = users.get('e2e_counselor_b')
+          assert counselor_b, users.keys()
+          class_b_id = int(org['classIds'][CLASS_B])
+          listed = _req('GET', '/student-affairs/counselor-assignments', token=token, params={'classId': class_b_id, 'pageSize': 100})
+          items = ((listed.get('data') or {}).get('items') or [])
+          active = next((x for x in items if x.get('status') == 'ACTIVE' and x.get('dutyType') == 'PRIMARY' and int(x.get('userId') or 0) == int(counselor_b['id'])), None)
+          if not active:
+              created = _req('POST', '/student-affairs/counselor-assignments', token=token, body={
+                  'classId': class_b_id, 'userId': int(counselor_b['id']), 'dutyType': 'PRIMARY',
+                  'reason': 'E2E严格验收：困难认定同租户错误辅导员攻击基线',
+              })
+              assert created.get('code') == 0, created
+          print('[aid-audit] counselor-b formal assignment configured for CLASS_B')
           PY
 
       - name: Start real staff PC and student PC
@@ -188,7 +216,7 @@ jobs:
         working-directory: app/e2e
         run: npx playwright test specs/student-affairs-aid-browser-audit.spec.mjs
 
-      - name: Verify aid MySQL, encrypted family economy, objection, audit and publicity time gate
+      - name: Verify aid MySQL, encryption, objection, audit, publicity gate and audit-key isolation
         working-directory: app/backend
         run: |
           python - <<'PY'
@@ -199,6 +227,7 @@ jobs:
           e = json.loads(Path('../e2e/student-affairs-aid-audit-evidence.json').read_text(encoding='utf-8'))
           aid_id = int(e['applyId'])
           batch_id = int(e['batchId'])
+          findings = {'applyId': aid_id, 'batchId': batch_id}
           conn = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', database='student_lifecycle_e2e', charset='utf8mb4')
           with conn.cursor() as cur:
               cur.execute('SELECT id,batch_id,student_id,apply_level,final_level,statement,status,publicity_at,result_at,return_reason,version FROM t_affairs_aid_apply WHERE id=%s', (aid_id,))
@@ -210,8 +239,7 @@ jobs:
               assert row[4] == 'DIFFICULT', row
               assert row[5] == e['revisedStatement'], (row[5], e['revisedStatement'])
               assert row[6] == 'PUBLICITY', row
-              assert row[7] is not None, row
-              assert row[8] is None, row
+              assert row[7] is not None and row[8] is None, row
 
               cur.execute('SELECT member_count,income_encrypted,debt_encrypted,special_flags_json FROM t_affairs_aid_family_economy WHERE apply_id=%s', (aid_id,))
               family = cur.fetchone()
@@ -226,9 +254,7 @@ jobs:
               print('[AID-DB objections]', objs)
               assert len(objs) == 1, objs
               assert objs[0][1] == 'CLOSED' and objs[0][2] == 'OVERRULED', objs
-              assert objs[0][3] == e['objectionReason'], objs
-              assert objs[0][4] == e['objectionReviewOpinion'], objs
-              assert objs[0][6] is not None, objs
+              assert objs[0][3] == e['objectionReason'] and objs[0][4] == e['objectionReviewOpinion'] and objs[0][6] is not None, objs
 
               cur.execute('SELECT COUNT(*) FROM t_affairs_aid_level_history WHERE apply_id=%s', (aid_id,))
               history_count = int(cur.fetchone()[0])
@@ -243,16 +269,21 @@ jobs:
               for expected in ('APPLY','RETURNED','RESUBMIT','TO_PUBLICITY','AID_OBJECTION_SUBMIT','AID_OBJECTION_REVIEW'):
                   assert expected in actions, (expected, actions)
               assert actions.count('REVIEW_STEP') >= 3, actions
+              findings['auditKeyCollision'] = bool(batch_id == aid_id and 'BATCH_CREATE' in actions)
+              findings['mixedActions'] = actions
 
-              cur.execute("SELECT operation,biz_type,result,detail_json FROM t_audit_log WHERE operation='SENSITIVE_VIEW' AND biz_type='aid_family_economy' ORDER BY id")
+              cur.execute("SELECT action,resource,result,detail FROM t_security_audit_log WHERE action='SENSITIVE_VIEW' AND resource LIKE 'aid_family_economy:%' ORDER BY id")
               sensitive = cur.fetchall()
               print('[AID-SENSITIVE-AUDIT]', sensitive)
               assert any(str(x[2]).upper() == 'SUCCESS' and e['revealReason'] in str(x[3]) for x in sensitive), sensitive
           conn.close()
+          Path('../e2e/student-affairs-aid-db-findings.json').write_text(json.dumps(findings, ensure_ascii=False, indent=2), encoding='utf-8')
+          print('[AID-FINDINGS]', json.dumps(findings, ensure_ascii=False))
           print('[AID-EVIDENCE]', json.dumps(e, ensure_ascii=False))
           PY
 
       - name: Record production dependency audit without mutating locks
+        if: always()
         run: |
           mkdir -p app/e2e/dependency-audit
           (cd app/frontend && npm audit --omit=dev --json > ../e2e/dependency-audit/frontend-production.json) || true
@@ -267,6 +298,7 @@ jobs:
           PY
 
       - name: Reassert tested app source stayed immutable
+        if: always()
         run: |
           set -euo pipefail
           test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
@@ -281,6 +313,7 @@ jobs:
           if-no-files-found: warn
           path: |
             app/e2e/student-affairs-aid-audit-evidence.json
+            app/e2e/student-affairs-aid-db-findings.json
             app/e2e/test-results/
             app/e2e/playwright-report/
             app/e2e/runtime-logs/
