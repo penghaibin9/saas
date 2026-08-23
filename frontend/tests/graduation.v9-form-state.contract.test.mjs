@@ -34,6 +34,14 @@ test('U9 grade and process forms keep editable drafts while refreshing real serv
   assert.match(processAction, /await this\.refreshConflictTruth\(\)/)
 })
 
+test('U9 specialist review/defense forms do not require unrelated grade read permission', () => {
+  assert.match(grade, /const GRADE_CONTEXT_FORMS = new Set\(\['calculate', 'returnGrade', 'withdraw'\]\)/)
+  assert.match(grade, /async loadStudentContext\(\)/)
+  assert.match(grade, /if \(GRADE_CONTEXT_FORMS\.has\(this\.formKey\)\)/)
+  assert.doesNotMatch(grade, /const contextCheck = await graduationDefenseGradeApi\.getGrade\(this\.studentId\)/)
+  assert.match(grade, /routeBatchId[\s\S]*studentBatchId[\s\S]*当前批次与学生上下文不一致/)
+})
+
 test('U9 final review keeps the selected teacher draft and refreshes only current server truth on conflict', () => {
   assert.match(finalReview, /isGraduationConflictResponse/)
   assert.match(finalReview, /const draft = this\.comment/)
