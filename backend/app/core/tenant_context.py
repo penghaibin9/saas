@@ -71,6 +71,10 @@ _TENANT_NEUTRAL_EXACT_PATHS = frozenset({
     "/docs",
     "/openapi.json",
     "/redoc",
+    # 官网匿名公开能力不读取学校业务租户；即使 tenant store 不可用也应进入各自的
+    # 短信/微信配置 fail-closed 逻辑，而不是被 DEFAULT_TENANT_CODE 提前阻断。
+    "/api/v1/notification/website-lead",
+    "/api/v1/notification/website-wechat-signature",
 })
 _TENANT_NEUTRAL = {
     "tenantId": "",
