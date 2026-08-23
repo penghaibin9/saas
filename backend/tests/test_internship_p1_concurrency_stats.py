@@ -53,6 +53,58 @@ def test_stats_rate_integrity_and_empty_denominator():
     assert {"arrivalRate", "weeklySubmitRate", "placementRate"} <= set(METRIC_DEFINITIONS)
 
 
+def test_leave_comply_rate_counts_returned_as_approved_history(client, auth_headers, db_mode):
+    """销假后的 RETURNED 仍是已审批请假，不能从合规率分子消失。"""
+    created = client.post(BATCH, headers=auth_headers, json={
+        "batchName": _uniq("销假统计批"), "batchNo": _uniq("LEAVESTBN"),
+        "startDate": "2026-03-01", "endDate": "2026-08-31", "plannedCount": 1,
+    }).json()
+    assert created["code"] == 0, created
+    bid = created["data"]["id"]
+    ver = int(created["data"].get("version") or 0)
+    activated = client.post(f"{BATCH}/{bid}/activate", headers=auth_headers,
+                            json={"expectedVersion": ver}).json()
+    assert activated["code"] == 0, activated
+
+    student = client.post(STU, headers=auth_headers, json={
+        "studentNo": _uniq("LCS"), "realName": "销假统计生", "classId": _org_class(),
+    }).json()
+    assert student["code"] == 0, student
+    sid = student["data"]["id"]
+    rec = client.post(IST, headers=auth_headers,
+                      json={"studentId": sid, "batchId": bid}).json()
+    assert rec["code"] == 0, rec
+    iid = rec["data"]["id"]
+
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipLeave
+    db = get_sessionmaker()()
+    try:
+        db.add_all([
+            InternshipLeave(
+                tenant_id=TID, internship_id=int(iid), student_id=int(sid),
+                leave_type="PERSONAL", start_date="2026-06-01", end_date="2026-06-01",
+                days=1, reason="已审批并完成销假", status="RETURNED", apply_by_name="销假统计生",
+            ),
+            InternshipLeave(
+                tenant_id=TID, internship_id=int(iid), student_id=int(sid),
+                leave_type="PERSONAL", start_date="2026-06-02", end_date="2026-06-02",
+                days=1, reason="被驳回请假", status="REJECTED", apply_by_name="销假统计生",
+            ),
+        ])
+        db.commit()
+    finally:
+        db.close()
+
+    overview = client.get(f"{STATS}/overview", headers=auth_headers,
+                          params={"batchId": bid}).json()
+    assert overview["code"] == 0, overview
+    metric = next(x for x in overview["data"]["metrics"] if x["key"] == "leaveComplyRate")
+    assert metric["numerator"] == 1, metric
+    assert metric["denominator"] == 2, metric
+    assert metric["rate"] == 50.0, metric
+
+
 def test_export_contract_rejects_oversized_result():
     assert pack_export_meta(3, 3)["truncated"] is False
     try:
