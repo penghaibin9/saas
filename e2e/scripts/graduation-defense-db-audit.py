@@ -1,6 +1,7 @@
 import json
 from datetime import date, datetime
 from decimal import Decimal
+from itertools import chain
 from pathlib import Path
 
 import pymysql
@@ -25,19 +26,20 @@ conn = pymysql.connect(
 )
 with conn.cursor() as cur:
     cur.execute("SELECT * FROM t_gd_defense_group ORDER BY id")
-    groups = cur.fetchall()
+    groups = list(cur.fetchall())
     cur.execute("SELECT * FROM t_gd_defense_score ORDER BY id")
-    scores = cur.fetchall()
+    scores = list(cur.fetchall())
     cur.execute("SELECT id,tenant_id,batch_id,student_no,name,defense_group_id,stage FROM t_gd_student ORDER BY id")
-    students = cur.fetchall()
+    students = list(cur.fetchall())
     cur.execute(
         "SELECT id,tenant_id,biz_type,biz_id,action,operator,role_name,detail,before_val,after_val,"
         "occurred_at,request_id,request_path,role_code,permission_code "
         "FROM t_gd_audit_trail WHERE biz_type='DEFENSE_SCORE' ORDER BY id"
     )
-    audits = cur.fetchall()
+    audits = list(cur.fetchall())
+conn.close()
 
-for row in groups + scores + students + audits:
+for row in chain(groups, scores, students, audits):
     for key, value in list(row.items()):
         row[key] = cv(value)
 
