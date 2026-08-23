@@ -174,7 +174,9 @@ jobs:
       - name: Install, production-build and start staff PC same-site
         env:
           VITE_USE_MOCK: 'false'
-          VITE_API_BASE_URL: /api/v1
+          # Staff HTTP config appends /api/v1 itself. Keep the dev server API root same-origin;
+          # Vite proxies /api to the real backend. Supplying /api/v1 here doubles the prefix.
+          VITE_API_BASE_URL: ''
           VITE_PROXY_TARGET: http://127.0.0.1:8000
         run: |
           set -euo pipefail
