@@ -14,6 +14,10 @@ _NODE_ROLES = {
     "SA_OFFICE_REVIEW": {"STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SA_ADMIN"},
     "SA_OFFICE_FINAL": {"STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SA_ADMIN"},
     "SCHOOL_REVIEW": {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN"},
+    # SP-E02/E04：就业去向登记单节点审核，无 TeacherStudentScope 式的院系/班级范围
+    # 概念（就业老师按学校配置的岗位任职覆盖全校），落到角色候选池即可，不做
+    # COLLEGE_REVIEW 式的二次地理收敛。
+    "EMPLOYMENT_TEACHER_REVIEW": {"EMPLOYMENT_TEACHER"},
 }
 
 

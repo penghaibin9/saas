@@ -55,6 +55,11 @@ DEFAULT_RULES = {
                  "accessTokenExpireMinutes": 120, "refreshTokenExpireDays": 7, "forceStrongPassword": False},
     "trial": {"trialDefaultDays": 30, "trialExpireReadOnly": True, "trialExpireAllowLogin": True,
               "trialExpireShowContactPhone": True},
+    # SP-D 校本离校阻断策略：disciplineBlocks 决定"存在未解除违纪处分"是否阻断学生离校
+    # READY 判定。默认 False（保守默认——不假装这是学校已确认的规则，
+    # departure_projection_service 据此在响应里标 policySource=default_conservative）；
+    # 学校通过平台规则中心把它改成 True 后才算真正的校本配置生效。
+    "departure": {"disciplineBlocks": False},
 }
 
 DEFAULT_WORKFLOWS = {

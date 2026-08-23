@@ -52,10 +52,30 @@ def test_student_message_detail_never_routes_students_into_teacher_pages():
 
 
 def test_student_portal_message_click_reads_action_metadata_and_uses_whitelisted_routes():
+    """安全意图不变：学生点开消息，绝不能被带进教师/管理端页面；解析不出安全落点
+    时必须明确拒绝。V3 施工手册 SP-M01/M04/M08 之后，落点这件事完全交给服务端
+    action_projection_service，页面自己不再维护 ACTION_ROUTES/MODULE_ROUTES 这类
+    第二路由 Authority，也不再直接依赖 `/mobile/me/messages/{id}` 这个 Mini surface。
+    """
     source = _read("student-portal/src/views/messages/MessagesView.vue")
 
-    assert "ACTION_ROUTES" in source
-    assert "MODULE_ROUTES" in source
-    assert "request(`/mobile/me/messages/${mid}`)" in source
-    assert "router.push(messageTarget(detail))" in source
-    assert "'student-affairs': '/campus-service'" in source
+    assert "const ACTION_ROUTES" not in source
+    assert "const MODULE_ROUTES" not in source
+    assert "messageTarget(" not in source
+    assert "/mobile/me/messages/" not in source
+    # PC 专属详情 facade，不是 Mini surface。
+    assert "portalApi.messageDetail(" in source
+    # 只消费服务端 action，不本地猜路由。
+    assert "m.action" in source
+    assert "canOpen(" in source
+
+    # 服务端：studentPc 只允许落到 student-portal 已注册的真实顶层路由，教师/管理端
+    # `/admin/...` 前缀一律 fail-closed（与 mobile_action_service 的 Mini 白名单同一
+    # 防御层级，见 action_projection_service._ALLOWED_PATH_PREFIXES）。
+    from app.student_portal.services.action_projection_service import (
+        _ALLOWED_PATH_PREFIXES,
+        _path_allowed,
+    )
+    assert not any(p.startswith("/admin") for p in _ALLOWED_PATH_PREFIXES)
+    assert _path_allowed("/campus-service") is True
+    assert _path_allowed("/admin/student-affairs/leave") is False

@@ -543,6 +543,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
@@ -564,7 +565,11 @@ const tabs = [
   { key: 'split', label: '专业分流' }, { key: 'recognition', label: '成绩认定' },
   { key: 'audit', label: '毕业自查' }
 ]
-const tab = ref('schedule')
+const route = useRoute()
+// V3 SP-M02：消息/首页深链带 ?tab= 指定要打开哪个分 tab（如考试/学业预警通知）。
+// 只接受已登记的合法 tab key，非法/未知值一律回落默认 tab，不信任外部字符串。
+const initialTab = tabs.some((item) => item.key === route.query.tab) ? String(route.query.tab) : 'schedule'
+const tab = ref(initialTab)
 const examTab = ref('我的考试')
 const examTabs = ['我的考试', '免修申请', '缓考申请', '补考重修申请']
 const wizStep = ref(1)

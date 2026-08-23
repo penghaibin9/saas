@@ -10,6 +10,39 @@ from app.db.session import db_enabled
 from app.services import approval_service as base
 from app.services.message_identity import resolve_message_user_id
 
+# TP-A10：审批业务类型字典的唯一服务端权威。前端此前自己维护一份完整枚举
+# （含 COMPANY_CHANGE / MATERIAL_VERIFY 两个全仓 grep 不到任何创建点的臆造类型），
+# 新增一种审批就必须记得同步改前端常量，忘改就会出现"能审批但列表筛选不出来"。
+#
+# 曾经考虑直接复用 WorkflowDefinition.source_biz_type（该表已有 workflow_name 可当
+# 标签），但核实后发现那张表的预置 `biz` 字段（如 STATUS_CHANGE）与各业务域实际写在
+# WorkflowInstance.source_biz_type 上的真实值（如 AA_STATUS_CHANGE）本身就不一致——
+# 这是 runtime_preset_install_service 预置数据自己的既有漂移，不是本项能顺手修的范围，
+# 直接借用只会把这个漂移进一步暴露到审批筛选器上。因此改为维护一份与各业务域真实
+# `WorkflowInstance(source_biz_type=...)` 写入值逐个核对过的静态字典：
+#   LEAVE/AID/FUNDING/DISCIPLINE/DISCIPLINE_REMOVE ← affairs_*_service.py
+#   AA_STATUS_CHANGE/AA_GRADE_TASK/AA_GRADE_CHANGE/AA_SCHEDULE_CHANGE ← academic_affairs 模块
+#   MESSAGE_CAMPAIGN ← message_campaign_service.py；PROFILE_CORRECTION ← 体验沙箱种子
+# 缺一个映射时各处已有 `label || bizType` 兜底显示原始 code，不伪造标签也不阻塞页面。
+_BIZ_TYPE_LABELS: dict[str, str] = {
+    "LEAVE": "请假审批",
+    "AID": "困难认定",
+    "FUNDING": "奖助评定",
+    "DISCIPLINE": "违纪认定",
+    "DISCIPLINE_REMOVE": "违纪解除",
+    "AA_STATUS_CHANGE": "学籍异动",
+    "AA_GRADE_TASK": "成绩审核",
+    "AA_GRADE_CHANGE": "成绩更正",
+    "AA_SCHEDULE_CHANGE": "调停课审批",
+    "MESSAGE_CAMPAIGN": "消息任务审批",
+    "PROFILE_CORRECTION": "信息更正",
+    "EMPLOYMENT_DESTINATION": "就业去向登记",
+}
+
+
+def biz_type_options() -> list[dict]:
+    return [{"value": k, "label": v} for k, v in _BIZ_TYPE_LABELS.items()]
+
 
 def _require_db() -> None:
     if not db_enabled():
@@ -136,12 +169,26 @@ def list_tasks(
     return _enrich_rows(rows, user=user), total
 
 
-def list_processed(page, page_size, *, user=None, keyword=None, biz_type=None, result=None):
+def list_processed(page, page_size, *, user=None, keyword=None, biz_type=None, result=None,
+                   acted_from=None, acted_to=None):
     _require_db()
     rows, total = base.list_processed(
-        page, page_size, user=user, keyword=keyword, biz_type=biz_type, result=result
+        page, page_size, user=user, keyword=keyword, biz_type=biz_type, result=result,
+        acted_from=acted_from, acted_to=acted_to,
     )
     return _enrich_rows(rows, user=user), total
+
+
+def next_task(anchor_task_id, *, user=None, keyword=None, biz_type=None, urgency=None, submit_date=None):
+    """TP-A03/A04：真实服务端 seek，取当前筛选队列里锚点任务之后的下一条待办。"""
+    _require_db()
+    row = base.next_pending_task(
+        anchor_task_id, user=user, keyword=keyword, biz_type=biz_type,
+        urgency=urgency, submit_date=submit_date,
+    )
+    if row is None:
+        return None
+    return _enrich_rows([row], user=user)[0]
 
 
 def get_task(task_id: str, *, user=None) -> dict:
@@ -162,7 +209,6 @@ def get_task(task_id: str, *, user=None) -> dict:
         )).first()
         if not task:
             raise not_found("审批任务不存在")
-        # 复用既有审批安全策略：assignee + approval.manage + SYS-14 节点动作策略。
         db_service._assert_task_assignee(db, task, user)
         inst = db.scalars(select(WorkflowInstance).where(
             WorkflowInstance.id == task.instance_id,
@@ -197,20 +243,26 @@ def get_task(task_id: str, *, user=None) -> dict:
             "createdAt": x.created_at.isoformat(timespec="seconds") if x.created_at else None,
             "actedAt": x.acted_at.isoformat(timespec="seconds") if x.acted_at else None,
         } for x in history]
-        row["attachments"] = []
+        from app.services import approval_business_context_service as ctx_svc
+
+        context = ctx_svc.resolve_context(db, inst)
+        row["businessContext"] = context
+        row["attachments"] = context.get("attachments") or []
         row["diff"] = []
+        row["diffNote"] = "各业务域暂未持久化变更前快照，审批详情不展示字段对比"
         return row
 
 
 def summary(*, user=None) -> dict:
-    """待办统计全部由数据库聚合；仅展示型 overdueList 限制 10 行。"""
+    """待办统计全部由数据库聚合；“今日”统一按租户本地自然日，展示型 overdueList 限 10 行。"""
     _require_db()
     from sqlalchemy import case, func, select
     from app.models import WorkflowInstance, WorkflowTask
+    from app.core.timeutil import local_today_bounds_utc
     from app.services import db_service
 
     now = datetime.utcnow()
-    start = datetime(now.year, now.month, now.day)
+    today_start, today_end = local_today_bounds_utc()
     near_until = now + timedelta(hours=24)
     cond = [
         WorkflowTask.tenant_id == _tid(),
@@ -232,12 +284,33 @@ def summary(*, user=None) -> dict:
             ) or 0)
 
         total = _count()
-        today = _count(WorkflowTask.created_at >= start)
+        today = _count(
+            WorkflowTask.created_at >= today_start,
+            WorkflowTask.created_at < today_end,
+        )
         overdue_count = _count(WorkflowTask.deadline_at < now)
         near_count = _count(
             WorkflowTask.deadline_at >= now,
             WorkflowTask.deadline_at <= near_until,
         )
+        # TP-W03/P2-04：Workbench「今日已完成」卡片与 todayNew 共用同一个租户本地
+        # 日历边界，再换算成 UTC-naive 比较数据库列。凌晨 00:00–08:00（UTC+8）不再
+        # 把本地“今天”误切成 UTC 的昨天/今天。
+        done_cond = [
+            WorkflowTask.tenant_id == _tid(),
+            WorkflowTask.is_deleted.is_(False),
+            WorkflowTask.status.in_(["APPROVED", "REJECTED", "RETURNED", "TRANSFERRED"]),
+            WorkflowInstance.tenant_id == _tid(),
+            WorkflowInstance.is_deleted.is_(False),
+            WorkflowTask.acted_at.is_not(None),
+            WorkflowTask.acted_at >= today_start,
+            WorkflowTask.acted_at < today_end,
+        ]
+        if not db_service._can_manage_all_approvals(user):
+            done_cond.append(WorkflowTask.assignee_id == db_service._approval_actor_id(user))
+        done_today = int(db.scalar(
+            select(func.count()).select_from(join_from).where(*done_cond)
+        ) or 0)
         grouped = db.execute(
             select(
                 WorkflowInstance.source_biz_type,
@@ -269,6 +342,7 @@ def summary(*, user=None) -> dict:
             "todayNew": today,
             "overdue": overdue_count,
             "nearDeadline": near_count,
+            "doneToday": done_today,
             "byBizType": [
                 {
                     "bizType": biz_type or "GENERAL",
@@ -283,20 +357,39 @@ def summary(*, user=None) -> dict:
         }
 
 
-def approve(task_id, comment, *, user=None, version=None):
+def _assert_context_gate(context: dict, expected_source_version) -> None:
+    """TP-A07 compatibility wrapper；真实规则统一在 Context adapter 服务。"""
+    from app.services import approval_business_context_service as ctx_svc
+    ctx_svc.assert_action_context(context, expected_source_version)
+
+
+def approve(task_id, comment, *, user=None, version=None, expected_source_version=None):
+    """通过：Context/sourceVersion 校验与 task/instance/业务副作用在同一事务。"""
     _require_db()
-    get_task(task_id, user=user)
-    return _contract(base.approve(task_id, comment, user=user, version=version))
+    from app.services import db_service
+
+    return _contract(db_service.act_task(
+        task_id, "APPROVED", comment, user=user, version=version,
+        enforce_context_gate=True,
+        expected_source_version=expected_source_version,
+    ))
 
 
-def reject(task_id, reason, *, user=None, version=None):
+def reject(task_id, reason, *, user=None, version=None, expected_source_version=None):
+    """驳回终止：与通过共用同事务 sourceVersion 硬门。"""
     _require_db()
-    get_task(task_id, user=user)
-    return _contract(base.reject(task_id, reason, user=user, version=version))
+    base._check_reject_reason(reason)
+    from app.services import db_service
+
+    return _contract(db_service.act_task(
+        task_id, "REJECTED", reason, user=user, version=version,
+        enforce_context_gate=True,
+        expected_source_version=expected_source_version,
+    ))
 
 
-def return_for_revision(task_id, reason, *, user=None, version=None):
-    """退回不是驳回：实例继续 RUNNING，并真实生成申请人重提待办 + 站内消息。"""
+def return_for_revision(task_id, reason, *, user=None, version=None, expected_source_version=None):
+    """退回：通用流程进入申请人重提；领域可在同事务内把 RETURN 覆盖为终态。"""
     _require_db()
     base._check_return_reason(reason)
     from sqlalchemy import select
@@ -323,6 +416,12 @@ def return_for_revision(task_id, reason, *, user=None, version=None):
         if not inst:
             raise not_found("审批实例不存在")
 
+        from app.services import approval_business_context_service as ctx_svc
+        _assert_context_gate(
+            ctx_svc.resolve_context(db, inst, for_update=True),
+            expected_source_version,
+        )
+
         atomic_versioned_update(
             db, WorkflowTask, entity_id=int(task_id), tenant_id=_tid(),
             expected_version=version, expected_status="PENDING",
@@ -336,7 +435,6 @@ def return_for_revision(task_id, reason, *, user=None, version=None):
         inst.current_node = "APPLICANT_RESUBMIT"
         inst.version = int(inst.version or 0) + 1
 
-        # 去重键不包含 is_deleted：必须连软删记录一起查，存在则原位恢复，禁止插入碰唯一键。
         todo = db.scalars(select(UnifiedTodo).where(
             UnifiedTodo.tenant_id == _tid(),
             UnifiedTodo.source_module == inst.source_module,
@@ -389,6 +487,9 @@ def return_for_revision(task_id, reason, *, user=None, version=None):
             },
             remark="RETURNED",
         ))
+        if (inst.source_biz_type or "") == "EMPLOYMENT_DESTINATION":
+            from app.modules.employment.services import employment_destination_submission_service as emp_dest_svc
+            emp_dest_svc.apply_return_in_db(db, inst, reason=reason.strip())
         audit.record_critical(
             "审批退回修改",
             method="POST",
@@ -401,21 +502,32 @@ def return_for_revision(task_id, reason, *, user=None, version=None):
                 "instanceId": str(inst.id),
                 "todoId": str(todo.id),
                 "reason": reason.strip(),
+                "instanceStatus": inst.status,
             },
             db=db,
         )
         db.commit()
+
+        next_todo = None
+        if (
+            inst.status == "RUNNING"
+            and inst.current_node == "APPLICANT_RESUBMIT"
+            and not bool(todo.is_deleted)
+            and todo.status == "PENDING"
+        ):
+            next_todo = {
+                "todoId": str(todo.id),
+                "status": "PENDING",
+                "action": "RESUBMIT",
+                "sourceBizId": str(inst.source_biz_id),
+            }
         return _contract({
             "taskId": str(task_id),
             "status": "RETURNED",
-            "instanceStatus": "RUNNING",
+            "instanceStatus": inst.status,
+            "currentNode": inst.current_node or "",
             "version": int(version) + 1,
-        }, {
-            "todoId": str(todo.id),
-            "status": "PENDING",
-            "action": "RESUBMIT",
-            "sourceBizId": str(inst.source_biz_id),
-        })
+        }, next_todo)
 
 
 def resubmit(instance_id, *, user=None, version=None, comment=None):
@@ -618,13 +730,23 @@ def batch_process(items, action, *, user=None, reason=None, target_user_id=None,
     for item in items:
         task_id = str(item.get("taskId") or "")
         version = item.get("version")
+        expected_source_version = item.get("expectedSourceVersion")
         try:
             if action == "APPROVE":
-                value = approve(task_id, comment, user=user, version=version)
+                value = approve(
+                    task_id, comment, user=user, version=version,
+                    expected_source_version=expected_source_version,
+                )
             elif action == "RETURN":
-                value = return_for_revision(task_id, reason or "", user=user, version=version)
+                value = return_for_revision(
+                    task_id, reason or "", user=user, version=version,
+                    expected_source_version=expected_source_version,
+                )
             elif action == "REJECT":
-                value = reject(task_id, reason or "", user=user, version=version)
+                value = reject(
+                    task_id, reason or "", user=user, version=version,
+                    expected_source_version=expected_source_version,
+                )
             else:
                 value = transfer(task_id, target_user_id or "", comment, user=user, version=version)
             results.append({"id": task_id, "result": "SUCCESS", "errorCode": None, "newVersion": value.get("version")})
@@ -701,7 +823,6 @@ def list_returned(page, page_size, *, user=None, keyword=None, rectify_status=No
     if rectify_status:
         wanted = str(rectify_status).upper()
         rows = [x for x in rows if x["rectifyStatus"] == wanted]
-        # 过滤发生在服务端返回的真实页内；total 不冒充全库命中数。
         total = len(rows)
     return rows, total
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Index, Integer, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Index, Integer, String, UniqueConstraint, event, inspect as sa_inspect
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
 
@@ -60,7 +60,30 @@ class UnifiedTodo(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING",
                                         comment="PENDING/DONE/CANCELLED")
     due_at: Mapped[datetime | None] = mapped_column(DateTime)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime, comment="TP-W02：真实完成时间；只在 status 变为 DONE 时写，与 updated_at（任何编辑都会动）区分")
     remark: Mapped[str | None] = mapped_column(String(500))
+
+
+# TP-W02：doneToday 之前用 updated_at 判断"今天完成"，而 updated_at 在改备注等任何编辑时都会
+# 被 CommonMixin 的 onupdate 刷新，导致历史 DONE 待办今天改个备注就被误计入"今日完成"。
+# 用 before_flush 集中收敛 completed_at 语义，而不是去改遍全仓 15+ 处直接 `row.status = "DONE"`
+# 的调用点——那些调用点各自独立维护同一语义，漏改一处就会重新产生分叉。
+@event.listens_for(Session, "before_flush")
+def _stamp_todo_completed_at(db, _flush_context, _instances):
+    for row in db.dirty:
+        if not isinstance(row, UnifiedTodo):
+            continue
+        state = sa_inspect(row)
+        hist = state.attrs.status.history
+        if not hist.has_changes():
+            continue
+        old_status = hist.deleted[0] if hist.deleted else None
+        new_status = row.status
+        if new_status == "DONE" and old_status != "DONE":
+            row.completed_at = datetime.utcnow()
+        elif old_status == "DONE" and new_status != "DONE":
+            row.completed_at = None
 
 
 class WorkflowDefinition(PKMixin, TenantMixin, CommonMixin, Base):

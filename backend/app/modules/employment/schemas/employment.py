@@ -14,6 +14,17 @@ class CommentBody(BaseModel):
     comment: Optional[str] = Field(default="")
 
 
+class DestinationVerifyBody(BaseModel):
+    """教师 PC 去向核验请求（TP-E02）。
+
+    expectedVersion 必填：核验是把 canonical 状态推进到 VERIFIED 的高风险动作，
+    必须带乐观锁，避免两个老师并发操作时后写覆盖前写。与教师小程序同一语义。
+    """
+    action: str = Field(..., pattern="^(VERIFY|RETURN)$")
+    comment: Optional[str] = Field(default="")
+    expectedVersion: int = Field(..., ge=0)
+
+
 class StudentCreate(BaseModel):
     # 阶段 D：业务台账不再独立建学生，必须指到已有学籍档案。
     # 优先传 studentId（从学籍选人）；只传 studentNo 时后端按学号唯一匹配主档。

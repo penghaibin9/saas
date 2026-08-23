@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import pytest
+
 PORTAL = "/api/v1/portal"
 TID = 1000000000000000001
 
@@ -39,21 +41,189 @@ def test_home_overview(client, db_mode):
     r = client.get(f"{PORTAL}/home/overview", headers=h).json()
     assert r["code"] == 0
     d = r["data"]
-    assert d.get("hasData") is True
+    # V3 HomeProjection v2（SP-H01）：不再是 me_overview 原样转发，而是带版本/分区
+    # 状态/typed action 的投影 DTO。
+    assert d.get("homeVersion") == 2
+    assert d.get("asOf")
     assert d["student"]["studentNo"] == "HM-001"
-    assert isinstance(d.get("quickEntries"), list) and len(d["quickEntries"]) >= 1
-    # 快捷入口每项结构完整
-    e = d["quickEntries"][0]
+    # 三个独立读取分区各自诚实报告状态，正常路径下应全部 DATA/EMPTY，不是 ERROR。
+    sections = d.get("sections") or {}
+    for key in ("core", "todo", "message"):
+        assert sections.get(key, {}).get("state") in ("DATA", "EMPTY")
+    assert isinstance(d.get("quickServices"), list) and len(d["quickServices"]) >= 1
+    # 快捷入口每项都带完整 typed action，target.client 固定为 studentPc。
+    e = d["quickServices"][0]
     assert e["key"] and e["label"] and e["path"]
+    assert e["action"]["target"]["client"] == "studentPc"
+    # 成功查询下的计数是真实 0/正整数，不是 unknown（SP-H08）。
+    summary = d.get("summary") or {}
+    assert summary.get("todoCount") is not None
+    assert summary.get("unreadCount") is not None
+
+
+def test_home_overview_todo_and_message_typed_action(client, db_mode):
+    """SP-H03：首页待办/消息卡片必须带 StudentPcActionDescriptor，未知/未落地一律 fail-closed。"""
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedMessage
+
+    uid = 930005
+    _seed("HM-005", "首页五")
+    db = get_sessionmaker()()
+    db.add(UnifiedMessage(
+        tenant_id=TID, receiver_id=uid, receiver_user_id=uid, receiver_context_key="GLOBAL",
+        title="请假审批已退回", message_type="BUSINESS", category="BUSINESS", status="UNREAD",
+        source_module="student-affairs", action_key="AFFAIRS_LEAVE",
+        action_params_json={"recordId": "9001"}))
+    db.commit()
+    db.close()
+
+    # message_center_service 按 resolve_message_user_id(userId) 判定本人可见性，
+    # 与 StudentProfile.id 无关：token 的 userId 必须能解析成上面写入的 uid。
+    h = {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u_{uid}", "realName": "首页五", "studentNo": "HM-005",
+        "userType": "STUDENT", "tid": "x", "tenantId": str(TID),
+        "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "PC"})}
+    r = client.get(f"{PORTAL}/home/overview", headers=h).json()
+    assert r["code"] == 0
+    d = r["data"]
+    notices = d.get("notices") or []
+    assert notices, "AFFAIRS_LEAVE 消息应出现在首页 notices"
+    action = notices[0]["action"]
+    # 真实落点：/campus-service?tab=leave&recordId=9001（不再是死链 /leave）。
+    assert action["target"]["client"] == "studentPc"
+    assert action["target"]["path"] == "/campus-service"
+    assert action["target"]["query"].get("tab") == "leave"
+    assert action["target"]["query"].get("recordId") == "9001"
+    assert action["disabledReason"] is None
+
+
+def test_home_overview_message_failure_is_isolated_error_not_fake_empty(client, db_mode, monkeypatch):
+    """SP-H02：单个分区故障必须诚实报 ERROR，不能吞成空数组冒充"暂无消息"，
+    也不能拖垮其他分区（core/todo 仍应正常返回真实数据）。"""
+    from app.student_portal.services import home_projection_service
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("message center 暂时不可用（模拟故障注入）")
+
+    monkeypatch.setattr(home_projection_service.message_svc, "list_messages", _boom)
+
+    _seed("HM-006", "首页六")
+    h = _stu_token("首页六", "HM-006")
+    r = client.get(f"{PORTAL}/home/overview", headers=h).json()
+    assert r["code"] == 0
+    d = r["data"]
+    assert d["sections"]["message"]["state"] == "ERROR"
+    assert d["sections"]["core"]["state"] in ("DATA", "EMPTY")
+    assert d["notices"] == []
+    # unreadCount 是 unknown，不能假装真实 0（SP-H08）。
+    assert d["summary"]["unreadCount"] is None
+    # core 分区没受连累，学生身份信息仍然真实返回。
+    assert d["student"]["studentNo"] == "HM-006"
 
 
 def test_messages_inbox_paged(client, db_mode):
+    """SP-M05/M07：默认 tab=todo；返回带 tabs/hasMore 的三 Authority 契约。"""
     _seed("HM-002", "首页二")
     h = _stu_token("首页二", "HM-002")
     r = client.get(f"{PORTAL}/messages?page=1&pageSize=10", headers=h).json()
     assert r["code"] == 0
     d = r["data"]
     assert d["page"] == 1 and d["pageSize"] == 10 and "total" in d and isinstance(d["list"], list)
+    assert d["tab"] == "todo"
+    assert {t["key"] for t in d["tabs"]} == {"todo", "notice", "progress"}
+    assert "hasMore" in d
+
+
+def test_messages_notice_tab_is_real_db_pagination(client, db_mode):
+    """SP-M05：通知 tab 是真实数据库分页，不是把全量取回后切片——插入 25 条时
+    page1(size10)+page2(size10)+page3(size10) 累计正好等于 total，且互不重复。"""
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedMessage
+
+    uid = 930010
+    _seed("HM-007", "首页七")
+    db = get_sessionmaker()()
+    for i in range(25):
+        db.add(UnifiedMessage(
+            tenant_id=TID, receiver_id=uid, receiver_user_id=uid, receiver_context_key="GLOBAL",
+            title=f"通知{i}", message_type="ANNOUNCEMENT", category="ANNOUNCEMENT", status="UNREAD"))
+    db.commit()
+    db.close()
+
+    h = {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u_{uid}", "realName": "首页七", "studentNo": "HM-007",
+        "userType": "STUDENT", "tid": "x", "tenantId": str(TID),
+        "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "PC"})}
+
+    seen_ids = set()
+    total = None
+    for page in (1, 2, 3):
+        r = client.get(f"{PORTAL}/messages?tab=notice&page={page}&pageSize=10", headers=h).json()
+        assert r["code"] == 0
+        d = r["data"]
+        total = d["total"]
+        for item in d["list"]:
+            assert item["id"] not in seen_ids, "分页重复，说明不是真实 keyset/offset 分页"
+            seen_ids.add(item["id"])
+    assert total == 25
+    assert len(seen_ids) == 25
+
+
+def test_messages_detail_facade_and_typed_action(client, db_mode):
+    """SP-M04/M08：/portal/messages/{id} 是独立 PC facade；notice 列表项自带
+    typed action，请假消息落到 /campus-service?tab=leave，不是死链 /leave。"""
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import UnifiedMessage
+
+    uid = 930011
+    _seed("HM-008", "首页八")
+    db = get_sessionmaker()()
+    db.add(UnifiedMessage(
+        tenant_id=TID, receiver_id=uid, receiver_user_id=uid, receiver_context_key="GLOBAL",
+        title="请假审批已退回", message_type="BUSINESS", category="BUSINESS", status="UNREAD",
+        source_module="student-affairs", action_key="AFFAIRS_LEAVE",
+        action_params_json={"recordId": "9002"}))
+    db.commit()
+    db.close()
+
+    h = {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u_{uid}", "realName": "首页八", "studentNo": "HM-008",
+        "userType": "STUDENT", "tid": "x", "tenantId": str(TID),
+        "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "PC"})}
+
+    r = client.get(f"{PORTAL}/messages?tab=notice&page=1&pageSize=10", headers=h).json()
+    item = r["data"]["list"][0]
+    assert item["action"]["target"]["path"] == "/campus-service"
+    assert item["action"]["target"]["query"]["tab"] == "leave"
+
+    detail = client.get(f"{PORTAL}/messages/{item['messageId']}", headers=h).json()
+    assert detail["code"] == 0
+    assert detail["data"]["title"] == "请假审批已退回"
+
+    # 不存在/越权一律 404，不泄露存在性。
+    assert client.get(f"{PORTAL}/messages/999999999", headers=h).json()["code"] != 0
+
+
+def test_mark_read_all_propagates_real_failure(client, db_mode, monkeypatch):
+    """SP-M06：主 Authority 失败必须真失败，不能吞成 affectedCount=0 冒充"全部已读成功"。"""
+    from app.services import message_center_service
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("message center 暂时不可用（模拟故障注入）")
+
+    monkeypatch.setattr(message_center_service, "read_all", _boom)
+
+    _seed("HM-009", "首页九")
+    h = _stu_token("首页九", "HM-009")
+    # TestClient 默认 raise_server_exceptions=True：未被吞掉的异常会一路冒泡到这里，
+    # 而不是被悄悄捕获后换算成 affectedCount=0 的假成功响应。生产环境下同一异常
+    # 会被 app 的全局 Exception handler 接住转成 500 SERVER_ERROR，此处直接验证
+    # "没有被吞"这一更强的断言。
+    with pytest.raises(RuntimeError):
+        client.post(f"{PORTAL}/messages/read-all", headers=h)
 
 
 def test_message_read_guards(client, db_mode):

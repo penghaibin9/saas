@@ -126,6 +126,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import AutoTable from '../../components/AutoTable.vue'
@@ -152,7 +153,11 @@ const CREDIT_APPEAL_COLS = [
   { key: 'reviewNote', label: '审核意见' }
 ]
 const tabs = [{ key: 'leave', label: '请假销假' }, { key: 'aid', label: '困难认定' }, { key: 'funding', label: '奖学金与助学金' }, { key: 'dorm', label: '我的宿舍' }, { key: 'discipline', label: '处分申诉' }, { key: 'psy', label: '心理自评' }, { key: 'activity', label: '活动与第二课堂' }, { key: 'talk', label: '谈心谈话' }]
-const tab = ref('leave')
+const route = useRoute()
+// V3 SP-M02：消息/首页深链带 ?tab= 指定要打开哪个分 tab（例如请假退回通知）。
+// 只接受已登记的合法 tab key，非法/未知值一律回落默认 tab，不信任外部字符串。
+const initialTab = tabs.some((item) => item.key === route.query.tab) ? String(route.query.tab) : 'leave'
+const tab = ref(initialTab)
 const busy = ref(false)
 const errors = reactive({})
 const loadedTabs = reactive({})
