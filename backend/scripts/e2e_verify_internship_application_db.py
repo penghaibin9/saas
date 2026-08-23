@@ -70,11 +70,11 @@ def main() -> int:
             InternshipAuditTrail.target_id == app_id,
         ).order_by(InternshipAuditTrail.id)).all()
         actions = [row.action for row in trails]
-        required_actions = ["SAVE_DRAFT", "SUBMIT", "REJECT", "APPROVE"]
+        required_actions = ["SAVE_DRAFT_VERSIONED", "SUBMIT_VERSIONED", "REJECT", "APPROVE"]
         for action in required_actions:
             if action not in actions:
                 raise AssertionError(f"missing application audit action {action}: {actions}")
-        if actions.count("SAVE_DRAFT") < 2 or actions.count("SUBMIT") < 2:
+        if actions.count("SAVE_DRAFT_VERSIONED") < 2 or actions.count("SUBMIT_VERSIONED") < 2:
             raise AssertionError(f"resubmit version history is incomplete: {actions}")
 
         file_obj = db.get(FileObject, final_file_id)
