@@ -242,7 +242,7 @@ jobs:
           with conn.cursor() as cur:
               cur.execute("SELECT id,tenant_id,gd_student_id,mentor_id,guidance_date,method,content,issues,void_reason,is_deleted,created_at FROM t_gd_guidance ORDER BY id")
               guidance = cur.fetchall()
-              cur.execute("SELECT id,tenant_id,biz_type,biz_id,action,operator,role_name,detail,occurred_at,request_id,request_path,role_code,permission_code,data_scope FROM t_gd_audit_trail WHERE biz_type='GUIDANCE' ORDER BY id")
+              cur.execute("SELECT id,tenant_id,biz_type,biz_id,action,operator,role_name,detail,occurred_at,request_id,request_path,role_code,permission_code FROM t_gd_audit_trail WHERE biz_type='GUIDANCE' ORDER BY id")
               audits = cur.fetchall()
           for row in guidance + audits:
               for k, v in list(row.items()): row[k] = cv(v)
