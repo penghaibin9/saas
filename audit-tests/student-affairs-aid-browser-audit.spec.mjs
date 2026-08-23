@@ -77,6 +77,7 @@ test.describe.serial('Student Affairs strict browser audit · aid / difficulty r
 
     const api500 = []
     const consoleErrors = []
+    const browserHttpErrors = []
     let batchId = ''
     let applyId = ''
     let submitCount = 0
@@ -93,6 +94,9 @@ test.describe.serial('Student Affairs strict browser audit · aid / difficulty r
 
     page.on('response', (response) => {
       if (response.url().includes('/api/') && response.status() >= 500) api500.push(`${response.status()} ${response.request().method()} ${response.url()}`)
+      if (response.url().includes('/api/') && response.status() >= 400 && response.status() < 500) {
+        browserHttpErrors.push(`${response.status()} ${response.request().method()} ${response.url()}`)
+      }
       try {
         const u = new URL(response.url())
         if (u.pathname.endsWith('/api/v1/portal/affairs/aid/apply') && response.request().method() === 'POST') submitCount += 1
@@ -276,6 +280,7 @@ test.describe.serial('Student Affairs strict browser audit · aid / difficulty r
       await confirmDialog(page, '确认公示通过', '确认通过')
       const response = await confirmPromise
       publicityConfirmStatus = response.status()
+      expect(response.status(), 'early publicity confirmation must be an explicit conflict').toBe(409)
       expect(response.ok(), `early publicity confirm must fail closed, got HTTP ${response.status()}`).toBeFalsy()
       const env = await jsonBody(response)
       publicityConfirmBizCode = String(env.bizCode || env.code || '')
@@ -329,7 +334,14 @@ test.describe.serial('Student Affairs strict browser audit · aid / difficulty r
     })
 
     expect(api500, 'no unhandled API 5xx during strict aid journey').toEqual([])
-    expect(consoleErrors, 'no browser console errors during strict aid journey').toEqual([])
+    expect(browserHttpErrors.length, `only the explicit early-publicity conflict may be a browser 4xx: ${browserHttpErrors.join(' | ')}`).toBe(1)
+    expect(browserHttpErrors[0]).toMatch(new RegExp(`^409 POST .*?/api/v1/student-affairs/aid/applications/${applyId}/publicity-confirm$`))
+    const unexpectedConsoleErrors = [...consoleErrors]
+    if (publicityConfirmStatus === 409) {
+      const expected409Noise = unexpectedConsoleErrors.findIndex((text) => /Failed to load resource:.*409 \(Conflict\)/i.test(text))
+      if (expected409Noise >= 0) unexpectedConsoleErrors.splice(expected409Noise, 1)
+    }
+    expect(unexpectedConsoleErrors, 'no unexpected browser console errors during strict aid journey').toEqual([])
 
     await fs.writeFile(path.resolve('student-affairs-aid-audit-evidence.json'), JSON.stringify({
       exactHead: process.env.E2E_TARGET_SHA || '', prefix, batchId, batchName, schoolYear, applyId,
