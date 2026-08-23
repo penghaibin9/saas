@@ -186,8 +186,8 @@ function buildDock(router) {
   dock.innerHTML = `
     <a href="/" data-route="/" data-key="home"><span aria-hidden="true">⌂</span><b>首页</b></a>
     <a href="/#products" data-route="/#products" data-key="products"><span aria-hidden="true">▦</span><b>产品</b></a>
-    <a href="/contact" data-route="/contact" data-key="contact"><span aria-hidden="true">✦</span><b>预约咨询</b></a>
-    <a href="${OFFICIAL_SITE_CONTACT.phoneHref}" data-key="phone"><span aria-hidden="true">☎</span><b>电话</b></a>
+    <a href="/contact" data-route="/contact" data-key="contact"><span aria-hidden="true">✦</span><b>预约产品演示</b></a>
+    <a href="/#login" data-route="/#login" data-key="login"><span aria-hidden="true">↗</span><b>登录系统</b></a>
   `
   dock.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target : null

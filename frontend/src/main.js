@@ -49,7 +49,9 @@ for (const page of OFFICIAL_SALES_PAGES.filter((item) => item.type !== 'product'
     name: routeName,
     component: page.path === '/platform'
       ? () => import('./views/official-site/OfficialPlatformCapabilityView.vue')
-      : () => import('./views/official-site/OfficialSalesPageView.vue'),
+      : page.type === 'legal'
+        ? () => import('./views/official-site/OfficialPolicyView.vue')
+        : () => import('./views/official-site/OfficialSalesPageView.vue'),
     meta: { public: true, title: page.navTitle || page.title, officialSalesPage: true }
   })
 }

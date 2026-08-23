@@ -65,12 +65,12 @@ export const STUDENT_MINIPROGRAM_QR = sanitizeEntryUrl(readEnv('VITE_PORTAL_STUD
 export const STATUS_PAGE_URL = sanitizeEntryUrl(readEnv('VITE_PORTAL_STATUS_URL'))
 
 /**
- * 隐私政策 / 用户协议 / 技术支持页。仓库当前均不存在对应公开路由，
- * 默认留空 → 页脚不渲染这些链接（不放虚假链接）。
+ * 隐私政策 / 用户协议 / 技术支持页。默认使用官网同源公开路由；
+ * 如学校另有统一政策与支持站点，可通过构建环境变量覆盖。
  */
-export const PRIVACY_URL = sanitizeEntryUrl(readEnv('VITE_PORTAL_PRIVACY_URL'))
-export const TERMS_URL = sanitizeEntryUrl(readEnv('VITE_PORTAL_TERMS_URL'))
-export const SUPPORT_URL = sanitizeEntryUrl(readEnv('VITE_PORTAL_SUPPORT_URL'))
+export const PRIVACY_URL = sanitizeEntryUrl(readEnv('VITE_PORTAL_PRIVACY_URL') || '/privacy')
+export const TERMS_URL = sanitizeEntryUrl(readEnv('VITE_PORTAL_TERMS_URL') || '/terms')
+export const SUPPORT_URL = sanitizeEntryUrl(readEnv('VITE_PORTAL_SUPPORT_URL') || '/support')
 
 /** 客服联系方式：复用登录页既有的 VITE_SUPPORT_CONTACT，不新增重复配置 */
 export const SUPPORT_CONTACT = readEnv('VITE_SUPPORT_CONTACT')

@@ -21,11 +21,10 @@ test('platform route keeps official sales SEO truth but renders the dedicated ca
 
 test('platform capability page preserves truthful build-status language', () => {
   for (const marker of [
-    '平台八大特色 · 已具备能力与持续演进清晰区分',
-    '只把已经进入当前产品代码与真实业务入口的能力标记为“当前具备”',
-    '尚未完成生产封板的能力统一标记为“持续演进”',
-    '具体交付范围以项目合同、正式版本与上线验收为准',
-    '持续演进能力不会借这些截图伪装成“已全面上线”'
+    '六项核心能力 · 当前能力与演进方向清晰区分',
+    '“当前具备”表示可进入现有产品工作区',
+    '“持续演进”表示产品方向',
+    '具体交付范围以项目合同、正式版本与上线验收为准'
   ]) {
     assert.ok(pageSource.includes(marker), `missing truthfulness marker: ${marker}`)
   }
@@ -33,7 +32,7 @@ test('platform capability page preserves truthful build-status language', () => 
   assert.ok(!pageSource.includes('全部已上线'))
 })
 
-test('platform capability page promotes current foundation and eight flagship capabilities', () => {
+test('platform capability page promotes a compact current foundation and six flagship capabilities', () => {
   for (const marker of [
     '学生 360° 成长工作台',
     '统一安全文件与版本中心',
@@ -52,16 +51,10 @@ test('platform capability page promotes current foundation and eight flagship ca
   }
 })
 
-test('platform capability page keeps ABCD as a clearly labeled evolution layer', () => {
-  for (const marker of [
-    'ABCD · 下一阶段平台演进',
-    '可信电子证据链 · 跨业务一致性巡检',
-    '材料合规检查 · 动态业务表单',
-    '文档版本比对 · 学生生命周期事实流',
-    '全局业务搜索 · 任务池 / 认领 / 转办 / 代理 / SLA'
-  ]) {
-    assert.ok(pageSource.includes(marker), `missing ABCD evolution copy: ${marker}`)
-  }
+test('platform capability page does not expose internal roadmap framing to customers', () => {
+  assert.ok(!pageSource.includes('ABCD · 下一阶段平台演进'))
+  assert.ok(!pageSource.includes('当前产品代码'))
+  assert.ok(!pageSource.includes('隔离浏览器环境'))
 })
 
 test('platform capability page ships responsive dedicated styling', () => {
@@ -70,7 +63,6 @@ test('platform capability page ships responsive dedicated styling', () => {
     '.yk-highlight-foundation-grid',
     '.yk-highlight-feature-grid',
     '.yk-highlight-proof-grid',
-    '.yk-highlight-evolution-grid',
     '@media (max-width: 720px)'
   ]) {
     assert.ok(styleSource.includes(marker), `missing platform capability style: ${marker}`)

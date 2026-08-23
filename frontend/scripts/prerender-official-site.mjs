@@ -3,7 +3,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { OFFICIAL_SALES_PAGE_MAP, OFFICIAL_SEO_ROUTES, OFFICIAL_SITE_CONTACT, officialCanonicalUrl } from '../src/config/officialSalesPages.js'
-import { HOME_FAQS, HOME_PAIN_POINTS, LIFECYCLE_STAGES, PRODUCT_STORIES, SALES_STORIES } from '../src/config/officialWebsiteStory.js'
+import { HOME_FAQS, LIFECYCLE_STAGES, PRODUCT_STORIES, SALES_STORIES } from '../src/config/officialWebsiteStory.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -39,6 +39,10 @@ function injectSeoHead(html, route) {
     about: page?.keywords || [],
     publisher: { '@type': 'Organization', name: OFFICIAL_SITE_CONTACT.company, url: OFFICIAL_SITE_CONTACT.canonicalOrigin, telephone: OFFICIAL_SITE_CONTACT.phone.replaceAll(' ', ''), contactPoint: { '@type': 'ContactPoint', contactType: 'sales', telephone: OFFICIAL_SITE_CONTACT.phone.replaceAll(' ', ''), availableLanguage: ['zh-CN'] } }
   }
+  const organizationLd = { '@context': 'https://schema.org', '@type': 'Organization', name: OFFICIAL_SITE_CONTACT.company, alternateName: OFFICIAL_SITE_CONTACT.brand, url: OFFICIAL_SITE_CONTACT.canonicalOrigin, telephone: OFFICIAL_SITE_CONTACT.phone.replaceAll(' ', ''), contactPoint: { '@type': 'ContactPoint', contactType: 'sales and support', telephone: OFFICIAL_SITE_CONTACT.phone.replaceAll(' ', ''), availableLanguage: ['zh-CN'] } }
+  const breadcrumbItems = route.path === '/' ? [] : [{ name: '官网首页', url: officialCanonicalUrl('/') }, ...(route.path.startsWith('/products/') ? [{ name: '产品中心', url: officialCanonicalUrl('/products') }] : []), { name: page?.navTitle || route.title.split('｜')[0], url: canonical }]
+  const breadcrumbLd = breadcrumbItems.length ? { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: breadcrumbItems.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.name, item: item.url })) } : null
+  const productLd = page?.type === 'product' ? { '@context': 'https://schema.org', '@type': 'Product', name: `跃科${page.navTitle}`, description: page.description, url: canonical, image: [socialImage], category: '职业院校学生管理软件', brand: { '@type': 'Brand', name: OFFICIAL_SITE_CONTACT.brand }, manufacturer: { '@type': 'Organization', name: OFFICIAL_SITE_CONTACT.company } } : null
   let next = setTitle(html, route.title)
   next = upsertHeadTag(next, /<meta\s+name=["']description["'][^>]*>/i, `<meta name="description" content="${escapeHtml(route.description)}">`)
   next = upsertHeadTag(next, /<meta\s+name=["']keywords["'][^>]*>/i, `<meta name="keywords" content="${escapeHtml(keywords)}">`)
@@ -55,26 +59,27 @@ function injectSeoHead(html, route) {
   next = upsertHeadTag(next, /<meta\s+name=["']twitter:title["'][^>]*>/i, `<meta name="twitter:title" content="${escapeHtml(route.title)}">`)
   next = upsertHeadTag(next, /<meta\s+name=["']twitter:description["'][^>]*>/i, `<meta name="twitter:description" content="${escapeHtml(route.description)}">`)
   next = upsertHeadTag(next, /<meta\s+name=["']twitter:image["'][^>]*>/i, `<meta name="twitter:image" content="${escapeHtml(socialImage)}">`)
-  next = next.replace('</head>', `  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>\n</head>`)
+  next = next.replace('</head>', `  <script type="application/ld+json" data-official-seo="page">${JSON.stringify(jsonLd)}</script>\n</head>`)
+  next = next.replace('</head>', `  <script type="application/ld+json" data-official-seo="organization">${JSON.stringify(organizationLd)}</script>\n</head>`)
+  if (breadcrumbLd) next = next.replace('</head>', `  <script type="application/ld+json" data-official-seo="breadcrumb">${JSON.stringify(breadcrumbLd)}</script>\n</head>`)
+  if (productLd) next = next.replace('</head>', `  <script type="application/ld+json" data-official-seo="product">${JSON.stringify(productLd)}</script>\n</head>`)
   if (faqs.length) {
     const faqLd = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faqs.map((item) => ({ '@type': 'Question', name: item.q, acceptedAnswer: { '@type': 'Answer', text: item.a } })) }
-    next = next.replace('</head>', `  <script type="application/ld+json">${JSON.stringify(faqLd)}</script>\n</head>`)
+    next = next.replace('</head>', `  <script type="application/ld+json" data-official-seo="faq">${JSON.stringify(faqLd)}</script>\n</head>`)
   }
   return next
 }
 
 function renderScreenshots(page) {
-  return (page?.screenshots || []).slice(0, 4).map((src, index) => `<figure><img src="${escapeHtml(src)}" alt="${escapeHtml(`${page.navTitle}真实产品界面 ${index + 1}`)}" width="1536" height="1024"><figcaption>${escapeHtml(page.navTitle)}真实代码运行界面；业务数据来自隔离测试环境，不代表客户运营规模。</figcaption></figure>`).join('')
+  return (page?.screenshots || []).slice(0, 4).map((src, index) => `<figure><img src="${escapeHtml(src)}" alt="${escapeHtml(`${page.navTitle}产品运行界面 ${index + 1}`)}" width="1536" height="1024"><figcaption>${escapeHtml(page.navTitle)}产品运行界面；页面内容为演示数据，不包含真实学校敏感信息。</figcaption></figure>`).join('')
 }
 function renderFaqs(faqs) { return faqs.length ? `<section><h2>常见问题</h2>${faqs.map((item) => `<details><summary>${escapeHtml(item.q)}</summary><p>${escapeHtml(item.a)}</p></details>`).join('')}</section>` : '' }
 
 function renderHomeSnapshot(route) {
   const lifecycle = LIFECYCLE_STAGES.map((item) => `<li><a href="${escapeHtml(item.route)}"><strong>${escapeHtml(item.stage)} · ${escapeHtml(item.title)}</strong><span>${escapeHtml(item.desc)}</span></a></li>`).join('')
-  const pains = HOME_PAIN_POINTS.map((item) => `<article><h2>${escapeHtml(item.title)}</h2><p>${escapeHtml(item.answer)}</p></article>`).join('')
   return `<main data-official-prerender="home"><article>
-    <p>面向职业院校的学生全生命周期数字化平台</p><h1>让职业院校学生业务真正连起来</h1><p>${escapeHtml(route.description)}</p>
-    <p><a href="/products">查看产品中心</a> · <a href="/contact">预约产品演示</a> · <a href="${OFFICIAL_SITE_CONTACT.phoneHref}">电话 ${OFFICIAL_SITE_CONTACT.phone}</a></p>
-    <section aria-label="学校真实痛点">${pains}</section>
+    <p>面向职业院校的学生全生命周期数字化平台</p><h1>把学生从入校到就业，连成一条业务主线</h1><p>${escapeHtml(route.description)}</p>
+    <p><a href="/#login">登录系统</a> · <a href="/products">查看产品中心</a> · <a href="/contact">预约产品演示</a> · <a href="${OFFICIAL_SITE_CONTACT.phoneHref}">电话 ${OFFICIAL_SITE_CONTACT.phone}</a></p>
     <section><h2>学生生命周期业务地图</h2><ol>${lifecycle}</ol></section>
     <section><h2>四大核心产品</h2><p><a href="/products/internship">岗位实习</a> · <a href="/products/graduation">毕业设计</a> · <a href="/products/student-affairs">学工中心</a> · <a href="/products/academic-affairs">教务系统</a></p></section>
     <section><h2>统一工作台、审批与消息</h2><p>重要事项汇聚到工作台、待办、审批和消息，减少老师在不同模块之间寻找今天要处理的事情。</p></section>
@@ -100,7 +105,7 @@ function renderStaticSnapshot(route) {
     ${facts.length ? `<section><h2>可核验产品事实</h2><ul>${facts.map((fact) => `<li>${escapeHtml(fact)}</li>`).join('')}</ul></section>` : ''}
     ${productStory?.roles?.length ? `<section><h2>不同角色怎么工作</h2>${productStory.roles.map((item) => `<article><h3>${escapeHtml(item.role)}</h3><p>${escapeHtml(item.work)}</p></article>`).join('')}</section>` : ''}
     ${productStory?.outcomes?.length ? `<section><h2>最终沉淀什么</h2><ul>${productStory.outcomes.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
-    <section><h2>真实产品证据</h2><p>官网仅使用真实系统界面，不把 Playwright/E2E 测试数据包装成真实学校客户案例。</p><div>${renderScreenshots(page)}</div></section>
+    <section><h2>产品运行界面</h2><p>页面内容为演示数据，不包含真实学生及学校敏感信息。</p><div>${renderScreenshots(page)}</div></section>
     <section><h2>四大核心产品</h2><p>${productLinks}</p></section>
     <p>公开内容最近更新：<time datetime="${escapeHtml(route.contentUpdatedAt)}">${escapeHtml(route.contentUpdatedAt)}</time></p>
     ${renderFaqs(faqs)}

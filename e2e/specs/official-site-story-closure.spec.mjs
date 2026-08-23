@@ -2,14 +2,17 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 
 test.describe('Official website P0 sales-story closure', () => {
-  test('desktop homepage explains pains, lifecycle, work hub, orientation, platform and delivery without login', async ({ page }) => {
+  test('desktop homepage leads with sales value, visible login, lifecycle, products, platform and delivery', async ({ page }) => {
     await page.goto(`${config.staffBaseUrl}/`)
-    await expect(page.getByRole('heading', { name: /系统已经不少，为什么老师还是忙/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /迎新.*在校.*教学.*实习.*毕设.*就业衔接/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /工作台、审批、消息/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /从到校前开始在线报到/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /学校级身份、权限、数据和治理边界/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /学校初始化、历史数据、角色权限/ })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: /把学生从入校到就业/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /选择身份，直接进入系统/ })).toBeVisible()
+    await expect(page.locator('#login .yk-login-card')).toHaveCount(3)
+    await expect(page.getByRole('heading', { name: /把分散的工作/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /从迎新到就业/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /覆盖学校最重/ })).toBeVisible()
+    await expect(page.locator('#products .yk-home-product-card')).toHaveCount(4)
+    await expect(page.getByRole('heading', { name: /统一工作、协同与治理/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /四步完成部署与落地/ })).toBeVisible()
     await expect(page.locator('#faq details')).toHaveCount(6)
   })
 
@@ -19,6 +22,7 @@ test.describe('Official website P0 sales-story closure', () => {
       await page.goto(`${config.staffBaseUrl}/`)
       const metrics = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
       expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1)
+      await expect(page.locator('#login')).toBeVisible()
       await expect(page.locator('#lifecycle')).toBeVisible()
       await expect(page.locator('#platform')).toBeVisible()
     })
