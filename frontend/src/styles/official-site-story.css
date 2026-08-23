@@ -1,0 +1,80 @@
+/* 官网销售叙事增强：只服务公开官网，不影响管理 PC 业务页面。 */
+.yk-story-site .yk-section-heading-left{margin-left:0;text-align:left}
+.yk-story-section{position:relative;overflow:hidden}
+.yk-story-section:before{content:"";position:absolute;inset:auto -15% -220px; height:420px;background:radial-gradient(circle,rgba(37,99,235,.08),transparent 68%);pointer-events:none}
+.yk-pain-section{background:#fbfcff}
+.yk-pain-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.yk-pain-card{position:relative;min-height:260px;padding:26px;border:1px solid rgba(21,50,91,.1);border-radius:24px;background:#fff;box-shadow:0 20px 50px rgba(28,59,110,.06)}
+.yk-pain-card>span{display:inline-flex;width:42px;height:42px;align-items:center;justify-content:center;border-radius:14px;background:#edf4ff;color:#2563eb;font-size:13px;font-weight:800}
+.yk-pain-card h3{margin:28px 0 14px;font-size:20px;line-height:1.45;color:#10213c}
+.yk-pain-card p{margin:0;color:#5a6b85;line-height:1.75}
+.yk-lifecycle-section{background:linear-gradient(180deg,#fff 0%,#f5f8ff 100%)}
+.yk-lifecycle-track{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;padding:0;margin:0;list-style:none}
+.yk-lifecycle-card{min-width:0}
+.yk-lifecycle-card>a{display:flex;height:100%;min-height:405px;flex-direction:column;padding:18px;border:1px solid rgba(30,64,175,.12);border-radius:26px;background:rgba(255,255,255,.92);color:inherit;text-decoration:none;box-shadow:0 24px 65px rgba(47,74,122,.07);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.yk-lifecycle-card>a:hover{transform:translateY(-3px);border-color:rgba(37,99,235,.3);box-shadow:0 30px 70px rgba(47,74,122,.12)}
+.yk-lifecycle-top{display:flex;align-items:center;justify-content:space-between;color:#63728a;font-size:13px;font-weight:700}
+.yk-lifecycle-index{display:inline-flex;width:38px;height:38px;align-items:center;justify-content:center;border-radius:13px;background:#102f70;color:#fff}
+.yk-lifecycle-card h3{margin:18px 0 8px;font-size:23px;color:#10213c}
+.yk-lifecycle-card p{min-height:76px;margin:0 0 16px;color:#5b6d88;line-height:1.7}
+.yk-lifecycle-card figure{height:160px;margin:auto 0 16px;overflow:hidden;border-radius:17px;background:#edf2fa}
+.yk-lifecycle-card img{width:100%;height:100%;object-fit:cover;object-position:top}
+.yk-lifecycle-card strong{color:#2356b6;font-size:14px}
+.yk-work-hub-section{background:#0d234d;color:#fff}
+.yk-work-hub-section .yk-section-heading h2,.yk-work-hub-section .yk-section-heading p{color:#fff}
+.yk-work-hub-section .yk-section-heading>p:last-child{color:rgba(255,255,255,.68)}
+.yk-proof-story-list{display:grid;gap:28px}
+.yk-proof-story{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);align-items:center;gap:34px;padding:22px;border:1px solid rgba(255,255,255,.12);border-radius:28px;background:rgba(255,255,255,.06)}
+.yk-proof-story-reverse{grid-template-columns:minmax(300px,.65fr) minmax(0,1.35fr)}
+.yk-proof-story-reverse figure{order:2}.yk-proof-story-reverse>div{order:1}
+.yk-proof-story figure{margin:0;overflow:hidden;border-radius:20px;background:#fff;box-shadow:0 26px 70px rgba(0,0,0,.22)}
+.yk-proof-story img{display:block;width:100%;height:auto}
+.yk-proof-story h3{margin:14px 0 12px;font-size:30px;color:#fff}
+.yk-proof-story p{margin:0 0 20px;color:rgba(255,255,255,.72);line-height:1.8}
+.yk-proof-story a{color:#9ec2ff;font-weight:700;text-decoration:none}
+.yk-proof-tag{display:inline-flex;padding:7px 10px;border-radius:999px;background:rgba(84,146,255,.16);color:#b9d2ff;font-size:12px;font-weight:800}
+.yk-orientation-section{background:#f5f9ff}
+.yk-orientation-layout{display:grid;grid-template-columns:minmax(340px,.78fr) minmax(0,1.22fr);gap:52px;align-items:center}
+.yk-orientation-copy h2{margin:12px 0 18px;font-size:clamp(32px,4vw,54px);line-height:1.15;color:#10213c}
+.yk-orientation-copy>p:not(.yk-kicker){color:#5d6f89;line-height:1.8}
+.yk-inline-flow{display:flex;flex-wrap:wrap;gap:8px;padding:0;margin:26px 0;list-style:none}
+.yk-inline-flow li{position:relative;padding:9px 13px;border:1px solid #d7e3f6;border-radius:999px;background:#fff;color:#294668;font-size:13px;font-weight:700}
+.yk-inline-flow li:not(:last-child):after{content:"→";margin-left:10px;color:#8aa0be}
+.yk-orientation-proofs{display:grid;gap:18px}
+.yk-orientation-proofs figure{margin:0;overflow:hidden;border:1px solid #dbe5f4;border-radius:22px;background:#fff;box-shadow:0 24px 60px rgba(37,67,116,.1)}
+.yk-orientation-proofs img{display:block;width:100%;height:auto}
+.yk-orientation-proofs figcaption{padding:12px 16px;color:#60718a;font-size:13px}
+.yk-platform-section{background:#fff}
+.yk-platform-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,.82fr);gap:26px;align-items:stretch}
+.yk-foundation-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.yk-foundation-grid article{padding:22px;border:1px solid #e0e8f4;border-radius:20px;background:#f8faff}
+.yk-foundation-grid span{display:block;margin-bottom:8px;color:#153463;font-weight:800}
+.yk-foundation-grid p{margin:0;color:#61728a;line-height:1.7}
+.yk-platform-proof{display:flex;flex-direction:column;margin:0;overflow:hidden;border:1px solid #dce5f3;border-radius:24px;background:#fff;box-shadow:0 24px 65px rgba(31,61,110,.09)}
+.yk-platform-proof img{width:100%;height:100%;min-height:300px;object-fit:cover;object-position:top}
+.yk-platform-proof figcaption{display:grid;gap:4px;padding:16px 18px}.yk-platform-proof figcaption strong{color:#17375f}.yk-platform-proof figcaption span{color:#6b7c91;font-size:13px;line-height:1.6}
+.yk-proof-pending-note{display:flex;gap:8px;margin-top:18px;padding:15px 18px;border:1px dashed #b8cae6;border-radius:15px;background:#f7faff;color:#59708f;font-size:13px;line-height:1.6}
+.yk-proof-pending-note strong{color:#1d4d94}.yk-text-link{display:inline-flex;margin-top:18px;color:#2458b7;font-weight:800;text-decoration:none}
+.yk-delivery-section{background:linear-gradient(180deg,#f8fbff,#fff)}
+.yk-implementation-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;padding:0;margin:0;list-style:none}
+.yk-implementation-grid li{position:relative;min-height:190px;padding:24px;border:1px solid #e1e9f4;border-radius:22px;background:#fff}
+.yk-implementation-grid li>span{display:block;color:#2762c9;font-size:12px;font-weight:900;letter-spacing:.08em}
+.yk-implementation-grid h3{margin:25px 0 9px;color:#183657;font-size:20px}.yk-implementation-grid p{margin:0;color:#65778f;line-height:1.7}
+.yk-delivery-actions{display:flex;justify-content:center;gap:12px;margin-top:28px}
+.yk-faq-section{background:#0f1d36;color:#fff}
+.yk-faq-layout{display:grid;grid-template-columns:minmax(300px,.75fr) minmax(0,1.25fr);gap:60px;align-items:start}
+.yk-faq-section .yk-section-heading h2,.yk-faq-section .yk-section-heading p{color:#fff}.yk-faq-section .yk-section-heading>p:last-child{color:rgba(255,255,255,.66)}
+.yk-faq-list{display:grid;gap:10px}.yk-faq-list details{border:1px solid rgba(255,255,255,.12);border-radius:17px;background:rgba(255,255,255,.06)}
+.yk-faq-list summary{padding:18px 20px;cursor:pointer;color:#fff;font-weight:800;list-style-position:inside}.yk-faq-list details p{margin:0;padding:0 20px 20px;color:rgba(255,255,255,.7);line-height:1.75}
+.yk-access-secondary{background:#f7f9fd}.yk-access-secondary .yk-section-heading{margin-bottom:28px}
+
+/* 通用销售/产品详情页新增的“看懂系统”区块 */
+.yk-story-fact{margin:22px 0;padding:17px 20px;border-left:4px solid #3976e8;border-radius:0 16px 16px 0;background:#f1f6ff;color:#365275;line-height:1.7}
+.yk-role-journey-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.yk-role-journey-grid article{padding:22px;border:1px solid #dfe7f2;border-radius:20px;background:#fff}.yk-role-journey-grid h3{margin:0 0 9px;color:#1a3e6c}.yk-role-journey-grid p{margin:0;color:#64758c;line-height:1.7}
+.yk-outcome-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.yk-outcome-grid li{padding:16px;border:1px solid #dfe8f4;border-radius:15px;background:#f8faff;color:#365471;font-weight:700;list-style:none}
+.yk-sales-process{display:flex;flex-wrap:wrap;gap:9px;padding:0;margin:24px 0;list-style:none}.yk-sales-process li{padding:10px 13px;border-radius:999px;background:#edf4ff;color:#234f98;font-size:13px;font-weight:800}.yk-sales-facts{display:grid;gap:10px;padding:0;margin:22px 0;list-style:none}.yk-sales-facts li{padding:14px 16px;border:1px solid #dce6f4;border-radius:15px;background:#fff;color:#49627e;line-height:1.65}
+.yk-product-faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.yk-product-faq details{padding:18px;border:1px solid #dfe7f2;border-radius:18px;background:#fff}.yk-product-faq summary{cursor:pointer;color:#173b68;font-weight:800}.yk-product-faq p{margin:12px 0 0;color:#66778d;line-height:1.7}
+
+@media (max-width:1100px){.yk-pain-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.yk-lifecycle-track{grid-template-columns:repeat(2,minmax(0,1fr))}.yk-platform-layout{grid-template-columns:1fr}.yk-platform-proof img{min-height:0}.yk-role-journey-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:900px){.yk-proof-story,.yk-proof-story-reverse,.yk-orientation-layout,.yk-faq-layout{grid-template-columns:1fr}.yk-proof-story-reverse figure,.yk-proof-story-reverse>div{order:initial}.yk-implementation-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.yk-outcome-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.yk-proof-pending-note{display:block}.yk-proof-pending-note strong{display:block;margin-bottom:4px}}
+@media (max-width:640px){.yk-pain-grid,.yk-lifecycle-track,.yk-foundation-grid,.yk-implementation-grid,.yk-role-journey-grid,.yk-outcome-grid,.yk-product-faq{grid-template-columns:1fr}.yk-pain-card{min-height:auto}.yk-lifecycle-card>a{min-height:0}.yk-lifecycle-card p{min-height:0}.yk-lifecycle-card figure{height:150px}.yk-proof-story{padding:12px;gap:20px}.yk-proof-story h3{font-size:25px}.yk-orientation-copy h2{font-size:32px}.yk-platform-layout{display:block}.yk-platform-proof{margin-top:16px}.yk-delivery-actions{flex-direction:column}.yk-delivery-actions .yk-button{width:100%}.yk-inline-flow li:not(:last-child):after{display:none}}
