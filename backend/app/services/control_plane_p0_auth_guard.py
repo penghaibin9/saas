@@ -8,6 +8,13 @@ the same durable functions after route registration.
 from __future__ import annotations
 
 _INSTALLED = False
+_PASSWORD_LOGIN_PATHS = frozenset({
+    "/api/v1/auth/login",
+    "/api/v1/auth/browser-login",
+})
+_PASSWORD_LOGIN_SHARED_NAT_LIMIT = 300
+_COMPAT_LOGIN_LIMIT = 10
+_LOGIN_WINDOW_SECONDS = 60
 
 
 def install() -> None:
@@ -17,6 +24,8 @@ def install() -> None:
 
     from app.db.session import db_enabled
     from app.core import token_store
+    from app.core.context import get_request_meta
+    from app.core.exceptions import AppException
     from app.services import auth_challenge_service as captcha
     from app.services import auth_risk_service as risk_store
     from app.services import auth_service_db
@@ -35,6 +44,31 @@ def install() -> None:
 
     def use_durable() -> bool:
         return bool(db_enabled() or strict_env())
+
+    def password_aware_login_rate_guard() -> None:
+        """Keep password login usable behind shared campus NAT without weakening spray locks.
+
+        Password-bearing login already has durable account, account+IP and IP-only failed-login
+        locks in ``control_plane_auth_service``; the IP-only failed-password threshold is wider
+        than one account but still fail-closed.  The historical 10 requests/minute *total* IP
+        bucket counted successful logins as attacks, so a classroom/campus NAT could deny the
+        11th legitimate user.  Give only the two password-login entry paths a higher flood cap;
+        mock/wx compatibility endpoints keep the legacy 10/minute ceiling.
+        """
+        meta = get_request_meta() or {}
+        ip = str(meta.get("ip") or "unknown")
+        path = str(meta.get("path") or "")
+        limit = (
+            _PASSWORD_LOGIN_SHARED_NAT_LIMIT
+            if path in _PASSWORD_LOGIN_PATHS
+            else _COMPAT_LOGIN_LIMIT
+        )
+        if not p0.rate_limit(f"login:{ip}", limit, _LOGIN_WINDOW_SECONDS):
+            raise AppException(
+                "RATE_LIMITED",
+                "登录过于频繁，请 1 分钟后再试",
+                http_status=429,
+            )
 
     def durable_risk_record_failure(
         key: str,
@@ -103,6 +137,7 @@ def install() -> None:
     token_store.get_login_failure_count = failure_count
     token_store.reset_login_failures = reset_failure
     token_store.rate_limit = p0.rate_limit
+    p0.login_rate_guard = password_aware_login_rate_guard
 
     # Modules that imported the old functions by value need their module globals
     # rebound as well; otherwise a route could silently bypass the new authority.
@@ -126,12 +161,14 @@ def install() -> None:
     wx_auth_service.build_login_result = p0.build_login_result
     wx_auth_service.wx_bind = p0.wx_bind
 
-    # auth.py imports rate_limit/issue_refresh by value.  Some non-replaced
-    # compatibility endpoints (mock/wx login) still call its _login_rate_guard.
+    # auth.py imports rate_limit/issue_refresh by value.  Rebind the legacy guard too because
+    # browser-login deliberately delegates to auth.login(body) and would otherwise retain the
+    # historical 10/minute total-IP cap even after the P0 authority is installed.
     try:
         from app.api.v1 import auth as auth_api
         auth_api.rate_limit = p0.rate_limit
         auth_api.issue_refresh = p0.issue_refresh
+        auth_api._login_rate_guard = password_aware_login_rate_guard
     except Exception:
         pass
 
