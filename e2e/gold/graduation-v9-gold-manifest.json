@@ -32,86 +32,275 @@
       "role": "GD_MENTOR",
       "batchId": "4",
       "route": "/admin/graduation?batchId=4",
-      "fixtureVersion": { "runId": "31803964135", "gdStudentId": "2" },
-      "viewports": [{ "width": 1440, "height": 900 }, { "width": 1280, "height": 800 }],
+      "fixtureVersion": {
+        "runId": "31803964135",
+        "gdStudentId": "2"
+      },
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900
+        },
+        {
+          "width": 1280,
+          "height": 800
+        }
+      ],
       "browser": "chromium",
       "browserProject": "default",
       "deviceScaleFactor": 1,
       "language": "zh-CN",
-      "fontEnvironment": { "bodyFontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif", "bodyFontSize": "15px", "status": "loaded" },
-      "dynamicZones": ["security-watermark", "run-scoped-batch-label"]
+      "fontEnvironment": {
+        "bodyFontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+        "bodyFontSize": "15px",
+        "status": "loaded"
+      },
+      "dynamicZones": [
+        "security-watermark",
+        "run-scoped-batch-label"
+      ]
     },
     "U3": {
       "tenant": "sandbox-school",
       "role": "GD_MENTOR",
       "batchId": "4",
       "route": "/admin/graduation/finals?batchId=4&tab=PENDING_REVIEW",
-      "fixtureVersion": { "runId": "31803964135", "gdStudentId": "2", "studentNo": "E2E20260001" },
-      "viewports": [{ "width": 1440, "height": 900 }, { "width": 1280, "height": 800 }],
+      "fixtureVersion": {
+        "runId": "31803964135",
+        "gdStudentId": "2",
+        "studentNo": "E2E20260001"
+      },
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900
+        },
+        {
+          "width": 1280,
+          "height": 800
+        }
+      ],
       "browser": "chromium",
       "browserProject": "default",
       "deviceScaleFactor": 1,
       "language": "zh-CN",
-      "fontEnvironment": { "bodyFontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif", "bodyFontSize": "15px", "status": "loaded" },
-      "dynamicZones": ["security-watermark", "run-scoped-batch-label", "run-scoped-topic-title"]
+      "fontEnvironment": {
+        "bodyFontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+        "bodyFontSize": "15px",
+        "status": "loaded"
+      },
+      "dynamicZones": [
+        "security-watermark",
+        "run-scoped-batch-label",
+        "run-scoped-topic-title"
+      ]
     },
     "U4": {
       "tenant": "sandbox-school",
       "role": "GD_MENTOR",
       "batchId": "4",
       "route": "/admin/graduation/process?batchId=4&studentId=132&panel=guidance&queue=U4-DEEP&source=v9-e2e",
-      "fixtureVersion": { "runId": "31803964135", "gdStudentId": "2", "targetSeedCount": 130 },
-      "viewports": [{ "width": 1440, "height": 900 }, { "width": 1280, "height": 800 }],
+      "fixtureVersion": {
+        "runId": "31803964135",
+        "gdStudentId": "2",
+        "targetSeedCount": 130
+      },
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900
+        },
+        {
+          "width": 1280,
+          "height": 800
+        }
+      ],
       "browser": "chromium",
       "browserProject": "default",
       "deviceScaleFactor": 1,
       "language": "zh-CN",
-      "fontEnvironment": { "bodyFontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif", "bodyFontSize": "15px", "status": "loaded" },
-      "dynamicZones": ["security-watermark", "run-scoped-batch-label", "run-scoped-guidance-text"]
+      "fontEnvironment": {
+        "bodyFontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+        "bodyFontSize": "15px",
+        "status": "loaded"
+      },
+      "dynamicZones": [
+        "security-watermark",
+        "run-scoped-batch-label",
+        "run-scoped-guidance-text"
+      ]
     },
     "U7": {
       "tenant": "sandbox-school",
       "role": "SCHOOL_ADMIN",
       "batchId": "4",
       "route": "/admin/graduation/risk-archive?panel=archive&batchId=4",
-      "fixtureVersion": { "runId": "31803964135", "gdStudentId": "2", "studentNo": "E2E20260001" },
-      "viewports": [{ "width": 1440, "height": 900 }, { "width": 1280, "height": 800 }],
+      "fixtureVersion": {
+        "runId": "31803964135",
+        "gdStudentId": "2",
+        "studentNo": "E2E20260001"
+      },
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900
+        },
+        {
+          "width": 1280,
+          "height": 800
+        }
+      ],
       "browser": "chromium",
       "browserProject": "default",
       "deviceScaleFactor": 1,
       "language": "zh-CN",
-      "fontEnvironment": { "bodyFontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif", "bodyFontSize": "15px", "status": "loaded" },
-      "dynamicZones": ["security-watermark", "run-scoped-batch-label", "run-scoped-topic-title"]
+      "fontEnvironment": {
+        "bodyFontFamily": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+        "bodyFontSize": "15px",
+        "status": "loaded"
+      },
+      "dynamicZones": [
+        "security-watermark",
+        "run-scoped-batch-label",
+        "run-scoped-topic-title"
+      ]
     },
     "U8": {
       "tenant": "sandbox-school",
       "role": "GD_MENTOR",
       "fixtureBatchId": "4",
       "selectedBatchId": "9",
-      "routes": ["#/pages/teacher/graduation-guide/index", "#/pages/teacher/graduation-taskbook/index"],
-      "fixtureVersion": { "runId": "31803964135", "gdStudentId": "2", "studentNo": "E2E20260001" },
-      "viewports": [{ "width": 390, "height": 844 }, { "width": 375, "height": 812 }],
+      "routes": [
+        "#/pages/teacher/graduation-guide/index",
+        "#/pages/teacher/graduation-taskbook/index"
+      ],
+      "fixtureVersion": {
+        "runId": "31803964135",
+        "gdStudentId": "2",
+        "studentNo": "E2E20260001"
+      },
+      "viewports": [
+        {
+          "width": 390,
+          "height": 844
+        },
+        {
+          "width": 375,
+          "height": 812
+        }
+      ],
       "browser": "chromium",
       "browserProject": "default",
       "deviceScaleFactor": 1,
       "language": "zh-CN",
-      "fontEnvironment": { "bodyFontFamily": "\"Times New Roman\"", "bodyFontSize": "16px", "status": "loaded" },
-      "dynamicZones": ["run-scoped-batch-label", "run-scoped-topic-title"]
+      "fontEnvironment": {
+        "bodyFontFamily": "\"Times New Roman\"",
+        "bodyFontSize": "16px",
+        "status": "loaded"
+      },
+      "dynamicZones": [
+        "run-scoped-batch-label",
+        "run-scoped-topic-title"
+      ]
     }
   },
   "baselineCount": 12,
   "baselines": [
-    { "card": "U1", "spec": "graduation-v9-dashboard-visual.spec.mjs", "logicalName": "gd-U1-dashboard-GoldCandidate-1280x800.png", "frozenFile": "gd-U1-dashboard-GoldCandidate-1280x800-chromium-linux.png", "sha256": "0a3e70d24ac905e06dd62cc2ef2e635a61769f45e283280952261db271c9674a", "maxDiffPixelRatio": 0.003 },
-    { "card": "U1", "spec": "graduation-v9-dashboard-visual.spec.mjs", "logicalName": "gd-U1-dashboard-GoldCandidate-1440x900.png", "frozenFile": "gd-U1-dashboard-GoldCandidate-1440x900-chromium-linux.png", "sha256": "3712e9419959854d1ef23da006e79402454af16ea44beac87d564b5e238da001", "maxDiffPixelRatio": 0.003 },
-    { "card": "U3", "spec": "graduation-v9-final-review-visual.spec.mjs", "logicalName": "gd-U3-final-GoldCandidate-1280x800.png", "frozenFile": "gd-U3-final-GoldCandidate-1280x800-chromium-linux.png", "sha256": "9ef1fe110f2249f296eabff0379635f53c88f90868a723cdcd04b683b381ade2", "maxDiffPixelRatio": 0.004 },
-    { "card": "U3", "spec": "graduation-v9-final-review-visual.spec.mjs", "logicalName": "gd-U3-final-GoldCandidate-1440x900.png", "frozenFile": "gd-U3-final-GoldCandidate-1440x900-chromium-linux.png", "sha256": "67b072e474901ac616b6301b64cc2b945725a0bb3ac6c03ba979189885a78d0c", "maxDiffPixelRatio": 0.004 },
-    { "card": "U4", "spec": "graduation-v9-process-visual.spec.mjs", "logicalName": "gd-U4-process-GoldCandidate-1280x800.png", "frozenFile": "gd-U4-process-GoldCandidate-1280x800-chromium-linux.png", "sha256": "752fce4f40cb6e8844ced8c3d5c18236a5c126b9f43838d04653ebdc79b7e753", "maxDiffPixelRatio": 0.004 },
-    { "card": "U4", "spec": "graduation-v9-process-visual.spec.mjs", "logicalName": "gd-U4-process-GoldCandidate-1440x900.png", "frozenFile": "gd-U4-process-GoldCandidate-1440x900-chromium-linux.png", "sha256": "b33ebcb5baa30a165441507ded4b67103857f3557a152f168c4be1d65c333c50", "maxDiffPixelRatio": 0.004 },
-    { "card": "U7", "spec": "graduation-v9-archive-visual.spec.mjs", "logicalName": "gd-U7-archive-GoldCandidate-1280x800.png", "frozenFile": "gd-U7-archive-GoldCandidate-1280x800-chromium-linux.png", "sha256": "c858a8c18032b4f4793c6efbab4bef7aba85c179850d4073834a02142a231266", "maxDiffPixelRatio": 0.004 },
-    { "card": "U7", "spec": "graduation-v9-archive-visual.spec.mjs", "logicalName": "gd-U7-archive-GoldCandidate-1440x900.png", "frozenFile": "gd-U7-archive-GoldCandidate-1440x900-chromium-linux.png", "sha256": "4e23d33def37d719ae796273f7e5a2c2111374f95870980d40aea409dd36df09", "maxDiffPixelRatio": 0.004 },
-    { "card": "U8", "spec": "graduation-v9-teacher-mobile-visual.spec.mjs", "logicalName": "gd-U8-taskbook-GoldCandidate-375x812.png", "frozenFile": "gd-U8-taskbook-GoldCandidate-375x812-chromium-linux.png", "sha256": "8e80e68a08511ebf604a1e1b2b14cee1df8d548b42777e22d4e22e9744b2653f", "maxDiffPixelRatio": 0.006 },
-    { "card": "U8", "spec": "graduation-v9-teacher-mobile-visual.spec.mjs", "logicalName": "gd-U8-taskbook-GoldCandidate-390x844.png", "frozenFile": "gd-U8-taskbook-GoldCandidate-390x844-chromium-linux.png", "sha256": "6a2a3bf5a4447be83292d75153a1833d76c3548f02f02f540968b4dbb5955081", "maxDiffPixelRatio": 0.006 },
-    { "card": "U8", "spec": "graduation-v9-teacher-mobile-visual.spec.mjs", "logicalName": "gd-U8-teacher-workbench-GoldCandidate-375x812.png", "frozenFile": "gd-U8-teacher-workbench-GoldCandidate-375x812-chromium-linux.png", "sha256": "76093b94de993fecdea8bef753d24ee840b441f37eb1232d67d2012c445684e8", "maxDiffPixelRatio": 0.006 },
-    { "card": "U8", "spec": "graduation-v9-teacher-mobile-visual.spec.mjs", "logicalName": "gd-U8-teacher-workbench-GoldCandidate-390x844.png", "frozenFile": "gd-U8-teacher-workbench-GoldCandidate-390x844-chromium-linux.png", "sha256": "672040f23f348dfe8409e833317e46c44709e9f5bdf41bd272cbbed707f965f4", "maxDiffPixelRatio": 0.006 }
+    {
+      "card": "U1",
+      "spec": "graduation-v9-dashboard-visual.spec.mjs",
+      "logicalName": "gd-U1-dashboard-GoldCandidate-1280x800.png",
+      "frozenFile": "gd-U1-dashboard-GoldCandidate-1280x800-chromium-linux.png",
+      "sha256": "0a3e70d24ac905e06dd62cc2ef2e635a61769f45e283280952261db271c9674a",
+      "maxDiffPixelRatio": 0.003
+    },
+    {
+      "card": "U1",
+      "spec": "graduation-v9-dashboard-visual.spec.mjs",
+      "logicalName": "gd-U1-dashboard-GoldCandidate-1440x900.png",
+      "frozenFile": "gd-U1-dashboard-GoldCandidate-1440x900-chromium-linux.png",
+      "sha256": "3712e9419959854d1ef23da006e79402454af16ea44beac87d564b5e238da001",
+      "maxDiffPixelRatio": 0.003
+    },
+    {
+      "card": "U3",
+      "spec": "graduation-v9-final-review-visual.spec.mjs",
+      "logicalName": "gd-U3-final-GoldCandidate-1280x800.png",
+      "frozenFile": "gd-U3-final-GoldCandidate-1280x800-chromium-linux.png",
+      "sha256": "0cf83b80bbe2bbc7d43a2caa40b21f90eb75afd69ed74395117f5cb0b04c7e42",
+      "maxDiffPixelRatio": 0.004
+    },
+    {
+      "card": "U3",
+      "spec": "graduation-v9-final-review-visual.spec.mjs",
+      "logicalName": "gd-U3-final-GoldCandidate-1440x900.png",
+      "frozenFile": "gd-U3-final-GoldCandidate-1440x900-chromium-linux.png",
+      "sha256": "44cfe86bd6171c1c23bfa8d74cc33d099061fa09bb5d28b0c643815797b188d6",
+      "maxDiffPixelRatio": 0.004
+    },
+    {
+      "card": "U4",
+      "spec": "graduation-v9-process-visual.spec.mjs",
+      "logicalName": "gd-U4-process-GoldCandidate-1280x800.png",
+      "frozenFile": "gd-U4-process-GoldCandidate-1280x800-chromium-linux.png",
+      "sha256": "752fce4f40cb6e8844ced8c3d5c18236a5c126b9f43838d04653ebdc79b7e753",
+      "maxDiffPixelRatio": 0.004
+    },
+    {
+      "card": "U4",
+      "spec": "graduation-v9-process-visual.spec.mjs",
+      "logicalName": "gd-U4-process-GoldCandidate-1440x900.png",
+      "frozenFile": "gd-U4-process-GoldCandidate-1440x900-chromium-linux.png",
+      "sha256": "b33ebcb5baa30a165441507ded4b67103857f3557a152f168c4be1d65c333c50",
+      "maxDiffPixelRatio": 0.004
+    },
+    {
+      "card": "U7",
+      "spec": "graduation-v9-archive-visual.spec.mjs",
+      "logicalName": "gd-U7-archive-GoldCandidate-1280x800.png",
+      "frozenFile": "gd-U7-archive-GoldCandidate-1280x800-chromium-linux.png",
+      "sha256": "c858a8c18032b4f4793c6efbab4bef7aba85c179850d4073834a02142a231266",
+      "maxDiffPixelRatio": 0.004
+    },
+    {
+      "card": "U7",
+      "spec": "graduation-v9-archive-visual.spec.mjs",
+      "logicalName": "gd-U7-archive-GoldCandidate-1440x900.png",
+      "frozenFile": "gd-U7-archive-GoldCandidate-1440x900-chromium-linux.png",
+      "sha256": "4e23d33def37d719ae796273f7e5a2c2111374f95870980d40aea409dd36df09",
+      "maxDiffPixelRatio": 0.004
+    },
+    {
+      "card": "U8",
+      "spec": "graduation-v9-teacher-mobile-visual.spec.mjs",
+      "logicalName": "gd-U8-taskbook-GoldCandidate-375x812.png",
+      "frozenFile": "gd-U8-taskbook-GoldCandidate-375x812-chromium-linux.png",
+      "sha256": "8e80e68a08511ebf604a1e1b2b14cee1df8d548b42777e22d4e22e9744b2653f",
+      "maxDiffPixelRatio": 0.006
+    },
+    {
+      "card": "U8",
+      "spec": "graduation-v9-teacher-mobile-visual.spec.mjs",
+      "logicalName": "gd-U8-taskbook-GoldCandidate-390x844.png",
+      "frozenFile": "gd-U8-taskbook-GoldCandidate-390x844-chromium-linux.png",
+      "sha256": "6a2a3bf5a4447be83292d75153a1833d76c3548f02f02f540968b4dbb5955081",
+      "maxDiffPixelRatio": 0.006
+    },
+    {
+      "card": "U8",
+      "spec": "graduation-v9-teacher-mobile-visual.spec.mjs",
+      "logicalName": "gd-U8-teacher-workbench-GoldCandidate-375x812.png",
+      "frozenFile": "gd-U8-teacher-workbench-GoldCandidate-375x812-chromium-linux.png",
+      "sha256": "76093b94de993fecdea8bef753d24ee840b441f37eb1232d67d2012c445684e8",
+      "maxDiffPixelRatio": 0.006
+    },
+    {
+      "card": "U8",
+      "spec": "graduation-v9-teacher-mobile-visual.spec.mjs",
+      "logicalName": "gd-U8-teacher-workbench-GoldCandidate-390x844.png",
+      "frozenFile": "gd-U8-teacher-workbench-GoldCandidate-390x844-chromium-linux.png",
+      "sha256": "672040f23f348dfe8409e833317e46c44709e9f5bdf41bd272cbbed707f965f4",
+      "maxDiffPixelRatio": 0.006
+    }
   ]
 }
