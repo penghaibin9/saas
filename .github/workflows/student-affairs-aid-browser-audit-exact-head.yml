@@ -67,7 +67,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_TARGET_SHA: b93750af35dada5c0f5808812fb275be20f49eb3
+      E2E_TARGET_SHA: 4c493c8673316d823fa1674a7506226f4bb2c75f
 
     steps:
       - name: Checkout audit runner only
@@ -80,7 +80,7 @@ jobs:
       - name: Checkout immutable application exact head
         uses: actions/checkout@v4
         with:
-          ref: b93750af35dada5c0f5808812fb275be20f49eb3
+          ref: 4c493c8673316d823fa1674a7506226f4bb2c75f
           path: app
           fetch-depth: 0
 
@@ -110,7 +110,7 @@ jobs:
         working-directory: app/backend
         run: |
           pip install -r requirements.txt
-          pytest -q tests/test_affairs_aid_draft_resubmit_contract.py tests/test_affairs_aid_detail_projection_contract.py tests/test_affairs_aid_audit_namespace_contract.py tests/test_auth_shared_nat_login_rate_guard.py
+          pytest -q tests/test_affairs_aid_draft_resubmit_contract.py tests/test_affairs_aid_detail_projection_contract.py tests/test_affairs_aid_audit_namespace_contract.py tests/test_auth_shared_nat_login_rate_guard.py tests/test_affairs_appeal_result_message_events.py
           alembic upgrade head
           python scripts/bootstrap_control_plane_school_iam_authority.py
           python scripts/e2e_seed_playwright_tenants.py
@@ -217,7 +217,7 @@ jobs:
         working-directory: app/e2e
         run: npx playwright test specs/student-affairs-aid-browser-audit.spec.mjs
 
-      - name: Verify aid MySQL, encryption, objection, audit, publicity gate and audit-key isolation
+      - name: Verify aid MySQL, encryption, objection, notification, audit, publicity gate and audit-key isolation
         working-directory: app/backend
         run: |
           python - <<'PY'
@@ -228,7 +228,8 @@ jobs:
           e = json.loads(Path('../e2e/student-affairs-aid-audit-evidence.json').read_text(encoding='utf-8'))
           aid_id = int(e['applyId'])
           batch_id = int(e['batchId'])
-          findings = {'applyId': aid_id, 'batchId': batch_id}
+          objection_id = int(e['objectionId'])
+          findings = {'applyId': aid_id, 'batchId': batch_id, 'objectionId': objection_id}
           conn = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', database='student_lifecycle_e2e', charset='utf8mb4')
           with conn.cursor() as cur:
               cur.execute('SELECT id,batch_id,student_id,apply_level,final_level,statement,status,publicity_at,result_at,return_reason,version FROM t_affairs_aid_apply WHERE id=%s', (aid_id,))
@@ -254,8 +255,38 @@ jobs:
               objs = cur.fetchall()
               print('[AID-DB objections]', objs)
               assert len(objs) == 1, objs
+              assert int(objs[0][0]) == objection_id, objs
               assert objs[0][1] == 'CLOSED' and objs[0][2] == 'OVERRULED', objs
               assert objs[0][3] == e['objectionReason'] and objs[0][4] == e['objectionReviewOpinion'] and objs[0][6] is not None, objs
+
+              cur.execute("SELECT id,status,event_code,source_biz_type,source_biz_id,campaign_id,last_error_code FROM t_message_event_outbox WHERE event_code='AID_OBJECTION.RESULT' AND source_biz_type='aid_objection' AND source_biz_id=%s AND is_deleted=0 ORDER BY id", (objection_id,))
+              notices = cur.fetchall()
+              print('[AID-OBJECTION-NOTICE outbox]', notices)
+              assert len(notices) == 1, notices
+              notice = notices[0]
+              assert notice[1] == 'SUCCEEDED' and notice[2] == 'AID_OBJECTION.RESULT', notice
+              assert int(notice[4]) == objection_id and notice[5] is not None and notice[6] is None, notice
+              campaign_id = int(notice[5])
+
+              cur.execute('SELECT status,source_kind,source_module,source_biz_type,source_biz_id,delivered_count,recipient_count,title FROM t_message_campaign WHERE id=%s AND is_deleted=0', (campaign_id,))
+              campaign = cur.fetchone()
+              print('[AID-OBJECTION-NOTICE campaign]', campaign)
+              assert campaign, campaign_id
+              assert campaign[0] == 'PUBLISHED' and campaign[1] == 'BUSINESS_EVENT', campaign
+              assert campaign[2] == 'student-affairs' and campaign[3] == 'aid_objection' and int(campaign[4]) == objection_id, campaign
+              assert int(campaign[5] or 0) >= 1 and int(campaign[6] or 0) >= 1, campaign
+
+              cur.execute('SELECT status,delivery_status,receiver_type,title,content,campaign_id FROM t_unified_message WHERE campaign_id=%s AND is_deleted=0 ORDER BY id', (campaign_id,))
+              messages = cur.fetchall()
+              print('[AID-OBJECTION-NOTICE messages]', messages)
+              assert messages, campaign_id
+              assert any(str(m[1]).upper() == 'DELIVERED' and str(m[2]).upper() == 'STUDENT' and '困难认定异议' in str(m[3]) and e['objectionReviewOpinion'] in str(m[4]) for m in messages), messages
+              findings['objectionNotification'] = {
+                  'eventCode': 'AID_OBJECTION.RESULT',
+                  'outboxStatus': notice[1],
+                  'campaignId': campaign_id,
+                  'messageCount': len(messages),
+              }
 
               cur.execute('SELECT COUNT(*) FROM t_affairs_aid_level_history WHERE apply_id=%s', (aid_id,))
               history_count = int(cur.fetchone()[0])
@@ -291,6 +322,14 @@ jobs:
           print('[AID-FINDINGS]', json.dumps(findings, ensure_ascii=False))
           print('[AID-EVIDENCE]', json.dumps(e, ensure_ascii=False))
           PY
+
+      - name: Assert objection notification did not degrade silently
+        run: |
+          set -euo pipefail
+          if grep -E 'student-affairs appeal sync failed|AFFAIRS_APPEAL_SYNC_FAILED|未登记的消息事件码：AID_OBJECTION\.RESULT' app/e2e/runtime-logs/backend.log; then
+            echo 'Hidden aid objection notification failure detected.'
+            exit 1
+          fi
 
       - name: Record production dependency audit without mutating locks
         if: always()
