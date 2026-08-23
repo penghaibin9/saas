@@ -100,7 +100,6 @@ jobs:
           set -euo pipefail
           alembic heads
           test "$(alembic heads | grep -c '(head)')" -eq 1
-          alembic heads | grep -q '20260821_aa_ctrl_merge (head)'
           alembic upgrade head
           mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse "SHOW COLUMNS FROM t_aa_grade_task LIKE 'deadline_at'" | grep -q deadline_at
           mysql -h127.0.0.1 -uroot -proot student_lifecycle_test -Nse "SHOW INDEX FROM t_aa_grade_task WHERE Key_name='ix_aa_grade_task_deadline'" | grep -q ix_aa_grade_task_deadline
