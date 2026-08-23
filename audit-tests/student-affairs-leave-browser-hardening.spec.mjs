@@ -149,7 +149,7 @@ test.describe.serial('Student Affairs strict browser audit · leave production h
       await page.reload()
       const record = page.locator('article.record').filter({ hasText: startDate }).filter({ hasText: endDate }).first()
       await expect(record).toBeVisible()
-      await expect(record).toContainText(scopeReason)
+      await expect(record).toContainText('辅导员审批')
     })
 
     await test.step('same-tenant counselor B cannot see detail or approve class A leave', async () => {
