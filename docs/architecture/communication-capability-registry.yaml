@@ -11,7 +11,7 @@
 #   (tenant_id, source_module, source_biz_id, todo_type, assignee_id)；
 #   业务模块新增一种 todo_type 时必须在这里登记 owner，否则治理面板会把它扔进
 #   "无责任人"异常队列——这不是阻断业务写入，只是让遗漏被看见。
-version: 1
+version: 2
 
 events:
   - eventCode: LEAVE.APPROVED
@@ -30,6 +30,10 @@ events:
     ownerModule: studentAffairs
     description: 请假逾期提醒
     todoTypeCreated: null
+  - eventCode: GRADUATION_DESIGN.REVIEW_REJECTED
+    ownerModule: graduation
+    description: 毕业设计开题/成果批阅退回学生整改通知
+    todoTypeCreated: null
 
 todoTypes:
   - todoType: APPROVAL
@@ -43,6 +47,27 @@ todoTypes:
       app/models/approval.py 不在本卡白名单内，不能加列）。deepLinkPattern 是本注册表
       登记的约定，前端按 sourceModule+sourceBizType+sourceBizId 自己拼；完成证据走
       todo_task_service.close_todo_with_evidence 写审计留痕，不落在 todo 行本身。
+  - todoType: GD_PROPOSAL_REVIEW
+    ownerModule: graduation
+    label: 开题批阅待办
+    slaHours: null
+    deepLinkPattern: /admin/graduation/review-tasks?caseType=PROPOSAL&recordId={sourceBizId}
+    completionEvidence: PROPOSAL_STATUS
+    notes: 截止时间由毕设批次阶段配置决定，不在治理注册表重复维护。
+  - todoType: GD_FINAL_REVIEW
+    ownerModule: graduation
+    label: 成果批阅待办
+    slaHours: null
+    deepLinkPattern: /admin/graduation/review-tasks?recordId={sourceBizId}
+    completionEvidence: FINAL_STATUS
+    notes: 初稿/定稿共用既有 todoType；截止时间以毕设批次阶段配置为准。
+  - todoType: GD_FORMAL_REVIEW
+    ownerModule: graduation
+    label: 正式评阅待办
+    slaHours: null
+    deepLinkPattern: /admin/graduation/review-tasks?caseType=FORMAL_REVIEW&recordId={sourceBizId}
+    completionEvidence: REVIEW_STATUS
+    notes: 分派、退回重评复用同一 dedupeKey；完成评阅后置 DONE。逾期按批次阶段截止时间统计。
 
 channels:
   - channel: SMS

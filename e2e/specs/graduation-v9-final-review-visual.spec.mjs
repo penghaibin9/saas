@@ -28,12 +28,39 @@ async function expectBrowserApiSuccess(response, action) {
   return body.data
 }
 
+function buildPreviewablePdf(label) {
+  const safeLabel = String(label).replace(/[()\\]/g, '')
+  const stream = `BT /F1 14 Tf 54 720 Td (YUEKE E2E ${safeLabel}) Tj ET\n`
+  const objects = [
+    null,
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [4 0 R] /Count 1 >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>',
+    `<< /Length ${Buffer.byteLength(stream, 'ascii')} >>\nstream\n${stream}endstream`,
+  ]
+  let body = '%PDF-1.4\n%YUEKE E2E SYNTHETIC DOCUMENT\n'
+  const offsets = [0]
+  for (let id = 1; id < objects.length; id += 1) {
+    offsets[id] = Buffer.byteLength(body, 'ascii')
+    body += `${id} 0 obj\n${objects[id]}\nendobj\n`
+  }
+  const xrefOffset = Buffer.byteLength(body, 'ascii')
+  body += `xref\n0 ${objects.length}\n0000000000 65535 f \n`
+  for (let id = 1; id < objects.length; id += 1) {
+    body += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`
+  }
+  body += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  return Buffer.from(body, 'ascii')
+}
+
 async function expectDecisionAboveFold(page) {
   const viewport = page.viewportSize()
   expect(viewport).toBeTruthy()
+  const review = page.locator('.gd-review-workspace__review')
   const targets = [
-    ['安全版本', page.locator('.fr-security-card .mp-card__head')],
-    ['SHA-256', page.locator('.fr-security-card .hash').first()],
+    ['安全版本', review.getByText('当前安全版本', { exact: true })],
+    ['SHA', review.getByText(/SHA=/).first()],
     ['通过当前版本', page.getByRole('button', { name: /通过当前版本/ })],
     ['退回当前版本', page.getByRole('button', { name: /退回当前版本/ })]
   ]
@@ -137,7 +164,7 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
       await fileInput.setInputFiles({
         name: `u3-final-${fixture.runId}.pdf`,
         mimeType: 'application/pdf',
-        buffer: Buffer.from('%PDF-1.4\n1 0 obj<< /Type /Catalog >>endobj\ntrailer<<>>\n%%EOF\n')
+        buffer: buildPreviewablePdf(`${fixture.runId}-u3-final`)
       })
       const uploaded = await expectBrowserApiSuccess(await uploadResponsePromise, '学生上传成果文件')
       expect(uploaded?.fileId).toBeTruthy()
@@ -161,12 +188,16 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     await dismissGuide(page)
 
     await expect(page.getByRole('heading', { name: '成果检查', exact: true })).toBeVisible()
-    await expect(page.locator('.fr-split')).toBeVisible()
-    await expect(page.locator('.fr-list')).toContainText(fixture.topicTitle)
-    await expect(page.locator('.fr-pane')).toContainText(fixture.topicTitle)
-    await expect(page.locator('.fr-pane')).toContainText('当前安全版本')
-    await expect(page.locator('.fr-pane')).toContainText(/SHA-256|安全门/)
-    await expect(page.locator('.fr-pane')).toContainText('查重')
+    const workspace = page.locator('.gd-review-workspace')
+    const queue = workspace.locator('.gd-review-workspace__queue')
+    const document = workspace.locator('.gd-review-workspace__document')
+    const review = workspace.locator('.gd-review-workspace__review')
+    await expect(workspace).toBeVisible()
+    await expect(queue).toContainText(fixture.topicTitle)
+    await expect(document).toContainText(fixture.topicTitle)
+    await expect(review).toContainText('当前安全版本')
+    await expect(review).toContainText(/SHA=|安全门/)
+    await expect(review).toContainText('查重')
     await expect(page.getByRole('button', { name: /通过当前版本/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /退回当前版本/ })).toBeVisible()
 

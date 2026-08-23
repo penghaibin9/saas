@@ -15,7 +15,9 @@ from app.models import (
     GraduationStudent,
     GraduationTaskBook,
 )
+from app.models.file import FileObject, FileVersion
 from app.models.graduation_material import GraduationStudentMaterial
+from app.modules.graduation.services import graduation_review_feedback_service as review_feedback
 from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services import file_service
@@ -76,6 +78,28 @@ def _audit(db, biz_type: str, biz_id: int, action: str, user: dict, *, before: s
         operator=_actor_name(user), before_val=before, after_val=after, detail=detail,
         occurred_at=datetime.utcnow(), created_by=_actor_id(user),
     ))
+
+
+def _append_feedback(db, *, student: GraduationStudent, material: GraduationStudentMaterial,
+                     stage: str, source_record_id: int, file_version_id: int,
+                     result: str, summary: str | None) -> None:
+    version = db.scalars(select(FileVersion).where(
+        FileVersion.tenant_id == _tid(), FileVersion.id == int(file_version_id),
+        FileVersion.asset_id == int(material.asset_id), FileVersion.is_deleted.is_(False),
+    )).first()
+    file_object = db.scalars(select(FileObject).where(
+        FileObject.tenant_id == _tid(),
+        FileObject.id == (int(version.file_object_id) if version else -1),
+        FileObject.is_deleted.is_(False),
+    )).first()
+    if not version or not file_object or not str(file_object.sha256 or "").strip():
+        raise AppException("FILE_HASH_MISSING", "批阅证据缺少可冻结的 FileVersion SHA-256")
+    review_feedback.append_feedback_in_session(
+        db, batch_id=student.batch_id, gd_student_id=int(student.id), stage=stage,
+        source_record_id=int(source_record_id), material_id=int(material.id),
+        file_version_id=int(version.id), source_sha256=str(file_object.sha256),
+        result=result, summary=str(summary or ""), visible_to_student=True,
+    )
 
 
 def _student_snapshot(user: dict) -> dict:
@@ -156,14 +180,10 @@ def submit_proposal(user: dict, body: dict) -> dict:
         )
         _audit(db, "PROPOSAL", int(proposal.id), "提交开题报告", user, after="PENDING_REVIEW")
         from app.modules.graduation.services import graduation_todo_helper as todo
-
         todo.push_proposal_todo(db, proposal, student)
         db.commit()
-        return {
-            "id": str(proposal.id), "version": proposal.version, "isResubmit": bool(existing),
-            "status": proposal.status, "material": material,
-            "fileVersionCount": 1, "currentSafeVersions": [],
-        }
+        return {"id": str(proposal.id), "version": proposal.version, "isResubmit": bool(existing),
+                "status": proposal.status, "material": material, "fileVersionCount": 1, "currentSafeVersions": []}
 
 
 def submit_final(user: dict, body: dict) -> dict:
@@ -189,8 +209,7 @@ def submit_final(user: dict, body: dict) -> dict:
             raise AppException("DATA_CONFLICT", "当前学生不满足成果提交条件")
         midterm = db.scalars(select(GraduationMidterm).where(
             GraduationMidterm.tenant_id == _tid(), GraduationMidterm.gd_student_id == int(student.id),
-            GraduationMidterm.status.in_(("CHECKED_PASS", "RECTIFIED_PASS")),
-            GraduationMidterm.is_deleted.is_(False),
+            GraduationMidterm.status.in_(("CHECKED_PASS", "RECTIFIED_PASS")), GraduationMidterm.is_deleted.is_(False),
         ).order_by(GraduationMidterm.id.desc())).first()
         if not midterm:
             raise AppException("DATA_CONFLICT", "中期检查未通过，不能提交成果")
@@ -215,31 +234,24 @@ def submit_final(user: dict, body: dict) -> dict:
         db.flush()
         material_code = "THESIS_FINAL" if final_type == "定稿" else "THESIS_DRAFT"
         material = submit_material_in_session(
-            db, user, int(student.id), material_code, int(file_id),
-            expected_version=expected, source_channel="STUDENT_SUBMISSION",
-            source_record_type="FINAL", source_record_id=str(final.id),
+            db, user, int(student.id), material_code, int(file_id), expected_version=expected,
+            source_channel="STUDENT_SUBMISSION", source_record_type="FINAL", source_record_id=str(final.id),
             comment=f"成果{final_type}兼容入口提交",
         )
         _audit(db, "FINAL", int(final.id), f"提交成果-{final_type}", user, after="PENDING_REVIEW")
         from app.modules.graduation.services import graduation_todo_helper as todo
-
         todo.push_final_todo(db, final, student)
         db.commit()
-        return {
-            "id": str(final.id), "finalType": final_type, "version": final.version,
-            "status": final.status, "material": material,
-            "fileVersionCount": 1, "currentSafeVersions": [],
-        }
+        return {"id": str(final.id), "finalType": final_type, "version": final.version,
+                "status": final.status, "material": material, "fileVersionCount": 1, "currentSafeVersions": []}
 
 
 def _record_material(db, student_id: int, material_code: str, record_type: str, record_id: int):
     row = db.scalars(select(GraduationStudentMaterial).where(
-        GraduationStudentMaterial.tenant_id == _tid(),
-        GraduationStudentMaterial.gd_student_id == int(student_id),
+        GraduationStudentMaterial.tenant_id == _tid(), GraduationStudentMaterial.gd_student_id == int(student_id),
         GraduationStudentMaterial.material_code == material_code,
         GraduationStudentMaterial.source_record_type == record_type,
-        GraduationStudentMaterial.source_record_id == str(record_id),
-        GraduationStudentMaterial.is_deleted.is_(False),
+        GraduationStudentMaterial.source_record_id == str(record_id), GraduationStudentMaterial.is_deleted.is_(False),
     ).with_for_update()).first()
     if not row:
         raise AppException("DATA_CONFLICT", "业务记录尚未绑定权威材料版本")
@@ -265,11 +277,11 @@ def review_proposal(proposal_id: int, action: str, comment: str | None, user: di
         if proposal.status != "PENDING_REVIEW":
             raise AppException("DATA_CONFLICT", "该开题报告已被处理")
         material = _record_material(db, int(student.id), "PROPOSAL_REPORT", "PROPOSAL", int(proposal.id))
-        reviewed = review_material_in_session(
-            db, int(material.id), int(expected_file_version_id), action, comment, user,
-            expected_version=int(expected_version),
-        )
+        reviewed = review_material_in_session(db, int(material.id), int(expected_file_version_id), action, comment, user,
+                                              expected_version=int(expected_version))
         target = "APPROVED" if str(action).upper() == "APPROVE" else "REJECTED"
+        _append_feedback(db, student=student, material=material, stage="PROPOSAL", source_record_id=int(proposal.id),
+                         file_version_id=int(expected_file_version_id), result=target, summary=comment)
         before = proposal.status
         proposal.status = target
         proposal.active_key = None
@@ -278,14 +290,11 @@ def review_proposal(proposal_id: int, action: str, comment: str | None, user: di
         proposal.review_time = datetime.now(timezone.utc)
         _audit(db, "PROPOSAL", int(proposal.id), "审核开题报告", user, before=before, after=target)
         from app.modules.graduation.services import graduation_todo_helper as todo
-
         todo.todo_done(db, biz_id=proposal.id, todo_type=todo.TODO_PROPOSAL)
         if target == "APPROVED" and student.stage in {"TOPIC_SELECTING", "TASKBOOK_CONFIRM"}:
             confirmed_taskbook = db.scalars(select(GraduationTaskBook).where(
-                GraduationTaskBook.tenant_id == _tid(),
-                GraduationTaskBook.gd_student_id == int(student.id),
-                GraduationTaskBook.status == "CONFIRMED",
-                GraduationTaskBook.is_deleted.is_(False),
+                GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == int(student.id),
+                GraduationTaskBook.status == "CONFIRMED", GraduationTaskBook.is_deleted.is_(False),
             ).limit(1)).first()
             if confirmed_taskbook:
                 student.stage = "GUIDING"
@@ -314,8 +323,7 @@ def review_final(final_id: int, action: str, comment: str | None, user: dict,
             raise AppException("DATA_CONFLICT", "该成果已被处理")
         if str(action).upper() == "APPROVE" and final.final_type == "定稿":
             check = db.scalars(select(GraduationPlagiarismCheck).where(
-                GraduationPlagiarismCheck.tenant_id == _tid(),
-                GraduationPlagiarismCheck.gd_final_id == int(final.id),
+                GraduationPlagiarismCheck.tenant_id == _tid(), GraduationPlagiarismCheck.gd_final_id == int(final.id),
                 GraduationPlagiarismCheck.is_deleted.is_(False),
             ).order_by(GraduationPlagiarismCheck.id.desc()).with_for_update()).first()
             if not check or check.status != "DONE":
@@ -324,11 +332,11 @@ def review_final(final_id: int, action: str, comment: str | None, user: dict,
                 raise AppException("DATA_CONFLICT", "查重超标且未通过特例审批")
         code = "THESIS_FINAL" if final.final_type == "定稿" else "THESIS_DRAFT"
         material = _record_material(db, int(student.id), code, "FINAL", int(final.id))
-        reviewed = review_material_in_session(
-            db, int(material.id), int(expected_file_version_id), action, comment, user,
-            expected_version=int(expected_version),
-        )
+        reviewed = review_material_in_session(db, int(material.id), int(expected_file_version_id), action, comment, user,
+                                              expected_version=int(expected_version))
         target = "APPROVED" if str(action).upper() == "APPROVE" else "REJECTED"
+        _append_feedback(db, student=student, material=material, stage="FINAL", source_record_id=int(final.id),
+                         file_version_id=int(expected_file_version_id), result=target, summary=comment)
         before = final.status
         final.status = target
         final.active_key = None
@@ -337,13 +345,9 @@ def review_final(final_id: int, action: str, comment: str | None, user: dict,
         final.review_time = datetime.now(timezone.utc)
         _audit(db, "FINAL", int(final.id), "审核成果", user, before=before, after=target)
         from app.modules.graduation.services import graduation_todo_helper as todo
-
         todo.todo_done(db, biz_id=final.id, todo_type=todo.TODO_FINAL)
         db.commit()
         return {"id": str(final.id), "status": target, "material": reviewed}
 
 
-__all__ = [
-    "final_detail", "proposal_detail", "review_final", "review_proposal",
-    "submit_final", "submit_proposal",
-]
+__all__ = ["final_detail", "proposal_detail", "review_final", "review_proposal", "submit_final", "submit_proposal"]

@@ -1,0 +1,161 @@
+entries:
+  - module: file-center
+    client: shared
+    route: document-preview-contract/v1
+    page: docs/architecture/document-preview-contract.md
+    action: preview
+    fileCategory: ALL_PREVIEWABLE
+    api: EXISTING_DOMAIN_PROVIDER_OR_FILE_CENTER_AUTHORIZED_BYTES
+    backendService: backend/app/api/v1/file_contract.py
+    storageMode: existing-authorized-bytes-only
+    authMode: file-center-object+domain-provider
+    dataScope: tenant+object-relation+domain-scope+batch+scan
+    versioned: true
+    scanGated: true
+    preview: true
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: W0-W6 document-preview-contract/v1 is implemented. W6 adds bounded read-only DOCX rendering on both PC clients while File Center/domain providers remain the only authorization and byte authority; annotation remains PDF-first.
+
+  - module: internship
+    client: admin-pc
+    route: /api/v1/internship/material-center/files/{file_id}/{action}
+    page: frontend/src/modules/internship/views/InternshipMaterialCenterView.vue; frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue
+    action: preview+download
+    fileCategory: INTERNSHIP_VERSIONED_MATERIAL
+    api: /api/v1/internship/material-center/files/{file_id}/ticket; /api/v1/internship/material-center/files/{file_id}/preview; /api/v1/internship/material-center/files/{file_id}/download
+    backendService: backend/app/modules/internship/services/internship_material_preview_access.py; backend/app/modules/internship/routers/internship_material_center.py
+    storageMode: business-ticket-local-proxy
+    authMode: task-domain-scope+file-center-object
+    dataScope: tenant+internship+student+batch+current-binding+scan
+    versioned: true
+    scanGated: true
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: W5 migration. Preview and download use separate business-ticket actions; download is single-use and no generic file URL bypass is allowed.
+
+  - module: student-affairs
+    client: admin-pc
+    route: /api/v1/student-affairs/material-center/files/{file_id}/{action}
+    page: frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue
+    action: preview+download
+    fileCategory: STUDENT_AFFAIRS_MATERIAL
+    api: /api/v1/student-affairs/material-center/files/{file_id}/ticket; /api/v1/student-affairs/material-center/files/{file_id}/preview; /api/v1/student-affairs/material-center/files/{file_id}/download
+    backendService: backend/app/services/affairs_material_preview_access.py; backend/app/modules/student_affairs/routers/affairs_material_center.py
+    storageMode: business-ticket-local-proxy
+    authMode: business-context+file-center-object
+    dataScope: tenant+student-affairs-business+student+batch+current-binding+scan
+    versioned: true
+    scanGated: true
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: W5 migration. Existing student-affairs material center owns business context; the Reader consumes only authorized ticket bytes.
+
+  - module: academic-affairs
+    client: admin-pc
+    route: /api/v1/academic-affairs/courses/{course_id}/materials/{material_id}/{action}
+    page: frontend/src/modules/academicAffairs/views/AaCourseDetailView.vue; frontend/src/modules/academicAffairs/api/course-material-reader.api.js
+    action: preview+download
+    fileCategory: COURSE_MATERIAL
+    api: /api/v1/academic-affairs/courses/{course_id}/materials/reader; /api/v1/academic-affairs/courses/{course_id}/materials/{material_id}/ticket; /api/v1/academic-affairs/courses/{course_id}/materials/{material_id}/preview; /api/v1/academic-affairs/courses/{course_id}/materials/{material_id}/download
+    backendService: backend/app/modules/academic_affairs/services/academic_affairs_course_material_preview_access.py; backend/app/modules/academic_affairs/routers/course_material_preview_router.py
+    storageMode: course-business-ticket-local-proxy
+    authMode: academic-course-view+material-relation+file-object
+    dataScope: tenant+course+material+file-object+scan
+    versioned: false
+    scanGated: true
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: W5 course material Reader. courseId + materialId is the authoritative business relation, including legacy TEMP_PRIVATE attachments that never had a generic FileBinding; preview/download are separate business tickets and the browser never opens a generic/public file URL.
+
+  - module: approval
+    client: admin-pc
+    route: /api/v1/approvals/tasks/{task_id}/files/{file_id}/{action}
+    page: frontend/src/views/admin/approval/ApprovalDetailView.vue; frontend/src/modules/approval/api/approval-attachments.api.js
+    action: preview+download
+    fileCategory: APPROVAL_SOURCE_ATTACHMENT
+    api: /api/v1/approvals/tasks/{task_id}/attachments; /api/v1/approvals/tasks/{task_id}/files/{file_id}/ticket; /api/v1/approvals/tasks/{task_id}/files/{file_id}/preview; /api/v1/approvals/tasks/{task_id}/files/{file_id}/download
+    backendService: backend/app/services/approval_attachment_preview_service.py; backend/app/api/v1/approval.py
+    storageMode: task-business-ticket-local-proxy
+    authMode: approval-task-authority+source-business-relation
+    dataScope: tenant+workflow-task+source-biz+current-binding+scan
+    versioned: true
+    scanGated: true
+    preview: true
+    download: true
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: W5 generic approval attachment Reader. Every ticket is bound to tenant, task, file, actor and action; download is single-use and preview is inline/no-store.
+
+  - module: file-center
+    client: admin-pc
+    route: document-preview-contract/v1#docx
+    page: frontend/src/components/file/viewer/adapters/DocxViewerAdapter.vue; frontend/src/components/file/viewer/adapters/docx-preview-renderer.js
+    action: preview
+    fileCategory: DOCX
+    api: EXISTING_AUTHORIZED_PREVIEW_PROVIDER_BYTES
+    backendService: no-new-backend-route
+    storageMode: local-in-browser-rendering
+    authMode: inherited-provider-authorization
+    dataScope: inherited-provider-tenant+business+scan
+    versioned: true
+    scanGated: true
+    preview: true
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: W6 read-only DOCX adapter. Source/ZIP size is bounded, external DOCX relationships are not navigated, embedded image object URLs are revoked, and XLSX/PPTX remain unsupported.
+
+  - module: file-center
+    client: student-pc
+    route: document-preview-contract/v1#docx-student
+    page: student-portal/src/components/file/viewer/StudentDocumentViewer.vue; student-portal/src/components/file/viewer/adapters/StudentDocxViewer.vue
+    action: preview
+    fileCategory: DOCX
+    api: EXISTING_STUDENT_AUTHORIZED_PREVIEW_PROVIDER_BYTES
+    backendService: no-new-backend-route
+    storageMode: local-in-browser-rendering
+    authMode: inherited-student-provider-authorization
+    dataScope: inherited-provider-tenant+student+business+scan
+    versioned: true
+    scanGated: true
+    preview: true
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: W6 Student PC mirrors the read-only DOCX renderer over authorized Blob bytes; immutable historical versions remain read-only and no business command is added to the renderer.
