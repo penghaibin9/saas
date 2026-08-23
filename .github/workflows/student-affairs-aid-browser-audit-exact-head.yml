@@ -1,0 +1,288 @@
+name: Student Affairs strict aid browser audit exact head
+
+on:
+  push:
+    branches:
+      - audit/student-affairs-browser-runner-20260823
+    paths:
+      - 'audit-tests/student-affairs-aid-browser-audit.spec.mjs'
+      - '.github/workflows/student-affairs-aid-browser-audit-exact-head.yml'
+  pull_request:
+    paths:
+      - 'audit-tests/student-affairs-aid-browser-audit.spec.mjs'
+      - '.github/workflows/student-affairs-aid-browser-audit-exact-head.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  aid-browser-audit:
+    name: exact-head aid journey / Chromium / MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/13
+      REDIS_KEY_PREFIX: student-affairs-aid-browser-audit
+      JWT_SECRET: student-affairs-aid-browser-audit-only
+      JWT_SECRET_KEY: student-affairs-aid-browser-audit-only
+      PYTHONPATH: .
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_TARGET_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+
+    steps:
+      - name: Checkout audit runner only
+        uses: actions/checkout@v4
+        with:
+          ref: audit/student-affairs-browser-runner-20260823
+          path: runner
+          fetch-depth: 1
+
+      - name: Checkout immutable application exact head
+        uses: actions/checkout@v4
+        with:
+          ref: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+          path: app
+          fetch-depth: 0
+
+      - name: Assert tested application exact head
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git -C app rev-parse HEAD)"
+          echo "tested_app_head=$ACTUAL"
+          test "$ACTUAL" = "$E2E_TARGET_SHA"
+          test -z "$(git -C app status --porcelain)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: app/backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            app/frontend/package-lock.json
+            app/student-portal/package-lock.json
+
+      - name: Install backend and migrate isolated MySQL
+        working-directory: app/backend
+        run: |
+          pip install -r requirements.txt
+          alembic upgrade head
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start real backend
+        run: |
+          mkdir -p app/e2e/runtime-logs
+          cd app/backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Bootstrap official Student Affairs multi-role identities and counselor relation
+        working-directory: app/backend
+        run: |
+          python - <<'PY'
+          import time
+          from scripts.e2e_bootstrap_student_affairs_accounts import (
+              CLASS_A, activate_passwords, ensure_counselor_assignment, ensure_org,
+              import_accounts, login_admin,
+          )
+          token = login_admin()
+          org = ensure_org(token)
+          print('[aid-audit] org:', org)
+          imported = import_accounts(token)
+          print('[aid-audit] identity import confirmed:', imported.get('confirmed'))
+          assert imported.get('confirmed') is True, imported
+          time.sleep(2)
+          token = login_admin()
+          assignment = ensure_counselor_assignment(token, int(org['classIds'][CLASS_A]))
+          print('[aid-audit] counselor assignment:', assignment)
+          assert assignment.get('configured') is True, assignment
+          passwords = activate_passwords(token)
+          required = {'e2e_sa_admin','e2e_college_admin','e2e_counselor_a','e2e_counselor_b','E2E20260001'}
+          missing = sorted(required - set(passwords))
+          assert not missing, missing
+          PY
+
+      - name: Start real staff PC and student PC
+        run: |
+          cd app/frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          cd ../student-portal
+          npm ci
+          VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+
+      - name: Wait for real browser applications
+        run: |
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
+            ok=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ok" ]; then
+              echo "Application not ready: $url"
+              cat app/e2e/runtime-logs/*.log
+              exit 1
+            fi
+          done
+
+      - name: Install Chromium and inject strict aid spec outside application commit
+        run: |
+          cp runner/audit-tests/student-affairs-aid-browser-audit.spec.mjs app/e2e/specs/student-affairs-aid-browser-audit.spec.mjs
+          cd app/e2e
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run strict Browser First aid journey
+        working-directory: app/e2e
+        run: npx playwright test specs/student-affairs-aid-browser-audit.spec.mjs
+
+      - name: Verify aid MySQL, encrypted family economy, objection, audit and publicity time gate
+        working-directory: app/backend
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pymysql
+
+          e = json.loads(Path('../e2e/student-affairs-aid-audit-evidence.json').read_text(encoding='utf-8'))
+          aid_id = int(e['applyId'])
+          batch_id = int(e['batchId'])
+          conn = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', database='student_lifecycle_e2e', charset='utf8mb4')
+          with conn.cursor() as cur:
+              cur.execute('SELECT id,batch_id,student_id,apply_level,final_level,statement,status,publicity_at,result_at,return_reason,version FROM t_affairs_aid_apply WHERE id=%s', (aid_id,))
+              row = cur.fetchone()
+              print('[AID-DB apply]', row)
+              assert row, aid_id
+              assert int(row[1]) == batch_id, row
+              assert row[3] == 'DIFFICULT', row
+              assert row[4] == 'DIFFICULT', row
+              assert row[5] == e['revisedStatement'], (row[5], e['revisedStatement'])
+              assert row[6] == 'PUBLICITY', row
+              assert row[7] is not None, row
+              assert row[8] is None, row
+
+              cur.execute('SELECT member_count,income_encrypted,debt_encrypted,special_flags_json FROM t_affairs_aid_family_economy WHERE apply_id=%s', (aid_id,))
+              family = cur.fetchone()
+              print('[AID-DB family]', family)
+              assert family and int(family[0]) == 4, family
+              assert family[1] and str(family[1]) not in {'16500','16500.0','16500.00'}, family
+              assert family[2] and str(family[2]) not in {'6200','6200.0','6200.00'}, family
+              assert '低保' in str(family[3]) and '重大疾病' in str(family[3]), family
+
+              cur.execute('SELECT id,status,result,reason,review_opinion,reviewer,reviewed_at FROM t_affairs_aid_objection WHERE apply_id=%s ORDER BY id', (aid_id,))
+              objs = cur.fetchall()
+              print('[AID-DB objections]', objs)
+              assert len(objs) == 1, objs
+              assert objs[0][1] == 'CLOSED' and objs[0][2] == 'OVERRULED', objs
+              assert objs[0][3] == e['objectionReason'], objs
+              assert objs[0][4] == e['objectionReviewOpinion'], objs
+              assert objs[0][6] is not None, objs
+
+              cur.execute('SELECT COUNT(*) FROM t_affairs_aid_level_history WHERE apply_id=%s', (aid_id,))
+              history_count = int(cur.fetchone()[0])
+              print('[AID-DB level_history_count]', history_count)
+              assert history_count == 0, 'early publicity confirmation must not create approved history'
+
+              cur.execute("SELECT action,operator,role_name,detail,before_val,after_val,occurred_at FROM t_affairs_audit_trail WHERE biz_type='AID' AND biz_id=%s ORDER BY id", (aid_id,))
+              trail = cur.fetchall()
+              print('[AID-AUDIT trail]')
+              for t in trail: print(t)
+              actions = [str(t[0]).upper() for t in trail]
+              for expected in ('APPLY','RETURNED','RESUBMIT','TO_PUBLICITY','AID_OBJECTION_SUBMIT','AID_OBJECTION_REVIEW'):
+                  assert expected in actions, (expected, actions)
+              assert actions.count('REVIEW_STEP') >= 3, actions
+
+              cur.execute("SELECT operation,biz_type,result,detail_json FROM t_audit_log WHERE operation='SENSITIVE_VIEW' AND biz_type='aid_family_economy' ORDER BY id")
+              sensitive = cur.fetchall()
+              print('[AID-SENSITIVE-AUDIT]', sensitive)
+              assert any(str(x[2]).upper() == 'SUCCESS' and e['revealReason'] in str(x[3]) for x in sensitive), sensitive
+          conn.close()
+          print('[AID-EVIDENCE]', json.dumps(e, ensure_ascii=False))
+          PY
+
+      - name: Record production dependency audit without mutating locks
+        run: |
+          mkdir -p app/e2e/dependency-audit
+          (cd app/frontend && npm audit --omit=dev --json > ../e2e/dependency-audit/frontend-production.json) || true
+          (cd app/student-portal && npm audit --omit=dev --json > ../e2e/dependency-audit/student-portal-production.json) || true
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for name in ('frontend-production.json','student-portal-production.json'):
+              p = Path('app/e2e/dependency-audit') / name
+              d = json.loads(p.read_text() or '{}')
+              print('[DEPENDENCY-AUDIT]', name, json.dumps(d.get('metadata', {}).get('vulnerabilities', {}), ensure_ascii=False))
+          PY
+
+      - name: Reassert tested app source stayed immutable
+        run: |
+          set -euo pipefail
+          test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
+          git -C app status --porcelain
+          test -z "$(git -C app status --porcelain --untracked-files=no)"
+
+      - name: Upload strict aid audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-strict-aid-audit-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            app/e2e/student-affairs-aid-audit-evidence.json
+            app/e2e/test-results/
+            app/e2e/playwright-report/
+            app/e2e/runtime-logs/
+            app/e2e/dependency-audit/
+          retention-days: 14
