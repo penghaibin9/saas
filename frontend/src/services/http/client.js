@@ -40,7 +40,7 @@ function clearOfflineState() {
 
 /** 冷却期内跳过真实 fetch，供 mock 层立即回退（不再重复等待超时） */
 function throwOfflineSkip(method) {
-  const err = new Error('服务连接正在恢复，请点击重试')
+  const err = new Error('后端离线冷却中')
   err.offlineSkip = true
   if (!canUseMockFallback() || isWriteMethod(method)) {
     err.biz = true
@@ -106,8 +106,7 @@ function markOffline() {
 }
 
 async function rawRequest(path, {
-  method = 'GET', params, body, auth = true, forceProbe = false,
-  timeoutMs = REQUEST_TIMEOUT_MS, headers: extraHeaders = {}
+  method = 'GET', params, body, auth = true, forceProbe = false, headers: extraHeaders = {}
 } = {}) {
   const methodUp = String(method || 'GET').toUpperCase()
   if (!forceProbe && isBackendOffline() && canUseMockFallback() && !isWriteMethod(methodUp)) {
@@ -123,10 +122,7 @@ async function rawRequest(path, {
   const headers = { 'Content-Type': 'application/json', ...(extraHeaders || {}) }
   if (auth && state.token) headers.Authorization = `Bearer ${state.token}`
   const controller = new AbortController()
-  const normalizedTimeoutMs = Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
-    ? Number(timeoutMs)
-    : REQUEST_TIMEOUT_MS
-  const timer = setTimeout(() => controller.abort(), normalizedTimeoutMs)
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   try {
     const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}${qs}`, {
       method,
@@ -160,12 +156,7 @@ async function rawRequest(path, {
   } catch (e) {
     if (e.offlineSkip) throw e
     if (!e.biz) {
-      const timedOut = ['AbortError', 'TimeoutError'].includes(e?.name) || /abort/i.test(String(e?.message || ''))
       markOffline()
-      if (timedOut) {
-        e.code = 'REQUEST_TIMEOUT'
-        e.message = '请求超时，请点击重试'
-      }
       if (!canUseMockFallback() || isWriteMethod(method)) {
         e.biz = true
         e.code = isWriteMethod(method) ? 503002 : 503001

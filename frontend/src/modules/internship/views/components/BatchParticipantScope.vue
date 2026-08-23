@@ -64,6 +64,12 @@
               <div><strong>{{ previewSummary.excludedCount }}</strong><span>被规则排除</span></div>
               <div><strong>{{ previewSummary.outOfScopeCount }}</strong><span>超出权限范围</span></div>
             </div>
+            <AppInlineAlert
+              v-if="previewTruncated"
+              type="warning"
+              title="预览名单已截断"
+              :description="`当前页面仅返回前 ${previewRows.length} 名用于核对，但规则实际命中 ${previewSummary.matchedCount} 名。确认冻结时，后端会按完整规则固化 ${previewSummary.matchedCount} 名学生，而不是只固化当前显示的预览行。`"
+            />
             <p v-if="!previewRows.length" class="bps-empty">当前范围没有符合条件的学生，请调整班级后重试。</p>
             <div v-else class="bps-table-wrap">
               <table class="bps-table">
@@ -77,8 +83,11 @@
                   </tr>
                 </tbody>
               </table>
-              <p v-if="previewRows.length > shownPreviewRows.length" class="bps-more">
-                当前展示前 {{ shownPreviewRows.length }} 人，冻结时将按完整规则加入 {{ previewRows.length }} 人。
+              <p v-if="previewTruncated" class="bps-more is-warning">
+                当前仅展示服务端返回的前 {{ previewRows.length }} 名中的前 {{ shownPreviewRows.length }} 名；完整规则实际命中 {{ previewSummary.matchedCount }} 名。
+              </p>
+              <p v-else-if="previewRows.length > shownPreviewRows.length" class="bps-more">
+                当前展示前 {{ shownPreviewRows.length }} 人，冻结时将按完整规则加入 {{ previewSummary.matchedCount }} 人。
               </p>
             </div>
           </div>
@@ -103,6 +112,19 @@
                 </tr>
               </tbody>
             </table>
+            <footer v-if="participantTotal > participantPageSize" class="bps-pagebar">
+              <button
+                type="button"
+                :disabled="participantLoading || participantPage <= 1"
+                @click="changeParticipantPage(participantPage - 1)"
+              >上一页</button>
+              <span>第 {{ participantPage }} / {{ participantPageCount }} 页 · 共 {{ participantTotal }} 人</span>
+              <button
+                type="button"
+                :disabled="participantLoading || participantPage >= participantPageCount"
+                @click="changeParticipantPage(participantPage + 1)"
+              >{{ participantLoading ? '加载中…' : '下一页' }}</button>
+            </footer>
           </div>
         </template>
       </template>
@@ -111,7 +133,7 @@
     <AppConfirmDialog
       v-model:visible="confirmVisible"
       title="冻结参与学生名单"
-      :message="`将当前预览的 ${previewRows.length} 名学生固化为正式实习名单，并立即启用批次。冻结后班级规则不可再修改，请确认预览无误。`"
+      :message="freezeConfirmMessage"
       type="primary"
       confirm-text="确认冻结并启用"
       :submitting="acting && actionMode === 'freeze'"
@@ -158,8 +180,13 @@ export default {
       previewDirty: true,
       previewed: false,
       previewRows: [],
+      previewTruncated: false,
       previewSummary: { matchedCount: 0, alreadyInCount: 0, excludedCount: 0, outOfScopeCount: 0 },
       participantRows: [],
+      participantPage: 1,
+      participantPageSize: 100,
+      participantTotal: 0,
+      participantLoading: false,
       summary: {},
       confirmVisible: false
     }
@@ -168,6 +195,16 @@ export default {
     isDraft() { return this.batchStatus === 'DRAFT' },
     hasScope() { return !!(this.rule.classIds.length || this.rule.studentIds.length) },
     shownPreviewRows() { return this.previewRows.slice(0, 50) },
+    participantPageCount() {
+      return Math.max(1, Math.ceil(this.participantTotal / this.participantPageSize))
+    },
+    freezeConfirmMessage() {
+      const matchedCount = Number(this.previewSummary.matchedCount || this.previewRows.length || 0)
+      if (this.previewTruncated) {
+        return `当前预览因人数较多只返回前 ${this.previewRows.length} 名，完整规则实际命中 ${matchedCount} 名。确认后将按完整规则固化 ${matchedCount} 名学生并立即启用批次，不是只固化当前预览行。冻结后班级规则不可再修改，请确认范围规则无误。`
+      }
+      return `将当前规则命中的 ${matchedCount} 名学生固化为正式实习名单，并立即启用批次。冻结后班级规则不可再修改，请确认预览无误。`
+    },
     stateText() {
       if (this.frozen) return '名单已冻结'
       if (this.isDraft) return '待配置名单'
@@ -182,9 +219,13 @@ export default {
         this.previewDirty = true
         this.previewed = false
         this.previewRows = []
+        this.previewTruncated = false
       }
     },
-    batchStatus() { this.load() }
+    batchStatus() {
+      this.participantPage = 1
+      this.load()
+    }
   },
   created() { this.load() },
   methods: {
@@ -195,7 +236,7 @@ export default {
       const [ruleRes, summaryRes, listRes] = await Promise.all([
         internshipApi.getBatchParticipantRule(this.batchId),
         internshipApi.getBatchParticipantSummary(this.batchId),
-        internshipApi.getBatchParticipants(this.batchId, { page: 1, pageSize: 100 })
+        internshipApi.getBatchParticipants(this.batchId, { page: this.participantPage, pageSize: this.participantPageSize })
       ])
       this.loading = false
       if (ruleRes.code !== 0) {
@@ -206,8 +247,17 @@ export default {
       this.rule = { ...blankRule(), ...(ruleRes.data.rule || {}) }
       this.frozen = !!ruleRes.data.frozen
       this.summary = summaryRes.code === 0 ? (summaryRes.data || {}) : {}
-      this.participantRows = listRes.code === 0 ? (listRes.data?.list || []) : []
+      if (listRes.code === 0) {
+        this.participantRows = listRes.data?.list || []
+        this.participantTotal = Number(listRes.data?.total || 0)
+        this.participantPage = Number(listRes.data?.page || this.participantPage)
+        this.participantPageSize = Number(listRes.data?.pageSize || this.participantPageSize)
+      } else {
+        this.participantRows = []
+        this.participantTotal = 0
+      }
       this.previewDirty = true
+      this.previewTruncated = false
       this.$nextTick(() => { this.ruleReady = true })
     },
     async previewParticipants() {
@@ -220,6 +270,7 @@ export default {
       this.ruleReady = false
       this.rule = { ...blankRule(), ...(res.data.rule || this.rule) }
       this.previewRows = res.data.rows || []
+      this.previewTruncated = !!res.data.truncated
       this.previewSummary = {
         matchedCount: Number(res.data.matchedCount || 0),
         alreadyInCount: Number(res.data.alreadyInCount || 0),
@@ -230,6 +281,21 @@ export default {
       this.previewDirty = false
       this.$nextTick(() => { this.ruleReady = true })
     },
+    async changeParticipantPage(page) {
+      const target = Math.max(1, Math.min(Number(page || 1), this.participantPageCount))
+      if (target === this.participantPage || this.participantLoading) return
+      this.participantLoading = true
+      const res = await internshipApi.getBatchParticipants(this.batchId, {
+        page: target,
+        pageSize: this.participantPageSize
+      })
+      this.participantLoading = false
+      if (res.code !== 0) return toast.error(res.message || '参与学生名单加载失败')
+      this.participantRows = res.data?.list || []
+      this.participantTotal = Number(res.data?.total || 0)
+      this.participantPage = Number(res.data?.page || target)
+      this.participantPageSize = Number(res.data?.pageSize || this.participantPageSize)
+    },
     async freezeParticipants() {
       if (this.previewDirty || !this.previewRows.length || this.acting) return
       this.acting = true
@@ -238,7 +304,7 @@ export default {
       this.acting = false
       if (res.code !== 0) return toast.error(res.message || '名单冻结失败')
       this.confirmVisible = false
-      toast.success(`已将 ${res.data.total || this.previewRows.length} 名学生加入批次，批次已启用`)
+      toast.success(`已将 ${res.data.total || this.previewSummary.matchedCount || this.previewRows.length} 名学生加入批次，批次已启用`)
       this.$emit('frozen', res.data)
     }
   }
@@ -274,7 +340,12 @@ export default {
 .bps-table td small { margin-top: 2px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .bps-empty, .bps-more { margin: 0; padding: var(--space-4); color: var(--text-tertiary); font-size: var(--font-size-sm); text-align: center; }
 .bps-more { border-top: 1px solid var(--border-light); }
+.bps-more.is-warning { color: var(--warning-700, #a16207); background: var(--warning-50, #fffbeb); }
+.bps-pagebar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--border-light); color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.bps-pagebar button { border: 1px solid var(--border-light); border-radius: 7px; background: #fff; padding: 5px 10px; cursor: pointer; }
+.bps-pagebar button:disabled { opacity: .45; cursor: default; }
 @media (max-width: 760px) {
   .bps-metrics, .bps-metrics--compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bps-pagebar { justify-content: center; flex-wrap: wrap; }
 }
 </style>
