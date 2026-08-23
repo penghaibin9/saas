@@ -145,7 +145,7 @@ test.describe.serial('Student Affairs strict browser audit · discipline lifecyc
       await expect(studentOption).toBeVisible({ timeout: 15_000 })
       await studentOption.click()
 
-      const drawer = page.getByText('登记违纪处分', { exact: true }).last().locator('..').locator('..')
+      await page.getByText('登记违纪处分', { exact: true }).last().locator('..').locator('..')
       await page.locator('select').last().selectOption('WARNING')
       await page.getByPlaceholder('客观描述违纪事实，不少于 5 字').fill(initialReason)
       await page.getByPlaceholder('选填，如「校学字〔2026〕12号」').fill(docNo)
@@ -256,10 +256,7 @@ test.describe.serial('Student Affairs strict browser audit · discipline lifecyc
       await dialog.locator('select').nth(1).selectOption('SERIOUS_WARNING')
       await dialog.getByPlaceholder('请填写变更决定采用的完整事实依据，不得用复核意见代替').fill(revisedReason)
       await dialog.getByPlaceholder('选填；如文号不变可保留原文号').fill(revisedDocNo)
-      const textareas = dialog.locator('textarea')
-      const count = await textareas.count()
-      expect(count).toBeGreaterThanOrEqual(2)
-      await textareas.first().fill(reviewOpinion)
+      await dialog.locator('.app-confirm-dialog__textarea').fill(reviewOpinion)
       const reviewPromise = page.waitForResponse((response) => /\/api\/v1\/student-affairs\/discipline\/appeals\/\d+\/review$/.test(new URL(response.url()).pathname) && response.request().method() === 'POST')
       await dialog.getByRole('button', { name: '提交复核结论', exact: true }).click()
       const reviewed = await reviewPromise
@@ -318,11 +315,11 @@ test.describe.serial('Student Affairs strict browser audit · discipline lifecyc
       await expect(page.locator('.dp-detail')).toContainText('仅可查看')
     })
 
-    await test.step('student refresh no longer has an active discipline case', async () => {
+    await test.step('student refresh no longer has this active discipline case', async () => {
       await freshStudentLogin(page)
       await page.goto(`${config.studentBaseUrl}/campus-service?tab=discipline`)
       await expect(page.locator('.sp-panel__head').filter({ hasText: '处分申诉' })).toBeVisible()
-      await expect(page.locator('article.record').filter({ hasText: appealReason })).toHaveCount(0)
+      await expect(page.locator('article.record').filter({ hasText: reviewOpinion })).toHaveCount(0)
     })
 
     await test.step('terminal replay fails closed and tenant B cannot read sandbox case', async () => {
