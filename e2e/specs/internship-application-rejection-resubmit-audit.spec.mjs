@@ -156,9 +156,11 @@ test.describe('岗位实习审计：自主实习真实文件—驳回—反馈�
     expect(detail.companyName).toBe(companyName)
     expect(detail.positionName).toBe(finalPosition)
     const actions = (detail.auditTrail || []).map((item) => item.action)
-    expect(actions).toEqual(expect.arrayContaining(['SAVE_DRAFT', 'SUBMIT', 'REJECT', 'APPROVE']))
-    expect(actions.filter((action) => action === 'SAVE_DRAFT').length).toBeGreaterThanOrEqual(2)
-    expect(actions.filter((action) => action === 'SUBMIT').length).toBeGreaterThanOrEqual(2)
+    expect(actions).toEqual(expect.arrayContaining([
+      'SAVE_DRAFT_VERSIONED', 'SUBMIT_VERSIONED', 'REJECT', 'APPROVE'
+    ]))
+    expect(actions.filter((action) => action === 'SAVE_DRAFT_VERSIONED').length).toBeGreaterThanOrEqual(2)
+    expect(actions.filter((action) => action === 'SUBMIT_VERSIONED').length).toBeGreaterThanOrEqual(2)
 
     execFileSync('python', ['../backend/scripts/e2e_verify_internship_application_db.py'], {
       cwd: process.cwd(),
