@@ -1,11 +1,16 @@
 import json
+import os
+import subprocess
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 import pymysql
 
-PRODUCT_EXACT_HEAD = "63195a6dc9d25fa3805563910fb699ec163b552a"
+EXPECTED_HEAD = os.environ.get("E2E_EXPECTED_SHA", "").strip()
+PRODUCT_EXACT_HEAD = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+assert EXPECTED_HEAD, "E2E_EXPECTED_SHA must be set for exact-head review audit"
+assert PRODUCT_EXACT_HEAD == EXPECTED_HEAD, (PRODUCT_EXACT_HEAD, EXPECTED_HEAD)
 
 
 def cv(value):
