@@ -1,0 +1,46 @@
+name: PR211 Main Sync Worker
+
+on:
+  push:
+    branches:
+      - tmp/pr211-main-sync-20260823
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Diagnose merge against latest main
+        shell: bash
+        run: |
+          set -u
+          TARGET_SHA="c915c1f151e2c7a1b75b6a9a2708c9f1d2a7c5b9"
+          git fetch origin main codex/daily-frontend-ux-20260822
+          CURRENT_TARGET="$(git rev-parse origin/codex/daily-frontend-ux-20260822)"
+          echo "target_expected=$TARGET_SHA"
+          echo "target_actual=$CURRENT_TARGET"
+          echo "main=$(git rev-parse origin/main)"
+          test "$CURRENT_TARGET" = "$TARGET_SHA"
+          git checkout --detach "$TARGET_SHA"
+          set +e
+          git merge --no-commit --no-ff origin/main
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "MERGE_CLEAN=1"
+            git status --short
+            exit 0
+          fi
+          echo "MERGE_CLEAN=0"
+          echo "CONFLICT_FILES_BEGIN"
+          git diff --name-only --diff-filter=U
+          echo "CONFLICT_FILES_END"
+          echo "CONFLICT_DETAIL_BEGIN"
+          git diff --cc --no-ext-diff
+          echo "CONFLICT_DETAIL_END"
+          exit 1
