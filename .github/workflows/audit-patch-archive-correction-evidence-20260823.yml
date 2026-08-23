@@ -1,4 +1,4 @@
-name: Audit Patch Archive Correction Evidence 20260823
+name: Audit Patch Grade High Risk Evidence 20260823
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 10
     env:
       FIX_BRANCH: fix/academic-e2e-school-iam-bootstrap-20260823
-      EXPECTED_SHA: fc0791c79475184b264803c818bbf4ab92d845aa
+      EXPECTED_SHA: 6d237b7a8c88af1b693107578ea8be812133b1a6
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -25,125 +25,101 @@ jobs:
           ref: ${{ env.FIX_BRANCH }}
           fetch-depth: 0
 
-      - name: Assert expected fix head
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Assert exact repair head
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git merge-base --is-ancestor 1c69336ea0728c5c6713c0c85b7275b06fca9ae1 "$EXPECTED_SHA"
 
-      - name: Apply minimal structured audit evidence patch
+      - name: Add structured before after to high risk grade task audit
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text(encoding='utf-8')
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected one match, got {count}')
-              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          path = Path('backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py')
+          text = path.read_text(encoding='utf-8')
 
-          replace_once(
-              'backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py',
-              '''def _audit(db, biz_id, action, detail=""):\n    from app.models import AffairsAuditTrail\n    db.add(AffairsAuditTrail(\n        tenant_id=_tid(), biz_type="AA_ARCHIVE", biz_id=biz_id, action=action,\n        operator=_op(), role_name=_role(), detail=detail[:990], occurred_at=datetime.utcnow(),\n    ))\n''',
-              '''def _audit(db, biz_id, action, detail="", *, before_val=None, after_val=None):\n    from app.models import AffairsAuditTrail\n    db.add(AffairsAuditTrail(\n        tenant_id=_tid(), biz_type="AA_ARCHIVE", biz_id=biz_id, action=action,\n        operator=_op(), role_name=_role(), detail=detail[:990],\n        before_val=before_val, after_val=after_val, occurred_at=datetime.utcnow(),\n    ))\n''',
-          )
+          def once(old, new):
+              global text
+              n = text.count(old)
+              if n != 1:
+                  raise SystemExit(f'expected exactly one match, got {n}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
 
-          replace_once(
-              'backend/app/modules/academic_affairs/services/academic_affairs_archive_manifest_service.py',
-              '''        core._audit(db, batch.id, "POST_ARCHIVE_CORRECTION_CREATE",\n                    f"caseId={case.id};type={business_type};target={target_ref};requester={requester}")\n''',
-              '''        core._audit(\n            db,\n            batch.id,\n            "POST_ARCHIVE_CORRECTION_CREATE",\n            f"caseId={case.id};type={business_type};target={target_ref};requester={requester}",\n            before_val=_json({\n                "caseId": str(case.id),\n                "status": None,\n                "officialFactId": None,\n                "resultingManifestId": None,\n            }),\n            after_val=_json({\n                "caseId": str(case.id),\n                "status": "PENDING_SECOND_APPROVAL",\n                "businessType": business_type,\n                "targetRef": target_ref,\n                "riskLevel": case.risk_level,\n                "requestedBy": int(requester),\n                "officialFactId": None,\n                "resultingManifestId": None,\n            }),\n        )\n''',
+          once(
+              'from datetime import datetime\n\nfrom sqlalchemy import and_, func, select\n',
+              'from datetime import datetime\nimport json\n\nfrom sqlalchemy import and_, func, select\n',
           )
-
-          replace_once(
-              'backend/app/modules/academic_affairs/services/academic_affairs_archive_manifest_service.py',
-              '''        core._audit(\n            db,\n            batch.id,\n            "POST_ARCHIVE_CORRECTION_APPLY",\n            (\n                f"caseId={case.id};type={case.business_type};officialFact={official['factType']}:"\n                f"{official['factId']};manifestV={version_no};manifestId={manifest.id};"\n                f"requester={case.created_by};secondApprover={actor}"\n            ),\n        )\n''',
-              '''        core._audit(\n            db,\n            batch.id,\n            "POST_ARCHIVE_CORRECTION_APPLY",\n            (\n                f"caseId={case.id};type={case.business_type};officialFact={official['factType']}:"\n                f"{official['factId']};manifestV={version_no};manifestId={manifest.id};"\n                f"requester={case.created_by};secondApprover={actor}"\n            ),\n            before_val=_json({\n                "caseId": str(case.id),\n                "status": "PENDING_SECOND_APPROVAL",\n                "requestedBy": int(case.created_by),\n                "previousManifestId": str(previous.id),\n                "previousManifestVersion": int(previous.version_no),\n                "officialFactHash": official["beforeHash"],\n            }),\n            after_val=_json({\n                "caseId": str(case.id),\n                "status": "APPLIED",\n                "secondApprovedBy": int(actor),\n                "officialFactType": official["factType"],\n                "officialFactId": str(official["factId"]),\n                "officialFactHash": official["afterHash"],\n                "resultingManifestId": str(manifest.id),\n                "manifestVersion": int(version_no),\n                "supersedesId": str(previous.id),\n            }),\n        )\n''',
+          once(
+              '''def _audit(db, biz_type, biz_id, action, detail=""):\n    from app.models import AffairsAuditTrail\n    n, r, uid = _op()\n    db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=int(biz_id) if biz_id else None,\n                             action=action, operator=n or uid, role_name=r, detail=detail,\n                             occurred_at=datetime.utcnow()))\n''',
+              '''def _audit(db, biz_type, biz_id, action, detail="", *, before_val=None, after_val=None):\n    from app.models import AffairsAuditTrail\n    n, r, uid = _op()\n\n    def _snapshot(value):\n        if value is None or isinstance(value, str):\n            return value\n        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)\n\n    db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=int(biz_id) if biz_id else None,\n                             action=action, operator=n or uid, role_name=r, detail=detail,\n                             before_val=_snapshot(before_val), after_val=_snapshot(after_val),\n                             occurred_at=datetime.utcnow()))\n''',
           )
-
-          replace_once(
-              'backend/app/modules/academic_affairs/services/academic_affairs_archive_correction_review_service.py',
-              '''        core._audit(\n            db,\n            batch.id,\n            "POST_ARCHIVE_CORRECTION_REJECT",\n            (\n                f"caseId={case.id};type={case.business_type};requester={case.created_by};"\n                f"reviewer={actor};reason={audit_reason}"\n            ),\n        )\n''',
-              '''        core._audit(\n            db,\n            batch.id,\n            "POST_ARCHIVE_CORRECTION_REJECT",\n            (\n                f"caseId={case.id};type={case.business_type};requester={case.created_by};"\n                f"reviewer={actor};reason={audit_reason}"\n            ),\n            before_val=immutable_service._json({\n                "caseId": str(case.id),\n                "status": _PENDING,\n                "requestedBy": int(case.created_by),\n                "officialFactId": None,\n                "resultingManifestId": None,\n            }),\n            after_val=immutable_service._json({\n                "caseId": str(case.id),\n                "status": "REJECTED",\n                "rejectedBy": int(actor),\n                "rejectReason": reason,\n                "officialFactId": None,\n                "resultingManifestId": None,\n            }),\n        )\n''',
+          once(
+              '''        # CAS：仅 INPUTTING/RETURNED 可抢占为 SUBMITTED，防并发双提交产生孤儿工作流\n        claim = db.query(AaGradeTask).filter(\n''',
+              '''        # CAS：仅 INPUTTING/RETURNED 可抢占为 SUBMITTED，防并发双提交产生孤儿工作流\n        before_status = t.status\n        claim = db.query(AaGradeTask).filter(\n''',
           )
-
-          # Extend the existing service-level MySQL regression for CREATE + APPLY evidence.
-          replace_once(
-              'backend/tests/test_stage_c3_correction_end_to_end.py',
-              'from datetime import datetime\n\nimport pytest\n',
-              'from datetime import datetime\n\nimport json\nimport pytest\n',
+          once(
+              '''        _todo_done_grade_entry(db, t.id)\n        _audit(db, "AA_GRADE_TASK", t.id, "SUBMIT")\n''',
+              '''        _todo_done_grade_entry(db, t.id)\n        _audit(\n            db, "AA_GRADE_TASK", t.id, "SUBMIT",\n            before_val={"status": before_status, "workflowInstanceId": None},\n            after_val={"status": "SUBMITTED", "workflowInstanceId": str(inst.id),\n                       "submittedAt": t.submitted_at},\n        )\n''',
           )
-          replace_once(
-              'backend/tests/test_stage_c3_correction_end_to_end.py',
-              '    from app.models import AaArchiveBatch, AcademicGrade, ArchiveManifest, PostArchiveCorrectionCase\n',
-              '    from app.models import AaArchiveBatch, AcademicGrade, AffairsAuditTrail, ArchiveManifest, PostArchiveCorrectionCase\n',
+          once(
+              '''            t.status, t.return_reason = "RETURNED", reason.strip()\n            _push_grade_entry_todo(db, t)\n            _audit(db, "AA_GRADE_TASK", t.id, "COLLEGE_RETURN", reason.strip())\n''',
+              '''            t.status, t.return_reason = "RETURNED", reason.strip()\n            _push_grade_entry_todo(db, t)\n            _audit(\n                db, "AA_GRADE_TASK", t.id, "COLLEGE_RETURN", reason.strip(),\n                before_val={"status": "SUBMITTED", "returnReason": None},\n                after_val={"status": "RETURNED", "returnReason": reason.strip(),\n                           "reviewerId": int(uid) if uid.isdigit() else None},\n            )\n''',
           )
-          replace_once(
-              'backend/tests/test_stage_c3_correction_end_to_end.py',
-              '''        manifests = db.query(ArchiveManifest).filter(\n            ArchiveManifest.tenant_id == TID,\n            ArchiveManifest.archive_batch_id == batch_id,\n        ).order_by(ArchiveManifest.version_no).all()\n''',
-              '''        manifests = db.query(ArchiveManifest).filter(\n            ArchiveManifest.tenant_id == TID,\n            ArchiveManifest.archive_batch_id == batch_id,\n        ).order_by(ArchiveManifest.version_no).all()\n        audits = db.query(AffairsAuditTrail).filter(\n            AffairsAuditTrail.tenant_id == TID,\n            AffairsAuditTrail.biz_type == "AA_ARCHIVE",\n            AffairsAuditTrail.biz_id == batch_id,\n            AffairsAuditTrail.action.in_([\n                "POST_ARCHIVE_CORRECTION_CREATE",\n                "POST_ARCHIVE_CORRECTION_APPLY",\n            ]),\n        ).order_by(AffairsAuditTrail.id).all()\n''',
+          once(
+              '''            t.college_reviewed_at = datetime.utcnow()\n            t.college_reviewer_id = int(uid) if uid.isdigit() else None\n            t.status = "ACADEMIC_REVIEW"\n            _audit(db, "AA_GRADE_TASK", t.id, "COLLEGE_APPROVE")\n''',
+              '''            t.college_reviewed_at = datetime.utcnow()\n            t.college_reviewer_id = int(uid) if uid.isdigit() else None\n            t.status = "ACADEMIC_REVIEW"\n            _audit(\n                db, "AA_GRADE_TASK", t.id, "COLLEGE_APPROVE",\n                before_val={"status": "SUBMITTED", "collegeReviewerId": None},\n                after_val={"status": "ACADEMIC_REVIEW",\n                           "collegeReviewerId": t.college_reviewer_id,\n                           "collegeReviewedAt": t.college_reviewed_at},\n            )\n''',
           )
-          replace_once(
-              'backend/tests/test_stage_c3_correction_end_to_end.py',
-              '''        assert manifests[0].id == manifest_v1_id\n''',
-              '''        assert manifests[0].id == manifest_v1_id\n        assert [row.action for row in audits] == [\n            "POST_ARCHIVE_CORRECTION_CREATE",\n            "POST_ARCHIVE_CORRECTION_APPLY",\n        ]\n        assert all(row.operator and row.role_name and row.before_val and row.after_val for row in audits)\n        create_before, create_after = json.loads(audits[0].before_val), json.loads(audits[0].after_val)\n        apply_before, apply_after = json.loads(audits[1].before_val), json.loads(audits[1].after_val)\n        assert create_before["status"] is None and create_after["status"] == "PENDING_SECOND_APPROVAL"\n        assert apply_before["status"] == "PENDING_SECOND_APPROVAL" and apply_after["status"] == "APPLIED"\n        assert apply_after["officialFactId"] == str(new_grade_id)\n        assert apply_after["resultingManifestId"] == str(manifests[1].id)\n''',
+          once(
+              '''        t.academic_reviewed_at = datetime.utcnow()\n        n, r2, uid = _op()\n        t.academic_reviewer_id = int(uid) if uid.isdigit() else None\n        _audit(db, "AA_GRADE_TASK", t.id, "PUBLISH", f"projected={projected},fail={fail_count}")\n''',
+              '''        t.academic_reviewed_at = datetime.utcnow()\n        n, r2, uid = _op()\n        t.academic_reviewer_id = int(uid) if uid.isdigit() else None\n        _audit(\n            db, "AA_GRADE_TASK", t.id, "PUBLISH", f"projected={projected},fail={fail_count}",\n            before_val={"status": "ACADEMIC_REVIEW", "publishAt": None,\n                        "academicReviewerId": None},\n            after_val={"status": "PUBLISHED", "publishAt": t.publish_at,\n                       "academicReviewedAt": t.academic_reviewed_at,\n                       "academicReviewerId": t.academic_reviewer_id,\n                       "projected": projected, "failCount": fail_count},\n        )\n''',
+          )
+          once(
+              '''        t.status, t.return_reason = "RETURNED", reason.strip()\n        _push_grade_entry_todo(db, t)\n        _audit(db, "AA_GRADE_TASK", t.id, "ACADEMIC_RETURN", reason.strip())\n''',
+              '''        t.status, t.return_reason = "RETURNED", reason.strip()\n        _push_grade_entry_todo(db, t)\n        _audit(\n            db, "AA_GRADE_TASK", t.id, "ACADEMIC_RETURN", reason.strip(),\n            before_val={"status": "ACADEMIC_REVIEW", "returnReason": None},\n            after_val={"status": "RETURNED", "returnReason": reason.strip()},\n        )\n''',
+          )
+          once(
+              '''        t.status = "ARCHIVED"\n        # 明确保留 teaching_task_id，归档不释放终身唯一占用\n        _audit(db, "AA_GRADE_TASK", t.id, "ARCHIVE")\n''',
+              '''        t.status = "ARCHIVED"\n        # 明确保留 teaching_task_id，归档不释放终身唯一占用\n        _audit(\n            db, "AA_GRADE_TASK", t.id, "ARCHIVE",\n            before_val={"status": "PUBLISHED", "teachingTaskId": str(t.teaching_task_id or "")},\n            after_val={"status": "ARCHIVED", "teachingTaskId": str(t.teaching_task_id or "")},\n        )\n''',
           )
 
-          # Extend reject path regression with its own before/after audit facts.
-          replace_once(
-              'backend/tests/test_stage_c3_correction_reject.py',
-              'from datetime import datetime\nfrom threading import Barrier\n\nimport pytest\n',
-              'from datetime import datetime\nfrom threading import Barrier\n\nimport json\nimport pytest\n',
-          )
-          replace_once(
-              'backend/tests/test_stage_c3_correction_reject.py',
-              '    from app.models import AaArchiveBatch, AcademicGrade, ArchiveManifest, PostArchiveCorrectionCase\n',
-              '    from app.models import AaArchiveBatch, AcademicGrade, AffairsAuditTrail, ArchiveManifest, PostArchiveCorrectionCase\n',
-          )
-          replace_once(
-              'backend/tests/test_stage_c3_correction_reject.py',
-              '''        grades = db.query(AcademicGrade).filter(\n            AcademicGrade.tenant_id == TID,\n            AcademicGrade.acad_student_id == grade.acad_student_id,\n        ).all()\n''',
-              '''        grades = db.query(AcademicGrade).filter(\n            AcademicGrade.tenant_id == TID,\n            AcademicGrade.acad_student_id == grade.acad_student_id,\n        ).all()\n        reject_audit = db.query(AffairsAuditTrail).filter(\n            AffairsAuditTrail.tenant_id == TID,\n            AffairsAuditTrail.biz_type == "AA_ARCHIVE",\n            AffairsAuditTrail.biz_id == batch_id,\n            AffairsAuditTrail.action == "POST_ARCHIVE_CORRECTION_REJECT",\n        ).one()\n''',
-          )
-          replace_once(
-              'backend/tests/test_stage_c3_correction_reject.py',
-              '''        assert manifests[0].manifest_hash == manifest_v1_hash\n''',
-              '''        assert manifests[0].manifest_hash == manifest_v1_hash\n        assert reject_audit.operator and reject_audit.role_name\n        assert reject_audit.before_val and reject_audit.after_val\n        reject_before = json.loads(reject_audit.before_val)\n        reject_after = json.loads(reject_audit.after_val)\n        assert reject_before["status"] == "PENDING_SECOND_APPROVAL"\n        assert reject_after["status"] == "REJECTED"\n        assert reject_after["rejectedBy"] == 41002\n        assert reject_after["officialFactId"] is None\n        assert reject_after["resultingManifestId"] is None\n''',
-          )
+          path.write_text(text, encoding='utf-8')
           PY
 
-      - name: Prove patch scope and syntax
+      - name: Prove exact patch scope and high risk evidence contract
         run: |
           set -euo pipefail
           git diff --check
-          git diff --name-only
-          test "$(git diff --name-only | wc -l | tr -d ' ')" = 5
-          python -m py_compile \
-            backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py \
-            backend/app/modules/academic_affairs/services/academic_affairs_archive_manifest_service.py \
-            backend/app/modules/academic_affairs/services/academic_affairs_archive_correction_review_service.py \
-            backend/tests/test_stage_c3_correction_end_to_end.py \
-            backend/tests/test_stage_c3_correction_reject.py
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = 1
+          test "$(git diff --name-only)" = 'backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py'
+          python -m py_compile backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py
+          python - <<'PY'
+          from pathlib import Path
+          s = Path('backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py').read_text(encoding='utf-8')
+          assert 'before_val=_snapshot(before_val)' in s and 'after_val=_snapshot(after_val)' in s
+          for action in ('SUBMIT', 'COLLEGE_RETURN', 'COLLEGE_APPROVE', 'PUBLISH', 'ACADEMIC_RETURN', 'ARCHIVE'):
+              pos = s.find(f'"{action}"')
+              assert pos >= 0, action
+              window = s[pos:pos+900]
+              assert 'before_val=' in window and 'after_val=' in window, (action, window)
+          PY
 
-      - name: Commit exact fix to audit repair branch
+      - name: Commit exact grade evidence fix
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py \
-            backend/app/modules/academic_affairs/services/academic_affairs_archive_manifest_service.py \
-            backend/app/modules/academic_affairs/services/academic_affairs_archive_correction_review_service.py \
-            backend/tests/test_stage_c3_correction_end_to_end.py \
-            backend/tests/test_stage_c3_correction_reject.py
-          git commit -m 'fix(academic): persist correction audit before-after evidence'
+          git add backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py
+          git commit -m 'fix(academic): persist grade high-risk audit before-after evidence'
           git push origin HEAD:"$FIX_BRANCH"
           echo "patched_sha=$(git rev-parse HEAD)" > /tmp/patch-result.txt
           cat /tmp/patch-result.txt
 
-      - name: Publish patch result
+      - name: Publish grade audit patch result
         if: always()
         env:
           JOB_STATUS: ${{ job.status }}
         run: |
-          printf '## Archive correction audit evidence patch\n\nStatus: **%s**\nExpected base: `%s`\n' "$JOB_STATUS" "$EXPECTED_SHA" > /tmp/comment.md
+          printf '## Grade high-risk audit evidence patch\n\nStatus: **%s**\nExpected base: `%s`\n' "$JOB_STATUS" "$EXPECTED_SHA" > /tmp/comment.md
           if [ -f /tmp/patch-result.txt ]; then cat /tmp/patch-result.txt >> /tmp/comment.md; fi
           gh issue comment 205 --repo '${{ github.repository }}' --body-file /tmp/comment.md
