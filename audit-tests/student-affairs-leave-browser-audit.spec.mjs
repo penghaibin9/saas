@@ -61,6 +61,10 @@ async function readClosedMetric(page) {
 }
 
 test.describe.serial('Student Affairs strict browser audit · leave lifecycle', () => {
+  // This journey writes real business state. A framework retry would rerun from a dirty
+  // database after a late assertion failure and turn correct duplicate protection into a false 409.
+  test.describe.configure({ retries: 0 })
+
   test('student create -> counselor return -> student edit/resubmit -> counselor approve -> student cancel -> counselor confirm -> stats -> tenant isolation', async ({ page }, testInfo) => {
     test.setTimeout(180_000)
 
@@ -118,7 +122,7 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
       const responsePromise = page.waitForResponse((response) =>
         exactPath(response, '/api/v1/portal/affairs/leave', 'POST')
       )
-      await form.getByRole('button', { name: '提交请假' }).dblclick()
+      await form.getByRole('button', { name: '提交请假', exact: true }).dblclick()
       const response = await responsePromise
       expect(response.ok(), `student leave submit HTTP ${response.status()}`).toBeTruthy()
       const envelope = await response.json()
@@ -153,7 +157,7 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
       const returnResponsePromise = page.waitForResponse((response) =>
         response.url().includes('/api/v1/student-affairs/leave/') && response.url().endsWith('/return') && response.request().method() === 'POST'
       )
-      await page.getByRole('button', { name: '退回重提' }).click()
+      await page.getByRole('button', { name: '退回重提', exact: true }).click()
       const dialog = page.getByRole('dialog')
       await expect(dialog).toBeVisible()
       await dialog.locator('textarea').fill(returnedReason)
@@ -170,7 +174,7 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
       const record = page.locator('article.record').filter({ hasText: startDate }).filter({ hasText: endDate }).first()
       await expect(record).toBeVisible()
       await expect(record).toContainText(returnedReason)
-      await record.getByRole('button', { name: '修改后重提' }).click()
+      await record.getByRole('button', { name: '修改后重提', exact: true }).click()
 
       const modal = page.locator('.mask .modal')
       await expect(modal).toBeVisible()
@@ -178,7 +182,7 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
       const resubmitPromise = page.waitForResponse((response) =>
         response.url().endsWith(`/api/v1/portal/affairs/leave/${leaveId}/resubmit`) && response.request().method() === 'POST'
       )
-      await modal.getByRole('button', { name: '保存并提交' }).click()
+      await modal.getByRole('button', { name: '保存并提交', exact: true }).click()
       const resubmitted = await resubmitPromise
       expect(resubmitted.ok(), `resubmit HTTP ${resubmitted.status()}`).toBeTruthy()
       const resubmitEnv = await resubmitted.json()
@@ -225,7 +229,7 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
         response.url().endsWith(`/api/v1/portal/affairs/leave/${leaveId}/cancel`) && response.request().method() === 'POST'
       )
       page.once('dialog', (dialog) => dialog.accept())
-      await record.getByRole('button', { name: '申请销假' }).click()
+      await record.getByRole('button', { name: '申请销假', exact: true }).click()
       const cancel = await cancelPromise
       expect(cancel.ok(), `cancel request HTTP ${cancel.status()}`).toBeTruthy()
       const cancelEnv = await cancel.json()
@@ -241,14 +245,17 @@ test.describe.serial('Student Affairs strict browser audit · leave lifecycle', 
       const item = page.locator('.lv-item').filter({ hasText: config.student.username }).first()
       await expect(item).toBeVisible()
       await item.click()
-      await expect(page.locator('.lv-main')).toContainText(/待销假确认|销假记录/)
-      await expect(page.locator('.lv-main')).toContainText(revisedReason)
+      const detailPanel = page.locator('.lv-main')
+      await expect(detailPanel).toContainText(/待销假确认|销假记录/)
+      await expect(detailPanel).toContainText(revisedReason)
 
       const confirmPromise = page.waitForResponse((response) =>
         response.url().endsWith(`/api/v1/student-affairs/leave/${leaveId}/cancel-confirm`) && response.request().method() === 'POST'
       )
-      await page.getByRole('button', { name: '销假确认' }).click()
-      await page.getByRole('button', { name: '确认销假' }).click()
+      await detailPanel.getByRole('button', { name: '销假确认', exact: true }).click()
+      const confirmDialog = page.getByRole('dialog', { name: '销假确认', exact: true })
+      await expect(confirmDialog).toBeVisible()
+      await confirmDialog.getByRole('button', { name: '确认销假', exact: true }).click()
       const confirmed = await confirmPromise
       expect(confirmed.ok(), `cancel confirm HTTP ${confirmed.status()}`).toBeTruthy()
       const confirmEnv = await confirmed.json()
