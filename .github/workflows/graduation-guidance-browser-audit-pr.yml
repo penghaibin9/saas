@@ -1,0 +1,295 @@
+name: Graduation guidance Browser First audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/graduation-guidance-browser-audit-pr.yml'
+      - 'e2e/specs/graduation-guidance-browser-audit.spec.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graduation-guidance-browser-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guidance-browser-audit:
+    name: exact SHA guidance create-refresh-student-visible / Chromium / MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping" --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/13
+      REDIS_KEY_PREFIX: graduation-guidance-audit-20260823
+      REDIS_CONNECT_TIMEOUT: '2'
+      REDIS_SOCKET_TIMEOUT: '2'
+      JWT_SECRET: graduation-guidance-audit-only-not-production
+      JWT_SECRET_KEY: graduation-guidance-audit-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_EXPECTED_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+
+    steps:
+      - name: Checkout product exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+          fetch-depth: 0
+
+      - name: Assert exact product HEAD
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          echo "PRODUCT_EXACT_HEAD=$ACTUAL"
+          test "$ACTUAL" = "1c69336ea0728c5c6713c0c85b7275b06fca9ae1"
+
+      - name: Checkout audit harness only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: audit-harness
+          sparse-checkout: |
+            e2e/specs/graduation-guidance-browser-audit.spec.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Inject only the audit spec into exact product tree
+        run: |
+          set -euo pipefail
+          cp audit-harness/e2e/specs/graduation-guidance-browser-audit.spec.mjs e2e/specs/
+          rm -rf audit-harness
+          test "$(git rev-parse HEAD)" = "1c69336ea0728c5c6713c0c85b7275b06fca9ae1"
+          bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/specs/graduation-guidance-browser-audit.spec.mjs$' || true)"
+          test -z "$bad"
+          git status --short
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+
+      - name: Install backend, migrate MySQL, seed IAM and tenants
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          alembic heads
+          alembic upgrade head
+          alembic current
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start real backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs e2e/test-results
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Bootstrap graduation accounts through real HTTP import
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+
+      - name: Start staff PC
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+
+      - name: Start student PC
+        env:
+          VITE_BASE: /portal/
+          VITE_API_BASE_URL: /
+          VITE_PROXY_TARGET: http://127.0.0.1:8000
+        run: |
+          set -euo pipefail
+          cd student-portal
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/student-portal.pid
+
+      - name: Wait for browser apps
+        run: |
+          set -euo pipefail
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
+            ok=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ok" ]; then
+              cat e2e/runtime-logs/*.log || true
+              exit 1
+            fi
+          done
+
+      - name: Apply runtime-only E2E-AUDIT-20260823 fixture prefix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          edits = {
+            'e2e/lib/api-fixture.mjs': [
+              ('`PW-E2E-${runId}`', '`E2E-AUDIT-20260823-${runId}`'),
+              ('`Playwright 毕设交互测试 ${runId}`', '`E2E-AUDIT-20260823 毕设批次 ${runId}`'),
+              ('`Playwright 交互测试课题 ${runId}`', '`E2E-AUDIT-20260823 课题 ${runId}`'),
+            ],
+          }
+          for raw, replacements in edits.items():
+            path = Path(raw)
+            text = path.read_text(encoding='utf-8')
+            for old, new in replacements:
+              assert old in text, (raw, old)
+              text = text.replace(old, new)
+            path.write_text(text, encoding='utf-8')
+          PY
+          bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
+          test -z "$bad"
+          git status --short
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Real browser guidance persistence journey
+        id: pw
+        continue-on-error: true
+        working-directory: e2e
+        run: npx playwright test specs/graduation-guidance-browser-audit.spec.mjs
+
+      - name: Direct MySQL guidance and audit verification
+        id: db
+        if: always()
+        continue-on-error: true
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import date, datetime
+          from decimal import Decimal
+          from pathlib import Path
+          import pymysql
+
+          def cv(v):
+              if isinstance(v, (datetime, date)): return v.isoformat()
+              if isinstance(v, Decimal): return str(v)
+              if isinstance(v, bytes): return v.decode('utf-8', 'replace')
+              return v
+
+          conn = pymysql.connect(
+              host='127.0.0.1', port=3306, user='root', password='e2e_root',
+              database='student_lifecycle_e2e', charset='utf8mb4',
+              cursorclass=pymysql.cursors.DictCursor,
+          )
+          with conn.cursor() as cur:
+              cur.execute("SELECT id,tenant_id,gd_student_id,mentor_id,guidance_date,method,content,issues,void_reason,is_deleted,created_at FROM t_gd_guidance ORDER BY id")
+              guidance = cur.fetchall()
+              cur.execute("SELECT id,tenant_id,biz_type,biz_id,action,operator,role_name,detail,occurred_at,request_id,request_path,role_code,permission_code,data_scope FROM t_gd_audit_trail WHERE biz_type='GUIDANCE' ORDER BY id")
+              audits = cur.fetchall()
+          for row in guidance + audits:
+              for k, v in list(row.items()): row[k] = cv(v)
+          evidence = {
+              'productExactHead': '1c69336ea0728c5c6713c0c85b7275b06fca9ae1',
+              'guidance': guidance,
+              'audits': audits,
+          }
+          out = Path('../e2e/test-results/graduation-guidance-db-audit.json')
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(evidence, ensure_ascii=False, indent=2))
+
+          rows = [g for g in guidance if str(g.get('content') or '').startswith('E2E-AUDIT-20260823') and not g.get('is_deleted')]
+          assert len(rows) == 1, guidance
+          g = rows[0]
+          assert g['tenant_id'] and g['gd_student_id'] and g['mentor_id'], g
+          assert g['method'] in ('ONLINE', 'OFFLINE'), g
+          assert '边界场景覆盖不足' in str(g.get('issues') or ''), g
+
+          matching = [a for a in audits if a['action'] == '新增指导记录' and str(a['biz_id']) == str(g['id'])]
+          assert len(matching) == 1, audits
+          a = matching[0]
+          assert a['tenant_id'] == g['tenant_id'], (a, g)
+          assert a['operator'] and a['role_name'] and a['occurred_at'], a
+          assert a['request_id'] and a['request_path'] and a['role_code'], a
+          assert str(a['request_path']).endswith(f"/api/v1/graduation/gd-guidances/{g['gd_student_id']}") or '/graduation/gd-guidances/' in str(a['request_path']), a
+          PY
+
+      - name: Enforce browser and DB evidence gates
+        if: always()
+        env:
+          PW: ${{ steps.pw.outcome }}
+          DB: ${{ steps.db.outcome }}
+        run: |
+          echo "playwright=$PW db=$DB"
+          test "$PW" = success
+          test "$DB" = success
+
+      - name: Upload guidance audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-guidance-browser-audit-${{ github.run_id }}
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
