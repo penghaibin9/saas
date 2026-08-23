@@ -8,8 +8,26 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, not_found
 from app.models import GraduationGrade, GraduationGradeAppeal, GraduationStudent
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
+from app.services import message_event_outbox_service as message_outbox
 from app.services.db_service import _tid, session
-from app.services.message_event_outbox_service import emit_message_event
+
+
+GRADE_APPEAL_REVIEWED_EVENT = "GRADUATION_DESIGN.GRADE_APPEAL_REVIEWED"
+
+# 毕设成绩申诉处理结果属于本模块的正式消息契约。服务加载时即登记，确保业务事务
+# 不会因“事件码未登记”在 emit_message_event 阶段被 422 回滚。
+message_outbox._EVENT_TEMPLATES.setdefault(
+    GRADE_APPEAL_REVIEWED_EVENT,
+    {
+        "source_module": "graduation",
+        "category": "BUSINESS",
+        "priority": "IMPORTANT",
+        "message_type": "GRADUATION_GRADE_APPEAL_REVIEWED",
+        "title": "毕业设计成绩申诉处理结果",
+        "require_ack": False,
+    },
+)
+
 
 def review_appeal(appeal_id, action, comment=None) -> dict:
     if action not in ("APPROVE", "REJECT"):
@@ -80,9 +98,9 @@ def review_appeal(appeal_id, action, comment=None) -> dict:
 
         outbox_id = None
         if student.student_id:
-            outbox = emit_message_event(
+            outbox = message_outbox.emit_message_event(
                 db,
-                event_code="GRADUATION_DESIGN.GRADE_APPEAL_REVIEWED",
+                event_code=GRADE_APPEAL_REVIEWED_EVENT,
                 source_module="graduation",
                 source_biz_type="grade_appeal",
                 source_biz_id=int(appeal.id),
@@ -91,7 +109,7 @@ def review_appeal(appeal_id, action, comment=None) -> dict:
                 content=result_text,
                 action_key="graduation.grade.view",
                 action_params={"gdStudentId": str(student.id), "batchId": str(student.batch_id)},
-                dedup_key=f"GRADUATION_DESIGN.GRADE_APPEAL_REVIEWED:{appeal.id}:{appeal.status}",
+                dedup_key=f"{GRADE_APPEAL_REVIEWED_EVENT}:{appeal.id}:{appeal.status}",
             )
             outbox_id = str(outbox.id)
 
