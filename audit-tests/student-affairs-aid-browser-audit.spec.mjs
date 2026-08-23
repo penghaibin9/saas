@@ -175,11 +175,13 @@ test.describe.serial('Student Affairs strict browser audit · aid / difficulty r
       expect([400, 403, 404, 409]).toContain(review.status())
     })
 
-    await test.step('assigned counselor sees masked family economy, can reveal only with audited reason, then returns through UI', async () => {
+    await test.step('assigned counselor sees statement and masked family economy, can reveal only with audited reason, then returns through UI', async () => {
       await openAidWorkbench(page, staff.counselorA)
       await chooseAidItem(page)
       const detail = page.locator('.ad-detail')
-      reviewerStatementVisible = await detail.getByText(initialStatement, { exact: true }).isVisible().catch(() => false)
+      const statement = detail.getByText(initialStatement, { exact: true })
+      await expect(statement).toBeVisible({ timeout: 15_000 })
+      reviewerStatementVisible = true
       const detailText = await detail.innerText()
       maskedBeforeReveal = !detailText.includes('18000') && detailText.includes('1-2万')
       expect(maskedBeforeReveal).toBeTruthy()
@@ -226,10 +228,11 @@ test.describe.serial('Student Affairs strict browser audit · aid / difficulty r
       await expect(resubmittedRecord).toBeVisible({ timeout: 15_000 })
     })
 
-    await test.step('assigned counselor completes class review and counselor initial review via real workbench', async () => {
+    await test.step('assigned counselor sees revised statement and completes class review plus counselor initial review via real workbench', async () => {
       await openAidWorkbench(page, staff.counselorA)
       await chooseAidItem(page)
       const detail = page.locator('.ad-detail')
+      await expect(detail.getByText(revisedStatement, { exact: true })).toBeVisible({ timeout: 15_000 })
       let reviewPromise = page.waitForResponse((response) => response.url().endsWith(`/api/v1/student-affairs/aid/applications/${applyId}/review`) && response.request().method() === 'POST')
       await detail.getByRole('button', { name: '评议通过', exact: true }).click()
       await confirmDialog(page, '评审通过', '评审通过')
