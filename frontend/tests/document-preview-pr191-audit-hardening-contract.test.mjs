@@ -34,9 +34,12 @@ test('PR191 hostile PDF and image resources are bounded before browser decode', 
   assert.match(session, /sourceByteLength\(bytes\) > sourceLimit/)
 })
 
-test('PR191 preview AbortSignal reaches actual byte stream and byte budget cancels transport', () => {
+test('PR191 preview AbortSignal reaches actual byte stream, timeout stays visible, and byte budget cancels transport', () => {
   const source = read('src/modules/graduation/api/graduation-material-center.api.js')
-  assert.match(source, /fetch\(`\$\{API_BASE_URL\}\$\{API_PREFIX\}\$\{path\}`,[\s\S]*signal/)
+  assert.match(source, /PREVIEW_FETCH_TIMEOUT_MS = 15000/)
+  assert.match(source, /setTimeout\(\(\) => \{[\s\S]*timedOut = true[\s\S]*controller\.abort\(\)/)
+  assert.match(source, /fetch\(`\$\{API_BASE_URL\}\$\{API_PREFIX\}\$\{path\}`,[\s\S]*signal: fetchScope\.signal/)
+  assert.match(source, /PREVIEW_FETCH_TIMEOUT/)
   assert.match(source, /response\.body\.getReader\(\)/)
   assert.match(source, /reader\.cancel\('preview aborted'\)/)
   assert.match(source, /reader\.cancel\('preview byte budget exceeded'\)/)
