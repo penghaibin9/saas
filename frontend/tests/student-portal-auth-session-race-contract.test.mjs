@@ -29,7 +29,7 @@ test('student portal refresh is generation-bound and cannot overwrite a newer se
   )
 })
 
-test('student portal business requests cannot replay under a newer login session', async () => {
+test('student portal business requests and file bytes cannot replay under a newer login session', async () => {
   const text = await source()
 
   const requestBlock = text.match(/export async function request\(path,[\s\S]*?\{([\s\S]*?)\n\}\n\nexport async function uploadFile/)
@@ -38,15 +38,20 @@ test('student portal business requests cannot replay under a newer login session
   assert.match(requestBlock[1], /if \(auth && sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
   assert.match(requestBlock[1], /await refreshOnce\(\)[\s\S]*?if \(sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
 
-  const uploadBlock = text.match(/export async function uploadFile\(path,[\s\S]*?\{([\s\S]*?)\n\}\n\nexport async function downloadFile/)
+  const uploadBlock = text.match(/export async function uploadFile\(path,[\s\S]*?\{([\s\S]*?)\n\}\n\nexport async function fetchFileBlob/)
   assert.ok(uploadBlock, 'uploadFile() block must exist')
   assert.match(uploadBlock[1], /const generationAtStart = sessionGeneration/)
   assert.match(uploadBlock[1], /if \(auth && sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
 
+  const blobBlock = text.match(/export async function fetchFileBlob\(path,[\s\S]*?\{([\s\S]*?)\n\}\n\nexport async function downloadFile/)
+  assert.ok(blobBlock, 'fetchFileBlob() block must exist')
+  assert.match(blobBlock[1], /const generationAtStart = sessionGeneration/)
+  assert.match(blobBlock[1], /if \(auth && sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
+  assert.match(blobBlock[1], /await refreshOnce\(\)[\s\S]*?if \(sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
+
   const downloadBlock = text.match(/export async function downloadFile\(path,[\s\S]*?\{([\s\S]*?)\n\}\s*$/)
   assert.ok(downloadBlock, 'downloadFile() block must exist')
-  assert.match(downloadBlock[1], /const generationAtStart = sessionGeneration/)
-  assert.match(downloadBlock[1], /if \(sessionGeneration !== generationAtStart\) throw staleSessionError\(\)/)
+  assert.match(downloadBlock[1], /const blob = await fetchFileBlob\(path, \{ _retried \}\)/)
 })
 
 test('student portal F5 restores only auth me through HttpOnly refresh cookie', async () => {
@@ -69,8 +74,9 @@ test('student portal late 401 only invalidates the token that actually made that
   assert.doesNotMatch(text, /if \(auth\) accessToken = ''/)
 
   const guardedInvalidations = text.match(/_invalidateIfCurrent\(token\)/g) || []
-  assert.ok(guardedInvalidations.length >= 2, 'normal requests and uploads need current-token invalidation')
-  assert.match(text, /downloadFile[\s\S]*?_invalidateIfCurrent\(token\)/)
+  assert.ok(guardedInvalidations.length >= 3, 'normal requests, uploads, and file-byte reads need current-token invalidation')
+  assert.match(text, /fetchFileBlob[\s\S]*?_invalidateIfCurrent\(token\)/)
+  assert.match(text, /downloadFile[\s\S]*?fetchFileBlob\(path, \{ _retried \}\)/)
 })
 
 test('student portal browser session stays memory plus HttpOnly-cookie only', async () => {

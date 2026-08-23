@@ -1,7 +1,7 @@
 """毕业设计中心 · 查重记录 / 教师评阅 请求 DTO。"""
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -34,6 +34,11 @@ class ReviewAssignRequest(BaseModel):
 class ReviewSubmitRequest(BaseModel):
     score: int = Field(..., ge=0, le=100)
     opinion: str = Field(..., min_length=2, max_length=2000)
+    expectedVersion: int = Field(..., ge=0, description="GraduationReview 乐观锁版本")
+    fileVersionId: int = Field(..., ge=1, description="本次提交必须匹配任务冻结的 exact FileVersion")
+    categories: list[str] = Field(default_factory=list)
+    issues: list[dict[str, Any]] = Field(default_factory=list)
+    idempotencyKey: Optional[str] = Field(default=None, max_length=128)
 
 
 class ReviewReturnRequest(BaseModel):

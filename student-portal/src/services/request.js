@@ -312,8 +312,6 @@ function browserAuthBody(path, body) {
 export async function request(path, {
   method = 'GET', body, auth = true, params, query, _retried = false
 } = {}) {
-  // F5 后 accessToken 为空；只允许 /auth/me 先走一次 HttpOnly cookie refresh。
-  // 登录、验证码、找回密码等其它 auth 端点永远不触发隐式 refresh。
   if (auth && !_retried && path === '/auth/me' && !getToken()) {
     await refreshOnce()
     return request(path, { method, body, auth, params, query, _retried: true })
@@ -343,7 +341,6 @@ export async function request(path, {
   if (auth && sessionGeneration !== generationAtStart) throw staleSessionError()
   if (isUnauthorized(res, payload)) {
     if (auth && !_retried && !path.startsWith('/auth/')) {
-      // 同一逻辑学生会话内的并发请求可能已经完成 refresh；允许同身份 token 重试。
       if (accessToken && accessToken !== token) {
         return request(path, { method, body, auth, params, query, _retried: true })
       }
@@ -417,34 +414,41 @@ export async function uploadFile(path, file, { auth = true, _retried = false } =
   return payload.data
 }
 
-export async function downloadFile(path, fallbackName = '毕业设计材料', _retried = false) {
+export async function fetchFileBlob(path, { auth = true, _retried = false, signal } = {}) {
+  cleanupStaleGraduationTemps()
   const generationAtStart = sessionGeneration
   const headers = {}
   const token = getToken()
-  if (token) headers.Authorization = `Bearer ${token}`
+  if (auth && token) headers.Authorization = `Bearer ${token}`
   addInternshipBatchHeader(headers, path)
   let res
   try {
-    res = await fetch(`${API_BASE}${API_PREFIX}${path}`, { headers, credentials: 'include' })
-  } catch {
+    res = await fetch(`${API_BASE}${API_PREFIX}${path}`, { headers, credentials: 'include', signal })
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error
     const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
   }
-  if (sessionGeneration !== generationAtStart) throw staleSessionError()
+  if (auth && sessionGeneration !== generationAtStart) throw staleSessionError()
   if (res.status === 401) {
-    if (!_retried) {
-      if (accessToken && accessToken !== token) return downloadFile(path, fallbackName, true)
+    if (auth && !_retried) {
+      if (accessToken && accessToken !== token) return fetchFileBlob(path, { auth, _retried: true, signal })
       await refreshOnce()
       if (sessionGeneration !== generationAtStart) throw staleSessionError()
-      return downloadFile(path, fallbackName, true)
+      return fetchFileBlob(path, { auth, _retried: true, signal })
     }
-    _invalidateIfCurrent(token)
+    if (auth) _invalidateIfCurrent(token)
     throw authError()
   }
   if (!res.ok) {
-    const e = new Error('材料下载失败或你已无权访问'); e.status = res.status; throw e
+    const e = new Error('文件读取失败或你已无权访问'); e.status = res.status; throw e
   }
   const blob = await res.blob()
-  if (sessionGeneration !== generationAtStart) throw staleSessionError()
+  if (auth && sessionGeneration !== generationAtStart) throw staleSessionError()
+  return blob
+}
+
+export async function downloadFile(path, fallbackName = '毕业设计材料', _retried = false) {
+  const blob = await fetchFileBlob(path, { _retried })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url

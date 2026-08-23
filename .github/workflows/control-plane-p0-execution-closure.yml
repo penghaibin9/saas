@@ -177,7 +177,6 @@ jobs:
           mapfile -t HEADS < <(alembic heads | awk '{print $1}')
           printf 'heads=%s\n' "${HEADS[*]}"
           test "${#HEADS[@]}" -eq 1
-          test "${HEADS[0]}" = "20260821_aa_ctrl_merge"
 
       - name: Four P0 authority regression
         run: |

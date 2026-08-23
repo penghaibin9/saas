@@ -1,5 +1,56 @@
 import { expect } from '../lib/observability.mjs'
 
+const SYNTHETIC_MARKER = 'YUEKE E2E SYNTHETIC DOCUMENT'
+
+function serializePdfObjects(objects) {
+  let body = `%PDF-1.4\n%${SYNTHETIC_MARKER}\n`
+  const offsets = [0]
+  for (let id = 1; id < objects.length; id += 1) {
+    offsets[id] = Buffer.byteLength(body, 'ascii')
+    body += `${id} 0 obj\n${objects[id]}\nendobj\n`
+  }
+  const xrefOffset = Buffer.byteLength(body, 'ascii')
+  body += `xref\n0 ${objects.length}\n`
+  body += '0000000000 65535 f \n'
+  for (let id = 1; id < objects.length; id += 1) {
+    body += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`
+  }
+  body += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  return body
+}
+
+function buildSyntheticPdf({ label = SYNTHETIC_MARKER, pages = 1, targetBytes = 0 } = {}) {
+  const pageCount = Math.max(1, Math.floor(Number(pages) || 1))
+  const safeLabel = String(label).replace(/[()\\]/g, '')
+  const objects = [null]
+  const pageIds = []
+
+  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>'
+  objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
+
+  for (let pageNo = 1; pageNo <= pageCount; pageNo += 1) {
+    const pageId = 4 + (pageNo - 1) * 2
+    const contentId = pageId + 1
+    pageIds.push(pageId)
+    const pageText = `${SYNTHETIC_MARKER} ${safeLabel} PAGE ${pageNo}/${pageCount}`
+    const stream = `BT /F1 14 Tf 54 720 Td (${pageText}) Tj ET\n`
+    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`
+    objects[contentId] = `<< /Length ${Buffer.byteLength(stream, 'ascii')} >>\nstream\n${stream}endstream`
+  }
+  objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageCount} >>`
+
+  let body = serializePdfObjects(objects)
+  const wantedBytes = Math.max(0, Math.floor(Number(targetBytes) || 0))
+  if (wantedBytes > Buffer.byteLength(body, 'ascii')) {
+    const paddingId = objects.length
+    const paddingBytes = Math.max(1, wantedBytes - Buffer.byteLength(body, 'ascii'))
+    const padding = 'X'.repeat(paddingBytes)
+    objects[paddingId] = `<< /Length ${paddingBytes} >>\nstream\n${padding}\nendstream`
+    body = serializePdfObjects(objects)
+  }
+  return Buffer.from(body, 'ascii')
+}
+
 async function expectSuccessfulResponse(response, action) {
   const text = await response.text()
   let body = null
@@ -57,7 +108,7 @@ export class StudentGraduationPage {
     }
   }
 
-  async submitProposal({ suffix, fileName }) {
+  async submitProposal({ suffix, fileName, pages = 1, targetBytes = 0 }) {
     const step = this.step('开题')
     await expect(step).toBeVisible()
     const action = step.getByRole('button').filter({ hasText: /填写|修改|重交|提交开题|完善/ }).first()
@@ -72,10 +123,12 @@ export class StudentGraduationPage {
     const outcome = this.page.getByLabel('预期成果', { exact: true })
     if (await outcome.count()) await outcome.fill(`Playwright 成果 ${suffix}：保留完整证据链。`)
 
+    const pdf = buildSyntheticPdf({ label: String(suffix), pages, targetBytes })
+    if (targetBytes) expect(pdf.length, 'large PDF fixture must meet the requested byte floor').toBeGreaterThanOrEqual(targetBytes)
     await this.page.locator('input[type=file]').setInputFiles({
       name: fileName,
       mimeType: 'application/pdf',
-      buffer: Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n')
+      buffer: pdf
     })
 
     const [response] = await Promise.all([
@@ -86,6 +139,94 @@ export class StudentGraduationPage {
     ])
     await expectSuccessfulResponse(response, '学生提交开题报告')
     await expect(this.step('开题')).toContainText(/待审核|待审阅|已提交/)
+  }
+
+  async openFeedbackFromRejectMessage({ minimumCount = 1, timeout = 30000 } = {}) {
+    const deadline = Date.now() + timeout
+    let matched = null
+    let observedCount = 0
+
+    while (Date.now() < deadline) {
+      await this.page.goto(`${this.baseUrl}/messages`)
+      const noticeTab = this.page.locator('.mtab').filter({ hasText: /通知/ }).first()
+      await expect(noticeTab).toBeVisible()
+      await noticeTab.click()
+      matched = this.page.locator('.mrow').filter({ hasText: '开题报告退回整改' })
+
+      for (let probe = 0; probe < 8 && Date.now() < deadline; probe += 1) {
+        await this.page.waitForTimeout(500)
+        observedCount = await matched.count()
+        if (observedCount >= minimumCount) break
+      }
+      if (observedCount >= minimumCount) break
+    }
+
+    expect(
+      observedCount,
+      `学生通知中心应至少出现 ${minimumCount} 条“开题报告退回整改”，用于证明共享消息投影已送达`
+    ).toBeGreaterThanOrEqual(minimumCount)
+
+    await Promise.all([
+      this.page.waitForURL((url) => url.pathname.endsWith('/graduation/feedback'), { timeout: 10000 }),
+      matched.first().click()
+    ])
+    await expect(this.page.getByRole('heading', { name: '评阅反馈与整改重交', exact: true })).toBeVisible()
+  }
+
+  async expectActionableFeedback(reason) {
+    const action = this.page.locator('.w75__action')
+    await expect(action).toBeVisible()
+    await expect(action).toContainText('当前需要整改')
+    await expect(action).toContainText(reason)
+    const frozen = action.locator('.w75__frozen')
+    await expect(frozen).toBeVisible()
+    await expect(frozen).toContainText(/FileVersion\s+\d+/)
+    await expect(frozen).toContainText(/SHA-256\s+[0-9a-f]{12}…[0-9a-f]{8}/i)
+    await expect(this.page.locator('.w75__timeline')).toContainText('SHA-256 已锁定')
+  }
+
+  async verifyFrozenReviewedReader() {
+    const action = this.page.locator('.w75__action')
+    await action.getByRole('button', { name: '查看被评版本', exact: true }).click()
+    const reader = this.page.getByRole('dialog', { name: '站内文件阅读器', exact: true })
+    await expect(reader).toBeVisible()
+    await expect(reader).toContainText('历史版本 · 只读')
+    await expect(reader).toContainText('你正在查看只读冻结版本；阅读器不会修改、替换或推进该业务文件。')
+    await reader.getByRole('button', { name: '关闭阅读器', exact: true }).click()
+    await expect(reader).toBeHidden()
+  }
+
+  async resubmitProposalFromFeedback({ suffix, fileName, pages = 1, targetBytes = 0 }) {
+    const action = this.page.locator('.w75__action')
+    await expect(action).toBeVisible()
+    const background = action.getByLabel('选题背景与研究依据', { exact: true })
+    const plan = action.getByLabel('研究方案与进度计划', { exact: true })
+    const outcome = action.getByLabel('预期成果', { exact: true })
+    await background.fill(`Playwright W7.5 背景 ${suffix}：整改后从反馈页 canonical 重交。`)
+    await plan.fill(`Playwright W7.5 计划 ${suffix}：保留冻结证据并生成新 FileVersion。`)
+    if (await outcome.count()) await outcome.fill(`Playwright W7.5 成果 ${suffix}：消息、反馈、Reader、重交闭环。`)
+
+    const pdf = buildSyntheticPdf({ label: String(suffix), pages, targetBytes })
+    if (targetBytes) expect(pdf.length, 'large PDF fixture must meet the requested byte floor').toBeGreaterThanOrEqual(targetBytes)
+    await action.locator('input[type=file]').setInputFiles({
+      name: fileName,
+      mimeType: 'application/pdf',
+      buffer: pdf
+    })
+    await expect(action.locator('.w75__upload')).toContainText(fileName, { timeout: 30000 })
+
+    const submit = action.getByRole('button', { name: '整改完成，重新提交开题报告', exact: true })
+    await expect(submit).toBeEnabled({ timeout: 30000 })
+    const [response] = await Promise.all([
+      this.page.waitForResponse((r) =>
+        new URL(r.url()).pathname.endsWith('/portal/graduation/proposal/submit')
+        && r.request().method() === 'POST'
+      ),
+      submit.click()
+    ])
+    await expectSuccessfulResponse(response, 'W7.5 学生整改重交开题报告')
+    await expect(this.page.locator('.w75__ok')).toContainText('当前没有待整改的评阅意见', { timeout: 15000 })
+    await expect(this.page.locator('.w75__timeline')).toContainText('已整改重交')
   }
 
   async expectRejected(reason) {
@@ -127,12 +268,13 @@ export class StaffGraduationPage {
     await this.dismissGuideIfPresent()
   }
 
-  async selectStudent() {
+  async selectStudent(expectedPages = 1) {
     await this.dismissGuideIfPresent()
 
     const detail = this.page.locator('.prc')
     if (await detail.count() && await detail.isVisible()) {
       await expect(detail).toContainText(this.fixture.topicTitle)
+      await this.expectDocumentViewer(expectedPages)
       return
     }
 
@@ -142,6 +284,24 @@ export class StaffGraduationPage {
     await row.click()
     await expect(detail).toBeVisible()
     await expect(detail).toContainText(this.fixture.topicTitle)
+    await this.expectDocumentViewer(expectedPages)
+  }
+
+  async expectDocumentViewer(expectedPages = 1) {
+    await expect(this.page.locator('.gd-review-workspace')).toBeVisible()
+    const adapter = this.page.locator('[data-preview-adapter="pdf"]')
+    await expect(adapter).toBeVisible()
+    await expect(adapter.locator('canvas')).toHaveCount(expectedPages)
+    await expect(adapter.locator('canvas[data-zoom]').first()).toBeVisible()
+    await expect(this.page.locator('.dv-toolbar')).toContainText(`1 / ${expectedPages}`)
+
+    if (expectedPages >= 60) {
+      const initiallyRendered = await adapter.locator('canvas[data-zoom]').count()
+      expect(initiallyRendered, `${expectedPages}-page PDF must not eagerly render the whole document`).toBeLessThan(20)
+      const lastPage = adapter.locator(`[data-page="${expectedPages}"]`)
+      await lastPage.scrollIntoViewIfNeeded()
+      await expect(lastPage.locator('canvas')).toHaveAttribute('data-zoom', /.+/)
+    }
   }
 
   async waitForPendingQueueReload() {

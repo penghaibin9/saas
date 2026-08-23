@@ -129,3 +129,49 @@ def test_counselor_bootstrap_uses_canonical_teacher_identity_pipeline():
     assert 'idempotency_namespace: str = "e2e-graduation"' in canonical
     assert 'upload_key = f"{namespace}-{kind}-canonical-v3"' in canonical
     assert 'f"{namespace}-{kind}-confirm-v3"' in canonical
+
+
+def test_document_preview_e2e_sources_are_synthetic_and_never_embed_secrets():
+    """Viewer browser fixtures must be synthetic; source-contract unit tests are not browser artifacts."""
+    e2e_root = ROOT / "e2e"
+    suffixes = {".js", ".mjs", ".ts", ".json", ".html"}
+    marker = "YUEKE E2E SYNTHETIC DOCUMENT"
+    candidates = []
+
+    if e2e_root.exists():
+        for path in e2e_root.rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in suffixes:
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            if "document-preview" in path.name.lower() or marker in text:
+                candidates.append((path, text))
+
+    # If browser-focused tests later live under frontend/tests/e2e or frontend/tests/playwright,
+    # keep them under the same safety gate without treating source-contract unit tests as fixtures.
+    for relative in (Path("frontend/tests/e2e"), Path("frontend/tests/playwright")):
+        base = ROOT / relative
+        if not base.exists():
+            continue
+        for path in base.rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in suffixes:
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            if "document-preview" in path.name.lower() or marker in text:
+                candidates.append((path, text))
+
+    assert candidates, "Viewer E2E must contain at least one synthetic document source"
+
+    forbidden = (
+        "Authorization: Bearer ",
+        '"authorization": "Bearer ',
+        "X-Amz-Signature=",
+        "X-Cos-Security-Token=",
+        "preview?ticket=",
+        '"ticket": "',
+        "studentNameReal",
+        "studentNoReal",
+    )
+    for path, text in candidates:
+        assert marker in text, path
+        for forbidden_marker in forbidden:
+            assert forbidden_marker not in text, f"{path} persists forbidden Viewer artifact data: {forbidden_marker}"

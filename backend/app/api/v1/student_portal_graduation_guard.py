@@ -8,6 +8,7 @@ from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.graduation.services import graduation_extension_action_service as extension_action_svc
 from app.modules.graduation.services import graduation_extension_safety_service as extension_safety_svc
+from app.modules.graduation.services import graduation_student_feedback_service as student_feedback_svc
 from app.modules.graduation.services.graduation_material_temp_service import abandon_temporary_material
 from app.modules.graduation.services.graduation_taskbook_confirmation_service import confirm_with_evidence
 
@@ -30,6 +31,11 @@ def graduation_taskbook_sign_evidence(
         expected_version=payload.get("taskbookVersion") or payload.get("expectedVersion"),
         confirm=bool(payload.get("confirm")),
     ))
+
+
+@router.get("/review-feedback", summary="W7.5 本人评阅反馈时间线与整改重交状态")
+def graduation_review_feedback(user=Depends(get_current_user)):
+    return success(student_feedback_svc.student_feedback_timeline(_student(user)))
 
 
 @router.get("/extensions/my", summary="本人优秀成果与延期答辩状态")
