@@ -165,9 +165,9 @@ export class StaffInternshipApplicationPage {
     const reject = drawer.getByRole('button', { name: '驳回' })
     await expect(reject).toBeEnabled()
     await reject.click()
-    const dialog = this.page.getByRole('dialog').last()
+    const dialog = this.page.getByRole('dialog').filter({ hasText: '驳回实习申请' }).first()
     await expect(dialog).toBeVisible()
-    await dialog.locator('textarea').fill(reason)
+    await dialog.getByRole('textbox', { name: '请填写具体原因，便于对方理解和修改' }).fill(reason)
     const responsePromise = this.page.waitForResponse((response) =>
       apiPath(response) === `/api/v1/internship/applications/${appId}/review`
       && response.request().method() === 'POST'
@@ -184,7 +184,7 @@ export class StaffInternshipApplicationPage {
     const approve = drawer.getByRole('button', { name: '通过并落实去向' })
     await expect(approve).toBeEnabled()
     await approve.click()
-    const dialog = this.page.getByRole('dialog').last()
+    const dialog = this.page.getByRole('dialog').filter({ hasText: '通过实习申请' }).first()
     await expect(dialog).toBeVisible()
     const responsePromise = this.page.waitForResponse((response) =>
       apiPath(response) === `/api/v1/internship/applications/${appId}/review`
