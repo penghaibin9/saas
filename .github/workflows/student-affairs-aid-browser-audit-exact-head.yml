@@ -67,7 +67,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_TARGET_SHA: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+      E2E_TARGET_SHA: d1fd3a94732614a6c74d6a4969b2e08ecf4db47f
 
     steps:
       - name: Checkout audit runner only
@@ -80,7 +80,7 @@ jobs:
       - name: Checkout immutable application exact head
         uses: actions/checkout@v4
         with:
-          ref: 1c69336ea0728c5c6713c0c85b7275b06fca9ae1
+          ref: d1fd3a94732614a6c74d6a4969b2e08ecf4db47f
           path: app
           fetch-depth: 0
 
@@ -106,10 +106,11 @@ jobs:
             app/frontend/package-lock.json
             app/student-portal/package-lock.json
 
-      - name: Install backend and migrate isolated MySQL
+      - name: Install backend, run regression and migrate isolated MySQL
         working-directory: app/backend
         run: |
           pip install -r requirements.txt
+          pytest -q tests/test_affairs_aid_draft_resubmit_contract.py
           alembic upgrade head
           python scripts/bootstrap_control_plane_school_iam_authority.py
           python scripts/e2e_seed_playwright_tenants.py
