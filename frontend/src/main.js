@@ -12,8 +12,11 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import './config/helpCenterRuntime'
+import { OFFICIAL_SALES_PAGES } from './config/officialSalesPages'
 import { installGraduationW76Workbench } from './modules/workbench/config/graduationW76Workbench'
 import { installDirtyFormGuard } from './router/dirtyFormGuard'
+import { installOfficialSeoRuntime } from './services/officialSeoRuntime'
+import { installOfficialWechatRuntime } from './services/officialWechatRuntime'
 import { toast } from './utils/toast'
 
 // W7.6：只扩展既有 T9 评阅人工作台配方，复用 UnifiedTodo 与统一评阅中心，不新增工作台状态。
@@ -27,6 +30,31 @@ if (!router.hasRoute('public-help')) {
     name: 'public-help',
     component: () => import('./views/help/PublicHelpView.vue'),
     meta: { public: true, title: '帮助中心' }
+  })
+}
+
+// 官网四大产品公开二级页：和业务系统路由分离，只承载可索引产品介绍与真实截图证据。
+if (!router.hasRoute('official-product')) {
+  router.addRoute({
+    path: '/products/:slug(academic-affairs|student-affairs|graduation|internship)',
+    name: 'official-product',
+    component: () => import('./views/official-site/OfficialProductView.vue'),
+    meta: { public: true, title: '跃科产品中心' }
+  })
+}
+
+// 官网其余销售页全部消费 officialSalesPages 唯一口径，避免路由、SEO 和页面内容各维护一份。
+// /platform 使用专门的平台能力叙事页，其 SEO / sitemap 仍复用 officialSalesPages 的唯一口径。
+for (const page of OFFICIAL_SALES_PAGES.filter((item) => item.type !== 'product')) {
+  const routeName = `official-sales-${page.key}`
+  if (router.hasRoute(routeName)) continue
+  router.addRoute({
+    path: page.path,
+    name: routeName,
+    component: page.path === '/platform'
+      ? () => import('./views/official-site/OfficialPlatformCapabilityView.vue')
+      : () => import('./views/official-site/OfficialSalesPageView.vue'),
+    meta: { public: true, title: page.navTitle || page.title, officialSalesPage: true }
   })
 }
 
@@ -70,3 +98,11 @@ app.config.globalProperties.$message = toast
 app.use(createPinia())
 app.use(router)
 app.mount('#app')
+
+// 官网预渲染负责首屏 SEO；SPA 路由切换后由 runtime 同步 canonical / OG / Twitter / JSON-LD，
+// 同时补齐移动端 /#products 这类 hash 导航的真实滚动行为。
+installOfficialSeoRuntime(router)
+
+// PC 官网、手机 H5、微信公众号微官网共用一套公开路由。
+// 只有微信内置浏览器才会尝试 JS-SDK；未配置公众号时保持普通官网完整可用。
+installOfficialWechatRuntime(router)
