@@ -283,7 +283,7 @@ def _patch_student_views() -> None:
             aid = int(item["applyId"]) if str(item.get("applyId", "")).isdigit() else 0
             item["version"] = versions.get(aid, 0)
             item["allowedActions"] = (
-                ["EDIT_RETURNED", "RESUBMIT"] if item.get("status") == "RETURNED" else
+                ["EDIT_RETURNED", "RESUBMIT"] if item.get("status") in {"DRAFT", "RETURNED"} else
                 (["SUBMIT_OBJECTION"] if item.get("hasPendingObjection") is False and item.get("status") == "PUBLICITY" else [])
             )
         return data
