@@ -6,6 +6,10 @@ on:
       - audit/student-affairs-browser-runner-20260823
     paths:
       - '.github/workflows/student-affairs-discipline-browser-audit-exact-head.yml'
+  pull_request:
+    paths:
+      - 'audit-tests/student-affairs-discipline-browser-audit.spec.mjs'
+      - '.github/workflows/student-affairs-discipline-browser-audit-exact-head.yml'
 
 permissions:
   contents: write
