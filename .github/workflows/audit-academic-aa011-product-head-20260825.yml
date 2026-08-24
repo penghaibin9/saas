@@ -41,6 +41,8 @@ jobs:
     env:
       CI: 'true'
       AA011_PRODUCT_SHA: 2308cb51947906886921530e26599f6c622b92be
+      E2E_EXPECTED_SHA: 2308cb51947906886921530e26599f6c622b92be
+      SCHOOL_IAM_AUTHORITY_EXPECTED_SHA: 2308cb51947906886921530e26599f6c622b92be
       APP_ENV: test
       DEPLOYMENT_MODE: local
       TRUSTED_PROXY_IPS: 127.0.0.1/32
@@ -79,11 +81,11 @@ jobs:
           test "$(git merge-base "$AA011_PRODUCT_SHA" HEAD)" = "$AA011_PRODUCT_SHA"
           mapfile -t changed < <(git diff --name-only "$AA011_PRODUCT_SHA"...HEAD | sort)
           printf '%s\n' "${changed[@]}"
-          allowed_re='^(\.github/workflows/audit-academic-aa011-product-head-20260825\.yml|backend/scripts/e2e_seed_academic_aa011_selection\.py|backend/scripts/e2e_assert_academic_aa011_selection\.py|e2e/specs/academic-aa011-selection-concurrency\.spec\.mjs)$'
+          allowed_re='^(\.github/workflows/audit-academic-aa011-product-head-20260825\.yml|backend/scripts/e2e_bootstrap_academic_aa011_accounts\.py|backend/scripts/e2e_seed_academic_aa011_selection\.py|backend/scripts/e2e_assert_academic_aa011_selection\.py|e2e/specs/academic-aa011-selection-concurrency\.spec\.mjs)$'
           for file in "${changed[@]}"; do
             [[ "$file" =~ $allowed_re ]] || { echo "non-audit file changed: $file"; exit 1; }
           done
-          test "${#changed[@]}" -eq 4
+          test "${#changed[@]}" -eq 5
 
       - uses: actions/setup-python@v5
         with:
@@ -104,6 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile \
+            backend/scripts/e2e_bootstrap_academic_aa011_accounts.py \
             backend/scripts/e2e_seed_academic_aa011_selection.py \
             backend/scripts/e2e_assert_academic_aa011_selection.py
           node --check e2e/specs/academic-aa011-selection-concurrency.spec.mjs
@@ -117,11 +120,17 @@ jobs:
           alembic upgrade head
           alembic current
 
-      - name: Seed isolated tenants before backend boot
+      - name: Replay production School IAM Authority
         working-directory: backend
-        run: |
-          set -euo pipefail
-          python scripts/e2e_seed_playwright_tenants.py
+        run: python scripts/bootstrap_control_plane_school_iam_authority.py
+
+      - name: Seed isolated tenants
+        working-directory: backend
+        run: python scripts/e2e_seed_playwright_tenants.py
+
+      - name: Seed real School IAM runtime fixture
+        working-directory: backend
+        run: python scripts/e2e_seed_control_plane_school_iam.py
 
       - name: Start real backend with two workers
         run: |
@@ -140,16 +149,22 @@ jobs:
             exit 1
           fi
 
-      - name: Bootstrap real accounts and seed AA-011 prerequisites
+      - name: Bootstrap AA-011 identities through canonical School IAM
         working-directory: backend
         run: |
           set -euo pipefail
-          python scripts/e2e_bootstrap_graduation_accounts_ci.py
-          python scripts/e2e_reset_graduation_passwords.py
-          python scripts/e2e_verify_graduation_accounts.py
+          python scripts/e2e_bootstrap_academic_aa011_accounts.py
+          test -s tmp/e2e_academic_aa011_credentials.local.json
+
+      - name: Seed AA-011 authoritative selection prerequisites
+        working-directory: backend
+        run: |
+          set -euo pipefail
           python scripts/e2e_seed_academic_b_selection.py
           python scripts/e2e_seed_academic_b_w5_selection.py
           python scripts/e2e_seed_academic_aa011_selection.py
+          test -s ../e2e/academic-b-w5-fixture.json
+          test -s ../e2e/academic-aa011-prereq.json
 
       - name: Install production-build and start Staff PC
         run: |
@@ -210,7 +225,7 @@ jobs:
 
       - name: Execute AA-011 complete selection concurrency through real browser buttons
         working-directory: e2e
-        run: npx playwright test specs/academic-aa011-selection-concurrency.spec.mjs --reporter=line
+        run: npx playwright test specs/academic-aa011-selection-concurrency.spec.mjs --workers=1 --retries=0 --reporter=line
 
       - name: Direct MySQL capacity record and locked-roster seal
         working-directory: backend
@@ -228,6 +243,7 @@ jobs:
             e2e/academic-aa011-prereq.json
             e2e/academic-b-w5-fixture.json
             backend/tmp/e2e_academic_aa011_db_evidence.json
+            backend/tmp/e2e_academic_aa011_credentials.local.json
           if-no-files-found: warn
           retention-days: 14
 
