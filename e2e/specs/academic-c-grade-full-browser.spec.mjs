@@ -152,7 +152,7 @@ async function selectRemotePicker(field, keyword, optionText = '') {
   await option.click()
 }
 
-test('Academic C grade: teacher input -> college return -> teacher resubmit -> college approve -> academic publish -> student transcript -> correction apply -> correction college approve', async ({ browser }, testInfo) => {
+test('Academic C grade: teacher input -> college return -> teacher resubmit -> college approve -> academic publish -> student transcript -> correction apply -> correction college approve -> correction academic approve', async ({ browser }, testInfo) => {
   const teacherCtx = await browser.newContext({ locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
   const teacherPage = await teacherCtx.newPage()
   const teacherNetwork = attachNetworkSeal(teacherPage, 'teacher-grade')
@@ -193,18 +193,14 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
     const submitted = await submitPromise
     expect(submitted.status()).toBe(200)
     expect((await submitted.json()).code).toBe(0)
-    // Let the product's post-submit grade-list refresh finish before the explicit persistence reload.
-    // Otherwise the test itself aborts this core GET and the strict network seal correctly reports it.
     await submittedListRefreshPromise
 
-    // Persistence after a real reload: the submitted task must still be visible and no longer editable.
     await teacherPage.reload()
     await teacherPage.locator('.uchip__role').first().waitFor({ state: 'visible', timeout: 20_000 })
     await dismissGuide(teacherPage)
     const submittedRow = teacherPage.locator('.aa-my-task-item').filter({ hasText: fixture.courseName }).first()
     await expect(submittedRow).toContainText('已提交')
 
-    // Before academic publish, a real student portal must not expose the grade.
     await studentTranscriptContext(browser, false)
 
     const collegeCtx = await browser.newContext({ locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
@@ -231,7 +227,6 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
       await collegeCtx.close()
     }
 
-    // Teacher receives the returned task, changes a real score and resubmits through UI.
     await gotoStaff(teacherPage, '/admin/academic-affairs/grade-entry')
     await openTaskFromList(teacherPage)
     await expect(teacherPage.getByText('已被退回：', { exact: false })).toBeVisible()
@@ -296,11 +291,8 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
       await publishCtx.close()
     }
 
-    // After publish the same real student account must see the course in the real Student PC transcript.
     await studentTranscriptContext(browser, true)
 
-    // Continue from the proven published fact into the real post-publish correction entry.
-    // This intentionally uses the production School IAM fixture; no RolePermission-only test shortcut.
     await gotoStaff(teacherPage, '/admin/academic-affairs/grade-change')
     await expect(teacherPage.getByText('成绩更正', { exact: true }).first()).toBeVisible({ timeout: 20_000 })
     const requestTaskField = teacherPage.locator('label.aa-field').filter({ hasText: '成绩录入任务' }).first()
@@ -325,10 +317,10 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
     const gradeRecordId = String(changePayload.data?.recordId || '')
     expect(gradeRecordId).toBeTruthy()
 
-    // The assigned college reviewer must be able to approve the same in-flight correction via the real UI.
     const changeCollegeCtx = await browser.newContext({ locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
     const changeCollegePage = await changeCollegeCtx.newPage()
     const changeCollegeNetwork = attachNetworkSeal(changeCollegePage, 'correction-college-review')
+    let academicAssigneeId = 0
     try {
       await loginStaffAndGoto(changeCollegePage, fixture.collegeReviewer, '/admin/academic-affairs/grade-change')
       const reviewTaskField = changeCollegePage.locator('label.aa-field').filter({ hasText: '成绩录入任务' }).nth(1)
@@ -344,12 +336,40 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
       expect(collegeReviewed.status()).toBe(200)
       const collegeReviewPayload = await collegeReviewed.json()
       expect(collegeReviewPayload.code).toBe(0)
-      const academicAssigneeId = Number(collegeReviewPayload.data?.assigneeId || 0)
+      academicAssigneeId = Number(collegeReviewPayload.data?.assigneeId || 0)
       expect(academicAssigneeId).toBeGreaterThan(0)
       expect(academicAssigneeId).not.toBe(collegeAssigneeId)
       changeCollegeNetwork()
     } finally {
       await changeCollegeCtx.close()
+    }
+
+    const changeAcademicCtx = await browser.newContext({ locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
+    const changeAcademicPage = await changeAcademicCtx.newPage()
+    const changeAcademicNetwork = attachNetworkSeal(changeAcademicPage, 'correction-academic-review')
+    try {
+      await loginStaffAndGoto(changeAcademicPage, fixture.gradeAdmin, '/admin/academic-affairs/grade-change')
+      const reviewTaskField = changeAcademicPage.locator('label.aa-field').filter({ hasText: '成绩录入任务' }).nth(1)
+      await selectRemotePicker(reviewTaskField, fixture.courseName, fixture.courseName)
+      const reviewRecordField = changeAcademicPage.locator('label.aa-field').filter({ hasText: '学生成绩记录' }).nth(1)
+      await selectRemotePicker(reviewRecordField, fixture.students[0])
+      const nodeField = changeAcademicPage.locator('label.aa-field').filter({ hasText: '审核节点' }).first()
+      await nodeField.locator('select.app-select__el').selectOption('academic')
+      const academicReviewPromise = changeAcademicPage.waitForResponse((r) =>
+        r.url().includes(`/api/v1/academic-affairs/grade-change/${gradeRecordId}/academic-review`) &&
+        r.request().method() === 'POST'
+      )
+      await changeAcademicPage.getByRole('button', { name: '通过' }).click()
+      const academicReviewed = await academicReviewPromise
+      expect(academicReviewed.status()).toBe(200)
+      const academicReviewPayload = await academicReviewed.json()
+      expect(academicReviewPayload.code).toBe(0)
+      expect(academicReviewPayload.data?.final).toBe(true)
+      expect(String(academicReviewPayload.data?.correctedGradeId || '')).toBeTruthy()
+      expect(Number(academicReviewPayload.data?.totalScore)).toBeGreaterThan(0)
+      changeAcademicNetwork()
+    } finally {
+      await changeAcademicCtx.close()
     }
 
     teacherNetwork()
