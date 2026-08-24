@@ -155,16 +155,25 @@ def _unique_assignee(candidates, node) -> int:
 
 
 def resolve_change_assignee(db, node: str, task) -> int:
-    """学院节点按开课学院的教学秘书/在岗负责人；教务终审收敛到校级岗位账号。解析不到即 409。
+    """学院节点按开课学院收敛；教务终审优先沿用该成绩真实发布责任人。解析不到即 409。
 
-    两个节点共用 ``gradeChange.review`` 一个权限码（现有权限模型如此），所以终审必须再按
-    校级账号身份收窄，否则学院教务也会被算成候选人，既破坏职责分离，也会因"候选人不唯一"
-    把整条更正链卡死。
+    两个节点共用 ``gradeChange.review`` 一个权限码（现有权限模型如此）。教务终审先排除
+    学院绑定账号，再优先复用成绩任务 ``academic_reviewer_id``：只有该原始发布人仍 ACTIVE、
+    仍持有当前 School IAM 的更正审核权限且仍属于校级候选时才可继续受理。发布责任人不可用时
+    不猜测账号，只允许剩余校级持权人天然唯一；否则继续 fail-closed。
     """
     candidates = _permission_holder_ids(db, _REVIEW_PERM)
     if node != _COLLEGE_NODE:
         college_bound = _college_bound_user_ids(db)
-        return _unique_assignee([uid for uid in candidates if uid not in college_bound], node)
+        school_level = [uid for uid in candidates if uid not in college_bound]
+        published_reviewer = int(getattr(task, "academic_reviewer_id", 0) or 0)
+        if (
+            published_reviewer > 0
+            and published_reviewer in school_level
+            and _active_user(db, published_reviewer)
+        ):
+            return published_reviewer
+        return _unique_assignee(school_level, node)
 
     from app.models import College, StaffAssignment
 
