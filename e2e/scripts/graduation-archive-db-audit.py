@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pymysql
 
-PRODUCT_EXACT_HEAD = "cb5dbff794c568c8d38ce72872c12e4c5be24870"
+PRODUCT_EXACT_HEAD = "47264037bf014276e795d3655d7f178830756729"
 REQUIRED_CODES = {
     "TASKBOOK", "PROPOSAL_REPORT", "GUIDANCE_RECORD", "MIDTERM_REPORT",
     "THESIS_FINAL", "PLAGIARISM_REPORT", "REVIEW_ATTACHMENT", "DEFENSE_RECORD", "GRADE_MATERIAL",
@@ -119,6 +119,10 @@ for code in REQUIRED_CODES:
     assert str(row.get("current_version_id") or "") == str(frozen["version_id"]), (row, frozen)
 
 assert audits, archive
-for row in audits:
+filing_audits = [row for row in audits if row.get("action") == "核验归档"]
+assert filing_audits, {"message": "missing canonical V2 filing audit", "audits": audits}
+for row in filing_audits:
     assert row.get("operator") and row.get("role_name") and row.get("occurred_at"), row
     assert row.get("request_id") and row.get("request_path") and row.get("role_code"), row
+    assert "archiveBatchNo=" in str(row.get("detail") or ""), row
+    assert "manifest=" in str(row.get("detail") or ""), row
