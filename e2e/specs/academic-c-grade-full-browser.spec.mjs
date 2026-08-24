@@ -152,7 +152,7 @@ async function selectRemotePicker(field, keyword, optionText = '') {
   await option.click()
 }
 
-test('Academic C grade: teacher input -> college return -> teacher resubmit -> college approve -> academic publish -> student transcript -> correction apply', async ({ browser }, testInfo) => {
+test('Academic C grade: teacher input -> college return -> teacher resubmit -> college approve -> academic publish -> student transcript -> correction apply -> correction college approve', async ({ browser }, testInfo) => {
   const teacherCtx = await browser.newContext({ locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
   const teacherPage = await teacherCtx.newPage()
   const teacherNetwork = attachNetworkSeal(teacherPage, 'teacher-grade')
@@ -321,6 +321,33 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
     const changePayload = await changeRequested.json()
     expect(changePayload.code).toBe(0)
     expect(Number(changePayload.data?.assigneeId || 0)).toBeGreaterThan(0)
+    const gradeRecordId = String(changePayload.data?.recordId || '')
+    expect(gradeRecordId).toBeTruthy()
+
+    // The assigned college reviewer must be able to approve the same in-flight correction via the real UI.
+    const changeCollegeCtx = await browser.newContext({ locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
+    const changeCollegePage = await changeCollegeCtx.newPage()
+    const changeCollegeNetwork = attachNetworkSeal(changeCollegePage, 'correction-college-review')
+    try {
+      await loginStaffAndGoto(changeCollegePage, fixture.collegeReviewer, '/admin/academic-affairs/grade-change')
+      const reviewTaskField = changeCollegePage.locator('label.aa-field').filter({ hasText: '成绩录入任务' }).nth(1)
+      await selectRemotePicker(reviewTaskField, fixture.courseName, fixture.courseName)
+      const reviewRecordField = changeCollegePage.locator('label.aa-field').filter({ hasText: '学生成绩记录' }).nth(1)
+      await selectRemotePicker(reviewRecordField, fixture.students[0])
+      const collegeReviewPromise = changeCollegePage.waitForResponse((r) =>
+        r.url().includes(`/api/v1/academic-affairs/grade-change/${gradeRecordId}/college-review`) &&
+        r.request().method() === 'POST'
+      )
+      await changeCollegePage.getByRole('button', { name: '通过' }).click()
+      const collegeReviewed = await collegeReviewPromise
+      expect(collegeReviewed.status()).toBe(200)
+      const collegeReviewPayload = await collegeReviewed.json()
+      expect(collegeReviewPayload.code).toBe(0)
+      expect(Number(collegeReviewPayload.data?.assigneeId || 0)).toBeGreaterThan(0)
+      changeCollegeNetwork()
+    } finally {
+      await changeCollegeCtx.close()
+    }
 
     teacherNetwork()
   } finally {
