@@ -309,6 +309,9 @@ test.describe.serial('Student Affairs strict browser audit · discipline lifecyc
     })
 
     let saAdminToken = ''
+    // This synthetic single-page audit performs ten valid browser logins in under the production 60s/IP window.
+    // Preserve the real 10/minute login guard and let that window expire before the eleventh role switch.
+    await page.waitForTimeout(61_000)
     await test.step('SA admin approves final removal and case reaches REMOVED terminal state', async () => {
       const login = await openDisciplineWorkbench(page, staff.saAdmin)
       saAdminToken = login.lastAccessToken
