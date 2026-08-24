@@ -173,7 +173,7 @@ test.describe('岗位实习审计：IX-003 企业生命周期 + IX-005 岗位生
     await page.getByLabel(/薪资展示/).fill('4200元/月')
 
     await page.getByRole('button', { name: /选择省.*市.*区县/ }).click()
-    await page.getByRole('textbox', { name: '搜索省、市或区县' }).fill('长沙市岳麓区')
+    await page.getByRole('textbox', { name: '搜索省、市或区县' }).fill('岳麓区')
     await page.locator('.region-picker__results button').filter({ hasText: '岳麓区' }).first().click()
 
     const createPromise = page.waitForResponse((response) =>
