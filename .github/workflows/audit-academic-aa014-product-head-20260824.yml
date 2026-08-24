@@ -93,6 +93,7 @@ jobs:
       - name: Overlay audit-only runner files
         run: |
           set -euo pipefail
+          cp audit-harness/backend/scripts/e2e_bootstrap_academic_grade_accounts.py backend/scripts/e2e_bootstrap_academic_grade_accounts.py
           cp audit-harness/backend/scripts/e2e_seed_academic_c_grade_browser.py backend/scripts/e2e_seed_academic_c_grade_browser.py
           cp audit-harness/backend/scripts/e2e_assert_academic_c_grade_browser.py backend/scripts/e2e_assert_academic_c_grade_browser.py
           cp audit-harness/backend/scripts/bootstrap_control_plane_school_iam_authority.py backend/scripts/bootstrap_control_plane_school_iam_authority.py
@@ -117,7 +118,7 @@ jobs:
       - name: Fast AA-014 preflight
         run: |
           set -euo pipefail
-          python -m py_compile backend/scripts/e2e_seed_academic_c_grade_browser.py backend/scripts/e2e_assert_academic_c_grade_browser.py backend/scripts/bootstrap_control_plane_school_iam_authority.py
+          python -m py_compile backend/scripts/e2e_bootstrap_academic_grade_accounts.py backend/scripts/e2e_seed_academic_c_grade_browser.py backend/scripts/e2e_assert_academic_c_grade_browser.py backend/scripts/bootstrap_control_plane_school_iam_authority.py
           node --check e2e/specs/academic-c-grade-full-browser.spec.mjs
 
       - name: Install backend and migrate isolated MySQL
@@ -154,11 +155,11 @@ jobs:
           cat ../e2e/runtime-logs/backend-grade.log
           exit 1
 
-      - name: Bootstrap real academic-affairs roles and students
+      - name: Bootstrap real AA-014 roles and students through canonical School IAM
         working-directory: backend
         run: |
           set -euo pipefail
-          python scripts/e2e_bootstrap_academic_affairs_accounts.py
+          python scripts/e2e_bootstrap_academic_grade_accounts.py
           test -s tmp/e2e_academic_affairs_credentials.local.json
 
       - name: Seed only authoritative grade prerequisites
