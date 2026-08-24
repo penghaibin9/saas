@@ -210,8 +210,10 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     await confirmBox.getByRole('button', { name: '确认整组投递', exact: true }).click()
     const submitted = await submitPromise
     const submitBody = submitted.request().postDataJSON()
-    expect(Number.isInteger(Number(submitBody?.expectedRecordVersion))).toBeTruthy()
     expect(Number.isInteger(Number(submitBody?.expectedGroupVersion))).toBeTruthy()
+    expect(Number.isInteger(Number(submitBody?.expectedProfileVersion))).toBeTruthy()
+    expect(String(submitBody?.consentPolicyVersion || '')).not.toBe('')
+    expect(String(submitBody?.confirmMaterialPreviewHash || '')).toMatch(/^sha256:/)
     const submittedPayload = await payloadOf(submitted)
     expect(submittedPayload.body?.code, submittedPayload.text).toBe(0)
     applicationId = String(submittedPayload.body?.data?.applications?.[0]?.id || '')
