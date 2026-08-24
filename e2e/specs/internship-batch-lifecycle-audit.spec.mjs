@@ -100,7 +100,6 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
       }
     })
 
-    // 40 + 40 + 20 的默认合法权重先改成 30 + 40 + 20 = 90，真实点击提交必须停在前端且不得发 POST。
     await fillText(page, '企业评价 %', 30)
     await page.getByRole('button', { name: '创建批次' }).click()
     await expect(page.getByText(/评价权重合计须为 100%，当前 90%/)).toBeVisible()
@@ -176,8 +175,6 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
     await expect(page.getByText('37 / 0').first()).toBeVisible()
     await expect(page.getByText('编辑批次').first()).toBeVisible()
 
-    // 当前生产 UI 已把“选定参与学生 + 冻结名单 + 批次启用”收口为一个真实动作链，
-    // 不再存在独立“启用”按钮。必须按真人页面完成点名、预览、冻结，不能绕过 UI 直调 activate。
     await page.getByRole('button', { name: '选择学生并启用' }).click()
     const participantCard = page.locator('.bps-card')
     await expect(participantCard.getByText('参与学生范围')).toBeVisible()
@@ -216,25 +213,30 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
     await expect(participantCard.getByText('名单已冻结')).toBeVisible()
     const statusCard = page.locator('.mp-card').filter({ hasText: '状态与操作' }).first()
     await expect(statusCard.getByText('进行中').first()).toBeVisible()
+    await expect(page.getByText('37 / 1').first()).toBeVisible()
     await expect(page.getByText('启用批次').first()).toBeVisible()
 
-    // 绕过列表禁用按钮直接深链编辑页，页面仍必须根据真实后端状态进入只读，不能靠入口隐藏伪装安全。
     await page.goto(`${config.staffBaseUrl}/admin/internship/batches/${batchId}/edit`)
     await expect(page.getByText('当前批次不可编辑').first()).toBeVisible()
     await expect(page.getByRole('button', { name: '保存修改' })).toBeDisabled()
 
-    // 立刻结束该测试批次，避免在全套并行 E2E 里长期留下第二个 RUNNING 批次污染无 batchId 的兼容路径。
+    // 新参与学生未完成资格/企业/岗位等 BATCH_CLOSE 前置时，普通结束必须继续被后端闸门阻断。
+    // 页面先读 readiness，再显式切换为“强制结束”并要求管理员填写原因，不能绕过真实 UI 直调接口。
     await page.goto(`${config.staffBaseUrl}/admin/internship/batches/${batchId}`)
+    await page.getByRole('button', { name: '结束' }).click()
+    const closeDialog = page.getByRole('dialog')
+    await expect(closeDialog).toContainText('强制结束批次')
+    await expect(closeDialog).toContainText(/当前有 1 名学生存在结束阻断/)
+    await closeDialog.locator('textarea').fill('E2E验收批次存在未完成学生，强制结束释放当前批次')
+
     const closeResponsePromise = page.waitForResponse((response) =>
       apiPath(response) === `/api/v1/internship/batches/${batchId}/close`
       && response.request().method() === 'POST'
     )
-    await page.getByRole('button', { name: '结束' }).click()
-    const closeDialog = page.getByRole('dialog')
-    await expect(closeDialog).toContainText('结束批次')
-    await closeDialog.getByRole('button', { name: '确认结束' }).click()
-    const closed = await expectBusinessOk(await closeResponsePromise, '结束实习批次')
+    await closeDialog.getByRole('button', { name: '确认强制结束' }).click()
+    const closed = await expectBusinessOk(await closeResponsePromise, '强制结束实习批次')
     expect(closed.data.status).toBe('CLOSED')
+    expect(closed.data.forced).toBe(true)
     await expect(page.getByText('已结束').first()).toBeVisible()
 
     const auditCard = page.locator('.mp-card').filter({ hasText: '操作留痕' }).first()

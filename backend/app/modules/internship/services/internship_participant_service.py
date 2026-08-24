@@ -136,6 +136,9 @@ def freeze(batch_id, body: dict, user: dict) -> dict:
     - participant 有 (tenant, batch, student) 唯一键，重复冻结不会插第二条；
     - InternshipRecord 有 (tenant, student, batch) 唯一键，已有记录直接复用，
       不会因为多点一次冻结就给学生建两条实习记录。
+
+    冻结与批次启用是同一事务：名单、合规规则冻结、RUNNING 状态和 ACTIVATE 审计
+    必须一起提交，不能出现“名单已冻结但批次未按正式启用语义落地”的半状态。
     """
     from app.models import InternshipBatchParticipant, InternshipRecord
 
@@ -181,27 +184,48 @@ def freeze(batch_id, body: dict, user: dict) -> dict:
                 snapshot_class_name=snap["className"], snapshot_college_name=snap["collegeName"],
                 internship_id=int(rec.id), status="ACTIVE"))
 
+        now = datetime.utcnow()
         rule_row.rule_json = rule.to_dict()
-        rule_row.frozen_at = datetime.utcnow()
+        rule_row.frozen_at = now
         rule_row.frozen_by = _op_name()
         rule_row.version = int(rule_row.version or 0) + 1
 
         total = len(existing) + len(res.students) - len(
             [s for s in res.students if int(s.id) in existing])
-        b.planned_count = total
+
+        # 与 canonical activate_batch 同口径冻结合规规则；但保留本服务同事务写名单的原子性。
+        frozen_rules = dict(b.rules_config or {})
+        if b.compliance_template_id:
+            from app.models import InternshipComplianceTemplate
+            template = db.get(InternshipComplianceTemplate, b.compliance_template_id)
+            if not template or int(template.tenant_id) != _tid():
+                raise AppException("DATA_CONFLICT", "关联合规模板不存在")
+            frozen_rules["compliance"] = template.config or frozen_rules.get("compliance", {})
+            frozen_rules["compliance_template_version"] = template.template_version
+            b.compliance_template_version = template.template_version
+        frozen_rules["_complianceFrozen"] = True
+        frozen_rules["_frozenAt"] = now.isoformat()
+        b.rules_config = frozen_rules
+
+        # planned_count 是学校在草稿阶段填写的“计划人数”，actualCount 由实习记录实时统计。
+        # 仅历史/脚本直接造出 0 计划人数时沿用旧兜底；真实已填写计划数绝不能被圈选人数覆盖。
+        if int(b.planned_count or 0) <= 0:
+            b.planned_count = total
         b.status = "RUNNING"
         b.previous_status = "DRAFT"
-        b.last_transition_at = datetime.utcnow()
+        b.last_transition_at = now
         b.last_transition_by = _op_name()
-        b.transition_reason = "冻结参与人名单"
+        b.transition_reason = "冻结参与人名单并启用批次"
         b.version = int(b.version or 0) + 1
 
         _audit(db, batch_id, "冻结参与人名单",
                {"total": total, "createdRecords": created, "reusedRecords": reused,
                 "rule": rule.to_dict()})
+        _audit(db, batch_id, "ACTIVATE",
+               {"before": "DRAFT", "after": "RUNNING", "source": "PARTICIPANT_FREEZE"})
         db.commit()
         return {"batchId": str(batch_id), "total": total, "createdRecords": created,
-                "reusedRecords": reused, "batchStatus": b.status}
+                "reusedRecords": reused, "batchStatus": b.status, "version": int(b.version or 0)}
 
 
 # ── 名单读写 ──────────────────────────────────────────────────────────────

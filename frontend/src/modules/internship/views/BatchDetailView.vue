@@ -62,7 +62,9 @@
               <AppStatusTag :type="statusTagType[detail.status] || 'default'" dot>{{ detail.statusLabel }}</AppStatusTag>
             </div>
             <AppDescriptionList v-if="transitionItems.length" :items="transitionItems" :columns="1" size="compact" />
-            <p v-if="detail.transitionReason" class="bdv-reason">作废原因：{{ detail.transitionReason }}</p>
+            <p v-if="detail.transitionReason" class="bdv-reason">
+              {{ detail.status === 'VOIDED' ? '作废原因' : '流转原因' }}：{{ detail.transitionReason }}
+            </p>
             <div class="bdv-actions">
               <AppButton v-if="detail.status === 'DRAFT'" variant="secondary" @click="goEdit">编辑</AppButton>
               <AppButton v-if="detail.status === 'DRAFT'" variant="primary" @click="focusParticipants">选择学生并启用</AppButton>
@@ -86,7 +88,6 @@
       </div>
     </div>
 
-    <!-- 启用 / 结束 / 归档 / 作废 二次确认（沿用列表页文案与 reason 规则） -->
     <AppConfirmDialog
       v-model:visible="confirmVisible"
       :title="confirmConf.title"
@@ -94,7 +95,7 @@
       :type="confirmConf.type"
       :confirm-text="confirmConf.confirmText"
       :require-reason="confirmConf.requireReason"
-      reason-label="作废原因（≥5 字）"
+      :reason-label="confirmConf.reasonLabel || '操作原因（≥5 字）'"
       :submitting="confirmSubmitting"
       @confirm="onConfirm"
     />
@@ -104,13 +105,14 @@
 <script>
 /**
  * 实习批次独立详情页（/admin/internship/batches/:id，路由由主流程挂载）。
- * 原列表页详情抽屉收口至此：批次信息 + 阶段时间轴 + 规则配置 + 状态动作（启用/结束/归档/作废）
- * + 编辑入口（仅 DRAFT）+ 审计留痕。状态流转全部走真实 internshipApi，越权与非法状态由后端拦截。
+ * 批次结束先读取真实 readiness；无阻断走普通结束，有阻断时只向校级管理员暴露后端已有的
+ * force + forceReason 正式能力，原因与当时合规报告均由后端留痕，不绕过或放松 BATCH_CLOSE 闸门。
  */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppTimeline, AppAuditTrail, AppDescriptionList } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { batchLifecycleApi } from '@/modules/internship/api/batch-lifecycle.api'
 import { toast } from '@/utils/toast'
 import { formatDate, formatDateTime } from '@/utils/dateUtils'
 import BatchParticipantScope from './components/BatchParticipantScope.vue'
@@ -133,6 +135,7 @@ export default {
       confirmVisible: false,
       confirmMode: '',
       confirmSubmitting: false,
+      closeReadiness: null,
       statusTagType: { DRAFT: 'default', RUNNING: 'success', CLOSED: 'info', ARCHIVED: 'default', VOIDED: 'danger' }
     }
   },
@@ -213,13 +216,33 @@ export default {
     confirmConf() {
       const name = this.detail ? this.detail.batchName : ''
       if (this.confirmMode === 'close') {
-        return { title: '结束批次', message: `将「${name}」置为「已结束」，结束后才可归档。`, type: 'danger', confirmText: '确认结束', requireReason: false }
+        return {
+          title: '结束批次',
+          message: `将「${name}」置为「已结束」，结束后才可归档。`,
+          type: 'danger', confirmText: '确认结束', requireReason: false
+        }
+      }
+      if (this.confirmMode === 'force-close') {
+        const blocked = Number(this.closeReadiness?.blocked || 0)
+        return {
+          title: '强制结束批次',
+          message: `当前有 ${blocked} 名学生存在结束阻断。确需结束请填写不少于 5 字原因；系统会保留本次就绪检查与强制结束事实。`,
+          type: 'danger', confirmText: '确认强制结束', requireReason: true,
+          reasonLabel: '强制结束原因（≥5 字）'
+        }
       }
       if (this.confirmMode === 'archive') {
-        return { title: '归档批次', message: `归档「${name}」后进入只读台账，不可再变更。`, type: 'danger', confirmText: '确认归档', requireReason: false }
+        return {
+          title: '归档批次', message: `归档「${name}」后进入只读台账，不可再变更。`,
+          type: 'danger', confirmText: '确认归档', requireReason: false
+        }
       }
       if (this.confirmMode === 'void') {
-        return { title: '作废批次', message: `作废「${name}」（仅草稿态可作废，可审计）。`, type: 'danger', confirmText: '确认作废', requireReason: true }
+        return {
+          title: '作废批次', message: `作废「${name}」（仅草稿态可作废，可审计）。`,
+          type: 'danger', confirmText: '确认作废', requireReason: true,
+          reasonLabel: '作废原因（≥5 字）'
+        }
       }
       return { title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false }
     }
@@ -228,6 +251,7 @@ export default {
     '$route.params.id'(id, oldId) {
       if (!id || id === oldId) return
       this.detail = null
+      this.closeReadiness = null
       this.load()
     }
   },
@@ -248,7 +272,6 @@ export default {
       return `${Math.round((v || 0) * 100)}%`
     },
     goBack() {
-      // 从列表进入时走历史返回（保留筛选/页码/panel）；深链直入时兜底到列表
       const back = this.$router.options.history.state && this.$router.options.history.state.back
       if (typeof back === 'string' && back.startsWith('/admin/internship/batches')) this.$router.back()
       else this.$router.push('/admin/internship/batches')
@@ -272,7 +295,18 @@ export default {
       }
       this.detail = res.data
     },
-    openConfirm(mode) {
+    async openConfirm(mode) {
+      if (mode === 'close') {
+        const res = await batchLifecycleApi.getReadiness(this.detail.id)
+        if (!res || res.code !== 0) {
+          toast.error((res && res.message) || '无法读取批次结束就绪检查')
+          return
+        }
+        this.closeReadiness = res.data || null
+        this.confirmMode = Number(res.data?.blocked || 0) > 0 ? 'force-close' : 'close'
+        this.confirmVisible = true
+        return
+      }
       this.confirmMode = mode
       this.confirmVisible = true
     },
@@ -282,15 +316,24 @@ export default {
       const reason = (payload && payload.reason) || ''
       this.confirmSubmitting = true
       let res
-      if (this.confirmMode === 'close') res = await internshipApi.closeBatch(d.id, { expectedVersion: d.version })
-      else if (this.confirmMode === 'archive') res = await internshipApi.archiveBatch(d.id, { expectedVersion: d.version })
-      else if (this.confirmMode === 'void') res = await internshipApi.voidBatch(d.id, {
-        reason, expectedVersion: d.version
-      })
+      if (this.confirmMode === 'close') {
+        res = await batchLifecycleApi.close(d.id, { expectedVersion: d.version })
+      } else if (this.confirmMode === 'force-close') {
+        res = await batchLifecycleApi.close(d.id, {
+          expectedVersion: d.version,
+          force: true,
+          forceReason: reason
+        })
+      } else if (this.confirmMode === 'archive') {
+        res = await internshipApi.archiveBatch(d.id, { expectedVersion: d.version })
+      } else if (this.confirmMode === 'void') {
+        res = await internshipApi.voidBatch(d.id, { reason, expectedVersion: d.version })
+      }
       this.confirmSubmitting = false
       if (res && res.code === 0) {
         toast.success('操作成功')
         this.confirmVisible = false
+        this.closeReadiness = null
         await this.load()
       } else {
         toast.error((res && res.message) || '操作失败')
