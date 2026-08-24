@@ -243,7 +243,11 @@ def enrich_snapshot(db, batch, snapshot: dict, *, lock: bool = False) -> dict:
         for item in items:
             triple = grouped.get(sid, {}).get(item.material_code)
             material, version, file_obj = triple if triple else (None, None, None)
-            if material is not None:
+            # Material catalog initialization creates placeholder rows for every rule item.
+            # For system-snapshot-backed items, an empty placeholder must therefore fall
+            # back to the authoritative business source; only an actual current FileVersion
+            # owns readiness.  If that version exists but is not approved/safe, fail closed.
+            if material is not None and material.current_version_id:
                 present = _ready(material, version, file_obj)
             elif item.material_code in _SYSTEM_SNAPSHOT_CODES:
                 present = _source_ready(item.material_code, legacy_present, sid, guidance_ids, plagiarism)
