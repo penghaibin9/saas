@@ -63,7 +63,7 @@ async function loginStudentMini(page) {
   await accountField.locator('input').fill(config.student.username)
   await passwordField.locator('input').fill(config.student.password)
   await page.locator('.agreement__box').click()
-  await page.getByRole('button', { name: '进入学生首页', exact: true }).click()
+  await page.locator('uni-button.account-button').click()
   await expect(page).toHaveURL(/#\/pages\/student\/home\/index/)
 }
 
