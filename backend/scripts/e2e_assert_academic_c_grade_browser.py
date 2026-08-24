@@ -69,8 +69,12 @@ def main() -> int:
         first = by_student[student_ids[0]]
         second = by_student[student_ids[1]]
         assert int(first.usual_score) == 82, first.usual_score
-        # Browser First intentionally completes a post-publish correction for the first student: 96 -> 90.
+        # Browser First intentionally completes a post-publish correction for the first student: final 96 -> 90.
+        # The task is 30% usual + 70% final, so the authoritative total must move 92 -> 88.
         assert int(first.final_score) == 90, f"approved correction did not become current server truth: {first.final_score}"
+        assert int(first.total_score) == 88, f"corrected grade record total must be 88, got {first.total_score}"
+        assert int(first.prev_final_score) == 96, f"grade record must preserve previous final component 96, got {first.prev_final_score}"
+        assert int(first.prev_total_score) == 92, f"grade record must preserve previous total 92, got {first.prev_total_score}"
         assert int(second.usual_score) == 55 and int(second.final_score) == 50
         assert all(row.acad_grade_id for row in records), "every published record must link to official t_acad_grade"
 
@@ -83,6 +87,7 @@ def main() -> int:
         official_by_id = {int(row.id): row for row in official}
         first_current = official_by_id[int(first.acad_grade_id)]
         second_current = official_by_id[int(second.acad_grade_id)]
+        assert int(first_current.score) == 88, f"current official grade must expose corrected total 88, got {first_current.score}"
         assert str(getattr(first_current, "record_status", "")).upper() == "ACTIVE"
         assert str(getattr(first_current, "source", "")).upper() == "CHANGE", getattr(first_current, "source", None)
         assert str(getattr(second_current, "record_status", "")).upper() == "ACTIVE"
@@ -101,6 +106,8 @@ def main() -> int:
         assert str(change_request.status or "").upper() == "APPROVED", change_request.status
         assert int(change_request.before_final_score) == 96, change_request.before_final_score
         assert int(change_request.proposed_final_score) == 90, change_request.proposed_final_score
+        assert int(change_request.before_total_score) == 92, f"change request must snapshot original total 92, got {change_request.before_total_score}"
+        assert int(change_request.proposed_total_score) == 88, f"change request must calculate corrected total 88, got {change_request.proposed_total_score}"
         assert int(change_request.current_grade_id or 0) > 0, "change request missing original official grade"
         assert int(change_request.workflow_instance_id or 0) > 0, "change request missing workflow instance"
 
@@ -116,6 +123,8 @@ def main() -> int:
         assert int(correction.original_grade_id) == int(change_request.current_grade_id)
         assert int(correction.corrected_grade_id) == int(first.acad_grade_id)
         assert int(correction.corrected_grade_id) != int(correction.original_grade_id)
+        assert int(correction.before_score) == 92, f"correction lineage must seal original score 92, got {correction.before_score}"
+        assert int(correction.after_score) == 88, f"correction lineage must seal corrected score 88, got {correction.after_score}"
 
         lineage = db.scalars(select(AcademicGrade).where(
             AcademicGrade.tenant_id == tid,
@@ -126,6 +135,8 @@ def main() -> int:
         lineage_by_id = {int(row.id): row for row in lineage}
         original = lineage_by_id[int(correction.original_grade_id)]
         corrected = lineage_by_id[int(correction.corrected_grade_id)]
+        assert int(original.score) == 92, f"superseded PUBLISH version must retain original total 92, got {original.score}"
+        assert int(corrected.score) == 88, f"ACTIVE CHANGE version must carry corrected total 88, got {corrected.score}"
         assert str(getattr(original, "record_status", "")).upper() == "SUPERSEDED", getattr(original, "record_status", None)
         assert str(getattr(original, "source", "")).upper() == "PUBLISH", getattr(original, "source", None)
         assert str(getattr(corrected, "record_status", "")).upper() == "ACTIVE", getattr(corrected, "record_status", None)
@@ -184,8 +195,11 @@ def main() -> int:
                     "usual": row.usual_score,
                     "final": row.final_score,
                     "total": row.total_score,
+                    "previousFinal": row.prev_final_score,
+                    "previousTotal": row.prev_total_score,
                     "passStatus": row.pass_status,
                     "acadGradeId": int(row.acad_grade_id),
+                    "officialScore": official_by_id[int(row.acad_grade_id)].score,
                     "officialSource": str(getattr(official_by_id[int(row.acad_grade_id)], "source", "")),
                     "officialRecordStatus": str(getattr(official_by_id[int(row.acad_grade_id)], "record_status", "")),
                 }
@@ -196,8 +210,12 @@ def main() -> int:
                 "status": change_request.status,
                 "beforeFinal": change_request.before_final_score,
                 "afterFinal": change_request.proposed_final_score,
+                "beforeTotal": change_request.before_total_score,
+                "afterTotal": change_request.proposed_total_score,
                 "originalGradeId": int(correction.original_grade_id),
                 "correctedGradeId": int(correction.corrected_grade_id),
+                "originalScore": original.score,
+                "correctedScore": corrected.score,
                 "originalStatus": str(getattr(original, "record_status", "")),
                 "correctedStatus": str(getattr(corrected, "record_status", "")),
                 "correctedSource": str(getattr(corrected, "source", "")),
