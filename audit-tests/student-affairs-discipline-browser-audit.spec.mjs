@@ -137,15 +137,18 @@ test.describe.serial('Student Affairs strict browser audit · discipline lifecyc
     await test.step('SA admin registers a real WARNING discipline and submits it to college review through UI', async () => {
       await openDisciplineWorkbench(page, staff.saAdmin)
       await page.getByRole('button', { name: '登记处分', exact: true }).click()
-      await expect(page.getByText('登记违纪处分', { exact: true }).last()).toBeVisible()
+      const registerDialog = page.getByRole('dialog').filter({ hasText: '登记违纪处分' }).last()
+      await expect(registerDialog).toBeVisible()
 
-      const studentSearch = page.getByPlaceholder('按姓名 / 学号搜索学生')
+      const studentPicker = registerDialog.getByRole('combobox').first()
+      await studentPicker.click()
+      const studentSearch = registerDialog.getByPlaceholder('按学号 / 姓名搜索')
+      await expect(studentSearch).toBeVisible()
       await studentSearch.fill('E2E20260001')
-      const studentOption = page.getByText(/E2E学生A.*E2E20260001|E2E20260001.*E2E学生A/).last()
+      const studentOption = registerDialog.getByRole('option').filter({ hasText: /E2E学生A.*E2E20260001|E2E20260001.*E2E学生A/ }).last()
       await expect(studentOption).toBeVisible({ timeout: 15_000 })
       await studentOption.click()
 
-      await page.getByText('登记违纪处分', { exact: true }).last().locator('..').locator('..')
       await page.locator('select').last().selectOption('WARNING')
       await page.getByPlaceholder('客观描述违纪事实，不少于 5 字').fill(initialReason)
       await page.getByPlaceholder('选填，如「校学字〔2026〕12号」').fill(docNo)
