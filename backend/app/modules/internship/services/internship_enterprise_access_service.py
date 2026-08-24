@@ -23,6 +23,17 @@ from app.modules.internship.services.internship_recruitment_campaign_service imp
 from app.services.db_service import _as_id, _iso, _tid, session
 
 
+def _storage_datetime(value: datetime) -> datetime:
+    """Match the M1 MySQL ``DATETIME`` second precision before persisting/grant checks.
+
+    Immediate grants are created from a microsecond ``now``. Letting MySQL round that value can
+    push ``valid_from`` into the next second, so the first request after invite acceptance sees a
+    freshly issued grant as ``NOT_STARTED``. Normalize in the Authority instead of adding a client
+    retry/sleep or weakening the effective-window check.
+    """
+    return value.replace(microsecond=0)
+
+
 def effective_grant_status(
     grant: InternshipEnterpriseAccessGrant,
     *,
@@ -131,6 +142,8 @@ def issue_grant_in_tx(
         raise AppException("VALIDATION_ERROR", "grantType 必须是 RECRUITMENT/INTERNSHIP_COLLAB")
     if not isinstance(valid_from, datetime) or not isinstance(valid_until, datetime):
         raise AppException("VALIDATION_ERROR", "validFrom/validUntil 必须是 datetime")
+    valid_from = _storage_datetime(valid_from)
+    valid_until = _storage_datetime(valid_until)
     if valid_from >= valid_until:
         raise AppException("VALIDATION_ERROR", "validFrom 必须早于 validUntil")
 
