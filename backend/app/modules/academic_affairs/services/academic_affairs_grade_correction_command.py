@@ -75,28 +75,15 @@ def _retry_on_deadlock(func):
 # ═══════════ 受理人解析（NEW-P1-02） ═══════════
 
 def _permission_holder_ids(db, permission_code: str) -> list[int]:
-    """持有该权限的启用账号。"""
-    from app.models import Permission, Role, RolePermission, User, UserRole
+    """按 canonical School IAM 运行时权威解析启用的持权账号。
 
-    conditions = [
-        User.tenant_id == _tid(), User.status == "ACTIVE", User.is_deleted.is_(False),
-        UserRole.tenant_id == _tid(), UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
-        Role.tenant_id == _tid(), Role.status == "ACTIVE", Role.is_deleted.is_(False),
-        RolePermission.tenant_id == _tid(), RolePermission.status == "ACTIVE",
-        RolePermission.is_deleted.is_(False),
-        Permission.permission_code == permission_code,
-    ]
-    stmt = (
-        select(User.id)
-        .join(UserRole, UserRole.user_id == User.id)
-        .join(Role, Role.id == UserRole.role_id)
-        .join(RolePermission, RolePermission.role_id == Role.id)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .where(*conditions)
-        .distinct()
-        .order_by(User.id)
-    )
-    return [int(value) for value in db.scalars(stmt).all()]
+    ``academic_affairs_grade_task_assignee_guard`` 已经把 SYSTEM 角色的已发布
+    TENANT RoleTemplate 与 CUSTOM/历史角色的 RolePermission 两个权限平面统一收口。
+    这里运行时懒导入，既复用同一权威，又避免该 guard 顶层回引本模块造成循环导入。
+    """
+    from .academic_affairs_grade_task_assignee_guard import _runtime_permission_holder_ids
+
+    return _runtime_permission_holder_ids(db, permission_code)
 
 
 def _college_bound_user_ids(db) -> set[int]:
@@ -168,16 +155,25 @@ def _unique_assignee(candidates, node) -> int:
 
 
 def resolve_change_assignee(db, node: str, task) -> int:
-    """学院节点按开课学院的教学秘书/在岗负责人；教务终审收敛到校级岗位账号。解析不到即 409。
+    """学院节点按开课学院收敛；教务终审优先沿用该成绩真实发布责任人。解析不到即 409。
 
-    两个节点共用 ``gradeChange.review`` 一个权限码（现有权限模型如此），所以终审必须再按
-    校级账号身份收窄，否则学院教务也会被算成候选人，既破坏职责分离，也会因"候选人不唯一"
-    把整条更正链卡死。
+    两个节点共用 ``gradeChange.review`` 一个权限码（现有权限模型如此）。教务终审先排除
+    学院绑定账号，再优先复用成绩任务 ``academic_reviewer_id``：只有该原始发布人仍 ACTIVE、
+    仍持有当前 School IAM 的更正审核权限且仍属于校级候选时才可继续受理。发布责任人不可用时
+    不猜测账号，只允许剩余校级持权人天然唯一；否则继续 fail-closed。
     """
     candidates = _permission_holder_ids(db, _REVIEW_PERM)
     if node != _COLLEGE_NODE:
         college_bound = _college_bound_user_ids(db)
-        return _unique_assignee([uid for uid in candidates if uid not in college_bound], node)
+        school_level = [uid for uid in candidates if uid not in college_bound]
+        published_reviewer = int(getattr(task, "academic_reviewer_id", 0) or 0)
+        if (
+            published_reviewer > 0
+            and published_reviewer in school_level
+            and _active_user(db, published_reviewer)
+        ):
+            return published_reviewer
+        return _unique_assignee(school_level, node)
 
     from app.models import College, StaffAssignment
 
