@@ -138,6 +138,12 @@ from . import academic_affairs_grade_correction_command
 
 academic_affairs_grade_correction_command.install()
 
+# AA-014/AA-015：成绩提交、退回、发布与更正审批必须写结构化 before/after 审计证据。
+# 只包裹 canonical _audit sink，不接管状态机、权限、工作流或正式成绩事实。
+from . import academic_affairs_grade_audit_evidence_guard
+
+academic_affairs_grade_audit_evidence_guard.install()
+
 # 成绩审计普通教师必须按真实任务/记录对象归属裁决，禁止用展示姓名充当身份键。
 from . import academic_affairs_grade_audit_scope_guard
 
