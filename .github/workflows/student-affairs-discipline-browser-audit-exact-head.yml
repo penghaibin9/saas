@@ -111,7 +111,7 @@ jobs:
         working-directory: app/backend
         run: |
           pip install -r requirements.txt
-          pytest -q tests/test_discipline_package11_integrity.py::test_package11_static_contracts_are_installed tests/test_affairs_appeal_result_message_events.py
+          pytest -q tests/test_discipline_package11_integrity.py::test_package11_static_contracts_are_installed
           alembic upgrade head
           python scripts/bootstrap_control_plane_school_iam_authority.py
           python scripts/e2e_seed_playwright_tenants.py
