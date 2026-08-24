@@ -253,7 +253,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分；可进本人工作台与待办
     "DORM_MANAGER": {*_WORKBENCH_SELF, "studentAffairs.dorm.*", "campusService.dorm.*"},
     # 辅导员：数据范围限本人所带班级（服务层 _allowed_class_ids/scope 收敛，越权返回 NO_DATA_SCOPE）。
-    # 本班范围内广读 + 操作 班级/请假/风险/谈话/家校；困难/资助/违纪的正式审批与登记归学工处/院，辅导员默认只读。
+    # 本班范围内广读 + 操作 班级/请假/风险/谈话/家校；困难/资助/违纪的正式审批与登记归学工处/院。
+    # 处分仅冻结一个写例外：解除子流程 COUNSELOR_REVIEW 初审；后端仍按节点、数据范围与 WorkflowTask assignee 收敛。
     "COUNSELOR": {
         *_WORKBENCH_SELF,
         "studentAffairs.dashboard.view",
@@ -262,6 +263,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "studentAffairs.leave.*", "studentAffairs.risk.*", "studentAffairs.talk.*",
         "studentAffairs.homeSchool.*",
         "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.discipline.view",
+        "studentAffairs.discipline.remove.approve",
         "studentAffairs.archive.view", "studentAffairs.stats.view",
         # 困难认定·辅导员初审节点（2026-07-18 甲方拍板扩权，见历史欠账"辅导员初审"矛盾记录）：
         # 仅授予 COUNSELOR_REVIEW 节点的通过/退回/驳回 + 该节点下本班学生家庭经济查看，
