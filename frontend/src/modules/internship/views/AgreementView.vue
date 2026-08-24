@@ -54,6 +54,7 @@
       <AppFormItem label="实习学生" required>
         <AppInternshipStudentPicker
           v-model="genForm.internshipId"
+          :query="{ batchId: batchStore.selectedBatchId }"
           placeholder="输入姓名或学号搜索实习学生"
           search-placeholder="按姓名 / 学号搜索"
           data-scope-hint="指导教师仅本人指导学生；管理员全校"
@@ -155,6 +156,7 @@ export default {
     },
     'batchStore.selectedBatchId'() {
       this.page = 1
+      this.templateOptions = []
       this.load()
     },
     'genForm.internshipId'() { this.loadPreview() },
@@ -204,7 +206,7 @@ export default {
       this.previewText = ''
       this.genDlg.visible = true
       if (!this.templateOptions.length) {
-        const res = await agreementTemplateApi.getEnabledOptions()
+        const res = await agreementTemplateApi.getEnabledOptions({ batchId: this.batchStore.selectedBatchId })
         if (res.code === 0) this.templateOptions = res.data || []
       }
     },
