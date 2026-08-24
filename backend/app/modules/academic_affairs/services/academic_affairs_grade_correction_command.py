@@ -75,28 +75,15 @@ def _retry_on_deadlock(func):
 # ═══════════ 受理人解析（NEW-P1-02） ═══════════
 
 def _permission_holder_ids(db, permission_code: str) -> list[int]:
-    """持有该权限的启用账号。"""
-    from app.models import Permission, Role, RolePermission, User, UserRole
+    """按 canonical School IAM 运行时权威解析启用的持权账号。
 
-    conditions = [
-        User.tenant_id == _tid(), User.status == "ACTIVE", User.is_deleted.is_(False),
-        UserRole.tenant_id == _tid(), UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
-        Role.tenant_id == _tid(), Role.status == "ACTIVE", Role.is_deleted.is_(False),
-        RolePermission.tenant_id == _tid(), RolePermission.status == "ACTIVE",
-        RolePermission.is_deleted.is_(False),
-        Permission.permission_code == permission_code,
-    ]
-    stmt = (
-        select(User.id)
-        .join(UserRole, UserRole.user_id == User.id)
-        .join(Role, Role.id == UserRole.role_id)
-        .join(RolePermission, RolePermission.role_id == Role.id)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .where(*conditions)
-        .distinct()
-        .order_by(User.id)
-    )
-    return [int(value) for value in db.scalars(stmt).all()]
+    ``academic_affairs_grade_task_assignee_guard`` 已经把 SYSTEM 角色的已发布
+    TENANT RoleTemplate 与 CUSTOM/历史角色的 RolePermission 两个权限平面统一收口。
+    这里运行时懒导入，既复用同一权威，又避免该 guard 顶层回引本模块造成循环导入。
+    """
+    from .academic_affairs_grade_task_assignee_guard import _runtime_permission_holder_ids
+
+    return _runtime_permission_holder_ids(db, permission_code)
 
 
 def _college_bound_user_ids(db) -> set[int]:
