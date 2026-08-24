@@ -4,10 +4,23 @@ on:
   push:
     branches:
       - fix/internship-final-rc-20260824
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/app/modules/internship/**'
+      - 'backend/tests/test_internship*.py'
+      - 'backend/scripts/e2e_*internship*.py'
+      - 'frontend/src/modules/internship/**'
+      - 'student-portal/src/**'
+      - 'e2e/specs/internship-*.mjs'
+      - 'e2e/pages/internship-*.mjs'
+      - 'e2e/lib/internship-*.mjs'
+      - '.github/workflows/internship-rc-targeted-browser-first.yml'
   workflow_dispatch:
 
 concurrency:
-  group: internship-rc-targeted-${{ github.ref }}
+  group: internship-rc-targeted-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -15,6 +28,7 @@ permissions:
 
 jobs:
   ix-001-008-015:
+    if: github.event_name != 'pull_request' || github.head_ref == 'fix/internship-final-rc-20260824'
     name: IX-001 IX-008 IX-015 / real MySQL / real browser / exact head
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -69,19 +83,19 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_EXPECTED_SHA: ${{ github.sha }}
+      E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Exact branch HEAD assertion
         run: |
           set -euo pipefail
           ACTUAL="$(git rev-parse HEAD)"
-          EXPECTED="${{ github.sha }}"
+          EXPECTED="$E2E_EXPECTED_SHA"
           echo "actual=$ACTUAL"
           echo "expected=$EXPECTED"
           test "$ACTUAL" = "$EXPECTED"
