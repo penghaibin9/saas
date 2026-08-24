@@ -10,6 +10,14 @@ on:
       - 'backend/scripts/e2e_assert_academic_c_grade_browser.py'
       - 'e2e/specs/academic-c-grade-full-browser.spec.mjs'
       - '.github/workflows/audit-academic-aa014-final-rc-20260824.yml'
+  pull_request:
+    branches:
+      - fix/academic-affairs-final-rc-20260824
+    paths:
+      - 'backend/scripts/e2e_seed_academic_c_grade_browser.py'
+      - 'backend/scripts/e2e_assert_academic_c_grade_browser.py'
+      - 'e2e/specs/academic-c-grade-full-browser.spec.mjs'
+      - '.github/workflows/audit-academic-aa014-final-rc-20260824.yml'
 
 permissions:
   contents: read
