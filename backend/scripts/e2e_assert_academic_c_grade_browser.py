@@ -1,7 +1,8 @@
 """Post-browser MySQL truth seal for the Academic C grade lifecycle.
 
 This script is read-only. It must run only after Playwright performed every grade business write
-through the real UI. It verifies final state, official projection, todo convergence and high-risk audit evidence.
+through the real UI. It verifies final state, official projection, append-only correction lineage,
+todo convergence and high-risk audit evidence.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from app.models import (
     Tenant,
     UnifiedTodo,
 )
+from app.models.academic_affairs_effective_grade import AaGradeChangeRequest, AaGradeCorrection
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_PATH = ROOT / "e2e" / "academic-c-grade-browser-fixture.json"
@@ -67,7 +69,8 @@ def main() -> int:
         first = by_student[student_ids[0]]
         second = by_student[student_ids[1]]
         assert int(first.usual_score) == 82, first.usual_score
-        assert int(first.final_score) == 96, f"returned/resubmitted score did not persist: {first.final_score}"
+        # Browser First intentionally completes a post-publish correction for the first student: 96 -> 90.
+        assert int(first.final_score) == 90, f"approved correction did not become current server truth: {first.final_score}"
         assert int(second.usual_score) == 55 and int(second.final_score) == 50
         assert all(row.acad_grade_id for row in records), "every published record must link to official t_acad_grade"
 
@@ -76,9 +79,61 @@ def main() -> int:
             AcademicGrade.id.in_([int(row.acad_grade_id) for row in records]),
             AcademicGrade.is_deleted.is_(False),
         )).all()
-        assert len(official) == 2, f"expected two official grade projections, got {len(official)}"
-        assert all(str(getattr(row, "source", "")).upper() == "PUBLISH" for row in official), [getattr(row, "source", None) for row in official]
+        assert len(official) == 2, f"expected two current official grade projections, got {len(official)}"
+        official_by_id = {int(row.id): row for row in official}
+        first_current = official_by_id[int(first.acad_grade_id)]
+        second_current = official_by_id[int(second.acad_grade_id)]
+        assert str(getattr(first_current, "record_status", "")).upper() == "ACTIVE"
+        assert str(getattr(first_current, "source", "")).upper() == "CHANGE", getattr(first_current, "source", None)
+        assert str(getattr(second_current, "record_status", "")).upper() == "ACTIVE"
+        assert str(getattr(second_current, "source", "")).upper() == "PUBLISH", getattr(second_current, "source", None)
         assert all(str(getattr(row, "course_name", "")) == fixture["courseName"] for row in official)
+
+        change_requests = db.scalars(select(AaGradeChangeRequest).where(
+            AaGradeChangeRequest.tenant_id == tid,
+            AaGradeChangeRequest.grade_task_id == int(task.id),
+            AaGradeChangeRequest.grade_record_id == int(first.id),
+            AaGradeChangeRequest.student_id == int(first.student_id),
+            AaGradeChangeRequest.is_deleted.is_(False),
+        ).order_by(AaGradeChangeRequest.id.asc())).all()
+        assert len(change_requests) == 1, f"expected one browser grade change request, got {len(change_requests)}"
+        change_request = change_requests[0]
+        assert str(change_request.status or "").upper() == "APPROVED", change_request.status
+        assert int(change_request.before_final_score) == 96, change_request.before_final_score
+        assert int(change_request.proposed_final_score) == 90, change_request.proposed_final_score
+        assert int(change_request.current_grade_id or 0) > 0, "change request missing original official grade"
+        assert int(change_request.workflow_instance_id or 0) > 0, "change request missing workflow instance"
+
+        corrections = db.scalars(select(AaGradeCorrection).where(
+            AaGradeCorrection.tenant_id == tid,
+            AaGradeCorrection.source_type == "CHANGE_REQUEST",
+            AaGradeCorrection.source_ref_id == int(change_request.id),
+            AaGradeCorrection.is_deleted.is_(False),
+        )).all()
+        assert len(corrections) == 1, f"expected one append-only correction link, got {len(corrections)}"
+        correction = corrections[0]
+        assert str(correction.status or "").upper() == "ACTIVE", correction.status
+        assert int(correction.original_grade_id) == int(change_request.current_grade_id)
+        assert int(correction.corrected_grade_id) == int(first.acad_grade_id)
+        assert int(correction.corrected_grade_id) != int(correction.original_grade_id)
+
+        lineage = db.scalars(select(AcademicGrade).where(
+            AcademicGrade.tenant_id == tid,
+            AcademicGrade.id.in_([int(correction.original_grade_id), int(correction.corrected_grade_id)]),
+            AcademicGrade.is_deleted.is_(False),
+        )).all()
+        assert len(lineage) == 2, f"correction lineage incomplete: {[row.id for row in lineage]}"
+        lineage_by_id = {int(row.id): row for row in lineage}
+        original = lineage_by_id[int(correction.original_grade_id)]
+        corrected = lineage_by_id[int(correction.corrected_grade_id)]
+        assert str(getattr(original, "record_status", "")).upper() == "SUPERSEDED", getattr(original, "record_status", None)
+        assert str(getattr(original, "source", "")).upper() == "PUBLISH", getattr(original, "source", None)
+        assert str(getattr(corrected, "record_status", "")).upper() == "ACTIVE", getattr(corrected, "record_status", None)
+        assert str(getattr(corrected, "source", "")).upper() == "CHANGE", getattr(corrected, "source", None)
+        assert str(getattr(corrected, "source_biz_type", "")).upper() == "GRADE_CHANGE_REQUEST"
+        assert int(getattr(corrected, "source_biz_id", 0) or 0) == int(change_request.id)
+        assert int(getattr(corrected, "grade_record_id", 0) or 0) == int(first.id)
+        assert int(getattr(original, "grade_record_id", 0) or 0) == int(first.id)
 
         pending_todos = db.scalars(select(UnifiedTodo).where(
             UnifiedTodo.tenant_id == tid,
@@ -108,6 +163,17 @@ def main() -> int:
             assert str(getattr(row, "before_val", "") or "").strip(), f"audit {row.action} missing before_val"
             assert str(getattr(row, "after_val", "") or "").strip(), f"audit {row.action} missing after_val"
 
+        correction_audits = db.scalars(select(AffairsAuditTrail).where(
+            AffairsAuditTrail.tenant_id == tid,
+            AffairsAuditTrail.biz_id == int(first.id),
+            AffairsAuditTrail.biz_type == "AA_GRADE_RECORD",
+            AffairsAuditTrail.action == "CHANGE_APPROVE",
+        ).order_by(AffairsAuditTrail.id.asc())).all()
+        assert correction_audits, "approved correction missing AA_GRADE_RECORD CHANGE_APPROVE audit"
+        assert all(str(row.operator or "").strip() for row in correction_audits)
+        assert all(str(row.role_name or "").strip() for row in correction_audits)
+        assert all(row.occurred_at is not None for row in correction_audits)
+
         evidence = {
             "tenantId": tid,
             "gradeTaskId": int(task.id),
@@ -120,11 +186,25 @@ def main() -> int:
                     "total": row.total_score,
                     "passStatus": row.pass_status,
                     "acadGradeId": int(row.acad_grade_id),
+                    "officialSource": str(getattr(official_by_id[int(row.acad_grade_id)], "source", "")),
+                    "officialRecordStatus": str(getattr(official_by_id[int(row.acad_grade_id)], "record_status", "")),
                 }
                 for row in records
             ],
+            "correction": {
+                "changeRequestId": int(change_request.id),
+                "status": change_request.status,
+                "beforeFinal": change_request.before_final_score,
+                "afterFinal": change_request.proposed_final_score,
+                "originalGradeId": int(correction.original_grade_id),
+                "correctedGradeId": int(correction.corrected_grade_id),
+                "originalStatus": str(getattr(original, "record_status", "")),
+                "correctedStatus": str(getattr(corrected, "record_status", "")),
+                "correctedSource": str(getattr(corrected, "source", "")),
+            },
             "auditActions": [row.action for row in audits],
             "highRiskAuditCount": len(high_risk),
+            "correctionAuditActions": [row.action for row in correction_audits],
             "pendingTeacherTodos": len(pending_todos),
         }
         out = Path(__file__).resolve().parents[1] / "tmp" / "e2e_academic_c_grade_browser_db_evidence.json"
