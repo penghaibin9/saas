@@ -54,13 +54,25 @@ def _get_batch(db, batch_id):
 
 def _get_or_create_rule(db, batch_id):
     from app.models import InternshipBatchScopeRule
+    # 唯一键是 (tenant_id, batch_id)，不含 is_deleted。软删后不能再 INSERT，
+    # 否则真实 MySQL 会命中 uk_intern_scope_batch 产生 1062。
     row = db.scalars(select(InternshipBatchScopeRule).where(
         InternshipBatchScopeRule.tenant_id == _tid(),
-        InternshipBatchScopeRule.batch_id == int(batch_id),
-        InternshipBatchScopeRule.is_deleted.is_(False))).first()
+        InternshipBatchScopeRule.batch_id == int(batch_id))).first()
     if row is None:
         row = InternshipBatchScopeRule(tenant_id=_tid(), batch_id=int(batch_id), rule_json={})
         db.add(row)
+        db.flush()
+    elif row.is_deleted:
+        # 旧实现把软删行视为“不存在”，因此恢复时必须保持“新规则”的语义，
+        # 不能把上一轮预览/冻结状态泄漏到重新进入的批次规则中。
+        row.is_deleted = False
+        row.rule_json = {}
+        row.last_preview_count = 0
+        row.last_preview_at = None
+        row.frozen_at = None
+        row.frozen_by = None
+        row.version = int(row.version or 0) + 1
         db.flush()
     return row
 

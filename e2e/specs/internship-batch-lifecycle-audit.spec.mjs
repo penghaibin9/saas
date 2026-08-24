@@ -118,14 +118,14 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
     expect(batchId).not.toBe('')
 
     await page.goto(`${config.staffBaseUrl}/admin/internship/batches/${batchId}`)
-    await expect(page.getByText(batchName).first()).toBeVisible()
-    await expect(page.getByText(batchNo).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: `${batchName} · 批次详情` })).toBeVisible()
+    await expect(page.locator('p.subtitle').filter({ hasText: batchNo }).first()).toBeVisible()
     await expect(page.getByText('浏览器岗前准备').first()).toBeVisible()
     await expect(page.getByText(/电子围栏 650 米/).first()).toBeVisible()
     await expect(page.getByText('新建批次').first()).toBeVisible()
 
     await page.reload()
-    await expect(page.getByText(batchName).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: `${batchName} · 批次详情` })).toBeVisible()
     await expect(page.getByText('浏览器岗前准备').first()).toBeVisible()
     await expect(page.getByText(/电子围栏 650 米/).first()).toBeVisible()
   })
