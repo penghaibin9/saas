@@ -362,5 +362,7 @@ jobs:
             app/e2e/test-results/
             app/e2e/playwright-report/
             app/e2e/runtime-logs/
+            app/backend/app/core/permissions.py
+            app/backend/tests/test_affairs_phase2_role_matrix.py
           if-no-files-found: warn
           retention-days: 14
