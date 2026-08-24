@@ -7,6 +7,7 @@ LOCKED-roster fixture and swaps only the isolated academic-affairs E2E identitie
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -24,6 +25,9 @@ OTHER_TEACHER = "e2e_aa_teacher_b"
 COLLEGE_REVIEWER = "e2e_aa_college_a"
 GRADE_ADMIN = "e2e_aa_grade"
 STUDENTS = ("E2EAA20260001", "E2EAA20260002")
+EFFECTIVE_POLICY_CODE = "AA014_E2E_LATEST_ATTEMPT_V1"
+EFFECTIVE_POLICY_VERSION = 1
+EFFECTIVE_ATTEMPT_STRATEGY = "LATEST_ATTEMPT"
 
 
 def _resolve_formal_roster(state: dict) -> dict:
@@ -87,6 +91,87 @@ def _resolve_formal_roster(state: dict) -> dict:
         db.close()
 
 
+def _ensure_effective_grade_policy(state: dict) -> dict:
+    """Seed the production prerequisite that formal grade publication must consume.
+
+    The product deliberately fails closed when no ACTIVE effective-grade policy exists. The Browser-First
+    fixture therefore must create that prerequisite instead of weakening ``publish_grades``. Re-runs may
+    reuse one applicable ACTIVE policy, but malformed or ambiguous policy facts fail the seed immediately.
+    """
+    from app.models.academic_affairs_effective_grade import AaEffectiveGradePolicy
+    from app.modules.academic_affairs.services.academic_affairs_effective_grade_policy_service import (
+        VALID_ATTEMPT_STRATEGIES,
+    )
+
+    tenant_id = int(state.get("tenantId") or 0)
+    term_id = int(state.get("termId") or 0)
+    if not tenant_id or not term_id:
+        raise SystemExit("grade browser cannot seed effective grade policy without tenantId + termId")
+
+    db = base.get_sessionmaker()()
+    try:
+        rows = db.scalars(select(AaEffectiveGradePolicy).where(
+            AaEffectiveGradePolicy.tenant_id == tenant_id,
+            AaEffectiveGradePolicy.status == "ACTIVE",
+            AaEffectiveGradePolicy.is_deleted.is_(False),
+            (
+                AaEffectiveGradePolicy.effective_from_term_id.is_(None)
+                | (AaEffectiveGradePolicy.effective_from_term_id <= term_id)
+            ),
+        ).order_by(
+            AaEffectiveGradePolicy.effective_from_term_id.desc(),
+            AaEffectiveGradePolicy.policy_version.desc(),
+            AaEffectiveGradePolicy.id.desc(),
+        )).all()
+
+        if rows:
+            policy = rows[0]
+            same_scope = [
+                row for row in rows
+                if row.effective_from_term_id == policy.effective_from_term_id
+            ]
+            if len(same_scope) > 1:
+                raise SystemExit(
+                    "grade browser effective-grade policy prerequisite is ambiguous: "
+                    f"term={term_id} policyIds={[int(row.id) for row in same_scope]}"
+                )
+            strategy = str(policy.attempt_strategy or "").upper()
+            if strategy not in VALID_ATTEMPT_STRATEGIES:
+                raise SystemExit(
+                    "grade browser effective-grade policy has unsupported attempt strategy: "
+                    f"policyId={policy.id} strategy={strategy}"
+                )
+        else:
+            policy = AaEffectiveGradePolicy(
+                tenant_id=tenant_id,
+                policy_code=EFFECTIVE_POLICY_CODE,
+                policy_version=EFFECTIVE_POLICY_VERSION,
+                active_scope_key=str(term_id),
+                attempt_strategy=EFFECTIVE_ATTEMPT_STRATEGY,
+                makeup_strategy="CAP_AND_OVERRIDE",
+                makeup_cap=60,
+                retake_strategy="REPLACE_IF_PASSED",
+                recognition_priority=75,
+                effective_from_term_id=term_id,
+                status="ACTIVE",
+                activated_at=datetime.utcnow(),
+            )
+            db.add(policy)
+            db.flush()
+            strategy = EFFECTIVE_ATTEMPT_STRATEGY
+            db.commit()
+
+        return {
+            "effectiveGradePolicyId": int(policy.id),
+            "effectiveGradePolicyCode": str(policy.policy_code),
+            "effectiveGradePolicyVersion": int(policy.policy_version or 1),
+            "effectiveAttemptStrategy": strategy,
+            "effectiveFromTermId": int(policy.effective_from_term_id or 0),
+        }
+    finally:
+        db.close()
+
+
 def main() -> int:
     # Reuse the production-shaped prerequisite seed; never create a GradeTask here.
     base.TEACHER_LOGIN = TEACHER
@@ -110,6 +195,7 @@ def main() -> int:
     missing = [key for key in required if not state.get(key)]
     if missing:
         raise SystemExit(f"grade browser prerequisite state missing: {missing}")
+    state.update(_ensure_effective_grade_policy(state))
 
     fixture = {
         "tenant": TENANT,
@@ -130,6 +216,11 @@ def main() -> int:
         "studentIds": state.get("studentIds") or [],
         "rosterVersionId": state.get("rosterVersionId"),
         "rosterHash": state.get("rosterHash"),
+        "effectiveGradePolicyId": state.get("effectiveGradePolicyId"),
+        "effectiveGradePolicyCode": state.get("effectiveGradePolicyCode"),
+        "effectiveGradePolicyVersion": state.get("effectiveGradePolicyVersion"),
+        "effectiveAttemptStrategy": state.get("effectiveAttemptStrategy"),
+        "effectiveFromTermId": state.get("effectiveFromTermId"),
         "runKey": state.get("runKey"),
     }
     FIXTURE_PATH.write_text(json.dumps(fixture, ensure_ascii=False, indent=2), encoding="utf-8")
