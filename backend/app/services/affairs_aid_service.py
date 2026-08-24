@@ -691,8 +691,11 @@ def get_application(apply_id, user) -> dict:
     with session() as db:
         x, s = _load(db, apply_id)
         _scope_or_403(db, x.student_id, user)
-        return _apply_row(x, s, _family_of(db, x.id),
-                          has_pending_objection=int(x.id) in _pending_objection_ids(db, [x.id]))
+        row = _apply_row(x, s, _family_of(db, x.id),
+                         has_pending_objection=int(x.id) in _pending_objection_ids(db, [x.id]))
+        # 困难情况说明仅在单笔详情返回，避免列表面不必要扩散学生申报叙述。
+        row["statement"] = x.statement or ""
+        return row
 
 
 def reveal_family_economy(apply_id, user, reason="") -> dict:

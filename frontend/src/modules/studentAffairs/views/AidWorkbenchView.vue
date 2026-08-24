@@ -100,6 +100,11 @@
             <div><dt>学号</dt><dd>{{ selected.studentNo || '—' }}</dd></div>
           </dl>
 
+          <section class="ad-statement" aria-label="困难情况说明">
+            <div class="ad-statement__title">困难情况说明</div>
+            <p>{{ selected.statement || '—' }}</p>
+          </section>
+
           <!-- 家庭经济（强敏感，默认脱敏） -->
           <section class="ad-family">
             <div class="ad-family__head">
@@ -547,16 +552,17 @@ export default {
         this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.applyId === this.selected.applyId)
-          if (hit) this.selected = hit
+          if (hit) this.selected = { ...this.selected, ...hit }
         }
       } else {
         this.listError = res.message || '申请加载失败'
       }
     },
-    select(it) {
+    async select(it) {
       this.selected = it
       this.revealed = false
       this.revealedFam = {}
+      await this.reloadDetail()
     },
     async reloadDetail() {
       if (!this.selected) return
@@ -920,6 +926,26 @@ export default {
 .ad-kv dd {
   margin: 0;
   font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+.ad-statement {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-base);
+  background: var(--bg-subtle, var(--bg-card));
+}
+.ad-statement__title {
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.ad-statement p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
   color: var(--text-primary);
 }
 .ad-family {
