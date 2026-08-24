@@ -48,8 +48,13 @@ export const agreementTemplateApi = {
   getVariablePresets() {
     return call(() => request(`${BASE}/variables`))
   },
-  getEnabledOptions() {
-    return call(() => request(`${BASE}/options`))
+  getEnabledOptions(params = {}) {
+    return call(async () => {
+      const d = await request(BASE, {
+        params: { page: 1, pageSize: 200, ...params, status: 'ENABLED' }
+      })
+      return d.items || []
+    })
   },
   previewTemplate(id, { internshipId }) {
     return call(() => request(`${BASE}/${id}/preview`, { method: 'POST', body: { internshipId } }))
