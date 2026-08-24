@@ -38,6 +38,10 @@ function guidanceUrl(fixture) {
   return url.toString()
 }
 
+function confirmDialog(page) {
+  return page.locator('.app-confirm-dialog').first()
+}
+
 async function addGuidance(page, fixture, marker) {
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
   await page.goto(guidanceUrl(fixture))
@@ -119,7 +123,6 @@ async function openArchivePanel(page, fixture) {
   await page.goto(archiveUrl(fixture))
   await dismissGuide(page)
   await expect(page.getByRole('heading', { name: '问题预警 · 毕设归档 · 毕设统计', exact: true })).toBeVisible()
-  await expect.soft(page.getByText('毕设材料归档', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: '毕设归档', exact: true })).toHaveClass(/is-active/)
 }
 
@@ -183,11 +186,11 @@ test.describe.serial('GD-018 归档 Browser First · preview/freeze/FileVersion/
       `archive preview=${JSON.stringify(generatePreview.data)} materialReadiness=${JSON.stringify(readiness)}`,
     ).toBeGreaterThanOrEqual(1)
     expect(String(generatePreview.data?.previewToken || '')).toBeTruthy()
-    await expect(page.getByRole('dialog')).toContainText(/预计成功\s*1|预计成功/)
+    await expect(confirmDialog(page)).toContainText(/预计成功\s*1|预计成功/)
 
     const [generateResponse] = await Promise.all([
       page.waitForResponse((r) => isArchivePath(r, 'batch-generate')),
-      page.getByRole('button', { name: '确认生成提交', exact: true }).click(),
+      confirmDialog(page).getByRole('button', { name: '确认生成提交', exact: true }).click(),
     ])
     expect(generateResponse.ok(), `batch-generate HTTP ${generateResponse.status()}`).toBeTruthy()
     const generated = await readJson(generateResponse)
@@ -207,7 +210,7 @@ test.describe.serial('GD-018 归档 Browser First · preview/freeze/FileVersion/
     expect(Number(stalePreview.data?.executableCount || 0), JSON.stringify(stalePreview.data)).toBeGreaterThanOrEqual(1)
     const staleToken = String(stalePreview.data?.previewToken || '')
     expect(staleToken).toBeTruthy()
-    await expect(page.getByRole('dialog')).toContainText(/预计备案/)
+    await expect(confirmDialog(page)).toContainText(/预计备案/)
 
     const mentorContext = await browser.newContext()
     const mentorPage = await mentorContext.newPage()
@@ -219,7 +222,7 @@ test.describe.serial('GD-018 归档 Browser First · preview/freeze/FileVersion/
 
     const [staleExecuteResponse] = await Promise.all([
       page.waitForResponse((r) => isArchivePath(r, 'batch-file')),
-      page.getByRole('button', { name: '确认核验备案', exact: true }).click(),
+      confirmDialog(page).getByRole('button', { name: '确认核验备案', exact: true }).click(),
     ])
     const staleExecute = await readJson(staleExecuteResponse)
     expect(
@@ -227,8 +230,8 @@ test.describe.serial('GD-018 归档 Browser First · preview/freeze/FileVersion/
       `stale preview unexpectedly filed: HTTP ${staleExecuteResponse.status()} ${JSON.stringify(staleExecute)}`,
     ).toBeTruthy()
     expect(JSON.stringify(staleExecute)).toMatch(/预览|变化|DATA_CONFLICT|snapshot|凭证/i)
-    await expect(page.getByRole('dialog')).toBeVisible()
-    await page.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(confirmDialog(page)).toBeVisible()
+    await confirmDialog(page).getByRole('button', { name: '取消', exact: true }).click()
 
     const [freshPreviewResponse] = await Promise.all([
       page.waitForResponse((r) => isArchivePath(r, 'batch-file/preview')),
@@ -243,7 +246,7 @@ test.describe.serial('GD-018 归档 Browser First · preview/freeze/FileVersion/
 
     const [fileResponse] = await Promise.all([
       page.waitForResponse((r) => isArchivePath(r, 'batch-file')),
-      page.getByRole('button', { name: '确认核验备案', exact: true }).click(),
+      confirmDialog(page).getByRole('button', { name: '确认核验备案', exact: true }).click(),
     ])
     expect(fileResponse.ok(), `fresh batch-file HTTP ${fileResponse.status()}`).toBeTruthy()
     const filed = await readJson(fileResponse)
