@@ -86,9 +86,14 @@ def _student_for_update(db, gd_student_id: int) -> GraduationStudent:
 
 
 def _assert_no_open_risk(db, student: GraduationStudent) -> None:
+    # GD-R12 (材料未归档) is the self-referential risk resolved by this very
+    # filing transaction. Counting it here creates a deadlock:
+    # not FILED -> GD-R12 OPEN -> filing forbidden. Every other unresolved
+    # risk remains fail-closed.
     count = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
         GraduationRiskCase.tenant_id == _tid(),
         GraduationRiskCase.gd_student_id == int(student.id),
+        GraduationRiskCase.risk_code != "GD-R12",
         GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
         GraduationRiskCase.is_deleted.is_(False),
     )) or 0)
