@@ -29,6 +29,7 @@ from app.modules.academic_affairs.services import academic_affairs_effective_gra
 from app.modules.academic_affairs.services import academic_affairs_grade_change_live_authority as grade_change_live_authority
 from app.modules.academic_affairs.services import academic_affairs_grade_deadline_service as grade_deadline_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as grade_exec_svc
+from app.modules.academic_affairs.services import academic_affairs_grade_execution_transaction_guard as grade_execution_transaction_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_recognition_read_guard as grade_recognition_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_recheck_read_guard as grade_recheck_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_reminder_service as grade_reminder_svc
@@ -50,6 +51,7 @@ legacy_grade_write_guard.install()
 warning_effective_guard.install()
 grade_recognition_read_guard.install()
 grade_recheck_read_guard.install()
+grade_execution_transaction_guard.install()
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-成绩主链"])
 
