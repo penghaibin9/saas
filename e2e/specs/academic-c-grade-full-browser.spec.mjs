@@ -116,8 +116,9 @@ async function studentTranscriptContext(browser, courseShouldExist) {
     const refresh = waitForRefresh(page)
     await page.goto(`${studentBase}/academic?tab=grades`)
     await refresh
-    await expect(page.getByRole('button', { name: '我的成绩' })).toBeVisible({ timeout: 20_000 })
-    await page.getByRole('button', { name: '我的成绩' }).click()
+    const gradeService = page.getByRole('button', { name: /我的成绩\s+正式发布成绩与有效口径/ })
+    await expect(gradeService).toBeVisible({ timeout: 20_000 })
+    await gradeService.click()
     await expect(page.getByText('我的成绩', { exact: true }).last()).toBeVisible()
     if (courseShouldExist) await expect(page.getByText(fixture.courseName, { exact: true })).toBeVisible({ timeout: 20_000 })
     else await expect(page.getByText(fixture.courseName, { exact: true })).toHaveCount(0)
