@@ -7,6 +7,7 @@ on:
     paths:
       - 'backend/scripts/e2e_seed_internship_enterprise_position_sandbox.py'
       - 'backend/scripts/e2e_verify_internship_enterprise_position_db.py'
+      - 'frontend/src/modules/internship/views/EnterpriseFormView.vue'
       - 'frontend/src/modules/internship/views/InternshipPositionDetailView.vue'
       - 'e2e/specs/internship-enterprise-position-lifecycle-audit.spec.mjs'
       - '.github/workflows/internship-rc-enterprise-position-browser-first.yml'
