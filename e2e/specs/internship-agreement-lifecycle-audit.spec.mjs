@@ -49,6 +49,24 @@ async function loginMini(page, entry, account) {
   await expect(page).toHaveURL(entry === 'teacher'
     ? /#\/pages\/teacher\/workbench\/index/
     : /#\/pages\/student\/home\/index/)
+
+  if (entry === 'teacher') {
+    // e2e_advisor_a is intentionally multi-role (GD_MENTOR + INTERN_MENTOR).
+    // Browser First must follow the real role-switch UI instead of deep-linking an
+    // internship page under the graduation-mentor context and weakening 403 guards.
+    await page.goto(`${miniBaseUrl}/#/pages/role-switch/index`)
+    const internshipRole = page.locator('.rs__item').filter({ hasText: '实习指导教师' }).first()
+    await expect(internshipRole).toBeVisible()
+    const switchPromise = page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/auth/switch-role'
+        && response.request().method() === 'POST'
+    )
+    await internshipRole.click()
+    const switched = await switchPromise
+    const switchPayload = await payloadOf(switched)
+    expect(switchPayload.body?.code, switchPayload.text).toBe(0)
+    await expect(page).toHaveURL(/#\/pages\/teacher\/workbench\/index/)
+  }
 }
 
 async function openStudentAgreementTab(page) {
