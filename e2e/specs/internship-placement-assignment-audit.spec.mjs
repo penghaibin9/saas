@@ -216,7 +216,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     expect(String(submitBody?.confirmMaterialPreviewHash || '')).toMatch(/^sha256:/)
     const submittedPayload = await payloadOf(submitted)
     expect(submittedPayload.body?.code, submittedPayload.text).toBe(0)
-    applicationId = String(submittedPayload.body?.data?.applications?.[0]?.id || '')
+    applicationId = String(submittedPayload.body?.data?.items?.[0]?.id || '')
     expect(applicationId).not.toBe('')
   })
 
