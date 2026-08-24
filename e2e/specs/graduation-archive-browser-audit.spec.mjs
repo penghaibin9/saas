@@ -62,49 +62,53 @@ async function addGuidance(page, fixture, marker) {
 }
 
 async function closeInactiveHistoricalRisks(page, fixture) {
+  const admin = await loginApi(config.sandboxAdmin)
+  const before = await admin.get('/graduation/gd-risks', {
+    gdStudentId: fixture.gdStudentId, batchId: fixture.batchId, page: 1, pageSize: 100,
+  })
+  const beforeRows = Array.isArray(before?.items) ? before.items : []
+  const closable = beforeRows.filter((row) =>
+    ['OPEN', 'PROCESSING'].includes(String(row.status || '').toUpperCase())
+    && row.conditionActive === false
+    && String(row.riskCode || '') !== 'GD-R12'
+  )
+
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
   await page.goto(riskUrl(fixture))
   await dismissGuide(page)
   await expect(page.getByRole('heading', { name: '问题预警 · 毕设归档 · 毕设统计', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '问题预警', exact: true })).toHaveClass(/is-active/)
 
-  const inactiveNames = [
-    '未选题',
-    '任务书未下达',
-    '开题逾期未提交或未获通过',
-    '指导记录不足',
-  ]
-  for (const name of inactiveNames) {
-    const row = page.locator('.rk-row').filter({ hasText: name }).first()
-    if (!(await row.isVisible().catch(() => false))) continue
+  for (const risk of closable) {
+    const row = page.locator('.rk-row').filter({ hasText: String(risk.riskName || '') }).filter({ hasText: fixture.studentNo }).first()
+    await expect(row, `inactive risk row ${risk.riskCode}/${risk.id}`).toBeVisible()
     await row.click()
     const pane = page.locator('.rk-pane')
-    await expect(pane).toContainText(name)
-    if (!(await pane.getByText(/最近扫描条件已消失/).isVisible().catch(() => false))) continue
+    await expect(pane).toContainText(String(risk.riskName || risk.riskCode || risk.id))
+    if (risk.nextActionHint) await expect(pane).toContainText(String(risk.nextActionHint))
     const close = pane.getByRole('button', { name: '关闭风险', exact: true })
-    await expect(close).toBeVisible()
+    await expect(close, `close button for ${risk.riskCode}/${risk.id}`).toBeVisible()
     await close.click()
     const dialog = page.getByRole('dialog').filter({ hasText: '关闭风险' }).first()
     await expect(dialog).toBeVisible()
-    await dialog.locator('textarea').fill('E2E-AUDIT-20260824 GD-018：扫描条件已消失，归档前完成真实风险闭环。')
+    await dialog.locator('textarea').fill('E2E-AUDIT-20260824 GD-018：扫描条件已消失，归档前通过真实浏览器完成风险闭环。')
     const [response] = await Promise.all([
-      page.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/gd-risks\/\d+\/close$/.test(new URL(r.url()).pathname)),
+      page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith(`/graduation/gd-risks/${risk.id}/close`)),
       dialog.getByRole('button', { name: '确认关闭', exact: true }).click(),
     ])
-    expect(response.ok(), `close inactive risk ${name} HTTP ${response.status()}`).toBeTruthy()
+    expect(response.ok(), `close inactive risk ${risk.riskCode}/${risk.id} HTTP ${response.status()}`).toBeTruthy()
     const body = await response.json()
     expect(body.code, JSON.stringify(body)).toBe(0)
-    await expect(row).toContainText(/已关闭/)
+    await expect(dialog).toBeHidden()
   }
 
-  // Read-only audit: prove no prerequisite risk was silently bypassed. GD-R12 is the
-  // product's "not archived yet" consequence and is intentionally non-blocking.
-  const admin = await loginApi(config.sandboxAdmin)
-  const riskData = await admin.get('/graduation/gd-risks', {
+  // API is read-only discovery/verification only. Every state mutation above went through
+  // the real PC risk workspace and its close dialog.
+  const after = await admin.get('/graduation/gd-risks', {
     gdStudentId: fixture.gdStudentId, batchId: fixture.batchId, page: 1, pageSize: 100,
   })
-  const rows = Array.isArray(riskData?.items) ? riskData.items : []
-  const blockers = rows.filter((row) =>
+  const afterRows = Array.isArray(after?.items) ? after.items : []
+  const blockers = afterRows.filter((row) =>
     ['OPEN', 'PROCESSING'].includes(String(row.status || '').toUpperCase())
     && String(row.riskCode || '') !== 'GD-R12'
   )
