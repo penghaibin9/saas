@@ -176,17 +176,46 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
     await expect(page.getByText('37 / 0').first()).toBeVisible()
     await expect(page.getByText('编辑批次').first()).toBeVisible()
 
-    const activateResponsePromise = page.waitForResponse((response) =>
-      apiPath(response) === `/api/v1/internship/batches/${batchId}/activate`
+    // 当前生产 UI 已把“选定参与学生 + 冻结名单 + 批次启用”收口为一个真实动作链，
+    // 不再存在独立“启用”按钮。必须按真人页面完成点名、预览、冻结，不能绕过 UI 直调 activate。
+    await page.getByRole('button', { name: '选择学生并启用' }).click()
+    const participantCard = page.locator('.bps-card')
+    await expect(participantCard.getByText('参与学生范围')).toBeVisible()
+
+    const studentField = participantCard.locator('.bps-field').filter({ hasText: '补充指定学生' }).first()
+    const studentPicker = studentField.getByRole('combobox')
+    await studentPicker.click()
+    const studentSearch = studentField.getByPlaceholder('按学号 / 姓名搜索')
+    await studentSearch.fill(fixture.studentNo)
+    const studentOption = studentField.getByRole('option').filter({ hasText: fixture.studentNo }).first()
+    await expect(studentOption).toBeVisible()
+    await studentOption.click()
+    await studentPicker.press('Escape')
+
+    const previewResponsePromise = page.waitForResponse((response) =>
+      apiPath(response) === `/api/v1/internship/batches/${batchId}/participants/preview`
       && response.request().method() === 'POST'
     )
-    await page.getByRole('button', { name: '启用' }).click()
+    await expect(participantCard.getByRole('button', { name: '预览学生名单' })).toBeEnabled()
+    await participantCard.getByRole('button', { name: '预览学生名单' }).click()
+    const previewed = await expectBusinessOk(await previewResponsePromise, '预览批次参与学生')
+    expect(Number(previewed.data?.matchedCount || 0)).toBeGreaterThanOrEqual(1)
+    await expect(participantCard.getByText(fixture.studentNo).first()).toBeVisible()
+
+    await expect(participantCard.getByRole('button', { name: '冻结名单并启用批次' })).toBeEnabled()
+    const freezeResponsePromise = page.waitForResponse((response) =>
+      apiPath(response) === `/api/v1/internship/batches/${batchId}/participants/freeze`
+      && response.request().method() === 'POST'
+    )
+    await participantCard.getByRole('button', { name: '冻结名单并启用批次' }).click()
     const activateDialog = page.getByRole('dialog')
-    await expect(activateDialog).toContainText('启用批次')
-    await activateDialog.getByRole('button', { name: '确认启用' }).click()
-    const activated = await expectBusinessOk(await activateResponsePromise, '启用实习批次')
-    expect(activated.data.status).toBe('RUNNING')
-    await expect(page.getByText('进行中').first()).toBeVisible()
+    await expect(activateDialog).toContainText('冻结参与学生名单')
+    await activateDialog.getByRole('button', { name: '确认冻结并启用' }).click()
+    const activated = await expectBusinessOk(await freezeResponsePromise, '冻结参与学生并启用实习批次')
+    expect(activated.data.batchStatus).toBe('RUNNING')
+    await expect(participantCard.getByText('名单已冻结')).toBeVisible()
+    const statusCard = page.locator('.mp-card').filter({ hasText: '状态与操作' }).first()
+    await expect(statusCard.getByText('进行中').first()).toBeVisible()
     await expect(page.getByText('启用批次').first()).toBeVisible()
 
     // 绕过列表禁用按钮直接深链编辑页，页面仍必须根据真实后端状态进入只读，不能靠入口隐藏伪装安全。
