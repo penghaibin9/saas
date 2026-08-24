@@ -118,18 +118,18 @@ async function openPendingFinal(page, fixture, { login = true } = {}) {
   await page.goto(`${config.staffBaseUrl}/admin/graduation/finals?batchId=${encodeURIComponent(fixture.batchId)}&tab=PENDING_REVIEW`)
   await dismissGuide(page)
   await expect(page.getByRole('heading', { name: '成果检查', exact: true })).toBeVisible()
-  const row = page.locator('.fr-row').filter({ hasText: fixture.topicTitle }).first()
+  const row = page.locator('.gd-review-workspace__queue > button').filter({ hasText: fixture.topicTitle }).first()
   await expect(row).toBeVisible()
   await row.click()
-  const pane = page.locator('.fr-pane')
+  const pane = page.locator('.gd-review-workspace__review')
   await expect(pane).toContainText(fixture.topicTitle)
-  await expect(pane).toContainText('当前安全版本')
-  await expect(pane).toContainText('SHA-256')
+  const evidence = pane.locator('.file-evidence-panel__canonical').first()
+  await expect(evidence).toBeVisible()
+  await expect(evidence).toContainText(/versionId=/)
+  await expect(evidence).toContainText(/SHA=/)
   await expect(page.getByRole('button', { name: /通过当前版本/ })).toBeVisible()
   await expect(page.getByRole('button', { name: /退回当前版本/ })).toBeVisible()
-  const versionRow = pane.locator('.version-table tbody tr').first()
-  await expect(versionRow).toBeVisible()
-  return { pane, versionEvidence: await versionRow.innerText() }
+  return { pane, versionEvidence: await evidence.innerText() }
 }
 
 async function reviewCurrentFinal(page, action, comment = '') {
@@ -268,7 +268,6 @@ test.describe.serial('毕业设计成果+查重 Browser First · 退回/重交/�
     const beforePlagiarism = await openPendingFinal(page, fixture, { login: false })
     expect(beforePlagiarism.versionEvidence).not.toBe(secondStaff.versionEvidence)
 
-    // 定稿未完成查重时禁止通过是产品正确门禁；通过完整复查后再回到同一审批动作。
     await completePlagiarismRecheck(page, fixture)
 
     await openPendingFinal(page, fixture)

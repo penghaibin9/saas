@@ -206,7 +206,22 @@ test.describe.serial('毕业设计答辩 Browser First · 建组发布/专家评
     await expect(page).toHaveURL(/\/admin\/graduation\/defense\/groups\/[^/]+\/edit/)
 
     const search = page.getByPlaceholder('搜索姓名')
+    const eligibleResponsePromise = page.waitForResponse((r) => {
+      if (r.request().method() !== 'GET') return false
+      const url = new URL(r.url())
+      return url.pathname.endsWith('/graduation/defense-groups/eligible-students') && url.searchParams.get('keyword') === fixture.studentName
+    })
     await search.fill(fixture.studentName)
+    const eligibleResponse = await eligibleResponsePromise
+    expect(eligibleResponse.ok(), `eligible students HTTP ${eligibleResponse.status()}`).toBeTruthy()
+    const eligibleBody = await eligibleResponse.json()
+    expect(eligibleBody.code, JSON.stringify(eligibleBody)).toBe(0)
+    const eligibleRows = Array.isArray(eligibleBody.data) ? eligibleBody.data : (eligibleBody.data?.items || eligibleBody.data?.list || [])
+    expect(
+      eligibleRows.some((row) => String(row.id) === String(fixture.gdStudentId)),
+      `candidate missing from API envelope: ${JSON.stringify(eligibleBody).slice(0, 1800)}`,
+    ).toBeTruthy()
+
     const candidate = page.locator('.dg-row--pick').filter({ hasText: fixture.studentName }).first()
     await expect(candidate).toBeVisible()
     await candidate.click()

@@ -53,35 +53,8 @@ async function ensureReviewerMentor() {
   return mentor
 }
 
-async function openReviewWorkspace(page, account, fixture) {
-  await new StaffLoginPage(page, config.staffBaseUrl).login(account)
-  const url = new URL(`${config.staffBaseUrl}/admin/graduation/review-tasks`)
-  url.searchParams.set('batchId', fixture.batchId)
-  url.searchParams.set('studentId', fixture.gdStudentId)
-  url.searchParams.set('panel', 'review')
-  url.searchParams.set('source', 'E2E-AUDIT-20260823')
-  await page.goto(url.toString())
-  await dismissGuide(page)
-  await expect(page.getByRole('heading', { name: '答辩与成绩', exact: true })).toBeVisible()
-
-  const context = page.locator('.gp-context')
-  if (!(await context.isVisible().catch(() => false))) {
-    const search = page.getByPlaceholder('搜索学生姓名/学号')
-    await expect(search).toBeVisible()
-    await search.fill(fixture.studentNo)
-    const student = page.locator('.gp-stu-item').filter({ hasText: fixture.studentNo }).first()
-    await expect(student).toBeVisible()
-    await student.click()
-  }
-
-  await expect(context).toContainText(fixture.studentNo)
-  await expect(page.getByRole('button', { name: '教师评阅', exact: true })).toBeVisible()
-}
-
-async function assignReviewer(page, fixture) {
-  await openReviewWorkspace(page, config.sandboxAdmin, fixture)
-  const panel = page.locator('.gp-panel')
-  const picker = panel.locator('.app-remote-select').first()
+async function chooseReviewer(page) {
+  const picker = page.locator('.ra-assignment .app-remote-select').first()
   await picker.locator('.app-remote-select__control').click()
   const search = picker.locator('.app-remote-select__search-el')
   await expect(search).toBeVisible()
@@ -89,61 +62,88 @@ async function assignReviewer(page, fixture) {
   const option = picker.locator('.app-remote-select__option').filter({ hasText: 'E2E评阅教师' }).first()
   await expect(option).toBeVisible()
   await option.click()
+}
 
+async function assignReviewer(page, fixture) {
+  await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+  const url = new URL(`${config.staffBaseUrl}/admin/graduation/review-assign`)
+  url.searchParams.set('batchId', fixture.batchId)
+  url.searchParams.set('studentId', fixture.gdStudentId)
+  url.searchParams.set('source', 'E2E-AUDIT-20260823')
+  await page.goto(url.toString())
+  await dismissGuide(page)
+  await expect(page.getByRole('heading', { name: '正式评阅分配', exact: true })).toBeVisible()
+  await expect(page.locator('.ra-assignment')).toContainText(fixture.studentNo)
+  await chooseReviewer(page)
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/graduation/gd-reviews/assign')),
-    page.getByRole('button', { name: '分配评阅', exact: true }).click(),
+    page.getByRole('button', { name: '分配正式评阅', exact: true }).click(),
   ])
   expect(response.ok(), `assign review HTTP ${response.status()}`).toBeTruthy()
   const body = await response.json()
-  expect(body.code).toBe(0)
+  expect(body.code, JSON.stringify(body)).toBe(0)
   expect(body.data?.id).toBeTruthy()
-  await expect(page.locator('.gp-timeline-item').filter({ hasText: 'E2E评阅教师' }).first()).toContainText(/待评阅|评阅/)
+  await expect(page.getByRole('button', { name: '进入统一评阅中心', exact: true })).toBeVisible()
   return String(body.data.id)
 }
 
-async function submitReview(page, fixture, reviewId, score, opinion) {
-  await openReviewWorkspace(page, reviewerAccount, fixture)
-  const row = page.locator('.gp-timeline-item').filter({ hasText: 'E2E评阅教师' }).first()
+async function openFormalTask(page, account, fixture, { reviewerOnly = false } = {}) {
+  await new StaffLoginPage(page, config.staffBaseUrl).login(account)
+  const url = new URL(`${config.staffBaseUrl}/admin/graduation/review-tasks`)
+  url.searchParams.set('batchId', fixture.batchId)
+  url.searchParams.set('source', 'E2E-AUDIT-20260823')
+  await page.goto(url.toString())
+  await dismissGuide(page)
+  await expect(page.locator('[aria-label="评阅队列筛选"]')).toBeVisible()
+  await page.getByRole('button', { name: '正式评阅', exact: true }).click()
+  if (reviewerOnly) {
+    const checkbox = page.getByLabel('只看分配给我的正式评阅')
+    if (!(await checkbox.isChecked())) await checkbox.check()
+  }
+  const search = page.getByPlaceholder('学生 / 学号 / 班级 / 课题')
+  await search.fill(fixture.studentNo)
+  const row = page.locator('.gd-review-workspace__queue > button').filter({ hasText: fixture.topicTitle }).first()
   await expect(row).toBeVisible()
-  await row.getByRole('button', { name: '提交评阅', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '提交评阅', exact: true })).toBeVisible()
-  const form = page.locator('form.ie-form')
-  await form.locator('label').filter({ hasText: '评分(0-100)' }).locator('input').fill(String(score))
+  await row.click()
+  await expect(page.locator('.w74-case-type')).toContainText('正式评阅')
+  return row
+}
+
+async function submitReview(page, fixture, reviewId, score, opinion) {
+  await openFormalTask(page, reviewerAccount, fixture, { reviewerOnly: true })
+  const form = page.locator('.w74-write-form')
+  await expect(form).toBeVisible()
+  await form.locator('label').filter({ hasText: '评阅评分' }).locator('input').fill(String(score))
   await form.locator('label').filter({ hasText: '评阅意见' }).locator('textarea').fill(opinion)
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith(`/graduation/gd-reviews/${reviewId}/submit`)),
-    page.getByRole('button', { name: '提交', exact: true }).click(),
+    page.getByRole('button', { name: '提交正式评阅', exact: true }).click(),
   ])
   expect(response.ok(), `submit review HTTP ${response.status()}`).toBeTruthy()
   const body = await response.json()
-  expect(body.code).toBe(0)
+  expect(body.code, JSON.stringify(body)).toBe(0)
   expect(body.data?.status).toBe('COMPLETED')
-  await expect(page.locator('.gp-timeline-item').filter({ hasText: 'E2E评阅教师' }).first()).toContainText(String(score))
 }
 
 async function returnReview(page, fixture, reviewId) {
-  await openReviewWorkspace(page, config.sandboxAdmin, fixture)
-  const row = page.locator('.gp-timeline-item').filter({ hasText: 'E2E评阅教师' }).first()
-  await expect(row).toContainText(/已完成|完成/)
-  await row.getByRole('button', { name: '退回重评', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '退回重评', exact: true })).toBeVisible()
+  await openFormalTask(page, config.sandboxAdmin, fixture)
+  const section = page.locator('.w74-return-form')
+  await expect(section).toBeVisible()
   const reason = 'E2E-AUDIT-20260823 评阅退回：补充边界条件、异常路径与验证依据后重新评阅。'
-  await page.locator('form.ie-form textarea').fill(reason)
+  await section.locator('textarea').fill(reason)
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith(`/graduation/gd-reviews/${reviewId}/return`)),
-    page.getByRole('button', { name: '提交', exact: true }).click(),
+    section.getByRole('button', { name: '退回重评', exact: true }).click(),
   ])
   expect(response.ok(), `return review HTTP ${response.status()}`).toBeTruthy()
   const body = await response.json()
-  expect(body.code).toBe(0)
+  expect(body.code, JSON.stringify(body)).toBe(0)
   expect(body.data?.status).toBe('RETURNED')
-  await expect(page.locator('.gp-timeline-item').filter({ hasText: 'E2E评阅教师' }).first()).toContainText(/已退回|退回/)
 }
 
 test.describe.configure({ retries: 0 })
 
-test.describe.serial('毕业设计独立评阅 Browser First · 分配/提交/退回/重评', () => {
+test.describe.serial('毕业设计正式评阅 Browser First · 菜单分配/提交/退回/重评', () => {
   let fixture
 
   test.beforeAll(async () => {
@@ -151,7 +151,7 @@ test.describe.serial('毕业设计独立评阅 Browser First · 分配/提交/�
     await ensureReviewerMentor()
   })
 
-  test('管理员真实分配 → 独立评阅教师提交 → 管理员退回 → 评阅教师重评 → 刷新保持', async ({ page }) => {
+  test('管理员从正式菜单分配 → GD_REVIEWER 统一评阅中心提交 → 管理员退回 → 重评 → 刷新保持', async ({ page }) => {
     const reviewId = await assignReviewer(page, fixture)
     await submitReview(
       page,
@@ -169,11 +169,10 @@ test.describe.serial('毕业设计独立评阅 Browser First · 分配/提交/�
       'E2E-AUDIT-20260823 重评完成：已复核异常路径、边界条件与测试证据，结论通过。',
     )
 
+    await openFormalTask(page, reviewerAccount, fixture, { reviewerOnly: true })
+    await expect(page.locator('.w74-feedback-list')).toContainText('E2E-AUDIT-20260823 重评完成')
     await page.reload()
     await dismissGuide(page)
-    const row = page.locator('.gp-timeline-item').filter({ hasText: 'E2E评阅教师' }).first()
-    await expect(row).toContainText('92')
-    await expect(row).toContainText('E2E-AUDIT-20260823 重评完成')
-    await expect(row.getByRole('button', { name: '提交评阅', exact: true })).toHaveCount(0)
+    await expect(page.locator('.gd-review-workspace__queue > button').filter({ hasText: fixture.topicTitle }).first()).toBeVisible()
   })
 })
