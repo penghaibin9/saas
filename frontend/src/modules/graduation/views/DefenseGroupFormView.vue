@@ -46,8 +46,10 @@
           候选学生
           <input v-model.trim="eligKeyword" class="ie-in dg-search" placeholder="搜索姓名" @input="loadEligible" />
         </div>
-        <EmptyState v-if="!eligibleFree.length" title="暂无可分配学生" />
-        <div v-for="s in eligibleFree" :key="s.id" class="dg-row dg-row--pick" tabindex="0" role="checkbox" :aria-checked="picked.includes(s.id)" @click="togglePick(s.id)" @keydown.enter.prevent="togglePick(s.id)" @keydown.space.prevent="togglePick(s.id)">
+        <ErrorState v-if="eligibleError" :description="eligibleError" @retry="loadEligible" />
+        <LoadingState v-else-if="eligibleLoading" />
+        <EmptyState v-else-if="!eligibleFree.length" title="暂无可分配学生" description="仅展示当前答辩组同批次、已进入成果检查及以后阶段的学生。" />
+        <div v-else v-for="s in eligibleFree" :key="s.id" class="dg-row dg-row--pick" tabindex="0" role="checkbox" :aria-checked="picked.includes(s.id)" @click="togglePick(s.id)" @keydown.enter.prevent="togglePick(s.id)" @keydown.space.prevent="togglePick(s.id)">
           <div>
             <div class="dg-row__main">
               <input type="checkbox" :checked="picked.includes(s.id)" @click.stop="togglePick(s.id)" /> {{ s.name }} · {{ s.className }}
@@ -68,7 +70,7 @@
 
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
-import { EmptyState } from '@/components/business'
+import { EmptyState, ErrorState, LoadingState } from '@/components/business'
 import { AppDateTimePicker } from '@/components/common/date'
 import { AppGraduationMentorPicker, AppTemplateChips } from '@/components/common'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
@@ -80,7 +82,7 @@ const GROUP_NAME_CHIPS = ['答辩第1组', '答辩第2组', '答辩第3组', '�
 
 export default {
   name: 'DefenseGroupFormView',
-  components: { GraduationFormPageShell, AppDateTimePicker, EmptyState, AppGraduationMentorPicker, AppTemplateChips },
+  components: { GraduationFormPageShell, AppDateTimePicker, EmptyState, ErrorState, LoadingState, AppGraduationMentorPicker, AppTemplateChips },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -94,7 +96,8 @@ export default {
         memberMentorIds: [], legacyMemberNames: []
       },
       formError: '',
-      assigned: [], eligible: [], picked: [], eligKeyword: ''
+      assigned: [], eligible: [], picked: [], eligKeyword: '',
+      eligibleLoading: false, eligibleError: '', eligibleRequestToken: 0
     }
   },
   computed: {
@@ -129,6 +132,7 @@ export default {
       }
     }
   },
+  beforeUnmount() { ++this.eligibleRequestToken },
   methods: {
     _formBody() {
       const body = {
@@ -176,8 +180,19 @@ export default {
     },
     async loadEligible() {
       if (!this.groupId) return
+      const token = ++this.eligibleRequestToken
+      this.eligibleLoading = true
+      this.eligibleError = ''
       const res = await graduationApi.getDefenseEligibleStudents(this.groupId, this.eligKeyword)
-      if (res.code === 0) this.eligible = res.data.list
+      if (token !== this.eligibleRequestToken) return
+      if (res.code === 0) {
+        this.eligible = res.data?.list || []
+      } else {
+        this.eligible = []
+        this.picked = []
+        this.eligibleError = res.message || '候选学生加载失败'
+      }
+      this.eligibleLoading = false
     },
     togglePick(id) {
       const i = this.picked.indexOf(id)
