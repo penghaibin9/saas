@@ -26,22 +26,52 @@ from app.models.academic_affairs_effective_grade import AaGradeChangeRequest, Aa
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_PATH = ROOT / "e2e" / "academic-c-grade-browser-fixture.json"
+EVIDENCE_PATH = Path(__file__).resolve().parents[1] / "tmp" / "e2e_academic_c_grade_browser_db_evidence.json"
+
+
+def _dump(payload: dict) -> None:
+    """Persist the latest read-only DB facts even if a later seal assertion fails."""
+    EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    EVIDENCE_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
 
 
 def main() -> int:
     fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
     db = get_sessionmaker()()
+    diagnostic: dict = {
+        "sealStatus": "DIAGNOSTIC_BEFORE_ASSERTIONS",
+        "fixture": {
+            "tenant": fixture["tenant"],
+            "teachingTaskId": fixture["teachingTaskId"],
+            "courseName": fixture["courseName"],
+            "students": fixture["students"],
+        },
+    }
     try:
         tenant = db.scalars(select(Tenant).where(
             Tenant.tenant_code == fixture["tenant"], Tenant.is_deleted.is_(False)
         )).first()
         assert tenant, "sandbox tenant missing"
         tid = int(tenant.id)
+        diagnostic["tenantId"] = tid
 
         tasks = db.scalars(select(AaGradeTask).where(
             AaGradeTask.tenant_id == tid,
             AaGradeTask.teaching_task_id == int(fixture["teachingTaskId"]),
         )).all()
+        diagnostic["tasks"] = [
+            {
+                "id": int(row.id),
+                "status": row.status,
+                "publishAt": row.publish_at,
+                "submittedAt": row.submitted_at,
+                "collegeReviewedAt": row.college_reviewed_at,
+                "courseName": row.course_name,
+            }
+            for row in tasks
+        ]
+        _dump(diagnostic)
         assert len(tasks) == 1, f"expected exactly one browser-created grade task, got {len(tasks)}"
         task = tasks[0]
         assert task.status == "PUBLISHED", f"grade task final status must be PUBLISHED, got {task.status}"
@@ -56,12 +86,36 @@ def main() -> int:
         ).order_by(StudentProfile.student_no.asc())).all()
         assert len(students) == 2, f"expected two fixture students, got {len(students)}"
         student_ids = [int(row.id) for row in students]
+        diagnostic["students"] = [
+            {"id": int(row.id), "studentNo": row.student_no}
+            for row in students
+        ]
 
         records = db.scalars(select(AaGradeRecord).where(
             AaGradeRecord.tenant_id == tid,
             AaGradeRecord.task_id == int(task.id),
             AaGradeRecord.is_deleted.is_(False),
         ).order_by(AaGradeRecord.student_id.asc())).all()
+        diagnostic["records"] = [
+            {
+                "id": int(row.id),
+                "studentId": int(row.student_id),
+                "usual": row.usual_score,
+                "midterm": row.midterm_score,
+                "final": row.final_score,
+                "total": row.total_score,
+                "previousUsual": row.prev_usual_score,
+                "previousMidterm": row.prev_midterm_score,
+                "previousFinal": row.prev_final_score,
+                "previousTotal": row.prev_total_score,
+                "passStatus": row.pass_status,
+                "acadGradeId": int(row.acad_grade_id) if row.acad_grade_id else None,
+                "source": row.source,
+                "versionNo": row.version_no,
+            }
+            for row in records
+        ]
+        _dump(diagnostic)
         assert len(records) == 2, f"expected two grade records, got {len(records)}"
         by_student = {int(row.student_id): row for row in records}
         assert set(by_student) == set(student_ids), "grade records must match the authoritative LOCKED roster"
@@ -83,6 +137,22 @@ def main() -> int:
             AcademicGrade.id.in_([int(row.acad_grade_id) for row in records]),
             AcademicGrade.is_deleted.is_(False),
         )).all()
+        diagnostic["currentOfficial"] = [
+            {
+                "id": int(row.id),
+                "studentId": int(row.student_id) if row.student_id else None,
+                "score": row.score,
+                "passStatus": row.pass_status,
+                "recordStatus": getattr(row, "record_status", None),
+                "source": getattr(row, "source", None),
+                "sourceBizType": getattr(row, "source_biz_type", None),
+                "sourceBizId": getattr(row, "source_biz_id", None),
+                "gradeRecordId": getattr(row, "grade_record_id", None),
+                "courseName": getattr(row, "course_name", None),
+            }
+            for row in official
+        ]
+        _dump(diagnostic)
         assert len(official) == 2, f"expected two current official grade projections, got {len(official)}"
         official_by_id = {int(row.id): row for row in official}
         first_current = official_by_id[int(first.acad_grade_id)]
@@ -101,6 +171,22 @@ def main() -> int:
             AaGradeChangeRequest.student_id == int(first.student_id),
             AaGradeChangeRequest.is_deleted.is_(False),
         ).order_by(AaGradeChangeRequest.id.asc())).all()
+        diagnostic["changeRequests"] = [
+            {
+                "id": int(row.id),
+                "status": row.status,
+                "gradeRecordId": int(row.grade_record_id),
+                "studentId": int(row.student_id),
+                "beforeFinal": row.before_final_score,
+                "proposedFinal": row.proposed_final_score,
+                "beforeTotal": row.before_total_score,
+                "proposedTotal": row.proposed_total_score,
+                "currentGradeId": int(row.current_grade_id) if row.current_grade_id else None,
+                "workflowInstanceId": int(row.workflow_instance_id) if row.workflow_instance_id else None,
+            }
+            for row in change_requests
+        ]
+        _dump(diagnostic)
         assert len(change_requests) == 1, f"expected one browser grade change request, got {len(change_requests)}"
         change_request = change_requests[0]
         assert str(change_request.status or "").upper() == "APPROVED", change_request.status
@@ -117,6 +203,20 @@ def main() -> int:
             AaGradeCorrection.source_ref_id == int(change_request.id),
             AaGradeCorrection.is_deleted.is_(False),
         )).all()
+        diagnostic["corrections"] = [
+            {
+                "id": int(row.id),
+                "status": row.status,
+                "sourceType": row.source_type,
+                "sourceRefId": int(row.source_ref_id) if row.source_ref_id else None,
+                "originalGradeId": int(row.original_grade_id),
+                "correctedGradeId": int(row.corrected_grade_id),
+                "beforeScore": row.before_score,
+                "afterScore": row.after_score,
+            }
+            for row in corrections
+        ]
+        _dump(diagnostic)
         assert len(corrections) == 1, f"expected one append-only correction link, got {len(corrections)}"
         correction = corrections[0]
         assert str(correction.status or "").upper() == "ACTIVE", correction.status
@@ -131,6 +231,20 @@ def main() -> int:
             AcademicGrade.id.in_([int(correction.original_grade_id), int(correction.corrected_grade_id)]),
             AcademicGrade.is_deleted.is_(False),
         )).all()
+        diagnostic["lineage"] = [
+            {
+                "id": int(row.id),
+                "score": row.score,
+                "recordStatus": getattr(row, "record_status", None),
+                "source": getattr(row, "source", None),
+                "sourceBizType": getattr(row, "source_biz_type", None),
+                "sourceBizId": getattr(row, "source_biz_id", None),
+                "gradeRecordId": getattr(row, "grade_record_id", None),
+                "voidReason": getattr(row, "void_reason", None),
+            }
+            for row in lineage
+        ]
+        _dump(diagnostic)
         assert len(lineage) == 2, f"correction lineage incomplete: {[row.id for row in lineage]}"
         lineage_by_id = {int(row.id): row for row in lineage}
         original = lineage_by_id[int(correction.original_grade_id)]
@@ -154,6 +268,17 @@ def main() -> int:
             UnifiedTodo.is_deleted.is_(False),
             UnifiedTodo.status == "PENDING",
         )).all()
+        diagnostic["pendingTeacherTodos"] = [
+            {
+                "id": int(row.id),
+                "status": row.status,
+                "todoType": row.todo_type,
+                "sourceBizId": row.source_biz_id,
+                "assigneeId": row.assignee_id,
+            }
+            for row in pending_todos
+        ]
+        _dump(diagnostic)
         assert not pending_todos, "published grade task must not leave teacher grade-entry todo pending"
 
         audits = db.scalars(select(AffairsAuditTrail).where(
@@ -161,6 +286,20 @@ def main() -> int:
             AffairsAuditTrail.biz_id == int(task.id),
             AffairsAuditTrail.biz_type == "AA_GRADE_TASK",
         ).order_by(AffairsAuditTrail.id.asc())).all()
+        diagnostic["taskAudits"] = [
+            {
+                "id": int(row.id),
+                "action": row.action,
+                "operator": row.operator,
+                "roleName": row.role_name,
+                "occurredAt": row.occurred_at,
+                "beforeVal": getattr(row, "before_val", None),
+                "afterVal": getattr(row, "after_val", None),
+                "detail": getattr(row, "detail", None),
+            }
+            for row in audits
+        ]
+        _dump(diagnostic)
         assert audits, "grade task has no AffairsAuditTrail rows"
         high_risk = [row for row in audits if any(token in str(row.action or "").upper() for token in (
             "SUBMIT", "RETURN", "COLLEGE", "REVIEW", "PUBLISH"
@@ -180,12 +319,27 @@ def main() -> int:
             AffairsAuditTrail.biz_type == "AA_GRADE_RECORD",
             AffairsAuditTrail.action == "CHANGE_APPROVE",
         ).order_by(AffairsAuditTrail.id.asc())).all()
+        diagnostic["correctionAudits"] = [
+            {
+                "id": int(row.id),
+                "action": row.action,
+                "operator": row.operator,
+                "roleName": row.role_name,
+                "occurredAt": row.occurred_at,
+                "beforeVal": getattr(row, "before_val", None),
+                "afterVal": getattr(row, "after_val", None),
+                "detail": getattr(row, "detail", None),
+            }
+            for row in correction_audits
+        ]
+        _dump(diagnostic)
         assert correction_audits, "approved correction missing AA_GRADE_RECORD CHANGE_APPROVE audit"
         assert all(str(row.operator or "").strip() for row in correction_audits)
         assert all(str(row.role_name or "").strip() for row in correction_audits)
         assert all(row.occurred_at is not None for row in correction_audits)
 
         evidence = {
+            "sealStatus": "PASS",
             "tenantId": tid,
             "gradeTaskId": int(task.id),
             "status": task.status,
@@ -225,9 +379,7 @@ def main() -> int:
             "correctionAuditActions": [row.action for row in correction_audits],
             "pendingTeacherTodos": len(pending_todos),
         }
-        out = Path(__file__).resolve().parents[1] / "tmp" / "e2e_academic_c_grade_browser_db_evidence.json"
-        out.write_text(json.dumps(evidence, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
-        print(json.dumps(evidence, ensure_ascii=False, indent=2, default=str))
+        _dump(evidence)
         return 0
     finally:
         db.close()
