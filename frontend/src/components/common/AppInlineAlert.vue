@@ -4,7 +4,7 @@
     <div class="app-inline-alert__content">
       <div v-if="title" class="app-inline-alert__title">{{ title }}</div>
       <div class="app-inline-alert__desc">
-        <slot>{{ description }}</slot>
+        <slot>{{ description || message }}</slot>
       </div>
       <div v-if="$slots.actions" class="app-inline-alert__actions">
         <slot name="actions" />
@@ -27,9 +27,9 @@
  * AppInlineAlert 行内提示
  * 依据 V2.1 §11.3：材料被退回时页面顶部必须显示不可关闭的 AppInlineAlert，
  * 因此 closable 默认 false，退回场景禁止传 closable=true。
- * Props: type: info|success|warning|danger、title、description、closable
+ * Props: type: info|success|warning|danger、title、description、message（旧调用兼容）、closable
  * Emits: close
- * Slots: default（正文，覆盖 description）、actions（如“重新提交”按钮）
+ * Slots: default（正文，覆盖 description/message）、actions（如“重新提交”按钮）
  */
 const ICONS = { info: 'ℹ', success: '✓', warning: '!', danger: '!' }
 
@@ -43,6 +43,8 @@ export default {
     },
     title: { type: String, default: '' },
     description: { type: String, default: '' },
+    // Backward-compatible alias. description remains the canonical prop and wins when both exist.
+    message: { type: String, default: '' },
     closable: { type: Boolean, default: false }
   },
   emits: ['close'],
