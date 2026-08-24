@@ -16,6 +16,7 @@ on:
       - 'backend/app/modules/internship/services/internship_student_position_eligibility_service.py'
       - 'backend/app/modules/internship/schemas/internship_student.py'
       - 'backend/app/modules/internship/routers/internship_student.py'
+      - 'frontend/src/modules/internship/views/AdminInternshipLayout.vue'
       - 'frontend/src/modules/internship/views/InternshipMatchListView.vue'
       - 'frontend/src/modules/internship/views/InternshipStudentListView.vue'
       - 'frontend/src/modules/internship/api/match.api.js'
