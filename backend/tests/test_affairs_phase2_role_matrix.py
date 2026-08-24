@@ -41,6 +41,14 @@ def test_eight_role_permission_matrix(role_name, permission, expected):
     assert has_permission(user, permission) is expected
 
 
+def test_counselor_discipline_removal_permission_is_narrow():
+    """辅导员仅获得处分解除初审，不得顺带获得正式处分审批或申诉复核。"""
+    user = {"currentRoleCode": "COUNSELOR", "userType": "TEACHER", "userId": "matrix"}
+    assert has_permission(user, "studentAffairs.discipline.remove.approve") is True
+    assert has_permission(user, "studentAffairs.discipline.approve") is False
+    assert has_permission(user, "studentAffairs.discipline.appeal.review") is False
+
+
 def _headers_or_skip(client, login_name, expected_role):
     response = client.post("/api/v1/auth/mock-login", json={"loginName": login_name, "password": "any"})
     data = response.json().get("data") if response.headers.get("content-type", "").startswith("application/json") else None
