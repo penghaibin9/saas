@@ -117,10 +117,11 @@ async function saveAllScores(page, firstFinal = 88) {
   }
 }
 
-async function studentTranscriptContext(browser, courseShouldExist) {
+async function studentTranscriptContext(browser, courseShouldExist, expected = {}) {
   const ctx = await browser.newContext({ locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
   const page = await ctx.newPage()
-  const assertNetwork = attachNetworkSeal(page, courseShouldExist ? 'student-after-publish' : 'student-before-publish')
+  const label = expected.source ? 'student-after-correction' : (courseShouldExist ? 'student-after-publish' : 'student-before-publish')
+  const assertNetwork = attachNetworkSeal(page, label)
   try {
     const login = new StudentLoginPage(page, studentBase)
     await login.login(account(fixture.students[0]))
@@ -131,8 +132,14 @@ async function studentTranscriptContext(browser, courseShouldExist) {
     await expect(gradeService).toBeVisible({ timeout: 20_000 })
     await gradeService.click()
     await expect(page.getByText('我的成绩', { exact: true }).last()).toBeVisible()
-    if (courseShouldExist) await expect(page.getByText(fixture.courseName, { exact: true })).toBeVisible({ timeout: 20_000 })
-    else await expect(page.getByText(fixture.courseName, { exact: true })).toHaveCount(0)
+    if (courseShouldExist) {
+      const courseRow = page.getByRole('row').filter({ hasText: fixture.courseName }).first()
+      await expect(courseRow).toBeVisible({ timeout: 20_000 })
+      if (expected.score != null) await expect(courseRow.locator('td.score')).toHaveText(String(expected.score))
+      if (expected.source) await expect(courseRow.getByText(expected.source, { exact: true })).toBeVisible()
+    } else {
+      await expect(page.getByText(fixture.courseName, { exact: true })).toHaveCount(0)
+    }
     assertNetwork()
   } finally {
     await ctx.close()
@@ -366,12 +373,13 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
       expect(academicReviewPayload.code).toBe(0)
       expect(academicReviewPayload.data?.final).toBe(true)
       expect(String(academicReviewPayload.data?.correctedGradeId || '')).toBeTruthy()
-      expect(Number(academicReviewPayload.data?.totalScore)).toBeGreaterThan(0)
+      expect(Number(academicReviewPayload.data?.totalScore)).toBe(88)
       changeAcademicNetwork()
     } finally {
       await changeAcademicCtx.close()
     }
 
+    await studentTranscriptContext(browser, true, { score: 88, source: '成绩更正' })
     teacherNetwork()
   } finally {
     await teacherCtx.close()
