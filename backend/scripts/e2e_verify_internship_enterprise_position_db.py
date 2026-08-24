@@ -3,7 +3,9 @@ import os
 import _mysql_env  # noqa: F401
 from sqlalchemy import select
 from app.db.session import get_sessionmaker
-from app.models import EmpCompany, InternshipAuditTrail, InternshipPosition, InternshipRecord
+from app.models import (
+    EmpCompany, InternshipAuditTrail, InternshipBatchParticipant, InternshipPosition, InternshipRecord,
+)
 from app.models.internship_enterprise_portal import (
     InternshipCampaignEnterprise, InternshipEnterpriseAccessGrant, InternshipEnterpriseMember,
 )
@@ -70,10 +72,24 @@ def main():
 
         record = db.get(InternshipRecord, internship_id)
         assert record and record.tenant_id == TENANT_ID and not record.is_deleted
+        assert record.batch_id == batch_id
         assert record.position_id is None
         assert record.enterprise_id is None
         assert record.destination_type == "NONE"
         assert record.eligibility_status == "QUALIFIED"
+
+        participant = db.scalar(select(InternshipBatchParticipant).where(
+            InternshipBatchParticipant.tenant_id == TENANT_ID,
+            InternshipBatchParticipant.batch_id == batch_id,
+            InternshipBatchParticipant.student_id == record.student_id,
+            InternshipBatchParticipant.is_deleted.is_(False),
+        ))
+        assert participant is not None
+        assert participant.status == "ACTIVE", participant.status
+        assert participant.source == "MANUAL", participant.source
+        assert int(participant.internship_id or 0) == int(record.id), (
+            participant.internship_id, record.id,
+        )
 
         enterprise_actions = list(db.scalars(select(InternshipAuditTrail.action).where(
             InternshipAuditTrail.tenant_id == TENANT_ID,
@@ -99,6 +115,7 @@ def main():
             "companyId": company_id,
             "positionId": position_id,
             "campaignId": campaign_id,
+            "participantId": participant.id,
             "enterpriseActions": enterprise_actions,
             "positionActions": position_actions,
         })

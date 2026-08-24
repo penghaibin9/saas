@@ -7,6 +7,9 @@ on:
     paths:
       - 'backend/scripts/e2e_seed_internship_enterprise_position_sandbox.py'
       - 'backend/scripts/e2e_verify_internship_enterprise_position_db.py'
+      - 'backend/app/modules/internship/services/internship_participant_service.py'
+      - 'backend/app/modules/internship/services/internship_student_catalog_facade_service.py'
+      - 'backend/app/modules/internship/services/internship_student_position_eligibility_service.py'
       - 'frontend/src/modules/internship/views/EnterpriseFormView.vue'
       - 'frontend/src/modules/internship/views/InternshipPositionDetailView.vue'
       - 'e2e/specs/internship-enterprise-position-lifecycle-audit.spec.mjs'

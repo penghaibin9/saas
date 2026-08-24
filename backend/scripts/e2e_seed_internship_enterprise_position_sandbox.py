@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import _mysql_env  # noqa: F401
 from sqlalchemy import select
 from app.db.session import get_sessionmaker
-from app.models import InternshipBatch, InternshipRecord, StudentProfile, Tenant
+from app.models import InternshipBatch, InternshipBatchParticipant, InternshipRecord, StudentProfile, Tenant
 from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign
 
 TENANT_ID = 1000000000000000007
@@ -131,13 +131,48 @@ def main():
             for key, value in record_values.items():
                 setattr(record, key, value)
             record.is_deleted = False
-        db.commit(); db.refresh(record)
+        db.flush()
+
+        # Student catalog fail-closes unless the student is in the batch's formal ACTIVE roster.
+        # This is not duplicate state: participant is the frozen/formal membership fact while
+        # InternshipRecord is the student's process record. Production freeze creates/reuses the
+        # record and writes the participant in the same transaction. The sandbox starts from an
+        # already-RUNNING prerequisite, so represent a production-valid manual roster addition.
+        participant = db.scalars(select(InternshipBatchParticipant).where(
+            InternshipBatchParticipant.tenant_id == TENANT_ID,
+            InternshipBatchParticipant.batch_id == batch.id,
+            InternshipBatchParticipant.student_id == student.id,
+        )).first()
+        participant_values = {
+            "source": "MANUAL",
+            "snapshot_student_no": student.student_no,
+            "snapshot_name": student.real_name,
+            "internship_id": record.id,
+            "status": "ACTIVE",
+            "remove_reason": None,
+        }
+        if participant is None:
+            participant = InternshipBatchParticipant(
+                tenant_id=TENANT_ID, batch_id=batch.id, student_id=student.id, **participant_values,
+            )
+            db.add(participant)
+        else:
+            for key, value in participant_values.items():
+                setattr(participant, key, value)
+            participant.is_deleted = False
+        db.flush()
+
+        if participant.status != "ACTIVE" or int(participant.internship_id or 0) != int(record.id):
+            raise RuntimeError("IX-003/IX-005 prerequisite roster is not linked to the canonical internship record")
+
+        db.commit(); db.refresh(record); db.refresh(participant)
 
         payload = {"runId":rid,"tenantCode":TENANT_CODE,"batchId":str(batch.id),"batchName":batch.batch_name,
                    "campaignId":str(campaign.id),"campaignName":campaign.campaign_name,
                    "internshipId":str(record.id),"studentId":str(student.id),"studentNo":student.student_no,
-                   "studentName":student.real_name,"initialStatus":record.status,
-                   "initialDestinationType":record.destination_type}
+                   "studentName":student.real_name,"participantId":str(participant.id),
+                   "participantStatus":participant.status,"participantSource":participant.source,
+                   "initialStatus":record.status,"initialDestinationType":record.destination_type}
         target = fixture_path(); target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         print("[e2e-ix-003-005-seed] ready:", json.dumps(payload, ensure_ascii=False))
