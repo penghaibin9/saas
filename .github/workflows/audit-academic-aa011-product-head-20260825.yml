@@ -117,17 +117,11 @@ jobs:
           alembic upgrade head
           alembic current
 
-      - name: Seed only isolated tenant and identity prerequisites
+      - name: Seed isolated tenants before backend boot
         working-directory: backend
         run: |
           set -euo pipefail
           python scripts/e2e_seed_playwright_tenants.py
-          python scripts/e2e_bootstrap_graduation_accounts_ci.py
-          python scripts/e2e_reset_graduation_passwords.py
-          python scripts/e2e_verify_graduation_accounts.py
-          python scripts/e2e_seed_academic_b_selection.py
-          python scripts/e2e_seed_academic_b_w5_selection.py
-          python scripts/e2e_seed_academic_aa011_selection.py
 
       - name: Start real backend with two workers
         run: |
@@ -145,6 +139,17 @@ jobs:
             cat ../e2e/runtime-logs/backend.log
             exit 1
           fi
+
+      - name: Bootstrap real accounts and seed AA-011 prerequisites
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+          python scripts/e2e_seed_academic_b_selection.py
+          python scripts/e2e_seed_academic_b_w5_selection.py
+          python scripts/e2e_seed_academic_aa011_selection.py
 
       - name: Install production-build and start Staff PC
         run: |
