@@ -1,4 +1,5 @@
 # Retrigger precise SA-004 product repair after runner pre-audit.
+# Retry 2026-08-24: execute the already-scoped three-file product repair.
 name: Student Affairs SA-004 product fix
 
 on:
