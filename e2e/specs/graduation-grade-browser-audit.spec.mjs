@@ -9,6 +9,8 @@ const gradeAdmin = {
   password: config.mentor.password,
 }
 
+let gradeAdminSessionReady = false
+
 async function dismissGuide(page) {
   for (const mask of [page.locator('.app-step-guide__mask'), page.locator('.tour-mask')]) {
     if (await mask.isVisible().catch(() => false)) {
@@ -20,8 +22,10 @@ async function dismissGuide(page) {
 }
 
 async function loginStaff(page, account, octet) {
+  if (gradeAdminSessionReady) return
   await page.context().setExtraHTTPHeaders({ 'X-Forwarded-For': `10.252.0.${octet}` })
   await new StaffLoginPage(page, config.staffBaseUrl).login(account)
+  gradeAdminSessionReady = true
 }
 
 async function openGradeWorkspace(page, fixture, octet) {
@@ -167,6 +171,7 @@ test.describe.serial('毕业设计成绩 Browser First · 核算/复核/发布/�
   let fixture
 
   test.beforeAll(async () => {
+    gradeAdminSessionReady = false
     fixture = await prepareGraduationFixture()
     const admin = await loginApi(config.sandboxAdmin)
     const student = await admin.get(`/graduation/gd-students/${fixture.gdStudentId}`)
