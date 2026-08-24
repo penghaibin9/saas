@@ -1,13 +1,13 @@
 /**
  * 毕业设计中心 · 问题预警 / 毕设归档 / 毕设统计 API。
- * 学校端始终携带当前批次；批量归档执行必须绑定后端签名预览令牌。
+ * 学校端始终携带当前批次；批量归档执行必须消费老师刚刚确认的后端签名预览令牌，禁止静默二次预览。
  */
 import { request } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { withGraduationBatch as withBatch } from '@/modules/graduation/api/graduation-batch-context'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
-function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
+function fail(message, code = 1, data = null) { return Promise.resolve({ code, data, message }) }
 function toErr(e) {
   if (e?.biz) return fail(e.message, e.code || 1)
   return fail(e?.message || '真实接口不可用', 503001)
@@ -25,6 +25,29 @@ async function callList(path, params = {}) {
 const RISK = '/graduation/gd-risks'
 const ARCHIVE = '/graduation/gd-archives'
 const STATS = '/graduation/gd-stats'
+const pendingArchivePreviews = new Map()
+
+function previewKey(mode, scoped = {}) {
+  return `${mode}:${String(scoped.batchId || '')}`
+}
+
+function rememberPreview(mode, scoped, data) {
+  if (!data?.previewToken) return
+  pendingArchivePreviews.set(previewKey(mode, scoped), {
+    previewToken: data.previewToken,
+    archiveBatchNo: data.archiveBatchNo || '',
+  })
+}
+
+function consumePreview(mode, scoped, body = {}) {
+  const key = previewKey(mode, scoped)
+  const cached = pendingArchivePreviews.get(key) || {}
+  pendingArchivePreviews.delete(key)
+  return {
+    previewToken: body.previewToken || cached.previewToken || '',
+    archiveBatchNo: body.archiveBatchNo || cached.archiveBatchNo || '',
+  }
+}
 
 export const graduationRiskArchiveApi = {
   scanRisks(params = {}) { return call(() => request(`${RISK}/scan`, { method: 'POST', params: withBatch(params) })) },
@@ -46,44 +69,52 @@ export const graduationRiskArchiveApi = {
 
   getArchiveList(params = {}) { return callList(ARCHIVE, params) },
   getArchiveStats(params = {}) { return call(() => request(`${ARCHIVE}/stats`, { params: withBatch(params) })) },
-  previewBatchGenerate(params = {}) {
-    return call(() => request(`${ARCHIVE}/batch-generate/preview`, { method: 'POST', params: withBatch(params) }))
+  async previewBatchGenerate(params = {}) {
+    const scoped = withBatch(params)
+    try {
+      const data = await request(`${ARCHIVE}/batch-generate/preview`, { method: 'POST', params: scoped })
+      rememberPreview('GENERATE', scoped, data)
+      return ok(data)
+    } catch (e) { return toErr(e) }
   },
   async batchGenerateArchive(params = {}, body = {}) {
     const scoped = withBatch(params)
+    const preview = consumePreview('GENERATE', scoped, body)
+    if (!preview.previewToken) return fail('归档预览执行凭证不存在或已消费，请重新预览', 409)
     try {
-      let previewToken = body.previewToken
-      if (!previewToken) {
-        const preview = await request(`${ARCHIVE}/batch-generate/preview`, { method: 'POST', params: scoped })
-        previewToken = preview.previewToken
-      }
-      if (!previewToken) return fail('归档预览未生成执行凭证，请重新预览', 409)
       return ok(await request(`${ARCHIVE}/batch-generate`, {
-        method: 'POST', params: scoped, body: { ...body, previewToken },
+        method: 'POST', params: scoped, body: { ...body, previewToken: preview.previewToken },
       }))
     } catch (e) { return toErr(e) }
   },
-  previewBatchFile(params = {}, body = {}) {
-    return call(() => request(`${ARCHIVE}/batch-file/preview`, {
-      method: 'POST', params: withBatch(params), body: { archiveBatchNo: body.archiveBatchNo || undefined },
-    }))
+  async previewBatchFile(params = {}, body = {}) {
+    const scoped = withBatch(params)
+    try {
+      const data = await request(`${ARCHIVE}/batch-file/preview`, {
+        method: 'POST', params: scoped, body: { archiveBatchNo: body.archiveBatchNo || undefined },
+      })
+      rememberPreview('FILE', scoped, data)
+      return ok(data)
+    } catch (e) { return toErr(e) }
   },
   async batchFileArchive(params = {}, body = {}) {
     const scoped = withBatch(params)
+    const preview = consumePreview('FILE', scoped, body)
+    if (!preview.previewToken || !preview.archiveBatchNo) {
+      return fail('备案预览执行凭证不存在、不完整或已消费，请重新预览', 409)
+    }
     try {
-      let previewToken = body.previewToken
-      let archiveBatchNo = body.archiveBatchNo
-      if (!previewToken) {
-        const preview = await request(`${ARCHIVE}/batch-file/preview`, {
-          method: 'POST', params: scoped, body: { archiveBatchNo: archiveBatchNo || undefined },
-        })
-        previewToken = preview.previewToken
-        archiveBatchNo = preview.archiveBatchNo
+      const data = await request(`${ARCHIVE}/batch-file`, {
+        method: 'POST', params: scoped,
+        body: { ...body, archiveBatchNo: preview.archiveBatchNo, previewToken: preview.previewToken },
+      })
+      const failed = Number(data?.failed || 0)
+      if (failed > 0) {
+        const first = data?.errors?.[0]?.message
+        const message = `批量备案部分失败：成功 ${Number(data?.filed || 0)}，跳过 ${Number(data?.skipped || 0)}，失败 ${failed}${first ? `；首个失败：${first}` : ''}`
+        return fail(message, 409, data)
       }
-      if (!previewToken || !archiveBatchNo) return fail('备案预览未生成完整执行凭证，请重新预览', 409)
-      return ok(await request(`${ARCHIVE}/batch-file`, {
-        method: 'POST', params: scoped, body: { ...body, archiveBatchNo, previewToken },
-      }))
+      return ok(data)
     } catch (e) { return toErr(e) }
   },
   generateArchive(gdStudentId, params = {}) {

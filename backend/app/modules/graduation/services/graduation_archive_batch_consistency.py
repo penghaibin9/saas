@@ -116,6 +116,12 @@ def _install_consistency_bridge() -> None:
     service.batch_generate_submit = scaled_batch_generate_submit
 
 
+# Install the GD-018 V2 rule/FileVersion guard before the public consistency bridge
+# captures ``build_snapshot``. The installer also wraps the canonical V2 manifest
+# batch writer while leaving single-student filing behavior unchanged.
+from app.modules.graduation.services.graduation_archive_v2_preview import install_archive_v2_guard
+
+install_archive_v2_guard()
 _install_consistency_bridge()
 
 
