@@ -159,6 +159,16 @@ def _student_record(db, user, *, batch_id=None, for_write: bool = False):
     return rec, stu
 
 
+def _template_name(db, a) -> str:
+    """读模型保留协议使用的模板身份；模板后续停用/归档也不应让协议档案显示成未知。"""
+    if not a.template_id:
+        return ""
+    tpl = db.get(InternshipAgreementTemplate, a.template_id)
+    if not tpl or tpl.tenant_id != _tid():
+        return ""
+    return tpl.name or ""
+
+
 def _row(db, a, rec, stu):
     return {
         "id": str(a.id), "internId": str(a.internship_id),
@@ -167,6 +177,7 @@ def _row(db, a, rec, stu):
         "enterpriseName": a.enterprise_name or (rec.enterprise_name if rec else ""),
         "positionName": a.position_name or (rec.position_name if rec else ""),
         "templateId": str(a.template_id) if a.template_id else "",
+        "templateName": _template_name(db, a),
         "studentConfirm": a.student_confirm_status, "studentConfirmLabel": CONFIRM_LABEL.get(a.student_confirm_status),
         "enterpriseConfirm": a.enterprise_confirm_status, "enterpriseConfirmLabel": CONFIRM_LABEL.get(a.enterprise_confirm_status),
         "schoolConfirm": a.school_confirm_status, "schoolConfirmLabel": CONFIRM_LABEL.get(a.school_confirm_status),
