@@ -318,7 +318,9 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
     await teacherPage.getByRole('button', { name: '提交更正申请' }).click()
     const changeRequested = await changeRequestPromise
     expect(changeRequested.status()).toBe(200)
-    expect((await changeRequested.json()).code).toBe(0)
+    const changePayload = await changeRequested.json()
+    expect(changePayload.code).toBe(0)
+    expect(Number(changePayload.data?.assigneeId || 0)).toBeGreaterThan(0)
 
     teacherNetwork()
   } finally {
