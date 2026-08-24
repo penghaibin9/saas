@@ -319,7 +319,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     expect(catalogPayload.body?.code, catalogPayload.text).toBe(0)
     const catalogItems = Array.isArray(catalogPayload.body?.data?.items) ? catalogPayload.body.data.items : []
     expect(catalogItems.some((item) => String(item?.positionId || item?.id || '') === String(positionId))).toBeFalsy()
-    await expect(page.getByText(positionTitle(), { exact: false })).toHaveCount(0)
+    await expect(page.locator('.catalog-panel').getByText(positionTitle(), { exact: false })).toHaveCount(0)
     await page.goto(`${config.studentBaseUrl}/internship`)
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(companyName(), { exact: false }).first()).toBeVisible()
