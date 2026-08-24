@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/graduation-archive-browser-audit-pr.yml'
+      - 'e2e/specs/graduation-final-browser-audit.spec.mjs'
+      - 'e2e/specs/graduation-review-browser-audit.spec.mjs'
+      - 'e2e/specs/graduation-defense-browser-audit.spec.mjs'
+      - 'e2e/specs/graduation-grade-browser-audit.spec.mjs'
       - 'e2e/specs/graduation-archive-browser-audit.spec.mjs'
       - 'e2e/scripts/graduation-archive-db-audit.py'
   workflow_dispatch:
@@ -18,7 +22,7 @@ concurrency:
 
 jobs:
   archive-browser-audit:
-    name: exact SHA GD-018 / real lifecycle / Chromium / MySQL
+    name: exact SHA review → defense → grade → GD-018 / Chromium / MySQL
     runs-on: ubuntu-latest
     timeout-minutes: 75
     services:
@@ -63,13 +67,13 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_EXPECTED_SHA: 7bf83e13955b5eca47c670d634f7522062421446
+      E2E_EXPECTED_SHA: e1496b6e0254e59fd2a2e511beebae3f2049fe25
 
     steps:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: 7bf83e13955b5eca47c670d634f7522062421446
+          ref: e1496b6e0254e59fd2a2e511beebae3f2049fe25
           fetch-depth: 0
 
       - name: Assert exact product HEAD
@@ -77,7 +81,7 @@ jobs:
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           echo "PRODUCT_EXACT_HEAD=$actual"
-          test "$actual" = "7bf83e13955b5eca47c670d634f7522062421446"
+          test "$actual" = "e1496b6e0254e59fd2a2e511beebae3f2049fe25"
 
       - name: Checkout audit harness only
         uses: actions/checkout@v4
@@ -106,8 +110,8 @@ jobs:
           cp audit-harness/e2e/scripts/graduation-specialist-accounts.py e2e/scripts/
           cp audit-harness/e2e/scripts/graduation-archive-db-audit.py e2e/scripts/
           rm -rf audit-harness
-          grep -rl '63195a6dc9d25fa3805563910fb699ec163b552a' e2e/scripts | xargs -r sed -i 's/63195a6dc9d25fa3805563910fb699ec163b552a/7bf83e13955b5eca47c670d634f7522062421446/g'
-          test "$(git rev-parse HEAD)" = "7bf83e13955b5eca47c670d634f7522062421446"
+          grep -rl -e '63195a6dc9d25fa3805563910fb699ec163b552a' -e '47264037bf014276e795d3655d7f178830756729' e2e/scripts | xargs -r sed -i -e 's/63195a6dc9d25fa3805563910fb699ec163b552a/e1496b6e0254e59fd2a2e511beebae3f2049fe25/g' -e 's/47264037bf014276e795d3655d7f178830756729/e1496b6e0254e59fd2a2e511beebae3f2049fe25/g'
+          test "$(git rev-parse HEAD)" = "e1496b6e0254e59fd2a2e511beebae3f2049fe25"
           bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
           test -z "$bad"
           git status --short
@@ -237,34 +241,34 @@ jobs:
           npm install
           npx playwright install --with-deps chromium
 
-      - name: Real browser final + plagiarism prerequisite
+      - name: Fixture setup only · real browser final + plagiarism
         id: finalpw
         continue-on-error: true
         working-directory: e2e
         run: npx playwright test specs/graduation-final-browser-audit.spec.mjs
 
-      - name: Real browser independent review prerequisite
+      - name: Target · real browser independent review
         id: reviewpw
         if: steps.finalpw.outcome == 'success'
         continue-on-error: true
         working-directory: e2e
         run: npx playwright test specs/graduation-review-browser-audit.spec.mjs
 
-      - name: Real browser defense prerequisite
+      - name: Target · real browser defense
         id: defensepw
         if: steps.reviewpw.outcome == 'success'
         continue-on-error: true
         working-directory: e2e
         run: npx playwright test specs/graduation-defense-browser-audit.spec.mjs
 
-      - name: Real browser grade prerequisite
+      - name: Target · real browser grade
         id: gradepw
         if: steps.defensepw.outcome == 'success'
         continue-on-error: true
         working-directory: e2e
         run: npx playwright test specs/graduation-grade-browser-audit.spec.mjs
 
-      - name: Real browser GD-018 archive preview, stale-token rejection, freeze and xlsx
+      - name: Target · real browser GD-018 archive preview, stale-token rejection, freeze and xlsx
         id: archivepw
         if: steps.gradepw.outcome == 'success'
         continue-on-error: true
@@ -283,10 +287,10 @@ jobs:
         working-directory: e2e
         run: python scripts/graduation-archive-db-audit.py
 
-      - name: Enforce GD-018 browser and MySQL evidence gates
+      - name: Enforce affected-chain review, defense, grade, GD-018 and MySQL evidence gates
         if: always()
         env:
-          FINAL_PW: ${{ steps.finalpw.outcome }}
+          FINAL_SETUP: ${{ steps.finalpw.outcome }}
           REVIEW_PW: ${{ steps.reviewpw.outcome }}
           DEFENSE_PW: ${{ steps.defensepw.outcome }}
           GRADE_PW: ${{ steps.gradepw.outcome }}
@@ -295,7 +299,7 @@ jobs:
         working-directory: e2e
         run: |
           set -euo pipefail
-          test "$FINAL_PW" = success
+          test "$FINAL_SETUP" = success
           test "$REVIEW_PW" = success
           test "$DEFENSE_PW" = success
           test "$GRADE_PW" = success
