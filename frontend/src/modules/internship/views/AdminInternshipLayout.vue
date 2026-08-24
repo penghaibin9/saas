@@ -11,7 +11,12 @@
       <button type="button" class="mp-link" @click="reloadContext">重试</button>
     </div>
     <InternshipBatchStrip v-if="ctx && !permissionServiceBlocked && !batchBlocked" />
-    <router-view v-if="ctx && !permissionServiceBlocked && !batchBlocked" :ctx="ctx" />
+    <!-- 子页只能在统一批次 Authority 完成首轮解析后挂载；否则 immediate watcher 会先发无 batchId 请求。 -->
+    <router-view
+      v-if="ctx && !permissionServiceBlocked && !batchBlocked && batchContextReady"
+      :key="batchStore.selectedBatchId || 'no-batch'"
+      :ctx="ctx"
+    />
     <ErrorState
       v-else-if="permissionServiceBlocked"
       title="权限服务加载失败"
@@ -23,6 +28,10 @@
       title="批次服务暂不可用"
       :description="batchStore.batchError || '批次列表加载失败，已保留上次选择；恢复前请勿按全历史数据操作'"
       @retry="reloadBatches"
+    />
+    <LoadingState
+      v-else-if="ctx && !batchContextReady"
+      text="正在加载当前实习批次…"
     />
     <LoadingState v-else-if="!ctx" text="正在加载岗位实习中心…" />
   </BasePortalLayout>
@@ -59,6 +68,9 @@ export default {
     },
     batchStore() {
       return useInternshipBatchStore()
+    },
+    batchContextReady() {
+      return this.batchStore.initialized && !this.batchStore.batchLoading
     },
     permissionServiceBlocked() {
       return !!(this.ctx && this.ctx.permissionServiceError)
