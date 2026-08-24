@@ -320,7 +320,8 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
     expect(changeRequested.status()).toBe(200)
     const changePayload = await changeRequested.json()
     expect(changePayload.code).toBe(0)
-    expect(Number(changePayload.data?.assigneeId || 0)).toBeGreaterThan(0)
+    const collegeAssigneeId = Number(changePayload.data?.assigneeId || 0)
+    expect(collegeAssigneeId).toBeGreaterThan(0)
     const gradeRecordId = String(changePayload.data?.recordId || '')
     expect(gradeRecordId).toBeTruthy()
 
@@ -343,7 +344,9 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
       expect(collegeReviewed.status()).toBe(200)
       const collegeReviewPayload = await collegeReviewed.json()
       expect(collegeReviewPayload.code).toBe(0)
-      expect(Number(collegeReviewPayload.data?.assigneeId || 0)).toBeGreaterThan(0)
+      const academicAssigneeId = Number(collegeReviewPayload.data?.assigneeId || 0)
+      expect(academicAssigneeId).toBeGreaterThan(0)
+      expect(academicAssigneeId).not.toBe(collegeAssigneeId)
       changeCollegeNetwork()
     } finally {
       await changeCollegeCtx.close()
