@@ -55,9 +55,13 @@ async function confirmPositionStatus(page, positionId, triggerName, confirmName)
 
 async function loginStudentMini(page) {
   await page.goto(`${miniBaseUrl}/#/pages/login/student/index`)
-  const account = page.locator('input').filter({ has: page.locator('') })
-  await page.locator('input[placeholder="学号 / 手机号"]').fill(config.student.username)
-  await page.locator('input[placeholder="密码"]').fill(config.student.password)
+  // Uni H5 renders the visible placeholder in a sibling div, not as a native input
+  // placeholder attribute. Drive the same visible fields a student sees instead of
+  // assuming MP-WEIXIN template attributes survive the H5 renderer.
+  const accountField = page.locator('uni-input.field').filter({ hasText: '学号 / 手机号' }).first()
+  const passwordField = page.locator('uni-input.field').filter({ hasText: '密码' }).first()
+  await accountField.locator('input').fill(config.student.username)
+  await passwordField.locator('input').fill(config.student.password)
   await page.locator('.agreement__box').click()
   await page.getByRole('button', { name: '进入学生首页', exact: true }).click()
   await expect(page).toHaveURL(/#\/pages\/student\/home\/index/)
