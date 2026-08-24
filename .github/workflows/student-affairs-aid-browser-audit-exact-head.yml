@@ -67,7 +67,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_TARGET_SHA: 4c493c8673316d823fa1674a7506226f4bb2c75f
+      E2E_TARGET_SHA: 17527da5265e392b617ca72ab51558974a06679f
 
     steps:
       - name: Checkout audit runner only
@@ -80,7 +80,7 @@ jobs:
       - name: Checkout immutable application exact head
         uses: actions/checkout@v4
         with:
-          ref: 4c493c8673316d823fa1674a7506226f4bb2c75f
+          ref: 17527da5265e392b617ca72ab51558974a06679f
           path: app
           fetch-depth: 0
 
