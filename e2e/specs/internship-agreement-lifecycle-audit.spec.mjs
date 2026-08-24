@@ -58,7 +58,7 @@ async function loginMini(page, entry, account) {
     const internshipRole = page.locator('.rs__item').filter({ hasText: '实习指导教师' }).first()
     await expect(internshipRole).toBeVisible()
     const switchPromise = page.waitForResponse((response) =>
-      apiPath(response) === '/api/v1/auth/switch-role'
+      apiPath(response) === '/api/v1/auth/browser-switch-role'
         && response.request().method() === 'POST'
     )
     await internshipRole.click()
