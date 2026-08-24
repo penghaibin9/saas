@@ -1,3 +1,4 @@
+# Retrigger precise SA-004 product repair after runner pre-audit.
 name: Student Affairs SA-004 product fix
 
 on:
