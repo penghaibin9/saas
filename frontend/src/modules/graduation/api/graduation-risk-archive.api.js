@@ -100,13 +100,14 @@ export const graduationRiskArchiveApi = {
   async batchFileArchive(params = {}, body = {}) {
     const scoped = withBatch(params)
     const preview = consumePreview('FILE', scoped, body)
-    if (!preview.previewToken || !preview.archiveBatchNo) {
+    const { previewToken, archiveBatchNo } = preview
+    if (!previewToken || !archiveBatchNo) {
       return fail('备案预览执行凭证不存在、不完整或已消费，请重新预览', 409)
     }
     try {
       const data = await request(`${ARCHIVE}/batch-file`, {
         method: 'POST', params: scoped,
-        body: { ...body, archiveBatchNo: preview.archiveBatchNo, previewToken: preview.previewToken },
+        body: { ...body, archiveBatchNo, previewToken },
       })
       const failed = Number(data?.failed || 0)
       if (failed > 0) {
