@@ -26,7 +26,17 @@ async function dismissGuide(page) {
 function attachNetworkSeal(page) {
   const failures = []
   const badResponses = []
-  page.on('requestfailed', (req) => failures.push(`${req.method()} ${req.url()} :: ${req.failure()?.errorText || 'failed'}`))
+  page.on('requestfailed', (req) => {
+    const errorText = req.failure()?.errorText || 'failed'
+    const url = req.url()
+    // Explicit browser navigation may cancel stale ancillary GETs from the page being left.
+    // Never suppress a grade request failure or any failed write.
+    if (
+      req.method() === 'GET' && errorText === 'net::ERR_ABORTED' &&
+      !url.includes('/api/v1/academic-affairs/grade')
+    ) return
+    failures.push(`${req.method()} ${url} :: ${errorText}`)
+  })
   page.on('response', (res) => {
     const status = res.status()
     if (status < 400) return
