@@ -1,4 +1,5 @@
 name: Student Affairs strict discipline browser audit exact head
+# trigger: guarded product fix via runner-base PR
 
 on:
   push:
