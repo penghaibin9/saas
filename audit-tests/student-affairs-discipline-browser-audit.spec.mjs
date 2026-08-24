@@ -224,7 +224,8 @@ test.describe.serial('Student Affairs strict browser audit · discipline lifecyc
       const delivered = await deliverPromise
       expect(delivered.ok(), `discipline delivery HTTP ${delivered.status()}`).toBeTruthy()
       expect((await jsonBody(delivered)).code).toBe(0)
-      await expect(row).toContainText('直接送达', { timeout: 15_000 })
+      const deliveredRow = page.locator('tbody tr').filter({ hasText: 'E2E学生A' }).filter({ hasText: '警告' }).first()
+      await expect(deliveredRow).toContainText('直接送达', { timeout: 15_000 })
     })
 
     await test.step('student sees the effective WARNING and submits exactly one real appeal from portal', async () => {
