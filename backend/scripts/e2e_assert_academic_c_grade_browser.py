@@ -140,7 +140,7 @@ def main() -> int:
         diagnostic["currentOfficial"] = [
             {
                 "id": int(row.id),
-                "studentId": int(row.student_id) if row.student_id else None,
+                "acadStudentId": int(row.acad_student_id) if row.acad_student_id else None,
                 "score": row.score,
                 "passStatus": row.pass_status,
                 "recordStatus": getattr(row, "record_status", None),
