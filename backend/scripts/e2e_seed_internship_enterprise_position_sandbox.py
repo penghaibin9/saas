@@ -42,6 +42,8 @@ def main():
     assert_safe_target()
     rid = run_id()
     now = datetime.utcnow()
+    batch_no = f"IXEP-{rid}"
+    campaign_code = f"IXEP-{rid}"
     db = get_sessionmaker()()
     try:
         tenant = db.get(Tenant, TENANT_ID)
@@ -54,37 +56,83 @@ def main():
         )).first()
         if not student:
             raise SystemExit(f"student {STUDENT_NO} is missing")
-        batch = InternshipBatch(
-            tenant_id=TENANT_ID, batch_name=f"IX-003-005 Browser First {rid}", batch_no=f"IXEP-{rid}",
-            academic_year=f"{now.year}-{now.year+1}", term="第一学期",
-            start_date=now-timedelta(days=15), end_date=now+timedelta(days=120),
-            signup_start_date=now-timedelta(days=30), signup_end_date=now+timedelta(days=30),
-            planned_count=2, status="RUNNING", stage_config=[],
-            rules_config={"checkin":{},"weeklyReport":{},"guidance":{},"evaluation":{},"score":{}},
-            remark="IX-003/IX-005 prerequisites only; enterprises/positions are browser-created",
-        )
-        db.add(batch); db.flush()
-        campaign = InternshipRecruitmentCampaign(
-            tenant_id=TENANT_ID, batch_id=batch.id, campaign_code=f"IXEP-{rid}",
-            campaign_name=f"IX-003-005 招聘季 {rid}", round_no=1, status="OPEN",
-            invite_start_at=now-timedelta(days=1), invite_end_at=now+timedelta(days=10),
-            position_submit_start_at=now-timedelta(days=1), position_submit_end_at=now+timedelta(days=10),
-            student_select_start_at=now-timedelta(days=1), student_select_end_at=now+timedelta(days=10),
-            enterprise_decision_start_at=now-timedelta(days=1), enterprise_decision_end_at=now+timedelta(days=10),
-            school_confirm_start_at=now-timedelta(days=1), school_confirm_end_at=now+timedelta(days=10),
-            enterprise_access_end_at=now+timedelta(days=30), enterprise_confirm_required=False,
-            teacher_confirm_sla_hours=48, application_material_policy_json={"schemaVersion":"V1"},
-            remark="IX-003/IX-005 Browser First campaign prerequisite only",
-        )
-        db.add(campaign); db.flush()
-        record = InternshipRecord(
-            tenant_id=TENANT_ID, student_id=student.id, batch_id=batch.id,
-            eligibility_status="QUALIFIED", destination_type="NONE", status="PREPARING",
-            risk_level="NONE", intern_start_date=now+timedelta(days=14),
-            intern_end_date=now+timedelta(days=104),
-            remark="IX-003/IX-005 student prerequisite only; no placement seeded",
-        )
-        db.add(record); db.commit()
+
+        batch = db.scalars(select(InternshipBatch).where(
+            InternshipBatch.tenant_id == TENANT_ID,
+            InternshipBatch.batch_no == batch_no,
+        )).first()
+        if batch is None:
+            batch = InternshipBatch(
+                tenant_id=TENANT_ID, batch_name=f"IX-003-005 Browser First {rid}", batch_no=batch_no,
+                academic_year=f"{now.year}-{now.year+1}", term="第一学期",
+                start_date=now-timedelta(days=15), end_date=now+timedelta(days=120),
+                signup_start_date=now-timedelta(days=30), signup_end_date=now+timedelta(days=30),
+                planned_count=2, status="RUNNING", stage_config=[],
+                rules_config={"checkin":{},"weeklyReport":{},"guidance":{},"evaluation":{},"score":{}},
+                remark="IX-003/IX-005 prerequisites only; enterprises/positions are browser-created",
+            )
+            db.add(batch); db.flush()
+        else:
+            batch.is_deleted = False
+            batch.status = "RUNNING"
+            batch.start_date = now-timedelta(days=15)
+            batch.end_date = now+timedelta(days=120)
+            batch.signup_start_date = now-timedelta(days=30)
+            batch.signup_end_date = now+timedelta(days=30)
+
+        campaign = db.scalars(select(InternshipRecruitmentCampaign).where(
+            InternshipRecruitmentCampaign.tenant_id == TENANT_ID,
+            InternshipRecruitmentCampaign.campaign_code == campaign_code,
+        )).first()
+        campaign_values = {
+            "batch_id": batch.id,
+            "campaign_name": f"IX-003-005 招聘季 {rid}",
+            "round_no": 1,
+            "status": "OPEN",
+            "invite_start_at": now-timedelta(days=1), "invite_end_at": now+timedelta(days=10),
+            "position_submit_start_at": now-timedelta(days=1), "position_submit_end_at": now+timedelta(days=10),
+            "student_select_start_at": now-timedelta(days=1), "student_select_end_at": now+timedelta(days=10),
+            "enterprise_decision_start_at": now-timedelta(days=1), "enterprise_decision_end_at": now+timedelta(days=10),
+            "school_confirm_start_at": now-timedelta(days=1), "school_confirm_end_at": now+timedelta(days=10),
+            "enterprise_access_end_at": now+timedelta(days=30),
+            "enterprise_confirm_required": False,
+            "teacher_confirm_sla_hours": 48,
+            "application_material_policy_json": {"schemaVersion":"V1"},
+            "remark": "IX-003/IX-005 Browser First campaign prerequisite only",
+        }
+        if campaign is None:
+            campaign = InternshipRecruitmentCampaign(
+                tenant_id=TENANT_ID, campaign_code=campaign_code, **campaign_values,
+            )
+            db.add(campaign); db.flush()
+        else:
+            for key, value in campaign_values.items():
+                setattr(campaign, key, value)
+            campaign.is_deleted = False
+
+        record = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == TENANT_ID,
+            InternshipRecord.student_id == student.id,
+            InternshipRecord.batch_id == batch.id,
+        )).first()
+        record_values = {
+            "eligibility_status": "QUALIFIED", "destination_type": "NONE", "status": "PREPARING",
+            "risk_level": "NONE", "intern_start_date": now+timedelta(days=14),
+            "intern_end_date": now+timedelta(days=104), "enterprise_id": None, "enterprise_name": None,
+            "position_id": None, "position_name": None,
+            "remark": "IX-003/IX-005 student prerequisite only; no placement seeded",
+        }
+        if record is None:
+            record = InternshipRecord(
+                tenant_id=TENANT_ID, student_id=student.id, batch_id=batch.id, **record_values,
+            )
+            db.add(record)
+        else:
+            for key, value in record_values.items():
+                setattr(record, key, value)
+            record.is_deleted = False
+        db.commit(); db.refresh(record)
+
         payload = {"runId":rid,"tenantCode":TENANT_CODE,"batchId":str(batch.id),"batchName":batch.batch_name,
                    "campaignId":str(campaign.id),"campaignName":campaign.campaign_name,
                    "internshipId":str(record.id),"studentId":str(student.id),"studentNo":student.student_no,
