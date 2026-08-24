@@ -139,7 +139,20 @@ async function studentTranscriptContext(browser, courseShouldExist) {
   }
 }
 
-test('Academic C grade: teacher input -> college return -> teacher resubmit -> college approve -> academic publish -> student transcript', async ({ browser }, testInfo) => {
+async function selectRemotePicker(field, keyword, optionText = '') {
+  const combo = field.locator('[role="combobox"]')
+  await expect(combo).toBeVisible()
+  await combo.click()
+  const search = field.locator('input.app-remote-select__search-el')
+  await expect(search).toBeVisible()
+  await search.fill(keyword)
+  const options = field.locator('[role="option"]')
+  const option = optionText ? options.filter({ hasText: optionText }).first() : options.first()
+  await expect(option).toBeVisible({ timeout: 15_000 })
+  await option.click()
+}
+
+test('Academic C grade: teacher input -> college return -> teacher resubmit -> college approve -> academic publish -> student transcript -> correction apply', async ({ browser }, testInfo) => {
   const teacherCtx = await browser.newContext({ locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
   const teacherPage = await teacherCtx.newPage()
   const teacherNetwork = attachNetworkSeal(teacherPage, 'teacher-grade')
@@ -285,6 +298,28 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
 
     // After publish the same real student account must see the course in the real Student PC transcript.
     await studentTranscriptContext(browser, true)
+
+    // Continue from the proven published fact into the real post-publish correction entry.
+    // This intentionally uses the production School IAM fixture; no RolePermission-only test shortcut.
+    await gotoStaff(teacherPage, '/admin/academic-affairs/grade-change')
+    await expect(teacherPage.getByText('成绩更正', { exact: true }).first()).toBeVisible({ timeout: 20_000 })
+    const requestTaskField = teacherPage.locator('label.aa-field').filter({ hasText: '成绩录入任务' }).first()
+    await selectRemotePicker(requestTaskField, fixture.courseName, fixture.courseName)
+    const requestRecordField = teacherPage.locator('label.aa-field').filter({ hasText: '学生成绩记录' }).first()
+    await selectRemotePicker(requestRecordField, fixture.students[0])
+    const newFinalField = teacherPage.locator('label.aa-field').filter({ hasText: '新期末分' }).first()
+    await newFinalField.locator('input[type="number"]').fill('90')
+    const reasonField = teacherPage.locator('label.aa-field').filter({ hasText: '更正原因' }).first()
+    await reasonField.locator('textarea').fill('浏览器验收更正：复核原卷后将第一名学生期末分更正为90分')
+    const changeRequestPromise = teacherPage.waitForResponse((r) =>
+      r.url().includes('/api/v1/academic-affairs/grade-records/') &&
+      r.url().includes('/change-request') && r.request().method() === 'POST'
+    )
+    await teacherPage.getByRole('button', { name: '提交更正申请' }).click()
+    const changeRequested = await changeRequestPromise
+    expect(changeRequested.status()).toBe(200)
+    expect((await changeRequested.json()).code).toBe(0)
+
     teacherNetwork()
   } finally {
     await teacherCtx.close()
