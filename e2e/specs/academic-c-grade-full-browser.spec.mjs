@@ -312,7 +312,7 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
     const reasonField = teacherPage.locator('label.aa-field').filter({ hasText: '更正原因' }).first()
     await reasonField.locator('textarea').fill('浏览器验收更正：复核原卷后将第一名学生期末分更正为90分')
     const changeRequestPromise = teacherPage.waitForResponse((r) =>
-      r.url().includes('/api/v1/academic-affairs/grade-records/') &&
+      r.url().includes(`/api/v1/academic-affairs/grade-tasks/${gradeTaskId}/records/`) &&
       r.url().includes('/change-request') && r.request().method() === 'POST'
     )
     await teacherPage.getByRole('button', { name: '提交更正申请' }).click()
