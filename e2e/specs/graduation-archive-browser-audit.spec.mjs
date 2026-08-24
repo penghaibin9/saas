@@ -1,6 +1,6 @@
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
-import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
 
 async function dismissGuide(page) {
@@ -17,6 +17,14 @@ function archiveUrl(fixture) {
   const url = new URL(`${config.staffBaseUrl}/admin/graduation/risk-archive`)
   url.searchParams.set('batchId', fixture.batchId)
   url.searchParams.set('panel', 'archive')
+  url.searchParams.set('source', 'E2E-AUDIT-20260824-GD018')
+  return url.toString()
+}
+
+function riskUrl(fixture) {
+  const url = new URL(`${config.staffBaseUrl}/admin/graduation/risk-archive`)
+  url.searchParams.set('batchId', fixture.batchId)
+  url.searchParams.set('panel', 'risk')
   url.searchParams.set('source', 'E2E-AUDIT-20260824-GD018')
   return url.toString()
 }
@@ -53,13 +61,82 @@ async function addGuidance(page, fixture, marker) {
   return content
 }
 
-async function loginArchiveAdmin(page, fixture) {
+async function closeInactiveHistoricalRisks(page, fixture) {
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+  await page.goto(riskUrl(fixture))
+  await dismissGuide(page)
+  await expect(page.getByRole('heading', { name: '问题预警 · 毕设归档 · 毕设统计', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '问题预警', exact: true })).toHaveClass(/is-active/)
+
+  const inactiveNames = [
+    '未选题',
+    '任务书未下达',
+    '开题逾期未提交或未获通过',
+    '指导记录不足',
+  ]
+  for (const name of inactiveNames) {
+    const row = page.locator('.rk-row').filter({ hasText: name }).first()
+    if (!(await row.isVisible().catch(() => false))) continue
+    await row.click()
+    const pane = page.locator('.rk-pane')
+    await expect(pane).toContainText(name)
+    if (!(await pane.getByText(/最近扫描条件已消失/).isVisible().catch(() => false))) continue
+    const close = pane.getByRole('button', { name: '关闭风险', exact: true })
+    await expect(close).toBeVisible()
+    await close.click()
+    const dialog = page.getByRole('dialog').filter({ hasText: '关闭风险' }).first()
+    await expect(dialog).toBeVisible()
+    await dialog.locator('textarea').fill('E2E-AUDIT-20260824 GD-018：扫描条件已消失，归档前完成真实风险闭环。')
+    const [response] = await Promise.all([
+      page.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/gd-risks\/\d+\/close$/.test(new URL(r.url()).pathname)),
+      dialog.getByRole('button', { name: '确认关闭', exact: true }).click(),
+    ])
+    expect(response.ok(), `close inactive risk ${name} HTTP ${response.status()}`).toBeTruthy()
+    const body = await response.json()
+    expect(body.code, JSON.stringify(body)).toBe(0)
+    await expect(row).toContainText(/已关闭/)
+  }
+
+  // Read-only audit: prove no prerequisite risk was silently bypassed. GD-R12 is the
+  // product's "not archived yet" consequence and is intentionally non-blocking.
+  const admin = await loginApi(config.sandboxAdmin)
+  const riskData = await admin.get('/graduation/gd-risks', {
+    gdStudentId: fixture.gdStudentId, batchId: fixture.batchId, page: 1, pageSize: 100,
+  })
+  const rows = Array.isArray(riskData?.items) ? riskData.items : []
+  const blockers = rows.filter((row) =>
+    ['OPEN', 'PROCESSING'].includes(String(row.status || '').toUpperCase())
+    && String(row.riskCode || '') !== 'GD-R12'
+  )
+  expect(blockers, `archive prerequisite risks still open: ${JSON.stringify(blockers).slice(0, 2500)}`).toHaveLength(0)
+}
+
+async function openArchivePanel(page, fixture) {
   await page.goto(archiveUrl(fixture))
   await dismissGuide(page)
   await expect(page.getByRole('heading', { name: '问题预警 · 毕设归档 · 毕设统计', exact: true })).toBeVisible()
   await expect.soft(page.getByText('毕设材料归档', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: '毕设归档', exact: true })).toHaveClass(/is-active/)
+}
+
+async function archiveMaterialReadiness(fixture) {
+  const admin = await loginApi(config.sandboxAdmin)
+  const data = await admin.get(`/graduation/material-center/students/${fixture.gdStudentId}/library`, {
+    includeHistory: true,
+  })
+  const required = (Array.isArray(data?.items) ? data.items : []).filter((item) => item.required && item.archiveRequired)
+  return required.map((item) => ({
+    code: item.materialCode,
+    initialized: item.initialized,
+    businessStatus: item.businessStatus,
+    reviewStatus: item.reviewStatus,
+    archiveStatus: item.archiveStatus,
+    currentVersionId: item.currentVersionId,
+    versionStatus: item.currentVersion?.versionStatus || '',
+    fileStatus: item.currentVersion?.status || '',
+    scanStatus: item.currentVersion?.scanStatus || '',
+    readyForBusiness: item.currentVersion?.readyForBusiness ?? false,
+  }))
 }
 
 function isArchivePath(response, suffix) {
@@ -80,11 +157,15 @@ test.describe.serial('GD-018 归档 Browser First · preview/freeze/FileVersion/
     fixture = await prepareGraduationFixture()
   })
 
-  test('真实指导补齐 → 批量生成提交 → 旧预览被并发指导变更拒绝 → 重新预览冻结 → 导出台账', async ({ page, browser }) => {
+  test('真实指导补齐 → 关闭已消失风险 → 批量生成提交 → 旧预览被并发指导变更拒绝 → 重新预览冻结 → 导出台账', async ({ page, browser }) => {
     // Required V2 GUIDANCE_RECORD comes from a real mentor operation, never an API seed.
     await addGuidance(page, fixture, 'baseline-guidance')
-    await loginArchiveAdmin(page, fixture)
+    // Historical risks stay auditable instead of auto-closing. Close only conditions the
+    // real UI explicitly says have disappeared; active prerequisite risks remain blockers.
+    await closeInactiveHistoricalRisks(page, fixture)
+    await openArchivePanel(page, fixture)
 
+    const readiness = await archiveMaterialReadiness(fixture)
     const [generatePreviewResponse] = await Promise.all([
       page.waitForResponse((r) => isArchivePath(r, 'batch-generate/preview')),
       page.getByRole('button', { name: '批量生成提交', exact: true }).click(),
@@ -93,7 +174,10 @@ test.describe.serial('GD-018 归档 Browser First · preview/freeze/FileVersion/
     const generatePreview = await readJson(generatePreviewResponse)
     expect(generatePreview.code, JSON.stringify(generatePreview)).toBe(0)
     expect(Number(generatePreview.data?.candidateCount || 0)).toBeGreaterThanOrEqual(1)
-    expect(Number(generatePreview.data?.executableCount || 0), JSON.stringify(generatePreview.data)).toBeGreaterThanOrEqual(1)
+    expect(
+      Number(generatePreview.data?.executableCount || 0),
+      `archive preview=${JSON.stringify(generatePreview.data)} materialReadiness=${JSON.stringify(readiness)}`,
+    ).toBeGreaterThanOrEqual(1)
     expect(String(generatePreview.data?.previewToken || '')).toBeTruthy()
     await expect(page.getByRole('dialog')).toContainText(/预计成功\s*1|预计成功/)
 
