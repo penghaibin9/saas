@@ -172,10 +172,17 @@ test('Academic C grade: teacher input -> college return -> teacher resubmit -> c
     const submitPromise = teacherPage.waitForResponse((r) =>
       r.url().includes(`/api/v1/academic-affairs/grade-tasks/${gradeTaskId}/submit`) && r.request().method() === 'POST'
     )
+    const submittedListRefreshPromise = teacherPage.waitForResponse((r) =>
+      r.url().includes('/api/v1/academic-affairs/grade-tasks?') &&
+      r.request().method() === 'GET' && r.status() === 200
+    )
     await teacherPage.getByRole('button', { name: '提交进入学院审核' }).click()
     const submitted = await submitPromise
     expect(submitted.status()).toBe(200)
     expect((await submitted.json()).code).toBe(0)
+    // Let the product's post-submit grade-list refresh finish before the explicit persistence reload.
+    // Otherwise the test itself aborts this core GET and the strict network seal correctly reports it.
+    await submittedListRefreshPromise
 
     // Persistence after a real reload: the submitted task must still be visible and no longer editable.
     await teacherPage.reload()
