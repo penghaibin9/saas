@@ -1,0 +1,37 @@
+name: TEMP export SA-003 permission sources
+
+on:
+  push:
+    branches:
+      - audit/student-affairs-browser-runner-20260823
+    paths:
+      - '.github/workflows/temp-export-sa003-permission-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout immutable product RC
+        uses: actions/checkout@v4
+        with:
+          ref: 79d6516780e13f58b6f4a4a5118fa6360fdaccc3
+          path: app
+          fetch-depth: 1
+      - name: Assert exact product head
+        run: |
+          set -euo pipefail
+          test "$(git -C app rev-parse HEAD)" = "79d6516780e13f58b6f4a4a5118fa6360fdaccc3"
+      - name: Upload exact source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: sa003-permission-source-79d65167
+          path: |
+            app/backend/app/core/permissions.py
+            app/backend/tests/test_affairs_phase2_role_matrix.py
+          if-no-files-found: error
+          retention-days: 1
