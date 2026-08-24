@@ -161,7 +161,8 @@ test('Academic C grade score checkpoint: browser writes persist through reload b
     mkdirSync(evidenceDir, { recursive: true })
     const checkpoint = {
       tenant: fixture.tenant,
-      tenantId: Number(fixture.tenantId),
+      // fixture.tenantId is deliberately text: real tenant IDs exceed JS safe integer precision.
+      tenantId: String(fixture.tenantId),
       teachingTaskId: Number(fixture.teachingTaskId),
       gradeTaskId: Number(gradeTaskId),
       studentIds: fixture.studentIds.map(Number),

@@ -119,7 +119,9 @@ def main() -> int:
         "collegeReviewer": COLLEGE_REVIEWER,
         "gradeAdmin": GRADE_ADMIN,
         "students": list(STUDENTS),
-        "tenantId": state["tenantId"],
+        # Tenant IDs are 64-bit identifiers and exceed JavaScript's safe integer range.
+        # Serialize as text so Playwright never loses identity precision during JSON.parse.
+        "tenantId": str(state["tenantId"]),
         "termId": state["termId"],
         "teachingTaskId": state["teachingTaskId"],
         "teachingClassId": state["teachingClassId"],
