@@ -310,7 +310,15 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     await expect(row).toContainText('黑名单')
 
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+    const catalogPromise = page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/catalog/positions'
+        && response.request().method() === 'GET'
+    )
     await page.goto(`${config.studentBaseUrl}/internship/selection`)
+    const catalogPayload = await payloadOf(await catalogPromise)
+    expect(catalogPayload.body?.code, catalogPayload.text).toBe(0)
+    const catalogItems = Array.isArray(catalogPayload.body?.data?.items) ? catalogPayload.body.data.items : []
+    expect(catalogItems.some((item) => String(item?.positionId || item?.id || '') === String(positionId))).toBeFalsy()
     await expect(page.getByText(positionTitle(), { exact: false })).toHaveCount(0)
     await page.goto(`${config.studentBaseUrl}/internship`)
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
