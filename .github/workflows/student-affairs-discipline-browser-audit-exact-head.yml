@@ -333,7 +333,7 @@ jobs:
               assert case[1] == e['revisedReason'] and case[2] == e['revisedDocNo'], case
               assert case[3] == 'REMOVED' and case[4] is not None, case
 
-              cur.execute('SELECT version_no,decision_kind,disc_type,reason,doc_no FROM t_affairs_discipline_decision_version WHERE case_id=%s AND is_deleted=0 ORDER BY version_no', (case_id,))
+              cur.execute('SELECT version_no,decision_kind,disc_type,reason,doc_no FROM t_affairs_discipline_decision_version WHERE case_id=%s ORDER BY version_no', (case_id,))
               versions = cur.fetchall()
               assert len(versions) == 2, versions
               assert versions[0][1] == 'ORIGINAL' and versions[0][2] == 'WARNING', versions
@@ -345,7 +345,7 @@ jobs:
               assert appeal and appeal[0] == 'REVISED' and appeal[1] == 'REVISED', appeal
               assert appeal[2] == e['reviewOpinion'], appeal
 
-              cur.execute("SELECT to_stage FROM t_student_stage_event WHERE source_module='student-affairs' AND student_id=(SELECT student_id FROM t_affairs_discipline_case WHERE id=%s) AND is_deleted=0", (case_id,))
+              cur.execute("SELECT to_stage FROM t_student_stage_event WHERE source_module='student-affairs' AND student_id=(SELECT student_id FROM t_affairs_discipline_case WHERE id=%s)", (case_id,))
               stages = {row[0] for row in cur.fetchall()}
               for expected in ('DISCIPLINE_EFFECTIVE', 'DISCIPLINE_REVISED', 'DISCIPLINE_REMOVED'):
                   assert expected in stages, (expected, stages)
