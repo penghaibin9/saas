@@ -7,18 +7,21 @@
 数据范围：协议模板为校级配置主数据，默认按租户可见；
 如需按学院限定（学院实习负责人只看本院模板），在 _scope_filter 处接入 resolve_teacher_scope（预留）。
 
-隔离：本文件不引用实习学生/打卡/周报/毕设等表；仅读写 t_internship_agreement_template + 审计表。
+隔离：模板 CRUD 本身只读写 t_internship_agreement_template + 审计表；协议发起预览复用
+internship_agreement_service 的真实渲染与实习数据范围，不另造一套占位替换规则。
 """
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
 
 from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
-from app.models import InternshipAgreementTemplate, InternshipAuditTrail
-from app.services.db_service import _iso, _tid, session
+from app.core.exceptions import AppException, no_permission, not_found
+from app.models import (InternshipAgreementTemplate, InternshipAuditTrail, InternshipRecord,
+                        StudentProfile)
+from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"DRAFT": "草稿", "ENABLED": "启用中", "DISABLED": "已停用", "ARCHIVED": "已归档"}
 STATUS_TONE = {"DRAFT": "default", "ENABLED": "success", "DISABLED": "warning", "ARCHIVED": "default"}
@@ -178,6 +181,40 @@ def get_template(template_id: str) -> dict:
                                "detail": a.detail_json or {}, "occurredAt": _iso(a.occurred_at)}
                               for a in trails]
         return data
+
+
+def enabled_options(batch_id=None) -> list[dict]:
+    """协议发起选择器专用读模型；只暴露已启用且适用于当前批次的模板。"""
+    items, _ = list_templates(1, 200, status="ENABLED", batch_id=batch_id)
+    return items
+
+
+def preview_template(template_id: str, internship_id, user=None) -> dict:
+    """按真实实习记录渲染模板预览，不写协议实例、不写审计业务结果。"""
+    if not internship_id:
+        raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
+    # 懒导入，避免模板配置服务与协议实例服务初始化时形成循环依赖。
+    from app.modules.internship.services import internship_agreement_service as agreement_svc
+    scope, in_scope = agreement_svc._scope_ctx(user)
+    with session() as db:
+        tpl = _get(db, template_id)
+        if tpl.status != "ENABLED":
+            raise AppException("STATUS_CONFLICT", "仅启用中的协议模板可用于发起预览")
+        rec = db.get(InternshipRecord, _as_id(internship_id))
+        if not rec or rec.is_deleted or rec.tenant_id != _tid():
+            raise not_found("实习记录不存在")
+        stu = db.get(StudentProfile, rec.student_id)
+        if not in_scope(scope, db, rec, stu):
+            raise no_permission("该实习学生不在你的数据范围内")
+        if tpl.scope_batch_ids and str(rec.batch_id) not in {str(value) for value in tpl.scope_batch_ids}:
+            raise AppException("VALIDATION_ERROR", "所选协议模板不适用于当前实习批次")
+        preview = SimpleNamespace(enterprise_name=rec.enterprise_name, position_name=rec.position_name)
+        return {
+            "templateId": str(tpl.id),
+            "templateName": tpl.name,
+            "internshipId": str(rec.id),
+            "renderedBody": agreement_svc._render_body(db, tpl, rec, stu, preview),
+        }
 
 
 def template_stats() -> dict:
