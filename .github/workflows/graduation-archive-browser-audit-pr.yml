@@ -67,13 +67,13 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_EXPECTED_SHA: e7e621751eda6d333114511bcda13d6cfab58086
+      E2E_EXPECTED_SHA: 4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9
 
     steps:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: e7e621751eda6d333114511bcda13d6cfab58086
+          ref: 4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9
           fetch-depth: 0
 
       - name: Assert exact product HEAD
@@ -81,7 +81,7 @@ jobs:
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           echo "PRODUCT_EXACT_HEAD=$actual"
-          test "$actual" = "e7e621751eda6d333114511bcda13d6cfab58086"
+          test "$actual" = "4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9"
 
       - name: Checkout audit harness only
         uses: actions/checkout@v4
@@ -110,8 +110,8 @@ jobs:
           cp audit-harness/e2e/scripts/graduation-specialist-accounts.py e2e/scripts/
           cp audit-harness/e2e/scripts/graduation-archive-db-audit.py e2e/scripts/
           rm -rf audit-harness
-          grep -rl -e '63195a6dc9d25fa3805563910fb699ec163b552a' -e '47264037bf014276e795d3655d7f178830756729' e2e/scripts | xargs -r sed -i -e 's/63195a6dc9d25fa3805563910fb699ec163b552a/e7e621751eda6d333114511bcda13d6cfab58086/g' -e 's/47264037bf014276e795d3655d7f178830756729/e7e621751eda6d333114511bcda13d6cfab58086/g'
-          test "$(git rev-parse HEAD)" = "e7e621751eda6d333114511bcda13d6cfab58086"
+          grep -rl -e '63195a6dc9d25fa3805563910fb699ec163b552a' -e '47264037bf014276e795d3655d7f178830756729' e2e/scripts | xargs -r sed -i -e 's/63195a6dc9d25fa3805563910fb699ec163b552a/4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9/g' -e 's/47264037bf014276e795d3655d7f178830756729/4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9/g'
+          test "$(git rev-parse HEAD)" = "4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9"
           bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
           test -z "$bad"
           git status --short
