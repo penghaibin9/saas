@@ -161,7 +161,7 @@ jobs:
           set -euo pipefail
           cp runner/audit-tests/student-affairs-sa009-browser-v3.spec.mjs app/e2e/specs/student-affairs-sa009-browser-v3.spec.mjs
           cd app/e2e
-          npm ci
+          npm install
           npx playwright install --with-deps chromium
 
       - name: Run strict Browser First SA-009 dorm lifecycle
