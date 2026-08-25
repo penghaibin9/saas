@@ -23,3 +23,15 @@ def test_dorm_transfer_approval_guard_remains_assignee_bound():
     assert "_require_pending_assignee(db, transfer.id, user, dorm.TODO_TRANSFER)" in source
     assert 'node == "DORM_MANAGER_REVIEW"' in source
     assert 'context.scope_type != "DORM_BUILDING"' in source
+
+
+def test_counselor_dorm_transfer_permissions_are_minimal_and_explicit():
+    source = (Path(__file__).resolve().parents[1] / "app/core/permissions.py").read_text(encoding="utf-8")
+    counselor = source.split('"COUNSELOR": {', 1)[1].split('\n    },', 1)[0]
+
+    assert '"studentAffairs.dorm.view"' in counselor
+    assert '"studentAffairs.dorm.transfer.create"' in counselor
+    assert '"studentAffairs.dorm.transfer.approve"' in counselor
+    assert '"studentAffairs.dorm.*"' not in counselor
+    assert '"studentAffairs.dorm.allocation.manage"' not in counselor
+    assert '"studentAffairs.dorm.building.manage"' not in counselor

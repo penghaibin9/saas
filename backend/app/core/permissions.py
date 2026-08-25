@@ -265,6 +265,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.funding.approve", "studentAffairs.discipline.view",
         "studentAffairs.discipline.remove.approve",
         "studentAffairs.archive.view", "studentAffairs.stats.view",
+        # 宿舍调宿：仅开放本班学生调宿入口/发起/审批能力；列表范围与审批节点仍由
+        # affairs_dorm_transfer_scope_guard + affairs_dorm_node_guard 双重 fail-closed 收敛。
+        "studentAffairs.dorm.view", "studentAffairs.dorm.transfer.create", "studentAffairs.dorm.transfer.approve",
         # 困难认定·辅导员初审节点（2026-07-18 甲方拍板扩权，见历史欠账"辅导员初审"矛盾记录）：
         # 仅授予 COUNSELOR_REVIEW 节点的通过/退回/驳回 + 该节点下本班学生家庭经济查看，
         # 不授予班级评议/学院复审/学校终审——节点授权由 affairs_aid_service._check_node_authority 收敛。
