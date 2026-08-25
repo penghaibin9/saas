@@ -96,7 +96,10 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
 
     try {
       // 1. Staff PC: real login, create and qualify mentor.
-      await new StaffLoginPage(staff, config.staffBaseUrl).login(config.multiRole)
+      const staffLogin = new StaffLoginPage(staff, config.staffBaseUrl)
+      await staffLogin.login(config.multiRole)
+      await staffLogin.switchRole(/毕设管理员|毕业设计管理员/)
+      await expect(staffLogin.currentRoleText()).resolves.toMatch(/毕设管理员|毕业设计管理员/)
       await staff.goto(`${config.staffBaseUrl}/admin/graduation/mentors/create`)
       await ensureNoBlockingGuide(staff)
       await fillField(staff, '教师工号', mentorNo)
