@@ -98,7 +98,7 @@ jobs:
       E2E_MINIAPP_BASE_URL: https://127.0.0.1:8443/miniapp
       E2E_ENTERPRISE_BASE_URL: https://127.0.0.1:8443/enterprise
       E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      E2E_PRODUCT_EXACT_SHA: 2e0a92c8b7f21a6eaa5ed6ca02929e39cd97fd2b
+      E2E_PRODUCT_EXACT_SHA: 5ae06df816a85601e787d63db31337f333b58f46
 
     steps:
       - uses: actions/checkout@v4
