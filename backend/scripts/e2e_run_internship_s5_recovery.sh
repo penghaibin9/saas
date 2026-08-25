@@ -60,6 +60,25 @@ wait_health() {
   return 1
 }
 
+assert_guardian_route_auth_gate() {
+  local path="$1"
+  local body_file="e2e/runtime/guardian-route-${2}.json"
+  local code
+  code="$(curl -sS -o "$body_file" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -X POST --data '{}' "http://127.0.0.1:8000${path}")"
+  case "$code" in
+    401|403)
+      echo "[s5-route] ${path} registered and auth-gated HTTP=${code}"
+      ;;
+    *)
+      echo "[s5-route] ${path} unexpected HTTP=${code}" >&2
+      cat "$body_file" >&2 || true
+      return 1
+      ;;
+  esac
+}
+
 stop_pid() {
   local pid="$1"
   [ -n "$pid" ] || return 0
@@ -125,6 +144,12 @@ FINAL_PID=$!
 popd >/dev/null
 wait_health "e2e/runtime-logs/s5-final-backend.log"
 
+# Probe the already-running final-RC backend itself. These two product routes must
+# exist in the real runtime and reject an unauthenticated caller; 404/405 or any
+# successful/unguarded response is a hard failure.
+assert_guardian_route_auth_gate "/api/v1/internship/compliance/consents/deliver" deliver
+assert_guardian_route_auth_gate "/api/v1/internship/compliance/consents/1/redeliver" redeliver
+
 pushd backend >/dev/null
 E2E_S5_PHASE=verify-upgraded python scripts/e2e_verify_internship_s5_recovery.py
 pytest tests/test_internship_guardian_consent_route_registration.py -q -p no:warnings
@@ -164,5 +189,6 @@ print(json.dumps({
     "uniqueIndexes": state["restoredSchema"]["uniqueIndexes"],
     "fileBindingRestored": True,
     "historicalReadsRestored": True,
+    "guardianRuntimeRoutesAuthGated": True,
 }, ensure_ascii=False, sort_keys=True))
 PY
