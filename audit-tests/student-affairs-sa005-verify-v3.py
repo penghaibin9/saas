@@ -47,7 +47,7 @@ def verify_precondition() -> None:
             row = cur.fetchone()
             print("[SA002_PRECONDITION]", row)
             assert row, "SA-005 requires one explicit APPROVED SA-002 difficult-library prerequisite"
-            assert row[3] == "SPECIAL_DIFFICULT"
+            assert row[3] == "SPECIAL"
             assert row[4] == "APPROVED"
             assert row[5] == "2026-2027"
     finally:
@@ -121,7 +121,7 @@ def verify_journey() -> None:
             assert snapshot.get("type") == "GRANT"
             assert snapshot.get("ok") is True
             assert snapshot.get("inDifficultLibrary") is True
-            assert snapshot.get("aidLevel") == "SPECIAL_DIFFICULT"
+            assert snapshot.get("aidLevel") == "SPECIAL"
             assert snapshot.get("aidLevelAllowed") is True
             assert snapshot.get("ruleVersion")
             assert snapshot.get("evaluatedAt")
@@ -167,7 +167,7 @@ def verify_journey() -> None:
             print("[CURRENT_DIFFICULT_LIBRARY]", aid)
             assert aid
             assert aid[0] == "APPROVED"
-            assert aid[1] == "SPECIAL_DIFFICULT"
+            assert aid[1] == "SPECIAL"
             assert aid[2] == evidence["schoolYear"]
 
             cur.execute(
