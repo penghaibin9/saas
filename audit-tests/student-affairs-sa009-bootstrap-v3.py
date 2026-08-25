@@ -19,6 +19,7 @@ from scripts.e2e_bootstrap_student_affairs_accounts import (
     list_users,
 )
 
+SA_ADMIN_LOGIN = "e2e_sa_admin"
 COUNSELOR_LOGIN = "e2e_sa009_counselor"
 DORM_MANAGER_LOGIN = "e2e_sa009_dorm"
 STUDENT_NO = "E2E20260911"
@@ -120,6 +121,7 @@ def main() -> None:
     teachers = _workbook_with_rows(
         build_teacher_template(),
         [
+            [SA_ADMIN_LOGIN, "SA009学工处管理员", "学工处", "学工处管理员", "STUDENT_AFFAIRS_ADMIN", "", ""],
             [COUNSELOR_LOGIN, "SA009辅导员", COLLEGE, "辅导员", "COUNSELOR", "CLASS", CLASS_A],
             # Do not pre-bind any dorm building. Browser-created managerTeacherKey is the authority.
             [DORM_MANAGER_LOGIN, "SA009宿管", "后勤处", "宿管", "DORM_MANAGER", "", ""],
@@ -133,7 +135,7 @@ def main() -> None:
     _canonical_import(token, kind="students", content=students, idempotency_namespace="e2e-sa009-v3-browser")
 
     users = list_users(token)
-    required = [COUNSELOR_LOGIN, DORM_MANAGER_LOGIN, STUDENT_NO]
+    required = [SA_ADMIN_LOGIN, COUNSELOR_LOGIN, DORM_MANAGER_LOGIN, STUDENT_NO]
     missing = [name for name in required if name not in users]
     assert not missing, f"missing canonical SA-009 identities: {missing}"
 
@@ -145,6 +147,8 @@ def main() -> None:
     dorm_manager_user_id = int(users[DORM_MANAGER_LOGIN].get("id") or users[DORM_MANAGER_LOGIN].get("userId"))
     _assert_no_prebound_dorm(dorm_manager_user_id)
     result = {
+        "saAdminLogin": SA_ADMIN_LOGIN,
+        "saAdminUserId": int(users[SA_ADMIN_LOGIN].get("id") or users[SA_ADMIN_LOGIN].get("userId")),
         "studentNo": STUDENT_NO,
         "studentUserId": int(users[STUDENT_NO].get("id") or users[STUDENT_NO].get("userId")),
         "counselorLogin": COUNSELOR_LOGIN,
