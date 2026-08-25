@@ -338,19 +338,21 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await expect(studentMini.getByText(topicTitle, { exact: true })).toBeVisible()
       await expect(studentMini.getByText(new RegExp(mentorName))).toBeVisible()
 
-      // Same-route page.goto does not re-run uni-app onLoad in H5, while a full document reload races
-      // auth hydration and can fire an unauthenticated 401 before the stored session is restored. Bounce
-      // through a different Teacher Mini route inside the live SPA, preserving the GD_MENTOR session, then
-      // require a fresh exact-batch taskbook GET before trusting the UI badge.
+      // Re-enter through the real Teacher Workbench quick action instead of mutating H5 hashes with page.goto.
+      // This exercises the same uni-app navigation a teacher uses and guarantees the taskbook page lifecycle
+      // runs again before we trust the post-confirmation status badge.
       await expect(teacherMini).toHaveURL(/pages\/teacher\/graduation-taskbook\/index/)
       await teacherMini.goto(`${miniBase}/#/pages/teacher/workbench/index`)
       await expect(teacherMini).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 20_000 })
+      const taskbookQuickAction = teacherMini.getByText('任务书', { exact: true }).first()
+      await expect(taskbookQuickAction, 'Teacher Mini workbench taskbook quick action must be visible').toBeVisible({ timeout: 20_000 })
       const confirmedTaskbooks = teacherMini.waitForResponse((r) =>
         r.request().method() === 'GET' &&
         r.url().includes('/api/v1/mobile/teacher/graduation/taskbooks') &&
         r.url().includes(`batchId=${batchId}`)
       )
-      await teacherMini.goto(`${miniBase}/#/pages/teacher/graduation-taskbook/index`)
+      await taskbookQuickAction.click()
+      await expect(teacherMini).toHaveURL(/pages\/teacher\/graduation-taskbook\/index/, { timeout: 20_000 })
       const confirmedTaskbooksResponse = await confirmedTaskbooks
       expect(confirmedTaskbooksResponse.ok(), 'Teacher Mini confirmed taskbook readback must be real HTTP success').toBeTruthy()
       const confirmedTaskbooksEnvelope = await confirmedTaskbooksResponse.json()
