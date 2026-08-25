@@ -136,7 +136,8 @@ test.describe.serial('Student Affairs V3 Browser First · SA-009 dorm lifecycle'
       const checkin = page.getByRole('button', { name: '入住', exact: true }).first()
       await expect(checkin).toBeVisible({ timeout: 20_000 })
       await checkin.click()
-      const dialog = page.getByRole('dialog', { name: /办理入住/ })
+      const dialog = page.getByRole('dialog').filter({ hasText: /办理入住/ }).last()
+      await expect(dialog).toBeVisible({ timeout: 20_000 })
       await selectRemote(field(dialog, '入住学生'), {
         keyword: studentNo, optionText: studentNo
       })
