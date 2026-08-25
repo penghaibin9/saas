@@ -209,6 +209,17 @@ async function createSessionFromUi(page, facts, occurrence, fromToday = false) {
   expect(payload?.data?.sourceType).toBe('FORMAL_TEACHING')
   const sessionId = String(payload?.data?.sessionId || '')
   expect(sessionId).toMatch(/^\d+$/)
+
+  // Product keeps the teacher on the session list after creation. Follow the same real-user
+  // path as a teacher: find the just-created DRAFT occurrence and click it into roll-call detail.
+  const createdRow = page.locator('.list-row')
+    .filter({ hasText: facts.courseName })
+    .filter({ hasText: sessionDate })
+    .filter({ hasText: `第${slotNo}节` })
+    .first()
+  await expect(createdRow, `AA-010 ${label} newly created occurrence must appear in the teacher session list`).toBeVisible({ timeout: 10_000 })
+  await expect(createdRow).toContainText('草稿')
+  await createdRow.click()
   await expect(page.getByText('考勤详情', { exact: true })).toBeVisible({ timeout: 10_000 })
   return sessionId
 }
