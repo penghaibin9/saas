@@ -219,12 +219,6 @@ jobs:
             ],
             'e2e/specs/graduation-final-browser-audit.spec.mjs': [
               (
-                "async function submitStudentFinal(page, fixture, marker) {\n  await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)",
-                "async function submitStudentFinal(page, fixture, marker, { login = true } = {}) {\n  if (login) await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)",
-              ),
-              ("const second = await submitStudentFinal(page, fixture, 'draft-v2')", "const second = await submitStudentFinal(page, fixture, 'draft-v2', { login: false })"),
-              ("const finalSubmit = await submitStudentFinal(page, fixture, 'final-v1')", "const finalSubmit = await submitStudentFinal(page, fixture, 'final-v1', { login: false })"),
-              (
                 "    await reachFinalCheckThroughUi(page, fixture)",
                 "    if (process.env.GD020_CONTINUE_FROM_MIDTERM !== '1') await reachFinalCheckThroughUi(page, fixture)",
               ),
