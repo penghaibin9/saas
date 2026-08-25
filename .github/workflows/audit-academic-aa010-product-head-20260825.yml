@@ -48,6 +48,7 @@ jobs:
     env:
       TARGET_SHA: ${{ github.event.pull_request.base.sha }}
       RUNNER_SHA: ${{ github.event.pull_request.head.sha }}
+      SCHOOL_IAM_AUTHORITY_EXPECTED_SHA: ${{ github.event.pull_request.base.sha }}
       CI: 'true'
       APP_ENV: test
       DEPLOYMENT_MODE: local
@@ -129,6 +130,8 @@ jobs:
           python -m py_compile backend/scripts/e2e_assert_academic_aa010_attendance.py
           node --check e2e/specs/academic-aa010-attendance-gold-browser.spec.mjs
           python -m py_compile backend/scripts/e2e_seed_academic_c_teacher_today.py
+          python -m py_compile backend/scripts/bootstrap_control_plane_school_iam_authority.py
+          python -m py_compile backend/scripts/e2e_seed_control_plane_school_iam.py
 
       - name: Install backend and migrate isolated MySQL
         working-directory: backend
@@ -138,9 +141,17 @@ jobs:
           test "$(alembic heads | grep -c '(head)')" -eq 1
           alembic upgrade head
 
+      - name: Replay production School IAM Authority
+        working-directory: backend
+        run: python scripts/bootstrap_control_plane_school_iam_authority.py
+
       - name: Seed isolated tenant
         working-directory: backend
         run: python scripts/e2e_seed_playwright_tenants.py
+
+      - name: Seed real School IAM runtime fixture
+        working-directory: backend
+        run: python scripts/e2e_seed_control_plane_school_iam.py
 
       - name: Start real backend with mock login disabled
         run: |
