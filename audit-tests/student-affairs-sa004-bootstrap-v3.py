@@ -65,12 +65,24 @@ def main() -> None:
             body={"loginName": login_name, "password": temp_password, "tenantCode": TENANT},
         )
         assert login.get("code") == 0, (login_name, login)
+        change_body = {
+            "oldPassword": temp_password,
+            "newPassword": STABLE_PWD,
+            "confirmPassword": STABLE_PWD,
+        }
         changed = _req(
             "POST",
             "/auth/change-password",
             token=login["data"]["accessToken"],
-            body={"oldPassword": temp_password, "newPassword": STABLE_PWD},
+            body=change_body,
         )
+        if changed.get("code") != 0:
+            changed = _req(
+                "POST",
+                "/auth/password/change",
+                token=login["data"]["accessToken"],
+                body={"oldPassword": temp_password, "newPassword": STABLE_PWD},
+            )
         assert changed.get("code") == 0, (login_name, changed)
 
     users = list_users(token)
