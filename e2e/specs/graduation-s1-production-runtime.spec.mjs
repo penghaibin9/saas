@@ -36,7 +36,7 @@ async function loginStudentMini(page) {
   await page.getByText('填写', { exact: true }).click()
   await fields.nth(2).fill(config.student.tenant)
   await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
-  const loginResponse = page.waitForResponse((response) => apiPath(response, /\/api\/v1\/auth\/login$/))
+  const loginResponse = page.waitForResponse((response) => apiPath(response, /\/api\/v1\/auth\/browser-login$/))
   await page.getByText('进入学生首页', { exact: true }).click()
   const response = await loginResponse
   expect(response.ok(), `Student Mini production login HTTP ${response.status()}`).toBeTruthy()
@@ -52,7 +52,7 @@ async function loginTeacherMini(page) {
   await page.getByText('填写', { exact: true }).click()
   await fields.nth(2).fill(config.mentor.tenant)
   await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
-  const loginResponse = page.waitForResponse((response) => apiPath(response, /\/api\/v1\/auth\/login$/))
+  const loginResponse = page.waitForResponse((response) => apiPath(response, /\/api\/v1\/auth\/browser-login$/))
   await page.getByText('进入教师工作台', { exact: true }).click()
   const response = await loginResponse
   expect(response.ok(), `Teacher Mini production login HTTP ${response.status()}`).toBeTruthy()
