@@ -255,7 +255,8 @@ test.describe.serial('Student Affairs V3 Browser First · SA-009 dorm lifecycle'
       const checkout = page.getByRole('button', { name: '退宿', exact: true }).first()
       await expect(checkout).toBeVisible()
       await checkout.click()
-      const dialog = page.getByRole('dialog', { name: '办理退宿' })
+      const dialog = page.getByRole('dialog').filter({ hasText: /办理退宿/ }).last()
+      await expect(dialog).toBeVisible({ timeout: 20_000 })
       const responsePromise = page.waitForResponse((response) =>
         response.url().includes(`/api/v1/student-affairs/dorm/beds/${toBedId}/checkout`)
         && response.request().method() === 'POST')
