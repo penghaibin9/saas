@@ -212,9 +212,16 @@ test.describe.serial('S1 · production build + nginx TLS + 2-worker backend repr
 
   test('S1-07 batch detail：Staff PC 真实读取实习批次详情', async ({ page }) => {
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+    const ruleResponsePromise = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith(`/api/v1/internship/batches/${fixture.batchId}/participants/rule`)
+        && response.request().method() === 'GET'
+    )
     await page.goto(`${config.staffBaseUrl}/admin/internship/batches/${fixture.batchId}`)
+    const ruleResponse = await ruleResponsePromise
+    expect(ruleResponse.ok(), `participant rule HTTP ${ruleResponse.status()}`).toBeTruthy()
     await expect(page.getByRole('heading', { name: new RegExp(fixture.batchName) })).toBeVisible()
-    await expect(page.getByText(fixture.batchName, { exact: false }).first()).toBeVisible()
+    await expect(page.getByText('参与学生范围', { exact: true })).toBeVisible()
+    await expect(page.getByText('参与学生范围加载失败', { exact: true })).toHaveCount(0)
     assertHttpsRuntime(page)
   })
 
