@@ -21,13 +21,16 @@ on:
       - 'miniapp/src/pages.json'
       - 'backend/app/modules/internship/**'
       - 'backend/app/models/internship.py'
+      - 'backend/app/models/internship_*.py'
       - 'backend/app/api/v1/route_registration.py'
-      - 'backend/app/api/v1/mobile_internship_*.py'
-      - 'backend/app/student_portal/internship_router.py'
+      - 'backend/app/api/v1/*internship*.py'
+      - 'backend/app/services/*internship*.py'
+      - 'backend/app/student_portal/**internship*.py'
       - 'backend/alembic/versions/**'
       - 'backend/scripts/run_scheduled_jobs.py'
       - 'enterprise-portal/**'
       - 'scripts/check/check-internship-source-closure.py'
+      - 'scripts/check/check-internship-source-closure-v2.py'
       - '.github/workflows/internship-*.yml'
       - '.github/workflows/playwright-production-e2e.yml'
   workflow_dispatch:
@@ -47,7 +50,7 @@ jobs:
     timeout-minutes: 10
     env:
       E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      E2E_PRODUCT_EXACT_SHA: 6c4e050f81d9fb7399d9ac7b0e0f0894ea4c75df
+      E2E_PRODUCT_EXACT_SHA: b0806ebc8355567428b4c6407e7806980b4db0f1
 
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +72,7 @@ jobs:
           git cat-file -e "$E2E_PRODUCT_EXACT_SHA^{commit}"
 
       - name: Run S6 source closure
-        run: python scripts/check/check-internship-source-closure.py
+        run: python scripts/check/check-internship-source-closure-v2.py
 
       - name: Print S6 evidence
         if: always()
