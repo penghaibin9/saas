@@ -20,10 +20,13 @@ async function jsonBody(response) {
   try { return await response.json() } catch { return {} }
 }
 
-async function selectRemote(root, { searchPlaceholder, keyword, optionText }) {
+async function selectRemote(root, { keyword, optionText }) {
   await root.getByRole('combobox').click()
-  const search = root.getByPlaceholder(searchPlaceholder)
-  if (keyword) await search.fill(keyword)
+  if (keyword) {
+    const search = root.getByRole('textbox').first()
+    await expect(search).toBeVisible({ timeout: 20_000 })
+    await search.fill(keyword)
+  }
   const option = root.getByRole('option').filter({ hasText: optionText }).first()
   await expect(option).toBeVisible({ timeout: 20_000 })
   await option.click()
@@ -77,7 +80,6 @@ test.describe.serial('Student Affairs V3 Browser First · SA-009 dorm lifecycle'
       await field(dialog, '楼栋名称').locator('input').fill(buildingName)
       await field(dialog, '性别限制').locator('select').selectOption('MALE')
       await selectRemote(field(dialog, '负责宿管'), {
-        searchPlaceholder: '按工号 / 姓名搜索',
         keyword: 'e2e_sa009_dorm',
         optionText: 'e2e_sa009_dorm'
       })
@@ -136,7 +138,7 @@ test.describe.serial('Student Affairs V3 Browser First · SA-009 dorm lifecycle'
       await checkin.click()
       const dialog = page.getByRole('dialog', { name: /办理入住/ })
       await selectRemote(field(dialog, '入住学生'), {
-        searchPlaceholder: '按学号 / 姓名搜索', keyword: studentNo, optionText: studentNo
+        keyword: studentNo, optionText: studentNo
       })
       const responsePromise = page.waitForResponse((response) =>
         /\/api\/v1\/student-affairs\/dorm\/beds\/\d+\/checkin$/.test(new URL(response.url()).pathname)
@@ -160,13 +162,13 @@ test.describe.serial('Student Affairs V3 Browser First · SA-009 dorm lifecycle'
       await page.getByRole('button', { name: '发起调宿', exact: true }).first().click()
       const dialog = page.getByRole('dialog', { name: '发起调宿' })
       await selectRemote(field(dialog, '调宿学生'), {
-        searchPlaceholder: '按学号 / 姓名搜索', keyword: studentNo, optionText: studentNo
+        keyword: studentNo, optionText: studentNo
       })
       await selectRemote(field(dialog, '目标楼栋'), {
-        searchPlaceholder: '按楼栋名称搜索', keyword: buildingName, optionText: buildingName
+        keyword: buildingName, optionText: buildingName
       })
       await selectRemote(field(dialog, '目标房间'), {
-        searchPlaceholder: '按房间号搜索', keyword: '', optionText: '101'
+        keyword: '', optionText: '101'
       })
       const bedField = field(dialog, '目标床位')
       await bedField.getByRole('combobox').click()
