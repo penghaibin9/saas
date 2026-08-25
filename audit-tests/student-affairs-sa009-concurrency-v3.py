@@ -233,8 +233,9 @@ def main() -> None:
     success = next(item for item in results if item["status"] == 200)
     conflict = next(item for item in results if item["status"] == 409)
     assert success.get("body", {}).get("code") == 0, success
-    conflict_code = conflict.get("body", {}).get("code")
-    assert conflict_code in {"DATA_CONFLICT", 409}, conflict
+    conflict_body = conflict.get("body", {})
+    assert conflict_body.get("bizCode") == "DATA_CONFLICT", conflict
+    assert int(conflict_body.get("code") or 0) == 409001, conflict
 
     mysql_truth = _verify_mysql(bed_id, student_ids)
     evidence = {
