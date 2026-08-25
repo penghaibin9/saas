@@ -107,7 +107,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await fillField(staff, '所属学院', '智能制造学院')
       await fillField(staff, '所属专业', '软件技术')
       await fillField(staff, '最大指导人数', 8)
-      const mentorCreate = staff.waitForResponse((r) => r.request().method() === 'POST' && /\/api\/v1\/graduation\/mentors(?:\?|$)/.test(r.url()))
+      const mentorCreate = staff.waitForResponse((r) => r.request().method() === 'POST' && /\/api\/v1\/graduation\/gd-mentors(?:\?|$)/.test(r.url()))
       await staff.getByRole('button', { name: '保存', exact: true }).click()
       expect((await mentorCreate).ok(), 'mentor create must be real HTTP success').toBeTruthy()
       await expect(staff).toHaveURL(/\/admin\/graduation\/mentors/)
@@ -115,7 +115,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       const mentorRow = rowFor(staff, mentorNo)
       await expect(mentorRow).toBeVisible({ timeout: 15_000 })
       await mentorRow.getByRole('button', { name: '审核', exact: true }).click()
-      const mentorReview = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/graduation/mentors/') && r.url().includes('/review'))
+      const mentorReview = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/graduation/gd-mentors/') && r.url().includes('/review'))
       await confirmDialog(staff, /确认通过|通过|确认/)
       expect((await mentorReview).ok(), 'mentor qualification review must persist').toBeTruthy()
 
@@ -146,7 +146,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await staff.goto(`${config.staffBaseUrl}/admin/graduation/students/create`)
       await pickRemote(staff, '学生', studentNo, studentNo)
       await pickRemote(staff, '毕设批次', batchNo, batchName)
-      const studentCreate = staff.waitForResponse((r) => r.request().method() === 'POST' && /\/api\/v1\/graduation\/students(?:\?|$)/.test(r.url()))
+      const studentCreate = staff.waitForResponse((r) => r.request().method() === 'POST' && /\/api\/v1\/graduation\/gd-students(?:\?|$)/.test(r.url()))
       await staff.getByRole('button', { name: '建档', exact: true }).click()
       const studentCreateResponse = await studentCreate
       expect(studentCreateResponse.ok(), 'graduation student create must persist').toBeTruthy()
@@ -158,7 +158,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await staff.goto(`${config.staffBaseUrl}/admin/graduation/mentors/assign/${gdStudentId}`)
       await pickRemote(staff, '导师', mentorNo, mentorName)
       await fillField(staff, '分配原因', 'GD-020 最终同批次真实浏览器导师绑定')
-      const mentorAssign = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/graduation/mentors/') && r.url().includes('/assign'))
+      const mentorAssign = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/graduation/gd-mentor-assignments/assign'))
       await staff.getByRole('button', { name: '确认', exact: true }).click()
       expect((await mentorAssign).ok(), 'mentor assignment must persist').toBeTruthy()
 
@@ -173,7 +173,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await fillField(staff, '题目要求', '完成真实业务闭环并保留完整过程证据')
       const submitReviewBox = staff.locator('label').filter({ hasText: '保存后直接提交审核' }).locator('input[type=checkbox]')
       await submitReviewBox.check()
-      const topicCreate = staff.waitForResponse((r) => r.request().method() === 'POST' && /\/api\/v1\/graduation\/topics(?:\?|$)/.test(r.url()))
+      const topicCreate = staff.waitForResponse((r) => r.request().method() === 'POST' && /\/api\/v1\/graduation\/gd-topics(?:\?|$)/.test(r.url()))
       await staff.getByRole('button', { name: '保存', exact: true }).click()
       const topicCreateResponse = await topicCreate
       expect(topicCreateResponse.ok(), 'topic create must persist').toBeTruthy()
@@ -187,7 +187,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       const topicRow = rowFor(staff, topicTitle)
       await expect(topicRow).toBeVisible({ timeout: 15_000 })
       await topicRow.getByRole('button', { name: '通过', exact: true }).click()
-      const topicReview = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes(`/graduation/topics/${topicId}`) && r.url().includes('/review'))
+      const topicReview = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes(`/graduation/gd-topics/${topicId}/review`))
       await confirmDialog(staff, /确认通过|通过|确认/)
       expect((await topicReview).ok(), 'topic approval must persist').toBeTruthy()
 
@@ -197,7 +197,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await pickRemote(staff, '毕设批次', batchNo, batchName)
       await fillField(staff, '轮次序号', 1)
       await fillField(staff, '最多志愿数', 1)
-      const roundCreate = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/graduation/topic-rounds'))
+      const roundCreate = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/graduation/gd-topic-rounds'))
       await staff.getByRole('button', { name: '创建', exact: true }).click()
       const roundCreateResponse = await roundCreate
       expect(roundCreateResponse.ok(), 'choice round create must persist').toBeTruthy()
@@ -208,7 +208,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       const roundRow = rowFor(staff, roundName)
       await expect(roundRow).toBeVisible({ timeout: 15_000 })
       await roundRow.getByRole('button', { name: '开启', exact: true }).click()
-      const openRound = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes(`/graduation/topic-rounds/${roundId}/open`))
+      const openRound = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes(`/graduation/gd-topic-rounds/${roundId}/open`))
       await confirmDialog(staff, /确认开启|开启|确认/)
       expect((await openRound).ok(), 'choice round open must persist').toBeTruthy()
 
@@ -219,7 +219,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       const miniTopic = studentMini.locator('.tp__topic').filter({ hasText: topicTitle }).first()
       await expect(miniTopic).toBeVisible({ timeout: 20_000 })
       await miniTopic.click()
-      const choiceSubmit = studentMini.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes(`/api/v1/mobile/student/graduation/topic-rounds/${roundId}/choices`))
+      const choiceSubmit = studentMini.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/api/v1/mobile/graduation/choices'))
       await studentMini.getByText(/提交志愿（已选1）/, { exact: false }).click()
       expect((await choiceSubmit).ok(), 'Student Mini choice submit must persist').toBeTruthy()
       await expect(studentMini.getByText(topicTitle, { exact: true }).first()).toBeVisible()
@@ -232,7 +232,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await expect(choiceRow).toBeVisible({ timeout: 15_000 })
       await expect(choiceRow).toContainText(topicTitle)
       await choiceRow.getByRole('button', { name: '确认', exact: true }).click()
-      const choiceConfirm = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/graduation/topic-rounds/choices/') && r.url().includes('/confirm'))
+      const choiceConfirm = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/graduation/gd-topic-rounds/choices/') && r.url().includes('/confirm'))
       await confirmDialog(staff, /确认|通过/)
       expect((await choiceConfirm).ok(), 'Staff PC choice confirmation must persist').toBeTruthy()
 
@@ -253,7 +253,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       // 10. Student Mini: confirm the same taskbook.
       await studentMini.goto(`${miniBase}/#/pages/student/graduation/taskbook/index`)
       await expect(studentMini.getByText('完成 GD-020 同批次毕业设计真实业务闭环', { exact: true })).toBeVisible({ timeout: 20_000 })
-      const taskbookConfirm = studentMini.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/api/v1/mobile/student/graduation/taskbook/confirm'))
+      const taskbookConfirm = studentMini.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/api/v1/mobile/graduation/taskbook/confirm'))
       await studentMini.getByText('确认任务书', { exact: true }).click()
       expect((await taskbookConfirm).ok(), 'Student Mini taskbook confirm must persist').toBeTruthy()
       await expect(studentMini.getByText(/已确认/).first()).toBeVisible({ timeout: 20_000 })
