@@ -40,7 +40,7 @@ async function resubmitRejectedProposalFromFeedback(page, fixture) {
   const submit = feedback.getByRole('button', { name: '整改完成，重新提交开题报告', exact: true })
   await expect(submit).toBeEnabled()
   const [response] = await Promise.all([
-    page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/portal/graduation/proposal')),
+    page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/portal/graduation/proposal/submit')),
     submit.click()
   ])
   expect(response.ok(), `feedback proposal resubmit HTTP ${response.status()}`).toBeTruthy()
