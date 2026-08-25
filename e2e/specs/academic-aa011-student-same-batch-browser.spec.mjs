@@ -9,7 +9,7 @@ import { StudentLoginPage } from '../pages/login.page.mjs'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const fixture = JSON.parse(fs.readFileSync(path.resolve(here, '../academic-b-w5-fixture.json'), 'utf8'))
 const staffFixture = JSON.parse(fs.readFileSync(path.resolve(here, '../academic-aa011-staff-browser-fixture.json'), 'utf8'))
-const MINIAPP_BASE = process.env.E2E_MINIAPP_BASE_URL || 'http://localhost:5188'
+const MINIAPP_BASE = (process.env.E2E_MINIAPP_BASE_URL || 'http://127.0.0.1:5188').replace('://localhost', '://127.0.0.1')
 
 const pcCourse = fixture.courses.find((row) => row.role === 'PC')
 const miniCourse = fixture.courses.find((row) => row.role === 'MINIAPP')
