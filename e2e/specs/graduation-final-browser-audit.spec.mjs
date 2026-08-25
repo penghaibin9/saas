@@ -4,6 +4,27 @@ import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 import { StaffGraduationPage, StudentGraduationPage } from '../pages/graduation.page.mjs'
 
+const actorIp = {
+  student: '10.251.0.61',
+  mentor: '10.251.0.62',
+  admin: '10.251.0.63',
+}
+
+async function loginStudent(page) {
+  await page.context().setExtraHTTPHeaders({ 'X-Forwarded-For': actorIp.student })
+  await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+}
+
+async function loginMentor(page) {
+  await page.context().setExtraHTTPHeaders({ 'X-Forwarded-For': actorIp.mentor })
+  await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+}
+
+async function loginAdmin(page) {
+  await page.context().setExtraHTTPHeaders({ 'X-Forwarded-For': actorIp.admin })
+  await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+}
+
 async function dismissGuide(page) {
   for (const mask of [page.locator('.app-step-guide__mask'), page.locator('.tour-mask')]) {
     if (await mask.isVisible().catch(() => false)) {
@@ -15,7 +36,7 @@ async function dismissGuide(page) {
 }
 
 async function establishApprovedProposal(page, fixture) {
-  await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+  await loginStudent(page)
   const student = new StudentGraduationPage(page, config.studentBaseUrl)
   await student.open()
   await student.signTaskbookIfNeeded()
@@ -23,7 +44,7 @@ async function establishApprovedProposal(page, fixture) {
     suffix: `${fixture.runId}-final-prereq`,
     fileName: `E2E-AUDIT-20260823-final-prereq-${fixture.runId}.pdf`
   })
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+  await loginMentor(page)
   const staff = new StaffGraduationPage(page, config.staffBaseUrl, fixture)
   await staff.openProposals('PENDING_REVIEW')
   await staff.selectStudent()
@@ -33,7 +54,7 @@ async function establishApprovedProposal(page, fixture) {
 async function reachFinalCheckThroughUi(page, fixture) {
   await establishApprovedProposal(page, fixture)
 
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+  await loginAdmin(page)
   const detailUrl = new URL(`${config.staffBaseUrl}/admin/graduation/students/${fixture.gdStudentId}`)
   detailUrl.searchParams.set('batchId', fixture.batchId)
   detailUrl.searchParams.set('source', 'E2E-AUDIT-20260823')
@@ -50,7 +71,7 @@ async function reachFinalCheckThroughUi(page, fixture) {
   expect((await advanceResponse.json()).code).toBe(0)
   await expect(stage).toContainText('中期检查')
 
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+  await loginMentor(page)
   const processUrl = new URL(`${config.staffBaseUrl}/admin/graduation/process`)
   processUrl.searchParams.set('batchId', fixture.batchId)
   processUrl.searchParams.set('studentId', fixture.gdStudentId)
@@ -77,7 +98,7 @@ function finalStep(page) {
 }
 
 async function submitStudentFinal(page, fixture, marker) {
-  await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+  await loginStudent(page)
   const student = new StudentGraduationPage(page, config.studentBaseUrl)
   await student.open()
   const step = finalStep(page)
@@ -114,7 +135,7 @@ async function submitStudentFinal(page, fixture, marker) {
 }
 
 async function openPendingFinal(page, fixture, { login = true } = {}) {
-  if (login) await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+  if (login) await loginMentor(page)
   await page.goto(`${config.staffBaseUrl}/admin/graduation/finals?batchId=${encodeURIComponent(fixture.batchId)}&tab=PENDING_REVIEW`)
   await dismissGuide(page)
   await expect(page.getByRole('heading', { name: '成果检查', exact: true })).toBeVisible()
@@ -152,7 +173,7 @@ async function reviewCurrentFinal(page, action, comment = '') {
 }
 
 async function openPlagiarismLedger(page, fixture) {
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+  await loginAdmin(page)
   const url = new URL(`${config.staffBaseUrl}/admin/graduation/plagiarism-ledger`)
   url.searchParams.set('batchId', fixture.batchId)
   url.searchParams.set('studentId', fixture.gdStudentId)
@@ -241,14 +262,14 @@ test.describe.serial('毕业设计成果+查重 Browser First · 退回/重交/�
   })
 
   test('真实前置 → 初稿退回重交 → 定稿 → 查重超标 → 复查 → 复查合格 → 定稿通过', async ({ page }) => {
-    await page.context().setExtraHTTPHeaders({ 'X-Forwarded-For': '10.251.0.50' })
     await reachFinalCheckThroughUi(page, fixture)
 
     const first = await submitStudentFinal(page, fixture, 'draft-v1')
-    const firstStaff = await openPendingFinal(page, fixture, { login: false })
+    const firstStaff = await openPendingFinal(page, fixture)
     const firstVersionEvidence = firstStaff.versionEvidence
     await reviewCurrentFinal(page, 'REJECT', 'E2E-AUDIT-20260823 初稿退回：补齐异常场景说明、测试证据和论文格式。')
 
+    await loginStudent(page)
     const student = new StudentGraduationPage(page, config.studentBaseUrl)
     await student.open()
     const rejectedStep = finalStep(page)
@@ -257,16 +278,17 @@ test.describe.serial('毕业设计成果+查重 Browser First · 退回/重交/�
 
     const second = await submitStudentFinal(page, fixture, 'draft-v2')
     expect(String(second.uploaded.fileId)).not.toBe(String(first.uploaded.fileId))
-    const secondStaff = await openPendingFinal(page, fixture, { login: false })
+    const secondStaff = await openPendingFinal(page, fixture)
     expect(secondStaff.versionEvidence).not.toBe(firstVersionEvidence)
     await reviewCurrentFinal(page, 'APPROVE')
 
+    await loginStudent(page)
     await student.open()
     await expect(finalStep(page)).toContainText(/初稿.*通过|已通过/)
 
     const finalSubmit = await submitStudentFinal(page, fixture, 'final-v1')
     expect(String(finalSubmit.uploaded.fileId)).not.toBe(String(second.uploaded.fileId))
-    const beforePlagiarism = await openPendingFinal(page, fixture, { login: false })
+    const beforePlagiarism = await openPendingFinal(page, fixture)
     expect(beforePlagiarism.versionEvidence).not.toBe(secondStaff.versionEvidence)
 
     await completePlagiarismRecheck(page, fixture)
@@ -274,6 +296,7 @@ test.describe.serial('毕业设计成果+查重 Browser First · 退回/重交/�
     await openPendingFinal(page, fixture)
     await reviewCurrentFinal(page, 'APPROVE')
 
+    await loginStudent(page)
     await student.open()
     const completed = finalStep(page)
     await expect(completed).toContainText(/定稿.*通过|定稿已通过|已通过/)
