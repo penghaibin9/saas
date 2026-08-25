@@ -64,8 +64,8 @@ test.describe.serial('Student Affairs strict browser audit · SA-004 scholarship
     test.setTimeout(300_000)
 
     const prefix = `E2E-SA004-${Date.now()}-${process.pid}`
-    const projectName = `${prefix}-奖学金`
-    const schoolYear = '2026-2027'
+    let projectName = ''
+    let schoolYear = ''
     const initialStatement = `${prefix}-APPLY 本学年学习表现稳定并积极参加集体活动，申请奖学金。`
     const revisedStatement = `${prefix}-RESUBMIT 已补充本学年学习情况、实践表现和申请依据，请重新审核。`
     const returnReason = `${prefix}-RETURN 请补充本学年学习表现和实践情况后重新提交。`
@@ -87,57 +87,59 @@ test.describe.serial('Student Affairs strict browser audit · SA-004 scholarship
     const consoleErrors = []
     const browserHttpErrors = []
 
-    page.on('response', (response) => {
-      if (response.url().includes('/api/') && response.status() >= 500) api500.push(`${response.status()} ${response.request().method()} ${response.url()}`)
-      if (response.url().includes('/api/') && response.status() >= 400 && response.status() < 500) browserHttpErrors.push(`${response.status()} ${response.request().method()} ${response.url()}`)
-      try {
-        const u = new URL(response.url())
-        if (u.pathname.endsWith('/api/v1/portal/affairs/funding/apply') && response.request().method() === 'POST') submitCount += 1
-      } catch {}
-    })
-    page.on('console', (message) => {
-      if (message.type() !== 'error') return
-      const text = message.text()
-      if (/favicon|source map|Vue Devtools/i.test(text)) return
-      consoleErrors.push(text)
-    })
-
-    await test.step('create exact scholarship project and one-day batch through formal API fixture', async () => {
-      const login = await freshStaffLogin(page, staff.saAdmin)
-      const headers = { Authorization: `Bearer ${login.lastAccessToken}` }
-      const project = await page.request.post(apiUrl('/student-affairs/funding/projects'), {
-        headers,
-        data: { projectName, projectType: 'SCHOLARSHIP', amount: 3000, quota: 1 }
+    const observePage = (targetPage) => {
+      targetPage.on('response', (response) => {
+        if (response.url().includes('/api/') && response.status() >= 500) api500.push(`${response.status()} ${response.request().method()} ${response.url()}`)
+        if (response.url().includes('/api/') && response.status() >= 400 && response.status() < 500) browserHttpErrors.push(`${response.status()} ${response.request().method()} ${response.url()}`)
+        try {
+          const u = new URL(response.url())
+          if (u.pathname.endsWith('/api/v1/portal/affairs/funding/apply') && response.request().method() === 'POST') submitCount += 1
+        } catch {}
       })
-      expect(project.ok(), `project create HTTP ${project.status()}`).toBeTruthy()
-      const projectEnv = await jsonBody(project)
-      expect(projectEnv.code).toBe(0)
-      projectId = String(projectEnv.data?.projectId || '')
+      targetPage.on('console', (message) => {
+        if (message.type() !== 'error') return
+        const text = message.text()
+        if (/favicon|source map|Vue Devtools/i.test(text)) return
+        consoleErrors.push(text)
+      })
+    }
+
+    observePage(page)
+    const browser = page.context().browser()
+    if (!browser) throw new Error('SA-004 journey requires a real browser for the persistent student session')
+    const studentContext = await browser.newContext()
+    const studentPage = await studentContext.newPage()
+    observePage(studentPage)
+
+    await test.step('reuse project and one-day batch created by the preceding real Staff PC configuration gate', async () => {
+      const evidencePath = path.resolve('student-affairs-scholarship-config-v3-evidence.json')
+      const evidence = JSON.parse(await fs.readFile(evidencePath, 'utf8'))
+      expect(String(evidence.exactHead || '')).toBe(String(process.env.E2E_TARGET_SHA || ''))
+      expect(evidence.result).toBe('REAL_PASS')
+      expect(evidence.surface).toBe('STAFF_PC')
+      expect(Number(evidence.publicityDays)).toBe(1)
+      projectId = String(evidence.projectId || '')
+      batchId = String(evidence.batchId || '')
+      projectName = String(evidence.projectName || '')
+      schoolYear = String(evidence.schoolYear || '')
       expect(projectId).toBeTruthy()
-
-      const batch = await page.request.post(apiUrl('/student-affairs/funding/batches'), {
-        headers,
-        data: { projectId, schoolYear, publicityDays: 1, quota: 1, publish: true }
-      })
-      expect(batch.ok(), `batch create HTTP ${batch.status()}`).toBeTruthy()
-      const batchEnv = await jsonBody(batch)
-      expect(batchEnv.code).toBe(0)
-      batchId = String(batchEnv.data?.batchId || '')
       expect(batchId).toBeTruthy()
+      expect(projectName).toBeTruthy()
+      expect(schoolYear).toBeTruthy()
     })
 
     await test.step('student submits scholarship in real PC portal; rapid double-click creates one request', async () => {
-      await freshStudentLogin(page)
-      await page.goto(`${config.studentBaseUrl}/campus-service?tab=funding`)
-      await expect(page.locator('.sp-panel__head').filter({ hasText: '奖学金与助学金' }).first()).toBeVisible()
-      await page.getByLabel('类型').selectOption('SCHOLARSHIP')
-      await page.getByLabel('开放批次').selectOption(batchId)
-      await page.getByLabel('申请理由（5-1000字）').fill(initialStatement)
-      await page.getByText('本人确认申请信息真实', { exact: false }).locator('..').locator('input[type="checkbox"]').check()
-      const submittedPromise = page.waitForResponse((response) => {
+      await freshStudentLogin(studentPage)
+      await studentPage.goto(`${config.studentBaseUrl}/campus-service?tab=funding`)
+      await expect(studentPage.locator('.sp-panel__head').filter({ hasText: '奖学金与助学金' }).first()).toBeVisible()
+      await studentPage.getByLabel('类型').selectOption('SCHOLARSHIP')
+      await studentPage.getByLabel('开放批次').selectOption(batchId)
+      await studentPage.getByLabel('申请理由（5-1000字）').fill(initialStatement)
+      await studentPage.getByText('本人确认申请信息真实', { exact: false }).locator('..').locator('input[type="checkbox"]').check()
+      const submittedPromise = studentPage.waitForResponse((response) => {
         try { const u = new URL(response.url()); return u.pathname.endsWith('/api/v1/portal/affairs/funding/apply') && response.request().method() === 'POST' } catch { return false }
       })
-      await page.getByRole('button', { name: '提交申请', exact: true }).dblclick()
+      await studentPage.getByRole('button', { name: '提交申请', exact: true }).dblclick()
       const submitted = await submittedPromise
       expect(submitted.ok(), `funding apply HTTP ${submitted.status()}`).toBeTruthy()
       const env = await jsonBody(submitted)
@@ -145,9 +147,9 @@ test.describe.serial('Student Affairs strict browser audit · SA-004 scholarship
       applicationId = String(env.data?.applicationId || env.data?.id || '')
       initialVersion = Number(env.data?.version || 0)
       expect(applicationId).toBeTruthy()
-      await page.waitForTimeout(800)
+      await studentPage.waitForTimeout(800)
       expect(submitCount).toBe(1)
-      const record = page.locator('article.record').filter({ hasText: '辅导员初审' }).first()
+      const record = studentPage.locator('article.record').filter({ hasText: '辅导员初审' }).first()
       await expect(record).toBeVisible({ timeout: 15_000 })
     })
 
@@ -181,17 +183,16 @@ test.describe.serial('Student Affairs strict browser audit · SA-004 scholarship
     })
 
     await test.step('student sees exact return reason, edits statement and resubmits through browser', async () => {
-      await freshStudentLogin(page)
-      await page.goto(`${config.studentBaseUrl}/campus-service?tab=funding`)
-      const record = page.locator('article.record').filter({ hasText: returnReason }).first()
+      await studentPage.goto(`${config.studentBaseUrl}/campus-service?tab=funding`)
+      const record = studentPage.locator('article.record').filter({ hasText: returnReason }).first()
       await expect(record).toBeVisible({ timeout: 15_000 })
       await record.getByRole('button', { name: '修改后重提', exact: true }).click()
-      const modal = page.locator('section.sp-card.modal')
+      const modal = studentPage.locator('section.sp-card.modal')
       await expect(modal).toBeVisible()
       await expect(modal).toContainText(returnReason)
       const textarea = modal.locator('textarea').first()
       await textarea.fill(revisedStatement)
-      const resubmitPromise = page.waitForResponse((response) => response.url().endsWith(`/api/v1/mobile/affairs/funding/${applicationId}/resubmit`) && response.request().method() === 'POST')
+      const resubmitPromise = studentPage.waitForResponse((response) => response.url().endsWith(`/api/v1/mobile/affairs/funding/${applicationId}/resubmit`) && response.request().method() === 'POST')
       await modal.getByRole('button', { name: '保存并提交', exact: true }).click()
       const resubmitted = await resubmitPromise
       expect(resubmitted.ok(), `funding resubmit HTTP ${resubmitted.status()}`).toBeTruthy()
@@ -250,12 +251,11 @@ test.describe.serial('Student Affairs strict browser audit · SA-004 scholarship
     })
 
     await test.step('student submits one real publicity appeal from PC portal', async () => {
-      await freshStudentLogin(page)
-      await page.goto(`${config.studentBaseUrl}/campus-service?tab=funding`)
-      const record = page.locator('article.record').filter({ hasText: '公示中' }).first()
+      await studentPage.goto(`${config.studentBaseUrl}/campus-service?tab=funding`)
+      const record = studentPage.locator('article.record').filter({ hasText: '公示中' }).first()
       await expect(record).toBeVisible({ timeout: 15_000 })
       await record.getByPlaceholder('公示申诉理由（5-1000字）').fill(appealReason)
-      const appealPromise = page.waitForResponse((response) => response.url().endsWith('/api/v1/portal/affairs/funding/appeal') && response.request().method() === 'POST')
+      const appealPromise = studentPage.waitForResponse((response) => response.url().endsWith('/api/v1/portal/affairs/funding/appeal') && response.request().method() === 'POST')
       await record.getByRole('button', { name: '提交申诉', exact: true }).dblclick()
       const appealed = await appealPromise
       expect(appealed.ok(), `student funding appeal HTTP ${appealed.status()}`).toBeTruthy()
@@ -312,5 +312,6 @@ test.describe.serial('Student Affairs strict browser audit · SA-004 scholarship
       tenantBDetailStatus, earlyConfirmStatus, earlyConfirmBizCode,
       expectedInterimState: 'PUBLICITY_TIME_GATED_AFTER_OVERRULED_APPEAL'
     }, null, 2), 'utf8')
+    await studentContext.close()
   })
 })
