@@ -149,6 +149,7 @@ jobs:
             DB_NAME=student_lifecycle_e2e
             REDIS_URL="$REDIS_URL"
             REDIS_KEY_PREFIX=graduation-s1-production-runtime
+            ALLOW_LOCAL_REDIS_IN_PRODUCTION=true
             JWT_SECRET="$JWT_SECRET"
             JWT_SECRET_KEY="$JWT_SECRET_KEY"
             MOCK_LOGIN_ENABLED=false
@@ -181,6 +182,7 @@ jobs:
           print('SCHEDULER_MODE=external')
           print('MULTI_INSTANCE=true')
           print('WEB_CONCURRENCY=2')
+          print('ALLOW_LOCAL_REDIS_IN_PRODUCTION=true (isolated single-host private-deployment S1 runner)')
           PY
 
           env "${PROD_ENV[@]}" python scripts/check_production_redis.py
