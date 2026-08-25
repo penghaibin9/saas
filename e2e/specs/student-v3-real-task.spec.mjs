@@ -173,11 +173,11 @@ test.describe.serial('Student V3 · Real Task 真实点击回放', () => {
     await loginStudentMini(page)
     await page.goto(`${miniBase}/#/pages/student/messages/index`)
 
-    // Outbox 不是只在 DB/API 里存在：学生真实页面必须先看得到独立 Worker 生成的探针。
+    // Outbox 探针属于“通知”分类。必须通过真实分类入口看到它，不能在默认“待办”页误找。
+    await page.getByText('通知', { exact: true }).first().click()
     const outboxCard = page.locator('.msg__item', { hasText: fixture.workerRecovery.outboxTitle }).first()
     await expect(outboxCard).toBeVisible({ timeout: 20_000 })
 
-    await page.getByText('通知', { exact: true }).first().click()
     const card = page.locator('.msg__item', { hasText: fixture.ackMessage.title }).first()
     await expect(card).toBeVisible({ timeout: 20_000 })
     await expect(card.getByText('待确认回执', { exact: true })).toBeVisible()
