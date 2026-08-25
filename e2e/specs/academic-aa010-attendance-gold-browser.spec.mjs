@@ -26,12 +26,6 @@ function fixture() {
   return JSON.parse(fs.readFileSync(statePath, 'utf8'))
 }
 
-function dateMinus(iso, days) {
-  const date = new Date(`${iso}T12:00:00Z`)
-  date.setUTCDate(date.getUTCDate() - days)
-  return date.toISOString().slice(0, 10)
-}
-
 async function screenshot(page, testInfo, name) {
   await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {})
   await page.evaluate(async () => { if (document.fonts?.ready) await document.fonts.ready })
@@ -163,7 +157,20 @@ async function dismissGuide(page) {
   }
 }
 
-async function createSessionFromUi(page, facts, sessionDate, fromToday = false) {
+function attendanceDocumentUrl(facts, occurrence) {
+  const documentKey = encodeURIComponent(`${occurrence.label}-${occurrence.sessionDate}-${occurrence.scheduleItemId}-${occurrence.slotNo}`)
+  return `${MINIAPP_BASE}/?aa010Occurrence=${documentKey}` +
+    `#/pages/teacher/academic-affairs/attendance?teachingTaskId=${facts.teachingTaskId}` +
+    `&sessionDate=${occurrence.sessionDate}&slotNo=${occurrence.slotNo}` +
+    `&scheduleItemId=${occurrence.scheduleItemId}`
+}
+
+async function createSessionFromUi(page, facts, occurrence, fromToday = false) {
+  const label = String(occurrence.label || occurrence.sessionDate)
+  const sessionDate = String(occurrence.sessionDate)
+  const scheduleItemId = String(occurrence.scheduleItemId)
+  const slotNo = String(occurrence.slotNo)
+
   if (fromToday) {
     await page.goto(`${MINIAPP_BASE}/#/pages/teacher/academic-affairs/index`)
     const today = page.locator('.ta__course').filter({ hasText: facts.courseName }).first()
@@ -174,19 +181,20 @@ async function createSessionFromUi(page, facts, sessionDate, fromToday = false) 
     await expect(page).toHaveURL(new RegExp(
       `pages/teacher/academic-affairs/attendance\\?teachingTaskId=${facts.teachingTaskId}`
     ), { timeout: 10_000 })
-    expect(page.url()).toContain(`sessionDate=${sessionDate}`)
-    expect(page.url()).toContain(`slotNo=${facts.slotNo}`)
-    expect(page.url()).toContain(`scheduleItemId=${facts.scheduleItemId}`)
   } else {
-    await page.goto(
-      `${MINIAPP_BASE}/#/pages/teacher/academic-affairs/attendance` +
-      `?teachingTaskId=${facts.teachingTaskId}&sessionDate=${sessionDate}` +
-      `&slotNo=${facts.slotNo}&scheduleItemId=${facts.scheduleItemId}`
-    )
+    // Force a real document navigation, not merely a same-page hash/query mutation. This makes
+    // UniApp remount attendance.vue and rerun onLoad for every proven formal occurrence while
+    // preserving same-origin browser session storage and cookies.
+    await page.goto(attendanceDocumentUrl(facts, occurrence), { waitUntil: 'domcontentloaded' })
   }
 
+  expect(page.url(), `AA-010 ${label} route must carry the proven session date`).toContain(`sessionDate=${sessionDate}`)
+  expect(page.url(), `AA-010 ${label} route must carry the proven slot`).toContain(`slotNo=${slotNo}`)
+  expect(page.url(), `AA-010 ${label} route must carry the proven schedule item`).toContain(`scheduleItemId=${scheduleItemId}`)
+  await expect(page.getByText('课堂点名', { exact: true })).toBeVisible({ timeout: 20_000 })
+
   const create = page.getByText('按教学任务圈定名单并新建', { exact: true })
-  await expect(create).toBeEnabled({ timeout: 20_000 })
+  await expect(create, `AA-010 ${label} (${sessionDate} / item ${scheduleItemId} / slot ${slotNo}) must be an executable published occurrence`).toBeEnabled({ timeout: 20_000 })
   const write = page.waitForResponse((response) => {
     const url = new URL(response.url())
     return response.request().method() === 'POST' &&
@@ -255,7 +263,7 @@ async function apiLogin(request, account, clientType) {
   return token
 }
 
-async function serverNegatives(request, facts, firstSessionId) {
+async function serverNegatives(request, facts, firstOccurrence, firstSessionId) {
   const teacherToken = await apiLogin(request, config.mentor, 'TEACHER_MINI')
   const teacherHeaders = { Authorization: `Bearer ${teacherToken}` }
 
@@ -287,9 +295,9 @@ async function serverNegatives(request, facts, firstSessionId) {
       headers: teacherHeaders,
       data: {
         teachingTaskId: String(facts.teachingTaskId),
-        sessionDate: facts.targetDate,
-        slotNo: Number(facts.slotNo),
-        scheduleItemId: String(facts.scheduleItemId),
+        sessionDate: String(firstOccurrence.sessionDate),
+        slotNo: Number(firstOccurrence.slotNo),
+        scheduleItemId: String(firstOccurrence.scheduleItemId),
       },
     }
   )
@@ -319,8 +327,19 @@ async function serverNegatives(request, facts, firstSessionId) {
 
 test('AA-010 Gold Deep: real roll-call -> immutable submit -> student projections -> warning follow-up', async ({ browser, request }, testInfo) => {
   const facts = fixture()
-  const dates = [facts.targetDate, dateMinus(facts.targetDate, 7), dateMinus(facts.targetDate, 14)]
+  const occurrences = facts.attendanceOccurrences || []
+  expect(occurrences, 'AA-010 Runner must provide three DB-proven published formal occurrences').toHaveLength(3)
+  const dates = occurrences.map((row) => String(row.sessionDate))
   expect(new Set(dates).size).toBe(3)
+  for (const occurrence of occurrences) {
+    expect(String(occurrence.sessionDate)).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(Number(occurrence.scheduleItemId)).toBeGreaterThan(0)
+    expect(Number(occurrence.slotNo)).toBeGreaterThan(0)
+    expect(Number(occurrence.weekNo)).toBeGreaterThan(0)
+    expect(Number(occurrence.activeBatchId)).toBeGreaterThan(0)
+  }
+  expect(dates[0]).toBe(String(facts.targetDate))
+
   const bridge = await startMiniLoopbackBridge()
   const sessionIds = []
   let firstScan = null
@@ -332,7 +351,7 @@ test('AA-010 Gold Deep: real roll-call -> immutable submit -> student projection
     const teacher = await teacherContext.newPage()
     await loginTeacherMini(teacher)
 
-    const firstId = await createSessionFromUi(teacher, facts, dates[0], true)
+    const firstId = await createSessionFromUi(teacher, facts, occurrences[0], true)
     sessionIds.push(firstId)
     await markStatus(teacher, firstId, facts, '缺勤')
     await markStatus(teacher, firstId, facts, '出勤')
@@ -352,9 +371,9 @@ test('AA-010 Gold Deep: real roll-call -> immutable submit -> student projection
     await expect(relogin.locator('.at__seg-item.is-active')).toHaveText('缺勤')
     await submitSession(teacher, firstId)
 
-    // Same formal task, week 2 and week 1 occurrences, both real UI writes.
-    for (const sessionDate of dates.slice(1)) {
-      const sessionId = await createSessionFromUi(teacher, facts, sessionDate)
+    // The next two writes consume DB-proven formal tuples and force a fresh UniApp page lifecycle.
+    for (const occurrence of occurrences.slice(1)) {
+      const sessionId = await createSessionFromUi(teacher, facts, occurrence)
       sessionIds.push(sessionId)
       await markStatus(teacher, sessionId, facts, '缺勤')
       await submitSession(teacher, sessionId)
@@ -363,7 +382,7 @@ test('AA-010 Gold Deep: real roll-call -> immutable submit -> student projection
     await teacherContext.close()
 
     // Server-side hard negatives: immutable submitted facts, duplicate occurrence, relation and role scope.
-    await serverNegatives(request, facts, firstId)
+    await serverNegatives(request, facts, occurrences[0], firstId)
 
     // Student PC reads only the three submitted authoritative absences.
     const studentPcContext = await browser.newContext({ viewport: { width: 1440, height: 900 } })
@@ -469,6 +488,7 @@ test('AA-010 Gold Deep: real roll-call -> immutable submit -> student projection
       courseName: facts.courseName,
       studentName: facts.studentName,
       studentNo: facts.studentNo,
+      formalOccurrences: occurrences,
       sessionDates: dates,
       sessionIds,
       firstScan: firstScan?.data || {},
