@@ -209,7 +209,8 @@ test.describe.serial('Student Affairs V3 Browser First · SA-009 dorm lifecycle'
       const row = page.locator('tbody tr').filter({ hasText: studentNo }).first()
       await expect(row).toBeVisible({ timeout: 20_000 })
       await row.getByRole('button', { name: '核对后通过', exact: true }).click()
-      const dialog = page.getByRole('dialog', { name: '确认通过调宿申请' })
+      const dialog = page.getByRole('dialog').filter({ hasText: /确认通过调宿申请/ }).last()
+      await expect(dialog).toBeVisible({ timeout: 20_000 })
       const responsePromise = page.waitForResponse((response) =>
         response.url().includes(`/api/v1/student-affairs/dorm/transfers/${transferId}/review`)
         && response.request().method() === 'POST')
@@ -228,7 +229,8 @@ test.describe.serial('Student Affairs V3 Browser First · SA-009 dorm lifecycle'
       const row = page.locator('tbody tr').filter({ hasText: studentNo }).first()
       await expect(row).toBeVisible({ timeout: 20_000 })
       await row.getByRole('button', { name: '核对后通过', exact: true }).click()
-      const dialog = page.getByRole('dialog', { name: '确认通过调宿申请' })
+      const dialog = page.getByRole('dialog').filter({ hasText: /确认通过调宿申请/ }).last()
+      await expect(dialog).toBeVisible({ timeout: 20_000 })
       const responsePromise = page.waitForResponse((response) =>
         response.url().includes(`/api/v1/student-affairs/dorm/transfers/${transferId}/review`)
         && response.request().method() === 'POST')
