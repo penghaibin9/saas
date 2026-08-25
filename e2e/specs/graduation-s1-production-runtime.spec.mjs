@@ -145,10 +145,10 @@ test.describe.serial('S1 · Graduation production runtime seal', () => {
 
       const previewTicketResponse = studentPc.waitForResponse((response) => (
         response.request().method() === 'POST'
-        && apiPath(response, /\/api\/v1\/mobile\/graduation\/materials\/[^/]+\/preview-ticket$/)
+        && apiPath(response, /\/api\/v1\/mobile\/graduation\/material-center\/files\/[^/]+\/ticket$/)
       ))
       const previewContentResponse = studentPc.waitForResponse((response) => {
-        if (response.request().method() !== 'GET' || !apiPath(response, /\/api\/v1\/files\/[^/]+\/preview$/)) return false
+        if (response.request().method() !== 'GET' || !apiPath(response, /\/api\/v1\/mobile\/graduation\/material-center\/files\/[^/]+\/preview$/)) return false
         return new URL(response.url()).searchParams.has('ticket')
       })
       await proposalStep.getByRole('button', { name: '查看当前版', exact: true }).first().click()
@@ -164,9 +164,17 @@ test.describe.serial('S1 · Graduation production runtime seal', () => {
       await reader.getByRole('button', { name: '关闭阅读器', exact: true }).click()
       await expect(reader).toBeHidden()
 
-      const downloadResponse = studentPc.waitForResponse((response) => apiPath(response, /\/api\/v1\/files\/download\/[^/]+$/))
+      const downloadTicketResponse = studentPc.waitForResponse((response) => (
+        response.request().method() === 'POST'
+        && apiPath(response, /\/api\/v1\/mobile\/graduation\/material-center\/files\/[^/]+\/ticket$/)
+      ))
+      const downloadResponse = studentPc.waitForResponse((response) => {
+        if (response.request().method() !== 'GET' || !apiPath(response, /\/api\/v1\/mobile\/graduation\/material-center\/files\/[^/]+\/download$/)) return false
+        return new URL(response.url()).searchParams.has('ticket')
+      })
       await proposalStep.getByRole('button', { name: '下载', exact: true }).first().click()
-      const downloaded = await downloadResponse
+      const [downloadTicket, downloaded] = await Promise.all([downloadTicketResponse, downloadResponse])
+      expect(downloadTicket.ok(), `Student production download ticket HTTP ${downloadTicket.status()}`).toBeTruthy()
       expect(downloaded.ok(), `Student production material download HTTP ${downloaded.status()}`).toBeTruthy()
 
       // Production Mini H5: both student and teacher identities must run from the built bundle, not dev:h5.
