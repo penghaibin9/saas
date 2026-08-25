@@ -1,0 +1,82 @@
+name: Internship S1 Playwright Install Diagnostics
+
+on:
+  push:
+    branches:
+      - fix/internship-final-rc-20260824
+    paths:
+      - '.github/workflows/internship-s1-playwright-install-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  playwright-install-diagnostics:
+    name: Capture Playwright Chromium install evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      E2E_PRODUCT_EXACT_SHA: 2e0a92c8b7f21a6eaa5ed6ca02929e39cd97fd2b
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Exact runner/product SHA assertion
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$GITHUB_SHA"
+          git cat-file -e "$E2E_PRODUCT_EXACT_SHA^{commit}"
+          echo "diagnosticRunnerExactSha=$ACTUAL"
+          echo "productExactSha=$E2E_PRODUCT_EXACT_SHA"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Capture npm ci and Playwright Chromium install
+        working-directory: e2e
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p runtime-logs
+          LOG="runtime-logs/s1-playwright-install-diagnostic.log"
+
+          {
+            echo '=== runner ==='
+            uname -a
+            cat /etc/os-release
+            echo '=== node/npm ==='
+            node --version
+            npm --version
+            echo '=== declared Playwright ==='
+            node -e "console.log(require('./package.json').devDependencies['@playwright/test'])"
+          } 2>&1 | tee "$LOG"
+
+          set +e
+          npm ci 2>&1 | tee -a "$LOG"
+          NPM_RC=${PIPESTATUS[0]}
+          echo "npm_ci_exit=$NPM_RC" | tee -a "$LOG"
+          if [ "$NPM_RC" -ne 0 ]; then
+            exit "$NPM_RC"
+          fi
+
+          npx playwright --version 2>&1 | tee -a "$LOG"
+          npx playwright install --with-deps chromium 2>&1 | tee -a "$LOG"
+          PLAYWRIGHT_RC=${PIPESTATUS[0]}
+          echo "playwright_install_exit=$PLAYWRIGHT_RC" | tee -a "$LOG"
+          exit "$PLAYWRIGHT_RC"
+
+      - name: Upload Playwright install diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-s1-playwright-install-diagnostics-${{ github.run_id }}
+          path: e2e/runtime-logs/s1-playwright-install-diagnostic.log
+          if-no-files-found: error
+          retention-days: 14
