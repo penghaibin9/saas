@@ -53,14 +53,31 @@ def _get_batch(db, batch_id):
 
 
 def _get_or_create_rule(db, batch_id):
-    from app.models import InternshipBatchScopeRule
+    from app.models import InternshipBatch, InternshipBatchScopeRule
+
+    tenant_id = _tid()
+    batch_pk = int(batch_id)
+    # 默认规则是按批次懒创建的。生产环境双 worker 会同时进入这里；如果只做
+    # SELECT -> INSERT，两个事务都可能先读到“不存在”，随后一起 INSERT，最终
+    # 一个命中 uk_intern_scope_batch 的 1062。先锁定必然存在的批次父行，把同一
+    # 批次的规则初始化/恢复串行化；不同批次仍可并行。锁定读也是 MySQL 的 current
+    # read，不依赖 REPEATABLE READ 已建立的旧快照。
+    locked_batch_id = db.scalar(select(InternshipBatch.id).where(
+        InternshipBatch.id == batch_pk,
+        InternshipBatch.tenant_id == tenant_id,
+        InternshipBatch.is_deleted.is_(False),
+    ).with_for_update())
+    if locked_batch_id is None:
+        raise not_found("实习批次不存在或不在当前数据范围内")
+
     # 唯一键是 (tenant_id, batch_id)，不含 is_deleted。软删后不能再 INSERT，
-    # 否则真实 MySQL 会命中 uk_intern_scope_batch 产生 1062。
+    # 否则真实 MySQL 会命中 uk_intern_scope_batch 产生 1062。这里同样使用锁定读，
+    # 让等待父行锁的 worker 读取到前一个事务刚提交的规则，而不是旧快照。
     row = db.scalars(select(InternshipBatchScopeRule).where(
-        InternshipBatchScopeRule.tenant_id == _tid(),
-        InternshipBatchScopeRule.batch_id == int(batch_id))).first()
+        InternshipBatchScopeRule.tenant_id == tenant_id,
+        InternshipBatchScopeRule.batch_id == batch_pk).with_for_update()).first()
     if row is None:
-        row = InternshipBatchScopeRule(tenant_id=_tid(), batch_id=int(batch_id), rule_json={})
+        row = InternshipBatchScopeRule(tenant_id=tenant_id, batch_id=batch_pk, rule_json={})
         db.add(row)
         db.flush()
     elif row.is_deleted:
