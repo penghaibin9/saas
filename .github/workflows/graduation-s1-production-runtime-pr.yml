@@ -64,7 +64,7 @@ jobs:
       E2E_STAFF_BASE_URL: https://127.0.0.1:18443
       E2E_STUDENT_BASE_URL: https://127.0.0.1:18443/portal
       E2E_MINIAPP_BASE_URL: https://127.0.0.1:18443/miniapp
-      E2E_EXPECTED_SHA: 4356e2e3bac50f9617d412fee841f2536d573f2f
+      E2E_EXPECTED_SHA: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
       S1_PUBLIC_ORIGIN: https://127.0.0.1:18443
       S1_IDENTITY_POLL_SECONDS: '1'
       S1_IDENTITY_TIMEOUT_SECONDS: '180'
@@ -73,7 +73,7 @@ jobs:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: 4356e2e3bac50f9617d412fee841f2536d573f2f
+          ref: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
           fetch-depth: 0
 
       - name: Assert exact product HEAD
