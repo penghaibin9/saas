@@ -90,6 +90,11 @@ jobs:
           test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
           test -z "$(git -C app status --porcelain)"
 
+      - name: Declare SA-009 concurrency authority
+        run: |
+          echo "SA-009 V3 authority: two real backend requests race for one real MySQL bed"
+          echo "PASS requires exactly one HTTP 200, one HTTP 409, one OCCUPIED bed, and one active IN dorm record"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
