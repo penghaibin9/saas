@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/audit-academic-aa010-product-head-20260825.yml'
       - 'e2e/specs/academic-aa010-attendance-gold-browser.spec.mjs'
+      - 'backend/scripts/e2e_prepare_academic_aa010_occurrences.py'
       - 'backend/scripts/e2e_assert_academic_aa010_attendance.py'
 
 permissions:
@@ -105,6 +106,7 @@ jobs:
           test "$ACTUAL_RUNNER_SHA" = "$RUNNER_SHA"
           echo "AA-010 runner SHA: $ACTUAL_RUNNER_SHA"
           cp audit-harness/e2e/specs/academic-aa010-attendance-gold-browser.spec.mjs e2e/specs/academic-aa010-attendance-gold-browser.spec.mjs
+          cp audit-harness/backend/scripts/e2e_prepare_academic_aa010_occurrences.py backend/scripts/e2e_prepare_academic_aa010_occurrences.py
           cp audit-harness/backend/scripts/e2e_assert_academic_aa010_attendance.py backend/scripts/e2e_assert_academic_aa010_attendance.py
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
 
@@ -127,6 +129,7 @@ jobs:
       - name: Fast AA-010 audit preflight
         run: |
           set -euo pipefail
+          python -m py_compile backend/scripts/e2e_prepare_academic_aa010_occurrences.py
           python -m py_compile backend/scripts/e2e_assert_academic_aa010_attendance.py
           node --check e2e/specs/academic-aa010-attendance-gold-browser.spec.mjs
           python -m py_compile backend/scripts/e2e_seed_academic_c_teacher_today.py
@@ -181,6 +184,22 @@ jobs:
           set -euo pipefail
           python scripts/e2e_seed_academic_c_teacher_today.py seed
           test -s tmp/e2e_academic_c_teacher_today_state.local.json
+
+      - name: Prove three current published AA-010 formal occurrences
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_prepare_academic_aa010_occurrences.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          state = json.loads(Path('tmp/e2e_academic_c_teacher_today_state.local.json').read_text(encoding='utf-8'))
+          rows = state.get('attendanceOccurrences') or []
+          assert len(rows) == 3, rows
+          assert len({row['sessionDate'] for row in rows}) == 3, rows
+          assert all(row['scheduleItemId'] and row['slotNo'] for row in rows), rows
+          print(json.dumps(rows, ensure_ascii=False, indent=2))
+          PY
 
       - name: Build and start Staff PC
         env:
