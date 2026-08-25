@@ -1035,7 +1035,7 @@ def _appeal_row(o, s=None) -> dict:
         "status": o.status, "statusLabel": _L_APPEAL.get(o.status, o.status),
         "result": o.result or "", "resultLabel": _L_APPEAL_RESULT.get(o.result or "", ""),
         "reviewOpinion": o.review_opinion or "", "reviewer": o.reviewer or "",
-        "reviewedAt": _iso(o.reviewed_at),
+        "reviewedAt": _iso(o.reviewed_at), "version": int(o.version or 0),
     }
 
 
