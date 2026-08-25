@@ -23,6 +23,7 @@ def install() -> None:
     from app.core.affairs_security import build_affairs_context
     from app.models import DormBed, DormTransfer, StudentProfile
     from app.services import affairs_dorm_service as dorm
+    from app.services.affairs_dorm_projection_service import project_transfer_items
 
     original_submit = dorm.submit_transfer
     original_list = dorm.list_transfers
@@ -45,7 +46,7 @@ def install() -> None:
         """调宿列表按真实职责范围收敛，不把 CLASS/COLLEGE 错当宿管楼栋范围。"""
         with session() as db:
             context = build_affairs_context(user, db)
-            # 原实现对这两类范围语义正确：全校不收敛；宿管按目标楼栋收敛。
+            # 原实现对这两类范围语义正确：全校不收敛；宿管按目标楼栋收敛，且已经过公共投影。
             if context.scope_type in ("TENANT_ALL", "DORM_BUILDING"):
                 return original_list(user, status, page, page_size, student_id)
             if context.scope_type not in ("CLASS", "COLLEGE"):
@@ -95,7 +96,9 @@ def install() -> None:
                 item["realName"] = student.real_name or ""
                 item["studentNo"] = student.student_no or ""
                 out.append(item)
-            return out, total
+            # CLASS/COLLEGE 自己完成范围过滤后，也必须进入与宿管/全校一致的投影层；
+            # 否则会丢 from/toBedLabel 和 allowedActions，PC/小程序只能看到内部床位 ID 且无法审批。
+            return project_transfer_items(out, user), total
 
     dorm.submit_transfer = submit_transfer
     dorm.list_transfers = list_transfers
