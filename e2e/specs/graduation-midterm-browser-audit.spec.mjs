@@ -14,6 +14,44 @@ async function dismissGuide(page) {
   }
 }
 
+async function resubmitRejectedProposalFromFeedback(page, fixture) {
+  const feedback = page.locator('section').filter({ hasText: 'W7.5 · Student PC Feedback / Resubmit' }).first()
+  await expect(feedback).toBeVisible()
+  await expect(feedback.getByRole('heading', { name: '整改后重交开题报告', exact: true })).toBeVisible()
+  await expect(feedback).toContainText('E2E-AUDIT-20260823 开题先退回补充真实中期整改计划')
+
+  const background = feedback.getByLabel('选题背景与研究依据', { exact: true })
+  const plan = feedback.getByLabel('研究方案与进度计划', { exact: true })
+  const outcome = feedback.getByLabel('预期成果', { exact: true })
+  await expect(background).toBeVisible()
+  await expect(plan).toBeVisible()
+  await background.fill(`E2E-GD020 背景 ${fixture.runId}-midterm-resubmit：通过反馈整改入口生成新版本。`)
+  await plan.fill(`E2E-GD020 计划 ${fixture.runId}-midterm-resubmit：保留旧版冻结证据并重新送审。`)
+  if (await outcome.count()) await outcome.fill(`E2E-GD020 成果 ${fixture.runId}-midterm-resubmit：验证反馈整改闭环。`)
+
+  const fileInput = feedback.locator('input[type=file]')
+  await expect(fileInput).toHaveCount(1)
+  await fileInput.setInputFiles({
+    name: `E2E-AUDIT-20260823-midterm-proposal-resubmit-${fixture.runId}.pdf`,
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n')
+  })
+
+  const submit = feedback.getByRole('button', { name: '整改完成，重新提交开题报告', exact: true })
+  await expect(submit).toBeEnabled()
+  const [response] = await Promise.all([
+    page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/portal/graduation/proposal')),
+    submit.click()
+  ])
+  expect(response.ok(), `feedback proposal resubmit HTTP ${response.status()}`).toBeTruthy()
+  const body = await response.json()
+  expect(body.code).toBe(0)
+
+  const student = new StudentGraduationPage(page, config.studentBaseUrl)
+  await expect(student.step('开题')).toContainText(/待审核|待审阅|已提交/)
+  await expect(feedback.getByRole('heading', { name: '整改后重交开题报告', exact: true })).toHaveCount(0)
+}
+
 async function establishApprovedProposal(page, fixture) {
   await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
   const student = new StudentGraduationPage(page, config.studentBaseUrl)
@@ -33,10 +71,7 @@ async function establishApprovedProposal(page, fixture) {
   await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
   await student.open()
   await student.expectRejected('E2E-AUDIT-20260823 开题先退回补充真实中期整改计划')
-  await student.submitProposal({
-    suffix: `${fixture.runId}-midterm-resubmit`,
-    fileName: `E2E-AUDIT-20260823-midterm-proposal-resubmit-${fixture.runId}.pdf`
-  })
+  await resubmitRejectedProposalFromFeedback(page, fixture)
 
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
   await staff.openProposals('PENDING_REVIEW')
