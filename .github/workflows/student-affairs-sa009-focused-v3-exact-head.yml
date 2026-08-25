@@ -77,7 +77,7 @@ jobs:
       E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
-      E2E_TARGET_SHA: 8576525eb95ee4dac8ce3dab3bb044eb175fc19c
+      E2E_TARGET_SHA: 3813e1bee539dd299e8d66c8521d4cc7928269ad
 
     steps:
       - name: Checkout immutable audit runner
@@ -90,7 +90,7 @@ jobs:
       - name: Checkout immutable application exact head
         uses: actions/checkout@v4
         with:
-          ref: 8576525eb95ee4dac8ce3dab3bb044eb175fc19c
+          ref: 3813e1bee539dd299e8d66c8521d4cc7928269ad
           path: app
           fetch-depth: 0
 
@@ -125,6 +125,10 @@ jobs:
           python scripts/bootstrap_control_plane_school_iam_authority.py
           python scripts/e2e_seed_playwright_tenants.py
           python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Run SA-009 counselor permission and scope contracts
+        working-directory: app/backend
+        run: pytest -q tests/test_affairs_dorm_transfer_list_scope_contract.py
 
       - name: Start real backend
         run: |
