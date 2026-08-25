@@ -858,6 +858,7 @@ def get_application(app_id, user) -> dict:
         _scope_or_403(db, x.student_id, user)
         d = _app_row(x, user, s, has_pending_appeal=int(x.id) in _pending_appeal_ids(db, [x.id]))
         d["checkSnapshot"] = json.loads(x.check_snapshot_json) if x.check_snapshot_json else {}
+        d["statement"] = x.statement or ""
         return d
 
 
