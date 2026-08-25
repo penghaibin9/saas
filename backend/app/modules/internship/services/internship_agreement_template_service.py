@@ -19,6 +19,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (InternshipAgreementTemplate, InternshipAuditTrail, InternshipRecord,
                         StudentProfile)
 from app.services.db_service import _as_id, _iso, _tid, session
@@ -200,10 +201,10 @@ def preview_template(template_id: str, internship_id, user=None) -> dict:
         tpl = _get(db, template_id)
         if tpl.status != "ENABLED":
             raise AppException("STATUS_CONFLICT", "仅启用中的协议模板可用于发起预览")
-        rec = db.get(InternshipRecord, _as_id(internship_id))
-        if not rec or rec.is_deleted or rec.tenant_id != _tid():
+        rec = tenant_get(db, InternshipRecord, _as_id(internship_id))
+        if not rec or rec.is_deleted:
             raise not_found("实习记录不存在")
-        stu = db.get(StudentProfile, rec.student_id)
+        stu = tenant_get(db, StudentProfile, rec.student_id)
         if not in_scope(scope, db, rec, stu):
             raise no_permission("该实习学生不在你的数据范围内")
         if tpl.scope_batch_ids and str(rec.batch_id) not in {str(value) for value in tpl.scope_batch_ids}:
