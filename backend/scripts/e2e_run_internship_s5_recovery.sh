@@ -127,9 +127,13 @@ wait_health "e2e/runtime-logs/s5-final-backend.log"
 
 pushd backend >/dev/null
 E2E_S5_PHASE=verify-upgraded python scripts/e2e_verify_internship_s5_recovery.py
+pytest tests/test_internship_guardian_consent_route_registration.py -q -p no:warnings
+# Inject explicit candidate-only damage while the backed-up canonical fixture still exists.
+# The subsequent real-MySQL smoke is intentionally allowed to mutate/clean current candidate data;
+# governed restore must recover both that drift and the explicit DB/file damage below.
+E2E_S5_PHASE=mutate python scripts/e2e_verify_internship_s5_recovery.py
 pytest tests/test_internship_e_series_final_mysql.py -q -p no:warnings \
   -k 'hot_position_headcount_one_has_exactly_one_winner or student_enterprise_school_chain_closes_one_canonical_placement'
-E2E_S5_PHASE=mutate python scripts/e2e_verify_internship_s5_recovery.py
 popd >/dev/null
 
 stop_pid "$FINAL_PID"
