@@ -95,6 +95,10 @@
             <div><dt>金额</dt><dd>{{ amountText(selected.amount) }}</dd></div>
             <div><dt>学号</dt><dd>{{ selected.studentNo || '—' }}</dd></div>
           </dl>
+          <div class="fd-statement">
+            <strong>申请说明</strong>
+            <p>{{ selected.statement || '—' }}</p>
+          </div>
           <p v-if="selected.checkSnapshot" class="fd-snap">资格校验：{{ snapshotText(selected.checkSnapshot) }}</p>
 
           <div v-if="detailActions.length" class="fd-actions">
@@ -490,18 +494,21 @@ export default {
         this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.applicationId === this.selected.applicationId)
-          if (hit) this.selected = hit
+          if (hit) this.selected = { ...this.selected, ...hit }
         }
       } else {
         this.listError = res.message || '申请加载失败'
       }
     },
-    select(it) {
+    async select(it) {
       this.selected = it
+      await this.reloadDetail()
     },
     async reloadDetail() {
       if (!this.selected) return
-      const res = await studentAffairsApi.getFundingDetail(this.selected.applicationId)
+      const selectedId = this.selected.applicationId
+      const res = await studentAffairsApi.getFundingDetail(selectedId)
+      if (String(this.selected?.applicationId) !== String(selectedId)) return
       if (res.code === 0 && res.data) this.selected = res.data
       else toast.error(res.message || '刷新详情失败')
     },
@@ -817,6 +824,26 @@ export default {
 }
 .fd-kv dd {
   margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+.fd-statement {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-base);
+  background: var(--bg-subtle);
+}
+.fd-statement strong {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.fd-statement p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
   font-size: var(--font-size-sm);
   color: var(--text-primary);
 }
