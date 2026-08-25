@@ -271,11 +271,42 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await confirmDialog(staff, /确认|通过/)
       expect((await choiceConfirm).ok(), 'Staff PC choice confirmation must persist').toBeTruthy()
 
-      // 10. Teacher Mini: real taskbook issuance, proving stable mentor identity relation.
+      // 10. Teacher Mini: wait for real batch context, then issue taskbook.
+      // The Teacher Mini request layer rejects graduation calls locally until the selected batch is persisted.
+      // Do not click the issue tab during that bootstrap race; first prove the exact new batch is active.
       await loginTeacherMini(teacherMini)
+      const initialTaskbooks = teacherMini.waitForResponse((r) =>
+        r.request().method() === 'GET' &&
+        r.url().includes('/api/v1/mobile/teacher/graduation/taskbooks') &&
+        r.url().includes(`batchId=${batchId}`)
+      )
       await teacherMini.goto(`${miniBase}/#/pages/teacher/graduation-taskbook/index`)
+      const initialTaskbooksResponse = await initialTaskbooks
+      expect(initialTaskbooksResponse.ok(), 'Teacher Mini taskbook page must bootstrap exact batch').toBeTruthy()
+      await expect(teacherMini.getByText(batchName, { exact: true })).toBeVisible({ timeout: 20_000 })
+
+      const myStudentsRequest = teacherMini.waitForResponse((r) =>
+        r.request().method() === 'GET' &&
+        r.url().includes('/api/v1/mobile/teacher/graduation/my-students') &&
+        r.url().includes(`batchId=${batchId}`)
+      )
       await teacherMini.getByText('下达任务书', { exact: true }).click()
+      const myStudentsResponse = await myStudentsRequest
+      expect(myStudentsResponse.ok(), 'Teacher Mini own-student query must be real HTTP success').toBeTruthy()
+      const myStudentsEnvelope = await myStudentsResponse.json()
+      const myStudents = Array.isArray(myStudentsEnvelope?.data)
+        ? myStudentsEnvelope.data
+        : (myStudentsEnvelope?.data?.items || [])
+      expect(
+        myStudents.some((row) =>
+          String(row?.gdStudentId || row?.id || '') === gdStudentId &&
+          String(row?.studentNo || '') === studentNo &&
+          String(row?.topicTitle || '') === topicTitle
+        ),
+        'Teacher Mini own-student response must project the confirmed same-batch mentor/student/topic relation'
+      ).toBeTruthy()
       await expect(teacherMini.getByText(studentNo, { exact: false }).first()).toBeVisible({ timeout: 20_000 })
+
       const textareas = teacherMini.locator('textarea')
       await textareas.nth(0).fill('完成 GD-020 同批次毕业设计真实业务闭环')
       await textareas.nth(1).fill('完成选题、开题、中期、成果、评阅、答辩、成绩和归档')
