@@ -202,7 +202,7 @@ test.describe.serial('S1 · production build + nginx TLS + 2-worker backend repr
   test('S1-06 message deep link：真实 Student PC 消息详情重验后跳业务页面', async ({ page }) => {
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
     await page.goto(`${config.studentBaseUrl}/messages`)
-    await page.getByText('通知', { exact: true }).first().click()
+    await page.getByRole('button', { name: /^通知(?:\s+\d+)?$/ }).click()
     const row = page.locator('.mrow').filter({ hasText: s1.messageTitle }).first()
     await expect(row).toBeVisible()
     await row.click()
