@@ -1,4 +1,7 @@
+import dns from 'node:dns/promises'
 import fs from 'node:fs'
+import http from 'node:http'
+import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -9,7 +12,8 @@ import { StudentLoginPage } from '../pages/login.page.mjs'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const fixture = JSON.parse(fs.readFileSync(path.resolve(here, '../academic-b-w5-fixture.json'), 'utf8'))
 const staffFixture = JSON.parse(fs.readFileSync(path.resolve(here, '../academic-aa011-staff-browser-fixture.json'), 'utf8'))
-const MINIAPP_BASE = (process.env.E2E_MINIAPP_BASE_URL || 'http://127.0.0.1:5188').replace('://localhost', '://127.0.0.1')
+const MINIAPP_UPSTREAM = new URL(process.env.E2E_MINIAPP_BASE_URL || 'http://localhost:5188')
+const MINIAPP_BASE = 'http://127.0.0.1:5190'
 
 const pcCourse = fixture.courses.find((row) => row.role === 'PC')
 const miniCourse = fixture.courses.find((row) => row.role === 'MINIAPP')
@@ -25,6 +29,69 @@ async function screenshot(page, testInfo, name) {
   const file = testInfo.outputPath(`${name}.png`)
   await page.screenshot({ path: file, fullPage: false, animations: 'disabled', caret: 'hide' })
   await testInfo.attach(name, { path: file, contentType: 'image/png' })
+}
+
+function canConnect(host, port) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port })
+    const finish = (ok) => {
+      socket.removeAllListeners()
+      socket.destroy()
+      resolve(ok)
+    }
+    socket.setTimeout(2_000)
+    socket.once('connect', () => finish(true))
+    socket.once('timeout', () => finish(false))
+    socket.once('error', () => finish(false))
+  })
+}
+
+async function reachableMiniUpstream() {
+  const port = Number(MINIAPP_UPSTREAM.port || 80)
+  const candidates = await dns.lookup(MINIAPP_UPSTREAM.hostname, { all: true, verbatim: true })
+  for (const candidate of candidates) {
+    if (await canConnect(candidate.address, port)) {
+      return { ...candidate, port }
+    }
+  }
+  throw new Error(`AA-011 Mini upstream is not reachable: ${MINIAPP_UPSTREAM.origin}`)
+}
+
+async function startMiniLoopbackBridge() {
+  const upstream = await reachableMiniUpstream()
+  const server = http.createServer((request, response) => {
+    const upstreamRequest = http.request({
+      protocol: MINIAPP_UPSTREAM.protocol,
+      hostname: upstream.address,
+      family: upstream.family,
+      port: upstream.port,
+      method: request.method,
+      path: request.url,
+      headers: { ...request.headers, host: MINIAPP_UPSTREAM.host },
+    }, (upstreamResponse) => {
+      response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers)
+      upstreamResponse.pipe(response)
+    })
+    upstreamRequest.on('error', (error) => {
+      if (!response.headersSent) response.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' })
+      response.end(`AA-011 Mini loopback bridge failed: ${error.message}`)
+    })
+    request.pipe(upstreamRequest)
+  })
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(5190, '127.0.0.1', () => {
+      server.removeListener('error', reject)
+      resolve()
+    })
+  })
+  return server
+}
+
+async function closeServer(server) {
+  if (!server) return
+  await new Promise((resolve) => server.close(resolve))
 }
 
 async function miniappLogin(page) {
@@ -102,52 +169,57 @@ test('AA-011 same Staff-created batch survives Student PC -> Mini -> Student PC 
   await expect(pcAfterRefresh.getByRole('button', { name: '退课', exact: true })).toBeVisible()
   await pcContext.close()
 
-  const miniContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
-  const mini = await miniContext.newPage()
-  await miniappLogin(mini)
-  await mini.goto(`${MINIAPP_BASE}/#/pages/student/academic-affairs/selection`)
+  const miniBridge = await startMiniLoopbackBridge()
+  try {
+    const miniContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    const mini = await miniContext.newPage()
+    await miniappLogin(mini)
+    await mini.goto(`${MINIAPP_BASE}/#/pages/student/academic-affairs/selection`)
 
-  const crossEnd = await miniCard(mini, staffFixture.batchName, pcCourse.courseName)
-  await expect(crossEnd).toContainText('已选')
-  await expect(crossEnd.locator('.sl__btn')).toHaveText('退课')
-  await screenshot(mini, testInfo, 'aa011-same-batch-mini-sees-pc-selected-390x844')
+    const crossEnd = await miniCard(mini, staffFixture.batchName, pcCourse.courseName)
+    await expect(crossEnd).toContainText('已选')
+    await expect(crossEnd.locator('.sl__btn')).toHaveText('退课')
+    await screenshot(mini, testInfo, 'aa011-same-batch-mini-sees-pc-selected-390x844')
 
-  const miniEligible = await miniCard(mini, staffFixture.batchName, miniCourse.courseName)
-  await expect(miniEligible.locator('.sl__btn')).toHaveText('选课')
-  const miniPreflightPromise = mini.waitForResponse((response) =>
-    response.url().includes('/api/v1/mobile/academic/selection/preflight') && response.request().method() === 'POST'
-  )
-  const miniEnrollPromise = mini.waitForResponse((response) =>
-    response.url().includes('/api/v1/mobile/academic/selection/enroll') && response.request().method() === 'POST'
-  )
-  await miniEligible.locator('.sl__btn').click()
-  const miniPreflight = await miniPreflightPromise
-  const miniEnroll = await miniEnrollPromise
-  expect(miniPreflight.ok()).toBeTruthy()
-  expect(miniEnroll.ok()).toBeTruthy()
-  expect(requestSelectionCourseId(miniPreflight)).toBe(String(staffFixture.miniSelectionCourseId))
-  expect(requestSelectionCourseId(miniEnroll)).toBe(String(staffFixture.miniSelectionCourseId))
+    const miniEligible = await miniCard(mini, staffFixture.batchName, miniCourse.courseName)
+    await expect(miniEligible.locator('.sl__btn')).toHaveText('选课')
+    const miniPreflightPromise = mini.waitForResponse((response) =>
+      response.url().includes('/api/v1/mobile/academic/selection/preflight') && response.request().method() === 'POST'
+    )
+    const miniEnrollPromise = mini.waitForResponse((response) =>
+      response.url().includes('/api/v1/mobile/academic/selection/enroll') && response.request().method() === 'POST'
+    )
+    await miniEligible.locator('.sl__btn').click()
+    const miniPreflight = await miniPreflightPromise
+    const miniEnroll = await miniEnrollPromise
+    expect(miniPreflight.ok()).toBeTruthy()
+    expect(miniEnroll.ok()).toBeTruthy()
+    expect(requestSelectionCourseId(miniPreflight)).toBe(String(staffFixture.miniSelectionCourseId))
+    expect(requestSelectionCourseId(miniEnroll)).toBe(String(staffFixture.miniSelectionCourseId))
 
-  const miniSelected = await miniCard(mini, staffFixture.batchName, miniCourse.courseName)
-  await expect(miniSelected).toContainText('已选')
-  await expect(miniSelected.locator('.sl__btn')).toHaveText('退课')
+    const miniSelected = await miniCard(mini, staffFixture.batchName, miniCourse.courseName)
+    await expect(miniSelected).toContainText('已选')
+    await expect(miniSelected.locator('.sl__btn')).toHaveText('退课')
 
-  const miniDropCard = await miniCard(mini, staffFixture.batchName, pcCourse.courseName)
-  const miniDropPromise = mini.waitForResponse((response) =>
-    response.url().includes('/api/v1/mobile/academic/selection/drop') && response.request().method() === 'POST'
-  )
-  await miniDropCard.locator('.sl__btn').click()
-  const miniDrop = await miniDropPromise
-  expect(miniDrop.ok()).toBeTruthy()
-  expect(requestSelectionCourseId(miniDrop)).toBe(String(staffFixture.pcSelectionCourseId))
+    const miniDropCard = await miniCard(mini, staffFixture.batchName, pcCourse.courseName)
+    const miniDropPromise = mini.waitForResponse((response) =>
+      response.url().includes('/api/v1/mobile/academic/selection/drop') && response.request().method() === 'POST'
+    )
+    await miniDropCard.locator('.sl__btn').click()
+    const miniDrop = await miniDropPromise
+    expect(miniDrop.ok()).toBeTruthy()
+    expect(requestSelectionCourseId(miniDrop)).toBe(String(staffFixture.pcSelectionCourseId))
 
-  const miniDropped = await miniCard(mini, staffFixture.batchName, pcCourse.courseName)
-  await expect(miniDropped).toContainText('已退课')
-  await expect(miniDropped.locator('.sl__btn')).toHaveText('选课')
-  await mini.reload()
-  const miniPersisted = await miniCard(mini, staffFixture.batchName, miniCourse.courseName)
-  await expect(miniPersisted.locator('.sl__btn')).toHaveText('退课')
-  await miniContext.close()
+    const miniDropped = await miniCard(mini, staffFixture.batchName, pcCourse.courseName)
+    await expect(miniDropped).toContainText('已退课')
+    await expect(miniDropped.locator('.sl__btn')).toHaveText('选课')
+    await mini.reload()
+    const miniPersisted = await miniCard(mini, staffFixture.batchName, miniCourse.courseName)
+    await expect(miniPersisted.locator('.sl__btn')).toHaveText('退课')
+    await miniContext.close()
+  } finally {
+    await closeServer(miniBridge)
+  }
 
   const reloginContext = await browser.newContext({ viewport: { width: 1280, height: 720 } })
   const relogin = await reloginContext.newPage()
