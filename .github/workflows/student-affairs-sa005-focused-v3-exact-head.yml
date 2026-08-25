@@ -1,0 +1,271 @@
+name: Student Affairs SA-005 Focused V3 exact head
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - audit/student-affairs-browser-runner-20260823
+    paths:
+      - 'audit-tests/student-affairs-sa005-bootstrap-v3.py'
+      - 'audit-tests/student-affairs-sa005-verify-v3.py'
+      - 'audit-tests/student-affairs-grant-config-browser-v3.spec.mjs'
+      - 'audit-tests/student-affairs-grant-browser-audit.spec.mjs'
+      - '.github/workflows/student-affairs-sa005-focused-v3-exact-head.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: student-affairs-sa005-focused-v3
+  cancel-in-progress: true
+
+jobs:
+  sa005-focused-browser:
+    name: SA-005 focused / SA-002 fact + GRANT Browser + MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_sa005_contract?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: student-affairs-sa005-focused-v3
+      JWT_SECRET: student-affairs-sa005-focused-v3-only
+      JWT_SECRET_KEY: student-affairs-sa005-focused-v3-only
+      PYTHONPATH: .
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_TARGET_SHA: d6e7b104409ce9208ed1d12c2a93121de5489276
+
+    steps:
+      - name: Checkout immutable audit runner
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: runner
+          fetch-depth: 1
+
+      - name: Checkout immutable application exact head
+        uses: actions/checkout@v4
+        with:
+          ref: d6e7b104409ce9208ed1d12c2a93121de5489276
+          path: app
+          fetch-depth: 0
+
+      - name: Assert exact heads and clean product source
+        run: |
+          set -euo pipefail
+          echo "tested_app_head=$(git -C app rev-parse HEAD)"
+          echo "audit_runner_head=$(git -C runner rev-parse HEAD)"
+          test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
+          test -z "$(git -C app status --porcelain)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: app/backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            app/frontend/package-lock.json
+            app/student-portal/package-lock.json
+            app/e2e/package-lock.json
+
+      - name: Install backend, prepare isolated contracts, migrate Browser MySQL and publish IAM
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          python - <<'PY'
+          import pymysql
+          conn = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', autocommit=True)
+          try:
+              with conn.cursor() as cur:
+                  cur.execute("CREATE DATABASE IF NOT EXISTS student_lifecycle_sa005_contract CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+          finally:
+              conn.close()
+          print('[DB] isolated SA-005 pytest database ready')
+          PY
+          alembic upgrade head
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Run changed SA-005 contracts only on isolated test database
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_affairs_funding_grant_eligibility_recheck.py \
+            tests/test_funding_package10_scan_closeout.py \
+            tests/test_affairs_funding_appeal_list_version.py \
+            tests/test_affairs_phase2_role_matrix.py
+
+      - name: Reassert untouched Browser database authority after isolated pytest
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start real backend
+        run: |
+          set -euo pipefail
+          mkdir -p app/e2e/runtime-logs
+          cd app/backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Bootstrap canonical SA-005 identities and explicit approved SA-002 prerequisite
+        working-directory: app/backend
+        run: python ../../runner/audit-tests/student-affairs-sa005-bootstrap-v3.py
+
+      - name: Verify SA-002 approved difficult-library prerequisite in MySQL
+        working-directory: app/backend
+        run: python ../../runner/audit-tests/student-affairs-sa005-verify-v3.py precondition
+
+      - name: Start official external scheduler
+        run: |
+          cd app/backend
+          nohup python scripts/run_scheduled_jobs.py > ../e2e/runtime-logs/scheduler.log 2>&1 &
+          sleep 2
+
+      - name: Start real Staff PC and Student PC
+        run: |
+          set -euo pipefail
+          cd app/frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          cd ../student-portal
+          npm ci
+          VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+
+      - name: Wait for browser applications
+        run: |
+          set -euo pipefail
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
+            ready=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ready=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ready" ]; then
+              echo "Application not ready: $url"
+              cat app/e2e/runtime-logs/*.log || true
+              exit 1
+            fi
+          done
+
+      - name: Install Chromium once and inject both SA-005 specs
+        run: |
+          set -euo pipefail
+          cp runner/audit-tests/student-affairs-grant-config-browser-v3.spec.mjs app/e2e/specs/student-affairs-grant-config-browser-v3.spec.mjs
+          cp runner/audit-tests/student-affairs-grant-browser-audit.spec.mjs app/e2e/specs/student-affairs-grant-browser-audit.spec.mjs
+          cd app/e2e
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run real Staff PC GRANT project and batch configuration
+        id: config_browser
+        continue-on-error: true
+        working-directory: app/e2e
+        run: npx playwright test specs/student-affairs-grant-config-browser-v3.spec.mjs
+
+      - name: Verify GRANT configuration truth in MySQL
+        id: config_mysql
+        if: steps.config_browser.outcome == 'success'
+        continue-on-error: true
+        working-directory: app/backend
+        run: python ../../runner/audit-tests/student-affairs-sa005-verify-v3.py config
+
+      - name: Run strict Browser First GRANT journey to real time gate
+        id: journey_browser
+        continue-on-error: true
+        working-directory: app/e2e
+        run: npx playwright test specs/student-affairs-grant-browser-audit.spec.mjs
+
+      - name: Verify SA-002 linkage, GRANT truth and real publicity wait in MySQL
+        id: journey_mysql
+        if: steps.journey_browser.outcome == 'success'
+        continue-on-error: true
+        working-directory: app/backend
+        run: python ../../runner/audit-tests/student-affairs-sa005-verify-v3.py journey
+
+      - name: Reassert immutable application commit
+        if: always()
+        run: |
+          echo "tested_app_head=$(git -C app rev-parse HEAD)"
+          echo "audit_runner_head=$(git -C runner rev-parse HEAD)"
+          test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
+
+      - name: Show focused outcomes and fail on any real blocker
+        if: always()
+        run: |
+          echo "config_browser=${{ steps.config_browser.outcome }}"
+          echo "config_mysql=${{ steps.config_mysql.outcome }}"
+          echo "journey_browser=${{ steps.journey_browser.outcome }}"
+          echo "journey_mysql=${{ steps.journey_mysql.outcome }}"
+          test "${{ steps.config_browser.outcome }}" = "success"
+          test "${{ steps.config_mysql.outcome }}" = "success"
+          test "${{ steps.journey_browser.outcome }}" = "success"
+          test "${{ steps.journey_mysql.outcome }}" = "success"
+
+      - name: Upload focused SA-005 browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-sa005-focused-v3-${{ github.run_id }}
+          path: |
+            app/e2e/playwright-report/
+            app/e2e/test-results/
+            app/e2e/student-affairs-grant-config-v3-evidence.json
+            app/e2e/student-affairs-grant-audit-evidence.json
+            app/e2e/runtime-logs/
+          if-no-files-found: ignore
+          retention-days: 7
