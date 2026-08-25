@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   playwright-install-diagnostics:
-    name: Capture Playwright Chromium install evidence
+    name: Verify e2e lockfile and Chromium install
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -36,10 +36,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: e2e/package-lock.json
 
-      - name: Capture npm ci and Playwright Chromium install
+      - name: Generate lockfile and verify npm ci plus Playwright Chromium install
         working-directory: e2e
         shell: bash
         run: |
@@ -59,6 +57,15 @@ jobs:
           } 2>&1 | tee "$LOG"
 
           set +e
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund 2>&1 | tee -a "$LOG"
+          LOCK_RC=${PIPESTATUS[0]}
+          echo "package_lock_generation_exit=$LOCK_RC" | tee -a "$LOG"
+          if [ "$LOCK_RC" -ne 0 ]; then
+            exit "$LOCK_RC"
+          fi
+          test -s package-lock.json
+          sha256sum package-lock.json | tee -a "$LOG"
+
           npm ci 2>&1 | tee -a "$LOG"
           NPM_RC=${PIPESTATUS[0]}
           echo "npm_ci_exit=$NPM_RC" | tee -a "$LOG"
@@ -72,11 +79,13 @@ jobs:
           echo "playwright_install_exit=$PLAYWRIGHT_RC" | tee -a "$LOG"
           exit "$PLAYWRIGHT_RC"
 
-      - name: Upload Playwright install diagnostics
+      - name: Upload Playwright install diagnostics and generated lockfile
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: internship-s1-playwright-install-diagnostics-${{ github.run_id }}
-          path: e2e/runtime-logs/s1-playwright-install-diagnostic.log
+          path: |
+            e2e/runtime-logs/s1-playwright-install-diagnostic.log
+            e2e/package-lock.json
           if-no-files-found: error
           retention-days: 14
