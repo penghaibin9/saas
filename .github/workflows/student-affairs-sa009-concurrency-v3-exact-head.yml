@@ -137,10 +137,18 @@ jobs:
       - name: Reassert immutable application commit
         if: always()
         run: |
+          set -euo pipefail
           echo "tested_app_head=$(git -C app rev-parse HEAD)"
           echo "audit_runner_head=$(git -C runner rev-parse HEAD)"
           test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
-          test -z "$(git -C app status --porcelain)"
+          git -C app diff --exit-code
+          git -C app diff --cached --exit-code
+          unexpected="$(git -C app status --porcelain --untracked-files=all | grep -v '^?? e2e/runtime-logs/' || true)"
+          if [ -n "$unexpected" ]; then
+            echo "unexpected product worktree changes:"
+            printf '%s\n' "$unexpected"
+            exit 1
+          fi
 
       - name: Upload SA-009 concurrency evidence
         if: always()
