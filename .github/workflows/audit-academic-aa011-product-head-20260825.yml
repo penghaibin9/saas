@@ -220,7 +220,7 @@ jobs:
       - name: Install dual-build and start Student Mini H5
         env:
           VITE_USE_MOCK: 'false'
-          VITE_API_BASE_URL: http://127.0.0.1:8000
+          VITE_API_BASE_URL: http://localhost:8000
         run: |
           set -euo pipefail
           cd miniapp
