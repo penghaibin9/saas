@@ -479,7 +479,7 @@ test('AA-010 Gold Deep: real roll-call -> immutable submit -> student projection
       .first()
     await expect(warningCard).toBeVisible({ timeout: 20_000 })
     await screenshot(warningPage, testInfo, 'aa010-teacher-warning-before-close-390x844')
-    await warningCard.getByRole('button', { name: '关闭预警', exact: true }).click()
+    await warningCard.getByText('关闭预警', { exact: true }).click()
     const modalInput = warningPage.getByRole('textbox').last()
     await expect(modalInput).toBeVisible({ timeout: 5_000 })
     await modalInput.fill(closeNote)
