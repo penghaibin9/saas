@@ -123,7 +123,8 @@ test('AA-011 Staff PC real-click creates term-bound batch, adds supply, publishe
   await page.reload()
   await dismissGuide(page)
   await selectBatch(page, batchName)
-  await expect(page.locator('.aasel-detail')).toContainText('正在选课')
+  await expect(page.locator('.aasel-batch.is-active')).toContainText('选课中')
+  await expect(page.getByRole('button', { name: '截止', exact: true })).toBeVisible()
   await expect(page.locator('tr').filter({ hasText: pcCourse.courseName }).first()).toContainText(pcCourse.teacherName)
   await expect(page.locator('tr').filter({ hasText: miniCourse.courseName }).first()).toContainText(miniCourse.teacherName)
 
