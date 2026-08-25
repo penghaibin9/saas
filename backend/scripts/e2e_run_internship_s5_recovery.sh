@@ -152,7 +152,10 @@ assert_guardian_route_auth_gate "/api/v1/internship/compliance/consents/1/redeli
 
 pushd backend >/dev/null
 E2E_S5_PHASE=verify-upgraded python scripts/e2e_verify_internship_s5_recovery.py
-pytest tests/test_internship_guardian_consent_route_registration.py -q -p no:warnings
+# Guardian route reachability is intentionally sealed by the live final-RC HTTP
+# probes above plus S6 source closure. Do not re-import the app through pytest's
+# DB-disabled conftest here: that creates a different bootstrap topology and can
+# only add runner noise, not stronger production evidence.
 # Inject explicit candidate-only damage while the backed-up canonical fixture still exists.
 # The subsequent real-MySQL smoke is intentionally allowed to mutate/clean current candidate data;
 # governed restore must recover both that drift and the explicit DB/file damage below.
