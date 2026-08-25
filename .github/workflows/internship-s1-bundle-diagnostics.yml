@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 35
     env:
       CI: 'true'
-      E2E_PRODUCT_EXACT_SHA: b0806ebc8355567428b4c6407e7806980b4db0f1
+      E2E_PRODUCT_EXACT_SHA: 2e0a92c8b7f21a6eaa5ed6ca02929e39cd97fd2b
     steps:
       - uses: actions/checkout@v4
         with:
@@ -142,7 +142,7 @@ jobs:
                   rows.append(row)
                   print(json.dumps(row, ensure_ascii=False))
           report = {
-              'productExactSha': 'b0806ebc8355567428b4c6407e7806980b4db0f1',
+              'productExactSha': '2e0a92c8b7f21a6eaa5ed6ca02929e39cd97fd2b',
               'totalMatchingFiles': len(rows),
               'executableMatchingFiles': sum(r['classification'] == 'EXECUTABLE' for r in rows),
               'nonExecutableMatchingFiles': sum(r['classification'] == 'NON_EXECUTABLE' for r in rows),
