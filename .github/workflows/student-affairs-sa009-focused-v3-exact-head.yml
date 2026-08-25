@@ -188,6 +188,7 @@ jobs:
           git -C app diff --cached --exit-code
           unexpected="$(git -C app status --porcelain --untracked-files=all \
             | grep -v '^?? e2e/runtime-logs/' \
+            | grep -v '^?? e2e/runtime-fixtures/control-plane-school-iam.json$' \
             | grep -v '^?? e2e/specs/student-affairs-sa009-browser-v3.spec.mjs$' \
             | grep -v '^?? e2e/student-affairs-sa009-browser-v3-evidence.json$' \
             | grep -v '^?? e2e/playwright-report/' \
