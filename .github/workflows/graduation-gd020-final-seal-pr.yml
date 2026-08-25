@@ -68,13 +68,13 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_EXPECTED_SHA: 4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9
+      E2E_EXPECTED_SHA: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
 
     steps:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: 4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9
+          ref: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
           fetch-depth: 0
 
       - name: Assert exact product HEAD
@@ -216,6 +216,12 @@ jobs:
               ('`Playwright 背景 ${suffix}：验证真实浏览器交互和数据持久化。`', '`E2E-GD020 背景 ${suffix}：验证真实浏览器交互和数据持久化。`'),
               ('`Playwright 计划 ${suffix}：学生提交、导师审核、管理员复核。`', '`E2E-GD020 计划 ${suffix}：学生提交、导师审核、管理员复核。`'),
               ('`Playwright 成果 ${suffix}：保留完整证据链。`', '`E2E-GD020 成果 ${suffix}：保留完整证据链。`'),
+            ],
+            'e2e/specs/graduation-midterm-browser-audit.spec.mjs': [
+              (
+                "    await loginStudent(page)\n    const student = new StudentGraduationPage(page, config.studentBaseUrl)\n    await student.open()\n    const midtermStep = page.locator('.gd-step').filter({ has: page.getByRole('heading', { name: '中期检查', exact: true }) }).first()",
+                "    const resumeResponsePromise = page.waitForResponse((response) =>\n      response.url().includes('/api/v1/auth/browser-refresh') && response.request().method() === 'POST'\n    )\n    const student = new StudentGraduationPage(page, config.studentBaseUrl)\n    await student.open()\n    const resumeResponse = await resumeResponsePromise\n    expect(resumeResponse.ok(), `student browser-refresh HTTP ${resumeResponse.status()}`).toBeTruthy()\n    const midtermStep = page.locator('.gd-step').filter({ has: page.getByRole('heading', { name: '中期检查', exact: true }) }).first()",
+              ),
             ],
             'e2e/specs/graduation-final-browser-audit.spec.mjs': [
               (
