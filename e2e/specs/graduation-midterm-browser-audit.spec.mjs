@@ -4,6 +4,22 @@ import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 import { StaffGraduationPage, StudentGraduationPage } from '../pages/graduation.page.mjs'
 
+const actorIp = {
+  student: '10.253.0.11',
+  mentor: '10.253.0.21',
+  admin: '10.253.0.31',
+}
+
+async function loginStudent(page) {
+  await page.context().setExtraHTTPHeaders({ 'X-Forwarded-For': actorIp.student })
+  await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+}
+
+async function loginStaff(page, account, ip) {
+  await page.context().setExtraHTTPHeaders({ 'X-Forwarded-For': ip })
+  await new StaffLoginPage(page, config.staffBaseUrl).login(account)
+}
+
 function buildPreviewablePdf(label) {
   const safeLabel = String(label).replace(/[()\\]/g, '')
   const stream = `BT /F1 14 Tf 54 720 Td (YUEKE E2E ${safeLabel}) Tj ET\n`
@@ -79,7 +95,7 @@ async function resubmitRejectedProposalFromFeedback(page, fixture) {
 }
 
 async function establishApprovedProposal(page, fixture) {
-  await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+  await loginStudent(page)
   const student = new StudentGraduationPage(page, config.studentBaseUrl)
   await student.open()
   await student.signTaskbookIfNeeded()
@@ -88,25 +104,25 @@ async function establishApprovedProposal(page, fixture) {
     fileName: `E2E-AUDIT-20260823-midterm-proposal-${fixture.runId}.pdf`
   })
 
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+  await loginStaff(page, config.mentor, actorIp.mentor)
   const staff = new StaffGraduationPage(page, config.staffBaseUrl, fixture)
   await staff.openProposals('PENDING_REVIEW')
   await staff.selectStudent()
   await staff.reject('E2E-AUDIT-20260823 开题先退回补充真实中期整改计划')
 
-  await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+  await loginStudent(page)
   await student.open()
   await student.expectRejected('E2E-AUDIT-20260823 开题先退回补充真实中期整改计划')
   await resubmitRejectedProposalFromFeedback(page, fixture)
 
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+  await loginStaff(page, config.mentor, actorIp.mentor)
   await staff.openProposals('PENDING_REVIEW')
   await staff.selectStudent()
   await staff.approve()
 }
 
 async function advanceGuidingToMidtermThroughAdminUi(page, fixture) {
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+  await loginStaff(page, config.sandboxAdmin, actorIp.admin)
   const url = new URL(`${config.staffBaseUrl}/admin/graduation/students/${fixture.gdStudentId}`)
   url.searchParams.set('batchId', fixture.batchId)
   url.searchParams.set('source', 'E2E-AUDIT-20260823')
@@ -144,7 +160,7 @@ async function openMidterm(page, fixture) {
 }
 
 async function studentSubmitRectification(page, text) {
-  await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+  await loginStudent(page)
   const student = new StudentGraduationPage(page, config.studentBaseUrl)
   await student.open()
   const step = page.locator('.gd-step').filter({ has: page.getByRole('heading', { name: '中期检查', exact: true }) }).first()
@@ -181,7 +197,7 @@ test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭�
     await establishApprovedProposal(page, fixture)
     await advanceGuidingToMidtermThroughAdminUi(page, fixture)
 
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+    await loginStaff(page, config.mentor, actorIp.mentor)
     await openMidterm(page, fixture)
     await expect(page.getByRole('button', { name: '发起中期检查', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '发起中期检查', exact: true }).click()
@@ -201,7 +217,7 @@ test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭�
 
     await studentSubmitRectification(page, `E2E-AUDIT-20260823 第一次整改 ${fixture.runId}：补齐异常路径、补测刷新恢复并完善阶段计划。`)
 
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+    await loginStaff(page, config.mentor, actorIp.mentor)
     await openMidterm(page, fixture)
     await expect(page.getByRole('button', { name: '复核不通过', exact: true })).toBeVisible()
     const [failResponse] = await Promise.all([
@@ -213,7 +229,7 @@ test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭�
 
     await studentSubmitRectification(page, `E2E-AUDIT-20260823 第二次整改 ${fixture.runId}：按复核要求完成补测、修订并提交可追溯说明。`)
 
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+    await loginStaff(page, config.mentor, actorIp.mentor)
     await openMidterm(page, fixture)
     await expect(page.getByRole('button', { name: '整改复核通过', exact: true })).toBeVisible()
     const [passResponse] = await Promise.all([
@@ -228,7 +244,7 @@ test.describe.serial('毕业设计中期检查 Browser First · 整改重交闭�
     await dismissGuide(page)
     await expect(page.locator('.gp-panel')).toContainText(/整改.*通过|复核.*通过|已通过/)
 
-    await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+    await loginStudent(page)
     const student = new StudentGraduationPage(page, config.studentBaseUrl)
     await student.open()
     const midtermStep = page.locator('.gd-step').filter({ has: page.getByRole('heading', { name: '中期检查', exact: true }) }).first()
