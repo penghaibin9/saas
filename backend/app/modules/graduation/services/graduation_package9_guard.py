@@ -251,12 +251,20 @@ def _append_archive_version(session: Session, archive: GraduationArchiveRecord) 
     if len(manifest_hash) != 64:
         raise AppException("DATA_CONFLICT", "归档来源清单 hash 生成失败")
 
-    archive.manifest_hash = manifest_hash
-    session.execute(
-        GraduationArchiveRecord.__table__.update()
-        .where(GraduationArchiveRecord.id == int(archive.id))
-        .values(manifest_hash=manifest_hash)
-    )
+    # V2 material-center owns GraduationArchiveRecord.manifest_hash. Package9 keeps
+    # its independent immutable source hash in GraduationArchiveVersion, but must
+    # not overwrite an already-written canonical V2 SHA during the FILED flush.
+    canonical_manifest_hash = str(archive.manifest_hash or "").strip()
+    if not (
+        len(canonical_manifest_hash) == 64
+        and all(ch in "0123456789abcdefABCDEF" for ch in canonical_manifest_hash)
+    ):
+        archive.manifest_hash = manifest_hash
+        session.execute(
+            GraduationArchiveRecord.__table__.update()
+            .where(GraduationArchiveRecord.id == int(archive.id))
+            .values(manifest_hash=manifest_hash)
+        )
 
     current_rows = list(session.scalars(select(GraduationArchiveVersion).where(
         GraduationArchiveVersion.tenant_id == int(archive.tenant_id),
