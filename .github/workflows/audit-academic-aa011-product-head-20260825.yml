@@ -43,7 +43,7 @@ jobs:
 
     env:
       TARGET_SHA: ${{ github.event.pull_request.head.sha }}
-      RUNNER_SHA: ${{ github.event.pull_request.base.sha }}
+      RUNNER_BRANCH: audit/academic-aa011-runner-base-20260825
       CI: 'true'
       APP_ENV: test
       DEPLOYMENT_MODE: local
@@ -84,19 +84,22 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
 
-      - name: Checkout exact AA-011 audit harness
+      - name: Checkout latest AA-011 audit harness
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.RUNNER_SHA }}
+          ref: ${{ env.RUNNER_BRANCH }}
           path: audit-harness
           fetch-depth: 1
 
       - name: Overlay audit-only AA-011 files
         run: |
           set -euo pipefail
-          test "$(git -C audit-harness rev-parse HEAD)" = "$RUNNER_SHA"
+          ACTUAL_RUNNER_SHA="$(git -C audit-harness rev-parse HEAD)"
+          REMOTE_RUNNER_SHA="$(git -C audit-harness ls-remote origin "refs/heads/$RUNNER_BRANCH" | awk '{print $1}')"
+          test -n "$REMOTE_RUNNER_SHA"
+          test "$ACTUAL_RUNNER_SHA" = "$REMOTE_RUNNER_SHA"
           echo "AA-011 exact product SHA: $TARGET_SHA"
-          echo "AA-011 exact runner SHA: $RUNNER_SHA"
+          echo "AA-011 exact runner SHA: $ACTUAL_RUNNER_SHA"
           cp audit-harness/backend/tests/test_audit_aa011_cross_tenant_selection.py backend/tests/test_audit_aa011_cross_tenant_selection.py
           cp audit-harness/backend/scripts/e2e_assert_academic_aa011_same_batch.py backend/scripts/e2e_assert_academic_aa011_same_batch.py
           cp audit-harness/e2e/specs/academic-aa011-staff-selection-browser.spec.mjs e2e/specs/academic-aa011-staff-selection-browser.spec.mjs
