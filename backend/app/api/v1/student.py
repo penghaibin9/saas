@@ -26,7 +26,12 @@ _PICKER_PERMS = (
     "studentAffairs.student.view",
     "campusService.student.view",
     "internship.student.view",
+    # 毕设学生建档/批次编排只需要从主档目录选择学生，不等于查看学生 360 主档。
+    # 运行时角色权限是细粒度 graduationDesign.student.*；不能依赖并非所有角色快照都
+    # 显式发布的 graduationDesign.view，否则页面可进入但学生 Picker 会被主档权限 403 拦住。
     "graduationDesign.view",
+    "graduationDesign.student.view",
+    "graduationDesign.student.manage",
     "academicAffairs.roster.view",
 )
 
@@ -318,7 +323,7 @@ def void_student(
         user, "student-void", idempotency_key, payload, require_store=True
     ) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已作废（幂等重放）")
+            return success(guard.cached, message="已作废（逻辑删除，档案保留可追溯；同号仅可复活）")
         result = svc.void_student(student_id, body.reason)
         audit.record_critical(
             "作废学生", method="POST", path=f"/api/v1/students/{student_id}/void",
