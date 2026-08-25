@@ -305,7 +305,10 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
         ),
         'Teacher Mini own-student response must project the confirmed same-batch mentor/student/topic relation'
       ).toBeTruthy()
-      await expect(teacherMini.getByText(studentNo, { exact: false }).first()).toBeVisible({ timeout: 20_000 })
+      const visibleStudentPicker = teacherMini.locator('.tb__pick-val').filter({ hasText: studentNo }).first()
+      await expect(visibleStudentPicker, 'Teacher Mini issue form must visibly select the exact same-batch student').toBeVisible({ timeout: 20_000 })
+      await expect(visibleStudentPicker).toContainText(studentName)
+      await expect(visibleStudentPicker).toContainText(topicTitle)
 
       const textareas = teacherMini.locator('textarea')
       await textareas.nth(0).fill('完成 GD-020 同批次毕业设计真实业务闭环')
