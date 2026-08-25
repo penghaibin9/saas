@@ -23,7 +23,7 @@ from scripts.e2e_bootstrap_student_affairs_accounts import (
 
 SCHOOL_YEAR = "2026-2027"
 AID_BATCH_NAME = "E2E SA005 已通过困难认定前置"
-AID_LEVEL = "SPECIAL_DIFFICULT"
+AID_LEVEL = "SPECIAL"
 
 
 def _bootstrap_identities() -> dict:
