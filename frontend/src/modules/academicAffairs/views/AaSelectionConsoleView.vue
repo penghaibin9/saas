@@ -203,6 +203,9 @@
         <AppFormItem label="批次名称" required>
           <AppTextInput v-model="form.batchName" placeholder="如 2024秋公共选修课选课" :disabled="saving" />
         </AppFormItem>
+        <AppFormItem label="学期" required>
+          <AppTermEntityPicker v-model="form.termId" placeholder="选择学期" :disabled="saving" />
+        </AppFormItem>
         <AppFormItem label="选课学分上限">
           <AppNumberInput v-model="form.maxCredits" :min="0" :max="50" :disabled="saving" />
         </AppFormItem>
@@ -281,7 +284,7 @@
 /** 选课管理 · 教务处控制台（/admin/academic-affairs/selection）：批次生命周期 + 课程供给 + 名单 + 统计。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsSelectionApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 
@@ -299,7 +302,7 @@ export default {
   name: 'AaSelectionConsoleView',
   components: {
     ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker
+    AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker
   },
   data() {
     return {
@@ -307,7 +310,7 @@ export default {
       loading: true, error: '', rows: [],
       pagination: { page: 1, pageSize: 50, total: 0 },
       current: null, courses: [], stats: null,
-      createVisible: false, form: { batchName: '', maxCredits: 0, remark: '' }, formError: '',
+      createVisible: false, form: { batchName: '', termId: '', maxCredits: 0, remark: '' }, formError: '',
       courseVisible: false,
       courseForm: { courseId: '', teachingTaskId: '', courseCode: '', courseName: '', teacherName: '', teachingClassName: '', capacity: 30, minCapacity: 1 },
       courseError: '',
@@ -535,11 +538,12 @@ export default {
       }
       this.confirmVisible = true
     },
-    openCreate() { this.form = { batchName: '', maxCredits: 0, remark: '' }; this.formError = ''; this.createVisible = true },
+    openCreate() { this.form = { batchName: '', termId: '', maxCredits: 0, remark: '' }; this.formError = ''; this.createVisible = true },
     async submitCreate() {
       if (!this.form.batchName) { this.formError = '批次名称必填'; return }
+      if (!this.form.termId) { this.formError = '学期必选'; return }
       this.saving = true
-      const body = { batchName: this.form.batchName, remark: this.form.remark }
+      const body = { batchName: this.form.batchName, termId: this.form.termId, remark: this.form.remark }
       if (this.form.maxCredits > 0) body.rule = { maxCredits: this.form.maxCredits }
       const res = await api.createBatch(body)
       this.saving = false
