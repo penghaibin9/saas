@@ -98,7 +98,7 @@ jobs:
       E2E_MINIAPP_BASE_URL: https://127.0.0.1:8443/miniapp
       E2E_ENTERPRISE_BASE_URL: https://127.0.0.1:8443/enterprise
       E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      E2E_PRODUCT_EXACT_SHA: b0806ebc8355567428b4c6407e7806980b4db0f1
+      E2E_PRODUCT_EXACT_SHA: 2e0a92c8b7f21a6eaa5ed6ca02929e39cd97fd2b
 
     steps:
       - uses: actions/checkout@v4
@@ -250,7 +250,8 @@ jobs:
       - name: Seal production bundles against dev-server leakage
         run: |
           set -euo pipefail
-          if grep -RInE 'localhost:(5173|5199|5188|5202|8000)|127\.0\.0\.1:(5173|5199|5188|5202|8000)|VITE_USE_MOCK[=:]["'"']?(true|1)' \
+          PATTERN='localhost:(5173|5199|5188|5202|8000)|127\.0\.0\.1:(5173|5199|5188|5202|8000)|VITE_USE_MOCK[=:]["'"'"']?(true|1)'
+          if grep -RInE "$PATTERN" \
             frontend/dist student-portal/dist enterprise-portal/dist miniapp/dist/build/h5 miniapp/dist/build/mp-weixin; then
             echo 'production bundle contains dev-server or mock leakage' >&2
             exit 1
