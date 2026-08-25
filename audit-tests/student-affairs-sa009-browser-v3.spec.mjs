@@ -126,7 +126,6 @@ test.describe.serial('Student Affairs V3 Browser First · SA-009 dorm lifecycle'
       await page.goto(`${config.staffBaseUrl}/admin/student-affairs/dorm/checkin`)
       await expect(page.getByRole('heading', { name: '入住管理', exact: true })).toBeVisible()
       await selectOpenPicker(page, 0, buildingName)
-      await page.waitForTimeout(300)
       const roomCombo = page.getByRole('combobox').nth(1)
       await roomCombo.click()
       const roomOption = page.getByRole('option').first()
@@ -164,10 +163,10 @@ test.describe.serial('Student Affairs V3 Browser First · SA-009 dorm lifecycle'
         searchPlaceholder: '按学号 / 姓名搜索', keyword: studentNo, optionText: studentNo
       })
       await selectRemote(field(dialog, '目标楼栋'), {
-        searchPlaceholder: '按名称搜索', keyword: buildingName, optionText: buildingName
+        searchPlaceholder: '按楼栋名称搜索', keyword: buildingName, optionText: buildingName
       })
       await selectRemote(field(dialog, '目标房间'), {
-        searchPlaceholder: '按名称搜索', keyword: '', optionText: '101'
+        searchPlaceholder: '按房间号搜索', keyword: '', optionText: '101'
       })
       const bedField = field(dialog, '目标床位')
       await bedField.getByRole('combobox').click()
