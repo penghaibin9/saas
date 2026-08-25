@@ -1,0 +1,416 @@
+name: Graduation S1 production runtime seal
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/graduation-s1-production-runtime-pr.yml'
+      - 'e2e/specs/graduation-s1-production-runtime.spec.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graduation-s1-production-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  s1-production-runtime:
+    name: S1 production build / HTTPS Nginx / 2 workers / graduation smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping" --health-interval=5s --health-timeout=3s --health-retries=20
+
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      # Playwright itself stays in the safety-guarded test environment. The backend process below
+      # is launched with explicit production env, so the E2E runner can never target a real prod DB.
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/11
+      REDIS_KEY_PREFIX: graduation-s1-production-runtime
+      JWT_SECRET: graduation-s1-production-runtime-only-not-production-20260825
+      JWT_SECRET_KEY: graduation-s1-production-runtime-only-not-production-20260825
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: https://127.0.0.1:18443
+      E2E_STUDENT_BASE_URL: https://127.0.0.1:18443/portal
+      E2E_MINIAPP_BASE_URL: https://127.0.0.1:18443/miniapp
+      E2E_EXPECTED_SHA: 4356e2e3bac50f9617d412fee841f2536d573f2f
+      S1_PUBLIC_ORIGIN: https://127.0.0.1:18443
+
+    steps:
+      - name: Checkout product exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: 4356e2e3bac50f9617d412fee841f2536d573f2f
+          fetch-depth: 0
+
+      - name: Assert exact product HEAD
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          echo "PRODUCT_EXACT_HEAD=$actual"
+          test "$actual" = "$E2E_EXPECTED_SHA"
+
+      - name: Checkout S1 audit harness only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: audit-harness
+          sparse-checkout: |
+            e2e/specs/graduation-s1-production-runtime.spec.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Inject only S1 audit harness
+        run: |
+          set -euo pipefail
+          cp audit-harness/e2e/specs/graduation-s1-production-runtime.spec.mjs e2e/specs/
+          rm -rf audit-harness
+          test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
+          bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
+          test -z "$bad"
+          node --check e2e/specs/graduation-s1-production-runtime.spec.mjs
+          git status --short
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+            miniapp/package-lock.json
+
+      - name: Install backend, migrate real MySQL, seed IAM and tenants
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          alembic heads
+          alembic upgrade head
+          alembic current
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start production-mode backend with two workers
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs e2e/test-results e2e/runtime-uploads e2e/runtime-exports
+          cd backend
+
+          PROD_ENV=(
+            APP_ENV=production
+            DEPLOYMENT_MODE=production
+            DEBUG=false
+            DB_ENABLED=true
+            DATABASE_URL="$DATABASE_URL"
+            TEST_DATABASE_URL="$TEST_DATABASE_URL"
+            DB_HOST=127.0.0.1
+            DB_PORT=3306
+            DB_USER=root
+            DB_PASSWORD=e2e_root
+            DB_NAME=student_lifecycle_e2e
+            REDIS_URL="$REDIS_URL"
+            REDIS_KEY_PREFIX=graduation-s1-production-runtime
+            JWT_SECRET="$JWT_SECRET"
+            JWT_SECRET_KEY="$JWT_SECRET_KEY"
+            MOCK_LOGIN_ENABLED=false
+            SMS_ENABLED=false
+            SCHEDULER_MODE=external
+            MULTI_INSTANCE=true
+            WEB_CONCURRENCY=2
+            TRUSTED_PROXY_IPS=127.0.0.1/32
+            CORS_ORIGINS=https://127.0.0.1:18443
+            INTERNAL_OPS_TOKEN=graduation-s1-local-ops-token-20260825
+            FIELD_ENCRYPTION_KEY=JTLWGWGdBm3GPXuno8mTXZ91bKIXP0sVkGl_KTNhG9k=
+            FIELD_ENCRYPTION_KEY_ID=s1
+            UPLOAD_DIR="$GITHUB_WORKSPACE/e2e/runtime-uploads"
+            EXPORT_DIR="$GITHUB_WORKSPACE/e2e/runtime-exports"
+          )
+
+          env "${PROD_ENV[@]}" python - <<'PY' | tee ../e2e/runtime-logs/production-contract.txt
+          from app.core.config import settings
+          assert settings.is_prod is True
+          assert settings.APP_ENV == 'production'
+          assert settings.DEPLOYMENT_MODE == 'production'
+          assert settings.mock_login_enabled is False
+          assert settings.DB_ENABLED is True
+          assert settings.SCHEDULER_MODE == 'external'
+          assert settings.MULTI_INSTANCE is True
+          assert settings.WEB_CONCURRENCY == 2
+          print('APP_ENV=production')
+          print('DEPLOYMENT_MODE=production')
+          print('MOCK_LOGIN_ENABLED=false')
+          print('SCHEDULER_MODE=external')
+          print('MULTI_INSTANCE=true')
+          print('WEB_CONCURRENCY=2')
+          PY
+
+          env "${PROD_ENV[@]}" python scripts/check_production_redis.py
+          nohup env "${PROD_ENV[@]}" uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 \
+            > ../e2e/runtime-logs/backend-production.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          parent="$(cat ../e2e/runtime-logs/backend.pid)"
+
+          for i in {1..90}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8000/health >/dev/null || {
+            cat ../e2e/runtime-logs/backend-production.log
+            exit 1
+          }
+
+          for i in {1..30}; do
+            child_count="$(pgrep -P "$parent" | wc -l | tr -d ' ')"
+            started_count="$(grep -c 'Started server process' ../e2e/runtime-logs/backend-production.log || true)"
+            if [ "$child_count" -ge 2 ] && [ "$started_count" -ge 2 ]; then
+              echo "UVICORN_PARENT=$parent" | tee -a ../e2e/runtime-logs/production-contract.txt
+              echo "UVICORN_DIRECT_CHILDREN=$child_count" | tee -a ../e2e/runtime-logs/production-contract.txt
+              echo "UVICORN_STARTED_WORKERS=$started_count" | tee -a ../e2e/runtime-logs/production-contract.txt
+              exit 0
+            fi
+            sleep 1
+          done
+          ps -ef | grep '[u]vicorn' || true
+          cat ../e2e/runtime-logs/backend-production.log
+          exit 1
+
+      - name: Bootstrap real graduation identities against production backend
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+
+      - name: Build Staff PC, Student PC and Mini H5 production bundles
+        run: |
+          set -euo pipefail
+
+          cd frontend
+          npm ci
+          VITE_API_BASE_URL="$S1_PUBLIC_ORIGIN" npm run build
+          test -f dist/index.html
+          ! grep -q '@vite/client' dist/index.html
+          cd ..
+
+          cd student-portal
+          npm ci
+          VITE_BASE=/portal/ VITE_API_BASE_URL="$S1_PUBLIC_ORIGIN" npm run build
+          test -f dist/index.html
+          ! grep -q '@vite/client' dist/index.html
+          cd ..
+
+          cd miniapp
+          npm ci
+          VITE_USE_MOCK=false VITE_API_BASE_URL="$S1_PUBLIC_ORIGIN" npm run build:h5
+          test -f dist/build/h5/index.html
+          ! grep -q '@vite/client' dist/build/h5/index.html
+          cd ..
+
+          mkdir -p e2e/runtime-www/pc e2e/runtime-www/portal e2e/runtime-www/miniapp
+          cp -a frontend/dist/. e2e/runtime-www/pc/
+          cp -a student-portal/dist/. e2e/runtime-www/portal/
+          cp -a miniapp/dist/build/h5/. e2e/runtime-www/miniapp/
+
+          printf '%s\n' \
+            "STAFF_INDEX_SHA256=$(sha256sum e2e/runtime-www/pc/index.html | awk '{print $1}')" \
+            "STUDENT_INDEX_SHA256=$(sha256sum e2e/runtime-www/portal/index.html | awk '{print $1}')" \
+            "MINI_INDEX_SHA256=$(sha256sum e2e/runtime-www/miniapp/index.html | awk '{print $1}')" \
+            > e2e/runtime-logs/production-build-manifest.txt
+
+      - name: Start HTTPS Nginx reverse proxy over production bundles
+        run: |
+          set -euo pipefail
+          openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 \
+            -keyout e2e/s1.key -out e2e/s1.crt \
+            -subj '/CN=127.0.0.1' \
+            -addext 'subjectAltName=IP:127.0.0.1,DNS:localhost' >/dev/null 2>&1
+
+          cat > e2e/runtime-nginx.conf <<'NGINX'
+          events { worker_connections 1024; }
+          http {
+            include /etc/nginx/mime.types;
+            default_type application/octet-stream;
+            access_log /var/log/nginx/access.log;
+            error_log /var/log/nginx/error.log notice;
+            sendfile on;
+            client_max_body_size 64m;
+
+            server {
+              listen 18080;
+              server_name 127.0.0.1 localhost;
+              return 308 https://127.0.0.1:18443$request_uri;
+            }
+
+            server {
+              listen 18443 ssl;
+              server_name 127.0.0.1 localhost;
+              ssl_certificate /etc/nginx/tls/s1.crt;
+              ssl_certificate_key /etc/nginx/tls/s1.key;
+              ssl_protocols TLSv1.2 TLSv1.3;
+
+              location = /health {
+                proxy_pass http://127.0.0.1:8000/health;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Forwarded-Proto https;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              }
+
+              location /api/ {
+                proxy_pass http://127.0.0.1:8000;
+                proxy_http_version 1.1;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto https;
+                proxy_set_header X-Forwarded-Host $http_host;
+              }
+
+              location = /portal { return 308 /portal/; }
+              location ^~ /portal/ {
+                root /usr/share/nginx/html;
+                try_files $uri $uri/ /portal/index.html;
+              }
+
+              location = /miniapp { return 308 /miniapp/; }
+              location ^~ /miniapp/ {
+                root /usr/share/nginx/html;
+                try_files $uri $uri/ /miniapp/index.html;
+              }
+
+              location / {
+                root /usr/share/nginx/html/pc;
+                try_files $uri $uri/ /index.html;
+              }
+            }
+          }
+          NGINX
+
+          docker rm -f gd-s1-nginx >/dev/null 2>&1 || true
+          docker run -d --name gd-s1-nginx --network host \
+            -v "$GITHUB_WORKSPACE/e2e/runtime-www:/usr/share/nginx/html:ro" \
+            -v "$GITHUB_WORKSPACE/e2e/runtime-nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$GITHUB_WORKSPACE/e2e/s1.crt:/etc/nginx/tls/s1.crt:ro" \
+            -v "$GITHUB_WORKSPACE/e2e/s1.key:/etc/nginx/tls/s1.key:ro" \
+            nginx:1.27-alpine >/dev/null
+
+          for url in \
+            https://127.0.0.1:18443/health \
+            https://127.0.0.1:18443/login \
+            https://127.0.0.1:18443/portal/login \
+            https://127.0.0.1:18443/miniapp/; do
+            ok=''
+            for i in {1..60}; do
+              if curl -kfsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ok" ]; then
+              echo "Production surface not ready: $url"
+              docker logs gd-s1-nginx || true
+              cat e2e/runtime-logs/backend-production.log || true
+              exit 1
+            fi
+          done
+
+          redirect="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://127.0.0.1:18080/portal/graduation)"
+          echo "HTTP_REDIRECT=$redirect" | tee -a e2e/runtime-logs/production-contract.txt
+          case "$redirect" in
+            '308 https://127.0.0.1:18443/portal/graduation') ;;
+            *) echo "Unexpected HTTP->HTTPS redirect: $redirect"; exit 1 ;;
+          esac
+
+          curl -kfsS https://127.0.0.1:18443/health >/dev/null
+          docker exec gd-s1-nginx nginx -T > e2e/runtime-logs/nginx-effective.conf 2>&1
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          set -euo pipefail
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: S1 production runtime Browser First
+        id: s1
+        working-directory: e2e
+        run: |
+          set +e
+          npx playwright test specs/graduation-s1-production-runtime.spec.mjs
+          rc=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/graduation-s1-production-runtime-junit.xml
+          exit $rc
+
+      - name: Capture S1 runtime evidence
+        if: always()
+        run: |
+          set +e
+          mkdir -p e2e/runtime-logs
+          docker logs gd-s1-nginx > e2e/runtime-logs/nginx-container.log 2>&1
+          ps -ef | grep '[u]vicorn' > e2e/runtime-logs/uvicorn-processes.txt
+          curl -k -sS -D e2e/runtime-logs/health-headers.txt https://127.0.0.1:18443/health \
+            -o e2e/runtime-logs/health-body.json
+          grep -R '@vite/client' e2e/runtime-www/*/index.html > e2e/runtime-logs/vite-dev-client-scan.txt 2>&1
+          if [ -s e2e/runtime-logs/vite-dev-client-scan.txt ]; then
+            echo 'Unexpected Vite dev client marker found in production HTML' >> e2e/runtime-logs/vite-dev-client-scan.txt
+          else
+            echo 'PASS: no @vite/client in production HTML' > e2e/runtime-logs/vite-dev-client-scan.txt
+          fi
+          set -e
+
+      - name: Upload S1 production runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-s1-production-runtime-${{ github.run_id }}
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+            e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop S1 runtime
+        if: always()
+        run: |
+          docker rm -f gd-s1-nginx >/dev/null 2>&1 || true
+          if [ -f e2e/runtime-logs/backend.pid ]; then
+            kill "$(cat e2e/runtime-logs/backend.pid)" >/dev/null 2>&1 || true
+          fi
