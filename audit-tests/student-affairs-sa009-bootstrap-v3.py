@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 
+from sqlalchemy import select
+
+from app.db.session import get_sessionmaker
+from app.models import DormBuilding
 from app.services.identity_import_file_service import build_student_template, build_teacher_template
 from scripts.e2e_bootstrap_graduation_accounts_ci import _canonical_import, _workbook_with_rows
 from scripts.e2e_bootstrap_student_affairs_accounts import (
@@ -88,6 +92,20 @@ def _ensure_primary_counselor(token: str, org: dict, users: dict[str, dict]) -> 
     return int((created.get("data") or {}).get("assignmentId") or (created.get("data") or {}).get("id"))
 
 
+def _assert_no_prebound_dorm(manager_user_id: int) -> None:
+    with get_sessionmaker()() as db:
+        rows = db.scalars(select(DormBuilding).where(
+            DormBuilding.is_deleted.is_(False),
+            DormBuilding.manager_teacher_key.in_((str(manager_user_id), DORM_MANAGER_LOGIN)),
+        )).all()
+        assert not rows, {
+            "message": "SA-009 fixture must not pre-bind a dorm manager; Browser UI is authoritative",
+            "managerUserId": manager_user_id,
+            "managerLogin": DORM_MANAGER_LOGIN,
+            "preboundBuildingIds": [int(row.id) for row in rows],
+        }
+
+
 def main() -> None:
     admin = _req(
         "POST",
@@ -124,13 +142,15 @@ def main() -> None:
 
     users = list_users(token)
     assignment_id = _ensure_primary_counselor(token, org, users)
+    dorm_manager_user_id = int(users[DORM_MANAGER_LOGIN].get("id") or users[DORM_MANAGER_LOGIN].get("userId"))
+    _assert_no_prebound_dorm(dorm_manager_user_id)
     result = {
         "studentNo": STUDENT_NO,
         "studentUserId": int(users[STUDENT_NO].get("id") or users[STUDENT_NO].get("userId")),
         "counselorLogin": COUNSELOR_LOGIN,
         "counselorUserId": int(users[COUNSELOR_LOGIN].get("id") or users[COUNSELOR_LOGIN].get("userId")),
         "dormManagerLogin": DORM_MANAGER_LOGIN,
-        "dormManagerUserId": int(users[DORM_MANAGER_LOGIN].get("id") or users[DORM_MANAGER_LOGIN].get("userId")),
+        "dormManagerUserId": dorm_manager_user_id,
         "counselorAssignmentId": assignment_id,
         "dormPrebound": False,
     }
