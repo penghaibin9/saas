@@ -248,3 +248,61 @@ def test_archive_filed_appends_mysql_version_chain(db_mode, monkeypatch):
     finally:
         db.rollback()
         db.close()
+
+
+def test_package9_version_listener_preserves_canonical_v2_manifest_hash(db_mode, monkeypatch):
+    """真实 MySQL：Package9 追加版本证据时不得覆盖 V2 material-center 的 canonical SHA。"""
+    from app.db.session import get_sessionmaker
+
+    tenant_id = 1000000000000000002
+    canonical_v2_hash = "c" * 64
+    package9_source_hash = "d" * 64
+    monkeypatch.setattr(package9, "_strict_check_completeness", lambda db, student: ([], []))
+    monkeypatch.setattr(
+        package9,
+        "_strict_manifest_payload",
+        lambda db, student, archive_no: {
+            "tenantId": str(tenant_id),
+            "gdStudentId": str(student.id),
+            "archiveBatchNo": archive_no,
+            "grade": {"id": "1", "status": "PUBLISHED", "version": 1},
+            "fileErrors": [],
+            "manifestHash": package9_source_hash,
+        },
+    )
+
+    db = get_sessionmaker()()
+    try:
+        student = GraduationStudent(
+            tenant_id=tenant_id,
+            student_no="PKG9-V2-HASH-001",
+            name="V2归档哈希保护测试学生",
+            stage="FINAL_CHECK",
+            record_status="ACTIVE",
+        )
+        db.add(student)
+        db.flush()
+        archive = GraduationArchiveRecord(
+            tenant_id=tenant_id,
+            gd_student_id=student.id,
+            status="PENDING_SUBMIT",
+        )
+        db.add(archive)
+        db.flush()
+
+        archive.manifest_hash = canonical_v2_hash
+        archive.status = "FILED"
+        archive.archive_batch_no = "PKG9-V2-HASH-01"
+        archive.filed_at = datetime.utcnow()
+        archive.verified_by = "mysql-test"
+        db.flush()
+
+        db.expire(archive, ["manifest_hash"])
+        assert archive.manifest_hash == canonical_v2_hash
+        version = db.scalars(select(package9.GraduationArchiveVersion).where(
+            package9.GraduationArchiveVersion.archive_record_id == archive.id,
+        )).one()
+        assert version.source_manifest_hash == package9_source_hash
+    finally:
+        db.rollback()
+        db.close()
