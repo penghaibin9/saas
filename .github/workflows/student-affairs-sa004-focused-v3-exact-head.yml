@@ -71,7 +71,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_TARGET_SHA: 335a1c74bef21e1f90ade813cf387f9cbc96492d
+      E2E_TARGET_SHA: 6a734c42f3df08d348a01bb36d930ab6620f9a0f
 
     steps:
       - name: Checkout immutable audit runner
@@ -84,7 +84,7 @@ jobs:
       - name: Checkout immutable application exact head
         uses: actions/checkout@v4
         with:
-          ref: 335a1c74bef21e1f90ade813cf387f9cbc96492d
+          ref: 6a734c42f3df08d348a01bb36d930ab6620f9a0f
           path: app
           fetch-depth: 0
 
@@ -121,11 +121,14 @@ jobs:
           python scripts/e2e_seed_playwright_tenants.py
           python scripts/e2e_seed_control_plane_school_iam.py
 
-      - name: Run only the changed counselor permission contract
+      - name: Run changed SA-004 contracts only
         working-directory: app/backend
         run: |
           set -euo pipefail
-          pytest -q -p no:warnings tests/test_affairs_permission_codes.py::test_counselor_self_service_eval_only
+          pytest -q -p no:warnings \
+            tests/test_affairs_permission_codes.py::test_counselor_self_service_eval_only \
+            tests/test_affairs_phase2_role_matrix.py \
+            tests/test_affairs_funding_appeal_list_version.py
           python - <<'PY'
           from app.services.system_role_shadow_service import expected_system_role_permissions
           codes = set(expected_system_role_permissions('COUNSELOR'))
