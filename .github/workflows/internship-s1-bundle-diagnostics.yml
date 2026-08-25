@@ -91,7 +91,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p e2e/runtime/s1-bundle-diagnostics
-          PATTERN='localhost:(5173|5199|5188|5202|8000)|127\.0\.0\.1:(5173|5199|5188|5202|8000)|VITE_USE_MOCK[=:]["'"']?(true|1)'
+          PATTERN='localhost:(5173|5199|5188|5202|8000)|127\.0\.0\.1:(5173|5199|5188|5202|8000)|VITE_USE_MOCK[=:]["'"'"']?(true|1)'
           ROOTS=(frontend/dist student-portal/dist enterprise-portal/dist miniapp/dist/build/h5 miniapp/dist/build/mp-weixin)
           set +e
           grep -RlE "$PATTERN" "${ROOTS[@]}" | sort -u | tee e2e/runtime/s1-bundle-diagnostics/matched-files.txt
