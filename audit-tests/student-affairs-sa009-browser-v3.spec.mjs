@@ -178,10 +178,16 @@ test.describe.serial('Student Affairs V3 Browser First · SA-009 dorm lifecycle'
       await targetOption.click()
       await field(dialog, '调宿事由').locator('textarea').fill('SA-009真实浏览器调宿验收：验证辅导员与宿管两级审批及床位切换')
 
+      let confirmMessage = ''
+      page.once('dialog', async (browserDialog) => {
+        confirmMessage = browserDialog.message()
+        await browserDialog.accept()
+      })
       const responsePromise = page.waitForResponse((response) =>
         response.url().endsWith('/api/v1/student-affairs/dorm/transfers')
         && response.request().method() === 'POST')
       await dialog.getByRole('button', { name: '核对并提交', exact: true }).click()
+      expect(confirmMessage).toContain('确认发起调宿')
       const response = await responsePromise
       expect(response.ok(), `transfer submit HTTP ${response.status()}`).toBeTruthy()
       const env = await jsonBody(response)
