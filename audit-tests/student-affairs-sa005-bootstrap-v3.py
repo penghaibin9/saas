@@ -5,7 +5,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
-from app.db.session import SessionLocal
+from app.db.session import get_sessionmaker
 from app.models import AidApply, AidBatch, AidLevelHistory, StudentProfile
 from app.services.identity_import_file_service import build_student_template, build_teacher_template
 from scripts.e2e_bootstrap_graduation_accounts_ci import _canonical_import, _workbook_with_rows
@@ -127,7 +127,7 @@ def _bootstrap_identities() -> dict:
 
 def _seed_approved_difficult_library_precondition() -> None:
     """只造 SA-005 的已完成 SA-002 前置，不冒充 SA-002 Browser 证据。"""
-    with SessionLocal() as db:
+    with get_sessionmaker()() as db:
         student = db.scalars(
             select(StudentProfile).where(
                 StudentProfile.student_no == "E2E20260001",
