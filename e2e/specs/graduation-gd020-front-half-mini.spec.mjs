@@ -372,7 +372,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await studentPc.goto(`${config.studentBaseUrl}/graduation`)
       await expect(studentPc.getByText(batchName, { exact: true })).toBeVisible({ timeout: 20_000 })
       await expect(studentPc.getByText(topicTitle, { exact: true })).toBeVisible()
-      await expect(studentPc.getByText(new RegExp(mentorName))).toBeVisible()
+      await expect(studentPc.getByText(mentorName, { exact: true })).toBeVisible()
 
       await staff.goto(`${config.staffBaseUrl}/admin/graduation/students?panel=roster&batchId=${batchId}`)
       const finalStaffRow = rowFor(staff, studentName)
