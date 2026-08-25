@@ -71,7 +71,7 @@ jobs:
       SMS_ENABLED: 'false'
       SCHEDULER_MODE: external
       E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
-      E2E_TARGET_SHA: d6e7b104409ce9208ed1d12c2a93121de5489276
+      E2E_TARGET_SHA: a8fe72dd367c9327faaecaae355098482cedcd7d
 
     steps:
       - name: Checkout immutable audit runner
@@ -84,7 +84,7 @@ jobs:
       - name: Checkout immutable application exact head
         uses: actions/checkout@v4
         with:
-          ref: d6e7b104409ce9208ed1d12c2a93121de5489276
+          ref: a8fe72dd367c9327faaecaae355098482cedcd7d
           path: app
           fetch-depth: 0
 
