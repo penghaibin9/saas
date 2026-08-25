@@ -162,8 +162,10 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       // Product correctly rejects PENDING students at Student Mini; R9 must include the school-side qualification step.
       await staff.goto(`${config.staffBaseUrl}/admin/graduation/students?panel=eligibility&batchId=${batchId}`)
       await ensureNoBlockingGuide(staff)
-      const eligibilityRow = rowFor(staff, studentNo)
+      // 学号在 Staff PC 名单按安全策略脱敏显示，不能用完整 studentNo 定位真实行。
+      const eligibilityRow = rowFor(staff, studentName)
       await expect(eligibilityRow, 'new graduation student must appear in qualification queue').toBeVisible({ timeout: 20_000 })
+      await expect(eligibilityRow).toContainText(batchName)
       await expect(eligibilityRow).toContainText('待认定')
       await eligibilityRow.getByRole('button', { name: '认定合格', exact: true }).click()
       const eligibilityDialog = staff.locator('.app-confirm-dialog').filter({ hasText: '毕设资格认定' }).last()
@@ -171,8 +173,21 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await eligibilityDialog.locator('textarea.app-confirm-dialog__textarea').fill('GD-020 最终验收资格认定合格，允许进入选题流程')
       const eligibilitySave = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes(`/graduation/gd-students/${gdStudentId}/eligibility`))
       await eligibilityDialog.getByRole('button', { name: '资格合格', exact: true }).click()
-      expect((await eligibilitySave).ok(), 'graduation eligibility qualification must persist').toBeTruthy()
-      await expect.poll(async () => (await rowFor(staff, studentNo).innerText()), { timeout: 15_000 }).toContain('资格合格')
+      const eligibilitySaveResponse = await eligibilitySave
+      expect(eligibilitySaveResponse.ok(), 'graduation eligibility qualification must persist').toBeTruthy()
+      const eligibilityEnvelope = await eligibilitySaveResponse.json()
+      expect(eligibilityEnvelope?.data?.eligibilityStatus, 'eligibility API truth').toBe('QUALIFIED')
+
+      // PENDING 成功转为 QUALIFIED 后应离开当前待认定列表；真实切换筛选回读最终状态。
+      await expect(rowFor(staff, studentName)).toHaveCount(0, { timeout: 15_000 })
+      const eligibilityFilter = staff.locator('.af__field').filter({ hasText: '毕设资格' }).locator('select').first()
+      await eligibilityFilter.selectOption('QUALIFIED')
+      const qualifiedList = staff.waitForResponse((r) => r.request().method() === 'GET' && r.url().includes('/graduation/gd-students') && r.url().includes(`batchId=${batchId}`) && r.url().includes('eligibility=QUALIFIED'))
+      await staff.getByRole('button', { name: '查询', exact: true }).click()
+      expect((await qualifiedList).ok(), 'qualified eligibility list must reload').toBeTruthy()
+      const qualifiedRow = rowFor(staff, studentName)
+      await expect(qualifiedRow, 'qualified student must be readable from Staff PC').toBeVisible({ timeout: 15_000 })
+      await expect(qualifiedRow).toContainText('资格合格')
 
       // 5. Staff PC: bind the qualified mentor through the real assignment form.
       await staff.goto(`${config.staffBaseUrl}/admin/graduation/mentors/assign/${gdStudentId}`)
@@ -295,7 +310,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await expect(studentPc.getByText(new RegExp(mentorName))).toBeVisible()
 
       await staff.goto(`${config.staffBaseUrl}/admin/graduation/students?panel=roster&batchId=${batchId}`)
-      const finalStaffRow = rowFor(staff, studentNo)
+      const finalStaffRow = rowFor(staff, studentName)
       await expect(finalStaffRow).toBeVisible({ timeout: 20_000 })
       await expect(finalStaffRow).toContainText(topicTitle)
       await expect(finalStaffRow).toContainText(mentorName)
