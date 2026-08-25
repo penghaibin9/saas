@@ -141,11 +141,12 @@ test.describe.serial('S1 · Graduation production runtime seal', () => {
       const proposalFile = `S1-PROD-${fixture.runId}.pdf`
       await studentGraduation.submitProposal({ suffix: `S1-PROD-${fixture.runId}`, fileName: proposalFile })
       const proposalStep = studentGraduation.step('开题')
-      await expect(proposalStep).toContainText(proposalFile, { timeout: 30_000 })
+      await expect(proposalStep.getByRole('button', { name: '查看当前版', exact: true }).first()).toBeVisible({ timeout: 30_000 })
 
       await proposalStep.getByRole('button', { name: '查看当前版', exact: true }).first().click()
       const reader = studentPc.getByRole('dialog', { name: '站内文件阅读器', exact: true })
       await expect(reader).toBeVisible({ timeout: 30_000 })
+      await expect(reader).toContainText(proposalFile, { timeout: 30_000 })
       await expect(reader.locator('[data-preview-adapter="pdf"]')).toBeVisible({ timeout: 30_000 })
       await expect(reader.locator('canvas').first()).toBeVisible({ timeout: 30_000 })
       await reader.getByRole('button', { name: '关闭阅读器', exact: true }).click()
