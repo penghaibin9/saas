@@ -138,6 +138,7 @@ test.describe.serial('S1 · Graduation production runtime seal', () => {
       await expect(studentPc.getByRole('heading', { name: '按步骤完成我的毕业设计', exact: true })).toBeVisible({ timeout: 30_000 })
 
       await studentGraduation.signTaskbookIfNeeded()
+      await expect(studentGraduation.step('开题').getByRole('button', { name: '填写开题报告', exact: true })).toBeVisible({ timeout: 30_000 })
       const proposalFile = `S1-PROD-${fixture.runId}.pdf`
       await studentGraduation.submitProposal({ suffix: `S1-PROD-${fixture.runId}`, fileName: proposalFile })
       const proposalStep = studentGraduation.step('开题')
