@@ -2,8 +2,9 @@
 
 This helper is audit-only. It does not create attendance sessions or mutate academic product
 rows. It reads the authoritative C-W2 fixture, asks the production formal-occurrence consumer
-to prove three executable occurrences, then writes those proven tuples back to the local E2E
-state file for Playwright to consume through Teacher Mini real UI clicks.
+to prove three executable occurrences, and installs exactly one isolated teacher-to-student
+responsibility scope required by the product warning write authorization. No attendance or
+warning result is seeded. The proven tuples are written back to local E2E state for Playwright.
 """
 from __future__ import annotations
 
@@ -14,16 +15,18 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import _mysql_env  # noqa: F401
+from sqlalchemy import select
 
 from app.core.context import set_tenant
 from app.db.session import get_sessionmaker
-from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTerm
+from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTerm, TeacherStudentScope, User
 from app.modules.academic_affairs.services.academic_affairs_attendance_occurrence_consumer import (
     formal_schedule_patterns,
     resolve_formal_occurrence,
 )
 
 STATE_PATH = Path(__file__).resolve().parents[1] / "tmp" / "e2e_academic_c_teacher_today_state.local.json"
+WARNING_ROLE_CODE = "GD_MENTOR"
 
 
 def assert_safe_target() -> None:
@@ -61,6 +64,47 @@ def _parity_allows(parity: str, week_no: int) -> bool:
     raise SystemExit(f"AA-010 formal pattern has unknown week parity: {value}")
 
 
+def _ensure_warning_responsibility_scope(db, tenant_id: int, teacher_login: str, student_no: str) -> dict:
+    teacher = db.scalars(select(User).where(
+        User.tenant_id == tenant_id,
+        User.login_name == teacher_login,
+        User.is_deleted.is_(False),
+        User.status == "ACTIVE",
+    )).first()
+    if not teacher:
+        raise SystemExit("AA-010 warning responsibility teacher is missing from isolated MySQL")
+
+    scope = db.scalars(select(TeacherStudentScope).where(
+        TeacherStudentScope.tenant_id == tenant_id,
+        TeacherStudentScope.teacher_key == teacher_login,
+        TeacherStudentScope.role_code == WARNING_ROLE_CODE,
+        TeacherStudentScope.scope_type == "STUDENT",
+        TeacherStudentScope.ref_value == student_no,
+        TeacherStudentScope.status == "ACTIVE",
+        TeacherStudentScope.is_deleted.is_(False),
+    )).first()
+    if not scope:
+        scope = TeacherStudentScope(
+            tenant_id=tenant_id,
+            teacher_key=teacher_login,
+            teacher_name=teacher.real_name,
+            role_code=WARNING_ROLE_CODE,
+            scope_type="STUDENT",
+            ref_value=student_no,
+            status="ACTIVE",
+        )
+        db.add(scope)
+        db.flush()
+
+    return {
+        "scopeId": int(scope.id),
+        "teacherLogin": teacher_login,
+        "roleCode": WARNING_ROLE_CODE,
+        "scopeType": "STUDENT",
+        "studentNo": student_no,
+    }
+
+
 def main() -> int:
     assert_safe_target()
     if not STATE_PATH.exists():
@@ -72,13 +116,16 @@ def main() -> int:
     task_id = int(state.get("teachingTaskId") or 0)
     expected_item_id = int(state.get("scheduleItemId") or 0)
     expected_slot_no = int(state.get("slotNo") or 0)
+    teacher_login = str(state.get("teacherLogin") or "").strip()
+    student_no = str(state.get("studentNo") or "").strip()
     target_date = date.fromisoformat(str(state.get("targetDate") or ""))
-    if not all((tenant_id, term_id, task_id, expected_item_id, expected_slot_no)):
-        raise SystemExit("AA-010 C-W2 state is missing formal schedule identity")
+    if not all((tenant_id, term_id, task_id, expected_item_id, expected_slot_no, teacher_login, student_no)):
+        raise SystemExit("AA-010 C-W2 state is missing formal schedule or warning responsibility identity")
 
     db = get_sessionmaker()()
     try:
         set_tenant({"tenantId": str(tenant_id)})
+        warning_scope = _ensure_warning_responsibility_scope(db, tenant_id, teacher_login, student_no)
         term = db.get(AaTerm, term_id)
         task = db.get(AaTeachingTask, task_id)
         if not term or term.is_deleted or int(term.tenant_id) != tenant_id:
@@ -158,12 +205,15 @@ def main() -> int:
         if any(row["slotNo"] != expected_slot_no for row in occurrences):
             raise SystemExit("AA-010 proven occurrences changed slot identity")
 
+        db.commit()
         state["attendanceOccurrences"] = occurrences
+        state["warningResponsibilityScope"] = warning_scope
         STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps({
             "teachingTaskId": task_id,
             "formalPattern": pattern,
             "attendanceOccurrences": occurrences,
+            "warningResponsibilityScope": warning_scope,
         }, ensure_ascii=False, indent=2))
         return 0
     finally:
