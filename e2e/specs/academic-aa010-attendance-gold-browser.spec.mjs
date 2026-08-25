@@ -191,7 +191,7 @@ async function createSessionFromUi(page, facts, occurrence, fromToday = false) {
   expect(page.url(), `AA-010 ${label} route must carry the proven session date`).toContain(`sessionDate=${sessionDate}`)
   expect(page.url(), `AA-010 ${label} route must carry the proven slot`).toContain(`slotNo=${slotNo}`)
   expect(page.url(), `AA-010 ${label} route must carry the proven schedule item`).toContain(`scheduleItemId=${scheduleItemId}`)
-  await expect(page.getByText('课堂点名', { exact: true })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('课堂考勤', { exact: true })).toBeVisible({ timeout: 20_000 })
 
   const create = page.getByText('按教学任务圈定名单并新建', { exact: true })
   await expect(create, `AA-010 ${label} (${sessionDate} / item ${scheduleItemId} / slot ${slotNo}) must be an executable published occurrence`).toBeEnabled({ timeout: 20_000 })
