@@ -8,12 +8,18 @@ on:
     paths:
       - 'audit-tests/student-affairs-sa009-concurrency-v3.py'
       - '.github/workflows/student-affairs-sa009-concurrency-v3-exact-head.yml'
+  pull_request:
+    branches:
+      - audit/student-affairs-p0-p1-closeout-20260803
+    paths:
+      - 'audit-tests/student-affairs-sa009-concurrency-v3.py'
+      - '.github/workflows/student-affairs-sa009-concurrency-v3-exact-head.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: student-affairs-sa009-concurrency-v3
+  group: student-affairs-sa009-concurrency-v3-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -71,7 +77,7 @@ jobs:
       - name: Checkout immutable audit runner
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: runner
           fetch-depth: 1
 
