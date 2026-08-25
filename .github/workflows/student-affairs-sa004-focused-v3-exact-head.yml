@@ -138,6 +138,12 @@ jobs:
           print('[PERMISSION] COUNSELOR funding first-review grant is narrow')
           PY
 
+      - name: Restore Playwright tenant credentials after pytest isolation
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_playwright_tenants.py
+
       - name: Start real backend
         run: |
           set -euo pipefail
