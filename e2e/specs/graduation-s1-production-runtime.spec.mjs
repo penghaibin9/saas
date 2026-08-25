@@ -143,12 +143,24 @@ test.describe.serial('S1 · Graduation production runtime seal', () => {
       const proposalStep = studentGraduation.step('开题')
       await expect(proposalStep.getByRole('button', { name: '查看当前版', exact: true }).first()).toBeVisible({ timeout: 30_000 })
 
+      const previewTicketResponse = studentPc.waitForResponse((response) => (
+        response.request().method() === 'POST'
+        && apiPath(response, /\/api\/v1\/mobile\/graduation\/materials\/[^/]+\/preview-ticket$/)
+      ))
+      const previewContentResponse = studentPc.waitForResponse((response) => {
+        if (response.request().method() !== 'GET' || !apiPath(response, /\/api\/v1\/files\/[^/]+\/preview$/)) return false
+        return new URL(response.url()).searchParams.has('ticket')
+      })
       await proposalStep.getByRole('button', { name: '查看当前版', exact: true }).first().click()
+      const [previewTicket, previewContent] = await Promise.all([previewTicketResponse, previewContentResponse])
+      expect(previewTicket.ok(), `Student production preview ticket HTTP ${previewTicket.status()}`).toBeTruthy()
+      expect(previewContent.ok(), `Student production PDF preview HTTP ${previewContent.status()}`).toBeTruthy()
+      expect(String(previewContent.headers()['content-type'] || '').toLowerCase()).toContain('application/pdf')
+
       const reader = studentPc.getByRole('dialog', { name: '站内文件阅读器', exact: true })
       await expect(reader).toBeVisible({ timeout: 30_000 })
       await expect(reader).toContainText(proposalFile, { timeout: 30_000 })
-      await expect(reader.locator('[data-preview-adapter="pdf"]')).toBeVisible({ timeout: 30_000 })
-      await expect(reader.locator('canvas').first()).toBeVisible({ timeout: 30_000 })
+      await expect(reader.locator('iframe.student-pdf-viewer')).toBeVisible({ timeout: 30_000 })
       await reader.getByRole('button', { name: '关闭阅读器', exact: true }).click()
       await expect(reader).toBeHidden()
 
