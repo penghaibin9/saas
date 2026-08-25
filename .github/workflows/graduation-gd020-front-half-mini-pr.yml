@@ -1,0 +1,222 @@
+name: Graduation GD-020 front-half + Mini Browser First
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/graduation-gd020-front-half-mini-pr.yml'
+      - 'e2e/specs/graduation-gd020-front-half-mini.spec.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graduation-gd020-front-half-mini-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  front-half-mini:
+    name: GD-020 front-half + four-surface same-batch readback
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping" --health-interval=5s --health-timeout=3s --health-retries=20
+
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/12
+      REDIS_KEY_PREFIX: graduation-gd020-front-half-mini
+      JWT_SECRET: graduation-gd020-front-half-mini-only-not-production
+      JWT_SECRET_KEY: graduation-gd020-front-half-mini-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_MINIAPP_BASE_URL: http://127.0.0.1:5188
+      E2E_EXPECTED_SHA: 4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9
+
+    steps:
+      - name: Checkout product exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: 4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9
+          fetch-depth: 0
+
+      - name: Assert exact product HEAD
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          echo "PRODUCT_EXACT_HEAD=$actual"
+          test "$actual" = "$E2E_EXPECTED_SHA"
+
+      - name: Checkout front-half audit harness only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: audit-harness
+          sparse-checkout: |
+            e2e/specs/graduation-gd020-front-half-mini.spec.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Inject only front-half audit harness
+        run: |
+          set -euo pipefail
+          cp audit-harness/e2e/specs/graduation-gd020-front-half-mini.spec.mjs e2e/specs/
+          rm -rf audit-harness
+          test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
+          bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
+          test -z "$bad"
+          git status --short
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+            miniapp/package-lock.json
+
+      - name: Install backend, migrate MySQL, seed IAM and tenants
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          alembic upgrade head
+          alembic current
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start real backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs e2e/test-results
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Bootstrap real graduation identities
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+
+      - name: Start Staff PC
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+
+      - name: Start Student PC
+        env:
+          VITE_BASE: /portal/
+          VITE_API_BASE_URL: /
+          VITE_PROXY_TARGET: http://127.0.0.1:8000
+        run: |
+          set -euo pipefail
+          cd student-portal
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/student-portal.pid
+
+      - name: Start Teacher/Student Mini H5
+        env:
+          VITE_USE_MOCK: 'false'
+          VITE_API_BASE_URL: http://127.0.0.1:8000
+        run: |
+          set -euo pipefail
+          cd miniapp
+          npm ci
+          nohup npm run dev:h5 -- --host 127.0.0.1 --port 5188 > ../e2e/runtime-logs/miniapp.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/miniapp.pid
+
+      - name: Wait for all four browser surfaces
+        run: |
+          set -euo pipefail
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://127.0.0.1:5188/; do
+            ok=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ok" ]; then
+              echo "Application not ready: $url"
+              cat e2e/runtime-logs/*.log || true
+              exit 1
+            fi
+          done
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: GD-020 front-half + Mini same-batch Browser First
+        id: front
+        working-directory: e2e
+        run: |
+          set +e
+          npx playwright test specs/graduation-gd020-front-half-mini.spec.mjs
+          rc=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd020-front-half-mini-junit.xml
+          exit $rc
+
+      - name: Upload GD-020 front-half + Mini evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-gd020-front-half-mini-${{ github.run_id }}
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+            e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
