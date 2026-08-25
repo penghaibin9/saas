@@ -324,7 +324,12 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await expect(studentMini.getByText('完成 GD-020 同批次毕业设计真实业务闭环', { exact: true })).toBeVisible({ timeout: 20_000 })
       const taskbookConfirm = studentMini.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/api/v1/mobile/graduation/taskbook/confirm'))
       await studentMini.getByText('确认任务书', { exact: true }).click()
-      expect((await taskbookConfirm).ok(), 'Student Mini taskbook confirm must persist').toBeTruthy()
+      const taskbookConfirmResponse = await taskbookConfirm
+      expect(taskbookConfirmResponse.ok(), 'Student Mini taskbook confirm must persist').toBeTruthy()
+      const taskbookConfirmEnvelope = await taskbookConfirmResponse.json()
+      expect(taskbookConfirmEnvelope?.data?.status, 'Student Mini confirmation API truth').toBe('CONFIRMED')
+      expect(String(taskbookConfirmEnvelope?.data?.taskbook?.gdStudentId || ''), 'Student Mini confirmed exact graduation student').toBe(gdStudentId)
+      expect(taskbookConfirmEnvelope?.data?.taskbook?.confirmedAt, 'Student Mini confirmation must persist confirmedAt').toBeTruthy()
       await expect(studentMini.getByText(/已确认/).first()).toBeVisible({ timeout: 20_000 })
 
       // 12. Four-surface same-batch readback.
@@ -333,9 +338,29 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await expect(studentMini.getByText(topicTitle, { exact: true })).toBeVisible()
       await expect(studentMini.getByText(new RegExp(mentorName))).toBeVisible()
 
-      await teacherMini.goto(`${miniBase}/#/pages/teacher/graduation-taskbook/index`)
-      await expect(teacherMini.getByText(studentNo, { exact: false }).first()).toBeVisible({ timeout: 20_000 })
-      await expect(teacherMini.getByText(/已确认/).first()).toBeVisible()
+      // Re-entering the same hash route with page.goto does not re-run uni-app onLoad in H5.
+      // Force a real reload, then require a fresh exact-batch HTTP projection before trusting the UI badge.
+      await expect(teacherMini).toHaveURL(/pages\/teacher\/graduation-taskbook\/index/)
+      const confirmedTaskbooks = teacherMini.waitForResponse((r) =>
+        r.request().method() === 'GET' &&
+        r.url().includes('/api/v1/mobile/teacher/graduation/taskbooks') &&
+        r.url().includes(`batchId=${batchId}`)
+      )
+      await teacherMini.reload()
+      const confirmedTaskbooksResponse = await confirmedTaskbooks
+      expect(confirmedTaskbooksResponse.ok(), 'Teacher Mini confirmed taskbook readback must be real HTTP success').toBeTruthy()
+      const confirmedTaskbooksEnvelope = await confirmedTaskbooksResponse.json()
+      const confirmedTaskbookRows = Array.isArray(confirmedTaskbooksEnvelope?.data)
+        ? confirmedTaskbooksEnvelope.data
+        : (confirmedTaskbooksEnvelope?.data?.items || [])
+      const confirmedTaskbook = confirmedTaskbookRows.find((row) => String(row?.gdStudentId || '') === gdStudentId)
+      expect(confirmedTaskbook, 'Teacher Mini must read back the exact confirmed taskbook').toBeTruthy()
+      expect(confirmedTaskbook?.status, 'Teacher Mini taskbook status API truth').toBe('CONFIRMED')
+      expect(confirmedTaskbook?.statusLabel, 'Teacher Mini taskbook status label API truth').toMatch(/已确认/)
+      expect(confirmedTaskbook?.confirmedAt, 'Teacher Mini taskbook confirmation timestamp API truth').toBeTruthy()
+      const confirmedTeacherCard = teacherMini.locator('.card.tb').filter({ hasText: studentNo }).first()
+      await expect(confirmedTeacherCard, 'Teacher Mini confirmed taskbook card must be visible').toBeVisible({ timeout: 20_000 })
+      await expect(confirmedTeacherCard).toContainText(/已确认/)
 
       await new StudentLoginPage(studentPc, config.studentBaseUrl).login(config.student)
       await studentPc.goto(`${config.studentBaseUrl}/graduation`)
