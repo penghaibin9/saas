@@ -91,6 +91,13 @@ test('AA-011 Staff PC real-click creates term-bound batch, adds supply, publishe
   await expect(create).toBeVisible({ timeout: 10_000 })
   await create.getByRole('textbox').first().fill(batchName)
 
+  const termPicker = create.locator('.app-remote-select').first()
+  await termPicker.locator('.app-remote-select__control').click()
+  const currentTerm = termPicker.getByRole('option').filter({ hasText: '当前学期' }).first()
+  await expect(currentTerm, 'Staff PC create form must expose the authoritative current term').toBeVisible({ timeout: 20_000 })
+  await currentTerm.click()
+  await expect(termPicker.locator('.app-remote-select__single')).not.toHaveText('')
+
   const createdWrite = page.waitForResponse((response) =>
     response.url().includes('/academic-affairs/selection/batches') &&
     !response.url().includes('/courses') &&
