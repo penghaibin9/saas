@@ -27,7 +27,7 @@ from scripts.e2e_bootstrap_graduation_accounts_ci import (  # noqa: E402
     _workbook_with_rows,
 )
 
-PRODUCT_EXACT_HEAD = "63195a6dc9d25fa3805563910fb699ec163b552a"
+PRODUCT_EXACT_HEAD = "4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9"
 STABLE_PWD = "E2eTest@2026"
 SPECIALISTS = (
     ("e2e_defense_secretary", "E2E答辩秘书", "答辩秘书", "GD_DEFENSE_SECRETARY"),
