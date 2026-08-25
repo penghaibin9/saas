@@ -13,6 +13,7 @@
         <div>
           <div class="pdr__health-title">生产灾备健康：{{ ov.machineHealth?.status || 'UNKNOWN' }}</div>
           <div class="pdr__health-sub">健康权威：MACHINE_ONLY。人工备份/人工恢复记录不会把本页判成 GREEN。</div>
+          <div v-if="ov.machineHealth?.message" class="pdr__health-warning">{{ ov.machineHealth.message }}</div>
         </div>
         <div class="pdr__health-grid">
           <span>机器备份：{{ ov.machineHealth?.backup?.status || 'UNKNOWN' }}</span>
@@ -202,6 +203,7 @@ export default {
 .pdr__health--unknown { border-color: var(--color-warning, #d97706); }
 .pdr__health-title { font-size: 20px; font-weight: var(--font-weight-bold); color: var(--t1); }
 .pdr__health-sub { margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
+.pdr__health-warning { margin-top: var(--space-2); font-size: 13px; color: var(--color-warning, #d97706); }
 .pdr__health-grid { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-3); font-size: 13px; color: var(--text-secondary); }
 .pdr__grid {
   display: grid;

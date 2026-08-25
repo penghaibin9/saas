@@ -38,6 +38,7 @@
             {{ row.ownerName || '（未指定）' }}
           </template>
           <template #cell-ops="{ row }">
+            <button class="mp-link" @click="openServiceConfiguration(row)">配置</button>
             <button class="mp-link" @click="editService(row)">编辑</button>
             <button class="mp-link" @click="viewImpact(row)">故障影响面</button>
           </template>
@@ -85,6 +86,8 @@
         </ul>
       </AppCard>
     </template>
+
+    <PlatformServiceConfigDrawer v-model:visible="runtimeConfig.open" :service="runtimeConfig.service" />
   </ModulePageShell>
 </template>
 
@@ -93,11 +96,12 @@ import { AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
+import PlatformServiceConfigDrawer from '@/modules/platform/components/PlatformServiceConfigDrawer.vue'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'PlatformServiceCatalogView',
-  components: { AppCard, AppSectionHeader, DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag },
+  components: { AppCard, AppSectionHeader, DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, PlatformServiceConfigDrawer, StatusTag },
   data() {
     return {
       loading: true,
@@ -106,6 +110,7 @@ export default {
       services: [],
       dependencies: [],
       impact: null,
+      runtimeConfig: { open: false, service: null },
       form: { serviceCode: '', serviceName: '', tier: 'P2', status: 'ACTIVE', ownerName: '', runbookUrl: '', _editing: false, expectedVersion: null },
       depForm: { serviceCode: '', dependsOnServiceCode: '' },
       serviceColumns: [
@@ -129,6 +134,13 @@ export default {
     onToolbarAction(action) {
       if (action === 'bootstrap') return this.bootstrap()
       if (action === 'refresh') return this.load()
+    },
+    openServiceConfiguration(row) {
+      if (row.serviceCode === 'COS') {
+        this.$router.push({ name: 'platform-file-storage' })
+        return
+      }
+      this.runtimeConfig = { open: true, service: row }
     },
     async bootstrap() {
       const res = await platformControlApi.bootstrapServiceCatalog()
