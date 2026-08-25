@@ -81,7 +81,11 @@ async function ensureNoBlockingGuide(page) {
 }
 
 test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => {
-  test('create batch → join → mentor → topic → choice → taskbook → four-surface readback', async ({ browser }) => {
+  // 这是单 MySQL、同 runId 的状态型连续链。第一次失败后已产生的导师/批次/学生不能
+  // 在原库原地重放，否则 retry 只会撞唯一键并覆盖真正第一红灯。
+  test.describe.configure({ retries: 0 })
+
+  test('create batch → join → qualify → mentor → topic → choice → taskbook → four-surface readback', async ({ browser }) => {
     test.setTimeout(1_200_000)
 
     const staffCtx = await browser.newContext({ extraHTTPHeaders: { 'X-Forwarded-For': '127.0.0.21' } })
@@ -154,7 +158,23 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       const gdStudentId = String(studentEnvelope?.data?.id || '')
       expect(gdStudentId, 'graduation student id').toMatch(/^\d+$/)
 
-      // 4. Staff PC: bind the qualified mentor through the real assignment form.
+      // 4. Staff PC: real qualification decision before any student choice.
+      // Product correctly rejects PENDING students at Student Mini; R9 must include the school-side qualification step.
+      await staff.goto(`${config.staffBaseUrl}/admin/graduation/students?panel=eligibility&batchId=${batchId}`)
+      await ensureNoBlockingGuide(staff)
+      const eligibilityRow = rowFor(staff, studentNo)
+      await expect(eligibilityRow, 'new graduation student must appear in qualification queue').toBeVisible({ timeout: 20_000 })
+      await expect(eligibilityRow).toContainText('待认定')
+      await eligibilityRow.getByRole('button', { name: '认定合格', exact: true }).click()
+      const eligibilityDialog = staff.locator('.app-confirm-dialog').filter({ hasText: '毕设资格认定' }).last()
+      await expect(eligibilityDialog).toBeVisible()
+      await eligibilityDialog.locator('textarea.app-confirm-dialog__textarea').fill('GD-020 最终验收资格认定合格，允许进入选题流程')
+      const eligibilitySave = staff.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes(`/graduation/gd-students/${gdStudentId}/eligibility`))
+      await eligibilityDialog.getByRole('button', { name: '资格合格', exact: true }).click()
+      expect((await eligibilitySave).ok(), 'graduation eligibility qualification must persist').toBeTruthy()
+      await expect.poll(async () => (await rowFor(staff, studentNo).innerText()), { timeout: 15_000 }).toContain('资格合格')
+
+      // 5. Staff PC: bind the qualified mentor through the real assignment form.
       await staff.goto(`${config.staffBaseUrl}/admin/graduation/mentors/assign/${gdStudentId}`)
       await pickRemote(staff, '导师', mentorNo, mentorName)
       await fillField(staff, '分配原因', 'GD-020 最终同批次真实浏览器导师绑定')
@@ -162,7 +182,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await staff.getByRole('button', { name: '确认', exact: true }).click()
       expect((await mentorAssign).ok(), 'mentor assignment must persist').toBeTruthy()
 
-      // 5. Staff PC: declare the exact topic and submit it for review.
+      // 6. Staff PC: declare the exact topic and submit it for review.
       await staff.goto(`${config.staffBaseUrl}/admin/graduation/topic-lib/create?sourceType=TEACHER`)
       await fillField(staff, '题目名称', topicTitle)
       await pickRemote(staff, '毕设批次', batchNo, batchName)
@@ -191,7 +211,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await confirmDialog(staff, /确认通过|通过|确认/)
       expect((await topicReview).ok(), 'topic approval must persist').toBeTruthy()
 
-      // 6. Staff PC: create and open a real choice round.
+      // 7. Staff PC: create and open a real choice round.
       await staff.goto(`${config.staffBaseUrl}/admin/graduation/topic-rounds/create`)
       await fillField(staff, '轮次名称', roundName)
       await pickRemote(staff, '毕设批次', batchNo, batchName)
@@ -212,7 +232,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await confirmDialog(staff, /确认开启|开启|确认/)
       expect((await openRound).ok(), 'choice round open must persist').toBeTruthy()
 
-      // 7. Student Mini: real click the exact topic and submit the choice.
+      // 8. Student Mini: real click the exact topic and submit the choice.
       await loginStudentMini(studentMini)
       await studentMini.goto(`${miniBase}/#/pages/student/graduation/topics/index`)
       await expect(studentMini.getByText(roundName, { exact: true })).toBeVisible({ timeout: 20_000 })
@@ -224,7 +244,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       expect((await choiceSubmit).ok(), 'Student Mini choice submit must persist').toBeTruthy()
       await expect(studentMini.getByText(topicTitle, { exact: true }).first()).toBeVisible()
 
-      // 8. Staff PC: confirm that exact student's real choice.
+      // 9. Staff PC: confirm that exact student's real choice.
       await staff.goto(`${config.staffBaseUrl}/admin/graduation/topic-rounds?panel=rounds`)
       const currentRoundRow = rowFor(staff, roundName)
       await currentRoundRow.getByRole('button', { name: '志愿', exact: true }).click()
@@ -236,7 +256,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await confirmDialog(staff, /确认|通过/)
       expect((await choiceConfirm).ok(), 'Staff PC choice confirmation must persist').toBeTruthy()
 
-      // 9. Teacher Mini: real taskbook issuance, proving stable mentor identity relation.
+      // 10. Teacher Mini: real taskbook issuance, proving stable mentor identity relation.
       await loginTeacherMini(teacherMini)
       await teacherMini.goto(`${miniBase}/#/pages/teacher/graduation-taskbook/index`)
       await teacherMini.getByText('下达任务书', { exact: true }).click()
@@ -250,7 +270,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await teacherMini.getByText('下达任务书', { exact: true }).last().click()
       expect((await taskbookIssue).ok(), 'Teacher Mini taskbook issue must persist').toBeTruthy()
 
-      // 10. Student Mini: confirm the same taskbook.
+      // 11. Student Mini: confirm the same taskbook.
       await studentMini.goto(`${miniBase}/#/pages/student/graduation/taskbook/index`)
       await expect(studentMini.getByText('完成 GD-020 同批次毕业设计真实业务闭环', { exact: true })).toBeVisible({ timeout: 20_000 })
       const taskbookConfirm = studentMini.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/api/v1/mobile/graduation/taskbook/confirm'))
@@ -258,7 +278,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       expect((await taskbookConfirm).ok(), 'Student Mini taskbook confirm must persist').toBeTruthy()
       await expect(studentMini.getByText(/已确认/).first()).toBeVisible({ timeout: 20_000 })
 
-      // 11. Four-surface same-batch readback.
+      // 12. Four-surface same-batch readback.
       await studentMini.goto(`${miniBase}/#/pages/student/graduation/index`)
       await expect(studentMini.getByText(batchName, { exact: true })).toBeVisible({ timeout: 20_000 })
       await expect(studentMini.getByText(topicTitle, { exact: true })).toBeVisible()
@@ -274,7 +294,7 @@ test.describe.serial('GD-020 front-half + Mini same-batch Browser First', () => 
       await expect(studentPc.getByText(topicTitle, { exact: true })).toBeVisible()
       await expect(studentPc.getByText(new RegExp(mentorName))).toBeVisible()
 
-      await staff.goto(`${config.staffBaseUrl}/admin/graduation/students?panel=roster`)
+      await staff.goto(`${config.staffBaseUrl}/admin/graduation/students?panel=roster&batchId=${batchId}`)
       const finalStaffRow = rowFor(staff, studentNo)
       await expect(finalStaffRow).toBeVisible({ timeout: 20_000 })
       await expect(finalStaffRow).toContainText(topicTitle)
