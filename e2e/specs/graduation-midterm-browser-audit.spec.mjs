@@ -4,6 +4,32 @@ import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 import { StaffGraduationPage, StudentGraduationPage } from '../pages/graduation.page.mjs'
 
+function buildPreviewablePdf(label) {
+  const safeLabel = String(label).replace(/[()\\]/g, '')
+  const stream = `BT /F1 14 Tf 54 720 Td (YUEKE E2E ${safeLabel}) Tj ET\n`
+  const objects = [
+    null,
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [4 0 R] /Count 1 >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>',
+    `<< /Length ${Buffer.byteLength(stream, 'ascii')} >>\nstream\n${stream}endstream`,
+  ]
+  let body = '%PDF-1.4\n%YUEKE E2E SYNTHETIC DOCUMENT\n'
+  const offsets = [0]
+  for (let id = 1; id < objects.length; id += 1) {
+    offsets[id] = Buffer.byteLength(body, 'ascii')
+    body += `${id} 0 obj\n${objects[id]}\nendobj\n`
+  }
+  const xrefOffset = Buffer.byteLength(body, 'ascii')
+  body += `xref\n0 ${objects.length}\n0000000000 65535 f \n`
+  for (let id = 1; id < objects.length; id += 1) {
+    body += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`
+  }
+  body += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  return Buffer.from(body, 'ascii')
+}
+
 async function dismissGuide(page) {
   for (const mask of [page.locator('.app-step-guide__mask'), page.locator('.tour-mask')]) {
     if (await mask.isVisible().catch(() => false)) {
@@ -34,7 +60,7 @@ async function resubmitRejectedProposalFromFeedback(page, fixture) {
   await fileInput.setInputFiles({
     name: `E2E-AUDIT-20260823-midterm-proposal-resubmit-${fixture.runId}.pdf`,
     mimeType: 'application/pdf',
-    buffer: Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n')
+    buffer: buildPreviewablePdf(`${fixture.runId}-midterm-proposal-resubmit`)
   })
 
   const submit = feedback.getByRole('button', { name: '整改完成，重新提交开题报告', exact: true })
