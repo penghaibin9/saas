@@ -370,6 +370,12 @@ test('AA-010 Gold Deep: real roll-call -> immutable submit -> student projection
     await screenshot(teacher, testInfo, 'aa010-teacher-correction-before-reload-390x844')
 
     await teacher.reload()
+    const reloaded = teacher.locator('.list-row')
+      .filter({ hasText: facts.courseName })
+      .filter({ hasText: String(occurrences[0].sessionDate) })
+      .filter({ hasText: `第${occurrences[0].slotNo}节` }).first()
+    await expect(reloaded).toContainText('草稿', { timeout: 15_000 })
+    await reloaded.click()
     const persisted = teacher.locator('.at__row').filter({ hasText: facts.studentName }).first()
     await expect(persisted).toBeVisible({ timeout: 15_000 })
     await expect(persisted.locator('.at__seg-item.is-active')).toHaveText('缺勤')
