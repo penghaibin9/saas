@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,14 @@ def conn():
         database=os.getenv("DB_NAME", "student_lifecycle_e2e"),
         charset="utf8mb4",
     )
+
+
+def _as_datetime(value):
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    raise AssertionError(f"unexpected MySQL datetime value: {value!r}")
 
 
 def verify_config() -> None:
@@ -97,7 +106,9 @@ def verify_journey() -> None:
             print("[TIME_GATE]", time_gate)
             assert time_gate
             assert int(time_gate[0]) >= 1
-            assert time_gate[2] > time_gate[1]
+            current_at = _as_datetime(time_gate[1])
+            due_at = _as_datetime(time_gate[2])
+            assert due_at > current_at
 
             cur.execute(
                 "SELECT status, result, reason, review_opinion, open_key FROM t_affairs_funding_appeal WHERE id=%s",
