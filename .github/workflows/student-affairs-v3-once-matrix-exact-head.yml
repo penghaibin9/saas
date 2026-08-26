@@ -217,7 +217,10 @@ jobs:
         working-directory: app/backend
         run: |
           set +e
-          pytest -q tests/test_affairs_*.py tests/test_student_affairs_final_acceptance_mysql.py \
+          pytest -q -p no:warnings \
+            tests/test_affairs*.py \
+            tests/test_portal_affairs*.py \
+            tests/test_student_affairs_p0_p1_closeout.py \
             --junitxml=../audit-evidence/backend-junit.xml 2>&1 | tee ../audit-evidence/backend.log
           rc=${PIPESTATUS[0]}
           echo "$rc" > ../audit-evidence/backend.rc
