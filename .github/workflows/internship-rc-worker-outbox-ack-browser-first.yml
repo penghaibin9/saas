@@ -33,7 +33,6 @@ permissions:
 
 jobs:
   worker-outbox-ack:
-    if: github.event_name != 'pull_request' || github.head_ref == 'fix/internship-final-rc-20260824'
     name: Worker-Outbox / Student Mini / ACK / server truth
     runs-on: ubuntu-latest
     timeout-minutes: 35
