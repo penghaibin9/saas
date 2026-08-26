@@ -79,7 +79,7 @@ jobs:
       SCHEDULER_MODE: external
       E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
       E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      E2E_PRODUCT_EXACT_SHA: 5d4503fc9213e276e7db0b8f26735de3c4f59c8c
+      E2E_PRODUCT_EXACT_SHA: 979592ef8bfe3318bf5fd12043da17e635dcad1a
       E2E_INTERNSHIP_FIXTURE_FILE: ${{ github.workspace }}/e2e/runtime/internship-fixture.json
       E2E_S5_STATE_FILE: ${{ github.workspace }}/e2e/runtime/internship-s5-state.json
       BACKUP_DIR: ${{ github.workspace }}/e2e/runtime/s5-backup
