@@ -7,9 +7,12 @@ on:
     paths:
       - 'backend/scripts/e2e_seed_internship_agreement_sandbox.py'
       - 'backend/scripts/e2e_verify_internship_agreement_db.py'
+      - 'backend/app/api/v1/route_registration.py'
+      - 'backend/app/modules/internship/routers/internship_agreement_document.py'
       - 'backend/app/modules/internship/services/internship_agreement_service.py'
       - 'backend/app/modules/internship/services/internship_agreement_template_service.py'
       - 'backend/app/student_portal/internship_router.py'
+      - 'backend/tests/test_internship_agreement_document_route_registration.py'
       - 'frontend/src/modules/internship/views/AgreementView.vue'
       - 'frontend/src/modules/internship/views/AgreementDetailView.vue'
       - 'frontend/src/modules/internship/api/agreement.api.js'
@@ -122,6 +125,10 @@ jobs:
       - name: Install backend
         working-directory: backend
         run: pip install -r requirements.txt
+
+      - name: Seal agreement PDF route contract
+        working-directory: backend
+        run: pytest tests/test_internship_agreement_document_route_registration.py -q -p no:warnings
 
       - name: Migrate isolated real MySQL
         working-directory: backend
