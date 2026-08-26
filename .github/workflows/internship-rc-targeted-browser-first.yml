@@ -1,9 +1,6 @@
 name: Internship RC Targeted Browser First
 
 on:
-  push:
-    branches:
-      - fix/internship-final-rc-20260824
   pull_request:
     branches:
       - main
@@ -28,7 +25,6 @@ permissions:
 
 jobs:
   ix-001-008-015:
-    if: github.event_name != 'pull_request' || github.head_ref == 'fix/internship-final-rc-20260824'
     name: IX-001 IX-008 IX-015 / real MySQL / real browser / exact head
     runs-on: ubuntu-latest
     timeout-minutes: 45
