@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 
 from app.core.exceptions import AppException
+from app.core.tenant_scoped import tenant_get
 from app.services import affairs_funding_service as legacy
 from app.services.db_service import _tid, session
 
@@ -51,11 +52,11 @@ def _grant_eligibility_snapshot(db, application) -> dict | None:
 
     from app.models import FundingBatch, FundingProject
 
-    batch = db.get(FundingBatch, int(application.batch_id)) if application.batch_id else None
-    if not batch or batch.is_deleted or int(batch.tenant_id) != int(_tid()):
+    batch = tenant_get(db, FundingBatch, int(application.batch_id)) if application.batch_id else None
+    if not batch or batch.is_deleted:
         raise _GrantEligibilityChanged("助学资格复核失败：资助批次不存在或已失效")
-    project = db.get(FundingProject, int(batch.project_id)) if batch.project_id else None
-    if not project or project.is_deleted or int(project.tenant_id) != int(_tid()):
+    project = tenant_get(db, FundingProject, int(batch.project_id)) if batch.project_id else None
+    if not project or project.is_deleted:
         raise _GrantEligibilityChanged("助学资格复核失败：资助项目不存在或已失效")
 
     snapshot = legacy._check_grant(db, int(application.student_id), project)
@@ -168,8 +169,8 @@ def scan_publicity() -> dict:
                 skipped_appeal += 1
                 continue
 
-            batch = db.get(FundingBatch, int(application.batch_id)) if application.batch_id else None
-            if not batch or batch.is_deleted or int(batch.tenant_id) != int(tenant_id):
+            batch = tenant_get(db, FundingBatch, int(application.batch_id)) if application.batch_id else None
+            if not batch or batch.is_deleted:
                 invalid_batch += 1
                 continue
             due = application.publicity_at + timedelta(days=max(1, int(batch.publicity_days or 5)))
