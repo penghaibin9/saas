@@ -1,13 +1,16 @@
 """Prepare the isolated real-account fixture for AA-003 status-change Gold Deep.
 
-This script runs only against a disposable e2e/test MySQL.  It reuses the canonical
+This script runs only against a disposable e2e/test MySQL. It reuses the canonical
 identity-import accounts already used by browser acceptance and adds only the exact
-AA-003 permission/scope graph required for the four-surface flow.
+AA-003 permission/scope graph required for the four-surface flow. Stage C1 is part of
+the product contract, so the fixture also proves or creates one authoritative baseline
+StudentAcademicFact before the browser is allowed to submit a status change.
 """
 from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -23,11 +26,15 @@ from app.models import (
     Role,
     RolePermission,
     SchoolClass,
+    StudentAcademicFact,
     StudentProfile,
     TeacherStudentScope,
     Tenant,
     User,
     UserRole,
+)
+from app.modules.academic_affairs.services.academic_affairs_student_fact_service import (
+    create_baseline_student_academic_fact,
 )
 
 TID = 1000000000000000007
@@ -44,6 +51,7 @@ COUNSELOR_PERM = "academicAffairs.statusChange.counselorReview"
 COLLEGE_PERM = "academicAffairs.statusChange.collegeReview"
 OFFICE_PERM = "academicAffairs.statusChange.officeReview"
 STATE_PATH = Path(__file__).resolve().parents[1] / "tmp/e2e_academic_aa003_state.local.json"
+_ENROLLED = {"NORMAL", "REGISTERED", "RETAINED"}
 
 
 def safe_target() -> None:
@@ -178,6 +186,57 @@ def ensure_current_term(db):
     return term
 
 
+def _projection_tuple(row) -> tuple:
+    return (
+        str(row.student_status or "NORMAL").upper(),
+        row.college_id,
+        row.major_id,
+        row.class_id,
+        row.grade,
+    )
+
+
+def ensure_stage_c1_baseline(db, student: StudentProfile):
+    """Require one aligned current fact; create v1 only when identity import has none.
+
+    The audit fixture must never repair a product-created drift. If canonical identity import
+    already wrote academic facts, they are treated as authoritative and must match the hot
+    StudentProfile projection exactly. Only the historical/no-fact case gets a one-time
+    baseline using the same production Stage C1 helper.
+    """
+    base_status = str(student.student_status or "NORMAL").upper()
+    if base_status not in _ENROLLED:
+        raise SystemExit(f"AA-003 student must start enrolled, got {base_status}")
+
+    facts = db.scalars(select(StudentAcademicFact).where(
+        StudentAcademicFact.tenant_id == TID,
+        StudentAcademicFact.student_id == int(student.id),
+    ).order_by(StudentAcademicFact.version_no)).all()
+    active = [row for row in facts if row.valid_to is None]
+    if not facts:
+        row = create_baseline_student_academic_fact(
+            db,
+            student,
+            valid_from=datetime.utcnow() - timedelta(minutes=5),
+            source_type="E2E_AA003_BASELINE",
+            source_quality="EXACT",
+            tenant_id=TID,
+        )
+        facts = [row]
+        active = [row]
+    if len(active) != 1:
+        raise SystemExit(
+            f"AA-003 Stage C1 requires exactly one active fact, got {[(r.id, r.version_no, r.valid_to) for r in active]}"
+        )
+    current = active[0]
+    if _projection_tuple(current) != _projection_tuple(student):
+        raise SystemExit(
+            "AA-003 Stage C1 projection drift before browser flow: "
+            f"fact={_projection_tuple(current)} profile={_projection_tuple(student)}"
+        )
+    return current, len(facts)
+
+
 def main() -> int:
     safe_target()
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -196,9 +255,9 @@ def main() -> int:
         college_user = one(db, User, tenant_id=TID, login_name=COLLEGE_LOGIN)
         office_user = one(db, User, tenant_id=TID, login_name=OFFICE_LOGIN)
 
-        # Use one simple status transition for the acceptance chain.  Identity import itself
-        # does not make an academic status-change case; force a clean enrolled starting fact.
-        student.student_status = "REGISTERED"
+        # Keep the canonical identity-import academic projection intact. The acceptance chain
+        # only requires an enrolled student; mutating student_status here would create an
+        # artificial Stage C1 projection drift if identity import already created a fact.
         student.status = "ACTIVE"
         student.is_deleted = False
         klass.status = "ACTIVE"
@@ -229,6 +288,7 @@ def main() -> int:
             real_name=college_user.real_name or COLLEGE_LOGIN,
         )
         term = ensure_current_term(db)
+        baseline, fact_count = ensure_stage_c1_baseline(db, student)
 
         active = db.scalars(select(AaStatusChange).where(
             AaStatusChange.tenant_id == TID,
@@ -241,13 +301,18 @@ def main() -> int:
             raise SystemExit(f"AA-003 fixture is not clean; existing SUSPEND cases: {[r.id for r in active]}")
 
         db.commit()
+        db.refresh(student)
         state = {
             "tenantId": str(TID),
             "tenantCode": TENANT_CODE,
             "studentId": str(student.id),
             "studentNo": student.student_no,
             "studentName": student.real_name,
+            "studentBaseStatus": str(student.student_status or "NORMAL").upper(),
             "studentBaseVersion": int(student.version or 0),
+            "academicBaselineFactId": str(baseline.id),
+            "academicBaselineFactVersion": int(baseline.version_no),
+            "academicFactCountBefore": int(fact_count),
             "classId": str(klass.id),
             "className": klass.class_name,
             "collegeId": str(college.id),
