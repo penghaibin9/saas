@@ -46,6 +46,7 @@ from scripts.e2e_bootstrap_student_affairs_accounts import (  # noqa: E402
     TEACHERS,
     TENANT,
     _req,
+    ensure_counselor_assignment,
     ensure_dorm,
     ensure_org,
     login_admin,
@@ -130,7 +131,14 @@ def ensure_student_org(token: str) -> dict:
     }
 
 
-def write_fixture_files(*, org: dict, dorm: dict, student_org: dict, imported: dict) -> None:
+def write_fixture_files(
+    *,
+    org: dict,
+    dorm: dict,
+    student_org: dict,
+    imported: dict,
+    counselor: dict,
+) -> None:
     passwords = set_passwords()
     missing = [login_name for login_name in ALL_LOGINS if login_name not in passwords]
     if missing:
@@ -159,6 +167,7 @@ def write_fixture_files(*, org: dict, dorm: dict, student_org: dict, imported: d
         "org": org,
         "dorm": {key: value for key, value in dorm.items() if key != "rooms"},
         "studentOrg": student_org,
+        "counselor": counselor,
         "import": imported,
         "accounts": ALL_LOGINS,
         "passwordFile": str(CRED_PATH),
@@ -187,10 +196,23 @@ def main() -> int:
     imported = import_accounts(token)
     print("identity_import:", json.dumps(imported, ensure_ascii=False))
 
+    counselor = ensure_counselor_assignment(token, int(org["classIds"][CLASS_A]))
+    if not counselor.get("configured"):
+        raise SystemExit(
+            "formal counselor assignment missing: " + json.dumps(counselor, ensure_ascii=False)
+        )
+    print("counselor:", json.dumps(counselor, ensure_ascii=False))
+
     student_org = ensure_student_org(token)
     print("student_org:", json.dumps(student_org, ensure_ascii=False))
 
-    write_fixture_files(org=org, dorm=dorm, student_org=student_org, imported=imported)
+    write_fixture_files(
+        org=org,
+        dorm=dorm,
+        student_org=student_org,
+        imported=imported,
+        counselor=counselor,
+    )
     return 0
 
 
