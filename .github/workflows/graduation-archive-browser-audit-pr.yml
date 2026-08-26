@@ -67,13 +67,13 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_EXPECTED_SHA: 4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9
+      E2E_EXPECTED_SHA: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
 
     steps:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: 4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9
+          ref: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
           fetch-depth: 0
 
       - name: Assert exact product HEAD
@@ -81,7 +81,7 @@ jobs:
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           echo "PRODUCT_EXACT_HEAD=$actual"
-          test "$actual" = "4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9"
+          test "$actual" = "$E2E_EXPECTED_SHA"
 
       - name: Checkout audit harness only
         uses: actions/checkout@v4
@@ -110,8 +110,8 @@ jobs:
           cp audit-harness/e2e/scripts/graduation-specialist-accounts.py e2e/scripts/
           cp audit-harness/e2e/scripts/graduation-archive-db-audit.py e2e/scripts/
           rm -rf audit-harness
-          grep -rl -e '63195a6dc9d25fa3805563910fb699ec163b552a' -e '47264037bf014276e795d3655d7f178830756729' e2e/scripts | xargs -r sed -i -e 's/63195a6dc9d25fa3805563910fb699ec163b552a/4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9/g' -e 's/47264037bf014276e795d3655d7f178830756729/4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9/g'
-          test "$(git rev-parse HEAD)" = "4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9"
+          grep -rl -e '63195a6dc9d25fa3805563910fb699ec163b552a' -e '47264037bf014276e795d3655d7f178830756729' -e '4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9' e2e/scripts | xargs -r sed -i -e 's/63195a6dc9d25fa3805563910fb699ec163b552a/fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2/g' -e 's/47264037bf014276e795d3655d7f178830756729/fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2/g' -e 's/4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9/fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2/g'
+          test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
           bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
           test -z "$bad"
           git status --short
@@ -228,8 +228,12 @@ jobs:
             path = Path(raw)
             text = path.read_text(encoding='utf-8')
             for old, new in replacements:
-              assert old in text, (raw, old)
-              text = text.replace(old, new)
+              if old in text:
+                text = text.replace(old, new)
+              elif new in text:
+                print(f'already patched: {raw}: {new[:80]}')
+              else:
+                raise AssertionError((raw, old, new))
             path.write_text(text, encoding='utf-8')
           PY
           bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
