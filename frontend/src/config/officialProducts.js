@@ -324,22 +324,22 @@ export const OFFICIAL_PRODUCTS = {
     },
     screenshots: [
       {
-        src: '/official-site/internship.webp',
-        title: '岗位实习总览',
-        tag: '管理 PC · 产品界面',
-        desc: '岗位实习总览把批次、流程、进度与风险放在同一首屏，直观展示实习闭环。'
+        src: '/official-site/internship-batch-list.png',
+        title: '实习批次设置',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '集中展示批次名称、学年学期、实习起止、计划与实际人数、当前状态及后续操作。学校先把管理周期和规则建清楚，再进入学生范围、岗位落实与过程监管。'
       },
       {
-        src: '/official-site/internship-risk.webp',
-        title: '风险处置看板',
-        tag: '管理 PC · 产品界面',
-        desc: '真实演示数据下的风险处置看板展示风险类型、学生对象、责任人与处置入口，适合解释实习过程监管如何落到具体事项。'
+        src: '/official-site/internship-participant-scope.png',
+        title: '参与学生范围配置',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '按班级批量圈选本批次参与学生，同时限定为当前身份有权管理的班级。预览确认后形成正式名单，让每名学生为什么进入该批次有据可查。'
       },
       {
-        src: '/official-site/internship-guidance.webp',
-        title: '指导巡访管理',
-        tag: '指导教师 PC · 产品界面',
-        desc: '指导巡访工作区展示学生队列、指导记录与当前实习上下文，证明系统不仅记录结果，也覆盖持续指导过程。'
+        src: '/official-site/internship-batch-detail.png',
+        title: '批次详情与状态留痕',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '在同一批次上下文中查看正式名单、计划人数、实习时间、当前状态、阶段时间线和操作留痕，为后续岗位匹配、过程监管、评价与归档提供统一依据。'
       },
       {
         src: '/official-site/internship-students.webp',
@@ -348,10 +348,16 @@ export const OFFICIAL_PRODUCTS = {
         desc: '学生实习台账展示学生、企业、岗位、状态与业务操作入口，便于持续跟踪每名学生的实习进度。'
       },
       {
-        src: '/official-site/internship-enterprises.webp',
-        title: '企业库',
+        src: '/official-site/internship-guidance.webp',
+        title: '指导巡访管理',
+        tag: '指导教师 PC · 产品界面',
+        desc: '指导巡访工作区展示学生队列、指导记录与当前实习上下文，证明系统不仅记录结果，也覆盖持续指导过程。'
+      },
+      {
+        src: '/official-site/internship-risk.webp',
+        title: '风险处置看板',
         tag: '管理 PC · 产品界面',
-        desc: '展示企业信息、合作状态与实习业务协同入口。'
+        desc: '演示数据下的风险处置看板展示风险类型、学生对象、责任人与处置入口，说明实习过程监管如何落到具体事项并持续跟进。'
       }
     ],
     devices: [
