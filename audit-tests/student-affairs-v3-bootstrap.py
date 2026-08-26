@@ -9,7 +9,8 @@ Product contracts are reused directly from the checked-out exact SHA:
 - dedicated TEACHER and STUDENT production templates;
 - canonical Data Exchange upload -> process/staging -> confirm;
 - the existing E2E DB password helper, which uses the application's hash_password;
-- real Student Affairs organization and dorm APIs.
+- real Student Affairs organization and dorm APIs;
+- formal counselor and dorm-manager business relations required by fail-closed scopes.
 """
 from __future__ import annotations
 
@@ -51,6 +52,7 @@ from scripts.e2e_bootstrap_student_affairs_accounts import (  # noqa: E402
     ensure_org,
     login_admin,
 )
+from scripts.e2e_sa_bind_dorm_manager import main as bind_dorm_manager  # noqa: E402
 from scripts.e2e_sa_set_passwords_db import STABLE_PWD, set_passwords  # noqa: E402
 
 
@@ -138,6 +140,7 @@ def write_fixture_files(
     student_org: dict,
     imported: dict,
     counselor: dict,
+    dorm_manager_binding: dict,
 ) -> None:
     passwords = set_passwords()
     missing = [login_name for login_name in ALL_LOGINS if login_name not in passwords]
@@ -168,6 +171,7 @@ def write_fixture_files(
         "dorm": {key: value for key, value in dorm.items() if key != "rooms"},
         "studentOrg": student_org,
         "counselor": counselor,
+        "dormManagerBinding": dorm_manager_binding,
         "import": imported,
         "accounts": ALL_LOGINS,
         "passwordFile": str(CRED_PATH),
@@ -203,6 +207,17 @@ def main() -> int:
         )
     print("counselor:", json.dumps(counselor, ensure_ascii=False))
 
+    dorm_bind_rc = bind_dorm_manager()
+    if dorm_bind_rc != 0:
+        raise SystemExit(f"formal dorm manager building binding failed rc={dorm_bind_rc}")
+    dorm_manager_binding = {
+        "configured": True,
+        "loginName": "e2e_dorm_manager",
+        "buildingCode": "E2E-DORM-1",
+        "scopeKey": "manager_teacher_key",
+    }
+    print("dorm_manager_binding:", json.dumps(dorm_manager_binding, ensure_ascii=False))
+
     student_org = ensure_student_org(token)
     print("student_org:", json.dumps(student_org, ensure_ascii=False))
 
@@ -212,6 +227,7 @@ def main() -> int:
         student_org=student_org,
         imported=imported,
         counselor=counselor,
+        dorm_manager_binding=dorm_manager_binding,
     )
     return 0
 
