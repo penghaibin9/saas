@@ -15,10 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  release-seal:
-    name: S2 async recovery / S4 truth / S5 restore / S6 source manifest
+  release-seal-tail:
+    name: S2 material / S4 truth / S5 restore / S6 manifest
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 60
     services:
       mysql:
         image: mysql:8.0
@@ -61,7 +61,7 @@ jobs:
       DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/graduation_release_seal?charset=utf8mb4
       TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/graduation_release_seal?charset=utf8mb4
       REDIS_URL: redis://127.0.0.1:6379/13
-      REDIS_KEY_PREFIX: graduation-release-seal
+      REDIS_KEY_PREFIX: graduation-release-seal-tail
       JWT_SECRET: graduation-release-seal-secret-at-least-32-bytes
       JWT_SECRET_KEY: graduation-release-seal-secret-at-least-32-bytes
       MOCK_LOGIN_ENABLED: 'false'
@@ -121,7 +121,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
-      - name: Install runtime and recovery dependencies
+      - name: Install tail dependencies
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -148,7 +148,7 @@ jobs:
           raise SystemExit(f"ClamAV did not become ready: {last}")
           PY
 
-      - name: Build exact-head source MySQL through current migrations
+      - name: Build exact-head MySQL and real login accounts
         working-directory: backend
         run: |
           set -euo pipefail
@@ -161,93 +161,29 @@ jobs:
           test -n "$EXPECTED"
           echo "EXPECTED_ALEMBIC_VERSION=$EXPECTED" >> "$GITHUB_ENV"
 
-      - name: S2 · File Scan worker fail-closed and real MySQL/ClamAV recovery
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          pytest -q tests/test_file_scan_clamav.py tests/test_file_scan_state.py -p no:warnings
-          python tests/file_scan_mysql_acceptance.py
-
-      - name: S2 · File Scan stale RUNNING lease is reclaimed once
+      - name: S2 tail · material/export with real SCHOOL_ADMIN auth context
         working-directory: backend
         run: |
           set -euo pipefail
           python - <<'PY'
-          from datetime import datetime, timedelta
-          from sqlalchemy import delete
-          from app.db.session import get_sessionmaker
-          from app.models.file import FileJob, FileObject
-          from app.services.file_scan_config import get_file_scan_config
-          from app.services.file_scan_constants import JOB_RUNNING, SCAN_JOB_TYPE, SCAN_PENDING
-          from app.services.file_scan_service import _claim_one
-
-          tenant_id = 990000000000000125
-          db = get_sessionmaker()()
-          try:
-              db.execute(delete(FileJob).where(FileJob.tenant_id == tenant_id))
-              db.execute(delete(FileObject).where(FileObject.tenant_id == tenant_id))
-              row = FileObject(
-                  tenant_id=tenant_id,
-                  file_key='quarantine/release-seal/stale.docx',
-                  file_name='stale.docx', ext='docx',
-                  mime_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                  size_bytes=16, sha256='a' * 64,
-                  biz_type='GRADUATION_MATERIAL', biz_id='S2-STALE',
-                  visibility='PRIVATE', security_level='SENSITIVE',
-                  status='QUARANTINED', storage_backend='local', storage_zone='QUARANTINE',
-                  upload_source='USER', scan_required=True, scan_status=SCAN_PENDING,
-              )
-              db.add(row); db.flush()
-              cfg = get_file_scan_config()
-              now = datetime.utcnow()
-              job = FileJob(
-                  tenant_id=tenant_id, job_type=SCAN_JOB_TYPE, file_id=row.id,
-                  dedupe_key=f'FILE_SCAN:{row.id}', status=JOB_RUNNING,
-                  attempts=1, max_attempts=3, available_at=now - timedelta(minutes=5),
-                  locked_at=now - timedelta(seconds=int(cfg.stale_lock_seconds) + 30),
-                  locked_by='dead-worker', payload_json={'fileId': str(row.id)},
-              )
-              db.add(job); db.commit(); job_id = int(job.id)
-          finally:
-              db.close()
-
-          claimed = _claim_one('release-seal-reclaimer')
-          assert claimed == job_id, (claimed, job_id)
-          db = get_sessionmaker()()
-          try:
-              job = db.get(FileJob, job_id)
-              assert job.status == JOB_RUNNING
-              assert job.locked_by == 'release-seal-reclaimer'
-              assert int(job.attempts or 0) == 2
-              file_id = int(job.file_id) if job.file_id else None
-              db.delete(job)
-              row = db.get(FileObject, file_id) if file_id else None
-              if row is not None:
-                  db.delete(row)
-              db.commit()
-          finally:
-              db.close()
-          print('S2 file-scan stale lease reclaimed exactly once')
+          from pathlib import Path
+          source = Path('tests/graduation_material_center_mysql_acceptance.py').read_text(encoding='utf-8')
+          old = '''    user = {"userId": "1", "realName": "材料域验收管理员", "currentRoleCode": "SCHOOL_ADMIN",
+                  "userType": "ADMIN", "permissions": ["*"]}
+'''
+          new = '''    from app.core.security import decode_token
+              from app.services.auth_service_db import login_with_password
+              login = login_with_password("admin", "123456", tenant_code="demo-school", client_type="PC")
+              user = decode_token(login["accessToken"])
+              assert user.get("currentRoleCode") == "SCHOOL_ADMIN", user
+              assert user.get("tenantId") == str(tenant_id), user
+'''.replace('              ', '    ')
+          assert old in source, 'legacy acceptance user fixture changed; refuse blind overlay'
+          target = Path('/tmp/graduation_material_center_release_acceptance.py')
+          target.write_text(source.replace(old, new, 1), encoding='utf-8')
+          print('release seal uses real password login + decoded SCHOOL_ADMIN JWT; no permission bypass')
           PY
-
-      - name: S2 · Message Outbox stale lease recovery
-        working-directory: backend
-        env:
-          TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/graduation_release_outbox?charset=utf8mb4
-          FAST_TEST_SCHEMA: '1'
-        run: |
-          set -euo pipefail
-          mysql -h 127.0.0.1 -uroot -proot -e "DROP DATABASE IF EXISTS graduation_release_outbox; CREATE DATABASE graduation_release_outbox CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-          pytest -q \
-            tests/test_message_lease_reclaim.py::test_expired_processing_outbox_is_reclaimed \
-            tests/test_message_lease_reclaim.py::test_live_processing_outbox_is_not_stolen \
-            | tee /tmp/graduation-release-outbox.log
-
-      - name: S2 · Graduation material/export idempotency on real MySQL
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          PYTHONPATH=. python tests/graduation_material_center_mysql_acceptance.py | tee /tmp/graduation-material-mysql.log
+          PYTHONPATH=. python /tmp/graduation_material_center_release_acceptance.py | tee /tmp/graduation-material-mysql.log
           python - <<'PY'
           import inspect
           from app.modules.graduation.materials import export_service
@@ -255,7 +191,7 @@ jobs:
           assert 'if row.status == "SUCCEEDED"' in src
           assert 'row.status not in {"CREATED", "FAILED"}' in src
           assert 'row.status = "FAILED"' in src
-          print('S2 export retry/idempotency state contract present')
+          print('S2 material/export retry-idempotency contract present')
           PY
 
       - name: S4 · Authoritative graduation truth and cross-module contracts
@@ -430,10 +366,9 @@ jobs:
           PY
           test "$(git rev-parse HEAD)" = "$PRODUCT_EXACT_SHA"
 
-      - name: Enforce S2 S4 S5 S6 release seal
+      - name: Enforce precise release seal tail
         run: |
           set -euo pipefail
-          test -s /tmp/graduation-release-outbox.log
           test -s /tmp/graduation-material-mysql.log
           test -s /tmp/graduation-s4-truth.log
           test -s /tmp/graduation-release-ready.json
@@ -443,16 +378,15 @@ jobs:
           import json
           data = json.load(open('/tmp/graduation-release-source-manifest.json', encoding='utf-8'))
           assert data['unclassifiedFiles'] == []
-          print('Graduation S2/S4/S5/S6 RELEASE SEAL PASS')
+          print('Graduation precise S2-tail/S4/S5/S6 RELEASE SEAL PASS')
           PY
 
-      - name: Upload S2 S4 S5 S6 evidence
+      - name: Upload release seal tail evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: graduation-release-seal-${{ github.run_id }}
+          name: graduation-release-seal-tail-${{ github.run_id }}
           path: |
-            /tmp/graduation-release-outbox.log
             /tmp/graduation-material-mysql.log
             /tmp/graduation-s4-truth.log
             /tmp/graduation-release-ready.json
