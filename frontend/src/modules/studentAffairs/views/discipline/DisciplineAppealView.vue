@@ -255,6 +255,10 @@ export default {
       appealFilters: APPEAL_FILTERS,
       casePagination: { page: 1, pageSize: 50, total: 0 },
       appealPagination: { page: 1, pageSize: 50, total: 0 },
+      loadAllSeq: 0,
+      caseLoadSeq: 0,
+      appealLoadSeq: 0,
+      pendingLoadSeq: 0,
       delDlg: { visible: false, caseId: '', method: 'DIRECT', version: null },
       apDlg: { visible: false, caseId: '' },
       revDlg: {
@@ -271,6 +275,12 @@ export default {
     pageUndelivered() { return this.effectiveCases.filter((row) => !row.deliveredAt).length }
   },
   mounted() { this.loadAll() },
+  beforeUnmount() {
+    this.loadAllSeq += 1
+    this.caseLoadSeq += 1
+    this.appealLoadSeq += 1
+    this.pendingLoadSeq += 1
+  },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     hasVersion(row) { return row?.version !== undefined && row?.version !== null && row?.version !== '' },
@@ -281,15 +291,20 @@ export default {
     canAppeal(row) { return this.allows(row, 'APPEAL', row.status === 'EFFECTIVE') },
     canReview(row) { return this.allows(row, 'REVIEW', ['SUBMITTED', 'REVIEWING'].includes(row.status)) },
     async loadAll() {
+      const seq = ++this.loadAllSeq
       this.loading = true
       await Promise.all([this.loadCases(), this.loadAppeals(), this.loadPendingCount()])
-      this.loading = false
+      if (seq === this.loadAllSeq) this.loading = false
     },
     async loadCases() {
+      const seq = ++this.caseLoadSeq
+      const page = this.casePagination.page
+      const pageSize = this.casePagination.pageSize
       this.caseError = ''
       const response = await studentAffairsApi.getDisciplineCases({
-        status: 'EFFECTIVE', page: this.casePagination.page, pageSize: this.casePagination.pageSize
+        status: 'EFFECTIVE', page, pageSize
       })
+      if (seq !== this.caseLoadSeq) return
       if (response.code !== 0 || !response.data) {
         this.effectiveCases = []
         this.casePagination.total = 0
@@ -300,12 +315,13 @@ export default {
       this.casePagination.total = response.data.total != null ? response.data.total : this.effectiveCases.length
     },
     async loadAppeals() {
+      const seq = ++this.appealLoadSeq
+      const status = this.appealStatus
+      const page = this.appealPagination.page
+      const pageSize = this.appealPagination.pageSize
       this.appealError = ''
-      const response = await studentAffairsApi.getDisciplineAppeals({
-        status: this.appealStatus,
-        page: this.appealPagination.page,
-        pageSize: this.appealPagination.pageSize
-      })
+      const response = await studentAffairsApi.getDisciplineAppeals({ status, page, pageSize })
+      if (seq !== this.appealLoadSeq) return
       if (response.code !== 0 || !response.data) {
         this.appeals = []
         this.appealPagination.total = 0
@@ -316,7 +332,9 @@ export default {
       this.appealPagination.total = response.data.total != null ? response.data.total : this.appeals.length
     },
     async loadPendingCount() {
+      const seq = ++this.pendingLoadSeq
       const response = await studentAffairsApi.getDisciplineAppeals({ status: 'SUBMITTED', page: 1, pageSize: 1 })
+      if (seq !== this.pendingLoadSeq) return
       this.pendingAppealCount = response.code === 0 && response.data
         ? Number(response.data.total != null ? response.data.total : (response.data.items || []).length)
         : '—'
