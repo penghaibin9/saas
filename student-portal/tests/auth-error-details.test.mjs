@@ -1,5 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+
+async function importRequestWithViteEnv() {
+  const fileUrl = new URL('../src/services/request.js', import.meta.url)
+  const source = await readFile(fileUrl, 'utf8')
+  const viteEnv = `({ VITE_API_BASE_URL: '', DEV: false })`
+  const transformed = source.replaceAll('import.meta.env', viteEnv)
+  const dataUrl = `data:text/javascript;base64,${Buffer.from(transformed).toString('base64')}`
+  return import(`${dataUrl}#captcha-test=${Date.now()}`)
+}
 
 test('public login 401 preserves captcha bizCode and details', async () => {
   const previousFetch = globalThis.fetch
@@ -14,7 +24,7 @@ test('public login 401 preserves captcha bizCode and details', async () => {
     })
   })
   try {
-    const mod = await import(`../src/services/request.js?captcha-test=${Date.now()}`)
+    const mod = await importRequestWithViteEnv()
     await assert.rejects(
       () => mod.request('/auth/login', { method: 'POST', auth: false, body: { loginName: 'student' } }),
       (error) => {
