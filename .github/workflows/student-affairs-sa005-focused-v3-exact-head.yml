@@ -71,7 +71,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_TARGET_SHA: d6e7b104409ce9208ed1d12c2a93121de5489276
+      E2E_TARGET_SHA: 7af4581d47cfc96cc425dda2c374c8cbd0c29922
 
     steps:
       - name: Checkout immutable audit runner
@@ -84,7 +84,7 @@ jobs:
       - name: Checkout immutable application exact head
         uses: actions/checkout@v4
         with:
-          ref: d6e7b104409ce9208ed1d12c2a93121de5489276
+          ref: 7af4581d47cfc96cc425dda2c374c8cbd0c29922
           path: app
           fetch-depth: 0
 
@@ -139,7 +139,8 @@ jobs:
             tests/test_affairs_funding_grant_eligibility_recheck.py \
             tests/test_funding_package10_scan_closeout.py \
             tests/test_affairs_funding_appeal_list_version.py \
-            tests/test_affairs_phase2_role_matrix.py
+            tests/test_affairs_phase2_role_matrix.py \
+            tests/test_affairs_four_end_ui_contract.py::test_funding_publicity_manual_confirm_keeps_optimistic_lock_version
 
       - name: Reassert untouched Browser database authority after isolated pytest
         working-directory: app/backend
@@ -172,8 +173,10 @@ jobs:
 
       - name: Start official external scheduler
         run: |
+          set -euo pipefail
           cd app/backend
           nohup python scripts/run_scheduled_jobs.py > ../e2e/runtime-logs/scheduler.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/scheduler.pid
           sleep 2
 
       - name: Start real Staff PC and Student PC
@@ -237,6 +240,132 @@ jobs:
         working-directory: app/backend
         run: python ../../runner/audit-tests/student-affairs-sa005-verify-v3.py journey
 
+      - name: Freeze immutable real GRANT publicity state for Stage-2
+        id: freeze
+        if: >-
+          steps.config_browser.outcome == 'success' &&
+          steps.config_mysql.outcome == 'success' &&
+          steps.journey_browser.outcome == 'success' &&
+          steps.journey_mysql.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f app/e2e/runtime-logs/scheduler.pid ]; then
+            scheduler_pid="$(cat app/e2e/runtime-logs/scheduler.pid)"
+            kill "$scheduler_pid" 2>/dev/null || true
+            for i in {1..20}; do
+              if ! kill -0 "$scheduler_pid" 2>/dev/null; then break; fi
+              sleep 0.25
+            done
+            if kill -0 "$scheduler_pid" 2>/dev/null; then kill -9 "$scheduler_pid" 2>/dev/null || true; fi
+          fi
+          mkdir -p state
+          if ! command -v mysqldump >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y default-mysql-client
+          fi
+          MYSQL_PWD=e2e_root mysqldump \
+            -h 127.0.0.1 -P 3306 -uroot \
+            --single-transaction --quick --skip-lock-tables --no-tablespaces \
+            student_lifecycle_e2e > state/student_lifecycle_e2e.sql
+          cp app/e2e/student-affairs-grant-audit-evidence.json state/student-affairs-grant-audit-evidence.json
+          RUNNER_SHA="$(git -C runner rev-parse HEAD)" python - <<'PY'
+          from datetime import timedelta
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import pymysql
+
+          state = Path('state')
+          evidence_path = state / 'student-affairs-grant-audit-evidence.json'
+          dump_path = state / 'student_lifecycle_e2e.sql'
+          evidence = json.loads(evidence_path.read_text(encoding='utf-8'))
+          assert evidence.get('qualificationPrecondition') == 'SA002_APPROVED_DIFFICULT_LIBRARY'
+          app_id = int(evidence['applicationId'])
+          batch_id = int(evidence['batchId'])
+          appeal_id = int(evidence['appealId'])
+
+          db = pymysql.connect(
+              host='127.0.0.1', port=3306, user='root', password='e2e_root',
+              database='student_lifecycle_e2e', charset='utf8mb4')
+          try:
+              with db.cursor() as cur:
+                  cur.execute(
+                      """SELECT student_id, project_type, status, check_snapshot_json,
+                                publicity_at, version, workflow_instance_id
+                         FROM t_affairs_funding_application WHERE id=%s""",
+                      (app_id,),
+                  )
+                  app = cur.fetchone()
+                  assert app and app[1] == 'GRANT' and app[2] == 'PUBLICITY', app
+                  snapshot = json.loads(app[3] or '{}')
+                  assert snapshot.get('inDifficultLibrary') is True, snapshot
+                  assert snapshot.get('aidLevel') == 'SPECIAL', snapshot
+                  assert 'grantEligibilityRecheck' not in snapshot, snapshot
+                  cur.execute('SELECT publicity_days FROM t_affairs_funding_batch WHERE id=%s', (batch_id,))
+                  batch = cur.fetchone()
+                  assert batch
+                  days = max(1, int(batch[0] or 5))
+                  publicity_at = app[4]
+                  due_at = publicity_at + timedelta(days=days)
+                  cur.execute('SELECT UTC_TIMESTAMP(6)')
+                  now = cur.fetchone()[0]
+                  assert due_at > now, (now, due_at)
+                  cur.execute(
+                      """SELECT a.status, a.final_level, b.year_code
+                         FROM t_affairs_aid_apply a
+                         JOIN t_affairs_aid_batch b ON b.id=a.batch_id AND b.tenant_id=a.tenant_id
+                         WHERE a.tenant_id=(SELECT tenant_id FROM t_affairs_funding_application WHERE id=%s)
+                           AND a.student_id=%s AND a.status='APPROVED' AND a.is_deleted=0
+                         ORDER BY a.id DESC LIMIT 1""",
+                      (app_id, int(app[0])),
+                  )
+                  aid = cur.fetchone()
+                  assert aid and aid[0] == 'APPROVED' and aid[1] == 'SPECIAL' and aid[2] == evidence['schoolYear'], aid
+                  cur.execute('SELECT status, result, open_key FROM t_affairs_funding_appeal WHERE id=%s', (appeal_id,))
+                  assert cur.fetchone() == ('CLOSED', 'OVERRULED', None)
+          finally:
+              db.close()
+
+          dump_sha = hashlib.sha256(dump_path.read_bytes()).hexdigest()
+          evidence_sha = hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+          manifest = {
+              'sourceRunId': os.environ['GITHUB_RUN_ID'],
+              'productSha': os.environ['E2E_TARGET_SHA'],
+              'runnerSha': os.environ['RUNNER_SHA'],
+              'applicationId': str(app_id),
+              'batchId': str(batch_id),
+              'appealId': str(appeal_id),
+              'studentId': str(app[0]),
+              'workflowInstanceId': str(app[6] or ''),
+              'preVersion': int(app[5]),
+              'publicityAt': publicity_at.isoformat(),
+              'publicityDays': days,
+              'dueAt': due_at.isoformat(),
+              'frozenAt': now.isoformat(),
+              'qualificationPrecondition': evidence['qualificationPrecondition'],
+              'aidLevelAtFreeze': 'SPECIAL',
+              'dumpSha256': dump_sha,
+              'evidenceSha256': evidence_sha,
+          }
+          (state / 'student-affairs-sa005-time-gate-manifest.json').write_text(
+              json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2), encoding='utf-8')
+          print('[SA005_TIME_GATE_FROZEN]', json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload immutable SA-005 time-gate authority
+        if: steps.freeze.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-sa005-time-gate-${{ github.run_id }}
+          path: |
+            state/student_lifecycle_e2e.sql
+            state/student-affairs-grant-audit-evidence.json
+            state/student-affairs-sa005-time-gate-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Reassert immutable application commit
         if: always()
         run: |
@@ -251,10 +380,12 @@ jobs:
           echo "config_mysql=${{ steps.config_mysql.outcome }}"
           echo "journey_browser=${{ steps.journey_browser.outcome }}"
           echo "journey_mysql=${{ steps.journey_mysql.outcome }}"
+          echo "freeze=${{ steps.freeze.outcome }}"
           test "${{ steps.config_browser.outcome }}" = "success"
           test "${{ steps.config_mysql.outcome }}" = "success"
           test "${{ steps.journey_browser.outcome }}" = "success"
           test "${{ steps.journey_mysql.outcome }}" = "success"
+          test "${{ steps.freeze.outcome }}" = "success"
 
       - name: Upload focused SA-005 browser evidence
         if: always()
