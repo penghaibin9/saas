@@ -35,7 +35,6 @@ permissions:
 
 jobs:
   ix-011:
-    if: github.event_name != 'pull_request' || github.head_ref == 'fix/internship-final-rc-20260824'
     name: IX-011 / real MySQL / Staff+Student PC+Student+Teacher Mini browser
     runs-on: ubuntu-latest
     timeout-minutes: 50
