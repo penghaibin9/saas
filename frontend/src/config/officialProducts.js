@@ -241,22 +241,46 @@ export const OFFICIAL_PRODUCTS = {
     },
     screenshots: [
       {
-        src: '/official-site/graduation-dashboard.webp',
-        title: '毕业设计工作台',
-        tag: '管理 PC · 产品界面',
-        desc: '毕业设计工作台同时呈现阶段结论、待办与异常，让老师先看到本批次现在要处理什么。'
+        src: '/official-site/graduation-process-workflow.png',
+        title: '全过程规范流程',
+        tag: '学校管理 / 指导教师 PC · 实际运行界面',
+        desc: '围绕同一名学生展示组织与选题、任务书确认、开题论证、过程指导、中期检查、成果检查、答辩评价、成绩发布和最终归档，明确每一步的交付材料、责任角色和准入条件。'
       },
       {
-        src: '/official-site/graduation-final-review.webp',
-        title: '成果评阅工作区',
-        tag: '教师 PC · 产品界面',
-        desc: '成果评阅页展示学生、版本、材料与审核动作，是毕业设计“材料—评阅—结果”闭环的直接证据。'
+        src: '/official-site/graduation-student-progress.png',
+        title: '毕设学生与阶段进度',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '按批次查看每名学生的课题、指导教师、当前节点、风险和可执行动作；未选题、指导中、已归档等状态清晰呈现，便于优先发现异常与缺口。'
       },
       {
-        src: '/official-site/graduation-process.webp',
-        title: '过程指导',
-        tag: '指导教师 PC · 产品界面',
-        desc: '过程指导页展示学生队列、当前学生上下文与真实指导记录，体现指导工作可持续跟进并保留过程证据。'
+        src: '/official-site/graduation-topic-library.png',
+        title: '题目申报与审核',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '统一承接教师申报、企业题目和学生自拟，持续核验专业要求、指导教师、容量、审核与入池状态，避免未审核或超容量题目进入正式选题。'
+      },
+      {
+        src: '/official-site/graduation-result-review.png',
+        title: '成果提交与连续批阅',
+        tag: '评阅教师 PC · 实际运行界面',
+        desc: '在同一工作区连续查看成果队列、文件内容、业务版本、查重或安全版本和批阅结果；退回重交会生成新版本，不会静默覆盖历史成果。'
+      },
+      {
+        src: '/official-site/graduation-defense-schedule.png',
+        title: '答辩编排与发布',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '集中管理答辩分组、时间地点、评委、秘书、回避冲突和发布状态。只有人员与安排校验完整后再向学生端发布，保证答辩组织清楚可执行。'
+      },
+      {
+        src: '/official-site/graduation-risk-warning-annotated.png',
+        title: '问题预警与处置闭环',
+        tag: '学校管理 PC · 重点标注实际界面',
+        desc: '红框标出问题预警、毕业归档和毕设统计入口；事项列表继续展示风险等级、处理状态、学生、指导教师、下一步和触发时间，让未选题、开题逾期、指导不足、材料未归档等问题有人受理并留下关闭依据。'
+      },
+      {
+        src: '/official-site/graduation-material-center-annotated.png',
+        title: '材料齐套与归档核验',
+        tag: '学校管理 PC · 重点标注实际界面',
+        desc: '红框标出毕业设计材料中心及具体材料记录。系统按学生汇总材料阶段、文件版本、上传时间、扫描结果、审核状态和归档资格，冻结归档前即可发现缺失、未提交或版本异常。'
       }
     ],
     devices: [
