@@ -41,6 +41,11 @@ test.describe('岗位实习审计：请假真实 XLSX 导出与统计一致性',
   const endDate = isoDay(3)
 
   test.beforeAll(async () => {
+    execFileSync('python', ['../backend/scripts/e2e_seed_internship_sandbox.py'], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: 'inherit'
+    })
     fixture = await loadInternshipFixture()
     firstReason = `${PREFIX}-${fixture.runId}-初次请假`
     secondReason = `${PREFIX}-${fixture.runId}-整改请假`
