@@ -221,7 +221,7 @@ test('AA-003 real four-surface RETURN -> same-case resubmit -> effective', async
     const studentPc = await studentPcContext.newPage()
     const studentLogin = new StudentLoginPage(studentPc, config.studentBaseUrl)
     await studentLogin.login(config.student)
-    const studentToken = await studentLogin.token()
+    const studentToken = studentLogin.lastAccessToken
     expect(studentToken).toBeTruthy()
     await studentPc.goto(`${config.studentBaseUrl}/academic/status`)
     await expect(studentPc.getByText('学籍异动申请向导', { exact: true })).toBeVisible({ timeout: 20_000 })
