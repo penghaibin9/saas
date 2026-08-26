@@ -132,7 +132,7 @@ test.describe.serial('毕业设计剩余五项精准 Browser First · GD-012/016
       await expect(mentor.getByRole('heading', { name: '优秀成果认定', exact: true })).toBeVisible()
       const candidate = mentor.locator('.ext-card').filter({ hasText: fixture.students.A.name }).first()
       await expect(candidate).toContainText(/92 分.*优秀/)
-      const nominatePromise = mentor.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/graduation/gd-excellent-outcomes/nominate'))
+      const nominatePromise = mentor.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/gd-excellent-outcomes\/\d+\/nominate$/.test(new URL(r.url()).pathname))
       await candidate.getByRole('button', { name: '导师提名', exact: true }).click()
       await confirmVisibleDialog(mentor, 'GD-016 Browser First 优秀成果提名：成果完整、质量突出、过程证据齐全。')
       const nominated = await nominatePromise

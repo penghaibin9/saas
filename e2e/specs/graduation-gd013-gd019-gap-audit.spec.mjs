@@ -11,6 +11,7 @@ const majorAdmin = { tenant: config.mentor.tenant, username: 'e2e_major_admin', 
 const collegeAdmin = { tenant: config.mentor.tenant, username: 'e2e_college_secretary', password: config.mentor.password }
 const conflictGroup = `GD013-冲突组-${fixture.runId}`
 const validGroup = `GD013-正式组-${fixture.runId}`
+const delayGroup = `GD013-延期组-${fixture.runId}`
 
 async function dismissGuide(page) {
   for (const mask of [page.locator('.app-step-guide__mask'), page.locator('.tour-mask')]) {
@@ -38,12 +39,19 @@ async function chooseMentor(field, keyword, visibleText) {
   await option.click()
 }
 
-async function createGroup(page, { name, chairNo, chairName, secretaryNo, secretaryName }) {
+async function createGroup(page, { name, chairNo, chairName, secretaryNo, secretaryName, defenseDate = '' }) {
   await page.goto(`${config.staffBaseUrl}/admin/graduation/defense/groups/create?batchId=${encodeURIComponent(fixture.batchId)}`)
   await dismissGuide(page)
   await expect(page.getByRole('heading', { name: '新增答辩组', exact: true })).toBeVisible()
   await page.getByPlaceholder('如 软件工程专业第一答辩组').fill(name)
   await page.getByPlaceholder('如 实训楼 A301').fill('GD-013 E2E 实训楼 A301')
+  if (defenseDate) {
+    const dateInput = page.locator('.app-dt input').first()
+    await expect(dateInput).toBeVisible()
+    await dateInput.fill(defenseDate)
+    await dateInput.press('Tab')
+    await expect(dateInput).toHaveValue(/2026-09-15/)
+  }
   await chooseMentor(page.locator('.ie-fld').filter({ hasText: '答辩组长' }).first(), chairNo, chairName)
   await chooseMentor(page.locator('.ie-fld').filter({ hasText: '答辩秘书' }).first(), secretaryNo, secretaryName)
   const createPromise = page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/graduation/defense-groups'))
@@ -52,6 +60,7 @@ async function createGroup(page, { name, chairNo, chairName, secretaryNo, secret
   expect(created.ok(), `create group ${name} HTTP ${created.status()}`).toBeTruthy()
   const body = await created.json()
   expect(body.code, JSON.stringify(body)).toBe(0)
+  await expect(page.getByPlaceholder('搜索姓名')).toBeVisible({ timeout: 15000 })
   return String(body.data.id)
 }
 
@@ -162,7 +171,7 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
     }
   })
 
-  test('GD-013：学生延期申请 → 导师 → 专业 → 学院 → 重新排期', async ({ browser }) => {
+  test('GD-013：学生延期申请 → 导师 → 专业 → 学院 → 独立延期组重新排期', async ({ browser }) => {
     test.setTimeout(420000)
     const studentCtx = await browser.newContext()
     const mentorCtx = await browser.newContext()
@@ -180,7 +189,7 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
       await expect(extension).toBeVisible({ timeout: 20000 })
       await expect(extension).toContainText(/申请延期答辩|延期答辩/)
       await extension.getByPlaceholder('说明延期原因、当前情况和预计准备时间（至少10字）').fill('GD-013 Browser First：因项目现场验证需要延期，预计一周内完成补充准备。')
-      const applyPromise = student.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.includes('/graduation/extension/defense-delay'))
+      const applyPromise = student.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/portal/graduation/defense-delay/apply'))
       await extension.getByRole('button', { name: '提交延期申请', exact: true }).click()
       const applied = await applyPromise
       expect(applied.ok(), `delay apply HTTP ${applied.status()}`).toBeTruthy()
@@ -216,16 +225,24 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
       await confirmExtension(college, 'GD-013 学院审批同意，进入重新排期。')
       expect((await collegePromise).ok()).toBeTruthy()
 
-      await college.reload(); await dismissGuide(college)
+      // Product contract requires a truly independent delay group when the date changes.
+      await createGroup(college, {
+        name: delayGroup,
+        chairNo: 'e2e_advisor_b', chairName: 'E2E指导教师B',
+        secretaryNo: 'e2e_reviewer', secretaryName: 'E2E评阅教师',
+        defenseDate: '2026-09-15 09:00:00',
+      })
+      await college.goto(`${config.staffBaseUrl}/admin/graduation?extension=delay&batchId=${encodeURIComponent(fixture.batchId)}`)
+      await dismissGuide(college)
       row = college.locator('tbody tr').filter({ hasText: fixture.students.B.name }).first()
       await expect(row).toContainText(/待排期/)
       const groupSelect = row.locator('select').first()
-      const validOption = groupSelect.locator('option').filter({ hasText: validGroup }).first()
-      const optionValue = await validOption.getAttribute('value')
+      const delayOption = groupSelect.locator('option').filter({ hasText: delayGroup }).first()
+      const optionValue = await delayOption.getAttribute('value')
       expect(optionValue).toBeTruthy()
       await groupSelect.selectOption(optionValue)
       const date = row.locator('input[type=date]').first()
-      await date.fill('2026-09-15')
+      await expect(date).toHaveValue('2026-09-15')
       const schedulePromise = college.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/gd-defense-delays\/\d+\/schedule$/.test(new URL(r.url()).pathname))
       await row.getByRole('button', { name: '确认排期', exact: true }).click()
       await confirmExtension(college, 'GD-013 延期答辩重新排期确认。')
@@ -236,7 +253,7 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
 
       await workbench.open()
       await expect(student.locator('.gdep')).toContainText(/已排期|重新排期/)
-      await expect(student.locator('.gdep')).toContainText(validGroup)
+      await expect(student.locator('.gdep')).toContainText(delayGroup)
     } finally {
       await studentCtx.close(); await mentorCtx.close(); await majorCtx.close(); await collegeCtx.close()
     }
@@ -246,10 +263,10 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
     test.setTimeout(240000)
     await loginStaff(page, config.sandboxAdmin, 31)
 
-    // Delay scheduling intentionally revokes publication, so publish the group again before notification/export evidence.
+    // Delay scheduling revokes publication; publish the newly scheduled delay group before notification/export evidence.
     await page.goto(`${config.staffBaseUrl}/admin/graduation/defense?batchId=${encodeURIComponent(fixture.batchId)}`)
     await dismissGuide(page)
-    let row = page.locator('tbody tr').filter({ hasText: validGroup }).first()
+    let row = page.locator('tbody tr').filter({ hasText: delayGroup }).first()
     await expect(row).toBeVisible()
     const publish = row.getByRole('button', { name: '发布', exact: true })
     if (await publish.count() && await publish.isVisible().catch(() => false)) {
@@ -257,10 +274,10 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
       await publish.click()
       await page.getByRole('button', { name: '确认发布', exact: true }).click()
       expect((await publishPromise).ok()).toBeTruthy()
-      row = page.locator('tbody tr').filter({ hasText: validGroup }).first()
+      row = page.locator('tbody tr').filter({ hasText: delayGroup }).first()
     }
 
-    const notifyPromise = page.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/defense-groups\/\d+\/notify$/.test(new URL(r.url()).pathname))
+    const notifyPromise = page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/graduation/gd-defense-notify'))
     await row.getByRole('button', { name: '通知', exact: true }).click()
     const notified = await notifyPromise
     expect(notified.ok(), `defense notify HTTP ${notified.status()}`).toBeTruthy()
@@ -269,7 +286,7 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
     expect(Number(notifyBody.data?.notified || 0)).toBeGreaterThanOrEqual(1)
 
     // XLSX must be initiated from the real visible export control, not direct API.
-    const exportPromise = page.waitForResponse((r) => r.request().method() === 'GET' && /graduation/.test(r.url()) && /export/.test(r.url()))
+    const exportPromise = page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/graduation/defense-groups/export'))
     await page.getByRole('button', { name: /导出答辩表/ }).click()
     const exported = await exportPromise
     expect(exported.ok(), `defense export HTTP ${exported.status()}`).toBeTruthy()

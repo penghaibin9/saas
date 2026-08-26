@@ -37,7 +37,8 @@ def main() -> int:
     b = int(fixture["students"]["B"]["gdStudentId"])
     c = int(fixture["students"]["C"]["gdStudentId"])
     final_id = int(fixture["finalId"])
-    valid_group = f"GD013-正式组-{fixture['runId']}"
+    original_group_name = f"GD013-正式组-{fixture['runId']}"
+    delay_group_name = f"GD013-延期组-{fixture['runId']}"
 
     db = get_sessionmaker()()
     try:
@@ -75,14 +76,23 @@ def main() -> int:
         require(bool(risk.close_reason), "GD-017 close reason missing")
         require(risk.closed_at is not None, "GD-017 closed_at missing")
 
+        original_group = db.scalars(select(GraduationDefenseGroup).where(
+            GraduationDefenseGroup.tenant_id == TENANT_ID,
+            GraduationDefenseGroup.batch_id == batch_id,
+            GraduationDefenseGroup.group_name == original_group_name,
+            GraduationDefenseGroup.is_deleted.is_(False),
+        )).first()
+        require(original_group is not None, "GD-013 missing original published defense group")
+        require(not bool(original_group.published), "GD-013 original group must be unpublished after delay reschedule")
+
         group = db.scalars(select(GraduationDefenseGroup).where(
             GraduationDefenseGroup.tenant_id == TENANT_ID,
             GraduationDefenseGroup.batch_id == batch_id,
-            GraduationDefenseGroup.group_name == valid_group,
+            GraduationDefenseGroup.group_name == delay_group_name,
             GraduationDefenseGroup.is_deleted.is_(False),
         )).first()
-        require(group is not None, "GD-013 missing canonical defense group")
-        require(bool(group.published), "GD-013/GD-019 canonical group must end published")
+        require(group is not None, "GD-013 missing independent delay defense group")
+        require(bool(group.published), "GD-013/GD-019 delay group must end published")
 
         delay = db.scalars(select(GraduationDefenseDelay).where(
             GraduationDefenseDelay.tenant_id == TENANT_ID,
@@ -106,20 +116,27 @@ def main() -> int:
             UnifiedMessage.is_deleted.is_(False),
             UnifiedMessage.title.like("%答辩%"),
         ).order_by(UnifiedMessage.id.desc()).limit(20)).all()
-        relevant_messages = [m for m in messages if str(m.source_biz_id or "") == str(group.id) or valid_group in (m.title or "") or valid_group in (m.content or "")]
+        relevant_messages = [m for m in messages if str(m.source_biz_id or "") == str(group.id) or delay_group_name in (m.title or "") or delay_group_name in (m.content or "")]
         require(relevant_messages, "GD-019 no persisted defense notification message found")
 
+        # Only accept todos linked to one of the actual targeted business records. GraduationStudent IDs
+        # are not StudentProfile IDs, so matching UnifiedTodo.student_id against a/b/c would be a false seal.
+        target_biz_ids = {int(peer.id), int(group.id), int(delay.id), int(excellent.id), int(risk.id)}
         todos = db.scalars(select(UnifiedTodo).where(
             UnifiedTodo.tenant_id == TENANT_ID,
             UnifiedTodo.is_deleted.is_(False),
             UnifiedTodo.source_module.in_(["graduation", "gd"]),
         ).order_by(UnifiedTodo.id.desc()).limit(100)).all()
-        relevant_todos = [t for t in todos if t.student_id in {a, b, c} or t.source_biz_id in {peer.id, group.id, delay.id, excellent.id, risk.id}]
+        relevant_todos = [t for t in todos if int(t.source_biz_id or 0) in target_biz_ids]
         require(relevant_todos, "GD-019 no graduation todo projection found for targeted business facts")
 
         print(json.dumps({
             "GD-012": {"peerId": str(peer.id), "status": peer.status, "finalId": str(peer.gd_final_id)},
-            "GD-013": {"groupId": str(group.id), "published": bool(group.published), "delayId": str(delay.id), "delayStatus": delay.status},
+            "GD-013": {
+                "originalGroupId": str(original_group.id), "originalPublished": bool(original_group.published),
+                "delayGroupId": str(group.id), "delayGroupPublished": bool(group.published),
+                "delayId": str(delay.id), "delayStatus": delay.status,
+            },
             "GD-016": {"excellentId": str(excellent.id), "status": excellent.status},
             "GD-017": {"riskId": str(risk.id), "status": risk.status, "riskCode": risk.risk_code},
             "GD-019": {"auditCount": int(audit_count), "messageCount": len(relevant_messages), "todoCount": len(relevant_todos)},
