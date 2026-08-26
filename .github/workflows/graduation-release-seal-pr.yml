@@ -246,7 +246,7 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
-          python tests/graduation_material_center_mysql_acceptance.py | tee /tmp/graduation-material-mysql.log
+          PYTHONPATH=. python tests/graduation_material_center_mysql_acceptance.py | tee /tmp/graduation-material-mysql.log
           python - <<'PY'
           import inspect
           from app.modules.graduation.materials import export_service
