@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
 _INSTALLED = False
@@ -136,10 +137,9 @@ def install() -> None:
                 raise AppException("NO_PERMISSION", "当前身份无权发起调宿")
             if target.status != "VACANT" or target.student_id is not None:
                 raise AppException("DATA_CONFLICT", "目标床位已被占用或锁定")
-            building = db.get(DormBuilding, int(target.building_id))
-            room = db.get(DormRoom, int(target.room_id))
-            if not building or building.is_deleted or building.tenant_id != _tid() \
-                    or not room or room.is_deleted or room.tenant_id != _tid():
+            building = tenant_get(db, DormBuilding, int(target.building_id))
+            room = tenant_get(db, DormRoom, int(target.room_id))
+            if not building or building.is_deleted or not room or room.is_deleted:
                 raise AppException("DATA_INCONSISTENT", "目标房源信息不完整")
             if not dorm._gender_ok(building.gender_limit, student.gender):
                 raise AppException("DATA_CONFLICT", "学生性别与目标楼栋限制不符")
@@ -229,10 +229,9 @@ def install() -> None:
             else:
                 if target.status != "VACANT" or target.student_id is not None:
                     raise AppException("DATA_CONFLICT", "目标床位已被占用，调宿无法执行")
-                building = db.get(DormBuilding, int(target.building_id))
-                room = db.get(DormRoom, int(target.room_id))
-                if not building or building.is_deleted or building.tenant_id != _tid() \
-                        or not room or room.is_deleted or room.tenant_id != _tid():
+                building = tenant_get(db, DormBuilding, int(target.building_id))
+                room = tenant_get(db, DormRoom, int(target.room_id))
+                if not building or building.is_deleted or not room or room.is_deleted:
                     raise AppException("DATA_INCONSISTENT", "目标房源信息不完整")
                 if not dorm._gender_ok(building.gender_limit, student.gender):
                     raise AppException("DATA_CONFLICT", "学生性别与目标楼栋限制不符")
