@@ -14,6 +14,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (InternshipAgreement, InternshipAgreementTemplate, InternshipAuditTrail,
                         InternshipRecord, Major, SchoolClass, StudentProfile, Tenant)
 from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
@@ -160,8 +161,8 @@ def _render_body(db, tpl: "InternshipAgreementTemplate | None", rec, stu, a) -> 
 
 
 def _ctx(db, a):
-    rec = db.get(InternshipRecord, a.internship_id)
-    stu = db.get(StudentProfile, a.student_id)
+    rec = tenant_get(db, InternshipRecord, a.internship_id)
+    stu = tenant_get(db, StudentProfile, a.student_id)
     return rec, stu
 
 
