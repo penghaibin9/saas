@@ -146,34 +146,94 @@ export const OFFICIAL_PRODUCTS = {
     },
     screenshots: [
       {
-        src: '/official-site/student-affairs-dashboard.png',
-        title: '学工看板',
-        tag: '管理 PC · 产品界面',
-        desc: '学工看板集中呈现办理时限、待办、风险与跨系统入口，让管理人员先判断当前最需要处理的工作。'
+        src: '/official-site/student-affairs-student360.png',
+        title: '学生 360 全生命周期档案',
+        tag: '学校管理 / 辅导员 PC · 实际运行界面',
+        desc: '围绕一名学生汇聚基础信息、学籍状态、迎新与在校、学业过程、实习毕设就业、风险跟进和更正审计。老师从画像直接进入谈心、家校、风险、调宿、困难与奖助办理，始终保持同一学生上下文。'
       },
       {
-        src: '/official-site/student-affairs-master.png',
-        title: '学生主档与学生 360',
-        tag: '管理 PC · 产品界面',
-        desc: '学生 360 页面集中呈现基础信息、在校状态、学业、实习、毕设、就业、风险与跟进，是围绕一名学生开展工作的共同上下文。'
+        src: '/official-site/student-affairs-student-roster.png',
+        title: '学生主档统一管理',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '按学院、班级、年级、学籍、身份核验和风险等级统一筛选学生，集中查看主档完整度并进入学生 360。学生新增、批量导出、信息更正和作废均在权限范围内留痕办理。'
       },
       {
-        src: '/official-site/student-affairs-risk.webp',
-        title: '风险预警工作区',
-        tag: '管理 PC · 产品界面',
-        desc: '真实演示数据下的风险预警工作区同时呈现风险分类、待处理对象与处置入口，适合说明“发现—跟进—留痕”的闭环。'
+        src: '/official-site/student-affairs-enrollment-status.png',
+        title: '学籍异动全过程台账',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '休学、保留学籍、退学、复学等状态变化按学生记录原状态、目标状态、原因依据、操作人和时间，并关联学生 360，避免只保留最终状态而找不到变化过程。'
       },
       {
-        src: '/official-site/student-affairs-talk.webp',
-        title: '谈心谈话台账',
-        tag: '辅导员 PC · 产品界面',
-        desc: '谈心谈话台账展示学生、责任人、状态与记录入口，证明学工日常工作不是只停留在统计层。'
+        src: '/official-site/student-affairs-class-counselor.png',
+        title: '班级与辅导员责任关系',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '按班级汇总学院、专业、年级、学生人数、当前请假和在办风险，并维护辅导员与班主任责任关系。学校既能看到班级全局，也能直接进入班级画像继续处理具体学生事项。'
       },
       {
-        src: '/official-site/student-affairs-dormitory.webp',
-        title: '宿舍管理',
-        tag: '管理 PC · 产品界面',
-        desc: '宿舍工作区展示房间、入住、空床等真实业务结构，数据为隔离演示数据，不代表真实学校规模。'
+        src: '/official-site/student-affairs-orientation-dashboard.png',
+        title: '数字迎新进度看板',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '从账号激活、信息核对、材料上传、缴费绿色通道、宿舍确认、现场报到到学院确认，逐环节展示完成率、待办和异常，让迎新不再依赖多个表格反复汇总。'
+      },
+      {
+        src: '/official-site/student-affairs-leave-closure.png',
+        title: '请假、续假与销假闭环',
+        tag: '辅导员 / 学校管理 PC · 实际运行界面',
+        desc: '将待续假审批、待销假确认、逾期未销和已通过事项集中为连续处理队列。请假信息、应返时间、实际返校时间、申请原因和审批留痕完整保留，逾期事项可直接进入后续处置。'
+      },
+      {
+        src: '/official-site/student-affairs-dorm-checkin.png',
+        title: '宿舍入住与床位实况',
+        tag: '宿管 / 辅导员 PC · 实际运行界面',
+        desc: '按楼栋、房间、床位办理入住与退宿，实时展示空床和当前入住学生。系统同时支持学校统一分配与学生自选模式，床位变化会更新实际占用关系，避免静态住宿表失真。'
+      },
+      {
+        src: '/official-site/student-affairs-risk-workbench.png',
+        title: '风险预警与责任处置',
+        tag: '学校管理 / 辅导员 PC · 实际运行界面',
+        desc: '聚合学业、请假、宿舍、心理和人工建单等风险来源，按等级、状态、责任人和是否超时形成处置队列。管理人员可分派、接管、跟进和升级，让每个风险都有下一步。'
+      },
+      {
+        src: '/official-site/student-affairs-hardship-review.png',
+        title: '困难学生认定评审',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '以认定批次串联班级评议、学院复审、学校终审、公示和困难库。敏感家庭经济信息默认脱敏，只有授权角色在填写业务原因并留下审计后才能查看完整材料。'
+      },
+      {
+        src: '/official-site/student-affairs-funding-review.png',
+        title: '奖助勤贷补申请评审',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '围绕奖学金、助学金等资助项目和批次，集中处理申请、评审、公示、申诉与发放。资格、金额、申请来源和当前节点同屏呈现，让每一笔资助都有依据、有流程、有结果。'
+      },
+      {
+        src: '/official-site/student-affairs-discipline-workbench.png',
+        title: '违纪处分办理与解除',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '处分登记、学院初审、学工处复核、校级生效和解除形成完整闭环。工作台保留违纪事实、技术与审计信息、当前状态和送达申诉过程，历史记录持续关联学生档案。'
+      },
+      {
+        src: '/official-site/student-affairs-talk-followup.png',
+        title: '谈心谈话与持续跟进',
+        tag: '辅导员 PC · 实际运行界面',
+        desc: '按待谈、已谈、跟进中和已办结管理谈话任务，记录谈话主题、时间、内容、结论与后续动作。发现风险时可继续转入风险处置或家校联系，避免谈完即散。'
+      },
+      {
+        src: '/official-site/student-affairs-mental-care.png',
+        title: '心理关注与授权回访',
+        tag: '心理老师 / 授权辅导员 PC · 实际运行界面',
+        desc: '关注名单只展示必要摘要，心理明细需要逐人授权并填写业务原因；回访、转介、危机升级和结案全程留痕。系统帮助学校守住敏感信息边界，不替代专业判断。'
+      },
+      {
+        src: '/official-site/student-affairs-activity-workbench.png',
+        title: '活动、第二课堂与社团',
+        tag: '学校管理 / 活动负责人 PC · 实际运行界面',
+        desc: '活动按创建、发布报名、开始签到、结束确认和积分入账依次推进，并同步展示报名、待确认和异常状态。确认名单后再生成第二课堂学时、积分或志愿时长，成长记录来源清楚。'
+      },
+      {
+        src: '/official-site/student-affairs-archive-workbench.png',
+        title: '学工材料归档与统计',
+        tag: '学校管理 PC · 实际运行界面',
+        desc: '按归档批次生成学生档案包，经过圈定学生、学院审核、学工处确认后形成正式只读归档。业务材料、审核状态、水印包和统计台账统一沉淀，检查时可以直接追溯。'
       }
     ],
     devices: [
