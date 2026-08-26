@@ -31,6 +31,7 @@ import { LoadingState, ErrorState } from '@/components/business'
 import { AppTemplateChips } from '@/components/common'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import { matchPermission } from '@/config/navPlan'
 import {
   graduationActionErrorMessage,
   graduationConflictMessage,
@@ -64,6 +65,18 @@ const PANEL_PATHS = {
   grade: '/admin/graduation/grade-ledger'
 }
 const GRADE_CONTEXT_FORMS = new Set(['calculate', 'returnGrade', 'withdraw'])
+const RECORD_CONTEXT_FORMS = new Set(['plagiarismResult', 'dispute', 'reviewSubmit', 'reviewReturn'])
+const FORM_PERMISSIONS = {
+  plagiarismResult: 'graduationDesign.plagiarism.result',
+  dispute: 'graduationDesign.plagiarism.start',
+  reviewSubmit: 'graduationDesign.review.submit',
+  reviewReturn: 'graduationDesign.review.return',
+  scoreEntry: 'graduationDesign.defense.score',
+  secondDefense: 'graduationDesign.defense.secondRound',
+  calculate: 'graduationDesign.grade.calculate',
+  returnGrade: 'graduationDesign.grade.review',
+  withdraw: 'graduationDesign.grade.withdraw'
+}
 
 const FORM_PRESETS = {
   plagiarismResult: {
@@ -127,6 +140,7 @@ export default {
   },
   computed: {
     studentId() { return this.$route.params.studentId || this.$route.query.studentId },
+    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
     backTo() {
       const panel = this.$route.query.panel || 'plagiarism'
       const path = RETURN_PATHS[this.$route.query.returnRoute] || PANEL_PATHS[panel] || PANEL_PATHS.plagiarism
@@ -141,6 +155,10 @@ export default {
   },
   created() { this.init() },
   methods: {
+    canOpenForm(formKey) {
+      const permissionKey = FORM_PERMISSIONS[formKey]
+      return !!permissionKey && matchPermission(this.permissionPatterns, permissionKey)
+    },
     onPickChip(f, value) {
       this.form[f.key] = f.type === 'textarea'
         ? (this.form[f.key] ? this.form[f.key] + '\n' + value : String(value))
@@ -186,6 +204,8 @@ export default {
       if (!this.studentId) { this.error = '缺少学生标识，请返回后重新选择学生'; this.loading = false; return }
       const preset = FORM_PRESETS[this.formKey]
       if (!preset) { this.error = '无效的表单类型'; this.loading = false; return }
+      if (!this.canOpenForm(this.formKey)) { this.error = '当前角色无权执行该毕业设计操作，请返回对应工作区'; this.loading = false; return }
+      if (RECORD_CONTEXT_FORMS.has(this.formKey) && !this.recordId) { this.error = '缺少业务记录标识，请返回对应工作区重新选择记录'; this.loading = false; return }
       this.formTitle = preset.title
       this.formFields = preset.fields
       this.form = {}
@@ -210,6 +230,7 @@ export default {
     },
     async submit() {
       this.formError = ''
+      if (!this.canOpenForm(this.formKey)) { this.formError = '当前角色无权执行该毕业设计操作'; return }
       this.submitting = true
       try {
         let res
