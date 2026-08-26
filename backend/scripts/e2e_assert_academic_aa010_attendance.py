@@ -183,7 +183,7 @@ def main() -> int:
         )).all()
         debug["warnings"] = [{
             "id": str(row.id),
-            "studentId": str(row.student_id or ""),
+            "acadStudentId": str(row.acad_student_id or ""),
             "sourceCode": row.source_code,
             "ruleCode": row.rule_code,
             "reason": row.reason,
