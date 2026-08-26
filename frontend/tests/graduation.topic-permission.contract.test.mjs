@@ -51,7 +51,7 @@ test('topic management separates maintenance, assignment and export actions', ()
 
 test('topic detail actually loads and no longer uses the legacy write permission string', () => {
   assert.doesNotMatch(topicDetail, /graduation:topic:write/)
-  assert.match(topicDetail, /\n  mounted\(\) \{\n    this\.load\(\)\n  \},\n  methods:/)
+  assert.match(topicDetail, /\n {2}mounted\(\) \{\n {4}this\.load\(\)\n {2}\},\n {2}methods:/)
   assert.match(topicDetail, /goEdit\(\) \{/)
   assert.match(topicDetail, /canTopicCreate/)
   assert.match(topicDetail, /canTopicAssign/)
