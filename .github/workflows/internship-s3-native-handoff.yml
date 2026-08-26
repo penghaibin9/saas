@@ -44,6 +44,21 @@ jobs:
           echo "productExactSha=$ACTUAL"
           echo "runnerExactSha=${{ github.event.pull_request.head.sha || github.sha }}"
 
+      - name: Verify public production API DNS TLS and health
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEALTH_URL="${PRODUCT_API_BASE}/health"
+          CODE="$(curl --silent --show-error --location \
+            --connect-timeout 10 --max-time 20 \
+            --output /tmp/s3-public-health.json \
+            --write-out '%{http_code}' \
+            "$HEALTH_URL")"
+          cat /tmp/s3-public-health.json
+          test "$CODE" = '200'
+          grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"' /tmp/s3-public-health.json
+          echo "S3_PUBLIC_API_HEALTH=PASS"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -138,6 +153,7 @@ jobs:
             runnerExactSha: process.env.RUNNER_EXACT_SHA,
             artifactType: 'mp-weixin-importable',
             apiBase: process.env.PRODUCT_API_BASE,
+            productionApiHealth: 'PASS',
             helpCenterUrl: process.env.PRODUCT_HELP_CENTER,
             appId: project.appid,
             compileType: project.compileType,
@@ -145,10 +161,12 @@ jobs:
             mockEnabled: false,
             packageBudgetPass: report.budgetPass === true,
             requiredInternshipPages,
+            wechatServerDomainConfig: 'PENDING_PLATFORM_CONFIRMATION',
+            privacyLocationDeclaration: 'PENDING_PLATFORM_CONFIRMATION',
             nativeDevToolsEvidence: 'PENDING',
             realDeviceEvidence: 'PENDING',
             r9Eligible: false,
-            note: 'Build/runtime handoff only. S3 must not be marked PASS until real WeChat DevTools and physical-device evidence is attached for this exact product SHA.'
+            note: 'Build/runtime/network handoff only. S3 must not be marked PASS until WeChat platform prerequisites plus real WeChat DevTools and physical-device evidence are attached for this exact product SHA.'
           }
           fs.writeFileSync('../e2e/runtime/s3-native/s3-native-handoff.json', JSON.stringify(manifest, null, 2) + '\n')
           console.log(JSON.stringify(manifest, null, 2))
