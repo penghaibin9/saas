@@ -8,6 +8,7 @@ on:
       - 'audit-tests/student-affairs-v3-bootstrap.py'
       - 'audit-tests/student-affairs-v3-matrix.py'
       - 'audit-tests/student-affairs-v3-focused-browser.spec.mjs'
+      - 'audit-tests/student-affairs-v3-domain-hubs-browser.spec.mjs'
       - '.github/workflows/student-affairs-v3-once-matrix-exact-head.yml'
   workflow_dispatch:
 
@@ -184,11 +185,13 @@ jobs:
           npm install
           npx playwright install --with-deps chromium
 
-      - name: Install runner-only focused Student Affairs browser specs
+      - name: Install runner-only Student Affairs browser specs
         run: |
           set -euo pipefail
           cp runner/audit-tests/student-affairs-v3-focused-browser.spec.mjs \
             app/e2e/specs/runner-student-affairs-v3-focused.spec.mjs
+          cp runner/audit-tests/student-affairs-v3-domain-hubs-browser.spec.mjs \
+            app/e2e/specs/runner-student-affairs-v3-domain-hubs.spec.mjs
 
       - name: Broad real-browser Student Affairs screening
         id: browser
@@ -199,7 +202,10 @@ jobs:
         run: |
           set +e
           npx playwright test \
-            specs/golden-rollout-student-affairs-*.spec.mjs \
+            specs/golden-rollout-student-affairs-aid.spec.mjs \
+            specs/golden-rollout-student-affairs-discipline.spec.mjs \
+            specs/golden-rollout-student-affairs-funding.spec.mjs \
+            specs/runner-student-affairs-v3-domain-hubs.spec.mjs \
             specs/runner-student-affairs-v3-focused.spec.mjs \
             --reporter=junit 2>&1 | tee ../audit-evidence/browser.log
           rc=${PIPESTATUS[0]}
