@@ -25,7 +25,8 @@ def test_dorm_transfer_projection_exposes_human_readable_approval_evidence():
         '"allowedActions"',
     ):
         assert field in source
-    assert 'if item.get("status") in dorm.TRANSFER_NODES' in source
+    assert 'node = str(item.get("currentNode") or item.get("status") or "")' in source
+    assert 'if node in dorm.TRANSFER_NODES:' in source
 
 
 def test_pc_and_mobile_dorm_approval_require_source_target_and_version():
