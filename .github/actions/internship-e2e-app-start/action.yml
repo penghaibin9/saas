@@ -37,15 +37,29 @@ runs:
         mkdir -p e2e/runtime-logs
 
         if [ "$START_STAFF" = 'true' ]; then
-          (cd frontend && npm ci && nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 & echo $! > ../e2e/runtime-logs/frontend.pid)
+          cd frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+          cd ..
         fi
 
         if [ "$START_STUDENT" = 'true' ]; then
-          (cd student-portal && npm ci && VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 & echo $! > ../e2e/runtime-logs/student-portal.pid)
+          cd student-portal
+          npm ci
+          VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 \
+            nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/student-portal.pid
+          cd ..
         fi
 
         if [ "$START_ENTERPRISE" = 'true' ]; then
-          (cd enterprise-portal && npm ci && VITE_BASE=/enterprise/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 nohup npm run dev -- --host 127.0.0.1 --port 5202 > ../e2e/runtime-logs/enterprise-portal.log 2>&1 & echo $! > ../e2e/runtime-logs/enterprise-portal.pid)
+          cd enterprise-portal
+          npm ci
+          VITE_BASE=/enterprise/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 \
+            nohup npm run dev -- --host 127.0.0.1 --port 5202 > ../e2e/runtime-logs/enterprise-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/enterprise-portal.pid
+          cd ..
         fi
 
         if [ "$START_MINIAPP" = 'true' ]; then
@@ -53,5 +67,10 @@ runs:
             miniapp.log:miniapp.pid|student-mini.log:student-mini.pid) ;;
             *) echo "unsupported Mini H5 log/PID names" >&2; exit 2 ;;
           esac
-          (cd miniapp && npm ci && VITE_USE_MOCK=false VITE_API_BASE_URL=http://127.0.0.1:8000 nohup npm run dev:h5 -- --host 127.0.0.1 --port 5188 > "../e2e/runtime-logs/$MINIAPP_LOG_NAME" 2>&1 & echo $! > "../e2e/runtime-logs/$MINIAPP_PID_NAME")
+          cd miniapp
+          npm ci
+          VITE_USE_MOCK=false VITE_API_BASE_URL=http://127.0.0.1:8000 \
+            nohup npm run dev:h5 -- --host 127.0.0.1 --port 5188 > "../e2e/runtime-logs/$MINIAPP_LOG_NAME" 2>&1 &
+          echo $! > "../e2e/runtime-logs/$MINIAPP_PID_NAME"
+          cd ..
         fi
