@@ -7,10 +7,10 @@
   >
     <div class="gp-mode">
       <button class="gp-mode__btn" :class="{ 'is-active': mode === 'single' }" @click="setMode('single')">按学生连续处理</button>
-      <button class="gp-mode__btn" :class="{ 'is-active': mode === 'batch' }" @click="setMode('batch')">成绩台账批量核对</button>
+      <button v-if="canUseGradeBatch" class="gp-mode__btn" :class="{ 'is-active': mode === 'batch' }" @click="setMode('batch')">成绩台账批量核对</button>
     </div>
 
-    <div v-if="mode === 'batch'" class="mp-stack">
+    <div v-if="mode === 'batch' && canUseGradeBatch" class="mp-stack">
       <div class="mp-tabs gp-queues" aria-label="成绩工作队列">
         <button v-for="q in batchQueues" :key="q.value" class="mp-tab" :class="{ 'is-active': batch.queue === q.value }" @click="selectBatchQueue(q.value)">{{ q.label }}</button>
       </div>
@@ -48,17 +48,17 @@
           <section class="gp-context" aria-label="当前处理学生">
             <div class="gp-context__avatar">{{ (current.name || '学').slice(0, 1) }}</div>
             <div class="gp-context__identity"><strong>{{ current.name }}</strong><span>{{ current.studentNo || '未关联学号' }} · {{ current.advisorName || '未分配指导教师' }}</span></div>
-            <div class="gp-context__hint">按阶段完成查重、评阅、答辩与成绩发布</div>
+            <div class="gp-context__hint">按当前角色授权完成查重、评阅、答辩或成绩处理</div>
           </section>
           <div class="gp-tabs">
-            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'plagiarism' }" @click="switchTab('plagiarism')">查重记录</button>
-            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'review' }" @click="switchTab('review')">教师评阅</button>
-            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'defense' }" @click="switchTab('defense')">答辩评分</button>
-            <button class="gp-tabs__item" :class="{ 'is-active': tab === 'grade' }" @click="switchTab('grade')">成绩评定</button>
+            <button v-if="canPanel('plagiarism')" class="gp-tabs__item" :class="{ 'is-active': tab === 'plagiarism' }" @click="switchTab('plagiarism')">查重记录</button>
+            <button v-if="canPanel('review')" class="gp-tabs__item" :class="{ 'is-active': tab === 'review' }" @click="switchTab('review')">教师评阅</button>
+            <button v-if="canPanel('defense')" class="gp-tabs__item" :class="{ 'is-active': tab === 'defense' }" @click="switchTab('defense')">答辩评分</button>
+            <button v-if="canPanel('grade')" class="gp-tabs__item" :class="{ 'is-active': tab === 'grade' }" @click="switchTab('grade')">成绩评定</button>
           </div>
           <ErrorState v-if="loadError" :description="loadError" @retry="loadAll" />
 
-          <div v-if="tab === 'plagiarism'" class="gp-panel">
+          <div v-if="tab === 'plagiarism' && canPanel('plagiarism')" class="gp-panel">
             <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)"><button class="mp-btn mp-btn--primary" :disabled="!canAction('submitPlagiarism')" :title="actionReason('submitPlagiarism')" @click="doSubmitPlagiarism">发起查重</button></div>
             <ul class="gp-timeline"><li v-for="p in plagiarismList" :key="p.id" class="gp-timeline-item">
               <div class="mp-cell-main"><AppDateDisplay :value="p.submitAt" mode="datetime" /> · <StatusTag :type="p.overThreshold ? 'danger' : 'success'" :label="p.status === 'DONE' ? (p.rate || '—') : p.statusLabel" dot /></div>
@@ -68,17 +68,17 @@
             </li></ul><EmptyState v-if="!plagiarismList.length" title="暂无查重记录" />
           </div>
 
-          <div v-if="tab === 'review'" class="gp-panel">
+          <div v-if="tab === 'review' && canPanel('review')" class="gp-panel">
             <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)"><AppGraduationMentorPicker v-model="reviewerMentorId" :query="{ qualificationStatus: 'QUALIFIED', valueMode: 'id', excludeMentorId: current?.mentorId || '', excludeTeacherName: current?.advisorName || '' }" placeholder="搜索评阅教师（自动回避该生导师）" style="width: 260px" /><button class="mp-btn mp-btn--primary" :disabled="!canAction('assignReview')" :title="actionReason('assignReview')" @click="doAssignReview">分配评阅</button></div>
             <ul class="gp-timeline"><li v-for="r in reviewList" :key="r.id" class="gp-timeline-item"><div class="mp-cell-main">{{ r.reviewerName }} · <StatusTag :type="r.statusTone" :label="r.statusLabel" dot /></div><div v-if="r.opinion" class="mp-cell-sub">评分 {{ r.score }} · {{ r.opinion }}</div><div class="ie-actions" style="justify-content:flex-start;margin-top:4px"><button v-if="['ASSIGNED', 'REVIEWING', 'RETURNED'].includes(r.status)" class="mp-link" :disabled="!canAction('submitReview')" :title="actionReason('submitReview')" @click="openReviewSubmit(r)">提交评阅</button><button v-if="r.status === 'COMPLETED'" class="mp-link" :disabled="!canAction('returnReview')" :title="actionReason('returnReview')" @click="openReviewReturn(r)">退回重评</button></div></li></ul><EmptyState v-if="!reviewList.length" title="暂无评阅任务" />
           </div>
 
-          <div v-if="tab === 'defense'" class="gp-panel">
+          <div v-if="tab === 'defense' && canPanel('defense')" class="gp-panel">
             <div class="ie-actions" style="justify-content: flex-start; margin-bottom: var(--space-3)"><button class="mp-btn mp-btn--primary" :disabled="!canEnterScore" :title="enterScoreReason" @click="openScoreEntry">录入评委评分</button></div>
             <ul class="gp-timeline"><li v-for="d in scoreList" :key="d.id" class="gp-timeline-item"><div class="mp-cell-main">{{ d.judgeName }}（第{{ d.roundNo }}轮）· {{ d.absent ? '缺席' : d.score }} · <StatusTag :type="d.status === 'CONFIRMED' ? 'success' : 'warning'" :label="d.statusLabel" dot /></div></li></ul><EmptyState v-if="!scoreList.length" title="暂无评分记录" /><div class="ie-actions"><button class="mp-btn" :disabled="!canConfirmScores" :title="confirmScoresReason" @click="doConfirmScores">确认本轮成绩</button><button class="mp-btn" :disabled="!canCreateSecondDefense" :title="secondDefenseReason" @click="openSecondDefense">发起二次答辩</button></div>
           </div>
 
-          <div v-if="tab === 'grade'" class="gp-panel">
+          <div v-if="tab === 'grade' && canPanel('grade')" class="gp-panel">
             <LoadingState v-if="gradeLoading" /><template v-else-if="grade"><div class="gp-kv"><span>状态</span><StatusTag :type="grade.statusTone" :label="grade.statusLabel" dot /></div><div class="gp-kv"><span>导师分</span><span>{{ grade.advisorScore ?? '—' }}</span></div><div class="gp-kv"><span>评阅分</span><span>{{ grade.reviewerScore ?? '—' }}</span></div><div class="gp-kv"><span>答辩分</span><span>{{ grade.defenseScore ?? '—' }}</span></div><div class="gp-kv"><span>综合分</span><span>{{ grade.totalScore ?? '—' }}（{{ grade.gradeLevel }}）</span></div><div class="gp-kv"><span>发布时间</span><AppDateDisplay :value="grade.publishedAt" mode="datetime" /></div><div class="ie-actions"><button v-if="['DRAFT', 'WITHDRAWN'].includes(grade.status)" class="mp-btn mp-btn--primary" :disabled="!canManageGrade" :title="manageGradeReason" @click="openCalculate">核算成绩</button><button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="!canReviewGrade" :title="reviewGradeReason" @click="doReview('APPROVE')">复核通过</button><button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="!canReviewGrade" :title="reviewGradeReason" @click="openReturnGrade">复核退回</button><button v-if="grade.status === 'REVIEWED'" class="mp-btn mp-btn--primary" :disabled="!canPublishGrade" :title="publishGradeReason" @click="doPublish">发布成绩</button><button v-if="grade.status === 'PUBLISHED'" class="mp-btn mp-link--danger" :disabled="!canWithdrawGrade" :title="withdrawGradeReason" @click="openWithdraw">撤回</button></div></template>
           </div>
         </template>
@@ -93,10 +93,17 @@ import { AppSearchBox, AppGraduationMentorPicker } from '@/components/common'
 import { AppDateDisplay } from '@/components/common/date'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 const PANEL_ROUTES = { plagiarism: 'graduation-plagiarism-ledger', review: 'graduation-review-tasks', defense: 'graduation-defense-scoring', grade: 'graduation-grade-ledger' }
+const PANEL_PERMISSIONS = {
+  plagiarism: ['graduationDesign.plagiarism.view'],
+  review: ['graduationDesign.review.view'],
+  defense: ['graduationDesign.defense.score', 'graduationDesign.defense.scoreConfirm'],
+  grade: ['graduationDesign.grade.view']
+}
 
 export default {
   name: 'GraduationDefenseGradeView',
@@ -117,6 +124,8 @@ export default {
     }
   },
   computed: {
+    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
+    canUseGradeBatch() { return this.canPanel('grade') },
     canEnterScore() { const pa = this.ctx.permissionActions.enterDefenseScore; return !!(pa && pa.allowed) }, enterScoreReason() { const pa = this.ctx.permissionActions.enterDefenseScore; return pa && !pa.allowed ? (pa.reason || '无答辩评分权限') : '' },
     canConfirmScores() { const pa = this.ctx.permissionActions.confirmDefenseScores; return !!(pa && pa.allowed) }, confirmScoresReason() { const pa = this.ctx.permissionActions.confirmDefenseScores; return pa && !pa.allowed ? (pa.reason || '仅答辩秘书/管理员可确认成绩') : '' },
     canCreateSecondDefense() { const pa = this.ctx.permissionActions.createSecondDefense; return !!(pa && pa.allowed) }, secondDefenseReason() { const pa = this.ctx.permissionActions.createSecondDefense; return pa && !pa.allowed ? (pa.reason || '仅答辩秘书/管理员可发起二次答辩') : '' },
@@ -126,31 +135,49 @@ export default {
     canPublishGrade() { const pa = this.ctx.permissionActions.publishGrade; return !!(pa && pa.allowed) }, publishGradeReason() { const pa = this.ctx.permissionActions.publishGrade; return pa && !pa.allowed ? (pa.reason || '无成绩发布权限') : '' }
   },
   async created() {
-    const p = this.$route.query.panel || this.$route.meta.defaultPanel
-    if (['plagiarism', 'review', 'defense', 'grade'].includes(p)) this.tab = p
-    if ((this.$route.query.view || '') === 'batch') { this.mode = 'batch'; this.restoreBatchQueueFromRoute(); await this.loadGrades() } else await this.restoreStudentFromRoute()
+    const requested = this.$route.meta.defaultPanel || this.$route.query.panel
+    this.tab = this.canPanel(requested) ? requested : (this.firstAllowedPanel() || 'plagiarism')
+    if ((this.$route.query.view || '') === 'batch' && this.canUseGradeBatch) {
+      this.mode = 'batch'
+      this.restoreBatchQueueFromRoute()
+      await this.loadGrades()
+    } else {
+      this.mode = 'single'
+      await this.restoreStudentFromRoute()
+    }
     this.searchStudents()
   },
   watch: {
     async '$route.query.panel'(p) {
-      if (['plagiarism', 'review', 'defense', 'grade'].includes(p) && p !== this.tab) {
-        this.tab = p
+      const requested = this.$route.meta.defaultPanel || p
+      if (this.canPanel(requested) && requested !== this.tab) {
+        this.tab = requested
         if (this.current) await this.loadAll()
       }
     },
     async '$route.query.studentId'(sid) { if (sid && String(this.current?.id || '') !== String(sid)) await this.restoreStudentFromRoute() },
-    'batchStore.selectedBatchId'(batchId) { this.current = null; this.studentOptions = []; this.batch.loaded = false; this.$router.replace({ query: { ...this.$route.query, batchId: batchId || undefined, studentId: undefined } }); this.searchStudents(); if (this.mode === 'batch') this.loadGrades() }
+    'batchStore.selectedBatchId'(batchId) { this.current = null; this.studentOptions = []; this.batch.loaded = false; this.$router.replace({ query: { ...this.$route.query, batchId: batchId || undefined, studentId: undefined } }); this.searchStudents(); if (this.mode === 'batch' && this.canUseGradeBatch) this.loadGrades() }
   },
   methods: {
+    hasPermission(permissionKey) { return matchPermission(this.permissionPatterns, permissionKey) },
+    canPanel(panel) { return (PANEL_PERMISSIONS[panel] || []).some((permissionKey) => this.hasPermission(permissionKey)) },
+    firstAllowedPanel() { return ['plagiarism', 'review', 'defense', 'grade'].find((panel) => this.canPanel(panel)) || '' },
+    panelRoute(panel) {
+      if (panel !== 'defense') return PANEL_ROUTES[panel]
+      if (this.$route.name === 'graduation-defense-confirmation' && this.hasPermission('graduationDesign.defense.scoreConfirm')) return 'graduation-defense-confirmation'
+      if (this.hasPermission('graduationDesign.defense.score')) return 'graduation-defense-scoring'
+      if (this.hasPermission('graduationDesign.defense.scoreConfirm')) return 'graduation-defense-confirmation'
+      return null
+    },
     canAction(key) { const pa = this.ctx.permissionActions[key]; return !!(pa && pa.allowed) }, actionReason(key) { const pa = this.ctx.permissionActions[key]; return pa && !pa.allowed ? (pa.reason || '无此操作权限') : '' },
     activeBatchQueue() { return this.batchQueues.find((q) => q.value === this.batch.queue) || this.batchQueues[0] },
     restoreBatchQueueFromRoute() { const missing = String(this.$route.query.missingType || '').toUpperCase(); const status = String(this.$route.query.status || '').toUpperCase(); if (['ANY', 'ADVISOR', 'REVIEWER', 'DEFENSE', 'TOTAL'].includes(missing)) this.batch.queue = missing; else if (status === 'CALCULATED') this.batch.queue = 'REVIEW'; else if (status === 'REVIEWED') this.batch.queue = 'PUBLISH'; else if (this.$route.query.queue === 'grade-missing') this.batch.queue = 'ANY'; else this.batch.queue = 'LEDGER' },
-    syncBatchRoute() { const q = this.activeBatchQueue(); this.$router.replace({ query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId || undefined, panel: 'grade', view: 'batch', studentId: undefined, queue: q.missingType ? 'grade-missing' : 'ledger', missingType: q.missingType || undefined, status: q.status || undefined } }) },
-    selectBatchQueue(value) { this.batch.queue = value; this.batch.page = 1; this.syncBatchRoute(); this.loadGrades() },
-    setMode(m) { this.mode = m; if (m === 'batch') { this.syncBatchRoute(); if (!this.batch.loaded) this.loadGrades() } else this.$router.replace({ query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId || undefined, studentId: this.current?.id || this.$route.query.studentId || undefined, panel: this.tab, view: undefined, queue: this.$route.query.queue || 'ledger' } }) },
-    async loadGrades() { const B = this.batch; B.loading = true; B.error = ''; if (!this.batchStore.selectedBatchId) { B.rows = []; B.total = 0; B.loading = false; return } const q = this.activeBatchQueue(); const res = await graduationDefenseGradeApi.getGrades({ keyword: B.keyword, status: q.status || undefined, missingType: q.missingType || undefined, batchId: this.batchStore.selectedBatchId, page: B.page, pageSize: B.pageSize }); if (res.code === 0) { B.rows = res.data.list; B.total = res.data.total; B.loaded = true } else { B.rows = []; B.total = 0; B.error = res.message || '加载失败' } B.loading = false },
-    openFromBatch(row) { const q = this.activeBatchQueue(); this.mode = 'single'; this.tab = 'grade'; this.current = { id: row.gdStudentId, name: row.studentName, studentNo: row.studentNo, advisorName: row.advisorName }; this.$router.replace({ query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId, studentId: row.gdStudentId, panel: 'grade', view: undefined, queue: q.missingType ? 'grade-missing' : 'ledger', missingType: q.missingType || undefined, status: q.status || undefined } }); this.loadAll() },
-    switchTab(t) { this.tab = t; let routeName = PANEL_ROUTES[t]; if (t === 'defense' && this.$route.name === 'graduation-defense-confirmation') routeName = this.$route.name; this.$router.replace({ name: routeName, query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId || undefined, studentId: this.current?.id || this.$route.query.studentId || undefined, panel: t, view: undefined, queue: this.$route.query.queue || 'ledger' } }); this.loadAll() },
+    syncBatchRoute() { if (!this.canUseGradeBatch) return; const q = this.activeBatchQueue(); this.$router.replace({ name: 'graduation-grade-ledger', query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId || undefined, panel: 'grade', view: 'batch', studentId: undefined, queue: q.missingType ? 'grade-missing' : 'ledger', missingType: q.missingType || undefined, status: q.status || undefined } }) },
+    selectBatchQueue(value) { if (!this.canUseGradeBatch) return; this.batch.queue = value; this.batch.page = 1; this.syncBatchRoute(); this.loadGrades() },
+    setMode(m) { if (m === 'batch' && !this.canUseGradeBatch) return; this.mode = m; if (m === 'batch') { this.syncBatchRoute(); if (!this.batch.loaded) this.loadGrades() } else this.$router.replace({ query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId || undefined, studentId: this.current?.id || this.$route.query.studentId || undefined, panel: this.tab, view: undefined, queue: this.$route.query.queue || 'ledger' } }) },
+    async loadGrades() { const B = this.batch; B.loading = true; B.error = ''; if (!this.canUseGradeBatch || !this.batchStore.selectedBatchId) { B.rows = []; B.total = 0; B.loading = false; return } const q = this.activeBatchQueue(); const res = await graduationDefenseGradeApi.getGrades({ keyword: B.keyword, status: q.status || undefined, missingType: q.missingType || undefined, batchId: this.batchStore.selectedBatchId, page: B.page, pageSize: B.pageSize }); if (res.code === 0) { B.rows = res.data.list; B.total = res.data.total; B.loaded = true } else { B.rows = []; B.total = 0; B.error = res.message || '加载失败' } B.loading = false },
+    openFromBatch(row) { if (!this.canUseGradeBatch) return; const q = this.activeBatchQueue(); this.mode = 'single'; this.tab = 'grade'; this.current = { id: row.gdStudentId, name: row.studentName, studentNo: row.studentNo, advisorName: row.advisorName }; this.$router.replace({ name: 'graduation-grade-ledger', query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId, studentId: row.gdStudentId, panel: 'grade', view: undefined, queue: q.missingType ? 'grade-missing' : 'ledger', missingType: q.missingType || undefined, status: q.status || undefined } }); this.loadAll() },
+    switchTab(t) { if (!this.canPanel(t)) return; const routeName = this.panelRoute(t); if (!routeName) return; this.tab = t; this.$router.replace({ name: routeName, query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId || undefined, studentId: this.current?.id || this.$route.query.studentId || undefined, panel: t, view: undefined, queue: this.$route.query.queue || 'ledger' } }); this.loadAll() },
     async searchStudents() { this.sideError = ''; if (!this.batchStore.selectedBatchId) { this.studentOptions = []; return } const res = await gdStudentApi.getStudents({ keyword: this.studentKeyword, batchId: this.batchStore.selectedBatchId, pageSize: 20 }); if (res.code === 0) this.studentOptions = res.data.list; else { this.studentOptions = []; this.sideError = res.message || '学生列表加载失败' } },
     async restoreStudentFromRoute() {
       const sid = this.$route.query.studentId
@@ -171,7 +198,7 @@ export default {
     selectStudent(s) { this.current = s; this.$router.replace({ query: { ...this.$route.query, batchId: this.batchStore.selectedBatchId, studentId: s.id, panel: this.tab, view: undefined, queue: this.$route.query.queue || 'ledger' } }); this.loadAll() },
     async loadAll() {
       this.loadError = ''
-      if (!this.current) return
+      if (!this.current || !this.canPanel(this.tab)) return
       if (this.tab === 'plagiarism') await this.loadPlagiarism()
       else if (this.tab === 'review') await this.loadReview()
       else if (this.tab === 'defense') await this.loadScores()
@@ -209,6 +236,6 @@ export default {
 .gp-context { display: flex; align-items: center; gap: var(--space-3); padding: 0 0 var(--space-3); margin-bottom: var(--space-1); border-bottom: 1px solid var(--border-light, #e2e8f0); }.gp-context__avatar { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border-radius: var(--radius-full); background: var(--primary-50, #eff6ff); color: var(--primary-700, #1d4ed8); font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); }.gp-context__identity { display: grid; gap: 2px; min-width: 0; }.gp-context__identity strong { color: var(--text-primary); font-size: var(--font-size-md); }.gp-context__identity span { overflow: hidden; color: var(--text-tertiary); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }.gp-context__hint { margin-left: auto; max-width: 235px; color: var(--text-tertiary); font-size: var(--font-size-xs); line-height: 1.5; text-align: right; }
 .gp-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); flex-wrap: wrap; }.gp-tabs__item { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }.gp-tabs__item.is-active { color: var(--pri, #2563eb); border-bottom-color: var(--pri, #2563eb); font-weight: 600; }
 .gp-panel { font-size: 13px; }.gp-kv { display: flex; gap: var(--space-3); padding: 6px 0; border-bottom: 1px dashed var(--line, #eef1f6); }.gp-kv > span:first-child { width: 90px; flex: none; color: var(--t3, #64748b); }.gp-timeline { list-style: none; margin: 0; padding: 0; }.gp-timeline-item { padding: 10px 0; border-bottom: 1px dashed var(--line, #eef1f6); }
-.mp-link--danger { color: var(--danger, #dc2626); }.ie-in { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; box-sizing: border-box; }.ie-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }.mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }.mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.mp-link--danger { color: var(--danger, #dc2626); }.ie-in { width: 100%; padding: 7px 10px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; font-size: 13px; box-sizing: border-box; }.ie-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }.mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }.mp-btn--primary { background: var(--pri,#2563eb); color: #fff; border-color: var(--pri,#2563eb); }.mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 @media (max-width: 960px) { .gp-layout { flex-direction: column; } .gp-side, .gp-main { width: 100%; box-sizing: border-box; } .gp-stu-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); max-height: 260px; gap: var(--space-1); } } @media (max-width: 640px) { .gp-context__hint { display: none; } .gp-main { padding: var(--space-3); } }
 </style>
