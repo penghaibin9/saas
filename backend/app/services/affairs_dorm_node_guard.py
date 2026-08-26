@@ -85,14 +85,13 @@ def install() -> None:
         return manager_id
 
     def create_building(body, user):
-        """服务端强制真实宿管，禁止产生后续无法分派终审待办的无主楼栋。"""
+        """允许先建房源后绑定宿管；一旦指定宿管，服务端必须核验真实 DORM_MANAGER 角色。"""
         key = str(getattr(body, "managerTeacherKey", None) or "").strip()
-        if not key:
-            raise AppException("VALIDATION_ERROR", "请选择负责宿管")
-        with session() as db:
-            manager_id = int(original_resolve_manager(db, key) or 0)
-            if manager_id <= 0 or not _has_active_dorm_manager_role(db, manager_id):
-                raise AppException("VALIDATION_ERROR", "请选择具有宿管角色的有效宿管")
+        if key:
+            with session() as db:
+                manager_id = int(original_resolve_manager(db, key) or 0)
+                if manager_id <= 0 or not _has_active_dorm_manager_role(db, manager_id):
+                    raise AppException("VALIDATION_ERROR", "请选择具有宿管角色的有效宿管")
         return original_create_building(body, user)
 
     def submit_transfer(user, student_id, to_bed_id, reason=""):
