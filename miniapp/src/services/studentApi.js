@@ -1,5 +1,6 @@
 /** 学生端数据服务：关键业务走真实接口，岗位实习禁止回落 mock 假状态。 */
 import { mockRequest, realFirst, realFirstStrict, realRequest } from './request'
+import { latestRead } from './latestRead'
 import * as real from './realApi'
 import * as internship from './internshipApi'
 import * as M from '@/mock'
@@ -88,9 +89,9 @@ export const studentApi = {
   startInternshipSafetyCourse: (id) => internship.studentInternshipSafetyStart(id),
   submitInternshipSafetyCourse: (id, body) => internship.studentInternshipSafetySubmit(id, body),
   commitInternshipSafety: (id, body) => internship.studentInternshipSafetyCommit(id, body),
-  getGraduation: () => real.enrichGraduation(),
+  getGraduation: () => latestRead('student:graduation:overview', () => real.enrichGraduation()),
   getGraduationMaterialLibrary: () =>
-    realRequest('/mobile/graduation/material-center/library?includeHistory=true'),
+    latestRead('student:graduation:materials', () => realRequest('/mobile/graduation/material-center/library?includeHistory=true')),
   submitGraduationMaterial: (materialCode, body) =>
     realRequest(`/mobile/graduation/material-center/materials/${encodeURIComponent(materialCode)}/submit`, {
       method: 'POST', data: { ...body, clientSurface: 'MP_WEIXIN' }
@@ -101,9 +102,9 @@ export const studentApi = {
   submitGraduationChoices: (roundId, choices) => real.gdSubmitChoices(roundId, choices),
   withdrawGraduationChoices: (roundId) => real.gdWithdrawChoices(roundId),
   requestGraduationTopicChange: (newTopicId, reason) => real.gdRequestChange(newTopicId, reason),
-  getGraduationProposal: () => real.gdProposal(),
+  getGraduationProposal: () => latestRead('student:graduation:proposal', () => real.gdProposal()),
   submitGraduationProposal: (body) => real.gdSubmitProposal(body),
-  getGraduationFinal: () => real.gdFinal(),
+  getGraduationFinal: () => latestRead('student:graduation:final', () => real.gdFinal()),
   submitGraduationFinal: (body) => real.gdSubmitFinal(body),
   getGraduationTaskbook: () => real.gdTaskbook(),
   // 必须携带页面实际展示的版本；后端据此拒绝过期页面确认新版本任务书。
@@ -111,15 +112,15 @@ export const studentApi = {
     realRequest('/mobile/graduation/taskbook/confirm', {
       method: 'POST', data: { taskbookVersion }
     }),
-  getGraduationMidterm: () => real.gdMidterm(),
+  getGraduationMidterm: () => latestRead('student:graduation:midterm', () => real.gdMidterm()),
   submitGraduationMidtermRectify: (content) => real.gdMidtermRectify(content),
-  getGraduationDefense: () => real.gdDefense(),
-  getGraduationGrade: () => real.gdGrade(),
+  getGraduationDefense: () => latestRead('student:graduation:defense', () => real.gdDefense()),
+  getGraduationGrade: () => latestRead('student:graduation:grade', () => real.gdGrade()),
   appealGraduationGrade: (reason) => real.gdGradeAppeal(reason),
-  getGraduationPeerTasks: () => real.gdPeerTasks(),
+  getGraduationPeerTasks: () => latestRead('student:graduation:peer', () => real.gdPeerTasks()),
   submitGraduationPeer: (pid, opinion) => real.gdPeerSubmit(pid, opinion),
   rectifyGraduationPeer: (pid, note) => real.gdPeerRectify(pid, note),
-  getGraduationArchive: () => real.gdArchive(),
+  getGraduationArchive: () => latestRead('student:graduation:archive', () => real.gdArchive()),
   getEmployment: () => real.employmentMy(),
   getApplications: () =>
     realFirst('student.applications',
