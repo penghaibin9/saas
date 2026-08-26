@@ -36,6 +36,24 @@ def _require_pending_assignee(db, transfer_id: int, user, todo_type: str) -> Non
         raise AppException("NO_PERMISSION", "当前调宿待办未指派给您")
 
 
+def _has_active_dorm_manager_role(db, user_id: int) -> bool:
+    """绑定到楼栋的账号必须在当前租户真实持有 ACTIVE DORM_MANAGER 角色。"""
+    from app.models import Role, UserRole
+    hit = db.scalar(select(Role.id).join(
+        UserRole, UserRole.role_id == Role.id,
+    ).where(
+        Role.tenant_id == _tid(),
+        Role.role_code == "DORM_MANAGER",
+        Role.status == "ACTIVE",
+        Role.is_deleted.is_(False),
+        UserRole.tenant_id == _tid(),
+        UserRole.user_id == int(user_id),
+        UserRole.status == "ACTIVE",
+        UserRole.is_deleted.is_(False),
+    ).limit(1))
+    return bool(hit)
+
+
 def _notify(db, student_id: int, transfer_id: int, title: str, content: str, event_code: str) -> None:
     from app.services.message_event_outbox_service import emit_receiver_notice
     emit_receiver_notice(
@@ -54,6 +72,26 @@ def install() -> None:
         DormBed, DormBuilding, DormRoom, DormTransfer, StudentProfile, StudentStageEvent,
     )
     from app.services import affairs_dorm_service as dorm
+
+    original_resolve_manager = dorm._resolve_user_by_manager_key
+    original_create_building = dorm.create_building
+
+    def resolve_user_by_manager_key(db, key: str) -> int:
+        """历史楼栋也 fail-closed：账号存在但未持宿管角色时不得成为审批受理人。"""
+        manager_id = int(original_resolve_manager(db, key) or 0)
+        if manager_id <= 0 or not _has_active_dorm_manager_role(db, manager_id):
+            return 0
+        return manager_id
+
+    def create_building(body, user):
+        """前端 picker 之外再做服务端角色校验，禁止直接 API 把普通老师绑定为宿管。"""
+        key = str(getattr(body, "managerTeacherKey", None) or "").strip()
+        if key:
+            with session() as db:
+                manager_id = int(original_resolve_manager(db, key) or 0)
+                if manager_id <= 0 or not _has_active_dorm_manager_role(db, manager_id):
+                    raise AppException("VALIDATION_ERROR", "请选择具有宿管角色的有效宿管")
+        return original_create_building(body, user)
 
     def submit_transfer(user, student_id, to_bed_id, reason=""):
         reason = str(reason or "").strip()
@@ -230,6 +268,8 @@ def install() -> None:
             db.commit(); db.refresh(transfer)
             return dorm._transfer_row(transfer)
 
+    dorm._resolve_user_by_manager_key = resolve_user_by_manager_key
+    dorm.create_building = create_building
     dorm.submit_transfer = submit_transfer
     dorm.review_transfer = review_transfer
     _INSTALLED = True
