@@ -98,6 +98,77 @@ def _ensure_student(db, batch, profile, *, name: str, mentor: GraduationMentor |
     return row
 
 
+def _ensure_approved_final(db, gd_student: GraduationStudent, *, key: str, label: str) -> tuple[FileObject, GraduationFinal]:
+    """Create only the frozen approved-final prerequisite required by the real UI contracts."""
+    payload = (f"{label} approved final prerequisite {RUN_ID}\n" * 20).encode("utf-8")
+    digest = hashlib.sha256(payload).hexdigest()
+    file_key = f"graduation/gap5/{RUN_ID}/{key}-final.txt"
+    target = Path(settings.UPLOAD_DIR or "./uploads") / file_key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(payload)
+
+    file_row = db.scalars(select(FileObject).where(
+        FileObject.tenant_id == TENANT_ID,
+        FileObject.file_key == file_key,
+        FileObject.is_deleted.is_(False),
+    )).first()
+    if file_row is None:
+        file_row = FileObject(
+            tenant_id=TENANT_ID,
+            file_key=file_key,
+            file_name=f"{label}-冻结定稿-{RUN_ID}.txt",
+            ext="txt",
+            mime_type="text/plain",
+            size_bytes=len(payload),
+            sha256=digest,
+            biz_type="GRADUATION_MATERIAL",
+            biz_id=str(gd_student.id),
+            visibility="PRIVATE",
+            security_level="NORMAL",
+            status="AVAILABLE",
+            storage_backend="local",
+            storage_zone="ACTIVE",
+            object_key=file_key,
+            upload_source="SYSTEM",
+            scan_required=False,
+            scan_status="NOT_REQUIRED",
+            available_at=datetime.now(timezone.utc),
+        )
+        db.add(file_row)
+        db.flush()
+
+    version = f"v-gap5-{key}-1"
+    final = db.scalars(select(GraduationFinal).where(
+        GraduationFinal.tenant_id == TENANT_ID,
+        GraduationFinal.gd_student_id == gd_student.id,
+        GraduationFinal.final_type == "定稿",
+        GraduationFinal.version == version,
+        GraduationFinal.is_deleted.is_(False),
+    )).first()
+    if final is None:
+        final = GraduationFinal(
+            tenant_id=TENANT_ID,
+            gd_student_id=gd_student.id,
+            final_type="定稿",
+            version=version,
+            submit_at=datetime.now(timezone.utc),
+            plagiarism_rate="8.0%",
+            plagiarism_status="已检测",
+            status="APPROVED",
+            active_key=None,
+            reviewer="E2E补测审核",
+            review_comment="正式定稿前置条件已由 SEED_ONLY 建立",
+            review_time=datetime.now(timezone.utc),
+            attachments_json=[{"fileId": str(file_row.id), "fileName": file_row.file_name}],
+        )
+        db.add(final)
+        db.flush()
+    else:
+        final.status = "APPROVED"
+        final.attachments_json = [{"fileId": str(file_row.id), "fileName": file_row.file_name}]
+    return file_row, final
+
+
 def main() -> int:
     if os.getenv("E2E_ALLOW_DESTRUCTIVE_TESTS") != "true":
         raise SystemExit("E2E_ALLOW_DESTRUCTIVE_TESTS=true is required")
@@ -145,76 +216,15 @@ def main() -> int:
             batch.is_deleted = False
 
         gd_a = _ensure_student(db, batch, profiles["A"], name=STUDENTS["A"][1], mentor=mentor_a, stage="DEFENSE")
-        # Student B is the GD-012 reviewer and GD-013 delay applicant. FINAL_CHECK is an allowed delay stage.
+        # Student B is the GD-012 reviewer and GD-013 delay applicant. FINAL_CHECK is an allowed defense/delay stage.
         gd_b = _ensure_student(db, batch, profiles["B"], name=STUDENTS["B"][1], mentor=mentor_a, stage="FINAL_CHECK")
         # Student C intentionally has no topic, guaranteeing a GD-R01 risk on real scan.
         gd_c = _ensure_student(db, batch, profiles["C"], name=STUDENTS["C"][1], mentor=None, stage="TOPIC_SELECTING")
 
-        payload = (f"GD-012 frozen final evidence {RUN_ID}\n" * 20).encode("utf-8")
-        digest = hashlib.sha256(payload).hexdigest()
-        file_key = f"graduation/gap5/{RUN_ID}/gd012-final.txt"
-        target = Path(settings.UPLOAD_DIR or "./uploads") / file_key
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(payload)
-
-        file_row = db.scalars(select(FileObject).where(
-            FileObject.tenant_id == TENANT_ID,
-            FileObject.file_key == file_key,
-            FileObject.is_deleted.is_(False),
-        )).first()
-        if file_row is None:
-            file_row = FileObject(
-                tenant_id=TENANT_ID,
-                file_key=file_key,
-                file_name=f"GD012-冻结定稿-{RUN_ID}.txt",
-                ext="txt",
-                mime_type="text/plain",
-                size_bytes=len(payload),
-                sha256=digest,
-                biz_type="GRADUATION_MATERIAL",
-                biz_id=str(gd_a.id),
-                visibility="PRIVATE",
-                security_level="NORMAL",
-                status="AVAILABLE",
-                storage_backend="local",
-                storage_zone="ACTIVE",
-                object_key=file_key,
-                upload_source="SYSTEM",
-                scan_required=False,
-                scan_status="NOT_REQUIRED",
-                available_at=datetime.now(timezone.utc),
-            )
-            db.add(file_row)
-            db.flush()
-
-        final = db.scalars(select(GraduationFinal).where(
-            GraduationFinal.tenant_id == TENANT_ID,
-            GraduationFinal.gd_student_id == gd_a.id,
-            GraduationFinal.final_type == "定稿",
-            GraduationFinal.version == "v-gap5-1",
-            GraduationFinal.is_deleted.is_(False),
-        )).first()
-        if final is None:
-            final = GraduationFinal(
-                tenant_id=TENANT_ID,
-                gd_student_id=gd_a.id,
-                final_type="定稿",
-                version="v-gap5-1",
-                submit_at=datetime.now(timezone.utc),
-                plagiarism_rate="8.0%",
-                plagiarism_status="已检测",
-                status="APPROVED",
-                active_key=None,
-                reviewer="E2E补测审核",
-                review_comment="正式定稿前置条件已由 SEED_ONLY 建立",
-                review_time=datetime.now(timezone.utc),
-                attachments_json=[{"fileId": str(file_row.id), "fileName": file_row.file_name}],
-            )
-            db.add(final)
-            db.flush()
-        else:
-            final.status = "APPROVED"
-            final.attachments_json = [{"fileId": str(file_row.id), "fileName": file_row.file_name}]
+        # A needs a frozen final for GD-012 peer-review binding. B separately needs an APPROVED final because
+        # the real defense eligible-student endpoint refuses students without one.
+        file_row, final = _ensure_approved_final(db, gd_a, key="gd012", label="GD012")
+        _, defense_final = _ensure_approved_final(db, gd_b, key="gd013", label="GD013")
 
         grade = db.scalars(select(GraduationGrade).where(
             GraduationGrade.tenant_id == TENANT_ID,
@@ -260,6 +270,7 @@ def main() -> int:
             },
             "fileId": str(file_row.id),
             "finalId": str(final.id),
+            "defenseFinalId": str(defense_final.id),
         }
         out = Path("../e2e/runtime-logs/gap-five-fixture.json")
         out.parent.mkdir(parents=True, exist_ok=True)
