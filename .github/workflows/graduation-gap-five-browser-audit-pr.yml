@@ -9,6 +9,15 @@ on:
       - 'e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs'
       - 'e2e/scripts/graduation-gap-five-seed.py'
       - 'e2e/scripts/graduation-gap-five-db-audit.py'
+  push:
+    branches:
+      - audit/graduation-real-browser-20260823
+    paths:
+      - '.github/workflows/graduation-gap-five-browser-audit-pr.yml'
+      - 'e2e/specs/graduation-gap-five-browser-audit.spec.mjs'
+      - 'e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs'
+      - 'e2e/scripts/graduation-gap-five-seed.py'
+      - 'e2e/scripts/graduation-gap-five-db-audit.py'
   workflow_dispatch:
 
 permissions:
