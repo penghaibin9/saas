@@ -67,13 +67,13 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_EXPECTED_SHA: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
+      E2E_EXPECTED_SHA: 1ddc6252cabd4e59d595779401ee0936b468a631
 
     steps:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
+          ref: 1ddc6252cabd4e59d595779401ee0936b468a631
           fetch-depth: 0
 
       - name: Assert exact product HEAD
@@ -110,7 +110,7 @@ jobs:
           cp audit-harness/e2e/scripts/graduation-specialist-accounts.py e2e/scripts/
           cp audit-harness/e2e/scripts/graduation-archive-db-audit.py e2e/scripts/
           rm -rf audit-harness
-          grep -rl -e '63195a6dc9d25fa3805563910fb699ec163b552a' -e '47264037bf014276e795d3655d7f178830756729' -e '4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9' e2e/scripts | xargs -r sed -i -e 's/63195a6dc9d25fa3805563910fb699ec163b552a/fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2/g' -e 's/47264037bf014276e795d3655d7f178830756729/fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2/g' -e 's/4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9/fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2/g'
+          grep -rl -e '63195a6dc9d25fa3805563910fb699ec163b552a' -e '47264037bf014276e795d3655d7f178830756729' -e '4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9' e2e/scripts | xargs -r sed -i -e 's/63195a6dc9d25fa3805563910fb699ec163b552a/1ddc6252cabd4e59d595779401ee0936b468a631/g' -e 's/47264037bf014276e795d3655d7f178830756729/1ddc6252cabd4e59d595779401ee0936b468a631/g' -e 's/4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9/1ddc6252cabd4e59d595779401ee0936b468a631/g'
           test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
           bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
           test -z "$bad"
