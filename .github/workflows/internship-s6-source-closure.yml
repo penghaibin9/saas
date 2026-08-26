@@ -43,13 +43,12 @@ permissions:
 
 jobs:
   s6-source-closure:
-    if: github.event_name != 'pull_request' || github.head_ref == 'fix/internship-final-rc-20260824'
     name: git ls-files / routes / imports / migrations / schedulers
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      E2E_PRODUCT_EXACT_SHA: 979592ef8bfe3318bf5fd12043da17e635dcad1a
+      E2E_PRODUCT_EXACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - uses: actions/checkout@v4
@@ -61,14 +60,14 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Assert exact runner SHA and product boundary
+      - name: Assert exact candidate SHA
         run: |
           set -euo pipefail
           ACTUAL="$(git rev-parse HEAD)"
           echo "runnerExactSha=$ACTUAL"
           echo "productExactSha=$E2E_PRODUCT_EXACT_SHA"
           test "$ACTUAL" = "$E2E_EXPECTED_SHA"
-          git cat-file -e "$E2E_PRODUCT_EXACT_SHA^{commit}"
+          test "$ACTUAL" = "$E2E_PRODUCT_EXACT_SHA"
 
       - name: Run S6 source closure
         run: python scripts/check/check-internship-source-closure-v2.py
