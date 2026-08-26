@@ -37,7 +37,7 @@ SA = [
     ("SA-019", "学生干部/党团", [r"cadre", r"party", r"league", r"学生干部", r"党团"]),
     ("SA-020", "辅导员责任/考评", [r"counselor", r"evaluation", r"辅导员", r"考评"]),
     ("SA-021", "学工材料与档案", [r"affairs.*material", r"material.*affairs", r"archive", r"档案", r"归档"]),
-    ("SA-022", "工作台/学生360/统计全域一致性", [r"360", r"cockpit", r"dashboard", r"stat", r"ledger", r"xlsx", r"工作台", r"驾驶舱"]),
+    ("SA-022", "工作台/学生360/统计全域一致性", [r"student.?360", r"360", r"cockpit", r"dashboard", r"statistics?", r"ledger", r"xlsx", r"工作台", r"驾驶舱", r"台账", r"统计"]),
 ]
 
 # These flows have dedicated Gold/strict runner assets in the audit branch.
