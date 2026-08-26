@@ -162,6 +162,11 @@ jobs:
           set -euo pipefail
           python scripts/e2e_bootstrap_graduation_accounts_ci.py
           python scripts/e2e_reset_graduation_passwords.py
+          python - <<'PY'
+          from scripts import e2e_reset_graduation_passwords as reset
+          reset.E2E_LOGINS = ['e2e_major_admin']
+          raise SystemExit(reset.main())
+          PY
           python scripts/e2e_verify_graduation_accounts.py
 
       - name: SEED_ONLY five-gap prerequisites
@@ -232,7 +237,7 @@ jobs:
         working-directory: e2e
         run: |
           set +e
-          npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep 'GD-012'
+          npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep '成果互查：管理员分配'
           rc=$?
           test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd012-junit.xml
           exit $rc
@@ -259,7 +264,7 @@ jobs:
         working-directory: e2e
         run: |
           set +e
-          npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep 'GD-016'
+          npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep '优秀成果：导师提名'
           rc=$?
           test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd016-junit.xml
           exit $rc
@@ -271,7 +276,7 @@ jobs:
         working-directory: e2e
         run: |
           set +e
-          npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep 'GD-017'
+          npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep '风险：真实扫描'
           rc=$?
           test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd017-junit.xml
           exit $rc
@@ -283,7 +288,7 @@ jobs:
         working-directory: e2e
         run: |
           set +e
-          npx playwright test specs/graduation-gd013-gd019-gap-audit.spec.mjs --grep 'GD-019'
+          npx playwright test specs/graduation-gd013-gd019-gap-audit.spec.mjs --grep '答辩 XLSX 真实 UI 导出'
           rc=$?
           test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd019-junit.xml
           exit $rc
