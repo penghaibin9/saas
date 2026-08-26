@@ -142,19 +142,15 @@ jobs:
           miniapp-log-name: miniapp.log
           miniapp-pid-name: miniapp.pid
 
-      - name: Wait for Student Mini and reassert worker
+      - name: Wait for Student Mini
+        uses: ./.github/actions/internship-e2e-wait-apps
+        with:
+          urls: http://127.0.0.1:5188/
+          failure-log-glob: e2e/runtime-logs/miniapp.log
+
+      - name: Reassert worker and browser runtime safety
         run: |
           set -euo pipefail
-          ok=''
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:5188/ >/dev/null; then ok=1; break; fi
-            sleep 2
-          done
-          if [ -z "$ok" ]; then
-            echo 'Student Mini H5 not ready'
-            cat e2e/runtime-logs/miniapp.log
-            exit 1
-          fi
           kill -0 "$(cat e2e/runtime-logs/message-delivery.pid)"
           test "$MOCK_LOGIN_ENABLED" = 'false'
           echo '[worker-outbox-ack] Mini ready, worker alive, mock login disabled'
