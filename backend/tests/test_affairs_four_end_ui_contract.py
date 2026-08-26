@@ -42,6 +42,18 @@ def test_pc_and_mobile_dorm_approval_require_source_target_and_version():
     assert "床位信息不完整" in mobile
 
 
+def test_funding_publicity_manual_confirm_keeps_optimistic_lock_version():
+    pc = _read("frontend/src/modules/studentAffairs/views/funding/FundingPublicityView.vue")
+    api = _read("frontend/src/modules/studentAffairs/api/studentAffairs.api.js")
+    backend = _read("backend/app/api/v1/student_affairs.py")
+    service = _read("backend/app/services/affairs_funding_service.py")
+    assert "confirmFundingPublicity(it.applicationId, it.version)" in pc
+    assert "confirmFundingPublicity(id, version)" in api
+    assert "class FundingVersionOnlyBody(BaseModel):" in backend
+    assert 'version: int = Field(..., description="乐观锁版本（必填）")' in backend
+    assert '"currentNode": x.status if x.status in FUND_NODES else "", "version": x.version' in service
+
+
 def test_credit_appeal_contract_matches_backend_numeric_rules():
     backend = _read("backend/app/services/affairs_activity_service.py")
     portal = _read("student-portal/src/views/affairs/AffairsFourEndView.vue")
