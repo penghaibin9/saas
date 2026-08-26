@@ -17,7 +17,7 @@ from app.modules.internship.services import internship_agreement_service as agr
 from app.services import audit_log
 from app.services.pdf_util import build_text_pdf, pack_pdf_result
 
-router = APIRouter(tags=["岗位实习-协议文档"])
+router = APIRouter(prefix="/internship", tags=["岗位实习-协议文档"])
 
 
 @router.post("/agreements/{agreement_id}/pdf", summary="三方协议 PDF 套打（真实 PDF + 下载审计）")
