@@ -18,9 +18,11 @@ import { config } from '../lib/config.mjs'
  * 每一步都在真实浏览器里点，且每一步之后都回读 server truth——只认服务端状态，
  * 不认 toast（手册 §13.1：禁止 toast 成功但服务器未落状态）。
  *
- * 前置事实由 backend/scripts/e2e_seed_student_v3_realtask.py 用正式 API 造，
- * 见该脚本的说明。消息发布是正式异步投递；Playwright 明确运行在 external scheduler
- * 模式，因此夹具发布后还要执行一次与生产相同的 delivery worker，再开始浏览器断言。
+ * 前置事实由 backend/scripts/e2e_seed_student_v3_realtask.py 用正式 API 造。回执消息先走
+ * 正式发布合同，再由 E2E fault-injection helper 仅把 durable DeliveryJob 重置为 PENDING，
+ * 同时通过正式 emit_message_event() 追加一条 PENDING internship Outbox；helper 不消费它们。
+ * 随后的 wait helper 只轮询，因此只有 workflow 独立启动的 production worker 能把两条债务
+ * 恢复成学生可见消息。浏览器最后再真实点击 ACK，并回读服务端 acked 真值。
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -39,9 +41,9 @@ function runFixture(command) {
     stdio: 'inherit'
   })
   if (command === 'seed') {
-    // 普通消息在 UTC+8 22:00–07:00 会被正式治理改成 SCHEDULED。浏览器回放不能因
-    // CI 墙钟时间随机缺消息；测试 helper 只把这一条隔离 E2E campaign 推到到期，
-    // 随后仍走正式 scheduler + delivery worker，并在启动浏览器前验证个人消息已落库。
+    // 正式 publish 允许 best-effort inline delivery；那不能证明外部 Worker 恢复能力。
+    // 因此这里只对本 E2E campaign 做可逆故障注入：清掉其已物化消息、把 durable job
+    // 重置 PENDING，并追加一个正式 Outbox 事件。此 helper 明确不消费，留给独立 Worker。
     execFileSync('python3', ['scripts/e2e_force_student_v3_ack_delivery.py'], {
       cwd: backendDir,
       env: process.env,
@@ -152,17 +154,29 @@ test.describe.serial('Student V3 · Real Task 真实点击回放', () => {
   })
 
   test('需回执的消息：点开详情确认已阅后服务端 acked 为真', async ({ page, request }) => {
-    // 先证明 external scheduler 已把正式发布单真正物化成当前学生的个人消息。
-    // 这样若投递链回归，失败点会落在真实 server truth，而不是 20 秒后才表现成 DOM 找不到卡片。
+    // 先锁死独立 Worker 证据：DeliveryJob 与 EventOutbox 都必须被外部进程消费过，
+    // 且两条最终个人消息均已通过学生正式读 API 可见。
+    expect(fixture.workerRecovery?.verified).toBe(true)
+    expect(Number(fixture.workerRecovery?.deliveryAttemptCount || 0)).toBeGreaterThan(0)
+    expect(Number(fixture.workerRecovery?.outboxAttemptCount || 0)).toBeGreaterThan(0)
+
     const seededInbox = await serverTruth(request, '/student-mini/messages?page=1&pageSize=100')
     const seededMessage = (seededInbox.items || []).find((item) => item.title === fixture.ackMessage.title)
+    const outboxMessage = (seededInbox.items || []).find(
+      (item) => item.title === fixture.workerRecovery.outboxTitle
+    )
     expect(seededMessage, `seeded acknowledgement missing: ${fixture.ackMessage.title}`).toBeTruthy()
+    expect(outboxMessage, `worker outbox probe missing: ${fixture.workerRecovery.outboxTitle}`).toBeTruthy()
     expect(seededMessage.requireAck).toBe(true)
     expect(seededMessage.acked).toBe(false)
 
     await loginStudentMini(page)
     await page.goto(`${miniBase}/#/pages/student/messages/index`)
+
+    // Outbox 探针属于“通知”分类。必须通过真实分类入口看到它，不能在默认“待办”页误找。
     await page.getByText('通知', { exact: true }).first().click()
+    const outboxCard = page.locator('.msg__item', { hasText: fixture.workerRecovery.outboxTitle }).first()
+    await expect(outboxCard).toBeVisible({ timeout: 20_000 })
 
     const card = page.locator('.msg__item', { hasText: fixture.ackMessage.title }).first()
     await expect(card).toBeVisible({ timeout: 20_000 })

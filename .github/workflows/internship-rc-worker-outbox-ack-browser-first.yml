@@ -1,0 +1,254 @@
+name: Internship RC Worker Outbox ACK Browser First
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/scripts/e2e_seed_student_v3_realtask.py'
+      - 'backend/scripts/e2e_force_student_v3_ack_delivery.py'
+      - 'backend/scripts/e2e_drain_student_v3_message_delivery.py'
+      - 'backend/scripts/run_scheduled_jobs.py'
+      - 'backend/app/services/message_delivery_service.py'
+      - 'backend/app/services/message_event_outbox_service.py'
+      - 'backend/app/services/message_campaign_service.py'
+      - 'backend/app/services/message_channel_delivery_service.py'
+      - 'backend/app/services/tenant_effective_state_service.py'
+      - 'backend/app/student_portal/**'
+      - 'miniapp/src/pages/student/messages/**'
+      - 'miniapp/src/pages/common/message-detail/**'
+      - 'miniapp/src/services/**'
+      - 'e2e/specs/student-v3-real-task.spec.mjs'
+      - 'e2e/lib/**'
+      - 'e2e/playwright.config.mjs'
+      - '.github/workflows/internship-rc-worker-outbox-ack-browser-first.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: internship-rc-worker-outbox-ack-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  worker-outbox-ack:
+    if: github.event_name != 'pull_request' || github.head_ref == 'fix/internship-final-rc-20260824'
+    name: Worker-Outbox / Student Mini / ACK / server truth
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/12
+      REDIS_KEY_PREFIX: internship-rc-worker-outbox-ack
+      REDIS_CONNECT_TIMEOUT: '2'
+      REDIS_SOCKET_TIMEOUT: '2'
+      JWT_SECRET: internship-rc-worker-outbox-ack-e2e-only-not-production
+      JWT_SECRET_KEY: internship-rc-worker-outbox-ack-e2e-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_MINIAPP_BASE_URL: http://127.0.0.1:5188
+      E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact runner SHA
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          echo "actual=$ACTUAL"
+          echo "expected=$E2E_EXPECTED_SHA"
+          test "$ACTUAL" = "$E2E_EXPECTED_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+
+      - name: Install backend
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Enforce E2E artifact safety contract
+        working-directory: backend
+        run: pytest tests/test_playwright_artifact_safety.py -q -p no:warnings
+
+      - name: Migrate isolated real MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          HEADS=$(python -m alembic heads | grep -c '(head)')
+          python -m alembic heads
+          test "$HEADS" = '1'
+          mysql -h 127.0.0.1 -uroot -pe2e_root -e \
+            "ALTER DATABASE student_lifecycle_e2e CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+          python -m alembic upgrade head
+          python -m alembic current
+
+      - name: Replay production School IAM Authority
+        working-directory: backend
+        run: python scripts/bootstrap_control_plane_school_iam_authority.py
+
+      - name: Seed isolated tenants and School IAM
+        working-directory: backend
+        run: |
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start backend
+        run: |
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Import Student V3 interaction accounts
+        working-directory: backend
+        run: |
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+          python scripts/e2e_bootstrap_affairs_counselor_ci.py
+
+      - name: Start independent production message worker
+        run: |
+          set -euo pipefail
+          cd backend
+          nohup python -u -c "import time; from scripts.run_scheduled_jobs import job_delivery_and_outbox; exec('while True:\\n    job_delivery_and_outbox()\\n    print(\"[worker] cycle-complete\", flush=True)\\n    time.sleep(2)')" > ../e2e/runtime-logs/message-delivery.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/message-delivery.pid
+          sleep 3
+          kill -0 "$(cat ../e2e/runtime-logs/message-delivery.pid)"
+          echo "worker_pid=$(cat ../e2e/runtime-logs/message-delivery.pid)"
+          cat ../e2e/runtime-logs/message-delivery.log || true
+
+      - name: Install and start Student Mini H5
+        env:
+          VITE_USE_MOCK: 'false'
+          VITE_API_BASE_URL: http://127.0.0.1:8000
+        run: |
+          cd miniapp
+          npm ci
+          nohup npm run dev:h5 -- --host 127.0.0.1 --port 5188 > ../e2e/runtime-logs/miniapp.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/miniapp.pid
+
+      - name: Wait for Student Mini and reassert worker
+        run: |
+          set -euo pipefail
+          ok=''
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:5188/ >/dev/null; then ok=1; break; fi
+            sleep 2
+          done
+          if [ -z "$ok" ]; then
+            echo 'Student Mini H5 not ready'
+            cat e2e/runtime-logs/miniapp.log
+            exit 1
+          fi
+          kill -0 "$(cat e2e/runtime-logs/message-delivery.pid)"
+          test "$MOCK_LOGIN_ENABLED" = 'false'
+          echo '[worker-outbox-ack] Mini ready, worker alive, mock login disabled'
+
+      - name: Install Playwright Chromium
+        working-directory: e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run Worker-Outbox Student ACK Browser First only
+        working-directory: e2e
+        run: >-
+          npx playwright test
+          specs/student-v3-real-task.spec.mjs
+          --workers=1
+
+      - name: Print independent worker evidence
+        if: always()
+        run: |
+          echo '===== message-delivery.log ====='
+          cat e2e/runtime-logs/message-delivery.log || true
+          echo '===== end worker log ====='
+
+      - name: Upload Worker-Outbox ACK HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-rc-worker-outbox-ack-html-${{ github.run_id }}
+          path: e2e/playwright-report/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Worker-Outbox ACK browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-rc-worker-outbox-ack-evidence-${{ github.run_id }}
+          path: e2e/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Worker-Outbox ACK service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-rc-worker-outbox-ack-service-logs-${{ github.run_id }}
+          path: e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14

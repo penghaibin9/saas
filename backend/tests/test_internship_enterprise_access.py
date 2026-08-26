@@ -84,6 +84,26 @@ def test_effective_status_fails_closed_on_time_and_revocation():
     assert service.effective_grant_status(grant, now=now) == "REVOKED"
 
 
+def test_grant_storage_precision_cannot_round_immediate_start_into_the_future():
+    request_now = datetime(2026, 8, 24, 12, 52, 1, 739000)
+    stored_start = service._storage_datetime(request_now)
+    assert stored_start == datetime(2026, 8, 24, 12, 52, 1)
+    assert stored_start <= request_now
+
+    grant = InternshipEnterpriseAccessGrant(
+        tenant_id=1,
+        member_id=10,
+        company_id=20,
+        grant_type="RECRUITMENT",
+        campaign_id=30,
+        batch_id=40,
+        valid_from=stored_start,
+        valid_until=datetime(2026, 8, 25, 12, 52, 1),
+        status="ACTIVE",
+    )
+    assert service.effective_grant_status(grant, now=request_now) == "ACTIVE"
+
+
 def test_issue_path_locks_member_first_and_serializes_nullable_scope_duplicates():
     source = inspect.getsource(service.issue_grant_in_tx)
     assert "scope_tenant_id = int(tenant_id) if tenant_id is not None else _tid()" in source
@@ -92,6 +112,8 @@ def test_issue_path_locks_member_first_and_serializes_nullable_scope_duplicates(
     assert "_scope_predicates(" in source
     assert ".with_for_update()" in source
     assert "不可静默覆盖或复活" in source
+    assert "valid_from = _storage_datetime(valid_from)" in source
+    assert "valid_until = _storage_datetime(valid_until)" in source
 
 
 def test_recruitment_grant_requires_accepted_campaign_participation_and_access_deadline():

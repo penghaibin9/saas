@@ -1,0 +1,163 @@
+name: Internship S1 Bundle Diagnostics
+
+on:
+  push:
+    branches:
+      - fix/internship-final-rc-20260824
+    paths:
+      - '.github/workflows/internship-s1-bundle-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-bundle-scanner:
+    name: Reproduce S1 bundle scanner hits only
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CI: 'true'
+      E2E_PRODUCT_EXACT_SHA: 2e0a92c8b7f21a6eaa5ed6ca02929e39cd97fd2b
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assert immutable product SHA remains reachable
+        run: |
+          set -euo pipefail
+          git cat-file -e "$E2E_PRODUCT_EXACT_SHA^{commit}"
+          echo "runnerExactSha=$(git rev-parse HEAD)"
+          echo "productExactSha=$E2E_PRODUCT_EXACT_SHA"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+            miniapp/package-lock.json
+            enterprise-portal/package-lock.json
+
+      - name: Build Staff PC production bundle
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ''
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          test -s dist/index.html
+
+      - name: Build Student PC production bundle
+        working-directory: student-portal
+        env:
+          VITE_BASE: /portal/
+          VITE_API_BASE_URL: ''
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          test -s dist/index.html
+
+      - name: Build Mini H5 and mp-weixin release bundles
+        working-directory: miniapp
+        env:
+          VITE_API_BASE_URL: https://127.0.0.1:8443
+          VITE_USE_MOCK: 'false'
+          VITE_HELP_CENTER_URL: https://127.0.0.1:8443/help
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build:h5
+          npm run build:mp-weixin:release
+          test -s dist/build/h5/index.html
+          test -s dist/build/mp-weixin/app.json
+
+      - name: Build Enterprise Portal production bundle
+        working-directory: enterprise-portal
+        env:
+          VITE_BASE: /enterprise/
+          VITE_API_BASE_URL: ''
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          test -s dist/index.html
+
+      - name: Diagnose exact S1 forbidden-pattern hits without changing gate semantics
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime/s1-bundle-diagnostics
+          PATTERN='localhost:(5173|5199|5188|5202|8000)|127\.0\.0\.1:(5173|5199|5188|5202|8000)|VITE_USE_MOCK[=:]["'"'"']?(true|1)'
+          ROOTS=(frontend/dist student-portal/dist enterprise-portal/dist miniapp/dist/build/h5 miniapp/dist/build/mp-weixin)
+          set +e
+          grep -RlE "$PATTERN" "${ROOTS[@]}" | sort -u | tee e2e/runtime/s1-bundle-diagnostics/matched-files.txt
+          GREP_STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$GREP_STATUS" -gt 1 ]; then
+            echo "grep failed with status $GREP_STATUS" >&2
+            exit "$GREP_STATUS"
+          fi
+          python - <<'PY'
+          import json
+          import pathlib
+          import re
+
+          pattern = re.compile(r'''localhost:(5173|5199|5188|5202|8000)|127\.0\.0\.1:(5173|5199|5188|5202|8000)|VITE_USE_MOCK[=:]["']?(true|1)''')
+          executable = {'.html', '.htm', '.js', '.mjs', '.cjs', '.css'}
+          roots = [
+              pathlib.Path('frontend/dist'),
+              pathlib.Path('student-portal/dist'),
+              pathlib.Path('enterprise-portal/dist'),
+              pathlib.Path('miniapp/dist/build/h5'),
+              pathlib.Path('miniapp/dist/build/mp-weixin'),
+          ]
+          rows = []
+          for root in roots:
+              if not root.exists():
+                  continue
+              for path in sorted(p for p in root.rglob('*') if p.is_file()):
+                  try:
+                      text = path.read_text(encoding='utf-8', errors='ignore')
+                  except OSError:
+                      continue
+                  matches = list(pattern.finditer(text))
+                  if not matches:
+                      continue
+                  first = matches[0]
+                  context = text[max(0, first.start()-100):min(len(text), first.end()+100)]
+                  context = ' '.join(context.split())[:320]
+                  row = {
+                      'root': root.as_posix(),
+                      'file': path.as_posix(),
+                      'suffix': path.suffix.lower(),
+                      'classification': 'EXECUTABLE' if path.suffix.lower() in executable else 'NON_EXECUTABLE',
+                      'matchCount': len(matches),
+                      'firstMatch': first.group(0),
+                      'context': context,
+                  }
+                  rows.append(row)
+                  print(json.dumps(row, ensure_ascii=False))
+          report = {
+              'productExactSha': '2e0a92c8b7f21a6eaa5ed6ca02929e39cd97fd2b',
+              'totalMatchingFiles': len(rows),
+              'executableMatchingFiles': sum(r['classification'] == 'EXECUTABLE' for r in rows),
+              'nonExecutableMatchingFiles': sum(r['classification'] == 'NON_EXECUTABLE' for r in rows),
+              'hits': rows,
+          }
+          out = pathlib.Path('e2e/runtime/s1-bundle-diagnostics/report.json')
+          out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps({k: report[k] for k in ('totalMatchingFiles','executableMatchingFiles','nonExecutableMatchingFiles')}, ensure_ascii=False))
+          PY
+
+      - name: Upload S1 bundle diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-s1-bundle-diagnostics-${{ github.run_id }}
+          path: e2e/runtime/s1-bundle-diagnostics/
+          if-no-files-found: error
+          retention-days: 7

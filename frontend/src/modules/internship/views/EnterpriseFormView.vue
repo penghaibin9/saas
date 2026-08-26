@@ -28,7 +28,6 @@
         label-width="128px"
         @submit="onSubmit"
       >
-        <!-- 基本信息 -->
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">基本信息</span></div>
           <div class="mp-card__body">
@@ -55,7 +54,6 @@
           </div>
         </section>
 
-        <!-- 联系与资质 -->
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">联系与资质</span>
@@ -80,7 +78,6 @@
           </div>
         </section>
 
-        <!-- 备注 -->
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">备注</span></div>
           <div class="mp-card__body">
@@ -177,7 +174,6 @@ export default {
   },
   watch: {
     '$route.params.id'() {
-      // 同组件在 /new 与 /:id/edit 间切换时重新初始化；离开表单路由时跳过
       if (!this.isFormRoute) return
       this.detail = null
       this.init()
@@ -223,7 +219,7 @@ export default {
         scale: d.scale || '',
         address: d.address || '',
         contactPerson: d.contactPerson || '',
-        contactPhone: '', // 敏感字段：详情只回传脱敏值，留空 = 不修改
+        contactPhone: '',
         remark: d.remark || ''
       }
     },
@@ -243,7 +239,6 @@ export default {
         contactPerson: (f.contactPerson || '').trim(),
         remark: (f.remark || '').trim()
       }
-      // 联系电话：新建时始终提交；编辑时留空表示不修改（不能把脱敏串写回后端）
       if (!this.isEdit || (f.contactPhone || '').trim()) body.contactPhone = (f.contactPhone || '').trim()
       this.submitting = true
       try {
@@ -251,6 +246,7 @@ export default {
           ? await internshipApi.updateEnterprise(this.$route.params.id, body)
           : await internshipApi.createEnterprise(body)
         if (res.code === 0) {
+          if (typeof window !== 'undefined') window.__SAAS_DIRTY_FORM_GUARD__?.markSaved?.()
           toast.success(this.isEdit ? '已保存并写入留痕' : '已新增企业（初始待审核）并写入留痕')
           this.goBack()
         } else {

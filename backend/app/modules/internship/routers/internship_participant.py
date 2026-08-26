@@ -17,18 +17,24 @@ from app.modules.internship.services import internship_participant_service as sv
 
 router = APIRouter(prefix="/internship/batches", tags=["岗位实习-批次参与人"])
 
+ScopeId = str | int
+
 
 class ScopeRuleBody(BaseModel):
-    """选人规则。字段与前端组织选择器的产出一一对应，不需要中间映射。"""
-    collegeIds: List[str] = Field(default_factory=list)
-    majorIds: List[str] = Field(default_factory=list)
-    classIds: List[str] = Field(default_factory=list)
-    studentIds: List[str] = Field(default_factory=list)
+    """选人规则。字段与前端组织选择器的产出一一对应，不需要中间映射。
+
+    ID 同时接受字符串和整数：公共 student_scope_resolver 会把规则规范化为整数 ID，
+    因此 preview/rule 接口返回的规则必须能原样提交给 freeze，不能在 API 边界再次拒绝。
+    """
+    collegeIds: List[ScopeId] = Field(default_factory=list)
+    majorIds: List[ScopeId] = Field(default_factory=list)
+    classIds: List[ScopeId] = Field(default_factory=list)
+    studentIds: List[ScopeId] = Field(default_factory=list)
     grades: List[str] = Field(default_factory=list)
-    excludeCollegeIds: List[str] = Field(default_factory=list)
-    excludeMajorIds: List[str] = Field(default_factory=list)
-    excludeClassIds: List[str] = Field(default_factory=list)
-    excludeStudentIds: List[str] = Field(default_factory=list)
+    excludeCollegeIds: List[ScopeId] = Field(default_factory=list)
+    excludeMajorIds: List[ScopeId] = Field(default_factory=list)
+    excludeClassIds: List[ScopeId] = Field(default_factory=list)
+    excludeStudentIds: List[ScopeId] = Field(default_factory=list)
     stages: List[str] = Field(default_factory=list)
     studentStatuses: List[str] = Field(default_factory=list)
 

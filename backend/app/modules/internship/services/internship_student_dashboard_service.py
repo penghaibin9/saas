@@ -129,7 +129,7 @@ def get_my_dashboard(user, batch_id=None):
             "positionName": record.position_name or "",
             "workLocation": getattr(position, "work_location", "") or getattr(position, "work_address", "") or "",
             "advisorName": record.advisor_name or "",
-            "enterpriseMentor": record.mentor_name or "",
+            "enterpriseMentor": record.enterprise_mentor_name or "",
             "todayCheckin": {
                 "done": bool(checkin),
                 "time": _iso(getattr(checkin, "checkin_time", None)) or "",
