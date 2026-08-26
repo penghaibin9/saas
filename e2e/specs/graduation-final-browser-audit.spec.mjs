@@ -25,6 +25,16 @@ async function loginAdmin(page) {
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
 }
 
+async function resumeStudent(page, student, marker) {
+  await page.context().setExtraHTTPHeaders({ 'X-Forwarded-For': actorIp.student })
+  const refreshPromise = page.waitForResponse((response) =>
+    response.url().includes('/api/v1/auth/browser-refresh') && response.request().method() === 'POST'
+  )
+  await student.open()
+  const refreshResponse = await refreshPromise
+  expect(refreshResponse.ok(), `${marker} student browser-refresh HTTP ${refreshResponse.status()}`).toBeTruthy()
+}
+
 async function dismissGuide(page) {
   for (const mask of [page.locator('.app-step-guide__mask'), page.locator('.tour-mask')]) {
     if (await mask.isVisible().catch(() => false)) {
@@ -269,9 +279,8 @@ test.describe.serial('毕业设计成果+查重 Browser First · 退回/重交/�
     const firstVersionEvidence = firstStaff.versionEvidence
     await reviewCurrentFinal(page, 'REJECT', 'E2E-AUDIT-20260823 初稿退回：补齐异常场景说明、测试证据和论文格式。')
 
-    await loginStudent(page)
     const student = new StudentGraduationPage(page, config.studentBaseUrl)
-    await student.open()
+    await resumeStudent(page, student, 'reject readback')
     const rejectedStep = finalStep(page)
     await expect(rejectedStep).toContainText(/驳回|退回|修改/)
     await expect(rejectedStep).toContainText('E2E-AUDIT-20260823')
@@ -282,8 +291,7 @@ test.describe.serial('毕业设计成果+查重 Browser First · 退回/重交/�
     expect(secondStaff.versionEvidence).not.toBe(firstVersionEvidence)
     await reviewCurrentFinal(page, 'APPROVE')
 
-    await loginStudent(page)
-    await student.open()
+    await resumeStudent(page, student, 'draft approval readback')
     await expect(finalStep(page)).toContainText(/初稿.*通过|已通过/)
 
     const finalSubmit = await submitStudentFinal(page, fixture, 'final-v1')
