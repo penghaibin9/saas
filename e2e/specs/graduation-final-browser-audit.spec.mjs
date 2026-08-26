@@ -296,8 +296,12 @@ test.describe.serial('毕业设计成果+查重 Browser First · 退回/重交/�
     await openPendingFinal(page, fixture)
     await reviewCurrentFinal(page, 'APPROVE')
 
-    await loginStudent(page)
+    const resumeResponsePromise = page.waitForResponse((response) =>
+      response.url().includes('/api/v1/auth/browser-refresh') && response.request().method() === 'POST'
+    )
     await student.open()
+    const resumeResponse = await resumeResponsePromise
+    expect(resumeResponse.ok(), `student browser-refresh HTTP ${resumeResponse.status()}`).toBeTruthy()
     const completed = finalStep(page)
     await expect(completed).toContainText(/定稿.*通过|定稿已通过|已通过/)
     await expect(completed).toContainText(/12/)
