@@ -1,10 +1,12 @@
 """Prepare the isolated real-account fixture for AA-003 status-change Gold Deep.
 
-This script runs only against a disposable e2e/test MySQL. It reuses the canonical
-identity-import accounts already used by browser acceptance and adds only the exact
-AA-003 permission/scope graph required for the four-surface flow. Stage C1 is part of
-the product contract, so the fixture also proves or creates one authoritative baseline
-StudentAcademicFact before the browser is allowed to submit a status change.
+This script runs only against a disposable e2e/test MySQL. Business approval identities
+use the product's real SYSTEM roles (COUNSELOR -> COLLEGE_ADMIN -> ACADEMIC_ADMIN) and
+the published School IAM templates. The fixture must never widen a SYSTEM role by inserting
+RolePermission rows: production authorization deliberately ignores those shadow writes.
+
+Stage C1 is also part of the product contract, so the fixture proves or creates one
+authoritative baseline StudentAcademicFact before the browser may submit a status change.
 """
 from __future__ import annotations
 
@@ -17,14 +19,13 @@ from urllib.parse import urlparse
 import _mysql_env  # noqa: F401
 from sqlalchemy import select
 
+from app.core.security import hash_password
 from app.db.session import get_sessionmaker
 from app.models import (
     AaStatusChange,
     AaTerm,
     College,
-    Permission,
     Role,
-    RolePermission,
     SchoolClass,
     StudentAcademicFact,
     StudentProfile,
@@ -36,17 +37,18 @@ from app.models import (
 from app.modules.academic_affairs.services.academic_affairs_student_fact_service import (
     create_baseline_student_academic_fact,
 )
+from app.services.system_role_shadow_service import published_system_role_permissions
 
 TID = 1000000000000000007
 TENANT_CODE = "sandbox-school"
 STUDENT_NO = "E2E20260001"
-COUNSELOR_LOGIN = "e2e_advisor_a"
-COUNSELOR_ROLE = "GD_MENTOR"
-COLLEGE_LOGIN = "e2e_college_secretary"
-COLLEGE_ROLE = "GD_COLLEGE_ADMIN"
+E2E_PASSWORD = "E2eTest@2026"
+COUNSELOR_LOGIN = "aa003_counselor"
+COUNSELOR_ROLE = "COUNSELOR"
+COLLEGE_LOGIN = "aa003_college_admin"
+COLLEGE_ROLE = "COLLEGE_ADMIN"
 OFFICE_LOGIN = "e2e_academic_admin"
 OFFICE_ROLE = "ACADEMIC_ADMIN"
-VIEW_PERM = "academicAffairs.statusChange.view"
 COUNSELOR_PERM = "academicAffairs.statusChange.counselorReview"
 COLLEGE_PERM = "academicAffairs.statusChange.collegeReview"
 OFFICE_PERM = "academicAffairs.statusChange.officeReview"
@@ -81,22 +83,74 @@ def one(db, model, **where):
     return rows[0]
 
 
-def ensure_permission(db, code: str):
-    row = db.scalars(select(Permission).where(Permission.permission_code == code)).first()
-    if row is None:
-        row = Permission(
-            permission_code=code,
-            permission_name=code,
-            module_code="academicAffairs",
-            action="REVIEW" if code != VIEW_PERM else "VIEW",
+def ensure_system_role(db, role_code: str, role_name: str, required_permission: str) -> Role:
+    role = db.scalars(select(Role).where(
+        Role.tenant_id == TID,
+        Role.role_code == role_code,
+        Role.is_deleted.is_(False),
+    )).first()
+    if role is None:
+        role = Role(
+            tenant_id=TID,
+            role_code=role_code,
+            role_name=role_name,
+            role_type="SYSTEM",
+            status="ACTIVE",
         )
-        db.add(row)
+        db.add(role)
         db.flush()
-    return row
+    else:
+        if str(role.role_type or "").upper() not in {"", "SYSTEM"}:
+            raise SystemExit(f"AA-003 expected SYSTEM role {role_code}, got {role.role_type}")
+        role.role_name = role_name
+        role.role_type = "SYSTEM"
+        role.status = "ACTIVE"
+        role.is_deleted = False
+
+    # SYSTEM role authorization is published-template authority. Direct t_role_permission
+    # rows are intentionally ignored by app.core.permissions._db_granted().
+    effective = set(published_system_role_permissions(db, role_code))
+    if required_permission not in effective:
+        raise SystemExit(
+            f"published SYSTEM role {role_code} lacks required AA-003 permission {required_permission}"
+        )
+    return role
 
 
-def grant(db, user: User, role_code: str, permission_codes: tuple[str, ...]):
-    role = one(db, Role, tenant_id=TID, role_code=role_code)
+def ensure_system_account(
+    db,
+    *,
+    login: str,
+    real_name: str,
+    role_code: str,
+    role_name: str,
+    required_permission: str,
+) -> User:
+    role = ensure_system_role(db, role_code, role_name, required_permission)
+    user = db.scalars(select(User).where(
+        User.tenant_id == TID,
+        User.login_name == login,
+    )).first()
+    if user is None:
+        user = User(
+            tenant_id=TID,
+            login_name=login,
+            real_name=real_name,
+            password_hash=hash_password(E2E_PASSWORD),
+            user_type="TEACHER",
+            status="ACTIVE",
+            must_change_password=False,
+        )
+        db.add(user)
+        db.flush()
+    else:
+        user.real_name = real_name
+        user.password_hash = hash_password(E2E_PASSWORD)
+        user.user_type = "TEACHER"
+        user.status = "ACTIVE"
+        user.must_change_password = False
+        user.is_deleted = False
+
     link = db.scalars(select(UserRole).where(
         UserRole.tenant_id == TID,
         UserRole.user_id == int(user.id),
@@ -104,26 +158,32 @@ def grant(db, user: User, role_code: str, permission_codes: tuple[str, ...]):
         UserRole.is_deleted.is_(False),
     )).first()
     if link is None:
-        raise SystemExit(f"{user.login_name} is not linked to required role {role_code}")
-    link.status = "ACTIVE"
-    for code in permission_codes:
-        permission = ensure_permission(db, code)
-        rp = db.scalars(select(RolePermission).where(
-            RolePermission.tenant_id == TID,
-            RolePermission.role_id == int(role.id),
-            RolePermission.permission_id == int(permission.id),
-            RolePermission.is_deleted.is_(False),
-        )).first()
-        if rp is None:
-            db.add(RolePermission(
-                tenant_id=TID,
-                role_id=int(role.id),
-                permission_id=int(permission.id),
-                status="ACTIVE",
-            ))
-        else:
-            rp.status = "ACTIVE"
-    return role
+        db.add(UserRole(
+            tenant_id=TID,
+            user_id=int(user.id),
+            role_id=int(role.id),
+            status="ACTIVE",
+        ))
+    else:
+        link.status = "ACTIVE"
+        link.is_deleted = False
+    db.flush()
+    return user
+
+
+def require_existing_system_account(db, login: str, role_code: str, required_permission: str) -> User:
+    user = one(db, User, tenant_id=TID, login_name=login)
+    role = ensure_system_role(db, role_code, role_code, required_permission)
+    link = db.scalars(select(UserRole).where(
+        UserRole.tenant_id == TID,
+        UserRole.user_id == int(user.id),
+        UserRole.role_id == int(role.id),
+        UserRole.status == "ACTIVE",
+        UserRole.is_deleted.is_(False),
+    )).first()
+    if link is None:
+        raise SystemExit(f"{login} is not linked to required SYSTEM role {role_code}")
+    return user
 
 
 def ensure_scope(db, *, login: str, role_code: str, scope_type: str, ref_value: str, real_name: str):
@@ -200,9 +260,8 @@ def ensure_stage_c1_baseline(db, student: StudentProfile):
     """Require one aligned current fact; create v1 only when identity import has none.
 
     The audit fixture must never repair a product-created drift. If canonical identity import
-    already wrote academic facts, they are treated as authoritative and must match the hot
-    StudentProfile projection exactly. Only the historical/no-fact case gets a one-time
-    baseline using the same production Stage C1 helper.
+    already wrote academic facts, they are authoritative and must match StudentProfile exactly.
+    Only the historical/no-fact case gets a baseline through the production Stage C1 helper.
     """
     base_status = str(student.student_status or "NORMAL").upper()
     if base_status not in _ENROLLED:
@@ -251,12 +310,27 @@ def main() -> int:
             raise SystemExit("AA-003 student must have class/college/major identity")
         klass = one(db, SchoolClass, id=int(student.class_id), tenant_id=TID)
         college = one(db, College, id=int(student.college_id), tenant_id=TID)
-        counselor = one(db, User, tenant_id=TID, login_name=COUNSELOR_LOGIN)
-        college_user = one(db, User, tenant_id=TID, login_name=COLLEGE_LOGIN)
-        office_user = one(db, User, tenant_id=TID, login_name=OFFICE_LOGIN)
+
+        counselor = ensure_system_account(
+            db,
+            login=COUNSELOR_LOGIN,
+            real_name="AA-003验收辅导员",
+            role_code=COUNSELOR_ROLE,
+            role_name="辅导员",
+            required_permission=COUNSELOR_PERM,
+        )
+        college_user = ensure_system_account(
+            db,
+            login=COLLEGE_LOGIN,
+            real_name="AA-003验收学院管理员",
+            role_code=COLLEGE_ROLE,
+            role_name="学院管理员",
+            required_permission=COLLEGE_PERM,
+        )
+        office_user = require_existing_system_account(db, OFFICE_LOGIN, OFFICE_ROLE, OFFICE_PERM)
 
         # Keep the canonical identity-import academic projection intact. The acceptance chain
-        # only requires an enrolled student; mutating student_status here would create an
+        # only requires an enrolled student; mutating student_status here could create an
         # artificial Stage C1 projection drift if identity import already created a fact.
         student.status = "ACTIVE"
         student.is_deleted = False
@@ -268,9 +342,6 @@ def main() -> int:
         klass.counselor_id = int(counselor.id)
         college.secretary_id = int(college_user.id)
 
-        grant(db, counselor, COUNSELOR_ROLE, (VIEW_PERM, COUNSELOR_PERM))
-        grant(db, college_user, COLLEGE_ROLE, (VIEW_PERM, COLLEGE_PERM))
-        grant(db, office_user, OFFICE_ROLE, (VIEW_PERM, OFFICE_PERM))
         ensure_scope(
             db,
             login=COUNSELOR_LOGIN,
