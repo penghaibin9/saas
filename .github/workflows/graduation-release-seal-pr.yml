@@ -129,6 +129,7 @@ jobs:
           pip install -r backend/requirements.txt
 
       - name: Wait for real ClamAV
+        working-directory: backend
         run: |
           python - <<'PY'
           import time
@@ -217,8 +218,9 @@ jobs:
               assert job.status == JOB_RUNNING
               assert job.locked_by == 'release-seal-reclaimer'
               assert int(job.attempts or 0) == 2
+              file_id = int(job.file_id) if job.file_id else None
               db.delete(job)
-              row = db.get(FileObject, int(job.file_id)) if job.file_id else None
+              row = db.get(FileObject, file_id) if file_id else None
               if row is not None:
                   db.delete(row)
               db.commit()
