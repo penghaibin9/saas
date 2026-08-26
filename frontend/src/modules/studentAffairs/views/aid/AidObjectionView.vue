@@ -135,6 +135,7 @@ export default {
       publicityColumns: PUBLICITY_COLUMNS,
       objectionColumns: OBJECTION_COLUMNS,
       loading: true, acting: '', errorMessage: '', publicity: [], objections: [], statusCounts: null, objStatus: '', statusFilters: STATUS_FILTERS,
+      loadSeq: 0,
       objDlg: { visible: false, applyId: '', who: '', objectorName: '' },
       revDlg: { visible: false, objectionId: '', result: 'OVERRULED', version: 0 }
     }
@@ -151,15 +152,19 @@ export default {
     }
   },
   mounted() { this.load() },
+  beforeUnmount() { this.loadSeq += 1 },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     async load() {
+      const seq = ++this.loadSeq
+      const status = this.objStatus
       this.loading = true; this.errorMessage = ''
       // 待服务端全量统计：复核工作台仅加载各接口单页上限。
       const [pu, ob] = await Promise.all([
         studentAffairsApi.getAidApplications({ status: 'PUBLICITY', pageSize: 200 }),
-        studentAffairsApi.getAidObjections({ status: this.objStatus, pageSize: 200 })
+        studentAffairsApi.getAidObjections({ status, pageSize: 200 })
       ])
+      if (seq !== this.loadSeq) return
       if (pu.code === 0 && pu.data) this.publicity = pu.data.items || []
       else this.errorMessage = pu.message || '加载失败'
       this.objections = (ob.code === 0 && ob.data) ? (ob.data.items || []) : []
