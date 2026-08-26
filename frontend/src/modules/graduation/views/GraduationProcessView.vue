@@ -249,7 +249,7 @@ export default {
       const allowed = !!(pa.visible && pa.allowed) && this.writeEnabled
       return {
         allowed,
-        reason: allowed ? '' : (pa.reason || '当前角色无导出权限（graduationDesign.export）')
+        reason: allowed ? '' : (pa.reason || '当前角色无导出权限（graduationDesign.taskbook.export）')
       }
     },
     pageSubtitle() {
