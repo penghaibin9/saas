@@ -80,7 +80,7 @@ const graduationRoutes = {
     { path: 'defense/groups/create', name: 'graduation-defense-group-create', component: () => import('@/modules/graduation/views/DefenseGroupFormView.vue'), meta: { moduleCode: 'GRADUATION', title: '新增答辩组', requiresAuth: true, permissionKey: 'graduationDesign.defense.groupManage' } },
     { path: 'defense/groups/:id/edit', name: 'graduation-defense-group-edit', component: () => import('@/modules/graduation/views/DefenseGroupFormView.vue'), meta: { moduleCode: 'GRADUATION', title: '编辑答辩组', requiresAuth: true, permissionKey: 'graduationDesign.defense.groupManage' } },
     { path: 'defense', name: 'graduation-defense', component: () => import('@/modules/graduation/views/DefenseScheduleView.vue'), meta: { moduleCode: 'GRADUATION', title: '答辩安排管理', requiresAuth: true, permissionKey: 'graduationDesign.defense.view' } },
-    { path: 'stats-report', name: 'graduation-stats-report', component: () => import('@/modules/graduation/views/GraduationStatsView.vue'), meta: { moduleCode: 'GRADUATION', title: '毕设统计报表', requiresAuth: true, permissionKey: 'graduationDesign.stats.view' } },
+    { path: 'stats-report', name: 'graduation-stats-report', component: () => import('@/modules/graduation/views/GraduationStatsView.vue'), meta: { moduleCode: 'GRADUATION', title: '毕设统计报表', requiresAuth: true, permissionKey: 'graduationDesign.dashboard.view' } },
     { path: 'more/peer-assign', name: 'graduation-more-peer', component: () => import('@/modules/graduation/views/GraduationMorePeerView.vue'), meta: { moduleCode: 'GRADUATION', title: '分配成果互查', requiresAuth: true, permissionKey: 'graduationDesign.review.assign' } },
     { path: 'more/expert/create', name: 'graduation-more-expert', component: () => import('@/modules/graduation/views/GraduationMoreExpertView.vue'), meta: { moduleCode: 'GRADUATION', title: '新增答辩专家', requiresAuth: true, permissionKey: 'graduationDesign.defense.groupManage' } },
     { path: 'more', name: 'graduation-more', component: () => import('@/modules/graduation/views/GraduationMoreView.vue'), meta: { moduleCode: 'GRADUATION', title: '互查/专家/申诉', requiresAuth: true, permissionAny: ['graduationDesign.review.view', 'graduationDesign.defense.groupManage', 'graduationDesign.grade.appealReview'] } },
@@ -126,7 +126,7 @@ const graduationRoutes = {
       meta: { moduleCode: 'GRADUATION', title: '毕设材料中心', requiresAuth: true, permissionKey: 'graduationDesign.student.view' }
     },
     { path: 'materials', redirect: { name: 'graduation-material-center' }, meta: { moduleCode: 'GRADUATION', requiresAuth: true, permissionKey: 'graduationDesign.student.view', hiddenFromMenu: true } },
-    { path: 'risk-archive', name: 'graduation-risk-archive', component: () => import('@/modules/graduation/views/GraduationRiskArchiveView.vue'), meta: { moduleCode: 'GRADUATION', title: '问题预警/毕设归档/毕设统计', requiresAuth: true, permissionAny: ['graduationDesign.risk.view', 'graduationDesign.archive.view', 'graduationDesign.stats.view'] } }
+    { path: 'risk-archive', name: 'graduation-risk-archive', component: () => import('@/modules/graduation/views/GraduationRiskArchiveView.vue'), meta: { moduleCode: 'GRADUATION', title: '问题预警/毕设归档/毕设统计', requiresAuth: true, permissionAny: ['graduationDesign.risk.view', 'graduationDesign.archive.view', 'graduationDesign.dashboard.view'] } }
   ]
 }
 
