@@ -5,6 +5,7 @@ on:
     branches:
       - audit/student-affairs-browser-runner-20260823
     paths:
+      - 'audit-tests/student-affairs-v3-bootstrap.py'
       - 'audit-tests/student-affairs-v3-matrix.py'
       - '.github/workflows/student-affairs-v3-once-matrix-exact-head.yml'
   workflow_dispatch:
@@ -143,7 +144,7 @@ jobs:
         working-directory: app/backend
         run: |
           set -euo pipefail
-          python scripts/e2e_bootstrap_student_affairs_accounts.py
+          python ../../runner/audit-tests/student-affairs-v3-bootstrap.py
           test -s tmp/e2e_student_affairs_credentials.local.json
           test -s tmp/e2e_student_affairs_state.local.json
 
