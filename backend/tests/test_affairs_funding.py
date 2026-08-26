@@ -49,7 +49,10 @@ def _seed(db_mode):
     db.commit()
     ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id}
     db.close()
-    ensure_workflow_assignees([ids["sa"], ids["sb"]])
+    ensure_workflow_assignees(
+        [ids["sa"], ids["sb"]],
+        nodes=("COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"),
+    )
     return ids
 
 
