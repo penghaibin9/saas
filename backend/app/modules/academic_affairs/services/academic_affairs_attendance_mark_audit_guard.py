@@ -1,69 +1,80 @@
-"""Atomic before/after audit evidence for classroom attendance MARK changes.
+"""Explicit atomic MARK audit command for classroom attendance.
 
-AA-010 Gold Deep requires every real per-student attendance correction to retain an
-immutable ``AA_ATTENDANCE / MARK`` history row.  The canonical attendance command
-already owns locking, authorization, roster mutation, counters and commit.  This guard
-does not replace that command; it observes dirty attendance roster JSON in SQLAlchemy's
-``before_flush`` hook and appends audit evidence inside the same database transaction.
+AA-010 Gold Deep requires every real per-student attendance state transition to retain
+one immutable ``AA_ATTENDANCE / MARK`` row.  The first implementation used a global
+SQLAlchemy ``before_flush`` listener; that hook did not produce the required final-DB
+evidence under the real browser path.  This guard therefore installs an explicit
+``mark_attendance`` command on the relation-aware attendance owner.  Authorization,
+row locking, roster mutation, counters and MARK evidence all share one transaction.
 """
 from __future__ import annotations
 
 import json
 
-from sqlalchemy import event, inspect
-from sqlalchemy.orm import Session
+from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_attendance_public_service as public
 
 
-def _status_by_student(raw: str | None) -> dict[str, str]:
-    try:
-        rows = json.loads(raw or "[]")
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return {}
-    if not isinstance(rows, list):
-        return {}
-    result: dict[str, str] = {}
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        student_id = str(row.get("studentId") or "").strip()
-        if not student_id:
-            continue
-        result[student_id] = str(row.get("status") or "").strip().upper()
-    return result
-
-
-def _append_mark_audits(db: Session, _flush_context, _instances) -> None:
+def mark_attendance(session_id, user, body) -> dict:
+    """Relation-authorized per-student mark + before/after audit in one transaction."""
     from app.models import AaAttendanceSession
+    from . import academic_affairs_attendance_teacher_relation_guard as relation_guard
 
-    for item in tuple(db.dirty):
-        if not isinstance(item, AaAttendanceSession):
-            continue
-        state = inspect(item)
-        history = state.attrs.roster_json.history
-        if not history.has_changes() or not history.deleted or not history.added:
-            continue
+    with public.session() as db:
+        item = db.query(AaAttendanceSession).filter(
+            AaAttendanceSession.id == int(session_id),
+            AaAttendanceSession.tenant_id == public._tid(),
+            AaAttendanceSession.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not item:
+            raise not_found("考勤场次不存在")
+        relation_guard._relation_scope_in_session(db, item, user, lock=True)
+        if item.status != "DRAFT":
+            raise AppException("DATA_CONFLICT", "已提交的考勤不可再修改")
 
-        before = _status_by_student(history.deleted[0])
-        after = _status_by_student(history.added[0])
-        for student_id in sorted(before.keys() & after.keys(), key=lambda value: int(value) if value.isdigit() else value):
-            before_status = before[student_id]
-            after_status = after[student_id]
-            if before_status == after_status:
-                continue
+        payload = body or {}
+        student_id = str(payload.get("studentId") or "")
+        status = str(payload.get("status") or "").upper()
+        if status not in public._STATUS_OK:
+            raise AppException("VALIDATION_ERROR", "考勤状态非法")
+
+        roster = json.loads(item.roster_json) if item.roster_json else []
+        found = False
+        before_status = ""
+        for roster_item in roster:
+            if str(roster_item.get("studentId") or "") == student_id:
+                before_status = str(roster_item.get("status") or "").strip().upper()
+                roster_item["status"] = status
+                found = True
+                break
+        if not found:
+            raise not_found("该生不在本场次名单内")
+
+        item.roster_json = json.dumps(roster, ensure_ascii=False)
+        item.present_count = sum(1 for row in roster if row.get("status") == "PRESENT")
+        item.absent_count = sum(1 for row in roster if row.get("status") == "ABSENT")
+        if before_status != status:
             public._audit(
                 db,
                 item.id,
                 "MARK",
-                f"student={student_id};before={before_status};after={after_status}",
+                f"student={student_id};before={before_status};after={status}",
             )
+        db.flush()
+        db.commit()
+        db.refresh(item)
+        return {**public._row(item), "items": roster}
 
 
-_append_mark_audits._aa010_attendance_mark_audit_guard = True
+mark_attendance._attendance_teacher_relation_guard = True
+mark_attendance._aa010_attendance_mark_audit_guard = True
 
 
 def install() -> None:
-    """Install once on SQLAlchemy Session; audit rows share the business transaction."""
-    if not event.contains(Session, "before_flush", _append_mark_audits):
-        event.listen(Session, "before_flush", _append_mark_audits)
+    """Install the explicit command once; no global SQLAlchemy event listener remains."""
+    from . import academic_affairs_attendance_teacher_relation_guard as relation_guard
+
+    if not hasattr(relation_guard, "_aa010_mark_audit_original_mark_attendance"):
+        relation_guard._aa010_mark_audit_original_mark_attendance = relation_guard.mark_attendance
+    relation_guard.mark_attendance = mark_attendance
