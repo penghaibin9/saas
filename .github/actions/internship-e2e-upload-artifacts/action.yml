@@ -10,6 +10,7 @@ runs:
   using: composite
   steps:
     - name: Upload Playwright HTML report
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact-prefix }}-html-${{ github.run_id }}
@@ -18,6 +19,7 @@ runs:
         retention-days: 14
 
     - name: Upload browser evidence
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact-prefix }}-evidence-${{ github.run_id }}
@@ -26,6 +28,7 @@ runs:
         retention-days: 14
 
     - name: Upload service logs
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact-prefix }}-service-logs-${{ github.run_id }}
