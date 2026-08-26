@@ -84,3 +84,24 @@ def test_no_router_directly_imports_concrete_legacy_stats_module():
             assert not module.endswith("academic_affairs_stats_service"), (
                 f"{path.name} 不得直接 import legacy stats_service；必须走包级 public service"
             )
+
+
+def test_other_services_may_reuse_helpers_but_not_legacy_0814_owners():
+    """允许复用 scope/helper，但禁止任何 Service 按值导入 08/09/14 的旧同名业务入口。"""
+    for path in SERVICES.glob("*.py"):
+        if path.name == "academic_affairs_stats_service.py":
+            continue
+        source = _read(path)
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            module = node.module or ""
+            if not module.endswith("academic_affairs_stats_service"):
+                continue
+            imported = {alias.name for alias in node.names}
+            forbidden = imported & CANONICAL_STATS
+            assert not forbidden, (
+                f"{path.name} 直接 import legacy 统计 owner：{sorted(forbidden)}；"
+                "应改走 public/canonical contract"
+            )
