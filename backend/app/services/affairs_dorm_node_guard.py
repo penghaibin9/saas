@@ -85,13 +85,14 @@ def install() -> None:
         return manager_id
 
     def create_building(body, user):
-        """前端 picker 之外再做服务端角色校验，禁止直接 API 把普通老师绑定为宿管。"""
+        """服务端强制真实宿管，禁止产生后续无法分派终审待办的无主楼栋。"""
         key = str(getattr(body, "managerTeacherKey", None) or "").strip()
-        if key:
-            with session() as db:
-                manager_id = int(original_resolve_manager(db, key) or 0)
-                if manager_id <= 0 or not _has_active_dorm_manager_role(db, manager_id):
-                    raise AppException("VALIDATION_ERROR", "请选择具有宿管角色的有效宿管")
+        if not key:
+            raise AppException("VALIDATION_ERROR", "请选择负责宿管")
+        with session() as db:
+            manager_id = int(original_resolve_manager(db, key) or 0)
+            if manager_id <= 0 or not _has_active_dorm_manager_role(db, manager_id):
+                raise AppException("VALIDATION_ERROR", "请选择具有宿管角色的有效宿管")
         return original_create_building(body, user)
 
     def submit_transfer(user, student_id, to_bed_id, reason=""):
