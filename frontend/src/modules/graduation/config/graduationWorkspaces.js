@@ -37,13 +37,13 @@ export const GRADUATION_WORKSPACES = [
   {
     key: 'gd-topic-select', label: '题目与选题', path: '/admin/graduation/topic-lib',
     children: [
-      { label: '题目列表', path: '/admin/graduation/topic-lib?panel=list', permissionKey: 'graduationDesign.topic.lib', entryType: 'TASK_QUEUE' },
-      { label: '待审核题目', path: '/admin/graduation/topic-lib?panel=pending', permissionKey: 'graduationDesign.topic.lib', entryType: 'TASK_QUEUE' },
+      { label: '题目列表', path: '/admin/graduation/topic-lib?panel=list', permissionKey: 'graduationDesign.topic.view', entryType: 'TASK_QUEUE' },
+      { label: '待审核题目', path: '/admin/graduation/topic-lib?panel=pending', permissionKey: 'graduationDesign.topic.view', entryType: 'TASK_QUEUE' },
       { label: '学生选题结果', path: '/admin/graduation/topics', permissionKey: 'graduationDesign.topic.manage', entryType: 'TASK_QUEUE' },
-      { label: '选题轮次', path: '/admin/graduation/topic-rounds?panel=rounds', permissionKey: 'graduationDesign.topic.round', entryType: 'TASK_QUEUE' },
-      { label: '学生志愿与确认', path: '/admin/graduation/topic-rounds?panel=choices', permissionKey: 'graduationDesign.topic.round', entryType: 'TASK_QUEUE' },
-      { label: '匹配结果', path: '/admin/graduation/topic-rounds?panel=match', permissionKey: 'graduationDesign.topic.round', entryType: 'TASK_QUEUE' },
-      { label: '容量冲突复核', path: '/admin/graduation/topic-rounds?panel=conflicts', permissionKey: 'graduationDesign.topic.round', entryType: 'TASK_QUEUE' },
+      { label: '选题轮次', path: '/admin/graduation/topic-rounds?panel=rounds', permissionKey: 'graduationDesign.topic.view', entryType: 'TASK_QUEUE' },
+      { label: '学生志愿与确认', path: '/admin/graduation/topic-rounds?panel=choices', permissionKey: 'graduationDesign.topic.view', entryType: 'TASK_QUEUE' },
+      { label: '匹配结果', path: '/admin/graduation/topic-rounds?panel=match', permissionKey: 'graduationDesign.topic.view', entryType: 'TASK_QUEUE' },
+      { label: '容量冲突复核', path: '/admin/graduation/topic-rounds?panel=conflicts', permissionKey: 'graduationDesign.topic.view', entryType: 'TASK_QUEUE' },
       { label: '题目调整申请', path: '/admin/graduation/topic-changes', permissionKey: 'graduationDesign.topic.change', entryType: 'TASK_QUEUE' }
     ]
   },
