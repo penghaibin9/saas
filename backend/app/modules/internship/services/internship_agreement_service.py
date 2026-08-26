@@ -64,6 +64,42 @@ def _normalize_body_dates(text: str | None) -> str:
     return _ISO_DT_IN_TEXT.sub(lambda m: f"{int(m.group(1))}年{int(m.group(2))}月{int(m.group(3))}日", text)
 
 
+def _scope_value_matches(scope_values, actual_value) -> bool:
+    """空范围表示全局适用；非空范围必须命中当前学生/实习的真实值。"""
+    values = scope_values or []
+    if not values:
+        return True
+    if actual_value is None:
+        return False
+    actual = str(actual_value)
+    return actual in {str(value) for value in values}
+
+
+def template_scope_matches(tpl: InternshipAgreementTemplate, rec, stu) -> bool:
+    """协议模板四维适用范围：学院、专业、年级、实习批次必须全部满足。"""
+    return all((
+        _scope_value_matches(tpl.scope_college_ids, getattr(stu, "college_id", None)),
+        _scope_value_matches(tpl.scope_major_ids, getattr(stu, "major_id", None)),
+        _scope_value_matches(tpl.scope_grades, getattr(stu, "grade", None)),
+        _scope_value_matches(tpl.scope_batch_ids, getattr(rec, "batch_id", None)),
+    ))
+
+
+def ensure_template_applicable(tpl: InternshipAgreementTemplate, rec, stu) -> None:
+    """模板用于预览/生成前的最终服务层防线，禁止停用模板或跨范围模板被绕过。"""
+    if tpl.status != "ENABLED":
+        raise AppException("STATUS_CONFLICT", "仅启用中的协议模板可用于生成协议")
+    checks = (
+        (tpl.scope_college_ids, getattr(stu, "college_id", None), "学院"),
+        (tpl.scope_major_ids, getattr(stu, "major_id", None), "专业"),
+        (tpl.scope_grades, getattr(stu, "grade", None), "年级"),
+        (tpl.scope_batch_ids, getattr(rec, "batch_id", None), "实习批次"),
+    )
+    for scope_values, actual_value, label in checks:
+        if not _scope_value_matches(scope_values, actual_value):
+            raise AppException("VALIDATION_ERROR", f"所选协议模板不适用于当前学生的{label}")
+
+
 def _render_body(db, tpl: "InternshipAgreementTemplate | None", rec, stu, a) -> str:
     """协议正文渲染：有模板按 {{变量}} 替换（支持模板变量预设全集，见
     internship_agreement_template_service.VARIABLE_PRESETS）；无模板/变量缺失时用
@@ -230,6 +266,7 @@ def generate(user, body) -> dict:
             tpl = db.get(InternshipAgreementTemplate, _as_id(tpl_id))
             if not tpl or tpl.is_deleted or tpl.tenant_id != _tid():
                 raise not_found("协议模板不存在")
+            ensure_template_applicable(tpl, rec, stu)
         exist = db.scalars(select(InternshipAgreement).where(
             InternshipAgreement.tenant_id == _tid(), InternshipAgreement.internship_id == rec.id,
             InternshipAgreement.status.notin_(["VOIDED", "REJECTED"]),

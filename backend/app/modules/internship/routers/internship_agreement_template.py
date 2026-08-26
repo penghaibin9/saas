@@ -48,9 +48,10 @@ def template_variables(user=Depends(require_permission(_P))):
     return success(svc.variable_presets())
 
 
-@router.get(f"{_BASE}/options", summary="协议发起可用模板（仅启用中，按批次收敛）")
-def template_options(batchId: Optional[str] = None, user=Depends(require_permission(_P_USE))):
-    return success(svc.enabled_options(batchId))
+@router.get(f"{_BASE}/options", summary="协议发起可用模板（按真实学生学院/专业/年级/批次收敛）")
+def template_options(batchId: Optional[str] = None, internshipId: Optional[str] = None,
+                     user=Depends(require_permission(_P_USE))):
+    return success(svc.enabled_options(batchId, internship_id=internshipId, user=user))
 
 
 @router.post(_BASE, summary="新建协议模板（初始草稿）")

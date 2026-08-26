@@ -159,7 +159,7 @@ export default {
       this.templateOptions = []
       this.load()
     },
-    'genForm.internshipId'() { this.loadPreview() },
+    'genForm.internshipId'() { this.refreshTemplateOptions() },
     'genForm.templateId'() { this.loadPreview() }
   },
   methods: {
@@ -201,14 +201,27 @@ export default {
     },
     // 选择器远程搜索（岗位实习模块适配层，后端裁定关键字与数据范围）
     async openGenerate() {
-      // 学生候选改为选择器内按关键字远程搜索，不再一次性预载 200 条
+      // 先选真实实习学生，再按该学生的学院/专业/年级/批次加载可用模板。
       this.genForm = { internshipId: '', templateId: '' }
+      this.templateOptions = []
       this.previewText = ''
       this.genDlg.visible = true
-      if (!this.templateOptions.length) {
-        const res = await agreementTemplateApi.getEnabledOptions({ batchId: this.batchStore.selectedBatchId })
-        if (res.code === 0) this.templateOptions = res.data || []
+    },
+    async refreshTemplateOptions() {
+      this.previewText = ''
+      this.genForm.templateId = ''
+      this.templateOptions = []
+      if (!this.genForm.internshipId) return
+      const res = await agreementTemplateApi.getEnabledOptions({
+        batchId: this.batchStore.selectedBatchId,
+        internshipId: this.genForm.internshipId
+      })
+      if (res.code !== 0) {
+        toast.error(res.message || '加载适用协议模板失败')
+        return
       }
+      this.templateOptions = res.data || []
+      await this.loadPreview()
     },
     async loadPreview() {
       this.previewText = ''
@@ -225,7 +238,9 @@ export default {
       if (!this.genForm.internshipId) return toast.error('请选择实习学生')
       this.genDlg.submitting = true
       const payload = { internshipId: this.genForm.internshipId }
-      if (this.genForm.templateId) payload.templateId = this.genForm.templateId
+      const effectiveTemplateId = this.genForm.templateId ||
+        (this.templateOptions.find((t) => t.isDefault) || this.templateOptions[0])?.id
+      if (effectiveTemplateId) payload.templateId = effectiveTemplateId
       const res = await agreementApi.generate(payload)
       this.genDlg.submitting = false
       if (res.code !== 0) return toast.error(res.message || '生成失败')

@@ -136,6 +136,13 @@ def _apply_scope(t, body) -> None:
         t.variables = [v.model_dump() if hasattr(v, "model_dump") else dict(v) for v in body.variables]
 
 
+def _row_scope_matches(items: list, key: str, actual_value) -> list:
+    """管理列表范围筛选：空 scope 是全局模板，也应视为适用于所选维度。"""
+    actual = str(actual_value)
+    return [item for item in items
+            if not item[key] or actual in {str(value) for value in item[key]}]
+
+
 # ═══════════ 查询 ═══════════
 
 def list_templates(page: int = 1, page_size: int = 20, *, keyword=None, status=None,
@@ -157,15 +164,15 @@ def list_templates(page: int = 1, page_size: int = 20, *, keyword=None, status=N
                                     InternshipAgreementTemplate.id.desc())
                           .offset((page - 1) * page_size).limit(page_size)).all()
         items = [_row(r) for r in rows]
-    # JSON 范围筛选在应用层做（跨方言稳妥；数据量为配置级，规模小）
+    # JSON 范围筛选在应用层做（跨方言稳妥；空范围=全局适用）
     if college_id:
-        items = [x for x in items if str(college_id) in [str(i) for i in x["scopeCollegeIds"]]]
+        items = _row_scope_matches(items, "scopeCollegeIds", college_id)
     if major_id:
-        items = [x for x in items if str(major_id) in [str(i) for i in x["scopeMajorIds"]]]
+        items = _row_scope_matches(items, "scopeMajorIds", major_id)
     if grade:
-        items = [x for x in items if str(grade) in [str(i) for i in x["scopeGrades"]]]
+        items = _row_scope_matches(items, "scopeGrades", grade)
     if batch_id:
-        items = [x for x in items if str(batch_id) in [str(i) for i in x["scopeBatchIds"]]]
+        items = _row_scope_matches(items, "scopeBatchIds", batch_id)
     return items, total
 
 
@@ -184,10 +191,36 @@ def get_template(template_id: str) -> dict:
         return data
 
 
-def enabled_options(batch_id=None) -> list[dict]:
-    """协议发起选择器专用读模型；只暴露已启用且适用于当前批次的模板。"""
-    items, _ = list_templates(1, 200, status="ENABLED", batch_id=batch_id)
-    return items
+def enabled_options(batch_id=None, *, internship_id=None, user=None) -> list[dict]:
+    """协议发起选择器：启用中 + 当前学生学院/专业/年级/批次四维全部适用。"""
+    from app.modules.internship.services import internship_agreement_service as agreement_svc
+    scope, in_scope = agreement_svc._scope_ctx(user)
+    with session() as db:
+        rows = db.scalars(select(InternshipAgreementTemplate).where(
+            InternshipAgreementTemplate.tenant_id == _tid(),
+            InternshipAgreementTemplate.is_deleted.is_(False),
+            InternshipAgreementTemplate.status == "ENABLED")
+            .order_by(InternshipAgreementTemplate.is_default.desc(),
+                      InternshipAgreementTemplate.id.desc()).limit(200)).all()
+
+        if internship_id:
+            rec = tenant_get(db, InternshipRecord, _as_id(internship_id))
+            if not rec or rec.is_deleted:
+                raise not_found("实习记录不存在")
+            stu = tenant_get(db, StudentProfile, rec.student_id)
+            if not stu or stu.is_deleted:
+                raise not_found("学生主档不存在")
+            if batch_id is not None and str(rec.batch_id) != str(batch_id):
+                raise AppException("VALIDATION_ERROR", "所选实习学生不属于当前实习批次")
+            if not in_scope(scope, db, rec, stu):
+                raise no_permission("该实习学生不在你的数据范围内")
+            return [_row(t) for t in rows if agreement_svc.template_scope_matches(t, rec, stu)]
+
+        # 未选学生时 fail-closed：仅返回不限制学院/专业/年级的模板；批次范围仍按
+        # “空=全批次 / 非空=必须命中”裁定，避免旧调用方继续展示明显不适用模板。
+        rec = SimpleNamespace(batch_id=batch_id)
+        stu = SimpleNamespace(college_id=None, major_id=None, grade=None)
+        return [_row(t) for t in rows if agreement_svc.template_scope_matches(t, rec, stu)]
 
 
 def preview_template(template_id: str, internship_id, user=None) -> dict:
@@ -199,16 +232,15 @@ def preview_template(template_id: str, internship_id, user=None) -> dict:
     scope, in_scope = agreement_svc._scope_ctx(user)
     with session() as db:
         tpl = _get(db, template_id)
-        if tpl.status != "ENABLED":
-            raise AppException("STATUS_CONFLICT", "仅启用中的协议模板可用于发起预览")
         rec = tenant_get(db, InternshipRecord, _as_id(internship_id))
         if not rec or rec.is_deleted:
             raise not_found("实习记录不存在")
         stu = tenant_get(db, StudentProfile, rec.student_id)
+        if not stu or stu.is_deleted:
+            raise not_found("学生主档不存在")
         if not in_scope(scope, db, rec, stu):
             raise no_permission("该实习学生不在你的数据范围内")
-        if tpl.scope_batch_ids and str(rec.batch_id) not in {str(value) for value in tpl.scope_batch_ids}:
-            raise AppException("VALIDATION_ERROR", "所选协议模板不适用于当前实习批次")
+        agreement_svc.ensure_template_applicable(tpl, rec, stu)
         preview = SimpleNamespace(enterprise_name=rec.enterprise_name, position_name=rec.position_name)
         return {
             "templateId": str(tpl.id),
