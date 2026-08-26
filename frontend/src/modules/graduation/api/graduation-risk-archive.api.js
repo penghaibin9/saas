@@ -106,7 +106,7 @@ export const graduationRiskArchiveApi = {
     }
     try {
       const data = await request(`${ARCHIVE}/batch-file`, {
-        method: 'POST', params: scoped,
+        method: 'POST', params: scoped, timeoutMs: 15000,
         body: { ...body, archiveBatchNo, previewToken },
       })
       const failed = Number(data?.failed || 0)
