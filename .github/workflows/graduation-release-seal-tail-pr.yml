@@ -1,5 +1,6 @@
 name: Graduation final Release Seal tail S2 S4 S5 S6
 
+# Existing-head trigger for the audit-only tail seal.
 on:
   pull_request:
     branches: [main]
