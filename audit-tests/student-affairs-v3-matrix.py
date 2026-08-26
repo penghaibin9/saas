@@ -48,12 +48,48 @@ DEDICATED_ASSETS = {
 }
 TIME_GATED = {"SA-002", "SA-004", "SA-005"}
 
+# These flows now write a dedicated exact-head closure marker only after a
+# Chromium write action has succeeded and the resulting business state has
+# been re-read from the real API/MySQL-backed application.
+MARKER_FLOWS = {
+    "SA-006", "SA-007", "SA-008", "SA-010", "SA-012", "SA-013",
+    "SA-016", "SA-017", "SA-018", "SA-019", "SA-020",
+}
+
 
 def read_rc(path: Path) -> int | None:
     try:
         return int(path.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         return None
+
+
+def read_marker(evidence: Path, code: str) -> dict | None:
+    path = evidence / f"v3-closure-{code.lower()}.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def valid_marker(marker: dict | None, *, code: str, product_sha: str) -> tuple[bool, str]:
+    if marker is None:
+        return False, "marker missing"
+    if marker.get("code") != code:
+        return False, "marker code mismatch"
+    if marker.get("productExactSha") != product_sha:
+        return False, "marker productExactSha mismatch"
+    if marker.get("browserFirst") is not True:
+        return False, "marker is not Browser First"
+    if marker.get("status") != "REAL_PASS_CANDIDATE":
+        return False, "marker status is not REAL_PASS_CANDIDATE"
+    evidence = marker.get("evidence")
+    if not isinstance(evidence, dict) or not evidence:
+        return False, "marker evidence is empty"
+    return True, "exact-head Browser First marker valid"
 
 
 def parse_junit(path: Path) -> list[dict]:
@@ -114,7 +150,7 @@ def main() -> int:
     result = {
         "productExactSha": args.product_sha,
         "policy": {
-            "realPassRule": "generic pytest/page smoke never promotes a flow to REAL_PASS",
+            "realPassRule": "generic pytest/page smoke never promotes a flow to REAL_PASS; marker flows additionally require exact-head Browser First marker + mapped browser PASS + green Student Affairs backend/API screening",
             "statuses": ["REAL_PASS", "FAIL", "BLOCKED"],
         },
         "aggregate": {
@@ -128,6 +164,8 @@ def main() -> int:
     for code, name, patterns in SA:
         b = summarize(backend, patterns)
         w = summarize(browser, patterns)
+        marker = read_marker(evidence, code) if code in MARKER_FLOWS else None
+        marker_ok, marker_reason = valid_marker(marker, code=code, product_sha=args.product_sha) if code in MARKER_FLOWS else (False, "not a marker flow")
         reasons: list[str] = []
         screening = "PASS"
         status = "BLOCKED"
@@ -151,6 +189,20 @@ def main() -> int:
             elif code in DEDICATED_ASSETS:
                 blocker = "CURRENT_HEAD_GOLD_NOT_EXECUTED_IN_THIS_MATRIX"
                 reasons.append("审计分支已有专用 Gold 资产，但本轮广筛不能替代当前 SHA 专用全链证据")
+            elif code in MARKER_FLOWS:
+                if not marker_ok:
+                    blocker = "EXACT_HEAD_BROWSER_CLOSURE_MARKER_INVALID"
+                    reasons.append(marker_reason)
+                elif w["passed"] < 1:
+                    blocker = "DEDICATED_BROWSER_TEST_NOT_RECORDED_PASS"
+                    reasons.append("marker 存在，但 JUnit 未记录到该业务的 Browser PASS，禁止仅凭 JSON 升级")
+                elif backend_rc != 0 or api_rc != 0:
+                    blocker = "STUDENT_AFFAIRS_SCREENING_NOT_GREEN"
+                    reasons.append(f"专用 Browser 已闭环，但 Student Affairs backend/api 广筛未全绿：backendRc={backend_rc} apiRc={api_rc}")
+                else:
+                    status = "REAL_PASS"
+                    blocker = "NONE"
+                    reasons.append("当前 exact-head 专用 Chromium 写操作、业务终态回读、marker、学工 backend/API 广筛均已闭环")
             else:
                 blocker = "NO_DEDICATED_V3_BROWSER_CLOSURE"
                 reasons.append("尚无可识别的 SA 编号专用 V3 Browser First 全链门，不能判 REAL_PASS")
@@ -163,6 +215,7 @@ def main() -> int:
             "blocker": blocker,
             "backend": b,
             "browser": w,
+            "closureMarker": marker,
             "reasons": reasons,
         })
 
