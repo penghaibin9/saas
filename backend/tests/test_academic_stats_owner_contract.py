@@ -1,12 +1,15 @@
 """教务统计 08/09/14 唯一运行 Owner 调用关系防回归。
 
-这组测试不执行业务数据库，只锁定源码调用关系：
-Router -> public service -> canonical contract facade -> legacy shared helpers。
+这组测试不执行业务数据库，只锁定真实调用关系：
+Router -> package public service -> canonical contract facade -> shared legacy helpers。
 后续删除 stats_service 历史重复实现时，禁止把真实 HTTP 入口重新指回 legacy 同名函数。
 """
 from __future__ import annotations
 
 import ast
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -23,6 +26,10 @@ CANONICAL_STATS = {
     "resource_detail",
 }
 
+PUBLIC_MODULE = "app.modules.academic_affairs.services.academic_affairs_stats_public_service"
+LEGACY_MODULE = "app.modules.academic_affairs.services.academic_affairs_stats_service"
+CANONICAL_MODULE = "app.modules.academic_affairs.services.academic_affairs_stats_contract_facade"
+
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -33,6 +40,41 @@ def _function_source(source: str, name: str) -> str:
     matches = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name]
     assert len(matches) == 1, f"{name} 在 public service 中必须且只能定义一次"
     return ast.get_source_segment(source, matches[0]) or ""
+
+
+def _runtime_owners() -> dict:
+    script = f"""
+import importlib
+import json
+
+services = importlib.import_module('app.modules.academic_affairs.services')
+public = services.academic_affairs_stats_service
+resolved = {{
+    'packageEntry': public.__name__,
+    'legacyRef': public._legacy.__name__,
+    'owners': {{name: getattr(public, name).__module__ for name in {sorted(CANONICAL_STATS)!r}}},
+}}
+print(json.dumps(resolved, sort_keys=True))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=BACKEND,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def test_stats_runtime_owner_chain_is_explicit():
+    """不相信变量名，直接检查 Python 启动后的真实模块对象。"""
+    resolved = _runtime_owners()
+    assert resolved["packageEntry"] == PUBLIC_MODULE
+    assert resolved["legacyRef"] == LEGACY_MODULE
+    assert set(resolved["owners"]) == CANONICAL_STATS
+    assert set(resolved["owners"].values()) == {CANONICAL_MODULE}
 
 
 def test_stats_router_only_enters_public_package_service():
@@ -47,7 +89,8 @@ def test_stats_router_only_enters_public_package_service():
         assert f"stats_svc.{name}(" in source
 
 
-def test_public_0814_stats_delegate_to_canonical_contract():
+def test_public_0814_stats_delegate_to_canonical_contract_before_package_rebind():
+    """public 源码自身也保持 canonical 委托，避免单独导入 public 时退回 legacy owner。"""
     source = _read(SERVICES / "academic_affairs_stats_public_service.py")
     for name in CANONICAL_STATS:
         function_source = _function_source(source, name)
@@ -55,7 +98,8 @@ def test_public_0814_stats_delegate_to_canonical_contract():
         assert f"_legacy.{name}(" not in function_source
 
 
-def test_canonical_facade_rebinds_all_legacy_internal_lookups():
+def test_canonical_install_declares_all_six_package_rebinds():
+    """这里只锁源码绑定声明；真实绑定对象由 runtime owner 测试裁定。"""
     source = _read(SERVICES / "academic_affairs_stats_contract_facade.py")
     for name in CANONICAL_STATS:
         assert f"_legacy.{name} = {name}" in source
