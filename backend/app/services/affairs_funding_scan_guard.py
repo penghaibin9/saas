@@ -1,4 +1,4 @@
-"""包 10：资助公示自动扫描的逐申请事务隔离与授予前资格复核。
+"""包 10：资助公示事务隔离、授予前资格复核与正式评审节点安全门。
 
 旧实现把最多 200 条到期申请放进同一事务。只要其中一条触发名额或金额额度冲突，
 整个事务都会回滚，已经成功占位的申请也会被撤销，后续扫描会重复失败。
@@ -8,6 +8,9 @@
 SA-005 还要求助学金在真正授予前重新读取 SA-002 困难学生库事实：申请时冻结的资格
 快照不能替代发放时的当前资格。自动扫描与人工公示确认最终都会调用 ``_grant_one``，
 因此在同一写事务里统一重验，避免资格漂移后仍错误授予。
+
+正式资助评审必须严格遵守辅导员→学院→学校三级节点及当前 WorkflowTask 受理人，
+TENANT_ALL 只代表数据范围，不得作为越节点代审或绕过待办指派的授权。
 """
 from __future__ import annotations
 
@@ -31,6 +34,11 @@ _QUOTA_CONFLICT_MARKERS = {
     "FUNDING_QUOTA_EXCEEDED",
     "FUNDING_AMOUNT_BUDGET_EXCEEDED",
 }
+_REVIEW_SCOPE = {
+    "COUNSELOR_REVIEW": "CLASS",
+    "COLLEGE_REVIEW": "COLLEGE",
+    "SCHOOL_REVIEW": "TENANT_ALL",
+}
 
 
 class _GrantEligibilityChanged(AppException):
@@ -43,6 +51,39 @@ class _GrantEligibilityChanged(AppException):
 def _is_quota_conflict(exc: BaseException) -> bool:
     message = str(getattr(exc, "orig", exc) or exc)
     return any(marker in message for marker in _QUOTA_CONFLICT_MARKERS)
+
+
+def _check_fund_review_node(db, application, user) -> None:
+    """按正式三级链校验数据范围与当前待办受理人，禁止管理员越节点代审。"""
+    from app.core.affairs_security import build_affairs_context
+    from app.models import WorkflowTask
+
+    node = str(getattr(application, "status", "") or "")
+    expected_scope = _REVIEW_SCOPE.get(node)
+    if not expected_scope:
+        raise AppException("DATA_CONFLICT", "当前资助申请不在正式评审节点")
+
+    context = build_affairs_context(user, db)
+    if context.scope_type != expected_scope:
+        raise AppException("NO_PERMISSION", f"当前账号不是 {legacy.L_FUND.get(node, node)} 的受理角色")
+
+    instance_id = int(getattr(application, "workflow_instance_id", 0) or 0)
+    if instance_id <= 0:
+        raise AppException("DATA_CONFLICT", "资助审批流缺失，禁止绕过正式节点审批")
+
+    task = db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(),
+        WorkflowTask.instance_id == instance_id,
+        WorkflowTask.node_code == node,
+        WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False),
+    ).order_by(WorkflowTask.id.desc())).first()
+    if not task or int(task.assignee_id or 0) <= 0:
+        raise AppException("DATA_CONFLICT", "当前资助审批节点没有有效受理人")
+
+    uid = legacy._uid_int(user)
+    if uid <= 0 or int(task.assignee_id) != uid:
+        raise AppException("NO_PERMISSION", "当前资助审批任务未指派给您")
 
 
 def _grant_eligibility_snapshot(db, application) -> dict | None:
@@ -214,4 +255,5 @@ def install() -> None:
     # _grant_one 原实现，因此自动扫描与人工确认仍会经过同一资格复核。
     legacy._grant_one = _grant_one
     legacy.scan_publicity = scan_publicity
+    legacy._check_fund_review_node = _check_fund_review_node
     _INSTALLED = True
