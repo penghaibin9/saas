@@ -50,7 +50,7 @@ jobs:
     timeout-minutes: 10
     env:
       E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      E2E_PRODUCT_EXACT_SHA: b0806ebc8355567428b4c6407e7806980b4db0f1
+      E2E_PRODUCT_EXACT_SHA: c320d712b67d78e1b8ce36c4a45bf9f4f959533d
 
     steps:
       - uses: actions/checkout@v4

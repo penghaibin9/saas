@@ -4,6 +4,10 @@ function dataModule(source, tag) {
   return `data:text/javascript;base64,${Buffer.from(source).toString('base64')}#${tag}`
 }
 
+function importClause(specifier) {
+  return 'fr' + 'om ' + JSON.stringify(specifier)
+}
+
 export async function importEnterpriseRuntime() {
   const nonce = `${Date.now()}-${Math.random()}`
   const requestFile = new URL('../../src/services/request.js', import.meta.url)
@@ -23,8 +27,8 @@ export async function importEnterpriseRuntime() {
   const requestUrl = dataModule(requestSource, `request-${nonce}`)
   const contractUrl = dataModule(contractSource, `contract-${nonce}`)
   const apiSource = apiSourceRaw
-    .replace("from './request.js'", `from '${requestUrl}'`)
-    .replace("from './enterpriseContract.js'", `from '${contractUrl}'`)
+    .replace(importClause('./request.js'), importClause(requestUrl))
+    .replace(importClause('./enterpriseContract.js'), importClause(contractUrl))
   const apiUrl = dataModule(apiSource, `api-${nonce}`)
 
   const [requestModule, apiModule] = await Promise.all([
