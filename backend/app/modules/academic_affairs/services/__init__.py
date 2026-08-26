@@ -219,3 +219,9 @@ academic_affairs_graduation_stats_scale_guard.install()
 from . import academic_affairs_stats_privacy_guard
 
 academic_affairs_stats_privacy_guard.install()
+
+# AA-003：所有基础/成绩 Authority guard 完成安装后，再把学籍异动受理人解析切到
+# 同一套 School IAM 权限真相；状态机、业务范围、唯一受理人 fail-closed 语义不变。
+from . import academic_affairs_change_assignee_authority_guard
+
+academic_affairs_change_assignee_authority_guard.install()
