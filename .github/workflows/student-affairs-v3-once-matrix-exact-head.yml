@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PRODUCT_EXACT_SHA: 4c41f48431d6c2df1afeddfe9552b8dbcea2e0bc
+  PRODUCT_EXACT_SHA: 99c91cb95cbcc6050fea0811fb2c47e48cc754c8
   CI: 'true'
   PYTHONPATH: .
   APP_ENV: test
