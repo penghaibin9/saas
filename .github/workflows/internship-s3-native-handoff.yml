@@ -2,9 +2,9 @@ name: Internship S3 Native Handoff
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches:
-      - fix/internship-final-rc-20260824
+      - main
     paths:
       - '.github/workflows/internship-s3-native-handoff.yml'
 
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: internship-s3-native-handoff-${{ github.ref }}
+  group: internship-s3-native-handoff-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -23,6 +23,7 @@ env:
 
 jobs:
   native-handoff:
+    if: github.event_name != 'pull_request' || github.head_ref == 'fix/internship-final-rc-20260824'
     name: Exact product SHA mp-weixin handoff only
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -41,7 +42,7 @@ jobs:
           ACTUAL="$(git rev-parse HEAD)"
           test "$ACTUAL" = "$PRODUCT_EXACT_SHA"
           echo "productExactSha=$ACTUAL"
-          echo "runnerExactSha=${GITHUB_SHA}"
+          echo "runnerExactSha=${{ github.event.pull_request.head.sha || github.sha }}"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -66,7 +67,7 @@ jobs:
       - name: Seal native handoff without claiming device PASS
         working-directory: miniapp
         env:
-          RUNNER_EXACT_SHA: ${{ github.sha }}
+          RUNNER_EXACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           mkdir -p ../e2e/runtime/s3-native
