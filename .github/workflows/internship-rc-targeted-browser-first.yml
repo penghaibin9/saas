@@ -150,19 +150,11 @@ jobs:
           start-student: 'true'
 
       - name: Wait for staff and student applications
-        run: |
-          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
-            ok=''
-            for i in {1..60}; do
-              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
-              sleep 2
-            done
-            if [ -z "$ok" ]; then
-              echo "Application not ready: $url"
-              cat e2e/runtime-logs/*.log
-              exit 1
-            fi
-          done
+        uses: ./.github/actions/internship-e2e-wait-apps
+        with:
+          urls: |
+            http://127.0.0.1:5173/login
+            http://127.0.0.1:5199/portal/login
 
       - name: Install Playwright Chromium
         working-directory: e2e
