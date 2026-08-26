@@ -11,6 +11,7 @@ fail-closed 409，绝不回落 assignee_id=0，也不扩大任何角色权限。
 from __future__ import annotations
 
 from . import academic_affairs_change_safety_guard as safety
+from . import academic_affairs_change_service as change_service
 from .academic_affairs_grade_task_assignee_guard import (
     _runtime_permission_holder_ids,
     resolve_grade_task_assignee,
@@ -28,7 +29,7 @@ def canonical_permission_candidate_ids(db, permission_code: str) -> list[int]:
 def strict_assignee_for(db, node, student_id):
     """Keep package-5 routing, except use the canonical school-level owner for final review."""
     if node == "AA_OFFICE_FINAL":
-        # Reuse the already hardened school-level resolver.  Supplying the status-change
+        # Reuse the already hardened school-level resolver. Supplying the status-change
         # permission keeps the role preference/uniqueness semantics while changing no
         # grade business state.
         return resolve_grade_task_assignee(
@@ -41,9 +42,16 @@ def strict_assignee_for(db, node, student_id):
     return _ORIGINAL_STRICT_ASSIGNEE_FOR(db, node, student_id)
 
 
+# Preserve package-5's idempotent-install contract if safety.install() is called again later.
+strict_assignee_for._status_change_safety_guard = True
+strict_assignee_for._status_change_authority_guard = True
+
+
 def install() -> None:
-    # The original package-5 strict resolver looks this module global up at call time,
-    # so replacing the candidate source automatically fixes COLLEGE/OUT/IN/ASSIGN nodes
-    # while preserving College.secretary_id / StaffAssignment narrowing and fail-closed.
+    # Package-5 routes both direct task creation (change_service._assignee_for) and
+    # claim-time repair through its resolver. Replace both live references, not just
+    # the safety module global, otherwise next-node task creation could retain the old
+    # RolePermission-only authority after this module is installed.
     safety._permission_candidate_ids = canonical_permission_candidate_ids
     safety.strict_assignee_for = strict_assignee_for
+    change_service._assignee_for = strict_assignee_for
