@@ -39,6 +39,9 @@ def main() -> int:
     student_id = int(state["studentId"])
     change_id = int(outcome["changeId"])
     modified_reason = str(outcome["modifiedReason"])
+    base_status = str(state["studentBaseStatus"])
+    baseline_fact_id = int(state["academicBaselineFactId"])
+    baseline_fact_version = int(state["academicBaselineFactVersion"])
 
     db = get_sessionmaker()()
     try:
@@ -52,7 +55,7 @@ def main() -> int:
         change = changes[0]
         req(int(change.id) == change_id, f"AA-003 changeId drifted: db={change.id} browser={change_id}")
         req(change.status == "EFFECTIVE", f"AA-003 final status={change.status}")
-        req(change.from_status == "REGISTERED", f"AA-003 from_status={change.from_status}")
+        req(change.from_status == base_status, f"AA-003 from_status={change.from_status}, expected={base_status}")
         req(change.to_status == "SUSPENDED", f"AA-003 to_status={change.to_status}")
         req(change.reason == modified_reason, f"AA-003 resubmitted reason not preserved: {change.reason!r}")
         req(change.current_task_id is None, f"AA-003 final current_task_id={change.current_task_id}")
@@ -144,8 +147,18 @@ def main() -> int:
             StudentStageEvent.reason == "学籍异动（SUSPEND）",
         ).order_by(StudentStageEvent.id)).all()
         req(len(stage_events) == 1, f"AA-003 formal stage event count={len(stage_events)}")
-        req(stage_events[0].from_stage == "REGISTERED" and stage_events[0].to_stage == "SUSPENDED",
-            f"AA-003 stage event={stage_events[0].from_stage}->{stage_events[0].to_stage}")
+        req(stage_events[0].from_stage == base_status and stage_events[0].to_stage == "SUSPENDED",
+            f"AA-003 stage event={stage_events[0].from_stage}->{stage_events[0].to_stage}, expected={base_status}->SUSPENDED")
+
+        baseline = db.get(StudentAcademicFact, baseline_fact_id)
+        req(baseline is not None, f"AA-003 baseline fact {baseline_fact_id} missing")
+        req(int(baseline.student_id) == student_id and int(baseline.tenant_id) == tid,
+            f"AA-003 baseline fact ownership drift: tenant={baseline.tenant_id} student={baseline.student_id}")
+        req(int(baseline.version_no) == baseline_fact_version,
+            f"AA-003 baseline fact version drift: {baseline.version_no} != {baseline_fact_version}")
+        req(baseline.student_status == base_status,
+            f"AA-003 baseline fact status={baseline.student_status}, expected={base_status}")
+        req(baseline.valid_to is not None, "AA-003 final approval must close the previous current fact")
 
         facts = db.scalars(select(StudentAcademicFact).where(
             StudentAcademicFact.tenant_id == tid,
@@ -154,13 +167,28 @@ def main() -> int:
             StudentAcademicFact.source_type == "SUSPEND",
         ).order_by(StudentAcademicFact.version_no)).all()
         req(len(facts) == 1, f"AA-003 canonical academic fact count={len(facts)}")
-        req(facts[0].student_status == "SUSPENDED", f"AA-003 fact status={facts[0].student_status}")
+        applied_fact = facts[0]
+        req(applied_fact.student_status == "SUSPENDED", f"AA-003 fact status={applied_fact.student_status}")
+        req(int(applied_fact.version_no) == baseline_fact_version + 1,
+            f"AA-003 academic fact version must advance once: baseline={baseline_fact_version} applied={applied_fact.version_no}")
+        req(applied_fact.valid_to is None, "AA-003 applied fact must be the one current fact")
+        req(baseline.valid_to == applied_fact.valid_from,
+            f"AA-003 fact timeline must be contiguous: old.valid_to={baseline.valid_to} new.valid_from={applied_fact.valid_from}")
+
+        active_facts = db.scalars(select(StudentAcademicFact).where(
+            StudentAcademicFact.tenant_id == tid,
+            StudentAcademicFact.student_id == student_id,
+            StudentAcademicFact.valid_to.is_(None),
+        )).all()
+        req(len(active_facts) == 1 and int(active_facts[0].id) == int(applied_fact.id),
+            f"AA-003 must leave exactly one current fact: {[(r.id, r.version_no, r.student_status) for r in active_facts]}")
 
         seal = {
             "tenantId": str(tid),
             "studentId": str(student_id),
             "changeId": str(change_id),
             "changeCount": len(changes),
+            "baseStudentStatus": base_status,
             "finalStatus": change.status,
             "studentStatus": student.student_status,
             "studentVersion": int(student.version or 0),
@@ -173,7 +201,10 @@ def main() -> int:
             "auditCounts": dict(audit_counts),
             "todoStatuses": [r.status for r in todos],
             "outboxEventCodes": event_codes,
-            "academicFactVersion": int(facts[0].version_no),
+            "baselineAcademicFactId": str(baseline.id),
+            "baselineAcademicFactVersion": int(baseline.version_no),
+            "academicFactId": str(applied_fact.id),
+            "academicFactVersion": int(applied_fact.version_no),
             "sameCaseResubmit": True,
         }
         SEAL_PATH.write_text(json.dumps(seal, ensure_ascii=False, indent=2), encoding="utf-8")
