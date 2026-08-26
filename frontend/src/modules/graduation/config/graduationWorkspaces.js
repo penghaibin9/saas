@@ -29,9 +29,9 @@ export const GRADUATION_WORKSPACES = [
       { label: '学生进度', path: '/admin/graduation/students?panel=progress', permissionKey: 'graduationDesign.student.view', entryType: 'TASK_QUEUE' },
       { label: '未选题学生', path: '/admin/graduation/students?panel=topic', permissionKey: 'graduationDesign.student.view', entryType: 'TASK_QUEUE' },
       { label: '毕设资格认定', path: '/admin/graduation/students?panel=eligibility', permissionKey: 'graduationDesign.student.manage', entryType: 'TASK_QUEUE' },
-      { label: '导师名单', path: '/admin/graduation/mentors?panel=list', permissionKey: 'graduationDesign.mentor.manage', entryType: 'TASK_QUEUE' },
-      { label: '学生分配', path: '/admin/graduation/mentors?panel=assign', permissionKey: 'graduationDesign.mentor.manage', entryType: 'TASK_QUEUE' },
-      { label: '分配冲突检测', path: '/admin/graduation/mentors/conflicts', permissionKey: 'graduationDesign.mentor.manage', entryType: 'TASK_QUEUE' }
+      { label: '导师名单', path: '/admin/graduation/mentors?panel=list', permissionKey: 'graduationDesign.student.manage', entryType: 'TASK_QUEUE' },
+      { label: '学生分配', path: '/admin/graduation/mentors?panel=assign', permissionKey: 'graduationDesign.student.manage', entryType: 'TASK_QUEUE' },
+      { label: '分配冲突检测', path: '/admin/graduation/mentors/conflicts', permissionKey: 'graduationDesign.student.manage', entryType: 'TASK_QUEUE' }
     ]
   },
   {
