@@ -131,33 +131,14 @@ jobs:
         working-directory: backend
         run: python scripts/e2e_seed_internship_agreement_sandbox.py
 
-      - name: Install and start Staff PC
-        run: |
-          cd frontend
-          npm ci
-          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/frontend.pid
-
-      - name: Install and start Student PC
-        env:
-          VITE_BASE: /portal/
-          VITE_API_BASE_URL: /
-          VITE_PROXY_TARGET: http://127.0.0.1:8000
-        run: |
-          cd student-portal
-          npm ci
-          nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/student-portal.pid
-
-      - name: Install and start Student+Teacher Mini H5
-        env:
-          VITE_USE_MOCK: 'false'
-          VITE_API_BASE_URL: http://127.0.0.1:8000
-        run: |
-          cd miniapp
-          npm ci
-          nohup npm run dev:h5 -- --host 127.0.0.1 --port 5188 > ../e2e/runtime-logs/miniapp.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/miniapp.pid
+      - name: Start shared browser applications
+        uses: ./.github/actions/internship-e2e-app-start
+        with:
+          start-staff: 'true'
+          start-student: 'true'
+          start-miniapp: 'true'
+          miniapp-log-name: miniapp.log
+          miniapp-pid-name: miniapp.pid
 
       - name: Wait for all browser applications
         run: |
