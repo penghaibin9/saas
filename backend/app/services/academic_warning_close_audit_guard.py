@@ -1,62 +1,52 @@
 """Bridge legacy academic warning close into the unified affairs audit trail.
 
-Teacher Mini still reaches ``app.services.academic_service.close_warning`` for the
-compatibility warning projection.  The business state is authoritative in
-``t_acad_warning``, but that legacy close path historically wrote only
-``AcademicAuditTrail``.  Install this wrapper so the same transaction also writes
-the canonical ``AffairsAuditTrail / ACAD_WARNING / CLOSE`` evidence consumed by
-production audit gates.
+``app.services.academic_service.close_warning`` remains the single owner of the warning close
+business command: validation, state transition, student aggregate refresh, todo completion and commit.
+The compatibility domain already emits its historical ``AcademicAuditTrail`` through ``module._audit``
+inside that transaction.  This guard wraps only that audit sink: when the legacy CLOSE event is written,
+it appends the canonical ``AffairsAuditTrail / ACAD_WARNING / CLOSE`` evidence in the very same Session.
+
+Keeping the bridge at the audit boundary avoids a second copy of the warning-close state machine while
+preserving the production requirement that both audit trails commit atomically with the business row.
 """
 from __future__ import annotations
 
 
+_MARKER = "_aa010_warning_close_audit_guard"
+
+
 def install(module):
-    current = getattr(module, "close_warning", None)
-    if current is None or getattr(current, "_aa010_warning_close_audit_guard", False):
+    current = getattr(module, "_audit", None)
+    if current is None or getattr(current, _MARKER, False):
         return module
 
     original = current
 
-    def close_warning(wid, result) -> dict:
-        text = str(result or "").strip()
-        if len(text) < 5:
-            raise module.AppException("VALIDATION_ERROR", "关闭说明必填且不少于 5 字")
+    def audit_with_warning_close(db, biz_type, biz_id, action, detail="", before="", after=""):
+        # Preserve the historical academic-domain evidence exactly as before.
+        result = original(db, biz_type, biz_id, action, detail, before, after)
 
-        with module.session() as db:
-            warning = module._get_warn(db, wid)
-            if warning.status == "CLOSED":
-                raise module.AppException("DATA_CONFLICT", "该预警已关闭")
+        if str(biz_type or "").upper() == "WARNING" and str(action or "") == "关闭预警":
+            # Import lazily to keep app.services.academic_service import order acyclic.
+            from app.modules.academic_affairs.services import (
+                academic_affairs_warning_service as warning_service,
+            )
 
-            before = warning.status
-            warning.status = "CLOSED"
-            warning.close_result = text
-            warning.version += 1
-
-            student = module._stu_of(db, warning.acad_student_id)
-            if student:
-                module._sync_student_warning(db, student)
-
-            # Preserve the historical academic-domain trail for compatibility.
-            module._audit(db, "WARNING", warning.id, "关闭预警", text, before, "CLOSED")
-
-            # Use the canonical academic-affairs helpers in the *same transaction*:
-            # close the unified counselor todo and append the cross-surface audit seal.
-            from app.modules.academic_affairs.services import academic_affairs_warning_service as warning_service
-
-            warning_service.mark_todos_done(db, warning.id)
+            # academic_service.close_warning already completes the unified todo in this same Session.
+            # The canonical audit seal belongs here as an additional side effect of the existing audit
+            # command; no warning state, version, student aggregate or transaction boundary is owned here.
             warning_service._audit(
                 db,
                 "ACAD_WARNING",
-                warning.id,
+                biz_id,
                 "CLOSE",
-                text,
+                detail,
                 before,
-                "CLOSED",
+                after,
             )
-            db.commit()
-            return {"id": str(warning.id)}
+        return result
 
-    close_warning._aa010_warning_close_audit_guard = True
-    close_warning._aa010_original_close_warning = original
-    module.close_warning = close_warning
+    setattr(audit_with_warning_close, _MARKER, True)
+    audit_with_warning_close._aa010_original_academic_audit = original
+    module._audit = audit_with_warning_close
     return module
