@@ -1,8 +1,11 @@
 """选课轮次归档写保护与正式公开入口回归。"""
+import importlib
 from pathlib import Path
 
 
 SERVICES = Path(__file__).resolve().parents[1] / "app/modules/academic_affairs/services"
+CANONICAL_MODULE = "app.modules.academic_affairs.services.academic_affairs_selection_round_service"
+COMPAT_MODULE = "app.modules.academic_affairs.services.academic_affairs_selection_round_facade"
 
 
 def test_canonical_round_service_uses_selection_term_archive_guard():
@@ -16,19 +19,18 @@ def test_canonical_round_service_uses_selection_term_archive_guard():
 
 def test_public_round_compat_path_delegates_all_writes_to_canonical_service():
     from app.modules.academic_affairs import services
-    from app.modules.academic_affairs.services import (
-        academic_affairs_selection_round_facade as compatibility,
-        academic_affairs_selection_round_service as canonical,
-    )
 
+    compatibility = importlib.import_module(COMPAT_MODULE)
+    canonical = importlib.import_module(CANONICAL_MODULE)
     public = services.academic_affairs_selection_round_service
+
     # 保留历史包级模块身份，避免旧 import 路径失效；真正写函数必须来自 canonical owner。
     assert public is compatibility
     assert compatibility._canonical is canonical
     assert compatibility._legacy is canonical
     for name in ("create_round", "open_round", "close_round", "draw_round"):
         assert getattr(public, name) is getattr(canonical, name)
-        assert getattr(public, name).__module__.endswith("academic_affairs_selection_round_service")
+        assert getattr(public, name).__module__ == CANONICAL_MODULE
     assert not hasattr(public, "draw_lottery")
 
 
