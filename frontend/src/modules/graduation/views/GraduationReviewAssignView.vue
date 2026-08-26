@@ -8,7 +8,7 @@
     <div class="ra-layout">
       <section class="ra-card ra-list">
         <header class="ra-card__head">
-          <div><strong>选择学生</strong><span>当前批次 · 后端真实数据范围</span></div>
+          <div><strong>选择学生</strong><span>当前批次 · 已通过正式定稿 · 后端真实数据范围</span></div>
           <button type="button" class="mp-btn" :disabled="loading" @click="loadStudents">刷新</button>
         </header>
         <div class="ra-search">
@@ -17,7 +17,11 @@
         </div>
         <ErrorState v-if="error" :description="error" @retry="loadStudents" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!students.length" title="当前条件下没有可见学生" description="请确认当前批次、数据范围或调整搜索条件。" />
+        <EmptyState
+          v-else-if="!students.length"
+          title="当前没有可分配正式评阅的学生"
+          description="这里只显示当前批次、当前数据范围内最新正式定稿已通过的学生。可调整姓名/学号搜索，或先完成成果定稿审核。"
+        />
         <div v-else class="ra-students">
           <button
             v-for="student in students" :key="student.id" type="button"
@@ -39,6 +43,7 @@
             <div><span>课题</span><b>{{ current.topicTitle || '未确认课题' }}</b></div>
             <div><span>指导教师</span><b>{{ current.advisorName || '未分配' }}</b></div>
             <div><span>当前阶段</span><b>{{ current.stageLabel || current.stage || '—' }}</b></div>
+            <div><span>正式定稿</span><b>{{ current.finalStatusLabel || current.finalStatus || '已通过' }}</b></div>
           </div>
           <label class="ra-field">
             <span>独立评阅教师</span>
@@ -60,9 +65,9 @@
             </button>
             <button v-if="assigned" type="button" class="mp-btn" @click="openReviewCenter">进入统一评阅中心</button>
           </div>
-          <p class="ra-note">系统只允许对“已通过正式定稿”的学生创建正式评阅任务，并由后端再次执行 SoD 校验：评阅人不得是该生指导教师。失败不会生成半条评阅记录。</p>
+          <p class="ra-note">候选列表已在服务端按“最新正式定稿=已通过”收窄；提交时后端仍会再次核对 exact FileVersion、安全扫描状态与 SoD：评阅人不得是该生指导教师。失败不会生成半条评阅记录。</p>
         </template>
-        <EmptyState v-else title="请先选择学生" description="从左侧当前批次学生中选择一人后，再分配独立评阅教师。" />
+        <EmptyState v-else title="请先选择学生" description="从左侧可分配候选中选择一人后，再分配独立评阅教师。" />
       </section>
     </div>
   </ModulePageShell>
@@ -115,8 +120,7 @@ export default {
       const res = await gdStudentApi.getStudents({
         keyword: this.keyword || undefined,
         batchId: this.batchStore.selectedBatchId,
-        page: 1,
-        pageSize: 50
+        finalStatus: 'APPROVED'
       })
       if (token !== this.loadToken) return
       if (res.code === 0) {
