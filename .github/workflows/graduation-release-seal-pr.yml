@@ -161,6 +161,32 @@ jobs:
           test -n "$EXPECTED"
           echo "EXPECTED_ALEMBIC_VERSION=$EXPECTED" >> "$GITHUB_ENV"
 
+      - name: Bootstrap production school-role permission authority
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from app.core.school_admin_permission_resolver import school_admin_cutover_preflight, resolve_school_admin_permissions
+          from app.services.permission_catalog_reconciliation_service import reconcile_permission_catalog
+          from app.services.system_role_shadow_service import converge_published_system_templates
+
+          catalog = reconcile_permission_catalog(source='GRADUATION_RELEASE_SEAL')
+          assert int(catalog.get('missingAfterReconcile') or 0) == 0, catalog
+          convergence = converge_published_system_templates(
+              actor_user_id=None,
+              source_commit_sha=os.environ['PRODUCT_EXACT_SHA'],
+          )
+          proof = school_admin_cutover_preflight()
+          permissions = set(resolve_school_admin_permissions())
+          assert proof['exactSnapshot'] is True, proof
+          assert proof['containsRuntimeWildcard'] is False, proof
+          assert proof['platformPermissionCount'] == 0, proof
+          assert proof['enterprisePermissionCount'] == 0, proof
+          assert 'graduationDesign.final.review' in permissions, sorted(permissions)
+          print({'catalog': catalog, 'convergence': convergence, 'preflight': proof})
+          PY
+
       - name: S2 tail · material/export with real SCHOOL_ADMIN auth context
         working-directory: backend
         run: |
