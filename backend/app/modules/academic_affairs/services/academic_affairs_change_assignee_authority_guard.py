@@ -21,11 +21,6 @@ _OFFICE_PERMISSION = "academicAffairs.statusChange.officeReview"
 _ORIGINAL_STRICT_ASSIGNEE_FOR = safety.strict_assignee_for
 
 
-def canonical_permission_candidate_ids(db, permission_code: str) -> list[int]:
-    """Resolve permission holders through the same Authority used by runtime login."""
-    return _runtime_permission_holder_ids(db, permission_code)
-
-
 def strict_assignee_for(db, node, student_id):
     """Keep package-5 routing, except use the canonical school-level owner for final review."""
     if node == "AA_OFFICE_FINAL":
@@ -48,10 +43,12 @@ strict_assignee_for._status_change_authority_guard = True
 
 
 def install() -> None:
-    # Package-5 routes both direct task creation (change_service._assignee_for) and
-    # claim-time repair through its resolver. Replace both live references, not just
-    # the safety module global, otherwise next-node task creation could retain the old
-    # RolePermission-only authority after this module is installed.
-    safety._permission_candidate_ids = canonical_permission_candidate_ids
+    # Reuse the exact School IAM permission-holder resolver already owned by the grade/schedule
+    # assignee module; do not keep a one-line local proxy that can drift from that canonical source.
+    safety._permission_candidate_ids = _runtime_permission_holder_ids
+
+    # Package-5 routes both direct task creation (change_service._assignee_for) and claim-time repair
+    # through its resolver. Replace both live references so every status-change node keeps the same
+    # fail-closed authority semantics.
     safety.strict_assignee_for = strict_assignee_for
     change_service._assignee_for = strict_assignee_for
