@@ -29,7 +29,6 @@ on:
       - 'backend/alembic/versions/**'
       - 'backend/scripts/run_scheduled_jobs.py'
       - 'enterprise-portal/**'
-      - 'scripts/check/check-internship-source-closure.py'
       - 'scripts/check/check-internship-source-closure-v2.py'
       - '.github/workflows/internship-*.yml'
       - '.github/workflows/playwright-production-e2e.yml'
