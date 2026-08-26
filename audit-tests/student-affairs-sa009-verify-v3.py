@@ -94,7 +94,6 @@ def main() -> None:
 
         audits = db.scalars(select(AffairsAuditTrail).where(
             AffairsAuditTrail.tenant_id == building.tenant_id,
-            AffairsAuditTrail.is_deleted.is_(False),
         ).order_by(AffairsAuditTrail.id)).all()
         audit_keys = {(row.biz_type, int(row.biz_id or 0), row.action) for row in audits}
         required = {
