@@ -56,15 +56,15 @@ const graduationRoutes = {
       path: 'topic-lib',
       name: 'graduation-topic-lib',
       component: () => import('@/modules/graduation/views/TopicLibListView.vue'),
-      meta: { moduleCode: 'GRADUATION', title: '题目库', requiresAuth: true, permissionKey: 'graduationDesign.topic.lib' },
+      meta: { moduleCode: 'GRADUATION', title: '题目库', requiresAuth: true, permissionKey: 'graduationDesign.topic.view' },
       children: [
-        { path: 'create', name: 'graduation-topic-lib-create', component: () => import('@/modules/graduation/views/TopicLibFormView.vue'), meta: { moduleCode: 'GRADUATION', title: '申报题目', requiresAuth: true, permissionKey: 'graduationDesign.topic.lib' } },
-        { path: ':id/edit', name: 'graduation-topic-lib-edit', component: () => import('@/modules/graduation/views/TopicLibFormView.vue'), meta: { moduleCode: 'GRADUATION', title: '编辑题目', requiresAuth: true, permissionKey: 'graduationDesign.topic.lib' } },
-        { path: ':id/capacity', name: 'graduation-topic-lib-capacity', component: () => import('@/modules/graduation/views/TopicLibCapacityView.vue'), meta: { moduleCode: 'GRADUATION', title: '调整题目容量', requiresAuth: true, permissionKey: 'graduationDesign.topic.lib' } },
-        { path: ':id/requirements', name: 'graduation-topic-lib-requirements', component: () => import('@/modules/graduation/views/TopicLibRequirementsView.vue'), meta: { moduleCode: 'GRADUATION', title: '维护题目要求', requiresAuth: true, permissionKey: 'graduationDesign.topic.lib' } },
-        { path: ':id/attachments', name: 'graduation-topic-lib-attachments', component: () => import('@/modules/graduation/views/TopicLibAttachmentsView.vue'), meta: { moduleCode: 'GRADUATION', title: '题目附件管理', requiresAuth: true, permissionKey: 'graduationDesign.topic.lib' } },
-        { path: ':id/category', name: 'graduation-topic-lib-category', component: () => import('@/modules/graduation/views/TopicLibCategoryView.vue'), meta: { moduleCode: 'GRADUATION', title: '调整题目分类', requiresAuth: true, permissionKey: 'graduationDesign.topic.lib' } },
-        { path: ':id', name: 'graduation-topic-lib-detail', component: () => import('@/modules/graduation/views/TopicLibDetailView.vue'), meta: { moduleCode: 'GRADUATION', title: '题目详情', requiresAuth: true, permissionKey: 'graduationDesign.topic.lib' } }
+        { path: 'create', name: 'graduation-topic-lib-create', component: () => import('@/modules/graduation/views/TopicLibFormView.vue'), meta: { moduleCode: 'GRADUATION', title: '申报题目', requiresAuth: true, permissionKey: 'graduationDesign.topic.create' } },
+        { path: ':id/edit', name: 'graduation-topic-lib-edit', component: () => import('@/modules/graduation/views/TopicLibFormView.vue'), meta: { moduleCode: 'GRADUATION', title: '编辑题目', requiresAuth: true, permissionKey: 'graduationDesign.topic.create' } },
+        { path: ':id/capacity', name: 'graduation-topic-lib-capacity', component: () => import('@/modules/graduation/views/TopicLibCapacityView.vue'), meta: { moduleCode: 'GRADUATION', title: '调整题目容量', requiresAuth: true, permissionKey: 'graduationDesign.topic.create' } },
+        { path: ':id/requirements', name: 'graduation-topic-lib-requirements', component: () => import('@/modules/graduation/views/TopicLibRequirementsView.vue'), meta: { moduleCode: 'GRADUATION', title: '维护题目要求', requiresAuth: true, permissionKey: 'graduationDesign.topic.create' } },
+        { path: ':id/attachments', name: 'graduation-topic-lib-attachments', component: () => import('@/modules/graduation/views/TopicLibAttachmentsView.vue'), meta: { moduleCode: 'GRADUATION', title: '题目附件管理', requiresAuth: true, permissionKey: 'graduationDesign.topic.create' } },
+        { path: ':id/category', name: 'graduation-topic-lib-category', component: () => import('@/modules/graduation/views/TopicLibCategoryView.vue'), meta: { moduleCode: 'GRADUATION', title: '调整题目分类', requiresAuth: true, permissionKey: 'graduationDesign.topic.create' } },
+        { path: ':id', name: 'graduation-topic-lib-detail', component: () => import('@/modules/graduation/views/TopicLibDetailView.vue'), meta: { moduleCode: 'GRADUATION', title: '题目详情', requiresAuth: true, permissionKey: 'graduationDesign.topic.view' } }
       ]
     },
     { path: 'topic-rounds/create', name: 'graduation-topic-round-create', component: () => import('@/modules/graduation/views/TopicRoundFormView.vue'), meta: { moduleCode: 'GRADUATION', title: '新建选题轮次', requiresAuth: true, permissionKey: 'graduationDesign.topic.round' } },
