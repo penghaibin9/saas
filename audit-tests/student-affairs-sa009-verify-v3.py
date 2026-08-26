@@ -18,7 +18,7 @@ from app.models import (
     User,
 )
 
-EVIDENCE = Path(__file__).resolve().parents[2] / "e2e" / "student-affairs-sa009-browser-v3-evidence.json"
+EVIDENCE = Path(__file__).resolve().parents[2] / "app" / "e2e" / "student-affairs-sa009-browser-v3-evidence.json"
 DORM_MANAGER_LOGIN = "e2e_sa009_dorm"
 STUDENT_NO = "E2E20260911"
 
