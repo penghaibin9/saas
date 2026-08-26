@@ -1,0 +1,461 @@
+name: Internship S1 Production Runtime
+
+on:
+  push:
+    branches:
+      - fix/internship-final-rc-20260824
+    paths:
+      - 'backend/scripts/e2e_seed_internship_s1_production_runtime.py'
+      - 'backend/app/**'
+      - 'frontend/**'
+      - 'student-portal/**'
+      - 'miniapp/**'
+      - 'enterprise-portal/**'
+      - 'deploy/nginx/**'
+      - 'deploy/systemd/**'
+      - 'e2e/specs/internship-s1-production-runtime.spec.mjs'
+      - 'e2e/playwright.s1.config.mjs'
+      - '.github/workflows/internship-s1-production-runtime.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/scripts/e2e_seed_internship_s1_production_runtime.py'
+      - 'backend/app/**'
+      - 'frontend/**'
+      - 'student-portal/**'
+      - 'miniapp/**'
+      - 'enterprise-portal/**'
+      - 'deploy/nginx/**'
+      - 'deploy/systemd/**'
+      - 'e2e/specs/internship-s1-production-runtime.spec.mjs'
+      - 'e2e/playwright.s1.config.mjs'
+      - '.github/workflows/internship-s1-production-runtime.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: internship-s1-production-runtime-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  production-runtime:
+    if: github.event_name != 'pull_request' || github.head_ref == 'fix/internship-final-rc-20260824'
+    name: Four production builds / nginx TLS / 2 workers / 10 smokes
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      # Seed / Playwright safety context. The backend process itself is started later
+      # with explicit production env vars in one command, and its startup log is sealed.
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/12
+      REDIS_KEY_PREFIX: internship-s1-production-runtime
+      REDIS_CONNECT_TIMEOUT: '2'
+      REDIS_SOCKET_TIMEOUT: '2'
+      JWT_SECRET: internship-s1-seed-only-not-production
+      JWT_SECRET_KEY: internship-s1-seed-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_SELF_SIGNED_TLS: 'true'
+      E2E_API_BASE_URL: https://127.0.0.1:8443/api/v1
+      E2E_STAFF_BASE_URL: https://127.0.0.1:8443
+      E2E_STUDENT_BASE_URL: https://127.0.0.1:8443/portal
+      E2E_MINIAPP_BASE_URL: https://127.0.0.1:8443/miniapp
+      E2E_ENTERPRISE_BASE_URL: https://127.0.0.1:8443/enterprise
+      E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      E2E_PRODUCT_EXACT_SHA: 979592ef8bfe3318bf5fd12043da17e635dcad1a
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Exact runner/product SHA assertion
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$E2E_EXPECTED_SHA"
+          git cat-file -e "$E2E_PRODUCT_EXACT_SHA^{commit}"
+          echo "runnerExactSha=$ACTUAL"
+          echo "productExactSha=$E2E_PRODUCT_EXACT_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+            miniapp/package-lock.json
+            enterprise-portal/package-lock.json
+            e2e/package-lock.json
+
+      - name: Install runtime/build dependencies
+        run: |
+          set -euo pipefail
+          pip install -r backend/requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y nginx
+          python - <<'PY' >> "$GITHUB_ENV"
+          from cryptography.fernet import Fernet
+          print('FIELD_ENCRYPTION_KEY=' + Fernet.generate_key().decode())
+          print('SENSITIVE_SEARCH_HMAC_KEY=s1-isolated-search-hmac-20260825-not-production')
+          PY
+
+      - name: Migrate isolated MySQL and seed canonical accounts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(python -m alembic heads | grep -c '(head)')" = '1'
+          python -m alembic upgrade head
+          python -m alembic current
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start temporary seed backend only
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/s1-seed-backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/s1-seed-backend.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/s1-seed-backend.log
+          exit 1
+
+      - name: Seed only the ten S1 smoke prerequisites
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+          python scripts/e2e_seed_internship_sandbox.py
+          python scripts/e2e_seed_internship_application_sandbox.py
+          python scripts/e2e_seed_internship_enterprise_position_sandbox.py
+          python scripts/e2e_seed_internship_s1_production_runtime.py
+          test -s ../e2e/runtime/internship-fixture.json
+          test -s ../e2e/runtime/internship-application-fixture.json
+          test -s ../e2e/runtime/internship-s1-production-runtime.json
+
+      - name: Stop seed backend before production runtime
+        run: |
+          set -euo pipefail
+          PID="$(cat e2e/runtime-logs/s1-seed-backend.pid)"
+          kill "$PID"
+          for i in {1..30}; do
+            if ! kill -0 "$PID" 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "seed backend did not stop" >&2
+          exit 1
+
+      - name: Build Staff PC production bundle
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ''
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+          test -s dist/index.html
+
+      - name: Build Student PC production bundle
+        working-directory: student-portal
+        env:
+          VITE_BASE: /portal/
+          VITE_API_BASE_URL: ''
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+          test -s dist/index.html
+
+      - name: Build Mini H5 and mp-weixin release bundles
+        working-directory: miniapp
+        env:
+          VITE_API_BASE_URL: https://127.0.0.1:8443
+          VITE_USE_MOCK: 'false'
+          VITE_HELP_CENTER_URL: https://127.0.0.1:8443/help
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build:h5
+          npm run build:mp-weixin:release
+          node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/h5
+          node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
+          test -s dist/build/h5/index.html
+          test -s dist/build/mp-weixin/app.json
+
+      - name: Build Enterprise Portal production bundle
+        working-directory: enterprise-portal
+        env:
+          VITE_BASE: /enterprise/
+          VITE_API_BASE_URL: ''
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          node ../scripts/check/scan-fixed-demo-credentials.mjs dist
+          test -s dist/index.html
+
+      - name: Seal production bundles against dev-server leakage
+        run: |
+          set -euo pipefail
+          PATTERN='localhost:(5173|5199|5188|5202|8000)|127\.0\.0\.1:(5173|5199|5188|5202|8000)|VITE_USE_MOCK[=:]["'"'"']?(true|1)'
+          if grep -RInE "$PATTERN" \
+            frontend/dist student-portal/dist enterprise-portal/dist miniapp/dist/build/h5 miniapp/dist/build/mp-weixin; then
+            echo 'production bundle contains dev-server or mock leakage' >&2
+            exit 1
+          fi
+          mkdir -p e2e/runtime/s1-build
+          sha256sum \
+            frontend/dist/index.html \
+            student-portal/dist/index.html \
+            miniapp/dist/build/h5/index.html \
+            miniapp/dist/build/mp-weixin/app.json \
+            enterprise-portal/dist/index.html \
+            | tee e2e/runtime/s1-build/sha256.txt
+
+      - name: Stage four production sites for nginx
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/s1-runtime
+          mkdir -p /tmp/s1-runtime/www/{pc,portal,miniapp,enterprise} /tmp/s1-runtime/tls
+          cp -a frontend/dist/. /tmp/s1-runtime/www/pc/
+          cp -a student-portal/dist/. /tmp/s1-runtime/www/portal/
+          cp -a miniapp/dist/build/h5/. /tmp/s1-runtime/www/miniapp/
+          cp -a enterprise-portal/dist/. /tmp/s1-runtime/www/enterprise/
+          chmod -R a+rX /tmp/s1-runtime
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout /tmp/s1-runtime/tls/server.key \
+            -out /tmp/s1-runtime/tls/server.crt \
+            -subj '/CN=127.0.0.1' \
+            -addext 'subjectAltName=IP:127.0.0.1'
+
+      - name: Start production-mode FastAPI with two uvicorn workers
+        run: |
+          set -euo pipefail
+          cd backend
+          nohup env \
+            APP_ENV=production \
+            DEPLOYMENT_MODE=production \
+            DEBUG=false \
+            MOCK_LOGIN_ENABLED=false \
+            DB_ENABLED=true \
+            DATABASE_URL="$DATABASE_URL" \
+            TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+            DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" DB_NAME="$DB_NAME" \
+            REDIS_URL="$REDIS_URL" REDIS_KEY_PREFIX="internship-s1-prod" \
+            JWT_SECRET='internship-s1-production-runtime-strong-jwt-secret-20260825' \
+            JWT_SECRET_KEY='' \
+            FIELD_ENCRYPTION_KEY="$FIELD_ENCRYPTION_KEY" \
+            SENSITIVE_SEARCH_HMAC_KEY="$SENSITIVE_SEARCH_HMAC_KEY" \
+            INTERNAL_OPS_TOKEN='internship-s1-ops-token-20260825' \
+            CORS_ORIGINS='https://127.0.0.1:8443' \
+            TRUSTED_PROXY_IPS='127.0.0.1/32' \
+            MULTI_INSTANCE=true \
+            WEB_CONCURRENCY=2 \
+            SCHEDULER_MODE=external \
+            SMS_ENABLED=false \
+            ALLOW_LOCAL_REDIS_IN_PRODUCTION=true \
+            uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=127.0.0.1 \
+            > ../e2e/runtime-logs/s1-production-backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/s1-production-backend.pid
+          for i in {1..90}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/s1-production-backend.log
+          exit 1
+
+      - name: Seal production backend flags and worker count
+        run: |
+          set -euo pipefail
+          PID="$(cat e2e/runtime-logs/s1-production-backend.pid)"
+          for i in {1..30}; do
+            CHILDREN="$(pgrep -P "$PID" | wc -l | tr -d ' ')"
+            if [ "$CHILDREN" -ge 2 ]; then break; fi
+            sleep 1
+          done
+          CHILDREN="$(pgrep -P "$PID" | wc -l | tr -d ' ')"
+          echo "uvicorn master=$PID directChildren=$CHILDREN"
+          ps -ef | grep -E '[u]vicorn|spawn_main' | tee e2e/runtime-logs/s1-worker-processes.log
+          test "$CHILDREN" -ge 2
+          grep -q 'deployment=production app_env=production is_prod=True mock_login=False db_enabled=True scheduler=external multi_instance=True' \
+            e2e/runtime-logs/s1-production-backend.log
+          test "$(curl -sS -o /tmp/s1-docs -w '%{http_code}' http://127.0.0.1:8000/docs)" = '404'
+          curl -fsS http://127.0.0.1:8000/health | tee e2e/runtime/s1-build/production-health.json
+          if grep -q '"env"' e2e/runtime/s1-build/production-health.json; then
+            echo 'production health leaked environment details' >&2
+            exit 1
+          fi
+
+      - name: Configure nginx TLS and production BASE_PATH/API proxy
+        run: |
+          set -euo pipefail
+          sudo rm -f /etc/nginx/sites-enabled/default
+          cat > /tmp/s1-nginx.conf <<'NGINX'
+          server {
+            listen 8080;
+            server_name 127.0.0.1;
+            return 301 https://127.0.0.1:8443$request_uri;
+          }
+          server {
+            listen 8443 ssl;
+            server_name 127.0.0.1;
+            ssl_certificate /tmp/s1-runtime/tls/server.crt;
+            ssl_certificate_key /tmp/s1-runtime/tls/server.key;
+            client_max_body_size 100m;
+
+            location /api/ {
+              proxy_pass http://127.0.0.1:8000;
+              proxy_http_version 1.1;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto https;
+            }
+            location /enterprise/ {
+              alias /tmp/s1-runtime/www/enterprise/;
+              try_files $uri $uri/ /enterprise/index.html;
+            }
+            location /miniapp/ {
+              alias /tmp/s1-runtime/www/miniapp/;
+              try_files $uri $uri/ /miniapp/index.html;
+            }
+            location /portal/ {
+              alias /tmp/s1-runtime/www/portal/;
+              try_files $uri $uri/ /portal/index.html;
+            }
+            location / {
+              root /tmp/s1-runtime/www/pc;
+              try_files $uri $uri/ /index.html;
+            }
+          }
+          NGINX
+          sudo cp /tmp/s1-nginx.conf /etc/nginx/conf.d/internship-s1.conf
+          sudo nginx -t
+          sudo nginx
+          curl -ksS https://127.0.0.1:8443/ >/dev/null
+          curl -ksS https://127.0.0.1:8443/portal/login >/dev/null
+          curl -ksS https://127.0.0.1:8443/miniapp/ >/dev/null
+          curl -ksS https://127.0.0.1:8443/enterprise/login >/dev/null
+          curl -ksS https://127.0.0.1:8443/api/v1/health >/dev/null || true
+          CODE="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/portal/login)"
+          test "$CODE" = '301'
+          sudo nginx -T > e2e/runtime-logs/s1-nginx-effective.conf 2>&1
+
+      - name: Install Playwright Chromium
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run exactly ten S1 production-runtime smokes
+        working-directory: e2e
+        run: >-
+          npx playwright test
+          specs/internship-s1-production-runtime.spec.mjs
+          --config=playwright.s1.config.mjs
+          --workers=1
+
+      - name: Emit S1 exact-head seal candidate
+        if: success()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          payload = {
+              'gate': 'S1',
+              'status': 'PASS',
+              'productExactSha': os.environ['E2E_PRODUCT_EXACT_SHA'],
+              'runnerExactSha': os.environ['E2E_EXPECTED_SHA'],
+              'productionBuilds': ['Staff PC', 'Student PC', 'Teacher/Student Mini H5', 'mp-weixin', 'Enterprise Portal'],
+              'reverseProxy': 'nginx',
+              'https': True,
+              'selfSignedTlsOnlyInIsolatedCI': True,
+              'mockLoginEnabled': False,
+              'debug': False,
+              'schedulerMode': 'external',
+              'webWorkers': 2,
+              'representativeSmokes': 10,
+          }
+          out = Path('e2e/runtime/s1-seal.json')
+          out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload S1 browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-s1-browser-evidence-${{ github.run_id }}
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            e2e/runtime/s1-seal.json
+            e2e/runtime/s1-build/
+            e2e/runtime/internship-s1-production-runtime.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload S1 runtime logs and native build handoff
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-s1-runtime-${{ github.run_id }}
+          path: |
+            e2e/runtime-logs/s1-*.log
+            e2e/runtime-logs/s1-nginx-effective.conf
+            miniapp/dist/build/mp-weixin/
+          if-no-files-found: warn
+          retention-days: 14

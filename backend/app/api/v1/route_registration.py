@@ -95,21 +95,23 @@ def register_core_routes(api_router: APIRouter) -> None:
 
 def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
     from app.modules.internship.routers import (
-        internship, internship_agreement_template, internship_application, internship_archive,
+        internship, internship_agreement_document, internship_agreement_template, internship_application, internship_archive,
         internship_communication, internship_complaint, internship_compliance,
         internship_enterprise_collaboration, internship_enterprise_eval_versioned,
-        internship_enterprise_portal, internship_insurance, internship_match, internship_material_center,
-        internship_participant, internship_plan, internship_position, internship_process,
-        internship_recruitment_campaign, internship_stats, internship_student, internship_visit_plan,
+        internship_enterprise_portal, internship_guardian_consent_delivery, internship_insurance,
+        internship_match, internship_material_center, internship_participant, internship_plan,
+        internship_position, internship_process, internship_recruitment_campaign, internship_stats,
+        internship_student, internship_visit_plan,
     )
     d = deps["intern"]
     api_router.include_router(internship_material_center.router, dependencies=d)
     for r in (
-        internship, internship_position, internship_agreement_template, internship_student,
+        internship, internship_position, internship_agreement_document, internship_agreement_template, internship_student,
         internship_match, internship_participant, internship_application, internship_archive,
         internship_stats, internship_plan, internship_insurance, internship_process,
         internship_communication, internship_visit_plan, internship_complaint, internship_compliance,
-        internship_enterprise_eval_versioned, internship_recruitment_campaign,
+        internship_guardian_consent_delivery, internship_enterprise_eval_versioned,
+        internship_recruitment_campaign,
     ):
         api_router.include_router(r.router, dependencies=d)
 

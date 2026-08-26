@@ -148,7 +148,10 @@ export default {
       if (!this.form.title) { this.formError = '岗位名称必填'; return }
       this.submitting = true
       try {
-        const res = await positionApi.updatePosition(this.detail.id, this.form)
+        const res = await positionApi.updatePosition(this.detail.id, {
+          ...this.form,
+          expectedVersion: this.detail.version
+        })
         if (res.code === 0) { toast.success('已保存'); this.editVisible = false; this.load() } else this.formError = res.message
       } finally { this.submitting = false }
     },

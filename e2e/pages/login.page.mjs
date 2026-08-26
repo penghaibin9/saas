@@ -135,6 +135,10 @@ export class StudentLoginPage {
     this.lastAccessToken = accessTokenFromEnvelope(await response.json())
     expect(this.lastAccessToken, 'student browser-login must return an in-memory access token').toBeTruthy()
     await this.page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 60_000 })
+    // Browser First specs often deep-link immediately after login. Let the portal's initial
+    // auth/bootstrap traffic settle first so a hard navigation cannot abort a refresh-token
+    // rotation after the backend has already consumed the old HttpOnly cookie.
+    await this.page.waitForLoadState('networkidle', { timeout: 60_000 })
   }
 }
 
