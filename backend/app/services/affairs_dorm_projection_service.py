@@ -95,13 +95,10 @@ def project_transfer_items(items, user):
         node = str(item.get("currentNode") or item.get("status") or "")
         assigned_to_current = uid > 0 and pending_assignees.get(transfer_id) == uid
         can_review = False
-        if node in dorm.TRANSFER_NODES:
-            if context.scope_type == "TENANT_ALL":
-                can_review = True
-            elif node == "COUNSELOR_REVIEW" and context.scope_type in ("CLASS", "COLLEGE"):
-                can_review = assigned_to_current
-            elif node == "DORM_MANAGER_REVIEW" and context.scope_type == "DORM_BUILDING":
-                can_review = assigned_to_current
+        if node == "COUNSELOR_REVIEW" and context.scope_type == "CLASS":
+            can_review = assigned_to_current
+        elif node == "DORM_MANAGER_REVIEW" and context.scope_type == "DORM_BUILDING":
+            can_review = assigned_to_current
 
         item.update({
             "fromBuildingName": from_building.building_name if from_building else "",
