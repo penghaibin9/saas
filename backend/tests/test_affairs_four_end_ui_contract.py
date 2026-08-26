@@ -26,7 +26,10 @@ def test_dorm_transfer_projection_exposes_human_readable_approval_evidence():
     ):
         assert field in source
     assert 'node = str(item.get("currentNode") or item.get("status") or "")' in source
-    assert 'if node in dorm.TRANSFER_NODES:' in source
+    assert 'if node == "COUNSELOR_REVIEW" and context.scope_type == "CLASS":' in source
+    assert 'elif node == "DORM_MANAGER_REVIEW" and context.scope_type == "DORM_BUILDING":' in source
+    assert 'can_review = assigned_to_current' in source
+    assert '"allowedActions": ["APPROVE", "REJECT"] if can_review else []' in source
 
 
 def test_pc_and_mobile_dorm_approval_require_source_target_and_version():

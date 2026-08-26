@@ -64,9 +64,12 @@ def _seed(db_mode):
             row.is_deleted = False
 
     counselor = ensure_user("counselor01", "王莉")
+    counselor_b = ensure_user("counselor02", "李老师")
     college_reviewer = ensure_user("leave_college01", "学院学工受理人")
     sa_reviewer = ensure_user("leave_sa01", "学工处受理人")
-    bind(counselor, ensure_role("COUNSELOR", "辅导员"))
+    counselor_role = ensure_role("COUNSELOR", "辅导员")
+    bind(counselor, counselor_role)
+    bind(counselor_b, counselor_role)
     bind(college_reviewer, ensure_role("COLLEGE_ADMIN", "学院管理员"))
     bind(sa_reviewer, ensure_role("STUDENT_AFFAIRS_ADMIN", "学工处管理员"))
 
@@ -87,7 +90,7 @@ def _seed(db_mode):
     )
     b = SchoolClass(
         tenant_id=TID, major_id=major.id, class_name="B班", grade="2024",
-        counselor_id=counselor.id, status="ACTIVE",
+        counselor_id=counselor_b.id, status="ACTIVE",
     )
     db.add_all([a, b])
     db.flush()
@@ -110,7 +113,7 @@ def _seed(db_mode):
             duty_type="PRIMARY", status="ACTIVE", effective_from=effective,
         ),
         AffairsCounselorAssignment(
-            tenant_id=TID, class_id=b.id, user_id=counselor.id,
+            tenant_id=TID, class_id=b.id, user_id=counselor_b.id,
             duty_type="PRIMARY", status="ACTIVE", effective_from=effective,
         ),
         TeacherStudentScope(
