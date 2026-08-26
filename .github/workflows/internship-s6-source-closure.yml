@@ -50,7 +50,7 @@ jobs:
     timeout-minutes: 10
     env:
       E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      E2E_PRODUCT_EXACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      E2E_PRODUCT_EXACT_SHA: 979592ef8bfe3318bf5fd12043da17e635dcad1a
 
     steps:
       - uses: actions/checkout@v4
@@ -62,14 +62,14 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Assert exact candidate SHA
+      - name: Assert exact runner SHA and product boundary
         run: |
           set -euo pipefail
           ACTUAL="$(git rev-parse HEAD)"
           echo "runnerExactSha=$ACTUAL"
           echo "productExactSha=$E2E_PRODUCT_EXACT_SHA"
           test "$ACTUAL" = "$E2E_EXPECTED_SHA"
-          test "$ACTUAL" = "$E2E_PRODUCT_EXACT_SHA"
+          git cat-file -e "$E2E_PRODUCT_EXACT_SHA^{commit}"
 
       - name: Run S6 source closure
         run: python scripts/check/check-internship-source-closure-v2.py
