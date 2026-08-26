@@ -93,10 +93,17 @@ def _grant_eligibility_snapshot(db, application) -> dict | None:
 
     from app.models import FundingBatch, FundingProject
 
-    batch = tenant_get(db, FundingBatch, int(application.batch_id)) if application.batch_id else None
+    tenant_id = _tid()
+    batch = (
+        tenant_get(db, FundingBatch, int(application.batch_id), tenant_id=tenant_id)
+        if application.batch_id else None
+    )
     if not batch or batch.is_deleted:
         raise _GrantEligibilityChanged("助学资格复核失败：资助批次不存在或已失效")
-    project = tenant_get(db, FundingProject, int(batch.project_id)) if batch.project_id else None
+    project = (
+        tenant_get(db, FundingProject, int(batch.project_id), tenant_id=tenant_id)
+        if batch.project_id else None
+    )
     if not project or project.is_deleted:
         raise _GrantEligibilityChanged("助学资格复核失败：资助项目不存在或已失效")
 
@@ -210,7 +217,10 @@ def scan_publicity() -> dict:
                 skipped_appeal += 1
                 continue
 
-            batch = tenant_get(db, FundingBatch, int(application.batch_id)) if application.batch_id else None
+            batch = (
+                tenant_get(db, FundingBatch, int(application.batch_id), tenant_id=tenant_id)
+                if application.batch_id else None
+            )
             if not batch or batch.is_deleted:
                 invalid_batch += 1
                 continue
