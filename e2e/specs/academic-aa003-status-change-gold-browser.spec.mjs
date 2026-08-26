@@ -19,10 +19,17 @@ const MINIAPP_BASE = 'http://127.0.0.1:5190'
 const originalReason = 'AA-003浏览器真实休学申请初次事由'
 const returnReason = 'AA-003材料需要补充后重新提交'
 const modifiedReason = 'AA-003补充材料后修改事由并重交原申请'
+const counselorAccount = {
+  tenant: config.mentor.tenant,
+  username: 'aa003_counselor',
+  password: config.mentor.password,
+  role: 'COUNSELOR',
+}
 const collegeAccount = {
   tenant: config.multiRole.tenant,
-  username: 'e2e_college_secretary',
+  username: 'aa003_college_admin',
   password: config.multiRole.password,
+  role: 'COLLEGE_ADMIN',
 }
 const secondStudent = {
   tenant: config.student.tenant,
@@ -102,7 +109,7 @@ async function closeServer(server) {
   await new Promise((resolve) => server.close(resolve))
 }
 
-async function loginTeacherMini(page, account = config.mentor) {
+async function loginTeacherMini(page, account) {
   await page.goto(`${MINIAPP_BASE}/#/pages/login/teacher/index`)
   const fields = page.getByRole('textbox')
   await fields.nth(0).fill(account.username)
@@ -110,7 +117,15 @@ async function loginTeacherMini(page, account = config.mentor) {
   await page.getByText('填写', { exact: true }).click()
   await fields.nth(2).fill(account.tenant)
   await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
+  const loginResponsePromise = page.waitForResponse((response) =>
+    response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
+  )
   await page.getByText('进入教师工作台', { exact: true }).click()
+  const loginResponse = await loginResponsePromise
+  const loginPayload = await loginResponse.json()
+  expect(loginResponse.ok(), JSON.stringify(loginPayload)).toBeTruthy()
+  expect(loginPayload.code, JSON.stringify(loginPayload)).toBe(0)
+  expect(loginPayload?.data?.currentRole?.roleCode).toBe(account.role)
   await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 30_000 })
 }
 
@@ -155,7 +170,7 @@ async function teacherMiniAction(page, facts, action, reason = '') {
   const buttonLabel = action === 'RETURN' ? '退回' : '通过'
   const responsePromise = page.waitForResponse((response) =>
     response.request().method() === 'POST' &&
-    response.url().includes(`/api/v1/mobile/teacher/academic/status-changes/`) &&
+    response.url().includes('/api/v1/mobile/teacher/academic/status-changes/') &&
     response.url().endsWith('/review')
   , { timeout: 20_000 })
   await card.getByText(buttonLabel, { exact: true }).click()
@@ -188,7 +203,7 @@ async function staffApprove(page, account, rolePattern, facts, expectedNode) {
 
   const responsePromise = page.waitForResponse((response) =>
     response.request().method() === 'POST' &&
-    response.url().includes(`/api/v1/academic-affairs/status-changes/`) &&
+    response.url().includes('/api/v1/academic-affairs/status-changes/') &&
     response.url().endsWith('/review')
   , { timeout: 20_000 })
   await row.getByText('通过', { exact: true }).click()
@@ -245,11 +260,11 @@ test('AA-003 real four-surface RETURN -> same-case resubmit -> effective', async
     outcome.initialStatus = submitPayload.data.status
     await screenshot(studentPc, testInfo, '01-student-pc-submitted')
 
-    // 2) Teacher Mini: real RETURN button with editable modal reason.
+    // 2) Teacher Mini: formal COUNSELOR identity uses the real RETURN button.
     const teacherContext = await browser.newContext()
     contexts.push(teacherContext)
     const teacherMini = await teacherContext.newPage()
-    await loginTeacherMini(teacherMini)
+    await loginTeacherMini(teacherMini, counselorAccount)
     const returned = await teacherMiniAction(teacherMini, facts, 'RETURN', returnReason)
     expect(String(returned?.changeId || '')).toBe(changeId)
     expect(returned?.status).toBe('RETURNED')
@@ -332,7 +347,7 @@ test('AA-003 real four-surface RETURN -> same-case resubmit -> effective', async
     expect(duplicatePayload.code, JSON.stringify(duplicatePayload)).not.toBe(0)
     outcome.duplicateResubmitRejected = true
 
-    // 4) Teacher Mini: the same counselor sees the reopened same case and approves it.
+    // 4) The same formal COUNSELOR sees the reopened original case and approves it.
     const counselorApproved = await teacherMiniAction(teacherMini, facts, 'APPROVE')
     expect(String(counselorApproved?.changeId || '')).toBe(changeId)
     expect(counselorApproved?.status).toBe('IN_REVIEW')
@@ -340,14 +355,14 @@ test('AA-003 real four-surface RETURN -> same-case resubmit -> effective', async
     outcome.counselorApproved = true
     await screenshot(teacherMini, testInfo, '04-teacher-mini-approved-resubmitted-case')
 
-    // 5) Staff PC: real college secretary approves the same row.
+    // 5) Staff PC: formal COLLEGE_ADMIN approves the same row.
     const collegeContext = await browser.newContext()
     contexts.push(collegeContext)
     const collegePage = await collegeContext.newPage()
     const collegeApproved = await staffApprove(
       collegePage,
       collegeAccount,
-      /学院|GD_COLLEGE_ADMIN/,
+      /学院管理员|COLLEGE_ADMIN/,
       facts,
       'COLLEGE_REVIEW',
     )
@@ -357,7 +372,7 @@ test('AA-003 real four-surface RETURN -> same-case resubmit -> effective', async
     outcome.collegeApproved = true
     await screenshot(collegePage, testInfo, '05-staff-pc-college-approved')
 
-    // 6) Staff PC: academic office final approval makes the same case effective atomically.
+    // 6) Staff PC: ACADEMIC_ADMIN final approval makes the same case effective atomically.
     const officeContext = await browser.newContext()
     contexts.push(officeContext)
     const officePage = await officeContext.newPage()
