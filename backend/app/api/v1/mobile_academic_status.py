@@ -1,7 +1,7 @@
-"""移动教师端·学籍异动审批路由补齐。
+"""移动端·学籍异动审批与退回重交补齐。
 
-业务逻辑、节点权限、数据范围与审计全部复用 ``mobile_teacher_service``；本模块只补齐
-小程序 realApi 已正式消费、但历史 mobile 聚合 Router 漏注册的两个 HTTP 合同。
+教师审批继续复用 ``mobile_teacher_service``；学生退回重交只恢复原 AaStatusChange / 原
+workflow instance，不新建第二张异动单。两类补充路由都挂在既有 /mobile 聚合边界。
 """
 from __future__ import annotations
 
@@ -10,8 +10,18 @@ from fastapi import APIRouter, Body, Depends
 from app.core.response import success
 from app.core.security import get_current_user
 from app.services import mobile_teacher_service as tea
+from app.modules.academic_affairs.services import academic_affairs_change_resubmit_service as resubmit
 
 router = APIRouter(prefix="/mobile", tags=["移动端聚合"])
+
+
+@router.post("/academic/status-changes/{change_id}/resubmit", summary="学籍异动·退回后修改重交原单")
+def student_academic_status_change_resubmit(
+    change_id: str,
+    body: dict = Body(default={}),
+    user=Depends(get_current_user),
+):
+    return success(resubmit.resubmit_my(user, change_id, body or {}), message="已重交")
 
 
 @router.get("/teacher/academic/status-changes/pending", summary="学籍异动·待我审批")
