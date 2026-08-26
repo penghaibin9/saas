@@ -168,16 +168,18 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           source = Path('tests/graduation_material_center_mysql_acceptance.py').read_text(encoding='utf-8')
-          old = '''    user = {"userId": "1", "realName": "材料域验收管理员", "currentRoleCode": "SCHOOL_ADMIN",
-                  "userType": "ADMIN", "permissions": ["*"]}
-'''
-          new = '''    from app.core.security import decode_token
-              from app.services.auth_service_db import login_with_password
-              login = login_with_password("admin", "123456", tenant_code="demo-school", client_type="PC")
-              user = decode_token(login["accessToken"])
-              assert user.get("currentRoleCode") == "SCHOOL_ADMIN", user
-              assert user.get("tenantId") == str(tenant_id), user
-'''.replace('              ', '    ')
+          old = (
+              '    user = {"userId": "1", "realName": "材料域验收管理员", "currentRoleCode": "SCHOOL_ADMIN",\n'
+              '            "userType": "ADMIN", "permissions": ["*"]}\n'
+          )
+          new = (
+              '    from app.core.security import decode_token\n'
+              '    from app.services.auth_service_db import login_with_password\n'
+              '    login = login_with_password("admin", "123456", tenant_code="demo-school", client_type="PC")\n'
+              '    user = decode_token(login["accessToken"])\n'
+              '    assert user.get("currentRoleCode") == "SCHOOL_ADMIN", user\n'
+              '    assert user.get("tenantId") == str(tenant_id), user\n'
+          )
           assert old in source, 'legacy acceptance user fixture changed; refuse blind overlay'
           target = Path('/tmp/graduation_material_center_release_acceptance.py')
           target.write_text(source.replace(old, new, 1), encoding='utf-8')
