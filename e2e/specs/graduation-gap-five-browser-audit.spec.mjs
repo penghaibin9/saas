@@ -91,7 +91,7 @@ test.describe.serial('毕业设计剩余五项精准 Browser First · GD-012/016
       await expect(task).toContainText(/定稿/)
       await expect(task.getByRole('button', { name: '查看任务定稿', exact: true })).toBeEnabled()
       await task.getByPlaceholder('互查意见（至少 5 字）').fill('GD-012 Browser First：冻结定稿内容完整，但建议补充实施风险说明。')
-      const reviewPromise = reviewer.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/gd-peer-reviews\/\d+\/submit$/.test(new URL(r.url()).pathname))
+      const reviewPromise = reviewer.waitForResponse((r) => r.request().method() === 'POST' && /\/mobile\/graduation\/peer\/\d+\/submit$/.test(new URL(r.url()).pathname))
       await task.getByRole('button', { name: '提交互查意见', exact: true }).click()
       const reviewed = await reviewPromise
       expect(reviewed.ok(), `peer review HTTP ${reviewed.status()}`).toBeTruthy()
@@ -105,7 +105,7 @@ test.describe.serial('毕业设计剩余五项精准 Browser First · GD-012/016
       await expect(rectify).toBeVisible({ timeout: 20000 })
       await expect(rectify).toContainText('GD-012 Browser First')
       await rectify.getByPlaceholder('整改说明（至少 5 字）').fill('已补充实施风险说明并逐项核对正式定稿，完成本次成果互查整改。')
-      const rectifyPromise = target.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/gd-peer-reviews\/\d+\/rectify$/.test(new URL(r.url()).pathname))
+      const rectifyPromise = target.waitForResponse((r) => r.request().method() === 'POST' && /\/mobile\/graduation\/peer\/\d+\/rectify$/.test(new URL(r.url()).pathname))
       await rectify.getByRole('button', { name: /提交整改|完成整改/ }).click()
       const rectified = await rectifyPromise
       expect(rectified.ok(), `peer rectify HTTP ${rectified.status()}`).toBeTruthy()
@@ -190,6 +190,7 @@ test.describe.serial('毕业设计剩余五项精准 Browser First · GD-012/016
 
     const acceptPromise = page.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/gd-risks\/\d+\/accept$/.test(new URL(r.url()).pathname))
     await page.getByRole('button', { name: '受理', exact: true }).click()
+    await confirmVisibleDialog(page, '')
     const accepted = await acceptPromise
     expect(accepted.ok()).toBeTruthy()
     expect((await accepted.json()).data?.status).toBe('PROCESSING')
