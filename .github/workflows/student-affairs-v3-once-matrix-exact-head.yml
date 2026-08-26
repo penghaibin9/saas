@@ -1,0 +1,272 @@
+name: Student Affairs V3 one-shot exact-head matrix
+
+on:
+  push:
+    branches:
+      - audit/student-affairs-browser-runner-20260823
+    paths:
+      - 'audit-tests/student-affairs-v3-matrix.py'
+      - '.github/workflows/student-affairs-v3-once-matrix-exact-head.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: student-affairs-v3-once-matrix
+  cancel-in-progress: true
+
+env:
+  PRODUCT_EXACT_SHA: 4c41f48431d6c2df1afeddfe9552b8dbcea2e0bc
+  CI: 'true'
+  PYTHONPATH: .
+  APP_ENV: test
+  DEPLOYMENT_MODE: local
+  TRUSTED_PROXY_IPS: 127.0.0.1/32
+  DB_ENABLED: 'true'
+  DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+  TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+  DB_HOST: 127.0.0.1
+  DB_PORT: '3306'
+  DB_USER: root
+  DB_PASSWORD: e2e_root
+  DB_NAME: student_lifecycle_e2e
+  REDIS_URL: redis://127.0.0.1:6379/12
+  REDIS_KEY_PREFIX: student-affairs-v3-once
+  REDIS_CONNECT_TIMEOUT: '2'
+  REDIS_SOCKET_TIMEOUT: '2'
+  JWT_SECRET: student-affairs-v3-once-only
+  JWT_SECRET_KEY: student-affairs-v3-once-only
+  MOCK_LOGIN_ENABLED: 'false'
+  SMS_ENABLED: 'false'
+  SCHEDULER_MODE: external
+  E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+  E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+  E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+  E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+  E2E_MINIAPP_BASE_URL: http://127.0.0.1:5188
+
+jobs:
+  once-matrix:
+    name: SA-001..SA-022 / real apps / MySQL / conservative markers
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    steps:
+      - name: Checkout audit runner only
+        uses: actions/checkout@v4
+        with:
+          ref: audit/student-affairs-browser-runner-20260823
+          path: runner
+          fetch-depth: 1
+
+      - name: Checkout immutable product exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_EXACT_SHA }}
+          path: app
+          fetch-depth: 0
+
+      - name: Assert immutable product exact head
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git -C app rev-parse HEAD)"
+          echo "productExactSha=$ACTUAL"
+          test "$ACTUAL" = "$PRODUCT_EXACT_SHA"
+          test -z "$(git -C app status --porcelain)"
+          mkdir -p app/audit-evidence app/e2e/runtime-logs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: app/backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            app/frontend/package-lock.json
+            app/student-portal/package-lock.json
+            app/miniapp/package-lock.json
+            app/e2e/package.json
+
+      - name: Install backend and migrate isolated MySQL
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          alembic upgrade head
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start real backend and outbox worker
+        run: |
+          set -euo pipefail
+          cd app/backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8000/health >/dev/null
+          nohup python -c "import time; from scripts.run_scheduled_jobs import job_delivery_and_outbox; exec('while True:\\n    job_delivery_and_outbox()\\n    time.sleep(2)')" > ../e2e/runtime-logs/message-delivery.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/message-delivery.pid
+
+      - name: Bootstrap canonical Student Affairs actors and organization
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_student_affairs_accounts.py
+          test -s tmp/e2e_student_affairs_credentials.local.json
+          test -s tmp/e2e_student_affairs_state.local.json
+
+      - name: Start Staff PC, Student PC and Teacher Mini H5
+        run: |
+          set -euo pipefail
+          cd app/frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          cd ../student-portal
+          npm ci
+          VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+          cd ../miniapp
+          npm ci
+          VITE_USE_MOCK=false VITE_API_BASE_URL=http://127.0.0.1:8000 nohup npm run dev:h5 -- --host 127.0.0.1 --port 5188 > ../e2e/runtime-logs/miniapp.log 2>&1 &
+
+      - name: Wait for real browser applications
+        run: |
+          set -euo pipefail
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://127.0.0.1:5188/; do
+            ok=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ok" ]; then
+              echo "Application not ready: $url"
+              cat app/e2e/runtime-logs/*.log || true
+              exit 1
+            fi
+          done
+
+      - name: Install Playwright Chromium
+        working-directory: app/e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Broad real-browser Student Affairs screening
+        id: browser
+        continue-on-error: true
+        working-directory: app/e2e
+        env:
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: ../audit-evidence/browser-junit.xml
+        run: |
+          set +e
+          npx playwright test \
+            specs/golden-rollout-student-affairs-*.spec.mjs \
+            specs/golden-rollout-risk-workspaces.spec.mjs \
+            specs/golden-rollout-student-360.spec.mjs \
+            --reporter=junit 2>&1 | tee ../audit-evidence/browser.log
+          rc=${PIPESTATUS[0]}
+          echo "$rc" > ../audit-evidence/browser.rc
+          exit "$rc"
+
+      - name: API-level multi-role business screening
+        id: api
+        continue-on-error: true
+        working-directory: app/backend
+        run: |
+          set +e
+          python scripts/e2e_student_affairs_acceptance.py 2>&1 | tee ../audit-evidence/api-e2e.log
+          rc=${PIPESTATUS[0]}
+          echo "$rc" > ../audit-evidence/api.rc
+          exit "$rc"
+
+      - name: Full Student Affairs backend screening
+        id: backend
+        continue-on-error: true
+        working-directory: app/backend
+        run: |
+          set +e
+          pytest -q tests/test_affairs_*.py tests/test_student_affairs_final_acceptance_mysql.py \
+            --junitxml=../audit-evidence/backend-junit.xml 2>&1 | tee ../audit-evidence/backend.log
+          rc=${PIPESTATUS[0]}
+          echo "$rc" > ../audit-evidence/backend.rc
+          exit "$rc"
+
+      - name: Build SA-001..SA-022 conservative matrix
+        id: matrix
+        continue-on-error: true
+        run: |
+          python runner/audit-tests/student-affairs-v3-matrix.py \
+            --evidence-dir app/audit-evidence \
+            --product-sha "$PRODUCT_EXACT_SHA" \
+            --output-json app/audit-evidence/student-affairs-v3-matrix.json \
+            --output-md app/audit-evidence/student-affairs-v3-matrix.md
+
+      - name: Print matrix to job summary
+        if: always()
+        run: |
+          if [ -f app/audit-evidence/student-affairs-v3-matrix.md ]; then
+            cat app/audit-evidence/student-affairs-v3-matrix.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'matrix missing' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload one-shot matrix and raw evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-v3-once-matrix-${{ github.run_id }}
+          path: |
+            app/audit-evidence/
+            app/e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 21
+
+      - name: Enforce V3 closure
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('app/audit-evidence/student-affairs-v3-matrix.json')
+          if not p.exists():
+              raise SystemExit('V3 matrix missing')
+          d = json.loads(p.read_text(encoding='utf-8'))
+          print('screeningCounts=', d['screeningCounts'])
+          print('closureCounts=', d['counts'])
+          bad = [x for x in d['flows'] if x['status'] != 'REAL_PASS']
+          for x in bad:
+              print(x['code'], x['name'], x['screening'], x['status'], x['blocker'])
+          if bad:
+              raise SystemExit(f'NO_GO: {len(bad)}/22 flows are not current-head REAL_PASS')
+          PY
