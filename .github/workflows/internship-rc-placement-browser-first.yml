@@ -28,6 +28,7 @@ on:
       - 'miniapp/src/pages/student/internship/index.vue'
       - 'miniapp/src/components/login/MiniLoginAuthPanel.vue'
       - 'e2e/specs/internship-placement-assignment-audit.spec.mjs'
+      - 'e2e/lib/internship-enterprise-position-browser.mjs'
       - '.github/actions/internship-e2e-*/**'
       - '.github/workflows/internship-rc-placement-browser-first.yml'
   workflow_dispatch:
