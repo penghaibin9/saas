@@ -63,15 +63,16 @@ def list_students(
     has_defense_group=None,
     grad_qual_status=None,
     material_complete=None,
+    final_status=None,
     archive_view=None,
 ) -> tuple[list[dict], int]:
     from app.modules.graduation.services import graduation_student_service as svc
 
     tenant_id = _tid()
     proposal_status = _latest_status(GraduationProposal)
-    final_status = _latest_status(GraduationFinal)
+    final_status_expr = _latest_status(GraduationFinal)
     proposal_current = func.coalesce(proposal_status, "NOT_SUBMITTED")
-    final_current = func.coalesce(final_status, "NOT_SUBMITTED")
+    final_current = func.coalesce(final_status_expr, "NOT_SUBMITTED")
 
     filters = [
         GraduationStudent.tenant_id == tenant_id,
@@ -120,6 +121,10 @@ def list_students(
     elif material_complete is False:
         filters.append(or_(proposal_current != "APPROVED", final_current != "APPROVED"))
 
+    requested_final_status = str(final_status or "").strip().upper()
+    if requested_final_status:
+        filters.append(final_current == requested_final_status)
+
     with session() as db:
         filters.append(GraduationStudent.id.in_(
             student_scope_select(db, tenant_id, batch_id=batch_id)
@@ -139,7 +144,7 @@ def list_students(
                 GraduationStudent,
                 GraduationBatch,
                 proposal_status.label("proposal_status"),
-                final_status.label("final_status"),
+                final_status_expr.label("final_status"),
             )
             .outerjoin(GraduationBatch, batch_on)
             .where(*filters)
