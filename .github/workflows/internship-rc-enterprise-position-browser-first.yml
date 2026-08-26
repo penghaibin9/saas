@@ -146,29 +146,8 @@ jobs:
           specs/internship-enterprise-position-lifecycle-audit.spec.mjs
           --workers=1
 
-      - name: Upload IX-003 IX-005 HTML report
+      - name: Upload IX-003 IX-005 browser artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: ./.github/actions/internship-e2e-upload-artifacts
         with:
-          name: internship-rc-ix003-ix005-html-${{ github.run_id }}
-          path: e2e/playwright-report/
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Upload IX-003 IX-005 browser evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: internship-rc-ix003-ix005-evidence-${{ github.run_id }}
-          path: e2e/test-results/
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Upload IX-003 IX-005 service logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: internship-rc-ix003-ix005-service-logs-${{ github.run_id }}
-          path: e2e/runtime-logs/
-          if-no-files-found: warn
-          retention-days: 14
+          artifact-prefix: internship-rc-ix003-ix005
