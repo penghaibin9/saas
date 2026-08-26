@@ -258,7 +258,7 @@ export default {
     canArchivePreview() { return matchPermission(this.permissionPatterns, 'graduationDesign.archive.preview') },
     canArchiveFile() { return matchPermission(this.permissionPatterns, 'graduationDesign.archive.file') },
     canArchiveExport() { return matchPermission(this.permissionPatterns, 'graduationDesign.archive.export') },
-    canStatsView() { return matchPermission(this.permissionPatterns, 'graduationDesign.stats.view') },
+    canStatsView() { return matchPermission(this.permissionPatterns, 'graduationDesign.dashboard.view') },
     canStudentView() { return matchPermission(this.permissionPatterns, 'graduationDesign.student.view') },
     availableTabs() {
       return [
