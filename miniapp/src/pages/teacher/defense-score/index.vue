@@ -65,10 +65,12 @@ function errorText(error) {
 export default {
   data() {
     return {
-      list: null, state: 'loading', loadError: '', expanded: null, drafts: {}, acting: false
+      list: null, state: 'loading', loadError: '', expanded: null, drafts: {}, acting: false,
+      loadToken: 0
     }
   },
   onLoad() { this.load() },
+  onUnload() { ++this.loadToken },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
@@ -76,11 +78,17 @@ export default {
   methods: {
     statusTone(s) { return s === 'CONFIRMED' ? 'success' : s === 'SCORED' ? 'warning' : 'default' },
     load(done) {
+      const token = ++this.loadToken
       this.state = 'loading'
       this.loadError = ''
       teacherApi.getGraduationDefenseScorePending()
-        .then((d) => { this.list = Array.isArray(d) ? d : []; this.state = 'ready' })
+        .then((d) => {
+          if (token !== this.loadToken) return
+          this.list = Array.isArray(d) ? d : []
+          this.state = 'ready'
+        })
         .catch((e) => {
+          if (token !== this.loadToken) return
           this.list = null
           this.loadError = errorText(e)
           this.state = 'error'
@@ -117,11 +125,18 @@ export default {
       }
       this.acting = true
       teacherApi.submitGraduationDefenseScore(d.gdStudentId, body)
-        .then(() => { toast('已保存'); this.expanded = null; this.load() })
+        .then(() => {
+          toast('已保存')
+          this.expanded = null
+          delete this.drafts[d.gdStudentId]
+          this.load()
+        })
         .catch((e) => {
           const code = String(e?.code || '')
           if (code.startsWith('409') || code === 'DATA_CONFLICT') {
             toast(e?.message || '当前状态不可修改，正在刷新')
+            this.expanded = null
+            delete this.drafts[d.gdStudentId]
             this.load()
           } else {
             toast(errorText(e))
