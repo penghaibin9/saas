@@ -163,7 +163,9 @@ async function apiLogin(request, account, clientType = 'PC') {
 }
 
 async function teacherMiniAction(page, facts, action, reason = '') {
-  await page.goto(`${MINIAPP_BASE}/#/pages/teacher/academic-affairs/status-change-review`)
+  const reviewUrl = `${MINIAPP_BASE}/#/pages/teacher/academic-affairs/status-change-review`
+  if (page.url() === reviewUrl) await page.reload()
+  else await page.goto(reviewUrl)
   await expect(page.getByText('学籍异动审批', { exact: true })).toBeVisible({ timeout: 20_000 })
   const card = page.locator('.card.ed').filter({ hasText: facts.studentName }).first()
   await expect(card, `AA-003 ${action} must show target student in Teacher Mini pending list`).toBeVisible({ timeout: 20_000 })
