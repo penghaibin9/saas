@@ -15,7 +15,6 @@
       </div>
     </template>
 
-    <!-- 分类 / 容量概览 -->
     <div v-if="activePanel === 'category' && categoryStats.length" class="mp-stats">
       <button v-for="c in categoryStats.slice(0, 6)" :key="c.category" type="button" class="mp-stat" @click="drillCategory(c.category)">
         <div class="mp-stat__val">{{ c.count }}</div>
@@ -31,7 +30,6 @@
     </div>
 
     <div class="mp-stack">
-      <!-- 页内视图页签：同一题目库的来源/审核/维护视图（原三级菜单入口收口至此，?panel= 深链不变） -->
       <div class="mp-tabs">
         <button
           v-for="p in panelTabs"
@@ -43,14 +41,11 @@
       </div>
       <AdvancedFilter v-if="hasBatch" v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
-      <!-- 内嵌表单/详情：固定在筛选栏下方，替换表格区域 -->
       <router-view v-if="inlineOpen" :ctx="ctx" />
 
       <template v-else>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <!-- 只有「申报类」页签的空态才给出路。requirements/attachments/pending 的空态是好消息
-           （要求已补全 / 附件已挂接 / 没有待审），给按钮等于把「做完了」说成「出问题了」。 -->
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc">
         <template v-if="showCreateEmptyActions" #actions>
           <button class="mp-btn mp-btn--primary" @click="onToolbar('create')">{{ createLabel }}</button>
@@ -130,53 +125,53 @@
               @click="openEdit(row)"
             >编辑</button>
             <button
-              v-if="activePanel === 'capacity' && row.status !== 'ARCHIVED'"
+              v-if="canTopicCreate && activePanel === 'capacity' && row.status !== 'ARCHIVED'"
               class="mp-link"
               style="margin-left: var(--space-2)"
               @click="openCapacity(row)"
             >调容量</button>
             <button
-              v-if="activePanel === 'requirements' && row.status !== 'ARCHIVED'"
+              v-if="canTopicCreate && activePanel === 'requirements' && row.status !== 'ARCHIVED'"
               class="mp-link"
               style="margin-left: var(--space-2)"
               @click="openRequirements(row)"
             >补要求</button>
             <button
-              v-if="activePanel === 'attachments' && row.status !== 'ARCHIVED'"
+              v-if="canTopicCreate && activePanel === 'attachments' && row.status !== 'ARCHIVED'"
               class="mp-link"
               style="margin-left: var(--space-2)"
               @click="openAttachments(row)"
             >管附件</button>
             <button
-              v-if="activePanel === 'category' && row.status !== 'ARCHIVED'"
+              v-if="canTopicCreate && activePanel === 'category' && row.status !== 'ARCHIVED'"
               class="mp-link"
               style="margin-left: var(--space-2)"
               @click="openCategoryEdit(row)"
             >改分类</button>
             <button
-              v-if="row.reviewStatus === 'DRAFT' || row.reviewStatus === 'REJECTED'"
+              v-if="canTopicCreate && (row.reviewStatus === 'DRAFT' || row.reviewStatus === 'REJECTED')"
               class="mp-link"
               style="margin-left: var(--space-2)"
               @click="askSubmitReview(row)"
             >提交审核</button>
-            <template v-if="activePanel === 'pending' && row.reviewStatus === 'PENDING_REVIEW'">
+            <template v-if="canTopicReview && activePanel === 'pending' && row.reviewStatus === 'PENDING_REVIEW'">
               <button class="mp-link" style="margin-left: var(--space-2)" @click="askReview(row, 'APPROVE')">通过</button>
               <button class="mp-link" style="margin-left: var(--space-2)" @click="askReview(row, 'REJECT')">驳回</button>
             </template>
             <button
-              v-if="row.status === 'CONFIRMED' && row.reviewStatus === 'APPROVED' && !panelOnlyOps"
+              v-if="canTopicCreate && row.status === 'CONFIRMED' && row.reviewStatus === 'APPROVED' && !panelOnlyOps"
               class="mp-link"
               style="margin-left: var(--space-2)"
               @click="askDisable(row)"
             >停用</button>
             <button
-              v-if="row.status === 'DISABLED' && !panelOnlyOps"
+              v-if="canTopicCreate && row.status === 'DISABLED' && !panelOnlyOps"
               class="mp-link"
               style="margin-left: var(--space-2)"
               @click="askEnable(row)"
             >启用</button>
             <button
-              v-if="row.status !== 'ARCHIVED' && !panelOnlyOps"
+              v-if="canTopicCreate && row.status !== 'ARCHIVED' && !panelOnlyOps"
               class="mp-link"
               style="margin-left: var(--space-2)"
               @click="askArchive(row)"
@@ -201,6 +196,7 @@
     />
 
     <AppExcelImportDrawer
+      v-if="canTopicCreate"
       v-model:visible="importVisible"
       title="导入题目库"
       template-name="题目库导入模板.xlsx"
@@ -212,13 +208,11 @@
       :download-errors-fn="({ rows, errors }) => gdTopicApi.downloadImportErrors(rows, errors)"
       @imported="onImported"
     />
-    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
     <AppPageGuide guide-key="graduation.gd-topic-lib" />
   </ModulePageShell>
 </template>
 
 <script>
-/** 题目库（/admin/graduation/topic-lib）：申报/审核/分类/容量/要求/附件/历史/归档 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton, AppPageGuide } from '@/components/common'
@@ -228,6 +222,7 @@ import {
   GD_TOPIC_SOURCE, GD_TOPIC_REVIEW, GD_TOPIC_STATUS, GD_TOPIC_CATEGORY,
   GD_TOPIC_DIFFICULTY, IS_FULL
 } from '@/modules/graduation/constants/graduation-topic.constants'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 import { buildTopicLibQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
@@ -253,7 +248,6 @@ const PANEL_PRESETS = {
   archive: () => ({ ...EMPTY_FILTERS(), archiveView: 'archived' })
 }
 
-/** 页内视图页签（与 PANEL_PRESETS 一一对应） */
 const PANEL_TABS = [
   { key: 'list', label: '全部题目' },
   { key: 'pending', label: '待审核' },
@@ -282,7 +276,6 @@ const PANEL_HINTS = {
   archive: '已归档题目'
 }
 
-/** 申报类页签：工具栏出新建按钮、空态出「怎么开始」的出路。两处共用，避免文案漂移。 */
 const CREATE_PANELS = ['list', 'teacher-apply', 'enterprise', 'student-proposed']
 const CREATE_LABELS = {
   list: '＋ 申报题目', 'teacher-apply': '＋ 教师申报',
@@ -356,6 +349,11 @@ export default {
     }
   },
   computed: {
+    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
+    canTopicView() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.view') },
+    canTopicCreate() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.create') },
+    canTopicReview() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.review') },
+    canTopicExport() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.export') },
     hasBatch() {
       return !!this.batchStore.selectedBatchId
     },
@@ -456,23 +454,19 @@ export default {
       }
       return base
     },
-    /** 申报类页签的新建按钮文案（空态与工具栏共用同一份，避免两处文案漂移） */
     createLabel() {
       return CREATE_LABELS[this.activePanel] || '＋ 申报题目'
     },
-    /** 只有申报类页签的空态才给「怎么开始」的出路 */
     showCreateEmptyActions() {
-      return CREATE_PANELS.includes(this.activePanel)
+      return this.canTopicCreate && CREATE_PANELS.includes(this.activePanel)
     },
     toolbarActions() {
       const base = []
-      if (CREATE_PANELS.includes(this.activePanel)) {
+      if (this.canTopicCreate && CREATE_PANELS.includes(this.activePanel)) {
         base.push({ key: 'create', label: this.createLabel, variant: 'primary' })
       }
-      if (['list', 'teacher-apply', 'enterprise', 'student-proposed', 'pending', 'archive', 'category', 'capacity', 'requirements', 'attachments', 'history'].includes(this.activePanel)) {
-        if (this.activePanel !== 'history') {
-          base.push({ key: 'import', label: '导入 Excel' })
-        }
+      if (this.canTopicCreate && ['list', 'teacher-apply', 'enterprise', 'student-proposed', 'pending', 'archive', 'category', 'capacity', 'requirements', 'attachments'].includes(this.activePanel)) {
+        base.push({ key: 'import', label: '导入 Excel' })
       }
       if (this.activePanel === 'category') {
         base.unshift({ key: 'refreshStats', label: '刷新统计' })
@@ -480,7 +474,7 @@ export default {
       return base
     },
     exportVisible() {
-      if (!this.hasBatch) return false
+      if (!this.canTopicExport || !this.hasBatch) return false
       return ['list', 'teacher-apply', 'enterprise', 'student-proposed', 'pending', 'archive', 'category', 'capacity', 'requirements', 'attachments', 'history'].includes(this.activePanel)
     },
     pageSubtitle() {
@@ -504,7 +498,7 @@ export default {
     emptyDesc() {
       if (!this.hasBatch) return '顶部批次条选择当前工作批次后，再维护本批次题目库。'
       if (['teacher-apply', 'enterprise', 'student-proposed', 'list'].includes(this.activePanel)) {
-        return '点「申报」创建题目，保存后可提交审核'
+        return this.canTopicCreate ? '点「申报」创建题目，保存后可提交审核' : '当前角色仅可查看题目库'
       }
       if (this.activePanel === 'requirements') return '可在题目申报时填写要求，或通过导入 Excel 批量维护'
       if (this.activePanel === 'attachments') return '为题目挂接任务书、参考资料等附件元数据'
@@ -542,9 +536,8 @@ export default {
     },
     sourceTone(t) { return SOURCE_TONE[t] || 'default' },
     canEdit(row) {
-      return row.status !== 'ARCHIVED' && row.reviewStatus !== 'PENDING_REVIEW' && !(row.selected > 0 && row.reviewStatus === 'APPROVED')
+      return this.canTopicCreate && row.status !== 'ARCHIVED' && row.reviewStatus !== 'PENDING_REVIEW' && !(row.selected > 0 && row.reviewStatus === 'APPROVED')
     },
-    /** 页内页签切换：统一回到列表路由并改 query，由 watcher 应用视图（内嵌子路由打开时也能返回） */
     switchPanel(p) {
       if (p === this.activePanel && !this.inlineOpen) return
       this.$router.push({ path: '/admin/graduation/topic-lib', query: { panel: p } })
@@ -558,6 +551,7 @@ export default {
       this.load()
     },
     async loadPanelExtras() {
+      if (!this.canTopicView) { this.categoryStats = []; this.libStats = null; return }
       if (this.activePanel === 'category' || this.activePanel === 'capacity' || this.activePanel === 'requirements' || this.activePanel === 'attachments') {
         const batchId = this.isHistoryPanel ? undefined : this.batchStore.selectedBatchId
         const s = await gdTopicApi.getStats(batchId ? { batchId } : {})
@@ -589,6 +583,9 @@ export default {
       })
     },
     async load() {
+      if (!this.canTopicView) {
+        this.loading = false; this.error = ''; this.rows = []; this.total = 0; return
+      }
       if (!this.batchStore.selectedBatchId && !this.isHistoryPanel) {
         this.loading = false
         this.error = ''
@@ -620,65 +617,54 @@ export default {
       this.load()
     },
     onToolbar(key) {
-      if (key === 'create') this.openCreate()
-      if (key === 'import') { this.importVisible = true }
+      if (key === 'create') { if (!this.canTopicCreate) return; this.openCreate() }
+      if (key === 'import') { if (!this.canTopicCreate) return; this.importVisible = true }
       if (key === 'refreshStats') this.loadPanelExtras()
     },
     topicReturnQuery() {
       return { returnPanel: this.activePanel }
     },
     openCreate() {
+      if (!this.canTopicCreate) return
       this.$router.push({
         path: '/admin/graduation/topic-lib/create',
         query: { sourceType: this.defaultSourceType, ...this.topicReturnQuery() }
       })
     },
     openEdit(row) {
-      this.$router.push({
-        path: `/admin/graduation/topic-lib/${row.id}/edit`,
-        query: this.topicReturnQuery()
-      })
+      if (!this.canTopicCreate) return
+      this.$router.push({ path: `/admin/graduation/topic-lib/${row.id}/edit`, query: this.topicReturnQuery() })
     },
     openCapacity(row) {
-      this.$router.push({
-        path: `/admin/graduation/topic-lib/${row.id}/capacity`,
-        query: this.topicReturnQuery()
-      })
+      if (!this.canTopicCreate) return
+      this.$router.push({ path: `/admin/graduation/topic-lib/${row.id}/capacity`, query: this.topicReturnQuery() })
     },
     openRequirements(row) {
-      this.$router.push({
-        path: `/admin/graduation/topic-lib/${row.id}/requirements`,
-        query: this.topicReturnQuery()
-      })
+      if (!this.canTopicCreate) return
+      this.$router.push({ path: `/admin/graduation/topic-lib/${row.id}/requirements`, query: this.topicReturnQuery() })
     },
     openAttachments(row) {
-      this.$router.push({
-        path: `/admin/graduation/topic-lib/${row.id}/attachments`,
-        query: this.topicReturnQuery()
-      })
+      if (!this.canTopicCreate) return
+      this.$router.push({ path: `/admin/graduation/topic-lib/${row.id}/attachments`, query: this.topicReturnQuery() })
     },
     openCategoryEdit(row) {
-      this.$router.push({
-        path: `/admin/graduation/topic-lib/${row.id}/category`,
-        query: this.topicReturnQuery()
-      })
+      if (!this.canTopicCreate) return
+      this.$router.push({ path: `/admin/graduation/topic-lib/${row.id}/category`, query: this.topicReturnQuery() })
     },
     openDetail(row) {
-      this.$router.push({
-        path: `/admin/graduation/topic-lib/${row.id}`,
-        query: this.topicReturnQuery()
-      })
+      if (!this.canTopicView) return
+      this.$router.push({ path: `/admin/graduation/topic-lib/${row.id}`, query: this.topicReturnQuery() })
     },
     openDetailById(topicId) {
-      this.$router.push({
-        path: `/admin/graduation/topic-lib/${topicId}`,
-        query: this.topicReturnQuery()
-      })
+      if (!this.canTopicView) return
+      this.$router.push({ path: `/admin/graduation/topic-lib/${topicId}`, query: this.topicReturnQuery() })
     },
     askSubmitReview(row) {
+      if (!this.canTopicCreate) return
       this.confirm = { visible: true, title: '提交审核', message: `确认提交「${row.title}」进入审核？`, type: 'primary', confirmText: '提交', requireReason: false, action: 'submitReview', row }
     },
     askReview(row, action) {
+      if (!this.canTopicReview) return
       this.confirm = {
         visible: true, title: action === 'APPROVE' ? '审核通过' : '驳回题目',
         message: action === 'APPROVE' ? `通过后题目入池，可分配给学生。` : `驳回须填写原因（≥5字）。`,
@@ -689,17 +675,22 @@ export default {
       }
     },
     askDisable(row) {
+      if (!this.canTopicCreate) return
       this.confirm = { visible: true, title: '停用题目', message: '停用后不可再分配新学生，已选学生不受影响。', type: 'warning', confirmText: '停用', requireReason: true, reasonLabel: '停用原因', action: 'disable', row }
     },
     askEnable(row) {
+      if (!this.canTopicCreate) return
       this.confirm = { visible: true, title: '启用题目', message: `确认重新启用「${row.title}」？`, type: 'primary', confirmText: '启用', requireReason: false, action: 'enable', row }
     },
     askArchive(row) {
+      if (!this.canTopicCreate) return
       this.confirm = { visible: true, title: '归档题目', message: '归档后题目移出在库列表。', type: 'warning', confirmText: '归档', requireReason: false, reasonLabel: '归档原因', action: 'archive', row }
     },
     async onConfirm({ reason }) {
       const row = this.confirm.row
       const action = this.confirm.action
+      const allowed = action === 'review' ? this.canTopicReview : this.canTopicCreate
+      if (!allowed) { this.confirm.visible = false; return }
       this.submitting = true
       let r = { code: 1 }
       if (action === 'submitReview') r = await gdTopicApi.submitReview(row.id)
@@ -715,12 +706,14 @@ export default {
       this.load()
     },
     onImported() {
+      if (!this.canTopicCreate) return
       this.importVisible = false
       toast.success('题目导入完成')
       this.loadPanelExtras()
       this.load()
     },
     exportTopicsLibFn() {
+      if (!this.canTopicExport) return Promise.resolve({ code: 403001, data: null, message: '当前角色无题目导出权限' })
       const p = this.buildParams()
       delete p.page
       delete p.pageSize
