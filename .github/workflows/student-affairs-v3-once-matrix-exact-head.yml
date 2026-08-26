@@ -9,6 +9,7 @@ on:
       - 'audit-tests/student-affairs-v3-matrix.py'
       - 'audit-tests/student-affairs-v3-focused-browser.spec.mjs'
       - 'audit-tests/student-affairs-v3-domain-hubs-browser.spec.mjs'
+      - 'audit-tests/student-affairs-v3-remaining-browser.spec.mjs'
       - '.github/workflows/student-affairs-v3-once-matrix-exact-head.yml'
   workflow_dispatch:
 
@@ -192,6 +193,8 @@ jobs:
             app/e2e/specs/runner-student-affairs-v3-focused.spec.mjs
           cp runner/audit-tests/student-affairs-v3-domain-hubs-browser.spec.mjs \
             app/e2e/specs/runner-student-affairs-v3-domain-hubs.spec.mjs
+          cp runner/audit-tests/student-affairs-v3-remaining-browser.spec.mjs \
+            app/e2e/specs/runner-student-affairs-v3-remaining.spec.mjs
 
       - name: Broad real-browser Student Affairs screening
         id: browser
@@ -207,6 +210,7 @@ jobs:
             specs/golden-rollout-student-affairs-funding.spec.mjs \
             specs/runner-student-affairs-v3-domain-hubs.spec.mjs \
             specs/runner-student-affairs-v3-focused.spec.mjs \
+            specs/runner-student-affairs-v3-remaining.spec.mjs \
             --reporter=junit 2>&1 | tee ../audit-evidence/browser.log
           rc=${PIPESTATUS[0]}
           echo "$rc" > ../audit-evidence/browser.rc
