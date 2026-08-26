@@ -18,6 +18,7 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, no_permission, not_found
 from app.core.field_crypto import decrypt_field, encrypt_field
 from app.core.pagination import normalize_page
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, audit_insert, session
 
 LEVELS = {"SPECIAL": "特别困难", "DIFFICULT": "困难", "GENERAL": "一般困难"}
@@ -156,7 +157,7 @@ def _scope_or_403(db, student_id, user):
     allowed, _ = _allowed_class_ids(db, user)
     if allowed is None:
         return
-    s = db.get(StudentProfile, int(student_id)) if student_id else None
+    s = tenant_get(db, StudentProfile, int(student_id)) if student_id else None
     if not s or s.class_id not in allowed:
         raise AppException("NO_DATA_SCOPE", "该申请不在您的数据范围内")
 
@@ -356,13 +357,13 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
         raise AppException("VALIDATION_ERROR", "困难情况说明需 10-500 字")
     with session() as db:
         from app.models import AidApply, AidBatch, AidFamilyEconomy, StudentProfile
-        s = db.get(StudentProfile, student_id)
-        if not s or s.is_deleted or s.tenant_id != _tid():
+        s = tenant_get(db, StudentProfile, student_id)
+        if not s or s.is_deleted:
             raise not_found("学生不存在或不在数据范围内")
         if not skip_scope_check:
             _scope_or_403(db, student_id, user)
-        b = db.get(AidBatch, _req_int(getattr(body, "batchId", None), "批次"))
-        if not b or b.is_deleted or b.tenant_id != _tid():
+        b = tenant_get(db, AidBatch, _req_int(getattr(body, "batchId", None), "批次"))
+        if not b or b.is_deleted:
             raise not_found("认定批次不存在")
         if b.status != "OPEN":
             raise AppException("DATA_CONFLICT", "批次未开放或已截止")
@@ -398,10 +399,10 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
 
 def _load(db, apply_id):
     from app.models import AidApply, StudentProfile
-    x = db.get(AidApply, int(apply_id))
-    if not x or x.is_deleted or x.tenant_id != _tid():
+    x = tenant_get(db, AidApply, int(apply_id))
+    if not x or x.is_deleted:
         raise not_found("认定申请不存在")
-    s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+    s = tenant_get(db, StudentProfile, int(x.student_id)) if x.student_id else None
     return x, s
 
 
@@ -414,7 +415,7 @@ def _family_of(db, apply_id):
 
 def _act_task(db, x, action, reason=""):
     from app.models import WorkflowInstance
-    inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
+    inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
     task = _cur_task(db, inst.id, x.status) if inst else None
     if task:
         task.status, task.acted_at, task.action_reason = action, datetime.utcnow(), reason
@@ -494,7 +495,7 @@ def resubmit(apply_id, user, expected_version=None) -> dict:
         atomic_claim_version(db, x, expected_version)
         first = AID_NODES[0]
         x.status, x.return_reason, x.version = first, None, x.version + 1
-        inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
+        inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
         if inst:
             inst.status, inst.current_node = "RUNNING", first
         assignee = _assignee_for(db, first, x.student_id)
@@ -512,7 +513,7 @@ def _confirm_one(db, x):
     from app.models import AidLevelHistory, StudentStageEvent, WorkflowInstance
     x.status, x.result_at, x.version = "APPROVED", datetime.utcnow(), x.version + 1
     if x.workflow_instance_id:
-        inst = db.get(WorkflowInstance, int(x.workflow_instance_id))
+        inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id))
         if inst:
             inst.status = "APPROVED"
     db.add(AidLevelHistory(tenant_id=_tid(), student_id=int(x.student_id), from_level=None,
@@ -573,7 +574,7 @@ def confirm_publicity(apply_id, user, expected_version=None) -> dict:
         atomic_claim_version(db, x, expected_version)
         _assert_no_open_objection(db, x.id)
         from app.models import AidBatch
-        batch = db.get(AidBatch, int(x.batch_id))
+        batch = tenant_get(db, AidBatch, int(x.batch_id))
         days = batch.publicity_days if batch and batch.publicity_days is not None else 5
         if not x.publicity_at or x.publicity_at + timedelta(days=max(1, days)) > datetime.utcnow():
             raise AppException("DATA_CONFLICT", "公示期尚未结束，不能提前确认")
@@ -873,7 +874,7 @@ def submit_objection(apply_id, body, user, *, skip_scope_check: bool = False) ->
         _audit(db, x.id, "AID_OBJECTION_SUBMIT", "")
         db.commit(); db.refresh(o)
         _drain_message_outbox()
-        s = db.get(StudentProfile, int(x.student_id)) if x.student_id else None
+        s = tenant_get(db, StudentProfile, int(x.student_id)) if x.student_id else None
         result = _obj_row(o, s)
         return appeal_todo.sync_after_submit("AID_OBJECTION_REVIEW", result, "objectionId", "id")
 
@@ -937,7 +938,7 @@ def review_objection(objection_id, body, user) -> dict:
         o.review_opinion, o.reviewer = opinion, _op()[0]
         o.reviewed_at, o.version = datetime.utcnow(), o.version + 1
         if result == "SUSTAINED":
-            x = db.get(AidApply, int(o.apply_id))
+            x = tenant_get(db, AidApply, int(o.apply_id))
             if x and x.status in ("PUBLICITY", "APPROVED"):
                 was_approved = x.status == "APPROVED"
                 old_level = x.final_level
@@ -960,7 +961,7 @@ def review_objection(objection_id, body, user) -> dict:
         _audit(db, o.apply_id, "AID_OBJECTION_REVIEW", result)
         db.commit(); db.refresh(o)
         _drain_message_outbox()
-        s = db.get(StudentProfile, int(o.student_id)) if o.student_id else None
+        s = tenant_get(db, StudentProfile, int(o.student_id)) if o.student_id else None
         result_row = _obj_row(o, s)
         from app.services import affairs_appeal_todo_service as appeal_todo
         return appeal_todo.sync_after_review("AID_OBJECTION_REVIEW", int(objection_id), result_row)
