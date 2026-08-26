@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[2] / "backend"
+REPO_ROOT = BACKEND.parent
 sys.path.insert(0, str(BACKEND))
 
 from app.services.identity_import_file_service import build_teacher_template  # noqa: E402
@@ -27,7 +29,6 @@ from scripts.e2e_bootstrap_graduation_accounts_ci import (  # noqa: E402
     _workbook_with_rows,
 )
 
-PRODUCT_EXACT_HEAD = "4aa4c95ba9e99f248ea19e251dacb6d116bbc3c9"
 STABLE_PWD = "E2eTest@2026"
 SPECIALISTS = (
     ("e2e_defense_secretary", "E2E答辩秘书", "答辩秘书", "GD_DEFENSE_SECRETARY"),
@@ -81,15 +82,39 @@ def _normalize_password(token: str, login_name: str, index: int) -> dict:
     return {"loginName": login_name, "ok": verified.get("code") == 0, "role": role}
 
 
-def main() -> int:
+def _assert_product_exact_head() -> bool:
     expected = str(os.environ.get("E2E_EXPECTED_SHA") or "").strip()
-    if expected != PRODUCT_EXACT_HEAD:
+    try:
+        actual = subprocess.check_output(
+            ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+            text=True,
+        ).strip()
+    except Exception as exc:  # noqa: BLE001 - audit helper must fail closed
+        print(json.dumps({
+            "ok": False,
+            "message": "unable to resolve product exact head",
+            "expectedEnv": expected,
+            "error": str(exc),
+        }, ensure_ascii=False))
+        return False
+    if not expected or actual != expected:
         print(json.dumps({
             "ok": False,
             "message": "audit harness exact-head drift",
             "expectedEnv": expected,
-            "productExactHead": PRODUCT_EXACT_HEAD,
+            "actualProductHead": actual,
         }, ensure_ascii=False))
+        return False
+    print(json.dumps({
+        "ok": True,
+        "message": "audit harness exact-head verified",
+        "productExactHead": actual,
+    }, ensure_ascii=False))
+    return True
+
+
+def main() -> int:
+    if not _assert_product_exact_head():
         return 2
 
     token = login()
