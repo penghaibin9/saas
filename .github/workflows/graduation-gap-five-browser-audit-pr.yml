@@ -1,4 +1,5 @@
 name: Graduation five-gap Browser First
+# Audit-only trigger revision: five-gap DB seal aligned to the product todo contract.
 
 on:
   pull_request:
