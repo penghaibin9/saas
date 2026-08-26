@@ -22,6 +22,7 @@ academic_affairs_effective_grade_policy_failclosed.install()
 # 其余各域最终公开入口。
 from . import academic_affairs_archive_service
 from . import academic_affairs_attendance_public_service as academic_affairs_attendance_service
+from . import academic_affairs_attendance_mark_audit_guard
 from . import academic_affairs_stats_public_service as academic_affairs_stats_service
 from . import academic_affairs_evaluation_public_service as academic_affairs_evaluation_service
 from . import academic_affairs_selection_final_service as academic_affairs_selection_service
@@ -35,6 +36,10 @@ from . import academic_affairs_recognition_public_service as academic_affairs_re
 from . import academic_affairs_major_split_public_service as academic_affairs_major_split_service
 from . import academic_affairs_org_fact_facade as academic_affairs_org_service
 from . import mobile_academic_affairs_public_service as mobile_academic_affairs_service
+
+# AA-010：逐生点名状态变更必须与业务写入同事务留下 before/after MARK 审计证据。
+# 只监听 AttendanceSession.roster_json 的真实状态变化，不接管权限、状态机或考勤事实。
+academic_affairs_attendance_mark_audit_guard.install()
 
 # D6：Selection Final 模块对象仍是唯一公开 owner；这里只安装等价只读优化/范围门禁。
 # AaSelectionRecord 写链、Selection Final 状态机和 TeachingRoster 投影均不在此模块实现。
