@@ -315,7 +315,7 @@ test('AA-003 real four-surface RETURN -> same-case resubmit -> effective', async
 
     const returnedCard = studentMini.locator('.stx__ch').filter({ hasText: '已退回' }).first()
     await expect(returnedCard).toBeVisible({ timeout: 20_000 })
-    const reasonBox = returnedCard.getByPlaceholder('修改后的申请事由（不少于5字）')
+    const reasonBox = returnedCard.locator('textarea.uni-textarea-textarea').first()
     await expect(reasonBox).toHaveValue(originalReason)
     await reasonBox.fill(modifiedReason)
     const resubmitResponsePromise = studentMini.waitForResponse((response) =>
