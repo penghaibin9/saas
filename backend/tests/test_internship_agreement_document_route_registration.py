@@ -4,6 +4,7 @@ from app.api.v1.route_registration import build_deps, register_internship_routes
 
 
 PDF_PATH = "/api/v1/internship/agreements/{agreement_id}/pdf"
+DOUBLE_PREFIX_PDF_PATH = "/api/v1/internship/internship/agreements/{agreement_id}/pdf"
 
 
 def test_agreement_pdf_route_is_registered_once() -> None:
@@ -30,4 +31,7 @@ def test_agreement_pdf_route_is_registered_once() -> None:
     operation_id = str(operation.get("operationId") or "")
     assert "agreement_pdf" in operation_id, (
         f"POST {PDF_PATH} resolved to unexpected operationId={operation_id!r}"
+    )
+    assert DOUBLE_PREFIX_PDF_PATH not in paths, (
+        f"unexpected duplicate agreement PDF alias: {DOUBLE_PREFIX_PDF_PATH}"
     )

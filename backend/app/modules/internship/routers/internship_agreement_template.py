@@ -95,9 +95,3 @@ def template_default(template_id: str, body: SetDefaultRequest, user=Depends(req
     audit_log.record("设置默认协议模板" if body.on else "取消默认协议模板",
                      f"internship-agreement-template:{template_id}", detail={"on": body.on})
     return success(result, message="已更新")
-
-
-# 协议实例的只读文档输出保持独立 router，但由同一协议入口汇总注册，
-# 避免为一条文档端点扩大顶层 route_registration 的改动面。
-from app.modules.internship.routers import internship_agreement_document as _agreement_document  # noqa: E402
-router.include_router(_agreement_document.router)
