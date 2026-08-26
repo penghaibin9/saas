@@ -22,14 +22,25 @@ def _hdr(client, login_name):
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile, TeacherStudentScope
+    from app.models import College, Major, SchoolClass, StudentProfile, TeacherStudentScope
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
-    b = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2102", grade="2021", status="ACTIVE")
+    college = College(
+        tenant_id=TID, college_name="奖助测试学院", code="FUNDING-TEST-COLLEGE", status="ACTIVE"
+    )
+    db.add(college); db.flush()
+    major = Major(
+        tenant_id=TID, college_id=college.id, major_name="奖助测试专业",
+        code="FUNDING-TEST-MAJOR", status="ACTIVE",
+    )
+    db.add(major); db.flush()
+    a = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2101", grade="2021", status="ACTIVE")
+    b = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2102", grade="2021", status="ACTIVE")
     db.add(a); db.add(b); db.flush()
     sa = StudentProfile(tenant_id=TID, student_no="A001", real_name="甲一", class_id=a.id,
+                        college_id=college.id, major_id=major.id,
                         current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
     sb = StudentProfile(tenant_id=TID, student_no="B001", real_name="乙一", class_id=b.id,
+                        college_id=college.id, major_id=major.id,
                         current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
     db.add(sa); db.add(sb); db.flush()
     db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
