@@ -185,6 +185,7 @@ def main() -> int:
             "id": str(row.id),
             "acadStudentId": str(row.acad_student_id or ""),
             "sourceCode": row.source_code,
+            "warnType": row.warn_type,
             "ruleCode": row.rule_code,
             "reason": row.reason,
             "status": row.status,
@@ -194,7 +195,9 @@ def main() -> int:
         _assert(len(warnings) == 1,
                 f"AA-010 warning dedup failed: expected 1 ATTENDANCE_ABSENT, got {len(warnings)}")
         warning = warnings[0]
-        _assert(str(warning.rule_code or "") == "ABSENT_EXCESS",
+        _assert(str(warning.warn_type or "") == "ABSENT_EXCESS",
+                f"AA-010 wrong attendance warning type: {warning.warn_type}")
+        _assert(str(warning.rule_code or "") == "ABSENT_GE_3",
                 f"AA-010 wrong attendance warning rule: {warning.rule_code}")
         _assert("旷课 3 次" in str(warning.reason or ""),
                 f"AA-010 wrong warning reason: {warning.reason}")
