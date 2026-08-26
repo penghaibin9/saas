@@ -4,8 +4,16 @@ function dataModule(source, tag) {
   return `data:text/javascript;base64,${Buffer.from(source).toString('base64')}#${tag}`
 }
 
-function importClause(specifier) {
-  return 'fr' + 'om ' + JSON.stringify(specifier)
+function importClause(specifier, quote) {
+  return 'fr' + 'om ' + quote + specifier + quote
+}
+
+function rewriteLocalImport(source, specifier, replacement) {
+  const singleQuote = String.fromCharCode(39)
+  const doubleQuote = String.fromCharCode(34)
+  return source
+    .replace(importClause(specifier, singleQuote), importClause(replacement, singleQuote))
+    .replace(importClause(specifier, doubleQuote), importClause(replacement, doubleQuote))
 }
 
 export async function importEnterpriseRuntime() {
@@ -26,9 +34,11 @@ export async function importEnterpriseRuntime() {
   )
   const requestUrl = dataModule(requestSource, `request-${nonce}`)
   const contractUrl = dataModule(contractSource, `contract-${nonce}`)
-  const apiSource = apiSourceRaw
-    .replace(importClause('./request.js'), importClause(requestUrl))
-    .replace(importClause('./enterpriseContract.js'), importClause(contractUrl))
+  const apiSource = rewriteLocalImport(
+    rewriteLocalImport(apiSourceRaw, './request.js', requestUrl),
+    './enterpriseContract.js',
+    contractUrl,
+  )
   const apiUrl = dataModule(apiSource, `api-${nonce}`)
 
   const [requestModule, apiModule] = await Promise.all([
