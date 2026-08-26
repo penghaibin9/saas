@@ -67,8 +67,8 @@ const graduationRoutes = {
         { path: ':id', name: 'graduation-topic-lib-detail', component: () => import('@/modules/graduation/views/TopicLibDetailView.vue'), meta: { moduleCode: 'GRADUATION', title: '题目详情', requiresAuth: true, permissionKey: 'graduationDesign.topic.view' } }
       ]
     },
-    { path: 'topic-rounds/create', name: 'graduation-topic-round-create', component: () => import('@/modules/graduation/views/TopicRoundFormView.vue'), meta: { moduleCode: 'GRADUATION', title: '新建选题轮次', requiresAuth: true, permissionKey: 'graduationDesign.topic.round' } },
-    { path: 'topic-rounds', name: 'graduation-topic-rounds', component: () => import('@/modules/graduation/views/TopicRoundListView.vue'), meta: { moduleCode: 'GRADUATION', title: '选题轮次', requiresAuth: true, permissionKey: 'graduationDesign.topic.round' } },
+    { path: 'topic-rounds/create', name: 'graduation-topic-round-create', component: () => import('@/modules/graduation/views/TopicRoundFormView.vue'), meta: { moduleCode: 'GRADUATION', title: '新建选题轮次', requiresAuth: true, permissionKey: 'graduationDesign.topic.match' } },
+    { path: 'topic-rounds', name: 'graduation-topic-rounds', component: () => import('@/modules/graduation/views/TopicRoundListView.vue'), meta: { moduleCode: 'GRADUATION', title: '选题轮次', requiresAuth: true, permissionKey: 'graduationDesign.topic.view' } },
     { path: 'topics/:id/edit', name: 'graduation-topic-edit', component: () => import('@/modules/graduation/views/TopicManageFormView.vue'), meta: { moduleCode: 'GRADUATION', title: '编辑课题', requiresAuth: true, permissionKey: 'graduationDesign.topic.manage' } },
     { path: 'topics/:id', name: 'graduation-topic-detail', component: () => import('@/modules/graduation/views/TopicManageDetailView.vue'), meta: { moduleCode: 'GRADUATION', title: '课题详情', requiresAuth: true, permissionKey: 'graduationDesign.topic.manage' } },
     { path: 'topics', name: 'graduation-topics', component: () => import('@/modules/graduation/views/TopicManageView.vue'), meta: { moduleCode: 'GRADUATION', title: '选题管理', requiresAuth: true, permissionKey: 'graduationDesign.topic.manage' } },
