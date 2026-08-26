@@ -13,6 +13,7 @@ on:
       - 'frontend/src/modules/internship/views/EnterpriseFormView.vue'
       - 'frontend/src/modules/internship/views/InternshipPositionDetailView.vue'
       - 'e2e/specs/internship-enterprise-position-lifecycle-audit.spec.mjs'
+      - '.github/actions/internship-e2e-*/**'
       - '.github/workflows/internship-rc-enterprise-position-browser-first.yml'
   workflow_dispatch:
 
