@@ -57,28 +57,154 @@ export const OFFICIAL_PRODUCTS = {
     },
     screenshots: [
       {
-        src: '/official-site/academic.webp',
-        title: '教务工作台',
-        tag: '管理 PC · 产品界面',
-        desc: '教务工作台按业务阻断和责任工作组织首屏，让教务人员先看到要处理的事情，而不是先看到一排统计卡。'
+        src: '/official-site/academic-workbench.png',
+        title: '教务运行阻断工作台',
+        tag: '教务处 / 学校管理 PC · 实际运行界面',
+        desc: '围绕当前学期集中显示不能继续的阻断项、风险项和待关注规则，并按责任角色、截止时间和影响人数排序。教务人员从首屏即可分派责任并进入对应业务处理。'
       },
       {
-        src: '/official-site/academic-schedule.webp',
-        title: '排课与课表维护',
-        tag: '管理 PC · 产品界面',
-        desc: '排课工作区展示教学任务进入课表后的结果与维护上下文，帮助老师连续处理课表调整。'
+        src: '/official-site/academic-calendar.png',
+        title: '校历节次与教学日历',
+        tag: '教务处 PC · 实际运行界面',
+        desc: '统一维护教学周、考试周、节假日、补课日、作息时间和上课节次，支持复制上学期草稿、校历发布与归档。发布后锁定正式教学事件，避免课表运行期间随意改动。'
       },
       {
-        src: '/official-site/academic-registration.webp',
-        title: '学生注册名单',
-        tag: '管理 PC · 产品界面',
-        desc: '通过名单、状态与批量办理入口展示学籍注册工作区，体现教务不是静态看板，而是可执行的业务台账。'
+        src: '/official-site/academic-term-governance.png',
+        title: '学年学期与业务日历治理',
+        tag: '系统管理 / 教务处 PC · 实际运行界面',
+        desc: '全校统一维护当前生效学期、时间范围和各业务模块接入状态。切换学期会同步影响教学任务、考勤、成绩、实习、毕设等模块，确保全校使用同一时间口径。'
       },
       {
-        src: '/official-site/academic-quality.webp',
-        title: '教学质量',
-        tag: '管理 PC · 产品界面',
-        desc: '展示教学质量模块的指标入口与业务导航，帮助学校从教学运行进入质量分析。'
+        src: '/official-site/academic-enrollment-change-detail-annotated.png',
+        title: '学籍异动审批详情',
+        tag: '教务处 / 学院 PC · 重点标注实际界面',
+        desc: '红框标出辅导员、学院和教务处三级审批链。页面同时展示异动类型、状态变化、生效方式、申请原因和材料，终审后再写入正式学籍，审批表可打印留档。'
+      },
+      {
+        src: '/official-site/academic-registration-roster.png',
+        title: '注册名单批量办理',
+        tag: '教务处 PC · 实际运行界面',
+        desc: '按注册批次筛选资格候选，批量预览阻断后再确认入库。已注册学生、注册时间和状态持续可追溯，避免未经核验直接改写学籍注册结果。'
+      },
+      {
+        src: '/official-site/academic-major-placement.png',
+        title: '专业分流与志愿分配',
+        tag: '教务处 / 学院 PC · 实际运行界面',
+        desc: '以分流批次配置可选专业和容量，采集学生志愿后结合成绩排序自动分配，并支持人工调剂与最终确认。容量使用、志愿顺序和分配结果同屏可查。'
+      },
+      {
+        src: '/official-site/academic-enrollment-change-ledger.png',
+        title: '学籍异动全流程台账',
+        tag: '教务处 / 学院 PC · 实际运行界面',
+        desc: '休学、退学、复学、留级、转专业和保留学籍统一进入异动台账，清楚展示原状态、目标状态、当前审批节点、计划生效时间和最终状态。'
+      },
+      {
+        src: '/official-site/academic-org-structure.png',
+        title: '学院、专业与班级组织',
+        tag: '教务处 / 学校管理 PC · 实际运行界面',
+        desc: '维护学院、专业、年级、行政班、教学班、专业方向和教学秘书关系，并保留组织变更审计。全校课程、任务、学生和统计都引用同一组织主数据。'
+      },
+      {
+        src: '/official-site/academic-program-editor.png',
+        title: '人才培养方案编制与校验',
+        tag: '教务处 / 专业负责人 PC · 实际运行界面',
+        desc: '按版本编制课程结构、学分要求、实践环节和毕业要求，运行校验持续提示学分缺口、标准绑定和实践配置问题。阻断项处理完成后才能提交审核发布。'
+      },
+      {
+        src: '/official-site/academic-course-catalog.png',
+        title: '课程库与课程标准',
+        tag: '教务处 PC · 实际运行界面',
+        desc: '统一管理课程分类、课程性质、学分学时、课程大纲、考核方式、负责人、材料和启停历史。培养方案与教学计划引用同一课程事实，减少重复建课。'
+      },
+      {
+        src: '/official-site/academic-teaching-plan.png',
+        title: '学期教学计划工作台',
+        tag: '教务处 / 学院 PC · 实际运行界面',
+        desc: '从培养方案生成学期教学计划，汇总计划批次、教学任务、待教师确认、阻断项和已就绪任务。计划经学院校对和教务终审后进入排课。'
+      },
+      {
+        src: '/official-site/academic-task-progress-annotated.png',
+        title: '教学任务执行进度',
+        tag: '教务处 / 学院 PC · 重点标注实际界面',
+        desc: '红框标出任务分配、教师确认进度、当前阻断和进入工作台入口。学校可按批次查看未分配教师、待确认任务和下一步动作，避免任务生成后无人跟进。'
+      },
+      {
+        src: '/official-site/academic-scheduling-rules.png',
+        title: '排课规则与冲突约束',
+        tag: '教务处 PC · 实际运行界面',
+        desc: '统一配置可排星期、节次、每日负荷、教师不可排时间、教室类型和容量等参数，并区分本学期默认与批次规则，让自动排课拥有明确边界。'
+      },
+      {
+        src: '/official-site/academic-schedule-change-annotated.png',
+        title: '调课、停课与补课申请',
+        tag: '教师 / 教务处 PC · 重点标注实际界面',
+        desc: '红框标出冲突预检规则。教师基于已发布课表发起调课、停课或补课，填写原因、目标周次节次和教室；通过教师、班级、教室三重校验后再提交审批。'
+      },
+      {
+        src: '/official-site/academic-attendance-stats.png',
+        title: '课堂考勤与缺勤统计',
+        tag: '教务处 / 任课教师 PC · 实际运行界面',
+        desc: '从正式课表和教学班名单汇总出勤、迟到、旷课、请假和缺勤率，特殊补录需要显式选择后单独校对。高缺勤学生可继续进入学业预警。'
+      },
+      {
+        src: '/official-site/academic-warning-dashboard.png',
+        title: '学业预警教务处控制台',
+        tag: '教务处 / 学院 PC · 实际运行界面',
+        desc: '按学分、挂科、绩点、补考重修和毕业风险等规则扫描预警，展示风险等级与处理状态分布，并支持跟进、通知和闭环统计，让问题在毕业审核前被发现。'
+      },
+      {
+        src: '/official-site/academic-course-selection-annotated.png',
+        title: '选课批次、容量与名单锁定',
+        tag: '教务处 PC · 重点标注实际界面',
+        desc: '红框标出批次锁定状态及课程供给、总容量、已选人次、填充率和低人数课程。选课从草稿、发布、开选、截止、锁定到归档持续管理，正式名单锁定后不再随意变更。'
+      },
+      {
+        src: '/official-site/academic-grade-correction-annotated.png',
+        title: '成绩更正申请与审核',
+        tag: '教师 / 学院 / 教务处 PC · 重点标注实际界面',
+        desc: '红色箭头强调成绩更正入口和审核动作。已发布成绩只能通过教师申请、学院初审、教务终审完成更正，原值追加留痕，不允许静默覆盖。'
+      },
+      {
+        src: '/official-site/academic-graduation-precheck.png',
+        title: '毕业资格十一项预审',
+        tag: '教务处 / 学院 PC · 实际运行界面',
+        desc: '按学籍状态、学分、必修选修、实践、岗位实习、毕业设计、处分、归档和费用等十一项事实逐项预审，明确通过、不通过、缺数据和系统异常及对应证据。'
+      },
+      {
+        src: '/official-site/academic-graduation-audit-annotated.png',
+        title: '毕业资格审核工作台',
+        tag: '教务处 / 学院 PC · 重点标注实际界面',
+        desc: '红框标出跨域十一项审核、未通过结果和证据。系统按批次统计应审、通过、异常、已终审和已归档人数，只有责任模块证据完整后才能形成毕业结论。'
+      },
+      {
+        src: '/official-site/academic-textbook-management.png',
+        title: '教材目录、选用与费用台账',
+        tag: '教务处 PC · 实际运行界面',
+        desc: '贯通教材目录、课程选用、审核备案、征订到货、发放签收、费用台账、库存与统计，按学期保留 ISBN、定价、状态和历史记录。'
+      },
+      {
+        src: '/official-site/academic-resource-management.png',
+        title: '教室、实训室与设备资源',
+        tag: '教务处 / 资源管理员 PC · 实际运行界面',
+        desc: '统一维护教室、实训室和设备资源的数量、位置、状态与规格，支持预约、占用、冲突、报修和报废，让排课与实训安排引用真实可用资源。'
+      },
+      {
+        src: '/official-site/academic-evaluation.png',
+        title: '教学评价与申诉审核',
+        tag: '教务处 PC · 实际运行界面',
+        desc: '按批次组织学生匿名评教、结果分级和申诉两级审核，集中查看课程、教师、已评数量和任务状态。评价发布与归档保留完整批次口径。'
+      },
+      {
+        src: '/official-site/academic-quality-dashboard.png',
+        title: '教学质量运行看板',
+        tag: '教务处 / 质量管理 PC · 实际运行界面',
+        desc: '汇聚挂科率、学业预警、成绩任务发布率、毕业资格通过率、培养方案发布率、课程启用数、教学任务确认率和调停课等运行指标，并可下钻到整改和归档。'
+      },
+      {
+        src: '/official-site/academic-archive-export.png',
+        title: '教务档案归档与导出',
+        tag: '教务处 PC · 实际运行界面',
+        desc: '按学期归档学籍、注册、异动、培养方案、教学任务、课表、考务、成绩等数据域，记录数量和下载留痕，并支持带水印批量打包，检查统计时可直接取证。'
       }
     ],
     devices: [
