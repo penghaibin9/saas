@@ -112,8 +112,10 @@ def install() -> None:
                 own = resolve_student(db, user or {})
                 if not own or int(own.id) != int(student.id):
                     raise AppException("NO_PERMISSION", "学生只能提交本人的调宿申请")
-            elif context.scope_type in ("CLASS", "COLLEGE", "TENANT_ALL"):
+            elif context.scope_type == "CLASS":
                 context.require_student(db, int(student.id))
+            else:
+                raise AppException("NO_PERMISSION", "仅学生本人或负责辅导员可发起调宿")
 
             current_beds = db.scalars(select(DormBed).where(
                 DormBed.tenant_id == _tid(), DormBed.student_id == int(student.id),
@@ -130,11 +132,6 @@ def install() -> None:
                 raise not_found("目标床位不存在")
             if int(target.id) == int(current.id):
                 raise AppException("DATA_CONFLICT", "目标床位不能与当前床位相同")
-            if context.scope_type == "DORM_BUILDING":
-                dorm._require_dorm_scope(db, current.building_id, user)
-                dorm._require_dorm_scope(db, target.building_id, user)
-            elif context.scope_type not in ("SELF", "CLASS", "COLLEGE", "TENANT_ALL"):
-                raise AppException("NO_PERMISSION", "当前身份无权发起调宿")
             if target.status != "VACANT" or target.student_id is not None:
                 raise AppException("DATA_CONFLICT", "目标床位已被占用或锁定")
             building = tenant_get(db, DormBuilding, int(target.building_id))
@@ -194,17 +191,16 @@ def install() -> None:
                 raise not_found("目标床位不存在")
             from app.core.affairs_security import build_affairs_context
             context = build_affairs_context(user, db)
-            if context.scope_type != "TENANT_ALL":
-                if node == "COUNSELOR_REVIEW":
-                    if context.scope_type not in ("CLASS", "COLLEGE"):
-                        raise AppException("NO_PERMISSION", "当前节点仅辅导员/学院学工可审批")
-                    context.require_student(db, int(student.id))
-                    _require_pending_assignee(db, transfer.id, user, dorm.TODO_TRANSFER)
-                elif node == "DORM_MANAGER_REVIEW":
-                    if context.scope_type != "DORM_BUILDING":
-                        raise AppException("NO_PERMISSION", "当前节点仅目标楼栋宿管可审批")
-                    dorm._require_dorm_scope(db, target.building_id, user)
-                    _require_pending_assignee(db, transfer.id, user, dorm.TODO_TRANSFER)
+            if node == "COUNSELOR_REVIEW":
+                if context.scope_type != "CLASS":
+                    raise AppException("NO_PERMISSION", "当前节点仅负责辅导员可审批")
+                context.require_student(db, int(student.id))
+                _require_pending_assignee(db, transfer.id, user, dorm.TODO_TRANSFER)
+            elif node == "DORM_MANAGER_REVIEW":
+                if context.scope_type != "DORM_BUILDING":
+                    raise AppException("NO_PERMISSION", "当前节点仅目标楼栋宿管可审批")
+                dorm._require_dorm_scope(db, target.building_id, user)
+                _require_pending_assignee(db, transfer.id, user, dorm.TODO_TRANSFER)
 
             if action == "REJECT":
                 text = str(reason or "").strip()
