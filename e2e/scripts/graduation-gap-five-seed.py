@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""SEED_ONLY prerequisites for GD-012/016/017 targeted Browser First.
+"""SEED_ONLY prerequisites for GD-012/013/016/017/019 targeted Browser First.
 
-This script intentionally creates only prerequisite truth in isolated E2E MySQL.
-The target business commands (peer assign/review/rectify, excellent nomination/reviews,
-risk scan/accept/process/close) are executed by real browser UI in Playwright.
+Only prerequisite truth is inserted into isolated E2E MySQL. Target business commands
+are executed by real browser UI in Playwright.
 """
 from __future__ import annotations
 
@@ -28,9 +27,43 @@ STUDENTS = {
     "B": ("E2E20260002", "E2E学生B"),
     "C": ("E2E20260003", "E2E学生C"),
 }
+MENTORS = {
+    "A": ("e2e_advisor_a", "E2E指导教师A", "副教授"),
+    "B": ("e2e_advisor_b", "E2E指导教师B", "副教授"),
+    "R": ("e2e_reviewer", "E2E评阅教师", "讲师"),
+}
 
 
-def _ensure_student(db, batch, profile, *, name: str, mentor_id: int | None, stage: str) -> GraduationStudent:
+def _mentor(db, key: str) -> GraduationMentor:
+    teacher_no, teacher_name, title = MENTORS[key]
+    row = db.scalars(select(GraduationMentor).where(
+        GraduationMentor.tenant_id == TENANT_ID,
+        GraduationMentor.teacher_no == teacher_no,
+        GraduationMentor.is_deleted.is_(False),
+    )).first()
+    if row is None:
+        row = GraduationMentor(
+            tenant_id=TENANT_ID,
+            teacher_no=teacher_no,
+            teacher_name=teacher_name,
+            mentor_type="INTERNAL",
+            title=title,
+            research_direction="GD五项精准补测",
+            max_capacity=20,
+            current_count=0,
+            qualification_status="QUALIFIED",
+        )
+        db.add(row)
+        db.flush()
+    else:
+        row.teacher_name = teacher_name
+        row.title = title
+        row.qualification_status = "QUALIFIED"
+        row.is_deleted = False
+    return row
+
+
+def _ensure_student(db, batch, profile, *, name: str, mentor: GraduationMentor | None, stage: str) -> GraduationStudent:
     row = db.scalars(select(GraduationStudent).where(
         GraduationStudent.tenant_id == TENANT_ID,
         GraduationStudent.batch_id == batch.id,
@@ -48,8 +81,8 @@ def _ensure_student(db, batch, profile, *, name: str, mentor_id: int | None, sta
             college_id=str(profile.college_id or ""),
             major_id=str(profile.major_id or ""),
             eligibility_status="QUALIFIED",
-            mentor_id=mentor_id,
-            advisor_name="E2E指导教师A" if mentor_id else None,
+            mentor_id=mentor.id if mentor else None,
+            advisor_name=mentor.teacher_name if mentor else None,
             stage=stage,
             record_status="ACTIVE",
         )
@@ -60,9 +93,8 @@ def _ensure_student(db, batch, profile, *, name: str, mentor_id: int | None, sta
         row.stage = stage
         row.record_status = "ACTIVE"
         row.is_deleted = False
-        if mentor_id:
-            row.mentor_id = mentor_id
-            row.advisor_name = "E2E指导教师A"
+        row.mentor_id = mentor.id if mentor else None
+        row.advisor_name = mentor.teacher_name if mentor else None
     return row
 
 
@@ -85,28 +117,9 @@ def main() -> int:
                 raise SystemExit(f"missing canonical E2E student profile: {student_no}")
             profiles[key] = profile
 
-        mentor = db.scalars(select(GraduationMentor).where(
-            GraduationMentor.tenant_id == TENANT_ID,
-            GraduationMentor.teacher_no == "e2e_advisor_a",
-            GraduationMentor.is_deleted.is_(False),
-        )).first()
-        if mentor is None:
-            mentor = GraduationMentor(
-                tenant_id=TENANT_ID,
-                teacher_no="e2e_advisor_a",
-                teacher_name="E2E指导教师A",
-                mentor_type="INTERNAL",
-                title="讲师",
-                research_direction="GD五项补测",
-                max_capacity=20,
-                current_count=0,
-                qualification_status="QUALIFIED",
-            )
-            db.add(mentor)
-            db.flush()
-        else:
-            mentor.qualification_status = "QUALIFIED"
-            mentor.is_deleted = False
+        mentor_a = _mentor(db, "A")
+        mentor_b = _mentor(db, "B")
+        reviewer = _mentor(db, "R")
 
         batch = db.scalars(select(GraduationBatch).where(
             GraduationBatch.tenant_id == TENANT_ID,
@@ -131,11 +144,12 @@ def main() -> int:
             batch.status = "RUNNING"
             batch.is_deleted = False
 
-        gd_a = _ensure_student(db, batch, profiles["A"], name=STUDENTS["A"][1], mentor_id=mentor.id, stage="DEFENSE")
-        gd_b = _ensure_student(db, batch, profiles["B"], name=STUDENTS["B"][1], mentor_id=None, stage="FINAL_CHECK")
-        gd_c = _ensure_student(db, batch, profiles["C"], name=STUDENTS["C"][1], mentor_id=None, stage="TOPIC_SELECTING")
+        gd_a = _ensure_student(db, batch, profiles["A"], name=STUDENTS["A"][1], mentor=mentor_a, stage="DEFENSE")
+        # Student B is the GD-012 reviewer and GD-013 delay applicant. FINAL_CHECK is an allowed delay stage.
+        gd_b = _ensure_student(db, batch, profiles["B"], name=STUDENTS["B"][1], mentor=mentor_a, stage="FINAL_CHECK")
+        # Student C intentionally has no topic, guaranteeing a GD-R01 risk on real scan.
+        gd_c = _ensure_student(db, batch, profiles["C"], name=STUDENTS["C"][1], mentor=None, stage="TOPIC_SELECTING")
 
-        # GD-012 / GD-016 prerequisite: a frozen, approved formal final with a real readable FileObject.
         payload = (f"GD-012 frozen final evidence {RUN_ID}\n" * 20).encode("utf-8")
         digest = hashlib.sha256(payload).hexdigest()
         file_key = f"graduation/gap5/{RUN_ID}/gd012-final.txt"
@@ -236,7 +250,9 @@ def main() -> int:
             "batchId": str(batch.id),
             "batchNo": batch.batch_no,
             "batchName": batch.batch_name,
-            "mentorId": str(mentor.id),
+            "mentorId": str(mentor_a.id),
+            "mentorBId": str(mentor_b.id),
+            "reviewerMentorId": str(reviewer.id),
             "students": {
                 "A": {"gdStudentId": str(gd_a.id), "studentNo": STUDENTS["A"][0], "name": STUDENTS["A"][1]},
                 "B": {"gdStudentId": str(gd_b.id), "studentNo": STUDENTS["B"][0], "name": STUDENTS["B"][1]},
