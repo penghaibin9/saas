@@ -1,6 +1,6 @@
-import { test, expect } from '../app/e2e/lib/observability.mjs'
-import { config } from '../app/e2e/lib/config.mjs'
-import { items, loginApi } from '../app/e2e/lib/api-fixture.mjs'
+import { test, expect } from '../../app/e2e/lib/observability.mjs'
+import { config } from '../../app/e2e/lib/config.mjs'
+import { items, loginApi } from '../../app/e2e/lib/api-fixture.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
 const STUDENT_NO = 'E2E20260002'
