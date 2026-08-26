@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 STATE_PATH = ROOT / "backend" / "tmp" / "e2e_academic_c_teacher_today_state.local.json"
 OUTCOME_PATH = ROOT / "e2e" / "academic-aa010-browser-outcome.json"
 SEAL_PATH = ROOT / "e2e" / "academic-aa010-mysql-seal.json"
+DEBUG_PATH = ROOT / "e2e" / "runtime-logs" / "aa010-mysql-debug.json"
 
 
 def _load(path: Path) -> dict:
@@ -28,6 +29,12 @@ def _load(path: Path) -> dict:
 def _assert(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def _write_debug(payload: dict) -> None:
+    """Persist read-only DB observations before assertions so failed seals remain diagnosable."""
+    DEBUG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DEBUG_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def main() -> int:
@@ -42,6 +49,19 @@ def main() -> int:
     _assert(len(dates) == 3 and len(set(dates)) == 3,
             "AA-010 must seal three distinct formal dates")
 
+    debug = {
+        "tenantId": str(tenant_id),
+        "teachingTaskId": str(task_id),
+        "sessionIds": [str(value) for value in session_ids],
+        "sessionDates": dates,
+        "browserOutcome": {
+            "firstScan": outcome.get("firstScan") or {},
+            "secondScan": outcome.get("secondScan") or {},
+            "warningCloseNote": outcome.get("warningCloseNote"),
+        },
+    }
+    _write_debug(debug)
+
     db = get_sessionmaker()()
     try:
         student = db.scalars(select(StudentProfile).where(
@@ -49,6 +69,11 @@ def main() -> int:
             StudentProfile.student_no == state["studentNo"],
             StudentProfile.is_deleted.is_(False),
         )).first()
+        debug["student"] = (
+            {"id": str(student.id), "studentNo": student.student_no, "realName": student.real_name}
+            if student is not None else None
+        )
+        _write_debug(debug)
         _assert(student is not None, "AA-010 target student missing")
 
         sessions = db.scalars(select(AaAttendanceSession).where(
@@ -56,6 +81,18 @@ def main() -> int:
             AaAttendanceSession.id.in_(session_ids),
             AaAttendanceSession.is_deleted.is_(False),
         ).order_by(AaAttendanceSession.id)).all()
+        debug["sessions"] = [{
+            "sessionId": str(row.id),
+            "status": row.status,
+            "teachingTaskId": str(row.teaching_task_id or ""),
+            "sourceType": row.source_type,
+            "occurrenceIdentity": row.occurrence_identity,
+            "sessionDate": row.session_date,
+            "absentCount": int(row.absent_count or 0),
+            "totalCount": int(row.total_count or 0),
+            "rosterJson": row.roster_json,
+        } for row in sessions]
+        _write_debug(debug)
         _assert(len(sessions) == 3, f"AA-010 expected 3 attendance rows, got {len(sessions)}")
 
         occurrences = set()
@@ -103,6 +140,17 @@ def main() -> int:
         creates = [row for row in attendance_audits if str(row.action or "").upper() == "CREATE"]
         marks = [row for row in attendance_audits if str(row.action or "").upper() == "MARK"]
         submits = [row for row in attendance_audits if str(row.action or "").upper() == "SUBMIT"]
+        debug["attendanceAudits"] = [{
+            "id": str(row.id),
+            "bizId": str(row.biz_id or ""),
+            "action": row.action,
+            "operator": row.operator,
+            "detail": row.detail,
+        } for row in attendance_audits]
+        debug["attendanceAuditCounts"] = {
+            "create": len(creates), "mark": len(marks), "submit": len(submits),
+        }
+        _write_debug(debug)
         _assert(len(creates) == 3, f"AA-010 attendance CREATE audit count != 3: {len(creates)}")
         _assert(len(submits) == 3, f"AA-010 attendance SUBMIT audit count != 3: {len(submits)}")
         for audit in creates:
@@ -114,6 +162,8 @@ def main() -> int:
         _assert(len(marks) == 5,
                 f"AA-010 expected 5 real MARK audit rows (3 correction clicks + 2 absences), got {len(marks)}")
         first_marks = [row for row in marks if int(row.biz_id or 0) == session_ids[0]]
+        debug["firstSessionMarkCount"] = len(first_marks)
+        _write_debug(debug)
         _assert(len(first_marks) == 3,
                 f"AA-010 first session correction history must have 3 MARK rows, got {len(first_marks)}")
         expected_transitions = [
@@ -131,6 +181,16 @@ def main() -> int:
             AcademicWarning.source_code == "ATTENDANCE_ABSENT",
             AcademicWarning.is_deleted.is_(False),
         )).all()
+        debug["warnings"] = [{
+            "id": str(row.id),
+            "studentId": str(row.student_id or ""),
+            "sourceCode": row.source_code,
+            "ruleCode": row.rule_code,
+            "reason": row.reason,
+            "status": row.status,
+            "closeResult": row.close_result,
+        } for row in warnings]
+        _write_debug(debug)
         _assert(len(warnings) == 1,
                 f"AA-010 warning dedup failed: expected 1 ATTENDANCE_ABSENT, got {len(warnings)}")
         warning = warnings[0]
@@ -149,6 +209,15 @@ def main() -> int:
             AffairsAuditTrail.biz_type == "ACAD_WARNING_SCAN",
             AffairsAuditTrail.action == "SCAN_ATTENDANCE_ABSENT",
         ).order_by(AffairsAuditTrail.id)).all()
+        debug["scanAudits"] = [{
+            "id": str(row.id),
+            "bizId": str(row.biz_id or ""),
+            "action": row.action,
+            "operator": row.operator,
+            "detail": row.detail,
+        } for row in scan_audits]
+        debug["scanAuditCount"] = len(scan_audits)
+        _write_debug(debug)
         _assert(len(scan_audits) >= 5,
                 f"AA-010 expected 3 submit auto-scans + 2 Staff scans, got {len(scan_audits)}")
         _assert(any("created=1" in str(row.detail or "") for row in scan_audits),
@@ -159,6 +228,14 @@ def main() -> int:
             AffairsAuditTrail.biz_type == "ACAD_WARNING",
             AffairsAuditTrail.biz_id == int(warning.id),
         ).order_by(AffairsAuditTrail.id)).all()
+        debug["warningAudits"] = [{
+            "id": str(row.id),
+            "bizId": str(row.biz_id or ""),
+            "action": row.action,
+            "operator": row.operator,
+            "detail": row.detail,
+        } for row in warning_audits]
+        _write_debug(debug)
         _assert(any(str(row.action or "").upper() == "CLOSE" for row in warning_audits),
                 "AA-010 warning close action missing from audit trail")
 
