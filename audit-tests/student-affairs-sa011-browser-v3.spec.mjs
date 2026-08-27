@@ -181,7 +181,7 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     await expect(page.locator('body')).not.toContainText(detailText)
     await expect(page.locator('body')).not.toContainText(title)
 
-    // 5) Teacher Mobile API + Teacher Mini Browser：同一 riskId 必须真实出现并携带 version。
+    // 5) Teacher Mobile API + Teacher Mini Browser：同一 riskId 必须出现，并由教师小程序真实执行第一次处置。
     const counselorALogin = await staffLogin(page, staff.counselorA)
     const teacherPending = await api(page, counselorALogin.lastAccessToken, 'GET', '/mobile/teacher/affairs/risk/pending')
     expect(teacherPending.response.status(), JSON.stringify(teacherPending.body)).toBe(200)
@@ -207,13 +207,26 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     await expect(miniRiskCard, `teacher mini must render risk ${riskId}`).toBeVisible({ timeout: 20_000 })
     await expect(miniRiskCard.getByText('填写处置', { exact: true })).toBeVisible()
     await expect(miniRiskCard.getByText('记录缺少版本号', { exact: true })).toHaveCount(0)
+
+    const miniProcessResponse = teacherMiniPage.waitForResponse((response) => {
+      const url = new URL(response.url())
+      return response.request().method() === 'POST'
+        && url.pathname.endsWith(`/api/v1/mobile/teacher/affairs/risk/${riskId}/process`)
+    }, { timeout: 20_000 })
+    await miniRiskCard.getByText('填写处置', { exact: true }).click()
+    const modal = teacherMiniPage.locator('uni-modal').last()
+    await expect(modal.getByText('处置内容', { exact: true })).toBeVisible({ timeout: 10_000 })
+    await modal.locator('input').first().fill('教师小程序真实处置：已与学生本人完成首次面谈核实')
+    await modal.getByText('确定', { exact: true }).click()
+    const miniProcess = await miniProcessResponse
+    const miniProcessPayload = await miniProcess.json()
+    expect(miniProcessPayload.code, JSON.stringify(miniProcessPayload)).toBe(0)
     evidence.teacherMiniBrowser = 'PASS'
+    evidence.teacherMiniProcess = 'PASS'
     await teacherMiniContext.close()
 
-    // 6) Staff PC：A 班责任人真实处置 + 跟进 + 升级。
+    // 6) Staff PC：回读教师小程序写入后的 PROCESSING，再继续跟进 + 升级。
     await openRisk(page, riskId)
-    await page.getByRole('button', { name: '处置', exact: true }).click()
-    await confirmReason(page, '确认处置', '已与学生本人面谈并核对近期情况')
     await expect(page.getByText('处置中', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
     await page.getByRole('button', { name: '持续跟进', exact: true }).click()
     await confirmReason(page, '确认跟进', '第二次跟进确认到课及宿舍情况持续改善')
