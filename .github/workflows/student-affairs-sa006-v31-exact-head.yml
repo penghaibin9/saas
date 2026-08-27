@@ -2,6 +2,12 @@ name: Student Affairs SA-006 V3.1 exact-head
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - audit/student-affairs-v31-final-runner-20260827
+    paths:
+      - 'audit-tests/student-affairs-sa006-v31-browser.spec.mjs'
+      - '.github/workflows/student-affairs-sa006-v31-exact-head.yml'
 
 permissions:
   contents: read
