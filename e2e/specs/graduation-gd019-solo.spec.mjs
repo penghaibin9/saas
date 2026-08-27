@@ -79,8 +79,11 @@ test('GD-019 solo: notification → XLSX export → statistics projection', asyn
   const gradeStats = gradeBody.data || gradeBody
   console.log('GD019_PEER_STATS=' + JSON.stringify(peerStats))
   console.log('GD019_GRADE_STATS=' + JSON.stringify(gradeStats))
+  const rectified = Array.isArray(peerStats.byStatus)
+    ? peerStats.byStatus.find((item) => item.status === 'RECTIFIED')
+    : null
   expect(Number(peerStats.total || 0)).toBe(1)
-  expect(Number(peerStats.RECTIFIED || peerStats.rectified || 0)).toBe(1)
+  expect(Number(rectified?.count || 0)).toBe(1)
   expect(Number(gradeStats.excellentCount || 0)).toBe(1)
 
   await expect(page.getByRole('heading', { name: '毕设统计报表', exact: true })).toBeVisible()
