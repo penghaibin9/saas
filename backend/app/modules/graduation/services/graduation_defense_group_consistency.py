@@ -178,6 +178,9 @@ def assign_students(group_id, student_ids, *, batch_id=None) -> dict:
                 student.stage = "DEFENSE"
             student.version = int(student.version or 0) + 1
             added += 1
+        # Session is configured with autoflush=False. Persist membership changes before
+        # recomputing derived group aggregates, otherwise the SELECT sees stale membership.
+        db.flush()
         svc._recompute_defense(db, group)
         group.published = False
         group.version = int(group.version or 0) + 1
@@ -207,6 +210,9 @@ def unassign_students(group_id, student_ids, *, batch_id=None) -> dict:
                 student.defense_group = None
                 student.version = int(student.version or 0) + 1
                 removed += 1
+        # Same autoflush=False rule as assign_students: make the relationship change
+        # visible to the aggregate query before persisting student_count/conflict.
+        db.flush()
         svc._recompute_defense(db, group)
         group.published = False
         group.version = int(group.version or 0) + 1
