@@ -69,7 +69,7 @@ jobs:
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
       E2E_MINIAPP_BASE_URL: http://127.0.0.1:5188
-      E2E_TARGET_SHA: 99c91cb95cbcc6050fea0811fb2c47e48cc754c8
+      E2E_TARGET_SHA: 1599bef7f74ae2629dbb7dd22deaa3a3cbbd0315
 
     steps:
       - name: Checkout immutable SA-011 runner
@@ -82,7 +82,7 @@ jobs:
       - name: Checkout immutable application exact head
         uses: actions/checkout@v4
         with:
-          ref: 99c91cb95cbcc6050fea0811fb2c47e48cc754c8
+          ref: 1599bef7f74ae2629dbb7dd22deaa3a3cbbd0315
           path: app
           fetch-depth: 0
 
