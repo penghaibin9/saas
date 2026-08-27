@@ -1,13 +1,10 @@
 {
   "repository": "penghaibin9/saas",
-  "base": {
-    "branch": "main",
-    "sha": "84bf29dc41bb2affa03c6345938ab0ca672b6eda"
-  },
+  "base": {"branch": "main", "sha": "9b314938a7b89647cfbb549a4e17c37d08a6bdc6"},
   "product": {
     "branch": "fix/student-affairs-final-rc-20260824",
-    "productExactSha": "ac5a34c396fc38ce4148e8c7d8633390fb9d31f0",
-    "ahead": 58,
+    "productExactSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
+    "ahead": 59,
     "behind": 0,
     "immutableForTargetedValidation": true
   },
@@ -18,9 +15,11 @@
   },
   "r0": {
     "status": "PASS",
+    "syncPr": 230,
     "unresolvedSemanticConflicts": 0,
     "unresolvedValidFixesOutsideRc": 0
   },
-  "nextGatePolicy": "Only affected SA chains and mandatory shared-security Gold Deep smoke are eligible for rerun; do not rerun all 22 chains.",
+  "targetedRevalidation": ["SA-001", "SA-002", "SA-003", "SA-004", "SA-005", "SA-009", "SA-011", "SA-014", "SA-016", "SA-021", "SA-022"],
+  "nextGatePolicy": "Do not run all 22. Inherit unaffected historical REAL_PASS only after evidence attribution; run current exact-head only for affected/shared-security chains.",
   "mergeState": "DRAFT_NO_GO_UNTIL_R0_R9_AND_S1_S6_PASS"
 }
