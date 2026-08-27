@@ -1,0 +1,38 @@
+name: Internship E2E Wait Apps
+description: Wait for selected browser application URLs without absorbing caller-specific safety assertions.
+
+inputs:
+  urls:
+    description: Newline-delimited URLs to wait for in order.
+    required: true
+  failure-log-glob:
+    description: Log path or glob printed when an application does not become ready.
+    default: e2e/runtime-logs/*.log
+
+runs:
+  using: composite
+  steps:
+    - name: Wait for browser applications
+      shell: bash
+      env:
+        APP_URLS: ${{ inputs.urls }}
+        FAILURE_LOG_GLOB: ${{ inputs.failure-log-glob }}
+      run: |
+        while IFS= read -r url; do
+          [ -z "$url" ] && continue
+          ok=''
+          for i in {1..60}; do
+            if curl -fsS "$url" >/dev/null; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$ok" ]; then
+            echo "Application not ready: $url"
+            for log in $FAILURE_LOG_GLOB; do
+              [ -f "$log" ] && cat "$log"
+            done
+            exit 1
+          fi
+        done <<< "$APP_URLS"

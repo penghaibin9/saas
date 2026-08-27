@@ -86,7 +86,7 @@ def test_playwright_materializes_all_academic_b_runtime_fixtures_in_dependency_o
     formation_seed = workflow.index("python scripts/e2e_seed_academic_b_w4_formation.py")
     account_bootstrap = workflow.index("python scripts/e2e_bootstrap_graduation_accounts_ci.py")
     w5_seed = workflow.index("python scripts/e2e_seed_academic_b_w5_selection.py")
-    browser_run = workflow.index("run: npm test")
+    browser_run = workflow.index('npx playwright test "${SPECS[@]}"')
 
     assert base_seed < w3_seed < w4_seed < formation_seed
     # Formation creates the official org rows the canonical account bootstrap discovers.

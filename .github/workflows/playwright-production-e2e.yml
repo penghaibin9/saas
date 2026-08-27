@@ -7,6 +7,7 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'student-portal/**'
+      - 'enterprise-portal/**'
       - 'miniapp/**'
       - 'e2e/**'
       - '.github/workflows/playwright-production-e2e.yml'
@@ -74,6 +75,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_ENTERPRISE_BASE_URL: http://127.0.0.1:5202/enterprise
       E2E_MINIAPP_BASE_URL: http://127.0.0.1:5188
       E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
@@ -105,6 +107,7 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             student-portal/package-lock.json
+            enterprise-portal/package-lock.json
             miniapp/package-lock.json
 
       - name: Install backend
@@ -218,6 +221,17 @@ jobs:
           nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
           echo $! > ../e2e/runtime-logs/student-portal.pid
 
+      - name: Install and start enterprise portal
+        env:
+          VITE_BASE: /enterprise/
+          VITE_API_BASE_URL: /
+          VITE_PROXY_TARGET: http://127.0.0.1:8000
+        run: |
+          cd enterprise-portal
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5202 > ../e2e/runtime-logs/enterprise-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/enterprise-portal.pid
+
       - name: Install and start teacher miniapp H5
         env:
           VITE_USE_MOCK: 'false'
@@ -230,7 +244,7 @@ jobs:
 
       - name: Wait for browser applications
         run: |
-          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://127.0.0.1:5188/; do
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://127.0.0.1:5202/enterprise/login http://127.0.0.1:5188/; do
             ok=''
             for i in {1..60}; do
               if curl -fsS "$url" >/dev/null; then ok=1; break; fi
@@ -251,7 +265,15 @@ jobs:
 
       - name: Run interaction E2E
         working-directory: e2e
-        run: npm test
+        run: |
+          set -euo pipefail
+          mapfile -t SPECS < <(find specs -maxdepth 1 -type f -name '*.spec.mjs' \
+            ! -name 'internship-s1-production-runtime.spec.mjs' \
+            ! -name 'internship-leave-lifecycle.spec.mjs' \
+            ! -name 'internship-leave-stats-xlsx-audit.spec.mjs' \
+            ! -name 'internship-placement-assignment-audit.spec.mjs' -print | sort)
+          test "${#SPECS[@]}" -gt 0
+          npx playwright test "${SPECS[@]}"
 
       - name: Upload Playwright HTML report
         if: always()

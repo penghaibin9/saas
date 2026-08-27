@@ -3,7 +3,8 @@
  * 端点 /internship/agreements。三方确认状态机 + owner + 数据范围由后端强校验。
  */
 import { request } from '@/services/http/client'
-export { uploadAttachment, downloadAttachment } from '@/modules/internship/api/guidance-visit.api'
+import { uploadAttachment, downloadAttachment } from '@/modules/internship/api/guidance-visit.api'
+export { uploadAttachment, downloadAttachment }
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
@@ -24,6 +25,8 @@ async function callList(path, params = {}) {
 const B = '/internship/agreements'
 
 export const agreementApi = {
+  uploadAttachment,
+  downloadAttachment,
   getAgreements(params = {}) { return callList(B, params) },
   getDetail(id) { return call(() => request(`${B}/${id}`)) },
   generate(body) { return call(() => request(B, { method: 'POST', body })) },

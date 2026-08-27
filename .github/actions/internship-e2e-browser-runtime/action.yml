@@ -1,0 +1,54 @@
+name: Internship E2E Browser Runtime
+description: Replay School IAM, seed isolated tenants, start the backend, and normalize interaction accounts in the current job.
+
+inputs:
+  include-affairs-counselor:
+    description: Also bootstrap the Student Affairs counselor identity required by the worker-outbox gate.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Replay production School IAM Authority
+      shell: bash
+      working-directory: backend
+      run: python scripts/bootstrap_control_plane_school_iam_authority.py
+
+    - name: Seed isolated tenants and School IAM
+      shell: bash
+      working-directory: backend
+      run: |
+        python scripts/e2e_seed_playwright_tenants.py
+        python scripts/e2e_seed_control_plane_school_iam.py
+
+    - name: Start backend
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p e2e/runtime-logs
+        cd backend
+        nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+        echo $! > ../e2e/runtime-logs/backend.pid
+        for i in {1..60}; do
+          if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+            exit 0
+          fi
+          sleep 2
+        done
+        cat ../e2e/runtime-logs/backend.log
+        exit 1
+
+    - name: Import and normalize interaction accounts
+      shell: bash
+      working-directory: backend
+      run: |
+        python scripts/e2e_bootstrap_graduation_accounts_ci.py
+        python scripts/e2e_reset_graduation_passwords.py
+        python scripts/e2e_verify_graduation_accounts.py
+
+    - name: Bootstrap Student Affairs counselor identity
+      if: ${{ inputs.include-affairs-counselor == 'true' }}
+      shell: bash
+      working-directory: backend
+      run: python scripts/e2e_bootstrap_affairs_counselor_ci.py

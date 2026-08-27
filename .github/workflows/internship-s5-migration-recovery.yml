@@ -1,0 +1,123 @@
+name: Internship S5 Migration Recovery
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/scripts/e2e_verify_internship_s5_recovery.py'
+      - 'backend/scripts/e2e_run_internship_s5_recovery.sh'
+      - 'backend/scripts/e2e_seed_internship_sandbox.py'
+      - 'backend/tests/test_internship_guardian_consent_route_registration.py'
+      - 'backend/app/api/v1/route_registration.py'
+      - 'backend/alembic/**'
+      - 'backend/app/models/internship.py'
+      - 'backend/app/models/file.py'
+      - 'deploy/backup/**'
+      - '.github/workflows/internship-s5-migration-recovery.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: internship-s5-recovery-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  s5-recovery:
+    name: Governed backup / upgrade / restore / historical read
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/13
+      REDIS_KEY_PREFIX: internship-s5-migration-recovery
+      REDIS_CONNECT_TIMEOUT: '2'
+      REDIS_SOCKET_TIMEOUT: '2'
+      JWT_SECRET: internship-s5-recovery-e2e-only-not-production
+      JWT_SECRET_KEY: internship-s5-recovery-e2e-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      E2E_PRODUCT_EXACT_SHA: 979592ef8bfe3318bf5fd12043da17e635dcad1a
+      E2E_INTERNSHIP_FIXTURE_FILE: ${{ github.workspace }}/e2e/runtime/internship-fixture.json
+      E2E_S5_STATE_FILE: ${{ github.workspace }}/e2e/runtime/internship-s5-state.json
+      BACKUP_DIR: ${{ github.workspace }}/e2e/runtime/s5-backup
+      UPLOAD_DIR: ${{ github.workspace }}/e2e/runtime/s5-uploads
+      REQUIRE_UPLOAD_BACKUP: 'true'
+      KEEP_DAYS: '14'
+      MIN_LOCAL_BACKUP_SETS: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install recovery dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-client rsync
+          pip install -r backend/requirements.txt
+
+      - name: Run isolated S5 final-RC recovery gate
+        run: bash backend/scripts/e2e_run_internship_s5_recovery.sh
+
+      - name: Upload S5 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-s5-migration-recovery-${{ github.run_id }}
+          path: |
+            e2e/runtime/internship-s5-state.json
+            e2e/runtime/internship-fixture.json
+            e2e/runtime/s5-backup/
+            e2e/runtime-logs/s5-bootstrap-backend.log
+            e2e/runtime-logs/s5-final-backend.log
+          if-no-files-found: warn
+          retention-days: 14

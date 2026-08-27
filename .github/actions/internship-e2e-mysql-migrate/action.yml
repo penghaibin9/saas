@@ -1,0 +1,37 @@
+name: Internship E2E MySQL Migration
+description: Migrate the isolated internship acceptance MySQL schema inside the current job.
+
+inputs:
+  verify-schema-parity:
+    description: Run the migrated-schema parity check after Alembic migration.
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Migrate isolated real MySQL
+      shell: bash
+      working-directory: backend
+      env:
+        VERIFY_SCHEMA_PARITY: ${{ inputs.verify-schema-parity }}
+      run: |
+        set -euo pipefail
+        HEADS=$(python -m alembic heads | grep -c '(head)')
+        python -m alembic heads
+        test "$HEADS" = '1'
+        mysql -h 127.0.0.1 -uroot -pe2e_root -e \
+          "ALTER DATABASE student_lifecycle_e2e CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+        python -m alembic upgrade head
+        python -m alembic current
+        case "$VERIFY_SCHEMA_PARITY" in
+          true)
+            python ../scripts/check/check-migrated-schema-parity.py
+            ;;
+          false)
+            ;;
+          *)
+            echo "verify-schema-parity must be true or false, got: $VERIFY_SCHEMA_PARITY" >&2
+            exit 2
+            ;;
+        esac

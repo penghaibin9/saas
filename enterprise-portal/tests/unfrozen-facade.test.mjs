@@ -1,7 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { enterpriseInternshipApi, setEnterpriseApiContext } from '../src/services/enterpriseInternshipApi.js'
-import { clearEnterpriseSession, setAuthTokens, setSelectedCampaignId } from '../src/services/request.js'
+import { importEnterpriseRuntime } from './helpers/import-vite-runtime.mjs'
+
+const { apiModule, requestModule } = await importEnterpriseRuntime()
+const { enterpriseInternshipApi, setEnterpriseApiContext } = apiModule
+const { clearEnterpriseSession, setAuthTokens, setSelectedCampaignId } = requestModule
 
 function installSessionStorage(){
   const values=new Map()
