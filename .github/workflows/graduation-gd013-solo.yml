@@ -89,9 +89,11 @@ jobs:
         run: |
           set -euo pipefail
           cp solo-harness/e2e/specs/graduation-gd013-solo.spec.mjs e2e/specs/
-          mkdir -p e2e/scripts
+          mkdir -p e2e/scripts e2e/runtime-logs e2e/test-results
           cp solo-harness/e2e/scripts/graduation-gd013-solo-seed.py e2e/scripts/
           cp solo-harness/e2e/scripts/graduation-gd013-solo-db.py e2e/scripts/
+          printf 'failure\n' > e2e/runtime-logs/gd013-solo-browser.outcome
+          printf 'failure\n' > e2e/runtime-logs/gd013-solo-db.outcome
           rm -rf solo-harness
           test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
           bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
@@ -119,14 +121,10 @@ jobs:
           python scripts/bootstrap_control_plane_school_iam_authority.py
           python scripts/e2e_seed_playwright_tenants.py
           python scripts/e2e_seed_control_plane_school_iam.py
-          python scripts/e2e_bootstrap_graduation_accounts_ci.py
-          python scripts/e2e_reset_graduation_passwords.py
-          python scripts/e2e_verify_graduation_accounts.py
 
       - name: Start real backend
         run: |
           set -euo pipefail
-          mkdir -p e2e/runtime-logs e2e/test-results
           cd backend
           nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
           for i in {1..60}; do
@@ -135,6 +133,14 @@ jobs:
           done
           cat ../e2e/runtime-logs/backend.log
           exit 1
+
+      - name: Bootstrap graduation accounts against real backend
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
 
       - name: Seed only GD-013 prerequisites
         working-directory: backend
@@ -171,7 +177,6 @@ jobs:
           set +e
           npx playwright test specs/graduation-gd013-solo.spec.mjs
           rc=$?
-          mkdir -p runtime-logs
           if [ "$rc" -eq 0 ]; then echo success > runtime-logs/gd013-solo-browser.outcome; else echo failure > runtime-logs/gd013-solo-browser.outcome; fi
           exit "$rc"
 
