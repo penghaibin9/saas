@@ -66,4 +66,5 @@ def test_gdr12_exclusion_and_system_snapshot_fallback_are_bound_to_batch_preview
     assert "GraduationRiskCase.risk_code.notin_(_ARCHIVE_NON_BLOCKING_RISK_CODES)" in scale
     assert "if material is not None and material.current_version_id:" in preview
     assert "elif item.material_code in _SYSTEM_SNAPSHOT_CODES:" in preview
-    assert "present = _source_ready(item.material_code, legacy_present, sid, guidance_ids, plagiarism)" in preview
+    assert "present = _source_ready(" in preview
+    assert "legacy_present, sid, guidance_ids, plagiarism, proposal_defense_ids" in preview

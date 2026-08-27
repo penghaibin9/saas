@@ -67,8 +67,9 @@ def test_archive_preview_binds_the_final_archive_batch_number():
     api = text("frontend/src/modules/graduation/api/graduation-risk-archive.api.js")
     assert 'snapshot["archiveBatchNo"] = archive_no' in service
     assert "archive.archive_batch_no = archive_no" in service
-    assert "const { previewToken, archiveBatchNo } = preview" in api
+    assert "const { previewToken, archiveBatchNo, candidateCount, executableCount } = preview" in api
     assert "body: { ...body, archiveBatchNo, previewToken }" in api
+    assert "reconcileBatchFile(" in api
 
 
 def test_xlsx_formula_injection_is_neutralized_in_public_and_legacy_exports():
