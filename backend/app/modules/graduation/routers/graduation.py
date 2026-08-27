@@ -215,7 +215,7 @@ def defense_groups(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, l
 
 
 @router.post("/defense-groups", summary="新建答辩组")
-def defense_create(body: DefenseGroupBody, user=Depends(get_current_user)):
+def defense_create(body: DefenseGroupBody, user=Depends(require_permission("graduationDesign.defense.groupManage"))):
     result = svc.create_defense_group(
         body.groupName, body.defenseDate, body.location,
         body.chair, body.members, body.secretary, batch_id=body.batchId,
@@ -242,7 +242,7 @@ def defense_detail(gid: str, user=Depends(get_current_user)):
 
 
 @router.put("/defense-groups/{gid}", summary="编辑答辩组（编辑后撤回发布，需重新发布）")
-def defense_update(gid: str, body: DefenseGroupBody, user=Depends(get_current_user)):
+def defense_update(gid: str, body: DefenseGroupBody, user=Depends(require_permission("graduationDesign.defense.groupManage"))):
     result = svc.update_defense_group(
         gid, body.groupName, body.defenseDate, body.location,
         body.chair, body.members, body.secretary,
@@ -252,12 +252,12 @@ def defense_update(gid: str, body: DefenseGroupBody, user=Depends(get_current_us
 
 
 @router.post("/defense-groups/{gid}/assign", summary="分配学生进答辩组（≤30人，评委回避自动检测）")
-def defense_assign(gid: str, body: AssignStudentsBody, user=Depends(get_current_user)):
+def defense_assign(gid: str, body: AssignStudentsBody, user=Depends(require_permission("graduationDesign.defense.groupManage"))):
     return success(svc.assign_defense_students(gid, body.studentIds), message="已分配")
 
 
 @router.post("/defense-groups/{gid}/unassign", summary="移出答辩组学生")
-def defense_unassign(gid: str, body: AssignStudentsBody, user=Depends(get_current_user)):
+def defense_unassign(gid: str, body: AssignStudentsBody, user=Depends(require_permission("graduationDesign.defense.groupManage"))):
     return success(svc.unassign_defense_students(gid, body.studentIds), message="已移出")
 
 
