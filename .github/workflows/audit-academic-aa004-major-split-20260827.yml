@@ -1,9 +1,9 @@
 name: Audit Academic AA-004 Major Split 20260827
 
 on:
-  pull_request:
+  push:
     branches:
-      - fix/academic-affairs-final-rc-20260824
+      - audit/academic-sequential-20260827
     paths:
       - '.github/workflows/audit-academic-aa004-major-split-20260827.yml'
       - 'e2e/specs/academic-aa004-major-split-browser.spec.mjs'
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: audit-academic-aa004-${{ github.event.pull_request.number }}
+  group: audit-academic-aa004-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -38,9 +38,9 @@ jobs:
         options: >-
           --health-cmd="redis-cli ping" --health-interval=5s --health-timeout=3s --health-retries=20
     env:
-      TARGET_SHA: ${{ github.event.pull_request.base.sha }}
-      RUNNER_SHA: ${{ github.event.pull_request.head.sha }}
-      SCHOOL_IAM_AUTHORITY_EXPECTED_SHA: ${{ github.event.pull_request.base.sha }}
+      TARGET_SHA: fc583c5de923c038a3cab970f16964c4beafa5d6
+      RUNNER_SHA: ${{ github.sha }}
+      SCHOOL_IAM_AUTHORITY_EXPECTED_SHA: fc583c5de923c038a3cab970f16964c4beafa5d6
       CI: 'true'
       APP_ENV: test
       DEPLOYMENT_MODE: local
@@ -65,7 +65,7 @@ jobs:
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
       E2E_MINIAPP_BASE_URL: http://localhost:5188
-      E2E_EXPECTED_SHA: ${{ github.event.pull_request.base.sha }}
+      E2E_EXPECTED_SHA: fc583c5de923c038a3cab970f16964c4beafa5d6
 
     steps:
       - name: Checkout exact product head
