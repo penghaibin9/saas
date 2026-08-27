@@ -7,6 +7,11 @@ import { items, loginApi } from '../lib/api-fixture.mjs'
 
 const STUDENT_NO = 'E2E20260002'
 const EVIDENCE_DIR = path.resolve(process.cwd(), '../audit-evidence')
+const COUNSELOR_B = {
+  tenant: 'sandbox-school',
+  username: 'e2e_counselor_b',
+  password: 'E2eTest@2026'
+}
 
 function marker() {
   const raw = process.env.GITHUB_RUN_ID || `${Date.now()}`
@@ -56,6 +61,7 @@ async function findStudent(adminApi) {
 test.describe.serial('SA-006 勤工助学 · exact-head Browser First', () => {
   let adminApi
   let demoAdminApi
+  let counselorBApi
   let student
   let postId
   let postName
@@ -64,6 +70,7 @@ test.describe.serial('SA-006 勤工助学 · exact-head Browser First', () => {
   test.beforeAll(async () => {
     adminApi = await loginApi(config.sandboxAdmin)
     demoAdminApi = await loginApi(config.demoAdmin)
+    counselorBApi = await loginApi(COUNSELOR_B)
     student = await findStudent(adminApi)
     const id = marker()
     postName = `SA-006 图书馆助理 ${id}`
@@ -131,6 +138,12 @@ test.describe.serial('SA-006 勤工助学 · exact-head Browser First', () => {
     expect(Number(month?.subsidyAmount || month?.subsidy_amount || 0)).toBe(288)
   })
 
+  test('Data-scope negative: 2402辅导员看不到2401学生的勤工记录', async () => {
+    const records = items(await counselorBApi.get('/student-affairs/work-study/records', { page: 1, pageSize: 200 }))
+    expect(records.some((item) => String(item.recordId || item.id) === recordId)).toBeFalsy()
+    expect(records.some((item) => String(item.studentNo || '') === STUDENT_NO)).toBeFalsy()
+  })
+
   test('Tenant negative: 另一租户管理员看不到本租户岗位与记录', async () => {
     const posts = items(await demoAdminApi.get('/student-affairs/work-study/posts', { page: 1, pageSize: 200 }))
     expect(posts.some((item) => String(item.postName || '') === postName)).toBeFalsy()
@@ -156,6 +169,7 @@ test.describe.serial('SA-006 勤工助学 · exact-head Browser First', () => {
       monthlyRating: 'GOOD',
       subsidyAmount: 288,
       browserActions: ['录用', '确认上岗', '月度考核', '保存考核'],
+      dataScopeNegative: true,
       tenantNegative: true
     })
   })
