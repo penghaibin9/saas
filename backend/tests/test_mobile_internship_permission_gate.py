@@ -99,7 +99,7 @@ def test_view_only_teacher_cannot_handle_attendance_via_real_route(client, db_mo
     response = client.post(
         "/api/v1/mobile/teacher/internship/exception/999999/handle",
         headers=_teacher_token("COUNSELOR"),
-        json={"action": "REASONABLE", "comment": "越权处置"),
+        json={"action": "REASONABLE", "comment": "越权处置"},
     )
     assert response.status_code == 403
     assert response.json()["code"] == 403001
