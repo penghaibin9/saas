@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, Query
 
+from app.core.exceptions import no_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.core.permissions import has_permission, require_permission
@@ -89,6 +90,12 @@ def download_graduation_material(file_id: str, user=Depends(get_current_user)):
 
 def _p(i, t, page, ps):
     return success(paginate(i, t, page, ps))
+
+
+def _require_full_defense_group_scope() -> None:
+    """Empty/new defense groups have no student relation, so only full-scope managers may mutate membership."""
+    if not has_full_scope():
+        raise no_permission("Only full-scope graduation managers can create or reassign defense groups")
 
 
 @router.get("/dashboard", summary="毕设看板")
@@ -201,7 +208,7 @@ def final_export(status: Optional[str] = None, keyword: Optional[str] = None,
                  batchId: Optional[str] = None, user=Depends(get_current_user)):
     data = svc.export_finals_xlsx(status=status, keyword=keyword, batch_id=batchId)
     audit_log.record("导出成果提交台账", "graduation-final:export",
-                     detail={"rowCount": data["rowCount"], "batchId": batchId, "status": status})
+                     detail={"rowCount": data["rowCount"], "batchId": batchId})
     return success(data)
 
 
@@ -216,6 +223,7 @@ def defense_groups(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, l
 
 @router.post("/defense-groups", summary="新建答辩组")
 def defense_create(body: DefenseGroupBody, user=Depends(require_permission("graduationDesign.defense.groupManage"))):
+    _require_full_defense_group_scope()
     result = svc.create_defense_group(
         body.groupName, body.defenseDate, body.location,
         body.chair, body.members, body.secretary, batch_id=body.batchId,
@@ -243,6 +251,7 @@ def defense_detail(gid: str, user=Depends(get_current_user)):
 
 @router.put("/defense-groups/{gid}", summary="编辑答辩组（编辑后撤回发布，需重新发布）")
 def defense_update(gid: str, body: DefenseGroupBody, user=Depends(require_permission("graduationDesign.defense.groupManage"))):
+    svc.get_defense_group_detail(gid)  # data-scope guard before mutation
     result = svc.update_defense_group(
         gid, body.groupName, body.defenseDate, body.location,
         body.chair, body.members, body.secretary,
@@ -253,16 +262,19 @@ def defense_update(gid: str, body: DefenseGroupBody, user=Depends(require_permis
 
 @router.post("/defense-groups/{gid}/assign", summary="分配学生进答辩组（≤30人，评委回避自动检测）")
 def defense_assign(gid: str, body: AssignStudentsBody, user=Depends(require_permission("graduationDesign.defense.groupManage"))):
+    _require_full_defense_group_scope()
     return success(svc.assign_defense_students(gid, body.studentIds), message="已分配")
 
 
 @router.post("/defense-groups/{gid}/unassign", summary="移出答辩组学生")
 def defense_unassign(gid: str, body: AssignStudentsBody, user=Depends(require_permission("graduationDesign.defense.groupManage"))):
+    _require_full_defense_group_scope()
     return success(svc.unassign_defense_students(gid, body.studentIds), message="已移出")
 
 
 @router.post("/defense-groups/{gid}/publish", summary="发布答辩安排（冲突/未安排完整/无学生则拒绝）")
 def defense_publish(gid: str, user=Depends(require_permission("graduationDesign.defense.publish"))):
+    svc.get_defense_group_detail(gid)  # data-scope guard before mutation
     return success(svc.publish_defense(gid), message="已发布")
 
 
