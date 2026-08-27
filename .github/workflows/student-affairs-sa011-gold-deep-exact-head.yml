@@ -120,6 +120,31 @@ jobs:
           python scripts/e2e_seed_playwright_tenants.py
           python scripts/e2e_seed_control_plane_school_iam.py
 
+      - name: Verify SA-011 mobile versioned route override contract
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import inspect
+          from fastapi.routing import APIRoute
+          from app.api.v1 import mobile
+          from app.api.v1.route_registration import _prepare_mobile_risk_version_overrides
+
+          filtered, override = _prepare_mobile_risk_version_overrides(mobile.router)
+          targets = {
+              '/mobile/teacher/affairs/risk/{risk_id}/process',
+              '/mobile/teacher/affairs/risk/{risk_id}/close',
+          }
+          for path in targets:
+              old = [r for r in filtered.routes if isinstance(r, APIRoute) and r.path == path and 'POST' in (r.methods or set())]
+              new = [r for r in override.routes if isinstance(r, APIRoute) and r.path == path and 'POST' in (r.methods or set())]
+              assert not old, (path, 'unversioned route still registered')
+              assert len(new) == 1, (path, len(new))
+              source = inspect.getsource(new[0].endpoint)
+              assert 'expected_version=payload.get("version")' in source, source
+          print('[SA011_ROUTE_PREFLIGHT] PASS version reaches core CAS on PROCESS/CLOSE')
+          PY
+
       - name: Start real backend
         run: |
           set -euo pipefail
