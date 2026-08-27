@@ -48,6 +48,25 @@ def _material_snapshot(proposal_status, final_status) -> dict:
     }
 
 
+def _latest_status_map(db, model, student_ids: list[int]) -> dict[int, str]:
+    """批量取得当前页学生的最新状态，避免列表 SELECT 中逐行相关子查询。"""
+    if not student_ids:
+        return {}
+    rows = db.execute(
+        select(model.gd_student_id, model.status)
+        .where(
+            model.tenant_id == _tid(),
+            model.gd_student_id.in_(student_ids),
+            model.is_deleted.is_(False),
+        )
+        .order_by(model.gd_student_id, model.id.desc())
+    ).all()
+    result = {}
+    for student_id, status in rows:
+        result.setdefault(int(student_id), status)
+    return result
+
+
 def list_students(
     page: int,
     page_size: int,
@@ -134,6 +153,28 @@ def list_students(
             GraduationBatch.tenant_id == tenant_id,
             GraduationBatch.is_deleted.is_(False),
         )
+        # 普通列表是最高频入口。材料筛选未启用时，先完成轻量分页，再只为当前页
+        # 批量读取最新材料状态；避免两个相关子查询在大表上对每一行重复执行。
+        if material_complete is None:
+            rows = db.execute(
+                select(GraduationStudent, GraduationBatch)
+                .outerjoin(GraduationBatch, batch_on)
+                .where(*filters)
+                .order_by(GraduationStudent.id.desc())
+                .offset((max(1, page) - 1) * page_size)
+                .limit(page_size)
+            ).all()
+            student_ids = [int(student.id) for student, _batch in rows]
+            proposal_by_student = _latest_status_map(db, GraduationProposal, student_ids)
+            final_by_student = _latest_status_map(db, GraduationFinal, student_ids)
+            return [
+                svc._row(student, batch, _material_snapshot(
+                    proposal_by_student.get(int(student.id)),
+                    final_by_student.get(int(student.id)),
+                ))
+                for student, batch in rows
+            ], total
+
         rows = db.execute(
             select(
                 GraduationStudent,
@@ -147,7 +188,6 @@ def list_students(
             .offset((max(1, page) - 1) * page_size)
             .limit(page_size)
         ).all()
-
         return [
             svc._row(student, batch, _material_snapshot(prop_status, fin_status))
             for student, batch, prop_status, fin_status in rows

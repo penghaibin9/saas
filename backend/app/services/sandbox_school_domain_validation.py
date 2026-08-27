@@ -9,7 +9,7 @@ source_biz_type=STUDENT_TASK。就业教师待办由 sandbox_school_employment_s
 """
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.services.sandbox_school_domain_seed import (
     EXPECTED_ACADEMIC_STUDENTS,
@@ -57,7 +57,14 @@ def validate_core_domain_facts_20k(db, tenant_id: int) -> dict:
         "internshipCheckins": count(InternshipCheckin, InternshipCheckin.is_deleted.is_(False)),
         "weeklyReports": count(WeeklyReport, WeeklyReport.is_deleted.is_(False)),
         "graduationStudents": count(GraduationStudent, GraduationStudent.is_deleted.is_(False)),
-        "messages": count(UnifiedMessage, UnifiedMessage.is_deleted.is_(False)),
+        # 六域基线消息由迎新、学业和实习各产生一条个人消息。后续学工风险扫描会
+        # 依法追加 RISK_ALERT，不能把这些真实业务消息误判为 20K 基线污染。
+        "messages": count(
+            UnifiedMessage,
+            UnifiedMessage.source_module.in_(("orientation", "academic", "internship")),
+            or_(UnifiedMessage.remark.is_(None), UnifiedMessage.remark != "SALES_STORY_RESET"),
+            UnifiedMessage.is_deleted.is_(False),
+        ),
         "pendingStudentTodos": count(
             UnifiedTodo,
             UnifiedTodo.source_biz_type == "STUDENT_TASK",

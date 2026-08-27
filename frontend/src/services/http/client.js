@@ -22,9 +22,12 @@ try { LEGACY_TOKEN_KEYS.forEach((key) => localStorage.removeItem(key)) } catch {
 
 const state = { token: '', sessionGeneration: 0, roleSwitchInFlight: false, offlineUntil: 0, notified: false }
 
-/** 开发态首次探测超时更短，避免后端未启动时每页白等 4s */
+/**
+ * 开发态会承载标准演示沙箱（2 万学生及完整过程数据）。首次请求还可能包含
+ * Vite 冷启动与后端连接池预热，2 秒会把正常慢查询误判成离线并触发 15 秒冷却。
+ */
 const REQUEST_TIMEOUT_MS =
-  typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV ? 2000 : 4000
+  typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV ? 10000 : 4000
 
 /** 后端不可达后的冷却窗口（ms）；冷却内读请求跳过 fetch，直接让 mock fallback 接管 */
 const OFFLINE_COOLDOWN_MS = 15000
