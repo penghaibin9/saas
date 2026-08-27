@@ -222,7 +222,7 @@ test('AA-004 Student PC submit -> Student Mini update -> Staff PC allocate/confi
     const miniSubmitPromise = studentMini.waitForResponse((response) =>
       response.request().method() === 'POST' && response.url().includes('/api/v1/mobile/academic/major-split')
     , { timeout: 20000 })
-    await miniBatch.getByRole('button', { name: /更新志愿|提交志愿/ }).click()
+    await miniBatch.locator('.btn-primary').click()
     const miniSubmit = await miniSubmitPromise
     const miniPayload = await miniSubmit.json()
     expect(miniSubmit.ok(), JSON.stringify(miniPayload)).toBeTruthy()
