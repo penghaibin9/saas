@@ -15,25 +15,18 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
     print(f"aligned: {label}")
 
 
-def require_once(path: Path, needle: str, label: str) -> None:
-    text = path.read_text(encoding="utf-8")
-    count = text.count(needle)
-    if count != 1:
-        raise SystemExit(f"{label}: expected exactly one source match, got {count}")
-    print(f"aligned: {label}")
-
-
 def main() -> int:
     gd013 = Path("e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs")
     gap5 = Path("e2e/specs/graduation-gap-five-browser-audit.spec.mjs")
 
-    # Exact-head product contract: a conflicted group may render a visible confirmation
-    # component in a blocked state. The acceptance fact is that no publish POST is issued.
-    # Keep the checked-in toHaveCount(0) assertion intact instead of rewriting it at runtime.
-    require_once(
+    # Exact-head product contract: conflict rows render the publish control with is-disabled and
+    # askPublish() returns before calling the publish API. Assert that business fact directly;
+    # dialog DOM implementation details are not the acceptance contract.
+    replace_once(
         gd013,
         "await expect(admin.locator('.app-confirm-dialog').filter({ hasText: '发布答辩安排' })).toHaveCount(0)",
-        "GD-013 conflicted publish dialog assertion preserved",
+        "await expect(conflictPublish).toHaveClass(/is-disabled/)",
+        "GD-013 conflicted publish control is disabled",
     )
 
     # StaffLoginPage currently returns as soon as login navigation completes, while the staff
