@@ -1,5 +1,5 @@
 {
-  "productExactSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
+  "productExactSha": "2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d",
   "items": [
     {
       "fixId": "SA-002-AID-AUDIT-NAMESPACE",
@@ -74,6 +74,17 @@
       "action": "TEST_CONTRACT_FIX_ONLY",
       "blastRadius": ["CI", "graduation-static-gate", "internship-static-gate"],
       "classification": "RUNNER_OR_TEST_CONTRACT_BUG"
+    },
+    {
+      "fixId": "R0-ALEMBIC-HEAD-MERGE",
+      "sourceBranch": "fix/student-affairs-final-rc-20260824",
+      "files": ["backend/alembic/versions/20260827_merge_affairs_gd_heads.py"],
+      "existsInLatestMain": false,
+      "semanticEquivalent": false,
+      "action": "KEEP_IN_FINAL_RC",
+      "classification": "PRODUCT_BUG",
+      "reason": "R0 integration produced two valid sibling Alembic heads; topology-only merge preserves both parent migrations and restores single-head invariant.",
+      "blastRadius": ["R0", "R2", "R8", "S5", "SA-002", "SA-005"]
     }
   ]
 }
