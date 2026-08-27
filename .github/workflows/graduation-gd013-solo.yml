@@ -61,12 +61,12 @@ jobs:
       E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
-      E2E_EXPECTED_SHA: 8e40c380a3717781c74c9b751f74f0ed166a3b7f
+      E2E_EXPECTED_SHA: 5a86ff4fc58d97eabf2a3931d99074b8f1291716
     steps:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: 8e40c380a3717781c74c9b751f74f0ed166a3b7f
+          ref: 5a86ff4fc58d97eabf2a3931d99074b8f1291716
           fetch-depth: 0
 
       - name: Assert product exact HEAD
