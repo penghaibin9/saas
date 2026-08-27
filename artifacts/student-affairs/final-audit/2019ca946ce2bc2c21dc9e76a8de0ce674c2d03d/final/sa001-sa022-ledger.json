@@ -2,7 +2,7 @@
   "productExactSha": "2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d",
   "ledgerPolicy": "REAL_PASS requires current exact-head evidence for impacted/shared-security chains; unaffected historical PASS may only be inherited after source/evidence attribution.",
   "flows": [
-    {"code":"SA-001","status":"RUNNING_TARGETED_REVALIDATION","reason":"shared IAM/security blast radius","runId":33081957347},
+    {"code":"SA-001","status":"CLOSED_PASS","reason":"current exact-head Browser First + MySQL + audit + permission negatives + XLSX","sourceRunId":33081957347,"evidenceRecheckRunId":33082704763,"runnerBug":"openpyxl read_only max_row returned None; fixed by evidence-only row iteration recheck"},
     {"code":"SA-002","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
     {"code":"SA-003","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
     {"code":"SA-004","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
