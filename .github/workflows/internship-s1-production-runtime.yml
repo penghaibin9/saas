@@ -1,21 +1,6 @@
 name: Internship S1 Production Runtime
 
 on:
-  push:
-    branches:
-      - fix/internship-final-rc-20260824
-    paths:
-      - 'backend/scripts/e2e_seed_internship_s1_production_runtime.py'
-      - 'backend/app/**'
-      - 'frontend/**'
-      - 'student-portal/**'
-      - 'miniapp/**'
-      - 'enterprise-portal/**'
-      - 'deploy/nginx/**'
-      - 'deploy/systemd/**'
-      - 'e2e/specs/internship-s1-production-runtime.spec.mjs'
-      - 'e2e/playwright.s1.config.mjs'
-      - '.github/workflows/internship-s1-production-runtime.yml'
   pull_request:
     branches:
       - main
@@ -42,7 +27,6 @@ permissions:
 
 jobs:
   production-runtime:
-    if: github.event_name != 'pull_request' || github.head_ref == 'fix/internship-final-rc-20260824'
     name: Four production builds / nginx TLS / 2 workers / 10 smokes
     runs-on: ubuntu-latest
     timeout-minutes: 60

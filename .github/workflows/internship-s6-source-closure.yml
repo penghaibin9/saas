@@ -29,8 +29,9 @@ on:
       - 'backend/alembic/versions/**'
       - 'backend/scripts/run_scheduled_jobs.py'
       - 'enterprise-portal/**'
-      - 'scripts/check/check-internship-source-closure.py'
+      - 'e2e/lib/internship-enterprise-position-browser.mjs'
       - 'scripts/check/check-internship-source-closure-v2.py'
+      - '.github/actions/internship-e2e-*/**'
       - '.github/workflows/internship-*.yml'
       - '.github/workflows/playwright-production-e2e.yml'
   workflow_dispatch:
@@ -44,7 +45,6 @@ permissions:
 
 jobs:
   s6-source-closure:
-    if: github.event_name != 'pull_request' || github.head_ref == 'fix/internship-final-rc-20260824'
     name: git ls-files / routes / imports / migrations / schedulers
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -2,45 +2,18 @@ import fs from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
-import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
+import { StudentLoginPage } from '../pages/login.page.mjs'
+import {
+  internshipApiPath as apiPath,
+  internshipPayloadOf as payloadOf,
+  internshipFormItem as formItem,
+  internshipCompanyRow as companyRow,
+  internshipStaffLogin as staffLogin,
+  confirmInternshipPositionStatus as confirmStatusAction
+} from '../lib/internship-enterprise-position-browser.mjs'
 
 const enterpriseBaseUrl = process.env.E2E_ENTERPRISE_BASE_URL || 'http://127.0.0.1:5202/enterprise'
 const ENTERPRISE_PASSWORD = 'E2eEnterprise@2026'
-
-function apiPath(response) {
-  try { return new URL(response.url()).pathname } catch { return '' }
-}
-
-async function payloadOf(response) {
-  const text = await response.text()
-  try { return { text, body: JSON.parse(text) } } catch { return { text, body: null } }
-}
-
-function formItem(page, label) {
-  return page.locator('.app-form-item').filter({ hasText: label }).first()
-}
-
-function companyRow(page, companyName) {
-  return page.locator('tbody tr').filter({ hasText: companyName }).first()
-}
-
-async function staffLogin(page) {
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
-}
-
-async function confirmStatusAction(page, positionId, triggerName, confirmName) {
-  await page.getByRole('button', { name: triggerName, exact: true }).click()
-  const dialog = page.getByRole('dialog')
-  await expect(dialog).toBeVisible()
-  const responsePromise = page.waitForResponse((response) =>
-    apiPath(response) === `/api/v1/internship/positions/${positionId}/status`
-      && response.request().method() === 'POST'
-  )
-  await dialog.getByRole('button', { name: confirmName, exact: true }).click()
-  const response = await responsePromise
-  const { text, body } = await payloadOf(response)
-  return { response, text, body }
-}
 
 test.describe('岗位实习审计：IX-003 企业生命周期 + IX-005 岗位生命周期', () => {
   test.describe.configure({ mode: 'serial', retries: 0 })
