@@ -1,17 +1,16 @@
 {
   "base": "main@9b314938a7b89647cfbb549a4e17c37d08a6bdc6",
-  "head": "fix/student-affairs-final-rc-20260824@65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
+  "head": "fix/student-affairs-final-rc-20260824@2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d",
   "history": [
     {"head": "a288b0dcfdd5b1a2b8fcee12d7d83b7b9ad9bfb4", "main": "84bf29dc41bb2affa03c6345938ab0ca672b6eda", "ahead": 52, "behind": 165, "status": "diverged"},
     {"head": "ac5a34c396fc38ce4148e8c7d8633390fb9d31f0", "main": "84bf29dc41bb2affa03c6345938ab0ca672b6eda", "ahead": 58, "behind": 0, "status": "ahead"},
     {"event": "main advanced by merged PR #210", "from": "84bf29dc41bb2affa03c6345938ab0ca672b6eda", "to": "9b314938a7b89647cfbb549a4e17c37d08a6bdc6", "commits": 100},
-    {"event": "sync PR #230", "resultSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e"}
+    {"event": "sync PR #230", "resultSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e"},
+    {"event": "Alembic topology merge", "parents": ["20260824_affairs_aid_audit_ns_rc", "20260824_gd_arch_audit_cols"], "resultSha": "2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d"}
   ],
-  "afterR0": {"ahead": 59, "behind": 0, "status": "ahead"},
-  "studentAffairsSharedOverlapsFromMain210": [
-    "backend/app/core/affairs_security.py",
-    "backend/app/core/permissions.py"
-  ],
+  "afterR0": {"ahead": 60, "behind": 0, "status": "ahead"},
+  "studentAffairsSharedOverlapsFromMain210": ["backend/app/core/affairs_security.py", "backend/app/core/permissions.py"],
   "sharedOverlapDecision": "SEMANTICALLY_COMPATIBLE_KEEP_BOTH",
+  "migrationTopologyDecision": "MERGE_TWO_VALID_HEADS_WITH_TOPOLOGY_ONLY_REVISION",
   "result": "R0_BASE_SYNC_PASS"
 }
