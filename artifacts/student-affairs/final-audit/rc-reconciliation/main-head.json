@@ -1,8 +1,10 @@
 {
-  "capturedAt": "2026-08-27T19:18:00+08:00",
+  "capturedAt": "2026-08-27T20:50:00+08:00",
   "repository": "penghaibin9/saas",
   "baseBranch": "main",
   "mainHead": "84bf29dc41bb2affa03c6345938ab0ca672b6eda",
-  "source": "GitHub branch head",
+  "productBranch": "fix/student-affairs-final-rc-20260824",
+  "productExactSha": "ac5a34c396fc38ce4148e8c7d8633390fb9d31f0",
+  "source": "GitHub compare main...fix/student-affairs-final-rc-20260824",
   "status": "LOCKED_FOR_R0"
 }
