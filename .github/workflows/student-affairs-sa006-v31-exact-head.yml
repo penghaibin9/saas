@@ -1,0 +1,264 @@
+name: Student Affairs SA-006 V3.1 exact-head
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: student-affairs-sa006-v31
+  cancel-in-progress: true
+
+env:
+  PRODUCT_EXACT_SHA: 2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d
+  CI: 'true'
+  PYTHONPATH: .
+  APP_ENV: test
+  DEPLOYMENT_MODE: local
+  TRUSTED_PROXY_IPS: 127.0.0.1/32
+  DB_ENABLED: 'true'
+  DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+  TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+  DB_HOST: 127.0.0.1
+  DB_PORT: '3306'
+  DB_USER: root
+  DB_PASSWORD: e2e_root
+  DB_NAME: student_lifecycle_e2e
+  REDIS_URL: redis://127.0.0.1:6379/12
+  REDIS_KEY_PREFIX: student-affairs-sa006-v31
+  REDIS_CONNECT_TIMEOUT: '2'
+  REDIS_SOCKET_TIMEOUT: '2'
+  JWT_SECRET: student-affairs-sa006-v31-only
+  JWT_SECRET_KEY: student-affairs-sa006-v31-only
+  MOCK_LOGIN_ENABLED: 'false'
+  SMS_ENABLED: 'false'
+  SCHEDULER_MODE: external
+  E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+  E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+  E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+
+jobs:
+  sa006:
+    name: SA-006 Browser First → scope/tenant negatives → Direct MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    steps:
+      - name: Checkout runner only
+        uses: actions/checkout@v4
+        with:
+          ref: audit/student-affairs-v31-final-runner-20260827
+          path: runner
+          fetch-depth: 1
+
+      - name: Checkout immutable product exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_EXACT_SHA }}
+          path: app
+          fetch-depth: 0
+
+      - name: Assert immutable product exact head
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git -C app rev-parse HEAD)"
+          echo "productExactSha=$ACTUAL"
+          test "$ACTUAL" = "$PRODUCT_EXACT_SHA"
+          test -z "$(git -C app status --porcelain)"
+          mkdir -p app/audit-evidence app/e2e/runtime-logs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: app/backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            app/frontend/package-lock.json
+            app/e2e/package.json
+
+      - name: Install backend and migrate isolated MySQL
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          alembic heads
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start real backend
+        run: |
+          set -euo pipefail
+          cd app/backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8000/health >/dev/null
+
+      - name: Bootstrap canonical Student Affairs actors and scope relations
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          python ../../runner/audit-tests/student-affairs-v3-bootstrap.py
+          test -s tmp/e2e_student_affairs_credentials.local.json
+          test -s tmp/e2e_student_affairs_state.local.json
+
+      - name: Start real Staff PC only
+        run: |
+          set -euo pipefail
+          cd app/frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:5173/login >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/frontend.log || true
+          exit 1
+
+      - name: Install Playwright Chromium
+        working-directory: app/e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Install isolated SA-006 runner spec
+        run: |
+          cp runner/audit-tests/student-affairs-sa006-v31-browser.spec.mjs \
+            app/e2e/specs/runner-student-affairs-sa006-v31.spec.mjs
+
+      - name: SA-006 Browser First and negative scope checks
+        working-directory: app/e2e
+        env:
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: ../audit-evidence/sa006-browser-junit.xml
+        run: |
+          set -euo pipefail
+          npx playwright test specs/runner-student-affairs-sa006-v31.spec.mjs \
+            --reporter=line,junit 2>&1 | tee ../audit-evidence/sa006-browser.log
+          test -s ../audit-evidence/v3-closure-sa-006.json
+
+      - name: Direct MySQL truth and business audit seal
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+          import pymysql
+
+          marker_path = Path('../audit-evidence/v3-closure-sa-006.json')
+          marker = json.loads(marker_path.read_text(encoding='utf-8'))
+          assert marker['productExactSha'] == '2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d'
+          assert marker['status'] == 'REAL_PASS_CANDIDATE'
+          record_id = int(marker['evidence']['recordId'])
+
+          conn = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root',
+                                 database='student_lifecycle_e2e', charset='utf8mb4', autocommit=True)
+          try:
+              with conn.cursor() as cur:
+                  cur.execute('SELECT status, onboard_at, subsidy_total, tenant_id FROM t_affairs_work_study_record WHERE id=%s AND is_deleted=0', (record_id,))
+                  record = cur.fetchone()
+                  assert record is not None, f'missing work-study record {record_id}'
+                  status, onboard_at, subsidy_total, tenant_id = record
+                  assert status == 'ONBOARD', record
+                  assert onboard_at is not None, record
+                  assert Decimal(str(subsidy_total)) == Decimal('288.00'), record
+
+                  cur.execute('SELECT month_code, work_hours, rating, subsidy_amount, tenant_id FROM t_affairs_work_study_monthly WHERE record_id=%s AND month_code=%s AND is_deleted=0', (record_id, '2099-08'))
+                  monthly = cur.fetchone()
+                  assert monthly is not None, f'missing monthly row for {record_id}'
+                  month_code, work_hours, rating, subsidy_amount, monthly_tenant = monthly
+                  assert month_code == '2099-08', monthly
+                  assert Decimal(str(work_hours)) == Decimal('16.00'), monthly
+                  assert rating == 'GOOD', monthly
+                  assert Decimal(str(subsidy_amount)) == Decimal('288.00'), monthly
+                  assert int(monthly_tenant) == int(tenant_id), (monthly, record)
+
+                  cur.execute("SELECT action FROM t_affairs_audit_trail WHERE tenant_id=%s AND biz_type='FUNDING_EXT' AND biz_id=%s ORDER BY id", (tenant_id, record_id))
+                  actions = [row[0] for row in cur.fetchall()]
+                  for required in ('WS_APPLY', 'WS_APPROVE', 'WS_ONBOARD', 'WS_MONTHLY'):
+                      assert required in actions, f'missing audit action {required}: {actions}'
+          finally:
+              conn.close()
+
+          evidence = {
+              'productExactSha': marker['productExactSha'],
+              'recordId': record_id,
+              'status': status,
+              'onboardAtPresent': True,
+              'subsidyTotal': str(subsidy_total),
+              'monthly': {
+                  'monthCode': month_code,
+                  'workHours': str(work_hours),
+                  'rating': rating,
+                  'subsidyAmount': str(subsidy_amount),
+              },
+              'auditActions': actions,
+              'tenantId': int(tenant_id),
+              'result': 'DIRECT_MYSQL_PASS',
+          }
+          Path('../audit-evidence/sa006-direct-mysql.json').write_text(
+              json.dumps(evidence, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(evidence, ensure_ascii=False))
+          PY
+
+      - name: Enforce SA-006 exact-head closure
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          marker = json.loads(Path('app/audit-evidence/v3-closure-sa-006.json').read_text(encoding='utf-8'))
+          mysql = json.loads(Path('app/audit-evidence/sa006-direct-mysql.json').read_text(encoding='utf-8'))
+          assert marker['code'] == 'SA-006'
+          assert marker['productExactSha'] == mysql['productExactSha'] == '2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d'
+          assert marker['evidence']['dataScopeNegative'] is True
+          assert marker['evidence']['tenantNegative'] is True
+          assert mysql['result'] == 'DIRECT_MYSQL_PASS'
+          print('SA-006 CLOSED/PASS candidate: Browser + scope/tenant + Direct MySQL + audit')
+          PY
+
+      - name: Upload SA-006 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-sa006-v31-${{ github.run_id }}
+          path: |
+            app/audit-evidence/
+            app/e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 21
