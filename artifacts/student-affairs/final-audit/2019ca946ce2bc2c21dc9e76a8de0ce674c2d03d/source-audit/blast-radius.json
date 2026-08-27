@@ -1,0 +1,21 @@
+{
+  "productExactSha": "2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d",
+  "mainBaseSha": "9b314938a7b89647cfbb549a4e17c37d08a6bdc6",
+  "policy": "Do not rerun all 22. Revalidate direct product hits plus shared IAM/security blast radius only; unaffected chains require evidence attribution before inheritance.",
+  "directProductHits": ["SA-002", "SA-003", "SA-004", "SA-005", "SA-009", "SA-011"],
+  "sharedInfrastructureExpansion": ["SA-001", "SA-014", "SA-016", "SA-021", "SA-022"],
+  "targetedRevalidation": ["SA-001", "SA-002", "SA-003", "SA-004", "SA-005", "SA-009", "SA-011", "SA-014", "SA-016", "SA-021", "SA-022"],
+  "inheritanceCandidates": ["SA-006", "SA-007", "SA-008", "SA-010", "SA-012", "SA-013", "SA-015", "SA-017", "SA-018", "SA-019", "SA-020"],
+  "sharedFiles": [
+    "backend/app/api/v1/route_registration.py",
+    "backend/app/core/affairs_security.py",
+    "backend/app/core/permissions.py"
+  ],
+  "r0MainAdvanceReview": {
+    "mainAdvance": "84bf29dc41bb2affa03c6345938ab0ca672b6eda -> 9b314938a7b89647cfbb549a4e17c37d08a6bdc6",
+    "source": "merged PR #210 graduation",
+    "studentAffairsSharedOverlap": ["backend/app/core/affairs_security.py", "backend/app/core/permissions.py"],
+    "decision": "SEMANTICALLY_COMPATIBLE_KEEP_BOTH",
+    "additionalStudentAffairsBusinessChains": []
+  }
+}
