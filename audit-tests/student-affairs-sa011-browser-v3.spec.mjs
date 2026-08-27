@@ -78,7 +78,7 @@ async function openRisk(page, riskId) {
 test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
   test.describe.configure({ retries: 0 })
 
-  test('multi-source boundary -> assign -> handle -> follow -> escalate -> takeover -> close -> reopen -> close, with scope/privacy seal', async ({ page }) => {
+  test('multi-source boundary -> four-surface visibility -> handle -> follow -> escalate -> takeover -> close -> reopen -> close, with scope/privacy seal', async ({ page }) => {
     test.setTimeout(300_000)
     const unique = `${Date.now()}`
     const title = `SA011真实风险-${unique}`
@@ -87,7 +87,7 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
       exactHead: process.env.E2E_TARGET_SHA || '',
       title,
       detailText,
-      surface: 'STAFF_PC+STUDENT_PC',
+      surface: 'STAFF_PC+STUDENT_PC+TEACHER_MOBILE+STUDENT_MOBILE',
     }
 
     // 1) 学工处管理员在真实 Staff PC 建人工风险。
@@ -161,8 +161,24 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     await expect(page.locator('body')).not.toContainText(detailText)
     await expect(page.locator('body')).not.toContainText(title)
 
-    // 5) A 班责任人真实处置 + 跟进 + 升级。
-    await staffLogin(page, staff.counselorA)
+    // 5) A 班责任人先从教师移动端读取同一 riskId，再回 Staff PC 完成处置 + 跟进 + 升级。
+    const counselorALogin = await staffLogin(page, staff.counselorA)
+    const teacherPending = await api(page, counselorALogin.lastAccessToken, 'GET', '/mobile/teacher/affairs/risk/pending')
+    expect(teacherPending.response.status(), JSON.stringify(teacherPending.body)).toBe(200)
+    const teacherPendingItems = teacherPending.body?.data?.items || teacherPending.body?.data?.list || []
+    const teacherPendingRisk = teacherPendingItems.find((item) => String(item?.riskId || item?.id || '') === riskId)
+    expect(teacherPendingRisk, `teacher mobile pending must contain risk ${riskId}`).toBeTruthy()
+    expect(teacherPendingRisk?.version, 'teacher mobile pending must expose visible optimistic-lock version').not.toBeUndefined()
+
+    const teacherMobileDetail = await api(page, counselorALogin.lastAccessToken, 'GET', `/mobile/teacher/affairs/risk/${riskId}`)
+    expect(teacherMobileDetail.response.status(), JSON.stringify(teacherMobileDetail.body)).toBe(200)
+    const teacherMobileData = teacherMobileDetail.body?.data || {}
+    expect(String(teacherMobileData.riskId || teacherMobileData.id || '')).toBe(riskId)
+    expect(String(teacherMobileData.studentId || '')).toBe(studentId)
+    expect(teacherMobileData.version, 'teacher mobile detail must expose current version').not.toBeUndefined()
+    evidence.teacherMobileRisk = 'PASS'
+    evidence.teacherMobileVersion = Number(teacherMobileData.version || teacherPendingRisk.version || 0)
+
     await openRisk(page, riskId)
     await page.getByRole('button', { name: '处置', exact: true }).click()
     await confirmReason(page, '确认处置', '已与学生本人面谈并核对近期情况')
@@ -202,7 +218,7 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     await confirmReason(page, '确认关闭', '复发处置完成，学生状态恢复稳定')
     await expect(page.getByText('已关闭', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
 
-    // 8) 学生 PC 真实登录：页面和本人学工总览只能看到计数，不得泄露内部标题/处置明细。
+    // 8) 学生 PC + 学生移动端真实登录：内部风险标题/处置明细必须完全不可见。
     const studentPage = await page.context().newPage()
     const studentLogin = new StudentLoginPage(studentPage, config.studentBaseUrl)
     await studentLogin.login(student)
@@ -211,11 +227,12 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     const overview = await api(studentPage, studentLogin.lastAccessToken, 'GET', '/mobile/affairs/overview')
     expect(overview.response.status(), JSON.stringify(overview.body)).toBe(200)
     const overviewData = overview.body?.data || {}
-    expect(Number(overviewData.riskOpen || 0)).toBeGreaterThanOrEqual(0)
     expect(JSON.stringify(overviewData)).not.toContain(title)
     expect(JSON.stringify(overviewData)).not.toContain(detailText)
+    expect(Object.keys(overviewData)).not.toContain('riskOpen')
     expect(Object.keys(overviewData)).not.toContain('riskDetail')
-    evidence.studentOverviewRiskOpen = Number(overviewData.riskOpen || 0)
+    expect(Number(overviewData.careActionCount || 0)).toBeGreaterThanOrEqual(0)
+    evidence.studentMobilePrivacy = 'PASS'
     evidence.studentPrivacy = 'PASS'
     await studentPage.close()
 
