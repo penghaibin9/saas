@@ -101,7 +101,7 @@ def main() -> int:
             tenant_id=TENANT_ID,
             gd_student_id=student.id,
             final_type='定稿',
-            version=f'v-gd013-solo-{RUN_ID}',
+            version=f'g13-{RUN_ID[-12:]}',
             submit_at=datetime.now(timezone.utc),
             plagiarism_rate='8.0%',
             plagiarism_status='已检测',
