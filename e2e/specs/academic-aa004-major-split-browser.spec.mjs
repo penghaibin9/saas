@@ -44,8 +44,7 @@ async function startMiniLoopbackBridge() {
     if (await canConnect(candidate.address, port)) { upstream = { ...candidate, port }; break }
   }
   if (!upstream) throw new Error(`AA-004 Mini upstream is not reachable: ${MINIAPP_UPSTREAM.origin}`)
-  const server = http.createServer({
-  }, (request, response) => {
+  const server = http.createServer((request, response) => {
     const proxy = http.request({
       protocol: MINIAPP_UPSTREAM.protocol,
       hostname: upstream.address,
