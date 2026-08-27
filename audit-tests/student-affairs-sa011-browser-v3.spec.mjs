@@ -71,6 +71,18 @@ async function chooseRemote(page, placeholderText, searchPlaceholder, keyword, o
       break
     }
   }
+  if (!combo) {
+    const dialogs = page.getByRole('dialog')
+    for (let index = (await dialogs.count()) - 1; index >= 0; index -= 1) {
+      const dialog = dialogs.nth(index)
+      if (!(await dialog.isVisible())) continue
+      const candidates = dialog.getByRole('combobox')
+      if (await candidates.count() === 1) {
+        combo = candidates.first()
+        break
+      }
+    }
+  }
   expect(combo, `picker ${placeholderText} must resolve to a combobox`).toBeTruthy()
   await expect(combo, `picker ${placeholderText}`).toBeVisible({ timeout: 20_000 })
   await combo.click()
