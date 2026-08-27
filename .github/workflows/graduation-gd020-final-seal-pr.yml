@@ -68,13 +68,13 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_EXPECTED_SHA: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
+      E2E_EXPECTED_SHA: a9540a86d8594c3e0ad8bfdb86d5cafe1a2fc8fe
 
     steps:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
+          ref: a9540a86d8594c3e0ad8bfdb86d5cafe1a2fc8fe
           fetch-depth: 0
 
       - name: Assert exact product HEAD
