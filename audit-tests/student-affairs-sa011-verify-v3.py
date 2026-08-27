@@ -23,12 +23,14 @@ def main() -> None:
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     assert evidence.get("result") == "REAL_PASS", evidence
     assert evidence.get("exactHead") == os.environ["E2E_TARGET_SHA"], evidence
-    assert evidence.get("surface") == "STAFF_PC+STUDENT_PC+TEACHER_MOBILE+STUDENT_MOBILE", evidence
+    assert evidence.get("surface") == "STAFF_PC+STUDENT_PC+TEACHER_MINI_BROWSER+STUDENT_MINI_BROWSER", evidence
     assert int(evidence.get("crossScopeHttpStatus") or 0) == 403
     assert int(evidence.get("duplicateSourceHttpStatus") or 0) == 409
     assert evidence.get("teacherMobileRisk") == "PASS"
     assert int(evidence.get("teacherMobileVersion") or 0) >= 1
+    assert evidence.get("teacherMiniBrowser") == "PASS"
     assert evidence.get("studentMobilePrivacy") == "PASS"
+    assert evidence.get("studentMiniBrowserPrivacy") == "PASS"
     assert evidence.get("studentPrivacy") == "PASS"
 
     risk_id = int(evidence["riskId"])
@@ -110,7 +112,6 @@ def main() -> None:
             assert todos, "risk todo missing"
             assert all(str(item[0]).upper() == "DONE" for item in todos), todos
 
-            # 学生可收到“状态变化”通知，但内容不得泄露内部风险标题/处置明细。
             cur.execute(
                 """SELECT title, content, rendered_title, rendered_content_plain
                    FROM t_unified_message
@@ -124,7 +125,6 @@ def main() -> None:
                 assert title not in text, text
                 assert detail not in text, text
 
-            # 同 source/ref 防重；不同 source 使用同 ref 不得互相误杀。
             cur.execute(
                 """SELECT source, COUNT(*) FROM t_affairs_risk_record
                    WHERE source_ref_id=%s AND source IN ('ACADEMIC_WARNING','DORM')
@@ -136,7 +136,6 @@ def main() -> None:
             assert source_counts.get("ACADEMIC_WARNING") == 1, source_counts
             assert source_counts.get("DORM") == 1, source_counts
 
-            # 最终没有第二条同一人工主风险被“复发”复制；重开必须沿用同一 riskId。
             cur.execute(
                 """SELECT COUNT(*) FROM t_affairs_risk_record
                    WHERE student_id=%s AND title=%s AND is_deleted=0""",
@@ -153,12 +152,12 @@ def main() -> None:
         "crossScope": 403,
         "duplicateSource": 409,
         "reopenSameRecord": True,
-        "teacherMobileRisk": "PASS",
-        "studentMobilePrivacy": "PASS",
+        "teacherMiniBrowser": "PASS",
+        "studentMiniBrowserPrivacy": "PASS",
         "studentPrivacy": "PASS",
         "riskClosedStageEvents": 2,
     }, ensure_ascii=False, sort_keys=True))
-    print("[RESULT] REAL_PASS SA-011 four-surface Browser/API + MySQL + privacy/scope seal")
+    print("[RESULT] REAL_PASS SA-011 four-end Browser First + API + MySQL + privacy/scope seal")
 
 
 if __name__ == "__main__":
