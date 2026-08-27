@@ -105,7 +105,7 @@ export const gdStudentApi = {
   },
   getStudentOptions(keyword) {
     return call(() =>
-      request('/students', { params: { page: 1, pageSize: 200, keyword: keyword || '' } }).then((d) =>
+      request('/students', { params: { page: 1, pageSize: 200, keyword: keyword || '', mode: 'picker' } }).then((d) =>
         (d.items || []).map((s) => ({ id: s.id || s.studentId, name: s.realName || s.name, studentNo: s.studentNo }))
       )
     )

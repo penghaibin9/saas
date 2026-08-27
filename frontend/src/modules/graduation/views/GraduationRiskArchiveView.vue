@@ -6,13 +6,13 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="gp-tabs">
-      <button class="gp-tabs__item" :class="{ 'is-active': tab === 'risk' }" @click="switchTab('risk')">问题预警</button>
-      <button class="gp-tabs__item" :class="{ 'is-active': tab === 'archive' }" @click="switchTab('archive')">毕设归档</button>
-      <button class="gp-tabs__item" :class="{ 'is-active': tab === 'stats' }" @click="switchTab('stats')">毕设统计</button>
+      <button v-if="canRiskView" class="gp-tabs__item" :class="{ 'is-active': tab === 'risk' }" @click="switchTab('risk')">问题预警</button>
+      <button v-if="canArchiveView" class="gp-tabs__item" :class="{ 'is-active': tab === 'archive' }" @click="switchTab('archive')">毕设归档</button>
+      <button v-if="canStatsView" class="gp-tabs__item" :class="{ 'is-active': tab === 'stats' }" @click="switchTab('stats')">毕设统计</button>
     </div>
 
     <!-- 问题预警：连续双栏处置 -->
-    <div v-if="tab === 'risk'" class="mp-stack">
+    <div v-if="tab === 'risk' && canRiskView" class="mp-stack">
       <div v-if="hasBatch" class="rk-scan-bar">
         <div class="rk-scan-bar__meta">
           <span>当前批次：{{ batchStore.selectedBatchName || batchStore.selectedBatchId }}</span>
@@ -20,7 +20,7 @@
           <span v-else>尚未扫描</span>
           <span v-if="lastScanStats">扫描 {{ lastScanStats.scannedStudents || 0 }} 人 · 新增 {{ lastScanStats.newCasesCreated || 0 }} · 重开 {{ lastScanStats.reopenedCases || 0 }} · 耗时 {{ lastScanStats.elapsedMs || '—' }}ms</span>
         </div>
-        <button class="mp-btn mp-btn--primary" @click="doScan">扫描生成风险项</button>
+        <button v-if="canRiskScan" class="mp-btn mp-btn--primary" @click="doScan">扫描生成风险项</button>
       </div>
       <AdvancedFilter v-if="hasBatch" v-model="riskFilters" :fields="riskFilterFields" @search="loadRisks" @reset="resetRiskFilters" />
       <ErrorState v-if="riskError" :description="riskError" @retry="loadRisks" />
@@ -30,7 +30,7 @@
         :title="hasBatch ? '还没有风险记录' : '请先选择或创建毕设批次'"
         :description="hasBatch ? '系统会自动排查 13 类毕设问题（没选题、任务书没下达、开题逾期、中期没做、论文没交、答辩没排、材料没归档、毕业资格受影响等）。点下面的按钮按当前数据扫一遍，出问题的学生会自动列出来，不用手工排查。' : '顶部批次条选择当前工作批次后，再扫描与处置风险。'"
       >
-        <template v-if="hasBatch" #actions>
+        <template v-if="hasBatch && canRiskScan" #actions>
           <button class="mp-btn mp-btn--primary" @click="doScan">扫描生成风险项</button>
         </template>
       </EmptyState>
@@ -61,7 +61,7 @@
           <section v-else class="mp-card">
             <div class="mp-card__head">
               <span class="mp-card__title">{{ selectedRisk.riskName }}</span>
-              <button v-if="selectedRisk.gdStudentId" class="mp-link" @click="$router.push('/admin/graduation/students/' + selectedRisk.gdStudentId)">查看学生档案 →</button>
+              <button v-if="canStudentView && selectedRisk.gdStudentId" class="mp-link" @click="$router.push('/admin/graduation/students/' + selectedRisk.gdStudentId)">查看学生档案 →</button>
             </div>
             <div class="mp-card__body">
               <div class="mp-kv"><span class="mp-kv__k">等级</span><span class="mp-kv__v"><StatusTag :type="selectedRisk.level === 'CRITICAL' || selectedRisk.level === 'HIGH' ? 'danger' : 'warning'" :label="levelLabel(selectedRisk.level)" dot /></span></div>
@@ -75,9 +75,9 @@
               <div v-if="selectedRisk.reopenCount" class="mp-kv"><span class="mp-kv__k">重开次数</span><span class="mp-kv__v">{{ selectedRisk.reopenCount }}</span></div>
               <div v-if="selectedRisk.handleNote" class="mp-kv"><span class="mp-kv__k">处理记录</span><span class="mp-kv__v">{{ selectedRisk.handleNote }}</span></div>
               <div class="ie-actions" style="justify-content: flex-start; margin-top: var(--space-3)">
-                <button v-if="selectedRisk.status === 'OPEN'" class="mp-btn mp-btn--primary" @click="doAccept(selectedRisk)">受理</button>
-                <button v-if="selectedRisk.status === 'PROCESSING'" class="mp-btn mp-btn--primary" @click="doProcess(selectedRisk)">记录处理</button>
-                <button v-if="selectedRisk.status === 'PROCESSING' || (selectedRisk.status === 'OPEN' && selectedRisk.conditionActive === false)" class="mp-btn" @click="doClose(selectedRisk)">关闭风险</button>
+                <button v-if="canRiskAccept && selectedRisk.status === 'OPEN'" class="mp-btn mp-btn--primary" @click="doAccept(selectedRisk)">受理</button>
+                <button v-if="canRiskProcess && selectedRisk.status === 'PROCESSING'" class="mp-btn mp-btn--primary" @click="doProcess(selectedRisk)">记录处理</button>
+                <button v-if="canRiskClose && (selectedRisk.status === 'PROCESSING' || (selectedRisk.status === 'OPEN' && selectedRisk.conditionActive === false))" class="mp-btn" @click="doClose(selectedRisk)">关闭风险</button>
                 <span v-if="selectedRisk.status === 'CLOSED'" class="mp-note">该风险已关闭</span>
               </div>
               <p class="mp-note" style="margin-top: var(--space-2)">受理 / 处理 / 关闭均写入审计留痕；关闭需填写原因。</p>
@@ -87,11 +87,11 @@
       </div>
     </div>
     <!-- 毕设归档：连续双栏核验（左队列 + 右缺件清单与状态机动作） -->
-    <div v-if="tab === 'archive'" class="mp-stack">
+    <div v-if="tab === 'archive' && canArchiveView" class="mp-stack">
       <div v-if="hasBatch" class="ie-actions" style="justify-content: flex-start">
-        <button class="mp-btn mp-btn--primary" @click="doBatchGenerate">批量生成提交</button>
-        <button class="mp-btn" @click="doBatchFile">一键核验备案</button>
-        <AppExportButton :export-fn="exportArchivesFn">导出台账</AppExportButton>
+        <button v-if="canArchivePreview && canArchiveFile" class="mp-btn mp-btn--primary" @click="doBatchGenerate">批量生成提交</button>
+        <button v-if="canArchivePreview && canArchiveFile" class="mp-btn" @click="doBatchFile">一键核验备案</button>
+        <AppExportButton v-if="canArchiveExport" :export-fn="exportArchivesFn">导出台账</AppExportButton>
       </div>
       <AdvancedFilter v-if="hasBatch" v-model="archiveFilters" :fields="archiveFilterFields" @search="loadArchives" @reset="resetArchiveFilters" />
       <ErrorState v-if="archiveError" :description="archiveError" @retry="loadArchives" />
@@ -126,7 +126,7 @@
           <section v-else class="mp-card">
             <div class="mp-card__head">
               <span class="mp-card__title">{{ selectedArchive.studentName }} · 归档核验</span>
-              <button v-if="selectedArchive.gdStudentId" class="mp-link" @click="$router.push('/admin/graduation/students/' + selectedArchive.gdStudentId)">查看学生档案 →</button>
+              <button v-if="canStudentView && selectedArchive.gdStudentId" class="mp-link" @click="$router.push('/admin/graduation/students/' + selectedArchive.gdStudentId)">查看学生档案 →</button>
             </div>
             <div class="mp-card__body">
               <div class="mp-kv"><span class="mp-kv__k">学号</span><span class="mp-kv__v">{{ selectedArchive.studentNo }}</span></div>
@@ -141,18 +141,18 @@
                 <ul class="ar-missing">
                   <li v-for="m in selectedArchive.missingItems" :key="m" class="ar-missing__item">
                     <span class="ar-missing__name">✕ {{ m }}</span>
-                    <button class="mp-link" @click="goFix(m, selectedArchive)">{{ selectedArchive.dataAnomaly ? '查看学生档案 →' : '去补齐 →' }}</button>
+                    <button v-if="canStudentView" class="mp-link" @click="goFix(m, selectedArchive)">{{ selectedArchive.dataAnomaly ? '查看学生档案 →' : '去补齐 →' }}</button>
                   </li>
                 </ul>
               </template>
               <div class="ie-actions" style="justify-content: flex-start; margin-top: var(--space-3)">
                 <span v-if="selectedArchive.dataAnomaly" class="mp-note" style="color: var(--danger, #dc2626); font-weight: 600">历史主档异常，当前归档记录仅允许只读查看</span>
                 <template v-else>
-                  <button v-if="['NOT_GENERATED', 'REJECTED'].includes(selectedArchive.status)" class="mp-btn mp-btn--primary" @click="doGenerate(selectedArchive)">生成清单</button>
-                  <button v-if="selectedArchive.status === 'PENDING_SUBMIT' && !selectedArchive.missingItems.length" class="mp-btn mp-btn--primary" @click="doSubmit(selectedArchive)">提交归档</button>
+                  <button v-if="canArchivePreview && ['NOT_GENERATED', 'REJECTED'].includes(selectedArchive.status)" class="mp-btn mp-btn--primary" @click="doGenerate(selectedArchive)">生成清单</button>
+                  <button v-if="canArchiveFile && selectedArchive.status === 'PENDING_SUBMIT' && !selectedArchive.missingItems.length" class="mp-btn mp-btn--primary" @click="doSubmit(selectedArchive)">提交归档</button>
                   <span v-if="selectedArchive.status === 'PENDING_SUBMIT' && selectedArchive.missingItems.length" class="mp-note">缺件补齐后方可提交归档</span>
-                  <button v-if="selectedArchive.status === 'SUBMITTED'" class="mp-btn mp-btn--primary" @click="doFile(selectedArchive)">核验归档</button>
-                  <button v-if="selectedArchive.status === 'SUBMITTED'" class="mp-btn" @click="doReject(selectedArchive)">驳回</button>
+                  <button v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" class="mp-btn mp-btn--primary" @click="doFile(selectedArchive)">核验归档</button>
+                  <button v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" class="mp-btn" @click="doReject(selectedArchive)">驳回</button>
                   <span v-if="selectedArchive.status === 'FILED'" class="mp-note">已正式归档备案，记录只读</span>
                 </template>
               </div>
@@ -163,7 +163,7 @@
       </div>
     </div>
     <!-- 毕设统计 -->
-    <div v-if="tab === 'stats'" class="mp-stack">
+    <div v-if="tab === 'stats' && canStatsView" class="mp-stack">
       <p class="mp-note">以下为当前数据范围内的全量汇总（时间筛选待后端统一接入后开放）。</p>
       <ErrorState v-if="statsError" :description="statsError" @retry="loadStats" />
       <LoadingState v-else-if="statsLoading" />
@@ -214,6 +214,7 @@ import { AppExportButton, AppPagination, AppStackedBarChart, AppPageGuide } from
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { buildRiskArchiveQuery, exportFilenameHint } from '@/modules/graduation/utils/queryParams'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
 
@@ -247,6 +248,25 @@ export default {
     }
   },
   computed: {
+    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
+    canRiskView() { return matchPermission(this.permissionPatterns, 'graduationDesign.risk.view') },
+    canRiskScan() { return matchPermission(this.permissionPatterns, 'graduationDesign.risk.scan') },
+    canRiskAccept() { return matchPermission(this.permissionPatterns, 'graduationDesign.risk.accept') },
+    canRiskProcess() { return matchPermission(this.permissionPatterns, 'graduationDesign.risk.process') },
+    canRiskClose() { return matchPermission(this.permissionPatterns, 'graduationDesign.risk.close') },
+    canArchiveView() { return matchPermission(this.permissionPatterns, 'graduationDesign.archive.view') },
+    canArchivePreview() { return matchPermission(this.permissionPatterns, 'graduationDesign.archive.preview') },
+    canArchiveFile() { return matchPermission(this.permissionPatterns, 'graduationDesign.archive.file') },
+    canArchiveExport() { return matchPermission(this.permissionPatterns, 'graduationDesign.archive.export') },
+    canStatsView() { return matchPermission(this.permissionPatterns, 'graduationDesign.dashboard.view') },
+    canStudentView() { return matchPermission(this.permissionPatterns, 'graduationDesign.student.view') },
+    availableTabs() {
+      return [
+        this.canRiskView ? 'risk' : '',
+        this.canArchiveView ? 'archive' : '',
+        this.canStatsView ? 'stats' : ''
+      ].filter(Boolean)
+    },
     hasBatch() {
       return !!this.batchStore.selectedBatchId
     },
@@ -285,29 +305,52 @@ export default {
     }
   },
   created() {
-    const p = this.$route.query.panel
-    if (['risk', 'archive', 'stats'].includes(p)) this.tab = p
+    const requested = String(this.$route.query.panel || '')
+    this.tab = this.isPanelAllowed(requested) ? requested : (this.availableTabs[0] || '')
     this.riskSelKey = (this.$route.query.rsel || '').toString()
     this.archiveSelKey = (this.$route.query.asel || '').toString()
-    this.loadRisks(); this.loadArchives(); this.loadStats(); this.loadLastScan()
+    if (this.tab && requested !== this.tab) {
+      this.$router.replace({ query: { ...this.$route.query, panel: this.tab } }).catch(() => {})
+    }
+    this.loadActivePanel()
   },
   watch: {
-    // 应用内点左侧三级菜单（同路由不同 ?panel=）时组件被复用，必须监听 query 才能切页签
+    // 应用内点左侧三级菜单（同路由不同 ?panel=）时组件被复用；无权 panel 必须回退到本角色第一个合法工作区。
     '$route.query.panel'(p) {
-      if (['risk', 'archive', 'stats'].includes(p) && p !== this.tab) this.tab = p
+      const requested = String(p || '')
+      const next = this.isPanelAllowed(requested) ? requested : (this.availableTabs[0] || '')
+      if (!next) return
+      if (next !== this.tab) {
+        this.tab = next
+        this.loadActivePanel()
+      }
+      if (requested !== next) this.$router.replace({ query: { ...this.$route.query, panel: next } }).catch(() => {})
     },
     'batchStore.selectedBatchId'() {
       this.riskPage = 1
       this.archivePage = 1
-      this.loadRisks()
-      this.loadArchives()
-      this.loadStats()
-      this.loadLastScan()
+      this.loadActivePanel()
     }
   },
   methods: {
     formatDateTime,
+    isPanelAllowed(panel) {
+      return (panel === 'risk' && this.canRiskView)
+        || (panel === 'archive' && this.canArchiveView)
+        || (panel === 'stats' && this.canStatsView)
+    },
+    loadActivePanel() {
+      if (this.tab === 'risk' && this.canRiskView) {
+        this.loadRisks()
+        this.loadLastScan()
+      } else if (this.tab === 'archive' && this.canArchiveView) {
+        this.loadArchives()
+      } else if (this.tab === 'stats' && this.canStatsView) {
+        this.loadStats()
+      }
+    },
     async loadLastScan() {
+      if (!this.canRiskView) return
       if (!this.batchStore.selectedBatchId) {
         this.lastScanAt = ''
         this.lastScanStats = null
@@ -321,10 +364,15 @@ export default {
     },
     /** 页签切换同步到 URL，保证刷新/分享/左侧菜单高亮一致 */
     switchTab(t) {
-      this.tab = t
-      if (this.$route.query.panel !== t) this.$router.replace({ query: { ...this.$route.query, panel: t } })
+      if (!this.isPanelAllowed(t)) return
+      if (this.tab !== t) {
+        this.tab = t
+        this.loadActivePanel()
+      }
+      if (this.$route.query.panel !== t) this.$router.replace({ query: { ...this.$route.query, panel: t } }).catch(() => {})
     },
     async doScan() {
+      if (!this.canRiskScan) { toast.error('当前角色无风险扫描权限'); return }
       if (!this.batchStore.selectedBatchId) {
         toast.error('请先选择毕设批次')
         return
@@ -375,6 +423,7 @@ export default {
       }
     },
     async loadRisks() {
+      if (!this.canRiskView) { this.riskLoading = false; this.riskRows = []; this.riskTotal = 0; return }
       if (!this.batchStore.selectedBatchId) {
         this.riskLoading = false
         this.riskError = ''
@@ -394,12 +443,15 @@ export default {
     },
     resetRiskFilters() { this.riskFilters = { status: '', level: '', keyword: '' }; this.riskPage = 1; this.loadRisks() },
     doAccept(row) {
+      if (!this.canRiskAccept) { toast.error('当前角色无风险受理权限'); return }
       this.confirm = { visible: true, title: '受理风险', message: `确认受理「${row.riskName}」（${row.studentName}）？`, type: 'primary', confirmText: '受理', requireReason: false, action: 'accept', row }
     },
     doProcess(row) {
+      if (!this.canRiskProcess) { toast.error('当前角色无风险处理权限'); return }
       this.confirm = { visible: true, title: '记录处理', message: '', type: 'primary', confirmText: '提交', requireReason: true, reasonLabel: '处理说明', action: 'process', row }
     },
     doClose(row) {
+      if (!this.canRiskClose) { toast.error('当前角色无风险关闭权限'); return }
       this.confirm = { visible: true, title: '关闭风险', message: '', type: 'danger', confirmText: '确认关闭', requireReason: true, reasonLabel: '关闭原因', action: 'close', row }
     },
     async onConfirm({ reason } = {}) {
@@ -408,6 +460,13 @@ export default {
         this.confirm.visible = false
         return
       }
+      const allowed = (action === 'accept' && this.canRiskAccept)
+        || (action === 'process' && this.canRiskProcess)
+        || (action === 'close' && this.canRiskClose)
+        || (action === 'reject-archive' && this.canArchiveFile)
+        || (action === 'batch-generate' && this.canArchivePreview && this.canArchiveFile)
+        || (action === 'batch-file' && this.canArchivePreview && this.canArchiveFile)
+      if (!allowed) { this.confirm.visible = false; toast.error('当前角色无此操作权限'); return }
       let res
       if (action === 'accept') res = await graduationRiskArchiveApi.acceptRisk(row.id)
       else if (action === 'process') res = await graduationRiskArchiveApi.processRisk(row.id, reason || '')
@@ -448,6 +507,7 @@ export default {
     },
     /** 缺件补齐入口：永远绑定 exact gdStudentId，并保留批次/source 上下文。 */
     goFix(item, row) {
+      if (!this.canStudentView) return
       const sid = row.gdStudentId
       if (!sid) {
         this.$router.push('/admin/graduation/students')
@@ -473,6 +533,7 @@ export default {
       })
     },
     async loadArchives() {
+      if (!this.canArchiveView) { this.archiveLoading = false; this.archiveRows = []; this.archiveTotal = 0; return }
       if (!this.batchStore.selectedBatchId) {
         this.archiveLoading = false
         this.archiveError = ''
@@ -492,18 +553,22 @@ export default {
     },
     resetArchiveFilters() { this.archiveFilters = { keyword: '', status: '' }; this.archivePage = 1; this.loadArchives() },
     async doGenerate(row) {
+      if (!this.canArchivePreview) { toast.error('当前角色无归档生成权限'); return }
       const res = await graduationRiskArchiveApi.generateArchive(row.gdStudentId)
       if (res.code === 0) { toast.success('已生成'); this.loadArchives() } else toast.error(res.message)
     },
     async doSubmit(row) {
+      if (!this.canArchiveFile) { toast.error('当前角色无归档提交权限'); return }
       const res = await graduationRiskArchiveApi.submitArchive(row.gdStudentId)
       if (res.code === 0) { toast.success('已提交'); this.loadArchives() } else toast.error(res.message)
     },
     async doFile(row) {
+      if (!this.canArchiveFile) { toast.error('当前角色无归档备案权限'); return }
       const res = await graduationRiskArchiveApi.fileArchive(row.gdStudentId)
       if (res.code === 0) { toast.success('已归档'); this.loadArchives() } else toast.error(res.message)
     },
     doReject(row) {
+      if (!this.canArchiveFile) { toast.error('当前角色无归档驳回权限'); return }
       this.confirm = {
         visible: true, title: '驳回归档', message: '', type: 'danger', confirmText: '确认驳回',
         requireReason: true, reasonLabel: '驳回原因', reasonChips: ARCHIVE_REJECT_REASON_CHIPS,
@@ -511,6 +576,7 @@ export default {
       }
     },
     exportArchivesFn() {
+      if (!this.canArchiveExport) return Promise.resolve({ code: 403001, data: null, message: '当前角色无归档导出权限' })
       const hint = exportFilenameHint(this.batchStore.selectedBatchName, '毕设归档')
       const p = buildRiskArchiveQuery(this.archiveFilters, { batchId: this.batchStore.selectedBatchId })
       return graduationRiskArchiveApi.exportArchives(p).then((res) => {
@@ -534,6 +600,7 @@ export default {
       return rows.map((r) => `${map[r.reason] || r.reason} ${r.count}`).join('；')
     },
     async doBatchGenerate() {
+      if (!this.canArchivePreview || !this.canArchiveFile) { toast.error('当前角色无批量归档权限'); return }
       if (!this.batchStore.selectedBatchId) {
         toast.error('请先选择毕设批次')
         return
@@ -564,6 +631,7 @@ export default {
       }
     },
     async doBatchFile() {
+      if (!this.canArchivePreview || !this.canArchiveFile) { toast.error('当前角色无批量备案权限'); return }
       if (!this.batchStore.selectedBatchId) {
         toast.error('请先选择毕设批次')
         return
@@ -594,6 +662,7 @@ export default {
       }
     },
     async loadStats() {
+      if (!this.canStatsView) { this.statsLoading = false; this.overview = null; this.collegeRows = []; return }
       this.statsLoading = true
       this.statsError = ''
       if (!this.batchStore.selectedBatchId) {

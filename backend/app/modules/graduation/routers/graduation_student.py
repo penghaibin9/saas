@@ -36,13 +36,15 @@ def gd_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=2
                 hasTopic: Optional[bool] = None, eligibility: Optional[str] = None,
                 studentGroup: Optional[str] = None, hasDefenseGroup: Optional[bool] = None,
                 gradQualStatus: Optional[str] = None, materialComplete: Optional[bool] = None,
+                finalStatus: Optional[str] = None,
                 archiveView: Optional[str] = None, user=Depends(get_current_user)):
     items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId,
                                      batch_id=batchId, stage=stage, risk_level=riskLevel,
                                      advisor_name=advisorName, has_topic=hasTopic,
                                      eligibility=eligibility, student_group=studentGroup,
                                      has_defense_group=hasDefenseGroup, grad_qual_status=gradQualStatus,
-                                     material_complete=materialComplete, archive_view=archiveView)
+                                     material_complete=materialComplete, final_status=finalStatus,
+                                     archive_view=archiveView)
     return success(paginate(items, total, page, pageSize))
 
 

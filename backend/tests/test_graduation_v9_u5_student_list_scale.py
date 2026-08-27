@@ -28,6 +28,8 @@ def test_u5_student_list_source_forbids_python_scope_and_n_plus_one():
     assert ".offset(" in source
     assert ".limit(" in source
     assert "_material_snapshot(db" not in source
+    assert "requested_final_status" in source
+    assert "filters.append(final_current == requested_final_status)" in source
 
 
 def test_u5_student_list_executes_count_plus_one_paged_select(monkeypatch):
@@ -71,6 +73,7 @@ def test_u5_student_list_executes_count_plus_one_paged_select(monkeypatch):
         batch_id="17",
         keyword="2026",
         material_complete=False,
+        final_status="APPROVED",
     )
 
     assert items == []
@@ -79,3 +82,5 @@ def test_u5_student_list_executes_count_plus_one_paged_select(monkeypatch):
     page_stmt = db.statements[1][1]
     assert page_stmt._limit_clause.value == 200
     assert page_stmt._offset_clause.value == 19800
+    page_sql = str(page_stmt.compile(compile_kwargs={"literal_binds": True}))
+    assert "APPROVED" in page_sql
