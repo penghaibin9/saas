@@ -1,0 +1,253 @@
+name: Student Affairs SA-005 Post-Publicity V3
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Stage-1 SA-005 run id that froze the real publicity state'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: student-affairs-sa005-post-publicity-v3
+  cancel-in-progress: false
+
+jobs:
+  post-publicity:
+    name: SA-005 real-time continuation / Staff PC / eligibility recheck / MySQL seal
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: student-affairs-sa005-post-publicity-v3
+      JWT_SECRET: student-affairs-sa005-focused-v3-only
+      JWT_SECRET_KEY: student-affairs-sa005-focused-v3-only
+      PYTHONPATH: .
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_TARGET_SHA: 7af4581d47cfc96cc425dda2c374c8cbd0c29922
+
+    steps:
+      - name: Checkout current runner dispatcher
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: runner
+          fetch-depth: 0
+
+      - name: Checkout immutable application exact head
+        uses: actions/checkout@v4
+        with:
+          ref: 7af4581d47cfc96cc425dda2c374c8cbd0c29922
+          path: app
+          fetch-depth: 0
+
+      - name: Download frozen Stage-1 authority
+        uses: actions/download-artifact@v4
+        with:
+          name: student-affairs-sa005-time-gate-${{ inputs.source_run_id }}
+          path: state
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Verify frozen authority and pin Stage-1 runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+
+          state = Path('state')
+          manifest = json.loads((state / 'student-affairs-sa005-time-gate-manifest.json').read_text(encoding='utf-8'))
+          expected_product = os.environ['E2E_TARGET_SHA']
+          expected_run = os.environ['SOURCE_RUN_ID']
+          assert str(manifest.get('productSha') or '') == expected_product, manifest
+          assert str(manifest.get('sourceRunId') or '') == expected_run, manifest
+          dump = state / 'student_lifecycle_e2e.sql'
+          digest = hashlib.sha256(dump.read_bytes()).hexdigest()
+          assert digest == str(manifest.get('dumpSha256') or ''), (digest, manifest.get('dumpSha256'))
+          evidence = state / 'student-affairs-grant-audit-evidence.json'
+          evidence_digest = hashlib.sha256(evidence.read_bytes()).hexdigest()
+          assert evidence_digest == str(manifest.get('evidenceSha256') or ''), (evidence_digest, manifest.get('evidenceSha256'))
+          print('[FROZEN_AUTHORITY]', json.dumps({
+              'sourceRunId': manifest['sourceRunId'],
+              'productSha': manifest['productSha'],
+              'runnerSha': manifest['runnerSha'],
+              'applicationId': manifest['applicationId'],
+              'dueAt': manifest['dueAt'],
+              'dumpSha256': digest,
+          }, sort_keys=True))
+          (state / 'runner.sha').write_text(str(manifest['runnerSha']), encoding='utf-8')
+          PY
+          runner_sha="$(cat state/runner.sha)"
+          git -C runner fetch origin "$runner_sha" --depth=1
+          git -C runner checkout --detach "$runner_sha"
+          test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
+          test "$(git -C runner rev-parse HEAD)" = "$runner_sha"
+          test -z "$(git -C app status --porcelain)"
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: app/backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            app/frontend/package-lock.json
+            app/e2e/package-lock.json
+
+      - name: Restore exact Stage-1 MySQL state without reseeding
+        shell: bash
+        run: |
+          set -euo pipefail
+          mysql -h 127.0.0.1 -P 3306 -uroot -pe2e_root student_lifecycle_e2e < state/student_lifecycle_e2e.sql
+          cp state/student-affairs-grant-audit-evidence.json app/e2e/student-affairs-grant-audit-evidence.json
+          cp state/student-affairs-sa005-time-gate-manifest.json app/e2e/student-affairs-sa005-time-gate-manifest.json
+          echo '[RESTORE] exact SA-005 Stage-1 MySQL authority restored; no migration/seed/bootstrap executed'
+
+      - name: Install backend dependencies only
+        working-directory: app/backend
+        run: pip install -r requirements.txt
+
+      - name: Enforce real elapsed publicity time and live SA-002 qualification before mutation
+        working-directory: app/backend
+        run: python ../../runner/audit-tests/student-affairs-sa005-post-publicity-verify-v3.py preflight
+
+      - name: Start real backend from restored authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/e2e/runtime-logs
+          cd app/backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend-sa005-post-publicity.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend-sa005-post-publicity.log
+          exit 1
+
+      - name: Start real Staff PC
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd app/frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend-sa005-post-publicity.log 2>&1 &
+
+      - name: Wait for Staff PC
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:5173/login >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat app/e2e/runtime-logs/frontend-sa005-post-publicity.log || true
+          exit 1
+
+      - name: Install Chromium and inject immutable SA-005 Stage-2 spec
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp runner/audit-tests/student-affairs-sa005-post-publicity-browser-v3.spec.mjs app/e2e/specs/student-affairs-sa005-post-publicity-browser-v3.spec.mjs
+          cd app/e2e
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run real Staff PC post-publicity GRANT confirmation
+        id: browser
+        continue-on-error: true
+        working-directory: app/e2e
+        run: npx playwright test specs/student-affairs-sa005-post-publicity-browser-v3.spec.mjs
+
+      - name: Seal GRANTED + grant-time eligibility recheck truth in restored MySQL
+        id: mysql
+        if: steps.browser.outcome == 'success'
+        continue-on-error: true
+        working-directory: app/backend
+        run: python ../../runner/audit-tests/student-affairs-sa005-post-publicity-verify-v3.py final
+
+      - name: Reassert immutable product and Stage-1 runner
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
+          test "$(git -C runner rev-parse HEAD)" = "$(cat state/runner.sha)"
+          test -z "$(git -C app status --porcelain --untracked-files=no)"
+          echo "tested_app_head=$(git -C app rev-parse HEAD)"
+          echo "stage1_runner_head=$(git -C runner rev-parse HEAD)"
+
+      - name: Show post-publicity outcomes and fail on any blocker
+        if: always()
+        shell: bash
+        run: |
+          echo "post_publicity_browser=${{ steps.browser.outcome }}"
+          echo "post_publicity_mysql=${{ steps.mysql.outcome }}"
+          test "${{ steps.browser.outcome }}" = "success"
+          test "${{ steps.mysql.outcome }}" = "success"
+
+      - name: Upload SA-005 post-publicity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-sa005-post-publicity-${{ github.run_id }}
+          path: |
+            state/student-affairs-sa005-time-gate-manifest.json
+            app/e2e/student-affairs-sa005-post-publicity-evidence.json
+            app/e2e/playwright-report/
+            app/e2e/test-results/
+            app/e2e/runtime-logs/
+          if-no-files-found: ignore
+          retention-days: 7

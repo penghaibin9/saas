@@ -1,0 +1,397 @@
+name: Student Affairs SA-004 Focused V3 exact head
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - audit/student-affairs-browser-runner-20260823
+    paths:
+      - 'audit-tests/student-affairs-sa004-bootstrap-v3.py'
+      - 'audit-tests/student-affairs-sa004-verify-v3.py'
+      - 'audit-tests/student-affairs-scholarship-config-browser-v3.spec.mjs'
+      - 'audit-tests/student-affairs-scholarship-browser-audit.spec.mjs'
+      - '.github/workflows/student-affairs-sa004-focused-v3-exact-head.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: student-affairs-sa004-focused-v3
+  cancel-in-progress: true
+
+jobs:
+  sa004-focused-browser:
+    name: SA-004 focused / config + journey / Chromium / MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_sa004_contract?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/15
+      REDIS_KEY_PREFIX: student-affairs-sa004-focused-v3
+      JWT_SECRET: student-affairs-sa004-focused-v3-only
+      JWT_SECRET_KEY: student-affairs-sa004-focused-v3-only
+      PYTHONPATH: .
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_TARGET_SHA: 7af4581d47cfc96cc425dda2c374c8cbd0c29922
+
+    steps:
+      - name: Checkout immutable audit runner
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: runner
+          fetch-depth: 1
+
+      - name: Checkout immutable application exact head
+        uses: actions/checkout@v4
+        with:
+          ref: 7af4581d47cfc96cc425dda2c374c8cbd0c29922
+          path: app
+          fetch-depth: 0
+
+      - name: Assert exact heads and clean product source
+        run: |
+          set -euo pipefail
+          echo "tested_app_head=$(git -C app rev-parse HEAD)"
+          echo "audit_runner_head=$(git -C runner rev-parse HEAD)"
+          test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
+          test -z "$(git -C app status --porcelain)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: app/backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            app/frontend/package-lock.json
+            app/student-portal/package-lock.json
+            app/e2e/package-lock.json
+
+      - name: Install backend, prepare isolated contracts, migrate Browser MySQL and publish IAM
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          python - <<'PY'
+          import pymysql
+          conn = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', autocommit=True)
+          try:
+              with conn.cursor() as cur:
+                  cur.execute("CREATE DATABASE IF NOT EXISTS student_lifecycle_sa004_contract CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+          finally:
+              conn.close()
+          print('[DB] isolated SA-004 pytest database ready')
+          PY
+          alembic upgrade head
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Run changed SA-004 contracts only on isolated test database
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_affairs_permission_codes.py::test_counselor_self_service_eval_only \
+            tests/test_affairs_phase2_role_matrix.py \
+            tests/test_affairs_funding_appeal_list_version.py \
+            tests/test_affairs_four_end_ui_contract.py::test_funding_publicity_manual_confirm_keeps_optimistic_lock_version
+          python - <<'PY'
+          from app.services.system_role_shadow_service import expected_system_role_permissions
+          codes = set(expected_system_role_permissions('COUNSELOR'))
+          assert 'studentAffairs.funding.approve' in codes, sorted(codes)
+          assert 'studentAffairs.funding.project.manage' not in codes, sorted(codes)
+          assert 'studentAffairs.funding.publicity.manage' not in codes, sorted(codes)
+          print('[PERMISSION] COUNSELOR funding first-review grant is narrow')
+          PY
+
+      - name: Reassert untouched Browser database authority after isolated pytest
+        working-directory: app/backend
+        run: |
+          set -euo pipefail
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start real backend
+        run: |
+          set -euo pipefail
+          mkdir -p app/e2e/runtime-logs
+          cd app/backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Bootstrap canonical SA-004 identities and counselor relations
+        working-directory: app/backend
+        run: python ../../runner/audit-tests/student-affairs-sa004-bootstrap-v3.py
+
+      - name: Start official external scheduler
+        run: |
+          set -euo pipefail
+          cd app/backend
+          nohup python scripts/run_scheduled_jobs.py > ../e2e/runtime-logs/scheduler.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/scheduler.pid
+          sleep 2
+
+      - name: Start real Staff PC and Student PC
+        run: |
+          set -euo pipefail
+          cd app/frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          cd ../student-portal
+          npm ci
+          VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+
+      - name: Wait for browser applications
+        run: |
+          set -euo pipefail
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login; do
+            ready=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ready=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ready" ]; then
+              echo "Application not ready: $url"
+              cat app/e2e/runtime-logs/*.log || true
+              exit 1
+            fi
+          done
+
+      - name: Install Chromium once and inject both SA-004 specs
+        run: |
+          set -euo pipefail
+          cp runner/audit-tests/student-affairs-scholarship-config-browser-v3.spec.mjs app/e2e/specs/student-affairs-scholarship-config-browser-v3.spec.mjs
+          cp runner/audit-tests/student-affairs-scholarship-browser-audit.spec.mjs app/e2e/specs/student-affairs-scholarship-browser-audit.spec.mjs
+          cd app/e2e
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run real Staff PC project and batch configuration
+        id: config_browser
+        continue-on-error: true
+        working-directory: app/e2e
+        run: npx playwright test specs/student-affairs-scholarship-config-browser-v3.spec.mjs
+
+      - name: Verify configuration truth in MySQL
+        id: config_mysql
+        if: steps.config_browser.outcome == 'success'
+        continue-on-error: true
+        working-directory: app/backend
+        run: python ../../runner/audit-tests/student-affairs-sa004-verify-v3.py config
+
+      - name: Run strict Browser First scholarship journey to real time gate
+        id: journey_browser
+        continue-on-error: true
+        working-directory: app/e2e
+        run: npx playwright test specs/student-affairs-scholarship-browser-audit.spec.mjs
+
+      - name: Verify journey truth and real publicity wait in MySQL
+        id: journey_mysql
+        if: steps.journey_browser.outcome == 'success'
+        continue-on-error: true
+        working-directory: app/backend
+        run: python ../../runner/audit-tests/student-affairs-sa004-verify-v3.py journey
+
+      - name: Freeze immutable real publicity state for Stage-2
+        id: freeze
+        if: >-
+          steps.config_browser.outcome == 'success' &&
+          steps.config_mysql.outcome == 'success' &&
+          steps.journey_browser.outcome == 'success' &&
+          steps.journey_mysql.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f app/e2e/runtime-logs/scheduler.pid ]; then
+            scheduler_pid="$(cat app/e2e/runtime-logs/scheduler.pid)"
+            kill "$scheduler_pid" 2>/dev/null || true
+            for i in {1..20}; do
+              if ! kill -0 "$scheduler_pid" 2>/dev/null; then break; fi
+              sleep 0.25
+            done
+            if kill -0 "$scheduler_pid" 2>/dev/null; then
+              kill -9 "$scheduler_pid" 2>/dev/null || true
+            fi
+          fi
+          mkdir -p state
+          if ! command -v mysqldump >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y default-mysql-client
+          fi
+          MYSQL_PWD=e2e_root mysqldump \
+            -h 127.0.0.1 -P 3306 -uroot \
+            --single-transaction --quick --skip-lock-tables --no-tablespaces \
+            student_lifecycle_e2e > state/student_lifecycle_e2e.sql
+          cp app/e2e/student-affairs-scholarship-audit-evidence.json \
+            state/student-affairs-scholarship-audit-evidence.json
+          RUNNER_SHA="$(git -C runner rev-parse HEAD)" python - <<'PY'
+          from datetime import timedelta
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import pymysql
+
+          state = Path('state')
+          evidence_path = state / 'student-affairs-scholarship-audit-evidence.json'
+          dump_path = state / 'student_lifecycle_e2e.sql'
+          evidence = json.loads(evidence_path.read_text(encoding='utf-8'))
+          app_id = int(evidence['applicationId'])
+          batch_id = int(evidence['batchId'])
+          appeal_id = int(evidence['appealId'])
+
+          db = pymysql.connect(
+              host='127.0.0.1', port=3306, user='root', password='e2e_root',
+              database='student_lifecycle_e2e', charset='utf8mb4')
+          try:
+              with db.cursor() as cur:
+                  cur.execute(
+                      """SELECT student_id, status, publicity_at, version, workflow_instance_id
+                         FROM t_affairs_funding_application WHERE id=%s""",
+                      (app_id,),
+                  )
+                  app = cur.fetchone()
+                  assert app, app_id
+                  assert app[1] == 'PUBLICITY', app
+                  assert app[2] is not None, app
+                  cur.execute(
+                      "SELECT publicity_days FROM t_affairs_funding_batch WHERE id=%s",
+                      (batch_id,),
+                  )
+                  batch = cur.fetchone()
+                  assert batch, batch_id
+                  days = max(1, int(batch[0] or 5))
+                  publicity_at = app[2]
+                  due_at = publicity_at + timedelta(days=days)
+                  cur.execute("SELECT UTC_TIMESTAMP(6)")
+                  now = cur.fetchone()[0]
+                  assert due_at > now, (now, due_at)
+                  cur.execute(
+                      "SELECT status, result, open_key FROM t_affairs_funding_appeal WHERE id=%s",
+                      (appeal_id,),
+                  )
+                  assert cur.fetchone() == ('CLOSED', 'OVERRULED', None)
+          finally:
+              db.close()
+
+          dump_sha = hashlib.sha256(dump_path.read_bytes()).hexdigest()
+          evidence_sha = hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+          manifest = {
+              'sourceRunId': os.environ['GITHUB_RUN_ID'],
+              'productSha': os.environ['E2E_TARGET_SHA'],
+              'runnerSha': os.environ['RUNNER_SHA'],
+              'applicationId': str(app_id),
+              'batchId': str(batch_id),
+              'appealId': str(appeal_id),
+              'studentId': str(app[0]),
+              'workflowInstanceId': str(app[4] or ''),
+              'preVersion': int(app[3]),
+              'publicityAt': publicity_at.isoformat(),
+              'publicityDays': days,
+              'dueAt': due_at.isoformat(),
+              'frozenAt': now.isoformat(),
+              'dumpSha256': dump_sha,
+              'evidenceSha256': evidence_sha,
+          }
+          manifest_path = state / 'student-affairs-sa004-time-gate-manifest.json'
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2), encoding='utf-8')
+          print('[SA004_TIME_GATE_FROZEN]', json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload immutable SA-004 time-gate authority
+        if: steps.freeze.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-sa004-time-gate-${{ github.run_id }}
+          path: |
+            state/student_lifecycle_e2e.sql
+            state/student-affairs-scholarship-audit-evidence.json
+            state/student-affairs-sa004-time-gate-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Reassert immutable application commit
+        if: always()
+        run: |
+          echo "tested_app_head=$(git -C app rev-parse HEAD)"
+          echo "audit_runner_head=$(git -C runner rev-parse HEAD)"
+          test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
+
+      - name: Show focused outcomes and fail on any real blocker
+        if: always()
+        run: |
+          echo "config_browser=${{ steps.config_browser.outcome }}"
+          echo "config_mysql=${{ steps.config_mysql.outcome }}"
+          echo "journey_browser=${{ steps.journey_browser.outcome }}"
+          echo "journey_mysql=${{ steps.journey_mysql.outcome }}"
+          echo "freeze=${{ steps.freeze.outcome }}"
+          test "${{ steps.config_browser.outcome }}" = "success"
+          test "${{ steps.config_mysql.outcome }}" = "success"
+          test "${{ steps.journey_browser.outcome }}" = "success"
+          test "${{ steps.journey_mysql.outcome }}" = "success"
+          test "${{ steps.freeze.outcome }}" = "success"
+
+      - name: Upload focused SA-004 browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-sa004-focused-v3-${{ github.run_id }}
+          path: |
+            app/e2e/playwright-report/
+            app/e2e/test-results/
+            app/e2e/student-affairs-scholarship-config-v3-evidence.json
+            app/e2e/student-affairs-scholarship-audit-evidence.json
+            app/e2e/runtime-logs/
+          if-no-files-found: ignore
+          retention-days: 7
