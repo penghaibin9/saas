@@ -1,0 +1,26 @@
+{
+  "repository": "penghaibin9/saas",
+  "base": {
+    "branch": "main",
+    "sha": "84bf29dc41bb2affa03c6345938ab0ca672b6eda"
+  },
+  "product": {
+    "branch": "fix/student-affairs-final-rc-20260824",
+    "productExactSha": "ac5a34c396fc38ce4148e8c7d8633390fb9d31f0",
+    "ahead": 58,
+    "behind": 0,
+    "immutableForTargetedValidation": true
+  },
+  "runner": {
+    "branch": "audit/student-affairs-v31-final-runner-20260827",
+    "runnerExactSha": null,
+    "status": "PENDING_FINAL_RUNNER_FREEZE_AFTER_TARGETED_GATES"
+  },
+  "r0": {
+    "status": "PASS",
+    "unresolvedSemanticConflicts": 0,
+    "unresolvedValidFixesOutsideRc": 0
+  },
+  "nextGatePolicy": "Only affected SA chains and mandatory shared-security Gold Deep smoke are eligible for rerun; do not rerun all 22 chains.",
+  "mergeState": "DRAFT_NO_GO_UNTIL_R0_R9_AND_S1_S6_PASS"
+}
