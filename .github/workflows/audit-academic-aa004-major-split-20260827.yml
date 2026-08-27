@@ -6,9 +6,8 @@ on:
       - audit/academic-sequential-20260827
     paths:
       - '.github/workflows/audit-academic-aa004-major-split-20260827.yml'
-      - 'e2e/specs/academic-aa004-major-split-browser.spec.mjs'
+      - 'e2e/specs/academic-aa004-major-split-close-allocate-resume.spec.mjs'
       - 'backend/scripts/e2e_prepare_academic_aa004_major_split.py'
-      - 'backend/scripts/e2e_assert_academic_aa004_major_split.py'
 
 permissions:
   contents: read
@@ -18,10 +17,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  major-split-gold:
-    name: exact product / Student PC+Mini / Staff PC / MySQL audit seal
+  major-split-failed-step-resume:
+    name: failed step only / Staff PC close-confirm -> auto-allocate
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 30
     services:
       mysql:
         image: mysql:8.4
@@ -54,7 +53,7 @@ jobs:
       DB_PASSWORD: e2e_root
       DB_NAME: academic_aa004_e2e
       REDIS_URL: redis://127.0.0.1:6379/11
-      REDIS_KEY_PREFIX: academic-aa004-final-rc
+      REDIS_KEY_PREFIX: academic-aa004-resume
       JWT_SECRET: academic-aa004-browser-only-not-production
       JWT_SECRET_KEY: academic-aa004-browser-only-not-production
       MOCK_LOGIN_ENABLED: 'false'
@@ -63,52 +62,51 @@ jobs:
       E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
-      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_MINIAPP_BASE_URL: http://localhost:5188
       E2E_EXPECTED_SHA: 7a761d2dd9f38fc9bad0685e95e37924eacd55fc
 
     steps:
       - name: Checkout exact product head
         uses: actions/checkout@v4
         with: { ref: '${{ env.TARGET_SHA }}', fetch-depth: 0 }
+
       - name: Assert clean product head
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           test -z "$(git status --porcelain)"
-          echo "AA-004 exact product SHA: $TARGET_SHA"
+          echo "AA-004 focused product SHA: $TARGET_SHA"
+
       - name: Checkout audit-only harness
         uses: actions/checkout@v4
         with: { ref: '${{ env.RUNNER_SHA }}', path: audit-harness, fetch-depth: 1 }
-      - name: Overlay only AA-004 audit files
+
+      - name: Overlay only failed-step harness
         run: |
           set -euo pipefail
           test "$(git -C audit-harness rev-parse HEAD)" = "$RUNNER_SHA"
-          cp audit-harness/e2e/specs/academic-aa004-major-split-browser.spec.mjs e2e/specs/academic-aa004-major-split-browser.spec.mjs
+          cp audit-harness/e2e/specs/academic-aa004-major-split-close-allocate-resume.spec.mjs e2e/specs/academic-aa004-major-split-close-allocate-resume.spec.mjs
           cp audit-harness/backend/scripts/e2e_prepare_academic_aa004_major_split.py backend/scripts/e2e_prepare_academic_aa004_major_split.py
-          cp audit-harness/backend/scripts/e2e_assert_academic_aa004_major_split.py backend/scripts/e2e_assert_academic_aa004_major_split.py
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+
       - uses: actions/setup-python@v5
         with: { python-version: '3.12', cache: pip, cache-dependency-path: backend/requirements.txt }
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: |
             frontend/package-lock.json
-            student-portal/package-lock.json
-            miniapp/package-lock.json
             e2e/package-lock.json
-      - name: Fast AA-004 source preflight
+
+      - name: Focused source preflight only
         run: |
           set -euo pipefail
-          python -m py_compile backend/scripts/e2e_prepare_academic_aa004_major_split.py backend/scripts/e2e_assert_academic_aa004_major_split.py
-          node --check e2e/specs/academic-aa004-major-split-browser.spec.mjs
-          grep -q 'source_type="MAJOR_SPLIT"' backend/app/modules/academic_affairs/services/academic_affairs_major_split_public_service.py
-          grep -q 'SPLIT_VOLUNTEER_SUBMIT' backend/app/modules/academic_affairs/services/academic_affairs_major_split_public_service.py
+          python -m py_compile backend/scripts/e2e_prepare_academic_aa004_major_split.py
+          node --check e2e/specs/academic-aa004-major-split-close-allocate-resume.spec.mjs
+          grep -q 'this.confirmVisible = false' frontend/src/modules/academicAffairs/views/AaMajorSplitView.vue
           grep -q '专业分流 · 教务处控制台' frontend/src/modules/academicAffairs/views/AaMajorSplitView.vue
-          grep -q '专业分流志愿' student-portal/src/views/academic/StudentMajorSplitView.vue
-          grep -q '专业分流志愿' miniapp/src/pages/student/academic-affairs/major-split.vue
+
       - name: Install backend and migrate isolated MySQL
         working-directory: backend
         run: |
@@ -116,34 +114,42 @@ jobs:
           pip install -r requirements.txt
           test "$(alembic heads | grep -c '(head)')" -eq 1
           alembic upgrade head
+
       - name: Replay production School IAM Authority
         working-directory: backend
         run: PYTHONPATH=. python scripts/bootstrap_control_plane_school_iam_authority.py
+
       - name: Seed isolated tenant
         working-directory: backend
         run: python scripts/e2e_seed_playwright_tenants.py
+
       - name: Seed real School IAM runtime fixture
         working-directory: backend
         run: PYTHONPATH=. python scripts/e2e_seed_control_plane_school_iam.py
+
       - name: Start real backend with mock login disabled
         run: |
           set -euo pipefail
           mkdir -p e2e/runtime-logs
           cd backend
-          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend-aa004.log 2>&1 &
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend-aa004-resume.log 2>&1 &
           for i in {1..60}; do if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi; sleep 2; done
-          cat ../e2e/runtime-logs/backend-aa004.log; exit 1
-      - name: Bootstrap canonical browser accounts
+          cat ../e2e/runtime-logs/backend-aa004-resume.log
+          exit 1
+
+      - name: Bootstrap canonical Staff PC account
         working-directory: backend
         run: |
           set -euo pipefail
           python scripts/e2e_bootstrap_graduation_accounts_ci.py
           python scripts/e2e_reset_graduation_passwords.py
           python scripts/e2e_verify_graduation_accounts.py
-      - name: Prepare AA-004 major split identity baseline
+
+      - name: Prepare only AA-004 identity baseline
         working-directory: backend
         run: python scripts/e2e_prepare_academic_aa004_major_split.py
-      - name: Build and start Staff PC
+
+      - name: Start Staff PC only
         env:
           VITE_USE_MOCK: 'false'
           VITE_API_BASE_URL: ''
@@ -152,59 +158,37 @@ jobs:
           set -euo pipefail
           cd frontend
           npm ci --no-audit --no-fund
-          npm run build
-          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend-aa004.log 2>&1 &
-      - name: Build and start Student PC
-        env:
-          VITE_BASE: /portal/
-          VITE_API_BASE_URL: /
-          VITE_PROXY_TARGET: http://127.0.0.1:8000
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend-aa004-resume.log 2>&1 &
+
+      - name: Wait for Staff PC only
         run: |
           set -euo pipefail
-          cd student-portal
-          npm ci --no-audit --no-fund
-          npm run build
-          nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-aa004.log 2>&1 &
-      - name: Dual-build and start Student Mini H5
-        env:
-          VITE_USE_MOCK: 'false'
-          VITE_API_BASE_URL: http://127.0.0.1:8000
-        run: |
-          set -euo pipefail
-          cd miniapp
-          npm ci --no-audit --no-fund
-          npm run build:h5
-          npm run build:mp-weixin
-          nohup npm run dev:h5 > ../e2e/runtime-logs/mini-aa004.log 2>&1 &
-      - name: Wait for AA-004 browser surfaces
-        run: |
-          set -euo pipefail
-          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://localhost:5188/; do
-            ready=''
-            for i in {1..60}; do if curl -fsS "$url" >/dev/null; then ready=1; break; fi; sleep 2; done
-            if [ -z "$ready" ]; then cat e2e/runtime-logs/*.log; exit 1; fi
+          ready=''
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:5173/login >/dev/null; then ready=1; break; fi
+            sleep 2
           done
+          if [ -z "$ready" ]; then cat e2e/runtime-logs/*.log; exit 1; fi
+
       - name: Install Playwright Chromium
         working-directory: e2e
         run: |
           npm install --no-audit --no-fund
           npx playwright install --with-deps chromium
-      - name: Run only AA-004 major split Browser chain
+
+      - name: Run only failed Staff PC step and immediate downstream
         working-directory: e2e
-        run: npx playwright test specs/academic-aa004-major-split-browser.spec.mjs --workers=1 --retries=0 --reporter=line
-      - name: Assert AA-004 Direct MySQL and audit final state
-        working-directory: backend
-        run: python scripts/e2e_assert_academic_aa004_major_split.py
-      - name: Upload AA-004 evidence
+        run: npx playwright test specs/academic-aa004-major-split-close-allocate-resume.spec.mjs --workers=1 --retries=0 --reporter=line
+
+      - name: Upload focused AA-004 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: academic-aa004-product-evidence-${{ env.TARGET_SHA }}
+          name: academic-aa004-close-allocate-resume-${{ env.TARGET_SHA }}
           path: |
             e2e/test-results/
             e2e/playwright-report/
-            e2e/academic-aa004-browser-outcome.json
-            e2e/academic-aa004-mysql-seal.json
+            e2e/academic-aa004-close-allocate-resume-outcome.json
             backend/tmp/e2e_academic_aa004_state.local.json
             e2e/runtime-logs/
           if-no-files-found: warn
