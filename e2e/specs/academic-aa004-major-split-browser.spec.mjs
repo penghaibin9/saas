@@ -122,6 +122,17 @@ async function confirmDialog(page) {
   await confirm.click()
 }
 
+function waitForMajorSplitDetailRefresh(page, batchId) {
+  return Promise.all([
+    page.waitForResponse((response) =>
+      response.request().method() === 'GET' && response.url().includes(`/api/v1/academic-affairs/major-split/batches/${batchId}/options`)
+    , { timeout: 20000 }),
+    page.waitForResponse((response) =>
+      response.request().method() === 'GET' && response.url().includes(`/api/v1/academic-affairs/major-split/batches/${batchId}/volunteers`)
+    , { timeout: 20000 }),
+  ])
+}
+
 test('AA-004 Student PC submit -> Student Mini update -> Staff PC allocate/confirm -> cross-surface result', async ({ browser, request }, testInfo) => {
   const facts = fixture()
   const miniBridge = await startMiniLoopbackBridge()
@@ -246,6 +257,7 @@ test('AA-004 Student PC submit -> Student Mini update -> Staff PC allocate/confi
     await batchRow.click()
     await expect(staff.getByText(facts.studentName, { exact: false }).first()).toBeVisible({ timeout: 20000 })
 
+    const closeRefreshPromise = waitForMajorSplitDetailRefresh(staff, batchId)
     const closePromise = staff.waitForResponse((response) =>
       response.request().method() === 'POST' && response.url().endsWith(`/api/v1/academic-affairs/major-split/batches/${batchId}/close`)
     , { timeout: 20000 })
@@ -253,17 +265,29 @@ test('AA-004 Student PC submit -> Student Mini update -> Staff PC allocate/confi
     await confirmDialog(staff)
     const closeResponse = await closePromise
     expect(closeResponse.ok()).toBeTruthy()
+    const closeRefreshResponses = await closeRefreshPromise
+    expect(closeRefreshResponses.every((response) => response.ok())).toBeTruthy()
+    await expect(staff.locator('.aams-batch').filter({ hasText: batchName }).first()).toContainText('已截止')
 
+    const allocateRefreshPromise = waitForMajorSplitDetailRefresh(staff, batchId)
     const allocatePromise = staff.waitForResponse((response) =>
       response.request().method() === 'POST' && response.url().includes(`/api/v1/academic-affairs/major-split/batches/${batchId}/allocate`)
     , { timeout: 20000 })
-    await staff.getByRole('button', { name: '自动分配', exact: true }).click({ force: true })
+    const allocateButton = staff.getByRole('button', { name: '自动分配', exact: true })
+    await expect(allocateButton).toBeVisible({ timeout: 20000 })
+    await allocateButton.hover()
+    const allocateBox = await allocateButton.boundingBox()
+    expect(allocateBox).toBeTruthy()
+    await staff.mouse.click(allocateBox.x + allocateBox.width / 2, allocateBox.y + allocateBox.height / 2)
     await confirmDialog(staff)
     const allocateResponse = await allocatePromise
     const allocatePayload = await allocateResponse.json()
     expect(allocateResponse.ok(), JSON.stringify(allocatePayload)).toBeTruthy()
     expect(allocatePayload?.data?.allocated).toBe(1)
     expect(allocatePayload?.data?.unallocated).toBe(0)
+    const allocateRefreshResponses = await allocateRefreshPromise
+    expect(allocateRefreshResponses.every((response) => response.ok())).toBeTruthy()
+    await expect(staff.locator('.aams-batch').filter({ hasText: batchName }).first()).toContainText('已分配')
 
     const confirmPromise = staff.waitForResponse((response) =>
       response.request().method() === 'POST' && response.url().endsWith(`/api/v1/academic-affairs/major-split/batches/${batchId}/confirm`)
