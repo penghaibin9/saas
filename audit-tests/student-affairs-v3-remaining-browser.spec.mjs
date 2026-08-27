@@ -83,6 +83,7 @@ test.describe.serial('Student Affairs V3 remaining Browser First closures', () =
   let evalPeriod
   let evalId
   let counselorAssignmentId
+  let counselorKey
 
   test.beforeAll(async () => {
     adminApi = await loginApi(config.sandboxAdmin)
@@ -187,11 +188,15 @@ test.describe.serial('Student Affairs V3 remaining Browser First closures', () =
     }
     expect(partyDevId).not.toBe('')
 
-    // SA-020: the canonical bootstrap must have a formal counselor responsibility relation.
+    // SA-020: bind the evaluation to the exact counselor proven by the formal ACTIVE responsibility relation.
     const assignments = items(await adminApi.get('/student-affairs/counselor-assignments', { page: 1, pageSize: 200 }))
-    const assignment = assignments.find((row) => String(row.status || '').toUpperCase() === 'ACTIVE')
+    const assignment = assignments.find((row) => (
+      String(row.status || '').toUpperCase() === 'ACTIVE' && String(row.loginName || '').trim()
+    ))
     counselorAssignmentId = String(assignment?.assignmentId || assignment?.id || '')
+    counselorKey = String(assignment?.loginName || '').trim()
     expect(counselorAssignmentId, 'SA-020 requires a real ACTIVE counselor assignment').not.toBe('')
+    expect(counselorKey, 'SA-020 ACTIVE counselor assignment must expose its real loginName').not.toBe('')
 
     const indicatorName = `SA-020 学生工作质量 ${id}`
     const indicator = await adminApi.post('/student-affairs/counselor-eval/indicators', {
@@ -206,8 +211,8 @@ test.describe.serial('Student Affairs V3 remaining Browser First closures', () =
     evalPeriod = `SA20-${String(id).slice(-18)}`
     const evaluation = await adminApi.post('/student-affairs/counselor-eval/evals', {
       periodCode: evalPeriod,
-      counselorKey: 'counselor01',
-      counselorName: 'E2E 辅导员',
+      counselorKey,
+      counselorName: String(assignment?.counselorName || counselorKey),
       scores: { [indicatorId]: 92 },
       remark: 'SA-020 Browser First 发布前评分'
     })
@@ -388,13 +393,16 @@ test.describe.serial('Student Affairs V3 remaining Browser First closures', () =
     }))
     const current = byId(evaluations, 'evalId', evalId)
     expect(String(current?.status || '').toUpperCase()).toBe('PUBLISHED')
+    expect(String(current?.counselorKey || '')).toBe(counselorKey)
 
     const assignments = items(await adminApi.get('/student-affairs/counselor-assignments', { page: 1, pageSize: 200 }))
     const assignment = byId(assignments, 'assignmentId', counselorAssignmentId)
     expect(String(assignment?.status || '').toUpperCase()).toBe('ACTIVE')
+    expect(String(assignment?.loginName || '')).toBe(counselorKey)
     writeClosure('SA-020', {
       assignmentId: counselorAssignmentId,
       assignmentStatus: 'ACTIVE',
+      counselorKey,
       evalId,
       evalStatus: 'PUBLISHED',
       browserActions: ['发布']
