@@ -44,7 +44,8 @@ async function startMiniLoopbackBridge() {
     if (await canConnect(candidate.address, port)) { upstream = { ...candidate, port }; break }
   }
   if (!upstream) throw new Error(`AA-004 Mini upstream is not reachable: ${MINIAPP_UPSTREAM.origin}`)
-  const server = http.createServer((request, response) => {
+  const server = http.createServer({
+  }, (request, response) => {
     const proxy = http.request({
       protocol: MINIAPP_UPSTREAM.protocol,
       hostname: upstream.address,
@@ -149,7 +150,7 @@ test('AA-004 Student PC submit -> Student Mini update -> Staff PC allocate/confi
     const batchName = `AA-004专业分流-${suffix}`
     await staff.getByRole('button', { name: '新建分流批次' }).click()
     await staff.getByPlaceholder('如 2024级电子信息大类分流').fill(batchName)
-    await staff.getByPlaceholder('如 2024').fill(facts.grade)
+    await staff.getByPlaceholder('如 2024', { exact: true }).fill(facts.grade)
     const createResponsePromise = staff.waitForResponse((response) =>
       response.request().method() === 'POST' && response.url().endsWith('/api/v1/academic-affairs/major-split/batches')
     , { timeout: 20000 })
