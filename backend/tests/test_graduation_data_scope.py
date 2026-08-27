@@ -8,6 +8,7 @@ import pytest
 from app.core.context import set_current_user
 from app.core.exceptions import AppException
 from app.models import GraduationDefenseGroup, GraduationStudent
+from app.modules.graduation.routers.graduation import _require_full_defense_group_scope
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access, can_access_student
 
 
@@ -49,6 +50,23 @@ def test_school_and_graduation_admin_have_tenant_scope():
     for role in ("SCHOOL_ADMIN", "GRADUATION_ADMIN"):
         _login(role, "管理员")
         assert can_access_student(FakeDb(), _student())
+
+
+def test_empty_defense_group_mutation_requires_full_scope_before_write():
+    set_current_user({
+        "currentRoleCode": "GD_COLLEGE_ADMIN",
+        "userType": "TEACHER",
+        "realName": "学院负责人",
+        "collegeId": "10",
+        "collegeIds": ["10"],
+    })
+    with pytest.raises(AppException) as exc:
+        _require_full_defense_group_scope()
+    assert exc.value.http_status == 403
+
+    for role in ("SCHOOL_ADMIN", "GRADUATION_ADMIN"):
+        _login(role, "全校毕设管理员")
+        _require_full_defense_group_scope()
 
 
 def test_mentor_only_sees_owned_students():
