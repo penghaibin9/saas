@@ -1,10 +1,6 @@
-import fs from 'node:fs'
-
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
-
-const outcomePath = new URL('../academic-aa001-browser-outcome.json', import.meta.url)
 
 async function dismissPageGuide(page) {
   const mask = page.locator('.app-step-guide__mask')
@@ -158,21 +154,6 @@ test.describe.serial('Academic affairs D1 term/calendar usability', () => {
     const remarks = (targetEvents.items || []).map((item) => item.remark)
     expect(remarks).toContain(holidayRemark)
     expect(remarks).toContain(examRemark)
-
-    fs.writeFileSync(outcomePath, JSON.stringify({
-      productSha: process.env.E2E_EXPECTED_SHA || '',
-      sourceTermId: String(source.termId),
-      targetTermId: String(target.termId),
-      sourceName,
-      targetName,
-      sourceYearCode,
-      targetYearCode,
-      holidayRemark,
-      examRemark,
-      mappedHoliday,
-      targetEvents: targetEvents.items || [],
-      browserPass: true
-    }, null, 2), 'utf8')
   })
 
   test('standard 8/10 time-slot templates expose conflict preview without replacing manual CRUD', async ({ page }, testInfo) => {
