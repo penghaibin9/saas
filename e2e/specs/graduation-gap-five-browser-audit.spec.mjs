@@ -163,7 +163,7 @@ test.describe.serial('毕业设计剩余五项精准 Browser First · GD-012/016
       expect(published.ok()).toBeTruthy()
       expect((await published.json()).data?.status).toBe('PUBLISHED')
       await college.reload(); await dismissGuide(college)
-      await expect(college.locator('tbody tr').filter({ hasText: fixture.students.A.name }).first()).toContainText(/已发布/)
+      await expect(college.locator('tbody tr').filter({ hasText: fixture.students.A.name }).first()).toContainText(/已认定并发布|已完成/)
     } finally {
       await mentorCtx.close(); await majorCtx.close(); await collegeCtx.close()
     }
@@ -188,30 +188,32 @@ test.describe.serial('毕业设计剩余五项精准 Browser First · GD-012/016
     await riskRow.click()
     await expect(page.locator('.rk-pane')).toContainText(fixture.students.C.studentNo)
 
-    const acceptPromise = page.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/gd-risks\/\d+\/accept$/.test(new URL(r.url()).pathname))
     await page.getByRole('button', { name: '受理', exact: true }).click()
-    await confirmVisibleDialog(page, '')
+    const acceptDialog = page.locator('.app-confirm-dialog').filter({ hasText: '受理风险' }).last()
+    await expect(acceptDialog).toBeVisible()
+    const acceptPromise = page.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/gd-risks\/\d+\/accept$/.test(new URL(r.url()).pathname))
+    await acceptDialog.getByRole('button', { name: '受理', exact: true }).click()
     const accepted = await acceptPromise
     expect(accepted.ok()).toBeTruthy()
     expect((await accepted.json()).data?.status).toBe('PROCESSING')
 
     await page.getByRole('button', { name: '记录处理', exact: true }).click()
-    const processDialog = page.locator('.app-confirm-dialog,[role=dialog]').last()
+    const processDialog = page.locator('.app-confirm-dialog').filter({ hasText: '记录处理' }).last()
     await expect(processDialog).toBeVisible()
     await processDialog.locator('textarea').fill('GD-017 已联系学生并确认选题安排，记录处置过程。')
     const processPromise = page.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/gd-risks\/\d+\/process$/.test(new URL(r.url()).pathname))
-    await processDialog.getByRole('button', { name: /确认|保存|提交/ }).last().click()
+    await processDialog.getByRole('button', { name: '提交', exact: true }).click()
     const processed = await processPromise
     expect(processed.ok()).toBeTruthy()
     expect((await processed.json()).data?.status).toBe('PROCESSING')
     await expect(page.locator('.rk-pane')).toContainText('已联系学生')
 
     await page.getByRole('button', { name: '关闭风险', exact: true }).click()
-    const closeDialog = page.locator('.app-confirm-dialog,[role=dialog]').last()
+    const closeDialog = page.locator('.app-confirm-dialog').filter({ hasText: '关闭风险' }).last()
     await expect(closeDialog).toBeVisible()
     await closeDialog.locator('textarea').fill('GD-017 补测完成：风险已人工处置并形成完整关闭留痕。')
     const closePromise = page.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/gd-risks\/\d+\/close$/.test(new URL(r.url()).pathname))
-    await closeDialog.getByRole('button', { name: /确认|关闭|提交/ }).last().click()
+    await closeDialog.getByRole('button', { name: '确认关闭', exact: true }).click()
     const closed = await closePromise
     expect(closed.ok()).toBeTruthy()
     expect((await closed.json()).data?.status).toBe('CLOSED')
