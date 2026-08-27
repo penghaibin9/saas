@@ -24,7 +24,7 @@
       :description="hasBatch ? '答辩要先建组：把学生分进组、排好时间地点，再发通知。评委可以从「答辩专家库」里选，不用每次重新录。' : '顶部批次条选择当前工作批次后，再安排答辩。'"
     >
       <template v-if="hasBatch" #actions>
-        <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/defense/groups/create')">＋ 新增答辩组</button>
+        <button v-if="canCreateGroup" class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/defense/groups/create')">＋ 新增答辩组</button>
         <button class="mp-btn" @click="$router.push('/admin/graduation/more?panel=experts')">先维护答辩专家库</button>
         <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-defense-grade')">怎么安排答辩？</button>
       </template>
@@ -146,6 +146,10 @@ export default {
       const pa = this.ctx.permissionActions.manageDefense
       return !!(pa && pa.visible && pa.allowed) && this.ctx.writeEnabled !== false
     },
+    canCreateGroup() {
+      const scopeName = String(this.ctx.dataScope?.scopeName || '')
+      return this.canManage && scopeName.startsWith('本校毕设数据')
+    },
     manageReason() {
       if (this.ctx.writeEnabled === false) return '写操作已禁用'
       const pa = this.ctx.permissionActions.manageDefense
@@ -170,8 +174,12 @@ export default {
         .filter((a) => pa[a.key] && pa[a.key].visible)
         .map((a) => ({
           ...a,
-          disabled: !pa[a.key].allowed || this.ctx.writeEnabled === false || !this.hasBatch,
-          disabledReason: this.ctx.writeEnabled === false ? '写操作已禁用' : (!this.hasBatch ? '请先选择批次' : pa[a.key].reason)
+          disabled: !pa[a.key].allowed || !this.canCreateGroup || this.ctx.writeEnabled === false || !this.hasBatch,
+          disabledReason: this.ctx.writeEnabled === false
+            ? '写操作已禁用'
+            : (!this.hasBatch
+                ? '请先选择批次'
+                : (!this.canCreateGroup ? '仅全校毕设管理员可新建或重新分配答辩组' : pa[a.key].reason))
         }))
     }
   },
@@ -185,7 +193,7 @@ export default {
   },
   methods: {
     async onToolbar(key) {
-      if (key === 'manageDefense' && this.canManage) {
+      if (key === 'manageDefense' && this.canCreateGroup) {
         this.$router.push('/admin/graduation/defense/groups/create')
       }
     },
@@ -200,6 +208,7 @@ export default {
       })
     },
     openCreate() {
+      if (!this.canCreateGroup) return
       this.$router.push('/admin/graduation/defense/groups/create')
     },
     openEdit(row) {
@@ -261,16 +270,13 @@ export default {
 </script>
 
 <style scoped>
-@import '@/styles/module-page.css';
-.ds-summary { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.ds-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-full, 999px); border: 1px solid var(--border-light, #e2e8f0); background: #fff; font: inherit; font-size: var(--font-size-sm, 13px); color: var(--text-secondary, #475569); cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
-.ds-chip:hover { border-color: var(--primary-200, #bfdbfe); background: var(--gray-50, #f8fafc); }
-.ds-chip:focus-visible { outline: 2px solid var(--primary-400, #60a5fa); outline-offset: 2px; }
-.ds-chip b { font-weight: 600; color: var(--text-primary, #0f172a); }
-.ds-chip.is-active { border-color: var(--brand-primary, #2563eb); color: var(--brand-primary, #2563eb); background: var(--primary-50, #eff6ff); }
-.ds-chip--danger b { color: var(--danger, #dc2626); }
-.ds-chip--warning b { color: var(--warning-600, #d97706); }
-.ds-chip--success b { color: var(--success-600, #16a34a); }
 .gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-@media (max-width: 700px) { .ds-summary .mp-note { width: 100%; margin-left: 0 !important; } }
+.ds-summary { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ds-chip { min-height:32px; border:1px solid var(--color-border); border-radius:999px; background:var(--color-surface); padding:4px 10px; font-size:12px; color:var(--color-text-muted); cursor:pointer; }
+.ds-chip b { margin-left:3px; font-size:14px; color:var(--color-text); }
+.ds-chip.is-active { border-color:var(--color-primary); background:var(--color-primary-soft); color:var(--color-primary); }
+.ds-chip.is-active b { color:var(--color-primary); }
+.ds-chip--success b { color:var(--success-600); }
+.ds-chip--warning b { color:var(--warning-600); }
+.ds-chip--danger b { color:var(--danger-600); }
 </style>
