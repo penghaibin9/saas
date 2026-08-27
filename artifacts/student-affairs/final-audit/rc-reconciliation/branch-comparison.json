@@ -1,0 +1,7 @@
+{
+  "base": "main@84bf29dc41bb2affa03c6345938ab0ca672b6eda",
+  "head": "fix/student-affairs-final-rc-20260824@0cb5bc3b240a61cbce962767146ab09a50200d55",
+  "beforeR0": {"head": "a288b0dcfdd5b1a2b8fcee12d7d83b7b9ad9bfb4", "ahead": 52, "behind": 165, "status": "diverged"},
+  "afterR0": {"ahead": 57, "behind": 0, "status": "ahead"},
+  "result": "R0_BASE_SYNC_PASS"
+}
