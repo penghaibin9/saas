@@ -198,7 +198,7 @@ async function staffApprove(page, account, rolePattern, facts, expectedNode) {
   await login.login(account)
   if (rolePattern) await login.switchRole(rolePattern)
   await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/status-changes/approval`)
-  await expect(page.getByText('异动审批', { exact: true })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('heading', { name: '异动审批', exact: true })).toBeVisible({ timeout: 20_000 })
   const row = page.locator('tr').filter({ hasText: facts.studentName }).first()
   await expect(row, `AA-003 Staff PC ${expectedNode} row must be visible`).toBeVisible({ timeout: 20_000 })
   await expect(row).toContainText(expectedNode === 'COLLEGE_REVIEW' ? /学院|COLLEGE/ : /教务处|AA_OFFICE_FINAL/)
