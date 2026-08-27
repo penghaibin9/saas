@@ -41,6 +41,7 @@ def main() -> int:
     c = int(fixture["students"]["C"]["gdStudentId"])
     final_id = int(fixture["finalId"])
     original_group_name = f"GD013-正式组-{fixture['runId']}"
+    forbidden_group_name = f"GD013-无权组-{fixture['runId']}"
     delay_group_name = f"GD013-延期组-{fixture['runId']}"
 
     db = get_sessionmaker()()
@@ -87,6 +88,15 @@ def main() -> int:
         )).first()
         require(original_group is not None, "GD-013 missing original published defense group")
         require(not bool(original_group.published), "GD-013 original group must be unpublished after delay reschedule")
+
+        forbidden_group_count = db.scalar(select(func.count()).select_from(GraduationDefenseGroup).where(
+            GraduationDefenseGroup.tenant_id == TENANT_ID,
+            GraduationDefenseGroup.batch_id == batch_id,
+            GraduationDefenseGroup.group_name == forbidden_group_name,
+            GraduationDefenseGroup.is_deleted.is_(False),
+        )) or 0
+        require(forbidden_group_count == 0,
+                f"GD-013 unauthorized defense-group create left {forbidden_group_count} committed ghost row(s)")
 
         group = db.scalars(select(GraduationDefenseGroup).where(
             GraduationDefenseGroup.tenant_id == TENANT_ID,
@@ -138,6 +148,7 @@ def main() -> int:
             "GD-012": {"peerId": str(peer.id), "status": peer.status, "finalId": str(peer.gd_final_id)},
             "GD-013": {
                 "originalGroupId": str(original_group.id), "originalPublished": bool(original_group.published),
+                "unauthorizedGhostGroupCount": int(forbidden_group_count),
                 "delayGroupId": str(group.id), "delayGroupPublished": bool(group.published),
                 "delayId": str(delay.id), "delayStatus": delay.status,
             },
