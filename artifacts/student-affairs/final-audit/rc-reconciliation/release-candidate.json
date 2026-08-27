@@ -3,8 +3,8 @@
   "base": {"branch": "main", "sha": "9b314938a7b89647cfbb549a4e17c37d08a6bdc6"},
   "product": {
     "branch": "fix/student-affairs-final-rc-20260824",
-    "productExactSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
-    "ahead": 59,
+    "productExactSha": "2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d",
+    "ahead": 60,
     "behind": 0,
     "immutableForTargetedValidation": true
   },
@@ -14,10 +14,11 @@
     "status": "PENDING_FINAL_RUNNER_FREEZE_AFTER_TARGETED_GATES"
   },
   "r0": {
-    "status": "PASS",
+    "status": "PASS_PENDING_CURRENT_SHA_FOUNDATION_RESULT",
     "syncPr": 230,
     "unresolvedSemanticConflicts": 0,
-    "unresolvedValidFixesOutsideRc": 0
+    "unresolvedValidFixesOutsideRc": 0,
+    "alembicTopologyMerge": "20260827_affairs_gd_merge"
   },
   "targetedRevalidation": ["SA-001", "SA-002", "SA-003", "SA-004", "SA-005", "SA-009", "SA-011", "SA-014", "SA-016", "SA-021", "SA-022"],
   "nextGatePolicy": "Do not run all 22. Inherit unaffected historical REAL_PASS only after evidence attribution; run current exact-head only for affected/shared-security chains.",
