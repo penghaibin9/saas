@@ -1,0 +1,21 @@
+{
+  "mainHead": "84bf29dc41bb2affa03c6345938ab0ca672b6eda",
+  "productExactSha": "ac5a34c396fc38ce4148e8c7d8633390fb9d31f0",
+  "policy": "Only semantic fixes absent from latest main remain in the final RC; historical duplicates are not re-ported.",
+  "missingFixFamilies": [
+    "SA-002 aid audit namespace and detail truth",
+    "SA-003 discipline appeal revised/resubmit four-end contract and message event guard",
+    "SA-004 funding detail/version/role-scope hardening",
+    "SA-005 grant eligibility recheck against current SA-002 truth",
+    "SA-009 dorm scope/projection/message hardening",
+    "SA-011 teacher-mobile risk version/CAS propagation",
+    "shared student-affairs permission/security hardening"
+  ],
+  "crossModuleTestOnlyFixes": [
+    "graduation source-shape contract follows filtered mobile_router registration",
+    "graduation cross-client static test follows current mobile router composition",
+    "internship mobile permission static test follows current mobile router composition"
+  ],
+  "unresolvedProductFixesMissingFromRc": [],
+  "result": "NO_KNOWN_VALID_STUDENT_AFFAIRS_FIX_LEFT_OUTSIDE_FINAL_RC"
+}
