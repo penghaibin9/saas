@@ -23,8 +23,12 @@ def main() -> None:
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     assert evidence.get("result") == "REAL_PASS", evidence
     assert evidence.get("exactHead") == os.environ["E2E_TARGET_SHA"], evidence
+    assert evidence.get("surface") == "STAFF_PC+STUDENT_PC+TEACHER_MOBILE+STUDENT_MOBILE", evidence
     assert int(evidence.get("crossScopeHttpStatus") or 0) == 403
     assert int(evidence.get("duplicateSourceHttpStatus") or 0) == 409
+    assert evidence.get("teacherMobileRisk") == "PASS"
+    assert int(evidence.get("teacherMobileVersion") or 0) >= 1
+    assert evidence.get("studentMobilePrivacy") == "PASS"
     assert evidence.get("studentPrivacy") == "PASS"
 
     risk_id = int(evidence["riskId"])
@@ -149,10 +153,12 @@ def main() -> None:
         "crossScope": 403,
         "duplicateSource": 409,
         "reopenSameRecord": True,
+        "teacherMobileRisk": "PASS",
+        "studentMobilePrivacy": "PASS",
         "studentPrivacy": "PASS",
         "riskClosedStageEvents": 2,
     }, ensure_ascii=False, sort_keys=True))
-    print("[RESULT] REAL_PASS SA-011 A Gold Deep Browser First + MySQL + privacy/scope seal")
+    print("[RESULT] REAL_PASS SA-011 four-surface Browser/API + MySQL + privacy/scope seal")
 
 
 if __name__ == "__main__":
