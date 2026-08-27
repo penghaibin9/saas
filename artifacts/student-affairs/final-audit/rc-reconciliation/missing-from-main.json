@@ -1,6 +1,6 @@
 {
   "mainHead": "9b314938a7b89647cfbb549a4e17c37d08a6bdc6",
-  "productExactSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
+  "productExactSha": "2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d",
   "policy": "Only semantic fixes absent from latest main remain in the final RC; historical duplicates are not re-ported.",
   "missingFixFamilies": [
     "SA-002 aid audit namespace and detail truth",
@@ -9,7 +9,8 @@
     "SA-005 grant eligibility recheck against current SA-002 truth",
     "SA-009 dorm scope/projection/message hardening",
     "SA-011 teacher-mobile risk version/CAS propagation",
-    "shared student-affairs permission/security hardening"
+    "shared student-affairs permission/security hardening",
+    "R0 topology-only Alembic merge required after latest-main Graduation migration integration"
   ],
   "latestMain210SemanticInheritance": [
     "Graduation specialist batch.view permission grants",
