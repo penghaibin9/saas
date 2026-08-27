@@ -250,7 +250,9 @@ jobs:
           npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep '成果互查：管理员分配'
           rc=$?
           test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd012-junit.xml
-          exit $rc
+          mkdir -p runtime-logs
+          if [ "$rc" -eq 0 ]; then echo success > runtime-logs/gd012.outcome; else echo failure > runtime-logs/gd012.outcome; fi
+          exit "$rc"
 
       - name: GD-013 Browser First · defense schedule/conflict/publish/delay
         id: gd013
@@ -265,6 +267,8 @@ jobs:
           npx playwright test specs/graduation-gd013-gd019-gap-audit.spec.mjs --grep '学生延期申请'
           rc2=$?
           test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd013-delay-junit.xml
+          mkdir -p runtime-logs
+          if [ "$rc1" -eq 0 ] && [ "$rc2" -eq 0 ]; then echo success > runtime-logs/gd013.outcome; else echo failure > runtime-logs/gd013.outcome; fi
           if [ "$rc1" -ne 0 ] || [ "$rc2" -ne 0 ]; then exit 1; fi
 
       - name: GD-016 Browser First · excellent outcome three-stage review
@@ -277,7 +281,9 @@ jobs:
           npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep '优秀成果：导师提名'
           rc=$?
           test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd016-junit.xml
-          exit $rc
+          mkdir -p runtime-logs
+          if [ "$rc" -eq 0 ]; then echo success > runtime-logs/gd016.outcome; else echo failure > runtime-logs/gd016.outcome; fi
+          exit "$rc"
 
       - name: GD-017 Browser First · risk scan/accept/process/close
         id: gd017
@@ -289,7 +295,9 @@ jobs:
           npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep '风险：真实扫描'
           rc=$?
           test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd017-junit.xml
-          exit $rc
+          mkdir -p runtime-logs
+          if [ "$rc" -eq 0 ]; then echo success > runtime-logs/gd017.outcome; else echo failure > runtime-logs/gd017.outcome; fi
+          exit "$rc"
 
       - name: GD-019 Browser First · message/stats/XLSX projections
         id: gd019
@@ -301,26 +309,33 @@ jobs:
           npx playwright test specs/graduation-gd013-gd019-gap-audit.spec.mjs --grep '答辩 XLSX 真实 UI 导出'
           rc=$?
           test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd019-junit.xml
-          exit $rc
+          mkdir -p runtime-logs
+          if [ "$rc" -eq 0 ]; then echo success > runtime-logs/gd019.outcome; else echo failure > runtime-logs/gd019.outcome; fi
+          exit "$rc"
 
       - name: Direct MySQL five-gap evidence seal
         id: dbseal
         if: always()
         continue-on-error: true
         working-directory: backend
-        run: python ../e2e/scripts/graduation-gap-five-db-audit.py
+        run: |
+          set +e
+          python ../e2e/scripts/graduation-gap-five-db-audit.py
+          rc=$?
+          mkdir -p ../e2e/runtime-logs
+          if [ "$rc" -eq 0 ]; then echo success > ../e2e/runtime-logs/dbseal.outcome; else echo failure > ../e2e/runtime-logs/dbseal.outcome; fi
+          exit "$rc"
 
       - name: Enforce five targeted evidence gates
         if: always()
-        env:
-          GD012: ${{ steps.gd012.outcome }}
-          GD013: ${{ steps.gd013.outcome }}
-          GD016: ${{ steps.gd016.outcome }}
-          GD017: ${{ steps.gd017.outcome }}
-          GD019: ${{ steps.gd019.outcome }}
-          DBSEAL: ${{ steps.dbseal.outcome }}
         run: |
           set -euo pipefail
+          GD012="$(cat e2e/runtime-logs/gd012.outcome)"
+          GD013="$(cat e2e/runtime-logs/gd013.outcome)"
+          GD016="$(cat e2e/runtime-logs/gd016.outcome)"
+          GD017="$(cat e2e/runtime-logs/gd017.outcome)"
+          GD019="$(cat e2e/runtime-logs/gd019.outcome)"
+          DBSEAL="$(cat e2e/runtime-logs/dbseal.outcome)"
           printf 'GD-012=%s\nGD-013=%s\nGD-016=%s\nGD-017=%s\nGD-019=%s\nDB-SEAL=%s\n' "$GD012" "$GD013" "$GD016" "$GD017" "$GD019" "$DBSEAL"
           test "$GD012" = success
           test "$GD013" = success
