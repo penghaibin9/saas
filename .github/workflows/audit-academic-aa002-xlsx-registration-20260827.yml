@@ -119,6 +119,14 @@ jobs:
       - name: Seed real School IAM runtime fixture
         working-directory: backend
         run: PYTHONPATH=. python scripts/e2e_seed_control_plane_school_iam.py
+      - name: Start real backend with mock login disabled
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend-aa002.log 2>&1 &
+          for i in {1..60}; do if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi; sleep 2; done
+          cat ../e2e/runtime-logs/backend-aa002.log; exit 1
       - name: Bootstrap canonical browser accounts and AA-002 class
         working-directory: backend
         run: |
@@ -129,14 +137,6 @@ jobs:
       - name: Build real AA-002 XLSX fixture
         working-directory: backend
         run: python scripts/e2e_prepare_academic_aa002_xlsx.py
-      - name: Start real backend with mock login disabled
-        run: |
-          set -euo pipefail
-          mkdir -p e2e/runtime-logs
-          cd backend
-          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend-aa002.log 2>&1 &
-          for i in {1..60}; do if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi; sleep 2; done
-          cat ../e2e/runtime-logs/backend-aa002.log; exit 1
       - name: Build and start Staff PC
         env:
           VITE_USE_MOCK: 'false'
