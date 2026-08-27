@@ -11,6 +11,7 @@ const majorAdmin = { tenant: config.mentor.tenant, username: 'e2e_major_admin', 
 const collegeAdmin = { tenant: config.mentor.tenant, username: 'e2e_college_secretary', password: config.mentor.password }
 const conflictGroup = `GD013-冲突组-${fixture.runId}`
 const validGroup = `GD013-正式组-${fixture.runId}`
+const forbiddenGroup = `GD013-无权组-${fixture.runId}`
 const delayGroup = `GD013-延期组-${fixture.runId}`
 
 async function dismissGuide(page) {
@@ -39,7 +40,7 @@ async function chooseMentor(field, keyword, visibleText) {
   await option.click()
 }
 
-async function createGroup(page, { name, chairNo, chairName, secretaryNo, secretaryName, defenseDate = '' }) {
+async function fillGroupForm(page, { name, chairNo, chairName, secretaryNo, secretaryName, defenseDate = '' }) {
   await page.goto(`${config.staffBaseUrl}/admin/graduation/defense/groups/create?batchId=${encodeURIComponent(fixture.batchId)}`)
   await dismissGuide(page)
   await expect(page.getByRole('heading', { name: '新增答辩组', exact: true })).toBeVisible()
@@ -54,10 +55,14 @@ async function createGroup(page, { name, chairNo, chairName, secretaryNo, secret
   }
   await chooseMentor(page.locator('.ie-fld').filter({ hasText: '答辩组长' }).first(), chairNo, chairName)
   await chooseMentor(page.locator('.ie-fld').filter({ hasText: '答辩秘书' }).first(), secretaryNo, secretaryName)
+}
+
+async function createGroup(page, options) {
+  await fillGroupForm(page, options)
   const createPromise = page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/graduation/defense-groups'))
   await page.getByRole('button', { name: '创建', exact: true }).click()
   const created = await createPromise
-  expect(created.ok(), `create group ${name} HTTP ${created.status()}`).toBeTruthy()
+  expect(created.ok(), `create group ${options.name} HTTP ${created.status()}`).toBeTruthy()
   const body = await created.json()
   expect(body.code, JSON.stringify(body)).toBe(0)
   await expect(page.getByPlaceholder('搜索姓名')).toBeVisible({ timeout: 15000 })
@@ -126,7 +131,16 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
       const conflictRow = admin.locator('tbody tr').filter({ hasText: conflictGroup }).first()
       await expect(conflictRow).toContainText(/冲突|回避/)
       const conflictPublish = conflictRow.getByRole('button', { name: '发布', exact: true })
-      await expect(conflictPublish).toHaveClass(/is-disabled/)
+      let conflictPublishRequests = 0
+      const countPublish = (req) => {
+        if (req.method() === 'POST' && /\/graduation\/defense-groups\/\d+\/publish$/.test(new URL(req.url()).pathname)) conflictPublishRequests += 1
+      }
+      admin.on('request', countPublish)
+      await conflictPublish.click()
+      await admin.waitForTimeout(350)
+      await expect(admin.locator('.app-confirm-dialog').filter({ hasText: '发布答辩安排' })).toHaveCount(0)
+      expect(conflictPublishRequests, 'conflicted group must not issue publish POST').toBe(0)
+      admin.off('request', countPublish)
 
       // Remove B from the conflict group so the canonical same-batch uniqueness remains true.
       await conflictRow.getByRole('button', { name: '编辑', exact: true }).click()
@@ -177,10 +191,12 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
     const mentorCtx = await browser.newContext()
     const majorCtx = await browser.newContext()
     const collegeCtx = await browser.newContext()
+    const schedulerCtx = await browser.newContext()
     const student = await studentCtx.newPage()
     const mentor = await mentorCtx.newPage()
     const major = await majorCtx.newPage()
     const college = await collegeCtx.newPage()
+    const scheduler = await schedulerCtx.newPage()
     try {
       await new StudentLoginPage(student, config.studentBaseUrl).login(studentB)
       const workbench = new StudentGraduationPage(student, config.studentBaseUrl)
@@ -225,13 +241,32 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
       await confirmExtension(college, 'GD-013 学院审批同意，进入重新排期。')
       expect((await collegePromise).ok()).toBeTruthy()
 
-      // Product contract requires a truly independent delay group when the date changes.
-      await createGroup(college, {
+      // Production permission seal: college approval scope must not grant defense-group mutation.
+      // The request must fail before any DB commit; the old bug committed the group then returned 403.
+      await fillGroupForm(college, {
+        name: forbiddenGroup,
+        chairNo: 'e2e_advisor_b', chairName: 'E2E指导教师B',
+        secretaryNo: 'e2e_reviewer', secretaryName: 'E2E评阅教师',
+        defenseDate: '2026-09-15 09:00:00',
+      })
+      const forbiddenPromise = college.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/graduation/defense-groups'))
+      await college.getByRole('button', { name: '创建', exact: true }).click()
+      const forbidden = await forbiddenPromise
+      expect(forbidden.status(), 'college role must be rejected before defense-group mutation').toBe(403)
+
+      await loginStaff(scheduler, config.sandboxAdmin, 24)
+      await scheduler.goto(`${config.staffBaseUrl}/admin/graduation/defense?batchId=${encodeURIComponent(fixture.batchId)}`)
+      await dismissGuide(scheduler)
+      await expect(scheduler.locator('tbody tr').filter({ hasText: forbiddenGroup }), '403 must not leave a committed ghost defense group').toHaveCount(0)
+
+      // A role with groupManage creates the actual independent delay group through the real UI.
+      await createGroup(scheduler, {
         name: delayGroup,
         chairNo: 'e2e_advisor_b', chairName: 'E2E指导教师B',
         secretaryNo: 'e2e_reviewer', secretaryName: 'E2E评阅教师',
         defenseDate: '2026-09-15 09:00:00',
       })
+
       await college.goto(`${config.staffBaseUrl}/admin/graduation?extension=delay&batchId=${encodeURIComponent(fixture.batchId)}`)
       await dismissGuide(college)
       row = college.locator('tbody tr').filter({ hasText: fixture.students.B.name }).first()
@@ -255,7 +290,7 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
       await expect(student.locator('.gdep')).toContainText(/已排期|重新排期/)
       await expect(student.locator('.gdep')).toContainText(delayGroup)
     } finally {
-      await studentCtx.close(); await mentorCtx.close(); await majorCtx.close(); await collegeCtx.close()
+      await studentCtx.close(); await mentorCtx.close(); await majorCtx.close(); await collegeCtx.close(); await schedulerCtx.close()
     }
   })
 
@@ -268,6 +303,7 @@ test.describe.serial('GD-013 + GD-019 精准补测', () => {
     await dismissGuide(page)
     let row = page.locator('tbody tr').filter({ hasText: delayGroup }).first()
     await expect(row).toBeVisible()
+    await expect(row, 'GD-019 requires the real GD-013 rescheduled student, not an empty fixture group').toContainText(/1 名学生/)
     const publish = row.getByRole('button', { name: '发布', exact: true })
     if (await publish.count() && await publish.isVisible().catch(() => false)) {
       const publishPromise = page.waitForResponse((r) => r.request().method() === 'POST' && /\/graduation\/defense-groups\/\d+\/publish$/.test(new URL(r.url()).pathname))
