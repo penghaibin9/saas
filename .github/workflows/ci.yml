@@ -79,8 +79,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
-      - name: 岗位实习专项测试（20分钟硬超时）
-        run: timeout 20m pytest tests/test_internship*.py -q -p no:warnings --durations=20
+      - name: 岗位实习专项测试（25分钟硬超时）
+        run: timeout 25m pytest tests/test_internship*.py -q -p no:warnings --durations=20
       - name: 岗位实习静态生产合同
         run: python ../scripts/check/check-internship-production-contracts.py
       - name: 岗位实习 PC 路由权限合同

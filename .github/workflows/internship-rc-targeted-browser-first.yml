@@ -1,0 +1,178 @@
+name: Internship RC Targeted Browser First
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/app/modules/internship/**'
+      - 'backend/tests/test_internship*.py'
+      - 'backend/scripts/e2e_*internship*.py'
+      - 'frontend/src/modules/internship/**'
+      - 'student-portal/src/**'
+      - 'e2e/specs/internship-*.mjs'
+      - 'e2e/pages/internship-*.mjs'
+      - 'e2e/lib/internship-*.mjs'
+      - '.github/actions/internship-e2e-*/**'
+      - '.github/workflows/internship-rc-targeted-browser-first.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: internship-rc-targeted-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ix-001-008-015:
+    name: IX-001 IX-008 IX-015 / real MySQL / real browser / exact head
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: internship-rc-targeted
+      REDIS_CONNECT_TIMEOUT: '2'
+      REDIS_SOCKET_TIMEOUT: '2'
+      JWT_SECRET: internship-rc-e2e-only-not-production
+      JWT_SECRET_KEY: internship-rc-e2e-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Exact branch HEAD assertion
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="$E2E_EXPECTED_SHA"
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Prepare shared E2E toolchain
+        uses: ./.github/actions/internship-e2e-toolchain
+        with:
+          node-cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+
+      - name: Enforce E2E artifact safety contract
+        working-directory: backend
+        run: pytest tests/test_playwright_artifact_safety.py -q -p no:warnings
+
+      - name: Assert single Alembic head and migrate isolated browser MySQL
+        uses: ./.github/actions/internship-e2e-mysql-migrate
+        with:
+          verify-schema-parity: 'true'
+
+      - name: Create isolated targeted pytest schema
+        run: |
+          mysql -h 127.0.0.1 -uroot -pe2e_root -e \
+            "CREATE DATABASE IF NOT EXISTS student_lifecycle_internship_rc_pytest CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+
+      - name: IX-015 targeted backend regression
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_internship_rc_pytest?charset=utf8mb4
+          MOCK_LOGIN_ENABLED: 'true'
+        run: >-
+          pytest
+          tests/test_internship_p1_concurrency_stats.py::test_leave_comply_rate_counts_returned_as_approved_history
+          -q -p no:warnings --durations=10
+
+      - name: Reassert browser database and non-mock runtime
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$MOCK_LOGIN_ENABLED" = 'false'
+          python -m alembic current
+          python ../scripts/check/check-migrated-schema-parity.py
+
+      - name: Bootstrap shared browser runtime
+        uses: ./.github/actions/internship-e2e-browser-runtime
+
+      - name: Seed internship prerequisites only
+        working-directory: backend
+        run: python scripts/e2e_seed_internship_sandbox.py
+
+      - name: Start shared browser applications
+        uses: ./.github/actions/internship-e2e-app-start
+        with:
+          start-staff: 'true'
+          start-student: 'true'
+
+      - name: Wait for staff and student applications
+        uses: ./.github/actions/internship-e2e-wait-apps
+        with:
+          urls: |
+            http://127.0.0.1:5173/login
+            http://127.0.0.1:5199/portal/login
+
+      - name: Install Playwright Chromium
+        working-directory: e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run targeted Browser First IX-001 IX-008 IX-015
+        working-directory: e2e
+        run: >-
+          npx playwright test
+          specs/internship-batch-lifecycle-audit.spec.mjs
+          specs/internship-application-rejection-resubmit-audit.spec.mjs
+          specs/internship-leave-stats-xlsx-audit.spec.mjs
+          --workers=1
+
+      - name: Upload targeted browser artifacts
+        if: always()
+        uses: ./.github/actions/internship-e2e-upload-artifacts
+        with:
+          artifact-prefix: internship-rc-targeted

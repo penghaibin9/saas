@@ -33,6 +33,15 @@ export class StudentInternshipPage {
   async openLeave() {
     await this.page.goto(`${this.baseUrl}/internship`)
     await expect(this.page.getByRole('button', { name: '实习请假' })).toBeVisible()
+
+    const batchSelector = this.page.getByText('请选择要办理的实习批次', { exact: true })
+    if (await batchSelector.count()) {
+      await expect(batchSelector).toBeVisible()
+      const targetBatch = this.page.getByRole('button').filter({ hasText: this.fixture.batchName }).first()
+      await expect(targetBatch).toBeVisible()
+      await targetBatch.click()
+    }
+
     await expect(this.page.getByText(this.fixture.companyName).first()).toBeVisible()
     await expect(this.page.getByText(this.fixture.positionName).first()).toBeVisible()
     await this.page.getByRole('button', { name: '实习请假' }).click()

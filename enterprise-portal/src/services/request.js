@@ -1,7 +1,7 @@
 const API_BASE = (() => {
-  const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
-  if (env.VITE_API_BASE_URL) return String(env.VITE_API_BASE_URL).replace(/\/+$/, '')
-  if (env.DEV) return 'http://localhost:8000'
+  const configuredBase = import.meta.env.VITE_API_BASE_URL
+  if (configuredBase) return String(configuredBase).replace(/\/+$/, '')
+  if (import.meta.env.DEV) return 'http://localhost:8000'
   return ''
 })()
 const API_PREFIX = '/api/v1'
