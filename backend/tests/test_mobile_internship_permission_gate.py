@@ -77,10 +77,12 @@ def test_unregistered_teacher_internship_route_fails_closed(path):
 
 def test_permission_gate_is_installed_on_real_mobile_router():
     source = (ROOT / "app/api/v1/route_registration.py").read_text(encoding="utf-8")
-    start = source.index("api_router.include_router(\n        mobile.router,")
+    start = source.index("mobile_deps = [")
     end = source.index("\n    from app.core.student_portal_module_gate", start)
     registration = source[start:end]
     assert "Depends(enforce_teacher_internship_mobile_permission)" in registration
+    assert "api_router.include_router(mobile_router, dependencies=mobile_deps)" in registration
+    assert "api_router.include_router(mobile_risk_overrides, dependencies=mobile_deps)" in registration
 
 
 def test_view_only_teacher_cannot_review_weekly_report_via_real_route(client, db_mode):
@@ -97,7 +99,7 @@ def test_view_only_teacher_cannot_handle_attendance_via_real_route(client, db_mo
     response = client.post(
         "/api/v1/mobile/teacher/internship/exception/999999/handle",
         headers=_teacher_token("COUNSELOR"),
-        json={"action": "REASONABLE", "comment": "越权处置"},
+        json={"action": "REASONABLE", "comment": "越权处置"),
     )
     assert response.status_code == 403
     assert response.json()["code"] == 403001
