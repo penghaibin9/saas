@@ -86,7 +86,7 @@ def main() -> None:
             cur.execute(
                 """SELECT action, operator, role_name, detail
                    FROM t_affairs_audit_trail
-                   WHERE biz_type='RISK' AND biz_id=%s AND is_deleted=0 ORDER BY id""",
+                   WHERE biz_type='RISK' AND biz_id=%s ORDER BY id""",
                 (risk_id,),
             )
             trail = cur.fetchall()
@@ -99,7 +99,7 @@ def main() -> None:
                 """SELECT COUNT(*) FROM t_student_stage_event
                    WHERE tenant_id=(SELECT tenant_id FROM t_affairs_risk_record WHERE id=%s)
                      AND student_id=%s AND to_stage='RISK_CLOSED'
-                     AND source_module='student-affairs' AND is_deleted=0""",
+                     AND source_module='student-affairs'""",
                 (risk_id, student_id),
             )
             closed_events = int(cur.fetchone()[0])
