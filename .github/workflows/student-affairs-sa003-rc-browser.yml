@@ -69,7 +69,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_TARGET_SHA: 2bbc7819e0aa6345f068b4a8c189223a6c082667
+      E2E_TARGET_SHA: a288b0dcfdd5b1a2b8fcee12d7d83b7b9ad9bfb4
 
     steps:
       - name: Checkout runner
@@ -82,7 +82,7 @@ jobs:
       - name: Checkout immutable product RC
         uses: actions/checkout@v4
         with:
-          ref: 2bbc7819e0aa6345f068b4a8c189223a6c082667
+          ref: a288b0dcfdd5b1a2b8fcee12d7d83b7b9ad9bfb4
           path: app
           fetch-depth: 0
 
@@ -193,7 +193,7 @@ jobs:
               assert case[1] == e['revisedReason'] and case[2] == e['revisedDocNo'], case
               assert case[3] == 'REMOVED' and case[4] is not None, case
 
-              cur.execute('SELECT version_no,decision_kind,disc_type,reason,doc_no FROM t_affairs_discipline_decision_version WHERE case_id=%s AND is_deleted=0 ORDER BY version_no', (case_id,))
+              cur.execute('SELECT version_no,decision_kind,disc_type,reason,doc_no FROM t_affairs_discipline_decision_version WHERE case_id=%s ORDER BY version_no', (case_id,))
               versions = cur.fetchall()
               assert len(versions) == 2, versions
               assert versions[0][1] == 'ORIGINAL' and versions[0][2] == 'WARNING', versions
@@ -205,13 +205,21 @@ jobs:
               assert appeal and appeal[0] == 'REVISED' and appeal[1] == 'REVISED', appeal
               assert appeal[2] == e['reviewOpinion'], appeal
 
-              cur.execute("SELECT to_stage FROM t_student_stage_event WHERE source_module='student-affairs' AND student_id=(SELECT student_id FROM t_affairs_discipline_case WHERE id=%s) AND is_deleted=0", (case_id,))
+              cur.execute("SELECT to_stage FROM t_student_stage_event WHERE source_module='student-affairs' AND student_id=(SELECT student_id FROM t_affairs_discipline_case WHERE id=%s)", (case_id,))
               stages = {row[0] for row in cur.fetchall()}
               for expected in ('DISCIPLINE_EFFECTIVE', 'DISCIPLINE_REVISED', 'DISCIPLINE_REMOVED'):
                   assert expected in stages, (expected, stages)
           conn.close()
           print('SA-003 MYSQL_REALITY_PASS', case_id)
           PY
+
+      - name: Reassert tested product source stayed immutable
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "tested_app_head=$(git -C app rev-parse HEAD)"
+          test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
+          test -z "$(git -C app status --porcelain)"
 
       - name: Upload SA-003 evidence
         if: always()
