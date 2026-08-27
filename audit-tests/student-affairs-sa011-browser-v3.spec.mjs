@@ -35,9 +35,14 @@ async function api(page, token, method, pathname, data) {
 async function chooseRemote(page, placeholderText, searchPlaceholder, keyword, optionText) {
   // AppRemoteSelect renders the visible outer placeholder in the combobox and the
   // searchPlaceholder only on the textbox after opening. Some pages override the
-  // outer placeholder with the search hint, so tolerate both without leaving the
-  // semantic combobox -> textbox -> option path.
-  const outerHints = [...new Set([placeholderText, searchPlaceholder].filter(Boolean))]
+  // outer placeholder, including the student picker whose displayed order is
+  // “姓名 / 学号” while its search input keeps “学号 / 姓名”. Cover both forms,
+  // then stay inside the selected picker for textbox -> option traversal.
+  const outerHints = [...new Set([
+    placeholderText,
+    searchPlaceholder,
+    searchPlaceholder === '按学号 / 姓名搜索' ? '按姓名 / 学号搜索' : '',
+  ].filter(Boolean))]
   let combo = null
   for (const hint of outerHints) {
     const candidate = page.getByRole('combobox').filter({ hasText: hint }).last()
