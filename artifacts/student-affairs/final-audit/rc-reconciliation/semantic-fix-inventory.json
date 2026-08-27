@@ -1,5 +1,5 @@
 {
-  "productExactSha": "ac5a34c396fc38ce4148e8c7d8633390fb9d31f0",
+  "productExactSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
   "items": [
     {
       "fixId": "SA-002-AID-AUDIT-NAMESPACE",
@@ -61,8 +61,9 @@
       "files": ["backend/app/core/permissions.py", "backend/app/core/affairs_security.py"],
       "existsInLatestMain": false,
       "semanticEquivalent": false,
-      "action": "KEEP_IN_FINAL_RC",
-      "blastRadius": ["SA-001", "SA-002", "SA-003", "SA-004", "SA-009", "SA-011", "SA-014", "SA-016", "SA-021", "SA-022", "R6"]
+      "action": "KEEP_IN_FINAL_RC_WITH_MAIN_210_COMPATIBILITY",
+      "blastRadius": ["SA-001", "SA-002", "SA-003", "SA-004", "SA-009", "SA-011", "SA-014", "SA-016", "SA-021", "SA-022", "R6"],
+      "main210OverlapDecision": "Keep Student Affairs fail-closed scope hardening plus Graduation specialist batch.view grants; no new SA blast radius."
     },
     {
       "fixId": "R0-CROSS-MODULE-STATIC-CONTRACT-DRIFT",
