@@ -1,6 +1,6 @@
 {
   "mainHead": "9b314938a7b89647cfbb549a4e17c37d08a6bdc6",
-  "productExactSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
+  "productExactSha": "2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d",
   "decisions": [
     {
       "path": "backend/app/api/v1/route_registration.py",
@@ -24,10 +24,20 @@
       "decision": "ASSERT_ACTUAL_FILTERED_ROUTER_REGISTRATION",
       "classification": "RUNNER_OR_TEST_CONTRACT_BUG",
       "reason": "Production order remained mobile_graduation_guard before mobile_router; old assertion searched removed source token mobile.router."
+    },
+    {
+      "path": "backend/alembic/versions/20260827_merge_affairs_gd_heads.py",
+      "type": "MIGRATION_TOPOLOGY_CONFLICT",
+      "classification": "PRODUCT_BUG",
+      "decision": "ADD_TOPOLOGY_ONLY_MERGE_REVISION",
+      "parents": ["20260824_affairs_aid_audit_ns_rc", "20260824_gd_arch_audit_cols"],
+      "commonParent": "20260822_pr191_w7_main_merge",
+      "reason": "Latest main Graduation migration and Student Affairs RC migration were both valid descendants of the same prior head, producing two Alembic heads after R0 integration. No business schema operation was removed or rewritten."
     }
   ],
   "syncPr": 230,
   "syncMergeSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
+  "currentProductExactSha": "2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d",
   "unresolvedConflicts": [],
   "result": "R0_CONFLICT_DECISIONS_CLOSED"
 }
