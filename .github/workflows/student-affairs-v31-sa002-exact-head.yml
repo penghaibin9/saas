@@ -203,6 +203,21 @@ jobs:
       - name: Install Chromium and inject strict aid spec outside product commit
         run: |
           cp runner/audit-tests/student-affairs-aid-browser-audit.spec.mjs app/e2e/specs/student-affairs-aid-browser-audit.spec.mjs
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app/e2e/specs/student-affairs-aid-browser-audit.spec.mjs')
+          s = p.read_text(encoding='utf-8')
+          import_old = "import { config } from '../lib/config.mjs'\n"
+          import_new = "import { config } from '../lib/config.mjs'\nimport { loginApi } from '../lib/api-fixture.mjs'\n"
+          assert import_old in s and "loginApi } from '../lib/api-fixture.mjs'" not in s
+          s = s.replace(import_old, import_new, 1)
+          old = """    await test.step('tenant B cannot read sandbox aid application by direct authenticated request', async () => {\n      const login = await freshStaffLogin(page, config.demoAdmin)\n      expect(login.lastAccessToken).toBeTruthy()\n      const response = await page.request.get(apiUrl(`/student-affairs/aid/applications/${applyId}`), { headers: { Authorization: `Bearer ${login.lastAccessToken}` } })\n"""
+          new = """    await test.step('tenant B cannot read sandbox aid application by direct authenticated request', async () => {\n      // This is an API authorization negative, not another Browser command. The journey already\n      // exercised ten real browser logins inside the production 10/60s limit. A redundant 11th\n      // browser-login deterministically returns 429 before the tenant-isolation assertion runs.\n      // Use the isolated API auth fixture once for tenant B; do not relax product throttling.\n      const tenantBApi = await loginApi(config.demoAdmin)\n      expect(tenantBApi.token).toBeTruthy()\n      const response = await page.request.get(apiUrl(`/student-affairs/aid/applications/${applyId}`), { headers: { Authorization: `Bearer ${tenantBApi.token}` } })\n"""
+          assert old in s, 'SA-002 tenant-B block drifted; refuse silent patch'
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+          print('[SA-002 RUNNER FIX] tenant-B negative uses API auth token; product login limit unchanged')
+          PY
           cd app/e2e
           npm install
           npx playwright install --with-deps chromium
@@ -315,11 +330,13 @@ jobs:
             "status": "REAL_PASS",
             "evidence": {
               "browserJourney": true,
+              "tenantIsolationNegative": true,
               "mysqlTruth": true,
               "encryptedSensitiveFields": true,
               "objectionNotification": true,
               "auditNamespaceIsolation": true,
-              "permissionAndScopeRegression": true
+              "permissionAndScopeRegression": true,
+              "productLoginRateLimitUnchanged": true
             },
             "workflowRun": "$GITHUB_RUN_ID"
           }
