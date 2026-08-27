@@ -393,7 +393,9 @@ test('AA-003 real four-surface RETURN -> same-case resubmit -> effective', async
 
     // Final student projection: real Student Mini shows the effective academic status and history.
     const finalStatusResponse = studentMini.waitForResponse((response) =>
-      response.request().method() === 'GET' && response.url().endsWith('/api/v1/mobile/academic/status/my')
+      response.request().method() === 'GET' &&
+      response.url().endsWith('/api/v1/mobile/academic/status/my') &&
+      response.ok()
     , { timeout: 20_000 })
     await studentMini.reload()
     const finalStatusPayload = await (await finalStatusResponse).json()
