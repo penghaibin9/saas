@@ -307,17 +307,15 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     evidence.studentMiniBrowserPrivacy = 'PASS'
     await studentMiniContext.close()
 
-    // 10) Staff PC：最终真实详情保留完整 handle 时间线。
+    // 10) Staff PC：最终真实详情必须渲染完整处置时间线；动作码由 MySQL seal 核，Browser 核用户可见留痕。
     await staffLogin(page, staff.sa)
     await openRisk(page, riskId)
     const timeline = page.locator('.sa-audit')
-    await expect(timeline).toContainText('ASSIGN')
-    await expect(timeline).toContainText('PROCESS')
-    await expect(timeline).toContainText('FOLLOW')
-    await expect(timeline).toContainText('ESCALATE')
-    await expect(timeline).toContainText('TAKEOVER')
-    await expect(timeline).toContainText('CLOSE')
-    await expect(timeline).toContainText('REOPEN')
+    const timelineItems = timeline.locator('.app-audit-trail__item')
+    expect(await timelineItems.count(), 'risk timeline must render the full same-risk lifecycle').toBeGreaterThanOrEqual(10)
+    await expect(timeline).toContainText('教师小程序真实处置：已与学生本人完成首次面谈核实')
+    await expect(timeline).toContainText('第二次跟进确认到课及宿舍情况持续改善')
+    await expect(timeline).toContainText('复发处置完成，学生状态恢复稳定')
 
     evidence.result = 'REAL_PASS'
     evidence.completedAt = new Date().toISOString()
