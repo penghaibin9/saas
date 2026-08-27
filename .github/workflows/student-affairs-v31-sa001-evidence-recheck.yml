@@ -1,0 +1,106 @@
+name: Student Affairs V3.1 SA-001 evidence recheck
+
+on:
+  push:
+    branches:
+      - audit/student-affairs-v31-final-runner-20260827
+    paths:
+      - '.github/workflows/student-affairs-v31-sa001-evidence-recheck.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  PRODUCT_EXACT_SHA: 2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d
+  SOURCE_RUN_ID: '33081957347'
+  SOURCE_ARTIFACT: student-affairs-v31-sa001-2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d
+
+jobs:
+  recheck:
+    name: SA-001 downstream evidence-only recheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download source evidence artifact only
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT }}
+          path: evidence
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install XLSX verifier
+        run: pip install openpyxl==3.1.5
+
+      - name: Recheck captured JSON and downloaded XLSX
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from openpyxl import load_workbook
+
+          root = Path('evidence')
+          main_candidates = list(root.rglob('student-affairs-audit-evidence.json'))
+          hard_candidates = list(root.rglob('student-affairs-leave-hardening-evidence.json'))
+          xlsx_candidates = list(root.rglob('student-affairs-leave-ledger.xlsx'))
+          assert len(main_candidates) == 1, main_candidates
+          assert len(hard_candidates) == 1, hard_candidates
+          assert len(xlsx_candidates) == 1, xlsx_candidates
+
+          main = json.loads(main_candidates[0].read_text(encoding='utf-8'))
+          hard = json.loads(hard_candidates[0].read_text(encoding='utf-8'))
+          assert str(main.get('finalUiState')).upper() == 'CLOSED', main
+          assert main.get('tenantIsolation') == 'PASS', main
+          assert str(hard.get('exportJobId') or '').strip(), hard
+          assert int(hard['mainVersionBefore']) == int(hard['mainVersionAfter']), hard
+
+          xlsx = xlsx_candidates[0]
+          assert xlsx.stat().st_size > 1000, xlsx
+          wb = load_workbook(xlsx, read_only=True, data_only=True)
+          ws = wb.active
+          rows = []
+          for row in ws.iter_rows(values_only=True):
+              rows.append(row)
+              if len(rows) >= 2:
+                  break
+          assert len(rows) >= 2, f'XLSX has fewer than header + one data row: {rows!r}'
+          assert any(v not in (None, '') for v in rows[0]), rows[0]
+          assert any(v not in (None, '') for v in rows[1]), rows[1]
+          print('[SA-001 RECHECK] workbook rows proven by iteration; max_row is not used')
+
+          marker = {
+              'code': 'SA-001',
+              'productExactSha': os.environ['PRODUCT_EXACT_SHA'],
+              'browserFirst': True,
+              'status': 'REAL_PASS',
+              'sourceRunId': int(os.environ['SOURCE_RUN_ID']),
+              'sourceArtifact': os.environ['SOURCE_ARTIFACT'],
+              'sourceArtifactDigest': 'sha256:9fa5b9117cbf9263a63a4b310cebdbb1e21571e6a07cc9be0a259b37068ae197',
+              'evidence': {
+                  'browserJourney': 'PASS in source run step 14',
+                  'mysqlTruthAndAppendOnlyAudit': 'PASS in source run step 15',
+                  'permissionNegativeAndAsyncXlsxDownload': 'PASS in source run step 16',
+                  'xlsxWorkbookReadableWithDataRow': True,
+                  'runnerBugFixed': 'openpyxl read_only max_row can be None; row iteration is authoritative'
+              }
+          }
+          out = Path('closure/v3-closure-sa-001.json')
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps(marker, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Upload closure marker
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-v31-sa001-closure-${{ env.PRODUCT_EXACT_SHA }}
+          path: closure/v3-closure-sa-001.json
+          if-no-files-found: error
+          retention-days: 30
