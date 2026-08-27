@@ -1,6 +1,6 @@
 {
-  "mainHead": "84bf29dc41bb2affa03c6345938ab0ca672b6eda",
-  "productExactSha": "ac5a34c396fc38ce4148e8c7d8633390fb9d31f0",
+  "mainHead": "9b314938a7b89647cfbb549a4e17c37d08a6bdc6",
+  "productExactSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
   "policy": "Only semantic fixes absent from latest main remain in the final RC; historical duplicates are not re-ported.",
   "missingFixFamilies": [
     "SA-002 aid audit namespace and detail truth",
@@ -10,6 +10,10 @@
     "SA-009 dorm scope/projection/message hardening",
     "SA-011 teacher-mobile risk version/CAS propagation",
     "shared student-affairs permission/security hardening"
+  ],
+  "latestMain210SemanticInheritance": [
+    "Graduation specialist batch.view permission grants",
+    "Graduation picker scope remains purpose-specific and does not expand Student Affairs TENANT_ALL"
   ],
   "crossModuleTestOnlyFixes": [
     "graduation source-shape contract follows filtered mobile_router registration",
