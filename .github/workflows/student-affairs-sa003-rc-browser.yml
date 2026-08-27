@@ -308,7 +308,7 @@ jobs:
           p.write_text(text.replace(old, new), encoding='utf-8')
           PY
           cd app/e2e
-          npm install
+          npm install --package-lock=false
           npx playwright install --with-deps chromium
 
       - name: Run strict Browser First SA-003 journey
