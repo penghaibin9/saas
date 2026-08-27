@@ -1,0 +1,219 @@
+name: Graduation GD-019 solo seal
+
+on:
+  push:
+    branches: [audit/graduation-gd019-solo-20260827]
+    paths:
+      - '.github/workflows/graduation-gd019-solo.yml'
+      - 'e2e/specs/graduation-gd019-solo.spec.mjs'
+      - 'e2e/scripts/graduation-gd019-solo-seed.py'
+      - 'e2e/scripts/graduation-gd019-solo-db.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graduation-gd019-solo
+  cancel-in-progress: true
+
+jobs:
+  gd019-solo:
+    name: GD-019 exact-head browser + MySQL seal
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping" --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: graduation-gd019-solo
+      JWT_SECRET: graduation-gd019-solo-only-not-production
+      JWT_SECRET_KEY: graduation-gd019-solo-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_EXPECTED_SHA: 5a86ff4fc58d97eabf2a3931d99074b8f1291716
+
+    steps:
+      - name: Checkout product exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: 5a86ff4fc58d97eabf2a3931d99074b8f1291716
+          fetch-depth: 0
+
+      - name: Assert product exact HEAD
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
+
+      - name: Checkout solo audit harness only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: solo-harness
+          sparse-checkout: |
+            e2e/specs/graduation-gd019-solo.spec.mjs
+            e2e/scripts/graduation-gd019-solo-seed.py
+            e2e/scripts/graduation-gd019-solo-db.py
+          sparse-checkout-cone-mode: false
+
+      - name: Inject solo audit harness
+        run: |
+          set -euo pipefail
+          cp solo-harness/e2e/specs/graduation-gd019-solo.spec.mjs e2e/specs/
+          mkdir -p e2e/scripts e2e/runtime-logs e2e/test-results
+          cp solo-harness/e2e/scripts/graduation-gd019-solo-seed.py e2e/scripts/
+          cp solo-harness/e2e/scripts/graduation-gd019-solo-db.py e2e/scripts/
+          printf 'failure\n' > e2e/runtime-logs/gd019-solo-browser.outcome
+          printf 'failure\n' > e2e/runtime-logs/gd019-solo-db.outcome
+          rm -rf solo-harness
+          test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
+          bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
+          test -z "$bad"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/package-lock.json
+
+      - name: Install backend and seed IAM
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          alembic upgrade head
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start real backend
+        run: |
+          set -euo pipefail
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health >/dev/null && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Bootstrap graduation accounts against real backend
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+
+      - name: Seed only GD-019 prerequisites
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python ../e2e/scripts/graduation-gd019-solo-seed.py
+          cat ../e2e/runtime-logs/gd019-solo-fixture.json
+
+      - name: Start Staff PC
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:5173/login >/dev/null && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/frontend.log
+          exit 1
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          set -euo pipefail
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: GD-019 solo Browser seal
+        id: browser
+        continue-on-error: true
+        working-directory: e2e
+        run: |
+          set +e
+          npx playwright test specs/graduation-gd019-solo.spec.mjs
+          rc=$?
+          if [ "$rc" -eq 0 ]; then echo success > runtime-logs/gd019-solo-browser.outcome; else echo failure > runtime-logs/gd019-solo-browser.outcome; fi
+          exit "$rc"
+
+      - name: GD-019 Direct MySQL seal
+        id: db
+        if: always()
+        continue-on-error: true
+        working-directory: backend
+        run: |
+          set +e
+          python ../e2e/scripts/graduation-gd019-solo-db.py
+          rc=$?
+          if [ "$rc" -eq 0 ]; then echo success > ../e2e/runtime-logs/gd019-solo-db.outcome; else echo failure > ../e2e/runtime-logs/gd019-solo-db.outcome; fi
+          exit "$rc"
+
+      - name: Enforce solo evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          BROWSER="$(cat e2e/runtime-logs/gd019-solo-browser.outcome)"
+          DB="$(cat e2e/runtime-logs/gd019-solo-db.outcome)"
+          echo "GD019_BROWSER=$BROWSER"
+          echo "GD019_DB=$DB"
+          test "$BROWSER" = success
+          test "$DB" = success
+          test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
+
+      - name: Upload solo evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-gd019-solo-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            e2e/runtime-logs/**
+            e2e/test-results/**
+            e2e/playwright-report/**
