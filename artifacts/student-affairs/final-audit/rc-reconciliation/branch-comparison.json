@@ -1,19 +1,17 @@
 {
-  "base": "main@84bf29dc41bb2affa03c6345938ab0ca672b6eda",
-  "head": "fix/student-affairs-final-rc-20260824@ac5a34c396fc38ce4148e8c7d8633390fb9d31f0",
-  "beforeR0": {
-    "head": "a288b0dcfdd5b1a2b8fcee12d7d83b7b9ad9bfb4",
-    "ahead": 52,
-    "behind": 165,
-    "status": "diverged"
-  },
-  "afterR0": {
-    "ahead": 58,
-    "behind": 0,
-    "status": "ahead"
-  },
-  "semanticMergeConflictFiles": [
-    "backend/app/api/v1/route_registration.py"
+  "base": "main@9b314938a7b89647cfbb549a4e17c37d08a6bdc6",
+  "head": "fix/student-affairs-final-rc-20260824@65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
+  "history": [
+    {"head": "a288b0dcfdd5b1a2b8fcee12d7d83b7b9ad9bfb4", "main": "84bf29dc41bb2affa03c6345938ab0ca672b6eda", "ahead": 52, "behind": 165, "status": "diverged"},
+    {"head": "ac5a34c396fc38ce4148e8c7d8633390fb9d31f0", "main": "84bf29dc41bb2affa03c6345938ab0ca672b6eda", "ahead": 58, "behind": 0, "status": "ahead"},
+    {"event": "main advanced by merged PR #210", "from": "84bf29dc41bb2affa03c6345938ab0ca672b6eda", "to": "9b314938a7b89647cfbb549a4e17c37d08a6bdc6", "commits": 100},
+    {"event": "sync PR #230", "resultSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e"}
   ],
+  "afterR0": {"ahead": 59, "behind": 0, "status": "ahead"},
+  "studentAffairsSharedOverlapsFromMain210": [
+    "backend/app/core/affairs_security.py",
+    "backend/app/core/permissions.py"
+  ],
+  "sharedOverlapDecision": "SEMANTICALLY_COMPATIBLE_KEEP_BOTH",
   "result": "R0_BASE_SYNC_PASS"
 }
