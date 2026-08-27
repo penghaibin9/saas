@@ -227,7 +227,12 @@ export default {
       this.saving = false
       if (res.code === 0) { toast.success('已调剂'); this.reassignVisible = false; this.refresh() } else this.reassignError = res.message
     },
-    onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
+    onConfirm() {
+      const a = this.pendingAction
+      this.pendingAction = null
+      this.confirmVisible = false
+      if (a) a()
+    }
   }
 }
 </script>
