@@ -290,7 +290,7 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     expect(Object.keys(overviewData)).not.toContain('riskDetail')
     expect(Number(overviewData.careActionCount || 0)).toBeGreaterThanOrEqual(0)
     await studentPage.goto(`${config.studentBaseUrl}/messages`)
-    const pcNoticeTab = studentPage.getByRole('button').filter({ hasText: '通知' }).first()
+    const pcNoticeTab = studentPage.locator('.mhead .mtab').filter({ hasText: '通知' }).first()
     await expect(pcNoticeTab).toBeVisible({ timeout: 20_000 })
     await pcNoticeTab.click()
     await expect(studentPage.locator('body')).toContainText('风险已关闭', { timeout: 20_000 })
