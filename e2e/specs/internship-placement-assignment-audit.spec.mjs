@@ -2,33 +2,20 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs/promises'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
-import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
+import { StudentLoginPage } from '../pages/login.page.mjs'
+import {
+  internshipApiPath as apiPath,
+  internshipPayloadOf as payloadOf,
+  internshipFormItem as formItem,
+  internshipCompanyRow as companyRow,
+  internshipStaffLogin as staffLogin,
+  confirmInternshipPositionStatus as confirmPositionStatus
+} from '../lib/internship-enterprise-position-browser.mjs'
 
 const enterpriseBaseUrl = process.env.E2E_ENTERPRISE_BASE_URL || 'http://127.0.0.1:5202/enterprise'
 const miniBaseUrl = process.env.E2E_STUDENT_MINI_BASE_URL || 'http://127.0.0.1:5188'
 const ENTERPRISE_PASSWORD = 'E2eEnterprise@2026'
 const ADVISOR_NAME = 'E2E指导教师A'
-
-function apiPath(response) {
-  try { return new URL(response.url()).pathname } catch { return '' }
-}
-
-async function payloadOf(response) {
-  const text = await response.text()
-  try { return { text, body: JSON.parse(text) } } catch { return { text, body: null } }
-}
-
-function formItem(page, label) {
-  return page.locator('.app-form-item').filter({ hasText: label }).first()
-}
-
-function companyRow(page, companyName) {
-  return page.locator('tbody tr').filter({ hasText: companyName }).first()
-}
-
-async function staffLogin(page) {
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
-}
 
 async function pickRemote(field, searchText, optionText) {
   await field.locator('[role="combobox"]').click()
@@ -38,19 +25,6 @@ async function pickRemote(field, searchText, optionText) {
   const option = field.locator('.app-remote-select__option').filter({ hasText: optionText }).first()
   await expect(option).toBeVisible()
   await option.click()
-}
-
-async function confirmPositionStatus(page, positionId, triggerName, confirmName) {
-  await page.getByRole('button', { name: triggerName, exact: true }).click()
-  const dialog = page.getByRole('dialog')
-  await expect(dialog).toBeVisible()
-  const responsePromise = page.waitForResponse((response) =>
-    apiPath(response) === `/api/v1/internship/positions/${positionId}/status`
-      && response.request().method() === 'POST'
-  )
-  await dialog.getByRole('button', { name: confirmName, exact: true }).click()
-  const response = await responsePromise
-  return { response, ...(await payloadOf(response)) }
 }
 
 async function loginStudentMini(page) {

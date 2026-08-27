@@ -119,14 +119,17 @@ test.describe.serial('S1 · production build + nginx TLS + 2-worker backend repr
     await expect(page.getByRole('button', { name: '我的实习' })).toBeVisible()
 
     const batchSelector = page.getByText('请选择要办理的实习批次', { exact: true })
-    if (await batchSelector.count()) {
-      await expect(batchSelector).toBeVisible()
+    const companyName = page.getByText(fixture.companyName, { exact: false }).first()
+    await expect.poll(async () => (
+      await batchSelector.isVisible() || await companyName.isVisible()
+    ), { timeout: 20_000 }).toBeTruthy()
+    if (await batchSelector.isVisible()) {
       const targetBatch = page.getByRole('button', { name: new RegExp(s1.batchName) })
       await expect(targetBatch).toBeVisible()
       await targetBatch.click()
     }
 
-    await expect(page.getByText(fixture.companyName, { exact: false }).first()).toBeVisible()
+    await expect(companyName).toBeVisible()
     assertHttpsRuntime(page)
     await page.reload()
     await expect(page.getByRole('button', { name: '我的实习' })).toBeVisible()

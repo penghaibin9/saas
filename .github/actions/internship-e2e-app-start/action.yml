@@ -1,0 +1,76 @@
+name: Internship E2E App Start
+description: Start selected browser apps in the current acceptance job while preserving caller log and PID names.
+
+inputs:
+  start-staff:
+    description: Start Staff PC.
+    default: 'false'
+  start-student:
+    description: Start Student PC.
+    default: 'false'
+  start-enterprise:
+    description: Start Enterprise Portal.
+    default: 'false'
+  start-miniapp:
+    description: Start Mini H5.
+    default: 'false'
+  miniapp-log-name:
+    description: Mini H5 log filename.
+    default: miniapp.log
+  miniapp-pid-name:
+    description: Mini H5 PID filename.
+    default: miniapp.pid
+
+runs:
+  using: composite
+  steps:
+    - name: Start selected browser applications
+      shell: bash
+      env:
+        START_STAFF: ${{ inputs.start-staff }}
+        START_STUDENT: ${{ inputs.start-student }}
+        START_ENTERPRISE: ${{ inputs.start-enterprise }}
+        START_MINIAPP: ${{ inputs.start-miniapp }}
+        MINIAPP_LOG_NAME: ${{ inputs.miniapp-log-name }}
+        MINIAPP_PID_NAME: ${{ inputs.miniapp-pid-name }}
+      run: |
+        mkdir -p e2e/runtime-logs
+
+        if [ "$START_STAFF" = 'true' ]; then
+          cd frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+          cd ..
+        fi
+
+        if [ "$START_STUDENT" = 'true' ]; then
+          cd student-portal
+          npm ci
+          VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 \
+            nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/student-portal.pid
+          cd ..
+        fi
+
+        if [ "$START_ENTERPRISE" = 'true' ]; then
+          cd enterprise-portal
+          npm ci
+          VITE_BASE=/enterprise/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 \
+            nohup npm run dev -- --host 127.0.0.1 --port 5202 > ../e2e/runtime-logs/enterprise-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/enterprise-portal.pid
+          cd ..
+        fi
+
+        if [ "$START_MINIAPP" = 'true' ]; then
+          case "$MINIAPP_LOG_NAME:$MINIAPP_PID_NAME" in
+            miniapp.log:miniapp.pid|student-mini.log:student-mini.pid) ;;
+            *) echo "unsupported Mini H5 log/PID names" >&2; exit 2 ;;
+          esac
+          cd miniapp
+          npm ci
+          VITE_USE_MOCK=false VITE_API_BASE_URL=http://127.0.0.1:8000 \
+            nohup npm run dev:h5 -- --host 127.0.0.1 --port 5188 > "../e2e/runtime-logs/$MINIAPP_LOG_NAME" 2>&1 &
+          echo $! > "../e2e/runtime-logs/$MINIAPP_PID_NAME"
+          cd ..
+        fi

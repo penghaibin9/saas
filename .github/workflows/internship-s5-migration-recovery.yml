@@ -26,7 +26,6 @@ permissions:
 
 jobs:
   s5-recovery:
-    if: github.event_name != 'pull_request' || github.head_ref == 'fix/internship-final-rc-20260824'
     name: Governed backup / upgrade / restore / historical read
     runs-on: ubuntu-latest
     timeout-minutes: 35
