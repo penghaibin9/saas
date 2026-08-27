@@ -45,8 +45,29 @@ async function dismissGuide(page) {
   }
 }
 
-async function openStaffWorkspace(page, api) {
-  await page.addInitScript((token) => window.sessionStorage.setItem('gx_pc_token_v1', token), api.token)
+async function openStaffWorkspace(page, account) {
+  const browserSessionId = `sa006-${process.pid}-${Date.now()}`
+  await page.addInitScript((sessionId) => {
+    window.sessionStorage.setItem('gx_browser_session_id_v2', sessionId)
+  }, browserSessionId)
+
+  const login = await page.request.post(`${config.apiBaseUrl}/auth/browser-login`, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Browser-Session-Id': browserSessionId
+    },
+    data: {
+      loginName: account.username,
+      password: account.password,
+      tenantCode: account.tenant,
+      clientType: 'PC'
+    }
+  })
+  expect(login.ok(), `browser-login HTTP ${login.status()}`).toBeTruthy()
+  const payload = await login.json()
+  expect(payload?.code, `browser-login payload=${JSON.stringify(payload)}`).toBe(0)
+  expect(payload?.data?.accessToken).toBeTruthy()
+
   await page.goto(`${config.staffBaseUrl}/admin/student-affairs/funding/work-study`)
   await dismissGuide(page)
 }
@@ -101,7 +122,7 @@ test.describe.serial('SA-006 勤工助学 · exact-head Browser First', () => {
 
   test('Browser: 录用 → 上岗 → 月度考核全部由真实 Staff PC 完成', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 })
-    await openStaffWorkspace(page, adminApi)
+    await openStaffWorkspace(page, config.sandboxAdmin)
     await expect(page).toHaveURL(/\/admin\/student-affairs\/funding\/work-study/)
     await expect(page.getByRole('heading', { name: '勤工助学', exact: true })).toBeVisible()
 
