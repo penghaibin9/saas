@@ -27,6 +27,13 @@ const ARCHIVE = '/graduation/gd-archives'
 const STATS = '/graduation/gd-stats'
 const pendingArchivePreviews = new Map()
 
+// batch-file 在同一请求内为每位学生生成系统快照并逐份备案。签名预览令牌有效期为 10 分钟，
+// 因此给正式写请求 8 分钟上限，而不是原来的 15 秒硬中断；若连接仍中断，禁止自动重放写请求，
+// 改为读取归档台账按 archiveBatchNo 对账，避免“前端报失败、后端其实已部分/全部成功”的未知状态。
+const BATCH_FILE_TIMEOUT_MS = 8 * 60 * 1000
+const BATCH_FILE_RECONCILE_ATTEMPTS = 5
+const BATCH_FILE_RECONCILE_DELAY_MS = 2000
+
 function previewKey(mode, scoped = {}) {
   return `${mode}:${String(scoped.batchId || '')}`
 }
@@ -36,6 +43,8 @@ function rememberPreview(mode, scoped, data) {
   pendingArchivePreviews.set(previewKey(mode, scoped), {
     previewToken: data.previewToken,
     archiveBatchNo: data.archiveBatchNo || '',
+    candidateCount: Number(data.candidateCount || 0),
+    executableCount: Number(data.executableCount || 0),
   })
 }
 
@@ -46,6 +55,65 @@ function consumePreview(mode, scoped, body = {}) {
   return {
     previewToken: body.previewToken || cached.previewToken || '',
     archiveBatchNo: body.archiveBatchNo || cached.archiveBatchNo || '',
+    candidateCount: Number(cached.candidateCount || 0),
+    executableCount: Number(cached.executableCount || 0),
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isUncertainBatchWrite(error) {
+  return error?.bizCode === 'REQUEST_TIMEOUT' || Number(error?.code) === 503002
+}
+
+async function readFiledCount(scoped, archiveBatchNo) {
+  const ids = new Set()
+  let page = 1
+  let total = 0
+  do {
+    const data = await request(ARCHIVE, {
+      params: { ...scoped, status: 'FILED', page, pageSize: 200 },
+      forceProbe: true,
+      timeoutMs: 10000,
+    })
+    const rows = data?.items || []
+    for (const row of rows) {
+      if (String(row?.archiveBatchNo || '') === String(archiveBatchNo || '')) {
+        ids.add(String(row?.gdStudentId || row?.id || ''))
+      }
+    }
+    total = Number(data?.total || 0)
+    page += 1
+  } while ((page - 1) * 200 < total)
+  return ids.size
+}
+
+async function reconcileBatchFile(scoped, archiveBatchNo, candidateCount, executableCount) {
+  const expected = Math.max(0, Number(executableCount || 0))
+  let filed = 0
+  let lastError = null
+  for (let attempt = 0; attempt < BATCH_FILE_RECONCILE_ATTEMPTS; attempt += 1) {
+    try {
+      filed = await readFiledCount(scoped, archiveBatchNo)
+      lastError = null
+      if (filed >= expected) break
+    } catch (error) {
+      lastError = error
+    }
+    if (attempt < BATCH_FILE_RECONCILE_ATTEMPTS - 1) {
+      await sleep(BATCH_FILE_RECONCILE_DELAY_MS)
+    }
+  }
+  return {
+    reconciled: true,
+    complete: !lastError && filed >= expected,
+    filed,
+    skipped: Math.max(0, Number(candidateCount || 0) - expected),
+    failed: 0,
+    expectedExecutableCount: expected,
+    archiveBatchNo,
   }
 }
 
@@ -100,13 +168,13 @@ export const graduationRiskArchiveApi = {
   async batchFileArchive(params = {}, body = {}) {
     const scoped = withBatch(params)
     const preview = consumePreview('FILE', scoped, body)
-    const { previewToken, archiveBatchNo } = preview
+    const { previewToken, archiveBatchNo, candidateCount, executableCount } = preview
     if (!previewToken || !archiveBatchNo) {
       return fail('备案预览执行凭证不存在、不完整或已消费，请重新预览', 409)
     }
     try {
       const data = await request(`${ARCHIVE}/batch-file`, {
-        method: 'POST', params: scoped, timeoutMs: 15000,
+        method: 'POST', params: scoped, timeoutMs: BATCH_FILE_TIMEOUT_MS,
         body: { ...body, archiveBatchNo, previewToken },
       })
       const failed = Number(data?.failed || 0)
@@ -116,7 +184,18 @@ export const graduationRiskArchiveApi = {
         return fail(message, 409, data)
       }
       return ok(data)
-    } catch (e) { return toErr(e) }
+    } catch (e) {
+      if (!isUncertainBatchWrite(e)) return toErr(e)
+      const reconciled = await reconcileBatchFile(
+        scoped, archiveBatchNo, candidateCount, executableCount
+      )
+      if (reconciled.complete) return ok(reconciled)
+      return fail(
+        `批量备案连接中断，已自动核对 ${reconciled.filed}/${reconciled.expectedExecutableCount} 份；当前结果尚未完全确认。请刷新归档台账并重新预览，勿直接重复提交。`,
+        503002,
+        reconciled,
+      )
+    }
   },
   generateArchive(gdStudentId, params = {}) {
     return call(() => request(`${ARCHIVE}/${gdStudentId}/generate`, { method: 'POST', params: withBatch(params) }))

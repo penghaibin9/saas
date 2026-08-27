@@ -46,6 +46,20 @@ def _can_pick_students(user) -> bool:
     return has_permission(user, "*") or any(has_permission(user, p) for p in _PICKER_PERMS)
 
 
+def _can_pick_graduation_students_schoolwide(user) -> bool:
+    """毕设管理员仅在显式 picker 模式下读取全校候选学生最小字段。
+
+    这是毕业设计建档/编排的用途级授权，不写入学工公共 TENANT_ALL，因而不会扩散到
+    学生主档、摘要、导入导出、学工/教务/就业等复用 StudentAffairsSecurityContext 的链路。
+    """
+    role = str((user or {}).get("currentRoleCode") or "").upper()
+    if role != "GRADUATION_ADMIN":
+        return False
+    return has_permission(user, "graduationDesign.student.view") or has_permission(
+        user, "graduationDesign.student.manage"
+    )
+
+
 def _can_view_profile(user) -> bool:
     return has_permission(user, "*") or has_permission(user, "student.profile.view")
 
@@ -170,7 +184,10 @@ def list_students(
     if requested_identity and requested_identity != "NOT_CONFIGURED":
         return success(paginate([], 0, page, pageSize))
 
-    class_ids, student_ids = student_directory_scope(user)
+    if is_picker and _can_pick_graduation_students_schoolwide(user):
+        class_ids, student_ids = None, None
+    else:
+        class_ids, student_ids = student_directory_scope(user)
     items, total = svc.list_students(
         page,
         pageSize,
@@ -223,7 +240,8 @@ def identity_records(
 
 @router.get("/{student_id}", summary="学生 360 详情")
 def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends(require_staff)):
-    is_picker = (mode or "").strip().lower() == "picker"
+    requested_picker = (mode or "").strip().lower() == "picker"
+    is_picker = requested_picker
     if is_picker:
         if not _can_pick_students(user):
             raise AppException("NO_PERMISSION", "无权检索学生目录")
@@ -231,7 +249,8 @@ def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends
         if not _can_pick_students(user):
             raise AppException("NO_PERMISSION", "无权查看学生主档")
         is_picker = True
-    _check_target_scope(student_id, user)
+    if not (requested_picker and _can_pick_graduation_students_schoolwide(user)):
+        _check_target_scope(student_id, user)
     row = svc.get_student(student_id)
     return success(_to_picker_item(row) if is_picker else row)
 

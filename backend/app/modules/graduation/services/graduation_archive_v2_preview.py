@@ -16,7 +16,7 @@ from collections import defaultdict
 from sqlalchemy import and_, select
 
 from app.core.exceptions import AppException
-from app.models import GraduationGuidance, GraduationPlagiarismCheck
+from app.models import GraduationGuidance, GraduationPlagiarismCheck, GraduationProposal
 from app.models.file import FileObject, FileVersion
 from app.models.graduation_material import (
     GraduationMaterialItem,
@@ -182,8 +182,9 @@ def _material_hashes(items, grouped_materials: dict[int, dict[str, tuple]], stud
 def _source_maps(db, student_ids: list[int], *, lock: bool = False):
     guidance_ids: set[int] = set()
     plagiarism: dict[int, object] = {}
+    proposal_defense_ids: set[int] = set()
     if not student_ids:
-        return guidance_ids, plagiarism
+        return guidance_ids, plagiarism, proposal_defense_ids
     guidance_stmt = select(GraduationGuidance).where(
         GraduationGuidance.tenant_id == _tid(),
         GraduationGuidance.gd_student_id.in_(student_ids),
@@ -203,13 +204,32 @@ def _source_maps(db, student_ids: list[int], *, lock: bool = False):
         current = plagiarism.get(sid)
         if current is None or int(row.id) > int(current.id):
             plagiarism[sid] = row
-    return guidance_ids, plagiarism
+    proposal_defense_stmt = select(GraduationProposal.gd_student_id).where(
+        GraduationProposal.tenant_id == _tid(),
+        GraduationProposal.gd_student_id.in_(student_ids),
+        GraduationProposal.status == "APPROVED",
+        GraduationProposal.defense_result == "PASS",
+        GraduationProposal.is_deleted.is_(False),
+    )
+    proposal_defense_ids = {
+        int(sid) for sid in db.scalars(_locked(proposal_defense_stmt, lock)).all() if sid is not None
+    }
+    return guidance_ids, plagiarism, proposal_defense_ids
 
 
-def _source_ready(code: str, legacy_present: dict[str, bool], sid: int, guidance_ids: set[int], plagiarism: dict[int, object]) -> bool:
+def _source_ready(
+    code: str,
+    legacy_present: dict[str, bool],
+    sid: int,
+    guidance_ids: set[int],
+    plagiarism: dict[int, object],
+    proposal_defense_ids: set[int],
+) -> bool:
     legacy_key = _LEGACY_SOURCE_BY_CODE.get(code)
     if legacy_key:
         return bool(legacy_present.get(legacy_key))
+    if code == "PROPOSAL_DEFENSE":
+        return sid in proposal_defense_ids
     if code == "GUIDANCE_RECORD":
         return sid in guidance_ids
     if code == "PLAGIARISM_REPORT":
@@ -219,12 +239,12 @@ def _source_ready(code: str, legacy_present: dict[str, bool], sid: int, guidance
 
 
 def enrich_snapshot(db, batch, snapshot: dict, *, lock: bool = False) -> dict:
-    """Add V2 rule/readiness and preserved-upload evidence using four bounded SQL reads."""
+    """Add V2 rule/readiness and preserved-upload evidence using five bounded SQL reads."""
     rows = snapshot.get("rows") or []
     _, items, rule_hash = _load_rule_items(db, int(batch.id), lock=lock)
     student_ids = [int(row["studentId"]) for row in rows]
     grouped = _load_material_rows(db, student_ids, lock=lock)
-    guidance_ids, plagiarism = _source_maps(db, student_ids, lock=lock)
+    guidance_ids, plagiarism, proposal_defense_ids = _source_maps(db, student_ids, lock=lock)
     preserved_hashes, _ = _material_hashes(items, grouped, student_ids)
 
     for row in rows:
@@ -250,7 +270,9 @@ def enrich_snapshot(db, batch, snapshot: dict, *, lock: bool = False) -> dict:
             if material is not None and material.current_version_id:
                 present = _ready(material, version, file_obj)
             elif item.material_code in _SYSTEM_SNAPSHOT_CODES:
-                present = _source_ready(item.material_code, legacy_present, sid, guidance_ids, plagiarism)
+                present = _source_ready(
+                    item.material_code, legacy_present, sid, guidance_ids, plagiarism, proposal_defense_ids
+                )
             else:
                 present = False
             checklist.append({

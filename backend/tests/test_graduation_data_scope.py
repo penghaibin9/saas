@@ -1,6 +1,7 @@
 """毕业设计业务关系数据范围单测（不连数据库）。"""
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -50,6 +51,21 @@ def test_school_and_graduation_admin_have_tenant_scope():
     for role in ("SCHOOL_ADMIN", "GRADUATION_ADMIN"):
         _login(role, "管理员")
         assert can_access_student(FakeDb(), _student())
+
+
+def test_graduation_admin_schoolwide_picker_does_not_expand_shared_affairs_scope():
+    root = Path(__file__).resolve().parents[2]
+    affairs = (root / "backend/app/core/affairs_security.py").read_text(encoding="utf-8")
+    students = (root / "backend/app/api/v1/student.py").read_text(encoding="utf-8")
+
+    tenant_roles = affairs.split("_TENANT_ALL_ROLES =", 1)[1].split("_COLLEGE_ROLES", 1)[0]
+    assert '"GRADUATION_ADMIN"' not in tenant_roles
+    assert "def _can_pick_graduation_students_schoolwide" in students
+    assert 'role != "GRADUATION_ADMIN"' in students
+    assert "if is_picker and _can_pick_graduation_students_schoolwide(user):" in students
+    assert "if not (requested_picker and _can_pick_graduation_students_schoolwide(user)):" in students
+    summary_contract = students.split("def student_summary", 1)[1].split("def identity_records", 1)[0]
+    assert "student_directory_scope(user)" in summary_contract
 
 
 def test_empty_defense_group_mutation_requires_full_scope_before_write():
