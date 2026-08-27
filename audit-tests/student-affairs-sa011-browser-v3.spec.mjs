@@ -259,7 +259,7 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     await confirmReason(page, '确认关闭', '复发处置完成，学生状态恢复稳定')
     await expect(page.getByText('已关闭', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
 
-    // 8) Student PC + Student Mobile API：进入真实学工页面后，内部风险标题/处置明细仍完全不可见。
+    // 8) Student PC + Student Mobile API：真实学工页面不泄密，消息中心必须收到安全的关闭结果。
     const studentPage = await page.context().newPage()
     const studentLogin = new StudentLoginPage(studentPage, config.studentBaseUrl)
     await studentLogin.login(student)
@@ -275,11 +275,16 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     expect(Object.keys(overviewData)).not.toContain('riskOpen')
     expect(Object.keys(overviewData)).not.toContain('riskDetail')
     expect(Number(overviewData.careActionCount || 0)).toBeGreaterThanOrEqual(0)
+    await studentPage.goto(`${config.studentBaseUrl}/messages`)
+    await expect(studentPage.locator('body')).toContainText('风险已关闭', { timeout: 20_000 })
+    await expect(studentPage.locator('body')).not.toContainText(title)
+    await expect(studentPage.locator('body')).not.toContainText(detailText)
+    evidence.studentPcSafeResult = 'PASS'
     evidence.studentMobilePrivacy = 'PASS'
     evidence.studentPrivacy = 'PASS'
     await studentPage.close()
 
-    // 9) Student Mini Browser：进入真实学工中心和消息页，均不得暴露内部风险标题/处置明细。
+    // 9) Student Mini Browser：学工中心不泄密，消息页必须同步同一安全关闭结果。
     const studentMiniContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
     const studentMiniPage = await studentMiniContext.newPage()
     await loginStudentMini(studentMiniPage, student)
@@ -287,8 +292,10 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     await expect(studentMiniPage.locator('body')).not.toContainText(title)
     await expect(studentMiniPage.locator('body')).not.toContainText(detailText)
     await studentMiniPage.goto(`${miniBase}/#/pages/student/messages/index`)
+    await expect(studentMiniPage.locator('body')).toContainText('风险已关闭', { timeout: 20_000 })
     await expect(studentMiniPage.locator('body')).not.toContainText(title)
     await expect(studentMiniPage.locator('body')).not.toContainText(detailText)
+    evidence.studentMiniSafeResult = 'PASS'
     evidence.studentMiniBrowserPrivacy = 'PASS'
     await studentMiniContext.close()
 
