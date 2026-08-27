@@ -1,0 +1,39 @@
+{
+  "mainHead": "84bf29dc41bb2affa03c6345938ab0ca672b6eda",
+  "productExactSha": "ac5a34c396fc38ce4148e8c7d8633390fb9d31f0",
+  "decisions": [
+    {
+      "path": "backend/app/api/v1/route_registration.py",
+      "type": "SEMANTIC_MERGE",
+      "decision": "KEEP_BOTH_CAPABILITIES",
+      "keptFromMain": [
+        "internship agreement document/template routes",
+        "internship guardian-consent delivery route",
+        "latest graduation/mobile route protections from main"
+      ],
+      "keptFromStudentAffairsRc": [
+        "filtered mobile router excluding legacy SA-011 PROCESS/CLOSE routes",
+        "mobile_risk_overrides with version/CAS propagation"
+      ],
+      "rejected": [
+        "ours-only merge",
+        "theirs-only merge",
+        "duplicate legacy and override risk write routes"
+      ],
+      "verification": [
+        "main...RC compare behind=0",
+        "Student Affairs Final Acceptance success on predecessor exact-head",
+        "current RC CI rerun required after test-contract-only commit"
+      ]
+    },
+    {
+      "path": "scripts/check/check-graduation-production-gates.mjs",
+      "type": "TEST_CONTRACT_DRIFT",
+      "decision": "ASSERT_ACTUAL_FILTERED_ROUTER_REGISTRATION",
+      "classification": "RUNNER_OR_TEST_CONTRACT_BUG",
+      "reason": "Production order remained mobile_graduation_guard before mobile_router; old assertion searched removed source token mobile.router, and false-failed after SA-011 router composition hardening."
+    }
+  ],
+  "unresolvedConflicts": [],
+  "result": "R0_CONFLICT_DECISIONS_CLOSED"
+}
