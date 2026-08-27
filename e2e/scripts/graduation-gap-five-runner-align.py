@@ -15,15 +15,44 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
     print(f"aligned: {label}")
 
 
+def require_once(path: Path, needle: str, label: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    count = text.count(needle)
+    if count != 1:
+        raise SystemExit(f"{label}: expected exactly one source match, got {count}")
+    print(f"aligned: {label}")
+
+
 def main() -> int:
     gd013 = Path("e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs")
     gap5 = Path("e2e/specs/graduation-gap-five-browser-audit.spec.mjs")
 
-    replace_once(
+    # Exact-head product contract: a conflicted group may render a visible confirmation
+    # component in a blocked state. The acceptance fact is that no publish POST is issued.
+    # Keep the checked-in toHaveCount(0) assertion intact instead of rewriting it at runtime.
+    require_once(
         gd013,
         "await expect(admin.locator('.app-confirm-dialog').filter({ hasText: '发布答辩安排' })).toHaveCount(0)",
-        "await expect(admin.locator('.app-confirm-dialog').filter({ hasText: '发布答辩安排' })).not.toBeVisible()",
-        "GD-013 hidden confirmation dialog",
+        "GD-013 conflicted publish dialog assertion preserved",
+    )
+
+    # StaffLoginPage currently returns as soon as login navigation completes, while the staff
+    # shell can still be finishing its initial browser-refresh rotation. A deep-link navigation
+    # during that window can start a second refresh against the already-consumed HttpOnly token
+    # (observed as 200 -> 401). Match the StudentLoginPage stabilization contract locally in this
+    # audit harness rather than changing product code.
+    replace_once(
+        gd013,
+        """async function loginStaff(page, account, octet) {
+  await page.context().setExtraHTTPHeaders({ 'X-Forwarded-For': `10.254.13.${octet}` })
+  await new StaffLoginPage(page, config.staffBaseUrl).login(account)
+}""",
+        """async function loginStaff(page, account, octet) {
+  await page.context().setExtraHTTPHeaders({ 'X-Forwarded-For': `10.254.13.${octet}` })
+  await new StaffLoginPage(page, config.staffBaseUrl).login(account)
+  await page.waitForLoadState('networkidle', { timeout: 60_000 })
+}""",
+        "GD-013 staff post-login refresh stabilization",
     )
 
     old_forbidden = """      await fillGroupForm(college, {
