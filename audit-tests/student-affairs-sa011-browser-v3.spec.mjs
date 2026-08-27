@@ -11,12 +11,37 @@ const staff = {
 }
 const student = { tenant: 'sandbox-school', username: 'E2E20260001', password: 'E2eTest@2026' }
 const apiBase = (process.env.E2E_API_BASE_URL || 'http://127.0.0.1:8000/api/v1').replace(/\/+$/, '')
+const miniBase = (process.env.E2E_MINIAPP_BASE_URL || 'http://127.0.0.1:5188').replace(/\/+$/, '')
 
 async function staffLogin(page, account) {
   await page.context().clearCookies()
   const login = new StaffLoginPage(page, config.staffBaseUrl)
   await login.login(account)
   return login
+}
+
+async function loginTeacherMini(page, account) {
+  await page.goto(`${miniBase}/#/pages/login/teacher/index`)
+  const fields = page.getByRole('textbox')
+  await fields.nth(0).fill(account.username)
+  await fields.nth(1).fill(account.password)
+  await page.getByText('填写', { exact: true }).click()
+  await fields.nth(2).fill(account.tenant)
+  await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
+  await page.getByText('进入教师工作台', { exact: true }).click()
+  await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 20_000 })
+}
+
+async function loginStudentMini(page, account) {
+  await page.goto(`${miniBase}/#/pages/login/student/index`)
+  const fields = page.getByRole('textbox')
+  await fields.nth(0).fill(account.username)
+  await fields.nth(1).fill(account.password)
+  await page.getByText('填写', { exact: true }).click()
+  await fields.nth(2).fill(account.tenant)
+  await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
+  await page.getByText('进入学生首页', { exact: true }).click()
+  await expect(page).toHaveURL(/pages\/student\/home\/index/, { timeout: 20_000 })
 }
 
 async function json(response) {
@@ -33,11 +58,6 @@ async function api(page, token, method, pathname, data) {
 }
 
 async function chooseRemote(page, placeholderText, searchPlaceholder, keyword, optionText) {
-  // AppRemoteSelect renders the visible outer placeholder in the combobox and the
-  // searchPlaceholder only on the textbox after opening. Some pages override the
-  // outer placeholder, including the student picker whose displayed order is
-  // “姓名 / 学号” while its search input keeps “学号 / 姓名”. Cover both forms,
-  // then stay inside the selected picker for textbox -> option traversal.
   const outerHints = [...new Set([
     placeholderText,
     searchPlaceholder,
@@ -78,8 +98,8 @@ async function openRisk(page, riskId) {
 test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
   test.describe.configure({ retries: 0 })
 
-  test('multi-source boundary -> four-surface visibility -> handle -> follow -> escalate -> takeover -> close -> reopen -> close, with scope/privacy seal', async ({ page }) => {
-    test.setTimeout(300_000)
+  test('same risk across Staff PC + Teacher Mini + Student PC + Student Mini, then MySQL/privacy/scope seal', async ({ page, browser }) => {
+    test.setTimeout(360_000)
     const unique = `${Date.now()}`
     const title = `SA011真实风险-${unique}`
     const detailText = `SA011内部处置证据-${unique}-仅工作人员可见`
@@ -87,10 +107,10 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
       exactHead: process.env.E2E_TARGET_SHA || '',
       title,
       detailText,
-      surface: 'STAFF_PC+STUDENT_PC+TEACHER_MOBILE+STUDENT_MOBILE',
+      surface: 'STAFF_PC+STUDENT_PC+TEACHER_MINI_BROWSER+STUDENT_MINI_BROWSER',
     }
 
-    // 1) 学工处管理员在真实 Staff PC 建人工风险。
+    // 1) Staff PC：学工管理员真实建单。
     const saLogin = await staffLogin(page, staff.sa)
     expect(saLogin.lastAccessToken).toBeTruthy()
     await page.goto(`${config.staffBaseUrl}/admin/student-affairs/risk`)
@@ -115,7 +135,7 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     expect(studentId).toBeTruthy()
     evidence.studentId = studentId
 
-    // 2) 多来源防重边界：同 source/ref 只能一条；不同 source 同 ref 不得误去重。
+    // 2) API：同 source/ref 防重，不同 source 同 ref 独立。
     const sourceRefId = Number(`${Date.now()}`.slice(-9)) + 700000000
     const sourcePayload = {
       studentId,
@@ -144,14 +164,14 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     evidence.crossSourceRiskId = String(crossSource.body?.data?.riskId || '')
     evidence.duplicateSourceHttpStatus = sourceDup.response.status()
 
-    // 3) 真实详情页分派给 A 班辅导员。
+    // 3) Staff PC：真实分派 A 班辅导员。
     await openRisk(page, riskId)
     await page.getByRole('button', { name: '分派', exact: true }).click()
     await chooseRemote(page, '选择风险责任人', '按姓名 / 工号搜索', 'e2e_counselor_a', 'E2E辅导员A')
     await page.getByRole('button', { name: '确认分派', exact: true }).click()
     await expect(page.getByText('已分派', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
 
-    // 4) 错误范围：B 班辅导员不能读取 A 班风险；真实页面也不得泄露标题/明细。
+    // 4) 权限负例：B 班辅导员读不到 A 班风险，页面也不得泄露标题/明细。
     const counselorBLogin = await staffLogin(page, staff.counselorB)
     const forbidden = await api(page, counselorBLogin.lastAccessToken, 'GET', `/student-affairs/risk/records/${riskId}`)
     expect(forbidden.response.status(), JSON.stringify(forbidden.body)).toBe(403)
@@ -161,7 +181,7 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     await expect(page.locator('body')).not.toContainText(detailText)
     await expect(page.locator('body')).not.toContainText(title)
 
-    // 5) A 班责任人先从教师移动端读取同一 riskId，再回 Staff PC 完成处置 + 跟进 + 升级。
+    // 5) Teacher Mobile API + Teacher Mini Browser：同一 riskId 必须真实出现并携带 version。
     const counselorALogin = await staffLogin(page, staff.counselorA)
     const teacherPending = await api(page, counselorALogin.lastAccessToken, 'GET', '/mobile/teacher/affairs/risk/pending')
     expect(teacherPending.response.status(), JSON.stringify(teacherPending.body)).toBe(200)
@@ -179,20 +199,30 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     evidence.teacherMobileRisk = 'PASS'
     evidence.teacherMobileVersion = Number(teacherMobileData.version || teacherPendingRisk.version || 0)
 
+    const teacherMiniContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    const teacherMiniPage = await teacherMiniContext.newPage()
+    await loginTeacherMini(teacherMiniPage, staff.counselorA)
+    await teacherMiniPage.goto(`${miniBase}/#/pages/teacher/affairs-review/index?type=RISK_HANDLE`)
+    const miniRiskCard = teacherMiniPage.locator('.card').filter({ hasText: title }).first()
+    await expect(miniRiskCard, `teacher mini must render risk ${riskId}`).toBeVisible({ timeout: 20_000 })
+    await expect(miniRiskCard.getByText('填写处置', { exact: true })).toBeVisible()
+    await expect(miniRiskCard.getByText('记录缺少版本号', { exact: true })).toHaveCount(0)
+    evidence.teacherMiniBrowser = 'PASS'
+    await teacherMiniContext.close()
+
+    // 6) Staff PC：A 班责任人真实处置 + 跟进 + 升级。
     await openRisk(page, riskId)
     await page.getByRole('button', { name: '处置', exact: true }).click()
     await confirmReason(page, '确认处置', '已与学生本人面谈并核对近期情况')
     await expect(page.getByText('处置中', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
-
     await page.getByRole('button', { name: '持续跟进', exact: true }).click()
     await confirmReason(page, '确认跟进', '第二次跟进确认到课及宿舍情况持续改善')
     await expect(page.getByText('持续跟进', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
-
     await page.getByRole('button', { name: '升级', exact: true }).click()
     await confirmReason(page, '确认升级', '仍存在复发迹象需要上级联合处置')
     await expect(page.getByText('已升级', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
 
-    // 6) 上级学工处接管并关闭。
+    // 7) 学工处接管并关闭；复发后必须重开同一 riskId，再次处置关闭。
     await staffLogin(page, staff.sa)
     await openRisk(page, riskId)
     await page.getByRole('button', { name: '接管', exact: true }).click()
@@ -201,8 +231,6 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     await page.getByRole('button', { name: '关闭', exact: true }).click()
     await confirmReason(page, '确认关闭', '联合复核确认风险已解除可以关闭')
     await expect(page.getByText('已关闭', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
-
-    // 7) 已关闭后复发必须重开同一风险，不允许复制同 source/ref 新建第二条。
     await page.getByRole('button', { name: '重开', exact: true }).click()
     await confirmReason(page, '确认重开', '学生情况复发，按原风险记录重新启动处置')
     await expect(page.getByText('已重开', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
@@ -218,7 +246,7 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     await confirmReason(page, '确认关闭', '复发处置完成，学生状态恢复稳定')
     await expect(page.getByText('已关闭', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
 
-    // 8) 学生 PC + 学生移动端真实登录：内部风险标题/处置明细必须完全不可见。
+    // 8) Student PC + Student Mobile API：内部风险标题/处置明细完全不可见。
     const studentPage = await page.context().newPage()
     const studentLogin = new StudentLoginPage(studentPage, config.studentBaseUrl)
     await studentLogin.login(student)
@@ -236,7 +264,19 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     evidence.studentPrivacy = 'PASS'
     await studentPage.close()
 
-    // 9) 最终详情真实页面必须保留完整 handle 时间线，产品源码保持 exact head。
+    // 9) Student Mini Browser：真实登录首页和消息页都不能暴露内部风险标题/处置明细。
+    const studentMiniContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    const studentMiniPage = await studentMiniContext.newPage()
+    await loginStudentMini(studentMiniPage, student)
+    await expect(studentMiniPage.locator('body')).not.toContainText(title)
+    await expect(studentMiniPage.locator('body')).not.toContainText(detailText)
+    await studentMiniPage.goto(`${miniBase}/#/pages/student/messages/index`)
+    await expect(studentMiniPage.locator('body')).not.toContainText(title)
+    await expect(studentMiniPage.locator('body')).not.toContainText(detailText)
+    evidence.studentMiniBrowserPrivacy = 'PASS'
+    await studentMiniContext.close()
+
+    // 10) Staff PC：最终真实详情保留完整 handle 时间线。
     await staffLogin(page, staff.sa)
     await openRisk(page, riskId)
     const timeline = page.locator('.sa-audit')
