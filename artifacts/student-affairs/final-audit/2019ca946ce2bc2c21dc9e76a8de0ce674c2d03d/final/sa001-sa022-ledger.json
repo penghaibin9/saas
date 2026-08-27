@@ -1,0 +1,35 @@
+{
+  "productExactSha": "2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d",
+  "ledgerPolicy": "REAL_PASS requires current exact-head evidence for impacted/shared-security chains; unaffected historical PASS may only be inherited after source/evidence attribution.",
+  "flows": [
+    {"code":"SA-001","status":"RUNNING_TARGETED_REVALIDATION","reason":"shared IAM/security blast radius","runId":33081957347},
+    {"code":"SA-002","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
+    {"code":"SA-003","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
+    {"code":"SA-004","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
+    {"code":"SA-005","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
+    {"code":"SA-006","status":"INHERITANCE_REVIEW_PENDING","reason":"outside current blast radius"},
+    {"code":"SA-007","status":"INHERITANCE_REVIEW_PENDING","reason":"outside current blast radius"},
+    {"code":"SA-008","status":"INHERITANCE_REVIEW_PENDING","reason":"outside current blast radius"},
+    {"code":"SA-009","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
+    {"code":"SA-010","status":"INHERITANCE_REVIEW_PENDING","reason":"outside current blast radius"},
+    {"code":"SA-011","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit; historical exact-head Gold Deep exists but predecessor SHA cannot seal current RC"},
+    {"code":"SA-012","status":"INHERITANCE_REVIEW_PENDING","reason":"outside current blast radius"},
+    {"code":"SA-013","status":"INHERITANCE_REVIEW_PENDING","reason":"outside current blast radius"},
+    {"code":"SA-014","status":"TARGETED_REVALIDATION_REQUIRED","reason":"shared IAM/security blast radius; high privacy chain"},
+    {"code":"SA-015","status":"INHERITANCE_REVIEW_PENDING","reason":"outside current blast radius"},
+    {"code":"SA-016","status":"TARGETED_REVALIDATION_REQUIRED","reason":"shared IAM/security blast radius"},
+    {"code":"SA-017","status":"INHERITANCE_REVIEW_PENDING","reason":"outside current blast radius"},
+    {"code":"SA-018","status":"INHERITANCE_REVIEW_PENDING","reason":"outside current blast radius"},
+    {"code":"SA-019","status":"INHERITANCE_REVIEW_PENDING","reason":"outside current blast radius"},
+    {"code":"SA-020","status":"INHERITANCE_REVIEW_PENDING","reason":"outside current blast radius"},
+    {"code":"SA-021","status":"TARGETED_REVALIDATION_REQUIRED","reason":"shared IAM/security blast radius plus archive immutability evidence gap"},
+    {"code":"SA-022","status":"TARGETED_REVALIDATION_REQUIRED_LAST","reason":"global consistency seal; execute after SA-001..SA-021 closure"}
+  ],
+  "foundation": {
+    "studentAffairsFinalAcceptanceRun":33075401064,
+    "studentAffairsFinalAcceptance":"PASS",
+    "repositoryCiRun":33075400750,
+    "repositoryCi":"PASS",
+    "r0":"PASS"
+  }
+}
