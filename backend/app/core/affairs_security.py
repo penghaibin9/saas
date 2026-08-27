@@ -31,6 +31,8 @@ from app.services.db_service import _tid
 # FUNDING_TEACHER（资助老师）纳入 TENANT_ALL：permissions.py 注释明确"困难认定+奖助勤贷全域经办"，
 # 权限集本身已窄限于 aid/funding/dashboard/student.view/stats.view，授予全租户 scope 不越出该权限集，
 # 且修复此前 fail-closed→NONE 导致该角色"有权限但审批不了任何人"的实际阻断（历史欠账，见 permissions.py:61 注释）。
+# 毕设管理员不属于学工公共 TENANT_ALL；其全校候选学生能力只允许在 /students?mode=picker
+# 这一用途级端点中显式放开，避免毕业设计角色被共享安全上下文扩散到学工/教务/就业等域。
 _TENANT_ALL_ROLES = {"SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN", "STUDENT_AFFAIRS_ADMIN",
                      "STUDENT_AFFAIRS", "SCHOOL_LEADER", "SA_ADMIN", "LEADER", "ACADEMIC_ADMIN",
                      "FUNDING_TEACHER"}

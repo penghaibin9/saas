@@ -29,9 +29,9 @@
         </section>
       </div>
     </template>
-    <template v-if="detail && canEdit" #footer>
-      <button type="button" class="mp-btn mp-btn--primary" @click="goEdit">编辑课题</button>
-      <button type="button" class="mp-btn" @click="$router.push('/admin/graduation/students?panel=topic')">分配学生</button>
+    <template v-if="detail && (canTopicCreate || canTopicAssign)" #footer>
+      <button v-if="canTopicCreate" type="button" class="mp-btn mp-btn--primary" @click="goEdit">编辑课题</button>
+      <button v-if="canTopicAssign" type="button" class="mp-btn" @click="goAssign">分配学生</button>
     </template>
   </GraduationFormPageShell>
 </template>
@@ -40,6 +40,7 @@
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
+import { matchPermission } from '@/config/navPlan'
 
 export default {
   name: 'TopicManageDetailView',
@@ -49,9 +50,12 @@ export default {
     return { loading: true, error: '', detail: null, assigned: [] }
   },
   computed: {
-    canEdit() {
-      return this.ctx?.permissions?.includes('graduation:topic:write')
-    }
+    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
+    canTopicCreate() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.create') },
+    canTopicAssign() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.assign') }
+  },
+  mounted() {
+    this.load()
   },
   methods: {
     async load() {
@@ -71,8 +75,13 @@ export default {
         this.loading = false
       }
     },
-    mounted() {
-      this.load()
+    goEdit() {
+      if (!this.canTopicCreate || !this.detail) return
+      this.$router.push(`/admin/graduation/topics/${this.detail.id}/edit`)
+    },
+    goAssign() {
+      if (!this.canTopicAssign) return
+      this.$router.push('/admin/graduation/students?panel=topic')
     }
   }
 }

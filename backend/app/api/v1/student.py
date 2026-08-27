@@ -26,7 +26,12 @@ _PICKER_PERMS = (
     "studentAffairs.student.view",
     "campusService.student.view",
     "internship.student.view",
+    # 毕设学生建档/批次编排只需要从主档目录选择学生，不等于查看学生 360 主档。
+    # 运行时角色权限是细粒度 graduationDesign.student.*；不能依赖并非所有角色快照都
+    # 显式发布的 graduationDesign.view，否则页面可进入但学生 Picker 会被主档权限 403 拦住。
     "graduationDesign.view",
+    "graduationDesign.student.view",
+    "graduationDesign.student.manage",
     "academicAffairs.roster.view",
 )
 
@@ -39,6 +44,20 @@ _STUDENT_CONTEXT_PERMS = (
 
 def _can_pick_students(user) -> bool:
     return has_permission(user, "*") or any(has_permission(user, p) for p in _PICKER_PERMS)
+
+
+def _can_pick_graduation_students_schoolwide(user) -> bool:
+    """毕设管理员仅在显式 picker 模式下读取全校候选学生最小字段。
+
+    这是毕业设计建档/编排的用途级授权，不写入学工公共 TENANT_ALL，因而不会扩散到
+    学生主档、摘要、导入导出、学工/教务/就业等复用 StudentAffairsSecurityContext 的链路。
+    """
+    role = str((user or {}).get("currentRoleCode") or "").upper()
+    if role != "GRADUATION_ADMIN":
+        return False
+    return has_permission(user, "graduationDesign.student.view") or has_permission(
+        user, "graduationDesign.student.manage"
+    )
 
 
 def _can_view_profile(user) -> bool:
@@ -165,7 +184,10 @@ def list_students(
     if requested_identity and requested_identity != "NOT_CONFIGURED":
         return success(paginate([], 0, page, pageSize))
 
-    class_ids, student_ids = student_directory_scope(user)
+    if is_picker and _can_pick_graduation_students_schoolwide(user):
+        class_ids, student_ids = None, None
+    else:
+        class_ids, student_ids = student_directory_scope(user)
     items, total = svc.list_students(
         page,
         pageSize,
@@ -218,7 +240,8 @@ def identity_records(
 
 @router.get("/{student_id}", summary="学生 360 详情")
 def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends(require_staff)):
-    is_picker = (mode or "").strip().lower() == "picker"
+    requested_picker = (mode or "").strip().lower() == "picker"
+    is_picker = requested_picker
     if is_picker:
         if not _can_pick_students(user):
             raise AppException("NO_PERMISSION", "无权检索学生目录")
@@ -226,7 +249,8 @@ def get_student(student_id: str, mode: Optional[str] = Query(None), user=Depends
         if not _can_pick_students(user):
             raise AppException("NO_PERMISSION", "无权查看学生主档")
         is_picker = True
-    _check_target_scope(student_id, user)
+    if not (requested_picker and _can_pick_graduation_students_schoolwide(user)):
+        _check_target_scope(student_id, user)
     row = svc.get_student(student_id)
     return success(_to_picker_item(row) if is_picker else row)
 
@@ -318,7 +342,7 @@ def void_student(
         user, "student-void", idempotency_key, payload, require_store=True
     ) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已作废（幂等重放）")
+            return success(guard.cached, message="已作废（逻辑删除，档案保留可追溯；同号仅可复活）")
         result = svc.void_student(student_id, body.reason)
         audit.record_critical(
             "作废学生", method="POST", path=f"/api/v1/students/{student_id}/void",

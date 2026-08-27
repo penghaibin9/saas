@@ -1,13 +1,13 @@
 /**
  * 毕业设计中心 · 问题预警 / 毕设归档 / 毕设统计 API。
- * 学校端始终携带当前批次；批量归档执行必须绑定后端签名预览令牌。
+ * 学校端始终携带当前批次；批量归档执行必须消费老师刚刚确认的后端签名预览令牌，禁止静默二次预览。
  */
 import { request } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { withGraduationBatch as withBatch } from '@/modules/graduation/api/graduation-batch-context'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
-function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
+function fail(message, code = 1, data = null) { return Promise.resolve({ code, data, message }) }
 function toErr(e) {
   if (e?.biz) return fail(e.message, e.code || 1)
   return fail(e?.message || '真实接口不可用', 503001)
@@ -25,6 +25,97 @@ async function callList(path, params = {}) {
 const RISK = '/graduation/gd-risks'
 const ARCHIVE = '/graduation/gd-archives'
 const STATS = '/graduation/gd-stats'
+const pendingArchivePreviews = new Map()
+
+// batch-file 在同一请求内为每位学生生成系统快照并逐份备案。签名预览令牌有效期为 10 分钟，
+// 因此给正式写请求 8 分钟上限，而不是原来的 15 秒硬中断；若连接仍中断，禁止自动重放写请求，
+// 改为读取归档台账按 archiveBatchNo 对账，避免“前端报失败、后端其实已部分/全部成功”的未知状态。
+const BATCH_FILE_TIMEOUT_MS = 8 * 60 * 1000
+const BATCH_FILE_RECONCILE_ATTEMPTS = 5
+const BATCH_FILE_RECONCILE_DELAY_MS = 2000
+
+function previewKey(mode, scoped = {}) {
+  return `${mode}:${String(scoped.batchId || '')}`
+}
+
+function rememberPreview(mode, scoped, data) {
+  if (!data?.previewToken) return
+  pendingArchivePreviews.set(previewKey(mode, scoped), {
+    previewToken: data.previewToken,
+    archiveBatchNo: data.archiveBatchNo || '',
+    candidateCount: Number(data.candidateCount || 0),
+    executableCount: Number(data.executableCount || 0),
+  })
+}
+
+function consumePreview(mode, scoped, body = {}) {
+  const key = previewKey(mode, scoped)
+  const cached = pendingArchivePreviews.get(key) || {}
+  pendingArchivePreviews.delete(key)
+  return {
+    previewToken: body.previewToken || cached.previewToken || '',
+    archiveBatchNo: body.archiveBatchNo || cached.archiveBatchNo || '',
+    candidateCount: Number(cached.candidateCount || 0),
+    executableCount: Number(cached.executableCount || 0),
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isUncertainBatchWrite(error) {
+  return error?.bizCode === 'REQUEST_TIMEOUT' || Number(error?.code) === 503002
+}
+
+async function readFiledCount(scoped, archiveBatchNo) {
+  const ids = new Set()
+  let page = 1
+  let total = 0
+  do {
+    const data = await request(ARCHIVE, {
+      params: { ...scoped, status: 'FILED', page, pageSize: 200 },
+      forceProbe: true,
+      timeoutMs: 10000,
+    })
+    const rows = data?.items || []
+    for (const row of rows) {
+      if (String(row?.archiveBatchNo || '') === String(archiveBatchNo || '')) {
+        ids.add(String(row?.gdStudentId || row?.id || ''))
+      }
+    }
+    total = Number(data?.total || 0)
+    page += 1
+  } while ((page - 1) * 200 < total)
+  return ids.size
+}
+
+async function reconcileBatchFile(scoped, archiveBatchNo, candidateCount, executableCount) {
+  const expected = Math.max(0, Number(executableCount || 0))
+  let filed = 0
+  let lastError = null
+  for (let attempt = 0; attempt < BATCH_FILE_RECONCILE_ATTEMPTS; attempt += 1) {
+    try {
+      filed = await readFiledCount(scoped, archiveBatchNo)
+      lastError = null
+      if (filed >= expected) break
+    } catch (error) {
+      lastError = error
+    }
+    if (attempt < BATCH_FILE_RECONCILE_ATTEMPTS - 1) {
+      await sleep(BATCH_FILE_RECONCILE_DELAY_MS)
+    }
+  }
+  return {
+    reconciled: true,
+    complete: !lastError && filed >= expected,
+    filed,
+    skipped: Math.max(0, Number(candidateCount || 0) - expected),
+    failed: 0,
+    expectedExecutableCount: expected,
+    archiveBatchNo,
+  }
+}
 
 export const graduationRiskArchiveApi = {
   scanRisks(params = {}) { return call(() => request(`${RISK}/scan`, { method: 'POST', params: withBatch(params) })) },
@@ -46,45 +137,65 @@ export const graduationRiskArchiveApi = {
 
   getArchiveList(params = {}) { return callList(ARCHIVE, params) },
   getArchiveStats(params = {}) { return call(() => request(`${ARCHIVE}/stats`, { params: withBatch(params) })) },
-  previewBatchGenerate(params = {}) {
-    return call(() => request(`${ARCHIVE}/batch-generate/preview`, { method: 'POST', params: withBatch(params) }))
+  async previewBatchGenerate(params = {}) {
+    const scoped = withBatch(params)
+    try {
+      const data = await request(`${ARCHIVE}/batch-generate/preview`, { method: 'POST', params: scoped })
+      rememberPreview('GENERATE', scoped, data)
+      return ok(data)
+    } catch (e) { return toErr(e) }
   },
   async batchGenerateArchive(params = {}, body = {}) {
     const scoped = withBatch(params)
+    const preview = consumePreview('GENERATE', scoped, body)
+    if (!preview.previewToken) return fail('归档预览执行凭证不存在或已消费，请重新预览', 409)
     try {
-      let previewToken = body.previewToken
-      if (!previewToken) {
-        const preview = await request(`${ARCHIVE}/batch-generate/preview`, { method: 'POST', params: scoped })
-        previewToken = preview.previewToken
-      }
-      if (!previewToken) return fail('归档预览未生成执行凭证，请重新预览', 409)
       return ok(await request(`${ARCHIVE}/batch-generate`, {
-        method: 'POST', params: scoped, body: { ...body, previewToken },
+        method: 'POST', params: scoped, body: { ...body, previewToken: preview.previewToken },
       }))
     } catch (e) { return toErr(e) }
   },
-  previewBatchFile(params = {}, body = {}) {
-    return call(() => request(`${ARCHIVE}/batch-file/preview`, {
-      method: 'POST', params: withBatch(params), body: { archiveBatchNo: body.archiveBatchNo || undefined },
-    }))
+  async previewBatchFile(params = {}, body = {}) {
+    const scoped = withBatch(params)
+    try {
+      const data = await request(`${ARCHIVE}/batch-file/preview`, {
+        method: 'POST', params: scoped, body: { archiveBatchNo: body.archiveBatchNo || undefined },
+      })
+      rememberPreview('FILE', scoped, data)
+      return ok(data)
+    } catch (e) { return toErr(e) }
   },
   async batchFileArchive(params = {}, body = {}) {
     const scoped = withBatch(params)
+    const preview = consumePreview('FILE', scoped, body)
+    const { previewToken, archiveBatchNo, candidateCount, executableCount } = preview
+    if (!previewToken || !archiveBatchNo) {
+      return fail('备案预览执行凭证不存在、不完整或已消费，请重新预览', 409)
+    }
     try {
-      let previewToken = body.previewToken
-      let archiveBatchNo = body.archiveBatchNo
-      if (!previewToken) {
-        const preview = await request(`${ARCHIVE}/batch-file/preview`, {
-          method: 'POST', params: scoped, body: { archiveBatchNo: archiveBatchNo || undefined },
-        })
-        previewToken = preview.previewToken
-        archiveBatchNo = preview.archiveBatchNo
+      const data = await request(`${ARCHIVE}/batch-file`, {
+        method: 'POST', params: scoped, timeoutMs: BATCH_FILE_TIMEOUT_MS,
+        body: { ...body, archiveBatchNo, previewToken },
+      })
+      const failed = Number(data?.failed || 0)
+      if (failed > 0) {
+        const first = data?.errors?.[0]?.message
+        const message = `批量备案部分失败：成功 ${Number(data?.filed || 0)}，跳过 ${Number(data?.skipped || 0)}，失败 ${failed}${first ? `；首个失败：${first}` : ''}`
+        return fail(message, 409, data)
       }
-      if (!previewToken || !archiveBatchNo) return fail('备案预览未生成完整执行凭证，请重新预览', 409)
-      return ok(await request(`${ARCHIVE}/batch-file`, {
-        method: 'POST', params: scoped, body: { ...body, archiveBatchNo, previewToken },
-      }))
-    } catch (e) { return toErr(e) }
+      return ok(data)
+    } catch (e) {
+      if (!isUncertainBatchWrite(e)) return toErr(e)
+      const reconciled = await reconcileBatchFile(
+        scoped, archiveBatchNo, candidateCount, executableCount
+      )
+      if (reconciled.complete) return ok(reconciled)
+      return fail(
+        `批量备案连接中断，已自动核对 ${reconciled.filed}/${reconciled.expectedExecutableCount} 份；当前结果尚未完全确认。请刷新归档台账并重新预览，勿直接重复提交。`,
+        503002,
+        reconciled,
+      )
+    }
   },
   generateArchive(gdStudentId, params = {}) {
     return call(() => request(`${ARCHIVE}/${gdStudentId}/generate`, { method: 'POST', params: withBatch(params) }))
