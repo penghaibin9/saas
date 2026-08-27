@@ -1,0 +1,78 @@
+{
+  "productExactSha": "ac5a34c396fc38ce4148e8c7d8633390fb9d31f0",
+  "items": [
+    {
+      "fixId": "SA-002-AID-AUDIT-NAMESPACE",
+      "sourceBranch": "fix/student-affairs-final-rc-20260824",
+      "files": ["backend/app/services/affairs_aid_service.py", "backend/alembic/versions/20260824_affairs_aid_audit_namespace_rc.py"],
+      "existsInLatestMain": false,
+      "semanticEquivalent": false,
+      "action": "KEEP_IN_FINAL_RC",
+      "blastRadius": ["SA-002", "SA-005", "R3", "R7"]
+    },
+    {
+      "fixId": "SA-003-APPEAL-REVISED-FOUR-END",
+      "sourceBranch": "fix/student-affairs-final-rc-20260824",
+      "files": ["frontend/src/modules/studentAffairs/api/disciplineIntegrity.api.js", "frontend/src/modules/studentAffairs/views/discipline/DisciplineAppealView.vue", "miniapp/src/pages/teacher/affairs-review/index.vue", "backend/app/services/affairs_appeal_message_event_guard.py"],
+      "existsInLatestMain": false,
+      "semanticEquivalent": false,
+      "action": "KEEP_IN_FINAL_RC",
+      "blastRadius": ["SA-003", "R4", "R5", "R7"]
+    },
+    {
+      "fixId": "SA-004-FUNDING-DETAIL-VERSION-SCOPE",
+      "sourceBranch": "fix/student-affairs-final-rc-20260824",
+      "files": ["backend/app/services/affairs_funding_service.py", "frontend/src/modules/studentAffairs/views/FundingWorkbenchView.vue", "frontend/src/modules/studentAffairs/views/funding/FundingPublicityView.vue"],
+      "existsInLatestMain": false,
+      "semanticEquivalent": false,
+      "action": "KEEP_IN_FINAL_RC",
+      "blastRadius": ["SA-004", "R4", "R5", "R6"]
+    },
+    {
+      "fixId": "SA-005-GRANT-ELIGIBILITY-RECHECK",
+      "sourceBranch": "fix/student-affairs-final-rc-20260824",
+      "files": ["backend/app/services/affairs_funding_scan_guard.py", "backend/tests/test_affairs_funding_grant_eligibility_recheck.py"],
+      "existsInLatestMain": false,
+      "semanticEquivalent": false,
+      "action": "KEEP_IN_FINAL_RC",
+      "blastRadius": ["SA-002", "SA-004", "SA-005", "R3", "R7"]
+    },
+    {
+      "fixId": "SA-009-DORM-SCOPE-PROJECTION-MESSAGE",
+      "sourceBranch": "fix/student-affairs-final-rc-20260824",
+      "files": ["backend/app/services/affairs_dorm_node_guard.py", "backend/app/services/affairs_dorm_projection_service.py", "backend/app/services/affairs_dorm_transfer_scope_guard.py", "backend/app/services/affairs_dorm_message_event_guard.py", "frontend/src/modules/studentAffairs/views/dorm/DormResourceView.vue"],
+      "existsInLatestMain": false,
+      "semanticEquivalent": false,
+      "action": "KEEP_IN_FINAL_RC",
+      "blastRadius": ["SA-009", "SA-010", "SA-011", "R5", "R6", "R7"]
+    },
+    {
+      "fixId": "SA-011-MOBILE-RISK-CAS",
+      "sourceBranch": "fix/student-affairs-final-rc-20260824",
+      "files": ["backend/app/api/v1/route_registration.py", "backend/app/services/affairs_risk_service.py", "miniapp/src/pages/teacher/affairs-review/index.vue"],
+      "existsInLatestMain": false,
+      "semanticEquivalent": false,
+      "action": "KEEP_IN_FINAL_RC",
+      "blastRadius": ["SA-011", "SA-001", "SA-002", "SA-003", "SA-004", "SA-009", "SA-014", "SA-016", "SA-021", "SA-022", "R6"]
+    },
+    {
+      "fixId": "SHARED-AFFAIRS-PERMISSION-SECURITY",
+      "sourceBranch": "fix/student-affairs-final-rc-20260824",
+      "files": ["backend/app/core/permissions.py", "backend/app/core/affairs_security.py"],
+      "existsInLatestMain": false,
+      "semanticEquivalent": false,
+      "action": "KEEP_IN_FINAL_RC",
+      "blastRadius": ["SA-001", "SA-002", "SA-003", "SA-004", "SA-009", "SA-011", "SA-014", "SA-016", "SA-021", "SA-022", "R6"]
+    },
+    {
+      "fixId": "R0-CROSS-MODULE-STATIC-CONTRACT-DRIFT",
+      "sourceBranch": "fix/student-affairs-final-rc-20260824",
+      "files": ["backend/tests/test_graduation_p0_cross_client.py", "backend/tests/test_mobile_internship_permission_gate.py", "scripts/check/check-graduation-production-gates.mjs"],
+      "existsInLatestMain": false,
+      "semanticEquivalent": false,
+      "action": "TEST_CONTRACT_FIX_ONLY",
+      "blastRadius": ["CI", "graduation-static-gate", "internship-static-gate"],
+      "classification": "RUNNER_OR_TEST_CONTRACT_BUG"
+    }
+  ]
+}
