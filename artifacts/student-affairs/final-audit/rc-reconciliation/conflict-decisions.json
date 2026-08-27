@@ -1,39 +1,33 @@
 {
-  "mainHead": "84bf29dc41bb2affa03c6345938ab0ca672b6eda",
-  "productExactSha": "ac5a34c396fc38ce4148e8c7d8633390fb9d31f0",
+  "mainHead": "9b314938a7b89647cfbb549a4e17c37d08a6bdc6",
+  "productExactSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
   "decisions": [
     {
       "path": "backend/app/api/v1/route_registration.py",
       "type": "SEMANTIC_MERGE",
       "decision": "KEEP_BOTH_CAPABILITIES",
-      "keptFromMain": [
-        "internship agreement document/template routes",
-        "internship guardian-consent delivery route",
-        "latest graduation/mobile route protections from main"
-      ],
-      "keptFromStudentAffairsRc": [
-        "filtered mobile router excluding legacy SA-011 PROCESS/CLOSE routes",
-        "mobile_risk_overrides with version/CAS propagation"
-      ],
-      "rejected": [
-        "ours-only merge",
-        "theirs-only merge",
-        "duplicate legacy and override risk write routes"
-      ],
-      "verification": [
-        "main...RC compare behind=0",
-        "Student Affairs Final Acceptance success on predecessor exact-head",
-        "current RC CI rerun required after test-contract-only commit"
-      ]
+      "keptFromMain": ["internship agreement/guardian routes", "graduation/mobile route protections"],
+      "keptFromStudentAffairsRc": ["filtered mobile_router", "mobile_risk_overrides with SA-011 version/CAS"],
+      "rejected": ["ours-only", "theirs-only", "duplicate legacy and override risk write routes"]
+    },
+    {
+      "paths": ["backend/app/core/affairs_security.py", "backend/app/core/permissions.py"],
+      "type": "LATEST_MAIN_210_SHARED_SECURITY_OVERLAP",
+      "decision": "KEEP_BOTH_SEMANTICS",
+      "keptFromMain": ["GD specialist graduationDesign.batch.view", "GRADUATION_ADMIN schoolwide picker remains purpose-specific"],
+      "keptFromStudentAffairsRc": ["Student Affairs fail-closed identity/scope hardening", "Student Affairs permission hardening"],
+      "blastRadiusDecision": "NO_NEW_SA_CHAIN; already covered by mandatory shared-security Gold Deep set"
     },
     {
       "path": "scripts/check/check-graduation-production-gates.mjs",
       "type": "TEST_CONTRACT_DRIFT",
       "decision": "ASSERT_ACTUAL_FILTERED_ROUTER_REGISTRATION",
       "classification": "RUNNER_OR_TEST_CONTRACT_BUG",
-      "reason": "Production order remained mobile_graduation_guard before mobile_router; old assertion searched removed source token mobile.router, and false-failed after SA-011 router composition hardening."
+      "reason": "Production order remained mobile_graduation_guard before mobile_router; old assertion searched removed source token mobile.router."
     }
   ],
+  "syncPr": 230,
+  "syncMergeSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
   "unresolvedConflicts": [],
   "result": "R0_CONFLICT_DECISIONS_CLOSED"
 }
