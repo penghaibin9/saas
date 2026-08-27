@@ -4,7 +4,7 @@
   "baseBranch": "main",
   "mainHead": "9b314938a7b89647cfbb549a4e17c37d08a6bdc6",
   "productBranch": "fix/student-affairs-final-rc-20260824",
-  "productExactSha": "65962076e01c9b1fd69af63bd71fbbc6ba51f41e",
-  "source": "GitHub compare main...fix/student-affairs-final-rc-20260824 after sync PR #230",
+  "productExactSha": "2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d",
+  "source": "GitHub compare main...fix/student-affairs-final-rc-20260824 after R0 sync and Alembic topology merge",
   "status": "LOCKED_FOR_R0"
 }
