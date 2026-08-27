@@ -216,7 +216,9 @@ test.describe.serial('Student Affairs SA-011 A Gold Deep Browser First', () => {
     await miniRiskCard.getByText('填写处置', { exact: true }).click()
     const modal = teacherMiniPage.locator('uni-modal').last()
     await expect(modal.getByText('处置内容', { exact: true })).toBeVisible({ timeout: 10_000 })
-    await modal.locator('input').first().fill('教师小程序真实处置：已与学生本人完成首次面谈核实')
+    const modalInput = teacherMiniPage.getByPlaceholder('不少于5字').last()
+    await expect(modalInput, 'teacher mini editable modal textarea').toBeVisible({ timeout: 10_000 })
+    await modalInput.fill('教师小程序真实处置：已与学生本人完成首次面谈核实')
     await modal.getByText('确定', { exact: true }).click()
     const miniProcess = await miniProcessResponse
     const miniProcessPayload = await miniProcess.json()
