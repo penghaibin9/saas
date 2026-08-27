@@ -30,7 +30,9 @@ def main() -> None:
     assert int(evidence.get("teacherMobileVersion") or 0) >= 1
     assert evidence.get("teacherMiniBrowser") == "PASS"
     assert evidence.get("teacherMiniProcess") == "PASS"
+    assert evidence.get("studentPcSafeResult") == "PASS"
     assert evidence.get("studentMobilePrivacy") == "PASS"
+    assert evidence.get("studentMiniSafeResult") == "PASS"
     assert evidence.get("studentMiniBrowserPrivacy") == "PASS"
     assert evidence.get("studentPrivacy") == "PASS"
 
@@ -123,10 +125,15 @@ def main() -> None:
             )
             messages = cur.fetchall()
             print("[SA011_MESSAGES]", messages)
+            assert messages, "risk message delivery missing"
+            safe_close_messages = 0
             for msg in messages:
                 text = " ".join(str(v or "") for v in msg)
                 assert title not in text, text
                 assert detail not in text, text
+                if "风险已关闭" in text and "相关风险已处置关闭" in text:
+                    safe_close_messages += 1
+            assert safe_close_messages >= 2, messages
 
             cur.execute(
                 """SELECT source, COUNT(*) FROM t_affairs_risk_record
@@ -157,11 +164,13 @@ def main() -> None:
         "reopenSameRecord": True,
         "teacherMiniBrowser": "PASS",
         "teacherMiniProcess": "PASS",
-        "studentMiniBrowserPrivacy": "PASS",
+        "studentPcSafeResult": "PASS",
+        "studentMiniSafeResult": "PASS",
         "studentPrivacy": "PASS",
         "riskClosedStageEvents": 2,
+        "safeCloseMessages": safe_close_messages,
     }, ensure_ascii=False, sort_keys=True))
-    print("[RESULT] REAL_PASS SA-011 four-end Browser First + API + MySQL + privacy/scope seal")
+    print("[RESULT] REAL_PASS SA-011 four-end Browser First + API + MySQL + safe-result/privacy/scope seal")
 
 
 if __name__ == "__main__":
