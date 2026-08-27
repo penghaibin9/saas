@@ -29,6 +29,7 @@ def main() -> None:
     assert evidence.get("teacherMobileRisk") == "PASS"
     assert int(evidence.get("teacherMobileVersion") or 0) >= 1
     assert evidence.get("teacherMiniBrowser") == "PASS"
+    assert evidence.get("teacherMiniProcess") == "PASS"
     assert evidence.get("studentMobilePrivacy") == "PASS"
     assert evidence.get("studentMiniBrowserPrivacy") == "PASS"
     assert evidence.get("studentPrivacy") == "PASS"
@@ -77,6 +78,8 @@ def main() -> None:
             assert actions.count("PROCESS") >= 2, actions
             assert actions.count("CLOSE") >= 2, actions
             assert actions.count("REOPEN") == 1, actions
+            mini_process = [item for item in handles if str(item[0]).upper() == "PROCESS" and "教师小程序真实处置" in str(item[1] or "")]
+            assert mini_process, handles
 
             cur.execute(
                 """SELECT action, operator, role_name, detail
@@ -153,6 +156,7 @@ def main() -> None:
         "duplicateSource": 409,
         "reopenSameRecord": True,
         "teacherMiniBrowser": "PASS",
+        "teacherMiniProcess": "PASS",
         "studentMiniBrowserPrivacy": "PASS",
         "studentPrivacy": "PASS",
         "riskClosedStageEvents": 2,
