@@ -43,8 +43,8 @@ jobs:
           --health-retries=20
 
     env:
-      PRODUCT_EXACT_SHA: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
-      EXPECTED_MAIN_SHA: 5d86cb16dad55e71f2fc4f912b944cd26b073522
+      PRODUCT_EXACT_SHA: a9540a86d8594c3e0ad8bfdb86d5cafe1a2fc8fe
+      EXPECTED_MAIN_SHA: 84bf29dc41bb2affa03c6345938ab0ca672b6eda
       APP_ENV: test
       DEPLOYMENT_MODE: local
       DB_ENABLED: 'true'
@@ -82,14 +82,14 @@ jobs:
       MIN_RESTORED_LOCAL_FILE_OBJECTS: '1'
       MIN_RESTORED_HASHED_FILE_OBJECTS: '1'
       RESTORE_EVIDENCE_FILE: /tmp/graduation-release-seal-restore-evidence.txt
-      RESTORE_SOURCE_COMMIT: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
+      RESTORE_SOURCE_COMMIT: a9540a86d8594c3e0ad8bfdb86d5cafe1a2fc8fe
       RESTORE_DB_NAME: graduation_release_restore_test
 
     steps:
       - name: Checkout product exact HEAD
         uses: actions/checkout@v4
         with:
-          ref: fcdbe5b1761a13f3fa96e6ece8b78abc5cdeb1e2
+          ref: a9540a86d8594c3e0ad8bfdb86d5cafe1a2fc8fe
           fetch-depth: 0
 
       - name: Seal exact product and current main ancestry
