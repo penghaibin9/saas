@@ -10,6 +10,7 @@ on:
       - 'e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs'
       - 'e2e/scripts/graduation-gap-five-seed.py'
       - 'e2e/scripts/graduation-gap-five-db-audit.py'
+      - 'e2e/scripts/graduation-gap-five-runner-align.py'
   push:
     branches:
       - audit/graduation-real-browser-20260823
@@ -19,6 +20,7 @@ on:
       - 'e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs'
       - 'e2e/scripts/graduation-gap-five-seed.py'
       - 'e2e/scripts/graduation-gap-five-db-audit.py'
+      - 'e2e/scripts/graduation-gap-five-runner-align.py'
   workflow_dispatch:
 
 permissions:
@@ -102,6 +104,7 @@ jobs:
             e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs
             e2e/scripts/graduation-gap-five-seed.py
             e2e/scripts/graduation-gap-five-db-audit.py
+            e2e/scripts/graduation-gap-five-runner-align.py
           sparse-checkout-cone-mode: false
 
       - name: Inject only five-gap audit harness
@@ -112,7 +115,9 @@ jobs:
           mkdir -p e2e/scripts
           cp audit-harness/e2e/scripts/graduation-gap-five-seed.py e2e/scripts/
           cp audit-harness/e2e/scripts/graduation-gap-five-db-audit.py e2e/scripts/
+          cp audit-harness/e2e/scripts/graduation-gap-five-runner-align.py e2e/scripts/
           rm -rf audit-harness
+          python3 e2e/scripts/graduation-gap-five-runner-align.py
           test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
           bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
           test -z "$bad"
@@ -136,7 +141,7 @@ jobs:
       - name: Audit harness syntax preflight
         run: |
           set -euo pipefail
-          python -m py_compile e2e/scripts/graduation-gap-five-seed.py e2e/scripts/graduation-gap-five-db-audit.py
+          python -m py_compile e2e/scripts/graduation-gap-five-seed.py e2e/scripts/graduation-gap-five-db-audit.py e2e/scripts/graduation-gap-five-runner-align.py
           node --check e2e/specs/graduation-gap-five-browser-audit.spec.mjs
           node --check e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs
 
