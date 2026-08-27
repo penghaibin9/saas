@@ -1,0 +1,139 @@
+name: Graduation final Release Seal S6 manifest rerun
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/graduation-release-seal-s6-manifest-pr.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graduation-release-seal-s6-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  s6-manifest:
+    name: S6 exact source manifest only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PRODUCT_EXACT_SHA: a9540a86d8594c3e0ad8bfdb86d5cafe1a2fc8fe
+      EXPECTED_MAIN_SHA: 84bf29dc41bb2affa03c6345938ab0ca672b6eda
+
+    steps:
+      - name: Checkout product exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: a9540a86d8594c3e0ad8bfdb86d5cafe1a2fc8fe
+          fetch-depth: 0
+
+      - name: Seal exact product and current main ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_EXACT_SHA"
+          git fetch origin main --no-tags
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA"
+          git merge-base --is-ancestor "$EXPECTED_MAIN_SHA" "$PRODUCT_EXACT_SHA"
+
+      - name: S6 · Freeze exact source manifest with zero unclassified files
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          base = os.environ['EXPECTED_MAIN_SHA']
+          head = os.environ['PRODUCT_EXACT_SHA']
+          files = [
+              line.strip()
+              for line in subprocess.check_output(
+                  ['git', 'diff', '--name-only', f'{base}..{head}'], text=True
+              ).splitlines()
+              if line.strip()
+          ]
+          categories = {
+              'workflows': [],
+              'migration': [],
+              'backendProduct': [],
+              'backendTests': [],
+              'docs': [],
+              'e2e': [],
+              'frontendPublic': [],
+              'frontendScripts': [],
+              'frontendProduct': [],
+              'frontendTests': [],
+              'miniappProduct': [],
+              'miniappTests': [],
+              'releaseChecks': [],
+          }
+          unclassified = []
+          for path in files:
+              if path.startswith('.github/workflows/'):
+                  categories['workflows'].append(path)
+              elif path.startswith('backend/alembic/versions/'):
+                  categories['migration'].append(path)
+              elif path.startswith('backend/app/'):
+                  categories['backendProduct'].append(path)
+              elif path.startswith('backend/tests/'):
+                  categories['backendTests'].append(path)
+              elif path.startswith('docs/'):
+                  categories['docs'].append(path)
+              elif path.startswith('e2e/'):
+                  categories['e2e'].append(path)
+              elif path.startswith('frontend/public/'):
+                  categories['frontendPublic'].append(path)
+              elif path.startswith('frontend/scripts/'):
+                  categories['frontendScripts'].append(path)
+              elif path.startswith('frontend/src/'):
+                  categories['frontendProduct'].append(path)
+              elif path.startswith('frontend/tests/'):
+                  categories['frontendTests'].append(path)
+              elif path.startswith('miniapp/src/'):
+                  categories['miniappProduct'].append(path)
+              elif path.startswith('miniapp/tests/'):
+                  categories['miniappTests'].append(path)
+              elif path.startswith('scripts/check/'):
+                  categories['releaseChecks'].append(path)
+              else:
+                  unclassified.append(path)
+
+          classified_count = sum(len(values) for values in categories.values())
+          payload = {
+              'baseSha': base,
+              'productExactSha': head,
+              'changedFileCount': len(files),
+              'classifiedFileCount': classified_count,
+              'categoryCounts': {key: len(values) for key, values in categories.items()},
+              'categories': categories,
+              'unclassifiedFiles': unclassified,
+          }
+          output = Path('/tmp/graduation-release-source-manifest.json')
+          output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(output.read_text(encoding='utf-8'))
+
+          assert files, 'source manifest unexpectedly empty'
+          assert classified_count == len(files), (classified_count, len(files))
+          assert not unclassified, unclassified
+          assert len(categories['miniappProduct']) == 4, categories['miniappProduct']
+          assert len(categories['miniappTests']) == 2, categories['miniappTests']
+          assert any(path.endswith('20260824_gd_archive_version_audit_columns.py') for path in categories['migration'])
+          assert any(path.endswith('manifest_service.py') for path in categories['backendProduct'])
+          assert any(path.endswith('file_service.py') for path in categories['backendProduct'])
+          print('Graduation precise S6 SOURCE MANIFEST PASS')
+          PY
+          test "$(git rev-parse HEAD)" = "$PRODUCT_EXACT_SHA"
+
+      - name: Upload S6 manifest evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-release-seal-s6-${{ github.run_id }}
+          path: /tmp/graduation-release-source-manifest.json
+          if-no-files-found: error
+          retention-days: 30
