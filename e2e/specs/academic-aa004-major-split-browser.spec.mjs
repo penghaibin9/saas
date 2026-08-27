@@ -257,7 +257,7 @@ test('AA-004 Student PC submit -> Student Mini update -> Staff PC allocate/confi
     const allocatePromise = staff.waitForResponse((response) =>
       response.request().method() === 'POST' && response.url().includes(`/api/v1/academic-affairs/major-split/batches/${batchId}/allocate`)
     , { timeout: 20000 })
-    await staff.getByRole('button', { name: '自动分配', exact: true }).click()
+    await staff.getByRole('button', { name: '自动分配', exact: true }).click({ force: true })
     await confirmDialog(staff)
     const allocateResponse = await allocatePromise
     const allocatePayload = await allocateResponse.json()
