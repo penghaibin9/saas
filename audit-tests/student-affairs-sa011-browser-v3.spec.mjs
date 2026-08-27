@@ -33,17 +33,24 @@ async function api(page, token, method, pathname, data) {
 }
 
 async function chooseRemote(page, placeholderText, searchPlaceholder, keyword, optionText) {
-  // Current AppStudentPicker/AppRiskOwnerPicker are AppRemoteSelect wrappers whose
-  // visible control text can be overridden by the page. Locate the real semantic
-  // combobox first, then stay inside that picker for textbox/option selection.
-  const displayHint = searchPlaceholder === '按学号 / 姓名搜索'
-    ? '按姓名 / 学号搜索'
-    : searchPlaceholder
-  const combo = page.getByRole('combobox').filter({ hasText: displayHint }).last()
+  // AppRemoteSelect renders the visible outer placeholder in the combobox and the
+  // searchPlaceholder only on the textbox after opening. Some pages override the
+  // outer placeholder with the search hint, so tolerate both without leaving the
+  // semantic combobox -> textbox -> option path.
+  const outerHints = [...new Set([placeholderText, searchPlaceholder].filter(Boolean))]
+  let combo = null
+  for (const hint of outerHints) {
+    const candidate = page.getByRole('combobox').filter({ hasText: hint }).last()
+    if (await candidate.count()) {
+      combo = candidate
+      break
+    }
+  }
+  expect(combo, `picker ${placeholderText} must resolve to a combobox`).toBeTruthy()
   await expect(combo, `picker ${placeholderText}`).toBeVisible({ timeout: 20_000 })
   await combo.click()
   const picker = combo.locator('..')
-  const search = picker.getByRole('textbox').first()
+  const search = picker.getByPlaceholder(searchPlaceholder).first()
   await expect(search, `search ${searchPlaceholder}`).toBeVisible({ timeout: 20_000 })
   await search.fill(keyword)
   const option = picker.getByRole('option').filter({ hasText: optionText }).first()
