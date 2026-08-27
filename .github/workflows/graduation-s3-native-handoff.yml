@@ -43,20 +43,31 @@ jobs:
           echo "productExactSha=$ACTUAL"
           echo "runnerExactSha=${{ github.sha }}"
 
-      - name: Verify public production API DNS TLS and health
+      - name: Diagnose public production API DNS TLS and health
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           HEALTH_URL="${PRODUCT_API_BASE}/health"
           CODE="$(curl --silent --show-error --location \
             --connect-timeout 10 --max-time 20 \
             --output /tmp/s3-public-health.json \
             --write-out '%{http_code}' \
             "$HEALTH_URL")"
-          cat /tmp/s3-public-health.json
-          test "$CODE" = '200'
-          grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"' /tmp/s3-public-health.json
-          echo "S3_PUBLIC_API_HEALTH=PASS"
+          RC=$?
+          STATUS=FAIL
+          if [ "$RC" = "0" ] && [ "$CODE" = "200" ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"' /tmp/s3-public-health.json; then
+            STATUS=PASS
+          elif [ "$RC" = "6" ]; then
+            STATUS=BLOCKED_DNS
+          elif [ "$RC" = "60" ]; then
+            STATUS=BLOCKED_TLS
+          else
+            STATUS="FAIL_RC_${RC}_HTTP_${CODE:-000}"
+          fi
+          echo "S3_PUBLIC_API_HEALTH=$STATUS" | tee -a "$GITHUB_ENV"
+          echo "curlRc=$RC httpCode=${CODE:-000} status=$STATUS"
+          test -f /tmp/s3-public-health.json && cat /tmp/s3-public-health.json || true
+          exit 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -107,6 +118,8 @@ jobs:
           const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
           const release = fs.readFileSync(releasePath, 'utf8')
           const envJs = fs.readFileSync(envPath, 'utf8')
+          const publicApiHealth = process.env.S3_PUBLIC_API_HEALTH || 'UNKNOWN'
+          const externalReady = publicApiHealth === 'PASS'
 
           if (project.compileType !== 'miniprogram') throw new Error(`compileType=${project.compileType}`)
           if (project.appid !== process.env.EXPECTED_WECHAT_APPID) throw new Error(`appid=${project.appid}`)
@@ -151,12 +164,12 @@ jobs:
           const manifest = {
             gate: 'S3',
             module: 'GRADUATION',
-            status: 'READY_FOR_NATIVE_ACCEPTANCE',
+            status: externalReady ? 'READY_FOR_NATIVE_ACCEPTANCE' : 'PACKAGE_READY_EXTERNAL_BLOCKER',
             productExactSha: process.env.PRODUCT_EXACT_SHA,
             runnerExactSha: process.env.RUNNER_EXACT_SHA,
             artifactType: 'mp-weixin-importable',
             apiBase: process.env.PRODUCT_API_BASE,
-            productionApiHealth: 'PASS',
+            productionApiHealth: publicApiHealth,
             helpCenterUrl: process.env.PRODUCT_HELP_CENTER,
             appId: project.appid,
             compileType: project.compileType,
@@ -171,12 +184,15 @@ jobs:
             teacherPhysicalDeviceEvidence: 'PENDING',
             crossRoleGraduationEvidence: 'PENDING',
             releaseEligible: false,
-            note: 'This artifact proves only exact-SHA production-bound mp-weixin readiness. S3 must remain OPEN until WeChat DevTools plus real physical-device evidence is attached for this exact product SHA.'
+            note: externalReady
+              ? 'Exact-SHA production-bound mp-weixin package is ready for native acceptance. S3 remains OPEN until WeChat DevTools plus real student/teacher physical-device evidence is attached for this exact product SHA.'
+              : `Exact-SHA package is built, but S3 remains externally blocked: production API health=${publicApiHealth}. DevTools import can proceed, but real-device network acceptance cannot close until public DNS/TLS/health is PASS.`
           }
           fs.writeFileSync(path.join(runtime, 's3-native-handoff.json'), JSON.stringify(manifest, null, 2) + '\n')
 
           const evidenceTemplate = {
             productExactSha: process.env.PRODUCT_EXACT_SHA,
+            productionApiHealthAtBuild: publicApiHealth,
             devTools: {
               version: '',
               compileScreenshotOrVideo: '',
@@ -208,14 +224,16 @@ jobs:
           fs.writeFileSync(path.join(runtime, 's3-native-evidence-template.json'), JSON.stringify(evidenceTemplate, null, 2) + '\n')
 
           const checklist = `# Graduation S3 Native Acceptance Checklist\n\n` +
-            `Product exact SHA: ${process.env.PRODUCT_EXACT_SHA}\n\n` +
-            `This package is READY_FOR_NATIVE_ACCEPTANCE, not S3 PASS.\n\n` +
+            `Product exact SHA: ${process.env.PRODUCT_EXACT_SHA}\n` +
+            `Public API health at build time: ${publicApiHealth}\n\n` +
+            `This package is ${manifest.status}, not S3 PASS.\n\n` +
             `1. Import miniapp/dist/build/mp-weixin into WeChat DevTools and confirm AppID ${project.appid}.\n` +
             `2. Compile with zero WXSS/appService errors and confirm requests target ${process.env.PRODUCT_API_BASE}.\n` +
             `3. On a real student device/account, open: 毕业设计首页 → 毕设选题 → 毕设任务书 → 答辩安排. Capture timestamped evidence.\n` +
             `4. On a real teacher device/account, open: 毕设指导 → 毕设选题审核. Capture timestamped evidence.\n` +
             `5. Use the same authorized tenant/batch/student marker to confirm at least one graduation fact projects consistently across teacher/student roles.\n` +
-            `6. Attach DevTools + student-device + teacher-device evidence to PR #210 and record this exact SHA. Only then may S3 be marked PASS.\n`
+            `6. Attach DevTools + student-device + teacher-device evidence to PR #210 and record this exact SHA. Only then may S3 be marked PASS.\n` +
+            (externalReady ? '' : `\nBLOCKER: production API health is ${publicApiHealth}. Do not mark S3 PASS until public DNS/TLS/health is PASS and real-device requests succeed.\n`)
           fs.writeFileSync(path.join(runtime, 'S3-NATIVE-ACCEPTANCE-CHECKLIST.md'), checklist)
           console.log(JSON.stringify(manifest, null, 2))
           NODE
