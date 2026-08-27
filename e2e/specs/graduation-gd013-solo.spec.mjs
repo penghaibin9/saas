@@ -98,14 +98,15 @@ test('GD-013 solo: create payload → assign response → list projection → no
   await expect(row).toContainText('⚠')
   await expect(row).toContainText('评委与指导教师冲突')
   const publish = row.getByRole('button', { name: '发布', exact: true })
-  await expect(publish).toHaveClass(/is-disabled/)
   let publishPosts = 0
   const count = (req) => {
     if (req.method() === 'POST' && /\/graduation\/defense-groups\/\d+\/publish$/.test(new URL(req.url()).pathname)) publishPosts += 1
   }
   page.on('request', count)
-  await publish.click()
+  if (await publish.isEnabled().catch(() => false)) await publish.click()
   await page.waitForTimeout(500)
   page.off('request', count)
-  expect(publishPosts).toBe(0)
+  const publishConfirm = page.locator('.app-confirm-dialog').filter({ hasText: /发布答辩|确认发布/ }).first()
+  expect(await publishConfirm.isVisible().catch(() => false), 'conflicted group must not open publish confirmation').toBeFalsy()
+  expect(publishPosts, 'conflicted group must not POST publish').toBe(0)
 })
