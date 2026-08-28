@@ -131,11 +131,7 @@ def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[in
 
 
 def _internship_staff_scope_allows(db, file_obj, bindings: list[Any], user: dict) -> bool:
-    """岗位实习内部人员必须命中绑定目标记录，并通过统一实习数据范围。
-
-    正式文件仍不能只凭 uploader/通用文件权限读取；这里只接受学校内部教职工/
-    管理身份，并把 binding 冻结的 student/internship scope 交给业务 Authority 复核。
-    """
+    """岗位实习内部人员必须命中绑定目标记录，并通过稳定导师身份或统一数据范围。"""
     actor_type = str((user or {}).get("userType") or "").upper()
     if db is None or actor_type not in {"TEACHER", "STAFF", "ADMIN", "SCHOOL_ADMIN"}:
         return False
@@ -156,6 +152,18 @@ def _internship_staff_scope_allows(db, file_obj, bindings: list[Any], user: dict
             InternshipRecord.is_deleted.is_(False),
             or_(*clauses),
         )).all()
+
+        # 指导教师授权只认稳定数字 userId；历史 advisor_name/realName 永不参与授权。
+        actor_user_id = stable_user_id(user)
+        if actor_type == "TEACHER" and actor_user_id is not None:
+            if any(
+                row.advisor_user_id is not None
+                and int(row.advisor_user_id) == actor_user_id
+                for row in rows
+            ):
+                return True
+
+        # 非直接导师以及学校内部管理角色继续走 #231 收口后的统一业务数据范围。
         for row in rows:
             try:
                 assert_internship_record_scope(db, row.id, user or {}, "访问岗位实习业务文件")
