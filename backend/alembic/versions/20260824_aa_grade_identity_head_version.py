@@ -1,7 +1,7 @@
 """add version column to aa grade identity head
 
 Revision ID: 20260824_aa_grade_id_ver
-Revises: 20260822_pr191_w7_main_merge
+Revises: 20260827_affairs_gd_merge
 Create Date: 2026-08-24
 """
 
@@ -11,7 +11,7 @@ from sqlalchemy import inspect
 
 
 revision = "20260824_aa_grade_id_ver"
-down_revision = "20260822_pr191_w7_main_merge"
+down_revision = "20260827_affairs_gd_merge"
 branch_labels = None
 depends_on = None
 
