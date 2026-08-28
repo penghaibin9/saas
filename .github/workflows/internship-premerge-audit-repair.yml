@@ -1,0 +1,105 @@
+name: internship-premerge-audit-repair
+
+on:
+  push:
+    branches:
+      - fix/internship-prelaunch-p1p2-20260828
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: "${{ github.event.head_commit.message == 'chore(internship): run premerge audit repair' }}"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/internship-prelaunch-p1p2-20260828
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply premerge audit repair
+        run: python .github/scripts/fix_internship_premerge_audit.py
+
+      - name: Python syntax gate
+        run: |
+          python -m py_compile \
+            backend/app/modules/internship/schemas/internship.py \
+            backend/app/modules/internship/schemas/internship_student.py \
+            backend/app/modules/internship/services/internship_enterprise_service.py \
+            backend/app/modules/internship/services/internship_student_service.py \
+            backend/app/modules/internship/services/internship_participant_service.py
+
+      - name: JavaScript syntax gate
+        run: |
+          node --check frontend/src/modules/internship/api/internship.api.js
+          node --check frontend/src/modules/internship/api/internship-student.api.js
+
+      - name: Static regression contracts
+        run: |
+          cd backend
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          path = Path('tests/test_internship_prelaunch_static_contracts.py')
+          spec = importlib.util.spec_from_file_location('prelaunch_contracts', path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          tests = sorted(name for name in dir(module) if name.startswith('test_'))
+          for name in tests:
+              getattr(module, name)()
+              print(f'PASS {name}')
+          print(f'{len(tests)} static contracts passed')
+          PY
+
+      - name: Targeted contract invariants
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          ent_schema = Path('backend/app/modules/internship/schemas/internship.py').read_text(encoding='utf-8')
+          stu_schema = Path('backend/app/modules/internship/schemas/internship_student.py').read_text(encoding='utf-8')
+          stu_api = Path('frontend/src/modules/internship/api/internship-student.api.js').read_text(encoding='utf-8')
+          stu_detail = Path('frontend/src/modules/internship/views/InternshipStudentDetailView.vue').read_text(encoding='utf-8')
+          ent_form = Path('frontend/src/modules/internship/views/EnterpriseFormView.vue').read_text(encoding='utf-8')
+          participant = Path('backend/app/modules/internship/services/internship_participant_service.py').read_text(encoding='utf-8')
+          assert ent_schema.count('expectedVersion: int = Field(...') >= 5
+          assert stu_schema.count('expectedVersion: int = Field(...') >= 7
+          assert 'destination: extra' in stu_detail and 'destinationType: extra' not in stu_detail
+          assert 'body.expectedVersion = this.detail?.version' in ent_form
+          assert stu_api.count('expectedVersion') >= 8
+          assert 'planned_count = len(visible) if scoped_view' in participant
+          print('targeted contract invariants passed')
+          PY
+
+      - name: Diff hygiene gate
+        run: git diff --check
+
+      - name: Remove one-shot repair script
+        run: rm .github/scripts/fix_internship_premerge_audit.py
+
+      - name: Commit validated repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            .github/scripts/fix_internship_premerge_audit.py \
+            backend/app/modules/internship/schemas/internship.py \
+            backend/app/modules/internship/schemas/internship_student.py \
+            backend/app/modules/internship/services/internship_enterprise_service.py \
+            backend/app/modules/internship/services/internship_student_service.py \
+            backend/app/modules/internship/services/internship_participant_service.py \
+            frontend/src/modules/internship/views/EnterpriseFormView.vue \
+            frontend/src/modules/internship/api/internship-student.api.js \
+            frontend/src/modules/internship/views/InternshipStudentListView.vue \
+            frontend/src/modules/internship/views/InternshipStudentDetailView.vue \
+            frontend/src/modules/internship/views/components/BatchParticipantScope.vue \
+            backend/tests/test_internship_prelaunch_static_contracts.py
+          git diff --cached --check
+          git commit -m 'fix(internship): close premerge concurrency and scope gaps'
+          git push origin HEAD:fix/internship-prelaunch-p1p2-20260828
