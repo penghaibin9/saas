@@ -154,6 +154,10 @@ def main() -> int:
                 seed_school_graduation_process_20k,
                 validate_school_graduation_process_20k,
             )
+            from app.services.sandbox_school_graduation_operational_seed import (
+                seed_graduation_operational_coverage,
+                validate_graduation_operational_coverage,
+            )
             from app.services.sandbox_school_legacy_cleanup import (
                 clean_legacy_identity_residue,
                 validate_no_legacy_identity_residue,
@@ -210,6 +214,7 @@ def main() -> int:
 
             mentor_workload = reconcile_school_mentor_workload_20k(db, SANDBOX_TID)
             graduation_process = seed_school_graduation_process_20k(db, SANDBOX_TID)
+            graduation_operational = seed_graduation_operational_coverage(db, SANDBOX_TID)
             employment = seed_school_employment_20k(db, SANDBOX_TID)
 
             exam_reconciliation = reconcile_exam_rooms(db, SANDBOX_TID)
@@ -222,6 +227,7 @@ def main() -> int:
                 "roleTopology": role_topology_acceptance,
                 "mentorWorkload": validate_school_mentor_workload_20k(db, SANDBOX_TID),
                 "graduationProcess": validate_school_graduation_process_20k(db, SANDBOX_TID),
+                "graduationOperational": validate_graduation_operational_coverage(db, SANDBOX_TID),
                 "domains": validate_core_domain_facts_20k(db, SANDBOX_TID),
                 "academicAffairsBaseline": academic_affairs_baseline,
                 "academicAffairsFinal": validate_school_academic_final_20k(db, SANDBOX_TID),
@@ -243,6 +249,7 @@ def main() -> int:
                     "roleTopology": role_topology,
                     "mentorWorkload": mentor_workload,
                     "graduationProcess": graduation_process,
+                    "graduationOperational": graduation_operational,
                     "domains": domains,
                     "academicAffairs": academic_affairs,
                     "professional": professional,
