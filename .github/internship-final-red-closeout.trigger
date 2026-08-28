@@ -1,1 +1,1 @@
-one-shot trigger; remove after validated closeout
+one-shot residual closeout trigger; remove after validated commit
