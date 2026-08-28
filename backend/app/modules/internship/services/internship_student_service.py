@@ -48,6 +48,13 @@ def _get(db, rec_id) -> InternshipRecord:
     return r
 
 
+def _require_record_version(r: InternshipRecord, expected_version) -> None:
+    if expected_version is None:
+        return
+    if int(expected_version) != int(r.version or 0):
+        raise AppException("DATA_CONFLICT", "实习记录已被其他用户修改，请刷新后重试")
+
+
 def _assert_write_scope(db, r: InternshipRecord, user) -> None:
     """写操作数据范围校验：越出教师数据范围的写 → 403（与详情读 get_student 同边界）。
     ADMIN_TENANT（校级管理员）恒通过；SCOPED（指导教师/学院负责人）按本人指导/本院收敛。
@@ -406,6 +413,7 @@ def update_student_record(rec_id, body, user=None) -> dict:
     with session() as db:
         r = _get(db, rec_id)
         _assert_write_scope(db, r, user)
+        _require_record_version(r, getattr(body, "expectedVersion", None))
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可编辑")
         before_advisor = r.advisor_user_id
@@ -425,10 +433,11 @@ def update_student_record(rec_id, body, user=None) -> dict:
         return _row_of(db, r)
 
 
-def assign_advisor(rec_id, advisor_user_id, reason: str = "", user=None) -> dict:
+def assign_advisor(rec_id, advisor_user_id, reason: str = "", user=None, expected_version=None) -> dict:
     with session() as db:
         r = _get(db, rec_id)
         _assert_write_scope(db, r, user)
+        _require_record_version(r, expected_version)
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可变更指导教师")
         advisor = _advisor(db, advisor_user_id)
@@ -637,11 +646,12 @@ def get_onboard_checklist(rec_id, user=None) -> dict:
                 "ruleVersion": result["ruleVersion"], "evaluation": result}
 
 
-def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
+def set_status(rec_id, action: str, reason: str = "", user=None, expected_version=None) -> dict:
     """普通状态流转仅 READY / ONBOARD / ASSESS；归档必须走 archive_student。"""
     with session() as db:
         r = _get(db, rec_id)
         _assert_write_scope(db, r, user)
+        _require_record_version(r, expected_version)
         if action == "READY":
             if r.status != "PREPARING":
                 raise AppException("DATA_CONFLICT", "仅「准备中」可置为待上岗")
@@ -682,25 +692,27 @@ def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
         return _row_of(db, r)
 
 
-def set_eligibility(rec_id, status: str, reason: str = "", user=None) -> dict:
+def set_eligibility(rec_id, status: str, reason: str = "", user=None, expected_version=None) -> dict:
     if status not in ("QUALIFIED", "UNQUALIFIED", "PENDING"):
         raise AppException("VALIDATION_ERROR", "非法资格状态")
     with session() as db:
         r = _get(db, rec_id)
         _assert_write_scope(db, r, user)
+        _require_record_version(r, expected_version)
         r.eligibility_status = status
         _trail(db, r.id, "ELIGIBILITY", {"status": status, "reason": reason})
         db.commit()
         return _row_of(db, r)
 
 
-def set_destination(rec_id, destination: str, reason: str = "", user=None) -> dict:
+def set_destination(rec_id, destination: str, reason: str = "", user=None, expected_version=None) -> dict:
     """自主实习 / 免实习 / 未落实。已分配岗位(ASSIGNED)请走退岗，不在此改。"""
     if destination not in ("SELF_ARRANGED", "EXEMPTED", "NONE"):
         raise AppException("VALIDATION_ERROR", "非法去向（分配岗位请用分配接口）")
     with session() as db:
         r = _get(db, rec_id)
         _assert_write_scope(db, r, user)
+        _require_record_version(r, expected_version)
         if r.position_id:
             raise AppException("DATA_CONFLICT", "已分配岗位，请先退岗再改去向")
         r.destination_type = destination

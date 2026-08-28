@@ -74,12 +74,17 @@ def material_quantity_facts(db, rec, batch) -> dict:
         InternshipMakeup.tenant_id == _tid(), InternshipMakeup.internship_id == rec.id,
         InternshipMakeup.status == "APPROVED",
         InternshipMakeup.is_deleted.is_(False))).all())
-    valid_checkin_dates = {
-        value for value in valid_checkin_dates
-        if value is not None
-        and (not start or _date(value) >= start)
-        and (not end or _date(value) <= end)
-    }
+    normalized_checkins = set()
+    for value in valid_checkin_dates:
+        parsed = _date(value)
+        if parsed is None:
+            continue
+        if start and parsed < start:
+            continue
+        if end and parsed > end:
+            continue
+        normalized_checkins.add(parsed.isoformat())
+    valid_checkin_dates = normalized_checkins
     expected_weekly = _expected_count(
         cfg, "weeklyReport", ("expectedCount", "requiredCount", "minCount"),
         max(0, ((end - start).days + 7) // 7) if start and end and start <= end else 0)

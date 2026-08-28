@@ -227,11 +227,6 @@ def student_help_report(user, body=None) -> dict:
             advisor = None
             if getattr(rec, "advisor_user_id", None):
                 advisor = db.get(User, rec.advisor_user_id)
-            if not advisor and (rec.advisor_name or "").strip():
-                advisor = db.scalars(select(User).where(
-                    User.tenant_id == _tid(), User.real_name == rec.advisor_name.strip(),
-                    User.user_type == "TEACHER", User.is_deleted.is_(False),
-                    User.status == "ACTIVE")).first()
             if advisor:
                 emit_message_event(
                     db,

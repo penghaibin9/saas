@@ -216,27 +216,52 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
         cfg = rules["specialFiling"]
         from app.modules.internship.services.internship_special_filing_service import evaluate_triggers
         pos = db.get(InternshipPosition, rec.position_id) if rec.position_id else None
-        trigger_tuples = evaluate_triggers(pos, stu, None) if cfg.get("required") else []
+        school_region = str(cfg.get("schoolRegion") or "").strip()
+        trigger_tuples = evaluate_triggers(pos, stu, school_region) if cfg.get("required") else []
+        enabled = {
+            "CROSS_PROVINCE": bool(cfg.get("crossProvinceRequired", True)),
+            "HIGH_RISK": bool(cfg.get("highRiskPositionRequired", True)),
+            "NIGHT_SHIFT": bool(cfg.get("nightShiftRequired", True)),
+        }
+        trigger_tuples = [t for t in trigger_tuples if enabled.get(t[0], True)]
         triggers = [t[0] for t in trigger_tuples]
+        labels_by_type = {t[0]: t[1] for t in trigger_tuples}
+        location = ((getattr(pos, "work_location", None) or getattr(pos, "work_address", None) or "").strip()
+                    if pos else "")
+        region_unknown = bool(cfg.get("required") and cfg.get("crossProvinceRequired", True)
+                              and location and not school_region)
         filings = db.scalars(select(InternshipSpecialFiling).where(
             InternshipSpecialFiling.tenant_id == _tid(),
             InternshipSpecialFiling.internship_id == rec.id,
             InternshipSpecialFiling.is_deleted.is_(False),
         )).all()
-        if not cfg.get("required") or not triggers:
+        if not cfg.get("required"):
+            items.append(_item("specialFiling", cfg, "NOT_APPLICABLE", "规则未要求"))
+        elif region_unknown:
+            items.append(_item("specialFiling", cfg, "MISSING",
+                               "学校所在地未配置，无法判定跨省备案要求"))
+        elif not triggers:
             na = next((x for x in filings if x.status in ("NOT_REQUIRED", "NOT_APPLICABLE")), None)
-            items.append(_item("specialFiling", cfg, "NOT_APPLICABLE",
-                               "无需特殊备案" if not triggers else "规则未要求",
+            items.append(_item("specialFiling", cfg, "NOT_APPLICABLE", "无需特殊备案",
                                getattr(na, "id", None)))
         else:
-            hit = _pick(filings, ("APPROVED",))
-            if hit:
-                status, reason, evid = "VALID", "", hit.id
-            elif any(str(x.status).startswith("PENDING") for x in filings):
-                status, reason, evid = "PENDING", "特殊备案审批中", None
+            approved = {
+                str(x.filing_type).upper(): x for x in filings
+                if x.status == "APPROVED" and (not x.valid_until or x.valid_until >= datetime.utcnow())
+            }
+            missing_types = [code for code in triggers if code not in approved]
+            pending_types = {
+                str(x.filing_type).upper() for x in filings
+                if str(x.status).startswith("PENDING")
+            }
+            if not missing_types:
+                first = approved[triggers[0]]
+                status, reason, evid = "VALID", "", first.id
+            elif any(code in pending_types for code in missing_types):
+                status, reason, evid = "PENDING", "特殊备案审批中：" + ",".join(missing_types), None
             else:
-                labels = [t[1] for t in trigger_tuples]
-                status, reason, evid = "MISSING", "特殊场景须备案：" + ",".join(labels), None
+                labels = [labels_by_type.get(code, code) for code in missing_types]
+                status, reason, evid = "MISSING", "缺少对应类型特殊备案：" + ",".join(labels), None
             status, reason, evid = apply_exemption("specialFiling", status, reason, evid)
             items.append(_item("specialFiling", cfg, status, reason, evid))
 
@@ -278,8 +303,8 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
         if not cfg.get("required"):
             items.append(_item("advisor", cfg, "NOT_APPLICABLE", "规则未要求"))
         else:
-            ok = bool(rec.advisor_user_id or (rec.advisor_name or "").strip())
-            status, reason, evid = (("VALID", "", None) if ok else ("MISSING", "未分配校内指导教师", None))
+            ok = bool(rec.advisor_user_id)
+            status, reason, evid = (("VALID", "", None) if ok else ("MISSING", "未分配稳定的校内指导教师账号", None))
             status, reason, evid = apply_exemption("advisor", status, reason, evid)
             items.append(_item("advisor", cfg, status, reason, evid))
 

@@ -162,6 +162,7 @@ class EnterpriseCreate(BaseModel):
 
 
 class EnterpriseUpdate(BaseModel):
+    expectedVersion: Optional[int] = Field(None, ge=0, description="企业乐观锁版本")
     name: Optional[str] = None
     creditCode: Optional[str] = None
     industry: Optional[str] = None
@@ -180,16 +181,19 @@ class EnterpriseUpdate(BaseModel):
 class EnterpriseReview(BaseModel):
     action: str = Field(..., description="APPROVE / REJECT")
     comment: Optional[str] = ""
+    expectedVersion: Optional[int] = Field(None, ge=0, description="企业乐观锁版本")
 
 
 class CoopActionRequest(BaseModel):
     action: str = Field(..., description="SUSPEND / RESUME / ARCHIVE")
     reason: Optional[str] = ""
+    expectedVersion: Optional[int] = Field(None, ge=0, description="企业乐观锁版本")
 
 
 class BlacklistRequest(BaseModel):
     on: bool = Field(..., description="true 拉黑 / false 移出黑名单")
     reason: Optional[str] = ""
+    expectedVersion: Optional[int] = Field(None, ge=0, description="企业乐观锁版本")
 
 
 class ContactCreate(BaseModel):
@@ -203,6 +207,7 @@ class ContactCreate(BaseModel):
 
 
 class ContactUpdate(BaseModel):
+    expectedVersion: Optional[int] = Field(None, ge=0, description="联系人乐观锁版本")
     contactType: Optional[str] = None
     name: Optional[str] = None
     title: Optional[str] = None

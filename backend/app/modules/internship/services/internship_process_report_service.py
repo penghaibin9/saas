@@ -167,9 +167,12 @@ def student_submit(rec, report_type: str, period_key: str, content: str) -> dict
             dup.status = "PENDING_REVIEW"
             dup.submitted_at = datetime.utcnow()
             dup.review_comment = None
-            _trail(db, dup.id, "RESUBMIT", {"reportType": rt, "periodKey": pk})
+            dup.version = int(dup.version or 0) + 1
+            _trail(db, dup.id, "RESUBMIT", {"reportType": rt, "periodKey": pk,
+                                             "version": int(dup.version or 0)})
             db.commit()
-            return {"id": str(dup.id), "status": dup.status, "message": "已重新提交"}
+            return {"id": str(dup.id), "status": dup.status, "version": int(dup.version or 0),
+                    "message": "已重新提交"}
         row = InternshipProcessReport(
             tenant_id=_tid(), internship_id=rec.id, report_type=rt, period_key=pk,
             content=text, word_count=len(text), status="PENDING_REVIEW", submitted_at=datetime.utcnow())
@@ -198,8 +201,8 @@ def review_report(rid, action: str, comment: str = "", user=None, *, expected_ve
             raise no_permission("不在数据范围内")
         from app.modules.internship.services.internship_batch_context import assert_record_batch
         assert_record_batch(rec, expected_batch_id)
-        if r.status not in ("PENDING_REVIEW", "RETURNED"):
-            raise AppException("DATA_CONFLICT", "当前状态不可批阅")
+        if r.status != "PENDING_REVIEW":
+            raise AppException("DATA_CONFLICT", "仅学生已提交/重交后的待批阅报告可审核")
         status = "APPROVED" if action == "APPROVE" else "RETURNED"
         new_ver = versioned_update(
             db, InternshipProcessReport, entity_id=r.id, tenant_id=_tid(),

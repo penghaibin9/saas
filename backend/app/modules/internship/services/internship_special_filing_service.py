@@ -91,7 +91,11 @@ def create(body, user=None):
         raise AppException("VALIDATION_ERROR", "特殊备案至少上传一份依据材料")
     with session() as db:
         from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        from app.services import file_service
         rec = assert_internship_record_scope(db, internship_id, user, "创建特殊备案")
+        for fid in file_ids:
+            if not file_service.get_file_meta(fid, user=user):
+                raise AppException("VALIDATION_ERROR", "特殊备案依据材料不存在或无权访问")
         active = db.scalars(select(InternshipSpecialFiling).where(
             InternshipSpecialFiling.tenant_id == _tid(),
             InternshipSpecialFiling.internship_id == rec.id,
@@ -115,6 +119,8 @@ def create(body, user=None):
         )
         db.add(row)
         db.flush()
+        for fid in file_ids:
+            file_service.bind_file_biz(fid, "INTERNSHIP", str(row.id), user=user, db=db)
         _audit(db, row, "CREATE", user, {
             "filingType": filing_type, "triggerReason": trigger_reason,
             "fileCount": len(file_ids), "version": int(row.version or 0),
@@ -134,6 +140,10 @@ def submit(filing_id, user=None, expected_version=None):
             raise AppException("DATA_CONFLICT", "仅草稿可提交")
         if not row.file_ids or not (row.trigger_reason or "").strip():
             raise AppException("VALIDATION_ERROR", "提交前必须具备触发原因和依据材料")
+        from app.services import file_service
+        for fid in row.file_ids:
+            if not file_service.get_file_meta(str(fid), user=user):
+                raise AppException("DATA_CONFLICT", "特殊备案依据材料已失效或无权访问，请重新上传")
         before = row.status
         row.status = "PENDING_COLLEGE"
         row.version = int(row.version or 0) + 1

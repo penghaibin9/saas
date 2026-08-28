@@ -637,10 +637,10 @@ def confirm_match(mid, user=None, *, expected_version=None, record_expected_vers
         match_ver = extract_expected_version({"expectedVersion": expected_version})
         if int(m.version or 0) != match_ver:
             raise AppException("DATA_CONFLICT", "匹配记录已被其他用户修改，请刷新后重试")
-        if m.status not in ("RECOMMENDED", "PENDING_CONFIRM", "CONFLICT"):
+        if m.status not in ("RECOMMENDED", "PENDING_CONFIRM"):
             raise AppException("DATA_CONFLICT", f"当前状态不可确认（{m.status}）")
-        if m.conflict_flag and m.status == "CONFLICT":
-            pass
+        if m.conflict_flag:
+            raise AppException("DATA_CONFLICT", "该匹配仍存在冲突，请先处理冲突后再确认")
         rec = db.scalar(select(InternshipRecord).where(
             InternshipRecord.id == m.record_id, InternshipRecord.tenant_id == _tid(),
             InternshipRecord.is_deleted.is_(False)).with_for_update())

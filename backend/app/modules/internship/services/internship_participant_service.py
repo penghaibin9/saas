@@ -248,7 +248,8 @@ def freeze(batch_id, body: dict, user: dict) -> dict:
 # ── 名单读写 ──────────────────────────────────────────────────────────────
 
 def list_participants(batch_id, page: int = 1, page_size: int = 20,
-                      keyword: str | None = None, include_removed: bool = False) -> tuple[list, int]:
+                      keyword: str | None = None, include_removed: bool = False,
+                      user: dict | None = None) -> tuple[list, int]:
     """名单列表。姓名/班级走主档双读——改了学籍这里立刻跟着变，快照只在主档缺失时兜底。"""
     from app.models import InternshipBatchParticipant, StudentProfile
 
@@ -262,6 +263,11 @@ def list_participants(batch_id, page: int = 1, page_size: int = 20,
         rows = db.scalars(select(InternshipBatchParticipant).where(*conds)
                           .order_by(InternshipBatchParticipant.id)).all()
 
+        requested_ids = [int(r.student_id) for r in rows]
+        allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": requested_ids}),
+                                user=user, limit=None) if requested_ids else None
+        allowed_ids = {int(s.id) for s in allowed.students} if allowed else set()
+        rows = [r for r in rows if int(r.student_id) in allowed_ids]
         profiles = {p.id: p for p in db.scalars(select(StudentProfile).where(
             StudentProfile.id.in_([r.student_id for r in rows] or [0]))).all()}
         cache: dict = {}
@@ -352,7 +358,7 @@ def add_participants(batch_id, student_ids, user: dict, reason: str = "") -> dic
                 "rejectedOutOfScope": rejected}
 
 
-def remove_participant(batch_id, participant_id, reason: str, expected_version) -> dict:
+def remove_participant(batch_id, participant_id, reason: str, expected_version, user: dict | None = None) -> dict:
     """移出名单。保留行 + 记原因，便于追溯"这个人当初在不在名单里"。"""
     from app.core.optimistic_lock import require_expected_version
     from app.models import InternshipBatchParticipant
@@ -367,6 +373,11 @@ def remove_participant(batch_id, participant_id, reason: str, expected_version) 
         if (not row or row.is_deleted or int(row.tenant_id) != _tid()
                 or int(row.batch_id) != int(batch_id)):
             raise not_found("参与人记录不存在")
+        allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": [int(row.student_id)]}),
+                                user=user, limit=None)
+        if int(row.student_id) not in {int(s.id) for s in allowed.students}:
+            from app.core.exceptions import no_permission
+            raise no_permission("该参与人不在你的数据范围内")
         if int(row.version or 0) != expected:
             raise AppException("APPROVAL_VERSION_CONFLICT", "数据已被他人修改，请刷新后重试")
         if row.status != "ACTIVE":
@@ -381,21 +392,25 @@ def remove_participant(batch_id, participant_id, reason: str, expected_version) 
         return {"id": str(row.id), "status": row.status}
 
 
-def summary(batch_id) -> dict:
+def summary(batch_id, user: dict | None = None) -> dict:
     from app.models import InternshipBatchParticipant
 
     with session() as db:
         b = _get_batch(db, batch_id)
         rule = _get_or_create_rule(db, batch_id)
-        base = [InternshipBatchParticipant.tenant_id == _tid(),
-                InternshipBatchParticipant.batch_id == int(batch_id),
-                InternshipBatchParticipant.is_deleted.is_(False)]
-        active = db.scalar(select(func.count()).select_from(InternshipBatchParticipant)
-                           .where(*base, InternshipBatchParticipant.status == "ACTIVE")) or 0
-        removed = db.scalar(select(func.count()).select_from(InternshipBatchParticipant)
-                            .where(*base, InternshipBatchParticipant.status == "REMOVED")) or 0
+        rows = db.scalars(select(InternshipBatchParticipant).where(
+            InternshipBatchParticipant.tenant_id == _tid(),
+            InternshipBatchParticipant.batch_id == int(batch_id),
+            InternshipBatchParticipant.is_deleted.is_(False))).all()
+        requested_ids = [int(r.student_id) for r in rows]
+        allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": requested_ids}),
+                                user=user, limit=None) if requested_ids else None
+        allowed_ids = {int(s.id) for s in allowed.students} if allowed else set()
+        visible = [r for r in rows if int(r.student_id) in allowed_ids]
+        active = sum(1 for r in visible if r.status == "ACTIVE")
+        removed = sum(1 for r in visible if r.status == "REMOVED")
         db.commit()
         return {"batchId": str(b.id), "batchName": b.batch_name, "batchStatus": b.status,
                 "frozen": rule.frozen_at is not None, "frozenAt": _iso(rule.frozen_at),
-                "activeCount": int(active), "removedCount": int(removed),
+                "activeCount": active, "removedCount": removed,
                 "plannedCount": int(b.planned_count or 0)}
