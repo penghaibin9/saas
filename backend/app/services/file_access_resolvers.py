@@ -121,21 +121,30 @@ def _collect_internship_scope(file_obj, bindings: list[Any], db) -> tuple[set[in
         except Exception:
             return set(), set()
 
-    if not linked_leaves:
+    if not linked_leaves and not student_ids and not internship_ids:
+        # Only legacy bindings without any authoritative subject/scope may interpret
+        # the historical INTERNSHIP biz_id ambiguously. Once a current binding
+        # carries student/internship scope, never union an unrelated numeric biz_id.
         student_ids.update(ambiguous_student_ids)
         internship_ids.update(ambiguous_internship_ids)
     return student_ids, internship_ids
 
 
 def _internship_staff_scope_allows(db, file_obj, bindings: list[Any], user: dict) -> bool:
-    """仅放行与文件目标学生存在真实指导关系的实习教师。"""
-    if db is None or str(user.get("userType") or "").upper() != "TEACHER":
+    """岗位实习内部人员必须命中绑定目标记录，并通过统一实习数据范围。
+
+    正式文件仍不能只凭 uploader/通用文件权限读取；这里只接受学校内部教职工/
+    管理身份，并把 binding 冻结的 student/internship scope 交给业务 Authority 复核。
+    """
+    actor_type = str((user or {}).get("userType") or "").upper()
+    if db is None or actor_type not in {"TEACHER", "STAFF", "ADMIN", "SCHOOL_ADMIN"}:
         return False
     student_ids, internship_ids = _collect_internship_scope(file_obj, bindings, db)
     if not student_ids and not internship_ids:
         return False
     try:
         from app.models import InternshipRecord
+        from app.modules.internship.services.internship_scope import assert_internship_record_scope
 
         clauses = []
         if student_ids:
@@ -147,14 +156,13 @@ def _internship_staff_scope_allows(db, file_obj, bindings: list[Any], user: dict
             InternshipRecord.is_deleted.is_(False),
             or_(*clauses),
         )).all()
-        actor_user_id = stable_user_id(user)
-        if actor_user_id is None:
-            return False
-        return any(
-            row.advisor_user_id is not None
-            and int(row.advisor_user_id) == actor_user_id
-            for row in rows
-        )
+        for row in rows:
+            try:
+                assert_internship_record_scope(db, row.id, user or {}, "访问岗位实习业务文件")
+                return True
+            except Exception:
+                continue
+        return False
     except Exception:
         return False
 
