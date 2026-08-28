@@ -42,7 +42,7 @@ jobs:
       - name: Checkout exact product SHA
         uses: actions/checkout@v4
         with:
-          ref: 05d26f06c0ae1f0b173e0eb9e6070890e1eb3254
+          ref: 40e885c6128519b60dc39ab004448afb12cfddf1
           fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
