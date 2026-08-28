@@ -13,6 +13,8 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/funding')"
     >
+      <AppInlineAlert v-if="genBatchId && routeSource === 'publicity'" type="info" :description="`已承接公示批次 #${genBatchId}；下方记录、生成与导出保持同一批次上下文。`" />
+      <p v-if="genBatchId" class="fd-scope-note">统计卡仍是当前权限范围的全局概览；下方发放记录与 Excel 导出按当前批次 #{{ genBatchId }} 收敛。</p>
       <div class="sa-toolbar">
         <div class="sa-grid sa-grid--metrics">
           <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
@@ -25,7 +27,7 @@
             :disabled="!!errorMessage"
             @click="openExport"
           >导出 Excel 台账</AppPermissionButton>
-          <AppFundingBatchPicker v-model="genBatchId" class="fd-genpick" :options="batchOptions" placeholder="选择批次生成…" />
+          <AppFundingBatchPicker v-model="genBatchId" class="fd-genpick" :options="batchOptions" placeholder="选择批次生成…" @change="onBatchContextChange" />
           <AppPermissionButton
             :allowed="canBtn('studentAffairs.funding.disburse.manage')"
             code="studentAffairs.funding.disburse.manage"
@@ -216,7 +218,7 @@ export default {
       batches: [],
       stats: null,
       activeStatus: '',
-      genBatchId: '',
+      genBatchId: '', routeProjectId: '', routeSource: '',
       pagination: { page: 1, pageSize: 50, total: 0 }
     }
   },
@@ -248,10 +250,32 @@ export default {
       return cards
     }
   },
-  mounted() { this.load() },
+  mounted() { this.applyRouteContext(); this.load() },
+  watch: {
+    '$route.query.batchId'(value, previous) {
+      if (String(value || '') === String(previous || '')) return
+      this.applyRouteContext(); this.pagination.page = 1; this.loadRecords()
+    }
+  },
   beforeUnmount() { this.stopExportPolling() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    applyRouteContext() {
+      const q = this.$route.query || {}
+      const batchId = String(q.batchId || '').trim()
+      this.genBatchId = batchId
+      this.routeProjectId = String(q.projectId || '').trim()
+      this.routeSource = String(q.source || '').trim()
+    },
+    onBatchContextChange() {
+      const batch = this.batches.find((item) => String(item.batchId) === String(this.genBatchId))
+      const query = { ...this.$route.query }
+      if (this.genBatchId) query.batchId = String(this.genBatchId); else delete query.batchId
+      if (batch?.projectId) query.projectId = String(batch.projectId); else delete query.projectId
+      this.$router.replace({ query }).catch(() => {})
+      this.pagination.page = 1
+      this.loadRecords()
+    },
     hasVersion(row) { return row?.version !== undefined && row?.version !== null && row?.version !== '' },
     allows(row, action) {
       if (Array.isArray(row?.allowedActions)) return row.allowedActions.includes(action)
@@ -266,6 +290,7 @@ export default {
     async loadRecords() {
       this.errorMessage = ''
       const response = await studentAffairsApi.getFundingDisbursements({
+        batchId: this.genBatchId || undefined,
         bankStatus: this.activeStatus,
         page: this.pagination.page,
         pageSize: this.pagination.pageSize
@@ -282,8 +307,14 @@ export default {
     async loadBatches() {
       this.batchError = ''
       const response = await studentAffairsApi.getFundingBatches({ page: 1, pageSize: 200 })
-      if (response.code === 0 && response.data) this.batches = response.data.items || []
-      else { this.batches = []; this.batchError = response.message || '资助批次加载失败，暂不能生成发放台账' }
+      if (response.code === 0 && response.data) {
+        this.batches = response.data.items || []
+        if (this.genBatchId) {
+          const batch = this.batches.find((item) => String(item.batchId) === String(this.genBatchId))
+          if (!batch) this.batchError = '承接的资助批次当前不可见，已停止自动回退到其他批次'
+          else if (this.routeProjectId && String(batch.projectId || '') !== String(this.routeProjectId)) this.batchError = '批次与项目上下文不一致，请返回资助工作台重新进入'
+        }
+      } else { this.batches = []; this.batchError = response.message || '资助批次加载失败，暂不能生成发放台账' }
     },
     async loadStats() {
       this.statsError = ''
@@ -321,6 +352,7 @@ export default {
       this.acting = 'export'
       const response = await fundingExportApi.create({
         purpose,
+        batchId: this.genBatchId || undefined,
         bankStatus: this.activeStatus || undefined
       })
       this.acting = ''
@@ -429,6 +461,7 @@ export default {
 <style scoped>
 .sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
+.fd-scope-note { margin: 0 0 var(--space-3); color: var(--text-tertiary); font-size: var(--font-size-sm); }
 .fd-gen { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .fd-genpick { width: 260px; }
 .fd-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }

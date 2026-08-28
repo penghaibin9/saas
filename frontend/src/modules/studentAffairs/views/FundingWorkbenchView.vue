@@ -27,6 +27,7 @@
         <AppPermissionButton :allowed="canBtn('studentAffairs.funding.project.manage')" code="studentAffairs.funding.project.manage" variant="secondary" size="sm" @click="openProject">建项目</AppPermissionButton>
         <AppPermissionButton :allowed="canBtn('studentAffairs.funding.project.manage')" code="studentAffairs.funding.project.manage" variant="secondary" size="sm" :disabled="!projectId" @click="openBatch">建批次</AppPermissionButton>
         <AppPermissionButton :allowed="canBtn('studentAffairs.funding.publicity.manage')" code="studentAffairs.funding.publicity.manage" variant="secondary" size="sm" :loading="scanning" @click="onScan">公示扫描</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.funding.publicity.manage')" code="studentAffairs.funding.publicity.manage" variant="secondary" size="sm" :disabled="!batchId || !projectId" @click="goPublicity">公示待办</AppPermissionButton>
         <AppPermissionButton :allowed="canBtn('studentAffairs.funding.create')" code="studentAffairs.funding.create" variant="primary" size="sm" :disabled="!currentBatchOpen" @click="openApply">受理申请</AppPermissionButton>
       </div>
     </div>
@@ -649,6 +650,13 @@ export default {
       const ok = await this.runAction(() => studentAffairsApi.applyFunding(body), '申请已受理')
       if (ok) this.applyModal.visible = false
       else this.applyModal.error = this._lastErr || '受理失败（可能资格校验未通过）'
+    },
+    goPublicity() {
+      if (!this.batchId || !this.projectId) return
+      this.$router.push({
+        path: '/admin/student-affairs/funding/publicity',
+        query: { batchId: String(this.batchId), projectId: String(this.projectId), source: 'funding-workbench' }
+      })
     },
     async onScan() {
       this.scanning = true
