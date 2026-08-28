@@ -683,12 +683,22 @@ def reject_match(mid, reason: str = "", user=None) -> dict:
         return _match_row(db, m)
 
 
-def match_stats(batch_id=None) -> dict:
+def match_stats(batch_id=None, user=None) -> dict:
     with session() as db:
-        from app.modules.internship.services.internship_batch_context import batch_record_ids, resolve_batch
-        batch, record_ids = batch_record_ids(db, batch_id)
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        from app.modules.internship.services.internship_scope import apply_internship_record_scope
+        batch = resolve_batch(db, batch_id)
+        record_query = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False),
+            ),
+            user,
+        ).subquery()
+        scoped_record_ids = select(record_query.c.id)
         base = [InternshipMatch.tenant_id == _tid(), InternshipMatch.is_deleted.is_(False),
-                InternshipMatch.record_id.in_(record_ids or [0])]
+                InternshipMatch.record_id.in_(scoped_record_ids)]
         total = int(db.scalar(select(func.count()).select_from(InternshipMatch).where(*base)) or 0)
         by_status = []
         for st, label in MATCH_STATUS_LABEL.items():
@@ -711,6 +721,7 @@ def match_stats(batch_id=None) -> dict:
         intent_submitted = int(db.scalar(select(func.count()).select_from(InternshipIntention).where(
             InternshipIntention.tenant_id == _tid(), InternshipIntention.is_deleted.is_(False),
             InternshipIntention.batch_id == batch.id,
+            InternshipIntention.record_id.in_(scoped_record_ids),
             InternshipIntention.status == "SUBMITTED")) or 0)
         return {
             "total": total, "byStatus": by_status, "byType": by_type,

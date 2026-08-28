@@ -95,3 +95,29 @@ def test_participant_summary_hides_global_plan_for_scoped_roles():
     assert 'planned_count = len(visible) if scoped_view' in service
     assert '"plannedCountScoped": scoped_view' in service
     assert "summary.plannedCountScoped ? '当前范围人数' : '批次计划人数'" in view
+
+
+def test_common_sql_scope_never_authorizes_advisor_by_name():
+    text = src("app/modules/internship/services/internship_scope.py")
+    assert 'InternshipRecord.advisor_user_id.in_(advisor_ids)' in text
+    assert 'InternshipRecord.advisor_name.in_(advisor_names)' not in text
+
+def test_match_stats_uses_row_level_scope():
+    svc = src("app/modules/internship/services/internship_match_service.py")
+    router = src("app/modules/internship/routers/internship_match.py")
+    assert 'def match_stats(batch_id=None, user=None)' in svc
+    assert 'apply_internship_record_scope' in svc
+    assert 'InternshipIntention.record_id.in_(scoped_record_ids)' in svc
+    assert 'svc.match_stats(batch_id=batchId, user=user)' in router
+
+def test_batch_invalid_dates_and_counts_fail_validation():
+    text = src("app/modules/internship/services/internship_service.py")
+    assert 'f"{label}格式不正确，请使用 YYYY-MM-DD"' in text
+    assert 'def _parse_nonnegative_int' in text
+    assert '_parse_nonnegative_int(body["plannedCount"], "计划人数")' in text
+
+def test_legacy_internship_detail_audit_is_type_scoped():
+    text = src("app/modules/internship/services/internship_service.py")
+    anchor = text.index('def get_internship_student_detail')
+    tail = text[anchor:anchor + 5000]
+    assert 'InternshipAuditTrail.target_type == "INTERN_STUDENT"' in tail

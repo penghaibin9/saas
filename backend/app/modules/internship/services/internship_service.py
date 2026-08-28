@@ -88,8 +88,8 @@ def notify_counselor_for_student(db, student, title: str, content: str,
     return True
 
 
-def _parse_dt(v):
-    if not v:
+def _parse_dt(v, label: str = "日期"):
+    if v in (None, ""):
         return None
     s = str(v).strip().replace("Z", "").replace("/", "-")
     if not s:
@@ -100,7 +100,17 @@ def _parse_dt(v):
         try:
             return datetime.strptime(s[:10], "%Y-%m-%d")
         except ValueError:
-            return None
+            raise AppException("VALIDATION_ERROR", f"{label}格式不正确，请使用 YYYY-MM-DD") from None
+
+
+def _parse_nonnegative_int(v, label: str) -> int:
+    try:
+        value = int(v or 0)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", f"{label}必须为非负整数") from None
+    if value < 0:
+        raise AppException("VALIDATION_ERROR", f"{label}必须为非负整数")
+    return value
 
 
 def _students_map(db, ids: list[int]) -> dict:
@@ -320,6 +330,7 @@ def get_internship_student_detail(record_id, user=None) -> dict:
             RiskRecord.is_deleted.is_(False)).order_by(RiskRecord.id.desc())).all()
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(),
+            InternshipAuditTrail.target_type == "INTERN_STUDENT",
             InternshipAuditTrail.target_id == r.id).order_by(
             InternshipAuditTrail.id.desc()).limit(8)).all()
         base = _record_row(r, stu)
@@ -1017,8 +1028,12 @@ def create_batch(body: dict, user=None) -> dict:
     no = str(body.get("batchNo") or "").strip()
     if not name or not no:
         raise AppException("VALIDATION_ERROR", "批次名称与批次编号必填")
-    _assert_batch_dates(_parse_dt(body.get("startDate")), _parse_dt(body.get("endDate")),
-                        _parse_dt(body.get("signupStartDate")), _parse_dt(body.get("signupEndDate")))
+    start = _parse_dt(body.get("startDate"), "实习开始日期")
+    end = _parse_dt(body.get("endDate"), "实习结束日期")
+    signup_start = _parse_dt(body.get("signupStartDate"), "报名开始日期")
+    signup_end = _parse_dt(body.get("signupEndDate"), "报名截止日期")
+    _assert_batch_dates(start, end, signup_start, signup_end)
+    planned_count = _parse_nonnegative_int(body.get("plannedCount"), "计划人数")
     with session() as db:
         dup = db.scalars(select(InternshipBatch).where(
             InternshipBatch.tenant_id == _tid(), InternshipBatch.batch_no == no,
@@ -1039,10 +1054,9 @@ def create_batch(body: dict, user=None) -> dict:
         b = InternshipBatch(
             tenant_id=_tid(), batch_name=name, batch_no=no,
             academic_year=body.get("academicYear"), term=body.get("term"),
-            start_date=_parse_dt(body.get("startDate")), end_date=_parse_dt(body.get("endDate")),
-            signup_start_date=_parse_dt(body.get("signupStartDate")),
-            signup_end_date=_parse_dt(body.get("signupEndDate")),
-            planned_count=int(body.get("plannedCount") or 0), remark=body.get("remark"),
+            start_date=start, end_date=end,
+            signup_start_date=signup_start, signup_end_date=signup_end,
+            planned_count=planned_count, remark=body.get("remark"),
             status="DRAFT", stage_config=stages, rules_config=rules, archive_status="NOT_ARCHIVED",
             compliance_template_id=_as_id(template_id) if template_id else None,
             compliance_template_version=template_version)
@@ -1069,18 +1083,21 @@ def update_batch(bid, body: dict, user=None) -> dict:
                        "term": "term", "remark": "remark"}.items():
             if body.get(k) is not None:
                 values[col] = body[k]
-        for k, col in {"startDate": "start_date", "endDate": "end_date",
-                       "signupStartDate": "signup_start_date",
-                       "signupEndDate": "signup_end_date"}.items():
+        for k, col, label in (
+            ("startDate", "start_date", "实习开始日期"),
+            ("endDate", "end_date", "实习结束日期"),
+            ("signupStartDate", "signup_start_date", "报名开始日期"),
+            ("signupEndDate", "signup_end_date", "报名截止日期"),
+        ):
             if body.get(k) is not None:
-                values[col] = _parse_dt(body[k])
+                values[col] = _parse_dt(body[k], label)
         start = values.get("start_date", b.start_date)
         end = values.get("end_date", b.end_date)
         ss = values.get("signup_start_date", b.signup_start_date)
         se = values.get("signup_end_date", b.signup_end_date)
         _assert_batch_dates(start, end, ss, se)
         if body.get("plannedCount") is not None:
-            values["planned_count"] = int(body["plannedCount"] or 0)
+            values["planned_count"] = _parse_nonnegative_int(body["plannedCount"], "计划人数")
         if body.get("stages") is not None:
             values["stage_config"] = _dump_stages(body["stages"])
         rules_version = int(b.rules_version or 1)
