@@ -858,6 +858,7 @@ def get_application(app_id, user) -> dict:
         _scope_or_403(db, x.student_id, user)
         d = _app_row(x, user, s, has_pending_appeal=int(x.id) in _pending_appeal_ids(db, [x.id]))
         d["checkSnapshot"] = json.loads(x.check_snapshot_json) if x.check_snapshot_json else {}
+        d["statement"] = x.statement or ""
         return d
 
 
@@ -1034,7 +1035,7 @@ def _appeal_row(o, s=None) -> dict:
         "status": o.status, "statusLabel": _L_APPEAL.get(o.status, o.status),
         "result": o.result or "", "resultLabel": _L_APPEAL_RESULT.get(o.result or "", ""),
         "reviewOpinion": o.review_opinion or "", "reviewer": o.reviewer or "",
-        "reviewedAt": _iso(o.reviewed_at),
+        "reviewedAt": _iso(o.reviewed_at), "version": int(o.version or 0),
     }
 
 

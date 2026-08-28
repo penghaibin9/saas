@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="资助发放台账"
-    subtitle="按批次生成发放记录，登记银行发放结果。列表、统计和操作均遵守当前数据范围。"
+    subtitle="按批次生成发放记录，登记银行发放结果。列表、统计、导出和操作均遵守当前数据范围。"
     role-name="学工处 / 资助老师"
     data-scope-name="资助范围（辅导员限本班）"
     watermark-purpose="资助发放台账"
@@ -18,6 +18,13 @@
           <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
         </div>
         <div class="fd-gen">
+          <AppPermissionButton
+            :allowed="canBtn('studentAffairs.funding.disburse.manage')"
+            code="studentAffairs.funding.disburse.manage"
+            variant="secondary"
+            :disabled="!!errorMessage"
+            @click="openExport"
+          >导出 Excel 台账</AppPermissionButton>
           <AppFundingBatchPicker v-model="genBatchId" class="fd-genpick" :options="batchOptions" placeholder="选择批次生成…" />
           <AppPermissionButton
             :allowed="canBtn('studentAffairs.funding.disburse.manage')"
@@ -30,6 +37,15 @@
       </div>
 
       <AppInlineAlert v-if="secondaryError" type="warning" :description="secondaryError" />
+
+      <div v-if="exportJob" class="fd-export-job" role="status" aria-live="polite">
+        <div>
+          <div class="mp-cell-main">Excel 导出任务 #{{ exportJob.jobId || exportJob.id }}</div>
+          <div class="mp-cell-sub">{{ exportStatusText }} · {{ exportJob.progress || 0 }}%<span v-if="exportJob.rowCount != null"> · {{ exportJob.rowCount }} 条</span></div>
+        </div>
+        <button v-if="exportJob.downloadable" type="button" class="fd-link" @click="downloadExport">下载 Excel</button>
+        <button v-else-if="exportJob.status === 'FAILED' || exportJob.status === 'DEAD'" type="button" class="fd-link" @click="openExport">重新创建</button>
+      </div>
 
       <AppSectionCard title="发放记录">
         <div class="fd-filters">
@@ -101,6 +117,21 @@
     />
 
     <AppConfirmDialog
+      v-model:visible="exportDlg.visible"
+      title="导出资助发放台账"
+      type="warning"
+      message="导出会按当前发放状态筛选和你的数据范围生成 Excel。用途会写入水印和安全审计，请填写真实使用目的。"
+      confirm-text="创建导出任务"
+      :submitting="acting === 'export'"
+      @confirm="createExport"
+    >
+      <AppFormItem label="导出用途" required>
+        <AppTextInput v-model="exportDlg.purpose" placeholder="至少5字，如：财务发放结果复核归档" :maxlength="500" />
+      </AppFormItem>
+      <AppInlineAlert v-if="exportDlg.error" type="danger" :description="exportDlg.error" />
+    </AppConfirmDialog>
+
+    <AppConfirmDialog
       v-model:visible="issDlg.visible"
       :title="`标记为已发放 · ${issDlg.who}`"
       type="primary"
@@ -142,8 +173,10 @@ import {
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
+import { fundingExportApi } from '@/modules/studentAffairs/api/fundingExport.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 import { toast } from '@/utils/toast'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 
 const DISBURSEMENT_COLUMNS = [
   { key: 'student', title: '学生' }, { key: 'projectType', title: '项目' },
@@ -171,6 +204,9 @@ export default {
       issDlg: { visible: false, disbursementId: '', who: '', disburseNo: '', bankLast4: '', error: '', version: null },
       failDlg: { visible: false, disbursementId: '', who: '', version: null },
       genDlg: { visible: false },
+      exportDlg: { visible: false, purpose: '', error: '' },
+      exportJob: null,
+      exportPollTimer: null,
       loading: true,
       acting: '',
       errorMessage: '',
@@ -187,6 +223,10 @@ export default {
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     secondaryError() { return [this.batchError, this.statsError].filter(Boolean).join('；') },
+    exportStatusText() {
+      const status = this.exportJob?.status || 'CREATED'
+      return ({ CREATED: '等待处理', RUNNING: '正在生成', SUCCEEDED: '已完成', FAILED: '生成失败', DEAD: '多次失败，需处理', EXPIRED: '已过期', REVOKED: '已撤销' })[status] || status
+    },
     batchOptions() {
       return this.batches.map((batch) => ({
         value: batch.batchId,
@@ -209,6 +249,7 @@ export default {
     }
   },
   mounted() { this.load() },
+  beforeUnmount() { this.stopExportPolling() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     hasVersion(row) { return row?.version !== undefined && row?.version !== null && row?.version !== '' },
@@ -266,6 +307,66 @@ export default {
         toast.success(`已生成 ${response.data.generated || 0} 条，已有 ${response.data.existing || 0} 条`)
         await Promise.all([this.loadRecords(), this.loadStats()])
       } else toast.error(response.message || '生成失败')
+    },
+    openExport() {
+      this.exportDlg = { visible: true, purpose: '', error: '' }
+    },
+    async createExport() {
+      const purpose = (this.exportDlg.purpose || '').trim()
+      if (purpose.length < 5 || purpose.length > 500) {
+        this.exportDlg.error = '导出用途需5-500字'
+        return
+      }
+      this.exportDlg.error = ''
+      this.acting = 'export'
+      const response = await fundingExportApi.create({
+        purpose,
+        bankStatus: this.activeStatus || undefined
+      })
+      this.acting = ''
+      if (response.code !== 0 || !response.data?.jobId) {
+        this.exportDlg.error = response.message || '创建导出任务失败'
+        return
+      }
+      this.exportDlg.visible = false
+      this.exportJob = response.data
+      toast.success('导出任务已创建，可继续使用系统')
+      this.startExportPolling()
+    },
+    startExportPolling() {
+      this.stopExportPolling()
+      this.refreshExportJob()
+      this.exportPollTimer = window.setInterval(this.refreshExportJob, 2500)
+    },
+    stopExportPolling() {
+      if (this.exportPollTimer) window.clearInterval(this.exportPollTimer)
+      this.exportPollTimer = null
+    },
+    async refreshExportJob() {
+      const jobId = this.exportJob?.jobId || this.exportJob?.id
+      if (!jobId) return
+      const response = await fundingExportApi.job(jobId)
+      if (response.code !== 0 || !response.data) {
+        this.stopExportPolling()
+        return
+      }
+      this.exportJob = { ...response.data, jobId }
+      if (['SUCCEEDED', 'FAILED', 'DEAD', 'EXPIRED', 'REVOKED'].includes(this.exportJob.status)) {
+        this.stopExportPolling()
+        if (this.exportJob.status === 'SUCCEEDED') toast.success('资助发放台账已生成，可下载')
+        else if (this.exportJob.status === 'FAILED' || this.exportJob.status === 'DEAD') toast.error(this.exportJob.errorMessage || '导出任务失败')
+      }
+    },
+    async downloadExport() {
+      const jobId = this.exportJob?.jobId || this.exportJob?.id
+      if (!jobId) return
+      const response = await fundingExportApi.ticket(jobId, this.exportJob.version)
+      if (response.code !== 0 || !response.data?.downloadUrl) {
+        toast.error(response.message || '创建下载票据失败')
+        return
+      }
+      this.exportJob.version = response.data.version
+      downloadXlsxFromApi({ filename: '资助发放台账.xlsx', downloadUrl: response.data.downloadUrl })
     },
     issue(row) {
       if (!this.allows(row, 'ISSUE') || !this.hasVersion(row)) return
@@ -328,7 +429,7 @@ export default {
 <style scoped>
 .sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 320px; }
-.fd-gen { display: flex; gap: var(--space-2); align-items: center; }
+.fd-gen { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .fd-genpick { width: 260px; }
 .fd-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .fd-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
@@ -338,6 +439,8 @@ export default {
 .fd-ops { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .fd-dash { color: var(--text-tertiary); }
 .fd-hint { margin: var(--space-2) 0 0; color: var(--text-tertiary); font-size: var(--font-size-sm); }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: repeat(2, minmax(0,1fr)); } .fd-gen { width: 100%; } .fd-genpick { flex: 1; } }
+.fd-export-job { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); padding: var(--space-3); border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-md); background: var(--warning-50, #fffbeb); }
+.fd-link { border: 0; background: transparent; color: var(--color-primary); font: inherit; cursor: pointer; font-weight: 600; }
+@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: repeat(2, minmax(0,1fr)); } .fd-gen { width: 100%; justify-content: flex-start; } .fd-genpick { flex: 1; } }
 @import '@/styles/module-page.css';
 </style>

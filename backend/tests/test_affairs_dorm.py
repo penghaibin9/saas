@@ -36,8 +36,9 @@ def _seed(db_mode):
     db.commit()
     db.close()
     ensure_workflow_assignees([ids["sm"], ids["sf"], ids["sm2"]])
-    # 楼栋 managerTeacherKey=dorm01 必须解析到真实、启用中的数据库用户。
+    # 楼栋 managerTeacherKey 必须解析到真实、启用中的数据库宿管用户。
     ensure_role_user("DORM_MANAGER", login_name="dorm01", real_name="宿管·李")
+    ensure_role_user("DORM_MANAGER", login_name="other", real_name="宿管·王")
     return ids
 
 
@@ -105,17 +106,18 @@ def test_m3_occupied_and_gender_conflict_409(client, db_mode):
 
 def test_m4_transfer_executes(client, db_mode):
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
-    bid = _make_building(client, hdr)
-    _, beds1 = _first_bed(client, hdr, bid, floor=1)
-    _, beds2 = _first_bed(client, hdr, bid, floor=2)
+    admin = _hdr(client, "school_admin01")
+    counselor = role_headers("COUNSELOR", login_name="counselor01", real_name="测试辅导员")
+    bid = _make_building(client, admin)
+    _, beds1 = _first_bed(client, admin, bid, floor=1)
+    _, beds2 = _first_bed(client, admin, bid, floor=2)
     old_bed, new_bed = beds1[0]["bedId"], beds2[0]["bedId"]
-    client.post(f"{BASE}/dorm/beds/{old_bed}/checkin", headers=hdr, json={"studentId": str(ids["sm"])})
-    transfer = client.post(f"{BASE}/dorm/transfers", headers=hdr, json={
+    client.post(f"{BASE}/dorm/beds/{old_bed}/checkin", headers=admin, json={"studentId": str(ids["sm"])})
+    transfer = client.post(f"{BASE}/dorm/transfers", headers=counselor, json={
         "studentId": str(ids["sm"]), "toBedId": str(new_bed), "reason": "学生申请调整宿舍床位"}).json()["data"]
     tid = transfer["transferId"]
-    first = client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=hdr, json={
-        "action": "APPROVE", "version": transfer["version"]}).json()["data"]  # 辅导员
+    first = client.post(f"{BASE}/dorm/transfers/{tid}/review", headers=counselor, json={
+        "action": "APPROVE", "version": transfer["version"]}).json()["data"]  # 真实辅导员初审
     r = client.post(f"{BASE}/dorm/transfers/{tid}/review",
                     headers=role_headers("DORM_MANAGER", login_name="dorm01", real_name="宿管·李"), json={
         "action": "APPROVE", "version": first["version"]}).json()  # 宿管→执行
@@ -189,7 +191,7 @@ def test_m10_dorm_building_scope(client, db_mode):
     """DORM_BUILDING：宿管只看到自己负责的楼栋。"""
     _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    # A 楼归 dorm01；B 楼不归
+    # A 楼归 dorm01；B 楼归另一名真实宿管
     a = client.post(f"{BASE}/dorm/buildings", headers=admin, json={
         "buildingName": "紫荆A", "genderLimit": "MALE", "managerTeacherKey": "dorm01"}).json()["data"]["buildingId"]
     client.post(f"{BASE}/dorm/buildings", headers=admin, json={
@@ -243,7 +245,7 @@ def test_m11_dorm_write_scope_blocks_cross_building(client, db_mode):
         "taskName": "夜查", "buildingId": str(a), "checkType": "NIGHT_ABSENCE"}).json()["data"]["taskId"]
     assert task
 
-    # 调宿：目标床位在 B 楼（宿管无权限的楼栋）→ 提交调宿即 403
+    # 宿管不是调宿发起角色；即便目标床位在其他楼栋也必须直接 403。
     client.post(f"{BASE}/dorm/beds/{bed_a}/checkin", headers=admin, json={"studentId": str(ids["sf"])})
     assert client.post(f"{BASE}/dorm/transfers", headers=dorm, json={
         "studentId": str(ids["sf"]), "toBedId": str(bed_b), "reason": "测试跨楼越权"}).status_code == 403
@@ -252,9 +254,9 @@ def test_m11_dorm_write_scope_blocks_cross_building(client, db_mode):
 def test_m6_one_step_building(client, db_mode):
     _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
-    # 建楼时直接带布局 → 一步铺满
+    # 建楼时直接带布局 → 一步铺满；新楼必须绑定真实宿管。
     client.post(f"{BASE}/dorm/buildings", headers=hdr, json={
-        "buildingName": "梅苑A栋", "genderLimit": "FEMALE",
+        "buildingName": "梅苑A栋", "genderLimit": "FEMALE", "managerTeacherKey": "dorm01",
         "floors": 3, "roomsPerFloor": 2, "bedsPerRoom": 6})
     occ = client.get(f"{BASE}/dorm/occupancy", headers=hdr).json()["data"]
     assert occ["totalBeds"] == 36  # 3×2×6
