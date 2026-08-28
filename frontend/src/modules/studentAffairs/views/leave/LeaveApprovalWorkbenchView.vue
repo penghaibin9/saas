@@ -11,6 +11,7 @@
         :degraded="!!error"
         @clear-filter="clearKeyword"
       />
+      <AppInlineAlert v-if="focusNotice" type="warning" :description="focusNotice" />
       <div class="bar">
         <AppSearchBox v-model="keyword" placeholder="按学生姓名 / 学号搜索" @search="reload" />
       </div>
@@ -93,7 +94,7 @@ import { ModulePageShell, EmptyState } from '@/components/business'
 import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
 import {
   AppStatusTag, AppConfirmDialog, AppPermissionButton, AppDescriptionList, AppAuditTrail,
-  AppSearchBox, AppGlobalState, AppPagination
+  AppSearchBox, AppGlobalState, AppPagination, AppInlineAlert
 } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
@@ -106,13 +107,13 @@ export default {
   name: 'LeaveApprovalWorkbenchView',
   components: {
     ModulePageShell, EmptyState, TaskContextBar, DualPaneWorkspace, AppStatusTag, AppConfirmDialog, AppPermissionButton,
-    AppDescriptionList, AppAuditTrail, AppSearchBox, AppGlobalState, AppPagination
+    AppDescriptionList, AppAuditTrail, AppSearchBox, AppGlobalState, AppPagination, AppInlineAlert
   },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
       rows: [], total: 0, loading: false, error: '',
-      keyword: '',
+      keyword: '', focusNotice: '',
       pagination: { page: 1, pageSize: 20 },
       selectedId: '', doneHint: false,
       detail: { loading: false, error: '', data: null },
@@ -159,8 +160,43 @@ export default {
       }))
     }
   },
-  created() { this.load() },
+  created() { this.initRouteFocus() },
+  watch: {
+    '$route.query.recordId'(value, previous) {
+      if (String(value || '') !== String(previous || '')) this.initRouteFocus()
+    }
+  },
   methods: {
+    async initRouteFocus() {
+      const recordId = String(this.$route.query?.recordId || '').trim()
+      this.focusNotice = ''
+      if (!recordId) {
+        this.selectedId = ''
+        this.detail = { loading: false, error: '', data: null }
+        await this.load()
+        return
+      }
+      await this.focusRecordFromRoute(recordId)
+    },
+    async focusRecordFromRoute(recordId) {
+      this.loading = true
+      this.error = ''
+      const res = await leaveApi.detail(recordId)
+      if (res.code !== 0 || !res.data) {
+        this.loading = false
+        this.rows = []; this.total = 0; this.selectedId = ''
+        this.detail = { loading: false, error: '', data: null }
+        this.error = res.message || '该请假记录不存在、已不可见或不在当前数据范围内'
+        return
+      }
+      const detail = res.data
+      this.selectedId = String(recordId)
+      this.detail = { loading: false, error: '', data: detail }
+      if (!['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'STUDENT_AFFAIRS_REVIEW'].includes(detail.affairsStatus)) {
+        this.focusNotice = `该待办状态已变化：当前为${detail.affairsStatusLabel || detail.affairsStatus || '未知状态'}，已按最新事实展示，旧待办动作不可继续执行。`
+      }
+      await this.load()
+    },
     clearKeyword() {
       this.keyword = ''
       this.reload()

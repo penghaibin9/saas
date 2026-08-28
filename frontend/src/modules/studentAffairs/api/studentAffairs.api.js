@@ -586,9 +586,11 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/discipline/cases/${caseId}/appeal`, { method: 'POST', body: { reason } }))
   },
   /** 处分申诉列表。 */
-  getDisciplineAppeals({ status = '', page = 1, pageSize = 100 } = {}) {
+  getDisciplineAppeals({ status = '', caseId = '', appealId = '', page = 1, pageSize = 100 } = {}) {
     const params = { page, pageSize }
     if (status) params.status = status
+    if (caseId) params.caseId = caseId
+    if (appealId) params.appealId = appealId
     return callStrict(() => request('/student-affairs/discipline/appeals', { params }))
   },
   /** 申诉复核。result: UPHELD/REVISED/REVOKED；opinion≥5。 */
