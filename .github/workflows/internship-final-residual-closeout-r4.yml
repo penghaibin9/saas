@@ -3,7 +3,7 @@ name: internship-final-residual-closeout-r4
 on:
   push:
     branches:
-      - fix/internship-prelaunch-p1p2-20260828
+      - tmp/pr231-residual-closeout-20260828
 
 permissions:
   contents: write
@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/internship-prelaunch-p1p2-20260828
+          ref: tmp/pr231-residual-closeout-20260828
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -59,6 +59,7 @@ jobs:
         working-directory: .
         run: |
           rm -f .github/internship-residual-closeout-r4.trigger
+          rm -f .github/internship-final-residual-closeout-r4.trigger
           rm -f .github/workflows/internship-final-residual-closeout-r3.yml
           rm -f .github/workflows/internship-final-residual-closeout-r4.yml
           rm -f .github/scripts/internship_residual_closeout.py
@@ -68,4 +69,4 @@ jobs:
           git add -- backend/tests/test_internship_score_archive_guard.py backend/tests/test_internship_archive.py backend/tests/test_internship_v93_batch2_remaining_first_create.py backend/tests/test_internship_v93_special_filing_review_flow.py backend/tests/test_portal_internship.py backend/tests/test_internship_scope.py backend/tests/test_internship_enterprise_eval.py
           git diff --cached --check
           git commit -m 'fix(internship): align remaining production fixtures'
-          git push origin HEAD:fix/internship-prelaunch-p1p2-20260828
+          git push origin HEAD:tmp/pr231-residual-closeout-20260828
