@@ -210,17 +210,19 @@ def test_two_same_node_reviews_produce_one_transition_and_one_audit(db_mode, mon
             for _ in range(2)
         ]
         successes = 0
-        conflicts = 0
+        blocked = 0
         for future in futures:
             try:
                 result = future.result(timeout=10)
                 assert result["status"] == "ACADEMIC_REVIEW"
                 successes += 1
             except AppException as exc:
-                assert exc.code == "APPROVAL_VERSION_CONFLICT"
-                conflicts += 1
+                # The loser waits on the row lock, then sees the next-node Authority.
+                # It must be blocked as the previous college reviewer, not cross the node.
+                assert exc.code == "NO_DATA_SCOPE"
+                blocked += 1
 
     assert successes == 1
-    assert conflicts == 1
+    assert blocked == 1
     assert _program(ids["own"]) == ("ACADEMIC_REVIEW", 7)
     assert _audit_count(ids["own"], "APPROVE") == 1
