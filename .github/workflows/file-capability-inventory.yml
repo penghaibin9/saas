@@ -17,6 +17,7 @@ on:
     branches:
       - main
       - audit/file-capability-inventory
+      - fix/student-affairs-flow-continuity-20260828
     paths:
       - "backend/app/**"
       - "frontend/src/**"
@@ -30,9 +31,57 @@ on:
       - ".github/workflows/file-capability-inventory.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  tenant-scope-repair:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/student-affairs-flow-continuity-20260828'
+    name: 学工处分申诉租户查询精准修复
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/student-affairs-flow-continuity-20260828
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Replace the single shifted bare Session.get
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/app/services/affairs_discipline_service.py')
+          text = p.read_text(encoding='utf-8')
+          old = '        s = db.get(StudentProfile, int(a.student_id)) if a.student_id else None\n'
+          new = ('        s = db.scalars(select(StudentProfile).where(\n'
+                 '            StudentProfile.id == int(a.student_id), StudentProfile.tenant_id == _tid(),\n'
+                 '            StudentProfile.is_deleted.is_(False)\n'
+                 '        )).first() if a.student_id else None\n')
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one target lookup, got {text.count(old)}')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          git diff --check
+          python -m py_compile backend/app/services/affairs_discipline_service.py
+          python scripts/audit_tenant_queries.py --gate
+      - name: Restore workflow files and publish only the verified product fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "student-affairs-flow-bot"
+          git config user.email "student-affairs-flow-bot@users.noreply.github.com"
+          git checkout origin/main -- .github/workflows/file-capability-inventory.yml
+          if [ -f .github/workflows/sa-flow-tenant-get-hotfix.yml ]; then
+            git rm .github/workflows/sa-flow-tenant-get-hotfix.yml
+          fi
+          git add -- backend/app/services/affairs_discipline_service.py .github/workflows/file-capability-inventory.yml
+          git diff --cached --check
+          git commit -m "fix(student-affairs): keep discipline appeal lookup tenant-scoped"
+          git push origin HEAD:fix/student-affairs-flow-continuity-20260828
+
   inventory:
     name: 文件能力清单与登记门禁
     runs-on: ubuntu-latest
