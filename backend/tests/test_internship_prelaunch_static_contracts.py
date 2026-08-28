@@ -60,3 +60,38 @@ def test_student_score_appeal_sends_context_and_reads_status():
 def test_score_appeal_router_is_registered():
     text = src("app/api/v1/route_registration.py")
     assert 'internship_score_appeal' in text
+
+
+def test_enterprise_and_student_mutations_require_versions():
+    enterprise_schema = src("app/modules/internship/schemas/internship.py")
+    student_schema = src("app/modules/internship/schemas/internship_student.py")
+    enterprise_service = src("app/modules/internship/services/internship_enterprise_service.py")
+    student_service = src("app/modules/internship/services/internship_student_service.py")
+    assert enterprise_schema.count('expectedVersion: int = Field(...') >= 5
+    assert student_schema.count('expectedVersion: int = Field(...') >= 7
+    assert '必须提供 expectedVersion（企业乐观锁）' in enterprise_service
+    assert '必须提供 expectedVersion（实习记录乐观锁）' in student_service
+
+def test_staff_student_api_forwards_versions_and_destination_contract():
+    api = (ROOT.parent / "frontend/src/modules/internship/api/internship-student.api.js").read_text(encoding="utf-8")
+    detail = (ROOT.parent / "frontend/src/modules/internship/views/InternshipStudentDetailView.vue").read_text(encoding="utf-8")
+    listing = (ROOT.parent / "frontend/src/modules/internship/views/InternshipStudentListView.vue").read_text(encoding="utf-8")
+    assert api.count('expectedVersion') >= 8
+    assert 'destination: extra' in detail
+    assert 'destinationType: extra' not in detail
+    assert 'expectedVersion: this.advisorRow.version' in listing
+    assert 'expectedVersion: row.version' in listing
+
+def test_enterprise_edit_and_contact_type_keep_concurrency_invariants():
+    form = (ROOT.parent / "frontend/src/modules/internship/views/EnterpriseFormView.vue").read_text(encoding="utf-8")
+    service = src("app/modules/internship/services/internship_enterprise_service.py")
+    assert 'body.expectedVersion = this.detail?.version' in form
+    assert 'was_primary = bool(t.is_primary)' in service
+    assert 't.contact_type != old_contact_type and was_primary' in service
+
+def test_participant_summary_hides_global_plan_for_scoped_roles():
+    service = src("app/modules/internship/services/internship_participant_service.py")
+    view = (ROOT.parent / "frontend/src/modules/internship/views/components/BatchParticipantScope.vue").read_text(encoding="utf-8")
+    assert 'planned_count = len(visible) if scoped_view' in service
+    assert '"plannedCountScoped": scoped_view' in service
+    assert "summary.plannedCountScoped ? '当前范围人数' : '批次计划人数'" in view

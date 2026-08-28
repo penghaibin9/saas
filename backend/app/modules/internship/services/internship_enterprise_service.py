@@ -220,7 +220,9 @@ def update_enterprise(company_id, body) -> dict:
         if not c:
             raise not_found("企业不存在或不在当前数据范围内")
         expected = getattr(body, "expectedVersion", None)
-        if expected is not None and int(expected) != int(c.version or 0):
+        if expected is None:
+            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+        if int(expected) != int(c.version or 0):
             raise AppException("DATA_CONFLICT", "企业信息已被其他用户修改，请刷新后重试")
         if c.coop_status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档企业不可编辑")
@@ -280,7 +282,9 @@ def review_enterprise(company_id, action: str, comment: str = "", expected_versi
             EmpCompany.is_deleted.is_(False)).with_for_update())
         if not c:
             raise not_found("企业不存在或不在当前数据范围内")
-        if expected_version is not None and int(expected_version) != int(c.version or 0):
+        if expected_version is None:
+            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+        if int(expected_version) != int(c.version or 0):
             raise AppException("DATA_CONFLICT", "企业资质状态已变化，请刷新后重试")
         if c.coop_status != "PENDING":
             raise AppException("DATA_CONFLICT",
@@ -305,7 +309,9 @@ def set_cooperation(company_id, action: str, reason: str = "", expected_version=
             EmpCompany.is_deleted.is_(False)).with_for_update())
         if not c:
             raise not_found("企业不存在或不在当前数据范围内")
-        if expected_version is not None and int(expected_version) != int(c.version or 0):
+        if expected_version is None:
+            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+        if int(expected_version) != int(c.version or 0):
             raise AppException("DATA_CONFLICT", "企业合作状态已变化，请刷新后重试")
         if action == "SUSPEND":
             if c.coop_status != "ACTIVE":
@@ -340,7 +346,9 @@ def set_blacklist(company_id, on: bool, reason: str = "", expected_version=None)
             EmpCompany.is_deleted.is_(False)).with_for_update())
         if not c:
             raise not_found("企业不存在或不在当前数据范围内")
-        if expected_version is not None and int(expected_version) != int(c.version or 0):
+        if expected_version is None:
+            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+        if int(expected_version) != int(c.version or 0):
             raise AppException("DATA_CONFLICT", "企业黑名单状态已变化，请刷新后重试")
         if on:
             if not (reason or "").strip():
@@ -442,8 +450,12 @@ def update_contact(company_id, contact_id, body) -> dict:
         if not t:
             raise not_found("联系人不存在")
         expected = getattr(body, "expectedVersion", None)
-        if expected is not None and int(expected) != int(t.version or 0):
+        if expected is None:
+            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（联系人乐观锁），请刷新后重试")
+        if int(expected) != int(t.version or 0):
             raise AppException("DATA_CONFLICT", "联系人已被其他用户修改，请刷新后重试")
+        old_contact_type = t.contact_type
+        was_primary = bool(t.is_primary)
         if "name" in body.model_fields_set:
             name = (getattr(body, "name", None) or "").strip()
             if not name:
@@ -466,6 +478,11 @@ def update_contact(company_id, contact_id, body) -> dict:
                 t.is_primary = True
             else:
                 t.is_primary = False
+        elif "contactType" in body.model_fields_set and t.contact_type != old_contact_type and was_primary:
+            # 主联系人换类型时仍保持“主联系人”语义，但新类型原主联系人必须被降级，
+            # 否则同一企业同一联系人类型会出现两个主联系人。
+            _unset_primary(db, c.id, t.contact_type)
+            t.is_primary = True
         t.version = int(t.version or 0) + 1
         _trail(db, c.id, "CONTACT_UPDATE", {"contactId": str(t.id)})
         db.commit()

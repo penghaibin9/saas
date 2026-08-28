@@ -55,18 +55,18 @@ export const internStudentApi = {
       method: 'POST', body: { reason, expectedVersion }
     }))
   },
-  setStatus(id, { action, reason }) {
-    return call(() => request(`${BASE}/${id}/status`, { method: 'POST', body: { action, reason } }))
+  setStatus(id, { action, reason, expectedVersion }) {
+    return call(() => request(`${BASE}/${id}/status`, { method: 'POST', body: { action, reason, expectedVersion } }))
   },
   /** 上岗前置检查清单（BUG-010）：岗位/三方协议/保险/指导教师，按批次规则裁定。 */
   getOnboardChecklist(id) {
     return call(() => request(`${BASE}/${id}/onboard-checklist`))
   },
-  setEligibility(id, { status, reason }) {
-    return call(() => request(`${BASE}/${id}/eligibility`, { method: 'POST', body: { status, reason } }))
+  setEligibility(id, { status, reason, expectedVersion }) {
+    return call(() => request(`${BASE}/${id}/eligibility`, { method: 'POST', body: { status, reason, expectedVersion } }))
   },
-  setDestination(id, { destination, reason }) {
-    return call(() => request(`${BASE}/${id}/destination`, { method: 'POST', body: { destination, reason } }))
+  setDestination(id, { destination, reason, expectedVersion }) {
+    return call(() => request(`${BASE}/${id}/destination`, { method: 'POST', body: { destination, reason, expectedVersion } }))
   },
   getStats() {
     return call(() => request(`${BASE}/stats`))
@@ -77,8 +77,8 @@ export const internStudentApi = {
   getAssignmentLogs(params = {}) {
     return callList(`${BASE}/assignment-logs`, params)
   },
-  assignAdvisor(id, { advisorUserId, reason = '' }) {
-    return call(() => request(`${BASE}/${id}/advisor`, { method: 'POST', body: { advisorUserId, reason } }))
+  assignAdvisor(id, { advisorUserId, reason = '', expectedVersion }) {
+    return call(() => request(`${BASE}/${id}/advisor`, { method: 'POST', body: { advisorUserId, reason, expectedVersion } }))
   },
   importDryRun(rows, batchId) {
     return call(() => request(`${BASE}/import/dry-run`, { method: 'POST', body: { rows, batchId } }))

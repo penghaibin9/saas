@@ -409,8 +409,14 @@ def summary(batch_id, user: dict | None = None) -> dict:
         visible = [r for r in rows if int(r.student_id) in allowed_ids]
         active = sum(1 for r in visible if r.status == "ACTIVE")
         removed = sum(1 for r in visible if r.status == "REMOVED")
+        from app.core.affairs_security import student_directory_scope
+        allow_classes, allow_students = student_directory_scope(user) if user is not None else (None, None)
+        scoped_view = allow_classes is not None or allow_students is not None
+        # 批次 planned_count 是校级总目标，学院角色不能借 summary 反推出全校规模。
+        # 对受限角色返回其可见正式名单规模，并显式告诉前端这是“当前范围人数”。
+        planned_count = len(visible) if scoped_view else int(b.planned_count or 0)
         db.commit()
         return {"batchId": str(b.id), "batchName": b.batch_name, "batchStatus": b.status,
                 "frozen": rule.frozen_at is not None, "frozenAt": _iso(rule.frozen_at),
                 "activeCount": active, "removedCount": removed,
-                "plannedCount": int(b.planned_count or 0)}
+                "plannedCount": planned_count, "plannedCountScoped": scoped_view}

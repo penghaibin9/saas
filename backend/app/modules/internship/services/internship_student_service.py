@@ -50,7 +50,7 @@ def _get(db, rec_id) -> InternshipRecord:
 
 def _require_record_version(r: InternshipRecord, expected_version) -> None:
     if expected_version is None:
-        return
+        raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（实习记录乐观锁），请刷新后重试")
     if int(expected_version) != int(r.version or 0):
         raise AppException("DATA_CONFLICT", "实习记录已被其他用户修改，请刷新后重试")
 
