@@ -69,15 +69,12 @@ jobs:
                   raise SystemExit(f'{path}: expected {count} matches, got {actual}: {old!r}')
               p.write_text(value.replace(old, new), encoding='utf-8')
 
-          # A never-reviewed enterprise must return to its pre-blacklist PENDING state;
-          # clearing blacklist must never act as an implicit approval.
           replace_exact(
               'tests/test_internship_enterprise.py',
               'off["data"]["coopStatus"] == "ACTIVE"',
               'off["data"]["coopStatus"] == "PENDING"',
           )
 
-          # The production compliance engine requires a stable advisor identity key.
           replace_exact(
               'tests/test_internship_student.py',
               'from app.models import InternshipAgreement, InternshipInsurance, InternshipRecord',
@@ -95,7 +92,6 @@ jobs:
               '        rec.advisor_name = advisor.real_name or "张指导"',
           )
 
-          # Staff enterprise mutations must carry the version displayed in the row.
           ui = Path('../frontend/src/modules/internship/views/InternshipEnterpriseListView.vue')
           value = ui.read_text(encoding='utf-8')
           replacements = [
@@ -104,7 +100,7 @@ jobs:
               ("{ action: action.slice(5), reason: reason || '' }", "{ action: action.slice(5), reason: reason || '', expectedVersion: row.version }"),
               ("{ on: true, reason: reason || '' }", "{ on: true, reason: reason || '', expectedVersion: row.version }"),
               ("{ on: false }", "{ on: false, expectedVersion: row.version }"),
-              ("this.confirm.visible = false\n        this.load()", "this.confirm.visible = false\n        await this.load()"),
+              ("if (res && res.code === 0) { toast.success('已更新并写入留痕'); this.confirm.visible = false; this.load() }", "if (res && res.code === 0) { toast.success('已更新并写入留痕'); this.confirm.visible = false; await this.load() }"),
           ]
           for old, new in replacements:
               if value.count(old) != 1:
@@ -112,7 +108,6 @@ jobs:
               value = value.replace(old, new)
           ui.write_text(value, encoding='utf-8')
 
-          # S1 raced the legitimate multi-batch selector by checking count() while data was loading.
           e2e = Path('../e2e/pages/internship.page.mjs')
           value = e2e.read_text(encoding='utf-8')
           anchor = "    await expect(this.page.getByRole('button', { name: '实习请假' })).toBeVisible()\n\n    const batchSelector"
@@ -154,11 +149,13 @@ jobs:
       - name: Commit validated repairs and remove one-shot workflows
         working-directory: .
         run: |
+          rm .github/internship-final-red-closeout.trigger
           rm .github/workflows/internship-expected-version-closeout.yml
           rm .github/workflows/internship-final-red-closeout-r2.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- \
+            .github/internship-final-red-closeout.trigger \
             .github/workflows/internship-expected-version-closeout.yml \
             .github/workflows/internship-final-red-closeout-r2.yml \
             backend/tests/test_internship_application.py \
