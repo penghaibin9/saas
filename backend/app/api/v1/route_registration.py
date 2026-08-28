@@ -100,7 +100,7 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
         internship_enterprise_collaboration, internship_enterprise_eval_versioned,
         internship_enterprise_portal, internship_guardian_consent_delivery, internship_insurance,
         internship_match, internship_material_center, internship_participant, internship_plan,
-        internship_position, internship_process, internship_recruitment_campaign, internship_stats,
+        internship_position, internship_process, internship_recruitment_campaign, internship_score_appeal, internship_stats,
         internship_student, internship_visit_plan,
     )
     d = deps["intern"]
@@ -111,7 +111,7 @@ def register_internship_routes(api_router: APIRouter, deps: dict) -> None:
         internship_stats, internship_plan, internship_insurance, internship_process,
         internship_communication, internship_visit_plan, internship_complaint, internship_compliance,
         internship_guardian_consent_delivery, internship_enterprise_eval_versioned,
-        internship_recruitment_campaign,
+        internship_recruitment_campaign, internship_score_appeal,
     ):
         api_router.include_router(r.router, dependencies=d)
 
