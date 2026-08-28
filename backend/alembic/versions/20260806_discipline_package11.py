@@ -418,8 +418,11 @@ def _create_triggers() -> None:
         BEFORE DELETE ON t_affairs_discipline_decision_version
         FOR EACH ROW
         BEGIN
-            SIGNAL SQLSTATE '45000'
-                SET MESSAGE_TEXT = 'DISCIPLINE_DECISION_IMMUTABLE';
+            IF COALESCE(@sandbox_reset_tenant_id, 0) <> OLD.tenant_id
+               OR OLD.tenant_id <> 1000000000000000007 THEN
+                SIGNAL SQLSTATE '45000'
+                    SET MESSAGE_TEXT = 'DISCIPLINE_DECISION_IMMUTABLE';
+            END IF;
         END
     """))
 

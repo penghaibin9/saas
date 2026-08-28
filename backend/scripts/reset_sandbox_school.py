@@ -141,8 +141,24 @@ def main() -> int:
                 seed_school_academic_textbooks_20k,
                 validate_school_academic_textbooks_20k,
             )
+            from app.services.sandbox_school_academic_operational_seed import (
+                seed_academic_operational_coverage,
+                validate_academic_operational_coverage,
+            )
+            from app.services.sandbox_school_academic_core_flow_seed import (
+                seed_academic_core_flows,
+                validate_academic_core_flows,
+            )
             from app.services.sandbox_school_affairs_runner import seed_school_affairs_20k
             from app.services.sandbox_school_affairs_seed import validate_affairs_facts
+            from app.services.sandbox_school_affairs_operational_seed import (
+                seed_affairs_operational_coverage,
+                validate_affairs_operational_coverage,
+            )
+            from app.services.sandbox_school_affairs_core_flow_seed import (
+                seed_affairs_core_flows,
+                validate_affairs_core_flows,
+            )
             from app.services.sandbox_school_curriculum_closure import validate_school_academic_final_20k
             from app.services.sandbox_school_domain_seed import seed_school_domains_20k
             from app.services.sandbox_school_domain_validation import validate_core_domain_facts_20k
@@ -157,6 +173,26 @@ def main() -> int:
             from app.services.sandbox_school_graduation_operational_seed import (
                 seed_graduation_operational_coverage,
                 validate_graduation_operational_coverage,
+            )
+            from app.services.sandbox_school_graduation_historical_seed import (
+                seed_graduation_historical_coverage,
+                validate_graduation_historical_coverage,
+            )
+            from app.services.sandbox_school_internship_operational_seed import (
+                seed_internship_operational_coverage,
+                validate_internship_operational_coverage,
+            )
+            from app.services.sandbox_school_shared_operational_seed import (
+                seed_shared_operational_coverage,
+                validate_shared_operational_coverage,
+            )
+            from app.services.sandbox_school_platform_operational_seed import (
+                seed_platform_operational_coverage,
+                validate_platform_operational_coverage,
+            )
+            from app.services.sandbox_school_governance_seed import (
+                seed_governance_coverage,
+                validate_governance_coverage,
             )
             from app.services.sandbox_school_legacy_cleanup import (
                 clean_legacy_identity_residue,
@@ -200,6 +236,13 @@ def main() -> int:
             if not academic_affairs_baseline.get("passed"):
                 raise RuntimeError(f"20K 13B 基础阶段验收未通过: {academic_affairs_baseline}")
 
+            # Governance owns the shared FileObject/FileAsset evidence used by
+            # academic, affairs, internship and graduation operational seeds.
+            # Its prerequisites (organization, current term and a real leave
+            # application) are already available after domains + 13B, so seed
+            # it before any downstream module references that evidence.
+            governance = seed_governance_coverage(db, SANDBOX_TID)
+
             # 所有教务课程快照先统一成 32 专业真实课程，再生成会保存课程名快照的教材和评教事实。
             professional = professionalize_school_20k(db, SANDBOX_TID)
             professional_baseline = professional.get("validation") or {}
@@ -207,27 +250,37 @@ def main() -> int:
                 raise RuntimeError(f"20K 专业核心画像基础验收未通过: {professional_baseline}")
             professional_academic_snapshots = validate_professional_academic_snapshots(db, SANDBOX_TID)
             academic_textbooks = seed_school_academic_textbooks_20k(db, SANDBOX_TID)
+            academic_operational = seed_academic_operational_coverage(db, SANDBOX_TID)
             academic_quality = seed_school_academic_quality_20k(db, SANDBOX_TID)
 
             # 历史学期结账必须由正式十三域归档策略给出 PASS；任何一域未闭环都中止 20K 重建。
             academic_archive = seed_school_academic_archive_20k(db, SANDBOX_TID)
+            academic_core_flows = seed_academic_core_flows(db, SANDBOX_TID)
 
             mentor_workload = reconcile_school_mentor_workload_20k(db, SANDBOX_TID)
             graduation_process = seed_school_graduation_process_20k(db, SANDBOX_TID)
             graduation_operational = seed_graduation_operational_coverage(db, SANDBOX_TID)
+            graduation_historical = seed_graduation_historical_coverage(db, SANDBOX_TID)
             employment = seed_school_employment_20k(db, SANDBOX_TID)
 
             exam_reconciliation = reconcile_exam_rooms(db, SANDBOX_TID)
             internship_reconciliation = reconcile_internship_capacity(db, SANDBOX_TID)
+            internship_operational = seed_internship_operational_coverage(db, SANDBOX_TID)
             affairs = seed_school_affairs_20k(db, SANDBOX_TID)
+            affairs_operational = seed_affairs_operational_coverage(db, SANDBOX_TID)
+            affairs_core_flows = seed_affairs_core_flows(db, SANDBOX_TID)
+            shared_operational = seed_shared_operational_coverage(db, SANDBOX_TID)
+            platform_operational = seed_platform_operational_coverage(db, SANDBOX_TID)
 
             acceptance = {
                 "master": validate_school_master(db, SANDBOX_TID),
                 "legacyIdentityResidue": legacy_identity_acceptance,
                 "roleTopology": role_topology_acceptance,
+                "governance": validate_governance_coverage(db, SANDBOX_TID),
                 "mentorWorkload": validate_school_mentor_workload_20k(db, SANDBOX_TID),
                 "graduationProcess": validate_school_graduation_process_20k(db, SANDBOX_TID),
                 "graduationOperational": validate_graduation_operational_coverage(db, SANDBOX_TID),
+                "graduationHistorical": validate_graduation_historical_coverage(db, SANDBOX_TID),
                 "domains": validate_core_domain_facts_20k(db, SANDBOX_TID),
                 "academicAffairsBaseline": academic_affairs_baseline,
                 "academicAffairsFinal": validate_school_academic_final_20k(db, SANDBOX_TID),
@@ -235,11 +288,18 @@ def main() -> int:
                 "professionalFinal": validate_professional_school_final_20k(db, SANDBOX_TID),
                 "professionalAcademicSnapshots": professional_academic_snapshots,
                 "academicTextbooks": validate_school_academic_textbooks_20k(db, SANDBOX_TID),
+                "academicOperational": validate_academic_operational_coverage(db, SANDBOX_TID),
                 "academicQuality": validate_school_academic_quality_20k(db, SANDBOX_TID),
                 "academicArchive": validate_school_academic_archive_20k(db, SANDBOX_TID),
+                "academicCoreFlows": validate_academic_core_flows(db, SANDBOX_TID),
                 "employment": validate_employment_facts_20k(db, SANDBOX_TID),
                 "studentAffairs": validate_affairs_facts(db, SANDBOX_TID),
+                "studentAffairsOperational": validate_affairs_operational_coverage(db, SANDBOX_TID),
+                "studentAffairsCoreFlows": validate_affairs_core_flows(db, SANDBOX_TID),
+                "sharedOperational": validate_shared_operational_coverage(db, SANDBOX_TID),
+                "platformOperational": validate_platform_operational_coverage(db, SANDBOX_TID),
                 "internshipReconciliation": internship_reconciliation,
+                "internshipOperational": validate_internship_operational_coverage(db, SANDBOX_TID),
                 "examReconciliation": exam_reconciliation,
             }
             report = {
@@ -247,17 +307,26 @@ def main() -> int:
                     "master": master,
                     "legacyIdentityCleanup": legacy_identity_cleanup,
                     "roleTopology": role_topology,
+                    "governance": governance,
                     "mentorWorkload": mentor_workload,
                     "graduationProcess": graduation_process,
                     "graduationOperational": graduation_operational,
+                    "graduationHistorical": graduation_historical,
+                    "internshipOperational": internship_operational,
+                    "studentAffairsCoreFlows": affairs_core_flows,
                     "domains": domains,
                     "academicAffairs": academic_affairs,
                     "professional": professional,
                     "professionalAcademicSnapshots": professional_academic_snapshots,
                     "academicTextbooks": academic_textbooks,
+                    "academicCoreFlows": academic_core_flows,
+                    "academicOperational": academic_operational,
                     "academicQuality": academic_quality,
                     "academicArchive": academic_archive,
                     "employment": employment,
+                    "studentAffairsOperational": affairs_operational,
+                    "sharedOperational": shared_operational,
+                    "platformOperational": platform_operational,
                     "studentAffairs": affairs,
                     "acceptance": acceptance,
                 }

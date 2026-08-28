@@ -87,6 +87,12 @@ def _reconcile_academic_grade_names(db, tenant_id: int) -> dict:
                 f"acadStudentId={student_id} grade={grade} rows={row_count} expected={expected}"
             )
 
+    # Do not use ``yield_per`` here.  MySQL implements it with an unbuffered
+    # server-side cursor; issuing the batched UPDATEs below on the same
+    # connection invalidates that cursor and can make the next student appear
+    # to have only a partial grade set.  The Core result buffers lightweight
+    # three-column tuples (not ORM entities), which is bounded and safe for the
+    # 174,600-row standard sandbox profile.
     rows = db.execute(
         select(AcademicGrade.id, AcademicGrade.acad_student_id, AcademicGrade.course_name)
         .where(
@@ -94,7 +100,6 @@ def _reconcile_academic_grade_names(db, tenant_id: int) -> dict:
             AcademicGrade.is_deleted.is_(False),
         )
         .order_by(AcademicGrade.acad_student_id, AcademicGrade.id)
-        .execution_options(yield_per=2000)
     )
     for grade_id, acad_student_id, current_name in rows:
         sid = int(acad_student_id)

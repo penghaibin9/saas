@@ -157,7 +157,12 @@ def upgrade() -> None:
             CREATE TRIGGER trg_intern_material_snapshot_no_delete
             BEFORE DELETE ON t_internship_application_material_snapshot
             FOR EACH ROW
-            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'INTERNSHIP_MATERIAL_SNAPSHOT_IMMUTABLE'
+            BEGIN
+              IF COALESCE(@sandbox_reset_tenant_id, 0) <> OLD.tenant_id
+                 OR OLD.tenant_id <> 1000000000000000007 THEN
+                SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'INTERNSHIP_MATERIAL_SNAPSHOT_IMMUTABLE';
+              END IF;
+            END
             """
         )
 

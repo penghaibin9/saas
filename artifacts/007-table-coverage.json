@@ -4,70 +4,70 @@
     "code": "sandbox-school",
     "schoolName": "跃科职业技术学院（演示）"
   },
-  "generatedAt": "2026-08-28T02:09:57.860043+00:00",
+  "generatedAt": "2026-08-28T23:52:18.786616+00:00",
   "summary": {
     "databaseTables": 450,
-    "productionBusinessTables": 417,
-    "tenantBusinessTables": 417,
-    "coveredBusinessTables": 139,
-    "emptyBusinessTables": 278,
-    "exemptTables": 33
+    "productionBusinessTables": 414,
+    "tenantBusinessTables": 414,
+    "coveredBusinessTables": 414,
+    "emptyBusinessTables": 0,
+    "exemptTables": 36
   },
   "moduleCoverage": {
     "教务": {
-      "covered": 52,
+      "covered": 114,
       "total": 114,
-      "rate": 45.61
+      "rate": 100.0
     },
     "其他": {
-      "covered": 4,
-      "total": 61,
-      "rate": 6.56
+      "covered": 60,
+      "total": 60,
+      "rate": 100.0
     },
     "学工": {
-      "covered": 36,
+      "covered": 86,
       "total": 86,
-      "rate": 41.86
+      "rate": 100.0
     },
     "岗位实习": {
-      "covered": 9,
+      "covered": 55,
       "total": 55,
-      "rate": 16.36
+      "rate": 100.0
     },
     "平台治理": {
-      "covered": 1,
-      "total": 13,
-      "rate": 7.69
+      "covered": 11,
+      "total": 11,
+      "rate": 100.0
     },
     "学校组织": {
-      "covered": 2,
+      "covered": 5,
       "total": 5,
-      "rate": 40.0
+      "rate": 100.0
     },
     "系统管理": {
-      "covered": 3,
+      "covered": 16,
       "total": 16,
-      "rate": 18.75
+      "rate": 100.0
     },
     "就业": {
-      "covered": 6,
+      "covered": 8,
       "total": 8,
-      "rate": 75.0
+      "rate": 100.0
     },
     "毕业设计": {
-      "covered": 20,
+      "covered": 38,
       "total": 38,
-      "rate": 52.63
+      "rate": 100.0
     },
     "流程中心": {
-      "covered": 3,
+      "covered": 15,
       "total": 15,
-      "rate": 20.0
+      "rate": 100.0
     },
     "学生": {
-      "covered": 3,
+      "covered": 6,
       "total": 6,
-      "rate": 50.0
+      "rate": 100.0
     }
   },
   "integrity": {
@@ -127,11 +127,11 @@
       "submodule": "教学运行与质量",
       "purpose": "归档批次、归档包或归档明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_attendance_session",
@@ -166,11 +166,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_class_time_band",
@@ -179,11 +179,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_classroom",
@@ -205,11 +205,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_course",
@@ -231,11 +231,11 @@
       "submodule": "教学运行与质量",
       "purpose": "材料或证明文件",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_deferred_exam",
@@ -244,11 +244,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_effective_grade_policy",
@@ -270,11 +270,11 @@
       "submodule": "教学运行与质量",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_effective_grade_policy_snapshot",
@@ -283,8 +283,8 @@
       "submodule": "教学运行与质量",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 52000,
-      "plannedCount": 52000,
+      "current007Count": 52002,
+      "plannedCount": 52002,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -296,11 +296,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_evaluation_appeal",
@@ -309,11 +309,11 @@
       "submodule": "教学运行与质量",
       "purpose": "评价任务、记录或结果",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_evaluation_batch",
@@ -374,11 +374,11 @@
       "submodule": "教学运行与质量",
       "purpose": "操作留痕/审计",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_exam_batch",
@@ -413,11 +413,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_exam_invigilator",
@@ -439,11 +439,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_exam_room",
@@ -478,11 +478,11 @@
       "submodule": "教学运行与质量",
       "purpose": "教师业务关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_exemption",
@@ -491,11 +491,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_gpa_point_policy",
@@ -504,11 +504,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_grade_change_request",
@@ -517,11 +517,11 @@
       "submodule": "教学运行与质量",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_grade_component_score",
@@ -530,11 +530,11 @@
       "submodule": "教学运行与质量",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_grade_correction",
@@ -543,11 +543,11 @@
       "submodule": "教学运行与质量",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_grade_identity_head",
@@ -556,11 +556,11 @@
       "submodule": "教学运行与质量",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_grade_recheck",
@@ -569,11 +569,11 @@
       "submodule": "教学运行与质量",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_grade_recognition",
@@ -582,11 +582,11 @@
       "submodule": "教学运行与质量",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_grade_record",
@@ -608,11 +608,11 @@
       "submodule": "教学运行与质量",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_grade_task",
@@ -634,11 +634,11 @@
       "submodule": "教学运行与质量",
       "purpose": "操作留痕/审计",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_graduation_audit_result",
@@ -647,11 +647,11 @@
       "submodule": "教学运行与质量",
       "purpose": "操作留痕/审计",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_graduation_certificate",
@@ -660,11 +660,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_graduation_decision_fact",
@@ -673,11 +673,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_graduation_evaluation_run",
@@ -686,11 +686,11 @@
       "submodule": "教学运行与质量",
       "purpose": "评价任务、记录或结果",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_lab_booking",
@@ -699,11 +699,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_lab_resource",
@@ -712,11 +712,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_level_exam",
@@ -725,11 +725,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_level_exam_reg",
@@ -738,11 +738,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_major_direction",
@@ -751,11 +751,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_major_split_batch",
@@ -764,11 +764,11 @@
       "submodule": "教学运行与质量",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_major_split_option",
@@ -777,11 +777,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_major_split_volunteer",
@@ -790,11 +790,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_makeup_batch",
@@ -803,11 +803,11 @@
       "submodule": "教学运行与质量",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_post_archive_correction_case",
@@ -816,11 +816,11 @@
       "submodule": "教学运行与质量",
       "purpose": "归档批次、归档包或归档明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_program",
@@ -894,11 +894,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_quality_record",
@@ -959,11 +959,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_registration_exception",
@@ -985,11 +985,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_retake_apply",
@@ -998,11 +998,11 @@
       "submodule": "教学运行与质量",
       "purpose": "申请单",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_roster_consumer_snapshot",
@@ -1037,11 +1037,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_schedule_item",
@@ -1063,11 +1063,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_schedule_rule",
@@ -1076,11 +1076,11 @@
       "submodule": "教学运行与质量",
       "purpose": "业务规则",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_schedule_scope_head",
@@ -1102,11 +1102,11 @@
       "submodule": "教学运行与质量",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_selection_course",
@@ -1115,11 +1115,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_selection_record",
@@ -1128,11 +1128,11 @@
       "submodule": "教学运行与质量",
       "purpose": "业务过程明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_selection_round",
@@ -1141,11 +1141,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_semester_pilot",
@@ -1154,11 +1154,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_semester_pilot_checkpoint",
@@ -1167,11 +1167,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_stats_snapshot",
@@ -1193,11 +1193,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_student_academic_fact",
@@ -1206,11 +1206,11 @@
       "submodule": "教学运行与质量",
       "purpose": "学生业务主档或关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_student_correction",
@@ -1219,11 +1219,11 @@
       "submodule": "教学运行与质量",
       "purpose": "学生业务主档或关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_teacher_availability",
@@ -1232,11 +1232,11 @@
       "submodule": "教学运行与质量",
       "purpose": "教师业务关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_teaching_class",
@@ -1349,11 +1349,11 @@
       "submodule": "教学运行与质量",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_textbook_distribution_record",
@@ -1362,11 +1362,11 @@
       "submodule": "教学运行与质量",
       "purpose": "业务过程明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_textbook_fee_ledger",
@@ -1375,11 +1375,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_aa_textbook_order_batch",
@@ -1466,11 +1466,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_acad_audit_trail",
@@ -1479,11 +1479,11 @@
       "submodule": "教学运行与质量",
       "purpose": "操作留痕/审计",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_acad_grade",
@@ -1492,8 +1492,8 @@
       "submodule": "教学运行与质量",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 174600,
-      "plannedCount": 174600,
+      "current007Count": 174601,
+      "plannedCount": 174601,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -1518,11 +1518,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_acad_retake",
@@ -1531,11 +1531,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_acad_student",
@@ -1570,11 +1570,11 @@
       "submodule": "教学运行与质量",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_access_decision_trace",
@@ -1583,11 +1583,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_access_review_campaign",
@@ -1596,11 +1596,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_access_review_item",
@@ -1609,11 +1609,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_activity",
@@ -1622,11 +1622,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_activity_credit",
@@ -1635,11 +1635,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_activity_signup",
@@ -1648,11 +1648,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 4,
+      "plannedCount": 4,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_aid_apply",
@@ -1661,8 +1661,8 @@
       "submodule": "学生事务",
       "purpose": "申请单",
       "hasTenantId": true,
-      "current007Count": 1560,
-      "plannedCount": 1560,
+      "current007Count": 1561,
+      "plannedCount": 1561,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -1674,8 +1674,8 @@
       "submodule": "学生事务",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 2,
-      "plannedCount": 2,
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -1713,11 +1713,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_archive_batch",
@@ -1726,11 +1726,11 @@
       "submodule": "学生事务",
       "purpose": "归档批次、归档包或归档明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_archive_package",
@@ -1739,11 +1739,11 @@
       "submodule": "学生事务",
       "purpose": "归档批次、归档包或归档明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_attachment",
@@ -1752,11 +1752,11 @@
       "submodule": "学生事务",
       "purpose": "附件与材料关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_audit_trail",
@@ -1765,8 +1765,8 @@
       "submodule": "学生事务",
       "purpose": "操作留痕/审计",
       "hasTenantId": true,
-      "current007Count": 200,
-      "plannedCount": 200,
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -1778,11 +1778,11 @@
       "submodule": "学生事务",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_batch_job_item",
@@ -1791,11 +1791,11 @@
       "submodule": "学生事务",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_class_cadre",
@@ -1830,11 +1830,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_club_annual_review",
@@ -1843,11 +1843,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_club_member",
@@ -1856,11 +1856,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_counselor_assessment",
@@ -1895,11 +1895,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_counselor_eval",
@@ -1908,11 +1908,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_counselor_eval_indicator",
@@ -1921,11 +1921,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_credit_appeal",
@@ -1934,11 +1934,11 @@
       "submodule": "学生事务",
       "purpose": "申诉或复议",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_credit_category",
@@ -1947,11 +1947,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_discipline_appeal",
@@ -1960,11 +1960,11 @@
       "submodule": "学生事务",
       "purpose": "申诉或复议",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_discipline_case",
@@ -1999,11 +1999,11 @@
       "submodule": "学生事务",
       "purpose": "申请单",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_discipline_subflow_lock",
@@ -2012,11 +2012,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_dorm_bed",
@@ -2051,11 +2051,11 @@
       "submodule": "学生事务",
       "purpose": "业务过程明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_dorm_check_task",
@@ -2064,11 +2064,11 @@
       "submodule": "学生事务",
       "purpose": "待办、任务或执行项",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_dorm_room",
@@ -2090,11 +2090,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_family_contact_log",
@@ -2116,11 +2116,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_funding_amount_adjustment",
@@ -2129,13 +2129,13 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [
         "t_affairs_funding_application"
       ],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_funding_appeal",
@@ -2144,11 +2144,11 @@
       "submodule": "学生事务",
       "purpose": "申诉或复议",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_funding_application",
@@ -2157,8 +2157,8 @@
       "submodule": "学生事务",
       "purpose": "申请单",
       "hasTenantId": true,
-      "current007Count": 1300,
-      "plannedCount": 1300,
+      "current007Count": 1302,
+      "plannedCount": 1302,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -2170,8 +2170,8 @@
       "submodule": "学生事务",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 2,
-      "plannedCount": 2,
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -2209,11 +2209,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_league_dev_stage",
@@ -2222,11 +2222,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_leave_cancel_record",
@@ -2235,11 +2235,11 @@
       "submodule": "学生事务",
       "purpose": "业务过程明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_leave_extension",
@@ -2248,11 +2248,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_material_requirement",
@@ -2261,11 +2261,11 @@
       "submodule": "学生事务",
       "purpose": "材料或证明文件",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_material_submission",
@@ -2274,11 +2274,11 @@
       "submodule": "学生事务",
       "purpose": "材料或证明文件",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_org_position",
@@ -2287,11 +2287,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_psy_referral",
@@ -2300,11 +2300,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_psy_survey_submission",
@@ -2313,11 +2313,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_repair_job",
@@ -2339,8 +2339,8 @@
       "submodule": "学生事务",
       "purpose": "风险预警与处置",
       "hasTenantId": true,
-      "current007Count": 200,
-      "plannedCount": 200,
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -2365,11 +2365,11 @@
       "submodule": "学生事务",
       "purpose": "学生业务主档或关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_student_org",
@@ -2378,11 +2378,11 @@
       "submodule": "学生事务",
       "purpose": "学生业务主档或关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_talk_plan",
@@ -2391,11 +2391,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_talk_record",
@@ -2417,11 +2417,11 @@
       "submodule": "学生事务",
       "purpose": "业务过程明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_work_study_monthly",
@@ -2430,11 +2430,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_work_study_post",
@@ -2443,11 +2443,11 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_affairs_work_study_record",
@@ -2456,11 +2456,11 @@
       "submodule": "学生事务",
       "purpose": "业务过程明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_archive_manifest",
@@ -2469,11 +2469,11 @@
       "submodule": "学生事务",
       "purpose": "归档批次、归档包或归档明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_archive_manifest_item",
@@ -2482,11 +2482,11 @@
       "submodule": "学生事务",
       "purpose": "归档批次、归档包或归档明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_attendance_exception",
@@ -2508,7 +2508,7 @@
       "submodule": "待人工归类",
       "purpose": "操作留痕/审计",
       "hasTenantId": true,
-      "current007Count": 4,
+      "current007Count": 7,
       "plannedCount": "真实运行产生",
       "references": [],
       "coverageStatus": "EXEMPT_RUNTIME",
@@ -2560,11 +2560,11 @@
       "submodule": "待人工归类",
       "purpose": "风险预警与处置",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_backup_evidence",
@@ -2586,11 +2586,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_calendar_window",
@@ -2599,11 +2599,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_change_execution",
@@ -2625,11 +2625,11 @@
       "submodule": "租户与运维",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_change_request",
@@ -2677,11 +2677,11 @@
       "submodule": "待人工归类",
       "purpose": "业务配置或规则",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_config_definition",
@@ -2703,11 +2703,11 @@
       "submodule": "待人工归类",
       "purpose": "业务配置或规则",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_cs_audit_trail",
@@ -2716,11 +2716,11 @@
       "submodule": "学生事务",
       "purpose": "操作留痕/审计",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 4,
+      "plannedCount": 4,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_cs_discipline",
@@ -2820,8 +2820,8 @@
       "submodule": "学生事务",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 326,
-      "plannedCount": 326,
+      "current007Count": 325,
+      "plannedCount": 325,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -2833,13 +2833,13 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [
         "t_role"
       ],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_data_center_report",
@@ -2848,11 +2848,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_data_center_report_version",
@@ -2861,11 +2861,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_data_domain",
@@ -2874,11 +2874,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_data_owner",
@@ -2887,11 +2887,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_data_quality_issue",
@@ -2900,11 +2900,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_data_quality_rule",
@@ -2913,11 +2913,11 @@
       "submodule": "待人工归类",
       "purpose": "业务规则",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_data_scope_rule",
@@ -2926,11 +2926,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "业务规则",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_emergency_access_session",
@@ -2939,11 +2939,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_emp_audit_trail",
@@ -2978,11 +2978,11 @@
       "submodule": "就业与去向",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_emp_followup",
@@ -3030,11 +3030,11 @@
       "submodule": "就业与去向",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_emp_student",
@@ -3056,11 +3056,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_export_job",
@@ -3069,11 +3069,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_export_task",
@@ -3082,11 +3082,11 @@
       "submodule": "待人工归类",
       "purpose": "待办、任务或执行项",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_feedback",
@@ -3095,11 +3095,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_file_asset",
@@ -3108,11 +3108,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_file_binding",
@@ -3121,11 +3121,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_file_job",
@@ -3134,11 +3134,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_file_object",
@@ -3147,11 +3147,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_file_retention_policy",
@@ -3160,11 +3160,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_file_scan_record",
@@ -3173,11 +3173,11 @@
       "submodule": "待人工归类",
       "purpose": "业务过程明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_file_storage_quota_reservation",
@@ -3199,11 +3199,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_file_version",
@@ -3212,11 +3212,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_archive_record",
@@ -3225,11 +3225,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "归档批次、归档包或归档明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_archive_version",
@@ -3238,11 +3238,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "归档批次、归档包或归档明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_audit_trail",
@@ -3264,8 +3264,8 @@
       "submodule": "毕业设计全过程",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 1,
-      "plannedCount": 1,
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -3277,11 +3277,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_defense_expert",
@@ -3290,11 +3290,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_defense_group",
@@ -3303,11 +3303,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_defense_score",
@@ -3316,11 +3316,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "评分、成绩或评价",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 6,
+      "plannedCount": 6,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_excellent_outcome",
@@ -3329,11 +3329,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_final",
@@ -3342,11 +3342,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 4,
+      "plannedCount": 4,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_grade",
@@ -3355,11 +3355,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_grade_appeal",
@@ -3368,11 +3368,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "成绩、复核或成绩申诉",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_guidance",
@@ -3381,8 +3381,8 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 1120,
-      "plannedCount": 1120,
+      "current007Count": 1129,
+      "plannedCount": 1129,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -3407,11 +3407,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "材料或证明文件",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_material_item",
@@ -3459,8 +3459,8 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 6400,
-      "plannedCount": 6400,
+      "current007Count": 6403,
+      "plannedCount": 6403,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -3485,11 +3485,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_migration_issue",
@@ -3498,11 +3498,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_peer_review",
@@ -3511,11 +3511,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_plagiarism",
@@ -3524,11 +3524,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 4,
+      "plannedCount": 4,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_proposal",
@@ -3537,8 +3537,8 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 960,
-      "plannedCount": 960,
+      "current007Count": 964,
+      "plannedCount": 964,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -3550,11 +3550,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_review_feedback",
@@ -3563,11 +3563,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_risk_case",
@@ -3576,11 +3576,11 @@
       "submodule": "毕业设计全过程",
       "purpose": "风险预警与处置",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_gd_student",
@@ -3589,8 +3589,8 @@
       "submodule": "毕业设计全过程",
       "purpose": "学生业务主档或关联",
       "hasTenantId": true,
-      "current007Count": 6400,
-      "plannedCount": 6400,
+      "current007Count": 6403,
+      "plannedCount": 6403,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -3628,8 +3628,8 @@
       "submodule": "毕业设计全过程",
       "purpose": "待办、任务或执行项",
       "hasTenantId": true,
-      "current007Count": 2240,
-      "plannedCount": 2240,
+      "current007Count": 2243,
+      "plannedCount": 2243,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -3667,8 +3667,8 @@
       "submodule": "毕业设计全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 1120,
-      "plannedCount": 1120,
+      "current007Count": 1123,
+      "plannedCount": 1123,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -3745,11 +3745,11 @@
       "submodule": "待人工归类",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_identity_import_staging_row",
@@ -3758,11 +3758,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_import_job",
@@ -3771,11 +3771,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_import_row_error",
@@ -3784,11 +3784,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_incident",
@@ -3810,11 +3810,11 @@
       "submodule": "租户与运维",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_incident_update",
@@ -3836,11 +3836,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_agreement_template",
@@ -3849,11 +3849,11 @@
       "submodule": "实习全过程",
       "purpose": "业务模板",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_application",
@@ -3862,11 +3862,11 @@
       "submodule": "实习全过程",
       "purpose": "申请单",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 5,
+      "plannedCount": 5,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_application_material_snapshot",
@@ -3875,11 +3875,11 @@
       "submodule": "实习全过程",
       "purpose": "材料或证明文件",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_archive",
@@ -3888,11 +3888,11 @@
       "submodule": "实习全过程",
       "purpose": "归档批次、归档包或归档明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_audit_trail",
@@ -3901,8 +3901,8 @@
       "submodule": "实习全过程",
       "purpose": "操作留痕/审计",
       "hasTenantId": true,
-      "current007Count": 4,
-      "plannedCount": 4,
+      "current007Count": 7,
+      "plannedCount": 7,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -3914,8 +3914,8 @@
       "submodule": "实习全过程",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 1,
-      "plannedCount": 1,
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -3927,11 +3927,11 @@
       "submodule": "实习全过程",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 7,
+      "plannedCount": 7,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_batch_plan",
@@ -3940,11 +3940,11 @@
       "submodule": "实习全过程",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_batch_scope_rule",
@@ -3966,11 +3966,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 5,
+      "plannedCount": 5,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_change_request",
@@ -3979,11 +3979,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_checkin",
@@ -4005,11 +4005,11 @@
       "submodule": "实习全过程",
       "purpose": "操作或沟通记录",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_complaint",
@@ -4018,11 +4018,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_compliance_exemption",
@@ -4031,11 +4031,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_compliance_template",
@@ -4044,11 +4044,11 @@
       "submodule": "实习全过程",
       "purpose": "业务模板",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_consent",
@@ -4057,11 +4057,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_emergency_plan",
@@ -4070,11 +4070,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_enterprise_access_grant",
@@ -4083,11 +4083,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_enterprise_application_decision",
@@ -4096,11 +4096,11 @@
       "submodule": "实习全过程",
       "purpose": "申请单",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_enterprise_contact",
@@ -4109,11 +4109,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_enterprise_eval",
@@ -4122,11 +4122,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_enterprise_inspection",
@@ -4135,11 +4135,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_enterprise_member",
@@ -4148,11 +4148,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_evidence_package",
@@ -4161,11 +4161,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_final_score",
@@ -4174,11 +4174,11 @@
       "submodule": "实习全过程",
       "purpose": "评分、成绩或评价",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 4,
+      "plannedCount": 4,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_guidance",
@@ -4187,11 +4187,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_incident",
@@ -4200,11 +4200,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_insurance",
@@ -4213,11 +4213,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_intention",
@@ -4226,11 +4226,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_leave",
@@ -4239,11 +4239,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_makeup",
@@ -4252,11 +4252,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_match",
@@ -4265,11 +4265,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_placement_snapshot",
@@ -4278,11 +4278,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_plan_ack",
@@ -4291,11 +4291,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_plan_task_progress",
@@ -4304,11 +4304,11 @@
       "submodule": "实习全过程",
       "purpose": "待办、任务或执行项",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_position",
@@ -4317,8 +4317,8 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 160,
-      "plannedCount": 160,
+      "current007Count": 162,
+      "plannedCount": 162,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -4330,11 +4330,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_record",
@@ -4343,8 +4343,8 @@
       "submodule": "实习全过程",
       "purpose": "业务过程明细",
       "hasTenantId": true,
-      "current007Count": 6400,
-      "plannedCount": 6400,
+      "current007Count": 6403,
+      "plannedCount": 6403,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -4356,11 +4356,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_remuneration_record",
@@ -4369,11 +4369,11 @@
       "submodule": "实习全过程",
       "purpose": "业务过程明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_safety_completion",
@@ -4382,11 +4382,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_safety_course",
@@ -4395,11 +4395,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_score_config",
@@ -4408,11 +4408,11 @@
       "submodule": "实习全过程",
       "purpose": "评分、成绩或评价",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_special_filing",
@@ -4421,11 +4421,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_student_eval",
@@ -4434,11 +4434,11 @@
       "submodule": "实习全过程",
       "purpose": "学生业务主档或关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_student_profile",
@@ -4447,11 +4447,11 @@
       "submodule": "实习全过程",
       "purpose": "学生业务主档或关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 4,
+      "plannedCount": 4,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_student_profile_item",
@@ -4460,11 +4460,11 @@
       "submodule": "实习全过程",
       "purpose": "学生业务主档或关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 4,
+      "plannedCount": 4,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_visit",
@@ -4473,11 +4473,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_visit_plan",
@@ -4486,11 +4486,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_internship_volunteer_group",
@@ -4499,11 +4499,11 @@
       "submodule": "实习全过程",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 4,
+      "plannedCount": 4,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_maintenance_window",
@@ -4538,11 +4538,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_menu_node",
@@ -4551,11 +4551,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 5,
+      "plannedCount": 5,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_message_attachment",
@@ -4564,11 +4564,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "附件与材料关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_message_audience",
@@ -4577,11 +4577,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_message_campaign",
@@ -4590,8 +4590,8 @@
       "submodule": "审批、消息与待办",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 120,
-      "plannedCount": 120,
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -4603,11 +4603,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_message_delivery_job",
@@ -4629,7 +4629,7 @@
       "submodule": "审批、消息与待办",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 6600,
+      "current007Count": 0,
       "plannedCount": "真实运行产生",
       "references": [],
       "coverageStatus": "EXEMPT_RUNTIME",
@@ -4694,11 +4694,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "操作或沟通记录",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_notification_preference",
@@ -4707,11 +4707,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_notification_task",
@@ -4720,7 +4720,7 @@
       "submodule": "审批、消息与待办",
       "purpose": "待办、任务或执行项",
       "hasTenantId": true,
-      "current007Count": 0,
+      "current007Count": 1,
       "plannedCount": "真实运行产生",
       "references": [],
       "coverageStatus": "EXEMPT_RUNTIME",
@@ -4733,11 +4733,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "业务模板",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_order",
@@ -4746,11 +4746,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_org_version",
@@ -4759,11 +4759,11 @@
       "submodule": "组织与主数据",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_org_version_item",
@@ -4772,11 +4772,11 @@
       "submodule": "组织与主数据",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_orientation_archive",
@@ -4785,11 +4785,11 @@
       "submodule": "迎新",
       "purpose": "归档批次、归档包或归档明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_orientation_audit_trail",
@@ -4798,11 +4798,11 @@
       "submodule": "迎新",
       "purpose": "操作留痕/审计",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_orientation_batch",
@@ -4824,11 +4824,11 @@
       "submodule": "迎新",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_orientation_exception",
@@ -4837,8 +4837,8 @@
       "submodule": "迎新",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 141,
-      "plannedCount": 141,
+      "current007Count": 140,
+      "plannedCount": 140,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -4863,11 +4863,11 @@
       "submodule": "迎新",
       "purpose": "业务配置或规则",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_orientation_material",
@@ -4876,8 +4876,8 @@
       "submodule": "迎新",
       "purpose": "材料或证明文件",
       "hasTenantId": true,
-      "current007Count": 1226,
-      "plannedCount": 1226,
+      "current007Count": 1225,
+      "plannedCount": 1225,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -4889,11 +4889,11 @@
       "submodule": "迎新",
       "purpose": "待办、任务或执行项",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_orientation_student",
@@ -4941,11 +4941,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_permission_bundle_item",
@@ -4954,11 +4954,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_platform_config",
@@ -4967,11 +4967,11 @@
       "submodule": "租户与运维",
       "purpose": "业务配置或规则",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_platform_notice",
@@ -4980,11 +4980,11 @@
       "submodule": "租户与运维",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_platform_service",
@@ -5007,10 +5007,10 @@
       "purpose": "操作或沟通记录",
       "hasTenantId": true,
       "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "plannedCount": "真实登录请求临时产生",
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "EXEMPT_RUNTIME",
+      "emptyReason": "一次性登录凭据表；只能由真实登录请求生成并过期/消费，预置会伪造可用安全凭据"
     },
     {
       "table": "t_portal_sign_record",
@@ -5019,11 +5019,11 @@
       "submodule": "待人工归类",
       "purpose": "业务过程明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_problem",
@@ -5058,11 +5058,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_provisioning_step_run",
@@ -5097,11 +5097,11 @@
       "submodule": "待人工归类",
       "purpose": "待办、任务或执行项",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_restore_drill",
@@ -5149,11 +5149,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_role_permission",
@@ -5162,11 +5162,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_role_template",
@@ -5175,11 +5175,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "业务模板",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_role_template_permission",
@@ -5188,11 +5188,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "业务模板",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_role_workbench_config",
@@ -5201,11 +5201,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "业务配置或规则",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_sandbox_baseline",
@@ -5214,11 +5214,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_school_major_standard_binding",
@@ -5227,11 +5227,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_scope_policy_decision_log",
@@ -5240,11 +5240,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "操作或沟通记录",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_scope_policy_target",
@@ -5253,11 +5253,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_security_activation",
@@ -5266,11 +5266,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_security_audit_log",
@@ -5279,8 +5279,8 @@
       "submodule": "待人工归类",
       "purpose": "操作留痕/审计",
       "hasTenantId": true,
-      "current007Count": 60,
-      "plannedCount": 60,
+      "current007Count": 8,
+      "plannedCount": 8,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -5292,11 +5292,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_security_change_set",
@@ -5305,11 +5305,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_service_dependency",
@@ -5331,11 +5331,11 @@
       "submodule": "租户与运维",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 5,
+      "plannedCount": 5,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_shared_import_batch",
@@ -5344,11 +5344,11 @@
       "submodule": "待人工归类",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_sod_rule",
@@ -5357,11 +5357,11 @@
       "submodule": "待人工归类",
       "purpose": "业务规则",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_sod_violation",
@@ -5370,11 +5370,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_staff_assignment",
@@ -5383,11 +5383,11 @@
       "submodule": "组织与主数据",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_student_account_link",
@@ -5422,11 +5422,11 @@
       "submodule": "学生主档与门户",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_student_parent_link",
@@ -5435,11 +5435,11 @@
       "submodule": "学生主档与门户",
       "purpose": "学生业务主档或关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_student_profile",
@@ -5461,11 +5461,11 @@
       "submodule": "学生主档与门户",
       "purpose": "学生业务主档或关联",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_support_ticket",
@@ -5474,11 +5474,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_sys_config",
@@ -5487,11 +5487,11 @@
       "submodule": "待人工归类",
       "purpose": "业务配置或规则",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_system_business_relation_batch",
@@ -5500,11 +5500,11 @@
       "submodule": "待人工归类",
       "purpose": "业务批次或批量任务",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_system_business_relation_install_item",
@@ -5513,11 +5513,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_system_implementation_check",
@@ -5526,11 +5526,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 3,
+      "plannedCount": 3,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_system_implementation_project",
@@ -5539,11 +5539,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_system_implementation_section",
@@ -5552,11 +5552,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 5,
+      "plannedCount": 5,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_system_json_doc",
@@ -5565,11 +5565,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_system_preset_installation",
@@ -5578,11 +5578,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_teacher_student_scope",
@@ -5630,11 +5630,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 14,
+      "plannedCount": 14,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_tenant_fair_use_limit",
@@ -5643,11 +5643,11 @@
       "submodule": "租户与运维",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_tenant_fair_use_violation",
@@ -5656,11 +5656,11 @@
       "submodule": "租户与运维",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_tenant_offboarding_job",
@@ -5670,10 +5670,10 @@
       "purpose": "生产业务数据表",
       "hasTenantId": true,
       "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "plannedCount": "活跃租户必须为 0",
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "EXEMPT_LIFECYCLE",
+      "emptyReason": "007 为 ACTIVE 正式演示租户；退服任务仅能在真实退服流程产生，预置会与租户状态矛盾"
     },
     {
       "table": "t_tenant_offboarding_step",
@@ -5695,11 +5695,11 @@
       "submodule": "租户与运维",
       "purpose": "业务配置或规则",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_tenant_storage_quota",
@@ -5708,11 +5708,11 @@
       "submodule": "租户与运维",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_tenant_tombstone",
@@ -5722,10 +5722,10 @@
       "purpose": "生产业务数据表",
       "hasTenantId": true,
       "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "plannedCount": "活跃租户必须为 0",
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "EXEMPT_LIFECYCLE",
+      "emptyReason": "租户墓碑是完成退服后的不可变凭据；007 仍活跃，不能伪造已销户事实"
     },
     {
       "table": "t_tenant_usage_snapshot",
@@ -5734,11 +5734,11 @@
       "submodule": "租户与运维",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_training_record",
@@ -5747,11 +5747,11 @@
       "submodule": "待人工归类",
       "purpose": "业务过程明细",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_unified_message",
@@ -5760,8 +5760,8 @@
       "submodule": "审批、消息与待办",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 20121,
-      "plannedCount": 20121,
+      "current007Count": 20001,
+      "plannedCount": 20001,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -5773,8 +5773,8 @@
       "submodule": "审批、消息与待办",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 4587,
-      "plannedCount": 4587,
+      "current007Count": 4584,
+      "plannedCount": 4584,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -5786,8 +5786,8 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 21282,
-      "plannedCount": 21282,
+      "current007Count": 21284,
+      "plannedCount": 21284,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -5799,8 +5799,8 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 7,
-      "plannedCount": 7,
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
       "coverageStatus": "COVERED",
       "emptyReason": ""
@@ -5838,11 +5838,11 @@
       "submodule": "待人工归类",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_workflow_action_policy",
@@ -5851,11 +5851,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "流程定义、实例或审批节点",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_workflow_definition",
@@ -5864,11 +5864,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "流程定义、实例或审批节点",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_workflow_instance",
@@ -5877,11 +5877,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "流程定义、实例或审批节点",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_workflow_node_definition",
@@ -5890,11 +5890,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "流程定义、实例或审批节点",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 2,
+      "plannedCount": 2,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_workflow_task",
@@ -5903,11 +5903,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "流程定义、实例或审批节点",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_workflow_version_migration_event",
@@ -5916,11 +5916,11 @@
       "submodule": "审批、消息与待办",
       "purpose": "流程定义、实例或审批节点",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     },
     {
       "table": "t_wx_account_binding",
@@ -5929,11 +5929,11 @@
       "submodule": "角色、数据范围与授权",
       "purpose": "生产业务数据表",
       "hasTenantId": true,
-      "current007Count": 0,
-      "plannedCount": ">=1（按真实业务语义）",
+      "current007Count": 1,
+      "plannedCount": 1,
       "references": [],
-      "coverageStatus": "EMPTY_NEEDS_DOMAIN_SEED",
-      "emptyReason": "尚无与真实状态机一致的 007 领域记录；必须由对应领域 seed 补齐"
+      "coverageStatus": "COVERED",
+      "emptyReason": ""
     }
   ]
 }

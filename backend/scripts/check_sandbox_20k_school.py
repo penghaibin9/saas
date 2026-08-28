@@ -144,13 +144,22 @@ def main() -> int:
     from app.services.sandbox_school_academic_archive_seed import validate_school_academic_archive_20k
     from app.services.sandbox_school_academic_quality_seed import validate_school_academic_quality_20k
     from app.services.sandbox_school_academic_textbook_seed import validate_school_academic_textbooks_20k
+    from app.services.sandbox_school_academic_operational_seed import validate_academic_operational_coverage
+    from app.services.sandbox_school_academic_core_flow_seed import validate_academic_core_flows
     from app.services.sandbox_school_affairs_seed import validate_affairs_facts
+    from app.services.sandbox_school_affairs_operational_seed import validate_affairs_operational_coverage
+    from app.services.sandbox_school_affairs_core_flow_seed import validate_affairs_core_flows
     from app.services.sandbox_school_curriculum_closure import validate_school_academic_final_20k
     from app.services.sandbox_school_discipline_decision_reconcile import verify_discipline_decision_links
     from app.services.sandbox_school_domain_validation import validate_core_domain_facts_20k
     from app.services.sandbox_school_employment_seed import validate_employment_facts_20k
     from app.services.sandbox_school_graduation_process_seed import validate_school_graduation_process_20k
     from app.services.sandbox_school_graduation_operational_seed import validate_graduation_operational_coverage
+    from app.services.sandbox_school_graduation_historical_seed import validate_graduation_historical_coverage
+    from app.services.sandbox_school_internship_operational_seed import validate_internship_operational_coverage
+    from app.services.sandbox_school_shared_operational_seed import validate_shared_operational_coverage
+    from app.services.sandbox_school_platform_operational_seed import validate_platform_operational_coverage
+    from app.services.sandbox_school_governance_seed import validate_governance_coverage
     from app.services.sandbox_school_legacy_cleanup import validate_no_legacy_identity_residue
     from app.services.sandbox_school_master_seed import validate_school_master
     from app.services.sandbox_school_mentor_workload import validate_school_mentor_workload_20k
@@ -174,15 +183,24 @@ def main() -> int:
             mentor_workload = validate_school_mentor_workload_20k(db, SANDBOX_TID)
             graduation_process = validate_school_graduation_process_20k(db, SANDBOX_TID)
             graduation_operational = validate_graduation_operational_coverage(db, SANDBOX_TID)
+            graduation_historical = validate_graduation_historical_coverage(db, SANDBOX_TID)
+            internship_operational = validate_internship_operational_coverage(db, SANDBOX_TID)
+            shared_operational = validate_shared_operational_coverage(db, SANDBOX_TID)
+            platform_operational = validate_platform_operational_coverage(db, SANDBOX_TID)
+            governance = validate_governance_coverage(db, SANDBOX_TID)
             domains = validate_core_domain_facts_20k(db, SANDBOX_TID)
             academic_affairs_final = validate_school_academic_final_20k(db, SANDBOX_TID)
             academic_archive = validate_school_academic_archive_20k(db, SANDBOX_TID)
             professional_final = validate_professional_school_final_20k(db, SANDBOX_TID)
             professional_snapshots = validate_professional_academic_snapshots(db, SANDBOX_TID)
             academic_textbooks = validate_school_academic_textbooks_20k(db, SANDBOX_TID)
+            academic_operational = validate_academic_operational_coverage(db, SANDBOX_TID)
+            academic_core_flows = validate_academic_core_flows(db, SANDBOX_TID)
             academic_quality = validate_school_academic_quality_20k(db, SANDBOX_TID)
             employment = validate_employment_facts_20k(db, SANDBOX_TID)
             affairs = validate_affairs_facts(db, SANDBOX_TID)
+            affairs_operational = validate_affairs_operational_coverage(db, SANDBOX_TID)
+            affairs_core_flows = validate_affairs_core_flows(db, SANDBOX_TID)
             discipline_decisions = verify_discipline_decision_links(db, SANDBOX_TID)
         except RuntimeError as exc:
             print("[20k-check] FAIL", str(exc))
@@ -201,15 +219,24 @@ def main() -> int:
             "mentorWorkload": mentor_workload,
             "graduationProcess": graduation_process,
             "graduationOperational": graduation_operational,
+            "graduationHistorical": graduation_historical,
+            "internshipOperational": internship_operational,
+            "sharedOperational": shared_operational,
+            "platformOperational": platform_operational,
+            "governance": governance,
             "domains": domains,
             "academicAffairsFinal": academic_affairs_final,
             "academicArchive": academic_archive,
             "professionalFinal": professional_final,
             "professionalAcademicSnapshots": professional_snapshots,
             "academicTextbooks": academic_textbooks,
+            "academicOperational": academic_operational,
+            "academicCoreFlows": academic_core_flows,
             "academicQuality": academic_quality,
             "employment": employment,
             "studentAffairs": affairs,
+            "studentAffairsOperational": affairs_operational,
+            "studentAffairsCoreFlows": affairs_core_flows,
             "disciplineDecisionReconciliation": discipline_decisions,
             "internshipReconciliation": internship,
             "examReconciliation": exam,

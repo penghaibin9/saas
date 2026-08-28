@@ -14,10 +14,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import inspect, text
 
@@ -37,6 +40,27 @@ RUNTIME_TABLES = {
     "t_message_event_outbox",
     "t_message_delivery_job",
     "t_notification_task",
+    "t_portal_login_otp",
+    "t_tenant_offboarding_job",
+    "t_tenant_tombstone",
+}
+
+EXEMPTION_REASONS = {
+    "t_portal_login_otp": (
+        "EXEMPT_RUNTIME",
+        "一次性登录凭据表；只能由真实登录请求生成并过期/消费，预置会伪造可用安全凭据",
+        "真实登录请求临时产生",
+    ),
+    "t_tenant_offboarding_job": (
+        "EXEMPT_LIFECYCLE",
+        "007 为 ACTIVE 正式演示租户；退服任务仅能在真实退服流程产生，预置会与租户状态矛盾",
+        "活跃租户必须为 0",
+    ),
+    "t_tenant_tombstone": (
+        "EXEMPT_LIFECYCLE",
+        "租户墓碑是完成退服后的不可变凭据；007 仍活跃，不能伪造已销户事实",
+        "活跃租户必须为 0",
+    ),
 }
 
 # 无物理外键的历史表仍需做逻辑关联检查；先列出代码已明确的主干关系，余下关系
@@ -276,9 +300,12 @@ def main() -> int:
                 reason = "不含 tenant_id；共享主数据、平台表或数据库技术表，不能安全按 007 人工填充"
                 planned: str | int = "不适用"
             elif runtime:
-                status = "EXEMPT_RUNTIME"
-                reason = "运行时安全、队列或幂等技术表；只能由真实请求/worker 产生，禁止伪造"
-                planned = "真实运行产生"
+                if table in EXEMPTION_REASONS:
+                    status, reason, planned = EXEMPTION_REASONS[table]
+                else:
+                    status = "EXEMPT_RUNTIME"
+                    reason = "运行时安全、队列或幂等技术表；只能由真实请求/worker 产生，禁止伪造"
+                    planned = "真实运行产生"
             elif current > 0:
                 status = "COVERED"
                 reason = ""
