@@ -1,6 +1,8 @@
 """统一合规评估：规则/事实/证据分离；NOT_APPLICABLE 不计缺失。"""
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
+
 from datetime import datetime
 from contextlib import nullcontext
 
@@ -215,7 +217,7 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
         # 7 特殊备案
         cfg = rules["specialFiling"]
         from app.modules.internship.services.internship_special_filing_service import evaluate_triggers
-        pos = db.get(InternshipPosition, rec.position_id) if rec.position_id else None
+        pos = tenant_get(db, InternshipPosition, rec.position_id) if rec.position_id else None
         school_region = str(cfg.get("schoolRegion") or "").strip()
         trigger_tuples = evaluate_triggers(pos, stu, school_region) if cfg.get("required") else []
         enabled = {
@@ -272,7 +274,7 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
                                "NOT_APPLICABLE" if not pos or not cfg.get("required") else "MISSING",
                                "未分配岗位" if not pos else "规则未要求"))
         else:
-            company = db.get(EmpCompany, pos.company_id) if pos else None
+            company = tenant_get(db, EmpCompany, pos.company_id) if pos else None
             rights = evaluate_position_publishability(
                 pos, company, batch, stu, operation=operation, db=db)
             status = "VALID" if rights.get("passed") else "REJECTED"
@@ -488,7 +490,7 @@ def batch_compliance_stats(batch_id, user=None):
         for rec in rows:
             onboard = evaluate_internship_compliance(rec.id, "ONBOARD", user=user, db=db)
             archive = evaluate_internship_compliance(rec.id, "ARCHIVE", user=user, db=db)
-            stu = db.get(StudentProfile, rec.student_id)
+            stu = tenant_get(db, StudentProfile, rec.student_id)
             codes = sorted({x["code"] for x in onboard["blockers"]})
             archive_codes = sorted({x["code"] for x in archive["blockers"]})
             entry = {

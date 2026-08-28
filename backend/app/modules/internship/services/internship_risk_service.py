@@ -226,7 +226,7 @@ def student_help_report(user, body=None) -> dict:
             from app.services.message_event_outbox_service import emit_message_event
             advisor = None
             if getattr(rec, "advisor_user_id", None):
-                advisor = db.get(User, rec.advisor_user_id)
+                advisor = tenant_get(db, User, rec.advisor_user_id)
             if advisor:
                 emit_message_event(
                     db,

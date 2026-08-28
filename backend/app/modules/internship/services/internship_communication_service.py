@@ -6,6 +6,8 @@ owner：教师对本人指导学生相关沟通；管理端全校；作废走状
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
+
 from datetime import datetime
 
 from sqlalchemy import select
@@ -46,7 +48,7 @@ def _scope_ok(db, c, user):
     if not c.internship_id:
         return False
     rec = db.get(InternshipRecord, c.internship_id)
-    stu = db.get(StudentProfile, rec.student_id) if rec else None
+    stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
     return bool(rec and stu and _rec_in_scope(scope, db, rec, stu))
 
 
@@ -93,8 +95,8 @@ def list_communications(page, page_size, enterprise_id=None, student_id=None, st
             if scoped:
                 ok = False
                 if c.internship_id:
-                    rec = db.get(InternshipRecord, c.internship_id)
-                    stu = db.get(StudentProfile, rec.student_id) if rec else None
+                    rec = tenant_get(db, InternshipRecord, c.internship_id)
+                    stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
                     ok = bool(rec and stu and _rec_in_scope(scope, db, rec, stu))
                 if not ok:
                     continue

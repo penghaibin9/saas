@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
+
 from datetime import datetime
 
 from sqlalchemy import select
@@ -102,8 +104,8 @@ def list_reports(page, page_size, report_type=None, status=None, keyword=None, b
         scope, in_scope = _scope(user)
         items = []
         for r in rows:
-            rec = db.get(InternshipRecord, r.internship_id)
-            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            rec = tenant_get(db, InternshipRecord, r.internship_id)
+            stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
             if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
                 continue
             if not in_scope(scope, db, rec, stu):
@@ -193,8 +195,8 @@ def review_report(rid, action: str, comment: str = "", user=None, *, expected_ve
         r = db.get(InternshipProcessReport, _as_id(rid))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("过程报告不存在")
-        rec = db.get(InternshipRecord, r.internship_id)
-        stu = db.get(StudentProfile, rec.student_id) if rec else None
+        rec = tenant_get(db, InternshipRecord, r.internship_id)
+        stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
         scope, in_scope = _scope(user)
         if not in_scope(scope, db, rec, stu):
             from app.core.exceptions import no_permission

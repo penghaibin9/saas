@@ -10,6 +10,8 @@ batch_id 仅预留（nullable），本模块不依赖实习批次模块已完成
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
+
 from datetime import datetime
 
 from sqlalchemy import func, or_, select
@@ -107,8 +109,8 @@ def _row(p: InternshipPosition, db=None) -> dict:
     if db is not None:
         from app.modules.internship.services.internship_position_rights import (
             evaluate_position_publishability)
-        company = db.get(EmpCompany, p.company_id)
-        batch = db.get(InternshipBatch, p.batch_id) if p.batch_id else None
+        company = tenant_get(db, EmpCompany, p.company_id)
+        batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
         result = evaluate_position_publishability(p, company, batch, db=db)
         out.update({
             "publishable": result["passed"],
@@ -331,7 +333,7 @@ def update_position(pos_id, body) -> dict:
                         filing.status = "SUPERSEDED"
                         filing.version = int(filing.version or 0) + 1
             company = _company(db, p.company_id)
-            batch = db.get(InternshipBatch, p.batch_id) if p.batch_id else None
+            batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
             from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
             rights = evaluate_position_publishability(p, company, batch, operation="PUBLISH", db=db)
             p.rights_status = "COMPLIANT" if rights["passed"] else "NON_COMPLIANT"
@@ -343,7 +345,7 @@ def update_position(pos_id, body) -> dict:
                 p.status = "PUBLISHED"
         elif headcount_changed and p.status == "FULL" and int(p.headcount or 0) > int(p.allocated_count or 0):
             company = _company(db, p.company_id)
-            batch = db.get(InternshipBatch, p.batch_id) if p.batch_id else None
+            batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
             from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
             rights = evaluate_position_publishability(p, company, batch, operation="PUBLISH", db=db)
             p.rights_status = "COMPLIANT" if rights["passed"] else "NON_COMPLIANT"
@@ -374,7 +376,7 @@ def set_status(pos_id, action: str, reason: str = "") -> dict:
             if p.status not in ("PENDING", "OFFLINE", "SUSPENDED"):
                 raise AppException("DATA_CONFLICT", "仅待审核/已下架/已暂停岗位可上架")
             c = _company(db, p.company_id)
-            batch = db.get(InternshipBatch, p.batch_id) if p.batch_id else None
+            batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
             from app.modules.internship.services.internship_position_rights import (
                 evaluate_position_publishability)
             rights = evaluate_position_publishability(

@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
+
 from datetime import datetime
 
 from sqlalchemy import func, or_, select
@@ -71,7 +73,7 @@ def _assert_write_scope(db, r: InternshipRecord, user) -> None:
     """写操作数据范围校验：越出教师数据范围的写 → 403（与详情读 get_student 同边界）。
     ADMIN_TENANT（校级管理员）恒通过；SCOPED（指导教师/学院负责人）按本人指导/本院收敛。
     _current_scope / _rec_in_scope 在本模块下方定义，调用时已就绪（Python 运行期解析）。"""
-    stu = db.get(StudentProfile, r.student_id)
+    stu = tenant_get(db, StudentProfile, r.student_id)
     if not _rec_in_scope(_current_scope(user), db, r, stu):
         from app.core.exceptions import no_permission
         raise no_permission("该实习学生不在你的数据范围内")
@@ -146,8 +148,8 @@ def list_assignment_logs(page: int, page_size: int, keyword: str | None = None, 
         items = []
         needle = (keyword or "").strip().lower()
         for log in logs:
-            rec = db.get(InternshipRecord, log.target_id)
-            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            rec = tenant_get(db, InternshipRecord, log.target_id)
+            stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
             if not rec or not stu or not _rec_in_scope(scope, db, rec, stu):
                 continue
             row = {"id": str(log.id), "recordId": str(rec.id), "studentName": stu.real_name,
@@ -227,9 +229,9 @@ def _row_of(db, r: InternshipRecord) -> dict:
     from app.modules.internship.services.internship_service import resolve_student_class_college_names
     batch_name = ""
     if r.batch_id:
-        b = db.get(InternshipBatch, r.batch_id)
+        b = tenant_get(db, InternshipBatch, r.batch_id)
         batch_name = (b.batch_name or "") if b else ""
-    stu = db.get(StudentProfile, r.student_id)
+    stu = tenant_get(db, StudentProfile, r.student_id)
     class_name, _ = resolve_student_class_college_names(db, stu)
     return _row(r, stu, batch_name, class_name=class_name)
 
@@ -353,7 +355,7 @@ def get_student(rec_id, user=None) -> dict:
             StudentContact.contact_type == "PHONE")).first()
         company = position = None
         if r.enterprise_id:
-            c = db.get(EmpCompany, r.enterprise_id)
+            c = tenant_get(db, EmpCompany, r.enterprise_id)
             if c and not c.is_deleted:
                 company = {"id": str(c.id), "name": c.name, "coopStatus": c.coop_status,
                            "blacklist": bool(c.blacklist)}
@@ -500,7 +502,7 @@ def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_ve
         raise AppException("DATA_CONFLICT", "该学生已分配到此岗位")
     if p.status != "PUBLISHED":
         raise AppException("DATA_CONFLICT", f"仅「已上架」岗位可分配（当前：{p.status}）")
-    c = db.get(EmpCompany, p.company_id)
+    c = tenant_get(db, EmpCompany, p.company_id)
     if not c or c.is_deleted:
         raise not_found("岗位所属企业不存在")
     if c.blacklist or c.coop_status == "BLACKLIST":
@@ -611,7 +613,7 @@ def _onboard_rules(db, r: InternshipRecord) -> dict:
     default = {"requireAgreement": True, "requireInsurance": True, "requireAdvisor": True}
     if not r.batch_id:
         return default
-    b = db.get(InternshipBatch, r.batch_id)
+    b = tenant_get(db, InternshipBatch, r.batch_id)
     cfg = ((b.rules_config or {}).get("onboard") or {}) if b else {}
     values = {k: bool(cfg.get(k, v)) for k, v in default.items()}
     if b:
