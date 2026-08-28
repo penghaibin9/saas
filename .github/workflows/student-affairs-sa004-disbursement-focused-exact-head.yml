@@ -33,7 +33,7 @@ env:
   SMS_ENABLED: 'false'
   SCHEDULER_MODE: external
   FAST_TEST_SCHEMA: '1'
-  E2E_TARGET_SHA: a49d17ffb14fa12c8e1bbc929e15090d71e591c2
+  E2E_TARGET_SHA: c8e7f05d41bc28c379631b0b8daa3ef6302c7374
 
 jobs:
   focused-disbursement:
@@ -99,7 +99,7 @@ jobs:
         working-directory: app/backend
         shell: bash
         env:
-          MOCK_LOGIN_ENABLED: 'true'
+          MOCK_LOGIN_ENABLED: 'false'
         run: |
           set -euo pipefail
           mkdir -p test-results
