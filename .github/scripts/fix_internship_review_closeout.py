@@ -63,40 +63,48 @@ helper = '''def _visible_participant_student_ids(db, rows, user: dict | None = N
 if "def _visible_participant_student_ids" not in participant:
     participant = replace_once(participant, anchor, helper + anchor, "participant helper anchor")
 
-old = '''        requested_ids = [int(r.student_id) for r in rows]
+list_old = '''        requested_ids = [int(r.student_id) for r in rows]
         allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": requested_ids}),
                                 user=user, limit=None) if requested_ids else None
         allowed_ids = {int(s.id) for s in allowed.students} if allowed else set()
         rows = [r for r in rows if int(r.student_id) in allowed_ids]
 '''
-new = '''        allowed_ids = _visible_participant_student_ids(db, rows, user=user)
+list_new = '''        allowed_ids = _visible_participant_student_ids(db, rows, user=user)
         rows = [r for r in rows if int(r.student_id) in allowed_ids]
 '''
-# This exact old block appears in list_participants and summary.
-if participant.count(old) != 2:
-    raise SystemExit(f"participant roster scope blocks: expected 2, got {participant.count(old)}")
-participant = participant.replace(old, new, 2)
+participant = replace_once(participant, list_old, list_new, "participant list scope")
 
-old = '''        allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": [int(row.student_id)]}),
+summary_old = '''        requested_ids = [int(r.student_id) for r in rows]
+        allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": requested_ids}),
+                                user=user, limit=None) if requested_ids else None
+        allowed_ids = {int(s.id) for s in allowed.students} if allowed else set()
+        visible = [r for r in rows if int(r.student_id) in allowed_ids]
+'''
+summary_new = '''        allowed_ids = _visible_participant_student_ids(db, rows, user=user)
+        visible = [r for r in rows if int(r.student_id) in allowed_ids]
+'''
+participant = replace_once(participant, summary_old, summary_new, "participant summary scope")
+
+remove_old = '''        allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": [int(row.student_id)]}),
                                 user=user, limit=None)
         if int(row.student_id) not in {int(s.id) for s in allowed.students}:
             from app.core.exceptions import no_permission
             raise no_permission("该参与人不在你的数据范围内")
 '''
-new = '''        if int(row.student_id) not in _visible_participant_student_ids(db, [row], user=user):
+remove_new = '''        if int(row.student_id) not in _visible_participant_student_ids(db, [row], user=user):
             from app.core.exceptions import no_permission
             raise no_permission("该参与人不在你的数据范围内")
 '''
-participant = replace_once(participant, old, new, "participant remove scope")
+participant = replace_once(participant, remove_old, remove_new, "participant remove scope")
 
-old = '''        from app.core.affairs_security import student_directory_scope
+scope_old = '''        from app.core.affairs_security import student_directory_scope
         allow_classes, allow_students = student_directory_scope(user) if user is not None else (None, None)
         scoped_view = allow_classes is not None or allow_students is not None
 '''
-new = '''        from app.modules.internship.services.internship_student_service import _current_scope
+scope_new = '''        from app.modules.internship.services.internship_student_service import _current_scope
         scoped_view = bool(user is not None and _current_scope(user).get("mode") == "SCOPED")
 '''
-participant = replace_once(participant, old, new, "participant summary scope marker")
+participant = replace_once(participant, scope_old, scope_new, "participant summary scope marker")
 participant_path.write_text(participant, encoding="utf-8")
 
 
