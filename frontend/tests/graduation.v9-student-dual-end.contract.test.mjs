@@ -55,13 +55,16 @@ test('U10 midterm remediation and grade appeal expose the same server-owned stat
   assert.match(miniApi, /appealGraduationGrade: \(reason\) => real\.gdGradeAppeal\(reason\)/)
 })
 
-test('U10 student graduation core never falls back to mock truth', () => {
-  assert.match(miniApi, /getGraduationProposal: \(\) => real\.gdProposal\(\)/)
-  assert.match(miniApi, /getGraduationFinal: \(\) => real\.gdFinal\(\)/)
-  assert.match(miniApi, /getGraduationMidterm: \(\) => real\.gdMidterm\(\)/)
-  assert.match(miniApi, /getGraduationGrade: \(\) => real\.gdGrade\(\)/)
-  assert.doesNotMatch(miniApi, /getGraduationProposal:[^\n]*realFirst/)
-  assert.doesNotMatch(miniApi, /getGraduationFinal:[^\n]*realFirst/)
+test('U10 student graduation core stays real-only behind the latest-read race guard', () => {
+  assert.match(miniApi, /import \{ latestRead \} from '\.\/latestRead'/)
+  assert.match(miniApi, /getGraduationProposal: \(\) => latestRead\('student:graduation:proposal', \(\) => real\.gdProposal\(\)\)/)
+  assert.match(miniApi, /getGraduationFinal: \(\) => latestRead\('student:graduation:final', \(\) => real\.gdFinal\(\)\)/)
+  assert.match(miniApi, /getGraduationMidterm: \(\) => latestRead\('student:graduation:midterm', \(\) => real\.gdMidterm\(\)\)/)
+  assert.match(miniApi, /getGraduationGrade: \(\) => latestRead\('student:graduation:grade', \(\) => real\.gdGrade\(\)\)/)
+  for (const method of ['Proposal', 'Final', 'Midterm', 'Grade']) {
+    assert.doesNotMatch(miniApi, new RegExp(`getGraduation${method}:[^\\n]*realFirst`))
+    assert.doesNotMatch(miniApi, new RegExp(`getGraduation${method}:[^\\n]*mock`))
+  }
   assert.match(pcApi, /graduationProposal: \(\) => request\('\/portal\/graduation\/proposal'\)/)
   assert.match(pcApi, /graduationFinal: \(\) => request\('\/portal\/graduation\/final'\)/)
   assert.match(pcApi, /graduationGrade: \(\) => request\('\/portal\/graduation\/grade'\)/)

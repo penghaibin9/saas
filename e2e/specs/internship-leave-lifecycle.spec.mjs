@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { loadInternshipFixture } from '../lib/internship-fixture.mjs'
@@ -24,6 +25,11 @@ test.describe('岗位实习：学生请假—导师审批—学生销假—管�
   const returnNote = '已完成就诊并按时返岗'
 
   test.beforeAll(async () => {
+    execFileSync('python', ['../backend/scripts/e2e_seed_internship_sandbox.py'], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: 'inherit'
+    })
     fixture = await loadInternshipFixture()
     reason = `Playwright 实习请假 ${fixture.runId}：办理个人事务后返岗`
   })

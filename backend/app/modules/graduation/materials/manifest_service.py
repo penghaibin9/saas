@@ -86,9 +86,14 @@ def _student_for_update(db, gd_student_id: int) -> GraduationStudent:
 
 
 def _assert_no_open_risk(db, student: GraduationStudent) -> None:
+    # GD-R12 (材料未归档) is the self-referential risk resolved by this very
+    # filing transaction. Counting it here creates a deadlock:
+    # not FILED -> GD-R12 OPEN -> filing forbidden. Every other unresolved
+    # risk remains fail-closed.
     count = int(db.scalar(select(func.count()).select_from(GraduationRiskCase).where(
         GraduationRiskCase.tenant_id == _tid(),
         GraduationRiskCase.gd_student_id == int(student.id),
+        GraduationRiskCase.risk_code != "GD-R12",
         GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
         GraduationRiskCase.is_deleted.is_(False),
     )) or 0)
@@ -291,6 +296,17 @@ def file_archive(gd_student_id: int, archive_batch_no: str | None, user: dict) -
         archive.version = int(archive.version or 0) + 1
         student.stage = "ARCHIVED"
         student.version = int(student.version or 0) + 1
+
+        # V2 is now the canonical filing writer, so preserve the original filing
+        # side effects in the same transaction: graduation audit evidence and risk refresh.
+        from app.modules.graduation.services import graduation_archive_service as archive_service
+        from app.modules.graduation.services.graduation_risk_service import notify_risk_rescan
+
+        archive_service._audit(
+            db, archive.id, "核验归档",
+            detail=f"archiveBatchNo={requested};manifest={digest};revision={revision}",
+        )
+        notify_risk_rescan(db, student.id)
         db.flush()
         result = _manifest_view(db, manifest)
         db.commit()

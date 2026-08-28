@@ -67,8 +67,9 @@ def test_archive_preview_binds_the_final_archive_batch_number():
     api = text("frontend/src/modules/graduation/api/graduation-risk-archive.api.js")
     assert 'snapshot["archiveBatchNo"] = archive_no' in service
     assert "archive.archive_batch_no = archive_no" in service
-    assert "preview.archiveBatchNo" in api
+    assert "const { previewToken, archiveBatchNo, candidateCount, executableCount } = preview" in api
     assert "body: { ...body, archiveBatchNo, previewToken }" in api
+    assert "reconcileBatchFile(" in api
 
 
 def test_xlsx_formula_injection_is_neutralized_in_public_and_legacy_exports():
@@ -92,12 +93,18 @@ def test_second_defense_is_exactly_round_two_and_rejects_stale_grade_states():
 
 
 def test_grade_appeal_acceptance_performs_full_withdrawal_and_notification():
+    consistency = importlib.import_module(
+        "app.modules.graduation.services.graduation_grade_appeal_consistency"
+    )
+    from app.services.message_event_outbox_service import _EVENT_TEMPLATES
+
     service = text("backend/app/modules/graduation/services/graduation_grade_appeal_consistency.py")
     assert 'grade.status = "WITHDRAWN"' in service
     assert "grade.reviewed_at = None" in service
     assert 'student.stage = "DEFENSE"' in service
     assert "emit_message_event" in service
-    assert "GRADUATION_DESIGN.GRADE_APPEAL_REVIEWED" in service
+    assert consistency.GRADE_APPEAL_REVIEWED_EVENT == "GRADUATION_DESIGN.GRADE_APPEAL_REVIEWED"
+    assert consistency.GRADE_APPEAL_REVIEWED_EVENT in _EVENT_TEMPLATES
 
 
 def test_peer_review_is_bound_to_approved_final_and_both_student_clients_show_evidence():

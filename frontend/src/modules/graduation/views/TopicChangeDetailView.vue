@@ -17,7 +17,7 @@
       <div v-if="detail.reviewerName"><dt>审核人</dt><dd>{{ detail.reviewerName }} · {{ detail.reviewedAt }}</dd></div>
       <div><dt>发起人</dt><dd>{{ detail.requestedBy }} · {{ detail.requestedAt }}</dd></div>
     </dl>
-    <template v-if="detail && detail.status === 'PENDING'" #footer>
+    <template v-if="canTopicReview && detail && detail.status === 'PENDING'" #footer>
       <button type="button" class="mp-btn mp-btn--primary" @click="askApprove">通过</button>
       <button type="button" class="mp-btn mp-link--danger" @click="askReject">驳回</button>
     </template>
@@ -34,6 +34,7 @@ import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, StatusTag } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { gdTopicChangeApi } from '@/modules/graduation/api/graduation-topic-change.api'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 export default {
@@ -46,9 +47,15 @@ export default {
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '理由', action: null }
     }
   },
+  computed: {
+    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
+    canTopicView() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.view') },
+    canTopicReview() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.review') }
+  },
   created() { this.load() },
   methods: {
     async load() {
+      if (!this.canTopicView) { this.loading = false; this.detail = null; return }
       this.loading = true
       this.error = ''
       const res = await gdTopicChangeApi.getChangeRequestDetail(this.$route.params.id)
@@ -57,6 +64,7 @@ export default {
       this.loading = false
     },
     askApprove() {
+      if (!this.canTopicReview) return
       this.confirm = {
         visible: true, title: '通过变更申请',
         message: `确认通过「${this.detail.studentName}」由「${this.detail.oldTopicTitle}」变更至「${this.detail.newTopicTitle}」？将立即迁移选题分配。`,
@@ -64,6 +72,7 @@ export default {
       }
     },
     askReject() {
+      if (!this.canTopicReview) return
       this.confirm = {
         visible: true, title: '驳回变更申请',
         message: `驳回「${this.detail.studentName}」的变更申请？`,
@@ -71,6 +80,7 @@ export default {
       }
     },
     async onConfirm({ reason } = {}) {
+      if (!this.canTopicReview) { this.confirm.visible = false; return }
       this.submitting = true
       try {
         const res = await gdTopicChangeApi.reviewChangeRequest(this.detail.id, { action: this.confirm.action, comment: reason || '' })

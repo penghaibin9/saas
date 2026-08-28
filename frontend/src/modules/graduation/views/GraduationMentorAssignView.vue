@@ -5,7 +5,8 @@
     subtitle="须导师「已认证」且未满员，调导师原因≥5字"
     :back-to="backTo"
   >
-    <form class="ie-form" @submit.prevent="submit">
+    <ErrorState v-if="permissionError" :description="permissionError" />
+    <form v-else class="ie-form" @submit.prevent="submit">
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">学生</span><input class="ie-in" :value="form.studentLabel" disabled /></label>
       <div class="ie-fld ie-fld--full"><span class="ie-lbl">导师 <i>*</i></span>
         <AppAvailableGraduationMentorPicker v-model="form.mentorId" placeholder="按姓名 / 工号搜索已认证且未满员的导师" />
@@ -13,7 +14,7 @@
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">{{ form.mode === 'change' ? '调导师原因（≥5字）' : '分配原因' }}<i v-if="form.mode === 'change'">*</i></span><textarea v-model.trim="form.reason" class="ie-in" rows="2" /></label>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
-    <template #footer>
+    <template v-if="canAssignMentor" #footer>
       <button type="button" class="mp-btn" @click="$router.push(backTo)">取消</button>
       <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">确认</button>
     </template>
@@ -22,14 +23,16 @@
 
 <script>
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
+import { ErrorState } from '@/components/business'
 import { AppAvailableGraduationMentorPicker } from '@/components/common'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationMentorAssignView',
-  components: { GraduationFormPageShell, AppAvailableGraduationMentorPicker },
+  components: { GraduationFormPageShell, ErrorState, AppAvailableGraduationMentorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -38,9 +41,15 @@ export default {
     }
   },
   computed: {
-    backTo() { return '/admin/graduation/mentors?panel=assign' },
+    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
+    canMentorManage() { return matchPermission(this.permissionPatterns, 'graduationDesign.student.manage') },
+    canTopicAssign() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.assign') },
+    canAssignMentor() { return this.canMentorManage && this.canTopicAssign },
+    permissionError() { return this.canAssignMentor ? '' : '当前角色无导师分配权限' },
+    backTo() { return '/admin/graduation/mentors?panel=assign' }
   },
   async created() {
+    if (!this.canAssignMentor) return
     const studentId = this.$route.params.studentId || this.$route.query.studentId
     const mode = this.$route.query.mode === 'change' ? 'change' : 'assign'
     this.form.mode = mode
@@ -49,12 +58,14 @@ export default {
       if (res.code === 0) {
         this.form.studentId = studentId
         this.form.studentLabel = `${res.data.name}（${res.data.studentNo}）`
-      }
+      } else this.formError = res.message || '学生信息加载失败'
     }
   },
   methods: {
     async submit() {
+      if (!this.canAssignMentor) return
       this.formError = ''
+      if (!this.form.studentId) { this.formError = '学生信息无效，请返回重新选择'; return }
       if (!this.form.mentorId) { this.formError = '请选择导师'; return }
       if (this.form.mode === 'change' && (!this.form.reason || this.form.reason.length < 5)) {
         this.formError = '调导师原因至少 5 字'

@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
-    :title="titleMap[tab]"
-    :subtitle="subtitleMap[tab]"
+    :title="titleMap[tab] || '毕业设计扩展事项'"
+    :subtitle="subtitleMap[tab] || '仅展示当前角色有权处理的事项'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -10,9 +10,13 @@
     </template>
 
     <div class="gm-tabs">
-      <button class="gm-tabs__item" :class="{ 'is-active': tab === 'peer' }" @click="switchTab('peer')">成果互查整改</button>
-      <button class="gm-tabs__item" :class="{ 'is-active': tab === 'experts' }" @click="switchTab('experts')">答辩专家库</button>
-      <button class="gm-tabs__item" :class="{ 'is-active': tab === 'appeals' }" @click="switchTab('appeals')">成绩更正申诉</button>
+      <button
+        v-for="t in visibleTabs"
+        :key="t.key"
+        class="gm-tabs__item"
+        :class="{ 'is-active': tab === t.key }"
+        @click="switchTab(t.key)"
+      >{{ t.label }}</button>
     </div>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -25,7 +29,7 @@
         title="还没有互查记录"
         description="成果互查是让学生之间互相查论文、再据此整改。这一步不是必做的——学校要求做才做。"
       >
-        <template #actions>
+        <template v-if="canPeerAssign" #actions>
           <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/more/peer-assign')">分配互查</button>
         </template>
       </EmptyState>
@@ -42,19 +46,19 @@
         title="还没有答辩专家"
         description="把评委先录进专家库，之后每次排答辩直接从库里挑，不用重复录入。校外专家可以标记，需要回避的也能在这里记上。"
       >
-        <template #actions>
+        <template v-if="canManageExperts" #actions>
           <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/more/expert/create')">＋ 新增专家</button>
         </template>
       </EmptyState>
       <DataTable v-else :columns="expertCols" :rows="rows" row-key="id">
         <template #cell-expert="{ row }"><div class="mp-cell-main">{{ row.expertName }} <StatusTag v-if="row.isExternal" type="info" label="校外" /></div><div class="mp-cell-sub">{{ row.title || '—' }} · {{ row.collegeName || '—' }}{{ row.avoidNote ? ' · 回避：' + row.avoidNote : '' }}</div></template>
         <template #cell-status="{ row }"><StatusTag :type="row.status === 'ACTIVE' ? 'success' : 'default'" :label="row.statusLabel" dot /></template>
-        <template #cell-actions="{ row }"><button class="mp-link" @click="toggleExpert(row)">{{ row.status === 'ACTIVE' ? '停用' : '启用' }}</button></template>
+        <template #cell-actions="{ row }"><button v-if="canManageExperts" class="mp-link" @click="toggleExpert(row)">{{ row.status === 'ACTIVE' ? '停用' : '启用' }}</button></template>
       </DataTable>
     </div>
 
     <!-- 成绩更正申诉 -->
-    <div v-else class="mp-stack">
+    <div v-else-if="tab === 'appeals'" class="mp-stack">
       <div class="mp-tabs">
         <button v-for="s in appealTabs" :key="s.value" class="mp-tab" :class="{ 'is-active': appealStatus === s.value }" @click="appealStatus = s.value; load()">{{ s.label }}</button>
       </div>
@@ -84,6 +88,12 @@
       </DataTable>
     </div>
 
+    <EmptyState
+      v-else
+      title="当前角色没有可处理的扩展事项"
+      description="请从毕业设计中心选择当前角色已授权的工作区。"
+    />
+
     <AppConfirmDialog v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message" :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason" reason-label="驳回理由" :reason-chips="confirm.reasonChips || []" :submitting="submitting" @confirm="onConfirmAppeal" />
   </ModulePageShell>
 </template>
@@ -94,6 +104,7 @@ import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, Err
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppPermissionButton } from '@/components/common'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 const APPEAL_REJECT_REASON_CHIPS = [
@@ -102,13 +113,19 @@ const APPEAL_REJECT_REASON_CHIPS = [
   '申诉材料不足以证明评分存在错误'
 ]
 
+const MORE_TABS = [
+  { key: 'peer', label: '成果互查整改', permissionKey: 'graduationDesign.review.view' },
+  { key: 'experts', label: '答辩专家库', permissionKey: 'graduationDesign.defense.groupManage' },
+  { key: 'appeals', label: '成绩更正申诉', permissionKey: 'graduationDesign.grade.appealReview' }
+]
+
 export default {
   name: 'GraduationMoreView',
   components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppPermissionButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      tab: 'peer', loading: true, error: '', submitting: false, rows: [],
+      tab: '', loading: true, error: '', submitting: false, rows: [],
       appealStatus: '',
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确定', requireReason: false, action: '', row: null },
       titleMap: { peer: '成果互查整改', experts: '答辩专家库', appeals: '成绩更正申诉' },
@@ -120,28 +137,66 @@ export default {
     }
   },
   computed: {
+    permissionPatterns() {
+      return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : []
+    },
+    visibleTabs() {
+      return MORE_TABS.filter((item) => matchPermission(this.permissionPatterns, item.permissionKey))
+    },
+    canPeerAssign() {
+      return matchPermission(this.permissionPatterns, 'graduationDesign.review.assign')
+    },
+    canManageExperts() {
+      return matchPermission(this.permissionPatterns, 'graduationDesign.defense.groupManage')
+    },
+    canAppealReview() {
+      return matchPermission(this.permissionPatterns, 'graduationDesign.grade.appealReview')
+    },
     toolbar() {
-      if (this.tab === 'peer') return [{ key: 'assignPeer', label: '＋ 分配互查', variant: 'primary' }]
-      if (this.tab === 'experts') return [{ key: 'addExpert', label: '＋ 新增专家', variant: 'primary' }]
+      if (this.tab === 'peer' && this.canPeerAssign) return [{ key: 'assignPeer', label: '＋ 分配互查', variant: 'primary' }]
+      if (this.tab === 'experts' && this.canManageExperts) return [{ key: 'addExpert', label: '＋ 新增专家', variant: 'primary' }]
       return []
     },
     canReviewAppeal() {
       const pa = this.ctx.permissionActions.reviewGradeAppeal || {}
-      return pa.allowed !== false && pa.visible !== false
+      return this.canAppealReview && pa.allowed !== false && pa.visible !== false
     },
     reviewAppealReason() {
       const pa = this.ctx.permissionActions.reviewGradeAppeal || {}
       return pa.reason || '无成绩申诉复核权限'
     }
   },
-  watch: { '$route.query.panel': { immediate: true, handler(p) { this.tab = ['peer', 'experts', 'appeals'].includes(p) ? p : 'peer'; this.load() } } },
+  watch: {
+    '$route.query.panel': {
+      immediate: true,
+      handler(p) {
+        const requested = ['peer', 'experts', 'appeals'].includes(p) ? p : ''
+        const fallback = this.visibleTabs[0]?.key || ''
+        this.tab = this.isTabAllowed(requested) ? requested : fallback
+        this.load()
+      }
+    }
+  },
   methods: {
-    switchTab(t) { this.tab = t; this.$router.replace({ query: { panel: t } }); this.load() },
+    isTabAllowed(t) {
+      return !!t && this.visibleTabs.some((item) => item.key === t)
+    },
+    switchTab(t) {
+      if (!this.isTabAllowed(t)) return
+      this.tab = t
+      this.$router.replace({ query: { ...this.$route.query, panel: t } })
+    },
     onToolbar(k) {
-      if (k === 'assignPeer') this.$router.push('/admin/graduation/more/peer-assign')
-      if (k === 'addExpert') this.$router.push('/admin/graduation/more/expert/create')
+      if (k === 'assignPeer' && this.canPeerAssign) this.$router.push('/admin/graduation/more/peer-assign')
+      if (k === 'addExpert' && this.canManageExperts) this.$router.push('/admin/graduation/more/expert/create')
     },
     async load() {
+      if (!this.isTabAllowed(this.tab)) {
+        this.loading = false
+        this.error = ''
+        this.rows = []
+        return
+      }
       this.loading = true
       this.error = ''
       let res
@@ -157,6 +212,7 @@ export default {
       this.loading = false
     },
     async toggleExpert(row) {
+      if (!this.canManageExperts) return toast.error('无答辩专家库维护权限')
       const res = await graduationMoreApi.setExpertStatus(row.id, row.status === 'ACTIVE' ? 'DISABLE' : 'ENABLE')
       if (res.code === 0) this.load(); else toast.error(res.message)
     },
@@ -171,6 +227,7 @@ export default {
         }
     },
     async onConfirmAppeal({ reason } = {}) {
+      if (!this.canReviewAppeal) return toast.error(this.reviewAppealReason)
       this.submitting = true
       const res = await graduationMoreApi.reviewAppeal(this.confirm.row.id, this.confirm.action, reason || '')
       this.submitting = false

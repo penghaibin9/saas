@@ -28,7 +28,7 @@
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="openDetail(row)">详情</button>
-          <template v-if="row.status === 'PENDING'">
+          <template v-if="canTopicReview && row.status === 'PENDING'">
             <button class="mp-link" style="margin-left: var(--space-2)" @click="askApprove(row)">通过</button>
             <button class="mp-link mp-link--danger" style="margin-left: var(--space-2)" @click="askReject(row)">驳回</button>
           </template>
@@ -45,12 +45,10 @@
 </template>
 
 <script>
-/** 题目调整/选题变更申请审核（/admin/graduation/topic-changes）：
- * 学生获批题目后换题的唯一合法途径——发起变更申请→教师/管理员重新审核（通过即迁移分配，驳回须≥5字理由）。
- */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { gdTopicChangeApi } from '@/modules/graduation/api/graduation-topic-change.api'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 const STATUS_OPTS = [
@@ -73,6 +71,9 @@ export default {
     }
   },
   computed: {
+    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
+    canTopicView() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.view') },
+    canTopicReview() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.review') },
     filterFields() {
       return [{ key: 'status', label: '状态', type: 'select', options: STATUS_OPTS }]
     },
@@ -94,6 +95,7 @@ export default {
   created() { this.load() },
   methods: {
     async load() {
+      if (!this.canTopicView) { this.loading = false; this.rows = []; this.total = 0; return }
       this.loading = true; this.error = ''
       const res = await gdTopicChangeApi.getChangeRequests({ ...this.filters, page: this.page, pageSize: this.pageSize })
       if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
@@ -104,15 +106,19 @@ export default {
     turnPage(p) { this.page = p; this.load() },
     onToolbar(key) { if (key === 'refresh') this.load() },
     openDetail(row) {
+      if (!this.canTopicView) return
       this.$router.push(`/admin/graduation/topic-changes/${row.id}`)
     },
     askApprove(row) {
+      if (!this.canTopicReview) return
       this.confirm = { visible: true, title: '通过变更申请', message: `确认通过「${row.studentName}」由「${row.oldTopicTitle}」变更至「${row.newTopicTitle}」？将立即迁移选题分配。`, type: 'primary', confirmText: '通过', requireReason: false, action: 'APPROVE', row }
     },
     askReject(row) {
+      if (!this.canTopicReview) return
       this.confirm = { visible: true, title: '驳回变更申请', message: `驳回「${row.studentName}」的变更申请？`, type: 'danger', confirmText: '驳回', requireReason: true, reasonLabel: '驳回理由', action: 'REJECT', row }
     },
     async onConfirm({ reason } = {}) {
+      if (!this.canTopicReview) { this.confirm.visible = false; return }
       const { action, row } = this.confirm
       this.submitting = true
       try {

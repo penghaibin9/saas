@@ -1,0 +1,182 @@
+name: Internship S3 Native Handoff
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/internship-s3-native-handoff.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: internship-s3-native-handoff-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PRODUCT_EXACT_SHA: f34b800249252e84f9ab5f34b801742b76c0e68c
+  PRODUCT_API_BASE: https://api.hnyueke.com
+  PRODUCT_HELP_CENTER: https://hnyueke.com/help
+  EXPECTED_WECHAT_APPID: wxb569328a0dbf268b
+
+jobs:
+  native-handoff:
+    name: Exact product SHA mp-weixin handoff only
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact product SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_EXACT_SHA }}
+          fetch-depth: 0
+
+      - name: Assert exact product identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$PRODUCT_EXACT_SHA"
+          echo "productExactSha=$ACTUAL"
+          echo "runnerExactSha=${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Verify public production API DNS TLS and health
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEALTH_URL="${PRODUCT_API_BASE}/health"
+          CODE="$(curl --silent --show-error --location \
+            --connect-timeout 10 --max-time 20 \
+            --output /tmp/s3-public-health.json \
+            --write-out '%{http_code}' \
+            "$HEALTH_URL")"
+          cat /tmp/s3-public-health.json
+          test "$CODE" = '200'
+          grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"' /tmp/s3-public-health.json
+          echo "S3_PUBLIC_API_HEALTH=PASS"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+
+      - name: Build production-reachable mp-weixin package
+        working-directory: miniapp
+        env:
+          VITE_API_BASE_URL: ${{ env.PRODUCT_API_BASE }}
+          VITE_HELP_CENTER_URL: ${{ env.PRODUCT_HELP_CENTER }}
+          VITE_USE_MOCK: 'false'
+          WECHAT_APPID: ${{ env.EXPECTED_WECHAT_APPID }}
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build:mp-weixin:release
+          node ../scripts/check/scan-fixed-demo-credentials.mjs dist/build/mp-weixin
+
+      - name: Seal native handoff without claiming device PASS
+        working-directory: miniapp
+        env:
+          RUNNER_EXACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p ../e2e/runtime/s3-native
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+          const crypto = require('crypto')
+
+          const out = path.resolve('dist/build/mp-weixin')
+          const projectPath = path.join(out, 'project.config.json')
+          const appPath = path.join(out, 'app.json')
+          const reportPath = path.join(out, 'miniapp-package-report.json')
+          const releasePath = path.join(out, 'RELEASE_INFO.txt')
+          const envPath = path.join(out, 'config/env.js')
+
+          for (const file of [projectPath, appPath, reportPath, releasePath, envPath]) {
+            if (!fs.existsSync(file)) throw new Error(`missing native handoff file: ${file}`)
+          }
+
+          const project = JSON.parse(fs.readFileSync(projectPath, 'utf8'))
+          const app = JSON.parse(fs.readFileSync(appPath, 'utf8'))
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+          const release = fs.readFileSync(releasePath, 'utf8')
+          const envJs = fs.readFileSync(envPath, 'utf8')
+
+          if (project.compileType !== 'miniprogram') throw new Error(`compileType=${project.compileType}`)
+          if (project.appid !== process.env.EXPECTED_WECHAT_APPID) throw new Error(`appid=${project.appid}`)
+          if (project.setting?.urlCheck !== true) throw new Error('project.config urlCheck is not true')
+          if (report.budgetPass !== true) throw new Error('miniapp package budget did not pass')
+          if (!release.includes(`API: ${process.env.PRODUCT_API_BASE}`)) throw new Error('release info is not bound to production API')
+          if (!envJs.includes(`VITE_API_BASE_URL:\"${process.env.PRODUCT_API_BASE}\"`)) throw new Error('compiled env missing production API')
+          if (!envJs.includes('VITE_USE_MOCK:\"false\"')) throw new Error('compiled env is not mock=false')
+          if (/VITE_API_BASE_URL:\"https?:\/\/(?:127\.0\.0\.1|localhost)/i.test(envJs)) throw new Error('compiled API points to loopback/dev host')
+          if (/VITE_HELP_CENTER_URL:\"https?:\/\/(?:127\.0\.0\.1|localhost)/i.test(envJs)) throw new Error('compiled help center points to loopback/dev host')
+
+          const pages = new Set(app.pages || [])
+          for (const sub of (app.subPackages || app.subpackages || [])) {
+            const root = String(sub.root || '').replace(/^\/+|\/+$/g, '')
+            for (const p of (sub.pages || [])) pages.add([root, p].filter(Boolean).join('/'))
+          }
+          const requiredInternshipPages = [
+            'pages/student/internship/index',
+            'pages/student/internship/checkin/index',
+            'pages/teacher/internship-review/index',
+            'pages/teacher/internship-risk/index'
+          ]
+          const missing = requiredInternshipPages.filter((p) => !pages.has(p))
+          if (missing.length) throw new Error(`missing internship native pages: ${missing.join(', ')}`)
+
+          function walk(dir) {
+            return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+              const full = path.join(dir, entry.name)
+              return entry.isDirectory() ? walk(full) : [full]
+            })
+          }
+          const files = walk(out).sort()
+          const digestRows = files.map((file) => {
+            const rel = path.relative(out, file).split(path.sep).join('/')
+            const sha256 = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+            return `${sha256}  ${rel}`
+          })
+          fs.writeFileSync('../e2e/runtime/s3-native/mp-weixin-files.sha256', digestRows.join('\n') + '\n')
+
+          const manifest = {
+            gate: 'S3',
+            status: 'READY_FOR_NATIVE_ACCEPTANCE',
+            productExactSha: process.env.PRODUCT_EXACT_SHA,
+            runnerExactSha: process.env.RUNNER_EXACT_SHA,
+            artifactType: 'mp-weixin-importable',
+            apiBase: process.env.PRODUCT_API_BASE,
+            productionApiHealth: 'PASS',
+            helpCenterUrl: process.env.PRODUCT_HELP_CENTER,
+            appId: project.appid,
+            compileType: project.compileType,
+            urlCheck: project.setting?.urlCheck === true,
+            mockEnabled: false,
+            packageBudgetPass: report.budgetPass === true,
+            requiredInternshipPages,
+            wechatServerDomainConfig: 'PENDING_PLATFORM_CONFIRMATION',
+            privacyLocationDeclaration: 'PENDING_PLATFORM_CONFIRMATION',
+            nativeDevToolsEvidence: 'PENDING',
+            realDeviceEvidence: 'PENDING',
+            r9Eligible: false,
+            note: 'Build/runtime/network handoff only. S3 must not be marked PASS until WeChat platform prerequisites plus real WeChat DevTools and physical-device evidence are attached for this exact product SHA.'
+          }
+          fs.writeFileSync('../e2e/runtime/s3-native/s3-native-handoff.json', JSON.stringify(manifest, null, 2) + '\n')
+          console.log(JSON.stringify(manifest, null, 2))
+          NODE
+
+      - name: Upload exact-SHA WeChat DevTools import package
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-s3-mp-weixin-${{ env.PRODUCT_EXACT_SHA }}
+          path: |
+            miniapp/dist/build/mp-weixin/
+            e2e/runtime/s3-native/
+          if-no-files-found: error
+          retention-days: 14

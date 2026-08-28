@@ -253,7 +253,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分；可进本人工作台与待办
     "DORM_MANAGER": {*_WORKBENCH_SELF, "studentAffairs.dorm.*", "campusService.dorm.*"},
     # 辅导员：数据范围限本人所带班级（服务层 _allowed_class_ids/scope 收敛，越权返回 NO_DATA_SCOPE）。
-    # 本班范围内广读 + 操作 班级/请假/风险/谈话/家校；困难/资助/违纪的正式审批与登记归学工处/院，辅导员默认只读。
+    # 本班范围内广读 + 操作班级/请假/风险/谈话/家校；资助仅开放本人 COUNSELOR_REVIEW 初审节点。
+    # 资助后续学院/学校节点仍由 service 的 scope + WorkflowTask assignee 双重收敛；处分仅冻结解除子流程初审例外。
     "COUNSELOR": {
         *_WORKBENCH_SELF,
         "studentAffairs.dashboard.view",
@@ -261,8 +262,12 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "studentAffairs.student.view",
         "studentAffairs.leave.*", "studentAffairs.risk.*", "studentAffairs.talk.*",
         "studentAffairs.homeSchool.*",
-        "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.discipline.view",
+        "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.funding.approve", "studentAffairs.discipline.view",
+        "studentAffairs.discipline.remove.approve",
         "studentAffairs.archive.view", "studentAffairs.stats.view",
+        # 宿舍调宿：仅开放本班学生调宿入口/发起/审批能力；列表范围与审批节点仍由
+        # affairs_dorm_transfer_scope_guard + affairs_dorm_node_guard 双重 fail-closed 收敛。
+        "studentAffairs.dorm.view", "studentAffairs.dorm.transfer.create", "studentAffairs.dorm.transfer.approve",
         # 困难认定·辅导员初审节点（2026-07-18 甲方拍板扩权，见历史欠账"辅导员初审"矛盾记录）：
         # 仅授予 COUNSELOR_REVIEW 节点的通过/退回/驳回 + 该节点下本班学生家庭经济查看，
         # 不授予班级评议/学院复审/学校终审——节点授权由 affairs_aid_service._check_node_authority 收敛。
@@ -280,7 +285,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         # 仅此一个 academicAffairs.* 点，不含其它教务权限（其余节点由任课教师/学院/教务处按 academicAffairs.* 通配覆盖）
         "academicAffairs.deferredExam.counselorReview",
         # 教务·学籍异动辅导员初审（13B 学籍异动 Tier1 R1）：辅导员对本人所带班级学生的休学/复学/
-        # 退学/转专业申请首级审核（范围限本班，service 端 _check_node_authority 收敛），不授予发起/学院/教务处终审。
+        # 退学/转专业申请首级审核（范围限本班，service 端 _check_node_authority 收敛到本人节点），不授予发起/学院/教务处终审。
         "academicAffairs.statusChange.counselorReview",
         # 教务·班级课表查看（13B 课表管理 Tier1 R2 §2.15：辅导员本班）：仅授予查看，
         # 范围收敛到本班由 academic_affairs_schedule_service.class_schedule 用 build_affairs_context 校验，
@@ -324,23 +329,25 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "graduationDesign.grade.view", "graduationDesign.grade.review",
     },
     "GD_REVIEWER": {
-        *_WORKBENCH_SELF, "graduationDesign.dashboard.view", "graduationDesign.student.view",
+        *_WORKBENCH_SELF,
+        # 评阅工作区与所有毕设专角色页面都会先加载当前批次；只授予只读批次上下文。
+        "graduationDesign.dashboard.view", "graduationDesign.batch.view", "graduationDesign.student.view",
         "graduationDesign.review.view", "graduationDesign.review.submit", "graduationDesign.final.view",
     },
     "GD_DEFENSE_SECRETARY": {
         *_WORKBENCH_SELF,
-        "graduationDesign.dashboard.view", "graduationDesign.student.view",
+        "graduationDesign.dashboard.view", "graduationDesign.batch.view", "graduationDesign.student.view",
         "graduationDesign.defense.view", "graduationDesign.defense.notify",
         "graduationDesign.defense.scoreConfirm", "graduationDesign.defense.secondRound",
     },
     "GD_DEFENSE_EXPERT": {
         *_WORKBENCH_SELF,
-        "graduationDesign.dashboard.view", "graduationDesign.student.view",
+        "graduationDesign.dashboard.view", "graduationDesign.batch.view", "graduationDesign.student.view",
         "graduationDesign.defense.view", "graduationDesign.defense.score",
     },
     "GD_GRADE_ADMIN": {
         *_WORKBENCH_SELF,
-        "graduationDesign.dashboard.view", "graduationDesign.student.view",
+        "graduationDesign.dashboard.view", "graduationDesign.batch.view", "graduationDesign.student.view",
         "graduationDesign.grade.view", "graduationDesign.grade.calculate",
         "graduationDesign.grade.review", "graduationDesign.grade.publish",
         "graduationDesign.grade.withdraw", "graduationDesign.grade.appealReview",
@@ -348,7 +355,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 校内指导教师：本人指导学生（范围由 scope 收敛）——工作台/学生/打卡请假审批/周报批阅/指导巡访/风险处理/评价，看企业岗位与匹配结果
     "INTERN_MENTOR": {
         *_WORKBENCH_SELF,
-        # 请假审批页必须先加载当前实习批次；只授予读取上下文，不授予批次配置或写操作。
+        # 请假审批页必须先加载当前实习批次；只授予读取上下文，不授予任何批次配置或写操作。
         "internship.guide.*", "internship.dashboard.view", "internship.batch.view",
         "internship.student.view", "internship.student.material.view",
         "internship.attendance.*", "internship.makeup.*", "internship.leave.view", "internship.leave.review",

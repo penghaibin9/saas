@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from app.core.exceptions import AppException
 from app.db.session import get_sessionmaker
 from app.models import GraduationArchiveRecord, GraduationBatch, GraduationStudent
+from app.models.graduation_material import GraduationMaterialItem, GraduationMaterialRule
 from app.modules.graduation.services.graduation_archive_data_quality import (
     assert_archive_identity_writable,
     identity_anomaly_reasons,
@@ -95,6 +96,43 @@ def _seed_batch_preview_rows():
     db = get_sessionmaker()()
     try:
         batch = _new_batch(db, planned_count=3, label="dirty-preview")
+        rule = GraduationMaterialRule(
+            tenant_id=MAIN_TENANT_ID,
+            batch_id=batch.id,
+            rule_code="GD_MATERIAL_STANDARD",
+            rule_name="U7 dirty-preview rule",
+            rule_version=1,
+            status="ENABLED",
+            enabled=True,
+            default_owner_role="STUDENT",
+            version_policy="IMMUTABLE_APPEND",
+            archive_required=True,
+            sensitivity_level="SENSITIVE",
+            required_items_json=["THESIS_FINAL"],
+            allowed_ext_json=["pdf"],
+            max_files=1,
+            max_size_bytes=100 * 1024 * 1024,
+        )
+        db.add(rule)
+        db.flush()
+        db.add(GraduationMaterialItem(
+            tenant_id=MAIN_TENANT_ID,
+            rule_id=rule.id,
+            biz_stage="FINAL_APPROVED",
+            material_code="THESIS_FINAL",
+            material_name="论文定稿",
+            owner_role="STUDENT",
+            required=True,
+            allowed_ext_json=["pdf"],
+            max_files=1,
+            max_size_bytes=100 * 1024 * 1024,
+            version_policy="IMMUTABLE_APPEND",
+            review_required=True,
+            archive_required=True,
+            sensitivity_level="SENSITIVE",
+            sort_no=1,
+            enabled=True,
+        ))
         rows = [
             GraduationStudent(
                 tenant_id=MAIN_TENANT_ID, batch_id=batch.id,

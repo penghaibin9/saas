@@ -1,35 +1,32 @@
-"""Drain canonical external message workers for the Student V3 Real Task fixture.
+"""Wait for the standalone production-style message worker to recover Student V3 debts.
 
-The production publish endpoint is intentionally asynchronous. During 22:00–07:00 quiet hours,
-a normal IMMEDIATE message is also intentionally converted to SCHEDULED, so no delivery job exists
-until the external scheduled-message worker reaches ``scheduled_at``. Playwright itself runs with
-``SCHEDULER_MODE=external`` and does not start that process.
+The paired preparation helper has already:
+- formally published the acknowledgement campaign through the real HTTP contract;
+- fault-injected only that isolated campaign back to durable PENDING delivery jobs;
+- emitted one internship MessageEventOutbox row through the real producer contract;
+- exited without processing either debt.
 
-This test-only helper therefore replays the same two production stages in order:
-1. if the seeded acknowledgement was quiet-hour scheduled, simulate the scheduler clock reaching
-   its persisted ``scheduled_at`` and call the canonical ``process_scheduled_campaigns`` service;
-2. drain the canonical delivery-job worker and prove the student can read the message through the
-   real student message API.
-
-No campaign status, recipient row, delivery job, or UnifiedMessage is fabricated directly. The
-helper refuses non-local/non-test databases via the Real Task fixture safety gate.
+This helper is intentionally read/poll only. It MUST NOT import or call
+claim_and_process_delivery_jobs(), process_pending_outbox(), or job_delivery_and_outbox(). The
+workflow's independently started worker process is the only actor allowed to turn those durable
+rows into personal messages. Success requires both durable states to be SUCCEEDED and both messages
+to be readable through the real student message API.
 """
 from __future__ import annotations
 
 import json
+import time
 from collections import Counter
 
 from sqlalchemy import select
 
 from app.core.context import set_tenant
-from app.models import MessageCampaign, MessageDeliveryJob, StudentProfile, UnifiedMessage, User
-from app.services import message_campaign_service, message_delivery_service
+from app.models import MessageCampaign, MessageDeliveryJob, MessageEventOutbox, UnifiedMessage
 
 from scripts.e2e_seed_student_v3_realtask import (
     ACK_TITLE,
     STATE_PATH,
     STUDENT_LOGIN,
-    STUDENT_NO,
     _call,
     _login,
     _session,
@@ -37,143 +34,142 @@ from scripts.e2e_seed_student_v3_realtask import (
     assert_safe_target,
 )
 
-_MAX_ROUNDS = 12
-_BATCH_LIMIT = 40
+_MAX_ROUNDS = 60
+_SLEEP_SECONDS = 1
 
 
-def _tenant_context(facts: dict) -> dict:
-    """Match the request runtime tenant context shape expected by current_tenant_id()."""
-    return {"tenantId": facts["tenantId"]}
+def _tenant_context(tenant_id: int) -> dict:
+    return {"tenantId": str(tenant_id)}
 
 
-def _campaign_id_from_state() -> int | None:
-    state = json.loads(STATE_PATH.read_text(encoding="utf-8")) if STATE_PATH.exists() else {}
-    return int(((state.get("ackMessage") or {}).get("campaignId") or 0)) or None
-
-
-def _student_inbox_has_ack(token: str) -> bool:
+def _student_titles(token: str) -> set[str]:
     data = _call("/student-mini/messages?page=1&pageSize=100", token)
-    return any(str(row.get("title") or "") == ACK_TITLE for row in (data.get("items") or []))
+    return {str(row.get("title") or "") for row in (data.get("items") or [])}
 
 
-def _materialize_scheduled_campaign_if_needed(facts: dict) -> int:
-    """Replay the production scheduled-message stage without bypassing quiet-hour semantics.
-
-    CI can run at any wall-clock hour. If publish occurred in quiet hours, waiting until 07:00 would
-    make the browser gate nondeterministic. Instead, for this isolated local fixture only, advance
-    the campaign service's clock to the already-persisted scheduled_at and invoke the exact
-    production scheduler service. This changes no database fact by hand.
-    """
-    campaign_id = _campaign_id_from_state()
-    if not campaign_id:
-        return 0
+def _diagnostics(facts: dict, state: dict) -> dict:
+    tenant_id = int(facts["tenantId"])
+    recovery = state.get("workerRecovery") or {}
+    campaign_id = int(recovery.get("campaignId") or 0)
+    outbox_id = int(recovery.get("outboxId") or 0)
 
     db = _session()
     try:
-        set_tenant(_tenant_context(facts))
-        campaign = db.get(MessageCampaign, campaign_id)
-        if not campaign or str(campaign.status or "").upper() != "SCHEDULED":
-            return 0
-        scheduled_at = campaign.scheduled_at
-        if scheduled_at is None:
-            raise SystemExit("S9-RT campaign is SCHEDULED without scheduled_at")
-    finally:
-        db.close()
-
-    original_now = message_campaign_service._utc_now
-    try:
-        # ``process_scheduled_campaigns`` itself owns the SCHEDULED -> PUBLISHING transition,
-        # audience-fingerprint revalidation, and transactional delivery-job enqueue.
-        message_campaign_service._utc_now = lambda: scheduled_at
-        set_tenant(_tenant_context(facts))
-        materialized = int(message_campaign_service.process_scheduled_campaigns(limit=30) or 0)
-    finally:
-        message_campaign_service._utc_now = original_now
-
-    print(
-        f"[s9-rt] scheduled-message worker replayed campaign={campaign_id} "
-        f"scheduledAt={scheduled_at.isoformat()} processed={materialized}"
-    )
-    return materialized
-
-
-def _diagnostics(facts: dict) -> dict:
-    campaign_id = _campaign_id_from_state()
-    db = _session()
-    try:
-        set_tenant(_tenant_context(facts))
-        student = db.scalars(select(StudentProfile).where(
-            StudentProfile.tenant_id == facts["tenantId"],
-            StudentProfile.student_no == STUDENT_NO,
-            StudentProfile.is_deleted.is_(False),
-        )).first()
-        account = db.scalars(select(User).where(
-            User.tenant_id == facts["tenantId"],
-            User.login_name == STUDENT_LOGIN[0],
-            User.is_deleted.is_(False),
-        )).first()
-        campaign = db.get(MessageCampaign, campaign_id) if campaign_id else None
+        set_tenant(_tenant_context(tenant_id))
+        campaign = db.scalar(select(MessageCampaign).where(
+            MessageCampaign.id == campaign_id,
+            MessageCampaign.tenant_id == tenant_id,
+            MessageCampaign.is_deleted.is_(False),
+        )) if campaign_id else None
         jobs = db.scalars(select(MessageDeliveryJob).where(
-            MessageDeliveryJob.tenant_id == facts["tenantId"],
+            MessageDeliveryJob.tenant_id == tenant_id,
             MessageDeliveryJob.campaign_id == campaign_id,
             MessageDeliveryJob.is_deleted.is_(False),
-        )).all() if campaign_id else []
-        rows = db.scalars(select(UnifiedMessage).where(
-            UnifiedMessage.tenant_id == facts["tenantId"],
+        ).order_by(MessageDeliveryJob.id.asc())).all() if campaign_id else []
+        outbox = db.scalar(select(MessageEventOutbox).where(
+            MessageEventOutbox.id == outbox_id,
+            MessageEventOutbox.tenant_id == tenant_id,
+            MessageEventOutbox.is_deleted.is_(False),
+        )) if outbox_id else None
+        ack_rows = db.scalars(select(UnifiedMessage).where(
+            UnifiedMessage.tenant_id == tenant_id,
             UnifiedMessage.campaign_id == campaign_id,
             UnifiedMessage.is_deleted.is_(False),
         )).all() if campaign_id else []
+        outbox_rows = db.scalars(select(UnifiedMessage).where(
+            UnifiedMessage.tenant_id == tenant_id,
+            UnifiedMessage.source_module == "internship",
+            UnifiedMessage.source_biz_id == campaign_id,
+            UnifiedMessage.title == recovery.get("outboxTitle"),
+            UnifiedMessage.is_deleted.is_(False),
+        )).all() if campaign_id else []
+
+        job_statuses = Counter(str(job.status or "") for job in jobs)
         return {
             "campaignId": campaign_id,
             "campaignStatus": getattr(campaign, "status", None),
-            "scheduledAt": getattr(campaign, "scheduled_at", None).isoformat()
-            if campaign and getattr(campaign, "scheduled_at", None) else None,
-            "recipientCount": int(getattr(campaign, "recipient_count", 0) or 0) if campaign else None,
-            "deliveredCount": int(getattr(campaign, "delivered_count", 0) or 0) if campaign else None,
-            "jobStatuses": dict(Counter(str(job.status or "") for job in jobs)),
-            "campaignMessageReceiverUserIds": sorted({int(row.receiver_user_id) for row in rows if row.receiver_user_id}),
-            "studentProfileStatus": getattr(student, "status", None),
-            "studentLifecycleStatus": getattr(student, "student_status", None),
-            "studentAccountUserId": int(account.id) if account else None,
-            "studentAccountStatus": getattr(account, "status", None),
+            "campaignRecipientCount": int(getattr(campaign, "recipient_count", 0) or 0)
+            if campaign else None,
+            "campaignDeliveredCount": int(getattr(campaign, "delivered_count", 0) or 0)
+            if campaign else None,
+            "deliveryJobCount": len(jobs),
+            "deliveryJobStatuses": dict(job_statuses),
+            "deliveryAttemptCount": sum(int(job.attempt_count or 0) for job in jobs),
+            "deliveryWrittenCount": sum(int(job.written_count or 0) for job in jobs),
+            "outboxId": outbox_id,
+            "outboxStatus": getattr(outbox, "status", None),
+            "outboxAttemptCount": int(getattr(outbox, "attempt_count", 0) or 0)
+            if outbox else 0,
+            "ackUnifiedMessageCount": len(ack_rows),
+            "outboxUnifiedMessageCount": len(outbox_rows),
         }
     finally:
         db.close()
+        set_tenant(None)
+
+
+def _durable_recovery_complete(diag: dict) -> bool:
+    jobs = int(diag.get("deliveryJobCount") or 0)
+    succeeded = int((diag.get("deliveryJobStatuses") or {}).get("SUCCEEDED") or 0)
+    return bool(
+        jobs > 0
+        and succeeded == jobs
+        and int(diag.get("deliveryAttemptCount") or 0) >= jobs
+        and str(diag.get("outboxStatus") or "").upper() == "SUCCEEDED"
+        and int(diag.get("outboxAttemptCount") or 0) >= 1
+        and int(diag.get("ackUnifiedMessageCount") or 0) >= 1
+        and int(diag.get("outboxUnifiedMessageCount") or 0) >= 1
+    )
 
 
 def main() -> int:
     assert_safe_target()
+    if not STATE_PATH.exists():
+        raise SystemExit("S9-RT state missing — run seed/recovery preparation first")
+
+    state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    recovery = state.get("workerRecovery") or {}
+    if not recovery.get("prepared"):
+        raise SystemExit("S9-RT external-worker recovery was not armed")
+    outbox_title = str(recovery.get("outboxTitle") or "")
+    if not outbox_title:
+        raise SystemExit("S9-RT outbox probe title missing")
+
     facts = _student_facts()
-    set_tenant(_tenant_context(facts))
     student_token = _login(*STUDENT_LOGIN)
+    last_diag = {}
+    last_titles: set[str] = set()
 
-    if _student_inbox_has_ack(student_token):
-        print("[s9-rt] acknowledgement message already materialized")
-        return 0
-
-    # In quiet hours the publish API correctly returns SCHEDULED and has no delivery jobs yet.
-    # Replaying the external scheduled-message stage makes this browser fixture independent of
-    # the CI runner's wall-clock time while preserving the production state machine.
-    _materialize_scheduled_campaign_if_needed(facts)
-
-    processed = 0
     for round_no in range(1, _MAX_ROUNDS + 1):
-        set_tenant(_tenant_context(facts))
-        count = message_delivery_service.claim_and_process_delivery_jobs(
-            limit=_BATCH_LIMIT,
-            worker_id=f"e2e-student-v3-{round_no}",
-        )
-        processed += int(count or 0)
-        if _student_inbox_has_ack(student_token):
-            print(f"[s9-rt] acknowledgement materialized after worker rounds={round_no} processed={processed}")
+        last_titles = _student_titles(student_token)
+        last_diag = _diagnostics(facts, state)
+        api_ready = ACK_TITLE in last_titles and outbox_title in last_titles
+        if api_ready and _durable_recovery_complete(last_diag):
+            recovery.update({
+                "verified": True,
+                "deliveryAttemptCount": int(last_diag["deliveryAttemptCount"]),
+                "deliveryWrittenCount": int(last_diag["deliveryWrittenCount"]),
+                "outboxAttemptCount": int(last_diag["outboxAttemptCount"]),
+                "deliveryJobStatuses": last_diag["deliveryJobStatuses"],
+                "campaignStatus": last_diag["campaignStatus"],
+            })
+            state["workerRecovery"] = recovery
+            STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(
+                "[s9-rt] external worker recovery verified "
+                f"round={round_no} diagnostics="
+                + json.dumps(last_diag, ensure_ascii=False, sort_keys=True)
+            )
             return 0
-        if not count:
-            break
+        time.sleep(_SLEEP_SECONDS)
 
-    diag = _diagnostics(facts)
     raise SystemExit(
-        "S9-RT acknowledgement was not visible after replaying canonical scheduled/delivery workers: "
-        + json.dumps(diag, ensure_ascii=False, sort_keys=True)
+        "S9-RT standalone worker did not recover delivery/outbox debt: "
+        + json.dumps({
+            "diagnostics": last_diag,
+            "ackVisible": ACK_TITLE in last_titles,
+            "outboxVisible": outbox_title in last_titles,
+        }, ensure_ascii=False, sort_keys=True)
     )
 
 

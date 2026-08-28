@@ -7,12 +7,31 @@
     <StateBlock v-if="loading" type="loading" text="正在加载实习信息…" />
     <StateBlock v-else-if="error" type="error" :text="error" />
     <template v-else>
-      <section v-if="!my.hasData" class="sp-notice" style="border-color:#FFD591;background:#FFFBE6">
+      <section v-if="my.needSelect && internshipCandidates.length" class="sp-card" style="margin-bottom:16px">
+        <div class="sp-panel__head">请选择要办理的实习批次</div>
+        <p class="sp-muted" style="margin-bottom:12px">你有多条进行中的实习记录。系统不会替你猜测；选择后，本页后续查询与办理都会固定使用同一批次。</p>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <button v-for="candidate in internshipCandidates" :key="candidate.recordId" class="sp-btn sp-btn--ghost" style="display:flex;justify-content:space-between;align-items:center;text-align:left" @click="selectInternshipBatch(candidate.batchId)">
+            <span><strong>{{ candidate.batchName || `批次 ${candidate.batchId}` }}</strong><small style="display:block;margin-top:4px">状态 {{ statusText(candidate.status) }} · 记录 {{ candidate.recordId }}</small></span>
+            <span>选择 ›</span>
+          </button>
+        </div>
+      </section>
+
+      <section v-else-if="!my.hasData" class="sp-notice" style="border-color:#FFD591;background:#FFFBE6">
         <div><strong style="color:#613400">暂无实习记录</strong><p class="sp-muted" style="margin:6px 0 0;color:#8b5c00">{{ my.message || '你尚未被纳入实习安排，建档后此处会显示企业、岗位与周月报待办。' }}</p></div>
       </section>
 
       <!-- 我的实习 -->
       <template v-else-if="tab === 'overview'">
+        <section v-if="internshipCandidates.length > 1" class="sp-card" style="margin-bottom:16px">
+          <div class="sp-fieldlabel">当前实习批次</div>
+          <select v-model="selectedBatchId" class="sp-inp" @change="changeInternshipBatch">
+            <option v-for="candidate in internshipCandidates" :key="candidate.recordId" :value="String(candidate.batchId)">
+              {{ candidate.batchName || `批次 ${candidate.batchId}` }} · {{ statusText(candidate.status) }}
+            </option>
+          </select>
+        </section>
         <section class="sp-card" style="margin-bottom:16px">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
             <div>
@@ -433,6 +452,9 @@ const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
 const my = ref({})
+const INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'
+const selectedBatchId = ref('')
+const internshipCandidates = ref([])
 const weeklyForm = reactive({ week: null, workContent: '', harvestContent: '', planContent: '' })
 const reportForm = reactive({ title: '', content: '' })
 const evalForm = reactive({ performance: '', reflection: '', problems: '' })
@@ -484,6 +506,25 @@ const agreementTone = computed(() => ((my.value.agreementStatus || activeAgreeme
 const intentionCanEdit = computed(() => intentionFlags.value.canEdit !== false && (intentionMeta.value.status || 'DRAFT') !== 'SUBMITTED')
 const intentionCanSubmit = computed(() => intentionFlags.value.canSubmit || ['DRAFT', '', undefined, null].includes(intentionMeta.value.status))
 const intentionCanWithdraw = computed(() => intentionFlags.value.canWithdraw || intentionMeta.value.status === 'SUBMITTED')
+
+function persistInternshipBatch(batchId) {
+  const value = String(batchId || '').trim()
+  selectedBatchId.value = /^\d+$/.test(value) ? value : ''
+  try {
+    if (selectedBatchId.value) sessionStorage.setItem(INTERNSHIP_BATCH_KEY, selectedBatchId.value)
+    else sessionStorage.removeItem(INTERNSHIP_BATCH_KEY)
+  } catch { /* storage unavailable */ }
+}
+
+async function selectInternshipBatch(batchId) {
+  persistInternshipBatch(batchId)
+  await load()
+}
+
+async function changeInternshipBatch() {
+  persistInternshipBatch(selectedBatchId.value)
+  await load()
+}
 
 function currentInternshipContext() {
   const batchId = my.value.batchId
@@ -582,7 +623,16 @@ async function loadEnterprises() {
 async function load() {
   loading.value = true; error.value = ''
   try {
-    my.value = await portalApi.internshipMy() || {}
+    try { selectedBatchId.value = String(sessionStorage.getItem(INTERNSHIP_BATCH_KEY) || '') } catch { selectedBatchId.value = '' }
+    const data = await portalApi.internshipMy() || {}
+    my.value = data
+    if (Array.isArray(data.candidates) && data.candidates.length) internshipCandidates.value = data.candidates
+    if (data.needSelect) {
+      persistInternshipBatch('')
+      return
+    }
+    if (data.batchId) persistInternshipBatch(data.batchId)
+    if (!data.hasData) return
     await loadLeaves()
     await loadExtras()
   } catch (e) { error.value = e?.message || '实习信息加载失败' } finally { loading.value = false }

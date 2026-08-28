@@ -66,8 +66,12 @@ def gd_archive_export(status: Optional[str] = None, keyword: Optional[str] = Non
 @router.get("/gd-archives", summary="归档列表（分页+筛选）")
 def gd_archives(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                 keyword: Optional[str] = None, status: Optional[str] = None,
-                batchId: Optional[str] = None, user=Depends(get_current_user)):
-    items, total = svc.list_archives(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
+                batchId: Optional[str] = None, archiveBatchNo: Optional[str] = None,
+                user=Depends(get_current_user)):
+    items, total = svc.list_archives(
+        page, pageSize, keyword=keyword, status=status, batch_id=batchId,
+        archive_batch_no=archiveBatchNo,
+    )
     return success(paginate(items, total, page, pageSize))
 
 

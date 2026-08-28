@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 from sqlalchemy import event
 
@@ -27,6 +28,7 @@ def _clear_ctx():
 
 def _new_batch(db, label: str, planned_count: int):
     from app.models import GraduationBatch
+    from app.modules.graduation.materials.rule_service import initialize_default_rule_in_session
 
     suffix = uuid.uuid4().hex[:10]
     row = GraduationBatch(
@@ -35,6 +37,7 @@ def _new_batch(db, label: str, planned_count: int):
     )
     db.add(row)
     db.flush()
+    initialize_default_rule_in_session(db, int(row.id))
     return row
 
 
@@ -64,8 +67,6 @@ def test_u7_batch_file_dirty_row_is_non_executable_even_when_other_checks_are_cl
 
 
 def test_u7_public_v2_writer_consumes_signed_dirty_marker_contract():
-    from pathlib import Path
-
     root = Path(__file__).resolve().parents[2]
     snapshot = (root / "backend/app/modules/graduation/services/graduation_archive_batch_scale.py").read_text(encoding="utf-8")
     compat = (root / "backend/app/modules/graduation/services/graduation_archive_batch_consistency.py").read_text(encoding="utf-8")
@@ -76,6 +77,43 @@ def test_u7_public_v2_writer_consumes_signed_dirty_marker_contract():
     assert "row_block_reasons(snap, \"FILE\")" in compat
     assert 'snapshot = verify_batch_file_preview(int(batch_id), str(preview_token))' in manifest
     assert 'if row.get("missing") or int(row.get("openRisks") or 0) > 0:' in manifest
+
+
+def test_u7_required_proposal_defense_uses_approved_pass_business_source():
+    from app.modules.graduation.services.graduation_archive_v2_preview import _source_ready
+
+    assert _source_ready("PROPOSAL_DEFENSE", {}, 101, set(), {}, {101}) is True
+    assert _source_ready("PROPOSAL_DEFENSE", {}, 101, set(), {}, {202}) is False
+
+
+def test_u7_archive_v2_preview_guard_binds_rule_required_sources_and_fileversions():
+    root = Path(__file__).resolve().parents[2]
+    bridge = (root / "backend/app/modules/graduation/services/graduation_archive_v2_preview.py").read_text(encoding="utf-8")
+    api = (root / "frontend/src/modules/graduation/api/graduation-risk-archive.api.js").read_text(encoding="utf-8")
+
+    assert '"PROPOSAL_DEFENSE"' in bridge
+    assert 'GraduationProposal.defense_result == "PASS"' in bridge
+    assert 'code == "PROPOSAL_DEFENSE"' in bridge
+    assert '"GUIDANCE_RECORD"' in bridge
+    assert '"PLAGIARISM_REPORT"' in bridge
+    assert 'row["v2RuleHash"]' in bridge
+    assert 'row["v2PreservedHash"]' in bridge
+    assert 'current_full != expected.get("fullHash")' in bridge
+    assert "verify_batch_file_preview(int(batch_id), str(preview_token))" in bridge
+    assert "snapshot_service.prepare_all(sid, user)" in bridge
+
+    generate_execute = api.split("async batchGenerateArchive", 1)[1].split("async previewBatchFile", 1)[0]
+    file_execute = api.split("async batchFileArchive", 1)[1].split("generateArchive", 1)[0]
+    assert "/batch-generate/preview" not in generate_execute
+    assert "/batch-file/preview" not in file_execute
+    assert "consumePreview('GENERATE'" in generate_execute
+    assert "consumePreview('FILE'" in file_execute
+    assert "data?.failed" in file_execute
+    assert "timeoutMs: 15000" not in file_execute
+    assert "BATCH_FILE_TIMEOUT_MS = 8 * 60 * 1000" in api
+    assert "timeoutMs: BATCH_FILE_TIMEOUT_MS" in file_execute
+    assert "isUncertainBatchWrite(e)" in file_execute
+    assert "reconcileBatchFile(" in file_execute
 
 
 def test_u7_mysql_compat_batch_file_never_files_dirty_snapshot(db_mode, monkeypatch):
@@ -167,15 +205,13 @@ def test_u7_mysql_batch_preview_600_students_has_constant_select_budget(db_mode)
             get_engine(), lambda: build_snapshot(check, batch, "GENERATE", lock=False),
         )
         assert len(snapshot["rows"]) == 600
-        assert selects <= 12, f"batch preview SELECTs={selects}; must not scale with student count"
+        assert selects <= 17, f"batch preview SELECTs={selects}; must remain O(1) with V2 evidence"
     finally:
         check.close()
         _clear_ctx()
 
 
 def test_u7_scale_snapshot_uses_sql_scope_not_full_tenant_materialization():
-    from pathlib import Path
-
     root = Path(__file__).resolve().parents[2]
     text = (root / "backend/app/modules/graduation/services/graduation_archive_batch_scale.py").read_text(encoding="utf-8")
     assert "student_scope_select" in text

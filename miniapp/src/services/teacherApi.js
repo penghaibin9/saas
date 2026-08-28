@@ -1,5 +1,6 @@
 /** 教师端数据服务：真实后端优先（主链：学生/审批/待办/消息/学生360），失败自动回退 mock。 */
 import { mockRequest, realFirst, realFirstStrict, realRequest } from './request'
+import { latestRead } from './latestRead'
 import { academicGradeEntryApi } from './academicGradeEntryApi'
 import * as teacherSequentialV3 from './teacherSequentialV3Api'
 import * as real from './realApi'
@@ -56,8 +57,8 @@ export const teacherApi = {
   getWeeklyDetail: (id) => real.teacherWeeklyDetail(id),
   getGdStudents: () => realFirst('teacher.graduation', () => real.teacherGraduationReal(), () => mockRequest({ list: M.gdStudents, detail: M.gdReviewDetail })),
   createGuidance: (gdStudentId, body) => real.teacherGraduationGuidanceCreate(gdStudentId, body),
-  getGraduationProposalDetail: (id) => real.gdTeacherProposalDetail(id),
-  getGraduationFinalDetail: (id) => real.gdTeacherFinalDetail(id),
+  getGraduationProposalDetail: (id) => latestRead('teacher:graduation:detail', () => real.gdTeacherProposalDetail(id)),
+  getGraduationFinalDetail: (id) => latestRead('teacher:graduation:detail', () => real.gdTeacherFinalDetail(id)),
   getGraduationMaterialLibrary: (gdStudentId) =>
     realRequest(`/mobile/graduation/material-center/library?gdStudentId=${encodeURIComponent(gdStudentId)}&includeHistory=true`),
   reviewGraduationMaterial: (materialId, body) =>
@@ -67,7 +68,7 @@ export const teacherApi = {
   reviewFinal: (id, action, comment, expectedVersion, fileVersionId) =>
     real.gdTeacherFinalReview(id, action, comment, expectedVersion, fileVersionId),
   getGraduationMidtermQueue: () => real.gdTeacherMidtermQueue(),
-  getGraduationMidtermDetail: (id) => real.gdTeacherMidtermDetail(id),
+  getGraduationMidtermDetail: (id) => latestRead('teacher:graduation:detail', () => real.gdTeacherMidtermDetail(id)),
   midtermCheck: (id, conclusion, comment, deadline) => real.gdTeacherMidtermCheck(id, conclusion, comment, deadline),
   midtermRectifyReview: (id, action, comment) => real.gdTeacherMidtermRectifyReview(id, action, comment),
   getGraduationMyReviews: () => real.gdTeacherReviewsMy(),
@@ -82,7 +83,7 @@ export const teacherApi = {
   getAcademicWarnings: () => real.teacherAcademicWarnings(),
   getGraduationDefenseArrangements: () => real.gdTeacherDefenseArrangements(),
   getGraduationGradeQueue: () => real.gdTeacherGradeQueue(),
-  getGraduationGradeDetail: (id) => real.gdTeacherGradeDetail(id),
+  getGraduationGradeDetail: (id) => latestRead('teacher:graduation:detail', () => real.gdTeacherGradeDetail(id)),
   reviewGrade: (id, action, comment) => real.gdTeacherGradeReview(id, action, comment),
   getEmployment: () => realFirst('teacher.employment', () => real.teacherEmploymentReal(), () => mockRequest({ stats: M.employmentStats, tabs: M.employmentTabs, list: M.employmentStudents, jobs: M.jobPool })),
   getEmploymentMyStudents: () => real.teacherEmploymentMyStudents(),

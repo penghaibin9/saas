@@ -166,17 +166,22 @@ export default {
   background: var(--bg-mask);
   z-index: calc(var(--z-modal) + 10);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: var(--space-6);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .app-confirm-dialog {
   width: 460px;
   max-width: 100%;
+  margin-block: auto;
+  flex: 0 0 auto;
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  /* 不能 overflow:hidden：body 里插槽常放 AppStudentPicker 等下拉选择器，
+  /* 长表单由 mask 承担整框纵向滚动，dialog 自身继续保持 overflow 可见。
+     不能 overflow:hidden：body 里插槽常放 AppStudentPicker 等下拉选择器，
      其结果面板是相对 body 内部元素绝对定位、超出弹窗自身高度展开的，
      hidden 会把选项列表从中间截断，看起来"显示不全/太短"。 */
 }

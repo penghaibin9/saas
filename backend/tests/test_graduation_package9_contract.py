@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException
 from app.models import GraduationArchiveRecord, GraduationBatch, GraduationStudent
+from app.models.file import ArchiveManifest
 from app.modules.graduation.policies import defense_policy
 from app.modules.graduation.schemas.graduation_mentor import MentorAssignRequest, MentorChangeRequest
 from app.modules.graduation.services import graduation_mentor_subject_guard as subject_guard
@@ -177,7 +178,7 @@ def test_package9_guard_installs_subject_archive_and_current_fact_guards():
 
 
 def test_archive_filed_appends_mysql_version_chain(db_mode, monkeypatch):
-    """真实 MySQL：两次 FILED 形成连续版本，且同一时刻仅一个 current。"""
+    """真实 MySQL：两次 FILED 形成连续版本，且无 V2 清单时保留 Package9 hash 语义。"""
     from app.db.session import get_sessionmaker
 
     tenant_id = 1000000000000000001
@@ -220,6 +221,7 @@ def test_archive_filed_appends_mysql_version_chain(db_mode, monkeypatch):
         archive.verified_by = "mysql-test"
         db.flush()
 
+        assert archive.manifest_hash == "a" * 64
         first = db.scalars(select(package9.GraduationArchiveVersion).where(
             package9.GraduationArchiveVersion.archive_record_id == archive.id,
         )).one()
@@ -245,6 +247,79 @@ def test_archive_filed_appends_mysql_version_chain(db_mode, monkeypatch):
         assert rows[1].current_flag is True
         assert rows[1].previous_archive_id == rows[0].id
         assert rows[1].source_manifest_hash == "b" * 64
+        db.expire(archive, ["manifest_hash"])
+        assert archive.manifest_hash == "b" * 64
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_package9_version_listener_uses_real_v2_manifest_as_canonical_hash(db_mode, monkeypatch):
+    """真实 MySQL：有 V2 冻结清单时主归档 hash 必须等于真实 manifest_sha256。"""
+    from app.db.session import get_sessionmaker
+
+    tenant_id = 1000000000000000002
+    canonical_v2_hash = "c" * 64
+    package9_source_hash = "d" * 64
+    monkeypatch.setattr(package9, "_strict_check_completeness", lambda db, student: ([], []))
+    monkeypatch.setattr(
+        package9,
+        "_strict_manifest_payload",
+        lambda db, student, archive_no: {
+            "tenantId": str(tenant_id),
+            "gdStudentId": str(student.id),
+            "archiveBatchNo": archive_no,
+            "grade": {"id": "1", "status": "PUBLISHED", "version": 1},
+            "fileErrors": [],
+            "manifestHash": package9_source_hash,
+        },
+    )
+
+    db = get_sessionmaker()()
+    try:
+        student = GraduationStudent(
+            tenant_id=tenant_id,
+            student_no="PKG9-V2-HASH-001",
+            name="V2归档哈希保护测试学生",
+            stage="FINAL_CHECK",
+            record_status="ACTIVE",
+        )
+        db.add(student)
+        db.flush()
+        archive = GraduationArchiveRecord(
+            tenant_id=tenant_id,
+            gd_student_id=student.id,
+            status="PENDING_SUBMIT",
+        )
+        db.add(archive)
+        db.flush()
+        db.add(ArchiveManifest(
+            tenant_id=tenant_id,
+            module_code="GRADUATION",
+            archive_type="GRADUATION_FILE_VERSION",
+            target_type="GRADUATION_STUDENT",
+            target_id=str(student.id),
+            revision=1,
+            status="FROZEN",
+            manifest_sha256=canonical_v2_hash,
+            frozen_at=datetime.utcnow(),
+        ))
+        db.flush()
+
+        # A stale/legacy-looking value must not be trusted merely because it is 64 hex chars.
+        archive.manifest_hash = "e" * 64
+        archive.status = "FILED"
+        archive.archive_batch_no = "PKG9-V2-HASH-01"
+        archive.filed_at = datetime.utcnow()
+        archive.verified_by = "mysql-test"
+        db.flush()
+
+        db.expire(archive, ["manifest_hash"])
+        assert archive.manifest_hash == canonical_v2_hash
+        version = db.scalars(select(package9.GraduationArchiveVersion).where(
+            package9.GraduationArchiveVersion.archive_record_id == archive.id,
+        )).one()
+        assert version.source_manifest_hash == package9_source_hash
     finally:
         db.rollback()
         db.close()

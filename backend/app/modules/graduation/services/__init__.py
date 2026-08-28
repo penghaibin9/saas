@@ -233,6 +233,13 @@ def _install_grade_read_model() -> None:
     service.list_grades = grade_read.list_grades
 
 
+def _install_defense_candidate_read_model() -> None:
+    from app.modules.graduation.services import graduation_defense_candidate_read_service as candidate_read
+    from app.modules.graduation.services import graduation_service as service
+
+    service.list_defense_eligible_students = candidate_read.list_defense_eligible_students
+
+
 def _install_archive_read_model() -> None:
     from app.modules.graduation.services import graduation_archive_read_service as archive_read
     from app.modules.graduation.services import graduation_archive_service as service
@@ -244,9 +251,11 @@ _install_proposal_read_model()
 _install_final_read_model()
 _install_student_read_model()
 _install_grade_read_model()
+_install_defense_candidate_read_model()
 _install_archive_read_model()
 del _install_proposal_read_model
 del _install_final_read_model
 del _install_student_read_model
 del _install_grade_read_model
+del _install_defense_candidate_read_model
 del _install_archive_read_model

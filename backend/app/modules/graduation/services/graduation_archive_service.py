@@ -31,6 +31,10 @@ CHECKLIST_ITEMS = [
     ("final", "成果定稿（已通过）"), ("review", "教师评阅（已完成）"), ("defenseScore", "答辩评分（已确认）"),
     ("grade", "成绩（已发布）"),
 ]
+# GD-R12 means exactly "材料未归档". Counting it as an archive prerequisite
+# creates a self-deadlock: published grade -> GD-R12 -> archive blocked -> GD-R12
+# can never disappear. All other OPEN/PROCESSING risks remain hard blockers.
+_ARCHIVE_NON_BLOCKING_RISK_CODES = ("GD-R12",)
 
 
 def _op() -> tuple[str, str]:
@@ -218,6 +222,7 @@ def _count_open_risks(db, stu: GraduationStudent) -> int:
         GraduationRiskCase.is_deleted.is_(False),
         GraduationRiskCase.gd_student_id == stu.id,
         GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+        GraduationRiskCase.risk_code.notin_(_ARCHIVE_NON_BLOCKING_RISK_CODES),
     )) or 0)
 
 

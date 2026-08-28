@@ -45,6 +45,9 @@ _CHECKLIST_ITEMS = [
     ("defenseScore", "答辩评分（已确认）"),
     ("grade", "成绩（已发布）"),
 ]
+# GD-R12 is the consequence "not archived yet", not an archive prerequisite.
+# Keeping it in the blocker count deadlocks the transition it is supposed to observe.
+_ARCHIVE_NON_BLOCKING_RISK_CODES = ("GD-R12",)
 
 
 def _json_hash(value) -> str:
@@ -197,6 +200,7 @@ def build_snapshot(db, batch, mode: str, *, lock: bool = False) -> dict:
         GraduationRiskCase.gd_student_id.in_(ids),
         GraduationRiskCase.is_deleted.is_(False),
         GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+        GraduationRiskCase.risk_code.notin_(_ARCHIVE_NON_BLOCKING_RISK_CODES),
     ).order_by(GraduationRiskCase.gd_student_id, GraduationRiskCase.id), lock=lock)
     risk_counts: dict[int, int] = defaultdict(int)
     for risk in risk_rows:

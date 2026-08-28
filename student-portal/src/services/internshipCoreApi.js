@@ -4,13 +4,83 @@ import { request, uploadFile } from './request'
 const encode = (value) => encodeURIComponent(String(value ?? ''))
 const contextQuery = ({ batchId, internshipId }) =>
   `?batchId=${encode(batchId)}&internshipId=${encode(internshipId)}`
+const APPLICATION_EDITABLE_STATUSES = new Set(['DRAFT', 'REJECTED', 'WITHDRAWN'])
+
+function listItems(data) {
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(data?.list)) return data.list
+  return []
+}
+
+function decorateLeaveReviewFeedback(data) {
+  const decorate = (item) => {
+    if (!item || item.status !== 'REJECTED') return item
+    const reviewComment = String(item.reviewComment || '').trim()
+    if (!reviewComment) return item
+    const reason = String(item.reason || '').trim()
+    return {
+      ...item,
+      reason: `${reason}${reason ? ' · ' : ''}驳回原因：${reviewComment}`
+    }
+  }
+  if (Array.isArray(data)) return data.map(decorate)
+  if (Array.isArray(data?.items)) return { ...data, items: data.items.map(decorate) }
+  if (Array.isArray(data?.list)) return { ...data, list: data.list.map(decorate) }
+  return data
+}
+
+function decorateApplicationReviewFeedback(data) {
+  const decorate = (item) => {
+    if (!item || item.status !== 'REJECTED') return item
+    const reviewComment = String(item.reviewComment || '').trim()
+    if (!reviewComment) return item
+    const note = String(item.applicationNote || '').trim()
+    return {
+      ...item,
+      applicationNote: `${note}${note ? ' · ' : ''}驳回原因：${reviewComment}`
+    }
+  }
+  if (Array.isArray(data)) return data.map(decorate)
+  if (Array.isArray(data?.items)) return { ...data, items: data.items.map(decorate) }
+  if (Array.isArray(data?.list)) return { ...data, list: data.list.map(decorate) }
+  return data
+}
+
+async function resolveEditableSelfArrangedApplication(body) {
+  if (!body || body.id || String(body.applicationType || '').toUpperCase() !== 'SELF_ARRANGED') {
+    return body
+  }
+  if (!body.batchId || !body.internshipId) return body
+
+  // The backend intentionally requires id + expectedVersion when an editable application
+  // already exists. Refresh that identity immediately before saving so a rejected/withdrawn
+  // application can be corrected without weakening optimistic-concurrency protection.
+  const current = await request(
+    `/portal/internship/context/applications${contextQuery(body)}`
+  )
+  const candidates = listItems(current).filter((item) =>
+    item
+    && String(item.applicationType || '').toUpperCase() === 'SELF_ARRANGED'
+    && APPLICATION_EDITABLE_STATUSES.has(String(item.status || '').toUpperCase())
+  )
+  if (candidates.length !== 1 || !candidates[0].id) return body
+
+  return {
+    ...body,
+    id: candidates[0].id,
+    expectedVersion: candidates[0].version
+  }
+}
 
 export const internshipCoreApi = {
-  applications(context) {
-    return request(`/portal/internship/context/applications${contextQuery(context)}`)
+  async applications(context) {
+    const data = await request(`/portal/internship/context/applications${contextQuery(context)}`)
+    return decorateApplicationReviewFeedback(data)
   },
-  saveApplication(body) {
-    return request('/portal/internship/context/applications', { method: 'PUT', body })
+  async saveApplication(body) {
+    const payload = await resolveEditableSelfArrangedApplication(body)
+    return request('/portal/internship/context/applications', { method: 'PUT', body: payload })
   },
   submitApplication(id, body) {
     return request(`/portal/internship/context/applications/${encode(id)}/submit`, {
@@ -22,8 +92,9 @@ export const internshipCoreApi = {
       method: 'POST', body
     })
   },
-  leaves(context) {
-    return request(`/portal/internship/context/leaves${contextQuery(context)}`)
+  async leaves(context) {
+    const data = await request(`/portal/internship/context/leaves${contextQuery(context)}`)
+    return decorateLeaveReviewFeedback(data)
   },
   applyLeave(body) {
     return request('/portal/internship/context/leaves', { method: 'POST', body })

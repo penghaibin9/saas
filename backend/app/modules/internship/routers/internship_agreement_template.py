@@ -1,15 +1,15 @@
 """岗位实习中心 · 实习协议模板库 API（/api/v1/internship/agreement-templates/*）。
 
 独立 router，与实习域/批次/岗位库隔离；在 router.py 汇总处单独 include。
-写操作落审计。静态子路由（stats/variables）声明在 /{template_id} 之前，避免被动态段吞掉。
-权限：登录校验（get_current_user）；细粒度 permission key（internship.agreementTemplate.*）随全局 RBAC 上线前补，
-本模块权限 key 已在路由 summary 标注，数据范围按租户隔离（校级配置主数据）。
+写操作落审计。静态子路由（stats/variables/options）声明在 /{template_id} 之前，避免被动态段吞掉。
+协议发起只需 agreement.manage 即可读取“已启用选项”和真实渲染预览；模板 CRUD 仍要求
+agreement.template.manage，避免为了使用模板而放大模板配置权限。
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -21,8 +21,9 @@ from app.modules.internship.services import internship_agreement_template_servic
 router = APIRouter(prefix="/internship", tags=["岗位实习-协议模板库"])
 
 _BASE = "/agreement-templates"
-# 协议模板是校级配置主数据，查看与编辑统一 internship.agreement.template.manage（管理员/学院负责人）
+# 模板 CRUD 是校级配置；协议发起的只读选择/预览沿用协议办理权限。
 _P = "internship.agreement.template.manage"
+_P_USE = "internship.agreement.manage"
 
 
 @router.get(_BASE, summary="协议模板列表（分页+筛选：关键词/状态/类型/学院/专业/年级/批次）")
@@ -47,12 +48,24 @@ def template_variables(user=Depends(require_permission(_P))):
     return success(svc.variable_presets())
 
 
+@router.get(f"{_BASE}/options", summary="协议发起可用模板（按真实学生学院/专业/年级/批次收敛）")
+def template_options(batchId: Optional[str] = None, internshipId: Optional[str] = None,
+                     user=Depends(require_permission(_P_USE))):
+    return success(svc.enabled_options(batchId, internship_id=internshipId, user=user))
+
+
 @router.post(_BASE, summary="新建协议模板（初始草稿）")
 def create_template(body: AgreementTemplateCreate, user=Depends(require_permission(_P))):
     result = svc.create_template(body)
     audit_log.record("新建协议模板", f"internship-agreement-template:{result['id']}",
                      detail={"name": result["name"]})
     return success(result, message="已创建")
+
+
+@router.post(f"{_BASE}/{{template_id}}/preview", summary="按真实实习记录渲染协议发起预览（不写业务结果）")
+def template_preview(template_id: str, body: dict = Body(...),
+                     user=Depends(require_permission(_P_USE))):
+    return success(svc.preview_template(template_id, body.get("internshipId"), user=user))
 
 
 @router.get(f"{_BASE}/{{template_id}}", summary="协议模板详情（含正文/变量/适用范围/审计）")

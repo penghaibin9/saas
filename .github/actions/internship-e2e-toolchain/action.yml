@@ -1,0 +1,29 @@
+name: Internship E2E Toolchain
+description: Prepare the shared Python/Node toolchain and backend dependencies inside the current acceptance job.
+
+inputs:
+  node-cache-dependency-path:
+    description: Multiline package-lock paths used by the npm cache.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: pip
+        cache-dependency-path: backend/requirements.txt
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: ${{ inputs.node-cache-dependency-path }}
+
+    - name: Install backend dependencies
+      shell: bash
+      working-directory: backend
+      run: pip install -r requirements.txt
