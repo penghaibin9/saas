@@ -175,7 +175,6 @@ def freeze(batch_id, body: dict, user: dict) -> dict:
         if not res.students:
             raise AppException("VALIDATION_ERROR", "按当前规则没有圈到任何学生，请调整后重试")
 
-        cache: dict = {}
         existing = _participant_student_ids(db, batch_id)
         created = reused = 0
         for s in res.students:
@@ -245,6 +244,45 @@ def freeze(batch_id, body: dict, user: dict) -> dict:
                 "reusedRecords": reused, "batchStatus": b.status, "version": int(b.version or 0)}
 
 
+def _visible_participant_student_ids(db, rows, user: dict | None = None) -> set[int]:
+    """只按当前实习数据范围裁剪已冻结名单，不重跑“新批次选人资格”。
+
+    participant 是冻结后的历史业务证据。学生后来毕业、离校或学籍状态变化，不应因此
+    从正式名单消失；但教师/学院角色仍只能看到当前实习数据范围内的记录。
+    """
+    student_ids = {int(r.student_id) for r in rows if getattr(r, "student_id", None)}
+    if not student_ids:
+        return set()
+    if user is None:
+        return student_ids
+
+    from app.models import InternshipRecord
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+    from app.modules.internship.services.internship_student_service import _current_scope
+
+    internship_ids = {int(r.internship_id) for r in rows if getattr(r, "internship_id", None)}
+    visible: set[int] = set()
+    if internship_ids:
+        q = apply_internship_record_scope(
+            select(InternshipRecord.student_id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.id.in_(internship_ids),
+                InternshipRecord.is_deleted.is_(False),
+            ),
+            user,
+        )
+        visible.update(int(value) for value in db.scalars(q).all())
+
+    # 历史脏数据若 participant 缺 internship_id，受限角色没有可靠关联可授权，必须 fail-closed；
+    # 校级租户管理员仍可为追溯/对账查看冻结快照。
+    if _current_scope(user).get("mode") != "SCOPED":
+        visible.update(
+            int(r.student_id) for r in rows
+            if getattr(r, "student_id", None) and not getattr(r, "internship_id", None)
+        )
+    return visible
+
+
 # ── 名单读写 ──────────────────────────────────────────────────────────────
 
 def list_participants(batch_id, page: int = 1, page_size: int = 20,
@@ -263,10 +301,7 @@ def list_participants(batch_id, page: int = 1, page_size: int = 20,
         rows = db.scalars(select(InternshipBatchParticipant).where(*conds)
                           .order_by(InternshipBatchParticipant.id)).all()
 
-        requested_ids = [int(r.student_id) for r in rows]
-        allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": requested_ids}),
-                                user=user, limit=None) if requested_ids else None
-        allowed_ids = {int(s.id) for s in allowed.students} if allowed else set()
+        allowed_ids = _visible_participant_student_ids(db, rows, user=user)
         rows = [r for r in rows if int(r.student_id) in allowed_ids]
         profiles = {p.id: p for p in db.scalars(select(StudentProfile).where(
             StudentProfile.id.in_([r.student_id for r in rows] or [0]))).all()}
@@ -301,7 +336,7 @@ def list_participants(batch_id, page: int = 1, page_size: int = 20,
 
 def add_participants(batch_id, student_ids, user: dict, reason: str = "") -> dict:
     """人工补录（转专业、休学复学、漏选）。同样幂等，且要求学生在调用者数据范围内。"""
-    from app.models import InternshipBatchParticipant, InternshipRecord, StudentProfile
+    from app.models import InternshipBatchParticipant, InternshipRecord
 
     ids = [int(x) for x in (student_ids or []) if x]
     if not ids:
@@ -309,7 +344,7 @@ def add_participants(batch_id, student_ids, user: dict, reason: str = "") -> dic
 
     with session() as db:
         _get_batch(db, batch_id)
-        # 复用 resolver 的数据范围口径：点名添加也不能越权把别院学生塞进来
+        # 新增名单仍属于“新选人”动作，继续复用 resolver 的学籍资格 + 数据范围双重口径。
         allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": ids}),
                                 user=user, limit=None)
         allowed_ids = {int(s.id) for s in allowed.students}
@@ -373,9 +408,7 @@ def remove_participant(batch_id, participant_id, reason: str, expected_version, 
         if (not row or row.is_deleted or int(row.tenant_id) != _tid()
                 or int(row.batch_id) != int(batch_id)):
             raise not_found("参与人记录不存在")
-        allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": [int(row.student_id)]}),
-                                user=user, limit=None)
-        if int(row.student_id) not in {int(s.id) for s in allowed.students}:
+        if int(row.student_id) not in _visible_participant_student_ids(db, [row], user=user):
             from app.core.exceptions import no_permission
             raise no_permission("该参与人不在你的数据范围内")
         if int(row.version or 0) != expected:
@@ -402,17 +435,13 @@ def summary(batch_id, user: dict | None = None) -> dict:
             InternshipBatchParticipant.tenant_id == _tid(),
             InternshipBatchParticipant.batch_id == int(batch_id),
             InternshipBatchParticipant.is_deleted.is_(False))).all()
-        requested_ids = [int(r.student_id) for r in rows]
-        allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": requested_ids}),
-                                user=user, limit=None) if requested_ids else None
-        allowed_ids = {int(s.id) for s in allowed.students} if allowed else set()
+        allowed_ids = _visible_participant_student_ids(db, rows, user=user)
         visible = [r for r in rows if int(r.student_id) in allowed_ids]
         active = sum(1 for r in visible if r.status == "ACTIVE")
         removed = sum(1 for r in visible if r.status == "REMOVED")
-        from app.core.affairs_security import student_directory_scope
-        allow_classes, allow_students = student_directory_scope(user) if user is not None else (None, None)
-        scoped_view = allow_classes is not None or allow_students is not None
-        # 批次 planned_count 是校级总目标，学院角色不能借 summary 反推出全校规模。
+        from app.modules.internship.services.internship_student_service import _current_scope
+        scoped_view = bool(user is not None and _current_scope(user).get("mode") == "SCOPED")
+        # 批次 planned_count 是校级总目标，学院/教师角色不能借 summary 反推出全校规模。
         # 对受限角色返回其可见正式名单规模，并显式告诉前端这是“当前范围人数”。
         planned_count = len(visible) if scoped_view else int(b.planned_count or 0)
         db.commit()
