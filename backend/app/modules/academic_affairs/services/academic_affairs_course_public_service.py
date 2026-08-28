@@ -1,13 +1,14 @@
 """A-W2 public Course service.
 
-Legacy course CRUD remains in ``academic_affairs_course_service``.  This facade only
-owns the version-creating update writer so ENABLED -> v+1 is serialized and returns a
-stable business conflict instead of leaking the database unique constraint.
+Legacy course CRUD remains in ``academic_affairs_course_service``. This facade owns
+the version-creating update writer and node-authorized review writer that must be
+serialized and fail closed.
 """
 from __future__ import annotations
 
 from sqlalchemy import select
 
+from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid, session
 
@@ -83,3 +84,57 @@ def update_course(course_id, user, body) -> dict:
         db.commit()
         db.refresh(new_version)
         return _core._row(new_version)
+
+
+def _assert_course_review_scope(db, user, course) -> None:
+    """Authorize the locked review node without letting school scope impersonate college review."""
+    ctx = build_affairs_context(user, db)
+    scope_type = str(getattr(ctx, "scope_type", None) or "NONE").upper()
+    if course.status == "ACADEMIC_REVIEW":
+        if scope_type != "TENANT_ALL":
+            raise no_data_scope("仅校级教务可执行课程终审")
+        return
+    if course.status != "COLLEGE_REVIEW":
+        raise AppException("APPROVAL_VERSION_CONFLICT", "该课程当前状态不可审核")
+    if scope_type == "TENANT_ALL":
+        raise no_data_scope("学院审核必须由课程开课单位审批人执行")
+    if not course.owner_college_id:
+        raise no_data_scope("课程缺少开课单位，无法证明学院审核权限")
+    college_ids = {int(value) for value in getattr(ctx, "college_ids", set()) if value is not None}
+    if int(course.owner_college_id) not in college_ids:
+        raise no_data_scope("该课程不在您的学院审核范围内")
+
+
+def review_course(course_id, user, action, reason="") -> dict:
+    """P1-04: serialize one review decision and enforce node-specific Authority."""
+    from app.models import AaCourse
+
+    action = str(action or "").upper()
+    with session() as db:
+        course = db.query(AaCourse).filter(
+            AaCourse.id == int(course_id),
+            AaCourse.tenant_id == _tid(),
+            AaCourse.is_deleted.is_(False),
+        ).with_for_update().first()
+        if not course:
+            raise not_found("课程不存在")
+        if course.status not in ("COLLEGE_REVIEW", "ACADEMIC_REVIEW"):
+            raise AppException("APPROVAL_VERSION_CONFLICT", "该课程当前状态不可审核")
+
+        _assert_course_review_scope(db, user, course)
+        before_status = course.status
+        if action == "APPROVE":
+            course.status = "ACADEMIC_REVIEW" if before_status == "COLLEGE_REVIEW" else "ENABLED"
+            _core._audit(db, course.id, "APPROVE", f"{before_status}->{course.status}")
+        elif action in ("RETURN", "REJECT"):
+            clean_reason = str(reason or "").strip()
+            if len(clean_reason) < 5:
+                raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
+            course.status = "RETURNED"
+            _core._audit(db, course.id, "RETURNED", clean_reason)
+        else:
+            raise AppException("VALIDATION_ERROR", "无效操作")
+
+        db.commit()
+        db.refresh(course)
+        return _core._row(course)
