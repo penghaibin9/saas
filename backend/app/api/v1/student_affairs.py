@@ -1061,9 +1061,10 @@ def discipline_appeal_submit(body: DiscAppealSubmitBody, caseId: int = Path(...)
 
 
 @router.get("/discipline/appeals", summary="处分申诉列表")
-def discipline_appeals(status: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
+def discipline_appeals(status: Optional[str] = None, caseId: Optional[int] = None, appealId: Optional[int] = None,
+                       page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                        user=Depends(require_permission("studentAffairs.discipline.view"))):
-    items, total = disc_svc.list_appeals(user, status, page, pageSize)
+    items, total = disc_svc.list_appeals(user, status, page, pageSize, case_id=caseId, appeal_id=appealId)
     return success(paginate(items, total, page, pageSize))
 
 

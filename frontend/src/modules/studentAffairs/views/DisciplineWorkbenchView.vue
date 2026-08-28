@@ -15,6 +15,7 @@
       :degraded="!!listError"
       @clear-filter="clearTaskFilters"
     />
+    <p v-if="focusNotice" class="dp-focus-note">{{ focusNotice }}</p>
     <div v-if="studentFilterLabel" class="dp-student-filter">
       <span>{{ studentFilterLabel }}</span>
       <button type="button" class="dp-chip" @click="clearStudentFilter">清除筛选</button>
@@ -88,6 +89,11 @@
             <div><dt>解除时间</dt><dd><AppDateDisplay :value="selected.removedAt" mode="datetime" empty-text="—" /></dd></div>
             <div class="dp-kv--full"><dt>违纪事实</dt><dd>{{ selected.reason || '—' }}</dd></div>
           </dl>
+
+          <section v-if="postEffectState" class="dp-post-effect">
+            <div><strong>{{ postEffectState.title }}</strong><p>{{ postEffectState.description }}</p></div>
+            <StatusTag :type="postEffectState.tone" :label="postEffectState.label" dot />
+          </section>
 
           <details class="dp-tech">
             <summary>技术与审计信息</summary>
@@ -202,7 +208,7 @@ export default {
       pagination: { page: 1, pageSize: 20, total: 0 },
       selected: null, acting: false, reconciling: false,
       activeStatus: 'ALL', typeFilter: '',
-      studentFilter: { studentId: '', studentNo: '', studentName: '' },
+      studentFilter: { studentId: '', studentNo: '', studentName: '' }, focusRecordId: '', focusNotice: '',
       statusMatch: null,
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       registerModal: { visible: false, studentId: '', discType: 'WARNING', reason: '', docNo: '', error: '' },
@@ -267,6 +273,15 @@ export default {
     typeFilterOptions() {
       return [{ value: '', label: '全部类型' }, ...this.discTypes]
     },
+    postEffectState() {
+      const row = this.selected
+      if (!row || row.status !== 'EFFECTIVE') return null
+      const appeal = row.appealSummary
+      if (!row.deliveredAt) return { key: 'DELIVERY_REQUIRED', label: '待送达', title: '处分已生效，下一步应先登记决定送达', description: '送达是后续申诉处理的前置业务动作；解除仍保留，但不应抢占当前主动作。', actionLabel: '登记送达', permission: 'studentAffairs.discipline.deliver', tone: 'warning' }
+      if (appeal && ['SUBMITTED', 'REVIEWING'].includes(appeal.status)) return { key: 'APPEAL_OPEN', label: appeal.statusLabel || '申诉中', title: '该处分正在申诉复核', description: '优先进入申诉复核处理当前 appeal；解除保留为次级动作。', actionLabel: '处理申诉', permission: 'studentAffairs.discipline.appeal.review', tone: 'warning' }
+      if (appeal) return { key: 'APPEAL_CLOSED', label: appeal.statusLabel || '申诉已结案', title: '处分申诉已有正式复核结论', description: '可查看复核结论；若处分仍保持生效，解除流程可恢复为较高优先级。', actionLabel: '查看复核结论', permission: 'studentAffairs.discipline.view', tone: 'success' }
+      return { key: 'DELIVERED_NO_APPEAL', label: '已送达', title: '决定已送达，当前可进入送达与申诉工作区', description: '如学生提出申诉，应在同一案件上下文登记并复核；解除继续作为次级动作。', actionLabel: '进入送达与申诉', permission: 'studentAffairs.discipline.view', tone: 'success' }
+    },
     detailActions() {
       const s = this.selected && this.selected.status
       if (!s) return []
@@ -283,7 +298,12 @@ export default {
           { key: 'reject', label: '驳回', tone: 'danger', code: 'studentAffairs.discipline.approve' }
         ]
       }
-      if (s === 'EFFECTIVE') return [{ key: 'remove', label: '发起解除', tone: 'primary', code: 'studentAffairs.discipline.remove.create' }]
+      if (s === 'EFFECTIVE') {
+        const effect = this.postEffectState
+        const next = { key: 'postEffect', label: effect.actionLabel, tone: effect.key === 'APPEAL_CLOSED' ? 'default' : 'primary', code: effect.permission }
+        const remove = { key: 'remove', label: '发起解除', tone: effect.key === 'APPEAL_CLOSED' ? 'primary' : 'default', code: 'studentAffairs.discipline.remove.create' }
+        return effect.key === 'APPEAL_CLOSED' ? [remove, next] : [next, remove]
+      }
       if (s === 'REMOVE_REVIEW') {
         return [
           { key: 'removeApprove', label: '解除通过', tone: 'primary', code: 'studentAffairs.discipline.remove.approve' },
@@ -296,15 +316,36 @@ export default {
       return this.dialog.action === 'reject' ? 'sa.discipline.reject' : ''
     }
   },
-  created() {
-    this.applyRouteFilters()
-    this.loadList()
-  },
+  created() { this.initRouteFocus() },
   watch: {
-    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.loadList() },
+    '$route.query'(value, previous) {
+      const nextId = String(value?.recordId || '')
+      const prevId = String(previous?.recordId || '')
+      if (nextId !== prevId) { this.initRouteFocus(); return }
+      this.applyRouteFilters(); this.pagination.page = 1; this.loadList()
+    },
     typeFilter() { this.pagination.page = 1; this.loadList() }
   },
   methods: {
+    async initRouteFocus() {
+      this.applyRouteFilters()
+      const recordId = String(this.$route.query?.recordId || '').trim()
+      this.focusRecordId = recordId
+      this.focusNotice = ''
+      this.listError = ''
+      if (!recordId) { this.selected = null; await this.loadList(); return }
+      const res = await studentAffairsApi.getDisciplineDetail(recordId)
+      if (res.code !== 0 || !res.data) {
+        this.selected = null; this.list = []; this.pagination.total = 0
+        this.listError = res.message || '该处分记录不存在、已不可见或不在当前数据范围内'
+        return
+      }
+      this.selected = res.data
+      if (this.statusMatch?.length && !this.statusMatch.includes(res.data.status)) {
+        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`
+      }
+      await this.loadList()
+    },
     clearTaskFilters() {
       this.activeStatus = 'ALL'
       this.typeFilter = ''
@@ -371,14 +412,15 @@ export default {
         this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.caseId === this.selected.caseId)
-          if (hit) this.selected = hit
+          if (hit) this.selected = { ...this.selected, ...hit }
         }
       } else {
         this.listError = res.message || '加载失败'
       }
     },
-    select(it) {
+    async select(it) {
       this.selected = it
+      await this.reloadDetail()
     },
     async reloadDetail() {
       if (!this.selected) return
@@ -386,7 +428,14 @@ export default {
       if (res.code === 0 && res.data) this.selected = res.data
       else toast.error(res.message || '刷新详情失败')
     },
+    goPostEffect() {
+      if (!this.selected || !this.postEffectState) return
+      const query = { caseId: String(this.selected.caseId), from: 'discipline-workbench' }
+      if (this.selected.appealSummary?.appealId) query.appealId = String(this.selected.appealSummary.appealId)
+      this.$router.push({ path: '/admin/student-affairs/discipline/appeals', query })
+    },
     onAction(key) {
+      if (key === 'postEffect') { this.goPostEffect(); return }
       const map = {
         submit: { action: 'submit', title: '提交学院初审', message: '提交后进入学院初审，登记信息不可再改。', type: 'primary', confirmText: '提交初审', requireReason: false },
         cancel: { action: 'cancel', title: '撤销登记', message: '撤销后该处分作废。', type: 'warning', confirmText: '撤销登记', requireReason: false },
@@ -484,6 +533,7 @@ export default {
 </script>
 
 <style scoped>
+.dp-focus-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-md); background: var(--warning-50, #fffbeb); color: var(--warning-800, #92400e); font-size: var(--font-size-sm); }
 .dp-student-filter {
   display: flex;
   align-items: center;
@@ -668,6 +718,9 @@ export default {
   font-size: var(--font-size-sm);
   color: var(--text-primary);
 }
+.dp-post-effect { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin: 0 0 var(--space-4); padding: var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-lg); background: var(--bg-section); }
+.dp-post-effect strong { color: var(--text-primary); }
+.dp-post-effect p { margin: 4px 0 0; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
 .dp-tech { margin: calc(var(--space-2) * -1) 0 var(--space-4); border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-section); }
 .dp-tech summary { padding: 9px 11px; color: var(--text-tertiary); font-size: var(--font-size-xs); cursor: pointer; user-select: none; }
 .dp-tech[open] summary { border-bottom: 1px solid var(--border-light); color: var(--text-secondary); }
