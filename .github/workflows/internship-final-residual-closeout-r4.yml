@@ -45,31 +45,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
-      - name: Apply residual fixture corrections
+      - name: Apply isolated diagnostic transforms
         run: |
           python ../.github/scripts/internship_residual_closeout.py
           python ../.github/scripts/internship_residual_patch2.py
-      - name: Syntax tenant ratchet and diff integrity
+          python ../.github/scripts/internship_special_filing_diag.py
+      - name: Run one special-filing diagnostic on real MySQL
         run: |
-          python -m py_compile tests/test_internship_score_archive_guard.py tests/test_internship_archive.py tests/test_internship_v93_batch2_remaining_first_create.py tests/test_internship_v93_special_filing_review_flow.py tests/test_portal_internship.py tests/test_internship_scope.py tests/test_internship_enterprise_eval.py
-          python scripts/audit_tenant_queries.py --gate
-          git diff --check
-      - name: Residual real MySQL regression
-        run: |
-          timeout 25m pytest -q -p no:warnings tests/test_internship_score_archive_guard.py tests/test_internship_archive.py tests/test_internship_v93_batch2_remaining_first_create.py tests/test_internship_v93_special_filing_review_flow.py tests/test_portal_internship.py tests/test_internship_scope.py tests/test_internship_enterprise_eval.py
-      - name: Commit validated residual repairs and remove scaffolding
-        working-directory: .
-        run: |
-          rm -f .github/internship-residual-closeout-r4.trigger
-          rm -f .github/internship-final-residual-closeout-r4.trigger
-          rm -f .github/workflows/internship-final-residual-closeout-r3.yml
-          rm -f .github/workflows/internship-final-residual-closeout-r4.yml
-          rm -f .github/scripts/internship_residual_closeout.py
-          rm -f .github/scripts/internship_residual_patch2.py
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -u -- .github
-          git add -- backend/tests/test_internship_score_archive_guard.py backend/tests/test_internship_archive.py backend/tests/test_internship_v93_batch2_remaining_first_create.py backend/tests/test_internship_v93_special_filing_review_flow.py backend/tests/test_portal_internship.py backend/tests/test_internship_scope.py backend/tests/test_internship_enterprise_eval.py
-          git diff --cached --check
-          git commit -m 'fix(internship): align remaining production fixtures'
-          git push origin HEAD:tmp/pr231-residual-closeout-20260828
+          pytest -s -q -p no:warnings tests/test_internship_v93_special_filing_review_flow.py::test_full_review_flow_reaches_approved
