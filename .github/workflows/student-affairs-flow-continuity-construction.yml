@@ -120,6 +120,7 @@ jobs:
           set -euo pipefail
           rm -f .sa-flow-changed-files .sa-flow-commit-message
           python scripts/maintenance/apply_sa_flow_p103.py
+          sed -i 's/[[:space:]]\+$//' frontend/src/modules/studentAffairs/views/discipline/DisciplineAppealView.vue
           git diff --check
           mapfile -t FILES < .sa-flow-changed-files
           git add -- "${FILES[@]}"
