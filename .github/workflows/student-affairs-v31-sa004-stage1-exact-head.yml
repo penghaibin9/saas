@@ -122,7 +122,7 @@ jobs:
               db.close()
           print('SA004_CONTRACT_DB_READY')
           PY
-          pytest -q -p no:warnings \
+          MOCK_LOGIN_ENABLED=true pytest -q -p no:warnings \
             tests/test_affairs_phase2_role_matrix.py::test_funding_school_review_assignee_override_is_domain_specific \
             tests/test_affairs_funding.py::test_f2_full_flow_granted_360
 
