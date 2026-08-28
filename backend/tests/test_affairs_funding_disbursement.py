@@ -158,12 +158,13 @@ def test_disbursement_full_flow(client, db_mode):
     wb = load_workbook(BytesIO(response.content), read_only=True, data_only=True)
     assert wb.sheetnames == ["资助发放台账"]
     ws = wb["资助发放台账"]
-    watermark = [str(x or "") for x in next(ws.iter_rows(values_only=True))]
+    row_iter = ws.iter_rows(values_only=True)
+    watermark = [str(x or "") for x in next(row_iter)]
     assert any("用途：财务发放结果复核归档" in x for x in watermark)
-    headers = list(next(ws.iter_rows(values_only=True)))
+    headers = list(next(row_iter))
     assert headers == ["学号", "姓名", "项目类型", "发放金额", "银行卡后4位", "发放状态",
                        "发放批次号", "发放时间", "失败原因"]
-    rows = list(ws.iter_rows(values_only=True))
+    rows = list(row_iter)
     assert len(rows) == 2
     assert all(Decimal(str(row[3])).quantize(Decimal("0.01")) == Decimal("3300.75") for row in rows)
     assert {str(row[4]) for row in rows} == {"6411", "7522"}
