@@ -65,7 +65,7 @@ jobs:
           PY
           git diff --check
           python -m py_compile backend/app/services/affairs_discipline_service.py
-          python scripts/audit_tenant_queries.py --gate
+          python backend/scripts/audit_tenant_queries.py --gate
       - name: Restore workflow files and publish only the verified product fix
         shell: bash
         run: |
