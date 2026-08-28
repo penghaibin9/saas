@@ -46,7 +46,9 @@ jobs:
           pip install -r requirements.txt
           pip install cryptography
       - name: Apply residual fixture corrections
-        run: python ../.github/scripts/internship_residual_closeout.py
+        run: |
+          python ../.github/scripts/internship_residual_closeout.py
+          python ../.github/scripts/internship_residual_patch2.py
       - name: Syntax tenant ratchet and diff integrity
         run: |
           python -m py_compile tests/test_internship_score_archive_guard.py tests/test_internship_archive.py tests/test_internship_v93_batch2_remaining_first_create.py tests/test_internship_v93_special_filing_review_flow.py tests/test_portal_internship.py tests/test_internship_scope.py tests/test_internship_enterprise_eval.py
@@ -63,6 +65,7 @@ jobs:
           rm -f .github/workflows/internship-final-residual-closeout-r3.yml
           rm -f .github/workflows/internship-final-residual-closeout-r4.yml
           rm -f .github/scripts/internship_residual_closeout.py
+          rm -f .github/scripts/internship_residual_patch2.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -u -- .github
