@@ -1,0 +1,65 @@
+name: internship-final-scope-validation-repair
+
+on:
+  push:
+    branches:
+      - fix/internship-prelaunch-p1p2-20260828
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: "${{ github.event.head_commit.message == 'chore(internship): run final scope validation repair' }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/internship-prelaunch-p1p2-20260828
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply repair
+        run: python .github/scripts/fix_internship_final_scope_validation.py
+      - name: Syntax gate
+        run: |
+          python -m py_compile \
+            backend/app/modules/internship/services/internship_scope.py \
+            backend/app/modules/internship/services/internship_match_service.py \
+            backend/app/modules/internship/routers/internship_match.py \
+            backend/app/modules/internship/services/internship_service.py
+      - name: Static regression contracts
+        run: |
+          cd backend
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          path = Path('tests/test_internship_prelaunch_static_contracts.py')
+          spec = importlib.util.spec_from_file_location('prelaunch_contracts', path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          tests = sorted(name for name in dir(module) if name.startswith('test_'))
+          for name in tests:
+              getattr(module, name)()
+              print(f'PASS {name}')
+          print(f'{len(tests)} static contracts passed')
+          PY
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Remove one-shot script
+        run: rm .github/scripts/fix_internship_final_scope_validation.py
+      - name: Commit validated repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            .github/scripts/fix_internship_final_scope_validation.py \
+            backend/app/modules/internship/services/internship_scope.py \
+            backend/app/modules/internship/services/internship_match_service.py \
+            backend/app/modules/internship/routers/internship_match.py \
+            backend/app/modules/internship/services/internship_service.py \
+            backend/tests/test_internship_prelaunch_static_contracts.py
+          git diff --cached --check
+          git commit -m 'fix(internship): close final scope and validation gaps'
+          git push origin HEAD:fix/internship-prelaunch-p1p2-20260828
