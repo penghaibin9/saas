@@ -18,8 +18,13 @@ new = '''    created = svc.create({
     from app.core.context import current_tenant_id
     from app.models.file import FileBinding, FileObject
     from app.services import file_service
-    from app.services.file_access_resolvers import _owner_allows
-    from app.services.file_access_service import authorize_file_object, _actor_id
+    from app.services.file_access_resolvers import _owner_allows, scoped_binding_resolver
+    from app.services.file_access_service import (
+        _RESOLVERS,
+        _actor_id,
+        authorize_file_object,
+        resolver_registry_snapshot,
+    )
     from app.services.message_identity import resolve_message_user_id
     from sqlalchemy import select
 
@@ -43,6 +48,7 @@ new = '''    created = svc.create({
             "visibility": getattr(file_obj, "visibility", None),
             "status": getattr(file_obj, "status", None),
             "scan_status": getattr(file_obj, "scan_status", None),
+            "is_deleted": getattr(file_obj, "is_deleted", None),
         })
         print("SPECIAL_FILING_DIAG bindings", [{
             "id": b.id,
@@ -54,7 +60,11 @@ new = '''    created = svc.create({
             "status": b.status,
             "scope_json": b.scope_json,
         } for b in bindings])
+        print("SPECIAL_FILING_DIAG registry", resolver_registry_snapshot())
+        registered = _RESOLVERS.get("INTERNSHIP")
+        print("SPECIAL_FILING_DIAG registered_intership", registered, getattr(registered, "__module__", None), getattr(registered, "__name__", None))
         print("SPECIAL_FILING_DIAG owner_allows", _owner_allows(file_obj, REQUESTER))
+        print("SPECIAL_FILING_DIAG direct_scoped", scoped_binding_resolver(diag_db, file_obj, bindings, REQUESTER, "meta"))
         for action in ("meta", "bind", "submit"):
             try:
                 print("SPECIAL_FILING_DIAG authorize_object", action,
