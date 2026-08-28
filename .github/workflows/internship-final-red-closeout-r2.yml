@@ -87,9 +87,19 @@ jobs:
               '            User.tenant_id == rec.tenant_id, User.status == "ACTIVE",\n'
               '            User.is_deleted.is_(False),\n'
               '        ).order_by(User.id).first()\n'
-              '        assert advisor is not None\n'
+              '        if advisor is None:\n'
+              '            advisor = User(\n'
+              '                tenant_id=str(rec.tenant_id),\n'
+              '                username=f"ist-advisor-{rid}",\n'
+              '                password_hash="test-only",\n'
+              '                display_name="张指导",\n'
+              '                status="ACTIVE",\n'
+              '                user_type="STAFF",\n'
+              '            )\n'
+              '            db.add(advisor)\n'
+              '            db.flush()\n'
               '        rec.advisor_user_id = advisor.id\n'
-              '        rec.advisor_name = advisor.real_name or "张指导"',
+              '        rec.advisor_name = advisor.display_name or "张指导"',
           )
 
           ui = Path('../frontend/src/modules/internship/views/InternshipEnterpriseListView.vue')
