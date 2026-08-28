@@ -12,6 +12,7 @@
       @retry="loadAll"
       @back="$router.push('/admin/student-affairs/discipline')"
     >
+      <p v-if="focusNotice" class="ap-focus-note">{{ focusNotice }}</p>
       <section class="sa-summary-strip">
         <div class="sa-summary-strip__content">
           <span class="sa-summary-strip__eyebrow">当前处理重点</span>
@@ -77,7 +78,7 @@
                 variant="secondary"
                 :loading="acting === row.caseId"
                 @click="appeal(row)"
-              >发起申诉</AppPermissionButton>
+              >代学生登记申诉</AppPermissionButton>
               <span v-if="!canDeliver(row) && !canAppeal(row)" class="ap-dash">无需处理</span>
             </div>
           </template>
@@ -148,7 +149,7 @@
 
     <AppConfirmDialog
       v-model:visible="apDlg.visible"
-      title="提交处分申诉"
+      title="代学生登记处分申诉"
       type="warning"
       confirm-text="提交申诉"
       require-reason
@@ -251,6 +252,7 @@ export default {
       caseError: '',
       appealError: '',
       pendingAppealCount: '—',
+      caseFocusId: '', appealFocusId: '', focusNotice: '',
       appealStatus: '',
       appealFilters: APPEAL_FILTERS,
       casePagination: { page: 1, pageSize: 50, total: 0 },
@@ -274,7 +276,14 @@ export default {
     pageState() { return this.loading ? 'loading' : 'ready' },
     pageUndelivered() { return this.effectiveCases.filter((row) => !row.deliveredAt).length }
   },
-  mounted() { this.loadAll() },
+  mounted() { this.applyRouteFocus(); this.loadAll() },
+  watch: {
+    '$route.query'(value, previous) {
+      const nextCase = String(value?.caseId || ''), prevCase = String(previous?.caseId || '')
+      const nextAppeal = String(value?.appealId || ''), prevAppeal = String(previous?.appealId || '')
+      if (nextCase !== prevCase || nextAppeal !== prevAppeal) { this.applyRouteFocus(); this.loadAll() }
+    }
+  },
   beforeUnmount() {
     this.loadAllSeq += 1
     this.caseLoadSeq += 1
@@ -282,13 +291,20 @@ export default {
     this.pendingLoadSeq += 1
   },
   methods: {
+    applyRouteFocus() {
+      const q = this.$route.query || {}
+      this.caseFocusId = String(q.caseId || '').trim()
+      this.appealFocusId = String(q.appealId || '').trim()
+      this.focusNotice = this.caseFocusId ? `已锁定处分案件 #${this.caseFocusId}；所有查询仍由后端权限与数据范围重新校验。` : ''
+      this.casePagination.page = 1; this.appealPagination.page = 1
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     hasVersion(row) { return row?.version !== undefined && row?.version !== null && row?.version !== '' },
     allows(row, action, fallback) {
       return Array.isArray(row?.allowedActions) ? row.allowedActions.includes(action) : fallback
     },
     canDeliver(row) { return !row.deliveredAt && this.allows(row, 'DELIVER', row.status === 'EFFECTIVE') },
-    canAppeal(row) { return this.allows(row, 'APPEAL', row.status === 'EFFECTIVE') },
+    canAppeal(row) { return !!row.deliveredAt && this.allows(row, 'APPEAL', row.status === 'EFFECTIVE') },
     canReview(row) { return this.allows(row, 'REVIEW', ['SUBMITTED', 'REVIEWING'].includes(row.status)) },
     async loadAll() {
       const seq = ++this.loadAllSeq
@@ -301,9 +317,14 @@ export default {
       const page = this.casePagination.page
       const pageSize = this.casePagination.pageSize
       this.caseError = ''
-      const response = await studentAffairsApi.getDisciplineCases({
-        status: 'EFFECTIVE', page, pageSize
-      })
+      if (this.caseFocusId) {
+        const response = await studentAffairsApi.getDisciplineDetail(this.caseFocusId)
+        if (seq !== this.caseLoadSeq) return
+        if (response.code !== 0 || !response.data) { this.effectiveCases = []; this.casePagination.total = 0; this.caseError = response.message || '该处分案件不存在、已不可见或不在当前数据范围内'; return }
+        if (response.data.status !== 'EFFECTIVE') { this.effectiveCases = []; this.casePagination.total = 0; this.caseError = `该案件当前状态为${response.data.statusLabel || response.data.status || '未知状态'}，不再属于已生效送达/申诉工作区`; return }
+        this.effectiveCases = [response.data]; this.casePagination.total = 1; return
+      }
+      const response = await studentAffairsApi.getDisciplineCases({ status: 'EFFECTIVE', page, pageSize })
       if (seq !== this.caseLoadSeq) return
       if (response.code !== 0 || !response.data) {
         this.effectiveCases = []
@@ -320,7 +341,9 @@ export default {
       const page = this.appealPagination.page
       const pageSize = this.appealPagination.pageSize
       this.appealError = ''
-      const response = await studentAffairsApi.getDisciplineAppeals({ status, page, pageSize })
+      const response = await studentAffairsApi.getDisciplineAppeals({
+        status, caseId: this.caseFocusId || undefined, appealId: this.appealFocusId || undefined, page, pageSize
+      })
       if (seq !== this.appealLoadSeq) return
       if (response.code !== 0 || !response.data) {
         this.appeals = []
@@ -330,6 +353,7 @@ export default {
       }
       this.appeals = response.data.items || []
       this.appealPagination.total = response.data.total != null ? response.data.total : this.appeals.length
+      if (this.appealFocusId && !this.appeals.some((item) => String(item.appealId) === String(this.appealFocusId))) this.appealError = '该申诉不存在、已不可见，或不属于当前处分案件'
     },
     async loadPendingCount() {
       const seq = ++this.pendingLoadSeq
@@ -442,6 +466,7 @@ export default {
 </script>
 
 <style scoped>
+.ap-focus-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .ap-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
 .ap-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
