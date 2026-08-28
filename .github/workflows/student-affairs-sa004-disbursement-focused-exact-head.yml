@@ -33,7 +33,7 @@ env:
   SMS_ENABLED: 'false'
   SCHEDULER_MODE: external
   FAST_TEST_SCHEMA: '1'
-  E2E_TARGET_SHA: c8e7f05d41bc28c379631b0b8daa3ef6302c7374
+  E2E_TARGET_SHA: ead5052441ad01cdd164326ac2155602961c7207
 
 jobs:
   focused-disbursement:
