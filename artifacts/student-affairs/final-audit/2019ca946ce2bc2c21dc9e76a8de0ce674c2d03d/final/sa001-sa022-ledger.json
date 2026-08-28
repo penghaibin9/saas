@@ -3,7 +3,7 @@
   "ledgerPolicy": "REAL_PASS requires current exact-head evidence for impacted/shared-security chains; unaffected historical PASS may only be inherited after source/evidence attribution.",
   "flows": [
     {"code":"SA-001","status":"CLOSED_PASS","reason":"current exact-head Browser First + MySQL + audit + permission negatives + XLSX","sourceRunId":33081957347,"evidenceRecheckRunId":33082704763,"runnerBug":"openpyxl read_only max_row returned None; fixed by evidence-only row iteration recheck"},
-    {"code":"SA-002","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
+    {"code":"SA-002","status":"CLOSED_PASS","reason":"current exact-head Browser First + MySQL truth + encryption + objection/message/audit evidence passed in source run; final focused permission/data-scope/privacy red was RUNNER_BUG caused by stale nonexistent pytest manifest; repaired by executing three real exact-node regressions","sourceRunId":33083700661,"focusedRegressionRunId":33133739212,"focusedRegressionJobId":98728970547,"focusedRegressionArtifactId":9671258718,"focusedNodes":["tests/test_affairs_aid.py::test_a5_sensitive_family_economy","tests/test_affairs_aid.py::test_a7_cross_class_403","tests/test_affairs_aid.py::test_a8_counselor_review_scoped_to_counselor_review_node"],"focusedResult":"3 passed"},
     {"code":"SA-003","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
     {"code":"SA-004","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
     {"code":"SA-005","status":"TARGETED_REVALIDATION_REQUIRED","reason":"direct product hit"},
@@ -26,6 +26,8 @@
     {"code":"SA-022","status":"TARGETED_REVALIDATION_REQUIRED_LAST","reason":"global consistency seal; execute after SA-001..SA-021 closure"}
   ],
   "foundation": {
+    "mainBaseSha":"9b314938a7b89647cfbb549a4e17c37d08a6bdc6",
+    "mainAheadBehind":"product ahead 60 / behind 0",
     "studentAffairsFinalAcceptanceRun":33075401064,
     "studentAffairsFinalAcceptance":"PASS",
     "repositoryCiRun":33075400750,
