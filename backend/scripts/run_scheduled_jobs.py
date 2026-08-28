@@ -253,6 +253,7 @@ def job_student_affairs_background() -> None:
     """Student-affairs mutation jobs require a writable effective tenant."""
     from app.services import affairs_appeal_repair_service as repair
     from app.services import affairs_archive_service as archive
+    from app.services import affairs_funding_export_service as funding_export
     from app.services import affairs_leave_export_service as leave_export
     from app.services import approval_export_service as approval_export
     from app.services import tenant_effective_state_service as tenant_state
@@ -262,6 +263,9 @@ def job_student_affairs_background() -> None:
     _run_for_tenants("affairs_leave_export", tenant_state.BACKGROUND_BUSINESS_WRITE,
                      lambda tenant_id: leave_export.run_pending(
                          limit=2, worker_id=f"scheduler-affairs:{tenant_id}"))
+    _run_for_tenants("affairs_funding_export", tenant_state.BACKGROUND_BUSINESS_WRITE,
+                     lambda tenant_id: funding_export.run_pending(
+                         limit=2, worker_id=f"scheduler-funding:{tenant_id}"))
     _run_for_tenants("approval_export", tenant_state.BACKGROUND_BUSINESS_WRITE,
                      lambda tenant_id: approval_export.run_pending(
                          limit=2, worker_id=f"scheduler-approval:{tenant_id}"))

@@ -90,7 +90,7 @@
               <h3 class="ad-dname">{{ selected.realName || ('学生#' + selected.studentId) }}</h3>
               <StatusTag :type="statusType(selected.status)" :label="selected.statusLabel" dot />
             </div>
-            <button type="button" class="ad-refresh" title="刷新详情" @click="reloadDetail">↻</button>
+            <button type="button" class="ad-refresh" title="刷新详情" :disabled="acting" @click="reloadDetail">↻</button>
           </div>
 
           <dl class="ad-kv">
@@ -99,6 +99,11 @@
             <div><dt>核定等级</dt><dd>{{ levelLabel(selected.finalLevel) || '—' }}</dd></div>
             <div><dt>学号</dt><dd>{{ selected.studentNo || '—' }}</dd></div>
           </dl>
+
+          <section class="ad-statement" aria-label="困难情况说明">
+            <div class="ad-statement__title">困难情况说明</div>
+            <p>{{ selected.statement || '—' }}</p>
+          </section>
 
           <!-- 家庭经济（强敏感，默认脱敏） -->
           <section class="ad-family">
@@ -297,6 +302,7 @@ export default {
       pagination: { page: 1, pageSize: 20, total: 0 },
       selected: null, acting: false, scanning: false,
       revealed: false, revealedFam: {}, revealing: false,
+      listRequestSeq: 0, detailRequestSeq: 0, revealRequestSeq: 0,
       activeStatus: 'ALL',
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
       routeIntentConsumed: false,
@@ -524,22 +530,38 @@ export default {
     },
     onBatchChange() {
       this.selected = null
+      this.detailRequestSeq += 1
+      this.revealRequestSeq += 1
+      this.revealModal.visible = false
+      this.revealing = false
       this.revealed = false
+      this.revealedFam = {}
       this.pagination.page = 1
       if (this.batchId) this.loadApplications()
-      else { this.list = []; this.pagination.total = 0 }
+      else {
+        this.listRequestSeq += 1
+        this.loading = false
+        this.list = []
+        this.pagination.total = 0
+      }
     },
     async loadApplications() {
       if (!this.batchId) return
+      const requestSeq = ++this.listRequestSeq
+      const requestBatchId = String(this.batchId)
+      const requestPage = this.pagination.page
+      const requestPageSize = this.pagination.pageSize
+      const requestStatus = this.statusMatch && this.statusMatch.length ? this.statusMatch.join(',') : ''
+      const sid = this.studentFilter && this.studentFilter.studentId
+      const requestStudentId = sid || ''
       this.loading = true
       this.listError = ''
       this.statusCounts = null
-      const sid = this.studentFilter && this.studentFilter.studentId
       const res = await studentAffairsApi.getAidApplications({
-        batchId: this.batchId, page: this.pagination.page, pageSize: this.pagination.pageSize,
-        status: this.statusMatch && this.statusMatch.length ? this.statusMatch.join(',') : '',
-        studentId: sid || ''
+        batchId: requestBatchId, page: requestPage, pageSize: requestPageSize,
+        status: requestStatus, studentId: requestStudentId
       })
+      if (requestSeq !== this.listRequestSeq || String(this.batchId) !== requestBatchId) return
       this.loading = false
       if (res.code === 0 && res.data) {
         this.list = res.data.items || []
@@ -547,20 +569,27 @@ export default {
         this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.applyId === this.selected.applyId)
-          if (hit) this.selected = hit
+          if (hit) this.selected = { ...this.selected, ...hit }
         }
       } else {
         this.listError = res.message || '申请加载失败'
       }
     },
-    select(it) {
+    async select(it) {
       this.selected = it
+      this.revealRequestSeq += 1
+      this.revealModal.visible = false
+      this.revealing = false
       this.revealed = false
       this.revealedFam = {}
+      await this.reloadDetail()
     },
     async reloadDetail() {
       if (!this.selected) return
-      const res = await studentAffairsApi.getAidDetail(this.selected.applyId)
+      const requestSeq = ++this.detailRequestSeq
+      const requestApplyId = String(this.selected.applyId)
+      const res = await studentAffairsApi.getAidDetail(requestApplyId)
+      if (requestSeq !== this.detailRequestSeq || !this.selected || String(this.selected.applyId) !== requestApplyId) return
       if (res.code === 0 && res.data) this.selected = res.data
       else toast.error(res.message || '刷新详情失败')
     },
@@ -608,8 +637,12 @@ export default {
     async submitReveal() {
       const reason = (this.revealModal.reason || '').trim()
       if (!reason || reason.length < 5) { this.revealModal.error = '查看原因不少于 5 字'; return }
+      if (!this.selected) return
+      const requestSeq = ++this.revealRequestSeq
+      const requestApplyId = String(this.selected.applyId)
       this.revealing = true
-      const res = await studentAffairsApi.revealAidFamily(this.selected.applyId, reason)
+      const res = await studentAffairsApi.revealAidFamily(requestApplyId, reason)
+      if (requestSeq !== this.revealRequestSeq || !this.selected || String(this.selected.applyId) !== requestApplyId) return
       this.revealing = false
       if (res.code === 0 && res.data) {
         this.revealed = true
@@ -696,8 +729,10 @@ export default {
       this._lastErr = ''
       const res = await call()
       if (res.code === 0) {
+        this.detailRequestSeq += 1
+        this.revealRequestSeq += 1
         toast.success(okMsg)
-        if (res.data && res.data.applyId) { this.selected = res.data; this.revealed = false }
+        if (res.data && res.data.applyId) { this.selected = res.data; this.revealed = false; this.revealedFam = {} }
         else await this.reloadDetail()
         await this.loadApplications()
         this.acting = false
@@ -920,6 +955,26 @@ export default {
 .ad-kv dd {
   margin: 0;
   font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+.ad-statement {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-base);
+  background: var(--bg-subtle, var(--bg-card));
+}
+.ad-statement__title {
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+.ad-statement p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
   color: var(--text-primary);
 }
 .ad-family {

@@ -105,7 +105,7 @@ export default {
     },
     async confirm(it) {
       this.actingId = it.applicationId
-      const res = await studentAffairsApi.confirmFundingPublicity(it.applicationId)
+      const res = await studentAffairsApi.confirmFundingPublicity(it.applicationId, it.version)
       if (res.code === 0) {
         toast.success('已确认获资助')
         await this.load()
