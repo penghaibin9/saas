@@ -6,6 +6,15 @@
 from __future__ import annotations
 
 from . import academic_affairs_schedule_service as _legacy
+from . import academic_affairs_schedule_final_service as _final
+from . import academic_affairs_schedule_write_scope_r3 as _write_scope_r3
+from . import academic_affairs_major_split_public_service as _major_split_public
+from . import academic_affairs_major_split_allocate_r3 as _major_split_allocate_r3
+
+# R3 targeted hardening installers.  The package imports this facade after both public
+# modules exist, so the aliases already held by routers see the same module objects.
+_write_scope_r3.install(_final)
+_major_split_public.allocate = _major_split_allocate_r3.allocate
 
 
 def __getattr__(name):

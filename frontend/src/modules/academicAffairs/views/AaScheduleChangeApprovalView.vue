@@ -89,7 +89,6 @@ export default {
       this.loading = true; this.error = ''
       const res = await scheduleChangeApi.list({ ...this.filters, page: this.page, pageSize: this.pageSize })
       if (res.code === 0) {
-        // 仅保留在途待审（后端已按范围过滤；前端再收敛为待审节点）
         const all = res.data.list
         this.rows = this.filters.status ? all : all.filter((r) => PENDING.includes(r.status))
         this.total = this.filters.status ? res.data.total : this.rows.length
@@ -113,12 +112,20 @@ export default {
       this.submitting = true
       try {
         const res = action === 'approve'
-          ? await scheduleChangeApi.approve(row.changeId, reason || '')
-          : await scheduleChangeApi.reject(row.changeId, reason || '')
+          ? await scheduleChangeApi.approve(row.changeId, row.version, reason || '')
+          : await scheduleChangeApi.reject(row.changeId, row.version, reason || '')
         if (res.code === 0) {
           toast.success(action === 'approve' ? (res.data.status === 'APPLIED' ? '已终审通过，课表已改写' : '已通过，转教务处') : '已驳回')
-          this.confirm.visible = false; this.load()
-        } else toast.error(res.message)
+          this.confirm.visible = false
+          await this.load()
+        } else {
+          const code = String(res.code || '')
+          if (code === '409' || code.includes('APPROVAL_VERSION_CONFLICT')) {
+            toast.error('该单据已被其他操作更新，已刷新最新状态')
+            this.confirm.visible = false
+            await this.load()
+          } else toast.error(res.message)
+        }
       } finally { this.submitting = false }
     }
   }
