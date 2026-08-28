@@ -1,5 +1,6 @@
 name: Student Affairs tenant-scope hotfix
 
+# Trigger after the workflow exists on the branch; the workflow self-removes after the verified patch.
 on:
   push:
     branches:
