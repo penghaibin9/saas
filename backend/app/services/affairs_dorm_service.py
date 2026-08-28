@@ -985,14 +985,20 @@ def list_exceptions(user, status=None, page=1, page_size=50, student_id=None):
         rows = db.scalars(select(CsDormException).where(*conds).order_by(CsDormException.id.desc())
                           .offset((page - 1) * page_size).limit(page_size)).all()
         resolved = _resolve_exception_students(db, rows)
+        from app.models import AffairsRiskRecord, User
+        from app.services.affairs_risk_service import L_RISK
+        exception_ids = [int(x.id) for x in rows]
+        risks = db.scalars(select(AffairsRiskRecord).where(AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.source == "DORM", AffairsRiskRecord.source_ref_id.in_(exception_ids), AffairsRiskRecord.is_deleted.is_(False))).all() if exception_ids else []
+        risk_by_exception = {int(r.source_ref_id): r for r in risks if r.source_ref_id}
+        owner_ids = {int(r.owner_id) for r in risks if r.owner_id}
+        owners = db.scalars(select(User).where(User.tenant_id == _tid(), User.id.in_(owner_ids), User.is_deleted.is_(False))).all() if owner_ids else []
+        owner_name_by_id = {int(u.id): (u.real_name or u.login_name or "") for u in owners}
         out = []
         for x in rows:
             real_name, student_no, global_sid, _building_id = resolved[int(x.id)]
-            out.append({"exceptionId": str(x.id), "csStudentId": str(x.cs_student_id or ""),
-                       "studentId": str(global_sid or ""),
-                       "realName": real_name, "studentNo": student_no,
-                       "excType": x.exc_type or "", "detail": x.detail or "", "status": x.status,
-                       "createdAt": _iso(x.created_at), "version": x.version})
+            risk = risk_by_exception.get(int(x.id))
+            related_risk = None if not risk else {"riskId": str(risk.id), "riskLevel": risk.risk_level, "status": risk.status, "statusLabel": L_RISK.get(risk.status, risk.status), "ownerId": str(risk.owner_id or ""), "ownerName": owner_name_by_id.get(int(risk.owner_id), "") if risk.owner_id else ""}
+            out.append({"exceptionId": str(x.id), "csStudentId": str(x.cs_student_id or ""), "studentId": str(global_sid or ""), "realName": real_name, "studentNo": student_no, "excType": x.exc_type or "", "detail": x.detail or "", "status": x.status, "createdAt": _iso(x.created_at), "version": x.version, "relatedRisk": related_risk})
         return out, total
 
 

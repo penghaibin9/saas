@@ -32,6 +32,7 @@
       <AppPermissionButton :allowed="canBtn('studentAffairs.homeSchool.record.create')" code="studentAffairs.homeSchool.record.create" variant="primary" size="sm" :disabled="!studentId" @click="openCreate">登记联系</AppPermissionButton>
     </div>
 
+    <p v-if="focusNotice" class="fc-focus-note">{{ focusNotice }}</p>
     <EmptyState v-if="!studentId" title="请选择一名学生" description="选择后可查看该生家校联系历史，并登记新的沟通记录" />
     <LoadingState v-else-if="loading" text="正在加载联系记录…" />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
@@ -45,7 +46,7 @@
         <AppPermissionButton :allowed="canBtn('studentAffairs.homeSchool.record.create')" code="studentAffairs.homeSchool.record.create" variant="primary" size="sm" :disabled="!studentId" @click="openCreate">登记本次联系</AppPermissionButton>
       </div>
       <ul class="fc-list">
-        <li v-for="c in contacts" :key="c.contactId" class="fc-item">
+        <li v-for="c in contacts" :key="c.contactId" class="fc-item" :class="{ 'is-focused': String(c.contactId) === String(contactFocusId) }">
           <div class="fc-item__rail"><span></span></div>
           <div class="fc-item__content">
             <div class="fc-item__head">
@@ -130,7 +131,7 @@ export default {
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
-      studentId: '', loading: false, error: '', contacts: [], acting: false,
+      studentId: '', contactFocusId: '', focusNotice: '', loading: false, error: '', contacts: [], acting: false,
       routeIntentConsumed: false,
       page: 1, pageSize: 20, total: 0,
       contactTypeOptions: CONTACT_TYPE_OPTIONS,
@@ -145,24 +146,21 @@ export default {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
     }
   },
-  created() {
-    const q = this.$route.query || {}
-    if (q.studentId) {
-      this.studentId = String(q.studentId)
-      this.load()
-    }
-    this.consumeRouteIntent()
-  },
+  created() { this.applyRouteContext(); if (this.studentId) this.load(); this.consumeRouteIntent() },
   watch: {
-    '$route.query.studentId'(v) {
-      if (v) {
-        this.studentId = String(v)
-        this.page = 1
-        this.load()
-      }
+    '$route.query'(value, previous) {
+      const nextStudent = String(value?.studentId || ''), prevStudent = String(previous?.studentId || '')
+      const nextContact = String(value?.contactId || ''), prevContact = String(previous?.contactId || '')
+      if (nextStudent !== prevStudent || nextContact !== prevContact) { this.applyRouteContext(); this.page = 1; if (this.studentId) this.load() }
     }
   },
   methods: {
+    applyRouteContext() { const q = this.$route.query || {}; this.studentId = String(q.studentId || '').trim(); this.contactFocusId = String(q.contactId || '').trim(); this.focusNotice = '' },
+    applyContactFocus() {
+      if (!this.contactFocusId) { this.focusNotice = ''; return }
+      const hit = this.contacts.some((item) => String(item.contactId) === String(this.contactFocusId))
+      this.focusNotice = hit ? `已定位谈话转出的家校联系 #${this.contactFocusId}` : '该联系记录未在当前页，已定位到该生时间线；可翻页继续查看，不会跨学生搜索。'
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     consumeRouteIntent() {
       if (this.routeIntentConsumed || this.$route.query?.intent !== 'create' || !this.studentId) return
@@ -174,7 +172,9 @@ export default {
       return CONTACT_TYPE[t] || t || '—'
     },
     onPick() {
-      this.page = 1
+      this.page = 1; this.contactFocusId = ''; this.focusNotice = ''
+      const query = this.studentId ? { studentId: String(this.studentId) } : {}
+      this.$router.replace({ query }).catch(() => {})
       if (this.studentId) this.load()
     },
     async load() {
@@ -183,8 +183,8 @@ export default {
       this.error = ''
       const res = await studentAffairsApi.getFamilyContacts(this.studentId, { page: this.page, pageSize: this.pageSize })
       this.loading = false
-      if (res.code === 0 && res.data) { this.contacts = res.data.items || []; this.total = res.data.total || 0 }
-      else { this.contacts = []; this.total = 0; this.error = res.message || '加载失败' }
+      if (res.code === 0 && res.data) { this.contacts = res.data.items || []; this.total = res.data.total || 0; this.applyContactFocus() }
+      else { this.contacts = []; this.total = 0; this.focusNotice = ''; this.error = res.message || '加载失败' }
     },
     openCreate() {
       this.createModal = { visible: true, contactType: 'PHONE', reason: '', result: '', fullPhoneView: false, viewReason: '', error: '' }
@@ -234,6 +234,7 @@ export default {
 </script>
 
 <style scoped>
+.fc-focus-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); }
 .fc-picker { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
 .fc-picker__copy { display: grid; gap: 2px; min-width: 150px; }
 .fc-picker__copy small { color: var(--text-tertiary); font-size: var(--font-size-xs); }
@@ -249,6 +250,7 @@ export default {
 .fc-item__rail::after { content: ''; position: absolute; top: 16px; bottom: calc(-1 * var(--space-3) - 4px); width: 2px; background: var(--border-light); }
 .fc-item:last-child .fc-item__rail::after { display: none; }
 .fc-item__rail span { position: relative; z-index: 1; width: 10px; height: 10px; margin-top: 16px; border: 2px solid var(--primary-500); border-radius: 50%; background: var(--bg-card); }
+.fc-item.is-focused .fc-item__content { border-color: var(--primary-500); box-shadow: 0 0 0 2px var(--primary-100); }
 .fc-item__content { min-width: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-base); border-radius: var(--radius-lg); background: var(--bg-card); }
 .fc-item__head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-light); }
 .fc-item__type { font-weight: 700; color: var(--primary-700); }
