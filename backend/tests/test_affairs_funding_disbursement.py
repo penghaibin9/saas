@@ -10,6 +10,8 @@ from io import BytesIO
 
 from openpyxl import load_workbook
 
+from affairs_contract_test_support import ensure_role_user
+
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
 
@@ -64,7 +66,12 @@ def _seed_granted(sid, n=2):
 
 
 def test_disbursement_full_flow(client, db_mode):
-    hdr = _hdr(client, "school_admin01")
+    # 发放属于学工/资助真实业务职责，禁止用 SCHOOL_ADMIN 通配权限冒充业务经办人。
+    ensure_role_user(
+        "STUDENT_AFFAIRS_ADMIN", login_name="sa_disbursement_admin",
+        real_name="资助发放测试学工管理员",
+    )
+    hdr = _hdr(client, "sa_disbursement_admin")
     bid = _seed_granted(db_mode["student"], n=2)
     # 生成发放台账
     g = client.post(f"{BASE}/funding/batches/{bid}/disbursements/generate", headers=hdr).json()
