@@ -16,9 +16,9 @@ concurrency:
 
 jobs:
   targeted:
-    name: P1-04 AA-006 targeted pytest
+    name: R3 remaining tickets combined targeted pytest
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     services:
       mysql:
         image: mysql:8.0
@@ -42,7 +42,7 @@ jobs:
       - name: Checkout exact product SHA
         uses: actions/checkout@v4
         with:
-          ref: c510842338ada79f258cec90d50b075369a37dab
+          ref: 0d1a9819cf483e0461a00ed3b9917f028a28d88a
           fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
@@ -55,6 +55,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
-      - name: Run P1-04 precise test only
+      - name: Run remaining R3 precise tests together
         working-directory: backend
-        run: pytest -q tests/test_aa_course_review_authority_r3.py
+        run: >-
+          pytest -q
+          tests/test_aa_course_review_authority_r3.py
+          tests/test_aa_schedule_write_scope_r3.py
+          tests/test_aa_schedule_change_authority_r3.py
+          tests/test_aa_schedule_change_origin_uniqueness_r3.py
+          tests/test_aa_major_split_allocate_concurrency_r3.py
