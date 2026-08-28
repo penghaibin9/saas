@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   repair:
-    if: "${{ github.event.head_commit.message == 'chore(internship): retry tenant closeout' }}"
+    if: "${{ github.event.head_commit.message == 'chore(internship): finish tenant closeout' }}"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repair branch
@@ -35,10 +35,10 @@ jobs:
           targets = {
               'backend/app/modules/internship/services/internship_communication_service.py': [49, 96, 97],
               'backend/app/modules/internship/services/internship_compliance_service.py': [218, 275, 491],
-              'backend/app/modules/internship/services/internship_position_service.py': [334, 346, 377],
-              'backend/app/modules/internship/services/internship_process_report_service.py': [196, 197],
+              'backend/app/modules/internship/services/internship_position_service.py': [110, 111, 334, 346, 377],
+              'backend/app/modules/internship/services/internship_process_report_service.py': [105, 106, 196, 197],
               'backend/app/modules/internship/services/internship_risk_service.py': [229],
-              'backend/app/modules/internship/services/internship_service.py': [137, 142, 145, 148, 472, 567, 703, 704, 869, 870],
+              'backend/app/modules/internship/services/internship_service.py': [74, 137, 142, 145, 148, 472, 567, 703, 704, 869, 870],
               'backend/app/modules/internship/services/internship_student_service.py': [74, 149, 150, 230, 232, 356, 503, 614],
           }
           import_line = 'from app.core.tenant_scoped import tenant_get\n'
