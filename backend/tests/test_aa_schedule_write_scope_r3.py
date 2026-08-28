@@ -149,12 +149,23 @@ def _stub_add(monkeypatch):
 
 
 def test_college_can_create_and_write_own_batch(db_mode, monkeypatch):
+    from app.db.session import get_sessionmaker
+    from app.models import AaScheduleItem
+
     ids = _seed(); _patch(monkeypatch); _stub_add(monkeypatch)
     body = SimpleNamespace(termId=ids["term"], batchName="R3 学院新批次", collegeId=ids["college_a"])
     created = svc.create_batch(body, COLLEGE_USER)
     row = svc.add_item(int(created["batchId"]), COLLEGE_USER, SimpleNamespace())
     assert created["status"] == "DRAFT"
-    assert row["batchId"] == created["batchId"]
+    assert row["itemId"]
+
+    db = get_sessionmaker()()
+    try:
+        item = db.get(AaScheduleItem, int(row["itemId"]))
+        assert item is not None
+        assert int(item.batch_id) == int(created["batchId"])
+    finally:
+        db.close()
 
 
 def test_college_cannot_create_other_college_or_schoolwide_batch(db_mode, monkeypatch):

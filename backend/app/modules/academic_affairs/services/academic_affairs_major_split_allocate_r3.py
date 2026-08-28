@@ -6,9 +6,13 @@ Batch -> Option(id ASC) -> Volunteer(id ASC) lock order and locked CLOSED rechec
 """
 from __future__ import annotations
 
+import importlib
 import json
 
-from . import academic_affairs_major_split_service as _legacy
+_legacy = importlib.import_module(
+    ".academic_affairs_major_split_service",
+    package=__package__,
+)
 
 
 def allocate(user, batch_id, dry_run=False) -> dict:
