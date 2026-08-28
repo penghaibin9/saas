@@ -81,6 +81,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/maintenance/apply_sa_flow_continuity.py')
+          text = path.read_text(encoding='utf-8')
+          old = "    replace_once(path, 'AppSearchBox, AppGlobalState, AppPagination', 'AppSearchBox, AppGlobalState, AppPagination, AppInlineAlert')"
+          new = "    replace_once(path, \"  AppSearchBox, AppGlobalState, AppPagination\\n} from '@/components/common'\", \"  AppSearchBox, AppGlobalState, AppPagination, AppInlineAlert\\n} from '@/components/common'\")"
+          if old not in text:
+              raise SystemExit('P1-01 import anchor hotfix source not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
           TICKET="$(tr -d '\r\n ' < scripts/maintenance/sa_flow_ticket.txt)"
           echo "ticket=${TICKET}"
           python scripts/maintenance/apply_sa_flow_continuity.py "${TICKET}"
