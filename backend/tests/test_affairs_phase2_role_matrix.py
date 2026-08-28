@@ -41,6 +41,19 @@ def test_eight_role_permission_matrix(role_name, permission, expected):
     assert has_permission(user, permission) is expected
 
 
+def test_funding_school_review_assignee_pool_uses_business_roles_only():
+    """校级资助终审只能分配给学工处/资助业务角色，不能被通用 SCHOOL_ADMIN 抢占。"""
+    from app.services.affairs_assignee_service import _NODE_ROLES
+
+    assert _NODE_ROLES["SCHOOL_REVIEW"] == {
+        "STUDENT_AFFAIRS",
+        "STUDENT_AFFAIRS_ADMIN",
+        "SA_ADMIN",
+        "FUNDING_TEACHER",
+    }
+    assert "SCHOOL_ADMIN" not in _NODE_ROLES["SCHOOL_REVIEW"]
+
+
 def test_counselor_discipline_removal_permission_is_narrow():
     """辅导员仅获得处分解除初审，不得顺带获得正式处分审批或申诉复核。"""
     user = {"currentRoleCode": "COUNSELOR", "userType": "TEACHER", "userId": "matrix"}
