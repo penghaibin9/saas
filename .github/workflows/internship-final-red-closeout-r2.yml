@@ -89,17 +89,17 @@ jobs:
               '        ).order_by(User.id).first()\n'
               '        if advisor is None:\n'
               '            advisor = User(\n'
-              '                tenant_id=str(rec.tenant_id),\n'
-              '                username=f"ist-advisor-{rid}",\n'
+              '                tenant_id=rec.tenant_id,\n'
+              '                login_name=f"ist-advisor-{rid}",\n'
               '                password_hash="test-only",\n'
-              '                display_name="张指导",\n'
+              '                real_name="张指导",\n'
               '                status="ACTIVE",\n'
-              '                user_type="STAFF",\n'
+              '                user_type="TEACHER",\n'
               '            )\n'
               '            db.add(advisor)\n'
               '            db.flush()\n'
               '        rec.advisor_user_id = advisor.id\n'
-              '        rec.advisor_name = advisor.display_name or "张指导"',
+              '        rec.advisor_name = advisor.real_name or "张指导"',
           )
 
           ui = Path('../frontend/src/modules/internship/views/InternshipEnterpriseListView.vue')
@@ -159,15 +159,16 @@ jobs:
       - name: Commit validated repairs and remove one-shot workflows
         working-directory: .
         run: |
-          rm .github/internship-final-red-closeout.trigger
-          rm .github/workflows/internship-expected-version-closeout.yml
-          rm .github/workflows/internship-final-red-closeout-r2.yml
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- \
+          rm -f \
             .github/internship-final-red-closeout.trigger \
             .github/workflows/internship-expected-version-closeout.yml \
+            .github/workflows/internship-final-red-closeout.yml \
             .github/workflows/internship-final-red-closeout-r2.yml \
+            .github/workflows/internship-r2-trigger.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- .github
+          git add -- \
             backend/tests/test_internship_application.py \
             backend/tests/test_internship_enterprise.py \
             backend/tests/test_internship_match.py \
