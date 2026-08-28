@@ -601,7 +601,10 @@ def close(risk_id, user, conclusion="", expected_version=None) -> dict:
                                  to_stage="RISK_CLOSED", reason=f"风险处置关闭（{x.source}）",
                                  source_module="student-affairs"))
         _todo_done(db, x.id)
-        _msg(db, x.student_id, "风险已关闭", "相关风险已处置关闭", "STATUS_CHANGED", x.id)
+        # 每次真实 CLOSE 都必须产生独立的学生结果通知。重开后再次关闭时，
+        # 若继续使用固定 STATUS_CHANGED 去重键，Outbox 会把第二次关闭误判成重复事件。
+        _msg(db, x.student_id, "风险已关闭", "相关风险已处置关闭",
+             f"STATUS_CHANGED:CLOSE:v{x.version}", x.id)
         _audit(db, x.id, "CLOSE")
         db.commit()
         _drain_message_outbox()

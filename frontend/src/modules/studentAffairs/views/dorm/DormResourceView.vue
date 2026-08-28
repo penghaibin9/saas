@@ -18,7 +18,7 @@
         <div class="sa-summary-strip__content">
           <span class="sa-summary-strip__eyebrow">当前房源结论</span>
           <h2 class="sa-summary-strip__title">{{ buildings.length }} 栋楼、{{ occ.totalBeds || 0 }} 张床位，当前空床 {{ occ.vacantBeds || 0 }} 张</h2>
-          <p class="sa-summary-strip__text">先选择楼栋查看房间，再选择房间查看具体床位。新建楼栋或一键铺床前，请核对性别限制、层数、房间数和每间床位数。</p>
+          <p class="sa-summary-strip__text">先选择楼栋查看房间，再选择房间查看具体床位。新建楼栋或一键铺床前，请核对性别限制、负责宿管、层数、房间数和每间床位数。</p>
         </div>
         <div class="sa-summary-strip__actions">
           <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" :loading="actioning" @click="createBuilding">新建楼栋</AppPermissionButton>
@@ -95,13 +95,23 @@
 
     <AppDrawer :visible="buildDlg.visible" title="新增楼栋" mode="modal" size="large" @close="buildDlg.visible = false">
       <div class="dr-form">
-        <div class="dorm-form-note">新建楼栋后可选择一键铺满。提交前请核对性别限制和容量参数，避免生成错误房间结构。</div>
+        <div class="dorm-form-note">新建楼栋后可选择一键铺满。负责宿管会承接该楼栋后续调宿终审与宿舍待办，请先完成真实指派。</div>
         <AppFormItem label="楼栋名称" required>
           <AppTextInput v-model="buildDlg.name" placeholder="如：1 号楼 / 西苑 3 栋" :disabled="actioning" />
         </AppFormItem>
         <AppFormItem label="性别限制" required>
           <AppSelect v-model="buildDlg.gender" :options="GENDER_LIMITS" :disabled="actioning" />
         </AppFormItem>
+        <AppFormItem label="负责宿管" required>
+          <AppTeacherPicker
+            v-model="buildDlg.managerTeacherKey"
+            :query="{ roleCode: 'DORM_MANAGER' }"
+            placeholder="选择负责宿管"
+            data-scope-hint="仅显示已分配宿管角色的在职人员"
+            :disabled="actioning"
+          />
+        </AppFormItem>
+        <p class="dr-hint">这里只列 DORM_MANAGER 角色；提交后写入楼栋宿管范围，调宿终审无需再靠数据库补绑定。</p>
         <label class="dr-check" :class="{ 'is-on': buildDlg.autoFill }">
           <input v-model="buildDlg.autoFill" type="checkbox" :disabled="actioning" />
           <span><strong>一键铺满整栋</strong><small>按层数 × 每层房数 × 每间床位自动建房间与床位</small></span>
@@ -139,7 +149,7 @@
 
 <script>
 import { AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput, AppPageShell,
-  AppPermissionButton, AppSectionCard, AppSelect, AppTextInput } from '@/components/common'
+  AppPermissionButton, AppSectionCard, AppSelect, AppTeacherPicker, AppTextInput } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
@@ -173,7 +183,7 @@ export default {
   name: 'DormResourceView',
   props: { ctx: { type: Object, default: null } },
   components: { AppButton, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
-    AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, DataTable },
+    AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTeacherPicker, AppTextInput, DataTable },
   data() {
     return {
       buildingColumns: BUILDING_COLUMNS,
@@ -181,7 +191,7 @@ export default {
       GENDER_LIMITS,
       loading: true, actioning: false, errorMessage: '', buildings: [], occ: {},
       curBuilding: '', curBuildingName: '', rooms: [], curRoom: '', curRoomNo: '', beds: [],
-      buildDlg: { visible: false, name: '', gender: 'MIXED', autoFill: false, floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' },
+      buildDlg: { visible: false, name: '', gender: 'MIXED', managerTeacherKey: '', autoFill: false, floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' },
       genDlg: { visible: false, buildingId: '', buildingName: '', floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' }
     }
   },
@@ -217,13 +227,14 @@ export default {
       catch (e) { this.errorMessage = e.message || '床位加载失败' }
     },
     createBuilding() {
-      this.buildDlg = { visible: true, name: '', gender: 'MIXED', autoFill: false,
+      this.buildDlg = { visible: true, name: '', gender: 'MIXED', managerTeacherKey: '', autoFill: false,
         floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' }
     },
     async submitBuilding() {
       const d = this.buildDlg
       if (!d.name.trim()) { d.error = '请填写楼栋名称'; return }
-      const body = { buildingName: d.name.trim(), genderLimit: d.gender }
+      if (!d.managerTeacherKey) { d.error = '请选择负责宿管'; return }
+      const body = { buildingName: d.name.trim(), genderLimit: d.gender, managerTeacherKey: String(d.managerTeacherKey) }
       if (d.autoFill) {
         if (!(d.floors > 0 && d.roomsPerFloor > 0 && d.bedsPerRoom > 0)) {
           d.error = '一键铺满时，层数 / 每层房数 / 每间床位均须大于 0'
