@@ -14,6 +14,12 @@ def _create(client, headers, **over):
     return client.post(BASE, headers=headers, json=body).json()
 
 
+def _version(client, headers, company_id) -> int:
+    detail = client.get(f"{BASE}/{company_id}", headers=headers).json()
+    assert detail["code"] == 0, detail
+    return int(detail["data"].get("version") or 0)
+
+
 def test_create_and_list(client, auth_headers, db_mode):
     r = _create(client, auth_headers)
     assert r["code"] == 0
@@ -41,13 +47,13 @@ def test_review_state_machine(client, auth_headers, db_mode):
     cid = _create(client, auth_headers)["data"]["id"]
     # 待审核 → 通过 → 合作中 + 资质通过
     ap = client.post(f"{BASE}/{cid}/review", headers=auth_headers,
-                     json={"action": "APPROVE", "comment": "资质齐全"}).json()
+                     json={"action": "APPROVE", "comment": "资质齐全", "expectedVersion": _version(client, auth_headers, cid)}).json()
     assert ap["code"] == 0
     assert ap["data"]["coopStatus"] == "ACTIVE"
     assert ap["data"]["qualificationStatus"] == "PASSED"
     # 非法：已合作中不能再审核
     again = client.post(f"{BASE}/{cid}/review", headers=auth_headers,
-                        json={"action": "APPROVE"}).json()
+                        json={"action": "APPROVE", "expectedVersion": _version(client, auth_headers, cid)}).json()
     assert again["code"] != 0
 
 
@@ -57,10 +63,10 @@ def test_review_reject(client, auth_headers, db_mode):
     cid = _create(client, auth_headers, creditCode="91310000REJ00001XA")["data"]["id"]
     # 原因不足 5 字被拒
     bad = client.post(f"{BASE}/{cid}/review", headers=auth_headers,
-                      json={"action": "REJECT", "comment": "资质不符"}).json()
+                      json={"action": "REJECT", "comment": "资质不符", "expectedVersion": _version(client, auth_headers, cid)}).json()
     assert bad["code"] == 422001
     rj = client.post(f"{BASE}/{cid}/review", headers=auth_headers,
-                     json={"action": "REJECT", "comment": "营业执照经营范围与实习岗位不符"}).json()
+                     json={"action": "REJECT", "comment": "营业执照经营范围与实习岗位不符", "expectedVersion": _version(client, auth_headers, cid)}).json()
     assert rj["code"] == 0 and rj["data"]["coopStatus"] == "REJECTED"
 
 
@@ -68,27 +74,27 @@ def test_cooperation_suspend_resume_archive(client, auth_headers, db_mode):
     cid = _create(client, auth_headers, creditCode="91310000COOP001XA")["data"]["id"]
     # 未审核直接暂停 → 非法
     assert client.post(f"{BASE}/{cid}/cooperation", headers=auth_headers,
-                       json={"action": "SUSPEND"}).json()["code"] != 0
-    client.post(f"{BASE}/{cid}/review", headers=auth_headers, json={"action": "APPROVE"})
+                       json={"action": "SUSPEND", "expectedVersion": _version(client, auth_headers, cid)}).json()["code"] != 0
+    client.post(f"{BASE}/{cid}/review", headers=auth_headers, json={"action": "APPROVE", "expectedVersion": _version(client, auth_headers, cid)})
     assert client.post(f"{BASE}/{cid}/cooperation", headers=auth_headers,
-                       json={"action": "SUSPEND"}).json()["data"]["coopStatus"] == "SUSPENDED"
+                       json={"action": "SUSPEND", "expectedVersion": _version(client, auth_headers, cid)}).json()["data"]["coopStatus"] == "SUSPENDED"
     assert client.post(f"{BASE}/{cid}/cooperation", headers=auth_headers,
-                       json={"action": "RESUME"}).json()["data"]["coopStatus"] == "ACTIVE"
+                       json={"action": "RESUME", "expectedVersion": _version(client, auth_headers, cid)}).json()["data"]["coopStatus"] == "ACTIVE"
     assert client.post(f"{BASE}/{cid}/cooperation", headers=auth_headers,
-                       json={"action": "ARCHIVE"}).json()["data"]["coopStatus"] == "ARCHIVED"
+                       json={"action": "ARCHIVE", "expectedVersion": _version(client, auth_headers, cid)}).json()["data"]["coopStatus"] == "ARCHIVED"
 
 
 def test_blacklist(client, auth_headers, db_mode):
     cid = _create(client, auth_headers, creditCode="91310000BLK00001XA")["data"]["id"]
     # 拉黑无原因 → 非法
     assert client.post(f"{BASE}/{cid}/blacklist", headers=auth_headers,
-                       json={"on": True, "reason": ""}).json()["code"] != 0
+                       json={"on": True, "reason": "", "expectedVersion": _version(client, auth_headers, cid)}).json()["code"] != 0
     on = client.post(f"{BASE}/{cid}/blacklist", headers=auth_headers,
-                     json={"on": True, "reason": "多次拖欠实习津贴"}).json()
+                     json={"on": True, "reason": "多次拖欠实习津贴", "expectedVersion": _version(client, auth_headers, cid)}).json()
     assert on["code"] == 0 and on["data"]["blacklist"] is True and on["data"]["coopStatus"] == "BLACKLIST"
     off = client.post(f"{BASE}/{cid}/blacklist", headers=auth_headers,
-                      json={"on": False}).json()
-    assert off["data"]["blacklist"] is False and off["data"]["coopStatus"] == "ACTIVE"
+                      json={"on": False, "expectedVersion": _version(client, auth_headers, cid)}).json()
+    assert off["data"]["blacklist"] is False and off["data"]["coopStatus"] == "PENDING"
 
 
 def test_contacts_crud_and_primary(client, auth_headers, db_mode):
@@ -106,7 +112,7 @@ def test_contacts_crud_and_primary(client, auth_headers, db_mode):
     assert len(primaries) == 1 and primaries[0]["name"] == "赵导师"
     # 编辑
     up = client.put(f"{BASE}/{cid}/contacts/{a['data']['id']}", headers=auth_headers,
-                    json={"title": "技术总监"}).json()
+                    json={"title": "技术总监", "expectedVersion": int(a["data"].get("version") or 0)}).json()
     assert up["code"] == 0 and up["data"]["title"] == "技术总监"
     # 删除
     dl = client.delete(f"{BASE}/{cid}/contacts/{a['data']['id']}", headers=auth_headers).json()

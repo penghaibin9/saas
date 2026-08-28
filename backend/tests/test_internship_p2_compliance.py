@@ -209,16 +209,19 @@ def test_safety_cannot_bypass_with_passed_true(client, auth_headers, db_mode):
 def test_incident_cannot_close_from_reported(client, auth_headers, db_mode):
     h = auth_headers
     bid = _mk_batch(client, h)
+    internship_id = _mk_intern(client, h, bid)
     key = _uniq("idem")
     rep = client.post(f"{CMP}/incidents", headers=h, json={
-        "batchId": bid, "summary": "现场受伤测试", "severity": "HIGH",
+        "batchId": bid, "internshipId": internship_id,
+        "summary": "现场受伤测试", "severity": "HIGH",
         "idempotencyKey": key, "fileIds": ["f1"],
     }).json()
     assert rep["code"] == 0, rep
     iid = rep["data"]["id"]
     # 幂等
     rep2 = client.post(f"{CMP}/incidents", headers=h, json={
-        "batchId": bid, "summary": "重复", "idempotencyKey": key,
+        "batchId": bid, "internshipId": internship_id,
+        "summary": "重复", "idempotencyKey": key,
     }).json()
     assert rep2["code"] == 0
     assert str(rep2["data"]["id"]) == str(iid)
@@ -366,7 +369,9 @@ def test_enterprise_access_required_blocks_assign(client, auth_headers, db_mode)
     if ent.get("code") != 0:
         pytest.fail(f"enterprise create failed: {ent}")
     eid = ent["data"]["id"]
-    client.post(f"{ENT}/{eid}/review", headers=h, json={"action": "APPROVE"})
+    client.post(f"{ENT}/{eid}/review", headers=h, json={
+        "action": "APPROVE", "expectedVersion": int(ent["data"].get("version") or 0),
+    })
     pos = client.post(POS, headers=h, json={
         "companyId": eid, "title": _uniq("岗"), "headcount": 2, "batchId": bid,
         "workContent": "现场值守", "dailyHours": 8, "weeklyHours": 40, "nightShift": False,

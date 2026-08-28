@@ -37,7 +37,7 @@ def batch_id(client, auth_headers, db_mode):
 
 def _company(client, h, cc, name="匹配测试企业"):
     cid = client.post(ENT, headers=h, json={"name": name, "creditCode": cc}).json()["data"]["id"]
-    client.post(f"{ENT}/{cid}/review", headers=h, json={"action": "APPROVE"})
+    client.post(f"{ENT}/{cid}/review", headers=h, json={"action": "APPROVE", "expectedVersion": 0})
     return cid
 
 
