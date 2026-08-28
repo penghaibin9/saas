@@ -6,7 +6,7 @@ F4 助学金困难库在库→放行→GRANTED；F5 重复申请409；F6 越权�
 from __future__ import annotations
 
 from affairs_contract_test_support import (
-    expire_publicity, ensure_owner_scope, ensure_workflow_assignees,
+    expire_publicity, ensure_owner_scope, ensure_role_user, ensure_workflow_assignees,
     post_versioned, role_headers,
 )
 
@@ -49,9 +49,14 @@ def _seed(db_mode):
     db.commit()
     ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id}
     db.close()
+    # 共享 SCHOOL_REVIEW 夹具继续保留 SCHOOL_ADMIN，供困难认定等非 Funding 流程使用；
+    # Funding 自己的校级终审必须额外存在真实学工业务受理人，禁止退回超级/系统管理员兜底。
     ensure_workflow_assignees(
         [ids["sa"], ids["sb"]],
         nodes=("COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"),
+    )
+    ensure_role_user(
+        "STUDENT_AFFAIRS_ADMIN", login_name="sa_admin01", real_name="测试学工处管理员"
     )
     return ids
 
@@ -91,7 +96,7 @@ def _approve_to_publicity(client, app_id):
     actors = (
         role_headers("COUNSELOR", login_name="counselor01", real_name="测试辅导员"),
         role_headers("COLLEGE_ADMIN", login_name="college_admin01", real_name="测试学院管理员"),
-        role_headers("SCHOOL_ADMIN", login_name="school_admin01", real_name="测试学校管理员"),
+        role_headers("STUDENT_AFFAIRS_ADMIN", login_name="sa_admin01", real_name="测试学工处管理员"),
     )
     for actor in actors:
         response = post_versioned(
