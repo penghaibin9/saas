@@ -13,7 +13,10 @@ _NODE_ROLES = {
     "STUDENT_AFFAIRS_REVIEW": {"STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SA_ADMIN"},
     "SA_OFFICE_REVIEW": {"STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SA_ADMIN"},
     "SA_OFFICE_FINAL": {"STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SA_ADMIN"},
-    "SCHOOL_REVIEW": {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN"},
+    # 资助 SCHOOL_REVIEW 是学工业务终审：只允许学工处/资助业务角色进入受理人池。
+    # SCHOOL_ADMIN 是平台初始化/系统管理角色，不能因为权限面较宽就抢占真实业务待办；
+    # 否则严格 WorkflowTask assignee 守卫会把任务分给系统管理员，反而拒绝真正的学工处管理员。
+    "SCHOOL_REVIEW": {"STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SA_ADMIN", "FUNDING_TEACHER"},
     # SP-E02/E04：就业去向登记单节点审核，无 TeacherStudentScope 式的院系/班级范围
     # 概念（就业老师按学校配置的岗位任职覆盖全校），落到角色候选池即可，不做
     # COLLEGE_REVIEW 式的二次地理收敛。
