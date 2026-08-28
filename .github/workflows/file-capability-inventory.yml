@@ -37,7 +37,7 @@ jobs:
     if: github.event_name == 'pull_request' && github.head_ref == 'fix/student-affairs-flow-continuity-20260828'
     name: 学工处分申诉租户查询精准修复
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,6 +46,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend CI dependencies
+        run: pip install -r backend/requirements.txt
       - name: Replace the single shifted bare Session.get
         shell: bash
         run: |
