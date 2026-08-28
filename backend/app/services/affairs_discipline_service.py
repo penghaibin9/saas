@@ -744,7 +744,10 @@ def review_appeal(appeal_id, body, user) -> dict:
         _audit(db, a.case_id, "DISCIPLINE_APPEAL_REVIEW", result)
         db.commit(); db.refresh(a)
         _drain_message_outbox()
-        s = db.get(StudentProfile, int(a.student_id)) if a.student_id else None
+        s = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == int(a.student_id), StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False)
+        )).first() if a.student_id else None
         result_row = _appeal_row(a, s)
         from app.services import affairs_appeal_todo_service as appeal_todo
         return appeal_todo.sync_after_review("DISCIPLINE_APPEAL_REVIEW", int(appeal_id), result_row)
