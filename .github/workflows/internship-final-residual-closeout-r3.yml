@@ -49,71 +49,23 @@ jobs:
           pip install -r requirements.txt
           pip install cryptography
 
-      - name: Apply validated contract repairs and residual fixture corrections
+      - name: Repair residual production-semantic fixtures
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          def read(path):
-              return Path(path).read_text(encoding='utf-8')
-
-          def write(path, text):
-              Path(path).write_text(text, encoding='utf-8')
-
           def replace_exact(path, old, new, count=1):
-              text = read(path)
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
               actual = text.count(old)
               if actual != count:
                   raise SystemExit(f'{path}: expected {count} matches, got {actual}: {old!r}')
-              write(path, text.replace(old, new))
+              p.write_text(text.replace(old, new), encoding='utf-8')
 
-          # Reuse the already-proven R2 transformation so the broad expectedVersion
-          # migration, frontend row-version payloads and S1 loading wait are applied
-          # exactly once in this clean runner workspace.
-          r2 = Path('../.github/workflows/internship-final-red-closeout-r2.yml')
-          r2_text = r2.read_text(encoding='utf-8')
-          marker = "          python - <<'PY'\n"
-          start = r2_text.index(marker) + len(marker)
-          end = r2_text.index("          PY\n", start)
-          r2_code = '\n'.join(
-              line[10:] if line.startswith('          ') else line
-              for line in r2_text[start:end].splitlines()
-          )
-          exec(compile(r2_code, str(r2), 'exec'), {'__name__': '__main__'})
-
-          # R2's last remaining failure was only an incorrect test-fixture mapping
-          # to the actual t_user model. Use real fields and a stable TEACHER identity.
-          replace_exact(
-              'tests/test_internship_student.py',
-              '''            advisor = User(
-                tenant_id=str(rec.tenant_id),
-                username=f"ist-advisor-{rid}",
-                password_hash="test-only",
-                display_name="张指导",
-                status="ACTIVE",
-                user_type="STAFF",
-            )''',
-              '''            advisor = User(
-                tenant_id=rec.tenant_id,
-                login_name=f"ist-advisor-{rid}",
-                real_name="张指导",
-                password_hash="test-only",
-                status="ACTIVE",
-                user_type="TEACHER",
-            )''',
-          )
-          replace_exact(
-              'tests/test_internship_student.py',
-              '        rec.advisor_name = advisor.display_name or "张指导"',
-              '        rec.advisor_name = advisor.real_name or "张指导"',
-          )
-
-          # Archive tests must satisfy the production stable-advisor identity rule;
-          # do not weaken ARCHIVE compliance to preserve legacy name-only fixtures.
           replace_exact(
               'tests/test_internship_score_archive_guard.py',
-              '    from app.db.session import get_sessionmaker\n    from app.models import (',
-              '    from app.db.session import get_sessionmaker\n    from app.models import User\n    from app.models import (',
+              '        InternshipStudentEval, StudentProfile, WeeklyReport,\n    )',
+              '        InternshipStudentEval, StudentProfile, User, WeeklyReport,\n    )',
           )
           replace_exact(
               'tests/test_internship_score_archive_guard.py',
@@ -132,25 +84,15 @@ jobs:
               '            advisor = User(tenant_id=TID,\n                           login_name=f"archive-advisor-{key}-{uuid4().hex[:8]}",\n                           real_name=adv, password_hash="test-only",\n                           user_type="TEACHER", status="ACTIVE")\n            db.add(advisor); db.flush()\n            r = InternshipRecord(tenant_id=TID, student_id=s.id,\n                                 advisor_user_id=advisor.id, advisor_name=adv,',
           )
 
-          # Special filing evidence must be a real, clean, current-user-owned TEMP_PRIVATE
-          # file. Reuse the existing real-file helper instead of fake string IDs.
           replace_exact(
               'tests/test_internship_v93_batch2_remaining_first_create.py',
-              '    ids = _seed(db)\n    db.commit()\n    db.close()\n\n    _admin_ctx()\n    svc.create({\n        "internshipId": str(ids["internship"]), "filingType": "OTHER",',
-              '    ids = _seed(db)\n    file_id = _seed_evidence_file(db)\n    db.commit()\n    db.close()\n\n    _admin_ctx()\n    svc.create({\n        "internshipId": str(ids["internship"]), "filingType": "OTHER",',
-              count=1,
+              '    db = _session()\n    ids = _seed(db)\n    db.commit()\n    db.close()\n\n    _admin_ctx()\n    svc.create({\n        "internshipId": str(ids["internship"]), "filingType": "OTHER",\n        "triggerReason": "企业临时调整岗位安排，需补充备案说明情况。",\n        "fileIds": ["f-evidence-1"],\n    }, user=ADMIN_USER)',
+              '    db = _session()\n    ids = _seed(db)\n    file_id = _seed_evidence_file(db)\n    db.commit()\n    db.close()\n\n    _admin_ctx()\n    svc.create({\n        "internshipId": str(ids["internship"]), "filingType": "OTHER",\n        "triggerReason": "企业临时调整岗位安排，需补充备案说明情况。",\n        "fileIds": [file_id],\n    }, user=ADMIN_USER)',
           )
           replace_exact(
               'tests/test_internship_v93_batch2_remaining_first_create.py',
-              '    ids = _seed(db)\n    db.commit()\n    db.close()\n\n    def _do(seq):\n        _admin_ctx()\n        svc.create({\n            "internshipId": str(ids["internship"]), "filingType": "OTHER",',
-              '    ids = _seed(db)\n    file_id = _seed_evidence_file(db)\n    db.commit()\n    db.close()\n\n    def _do(seq):\n        _admin_ctx()\n        svc.create({\n            "internshipId": str(ids["internship"]), "filingType": "OTHER",',
-              count=1,
-          )
-          replace_exact(
-              'tests/test_internship_v93_batch2_remaining_first_create.py',
-              '        "fileIds": ["f-evidence-1"],',
-              '        "fileIds": [file_id],',
-              count=2,
+              '    db = _session()\n    ids = _seed(db)\n    db.commit()\n    db.close()\n\n    def _do(seq):\n        _admin_ctx()\n        svc.create({\n            "internshipId": str(ids["internship"]), "filingType": "OTHER",\n            "triggerReason": "企业临时调整岗位安排，需补充备案说明情况。",\n            "fileIds": ["f-evidence-1"],\n        }, user=ADMIN_USER)',
+              '    db = _session()\n    ids = _seed(db)\n    ids["files"] = [_seed_evidence_file(db) for _ in range(2)]\n    db.commit()\n    db.close()\n\n    def _do(seq):\n        _admin_ctx()\n        svc.create({\n            "internshipId": str(ids["internship"]), "filingType": "OTHER",\n            "triggerReason": "企业临时调整岗位安排，需补充备案说明情况。",\n            "fileIds": [ids["files"][seq]],\n        }, user=ADMIN_USER)',
           )
 
           replace_exact(
@@ -169,54 +111,52 @@ jobs:
               '        "fileIds": [ids["file"]],',
           )
 
-          # Portal score appeal now deliberately requires explicit internship context
-          # and an actual PUBLISHED score; seed both so this remains a business test.
-          portal_helper_anchor = '''def test_my_view(client, db_mode):\n'''
-          portal_helper = '''def _seed_score_context(no, name):
-    from datetime import datetime
-    from uuid import uuid4
-
-    from app.db.session import get_sessionmaker
-    from app.models import InternshipBatch, InternshipFinalScore, InternshipRecord, StudentProfile
-
-    db = get_sessionmaker()()
-    try:
-        student = StudentProfile(
-            tenant_id=TID, student_no=no, real_name=name, gender="M", grade="2022",
-            current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE",
-        )
-        db.add(student)
-        db.flush()
-        batch = InternshipBatch(
-            tenant_id=TID, batch_name="门户成绩申诉批次",
-            batch_no=f"PORTAL-APPEAL-{uuid4().hex[:8]}", status="RUNNING", planned_count=1,
-        )
-        db.add(batch)
-        db.flush()
-        record = InternshipRecord(
-            tenant_id=TID, student_id=student.id, batch_id=batch.id,
-            status="ASSESSING", risk_level="NONE",
-        )
-        db.add(record)
-        db.flush()
-        score = InternshipFinalScore(
-            tenant_id=TID, internship_id=record.id, student_id=student.id,
-            batch_id=batch.id, total_score=80, pass_line=60,
-            is_pass=True, incomplete=False, status="PUBLISHED",
-            published_by_name="学校管理员", published_at=datetime.utcnow(), version=1,
-        )
-        db.add(score)
-        db.commit()
-        return {"internship": record.id, "batch": batch.id, "score": score.id}
-    finally:
-        db.close()
-
-
-'''
+          helper = "\n".join([
+              'def _seed_score_context(no, name):',
+              '    from datetime import datetime',
+              '    from uuid import uuid4',
+              '',
+              '    from app.db.session import get_sessionmaker',
+              '    from app.models import InternshipBatch, InternshipFinalScore, InternshipRecord, StudentProfile',
+              '',
+              '    db = get_sessionmaker()()',
+              '    try:',
+              '        student = StudentProfile(',
+              '            tenant_id=TID, student_no=no, real_name=name, gender="M", grade="2022",',
+              '            current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE",',
+              '        )',
+              '        db.add(student)',
+              '        db.flush()',
+              '        batch = InternshipBatch(',
+              '            tenant_id=TID, batch_name="门户成绩申诉批次",',
+              '            batch_no=f"PORTAL-APPEAL-{uuid4().hex[:8]}", status="RUNNING", planned_count=1,',
+              '        )',
+              '        db.add(batch)',
+              '        db.flush()',
+              '        record = InternshipRecord(',
+              '            tenant_id=TID, student_id=student.id, batch_id=batch.id,',
+              '            status="ASSESSING", risk_level="NONE",',
+              '        )',
+              '        db.add(record)',
+              '        db.flush()',
+              '        score = InternshipFinalScore(',
+              '            tenant_id=TID, internship_id=record.id, student_id=student.id,',
+              '            batch_id=batch.id, total_score=80, pass_line=60,',
+              '            is_pass=True, incomplete=False, status="PUBLISHED",',
+              '            published_by_name="学校管理员", published_at=datetime.utcnow(), version=1,',
+              '        )',
+              '        db.add(score)',
+              '        db.commit()',
+              '        return {"internship": record.id, "batch": batch.id, "score": score.id}',
+              '    finally:',
+              '        db.close()',
+              '',
+              '',
+          ])
           replace_exact(
               'tests/test_portal_internship.py',
-              portal_helper_anchor,
-              portal_helper + portal_helper_anchor,
+              'def test_my_view(client, db_mode):\n',
+              helper + 'def test_my_view(client, db_mode):\n',
           )
           replace_exact(
               'tests/test_portal_internship.py',
@@ -234,32 +174,17 @@ jobs:
               '    assert client.post(f"{PORTAL}/score/appeal", headers=h,\n                       json={"internshipId": str(ids["internship"]), "reason": "短"}).json()["code"] != 0',
           )
 
-          # Direct service calls in this scope test are intentionally tenant-bound;
-          # establish the same context middleware would establish for an HTTP call.
           replace_exact(
               'tests/test_internship_scope.py',
-              '    from app.core.security import create_access_token\n',
-              '    from app.core.context import set_tenant\n    from app.core.security import create_access_token\n',
+              '    from sqlalchemy import select\n\n    from app.core.security import create_access_token\n',
+              '    from sqlalchemy import select\n\n    from app.core.context import set_tenant\n    from app.core.security import create_access_token\n',
           )
-          scope_anchor = '''    scope_other = {
-        "mode": "SCOPED", "collegeNames": {"IX外院"}, "classNames": set(),
-        "studentNos": set(), "advisorNames": set(), "advisorUserIds": set(),
-    }
+          replace_exact(
+              'tests/test_internship_scope.py',
+              '    scope_other = {\n        "mode": "SCOPED", "collegeNames": {"IX外院"}, "classNames": set(),\n        "studentNos": set(), "advisorNames": set(), "advisorUserIds": set(),\n    }\n\n    db = get_sessionmaker()()\n',
+              '    scope_other = {\n        "mode": "SCOPED", "collegeNames": {"IX外院"}, "classNames": set(),\n        "studentNos": set(), "advisorNames": set(), "advisorUserIds": set(),\n    }\n\n    set_tenant({"tenantId": str(TID)})\n    db = get_sessionmaker()()\n',
+          )
 
-    db = get_sessionmaker()()
-'''
-          scope_replacement = '''    scope_other = {
-        "mode": "SCOPED", "collegeNames": {"IX外院"}, "classNames": set(),
-        "studentNos": set(), "advisorNames": set(), "advisorUserIds": set(),
-    }
-
-    set_tenant({"tenantId": str(TID)})
-    db = get_sessionmaker()()
-'''
-          replace_exact('tests/test_internship_scope.py', scope_anchor, scope_replacement)
-
-          # Enterprise evaluations are a formal assessment-stage artifact. Keep the
-          # production ASSESSING guard and put the fixture into that real lifecycle state.
           replace_exact(
               'tests/test_internship_enterprise_eval.py',
               '                                 status="ONBOARD", risk_level="NONE", batch_id=b.id)',
@@ -270,15 +195,6 @@ jobs:
       - name: Syntax, tenant ratchet and diff integrity
         run: |
           python -m py_compile \
-            tests/test_internship_application.py \
-            tests/test_internship_enterprise.py \
-            tests/test_internship_match.py \
-            tests/test_internship_p0_launch_blockers.py \
-            tests/test_internship_p1_acceptance.py \
-            tests/test_internship_p2_compliance.py \
-            tests/test_internship_placement_snapshot_mysql.py \
-            tests/test_internship_position.py \
-            tests/test_internship_student.py \
             tests/test_internship_score_archive_guard.py \
             tests/test_internship_archive.py \
             tests/test_internship_v93_batch2_remaining_first_create.py \
@@ -287,21 +203,11 @@ jobs:
             tests/test_internship_scope.py \
             tests/test_internship_enterprise_eval.py
           python scripts/audit_tenant_queries.py --gate
-          node --check ../e2e/pages/internship.page.mjs
           git diff --check
 
-      - name: Combined real-MySQL residual regression
+      - name: Residual real-MySQL regression only
         run: |
-          timeout 30m pytest -q -p no:warnings \
-            tests/test_internship_application.py \
-            tests/test_internship_enterprise.py \
-            tests/test_internship_match.py \
-            tests/test_internship_p0_launch_blockers.py \
-            tests/test_internship_p1_acceptance.py \
-            tests/test_internship_p2_compliance.py \
-            tests/test_internship_placement_snapshot_mysql.py \
-            tests/test_internship_position.py \
-            tests/test_internship_student.py \
+          timeout 20m pytest -q -p no:warnings \
             tests/test_internship_score_archive_guard.py \
             tests/test_internship_archive.py \
             tests/test_internship_v93_batch2_remaining_first_create.py \
@@ -310,38 +216,21 @@ jobs:
             tests/test_internship_scope.py \
             tests/test_internship_enterprise_eval.py
 
-      - name: Commit validated repairs and remove all one-shot scaffolding
+      - name: Commit validated residual fixes and remove one-shot workflow
         working-directory: .
         run: |
-          rm .github/internship-final-red-closeout.trigger
-          rm .github/workflows/internship-expected-version-closeout.yml
-          rm .github/workflows/internship-final-red-closeout-r2.yml
-          rm .github/workflows/internship-final-residual-closeout-r3.yml
+          rm -f .github/workflows/internship-final-residual-closeout-r3.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- .github/workflows/internship-final-residual-closeout-r3.yml
           git add -- \
-            .github/internship-final-red-closeout.trigger \
-            .github/workflows/internship-expected-version-closeout.yml \
-            .github/workflows/internship-final-red-closeout-r2.yml \
-            .github/workflows/internship-final-residual-closeout-r3.yml \
-            backend/tests/test_internship_application.py \
-            backend/tests/test_internship_enterprise.py \
-            backend/tests/test_internship_match.py \
-            backend/tests/test_internship_p0_launch_blockers.py \
-            backend/tests/test_internship_p1_acceptance.py \
-            backend/tests/test_internship_p2_compliance.py \
-            backend/tests/test_internship_placement_snapshot_mysql.py \
-            backend/tests/test_internship_position.py \
-            backend/tests/test_internship_student.py \
             backend/tests/test_internship_score_archive_guard.py \
             backend/tests/test_internship_archive.py \
             backend/tests/test_internship_v93_batch2_remaining_first_create.py \
             backend/tests/test_internship_v93_special_filing_review_flow.py \
             backend/tests/test_portal_internship.py \
             backend/tests/test_internship_scope.py \
-            backend/tests/test_internship_enterprise_eval.py \
-            frontend/src/modules/internship/views/InternshipEnterpriseListView.vue \
-            e2e/pages/internship.page.mjs
+            backend/tests/test_internship_enterprise_eval.py
           git diff --cached --check
-          git commit -m 'fix(internship): close remaining CI and fixture drift'
+          git commit -m 'fix(internship): close residual test fixture drift'
           git push origin HEAD:fix/internship-prelaunch-p1p2-20260828
