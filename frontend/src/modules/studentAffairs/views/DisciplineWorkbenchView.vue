@@ -15,6 +15,7 @@
       :degraded="!!listError"
       @clear-filter="clearTaskFilters"
     />
+    <p v-if="focusNotice" class="dp-focus-note">{{ focusNotice }}</p>
     <div v-if="studentFilterLabel" class="dp-student-filter">
       <span>{{ studentFilterLabel }}</span>
       <button type="button" class="dp-chip" @click="clearStudentFilter">清除筛选</button>
@@ -202,7 +203,7 @@ export default {
       pagination: { page: 1, pageSize: 20, total: 0 },
       selected: null, acting: false, reconciling: false,
       activeStatus: 'ALL', typeFilter: '',
-      studentFilter: { studentId: '', studentNo: '', studentName: '' },
+      studentFilter: { studentId: '', studentNo: '', studentName: '' }, focusRecordId: '', focusNotice: '',
       statusMatch: null,
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       registerModal: { visible: false, studentId: '', discType: 'WARNING', reason: '', docNo: '', error: '' },
@@ -296,15 +297,36 @@ export default {
       return this.dialog.action === 'reject' ? 'sa.discipline.reject' : ''
     }
   },
-  created() {
-    this.applyRouteFilters()
-    this.loadList()
-  },
+  created() { this.initRouteFocus() },
   watch: {
-    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.loadList() },
+    '$route.query'(value, previous) {
+      const nextId = String(value?.recordId || '')
+      const prevId = String(previous?.recordId || '')
+      if (nextId !== prevId) { this.initRouteFocus(); return }
+      this.applyRouteFilters(); this.pagination.page = 1; this.loadList()
+    },
     typeFilter() { this.pagination.page = 1; this.loadList() }
   },
   methods: {
+    async initRouteFocus() {
+      this.applyRouteFilters()
+      const recordId = String(this.$route.query?.recordId || '').trim()
+      this.focusRecordId = recordId
+      this.focusNotice = ''
+      this.listError = ''
+      if (!recordId) { this.selected = null; await this.loadList(); return }
+      const res = await studentAffairsApi.getDisciplineDetail(recordId)
+      if (res.code !== 0 || !res.data) {
+        this.selected = null; this.list = []; this.pagination.total = 0
+        this.listError = res.message || '该处分记录不存在、已不可见或不在当前数据范围内'
+        return
+      }
+      this.selected = res.data
+      if (this.statusMatch?.length && !this.statusMatch.includes(res.data.status)) {
+        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`
+      }
+      await this.loadList()
+    },
     clearTaskFilters() {
       this.activeStatus = 'ALL'
       this.typeFilter = ''
@@ -371,14 +393,15 @@ export default {
         this.pagination.total = res.data.total != null ? res.data.total : this.list.length
         if (this.selected) {
           const hit = this.list.find((x) => x.caseId === this.selected.caseId)
-          if (hit) this.selected = hit
+          if (hit) this.selected = { ...this.selected, ...hit }
         }
       } else {
         this.listError = res.message || '加载失败'
       }
     },
-    select(it) {
+    async select(it) {
       this.selected = it
+      await this.reloadDetail()
     },
     async reloadDetail() {
       if (!this.selected) return
@@ -484,6 +507,7 @@ export default {
 </script>
 
 <style scoped>
+.dp-focus-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-md); background: var(--warning-50, #fffbeb); color: var(--warning-800, #92400e); font-size: var(--font-size-sm); }
 .dp-student-filter {
   display: flex;
   align-items: center;

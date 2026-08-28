@@ -15,6 +15,7 @@
       :degraded="!!listError"
       @clear-filter="clearTaskFilters"
     />
+    <p v-if="focusNotice" class="ad-focus-note">{{ focusNotice }}</p>
     <!-- 批次上下文 -->
     <div class="ad-batchbar">
       <label class="ad-batchsel">
@@ -305,7 +306,7 @@ export default {
       listRequestSeq: 0, detailRequestSeq: 0, revealRequestSeq: 0,
       activeStatus: 'ALL',
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
-      routeIntentConsumed: false,
+      routeIntentConsumed: false, focusRecordId: '', focusNotice: '',
       statusMatch: null,
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       revealModal: { visible: false, reason: '', error: '' },
@@ -436,14 +437,41 @@ export default {
       return []
     }
   },
-  created() {
-    this.applyRouteFilters()
-    this.loadBatches()
-  },
+  created() { this.initRouteFocus() },
   watch: {
-    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications() }
+    '$route.query'(value, previous) {
+      const nextId = String(value?.recordId || '')
+      const prevId = String(previous?.recordId || '')
+      if (nextId !== prevId) { this.initRouteFocus(); return }
+      this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications()
+    }
   },
   methods: {
+    async initRouteFocus() {
+      this.applyRouteFilters()
+      const recordId = String(this.$route.query?.recordId || '').trim()
+      this.focusRecordId = recordId
+      this.focusNotice = ''
+      this.listError = ''
+      if (!recordId) {
+        this.selected = null; this.batchId = ''
+        await this.loadBatches()
+        return
+      }
+      const res = await studentAffairsApi.getAidDetail(recordId)
+      if (res.code !== 0 || !res.data) {
+        this.selected = null; this.batchId = ''; this.batches = []; this.list = []; this.pagination.total = 0
+        this.listError = res.message || '该困难认定申请不存在、已不可见或不在当前数据范围内'
+        return
+      }
+      this.selected = res.data
+      this.batchId = String(res.data.batchId || '')
+      if (!this.batchId) { this.listError = '该申请缺少真实批次上下文，无法安全定位'; return }
+      if (this.statusMatch?.length && !this.statusMatch.includes(res.data.status)) {
+        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`
+      }
+      await this.loadBatches()
+    },
     clearTaskFilters() {
       this.activeStatus = 'ALL'
       this.clearStudentFilter()
@@ -518,10 +546,18 @@ export default {
       const res = await studentAffairsApi.getAidBatches({ page: 1, pageSize: 100 })
       if (res.code === 0 && res.data) {
         this.batches = res.data.items || []
-        if (!this.batchId && this.batches.length) {
+        if (this.batchId) {
+          const visible = this.batches.some((batch) => String(batch.batchId) === String(this.batchId))
+          if (!visible) {
+            this.listError = '该申请所属认定批次当前不可见，已停止自动回退到其他批次'
+            this.list = []; this.pagination.total = 0
+            return
+          }
+          await this.loadApplications()
+        } else if (this.batches.length) {
           const candidate = this.batches.find((batch) => batch.status === 'OPEN') || this.batches[0]
           this.batchId = candidate.batchId
-          this.loadApplications()
+          await this.loadApplications()
         }
         this.consumeRouteIntent()
       } else {
@@ -756,6 +792,7 @@ export default {
 </script>
 
 <style scoped>
+.ad-focus-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-md); background: var(--warning-50, #fffbeb); color: var(--warning-800, #92400e); font-size: var(--font-size-sm); }
 .ad-batchbar {
   display: flex;
   align-items: center;

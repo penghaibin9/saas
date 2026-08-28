@@ -15,6 +15,7 @@
       :degraded="!!listError"
       @clear-filter="clearTaskFilters"
     />
+    <p v-if="focusNotice" class="fd-focus-note">{{ focusNotice }}</p>
     <div class="fd-ctxbar">
       <label class="fd-ctxsel"><span>资助项目</span>
         <AppFundingProjectPicker v-model="projectId" :options="projectSelectOptions" placeholder="（选择项目）" @change="onProjectChange" />
@@ -240,7 +241,7 @@ export default {
       pagination: { page: 1, pageSize: 20, total: 0 },
       acting: false, scanning: false, activeStatus: 'ALL',
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
-      routeIntentConsumed: false,
+      routeIntentConsumed: false, focusRecordId: '', focusNotice: '',
       statusMatch: null,
       dialog: { visible: false, action: '', title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '', reasonPlaceholder: '' },
       projectModal: { visible: false, projectType: 'GRANT', projectName: '', amount: null, quota: null, error: '' },
@@ -362,14 +363,41 @@ export default {
       return []
     }
   },
-  created() {
-    this.applyRouteFilters()
-    this.loadProjects()
-  },
+  created() { this.initRouteFocus() },
   watch: {
-    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications() }
+    '$route.query'(value, previous) {
+      const nextId = String(value?.recordId || '')
+      const prevId = String(previous?.recordId || '')
+      if (nextId !== prevId) { this.initRouteFocus(); return }
+      this.applyRouteFilters(); this.pagination.page = 1; if (this.batchId) this.loadApplications()
+    }
   },
   methods: {
+    async initRouteFocus() {
+      this.applyRouteFilters()
+      const recordId = String(this.$route.query?.recordId || '').trim()
+      this.focusRecordId = recordId
+      this.focusNotice = ''
+      this.listError = ''
+      if (!recordId) {
+        this.selected = null; this.projectId = ''; this.batchId = ''
+        await this.loadProjects()
+        return
+      }
+      const res = await studentAffairsApi.getFundingDetail(recordId)
+      if (res.code !== 0 || !res.data) {
+        this.selected = null; this.projectId = ''; this.batchId = ''; this.projects = []; this.batches = []; this.list = []; this.pagination.total = 0
+        this.listError = res.message || '该资助申请不存在、已不可见或不在当前数据范围内'
+        return
+      }
+      this.selected = res.data
+      this.batchId = String(res.data.batchId || '')
+      if (!this.batchId) { this.listError = '该资助申请缺少真实批次上下文，无法安全定位'; return }
+      if (this.statusMatch?.length && !this.statusMatch.includes(res.data.status)) {
+        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`
+      }
+      await this.loadProjects()
+    },
     clearTaskFilters() {
       this.activeStatus = 'ALL'
       this.clearStudentFilter()
@@ -442,12 +470,33 @@ export default {
     },
     async loadProjects() {
       const res = await studentAffairsApi.getFundingProjects({ page: 1, pageSize: 100 })
-      if (res.code === 0 && res.data) {
-        this.projects = res.data.items || []
-        await this.loadBatches()
-        if (!this.projectId && this.projects.length) { this.projectId = this.projects[0].projectId; this.autoPickBatch() }
-      } else {
+      if (res.code !== 0 || !res.data) {
         this.listError = res.message || '项目加载失败'
+        return
+      }
+      this.projects = res.data.items || []
+      await this.loadBatches()
+      if (this.batchId) {
+        const batch = this.batches.find((item) => String(item.batchId) === String(this.batchId))
+        if (!batch) {
+          this.listError = '该资助申请所属批次当前不可见，已停止自动回退到其他批次'
+          this.list = []; this.pagination.total = 0
+          return
+        }
+        const projectId = String(batch.projectId || '')
+        if (!projectId || !this.projects.some((item) => String(item.projectId) === projectId)) {
+          this.listError = '该资助批次所属项目当前不可见，已停止自动回退到其他项目'
+          this.list = []; this.pagination.total = 0
+          return
+        }
+        this.projectId = projectId
+        await this.loadApplications()
+        this.consumeRouteIntent()
+        return
+      }
+      if (!this.projectId && this.projects.length) {
+        this.projectId = this.projects[0].projectId
+        this.autoPickBatch()
       }
     },
     async loadBatches() {
@@ -638,6 +687,7 @@ export default {
 </script>
 
 <style scoped>
+.fd-focus-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-md); background: var(--warning-50, #fffbeb); color: var(--warning-800, #92400e); font-size: var(--font-size-sm); }
 .fd-ctxbar {
   display: flex;
   align-items: center;
