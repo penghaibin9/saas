@@ -1,4 +1,4 @@
-name: internship-prelaunch-phase1-repair
+name: internship-prelaunch-final-repair
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   repair:
-    if: "${{ github.event.head_commit.message == 'chore(internship): run prelaunch phase1 repair' }}"
+    if: "${{ github.event.head_commit.message == 'chore(internship): run score appeal final repair' }}"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repair branch
@@ -24,38 +24,26 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Apply exact-SHA repair codemod
-        run: python .github/scripts/fix_internship_prelaunch_phase1.py
+      - name: Apply final score appeal codemod
+        run: python .github/scripts/fix_internship_score_appeal_final.py
 
       - name: Python syntax gate
         run: |
           python -m py_compile \
-            backend/app/modules/internship/services/internship_enterprise_service.py \
-            backend/app/modules/internship/schemas/internship.py \
-            backend/app/modules/internship/routers/internship.py \
-            backend/app/modules/internship/services/internship_position_service.py \
-            backend/app/modules/internship/services/internship_communication_service.py \
-            backend/app/modules/internship/services/internship_risk_service.py \
-            backend/app/modules/internship/services/internship_evidence_package_service.py \
-            backend/app/modules/internship/services/internship_incident_service.py \
-            backend/app/modules/internship/services/internship_compliance_rules.py \
-            backend/app/modules/internship/services/internship_compliance_service.py \
-            backend/app/modules/internship/services/internship_special_filing_service.py \
-            backend/app/modules/internship/services/internship_process_report_service.py \
-            backend/app/modules/internship/services/internship_makeup_service.py \
-            backend/app/modules/internship/services/internship_compliance_facts.py \
-            backend/app/modules/internship/routers/internship_participant.py \
-            backend/app/modules/internship/services/internship_participant_service.py \
-            backend/app/modules/internship/schemas/internship_student.py \
-            backend/app/modules/internship/routers/internship_student.py \
-            backend/app/modules/internship/services/internship_student_service.py \
-            backend/app/modules/internship/services/internship_enterprise_eval_service.py \
-            backend/app/modules/internship/services/internship_match_service.py
+            backend/app/modules/internship/services/internship_score_appeal_service.py \
+            backend/app/modules/internship/routers/internship_score_appeal.py \
+            backend/app/student_portal/services/internship_service.py \
+            backend/app/student_portal/router.py \
+            backend/app/api/v1/campus_service.py \
+            backend/app/api/v1/route_registration.py \
+            backend/app/modules/internship/services/internship_score_service.py
 
       - name: JavaScript syntax gate
-        run: node --check frontend/src/modules/internship/api/internship.api.js
+        run: |
+          node --check frontend/src/modules/internship/api/score.api.js
+          node --check student-portal/src/services/portalApi.js
 
-      - name: Static regression contracts
+      - name: Final static regression contracts
         run: |
           cd backend
           python - <<'PY'
@@ -73,6 +61,22 @@ jobs:
           print(f'{len(tests)} static contracts passed')
           PY
 
+      - name: Targeted source invariants
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          appeal = Path('backend/app/modules/internship/services/internship_score_appeal_service.py').read_text(encoding='utf-8')
+          score_view = Path('frontend/src/modules/internship/views/ScoreView.vue').read_text(encoding='utf-8')
+          student_view = Path('student-portal/src/views/internship/InternshipView.vue').read_text(encoding='utf-8')
+          assert '成绩申诉必须携带当前实习批次或实习记录上下文' in appeal
+          assert 'values={"status": "WITHDRAWN"}' in appeal
+          assert "const RECALC_STATUSES = ['PENDING_REVIEW', 'PENDING_CALC', 'WITHDRAWN']" in score_view
+          assert 'body.expectedVersion = current.version' in score_view
+          assert 'scoreApi.getAppeals' in score_view
+          assert '...currentInternshipContext(), reason: appealReason.value' in student_view
+          print('targeted source invariants passed')
+          PY
+
       - name: Diff hygiene gate
         run: git diff --check
 
@@ -80,38 +84,22 @@ jobs:
         run: git diff --stat
 
       - name: Remove one-shot codemod
-        run: rm .github/scripts/fix_internship_prelaunch_phase1.py
+        run: rm .github/scripts/fix_internship_score_appeal_final.py
 
-      - name: Commit validated repair
+      - name: Commit validated final repair
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- \
-            .github/scripts/fix_internship_prelaunch_phase1.py \
-            backend/app/modules/internship/services/internship_enterprise_service.py \
-            backend/app/modules/internship/schemas/internship.py \
-            backend/app/modules/internship/routers/internship.py \
-            frontend/src/modules/internship/api/internship.api.js \
-            frontend/src/modules/internship/views/InternshipEnterpriseDetailView.vue \
-            backend/app/modules/internship/services/internship_position_service.py \
-            backend/app/modules/internship/services/internship_communication_service.py \
-            backend/app/modules/internship/services/internship_risk_service.py \
-            backend/app/modules/internship/services/internship_evidence_package_service.py \
-            backend/app/modules/internship/services/internship_incident_service.py \
-            backend/app/modules/internship/services/internship_compliance_rules.py \
-            backend/app/modules/internship/services/internship_compliance_service.py \
-            backend/app/modules/internship/services/internship_special_filing_service.py \
-            backend/app/modules/internship/services/internship_process_report_service.py \
-            backend/app/modules/internship/services/internship_makeup_service.py \
-            backend/app/modules/internship/services/internship_compliance_facts.py \
-            backend/app/modules/internship/routers/internship_participant.py \
-            backend/app/modules/internship/services/internship_participant_service.py \
-            backend/app/modules/internship/schemas/internship_student.py \
-            backend/app/modules/internship/routers/internship_student.py \
-            backend/app/modules/internship/services/internship_student_service.py \
-            backend/app/modules/internship/services/internship_enterprise_eval_service.py \
-            backend/app/modules/internship/services/internship_match_service.py \
+            .github/scripts/fix_internship_score_appeal_final.py \
+            backend/app/modules/internship/services/internship_score_appeal_service.py \
+            backend/app/student_portal/services/internship_service.py \
+            backend/app/student_portal/router.py \
+            student-portal/src/services/portalApi.js \
+            student-portal/src/views/internship/InternshipView.vue \
+            frontend/src/modules/internship/api/score.api.js \
+            frontend/src/modules/internship/views/ScoreView.vue \
             backend/tests/test_internship_prelaunch_static_contracts.py
           git diff --cached --check
-          git commit -m 'fix(internship): close prelaunch authorization and consistency gaps'
+          git commit -m 'fix(internship): close score appeal domain loop'
           git push origin HEAD:fix/internship-prelaunch-p1p2-20260828
