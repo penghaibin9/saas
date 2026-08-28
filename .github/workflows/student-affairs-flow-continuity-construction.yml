@@ -1,19 +1,17 @@
-name: Student Affairs Flow Continuity Construction
+name: Student Affairs Flow Continuity Unified Gate
 
 on:
   push:
     branches:
       - fix/student-affairs-flow-continuity-20260828
     paths:
-      - scripts/maintenance/apply_sa_flow_continuity.py
-      - scripts/maintenance/sa_flow_ticket.txt
       - .github/workflows/student-affairs-flow-continuity-construction.yml
 
 permissions:
   contents: write
 
 concurrency:
-  group: student-affairs-flow-continuity-construction
+  group: student-affairs-flow-continuity-unified
   cancel-in-progress: false
 
 env:
@@ -26,9 +24,9 @@ env:
   FAST_TEST_SCHEMA: "1"
 
 jobs:
-  construct-and-verify:
+  construct-verify-publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     services:
       mysql:
         image: mysql:8.0
@@ -71,59 +69,143 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Migrate real MySQL
+      - name: Migrate real MySQL once
         working-directory: backend
         run: |
+          set -euo pipefail
           test "$(alembic heads | wc -l)" -eq 1
           alembic upgrade head
 
-      - name: Apply selected ticket
+      - name: Validate deterministic runners
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/maintenance/apply_sa_flow_continuity.py')
-          text = path.read_text(encoding='utf-8')
-          old = "    replace_once(path, 'AppSearchBox, AppGlobalState, AppPagination', 'AppSearchBox, AppGlobalState, AppPagination, AppInlineAlert')"
-          new = "    replace_once(path, \"  AppSearchBox, AppGlobalState, AppPagination\\n} from '@/components/common'\", \"  AppSearchBox, AppGlobalState, AppPagination, AppInlineAlert\\n} from '@/components/common'\")"
-          if old not in text:
-              raise SystemExit('P1-01 import anchor hotfix source not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-          TICKET="$(tr -d '\r\n ' < scripts/maintenance/sa_flow_ticket.txt)"
-          echo "ticket=${TICKET}"
-          python scripts/maintenance/apply_sa_flow_continuity.py "${TICKET}"
-          git diff --check
-
-      - name: Verify P1-01 backend contracts
-        if: ${{ hashFiles('.sa-flow-changed-files') != '' }}
-        working-directory: backend
-        run: |
-          pytest -q -p no:warnings tests/test_affairs_todo_drilldown.py
-          python -m compileall -q app tests
-
-      - name: Verify P1-01 frontend focus contracts
-        working-directory: frontend
-        run: |
-          npm test -- tests/student-affairs-todo-pc-focus.contract.test.mjs
-          npx eslint \
-            src/modules/studentAffairs/views/leave/LeaveApprovalWorkbenchView.vue \
-            src/modules/studentAffairs/views/leave/LeaveExtensionCancelView.vue \
-            src/modules/studentAffairs/views/AidWorkbenchView.vue \
-            src/modules/studentAffairs/views/FundingWorkbenchView.vue \
-            src/modules/studentAffairs/views/DisciplineWorkbenchView.vue \
-            tests/student-affairs-todo-pc-focus.contract.test.mjs
-
-      - name: Commit verified ticket only
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t FILES < .sa-flow-changed-files
+          python -m py_compile \
+            scripts/maintenance/apply_sa_flow_p102.py \
+            scripts/maintenance/apply_sa_flow_p103.py \
+            scripts/maintenance/apply_sa_flow_p201.py
           git config user.name "student-affairs-flow-bot"
           git config user.email "student-affairs-flow-bot@users.noreply.github.com"
+
+      - name: Apply P1-02 funding publicity handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/maintenance/apply_sa_flow_p102.py
+          if [ -f frontend/tests/student-affairs-funding-handoff.contract.test.mjs ]; then
+            mv frontend/tests/student-affairs-funding-handoff.contract.test.mjs \
+               frontend/tests/student-affairs-funding-stage-handoff.contract.test.mjs
+          fi
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.sa-flow-changed-files')
+          text = p.read_text(encoding='utf-8').replace(
+              'frontend/tests/student-affairs-funding-handoff.contract.test.mjs',
+              'frontend/tests/student-affairs-funding-stage-handoff.contract.test.mjs',
+          )
+          p.write_text(text, encoding='utf-8')
+          Path('.sa-flow-commit-message').write_text(
+              'fix(student-affairs): hand off funding publicity to disbursement\n', encoding='utf-8'
+          )
+          PY
+          git diff --check
+          mapfile -t FILES < .sa-flow-changed-files
           git add -- "${FILES[@]}"
           git diff --cached --check
-          git status --short
           git commit -F .sa-flow-commit-message
-          git push origin HEAD:${GITHUB_REF_NAME}
+
+      - name: Apply P1-03 discipline post-effective flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .sa-flow-changed-files .sa-flow-commit-message
+          python scripts/maintenance/apply_sa_flow_p103.py
+          git diff --check
+          mapfile -t FILES < .sa-flow-changed-files
+          git add -- "${FILES[@]}"
+          git diff --cached --check
+          git commit -F .sa-flow-commit-message
+
+      - name: Apply P2-01 cross-domain links
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .sa-flow-changed-files .sa-flow-commit-message
+          python scripts/maintenance/apply_sa_flow_p201.py
+          git diff --check
+          mapfile -t FILES < .sa-flow-changed-files
+          git add -- "${FILES[@]}"
+          git diff --cached --check
+          git commit -F .sa-flow-commit-message
+
+      - name: Verify focused backend contracts on real MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_affairs_todo_drilldown.py \
+            tests/test_affairs_funding_disbursement.py \
+            tests/test_affairs_discipline_appeal.py \
+            tests/test_affairs_talk.py \
+            tests/test_affairs_dorm_risk_link.py
+          python -m compileall -q app tests
+
+      - name: Verify focused frontend contracts and lint
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/student-affairs-todo-pc-focus.contract.test.mjs \
+            tests/student-affairs-funding-stage-handoff.contract.test.mjs \
+            tests/student-affairs-discipline-post-effect-flow.contract.test.mjs \
+            tests/student-affairs-cross-domain-links.contract.test.mjs
+          npx eslint \
+            src/modules/studentAffairs/api/studentAffairs.api.js \
+            src/modules/studentAffairs/views/FundingWorkbenchView.vue \
+            src/modules/studentAffairs/views/funding/FundingPublicityView.vue \
+            src/modules/studentAffairs/views/funding/FundingDisbursementView.vue \
+            src/modules/studentAffairs/views/DisciplineWorkbenchView.vue \
+            src/modules/studentAffairs/views/discipline/DisciplineAppealView.vue \
+            src/modules/studentAffairs/views/TalkWorkbenchView.vue \
+            src/modules/studentAffairs/views/FamilyContactView.vue \
+            src/modules/studentAffairs/views/dorm/DormExceptionView.vue \
+            tests/student-affairs-todo-pc-focus.contract.test.mjs \
+            tests/student-affairs-funding-stage-handoff.contract.test.mjs \
+            tests/student-affairs-discipline-post-effect-flow.contract.test.mjs \
+            tests/student-affairs-cross-domain-links.contract.test.mjs
+
+      - name: Build admin PC
+        working-directory: frontend
+        run: npm run build
+
+      - name: Remove temporary construction helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .sa-flow-changed-files .sa-flow-commit-message \
+            scripts/maintenance/apply_sa_flow_continuity.py \
+            scripts/maintenance/sa_flow_ticket.txt \
+            scripts/maintenance/apply_sa_flow_p102.py \
+            scripts/maintenance/apply_sa_flow_p103.py \
+            scripts/maintenance/apply_sa_flow_p201.py \
+            .github/workflows/student-affairs-flow-continuity-construction.yml
+          git add -u -- \
+            scripts/maintenance/apply_sa_flow_continuity.py \
+            scripts/maintenance/sa_flow_ticket.txt \
+            scripts/maintenance/apply_sa_flow_p102.py \
+            scripts/maintenance/apply_sa_flow_p103.py \
+            scripts/maintenance/apply_sa_flow_p201.py \
+            .github/workflows/student-affairs-flow-continuity-construction.yml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(student-affairs): remove temporary flow construction helpers"
+          fi
+          git diff --check
+          git status --short
+
+      - name: Publish all verified ticket commits once
+        shell: bash
+        run: |
+          set -euo pipefail
+          git log --oneline --decorate -8
+          git push origin HEAD:fix/student-affairs-flow-continuity-20260828
