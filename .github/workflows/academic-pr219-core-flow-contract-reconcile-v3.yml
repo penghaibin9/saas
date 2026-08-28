@@ -1,0 +1,238 @@
+name: PR219 Core Flow Contract Reconcile V3
+
+on:
+  push:
+    branches:
+      - audit/pr219-core-flow-contract-reconcile-20260828
+    paths:
+      - '.github/workflows/academic-pr219-core-flow-contract-reconcile-v3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr219-core-flow-contract-reconcile-v3
+  cancel-in-progress: true
+
+env:
+  PRODUCT_BRANCH: fix/academic-affairs-final-rc-20260824
+  AUDIT_BRANCH: audit/pr219-core-flow-contract-reconcile-20260828
+  EXPECTED_SHA: 6457558e0951da62b53227f9fafd9eb292ad41a3
+
+jobs:
+  reconcile-test-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+      MOCK_LOGIN_ENABLED: 'true'
+      FILE_STORAGE_PROVIDER: local
+      LOCAL_UPLOAD_DIR: /tmp/saas-ci-uploads
+    steps:
+      - name: Checkout exact PR219 product branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_BRANCH }}
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Assert immutable starting head
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL=$(git rev-parse HEAD)
+          echo "actual=$ACTUAL expected=$EXPECTED_SHA"
+          test "$ACTUAL" = "$EXPECTED_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check
+
+      - name: Replay V1 reconciliation exactly
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show origin/${AUDIT_BRANCH}:.github/workflows/academic-pr219-core-flow-contract-reconcile.yml > /tmp/reconcile-v1.yml
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          doc = yaml.safe_load(Path('/tmp/reconcile-v1.yml').read_text(encoding='utf-8'))
+          steps = doc['jobs']['reconcile-and-test']['steps']
+          step = next(s for s in steps if s.get('name') == 'Reconcile stale core-flow tests with R3 Authority contracts')
+          Path('/tmp/reconcile-v1.sh').write_text(step['run'], encoding='utf-8')
+          PY
+          bash /tmp/reconcile-v1.sh
+
+      - name: Switch each assignee into the node-authorized real DB role
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('backend/tests/support_r3_authority_flow.py')
+          text = p.read_text(encoding='utf-8')
+          start = text.index('def review_schedule_change(')
+          replacement = '''def review_schedule_change(client, change_id, *, action="APPROVE", comment=""):
+              from app.core.permissions import has_permission
+              from app.core.security import create_access_token
+              from app.db.session import get_sessionmaker
+              from app.models import AaScheduleChange, User, WorkflowTask
+              from app.services import auth_service_db as auth_db
+
+              db = get_sessionmaker()()
+              try:
+                  change = db.get(AaScheduleChange, int(change_id))
+                  if change is None:
+                      raise AssertionError(f"schedule change not found: {change_id}")
+                  node = str(change.current_node or "").upper()
+                  version = int(change.version or 0)
+                  required_perm = (
+                      "academicAffairs.scheduleChange.collegeReview"
+                      if node == "COLLEGE_REVIEW"
+                      else "academicAffairs.scheduleChange.academicReview"
+                  )
+                  preferred_role = "COLLEGE_ADMIN" if node == "COLLEGE_REVIEW" else "ACADEMIC_ADMIN"
+                  task = db.query(WorkflowTask).filter(
+                      WorkflowTask.tenant_id == TID,
+                      WorkflowTask.instance_id == int(change.workflow_instance_id),
+                      WorkflowTask.node_code == change.current_node,
+                      WorkflowTask.status == "PENDING",
+                      WorkflowTask.is_deleted.is_(False),
+                  ).order_by(WorkflowTask.id).first()
+                  if task is None or not task.assignee_id:
+                      raise AssertionError("current schedule-change node has no real assignee")
+                  user = db.get(User, int(task.assignee_id))
+                  if user is None or user.is_deleted or user.status != "ACTIVE":
+                      raise AssertionError(f"schedule-change assignee account invalid: {task.assignee_id}")
+
+                  contexts = auth_db._role_contexts(db, user)
+                  eligible = []
+                  for ctx in contexts:
+                      claims = auth_db._claims(db, user, ctx, contexts, "PC")
+                      if has_permission(claims, required_perm):
+                          eligible.append((ctx, claims))
+                  preferred = [pair for pair in eligible if pair[0].get("roleCode") == preferred_role]
+                  if len(preferred) == 1:
+                      chosen_ctx, claims = preferred[0]
+                  elif len(eligible) == 1:
+                      chosen_ctx, claims = eligible[0]
+                  else:
+                      raise AssertionError(
+                          f"assignee role context is not uniquely actionable: node={node} "
+                          f"user={user.login_name} eligible={[x[0].get('roleCode') for x in eligible]}"
+                      )
+                  assert claims["userId"] == f"db-{int(task.assignee_id)}"
+                  assert has_permission(claims, required_perm), (node, chosen_ctx, required_perm)
+                  token = create_access_token(claims)
+                  hdr = {"Authorization": f"Bearer {token}"}
+              finally:
+                  db.close()
+
+              verb = "approve" if str(action).upper() == "APPROVE" else "reject"
+              response = client.post(
+                  f"{BASE}/schedule-change/{change_id}/{verb}",
+                  headers=hdr,
+                  json={"action": str(action).upper(), "comment": comment, "expectedVersion": version},
+              )
+              if response.status_code in (401, 403):
+                  raise AssertionError(
+                      f"authorized workflow assignee was rejected before business review: "
+                      f"node={node} role={chosen_ctx.get('roleCode')} status={response.status_code} "
+                      f"body={response.text}"
+                  )
+              return response
+          '''
+          text = text[:start] + replacement
+          p.write_text(text, encoding='utf-8')
+          PY
+          python -m py_compile backend/tests/support_r3_authority_flow.py
+          git diff --check
+
+      - name: Prove schedule-change core chain first
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings tests/test_aa_schedule_change.py
+
+      - name: Re-run complete affected core-flow set
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_aa_schedule_change.py \
+            tests/test_aa_teaching_plan_r3.py \
+            tests/test_academic_grade_dedupe_contract.py \
+            tests/test_aa_academic_task_mobile.py \
+            tests/test_aa_course.py \
+            tests/test_aa_course_program_task_refactor_contracts.py \
+            tests/test_aa_grade.py \
+            tests/test_aa_task_batch_editable_reuse_w3.py \
+            tests/test_aa_grade_task_uniqueness_and_archive.py \
+            tests/test_aa_program_tier1_r3.py \
+            tests/test_aa_teaching_task.py
+
+      - name: Commit only verified reconciliation to PR219
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_CHANGED=$(cat <<'EOF'
+          backend/app/modules/academic_affairs/services/academic_affairs_grade_execution_transaction_guard.py
+          backend/tests/support_r3_authority_flow.py
+          backend/tests/test_aa_academic_task_mobile.py
+          backend/tests/test_aa_course.py
+          backend/tests/test_aa_course_program_task_refactor_contracts.py
+          backend/tests/test_aa_grade.py
+          backend/tests/test_aa_grade_task_uniqueness_and_archive.py
+          backend/tests/test_aa_program_tier1_r3.py
+          backend/tests/test_aa_schedule_change.py
+          backend/tests/test_aa_teaching_plan_r3.py
+          backend/tests/test_aa_teaching_task.py
+          EOF
+          )
+          ACTUAL_CHANGED=$(git status --short | awk '{print $2}' | sort)
+          test "$ACTUAL_CHANGED" = "$(printf '%s\n' "$EXPECTED_CHANGED" | sort)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            backend/app/modules/academic_affairs/services/academic_affairs_grade_execution_transaction_guard.py \
+            backend/tests/support_r3_authority_flow.py \
+            backend/tests/test_aa_academic_task_mobile.py \
+            backend/tests/test_aa_course.py \
+            backend/tests/test_aa_course_program_task_refactor_contracts.py \
+            backend/tests/test_aa_grade.py \
+            backend/tests/test_aa_grade_task_uniqueness_and_archive.py \
+            backend/tests/test_aa_program_tier1_r3.py \
+            backend/tests/test_aa_schedule_change.py \
+            backend/tests/test_aa_teaching_plan_r3.py \
+            backend/tests/test_aa_teaching_task.py
+          git commit -m "test(academic): align core flows with R3 authority contracts"
+          git push origin HEAD:${PRODUCT_BRANCH}
+          echo "new_product_sha=$(git rev-parse HEAD)"
