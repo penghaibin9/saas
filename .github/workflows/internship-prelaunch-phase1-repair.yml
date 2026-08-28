@@ -1,0 +1,105 @@
+name: internship-prelaunch-phase1-repair
+
+on:
+  push:
+    branches:
+      - fix/internship-prelaunch-p1p2-20260828
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.event.head_commit.message == 'chore(internship): run prelaunch phase1 repair'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/internship-prelaunch-p1p2-20260828
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply exact-SHA repair codemod
+        run: python .github/scripts/fix_internship_prelaunch_phase1.py
+
+      - name: Python syntax gate
+        run: |
+          python -m py_compile \
+            backend/app/modules/internship/services/internship_enterprise_service.py \
+            backend/app/modules/internship/schemas/internship.py \
+            backend/app/modules/internship/routers/internship.py \
+            backend/app/modules/internship/services/internship_position_service.py \
+            backend/app/modules/internship/services/internship_communication_service.py \
+            backend/app/modules/internship/services/internship_risk_service.py \
+            backend/app/modules/internship/services/internship_evidence_package_service.py \
+            backend/app/modules/internship/services/internship_incident_service.py \
+            backend/app/modules/internship/services/internship_compliance_rules.py \
+            backend/app/modules/internship/services/internship_compliance_service.py \
+            backend/app/modules/internship/services/internship_special_filing_service.py \
+            backend/app/modules/internship/services/internship_process_report_service.py \
+            backend/app/modules/internship/services/internship_makeup_service.py \
+            backend/app/modules/internship/services/internship_compliance_facts.py \
+            backend/app/modules/internship/routers/internship_participant.py \
+            backend/app/modules/internship/services/internship_participant_service.py \
+            backend/app/modules/internship/schemas/internship_student.py \
+            backend/app/modules/internship/routers/internship_student.py \
+            backend/app/modules/internship/services/internship_student_service.py \
+            backend/app/modules/internship/services/internship_enterprise_eval_service.py \
+            backend/app/modules/internship/services/internship_match_service.py
+
+      - name: JavaScript syntax gate
+        run: node --check frontend/src/modules/internship/api/internship.api.js
+
+      - name: Static regression contracts
+        run: |
+          python -m pip install -q pytest
+          cd backend
+          pytest -q tests/test_internship_prelaunch_static_contracts.py
+
+      - name: Diff hygiene gate
+        run: git diff --check
+
+      - name: Show patch summary
+        run: git diff --stat
+
+      - name: Remove one-shot codemod
+        run: rm .github/scripts/fix_internship_prelaunch_phase1.py
+
+      - name: Commit validated repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            .github/scripts/fix_internship_prelaunch_phase1.py \
+            backend/app/modules/internship/services/internship_enterprise_service.py \
+            backend/app/modules/internship/schemas/internship.py \
+            backend/app/modules/internship/routers/internship.py \
+            frontend/src/modules/internship/api/internship.api.js \
+            frontend/src/modules/internship/views/InternshipEnterpriseDetailView.vue \
+            backend/app/modules/internship/services/internship_position_service.py \
+            backend/app/modules/internship/services/internship_communication_service.py \
+            backend/app/modules/internship/services/internship_risk_service.py \
+            backend/app/modules/internship/services/internship_evidence_package_service.py \
+            backend/app/modules/internship/services/internship_incident_service.py \
+            backend/app/modules/internship/services/internship_compliance_rules.py \
+            backend/app/modules/internship/services/internship_compliance_service.py \
+            backend/app/modules/internship/services/internship_special_filing_service.py \
+            backend/app/modules/internship/services/internship_process_report_service.py \
+            backend/app/modules/internship/services/internship_makeup_service.py \
+            backend/app/modules/internship/services/internship_compliance_facts.py \
+            backend/app/modules/internship/routers/internship_participant.py \
+            backend/app/modules/internship/services/internship_participant_service.py \
+            backend/app/modules/internship/schemas/internship_student.py \
+            backend/app/modules/internship/routers/internship_student.py \
+            backend/app/modules/internship/services/internship_student_service.py \
+            backend/app/modules/internship/services/internship_enterprise_eval_service.py \
+            backend/app/modules/internship/services/internship_match_service.py \
+            backend/tests/test_internship_prelaunch_static_contracts.py
+          git diff --cached --check
+          git commit -m 'fix(internship): close prelaunch authorization and consistency gaps'
+          git push origin HEAD:fix/internship-prelaunch-p1p2-20260828
