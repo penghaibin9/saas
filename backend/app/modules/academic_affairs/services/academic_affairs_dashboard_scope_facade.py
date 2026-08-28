@@ -28,6 +28,18 @@ def __getattr__(name):
     return getattr(_legacy, name)
 
 
+def register_student(batch_id, user, student_id) -> dict:
+    from .academic_affairs_registration_scope import register_student as scoped_register_student
+
+    return scoped_register_student(batch_id, user, student_id)
+
+
+def list_registrations(batch_id, user, page=1, page_size=50):
+    from .academic_affairs_registration_scope import list_registrations as scoped_list_registrations
+
+    return scoped_list_registrations(batch_id, user, page, page_size)
+
+
 def _assert_term_command_scope(user, db) -> None:
     ctx = build_affairs_context(user, db)
     if str(getattr(ctx, "scope_type", None) or "NONE").upper() != "TENANT_ALL":
