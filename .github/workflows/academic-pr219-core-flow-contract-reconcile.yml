@@ -1,0 +1,532 @@
+name: PR219 Core Flow Contract Reconcile
+
+on:
+  push:
+    branches:
+      - audit/pr219-core-flow-contract-reconcile-20260828
+    paths:
+      - '.github/workflows/academic-pr219-core-flow-contract-reconcile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr219-core-flow-contract-reconcile
+  cancel-in-progress: true
+
+env:
+  PRODUCT_BRANCH: fix/academic-affairs-final-rc-20260824
+  EXPECTED_SHA: 6457558e0951da62b53227f9fafd9eb292ad41a3
+
+jobs:
+  reconcile-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+      MOCK_LOGIN_ENABLED: 'true'
+      FILE_STORAGE_PROVIDER: local
+      LOCAL_UPLOAD_DIR: /tmp/saas-ci-uploads
+    steps:
+      - name: Checkout PR219 product branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_BRANCH }}
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Assert expected product head
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL=$(git rev-parse HEAD)
+          echo "actual=$ACTUAL expected=$EXPECTED_SHA"
+          test "$ACTUAL" = "$EXPECTED_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check
+
+      - name: Reconcile stale core-flow tests with R3 Authority contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > backend/tests/support_r3_authority_flow.py <<'PY'
+          """HTTP-flow helpers for the R3 node-specific review Authority contracts."""
+          from __future__ import annotations
+
+          TID = 1000000000000000001
+          BASE = "/api/v1/academic-affairs"
+
+
+          def _token_header(role: str, login_name: str, *, user_id: str | None = None):
+              from app.core.security import create_access_token
+
+              uid = user_id or f"u_{login_name}"
+              token = create_access_token({
+                  "userId": uid,
+                  "loginName": login_name,
+                  "realName": login_name,
+                  "userType": "ADMIN",
+                  "tid": "x",
+                  "tenantId": str(TID),
+                  "activeContextId": f"ctx_{login_name}",
+                  "currentRoleCode": role,
+                  "clientType": "PC",
+              })
+              return {"Authorization": f"Bearer {token}"}
+
+
+          def ensure_college(name: str = "R3核心流回归学院") -> int:
+              from app.db.session import get_sessionmaker
+              from app.models import College
+
+              db = get_sessionmaker()()
+              try:
+                  row = db.query(College).filter(
+                      College.tenant_id == TID,
+                      College.college_name == name,
+                      College.is_deleted.is_(False),
+                  ).order_by(College.id).first()
+                  if row is None:
+                      row = College(tenant_id=TID, college_name=name, status="ACTIVE")
+                      db.add(row)
+                      db.flush()
+                  cid = int(row.id)
+                  db.commit()
+                  return cid
+              finally:
+                  db.close()
+
+
+          def latest_college_id() -> int:
+              from app.db.session import get_sessionmaker
+              from app.models import College
+
+              db = get_sessionmaker()()
+              try:
+                  row = db.query(College).filter(
+                      College.tenant_id == TID,
+                      College.is_deleted.is_(False),
+                  ).order_by(College.id.desc()).first()
+                  if row is None:
+                      raise AssertionError("core-flow fixture has no real college")
+                  return int(row.id)
+              finally:
+                  db.close()
+
+
+          def _ensure_college_scope(college_id: int) -> None:
+              from app.db.session import get_sessionmaker
+              from app.models import College, TeacherStudentScope
+
+              db = get_sessionmaker()()
+              try:
+                  college = db.get(College, int(college_id))
+                  if college is None or college.is_deleted or college.tenant_id != TID:
+                      raise AssertionError(f"invalid review college: {college_id}")
+                  exists = db.query(TeacherStudentScope).filter(
+                      TeacherStudentScope.tenant_id == TID,
+                      TeacherStudentScope.teacher_key == "college_admin01",
+                      TeacherStudentScope.role_code == "COLLEGE_ADMIN",
+                      TeacherStudentScope.scope_type == "COLLEGE",
+                      TeacherStudentScope.ref_value == college.college_name,
+                      TeacherStudentScope.is_deleted.is_(False),
+                  ).first()
+                  if exists is None:
+                      db.add(TeacherStudentScope(
+                          tenant_id=TID,
+                          teacher_key="college_admin01",
+                          role_code="COLLEGE_ADMIN",
+                          scope_type="COLLEGE",
+                          ref_value=college.college_name,
+                          status="ACTIVE",
+                      ))
+                  db.commit()
+              finally:
+                  db.close()
+
+
+          def review_course(client, course_id, *, action="APPROVE", reason=""):
+              from app.db.session import get_sessionmaker
+              from app.models import AaCourse
+
+              db = get_sessionmaker()()
+              try:
+                  row = db.get(AaCourse, int(course_id))
+                  if row is None:
+                      raise AssertionError(f"course not found: {course_id}")
+                  status = str(row.status or "").upper()
+                  owner_college_id = int(row.owner_college_id) if row.owner_college_id else None
+              finally:
+                  db.close()
+              if status == "COLLEGE_REVIEW":
+                  if owner_college_id is None:
+                      raise AssertionError("R3 college review requires owner_college_id")
+                  _ensure_college_scope(owner_college_id)
+                  hdr = _token_header("COLLEGE_ADMIN", "college_admin01")
+              else:
+                  hdr = _token_header("SCHOOL_ADMIN", "school_admin01")
+              body = {"action": action}
+              if reason:
+                  body["reason"] = reason
+              return client.post(f"{BASE}/courses/{course_id}/review", headers=hdr, json=body)
+
+
+          def review_program(client, program_id, *, action="APPROVE", reason=""):
+              from app.db.session import get_sessionmaker
+              from app.models import AaProgram, Major
+
+              db = get_sessionmaker()()
+              try:
+                  row = db.get(AaProgram, int(program_id))
+                  if row is None:
+                      raise AssertionError(f"program not found: {program_id}")
+                  status = str(row.status or "").upper()
+                  major = db.get(Major, int(row.major_id)) if row.major_id else None
+                  college_id = int(major.college_id) if major is not None and major.college_id else None
+              finally:
+                  db.close()
+              if status == "COLLEGE_REVIEW":
+                  if college_id is None:
+                      raise AssertionError("R3 college review requires a real major college")
+                  _ensure_college_scope(college_id)
+                  hdr = _token_header("COLLEGE_ADMIN", "college_admin01")
+              else:
+                  hdr = _token_header("SCHOOL_ADMIN", "school_admin01")
+              body = {"action": action}
+              if reason:
+                  body["reason"] = reason
+              return client.post(f"{BASE}/programs/{program_id}/review", headers=hdr, json=body)
+
+
+          def review_schedule_change(client, change_id, *, action="APPROVE", comment=""):
+              from app.db.session import get_sessionmaker
+              from app.models import AaScheduleChange, User
+
+              db = get_sessionmaker()()
+              try:
+                  change = db.get(AaScheduleChange, int(change_id))
+                  if change is None:
+                      raise AssertionError(f"schedule change not found: {change_id}")
+                  node = str(change.current_node or "").upper()
+                  version = int(change.version or 0)
+                  login_name = "college_admin01" if node == "COLLEGE_REVIEW" else "school_admin01"
+                  role = "COLLEGE_ADMIN" if node == "COLLEGE_REVIEW" else "SCHOOL_ADMIN"
+                  user = db.query(User).filter(
+                      User.tenant_id == TID,
+                      User.login_name == login_name,
+                      User.is_deleted.is_(False),
+                      User.status == "ACTIVE",
+                  ).first()
+                  if user is None:
+                      raise AssertionError(f"real schedule-change assignee account missing: {login_name}")
+                  hdr = _token_header(role, login_name, user_id=f"db-{int(user.id)}")
+              finally:
+                  db.close()
+              verb = "approve" if str(action).upper() == "APPROVE" else "reject"
+              return client.post(
+                  f"{BASE}/schedule-change/{change_id}/{verb}",
+                  headers=hdr,
+                  json={"action": str(action).upper(), "comment": comment, "expectedVersion": version},
+              )
+          PY
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path("backend")
+
+          def read(path):
+              return (ROOT / path).read_text(encoding="utf-8")
+
+          def write(path, text):
+              (ROOT / path).write_text(text, encoding="utf-8")
+
+          def replace(path, old, new, *, count=None):
+              text = read(path)
+              actual = text.count(old)
+              if count is not None and actual != count:
+                  raise SystemExit(f"{path}: expected {count} occurrences, found {actual}: {old[:80]!r}")
+              if actual == 0:
+                  raise SystemExit(f"{path}: replacement anchor missing: {old[:80]!r}")
+              write(path, text.replace(old, new))
+
+          def insert_import(path, names):
+              text = read(path)
+              anchor = "from __future__ import annotations\n"
+              line = f"\nfrom tests.support_r3_authority_flow import {names}\n"
+              if line.strip() not in text:
+                  if anchor not in text:
+                      raise SystemExit(f"{path}: future-import anchor missing")
+                  text = text.replace(anchor, anchor + line, 1)
+              write(path, text)
+
+          # Static guard: wording only; no business implementation change.
+          replace(
+              "app/modules/academic_affairs/services/academic_affairs_grade_execution_transaction_guard.py",
+              "historical AaGradeTask.teacher_key snapshot",
+              "historical grade-task teacher_key snapshot",
+              count=1,
+          )
+
+          # D4 structural contract now recognizes the R3 public review writer.
+          replace(
+              "tests/test_aa_course_program_task_refactor_contracts.py",
+              "assert course_public_svc.review_course is legacy.course_svc.review_course",
+              "assert course_public_svc.review_course is not legacy.course_svc.review_course",
+              count=1,
+          )
+
+          # Public grade-task DTO keeps API IDs string-normalized like termId/teachingTaskId.
+          replace(
+              "tests/test_aa_grade_task_uniqueness_and_archive.py",
+              '== int(seed["course_id"])',
+              '== str(seed["course_id"])',
+              count=2,
+          )
+          replace(
+              "tests/test_aa_grade_task_uniqueness_and_archive.py",
+              "# V2 正式课程身份合同统一使用数值主键；term/teachingTask 等兼容字段仍保持字符串。",
+              "# 正式课程身份绑定真实数值主键，但公共 API 与 term/teachingTask 一致保持字符串 ID。",
+              count=1,
+          )
+
+          # Course library HTTP flow: every created course has a real owner college;
+          # review helper selects COLLEGE_REVIEW vs ACADEMIC_REVIEW actor from locked DB truth.
+          p = "tests/test_aa_course.py"
+          insert_import(p, "ensure_college, review_course")
+          replace(
+              p,
+              'def _course(client, hdr, code="CS101", **extra):\n    body = {',
+              'def _course(client, hdr, code="CS101", **extra):\n    extra.setdefault("ownerCollegeId", str(ensure_college("课程库回归学院")))\n    body = {',
+              count=1,
+          )
+          text = read(p)
+          text, n = re.subn(
+              r'client\.post\(f"\{BASE\}/courses/\{(?P<cid>\w+)\}/review", headers=hdr, json=\{"action": "APPROVE"\}\)',
+              r'review_course(client, \g<cid>, action="APPROVE")',
+              text,
+          )
+          if n < 2:
+              raise SystemExit(f"{p}: expected multiple approve rewrites, got {n}")
+          old_return = 'client.post(f"{BASE}/courses/{cid}/review", headers=hdr,\n                    json={"action": "RETURN", "reason": "学时构成需调整"})'
+          if old_return not in text:
+              raise SystemExit(f"{p}: RETURN review anchor missing")
+          text = text.replace(old_return, 'review_course(client, cid, action="RETURN", reason="学时构成需调整")', 1)
+          write(p, text)
+
+          # Teaching-task core flow: seeded college is the course owner; both course and program
+          # review nodes use the R3 role-specific helper.
+          p = "tests/test_aa_teaching_task.py"
+          insert_import(p, "latest_college_id, review_course, review_program")
+          replace(
+              p,
+              'def _enabled_course(client, hdr, code="TT101", credit=4, name="程序设计"):\n    created = client.post',
+              'def _enabled_course(client, hdr, code="TT101", credit=4, name="程序设计"):\n    owner_college_id = latest_college_id()\n    created = client.post',
+              count=1,
+          )
+          replace(
+              p,
+              '"examMode": "EXAM"})',
+              '"examMode": "EXAM", "ownerCollegeId": str(owner_college_id)})',
+              count=1,
+          )
+          replace(
+              p,
+              'client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})',
+              'review_course(client, cid, action="APPROVE")',
+              count=2,
+          )
+          replace(
+              p,
+              'client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})',
+              'review_program(client, pid, action="APPROVE")',
+              count=2,
+          )
+
+          # Mobile teaching-task core flow uses the same real college/program review semantics.
+          p = "tests/test_aa_academic_task_mobile.py"
+          insert_import(p, "latest_college_id, review_course, review_program")
+          replace(
+              p,
+              'def _enabled_course(client, hdr, code):\n    created = client.post',
+              'def _enabled_course(client, hdr, code):\n    owner_college_id = latest_college_id()\n    created = client.post',
+              count=1,
+          )
+          replace(
+              p,
+              '"examMode": "EXAM"})',
+              '"examMode": "EXAM", "ownerCollegeId": str(owner_college_id)})',
+              count=1,
+          )
+          replace(
+              p,
+              'client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})',
+              'review_course(client, cid, action="APPROVE")',
+              count=2,
+          )
+          replace(
+              p,
+              'client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})',
+              'review_program(client, pid, action="APPROVE")',
+              count=2,
+          )
+
+          # Grade core flow: the test's seeded college becomes the course owner; only the course
+          # enablement precondition changes actor, grade review/publish semantics remain untouched.
+          p = "tests/test_aa_grade.py"
+          insert_import(p, "latest_college_id, review_course")
+          replace(
+              p,
+              'def _enabled_course(client, hdr, *, code="GD101", name="高等数学", credit=4):\n    """通过课程库正式状态机建立稳定 courseId，而不是在成绩任务中继续使用自由文本课程。"""\n    created = client.post',
+              'def _enabled_course(client, hdr, *, code="GD101", name="高等数学", credit=4):\n    """通过课程库正式状态机建立稳定 courseId，而不是在成绩任务中继续使用自由文本课程。"""\n    owner_college_id = latest_college_id()\n    created = client.post',
+              count=1,
+          )
+          replace(
+              p,
+              '"examMode": "EXAM",\n    })',
+              '"examMode": "EXAM",\n        "ownerCollegeId": str(owner_college_id),\n    })',
+              count=1,
+          )
+          replace(
+              p,
+              'client.post(f"{BASE}/courses/{course_id}/review", headers=hdr, json={"action": "APPROVE"})',
+              'review_course(client, course_id, action="APPROVE")',
+              count=2,
+          )
+
+          # Teaching-plan and program-tier flows: two-level program review is role-specific.
+          p = "tests/test_aa_teaching_plan_r3.py"
+          insert_import(p, "review_program")
+          replace(
+              p,
+              'client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})',
+              'review_program(client, pid, action="APPROVE")',
+              count=4,
+          )
+
+          p = "tests/test_aa_program_tier1_r3.py"
+          insert_import(p, "review_program")
+          replace(
+              p,
+              '    "t_college", "t_major",\n',
+              '    "t_college", "t_major", "t_teacher_student_scope",\n',
+              count=1,
+          )
+          replace(
+              p,
+              'client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})',
+              'review_program(client, pid, action="APPROVE")',
+              count=2,
+          )
+
+          # Schedule-change HTTP flow: supply required expectedVersion and authenticate as the
+          # current unique WorkflowTask assignee for each node.
+          p = "tests/test_aa_schedule_change.py"
+          insert_import(p, "review_schedule_change")
+          text = read(p)
+          text, n = re.subn(
+              r'client\.post\(f"\{BASE\}/schedule-change/\{(?P<cid>\w+)\}/approve", headers=admin, json=\{"action": "APPROVE"\}\)',
+              r'review_schedule_change(client, \g<cid>, action="APPROVE")',
+              text,
+          )
+          if n < 6:
+              raise SystemExit(f"{p}: expected >=6 approve rewrites, got {n}")
+          old_short = 'client.post(f"{BASE}/schedule-change/{cid}/reject", headers=admin, json={"action": "REJECT", "comment": "不行"})'
+          if old_short not in text:
+              raise SystemExit(f"{p}: short reject anchor missing")
+          text = text.replace(old_short, 'review_schedule_change(client, cid, action="REJECT", comment="不行")', 1)
+          old_long = 'client.post(f"{BASE}/schedule-change/{cid}/reject", headers=admin,\n                     json={"action": "REJECT", "comment": "目标时段与全校统考冲突，不予调整"})'
+          if old_long not in text:
+              raise SystemExit(f"{p}: long reject anchor missing")
+          text = text.replace(old_long, 'review_schedule_change(client, cid, action="REJECT", comment="目标时段与全校统考冲突，不予调整")', 1)
+          write(p, text)
+
+          print("R3 contract reconciliation complete")
+          PY
+
+          git diff --check
+          git status --short
+
+      - name: Run only affected core-flow regression files
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q -p no:warnings \
+            tests/test_aa_schedule_change.py \
+            tests/test_aa_teaching_plan_r3.py \
+            tests/test_academic_grade_dedupe_contract.py \
+            tests/test_aa_academic_task_mobile.py \
+            tests/test_aa_course.py \
+            tests/test_aa_course_program_task_refactor_contracts.py \
+            tests/test_aa_grade.py \
+            tests/test_aa_task_batch_editable_reuse_w3.py \
+            tests/test_aa_grade_task_uniqueness_and_archive.py \
+            tests/test_aa_program_tier1_r3.py \
+            tests/test_aa_teaching_task.py
+
+      - name: Commit verified test-contract reconciliation to PR219
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_CHANGED=$(cat <<'EOF'
+          backend/app/modules/academic_affairs/services/academic_affairs_grade_execution_transaction_guard.py
+          backend/tests/support_r3_authority_flow.py
+          backend/tests/test_aa_academic_task_mobile.py
+          backend/tests/test_aa_course.py
+          backend/tests/test_aa_course_program_task_refactor_contracts.py
+          backend/tests/test_aa_grade.py
+          backend/tests/test_aa_grade_task_uniqueness_and_archive.py
+          backend/tests/test_aa_program_tier1_r3.py
+          backend/tests/test_aa_schedule_change.py
+          backend/tests/test_aa_teaching_plan_r3.py
+          backend/tests/test_aa_teaching_task.py
+          EOF
+          )
+          ACTUAL_CHANGED=$(git status --short | awk '{print $2}' | sort)
+          test "$ACTUAL_CHANGED" = "$(printf '%s\n' "$EXPECTED_CHANGED" | sort)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            backend/app/modules/academic_affairs/services/academic_affairs_grade_execution_transaction_guard.py \
+            backend/tests/support_r3_authority_flow.py \
+            backend/tests/test_aa_academic_task_mobile.py \
+            backend/tests/test_aa_course.py \
+            backend/tests/test_aa_course_program_task_refactor_contracts.py \
+            backend/tests/test_aa_grade.py \
+            backend/tests/test_aa_grade_task_uniqueness_and_archive.py \
+            backend/tests/test_aa_program_tier1_r3.py \
+            backend/tests/test_aa_schedule_change.py \
+            backend/tests/test_aa_teaching_plan_r3.py \
+            backend/tests/test_aa_teaching_task.py
+          git commit -m "test(academic): align core flows with R3 authority contracts"
+          git push origin HEAD:${PRODUCT_BRANCH}
+          git rev-parse HEAD
