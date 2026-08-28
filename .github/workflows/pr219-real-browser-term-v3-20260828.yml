@@ -1,0 +1,123 @@
+name: PR219 Real Browser Term V3 20260828
+
+on:
+  push:
+    branches: [audit/pr219-real-browser-core-20260828]
+    paths: ['.github/workflows/pr219-real-browser-term-v3-20260828.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PRODUCT_SHA: 6457558e0951da62b53227f9fafd9eb292ad41a3
+
+jobs:
+  real-click:
+    name: Current-term governance real Chromium clicks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: academic_pr219_term_v3
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_pr219_term_v3?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_pr219_term_v3?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/12
+      REDIS_KEY_PREFIX: academic-pr219-term-v3
+      JWT_SECRET: academic-pr219-term-v3-only-not-production
+      JWT_SECRET_KEY: academic-pr219-term-v3-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_EXPECTED_SHA: 6457558e0951da62b53227f9fafd9eb292ad41a3
+      SCHOOL_IAM_AUTHORITY_EXPECTED_SHA: 6457558e0951da62b53227f9fafd9eb292ad41a3
+      PYTHONPATH: ${{ github.workspace }}/backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+          fetch-depth: 0
+      - name: Assert immutable PR219 product SHA
+        run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Migrate and install production IAM
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+      - name: Start real backend
+        run: |
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          for i in {1..60}; do curl -fsS http://127.0.0.1:8000/health && exit 0; sleep 2; done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+      - name: Production build and start staff PC
+        run: |
+          cd frontend
+          npm ci --no-audit --no-fund
+          npm run build
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          for i in {1..60}; do curl -fsS http://127.0.0.1:5173/login >/dev/null && exit 0; sleep 2; done
+          cat ../e2e/runtime-logs/frontend.log
+          exit 1
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Real browser click current-term governance
+        working-directory: e2e
+        run: npx playwright test specs/academic-affairs-current-term-authority.spec.mjs --reporter=line
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr219-term-v3-evidence-${{ env.PRODUCT_SHA }}
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+            e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
