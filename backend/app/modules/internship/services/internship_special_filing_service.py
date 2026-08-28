@@ -119,8 +119,32 @@ def create(body, user=None):
         )
         db.add(row)
         db.flush()
+        from app.services.file_business_binding_service import bind_file_to_business
+
+        scope = {
+            "internshipId": str(rec.id),
+            "studentId": str(rec.student_id),
+            "batchId": str(rec.batch_id or ""),
+            "businessType": "SPECIAL_FILING",
+            "businessId": str(row.id),
+        }
+        legacy_targets = {str(rec.id), str(rec.student_id), str(row.id)}
         for fid in file_ids:
-            file_service.bind_file_biz(fid, "INTERNSHIP", str(row.id), user=user, db=db)
+            bind_file_to_business(
+                db,
+                file_id=fid,
+                biz_type="INTERNSHIP",
+                biz_id=str(row.id),
+                actor=user or {},
+                subject_type="STUDENT",
+                subject_id=str(rec.student_id),
+                relation_type="SPECIAL_FILING_EVIDENCE",
+                module_code="INTERNSHIP",
+                student_id=rec.student_id,
+                batch_id=str(rec.batch_id or "") or None,
+                scope=scope,
+                legacy_target_values=legacy_targets,
+            )
         _audit(db, row, "CREATE", user, {
             "filingType": filing_type, "triggerReason": trigger_reason,
             "fileCount": len(file_ids), "version": int(row.version or 0),

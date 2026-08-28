@@ -274,6 +274,7 @@ def test_serial_special_filing_create_lands_one_row(db_mode):
 
     db = _session()
     ids = _seed(db)
+    file_id = _seed_evidence_file(db)
     db.commit()
     db.close()
 
@@ -281,7 +282,7 @@ def test_serial_special_filing_create_lands_one_row(db_mode):
     svc.create({
         "internshipId": str(ids["internship"]), "filingType": "OTHER",
         "triggerReason": "企业临时调整岗位安排，需补充备案说明情况。",
-        "fileIds": ["f-evidence-1"],
+        "fileIds": [file_id],
     }, user=ADMIN_USER)
 
     db = _session()
@@ -515,6 +516,7 @@ def test_concurrent_special_filing_create_first_create(db_mode):
 
     db = _session()
     ids = _seed(db)
+    file_id = _seed_evidence_file(db)
     db.commit()
     db.close()
 
@@ -523,7 +525,7 @@ def test_concurrent_special_filing_create_first_create(db_mode):
         svc.create({
             "internshipId": str(ids["internship"]), "filingType": "OTHER",
             "triggerReason": "企业临时调整岗位安排，需补充备案说明情况。",
-            "fileIds": ["f-evidence-1"],
+            "fileIds": [file_id],
         }, user=ADMIN_USER)
 
     ok, failed = _run_pair(_do)

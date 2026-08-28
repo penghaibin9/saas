@@ -42,6 +42,7 @@ def _session():
 @pytest.fixture()
 def seeded(db_mode):
     from app.models import InternshipBatch, InternshipRecord, StudentProfile
+    from app.models.file import FileObject
 
     db = _session()
     batch = InternshipBatch(tenant_id=TID, batch_name="特殊备案审核批次",
@@ -57,9 +58,28 @@ def seeded(db_mode):
                               status="ONBOARD")
     db.add(record)
     db.flush()
+    evidence = FileObject(
+        tenant_id=TID, file_key=f"test/filing/{uuid.uuid4().hex}.pdf",
+        file_name="特殊备案依据.pdf", status="AVAILABLE", scan_status="CLEAN",
+        biz_type="TEMP_PRIVATE", biz_id=None, visibility="PRIVATE",
+        owner_user_id=REQUESTER["userId"],
+    )
+    db.add(evidence)
+    db.flush()
     db.commit()
-    ids = {"batch": batch.id, "internship": record.id, "student": profile.id}
+    ids = {"batch": batch.id, "internship": record.id, "student": profile.id,
+           "file": str(evidence.id)}
     db.close()
+    _ctx(REQUESTER)
+    from app.services import file_service
+    stored = file_service.store_bytes(
+        b"special-filing-authoritative-evidence",
+        "special-filing-evidence.txt",
+        biz_type="TEMP_PRIVATE",
+        user=REQUESTER,
+        visibility="PRIVATE",
+    )
+    ids["file"] = stored["fileId"]
     return ids
 
 
@@ -71,7 +91,7 @@ def _create_filing(ids):
     created = svc.create({
         "internshipId": str(ids["internship"]), "filingType": "OTHER",
         "triggerReason": "企业临时调整岗位安排，需补充备案说明情况。",
-        "fileIds": ["f-evidence-1"],
+        "fileIds": [ids["file"]],
     }, user=REQUESTER)
     return created["id"], created["version"]
 

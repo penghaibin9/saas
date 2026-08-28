@@ -54,7 +54,7 @@ def _seed(db_mode):
             db.add(s); db.flush()
             r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
                                  enterprise_name="测试企业", position_name="实习生",
-                                 status="ONBOARD", risk_level="NONE", batch_id=b.id)
+                                 status="ASSESSING", risk_level="NONE", batch_id=b.id)
             db.add(r); db.flush()
             ids[f"rec_{key}"] = r.id
         db.commit()
