@@ -31,3 +31,32 @@ def test_match_conflict_cannot_be_confirmed():
     text = src("app/modules/internship/services/internship_match_service.py")
     assert 'if m.conflict_flag:' in text
     assert '该匹配仍存在冲突' in text
+
+
+def test_score_appeal_is_real_domain_flow():
+    text = src("app/modules/internship/services/internship_score_appeal_service.py")
+    assert 'scoreVersion' in text
+    assert 'expected_status="PUBLISHED"' in text
+    assert 'values={"status": "WITHDRAWN"}' in text
+    assert '实习已最终归档' in text
+    assert 'def my_latest' in text
+
+def test_score_appeal_generic_workorder_cannot_bypass_domain():
+    text = src("app/api/v1/campus_service.py")
+    assert '_is_internship_score_appeal' in text
+    assert 'internship_score_appeal.decide' in text
+
+def test_score_recalc_supports_withdrawn_and_optimistic_lock():
+    text = (ROOT.parent / "frontend/src/modules/internship/views/ScoreView.vue").read_text(encoding="utf-8")
+    assert "'WITHDRAWN'" in text
+    assert 'body.expectedVersion = current.version' in text
+    assert 'scoreApi.getAppeals' in text
+
+def test_student_score_appeal_sends_context_and_reads_status():
+    text = (ROOT.parent / "student-portal/src/views/internship/InternshipView.vue").read_text(encoding="utf-8")
+    assert '...currentInternshipContext(), reason: appealReason.value' in text
+    assert 'internshipScoreAppealStatus(currentInternshipContext())' in text
+
+def test_score_appeal_router_is_registered():
+    text = src("app/api/v1/route_registration.py")
+    assert 'internship_score_appeal' in text

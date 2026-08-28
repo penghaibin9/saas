@@ -601,6 +601,13 @@ def internship_agreement_print(user=Depends(get_current_user), body: dict = Body
     return success(internship.agreement_print(user, body))
 
 
+@router.get("/internship/score/appeal", summary="本人实习成绩申诉状态")
+def internship_score_appeal_status(batchId: str = "", internshipId: str = "", user=Depends(get_current_user)):
+    return success(internship.score_appeal_status(
+        user, batch_id=batchId or None, internship_id=internshipId or None
+    ))
+
+
 @router.post("/internship/score/appeal", summary="实习成绩申诉（本人）")
 def internship_score_appeal(user=Depends(get_current_user), body: dict = Body(...)):
     return success(internship.score_appeal(user, body))

@@ -177,6 +177,8 @@ def _service_student(db, student: StudentProfile) -> CsServiceStudent:
 def create(user: dict, body: dict | None) -> dict:
     _require_student(user)
     b = body or {}
+    if not str(b.get("batchId") or "").strip() and not str(b.get("internshipId") or "").strip():
+        raise AppException("VALIDATION_ERROR", "成绩申诉必须携带当前实习批次或实习记录上下文")
     reason = str(b.get("reason") or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "申诉理由至少 5 个字")
@@ -313,6 +315,67 @@ def create(user: dict, body: dict | None) -> dict:
             "scoreVersion": int(score.version or 0),
             "message": "成绩申诉已提交，学校处理时将校验原成绩版本",
         }
+
+
+def my_latest(user: dict, *, batch_id=None, internship_id=None) -> dict:
+    """学生本人查看当前实习最近一条成绩申诉及其真实处理状态。"""
+    _require_student(user)
+    with session() as db:
+        student = resolve_student(db, user)
+        if not student:
+            raise not_found("未找到当前学生档案")
+
+        from app.modules.internship.services.internship_record_resolver import resolve_student_internship_context
+
+        ctx = resolve_student_internship_context(
+            db, student=student, batch_id=batch_id, for_write=False
+        )
+        record = ctx.record
+        explicit = str(internship_id or "").strip()
+        if explicit:
+            direct = db.get(InternshipRecord, _as_id(explicit))
+            if (
+                not direct
+                or direct.is_deleted
+                or direct.tenant_id != _tid()
+                or direct.student_id != student.id
+            ):
+                raise not_found("该实习记录不存在或不属于当前学生")
+            if batch_id and str(direct.batch_id or "") != str(batch_id):
+                raise AppException("DATA_CONFLICT", "实习记录与所选批次不一致，请刷新后重试")
+            record = direct
+        if not record:
+            return {"hasAppeal": False, "status": "", "statusLabel": "暂无成绩申诉"}
+
+        cs_student = db.scalars(
+            select(CsServiceStudent).where(
+                CsServiceStudent.tenant_id == _tid(),
+                CsServiceStudent.student_id == student.id,
+                CsServiceStudent.is_deleted.is_(False),
+            )
+        ).first()
+        if not cs_student:
+            return {"hasAppeal": False, "status": "", "statusLabel": "暂无成绩申诉"}
+
+        orders = db.scalars(
+            select(CsWorkOrder).where(
+                CsWorkOrder.tenant_id == _tid(),
+                CsWorkOrder.cs_student_id == cs_student.id,
+                CsWorkOrder.title == APPEAL_KEY,
+                CsWorkOrder.is_deleted.is_(False),
+            ).order_by(CsWorkOrder.id.desc())
+        ).all()
+        for work_order in orders:
+            try:
+                meta = _meta(work_order)
+            except AppException:
+                # 历史通用工单没有冻结成绩快照，不能冒充当前领域申诉。
+                continue
+            if str(meta.get("internshipId") or "") != str(record.id):
+                continue
+            row = _row(db, work_order, record=record, student=student)
+            return {"hasAppeal": True, **row}
+        return {"hasAppeal": False, "status": "", "statusLabel": "暂无成绩申诉"}
 
 
 def list_appeals(user: dict, *, page: int = 1, page_size: int = 20, status: str | None = None,
