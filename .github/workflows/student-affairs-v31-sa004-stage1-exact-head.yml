@@ -49,7 +49,7 @@ jobs:
       DEPLOYMENT_MODE: local
       DB_ENABLED: 'true'
       DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
-      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_sa004_contract?charset=utf8mb4
       DB_HOST: 127.0.0.1
       DB_PORT: '3306'
       DB_USER: root
@@ -67,7 +67,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_TARGET_SHA: af8de55cacace72de37598fdd33b47a031970730
+      E2E_TARGET_SHA: dc1b1b4ef752f2ad87bd26f814bb8248f82ca561
 
     steps:
       - name: Checkout immutable runner
@@ -107,13 +107,24 @@ jobs:
             app/student-portal/package-lock.json
             app/e2e/package-lock.json
 
-      - name: Install backend and run only affected assignee contract
+      - name: Install backend and prepare isolated affected contracts
         working-directory: app/backend
         run: |
           set -euo pipefail
           pip install -r requirements.txt
+          python - <<'PY'
+          import pymysql
+          db = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', autocommit=True)
+          try:
+              with db.cursor() as cur:
+                  cur.execute('CREATE DATABASE IF NOT EXISTS student_lifecycle_sa004_contract CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
+          finally:
+              db.close()
+          print('SA004_CONTRACT_DB_READY')
+          PY
           pytest -q -p no:warnings \
-            tests/test_affairs_phase2_role_matrix.py::test_funding_school_review_assignee_override_is_domain_specific
+            tests/test_affairs_phase2_role_matrix.py::test_funding_school_review_assignee_override_is_domain_specific \
+            tests/test_affairs_funding.py::test_f2_full_flow_granted_360
 
       - name: Migrate real Browser database and publish IAM authority
         working-directory: app/backend
