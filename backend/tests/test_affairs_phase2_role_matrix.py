@@ -41,17 +41,40 @@ def test_eight_role_permission_matrix(role_name, permission, expected):
     assert has_permission(user, permission) is expected
 
 
-def test_funding_school_review_assignee_pool_uses_business_roles_only():
-    """校级资助终审只能分配给学工处/资助业务角色，不能被通用 SCHOOL_ADMIN 抢占。"""
-    from app.services.affairs_assignee_service import _NODE_ROLES
+def test_funding_school_review_assignee_override_is_domain_specific(monkeypatch):
+    """Funding 校审使用业务角色池；共享 SCHOOL_REVIEW 与 Funding 其他节点都不得被连带改写。"""
+    from app.services import affairs_assignee_service as shared
+    from app.services import affairs_funding_scan_guard as guard
 
-    assert _NODE_ROLES["SCHOOL_REVIEW"] == {
+    # 共享节点仍保持历史语义，避免影响困难认定/处分等其他业务。
+    assert shared._NODE_ROLES["SCHOOL_REVIEW"] == {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN"}
+    assert set(guard._FUNDING_SCHOOL_REVIEW_ROLES) == {
         "STUDENT_AFFAIRS",
         "STUDENT_AFFAIRS_ADMIN",
         "SA_ADMIN",
         "FUNDING_TEACHER",
     }
-    assert "SCHOOL_ADMIN" not in _NODE_ROLES["SCHOOL_REVIEW"]
+    assert "SCHOOL_ADMIN" not in guard._FUNDING_SCHOOL_REVIEW_ROLES
+
+    captured = {}
+
+    def fake_require_assignee_id(db, node, *, student_id=None, role_codes=None):
+        captured.update({"db": db, "node": node, "studentId": student_id, "roleCodes": set(role_codes or ())})
+        return 88001
+
+    monkeypatch.setattr(shared, "require_assignee_id", fake_require_assignee_id)
+    monkeypatch.setattr(guard, "_ORIGINAL_ASSIGNEE_FOR", lambda db, node, student_id: 77001)
+
+    marker_db = object()
+    assert guard._assignee_for(marker_db, "SCHOOL_REVIEW", 901) == 88001
+    assert captured == {
+        "db": marker_db,
+        "node": "SCHOOL_REVIEW",
+        "studentId": 901,
+        "roleCodes": set(guard._FUNDING_SCHOOL_REVIEW_ROLES),
+    }
+    # 辅导员/学院节点仍交回原 Funding resolver，修复只命中校级资助受理人。
+    assert guard._assignee_for(marker_db, "COLLEGE_REVIEW", 901) == 77001
 
 
 def test_counselor_discipline_removal_permission_is_narrow():
