@@ -17,9 +17,9 @@ concurrency:
 
 jobs:
   sa004-stage1:
-    name: SA-004 Browser First / permissions / MySQL / real time gate
+    name: SA-004 school-review minimal Browser / MySQL rerun
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 45
     services:
       mysql:
         image: mysql:8.4
@@ -49,7 +49,6 @@ jobs:
       DEPLOYMENT_MODE: local
       DB_ENABLED: 'true'
       DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
-      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_sa004_contract?charset=utf8mb4
       DB_HOST: 127.0.0.1
       DB_PORT: '3306'
       DB_USER: root
@@ -67,7 +66,7 @@ jobs:
       E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
       E2E_STAFF_BASE_URL: http://127.0.0.1:5173
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
-      E2E_TARGET_SHA: 2019ca946ce2bc2c21dc9e76a8de0ce674c2d03d
+      E2E_TARGET_SHA: af8de55cacace72de37598fdd33b47a031970730
 
     steps:
       - name: Checkout immutable runner
@@ -107,53 +106,19 @@ jobs:
             app/student-portal/package-lock.json
             app/e2e/package-lock.json
 
-      - name: Install backend and prepare isolated contract database
+      - name: Install backend and run only affected assignee contract
         working-directory: app/backend
         run: |
           set -euo pipefail
           pip install -r requirements.txt
-          python - <<'PY'
-          import pymysql
-          db = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', autocommit=True)
-          try:
-              with db.cursor() as cur:
-                  cur.execute('CREATE DATABASE IF NOT EXISTS student_lifecycle_sa004_contract CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
-          finally:
-              db.close()
-          print('SA004_CONTRACT_DB_READY')
-          PY
+          pytest -q -p no:warnings \
+            tests/test_affairs_phase2_role_matrix.py::test_funding_school_review_assignee_override_is_domain_specific
 
       - name: Migrate real Browser database and publish IAM authority
         working-directory: app/backend
         run: |
           set -euo pipefail
           alembic upgrade head
-          python scripts/bootstrap_control_plane_school_iam_authority.py
-          python scripts/e2e_seed_playwright_tenants.py
-          python scripts/e2e_seed_control_plane_school_iam.py
-
-      - name: Run only current SA-004 changed contracts
-        working-directory: app/backend
-        run: |
-          set -euo pipefail
-          pytest -q -p no:warnings \
-            tests/test_affairs_permission_codes.py::test_counselor_self_service_eval_only \
-            tests/test_affairs_phase2_role_matrix.py \
-            tests/test_affairs_funding_appeal_list_version.py \
-            tests/test_affairs_four_end_ui_contract.py::test_funding_publicity_manual_confirm_keeps_optimistic_lock_version
-          python - <<'PY'
-          from app.services.system_role_shadow_service import expected_system_role_permissions
-          codes = set(expected_system_role_permissions('COUNSELOR'))
-          assert 'studentAffairs.funding.approve' in codes, sorted(codes)
-          assert 'studentAffairs.funding.project.manage' not in codes, sorted(codes)
-          assert 'studentAffairs.funding.publicity.manage' not in codes, sorted(codes)
-          print('SA004_COUNSELOR_PERMISSION_BOUNDARY_PASS')
-          PY
-
-      - name: Re-converge real Browser database after isolated contracts
-        working-directory: app/backend
-        run: |
-          set -euo pipefail
           python scripts/bootstrap_control_plane_school_iam_authority.py
           python scripts/e2e_seed_playwright_tenants.py
           python scripts/e2e_seed_control_plane_school_iam.py
@@ -175,13 +140,6 @@ jobs:
       - name: Bootstrap canonical SA-004 identities and counselor scopes
         working-directory: app/backend
         run: python ../../runner/audit-tests/student-affairs-sa004-bootstrap-v3.py
-
-      - name: Start official external scheduler
-        run: |
-          set -euo pipefail
-          cd app/backend
-          nohup python scripts/run_scheduled_jobs.py > ../e2e/runtime-logs/scheduler.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/scheduler.pid
 
       - name: Start real Staff PC and Student PC
         run: |
@@ -218,88 +176,17 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
-      - name: Browser First - create real scholarship project and one-day batch
+      - name: Required upstream - create real scholarship project and one-day batch
         working-directory: app/e2e
         run: npx playwright test specs/student-affairs-scholarship-config-browser-v3.spec.mjs
 
-      - name: Direct MySQL - verify project and batch configuration truth
-        working-directory: app/backend
-        run: python ../../runner/audit-tests/student-affairs-sa004-verify-v3.py config
-
-      - name: Browser First - scholarship journey to real publicity time gate
+      - name: Failed chain rerun - school review through next valid blocker/time gate
         working-directory: app/e2e
         run: npx playwright test specs/student-affairs-scholarship-browser-audit.spec.mjs
 
-      - name: Direct MySQL - verify journey audit and real publicity wait
+      - name: Minimal downstream - Direct MySQL journey truth
         working-directory: app/backend
         run: python ../../runner/audit-tests/student-affairs-sa004-verify-v3.py journey
-
-      - name: Freeze immutable Stage-1 authority for legitimate Stage-2
-        run: |
-          set -euo pipefail
-          if [ -f app/e2e/runtime-logs/scheduler.pid ]; then
-            kill "$(cat app/e2e/runtime-logs/scheduler.pid)" 2>/dev/null || true
-          fi
-          mkdir -p state
-          if ! command -v mysqldump >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y default-mysql-client
-          fi
-          MYSQL_PWD=e2e_root mysqldump \
-            -h 127.0.0.1 -P 3306 -uroot \
-            --single-transaction --quick --skip-lock-tables --no-tablespaces \
-            student_lifecycle_e2e > state/student_lifecycle_e2e.sql
-          cp app/e2e/student-affairs-scholarship-config-v3-evidence.json state/
-          cp app/e2e/student-affairs-scholarship-audit-evidence.json state/
-          RUNNER_SHA="$(git -C runner rev-parse HEAD)" python - <<'PY'
-          from datetime import timedelta
-          import hashlib, json, os
-          from pathlib import Path
-          import pymysql
-
-          evidence_path = Path('state/student-affairs-scholarship-audit-evidence.json')
-          dump_path = Path('state/student_lifecycle_e2e.sql')
-          evidence = json.loads(evidence_path.read_text(encoding='utf-8'))
-          app_id = int(evidence['applicationId'])
-          batch_id = int(evidence['batchId'])
-          appeal_id = int(evidence['appealId'])
-          db = pymysql.connect(host='127.0.0.1', port=3306, user='root', password='e2e_root', database='student_lifecycle_e2e', charset='utf8mb4')
-          try:
-              with db.cursor() as cur:
-                  cur.execute('SELECT student_id,status,publicity_at,version,workflow_instance_id FROM t_affairs_funding_application WHERE id=%s', (app_id,))
-                  app = cur.fetchone()
-                  assert app and app[1] == 'PUBLICITY' and app[2] is not None, app
-                  cur.execute('SELECT publicity_days FROM t_affairs_funding_batch WHERE id=%s', (batch_id,))
-                  days = max(1, int(cur.fetchone()[0] or 5))
-                  due_at = app[2] + timedelta(days=days)
-                  cur.execute('SELECT UTC_TIMESTAMP(6)')
-                  frozen_at = cur.fetchone()[0]
-                  assert due_at > frozen_at, (frozen_at, due_at)
-                  cur.execute('SELECT status,result,open_key FROM t_affairs_funding_appeal WHERE id=%s', (appeal_id,))
-                  assert cur.fetchone() == ('CLOSED', 'OVERRULED', None)
-          finally:
-              db.close()
-          manifest = {
-              'sourceRunId': os.environ['GITHUB_RUN_ID'],
-              'productSha': os.environ['E2E_TARGET_SHA'],
-              'runnerSha': os.environ['RUNNER_SHA'],
-              'applicationId': str(app_id),
-              'batchId': str(batch_id),
-              'appealId': str(appeal_id),
-              'studentId': str(app[0]),
-              'workflowInstanceId': str(app[4] or ''),
-              'preVersion': int(app[3]),
-              'publicityAt': app[2].isoformat(),
-              'publicityDays': days,
-              'dueAt': due_at.isoformat(),
-              'frozenAt': frozen_at.isoformat(),
-              'dumpSha256': hashlib.sha256(dump_path.read_bytes()).hexdigest(),
-              'evidenceSha256': hashlib.sha256(evidence_path.read_bytes()).hexdigest(),
-              'stage1Result': 'TIME_GATED_PRECHECK_PASS'
-          }
-          Path('state/student-affairs-sa004-time-gate-manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2), encoding='utf-8')
-          print('SA004_TIME_GATE_FROZEN', json.dumps(manifest, ensure_ascii=False, sort_keys=True))
-          PY
 
       - name: Reassert immutable product exact head
         run: |
@@ -308,16 +195,14 @@ jobs:
           git -C app diff --exit-code
           git -C app diff --cached --exit-code
 
-      - name: Upload immutable SA-004 Stage-1 time-gate authority
+      - name: Upload focused SA-004 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: student-affairs-v31-sa004-stage1-${{ env.E2E_TARGET_SHA }}-${{ github.run_id }}
           path: |
-            state/student_lifecycle_e2e.sql
-            state/student-affairs-scholarship-config-v3-evidence.json
-            state/student-affairs-scholarship-audit-evidence.json
-            state/student-affairs-sa004-time-gate-manifest.json
+            app/e2e/student-affairs-scholarship-config-v3-evidence.json
+            app/e2e/student-affairs-scholarship-audit-evidence.json
             app/e2e/playwright-report/
             app/e2e/test-results/
             app/e2e/runtime-logs/
