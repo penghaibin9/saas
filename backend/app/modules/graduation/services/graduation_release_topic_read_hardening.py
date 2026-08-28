@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from sqlalchemy import and_, func, or_, select
+from app.core.context import get_current_user_ctx
 from app.models import GraduationAuditTrail, GraduationBatch, GraduationStudent, GraduationTopic
 from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_release_hardening_common import _student_scope_select
@@ -11,10 +12,58 @@ from app.modules.graduation.services.graduation_release_topic_core_hardening imp
 def _install_topic_read_hardening() -> None:
     from app.modules.graduation.services import graduation_topic_service as svc
     from app.modules.graduation.services import graduation_service as legacy
+
+    def public_pool(page, page_size, keyword=None, status=None, batch_id=None,
+                    review_status=None, is_full=None):
+        with session() as db:
+            q = select(GraduationTopic).where(
+                GraduationTopic.tenant_id == _tid(), GraduationTopic.is_deleted.is_(False), GraduationTopic.status != "ARCHIVED"
+            )
+            if batch_id not in (None, ""):
+                q = q.where(GraduationTopic.batch_id == int(batch_id))
+            if review_status:
+                q = q.where(GraduationTopic.review_status == review_status)
+            if status == "CONFIRMED":
+                q = q.where(GraduationTopic.review_status == "APPROVED", GraduationTopic.status == "CONFIRMED")
+            elif status == "PENDING_CONFIRM":
+                q = q.where(GraduationTopic.status == "PENDING_CONFIRM")
+            elif status:
+                q = q.where(GraduationTopic.status == status)
+            if is_full is True:
+                q = q.where(GraduationTopic.selected >= GraduationTopic.capacity)
+            elif is_full is False:
+                q = q.where(GraduationTopic.selected < GraduationTopic.capacity)
+            if keyword:
+                like = f"%{str(keyword).strip()}%"
+                q = q.where(or_(GraduationTopic.title.like(like), GraduationTopic.topic_no.like(like), GraduationTopic.advisor_name.like(like)))
+            total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+            size = min(200, max(1, int(page_size)))
+            rows = db.scalars(q.order_by(GraduationTopic.id.desc()).offset((max(1, int(page)) - 1) * size).limit(size)).all()
+            batch_ids = {int(t.batch_id) for t in rows if t.batch_id}
+            batches = {b.id: b for b in db.scalars(select(GraduationBatch).where(GraduationBatch.id.in_(batch_ids or {-1}), GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False))).all()}
+            items = []
+            for t in rows:
+                row = svc._row(t, batches.get(t.batch_id))
+                # Student/public pools intentionally expose no selected-student
+                # identity, even when the underlying row keeps legacy snapshots.
+                row.pop("studentNames", None)
+                row.pop("students", None)
+                row.pop("assignedStudents", None)
+                items.append(row)
+            return items, total
+
     def list_topics(page: int, page_size: int, keyword=None, batch_id=None, source_type=None,
                     category=None, review_status=None, status=None, is_full=None,
                     archive_view=None, has_requirements=None, has_attachments=None,
                     missing_category=None):
+        # The student selectable-topic pool is intentionally broader than staff
+        # management scope, but it uses a minimal projection with no student PII.
+        user = get_current_user_ctx() or {}
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            return public_pool(
+                page, page_size, keyword=keyword, status=status, batch_id=batch_id,
+                review_status=review_status, is_full=is_full,
+            )
         with session() as db:
             q = select(GraduationTopic).where(
                 GraduationTopic.id.in_(_topic_scope_select(db)),
@@ -85,33 +134,6 @@ def _install_topic_read_hardening() -> None:
 
     def list_assigned_students(topic_id):
         return get_topic(topic_id).get("assignedStudents", [])
-
-    def public_pool(page, page_size, keyword=None, status=None):
-        with session() as db:
-            q = select(GraduationTopic).where(
-                GraduationTopic.tenant_id == _tid(), GraduationTopic.is_deleted.is_(False), GraduationTopic.status != "ARCHIVED"
-            )
-            if status == "CONFIRMED":
-                q = q.where(GraduationTopic.review_status == "APPROVED", GraduationTopic.status == "CONFIRMED")
-            elif status == "PENDING_CONFIRM":
-                q = q.where(GraduationTopic.status == "PENDING_CONFIRM")
-            elif status:
-                q = q.where(GraduationTopic.status == status)
-            if keyword:
-                like = f"%{str(keyword).strip()}%"
-                q = q.where(or_(GraduationTopic.title.like(like), GraduationTopic.topic_no.like(like), GraduationTopic.advisor_name.like(like)))
-            total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
-            size = min(200, max(1, int(page_size)))
-            rows = db.scalars(q.order_by(GraduationTopic.id.desc()).offset((max(1, int(page)) - 1) * size).limit(size)).all()
-            batch_ids = {int(t.batch_id) for t in rows if t.batch_id}
-            batches = {b.id: b for b in db.scalars(select(GraduationBatch).where(GraduationBatch.id.in_(batch_ids or {-1}), GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False))).all()}
-            items = []
-            for t in rows:
-                row = svc._row(t, batches.get(t.batch_id))
-                row.pop("studentNames", None)
-                row.pop("students", None)
-                items.append(row)
-            return items, total
 
     def topic_stats(batch_id=None):
         with session() as db:

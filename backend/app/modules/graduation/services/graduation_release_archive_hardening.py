@@ -6,6 +6,7 @@ from app.models import GraduationArchiveRecord, GraduationStudent
 from app.services.db_service import _tid, session
 from app.modules.graduation.services.graduation_release_hardening_common import _student_scope_select
 
+
 def _install_archive_hardening() -> None:
     from app.modules.graduation.services import graduation_archive_read_service as read
     from app.modules.graduation.services import graduation_archive_service as archive
@@ -23,7 +24,9 @@ def _install_archive_hardening() -> None:
         return GraduationStudent.id == GraduationArchiveRecord.gd_student_id, filters
 
     def list_archives(page, page_size, keyword=None, status=None, batch_id=None, archive_batch_no=None):
-        tid = _tid(); p = max(1, int(page)); size = min(200, max(1, int(page_size)))
+        # The HTTP router caps pageSize at 200. Internal exporters may request a
+        # larger page and must not silently truncate while still reporting total.
+        tid = _tid(); p = max(1, int(page)); size = max(1, int(page_size))
         with session() as db:
             join_on, filters = query_parts(db, tid, keyword=keyword, status=status, batch_id=batch_id, archive_batch_no=archive_batch_no)
             total = int(db.scalar(select(func.count(func.distinct(GraduationArchiveRecord.id))).select_from(GraduationArchiveRecord).join(GraduationStudent, join_on).where(*filters)) or 0)
@@ -31,7 +34,11 @@ def _install_archive_hardening() -> None:
             return [read._row(a, s) for a, s in rows], total
 
     def resolve_material_download(file_id):
-        return material_v2.resolve_material_download(file_id, get_current_user_ctx() or {})
+        # V2 resolver is the authorization authority and returns (FileObject, Path).
+        # The legacy HTTP download contract expects (Path, filename).
+        file_obj, path = material_v2.resolve_material_download(file_id, get_current_user_ctx() or {})
+        filename = str(getattr(file_obj, "file_name", None) or getattr(path, "name", ""))
+        return path, filename
 
     read.list_archives = list_archives
     archive.list_archives = list_archives

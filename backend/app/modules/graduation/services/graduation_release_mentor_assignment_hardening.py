@@ -16,6 +16,31 @@ from app.modules.graduation.services.graduation_release_mentor_common import _me
 def _install_mentor_assignment_hardening() -> None:
     from app.modules.graduation.services import graduation_mentor_service as svc
     from app.modules.graduation.services import graduation_scope_service as scope
+
+    def _mentor_ref(raw):
+        value = str(raw or "").strip()
+        subject_type = None
+        if ":" in value:
+            subject_type, value = value.split(":", 1)
+            subject_type = subject_type.strip().upper()
+            if subject_type not in {"INTERNAL", "EXTERNAL"}:
+                raise AppException("VALIDATION_ERROR", "导师主体类型无效")
+        if not value.isdigit() or int(value) <= 0:
+            raise AppException("VALIDATION_ERROR", "导师主体 ID 无效")
+        return int(value), subject_type
+
+    def _assert_subject_type(mentor, subject_type):
+        if not subject_type:
+            return
+        mentor_type = str(mentor.mentor_type or "").upper()
+        allowed = {"INTERNAL", "DUAL"} if subject_type == "INTERNAL" else {"ENTERPRISE", "DUAL"}
+        if mentor_type not in allowed:
+            requested_field = "mentorId" if subject_type == "INTERNAL" else "externalAdvisorId"
+            raise AppException(
+                "VALIDATION_ERROR", "导师主体类型与请求字段不匹配",
+                details={"requestedField": requested_field, "mentorId": str(mentor.id), "mentorType": mentor_type},
+            )
+
     def _lock_student(db, sid):
         s = db.scalars(select(GraduationStudent).where(
             GraduationStudent.id == int(sid), GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False), GraduationStudent.record_status == "ACTIVE"
@@ -23,14 +48,17 @@ def _install_mentor_assignment_hardening() -> None:
         if not s: raise not_found("毕设学生不存在")
         return scope.assert_student_access(db, s, "mentor.assignment")
 
-    def _lock_mentors(db, ids: Iterable[int]):
-        ids = sorted({int(x) for x in ids if x})
+    def _lock_mentors(db, refs: Iterable):
+        parsed = [_mentor_ref(ref) for ref in refs if ref not in (None, "")]
+        ids = sorted({mid for mid, _subject_type in parsed})
         rows = db.scalars(select(GraduationMentor).where(
             GraduationMentor.tenant_id == _tid(), GraduationMentor.id.in_(ids or {-1}), GraduationMentor.is_deleted.is_(False)
         ).order_by(GraduationMentor.id).with_for_update()).all()
         by_id = {int(m.id): m for m in rows}
-        for mid in ids:
-            if mid not in by_id: raise not_found("导师不存在")
+        for mid, subject_type in parsed:
+            mentor = by_id.get(mid)
+            if not mentor: raise not_found("导师不存在")
+            _assert_subject_type(mentor, subject_type)
         return by_id
 
     def _active_count(db, mentor_id):
@@ -40,6 +68,7 @@ def _install_mentor_assignment_hardening() -> None:
         )) or 0)
 
     def assign_mentor(gd_student_id, mentor_id, reason=None):
+        mentor_pk, _subject_type = _mentor_ref(mentor_id)
         with session() as db:
             stu = _lock_student(db, gd_student_id)
             active = db.scalars(select(GraduationMentorAssignment).where(
@@ -47,7 +76,7 @@ def _install_mentor_assignment_hardening() -> None:
                 GraduationMentorAssignment.status == "ACTIVE", GraduationMentorAssignment.is_deleted.is_(False)
             ).with_for_update()).first()
             if active or stu.mentor_id: raise AppException("DATA_CONFLICT", "该生已有导师，如需更换请使用「调导师」")
-            mentor = _lock_mentors(db, [mentor_id])[int(mentor_id)]
+            mentor = _lock_mentors(db, [mentor_id])[mentor_pk]
             if mentor.id not in set(db.scalars(_mentor_scope_select(db)).all()): raise no_permission("目标导师不在当前管理范围内")
             if mentor.qualification_status != "QUALIFIED": raise AppException("DATA_CONFLICT", "仅「已认证」导师可被分配学生")
             current = _active_count(db, mentor.id)
@@ -64,6 +93,7 @@ def _install_mentor_assignment_hardening() -> None:
     def change_mentor(gd_student_id, new_mentor_id, reason):
         reason = str(reason or "").strip()
         if len(reason) < 5: raise AppException("VALIDATION_ERROR", "调导师原因必填且不少于 5 字")
+        new_mentor_pk, _subject_type = _mentor_ref(new_mentor_id)
         with session() as db:
             stu = _lock_student(db, gd_student_id)
             active = db.scalars(select(GraduationMentorAssignment).where(
@@ -71,9 +101,9 @@ def _install_mentor_assignment_hardening() -> None:
                 GraduationMentorAssignment.status == "ACTIVE", GraduationMentorAssignment.is_deleted.is_(False)
             ).with_for_update()).first()
             if not active or not stu.mentor_id: raise AppException("DATA_CONFLICT", "该生尚无导师，请使用「分配导师」")
-            if int(stu.mentor_id) == int(new_mentor_id): raise AppException("DATA_CONFLICT", "新导师与当前导师相同")
-            mentors = _lock_mentors(db, [int(stu.mentor_id), int(new_mentor_id)])
-            old_m, new_m = mentors[int(stu.mentor_id)], mentors[int(new_mentor_id)]
+            if int(stu.mentor_id) == new_mentor_pk: raise AppException("DATA_CONFLICT", "新导师与当前导师相同")
+            mentors = _lock_mentors(db, [int(stu.mentor_id), new_mentor_id])
+            old_m, new_m = mentors[int(stu.mentor_id)], mentors[new_mentor_pk]
             if new_m.id not in set(db.scalars(_mentor_scope_select(db)).all()): raise no_permission("目标导师不在当前管理范围内")
             if new_m.qualification_status != "QUALIFIED": raise AppException("DATA_CONFLICT", "仅「已认证」导师可被分配学生")
             new_count = _active_count(db, new_m.id)
