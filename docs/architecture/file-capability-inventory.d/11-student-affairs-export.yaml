@@ -41,5 +41,5 @@ entries:
     archive: false
     status: active
     risk: P0
-    targetPhase: 'SA-004'
+    targetPhase: '10'
     notes: Web请求只冻结当前发放状态筛选、业务数据范围和不少于5字的导出用途；scheduler分页复用发放台账同一service投影生成单Sheet XLSX，金额沿用角色脱敏，银行卡仅后4位，用途写水印和SENSITIVE_EXPORT审计，下载使用一次性票据。
