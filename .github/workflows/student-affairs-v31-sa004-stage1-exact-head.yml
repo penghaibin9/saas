@@ -73,7 +73,7 @@ jobs:
       - name: Checkout immutable runner
         uses: actions/checkout@v4
         with:
-          ref: audit/student-affairs-v31-final-runner-20260827
+          ref: ${{ github.sha }}
           path: runner
           fetch-depth: 1
 
@@ -89,7 +89,9 @@ jobs:
           set -euo pipefail
           actual="$(git -C app rev-parse HEAD)"
           echo "tested_product_exact_sha=$actual"
+          echo "audit_runner_exact_sha=$(git -C runner rev-parse HEAD)"
           test "$actual" = "$E2E_TARGET_SHA"
+          test "$(git -C runner rev-parse HEAD)" = "${GITHUB_SHA}"
           test -z "$(git -C app status --porcelain)"
 
       - uses: actions/setup-python@v5
@@ -200,10 +202,114 @@ jobs:
         working-directory: app/backend
         run: python ../../runner/audit-tests/student-affairs-sa004-verify-v3.py journey
 
+      - name: Freeze immutable real publicity state for Stage-2
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p state
+          if ! command -v mysqldump >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y default-mysql-client
+          fi
+          MYSQL_PWD=e2e_root mysqldump \
+            -h 127.0.0.1 -P 3306 -uroot \
+            --single-transaction --quick --skip-lock-tables --no-tablespaces \
+            student_lifecycle_e2e > state/student_lifecycle_e2e.sql
+          cp app/e2e/student-affairs-scholarship-audit-evidence.json \
+            state/student-affairs-scholarship-audit-evidence.json
+          RUNNER_SHA="$(git -C runner rev-parse HEAD)" python - <<'PY'
+          from datetime import timedelta
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import pymysql
+
+          state = Path('state')
+          evidence_path = state / 'student-affairs-scholarship-audit-evidence.json'
+          dump_path = state / 'student_lifecycle_e2e.sql'
+          evidence = json.loads(evidence_path.read_text(encoding='utf-8'))
+          app_id = int(evidence['applicationId'])
+          batch_id = int(evidence['batchId'])
+          appeal_id = int(evidence['appealId'])
+
+          db = pymysql.connect(
+              host='127.0.0.1', port=3306, user='root', password='e2e_root',
+              database='student_lifecycle_e2e', charset='utf8mb4')
+          try:
+              with db.cursor() as cur:
+                  cur.execute(
+                      '''SELECT student_id, status, publicity_at, version, workflow_instance_id
+                         FROM t_affairs_funding_application WHERE id=%s''',
+                      (app_id,),
+                  )
+                  app = cur.fetchone()
+                  assert app, app_id
+                  assert app[1] == 'PUBLICITY', app
+                  assert app[2] is not None, app
+                  cur.execute(
+                      'SELECT publicity_days FROM t_affairs_funding_batch WHERE id=%s',
+                      (batch_id,),
+                  )
+                  batch = cur.fetchone()
+                  assert batch, batch_id
+                  days = max(1, int(batch[0] or 5))
+                  publicity_at = app[2]
+                  due_at = publicity_at + timedelta(days=days)
+                  cur.execute('SELECT UTC_TIMESTAMP(6)')
+                  now = cur.fetchone()[0]
+                  assert due_at > now, (now, due_at)
+                  cur.execute(
+                      'SELECT status, result, open_key FROM t_affairs_funding_appeal WHERE id=%s',
+                      (appeal_id,),
+                  )
+                  assert cur.fetchone() == ('CLOSED', 'OVERRULED', None)
+          finally:
+              db.close()
+
+          dump_sha = hashlib.sha256(dump_path.read_bytes()).hexdigest()
+          evidence_sha = hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+          manifest = {
+              'sourceRunId': os.environ['GITHUB_RUN_ID'],
+              'productSha': os.environ['E2E_TARGET_SHA'],
+              'runnerSha': os.environ['RUNNER_SHA'],
+              'applicationId': str(app_id),
+              'batchId': str(batch_id),
+              'appealId': str(appeal_id),
+              'studentId': str(app[0]),
+              'workflowInstanceId': str(app[4] or ''),
+              'preVersion': int(app[3]),
+              'publicityAt': publicity_at.isoformat(),
+              'publicityDays': days,
+              'dueAt': due_at.isoformat(),
+              'frozenAt': now.isoformat(),
+              'dumpSha256': dump_sha,
+              'evidenceSha256': evidence_sha,
+          }
+          manifest_path = state / 'student-affairs-sa004-time-gate-manifest.json'
+          manifest_path.write_text(
+              json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2),
+              encoding='utf-8',
+          )
+          print('[SA004_TIME_GATE_FROZEN]', json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload immutable SA-004 time-gate authority
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-affairs-sa004-time-gate-${{ github.run_id }}
+          path: |
+            state/student_lifecycle_e2e.sql
+            state/student-affairs-scholarship-audit-evidence.json
+            state/student-affairs-sa004-time-gate-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Reassert immutable product exact head
         run: |
           set -euo pipefail
           test "$(git -C app rev-parse HEAD)" = "$E2E_TARGET_SHA"
+          test "$(git -C runner rev-parse HEAD)" = "$GITHUB_SHA"
           git -C app diff --exit-code
           git -C app diff --cached --exit-code
 
