@@ -121,3 +121,32 @@ def test_legacy_internship_detail_audit_is_type_scoped():
     anchor = text.index('def get_internship_student_detail')
     tail = text[anchor:anchor + 5000]
     assert 'InternshipAuditTrail.target_type == "INTERN_STUDENT"' in tail
+
+
+def test_frozen_participant_roster_scope_does_not_reapply_lifecycle_eligibility():
+    text = src("app/modules/internship/services/internship_participant_service.py")
+    assert "def _visible_participant_student_ids" in text
+    assert "apply_internship_record_scope" in text
+    list_start = text.index("def list_participants")
+    add_start = text.index("def add_participants", list_start)
+    remove_start = text.index("def remove_participant", add_start)
+    summary_start = text.index("def summary", remove_start)
+    assert "scope.resolve" not in text[list_start:add_start]
+    assert "scope.resolve" in text[add_start:remove_start]
+    assert "scope.resolve" not in text[remove_start:summary_start]
+    assert "scope.resolve" not in text[summary_start:]
+
+
+def test_student_guarded_mutations_lock_and_advance_record_version():
+    text = src("app/modules/internship/services/internship_student_service.py")
+    assert "def _get_for_update" in text
+    for name in ("update_student_record", "assign_advisor", "set_status", "set_eligibility", "set_destination"):
+        start = text.index(f"def {name}")
+        next_def = text.find("\ndef ", start + 4)
+        block = text[start:] if next_def < 0 else text[start:next_def]
+        assert "_get_for_update(db, rec_id)" in block
+    for name in ("set_status", "set_eligibility", "set_destination"):
+        start = text.index(f"def {name}")
+        next_def = text.find("\ndef ", start + 4)
+        block = text[start:] if next_def < 0 else text[start:next_def]
+        assert "r.version = int(r.version or 0) + 1" in block
