@@ -117,4 +117,11 @@ def download_disbursement_export(
     user=Depends(require_permission("studentAffairs.funding.disburse.manage")),
 ):
     path, filename = funding_export.consume_download_ticket(job_id, ticket, user)
-    return validated_local_file_response(path, filename=filename)
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        audit_action="AFFAIRS_FUNDING_DISBURSEMENT_EXPORT_DOWNLOAD",
+        audit_target=f"funding-disbursement-export:{job_id}",
+        audit_detail={"jobId": str(job_id), "ticketConsumed": True},
+    )
