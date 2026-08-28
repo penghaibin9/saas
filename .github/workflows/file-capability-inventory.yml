@@ -17,7 +17,6 @@ on:
     branches:
       - main
       - audit/file-capability-inventory
-      - fix/student-affairs-flow-continuity-20260828
     paths:
       - "backend/app/**"
       - "frontend/src/**"
@@ -35,7 +34,7 @@ permissions:
 
 jobs:
   tenant-scope-repair:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/student-affairs-flow-continuity-20260828'
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/student-affairs-flow-continuity-20260828'
     name: 学工处分申诉租户查询精准修复
     runs-on: ubuntu-latest
     timeout-minutes: 10
