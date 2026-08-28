@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   targeted:
-    name: P1-02 AA-002 targeted pytest
+    name: P1-03 AA-005 targeted pytest
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -42,7 +42,7 @@ jobs:
       - name: Checkout exact product SHA
         uses: actions/checkout@v4
         with:
-          ref: c9eb3e46707ccd98d0c18f0d8b26f7c30b91719b
+          ref: 05d26f06c0ae1f0b173e0eb9e6070890e1eb3254
           fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
@@ -55,6 +55,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install cryptography
-      - name: Run P1-02 precise test only
+      - name: Run P1-03 precise test only
         working-directory: backend
-        run: pytest -q tests/test_aa_registration_scope_r3.py
+        run: pytest -q tests/test_aa_program_review_authority_r3.py
