@@ -29,6 +29,7 @@ from app.services.db_service import _tid, session
 _INSTALLED = False
 _ORIGINAL_SCAN: Any = None
 _ORIGINAL_GRANT_ONE: Any = None
+_ORIGINAL_ASSIGNEE_FOR: Any = None
 _QUOTA_CONFLICT_MARKERS = {
     "FUNDING_QUOTA_OR_BUDGET_EXCEEDED",
     "FUNDING_QUOTA_EXCEEDED",
@@ -39,6 +40,15 @@ _REVIEW_SCOPE = {
     "COLLEGE_REVIEW": "COLLEGE",
     "SCHOOL_REVIEW": "TENANT_ALL",
 }
+# SCHOOL_REVIEW 是跨学工业务共享的节点名，不能修改共享 resolver 的全局角色池来修 Funding。
+# 资助校级复核按 13A 权限矩阵只从真实学工处/资助业务角色中选择具体受理人；
+# 通用 SCHOOL_ADMIN 不进入钱相关业务待办候选池，但其他域的共享节点语义保持原样。
+_FUNDING_SCHOOL_REVIEW_ROLES = frozenset({
+    "STUDENT_AFFAIRS",
+    "STUDENT_AFFAIRS_ADMIN",
+    "SA_ADMIN",
+    "FUNDING_TEACHER",
+})
 
 
 class _GrantEligibilityChanged(AppException):
@@ -51,6 +61,22 @@ class _GrantEligibilityChanged(AppException):
 def _is_quota_conflict(exc: BaseException) -> bool:
     message = str(getattr(exc, "orig", exc) or exc)
     return any(marker in message for marker in _QUOTA_CONFLICT_MARKERS)
+
+
+def _assignee_for(db, node, student_id):
+    """Funding-only assignee policy; shared student-affairs nodes keep their original policy."""
+    if node == "SCHOOL_REVIEW":
+        from app.services.affairs_assignee_service import require_assignee_id
+
+        return require_assignee_id(
+            db,
+            node,
+            student_id=student_id,
+            role_codes=set(_FUNDING_SCHOOL_REVIEW_ROLES),
+        )
+    if _ORIGINAL_ASSIGNEE_FOR is None:
+        raise RuntimeError("funding assignee guard is not installed")
+    return _ORIGINAL_ASSIGNEE_FOR(db, node, student_id)
 
 
 def _check_fund_review_node(db, application, user) -> None:
@@ -256,14 +282,16 @@ def scan_publicity() -> dict:
 
 
 def install() -> None:
-    global _INSTALLED, _ORIGINAL_SCAN, _ORIGINAL_GRANT_ONE
+    global _INSTALLED, _ORIGINAL_SCAN, _ORIGINAL_GRANT_ONE, _ORIGINAL_ASSIGNEE_FOR
     if _INSTALLED:
         return
     _ORIGINAL_SCAN = legacy.scan_publicity
     _ORIGINAL_GRANT_ONE = legacy._grant_one
+    _ORIGINAL_ASSIGNEE_FOR = legacy._assignee_for
     # 先包住最终授予原语；后安装的金额 Authority 会把本守卫保存为自己的
     # _grant_one 原实现，因此自动扫描与人工确认仍会经过同一资格复核。
     legacy._grant_one = _grant_one
     legacy.scan_publicity = scan_publicity
+    legacy._assignee_for = _assignee_for
     legacy._check_fund_review_node = _check_fund_review_node
     _INSTALLED = True
