@@ -1,0 +1,411 @@
+name: PR219 R3 Final Same-SHA Seal
+
+on:
+  push:
+    branches:
+      - audit/pr219-r3-final-same-sha-seal-20260828-6457558
+    paths:
+      - '.github/workflows/academic-pr219-r3-final-same-sha-seal.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr219-r3-final-same-sha-seal
+  cancel-in-progress: true
+
+env:
+  PRODUCT_SHA: 6457558e0951da62b53227f9fafd9eb292ad41a3
+
+jobs:
+  backend-full-regression:
+    name: Final / backend full regression shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+      SHARD_TOTAL: '4'
+      SHARD_INDEX: ${{ matrix.shard }}
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - name: Checkout immutable product SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+          fetch-depth: 1
+      - name: Assert immutable product SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install frozen backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check
+      - name: Select deterministic all-test shard
+        id: shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILES=$(python - <<'PY'
+          import os
+          from pathlib import Path
+          shard = int(os.environ['SHARD_INDEX'])
+          total = int(os.environ['SHARD_TOTAL'])
+          files = sorted(str(p) for p in Path('tests').rglob('test_*.py'))
+          selected = [p for i, p in enumerate(files) if i % total == shard]
+          if not selected:
+              raise SystemExit('empty pytest shard')
+          print(' '.join(selected))
+          PY
+          )
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+          echo "Shard ${SHARD_INDEX}/${SHARD_TOTAL}: $(wc -w <<<"$FILES" | tr -d ' ') test files"
+      - name: Run every backend test in this shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 85m pytest ${{ steps.shard.outputs.files }} -q -p no:warnings --durations=30
+
+  frontend-production-build:
+    name: Final / frontend production build
+    needs: backend-full-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout immutable product SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+          fetch-depth: 1
+      - name: Assert immutable product SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Build production frontend
+        run: npm run build
+
+  academic-browser-api-core:
+    name: Final / academic API core and real browser
+    needs: frontend-production-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: academic_pr219_browser
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_pr219_browser?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_pr219_browser?charset=utf8mb4
+      FAST_TEST_SCHEMA: '1'
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: academic_pr219_browser
+      REDIS_URL: redis://127.0.0.1:6379/13
+      REDIS_KEY_PREFIX: academic-pr219-final
+      JWT_SECRET: academic-pr219-final-browser-not-production
+      JWT_SECRET_KEY: academic-pr219-final-browser-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      FILE_STORAGE_PROVIDER: local
+      LOCAL_UPLOAD_DIR: /tmp/saas-ci-uploads
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+    steps:
+      - name: Checkout immutable product SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+          fetch-depth: 1
+      - name: Assert immutable product SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install backend dependencies and prepare isolated databases
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          pip check
+          python - <<'PY'
+          import pymysql
+          conn = pymysql.connect(host='127.0.0.1', user='root', password='e2e_root', autocommit=True)
+          try:
+              with conn.cursor() as cur:
+                  for name in ('academic_pr219_api', 'academic_pr219_browser'):
+                      cur.execute(f'DROP DATABASE IF EXISTS `{name}`')
+                      cur.execute(f'CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
+          finally:
+              conn.close()
+          PY
+      - name: Run focused academic API core matrix
+        working-directory: backend
+        env:
+          DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_pr219_api?charset=utf8mb4
+          TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_pr219_api?charset=utf8mb4
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_aa_course_api.py \
+            tests/test_aa_registration_scope.py \
+            tests/test_aa_registration_api.py \
+            tests/test_aa_schedule_api.py \
+            tests/test_aa_schedule_change_api.py \
+            -p no:warnings --durations=20
+      - name: Recreate and migrate clean browser database
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pymysql
+          conn = pymysql.connect(host='127.0.0.1', user='root', password='e2e_root', autocommit=True)
+          try:
+              with conn.cursor() as cur:
+                  cur.execute('DROP DATABASE IF EXISTS `academic_pr219_browser`')
+                  cur.execute('CREATE DATABASE `academic_pr219_browser` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
+          finally:
+              conn.close()
+          PY
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+      - name: Seed tenant foundation
+        working-directory: backend
+        run: python scripts/e2e_seed_playwright_tenants.py
+      - name: Start backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+      - name: Bootstrap and verify academic-admin account
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+      - name: Seed authoritative schedule fixture
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_seed_academic_b_selection.py
+          python scripts/e2e_seed_academic_b_w3_schedule.py
+          test -s ../e2e/academic-b-w3-fixture.json
+      - name: Install, production-build and start staff PC
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci --no-audit --no-fund
+          npm run build
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:5173/login >/dev/null && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/frontend.log
+          exit 1
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Run focused real-click browser seal
+        working-directory: e2e
+        run: npx playwright test specs/academic-b-schedule-w3-final.spec.mjs --reporter=line
+      - name: Upload browser screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr219-r3-final-browser-evidence-${{ env.PRODUCT_SHA }}
+          path: e2e/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload browser service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr219-r3-final-browser-logs-${{ env.PRODUCT_SHA }}
+          path: e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
+
+  direct-mysql-audit-seal:
+    name: Final / Direct MySQL and R3 audit seal
+    needs: academic-browser-api-core
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      APP_ENV: test
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: '1'
+      FILE_STORAGE_PROVIDER: local
+      LOCAL_UPLOAD_DIR: /tmp/saas-ci-uploads
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - name: Checkout immutable product SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+          fetch-depth: 1
+      - name: Assert immutable product SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check
+      - name: Seal all R3 Authority, scope, version, uniqueness and audit facts
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_aa_term_authority_commands_r3.py \
+            tests/test_aa_registration_scope_r3.py \
+            tests/test_aa_program_review_authority_r3.py \
+            tests/test_aa_course_review_authority_r3.py \
+            tests/test_aa_schedule_write_scope_r3.py \
+            tests/test_aa_schedule_change_authority_r3.py \
+            tests/test_aa_schedule_change_origin_uniqueness_r3.py \
+            tests/test_aa_major_split_allocate_concurrency_r3.py \
+            -p no:warnings --durations=20
+
+  seal-summary:
+    name: Final / immutable product and PR seal summary
+    if: always()
+    needs:
+      - backend-full-regression
+      - frontend-production-build
+      - academic-browser-api-core
+      - direct-mysql-audit-seal
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert complete same-SHA gate and unchanged Draft PR
+        shell: bash
+        env:
+          BACKEND: ${{ needs.backend-full-regression.result }}
+          FRONTEND: ${{ needs.frontend-production-build.result }}
+          BROWSER_API: ${{ needs.academic-browser-api-core.result }}
+          MYSQL_AUDIT: ${{ needs.direct-mysql-audit-seal.result }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf 'product_sha=%s\nbackend=%s\nfrontend=%s\nbrowser_api=%s\nmysql_audit=%s\n' \
+            "$PRODUCT_SHA" "$BACKEND" "$FRONTEND" "$BROWSER_API" "$MYSQL_AUDIT" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          test "$BACKEND" = success
+          test "$FRONTEND" = success
+          test "$BROWSER_API" = success
+          test "$MYSQL_AUDIT" = success
+
+          curl --fail-with-body -sS \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/219" > /tmp/pr219.json
+
+          test "$(jq -r '.state' /tmp/pr219.json)" = open
+          test "$(jq -r '.draft' /tmp/pr219.json)" = true
+          test "$(jq -r '.merged_at' /tmp/pr219.json)" = null
+          test "$(jq -r '.head.sha' /tmp/pr219.json)" = "$PRODUCT_SHA"
+
+          echo 'PR #219 remains open + Draft + unmerged at the immutable product SHA.' | tee -a "$GITHUB_STEP_SUMMARY"
