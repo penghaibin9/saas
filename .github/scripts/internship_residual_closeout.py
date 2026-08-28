@@ -138,11 +138,6 @@ replace_exact(
 )
 
 # 6) Direct tenant-bound service helper calls must have the same tenant context as HTTP middleware.
-replace_exact(
-    "tests/test_internship_scope.py",
-    "    from app.core.security import create_access_token\n",
-    "    from app.core.context import set_tenant\n    from app.core.security import create_access_token\n",
-)
 scope_anchor = '''    scope_other = {
         "mode": "SCOPED", "collegeNames": {"IX外院"}, "classNames": set(),
         "studentNos": set(), "advisorNames": set(), "advisorUserIds": set(),
@@ -155,6 +150,7 @@ scope_replacement = '''    scope_other = {
         "studentNos": set(), "advisorNames": set(), "advisorUserIds": set(),
     }
 
+    from app.core.context import set_tenant
     set_tenant({"tenantId": str(TID)})
     db = get_sessionmaker()()
 '''
