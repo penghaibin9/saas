@@ -1,0 +1,167 @@
+name: PR219 Real Browser Selection V3 20260828
+
+on:
+  push:
+    branches: [audit/pr219-real-browser-core-20260828]
+    paths: ['.github/workflows/pr219-real-browser-selection-v3-20260828.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PRODUCT_SHA: 6457558e0951da62b53227f9fafd9eb292ad41a3
+
+jobs:
+  real-click:
+    name: Staff student PC miniapp real selection clicks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: academic_pr219_selection_v3
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      CI: 'true'
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_pr219_selection_v3?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/academic_pr219_selection_v3?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/14
+      REDIS_KEY_PREFIX: academic-pr219-selection-v3
+      JWT_SECRET: academic-pr219-selection-v3-only-not-production
+      JWT_SECRET_KEY: academic-pr219-selection-v3-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_MINIAPP_BASE_URL: http://localhost:5188
+      E2E_EXPECTED_SHA: 6457558e0951da62b53227f9fafd9eb292ad41a3
+      SCHOOL_IAM_AUTHORITY_EXPECTED_SHA: 6457558e0951da62b53227f9fafd9eb292ad41a3
+      PYTHONPATH: ${{ github.workspace }}/backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+          fetch-depth: 0
+      - name: Assert immutable PR219 product SHA
+        run: test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+            miniapp/package-lock.json
+      - name: Migrate isolated MySQL
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          test "$(alembic heads | grep -c '(head)')" -eq 1
+          alembic upgrade head
+      - name: Install production School IAM authority
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+      - name: Start real backend
+        run: |
+          mkdir -p e2e/runtime-logs
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          for i in {1..60}; do curl -fsS http://127.0.0.1:8000/health && exit 0; sleep 2; done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+      - name: Bootstrap real users and selection facts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python scripts/e2e_verify_graduation_accounts.py
+          python scripts/e2e_seed_academic_b_selection.py
+          test -s ../e2e/academic-b-w1-fixture.json
+      - name: Build and start staff PC
+        run: |
+          cd frontend
+          npm ci --no-audit --no-fund
+          npm run build
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+      - name: Build and start student PC
+        env:
+          VITE_BASE: /portal/
+          VITE_API_BASE_URL: /
+          VITE_PROXY_TARGET: http://127.0.0.1:8000
+        run: |
+          cd student-portal
+          npm ci --no-audit --no-fund
+          npm run build
+          nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+      - name: Build and start miniapp H5
+        env:
+          VITE_USE_MOCK: 'false'
+          VITE_API_BASE_URL: http://127.0.0.1:8000
+        run: |
+          cd miniapp
+          npm ci --no-audit --no-fund
+          npm run build:h5
+          npm run build:mp-weixin
+          nohup npm run dev:h5 > ../e2e/runtime-logs/miniapp.log 2>&1 &
+      - name: Wait for all three browser apps
+        run: |
+          set -euo pipefail
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://localhost:5188/; do
+            for i in {1..60}; do if curl -fsS "$url" >/dev/null; then break 2; fi; sleep 2; done
+          done
+          curl -fsS http://127.0.0.1:5173/login >/dev/null
+          curl -fsS http://127.0.0.1:5199/portal/login >/dev/null
+          curl -fsS http://localhost:5188/ >/dev/null
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Real browser click selection lifecycle
+        working-directory: e2e
+        run: npx playwright test specs/academic-b-selection-w1-final.spec.mjs --reporter=line
+      - name: Upload real browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr219-selection-v3-evidence-${{ env.PRODUCT_SHA }}
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+            e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
