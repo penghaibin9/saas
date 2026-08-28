@@ -1,0 +1,119 @@
+name: Student Affairs Flow Continuity Construction
+
+on:
+  push:
+    branches:
+      - fix/student-affairs-flow-continuity-20260828
+    paths:
+      - scripts/maintenance/apply_sa_flow_continuity.py
+      - scripts/maintenance/sa_flow_ticket.txt
+      - .github/workflows/student-affairs-flow-continuity-construction.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: student-affairs-flow-continuity-construction
+  cancel-in-progress: false
+
+env:
+  APP_ENV: test
+  DB_ENABLED: "true"
+  MOCK_LOGIN_ENABLED: "true"
+  JWT_SECRET: student-affairs-flow-continuity-secret-at-least-32-bytes
+  DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_affairs_flow?charset=utf8mb4
+  TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_affairs_flow?charset=utf8mb4
+  FAST_TEST_SCHEMA: "1"
+
+jobs:
+  construct-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_affairs_flow
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/student-affairs-flow-continuity-20260828
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: Install admin PC dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Migrate real MySQL
+        working-directory: backend
+        run: |
+          test "$(alembic heads | wc -l)" -eq 1
+          alembic upgrade head
+
+      - name: Apply selected ticket
+        shell: bash
+        run: |
+          set -euo pipefail
+          TICKET="$(tr -d '\r\n ' < scripts/maintenance/sa_flow_ticket.txt)"
+          echo "ticket=${TICKET}"
+          python scripts/maintenance/apply_sa_flow_continuity.py "${TICKET}"
+          git diff --check
+
+      - name: Verify P1-01 backend contracts
+        if: ${{ hashFiles('.sa-flow-changed-files') != '' }}
+        working-directory: backend
+        run: |
+          pytest -q -p no:warnings tests/test_affairs_todo_drilldown.py
+          python -m compileall -q app tests
+
+      - name: Verify P1-01 frontend focus contracts
+        working-directory: frontend
+        run: |
+          npm test -- tests/student-affairs-todo-pc-focus.contract.test.mjs
+          npx eslint \
+            src/modules/studentAffairs/views/leave/LeaveApprovalWorkbenchView.vue \
+            src/modules/studentAffairs/views/leave/LeaveExtensionCancelView.vue \
+            src/modules/studentAffairs/views/AidWorkbenchView.vue \
+            src/modules/studentAffairs/views/FundingWorkbenchView.vue \
+            src/modules/studentAffairs/views/DisciplineWorkbenchView.vue \
+            tests/student-affairs-todo-pc-focus.contract.test.mjs
+
+      - name: Commit verified ticket only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t FILES < .sa-flow-changed-files
+          git config user.name "student-affairs-flow-bot"
+          git config user.email "student-affairs-flow-bot@users.noreply.github.com"
+          git add -- "${FILES[@]}"
+          git diff --cached --check
+          git status --short
+          git commit -F .sa-flow-commit-message
+          git push origin HEAD:${GITHUB_REF_NAME}
