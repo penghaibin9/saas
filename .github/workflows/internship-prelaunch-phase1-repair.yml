@@ -57,9 +57,21 @@ jobs:
 
       - name: Static regression contracts
         run: |
-          python -m pip install -q pytest
           cd backend
-          pytest -q tests/test_internship_prelaunch_static_contracts.py
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+
+          path = Path('tests/test_internship_prelaunch_static_contracts.py')
+          spec = importlib.util.spec_from_file_location('prelaunch_contracts', path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          tests = [name for name in dir(module) if name.startswith('test_')]
+          for name in tests:
+              getattr(module, name)()
+              print(f'PASS {name}')
+          print(f'{len(tests)} static contracts passed')
+          PY
 
       - name: Diff hygiene gate
         run: git diff --check
