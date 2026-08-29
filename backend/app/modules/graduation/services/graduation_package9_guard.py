@@ -20,6 +20,7 @@ from app.models import (
     GraduationTaskBook,
 )
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
+from app.models.file import ArchiveManifest
 from app.modules.graduation.services import graduation_archive_consistency as archive_consistency
 from app.modules.graduation.services import graduation_archive_service as archive_service
 from app.modules.graduation.services import graduation_defense_score_service as defense_score_service
@@ -217,6 +218,30 @@ def _queue_archive_versions(session: Session, flush_context, instances) -> None:
             known.add(id(archive))
 
 
+def _canonical_v2_manifest_hash(session: Session, archive: GraduationArchiveRecord) -> str | None:
+    """Return the one active V2 material-center manifest hash, if this FILED path owns one."""
+    active = list(session.scalars(select(ArchiveManifest).where(
+        ArchiveManifest.tenant_id == int(archive.tenant_id),
+        ArchiveManifest.module_code == "GRADUATION",
+        ArchiveManifest.archive_type == "GRADUATION_FILE_VERSION",
+        ArchiveManifest.target_type == "GRADUATION_STUDENT",
+        ArchiveManifest.target_id == str(archive.gd_student_id),
+        ArchiveManifest.status.in_(("FROZEN", "PACKAGED")),
+        ArchiveManifest.is_deleted.is_(False),
+    ).order_by(ArchiveManifest.revision.desc(), ArchiveManifest.id.desc()).with_for_update()).all())
+    if len(active) > 1:
+        raise AppException("DATA_CONFLICT", "同一毕设归档存在多个当前 V2 冻结清单")
+    if not active:
+        return None
+    value = str(active[0].manifest_sha256 or "").strip()
+    if not (
+        len(value) == 64
+        and all(ch in "0123456789abcdefABCDEF" for ch in value)
+    ):
+        raise AppException("DATA_CONFLICT", "V2 归档清单 manifest_sha256 无效")
+    return value
+
+
 def _append_archive_version(session: Session, archive: GraduationArchiveRecord) -> None:
     if archive.id is None:
         raise AppException("DATA_CONFLICT", "归档主记录尚未取得稳定 ID")
@@ -251,11 +276,16 @@ def _append_archive_version(session: Session, archive: GraduationArchiveRecord) 
     if len(manifest_hash) != 64:
         raise AppException("DATA_CONFLICT", "归档来源清单 hash 生成失败")
 
-    archive.manifest_hash = manifest_hash
+    # V2 material-center owns GraduationArchiveRecord.manifest_hash when a real
+    # frozen/package manifest exists. Package9 still keeps its independent strict
+    # source hash in GraduationArchiveVersion. Legacy FILED paths without a V2
+    # manifest retain their original Package9 hash semantics.
+    record_manifest_hash = _canonical_v2_manifest_hash(session, archive) or manifest_hash
+    archive.manifest_hash = record_manifest_hash
     session.execute(
         GraduationArchiveRecord.__table__.update()
         .where(GraduationArchiveRecord.id == int(archive.id))
-        .values(manifest_hash=manifest_hash)
+        .values(manifest_hash=record_manifest_hash)
     )
 
     current_rows = list(session.scalars(select(GraduationArchiveVersion).where(

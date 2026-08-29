@@ -60,11 +60,14 @@ def test_org_personnel_capabilities():
 
 
 def test_counselor_self_service_eval_only():
-    """辅导员对本人考评仅有 view + appeal.create，绝无 manage（考评/复核）。"""
+    """辅导员仅增加本人资助初审命令权；项目、公示与其它高危管理能力仍拒绝。"""
     c = _u("COUNSELOR")
     assert has_permission(c, "studentAffairs.counselorEval.view")
     assert has_permission(c, "studentAffairs.counselorEval.appeal.create")
+    assert has_permission(c, "studentAffairs.funding.approve")
     assert not has_permission(c, "studentAffairs.counselorEval.manage")
+    assert not has_permission(c, "studentAffairs.funding.project.manage")
+    assert not has_permission(c, "studentAffairs.funding.publicity.manage")
     assert not has_permission(c, "studentAffairs.funding.workstudy.manage")
     assert not has_permission(c, "studentAffairs.discipline.appeal.review")
 

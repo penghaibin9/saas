@@ -8,7 +8,7 @@
     <template #actions>
       <div class="gd-actions">
         <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
-        <AppExportButton v-if="hasBatch" :export-fn="exportTopicsFn">导出 Excel</AppExportButton>
+        <AppExportButton v-if="canTopicExport && hasBatch" :export-fn="exportTopicsFn">导出 Excel</AppExportButton>
       </div>
     </template>
 
@@ -21,8 +21,6 @@
         title="请先选择或创建毕设批次"
         description="顶部批次条选择当前工作批次后，再查看已入池课题。"
       />
-      <!-- 空态分两种：筛选无果 ≠ 题目库还没入池。后者是跨页依赖，老师最容易卡在这里，
-           所以直接给去题目库的按钮，而不是只写一句「请先在题目库申报」。 -->
       <EmptyState
         v-else-if="!rows.length && filtered"
         title="没有符合条件的课题"
@@ -38,8 +36,8 @@
         description="学生能选的题，都来自题目库。老师申报的题目要先经管理员审核通过才会入池，入池后才会出现在这里、学生才选得到。"
       >
         <template #actions>
-          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/topic-lib?panel=pending')">去审核待审题目</button>
-          <button class="mp-btn" @click="$router.push('/admin/graduation/topic-lib?panel=list')">去题目库</button>
+          <button v-if="canTopicReview" class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/topic-lib?panel=pending')">去审核待审题目</button>
+          <button v-if="canTopicView" class="mp-btn" @click="$router.push('/admin/graduation/topic-lib?panel=list')">去题目库</button>
           <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-topic-review')">怎么审核题目？</button>
         </template>
       </EmptyState>
@@ -63,18 +61,19 @@
           <button class="mp-link" @click="openDetail(row)">详情</button>
           <button v-if="canEdit(row)" class="mp-link" style="margin-left: var(--space-2)" @click="openEdit(row)">编辑</button>
           <button
-            v-if="row.status === 'CONFIRMED'"
+            v-if="canTopicCreate && row.status === 'CONFIRMED'"
             class="mp-link"
             style="margin-left: var(--space-2)"
             @click="askDisable(row)"
           >停用</button>
           <button
-            v-if="row.status === 'DISABLED'"
+            v-if="canTopicCreate && row.status === 'DISABLED'"
             class="mp-link"
             style="margin-left: var(--space-2)"
             @click="askEnable(row)"
           >启用</button>
           <button
+            v-if="canTopicAssign"
             class="mp-link"
             style="margin-left: var(--space-2)"
             @click="goAssign(row)"
@@ -85,6 +84,7 @@
     </div>
 
     <AppExcelImportDrawer
+      v-if="canTopicCreate"
       v-model:visible="importVisible"
       title="导入题目库"
       template-name="题目库导入模板.xlsx"
@@ -108,13 +108,11 @@
       :submitting="submitting"
       @confirm="onConfirm"
     />
-    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
     <AppPageGuide guide-key="graduation.gd-topics" />
   </ModulePageShell>
 </template>
 
 <script>
-/** 选题管理（/admin/graduation/topics）：已入池课题 + 关联学生 + 停用/分配；接 gd-topics 真实 API。 */
 import {
   ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
   StatusTag, LoadingState, ErrorState, EmptyState
@@ -125,14 +123,14 @@ import { AppExcelImportDrawer } from '@/components/common/excel'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import { GD_TOPIC_STATUS } from '@/modules/graduation/constants/graduation-topic.constants'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', dateStart: '', dateEnd: '' })
 
-
 export default {
   name: 'TopicManageView',
-  components: { AppPageGuide, 
+  components: { AppPageGuide,
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
     LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton
   },
@@ -148,10 +146,15 @@ export default {
     }
   },
   computed: {
+    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
+    canTopicView() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.view') },
+    canTopicCreate() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.create') },
+    canTopicReview() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.review') },
+    canTopicAssign() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.assign') },
+    canTopicExport() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.export') },
     hasBatch() {
       return !!this.batchStore.selectedBatchId
     },
-    /** 是否处于筛选态：用于区分「筛选没结果」和「题目库真的还没入池」两种空态 */
     filtered() {
       const f = this.filters
       return !!(f.keyword || f.status || f.dateStart || f.dateEnd)
@@ -173,10 +176,10 @@ export default {
       ]
     },
     toolbarActions() {
-      return [
-        { key: 'topicLib', label: '题目库申报', variant: 'primary' },
-        { key: 'importTopics', label: '导入 Excel', disabled: !this.hasBatch || this.ctx.writeEnabled === false }
-      ]
+      const actions = []
+      if (this.canTopicView) actions.push({ key: 'topicLib', label: '题目库' })
+      if (this.canTopicCreate) actions.push({ key: 'importTopics', label: '导入 Excel', variant: 'primary', disabled: !this.hasBatch || this.ctx.writeEnabled === false })
+      return actions
     },
     pageSubtitle() {
       if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
@@ -195,7 +198,7 @@ export default {
   },
   methods: {
     canEdit(row) {
-      return row.status !== 'ARCHIVED' && row.reviewStatus !== 'PENDING_REVIEW' && !(row.selected > 0 && row.reviewStatus === 'APPROVED')
+      return this.canTopicCreate && row.status !== 'ARCHIVED' && row.reviewStatus !== 'PENDING_REVIEW' && !(row.selected > 0 && row.reviewStatus === 'APPROVED')
     },
     buildParams() {
       return {
@@ -209,7 +212,7 @@ export default {
       }
     },
     async load() {
-      if (!this.batchStore.selectedBatchId) {
+      if (!this.canTopicView || !this.batchStore.selectedBatchId) {
         this.loading = false
         this.rows = []
         this.pagination.total = 0
@@ -227,22 +230,27 @@ export default {
     search() { this.pagination.page = 1; this.load() },
     reset() { this.filters = EMPTY_FILTERS(); this.pagination.page = 1; this.load() },
     onToolbar(key) {
-      if (key === 'topicLib') this.$router.push('/admin/graduation/topic-lib?panel=list')
-      if (key === 'importTopics') this.importVisible = true
+      if (key === 'topicLib' && this.canTopicView) this.$router.push('/admin/graduation/topic-lib?panel=list')
+      if (key === 'importTopics' && this.canTopicCreate) this.importVisible = true
     },
     openEdit(row) {
+      if (!this.canTopicCreate) return
       this.$router.push(`/admin/graduation/topics/${row.id}/edit`)
     },
     openDetail(row) {
+      if (!this.canTopicView) return
       this.$router.push(`/admin/graduation/topics/${row.id}`)
     },
     askDisable(row) {
+      if (!this.canTopicCreate) return
       this.confirm = { visible: true, title: '停用课题', message: `停用「${row.title}」后不可再分配新学生。`, type: 'warning', confirmText: '停用', requireReason: true, reasonLabel: '停用原因', action: 'disable', row }
     },
     askEnable(row) {
+      if (!this.canTopicCreate) return
       this.confirm = { visible: true, title: '启用课题', message: `确认重新启用「${row.title}」？`, type: 'primary', confirmText: '启用', requireReason: false, action: 'enable', row }
     },
     async onConfirm({ reason }) {
+      if (!this.canTopicCreate) { this.confirm.visible = false; return }
       const row = this.confirm.row
       this.submitting = true
       let r = { code: 1 }
@@ -255,10 +263,17 @@ export default {
       this.load()
     },
     goAssign() {
+      if (!this.canTopicAssign) return
       this.$router.push('/admin/graduation/students?panel=topic')
     },
-    onImported() { this.importVisible = false; toast.success('导入完成'); this.load() },
+    onImported() {
+      if (!this.canTopicCreate) return
+      this.importVisible = false
+      toast.success('导入完成')
+      this.load()
+    },
     exportTopicsFn() {
+      if (!this.canTopicExport) return Promise.resolve({ code: 403001, data: null, message: '当前角色无选题导出权限' })
       const p = this.buildParams()
       delete p.page
       delete p.pageSize

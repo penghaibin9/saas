@@ -17,8 +17,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import _db_granted, _granted, is_super_admin
@@ -31,6 +32,8 @@ from app.services.db_service import _tid
 # FUNDING_TEACHER（资助老师）纳入 TENANT_ALL：permissions.py 注释明确"困难认定+奖助勤贷全域经办"，
 # 权限集本身已窄限于 aid/funding/dashboard/student.view/stats.view，授予全租户 scope 不越出该权限集，
 # 且修复此前 fail-closed→NONE 导致该角色"有权限但审批不了任何人"的实际阻断（历史欠账，见 permissions.py:61 注释）。
+# 毕设管理员不属于学工公共 TENANT_ALL；其全校候选学生能力只允许在 /students?mode=picker
+# 这一用途级端点中显式放开，避免毕业设计角色被共享安全上下文扩散到学工/教务/就业等域。
 _TENANT_ALL_ROLES = {"SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN", "STUDENT_AFFAIRS_ADMIN",
                      "STUDENT_AFFAIRS", "SCHOOL_LEADER", "SA_ADMIN", "LEADER", "ACADEMIC_ADMIN",
                      "FUNDING_TEACHER"}
@@ -52,12 +55,12 @@ def no_data_scope(msg: str = "该数据不在您的管理范围内") -> AppExcep
 
 
 def _derive_keys(user: dict) -> set[str]:
-    """teacher_key 命中键：mock u_counselor01→counselor01 / db ctx_<login>。
+    """teacher_key 命中键：mock u_counselor01→counselor01 / DB db-10→10 / ctx_<login>。
 
-    只派生工号族标识（t_user.login_name，租户内唯一 uk_tenant_login），**不含 realName**：
+    只派生工号族标识（t_user.login_name，租户内唯一 uk_tenant_login）与明确的账户主键别名，**不含 realName**：
     姓名在学校里会重名，一旦参与匹配，两个同名教师会互相命中对方的授课/带班/指导范围
     （t_teacher_student_scope 等表存在 `teacher_name.in_(keys)` 分支）。工号唯一，姓名不唯一，
-    因此身份判定一律以工号为准。
+    因此身份判定一律以工号/账户主键为准。
     历史数据前提（改动前已核验开发库 t_teacher_student_scope 22 行）：teacher_key 全部为工号
     （如 t_luo_yaqin / counselor_demo），无「仅有姓名」的行，故移除姓名不会使既有范围查空。
     若今后导入的范围数据只有姓名没有工号，正确做法是在导入时补齐 teacher_key，而不是把姓名放回本函数。
@@ -65,8 +68,13 @@ def _derive_keys(user: dict) -> set[str]:
     uid = str(user.get("userId") or "")
     ctx = str(user.get("activeContextId") or "")
     login = user.get("loginName") or ""
-    return {k for k in (uid, login, uid[2:] if uid.startswith("u_") else "",
-                        ctx[4:] if ctx.startswith("ctx_") else "") if k}
+    return {k for k in (
+        uid,
+        login,
+        uid[3:] if uid.startswith("db-") else "",
+        uid[2:] if uid.startswith("u_") else "",
+        ctx[4:] if ctx.startswith("ctx_") else "",
+    ) if k}
 
 
 @dataclass
@@ -262,8 +270,10 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
         db = cm.__enter__()
     try:
         keys = _derive_keys(u)
-        from app.models import (College, DormBuilding, SchoolClass, StudentProfile,
-                                TeacherStudentScope)
+        from app.models import (
+            AffairsCounselorAssignment, College, DormBuilding, SchoolClass,
+            StudentProfile, TeacherStudentScope, User,
+        )
         rows = db.scalars(select(TeacherStudentScope).where(
             TeacherStudentScope.tenant_id == tenant_id,
             TeacherStudentScope.is_deleted.is_(False),
@@ -302,6 +312,40 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
             studs = db.scalars(select(StudentProfile).where(
                 StudentProfile.tenant_id == tenant_id, StudentProfile.student_no.in_(list(psy_nos)))).all()
             ctx.psychology_student_ids = {s.id for s in studs}
+
+        # 辅导员班级以真实任职关系为权威来源。TeacherStudentScope 只是额外显式范围，
+        # 不能要求学校为同一带班关系维护两份数据，否则会出现“有待办但 NO_DATA_SCOPE”。
+        if role == "COUNSELOR":
+            raw_uid = str(u.get("userId") or "")
+            if raw_uid.startswith("db-"):
+                raw_uid = raw_uid[3:]
+            uid = int(raw_uid) if raw_uid.isdigit() else 0
+            if uid <= 0 and (u.get("loginName") or ""):
+                uid = int(db.scalar(select(User.id).where(
+                    User.tenant_id == tenant_id,
+                    User.login_name == str(u.get("loginName")),
+                    User.status == "ACTIVE",
+                    User.is_deleted.is_(False),
+                ).limit(1)) or 0)
+            if uid > 0:
+                now = datetime.utcnow()
+                assigned = db.scalars(select(AffairsCounselorAssignment.class_id).where(
+                    AffairsCounselorAssignment.tenant_id == tenant_id,
+                    AffairsCounselorAssignment.user_id == uid,
+                    AffairsCounselorAssignment.status == "ACTIVE",
+                    AffairsCounselorAssignment.is_deleted.is_(False),
+                    or_(AffairsCounselorAssignment.effective_from.is_(None),
+                        AffairsCounselorAssignment.effective_from <= now),
+                    or_(AffairsCounselorAssignment.effective_to.is_(None),
+                        AffairsCounselorAssignment.effective_to > now),
+                )).all()
+                ctx.class_ids |= {int(class_id) for class_id in assigned if class_id}
+                legacy = db.scalars(select(SchoolClass.id).where(
+                    SchoolClass.tenant_id == tenant_id,
+                    SchoolClass.counselor_id == uid,
+                    SchoolClass.is_deleted.is_(False),
+                )).all()
+                ctx.class_ids |= {int(class_id) for class_id in legacy if class_id}
 
         # Explicit DORM_BUILDING scope applies to tenant-defined roles too.
         has_dorm_scope = any((r.scope_type or "").upper() == "DORM_BUILDING" for r in rows)

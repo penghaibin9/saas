@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="处分送达与申诉"
-    subtitle="已生效处分的送达登记与申诉复核；变更处分必须明确新的处分类型，所有写操作携带当前版本。"
+    subtitle="已生效处分的送达登记与申诉复核；变更处分必须明确新的处分类型与事实，所有写操作携带当前版本。"
     role-name="学工处 / 学院"
     data-scope-name="学院本院 / 学工处全校"
     watermark-purpose="处分送达与申诉复核"
@@ -12,6 +12,7 @@
       @retry="loadAll"
       @back="$router.push('/admin/student-affairs/discipline')"
     >
+      <p v-if="focusNotice" class="ap-focus-note">{{ focusNotice }}</p>
       <section class="sa-summary-strip">
         <div class="sa-summary-strip__content">
           <span class="sa-summary-strip__eyebrow">当前处理重点</span>
@@ -19,7 +20,7 @@
             {{ pendingAppealCount === '—' ? '正在核对处分送达与申诉待办' : `待复核申诉 ${pendingAppealCount} 件，本页待送达 ${pageUndelivered} 件` }}
           </h2>
           <p class="sa-summary-strip__text">
-            先完成处分决定送达，再受理学生申诉。复核时必须核对原处分、学生理由和证据；选择“变更处分”后会真实更新处分及有效投影。
+            先完成处分决定送达，再受理学生申诉。复核时必须核对原处分、学生理由和证据；选择“变更处分”后会真实更新处分类型、事实依据及有效投影。
           </p>
         </div>
       </section>
@@ -77,7 +78,7 @@
                 variant="secondary"
                 :loading="acting === row.caseId"
                 @click="appeal(row)"
-              >发起申诉</AppPermissionButton>
+              >代学生登记申诉</AppPermissionButton>
               <span v-if="!canDeliver(row) && !canAppeal(row)" class="ap-dash">无需处理</span>
             </div>
           </template>
@@ -148,7 +149,7 @@
 
     <AppConfirmDialog
       v-model:visible="apDlg.visible"
-      title="提交处分申诉"
+      title="代学生登记处分申诉"
       type="warning"
       confirm-text="提交申诉"
       require-reason
@@ -175,12 +176,25 @@
       <AppFormItem label="复核结论" required>
         <AppSelect v-model="revDlg.result" :options="RESULT_OPTIONS" />
       </AppFormItem>
-      <AppFormItem v-if="revDlg.result === 'REVISED'" label="变更后的处分类型" required>
-        <AppSelect v-model="revDlg.revisedDiscType" :options="DISC_OPTIONS" />
-      </AppFormItem>
-      <p v-if="revDlg.result === 'REVISED'" class="ap-hint">
-        “变更处分”不是只改申诉状态；提交后会真实更新原处分及其有效投影。
-      </p>
+      <template v-if="revDlg.result === 'REVISED'">
+        <AppFormItem label="变更后的处分类型" required>
+          <AppSelect v-model="revDlg.revisedDiscType" :options="DISC_OPTIONS" />
+        </AppFormItem>
+        <AppFormItem label="变更后的处分事实（5-1000字）" required>
+          <AppTextarea
+            v-model="revDlg.revisedReason"
+            :rows="3"
+            maxlength="1000"
+            placeholder="请填写变更决定采用的完整事实依据，不得用复核意见代替"
+          />
+        </AppFormItem>
+        <AppFormItem label="变更后的文号">
+          <AppTextInput v-model="revDlg.revisedDocNo" placeholder="选填；如文号不变可保留原文号" />
+        </AppFormItem>
+        <p class="ap-hint">
+          “变更处分”会真实更新处分类型、事实依据、文号（如有）及有效投影，并追加不可变决定版本；复核意见另行保留。
+        </p>
+      </template>
     </AppConfirmDialog>
   </AppPageShell>
 </template>
@@ -188,7 +202,7 @@
 <script>
 import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell,
-  AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag
+  AppPermissionButton, AppSectionCard, AppSelect, AppStatusTag, AppTextarea, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
@@ -225,7 +239,7 @@ export default {
   props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell,
-    AppPermissionButton, AppSectionCard, AppSelect, StatusTag: AppStatusTag, DataTable
+    AppPermissionButton, AppSectionCard, AppSelect, StatusTag: AppStatusTag, AppTextarea, AppTextInput, DataTable
   },
   data() {
     return {
@@ -238,13 +252,21 @@ export default {
       caseError: '',
       appealError: '',
       pendingAppealCount: '—',
+      caseFocusId: '', appealFocusId: '', focusNotice: '',
       appealStatus: '',
       appealFilters: APPEAL_FILTERS,
       casePagination: { page: 1, pageSize: 50, total: 0 },
       appealPagination: { page: 1, pageSize: 50, total: 0 },
+      loadAllSeq: 0,
+      caseLoadSeq: 0,
+      appealLoadSeq: 0,
+      pendingLoadSeq: 0,
       delDlg: { visible: false, caseId: '', method: 'DIRECT', version: null },
       apDlg: { visible: false, caseId: '' },
-      revDlg: { visible: false, appealId: '', version: null, result: 'UPHELD', revisedDiscType: '' }
+      revDlg: {
+        visible: false, appealId: '', caseId: '', version: null,
+        result: 'UPHELD', revisedDiscType: '', revisedReason: '', revisedDocNo: ''
+      }
     }
   },
   computed: {
@@ -254,26 +276,56 @@ export default {
     pageState() { return this.loading ? 'loading' : 'ready' },
     pageUndelivered() { return this.effectiveCases.filter((row) => !row.deliveredAt).length }
   },
-  mounted() { this.loadAll() },
+  mounted() { this.applyRouteFocus(); this.loadAll() },
+  watch: {
+    '$route.query'(value, previous) {
+      const nextCase = String(value?.caseId || ''), prevCase = String(previous?.caseId || '')
+      const nextAppeal = String(value?.appealId || ''), prevAppeal = String(previous?.appealId || '')
+      if (nextCase !== prevCase || nextAppeal !== prevAppeal) { this.applyRouteFocus(); this.loadAll() }
+    }
+  },
+  beforeUnmount() {
+    this.loadAllSeq += 1
+    this.caseLoadSeq += 1
+    this.appealLoadSeq += 1
+    this.pendingLoadSeq += 1
+  },
   methods: {
+    applyRouteFocus() {
+      const q = this.$route.query || {}
+      this.caseFocusId = String(q.caseId || '').trim()
+      this.appealFocusId = String(q.appealId || '').trim()
+      this.focusNotice = this.caseFocusId ? `已锁定处分案件 #${this.caseFocusId}；所有查询仍由后端权限与数据范围重新校验。` : ''
+      this.casePagination.page = 1; this.appealPagination.page = 1
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     hasVersion(row) { return row?.version !== undefined && row?.version !== null && row?.version !== '' },
     allows(row, action, fallback) {
       return Array.isArray(row?.allowedActions) ? row.allowedActions.includes(action) : fallback
     },
     canDeliver(row) { return !row.deliveredAt && this.allows(row, 'DELIVER', row.status === 'EFFECTIVE') },
-    canAppeal(row) { return this.allows(row, 'APPEAL', row.status === 'EFFECTIVE') },
+    canAppeal(row) { return !!row.deliveredAt && this.allows(row, 'APPEAL', row.status === 'EFFECTIVE') },
     canReview(row) { return this.allows(row, 'REVIEW', ['SUBMITTED', 'REVIEWING'].includes(row.status)) },
     async loadAll() {
+      const seq = ++this.loadAllSeq
       this.loading = true
       await Promise.all([this.loadCases(), this.loadAppeals(), this.loadPendingCount()])
-      this.loading = false
+      if (seq === this.loadAllSeq) this.loading = false
     },
     async loadCases() {
+      const seq = ++this.caseLoadSeq
+      const page = this.casePagination.page
+      const pageSize = this.casePagination.pageSize
       this.caseError = ''
-      const response = await studentAffairsApi.getDisciplineCases({
-        status: 'EFFECTIVE', page: this.casePagination.page, pageSize: this.casePagination.pageSize
-      })
+      if (this.caseFocusId) {
+        const response = await studentAffairsApi.getDisciplineDetail(this.caseFocusId)
+        if (seq !== this.caseLoadSeq) return
+        if (response.code !== 0 || !response.data) { this.effectiveCases = []; this.casePagination.total = 0; this.caseError = response.message || '该处分案件不存在、已不可见或不在当前数据范围内'; return }
+        if (response.data.status !== 'EFFECTIVE') { this.effectiveCases = []; this.casePagination.total = 0; this.caseError = `该案件当前状态为${response.data.statusLabel || response.data.status || '未知状态'}，不再属于已生效送达/申诉工作区`; return }
+        this.effectiveCases = [response.data]; this.casePagination.total = 1; return
+      }
+      const response = await studentAffairsApi.getDisciplineCases({ status: 'EFFECTIVE', page, pageSize })
+      if (seq !== this.caseLoadSeq) return
       if (response.code !== 0 || !response.data) {
         this.effectiveCases = []
         this.casePagination.total = 0
@@ -284,12 +336,15 @@ export default {
       this.casePagination.total = response.data.total != null ? response.data.total : this.effectiveCases.length
     },
     async loadAppeals() {
+      const seq = ++this.appealLoadSeq
+      const status = this.appealStatus
+      const page = this.appealPagination.page
+      const pageSize = this.appealPagination.pageSize
       this.appealError = ''
       const response = await studentAffairsApi.getDisciplineAppeals({
-        status: this.appealStatus,
-        page: this.appealPagination.page,
-        pageSize: this.appealPagination.pageSize
+        status, caseId: this.caseFocusId || undefined, appealId: this.appealFocusId || undefined, page, pageSize
       })
+      if (seq !== this.appealLoadSeq) return
       if (response.code !== 0 || !response.data) {
         this.appeals = []
         this.appealPagination.total = 0
@@ -298,9 +353,12 @@ export default {
       }
       this.appeals = response.data.items || []
       this.appealPagination.total = response.data.total != null ? response.data.total : this.appeals.length
+      if (this.appealFocusId && !this.appeals.some((item) => String(item.appealId) === String(this.appealFocusId))) this.appealError = '该申诉不存在、已不可见，或不属于当前处分案件'
     },
     async loadPendingCount() {
+      const seq = ++this.pendingLoadSeq
       const response = await studentAffairsApi.getDisciplineAppeals({ status: 'SUBMITTED', page: 1, pageSize: 1 })
+      if (seq !== this.pendingLoadSeq) return
       this.pendingAppealCount = response.code === 0 && response.data
         ? Number(response.data.total != null ? response.data.total : (response.data.items || []).length)
         : '—'
@@ -349,25 +407,41 @@ export default {
     },
     review(row) {
       if (!this.canReview(row) || !this.hasVersion(row)) return
+      const currentCase = this.effectiveCases.find((item) => String(item.caseId) === String(row.caseId)) || {}
       this.revDlg = {
-        visible: true, appealId: row.appealId, version: row.version,
-        result: 'UPHELD', revisedDiscType: ''
+        visible: true,
+        appealId: row.appealId,
+        caseId: row.caseId || '',
+        version: row.version,
+        result: 'UPHELD',
+        revisedDiscType: currentCase.discType || '',
+        revisedReason: currentCase.reason || '',
+        revisedDocNo: currentCase.docNo || ''
       }
     },
     async submitReview({ reason }) {
       const dialog = this.revDlg
       const opinion = (reason || '').trim()
       if (opinion.length < 5 || opinion.length > 1000) { toast.error('复核意见需5-1000字'); return }
-      if (dialog.result === 'REVISED' && !dialog.revisedDiscType) {
-        toast.error('变更处分必须选择新的处分类型')
-        return
+      if (dialog.result === 'REVISED') {
+        if (!dialog.revisedDiscType) {
+          toast.error('变更处分必须选择新的处分类型')
+          return
+        }
+        const revisedReason = (dialog.revisedReason || '').trim()
+        if (revisedReason.length < 5 || revisedReason.length > 1000) {
+          toast.error('变更后的处分事实需5-1000字')
+          return
+        }
       }
       this.acting = dialog.appealId
       const response = await disciplineIntegrityApi.reviewAppeal(dialog.appealId, {
         result: dialog.result,
         opinion,
         version: dialog.version,
-        revisedDiscType: dialog.revisedDiscType
+        revisedDiscType: dialog.revisedDiscType,
+        revisedReason: (dialog.revisedReason || '').trim(),
+        revisedDocNo: (dialog.revisedDocNo || '').trim()
       })
       this.acting = ''
       if (response.code === 0) {
@@ -392,6 +466,7 @@ export default {
 </script>
 
 <style scoped>
+.ap-focus-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .ap-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
 .ap-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }

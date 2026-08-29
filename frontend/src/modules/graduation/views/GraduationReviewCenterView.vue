@@ -7,6 +7,10 @@
         <small>{{ card.hint }}</small>
       </button>
     </section>
+    <div v-if="summaryError" class="w74-summary-warning" role="status">
+      <span>评阅摘要加载失败：{{ summaryError }}</span>
+      <button type="button" class="w74-refresh" :disabled="submitting" @click="retrySummary">重试摘要</button>
+    </div>
 
     <section class="w74-toolbar" aria-label="评阅队列筛选">
       <div class="w74-filter-group">
@@ -182,7 +186,7 @@ export default {
   data() {
     return {
       caseOptions: CASE_OPTIONS, statusOptions: STATUS_OPTIONS, categoryOptions: CATEGORY_OPTIONS,
-      loading: false, loadingDetail: false, error: '', formError: '',
+      loading: false, loadingDetail: false, error: '', summaryError: '', formError: '',
       summary: {}, queue: [], total: 0, page: 1, pageSize: 50,
       filters: { caseType: '', statusGroup: '', keyword: '', reviewerOnly: false },
       activeIndex: 0, activeTask: null, detail: null, writeContext: null,
@@ -338,13 +342,27 @@ export default {
     },
     reloadFromFirstPage() {
       if (this.submitting) return
-      this.page = 1; this.loadAll()
+      this.page = 1; this.loadQueueOnly()
     },
     async loadSummary(token = this.loadToken) {
       const data = await graduationReviewCenterApi.summary()
       if (token !== this.loadToken) return false
       this.summary = data
       return true
+    },
+    async loadSummaryBestEffort(token = this.loadToken) {
+      try {
+        const loaded = await this.loadSummary(token)
+        if (loaded && token === this.loadToken) this.summaryError = ''
+        return loaded
+      } catch (error) {
+        if (token === this.loadToken) this.summaryError = errorMessage(error, '评阅摘要加载失败')
+        return false
+      }
+    },
+    async retrySummary() {
+      if (this.submitting) return
+      await this.loadSummaryBestEffort(this.loadToken)
     },
     async loadQueue({ select = true, preserveSelection = false, token = this.loadToken } = {}) {
       const oldKey = preserveSelection ? this.activeTask?.caseKey : null
@@ -362,16 +380,27 @@ export default {
       await this.selectTask(target || this.queue[0])
       return token === this.loadToken
     },
-    async loadAll({ preserveSelection = false } = {}) {
+    async loadQueueOnly({ preserveSelection = false } = {}) {
       if (this.submitting) return
       const token = ++this.loadToken
       ++this.selectionToken
       this.loading = true; this.error = ''
       try {
-        await Promise.all([
-          this.loadSummary(token),
-          this.loadQueue({ preserveSelection, token })
-        ])
+        await this.loadQueue({ preserveSelection, token })
+      } catch (error) {
+        if (token === this.loadToken) this.error = errorMessage(error, '评阅中心数据加载失败')
+      } finally {
+        if (token === this.loadToken) this.loading = false
+      }
+    },
+    async loadAll({ preserveSelection = false } = {}) {
+      if (this.submitting) return
+      const token = ++this.loadToken
+      ++this.selectionToken
+      this.loading = true; this.error = ''
+      void this.loadSummaryBestEffort(token)
+      try {
+        await this.loadQueue({ preserveSelection, token })
       } catch (error) {
         if (token === this.loadToken) this.error = errorMessage(error, '评阅中心数据加载失败')
       } finally {
@@ -435,7 +464,7 @@ export default {
     async changePage(next) {
       if (this.submitting || next < 1 || next > this.pageCount || next === this.page) return
       this.page = next
-      await this.loadAll()
+      await this.loadQueueOnly()
     },
     async submitBusiness(action) {
       if (!this.canReviewBusiness || !this.canSubmitCurrent || this.submitting) return
@@ -500,11 +529,9 @@ export default {
       ++this.selectionToken
       this.clearDraft()
       toast.success(message)
+      void this.loadSummaryBestEffort(token)
       try {
-        await Promise.all([
-          this.loadSummary(token),
-          this.loadQueue({ select: false, token })
-        ])
+        await this.loadQueue({ select: false, token })
       } catch (error) {
         if (token === this.loadToken) this.formError = errorMessage(error, '操作已完成，但评阅队列刷新失败，请手动刷新')
         return
@@ -548,6 +575,6 @@ export default {
 </script>
 
 <style scoped>
-.w74-center{display:grid;gap:12px;min-width:0}.w74-summary{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px}.w74-summary__card{display:grid;gap:2px;text-align:left;padding:11px 12px;border:1px solid var(--border-light,#e2e8f0);border-radius:10px;background:#fff;cursor:pointer}.w74-summary__card span,.w74-summary__card small{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-summary__card strong{font-size:22px;color:var(--text-primary,#0f172a)}.w74-toolbar{display:grid;gap:9px;padding:10px 12px;border:1px solid var(--border-light,#e2e8f0);border-radius:10px;background:#fff}.w74-filter-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.w74-filter-label{width:64px;font-size:12px;color:var(--text-tertiary,#64748b)}.w74-chip,.w74-category{border:1px solid var(--border-light,#e2e8f0);border-radius:999px;background:#fff;padding:5px 9px;font-size:12px;color:var(--text-secondary,#475569);cursor:pointer}.w74-chip.is-active,.w74-category.is-active{border-color:var(--brand-primary,#2563eb);background:var(--primary-50,#eff6ff);color:var(--brand-primary,#2563eb)}.w74-toolbar__search{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--border-light,#e2e8f0)}.w74-toolbar__search input[type=search]{flex:1 1 300px;min-width:220px;border:1px solid var(--border-base,#cbd5e1);border-radius:8px;padding:7px 9px}.w74-toolbar__search label{font-size:12px;color:var(--text-secondary,#475569)}.w74-refresh,.w74-pagination button{border:1px solid var(--border-light,#e2e8f0);border-radius:7px;background:#fff;padding:6px 9px;cursor:pointer}.w74-state{min-height:120px;display:grid;place-content:center;justify-items:center;gap:5px;border:1px dashed var(--border-light,#e2e8f0);border-radius:10px;color:var(--text-secondary,#475569);background:#fff}.w74-state--error{color:#b91c1c}.w74-state button{margin-top:5px}.w74-pagination{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px;font-size:11px;color:var(--text-tertiary,#64748b)}.w74-case-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.w74-case-type,.w74-status,.w74-overdue{font-size:11px;border-radius:999px;padding:3px 7px;background:#f1f5f9;color:#475569}.w74-overdue{background:#fff1f2;color:#be123c}.w74-status.is-returned{background:#fff7ed;color:#c2410c}.w74-status.is-done{background:#ecfdf5;color:#047857}.w74-blockers,.w74-history-lock,.w74-form-error{padding:8px 9px;border-radius:8px;font-size:12px}.w74-blockers{background:#fff7ed;color:#9a3412}.w74-blockers ul{margin:5px 0 0;padding-left:18px}.w74-history-lock{background:#eff6ff;color:#1d4ed8;line-height:1.5}.w74-form-error{margin:0;background:#fef2f2;color:#b91c1c}.w74-feedback,.w74-write-form,.w74-return-form{display:grid;gap:8px;padding-top:8px;border-top:1px solid var(--border-light,#e2e8f0)}.w74-section-title{display:flex;justify-content:space-between;gap:8px;align-items:center}.w74-section-title span,.w74-muted{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-feedback-list{display:grid;gap:6px;max-height:180px;overflow:auto}.w74-feedback-list article{display:grid;gap:3px;padding:7px;border-radius:7px;background:#f8fafc}.w74-feedback-list article>div{display:flex;justify-content:space-between;gap:6px;font-size:11px}.w74-feedback-list p{margin:0;white-space:pre-wrap;font-size:12px;line-height:1.5}.w74-feedback-list small{color:var(--text-tertiary,#64748b)}.w74-category-list{display:flex;gap:5px;flex-wrap:wrap}.w74-field{display:grid;gap:4px}.w74-field>span{font-size:12px;font-weight:600;color:var(--text-primary,#0f172a)}.w74-field small{font-weight:400;color:var(--text-tertiary,#64748b)}.w74-field textarea,.w74-field input{width:100%;box-sizing:border-box;border:1px solid var(--border-base,#cbd5e1);border-radius:8px;padding:7px 8px;font:inherit;resize:vertical}.w74-actions{display:grid;gap:7px}.w74-actions--two{grid-template-columns:1fr 1fr}.w74-primary,.w74-warning{border-radius:8px;padding:7px 10px;cursor:pointer}.w74-primary{border:1px solid var(--brand-primary,#2563eb);background:var(--brand-primary,#2563eb);color:#fff}.w74-warning{border:1px solid #f59e0b;background:#fffbeb;color:#a16207}.w74-primary:disabled,.w74-warning:disabled,.w74-refresh:disabled,.w74-pagination button:disabled{opacity:.5;cursor:not-allowed}.w74-review-loading{padding:18px 8px;text-align:center;color:var(--text-tertiary,#64748b);font-size:12px}.w74-modal{position:fixed;inset:0;z-index:1500;display:grid;place-items:center;padding:24px;background:rgba(15,23,42,.45)}.w74-modal__panel{width:min(680px,100%);max-height:80vh;overflow:auto;border-radius:14px;background:#fff;box-shadow:0 24px 60px rgba(15,23,42,.24)}.w74-modal__panel header,.w74-modal__panel footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border-light,#e2e8f0)}.w74-modal__panel footer{justify-content:flex-end;border-top:1px solid var(--border-light,#e2e8f0);border-bottom:0}.w74-modal__panel header div{display:grid}.w74-modal__panel header small{color:var(--text-tertiary,#64748b)}.w74-modal__panel header button{border:0;background:transparent;font-size:24px;cursor:pointer}.w74-dossier-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px}.w74-dossier-grid div{display:grid;gap:3px}.w74-dossier-grid span{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-dossier-grid b{font-size:13px;color:var(--text-primary,#0f172a)}
+.w74-center{display:grid;gap:12px;min-width:0}.w74-summary{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px}.w74-summary__card{display:grid;gap:2px;text-align:left;padding:11px 12px;border:1px solid var(--border-light,#e2e8f0);border-radius:10px;background:#fff;cursor:pointer}.w74-summary__card span,.w74-summary__card small{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-summary__card strong{font-size:22px;color:var(--text-primary,#0f172a)}.w74-summary-warning{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid #fcd34d;border-radius:9px;background:#fffbeb;color:#92400e;font-size:12px}.w74-toolbar{display:grid;gap:9px;padding:10px 12px;border:1px solid var(--border-light,#e2e8f0);border-radius:10px;background:#fff}.w74-filter-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.w74-filter-label{width:64px;font-size:12px;color:var(--text-tertiary,#64748b)}.w74-chip,.w74-category{border:1px solid var(--border-light,#e2e8f0);border-radius:999px;background:#fff;padding:5px 9px;font-size:12px;color:var(--text-secondary,#475569);cursor:pointer}.w74-chip.is-active,.w74-category.is-active{border-color:var(--brand-primary,#2563eb);background:var(--primary-50,#eff6ff);color:var(--brand-primary,#2563eb)}.w74-toolbar__search{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--border-light,#e2e8f0)}.w74-toolbar__search input[type=search]{flex:1 1 300px;min-width:220px;border:1px solid var(--border-base,#cbd5e1);border-radius:8px;padding:7px 9px}.w74-toolbar__search label{font-size:12px;color:var(--text-secondary,#475569)}.w74-refresh,.w74-pagination button{border:1px solid var(--border-light,#e2e8f0);border-radius:7px;background:#fff;padding:6px 9px;cursor:pointer}.w74-state{min-height:120px;display:grid;place-content:center;justify-items:center;gap:5px;border:1px dashed var(--border-light,#e2e8f0);border-radius:10px;color:var(--text-secondary,#475569);background:#fff}.w74-state--error{color:#b91c1c}.w74-state button{margin-top:5px}.w74-pagination{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px;font-size:11px;color:var(--text-tertiary,#64748b)}.w74-case-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.w74-case-type,.w74-status,.w74-overdue{font-size:11px;border-radius:999px;padding:3px 7px;background:#f1f5f9;color:#475569}.w74-overdue{background:#fff1f2;color:#be123c}.w74-status.is-returned{background:#fff7ed;color:#c2410c}.w74-status.is-done{background:#ecfdf5;color:#047857}.w74-blockers,.w74-history-lock,.w74-form-error{padding:8px 9px;border-radius:8px;font-size:12px}.w74-blockers{background:#fff7ed;color:#9a3412}.w74-blockers ul{margin:5px 0 0;padding-left:18px}.w74-history-lock{background:#eff6ff;color:#1d4ed8;line-height:1.5}.w74-form-error{margin:0;background:#fef2f2;color:#b91c1c}.w74-feedback,.w74-write-form,.w74-return-form{display:grid;gap:8px;padding-top:8px;border-top:1px solid var(--border-light,#e2e8f0)}.w74-section-title{display:flex;justify-content:space-between;gap:8px;align-items:center}.w74-section-title span,.w74-muted{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-feedback-list{display:grid;gap:6px;max-height:180px;overflow:auto}.w74-feedback-list article{display:grid;gap:3px;padding:7px;border-radius:7px;background:#f8fafc}.w74-feedback-list article>div{display:flex;justify-content:space-between;gap:6px;font-size:11px}.w74-feedback-list p{margin:0;white-space:pre-wrap;font-size:12px;line-height:1.5}.w74-feedback-list small{color:var(--text-tertiary,#64748b)}.w74-category-list{display:flex;gap:5px;flex-wrap:wrap}.w74-field{display:grid;gap:4px}.w74-field>span{font-size:12px;font-weight:600;color:var(--text-primary,#0f172a)}.w74-field small{font-weight:400;color:var(--text-tertiary,#64748b)}.w74-field textarea,.w74-field input{width:100%;box-sizing:border-box;border:1px solid var(--border-base,#cbd5e1);border-radius:8px;padding:7px 8px;font:inherit;resize:vertical}.w74-actions{display:grid;gap:7px}.w74-actions--two{grid-template-columns:1fr 1fr}.w74-primary,.w74-warning{border-radius:8px;padding:7px 10px;cursor:pointer}.w74-primary{border:1px solid var(--brand-primary,#2563eb);background:var(--brand-primary,#2563eb);color:#fff}.w74-warning{border:1px solid #f59e0b;background:#fffbeb;color:#a16207}.w74-primary:disabled,.w74-warning:disabled,.w74-refresh:disabled,.w74-pagination button:disabled{opacity:.5;cursor:not-allowed}.w74-review-loading{padding:18px 8px;text-align:center;color:var(--text-tertiary,#64748b);font-size:12px}.w74-modal{position:fixed;inset:0;z-index:1500;display:grid;place-items:center;padding:24px;background:rgba(15,23,42,.45)}.w74-modal__panel{width:min(680px,100%);max-height:80vh;overflow:auto;border-radius:14px;background:#fff;box-shadow:0 24px 60px rgba(15,23,42,.24)}.w74-modal__panel header,.w74-modal__panel footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border-light,#e2e8f0)}.w74-modal__panel footer{justify-content:flex-end;border-top:1px solid var(--border-light,#e2e8f0);border-bottom:0}.w74-modal__panel header div{display:grid}.w74-modal__panel header small{color:var(--text-tertiary,#64748b)}.w74-modal__panel header button{border:0;background:transparent;font-size:24px;cursor:pointer}.w74-dossier-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px}.w74-dossier-grid div{display:grid;gap:3px}.w74-dossier-grid span{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-dossier-grid b{font-size:13px;color:var(--text-primary,#0f172a)}
 @media(max-width:1400px){.w74-summary{grid-template-columns:repeat(3,1fr)}}@media(max-width:900px){.w74-summary{grid-template-columns:repeat(2,1fr)}.w74-dossier-grid{grid-template-columns:1fr}}
 </style>

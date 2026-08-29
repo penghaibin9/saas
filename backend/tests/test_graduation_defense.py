@@ -143,6 +143,28 @@ def test_assign_conflict_then_resolve_and_publish(graduation_client, auth_header
     assert any(s["id"] == str(sid) for s in assigned["students"])
     assert assigned["conflict"]
 
+    # Regression: the assignment response is rebuilt in a fresh read session. Verify that
+    # the aggregate cache itself was committed, not only recomputed transiently for response.
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationDefenseGroup, GraduationStudent
+
+    db = get_sessionmaker()()
+    try:
+        persisted_group = db.get(GraduationDefenseGroup, int(gid))
+        persisted_student = db.get(GraduationStudent, int(sid))
+        assert persisted_student is not None
+        assert persisted_student.defense_group_id == int(gid)
+        assert persisted_group is not None
+        assert persisted_group.student_count == 1
+        assert "张导师" in (persisted_group.conflict or "")
+    finally:
+        db.close()
+
+    listed = graduation_client.get(DG, headers=h, params={"batchId": bid, "page": 1, "pageSize": 200}).json()["data"]
+    projected = next(row for row in _items(listed) if row["id"] == str(gid))
+    assert projected["studentCount"] == 1
+    assert "张导师" in projected["conflict"]
+
     blocked = graduation_client.post(f"{DG}/{gid}/publish", headers=h, params={"batchId": bid})
     assert blocked.json()["code"] != 0
 

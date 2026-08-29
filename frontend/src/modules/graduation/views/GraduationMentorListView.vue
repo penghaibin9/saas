@@ -8,17 +8,17 @@
     <template #actions>
       <div class="gd-actions">
         <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
-        <AppExportButton v-if="tab === 'mentors'" :export-fn="exportMentorsFn">导出台账</AppExportButton>
+        <AppExportButton v-if="tab === 'mentors' && canMentorExport" :export-fn="exportMentorsFn">导出台账</AppExportButton>
       </div>
     </template>
 
     <div class="gm-tabs">
-      <button class="gm-tabs__item" :class="{ 'is-active': tab === 'mentors' }" @click="switchTab('mentors')">导师名单</button>
-      <button class="gm-tabs__item" :class="{ 'is-active': tab === 'assign' }" @click="switchTab('assign')">导师分配</button>
+      <button v-if="canMentorManage" class="gm-tabs__item" :class="{ 'is-active': tab === 'mentors' }" @click="switchTab('mentors')">导师名单</button>
+      <button v-if="canMentorManage" class="gm-tabs__item" :class="{ 'is-active': tab === 'assign' }" @click="switchTab('assign')">导师分配</button>
     </div>
 
     <!-- ═══ 导师名单 ═══ -->
-    <div v-if="tab === 'mentors'" class="mp-stack">
+    <div v-if="tab === 'mentors' && canMentorManage" class="mp-stack">
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -28,7 +28,7 @@
         description="导师报上来是「待审核」，审过变「已认证」才能带学生。记得给每位导师定容量——不定容量，分配时就拦不住超载。"
       >
         <template #actions>
-          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/mentors/create')">＋ 申报导师</button>
+          <button v-if="canMentorManage" class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/mentors/create')">＋ 申报导师</button>
           <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-mentor-maintain')">怎么维护导师？</button>
         </template>
       </EmptyState>
@@ -42,18 +42,18 @@
         <template #cell-status="{ row }"><StatusTag :type="row.qualificationTone" :label="row.qualificationLabel" dot /></template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="openDetail(row)">详情</button>
-          <button v-if="row.qualificationStatus === 'QUALIFIED'" class="mp-link" style="margin-left: var(--space-2)" @click="openEval(row)">评价</button>
-          <button v-if="row.qualificationStatus !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="openEdit(row)">编辑</button>
-          <button v-if="row.qualificationStatus === 'PENDING_REVIEW'" class="mp-link" style="margin-left: var(--space-2)" @click="askReview(row)">审核</button>
-          <button v-if="row.qualificationStatus === 'QUALIFIED'" class="mp-link" style="margin-left: var(--space-2)" @click="askDisable(row)">停用</button>
-          <button v-if="row.qualificationStatus === 'DISABLED'" class="mp-link" style="margin-left: var(--space-2)" @click="doEnable(row)">启用</button>
-          <button v-if="['DISABLED', 'REJECTED'].includes(row.qualificationStatus)" class="mp-link" style="margin-left: var(--space-2)" @click="doArchive(row)">归档</button>
+          <button v-if="canMentorManage && row.qualificationStatus === 'QUALIFIED'" class="mp-link" style="margin-left: var(--space-2)" @click="openEval(row)">评价</button>
+          <button v-if="canMentorManage && row.qualificationStatus !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="openEdit(row)">编辑</button>
+          <button v-if="canMentorManage && row.qualificationStatus === 'PENDING_REVIEW'" class="mp-link" style="margin-left: var(--space-2)" @click="askReview(row)">审核</button>
+          <button v-if="canMentorManage && row.qualificationStatus === 'QUALIFIED'" class="mp-link" style="margin-left: var(--space-2)" @click="askDisable(row)">停用</button>
+          <button v-if="canMentorManage && row.qualificationStatus === 'DISABLED'" class="mp-link" style="margin-left: var(--space-2)" @click="doEnable(row)">启用</button>
+          <button v-if="canMentorManage && ['DISABLED', 'REJECTED'].includes(row.qualificationStatus)" class="mp-link" style="margin-left: var(--space-2)" @click="doArchive(row)">归档</button>
         </template>
       </DataTable>
     </div>
 
     <!-- ═══ 导师分配 ═══ -->
-    <div v-else class="mp-stack">
+    <div v-else-if="canMentorManage" class="mp-stack">
       <div class="gm-assign-hint">未分配导师学生共 <b>{{ unassignedTotal }}</b> 人；分配须导师「已认证」且未满员，调导师原因≥5字。</div>
       <AdvancedFilter v-model="uFilters" :fields="uFilterFields" @search="searchUnassigned" @reset="resetUnassigned" />
       <ErrorState v-if="uError" :description="uError" @retry="loadUnassigned" />
@@ -64,7 +64,7 @@
           <div class="mp-cell-main">{{ row.name }}</div>
           <div class="mp-cell-sub">{{ row.studentNo }} · {{ row.className || '—' }}</div>
         </template>
-        <template #cell-actions="{ row }"><button class="mp-link" @click="openAssign(row)">分配导师</button></template>
+        <template #cell-actions="{ row }"><button v-if="canTopicAssign" class="mp-link" @click="openAssign(row)">分配导师</button><span v-else class="mp-cell-sub">—</span></template>
       </DataTable>
 
       <div class="gm-section-title" style="margin-top: var(--space-4)" >分配记录</div>
@@ -75,8 +75,9 @@
         </template>
         <template #cell-status="{ row }"><StatusTag :type="row.status === 'ACTIVE' ? 'success' : 'default'" :label="row.statusLabel" dot /></template>
         <template #cell-actions="{ row }">
-          <button v-if="row.status === 'ACTIVE'" class="mp-link" @click="openChange(row)">调导师</button>
-          <button v-if="row.status === 'ACTIVE'" class="mp-link mp-link--danger" style="margin-left: var(--space-2)" @click="askCancel(row)">取消</button>
+          <button v-if="canTopicAssign && row.status === 'ACTIVE'" class="mp-link" @click="openChange(row)">调导师</button>
+          <button v-if="canTopicAssign && row.status === 'ACTIVE'" class="mp-link mp-link--danger" style="margin-left: var(--space-2)" @click="askCancel(row)">取消</button>
+          <span v-if="!canTopicAssign" class="mp-cell-sub">—</span>
         </template>
       </DataTable>
     </div>
@@ -88,6 +89,7 @@
     />
 
     <AppExcelImportDrawer
+      v-if="canMentorImport"
       v-model:visible="importVisible"
       title="导入导师名单"
       show-account-boundary
@@ -100,24 +102,22 @@
       :download-errors-fn="({ rows, errors }) => graduationMentorApi.downloadImportErrors(rows, errors)"
       @imported="onImported"
     />
-    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
     <AppPageGuide guide-key="graduation.gd-mentors" />
   </ModulePageShell>
 </template>
 
 <script>
-/** 导师管理 + 导师分配（/admin/graduation/mentors）：生产级只走真实后端；申报/审核/停用/启用/归档 + 分配/调导师/取消 + Excel。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton, AppPageGuide } from '@/components/common'
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
 import { MENTOR_QUALIFICATION_STATUS, MENTOR_TYPE } from '@/modules/graduation/constants/graduation-mentor.constants'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', qualificationStatus: '', mentorType: '', dateStart: '', dateEnd: '' })
 const EMPTY_U_FILTERS = () => ({ keyword: '', dateStart: '', dateEnd: '' })
-
 
 export default {
   name: 'GraduationMentorListView',
@@ -138,7 +138,6 @@ export default {
         { key: 'status', title: '资格状态' },
         { key: 'actions', title: '操作', width: '260px' }
       ],
-      // 分配
       uFilters: EMPTY_U_FILTERS(), uRows: [], uTotal: 0, uPage: 1, uPageSize: 10, uLoading: true, uError: '',
       unassignedTotal: 0,
       aRows: [], aTotal: 0, aPage: 1, aPageSize: 10,
@@ -147,6 +146,11 @@ export default {
     }
   },
   computed: {
+    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
+    canMentorManage() { return matchPermission(this.permissionPatterns, 'graduationDesign.student.manage') },
+    canMentorImport() { return matchPermission(this.permissionPatterns, 'graduationDesign.student.import') },
+    canMentorExport() { return matchPermission(this.permissionPatterns, 'graduationDesign.student.export') },
+    canTopicAssign() { return matchPermission(this.permissionPatterns, 'graduationDesign.topic.assign') },
     filterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 工号 / 方向' },
@@ -155,19 +159,25 @@ export default {
       ]
     },
     uFilterFields() {
-      return [
-        { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号' }
-      ]
+      return [{ key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号' }]
     },
     toolbarActions() {
-      if (this.tab === 'assign') return [{ key: 'batchAssign', label: '一键批量分配', variant: 'primary' }]
-      return [{ key: 'create', label: '＋ 申报导师', variant: 'primary' }, { key: 'conflicts', label: '分配冲突检测' }, { key: 'batchArchive', label: '批量归档' }, { key: 'import', label: '导入 Excel' }]
+      if (!this.canMentorManage) return []
+      if (this.tab === 'assign') return this.canTopicAssign ? [{ key: 'batchAssign', label: '一键批量分配', variant: 'primary' }] : []
+      const actions = [
+        { key: 'create', label: '＋ 申报导师', variant: 'primary' },
+        { key: 'conflicts', label: '分配冲突检测' },
+        { key: 'batchArchive', label: '批量归档' }
+      ]
+      if (this.canMentorImport) actions.push({ key: 'import', label: '导入 Excel' })
+      return actions
     }
   },
   created() { this.applyPanel(this.$route.query.panel, true) },
   watch: { '$route.query.panel'(p) { this.applyPanel(p, false) } },
   methods: {
     applyPanel(panel, initial) {
+      if (!this.canMentorManage) { this.tab = 'mentors'; this.loading = false; return }
       panel = panel || 'list'
       this.tab = panel === 'assign' ? 'assign' : 'mentors'
       if (panel === 'create') { this.tab = 'mentors'; this.load(); this.$router.push('/admin/graduation/mentors/create'); return }
@@ -175,11 +185,13 @@ export default {
       if (!initial) { /* 切换 panel 已在上面处理 */ }
     },
     switchTab(t) {
+      if (!this.canMentorManage) return
       this.tab = t
       this.$router.replace({ query: { ...this.$route.query, panel: t === 'assign' ? 'assign' : 'list' } })
       if (t === 'mentors') this.load(); else { this.loadUnassigned(); this.loadAssignments() }
     },
     async load() {
+      if (!this.canMentorManage) { this.loading = false; this.rows = []; this.total = 0; return }
       this.loading = true; this.error = ''
       const res = await graduationMentorApi.getMentors({ ...this.filters, page: this.page, pageSize: this.pageSize })
       if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
@@ -189,16 +201,19 @@ export default {
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
     onToolbar(key) {
+      if (!this.canMentorManage) return
       if (key === 'create') this.$router.push('/admin/graduation/mentors/create')
-      if (key === 'import') this.importVisible = true
+      if (key === 'import') { if (this.canMentorImport) this.importVisible = true }
       if (key === 'conflicts') this.$router.push('/admin/graduation/mentors/conflicts')
       if (key === 'batchArchive') this.doBatchArchive()
-      if (key === 'batchAssign') this.doBatchAssign()
+      if (key === 'batchAssign') { if (this.canTopicAssign) this.doBatchAssign() }
     },
     openEval(row) {
+      if (!this.canMentorManage) return
       this.$router.push(`/admin/graduation/mentors/${row.id}/eval`)
     },
     async doBatchArchive() {
+      if (!this.canMentorManage) return
       const ids = this.rows.filter((m) => ['DISABLED', 'REJECTED'].includes(m.qualificationStatus)).map((m) => m.id)
       if (!ids.length) { toast.info('当前页无「已停用/已驳回」的可归档导师'); return }
       const res = await graduationMentorApi.batchArchive(ids)
@@ -206,7 +221,7 @@ export default {
       else toast.error(res.message)
     },
     async doBatchAssign() {
-      // 一键批量分配：把未分配学生按顺序分给「已认证且未满员」导师
+      if (!this.canMentorManage || !this.canTopicAssign) return
       const [us, ms] = await Promise.all([
         graduationMentorApi.getUnassignedStudents({ page: 1, pageSize: 200 }),
         graduationMentorApi.getMentors({ qualificationStatus: 'QUALIFIED', page: 1, pageSize: 200 })
@@ -228,29 +243,38 @@ export default {
       if (res.code === 0) { toast.success(res.message || '批量分配完成'); this.loadUnassigned(); this.loadAssignments() }
       else toast.error(res.message)
     },
-    onImported() { this.importVisible = false; this.load(); toast.success('导入完成') },
+    onImported() { if (!this.canMentorImport) return; this.importVisible = false; this.load(); toast.success('导入完成') },
     openEdit(row) {
+      if (!this.canMentorManage) return
       this.$router.push(`/admin/graduation/mentors/${row.id}/edit`)
     },
     openDetail(row) {
+      if (!this.canMentorManage) return
       this.$router.push(`/admin/graduation/mentors/${row.id}`)
     },
     askReview(row) {
+      if (!this.canMentorManage) return
       this.confirm = { visible: true, title: '审核导师资格', message: `确认「${row.teacherName}」资格审核通过？`, type: 'primary', confirmText: '通过', requireReason: false, action: 'review-approve', row }
     },
     askDisable(row) {
+      if (!this.canMentorManage) return
       this.confirm = { visible: true, title: '停用导师', message: `确认停用「${row.teacherName}」？停用后不可被分配新学生。`, type: 'danger', confirmText: '确认停用', requireReason: true, reasonLabel: '停用原因', action: 'disable', row }
     },
     async doEnable(row) {
+      if (!this.canMentorManage) return
       const res = await graduationMentorApi.enableMentor(row.id)
       if (res.code === 0) { toast.success('已启用'); this.load() } else toast.error(res.message)
     },
     async doArchive(row) {
+      if (!this.canMentorManage) return
       const res = await graduationMentorApi.archiveMentor(row.id)
       if (res.code === 0) { toast.success('已归档'); this.load() } else toast.error(res.message)
     },
     async onConfirm({ reason } = {}) {
       const { action, row } = this.confirm
+      const allowed = ['review-approve', 'disable'].includes(action) ? this.canMentorManage
+        : action === 'cancel-assign' ? (this.canMentorManage && this.canTopicAssign) : false
+      if (!allowed) { this.confirm.visible = false; return }
       this.submitting = true
       try {
         let res
@@ -261,10 +285,11 @@ export default {
       } finally { this.submitting = false }
     },
     exportMentorsFn() {
+      if (!this.canMentorExport) return Promise.resolve({ code: 403001, data: null, message: '当前角色无导师导出权限' })
       return graduationMentorApi.exportMentors({ ...this.filters })
     },
-    // ═══ 分配 ═══
     async loadUnassigned() {
+      if (!this.canMentorManage) { this.uLoading = false; this.uRows = []; this.uTotal = 0; this.unassignedTotal = 0; return }
       this.uLoading = true; this.uError = ''
       const res = await graduationMentorApi.getUnassignedStudents({ ...this.uFilters, page: this.uPage, pageSize: this.uPageSize })
       if (res.code === 0) { this.uRows = res.data.list; this.uTotal = res.data.total; this.unassignedTotal = res.data.total } else this.uError = res.message
@@ -274,17 +299,21 @@ export default {
     resetUnassigned() { this.uFilters = EMPTY_U_FILTERS(); this.uPage = 1; this.loadUnassigned() },
     turnUnassignedPage(p) { this.uPage = p; this.loadUnassigned() },
     async loadAssignments() {
+      if (!this.canMentorManage) { this.aRows = []; this.aTotal = 0; return }
       const res = await graduationMentorApi.getAssignments({ page: this.aPage, pageSize: this.aPageSize })
       if (res.code === 0) { this.aRows = res.data.list; this.aTotal = res.data.total }
     },
     turnAssignPage(p) { this.aPage = p; this.loadAssignments() },
     openAssign(row) {
+      if (!this.canMentorManage || !this.canTopicAssign) return
       this.$router.push(`/admin/graduation/mentors/assign/${row.id}`)
     },
     openChange(row) {
+      if (!this.canMentorManage || !this.canTopicAssign) return
       this.$router.push({ path: `/admin/graduation/mentors/assign/${row.gdStudentId}`, query: { mode: 'change' } })
     },
     askCancel(row) {
+      if (!this.canMentorManage || !this.canTopicAssign) return
       this.confirm = { visible: true, title: '取消分配', message: `确认取消「${row.studentName}」与「${row.mentorName}」的分配关系？`, type: 'danger', confirmText: '确认取消', requireReason: true, reasonLabel: '取消原因', action: 'cancel-assign', row }
     }
   }

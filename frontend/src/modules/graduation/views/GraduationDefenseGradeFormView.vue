@@ -31,6 +31,7 @@ import { LoadingState, ErrorState } from '@/components/business'
 import { AppTemplateChips } from '@/components/common'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
+import { matchPermission } from '@/config/navPlan'
 import {
   graduationActionErrorMessage,
   graduationConflictMessage,
@@ -62,6 +63,19 @@ const PANEL_PATHS = {
   review: '/admin/graduation/review-tasks',
   defense: '/admin/graduation/defense-scoring',
   grade: '/admin/graduation/grade-ledger'
+}
+const GRADE_CONTEXT_FORMS = new Set(['calculate', 'returnGrade', 'withdraw'])
+const RECORD_CONTEXT_FORMS = new Set(['plagiarismResult', 'dispute', 'reviewSubmit', 'reviewReturn'])
+const FORM_PERMISSIONS = {
+  plagiarismResult: 'graduationDesign.plagiarism.result',
+  dispute: 'graduationDesign.plagiarism.start',
+  reviewSubmit: 'graduationDesign.review.submit',
+  reviewReturn: 'graduationDesign.review.return',
+  scoreEntry: 'graduationDesign.defense.score',
+  secondDefense: 'graduationDesign.defense.secondRound',
+  calculate: 'graduationDesign.grade.calculate',
+  returnGrade: 'graduationDesign.grade.review',
+  withdraw: 'graduationDesign.grade.withdraw'
 }
 
 const FORM_PRESETS = {
@@ -126,6 +140,7 @@ export default {
   },
   computed: {
     studentId() { return this.$route.params.studentId || this.$route.query.studentId },
+    permissionPatterns() { return Array.isArray(this.ctx?.permissionPatterns) ? this.ctx.permissionPatterns : [] },
     backTo() {
       const panel = this.$route.query.panel || 'plagiarism'
       const path = RETURN_PATHS[this.$route.query.returnRoute] || PANEL_PATHS[panel] || PANEL_PATHS.plagiarism
@@ -140,6 +155,10 @@ export default {
   },
   created() { this.init() },
   methods: {
+    canOpenForm(formKey) {
+      const permissionKey = FORM_PERMISSIONS[formKey]
+      return !!permissionKey && matchPermission(this.permissionPatterns, permissionKey)
+    },
     onPickChip(f, value) {
       this.form[f.key] = f.type === 'textarea'
         ? (this.form[f.key] ? this.form[f.key] + '\n' + value : String(value))
@@ -155,15 +174,27 @@ export default {
         if (!field.readonly && Object.prototype.hasOwnProperty.call(draft, field.key)) this.form[field.key] = draft[field.key]
       }
     },
-    async refreshConflictTruth() {
-      const grade = await graduationDefenseGradeApi.getGrade(this.studentId)
-      if (grade.code === 0 && this.formKey === 'calculate') {
-        const source = grade.data.sourceScores || {}
-        this.form.reviewerScore = source.reviewerScore ?? ''
-        this.form.defenseScore = source.defenseScore ?? ''
-      }
+    async loadStudentContext() {
       const student = await gdStudentApi.getStudentDetail(this.studentId)
-      if (student.code === 0) this.student = student.data
+      if (student.code !== 0) return student
+      const routeBatchId = String(this.$route.query.batchId || '')
+      const studentBatchId = String(student.data?.batchId || '')
+      if (routeBatchId && studentBatchId && routeBatchId !== studentBatchId) {
+        return { code: 409, message: '当前批次与学生上下文不一致，请返回后重新选择学生' }
+      }
+      this.student = student.data
+      return student
+    },
+    async refreshConflictTruth() {
+      if (this.formKey === 'calculate') {
+        const grade = await graduationDefenseGradeApi.getGrade(this.studentId)
+        if (grade.code === 0) {
+          const source = grade.data.sourceScores || {}
+          this.form.reviewerScore = source.reviewerScore ?? ''
+          this.form.defenseScore = source.defenseScore ?? ''
+        }
+      }
+      await this.loadStudentContext()
     },
     async init() {
       this.loading = true
@@ -173,19 +204,22 @@ export default {
       if (!this.studentId) { this.error = '缺少学生标识，请返回后重新选择学生'; this.loading = false; return }
       const preset = FORM_PRESETS[this.formKey]
       if (!preset) { this.error = '无效的表单类型'; this.loading = false; return }
+      if (!this.canOpenForm(this.formKey)) { this.error = '当前角色无权执行该毕业设计操作，请返回对应工作区'; this.loading = false; return }
+      if (RECORD_CONTEXT_FORMS.has(this.formKey) && !this.recordId) { this.error = '缺少业务记录标识，请返回对应工作区重新选择记录'; this.loading = false; return }
       this.formTitle = preset.title
       this.formFields = preset.fields
       this.form = {}
       preset.fields.forEach((f) => { this.form[f.key] = f.type === 'checkbox' ? false : '' })
 
-      // 先走 batch-safe 成绩读口验证 WorkContext；错批次必须在学生身份展示前由服务端拒绝。
-      const contextCheck = await graduationDefenseGradeApi.getGrade(this.studentId)
-      if (contextCheck.code !== 0) { this.error = contextCheck.message || '当前批次与学生上下文不一致'; this.loading = false; return }
-      const s = await gdStudentApi.getStudentDetail(this.studentId)
-      if (s.code !== 0) { this.error = s.message; this.loading = false; return }
-      this.student = s.data
+      let grade = null
+      if (GRADE_CONTEXT_FORMS.has(this.formKey)) {
+        grade = await graduationDefenseGradeApi.getGrade(this.studentId)
+        if (grade.code !== 0) { this.error = grade.message || '当前成绩上下文不可用'; this.loading = false; return }
+      }
+      const student = await this.loadStudentContext()
+      if (student.code !== 0) { this.error = student.message || '学生上下文加载失败'; this.loading = false; return }
+
       if (this.formKey === 'calculate') {
-        const grade = contextCheck
         const source = grade.data.sourceScores || {}
         this.form.advisorScore = grade.data.advisorScore ?? ''
         this.form.reviewerScore = source.reviewerScore ?? ''
@@ -196,6 +230,7 @@ export default {
     },
     async submit() {
       this.formError = ''
+      if (!this.canOpenForm(this.formKey)) { this.formError = '当前角色无权执行该毕业设计操作'; return }
       this.submitting = true
       try {
         let res
