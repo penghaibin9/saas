@@ -163,6 +163,7 @@ def _tenant_id() -> int:
 
 
 def persist_job_spec(db, spec: DerivedJobSpec, *, tenant_id: int) -> FileJob:
+    _assert_credential_free(spec.payload)
     existing = db.scalars(select(FileJob).where(
         FileJob.tenant_id == tenant_id,
         FileJob.dedupe_key == spec.dedupe_key,

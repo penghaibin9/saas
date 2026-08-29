@@ -3,12 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import UniqueConstraint, create_engine
+from sqlalchemy.orm import sessionmaker
 
 from app.core.exceptions import AppException
+from app.models.file import FileJob
 from app.modules.platform.document_lifecycle.exact_file_version_read_port import ExactSourceVersion
 from app.modules.platform.document_lifecycle.file_job_dag import (
+    DerivedJobSpec,
     _assert_credential_free,
+    persist_job_spec,
     prepare_compare_job,
     prepare_extract_job,
 )
@@ -102,6 +106,24 @@ def test_job_payload_guard_rejects_credential_and_url_values(value: str) -> None
     with pytest.raises(AppException) as exc:
         _assert_credential_free({"opaqueValue": value})
     assert exc.value.code == "VALIDATION_ERROR"
+
+
+def test_persistence_boundary_rejects_credential_bearing_job_spec() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    FileJob.__table__.create(engine)
+    sessions = sessionmaker(engine, expire_on_commit=False)
+    spec = DerivedJobSpec(
+        job_type="DOCUMENT_EXTRACT",
+        file_id=10,
+        dedupe_key="direct-persistence-credential-test",
+        payload={"source": {"accessToken": "must-not-persist"}},
+    )
+    with sessions() as db:
+        with pytest.raises(AppException) as exc:
+            persist_job_spec(db, spec, tenant_id=101)
+        assert exc.value.code == "VALIDATION_ERROR"
+        assert db.query(FileJob).count() == 0
+    engine.dispose()
 
 
 def test_private_models_freeze_directional_and_dedupe_identity() -> None:
