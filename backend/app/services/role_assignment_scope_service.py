@@ -95,16 +95,21 @@ def role_scope_policy(db, role) -> dict:
 
 
 def _scope_rows(db, *, tenant_id: int, user_id: int, role_code: str):
+    """Return the persisted scope inventory for the account editor.
+
+    This is an administrative read-back, not an authorization decision.  The
+    authorization paths in ``affairs_security`` and ``auth_service_db`` apply
+    the effective/expiry window.  Keeping that clock filter here made a scope
+    disappear intermittently immediately after commit, so an unrelated edit
+    could overwrite the persisted selection with an empty one.
+    """
     from app.models import RoleAssignmentScope
-    now = datetime.utcnow()
     return list(db.scalars(select(RoleAssignmentScope).where(
         RoleAssignmentScope.tenant_id == tenant_id,
         RoleAssignmentScope.user_id == user_id,
         RoleAssignmentScope.role_code == role_code,
         RoleAssignmentScope.status == "ACTIVE",
         RoleAssignmentScope.is_deleted.is_(False),
-        RoleAssignmentScope.effective_at <= now,
-        (RoleAssignmentScope.expires_at.is_(None) | (RoleAssignmentScope.expires_at > now)),
     ).order_by(RoleAssignmentScope.scope_type, RoleAssignmentScope.scope_name_snapshot)).all())
 
 
