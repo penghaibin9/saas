@@ -6,6 +6,8 @@ owner：教师对本人指导学生相关沟通；管理端全校；作废走状
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
+
 from datetime import datetime
 
 from sqlalchemy import select
@@ -43,12 +45,11 @@ def _scope_ok(db, c, user):
     scope = _current_scope(user)
     if scope.get("mode") != "SCOPED":
         return True
-    if c.internship_id:
-        rec = db.get(InternshipRecord, c.internship_id)
-        stu = db.get(StudentProfile, rec.student_id) if rec else None
-        if rec and stu and _rec_in_scope(scope, db, rec, stu):
-            return True
-    return (c.advisor_name or "") in (scope.get("advisorNames") or set())
+    if not c.internship_id:
+        return False
+    rec = db.get(InternshipRecord, c.internship_id)
+    stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
+    return bool(rec and stu and _rec_in_scope(scope, db, rec, stu))
 
 
 def _row(c):
@@ -73,7 +74,6 @@ def list_communications(page, page_size, enterprise_id=None, student_id=None, st
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     scope = _current_scope(user)
     scoped = scope.get("mode") == "SCOPED"
-    names = scope.get("advisorNames") or set()
     with session() as db:
         _, record_ids = batch_record_ids(db, batch_id)
         if not record_ids:
@@ -95,10 +95,10 @@ def list_communications(page, page_size, enterprise_id=None, student_id=None, st
             if scoped:
                 ok = False
                 if c.internship_id:
-                    rec = db.get(InternshipRecord, c.internship_id)
-                    stu = db.get(StudentProfile, rec.student_id) if rec else None
+                    rec = tenant_get(db, InternshipRecord, c.internship_id)
+                    stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
                     ok = bool(rec and stu and _rec_in_scope(scope, db, rec, stu))
-                if not ok and (c.advisor_name or "") not in names:
+                if not ok:
                     continue
             items.append(_row(c))
         total = len(items)

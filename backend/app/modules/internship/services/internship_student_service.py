@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
+
 from datetime import datetime
 
 from sqlalchemy import func, or_, select
@@ -48,11 +50,30 @@ def _get(db, rec_id) -> InternshipRecord:
     return r
 
 
+def _get_for_update(db, rec_id) -> InternshipRecord:
+    """锁定实习记录后再做 expectedVersion 校验，避免两个旧版本写请求同时通过。"""
+    r = db.scalar(select(InternshipRecord).where(
+        InternshipRecord.id == _as_id(rec_id),
+        InternshipRecord.tenant_id == _tid(),
+        InternshipRecord.is_deleted.is_(False),
+    ).with_for_update())
+    if not r:
+        raise not_found("实习学生记录不存在或不在当前数据范围内")
+    return r
+
+
+def _require_record_version(r: InternshipRecord, expected_version) -> None:
+    if expected_version is None:
+        raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（实习记录乐观锁），请刷新后重试")
+    if int(expected_version) != int(r.version or 0):
+        raise AppException("DATA_CONFLICT", "实习记录已被其他用户修改，请刷新后重试")
+
+
 def _assert_write_scope(db, r: InternshipRecord, user) -> None:
     """写操作数据范围校验：越出教师数据范围的写 → 403（与详情读 get_student 同边界）。
     ADMIN_TENANT（校级管理员）恒通过；SCOPED（指导教师/学院负责人）按本人指导/本院收敛。
     _current_scope / _rec_in_scope 在本模块下方定义，调用时已就绪（Python 运行期解析）。"""
-    stu = db.get(StudentProfile, r.student_id)
+    stu = tenant_get(db, StudentProfile, r.student_id)
     if not _rec_in_scope(_current_scope(user), db, r, stu):
         from app.core.exceptions import no_permission
         raise no_permission("该实习学生不在你的数据范围内")
@@ -127,8 +148,8 @@ def list_assignment_logs(page: int, page_size: int, keyword: str | None = None, 
         items = []
         needle = (keyword or "").strip().lower()
         for log in logs:
-            rec = db.get(InternshipRecord, log.target_id)
-            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            rec = tenant_get(db, InternshipRecord, log.target_id)
+            stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
             if not rec or not stu or not _rec_in_scope(scope, db, rec, stu):
                 continue
             row = {"id": str(log.id), "recordId": str(rec.id), "studentName": stu.real_name,
@@ -158,8 +179,7 @@ def _rec_in_scope(scope: dict, db, r: InternshipRecord, stu) -> bool:
     """实习记录是否在教师数据范围内。复用 internship_service 统一推导（含缺 college_id）。"""
     if scope.get("mode") != "SCOPED":
         return True
-    from app.modules.internship.services.internship_service import (
-        resolve_student_class_college_names)
+    from app.modules.internship.services.internship_service import resolve_student_class_college_names
     from app.services.mobile_teacher_service import scope_match_row
     class_name, college_name = resolve_student_class_college_names(db, stu)
     return scope_match_row(scope, student_no=(stu.student_no if stu else None),
@@ -175,7 +195,6 @@ def _row(r: InternshipRecord, stu: StudentProfile | None, batch_name: str = "",
         "className": class_name or "-",
         "classId": str(stu.class_id) if stu and stu.class_id else "",
         "batchId": str(r.batch_id) if r.batch_id else "",
-        # BUG-009：同一学生跨批次会有多条实习记录，下拉必须能靠批次名区分
         "batchName": batch_name or "",
         "enterpriseId": str(r.enterprise_id) if r.enterprise_id else "",
         "enterpriseName": r.enterprise_name or "",
@@ -199,7 +218,6 @@ def _row(r: InternshipRecord, stu: StudentProfile | None, batch_name: str = "",
 
 
 def _batch_names(db, batch_ids) -> dict:
-    """批量取批次名（消 N+1），用于列表/下拉区分同一学生的跨批次记录。"""
     ids = {b for b in batch_ids if b}
     if not ids:
         return {}
@@ -211,9 +229,9 @@ def _row_of(db, r: InternshipRecord) -> dict:
     from app.modules.internship.services.internship_service import resolve_student_class_college_names
     batch_name = ""
     if r.batch_id:
-        b = db.get(InternshipBatch, r.batch_id)
+        b = tenant_get(db, InternshipBatch, r.batch_id)
         batch_name = (b.batch_name or "") if b else ""
-    stu = db.get(StudentProfile, r.student_id)
+    stu = tenant_get(db, StudentProfile, r.student_id)
     class_name, _ = resolve_student_class_college_names(db, stu)
     return _row(r, stu, batch_name, class_name=class_name)
 
@@ -223,10 +241,6 @@ def _row_of(db, r: InternshipRecord) -> dict:
 def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status=None,
                             risk_level=None, eligibility=None, destination=None,
                             has_position=None, user=None) -> list[InternshipRecord]:
-    """列表 / 统计 / 导出共用过滤：tenant + batch_id(SQL) + 业务筛选 + 数据范围。
-
-    缺少或非法 batchId 一律拒绝，禁止静默回退到全历史。
-    """
     from app.modules.internship.services.internship_batch_context import resolve_batch
     batch = resolve_batch(db, batch_id, for_write=False)
     q = select(InternshipRecord).where(
@@ -275,9 +289,6 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
                   risk_level=None, eligibility=None, destination=None,
                   has_position=None, batch_id=None, user=None) -> tuple[list[dict], int]:
     with session() as db:
-        # The common collector retains the complete Python scope fallback for
-        # class/college scopes.  For tenant-wide and advisor-id-only scopes,
-        # paginate in SQL so the flagship list does not load an entire batch.
         scope = _current_scope(user)
         sql_safe = scope.get("mode") != "SCOPED" or (
             scope.get("by") == "ADVISOR" and scope.get("advisorUserIds"))
@@ -287,12 +298,18 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
             q = select(InternshipRecord).where(
                 InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
                 InternshipRecord.batch_id == batch.id)
-            if status: q = q.where(InternshipRecord.status == status)
-            if risk_level: q = q.where(InternshipRecord.risk_level == risk_level)
-            if eligibility: q = q.where(InternshipRecord.eligibility_status == eligibility)
-            if destination: q = q.where(InternshipRecord.destination_type == destination)
-            if has_position is True: q = q.where(InternshipRecord.position_id.is_not(None))
-            elif has_position is False: q = q.where(InternshipRecord.position_id.is_(None))
+            if status:
+                q = q.where(InternshipRecord.status == status)
+            if risk_level:
+                q = q.where(InternshipRecord.risk_level == risk_level)
+            if eligibility:
+                q = q.where(InternshipRecord.eligibility_status == eligibility)
+            if destination:
+                q = q.where(InternshipRecord.destination_type == destination)
+            if has_position is True:
+                q = q.where(InternshipRecord.position_id.is_not(None))
+            elif has_position is False:
+                q = q.where(InternshipRecord.position_id.is_(None))
             if scope.get("mode") == "SCOPED":
                 q = q.where(InternshipRecord.advisor_user_id.in_(scope["advisorUserIds"]))
             if keyword or class_id:
@@ -300,7 +317,8 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
                 if keyword:
                     like = f"%{keyword.strip()}%"
                     q = q.where(or_(StudentProfile.real_name.like(like), StudentProfile.student_no.like(like)))
-                if class_id: q = q.where(StudentProfile.class_id == _as_id(class_id))
+                if class_id:
+                    q = q.where(StudentProfile.class_id == _as_id(class_id))
             total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
             offset = (max(1, page) - 1) * page_size
             kept = db.scalars(q.order_by(InternshipRecord.updated_at.desc(), InternshipRecord.id.desc())
@@ -329,7 +347,7 @@ def get_student(rec_id, user=None) -> dict:
     with session() as db:
         r = _get(db, rec_id)
         stu = db.get(StudentProfile, r.student_id)
-        if not _rec_in_scope(_current_scope(user), db, r, stu):  # P0-D：越范围访问详情 → 403
+        if not _rec_in_scope(_current_scope(user), db, r, stu):
             from app.core.exceptions import no_permission
             raise no_permission("该实习学生不在你的数据范围内")
         phone = db.scalars(select(StudentContact).where(
@@ -337,7 +355,7 @@ def get_student(rec_id, user=None) -> dict:
             StudentContact.contact_type == "PHONE")).first()
         company = position = None
         if r.enterprise_id:
-            c = db.get(EmpCompany, r.enterprise_id)
+            c = tenant_get(db, EmpCompany, r.enterprise_id)
             if c and not c.is_deleted:
                 company = {"id": str(c.id), "name": c.name, "coopStatus": c.coop_status,
                            "blacklist": bool(c.blacklist)}
@@ -367,7 +385,6 @@ def get_student(rec_id, user=None) -> dict:
 
 def create_student_record(body, user=None) -> dict:
     from sqlalchemy.exc import IntegrityError
-
     from app.modules.internship.services.internship_batch_context import resolve_batch
     with session() as db:
         sid = int(getattr(body, "studentId"))
@@ -404,8 +421,9 @@ def create_student_record(body, user=None) -> dict:
 
 def update_student_record(rec_id, body, user=None) -> dict:
     with session() as db:
-        r = _get(db, rec_id)
+        r = _get_for_update(db, rec_id)
         _assert_write_scope(db, r, user)
+        _require_record_version(r, getattr(body, "expectedVersion", None))
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可编辑")
         before_advisor = r.advisor_user_id
@@ -420,15 +438,17 @@ def update_student_record(rec_id, body, user=None) -> dict:
                 setattr(r, col, v)
         r.version = int(r.version or 0) + 1
         _trail(db, r.id, "UPDATE", {"advisorUserIdBefore": str(before_advisor or ""),
-                                      "advisorUserIdAfter": str(r.advisor_user_id or "")})
+                                      "advisorUserIdAfter": str(r.advisor_user_id or ""),
+                                      "recordVersion": int(r.version or 0)})
         db.commit()
         return _row_of(db, r)
 
 
-def assign_advisor(rec_id, advisor_user_id, reason: str = "", user=None) -> dict:
+def assign_advisor(rec_id, advisor_user_id, reason: str = "", user=None, expected_version=None) -> dict:
     with session() as db:
-        r = _get(db, rec_id)
+        r = _get_for_update(db, rec_id)
         _assert_write_scope(db, r, user)
+        _require_record_version(r, expected_version)
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可变更指导教师")
         advisor = _advisor(db, advisor_user_id)
@@ -438,7 +458,9 @@ def assign_advisor(rec_id, advisor_user_id, reason: str = "", user=None) -> dict
         r.advisor_user_id, r.advisor_name = advisor.id, advisor.real_name
         r.version = int(r.version or 0) + 1
         _trail(db, r.id, "ASSIGN_ADVISOR", {"fromUserId": str(before or ""),
-                                             "toUserId": str(advisor.id), "reason": (reason or "").strip()})
+                                             "toUserId": str(advisor.id),
+                                             "reason": (reason or "").strip(),
+                                             "recordVersion": int(r.version or 0)})
         db.commit()
         return _row_of(db, r)
 
@@ -464,7 +486,6 @@ _CLAIM_SQL = (
 
 
 def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_version, user=None) -> InternshipRecord:
-    """事务内唯一落岗入口；调用方负责提交，学生行须已在本事务中加锁。"""
     from sqlalchemy import text
     from app.modules.internship.services.internship_version import extract_expected_version
     r = record
@@ -481,7 +502,7 @@ def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_ve
         raise AppException("DATA_CONFLICT", "该学生已分配到此岗位")
     if p.status != "PUBLISHED":
         raise AppException("DATA_CONFLICT", f"仅「已上架」岗位可分配（当前：{p.status}）")
-    c = db.get(EmpCompany, p.company_id)
+    c = tenant_get(db, EmpCompany, p.company_id)
     if not c or c.is_deleted:
         raise not_found("岗位所属企业不存在")
     if c.blacklist or c.coop_status == "BLACKLIST":
@@ -489,8 +510,7 @@ def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_ve
     from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
     batch = db.get(InternshipBatch, r.batch_id) if r.batch_id else None
     stu = db.get(StudentProfile, r.student_id)
-    rights = evaluate_position_publishability(
-        p, c, batch, stu, operation="ASSIGN", db=db)
+    rights = evaluate_position_publishability(p, c, batch, stu, operation="ASSIGN", db=db)
     if not rights["passed"]:
         reasons = [x["reason"] for x in rights["blockers"] + rights["unknowns"]]
         raise AppException("DATA_CONFLICT", "岗位劳动权益不合规：" + "；".join(reasons))
@@ -517,7 +537,6 @@ def assign_position_in_tx(db, record: InternshipRecord, position_id, expected_ve
     return r
 
 
-
 def _assert_direct_position_change_allowed(record: InternshipRecord) -> None:
     if record.status in ("ONBOARD", "ASSESSING"):
         raise AppException(
@@ -527,7 +546,6 @@ def _assert_direct_position_change_allowed(record: InternshipRecord) -> None:
 
 
 def assign_position(rec_id, position_id, expected_version=None, user=None) -> dict:
-    """锁学生记录后，在一个事务中完成岗位占用、释放、主档更新和审计。"""
     with session() as db:
         record = db.scalar(select(InternshipRecord).where(
             InternshipRecord.id == _as_id(rec_id),
@@ -544,10 +562,8 @@ def assign_position(rec_id, position_id, expected_version=None, user=None) -> di
 
 def unassign_position_in_tx(db, record: InternshipRecord, expected_version=None,
                             reason: str = "", user=None, *, next_status: str | None = None):
-    """Within the caller transaction, release the current position and clear destination fields."""
     from sqlalchemy import text
     from app.modules.internship.services.internship_version import extract_expected_version
-
     ver = extract_expected_version({"expectedVersion": expected_version})
     if int(record.version or 0) != ver:
         raise AppException("DATA_CONFLICT", "实习学生记录已被其他用户修改，请刷新后重试")
@@ -588,18 +604,16 @@ def unassign_position(rec_id, reason: str = "", expected_version=None, user=None
         if not record:
             raise not_found("实习学生记录不存在或不在当前数据范围内")
         _assert_direct_position_change_allowed(record)
-        unassign_position_in_tx(
-            db, record, expected_version, reason, user=user)
+        unassign_position_in_tx(db, record, expected_version, reason, user=user)
         db.commit()
         return _row_of(db, record)
 
 
 def _onboard_rules(db, r: InternshipRecord) -> dict:
-    """取该记录所属批次的上岗前置规则；批次未配置时用系统默认（全部要求）。"""
     default = {"requireAgreement": True, "requireInsurance": True, "requireAdvisor": True}
     if not r.batch_id:
         return default
-    b = db.get(InternshipBatch, r.batch_id)
+    b = tenant_get(db, InternshipBatch, r.batch_id)
     cfg = ((b.rules_config or {}).get("onboard") or {}) if b else {}
     values = {k: bool(cfg.get(k, v)) for k, v in default.items()}
     if b:
@@ -608,13 +622,11 @@ def _onboard_rules(db, r: InternshipRecord) -> dict:
 
 
 def _operation_evaluation(db, r: InternshipRecord, operation: str, user=None) -> dict:
-    from app.modules.internship.services.internship_compliance_service import (
-        evaluate_internship_compliance)
+    from app.modules.internship.services.internship_compliance_service import evaluate_internship_compliance
     return evaluate_internship_compliance(r.id, operation, user=user, db=db)
 
 
 def _onboard_blockers(db, r: InternshipRecord, user=None) -> tuple[list[str], dict]:
-    """上岗前置：岗位硬门槛 + 统一合规评估（含协议/保险/知情/安全/备案等）。"""
     missing: list[str] = []
     if not r.position_id:
         missing.append("未分配岗位")
@@ -627,7 +639,6 @@ def _onboard_blockers(db, r: InternshipRecord, user=None) -> tuple[list[str], di
 
 
 def get_onboard_checklist(rec_id, user=None) -> dict:
-    """上岗前置检查清单（供前端在点「上岗」前展示，不做写操作）。"""
     with session() as db:
         r = _get(db, rec_id)
         _assert_write_scope(db, r, user)
@@ -637,11 +648,12 @@ def get_onboard_checklist(rec_id, user=None) -> dict:
                 "ruleVersion": result["ruleVersion"], "evaluation": result}
 
 
-def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
+def set_status(rec_id, action: str, reason: str = "", user=None, expected_version=None) -> dict:
     """普通状态流转仅 READY / ONBOARD / ASSESS；归档必须走 archive_student。"""
     with session() as db:
-        r = _get(db, rec_id)
+        r = _get_for_update(db, rec_id)
         _assert_write_scope(db, r, user)
+        _require_record_version(r, expected_version)
         if action == "READY":
             if r.status != "PREPARING":
                 raise AppException("DATA_CONFLICT", "仅「准备中」可置为待上岗")
@@ -669,7 +681,8 @@ def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
             r.status = "ASSESSING"
         else:
             raise AppException("VALIDATION_ERROR", "非法状态动作")
-        detail = {"reason": reason, "to": r.status}
+        r.version = int(r.version or 0) + 1
+        detail = {"reason": reason, "to": r.status, "recordVersion": int(r.version or 0)}
         if action in ("ONBOARD", "ASSESS"):
             detail.update({
                 "ruleVersion": evaluation["ruleVersion"],
@@ -682,29 +695,35 @@ def set_status(rec_id, action: str, reason: str = "", user=None) -> dict:
         return _row_of(db, r)
 
 
-def set_eligibility(rec_id, status: str, reason: str = "", user=None) -> dict:
+def set_eligibility(rec_id, status: str, reason: str = "", user=None, expected_version=None) -> dict:
     if status not in ("QUALIFIED", "UNQUALIFIED", "PENDING"):
         raise AppException("VALIDATION_ERROR", "非法资格状态")
     with session() as db:
-        r = _get(db, rec_id)
+        r = _get_for_update(db, rec_id)
         _assert_write_scope(db, r, user)
+        _require_record_version(r, expected_version)
         r.eligibility_status = status
-        _trail(db, r.id, "ELIGIBILITY", {"status": status, "reason": reason})
+        r.version = int(r.version or 0) + 1
+        _trail(db, r.id, "ELIGIBILITY", {"status": status, "reason": reason,
+                                          "recordVersion": int(r.version or 0)})
         db.commit()
         return _row_of(db, r)
 
 
-def set_destination(rec_id, destination: str, reason: str = "", user=None) -> dict:
+def set_destination(rec_id, destination: str, reason: str = "", user=None, expected_version=None) -> dict:
     """自主实习 / 免实习 / 未落实。已分配岗位(ASSIGNED)请走退岗，不在此改。"""
     if destination not in ("SELF_ARRANGED", "EXEMPTED", "NONE"):
         raise AppException("VALIDATION_ERROR", "非法去向（分配岗位请用分配接口）")
     with session() as db:
-        r = _get(db, rec_id)
+        r = _get_for_update(db, rec_id)
         _assert_write_scope(db, r, user)
+        _require_record_version(r, expected_version)
         if r.position_id:
             raise AppException("DATA_CONFLICT", "已分配岗位，请先退岗再改去向")
         r.destination_type = destination
-        _trail(db, r.id, "DESTINATION", {"destination": destination, "reason": reason})
+        r.version = int(r.version or 0) + 1
+        _trail(db, r.id, "DESTINATION", {"destination": destination, "reason": reason,
+                                          "recordVersion": int(r.version or 0)})
         db.commit()
         return _row_of(db, r)
 
@@ -714,7 +733,6 @@ def set_destination(rec_id, destination: str, reason: str = "", user=None) -> di
 def student_stats(batch_id=None, keyword=None, class_id=None, status=None,
                   risk_level=None, eligibility=None, destination=None,
                   has_position=None, user=None) -> dict:
-    """与 list_students / export_students 共用同一过滤条件，保证 total 一致。"""
     with session() as db:
         kept = _collect_scoped_records(
             db, batch_id=batch_id, keyword=keyword, class_id=class_id, status=status,
@@ -726,8 +744,7 @@ def student_stats(batch_id=None, keyword=None, class_id=None, status=None,
         assigned = sum(1 for r in kept if r.position_id)
         unassigned = total - assigned
         qualified = sum(1 for r in kept if r.eligibility_status == "QUALIFIED")
-        from app.modules.internship.services.internship_batch_context import (
-            batch_public_fields, resolve_batch)
+        from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
         batch = resolve_batch(db, batch_id, for_write=False)
         return {"total": total, "byStatus": by_status, "assigned": assigned,
                 "unassigned": unassigned, "qualified": qualified,
@@ -737,7 +754,6 @@ def student_stats(batch_id=None, keyword=None, class_id=None, status=None,
 # ═══════════ 导入 / 导出 ═══════════
 
 def _parse_date(s):
-    """宽松解析日期：支持 2026-03-02 / 2026/3/2 / 2026.3.2；空返回 None；非法返回 False。"""
     s = (s or "").strip()
     if not s:
         return None
@@ -750,11 +766,7 @@ def _parse_date(s):
 
 
 def import_dry_run(rows: list[dict], batch_id=None) -> dict:
-    """xlsx 逐行预校验：学生与指导教师均引用既有账号/主档，不隐式创建身份。
-    批次来自页面上下文 batchId，不依赖 Excel 填写数据库 ID。
-    """
-    from app.modules.internship.services.internship_batch_context import (
-        batch_public_fields, resolve_batch)
+    from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=True)
         profiles = {s.student_no: s for s in db.scalars(select(StudentProfile).where(
@@ -805,12 +817,9 @@ def import_dry_run(rows: list[dict], batch_id=None) -> dict:
 
 def import_confirm(rows: list[dict], batch_id=None, user=None) -> dict:
     from sqlalchemy.exc import IntegrityError
-
-    from app.modules.internship.services.internship_batch_context import (
-        batch_public_fields, resolve_batch)
+    from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
     from app.modules.internship.services.internship_service import assert_admin_tenant
     assert_admin_tenant(user, "实习学生批量导入")
-    # confirm 重新校验批次状态，不信任 dry-run 时的快照
     pre = import_dry_run(rows, batch_id=batch_id)
     if pre["invalidRows"] > 0:
         raise AppException("DATA_CONFLICT", "存在未通过预校验的行，禁止确认导入")
@@ -825,7 +834,6 @@ def import_confirm(rows: list[dict], batch_id=None, user=None) -> dict:
                 if not stu:
                     failed += 1
                     continue
-                # confirm 再次查重（防 dry-run 后并发写入）
                 dup = db.scalars(select(InternshipRecord).where(
                     InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
                     InternshipRecord.batch_id == batch.id,
@@ -858,7 +866,6 @@ def import_confirm(rows: list[dict], batch_id=None, user=None) -> dict:
                 **batch_public_fields(batch)}
 
 
-# 导入模板仅含真实可写入字段（P0-6）。本次导入只建实习学生名单，不自动分岗、不上岗。
 IMPORT_HEADERS = ["学号", "指导教师", "实习开始日期", "实习结束日期", "备注"]
 IMPORT_REQUIRED = ["学号"]
 IMPORT_HEADER_MAP = {
@@ -883,15 +890,12 @@ def _row_values_for_error(r: dict) -> list:
 def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
                     class_id=None, risk_level=None, destination=None, has_position=None,
                     user=None) -> dict:
-    """导出实习学生台账（xlsx）：与 list_students 同过滤；文件名含水印含批次名；审计记 batchId。"""
-    from app.modules.internship.services.internship_batch_context import (
-        batch_public_fields, resolve_batch)
+    from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
     from app.services import xlsx_util
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=False)
         batch_meta = batch_public_fields(batch)
-    from app.modules.internship.services.internship_export_util import (
-        load_export_rows, pack_export_meta)
+    from app.modules.internship.services.internship_export_util import load_export_rows, pack_export_meta
     items, total = load_export_rows(
         list_students, keyword=keyword, status=status, eligibility=eligibility,
         batch_id=batch_id, class_id=class_id, risk_level=risk_level,

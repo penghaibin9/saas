@@ -226,12 +226,7 @@ def student_help_report(user, body=None) -> dict:
             from app.services.message_event_outbox_service import emit_message_event
             advisor = None
             if getattr(rec, "advisor_user_id", None):
-                advisor = db.get(User, rec.advisor_user_id)
-            if not advisor and (rec.advisor_name or "").strip():
-                advisor = db.scalars(select(User).where(
-                    User.tenant_id == _tid(), User.real_name == rec.advisor_name.strip(),
-                    User.user_type == "TEACHER", User.is_deleted.is_(False),
-                    User.status == "ACTIVE")).first()
+                advisor = tenant_get(db, User, rec.advisor_user_id)
             if advisor:
                 emit_message_event(
                     db,

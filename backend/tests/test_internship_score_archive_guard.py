@@ -21,6 +21,7 @@ def _seed(db_mode):
     from uuid import uuid4
 
     from app.db.session import get_sessionmaker
+    from app.models import User
     from app.models import (
         EmpCompany, InternshipAgreement, InternshipBatch, InternshipCheckin,
         InternshipEnterpriseEval, InternshipFinalScore, InternshipGuidance,
@@ -72,9 +73,17 @@ def _seed(db_mode):
         )
         db.add(student)
         db.flush()
+        advisor = User(
+            tenant_id=TID, login_name=f"score-archive-advisor-{uuid4().hex[:8]}",
+            real_name="成绩归档老师", password_hash="test-only",
+            user_type="TEACHER", status="ACTIVE",
+        )
+        db.add(advisor)
+        db.flush()
         record = InternshipRecord(
             tenant_id=TID,
             student_id=student.id,
+            advisor_user_id=advisor.id,
             advisor_name="成绩归档老师",
             enterprise_name=company.name,
             position_name=position.title,

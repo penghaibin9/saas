@@ -97,7 +97,7 @@
           <div class="bps-metrics bps-metrics--compact">
             <div><strong>{{ summary.activeCount || 0 }}</strong><span>当前参与学生</span></div>
             <div><strong>{{ summary.removedCount || 0 }}</strong><span>已移出</span></div>
-            <div><strong>{{ summary.plannedCount || 0 }}</strong><span>批次计划人数</span></div>
+            <div><strong>{{ summary.plannedCount || 0 }}</strong><span>{{ summary.plannedCountScoped ? '当前范围人数' : '批次计划人数' }}</span></div>
           </div>
           <p v-if="!participantRows.length" class="bps-empty">该批次尚无参与学生记录。</p>
           <div v-else class="bps-table-wrap">

@@ -161,6 +161,7 @@ def _record_entries(db, rec, user, base: str, entries, files, missing):
                 _attachment(db, file_id, user, f"{base}attachments", entries, files, missing)
     audits = db.scalars(select(InternshipAuditTrail).where(
         InternshipAuditTrail.tenant_id == _tid(),
+        InternshipAuditTrail.target_type == "INTERN_STUDENT",
         InternshipAuditTrail.target_id == rec.id).order_by(InternshipAuditTrail.id)).all()
     _add_json(entries, f"{base}audit/internship-audit.json", [_safe_row(x) for x in audits])
     return evaluation
@@ -188,6 +189,7 @@ def capture_archive_snapshot(db, rec, evaluation, user=None) -> dict:
                 })
     audits = db.scalars(select(InternshipAuditTrail).where(
         InternshipAuditTrail.tenant_id == _tid(),
+        InternshipAuditTrail.target_type == "INTERN_STUDENT",
         InternshipAuditTrail.target_id == rec.id).order_by(InternshipAuditTrail.id)).all()
     return {
         "snapshotSchemaVersion": "INTERNSHIP_ARCHIVE_SNAPSHOT_V2",

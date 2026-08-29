@@ -410,9 +410,16 @@
               <p class="sp-muted" style="margin-top:8px">发布时间：{{ fmt(my.score.publishedAt) }}</p>
             </template>
             <p v-else class="sp-muted">综合成绩由企业导师、指导教师、周月报打卡按权重生成，发布后可在此查看。</p>
+            <div v-if="appealMeta?.hasAppeal" class="notebox" style="margin-top:14px">
+              最近申诉：{{ appealMeta.statusLabel || appealMeta.status }}
+              <span v-if="appealMeta.status === 'APPROVED_RECALCULATING'"> · 原成绩已撤回，学校正在重新核算</span>
+              <span v-else-if="appealMeta.status === 'CLOSED'"> · 新成绩已重新发布</span>
+            </div>
             <div class="sp-fieldlabel" style="margin-top:14px">成绩申诉理由</div>
             <textarea v-model.trim="appealReason" class="sp-inp" style="margin-bottom:12px" placeholder="对成绩有异议？请说明理由" />
-            <button class="sp-btn sp-btn--ghost" :disabled="busy || !appealReason" @click="submitAppeal">提交成绩申诉</button>
+            <button class="sp-btn sp-btn--ghost"
+              :disabled="busy || !appealReason || !my.score || ['PENDING','APPROVED_RECALCULATING'].includes(appealMeta?.status)"
+              @click="submitAppeal">提交成绩申诉</button>
           </section>
         </div>
       </template>
@@ -486,6 +493,7 @@ const insuranceMeta = ref(null)
 const planMeta = ref(null)
 const helpForm = reactive({ title: '', content: '', riskLevel: 'MEDIUM' })
 const appealReason = ref('')
+const appealMeta = ref(null)
 const selfEvalMeta = ref(null)
 
 const brandSchool = computed(() => cfg.brand?.schoolName || '学校')
@@ -611,6 +619,9 @@ async function loadExtras() {
   try {
     selfEvalMeta.value = await internshipCoreApi.selfEval()
   } catch { selfEvalMeta.value = null }
+  try {
+    appealMeta.value = await portalApi.internshipScoreAppealStatus(currentInternshipContext())
+  } catch { appealMeta.value = null }
   await loadEnterprises()
 }
 async function loadEnterprises() {
@@ -930,7 +941,12 @@ async function submitSelfEval() {
 }
 async function submitAppeal() {
   busy.value = true
-  try { await portalApi.internshipScoreAppeal({ reason: appealReason.value }); ui.notify('成绩申诉已提交'); appealReason.value = '' }
+  try {
+    await portalApi.internshipScoreAppeal({ ...currentInternshipContext(), reason: appealReason.value })
+    ui.notify('成绩申诉已提交')
+    appealReason.value = ''
+    appealMeta.value = await portalApi.internshipScoreAppealStatus(currentInternshipContext())
+  }
   catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
 async function printAgreement() {

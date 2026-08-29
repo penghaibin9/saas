@@ -63,7 +63,7 @@ def _published_position(client, headers, batch_id=None):
     company = client.post(ENT, headers=headers, json={
         "name": "申请闭环企业", "creditCode": "91310000APP0001X",
     }).json()["data"]["id"]
-    assert client.post(f"{ENT}/{company}/review", headers=headers, json={"action": "APPROVE"}).json()["code"] == 0
+    assert client.post(f"{ENT}/{company}/review", headers=headers, json={"action": "APPROVE", "expectedVersion": 0}).json()["code"] == 0
     position = client.post(POS, headers=headers, json={
         "companyId": company, "title": "申请闭环岗位", "workLocation": "上海市浦东新区",
         "headcount": 1, "batchId": str(batch_id), **_RIGHTS_FACTS,
@@ -194,7 +194,7 @@ def test_approve_rolls_back_when_position_full(client, auth_headers, db_mode):
     company = client.post(ENT, headers=auth_headers, json={
         "name": "满员回滚企业", "creditCode": "91310000APPFULL1X",
     }).json()["data"]["id"]
-    assert client.post(f"{ENT}/{company}/review", headers=auth_headers, json={"action": "APPROVE"}).json()["code"] == 0
+    assert client.post(f"{ENT}/{company}/review", headers=auth_headers, json={"action": "APPROVE", "expectedVersion": 0}).json()["code"] == 0
     batch_id = _mk_batch(client, auth_headers)
     position = client.post(POS, headers=auth_headers, json={
         "companyId": company, "title": "满员回滚岗位", "workLocation": "上海市浦东新区",

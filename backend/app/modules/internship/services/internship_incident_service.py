@@ -41,20 +41,49 @@ def create_plan(body, user=None):
     if not str(b.get("responseSteps") or "").strip():
         raise AppException("VALIDATION_ERROR", "应急处置步骤必填")
     with session() as db:
+        from app.models import EmpCompany, InternshipBatch
+        from app.services import file_service
+        company_id = _as_id(b["companyId"]) if b.get("companyId") else None
+        batch_id = _as_id(b["batchId"]) if b.get("batchId") else None
+        if company_id:
+            company = db.get(EmpCompany, company_id)
+            if not company or company.is_deleted or company.tenant_id != _tid():
+                raise not_found("应急预案关联企业不存在或不在当前租户")
+        if batch_id:
+            batch = db.get(InternshipBatch, batch_id)
+            if not batch or batch.is_deleted or batch.tenant_id != _tid():
+                raise not_found("应急预案关联批次不存在或不在当前租户")
+        def _plan_dt(value, label):
+            if not value:
+                return None
+            try:
+                return datetime.fromisoformat(str(value).replace("Z", "")[:19])
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", f"{label}格式不正确") from None
+        valid_from = _plan_dt(b.get("validFrom"), "生效日期")
+        valid_until = _plan_dt(b.get("validUntil"), "失效日期")
+        if valid_from and valid_until and valid_from > valid_until:
+            raise AppException("VALIDATION_ERROR", "应急预案生效日期不能晚于失效日期")
+        file_ids = [str(v) for v in (b.get("fileIds") or []) if v]
+        for fid in file_ids:
+            if not file_service.get_file_meta(fid, user=user):
+                raise AppException("VALIDATION_ERROR", "应急预案附件不存在或无权访问")
         x = InternshipEmergencyPlan(
             tenant_id=_tid(),
-            company_id=_as_id(b["companyId"]) if b.get("companyId") else None,
-            batch_id=_as_id(b["batchId"]) if b.get("batchId") else None,
+            company_id=company_id,
+            batch_id=batch_id,
             plan_name=name,
             responsible_person=str(b.get("responsiblePerson") or "").strip(),
             emergency_contact=str(b.get("emergencyContact") or "").strip(),
             backup_contact=str(b.get("backupContact") or "").strip() or None,
             hospital_or_support=str(b.get("hospitalOrSupport") or "").strip() or None,
             response_steps=str(b.get("responseSteps") or "").strip(),
-            valid_from=b.get("validFrom"), valid_until=b.get("validUntil"),
-            file_ids=b.get("fileIds") or [], status="DRAFT")
+            valid_from=valid_from, valid_until=valid_until,
+            file_ids=file_ids, status="DRAFT")
         db.add(x)
         db.flush()
+        for fid in file_ids:
+            file_service.bind_file_biz(fid, "INTERNSHIP", str(x.id), user=user, db=db)
         _audit(db, x.id, "EMERGENCY_PLAN", "CREATE", user, {
             "companyId": str(x.company_id or ""), "batchId": str(x.batch_id or ""),
             "actorUserId": _uid(user), "version": int(x.version or 0),
@@ -72,7 +101,7 @@ def review_plan(pid, action, user=None, expected_version=None, comment=""):
             InternshipEmergencyPlan.is_deleted.is_(False)).with_for_update())
         if not x:
             raise not_found("应急预案不存在")
-        if expected_version is not None and int(expected_version) != int(x.version or 0):
+        if expected_version is None or int(expected_version) != int(x.version or 0):
             raise AppException("DATA_CONFLICT", "应急预案版本已变化，请刷新后重试")
         before = x.status
         if action == "SUBMIT" and x.status == "DRAFT":
@@ -120,12 +149,13 @@ def report_incident(body, user=None):
         raise AppException("VALIDATION_ERROR", "idempotencyKey 必填")
     if not str(b.get("summary") or "").strip():
         raise AppException("VALIDATION_ERROR", "事故情况摘要必填")
+    if not b.get("internshipId"):
+        raise AppException("VALIDATION_ERROR", "学生事故上报必须关联 internshipId")
     with session() as db:
-        if b.get("internshipId"):
-            from app.modules.internship.services.internship_scope import assert_internship_record_scope
-            rec = assert_internship_record_scope(db, b["internshipId"], user, "事故上报")
-            b["studentId"], b["batchId"], b["companyId"] = (
-                rec.student_id, rec.batch_id, rec.enterprise_id)
+        from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        rec = assert_internship_record_scope(db, b["internshipId"], user, "事故上报")
+        b["studentId"], b["batchId"], b["companyId"] = (
+            rec.student_id, rec.batch_id, rec.enterprise_id)
         existing = _find_by_idempotency_key(db, key)
         if existing:
             return _idempotent_result(existing)

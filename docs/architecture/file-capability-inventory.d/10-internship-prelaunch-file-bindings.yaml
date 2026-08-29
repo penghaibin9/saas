@@ -1,0 +1,46 @@
+entries:
+  - module: internship
+    client: backend
+    route: /api/v1/internship/compliance/emergency-plans
+    page: backend/app/modules/internship/services/internship_incident_service.py
+    action: metadata-validate+bind
+    fileCategory: INTERNSHIP
+    api: POST /api/v1/internship/compliance/emergency-plans
+    backendService: backend/app/modules/internship/services/internship_incident_service.py::create_plan
+    storageMode: file-center-existing-object+business-binding
+    authMode: authenticated+internship.incident.handle+file-center-auth
+    dataScope: tenant+company+batch+file-owner-or-bind-permission
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: 应急预案提交已有 File Center 文件 ID；服务先通过 get_file_meta 做租户、文件访问权限与 readyForBusiness 安全门禁，再以 INTERNSHIP 业务类型绑定到应急预案记录。源码 backend/app/modules/internship/services/internship_incident_service.py
+
+  - module: internship
+    client: backend
+    route: /api/v1/internship/compliance/filings
+    page: backend/app/modules/internship/services/internship_special_filing_service.py
+    action: metadata-validate+bind
+    fileCategory: INTERNSHIP
+    api: POST /api/v1/internship/compliance/filings
+    backendService: backend/app/modules/internship/services/internship_special_filing_service.py::create
+    storageMode: file-center-existing-object+business-binding
+    authMode: authenticated+internship.filing.review+internship-record-scope+file-center-auth
+    dataScope: tenant+internship-record+student+file-owner-or-bind-permission
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: 特殊实习备案提交已有 File Center 文件 ID；创建与再次提交前均通过 get_file_meta 校验文件仍可用且已完成安全扫描，创建时再绑定到备案记录。源码 backend/app/modules/internship/services/internship_special_filing_service.py

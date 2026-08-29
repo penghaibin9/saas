@@ -126,6 +126,26 @@ def test_student_without_batch_header_can_only_read_own_bound_internship_file(db
             {"userType": "STUDENT", "studentNo": other.student_no},
             "meta",
         ) is False
+        assert strict_scoped_binding_resolver(
+            db,
+            file_obj,
+            [binding],
+            {
+                "userId": "99001", "userType": "ADMIN",
+                "currentRoleCode": "SCHOOL_ADMIN", "tenantId": str(TID),
+            },
+            "meta",
+        ) is True
+        assert strict_scoped_binding_resolver(
+            db,
+            file_obj,
+            [binding],
+            {
+                "userId": "ent-99001", "userType": "ENTERPRISE",
+                "currentRoleCode": "ENTERPRISE_ADMIN", "tenantId": str(TID),
+            },
+            "meta",
+        ) is False
         db.rollback()
     finally:
         db.close()

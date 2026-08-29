@@ -35,6 +35,7 @@ DEFAULT_COMPLIANCE_RULES = {
     "specialFiling": {
         "label": "特殊实习备案", "required": False, "severity": "BLOCK",
         "crossProvinceRequired": True, "highRiskPositionRequired": True, "nightShiftRequired": True,
+        "schoolRegion": None,
     },
     "workRights": {
         "label": "岗位劳动权益", "required": False, "severity": "BLOCK",

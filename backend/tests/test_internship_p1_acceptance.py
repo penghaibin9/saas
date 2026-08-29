@@ -167,7 +167,9 @@ def test_mysql_two_connections_last_slot_race(client, auth_headers, db_mode):
     if ent.get("code") != 0:
         pytest.fail(f"enterprise create failed: {ent}")
     eid = ent["data"]["id"]
-    client.post(f"{ENT}/{eid}/review", headers=auth_headers, json={"action": "APPROVE"})
+    client.post(f"{ENT}/{eid}/review", headers=auth_headers, json={
+        "action": "APPROVE", "expectedVersion": int(ent["data"].get("version") or 0),
+    })
     pos = client.post(POS, headers=auth_headers, json={
         "companyId": eid, "title": _uniq("末席岗"), "headcount": 1, "batchId": bid,
         "workContent": "现场值守", "dailyHours": 8, "weeklyHours": 40, "nightShift": False,
