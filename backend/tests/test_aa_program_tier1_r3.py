@@ -20,13 +20,16 @@ import time
 
 import pytest
 
+from tests.support_academic_review_identity import ensure_college_review_scope
+
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
 # 正式 submit/bind 门禁会校验稳定课程身份、真实专业、结构化毕业要求与国家标准绑定告警，
-# 故最小表集必须覆盖这些真实读取源；不再用 phantom majorId 或“课程名占位 + 缺表”绕过生产治理。
+# 学院审核还必须解析真实 COLLEGE scope，因此最小表集显式覆盖 School IAM 的相关事实表。
 _PROGRAM_TABLES = [
     "t_college", "t_major",
+    "t_user", "t_role", "t_permission", "t_user_role", "t_role_permission", "t_teacher_student_scope",
     "t_aa_program", "t_aa_program_course", "t_aa_program_binding",
     "t_aa_program_graduation_requirement", "t_aa_program_practice_segment",
     "t_aa_course", "t_national_standard_document", "t_school_major_standard_binding",
@@ -127,6 +130,7 @@ def _ensure_real_major():
 def _new_program(client, hdr, name):
     # 正式发布/绑定门禁要求方案必须有稳定且真实存在的专业/年级身份。
     major_id = _ensure_real_major()
+    ensure_college_review_scope(major_ids=[major_id])
     r = client.post(f"{BASE}/programs", headers=hdr, json={
         "programName": name, "majorId": str(major_id), "gradeYear": "2026"})
     assert r.status_code == 200, r.text
@@ -182,7 +186,11 @@ def _publish(client, hdr, pid):
     _make_governance_ready(client, hdr, pid)
     r = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
     assert r.status_code == 200, r.text
-    r = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
+    r = client.post(
+        f"{BASE}/programs/{pid}/review",
+        headers=_hdr(client, "college_admin01"),
+        json={"action": "APPROVE"},
+    )
     assert r.status_code == 200, r.text
     r = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
     assert r.status_code == 200, r.text
