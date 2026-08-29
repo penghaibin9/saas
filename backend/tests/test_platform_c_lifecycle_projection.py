@@ -59,7 +59,7 @@ def _prepare(monkeypatch, rows):
 
 def test_student_projection_hides_restricted_and_masks_sensitive_summary(monkeypatch) -> None:
     rows = [
-        _fact(3, visibility="STUDENT_SELF_AND_SCOPED_STAFF", sensitivity="SENSITIVE"),
+        _fact(3, visibility="STUDENT_SELF_AND_SCOPED_STAFF", sensitivity="LEGACY_UNKNOWN"),
         _fact(2, visibility="STUDENT_SELF_ONLY"),
     ]
     db = _prepare(monkeypatch, rows)
@@ -72,21 +72,23 @@ def test_student_projection_hides_restricted_and_masks_sensitive_summary(monkeyp
         "STUDENT_SELF_ONLY", "STUDENT_SELF_AND_SCOPED_STAFF",
     }
     assert result["items"][0]["summary"] is None
+    assert result["items"][0]["sensitivityLevel"] == "HIGHLY_SENSITIVE"
     assert result["nextCursor"]
     event_time, row_id = service._decode_cursor(result["nextCursor"])
     assert (event_time, row_id) == (rows[0].event_time, rows[0].id)
 
 
 def test_staff_restricted_visibility_requires_explicit_sensitive_permission(monkeypatch) -> None:
-    rows = [_fact(1, visibility="SCOPED_STAFF_ONLY")]
+    rows = [_fact(1, visibility="SCOPED_STAFF_ONLY", sensitivity="SENSITIVE")]
     db = _prepare(monkeypatch, rows)
     monkeypatch.setattr(service, "has_permission", lambda _user, _permission: False)
 
-    service.lifecycle_timeline(db, student_id=7, user={"userType": "TEACHER"})
+    unprivileged = service.lifecycle_timeline(db, student_id=7, user={"userType": "TEACHER"})
 
     assert _visibility_values(db.statements[0]) == {
         "STUDENT_SELF_AND_SCOPED_STAFF", "SCOPED_STAFF_ONLY",
     }
+    assert unprivileged["items"][0]["summary"] is None
 
     privileged = _prepare(monkeypatch, rows)
     monkeypatch.setattr(
@@ -94,5 +96,8 @@ def test_staff_restricted_visibility_requires_explicit_sensitive_permission(monk
         "has_permission",
         lambda _user, permission: permission == "studentLifecycle.sensitive.view",
     )
-    service.lifecycle_timeline(privileged, student_id=7, user={"userType": "TEACHER"})
+    privileged_result = service.lifecycle_timeline(
+        privileged, student_id=7, user={"userType": "TEACHER"},
+    )
     assert "RESTRICTED_STAFF_ONLY" in _visibility_values(privileged.statements[0])
+    assert privileged_result["items"][0]["summary"] == "summary-1"

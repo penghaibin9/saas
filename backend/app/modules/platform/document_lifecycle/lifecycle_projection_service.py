@@ -15,6 +15,13 @@ from app.modules.platform.document_lifecycle.models import StudentLifecycleFact
 from app.services.message_identity import resolve_message_user_id
 from app.services.teacher_student_visibility_service import compile_teacher_student_visibility
 
+_KNOWN_SENSITIVITY = {"PUBLIC", "INTERNAL", "PERSONAL", "SENSITIVE", "HIGHLY_SENSITIVE"}
+
+
+def _normalized_sensitivity(value: object) -> str:
+    normalized = str(value or "").strip().upper()
+    return normalized if normalized in _KNOWN_SENSITIVITY else "HIGHLY_SENSITIVE"
+
 
 def _tid() -> int:
     value = int(current_tenant_id() or 0)
@@ -71,14 +78,16 @@ def lifecycle_timeline(db, *, student_id: int, user: dict, source_module: str | 
         StudentLifecycleFact.student_id == int(student.id),
     )
     user_type = str((user or {}).get("userType") or "").upper()
+    can_view_sensitive = False
     if user_type == "STUDENT":
         stmt = stmt.where(StudentLifecycleFact.visibility_code.in_((
             "STUDENT_SELF_ONLY", "STUDENT_SELF_AND_SCOPED_STAFF",
         )))
     else:
         staff_codes = ["STUDENT_SELF_AND_SCOPED_STAFF", "SCOPED_STAFF_ONLY"]
-        if has_permission(user or {}, "studentLifecycle.sensitive.view") \
-                or has_permission(user or {}, "*"):
+        can_view_sensitive = has_permission(user or {}, "studentLifecycle.sensitive.view") \
+            or has_permission(user or {}, "*")
+        if can_view_sensitive:
             staff_codes.append("RESTRICTED_STAFF_ONLY")
         stmt = stmt.where(StudentLifecycleFact.visibility_code.in_(staff_codes))
     if source_module:
@@ -95,22 +104,23 @@ def lifecycle_timeline(db, *, student_id: int, user: dict, source_module: str | 
     ).limit(size + 1)).all())
     has_more = len(rows) > size
     page = rows[:size]
-    return {
-        "studentId": str(student.id),
-        "studentName": student.real_name or "",
-        "items": [{
+    def project(row: StudentLifecycleFact) -> dict:
+        sensitivity = _normalized_sensitivity(row.sensitivity_level)
+        summary_allowed = sensitivity in {"PUBLIC", "INTERNAL", "PERSONAL"} \
+            or (user_type != "STUDENT" and can_view_sensitive)
+        return {
             "id": str(row.id), "sourceModule": row.source_module,
             "factType": row.fact_type, "eventTime": row.event_time.isoformat(),
             "title": row.title,
-            "summary": (
-                None
-                if user_type == "STUDENT" and row.sensitivity_level in {"SENSITIVE", "HIGHLY_SENSITIVE"}
-                else row.summary
-            ),
+            "summary": row.summary if summary_allowed else None,
             "importance": row.importance, "visibilityCode": row.visibility_code,
-            "sensitivityLevel": row.sensitivity_level,
+            "sensitivityLevel": sensitivity,
             "targetRef": row.target_ref_json, "canOpen": False,
-        } for row in page],
+        }
+    return {
+        "studentId": str(student.id),
+        "studentName": student.real_name or "",
+        "items": [project(row) for row in page],
         "nextCursor": _encode_cursor(page[-1]) if has_more and page else None,
         "pageSize": size,
     }

@@ -81,6 +81,9 @@ Verified in the independent PLAT-C worktree before any C7 registration:
 - Derived-body reads now also verify the embedded artifact contract, extractor/algorithm version and
   single/both source version+SHA identities against the persisted result row. Replacing a body and its
   digest together can no longer return content from a different authorized or unauthorized source.
+- Lifecycle reads independently fail closed for legacy/unknown sensitivity values. Student summaries
+  are masked for sensitive or unknown facts, and scoped staff receive sensitive summaries only with
+  the explicit sensitive-view permission, even if a historical row has an overly broad visibility.
 - A canonical academic status smoke path passed after the premature fact hook was removed. A later
   full canonical fixture rebuild stopped before PLAT-C execution because the baseline MySQL fixture
   could not recreate `t_role_template` (1146); this is preserved as a real same-head gate blocker,
