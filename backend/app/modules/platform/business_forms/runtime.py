@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+import math
 from typing import Any, Callable
 
 from app.core.exceptions import AppException
@@ -35,6 +36,8 @@ class BusinessFormRuntimeValidator:
         elif field.type == FormFieldType.NUMBER:
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 self._invalid(field.code, "字段必须是数字")
+            if not math.isfinite(float(value)):
+                self._invalid(field.code, "字段必须是有限数字")
             if field.min_value is not None and value < field.min_value:
                 self._invalid(field.code, "字段小于最小值")
             if field.max_value is not None and value > field.max_value:
@@ -57,7 +60,12 @@ class BusinessFormRuntimeValidator:
             values = value if field.multiple else [value]
             if field.multiple and not isinstance(value, list):
                 self._invalid(field.code, "多文件字段必须是数组")
-            if not values or any(not isinstance(item, (str, int)) for item in values):
+            valid_file_id = lambda item: (
+                isinstance(item, str) and bool(item.strip())
+            ) or (
+                isinstance(item, int) and not isinstance(item, bool) and item > 0
+            )
+            if not values or any(not valid_file_id(item) for item in values):
                 self._invalid(field.code, "文件字段必须提交 File Center ID")
         elif field.type == FormFieldType.STUDENT_PICKER:
             if not isinstance(value, (str, int)) or isinstance(value, bool):
@@ -73,6 +81,7 @@ class BusinessFormRuntimeValidator:
         version_id: int,
         context: dict,
         user: dict,
+        authoritative_values: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         self._schema_validator.validate(version)
         if int(version_id) != int(version.version_id):
@@ -95,15 +104,28 @@ class BusinessFormRuntimeValidator:
         unknown = sorted(set(submitted_values) - set(by_code))
         if unknown:
             raise AppException("FORM_FIELD_INJECTION", "提交包含未发布字段", details={"fields": unknown}, http_status=400)
+        if authoritative_values is not None and not isinstance(authoritative_values, dict):
+            raise AppException("FORM_ADAPTER_INVALID", "业务表单初始数据必须是对象", http_status=500)
+        # Client conditions are evaluated against initialData plus the current
+        # draft.  Rebuild that same view from a freshly authorized data-adapter
+        # read so readonly/server-owned facts cannot disappear at submit time.
+        # Submitted values win only for condition evaluation; an attempted
+        # readonly submission is still rejected below before any command runs.
+        condition_values = {
+            key: value
+            for key, value in (authoritative_values or {}).items()
+            if key in by_code
+        }
+        condition_values.update(submitted_values)
         sanitized: dict[str, Any] = {}
         for field in version.fields:
-            visible = field.visible_when is None or evaluate_condition(field.visible_when, submitted_values)
+            visible = field.visible_when is None or evaluate_condition(field.visible_when, condition_values)
             readonly = field.readonly or (
-                field.readonly_when is not None and evaluate_condition(field.readonly_when, submitted_values)
+                field.readonly_when is not None and evaluate_condition(field.readonly_when, condition_values)
             )
             required = visible and (
                 field.required or (
-                    field.required_when is not None and evaluate_condition(field.required_when, submitted_values)
+                    field.required_when is not None and evaluate_condition(field.required_when, condition_values)
                 )
             )
             present = field.code in submitted_values

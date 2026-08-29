@@ -222,6 +222,74 @@ def test_runtime_rechecks_required_client_student_and_file_authorization():
     assert caught.value.code == "FORM_CLIENT_UNSUPPORTED"
 
 
+def test_runtime_rebuilds_conditions_from_authoritative_initial_data():
+    version = _version(fields=[
+        {"code": "serverStatus", "type": "text", "label": "服务端状态", "readonly": True},
+        {
+            "code": "reason", "type": "textarea", "label": "原因",
+            "visibleWhen": {"op": "eq", "field": "serverStatus", "value": "PENDING"},
+            "requiredWhen": {"op": "eq", "field": "serverStatus", "value": "PENDING"},
+        },
+    ])
+    runtime = BusinessFormRuntimeValidator()
+    sanitized = runtime.validate_submission(
+        version=version,
+        submitted_values={"reason": "由服务端状态触发"},
+        authoritative_values={"serverStatus": "PENDING", "tenantId": "must-be-filtered"},
+        client="STUDENT_PC",
+        schema_hash=version.schema_hash,
+        version_id=version.version_id,
+        context={},
+        user={},
+    )
+    assert sanitized == {"reason": "由服务端状态触发"}
+
+    with pytest.raises(AppException) as caught:
+        runtime.validate_submission(
+            version=version,
+            submitted_values={"reason": "隐藏字段不得提交"},
+            authoritative_values={"serverStatus": "APPROVED"},
+            client="STUDENT_PC",
+            schema_hash=version.schema_hash,
+            version_id=version.version_id,
+            context={},
+            user={},
+        )
+    assert caught.value.code == "FORM_HIDDEN_FIELD_INJECTION"
+
+
+@pytest.mark.parametrize("invalid_number", [float("nan"), float("inf"), float("-inf")])
+def test_runtime_rejects_non_finite_numbers_and_boolean_file_ids(invalid_number):
+    version = _version(fields=[
+        {"code": "amount", "type": "number", "label": "数值"},
+        {"code": "fileIds", "type": "file", "label": "文件", "multiple": True},
+    ])
+    runtime = BusinessFormRuntimeValidator(file_authorizer=lambda *_: True)
+    with pytest.raises(AppException) as caught:
+        runtime.validate_submission(
+            version=version,
+            submitted_values={"amount": invalid_number},
+            client="STUDENT_PC",
+            schema_hash=version.schema_hash,
+            version_id=version.version_id,
+            context={},
+            user={},
+        )
+    assert caught.value.code == "FORM_VALUE_INVALID"
+
+    with pytest.raises(AppException) as caught:
+        runtime.validate_submission(
+            version=version,
+            submitted_values={"fileIds": [True]},
+            client="STUDENT_PC",
+            schema_hash=version.schema_hash,
+            version_id=version.version_id,
+            context={},
+            user={},
+        )
+    assert caught.value.code == "FORM_VALUE_INVALID"
+
+
 def test_special_filing_adapter_calls_canonical_commands_and_expected_version():
     calls = []
 
@@ -440,7 +508,11 @@ def test_application_service_loads_exact_active_version_before_real_command():
             "domainCommandAdapter": "INTERNSHIP_SPECIAL_FILING",
             "fields": [
                 {"code": "serverStatus", "type": "text", "label": "状态", "readonly": True},
-                {"code": "triggerReason", "type": "textarea", "label": "原因", "required": True},
+                {
+                    "code": "triggerReason", "type": "textarea", "label": "原因",
+                    "visibleWhen": {"op": "eq", "field": "serverStatus", "value": "NOT_APPLICABLE"},
+                    "requiredWhen": {"op": "eq", "field": "serverStatus", "value": "NOT_APPLICABLE"},
+                },
                 {"code": "fileIds", "type": "file", "label": "材料", "required": True, "multiple": True},
             ],
         })
@@ -476,6 +548,7 @@ def test_application_service_loads_exact_active_version_before_real_command():
             user={"userId": "u1"},
         )
         assert result.record_id == "88"
+        assert [call[0] for call in calls] == ["read", "read", "create"]
         assert calls[-1] == (
             "create",
             {"triggerReason": "跨省岗位需要备案", "fileIds": ["5"], "internshipId": "19"},

@@ -186,6 +186,7 @@ class BusinessFormSubmissionService:
         context: dict,
         expected_business_version: int | None,
         user: dict,
+        authoritative_values: dict | None = None,
     ) -> DomainCommandResult:
         sanitized = self._runtime.validate_submission(
             version=version,
@@ -195,6 +196,7 @@ class BusinessFormSubmissionService:
             version_id=version_id,
             context=context,
             user=user,
+            authoritative_values=authoritative_values,
         )
         adapter = self._registry.get(version.domain_command_adapter)
         adapter.validate_context(context=context, user=user)

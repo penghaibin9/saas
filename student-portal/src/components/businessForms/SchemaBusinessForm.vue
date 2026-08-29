@@ -5,7 +5,7 @@
       <label v-for="entry in visibleFields" :key="entry.field.code">
         <span>{{ entry.field.label }}<b v-if="entry.state.required">*</b></span>
         <textarea v-if="entry.field.type === 'textarea'" :disabled="entry.state.readonly" :value="values[entry.field.code] || ''" @input="set(entry.field.code, $event.target.value)" />
-        <select v-else-if="entry.field.type === 'select'" :disabled="entry.state.readonly" :value="values[entry.field.code]" @change="set(entry.field.code, $event.target.value)">
+        <select v-else-if="entry.field.type === 'select'" :disabled="entry.state.readonly" :multiple="entry.field.multiple" :value="values[entry.field.code]" @change="set(entry.field.code, selectValue($event, entry.field))">
           <option value="">请选择</option>
           <option v-for="option in entry.field.options || []" :key="String(option.value)" :value="option.value">{{ option.label }}</option>
         </select>
@@ -19,17 +19,25 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { normalizeVersion, presentation } from './schemaRuntime.js'
 
 const props = defineProps({ formVersion: { type: Object, required: true }, initialData: { type: Object, default: () => ({}) } })
 const emit = defineEmits(['submit', 'unsupported', 'request-file-center'])
 const values = reactive({ ...props.initialData })
+watch(() => props.initialData, value => {
+  Object.keys(values).forEach(key => delete values[key])
+  Object.assign(values, value || {})
+}, { deep: true })
 const version = computed(() => normalizeVersion(props.formVersion))
 const unsupportedFields = computed(() => version.value.fields.filter(field => field.type === 'student-picker' && !field.readonly))
 const unsupported = computed(() => !version.value.supportedClients.includes('STUDENT_PC') || unsupportedFields.value.length > 0)
 const visibleFields = computed(() => version.value.fields.map(field => ({ field, state: presentation(field, values) })).filter(entry => entry.state.visible))
 function set(code, value) { values[code] = value }
+function selectValue(event, field) {
+  if (!field.multiple) return event.target.value
+  return Array.from(event.target.selectedOptions).map(option => option._value ?? option.value)
+}
 function submit() {
   if (unsupported.value) {
     emit('unsupported', { code: 'FORM_CLIENT_UNSUPPORTED', clientType: 'STUDENT_PC' })

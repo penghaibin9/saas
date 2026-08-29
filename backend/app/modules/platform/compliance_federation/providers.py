@@ -67,7 +67,10 @@ class InternshipComplianceProvider:
     def _native_evaluator(self) -> Callable:
         if self._evaluator is not None:
             return self._evaluator
-        from app.modules.internship.services.internship_compliance_service import (
+        # Import the installed authority explicitly.  Importing the legacy
+        # module here relied on unrelated startup order to monkey-patch it and
+        # could otherwise bypass the corrected safety-evidence evaluation.
+        from app.modules.internship.services.internship_compliance_authoritative_service import (
             evaluate_internship_compliance,
         )
         return evaluate_internship_compliance
@@ -292,7 +295,16 @@ class EvidenceOnlyProvider:
 
 class ComplianceFederation:
     def __init__(self, providers: list[IDomainComplianceProvider]):
-        self._providers = {provider.provider_code: provider for provider in providers}
+        self._providers = {}
+        for provider in providers:
+            code = str(provider.provider_code or "").strip().upper()
+            domain = str(provider.domain_code or "").strip().upper()
+            if not code or not domain or code in self._providers:
+                raise AppException(
+                    "COMPLIANCE_PROVIDER_INVALID",
+                    "合规 provider code/domain 为空或 provider code 重复",
+                )
+            self._providers[code] = provider
 
     @property
     def provider_codes(self) -> tuple[str, ...]:
@@ -305,7 +317,7 @@ class ComplianceFederation:
         provider = self._providers.get(code)
         if not provider:
             raise AppException("COMPLIANCE_PROVIDER_NOT_FOUND", "未知合规 provider", http_status=404)
-        if str(subject_ref.domain or "").upper() != provider.domain_code:
+        if str(subject_ref.domain or "").upper() != str(provider.domain_code or "").strip().upper():
             raise AppException(
                 "COMPLIANCE_SUBJECT_DOMAIN_MISMATCH",
                 "合规 provider 与 subject domain 不匹配",

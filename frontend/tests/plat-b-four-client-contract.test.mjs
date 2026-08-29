@@ -41,6 +41,8 @@ test('Staff and Student PC submit exact form identity instead of copied business
     assert.match(form, /state\.readonly/)
     assert.doesNotMatch(form, /v-html|javascript:|remoteOptionsUrl|eval\s*\(|new Function/)
   }
+  assert.match(source('studentForm'), /selectedOptions/)
+  assert.match(source('studentForm'), /entry\.field\.multiple/)
 })
 
 test('Teacher and Student miniapp share one safe renderer and fail closed to PC', () => {
@@ -52,6 +54,7 @@ test('Teacher and Student miniapp share one safe renderer and fail closed to PC'
   assert.match(form, /formVersionId/)
   assert.match(form, /schemaHash/)
   assert.match(form, /MOBILE_FIELD_TYPES/)
+  assert.match(form, /field\.type === 'select' && field\.multiple/)
   assert.doesNotMatch(form, /MOBILE_FIELD_TYPES[^\n]+datetime/)
   assert.doesNotMatch(form, /v-html|javascript:|remoteOptionsUrl|eval\s*\(|new Function/)
 })

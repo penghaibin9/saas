@@ -69,17 +69,28 @@ def test_internship_provider_normalizes_without_changing_native_semantics():
     }
 
 
-def test_default_internship_provider_consumes_installed_canonical_authority():
+def test_default_internship_provider_consumes_installed_canonical_authority(monkeypatch):
     from app.modules.internship.services import (
         internship_compliance_authoritative_service as authoritative,
         internship_compliance_service as base,
-        internship_evidence_authority_guard as evidence_guard,
     )
 
+    monkeypatch.setattr(base, "evaluate_internship_compliance", lambda *_args, **_kwargs: {})
     evaluator = InternshipComplianceProvider()._native_evaluator()
-    assert evaluator is base.evaluate_internship_compliance
     assert evaluator is authoritative.evaluate_internship_compliance
-    assert evaluator is evidence_guard.evaluate_internship_compliance
+
+
+def test_federation_rejects_duplicate_or_blank_provider_identity():
+    first = EvidenceOnlyProvider("ACADEMIC_EVIDENCE", "ACADEMIC", "教务")
+    duplicate = EvidenceOnlyProvider("academic_evidence", "ACADEMIC", "教务副本")
+    with pytest.raises(AppException) as caught:
+        ComplianceFederation([first, duplicate])
+    assert caught.value.code == "COMPLIANCE_PROVIDER_INVALID"
+
+    blank = EvidenceOnlyProvider("", "ACADEMIC", "空 provider")
+    with pytest.raises(AppException) as caught:
+        ComplianceFederation([blank])
+    assert caught.value.code == "COMPLIANCE_PROVIDER_INVALID"
 
 
 def test_provider_exception_fails_closed_as_not_evaluated():

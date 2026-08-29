@@ -23,7 +23,7 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { normalizeVersion, presentation } from './schemaRuntime.js'
 
 const MOBILE_FIELD_TYPES = new Set(['text', 'textarea', 'number', 'select', 'date', 'file'])
@@ -34,8 +34,14 @@ const props = defineProps({
 })
 const emit = defineEmits(['submit', 'unsupported', 'request-file-center'])
 const values = reactive({ ...props.initialData })
+watch(() => props.initialData, value => {
+  Object.keys(values).forEach(key => delete values[key])
+  Object.assign(values, value || {})
+}, { deep: true })
 const version = computed(() => normalizeVersion(props.formVersion))
-const unsupportedFields = computed(() => version.value.fields.filter(field => !MOBILE_FIELD_TYPES.has(field.type)))
+const unsupportedFields = computed(() => version.value.fields.filter(field => (
+  !MOBILE_FIELD_TYPES.has(field.type) || (field.type === 'select' && field.multiple)
+)))
 const unsupported = computed(() => !version.value.supportedClients.includes(props.clientType) || unsupportedFields.value.length > 0)
 const visibleFields = computed(() => version.value.fields.map(field => ({ field, state: presentation(field, values) })).filter(entry => entry.state.visible))
 function set(code, value) { values[code] = value }

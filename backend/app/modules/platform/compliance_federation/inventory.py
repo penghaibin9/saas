@@ -10,7 +10,7 @@ DOMAIN_COMPLIANCE_INVENTORY = (
         "domain": "INTERNSHIP",
         "providerCode": "INTERNSHIP_NATIVE",
         "mode": "NATIVE_ENGINE",
-        "nativeEvaluator": "app.modules.internship.services.internship_compliance_service.evaluate_internship_compliance",
+        "nativeEvaluator": "app.modules.internship.services.internship_compliance_authoritative_service.evaluate_internship_compliance",
         "ruleSource": "internship_compliance_rules.get_batch_compliance_rules",
         "actualSource": "InternshipRecord plus domain evidence models",
         "writerSource": "internship domain services",

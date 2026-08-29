@@ -51,7 +51,10 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue', 'submit', 'unsupported', 'request-file-picker', 'request-student-picker'])
 const draft = reactive({ ...props.modelValue })
-watch(() => props.modelValue, value => Object.assign(draft, value || {}), { deep: true })
+watch(() => props.modelValue, value => {
+  Object.keys(draft).forEach(key => delete draft[key])
+  Object.assign(draft, value || {})
+}, { deep: true })
 const version = computed(() => normalizeFormVersion(props.formVersion))
 const unsupported = computed(() => !supportsClient(props.formVersion, props.clientType))
 const visibleFields = computed(() => version.value.fields
