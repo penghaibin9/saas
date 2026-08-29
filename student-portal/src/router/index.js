@@ -31,6 +31,7 @@ const routes = [
       { path: 'messages', name: 'messages', meta: { modulePath: 'messages' }, component: () => import('../views/messages/MessagesView.vue') },
       { path: 'service-hall', name: 'service-hall', component: () => import('../views/hall/ServiceHallView.vue') },
       { path: 'graduation/materials', name: 'graduation-material-library', meta: { modulePath: 'graduation' }, component: () => import('../views/graduation/GraduationMaterialsView.vue') },
+      { path: 'graduation/evidence-package', name: 'graduation-evidence-package', meta: { modulePath: 'graduation' }, component: () => import('../views/graduation/GraduationFrozenPackageView.vue') },
       { path: 'graduation/feedback', name: 'graduation-feedback', meta: { modulePath: 'graduation' }, component: () => import('../views/graduation/GraduationFeedbackResubmitView.vue') },
       { path: 'graduation', name: 'graduation-workbench', meta: { modulePath: 'graduation' }, component: () => import('../views/graduation/GraduationStudentClosureView.vue') },
       { path: ':module', name: 'module', component: () => import('../views/template/ModuleTemplateView.vue') }

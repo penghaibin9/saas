@@ -1,8 +1,6 @@
 """Sole V2 graduation archive manifest writer."""
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from datetime import datetime
 
@@ -13,6 +11,12 @@ from app.models import GraduationArchiveRecord, GraduationRiskCase, GraduationSt
 from app.models.data_exchange import ExportJob
 from app.models.file import ArchiveManifest, ArchiveManifestItem, FileObject, FileVersion
 from app.models.graduation_material import GraduationStudentMaterial
+from app.modules.platform_integrity.manifest_digest import (
+    PLATFORM_BUSINESS_SNAPSHOT,
+    PLATFORM_MANIFEST_DIGEST_V1,
+    is_platform_frozen_manifest,
+    platform_manifest_digest,
+)
 from app.modules.graduation.services.graduation_archive_data_quality import assert_archive_identity_writable
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _iso, _tid, session
@@ -55,7 +59,7 @@ def _manifest_view(db, manifest: ArchiveManifest) -> dict:
         ArchiveManifestItem.manifest_id == int(manifest.id),
         ArchiveManifestItem.is_deleted.is_(False),
     ).order_by(ArchiveManifestItem.sort_no, ArchiveManifestItem.id)).all())
-    return {
+    result = {
         "schemaVersion": MANIFEST_SCHEMA_VERSION,
         "manifestId": str(manifest.id), "revision": int(manifest.revision or 1),
         "status": manifest.status, "ruleVersion": manifest.rule_version or "",
@@ -73,6 +77,9 @@ def _manifest_view(db, manifest: ArchiveManifest) -> dict:
             "sortNo": int(item.sort_no or 0),
         } for item in items],
     }
+    if is_platform_frozen_manifest(items):
+        result["digestSchemaVersion"] = PLATFORM_MANIFEST_DIGEST_V1
+    return result
 
 
 def _student_for_update(db, gd_student_id: int) -> GraduationStudent:
@@ -170,29 +177,6 @@ def _collect_items(db, student: GraduationStudent, user: dict) -> tuple[object, 
     return rule, selected
 
 
-def _payload(student: GraduationStudent, archive_no: str, revision: int, rule, selected: list[tuple], user: dict) -> dict:
-    return {
-        "schemaVersion": MANIFEST_SCHEMA_VERSION,
-        "tenantId": str(_tid()), "batchId": str(student.batch_id),
-        "gdStudentId": str(student.id), "studentId": str(student.student_id or ""),
-        "studentNo": student.student_no or "", "studentName": student.name,
-        "topicId": str(student.topic_id or ""), "topicTitle": student.topic_title or "",
-        "advisorName": student.advisor_name or "", "archiveBatchNo": archive_no,
-        "revision": int(revision), "ruleCode": rule.rule_code,
-        "ruleVersion": int(rule.rule_version), "generatedBy": _actor_name(user),
-        "items": [{
-            "materialCode": material.material_code, "assetId": int(material.asset_id),
-            "fileVersionId": int(version.id), "fileObjectId": int(file_obj.id),
-            "fileNameSnapshot": file_obj.file_name, "sizeSnapshot": int(file_obj.size_bytes or 0),
-            "sha256Snapshot": file_obj.sha256,
-            "scanResult": str(file_obj.scan_status or SCAN_NOT_REQUIRED).upper(),
-            "reviewStatus": material.review_status,
-            "uploaderSnapshot": version.uploader_name_snapshot or "",
-            "submittedAt": _iso(version.submitted_at),
-        } for _, material, version, file_obj in selected],
-    }
-
-
 def file_archive(gd_student_id: int, archive_batch_no: str | None, user: dict) -> dict:
     """Atomically file one student and freeze exactly one new V2 manifest."""
     requested = _archive_no(archive_batch_no)
@@ -250,19 +234,28 @@ def file_archive(gd_student_id: int, archive_batch_no: str | None, user: dict) -
         _assert_no_open_risk(db, student)
         rule, selected = _collect_items(db, student, user)
         revision = int(latest.revision if latest else 0) + 1
-        payload = _payload(student, requested, revision, rule, selected, user)
-        digest = hashlib.sha256(json.dumps(
-            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-        ).encode("utf-8")).hexdigest()
+        frozen_at = datetime.utcnow()
         manifest = ArchiveManifest(
             tenant_id=_tid(), module_code=MODULE_CODE, archive_type=MANIFEST_ARCHIVE_TYPE,
             target_type=MANIFEST_TARGET_TYPE, target_id=str(student.id), revision=revision,
             status="FROZEN", rule_version=f"{rule.rule_code}:v{rule.rule_version}",
-            manifest_sha256=digest, created_by_name=_actor_name(user), frozen_at=datetime.utcnow(),
+            manifest_sha256=None, created_by_name=_actor_name(user), frozen_at=frozen_at,
             created_by=_actor_id(user),
         )
         db.add(manifest)
         db.flush()
+        from .platform_frozen_adapter import create_graduation_business_snapshot
+
+        snapshot = create_graduation_business_snapshot(
+            db,
+            student=student,
+            archive=archive,
+            archive_batch_no=requested,
+            revision=revision,
+            rule=rule,
+            frozen_at=frozen_at,
+            user=user,
+        )
         checklist = []
         selected_by_code = {material.material_code for _, material, _, _ in selected}
         for sort_no, (item, material, version, file_obj) in enumerate(selected, start=1):
@@ -279,6 +272,27 @@ def file_archive(gd_student_id: int, archive_batch_no: str | None, user: dict) -
             material.archived_revision = revision
             material.version = int(material.version or 0) + 1
             version.status = "ARCHIVED"
+        db.add(ArchiveManifestItem(
+            tenant_id=_tid(), manifest_id=int(manifest.id),
+            material_code=PLATFORM_BUSINESS_SNAPSHOT,
+            asset_id=int(snapshot.asset_id), version_id=int(snapshot.version_id),
+            file_object_id=int(snapshot.file_object_id), file_name_snapshot=snapshot.file_name,
+            size_snapshot=int(snapshot.size_bytes), sha256_snapshot=snapshot.sha256,
+            review_status="APPROVED", scan_result=SCAN_NOT_REQUIRED,
+            uploader_snapshot="系统冻结快照", submitted_at_snapshot=frozen_at,
+            sort_no=len(selected) + 1, created_by=_actor_id(user),
+        ))
+        db.flush()
+        frozen_items = list(db.scalars(select(ArchiveManifestItem).where(
+            ArchiveManifestItem.tenant_id == _tid(),
+            ArchiveManifestItem.manifest_id == int(manifest.id),
+            ArchiveManifestItem.is_deleted.is_(False),
+        )).all())
+        digest = platform_manifest_digest(manifest, frozen_items)
+        manifest.manifest_sha256 = digest
+        from app.modules.platform_integrity.file_job_service import enqueue_frozen_package
+
+        enqueue_frozen_package(db, manifest_id=int(manifest.id))
         for item in rule_items(db, int(rule.id)):
             if item.archive_required:
                 checklist.append({
