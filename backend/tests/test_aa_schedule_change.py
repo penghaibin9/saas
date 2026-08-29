@@ -25,6 +25,17 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _review_hdr(login_name):
+    """审批节点必须使用可被生产鉴权重新核验的真实 DB 账号令牌。"""
+    from affairs_contract_test_support import role_headers
+
+    role_code = {
+        "college_admin01": "COLLEGE_ADMIN",
+        "school_admin01": "SCHOOL_ADMIN",
+    }[login_name]
+    return role_headers(role_code, login_name=login_name)
+
+
 def _seed(db_mode):
     """调停课必须回链真实组织树；学院审批受理人由后续 READY 教学任务夹具按学院绑定。"""
     from app.db.session import get_sessionmaker
@@ -176,7 +187,7 @@ def _submit(client, hdr, origin, **kw):
 def _approve_college(client, change_id, expected_version):
     return client.post(
         f"{BASE}/schedule-change/{change_id}/approve",
-        headers=_hdr(client, "college_admin01"),
+        headers=_review_hdr("college_admin01"),
         json={"action": "APPROVE", "expectedVersion": int(expected_version)},
     )
 
@@ -184,7 +195,7 @@ def _approve_college(client, change_id, expected_version):
 def _approve_academic(client, change_id, expected_version):
     return client.post(
         f"{BASE}/schedule-change/{change_id}/approve",
-        headers=_hdr(client, "school_admin01"),
+        headers=_review_hdr("school_admin01"),
         json={"action": "APPROVE", "expectedVersion": int(expected_version)},
     )
 
@@ -283,7 +294,7 @@ def test_c7_reject_requires_reason(client, db_mode):
     submitted = _submit(client, admin, origin).json()["data"]
     cid = submitted["changeId"]
     version = submitted["version"]
-    reviewer = _hdr(client, "college_admin01")
+    reviewer = _review_hdr("college_admin01")
     short = client.post(
         f"{BASE}/schedule-change/{cid}/reject",
         headers=reviewer,
