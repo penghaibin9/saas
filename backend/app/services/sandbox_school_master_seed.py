@@ -273,7 +273,7 @@ def _seed_staff_accounts(db, tenant_id: int, role_ids: dict[str, int]) -> dict[s
         "tenant_id": tenant_id,
         "login_name": "sandbox-tourism-company-hr",
         "real_name": "周雯",
-        "password_hash": opaque_background_password_hash(),
+        "password_hash": shared_hash,
         "user_type": "ENTERPRISE_MENTOR",
         "phone_encrypted": encrypt_sensitive(enterprise_phone, "phone"),
         "phone_hash": hash_sensitive(enterprise_phone, "phone"),
