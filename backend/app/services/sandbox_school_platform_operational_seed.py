@@ -7,7 +7,7 @@ OTP、租户退服任务和租户墓碑不在此处造数据：007 为活跃学�
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from hashlib import sha256
 
@@ -54,7 +54,8 @@ def _global_put(db, model, key: dict, values: dict):
 def seed_platform_operational_coverage(db, tenant_id: int) -> dict:
     from app.models import (
         ExcelImportJob, ExportJob, ExportTask, FileObject, IdentityImportBatch,
-        Major, NationalStandardDocument, PlatformOrder, PortalSignRecord,
+        Major, NationalMajorCatalog, NationalStandardDocument, NationalStandardSource,
+        PlatformOrder, PortalSignRecord,
         SandboxBaseline, SharedImportBatch, StudentAccountLink, StudentProfile,
         User,
     )
@@ -278,16 +279,51 @@ def seed_platform_operational_coverage(db, tenant_id: int) -> dict:
             created_at=REFERENCE_NOW - timedelta(days=12),
         ))
 
-    # 校级专业与同名国家教学标准绑定，不使用无关文档凑数。
-    major_document = db.execute(select(Major, NationalStandardDocument).join(
-        NationalStandardDocument, NationalStandardDocument.major_name == Major.major_name
-    ).where(
-        Major.tenant_id == tenant_id, Major.is_deleted.is_(False),
-        NationalStandardDocument.is_deleted.is_(False), NationalStandardDocument.status == "PUBLISHED",
-    ).order_by(Major.id, NationalStandardDocument.id.desc())).first()
-    if not major_document:
+    # 空库 CI 不会运行外网采集任务；从仓库冻结的教育部 2025 公开清单写入一条
+    # 可核验的「软件技术」元数据，不伪造正文或采集完成状态。
+    standard_source = _global_put(db, NationalStandardSource, {
+        "source_key": "MOE_PROFESSIONAL_TEACHING_STANDARD", "version_label": "2025",
+    }, {
+        "source_type": "PROFESSIONAL_TEACHING_STANDARD",
+        "title": "758项新版职业教育专业教学标准",
+        "publisher": "中华人民共和国教育部",
+        "source_url": "https://www.moe.gov.cn/s78/A07/zcs_ztzl/2017_zt06/17zt06_bznr/bznr_zyjyzyjxbz/",
+        "published_date": date(2025, 2, 11), "is_official": True,
+        "copyright_policy": "INTERNAL_SEARCH_LINK_SOURCE", "retrieval_status": "PARTIAL",
+        "item_count": 1,
+        "metadata_json": {"scope": "sandbox-minimum", "officialPublishedCount": 758},
+    })
+    standard_major = _global_put(db, NationalMajorCatalog, {
+        "catalog_version": "2021", "education_level": "HIGHER_VOCATIONAL_SPECIALIST",
+        "major_code": "510203",
+    }, {
+        "source_id": standard_source.id, "category_code": "51", "category_name": "电子与信息大类",
+        "major_class_code": "5102", "major_class_name": "计算机类", "major_name": "软件技术",
+        "directory_status": "ACTIVE", "effective_date": date(2021, 3, 12),
+        "metadata_json": {"standardCovered": True, "source": "tmp/moe-standards-manifest.json"},
+    })
+    document = _global_put(db, NationalStandardDocument, {
+        "standard_code": "MOE-2025-HIGHER_VOCATIONAL_SPECIALIST-510203", "version_label": "2025",
+    }, {
+        "source_id": standard_source.id, "major_catalog_id": standard_major.id,
+        "document_type": "PROFESSIONAL_TEACHING_STANDARD",
+        "title": "软件技术专业教学标准（高等职业教育专科）",
+        "education_level": "HIGHER_VOCATIONAL_SPECIALIST", "major_code": "510203",
+        "major_name": "软件技术", "published_date": date(2025, 2, 11),
+        "source_url": (
+            "https://www.moe.gov.cn/s78/A07/zcs_ztzl/2017_zt06/17zt06_bznr/"
+            "bznr_zyjyzyjxbz/gdzyjy_zk/zk_dzyxxdl/dzxxdl_jsjl/202502/"
+            "P020250207533323690137.pdf"
+        ),
+        "text_status": "METADATA_ONLY", "structured_json": {"sectionCodes": []},
+        "char_count": 0, "status": "PUBLISHED",
+    })
+    major = db.scalars(select(Major).where(
+        Major.tenant_id == tenant_id, Major.major_name == document.major_name,
+        Major.is_deleted.is_(False),
+    ).order_by(Major.id)).first()
+    if major is None:
         raise RuntimeError("007 专业无同名国家教学标准，禁止错绑文档")
-    major, document = major_document
     _tenant_put(db, SchoolMajorStandardBinding, tenant_id, {
         "school_major_id": major.id, "document_id": document.id
     }, {

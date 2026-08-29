@@ -19,7 +19,6 @@ def _put(db, model, tenant_id, key, vals):
 
 def seed_internship_operational_coverage(db, tenant_id: int) -> dict:
     from app.core.field_crypto import encrypt_sensitive, hash_sensitive
-    from app.services.sandbox_school_credentials import opaque_background_password_hash
     from app.models import (EmpCompany, InternshipBatch, InternshipRecord, InternshipPosition, Major, StudentProfile, User)
     from app.models.employment import EmpJob, InternshipEnterpriseContact
     from app.models.internship_enterprise_portal import (InternshipCampaignEnterprise, InternshipEnterpriseAccessGrant,
@@ -78,7 +77,7 @@ def seed_internship_operational_coverage(db, tenant_id: int) -> dict:
     contact=_put(db,InternshipEnterpriseContact,tenant_id,{"company_id":recruitment_company.id,"email":"hr.tourism007@example.edu.cn"},{"contact_type":"CONTACT","name":"周雯","title":"人力资源专员","phone_encrypted":encrypt_sensitive("13900000071","phone"),"is_primary":True,"remark":"007 演示企业协同联系人，已完成学校资质核验。","status":"ACTIVE"})
     enterprise_user=_one(db,User,tenant_id,login_name="sandbox-tourism-company-hr")
     if enterprise_user is None:
-        enterprise_user=User(tenant_id=tenant_id,login_name="sandbox-tourism-company-hr",real_name=contact.name,password_hash=opaque_background_password_hash(),user_type="ENTERPRISE_MENTOR",phone_encrypted=encrypt_sensitive("13900000071","phone"),phone_hash=hash_sensitive("13900000071","phone"),status="ACTIVE",must_change_password=True);db.add(enterprise_user);db.flush()
+        raise RuntimeError("internship recruitment seed requires the master-seeded enterprise account")
     member=_put(db,InternshipEnterpriseMember,tenant_id,{"company_id":recruitment_company.id,"user_id":enterprise_user.id},{"contact_id":contact.id,"member_role":"HR","status":"ACTIVE","is_primary":True,"invited_phone_hash":hash_sensitive("13900000071","phone"),"invite_token_hash":hash_sensitive(f"{MARKER}-enterprise-invite","internship_enterprise_invite"),"invite_expires_at":REFERENCE_NOW-timedelta(days=5),"invited_at":REFERENCE_NOW-timedelta(days=8),"accepted_at":REFERENCE_NOW-timedelta(days=7),"last_active_at":REFERENCE_NOW-timedelta(hours=3)})
     for camp,comp,status,source in ((campaign,company,"ACCEPTED","MANUAL"),(campaign,company2,"INVITED","REUSE"),(campaign,company3,"DECLINED","MANUAL"),(archived_campaign,company,"ACCEPTED","REUSE")):
         _put(db,InternshipCampaignEnterprise,tenant_id,{"campaign_id":camp.id,"company_id":comp.id},{"status":status,"invite_source":source,"invited_by_user_id":admin.id,"invited_at":REFERENCE_NOW-timedelta(days=8),"accepted_at":REFERENCE_NOW-timedelta(days=7) if status=="ACCEPTED" else None,"declined_at":REFERENCE_NOW-timedelta(days=6) if status=="DECLINED" else None,"revoked_at":None,"revoke_reason":None})
