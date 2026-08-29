@@ -9,6 +9,7 @@ from __future__ import annotations
 
 TID = 1000000000000000001
 COLLEGE_LOGIN = "college_admin01"
+COLLEGE_ROLE = "COLLEGE_ADMIN"
 COURSE_REVIEW_PERMISSION = "academicAffairs.course.approve"
 PROGRAM_REVIEW_PERMISSION = "academicAffairs.program.review"
 
@@ -54,13 +55,13 @@ def _ensure_college_reviewer_permissions(db) -> None:
 
     role = db.query(Role).filter(
         Role.tenant_id == TID,
-        Role.role_code == "TEST_AA_COLLEGE_REVIEW",
+        Role.role_code == COLLEGE_ROLE,
     ).first()
     if role is None:
         role = Role(
             tenant_id=TID,
-            role_code="TEST_AA_COLLEGE_REVIEW",
-            role_name="TEST_AA_COLLEGE_REVIEW",
+            role_code=COLLEGE_ROLE,
+            role_name=COLLEGE_ROLE,
             status="ACTIVE",
         )
         db.add(role)
@@ -133,7 +134,7 @@ def seed_college_review_scope(db, *, college_ids=(), major_ids=()) -> list[int]:
         row = db.query(TeacherStudentScope).filter(
             TeacherStudentScope.tenant_id == TID,
             TeacherStudentScope.teacher_key == COLLEGE_LOGIN,
-            TeacherStudentScope.role_code == "COLLEGE_ADMIN",
+            TeacherStudentScope.role_code == COLLEGE_ROLE,
             TeacherStudentScope.scope_type == "COLLEGE",
             TeacherStudentScope.ref_value == college.college_name,
             TeacherStudentScope.is_deleted.is_(False),
@@ -142,7 +143,7 @@ def seed_college_review_scope(db, *, college_ids=(), major_ids=()) -> list[int]:
             row = TeacherStudentScope(
                 tenant_id=TID,
                 teacher_key=COLLEGE_LOGIN,
-                role_code="COLLEGE_ADMIN",
+                role_code=COLLEGE_ROLE,
                 scope_type="COLLEGE",
                 ref_value=college.college_name,
                 status="ACTIVE",
