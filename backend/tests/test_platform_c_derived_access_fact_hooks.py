@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.context import set_tenant
 from app.core.exceptions import AppException
+from app.modules.platform.document_lifecycle import derived_access as access
 from app.modules.platform.document_lifecycle.derived_access import (
     authorize_compare_result_read,
     authorize_extracted_artifact_read,
@@ -44,6 +45,24 @@ class _Port:
         )
 
 
+class _ScalarResult:
+    def __init__(self, row):
+        self.row = row
+
+    def first(self):
+        return self.row
+
+
+class _ResolverDb:
+    def __init__(self, row=None):
+        self.row = row
+        self.calls = 0
+
+    def scalars(self, _statement):
+        self.calls += 1
+        return _ScalarResult(self.row)
+
+
 def test_extracted_artifact_reauthorizes_source_on_every_read() -> None:
     port = _Port()
     authorize_extracted_artifact_read(
@@ -76,6 +95,40 @@ def test_compare_denies_whole_result_when_either_side_is_revoked() -> None:
         )
     assert exc.value.code == "DATA_NOT_FOUND"
     assert right_revoked.calls == [1, 2]
+
+
+def test_derivative_resolver_rejects_forged_file_to_artifact_binding(monkeypatch) -> None:
+    set_tenant(101)
+    try:
+        auth_calls = []
+        monkeypatch.setattr(
+            access, "authorize_extracted_artifact_read",
+            lambda **kwargs: auth_calls.append(kwargs),
+        )
+        binding = SimpleNamespace(
+            file_id=900, is_deleted=False, status="ACTIVE", biz_type="DOCUMENT_DERIVATIVE",
+            scope_json={
+                "derivativeKind": "EXTRACTED_TEXT", "artifactId": "77",
+                "sourceFileVersionId": "30", "sourceSha256": "a" * 64,
+            },
+        )
+        allowed = access.document_derivative_resolver(
+            _ResolverDb(row=None),
+            SimpleNamespace(id=900, tenant_id=101, is_deleted=False),
+            [binding], {"userId": "7"}, "preview",
+        )
+        assert allowed is False
+        assert auth_calls == []
+
+        allowed = access.document_derivative_resolver(
+            _ResolverDb(row=77),
+            SimpleNamespace(id=900, tenant_id=101, is_deleted=False),
+            [binding], {"userId": "7"}, "preview",
+        )
+        assert allowed is True
+        assert auth_calls[0]["source_file_version_id"] == 30
+    finally:
+        set_tenant(None)
 
 
 def test_five_selected_fact_hooks_share_one_rollback_boundary() -> None:

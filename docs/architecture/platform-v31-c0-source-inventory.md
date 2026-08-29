@@ -64,7 +64,7 @@ The PLAT-C private package contains no assignment to `FileVersion.is_current`,
 
 Verified in the independent PLAT-C worktree before any C7 registration:
 
-- 55 PLAT-C backend characterization, security, rollback, visibility, worker and backfill tests pass;
+- 56 PLAT-C backend characterization, security, rollback, visibility, worker and backfill tests pass;
   the suite contains no skip or xfail.
 - Staff PC and Student PC production builds pass. Miniapp H5 and Weixin builds pass. The private
   four-client contract tests pass 3/3 and assert one real server contract, exact version/SHA inputs,
@@ -74,6 +74,10 @@ Verified in the independent PLAT-C worktree before any C7 registration:
 - The 2026-08-30 third reverse review reproduced an inheritance defect where an unknown legacy
   sensitivity code could reach a derived FileObject unchanged. The worker now fails closed by
   normalising every unknown source level to `HIGHLY_SENSITIVE` before extraction or comparison.
+- A further source-bound falsification reproduced that a forged `DOCUMENT_DERIVATIVE` binding could
+  borrow a valid source ACL without proving that its FileObject was the stored output of that exact
+  artifact/result. The private C7 resolver candidate now requires tenant, result identity, generated
+  FileObject id and all pinned source identities to match a `SUCCEEDED` persisted row before ACL.
 - A canonical academic status smoke path passed after the premature fact hook was removed. A later
   full canonical fixture rebuild stopped before PLAT-C execution because the baseline MySQL fixture
   could not recreate `t_role_template` (1146); this is preserved as a real same-head gate blocker,
