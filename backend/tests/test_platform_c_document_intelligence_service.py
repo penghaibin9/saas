@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -24,11 +25,37 @@ class _Backend:
         return self.path
 
 
+def test_extracted_body_identity_must_match_persisted_artifact() -> None:
+    row = SimpleNamespace(
+        source_file_version_id=21, source_sha256="d" * 64,
+        extractor_code="SAFE_TEXT_LAYER", extractor_version="PARAGRAPH_PAGE_V1",
+    )
+    artifact = {
+        "contract": "PLAT_C_EXTRACTED_ARTIFACT_V1",
+        "extractorCode": "SAFE_TEXT_LAYER", "extractorVersion": "PARAGRAPH_PAGE_V1",
+        "source": {"fileVersionId": "21", "sourceSha256": "d" * 64},
+        "document": {"blocks": [{"paragraph": 1, "text": "alpha"}]},
+    }
+    assert service._validated_extracted_blocks(artifact, row)[0]["text"] == "alpha"
+    with pytest.raises(AppException):
+        service._validated_extracted_blocks({
+            **artifact,
+            "source": {"fileVersionId": "22", "sourceSha256": "e" * 64},
+        }, row)
+
+
 def test_compare_result_reauthorizes_both_sources_before_reading_body(monkeypatch, tmp_path) -> None:
-    body = json.dumps({"changes": [
-        {"status": "MODIFIED", "left": {"paragraph": 1}, "right": {"paragraph": 1}},
-        {"status": "ADDED", "left": None, "right": {"paragraph": 2}},
-    ]}, separators=(",", ":")).encode()
+    artifact = {
+        "contract": "PLAT_C_DOCUMENT_COMPARE_ARTIFACT_V1",
+        "algorithmCode": "PARAGRAPH_PAGE_V1", "algorithmVersion": "1.0.0",
+        "left": {"fileVersionId": "11", "sourceSha256": "a" * 64},
+        "right": {"fileVersionId": "12", "sourceSha256": "b" * 64},
+        "changes": [
+            {"status": "MODIFIED", "left": {"paragraph": 1}, "right": {"paragraph": 1}},
+            {"status": "ADDED", "left": None, "right": {"paragraph": 2}},
+        ],
+    }
+    body = json.dumps(artifact, separators=(",", ":")).encode()
     digest = hashlib.sha256(body).hexdigest()
     path = tmp_path / "compare.txt"
     path.write_bytes(body)
@@ -83,5 +110,22 @@ def test_compare_result_reauthorizes_both_sources_before_reading_body(monkeypatc
         with pytest.raises(AppException):
             service.compare_result_view(db, result_id=result_id, user={"userId": "7"})
         assert backend.calls == 1
+
+        monkeypatch.setattr(
+            service,
+            "authorize_compare_result_read",
+            lambda **kwargs: auth_calls.append(kwargs),
+        )
+        forged = json.dumps({
+            **artifact,
+            "left": {"fileVersionId": "999", "sourceSha256": "c" * 64},
+        }, separators=(",", ":")).encode()
+        forged_digest = hashlib.sha256(forged).hexdigest()
+        path.write_bytes(forged)
+        generated.sha256 = forged_digest
+        result.diff_sha256 = forged_digest
+        db.flush()
+        with pytest.raises(AppException):
+            service.compare_result_view(db, result_id=result_id, user={"userId": "7"})
     set_tenant(None)
     engine.dispose()

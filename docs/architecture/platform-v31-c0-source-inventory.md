@@ -64,7 +64,7 @@ The PLAT-C private package contains no assignment to `FileVersion.is_current`,
 
 Verified in the independent PLAT-C worktree before any C7 registration:
 
-- 56 PLAT-C backend characterization, security, rollback, visibility, worker and backfill tests pass;
+- 57 PLAT-C backend characterization, security, rollback, visibility, worker and backfill tests pass;
   the suite contains no skip or xfail.
 - Staff PC and Student PC production builds pass. Miniapp H5 and Weixin builds pass. The private
   four-client contract tests pass 3/3 and assert one real server contract, exact version/SHA inputs,
@@ -78,6 +78,9 @@ Verified in the independent PLAT-C worktree before any C7 registration:
   borrow a valid source ACL without proving that its FileObject was the stored output of that exact
   artifact/result. The private C7 resolver candidate now requires tenant, result identity, generated
   FileObject id and all pinned source identities to match a `SUCCEEDED` persisted row before ACL.
+- Derived-body reads now also verify the embedded artifact contract, extractor/algorithm version and
+  single/both source version+SHA identities against the persisted result row. Replacing a body and its
+  digest together can no longer return content from a different authorized or unauthorized source.
 - A canonical academic status smoke path passed after the premature fact hook was removed. A later
   full canonical fixture rebuild stopped before PLAT-C execution because the baseline MySQL fixture
   could not recreate `t_role_template` (1146); this is preserved as a real same-head gate blocker,

@@ -25,6 +25,67 @@ from app.services.storage import get_backend
 MAX_DERIVED_BODY_BYTES = 25 * 1024 * 1024
 
 
+def _identity_id(value: Any) -> int | None:
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError):
+        return None
+    return normalized if normalized > 0 else None
+
+
+def _identity_sha(value: Any, expected: Any) -> bool:
+    actual = str(value or "").strip().lower()
+    pinned = str(expected or "").strip().lower()
+    return len(actual) == 64 and len(pinned) == 64 and hmac.compare_digest(actual, pinned)
+
+
+def _validated_extracted_blocks(artifact: dict[str, Any], row: FileDerivedArtifact) -> list[dict[str, Any]]:
+    source = artifact.get("source")
+    document = artifact.get("document")
+    blocks = document.get("blocks") if isinstance(document, dict) else None
+    valid = (
+        artifact.get("contract") == "PLAT_C_EXTRACTED_ARTIFACT_V1"
+        and artifact.get("extractorCode") == row.extractor_code
+        and artifact.get("extractorVersion") == row.extractor_version
+        and isinstance(source, dict)
+        and _identity_id(source.get("fileVersionId")) == int(row.source_file_version_id)
+        and _identity_sha(source.get("sourceSha256"), row.source_sha256)
+        and isinstance(blocks, list)
+        and all(isinstance(item, dict) for item in blocks)
+    )
+    if not valid:
+        raise not_found("派生结果不存在")
+    return blocks
+
+
+def _validated_compare_changes(artifact: dict[str, Any], row: DocumentCompareResult) -> list[dict[str, Any]]:
+    left = artifact.get("left")
+    right = artifact.get("right")
+    changes = artifact.get("changes")
+    valid = (
+        artifact.get("contract") == "PLAT_C_DOCUMENT_COMPARE_ARTIFACT_V1"
+        and artifact.get("algorithmCode") == row.algorithm_code
+        and artifact.get("algorithmVersion") == row.algorithm_version
+        and isinstance(left, dict)
+        and _identity_id(left.get("fileVersionId")) == int(row.left_file_version_id)
+        and _identity_sha(left.get("sourceSha256"), row.left_source_sha256)
+        and isinstance(right, dict)
+        and _identity_id(right.get("fileVersionId")) == int(row.right_file_version_id)
+        and _identity_sha(right.get("sourceSha256"), row.right_source_sha256)
+        and isinstance(changes, list)
+        and all(
+            isinstance(item, dict)
+            and str(item.get("status") or "").upper() in {
+                "UNCHANGED", "ADDED", "REMOVED", "MODIFIED",
+            }
+            for item in changes
+        )
+    )
+    if not valid:
+        raise not_found("派生结果不存在")
+    return changes
+
+
 def _tenant_id() -> int:
     try:
         value = int(current_tenant_id() or 0)
@@ -174,7 +235,7 @@ def extracted_artifact_view(db, *, artifact_id: int, user: dict,
             file_object_id=int(row.generated_file_object_id),
             expected_sha256=str(row.content_sha256),
         )
-        blocks = list((artifact.get("document") or {}).get("blocks") or [])
+        blocks = _validated_extracted_blocks(artifact, row)
     return {
         "artifactId": str(row.id),
         "status": row.status,
@@ -212,7 +273,7 @@ def compare_result_view(db, *, result_id: int, user: dict,
             file_object_id=int(row.generated_file_object_id),
             expected_sha256=str(row.diff_sha256),
         )
-        changes = list(artifact.get("changes") or [])
+        changes = _validated_compare_changes(artifact, row)
     return {
         "compareResultId": str(row.id),
         "status": row.status,
