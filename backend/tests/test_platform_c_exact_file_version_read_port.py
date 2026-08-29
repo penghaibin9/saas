@@ -125,6 +125,30 @@ def test_exact_port_supports_authorized_historical_version() -> None:
     assert session.closed is True
 
 
+def test_authorization_receives_only_the_exact_version_bindings() -> None:
+    exact = _binding(id=401, version_id=301, status="SUPERSEDED")
+    other = _binding(id=402, version_id=302, status="ACTIVE")
+    rows = _rows(exact_bindings=(exact,))
+    rows = _ExactVersionRows(
+        version=rows.version,
+        asset=rows.asset,
+        file_object=rows.file_object,
+        all_file_bindings=(exact, other),
+        exact_bindings=(exact,),
+    )
+    seen: dict = {}
+    port, _session = _port(rows, seen=seen)
+
+    port.resolve(
+        file_version_id=301,
+        expected_sha256="a" * 64,
+        action="preview",
+        user={"userId": "77"},
+    )
+
+    assert [item.id for item in seen["bindings"]] == [401]
+
+
 @pytest.mark.parametrize("rows", [None, _rows(exact_bindings=())])
 def test_missing_deleted_cross_tenant_or_unbound_version_fails_closed(rows) -> None:
     port, session = _port(rows)

@@ -173,9 +173,11 @@ class ExactFileVersionReadPort(IExactFileVersionReadPort):
                 # Do not reveal whether the version exists when its pinned byte identity differs.
                 raise not_found("文件版本不存在")
 
+            # A different version that reuses the same physical object must not lend
+            # its audience to this exact historical version.
             if not self._authorizer(
                 rows.file_object,
-                list(rows.all_file_bindings),
+                list(rows.exact_bindings),
                 user or {},
                 source_action,
                 db=db,

@@ -87,6 +87,23 @@ def test_job_payload_guard_rejects_credentials_and_temporary_access(key: str) ->
     assert exc.value.code == "VALIDATION_ERROR"
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "Bearer abc.def.ghi",
+        "https://storage.example/presigned?signature=x",
+        "s3://private-bucket/object?signature=x",
+        "//storage.example/temporary-object",
+        "access_token=secret",
+        "sessionid=secret",
+    ],
+)
+def test_job_payload_guard_rejects_credential_and_url_values(value: str) -> None:
+    with pytest.raises(AppException) as exc:
+        _assert_credential_free({"opaqueValue": value})
+    assert exc.value.code == "VALIDATION_ERROR"
+
+
 def test_private_models_freeze_directional_and_dedupe_identity() -> None:
     def unique_columns(model):
         return {

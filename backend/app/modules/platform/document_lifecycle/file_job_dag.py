@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -27,6 +28,12 @@ COMPARE_ALGORITHM_VERSION = "1.0.0"
 _FORBIDDEN_KEY_PARTS = (
     "authorization", "token", "cookie", "session", "password", "secret",
     "ticket", "presigned", "signedurl", "storageurl", "refresh",
+)
+_FORBIDDEN_VALUE_RE = re.compile(
+    r"(?:^|\s)(?:bearer|basic)\s+\S+|"
+    r"(?:[a-z][a-z0-9+.-]*:)?//|"
+    r"(?:^|[;&\s])(?:access_token|refresh_token|sessionid|cookie|ticket)=",
+    re.IGNORECASE,
 )
 
 
@@ -78,6 +85,8 @@ def _assert_credential_free(value: Any, path: str = "payload") -> None:
     elif isinstance(value, (list, tuple)):
         for index, child in enumerate(value):
             _assert_credential_free(child, f"{path}[{index}]")
+    elif isinstance(value, str) and _FORBIDDEN_VALUE_RE.search(value):
+        raise AppException("VALIDATION_ERROR", f"FileJob 禁止保存凭证或临时 URL: {path}")
 
 
 def prepare_extract_job(

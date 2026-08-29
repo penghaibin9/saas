@@ -18,6 +18,14 @@ from app.core.context import current_tenant_id
 from app.core.exceptions import AppException
 from app.modules.platform.document_lifecycle.models import StudentLifecycleFact
 
+_VISIBILITY_CODES = {
+    "STUDENT_SELF_ONLY",
+    "STUDENT_SELF_AND_SCOPED_STAFF",
+    "SCOPED_STAFF_ONLY",
+    "RESTRICTED_STAFF_ONLY",
+}
+_SENSITIVITY_LEVELS = {"PUBLIC", "INTERNAL", "PERSONAL", "SENSITIVE", "HIGHLY_SENSITIVE"}
+
 
 @dataclass(frozen=True, slots=True)
 class LifecycleFactInput:
@@ -80,6 +88,13 @@ def record_in_session(db, fact: LifecycleFactInput) -> StudentLifecycleFact:
         raise AppException("VALIDATION_ERROR", "生命周期 Fact 源身份不完整")
     if len(fact.title) > 200 or (fact.summary is not None and len(fact.summary) > 500):
         raise AppException("VALIDATION_ERROR", "生命周期 Fact 展示文本超过上限")
+    if str(fact.visibility_code).upper() not in _VISIBILITY_CODES:
+        raise AppException("VALIDATION_ERROR", "生命周期 Fact visibilityCode 不受支持")
+    if str(fact.sensitivity_level).upper() not in _SENSITIVITY_LEVELS:
+        raise AppException("VALIDATION_ERROR", "生命周期 Fact sensitivityLevel 不受支持")
+    if not isinstance(fact.target_ref, dict) or not str(fact.target_ref.get("type") or "").strip() \
+            or not str(fact.target_ref.get("id") or "").strip():
+        raise AppException("VALIDATION_ERROR", "生命周期 Fact 必须保存 typed target")
     _validate_target_ref(fact.target_ref)
     dedupe = fact_dedupe_key(fact)
     existing = db.scalars(select(StudentLifecycleFact).where(
@@ -103,8 +118,8 @@ def record_in_session(db, fact: LifecycleFactInput) -> StudentLifecycleFact:
         "title": fact.title,
         "summary": fact.summary,
         "importance": fact.importance,
-        "visibility_code": fact.visibility_code,
-        "sensitivity_level": fact.sensitivity_level,
+        "visibility_code": str(fact.visibility_code).upper(),
+        "sensitivity_level": str(fact.sensitivity_level).upper(),
         "target_ref_json": fact.target_ref,
         "metadata_json": fact.metadata,
         "dedupe_key": dedupe,

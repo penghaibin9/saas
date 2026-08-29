@@ -82,6 +82,19 @@ def _finish(kind: str, page_count: int | None, blocks: list[TextBlock], budgets:
     return ExtractedDocument(kind, page_count, characters, tuple(blocks))
 
 
+def _append_bounded(blocks: list[TextBlock], item: TextBlock | None,
+                    budgets: ParserBudgets, character_count: int) -> int:
+    if item is None:
+        return character_count
+    if len(blocks) >= budgets.max_paragraphs:
+        raise _fail("文档段落数量超过安全上限")
+    next_count = character_count + len(item.text)
+    if next_count > budgets.max_characters:
+        raise _fail("文档字符数量超过安全上限")
+    blocks.append(item)
+    return next_count
+
+
 def extract_text(data: bytes, *, ext: str | None, mime_type: str | None = None,
                  budgets: ParserBudgets | None = None) -> ExtractedDocument:
     limits = budgets or ParserBudgets()
@@ -93,7 +106,7 @@ def extract_text(data: bytes, *, ext: str | None, mime_type: str | None = None,
     mime = str(mime_type or "").lower()
     started = time.monotonic()
     if suffix == "txt" or mime == "text/plain":
-        return _extract_txt(data, limits)
+        return _extract_txt(data, limits, started)
     if suffix == "pdf" or mime == "application/pdf":
         return _extract_pdf(data, limits, started)
     if suffix == "docx" or mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
@@ -101,13 +114,16 @@ def extract_text(data: bytes, *, ext: str | None, mime_type: str | None = None,
     raise _fail("不支持的文档类型", code="DOCUMENT_TYPE_UNSUPPORTED")
 
 
-def _extract_txt(data: bytes, budgets: ParserBudgets) -> ExtractedDocument:
+def _extract_txt(data: bytes, budgets: ParserBudgets, started: float) -> ExtractedDocument:
     try:
         text = data.decode("utf-8-sig", errors="strict")
     except UnicodeDecodeError as exc:
         raise _fail("TXT 必须是 UTF-8 编码") from exc
-    parts = re.split(r"(?:\r?\n){2,}", text)
-    blocks = [item for i, part in enumerate(parts, 1) if (item := _block(None, i, part))]
+    blocks: list[TextBlock] = []
+    characters = 0
+    for paragraph, part in enumerate(re.split(r"(?:\r?\n){2,}", text), 1):
+        _check_time(started, budgets)
+        characters = _append_bounded(blocks, _block(None, paragraph, part), budgets, characters)
     return _finish("TXT", None, blocks, budgets)
 
 
@@ -120,13 +136,15 @@ def _extract_pdf(data: bytes, budgets: ParserBudgets, started: float) -> Extract
             raise _fail("PDF 页数超过安全上限")
         blocks: list[TextBlock] = []
         paragraph = 0
+        characters = 0
         for page_no, page in enumerate(reader.pages, 1):
             _check_time(started, budgets)
-            for part in re.split(r"(?:\r?\n){2,}", page.extract_text() or ""):
+            page_text = page.extract_text() or ""
+            _check_time(started, budgets)
+            for part in re.split(r"(?:\r?\n){2,}", page_text):
                 paragraph += 1
                 item = _block(page_no, paragraph, part)
-                if item:
-                    blocks.append(item)
+                characters = _append_bounded(blocks, item, budgets, characters)
     except AppException:
         raise
     except Exception as exc:
@@ -145,7 +163,10 @@ def _unsafe_zip_name(name: str) -> bool:
 def _read_xml(archive: zipfile.ZipFile, info: zipfile.ZipInfo, budgets: ParserBudgets) -> bytes:
     if info.file_size > budgets.max_xml_part_bytes:
         raise _fail("DOCX XML 部件超过安全上限")
-    raw = archive.read(info)
+    with archive.open(info, "r") as reader:
+        raw = reader.read(budgets.max_xml_part_bytes + 1)
+    if len(raw) > budgets.max_xml_part_bytes:
+        raise _fail("DOCX XML 部件超过安全上限")
     lowered = raw.lower()
     if b"<!doctype" in lowered or b"<!entity" in lowered:
         raise _fail("DOCX 禁止 DTD/ENTITY")
@@ -164,33 +185,40 @@ def _extract_docx(data: bytes, budgets: ParserBudgets, started: float) -> Extrac
                 _check_time(started, budgets)
                 if _unsafe_zip_name(info.filename):
                     raise _fail("DOCX 包含路径穿越条目")
+                if (info.external_attr >> 16) & 0o170000 == 0o120000:
+                    raise _fail("DOCX 禁止符号链接条目")
+                normalized_name = info.filename.replace("\\", "/")
+                if normalized_name in by_name:
+                    raise _fail("DOCX 包含重复条目")
                 if info.file_size > budgets.max_single_inflated_bytes:
                     raise _fail("DOCX 单个解压条目超过安全上限")
                 total += info.file_size
                 if total > budgets.max_total_inflated_bytes:
                     raise _fail("DOCX 解压总量超过安全上限")
-                by_name[info.filename] = info
+                by_name[normalized_name] = info
 
             for name, info in by_name.items():
                 if name.endswith(".rels"):
                     root = ElementTree.fromstring(_read_xml(archive, info, budgets))
+                    _check_time(started, budgets)
                     for rel in root.findall(f"{_REL_NS}Relationship"):
                         target = str(rel.attrib.get("Target") or "")
                         if str(rel.attrib.get("TargetMode") or "").upper() == "EXTERNAL" \
-                                or target.lower().startswith(("http:", "https:", "file:")):
+                                or re.match(r"^[a-z][a-z0-9+.-]*:", target, re.IGNORECASE):
                             raise _fail("DOCX 禁止外部关系")
 
             document = by_name.get("word/document.xml")
             if document is None:
                 raise _fail("DOCX 缺少 word/document.xml")
             root = ElementTree.fromstring(_read_xml(archive, document, budgets))
+            _check_time(started, budgets)
             blocks: list[TextBlock] = []
+            characters = 0
             for paragraph, node in enumerate(root.iter(f"{_WORD_NS}p"), 1):
                 _check_time(started, budgets)
                 text = "".join(item.text or "" for item in node.iter(f"{_WORD_NS}t"))
                 item = _block(None, paragraph, text)
-                if item:
-                    blocks.append(item)
+                characters = _append_bounded(blocks, item, budgets, characters)
     except AppException:
         raise
     except (zipfile.BadZipFile, ElementTree.ParseError, RuntimeError) as exc:

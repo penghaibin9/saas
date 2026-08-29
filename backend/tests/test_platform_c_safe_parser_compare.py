@@ -59,6 +59,39 @@ def test_docx_rejects_inflated_entry_budget() -> None:
         extract_text(_docx(xml), ext="docx", budgets=ParserBudgets(max_single_inflated_bytes=20))
 
 
+def test_parser_rejects_character_budget_while_streaming_blocks() -> None:
+    with pytest.raises(AppException) as exc:
+        extract_text(b"12345\n\n67890", ext="txt", budgets=ParserBudgets(max_characters=6))
+    assert exc.value.code == "DOCUMENT_PARSE_REJECTED"
+
+
+def test_pdf_checks_timeout_after_single_page_extraction(monkeypatch) -> None:
+    class _Page:
+        def extract_text(self):
+            return "alpha"
+
+    class _Reader:
+        is_encrypted = False
+        pages = [_Page()]
+
+    clock = iter((0.0, 0.1, 2.0))
+    monkeypatch.setattr("app.modules.platform.document_lifecycle.safe_text_parser.PdfReader", lambda *_a, **_k: _Reader())
+    monkeypatch.setattr("app.modules.platform.document_lifecycle.safe_text_parser.time.monotonic", lambda: next(clock))
+    with pytest.raises(AppException) as exc:
+        extract_text(b"%PDF-test", ext="pdf", budgets=ParserBudgets(timeout_seconds=1.0))
+    assert exc.value.code == "DOCUMENT_PARSE_TIMEOUT"
+
+
+def test_docx_rejects_duplicate_package_entries() -> None:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", b"<x/>")
+        archive.writestr("word/document.xml", b"<x/>")
+    with pytest.raises(AppException) as exc:
+        extract_text(buf.getvalue(), ext="docx")
+    assert exc.value.code == "DOCUMENT_PARSE_REJECTED"
+
+
 def test_scanned_pdf_is_not_reported_as_empty_success() -> None:
     buf = io.BytesIO()
     writer = PdfWriter()
@@ -80,3 +113,11 @@ def test_compare_preserves_direction_and_four_status_contract() -> None:
     assert forward.added == 1
     assert reverse.removed == 1
     assert forward.changes != reverse.changes
+
+
+def test_compare_rejects_quadratic_work_budget_before_diffing() -> None:
+    left = extract_text(b"a\n\nb\n\nc", ext="txt")
+    right = extract_text(b"d\n\ne\n\nf", ext="txt")
+    with pytest.raises(AppException) as exc:
+        compare_documents(left, right, max_pair_product=8)
+    assert exc.value.code == "DOCUMENT_COMPARE_LIMIT"

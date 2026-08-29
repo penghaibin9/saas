@@ -50,5 +50,35 @@ The PLAT-C private package contains no assignment to `FileVersion.is_current`,
   row per domain and the last ten `StudentStageEvent` rows.
 - Its `sections`, risk summaries and current statuses remain direct-domain reads. PLAT-C may later
   shadow only the timeline and must not switch sections to facts.
-- No lifecycle hook was added during C0/C1. Same-session hooks wait for the fact table/model and the
-  A+B+C migration slot; backfill stays outside Alembic.
+- C4 now contains five private, transaction-only hook mappings and rollback/dedupe tests. They do
+  not open or commit sessions. Their canonical call sites remain deliberately unmodified until C7,
+  because the current single Alembic head does not contain `t_student_lifecycle_fact`; wiring them
+  earlier was reverse-tested against `test_aa_status_change.py` and correctly identified as a real
+  1146 regression. C7 must add each call immediately before the existing canonical commit (or inside
+  the caller-owned academic transaction), never through `after_commit`.
+- The resumable backfill remains a standalone script outside Alembic. It binds checkpoints to tenant
+  and schema version, keyset-scans `StudentStageEvent`, bulk-resolves `StudentProfile`, excludes
+  sandbox rows, and reports source/fact post-compare counts.
+
+## C0-C6 private checkpoint evidence
+
+Verified in the independent PLAT-C worktree before any C7 registration:
+
+- 54 PLAT-C backend characterization, security, rollback, visibility, worker and backfill tests pass;
+  the suite contains no skip or xfail.
+- Staff PC and Student PC production builds pass. Miniapp H5 and Weixin builds pass. The private
+  four-client contract tests pass 3/3 and assert one real server contract, exact version/SHA inputs,
+  summary-only miniapp output and unchanged Student360 direct-domain sections.
+- Reverse falsification closed two additional boundaries: FileJob rejects arbitrary URI/protocol-
+  relative values, and parser/compare elapsed-time checks run after expensive parsing/diff work.
+- A canonical academic status smoke path passed after the premature fact hook was removed. A later
+  full canonical fixture rebuild stopped before PLAT-C execution because the baseline MySQL fixture
+  could not recreate `t_role_template` (1146); this is preserved as a real same-head gate blocker,
+  not skipped or relabelled.
+
+C7 remains blocked at this checkpoint: `origin/main` is
+`eecb4d01d2a9592b71975be07c54f994f08e7461`, Alembic has the single head
+`20260829_pr236_main_merge`, A is still on the main baseline, B has a separate private head, and no
+ref proves an A+B integration head containing both migration lineages. Therefore no PLAT-C migration,
+model/base import, shared router/resolver, canonical fact-hook or Student360 shadow registration is
+present at C0-C6.

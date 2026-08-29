@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from difflib import SequenceMatcher
+import time
 
 from app.core.exceptions import AppException
 from app.modules.platform.document_lifecycle.safe_text_parser import ExtractedDocument, TextBlock
@@ -34,18 +35,33 @@ def _view(block: TextBlock) -> dict:
 
 
 def compare_documents(left: ExtractedDocument, right: ExtractedDocument,
-                      *, max_blocks: int = 100_000) -> CompareArtifact:
+                      *, max_blocks: int = 10_000,
+                      max_pair_product: int = 4_000_000,
+                      max_characters: int = 4_000_000,
+                      timeout_seconds: float = 15.0) -> CompareArtifact:
     if len(left.blocks) > max_blocks or len(right.blocks) > max_blocks:
         raise AppException("DOCUMENT_COMPARE_LIMIT", "文档段落数量超过比较上限", http_status=422)
+    if len(left.blocks) * len(right.blocks) > max_pair_product:
+        raise AppException("DOCUMENT_COMPARE_LIMIT", "文档比较复杂度超过安全上限", http_status=422)
+    if left.character_count + right.character_count > max_characters:
+        raise AppException("DOCUMENT_COMPARE_LIMIT", "文档比较字符量超过安全上限", http_status=422)
+    if timeout_seconds <= 0:
+        raise AppException("DOCUMENT_COMPARE_TIMEOUT", "文档比较超时", http_status=422)
+    started = time.monotonic()
     matcher = SequenceMatcher(
         None,
         [item.normalized_sha256 for item in left.blocks],
         [item.normalized_sha256 for item in right.blocks],
         autojunk=False,
     )
+    opcodes = matcher.get_opcodes()
+    if time.monotonic() - started > timeout_seconds:
+        raise AppException("DOCUMENT_COMPARE_TIMEOUT", "文档比较超时", http_status=422)
     changes: list[Change] = []
     counts = {"UNCHANGED": 0, "ADDED": 0, "REMOVED": 0, "MODIFIED": 0}
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+    for tag, i1, i2, j1, j2 in opcodes:
+        if time.monotonic() - started > timeout_seconds:
+            raise AppException("DOCUMENT_COMPARE_TIMEOUT", "文档比较超时", http_status=422)
         left_part = left.blocks[i1:i2]
         right_part = right.blocks[j1:j2]
         if tag == "equal":
