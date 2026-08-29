@@ -59,7 +59,7 @@ def _same_session_course_scope(task, user):
     # so import order cannot freeze an older authority implementation.
     _exec._require_live_teacher(db, task, actor, lock_owner=True)
 
-    # The canonical service deliberately retains the historical AaGradeTask.teacher_key snapshot.
+    # The canonical service deliberately retains the historical grade-task teacher snapshot.
     # Once current ownership is proven and pinned, bridge only the scope identity expected by that
     # legacy comparison. Audit/operator identity continues to come from request context.
     delegated_user = _exec._canonical_scope_user(task, actor)
