@@ -88,10 +88,18 @@ print("persisted B/C convergence semantic contract=valid")
 PY_DAG
     DAG_CONVERGENCE_COMMIT="$(git log -n1 --format=%H -- "$B_C_DAG_PATH")"
     DAG_CONVERGENCE_BLOB="$(git hash-object "$B_C_DAG_PATH")"
-    test "$(cd backend && alembic heads | awk '{print $1}')" = "$B_C_DAG_REVISION"
+    mapfile -t current_dag_heads < <(cd backend && alembic heads | awk '{print $1}')
+    if [[ "${#current_dag_heads[@]}" -ne 1 ]]; then
+      echo "[dag-convergence-rejected] expected exactly one current Alembic head, got ${#current_dag_heads[@]}: ${current_dag_heads[*]:-<none>}" | tee -a "$MERGE_LEDGER"
+      return 1
+    fi
+    if ! (cd backend && alembic history -r "${B_C_DAG_REVISION}:${current_dag_heads[0]}" >/dev/null); then
+      echo "[dag-convergence-rejected] persisted revision $B_C_DAG_REVISION is not carried by current Alembic head ${current_dag_heads[0]}" | tee -a "$MERGE_LEDGER"
+      return 1
+    fi
     DAG_CONVERGENCE_PROVEN=true
     CURRENT_LAYER=""
-    echo "[dag-convergence-proven] persisted revision=$B_C_DAG_REVISION parents=$B_C_DAG_HEAD_A,$B_C_DAG_HEAD_C blob=$DAG_CONVERGENCE_BLOB commit=$DAG_CONVERGENCE_COMMIT" | tee -a "$MERGE_LEDGER"
+    echo "[dag-convergence-proven] persisted revision=$B_C_DAG_REVISION parents=$B_C_DAG_HEAD_A,$B_C_DAG_HEAD_C current_head=${current_dag_heads[0]} blob=$DAG_CONVERGENCE_BLOB commit=$DAG_CONVERGENCE_COMMIT" | tee -a "$MERGE_LEDGER"
     return 0
   fi
 '''
