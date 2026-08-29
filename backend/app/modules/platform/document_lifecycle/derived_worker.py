@@ -81,6 +81,20 @@ def _fail(code: str, message: str) -> AppException:
     return AppException(code, message, http_status=422)
 
 
+def _safe_error_code(exc: Exception) -> str:
+    raw = str(getattr(exc, "code", "") or exc.__class__.__name__).upper()
+    normalized = "".join(
+        char if char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" else "_"
+        for char in raw
+    ).strip("_")[:80]
+    return normalized or "WORKER_ERROR"
+
+
+def _worker_lock_identity(value: object) -> str:
+    digest = hashlib.sha256(str(value or "worker").encode("utf-8")).hexdigest()
+    return f"worker:{digest[:32]}"
+
+
 def _payload_int(payload: dict[str, Any], key: str) -> int:
     try:
         value = int(payload[key])
@@ -346,7 +360,7 @@ def claim_next_job(worker_id: str) -> int | None:
         row.status = "RUNNING"
         row.attempts = int(row.attempts or 0) + 1
         row.locked_at = now
-        row.locked_by = worker_id[:120]
+        row.locked_by = _worker_lock_identity(worker_id)
         row.last_error = None
         db.commit()
         return int(row.id)
@@ -386,8 +400,9 @@ def complete_job(job_id: int, *, artifact_writer: Callable[..., FileObject] | No
         job.available_at = _now() + timedelta(
             seconds=min(3600, RETRY_BASE_SECONDS * (2 ** max(0, int(job.attempts or 1) - 1)))
         )
-        job.last_error = f"{exc.__class__.__name__}: {exc}"[:4000]
-        job.result_json = {"errorCode": getattr(exc, "code", exc.__class__.__name__)[:80]}
+        error_code = _safe_error_code(exc)
+        job.last_error = error_code
+        job.result_json = {"errorCode": error_code}
         job.locked_at = None
         job.locked_by = None
         db.commit()

@@ -64,7 +64,7 @@ The PLAT-C private package contains no assignment to `FileVersion.is_current`,
 
 Verified in the independent PLAT-C worktree before any C7 registration:
 
-- 57 PLAT-C backend characterization, security, rollback, visibility, worker and backfill tests pass;
+- 58 PLAT-C backend characterization, security, rollback, visibility, worker and backfill tests pass;
   the suite contains no skip or xfail.
 - Staff PC and Student PC production builds pass. Miniapp H5 and Weixin builds pass. The private
   four-client contract tests pass 3/3 and assert one real server contract, exact version/SHA inputs,
@@ -84,6 +84,9 @@ Verified in the independent PLAT-C worktree before any C7 registration:
 - Lifecycle reads independently fail closed for legacy/unknown sensitivity values. Student summaries
   are masked for sensitive or unknown facts, and scoped staff receive sensitive summaries only with
   the explicit sensitive-view permission, even if a historical row has an overly broad visibility.
+- FileJob failure persistence was reverse-tested with an exception containing a temporary URL and
+  access token. Retry/failure rows now retain only a bounded sanitized error code, while worker lock
+  owners are stored as one-way hashes; neither path can persist credentials, tickets or raw URLs.
 - A canonical academic status smoke path passed after the premature fact hook was removed. A later
   full canonical fixture rebuild stopped before PLAT-C execution because the baseline MySQL fixture
   could not recreate `t_role_template` (1146); this is preserved as a real same-head gate blocker,

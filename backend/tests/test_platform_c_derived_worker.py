@@ -212,3 +212,38 @@ def test_compare_worker_stores_diff_in_file_object_and_inherits_stricter_control
         assert row.legal_hold is True
         assert captured["sensitivity"] == "HIGHLY_SENSITIVE"
     engine.dispose()
+
+
+def test_worker_failure_never_persists_exception_credentials_or_temporary_url(
+        monkeypatch) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    FileJob.__table__.create(engine)
+    sessions = sessionmaker(engine, expire_on_commit=False)
+    with sessions() as db:
+        db.add(FileJob(
+            id=90, tenant_id=101, job_type="DOCUMENT_EXTRACT", file_id=10,
+            dedupe_key="failure-secret-test", status="RUNNING", attempts=1, max_attempts=3,
+            payload_json={
+                "contract": "PLAT_C_DOCUMENT_EXTRACT_V1",
+                "source": {}, "derivativeKind": "EXTRACTED_TEXT",
+                "extractorCode": "SAFE_TEXT_LAYER", "extractorVersion": "PARAGRAPH_PAGE_V1",
+            },
+        ))
+        db.commit()
+
+    monkeypatch.setattr(worker, "get_sessionmaker", lambda: sessions)
+    monkeypatch.setattr(
+        worker, "_execute_extract",
+        lambda *_a, **_k: (_ for _ in ()).throw(
+            RuntimeError("https://storage.invalid/temp?access_token=must-not-persist"),
+        ),
+    )
+    result = worker.complete_job(90)
+    assert result["jobStatus"] == "RETRY"
+    with sessions() as db:
+        job = db.get(FileJob, 90)
+        persisted = f"{job.last_error} {job.result_json}".lower()
+        assert "http" not in persisted
+        assert "token" not in persisted
+        assert "must-not-persist" not in persisted
+    engine.dispose()
