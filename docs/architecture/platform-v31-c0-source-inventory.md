@@ -76,9 +76,11 @@ Verified in the independent PLAT-C worktree before any C7 registration:
   could not recreate `t_role_template` (1146); this is preserved as a real same-head gate blocker,
   not skipped or relabelled.
 
-C7 remains blocked at this checkpoint: `origin/main` is
-`eecb4d01d2a9592b71975be07c54f994f08e7461`, Alembic has the single head
-`20260829_pr236_main_merge`, A is still on the main baseline, B has a separate private head, and no
-ref proves an A+B integration head containing both migration lineages. Therefore no PLAT-C migration,
-model/base import, shared router/resolver, canonical fact-hook or Student360 shadow registration is
-present at C0-C6.
+C7 remains blocked at the 2026-08-30 re-review checkpoint: `origin/main` is
+`eecb4d01d2a9592b71975be07c54f994f08e7461`; A now has private head
+`67522ea88e5dd6a2984ae9177583fe20d4141e68` with migration
+`20260829_plat_a_integrity` based on `20260829_pr236_main_merge`; B has separate private head
+`18aedb8e34bb063ab50403697a632f962cec9c7e` and no migration. No local or remote ref proves an A+B
+integration head, and the PLAT-C worktree still resolves only the main Alembic head
+`20260829_pr236_main_merge`. Therefore no PLAT-C migration, model/base import, shared router/resolver,
+canonical fact-hook or Student360 shadow registration is present at C0-C6.
