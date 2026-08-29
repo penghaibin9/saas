@@ -32,9 +32,9 @@ _PC_EXACT: dict[str, tuple[str, str]] = {
 # 尚无详情路由时，只能落到真实可处理列表；仍下发 recordId，不把列表伪装成详情页。
 _PC_LIST: dict[str, tuple[str, str, dict[str, str]]] = {
     "LEAVE_APPROVAL": ("todo-route:student-affairs-leave-queue", "/admin/student-affairs/leave", {"status": "PENDING"}),
-    "LEAVE_OVERDUE": ("todo-route:student-affairs-leave-ledger", "/admin/student-affairs/leave/ledger", {"status": "OVERDUE"}),
-    "LEAVE_CANCEL": ("todo-route:student-affairs-leave-queue", "/admin/student-affairs/leave", {"status": "CANCEL_PENDING"}),
-    "LEAVE_EXTENSION": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "PENDING"}),
+    "LEAVE_OVERDUE": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "OVERDUE"}),
+    "LEAVE_CANCEL": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "WAIT_CANCEL_LEAVE"}),
+    "LEAVE_EXTENSION": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "EXTENSION_REVIEW"}),
     "DISCIPLINE_APPROVAL": ("todo-route:student-affairs-discipline-queue", "/admin/student-affairs/discipline", {"status": "PENDING"}),
     "DISCIPLINE_REMOVE": ("todo-route:student-affairs-discipline-queue", "/admin/student-affairs/discipline", {"status": "REMOVE_PENDING"}),
     "AID_APPROVAL": ("todo-route:student-affairs-aid-queue", "/admin/student-affairs/aid", {"status": "PENDING"}),
@@ -51,6 +51,15 @@ _PC_LIST: dict[str, tuple[str, str, dict[str, str]]] = {
     "DORM_EXCEPTION": ("todo-route:student-affairs-dorm-exception-queue", "/admin/student-affairs/dorm/exception", {"status": "PENDING_HANDLE"}),
     "EMPLOYMENT_FOLLOWUP": ("todo-route:employment-followup-queue", "/admin/employment/followups", {"status": "OPEN"}),
 }
+
+# PC 列表页已实现 recordId -> detail-first -> 对象聚焦的业务类型。
+# exact=True 的证据由 frontend/tests/student-affairs-todo-pc-focus.contract.test.mjs 逐页约束；
+# 不允许只改本表、页面不消费 recordId。
+_PC_LIST_FOCUS = frozenset({
+    "LEAVE_APPROVAL", "LEAVE_OVERDUE", "LEAVE_CANCEL", "LEAVE_EXTENSION",
+    "AID_APPROVAL", "AID_ADJUST", "FUNDING_APPROVAL",
+    "DISCIPLINE_APPROVAL", "DISCIPLINE_REMOVE",
+})
 
 # 学生小程序当前真实业务页。query.recordId 用于页面 focus。
 # V3 §4.4：第三项是 focusMode——页面真的会读 recordId 定位对象才写 LIST_FOCUS，
@@ -187,13 +196,15 @@ def resolve_todo_route(todo_type: str | None, record_id: Any, *, client: str) ->
         fallback = _PC_LIST.get(type_code)
         if fallback:
             route_name, path, query = fallback
+            focus_mode = FOCUS_LIST_FOCUS if type_code in _PC_LIST_FOCUS else FOCUS_NONE
             return {
                 "routeName": route_name,
                 "routeParams": {"recordId": rid},
                 "query": {**query, "recordId": rid},
                 "path": path,
-                "focusMode": FOCUS_NONE,
-                "exact": False,
+                "focusMode": focus_mode,
+                # PC 的 LIST_FOCUS 由对应页面合同测试证明；这里不复用 Mini 端页面白名单。
+                "exact": focus_mode == FOCUS_LIST_FOCUS,
             }
         return None
 
@@ -213,7 +224,14 @@ def route_contract_snapshot() -> dict[str, dict[str, Any]]:
     """供 CI/合同测试枚举，防新增 todoType 后又回到前端猜路由。"""
     return {
         "pcExact": {key: {"routeName": value[0], "pathTemplate": value[1]} for key, value in _PC_EXACT.items()},
-        "pcList": {key: {"routeName": value[0], "path": value[1]} for key, value in _PC_LIST.items()},
+        "pcList": {
+            key: {
+                "routeName": value[0], "path": value[1],
+                "focusMode": FOCUS_LIST_FOCUS if key in _PC_LIST_FOCUS else FOCUS_NONE,
+                "exact": key in _PC_LIST_FOCUS,
+            }
+            for key, value in _PC_LIST.items()
+        },
         "studentMini": {
             key: {
                 "routeName": value[0],

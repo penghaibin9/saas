@@ -39,6 +39,10 @@
                    :pagination="pagination" @page-change="onPageChange">
           <template #cell-type="{ row }"><strong>{{ typeLabel(row.excType) }}</strong></template>
           <template #cell-detail="{ row }"><span class="dorm-exception-detail sa-cell-wrap">{{ row.detail || '—' }}</span></template>
+          <template #cell-relatedRisk="{ row }">
+            <button v-if="row.relatedRisk?.riskId" type="button" class="dorm-risk-link" @click="goRisk(row)">{{ row.relatedRisk.riskLevel }} · {{ row.relatedRisk.statusLabel || row.relatedRisk.status }}<span v-if="row.relatedRisk.ownerName"> · {{ row.relatedRisk.ownerName }}</span> →</button>
+            <span v-else class="sa-muted">未生成风险</span>
+          </template>
           <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'HANDLED' ? 'success' : 'warning'" :label="row.status === 'HANDLED' ? '已处置' : '待处置'" /></template>
           <template #cell-createdAt="{ row }"><span class="dorm-exception-time">{{ (row.createdAt || '').slice(0, 16) || '—' }}</span></template>
           <template #cell-actions="{ row }">
@@ -73,6 +77,7 @@ import { resolveTodoStatus } from '@/modules/studentAffairs/utils/todoFilterSema
 const EXCEPTION_COLUMNS = [
   { key: 'type', title: '类型' },
   { key: 'detail', title: '说明' },
+  { key: 'relatedRisk', title: '关联风险', width: '220px' },
   { key: 'status', title: '状态' },
   { key: 'createdAt', title: '时间' },
   { key: 'actions', title: '操作', align: 'right', width: '100px' }
@@ -160,6 +165,11 @@ export default {
       this.pagination.page = page
       this.load()
     },
+    goRisk(row) {
+      const riskId = row.relatedRisk?.riskId
+      if (!riskId) return
+      this.$router.push({ name: 'student-affairs-risk-detail', params: { riskId: String(riskId) }, query: { studentId: String(row.studentId || ''), from: 'dorm-exception', exceptionId: String(row.exceptionId || '') } })
+    },
     handle(x) {
       this.dlg = {
         visible: true,
@@ -188,6 +198,8 @@ export default {
 .sa-toolbar { margin-bottom: var(--space-3); }
 .sa-filter { width: 180px; }
 .sa-student-filter { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--warning-50, #fffbeb); border: 1px solid var(--warning-200, #fde68a); font-size: var(--font-size-sm); color: var(--text-primary); }
+.dorm-risk-link { border: 0; background: transparent; padding: 0; color: var(--primary-600); font: inherit; font-size: var(--font-size-xs); cursor: pointer; text-align: left; }
+.dorm-risk-link:hover { text-decoration: underline; }
 .dorm-exception-detail { color: var(--text-secondary); }
 .dorm-exception-time { color: var(--text-tertiary); font-size: var(--font-size-xs); white-space: nowrap; }
 .sa-muted { color: var(--text-tertiary); }
