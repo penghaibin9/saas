@@ -69,6 +69,7 @@ def seed_platform_operational_coverage(db, tenant_id: int) -> dict:
     from app.models.tenant_provisioning import ProvisioningJob, ProvisioningStepRun
     from app.models.audit import SecurityAuditLog
     from app.models.user_preference import UserPreference
+    from app.services.service_catalog_service import DEFAULT_SERVICES
     from app.services.tenant_provisioning_service import STEP_ORDER
 
     admin = _tenant_row(db, User, tenant_id, login_name="admin2")
@@ -331,6 +332,16 @@ def seed_platform_operational_coverage(db, tenant_id: int) -> dict:
         "selected_at": REFERENCE_NOW - timedelta(days=20), "selected_by": admin.id,
         "note": f"学校专业“{major.major_name}”与国家教学标准 {document.standard_code} 同名校验后绑定。",
     })
+
+    # 全新空库不会经过 Web 进程的服务目录启动钩子；标准 20K 重建必须在
+    # 当前事务内复用唯一的 DEFAULT_SERVICES 权威清单，幂等补齐平台底座。
+    for service_spec in DEFAULT_SERVICES:
+        _global_put(db, PlatformService, {
+            "service_code": service_spec["serviceCode"],
+        }, {
+            "service_name": service_spec["serviceName"],
+            "tier": service_spec["tier"], "status": "ACTIVE",
+        })
 
     # 实际在用服务用于故障影响面反算；随后保留一次已解决 P3 事件时间线。
     for service_code in ("API_GATEWAY", "PC_ADMIN", "STUDENT_PORTAL", "MYSQL", "WORKER"):
