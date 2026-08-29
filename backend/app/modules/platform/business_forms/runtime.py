@@ -134,7 +134,17 @@ class BusinessFormRuntimeValidator:
                 self._invalid(field.code, "禁止提交隐藏字段", "FORM_HIDDEN_FIELD_INJECTION")
             if present and readonly:
                 self._invalid(field.code, "禁止提交只读字段", "FORM_READONLY_FIELD_INJECTION")
-            if required and (not present or value is None or value == "" or value == []):
+            # A required readonly field is server-owned: the client must not
+            # echo it, but a freshly authorized initial value can satisfy the
+            # requirement.  Writable fields remain submission-owned.
+            required_value = condition_values.get(field.code) if readonly else value
+            required_present = field.code in condition_values if readonly else present
+            if required and (
+                not required_present
+                or required_value is None
+                or required_value == ""
+                or required_value == []
+            ):
                 self._invalid(field.code, "必填字段缺失", "FORM_REQUIRED")
             if not present or value is None:
                 continue

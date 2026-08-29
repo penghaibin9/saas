@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from typing import Any
 
@@ -51,6 +52,8 @@ def _scan_untrusted(value: Any, path: str = "schema") -> None:
         lowered = value.lower()
         if any(marker in lowered for marker in FORBIDDEN_VALUE_MARKERS):
             _fail("表单 Schema 包含危险内容", {"path": path})
+    elif isinstance(value, float) and not math.isfinite(value):
+        _fail("表单 Schema 只允许有限数字", {"path": path})
 
 
 def _validate_condition(
@@ -98,9 +101,20 @@ def schema_payload(version: BusinessFormVersionDTO) -> dict[str, Any]:
 
 
 def compute_schema_hash(version: BusinessFormVersionDTO) -> str:
-    encoded = json.dumps(
-        schema_payload(version), ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-    ).encode("utf-8")
+    try:
+        encoded = json.dumps(
+            schema_payload(version),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise AppException(
+            "FORM_SCHEMA_INVALID",
+            "表单 Schema 必须是标准 JSON 且数字必须有限",
+            http_status=400,
+        ) from exc
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -123,6 +137,8 @@ class BusinessFormSchemaValidator:
         for index, field in enumerate(version.fields):
             if not FIELD_CODE.fullmatch(field.code) or field.code in RESERVED_KEYS:
                 _fail("表单字段 code 非法或为保留字", {"field": field.code})
+            if not str(field.label or "").strip():
+                _fail("表单字段 label 不能为空", {"field": field.code})
             if field.type == FormFieldType.SELECT:
                 if not field.options:
                     _fail("select 字段必须声明 options", {"field": field.code})
@@ -131,8 +147,32 @@ class BusinessFormSchemaValidator:
                 option_values = [option.value for option in field.options]
                 if len(option_values) != len(set(map(str, option_values))):
                     _fail("select 选项值不能重复", {"field": field.code})
+                if any(not str(option.label or "").strip() for option in field.options):
+                    _fail("select 选项 label 不能为空", {"field": field.code})
             elif field.options:
                 _fail("只有 select 字段可声明 options", {"field": field.code})
+            if field.multiple and field.type not in {FormFieldType.SELECT, FormFieldType.FILE}:
+                _fail("只有 select/file 字段可声明 multiple", {"field": field.code})
+            if field.max_length is not None:
+                if field.type not in {FormFieldType.TEXT, FormFieldType.TEXTAREA}:
+                    _fail("只有文本字段可声明 maxLength", {"field": field.code})
+                if field.max_length <= 0 or field.max_length > MAX_SCHEMA_STRING:
+                    _fail(
+                        "文本字段 maxLength 超出预算",
+                        {"field": field.code, "maxLength": MAX_SCHEMA_STRING},
+                    )
+            if field.min_value is not None or field.max_value is not None:
+                if field.type != FormFieldType.NUMBER:
+                    _fail("只有 number 字段可声明 min/max", {"field": field.code})
+                bounds = [value for value in (field.min_value, field.max_value) if value is not None]
+                if any(not math.isfinite(float(value)) for value in bounds):
+                    _fail("number 字段 min/max 必须是有限数字", {"field": field.code})
+                if (
+                    field.min_value is not None
+                    and field.max_value is not None
+                    and field.min_value > field.max_value
+                ):
+                    _fail("number 字段 min 不能大于 max", {"field": field.code})
             for condition_name, condition in (
                 ("visibleWhen", field.visible_when),
                 ("requiredWhen", field.required_when),

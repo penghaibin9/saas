@@ -10,6 +10,9 @@ from app.modules.platform.compliance_federation.providers import (
     ComplianceFederation,
     EvidenceOnlyProvider,
     InternshipComplianceProvider,
+    _graduation_current_version_is_valid,
+    _graduation_operation_applicable,
+    _graduation_state_blocks,
 )
 from app.modules.platform.compliance_federation.schemas import (
     ComplianceState,
@@ -190,3 +193,67 @@ def test_graduation_adapter_is_backed_only_by_canonical_rule_fact_and_scope_sour
     assert not [token for token in required_sources if token not in source]
     assert "MaterialConstraintState.ENFORCED" in source
     assert "MaterialConstraintState.UNSPECIFIED" not in source
+
+
+def test_graduation_operation_and_blocking_match_canonical_archive_collector():
+    from types import SimpleNamespace
+
+    definition = SimpleNamespace(review_required=False, archive_required=False)
+    assert _graduation_operation_applicable(definition, "SUBMIT") is True
+    assert _graduation_operation_applicable(definition, "REVIEW") is False
+    assert _graduation_operation_applicable(definition, "ARCHIVE") is False
+
+    assert _graduation_state_blocks(
+        state=ComplianceState.PENDING,
+        required=True,
+        operation="SUBMIT",
+        has_evidence=True,
+    ) is True
+    assert _graduation_state_blocks(
+        state=ComplianceState.PENDING,
+        required=False,
+        operation="SUBMIT",
+        has_evidence=True,
+    ) is False
+    # Graduation manifest_service._collect_items rejects a supplied optional
+    # archive item when it is pending/returned/unsafe; optional absence is okay.
+    assert _graduation_state_blocks(
+        state=ComplianceState.PENDING,
+        required=False,
+        operation="ARCHIVE",
+        has_evidence=True,
+    ) is True
+    assert _graduation_state_blocks(
+        state=ComplianceState.WARNING,
+        required=False,
+        operation="ARCHIVE",
+        has_evidence=True,
+    ) is True
+    assert _graduation_state_blocks(
+        state=ComplianceState.WARNING,
+        required=False,
+        operation="ARCHIVE",
+        has_evidence=False,
+    ) is False
+
+
+def test_graduation_evidence_rejects_stale_or_cross_asset_current_version_pointer():
+    from types import SimpleNamespace
+
+    actual = SimpleNamespace(asset_id=41)
+    assert _graduation_current_version_is_valid(
+        actual,
+        SimpleNamespace(asset_id=41, is_current=True, is_deleted=False),
+    ) is True
+    assert _graduation_current_version_is_valid(
+        actual,
+        SimpleNamespace(asset_id=99, is_current=True, is_deleted=False),
+    ) is False
+    assert _graduation_current_version_is_valid(
+        actual,
+        SimpleNamespace(asset_id=41, is_current=False, is_deleted=False),
+    ) is False
+    assert _graduation_current_version_is_valid(
+        actual,
+        SimpleNamespace(asset_id=41, is_current=True, is_deleted=True),
+    ) is False

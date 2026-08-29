@@ -70,6 +70,28 @@ def test_publish_validator_accepts_bounded_schema_and_hash():
     assert len(version.schema_hash) == 64
 
 
+def test_schema_hash_rejects_non_standard_json_numbers():
+    version = BusinessFormVersionDTO.model_validate({
+        "form_code": "NON_FINITE_SCHEMA",
+        "version_id": 1,
+        "version_no": 1,
+        "schema_hash": "pending",
+        "schema_version": "1.0",
+        "supported_clients": ["STAFF_PC"],
+        "domain_data_adapter": "SOURCE",
+        "domain_command_adapter": "COMMAND",
+        "fields": [{
+            "code": "choice",
+            "type": "select",
+            "label": "选择",
+            "options": [{"label": "非法", "value": float("nan")}],
+        }],
+    })
+    with pytest.raises(AppException) as caught:
+        compute_schema_hash(version)
+    assert caught.value.code == "FORM_SCHEMA_INVALID"
+
+
 @pytest.mark.parametrize("dangerous", [
     "javascript:alert(1)",
     "data:text/html,<script>alert(1)</script>",
@@ -256,6 +278,49 @@ def test_runtime_rebuilds_conditions_from_authoritative_initial_data():
             user={},
         )
     assert caught.value.code == "FORM_HIDDEN_FIELD_INJECTION"
+
+
+def test_runtime_required_readonly_field_uses_authoritative_value_without_accepting_echo():
+    version = _version(fields=[
+        {"code": "serverIdentity", "type": "text", "label": "服务端身份", "readonly": True, "required": True},
+        {"code": "reason", "type": "text", "label": "原因", "required": True},
+    ])
+    runtime = BusinessFormRuntimeValidator()
+    assert runtime.validate_submission(
+        version=version,
+        submitted_values={"reason": "来源事实完整"},
+        authoritative_values={"serverIdentity": "GD-STUDENT-42"},
+        client="STUDENT_PC",
+        schema_hash=version.schema_hash,
+        version_id=version.version_id,
+        context={},
+        user={},
+    ) == {"reason": "来源事实完整"}
+
+    with pytest.raises(AppException) as caught:
+        runtime.validate_submission(
+            version=version,
+            submitted_values={"serverIdentity": "GD-STUDENT-42", "reason": "不得回传只读值"},
+            authoritative_values={"serverIdentity": "GD-STUDENT-42"},
+            client="STUDENT_PC",
+            schema_hash=version.schema_hash,
+            version_id=version.version_id,
+            context={},
+            user={},
+        )
+    assert caught.value.code == "FORM_READONLY_FIELD_INJECTION"
+
+
+@pytest.mark.parametrize("field", [
+    {"code": "badMultiple", "type": "text", "label": "非法多值", "multiple": True},
+    {"code": "badLength", "type": "number", "label": "非法长度", "maxLength": 20},
+    {"code": "badRange", "type": "number", "label": "非法区间", "min": 10, "max": 1},
+])
+def test_publish_validator_rejects_incoherent_field_capabilities(field):
+    version = _version(fields=[field])
+    with pytest.raises(AppException) as caught:
+        BusinessFormSchemaValidator().validate(version, verify_hash=False)
+    assert caught.value.code == "FORM_SCHEMA_INVALID"
 
 
 @pytest.mark.parametrize("invalid_number", [float("nan"), float("inf"), float("-inf")])
@@ -445,6 +510,59 @@ def test_disabled_published_version_remains_permanently_immutable():
         with pytest.raises(Exception) as caught:
             db.flush()
         assert "published business form version is immutable" in str(caught.value)
+
+
+def test_published_marker_cannot_be_cleared_to_bypass_schema_immutability():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine, tables=[
+        BusinessFormDefinition.__table__, BusinessFormVersion.__table__,
+    ])
+    with Session(engine) as db:
+        service = BusinessFormDefinitionService(db, tenant_id=7, actor_id=9)
+        definition = service.create_definition(
+            form_code="immutable_marker", form_name="发布证明", domain_code="internship",
+        )
+        row = service.create_draft_version(definition.id, {
+            "supportedClients": ["STAFF_PC"],
+            "domainDataAdapter": "INTERNSHIP_SPECIAL_FILING_INITIAL",
+            "domainCommandAdapter": "INTERNSHIP_SPECIAL_FILING",
+            "fields": [{"code": "reason", "type": "text", "label": "原因"}],
+        })
+        service.publish_version(row.id, expected_version=0)
+        service.disable_version(row.id, expected_version=1)
+        db.flush()
+        row.published_at = None
+        row.published_by = None
+        row.schema_json = {"fields": [], "conditions": []}
+        with pytest.raises(Exception) as caught:
+            db.flush()
+        message = str(caught.value)
+        assert "published business form version is immutable" in message
+        assert "published_at" in message
+
+
+def test_disabled_version_cannot_return_to_draft_lifecycle():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine, tables=[
+        BusinessFormDefinition.__table__, BusinessFormVersion.__table__,
+    ])
+    with Session(engine) as db:
+        service = BusinessFormDefinitionService(db, tenant_id=7, actor_id=9)
+        definition = service.create_definition(
+            form_code="invalid_lifecycle", form_name="生命周期", domain_code="internship",
+        )
+        row = service.create_draft_version(definition.id, {
+            "supportedClients": ["STAFF_PC"],
+            "domainDataAdapter": "INTERNSHIP_SPECIAL_FILING_INITIAL",
+            "domainCommandAdapter": "INTERNSHIP_SPECIAL_FILING",
+            "fields": [{"code": "reason", "type": "text", "label": "原因"}],
+        })
+        service.publish_version(row.id, expected_version=0)
+        service.disable_version(row.id, expected_version=1)
+        row.status = "DRAFT"
+        with pytest.raises(Exception) as caught:
+            db.flush()
+        assert "lifecycle transition is invalid" in str(caught.value)
 
 
 def test_resolve_active_policy_requires_explicit_impact_ack_before_publish():

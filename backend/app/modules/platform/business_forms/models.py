@@ -56,19 +56,41 @@ class BusinessFormVersion(PKMixin, TenantMixin, CommonMixin, Base):
 _IMMUTABLE_PUBLISHED_FIELDS = (
     "form_code", "version_no", "schema_hash", "schema_version", "supported_clients_json",
     "policy_refs_json", "domain_data_adapter", "domain_command_adapter", "schema_json", "effective_at",
+    "published_at", "published_by",
 )
 
 
 @event.listens_for(BusinessFormVersion, "before_update")
 def _published_version_is_immutable(_mapper, _connection, target: BusinessFormVersion) -> None:
     state = inspect(target)
-    previously_published = state.attrs.status.history.deleted and state.attrs.status.history.deleted[0] == "PUBLISHED"
-    still_published = str(target.status or "").upper() == "PUBLISHED"
+    old_statuses = {
+        str(value or "").upper()
+        for value in state.attrs.status.history.deleted
+    }
+    current_status = str(target.status or "").upper()
+    if old_statuses:
+        allowed_transitions = {
+            ("DRAFT", "PUBLISHED"),
+            ("PUBLISHED", "DISABLED"),
+        }
+        transitions = {(old, current_status) for old in old_statuses if old != current_status}
+        if any(transition not in allowed_transitions for transition in transitions):
+            raise ValueError("business form version lifecycle transition is invalid")
+    first_publish = current_status == "PUBLISHED" and old_statuses == {"DRAFT"}
     # ``DISABLED`` is a lifecycle state, not a return to draft.  Once a version
-    # has ever been published its schema identity must remain immutable forever.
-    # ``published_at`` survives disable and is therefore the durable marker.
-    ever_published = target.published_at is not None
-    if previously_published or still_published or ever_published:
+    # has ever been published its schema identity and publication proof must
+    # remain immutable forever.  Include deleted history so clearing
+    # ``published_at`` in the same UPDATE cannot erase that durable marker.
+    published_at_history = state.attrs.published_at.history
+    had_published_at = target.published_at is not None or any(
+        value is not None for value in published_at_history.deleted
+    )
+    ever_published = (
+        current_status in {"PUBLISHED", "DISABLED"}
+        or bool(old_statuses & {"PUBLISHED", "DISABLED"})
+        or had_published_at
+    )
+    if ever_published and not first_publish:
         changed = [name for name in _IMMUTABLE_PUBLISHED_FIELDS if state.attrs[name].history.has_changes()]
         if changed:
             raise ValueError("published business form version is immutable: " + ",".join(changed))

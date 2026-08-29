@@ -156,7 +156,14 @@ class BusinessFormApplicationService:
             raise AppException("FORM_VALUE_INVALID", "表单 values 必须是对象", http_status=400)
         condition_fields = self._condition_field_codes(version)
         missing_condition_fields = condition_fields - set(values)
-        if missing_condition_fields:
+        readonly_required_fields = {
+            field.code
+            for field in version.fields
+            if (field.readonly or field.readonly_when is not None)
+            and (field.required or field.required_when is not None)
+        }
+        missing_readonly_required_fields = readonly_required_fields - set(values)
+        if missing_condition_fields or missing_readonly_required_fields:
             authoritative_values = self._load_authoritative_initial(
                 version=version, context=context, user=user,
             )

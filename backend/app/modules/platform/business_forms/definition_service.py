@@ -34,7 +34,11 @@ def _version_row(db, tenant_id: int, version_id: int, *, lock: bool = False):
         BusinessFormVersion.id == int(version_id),
         BusinessFormVersion.is_deleted.is_(False),
     )
-    row = db.scalars(stmt.with_for_update() if lock else stmt).first()
+    if lock:
+        # A prior identity-map read must not leave stale status/version fields
+        # after waiting for the definition lock.
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
+    row = db.scalars(stmt).first()
     if not row:
         raise not_found("业务表单版本不存在")
     return row
@@ -174,7 +178,16 @@ class BusinessFormDefinitionService:
         expected_version: int,
         resolve_active_impact_ack: bool = False,
     ) -> BusinessFormVersion:
+        candidate_ref = _version_row(self.db, self.tenant_id, version_id)
+        # All lifecycle writers use definition -> version lock order.  The old
+        # version -> definition order could deadlock a publish of a draft
+        # against a concurrent disable of the currently published version.
+        definition = _definition_row(
+            self.db, self.tenant_id, int(candidate_ref.definition_id), lock=True,
+        )
         candidate = _version_row(self.db, self.tenant_id, version_id, lock=True)
+        if int(candidate.definition_id) != int(definition.id):
+            raise AppException("DATA_CONFLICT", "业务表单版本归属已变化", http_status=409)
         check_version(int(candidate.version or 0), expected_version)
         if candidate.status != "DRAFT":
             raise AppException("DATA_CONFLICT", "仅草稿表单版本可发布", http_status=409)
@@ -192,7 +205,6 @@ class BusinessFormDefinitionService:
                 },
                 http_status=409,
             )
-        definition = _definition_row(self.db, self.tenant_id, int(candidate.definition_id), lock=True)
         prior = list(self.db.scalars(select(BusinessFormVersion).where(
             BusinessFormVersion.tenant_id == self.tenant_id,
             BusinessFormVersion.definition_id == int(definition.id),
@@ -217,11 +229,16 @@ class BusinessFormDefinitionService:
         return candidate
 
     def disable_version(self, version_id: int, *, expected_version: int) -> BusinessFormVersion:
+        row_ref = _version_row(self.db, self.tenant_id, version_id)
+        definition = _definition_row(
+            self.db, self.tenant_id, int(row_ref.definition_id), lock=True,
+        )
         row = _version_row(self.db, self.tenant_id, version_id, lock=True)
+        if int(row.definition_id) != int(definition.id):
+            raise AppException("DATA_CONFLICT", "业务表单版本归属已变化", http_status=409)
         check_version(int(row.version or 0), expected_version)
         if row.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅已发布表单版本可停用", http_status=409)
-        definition = _definition_row(self.db, self.tenant_id, int(row.definition_id), lock=True)
         row.status = "DISABLED"
         row.disabled_at = datetime.utcnow()
         row.version = int(row.version or 0) + 1

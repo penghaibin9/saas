@@ -56,6 +56,34 @@ def _internship_state(item: dict) -> ComplianceState:
     return ComplianceState.NOT_EVALUATED
 
 
+def _graduation_operation_applicable(definition, operation: str) -> bool:
+    if operation == "ARCHIVE":
+        return bool(definition.archive_required)
+    if operation == "REVIEW":
+        return bool(definition.review_required)
+    return True
+
+
+def _graduation_state_blocks(
+    *, state: ComplianceState, required: bool, operation: str, has_evidence: bool,
+) -> bool:
+    if state == ComplianceState.BLOCKER:
+        return True
+    if state in {ComplianceState.PENDING, ComplianceState.NOT_EVALUATED}:
+        return required or (operation == "ARCHIVE" and has_evidence)
+    return operation == "ARCHIVE" and has_evidence and state == ComplianceState.WARNING
+
+
+def _graduation_current_version_is_valid(actual, version) -> bool:
+    return bool(
+        actual
+        and version
+        and not bool(getattr(version, "is_deleted", False))
+        and bool(getattr(version, "is_current", False))
+        and int(getattr(version, "asset_id", 0) or 0) == int(getattr(actual, "asset_id", 0) or 0)
+    )
+
+
 class InternshipComplianceProvider:
     provider_code = "INTERNSHIP_NATIVE"
     domain_code = "INTERNSHIP"
@@ -140,6 +168,13 @@ class GraduationMaterialComplianceProvider:
         from app.modules.graduation.services.graduation_scope_service import assert_student_access
         from app.services.db_service import _tid, session
 
+        normalized_operation = str(operation or "SUBMIT").strip().upper()
+        if normalized_operation not in {"SUBMIT", "REVIEW", "ARCHIVE"}:
+            raise AppException(
+                "COMPLIANCE_OPERATION_UNSUPPORTED",
+                "毕业材料合规评估不支持该 operation",
+                http_status=400,
+            )
         cm = self._session_factory() if self._session_factory else session()
         with cm if hasattr(cm, "__enter__") else nullcontext(cm) as db:
             student = db.scalars(select(GraduationStudent).where(
@@ -167,6 +202,7 @@ class GraduationMaterialComplianceProvider:
                 binding_mode=PolicyRefBindingMode.PINNED,
             )
             items: list[ComplianceItem] = []
+            blocking = False
             for definition in definitions:
                 actual = by_code.get(str(definition.material_code).upper())
                 major_mismatch = bool(
@@ -181,7 +217,13 @@ class GraduationMaterialComplianceProvider:
                 required = bool(definition.required)
                 reason = None
                 evidence_ref = None
-                if major_mismatch or topic_mismatch:
+                operation_not_applicable = not _graduation_operation_applicable(
+                    definition, normalized_operation,
+                )
+                if operation_not_applicable:
+                    state = ComplianceState.NOT_APPLICABLE
+                    reason = f"当前材料规则不要求执行{normalized_operation}"
+                elif major_mismatch or topic_mismatch:
                     state = ComplianceState.NOT_APPLICABLE
                     reason = "当前专业或课题类型不适用"
                 elif actual and str(actual.required_status).upper() == "NOT_APPLICABLE":
@@ -191,11 +233,14 @@ class GraduationMaterialComplianceProvider:
                     state = ComplianceState.EXEMPTED
                     reason = "业务材料目录已豁免"
                 elif not actual or not actual.current_version_id:
-                    state = ComplianceState.BLOCKER if required else ComplianceState.NOT_APPLICABLE
+                    state = ComplianceState.BLOCKER if required else ComplianceState.WARNING
                     reason = "缺少必需材料" if required else "可选材料未提交"
                 else:
                     version = tenant_get(db, FileVersion, actual.current_version_id)
-                    file_obj = tenant_get(db, FileObject, version.file_object_id) if version else None
+                    version_valid = _graduation_current_version_is_valid(actual, version)
+                    file_obj = tenant_get(db, FileObject, version.file_object_id) if version_valid else None
+                    if file_obj and bool(getattr(file_obj, "is_deleted", False)):
+                        file_obj = None
                     evidence_ref = {
                         "materialId": str(actual.id),
                         "fileVersionId": str(actual.current_version_id),
@@ -203,22 +248,46 @@ class GraduationMaterialComplianceProvider:
                     }
                     business_status = str(actual.business_status or "").upper()
                     review_status = str(actual.review_status or "").upper()
+                    version_status = str(version.status or "").upper() if version_valid else ""
                     ready = bool(
                         file_obj
                         and str(file_obj.status or "").upper() == "AVAILABLE"
                         and str(file_obj.scan_status or "").upper() in SAFE_SCAN
                     )
-                    if business_status in {"RETURNED"} or review_status == "RETURNED":
+                    if not version_valid:
+                        state = ComplianceState.NOT_EVALUATED
+                        reason = "当前文件版本不属于材料资产或已不是 current version"
+                    elif business_status in {"RETURNED"} or review_status == "RETURNED":
                         state = ComplianceState.BLOCKER if required else ComplianceState.WARNING
                         reason = actual.reject_reason or "材料已退回"
-                    elif not ready or business_status in {"UPLOADING", "SCANNING", "SUBMITTED"} or review_status == "PENDING":
+                    elif (
+                        not ready
+                        or business_status in {"UPLOADING", "SCANNING", "SUBMITTED"}
+                        or review_status == "PENDING"
+                        or version_status in {"UPLOADED", "SCANNING", "READY", "SUBMITTED"}
+                    ):
                         state = ComplianceState.PENDING
                         reason = "文件安全状态或业务审核尚未完成"
                     elif business_status in {"APPROVED", "ARCHIVED"} or review_status in {"APPROVED", "NOT_REQUIRED"}:
-                        state = ComplianceState.PASS
+                        if version_status in {"APPROVED", "ARCHIVED"}:
+                            state = ComplianceState.PASS
+                        else:
+                            state = ComplianceState.NOT_EVALUATED
+                            reason = f"材料状态与文件版本状态不一致：{version_status or 'UNKNOWN'}"
                     else:
                         state = ComplianceState.NOT_EVALUATED
                         reason = f"未识别的业务材料状态：{business_status or 'UNKNOWN'}"
+                has_evidence = bool(actual and actual.current_version_id)
+                # Required work cannot pass while pending/unknown.  The
+                # canonical archive collector additionally rejects any
+                # supplied archive item that is not approved and safe,
+                # including optional material once it has been supplied.
+                blocking = blocking or _graduation_state_blocks(
+                    state=state,
+                    required=required,
+                    operation=normalized_operation,
+                    has_evidence=has_evidence,
+                )
                 constraints = {
                     "allowedExtensions": MaterialConstraint(
                         state=MaterialConstraintState.ENFORCED,
@@ -246,12 +315,11 @@ class GraduationMaterialComplianceProvider:
                     target={"route": f"/graduation/materials/{student.id}"},
                     constraints=constraints,
                 ))
-            blocking = any(item.state == ComplianceState.BLOCKER for item in items)
             return DomainComplianceAssessment(
                 provider_code=self.provider_code,
                 provider_mode=self.mode,
                 subject_ref=subject_ref,
-                operation=str(operation or "SUBMIT").upper(),
+                operation=normalized_operation,
                 policy_version=policy_version,
                 items=items,
                 blocking=blocking,
