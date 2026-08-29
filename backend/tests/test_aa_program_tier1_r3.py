@@ -83,26 +83,17 @@ def _hdr(client, login_name):
 
 
 def _ensure_real_major():
-    """最小真库夹具补齐真实学院/专业，使 Program bind 使用正式 Major 锁锚点。"""
+    """固定使用本文件专用学院/专业，避免 shard 顺序影响 Program 的学院审核 scope。"""
     from app.db.session import get_sessionmaker
     from app.models import College, Major
 
     db = get_sessionmaker()()
     try:
-        major = db.query(Major).filter(
-            Major.tenant_id == TID,
-            Major.status == "ACTIVE",
-            Major.is_deleted.is_(False),
-        ).order_by(Major.id).first()
-        if major:
-            return major.id
-
         college = db.query(College).filter(
             College.tenant_id == TID,
             College.code == "AW2TESTCOL",
-            College.is_deleted.is_(False),
         ).first()
-        if not college:
+        if college is None:
             college = College(
                 tenant_id=TID,
                 college_name="A-W2测试学院",
@@ -111,18 +102,35 @@ def _ensure_real_major():
             )
             db.add(college)
             db.flush()
+        else:
+            college.college_name = "A-W2测试学院"
+            college.status = "ACTIVE"
+            college.is_deleted = False
 
-        major = Major(
-            tenant_id=TID,
-            college_id=college.id,
-            major_name="A-W2测试专业",
-            code="AW2TESTMAJ",
-            status="ACTIVE",
-            enroll_status="ENROLLING",
-        )
-        db.add(major)
+        major = db.query(Major).filter(
+            Major.tenant_id == TID,
+            Major.code == "AW2TESTMAJ",
+        ).first()
+        if major is None:
+            major = Major(
+                tenant_id=TID,
+                college_id=college.id,
+                major_name="A-W2测试专业",
+                code="AW2TESTMAJ",
+                status="ACTIVE",
+                enroll_status="ENROLLING",
+            )
+            db.add(major)
+        else:
+            major.college_id = college.id
+            major.major_name = "A-W2测试专业"
+            major.status = "ACTIVE"
+            major.enroll_status = "ENROLLING"
+            major.is_deleted = False
+        db.flush()
+        major_id = int(major.id)
         db.commit()
-        return major.id
+        return major_id
     finally:
         db.close()
 
