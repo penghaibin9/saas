@@ -573,7 +573,10 @@ def test_major_assignment_scope_does_not_expand_to_sibling_major(db_mode):
             scope_id=int(selected_major.id),
             scope_name_snapshot="专业范围测试学院 / 已授权专业",
             status="ACTIVE",
-            effective_at=datetime.utcnow(),
+            # This contract verifies MAJOR isolation, not activation at the
+            # exact wall-clock boundary.  Make the grant unambiguously active
+            # across host/container clock skew on CI runners.
+            effective_at=datetime.utcnow() - timedelta(minutes=1),
         ))
         db.commit()
 
