@@ -25,6 +25,7 @@ from sqlalchemy.exc import OperationalError
 from app.core.affairs_security import build_affairs_context
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_grade_core_service as _core
@@ -407,7 +408,7 @@ def change_college_review(record_id, user, action, reason="") -> dict:
     act = (action or "").upper()
     with session() as db:
         request = _load_pending_request(db, record_id)
-        task = db.get(AaGradeTask, int(request.grade_task_id))
+        task = tenant_get(db, AaGradeTask, int(request.grade_task_id))
         if task:
             _core._check_college_scope(db, task, user)
         instance, wtask = _claim_task(db, request, _COLLEGE_NODE)
@@ -585,7 +586,7 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
         )
 
         academic_student = (
-            db.get(AcademicStudent, int(corrected.acad_student_id))
+            tenant_get(db, AcademicStudent, int(corrected.acad_student_id))
             if corrected.acad_student_id else None
         )
         if academic_student:

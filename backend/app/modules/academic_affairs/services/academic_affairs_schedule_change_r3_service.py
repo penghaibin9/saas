@@ -221,6 +221,8 @@ def review(cid, user, action, comment="", *, expected_version=None) -> dict:
             )
             _legacy._audit(db, change.id, "REJECT", clean_comment)
             db.commit()
+            from app.services.message_event_outbox_service import try_process_pending_outbox
+            try_process_pending_outbox(worker_id="aa-sched-change-inline")
             db.refresh(change)
             return _legacy._row(change)
 
@@ -266,6 +268,8 @@ def review(cid, user, action, comment="", *, expected_version=None) -> dict:
         applied = _legacy._apply_schedule(db, change)
         _legacy._todo_done(db, change.id)
         db.commit()
+        from app.services.message_event_outbox_service import try_process_pending_outbox
+        try_process_pending_outbox(worker_id="aa-sched-change-inline")
         db.refresh(change)
         out = _legacy._row(change)
         out["applied"] = applied

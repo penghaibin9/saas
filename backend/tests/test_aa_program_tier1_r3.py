@@ -77,8 +77,18 @@ def db_mode_programs():
 
 
 def _hdr(client, login_name):
-    data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
+    """业务回归直接签发既有 mock 身份，避免全量 shard 的登录限流状态污染本模块。"""
+    del client
+    from app.core.config import settings
+    from app.services import mock_auth_service
+
+    user_type = "STUDENT" if login_name == "student01" else "ADMIN"
+    data = mock_auth_service.login(
+        settings.DEFAULT_TENANT_CODE,
+        login_name,
+        user_type,
+        "PC",
+    )
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
