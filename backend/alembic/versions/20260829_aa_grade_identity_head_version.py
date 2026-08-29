@@ -15,6 +15,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Expand phase: keep a server default so the previous release can still
+    # insert grade-identity rows after an application rollback. Removing the
+    # default belongs to a later contract migration once N-1 is retired.
     op.add_column(
         "t_aa_grade_identity_head",
         sa.Column(
@@ -24,14 +27,6 @@ def upgrade() -> None:
             server_default=sa.text("0"),
             comment="乐观锁",
         ),
-    )
-    op.alter_column(
-        "t_aa_grade_identity_head",
-        "version",
-        existing_type=sa.Integer(),
-        nullable=False,
-        server_default=None,
-        existing_comment="乐观锁",
     )
 
 
