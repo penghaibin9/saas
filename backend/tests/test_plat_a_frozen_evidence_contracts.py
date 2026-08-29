@@ -20,10 +20,12 @@ from app.modules.platform_integrity.contracts import PackageArtifactRef
 from app.modules.platform_integrity.deterministic_package import ArchiveEntry, write_standard_v1
 from app.modules.platform_integrity.file_access_resolver import frozen_evidence_package_resolver
 from app.modules.platform_integrity.file_job_service import package_job_dedupe_key
+from app.modules.platform_integrity.frozen_package_service import frozen_package_artifact_biz_id
 from app.modules.platform_integrity.integrity_service import (
     DetectorPage,
     IntegrityFinding,
     run_registered_probe,
+    scan_frozen_manifest_page,
     stable_fingerprint,
 )
 from app.modules.platform_integrity.manifest_digest import (
@@ -175,6 +177,88 @@ def test_standard_v1_is_byte_deterministic_above_one_hundred_entries(tmp_path):
     with zipfile.ZipFile(output_a) as archive:
         assert len(archive.namelist()) == 122
         assert archive.namelist()[1:-1] == sorted(archive.namelist()[1:-1])
+
+
+def test_standard_v1_rejects_duplicate_and_reserved_paths(tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_bytes(b"frozen")
+    entry = ArchiveEntry(
+        path="evidence/0001/source.txt",
+        source_path=source,
+        sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+        size_bytes=source.stat().st_size,
+    )
+    with pytest.raises(ValueError):
+        write_standard_v1(
+            tmp_path / "duplicate.zip",
+            manifest_payload={"manifestId": "41"},
+            entries=[entry, entry],
+        )
+    with pytest.raises(ValueError):
+        write_standard_v1(
+            tmp_path / "reserved.zip",
+            manifest_payload={"manifestId": "41"},
+            entries=[ArchiveEntry(
+                path="MANIFEST.JSON",
+                source_path=source,
+                sha256=entry.sha256,
+                size_bytes=entry.size_bytes,
+            )],
+        )
+
+
+def test_deep_sha_budget_counts_unreadable_fetch_attempts(monkeypatch):
+    manifest = _manifest()
+    items = [
+        _item(item_id=index, code=f"MATERIAL_{index}", sort_no=index, version_id=100 + index, sha="a" * 64)
+        for index in range(1, 7)
+    ]
+    manifest.manifest_sha256 = platform_manifest_digest(manifest, items)
+    versions = [SimpleNamespace(id=item.version_id, file_object_id=item.file_object_id) for item in items]
+    objects = [SimpleNamespace(
+        id=item.file_object_id,
+        size_bytes=item.size_snapshot,
+        sha256=item.sha256_snapshot,
+        object_key=f"objects/{item.file_object_id}",
+        file_key=f"objects/{item.file_object_id}",
+    ) for item in items]
+
+    class _Rows:
+        def __init__(self, values):
+            self.values = values
+
+        def all(self):
+            return self.values
+
+    class _Db:
+        def __init__(self):
+            self.results = iter(([manifest], items, versions, objects, []))
+
+        def scalars(self, _statement):
+            return _Rows(next(self.results))
+
+    class _Backend:
+        def __init__(self):
+            self.fetches = 0
+
+        def exists(self, _key):
+            return True
+
+        def fetch_local(self, _key):
+            self.fetches += 1
+            return None
+
+    backend = _Backend()
+    monkeypatch.setattr("app.modules.platform_integrity.integrity_service._tid", lambda: 1001)
+    monkeypatch.setattr("app.modules.platform_integrity.integrity_service.get_backend", lambda: backend)
+    page = scan_frozen_manifest_page(
+        _Db(),
+        tenant_id=1001,
+        deep_sha=True,
+        deep_sha_limit=3,
+    )
+    assert backend.fetches == 3
+    assert page.deep_sha_scanned == 3
 
 
 def test_artifact_contract_never_exposes_storage_location_or_raw_url():
@@ -463,6 +547,8 @@ def test_student_teacher_and_file_resolver_negative_authorization_is_fail_closed
         module_code="GRADUATION",
         target_id="5",
         status="FROZEN",
+        revision=2,
+        manifest_sha256="a" * 64,
         is_deleted=False,
     )
     student = SimpleNamespace(tenant_id=1001, id=5, is_deleted=False)
@@ -481,7 +567,10 @@ def test_student_teacher_and_file_resolver_negative_authorization_is_fail_closed
         def scalars(self, _statement):
             return _Scalar(next(self.values))
 
-    same_tenant_file = SimpleNamespace(tenant_id=1001, biz_id="m41:r2:digest")
+    same_tenant_file = SimpleNamespace(
+        tenant_id=1001,
+        biz_id=frozen_package_artifact_biz_id(manifest, "STANDARD_V1"),
+    )
     assert frozen_evidence_package_resolver(
         _Db(), same_tenant_file, [], {"userType": "TEACHER", "permissions": []}, "download",
     ) is False
@@ -491,6 +580,17 @@ def test_student_teacher_and_file_resolver_negative_authorization_is_fail_closed
     )
     assert frozen_evidence_package_resolver(
         _Db(), same_tenant_file, [], {"userType": "STUDENT", "studentId": "6"}, "download",
+    ) is False
+    monkeypatch.setattr(
+        "app.modules.graduation.services.graduation_record_resolver.resolve_current_gd_student",
+        lambda _db, _actor: SimpleNamespace(id=5),
+    )
+    assert frozen_evidence_package_resolver(
+        _Db(), same_tenant_file, [], {"userType": "STUDENT", "studentId": "5"}, "download",
+    ) is True
+    forged_file = SimpleNamespace(tenant_id=1001, biz_id="m41:r2:forged")
+    assert frozen_evidence_package_resolver(
+        _Db(), forged_file, [], {"userType": "STUDENT", "studentId": "5"}, "download",
     ) is False
     manifest.status = "REVOKED"
     assert frozen_evidence_package_resolver(

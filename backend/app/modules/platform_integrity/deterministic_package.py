@@ -12,6 +12,7 @@ from typing import BinaryIO, Iterable
 STANDARD_PROFILE_V1 = "STANDARD_V1"
 _ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 _CHUNK_SIZE = 1024 * 1024
+_RESERVED_PATHS = frozenset({"manifest.json", "checksums.sha256"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +73,20 @@ def write_standard_v1(
     entries: Iterable[ArchiveEntry],
 ) -> tuple[int, str]:
     ordered = sorted(entries, key=lambda item: item.path)
+    seen_paths: set[str] = set()
+    for entry in ordered:
+        path = str(entry.path or "")
+        folded = path.casefold()
+        if (
+            not path
+            or "\\" in path
+            or path.startswith("/")
+            or any(segment in {"", ".", ".."} for segment in path.split("/"))
+            or folded in _RESERVED_PATHS
+            or folded in seen_paths
+        ):
+            raise ValueError(f"invalid or conflicting archive entry path: {path!r}")
+        seen_paths.add(folded)
     manifest_bytes = canonical_package_manifest(manifest_payload)
     checksums = [(hashlib.sha256(manifest_bytes).hexdigest(), "manifest.json")]
     checksums.extend((entry.sha256.lower(), entry.path) for entry in ordered)

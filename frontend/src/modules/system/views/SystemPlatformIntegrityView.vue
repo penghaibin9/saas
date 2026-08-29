@@ -93,10 +93,10 @@ function goTarget(target) {
 async function downloadPackage(item) {
   try {
     let result = await platformIntegrityApi.packageStatus(item.manifestId)
-    if (!result.artifact && result.packageStatus !== 'LEGACY_UNAVAILABLE') result = await platformIntegrityApi.buildPackage(item.manifestId)
+    if (!result.artifact && !['LEGACY_UNAVAILABLE', 'UNAVAILABLE'].includes(result.packageStatus)) result = await platformIntegrityApi.buildPackage(item.manifestId)
     const artifact = result.artifact
     if (!artifact?.fileId) {
-      notice.value = result.packageStatus === 'LEGACY_UNAVAILABLE' ? '历史清单保持原打包语义。' : `冻结包已进入任务队列（${result.packageStatus || 'PENDING'}），完成后可安全下载。`
+      notice.value = result.packageStatus === 'LEGACY_UNAVAILABLE' ? '历史清单保持原打包语义。' : result.packageStatus === 'UNAVAILABLE' ? '冻结包已失效或尚未通过安全检查，已禁止下载。' : `冻结包已进入任务队列（${result.packageStatus || 'PENDING'}），完成后可安全下载。`
       return
     }
     await fileSdk.download(artifact.fileId, artifact.fileName)

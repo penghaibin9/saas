@@ -10,10 +10,22 @@ from sqlalchemy.exc import IntegrityError
 from app.core.exceptions import AppException, not_found
 from app.models.file import ArchiveManifest, FileJob
 from app.modules.platform_integrity.deterministic_package import STANDARD_PROFILE_V1
-from app.modules.platform_integrity.frozen_package_service import build_frozen_package
+from app.modules.platform_integrity.frozen_package_service import (
+    PACKAGEABLE_MANIFEST_STATUSES,
+    build_frozen_package_for_job,
+)
 from app.services.db_service import _tid, session
 
 FROZEN_PACKAGE_JOB_TYPE = "FROZEN_EVIDENCE_PACKAGE"
+_PERMANENT_PACKAGE_JOB_ERRORS = frozenset({
+    "FILE_JOB_SOURCE_CHANGED",
+    "FROZEN_MANIFEST_STATE_INVALID",
+    "FROZEN_SNAPSHOT_CARDINALITY_INVALID",
+    "FROZEN_MANIFEST_ITEM_DRIFT",
+    "LEGACY_MANIFEST_UNSUPPORTED",
+    "PACKAGE_ENTRY_PATH_CONFLICT",
+    "PACKAGE_PROFILE_UNSUPPORTED",
+})
 
 
 def package_job_dedupe_key(*, tenant_id: int, manifest_id: int, revision: int, manifest_sha256: str, profile_code: str) -> str:
@@ -33,6 +45,8 @@ def enqueue_frozen_package(db, *, manifest_id: int, profile_code: str = STANDARD
     )).first()
     if not manifest:
         raise not_found("冻结清单不存在")
+    if str(manifest.status or "").upper() not in PACKAGEABLE_MANIFEST_STATUSES:
+        raise AppException("FROZEN_MANIFEST_STATE_INVALID", "当前清单状态不允许生成冻结证据包", http_status=409)
     if not manifest.manifest_sha256:
         raise AppException("FROZEN_MANIFEST_DIGEST_MISSING", "冻结清单缺少摘要", http_status=409)
     key = package_job_dedupe_key(
@@ -149,9 +163,11 @@ def run_claimed_frozen_package_job(*, job_id: int, worker_id: str) -> dict:
             raise AppException("TENANT_SCOPE_MISMATCH", "任务租户与执行上下文不一致", http_status=409)
 
     try:
-        result = build_frozen_package(
+        result = build_frozen_package_for_job(
             manifest_id=int(payload["manifestId"]),
             profile_code=str(payload["profileCode"]),
+            expected_revision=int(payload["revision"]),
+            expected_manifest_sha256=str(payload["manifestSha256"]),
         ).as_dict()
     except Exception as exc:
         with session() as db:
@@ -161,10 +177,12 @@ def run_claimed_frozen_package_job(*, job_id: int, worker_id: str) -> dict:
                 FileJob.is_deleted.is_(False),
             ).with_for_update()).first()
             if job and job.status == "RUNNING" and str(job.locked_by or "") == str(worker_id):
-                job.last_error = str(exc)[:4000]
+                error_text = f"{exc.code}: {exc.message}" if isinstance(exc, AppException) else str(exc)
+                job.last_error = error_text[:4000]
                 job.locked_at = None
                 job.locked_by = None
-                if int(job.attempts or 0) >= int(job.max_attempts or 5):
+                permanent = isinstance(exc, AppException) and exc.code in _PERMANENT_PACKAGE_JOB_ERRORS
+                if permanent or int(job.attempts or 0) >= int(job.max_attempts or 5):
                     job.status = "DEAD"
                 else:
                     job.status = "RETRY"

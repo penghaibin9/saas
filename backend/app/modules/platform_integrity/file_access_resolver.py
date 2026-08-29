@@ -5,7 +5,11 @@ from sqlalchemy import select
 
 from app.core.permissions import has_permission
 from app.models.file import ArchiveManifest
-from app.modules.platform_integrity.frozen_package_service import PACKAGE_BIZ_TYPE
+from app.modules.platform_integrity.deterministic_package import STANDARD_PROFILE_V1
+from app.modules.platform_integrity.frozen_package_service import (
+    PACKAGE_BIZ_TYPE,
+    frozen_package_artifact_biz_id,
+)
 from app.services.file_access_service import register_file_resolver
 from app.services.db_service import _tid
 
@@ -34,6 +38,8 @@ def frozen_evidence_package_resolver(db, file_obj, bindings: list[object], user:
     if str(manifest.module_code or "").upper() != "GRADUATION":
         return False
     if str(manifest.status or "").upper() not in {"FROZEN", "PACKAGED"}:
+        return False
+    if biz_id != frozen_package_artifact_biz_id(manifest, STANDARD_PROFILE_V1):
         return False
     try:
         from app.models import GraduationStudent

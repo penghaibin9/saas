@@ -33,18 +33,30 @@ from app.modules.platform_integrity.manifest_digest import (
     platform_manifest_digest,
 )
 from app.services.db_service import _tid, session
+from app.services.file_content_security import is_downloadable_status
+from app.services.file_scan_constants import READY_SCAN_STATES
 from app.services.generated_file_path_service import store_generated_path
 from app.services.storage import get_backend
 
 PACKAGE_BIZ_TYPE = "FROZEN_EVIDENCE_PACKAGE"
 MAX_PACKAGE_ITEMS = 1000
+PACKAGEABLE_MANIFEST_STATUSES = frozenset({"FROZEN", "PACKAGED"})
 
 
-def _artifact_biz_id(manifest: ArchiveManifest, profile_code: str) -> str:
+def frozen_package_artifact_biz_id(manifest: ArchiveManifest, profile_code: str) -> str:
     raw = f"m{manifest.id}:r{manifest.revision}:{manifest.manifest_sha256}:{profile_code}"
     if len(raw) <= 64:
         return raw
     return f"m{manifest.id}:r{manifest.revision}:{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:32]}"
+
+
+def is_package_artifact_ready(file_obj: FileObject | None) -> bool:
+    return bool(
+        file_obj
+        and not bool(file_obj.is_deleted)
+        and is_downloadable_status(file_obj.status)
+        and str(file_obj.scan_status or "").upper() in READY_SCAN_STATES
+    )
 
 
 def _artifact_ref(
@@ -115,8 +127,13 @@ def _existing_artifact(db, *, tenant_id: int, biz_id: str) -> FileObject | None:
     ).order_by(FileObject.id.desc()).limit(1)).first()
 
 
-def build_frozen_package(*, manifest_id: int, profile_code: str) -> FrozenPackageResult:
-    """Build or return the immutable File Center artifact for one frozen manifest."""
+def _build_frozen_package(
+    *,
+    manifest_id: int,
+    profile_code: str,
+    expected_revision: int | None = None,
+    expected_manifest_sha256: str | None = None,
+) -> FrozenPackageResult:
     profile = str(profile_code or "").strip().upper()
     if profile != STANDARD_PROFILE_V1:
         raise AppException("PACKAGE_PROFILE_UNSUPPORTED", "仅支持 STANDARD_V1 冻结包规范", http_status=422)
@@ -129,6 +146,14 @@ def build_frozen_package(*, manifest_id: int, profile_code: str) -> FrozenPackag
         ).with_for_update()).first()
         if not manifest:
             raise not_found("冻结清单不存在")
+        if str(manifest.status or "").upper() not in PACKAGEABLE_MANIFEST_STATUSES:
+            raise AppException("FROZEN_MANIFEST_STATE_INVALID", "当前清单状态不允许生成冻结证据包", http_status=409)
+        if expected_revision is not None and int(manifest.revision or 1) != int(expected_revision):
+            raise AppException("FILE_JOB_SOURCE_CHANGED", "冻结包任务引用的清单版本已变化", http_status=409)
+        if expected_manifest_sha256 is not None and (
+            str(manifest.manifest_sha256 or "").lower() != str(expected_manifest_sha256).lower()
+        ):
+            raise AppException("FILE_JOB_SOURCE_CHANGED", "冻结包任务引用的清单摘要已变化", http_status=409)
         items = list(db.scalars(select(ArchiveManifestItem).where(
             ArchiveManifestItem.tenant_id == tenant_id,
             ArchiveManifestItem.manifest_id == int(manifest.id),
@@ -140,16 +165,26 @@ def build_frozen_package(*, manifest_id: int, profile_code: str) -> FrozenPackag
                 f"冻结清单材料数超过安全上限 {MAX_PACKAGE_ITEMS}",
                 http_status=409,
             )
-        if not items or not is_platform_frozen_manifest(items):
+        snapshot_items = [
+            item for item in items
+            if str(item.material_code or "").upper() == PLATFORM_BUSINESS_SNAPSHOT
+        ]
+        if not snapshot_items:
+            raise AppException("LEGACY_MANIFEST_UNSUPPORTED", "历史清单未包含平台业务快照，保持原有打包语义", http_status=409)
+        if len(snapshot_items) != 1:
+            raise AppException("FROZEN_SNAPSHOT_CARDINALITY_INVALID", "冻结清单必须且只能包含一个平台业务快照", http_status=409)
+        if not is_platform_frozen_manifest(items):
             raise AppException("LEGACY_MANIFEST_UNSUPPORTED", "历史清单未包含平台业务快照，保持原有打包语义", http_status=409)
         digest = platform_manifest_digest(manifest, items)
         if digest != str(manifest.manifest_sha256 or "").lower():
             raise AppException("FROZEN_MANIFEST_ITEM_DRIFT", "冻结清单摘要校验失败", http_status=409)
 
-        biz_id = _artifact_biz_id(manifest, profile)
+        biz_id = frozen_package_artifact_biz_id(manifest, profile)
         existing = _existing_artifact(db, tenant_id=tenant_id, biz_id=biz_id)
         backend = get_backend()
         if existing:
+            if not is_package_artifact_ready(existing):
+                raise AppException("PACKAGE_ARTIFACT_UNAVAILABLE", "冻结证据包已失效或尚未通过安全检查", http_status=409)
             path = backend.fetch_local(str(existing.object_key or existing.file_key))
             if not path:
                 raise AppException("PACKAGED_FILE_MISSING", "冻结证据包物理文件不存在", http_status=409)
@@ -203,11 +238,14 @@ def build_frozen_package(*, manifest_id: int, profile_code: str) -> FrozenPackag
         try:
             with tempfile.NamedTemporaryFile(prefix="plat-a-frozen-", suffix=".zip", delete=False) as handle:
                 temp_path = Path(handle.name)
-            expected_size, expected_sha = write_standard_v1(
-                temp_path,
-                manifest_payload=package_manifest,
-                entries=entries,
-            )
+            try:
+                expected_size, expected_sha = write_standard_v1(
+                    temp_path,
+                    manifest_payload=package_manifest,
+                    entries=entries,
+                )
+            except ValueError as exc:
+                raise AppException("PACKAGE_ENTRY_PATH_CONFLICT", "冻结证据包条目路径冲突", http_status=409) from exc
             meta = store_generated_path(
                 temp_path,
                 f"frozen-manifest-{manifest.id}-r{int(manifest.revision or 1)}.zip",
@@ -226,9 +264,7 @@ def build_frozen_package(*, manifest_id: int, profile_code: str) -> FrozenPackag
             )).one()
             if int(artifact.size_bytes or 0) != expected_size or str(artifact.sha256 or "").lower() != expected_sha:
                 raise AppException("PACKAGE_ARTIFACT_MISMATCH", "冻结证据包登记结果与生成字节不一致", http_status=500)
-            snapshot_item = next(
-                item for item in items if str(item.material_code).upper() == PLATFORM_BUSINESS_SNAPSHOT
-            )
+            snapshot_item = snapshot_items[0]
             source_binding = db.scalars(select(FileBinding).where(
                 FileBinding.tenant_id == tenant_id,
                 FileBinding.file_id == int(snapshot_item.file_object_id),
@@ -272,4 +308,32 @@ def build_frozen_package(*, manifest_id: int, profile_code: str) -> FrozenPackag
                 temp_path.unlink(missing_ok=True)
 
 
-__all__ = ["PACKAGE_BIZ_TYPE", "build_frozen_package"]
+def build_frozen_package(*, manifest_id: int, profile_code: str) -> FrozenPackageResult:
+    """Build or return the immutable File Center artifact for one frozen manifest."""
+    return _build_frozen_package(manifest_id=manifest_id, profile_code=profile_code)
+
+
+def build_frozen_package_for_job(
+    *,
+    manifest_id: int,
+    profile_code: str,
+    expected_revision: int,
+    expected_manifest_sha256: str,
+) -> FrozenPackageResult:
+    """Build only when the row-locked manifest still matches the queued source identity."""
+    return _build_frozen_package(
+        manifest_id=manifest_id,
+        profile_code=profile_code,
+        expected_revision=expected_revision,
+        expected_manifest_sha256=expected_manifest_sha256,
+    )
+
+
+__all__ = [
+    "PACKAGE_BIZ_TYPE",
+    "PACKAGEABLE_MANIFEST_STATUSES",
+    "build_frozen_package",
+    "build_frozen_package_for_job",
+    "frozen_package_artifact_biz_id",
+    "is_package_artifact_ready",
+]

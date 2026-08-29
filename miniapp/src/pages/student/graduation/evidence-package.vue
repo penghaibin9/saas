@@ -6,7 +6,7 @@
       <text class="label">当前状态</text><text class="status">{{ statusText }}</text>
       <text v-if="data.manifestId" class="meta">Manifest #{{ data.manifestId }} · r{{ data.revision }}</text>
       <button v-if="data.artifact && data.artifact.fileId" class="btn btn-primary" :disabled="busy" @click="download">{{ busy ? '下载中…' : '下载冻结证据包' }}</button>
-      <text v-else class="desc">{{ data.packageStatus === 'LEGACY_UNAVAILABLE' ? '历史归档请使用原导出入口。' : '归档完成后系统会异步生成，请稍后刷新。' }}</text>
+      <text v-else class="desc">{{ data.packageStatus === 'LEGACY_UNAVAILABLE' ? '历史归档请使用原导出入口。' : data.packageStatus === 'UNAVAILABLE' ? '冻结包已失效或尚未通过安全检查，请联系管理员处理。' : '归档完成后系统会异步生成，请稍后刷新。' }}</text>
     </view>
   </view></view>
 </template>
@@ -17,7 +17,7 @@ import { platformIntegrityApi } from '@/services/platformIntegrityApi'
 import { normalizeError, safeToast } from '@/services/request'
 export default {
   data: () => ({ state: 'loading', data: {}, busy: false }),
-  computed: { statusText() { return ({ AVAILABLE: '可下载', PENDING: '等待生成', RUNNING: '正在生成', RETRY: '等待重试', NOT_FROZEN: '尚未归档', LEGACY_UNAVAILABLE: '历史归档' }[this.data.packageStatus] || this.data.packageStatus || '暂无') } },
+  computed: { statusText() { return ({ AVAILABLE: '可下载', PENDING: '等待生成', RUNNING: '正在生成', RETRY: '等待重试', UNAVAILABLE: '文件不可用', NOT_FROZEN: '尚未归档', LEGACY_UNAVAILABLE: '历史归档' }[this.data.packageStatus] || this.data.packageStatus || '暂无') } },
   onLoad() { this.load() },
   onPullDownRefresh() { this.load().finally(() => uni.stopPullDownRefresh()) },
   methods: {

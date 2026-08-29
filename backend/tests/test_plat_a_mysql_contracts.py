@@ -17,7 +17,7 @@ from app.modules.platform_integrity.file_job_service import (
     enqueue_frozen_package,
     run_claimed_frozen_package_job,
 )
-from app.modules.graduation.materials.frozen_package_projection import _artifact_view
+from app.modules.graduation.materials.frozen_package_projection import _artifact_view, _projection
 from app.modules.platform_integrity.frozen_package_service import build_frozen_package
 from app.modules.platform_integrity.integrity_service import (
     DetectorPage,
@@ -274,10 +274,61 @@ def test_mysql_file_job_lease_artifact_idempotency_and_tenant_fail_closed(db_mod
         with pytest.raises(AppException) as missing:
             build_frozen_package(manifest_id=manifest_id, profile_code="STANDARD_V1")
         assert missing.value.code == "PACKAGED_FILE_MISSING"
+        with session() as db:
+            forced_object = db.get(FileObject, int(forced["artifact"]["fileId"]))
+            forced_object.status = "REJECTED"
+            db.commit()
+        with session() as db:
+            projection = _projection(db, db.get(ArchiveManifest, manifest_id))
+            assert projection["packageStatus"] == "UNAVAILABLE"
+            assert projection["artifact"] is None
     finally:
         set_tenant(previous)
         settings.UPLOAD_DIR = previous_upload_dir
         reset_backend()
+
+
+def test_mysql_job_source_identity_and_manifest_state_fail_closed(db_mode):
+    previous = get_tenant()
+    try:
+        _tenant(TENANT_A)
+        manifest_id = _seed_manifest()
+        with session() as db:
+            job = enqueue_frozen_package(db, manifest_id=manifest_id)
+            job_id = int(job.id)
+            db.commit()
+        with session() as db:
+            manifest = db.get(ArchiveManifest, manifest_id)
+            manifest.revision = 2
+            items = list(db.scalars(select(ArchiveManifestItem).where(
+                ArchiveManifestItem.tenant_id == TENANT_A,
+                ArchiveManifestItem.manifest_id == manifest_id,
+                ArchiveManifestItem.is_deleted.is_(False),
+            )).all())
+            manifest.manifest_sha256 = platform_manifest_digest(manifest, items)
+            db.commit()
+
+        assert claim_next_frozen_package_job(worker_id="identity-worker") == job_id
+        with pytest.raises(AppException) as changed:
+            run_claimed_frozen_package_job(job_id=job_id, worker_id="identity-worker")
+        assert changed.value.code == "FILE_JOB_SOURCE_CHANGED"
+        with session() as db:
+            job = db.get(FileJob, job_id)
+            assert job.status == "DEAD"
+            assert "FILE_JOB_SOURCE_CHANGED" in str(job.last_error)
+            manifest = db.get(ArchiveManifest, manifest_id)
+            manifest.status = "REVOKED"
+            db.commit()
+
+        with pytest.raises(AppException) as direct:
+            build_frozen_package(manifest_id=manifest_id, profile_code="STANDARD_V1")
+        assert direct.value.code == "FROZEN_MANIFEST_STATE_INVALID"
+        with session() as db:
+            with pytest.raises(AppException) as queued:
+                enqueue_frozen_package(db, manifest_id=manifest_id)
+            assert queued.value.code == "FROZEN_MANIFEST_STATE_INVALID"
+    finally:
+        set_tenant(previous)
 
 
 def test_mysql_exception_fingerprint_concurrent_upsert_is_single_row(db_mode):

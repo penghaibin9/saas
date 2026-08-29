@@ -6,7 +6,7 @@
     <article v-else class="package-card">
       <div><small>包状态</small><strong>{{ statusText }}</strong><p v-if="data.manifestId">Manifest #{{ data.manifestId }} · revision {{ data.revision }} · {{ data.digestSchemaVersion }}</p></div>
       <button v-if="data.artifact?.fileId" type="button" :disabled="downloading" @click="download">{{ downloading ? '下载中…' : '通过文件中心下载' }}</button>
-      <p v-else class="hint">{{ data.packageStatus === 'LEGACY_UNAVAILABLE' ? '该历史归档继续沿用原有导出入口。' : '归档完成后系统会生成冻结包，请稍后刷新。' }}</p>
+      <p v-else class="hint">{{ data.packageStatus === 'LEGACY_UNAVAILABLE' ? '该历史归档继续沿用原有导出入口。' : data.packageStatus === 'UNAVAILABLE' ? '冻结包已失效或尚未通过安全检查，请联系管理员处理。' : '归档完成后系统会生成冻结包，请稍后刷新。' }}</p>
     </article>
   </section>
 </template>
@@ -20,7 +20,7 @@ const data = ref({})
 const loading = ref(true)
 const downloading = ref(false)
 const error = ref('')
-const statusText = computed(() => ({ AVAILABLE: '可下载', SUCCEEDED: '可下载', PENDING: '等待生成', RUNNING: '正在生成', RETRY: '等待重试', NOT_FROZEN: '尚未归档', LEGACY_UNAVAILABLE: '历史归档' }[data.value.packageStatus] || data.value.packageStatus || '暂无'))
+const statusText = computed(() => ({ AVAILABLE: '可下载', SUCCEEDED: '可下载', PENDING: '等待生成', RUNNING: '正在生成', RETRY: '等待重试', UNAVAILABLE: '文件不可用', NOT_FROZEN: '尚未归档', LEGACY_UNAVAILABLE: '历史归档' }[data.value.packageStatus] || data.value.packageStatus || '暂无'))
 async function load() { loading.value = true; error.value = ''; try { data.value = await portalApi.graduationFrozenPackage() } catch (e) { error.value = e?.message || '归档包状态加载失败' } finally { loading.value = false } }
 async function download() { downloading.value = true; try { const file = data.value.artifact; await fileSdk.download(file.fileId, file.fileName) } catch (e) { error.value = e?.message || '下载失败' } finally { downloading.value = false } }
 onMounted(load)

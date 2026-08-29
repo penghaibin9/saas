@@ -1,9 +1,9 @@
 """Graduation-owned projection of the shared PLAT-A package artifact."""
 from __future__ import annotations
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, select
 
-from app.core.exceptions import no_permission, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import has_permission
 from app.models import GraduationStudent
 from app.models.file import ArchiveManifest, ArchiveManifestItem, FileJob, FileObject
@@ -15,7 +15,12 @@ from app.modules.platform_integrity.file_job_service import (
     FROZEN_PACKAGE_JOB_TYPE,
     package_job_dedupe_key,
 )
-from app.modules.platform_integrity.frozen_package_service import PACKAGE_BIZ_TYPE
+from app.modules.platform_integrity.frozen_package_service import (
+    PACKAGE_BIZ_TYPE,
+    PACKAGEABLE_MANIFEST_STATUSES,
+    frozen_package_artifact_biz_id,
+    is_package_artifact_ready,
+)
 from app.modules.platform_integrity.manifest_digest import (
     PLATFORM_BUSINESS_SNAPSHOT,
     PLATFORM_MANIFEST_DIGEST_V1,
@@ -75,18 +80,19 @@ def _projection(db, manifest: ArchiveManifest) -> dict:
     artifact = db.scalars(select(FileObject).where(
         FileObject.tenant_id == _tid(),
         FileObject.biz_type == PACKAGE_BIZ_TYPE,
-        FileObject.biz_id.like(f"m{manifest.id}:r{manifest.revision}:%"),
+        FileObject.biz_id == frozen_package_artifact_biz_id(manifest, "STANDARD_V1"),
         FileObject.is_deleted.is_(False),
     ).order_by(FileObject.id.desc()).limit(1)).first()
+    artifact_ready = is_package_artifact_ready(artifact)
     artifact_view = None
-    if artifact:
+    if artifact_ready:
         artifact_view = _artifact_view(manifest, artifact, can_download=True)
     return {
         "manifestId": str(manifest.id),
         "revision": int(manifest.revision or 1),
         "manifestStatus": manifest.status,
         "manifestSha256": manifest.manifest_sha256 or "",
-        "packageStatus": "AVAILABLE" if artifact else _package_job_status(db, manifest),
+        "packageStatus": "AVAILABLE" if artifact_ready else ("UNAVAILABLE" if artifact else _package_job_status(db, manifest)),
         "digestSchemaVersion": PLATFORM_MANIFEST_DIGEST_V1,
         "artifact": artifact_view,
     }
@@ -136,6 +142,8 @@ def manifest_frozen_package(manifest_id: int, user: dict) -> dict:
         )).first()
         if not manifest:
             raise not_found("毕业归档清单不存在")
+        if str(manifest.status or "").upper() not in PACKAGEABLE_MANIFEST_STATUSES:
+            raise AppException("FROZEN_MANIFEST_STATE_INVALID", "当前清单状态不允许访问冻结证据包", http_status=409)
         student = db.scalars(select(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(),
             GraduationStudent.id == int(manifest.target_id),
@@ -252,21 +260,22 @@ def teacher_integrity_summary(user: dict, *, limit: int = 100) -> dict:
             except Exception:
                 continue
             scoped_manifests.append((manifest, student))
-        artifact_filters = [
-            FileObject.biz_id.like(f"m{manifest.id}:r{manifest.revision}:%")
+        artifact_identities = {
+            int(manifest.id): frozen_package_artifact_biz_id(manifest, "STANDARD_V1")
             for manifest, _student in scoped_manifests
-        ]
+        }
         artifacts = list(db.scalars(select(FileObject).where(
             FileObject.tenant_id == _tid(),
             FileObject.biz_type == PACKAGE_BIZ_TYPE,
-            or_(*(artifact_filters or [FileObject.id == -1])),
+            FileObject.biz_id.in_(set(artifact_identities.values()) or {"-"}),
             FileObject.is_deleted.is_(False),
         ).order_by(FileObject.id.desc()).limit(page_size)).all())
+        manifest_by_identity = {value: key for key, value in artifact_identities.items()}
         artifact_by_manifest: dict[int, FileObject] = {}
         for artifact in artifacts:
-            prefix = str(artifact.biz_id or "").split(":", 1)[0]
-            if prefix.startswith("m") and prefix[1:].isdigit():
-                artifact_by_manifest.setdefault(int(prefix[1:]), artifact)
+            manifest_id = manifest_by_identity.get(str(artifact.biz_id or ""))
+            if manifest_id is not None:
+                artifact_by_manifest.setdefault(manifest_id, artifact)
         can_download = any(has_permission(user or {}, code) for code in (
             "graduationDesign.archive.view",
             "graduationDesign.archive.file",
@@ -293,6 +302,7 @@ def teacher_integrity_summary(user: dict, *, limit: int = 100) -> dict:
         packages = []
         for manifest, student in scoped_manifests:
             artifact = artifact_by_manifest.get(int(manifest.id))
+            artifact_ready = is_package_artifact_ready(artifact)
             dedupe = dedupe_by_manifest.get(int(manifest.id))
             packages.append({
                 "gdStudentId": str(student.id),
@@ -301,8 +311,8 @@ def teacher_integrity_summary(user: dict, *, limit: int = 100) -> dict:
                 "studentName": student.name or "",
                 "manifestId": str(manifest.id),
                 "revision": int(manifest.revision or 1),
-                "packageStatus": "AVAILABLE" if artifact else job_status_by_key.get(str(dedupe), "NOT_REQUESTED"),
-                "artifact": _artifact_view(manifest, artifact, can_download=can_download) if artifact else None,
+                "packageStatus": "AVAILABLE" if artifact_ready else ("UNAVAILABLE" if artifact else job_status_by_key.get(str(dedupe), "NOT_REQUESTED")),
+                "artifact": _artifact_view(manifest, artifact, can_download=can_download) if artifact_ready else None,
                 "target": {
                     "type": "TEACHER_STUDENT_DETAIL",
                     "path": "/pages/teacher/student-detail/index",

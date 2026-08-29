@@ -245,6 +245,7 @@ def scan_frozen_manifest_page(
                 ))
                 continue
             if deep_scanned < deep_budget:
+                deep_scanned += 1
                 local_path = backend.fetch_local(storage_key)
                 if local_path is None:
                     findings.append(_finding(
@@ -256,7 +257,6 @@ def scan_frozen_manifest_page(
                     ))
                 else:
                     actual_size, actual_sha = _sha256_path(local_path)
-                    deep_scanned += 1
                     if actual_size != int(item.size_snapshot or 0) or actual_sha != str(item.sha256_snapshot or "").lower():
                         findings.append(_finding(
                             FROZEN_MANIFEST_ITEM_DRIFT,
