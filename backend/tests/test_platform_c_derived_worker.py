@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -11,7 +13,7 @@ from app.core.context import set_tenant
 from app.core.exceptions import AppException
 from app.models.file import FileAsset, FileJob, FileObject, FileVersion
 from app.modules.platform.document_lifecycle import derived_worker as worker
-from app.modules.platform.document_lifecycle.models import FileDerivedArtifact
+from app.modules.platform.document_lifecycle.models import DocumentCompareResult, FileDerivedArtifact
 
 
 class _Backend:
@@ -139,4 +141,69 @@ def test_extract_worker_stores_body_in_file_object_and_only_summary_in_job(
         assert artifact.generated_file_object_id is not None
         assert artifact.content_sha256 == hashlib.sha256(captured["data"]).hexdigest()
         assert artifact.legal_hold is True
+    engine.dispose()
+
+
+def test_compare_worker_stores_diff_in_file_object_and_inherits_stricter_controls(
+        monkeypatch) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    FileObject.__table__.create(engine)
+    FileJob.__table__.create(engine)
+    DocumentCompareResult.__table__.create(engine)
+    left_retention = datetime(2027, 1, 1)
+    right_retention = left_retention + timedelta(days=30)
+    sources = iter((
+        worker.WorkerSource(
+            tenant_id=101, asset_id=20, file_version_id=30, file_object_id=10,
+            source_sha256="a" * 64, mime_type="text/plain", ext="txt",
+            size_bytes=5, sensitivity_level="PERSONAL", retention_until=left_retention,
+            legal_hold=False, data=b"alpha",
+        ),
+        worker.WorkerSource(
+            tenant_id=101, asset_id=21, file_version_id=31, file_object_id=11,
+            source_sha256="b" * 64, mime_type="text/plain", ext="txt",
+            size_bytes=4, sensitivity_level="HIGHLY_SENSITIVE", retention_until=right_retention,
+            legal_hold=True, data=b"beta",
+        ),
+    ))
+    monkeypatch.setattr(worker, "load_pinned_source", lambda *_a, **_k: next(sources))
+    captured: dict = {}
+
+    def artifact_writer(db, *, data, filename, sensitivity):
+        captured.update({"data": data, "filename": filename, "sensitivity": sensitivity})
+        row = FileObject(
+            tenant_id=101, file_key="compare.txt", file_name=filename,
+            ext="txt", mime_type="text/plain", size_bytes=len(data),
+            sha256=hashlib.sha256(data).hexdigest(), biz_type="DOCUMENT_DERIVATIVE",
+            biz_id=None, visibility="PRIVATE", security_level=sensitivity,
+            status="AVAILABLE", storage_backend="local", storage_zone="ACTIVE",
+            upload_source="SYSTEM", scan_required=False, scan_status="NOT_REQUIRED",
+        )
+        db.add(row)
+        db.flush()
+        return row
+
+    with Session(engine) as db:
+        job = FileJob(
+            id=40, tenant_id=101, job_type="DOCUMENT_COMPARE", file_id=10,
+            dedupe_key="compare-worker-test", status="RUNNING", attempts=1, max_attempts=3,
+        )
+        db.add(job)
+        db.flush()
+        result = worker._execute_compare(db, job, {
+            "contract": "PLAT_C_DOCUMENT_COMPARE_V1",
+            "left": {}, "right": {},
+            "algorithmCode": "PARAGRAPH_PAGE_V1", "algorithmVersion": "1.0.0",
+        }, artifact_writer)
+        row = db.scalars(select(DocumentCompareResult)).one()
+        stored = json.loads(captured["data"])
+        assert stored["changes"]
+        assert "changes" not in str(result["summary"])
+        assert row.summary_json == result["summary"]
+        assert row.algorithm_code == "PARAGRAPH_PAGE_V1"
+        assert row.algorithm_version == "1.0.0"
+        assert row.sensitivity_level == "HIGHLY_SENSITIVE"
+        assert row.retention_until == right_retention
+        assert row.legal_hold is True
+        assert captured["sensitivity"] == "HIGHLY_SENSITIVE"
     engine.dispose()

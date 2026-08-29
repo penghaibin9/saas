@@ -64,7 +64,7 @@ The PLAT-C private package contains no assignment to `FileVersion.is_current`,
 
 Verified in the independent PLAT-C worktree before any C7 registration:
 
-- 54 PLAT-C backend characterization, security, rollback, visibility, worker and backfill tests pass;
+- 55 PLAT-C backend characterization, security, rollback, visibility, worker and backfill tests pass;
   the suite contains no skip or xfail.
 - Staff PC and Student PC production builds pass. Miniapp H5 and Weixin builds pass. The private
   four-client contract tests pass 3/3 and assert one real server contract, exact version/SHA inputs,
