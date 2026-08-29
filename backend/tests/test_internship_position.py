@@ -10,7 +10,7 @@ ENT = "/api/v1/internship/enterprises"
 def _company(client, h, approve=True, cc="91310000POS0001XA", name="岗位测试企业"):
     cid = client.post(ENT, headers=h, json={"name": name, "creditCode": cc}).json()["data"]["id"]
     if approve:
-        client.post(f"{ENT}/{cid}/review", headers=h, json={"action": "APPROVE"})
+        client.post(f"{ENT}/{cid}/review", headers=h, json={"action": "APPROVE", "expectedVersion": 0})
     return cid
 
 
@@ -97,7 +97,7 @@ def test_status_machine_publish(client, auth_headers, db_mode):
 
 def test_blacklist_company_cannot_publish(client, auth_headers, db_mode):
     cid = _company(client, auth_headers, cc="91310000POSBLK1XA", name="黑名单企业")
-    client.post(f"{ENT}/{cid}/blacklist", headers=auth_headers, json={"on": True, "reason": "拖欠津贴多次投诉"})
+    client.post(f"{ENT}/{cid}/blacklist", headers=auth_headers, json={"on": True, "reason": "拖欠津贴多次投诉", "expectedVersion": 1})
     pid = _mk(client, auth_headers, cid)["data"]["id"]
     client.post(f"{POS}/{pid}/status", headers=auth_headers, json={"action": "SUBMIT"})
     r = client.post(f"{POS}/{pid}/status", headers=auth_headers, json={"action": "PUBLISH"}).json()

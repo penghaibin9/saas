@@ -186,7 +186,7 @@ def conflicts(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200
 
 @router.get("/stats", summary="匹配统计")
 def stats(batchId: Optional[str] = None, user=Depends(require_permission(_P_RESULT))):
-    return success(svc.match_stats(batch_id=batchId))
+    return success(svc.match_stats(batch_id=batchId, user=user))
 
 
 @router.post("/export", summary="导出匹配 Excel 台账")

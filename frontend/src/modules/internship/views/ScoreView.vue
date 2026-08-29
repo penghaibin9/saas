@@ -9,6 +9,29 @@
     <div class="stack">
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
+      <div class="appeals">
+        <div class="appeals__head">
+          <div><strong>成绩申诉</strong><span>与正式成绩状态机联动，受理后原成绩自动撤回</span></div>
+          <AppButton variant="ghost" size="sm" :disabled="appealsLoading" @click="loadAppeals">刷新</AppButton>
+        </div>
+        <div v-if="appealsLoading" class="state">正在加载申诉…</div>
+        <div v-else-if="!appeals.length" class="state">当前批次暂无成绩申诉</div>
+        <div v-else class="appeals__list">
+          <div v-for="item in appeals" :key="item.id" class="appeal-row">
+            <div class="appeal-row__main">
+              <div><strong>{{ item.studentName }}</strong> · {{ item.studentNo || '无学号' }} · <AppStatusTag :status="item.status">{{ item.statusLabel }}</AppStatusTag></div>
+              <div class="appeal-row__reason">申诉理由：{{ item.reason }}</div>
+              <div class="appeal-row__reason">冻结成绩：{{ item.scoreSnapshot?.totalScore ?? '—' }} · 当前成绩状态：{{ item.currentScore?.status || '—' }}</div>
+            </div>
+            <div v-if="item.status === 'PENDING'" class="appeal-row__ops">
+              <AppPermissionButton code="internship.score.publish" :allowed="canBtn('internship.score.publish')" variant="secondary" size="sm" @click="decideAppeal(item, true)">受理并撤回原成绩</AppPermissionButton>
+              <AppPermissionButton code="internship.score.publish" :allowed="canBtn('internship.score.publish')" variant="ghost" size="sm" :danger="true" @click="decideAppeal(item, false)">驳回</AppPermissionButton>
+            </div>
+            <div v-else-if="item.status === 'APPROVED_RECALCULATING'" class="appeal-row__tip">请在下方找到该学生的「已撤回」成绩并重新核算、复核、发布。</div>
+          </div>
+        </div>
+      </div>
+
       <!-- 权重配置（真实 getConfig / saveConfig） -->
       <div class="cfg">
         <span class="cfg__t">五项权重配置</span>
@@ -156,7 +179,7 @@ const STATUS_MAP = { PENDING_CALC: '待核算', PENDING_REVIEW: '待复核', PUB
 // U8：只有 stage 在 URL 上，关键词/状态/仅看缺项/页码刷新即丢
 const WORK_FIELDS = ['keyword', 'statusFilter', 'missingOnly', 'page']
 
-const RECALC_STATUSES = ['PENDING_REVIEW', 'PENDING_CALC']
+const RECALC_STATUSES = ['PENDING_REVIEW', 'PENDING_CALC', 'WITHDRAWN']
 const DETAIL = [
   { key: 'studentName', label: '学生' }, { key: 'statusLabel', label: '状态' },
   { key: 'totalScore', label: '总分' }, { key: 'passLine', label: '及格线' },
@@ -173,6 +196,7 @@ export default {
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
+      appeals: [], appealsLoading: false,
       keyword: '', statusFilter: '', missingOnly: '', columns: COLUMNS, weightDefs: WEIGHTS, scoreInputs: SCORE_INPUTS,
       statusOptions: Object.entries(STATUS_MAP).map(([value, label]) => ({ value, label })),
       missingOptions: [{ value: 'MISSING', label: '仅看缺项' }],
@@ -228,10 +252,11 @@ export default {
     restoreWorkContext(this, WORK_FIELDS, { skipWhenQuery: ['stage'] })
     this.loadConfig()
     this.load()
+    this.loadAppeals()
   },
   watch: {
     '$route.query.stage'() { this.applyStageFromRoute(); this.reload() },
-    'batchStore.selectedBatchId'() { this.page = 1; this.closePanel(); this.load() }
+    'batchStore.selectedBatchId'() { this.page = 1; this.closePanel(); this.load(); this.loadAppeals() }
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
@@ -263,6 +288,25 @@ export default {
     },
     reload() { this.page = 1; this.load() },
     onPageChange(p) { this.page = p; this.load() },
+    async loadAppeals() {
+      if (!this.batchStore.selectedBatchId) { this.appeals = []; this.appealsLoading = false; return }
+      this.appealsLoading = true
+      const res = await scoreApi.getAppeals({ batchId: this.batchStore.selectedBatchId, page: 1, pageSize: 100 })
+      this.appealsLoading = false
+      if (res.code !== 0) { this.appeals = []; return toast.error(res.message || '成绩申诉加载失败') }
+      this.appeals = res.data.list || []
+    },
+    async decideAppeal(item, approve) {
+      const promptText = approve ? '请输入受理意见（不少于5字）' : '请输入驳回原因（不少于5字）'
+      const reason = (window.prompt(promptText) || '').trim()
+      if (reason.length < 5) return toast.error('处理意见不少于 5 字')
+      const fn = approve ? scoreApi.approveAppeal : scoreApi.rejectAppeal
+      const res = await fn(item.id, { reason, expectedVersion: item.version })
+      if (res.code !== 0) return toast.error(res.message || '申诉处理失败')
+      toast.success(res.data?.message || (approve ? '申诉已受理，原成绩已撤回' : '申诉已驳回'))
+      await this.loadAppeals()
+      await this.load()
+    },
     async load() {
       if (!this.batchStore.selectedBatchId) {
         this.loading = false; this.error = '请先选择批次'; this.rows = []; this.total = 0
@@ -300,6 +344,14 @@ export default {
       this.panel.submitting = true
       const body = { internshipId: this.cForm.internshipId }
       for (const s of SCORE_INPUTS) if (this.cForm[s.key] !== null && this.cForm[s.key] !== '') body[s.key] = this.cForm[s.key]
+      if (this.panel.mode === 'edit') {
+        const current = this.panelRow
+        if (!current || current.version === null || current.version === undefined) {
+          this.panel.submitting = false
+          return toast.error('成绩版本已失效，请刷新后重试')
+        }
+        body.expectedVersion = current.version
+      }
       const res = await scoreApi.compute(body)
       this.panel.submitting = false
       if (res.code !== 0) return toast.error(res.message || '核算失败')
@@ -354,6 +406,7 @@ export default {
       if (res.code !== 0) return toast.error(res.message || '操作失败')
       this.cd.visible = false; toast.success('操作成功，已写审计')
       await this.load()
+      await this.loadAppeals()
       // 若工作区正在核对该行，动作后刷新留痕
       if (this.panel.visible && this.panel.mode === 'detail' && this.panel.rowId === p.id) this.openDetailById(p.id)
     }
@@ -369,6 +422,15 @@ export default {
 .cfg__item :deep(.app-number-input) { width: 64px; }
 .cfg__sum { font-size: var(--font-size-sm); color: var(--success-700); }
 .cfg__sum.is-bad { color: var(--danger-600); }
+.appeals { border: 1px solid var(--border-base); border-radius: var(--radius-lg, 12px); padding: var(--space-3); background: var(--card, #fff); }
+.appeals__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-2); }
+.appeals__head > div { display: flex; align-items: baseline; gap: var(--space-2); }
+.appeals__head span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.appeals__list { display: flex; flex-direction: column; gap: var(--space-2); }
+.appeal-row { display: flex; gap: var(--space-3); align-items: center; justify-content: space-between; padding: var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-base); background: var(--bg-subtle); }
+.appeal-row__main { min-width: 0; }
+.appeal-row__reason, .appeal-row__tip { margin-top: var(--space-1); color: var(--text-secondary); font-size: var(--font-size-xs); }
+.appeal-row__ops { display: flex; gap: var(--space-1); flex-wrap: wrap; flex: none; }
 .bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .bar__note { font-size: var(--font-size-xs); color: var(--warning-700, #b45309); }
 .state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--radius-base); }

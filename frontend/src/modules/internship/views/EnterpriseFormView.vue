@@ -240,6 +240,7 @@ export default {
         remark: (f.remark || '').trim()
       }
       if (!this.isEdit || (f.contactPhone || '').trim()) body.contactPhone = (f.contactPhone || '').trim()
+      if (this.isEdit) body.expectedVersion = this.detail?.version
       this.submitting = true
       try {
         const res = this.isEdit

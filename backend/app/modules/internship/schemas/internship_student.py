@@ -15,6 +15,7 @@ class StudentRecordCreate(BaseModel):
 
 
 class StudentRecordUpdate(BaseModel):
+    expectedVersion: int = Field(..., ge=0, description="实习记录乐观锁版本")
     advisorName: Optional[str] = None
     advisorUserId: Optional[str] = None
     insurance: Optional[str] = None
@@ -33,17 +34,20 @@ class UnassignRequest(BaseModel):
 
 
 class StudentStatusRequest(BaseModel):
+    expectedVersion: int = Field(..., ge=0, description="实习记录乐观锁版本")
     action: str = Field(..., pattern="^(READY|ONBOARD|ASSESS)$",
                         description="READY / ONBOARD / ASSESS；归档只能走正式归档接口")
     reason: Optional[str] = ""
 
 
 class EligibilityRequest(BaseModel):
+    expectedVersion: int = Field(..., ge=0, description="实习记录乐观锁版本")
     status: str = Field(..., description="QUALIFIED / UNQUALIFIED / PENDING")
     reason: Optional[str] = ""
 
 
 class DestinationRequest(BaseModel):
+    expectedVersion: int = Field(..., ge=0, description="实习记录乐观锁版本")
     destination: str = Field(..., description="SELF_ARRANGED / EXEMPTED / NONE")
     reason: Optional[str] = ""
 
@@ -55,4 +59,5 @@ class StudentImport(BaseModel):
 
 class AdvisorAssignmentRequest(BaseModel):
     advisorUserId: str = Field(..., description="Active teacher user id")
+    expectedVersion: int = Field(..., ge=0, description="实习记录乐观锁版本")
     reason: Optional[str] = ""

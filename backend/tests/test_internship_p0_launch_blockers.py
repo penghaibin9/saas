@@ -21,8 +21,8 @@ def test_assignment_requires_record_expected_version():
 
 def test_regular_status_contract_has_no_archive_action():
     with pytest.raises(ValidationError):
-        StudentStatusRequest(action="ARCHIVE")
-    assert StudentStatusRequest(action="ASSESS").action == "ASSESS"
+        StudentStatusRequest(action="ARCHIVE", expectedVersion=0)
+    assert StudentStatusRequest(action="ASSESS", expectedVersion=0).action == "ASSESS"
 
 
 def test_mobile_internship_routes_use_module_guarded_subrouters():

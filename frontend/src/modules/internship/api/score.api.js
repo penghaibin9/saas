@@ -21,11 +21,15 @@ async function callList(path, params = {}) {
 }
 
 const B = '/internship/scores'
+const A = '/internship/score-appeals'
 
 export const scoreApi = {
   getConfig() { return call(() => request(`${B}/config`)) },
   saveConfig(body) { return call(() => request(`${B}/config`, { method: 'POST', body })) },
   getScores(params = {}) { return callList(B, params) },
+  getAppeals(params = {}) { return callList(A, params) },
+  approveAppeal(id, body) { return call(() => request(`${A}/${id}/approve`, { method: 'POST', body })) },
+  rejectAppeal(id, body) { return call(() => request(`${A}/${id}/reject`, { method: 'POST', body })) },
   getDetail(id) { return call(() => request(`${B}/${id}`)) },
   compute(body) { return call(() => request(`${B}/compute`, { method: 'POST', body })) },
   publish(id, { expectedVersion, version } = {}) {

@@ -10,6 +10,8 @@ batch_id 仅预留（nullable），本模块不依赖实习批次模块已完成
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
+
 from datetime import datetime
 
 from sqlalchemy import func, or_, select
@@ -107,8 +109,8 @@ def _row(p: InternshipPosition, db=None) -> dict:
     if db is not None:
         from app.modules.internship.services.internship_position_rights import (
             evaluate_position_publishability)
-        company = db.get(EmpCompany, p.company_id)
-        batch = db.get(InternshipBatch, p.batch_id) if p.batch_id else None
+        company = tenant_get(db, EmpCompany, p.company_id)
+        batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
         result = evaluate_position_publishability(p, company, batch, db=db)
         out.update({
             "publishable": result["passed"],
@@ -296,13 +298,19 @@ def update_position(pos_id, body) -> dict:
             if src in body.model_fields_set:
                 setattr(p, col, getattr(body, src))
         hc = getattr(body, "headcount", None)
+        headcount_changed = hc is not None and int(hc) != int(p.headcount or 0)
         if hc is not None:
             if hc < p.allocated_count:
                 raise AppException("VALIDATION_ERROR", f"容量不能小于已分配人数（{p.allocated_count}）")
             p.headcount = hc
         bid = getattr(body, "batchId", None)
         if bid is not None:
-            p.batch_id = _opt_int(bid, "批次")
+            new_batch_id = _opt_int(bid, "批次")
+            if new_batch_id != p.batch_id and (
+                    int(p.allocated_count or 0) > 0 or p.publish_at is not None
+                    or p.status not in ("DRAFT", "PENDING")):
+                raise AppException("DATA_CONFLICT", "岗位已发布或存在学生分配记录，不可变更所属实习批次")
+            p.batch_id = new_batch_id
         mc = getattr(body, "mentorContactId", None)
         if mc is not None:
             p.mentor_contact_id, p.mentor_name = _resolve_mentor(db, p.company_id, mc) if mc else (None, None)
@@ -312,20 +320,38 @@ def update_position(pos_id, body) -> dict:
             InternshipRecord.tenant_id == _tid(),
             InternshipRecord.position_id == p.id,
             InternshipRecord.is_deleted.is_(False))).all() if changed else []
-        if changed and rec_ids:
-            from app.modules.internship.services.internship_consent_service import supersede_for_major_change
-            for rec_id in rec_ids:
-                supersede_for_major_change(db, rec_id)
-                for filing in db.scalars(select(InternshipSpecialFiling).where(
-                    InternshipSpecialFiling.tenant_id == _tid(),
-                    InternshipSpecialFiling.internship_id == rec_id,
-                    InternshipSpecialFiling.status == "APPROVED",
-                    InternshipSpecialFiling.is_deleted.is_(False)).with_for_update()).all():
-                    filing.status = "SUPERSEDED"
-                    filing.version = int(filing.version or 0) + 1
-            p.rights_status = "UNKNOWN"
-            p.rights_checked_at = None
-            p.rights_rule_version = None
+        if changed:
+            if rec_ids:
+                from app.modules.internship.services.internship_consent_service import supersede_for_major_change
+                for rec_id in rec_ids:
+                    supersede_for_major_change(db, rec_id)
+                    for filing in db.scalars(select(InternshipSpecialFiling).where(
+                        InternshipSpecialFiling.tenant_id == _tid(),
+                        InternshipSpecialFiling.internship_id == rec_id,
+                        InternshipSpecialFiling.status == "APPROVED",
+                        InternshipSpecialFiling.is_deleted.is_(False)).with_for_update()).all():
+                        filing.status = "SUPERSEDED"
+                        filing.version = int(filing.version or 0) + 1
+            company = _company(db, p.company_id)
+            batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
+            from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
+            rights = evaluate_position_publishability(p, company, batch, operation="PUBLISH", db=db)
+            p.rights_status = "COMPLIANT" if rights["passed"] else "NON_COMPLIANT"
+            p.rights_checked_at = datetime.utcnow()
+            p.rights_rule_version = rights["ruleVersion"]
+            if p.status in ("PUBLISHED", "FULL") and not rights["passed"]:
+                p.status = "OFFLINE"
+            elif p.status == "FULL" and rights["passed"] and int(p.headcount or 0) > int(p.allocated_count or 0):
+                p.status = "PUBLISHED"
+        elif headcount_changed and p.status == "FULL" and int(p.headcount or 0) > int(p.allocated_count or 0):
+            company = _company(db, p.company_id)
+            batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
+            from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
+            rights = evaluate_position_publishability(p, company, batch, operation="PUBLISH", db=db)
+            p.rights_status = "COMPLIANT" if rights["passed"] else "NON_COMPLIANT"
+            p.rights_checked_at = datetime.utcnow()
+            p.rights_rule_version = rights["ruleVersion"]
+            p.status = "PUBLISHED" if rights["passed"] else "OFFLINE"
         p.version = int(p.version or 0) + 1
         _trail(db, p.id, "UPDATE", {"before": before, "after": after,
                                      "majorChangedFields": changed})
@@ -350,7 +376,7 @@ def set_status(pos_id, action: str, reason: str = "") -> dict:
             if p.status not in ("PENDING", "OFFLINE", "SUSPENDED"):
                 raise AppException("DATA_CONFLICT", "仅待审核/已下架/已暂停岗位可上架")
             c = _company(db, p.company_id)
-            batch = db.get(InternshipBatch, p.batch_id) if p.batch_id else None
+            batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
             from app.modules.internship.services.internship_position_rights import (
                 evaluate_position_publishability)
             rights = evaluate_position_publishability(

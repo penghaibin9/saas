@@ -1,0 +1,236 @@
+name: internship-final-residual-closeout-r3
+
+on:
+  push:
+    branches:
+      - fix/internship-prelaunch-p1p2-20260828
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: "${{ github.event.head_commit.message == 'chore(internship): run residual closeout' }}"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      TEST_DATABASE_URL: "mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test"
+      FAST_TEST_SCHEMA: "1"
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/internship-prelaunch-p1p2-20260828
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install cryptography
+
+      - name: Repair residual production-semantic fixtures
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f'{path}: expected {count} matches, got {actual}: {old!r}')
+              p.write_text(text.replace(old, new), encoding='utf-8')
+
+          replace_exact(
+              'tests/test_internship_score_archive_guard.py',
+              '        InternshipStudentEval, StudentProfile, WeeklyReport,\n    )',
+              '        InternshipStudentEval, StudentProfile, User, WeeklyReport,\n    )',
+          )
+          replace_exact(
+              'tests/test_internship_score_archive_guard.py',
+              '        record = InternshipRecord(\n            tenant_id=TID,\n            student_id=student.id,\n            advisor_name="成绩归档老师",',
+              '        advisor = User(\n            tenant_id=TID, login_name=f"score-archive-advisor-{uuid4().hex[:8]}",\n            real_name="成绩归档老师", password_hash="test-only",\n            user_type="TEACHER", status="ACTIVE",\n        )\n        db.add(advisor)\n        db.flush()\n        record = InternshipRecord(\n            tenant_id=TID,\n            student_id=student.id,\n            advisor_user_id=advisor.id,\n            advisor_name="成绩归档老师",',
+          )
+
+          replace_exact(
+              'tests/test_internship_archive.py',
+              '                            InternshipStudentEval, StudentProfile, WeeklyReport)',
+              '                            InternshipStudentEval, StudentProfile, User, WeeklyReport)',
+          )
+          replace_exact(
+              'tests/test_internship_archive.py',
+              '            r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,',
+              '            advisor = User(tenant_id=TID,\n                           login_name=f"archive-advisor-{key}-{uuid4().hex[:8]}",\n                           real_name=adv, password_hash="test-only",\n                           user_type="TEACHER", status="ACTIVE")\n            db.add(advisor); db.flush()\n            r = InternshipRecord(tenant_id=TID, student_id=s.id,\n                                 advisor_user_id=advisor.id, advisor_name=adv,',
+          )
+
+          replace_exact(
+              'tests/test_internship_v93_batch2_remaining_first_create.py',
+              '    db = _session()\n    ids = _seed(db)\n    db.commit()\n    db.close()\n\n    _admin_ctx()\n    svc.create({\n        "internshipId": str(ids["internship"]), "filingType": "OTHER",\n        "triggerReason": "企业临时调整岗位安排，需补充备案说明情况。",\n        "fileIds": ["f-evidence-1"],\n    }, user=ADMIN_USER)',
+              '    db = _session()\n    ids = _seed(db)\n    file_id = _seed_evidence_file(db)\n    db.commit()\n    db.close()\n\n    _admin_ctx()\n    svc.create({\n        "internshipId": str(ids["internship"]), "filingType": "OTHER",\n        "triggerReason": "企业临时调整岗位安排，需补充备案说明情况。",\n        "fileIds": [file_id],\n    }, user=ADMIN_USER)',
+          )
+          replace_exact(
+              'tests/test_internship_v93_batch2_remaining_first_create.py',
+              '    db = _session()\n    ids = _seed(db)\n    db.commit()\n    db.close()\n\n    def _do(seq):\n        _admin_ctx()\n        svc.create({\n            "internshipId": str(ids["internship"]), "filingType": "OTHER",\n            "triggerReason": "企业临时调整岗位安排，需补充备案说明情况。",\n            "fileIds": ["f-evidence-1"],\n        }, user=ADMIN_USER)',
+              '    db = _session()\n    ids = _seed(db)\n    ids["files"] = [_seed_evidence_file(db) for _ in range(2)]\n    db.commit()\n    db.close()\n\n    def _do(seq):\n        _admin_ctx()\n        svc.create({\n            "internshipId": str(ids["internship"]), "filingType": "OTHER",\n            "triggerReason": "企业临时调整岗位安排，需补充备案说明情况。",\n            "fileIds": [ids["files"][seq]],\n        }, user=ADMIN_USER)',
+          )
+
+          replace_exact(
+              'tests/test_internship_v93_special_filing_review_flow.py',
+              '    from app.models import InternshipBatch, InternshipRecord, StudentProfile\n',
+              '    from app.models import InternshipBatch, InternshipRecord, StudentProfile\n    from app.models.file import FileObject\n',
+          )
+          replace_exact(
+              'tests/test_internship_v93_special_filing_review_flow.py',
+              '    db.add(record)\n    db.flush()\n    db.commit()\n    ids = {"batch": batch.id, "internship": record.id, "student": profile.id}',
+              '    db.add(record)\n    db.flush()\n    evidence = FileObject(\n        tenant_id=TID, file_key=f"test/filing/{uuid.uuid4().hex}.pdf",\n        file_name="特殊备案依据.pdf", status="AVAILABLE", scan_status="CLEAN",\n        biz_type="TEMP_PRIVATE", biz_id=None, visibility="PRIVATE",\n        owner_user_id=REQUESTER["userId"],\n    )\n    db.add(evidence)\n    db.flush()\n    db.commit()\n    ids = {"batch": batch.id, "internship": record.id, "student": profile.id,\n           "file": str(evidence.id)}',
+          )
+          replace_exact(
+              'tests/test_internship_v93_special_filing_review_flow.py',
+              '        "fileIds": ["f-evidence-1"],',
+              '        "fileIds": [ids["file"]],',
+          )
+
+          helper = "\n".join([
+              'def _seed_score_context(no, name):',
+              '    from datetime import datetime',
+              '    from uuid import uuid4',
+              '',
+              '    from app.db.session import get_sessionmaker',
+              '    from app.models import InternshipBatch, InternshipFinalScore, InternshipRecord, StudentProfile',
+              '',
+              '    db = get_sessionmaker()()',
+              '    try:',
+              '        student = StudentProfile(',
+              '            tenant_id=TID, student_no=no, real_name=name, gender="M", grade="2022",',
+              '            current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE",',
+              '        )',
+              '        db.add(student)',
+              '        db.flush()',
+              '        batch = InternshipBatch(',
+              '            tenant_id=TID, batch_name="门户成绩申诉批次",',
+              '            batch_no=f"PORTAL-APPEAL-{uuid4().hex[:8]}", status="RUNNING", planned_count=1,',
+              '        )',
+              '        db.add(batch)',
+              '        db.flush()',
+              '        record = InternshipRecord(',
+              '            tenant_id=TID, student_id=student.id, batch_id=batch.id,',
+              '            status="ASSESSING", risk_level="NONE",',
+              '        )',
+              '        db.add(record)',
+              '        db.flush()',
+              '        score = InternshipFinalScore(',
+              '            tenant_id=TID, internship_id=record.id, student_id=student.id,',
+              '            batch_id=batch.id, total_score=80, pass_line=60,',
+              '            is_pass=True, incomplete=False, status="PUBLISHED",',
+              '            published_by_name="学校管理员", published_at=datetime.utcnow(), version=1,',
+              '        )',
+              '        db.add(score)',
+              '        db.commit()',
+              '        return {"internship": record.id, "batch": batch.id, "score": score.id}',
+              '    finally:',
+              '        db.close()',
+              '',
+              '',
+          ])
+          replace_exact(
+              'tests/test_portal_internship.py',
+              'def test_my_view(client, db_mode):\n',
+              helper + 'def test_my_view(client, db_mode):\n',
+          )
+          replace_exact(
+              'tests/test_portal_internship.py',
+              '    _seed("IN-003", "实习三")',
+              '    ids = _seed_score_context("IN-003", "实习三")',
+          )
+          replace_exact(
+              'tests/test_portal_internship.py',
+              '                     json={"reason": "实习成绩与考勤/周报表现不符，申请复核。"}).json()',
+              '                     json={"internshipId": str(ids["internship"]),\n                           "reason": "实习成绩与考勤/周报表现不符，申请复核。"}).json()',
+          )
+          replace_exact(
+              'tests/test_portal_internship.py',
+              '    assert client.post(f"{PORTAL}/score/appeal", headers=h, json={"reason": "短"}).json()["code"] != 0',
+              '    assert client.post(f"{PORTAL}/score/appeal", headers=h,\n                       json={"internshipId": str(ids["internship"]), "reason": "短"}).json()["code"] != 0',
+          )
+
+          replace_exact(
+              'tests/test_internship_scope.py',
+              '    from sqlalchemy import select\n\n    from app.core.security import create_access_token\n',
+              '    from sqlalchemy import select\n\n    from app.core.context import set_tenant\n    from app.core.security import create_access_token\n',
+          )
+          replace_exact(
+              'tests/test_internship_scope.py',
+              '    scope_other = {\n        "mode": "SCOPED", "collegeNames": {"IX外院"}, "classNames": set(),\n        "studentNos": set(), "advisorNames": set(), "advisorUserIds": set(),\n    }\n\n    db = get_sessionmaker()()\n',
+              '    scope_other = {\n        "mode": "SCOPED", "collegeNames": {"IX外院"}, "classNames": set(),\n        "studentNos": set(), "advisorNames": set(), "advisorUserIds": set(),\n    }\n\n    set_tenant({"tenantId": str(TID)})\n    db = get_sessionmaker()()\n',
+          )
+
+          replace_exact(
+              'tests/test_internship_enterprise_eval.py',
+              '                                 status="ONBOARD", risk_level="NONE", batch_id=b.id)',
+              '                                 status="ASSESSING", risk_level="NONE", batch_id=b.id)',
+          )
+          PY
+
+      - name: Syntax, tenant ratchet and diff integrity
+        run: |
+          python -m py_compile \
+            tests/test_internship_score_archive_guard.py \
+            tests/test_internship_archive.py \
+            tests/test_internship_v93_batch2_remaining_first_create.py \
+            tests/test_internship_v93_special_filing_review_flow.py \
+            tests/test_portal_internship.py \
+            tests/test_internship_scope.py \
+            tests/test_internship_enterprise_eval.py
+          python scripts/audit_tenant_queries.py --gate
+          git diff --check
+
+      - name: Residual real-MySQL regression only
+        run: |
+          timeout 20m pytest -q -p no:warnings \
+            tests/test_internship_score_archive_guard.py \
+            tests/test_internship_archive.py \
+            tests/test_internship_v93_batch2_remaining_first_create.py \
+            tests/test_internship_v93_special_filing_review_flow.py \
+            tests/test_portal_internship.py \
+            tests/test_internship_scope.py \
+            tests/test_internship_enterprise_eval.py
+
+      - name: Commit validated residual fixes and remove one-shot workflow
+        working-directory: .
+        run: |
+          rm -f .github/workflows/internship-final-residual-closeout-r3.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- .github/workflows/internship-final-residual-closeout-r3.yml
+          git add -- \
+            backend/tests/test_internship_score_archive_guard.py \
+            backend/tests/test_internship_archive.py \
+            backend/tests/test_internship_v93_batch2_remaining_first_create.py \
+            backend/tests/test_internship_v93_special_filing_review_flow.py \
+            backend/tests/test_portal_internship.py \
+            backend/tests/test_internship_scope.py \
+            backend/tests/test_internship_enterprise_eval.py
+          git diff --cached --check
+          git commit -m 'fix(internship): close residual test fixture drift'
+          git push origin HEAD:fix/internship-prelaunch-p1p2-20260828

@@ -352,16 +352,16 @@ export const internshipApi = {
     return call(() => request(`/internship/enterprises/${id}`, { method: 'PUT', body }))
   },
 
-  reviewEnterprise(id, { action, comment }) {
-    return call(() => request(`/internship/enterprises/${id}/review`, { method: 'POST', body: { action, comment } }))
+  reviewEnterprise(id, { action, comment, expectedVersion }) {
+    return call(() => request(`/internship/enterprises/${id}/review`, { method: 'POST', body: { action, comment, expectedVersion } }))
   },
 
-  setEnterpriseCooperation(id, { action, reason }) {
-    return call(() => request(`/internship/enterprises/${id}/cooperation`, { method: 'POST', body: { action, reason } }))
+  setEnterpriseCooperation(id, { action, reason, expectedVersion }) {
+    return call(() => request(`/internship/enterprises/${id}/cooperation`, { method: 'POST', body: { action, reason, expectedVersion } }))
   },
 
-  setEnterpriseBlacklist(id, { on, reason }) {
-    return call(() => request(`/internship/enterprises/${id}/blacklist`, { method: 'POST', body: { on, reason } }))
+  setEnterpriseBlacklist(id, { on, reason, expectedVersion }) {
+    return call(() => request(`/internship/enterprises/${id}/blacklist`, { method: 'POST', body: { on, reason, expectedVersion } }))
   },
 
   getEnterpriseContacts(id) {

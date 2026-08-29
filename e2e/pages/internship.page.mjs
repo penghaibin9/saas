@@ -33,6 +33,7 @@ export class StudentInternshipPage {
   async openLeave() {
     await this.page.goto(`${this.baseUrl}/internship`)
     await expect(this.page.getByRole('button', { name: '实习请假' })).toBeVisible()
+    await expect(this.page.getByText('正在加载实习信息…', { exact: true })).toBeHidden()
 
     const batchSelector = this.page.getByText('请选择要办理的实习批次', { exact: true })
     if (await batchSelector.count()) {

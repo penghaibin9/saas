@@ -20,7 +20,7 @@ _RIGHTS_FACTS = {
 
 def _company(client, h, cc, name="实习学生测试企业"):
     cid = client.post(ENT, headers=h, json={"name": name, "creditCode": cc}).json()["data"]["id"]
-    client.post(f"{ENT}/{cid}/review", headers=h, json={"action": "APPROVE"})  # → 合作中
+    client.post(f"{ENT}/{cid}/review", headers=h, json={"action": "APPROVE", "expectedVersion": 0})  # → 合作中
     return cid
 
 
@@ -92,17 +92,39 @@ def _record(client, h, sid, batch_id=None):
     return client.post(IST, headers=h, json={"studentId": sid, "batchId": batch_id}).json()["data"]["id"]
 
 
+def _record_version(client, headers, record_id) -> int:
+    detail = client.get(f"{IST}/{record_id}", headers=headers).json()
+    assert detail["code"] == 0, detail
+    return int(detail["data"].get("version") or 0)
+
+
 def _satisfy_onboard_prereqs(rid):
     """补齐上岗前置（BUG-010）：三方协议生效 + 保险核验通过 + 校内指导教师。
 
     这三项在真实业务里分别由协议、保险、指导教师分配三个模块产生；本用例只验状态机，
     故直接写库造前置，不绕过 set_status 本身的校验。"""
     from app.db.session import get_sessionmaker
-    from app.models import InternshipAgreement, InternshipInsurance, InternshipRecord
+    from app.models import InternshipAgreement, InternshipInsurance, InternshipRecord, User
     db = get_sessionmaker()()
     try:
         rec = db.get(InternshipRecord, int(rid))
-        rec.advisor_name = "张指导"
+        advisor = db.query(User).filter(
+            User.tenant_id == rec.tenant_id, User.status == "ACTIVE",
+            User.is_deleted.is_(False),
+        ).order_by(User.id).first()
+        if advisor is None:
+            advisor = User(
+                tenant_id=rec.tenant_id,
+                login_name=f"ist-advisor-{rid}",
+                password_hash="test-only",
+                real_name="张指导",
+                status="ACTIVE",
+                user_type="TEACHER",
+            )
+            db.add(advisor)
+            db.flush()
+        rec.advisor_user_id = advisor.id
+        rec.advisor_name = advisor.real_name or "张指导"
         db.add(InternshipAgreement(tenant_id=rec.tenant_id, internship_id=rec.id,
                                    student_id=rec.student_id, status="EFFECTIVE"))
         db.add(InternshipInsurance(tenant_id=rec.tenant_id, internship_id=rec.id,
@@ -173,7 +195,8 @@ def test_advisor_assignment_binds_active_teacher_and_audits(client, auth_headers
     advisors = client.get(f"{IST}/advisors", headers=auth_headers).json()["data"]
     assert any(a["id"] == teacher_id for a in advisors)
     changed = client.post(f"{IST}/{record_id}/advisor", headers=auth_headers,
-                          json={"advisorUserId": replacement_id, "reason": "重新分配"})
+                          json={"advisorUserId": replacement_id, "reason": "重新分配",
+                                "expectedVersion": _record_version(client, auth_headers, record_id)})
     assert changed.status_code == 200 and changed.json()["data"]["advisorUserId"] == replacement_id
     db = get_sessionmaker()()
     try:
@@ -225,7 +248,7 @@ def test_assign_non_published_rejected(client, auth_headers, db_mode):
 def test_assign_blacklist_rejected(client, auth_headers, db_mode):
     cid = _company(client, auth_headers, "91310000ISTB001X")
     pid = _position(client, auth_headers, cid)
-    client.post(f"{ENT}/{cid}/blacklist", headers=auth_headers, json={"on": True, "reason": "多次违规拖欠"})
+    client.post(f"{ENT}/{cid}/blacklist", headers=auth_headers, json={"on": True, "reason": "多次违规拖欠", "expectedVersion": 1})
     rid = _record(client, auth_headers, _student(client, auth_headers, "S-IST-040"))
     assert client.post(f"{IST}/{rid}/assign", headers=auth_headers,
                        json={"positionId": pid, "expectedVersion": 0}).json()["code"] != 0
@@ -281,14 +304,14 @@ def test_status_machine(client, auth_headers, db_mode):
     pid = _position(client, auth_headers, cid, batch_id=bid)
     rid = _record(client, auth_headers, _student(client, auth_headers, "S-IST-070"), batch_id=bid)
     # 未合格不能待上岗
-    assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "READY"}).json()["code"] != 0
-    client.post(f"{IST}/{rid}/eligibility", headers=auth_headers, json={"status": "QUALIFIED"})
-    assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "READY"}).json()["data"]["status"] == "READY"
+    assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "READY", "expectedVersion": _record_version(client, auth_headers, rid)}).json()["code"] != 0
+    client.post(f"{IST}/{rid}/eligibility", headers=auth_headers, json={"status": "QUALIFIED", "expectedVersion": _record_version(client, auth_headers, rid)})
+    assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "READY", "expectedVersion": _record_version(client, auth_headers, rid)}).json()["data"]["status"] == "READY"
     # 未分配岗位不能上岗
-    assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ONBOARD"}).json()["code"] != 0
-    client.post(f"{IST}/{rid}/assign", headers=auth_headers, json={"positionId": pid, "expectedVersion": 0})
+    assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ONBOARD", "expectedVersion": _record_version(client, auth_headers, rid)}).json()["code"] != 0
+    client.post(f"{IST}/{rid}/assign", headers=auth_headers, json={"positionId": pid, "expectedVersion": _record_version(client, auth_headers, rid)})
     # BUG-010：仅「有岗位」不足以上岗——三方协议/保险/指导教师任一缺失都必须拦住
-    blocked = client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ONBOARD"}).json()
+    blocked = client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ONBOARD", "expectedVersion": _record_version(client, auth_headers, rid)}).json()
     assert blocked["code"] != 0 and "上岗前置未完成" in blocked["message"]
     # 前置清单接口应如实列出缺什么（供前端在点「上岗」前提示）
     chk = client.get(f"{IST}/{rid}/onboard-checklist", headers=auth_headers).json()["data"]
@@ -298,7 +321,7 @@ def test_status_machine(client, auth_headers, db_mode):
     _satisfy_onboard_prereqs(rid)
     chk2 = client.get(f"{IST}/{rid}/onboard-checklist", headers=auth_headers).json()["data"]
     assert chk2["canOnboard"] is True and chk2["blockers"] == []
-    assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ONBOARD"}).json()["data"]["status"] == "ONBOARD"
+    assert client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ONBOARD", "expectedVersion": _record_version(client, auth_headers, rid)}).json()["data"]["status"] == "ONBOARD"
     # 批次结束日=今天 → 应有周报/打卡各最少化为 1 条；补齐即可通过考核前置数量核算
     from app.models import InternshipCheckin, WeeklyReport
     db = get_sessionmaker()()
@@ -310,7 +333,7 @@ def test_status_machine(client, auth_headers, db_mode):
         db.commit()
     finally:
         db.close()
-    assess = client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ASSESS"}).json()
+    assess = client.post(f"{IST}/{rid}/status", headers=auth_headers, json={"action": "ASSESS", "expectedVersion": _record_version(client, auth_headers, rid)}).json()
     assert assess.get("data") and assess["data"]["status"] == "ASSESSING", assess
 
     # force 只能绕过企业评价、自评等材料缺项，不能绕过正式成绩；状态机用例先写入
@@ -347,17 +370,17 @@ def test_status_machine(client, auth_headers, db_mode):
     fid = up.json()["data"]["fileId"]
     arc = client.post(f"/api/v1/internship/archive/{rid}/archive", headers=auth_headers, json={
         "force": True, "forceReason": "状态机用例仅验证流转，材料另有专项测试覆盖",
-        "evidenceFileIds": [fid], "expectedVersion": 1,
+        "evidenceFileIds": [fid], "expectedVersion": _record_version(client, auth_headers, rid),
     }).json()
     assert arc.get("data") and arc["data"]["archived"] is True, arc
     assert client.get(f"{IST}/{rid}", headers=auth_headers).json()["data"]["status"] == "ARCHIVED"
     # 已归档不可编辑
-    assert client.put(f"{IST}/{rid}", headers=auth_headers, json={"remark": "x"}).json()["code"] != 0
+    assert client.put(f"{IST}/{rid}", headers=auth_headers, json={"remark": "x", "expectedVersion": _record_version(client, auth_headers, rid)}).json()["code"] != 0
 
 
 def test_destination(client, auth_headers, db_mode):
     rid = _record(client, auth_headers, _student(client, auth_headers, "S-IST-080"))
-    d = client.post(f"{IST}/{rid}/destination", headers=auth_headers, json={"destination": "SELF_ARRANGED"}).json()
+    d = client.post(f"{IST}/{rid}/destination", headers=auth_headers, json={"destination": "SELF_ARRANGED", "expectedVersion": _record_version(client, auth_headers, rid)}).json()
     assert d["code"] == 0 and d["data"]["destinationType"] == "SELF_ARRANGED"
     # 已分配岗位则不能直接改去向
     cid = _company(client, auth_headers, "91310000ISTD001X")
@@ -366,7 +389,7 @@ def test_destination(client, auth_headers, db_mode):
     r2 = _record(client, auth_headers, _student(client, auth_headers, "S-IST-081"), batch_id=bid)
     assert client.post(f"{IST}/{r2}/assign", headers=auth_headers,
                        json={"positionId": pid, "expectedVersion": 0}).json()["code"] == 0
-    assert client.post(f"{IST}/{r2}/destination", headers=auth_headers, json={"destination": "EXEMPTED"}).json()["code"] != 0
+    assert client.post(f"{IST}/{r2}/destination", headers=auth_headers, json={"destination": "EXEMPTED", "expectedVersion": _record_version(client, auth_headers, r2)}).json()["code"] != 0
 
 
 def test_stats_and_export(client, auth_headers, db_mode):

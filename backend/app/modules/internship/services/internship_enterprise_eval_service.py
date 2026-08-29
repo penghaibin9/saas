@@ -192,6 +192,11 @@ def _assert_review_authority(user):
         raise no_permission("企业评价学校审核仅限学校或学院授权管理员")
 
 
+def _assert_assessing(record):
+    if not record or record.status != "ASSESSING":
+        raise AppException("DATA_CONFLICT", "仅处于考核中的实习记录可录入、重交或审核企业评价")
+
+
 def create(user, body, *, expected_batch_id=None) -> dict:
     payload = body or {}
     internship_id = payload.get("internshipId") or payload.get("internId")
@@ -204,6 +209,7 @@ def create(user, body, *, expected_batch_id=None) -> dict:
         if not record or record.is_deleted or record.tenant_id != _tid():
             raise not_found("实习记录不存在")
         student = db.get(StudentProfile, record.student_id)
+        _assert_assessing(record)
         if not in_scope(scope, db, record, student):
             raise no_permission("只能为本人指导或授权范围内学生录入企业评价")
         from app.modules.internship.services.internship_batch_context import assert_record_batch
@@ -248,6 +254,7 @@ def resubmit(user, eval_id, body, *, expected_batch_id=None) -> dict:
     with session() as db:
         row = _get(db, eval_id, lock=True)
         record, _student = _assert_scope(db, row, user, "只能修改本人指导或授权范围内企业评价")
+        _assert_assessing(record)
         from app.modules.internship.services.internship_batch_context import assert_record_batch
         assert_record_batch(record, expected_batch_id)
         if row.school_review_status != "RETURNED":
@@ -304,6 +311,7 @@ def review(user, eval_id, action: str, comment: str = "", expected_version=None,
     with session() as db:
         row = _get(db, eval_id, lock=True)
         record, _student = _assert_scope(db, row, user, "只能审核本人数据范围内的企业评价")
+        _assert_assessing(record)
         from app.modules.internship.services.internship_batch_context import assert_record_batch
         assert_record_batch(record, expected_batch_id)
         if row.school_review_status != "PENDING":

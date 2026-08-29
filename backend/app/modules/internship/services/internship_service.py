@@ -1,6 +1,8 @@
 """岗位实习域真实数据服务（DB_ENABLED=true 走本模块）。租户过滤 + is_deleted + 脱敏 + 审计留痕。"""
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
+
 import json
 from datetime import datetime, timedelta
 
@@ -71,7 +73,7 @@ def notify_counselor_for_student(db, student, title: str, content: str,
     from app.services.message_event_outbox_service import emit_receiver_notice
     if not student or not getattr(student, "class_id", None):
         return False
-    cls = db.get(SchoolClass, student.class_id)
+    cls = tenant_get(db, SchoolClass, student.class_id)
     if not cls or not getattr(cls, "counselor_id", None):
         return False
     emit_receiver_notice(
@@ -88,8 +90,8 @@ def notify_counselor_for_student(db, student, title: str, content: str,
     return True
 
 
-def _parse_dt(v):
-    if not v:
+def _parse_dt(v, label: str = "日期"):
+    if v in (None, ""):
         return None
     s = str(v).strip().replace("Z", "").replace("/", "-")
     if not s:
@@ -100,7 +102,17 @@ def _parse_dt(v):
         try:
             return datetime.strptime(s[:10], "%Y-%m-%d")
         except ValueError:
-            return None
+            raise AppException("VALIDATION_ERROR", f"{label}格式不正确，请使用 YYYY-MM-DD") from None
+
+
+def _parse_nonnegative_int(v, label: str) -> int:
+    try:
+        value = int(v or 0)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", f"{label}必须为非负整数") from None
+    if value < 0:
+        raise AppException("VALIDATION_ERROR", f"{label}必须为非负整数")
+    return value
 
 
 def _students_map(db, ids: list[int]) -> dict:
@@ -124,18 +136,18 @@ def resolve_student_class_college_names(db, stu) -> tuple[str | None, str | None
         return None, None
     from app.models import College, Major, SchoolClass
     class_name = college_name = None
-    cls = db.get(SchoolClass, stu.class_id) if getattr(stu, "class_id", None) else None
+    cls = tenant_get(db, SchoolClass, stu.class_id) if getattr(stu, "class_id", None) else None
     if cls:
         class_name = cls.class_name
     college_id = getattr(stu, "college_id", None)
     if not college_id and getattr(stu, "major_id", None):
-        maj = db.get(Major, stu.major_id)
+        maj = tenant_get(db, Major, stu.major_id)
         college_id = maj.college_id if maj else None
     if not college_id and cls is not None:
-        maj = db.get(Major, cls.major_id)
+        maj = tenant_get(db, Major, cls.major_id)
         college_id = maj.college_id if maj else None
     if college_id:
-        col = db.get(College, college_id)
+        col = tenant_get(db, College, college_id)
         college_name = col.college_name if col else None
     return class_name, college_name
 
@@ -320,6 +332,7 @@ def get_internship_student_detail(record_id, user=None) -> dict:
             RiskRecord.is_deleted.is_(False)).order_by(RiskRecord.id.desc())).all()
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(),
+            InternshipAuditTrail.target_type == "INTERN_STUDENT",
             InternshipAuditTrail.target_id == r.id).order_by(
             InternshipAuditTrail.id.desc()).limit(8)).all()
         base = _record_row(r, stu)
@@ -458,7 +471,7 @@ def export_exceptions(type=None, status=None, keyword=None, batch_id=None, user=
 
 
 def _exc_ctx(db, c: AttendanceException):
-    rec = db.get(InternshipRecord, c.internship_id)
+    rec = tenant_get(db, InternshipRecord, c.internship_id)
     stu = db.get(StudentProfile, rec.student_id) if rec else None
     return rec, stu
 
@@ -553,7 +566,7 @@ def handle_attendance_exception(exception_id, action: str, comment: str, user=No
                               risk_level="HIGH", source_module="system", owner_name=_op_name(),
                               deadline_at=datetime.utcnow() + timedelta(days=3),
                               status="PENDING_HANDLE"))
-            rec = db.get(InternshipRecord, c.internship_id)
+            rec = tenant_get(db, InternshipRecord, c.internship_id)
             if rec:
                 rec.risk_level = "HIGH"
         _trail(db, c.id, "EXCEPTION", f"HANDLE_{action}", {"comment": comment.strip()})
@@ -689,8 +702,8 @@ def review_weekly_report(report_id, action: str, comment: str, user=None, *, exp
         w = db.get(WeeklyReport, _as_id(report_id))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("周报不存在")
-        rec = db.get(InternshipRecord, w.internship_id)
-        stu = db.get(StudentProfile, rec.student_id) if rec else None
+        rec = tenant_get(db, InternshipRecord, w.internship_id)
+        stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
         if not _rec_in_scope(_current_scope(user), db, rec, stu):  # P1：owner 级写校验
             from app.core.exceptions import no_permission
             raise no_permission("只能批阅本人指导学生的周报")
@@ -855,8 +868,8 @@ def list_risk_students(page, page_size, level=None, status=None, keyword=None,
         kw = (keyword or "").strip()
         items = []
         for k in rows:
-            rec = db.get(InternshipRecord, k.internship_id)
-            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            rec = tenant_get(db, InternshipRecord, k.internship_id)
+            stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
             if not _rec_in_scope(scope, db, rec, stu):
                 continue
             if kw and kw not in (stu.real_name or "") and kw not in (stu.student_no or ""):
@@ -1017,8 +1030,12 @@ def create_batch(body: dict, user=None) -> dict:
     no = str(body.get("batchNo") or "").strip()
     if not name or not no:
         raise AppException("VALIDATION_ERROR", "批次名称与批次编号必填")
-    _assert_batch_dates(_parse_dt(body.get("startDate")), _parse_dt(body.get("endDate")),
-                        _parse_dt(body.get("signupStartDate")), _parse_dt(body.get("signupEndDate")))
+    start = _parse_dt(body.get("startDate"), "实习开始日期")
+    end = _parse_dt(body.get("endDate"), "实习结束日期")
+    signup_start = _parse_dt(body.get("signupStartDate"), "报名开始日期")
+    signup_end = _parse_dt(body.get("signupEndDate"), "报名截止日期")
+    _assert_batch_dates(start, end, signup_start, signup_end)
+    planned_count = _parse_nonnegative_int(body.get("plannedCount"), "计划人数")
     with session() as db:
         dup = db.scalars(select(InternshipBatch).where(
             InternshipBatch.tenant_id == _tid(), InternshipBatch.batch_no == no,
@@ -1039,10 +1056,9 @@ def create_batch(body: dict, user=None) -> dict:
         b = InternshipBatch(
             tenant_id=_tid(), batch_name=name, batch_no=no,
             academic_year=body.get("academicYear"), term=body.get("term"),
-            start_date=_parse_dt(body.get("startDate")), end_date=_parse_dt(body.get("endDate")),
-            signup_start_date=_parse_dt(body.get("signupStartDate")),
-            signup_end_date=_parse_dt(body.get("signupEndDate")),
-            planned_count=int(body.get("plannedCount") or 0), remark=body.get("remark"),
+            start_date=start, end_date=end,
+            signup_start_date=signup_start, signup_end_date=signup_end,
+            planned_count=planned_count, remark=body.get("remark"),
             status="DRAFT", stage_config=stages, rules_config=rules, archive_status="NOT_ARCHIVED",
             compliance_template_id=_as_id(template_id) if template_id else None,
             compliance_template_version=template_version)
@@ -1069,18 +1085,21 @@ def update_batch(bid, body: dict, user=None) -> dict:
                        "term": "term", "remark": "remark"}.items():
             if body.get(k) is not None:
                 values[col] = body[k]
-        for k, col in {"startDate": "start_date", "endDate": "end_date",
-                       "signupStartDate": "signup_start_date",
-                       "signupEndDate": "signup_end_date"}.items():
+        for k, col, label in (
+            ("startDate", "start_date", "实习开始日期"),
+            ("endDate", "end_date", "实习结束日期"),
+            ("signupStartDate", "signup_start_date", "报名开始日期"),
+            ("signupEndDate", "signup_end_date", "报名截止日期"),
+        ):
             if body.get(k) is not None:
-                values[col] = _parse_dt(body[k])
+                values[col] = _parse_dt(body[k], label)
         start = values.get("start_date", b.start_date)
         end = values.get("end_date", b.end_date)
         ss = values.get("signup_start_date", b.signup_start_date)
         se = values.get("signup_end_date", b.signup_end_date)
         _assert_batch_dates(start, end, ss, se)
         if body.get("plannedCount") is not None:
-            values["planned_count"] = int(body["plannedCount"] or 0)
+            values["planned_count"] = _parse_nonnegative_int(body["plannedCount"], "计划人数")
         if body.get("stages") is not None:
             values["stage_config"] = _dump_stages(body["stages"])
         rules_version = int(b.rules_version or 1)

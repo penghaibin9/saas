@@ -101,7 +101,7 @@ def _row(c: EmpCompany) -> dict:
         "remark": c.remark or "",
         "reviewBy": c.review_by or "", "reviewAt": _iso(c.review_at), "reviewComment": c.review_comment or "",
         "archivedAt": _iso(c.archived_at), "archivedBy": c.archived_by or "",
-        "updatedAt": _iso(c.updated_at),
+        "updatedAt": _iso(c.updated_at), "version": int(c.version or 0),
     }
 
 
@@ -112,7 +112,7 @@ def _contact_row(t: InternshipEnterpriseContact) -> dict:
         "name": t.name, "title": t.title or "",
         "phoneMasked": mask_phone_encrypted(t.phone_encrypted),
         "email": t.email or "", "isPrimary": bool(t.is_primary),
-        "remark": t.remark or "", "status": t.status,
+        "remark": t.remark or "", "status": t.status, "version": int(t.version or 0),
     }
 
 
@@ -214,32 +214,78 @@ def create_enterprise(body) -> dict:
 
 def update_enterprise(company_id, body) -> dict:
     with session() as db:
-        c = _get(db, company_id)
-        cc = (getattr(body, "creditCode", None) or "").strip()
-        if cc and cc != (c.credit_code or ""):
-            dup = db.scalars(select(EmpCompany).where(
-                EmpCompany.tenant_id == _tid(), EmpCompany.credit_code == cc,
-                EmpCompany.id != c.id, EmpCompany.is_deleted.is_(False))).first()
-            if dup:
-                raise AppException("DATA_CONFLICT", f"统一社会信用代码已存在：{cc}")
+        c = db.scalar(select(EmpCompany).where(
+            EmpCompany.id == _as_id(company_id), EmpCompany.tenant_id == _tid(),
+            EmpCompany.is_deleted.is_(False)).with_for_update())
+        if not c:
+            raise not_found("企业不存在或不在当前数据范围内")
+        expected = getattr(body, "expectedVersion", None)
+        if expected is None:
+            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+        if int(expected) != int(c.version or 0):
+            raise AppException("DATA_CONFLICT", "企业信息已被其他用户修改，请刷新后重试")
+        if c.coop_status == "ARCHIVED":
+            raise AppException("DATA_CONFLICT", "已归档企业不可编辑")
+
+        old_name = c.name or ""
+        old_cc = c.credit_code or ""
+        new_name = (getattr(body, "name", None) if "name" in body.model_fields_set else None)
+        new_cc = (getattr(body, "creditCode", None) if "creditCode" in body.model_fields_set else None)
+        if new_name is not None:
+            normalized_name = (new_name or "").strip()
+            err = _validate_company_name(normalized_name)
+            if err:
+                raise AppException("VALIDATION_ERROR", err)
+            body.name = normalized_name
+        if new_cc is not None:
+            normalized_cc = (new_cc or "").strip()
+            err = _validate_credit_code(normalized_cc)
+            if err:
+                raise AppException("VALIDATION_ERROR", err)
+            body.creditCode = normalized_cc or None
+            if normalized_cc and normalized_cc != old_cc:
+                dup = db.scalars(select(EmpCompany).where(
+                    EmpCompany.tenant_id == _tid(), EmpCompany.credit_code == normalized_cc,
+                    EmpCompany.id != c.id, EmpCompany.is_deleted.is_(False))).first()
+                if dup:
+                    raise AppException("DATA_CONFLICT", f"统一社会信用代码已存在：{normalized_cc}")
+
         _apply(c, body)
-        c.version += 1
-        _trail(db, c.id, "UPDATE", {"name": c.name})
+        identity_changed = (c.name or "") != old_name or (c.credit_code or "") != old_cc
+        if identity_changed:
+            c.qualification_status = "UNREVIEWED"
+            c.review_by = None
+            c.review_at = None
+            c.review_comment = None
+            if c.coop_status != "BLACKLIST":
+                c.coop_status = "PENDING"
+        c.version = int(c.version or 0) + 1
+        _trail(db, c.id, "UPDATE", {
+            "name": c.name, "identityInvalidated": identity_changed,
+            "previousName": old_name if identity_changed else "",
+            "previousCreditCode": old_cc if identity_changed else "",
+        })
         db.commit()
         db.refresh(c)
         return _row(c)
 
 
-# ═══════════ 状态机：审核 / 合作启停 / 黑名单 ═══════════
-
-def review_enterprise(company_id, action: str, comment: str = "") -> dict:
+def review_enterprise(company_id, action: str, comment: str = "", expected_version=None) -> dict:
     """资质审核：仅 PENDING 可审。APPROVE→ACTIVE+资质通过；REJECT→REJECTED+资质不通过。"""
     if action not in ("APPROVE", "REJECT"):
         raise AppException("VALIDATION_ERROR", "非法审核动作")
     if action == "REJECT" and len((comment or "").strip()) < 5:
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 个字")
     with session() as db:
-        c = _get(db, company_id)
+        c = db.scalar(select(EmpCompany).where(
+            EmpCompany.id == _as_id(company_id), EmpCompany.tenant_id == _tid(),
+            EmpCompany.is_deleted.is_(False)).with_for_update())
+        if not c:
+            raise not_found("企业不存在或不在当前数据范围内")
+        if expected_version is None:
+            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+        if int(expected_version) != int(c.version or 0):
+            raise AppException("DATA_CONFLICT", "企业资质状态已变化，请刷新后重试")
         if c.coop_status != "PENDING":
             raise AppException("DATA_CONFLICT",
                                f"仅「待审核」企业可审核，当前状态：{COOP_LABEL.get(c.coop_status)}")
@@ -248,16 +294,25 @@ def review_enterprise(company_id, action: str, comment: str = "") -> dict:
         c.review_by = _op_name()
         c.review_at = datetime.utcnow()
         c.review_comment = comment or ""
+        c.version = int(c.version or 0) + 1
         _trail(db, c.id, f"REVIEW_{action}", {"comment": comment})
         db.commit()
         db.refresh(c)
         return _row(c)
 
 
-def set_cooperation(company_id, action: str, reason: str = "") -> dict:
+def set_cooperation(company_id, action: str, reason: str = "", expected_version=None) -> dict:
     """合作启停：SUSPEND(ACTIVE→SUSPENDED) / RESUME(SUSPENDED→ACTIVE) / ARCHIVE(→ARCHIVED)。"""
     with session() as db:
-        c = _get(db, company_id)
+        c = db.scalar(select(EmpCompany).where(
+            EmpCompany.id == _as_id(company_id), EmpCompany.tenant_id == _tid(),
+            EmpCompany.is_deleted.is_(False)).with_for_update())
+        if not c:
+            raise not_found("企业不存在或不在当前数据范围内")
+        if expected_version is None:
+            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+        if int(expected_version) != int(c.version or 0):
+            raise AppException("DATA_CONFLICT", "企业合作状态已变化，请刷新后重试")
         if action == "SUSPEND":
             if c.coop_status != "ACTIVE":
                 raise AppException("DATA_CONFLICT", "仅「合作中」企业可暂停")
@@ -265,6 +320,8 @@ def set_cooperation(company_id, action: str, reason: str = "") -> dict:
         elif action == "RESUME":
             if c.coop_status != "SUSPENDED":
                 raise AppException("DATA_CONFLICT", "仅「已暂停」企业可恢复合作")
+            if c.qualification_status != "PASSED":
+                raise AppException("DATA_CONFLICT", "企业资质未通过，不能恢复合作")
             c.coop_status = "ACTIVE"
         elif action == "ARCHIVE":
             if c.coop_status in ("ARCHIVED", "BLACKLIST"):
@@ -274,31 +331,55 @@ def set_cooperation(company_id, action: str, reason: str = "") -> dict:
             c.archived_by = _op_name()
         else:
             raise AppException("VALIDATION_ERROR", "非法合作动作")
+        c.version = int(c.version or 0) + 1
         _trail(db, c.id, f"COOP_{action}", {"reason": reason})
         db.commit()
         db.refresh(c)
         return _row(c)
 
 
-def set_blacklist(company_id, on: bool, reason: str = "") -> dict:
-    """拉黑 / 移出黑名单。拉黑需原因；移出后恢复为合作中。"""
+def set_blacklist(company_id, on: bool, reason: str = "", expected_version=None) -> dict:
+    """拉黑 / 移出黑名单。移出时恢复拉黑前状态；缺历史证据则 fail-closed 回待审核。"""
     with session() as db:
-        c = _get(db, company_id)
+        c = db.scalar(select(EmpCompany).where(
+            EmpCompany.id == _as_id(company_id), EmpCompany.tenant_id == _tid(),
+            EmpCompany.is_deleted.is_(False)).with_for_update())
+        if not c:
+            raise not_found("企业不存在或不在当前数据范围内")
+        if expected_version is None:
+            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+        if int(expected_version) != int(c.version or 0):
+            raise AppException("DATA_CONFLICT", "企业黑名单状态已变化，请刷新后重试")
         if on:
             if not (reason or "").strip():
                 raise AppException("VALIDATION_ERROR", "拉黑必须填写原因")
             if c.coop_status == "ARCHIVED":
                 raise AppException("DATA_CONFLICT", "已归档企业不可拉黑")
+            previous = c.coop_status
             c.blacklist = True
             c.blacklist_reason = reason.strip()
             c.coop_status = "BLACKLIST"
+            detail = {"reason": reason, "previousCoopStatus": previous}
         else:
             if not c.blacklist:
                 raise AppException("DATA_CONFLICT", "该企业不在黑名单中")
+            trail = db.scalars(select(InternshipAuditTrail).where(
+                InternshipAuditTrail.tenant_id == _tid(),
+                InternshipAuditTrail.target_type == "ENTERPRISE",
+                InternshipAuditTrail.target_id == c.id,
+                InternshipAuditTrail.action == "BLACKLIST_ON",
+            ).order_by(InternshipAuditTrail.id.desc())).first()
+            previous = str(((trail.detail_json or {}).get("previousCoopStatus") if trail else "") or "").upper()
+            if previous not in {"PENDING", "ACTIVE", "REJECTED", "SUSPENDED"}:
+                previous = "PENDING"
+            if previous == "ACTIVE" and c.qualification_status != "PASSED":
+                previous = "PENDING"
             c.blacklist = False
             c.blacklist_reason = None
-            c.coop_status = "ACTIVE"
-        _trail(db, c.id, "BLACKLIST_ON" if on else "BLACKLIST_OFF", {"reason": reason})
+            c.coop_status = previous
+            detail = {"reason": reason, "restoredCoopStatus": previous}
+        c.version = int(c.version or 0) + 1
+        _trail(db, c.id, "BLACKLIST_ON" if on else "BLACKLIST_OFF", detail)
         db.commit()
         db.refresh(c)
         return _row(c)
@@ -361,21 +442,48 @@ def _get_contact(db, company_id: int, contact_id) -> InternshipEnterpriseContact
 def update_contact(company_id, contact_id, body) -> dict:
     with session() as db:
         c = _get(db, company_id)
-        t = _get_contact(db, c.id, contact_id)
+        t = db.scalar(select(InternshipEnterpriseContact).where(
+            InternshipEnterpriseContact.id == _as_id(contact_id),
+            InternshipEnterpriseContact.tenant_id == _tid(),
+            InternshipEnterpriseContact.company_id == c.id,
+            InternshipEnterpriseContact.is_deleted.is_(False)).with_for_update())
+        if not t:
+            raise not_found("联系人不存在")
+        expected = getattr(body, "expectedVersion", None)
+        if expected is None:
+            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（联系人乐观锁），请刷新后重试")
+        if int(expected) != int(t.version or 0):
+            raise AppException("DATA_CONFLICT", "联系人已被其他用户修改，请刷新后重试")
+        old_contact_type = t.contact_type
+        was_primary = bool(t.is_primary)
+        if "name" in body.model_fields_set:
+            name = (getattr(body, "name", None) or "").strip()
+            if not name:
+                raise AppException("VALIDATION_ERROR", "姓名必填")
+            body.name = name
+        if "contactType" in body.model_fields_set:
+            ctype = getattr(body, "contactType", None)
+            if ctype not in CONTACT_TYPE_LABEL:
+                raise AppException("VALIDATION_ERROR", "非法联系人类型")
         for src, col in [("name", "name"), ("title", "title"), ("email", "email"),
                          ("remark", "remark"), ("contactType", "contact_type")]:
-            v = getattr(body, src, None)
-            if v is not None:
-                setattr(t, col, v)
-        phone = getattr(body, "phone", None)
-        if phone is not None:
-            t.phone_encrypted = encrypt_field(phone)
-        is_primary = getattr(body, "isPrimary", None)
-        if is_primary:
+            if src in body.model_fields_set:
+                setattr(t, col, getattr(body, src))
+        if "phone" in body.model_fields_set:
+            t.phone_encrypted = encrypt_field(getattr(body, "phone", None))
+        if "isPrimary" in body.model_fields_set:
+            is_primary = getattr(body, "isPrimary", None)
+            if is_primary:
+                _unset_primary(db, c.id, t.contact_type)
+                t.is_primary = True
+            else:
+                t.is_primary = False
+        elif "contactType" in body.model_fields_set and t.contact_type != old_contact_type and was_primary:
+            # 主联系人换类型时仍保持“主联系人”语义，但新类型原主联系人必须被降级，
+            # 否则同一企业同一联系人类型会出现两个主联系人。
             _unset_primary(db, c.id, t.contact_type)
             t.is_primary = True
-        elif is_primary is False:
-            t.is_primary = False
+        t.version = int(t.version or 0) + 1
         _trail(db, c.id, "CONTACT_UPDATE", {"contactId": str(t.id)})
         db.commit()
         db.refresh(t)

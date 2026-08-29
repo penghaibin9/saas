@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
+
 from datetime import datetime
 
 from sqlalchemy import select
@@ -102,8 +104,8 @@ def list_reports(page, page_size, report_type=None, status=None, keyword=None, b
         scope, in_scope = _scope(user)
         items = []
         for r in rows:
-            rec = db.get(InternshipRecord, r.internship_id)
-            stu = db.get(StudentProfile, rec.student_id) if rec else None
+            rec = tenant_get(db, InternshipRecord, r.internship_id)
+            stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
             if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
                 continue
             if not in_scope(scope, db, rec, stu):
@@ -167,9 +169,12 @@ def student_submit(rec, report_type: str, period_key: str, content: str) -> dict
             dup.status = "PENDING_REVIEW"
             dup.submitted_at = datetime.utcnow()
             dup.review_comment = None
-            _trail(db, dup.id, "RESUBMIT", {"reportType": rt, "periodKey": pk})
+            dup.version = int(dup.version or 0) + 1
+            _trail(db, dup.id, "RESUBMIT", {"reportType": rt, "periodKey": pk,
+                                             "version": int(dup.version or 0)})
             db.commit()
-            return {"id": str(dup.id), "status": dup.status, "message": "已重新提交"}
+            return {"id": str(dup.id), "status": dup.status, "version": int(dup.version or 0),
+                    "message": "已重新提交"}
         row = InternshipProcessReport(
             tenant_id=_tid(), internship_id=rec.id, report_type=rt, period_key=pk,
             content=text, word_count=len(text), status="PENDING_REVIEW", submitted_at=datetime.utcnow())
@@ -190,16 +195,16 @@ def review_report(rid, action: str, comment: str = "", user=None, *, expected_ve
         r = db.get(InternshipProcessReport, _as_id(rid))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("过程报告不存在")
-        rec = db.get(InternshipRecord, r.internship_id)
-        stu = db.get(StudentProfile, rec.student_id) if rec else None
+        rec = tenant_get(db, InternshipRecord, r.internship_id)
+        stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
         scope, in_scope = _scope(user)
         if not in_scope(scope, db, rec, stu):
             from app.core.exceptions import no_permission
             raise no_permission("不在数据范围内")
         from app.modules.internship.services.internship_batch_context import assert_record_batch
         assert_record_batch(rec, expected_batch_id)
-        if r.status not in ("PENDING_REVIEW", "RETURNED"):
-            raise AppException("DATA_CONFLICT", "当前状态不可批阅")
+        if r.status != "PENDING_REVIEW":
+            raise AppException("DATA_CONFLICT", "仅学生已提交/重交后的待批阅报告可审核")
         status = "APPROVED" if action == "APPROVE" else "RETURNED"
         new_ver = versioned_update(
             db, InternshipProcessReport, entity_id=r.id, tenant_id=_tid(),
