@@ -93,8 +93,21 @@
     </div>
 
     <!-- 新增 / 编辑抽屉 -->
-    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑账号' : '新增用户'" mode="modal" size="medium">
-      <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
+    <AppDrawer v-model:visible="form.open" :title="form.id ? '编辑账号' : '新增用户'" mode="modal" size="xlarge">
+      <LoadingState v-if="form.loading" />
+      <template v-else>
+        <FormFields v-model="form.value" :fields="formFields" :errors="form.errors" />
+        <RoleScopeEditor
+          v-if="!isStudent"
+          v-model="form.roleAssignments"
+          :role-options="staffRoleOptions"
+          :org-tree="scopeOrgTree"
+          :student-search="searchScopeStudents"
+          :student-resolve="resolveScopeStudents"
+          :loading="form.scopeLoading"
+          :disabled="!can('assignRole')"
+        />
+      </template>
       <p class="mp-note" style="margin-top: var(--space-3)">
         新账号初始状态为「待激活」，首次登录强制修改密码；工号 / 账号创建后不可修改。
       </p>
@@ -274,6 +287,7 @@ import AppDrawer from '@/components/ui/AppDrawer.vue'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppCheckboxGroup, AppSelect } from '@/components/common'
 import FormFields from '@/modules/system/components/FormFields.vue'
+import RoleScopeEditor from '@/modules/system/components/RoleScopeEditor.vue'
 import ExportDialog from '@/modules/system/components/ExportDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
@@ -281,14 +295,14 @@ import { toast } from '@/utils/toast'
 const EMPTY_FILTERS = () => ({
   keyword: '', role: '', status: '', collegeId: '', classId: '', grade: '', studentStatus: ''
 })
-const EMPTY_FORM = () => ({ userNo: '', name: '', orgId: '', phone: '', email: '', roles: [] })
+const EMPTY_FORM = () => ({ userNo: '', name: '', orgId: '', phone: '', email: '' })
 
 export default {
   name: 'SystemUserListView',
   components: {
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
     LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppConfirmDialog, AppCheckboxGroup, AppSelect,
-    FormFields, ExportDialog
+    FormFields, RoleScopeEditor, ExportDialog
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -303,7 +317,12 @@ export default {
       pagination: { page: 1, pageSize: 10, total: 0 },
       colsOpen: false,
       columnsConfig: this.ctx.fieldColumns[accountEntityKey].map((c) => ({ ...c, visible: c.defaultVisible })),
-      form: { open: false, id: '', value: EMPTY_FORM(), errors: {}, submitting: false },
+      form: {
+        open: false, id: '', value: EMPTY_FORM(), errors: {}, submitting: false,
+        loading: false, scopeLoading: false, roleAssignments: [], originalRoleAssignments: []
+      },
+      scopeOrgTree: [],
+      scopeStudentOptions: [],
       detail: { open: false, loading: false, data: null },
       assign: { open: false, batch: false, id: '', name: '', roles: [], submitting: false },
       confirm: { disable: false, batchDisable: false, reset: false, enable: false, row: null, submitting: false },
@@ -419,13 +438,6 @@ export default {
         { key: 'userNo', label: '工号 / 账号', required: true, disabled: !!this.form.id, lockNote: this.form.id ? '（创建后不可修改）' : '', placeholder: '如 T2026001' },
         { key: 'name', label: '姓名', required: true },
         { key: 'phone', label: '手机号', hint: '仅用于找回密码，列表默认脱敏展示' },
-        {
-          key: 'roles', label: '角色身份', type: 'checkbox-group', full: true,
-          options: this.staffRoleOptions, disabled: !this.can('assignRole'),
-          hint: this.can('assignRole')
-            ? '保存时同步写入账号角色关系；账号需重新登录后生效'
-            : '当前账号没有角色分配权限，仅可查看已有身份'
-        }
       ]
     }
   },
@@ -508,7 +520,7 @@ export default {
       if (!this.can('exportUsers')) return
       this.exportOpen = true
     },
-    openEdit(row) {
+    async openEdit(row) {
       if (this.isStudent) {
         toast.error('学生姓名与组织归属由学生主档维护，本页只管理登录账号')
         return
@@ -521,11 +533,45 @@ export default {
       this.form = {
         open: true,
         id: row.id,
-        value: { userNo: row.userNo, name: row.name, phone: row.phone, roles: [...(row.roles || [])] },
-        originalRoles: [...(row.roles || [])],
+        value: { userNo: row.userNo, name: row.name, phone: row.phone },
+        roleAssignments: [],
+        originalRoleAssignments: [],
         errors: {},
-        submitting: false
+        submitting: false,
+        loading: true,
+        scopeLoading: true
       }
+      const [detailRes, orgRes] = await Promise.all([
+        systemApi.getUserDetail(row.id),
+        this.scopeOrgTree.length ? Promise.resolve({ code: 0, data: this.scopeOrgTree }) : systemApi.getDepartmentTree()
+      ])
+      if (!this.form.open || String(this.form.id) !== String(row.id)) return
+      if (detailRes.code !== 0) {
+        toast.error(detailRes.message)
+        this.form.open = false
+        return
+      }
+      if (orgRes.code === 0) this.scopeOrgTree = orgRes.data || []
+      else toast.error(`组织范围加载失败：${orgRes.message}`)
+      const detail = detailRes.data
+      const assignments = (detail.roleAssignments || []).map((item) => ({
+        ...item,
+        scopeIds: (item.scopeIds || []).map(String)
+      }))
+      this.scopeStudentOptions = assignments.flatMap((item) =>
+        (item.scopeItems || [])
+          .filter((scope) => scope.type === 'STUDENT')
+          .map((scope) => ({ value: String(scope.id), label: scope.name, desc: '已授权学生' }))
+      )
+      this.form.value = {
+        userNo: detail.userNo,
+        name: detail.name,
+        phone: detail.phone
+      }
+      this.form.roleAssignments = assignments
+      this.form.originalRoleAssignments = JSON.parse(JSON.stringify(assignments))
+      this.form.loading = false
+      this.form.scopeLoading = false
     },
     async submitForm() {
       if (!this.form.id) {
@@ -535,13 +581,12 @@ export default {
       const errors = FormFields.validateRequired(this.formFields, this.form.value)
       this.form.errors = errors
       if (Object.keys(errors).length) return
-      if (!this.can('assignRole')) {
-        const before = [...(this.form.originalRoles || [])].sort().join(',')
-        const after = [...(this.form.value.roles || [])].sort().join(',')
-        if (before !== after) {
-          toast.error(this.reason('assignRole') || '当前账号没有角色分配权限')
-          return
-        }
+      if (this.can('assignRole')) {
+        if (!this.form.roleAssignments.length) return toast.error('至少保留一个角色')
+        const missing = this.form.roleAssignments.find((item) =>
+          item.scopeMode !== 'AUTO' && item.scopeType !== 'SCHOOL' && !(item.scopeIds || []).length
+        )
+        if (missing) return toast.error(`请为「${missing.roleName}」选择授权范围`)
       }
       this.form.submitting = true
       const res = await systemApi.updateUser(this.form.id, this.form.value)
@@ -551,7 +596,8 @@ export default {
         return
       }
       if (this.can('assignRole')) {
-        const roleRes = await systemApi.assignUserRoles(this.form.id, this.form.value.roles || [])
+        const roleCodes = this.form.roleAssignments.map((item) => item.roleCode)
+        const roleRes = await systemApi.assignUserRoles(this.form.id, roleCodes, this.form.roleAssignments)
         if (roleRes.code !== 0) {
           this.form.submitting = false
           toast.error(`基础信息已保存，但角色身份保存失败：${roleRes.message}`)
@@ -578,7 +624,36 @@ export default {
     },
     openAssign(user) {
       if (!this.can('assignRole')) return
-      this.assign = { open: true, batch: false, id: user.id, name: user.name, roles: (user.roles || []).map((r) => r.code || r), submitting: false }
+      this.detail.open = false
+      this.openEdit(user)
+    },
+    async searchScopeStudents(keyword = '') {
+      const res = await systemApi.getUsers({
+        keyword,
+        accountType: 'STUDENT',
+        page: 1,
+        pageSize: 50
+      })
+      if (res.code !== 0) throw new Error(res.message || '学生目录加载失败')
+      const options = (res.data.list || []).filter((row) => row.studentId).map((row) => ({
+        value: String(row.studentId),
+        label: `${row.name}（${row.studentNo || row.userNo}）`,
+        desc: [row.collegeName, row.majorName, row.className].filter(Boolean).join(' / ')
+      }))
+      const known = new Map(this.scopeStudentOptions.map((item) => [String(item.value), item]))
+      options.forEach((item) => known.set(String(item.value), item))
+      this.scopeStudentOptions = [...known.values()]
+      return options
+    },
+    async resolveScopeStudents(values) {
+      const ids = (Array.isArray(values) ? values : [values]).map(String)
+      let matched = this.scopeStudentOptions.filter((item) => ids.includes(String(item.value)))
+      if (matched.length < ids.length) {
+        const loaded = await this.searchScopeStudents('')
+        const all = new Map([...this.scopeStudentOptions, ...loaded].map((item) => [String(item.value), item]))
+        matched = ids.map((id) => all.get(id)).filter(Boolean)
+      }
+      return Array.isArray(values) ? matched : matched[0]
     },
     openBatchAssign() {
       if (this.isStudent || !this.can('assignRole') || !this.selected.length) return

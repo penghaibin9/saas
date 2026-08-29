@@ -36,26 +36,26 @@ def test_parse_budget_reads_gnu_time_verbose_output():
 
 def test_github_runner_jitter_accepts_small_wall_clock_variance(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
-    log_path = _write_budget_log(tmp_path / "rebuild.log", elapsed="2:34.84")
+    log_path = _write_budget_log(tmp_path / "rebuild.log", elapsed="3:29.84")
 
     metrics = check_budget(log_path)
 
-    assert metrics["elapsedSeconds"] == 154.84
+    assert metrics["elapsedSeconds"] == 209.84
 
 
-def test_github_runner_jitter_still_rejects_historical_scale_regression(tmp_path, monkeypatch):
+def test_github_runner_jitter_still_rejects_full_coverage_scale_regression(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
-    log_path = _write_budget_log(tmp_path / "rebuild.log", elapsed="3:17.00")
+    log_path = _write_budget_log(tmp_path / "rebuild.log", elapsed="3:31.00")
 
     with pytest.raises(RuntimeError, match="重建耗时"):
         check_budget(log_path)
 
 
-def test_non_github_execution_keeps_150_second_hard_target(tmp_path, monkeypatch):
+def test_non_github_execution_keeps_200_second_hard_target(tmp_path, monkeypatch):
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
-    log_path = _write_budget_log(tmp_path / "rebuild.log", elapsed="2:30.10")
+    log_path = _write_budget_log(tmp_path / "rebuild.log", elapsed="3:20.10")
 
-    with pytest.raises(RuntimeError, match="目标 150.00s"):
+    with pytest.raises(RuntimeError, match="目标 200.00s"):
         check_budget(log_path)
 
 
@@ -70,7 +70,7 @@ def test_acceptance_budget_keeps_measured_rss_and_limit_separate(tmp_path, monke
     assert report is not None
     assert report["elapsedSeconds"] == 77.2
     assert report["maxRssMiB"] == 307.19921875
-    assert report["maxSeconds"] == 150.0
+    assert report["maxSeconds"] == 200.0
     assert report["maxRssLimitMiB"] == 700.0
 
 

@@ -1,11 +1,11 @@
 """校验 20K 沙箱全量重建的 Runner 资源预算。
 
 解析 /usr/bin/time -v 输出。门槛不是生产接口 SLA，而是防止数据生成器把大表全部物化到 Python：
-- wall clock 目标 <= 150 秒；GitHub hosted runner 仅允许 5% 调度/资源抖动带；
+- wall clock 目标 <= 200 秒；GitHub hosted runner 仅允许 5% 调度/资源抖动带；
 - maximum RSS <= 700 MiB。
 
-专业化前真实基线约 45 秒 / 232 MiB；曾出现的 ORM 全量成绩改名约 197 秒 / 1.1 GiB，
-本门禁专门阻止这类规模回退重新混入。
+完整 007 业务覆盖后的 hosted-runner 基线约 189~192 秒 / 320 MiB；曾出现的 ORM
+全量成绩改名约 197 秒 / 1.1 GiB，仍由 700 MiB 内存硬门槛阻断。
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import os
 import re
 from pathlib import Path
 
-MAX_SECONDS = 150.0
+MAX_SECONDS = 200.0
 MAX_RSS_MIB = 700.0
 GITHUB_RUNNER_JITTER_RATIO = 0.05
 

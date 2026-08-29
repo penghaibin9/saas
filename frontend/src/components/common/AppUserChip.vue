@@ -74,6 +74,11 @@
       </template>
       <div v-else class="uchip__hint">未获取到可用身份列表，请刷新后重试</div>
 
+      <button class="uchip__security" type="button" :disabled="loading || !!switchingId" @click="openSecurity">
+        <span>账号安全</span>
+        <small>修改登录密码</small>
+      </button>
+
       <button class="uchip__logout" type="button" :disabled="loading || !!switchingId" @click="doLogout">
         {{ loading ? '正在退出…' : '退出登录' }}
       </button>
@@ -89,6 +94,14 @@
     >
       {{ loading ? '退出中' : '退出' }}
     </button>
+
+    <AccountSecurityDialog
+      v-if="securityVisible"
+      :user="user"
+      :tenant-name="tenantName"
+      @close="securityVisible = false"
+      @changed="passwordChanged"
+    />
   </div>
 </template>
 
@@ -99,6 +112,7 @@
  * 切换成功后整页刷新，保证菜单/数据范围/工作台按新身份重建。
  */
 import {
+  clearAuthSession,
   currentUserFromToken,
   fetchMyAuthContexts,
   getToken,
@@ -106,6 +120,7 @@ import {
   switchAuthContext
 } from '@/services/http/client'
 import { toast } from '@/utils/toast'
+import AccountSecurityDialog from '@/components/auth/AccountSecurityDialog.vue'
 
 const ROLE_LABEL = {
   SCHOOL_ADMIN: '学校管理员',
@@ -136,6 +151,7 @@ const ROLE_LABEL = {
 
 export default {
   name: 'AppUserChip',
+  components: { AccountSecurityDialog },
   props: {
     embedded: { type: Boolean, default: false }
   },
@@ -150,7 +166,8 @@ export default {
       contextsLoading: false,
       contextsError: '',
       switchingId: '',
-      loadedOnce: false
+      loadedOnce: false,
+      securityVisible: false
     }
   },
   computed: {
@@ -232,6 +249,16 @@ export default {
       if (this.activeContextId && c.contextId === this.activeContextId) return true
       const code = this.user?.currentRoleCode
       return !!(code && (c.roleCode === code || c.contextType === code) && this.contexts.length === 1)
+    },
+    openSecurity() {
+      this.open = false
+      this.securityVisible = true
+    },
+    async passwordChanged() {
+      this.securityVisible = false
+      clearAuthSession()
+      toast.success('密码已修改，请使用新密码重新登录')
+      await this.$router.replace('/login')
     },
     async pickContext(c) {
       if (!c || !c.contextId || this.switchingId || this.isActive(c)) return
@@ -532,6 +559,36 @@ export default {
 }
 .uchip__hint.is-err {
   color: #dc2626;
+}
+.uchip__security {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid #dbe7f8;
+  border-radius: 8px;
+  color: #1e4f9d;
+  background: #f5f9ff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.uchip__security small {
+  color: #6f83a3;
+  font-size: 10.5px;
+  font-weight: 500;
+}
+.uchip__security:hover:not(:disabled) {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+.uchip__security:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .uchip__logout {
   margin-top: 10px;

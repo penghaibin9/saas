@@ -1090,8 +1090,8 @@ def _seed_messages_and_todos(db, tenant_id: int, all_roster: list[dict]) -> dict
 
 def validate_domain_facts(db, tenant_id: int) -> dict:
     from app.models import (
-        AcademicGrade, AcademicStudent, CsDormRecord, CsServiceStudent, GraduationStudent,
-        InternshipCheckin, InternshipRecord, OrientationStudent, UnifiedMessage, UnifiedTodo, WeeklyReport,
+        AcademicGrade, AcademicStudent, CsDormRecord, CsServiceStudent, GraduationBatch, GraduationStudent,
+        InternshipBatch, InternshipCheckin, InternshipRecord, OrientationStudent, UnifiedMessage, UnifiedTodo, WeeklyReport,
     )
 
     def count(model, *where):
@@ -1100,16 +1100,35 @@ def validate_domain_facts(db, tenant_id: int) -> dict:
             *where,
         )) or 0)
 
+    current_internship_batch_id = db.scalar(select(InternshipBatch.id).where(
+        InternshipBatch.tenant_id == tenant_id,
+        InternshipBatch.batch_no == "INT-2024-2026FALL",
+        InternshipBatch.is_deleted.is_(False),
+    ))
+    if not current_internship_batch_id:
+        raise RuntimeError("当前 2026 秋季实习批次不存在，无法执行 20K 基线验收")
+    current_graduation_batch_id = db.scalar(select(GraduationBatch.id).where(
+        GraduationBatch.tenant_id == tenant_id,
+        GraduationBatch.batch_no == "GD-2027",
+        GraduationBatch.is_deleted.is_(False),
+    ))
+    if not current_graduation_batch_id:
+        raise RuntimeError("当前 GD-2027 毕设批次不存在，无法执行 20K 基线验收")
     report = {
         "orientationStudents": count(OrientationStudent, OrientationStudent.is_deleted.is_(False)),
         "academicStudents": count(AcademicStudent, AcademicStudent.is_deleted.is_(False)),
-        "academicGrades": count(AcademicGrade, AcademicGrade.is_deleted.is_(False)),
+        # 追加式更正会保留 SUPERSEDED 历史，基线合同统计当前 ACTIVE 成绩。
+        "academicGrades": count(
+            AcademicGrade,
+            AcademicGrade.record_status == "ACTIVE",
+            AcademicGrade.is_deleted.is_(False),
+        ),
         "campusStudents": count(CsServiceStudent, CsServiceStudent.is_deleted.is_(False)),
         "dormRecords": count(CsDormRecord, CsDormRecord.is_deleted.is_(False)),
-        "internshipRecords": count(InternshipRecord, InternshipRecord.is_deleted.is_(False)),
+        "internshipRecords": count(InternshipRecord, InternshipRecord.batch_id == current_internship_batch_id, InternshipRecord.is_deleted.is_(False)),
         "internshipCheckins": count(InternshipCheckin, InternshipCheckin.is_deleted.is_(False)),
         "weeklyReports": count(WeeklyReport, WeeklyReport.is_deleted.is_(False)),
-        "graduationStudents": count(GraduationStudent, GraduationStudent.is_deleted.is_(False)),
+        "graduationStudents": count(GraduationStudent, GraduationStudent.batch_id == current_graduation_batch_id, GraduationStudent.is_deleted.is_(False)),
         "messages": count(UnifiedMessage, UnifiedMessage.is_deleted.is_(False)),
         "pendingStudentTodos": count(UnifiedTodo, UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False)),
     }

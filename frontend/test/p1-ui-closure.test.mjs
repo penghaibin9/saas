@@ -12,6 +12,8 @@ const platformP1Api = read('src/modules/platform/api/platformP1Closure.api.js')
 const platformLayout = read('src/modules/platform/views/AdminPlatformLayout.vue')
 const platformRoutes = read('src/modules/platform/platform.routes.js')
 const platformCatalog = read('src/modules/platform/platformManagementCatalog.js')
+const serviceCatalog = read('src/modules/platform/views/control/PlatformServiceCatalogView.vue')
+const serviceConfigDrawer = read('src/modules/platform/components/PlatformServiceConfigDrawer.vue')
 const systemPanel = read('src/modules/system/components/SystemP1ClosurePanel.vue')
 const systemLayout = read('src/modules/system/views/AdminSystemLayout.vue')
 const systemClosureApi = read('src/modules/system/api/systemP1Closure.api.js')
@@ -54,6 +56,19 @@ test('customer success menu and route use the canonical delegated duty instead o
   assert.match(platformCatalog, /plt-customer-success[\s\S]*platform\.customerSuccess\.manage/)
   assert.match(customer, /role-name="客户成功平台主管"/)
   assert.doesNotMatch(customer, /role-name="平台超级管理员"/)
+})
+
+test('every service catalog row has an honest configuration entry and COS uses the real encrypted storage configuration', () => {
+  assert.match(serviceCatalog, /@click="openServiceConfiguration\(row\)">配置<\/button>/)
+  assert.match(serviceCatalog, /if \(row\.serviceCode === 'COS'\)/)
+  assert.match(serviceCatalog, /name:\s*'platform-file-storage'/)
+  assert.match(serviceCatalog, /PlatformServiceConfigDrawer/)
+  assert.match(platformRoutes, /path:\s*'file-storage'[\s\S]*PlatformControlFileStorage/)
+  for (const code of ['API_GATEWAY', 'MYSQL', 'REDIS', 'MINIAPP', 'PC_ADMIN', 'STUDENT_PORTAL', 'WORKER', 'CLAMAV', 'SMS_GATEWAY']) {
+    assert.match(serviceConfigDrawer, new RegExp(`${code}:`))
+  }
+  assert.match(serviceConfigDrawer, /浏览器热改可能导致服务中断或密钥泄露/)
+  assert.doesNotMatch(serviceConfigDrawer, /保存成功/)
 })
 
 test('tenant detail profile uses a dedicated optimistic audited API and keeps environment read-only', () => {
