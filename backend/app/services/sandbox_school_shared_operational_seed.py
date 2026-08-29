@@ -1,7 +1,6 @@
 """007 学校可安全复现的门户、数据中心、客户成功与计量演示事实。"""
 from __future__ import annotations
 from datetime import date, datetime, timedelta
-import hashlib
 from sqlalchemy import func, select
 
 REFERENCE_NOW=datetime(2026,8,28,10,30); MARKER="007-SHARED-OP-2026"
@@ -15,7 +14,7 @@ def _put(db,m,t,key,vals):
  if r is None:r=m(tenant_id=t,**key,**vals);db.add(r);db.flush()
  return r
 def seed_shared_operational_coverage(db, tenant_id:int)->dict:
- from app.core.field_crypto import encrypt_field
+ from app.core.field_crypto import encrypt_field, hash_sensitive
  from app.models import StudentAccountLink, StudentProfile, User
  from app.models.customer_success import RenewalTask, SupportTicket, TrainingRecord
  from app.models.data_center import DataCenterReport, DataCenterReportVersion
@@ -88,7 +87,7 @@ def seed_shared_operational_coverage(db, tenant_id:int)->dict:
  _put(db,StudentImportBatch,tenant_id,{"batch_no":f"{MARKER}-STUDENT-IMPORT"},{"file_id":evidence.id,"total_rows":20,"success_rows":20,"error_rows":0,"status":"SUCCESS","remark":"标准演示学校历史学生主档导入批次，复核已通过。"})
  if _one(db,StudentStageEvent,tenant_id,student_id=profile.id,to_stage=profile.current_stage,source_module="sandbox") is None:
   db.add(StudentStageEvent(tenant_id=tenant_id,student_id=profile.id,from_stage="ENROLLED",to_stage=profile.current_stage,reason="007 演示学生生命周期主档已校验。",source_module="sandbox",occurred_at=REFERENCE_NOW-timedelta(days=30),created_by=admin.id))
- phone="13900000007";ph=hashlib.sha256(phone.encode()).hexdigest()
+ phone="13900000007";ph=hash_sensitive(phone,"phone")
  _put(db,StudentParentLink,tenant_id,{"student_id":profile.id,"guardian_phone_hash":ph,"link_status":"ACTIVE"},{"student_no":profile.student_no,"guardian_name":"演示学生家长","relation":"PARENT","guardian_phone_encrypted":encrypt_field(phone),"visible_scopes":["ACADEMIC_GRADE","CAMPUS_ALERT","CAREER_PROGRESS"]})
  db.commit();return validate_shared_operational_coverage(db,tenant_id)
 def validate_shared_operational_coverage(db,tenant_id):

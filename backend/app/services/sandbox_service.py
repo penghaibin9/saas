@@ -321,7 +321,10 @@ def seed_sandbox(db) -> dict:
             StudentProfile.tenant_id == SANDBOX_TID).order_by(StudentProfile.id)).all()
         for index, student in enumerate(students):
             school_class = classes[index % len(classes)]
-            major = db.get(Major, school_class.major_id)
+            major = db.scalars(select(Major).where(
+                Major.id == school_class.major_id,
+                Major.tenant_id == SANDBOX_TID,
+            )).first()
             student.class_id = school_class.id
             student.major_id = school_class.major_id
             student.college_id = major.college_id if major else None
