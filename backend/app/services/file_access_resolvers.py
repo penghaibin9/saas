@@ -153,7 +153,7 @@ def _internship_staff_scope_allows(db, file_obj, bindings: list[Any], user: dict
             or_(*clauses),
         )).all()
 
-        # 指导教师授权只认稳定数字 userId；历史 advisor_name/realName 永不参与授权。
+        # 指导教师授权只认稳定数字 userId；历史显示名字段永不参与授权。
         actor_user_id = stable_user_id(user)
         if actor_type == "TEACHER" and actor_user_id is not None:
             if any(
