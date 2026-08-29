@@ -869,21 +869,21 @@ def update_enterprise(company_id: str, body: EnterpriseUpdate, user=Depends(requ
 
 @router.post("/enterprises/{company_id}/review", summary="企业资质审核（仅待审核可审：通过→合作中/驳回）")
 def review_enterprise(company_id: str, body: EnterpriseReview, user=Depends(require_permission("internship.enterprise.manage"))):
-    result = ent.review_enterprise(company_id, body.action, body.comment or "")
+    result = ent.review_enterprise(company_id, body.action, body.comment or "", body.expectedVersion)
     audit_log.record("企业资质审核", f"internship-enterprise:{company_id}", detail={"action": body.action})
     return success(result, message="审核完成")
 
 
 @router.post("/enterprises/{company_id}/cooperation", summary="合作启停（暂停/恢复/归档）")
 def cooperation(company_id: str, body: CoopActionRequest, user=Depends(require_permission("internship.enterprise.manage"))):
-    result = ent.set_cooperation(company_id, body.action, body.reason or "")
+    result = ent.set_cooperation(company_id, body.action, body.reason or "", body.expectedVersion)
     audit_log.record("企业合作状态变更", f"internship-enterprise:{company_id}", detail={"action": body.action})
     return success(result, message="已更新")
 
 
 @router.post("/enterprises/{company_id}/blacklist", summary="拉黑/移出黑名单（拉黑须原因）")
 def blacklist(company_id: str, body: BlacklistRequest, user=Depends(require_permission("internship.enterprise.manage"))):
-    result = ent.set_blacklist(company_id, body.on, body.reason or "")
+    result = ent.set_blacklist(company_id, body.on, body.reason or "", body.expectedVersion)
     audit_log.record("企业黑名单变更", f"internship-enterprise:{company_id}", detail={"on": body.on})
     return success(result, message="已更新")
 

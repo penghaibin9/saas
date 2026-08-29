@@ -91,7 +91,11 @@ def create(body, user=None):
         raise AppException("VALIDATION_ERROR", "特殊备案至少上传一份依据材料")
     with session() as db:
         from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        from app.services import file_service
         rec = assert_internship_record_scope(db, internship_id, user, "创建特殊备案")
+        for fid in file_ids:
+            if not file_service.get_file_meta(fid, user=user):
+                raise AppException("VALIDATION_ERROR", "特殊备案依据材料不存在或无权访问")
         active = db.scalars(select(InternshipSpecialFiling).where(
             InternshipSpecialFiling.tenant_id == _tid(),
             InternshipSpecialFiling.internship_id == rec.id,
@@ -115,6 +119,32 @@ def create(body, user=None):
         )
         db.add(row)
         db.flush()
+        from app.services.file_business_binding_service import bind_file_to_business
+
+        scope = {
+            "internshipId": str(rec.id),
+            "studentId": str(rec.student_id),
+            "batchId": str(rec.batch_id or ""),
+            "businessType": "SPECIAL_FILING",
+            "businessId": str(row.id),
+        }
+        legacy_targets = {str(rec.id), str(rec.student_id), str(row.id)}
+        for fid in file_ids:
+            bind_file_to_business(
+                db,
+                file_id=fid,
+                biz_type="INTERNSHIP",
+                biz_id=str(row.id),
+                actor=user or {},
+                subject_type="STUDENT",
+                subject_id=str(rec.student_id),
+                relation_type="SPECIAL_FILING_EVIDENCE",
+                module_code="INTERNSHIP",
+                student_id=rec.student_id,
+                batch_id=str(rec.batch_id or "") or None,
+                scope=scope,
+                legacy_target_values=legacy_targets,
+            )
         _audit(db, row, "CREATE", user, {
             "filingType": filing_type, "triggerReason": trigger_reason,
             "fileCount": len(file_ids), "version": int(row.version or 0),
@@ -134,6 +164,10 @@ def submit(filing_id, user=None, expected_version=None):
             raise AppException("DATA_CONFLICT", "仅草稿可提交")
         if not row.file_ids or not (row.trigger_reason or "").strip():
             raise AppException("VALIDATION_ERROR", "提交前必须具备触发原因和依据材料")
+        from app.services import file_service
+        for fid in row.file_ids:
+            if not file_service.get_file_meta(str(fid), user=user):
+                raise AppException("DATA_CONFLICT", "特殊备案依据材料已失效或无权访问，请重新上传")
         before = row.status
         row.status = "PENDING_COLLEGE"
         row.version = int(row.version or 0) + 1

@@ -81,14 +81,14 @@ def list_participants(
     includeRemoved: bool = False,
     user=Depends(require_permission("internship.batch.view")),
 ):
-    items, total = svc.list_participants(batchId, page, pageSize, keyword, includeRemoved)
+    items, total = svc.list_participants(batchId, page, pageSize, keyword, includeRemoved, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/{batchId}/participants/summary", summary="参与人概览")
 def participant_summary(batchId: str = Path(...),
                         user=Depends(require_permission("internship.batch.view"))):
-    return success(svc.summary(batchId))
+    return success(svc.summary(batchId, user=user))
 
 
 @router.post("/{batchId}/participants/add", summary="人工补录参与人")
@@ -105,5 +105,5 @@ def remove_participant(
     participantId: str = Path(...),
     user=Depends(require_permission("internship.batch.manage")),
 ):
-    return success(svc.remove_participant(batchId, participantId, body.reason, body.version),
+    return success(svc.remove_participant(batchId, participantId, body.reason, body.version, user=user),
                    message="已移出")

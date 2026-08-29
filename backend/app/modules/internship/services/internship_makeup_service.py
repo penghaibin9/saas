@@ -8,7 +8,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -184,21 +184,52 @@ def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MI
         raise AppException("VALIDATION_ERROR", "补卡类型无效")
     if not (checkin_date or "").strip() or not (reason or "").strip() or len(reason.strip()) < 2:
         raise AppException("VALIDATION_ERROR", "补卡日期与事由必填（事由不少于 2 字）")
+    try:
+        makeup_day = date.fromisoformat((checkin_date or "").strip())
+    except ValueError:
+        raise AppException("VALIDATION_ERROR", "补卡日期必须为 YYYY-MM-DD") from None
+    if makeup_day > datetime.utcnow().date():
+        raise AppException("VALIDATION_ERROR", "不能申请未来日期补卡")
     evidence_file_id = _validate_evidence_file(evidence_file_id)
     if _evidence_required(makeup_type) and not evidence_file_id:
         raise AppException("VALIDATION_ERROR", _evidence_requirement_label(makeup_type))
     with session() as db:
         rec, stu = _student_record(db, user, for_write=True)
+        def _as_day(value):
+            if value is None:
+                return None
+            if isinstance(value, datetime):
+                return value.date()
+            if isinstance(value, date):
+                return value
+            try:
+                return date.fromisoformat(str(value)[:10])
+            except ValueError:
+                return None
+        start_day, end_day = _as_day(rec.intern_start_date), _as_day(rec.intern_end_date)
+        if start_day and makeup_day < start_day:
+            raise AppException("VALIDATION_ERROR", "补卡日期早于本次实习开始日期")
+        if end_day and makeup_day > end_day:
+            raise AppException("VALIDATION_ERROR", "补卡日期晚于本次实习结束日期")
+        canonical_date = makeup_day.isoformat()
+        if makeup_type == "MISSING":
+            existing_checkin = db.scalars(select(InternshipCheckin).where(
+                InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == rec.id,
+                InternshipCheckin.checkin_date == canonical_date,
+                InternshipCheckin.result.in_(("NORMAL", "RECORDED")),
+                InternshipCheckin.is_deleted.is_(False))).first()
+            if existing_checkin:
+                raise AppException("DATA_CONFLICT", "该日期已有有效打卡记录，无需补卡")
         if internship_id and str(internship_id) != str(rec.id):
             raise no_permission("只能对本人实习记录申请补卡")
         dup = db.scalars(select(InternshipMakeup).where(
             InternshipMakeup.tenant_id == _tid(), InternshipMakeup.internship_id == rec.id,
-            InternshipMakeup.checkin_date == checkin_date.strip(),
+            InternshipMakeup.checkin_date == canonical_date,
             InternshipMakeup.status == "PENDING", InternshipMakeup.is_deleted.is_(False))).first()
         if dup:
             raise AppException("DATA_CONFLICT", "该日期已有待审核补卡申请")
         m = InternshipMakeup(tenant_id=_tid(), internship_id=rec.id, student_id=rec.student_id,
-                             checkin_date=checkin_date.strip(), makeup_type=makeup_type,
+                             checkin_date=canonical_date, makeup_type=makeup_type,
                              reason=reason.strip(), status="PENDING",
                              apply_by_name=(stu.real_name if stu else _op_name(user)))
         db.add(m)

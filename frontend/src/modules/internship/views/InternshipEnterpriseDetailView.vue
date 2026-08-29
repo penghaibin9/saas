@@ -393,7 +393,7 @@ export default {
       this.submitting = true
       try {
         const res = this.editingContact
-          ? await internshipApi.updateEnterpriseContact(this.detail.id, this.editingContact.id, this.cform)
+          ? await internshipApi.updateEnterpriseContact(this.detail.id, this.editingContact.id, { ...this.cform, expectedVersion: this.editingContact.version })
           : await internshipApi.addEnterpriseContact(this.detail.id, this.cform)
         if (res.code === 0) { toast.success('已保存'); this.contactDrawer = false; this.load() }
         else this.cformError = res.message
@@ -426,7 +426,7 @@ export default {
     },
     askBlacklist(on) {
       if (!this.can('blacklistEnterprise')) return toast.error(this.reason('blacklistEnterprise'))
-      this.confirm = { visible: true, title: on ? '加入黑名单' : '移出黑名单', message: on ? '确认拉黑该企业？拉黑后不再向学生推荐。' : '确认移出黑名单？恢复为合作中。', type: on ? 'danger' : 'primary', confirmText: on ? '确认拉黑' : '确认移出', requireReason: on, reasonLabel: '拉黑原因', action: on ? 'BLACKLIST_ON' : 'BLACKLIST_OFF', extra: null }
+      this.confirm = { visible: true, title: on ? '加入黑名单' : '移出黑名单', message: on ? '确认拉黑该企业？拉黑后不再向学生推荐。' : '确认移出黑名单？系统将恢复拉黑前状态，缺少历史状态时回到待审核。', type: on ? 'danger' : 'primary', confirmText: on ? '确认拉黑' : '确认移出', requireReason: on, reasonLabel: '拉黑原因', action: on ? 'BLACKLIST_ON' : 'BLACKLIST_OFF', extra: null }
     },
     async onConfirm({ reason } = {}) {
       const { action, extra } = this.confirm
@@ -434,11 +434,11 @@ export default {
       try {
         let res
         if (action === 'DELETE_CONTACT') res = await internshipApi.deleteEnterpriseContact(this.detail.id, extra)
-        else if (action === 'REVIEW_APPROVE') res = await internshipApi.reviewEnterprise(this.detail.id, { action: 'APPROVE', comment: reason || '' })
-        else if (action === 'REVIEW_REJECT') res = await internshipApi.reviewEnterprise(this.detail.id, { action: 'REJECT', comment: reason || '' })
-        else if (action.startsWith('COOP_')) res = await internshipApi.setEnterpriseCooperation(this.detail.id, { action: action.slice(5), reason: reason || '' })
-        else if (action === 'BLACKLIST_ON') res = await internshipApi.setEnterpriseBlacklist(this.detail.id, { on: true, reason: reason || '' })
-        else if (action === 'BLACKLIST_OFF') res = await internshipApi.setEnterpriseBlacklist(this.detail.id, { on: false })
+        else if (action === 'REVIEW_APPROVE') res = await internshipApi.reviewEnterprise(this.detail.id, { action: 'APPROVE', comment: reason || '', expectedVersion: this.detail.version })
+        else if (action === 'REVIEW_REJECT') res = await internshipApi.reviewEnterprise(this.detail.id, { action: 'REJECT', comment: reason || '', expectedVersion: this.detail.version })
+        else if (action.startsWith('COOP_')) res = await internshipApi.setEnterpriseCooperation(this.detail.id, { action: action.slice(5), reason: reason || '', expectedVersion: this.detail.version })
+        else if (action === 'BLACKLIST_ON') res = await internshipApi.setEnterpriseBlacklist(this.detail.id, { on: true, reason: reason || '', expectedVersion: this.detail.version })
+        else if (action === 'BLACKLIST_OFF') res = await internshipApi.setEnterpriseBlacklist(this.detail.id, { on: false, expectedVersion: this.detail.version })
         if (res && res.code === 0) { toast.success('已更新并写入留痕'); this.confirm.visible = false; this.load() }
         else if (res) toast.error(res.message)
       } finally { this.submitting = false }

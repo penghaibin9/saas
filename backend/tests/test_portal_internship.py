@@ -32,6 +32,46 @@ def _seed(no, name):
     db.close()
 
 
+def _seed_score_context(no, name):
+    from datetime import datetime
+    from uuid import uuid4
+
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipBatch, InternshipFinalScore, InternshipRecord, StudentProfile
+
+    db = get_sessionmaker()()
+    try:
+        student = StudentProfile(
+            tenant_id=TID, student_no=no, real_name=name, gender="M", grade="2022",
+            current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE",
+        )
+        db.add(student)
+        db.flush()
+        batch = InternshipBatch(
+            tenant_id=TID, batch_name="门户成绩申诉批次",
+            batch_no=f"PORTAL-APPEAL-{uuid4().hex[:8]}", status="RUNNING", planned_count=1,
+        )
+        db.add(batch)
+        db.flush()
+        record = InternshipRecord(
+            tenant_id=TID, student_id=student.id, batch_id=batch.id,
+            status="ASSESSING", risk_level="NONE",
+        )
+        db.add(record)
+        db.flush()
+        score = InternshipFinalScore(
+            tenant_id=TID, internship_id=record.id, student_id=student.id,
+            batch_id=batch.id, total_score=80, pass_line=60,
+            is_pass=True, incomplete=False, status="PUBLISHED",
+            published_by_name="学校管理员", published_at=datetime.utcnow(), version=1,
+        )
+        db.add(score)
+        db.commit()
+        return {"internship": record.id, "batch": batch.id, "score": score.id}
+    finally:
+        db.close()
+
+
 def test_my_view(client, db_mode):
     _seed("IN-001", "实习一")
     h = _stu_token("实习一", "IN-001")
@@ -52,14 +92,16 @@ def test_weekly_and_report_guards(client, db_mode):
 
 
 def test_agreement_print_and_score_appeal(client, db_mode):
-    _seed("IN-003", "实习三")
+    ids = _seed_score_context("IN-003", "实习三")
     h = _stu_token("实习三", "IN-003")
     p = client.post(f"{PORTAL}/agreement/print", headers=h, json={"bizId": "AG1"}).json()
     assert p["code"] == 0 and p["data"]["watermark"] == "实习三"
     ok = client.post(f"{PORTAL}/score/appeal", headers=h,
-                     json={"reason": "实习成绩与考勤/周报表现不符，申请复核。"}).json()
+                     json={"internshipId": str(ids["internship"]),
+                           "reason": "实习成绩与考勤/周报表现不符，申请复核。"}).json()
     assert ok["code"] == 0
-    assert client.post(f"{PORTAL}/score/appeal", headers=h, json={"reason": "短"}).json()["code"] != 0
+    assert client.post(f"{PORTAL}/score/appeal", headers=h,
+                       json={"internshipId": str(ids["internship"]), "reason": "短"}).json()["code"] != 0
 
 
 def test_non_student_rejected(client, db_mode):

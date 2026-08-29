@@ -80,12 +80,15 @@ def agreement_print(user: dict, body: dict) -> dict:
 
 
 def score_appeal(user: dict, body: dict) -> dict:
-    """实习成绩申诉（书面理由，复用通用事务申请）。"""
-    body = body or {}
-    reason = str(body.get("reason") or "").strip()
-    if len(reason) < 5:
-        raise AppException("VALIDATION_ERROR", "申诉理由至少 5 个字")
-    return stu.campus_service_apply(user, {"serviceKey": "INTERNSHIP_SCORE_APPEAL", "reason": reason})
+    """实习成绩申诉：冻结正式成绩版本并进入岗位实习成绩状态机。"""
+    from app.modules.internship.services import internship_score_appeal_service as appeal
+    return appeal.create(user, body or {})
+
+
+def score_appeal_status(user: dict, *, batch_id=None, internship_id=None) -> dict:
+    """本人查看当前实习最近一条成绩申诉状态。"""
+    from app.modules.internship.services import internship_score_appeal_service as appeal
+    return appeal.my_latest(user, batch_id=batch_id, internship_id=internship_id)
 
 
 def makeup_list(user: dict) -> dict:

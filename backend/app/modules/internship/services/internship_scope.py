@@ -34,16 +34,12 @@ def apply_internship_record_scope(query, user):
     role = (scope.get("roleCode") or "").upper()
     advisor_roles = {"INTERN_MENTOR", "INTERNSHIP_MENTOR", "INTERN_ADVISOR"}
     advisor_ids = [int(x) for x in scope.get("advisorUserIds", set()) if str(x).isdigit()]
-    advisor_names = list(scope.get("advisorNames", set()))
     if role in advisor_roles:
-        clauses = []
-        if advisor_ids:
-            clauses.append(InternshipRecord.advisor_user_id.in_(advisor_ids))
-        if advisor_names:
-            clauses.append(
-                InternshipRecord.advisor_user_id.is_(None)
-                & InternshipRecord.advisor_name.in_(advisor_names))
-        return query.where(or_(*clauses) if clauses else false())
+        # 运行时授权只认稳定 user_id；历史只有 advisor_name 的记录必须先治理数据，
+        # 不能因为同名教师存在就扩大数据范围。
+        return query.where(
+            InternshipRecord.advisor_user_id.in_(advisor_ids) if advisor_ids else false()
+        )
 
     direct_major = aliased(Major)
     class_major = aliased(Major)
@@ -127,6 +123,6 @@ def apply_internship_record_scope(query, user):
     clauses = []
     if student_clauses:
         clauses.append(InternshipRecord.student_id.in_(student_ids.where(or_(*student_clauses))))
-    if advisor_names:
-        clauses.append(InternshipRecord.advisor_name.in_(advisor_names))
+    if advisor_ids:
+        clauses.append(InternshipRecord.advisor_user_id.in_(advisor_ids))
     return query.where(or_(*clauses) if clauses else false())

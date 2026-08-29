@@ -13,10 +13,10 @@ def _admin(client):
     return {"Authorization": f"Bearer {d['accessToken']}"}
 
 
-def _mentor(name, tid=TID):
+def _mentor(name, user_id=None, tid=TID):
     from app.core.security import create_access_token
     return {"Authorization": "Bearer " + create_access_token({
-        "userId": f"u-{name}", "realName": name, "userType": "TEACHER",
+        "userId": str(user_id or f"u-{name}"), "realName": name, "userType": "TEACHER",
         "tid": "x", "tenantId": str(tid), "activeContextId": "ctx",
         "currentRoleCode": "INTERN_MENTOR", "clientType": "PC"})}
 
@@ -45,7 +45,7 @@ def _seed(db_mode, full_a=True):
     from app.models import (EmpCompany, InternshipAgreement, InternshipBatch, InternshipCheckin,
                             InternshipEnterpriseEval, InternshipFinalScore, InternshipGuidance,
                             InternshipInsurance, InternshipPosition, InternshipRecord,
-                            InternshipStudentEval, StudentProfile, WeeklyReport)
+                            InternshipStudentEval, StudentProfile, User, WeeklyReport)
     db = get_sessionmaker()()
     ids = {}
     try:
@@ -65,7 +65,14 @@ def _seed(db_mode, full_a=True):
             s = StudentProfile(tenant_id=TID, student_no=no, real_name=name,
                                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
             db.add(s); db.flush()
-            r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
+            advisor = User(tenant_id=TID,
+                           login_name=f"archive-advisor-{key}-{uuid4().hex[:8]}",
+                           real_name=adv, password_hash="test-only",
+                           user_type="TEACHER", status="ACTIVE")
+            db.add(advisor); db.flush()
+            ids[f"adv_{key}"] = advisor.id
+            r = InternshipRecord(tenant_id=TID, student_id=s.id,
+                                 advisor_user_id=advisor.id, advisor_name=adv,
                                  enterprise_name="归档测试企业", position_name="实习生",
                                  status="ASSESSING", risk_level="NONE", batch_id=b.id)
             db.add(r); db.flush()
@@ -217,7 +224,7 @@ def test_by_enterprise_aggregate(client, db_mode):
 def test_scope_and_student_forbidden(client, db_mode):
     ids = _seed(db_mode)
     assert client.get(f"{INT}/archive", headers=_admin(client), params={"batchId": ids["batch"]}).json()["data"]["total"] == 2
-    assert client.get(f"{INT}/archive", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["total"] == 1
+    assert client.get(f"{INT}/archive", headers=_mentor("刘强", ids["adv_a"]), params={"batchId": ids["batch"]}).json()["data"]["total"] == 1
     assert client.get(f"{INT}/archive", headers=_student("AR-A"), params={"batchId": ids["batch"]}).status_code == 403
 
 

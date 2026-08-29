@@ -376,7 +376,8 @@ export default {
       try {
         const res = await internStudentApi.assignAdvisor(this.advisorRow.id, {
           advisorUserId: this.advisorAssignmentUserId,
-          reason: this.advisorAssignmentReason
+          reason: this.advisorAssignmentReason,
+          expectedVersion: this.advisorRow.version
         })
         if (res.code === 0) {
           toast.success('指导教师已分配，变更已写入审计留痕')
@@ -416,7 +417,9 @@ export default {
       this.submitting = true
       try {
         let res
-        if (action === 'ELIG_QUALIFIED') res = await internStudentApi.setEligibility(row.id, { status: 'QUALIFIED', reason: reason || '' })
+        if (action === 'ELIG_QUALIFIED') res = await internStudentApi.setEligibility(row.id, {
+          status: 'QUALIFIED', reason: reason || '', expectedVersion: row.version
+        })
         if (res && res.code === 0) { toast.success('已更新'); this.confirm.visible = false; this.load() } else if (res) toast.error(res.message)
       } finally { this.submitting = false }
     }

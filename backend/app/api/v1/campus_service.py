@@ -7,17 +7,29 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.permissions import require_permission
+from app.models import CsWorkOrder
+from app.modules.internship.services import internship_score_appeal_service as internship_score_appeal
 from app.schemas.campus_service import (AssignBody, CommentBody, DisciplineCreate, DisciplineUpdate,
                                         DormExcHandle, DormExcMark, HandleBody, IdsBody, NoteBody,
                                         ReasonBody, StudentCreate, StudentUpdate, VersionedIdsBody,
                                         WorkOrderCreate)
 from app.services import campus_service_service as svc
+from app.services.db_service import _as_id, _tid, session
 
 router = APIRouter(prefix="/campus-service", tags=["在校服务"])
 
 
 def _p(items, total, page, ps):
     return success(paginate(items, total, page, ps))
+
+
+def _is_internship_score_appeal(wid: str) -> bool:
+    """通用工单队列遇到实习成绩申诉时，必须切回实习成绩状态机处理。"""
+    with session() as db:
+        row = db.get(CsWorkOrder, _as_id(wid))
+        if not row or row.tenant_id != _tid():
+            return False
+        return internship_score_appeal.is_score_appeal(row)
 
 
 @router.get("/dashboard", summary="在校服务看板")
@@ -166,11 +178,25 @@ def work_order_assign(body: AssignBody, user=Depends(require_permission("campusS
 
 @router.post("/work-orders/{wid}/handle", summary="处理工单（说明≥5字）")
 def work_order_handle(wid: str, body: HandleBody, user=Depends(require_permission("campusService.workOrder.handle"))):
+    if _is_internship_score_appeal(wid) and body.close:
+        return success(
+            internship_score_appeal.decide(
+                user, wid, {"reason": body.note, "expectedVersion": body.version}, approve=True
+            ),
+            message="成绩申诉已受理，原成绩已撤回",
+        )
     return success(svc.handle_work_order(wid, body.note, body.close, body.version), message="已处理")
 
 
 @router.post("/work-orders/{wid}/close", summary="关闭工单（原因≥5字）")
 def work_order_close(wid: str, body: ReasonBody, user=Depends(require_permission("campusService.workOrder.handle"))):
+    if _is_internship_score_appeal(wid):
+        return success(
+            internship_score_appeal.decide(
+                user, wid, {"reason": body.reason, "expectedVersion": body.version}, approve=False
+            ),
+            message="成绩申诉已驳回",
+        )
     return success(svc.close_work_order(wid, body.reason, body.version), message="已关闭")
 
 

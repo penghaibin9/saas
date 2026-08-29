@@ -262,6 +262,8 @@ def test_college_scope_derives_missing_college_id(client, db_mode):
         "studentNos": set(), "advisorNames": set(), "advisorUserIds": set(),
     }
 
+    from app.core.context import set_tenant
+    set_tenant({"tenantId": str(TID)})
     db = get_sessionmaker()()
     try:
         stu = db.get(StudentProfile, stu_id)

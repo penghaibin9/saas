@@ -48,7 +48,9 @@ def test_mysql_placement_snapshot_survives_position_edit_and_switches_with_new_s
     company = client.post(ENT, headers=auth_headers, json={"name": _uniq("快照企"), "creditCode": _credit()}).json()
     assert company["code"] == 0, company
     company_id = company["data"]["id"]
-    reviewed = client.post(f"{ENT}/{company_id}/review", headers=auth_headers, json={"action": "APPROVE"}).json()
+    reviewed = client.post(f"{ENT}/{company_id}/review", headers=auth_headers, json={
+        "action": "APPROVE", "expectedVersion": int(company["data"].get("version") or 0),
+    }).json()
     assert reviewed["code"] == 0, reviewed
 
     p1 = _position(client, auth_headers, batch_id, company_id, _uniq("设备岗A"), 3500, "长沙A园区")

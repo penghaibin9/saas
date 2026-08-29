@@ -126,6 +126,7 @@ export const portalApi = {
   internshipWeeklySubmit: (body) => request('/portal/internship/weekly/submit', { method: 'POST', body }),
   internshipReportSubmit: (body) => request('/portal/internship/report/submit', { method: 'POST', body }),
   internshipAgreementPrint: (body) => request('/portal/internship/agreement/print', { method: 'POST', body }),
+  internshipScoreAppealStatus: (params = {}) => request(`/portal/internship/score/appeal${q(params)}`),
   internshipScoreAppeal: (body) => request('/portal/internship/score/appeal', { method: 'POST', body }),
   internshipLeaves: () => request('/portal/internship/leaves'),
   internshipLeaveApply: (body) => request('/portal/internship/leaves/apply', { method: 'POST', body }),

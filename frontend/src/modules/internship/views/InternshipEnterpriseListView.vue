@@ -302,12 +302,12 @@ export default {
       this.submitting = true
       try {
         let res
-        if (action === 'REVIEW_APPROVE') res = await internshipApi.reviewEnterprise(row.id, { action: 'APPROVE', comment: reason || '' })
-        else if (action === 'REVIEW_REJECT') res = await internshipApi.reviewEnterprise(row.id, { action: 'REJECT', comment: reason || '' })
-        else if (action.startsWith('COOP_')) res = await internshipApi.setEnterpriseCooperation(row.id, { action: action.slice(5), reason: reason || '' })
-        else if (action === 'BLACKLIST_ON') res = await internshipApi.setEnterpriseBlacklist(row.id, { on: true, reason: reason || '' })
-        else if (action === 'BLACKLIST_OFF') res = await internshipApi.setEnterpriseBlacklist(row.id, { on: false })
-        if (res && res.code === 0) { toast.success('已更新并写入留痕'); this.confirm.visible = false; this.load() }
+        if (action === 'REVIEW_APPROVE') res = await internshipApi.reviewEnterprise(row.id, { action: 'APPROVE', comment: reason || '', expectedVersion: row.version })
+        else if (action === 'REVIEW_REJECT') res = await internshipApi.reviewEnterprise(row.id, { action: 'REJECT', comment: reason || '', expectedVersion: row.version })
+        else if (action.startsWith('COOP_')) res = await internshipApi.setEnterpriseCooperation(row.id, { action: action.slice(5), reason: reason || '', expectedVersion: row.version })
+        else if (action === 'BLACKLIST_ON') res = await internshipApi.setEnterpriseBlacklist(row.id, { on: true, reason: reason || '', expectedVersion: row.version })
+        else if (action === 'BLACKLIST_OFF') res = await internshipApi.setEnterpriseBlacklist(row.id, { on: false, expectedVersion: row.version })
+        if (res && res.code === 0) { toast.success('已更新并写入留痕'); this.confirm.visible = false; await this.load() }
         else if (res) toast.error(res.message)
       } finally { this.submitting = false }
     }
