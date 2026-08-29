@@ -1,7 +1,7 @@
 """Add stable five-level scope nodes to role assignments.
 
 Revision ID: 20260829_role_assign_scope
-Revises: 20260827_affairs_gd_merge, 20260828_sandbox_reset_guards
+Revises: 20260829_aa_grade_head_ver
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = "20260829_role_assign_scope"
-down_revision = ("20260827_affairs_gd_merge", "20260828_sandbox_reset_guards")
+down_revision = "20260829_aa_grade_head_ver"
 branch_labels = None
 depends_on = None
 
