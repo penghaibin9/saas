@@ -193,15 +193,15 @@ def seed_academic_core_flows(db, tenant_id: int) -> dict:
         "exam_course_id": exam_course.id, "student_id": student.id
     }, {
         "exam_room_id": exam_room.id if exam_room else None, "student_no": student.student_no,
-        "student_name": student.real_name, "incident_type": "DEVICE_VIOLATION",
-        "description": "开考后发现未按要求关闭智能手表；监考教师现场收存并登记。",
+        "student_name": student.real_name, "incident_type": "ABSENT",
+        "description": "学生未按时到场；监考教师完成缺考登记并联动学业风险提醒。",
         "evidence_file_ids": json.dumps([evidence.id]), "recorded_by": task.teacher_name,
         "recorded_at": datetime(2026, 6, 25, 14, 42), "risk_alert_sent": True,
         "discipline_case_ref": None, "status": "ACTIVE",
     })
-    _put(db, c["t_aa_exam_audit_trail"], tenant_id, {"biz_type": "EXAM_INCIDENT", "biz_id": str(incident.id), "action": "REVIEW_COMPLETE"}, {
-        "operator": "考务管理员", "role_name": "教务处", "detail": "监考记录、考场签字和证据附件核验完成。",
-        "before_val": "ACTIVE", "after_val": "ACTIVE", "occurred_at": datetime(2026, 6, 26, 10),
+    _put(db, c["t_aa_exam_audit_trail"], tenant_id, {"biz_type": "EXAM_INCIDENT", "biz_id": str(incident.id), "action": "EXAM_INCIDENT_CLOSE"}, {
+        "operator": "考务管理员", "role_name": "教务处", "detail": "缺考事实、考场签字和风险提醒均已核验闭环。",
+        "before_val": "ACTIVE", "after_val": "RISK_TRANSFERRED", "occurred_at": datetime(2026, 6, 26, 10),
     })
     _put(db, c["t_aa_deferred_exam"], tenant_id, {"student_id": selection_students[1].id, "exam_course_id": exam_course.id}, {
         "student_no": selection_students[1].student_no, "student_name": selection_students[1].real_name,
@@ -282,7 +282,7 @@ def seed_academic_core_flows(db, tenant_id: int) -> dict:
         "kind": "MAKEUP", "target_grades": "2024,2025", "term_id": archived_term.id,
         "term_code": f"{archived_term.year_code}-{archived_term.term_no}", "exam_batch_ref": exam_batch.id,
         "score_rule": "CAP60", "published_at": datetime(2026, 7, 15, 9),
-        "remark": "覆盖不及格补考与经批准缓考学生。", "status": "PUBLISHED",
+        "remark": "覆盖不及格补考与经批准缓考学生，成绩已发布回写。", "status": "FINISHED",
     })
     _put(db, c["t_acad_makeup"], tenant_id, {"acad_student_id": failed_student.id, "batch_id": makeup_batch.id}, {
         "kind": "补考", "course_name": failed_grade.course_name, "term": failed_grade.term,
