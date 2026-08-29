@@ -97,7 +97,7 @@ def _strict_score(value, label: str):
 
 def _task_row(task) -> dict:
     row = _core._task_row(task)
-    row["courseId"] = str(task.course_id or "")
+    row["courseId"] = int(task.course_id) if task.course_id is not None else None
     row["teachingTaskId"] = str(task.teaching_task_id or "")
     row["termId"] = str(task.term_id or "")
     return row

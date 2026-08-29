@@ -6,6 +6,10 @@ set -euo pipefail
 # byte beside this adapter. We materialize one temporary replay that skips duplicate
 # B/C merges only when Git ancestry proves both containment relationships. Any other
 # topology falls back to the original fail-closed A -> B -> C -> D -> INT replay.
+#
+# Current product heads may also already persist the exact reviewed no-DDL B/C
+# convergence migration. The temporary replay accepts that state only after proving
+# its revision, parent pair and empty upgrade/downgrade bodies; any drift still fails closed.
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 legacy="$script_dir/academic_d_w5_final_gold_replay_legacy.sh"
@@ -45,6 +49,63 @@ CURRENT_LAYER=""
 if text.count(old) != 1:
     raise SystemExit("W5 replay topology anchor drifted; refusing to adapt")
 text = text.replace(old, new, 1)
+
+old_existing = '''  if [[ -e "$B_C_DAG_PATH" ]]; then
+    echo "[dag-convergence-rejected] unexpected existing path $B_C_DAG_PATH" | tee -a "$MERGE_LEDGER"
+    return 1
+  fi
+'''
+new_existing = '''  if [[ -e "$B_C_DAG_PATH" ]]; then
+    python - "$B_C_DAG_PATH" "$B_C_DAG_REVISION" "$B_C_DAG_HEAD_A" "$B_C_DAG_HEAD_C" <<'PY_DAG'
+from pathlib import Path
+import ast
+import sys
+
+path = Path(sys.argv[1])
+expected_revision, head_a, head_c = sys.argv[2:]
+source = path.read_text(encoding="utf-8")
+tree = ast.parse(source, filename=str(path))
+values = {}
+functions = {}
+for node in tree.body:
+    if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+        try:
+            values[node.targets[0].id] = ast.literal_eval(node.value)
+        except Exception:
+            pass
+    elif isinstance(node, ast.FunctionDef):
+        functions[node.name] = node
+if values.get("revision") != expected_revision:
+    raise SystemExit(f"persisted convergence revision drift: {values.get('revision')!r}")
+parents = values.get("down_revision")
+if not isinstance(parents, (tuple, list)) or set(parents) != {head_a, head_c} or len(parents) != 2:
+    raise SystemExit(f"persisted convergence parents drift: {parents!r}")
+for name in ("upgrade", "downgrade"):
+    fn = functions.get(name)
+    if fn is None or len(fn.body) != 1 or not isinstance(fn.body[0], ast.Pass):
+        raise SystemExit(f"persisted convergence {name} must remain no-DDL pass")
+print("persisted B/C convergence semantic contract=valid")
+PY_DAG
+    DAG_CONVERGENCE_COMMIT="$(git log -n1 --format=%H -- "$B_C_DAG_PATH")"
+    DAG_CONVERGENCE_BLOB="$(git hash-object "$B_C_DAG_PATH")"
+    mapfile -t current_dag_heads < <(cd backend && alembic heads | awk '{print $1}')
+    if [[ "${#current_dag_heads[@]}" -ne 1 ]]; then
+      echo "[dag-convergence-rejected] expected exactly one current Alembic head, got ${#current_dag_heads[@]}: ${current_dag_heads[*]:-<none>}" | tee -a "$MERGE_LEDGER"
+      return 1
+    fi
+    if ! (cd backend && alembic history -r "${B_C_DAG_REVISION}:${current_dag_heads[0]}" >/dev/null); then
+      echo "[dag-convergence-rejected] persisted revision $B_C_DAG_REVISION is not carried by current Alembic head ${current_dag_heads[0]}" | tee -a "$MERGE_LEDGER"
+      return 1
+    fi
+    DAG_CONVERGENCE_PROVEN=true
+    CURRENT_LAYER=""
+    echo "[dag-convergence-proven] persisted revision=$B_C_DAG_REVISION parents=$B_C_DAG_HEAD_A,$B_C_DAG_HEAD_C current_head=${current_dag_heads[0]} blob=$DAG_CONVERGENCE_BLOB commit=$DAG_CONVERGENCE_COMMIT" | tee -a "$MERGE_LEDGER"
+    return 0
+  fi
+'''
+if text.count(old_existing) != 1:
+    raise SystemExit("W5 replay DAG existing-path anchor drifted; refusing to adapt")
+text = text.replace(old_existing, new_existing, 1)
 target.write_text(text, encoding="utf-8")
 PY
 

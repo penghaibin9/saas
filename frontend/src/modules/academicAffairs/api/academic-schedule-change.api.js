@@ -64,13 +64,17 @@ export const scheduleChangeApi = {
   submit(body) {
     return call(() => request(BASE, { method: 'POST', body }))
   },
-  /** 审批通过（学院/教务处；终审通过即改写课表 → APPLIED） */
-  approve(id, comment = '') {
-    return call(() => request(`${BASE}/${id}/approve`, { method: 'POST', body: { action: 'APPROVE', comment } }))
+  /** 审批通过：必须回传当前行 version，后端做 expectedVersion CAS。 */
+  approve(id, expectedVersion, comment = '') {
+    return call(() => request(`${BASE}/${id}/approve`, {
+      method: 'POST', body: { action: 'APPROVE', comment, expectedVersion }
+    }))
   },
-  /** 驳回（原因≥5 字） */
-  reject(id, comment) {
-    return call(() => request(`${BASE}/${id}/reject`, { method: 'POST', body: { action: 'REJECT', comment } }))
+  /** 驳回：必须回传当前行 version；原因≥5字。 */
+  reject(id, expectedVersion, comment) {
+    return call(() => request(`${BASE}/${id}/reject`, {
+      method: 'POST', body: { action: 'REJECT', comment, expectedVersion }
+    }))
   },
   /** 撤销（仅 SUBMITTED/COLLEGE_REVIEW；APPROVED 后 409） */
   cancel(id, reason = '') {

@@ -12,8 +12,8 @@ COLLEGE_REVIEW_PERM = "academicAffairs.scheduleChange.collegeReview"
 ACADEMIC_REVIEW_PERM = "academicAffairs.scheduleChange.academicReview"
 
 _ACCOUNTS = {
-    "college_admin01": ("张晓明", "SCHOOL_ADMIN", (COLLEGE_REVIEW_PERM,)),
-    "school_admin01": ("陈校", "SCHOOL_ADMIN", (ACADEMIC_REVIEW_PERM,)),
+    "college_admin01": ("张晓明", "SCHOOL_ADMIN", "COLLEGE_ADMIN", (COLLEGE_REVIEW_PERM,)),
+    "school_admin01": ("陈校", "SCHOOL_ADMIN", "SCHOOL_ADMIN", (ACADEMIC_REVIEW_PERM,)),
 }
 
 
@@ -36,7 +36,7 @@ def _ensure_permission(db, code):
 def _ensure_account(db, login_name):
     from app.models import Role, RolePermission, User, UserRole
 
-    real_name, user_type, permissions = _ACCOUNTS[login_name]
+    real_name, user_type, role_code, permissions = _ACCOUNTS[login_name]
     user = db.query(User).filter(
         User.tenant_id == TID,
         User.login_name == login_name,
@@ -52,8 +52,10 @@ def _ensure_account(db, login_name):
         )
         db.add(user)
         db.flush()
+    else:
+        user.status = "ACTIVE"
+        user.is_deleted = False
 
-    role_code = f"TEST_SCHEDULE_CHANGE_{login_name.upper()}"
     role = db.query(Role).filter(
         Role.tenant_id == TID,
         Role.role_code == role_code,
@@ -67,32 +69,43 @@ def _ensure_account(db, login_name):
         )
         db.add(role)
         db.flush()
+    else:
+        role.status = "ACTIVE"
+        role.is_deleted = False
 
-    if db.query(UserRole).filter(
+    link = db.query(UserRole).filter(
         UserRole.tenant_id == TID,
         UserRole.user_id == user.id,
         UserRole.role_id == role.id,
-    ).first() is None:
+    ).first()
+    if link is None:
         db.add(UserRole(
             tenant_id=TID,
             user_id=user.id,
             role_id=role.id,
             status="ACTIVE",
         ))
+    else:
+        link.status = "ACTIVE"
+        link.is_deleted = False
 
     for code in permissions:
         permission = _ensure_permission(db, code)
-        if db.query(RolePermission).filter(
+        grant = db.query(RolePermission).filter(
             RolePermission.tenant_id == TID,
             RolePermission.role_id == role.id,
             RolePermission.permission_id == permission.id,
-        ).first() is None:
+        ).first()
+        if grant is None:
             db.add(RolePermission(
                 tenant_id=TID,
                 role_id=role.id,
                 permission_id=permission.id,
                 status="ACTIVE",
             ))
+        else:
+            grant.status = "ACTIVE"
+            grant.is_deleted = False
     db.flush()
     return user
 

@@ -8,6 +8,8 @@ R3 本轮补齐的剩余 5 个叶子：实践教学计划/计划审核/计划发
 """
 from __future__ import annotations
 
+from tests.support_academic_review_identity import ensure_college_review_scope
+
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
@@ -89,6 +91,7 @@ def _seed_enabled_course(pid, *, name, credit):
 def _governance_ready_program(client, hdr, name, total=10):
     """构造满足当前正式发布门禁的方案，但保持 DRAFT 供各用例选择后续动作。"""
     major_id = _ensure_real_major()
+    ensure_college_review_scope(major_ids=[major_id])
     r = client.post(f"{BASE}/programs", headers=hdr, json={
         "programName": name, "majorId": str(major_id), "gradeYear": "2026", "totalCredits": total})
     assert r.status_code == 200, r.text
@@ -108,11 +111,15 @@ def _governance_ready_program(client, hdr, name, total=10):
 
 
 def _enabled_program(client, hdr, name="软件技术2026方案", total=10):
-    """建治理完整方案→提交→两审通过（PUBLISHED）→绑年级（ENABLED）。"""
+    """建治理完整方案→提交→真实学院审→教务终审（PUBLISHED）→绑年级（ENABLED）。"""
     pid = _governance_ready_program(client, hdr, name, total)
     r = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
     assert r.status_code == 200, r.text
-    r = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
+    r = client.post(
+        f"{BASE}/programs/{pid}/review",
+        headers=_hdr(client, "college_admin01"),
+        json={"action": "APPROVE"},
+    )
     assert r.status_code == 200, r.text
     r = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
     assert r.status_code == 200, r.text
@@ -185,7 +192,11 @@ def test_tp4_review_publish_workbench_status_filters(client, db_mode):
                              headers=hdr).json()["data"]["items"]
     assert any(p["programId"] == pid for p in review_list)
 
-    r = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
+    r = client.post(
+        f"{BASE}/programs/{pid}/review",
+        headers=_hdr(client, "college_admin01"),
+        json={"action": "APPROVE"},
+    )
     assert r.status_code == 200, r.text
     r = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
     assert r.status_code == 200, r.text

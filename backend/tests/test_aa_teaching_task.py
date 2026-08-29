@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from tests.support_academic_review_identity import ensure_college_review_scope, ensure_course_review_college
+
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
@@ -48,15 +50,20 @@ def _seed_two_classes(db_mode, *, grade="2026"):
 
 
 def _enabled_course(client, hdr, code="TT101", credit=4, name="程序设计"):
+    owner_college_id = ensure_course_review_college()
     created = client.post(f"{BASE}/courses", headers=hdr, json={
         "courseCode": code, "courseName": name, "category": "MAJOR_CORE", "nature": "REQUIRED",
         "credit": credit, "hoursTotal": 64, "hoursTheory": 48, "hoursPractice": 16,
-        "examMode": "EXAM"})
+        "examMode": "EXAM", "ownerCollegeId": str(owner_college_id)})
     assert created.status_code == 200, created.text
     cid = created.json()["data"]["courseId"]
     submitted = client.post(f"{BASE}/courses/{cid}/submit", headers=hdr)
     assert submitted.status_code == 200, submitted.text
-    college = client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})
+    college = client.post(
+        f"{BASE}/courses/{cid}/review",
+        headers=_hdr(client, "college_admin01"),
+        json={"action": "APPROVE"},
+    )
     assert college.status_code == 200, college.text
     academic = client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})
     assert academic.status_code == 200, academic.text
@@ -64,6 +71,7 @@ def _enabled_course(client, hdr, code="TT101", credit=4, name="程序设计"):
 
 
 def _program(client, hdr, *, major_id, grade_year, total_credits, courses, bindings, name):
+    ensure_college_review_scope(major_ids=[major_id])
     created = client.post(f"{BASE}/programs", headers=hdr, json={
         "programName": name, "majorId": str(major_id), "gradeYear": grade_year,
         "totalCredits": total_credits})
@@ -78,7 +86,11 @@ def _program(client, hdr, *, major_id, grade_year, total_credits, courses, bindi
     seed_program_quality_requirements(pid, total_credits=total_credits)
     submitted = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
     assert submitted.status_code == 200, submitted.text
-    college = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
+    college = client.post(
+        f"{BASE}/programs/{pid}/review",
+        headers=_hdr(client, "college_admin01"),
+        json={"action": "APPROVE"},
+    )
     assert college.status_code == 200, college.text
     academic = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
     assert academic.status_code == 200, academic.text
