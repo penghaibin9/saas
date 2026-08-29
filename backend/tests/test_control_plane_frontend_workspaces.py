@@ -96,6 +96,21 @@ def test_b7_reuses_20k_safe_member_and_security_audit_pagination():
     assert "不会把前 50 条 preview 冒充完整结果" in view
 
 
+def test_role_list_member_count_opens_paginated_member_directory():
+    view = _read("frontend/src/modules/system/views/SystemRoleListView.vue")
+    api = _read("frontend/src/modules/system/api/schoolIam.api.js")
+    router = _read("backend/app/modules/system_admin/routers/system_i4_router.py")
+    assert '@click="openMembers(row)"' in view
+    assert "schoolIamApi.roleMembers" in view
+    assert "data.items || []" in view
+    assert "@page-change=\"onMembersPageChange\"" in view
+    assert "openMemberAdd" in view
+    assert "batchAddRoleMembers" in view and "roleMemberCandidates" in view
+    assert "member-candidates" in api and "members/batch" in api
+    assert "/system/roles/{role_id}/member-candidates" in router
+    assert "/system/roles/{role_id}/members/batch" in router
+
+
 def test_b6_b7_do_not_create_second_permission_authority_in_frontend():
     product = _read("frontend/src/modules/platform/views/control/PlatformProductIamView.vue")
     school = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")

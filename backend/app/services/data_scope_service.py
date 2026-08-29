@@ -230,6 +230,9 @@ def _provider_counselor_classes(user, resource_type, resource) -> bool:
     """辅导员班级关系提供器。"""
     login = str(user.get("loginName") or "")
     class_id = resource.get("classId")
+    assigned = {str(value) for value in (user.get("classIds") or [])}
+    if assigned:
+        return bool(class_id) and str(class_id) in assigned
     if not login or not class_id:
         return False
     from app.models import SchoolClass

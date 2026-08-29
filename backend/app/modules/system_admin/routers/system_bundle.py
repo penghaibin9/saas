@@ -341,7 +341,8 @@ def get_system_readiness(user=Depends(require_permission("systemAdmin.dashboard.
 
 
 @router.get("/system/org-tree", summary="学院专业班级组织树（真实库）")
-def get_system_org_tree(user=Depends(require_permission("systemAdmin.org.view"))):
+def get_system_org_tree(user=Depends(require_any_permission(
+        "systemAdmin.org.view", "systemAdmin.user.assign-role"))):
     from app.models import College, Major, SchoolClass, StudentProfile
     tenant_id = current_tenant_id()
     db = get_sessionmaker()()
@@ -499,16 +500,30 @@ def get_system_user(user_id: int, user=Depends(require_permission("systemAdmin.u
                                                 User.is_deleted.is_(False))).first()
         if account is None:
             raise AppException("DATA_NOT_FOUND", "账号不存在或不在当前数据范围内")
-        roles = [r for _, r in db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
+        role_links = list(db.execute(select(UserRole, Role).join(Role, Role.id == UserRole.role_id).where(
             UserRole.tenant_id == tenant_id, UserRole.user_id == user_id, UserRole.status == "ACTIVE",
-            UserRole.is_deleted.is_(False), Role.is_deleted.is_(False))).all()]
+            UserRole.is_deleted.is_(False), Role.is_deleted.is_(False))).all())
+        roles = [role for _, role in role_links]
         row = _user_row(account, roles, db)
         audits = db.scalars(select(SecurityAuditLog).where(
             SecurityAuditLog.tenant_id == tenant_id,
             SecurityAuditLog.resource.like(f"%{account.login_name}%")
         ).order_by(SecurityAuditLog.id.desc()).limit(20)).all()
+        from app.services.role_assignment_scope_service import assignment_payload
+        role_assignments = [assignment_payload(
+            db, account=account, role=role, user_role_id=int(link.id)
+        ) for link, role in role_links]
         row.update({
-            "roles": [{"code": r.role_code, "name": r.role_name, "scopeName": _role_scope(r)} for r in roles],
+            "roles": [{
+                "code": item["roleCode"], "name": item["roleName"],
+                "scopeName": (
+                    "、".join(scope["name"] for scope in item["scopeItems"])
+                    if item["scopeItems"] else item["scopePolicyLabel"]
+                ),
+                "scopeType": item["scopeType"], "scopeItems": item["scopeItems"],
+                "scopeConfigured": item["scopeConfigured"],
+            } for item in role_assignments],
+            "roleAssignments": role_assignments,
             "contexts": [r.role_name for r in roles],
             "loginHistory": [],
             "auditTrail": [{"who": a.operator_name or "系统", "time": str(a.created_at or "")[:19],
@@ -1332,7 +1347,12 @@ def get_system_context(user=Depends(require_any_permission(
                 College.is_deleted.is_(False),
                 College.status == "ACTIVE",
             ).order_by(College.college_name)).all()
-            role_options = [{"value": row.role_code, "label": row.role_name} for row in roles]
+            from app.services.role_assignment_scope_service import role_scope_policy
+            role_options = [{
+                "value": row.role_code,
+                "label": row.role_name,
+                **role_scope_policy(db, row),
+            } for row in roles]
             college_options = [{"value": str(row.id), "label": row.college_name} for row in colleges]
             classes = db.scalars(select(SchoolClass).where(
                 SchoolClass.tenant_id == tenant_id,

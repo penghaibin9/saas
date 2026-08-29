@@ -219,12 +219,33 @@ def assign_system_user_roles(
                 link.is_deleted = True
             link.version = int(link.version or 0) + 1
         for role_id in wanted - set(existing):
-            db.add(UserRole(
+            link = UserRole(
                 tenant_id=tenant_id,
                 user_id=account.id,
                 role_id=role_id,
                 status="ACTIVE",
-            ))
+            )
+            db.add(link)
+            existing[role_id] = link
+        db.flush()
+
+        scope_result = []
+        if "roleAssignments" in body:
+            from app.services.role_assignment_scope_service import sync_assignment_scopes
+            scope_result = sync_assignment_scopes(
+                db,
+                account=account,
+                roles=roles,
+                links_by_role_id=existing,
+                raw_assignments=body.get("roleAssignments"),
+                actor=user,
+            )
+        else:
+            from app.services.role_assignment_scope_service import revoke_removed_role_scopes
+            revoke_removed_role_scopes(
+                db, tenant_id=tenant_id, user_id=int(account.id),
+                active_role_codes=set(codes), actor=user,
+            )
         account.version = int(account.version or 0) + 1
 
         from app.services import audit_log
@@ -236,6 +257,7 @@ def assign_system_user_roles(
             detail={
                 "loginName": account.login_name,
                 "roleCodes": codes,
+                "roleAssignments": scope_result,
                 "moduleCode": "systemAdmin",
                 "authoritySource": "PUBLISHED_ROLE_TEMPLATE_OR_CUSTOM_ROLE_PERMISSION",
             },
@@ -253,7 +275,7 @@ def assign_system_user_roles(
 
     invalidate_subject_cache(f"db-{int(user_id)}", tenant_id)
     return success(
-        {"id": str(user_id), "roleCodes": codes},
+        {"id": str(user_id), "roleCodes": codes, "roleAssignments": scope_result},
         message="角色已分配；该账号需重新登录",
     )
 

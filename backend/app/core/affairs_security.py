@@ -271,8 +271,8 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
     try:
         keys = _derive_keys(u)
         from app.models import (
-            AffairsCounselorAssignment, College, DormBuilding, SchoolClass,
-            StudentProfile, TeacherStudentScope, User,
+            AffairsCounselorAssignment, College, DormBuilding, Major,
+            RoleAssignmentScope, SchoolClass, StudentProfile, TeacherStudentScope, User,
         )
         rows = db.scalars(select(TeacherStudentScope).where(
             TeacherStudentScope.tenant_id == tenant_id,
@@ -312,6 +312,50 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
             studs = db.scalars(select(StudentProfile).where(
                 StudentProfile.tenant_id == tenant_id, StudentProfile.student_no.in_(list(psy_nos)))).all()
             ctx.psychology_student_ids = {s.id for s in studs}
+
+        # 新五级授权范围以稳定主键为权威；历史 TeacherStudentScope 继续只读兼容。
+        moment = datetime.utcnow()
+        raw_scope_uid = str(u.get("userId") or "")
+        if raw_scope_uid.startswith("db-"):
+            raw_scope_uid = raw_scope_uid[3:]
+        scope_user_id = int(raw_scope_uid) if raw_scope_uid.isdigit() else -1
+        assignment_scopes = db.scalars(select(RoleAssignmentScope).where(
+            RoleAssignmentScope.tenant_id == tenant_id,
+            RoleAssignmentScope.user_id == scope_user_id,
+            RoleAssignmentScope.role_code == role,
+            RoleAssignmentScope.status == "ACTIVE",
+            RoleAssignmentScope.is_deleted.is_(False),
+            RoleAssignmentScope.effective_at <= moment,
+            (RoleAssignmentScope.expires_at.is_(None) | (RoleAssignmentScope.expires_at > moment)),
+        )).all()
+        has_school_scope = any(str(row.scope_type or "").upper() == "SCHOOL" for row in assignment_scopes)
+        major_scope_ids = {
+            int(row.scope_id) for row in assignment_scopes
+            if str(row.scope_type or "").upper() == "MAJOR"
+        }
+        ctx.college_ids |= {
+            int(row.scope_id) for row in assignment_scopes
+            if str(row.scope_type or "").upper() == "COLLEGE"
+        }
+        ctx.class_ids |= {
+            int(row.scope_id) for row in assignment_scopes
+            if str(row.scope_type or "").upper() == "CLASS"
+        }
+        ctx.student_ids |= {
+            int(row.scope_id) for row in assignment_scopes
+            if str(row.scope_type or "").upper() == "STUDENT"
+        }
+        if major_scope_ids:
+            ctx.class_ids |= {int(value) for value in db.scalars(select(SchoolClass.id).where(
+                SchoolClass.tenant_id == tenant_id,
+                SchoolClass.major_id.in_(major_scope_ids),
+                SchoolClass.is_deleted.is_(False),
+            )).all() if value}
+            ctx.college_ids |= {int(value) for value in db.scalars(select(Major.college_id).where(
+                Major.tenant_id == tenant_id,
+                Major.id.in_(major_scope_ids),
+                Major.is_deleted.is_(False),
+            )).all() if value}
 
         # 辅导员班级以真实任职关系为权威来源。TeacherStudentScope 只是额外显式范围，
         # 不能要求学校为同一带班关系维护两份数据，否则会出现“有待办但 NO_DATA_SCOPE”。
@@ -359,7 +403,11 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
             cm.__exit__(None, None, None)
 
     # scope_type 裁决
-    if role in _DORM_ROLES or has_dorm_scope:
+    if has_school_scope:
+        ctx.scope_type = "TENANT_ALL"
+        ctx.is_scope_configured = True
+        ctx.scope_source = "ROLE_ASSIGNMENT_SCOPE_SCHOOL"
+    elif role in _DORM_ROLES or has_dorm_scope:
         ctx.scope_type = "DORM_BUILDING"
         ctx.is_scope_configured = bool(ctx.dorm_building_ids)
         ctx.scope_source = "SCOPE_TABLE_DORM"
