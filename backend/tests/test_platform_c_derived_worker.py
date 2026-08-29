@@ -77,6 +77,11 @@ def test_worker_rechecks_pinned_relation_sha_size_and_storage(monkeypatch, tmp_p
         assert loaded.legal_hold is True
         assert loaded.sensitivity_level == "SENSITIVE"
 
+        db.get(FileAsset, 20).sensitivity_level = "LEGACY_UNKNOWN"
+        db.flush()
+        fail_closed = worker.load_pinned_source(db, tenant_id=101, payload=payload)
+        assert fail_closed.sensitivity_level == "HIGHLY_SENSITIVE"
+
         with pytest.raises(AppException) as exc:
             worker.load_pinned_source(
                 db, tenant_id=101, payload={**payload, "source_sha256": "0" * 64},

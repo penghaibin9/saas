@@ -52,6 +52,11 @@ _SENSITIVITY_RANK = {
 }
 
 
+def _normalize_sensitivity(value: Any) -> str:
+    normalized = str(value or "").strip().upper()
+    return normalized if normalized in _SENSITIVITY_RANK else "HIGHLY_SENSITIVE"
+
+
 @dataclass(frozen=True, slots=True)
 class WorkerSource:
     tenant_id: int
@@ -136,9 +141,9 @@ def load_pinned_source(db, *, tenant_id: int, payload: dict[str, Any],
     if not hmac.compare_digest(hashlib.sha256(data).hexdigest(), expected_sha):
         raise _fail("DOCUMENT_SOURCE_CHANGED", "源文件实际内容与任务快照不一致")
 
-    sensitivity = str(
+    sensitivity = _normalize_sensitivity(
         asset.sensitivity_level or file_object.security_level or "PERSONAL"
-    ).upper()
+    )
     return WorkerSource(
         tenant_id=tenant_id,
         asset_id=int(version.asset_id),
@@ -157,8 +162,8 @@ def load_pinned_source(db, *, tenant_id: int, payload: dict[str, Any],
 
 def _max_sensitivity(*sources: WorkerSource) -> str:
     return max(
-        (source.sensitivity_level for source in sources),
-        key=lambda value: _SENSITIVITY_RANK.get(value, _SENSITIVITY_RANK["HIGHLY_SENSITIVE"]),
+        (_normalize_sensitivity(source.sensitivity_level) for source in sources),
+        key=lambda value: _SENSITIVITY_RANK[value],
     )
 
 

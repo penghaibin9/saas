@@ -71,6 +71,9 @@ Verified in the independent PLAT-C worktree before any C7 registration:
   summary-only miniapp output and unchanged Student360 direct-domain sections.
 - Reverse falsification closed two additional boundaries: FileJob rejects arbitrary URI/protocol-
   relative values, and parser/compare elapsed-time checks run after expensive parsing/diff work.
+- The 2026-08-30 third reverse review reproduced an inheritance defect where an unknown legacy
+  sensitivity code could reach a derived FileObject unchanged. The worker now fails closed by
+  normalising every unknown source level to `HIGHLY_SENSITIVE` before extraction or comparison.
 - A canonical academic status smoke path passed after the premature fact hook was removed. A later
   full canonical fixture rebuild stopped before PLAT-C execution because the baseline MySQL fixture
   could not recreate `t_role_template` (1146); this is preserved as a real same-head gate blocker,
