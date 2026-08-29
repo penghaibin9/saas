@@ -437,6 +437,8 @@ def test_batch_grant_restores_soft_deleted_user_role(db_mode):
 def test_role_assignment_scope_persists_college_and_enters_auth_claims(db_mode):
     from sqlalchemy import select
 
+    from app.core.affairs_security import build_affairs_context
+    from app.core.context import set_tenant
     from app.models import College, DataScopeRule, Role, RoleAssignmentScope, User, UserRole
     from app.services import auth_service_db as auth
     from app.services.role_assignment_scope_service import sync_assignment_scopes
@@ -498,6 +500,16 @@ def test_role_assignment_scope_persists_college_and_enters_auth_claims(db_mode):
         claims = {"currentRoleCode": role.role_code, "loginName": "ras_scope_college"}
         auth._inject_org_scope_claims(db, db.get(User, user_id), claims)
         assert claims["collegeIds"] == [str(college.id)]
+        set_tenant({"tenantId": MAIN_TENANT_ID})
+        context = build_affairs_context({
+            "userId": f"db-{user_id}",
+            "loginName": "ras_scope_college",
+            "currentRoleCode": role.role_code,
+            "tenantId": str(MAIN_TENANT_ID),
+            "userType": "TEACHER",
+        }, db)
+        assert context.scope_type == "COLLEGE"
+        assert context.college_ids == {int(college.id)}
 
 
 def test_major_assignment_scope_does_not_expand_to_sibling_major(db_mode):
@@ -561,6 +573,7 @@ def test_major_assignment_scope_does_not_expand_to_sibling_major(db_mode):
             scope_id=int(selected_major.id),
             scope_name_snapshot="专业范围测试学院 / 已授权专业",
             status="ACTIVE",
+            effective_at=datetime.utcnow(),
         ))
         db.commit()
 

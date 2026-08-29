@@ -96,7 +96,7 @@ def role_scope_policy(db, role) -> dict:
 
 def _scope_rows(db, *, tenant_id: int, user_id: int, role_code: str):
     from app.models import RoleAssignmentScope
-    now = datetime.now()
+    now = datetime.utcnow()
     return list(db.scalars(select(RoleAssignmentScope).where(
         RoleAssignmentScope.tenant_id == tenant_id,
         RoleAssignmentScope.user_id == user_id,
@@ -284,7 +284,7 @@ def sync_assignment_scopes(
     by_key = {(row.role_code, row.scope_type, int(row.scope_id)): row for row in existing}
     desired: set[tuple[str, str, int]] = set()
     result = []
-    now = datetime.now().replace(microsecond=0)
+    now = datetime.utcnow().replace(microsecond=0)
     actor_id = _actor_id(actor)
 
     for role in roles:

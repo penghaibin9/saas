@@ -499,25 +499,16 @@ def get_system_user(user_id: int, user=Depends(require_permission("systemAdmin.u
                                                 User.is_deleted.is_(False))).first()
         if account is None:
             raise AppException("DATA_NOT_FOUND", "账号不存在或不在当前数据范围内")
-        role_links = db.execute(select(UserRole, Role).join(Role, Role.id == UserRole.role_id).where(
+        roles = [r for _, r in db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
             UserRole.tenant_id == tenant_id, UserRole.user_id == user_id, UserRole.status == "ACTIVE",
-            UserRole.is_deleted.is_(False), Role.status.in_(("ACTIVE", "ENABLED")),
-            Role.is_deleted.is_(False))).all()
-        roles = [role for _, role in role_links]
+            UserRole.is_deleted.is_(False), Role.is_deleted.is_(False))).all()]
         row = _user_row(account, roles, db)
-        from app.services.role_assignment_scope_service import assignment_payload
         audits = db.scalars(select(SecurityAuditLog).where(
             SecurityAuditLog.tenant_id == tenant_id,
             SecurityAuditLog.resource.like(f"%{account.login_name}%")
         ).order_by(SecurityAuditLog.id.desc()).limit(20)).all()
         row.update({
             "roles": [{"code": r.role_code, "name": r.role_name, "scopeName": _role_scope(r)} for r in roles],
-            "roleAssignments": [
-                assignment_payload(
-                    db, account=account, role=role, user_role_id=int(link.id),
-                )
-                for link, role in role_links
-            ],
             "contexts": [r.role_name for r in roles],
             "loginHistory": [],
             "auditTrail": [{"who": a.operator_name or "系统", "time": str(a.created_at or "")[:19],
@@ -1341,12 +1332,7 @@ def get_system_context(user=Depends(require_any_permission(
                 College.is_deleted.is_(False),
                 College.status == "ACTIVE",
             ).order_by(College.college_name)).all()
-            from app.services.role_assignment_scope_service import role_scope_policy
-            role_options = [{
-                "value": row.role_code,
-                "label": row.role_name,
-                **role_scope_policy(db, row),
-            } for row in roles]
+            role_options = [{"value": row.role_code, "label": row.role_name} for row in roles]
             college_options = [{"value": str(row.id), "label": row.college_name} for row in colleges]
             classes = db.scalars(select(SchoolClass).where(
                 SchoolClass.tenant_id == tenant_id,

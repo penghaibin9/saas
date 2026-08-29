@@ -134,6 +134,35 @@ def get_system_context(user=Depends(require_any_permission(
     if isinstance(payload, dict):
         data = payload.get("data")
         if isinstance(data, dict):
+            role_options = ((data.get("filterOptions") or {}).get("roles") or [])
+            role_codes = {
+                str(option.get("value") or "").strip().upper()
+                for option in role_options if isinstance(option, dict)
+            }
+            if role_codes:
+                from app.models import Role
+                from app.services.role_assignment_scope_service import role_scope_policy
+
+                db = get_sessionmaker()()
+                try:
+                    roles = db.scalars(select(Role).where(
+                        Role.tenant_id == int(current_tenant_id() or 0),
+                        Role.role_code.in_(role_codes),
+                        Role.status.in_(("ACTIVE", "ENABLED")),
+                        Role.is_deleted.is_(False),
+                    )).all()
+                    policies = {
+                        str(role.role_code).upper(): role_scope_policy(db, role)
+                        for role in roles
+                    }
+                    for option in role_options:
+                        if not isinstance(option, dict):
+                            continue
+                        policy = policies.get(str(option.get("value") or "").upper())
+                        if policy:
+                            option.update(policy)
+                finally:
+                    db.close()
             for key in _EFFECTIVE_ACCESS_KEYS:
                 data[key] = access.get(key)
             actions = data.get("permissionActions")
@@ -142,6 +171,51 @@ def get_system_context(user=Depends(require_any_permission(
                 data["permissionActions"] = actions
             actions["effectiveAccess"] = {key: access.get(key) for key in _EFFECTIVE_ACCESS_KEYS}
     return payload
+
+
+@_replacements.get("/system/users/{user_id}", summary="学校账号详情（真实库）")
+def get_system_user(
+    user_id: int,
+    user=Depends(require_permission("systemAdmin.user.view")),
+):
+    """Layer the editable role-scope contract over the byte-frozen detail endpoint."""
+    from app.models import Role, User, UserRole
+    from app.services.role_assignment_scope_service import assignment_payload
+
+    payload = _bundle.get_system_user(user_id, user=user)
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return payload
+
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        account = db.scalars(select(User).where(
+            User.id == int(user_id),
+            User.tenant_id == tenant_id,
+            User.is_deleted.is_(False),
+        )).first()
+        if account is None:
+            return payload
+        role_links = db.execute(select(UserRole, Role).join(
+            Role, Role.id == UserRole.role_id,
+        ).where(
+            UserRole.tenant_id == tenant_id,
+            UserRole.user_id == int(user_id),
+            UserRole.status == "ACTIVE",
+            UserRole.is_deleted.is_(False),
+            Role.status.in_(("ACTIVE", "ENABLED")),
+            Role.is_deleted.is_(False),
+        )).all()
+        data["roleAssignments"] = [
+            assignment_payload(
+                db, account=account, role=role, user_role_id=int(link.id),
+            )
+            for link, role in role_links
+        ]
+        return payload
+    finally:
+        db.close()
 
 
 @_replacements.put("/system/users/{user_id}/roles", summary="分配学校账号角色")
