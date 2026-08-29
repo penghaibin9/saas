@@ -271,7 +271,7 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
     try:
         keys = _derive_keys(u)
         from app.models import (
-            AffairsCounselorAssignment, College, DormBuilding, Major,
+            AffairsCounselorAssignment, College, DormBuilding,
             RoleAssignmentScope, SchoolClass, StudentProfile, TeacherStudentScope, User,
         )
         rows = db.scalars(select(TeacherStudentScope).where(
@@ -350,11 +350,6 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
                 SchoolClass.tenant_id == tenant_id,
                 SchoolClass.major_id.in_(major_scope_ids),
                 SchoolClass.is_deleted.is_(False),
-            )).all() if value}
-            ctx.college_ids |= {int(value) for value in db.scalars(select(Major.college_id).where(
-                Major.tenant_id == tenant_id,
-                Major.id.in_(major_scope_ids),
-                Major.is_deleted.is_(False),
             )).all() if value}
 
         # 辅导员班级以真实任职关系为权威来源。TeacherStudentScope 只是额外显式范围，

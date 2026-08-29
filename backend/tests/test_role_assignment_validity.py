@@ -500,6 +500,85 @@ def test_role_assignment_scope_persists_college_and_enters_auth_claims(db_mode):
         assert claims["collegeIds"] == [str(college.id)]
 
 
+def test_major_assignment_scope_does_not_expand_to_sibling_major(db_mode):
+    from app.core.affairs_security import build_affairs_context
+    from app.core.context import set_tenant
+    from app.models import College, Major, RoleAssignmentScope, SchoolClass, UserRole
+
+    role_id = _make_role("SCOPE_MAJOR_TEST")
+    user_id = _make_user("ras_scope_major")
+    with _session() as db:
+        college = College(
+            tenant_id=MAIN_TENANT_ID,
+            college_name="专业范围测试学院",
+            code="SCOPE-MAJOR-COLLEGE",
+            status="ACTIVE",
+        )
+        db.add(college)
+        db.flush()
+        selected_major = Major(
+            tenant_id=MAIN_TENANT_ID,
+            college_id=int(college.id),
+            major_name="已授权专业",
+            code="SCOPE-MAJOR-SELECTED",
+            status="ACTIVE",
+        )
+        sibling_major = Major(
+            tenant_id=MAIN_TENANT_ID,
+            college_id=int(college.id),
+            major_name="同院未授权专业",
+            code="SCOPE-MAJOR-SIBLING",
+            status="ACTIVE",
+        )
+        db.add_all([selected_major, sibling_major])
+        db.flush()
+        selected_class = SchoolClass(
+            tenant_id=MAIN_TENANT_ID,
+            major_id=int(selected_major.id),
+            class_name="已授权专业班级",
+            status="ACTIVE",
+        )
+        sibling_class = SchoolClass(
+            tenant_id=MAIN_TENANT_ID,
+            major_id=int(sibling_major.id),
+            class_name="同院未授权专业班级",
+            status="ACTIVE",
+        )
+        link = UserRole(
+            tenant_id=MAIN_TENANT_ID,
+            user_id=user_id,
+            role_id=role_id,
+            status="ACTIVE",
+        )
+        db.add_all([selected_class, sibling_class, link])
+        db.flush()
+        db.add(RoleAssignmentScope(
+            tenant_id=MAIN_TENANT_ID,
+            user_role_id=int(link.id),
+            user_id=user_id,
+            role_code="SCOPE_MAJOR_TEST",
+            scope_type="MAJOR",
+            scope_id=int(selected_major.id),
+            scope_name_snapshot="专业范围测试学院 / 已授权专业",
+            status="ACTIVE",
+        ))
+        db.commit()
+
+        set_tenant({"tenantId": MAIN_TENANT_ID})
+        ctx = build_affairs_context({
+            "userId": f"db-{user_id}",
+            "loginName": "ras_scope_major",
+            "currentRoleCode": "SCOPE_MAJOR_TEST",
+            "tenantId": str(MAIN_TENANT_ID),
+            "userType": "TEACHER",
+        }, db)
+
+        assert ctx.scope_type == "CLASS"
+        assert ctx.college_ids == set()
+        assert ctx.class_ids == {int(selected_class.id)}
+        assert int(sibling_class.id) not in ctx.allowed_class_ids(db)
+
+
 def test_role_assignment_scope_rejects_cross_tenant_node_atomically(db_mode):
     from app.models import College, DataScopeRule, Role, User, UserRole
     from app.services.role_assignment_scope_service import sync_assignment_scopes

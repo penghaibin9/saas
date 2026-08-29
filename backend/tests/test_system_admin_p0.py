@@ -263,6 +263,56 @@ def test_user_detail_update_and_batch_disable(seeded):
         assert db.get(User, 2).status == "DISABLED"
 
 
+def test_user_detail_and_context_expose_role_scope_contract(seeded):
+    """账号编辑必须能回显已授权范围，角色选项必须携带真实范围策略。"""
+    from app.api.v1 import system
+    from app.models import RoleAssignmentScope, UserRole
+    from app.services.db_service import session
+
+    with session() as db:
+        link = UserRole(tenant_id=TID, user_id=2, role_id=90, status="ACTIVE")
+        db.add(link)
+        db.flush()
+        db.add(RoleAssignmentScope(
+            tenant_id=TID,
+            user_role_id=int(link.id),
+            user_id=2,
+            role_code="CUSTOM_AAA",
+            scope_type="COLLEGE",
+            scope_id=10,
+            scope_name_snapshot="信息工程学院",
+            status="ACTIVE",
+        ))
+        db.commit()
+
+    detail = system.get_system_user(2, user=ADMIN)["data"]
+    assert detail["roleAssignments"] == [{
+        "roleCode": "CUSTOM_AAA",
+        "roleName": "自定义辅导员",
+        "userRoleId": detail["roleAssignments"][0]["userRoleId"],
+        "roleScopeCode": "COLLEGE",
+        "scopeMode": "NODE",
+        "scopeType": "COLLEGE",
+        "allowedScopeTypes": ["COLLEGE"],
+        "scopePolicyLabel": "按学院授权",
+        "scopeIds": ["10"],
+        "scopeItems": [{"id": "10", "type": "COLLEGE", "name": "信息工程学院"}],
+        "scopeConfigured": True,
+    }]
+
+    context = system.get_system_context(user=ADMIN)["data"]
+    option = next(item for item in context["filterOptions"]["roles"] if item["value"] == "CUSTOM_AAA")
+    assert option == {
+        "value": "CUSTOM_AAA",
+        "label": "自定义辅导员",
+        "roleScopeCode": "COLLEGE",
+        "scopeMode": "NODE",
+        "scopeType": "COLLEGE",
+        "allowedScopeTypes": ["COLLEGE"],
+        "scopePolicyLabel": "按学院授权",
+    }
+
+
 def test_staff_student_account_boundaries(seeded):
     """正式账号页按类型分流；学生角色、主档姓名和混合批量操作均由后端拒绝。"""
     from app.api.v1 import system
