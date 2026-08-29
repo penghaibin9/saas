@@ -108,13 +108,6 @@ def sync_grade_entry_todos(db, task) -> bool:
 sync_grade_entry_todos._grade_todo_teacher_relation_guard = True
 
 
-def _push_grade_entry_todo(db, task) -> bool:
-    return sync_grade_entry_todos(db, task)
-
-
-_push_grade_entry_todo._grade_todo_teacher_relation_guard = True
-
-
 def _explicit_topology(db, teaching_class, task):
     """Return (explicit, active_primary, active_relations) for safe legacy sync."""
     from app.models import AaTeachingClassTeacher
@@ -208,7 +201,7 @@ def install() -> None:
     if not getattr(current, "_grade_todo_teacher_relation_guard", False):
         if not hasattr(grade_core, "_grade_todo_relation_original_push"):
             grade_core._grade_todo_relation_original_push = current
-        grade_core._push_grade_entry_todo = _push_grade_entry_todo
+        grade_core._push_grade_entry_todo = sync_grade_entry_todos
 
     current_sync = getattr(teaching_class_core, "_sync_primary_teacher", None)
     if not getattr(current_sync, "_grade_todo_teacher_relation_guard", False):

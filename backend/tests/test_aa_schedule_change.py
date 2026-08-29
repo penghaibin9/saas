@@ -25,6 +25,17 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _review_hdr(login_name):
+    """审批节点必须使用可被生产鉴权重新核验的真实 DB 账号令牌。"""
+    from affairs_contract_test_support import role_headers
+
+    role_code = {
+        "college_admin01": "COLLEGE_ADMIN",
+        "school_admin01": "SCHOOL_ADMIN",
+    }[login_name]
+    return role_headers(role_code, login_name=login_name)
+
+
 def _seed(db_mode):
     """调停课必须回链真实组织树；学院审批受理人由后续 READY 教学任务夹具按学院绑定。"""
     from app.db.session import get_sessionmaker
@@ -173,6 +184,31 @@ def _submit(client, hdr, origin, **kw):
     return client.post(f"{BASE}/schedule-change", headers=hdr, json=body)
 
 
+def _approve_college(client, change_id, expected_version):
+    return client.post(
+        f"{BASE}/schedule-change/{change_id}/approve",
+        headers=_review_hdr("college_admin01"),
+        json={"action": "APPROVE", "expectedVersion": int(expected_version)},
+    )
+
+
+def _approve_academic(client, change_id, expected_version):
+    return client.post(
+        f"{BASE}/schedule-change/{change_id}/approve",
+        headers=_review_hdr("school_admin01"),
+        json={"action": "APPROVE", "expectedVersion": int(expected_version)},
+    )
+
+
+def _approve_all(client, submitted_data):
+    change_id = submitted_data["changeId"]
+    first = _approve_college(client, change_id, submitted_data["version"])
+    assert first.status_code == 200, first.text
+    second = _approve_academic(client, change_id, first.json()["data"]["version"])
+    assert second.status_code == 200, second.text
+    return first, second
+
+
 # ── C1 调课全链路 → APPLIED ──
 def test_c1_adjust_full_chain_applied(client, db_mode):
     ids = _seed(db_mode)
@@ -180,11 +216,10 @@ def test_c1_adjust_full_chain_applied(client, db_mode):
     _, origin = _published_item(client, admin, ids["class"])
     r = _submit(client, admin, origin)
     assert r.status_code == 200
-    cid = r.json()["data"]["changeId"]
-    assert r.json()["data"]["status"] == "SUBMITTED"
-    r1 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
-    assert r1["data"]["status"] == "COLLEGE_REVIEW"
-    r2 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
+    submitted = r.json()["data"]
+    r1, r2_response = _approve_all(client, submitted)
+    assert r1.json()["data"]["status"] == "COLLEGE_REVIEW"
+    r2 = r2_response.json()
     assert r2["data"]["status"] == "APPLIED"
     assert r2["data"]["newItemId"] and r2["data"]["applied"]["notified"]["channel"] == "STATUS_CHANGED"
     cv = client.get(f"{BASE}/schedule-batches/{r2['data']['batchId']}/class-view?classId={ids['class']}",
@@ -220,12 +255,13 @@ def test_c4_cancel_window(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
-    cid = _submit(client, admin, origin).json()["data"]["changeId"]
+    first_submit = _submit(client, admin, origin).json()["data"]
+    cid = first_submit["changeId"]
     rc = client.post(f"{BASE}/schedule-change/{cid}/cancel", headers=admin, json={"reason": "自行取消"}).json()
     assert rc["data"]["status"] == "CANCELLED"
-    cid2 = _submit(client, admin, origin).json()["data"]["changeId"]
-    client.post(f"{BASE}/schedule-change/{cid2}/approve", headers=admin, json={"action": "APPROVE"})
-    client.post(f"{BASE}/schedule-change/{cid2}/approve", headers=admin, json={"action": "APPROVE"})
+    second_submit = _submit(client, admin, origin).json()["data"]
+    cid2 = second_submit["changeId"]
+    _approve_all(client, second_submit)
     r409 = client.post(f"{BASE}/schedule-change/{cid2}/cancel", headers=admin, json={"reason": "晚了"})
     assert r409.status_code == 409
 
@@ -255,11 +291,21 @@ def test_c7_reject_requires_reason(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
-    cid = _submit(client, admin, origin).json()["data"]["changeId"]
-    short = client.post(f"{BASE}/schedule-change/{cid}/reject", headers=admin, json={"action": "REJECT", "comment": "不行"})
+    submitted = _submit(client, admin, origin).json()["data"]
+    cid = submitted["changeId"]
+    version = submitted["version"]
+    reviewer = _review_hdr("college_admin01")
+    short = client.post(
+        f"{BASE}/schedule-change/{cid}/reject",
+        headers=reviewer,
+        json={"action": "REJECT", "comment": "不行", "expectedVersion": version},
+    )
     assert short.status_code == 400
-    ok = client.post(f"{BASE}/schedule-change/{cid}/reject", headers=admin,
-                     json={"action": "REJECT", "comment": "目标时段与全校统考冲突，不予调整"}).json()
+    ok = client.post(
+        f"{BASE}/schedule-change/{cid}/reject",
+        headers=reviewer,
+        json={"action": "REJECT", "comment": "目标时段与全校统考冲突，不予调整", "expectedVersion": version},
+    ).json()
     assert ok["data"]["status"] == "REJECTED"
 
 
@@ -369,9 +415,10 @@ def test_c11_notify_precise_delivery_uses_real_user_id(client, db_mode):
     teacher_uid, student_uid = teacher_acc.id, student_acc.id
     db.commit(); db.close()
     _, origin = _published_item(client, admin, ids["class"])
-    cid = _submit(client, admin, origin).json()["data"]["changeId"]
-    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
-    r2 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
+    submitted = _submit(client, admin, origin).json()["data"]
+    cid = submitted["changeId"]
+    _, r2_response = _approve_all(client, submitted)
+    r2 = r2_response.json()
     assert r2["data"]["status"] == "APPLIED"
     assert r2["data"]["applied"]["notified"] == {"students": 1, "teacher": 1, "channel": "STATUS_CHANGED"}
     db2 = get_sessionmaker()()
@@ -394,9 +441,10 @@ def test_c12_notify_gracefully_skips_missing_accounts(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
-    cid = _submit(client, admin, origin).json()["data"]["changeId"]
-    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
-    r2 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
+    submitted = _submit(client, admin, origin).json()["data"]
+    cid = submitted["changeId"]
+    _, r2_response = _approve_all(client, submitted)
+    r2 = r2_response.json()
     assert r2["data"]["status"] == "APPLIED"
     assert r2["data"]["applied"]["notified"] == {"students": 0, "teacher": 0, "channel": "STATUS_CHANGED"}
     db = get_sessionmaker()()
@@ -411,9 +459,9 @@ def test_c13_detail_fields_for_notice_print(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
-    cid = _submit(client, admin, origin).json()["data"]["changeId"]
-    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
-    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
+    submitted = _submit(client, admin, origin).json()["data"]
+    cid = submitted["changeId"]
+    _approve_all(client, submitted)
     d = client.get(f"{BASE}/schedule-change/{cid}", headers=admin).json()["data"]
     assert d["status"] == "APPLIED"
     for key in ("changeId", "changeType", "changeTypeLabel", "courseName", "className",

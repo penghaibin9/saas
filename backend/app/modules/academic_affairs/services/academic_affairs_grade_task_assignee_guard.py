@@ -15,8 +15,14 @@
 节点与权限：
 - ``COLLEGE_REVIEW`` → ``academicAffairs.grade.collegeReview``，按成绩任务的开课学院
   收敛到该院教学秘书 / 在岗负责人；
-- ``ACADEMIC_REVIEW`` → ``academicAffairs.grade.publish``，属校级职责，排除绑在具体
-  学院上的账号，避免学院教务既审初审又审终审。
+- ``ACADEMIC_REVIEW`` → ``academicAffairs.grade.publish``，属校级职责，优先唯一
+  ``ACADEMIC_ADMIN``；仅当没有领域管理员时才允许其它校级显式持权账号兜底。
+
+School IAM 权限真相：
+- SYSTEM 角色消费已发布 TENANT RoleTemplate；
+- CUSTOM/历史角色才消费 RolePermission。
+审批受理人查询必须与登录鉴权使用同一权威，不能只 JOIN ``t_role_permission``，否则
+COLLEGE_ADMIN / ACADEMIC_ADMIN 在真实 School IAM 下明明有权限，却会被候选查询当成 0 人。
 """
 from __future__ import annotations
 
@@ -25,9 +31,7 @@ from app.modules.academic_affairs.services.academic_affairs_grade_correction_com
     _active_user,
     _college_bound_user_ids,
     _conflict,
-    _permission_holder_ids,
     _task_college_id,
-    _unique_assignee,
 )
 
 COLLEGE_NODE = "COLLEGE_REVIEW"
@@ -40,24 +44,151 @@ SCHEDULE_CHANGE_COLLEGE_PERM = "academicAffairs.scheduleChange.collegeReview"
 SCHEDULE_CHANGE_ACADEMIC_PERM = "academicAffairs.scheduleChange.academicReview"
 
 
+def _runtime_permission_holder_ids(db, permission_code: str) -> list[int]:
+    """Return active users holding ``permission_code`` under canonical School IAM.
+
+    SYSTEM roles no longer materialize their runtime authority into tenant
+    ``RolePermission`` rows: the immutable published TENANT RoleTemplate is the
+    authority.  CUSTOM (and legacy non-system) roles still use normalized
+    ``RolePermission`` rows.  Resolve both planes explicitly and fail closed if a
+    published SYSTEM template is missing or drifting.
+    """
+    from sqlalchemy import select
+
+    from app.core.permissions import ROLE_PERMISSIONS
+    from app.models import Permission, Role, RolePermission, User, UserRole
+    from app.services.system_role_shadow_service import published_system_role_permissions
+
+    pairs = list(db.execute(
+        select(User.id, Role)
+        .join(UserRole, UserRole.user_id == User.id)
+        .join(Role, Role.id == UserRole.role_id)
+        .where(
+            User.tenant_id == _core._tid(),
+            User.status == "ACTIVE",
+            User.is_deleted.is_(False),
+            UserRole.tenant_id == _core._tid(),
+            UserRole.status == "ACTIVE",
+            UserRole.is_deleted.is_(False),
+            Role.tenant_id == _core._tid(),
+            Role.status == "ACTIVE",
+            Role.is_deleted.is_(False),
+        )
+    ).all())
+
+    legacy_role_ids = {
+        int(role.id)
+        for _user_id, role in pairs
+        if str(role.role_type or "").upper() != "SYSTEM"
+        and str(role.role_code or "").strip().upper() not in ROLE_PERMISSIONS
+    }
+    legacy_allowed: set[int] = set()
+    if legacy_role_ids:
+        legacy_allowed = {
+            int(value)
+            for value in db.scalars(
+                select(RolePermission.role_id)
+                .join(Permission, Permission.id == RolePermission.permission_id)
+                .where(
+                    RolePermission.tenant_id == _core._tid(),
+                    RolePermission.role_id.in_(legacy_role_ids),
+                    RolePermission.status == "ACTIVE",
+                    RolePermission.is_deleted.is_(False),
+                    Permission.permission_code == permission_code,
+                )
+            ).all()
+        }
+
+    system_cache: dict[str, bool] = {}
+    users: set[int] = set()
+    for user_id, role in pairs:
+        role_code = str(role.role_code or "").strip().upper()
+        role_type = str(role.role_type or "").upper()
+        is_system = role_type == "SYSTEM" or role_code in ROLE_PERMISSIONS
+        if is_system:
+            allowed = system_cache.get(role_code)
+            if allowed is None:
+                allowed = permission_code in set(published_system_role_permissions(db, role_code))
+                system_cache[role_code] = allowed
+            if allowed:
+                users.add(int(user_id))
+        elif int(role.id) in legacy_allowed:
+            users.add(int(user_id))
+    return sorted(users)
+
+
+def _preferred_role_candidates(db, candidates, role_code: str) -> list[int]:
+    """Prefer the domain owner role without silently broadening authority.
+
+    SCHOOL_ADMIN may legitimately hold the same high-risk permission, but its global
+    authority must not make every normal domain workflow ambiguous when a concrete
+    ACADEMIC_ADMIN exists.  Multiple domain admins still fail closed via the unique
+    assignee check; fallback candidates are considered only when no domain owner is
+    present.
+    """
+    from sqlalchemy import select
+
+    from app.models import Role, UserRole
+
+    candidate_ids = {int(value) for value in candidates if int(value) > 0}
+    if not candidate_ids:
+        return []
+    preferred = {
+        int(value)
+        for value in db.scalars(
+            select(UserRole.user_id)
+            .join(Role, Role.id == UserRole.role_id)
+            .where(
+                UserRole.tenant_id == _core._tid(),
+                UserRole.user_id.in_(candidate_ids),
+                UserRole.status == "ACTIVE",
+                UserRole.is_deleted.is_(False),
+                Role.tenant_id == _core._tid(),
+                Role.role_code == str(role_code or "").strip().upper(),
+                Role.status == "ACTIVE",
+                Role.is_deleted.is_(False),
+            )
+        ).all()
+    }
+    return sorted(preferred or candidate_ids)
+
+
+def _unique_subject_assignee(candidates, node: str, subject: str) -> int:
+    """Resolve one concrete assignee without leaking correction-specific wording."""
+    unique = sorted({int(value) for value in candidates if int(value) > 0})
+    if len(unique) != 1:
+        raise _conflict(
+            f"{subject}审批节点没有唯一真实受理人，禁止生成无人或人人可抢的待审任务",
+            node=node,
+            subject=subject,
+            candidateUserIds=[str(value) for value in unique],
+        )
+    return unique[0]
+
+
 def resolve_grade_task_assignee(db, node: str, task, *, college_perm: str = COLLEGE_PERM,
                                 academic_perm: str = ACADEMIC_PERM,
                                 subject: str = "成绩任务") -> int:
     """审批节点 → 唯一真实受理人 userId；解析不到即 409。
 
     默认按成绩任务的权限码解析；调停课等同构流程传入自己的权限码复用同一套收敛规则
-    （学院节点收敛到该院教学秘书/在岗负责人，校级节点排除院级账号）。
+    （学院节点收敛到该院教学秘书/在岗负责人，校级节点优先 ACADEMIC_ADMIN）。
     """
     if node == ACADEMIC_NODE:
-        candidates = _permission_holder_ids(db, academic_perm)
+        candidates = _runtime_permission_holder_ids(db, academic_perm)
         college_bound = _college_bound_user_ids(db)
-        return _unique_assignee([uid for uid in candidates if uid not in college_bound], node)
+        school_level = [uid for uid in candidates if uid not in college_bound]
+        return _unique_subject_assignee(
+            _preferred_role_candidates(db, school_level, "ACADEMIC_ADMIN"),
+            node,
+            subject,
+        )
 
     from sqlalchemy import or_, select
 
     from app.models import College, StaffAssignment
 
-    candidates = _permission_holder_ids(db, college_perm)
+    candidates = _runtime_permission_holder_ids(db, college_perm)
     college_id = _task_college_id(db, task)
     if not college_id:
         raise _conflict(f"{subject}未绑定开课学院，无法解析学院审核受理人", node=node)
@@ -84,4 +215,4 @@ def resolve_grade_task_assignee(db, node: str, task, *, college_perm: str = COLL
     ).order_by(StaffAssignment.is_primary.desc(), StaffAssignment.user_id)).all()
     allowed = [int(uid) for uid in assigned
                if int(uid) in candidates and _active_user(db, int(uid))]
-    return _unique_assignee(allowed, node)
+    return _unique_subject_assignee(allowed, node, subject)

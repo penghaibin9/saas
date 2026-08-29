@@ -5,6 +5,7 @@ import importlib
 
 _CACHEABLE_MOBILE_MODULES = {"mobile_student_service", "mobile_teacher_service"}
 _APPROVAL_RUNTIME_MODULE = "approval_runtime_service"
+_ACADEMIC_SERVICE_MODULE = "academic_service"
 
 
 def __getattr__(name: str):
@@ -13,6 +14,13 @@ def __getattr__(name: str):
         from app.services.approval_production_guard import install as install_approval_guard
 
         module = install_approval_guard(module)
+        globals()[name] = module
+        return module
+    if name == _ACADEMIC_SERVICE_MODULE:
+        module = importlib.import_module(f"{__name__}.{name}")
+        from app.services.academic_warning_close_audit_guard import install as install_warning_close_audit_guard
+
+        module = install_warning_close_audit_guard(module)
         globals()[name] = module
         return module
     if name not in _CACHEABLE_MOBILE_MODULES:
