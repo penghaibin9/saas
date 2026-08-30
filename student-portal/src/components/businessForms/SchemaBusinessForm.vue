@@ -12,6 +12,7 @@
         <button v-else-if="entry.field.type === 'file'" type="button" :disabled="entry.state.readonly" @click="$emit('request-file-center', entry.field)">从文件中心选择</button>
         <button v-else-if="entry.field.type === 'student-picker'" type="button" disabled>学生身份由服务端上下文确定</button>
         <input v-else :type="entry.field.type === 'number' ? 'number' : entry.field.type === 'datetime' ? 'datetime-local' : entry.field.type" :disabled="entry.state.readonly" :value="values[entry.field.code] ?? ''" @input="set(entry.field.code, entry.field.type === 'number' && $event.target.value !== '' ? Number($event.target.value) : $event.target.value)" />
+        <small v-if="serverErrors[entry.field.code]" class="field-error">{{ serverErrors[entry.field.code] }}</small>
       </label>
       <button type="submit">提交</button>
     </template>
@@ -22,7 +23,11 @@
 import { computed, reactive, watch } from 'vue'
 import { normalizeVersion, presentation } from './schemaRuntime.js'
 
-const props = defineProps({ formVersion: { type: Object, required: true }, initialData: { type: Object, default: () => ({}) } })
+const props = defineProps({
+  formVersion: { type: Object, required: true },
+  initialData: { type: Object, default: () => ({}) },
+  serverErrors: { type: Object, default: () => ({}) },
+})
 const emit = defineEmits(['submit', 'unsupported', 'request-file-center'])
 const values = reactive({ ...props.initialData })
 watch(() => props.initialData, value => {
@@ -62,4 +67,5 @@ function submit() {
 label b { color: #d92d20; margin-left: 3px; }
 input, textarea, select, button { min-height: 42px; }
 .unsupported { background: #fff3cd; color: #7a4d00; padding: 12px; border-radius: 8px; }
+.field-error { color: #b42318; }
 </style>

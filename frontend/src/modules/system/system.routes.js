@@ -79,6 +79,13 @@ const systemRoutes = {
         permissionKey: 'systemAdmin.fileGovernance.view' }
     },
     {
+      path: 'business-forms',
+      name: 'system-business-forms',
+      component: () => import('@/modules/system/views/SystemBusinessFormsView.vue'),
+      meta: { moduleCode: 'SYSTEM', title: '合规与业务表单', requiresAuth: true,
+        permissionKey: 'systemAdmin.config.view' }
+    },
+    {
       /* 旧的师生混合入口：保留路由避免既有链接 404，直接落到学生导入页。 */
       path: 'identity-import',
       redirect: '/admin/system/identity-import/students'

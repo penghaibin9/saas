@@ -112,6 +112,8 @@ export const portalApi = {
   affairsActivityEnroll: (activityId) => request(`/portal/affairs/activities/${encodeURIComponent(activityId)}/enroll`, { method: 'POST' }),
 
   internshipMy: () => request('/portal/internship/my'),
+  businessFormLoad: (body) => request('/business-forms/runtime/load', { method: 'POST', body }),
+  businessFormSubmit: (body) => request('/business-forms/runtime/submit', { method: 'POST', body }),
   internshipCompliance: (operation = 'ONBOARD', batchId = '') => request(`/portal/internship/compliance${q({ operation, batchId })}`),
   internshipConsents: () => request('/portal/internship/consents'),
   internshipConsentDetail: (id) => request(`/portal/internship/consents/${encodeURIComponent(id)}`),

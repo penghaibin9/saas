@@ -12,6 +12,7 @@
     {"path": "pages/common/notify-settings/index", "style": {"navigationBarTitleText": "消息通知设置", "navigationStyle": "custom"}},
     {"path": "pages/common/legal-doc/index", "style": {"navigationBarTitleText": "协议", "navigationStyle": "custom"}},
     {"path": "pages/common/help/index", "style": {"navigationBarTitleText": "帮助中心"}},
+    {"path": "pages/common/business-form/index", "style": {"navigationBarTitleText": "业务表单"}},
     {"path": "pages/role-switch/index", "style": {"navigationBarTitleText": "选择身份", "navigationStyle": "custom"}}
   ],
   "subPackages": [

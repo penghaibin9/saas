@@ -259,6 +259,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1.todos import make_router as make_todos_router
     from app.modules.internship.routers import internship_student_selection
     from app.student_portal.router import router as student_portal_router
+    from app.api.v1 import platform_business_forms
 
     api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
     api_router.include_router(todo_simple.router, prefix="/todos", tags=["todos"])
@@ -277,6 +278,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(audit.alias_router)
     from app.modules.platform.routers import platform_router
     api_router.include_router(platform_router.router)
+    api_router.include_router(platform_business_forms.router)
     api_router.include_router(stats.router)
     api_router.include_router(platform_integrity.router)
     api_router.include_router(mobile_export.router)

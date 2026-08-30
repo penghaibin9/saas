@@ -16,7 +16,20 @@ const files = {
   miniRuntime: 'miniapp/src/components/businessForms/schemaRuntime.js',
 }
 
+const productionFiles = {
+  staffApi: 'frontend/src/modules/system/api/businessForms.api.js',
+  staffPage: 'frontend/src/modules/system/views/SystemBusinessFormsView.vue',
+  staffRoutes: 'frontend/src/modules/system/system.routes.js',
+  studentPage: 'student-portal/src/views/forms/BusinessFormView.vue',
+  studentApi: 'student-portal/src/services/portalApi.js',
+  studentRoutes: 'student-portal/src/router/index.js',
+  miniPage: 'miniapp/src/pages/common/business-form/index.vue',
+  miniApi: 'miniapp/src/services/businessFormApi.js',
+  miniPages: 'miniapp/src/pages.json',
+}
+
 function source(name) { return fs.readFileSync(path.join(root, files[name]), 'utf8') }
+function read(relativePath) { return fs.readFileSync(path.join(root, relativePath), 'utf8') }
 
 test('Staff compliance UI preserves all normalized non-pass states and source identity', () => {
   const panel = source('staffPanel')
@@ -68,4 +81,39 @@ test('Client condition runtimes are bounded presentation-only DSLs', () => {
     assert.match(runtime, /depth\s*>\s*8/)
     assert.doesNotMatch(runtime, /eval\s*\(|new Function|Function\s*\(/)
   }
+})
+
+test('Staff and Student PC components are wired to real APIs and routable pages', () => {
+  const staffApi = read(productionFiles.staffApi)
+  const staffPage = read(productionFiles.staffPage)
+  const staffRoutes = read(productionFiles.staffRoutes)
+  const studentPage = read(productionFiles.studentPage)
+  const studentApi = read(productionFiles.studentApi)
+  const studentRoutes = read(productionFiles.studentRoutes)
+  assert.match(staffApi, /platform\/business-form-versions/)
+  assert.match(staffApi, /platform\/compliance\/evaluate/)
+  assert.match(staffPage, /BusinessFormVersionWorkbench/)
+  assert.match(staffPage, /CompliancePanel/)
+  assert.match(staffRoutes, /SystemBusinessFormsView\.vue/)
+  assert.match(studentPage, /businessFormLoad/)
+  assert.match(studentPage, /fileSdk\.upload/)
+  assert.match(studentPage, /expectedBusinessVersion/)
+  assert.match(studentPage, /complianceRequests\.value/)
+  assert.match(studentPage, /:server-errors="fieldErrors"/)
+  assert.match(studentApi, /business-forms\/runtime\/submit/)
+  assert.match(studentRoutes, /business-forms\/:formCode\/:versionId/)
+})
+
+test('Teacher and Student miniapp use one registered common typed-action target', () => {
+  const page = read(productionFiles.miniPage)
+  const api = read(productionFiles.miniApi)
+  const pages = read(productionFiles.miniPages)
+  assert.match(page, /TEACHER_MINIAPP/)
+  assert.match(page, /STUDENT_MINIAPP/)
+  assert.match(page, /SchemaBusinessForm/)
+  assert.match(page, /result\.nextAction \|\| result\.next_action/)
+  assert.match(page, /complianceRequests: this\.complianceRequests/)
+  assert.match(page, /runAction\(nextAction/)
+  assert.match(api, /business-forms\/runtime\/load/)
+  assert.match(pages, /pages\/common\/business-form\/index/)
 })
