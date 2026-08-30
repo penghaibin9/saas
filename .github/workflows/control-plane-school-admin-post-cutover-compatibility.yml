@@ -102,7 +102,7 @@ jobs:
           assert s['usedUndefined'] == 0
           assert s['usedLegacyPattern'] == 0
           assert s['b8BaseConcreteExact'] == 449
-          assert s['b8PostCutoverCompatibilityExact'] == 148
+          assert s['b8PostCutoverCompatibilityExact'] == 149
           assert s['b8ConcreteExact'] == 598
           assert s['catalogExact'] == 662
           assert all(not c.startswith(('platform.', 'enterprise.')) and c != '*' for c in data['postCutoverCompatibilityCodes'])
