@@ -1,4 +1,6 @@
 """20K 演示校正式角色拓扑合同；纯单元测试，不连接数据库。"""
+from pathlib import Path
+
 from app.services.saas_role_templates import ROLE_TEMPLATE_BY_CODE
 from app.services.sandbox_school_role_reconcile import (
     EXPECTED_ORG_SCOPES,
@@ -43,3 +45,10 @@ def test_org_scope_validation_does_not_count_sensitive_student_grants_twice():
     assert EXPECTED_ORG_SCOPE_TYPES["PSYCHOLOGY_TEACHER"] == "COLLEGE"
     assert EXPECTED_ORG_SCOPE_TYPES["GD_MAJOR_ADMIN"] == "MAJOR"
     assert EXPECTED_ORG_SCOPE_TYPES["GD_MENTOR"] == "ADVISOR"
+
+
+def test_b8_final_topology_uses_the_same_canonical_org_scope_types():
+    source = (Path(__file__).resolve().parents[1]
+              / "scripts" / "check_control_plane_b8_topology.py").read_text(encoding="utf-8")
+    assert "EXPECTED_ORG_SCOPE_TYPES" in source
+    assert "TeacherStudentScope.scope_type == EXPECTED_ORG_SCOPE_TYPES[code]" in source
