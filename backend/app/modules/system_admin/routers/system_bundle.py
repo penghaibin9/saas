@@ -14,9 +14,8 @@ from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.context import current_tenant_id
-from app.core.permissions import require_any_permission, require_permission
 from app.core.response import success
-from app.core.tenant_scoped import tenant_get
+from app.core.permissions import require_any_permission, require_permission
 from app.db.session import db_enabled, get_sessionmaker
 
 router = APIRouter()
@@ -235,9 +234,9 @@ def _student_account_meta(db, account) -> dict:
                 "studentStatus": "UNBOUND", "studentStatusLabel": "未绑定学生主档",
                 "currentStage": "", "profileBound": False,
             }
-        college = tenant_get(db, College, sp.college_id, tenant_id=sp.tenant_id) if sp.college_id else None
-        major = tenant_get(db, Major, sp.major_id, tenant_id=sp.tenant_id) if sp.major_id else None
-        cls = tenant_get(db, SchoolClass, sp.class_id, tenant_id=sp.tenant_id) if sp.class_id else None
+        college = db.get(College, sp.college_id) if sp.college_id else None
+        major = db.get(Major, sp.major_id) if sp.major_id else None
+        cls = db.get(SchoolClass, sp.class_id) if sp.class_id else None
         student_status = str(sp.student_status or sp.status or "").upper()
         return {
             "studentId": str(sp.id), "studentNo": sp.student_no,
