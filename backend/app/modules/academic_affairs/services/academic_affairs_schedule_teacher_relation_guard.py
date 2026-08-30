@@ -184,19 +184,29 @@ def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
         raise AppException("VALIDATION_ERROR", "teacherKey 必填")
     _check_query_scope(user, key)
     with schedule.session() as db:
-        batch = schedule._current_published_batch(db, term_id)
-        if not batch:
+        batches = schedule._current_published_batches(db, term_id)
+        if not batches:
             return {
-                "items": [], "batchId": None, "weeklyHours": 0,
+                "items": [], "batchId": None, "batchIds": [], "weeklyHours": 0,
                 "teacherKey": key,
                 "teacherAuthorityPolicy": "TEACHING_CLASS_TEACHER_BY_WEEK",
                 "note": "本学期暂无授课安排",
             }
-        all_rows = _teacher_items(db, batch, key)
+        all_rows = []
+        for batch in batches:
+            all_rows.extend(_teacher_items(db, batch, key))
+        all_rows.sort(key=lambda row: (
+            int(row.get("weekday") or 0),
+            int(row.get("slotNo") or 0),
+            int(row.get("startWeek") or 0),
+            int(row.get("scheduleItemId") or row.get("itemId") or 0),
+        ))
         rows = [row for row in all_rows if schedule._week_in_range(row, week)]
+        batch_ids = [str(batch.id) for batch in batches]
         return {
             "items": rows,
-            "batchId": str(batch.id),
+            "batchId": batch_ids[0] if len(batch_ids) == 1 else None,
+            "batchIds": batch_ids,
             "weeklyHours": len(all_rows),
             "teacherKey": key,
             "teacherName": next((str(row.get("teacherName") or "").strip() for row in all_rows
