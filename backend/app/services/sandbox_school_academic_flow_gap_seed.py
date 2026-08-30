@@ -167,6 +167,122 @@ def _seed_status_history(db, c, tenant_id, admin, student):
     )
 
 
+def _seed_applied_schedule_change_attendance(db, c, tenant_id, admin):
+    """补一条已审批、生效且已进入课堂执行的正式调课成功链。"""
+    reason = f"{MARKER}：原教室临时检修，完成审批后调整到备用教学场地。"
+    existing = _one(db, c["t_aa_schedule_change"], tenant_id, reason=reason)
+    if existing is not None and existing.new_item_id:
+        target = db.get(c["t_aa_schedule_item"], int(existing.new_item_id))
+        if target is not None:
+            occurrence = f"{target.batch_id}:{target.id}:2026-09-03:S{target.slot_no}"
+            if _one(db, c["t_aa_attendance_session"], tenant_id,
+                    occurrence_identity=occurrence) is not None:
+                return existing
+
+    origin = db.scalars(select(c["t_aa_schedule_item"]).join(
+        c["t_aa_schedule_batch"],
+        c["t_aa_schedule_batch"].id == c["t_aa_schedule_item"].batch_id,
+    ).where(
+        c["t_aa_schedule_item"].tenant_id == tenant_id,
+        c["t_aa_schedule_item"].status == "EFFECTIVE",
+        c["t_aa_schedule_item"].change_id.is_(None),
+        c["t_aa_schedule_item"].task_id.is_not(None),
+        c["t_aa_schedule_item"].is_deleted.is_(False),
+        c["t_aa_schedule_batch"].tenant_id == tenant_id,
+        c["t_aa_schedule_batch"].status == "PUBLISHED",
+        c["t_aa_schedule_batch"].is_deleted.is_(False),
+    ).order_by(c["t_aa_schedule_item"].id)).first()
+    if origin is None:
+        raise RuntimeError("AA-009 补链缺少已发布正式课位")
+
+    applicant = _one(db, c["t_user"], tenant_id, login_name=origin.teacher_key) or admin
+    change = c["t_aa_schedule_change"](
+        tenant_id=tenant_id, term_id=db.get(c["t_aa_schedule_batch"], origin.batch_id).term_id,
+        batch_id=origin.batch_id, origin_item_id=origin.id, task_id=origin.task_id,
+        change_type="ADJUST", course_name=origin.course_name,
+        class_id=origin.class_id, class_name=origin.class_name,
+        teacher_key=origin.teacher_key, teacher_name=origin.teacher_name,
+        origin_weekday=origin.weekday, origin_slot_no=origin.slot_no,
+        origin_start_week=origin.start_week, origin_end_week=origin.end_week,
+        origin_week_parity=origin.week_parity, origin_classroom=origin.classroom_text,
+        target_weekday=origin.weekday, target_slot_no=origin.slot_no,
+        target_start_week=origin.start_week, target_end_week=origin.end_week,
+        target_week_parity=origin.week_parity, target_classroom="备用教学场地（检修调课）",
+        makeup_plan="教学时间不变，仅按审批结论切换备用教学场地。",
+        reason=reason, applicant_id=applicant.id,
+        current_node="COMPLETED", status="APPROVED",
+    )
+    db.add(change)
+    db.flush()
+    workflow = c["t_workflow_instance"](
+        tenant_id=tenant_id, workflow_code="ACAD_SCHEDULE_CHANGE",
+        source_module="academic-affairs", source_biz_type="AA_SCHEDULE_CHANGE",
+        source_biz_id=change.id, applicant_id=applicant.id,
+        title=f"{origin.course_name} 教室调整", status="APPROVED",
+        current_node="COMPLETED", remark="学院与教务处审批均通过。",
+    )
+    db.add(workflow)
+    db.flush()
+    change.workflow_instance_id = workflow.id
+    for node in ("COLLEGE_REVIEW", "ACADEMIC_REVIEW"):
+        db.add(c["t_workflow_task"](
+            tenant_id=tenant_id, instance_id=workflow.id, node_code=node,
+            assignee_id=admin.id, status="APPROVED",
+            action_reason="教室检修证明与备用场地冲突检查均通过。", acted_at=NOW,
+        ))
+    target = c["t_aa_schedule_item"](
+        tenant_id=tenant_id, batch_id=origin.batch_id, task_id=origin.task_id,
+        course_id=origin.course_id, course_name=origin.course_name,
+        class_id=origin.class_id, class_name=origin.class_name,
+        teacher_key=origin.teacher_key, teacher_name=origin.teacher_name,
+        weekday=origin.weekday, slot_no=origin.slot_no,
+        start_week=origin.start_week, end_week=origin.end_week,
+        week_parity=origin.week_parity, classroom_id=None,
+        classroom_text=change.target_classroom, source="MANUAL",
+        change_id=change.id, status="EFFECTIVE",
+    )
+    db.add(target)
+    db.flush()
+    origin.status = "CHANGED"
+    change.new_item_id = target.id
+    change.applied_at = NOW
+    change.status = "APPLIED"
+
+    student = db.scalars(select(c["t_student_profile"]).where(
+        c["t_student_profile"].tenant_id == tenant_id,
+        c["t_student_profile"].class_id == origin.class_id,
+        c["t_student_profile"].status == "ACTIVE",
+        c["t_student_profile"].is_deleted.is_(False),
+    ).order_by(c["t_student_profile"].id)).first()
+    if student is None:
+        raise RuntimeError("AA-009 补链缺少课位行政班学生")
+    occurrence = f"{origin.batch_id}:{target.id}:2026-09-03:S{origin.slot_no}"
+    db.add(c["t_aa_attendance_session"](
+        tenant_id=tenant_id, class_id=origin.class_id,
+        teaching_task_id=origin.task_id, occurrence_identity=occurrence,
+        source_type="FORMAL_TEACHING", source_reason="调课审批生效后的正式课堂点名",
+        source_evidence=json.dumps({
+            "batchId": str(origin.batch_id), "scheduleItemId": str(target.id),
+            "teachingTaskId": str(origin.task_id), "scheduleChangeId": str(change.id),
+        }, ensure_ascii=False),
+        course_name=origin.course_name, term_code="2026-2027-1",
+        teacher_key=origin.teacher_key, session_date="2026-09-03",
+        slot_no=origin.slot_no, session_type="常规",
+        roster_json=json.dumps([{
+            "studentId": str(student.id), "studentNo": student.student_no,
+            "realName": student.real_name, "status": "PRESENT",
+        }], ensure_ascii=False),
+        total_count=1, present_count=1, absent_count=0, status="SUBMITTED",
+    ))
+    db.add(c["t_affairs_audit_trail"](
+        tenant_id=tenant_id, biz_type="AA_SCHEDULE_CHANGE", biz_id=change.id,
+        action="APPLY", operator=admin.real_name, role_name="教务处管理员",
+        detail=f"originItem={origin.id}; newItem={target.id}; attendanceOccurrence={occurrence}",
+        occurred_at=NOW,
+    ))
+    return change
+
+
 def _seed_major_split(db, c, tenant_id, admin):
     batch = db.scalars(select(c["t_aa_major_split_batch"]).where(
         c["t_aa_major_split_batch"].tenant_id == tenant_id,
@@ -495,6 +611,7 @@ def seed_academic_flow_gap_coverage(db, tenant_id: int) -> dict:
         raise RuntimeError("AA24 补链缺少管理员、证明文件或学生主档")
     _seed_correction(db, c, tenant_id, admin, evidence, students[3])
     _seed_status_history(db, c, tenant_id, admin, students[4])
+    _seed_applied_schedule_change_attendance(db, c, tenant_id, admin)
     _seed_major_split(db, c, tenant_id, admin)
     _seed_program_version_and_graduate(db, c, tenant_id, admin)
     _seed_selection_roster_and_exemption(db, c, tenant_id, admin)
