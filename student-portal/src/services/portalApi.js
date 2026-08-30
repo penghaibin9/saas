@@ -26,6 +26,7 @@ export const portalApi = {
   todos: () => request('/mobile/me/todos'),
   messages: () => request('/mobile/me/messages'),
   domainMy: (domain) => request(`/mobile/${domain}/my`),
+  graduationFrozenPackage: () => request('/portal/graduation/frozen-package'),
   // HomeProjection v2：返回 homeVersion/asOf/sections/typed action。
   // 调用方必须自行处理 reject——首页核心真值失败绝不能被吞成空对象当"暂无待办"。
   homeOverview: () => request('/portal/home/overview'),
@@ -111,6 +112,8 @@ export const portalApi = {
   affairsActivityEnroll: (activityId) => request(`/portal/affairs/activities/${encodeURIComponent(activityId)}/enroll`, { method: 'POST' }),
 
   internshipMy: () => request('/portal/internship/my'),
+  businessFormLoad: (body) => request('/business-forms/runtime/load', { method: 'POST', body }),
+  businessFormSubmit: (body) => request('/business-forms/runtime/submit', { method: 'POST', body }),
   internshipCompliance: (operation = 'ONBOARD', batchId = '') => request(`/portal/internship/compliance${q({ operation, batchId })}`),
   internshipConsents: () => request('/portal/internship/consents'),
   internshipConsentDetail: (id) => request(`/portal/internship/consents/${encodeURIComponent(id)}`),
@@ -203,7 +206,14 @@ export const portalApi = {
   rectifyGraduationPeer: (pid, note) => request(`/mobile/graduation/peer/${encodeURIComponent(pid)}/rectify`, { method: 'POST', body: { note } }),
   graduationArchive: () => request('/mobile/graduation/archive'),
   graduationActiveRound: () => request('/mobile/graduation/active-round'),
-  graduationTopics: (batchId) => request(`/mobile/graduation/topics${batchId ? `?batchId=${encodeURIComponent(batchId)}` : ''}`),
+  graduationTopics: (batchOrParams = {}) => {
+    const params = typeof batchOrParams === 'object' ? batchOrParams : { batchId: batchOrParams }
+    const query = new URLSearchParams()
+    Object.entries({ pageSize: 20, ...params }).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value))
+    })
+    return request(`/mobile/graduation/topics?${query.toString()}`)
+  },
   submitGraduationChoices: (roundId, choices) => request('/mobile/graduation/choices', { method: 'POST', body: { roundId, choices } }),
   withdrawGraduationChoices: (roundId) => request('/mobile/graduation/withdraw-choices', { method: 'POST', body: { roundId } }),
   requestGraduationTopicChange: (newTopicId, reason) => request('/mobile/graduation/change-request', { method: 'POST', body: { newTopicId, reason } }),

@@ -4,7 +4,7 @@ import fs from 'node:fs'
 
 import { validateFiles } from '../../scripts/check/check-graduation-v9-scope.mjs'
 
-const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8')
+const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
 const truth = read('../src/services/graduationTeacherCountTruth.js')
 const page = read('../src/pages/teacher/graduation-guide/index.vue')

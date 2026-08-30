@@ -1,0 +1,16 @@
+{
+  "capturedAt": "2026-08-30T00:00:00+08:00",
+  "repository": "penghaibin9/saas",
+  "openCount": 46,
+  "currentBranchHasOpenPr": false,
+  "relevant": [
+    {"number": 238, "title": "platform federation", "draft": false},
+    {"number": 237, "title": "platform DR", "draft": true},
+    {"number": 234, "title": "sync main", "draft": false},
+    {"number": 228, "title": "docs", "draft": false},
+    {"number": 204, "title": "test(graduation): exact-head real browser audit harness 20260823", "head": "audit/graduation-real-browser-20260823", "draft": true},
+    {"number": 124, "title": "U11 gold", "draft": true},
+    {"number": 118, "title": "U12 count", "draft": true}
+  ],
+  "collisionAssessment": "No open PR uses codex/graduation-v8. PR #204 overlaps only in audit/evidence intent; implementation remains isolated and exact-head validation must be rerun before hold."
+}

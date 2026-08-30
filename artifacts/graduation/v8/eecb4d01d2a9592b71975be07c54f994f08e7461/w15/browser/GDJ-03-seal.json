@@ -1,0 +1,14 @@
+{
+  "journey": "GDJ-03",
+  "result": "BROWSER_PASS",
+  "batchId": "2",
+  "gdStudentId": "12",
+  "screenshotA": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w15\\browser\\/GDJ-03-A-first-screen.png",
+  "screenshotB": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w15\\browser\\/GDJ-03-B-action-receipt.png",
+  "screenshotC": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w15\\browser\\/GDJ-03-C-handoff.png",
+  "action": "从待办队列打开真实待审开题",
+  "serverTruth": {
+    "taskbookStatus": "CONFIRMED",
+    "proposalCount": 1
+  }
+}

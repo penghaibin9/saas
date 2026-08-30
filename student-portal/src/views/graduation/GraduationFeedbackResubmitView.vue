@@ -2,9 +2,9 @@
   <section class="w75 sp-panel">
     <header class="w75__head">
       <div>
-        <p class="w75__eyebrow">W7.5 · Student PC Feedback / Resubmit</p>
+        <p class="w75__eyebrow">评阅与整改</p>
         <h2>评阅反馈与整改重交</h2>
-        <p>每条意见绑定评阅时的冻结文件版本；退回后只通过原提交入口生成新版本，不覆盖历史证据。</p>
+        <p>这里集中显示老师退回的意见。按要求修改并重新提交后，旧版本仍可查阅。</p>
       </div>
       <button class="sp-btn sp-btn--ghost" :disabled="loading || busy" @click="load">刷新反馈</button>
     </header>
@@ -28,14 +28,14 @@
           <div>
             <b>本次意见对应冻结版</b>
             <span>{{ actionable.reviewedFile.fileName }} · 文件版本 v{{ actionable.reviewedFile.versionNo }}</span>
-            <small>FileVersion {{ actionable.reviewedFile.fileVersionId }} · SHA-256 {{ shortHash(actionable.reviewedFile.sha256) }}</small>
+            <details><summary>查看该版本的校验证据</summary><small>FileVersion {{ actionable.reviewedFile.fileVersionId }} · SHA-256 {{ shortHash(actionable.reviewedFile.sha256) }}</small></details>
           </div>
           <button v-if="actionable.reviewedFile.canPreview" class="sp-btn sp-btn--ghost" :disabled="busy" @click="openReviewed(actionable.reviewedFile)">查看被评版本</button>
         </div>
 
         <div v-if="actionable.resubmitTarget?.kind === 'PROPOSAL'" class="w75__form">
           <h3>整改后重交开题报告</h3>
-          <p>正文已带入最近一次开题内容。修改后提交会继续走现有开题 canonical submit + optimistic lock。</p>
+          <p>正文已带入最近一次开题内容；请按意见修改并确认后重新提交。</p>
           <label>选题背景与研究依据<textarea v-model.trim="proposalForm.background" /></label>
           <label>研究方案与进度计划<textarea v-model.trim="proposalForm.plan" /></label>
           <label>预期成果<textarea v-model.trim="proposalForm.outcome" /></label>
@@ -48,7 +48,7 @@
 
         <div v-else-if="actionable.resubmitTarget?.kind === 'FINAL' && actionable.resubmitTarget.finalType" class="w75__form">
           <h3>整改后重交{{ actionable.resubmitTarget.finalType }}</h3>
-          <p>必须上传修改后的新文件；系统会生成新的不可变 FileVersion，原被评版本继续留在反馈时间线中。</p>
+          <p>请上传修改后的新文件。重新提交不会覆盖老师评阅过的旧版本。</p>
           <label>修改后主文档<input type="file" accept=".pdf,.doc,.docx,.zip" @change="pickFile('final', $event)" /></label>
           <UploadState v-if="finalUpload" :file="finalUpload" @preview="openPending(finalUpload)" />
           <button class="sp-btn" :disabled="busy || !finalUpload?.readyForBusiness" @click="resubmitFinal">
@@ -59,13 +59,13 @@
 
       <div v-else class="w75__ok">
         <strong>当前没有待整改的评阅意见</strong>
-        <span>{{ timeline.hasData ? '历史反馈已全部进入后续处理或通过。' : '暂未产生可展示的 W7 评阅反馈。' }}</span>
+        <span>{{ timeline.hasData ? '历史反馈已全部进入后续处理或通过。' : '目前还没有评阅反馈。' }}</span>
       </div>
 
       <div v-if="items.length" class="w75__timeline">
         <div class="w75__timeline-head">
           <h3>反馈时间线</h3>
-          <span>append-only · {{ items.length }} 条</span>
+          <span>完整保留 · {{ items.length }} 条</span>
         </div>
         <article v-for="item in items" :key="item.id" class="w75__event" :class="eventClass(item)">
           <div class="w75__rail"><span></span></div>
@@ -83,9 +83,8 @@
             </ul>
             <div v-if="item.reviewedFile" class="w75__version">
               <span>冻结文件 v{{ item.reviewedFile.versionNo }} · {{ item.reviewedFile.fileName }}</span>
-              <span :class="item.reviewedFile.evidenceLocked ? 'is-locked' : 'is-warning'">
-                {{ item.reviewedFile.evidenceLocked ? 'SHA-256 已锁定' : '证据哈希需治理' }}
-              </span>
+              <span :class="item.reviewedFile.evidenceLocked ? 'is-locked' : 'is-warning'">{{ item.reviewedFile.evidenceLocked ? '版本已固定' : '版本证据待确认' }}</span>
+              <details><summary>校验证据</summary><small>SHA-256 {{ shortHash(item.reviewedFile.sha256) }}</small></details>
               <button v-if="item.reviewedFile.canPreview" class="w75__link" :disabled="busy" @click="openReviewed(item.reviewedFile)">查看该版</button>
               <button v-if="item.reviewedFile.canDownload" class="w75__link" :disabled="busy" @click="downloadReviewed(item.reviewedFile)">下载</button>
             </div>

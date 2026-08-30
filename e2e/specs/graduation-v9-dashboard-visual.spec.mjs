@@ -68,12 +68,16 @@ test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
       page.locator('.gbs__select'),
       ...dynamicTextMasks(page, [fixture.runId, fixture.batchName]),
     ]
-    await captureGoldCandidate(page, testInfo, {
-      name: 'gd-U1-dashboard-GoldCandidate', width: 1440, height: 900, masks: goldMasks,
-    })
-    await captureGoldCandidate(page, testInfo, {
-      name: 'gd-U1-dashboard-GoldCandidate', width: 1280, height: 800, masks: goldMasks,
-    })
+    const goldCandidateFailures = []
+    for (const viewport of [VIEWPORT, { width: 1280, height: 800 }]) {
+      try {
+        await captureGoldCandidate(page, testInfo, {
+          name: 'gd-U1-dashboard-GoldCandidate', ...viewport, masks: goldMasks,
+        })
+      } catch (error) {
+        goldCandidateFailures.push(`${viewport.width}x${viewport.height}: ${error?.message || error}`)
+      }
+    }
     await page.setViewportSize(VIEWPORT)
 
     const batchId = fixture.batchId
@@ -135,5 +139,6 @@ test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
 
     await testInfo.attach('gd-U1-dashboard-B-1440x900', { path: screenshot, contentType: 'image/png' })
     await testInfo.attach('gd-U1-dashboard-B-meta', { path: metadata, contentType: 'application/json' })
+    expect(goldCandidateFailures, 'Dashboard Gold 的所有视口都必须匹配；失败时仍应完整采集每个 actual').toEqual([])
   })
 })

@@ -42,6 +42,9 @@ def _install_grade_appeal_hardening() -> None:
                 "gradeId": int(grade_row.id), "gradeVersion": int(grade_row.version or 0),
                 "sourceSnapshotHash": grade_row.source_snapshot_hash or "",
                 "totalScore": float(grade_row.total_score or 0), "publishedAt": _iso(grade_row.published_at),
+                "advisorScore": float(grade_row.advisor_score or 0),
+                "reviewerScore": float(grade_row.reviewer_score or 0),
+                "defenseScore": float(grade_row.defense_score or 0),
             }
             db.add(GraduationAuditTrail(
                 tenant_id=_tid(), biz_type="GRADE_APPEAL_SNAPSHOT", biz_id=str(appeal.id),
@@ -68,7 +71,7 @@ def _install_grade_appeal_hardening() -> None:
             snap = (snap_row.after_json if snap_row else None) or {}
             if not snap: raise AppException("DATA_CONFLICT", "历史申诉缺少成绩版本快照，请重新发起申诉")
             grade_row = db.scalars(select(GraduationGrade).where(GraduationGrade.tenant_id == _tid(), GraduationGrade.gd_student_id == student.id, GraduationGrade.is_deleted.is_(False)).with_for_update()).first()
-            current = {"gradeId": int(grade_row.id) if grade_row else None, "gradeVersion": int(grade_row.version or 0) if grade_row else None, "sourceSnapshotHash": grade_row.source_snapshot_hash or "" if grade_row else "", "totalScore": float(grade_row.total_score or 0) if grade_row else None, "publishedAt": _iso(grade_row.published_at) if grade_row else None}
+            current = {"gradeId": int(grade_row.id) if grade_row else None, "gradeVersion": int(grade_row.version or 0) if grade_row else None, "sourceSnapshotHash": (grade_row.source_snapshot_hash or "") if grade_row else "", "totalScore": float(grade_row.total_score or 0) if grade_row else None, "publishedAt": _iso(grade_row.published_at) if grade_row else None}
             expected = {k: snap.get(k) for k in current}
             if not grade_row or grade_row.status != "PUBLISHED" or current != expected:
                 raise AppException("DATA_CONFLICT", "成绩版本已变化，原申诉不得作用于新成绩，请重新申诉")
@@ -115,7 +118,51 @@ def _install_grade_appeal_hardening() -> None:
             total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
             size = min(200, max(1, int(page_size)))
             rows = db.execute(base.order_by(GraduationGradeAppeal.id.desc()).offset((max(1, int(page)) - 1) * size).limit(size)).all()
-            return [{"id": str(a.id), "gdStudentId": str(a.gd_student_id), "studentName": stu.name, "studentNo": stu.student_no or "", "reason": a.reason, "status": a.status, "statusLabel": more.APPEAL_LABEL.get(a.status, a.status), "reviewComment": a.review_comment or "", "reviewedBy": a.reviewed_by or "", "reviewedAt": _iso(a.reviewed_at), "createdAt": _iso(a.created_at)} for a, stu in rows], total
+            appeal_ids = [str(a.id) for a, _stu in rows]
+            student_ids = [int(a.gd_student_id) for a, _stu in rows]
+            grades = db.scalars(select(GraduationGrade).where(
+                GraduationGrade.tenant_id == _tid(), GraduationGrade.gd_student_id.in_(student_ids or [-1]),
+                GraduationGrade.is_deleted.is_(False),
+            )).all()
+            grade_by_student = {int(row.gd_student_id): row for row in grades}
+            snapshots = db.scalars(select(GraduationAuditTrail).where(
+                GraduationAuditTrail.tenant_id == _tid(),
+                GraduationAuditTrail.biz_type == "GRADE_APPEAL_SNAPSHOT",
+                GraduationAuditTrail.biz_id.in_(appeal_ids or ["-1"]),
+                GraduationAuditTrail.action == "BIND_GRADE_VERSION",
+            ).order_by(GraduationAuditTrail.id.desc())).all()
+            snapshot_by_appeal = {}
+            for row in snapshots:
+                snapshot_by_appeal.setdefault(str(row.biz_id), (row.after_json or {}))
+
+            result = []
+            for appeal, student in rows:
+                grade = grade_by_student.get(int(appeal.gd_student_id))
+                snapshot = snapshot_by_appeal.get(str(appeal.id), {})
+                current = {
+                    "gradeId": int(grade.id) if grade else None,
+                    "gradeVersion": int(grade.version or 0) if grade else None,
+                    "sourceSnapshotHash": (grade.source_snapshot_hash or "") if grade else "",
+                    "totalScore": float(grade.total_score or 0) if grade else None,
+                    "advisorScore": float(grade.advisor_score or 0) if grade else None,
+                    "reviewerScore": float(grade.reviewer_score or 0) if grade else None,
+                    "defenseScore": float(grade.defense_score or 0) if grade else None,
+                    "publishedAt": _iso(grade.published_at) if grade else None,
+                    "status": grade.status if grade else None,
+                }
+                comparable = ("gradeId", "gradeVersion", "sourceSnapshotHash", "totalScore", "publishedAt")
+                version_matches = bool(snapshot and grade and grade.status == "PUBLISHED" and all(current[key] == snapshot.get(key) for key in comparable))
+                result.append({
+                    "id": str(appeal.id), "gdStudentId": str(appeal.gd_student_id),
+                    "studentName": student.name, "studentNo": student.student_no or "", "reason": appeal.reason,
+                    "status": appeal.status, "statusLabel": more.APPEAL_LABEL.get(appeal.status, appeal.status),
+                    "reviewComment": appeal.review_comment or "", "reviewedBy": appeal.reviewed_by or "",
+                    "reviewedAt": _iso(appeal.reviewed_at), "createdAt": _iso(appeal.created_at),
+                    "appealedGrade": snapshot or None, "currentGrade": current,
+                    "versionMatches": version_matches,
+                    "versionMessage": "仍与申诉时的已发布成绩一致" if version_matches else "成绩版本已变化，原申诉不能作用于当前成绩",
+                })
+            return result, total
 
     more.create_appeal = create_appeal
     more.review_appeal = review_appeal

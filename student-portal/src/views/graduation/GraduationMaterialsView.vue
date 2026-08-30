@@ -17,7 +17,8 @@
           <div class="gsm-item__head"><div><strong>{{ material.materialName }}</strong><span>{{ material.materialCode }} · {{ material.required ? '必交' : '选交' }}</span></div><div class="gsm-tags"><b :class="tone(material.businessStatus)">{{ label(material.businessStatus) }}</b><b>{{ material.reviewStatus }}</b><b>{{ material.archiveStatus }}</b></div></div>
           <p v-if="material.rejectReason" class="gsm-reject">退回原因：{{ material.rejectReason }}</p>
           <p class="gsm-next">下一步：{{ material.nextAction || '无需处理' }}</p>
-          <div class="gsm-meta"><span>当前版本：{{ material.currentVersion?.versionNo ? `v${material.currentVersion.versionNo}` : '尚未提交' }}</span><span>FileVersion ID：{{ material.currentVersionId || '-' }}</span><span>安全状态：{{ material.currentVersion?.statusText || material.currentVersion?.scanStatus || '-' }}</span><span>上传时间：{{ material.submittedAt || '-' }}</span></div>
+          <div class="gsm-meta"><span>当前版本：{{ material.currentVersion?.versionNo ? `第 ${material.currentVersion.versionNo} 版` : '尚未提交' }}</span><span>文件状态：{{ material.currentVersion?.statusText || material.currentVersion?.scanStatus || '-' }}</span><span>上传时间：{{ material.submittedAt || '-' }}</span></div>
+          <details v-if="material.currentVersion" class="gsm-evidence"><summary>查看文件校验证据</summary><code>FileVersion {{ material.currentVersionId || '-' }}</code><code>SHA-256 {{ material.currentVersion.sha256 || material.currentVersion.sourceSha256 || '-' }}</code></details>
           <div v-if="material.currentVersion" class="gsm-file">
             <div><strong>{{ material.currentVersion.fileName }}</strong><span>{{ sizeText(material.currentVersion.sizeBytes) }} · {{ material.currentVersion.statusText }}</span></div>
             <button v-if="material.currentVersion.canPreview" class="gsm-btn" :disabled="busy" @click="openReader(material, material.currentVersion)">查看当前版</button>
@@ -43,7 +44,7 @@
         </article>
       </section>
 
-      <section class="gsm-manifest"><header><div><h2>归档状态</h2><p>归档后可查看学校冻结的真实文件版本清单。</p></div><button class="gsm-btn" @click="loadManifest">查看 Manifest</button></header><div v-if="manifest"><strong>revision {{ manifest.revision }} · {{ manifest.status }}</strong><code>{{ manifest.manifestSha256 }}</code><p>{{ manifest.itemCount }} 个冻结文件版本</p></div></section>
+      <section class="gsm-manifest"><header><div><h2>归档状态</h2><p>归档后可查看学校固定的真实文件清单。</p></div><button class="gsm-btn" @click="loadManifest">查看归档凭据</button></header><div v-if="manifest"><strong>第 {{ manifest.revision }} 次归档 · {{ manifest.status }}</strong><p>{{ manifest.itemCount }} 个固定文件版本</p><details><summary>查看技术校验证据</summary><code>SHA-256 {{ manifest.manifestSha256 }}</code></details></div></section>
     </template>
     <StateBlock v-else type="empty" text="尚未建立毕业设计材料库" />
 

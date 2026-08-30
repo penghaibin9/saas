@@ -1,0 +1,31 @@
+{
+  "rule":"Each command has exactly one primary owner. Secondary surfaces are read-only or deep-link to the owner.",
+  "commands": [
+    {"command":"batch.create","endpoint":"POST /graduation/batches","owner":"BatchAndRules"},
+    {"command":"batch.update","endpoint":"PUT /graduation/batches/{id}","owner":"BatchAndRules"},
+    {"command":"batch.stage.configure","endpoint":"PUT /graduation/batches/{id}/stages","owner":"BatchAndRules"},
+    {"command":"batch.rules.configure","endpoint":"PUT /graduation/batches/{id}/rules","owner":"BatchAndRules"},
+    {"command":"student.eligibility","endpoint":"POST /graduation/gd-students/{id}/eligibility","owner":"StudentRelations"},
+    {"command":"student.assignAdvisor","endpoint":"POST /graduation/gd-students/{id}/assign-advisor","owner":"StudentRelations"},
+    {"command":"topic.review","endpoint":"topic review endpoint","owner":"TopicReview"},
+    {"command":"topic.match","endpoint":"POST /graduation/gd-topic-rounds/{id}/match","owner":"TopicRounds"},
+    {"command":"topic.choice.confirm","endpoint":"choice confirm endpoint","owner":"TopicRounds"},
+    {"command":"topic.choice.reject","endpoint":"choice reject endpoint","owner":"TopicRounds"},
+    {"command":"taskbook.issue","endpoint":"POST /graduation/gd-taskbooks/{studentId}/issue","owner":"ProcessTaskbook"},
+    {"command":"taskbook.change","endpoint":"POST /graduation/gd-taskbooks/{studentId}/change","owner":"ProcessTaskbook"},
+    {"command":"proposal.review","endpoint":"POST /graduation/proposals/{id}/review","owner":"ProposalReview"},
+    {"command":"final.review","endpoint":"POST /graduation/finals/{id}/review","owner":"FinalReview"},
+    {"command":"review.assign","endpoint":"POST /graduation/gd-reviews/assign","owner":"UnifiedReview"},
+    {"command":"review.submit","endpoint":"POST /graduation/gd-reviews/{id}/submit","owner":"UnifiedReview"},
+    {"command":"defense.publish","endpoint":"POST /graduation/defense-groups/{id}/publish","owner":"DefenseArrangement"},
+    {"command":"defense.score","endpoint":"POST /graduation/gd-defense-scores/entry","owner":"DefenseScoring"},
+    {"command":"defense.confirm","endpoint":"POST /graduation/gd-defense-scores/{studentId}/confirm","owner":"DefenseConfirmation"},
+    {"command":"grade.calculate","endpoint":"POST /graduation/gd-grades/{studentId}/calculate","owner":"GradeLedger"},
+    {"command":"grade.reviewPublishWithdraw","endpoint":"POST /graduation/gd-grades/{studentId}/{action}","owner":"GradeLedger"},
+    {"command":"grade.appeal.review","endpoint":"POST /graduation/gd-grade-appeals/{id}/review","owner":"GradeAppeals"},
+    {"command":"risk.close","endpoint":"POST /graduation/gd-risks/{id}/close","owner":"RiskWorkbench"},
+    {"command":"archive.generate","endpoint":"POST /graduation/gd-archives/{studentId}/generate","owner":"ArchiveWorkbench"},
+    {"command":"archive.file","endpoint":"POST /graduation/gd-archives/{studentId}/file","owner":"ArchiveWorkbench"}
+  ],
+  "count": 25
+}

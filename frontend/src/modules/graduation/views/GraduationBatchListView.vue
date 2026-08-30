@@ -112,7 +112,8 @@ export default {
   },
   created() { this.applyPanel(this.$route.query.panel, true) },
   watch: {
-    '$route.query.panel'(p) { this.applyPanel(p, false) }
+    '$route.query.panel'(p) { this.applyPanel(p, false) },
+    '$route.query.batchId'() { this.applyPanel(this.$route.query.panel, false) }
   },
   methods: {
     editable(row) { return !['CLOSED', 'ARCHIVED', 'VOIDED'].includes(row.status) },
@@ -129,6 +130,11 @@ export default {
         this.filters.status = panel === 'running' ? 'RUNNING' : 'ARCHIVED'; this.page = 1; this.load(); return
       }
       if (panel === 'stages' || panel === 'rules') {
+        const batchId = this.$route.query.batchId
+        if (batchId) {
+          this.$router.replace({ path: `/admin/graduation/batches/${batchId}`, query: { tab: panel } })
+          return
+        }
         this.preferredTab = panel; this.filters.status = ''; this.page = 1; this.load()
         if (!initial) toast.info(panel === 'stages' ? '点某个批次「详情/配置」即可编辑阶段时间轴' : '点某个批次「详情/配置」即可编辑规则')
         return

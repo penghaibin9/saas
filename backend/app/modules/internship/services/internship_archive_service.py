@@ -13,6 +13,7 @@ from urllib.parse import quote
 from sqlalchemy import and_, case, func, or_, select
 
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     InternshipAgreement, InternshipArchive, InternshipAuditTrail,
     InternshipCheckin, InternshipEnterpriseEval, InternshipFinalScore,
@@ -27,6 +28,7 @@ from app.modules.internship.services.internship_version import (
     versioned_update,
 )
 from app.services.db_service import _as_id, _iso, _tid, session
+from app.services.message_identity import resolve_message_user_id
 
 MATERIALS = [
     ("agreement", "三方协议"), ("checkin", "打卡记录"), ("weekly", "周报"),
@@ -241,7 +243,7 @@ def get_archive(internship_id, user=None) -> dict:
         record = db.get(InternshipRecord, _as_id(internship_id))
         if not record or record.is_deleted or record.tenant_id != _tid():
             raise not_found("实习记录不存在")
-        student = db.get(StudentProfile, record.student_id)
+        student = tenant_get(db, StudentProfile, record.student_id)
         if not in_scope(scope, db, record, student):
             raise no_permission("该学生不在你的数据范围内")
         result = _row(db, record, student, user)
@@ -438,7 +440,7 @@ def preflight_archive(internship_id, user=None) -> dict:
         record = db.get(InternshipRecord, _as_id(internship_id))
         if not record or record.is_deleted or record.tenant_id != _tid():
             raise not_found("实习记录不存在")
-        student = db.get(StudentProfile, record.student_id)
+        student = tenant_get(db, StudentProfile, record.student_id)
         if not in_scope(scope, db, record, student):
             raise no_permission("该学生不在你的数据范围内")
 
@@ -475,6 +477,15 @@ def preflight_archive(internship_id, user=None) -> dict:
             "fileVersionCount": len(items),
             "unsafeFileCount": len(unsafe),
         }, operator=_op_name(user))
+        from app.modules.platform.document_lifecycle.fact_hooks import internship_completed
+
+        internship_completed(
+            db,
+            record=record,
+            archive=archive,
+            source_version=archive_version,
+            actor_id=resolve_message_user_id(user or {}) or None,
+        )
         db.commit()
         return {
             **detail,
@@ -595,7 +606,7 @@ def build_package(user, internship_id) -> dict:
         record = db.get(InternshipRecord, _as_id(internship_id))
         if not record or record.is_deleted or record.tenant_id != _tid():
             raise not_found("实习记录不存在")
-        student = db.get(StudentProfile, record.student_id)
+        student = tenant_get(db, StudentProfile, record.student_id)
         if not in_scope(scope, db, record, student):
             raise no_permission("该学生不在你的数据范围内")
         archive = _archive_row(db, record.id)

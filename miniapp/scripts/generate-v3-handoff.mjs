@@ -78,9 +78,7 @@ function contractVersion(file, marker) {
 function alembicHead() {
   const dir = resolve(REPO, 'backend/alembic/versions')
   if (!existsSync(dir)) return ''
-  try {
-    const python = process.platform === 'win32' ? 'python' : 'python3'
-    return execFileSync(python, ['-c', `
+  const script = `
 import ast, os
 d = ${JSON.stringify(dir)}
 revs, downs = {}, {}
@@ -103,10 +101,16 @@ for r, p in downs.items():
     elif p: parents.update(p)
 heads = sorted(r for r in revs if r not in parents)
 print(','.join(heads))
-`], { cwd: REPO }).toString().trim()
-  } catch (error) {
-    return ''
+`
+  for (const executable of ['python3', 'python']) {
+    try {
+      const head = execFileSync(executable, ['-c', script], { cwd: REPO }).toString().trim()
+      if (head) return head
+    } catch (error) {
+      // Try the next common executable name (Windows commonly exposes only `python`).
+    }
   }
+  return ''
 }
 
 function packageReportSha() {

@@ -114,18 +114,18 @@ export class StudentGraduationPage {
     const action = step.getByRole('button').filter({ hasText: /填写|修改|重交|提交开题|完善/ }).first()
     if (await action.count()) await action.click()
 
-    const background = this.page.getByLabel('选题背景与研究依据', { exact: true })
-    const plan = this.page.getByLabel('研究方案与进度计划', { exact: true })
+    const background = step.getByLabel('选题背景与研究依据', { exact: true })
+    const plan = step.getByLabel('研究方案与进度计划', { exact: true })
     await expect(background).toBeVisible()
     await expect(plan).toBeVisible()
     await background.fill(`Playwright 背景 ${suffix}：验证真实浏览器交互和数据持久化。`)
     await plan.fill(`Playwright 计划 ${suffix}：学生提交、导师审核、管理员复核。`)
-    const outcome = this.page.getByLabel('预期成果', { exact: true })
+    const outcome = step.getByLabel('预期成果', { exact: true })
     if (await outcome.count()) await outcome.fill(`Playwright 成果 ${suffix}：保留完整证据链。`)
 
     const pdf = buildSyntheticPdf({ label: String(suffix), pages, targetBytes })
     if (targetBytes) expect(pdf.length, 'large PDF fixture must meet the requested byte floor').toBeGreaterThanOrEqual(targetBytes)
-    await this.page.locator('input[type=file]').setInputFiles({
+    await step.locator('input[type=file]').setInputFiles({
       name: fileName,
       mimeType: 'application/pdf',
       buffer: pdf
@@ -135,7 +135,7 @@ export class StudentGraduationPage {
       this.page.waitForResponse((r) =>
         r.url().includes('/portal/graduation/proposal') && r.request().method() === 'POST'
       ),
-      this.page.getByRole('button', { name: /提交开题报告/ }).click()
+      step.getByRole('button', { name: /提交开题报告/ }).click()
     ])
     await expectSuccessfulResponse(response, '学生提交开题报告')
     await expect(this.step('开题')).toContainText(/待审核|待审阅|已提交/)
@@ -182,7 +182,9 @@ export class StudentGraduationPage {
     await expect(frozen).toBeVisible()
     await expect(frozen).toContainText(/FileVersion\s+\d+/)
     await expect(frozen).toContainText(/SHA-256\s+[0-9a-f]{12}…[0-9a-f]{8}/i)
-    await expect(this.page.locator('.w75__timeline')).toContainText('SHA-256 已锁定')
+    const timeline = this.page.locator('.w75__timeline')
+    await expect(timeline).toContainText('版本已固定')
+    await expect(timeline).toContainText('校验证据')
   }
 
   async verifyFrozenReviewedReader() {
