@@ -152,6 +152,17 @@ def test_sandbox_role_scopes_project_legacy_business_facts_to_stable_ids():
     assert "reconcile_sandbox_role_assignment_scopes" in role_seed
 
 
+def test_role_assignment_scope_collation_matches_legacy_role_codes():
+    migration = _read(
+        "alembic/versions/20260830_role_assignment_scope_collation.py"
+    )
+
+    assert 'down_revision = "20260829_pr236_main_merge"' in migration
+    assert 'TARGET_COLLATION = "utf8mb4_unicode_ci"' in migration
+    assert "CONVERT TO CHARACTER SET" in migration
+    assert "t_role_assignment_scope" in migration
+
+
 def test_academic_main_chain_verifier_uses_cross_module_business_identities():
     source = _read("scripts/verify_sandbox_academic_main_chain.py")
     change = _read(
