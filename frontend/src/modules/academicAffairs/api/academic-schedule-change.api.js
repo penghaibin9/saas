@@ -40,6 +40,10 @@ export const CHANGE_STATUS = [
 ]
 
 export const scheduleChangeApi = {
+  /** 教师课表点击课位后的只读摘要；后端按本人关系与 PUBLISHED 状态收敛。 */
+  originItem(itemId) {
+    return call(() => request(`${BASE}/origin-items/${itemId}`))
+  },
   /** 台账/列表（范围过滤：教务处全量 / 学院按班级 / 教师按本人课位） */
   list(params = {}) {
     return callList(BASE, params)

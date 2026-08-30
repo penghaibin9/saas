@@ -88,6 +88,63 @@ def active_batch_id(db, term_id, scope_type, scope_id):
     return int(head.active_batch_id) if head and head.active_batch_id else None
 
 
+def active_batch_ids_by_term(db, term_ids) -> dict[int, list[int]]:
+    """Return every valid formal schedule batch selected by ScopeHead.
+
+    A term may have one SCHOOL head and several COLLEGE heads.  Read-side
+    consumers must project the union instead of collapsing the term to the most
+    recently published batch.  The second query also fails closed when a stale
+    or corrupt head points at a deleted/non-PUBLISHED/wrong-term batch.
+    """
+    from app.models import AaScheduleBatch, AaScheduleScopeHead
+
+    normalized_terms = sorted({int(value) for value in term_ids or [] if value})
+    if not normalized_terms:
+        return {}
+
+    heads = db.query(AaScheduleScopeHead).filter(
+        AaScheduleScopeHead.tenant_id == _tid(),
+        AaScheduleScopeHead.term_id.in_(normalized_terms),
+        AaScheduleScopeHead.scope_type.in_([_SCHOOL, _COLLEGE]),
+        AaScheduleScopeHead.active_batch_id.is_not(None),
+        AaScheduleScopeHead.is_deleted.is_(False),
+    ).all()
+    candidate_ids = sorted({int(head.active_batch_id) for head in heads})
+    if not candidate_ids:
+        return {term_id: [] for term_id in normalized_terms}
+
+    batches = db.query(AaScheduleBatch).filter(
+        AaScheduleBatch.tenant_id == _tid(),
+        AaScheduleBatch.term_id.in_(normalized_terms),
+        AaScheduleBatch.id.in_(candidate_ids),
+        AaScheduleBatch.status == "PUBLISHED",
+        AaScheduleBatch.is_deleted.is_(False),
+    ).all()
+    valid_by_id = {int(batch.id): batch for batch in batches}
+    result = {term_id: [] for term_id in normalized_terms}
+    for head in sorted(
+        heads,
+        key=lambda row: (
+            int(row.term_id),
+            0 if str(row.scope_type or "").upper() == _SCHOOL else 1,
+            int(row.scope_id or 0),
+        ),
+    ):
+        batch = valid_by_id.get(int(head.active_batch_id))
+        if not batch or int(batch.term_id) != int(head.term_id):
+            continue
+        term_batches = result[int(head.term_id)]
+        if int(batch.id) not in term_batches:
+            term_batches.append(int(batch.id))
+    return result
+
+
+def active_batch_ids(db, term_ids) -> list[int]:
+    """Flatten :func:`active_batch_ids_by_term` while preserving scope order."""
+    by_term = active_batch_ids_by_term(db, term_ids)
+    return [batch_id for term_id in sorted(by_term) for batch_id in by_term[term_id]]
+
+
 def _supports_share_lock(db) -> bool:
     try:
         return db.get_bind().dialect.name == "mysql"
@@ -103,14 +160,17 @@ def _fresh(query, db):
     return query.all()
 
 
-def _live_batch_ids(db, term_id, exclude_batch_id):
+def _live_batch_ids(db, term_id, exclude_batch_id, replacing_batch_id=None):
     """同学期全部当前正式课表批次——不分学院，教师和教室是全校共享资源。"""
     from app.models import AaScheduleBatch
 
+    excluded = [int(exclude_batch_id)]
+    if replacing_batch_id and int(replacing_batch_id) != int(exclude_batch_id):
+        excluded.append(int(replacing_batch_id))
     rows = _fresh(db.query(AaScheduleBatch.id).filter(
         AaScheduleBatch.tenant_id == _tid(),
         AaScheduleBatch.term_id == int(term_id),
-        AaScheduleBatch.id != int(exclude_batch_id),
+        AaScheduleBatch.id.notin_(excluded),
         AaScheduleBatch.status.in_(_LIVE_STATUSES),
         AaScheduleBatch.is_deleted.is_(False),
     ), db)
@@ -182,13 +242,22 @@ def _describe(item) -> str:
     return f"{item.course_name or '课程'}（周{item.weekday} 第{item.slot_no}节 {weeks}）"
 
 
-def validate_school_wide_conflicts(db, batch) -> dict:
+def validate_school_wide_conflicts(db, batch, *, replacing_batch_id=None) -> dict:
     """把本批次课表行与全校当前正式课表比对，返回问题清单。
 
     只比对跨批次：批次内部冲突由既有 gate_service 负责，不在这里重复实现第二套规则。
     """
     own = _items(db, [int(batch.id)])
-    others = _items(db, _live_batch_ids(db, batch.term_id, batch.id), fresh=True)
+    others = _items(
+        db,
+        _live_batch_ids(
+            db,
+            batch.term_id,
+            batch.id,
+            replacing_batch_id=replacing_batch_id,
+        ),
+        fresh=True,
+    )
     if not own or not others:
         return {"problems": [], "items": len(own), "comparedAgainst": len(others)}
 
@@ -242,8 +311,12 @@ def promote_to_active(db, batch, head) -> dict:
     }
 
 
-def require_no_school_wide_conflict(db, batch) -> dict:
-    result = validate_school_wide_conflicts(db, batch)
+def require_no_school_wide_conflict(db, batch, *, replacing_batch_id=None) -> dict:
+    result = validate_school_wide_conflicts(
+        db,
+        batch,
+        replacing_batch_id=replacing_batch_id,
+    )
     if result["problems"]:
         found = result["problems"]
         raise AppException(

@@ -190,6 +190,107 @@ def _schedule_meta(db, term, batch):
     }
 
 
+_NO_CLASS_CALENDAR_MESSAGES = {
+    "该日期为校历调休停课日，不能创建普通课堂考勤": "SWAP_SOURCE",
+    "该日期为节假日，不能创建普通课堂考勤": "HOLIDAY",
+}
+
+
+def _student_today_context(db, term, now=None) -> dict:
+    """Resolve today's logical teaching date from the canonical school calendar."""
+    from app.modules.academic_affairs.services import academic_affairs_attendance_occurrence_consumer as occurrence
+    from app.modules.academic_affairs.services.student_exam_read_service import _tenant_timezone
+
+    zone, _zone_name = _tenant_timezone(db)
+    current = now or datetime.now(zone)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=zone)
+    target = current.astimezone(zone).date()
+    base = {
+        "todayDate": target.isoformat(),
+        "logicalDate": target.isoformat(),
+        "calendarSource": "NORMAL",
+        "calendarEventId": None,
+        "todayWeekday": target.isoweekday(),
+        "todayWeek": None,
+    }
+    if not term:
+        return base
+    term_start = _as_date(term.start_date)
+    term_end = _as_date(term.end_date)
+    if not term_start or not term_end:
+        raise AppException(
+            "DATA_CONFLICT",
+            "当前学期缺少起止日期，无法确定今天的正式课程",
+            http_status=409,
+        )
+    if target < term_start or target > term_end:
+        return {**base, "calendarSource": "OUT_OF_TERM"}
+
+    wall_week, _wall_weekday = occurrence._week_and_weekday(term, target)
+    base["todayWeek"] = wall_week
+    try:
+        logical_date, source, event_id = occurrence._calendar_logical_date(
+            db, term, target, lock=False,
+        )
+    except AppException as exc:
+        source = _NO_CLASS_CALENDAR_MESSAGES.get(str(getattr(exc, "message", "") or ""))
+        if not source:
+            raise
+        return {**base, "calendarSource": source}
+
+    week_no, weekday = occurrence._week_and_weekday(term, logical_date)
+    return {
+        **base,
+        "logicalDate": logical_date.isoformat(),
+        "calendarSource": source,
+        "calendarEventId": str(event_id) if event_id else None,
+        "todayWeekday": weekday,
+        "todayWeek": week_no,
+    }
+
+
+def _schedule_item_occurs(item: dict, *, week_no: int, weekday: int) -> bool:
+    if int(item.get("weekday") or 0) != int(weekday):
+        return False
+    start = int(item.get("startWeek") or 0)
+    end = int(item.get("endWeek") or 0)
+    if start and week_no < start:
+        return False
+    if end and week_no > end:
+        return False
+    parity = str(item.get("weekParity") or "ALL").upper()
+    if parity == "ODD":
+        return week_no % 2 == 1
+    if parity == "EVEN":
+        return week_no % 2 == 0
+    if parity != "ALL":
+        raise AppException("DATA_CONFLICT", "正式课表存在未知单双周配置", http_status=409)
+    return True
+
+
+def project_student_today_items(items, context) -> list[dict]:
+    """Pure projection: select today's formal rows without creating schedule truth."""
+    if str((context or {}).get("calendarSource") or "NORMAL") in {
+        "HOLIDAY", "SWAP_SOURCE", "OUT_OF_TERM",
+    }:
+        return []
+    week_no = int((context or {}).get("todayWeek") or 0)
+    weekday = int((context or {}).get("todayWeekday") or 0)
+    if week_no <= 0 or weekday <= 0:
+        return []
+    rows = [
+        {**item, "sessionDate": context.get("todayDate"), "weekNo": week_no}
+        for item in items or []
+        if _schedule_item_occurs(item, week_no=week_no, weekday=weekday)
+    ]
+    return sorted(rows, key=lambda row: (
+        int(row.get("slotNo") or 0),
+        str(row.get("courseName") or ""),
+        str(row.get("itemId") or ""),
+    ))
+
+
 def schedule_my(user) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_schedule_service as schedule
 
@@ -197,13 +298,15 @@ def schedule_my(user) -> dict:
         student = _legacy._me(db, user)
         term, batch = _current_term_and_batch(db)
         meta = _schedule_meta(db, term, batch)
+        today_context = _student_today_context(db, term)
         student_id = student.id
     if not term:
-        return {**meta, "items": [], "note": "学校尚未设置当前学期"}
+        return {**meta, **today_context, "items": [], "todayItems": [], "note": "学校尚未设置当前学期"}
     if not batch:
-        return {**meta, "items": [], "note": "当前学期暂无已发布课表"}
+        return {**meta, **today_context, "items": [], "todayItems": [], "note": "当前学期暂无已发布课表"}
     data = schedule.student_view(batch.id, user, student_id)
-    return {**meta, **data}
+    today_items = project_student_today_items(data.get("items") or [], today_context)
+    return {**meta, **today_context, **data, "todayItems": today_items}
 
 
 def teacher_schedule_my(user) -> dict:

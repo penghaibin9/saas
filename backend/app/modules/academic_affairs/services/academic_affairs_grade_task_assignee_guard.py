@@ -175,9 +175,35 @@ def resolve_grade_task_assignee(db, node: str, task, *, college_perm: str = COLL
     （学院节点收敛到该院教学秘书/在岗负责人，校级节点优先 ACADEMIC_ADMIN）。
     """
     if node == ACADEMIC_NODE:
+        from datetime import datetime
+
+        from sqlalchemy import or_, select
+
+        from app.models import StaffAssignment
+
         candidates = _runtime_permission_holder_ids(db, academic_perm)
         college_bound = _college_bound_user_ids(db)
         school_level = [uid for uid in candidates if uid not in college_bound]
+        # 校级教务可能有多名持权账号；最终审批必须落到组织任职中明确指定的
+        # ACADEMIC_REVIEWER，而不是让所有教务管理员都能抢办。没有配置该岗位的
+        # 老租户继续走原有“领域角色天然唯一”兼容路径。
+        now = datetime.utcnow()
+        appointed = {
+            int(value)
+            for value in db.scalars(select(StaffAssignment.user_id).where(
+                StaffAssignment.tenant_id == _core._tid(),
+                StaffAssignment.org_type == "SCHOOL",
+                StaffAssignment.org_node_id == _core._tid(),
+                StaffAssignment.assignment_type == "ACADEMIC_REVIEWER",
+                StaffAssignment.status == "ACTIVE",
+                StaffAssignment.is_deleted.is_(False),
+                StaffAssignment.effective_at <= now,
+                or_(StaffAssignment.expires_at.is_(None), StaffAssignment.expires_at > now),
+            )).all()
+            if int(value) in school_level and _active_user(db, int(value))
+        }
+        if appointed:
+            return _unique_subject_assignee(appointed, node, subject)
         return _unique_subject_assignee(
             _preferred_role_candidates(db, school_level, "ACADEMIC_ADMIN"),
             node,

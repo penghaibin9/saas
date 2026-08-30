@@ -357,6 +357,7 @@ def student_courses(user, batch_id=None):
             AaSelectionCourse.batch_id.in_(batch_ids),
             AaSelectionCourse.is_deleted.is_(False),
         ).order_by(AaSelectionCourse.batch_id, AaSelectionCourse.id).all()
+        schedule_by_task = _student_course_schedule_projection(db, batches, course_rows)
         my_records = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.tenant_id == _base._core._tid(),
             AaSelectionRecord.student_id == student.id,
@@ -400,6 +401,7 @@ def student_courses(user, batch_id=None):
                     allowed_actions.insert(0, "VIEW")
                 projected_courses.append({
                     **_base._core._course_dto(course),
+                    "scheduleItems": schedule_by_task.get(int(course.teaching_task_id or 0), []),
                     "status": projection["status"],
                     "statusLabel": projection["statusLabel"],
                     "phase": projection["phase"],
@@ -425,6 +427,85 @@ def student_courses(user, batch_id=None):
                 "courses": projected_courses,
             })
         return out
+
+
+def _student_course_schedule_projection(db, batches, courses) -> dict[int, list[dict]]:
+    """Return the published meeting pattern for each selectable teaching task.
+
+    This is read-side context only: it helps a student understand *when* a course meets
+    before choosing it.  Enrollment authority remains in preflight/Command and a missing
+    published timetable is represented by an empty list instead of guessed client data.
+    """
+    from app.models import AaScheduleBatch, AaScheduleItem
+    from . import academic_affairs_schedule_truth_service as schedule_truth
+
+    task_ids = sorted({
+        int(course.teaching_task_id)
+        for course in courses or []
+        if course.teaching_task_id
+    })
+    term_ids = sorted({int(batch.term_id) for batch in batches or [] if batch.term_id})
+    if not task_ids or not term_ids:
+        return {}
+
+    active_by_term = schedule_truth.active_batch_ids_by_term(db, term_ids)
+    missing_terms = [term_id for term_id in term_ids if not active_by_term.get(term_id)]
+    if missing_terms:
+        # Compatibility for tenants created before ScopeHead existed: retain one
+        # newest PUBLISHED batch per SCHOOL/COLLEGE scope, never one per whole term.
+        published_batches = db.query(AaScheduleBatch).filter(
+            AaScheduleBatch.tenant_id == _base._core._tid(),
+            AaScheduleBatch.term_id.in_(missing_terms),
+            AaScheduleBatch.status == "PUBLISHED",
+            AaScheduleBatch.is_deleted.is_(False),
+        ).order_by(
+            AaScheduleBatch.term_id,
+            AaScheduleBatch.publish_at.desc(),
+            AaScheduleBatch.id.desc(),
+        ).all()
+        latest_by_scope = {}
+        for batch in published_batches:
+            scope = (
+                int(batch.term_id),
+                "COLLEGE" if batch.college_id else "SCHOOL",
+                int(batch.college_id or 0),
+            )
+            latest_by_scope.setdefault(scope, int(batch.id))
+        for (term_id, _scope_type, _scope_id), batch_id in latest_by_scope.items():
+            active_by_term.setdefault(term_id, []).append(batch_id)
+
+    active_batch_ids = [
+        batch_id
+        for term_id in term_ids
+        for batch_id in active_by_term.get(term_id, [])
+    ]
+    if not active_batch_ids:
+        return {}
+
+    rows = db.query(AaScheduleItem).filter(
+        AaScheduleItem.tenant_id == _base._core._tid(),
+        AaScheduleItem.batch_id.in_(active_batch_ids),
+        AaScheduleItem.task_id.in_(task_ids),
+        AaScheduleItem.status == "EFFECTIVE",
+        AaScheduleItem.is_deleted.is_(False),
+    ).order_by(
+        AaScheduleItem.task_id,
+        AaScheduleItem.weekday,
+        AaScheduleItem.slot_no,
+        AaScheduleItem.start_week,
+    ).all()
+    result: dict[int, list[dict]] = {}
+    for row in rows:
+        result.setdefault(int(row.task_id), []).append({
+            "scheduleItemId": str(row.id),
+            "weekday": int(row.weekday),
+            "slotNo": int(row.slot_no),
+            "startWeek": int(row.start_week),
+            "endWeek": int(row.end_week),
+            "weekParity": str(row.week_parity or "ALL"),
+            "classroom": row.classroom_text or "",
+        })
+    return result
 
 
 def batch_preflight(user, batch_id, action: str) -> dict:

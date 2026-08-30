@@ -45,9 +45,9 @@
         <div class="aa-filter">
           <label class="aa-filter__item">
             教师
-            <AppTeacherPicker v-model="teacherKey" placeholder="搜索教师姓名/工号" @change="load" />
+            <AppTeacherPicker v-model="teacherKey" placeholder="搜索教师姓名/工号" @change="onTeacherChange" />
           </label>
-          <AppButton v-if="selfKey" @click="teacherKey = selfKey; load()">查看本人课表</AppButton>
+          <AppButton v-if="selfKey" @click="showSelfSchedule">查看本人课表</AppButton>
           <AppButton variant="primary" :disabled="!teacherKey" @click="load">查询</AppButton>
         </div>
       </div>
@@ -117,7 +117,7 @@ export default {
       termId: '', week: 1, currentWeekNo: 0, weekRange: '',
       slots: [], items: [], note: '', loading: false, error: '',
       classId: '', className: '',
-      teacherKey: '', selfKey: String(u.userId || u.loginName || ''),
+      teacherKey: '', teacherName: '', selfKey: String(u.userId || u.loginName || ''),
       classroomId: '', classroomText: '',
       studentId: '', studentName: '',
       teachingClassCode: '', teachingClassName: ''
@@ -137,7 +137,7 @@ export default {
       return m[this.dim]
     },
     resultTitle() {
-      const name = { class: this.className, teacher: `教师 ${this.teacherKey}`, room: this.classroomText,
+      const name = { class: this.className, teacher: this.teacherName || '本人课表', room: this.classroomText,
                     student: this.studentName, teachingClass: this.teachingClassName }[this.dim]
       return (name ? `${name} · ` : '') + `第 ${this.week} 周课表`
     },
@@ -194,6 +194,18 @@ export default {
       if (!value) return
       this.load()
     },
+    onTeacherChange(value, items) {
+      const item = items?.[0]
+      const teacher = item?.raw || item || {}
+      this.teacherName = teacher.realName || teacher.teacherName || item?.label || ''
+      if (!value) return
+      this.load()
+    },
+    showSelfSchedule() {
+      this.teacherKey = this.selfKey
+      this.teacherName = '本人课表'
+      this.load()
+    },
     onTeachingClassChange(value, items) {
       const item = items?.[0]
       const row = item?.raw || item || {}
@@ -218,6 +230,7 @@ export default {
       this.loading = false
       if (res.code === 0) {
         this.items = res.data.items || []
+        if (res.data.teacherName) this.teacherName = res.data.teacherName
         this.note = res.data.note || ''
       } else {
         this.error = res.message

@@ -27,6 +27,7 @@ from app.services.sandbox_school_master_seed import validate_school_master
 from app.services.sandbox_school_mentor_workload import validate_school_mentor_workload_20k
 from app.services.sandbox_school_role_reconcile import (
     EXPECTED_ORG_SCOPES,
+    EXPECTED_ORG_SCOPE_TYPES,
     REQUIRED_ROLE_CODES,
     SECONDARY_ROLE_ASSIGNMENT_COUNTS,
 )
@@ -74,6 +75,7 @@ def _final_role_topology(db, tenant_id: int) -> tuple[dict, dict]:
         actual = int(db.scalar(select(func.count()).select_from(TeacherStudentScope).where(
             TeacherStudentScope.tenant_id == tenant_id,
             TeacherStudentScope.role_code == code,
+            TeacherStudentScope.scope_type == EXPECTED_ORG_SCOPE_TYPES[code],
             TeacherStudentScope.status == "ACTIVE",
             TeacherStudentScope.is_deleted.is_(False),
         )) or 0)

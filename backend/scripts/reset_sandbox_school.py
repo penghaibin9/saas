@@ -149,6 +149,12 @@ def main() -> int:
                 seed_academic_core_flows,
                 validate_academic_core_flows,
             )
+            from app.services.sandbox_school_academic_flow_gap_seed import (
+                seed_academic_flow_gap_coverage,
+            )
+            from app.services.sandbox_school_academic_flow_coverage import (
+                audit_academic_flow_coverage,
+            )
             from app.services.sandbox_school_affairs_runner import seed_school_affairs_20k
             from app.services.sandbox_school_affairs_seed import validate_affairs_facts
             from app.services.sandbox_school_affairs_operational_seed import (
@@ -214,6 +220,9 @@ def main() -> int:
                 validate_professional_academic_snapshots,
             )
             from app.services.sandbox_school_reconcile import reconcile_internship_capacity
+            from app.services.sandbox_school_relationship_closure import (
+                require_sandbox_relationship_closure,
+            )
             from app.services.sandbox_school_role_reconcile import (
                 reconcile_school_roles_20k,
                 validate_school_roles_20k,
@@ -271,6 +280,9 @@ def main() -> int:
             affairs_core_flows = seed_affairs_core_flows(db, SANDBOX_TID)
             shared_operational = seed_shared_operational_coverage(db, SANDBOX_TID)
             platform_operational = seed_platform_operational_coverage(db, SANDBOX_TID)
+            # AA-001～024 的成功链依赖教务、实习、毕设、就业、学工归档均已生成，
+            # 因此必须在所有域种子之后执行；失败即中止重建，不允许留下“表有数据但流程断链”的沙箱。
+            academic_flow_coverage = seed_academic_flow_gap_coverage(db, SANDBOX_TID)
 
             acceptance = {
                 "master": validate_school_master(db, SANDBOX_TID),
@@ -292,6 +304,7 @@ def main() -> int:
                 "academicQuality": validate_school_academic_quality_20k(db, SANDBOX_TID),
                 "academicArchive": validate_school_academic_archive_20k(db, SANDBOX_TID),
                 "academicCoreFlows": validate_academic_core_flows(db, SANDBOX_TID),
+                "academicFlowCoverage": audit_academic_flow_coverage(db, SANDBOX_TID),
                 "employment": validate_employment_facts_20k(db, SANDBOX_TID),
                 "studentAffairs": validate_affairs_facts(db, SANDBOX_TID),
                 "studentAffairsOperational": validate_affairs_operational_coverage(db, SANDBOX_TID),
@@ -301,6 +314,8 @@ def main() -> int:
                 "internshipReconciliation": internship_reconciliation,
                 "internshipOperational": validate_internship_operational_coverage(db, SANDBOX_TID),
                 "examReconciliation": exam_reconciliation,
+                # 最后一步不再只数表行数：必须证明主档→过程→终态→下游投影真的连得起来。
+                "relationshipClosure": require_sandbox_relationship_closure(db, SANDBOX_TID),
             }
             report = {
                 "reseeded": {
@@ -320,6 +335,7 @@ def main() -> int:
                     "professionalAcademicSnapshots": professional_academic_snapshots,
                     "academicTextbooks": academic_textbooks,
                     "academicCoreFlows": academic_core_flows,
+                    "academicFlowCoverage": academic_flow_coverage,
                     "academicOperational": academic_operational,
                     "academicQuality": academic_quality,
                     "academicArchive": academic_archive,

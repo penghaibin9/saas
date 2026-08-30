@@ -169,7 +169,172 @@ def _can_manage_all(ctx) -> bool:
     return ctx.scope_type == "TENANT_ALL"
 
 
+def _require_current_published_origin(db, batch, origin, *, lock_scope=False):
+    """Fail closed unless ``origin`` belongs to the current formal timetable truth.
+
+    ``PUBLISHED`` is only a lifecycle label. Once a batch is superseded, a stale
+    browser link or an old sandbox row must not create/apply a change against it
+    because all four timetable projections consume ScopeHead instead.
+    """
+    from app.models import AaScheduleScopeHead
+    from . import academic_affairs_schedule_truth_service as truth_service
+
+    if not batch or batch.is_deleted or batch.status != "PUBLISHED":
+        raise AppException(
+            "DATA_CONFLICT",
+            "该课位已发生变化或不再属于正式发布课表，请返回本人课表刷新后重新发起",
+            http_status=409,
+        )
+    scope_type = "COLLEGE" if batch.college_id else "SCHOOL"
+    scope_id = int(batch.college_id or 0)
+    if lock_scope:
+        # Final approval and publication serialize on the same authority row.  Keep
+        # this lock until the caller commits the schedule mutation, otherwise a
+        # correction draft can replace the head between validation and apply.
+        head = truth_service.lock_scope_head(
+            db, int(batch.term_id), scope_type, scope_id,
+        )
+        db.refresh(batch)
+        if origin is not None:
+            db.refresh(origin)
+        if batch.is_deleted or batch.status != "PUBLISHED":
+            raise AppException(
+                "DATA_CONFLICT",
+                "该课位已发生变化或不再属于正式发布课表，请返回本人课表刷新后重新发起",
+                http_status=409,
+            )
+    else:
+        head = db.scalars(select(AaScheduleScopeHead).where(
+            AaScheduleScopeHead.tenant_id == _tid(),
+            AaScheduleScopeHead.term_id == int(batch.term_id),
+            AaScheduleScopeHead.scope_type == scope_type,
+            AaScheduleScopeHead.scope_id == scope_id,
+            AaScheduleScopeHead.is_deleted.is_(False),
+        )).first()
+    if not head or int(head.active_batch_id or 0) != int(batch.id):
+        raise AppException(
+            "DATA_CONFLICT",
+            "该课位来自已被顶替的历史课表，不能继续调停课；请从当前正式课表重新发起",
+            details={
+                "originItemId": str(origin.id if origin else ""),
+                "originBatchId": str(batch.id),
+                "activeBatchId": str(head.active_batch_id if head and head.active_batch_id else ""),
+            },
+            http_status=409,
+        )
+    return head
+
+
+def _validate_adjust_window(origin, start_week: int, end_week: int, parity: str) -> None:
+    """A partial adjustment may only move occurrences contained by the origin."""
+    if start_week > end_week:
+        raise AppException("VALIDATION_ERROR", "目标起始周不能晚于结束周")
+    if start_week < int(origin.start_week) or end_week > int(origin.end_week):
+        raise AppException("VALIDATION_ERROR", "调课周次必须位于原课位有效周次内")
+    origin_parity = str(origin.week_parity or "ALL").upper()
+    target_parity = str(parity or "ALL").upper()
+    if origin_parity != "ALL" and target_parity != origin_parity:
+        raise AppException("VALIDATION_ERROR", "调课单双周必须属于原课位有效周次")
+
+
+def _clone_residual_item(db, origin, change_id: int, start_week: int, end_week: int, parity: str):
+    """Append one effective residual segment; the published origin remains immutable history."""
+    from app.models import AaScheduleItem
+
+    item = AaScheduleItem(
+        tenant_id=_tid(), batch_id=origin.batch_id, task_id=origin.task_id,
+        course_id=origin.course_id, course_name=origin.course_name,
+        class_id=origin.class_id, class_name=origin.class_name,
+        teacher_key=origin.teacher_key, teacher_name=origin.teacher_name,
+        weekday=origin.weekday, slot_no=origin.slot_no,
+        start_week=int(start_week), end_week=int(end_week), week_parity=parity,
+        classroom_id=origin.classroom_id, classroom_text=origin.classroom_text,
+        # change_id is the canonical link for the moved/new occurrence named by
+        # AaScheduleChange.new_item_id. Residual source segments are ordinary
+        # effective carry-forward rows; linking them as the changed occurrence
+        # makes strict teacher/attendance consumers reject the whole task.
+        source=origin.source, change_id=None, status="EFFECTIVE",
+    )
+    db.add(item)
+    db.flush()
+    return item
+
+
+def _create_adjust_residuals(db, change, origin) -> list[int]:
+    """Preserve all origin occurrences outside a partial ADJUST window."""
+    if change.change_type != "ADJUST":
+        return []
+    start_week = int(change.target_start_week or origin.start_week)
+    end_week = int(change.target_end_week or origin.end_week)
+    target_parity = str(change.target_week_parity or "ALL").upper()
+    _validate_adjust_window(origin, start_week, end_week, target_parity)
+    residuals = []
+    if int(origin.start_week) < start_week:
+        residuals.append(_clone_residual_item(
+            db, origin, change.id, int(origin.start_week), start_week - 1,
+            str(origin.week_parity or "ALL").upper(),
+        ).id)
+    if end_week < int(origin.end_week):
+        residuals.append(_clone_residual_item(
+            db, origin, change.id, end_week + 1, int(origin.end_week),
+            str(origin.week_parity or "ALL").upper(),
+        ).id)
+    origin_parity = str(origin.week_parity or "ALL").upper()
+    if origin_parity == "ALL" and target_parity in {"ODD", "EVEN"}:
+        complement = "EVEN" if target_parity == "ODD" else "ODD"
+        residuals.append(_clone_residual_item(
+            db, origin, change.id, start_week, end_week, complement,
+        ).id)
+    return [int(value) for value in residuals]
+
+
 _TERMINAL_STATES = ("APPLIED", "REJECTED", "CANCELLED")
+
+
+def get_origin_item(item_id, user) -> dict:
+    """Return the display summary used by the teacher change-application handoff.
+
+    This is deliberately a read-side projection.  It applies the same tenant,
+    published-state and teacher-ownership rules as ``submit`` so the route cannot
+    be used to inspect another teacher's timetable item.  The command still
+    repeats every check under lock; this helper never authorizes a write.
+    """
+    from app.models import AaScheduleBatch, AaScheduleItem
+
+    with session() as db:
+        origin = db.get(AaScheduleItem, int(item_id))
+        if not origin or origin.is_deleted or origin.tenant_id != _tid():
+            raise not_found("原课位不存在或已发生变化")
+        batch = db.get(AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
+        if origin.status != "EFFECTIVE":
+            raise AppException(
+                "DATA_CONFLICT",
+                "该课位已发生变化或不再属于正式发布课表，请返回本人课表刷新后重新发起",
+                http_status=409,
+            )
+        _require_current_published_origin(db, batch, origin)
+
+        ctx = build_affairs_context(user, db)
+        if not _can_manage_all(ctx):
+            keys = _derive_keys(user)
+            if not origin.teacher_key or origin.teacher_key not in keys:
+                raise no_data_scope("仅可查看并变更本人任课课位")
+
+        return {
+            "itemId": str(origin.id),
+            "batchId": str(batch.id),
+            "batchName": batch.batch_name or "正式课表",
+            "termId": str(batch.term_id or ""),
+            "courseName": origin.course_name or "",
+            "className": origin.class_name or "",
+            "teacherName": origin.teacher_name or "",
+            "weekday": origin.weekday,
+            "slotNo": origin.slot_no,
+            "startWeek": origin.start_week,
+            "endWeek": origin.end_week,
+            "weekParity": origin.week_parity or "ALL",
+            "classroom": origin.classroom_text or "",
+        }
 
 
 # ═══════════ 冲突预检（只读，不落库；供三申请表单提交前 UX 反馈）═══════════
@@ -177,7 +342,7 @@ _TERMINAL_STATES = ("APPLIED", "REJECTED", "CANCELLED")
 def conflict_check(body, user) -> dict:
     """只读预检：复用 `_detect_conflict`（不重复实现算法）。仍需归属校验——
     否则会变成一个可被任意教师用来探测他人课表安排信息的越权通道（CLAUDE.md §6.1）。"""
-    from app.models import AaScheduleItem
+    from app.models import AaScheduleBatch, AaScheduleItem
     origin_id = getattr(body, "originItemId", None)
     if not origin_id:
         raise AppException("VALIDATION_ERROR", "originItemId 必填")
@@ -188,6 +353,8 @@ def conflict_check(body, user) -> dict:
         origin = db.get(AaScheduleItem, int(origin_id))
         if not origin or origin.is_deleted or origin.tenant_id != _tid():
             raise not_found("原课表项不存在")
+        batch = db.get(AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
+        _require_current_published_origin(db, batch, origin)
         ctx = build_affairs_context(user, db)
         if not _can_manage_all(ctx):
             keys = _derive_keys(user)
@@ -220,8 +387,7 @@ def submit(body, user) -> dict:
         if origin.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "原课表项已变更/失效，不可再发起调停课")
         b = db.get(AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
-        if not b or b.status != "PUBLISHED":
-            raise AppException("DATA_CONFLICT", "仅已发布课表的课位可发起调停课")
+        _require_current_published_origin(db, b, origin)
         # 数据范围(COURSE)：非 TENANT_ALL 角色须为本人任课课位
         if not _can_manage_all(ctx):
             keys = _derive_keys(user)
@@ -240,6 +406,8 @@ def submit(body, user) -> dict:
             tew = int(getattr(body, "targetEndWeek", None) or origin.end_week)
             tp = (getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL")
             tcr = getattr(body, "targetClassroom", None) or origin.classroom_text
+            if ct == "ADJUST":
+                _validate_adjust_window(origin, tsw, tew, tp)
             if tw < 1 or tw > 7:
                 raise AppException("VALIDATION_ERROR", "目标星期非法")
             # 提交即三重冲突预检（同批次；排除原课位自身）
@@ -347,8 +515,10 @@ def review(cid, user, action, comment="") -> dict:
 
 def _apply_schedule(db, x) -> dict:
     """终审通过后改写课表：原课位标 CHANGED(保留历史)，调课/补课生成新项并回链本单，STATUS_CHANGED 通知师生。"""
-    from app.models import AaScheduleItem, StudentProfile, User
+    from app.models import AaScheduleBatch, AaScheduleItem, StudentProfile, User
     origin = db.get(AaScheduleItem, int(x.origin_item_id)) if x.origin_item_id else None
+    batch = db.get(AaScheduleBatch, int(origin.batch_id)) if origin and origin.batch_id else None
+    _require_current_published_origin(db, batch, origin, lock_scope=True)
     # 复核目标冲突仍为 0（并发防护）
     new_item_id = None
     if x.change_type in ("ADJUST", "MAKEUP"):
@@ -359,6 +529,7 @@ def _apply_schedule(db, x) -> dict:
         if conflict:
             raise AppException("DATA_CONFLICT", f"复核目标课位冲突（{conflict['type']}）：{conflict['detail']}")
     # 原课位：调课/停课置 CHANGED（保留历史，禁直接 UPDATE 已发布项）；补课不动原课位
+    residual_item_ids = _create_adjust_residuals(db, x, origin) if origin else []
     if origin and x.change_type in ("ADJUST", "STOP"):
         origin.status = "CHANGED"
     # 调课/补课生成新课表项，回链本单
@@ -372,7 +543,9 @@ def _apply_schedule(db, x) -> dict:
             start_week=x.target_start_week or origin.start_week,
             end_week=x.target_end_week or origin.end_week,
             week_parity=x.target_week_parity or "ALL",
-            classroom_text=x.target_classroom, change_id=x.id, status="EFFECTIVE")
+            classroom_id=(origin.classroom_id if x.target_classroom == origin.classroom_text else None),
+            classroom_text=x.target_classroom, source=origin.source,
+            change_id=x.id, status="EFFECTIVE")
         db.add(ni)
         db.flush()
         new_item_id = ni.id
@@ -413,7 +586,9 @@ def _apply_schedule(db, x) -> dict:
             _msg(db, uid, title, content, "STATUS_CHANGED", x.id)
             students += 1
     _audit(db, x.id, "APPLIED", f"newItem={new_item_id},pushed={students}生+{teacher_notified}师")
-    return {"status": "APPLIED", "newItemId": str(new_item_id or ""), "originKept": "CHANGED(历史留痕)",
+    return {"status": "APPLIED", "newItemId": str(new_item_id or ""),
+            "residualItemIds": [str(value) for value in residual_item_ids],
+            "originKept": "CHANGED(历史留痕)",
             "notified": {"students": int(students), "teacher": teacher_notified, "channel": "STATUS_CHANGED"}}
 
 

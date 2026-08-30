@@ -64,6 +64,12 @@ def _raw_role_scope(db, role) -> str:
     marker = str(role.remark or "")
     if ";scope=" in marker:
         return marker.split(";scope=", 1)[1].split(";", 1)[0].strip().upper()
+    # 内置角色以冻结模板为权威。历史角色 remark 只有展示文本（例如“/ SCHOOL”），
+    # 不一定带 ;scope= 标记；若直接回落旧字典，较新的角色会被误判为 ASSIGNED。
+    from app.services.saas_role_templates import ROLE_TEMPLATE_BY_CODE
+    template = ROLE_TEMPLATE_BY_CODE.get(str(role.role_code or "").strip().upper())
+    if template is not None:
+        return str(template["defaultScope"]).upper()
     from app.services.auth_service_db import ROLE_DEFAULT_SCOPE
     return str(ROLE_DEFAULT_SCOPE.get(role.role_code, ("ASSIGNED", ""))[0]).upper()
 

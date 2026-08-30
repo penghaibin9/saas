@@ -74,8 +74,7 @@ def submit(body, user) -> dict:
             AaScheduleBatch.tenant_id == _legacy._tid(),
             AaScheduleBatch.is_deleted.is_(False),
         ).first() if origin.batch_id else None
-        if not batch or batch.status != "PUBLISHED":
-            raise AppException("DATA_CONFLICT", "仅已发布课表的课位可发起调停课", http_status=409)
+        _legacy._require_current_published_origin(db, batch, origin)
 
         existing = db.query(AaScheduleChange).filter(
             AaScheduleChange.tenant_id == _legacy._tid(),
@@ -108,6 +107,8 @@ def submit(body, user) -> dict:
             tew = int(getattr(body, "targetEndWeek", None) or origin.end_week)
             tp = getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL"
             tcr = getattr(body, "targetClassroom", None) or origin.classroom_text
+            if ct == "ADJUST":
+                _legacy._validate_adjust_window(origin, tsw, tew, tp)
             if tw < 1 or tw > 7:
                 raise AppException("VALIDATION_ERROR", "目标星期非法")
             conflict = _legacy._detect_conflict(
@@ -258,6 +259,9 @@ def review(cid, user, action, comment="", *, expected_version=None) -> dict:
         ).with_for_update().first() if change.origin_item_id else None
         if not origin:
             raise AppException("DATA_CONFLICT", "原课表项不存在，终审不能生效", http_status=409)
+        from app.models import AaScheduleBatch
+        batch = db.get(AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
+        _legacy._require_current_published_origin(db, batch, origin)
         if change.change_type in ("ADJUST", "STOP") and origin.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "原课表项已被其它操作变更，终审已回滚", http_status=409)
 
