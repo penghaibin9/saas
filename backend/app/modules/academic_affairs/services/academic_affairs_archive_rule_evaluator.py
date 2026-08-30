@@ -112,10 +112,19 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
     unresolved = []
     resolved = []
     replay_as_of = getattr(term, "end_date", None) if term is not None else None
+    resolution_cache = {}
     for student in students:
-        resolution = resolve_student_program(
-            db, student, tenant_id=_tid(), as_of=replay_as_of
+        resolution_key = (
+            int(getattr(student, "major_id", 0) or 0),
+            str(getattr(student, "grade", None) or "").strip(),
+            int(getattr(student, "class_id", 0) or 0),
         )
+        resolution = resolution_cache.get(resolution_key)
+        if resolution is None:
+            resolution = resolve_student_program(
+                db, student, tenant_id=_tid(), as_of=replay_as_of
+            )
+            resolution_cache[resolution_key] = resolution
         if resolution.status != "RESOLVED" or not resolution.program:
             unresolved.append({
                 "studentId": str(student.id),
@@ -195,6 +204,7 @@ def _expected_opening(db, term, *, college_ids=None):
     expected = []
     structural = []
     replay_as_of = getattr(term, "end_date", None)
+    course_cache = {}
     for clazz in classes:
         grade = str(getattr(clazz, "grade", None) or "").strip()
         scope = cohort_term_scope(term.year_code, term.term_no, grade)
@@ -225,12 +235,16 @@ def _expected_opening(db, term, *, college_ids=None):
             continue
         program = resolution.program
         plan_term = int(scope["planTerm"])
-        courses = db.query(AaProgramCourse).filter(
-            AaProgramCourse.tenant_id == _tid(),
-            AaProgramCourse.program_id == int(program.id),
-            AaProgramCourse.open_term_no == plan_term,
-            AaProgramCourse.is_deleted.is_(False),
-        ).all()
+        course_key = (int(program.id), plan_term)
+        courses = course_cache.get(course_key)
+        if courses is None:
+            courses = db.query(AaProgramCourse).filter(
+                AaProgramCourse.tenant_id == _tid(),
+                AaProgramCourse.program_id == int(program.id),
+                AaProgramCourse.open_term_no == plan_term,
+                AaProgramCourse.is_deleted.is_(False),
+            ).all()
+            course_cache[course_key] = courses
         for course in courses:
             if not course.course_id:
                 structural.append({

@@ -64,8 +64,10 @@ class _OpeningDb:
     def __init__(self, classes, courses):
         self.classes = classes
         self.courses = courses
+        self.query_counts = {}
 
     def query(self, model):
+        self.query_counts[model.__name__] = self.query_counts.get(model.__name__, 0) + 1
         if model.__name__ in {"SchoolClass", "StudentProfile"}:
             return _OpeningQuery(self.classes)
         if model.__name__ == "AaProgramCourse":
@@ -97,9 +99,10 @@ def test_historical_opening_projection_uses_one_canonical_program_per_class(monk
 
     monkeypatch.setattr(policy, "resolve_program_for_scope", resolve)
     set_tenant({"tenantId": "1"})
+    opening_db = _OpeningDb(classes, courses)
     try:
         expected, structural = policy._expected_opening(
-            _OpeningDb(classes, courses), term
+            opening_db, term
         )
     finally:
         set_tenant(None)
@@ -108,6 +111,7 @@ def test_historical_opening_projection_uses_one_canonical_program_per_class(monk
     assert [row["key"] for row in expected] == [(501, 1), (501, 2)]
     assert [call["class_id"] for call in calls] == [1, 2]
     assert all(call["as_of"] == cutoff for call in calls)
+    assert opening_db.query_counts["AaProgramCourse"] == 1
 
 
 def test_historical_program_coverage_replays_binding_at_term_end(monkeypatch):
@@ -117,6 +121,10 @@ def test_historical_program_coverage_replays_binding_at_term_end(monkeypatch):
     cutoff = datetime(2026, 7, 12, 23, 59)
     student = SimpleNamespace(
         id=1, student_no="2024S0001", major_id=10, class_id=1,
+        grade="2024", college_id=2, student_status="REGISTERED",
+    )
+    classmate = SimpleNamespace(
+        id=2, student_no="2024S0002", major_id=10, class_id=1,
         grade="2024", college_id=2, student_status="REGISTERED",
     )
     captured = []
@@ -133,7 +141,7 @@ def test_historical_program_coverage_replays_binding_at_term_end(monkeypatch):
     set_tenant({"tenantId": "1"})
     try:
         result = policy.evaluate_program(
-            _OpeningDb([student], []),
+            _OpeningDb([student, classmate], []),
             SimpleNamespace(
                 id=4, year_code="2025-2026", term_no=2, end_date=cutoff,
             ),
@@ -142,6 +150,7 @@ def test_historical_program_coverage_replays_binding_at_term_end(monkeypatch):
         set_tenant(None)
 
     assert result["result"] == "PASS"
+    assert result["recordCount"] == 2
     assert captured == [{"tenant_id": 1, "as_of": cutoff}]
 
 
