@@ -104,10 +104,16 @@ PRODUCTION_PACKAGE_PATHS = (
         code="ACADEMIC_ARCHIVE_EXPORT",
         classification=EXPORT_ONLY,
         selected_scope=False,
-        manifest_writers=("backend/app/modules/academic_affairs/services/academic_affairs_archive_manifest_service.py",),
+        manifest_writers=(
+            "backend/app/modules/academic_affairs/services/academic_affairs_archive_manifest_service.py",
+            "backend/app/services/sandbox_school_academic_archive_seed.py",
+        ),
         builders=("backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py",),
         download_endpoints=("/api/v1/academic-affairs/archive/batches/{bid}/export",),
-        authority_note="Academic term archive/export authority is not File Center ArchiveManifest truth.",
+        authority_note=(
+            "Academic term archive/export authority is not File Center ArchiveManifest truth; "
+            "the 20K sandbox writer seeds the same formal academic manifest algorithm for release evidence."
+        ),
     ),
     ProductionPackagePath(
         code="GRADUATION_BULK_ARCHIVE_EXPORT",

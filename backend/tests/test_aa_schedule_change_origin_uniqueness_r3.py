@@ -58,7 +58,7 @@ def _patch(monkeypatch):
 
 def _seed_origins():
     from app.db.session import get_sessionmaker
-    from app.models import AaScheduleBatch, AaScheduleItem, Tenant
+    from app.models import AaScheduleBatch, AaScheduleItem, AaScheduleScopeHead, Tenant
 
     db = get_sessionmaker()()
     try:
@@ -75,6 +75,26 @@ def _seed_origins():
             db.flush()
         batch = AaScheduleBatch(tenant_id=TID, term_id=99001, batch_name="R3 已发布课表", status="PUBLISHED")
         db.add(batch); db.flush()
+        head = db.scalars(select(AaScheduleScopeHead).where(
+            AaScheduleScopeHead.tenant_id == TID,
+            AaScheduleScopeHead.term_id == 99001,
+            AaScheduleScopeHead.scope_type == "SCHOOL",
+            AaScheduleScopeHead.scope_id == 0,
+            AaScheduleScopeHead.is_deleted.is_(False),
+        )).one_or_none()
+        if head is None:
+            head = AaScheduleScopeHead(
+                tenant_id=TID,
+                term_id=99001,
+                scope_type="SCHOOL",
+                scope_id=0,
+                active_batch_id=int(batch.id),
+                version=1,
+            )
+            db.add(head)
+        else:
+            head.active_batch_id = int(batch.id)
+            head.version = int(head.version or 0) + 1
         origins = []
         for index in (1, 2):
             item = AaScheduleItem(
