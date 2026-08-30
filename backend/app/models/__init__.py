@@ -27,6 +27,7 @@ from app.models.idempotency import IdempotencyRecord  # noqa: F401
 from app.models.system_config import DataScopeRule, MenuNode, SysConfig  # noqa: F401  (系统管理·可编辑配置)
 from app.models.system_governance import SystemJsonDoc  # noqa: F401  (系统管理·治理 JSON 文档)
 from app.models.file import FileObject  # noqa: F401
+from app.models.platform_integrity import IntegrityException  # noqa: F401
 from app.models.data_exchange import ExportJob, ImportJob, ImportRowError  # noqa: F401
 from app.models.platform import PlatformConfig, PlatformNotice, PlatformOrder  # noqa: F401
 from app.models.internship import (AttendanceException, InternshipAgreement,  # noqa: F401
@@ -232,3 +233,7 @@ from app.models.national_standard import (NationalMajorCatalog, NationalStandard
 
 from app.models.affairs_repair_job import AffairsRepairJob  # noqa: F401  (学工申诉补偿租约任务)
 from app.models.password_reset import PasswordResetSmsJob  # noqa: F401
+from app.modules.platform.business_forms.models import (  # noqa: F401
+    BusinessFormDefinition,
+    BusinessFormVersion,
+)
