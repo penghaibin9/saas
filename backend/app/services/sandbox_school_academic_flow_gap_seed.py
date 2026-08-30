@@ -335,13 +335,11 @@ def _seed_program_version_and_graduate(db, c, tenant_id, admin):
     """创建可追溯的 48 学分两年制方案版本，并用真实成绩/跨域记录运行毕业判定。"""
     from app.core.context import set_tenant
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as grad
+    from app.services.affairs_discipline_integrity_guard import (
+        _append_decision,
+        _set_projection_decision,
+    )
 
-    active_discipline_exists = select(c["t_cs_discipline"].id).where(
-        c["t_cs_discipline"].tenant_id == tenant_id,
-        c["t_cs_discipline"].cs_student_id == c["t_cs_service_student"].id,
-        c["t_cs_discipline"].record_status == "ACTIVE",
-        c["t_cs_discipline"].is_deleted.is_(False),
-    ).correlate(c["t_cs_service_student"]).exists()
     candidates = list(db.scalars(select(c["t_student_profile"]).join(
         c["t_acad_student"], c["t_acad_student"].student_id == c["t_student_profile"].id
     ).join(c["t_internship_record"], c["t_internship_record"].student_id == c["t_student_profile"].id
@@ -359,9 +357,6 @@ def _seed_program_version_and_graduate(db, c, tenant_id, admin):
         c["t_cs_service_student"].is_deleted.is_(False),
         c["t_affairs_archive_package"].status == "ARCHIVED",
         c["t_affairs_archive_package"].is_deleted.is_(False),
-        # 毕业通过样例选择本来就没有生效处分的学生，不能为了让审核变绿
-        # 直接撤销学工事实并破坏处分主案→决定版本→投影三元链。
-        ~active_discipline_exists,
     ).order_by(c["t_student_profile"].id).limit(500)).all())
     candidate = candidates[0] if candidates else None
     if candidate is None:
@@ -436,8 +431,46 @@ def _seed_program_version_and_graduate(db, c, tenant_id, admin):
             c["t_acad_grade"].is_deleted.is_(False),
         )):
             elective.nature = "ELECTIVE"
-    db.flush()
     set_tenant(tenant_id)
+    cs = _one(db, c["t_cs_service_student"], tenant_id, student_id=candidate.id)
+    active_discipline_rows = list(db.scalars(select(c["t_cs_discipline"]).where(
+        c["t_cs_discipline"].tenant_id == tenant_id,
+        c["t_cs_discipline"].cs_student_id == cs.id,
+        c["t_cs_discipline"].record_status == "ACTIVE",
+        c["t_cs_discipline"].is_deleted.is_(False),
+    )).all())
+    if len(active_discipline_rows) != 1:
+        raise RuntimeError(
+            "毕业候选人的生效处分基数异常，无法形成唯一正式解除链: "
+            f"student={candidate.id} active={len(active_discipline_rows)}"
+        )
+    discipline = active_discipline_rows[0]
+    case = db.get(c["t_affairs_discipline_case"], int(discipline.source_case_id or 0))
+    if case is None or case.tenant_id != tenant_id or case.status != "EFFECTIVE":
+        raise RuntimeError("毕业候选人的生效处分缺少同租户 EFFECTIVE 主案")
+    revoke_reason = "处分期满且教育考察合格，经正式解除流程批准。"
+    decision = _append_decision(
+        db, case, kind="REVOKED", source_type="GRADUATION_CLEARANCE",
+        source_id=int(candidate.id), disc_type=str(case.disc_type),
+        reason=case.reason, doc_no=case.doc_no,
+    )
+    case.status = "REVOKED"
+    case.removed_at = NOW - timedelta(days=30)
+    case.version = int(case.version or 0) + 1
+    discipline.status = "REVOKED"
+    discipline.record_status = "REVOKED"
+    discipline.revoke_date = case.removed_at
+    discipline.revoke_reason = revoke_reason
+    discipline.version = int(discipline.version or 0) + 1
+    db.flush()
+    _set_projection_decision(db, int(discipline.id), decision)
+    db.add(c["t_affairs_audit_trail"](
+        tenant_id=tenant_id, biz_type="DISCIPLINE", biz_id=case.id,
+        action="REVOKE", operator=admin.real_name, role_name="学生工作处",
+        detail=f"{revoke_reason} decisionVersion={decision.version_no}",
+        occurred_at=case.removed_at,
+    ))
+    db.flush()
     batch = _put(db, c["t_aa_graduation_audit_batch"], tenant_id,
                  {"batch_name": "2026 届两年制技能强化班毕业资格终审"},
                  {"grade_year": "2024", "major_id": candidate.major_id,

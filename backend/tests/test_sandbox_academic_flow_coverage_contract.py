@@ -82,9 +82,11 @@ def test_core_flow_keeps_schedule_approval_and_thirteen_domain_manifest_chains()
     assert 'domain_hashes["GRADE"]' in source
 
 
-def test_graduation_sample_does_not_revoke_student_affairs_discipline_facts():
+def test_graduation_sample_uses_append_only_discipline_revocation_chain():
     source = inspect.getsource(_seed_program_version_and_graduate)
-    assert "active_discipline_exists" in source
-    assert "~active_discipline_exists" in source
-    assert 'discipline.status = "REVOKED"' not in source
-    assert 'discipline.record_status = "REVOKED"' not in source
+    assert '_append_decision(' in source
+    assert 'kind="REVOKED"' in source
+    assert 'source_type="GRADUATION_CLEARANCE"' in source
+    assert "_set_projection_decision" in source
+    assert 'case.status = "REVOKED"' in source
+    assert 'discipline.status = "REVOKED"' in source

@@ -163,6 +163,15 @@ def test_role_assignment_scope_collation_matches_legacy_role_codes():
     assert "t_role_assignment_scope" in migration
 
 
+def test_discipline_readonly_check_accepts_one_formally_revoked_chain():
+    source = _read("app/services/sandbox_school_discipline_decision_reconcile.py")
+
+    assert "revoked_cases in (0, 1)" in source
+    assert "linked_revoked == revoked_cases" in source
+    assert "GRADUATION_CLEARANCE" in source
+    assert "previous.decision_kind = 'ORIGINAL'" in source
+
+
 def test_academic_main_chain_verifier_uses_cross_module_business_identities():
     source = _read("scripts/verify_sandbox_academic_main_chain.py")
     change = _read(
