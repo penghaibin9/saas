@@ -86,6 +86,10 @@ def test_p0_purge_registry_locks_reviewed_exception_semantics():
         "t_class",
         "t_green_channel_application",
         "t_emp_recommendation",
+        "t_business_form_definition",
+        "t_business_form_version",
+        "t_document_compare_result",
+        "t_integrity_exception",
     }
 
     assert {name for name in retained if classify_table(name).classification != RETAIN} == set()
