@@ -85,7 +85,7 @@ def lifecycle_timeline(db, *, student_id: int, user: dict, source_module: str | 
         )))
     else:
         staff_codes = ["STUDENT_SELF_AND_SCOPED_STAFF", "SCOPED_STAFF_ONLY"]
-        can_view_sensitive = has_permission(user or {}, "studentLifecycle.sensitive.view") \
+        can_view_sensitive = has_permission(user or {}, "systemAdmin.audit.sensitive.view") \
             or has_permission(user or {}, "*")
         if can_view_sensitive:
             staff_codes.append("RESTRICTED_STAFF_ONLY")

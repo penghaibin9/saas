@@ -27,7 +27,6 @@ router = APIRouter(tags=["PLAT-A·冻结证据与一致性"])
 _INTEGRITY_VIEW = require_any_permission(
     "systemAdmin.fileGovernance.view",
     "systemAdmin.audit.view",
-    "audit.view",
 )
 _INTEGRITY_MANAGE = require_any_permission(
     "systemAdmin.file.manage",

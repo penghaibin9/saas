@@ -94,7 +94,7 @@ def test_staff_restricted_visibility_requires_explicit_sensitive_permission(monk
     monkeypatch.setattr(
         service,
         "has_permission",
-        lambda _user, permission: permission == "studentLifecycle.sensitive.view",
+        lambda _user, permission: permission == "systemAdmin.audit.sensitive.view",
     )
     privileged_result = service.lifecycle_timeline(
         privileged, student_id=7, user={"userType": "TEACHER"},
