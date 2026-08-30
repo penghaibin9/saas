@@ -108,14 +108,16 @@ def _rebuild_budget_audit() -> dict | None:
     if not log_path.exists():
         return None
     from scripts.check_sandbox_20k_rebuild_budget import (
+        MAX_CPU_SECONDS,
         MAX_RSS_MIB,
-        MAX_SECONDS,
+        MAX_WALL_SECONDS,
         check_budget,
     )
     metrics = check_budget(log_path)
     return {
         **metrics,
-        "maxSeconds": MAX_SECONDS,
+        "maxCpuSeconds": MAX_CPU_SECONDS,
+        "maxWallSeconds": MAX_WALL_SECONDS,
         "maxRssLimitMiB": MAX_RSS_MIB,
         "passed": True,
     }
