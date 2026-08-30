@@ -65,3 +65,17 @@ def test_final_scale_contract_counts_auditable_flow_versions():
         '"scheduleItems": EXPECTED_SCHEDULE_ITEMS_AFTER_FLOW_COVERAGE'
         in validator
     )
+
+
+def test_core_flow_keeps_schedule_approval_and_thirteen_domain_manifest_chains():
+    from app.services.sandbox_school_academic_core_flow_seed import (
+        seed_academic_core_flows,
+    )
+
+    source = inspect.getsource(seed_academic_core_flows)
+    assert "_repair_schedule_change_workflows" in source
+    assert 'report["scheduleChangeWorkflow"]' in source
+    assert 'json.loads(manifest_v1.domain_counts_json or "{}")' in source
+    assert "len(domain_counts) != 13" in source
+    assert "manifest_service._manifest_payload" in source
+    assert 'domain_hashes["GRADE"]' in source
