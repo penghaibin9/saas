@@ -250,6 +250,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
         mobile_graduation_teacher_context, mobile_orientation_teacher,
         mobile_internship_context, mobile_internship_leave_context, mobile_internship_student,
         national_standards, notification, onboarding, org_directory, stats,
+        platform_integrity,
         student_portal_graduation_guard, transfer, user_preference,
     )
     from app.api.v1 import message as message_simple
@@ -257,7 +258,9 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.api.v1 import todo as todo_simple
     from app.api.v1.todos import make_router as make_todos_router
     from app.modules.internship.routers import internship_student_selection
+    from app.modules.platform.document_lifecycle.router import router as document_lifecycle_router
     from app.student_portal.router import router as student_portal_router
+    from app.api.v1 import platform_business_forms
 
     api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
     api_router.include_router(todo_simple.router, prefix="/todos", tags=["todos"])
@@ -276,7 +279,10 @@ def register_platform_routes(api_router: APIRouter) -> None:
     api_router.include_router(audit.alias_router)
     from app.modules.platform.routers import platform_router
     api_router.include_router(platform_router.router)
+    api_router.include_router(platform_business_forms.router)
+    api_router.include_router(document_lifecycle_router)
     api_router.include_router(stats.router)
+    api_router.include_router(platform_integrity.router)
     api_router.include_router(mobile_export.router)
     api_router.include_router(mobile_orientation_teacher.router)
 

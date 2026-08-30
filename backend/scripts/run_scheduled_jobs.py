@@ -20,6 +20,7 @@ log = logging.getLogger("app.scheduler")
 
 # 频率（秒）
 INTERVAL_DELIVERY = 15          # 消息投递 / Outbox
+INTERVAL_FILE_JOBS = 30         # 文档派生 + 毕业冻结证据包
 INTERVAL_STUDENT_AFFAIRS = 60    # 学工补偿租约 + 异步导出 + 审批导出
 INTERVAL_ACADEMIC_EFFECTIVE = 60 # Stage C1：已批准的未来生效学籍异动
 INTERVAL_SCHEDULED_MSG = 45     # 定时消息到点发布
@@ -273,6 +274,32 @@ def job_student_affairs_background() -> None:
                      lambda _tid: archive.run_pending_packages(limit=2))
 
 
+def job_file_derivatives() -> None:
+    """Process tenant-scoped document intelligence and frozen-package FileJobs."""
+    from app.modules.platform.document_lifecycle import derived_worker
+    from app.services import tenant_effective_state_service as tenant_state
+    from app.workers.frozen_package_worker import process_pending_frozen_packages
+
+    _run_for_tenants(
+        "document_lifecycle_jobs",
+        tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda tenant_id: derived_worker.process_pending_jobs(
+            tenant_id=tenant_id,
+            limit=20,
+            worker_id=f"scheduler-document:{tenant_id}",
+        ),
+    )
+    _run_for_tenants(
+        "frozen_package_jobs",
+        tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda tenant_id: process_pending_frozen_packages(
+            tenant_id=tenant_id,
+            limit=20,
+            worker_id=f"scheduler-frozen:{tenant_id}",
+        ),
+    )
+
+
 def job_academic_future_effective() -> None:
     """Stage C1 due changes create business facts and require writable effective state."""
     from app.modules.academic_affairs.services import academic_affairs_change_temporal_guard as temporal
@@ -365,6 +392,7 @@ def main() -> int:
     now0 = time.monotonic()
     tickers = [
         _Ticker(INTERVAL_DELIVERY, now0, job_delivery_and_outbox),
+        _Ticker(INTERVAL_FILE_JOBS, now0, job_file_derivatives),
         _Ticker(INTERVAL_STUDENT_AFFAIRS, now0, job_student_affairs_background),
         _Ticker(INTERVAL_ACADEMIC_EFFECTIVE, now0, job_academic_future_effective),
         _Ticker(INTERVAL_GRADE_DEADLINE, now0, job_grade_deadline),

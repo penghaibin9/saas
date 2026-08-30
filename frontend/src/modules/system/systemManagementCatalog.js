@@ -87,6 +87,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-school-brand', label: '学校信息与品牌', path: '/admin/system/config?tab=brand', permissionKey: 'system.config.brand.manage', view: 'config', actions: [action('config:brand:update', '修改品牌配置', 'HIGH')] },
       { key: 'sys-module-entitlements', label: '模块授权与业务开关', path: '/admin/system/module-entitlements', permissionKey: 'system.config.feature.view', view: 'module-entitlements', actions: [action('config:feature:toggle', '调整业务开关', 'HIGH')] },
       { key: 'sys-master-data', label: '主数据责任与数据质量', path: '/admin/system/master-data', permissionKey: 'system.config.view', view: 'master-data', actions: [] },
+      { key: 'sys-business-forms', label: '合规与业务表单', path: '/admin/system/business-forms', permissionKey: 'systemAdmin.config.view', view: 'business-forms', actions: [action('systemAdmin.config.manage', '发布或停用表单版本', 'HIGH')] },
       { key: 'sys-academic-calendar', label: '学年学期与业务日历', path: '/admin/system/academic-calendar', permissionKey: 'systemAdmin.academicCalendar.view', view: 'academic-calendar', actions: [action('systemAdmin.academicCalendar.manage', '切换全校学期', 'HIGH'), action('systemAdmin.academicCalendar.manage', '维护业务窗口')] }
     ]
   },
@@ -108,6 +109,7 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-login-audit', label: '登录与安全审计', path: '/admin/system/logs?tab=login', permissionKey: 'system.audit.login.view', view: 'logs', actions: [action('audit:login:view', '查看登录审计'), action('audit:login:export', '导出登录审计', 'HIGH')] },
       { key: 'sys-sensitive-audit', label: '敏感与导入导出审计', path: '/admin/system/sensitive-audit', permissionKey: 'system.audit.sensitive.view', view: 'sensitive-audit', actions: [action('audit:sensitive:view', '查看敏感审计'), action('audit:export:view', '查看导入导出审计')] },
       { key: 'sys-audit-evidence', label: '安全审计证据与完整性', path: '/admin/system/audit-evidence', permissionKey: 'systemAdmin.audit.view', view: 'audit-evidence', actions: [action('audit:evidence:export', '导出证据包', 'HIGH')] },
+      { key: 'sys-platform-integrity', label: '完整性异常中心', path: '/admin/system/platform-integrity', permissionKey: 'systemAdmin.fileGovernance.view', view: 'platform-integrity', actions: [action('systemAdmin.fileGovernance.view', '执行有界巡检'), action('systemAdmin.file.manage', '处置异常', 'HIGH')] },
       {
         key: 'sys-file-storage-governance',
         label: '文件存储治理',

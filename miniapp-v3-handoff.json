@@ -1,23 +1,23 @@
 {
   "schema": "miniapp-v3-handoff/1",
-  "generatedAt": "2026-08-20T04:46:00.000Z",
-  "studentMergeSha": "b5533f99e4e277050e5beeb3e364b14298a18048",
+  "generatedAt": "2026-08-30T05:32:54.806Z",
+  "studentMergeSha": "67b80bda4daf3f6053854be6218d0d2b2586f7a9",
   "actionSchemaVersion": "1.0.0",
-  "routeInventoryHash": "8e9bdf2e10a9093639a376d3273e5b45657a74cee04f6346cb2e24644c42e87d",
-  "routeCount": 137,
-  "subpackageHash": "99a738325053e64632958dd73485bd563faf902f5a5c4a93892b12bec6b1473f",
+  "routeInventoryHash": "9092f134152fe55bc4268b572e3966449b9448658e7b52dbb467591c85a0a7e2",
+  "routeCount": 140,
+  "subpackageHash": "bbf0fa6dbf1c07d9adfb4c1bf3b48b85449616bd027ee313522395aa26004bd3",
   "subpackages": [
     {
       "root": "pages/student",
-      "pages": 68
+      "pages": 69
     },
     {
       "root": "pages/teacher",
-      "pages": 57
+      "pages": 58
     }
   ],
   "networkPagerVersion": "1.0.0",
   "attachmentPickerVersion": "1.0.0",
-  "alembicHead": "20260818_merge_prog_grade_dl",
-  "packageReportSha": "93a8436297c82e08db7c41b3f25f3b7462d1aaf2a63691653826c554f956faa4"
+  "alembicHead": "20260830_plat_c_lifecycle",
+  "packageReportSha": "be3286a3466ce74e53cc7861528fff04842d228e7d0fc920996991be023d915b"
 }

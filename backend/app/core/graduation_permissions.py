@@ -176,6 +176,11 @@ GRADUATION_ENDPOINT_PERMISSION_OVERRIDES = {
     "graduation_batch.batch_archive": "graduationDesign.batch.archive",
     "graduation_student.batch_archive": "graduationDesign.student.manage",
 
+    # PLAT-A frozen-package projection lives outside the graduation routers, but
+    # remains governed by the same explicit graduation action catalogue.
+    "platform_integrity.graduation_manifest_package": "graduationDesign.archive.view",
+    "platform_integrity.graduation_manifest_package_build": "graduationDesign.archive.file",
+
     # Stage 6 材料中心：显式动作权限；文件对象范围仍由 resolver 二次收敛。
     "graduation_material_center.material_rules": "graduationDesign.student.view",
     "graduation_material_center.create_material_rule": "graduationDesign.student.manage",

@@ -85,6 +85,11 @@
           <text class="gd__arrow">›</text>
         </view>
 
+        <view class="section-head"><text class="section-head__title">冻结证据</text></view>
+        <view class="card gd__linkrow" @click="go('/pages/student/graduation/evidence-package')">
+          <view class="flex-1"><text class="t-md t-bold">我的毕业归档包</text><text class="gd__hint" style="margin:2px 0 0;">查看归档时固定的材料版本与业务快照</text></view><text class="gd__arrow">›</text>
+        </view>
+
         <!-- 中期检查（含 PENDING「待导师检查」） -->
         <view v-if="midterm && midterm.hasData" id="gd-midterm" class="section-head"><text class="section-head__title">中期检查</text></view>
         <view v-if="midterm && midterm.hasData" class="card stack-sm">
