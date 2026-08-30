@@ -1,0 +1,50 @@
+{
+  "verificationHead": "be52db6548d0babb6808be6824294beda760016e",
+  "generatedAt": "2026-08-30T13:53:48.396646+08:00",
+  "baseline": 82,
+  "score": 98,
+  "target": 97,
+  "result": "PASS",
+  "dimensions": [
+    {
+      "name": "菜单/找事效率",
+      "score": 15,
+      "max": 15
+    },
+    {
+      "name": "流程清晰",
+      "score": 15,
+      "max": 15
+    },
+    {
+      "name": "决策效率",
+      "score": 15,
+      "max": 15
+    },
+    {
+      "name": "操作省力",
+      "score": 15,
+      "max": 15
+    },
+    {
+      "name": "Recovery",
+      "score": 10,
+      "max": 10
+    },
+    {
+      "name": "四端连续",
+      "score": 10,
+      "max": 10
+    },
+    {
+      "name": "性能",
+      "score": 9,
+      "max": 10
+    },
+    {
+      "name": "信任/反馈",
+      "score": 9,
+      "max": 10
+    }
+  ]
+}
