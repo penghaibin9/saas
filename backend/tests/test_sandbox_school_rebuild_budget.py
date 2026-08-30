@@ -51,6 +51,16 @@ def test_github_runner_jitter_still_rejects_full_coverage_scale_regression(tmp_p
         check_budget(log_path)
 
 
+def test_20k_gate_removes_ephemeral_mysql_fsync_noise_before_timing():
+    workflow = (ROOT / ".github/workflows/sandbox-20k-data-gate.yml").read_text(encoding="utf-8")
+    timed_reset = "/usr/bin/time -v python scripts/reset_sandbox_school.py"
+
+    assert "SET GLOBAL innodb_redo_log_capacity = 1073741824" in workflow
+    assert "SET GLOBAL innodb_flush_log_at_trx_commit = 2" in workflow
+    assert "SET GLOBAL sync_binlog = 0" in workflow
+    assert workflow.index("SET GLOBAL innodb_redo_log_capacity") < workflow.index(timed_reset)
+
+
 def test_non_github_execution_keeps_200_second_hard_target(tmp_path, monkeypatch):
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     log_path = _write_budget_log(tmp_path / "rebuild.log", elapsed="3:20.10")
