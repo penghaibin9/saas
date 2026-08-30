@@ -437,6 +437,10 @@ def decide(user: dict, appeal_id, body: dict | None, *, approve: bool) -> dict:
     expected_version = extract_expected_version(b)
 
     with session() as db:
+        from app.modules.internship.services.internship_audit_service import (
+            assert_high_risk_write_available,
+        )
+        assert_high_risk_write_available(db)
         work_order = db.scalars(
             select(CsWorkOrder)
             .where(
@@ -566,6 +570,7 @@ def decide(user: dict, appeal_id, body: dict | None, *, approve: bool) -> dict:
             "message": message,
             "internshipId": str(record.id),
             "scoreId": str(meta.get("scoreId") or ""),
+            "scoreVersion": score_version if approve else int(meta.get("scoreVersion") or 0),
         }
 
 

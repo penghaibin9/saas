@@ -10,6 +10,7 @@ from app.core.permissions import is_super_admin
 from app.models import (
     InternshipAuditTrail, InternshipEnterpriseEval, InternshipRecord, StudentProfile,
 )
+from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
 from app.services.db_service import _as_id, _iso, _tid, session
 
 REVIEW_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "RETURNED": "已退回"}
@@ -102,6 +103,9 @@ def _snapshot(row):
         "overallComment": row.overall_comment or "",
         "recommendHire": bool(row.recommend_hire),
         "sourceFileId": row.source_file_id or row.file_id or "",
+        "placementSnapshotId": str(row.placement_snapshot_id or ""),
+        "enterpriseId": str(row.enterprise_id or ""),
+        "positionId": str(row.position_id or ""),
         "reviewStatus": row.school_review_status,
         "reviewComment": row.school_review_comment or "",
         "recordedByUserId": str(row.recorded_by_user_id or ""),
@@ -125,6 +129,9 @@ def _row(row, record, student):
         "source": row.source_type or row.source or "LEGACY_UNKNOWN",
         "sourceLabel": SOURCE_LABEL.get(row.source_type or row.source or "LEGACY_UNKNOWN", "历史来源未知"),
         "sourceFileId": row.source_file_id or row.file_id or "",
+        "placementSnapshotId": str(row.placement_snapshot_id or ""),
+        "enterpriseId": str(row.enterprise_id or ""),
+        "positionId": str(row.position_id or ""),
         "reviewStatus": row.school_review_status,
         "reviewStatusLabel": REVIEW_LABEL.get(row.school_review_status, row.school_review_status),
         "reviewComment": row.school_review_comment or "",
@@ -197,6 +204,28 @@ def _assert_assessing(record):
         raise AppException("DATA_CONFLICT", "仅处于考核中的实习记录可录入、重交或审核企业评价")
 
 
+def _placement_truth(db, record) -> InternshipPlacementSnapshot:
+    snapshot = db.scalar(select(InternshipPlacementSnapshot).where(
+        InternshipPlacementSnapshot.id == record.current_placement_snapshot_id,
+        InternshipPlacementSnapshot.tenant_id == _tid(),
+        InternshipPlacementSnapshot.record_id == record.id,
+        InternshipPlacementSnapshot.batch_id == record.batch_id,
+        InternshipPlacementSnapshot.company_id == record.enterprise_id,
+        InternshipPlacementSnapshot.position_id == record.position_id,
+    ))
+    if not snapshot:
+        raise AppException("DATA_CONFLICT", "当前岗位缺少正式安置快照，不能录入或审核企业评价")
+    return snapshot
+
+
+def _matches_current_placement(row, record, placement) -> bool:
+    return bool(
+        int(row.placement_snapshot_id or 0) == int(placement.id)
+        and int(row.enterprise_id or 0) == int(record.enterprise_id or 0)
+        and int(row.position_id or 0) == int(record.position_id or 0)
+    )
+
+
 def create(user, body, *, expected_batch_id=None) -> dict:
     payload = body or {}
     internship_id = payload.get("internshipId") or payload.get("internId")
@@ -210,6 +239,7 @@ def create(user, body, *, expected_batch_id=None) -> dict:
             raise not_found("实习记录不存在")
         student = db.get(StudentProfile, record.student_id)
         _assert_assessing(record)
+        placement = _placement_truth(db, record)
         if not in_scope(scope, db, record, student):
             raise no_permission("只能为本人指导或授权范围内学生录入企业评价")
         from app.modules.internship.services.internship_batch_context import assert_record_batch
@@ -217,6 +247,9 @@ def create(user, body, *, expected_batch_id=None) -> dict:
         duplicate = db.scalars(select(InternshipEnterpriseEval).where(
             InternshipEnterpriseEval.tenant_id == _tid(),
             InternshipEnterpriseEval.internship_id == record.id,
+            InternshipEnterpriseEval.placement_snapshot_id == placement.id,
+            InternshipEnterpriseEval.enterprise_id == record.enterprise_id,
+            InternshipEnterpriseEval.position_id == record.position_id,
             InternshipEnterpriseEval.is_deleted.is_(False),
         ).with_for_update()).first()
         if duplicate:
@@ -231,6 +264,9 @@ def create(user, body, *, expected_batch_id=None) -> dict:
             recorded_at=datetime.utcnow(),
             enterprise_contact_id=_as_id(payload["enterpriseContactId"])
             if payload.get("enterpriseContactId") else None,
+            placement_snapshot_id=placement.id,
+            enterprise_id=record.enterprise_id,
+            position_id=record.position_id,
             **values,
         )
         db.add(row)
@@ -240,6 +276,7 @@ def create(user, body, *, expected_batch_id=None) -> dict:
             "mentor": row.mentor_name, "avg": round(_total(row) / 5, 1),
             "actorUserId": _user_id(user), "actorRole": _role_code(user),
             "afterStatus": "PENDING", "newVersion": int(row.version or 0),
+            "placementSnapshotId": str(placement.id),
         }, operator=_op_name(user))
         db.commit()
         return {"id": str(row.id), "source": row.source_type,
@@ -255,6 +292,9 @@ def resubmit(user, eval_id, body, *, expected_batch_id=None) -> dict:
         row = _get(db, eval_id, lock=True)
         record, _student = _assert_scope(db, row, user, "只能修改本人指导或授权范围内企业评价")
         _assert_assessing(record)
+        placement = _placement_truth(db, record)
+        if not _matches_current_placement(row, record, placement):
+            raise AppException("DATA_CONFLICT", "该评价属于旧安置关系，不能用于当前岗位；请新建当前岗位评价")
         from app.modules.internship.services.internship_batch_context import assert_record_batch
         assert_record_batch(record, expected_batch_id)
         if row.school_review_status != "RETURNED":
@@ -312,6 +352,9 @@ def review(user, eval_id, action: str, comment: str = "", expected_version=None,
         row = _get(db, eval_id, lock=True)
         record, _student = _assert_scope(db, row, user, "只能审核本人数据范围内的企业评价")
         _assert_assessing(record)
+        placement = _placement_truth(db, record)
+        if not _matches_current_placement(row, record, placement):
+            raise AppException("DATA_CONFLICT", "该评价属于旧安置关系，不能审核为当前岗位评价")
         from app.modules.internship.services.internship_batch_context import assert_record_batch
         assert_record_batch(record, expected_batch_id)
         if row.school_review_status != "PENDING":

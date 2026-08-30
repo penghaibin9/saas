@@ -10,6 +10,36 @@
     </template>
 
     <div class="mp-stack">
+      <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
+
+      <section v-if="!error" class="guidance-now" aria-label="当前指导巡访对象">
+        <header class="guidance-now__head">
+          <div>
+            <span>GUIDANCE NOW</span>
+            <h2>先处理这 {{ priorityRows.length }} 个真实协作对象</h2>
+            <p>整改中巡访、进行中计划和风险指导优先；详情、附件、版本与留痕仍在同一工作台完成。</p>
+          </div>
+          <b>{{ activeTabLabel }}</b>
+        </header>
+        <div v-if="loading" class="guidance-now__state">正在读取当前指导巡访对象…</div>
+        <div v-else-if="priorityRows.length" class="guidance-now__list">
+          <article v-for="row in priorityRows" :key="row.id" class="guidance-now__item">
+            <div class="guidance-now__identity">
+              <small>{{ row.studentNo || row.enterpriseName || '当前数据范围' }} · v{{ row.version ?? '-' }}</small>
+              <strong>{{ guidanceObjectTitle(row) }}</strong>
+              <span>{{ guidanceObjectSubtitle(row) }}</span>
+            </div>
+            <dl>
+              <div><dt>为什么到这里</dt><dd>{{ guidanceWhy(row) }}</dd></div>
+              <div><dt>最近事实</dt><dd>{{ guidanceRecent(row) }}</dd></div>
+              <div><dt>下一责任人</dt><dd>{{ guidanceNextActor(row) }}</dd></div>
+            </dl>
+            <AppButton variant="primary" size="sm" @click="select(row.id)">{{ guidanceActionLabel(row) }} →</AppButton>
+          </article>
+        </div>
+        <div v-else class="guidance-now__state">当前页签没有协作对象，可切换指导、沟通、巡访或计划。</div>
+      </section>
+
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
       <div class="tabs">
@@ -155,6 +185,7 @@ import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
 import ConflictNotice from './components/ConflictNotice.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
@@ -222,7 +253,7 @@ export default {
     AppDrawer, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
     AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination,
     AppFormItem, AppSelect, AppTextarea,
-    AppInternshipEnterprisePicker, AppInternshipStudentPicker, ConflictNotice },
+    AppInternshipEnterprisePicker, AppInternshipStudentPicker, ConflictNotice, ActionReceipt },
   data() {
     return {
       commDlg: { visible: false, submitting: false, error: '' },
@@ -247,6 +278,7 @@ export default {
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', reasonLabel: '说明', requireReason: true, submitting: false },
       conflict: emptyConflict(),
       pending: null,
+      lastReceipt: null,
       scopeHint: '指导教师仅本人指导学生；管理员全校',
       guidanceStats: null,
       visitStats: null
@@ -282,6 +314,16 @@ export default {
     summaryMetrics() {
       return this.statsCards.slice(0, 5).map((c) => ({ label: c.label, value: c.value }))
     },
+    priorityRows() {
+      const score = (row) => {
+        if (this.tab === 'visit') return row.rectifyStatus === 'PENDING' ? 4 : row.safetyIssue ? 2 : 0
+        if (this.tab === 'visit-plan') return ['PUBLISHED', 'IN_PROGRESS'].includes(row.status) ? 4 : row.status === 'DRAFT' ? 2 : 0
+        if (this.tab === 'guidance') return row.toRisk ? 4 : row.nextFollowDate ? 2 : 0
+        return row.followUpNeeded && !row.followUpDone ? 4 : 0
+      }
+      return [...this.rows].sort((a, b) => score(b) - score(a)).slice(0, 3)
+    },
+    activeTabLabel() { return this.tabs.find((item) => item.key === this.tab)?.label || '指导巡访' },
     canExportTab() { return this.tab === 'guidance' || this.tab === 'visit' },
     detailFields() { return DETAIL[this.tab] || DETAIL.guidance },
     detailItems() { const d = this.detail.data || {}; return this.detailFields.map((f) => ({ label: f.label, value: d[f.key] })) },
@@ -330,10 +372,48 @@ export default {
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    guidanceObjectTitle(row) {
+      if (this.tab === 'visit-plan') return row.enterpriseName || row.objective || '巡访计划'
+      if (this.tab === 'communication') return `${row.enterpriseName || '企业'} · ${row.studentName || '关联学生'}`
+      return `${row.studentName || '学生'} · ${this.tab === 'guidance' ? (row.topic || '指导记录') : '教师巡访'}`
+    },
+    guidanceObjectSubtitle(row) {
+      if (this.tab === 'visit-plan') return [row.planDate, row.ownerName, row.statusLabel].filter(Boolean).join(' · ')
+      if (this.tab === 'communication') return [row.communicationTypeLabel || row.channel, row.summary || row.topic].filter(Boolean).join(' · ')
+      if (this.tab === 'guidance') return [row.methodLabel, row.advisorName, row.nextFollowDate && `下次 ${row.nextFollowDate}`].filter(Boolean).join(' · ')
+      return [row.enterpriseName, row.methodLabel, row.visitAt].filter(Boolean).join(' · ')
+    },
+    guidanceWhy(row) {
+      if (this.tab === 'visit' && row.rectifyStatus === 'PENDING') return '巡访发现的安全隐患仍在整改中，等待跟进闭环'
+      if (this.tab === 'visit-plan' && row.status === 'DRAFT') return '巡访计划仍是草稿，等待发布后进入执行'
+      if (this.tab === 'visit-plan' && ['PUBLISHED', 'IN_PROGRESS'].includes(row.status)) return '计划已发布或执行中，需要推进到下一合法状态'
+      if (this.tab === 'guidance' && row.toRisk) return '本次指导已形成风险线索，需要核对风险联动与后续跟进'
+      if (this.tab === 'communication' && row.followUpNeeded && !row.followUpDone) return '企业沟通产生后续事项，仍等待协作完成'
+      return '这是当前页签最近的真实记录，可查看完整事实与留痕'
+    },
+    guidanceRecent(row) {
+      if (this.tab === 'visit') return `${row.visitAt || row.createdAt || '时间未记录'} · ${row.rectifyStatusLabel || '状态未记录'}`
+      if (this.tab === 'visit-plan') return `${row.planDate || '日期未定'} · ${row.statusLabel || row.status || '状态未记录'}`
+      if (this.tab === 'communication') return `${row.occurredAt || row.createdAt || '时间未记录'} · ${row.statusLabel || row.status || '已登记'}`
+      return `${row.createdAt || '时间未记录'} · ${row.methodLabel || '方式未记录'}${row.toRisk ? ' · 已转风险' : ''}`
+    },
+    guidanceNextActor(row) {
+      if (this.tab === 'visit' && row.rectifyStatus === 'PENDING') return '本人指导教师 / 整改责任人'
+      if (this.tab === 'visit-plan') return ['COMPLETED', 'CANCELLED'].includes(row.status) ? '无需继续处理' : (row.ownerName || '巡访计划负责人')
+      if (this.tab === 'communication' && row.followUpNeeded && !row.followUpDone) return row.followUpOwner || '沟通经办人'
+      if (this.tab === 'guidance' && row.nextFollowDate) return '本人指导教师（按期跟进）'
+      return '记录只读 / 按需跟进'
+    },
+    guidanceActionLabel(row) {
+      if (this.tab === 'visit' && row.rectifyStatus === 'PENDING') return '进入整改跟进'
+      if (this.tab === 'visit-plan' && ['DRAFT', 'PUBLISHED', 'IN_PROGRESS'].includes(row.status)) return '推进计划'
+      return '查看完整记录'
+    },
     /** 打开巡访计划的状态迁移确认框 */
     openPlanAction(a) {
       const d = this.detail.data || {}
-      this.pending = { kind: 'plan-transition', id: this.selectedId, action: a.action }
+      this.pending = { kind: 'plan-transition', id: this.selectedId, action: a.action,
+        expectedVersion: d.version, objectLabel: d.enterpriseName || d.objective || '巡访计划' }
       this.conflict = emptyConflict()
       this.cd = {
         visible: true,
@@ -417,7 +497,14 @@ export default {
       })
       this.commDlg.submitting = false
       if (res.code !== 0) { this.commDlg.error = res.message || '登记失败'; return }
-      this.commDlg.visible = false; toast.success('沟通已登记'); this.reload()
+      this.commDlg.visible = false
+      this.lastReceipt = {
+        id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel || '沟通已登记',
+        version: res.data?.version, actionLabel: '登记企业沟通',
+        objectLabel: `${res.data?.enterpriseName || '企业'} · ${res.data?.studentName || '关联学生'}`,
+        auditText: '沟通记录与创建留痕已同事务提交', nextStep: res.data?.followUpNeeded ? '按后续事项继续跟进' : '可继续登记或查看其他协作对象'
+      }
+      toast.success('沟通已登记'); this.reload()
     },
     async submitVisitPlan() {
       const f = this.planForm
@@ -430,7 +517,14 @@ export default {
       })
       this.planDlg.submitting = false
       if (res.code !== 0) { this.planDlg.error = res.message || '创建失败'; return }
-      this.planDlg.visible = false; toast.success('巡访计划已创建'); this.reload()
+      this.planDlg.visible = false
+      this.lastReceipt = {
+        id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel,
+        version: res.data?.version, actionLabel: '创建巡访计划',
+        objectLabel: res.data?.enterpriseName || res.data?.objective || '巡访计划',
+        auditText: '巡访计划与创建留痕已同事务提交', nextStep: '进入计划详情发布并按状态连续推进'
+      }
+      toast.success('巡访计划已创建'); this.reload()
     },
     goCreate() {
       if (this.tab === 'communication') {
@@ -501,6 +595,21 @@ export default {
       this.detail.loading = false
       if (res.code !== 0) { this.detail.error = res.message || '详情加载失败'; return }
       this.detail.data = res.data
+      if (this.$route.query.receipt === 'created' && String(this.$route.query.id || '') === String(id)) {
+        const d = res.data
+        this.lastReceipt = {
+          id: d.id, status: d.status || d.rectifyStatus,
+          statusLabel: this.tab === 'guidance' ? '指导记录已创建' : '巡访记录已创建',
+          version: d.version,
+          actionLabel: this.tab === 'guidance' ? '新增指导记录' : '新增巡访记录',
+          objectLabel: `${d.studentName || '学生'} · ${this.tab === 'guidance' ? (d.topic || '指导记录') : '教师巡访'}`,
+          auditText: '记录与创建留痕已同事务提交',
+          nextStep: d.toRisk ? '风险线索已联动，继续进入风险工作台跟进' : d.rectifyStatus === 'PENDING' ? '安全隐患已进入整改队列' : '可继续查看详情或新增下一条记录'
+        }
+        const query = { ...this.$route.query }
+        delete query.receipt
+        this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
+      }
     },
     async downloadAtt() {
       const a = this.detail.data?.attachment
@@ -508,12 +617,14 @@ export default {
       try { await guidanceVisitApi.downloadAttachment(a.fileId, a.fileName) } catch (e) { toast.error('下载失败：' + (e.message || '')) }
     },
     openVoid(d) {
-      this.pending = { kind: 'void', id: this.selectedId }
+      this.pending = { kind: 'void', id: this.selectedId, expectedVersion: d.version,
+        objectLabel: `${d.studentName || '学生'} · ${d.topic || '指导记录'}` }
       this.cd = { visible: true, title: '撤销指导记录', content: `撤销「${d.studentName}」的指导记录，撤销原因将写入审计。`,
         danger: true, confirmText: '撤销', reasonLabel: '撤销原因', requireReason: true, submitting: false }
     },
     openRectify(d) {
-      this.pending = { kind: 'rectify', id: this.selectedId }
+      this.pending = { kind: 'rectify', id: this.selectedId, expectedVersion: d.version,
+        objectLabel: `${d.studentName || '学生'} · 巡访整改` }
       this.cd = { visible: true, title: '巡访整改跟进', content: `将「${d.studentName}」的安全隐患整改标记为「已整改」，跟进说明将写入审计。`,
         danger: false, confirmText: '标记已整改', reasonLabel: '整改跟进说明', requireReason: true, submitting: false }
     },
@@ -522,11 +633,15 @@ export default {
       this.cd.submitting = true
       let res
       if (p.kind === 'plan-transition') {
-        res = await guidanceVisitApi.transitionVisitPlan(p.id, p.action, { reason: reason || '' })
+        res = await guidanceVisitApi.transitionVisitPlan(p.id, p.action, {
+          reason: reason || '', expectedVersion: p.expectedVersion
+        })
       } else if (p.kind === 'void') {
-        res = await guidanceVisitApi.voidGuidance(p.id, { reason })
+        res = await guidanceVisitApi.voidGuidance(p.id, { reason, expectedVersion: p.expectedVersion })
       } else {
-        res = await guidanceVisitApi.rectifyVisit(p.id, { status: 'DONE', note: reason })
+        res = await guidanceVisitApi.rectifyVisit(p.id, {
+          status: 'DONE', note: reason, expectedVersion: p.expectedVersion
+        })
       }
       this.cd.submitting = false
       if (isConflict(res)) {
@@ -539,6 +654,7 @@ export default {
           latest: () => {
             const d = this.detail.data
             if (!d) throw new Error('最新详情未拉回')
+            this.pending.expectedVersion = d.version
             return [
               { label: '最新状态', value: d.statusLabel || d.status || '' },
               { label: '负责人', value: d.ownerName || '' },
@@ -551,6 +667,15 @@ export default {
       if (res.code !== 0) return toast.error(res.message || '操作失败')
       this.cd.visible = false
       this.conflict = emptyConflict()
+      this.lastReceipt = {
+        id: res.data?.id, status: res.data?.status || res.data?.rectifyStatus,
+        statusLabel: res.data?.statusLabel || res.data?.rectifyStatusLabel || (p.kind === 'void' ? '已撤销' : '操作成功'),
+        version: res.data?.version,
+        actionLabel: p.kind === 'plan-transition' ? `巡访计划${this.cd.confirmText}` : p.kind === 'void' ? '撤销指导记录' : '完成巡访整改',
+        objectLabel: p.objectLabel,
+        auditText: '状态更新与操作留痕已同事务提交',
+        nextStep: p.kind === 'rectify' ? '整改已闭环，可查看完整审计记录' : '按最新服务端状态继续下一合法动作'
+      }
       toast.success('操作成功，已写审计')
       this.loadStats(); this.load()
       if (p.kind === 'void') this.clearSelection()
@@ -561,8 +686,10 @@ export default {
 </script>
 
 <style scoped>
-.gv-form-error { color: var(--danger-600, #d92d20); margin: var(--space-2) 0 0; }
 @import '@/styles/module-page.css';
+.gv-form-error { color: var(--danger-600, #d92d20); margin: var(--space-2) 0 0; }
+
+.guidance-now { overflow: hidden; border: 1px solid color-mix(in srgb, var(--pri) 24%, var(--card-b)); border-radius: 14px; background: var(--card); box-shadow: 0 14px 38px rgba(30,64,175,.08); }.guidance-now__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 16px 18px; background: linear-gradient(120deg, var(--pri-bg), #fff 72%); }.guidance-now__head > div { display: grid; gap: 3px; }.guidance-now__head span { color: var(--pri); font-size: 10px; font-weight: 800; letter-spacing: .12em; }.guidance-now__head h2 { margin: 0; color: var(--t1); font-size: 17px; }.guidance-now__head p { margin: 0; color: var(--t3); font-size: 12px; }.guidance-now__head b { flex: 0 0 auto; padding: 4px 9px; border-radius: 999px; background: #fff; color: var(--pri); font-size: 12px; }.guidance-now__list { display: grid; gap: 10px; padding: 14px; }.guidance-now__item { display: grid; grid-template-columns: minmax(170px,.9fr) minmax(0,2fr) auto; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--card-b); border-left: 4px solid var(--warning-500,#f59e0b); border-radius: 10px; }.guidance-now__identity { display: grid; gap: 3px; min-width: 0; }.guidance-now__identity small { color: var(--pri); font-weight: 700; }.guidance-now__identity strong,.guidance-now__identity span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.guidance-now__identity span { color: var(--t3); font-size: 12px; }.guidance-now__item dl { display: grid; grid-template-columns: 1.25fr 1fr .8fr; gap: 8px; margin: 0; }.guidance-now__item dl div { min-width: 0; padding: 8px 10px; border-radius: 8px; background: var(--fill-2,#f8fafc); }.guidance-now__item dt { margin-bottom: 3px; color: var(--t3); font-size: 10px; font-weight: 700; }.guidance-now__item dd { margin: 0; color: var(--t2); font-size: 12px; line-height: 1.45; }.guidance-now__state { padding: 24px; color: var(--t3); font-size: 13px; text-align: center; }
 
 .tabs { display: flex; gap: var(--space-2); border-bottom: 1px solid var(--border-light); }
 .tabs__btn { border: none; background: none; padding: var(--space-2) var(--space-3); cursor: pointer; color: var(--text-secondary); font-size: var(--font-size-sm); border-bottom: 2px solid transparent; }
@@ -588,4 +715,5 @@ export default {
 .gv-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .gv-head__name { font-size: var(--font-size-md, 15px); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
 .gv-foot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); background: var(--bg-card, #fff); border-radius: 0 0 var(--r, 12px) var(--r, 12px); }
+@media (max-width: 900px) { .guidance-now__item { grid-template-columns: 1fr; }.guidance-now__item dl { grid-template-columns: 1fr; }.guidance-now__head { align-items: flex-start; flex-direction: column; } }
 </style>

@@ -40,7 +40,16 @@ def _student(sno, tid=TID):
 def _seed(db_mode):
     from uuid import uuid4
     from app.db.session import get_sessionmaker
-    from app.models import InternshipBatch, InternshipRecord, StudentProfile
+    from app.models import (
+        EmpCompany,
+        InternshipBatch,
+        InternshipPosition,
+        InternshipRecord,
+        StudentProfile,
+    )
+    from app.modules.internship.services.internship_placement_snapshot_service import (
+        capture_placement_snapshot_in_tx,
+    )
     db = get_sessionmaker()()
     ids = {}
     try:
@@ -48,14 +57,39 @@ def _seed(db_mode):
                             batch_no=f"EEBATCH-{uuid4().hex[:8]}", status="RUNNING", planned_count=5)
         db.add(b); db.flush()
         ids["batch"] = b.id
+        company = EmpCompany(
+            tenant_id=TID,
+            name="企业评价测试企业",
+            credit_code=f"91310000EE{uuid4().hex[:6].upper()}",
+            coop_status="ACTIVE",
+        )
+        db.add(company); db.flush()
+        position = InternshipPosition(
+            tenant_id=TID,
+            company_id=company.id,
+            company_name=company.name,
+            title="评价测试实习生",
+            batch_id=b.id,
+            status="PUBLISHED",
+            headcount=5,
+        )
+        db.add(position); db.flush()
         for no, name, adv, key in [("EE-A", "甲", "刘强", "a"), ("EE-B", "乙", "王芳", "b")]:
             s = StudentProfile(tenant_id=TID, student_no=no, real_name=name,
                                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
             db.add(s); db.flush()
             r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
-                                 enterprise_name="测试企业", position_name="实习生",
+                                 enterprise_name=company.name, position_name=position.title,
+                                 enterprise_id=company.id, position_id=position.id,
                                  status="ASSESSING", risk_level="NONE", batch_id=b.id)
             db.add(r); db.flush()
+            capture_placement_snapshot_in_tx(
+                db,
+                record=r,
+                position=position,
+                company=company,
+                rights={"passed": True, "ruleVersion": "ENTERPRISE-EVAL-TEST-V1"},
+            )
             ids[f"rec_{key}"] = r.id
         db.commit()
         return ids

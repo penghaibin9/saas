@@ -12,6 +12,12 @@
       </view>
     </view>
 
+    <view v-if="receipt" class="card is__receipt">
+      <view class="row-between"><text class="t-bold">✓ {{ receipt.actionLabel }}</text><text>v{{ receipt.version }}</text></view>
+      <text>成绩 #{{ receipt.id }} · {{ receipt.statusLabel }}</text>
+      <text>{{ receipt.nextStep }}</text>
+    </view>
+
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad is__page" v-if="tab === 'list'">
         <view class="card is__batch" v-if="batches.length">
@@ -37,11 +43,11 @@
           </view>
         </view>
 
-        <MobileInlineAlert type="info" description="企业评价分只读取已审核评价；教师端负责核算与补齐缺项，最终发布仍由学校管理端完成。" />
+        <MobileInlineAlert type="info" description="企业评价分只读取当前正式安置的已审核评价；教师端触发系统事实核算，复核与最终发布由学校管理端分步完成。" />
         <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次"
           description="当前身份的数据范围内没有可查看的实习批次。" />
         <MobileGlobalState v-else-if="!list || !list.length" state="empty" title="当前批次尚未核算成绩"
-          description="有核算权限的教师可进入“核算成绩”，选择学生并填写评分。" />
+          description="有核算权限的教师可进入“核算成绩”，选择学生并触发系统按权威来源计算。" />
 
         <view class="stack" v-else>
           <view v-for="s in list" :key="s.id" class="card is">
@@ -75,6 +81,16 @@
               <text class="is__pending-title">已提交学校复核</text>
               <text class="is__pending-text">教师端不能直接发布，请等待学校管理端完成复核。</text>
             </view>
+            <view v-else-if="s.status === 'PENDING_PUBLISH'" class="is__pending-box">
+              <text class="is__pending-title">复核通过，等待发布</text>
+              <text class="is__pending-text">学校管理员发布后学生端才会看到正式成绩。</text>
+            </view>
+
+            <view class="is__sources">
+              <text :class="{ ok: s.sourceReadiness?.enterpriseEvaluation }">企业评价</text>
+              <text :class="{ ok: s.sourceReadiness?.studentSelfEvaluation }">学生自评</text>
+              <text :class="{ ok: s.sourceReadiness?.advisorEvaluation }">导师评价</text>
+            </view>
 
             <view class="is__next" :class="{ 'is-danger': s.incomplete }">
               <text class="is__next-label">下一步</text>
@@ -95,7 +111,7 @@
           </picker>
         </view>
 
-        <MobileInlineAlert type="info" description="企业评价分由系统读取已审核结果，不能手工覆盖。已有未发布成绩再次核算会携带当前版本，防止覆盖他人修改。" />
+        <MobileInlineAlert type="info" description="所有分项由系统读取权威过程事实，不能手工提交裸分。已有未发布成绩再次核算会携带当前版本，防止覆盖他人修改。" />
         <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次"
           description="当前身份的数据范围内没有可核算的实习批次。" />
         <MobileGlobalState v-else-if="!students.length" state="empty" title="暂无可核算学生"
@@ -127,19 +143,18 @@
           <view class="card is__form-section">
             <view class="is__section-head">
               <text class="is__step">2</text>
-              <view><text class="is__section-title">录入学校侧评分</text><text class="is__section-hint">所有分值均为0-100整数</text></view>
+              <view><text class="is__section-title">核对权威来源</text><text class="is__section-hint">小程序不提交裸分，也不覆盖企业评价</text></view>
             </view>
-            <view class="is__score-form">
-              <view class="is__score-field" v-for="f in SCORE_FIELDS" :key="f.key">
-                <view><text class="is__score-name">{{ f.label }}</text><text class="is__score-help">0-100</text></view>
-                <input type="number" v-model="scores[f.key]" placeholder="请输入" />
-              </view>
+            <view class="is__truth-list">
+              <text>打卡、周报、月报：系统按有效过程事实与批次规则计算</text>
+              <text>企业评价：只读取当前正式安置且学校已审核的企业评价</text>
+              <text>学校评价：学生自评/企业岗位评价、导师意见与学校审核齐全后生成</text>
             </view>
           </view>
 
           <view class="card is__source-note">
             <text class="is__source-title">系统自动参与核算</text>
-            <text class="is__source-text">企业评价分来自已通过的企业评价；最终总分按照当前批次权重计算。</text>
+            <text class="is__source-text">提交后服务端冻结来源 hash；来源发生变化会要求重新核算。人工调分须在 PC 端上传依据并由不同人员复核。</text>
           </view>
         </template>
 
@@ -159,11 +174,6 @@ import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
 const submitLock = createSubmitLock(1500)
-const SCORE_FIELDS = [
-  { key: 'checkinScore', label: '打卡分' }, { key: 'weeklyScore', label: '周报分' },
-  { key: 'monthlyScore', label: '月报总结分' }, { key: 'schoolScore', label: '学校评价分' }
-]
-
 export default {
   data() {
     return {
@@ -171,8 +181,7 @@ export default {
       students: [], studentIndex: 0,
       batches: [], batchId: '', batchIndex: 0,
       page: 1, hasMore: false, loadingMore: false,
-      scores: { checkinScore: '', weeklyScore: '', monthlyScore: '', schoolScore: '' },
-      submitting: false, SCORE_FIELDS
+      submitting: false, receipt: null
     }
   },
   onLoad() { this.load() },
@@ -203,6 +212,7 @@ export default {
     nextStepText(s) {
       if (s.incomplete) return this.canCompute ? '进入“核算成绩”，选择该学生补齐缺项后重新核算。' : '联系有核算权限的教师补齐缺项。'
       if (s.status === 'PENDING_REVIEW') return '等待学校管理端复核并发布成绩。'
+      if (s.status === 'PENDING_PUBLISH') return '独立复核已完成，等待学校管理员发布。'
       if (['PUBLISHED', 'ARCHIVED'].includes(s.status)) return '成绩已发布或归档，教师端仅查看。'
       return this.canCompute ? '如评分来源有更新，可按当前版本重新核算。' : '等待学校复核或后续状态更新。'
     },
@@ -268,13 +278,6 @@ export default {
     },
     onStudent(e) {
       this.studentIndex = Number(e.detail.value)
-      const stu = this.students[this.studentIndex]
-      const existing = this.findExisting(stu)
-      if (existing && !['PUBLISHED', 'ARCHIVED'].includes(existing.status)) {
-        SCORE_FIELDS.forEach((f) => { this.scores[f.key] = existing[f.key] == null ? '' : String(existing[f.key]) })
-      } else {
-        this.scores = { checkinScore: '', weeklyScore: '', monthlyScore: '', schoolScore: '' }
-      }
     },
     async loadStudents() {
       if (!this.batchId) { this.students = []; return }
@@ -296,23 +299,18 @@ export default {
       if (this.submitting) return
       const stu = this.students[this.studentIndex]
       if (!stu) { toast('请选择实习学生'); return }
-      for (const f of SCORE_FIELDS) {
-        const v = this.scores[f.key]
-        if (v === '' || v === null || v === undefined || !Number.isInteger(Number(v)) || Number(v) < 0 || Number(v) > 100) {
-          toast(`${f.label}必须是 0-100 的整数`); return
-        }
-      }
       const existing = this.findExisting(stu)
       if (existing && ['PUBLISHED', 'ARCHIVED'].includes(existing.status)) {
         toast('该生成绩已发布或归档，不能在教师端直接重算'); return
       }
       this.submitting = true
       const body = { internshipId: stu.id, batchId: this.batchId }
-      SCORE_FIELDS.forEach((f) => { body[f.key] = Number(this.scores[f.key]) })
       if (existing) body.expectedVersion = existing.version
       submitLock.run(() => teacherApi.computeInternshipScore(body)).then((result) => {
         uni.showToast({ title: result && result.incomplete ? `已保存，缺：${result.incompleteReason}` : `核算完成，总分 ${result.total}`, icon: 'none' })
-        this.scores = { checkinScore: '', weeklyScore: '', monthlyScore: '', schoolScore: '' }
+        this.receipt = { actionLabel: '系统事实核算完成', id: result.id, version: result.version,
+          statusLabel: result.incomplete ? '缺项待补齐' : '待复核',
+          nextStep: result.incomplete ? (result.incompleteReason || '补齐来源后重算') : '等待授权管理员独立复核' }
         this.tab = 'list'; this.load()
       }).catch((e) => {
         if (e && e.code === 'LOCKED') return
@@ -325,5 +323,8 @@ export default {
 </script>
 
 <style scoped>
+.is__receipt{display:flex;flex-direction:column;gap:5px;margin:var(--space-3) var(--page-padding-mobile) 0;padding:var(--space-3);border-color:var(--success-300,#86efac);background:var(--success-50,#f0fdf4);font-size:var(--font-size-xs);color:var(--text-secondary)}
+.is__sources{display:flex;gap:6px;flex-wrap:wrap}.is__sources text{padding:3px 7px;border-radius:999px;background:var(--danger-50,#fef2f2);color:var(--danger-600);font-size:10px}.is__sources text.ok{background:var(--success-50,#ecfdf5);color:var(--success-700,#047857)}
+.is__truth-list{display:flex;flex-direction:column;gap:8px;padding-top:var(--space-3)}.is__truth-list text{padding:9px 10px;border-radius:var(--radius-md);background:var(--gray-50);font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}
 .is__tabs{display:flex;gap:var(--space-6);padding:var(--space-3) var(--page-padding-mobile) 0;background:var(--bg-card)}.is__tab{position:relative;font-size:var(--font-size-base);color:var(--text-tertiary);font-weight:var(--font-weight-medium);padding-bottom:var(--space-3)}.is__tab.is-on{color:var(--text-primary);font-weight:var(--font-weight-semibold)}.is__tab-u{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:22px;height:3px;border-radius:2px;background:var(--teacher-600)}.is__tab-badge{margin-left:4px;font-size:10px;color:#fff;background:var(--danger-500);padding:1px 5px;border-radius:var(--radius-full)}.is__page{display:flex;flex-direction:column;gap:var(--space-3);padding-bottom:calc(var(--safe-bottom) + 88px)}.is__batch{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-3)}.is__batch-copy{min-width:0;display:flex;flex-direction:column;gap:3px}.is__eyebrow{font-size:var(--font-size-xs);color:var(--text-tertiary)}.is__batch-name{font-size:var(--font-size-md);font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.is__picker{flex-shrink:0}.is__pick-val{color:var(--teacher-700);font-size:var(--font-size-sm);white-space:nowrap}.is__arrow{margin-left:4px;color:var(--text-tertiary)}.is__summary{display:flex;align-items:stretch;gap:var(--space-3);padding:var(--space-3)}.is__summary-main{flex:1;min-width:0}.is__summary-label{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary)}.is__summary-value{display:flex;align-items:baseline;gap:4px;margin-top:4px}.is__summary-value text:first-child{font-size:34px;line-height:1;font-weight:700;color:var(--teacher-700)}.is__summary-value text:last-child{font-size:var(--font-size-sm);color:var(--text-secondary)}.is__summary-note{display:block;margin-top:8px;font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.is__summary-metrics{width:52%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--gray-50);border-radius:var(--radius-md);overflow:hidden}.is__metric{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 3px;border-left:1px solid var(--border-light);text-align:center}.is__metric:first-child{border-left:0}.is__metric text:first-child{font-size:var(--font-size-lg);font-weight:700;color:var(--text-primary)}.is__metric.is-danger text:first-child{color:var(--danger-600)}.is__metric.is-warning text:first-child{color:var(--warning-700)}.is__metric.is-success text:first-child{color:var(--success-700)}.is__metric text:last-child{font-size:10px;line-height:1.25;color:var(--text-tertiary)}.is{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3)}.is__head{align-items:flex-start}.is__identity{min-width:0}.is__sub{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary);margin-top:3px}.is__score-overview{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2);background:var(--gray-50);border-radius:var(--radius-md)}.is__total-block{width:82px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px;border-right:1px solid var(--border-light)}.is__total-value{font-size:30px;line-height:1;font-weight:700;color:var(--teacher-700)}.is__total-label{margin-top:5px;font-size:10px;color:var(--text-tertiary)}.is__score-grid{flex:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px}.is__score-grid>view{display:flex;justify-content:space-between;gap:8px;min-width:0}.is__score-grid text:first-child{font-size:10px;color:var(--text-tertiary)}.is__score-grid text:last-child{font-size:var(--font-size-xs);font-weight:600;color:var(--text-primary);word-break:break-word}.is__issue,.is__pending-box{padding:var(--space-2) var(--space-3);border-radius:var(--radius-md)}.is__issue{border:1px solid var(--danger-200,#fecaca);background:var(--danger-50)}.is__pending-box{border:1px solid var(--warning-200,#fed7aa);background:var(--warning-50,#fff7ed)}.is__issue-title,.is__pending-title{display:block;font-size:var(--font-size-sm);font-weight:600}.is__issue-title{color:var(--danger-700)}.is__pending-title{color:var(--warning-800,#9a3412)}.is__issue-text,.is__pending-text{display:block;margin-top:4px;font-size:var(--font-size-xs);line-height:1.5}.is__issue-text{color:var(--danger-600)}.is__pending-text{color:var(--warning-700)}.is__next{display:flex;gap:10px;padding:10px 12px;border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.is__next.is-danger{background:var(--warning-50,#fff7ed)}.is__next-label{flex-shrink:0;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.is__next-text{font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.is__selected{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-3);background:var(--teacher-50,#eff6ff);border-color:var(--teacher-200,#bfdbfe)}.is__selected-copy{min-width:0}.is__selected-label{display:block;font-size:10px;color:var(--text-tertiary)}.is__selected-name{display:block;margin-top:3px;font-size:var(--font-size-md);font-weight:600;color:var(--text-primary)}.is__selected-meta{display:block;margin-top:3px;font-size:var(--font-size-xs);color:var(--text-secondary);word-break:break-word}.is__form-section{display:flex;flex-direction:column;padding:var(--space-3)}.is__section-head{display:flex;align-items:center;gap:10px;padding-bottom:var(--space-2);border-bottom:1px solid var(--border-light)}.is__step{display:flex;align-items:center;justify-content:center;width:26px;height:26px;flex-shrink:0;border-radius:50%;background:var(--teacher-600);color:#fff;font-size:var(--font-size-sm);font-weight:700}.is__section-title{display:block;font-size:var(--font-size-sm);font-weight:600;color:var(--text-primary)}.is__section-hint{display:block;margin-top:2px;font-size:var(--font-size-xs);color:var(--text-tertiary)}.is__row{display:flex;align-items:center;min-height:52px;border-bottom:1px solid var(--border-light);gap:var(--space-3)}.is__label{width:100px;flex-shrink:0;font-size:var(--font-size-sm);color:var(--text-secondary)}.is__required{color:var(--danger-600)}.is__field-value{min-width:0;font-size:var(--font-size-sm);color:var(--text-primary);text-align:right;word-break:break-word}.is__score-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-top:var(--space-3)}.is__score-field{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 12px;border:1px solid var(--border-light);border-radius:var(--radius-md);background:var(--gray-50)}.is__score-name{display:block;font-size:var(--font-size-sm);color:var(--text-secondary)}.is__score-help{display:block;margin-top:2px;font-size:10px;color:var(--text-tertiary)}.is__score-field input{width:74px;text-align:right;font-size:var(--font-size-lg);color:var(--text-primary)}.is__source-note{padding:var(--space-3);border-color:var(--success-200,#bbf7d0);background:var(--success-50)}.is__source-title{display:block;font-size:var(--font-size-sm);font-weight:600;color:var(--success-800,#166534)}.is__source-text{display:block;margin-top:4px;font-size:var(--font-size-xs);line-height:1.5;color:var(--success-700)}@media(max-width:360px){.is__summary{flex-direction:column}.is__summary-metrics{width:100%}.is__score-overview{align-items:flex-start}.is__score-grid,.is__score-form{grid-template-columns:1fr}.is__batch{align-items:flex-start}}
 </style>

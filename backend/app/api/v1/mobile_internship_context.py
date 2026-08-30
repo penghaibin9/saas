@@ -366,3 +366,33 @@ def teacher_batch_application_review(
         record_expected_version=payload.get("recordExpectedVersion"),
         expected_batch_id=batchId),
         message="正式实习申请审核完成")
+
+
+@router.get("/changes", summary="教师当前批次实习变更待审核队列")
+def teacher_batch_changes(
+    batchId: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("internship.change.view")),
+):
+    from app.modules.internship.services import internship_change_service as changes
+    items, total = changes.list_changes(
+        page, pageSize, status="PENDING", batch_id=batchId, user=user)
+    return success(_paged(items, total, page, pageSize, batchId))
+
+
+@router.post("/changes/{change_id}/review", summary="教师按申请与学生记录版本审核实习变更")
+def teacher_batch_change_review(
+    change_id: str,
+    batchId: int = Query(..., ge=1),
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.change.review")),
+):
+    from app.modules.internship.services import internship_change_service as changes
+    payload = body or {}
+    return success(changes.review_change(
+        change_id, str(payload.get("action") or "").upper(),
+        payload.get("comment") or "", user=user,
+        expected_version=payload.get("expectedVersion"),
+        record_expected_version=payload.get("recordExpectedVersion"),
+        expected_batch_id=batchId), message="实习变更审核完成")

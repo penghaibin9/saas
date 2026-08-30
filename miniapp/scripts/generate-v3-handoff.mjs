@@ -79,7 +79,8 @@ function alembicHead() {
   const dir = resolve(REPO, 'backend/alembic/versions')
   if (!existsSync(dir)) return ''
   try {
-    return execFileSync('python3', ['-c', `
+    const python = process.platform === 'win32' ? 'python' : 'python3'
+    return execFileSync(python, ['-c', `
 import ast, os
 d = ${JSON.stringify(dir)}
 revs, downs = {}, {}

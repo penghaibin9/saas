@@ -2,6 +2,9 @@
   <ModulePageShell title="就业学生列表" subtitle="就业去向台账 · 敏感字段默认脱敏展示" :role-name="roleName" :data-scope-name="dataScopeName" watermark-purpose="就业台账查阅">
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
+      <div v-if="$route.query.source === 'internship'" class="emp-source-note">
+        已从岗位实习归档进入。衔接依据只认归档中冻结的已发布正式成绩；就业去向仍需在本台账单独登记与核验。
+      </div>
       <ModuleToolbar :actions="toolbarActions" :hint="`共 ${total} 条 · 操作全程留痕`" @action="onToolbar">
         <template #right>
           <ColumnSettings v-model:selected-keys="visibleColumnKeys" :columns="allColumns" />
@@ -249,6 +252,7 @@ export default {
     }
   },
   async created() {
+    if (this.$route.query.keyword) this.filters.keyword = String(this.$route.query.keyword)
     await this.init()
   },
   methods: {
@@ -427,6 +431,8 @@ export default {
 
 <style scoped>
 @import './employment-page.css';
+
+.emp-source-note { margin-bottom: 14px; padding: 12px 14px; border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; color: #1e40af; font-size: 13px; line-height: 1.6; }
 
 .emp-mark-select {
   width: 100%;

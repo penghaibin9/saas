@@ -11,6 +11,36 @@
     </template>
 
     <div class="mp-stack">
+      <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
+
+      <section v-if="!error" class="report-now" aria-label="当前报告批阅对象">
+        <header class="report-now__head">
+          <div>
+            <span>REPORT NOW</span>
+            <h2>先批阅这 {{ priorityRows.length }} 份真实报告</h2>
+            <p>重交件与风险学生优先；列表只负责找对象，正文、版本对比、评语和最终动作都在详情完成。</p>
+          </div>
+          <b>{{ pageTitle }}</b>
+        </header>
+        <div v-if="loading" class="report-now__state">正在读取当前报告对象…</div>
+        <div v-else-if="priorityRows.length" class="report-now__list">
+          <article v-for="row in priorityRows" :key="row.id" class="report-now__item">
+            <div class="report-now__identity">
+              <small>{{ row.className }} · {{ row.reportVersion || ('v' + (row.version ?? '-')) }}</small>
+              <strong>{{ row.studentName }} · {{ row.week || row.periodKey }}</strong>
+              <span>{{ row.enterpriseName || '企业信息未记录' }}</span>
+            </div>
+            <dl>
+              <div><dt>为什么到这里</dt><dd>{{ reportWhy(row) }}</dd></div>
+              <div><dt>最近变化</dt><dd>{{ reportRecent(row) }}</dd></div>
+              <div><dt>下一责任人</dt><dd>{{ reportNextActor(row) }}</dd></div>
+            </dl>
+            <AppButton variant="primary" size="sm" @click="goDetail(row)">核对正文与版本 →</AppButton>
+          </article>
+        </div>
+        <div v-else class="report-now__state">当前状态没有报告对象，可切换报告类型或审核状态。</div>
+      </section>
+
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
       <!-- 报告类型切换（原「日报批阅 / 月报批阅 / 实习总结」独立菜单收口为页内切换） -->
       <div class="mp-tabs wr-tabs wr-tabs--type" aria-label="报告类型">
@@ -82,8 +112,10 @@ import {
   ModulePageShell, DataTable,
   LoadingState, ErrorState, EmptyState
 } from '@/components/business'
+import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppRiskTag, AppExportButton, AppPermissionButton } from '@/components/common'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
 import { restoreWorkContext, captureWorkContext } from '@/modules/internship/composables/workContext'
@@ -117,7 +149,8 @@ const PROCESS_COLUMNS = [
 
 export default {
   name: 'WeeklyReportListView',
-  components: { ModulePageShell, DataTable, AppStatusTag, AppRiskTag, AppExportButton, AppPermissionButton, LoadingState, ErrorState, EmptyState, ModuleSummaryStrip },
+  components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppRiskTag, AppExportButton,
+    AppPermissionButton, LoadingState, ErrorState, EmptyState, ModuleSummaryStrip, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -126,6 +159,7 @@ export default {
       rows: [],
       selected: [],
       batchSubmitting: false,
+      lastReceipt: null,
       workContextReady: false,
       filters: { status: 'PENDING_REVIEW' },
       pagination: { page: 1, pageSize: 10, total: 0 },
@@ -187,6 +221,10 @@ export default {
       const label = (this.isProcessReport ? this.typeConfig.label : '周报') + (cur ? ' · ' + cur.label : '')
       return [{ label, value: this.pagination.total, tone: this.filters.status === 'PENDING_REVIEW' && this.pagination.total ? 'warn' : undefined }]
     },
+    priorityRows() {
+      const score = (row) => (row.isResubmit ? 4 : 0) + (row.riskFlag ? 2 : 0) + (row.status === 'PENDING_REVIEW' ? 1 : 0)
+      return [...this.rows].sort((a, b) => score(b) - score(a)).slice(0, 3)
+    },
     exportLabel() {
       return this.isProcessReport ? `⬇ 导出${this.typeConfig.label}` : '⬇ 导出周报'
     },
@@ -245,6 +283,23 @@ export default {
     }
   },
   methods: {
+    reportWhy(row) {
+      if (row.isResubmit) return '这是退回后的新版本，必须先对比上版意见与本次修正'
+      if (row.riskFlag) return '该学生带风险标记，禁止用批量通过绕过逐篇判断'
+      if (row.status === 'PENDING_REVIEW') return '报告已提交，等待本人指导教师批阅'
+      if (row.status === 'OVERDUE') return '报告已逾期，需催交或进入过程风险跟进'
+      return '该报告已有批阅结果，可回看正文与审计留痕'
+    },
+    reportRecent(row) {
+      const when = row.submitAt ? String(row.submitAt).replace('T', ' ').replace('Z', '').slice(0, 16) : '未提交'
+      return `${when} · ${row.statusLabel || row.status || '状态待确认'} · ${row.wordCount ?? 0} 字`
+    },
+    reportNextActor(row) {
+      if (row.status === 'PENDING_REVIEW') return '本人指导教师 / 管理员'
+      if (row.status === 'RETURNED') return '学生本人（按意见重交）'
+      if (row.status === 'OVERDUE') return '学生本人 / 指导教师催办'
+      return '学生查看批阅结果'
+    },
     goDetail(row) {
       // 进入详情前保存连续批阅队列（仅当前页真实行，不伪造全量）
       const tab = this.activeTabs.find((t) => t.value === this.filters.status)
@@ -324,6 +379,12 @@ export default {
         const res = await internshipApi.batchReviewWeeklyReports(items, { action: 'APPROVE', comment: '批量通过' })
         if (res.code === 0) {
           const d = res.data || {}
+          this.lastReceipt = {
+            statusLabel: '批量批阅完成', actionLabel: '周报批量通过',
+            objectLabel: `服务端逐条校验 · 通过 ${d.approvedCount || 0} · 跳过 ${d.skippedCount || 0}`,
+            auditText: '每条成功记录分别提交业务更新与审批留痕',
+            nextStep: d.skippedCount ? '查看跳过项原因并逐篇处理' : '可继续当前队列下一页'
+          }
           toast.success(`已通过 ${d.approvedCount || 0} 篇，跳过 ${d.skippedCount || 0} 篇（已写审计）`)
           this.selected = []
           this.load()
@@ -356,6 +417,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.report-now { overflow: hidden; border: 1px solid color-mix(in srgb, var(--pri) 24%, var(--card-b)); border-radius: 14px; background: var(--card); box-shadow: 0 14px 38px rgba(30,64,175,.08); }.report-now__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 16px 18px; background: linear-gradient(120deg, var(--pri-bg), #fff 72%); }.report-now__head > div { display: grid; gap: 3px; }.report-now__head span { color: var(--pri); font-size: 10px; font-weight: 800; letter-spacing: .12em; }.report-now__head h2 { margin: 0; color: var(--t1); font-size: 17px; }.report-now__head p { margin: 0; color: var(--t3); font-size: 12px; }.report-now__head b { flex: 0 0 auto; padding: 4px 9px; border-radius: 999px; background: #fff; color: var(--pri); font-size: 12px; }.report-now__list { display: grid; gap: 10px; padding: 14px; }.report-now__item { display: grid; grid-template-columns: minmax(170px,.9fr) minmax(0,2fr) auto; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--card-b); border-left: 4px solid var(--warning-500,#f59e0b); border-radius: 10px; }.report-now__identity { display: grid; gap: 3px; min-width: 0; }.report-now__identity small { color: var(--pri); font-weight: 700; }.report-now__identity strong,.report-now__identity span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.report-now__identity span { color: var(--t3); font-size: 12px; }.report-now__item dl { display: grid; grid-template-columns: 1.25fr 1fr .8fr; gap: 8px; margin: 0; }.report-now__item dl div { min-width: 0; padding: 8px 10px; border-radius: 8px; background: var(--fill-2,#f8fafc); }.report-now__item dt { margin-bottom: 3px; color: var(--t3); font-size: 10px; font-weight: 700; }.report-now__item dd { margin: 0; color: var(--t2); font-size: 12px; line-height: 1.45; }.report-now__state { padding: 24px; color: var(--t3); font-size: 13px; text-align: center; }
 .wr-tabs { display: flex; gap: 6px; padding: 7px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); overflow-x: auto; }
 .wr-tabs--type { background: linear-gradient(100deg, var(--pri-bg), var(--card) 52%); }
 .wr-tabs--status { margin-top: -8px; padding-left: 14px; border-top: 0; border-radius: 0 0 12px 12px; box-shadow: none; }
@@ -363,4 +425,5 @@ export default {
 .wr-tabs .mp-tab:hover { color: var(--pri); background: var(--pri-bg); }
 .wr-tabs .mp-tab.is-active { border-color: var(--pri-100); background: var(--card); color: var(--pri); font-weight: var(--font-weight-semibold); box-shadow: 0 2px 5px rgba(15, 40, 90, .07); }
 .wr-tabs--status .mp-tab.is-active { background: var(--pri-bg); box-shadow: none; }
+@media (max-width: 900px) { .report-now__item { grid-template-columns: 1fr; }.report-now__item dl { grid-template-columns: 1fr; }.report-now__head { align-items: flex-start; flex-direction: column; } }
 </style>

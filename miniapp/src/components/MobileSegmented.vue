@@ -1,16 +1,19 @@
 <template>
   <scroll-view class="mseg" scroll-x :show-scrollbar="false">
-    <view class="mseg__inner">
-      <view
+    <view class="mseg__inner" role="tablist">
+      <button
         v-for="item in items"
         :key="item.key"
         class="mseg__item"
         :class="{ 'is-active': item.key === modelValue }"
+        role="tab"
+        :aria-selected="item.key === modelValue"
+        :aria-label="item.badge ? `${item.label}，${item.badge} 条待处理` : item.label"
         @click="$emit('update:modelValue', item.key)"
       >
         <text>{{ item.label }}</text>
         <text v-if="item.badge" class="mseg__badge">{{ item.badge }}</text>
-      </view>
+      </button>
     </view>
   </scroll-view>
 </template>
@@ -40,7 +43,9 @@ export default {
   color: var(--text-secondary);
   font-size: var(--font-size-base);
   border: 1px solid var(--border-base);
+  line-height: 1.4;
 }
+.mseg__item::after { border: 0; }
 .mseg__item.is-active {
   background: var(--brand-primary);
   color: #fff;

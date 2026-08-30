@@ -60,20 +60,8 @@
             </view>
           </view>
 
-          <view class="section-head"><text class="section-head__title">快捷操作</text><text class="wb__section-hint">按当前身份和权限展示</text></view>
-          <view class="card wb__quick-card">
-            <view class="icon-grid">
-              <view v-for="(q, i) in visibleQuickActions" :key="q.key" class="icon-grid__item" @click="quick(q)">
-                <view class="icon-grid__badge" :class="gradClass(i)">{{ q.icon }}</view>
-                <text class="icon-grid__label">{{ q.label }}</text>
-              </view>
-            </view>
-            <MobileGlobalState v-if="!visibleQuickActions.length" state="empty" title="当前身份暂无可操作入口"
-              description="快捷操作由服务端角色权限生成；需要更多权限请联系学校管理员。" />
-          </view>
-
           <view class="section-head">
-            <view><text class="section-head__title">即将超时</text><text class="wb__section-sub">优先处理临近截止或已经逾期的事项</text></view>
+            <view><text class="section-head__title">今天先处理</text><text class="wb__section-sub">具体对象优先于功能入口；先完成临近截止事项</text></view>
             <text class="section-head__more" @click="go('/pages/teacher/todos/index')">全部待办 ›</text>
           </view>
           <view class="stack-sm" v-if="wb.dueSoon && wb.dueSoon.length">
@@ -111,6 +99,18 @@
             </view>
           </view>
           <view v-else class="card wb__quiet"><text class="wb__quiet-title">暂无风险学生</text><text class="wb__quiet-text">当前工作台未返回需要重点处置的风险记录。</text></view>
+
+          <view class="section-head"><text class="section-head__title">更多办理入口</text><text class="wb__section-hint">按当前身份和权限展示</text></view>
+          <view class="card wb__quick-card">
+            <view class="icon-grid">
+              <view v-for="(q, i) in visibleQuickActions" :key="q.key" class="icon-grid__item" @click="quick(q)">
+                <view class="icon-grid__badge" :class="gradClass(i)">{{ q.icon }}</view>
+                <text class="icon-grid__label">{{ q.label }}</text>
+              </view>
+            </view>
+            <MobileGlobalState v-if="!visibleQuickActions.length" state="empty" title="当前身份暂无可操作入口"
+              description="办理入口由服务端角色权限生成；需要更多权限请联系学校管理员。" />
+          </view>
 
           <view class="section-head"><view><text class="section-head__title">最近学生动态</text><text class="wb__section-sub">用于了解近期提交、审批和状态变化</text></view></view>
           <view class="card stack-sm wb__recent" v-if="wb.recent && wb.recent.length">

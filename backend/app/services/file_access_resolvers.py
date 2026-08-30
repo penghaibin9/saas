@@ -219,6 +219,44 @@ def scoped_binding_resolver(db, file_obj, bindings: list[Any], user: dict, actio
     return subject_allowed
 
 
+@register_file_resolver("ARCHIVE_PACKAGE", "ARCHIVE_BATCH_PACKAGE")
+def internship_archive_package_resolver(
+    db, file_obj, bindings: list[Any], user: dict, action: str,
+) -> bool:
+    """归档包只认归档权限与包内每个实习学生的实时数据范围。"""
+    if db is None or not has_permission(user or {}, "internship.archive.package"):
+        return False
+    try:
+        from app.models import InternshipEvidencePackage
+        from app.modules.internship.services.internship_scope import (
+            assert_internship_record_scope,
+        )
+
+        package = db.scalars(select(InternshipEvidencePackage).where(
+            InternshipEvidencePackage.tenant_id == int(file_obj.tenant_id),
+            InternshipEvidencePackage.package_file_id == str(file_obj.id),
+            InternshipEvidencePackage.status == "READY",
+            InternshipEvidencePackage.is_deleted.is_(False),
+        )).first()
+        if not package:
+            return False
+        if package.package_type == "ARCHIVE":
+            assert_internship_record_scope(db, package.target_id, user, "下载实习归档包")
+            return True
+        if package.package_type != "ARCHIVE_BATCH":
+            return False
+        records = (package.manifest_json or {}).get("records") or []
+        if not records or len(records) != int(package.row_count or 0):
+            return False
+        for row in records:
+            assert_internship_record_scope(
+                db, row.get("internshipId"), user, "下载实习批次归档包",
+            )
+        return True
+    except Exception:
+        return False
+
+
 def _graduation_student_ids(bindings: list[Any]) -> set[int]:
     explicit: set[int] = set()
     legacy: set[int] = set()

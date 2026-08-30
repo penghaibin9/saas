@@ -103,7 +103,8 @@ def _row(c, user=None, student_name: str = ""):
         "acceptDeadline": c.accept_deadline or "", "resolveDeadline": c.resolve_deadline or "",
         "conclusion": "" if hide_business_detail else (c.conclusion or ""),
         "followupResult": "" if hide_business_detail else (c.followup_result or ""),
-        "riskId": str(c.risk_id) if c.risk_id else "", "createdAt": _iso(c.created_at) or "",
+        "riskId": str(c.risk_id) if c.risk_id else "",
+        "version": int(c.version or 0), "createdAt": _iso(c.created_at) or "",
     }
 
 
@@ -354,7 +355,10 @@ def transition(cid, action, body=None, user=None):
         return _row(c, user)
 
 
-def to_risk(cid, user=None):
+def to_risk(cid, user=None, expected_version=None):
+    from app.modules.internship.services.internship_version import extract_expected_version
+    client_version = extract_expected_version(
+        {"expectedVersion": expected_version}, required=False)
     with session() as db:
         c = db.scalar(select(InternshipComplaint).where(
             InternshipComplaint.id == _as_id(cid),
@@ -363,6 +367,8 @@ def to_risk(cid, user=None):
         if not c:
             raise not_found("投诉不存在或不在当前数据范围内")
         _assert_complaint_writable(db, c, user, "该投诉不在你的可写范围内")
+        if client_version is not None and client_version != int(c.version or 0):
+            raise AppException("DATA_CONFLICT", "投诉版本已变化，请刷新后重试")
         if c.risk_id:
             raise AppException("DATA_CONFLICT", "该投诉已转风险单")
         if c.status in ("WITHDRAWN", "CLOSED", "REJECTED"):
@@ -386,6 +392,11 @@ def to_risk(cid, user=None):
                 c.internship_id = rec.id
         if not rec:
             raise not_found("投诉未精确关联实习记录，禁止按学生最新记录猜测转风险")
+        if c.severity == "HIGH":
+            from app.modules.internship.services.internship_audit_service import (
+                assert_high_risk_write_available,
+            )
+            assert_high_risk_write_available(db)
         risk_code = f"INT-CPL-{c.id}"
         existing = db.scalar(select(RiskRecord).where(
             RiskRecord.tenant_id == _tid(),
@@ -418,17 +429,29 @@ def to_risk(cid, user=None):
         return _row(c, user)
 
 
-def followup(cid, result, user=None):
+def followup(cid, result, user=None, expected_version=None):
     result = (result or "").strip()
     if len(result) < 2:
         raise AppException("VALIDATION_ERROR", "回访结果不少于 2 个字符")
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
+    client_version = extract_expected_version(
+        {"expectedVersion": expected_version}, required=False)
     with session() as db:
         c = _get(db, cid)
         _assert_complaint_writable(db, c, user, "该投诉不在你的可写范围内")
+        current_version = int(c.version or 0)
+        if client_version is not None and client_version != current_version:
+            raise AppException("DATA_CONFLICT", "投诉版本已变化，请刷新后重试")
         if c.status not in ("RESOLVED", "CLOSED"):
             raise AppException("DATA_CONFLICT", "仅办结/关闭的投诉可回访")
-        c.followup_result = result
-        c.version = int(c.version or 0) + 1
-        _trail(db, c.id, "FOLLOWUP", {}, user)
+        new_version = versioned_update(
+            db, InternshipComplaint, entity_id=c.id, tenant_id=_tid(),
+            expected_version=current_version, expected_status=c.status,
+            values={"followup_result": result},
+        )
+        _trail(db, c.id, "FOLLOWUP", {"newVersion": new_version}, user)
         db.commit()
+        db.refresh(c)
         return _row(c, user)

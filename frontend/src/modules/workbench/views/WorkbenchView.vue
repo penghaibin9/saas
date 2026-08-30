@@ -1,6 +1,6 @@
 <template>
   <div class="wb-v2">
-    <AppPageGuide guide-key="workbench.first-login" />
+    <AppPageGuide guide-key="workbench.first-login" :auto-open="false" />
 
     <div class="wb-v2__layout">
       <main class="wb-v2__main">

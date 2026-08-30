@@ -1,7 +1,7 @@
 """岗位实习 · 实习成绩五项权重核算（P2-D，成熟商业核心）。
 
 五项：打卡 / 周报 / 月报总结 / 企业评价 / 学校(指导教师)评价，权重和须=100。
-状态机：PENDING_CALC 待核算 → PENDING_REVIEW 待复核 → PUBLISHED 已发布 → WITHDRAWN 已撤回 → ARCHIVED 已归档。
+状态机：PENDING_CALC 待核算 → PENDING_REVIEW 待复核 → PENDING_PUBLISH 待发布 → PUBLISHED 已发布 → WITHDRAWN 已撤回 → ARCHIVED 已归档。
 缺项(incomplete)不得发布。企业评价分只能读取已审核企业评价，客户端不得手工覆盖。
 owner + 数据范围复用 internship_service。审计 target_type=SCORE。
 """
@@ -17,7 +17,7 @@ from app.models import (InternshipAuditTrail, InternshipEnterpriseEval, Internsh
 from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
 from app.services.db_service import _as_id, _iso, _tid, session
 
-STATUS_LABEL = {"PENDING_CALC": "待核算", "PENDING_REVIEW": "待复核", "PUBLISHED": "已发布",
+STATUS_LABEL = {"PENDING_CALC": "待核算", "PENDING_REVIEW": "待复核", "PENDING_PUBLISH": "待发布", "PUBLISHED": "已发布",
                 "WITHDRAWN": "已撤回", "ARCHIVED": "已归档"}
 COMPONENTS = [("checkinScore", "checkin_score", "w_checkin", "打卡"),
               ("weeklyScore", "weekly_score", "w_weekly", "周报"),
@@ -211,9 +211,20 @@ def save_config(user, body) -> dict:
 # ═══════════ 核算 / 复核 / 发布 ═══════════
 
 def _approved_enterprise_eval(db, internship_id):
+    record = db.get(InternshipRecord, _as_id(
+        internship_id.id if isinstance(internship_id, InternshipRecord) else internship_id))
+    if (
+        not record or record.is_deleted or record.tenant_id != _tid()
+        or not record.current_placement_snapshot_id
+        or not record.enterprise_id or not record.position_id
+    ):
+        return None
     return db.scalars(select(InternshipEnterpriseEval).where(
         InternshipEnterpriseEval.tenant_id == _tid(),
-        InternshipEnterpriseEval.internship_id == internship_id,
+        InternshipEnterpriseEval.internship_id == record.id,
+        InternshipEnterpriseEval.placement_snapshot_id == record.current_placement_snapshot_id,
+        InternshipEnterpriseEval.enterprise_id == record.enterprise_id,
+        InternshipEnterpriseEval.position_id == record.position_id,
         InternshipEnterpriseEval.school_review_status == "APPROVED",
         InternshipEnterpriseEval.is_deleted.is_(False)).order_by(
             InternshipEnterpriseEval.id.desc())).first()
@@ -359,11 +370,12 @@ def return_recalc(user, sid, reason="", expected_version=None) -> dict:
         scope, in_scope = _scope_ctx(user)
         if not in_scope(scope, db, rec, stu):
             raise no_permission("只能退回本人数据范围内的成绩")
-        if s.status != "PENDING_REVIEW":
-            raise AppException("DATA_CONFLICT", "仅待复核成绩可退回重算")
+        if s.status not in ("PENDING_REVIEW", "PENDING_PUBLISH"):
+            raise AppException("DATA_CONFLICT", "仅待复核或待发布成绩可退回重算")
+        current_status = s.status
         new_ver = versioned_update(db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
                                    expected_version=extract_expected_version({"expectedVersion": expected_version}),
-                                   expected_status="PENDING_REVIEW", values={"status": "PENDING_CALC"})
+                                   expected_status=current_status, values={"status": "PENDING_CALC"})
         _trail(db, s.id, "RETURN_RECALC", {"reason": reason,
                "actorUserId": _user_id(user), "actorRole": _role_code(user)}, operator=_op_name(user))
         db.commit()

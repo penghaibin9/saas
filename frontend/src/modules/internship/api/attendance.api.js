@@ -49,6 +49,9 @@ export const attendanceApi = {
   // 补卡审批
   getMakeups(params = {}) { return callList(`${B}/makeups`, params) },
   getMakeupDetail(id) { return call(() => request(`${B}/makeups/${id}`)) },
+  markMakeupEvidenceViewed(id) {
+    return call(() => request(`${B}/makeups/${id}/evidence-viewed`, { method: 'POST' }))
+  },
   approveMakeup(id, { comment, expectedVersion, version } = {}) {
     return call(() => request(`${B}/makeups/${id}/approve`, {
       method: 'POST', body: { comment: comment || '', expectedVersion: expectedVersion ?? version }

@@ -56,6 +56,30 @@ def _resolve_context_in_tx(
             raise AppException("DATA_CONFLICT", "批次与招聘季上下文不一致", http_status=409)
         return campaign, record
 
+    # Student PC/Mini persist the batch chosen by the student in
+    # X-Internship-Batch-Id.  An explicit batch must win over an older submitted/
+    # approved volunteer group; otherwise a student with parallel placements is
+    # silently pinned to a previous recruitment round.
+    if batch_id not in (None, ""):
+        selected_batch_id = _as_id(batch_id)
+        record = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == tenant_id,
+            InternshipRecord.student_id == student_id,
+            InternshipRecord.batch_id == selected_batch_id,
+            InternshipRecord.is_deleted.is_(False),
+        ).order_by(InternshipRecord.id.desc()))
+        if not record:
+            raise not_found("所选实习批次没有本人的实习记录")
+        campaign = db.scalar(select(InternshipRecruitmentCampaign).where(
+            InternshipRecruitmentCampaign.tenant_id == tenant_id,
+            InternshipRecruitmentCampaign.batch_id == selected_batch_id,
+            InternshipRecruitmentCampaign.status == "OPEN",
+            InternshipRecruitmentCampaign.is_deleted.is_(False),
+        ).order_by(InternshipRecruitmentCampaign.round_no.desc(), InternshipRecruitmentCampaign.id.desc()))
+        if not campaign:
+            raise not_found("所选实习批次没有开放中的招聘季")
+        return campaign, record
+
     if record_id not in (None, ""):
         record = db.scalar(select(InternshipRecord).where(
             InternshipRecord.id == _as_id(record_id),
@@ -185,11 +209,12 @@ def _contact_policy(payload: dict) -> dict:
     return material_svc.normalize_contact_sharing_policy(raw)
 
 
-def get_my_volunteers(*, user: dict) -> dict:
+def get_my_volunteers(*, user: dict, batch_id=None) -> dict:
     tenant_id = _tid()
     student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
-        campaign, record = _resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
+        campaign, record = _resolve_context_in_tx(
+            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id)
         group = db.scalar(select(InternshipVolunteerGroup).where(
             InternshipVolunteerGroup.tenant_id == tenant_id,
             InternshipVolunteerGroup.record_id == record.id,
@@ -267,11 +292,12 @@ def save_my_draft(*, user: dict, body: dict) -> dict:
         }
 
 
-def get_my_material_preview(*, user: dict) -> dict:
+def get_my_material_preview(*, user: dict, batch_id=None) -> dict:
     tenant_id = _tid()
     student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
-        campaign, record = _resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
+        campaign, record = _resolve_context_in_tx(
+            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id)
         preview = _material_preview_in_tx(
             db, tenant_id=tenant_id, student_id=student_id, campaign=campaign,
         )
@@ -291,9 +317,14 @@ def get_my_material_preview(*, user: dict) -> dict:
         }
 
 
-def submit_my_saved_volunteers(*, user: dict, body: dict) -> dict:
+def submit_my_saved_volunteers(*, user: dict, body: dict, batch_id=None) -> dict:
     """Validate A03 V3 evidence under locks, then delegate mutation to sealed A01 Authority."""
     payload = dict(body or {})
+    if batch_id not in (None, ""):
+        selected_batch_id = _as_id(batch_id)
+        if payload.get("batchId") not in (None, "") and _as_id(payload["batchId"]) != selected_batch_id:
+            raise AppException("DATA_CONFLICT", "请求批次与当前选择的实习批次不一致", http_status=409)
+        payload["batchId"] = selected_batch_id
     tenant_id = _tid()
     student_id = profile_svc.resolve_my_student_id(user)
     expected_profile_raw = payload.get("expectedProfileVersion")

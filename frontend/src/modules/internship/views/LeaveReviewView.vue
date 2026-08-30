@@ -6,6 +6,37 @@
     </template>
 
     <div class="mp-stack">
+      <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
+
+      <section v-if="!error" class="leave-now" aria-label="当前请假办理对象">
+        <header class="leave-now__head">
+          <div>
+            <span>LEAVE NOW</span>
+            <h2>先办理这 {{ priorityRows.length }} 份真实请假</h2>
+            <p>当前对象先于统计出现；进入右侧完整申请核对日期、理由、证据、历史退回和版本。</p>
+          </div>
+          <b>{{ activeStatusLabel }}</b>
+        </header>
+        <div v-if="loading" class="leave-now__state">正在读取当前请假对象…</div>
+        <div v-else-if="priorityRows.length" class="leave-now__list">
+          <article v-for="row in priorityRows" :key="row.id" class="leave-now__item">
+            <div class="leave-now__identity">
+              <small>{{ row.studentNo }} · v{{ row.version ?? '-' }}</small>
+              <strong>{{ row.studentName }} · {{ row.leaveTypeLabel }}</strong>
+              <span>{{ row.startDate }} ~ {{ row.endDate }} · {{ row.days }} 天</span>
+            </div>
+            <dl>
+              <div><dt>为什么到这里</dt><dd>{{ leaveWhy(row) }}</dd></div>
+              <div><dt>最近状态</dt><dd>{{ leaveRecent(row) }}</dd></div>
+              <div><dt>下一责任人</dt><dd>{{ leaveNextActor(row) }}</dd></div>
+            </dl>
+            <AppPermissionButton code="internship.leave.review" :allowed="canBtn('internship.leave.review')"
+              variant="secondary" size="sm" @click="select(row.id)">核对完整申请 →</AppPermissionButton>
+          </article>
+        </div>
+        <div v-else class="leave-now__state">当前筛选没有请假对象，可切换状态查看其他办理阶段。</div>
+      </section>
+
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
       <div class="bar">
@@ -65,6 +96,16 @@
               <div class="sec-t">请假时间与原因</div>
               <AppDescriptionList :items="leaveItems" :columns="2" />
 
+              <div class="lv-evidence">
+                <div>
+                  <strong>审批证明</strong>
+                  <span>{{ detail.data.evidenceRequirementLabel }}</span>
+                </div>
+                <AppStatusTag :type="leaveCanApprove ? 'success' : 'warning'">
+                  {{ leaveCanApprove ? '当前版本可审批' : detail.data.hasEvidence ? '证明待核对' : '缺少必需证明' }}
+                </AppStatusTag>
+              </div>
+
               <template v-if="detail.data.attachment">
                 <div class="sec-t">证明附件</div>
                 <AppFilePreview :files="attachmentFiles" @download="downloadAtt" />
@@ -83,6 +124,7 @@
               <AppPermissionButton code="internship.leave.review" :allowed="canBtn('internship.leave.review')" variant="ghost" :danger="true"
                 @click="openReview(detail.data, 'REJECT')">驳回</AppPermissionButton>
               <AppPermissionButton code="internship.leave.review" :allowed="canBtn('internship.leave.review')" variant="secondary"
+                :disabled="!leaveCanApprove" :native-title="leaveApproveHint"
                 @click="openReview(detail.data, 'APPROVE')">通过</AppPermissionButton>
             </div>
           </template>
@@ -93,7 +135,9 @@
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
       :reason-chips="cd.requireReason ? REJECT_LEAVE : []"
-      reason-label="审批意见" :submitting="cd.submitting" @confirm="onConfirm" />
+      reason-label="审批意见" :submitting="cd.submitting" @confirm="onConfirm">
+      <ConflictNotice :state="conflict" />
+    </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -103,12 +147,15 @@ import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, A
   AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
+import ConflictNotice from './components/ConflictNotice.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { leaveApi } from '@/modules/internship/api/leave-risk.api'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { REJECT_LEAVE } from '@/modules/internship/constants/presetPrompts'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 
 const STATUS_OPTIONS = [
   { label: '待审批', value: 'PENDING' }, { label: '已通过', value: 'APPROVED' },
@@ -141,7 +188,7 @@ export default {
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppStatusTag,
     AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList, AppAuditTrail,
-    AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination },
+    AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination, ConflictNotice, ActionReceipt },
   data() {
     return {
       REJECT_LEAVE,
@@ -151,6 +198,8 @@ export default {
       detail: { loading: false, error: '', data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, submitting: false },
       pending: null,
+      conflict: emptyConflict(),
+      lastReceipt: null,
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
   },
@@ -161,6 +210,26 @@ export default {
       const cur = this.statusOptions.find((o) => o.value === this.statusFilter)
       return [{ label: '请假单 · ' + (cur ? cur.label : '全部'), value: this.total,
         tone: this.statusFilter === 'PENDING' && this.total ? 'warn' : undefined }]
+    },
+    priorityRows() {
+      const pending = this.rows.filter((row) => row.status === 'PENDING')
+      return (pending.length ? pending : this.rows).slice(0, 3)
+    },
+    activeStatusLabel() {
+      return this.statusOptions.find((item) => item.value === this.statusFilter)?.label || '全部请假'
+    },
+    leaveCanApprove() {
+      const d = this.detail.data
+      if (!d) return false
+      if (d.evidenceRequired && !d.hasEvidence) return false
+      return !d.hasEvidence || !!d.evidenceViewed
+    },
+    leaveApproveHint() {
+      const d = this.detail.data
+      if (!d) return ''
+      if (d.evidenceRequired && !d.hasEvidence) return '按规则必须上传证明，当前不可通过'
+      if (d.hasEvidence && !d.evidenceViewed) return '请先下载并核对当前版本证明'
+      return ''
     },
     summaryItems() { const d = this.detail.data || {}; return SUMMARY_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
     leaveItems() { const d = this.detail.data || {}; return LEAVE_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
@@ -203,6 +272,22 @@ export default {
   },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    leaveWhy(row) {
+      if (row.status === 'PENDING') return '学生请假已提交，等待本人指导教师核对完整事实'
+      if (row.status === 'APPROVED') return '请假已批准，等待学生按期销假或系统识别超期'
+      if (row.status === 'OVERDUE') return '批准期限已过且未销假，需要进入风险联动'
+      if (row.status === 'REJECTED') return '申请已驳回，保留原因供学生修正后重交'
+      return '该请假已有状态变化，可回看审批与销假留痕'
+    },
+    leaveRecent(row) {
+      const when = row.submittedAt || row.createdAt || '时间未记录'
+      const evidence = row.hasEvidence ? (row.evidenceViewed ? '证明已核对' : '证明待核对') : (row.evidenceRequired ? '缺必需证明' : '无附件')
+      return `${String(when).replace('T', ' ').replace('Z', '').slice(0, 16)} · ${row.statusLabel || row.status} · ${evidence}`
+    },
+    leaveNextActor(row) {
+      return ({ PENDING: '本人指导教师 / 管理员', APPROVED: '学生本人（销假）', OVERDUE: '风险责任人',
+        REJECTED: '学生本人（修正重交）', RETURNED: '无需继续处理', WITHDRAWN: '无需继续处理' })[row.status] || '请假经办人'
+    },
     leaveStatusLabel(status) { return status === 'RETURNED' ? '已销假' : '' },
     leaveStatusType(status) { return status === 'RETURNED' ? 'success' : '' },
     applyPanel(panel) {
@@ -259,10 +344,20 @@ export default {
     async downloadAtt() {
       const a = this.detail.data?.attachment
       if (!a) return
-      try { await guidanceVisitApi.downloadAttachment(a.fileId, a.fileName) } catch (e) { toast.error('下载失败：' + (e.message || '')) }
+      try {
+        await guidanceVisitApi.downloadAttachment(a.fileId, a.fileName)
+        const viewed = await leaveApi.markEvidenceViewed(this.detail.data.id)
+        if (viewed.code !== 0) return toast.error(viewed.message || '证明已下载，但查看留痕失败')
+        this.detail.data = { ...this.detail.data, evidenceViewed: true }
+        const row = this.rows.find((item) => String(item.id) === String(this.detail.data.id))
+        if (row) row.evidenceViewed = true
+        toast.success('证明已下载，当前版本查看动作已留痕')
+      } catch (e) { toast.error('下载失败：' + (e.message || '')) }
     },
     openReview(r, action) {
-      this.pending = { id: r.id, action, expectedVersion: r.version }
+      this.conflict = emptyConflict()
+      this.pending = { id: r.id, action, expectedVersion: r.version, studentName: r.studentName,
+        startDate: r.startDate, endDate: r.endDate }
       const ap = action === 'APPROVE'
       this.cd = { visible: true, title: ap ? '请假 · 通过' : '请假 · 驳回',
         content: `${ap ? '通过' : '驳回'}「${r.studentName}」${r.startDate}~${r.endDate} 的请假，意见将写入审计。`,
@@ -275,8 +370,34 @@ export default {
         expectedVersion: this.pending.expectedVersion
       })
       this.cd.submitting = false
+      if (isConflict(res)) {
+        this.conflict = await captureConflict({
+          res, kept: reason || '', refresh: () => this.loadDetail(this.pending.id),
+          latest: () => {
+            const fresh = this.detail.data
+            if (!fresh) throw new Error('最新请假详情未拉回')
+            this.pending.expectedVersion = fresh.version
+            return [
+              { label: '最新状态', value: fresh.statusLabel || fresh.status || '' },
+              { label: '最新版本', value: fresh.version }
+            ]
+          }
+        })
+        return
+      }
       if (res.code !== 0) return toast.error(res.message || '操作失败')
-      this.cd.visible = false; toast.success('审批完成，已写审计')
+      this.cd.visible = false
+      this.conflict = emptyConflict()
+      this.lastReceipt = {
+        id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel,
+        version: res.data?.version, actionLabel: this.pending.action === 'APPROVE' ? '请假通过' : '请假驳回',
+        objectLabel: `${this.pending.studentName || '学生'} · ${this.pending.startDate || ''}~${this.pending.endDate || ''}`,
+        auditText: this.pending.action === 'APPROVE'
+          ? '请假更新、打卡豁免与审批留痕已同事务提交'
+          : '请假驳回与审批留痕已同事务提交',
+        nextStep: this.pending.action === 'APPROVE' ? '等待学生按期销假；超期将进入风险联动' : '等待学生查看原因并修正重交'
+      }
+      toast.success('审批完成，已写审计')
       await this.advanceAfterReview(this.pending.id)
     },
     /** 动作成功后：刷新当前页并自动选中下一条待审批；无下一条则清空选中并提示本页已处理完 */
@@ -300,6 +421,9 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 
+.leave-now { overflow: hidden; border: 1px solid color-mix(in srgb, var(--pri) 24%, var(--card-b)); border-radius: 14px; background: var(--card); box-shadow: 0 14px 38px rgba(30,64,175,.08); }
+.leave-now__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 16px 18px; background: linear-gradient(120deg, var(--pri-bg), #fff 72%); }.leave-now__head > div { display: grid; gap: 3px; }.leave-now__head span { color: var(--pri); font-size: 10px; font-weight: 800; letter-spacing: .12em; }.leave-now__head h2 { margin: 0; color: var(--t1); font-size: 17px; }.leave-now__head p { margin: 0; color: var(--t3); font-size: 12px; }.leave-now__head b { flex: 0 0 auto; padding: 4px 9px; border-radius: 999px; background: #fff; color: var(--pri); font-size: 12px; }
+.leave-now__list { display: grid; gap: 10px; padding: 14px; }.leave-now__item { display: grid; grid-template-columns: minmax(170px,.9fr) minmax(0,2fr) auto; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--card-b); border-left: 4px solid var(--warning-500,#f59e0b); border-radius: 10px; }.leave-now__identity { display: grid; gap: 3px; min-width: 0; }.leave-now__identity small { color: var(--pri); font-weight: 700; }.leave-now__identity strong,.leave-now__identity span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.leave-now__identity span { color: var(--t3); font-size: 12px; }.leave-now__item dl { display: grid; grid-template-columns: 1.2fr 1.2fr .8fr; gap: 8px; margin: 0; }.leave-now__item dl div { min-width: 0; padding: 8px 10px; border-radius: 8px; background: var(--fill-2,#f8fafc); }.leave-now__item dt { margin-bottom: 3px; color: var(--t3); font-size: 10px; font-weight: 700; }.leave-now__item dd { margin: 0; color: var(--t2); font-size: 12px; line-height: 1.45; }.leave-now__state { padding: 24px; color: var(--t3); font-size: 13px; text-align: center; }
 .bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .state { padding: var(--space-6); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); border: 1px dashed var(--border-base); border-radius: var(--radius-base); margin: var(--space-3); }
 .state.is-err { color: var(--danger-600); }
@@ -320,5 +444,7 @@ export default {
 .lv-main__state { margin: var(--space-4); }
 .lv-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .lv-head__name { font-size: var(--font-size-md, 15px); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
+.lv-evidence { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: var(--space-3); padding: 10px 12px; border: 1px solid var(--card-b); border-radius: 9px; background: var(--fill-2,#f8fafc); }.lv-evidence > div { display: grid; gap: 3px; }.lv-evidence span { color: var(--t3); font-size: 12px; }
 .lv-foot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-light); background: var(--bg-card, #fff); border-radius: 0 0 var(--r, 12px) var(--r, 12px); }
+@media (max-width: 900px) { .leave-now__item { grid-template-columns: 1fr; }.leave-now__item dl { grid-template-columns: 1fr; }.leave-now__head { align-items: flex-start; flex-direction: column; } }
 </style>
