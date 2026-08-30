@@ -28,6 +28,11 @@ _PERMANENT_PACKAGE_JOB_ERRORS = frozenset({
 })
 
 
+def _available_at_now() -> datetime:
+    """Match MySQL ``DATETIME(0)`` precision without rounding into the future."""
+    return datetime.utcnow().replace(microsecond=0)
+
+
 def package_job_dedupe_key(*, tenant_id: int, manifest_id: int, revision: int, manifest_sha256: str, profile_code: str) -> str:
     identity = f"{tenant_id}:{manifest_id}:{revision}:{manifest_sha256.lower()}:{profile_code.upper()}"
     return f"FROZEN_PACKAGE:{hashlib.sha256(identity.encode('utf-8')).hexdigest()}"
@@ -70,7 +75,7 @@ def enqueue_frozen_package(db, *, manifest_id: int, profile_code: str = STANDARD
         status="PENDING",
         attempts=0,
         max_attempts=5,
-        available_at=datetime.utcnow(),
+        available_at=_available_at_now(),
         payload_json={
             "tenantId": str(tenant_id),
             "manifestId": str(manifest.id),
@@ -103,7 +108,7 @@ def request_frozen_package_build(*, manifest_id: int, profile_code: str = STANDA
         if str(job.status or "").upper() == "DEAD":
             job.status = "RETRY"
             job.attempts = 0
-            job.available_at = datetime.utcnow()
+            job.available_at = _available_at_now()
             job.locked_at = None
             job.locked_by = None
             job.last_error = None
@@ -186,7 +191,7 @@ def run_claimed_frozen_package_job(*, job_id: int, worker_id: str) -> dict:
                     job.status = "DEAD"
                 else:
                     job.status = "RETRY"
-                    job.available_at = datetime.utcnow() + timedelta(seconds=min(300, 2 ** int(job.attempts or 1)))
+                    job.available_at = _available_at_now() + timedelta(seconds=min(300, 2 ** int(job.attempts or 1)))
                 db.commit()
         raise
 
