@@ -193,6 +193,36 @@ def test_federation_centrally_bounds_provider_input_and_output():
     assert len(result.hits) == 50
 
 
+def test_federation_applies_one_global_page_limit_without_provider_starvation():
+    first = _Provider(
+        "FIRST",
+        hits=[
+            _hit("FIRST", "shared"),
+            _hit("FIRST", "first-2"),
+            _hit("FIRST", "first-3"),
+        ],
+    )
+    second = _Provider(
+        "SECOND",
+        hits=[
+            _hit("SECOND", "shared"),
+            _hit("SECOND", "second-2"),
+            _hit("SECOND", "second-3"),
+        ],
+    )
+    service = SearchFederationService([first, second])
+    try:
+        result = service.search(SearchContext(
+            tenant_id=TENANT, actor=_actor(), keyword="终稿", limit=3,
+        ))
+    finally:
+        service.close(wait_for_running=True)
+
+    assert len(result.hits) == 3
+    assert [hit.dedupe_key for hit in result.hits] == ["shared", "first-2", "second-2"]
+    assert {hit.provider for hit in result.hits} == {"FIRST", "SECOND"}
+
+
 def test_federation_rejects_non_list_provider_result_as_opaque_failure():
     provider = _Provider("INVALID")
     provider.search = lambda _context: iter([_hit("INVALID", "one")])

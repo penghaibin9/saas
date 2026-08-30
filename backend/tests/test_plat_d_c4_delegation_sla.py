@@ -132,6 +132,36 @@ def test_acting_delegation_is_not_iam_and_overlap_is_rejected():
     assert aware.effective_from == aware_start_utc
 
 
+def test_delegation_scope_rejects_non_array_and_partially_invalid_payloads():
+    factory, _todo_id = _factory()
+    service = _service(factory, [])
+    malformed = (
+        ("TODO_TYPE", {"todoTypes": "GD_FINAL_REVIEW"}),
+        ("SOURCE_MODULE", {"sourceModules": 17}),
+        ("TODO_IDS", {"todoIds": "123"}),
+        ("TODO_IDS", {"todoIds": [123, "not-an-id"]}),
+    )
+    now = datetime.utcnow()
+    for scope_type, scope in malformed:
+        try:
+            service.create(
+                tenant_id=TENANT,
+                delegate_user_id=702,
+                scope_type=scope_type,
+                scope=scope,
+                effective_from=now,
+                effective_until=now + timedelta(hours=1),
+                reason="出差期间代理",
+                actor=_actor(701),
+            )
+            raise AssertionError(f"malformed {scope_type} scope must fail closed")
+        except TodoCollaborationError as exc:
+            assert exc.code == "VALIDATION_ERROR" and exc.http_status == 422
+
+    with factory() as db:
+        assert db.query(TodoActingDelegation).count() == 0
+
+
 def test_student_delegatee_is_forbidden_and_runtime_rechecks_disabled_user():
     factory, todo_id = _factory()
     events = []

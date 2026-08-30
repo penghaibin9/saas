@@ -116,23 +116,53 @@ def _normalize_scope(scope_type: str, scope: dict | None) -> tuple[str, dict, st
     normalized_type = str(scope_type or "").strip().upper()
     if normalized_type not in _SCOPE_TYPES:
         raise TodoCollaborationError("VALIDATION_ERROR", "不支持的待办代理范围", http_status=422)
+    if scope is not None and not isinstance(scope, dict):
+        raise TodoCollaborationError("VALIDATION_ERROR", "待办代理范围必须是对象", http_status=422)
     raw = dict(scope or {})
     if normalized_type == "ALL_TODOS":
         normalized = {}
     elif normalized_type == "TODO_TYPE":
-        values = sorted({str(value).strip().upper() for value in raw.get("todoTypes", []) if str(value).strip()})
-        if not values:
-            raise TodoCollaborationError("VALIDATION_ERROR", "代理范围缺少 todoTypes", http_status=422)
+        raw_values = raw.get("todoTypes")
+        if not isinstance(raw_values, list) or not raw_values or any(
+            not isinstance(value, str) or not value.strip() for value in raw_values
+        ):
+            raise TodoCollaborationError(
+                "VALIDATION_ERROR", "代理范围 todoTypes 必须为非空字符串数组", http_status=422,
+            )
+        values = sorted({value.strip().upper() for value in raw_values})
         normalized = {"todoTypes": values}
     elif normalized_type == "SOURCE_MODULE":
-        values = sorted({str(value).strip().lower() for value in raw.get("sourceModules", []) if str(value).strip()})
-        if not values:
-            raise TodoCollaborationError("VALIDATION_ERROR", "代理范围缺少 sourceModules", http_status=422)
+        raw_values = raw.get("sourceModules")
+        if not isinstance(raw_values, list) or not raw_values or any(
+            not isinstance(value, str) or not value.strip() for value in raw_values
+        ):
+            raise TodoCollaborationError(
+                "VALIDATION_ERROR", "代理范围 sourceModules 必须为非空字符串数组", http_status=422,
+            )
+        values = sorted({value.strip().lower() for value in raw_values})
         normalized = {"sourceModules": values}
     else:
-        values = sorted({str(int(value)) for value in raw.get("todoIds", []) if str(value).isdigit()})
-        if not values:
-            raise TodoCollaborationError("VALIDATION_ERROR", "代理范围缺少 todoIds", http_status=422)
+        raw_values = raw.get("todoIds")
+        normalized_ids: set[str] = set()
+        if not isinstance(raw_values, list) or not raw_values:
+            raise TodoCollaborationError(
+                "VALIDATION_ERROR", "代理范围 todoIds 必须为非空正整数数组", http_status=422,
+            )
+        for value in raw_values:
+            if isinstance(value, bool):
+                normalized_id = 0
+            elif isinstance(value, int):
+                normalized_id = value
+            elif isinstance(value, str) and value.strip().isdigit():
+                normalized_id = int(value.strip())
+            else:
+                normalized_id = 0
+            if normalized_id <= 0:
+                raise TodoCollaborationError(
+                    "VALIDATION_ERROR", "代理范围 todoIds 必须为非空正整数数组", http_status=422,
+                )
+            normalized_ids.add(str(normalized_id))
+        values = sorted(normalized_ids, key=int)
         normalized = {"todoIds": values}
     canonical = json.dumps(
         {"scopeType": normalized_type, "scope": normalized},

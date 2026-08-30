@@ -141,16 +141,31 @@ class SearchFederationService:
                 errors.append(ProviderError(provider=code, code="FAILED"))
 
         partial = bool(errors)
+        # ``limit`` is the response-page bound, not a multiplier that every
+        # provider may independently spend.  Merge round-robin so a broad
+        # provider (usually STUDENT) cannot consume the whole page before an
+        # actionable TODO/domain result gets a chance to appear.
         deduped: list[SearchHit] = []
         seen: set[str] = set()
-        for provider in self._providers:
-            code = provider.provider_code
-            hits = provider_hits.get(code, [])
-            for hit in hits:
+        max_provider_hits = max((len(hits) for hits in provider_hits.values()), default=0)
+        for index in range(max_provider_hits):
+            for provider in self._providers:
+                hits = provider_hits.get(provider.provider_code, [])
+                if index >= len(hits):
+                    continue
+                hit = hits[index]
                 if hit.dedupe_key in seen:
                     continue
                 seen.add(hit.dedupe_key)
                 deduped.append(hit)
+                if len(deduped) >= effective_context.limit:
+                    break
+            if len(deduped) >= effective_context.limit:
+                break
+
+        for provider in self._providers:
+            code = provider.provider_code
+            hits = provider_hits.get(code, [])
             self._record_telemetry(
                 SearchTelemetryEvent(
                     provider=code,
