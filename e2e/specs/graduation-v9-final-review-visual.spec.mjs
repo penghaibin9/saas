@@ -59,8 +59,9 @@ async function expectDecisionAboveFold(page) {
   expect(viewport).toBeTruthy()
   const review = page.locator('.gd-review-workspace__review')
   const targets = [
-    ['安全版本', review.getByText('当前安全版本', { exact: true })],
-    ['SHA', review.getByText(/SHA=/).first()],
+    ['审核材料', review.getByText('本次审核材料', { exact: true })],
+    ['当前提交版本', review.getByText(/当前提交第 \d+ 版/).first()],
+    ['校验证据入口', review.getByText(/查看文件校验证据与历史版本/).first()],
     ['通过当前版本', page.getByRole('button', { name: /通过当前版本/ })],
     ['退回当前版本', page.getByRole('button', { name: /退回当前版本/ })]
   ]
@@ -195,8 +196,10 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     await expect(workspace).toBeVisible()
     await expect(queue).toContainText(fixture.topicTitle)
     await expect(document).toContainText(fixture.topicTitle)
-    await expect(review).toContainText('当前安全版本')
-    await expect(review).toContainText(/SHA=|安全门/)
+    await expect(review).toContainText('本次审核材料')
+    await expect(review).toContainText(/当前提交第 \d+ 版/)
+    await expect(review).toContainText('校验证据与历史版本')
+    await expect(review).toContainText('SHA-256')
     await expect(review).toContainText('查重')
     await expect(page.getByRole('button', { name: /通过当前版本/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /退回当前版本/ })).toBeVisible()

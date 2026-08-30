@@ -67,8 +67,9 @@ async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
   await graduationRail.click()
   await expect(page).toHaveURL(/\/admin\/graduation(?:\?|$)/)
   await page.evaluate((batchId) => localStorage.setItem('graduation.selectedBatchId', batchId), fixture.batchId)
-  await page.reload()
+  await page.goto(`${config.staffBaseUrl}/admin/graduation?batchId=${encodeURIComponent(fixture.batchId)}`)
   await dismissGuide(page)
+  await expect(page.locator('.gbs__select')).toHaveValue(String(fixture.batchId))
 
   const roleHomeTask = {
     '待评阅开题': '开题材料待审阅',
@@ -79,6 +80,7 @@ async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
     await expect(taskButton, `Role Home 必须显示 ${roleHomeTask}`).toBeVisible()
     await taskButton.click()
     await expect.poll(() => new URL(page.url()).pathname).toBe(expectedPath)
+    await expect.poll(() => new URL(page.url()).searchParams.get('batchId')).toBe(String(fixture.batchId))
     await dismissGuide(page)
     await assertHealthyPage(page)
     return
@@ -109,6 +111,7 @@ async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
   await expect(leaf, `Role Home 侧栏必须能找到 ${workspaceLabel} → ${leafLabel}`).toBeVisible()
   await leaf.click()
   await expect.poll(() => new URL(page.url()).pathname).toBe(expectedPath)
+  await expect.poll(() => new URL(page.url()).searchParams.get('batchId')).toBe(String(fixture.batchId))
   await dismissGuide(page)
   await assertHealthyPage(page)
 }
@@ -209,7 +212,12 @@ test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys',
   test('GDJ-02 topic library to student topic handoff', async ({ page }) => {
     await openStaffFromRoleHome(page, '题目库', '/admin/graduation/topic-lib')
     const screenshotA = await capture(page, 'GDJ-02', 'A-first-screen')
-    const action = await clickFirstVisible(page, ['详情'])
+    await page.getByPlaceholder('题目 / 教师 / 企业').fill(fixture.topicTitle)
+    await page.getByRole('button', { name: '查询', exact: true }).click()
+    const topicRow = page.locator('.dt__tr').filter({ hasText: fixture.topicTitle }).first()
+    await expect(topicRow).toBeVisible()
+    await topicRow.getByRole('button', { name: '详情', exact: true }).click()
+    const action = '搜索真实题目并打开详情'
     await assertHealthyPage(page)
     const screenshotB = await capture(page, 'GDJ-02', 'B-action-receipt')
 
