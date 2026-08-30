@@ -6,6 +6,7 @@ from app.services.sandbox_school_academic_flow_gap_seed import (
     _seed_program_version_and_graduate,
     seed_academic_flow_gap_coverage,
 )
+from app.services.sandbox_school_affairs_seed import validate_affairs_facts
 from app.services.sandbox_school_curriculum_closure import (
     EXPECTED_PROGRAMS,
     EXPECTED_PROGRAMS_AFTER_FLOW_COVERAGE,
@@ -90,3 +91,12 @@ def test_graduation_sample_uses_append_only_discipline_revocation_chain():
     assert "_set_projection_decision" in source
     assert 'case.status = "REVOKED"' in source
     assert 'discipline.status = "REVOKED"' in source
+
+
+def test_affairs_scale_validation_accepts_only_the_two_formal_discipline_stages():
+    source = inspect.getsource(validate_affairs_facts)
+    assert '"revokedDiscipline"' in source
+    assert "allowed_discipline_lifecycles" in source
+    assert "(EXPECTED_EFFECTIVE_DISCIPLINE, 0)" in source
+    assert "(EXPECTED_EFFECTIVE_DISCIPLINE - 1, 1)" in source
+    assert 'mismatch["disciplineLifecycle"]' in source
