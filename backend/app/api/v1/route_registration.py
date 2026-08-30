@@ -250,6 +250,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
         mobile_graduation_teacher_context, mobile_orientation_teacher,
         mobile_internship_context, mobile_internship_leave_context, mobile_internship_student,
         national_standards, notification, onboarding, org_directory, stats,
+        platform_integrity,
         student_portal_graduation_guard, transfer, user_preference,
     )
     from app.api.v1 import message as message_simple
@@ -277,6 +278,7 @@ def register_platform_routes(api_router: APIRouter) -> None:
     from app.modules.platform.routers import platform_router
     api_router.include_router(platform_router.router)
     api_router.include_router(stats.router)
+    api_router.include_router(platform_integrity.router)
     api_router.include_router(mobile_export.router)
     api_router.include_router(mobile_orientation_teacher.router)
 
