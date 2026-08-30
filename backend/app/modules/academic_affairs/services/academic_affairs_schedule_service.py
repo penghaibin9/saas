@@ -190,7 +190,10 @@ def add_item(batch_id, user, body) -> dict:
             raise not_found("课表批次不存在")
         guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再变更
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):
-            raise AppException("DATA_CONFLICT", "已发布课表不可直接改（走作废重发）")
+            raise AppException(
+                "DATA_CONFLICT",
+                "已发布课表不可直接修改；单课位调课、停课、补课请走调停课，只有整批重大纠错才作废重发",
+            )
         it = _item_from(body)
         # 从教学任务带出 课程/班级/教师
         course_name = class_id = class_name = teacher_key = teacher_name = None
@@ -462,7 +465,10 @@ def adjust_item(batch_id, item_id, user, weekday, slot_no, classroom, week_parit
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):
-            raise AppException("DATA_CONFLICT", "已发布课表不可直接改（走作废重发）")
+            raise AppException(
+                "DATA_CONFLICT",
+                "已发布课表不可直接修改；单课位调课、停课、补课请走调停课，只有整批重大纠错才作废重发",
+            )
         it = db.get(AaScheduleItem, int(item_id))
         if not it or it.is_deleted or it.tenant_id != _tid() or it.batch_id != b.id:
             raise not_found("排课条目不存在")
@@ -577,14 +583,58 @@ def list_batches(user, term_id=None, status=None, page=1, page_size=20):
 # 「三视图」下钻用）不同：以下入口面向导航菜单三级页，自动取「当前已发布批次」，无需先选批次。
 
 def _current_published_batch(db, term_id=None):
-    """当前已发布批次：优先按学期过滤，取最近一次发布（publish_at desc）。不存在返回 None（页面走空态）。"""
-    from app.models import AaScheduleBatch
-    conds = [AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.is_deleted.is_(False),
-             AaScheduleBatch.status == "PUBLISHED"]
-    if term_id:
-        conds.append(AaScheduleBatch.term_id == int(term_id))
-    return db.scalars(select(AaScheduleBatch).where(*conds)
-                      .order_by(AaScheduleBatch.publish_at.desc(), AaScheduleBatch.id.desc())).first()
+    """Resolve the official schedule through the term-scoped authority head.
+
+    ``publish_at DESC`` across all terms is unsafe: a post-archive correction to an
+    old term is legitimately newer than the current teaching schedule.  Teacher,
+    student, class and room PC views must therefore use the same
+    ``AaScheduleScopeHead.active_batch_id`` truth as the four-end mobile projection.
+    A same-term published fallback is kept only for pre-ScopeHead migrated data.
+    """
+    from app.models import AaScheduleBatch, AaScheduleScopeHead, AaTerm
+
+    resolved_term_id = int(term_id) if term_id else None
+    if resolved_term_id is None:
+        current_term = db.scalars(select(AaTerm).where(
+            AaTerm.tenant_id == _tid(),
+            AaTerm.is_current.is_(True),
+            AaTerm.is_deleted.is_(False),
+        ).order_by(AaTerm.id.desc()).limit(1)).first()
+        resolved_term_id = int(current_term.id) if current_term else None
+
+    if resolved_term_id is not None:
+        head = db.scalars(select(AaScheduleScopeHead).where(
+            AaScheduleScopeHead.tenant_id == _tid(),
+            AaScheduleScopeHead.term_id == resolved_term_id,
+            AaScheduleScopeHead.scope_type == "SCHOOL",
+            AaScheduleScopeHead.scope_id == 0,
+            AaScheduleScopeHead.active_batch_id.is_not(None),
+            AaScheduleScopeHead.is_deleted.is_(False),
+        ).limit(1)).first()
+        if head is not None:
+            authoritative = db.scalars(select(AaScheduleBatch).where(
+                AaScheduleBatch.id == int(head.active_batch_id),
+                AaScheduleBatch.tenant_id == _tid(),
+                AaScheduleBatch.term_id == resolved_term_id,
+                AaScheduleBatch.status == "PUBLISHED",
+                AaScheduleBatch.is_deleted.is_(False),
+            )).first()
+            if authoritative is not None:
+                return authoritative
+        return db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.tenant_id == _tid(),
+            AaScheduleBatch.term_id == resolved_term_id,
+            AaScheduleBatch.status == "PUBLISHED",
+            AaScheduleBatch.is_deleted.is_(False),
+        ).order_by(AaScheduleBatch.publish_at.desc(), AaScheduleBatch.id.desc())).first()
+
+    # Compatibility only: tenants not yet carrying a current-term marker or scope
+    # head still receive their latest formal batch instead of a hard failure.
+    return db.scalars(select(AaScheduleBatch).where(
+        AaScheduleBatch.tenant_id == _tid(),
+        AaScheduleBatch.status == "PUBLISHED",
+        AaScheduleBatch.is_deleted.is_(False),
+    ).order_by(AaScheduleBatch.publish_at.desc(), AaScheduleBatch.id.desc())).first()
 
 
 def _week_in_range(row: dict, week) -> bool:

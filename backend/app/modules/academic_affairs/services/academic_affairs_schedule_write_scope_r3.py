@@ -88,7 +88,14 @@ def install(target) -> None:
 
     target._load_batch = guarded_load_batch
 
-    for name in ("add_item", "import_items", "adjust_item", "pre_publish", "publish"):
+    for name in (
+        "add_item",
+        "import_items",
+        "adjust_item",
+        "start_correction_draft",
+        "pre_publish",
+        "publish",
+    ):
         setattr(target, name, _bind_actor(getattr(target, name)))
 
     original_create_batch = target.create_batch

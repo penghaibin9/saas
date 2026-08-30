@@ -32,15 +32,18 @@
           <AppStatusTag :type="scheduleBatchColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push(`/admin/academic-affairs/schedule/${row.batchId}/edit`)">排课</button>
-          <button class="mp-link" @click="$router.push(`/admin/academic-affairs/schedule/${row.batchId}/views`)">三视图</button>
-          <button v-if="row.status === 'DRAFT'" class="mp-link" @click="act(row, 'pre')">预发布</button>
-          <button v-if="row.status === 'PRE_PUBLISHED'" class="mp-link" @click="act(row, 'pub')">发布</button>
-          <button v-if="row.status === 'PUBLISHED'" class="mp-link aa-danger" @click="openVoid(row)">作废重发</button>
-          <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openArchive(row)">归档</button>
+          <div class="aa-actions">
+            <button class="mp-link" @click="$router.push(`/admin/academic-affairs/schedule/${row.batchId}/edit`)">排课</button>
+            <button class="mp-link" @click="$router.push(`/admin/academic-affairs/schedule/${row.batchId}/views`)">三视图</button>
+            <button v-if="row.status === 'DRAFT'" class="mp-link" @click="act(row, 'pre')">预发布</button>
+            <button v-if="row.status === 'PRE_PUBLISHED'" class="mp-link" @click="act(row, 'pub')">发布</button>
+            <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openChangeLedger(row)">调停课台账</button>
+            <button v-if="row.status === 'PUBLISHED'" class="mp-link aa-danger" @click="openVoid(row)">作废重发（重大纠错）</button>
+            <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openArchive(row)">归档</button>
+          </div>
         </template>
       </DataTable>
-      <p class="mp-note">发布后课表项不可直改；如需调整走「作废重发」（原因必填，留审计），再新建批次重排；学期结束请走「归档」，与「作废重发」语义不同，归档后数据只读供教务归档统一消费。</p>
+      <p class="mp-note">发布后课表不可直接修改。日常单课位调课、停课、补课走「调停课」审批；只有整批重大错误才作废重发。学期正常结束请走「归档」，归档后数据只读。</p>
     </div>
 
     <AppConfirmDialog
@@ -90,7 +93,7 @@ export default {
       columns: [
         { key: 'batchName', title: '批次名称' },
         { key: 'status', title: '状态' },
-        { key: 'actions', title: '操作', width: '260px' }
+        { key: 'actions', title: '操作', width: '360px' }
       ]
     }
   },
@@ -103,6 +106,7 @@ export default {
     scheduleBatchColor,
     statusLabel(s) { return SCHEDULE_BATCH_STATUS[s] || s || '' },
     onPageChange(p) { this.pagination.page = p; this.load() },
+    openChangeLedger(row) { this.$router.push({ path: '/admin/academic-affairs/schedule-change', query: { termId: row.termId || '' } }) },
     async createBatch() {
       if (this.creating || !this.draft.termId) return
       this.creating = true
@@ -155,5 +159,6 @@ export default {
 .aa-cal-form__item--grow { flex: 1; min-width: 220px; }
 .aa-input, .aa-select { height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box; }
 .aa-danger { color: var(--danger-600, #f53f3f); }
+.aa-actions { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
 .aa-archive-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); margin-right: 12px; }
 </style>

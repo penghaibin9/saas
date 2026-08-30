@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime
 
 from sqlalchemy import select
 
@@ -267,8 +268,103 @@ def _seed_org_scopes(db, tenant_id: int, pools: dict[str, list]) -> dict[str, in
     return dict(counts)
 
 
+def ensure_school_approval_responsibilities(db, tenant_id: int, pools: dict[str, list] | None = None) -> dict:
+    """把“有角色”收敛成审批链可实际送达的唯一组织责任人。
+
+    48 名教务背景账号用于规模与岗位兼任演示，不能因此让每张高风险审批单出现
+    48 个可抢办账号。学院节点以 ``College.secretary_id`` 为权威责任人；校级终审
+    以 SCHOOL/ACADEMIC_REVIEWER 任职为权威责任人。两者都保留 StaffAssignment
+    任职事实，供权限、组织版本和审计链共同消费。
+    """
+    from app.models import College, StaffAssignment, User
+
+    pools = pools or _staff_pools(db, tenant_id)
+    academic_admins = list(pools["academic_admin"])
+    colleges = list(db.scalars(select(College).where(
+        College.tenant_id == tenant_id,
+        College.status == "ACTIVE",
+        College.is_deleted.is_(False),
+    ).order_by(College.code)).all())
+    if len(colleges) != 8 or len(academic_admins) < 24:
+        raise RuntimeError(
+            f"审批责任人组织基数异常 colleges={len(colleges)} academicAdmins={len(academic_admins)}"
+        )
+
+    effective_at = datetime(2026, 8, 1)
+    secretary_ids: list[int] = []
+    for index, college in enumerate(colleges):
+        # 与 TeacherStudentScope 的“每学院 3 名学院管理员”分配顺序保持一致，
+        # 每组三人中的第一人担任唯一教学秘书。
+        secretary = academic_admins[index * 3]
+        secretary_id = int(secretary.id)
+        secretary_ids.append(secretary_id)
+        college.secretary_id = secretary_id
+        assignment = db.scalars(select(StaffAssignment).where(
+            StaffAssignment.tenant_id == tenant_id,
+            StaffAssignment.user_id == secretary_id,
+            StaffAssignment.org_type == "COLLEGE",
+            StaffAssignment.org_node_id == int(college.id),
+            StaffAssignment.assignment_type == "SECRETARY",
+            StaffAssignment.is_deleted.is_(False),
+        ).order_by(StaffAssignment.id)).first()
+        if assignment is None:
+            assignment = StaffAssignment(
+                tenant_id=tenant_id,
+                user_id=secretary_id,
+                org_type="COLLEGE",
+                org_node_id=int(college.id),
+                assignment_type="SECRETARY",
+                effective_at=effective_at,
+            )
+            db.add(assignment)
+        assignment.is_primary = True
+        assignment.source_type = "PROJECTED"
+        assignment.source_id = f"sandbox-school:college:{college.id}:secretary"
+        assignment.expires_at = None
+        assignment.status = "ACTIVE"
+        assignment.reason = "20K 演示学校学院教学秘书唯一审批责任人"
+
+    final_reviewer = db.scalars(select(User).where(
+        User.tenant_id == tenant_id,
+        User.login_name == "admin2",
+        User.status == "ACTIVE",
+        User.is_deleted.is_(False),
+    )).first()
+    if final_reviewer is None:
+        raise RuntimeError("admin2 公开体验账号不存在，无法建立校级教务终审责任")
+    school_assignment = db.scalars(select(StaffAssignment).where(
+        StaffAssignment.tenant_id == tenant_id,
+        StaffAssignment.user_id == int(final_reviewer.id),
+        StaffAssignment.org_type == "SCHOOL",
+        StaffAssignment.org_node_id == tenant_id,
+        StaffAssignment.assignment_type == "ACADEMIC_REVIEWER",
+        StaffAssignment.is_deleted.is_(False),
+    ).order_by(StaffAssignment.id)).first()
+    if school_assignment is None:
+        school_assignment = StaffAssignment(
+            tenant_id=tenant_id,
+            user_id=int(final_reviewer.id),
+            org_type="SCHOOL",
+            org_node_id=tenant_id,
+            assignment_type="ACADEMIC_REVIEWER",
+            effective_at=effective_at,
+        )
+        db.add(school_assignment)
+    school_assignment.is_primary = True
+    school_assignment.source_type = "PROJECTED"
+    school_assignment.source_id = "sandbox-school:academic-office:final-reviewer"
+    school_assignment.expires_at = None
+    school_assignment.status = "ACTIVE"
+    school_assignment.reason = "20K 演示学校公开管理员承担校级教务终审"
+    db.commit()
+    return {
+        "collegeSecretaries": len(secretary_ids),
+        "academicFinalReviewerUserId": int(final_reviewer.id),
+    }
+
+
 def validate_school_roles_20k(db, tenant_id: int) -> dict:
-    from app.models import Role, TeacherStudentScope, User, UserRole
+    from app.models import College, Role, StaffAssignment, TeacherStudentScope, User, UserRole
 
     role_id_by_code = {
         code: int(rid)
@@ -312,6 +408,24 @@ def validate_school_roles_20k(db, tenant_id: int) -> dict:
             User.is_deleted.is_(False),
         )
     ) or 0)
+    college_secretaries = int(db.scalar(
+        select(__import__("sqlalchemy").func.count()).select_from(College).where(
+            College.tenant_id == tenant_id,
+            College.status == "ACTIVE",
+            College.secretary_id.is_not(None),
+            College.is_deleted.is_(False),
+        )
+    ) or 0)
+    academic_final_reviewers = int(db.scalar(
+        select(__import__("sqlalchemy").func.count()).select_from(StaffAssignment).where(
+            StaffAssignment.tenant_id == tenant_id,
+            StaffAssignment.org_type == "SCHOOL",
+            StaffAssignment.org_node_id == tenant_id,
+            StaffAssignment.assignment_type == "ACADEMIC_REVIEWER",
+            StaffAssignment.status == "ACTIVE",
+            StaffAssignment.is_deleted.is_(False),
+        )
+    ) or 0)
 
     role_mismatches = {
         code: {"expected": expected, "actual": assignment_counts.get(code, 0)}
@@ -323,17 +437,21 @@ def validate_school_roles_20k(db, tenant_id: int) -> dict:
         for code, expected in EXPECTED_ORG_SCOPES.items()
         if scope_counts.get(code, 0) != expected
     }
-    if missing_roles or role_mismatches or scope_mismatches or background_accounts != 1280:
+    if (missing_roles or role_mismatches or scope_mismatches or background_accounts != 1280
+            or college_secretaries != 8 or academic_final_reviewers != 1):
         raise RuntimeError(
             "20K 角色拓扑验收失败: "
             f"missingRoles={missing_roles}, roleMismatches={role_mismatches}, "
-            f"scopeMismatches={scope_mismatches}, backgroundAccounts={background_accounts}"
+            f"scopeMismatches={scope_mismatches}, backgroundAccounts={background_accounts}, "
+            f"collegeSecretaries={college_secretaries}, academicFinalReviewers={academic_final_reviewers}"
         )
     return {
         "requiredRoles": len(REQUIRED_ROLE_CODES),
         "secondaryRoleBindings": sum(assignment_counts.values()),
         "roleAssignments": assignment_counts,
         "orgScopes": scope_counts,
+        "collegeSecretaries": college_secretaries,
+        "academicFinalReviewers": academic_final_reviewers,
         "backgroundStaffAccounts": background_accounts,
         "passed": True,
     }
@@ -345,9 +463,17 @@ def reconcile_school_roles_20k(db, tenant_id: int) -> dict:
     plan = _assignment_plan(pools)
     inserted = _insert_role_bindings(db, tenant_id, role_ids, plan)
     scope_counts = _seed_org_scopes(db, tenant_id, pools)
+    approval_responsibilities = ensure_school_approval_responsibilities(db, tenant_id, pools)
+    from app.services.sandbox_school_role_scope_reconcile import (
+        reconcile_sandbox_role_assignment_scopes,
+    )
+    assignment_scope_projection = reconcile_sandbox_role_assignment_scopes(db, tenant_id)
+    db.commit()
     validation = validate_school_roles_20k(db, tenant_id)
     return {
         "insertedSecondaryBindings": inserted,
         "scopeCounts": scope_counts,
+        "approvalResponsibilities": approval_responsibilities,
+        "assignmentScopeProjection": assignment_scope_projection,
         "validation": validation,
     }

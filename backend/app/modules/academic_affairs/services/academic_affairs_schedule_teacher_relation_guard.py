@@ -163,10 +163,13 @@ def teacher_view(batch_id, user, teacher_key):
         ).first()
         if not batch:
             raise not_found("课表批次不存在")
+        items = _teacher_items(db, batch, key)
         return {
-            "items": _teacher_items(db, batch, key),
+            "items": items,
             "batchId": str(batch.id),
             "teacherKey": key,
+            "teacherName": next((str(row.get("teacherName") or "").strip() for row in items
+                                 if str(row.get("teacherName") or "").strip()), ""),
             "teacherAuthorityPolicy": "TEACHING_CLASS_TEACHER_BY_WEEK",
         }
 
@@ -196,6 +199,8 @@ def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
             "batchId": str(batch.id),
             "weeklyHours": len(all_rows),
             "teacherKey": key,
+            "teacherName": next((str(row.get("teacherName") or "").strip() for row in all_rows
+                                 if str(row.get("teacherName") or "").strip()), ""),
             "teacherAuthorityPolicy": "TEACHING_CLASS_TEACHER_BY_WEEK",
             "note": "正式教师关系周窗投影；weeklyHours 仅保留旧课表条目参考，不作为薪酬工时",
         }

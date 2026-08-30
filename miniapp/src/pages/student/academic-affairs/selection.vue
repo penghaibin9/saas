@@ -32,6 +32,15 @@
           audience="student"
         />
 
+        <view v-if="lastSuccess" class="sl__success">
+          <text class="sl__success-mark">✓</text>
+          <view class="flex-1">
+            <text class="sl__success-title">“{{ lastSuccess }}”已选课成功</text>
+            <text class="sl__success-text">名单锁定且课表正式发布后会进入我的课表；今天课程以正式课表为准。</text>
+          </view>
+          <button class="btn btn-primary sl__success-btn" @click="goSchedule">看课表</button>
+        </view>
+
         <view class="sl__tabs">
           <view class="sl__tab" :class="{ 'is-active': tab === 'courses' }" @click="tab = 'courses'">
             <text>可办理课程</text><text class="sl__tab-count">{{ courseCount }}</text>
@@ -60,6 +69,7 @@
                     <text v-if="c.statusLabel" class="sl__status-chip">{{ c.statusLabel }}</text>
                   </view>
                   <text class="sl__course-meta">{{ c.teacherName || '教师待定' }} · {{ c.credit ?? '—' }}学分</text>
+                  <text class="sl__course-schedule">{{ scheduleText(c) }}</text>
                   <view class="sl__remain">
                     <text>余量 {{ remainText(c) }}</text>
                     <view class="sl__remain-bar"><view :style="{ width: availabilityPct(c) + '%' }" /></view>
@@ -120,11 +130,11 @@ export default {
   data() {
     return {
       groups: [], selections: [], state: 'loading', loaded: false,
-      tab: 'courses', acting: null, decisionError: null
+      tab: 'courses', acting: null, decisionError: null, lastSuccess: ''
     }
   },
   computed: {
-    mySelected() { return this.selections.filter((r) => r.status === 'SELECTED') },
+    mySelected() { return this.selections.filter((r) => ['SELECTED', 'LOCKED'].includes(String(r.status || '').toUpperCase())) },
     courseCount() { return this.groups.reduce((sum, group) => sum + ((group && group.courses && group.courses.length) || 0), 0) },
     selectedCredits() { return this.mySelected.reduce((sum, item) => sum + Number(item.credit || 0), 0) }
   },
@@ -140,6 +150,18 @@ export default {
     },
     batchKicker(batch) {
       return String((batch && batch.status) || '').toUpperCase() === 'CLOSED' ? '补选批次' : '开放批次'
+    },
+    scheduleText(course) {
+      const week = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
+      const rows = Array.isArray(course && course.scheduleItems) ? course.scheduleItems : []
+      if (!rows.length) return '时间待排 · 以正式课表为准'
+      return rows.map((row) => {
+        const parity = row.weekParity === 'ODD' ? '单周' : row.weekParity === 'EVEN' ? '双周' : ''
+        return [week[Number(row.weekday)] || `周${row.weekday}`, `第${row.slotNo}节`, parity, row.classroom].filter(Boolean).join(' · ')
+      }).join('；')
+    },
+    goSchedule() {
+      uni.navigateTo({ url: '/pages/student/academic-affairs/schedule' })
     },
     remain(c) {
       const explicit = Number(c && c.remain)
@@ -166,12 +188,23 @@ export default {
     load() {
       this.state = 'loading'
       this.decisionError = null
-      Promise.all([studentApi.getSelectionCourses(), studentApi.getMySelections()]).then(([groups, selections]) => {
-        this.groups = groups || []
-        this.selections = selections || []
+      Promise.allSettled([studentApi.getSelectionCourses(), studentApi.getMySelections()]).then(([coursesResult, selectionsResult]) => {
+        this.groups = coursesResult.status === 'fulfilled' ? (coursesResult.value || []) : []
+        this.selections = selectionsResult.status === 'fulfilled' ? (selectionsResult.value || []) : []
+        const businessError = [coursesResult, selectionsResult]
+          .find((result) => result.status === 'rejected' && result.reason && result.reason.biz)
+        if (businessError) {
+          const reason = businessError.reason
+          this.decisionError = {
+            message: normalizeError(reason).text,
+            decisionTrace: reason.decisionTrace || null
+          }
+        }
         this.loaded = true
-        this.state = 'ready'
-      }).catch(() => { this.state = 'error' })
+        this.state = coursesResult.status === 'fulfilled' || selectionsResult.status === 'fulfilled' || businessError
+          ? 'ready'
+          : 'error'
+      })
     },
     enroll(c) {
       if (this.acting || !this.hasAction(c, 'ENROLL')) return
@@ -189,6 +222,7 @@ export default {
         return studentApi.enrollSelection(c.selectionCourseId)
       }).then((result) => {
         if (result == null) return
+        this.lastSuccess = c.courseName || '该课程'
         uni.showToast({ title: c.reselect ? '补选成功' : '选课成功', icon: 'success' })
         this.load()
       }).catch((e) => {
@@ -225,6 +259,11 @@ export default {
 .sl__metric > text:first-child { display: block; font-size: 10px; color: var(--text-tertiary); }
 .sl__metric-value { display: block; margin-top: 4px; font-size: 20px; font-weight: 800; color: var(--text-primary); }
 .sl__decision { margin-top: var(--space-3); }
+.sl__success { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-3); border: 1px solid rgba(22,163,74,.22); border-radius: 14px; background: rgba(240,253,244,.96); }
+.sl__success-mark { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #16a34a; color: #fff; font-weight: 800; }
+.sl__success-title { display: block; color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 700; }
+.sl__success-text { display: block; margin-top: 2px; color: var(--text-tertiary); font-size: 10px; line-height: 1.5; }
+.sl__success-btn { flex-shrink: 0; min-height: 32px; padding: 0 var(--space-3); font-size: 11px; }
 .sl__tabs { display: flex; gap: 5px; margin-top: var(--space-4); padding: 5px; border: 1px solid var(--border-light); border-radius: 13px; background: var(--bg-card); }
 .sl__tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; border-radius: 9px; font-size: var(--font-size-sm); color: var(--text-secondary); }
 .sl__tab.is-active { color: var(--brand-primary); font-weight: var(--font-weight-semibold); background: rgba(59,130,246,.08); }
@@ -245,6 +284,7 @@ export default {
 .sl__course-title { font-size: var(--font-size-base); font-weight: 600; line-height: 1.45; color: var(--text-primary); }
 .sl__status-chip { flex-shrink: 0; font-size: 9px; line-height: 18px; padding: 0 6px; border-radius: var(--radius-full); color: var(--brand-primary); background: rgba(59,130,246,.08); }
 .sl__course-meta { display: block; margin-top: 3px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.sl__course-schedule { display: block; margin-top: 5px; color: var(--text-secondary); font-size: 10px; line-height: 1.5; }
 .sl__remain { display: flex; align-items: center; gap: var(--space-2); margin-top: 7px; }
 .sl__remain > text { flex-shrink: 0; font-size: 10px; color: var(--text-secondary); }
 .sl__remain-bar { width: 62px; height: 5px; overflow: hidden; border-radius: var(--radius-full); background: rgba(15,23,42,.06); }

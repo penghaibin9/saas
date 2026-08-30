@@ -103,14 +103,17 @@ def _fresh(query, db):
     return query.all()
 
 
-def _live_batch_ids(db, term_id, exclude_batch_id):
+def _live_batch_ids(db, term_id, exclude_batch_id, replacing_batch_id=None):
     """同学期全部当前正式课表批次——不分学院，教师和教室是全校共享资源。"""
     from app.models import AaScheduleBatch
 
+    excluded = [int(exclude_batch_id)]
+    if replacing_batch_id and int(replacing_batch_id) != int(exclude_batch_id):
+        excluded.append(int(replacing_batch_id))
     rows = _fresh(db.query(AaScheduleBatch.id).filter(
         AaScheduleBatch.tenant_id == _tid(),
         AaScheduleBatch.term_id == int(term_id),
-        AaScheduleBatch.id != int(exclude_batch_id),
+        AaScheduleBatch.id.notin_(excluded),
         AaScheduleBatch.status.in_(_LIVE_STATUSES),
         AaScheduleBatch.is_deleted.is_(False),
     ), db)
@@ -182,13 +185,22 @@ def _describe(item) -> str:
     return f"{item.course_name or '课程'}（周{item.weekday} 第{item.slot_no}节 {weeks}）"
 
 
-def validate_school_wide_conflicts(db, batch) -> dict:
+def validate_school_wide_conflicts(db, batch, *, replacing_batch_id=None) -> dict:
     """把本批次课表行与全校当前正式课表比对，返回问题清单。
 
     只比对跨批次：批次内部冲突由既有 gate_service 负责，不在这里重复实现第二套规则。
     """
     own = _items(db, [int(batch.id)])
-    others = _items(db, _live_batch_ids(db, batch.term_id, batch.id), fresh=True)
+    others = _items(
+        db,
+        _live_batch_ids(
+            db,
+            batch.term_id,
+            batch.id,
+            replacing_batch_id=replacing_batch_id,
+        ),
+        fresh=True,
+    )
     if not own or not others:
         return {"problems": [], "items": len(own), "comparedAgainst": len(others)}
 
@@ -242,8 +254,12 @@ def promote_to_active(db, batch, head) -> dict:
     }
 
 
-def require_no_school_wide_conflict(db, batch) -> dict:
-    result = validate_school_wide_conflicts(db, batch)
+def require_no_school_wide_conflict(db, batch, *, replacing_batch_id=None) -> dict:
+    result = validate_school_wide_conflicts(
+        db,
+        batch,
+        replacing_batch_id=replacing_batch_id,
+    )
     if result["problems"]:
         found = result["problems"]
         raise AppException(
