@@ -60,6 +60,9 @@ try {
     await staffPage.goto(`${staff}${journey.b}`)
     await settle(staffPage, journey.b)
     await staffPage.screenshot({ path: b, fullPage: true })
+    await studentPage.evaluate((batchId) => {
+      sessionStorage.setItem('student_portal_internship_batch_v1', String(batchId))
+    }, journey.batchId)
     await studentPage.goto(`${student}${journey.c}?batchId=${journey.batchId}`)
     await settle(studentPage, journey.c)
     await studentPage.screenshot({ path: c, fullPage: true })
