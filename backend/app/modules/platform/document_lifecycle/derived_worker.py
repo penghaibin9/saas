@@ -336,21 +336,24 @@ def _execute_compare(db, job: FileJob, payload: dict[str, Any],
     return {"compareResultId": str(row.id), "summary": summary, "deduped": False}
 
 
-def claim_next_job(worker_id: str) -> int | None:
+def claim_next_job(worker_id: str, *, tenant_id: int | None = None) -> int | None:
     now = _now()
     db = get_sessionmaker()()
     try:
+        predicates = [
+            FileJob.job_type.in_(JOB_TYPES),
+            FileJob.is_deleted.is_(False),
+            FileJob.available_at <= now,
+            or_(
+                FileJob.status.in_(PENDING_STATES),
+                (FileJob.status == "RUNNING") & (FileJob.locked_at < now - LOCK_STALE_AFTER),
+            ),
+        ]
+        if tenant_id is not None:
+            predicates.append(FileJob.tenant_id == int(tenant_id))
         row = db.scalars(
             select(FileJob)
-            .where(
-                FileJob.job_type.in_(JOB_TYPES),
-                FileJob.is_deleted.is_(False),
-                FileJob.available_at <= now,
-                or_(
-                    FileJob.status.in_(PENDING_STATES),
-                    (FileJob.status == "RUNNING") & (FileJob.locked_at < now - LOCK_STALE_AFTER),
-                ),
-            )
+            .where(*predicates)
             .order_by(FileJob.available_at, FileJob.id)
             .limit(1)
             .with_for_update(skip_locked=True)
@@ -416,9 +419,27 @@ def complete_job(job_id: int, *, artifact_writer: Callable[..., FileObject] | No
         set_tenant(previous_tenant)
 
 
-def process_next_job(worker_id: str | None = None) -> dict[str, Any]:
+def process_next_job(worker_id: str | None = None, *, tenant_id: int | None = None) -> dict[str, Any]:
     identity = worker_id or f"{socket.gethostname()}:{id(worker_id)}"
-    job_id = claim_next_job(identity)
+    job_id = claim_next_job(identity, tenant_id=tenant_id)
     if job_id is None:
         return {"processed": False, "reason": "empty"}
     return complete_job(job_id)
+
+
+def process_pending_jobs(*, tenant_id: int, limit: int = 20,
+                         worker_id: str | None = None) -> dict[str, int]:
+    """Run one tenant-bounded batch for the production scheduler."""
+    batch_size = max(1, min(int(limit or 20), 100))
+    identity = worker_id or f"{socket.gethostname()}:document-lifecycle"
+    processed = succeeded = failed = 0
+    while processed < batch_size:
+        result = process_next_job(identity, tenant_id=int(tenant_id))
+        if not result.get("processed"):
+            break
+        processed += 1
+        if result.get("jobStatus") == "SUCCEEDED":
+            succeeded += 1
+        else:
+            failed += 1
+    return {"processed": processed, "succeeded": succeeded, "failed": failed}

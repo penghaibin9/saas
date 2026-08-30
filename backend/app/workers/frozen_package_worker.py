@@ -16,17 +16,23 @@ from app.modules.platform_integrity.file_job_service import (
 )
 
 
-def process_pending_frozen_packages(*, limit: int = 20, worker_id: str | None = None) -> dict:
+def process_pending_frozen_packages(*, limit: int = 20, worker_id: str | None = None,
+                                    tenant_id: int | None = None) -> dict:
     """Bound one pass and isolate tenant context before every claim/build."""
     batch_size = max(1, min(int(limit or 20), 100))
     identity = worker_id or os.getenv("FROZEN_PACKAGE_WORKER_ID") or f"{socket.gethostname()}:{os.getpid()}"
     db = get_sessionmaker()()
     try:
-        tenant_ids = list(db.scalars(select(FileJob.tenant_id).where(
+        tenant_query = select(FileJob.tenant_id).where(
             FileJob.job_type == FROZEN_PACKAGE_JOB_TYPE,
             FileJob.status.in_(("PENDING", "RETRY", "RUNNING")),
             FileJob.is_deleted.is_(False),
-        ).distinct().order_by(FileJob.tenant_id).limit(batch_size)).all())
+        )
+        if tenant_id is not None:
+            tenant_query = tenant_query.where(FileJob.tenant_id == int(tenant_id))
+        tenant_ids = list(db.scalars(
+            tenant_query.distinct().order_by(FileJob.tenant_id).limit(batch_size)
+        ).all())
     finally:
         db.close()
     previous = get_tenant()

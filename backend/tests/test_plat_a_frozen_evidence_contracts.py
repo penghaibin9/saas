@@ -3,24 +3,38 @@ from __future__ import annotations
 import hashlib
 import time
 import zipfile
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
-from app.core.context import get_current_user_ctx, set_current_user
+from app.core.context import (
+    current_tenant_id,
+    get_current_user_ctx,
+    get_tenant,
+    set_current_user,
+    set_tenant,
+)
 from app.core.exceptions import AppException
 from app.modules.graduation.materials.frozen_package_projection import (
     my_frozen_package,
     teacher_integrity_summary,
 )
+from app.modules.graduation.materials import frozen_package_projection
 from app.modules.graduation.services.graduation_scope_service import can_access_student
 from app.modules.platform_integrity.contracts import PackageArtifactRef
 from app.modules.platform_integrity.deterministic_package import ArchiveEntry, write_standard_v1
 from app.modules.platform_integrity.file_access_resolver import frozen_evidence_package_resolver
 from app.modules.platform_integrity.file_job_service import package_job_dedupe_key
 from app.modules.platform_integrity.frozen_package_service import frozen_package_artifact_biz_id
+from app.models import GraduationStudent
+from app.models.file import ArchiveManifest, ArchiveManifestItem, FileJob, FileObject
+from app.models.platform_integrity import IntegrityException
+from app.workers import frozen_package_worker
 from app.modules.platform_integrity.integrity_service import (
     DetectorPage,
     IntegrityFinding,
@@ -522,6 +536,131 @@ def test_package_file_access_is_registered_and_worker_is_tenant_bounded():
     assert "set_tenant(int(tenant_id))" in worker
     assert "batch_size = max(1, min(int(limit or 20), 100))" in worker
     assert "set_tenant(previous)" in worker
+
+
+def test_platform_file_jobs_are_registered_with_the_production_scheduler():
+    scheduler = (ROOT / "backend/scripts/run_scheduled_jobs.py").read_text(encoding="utf-8")
+    assert "def job_file_derivatives()" in scheduler
+    assert "derived_worker.process_pending_jobs(" in scheduler
+    assert "process_pending_frozen_packages(" in scheduler
+    assert scheduler.count("tenant_id=tenant_id") >= 2
+    assert "tenant_state.BACKGROUND_BUSINESS_WRITE" in scheduler
+    assert "_Ticker(INTERVAL_FILE_JOBS, now0, job_file_derivatives)" in scheduler
+
+
+def test_frozen_package_scheduler_batch_can_be_pinned_to_one_tenant(monkeypatch):
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    FileJob.__table__.create(engine)
+    sessions = sessionmaker(engine, expire_on_commit=False)
+    with sessions() as db:
+        db.add_all([
+            FileJob(
+                tenant_id=1001, job_type="FROZEN_EVIDENCE_PACKAGE",
+                dedupe_key="package-1001", status="PENDING",
+            ),
+            FileJob(
+                tenant_id=1002, job_type="FROZEN_EVIDENCE_PACKAGE",
+                dedupe_key="package-1002", status="PENDING",
+            ),
+        ])
+        db.commit()
+
+    seen_tenants: list[int] = []
+
+    def no_claim(*, worker_id):
+        del worker_id
+        seen_tenants.append(int(current_tenant_id()))
+        return None
+
+    monkeypatch.setattr(frozen_package_worker, "get_sessionmaker", lambda: sessions)
+    monkeypatch.setattr(frozen_package_worker, "claim_next_frozen_package_job", no_claim)
+    previous = get_tenant()
+    try:
+        result = frozen_package_worker.process_pending_frozen_packages(
+            tenant_id=1002, limit=20, worker_id="scheduler-frozen:1002",
+        )
+    finally:
+        set_tenant(previous)
+    assert result == {"processed": 0, "succeeded": 0, "failed": 0}
+    assert seen_tenants == [1002]
+    engine.dispose()
+
+
+def test_teacher_integrity_summary_applies_scope_before_limit(monkeypatch):
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    for model in (
+        GraduationStudent,
+        ArchiveManifest,
+        ArchiveManifestItem,
+        FileObject,
+        FileJob,
+        IntegrityException,
+    ):
+        model.__table__.create(engine)
+    sessions = sessionmaker(engine, expire_on_commit=False)
+    with sessions() as db:
+        db.add_all([
+            GraduationStudent(
+                id=1, tenant_id=1001, student_id=101, student_no="S101",
+                name="Out of scope", college_id="1", record_status="ACTIVE",
+            ),
+            GraduationStudent(
+                id=2, tenant_id=1001, student_id=202, student_no="S202",
+                name="In scope", college_id="2", record_status="ACTIVE",
+            ),
+            ArchiveManifest(
+                id=11, tenant_id=1001, module_code="GRADUATION",
+                archive_type="STUDENT_ARCHIVE", target_type="GD_STUDENT",
+                target_id="1", revision=1, status="FROZEN",
+            ),
+            ArchiveManifest(
+                id=22, tenant_id=1001, module_code="GRADUATION",
+                archive_type="STUDENT_ARCHIVE", target_type="GD_STUDENT",
+                target_id="2", revision=1, status="FROZEN",
+            ),
+            IntegrityException(
+                id=200, tenant_id=1001, exception_type="NEWER_HIDDEN",
+                fingerprint="hidden", status="OPEN", severity="HIGH",
+                detector_code="TEST", module_code="GRADUATION",
+                subject_type="MANIFEST", subject_id="11", manifest_id=11,
+                title="Hidden",
+            ),
+            IntegrityException(
+                id=100, tenant_id=1001, exception_type="OLDER_VISIBLE",
+                fingerprint="visible", status="OPEN", severity="HIGH",
+                detector_code="TEST", module_code="GRADUATION",
+                subject_type="MANIFEST", subject_id="22", manifest_id=22,
+                title="Visible",
+            ),
+        ])
+        db.commit()
+
+    @contextmanager
+    def scoped_session():
+        with sessions() as db:
+            yield db
+
+    monkeypatch.setattr(frozen_package_projection, "session", scoped_session)
+    previous_user = get_current_user_ctx()
+    previous_tenant = get_tenant()
+    try:
+        set_tenant(1001)
+        teacher = {
+            "currentRoleCode": "GD_COLLEGE_ADMIN",
+            "collegeId": "2",
+            "realName": "学院管理员",
+        }
+        set_current_user(teacher)
+        result = teacher_integrity_summary(
+            teacher,
+            limit=1,
+        )
+    finally:
+        set_current_user(previous_user)
+        set_tenant(previous_tenant)
+    assert result["total"] == 1
+    assert [item["exceptionType"] for item in result["items"]] == ["OLDER_VISIBLE"]
+    engine.dispose()
 
 
 def test_student_teacher_and_file_resolver_negative_authorization_is_fail_closed(monkeypatch):

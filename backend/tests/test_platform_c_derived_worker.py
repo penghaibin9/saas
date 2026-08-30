@@ -247,3 +247,50 @@ def test_worker_failure_never_persists_exception_credentials_or_temporary_url(
         assert "token" not in persisted
         assert "must-not-persist" not in persisted
     engine.dispose()
+
+
+def test_worker_claim_and_batch_are_tenant_bounded(monkeypatch) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    FileJob.__table__.create(engine)
+    sessions = sessionmaker(engine, expire_on_commit=False)
+    with sessions() as db:
+        db.add_all([
+            FileJob(
+                tenant_id=101, job_type="DOCUMENT_EXTRACT", dedupe_key="tenant-101",
+                status="PENDING", attempts=0, max_attempts=3,
+            ),
+            FileJob(
+                tenant_id=202, job_type="DOCUMENT_COMPARE", dedupe_key="tenant-202",
+                status="PENDING", attempts=0, max_attempts=3,
+            ),
+        ])
+        db.commit()
+
+    monkeypatch.setattr(worker, "get_sessionmaker", lambda: sessions)
+    claimed = worker.claim_next_job("tenant-worker", tenant_id=202)
+    with sessions() as db:
+        assert db.get(FileJob, claimed).tenant_id == 202
+        assert db.scalars(select(FileJob).where(FileJob.tenant_id == 101)).one().status == "PENDING"
+
+    calls: list[tuple[str, int]] = []
+    results = iter((
+        {"processed": True, "jobStatus": "SUCCEEDED"},
+        {"processed": True, "jobStatus": "RETRY"},
+        {"processed": False, "reason": "empty"},
+    ))
+
+    def fake_process(worker_id, *, tenant_id):
+        calls.append((worker_id, tenant_id))
+        return next(results)
+
+    monkeypatch.setattr(worker, "process_next_job", fake_process)
+    summary = worker.process_pending_jobs(
+        tenant_id=202, limit=5, worker_id="scheduler-document:202",
+    )
+    assert summary == {"processed": 2, "succeeded": 1, "failed": 1}
+    assert calls == [
+        ("scheduler-document:202", 202),
+        ("scheduler-document:202", 202),
+        ("scheduler-document:202", 202),
+    ]
+    engine.dispose()

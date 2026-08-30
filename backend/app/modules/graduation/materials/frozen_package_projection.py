@@ -10,7 +10,10 @@ from app.models.file import ArchiveManifest, ArchiveManifestItem, FileJob, FileO
 from app.models.platform_integrity import IntegrityException
 from app.modules.platform_integrity.contracts import frozen_manifest_artifact_ref
 from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
-from app.modules.graduation.services.graduation_scope_service import assert_student_access
+from app.modules.graduation.services.graduation_scope_service import (
+    accessible_student_ids,
+    assert_student_access,
+)
 from app.modules.platform_integrity.file_job_service import (
     FROZEN_PACKAGE_JOB_TYPE,
     package_job_dedupe_key,
@@ -172,6 +175,8 @@ def teacher_integrity_summary(user: dict, *, limit: int = 100) -> dict:
         raise no_permission("缺少毕业设计查看权限")
     page_size = max(1, min(int(limit or 100), 100))
     with session() as db:
+        scoped_gd_ids = accessible_student_ids(db, _tid())
+        scoped_target_ids = tuple(str(value) for value in scoped_gd_ids) or ("-1",)
         rows = list(db.execute(
             select(IntegrityException, ArchiveManifest)
             .join(ArchiveManifest, and_(
@@ -184,6 +189,7 @@ def teacher_integrity_summary(user: dict, *, limit: int = 100) -> dict:
                 IntegrityException.module_code == MODULE_CODE,
                 IntegrityException.status.in_(("OPEN", "ACKNOWLEDGED")),
                 IntegrityException.is_deleted.is_(False),
+                ArchiveManifest.target_id.in_(scoped_target_ids),
             )
             .order_by(IntegrityException.id.desc())
             .limit(page_size)
@@ -231,6 +237,7 @@ def teacher_integrity_summary(user: dict, *, limit: int = 100) -> dict:
             ArchiveManifest.module_code == MODULE_CODE,
             ArchiveManifest.status.in_(("FROZEN", "PACKAGED")),
             ArchiveManifest.is_deleted.is_(False),
+            ArchiveManifest.target_id.in_(scoped_target_ids),
             has_snapshot,
         ).order_by(ArchiveManifest.id.desc()).limit(page_size)).all())
         latest_by_target: dict[str, ArchiveManifest] = {}
