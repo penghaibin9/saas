@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import subprocess
+import sys
 
 from app.models import DocumentCompareResult, FileDerivedArtifact, StudentLifecycleFact
 from app.models.base import Base
@@ -62,3 +64,17 @@ def test_c_routes_and_source_bound_file_resolver_are_shared_registered() -> None
     assert "api_router.include_router(document_lifecycle_router)" in registration
     resolver = resolver_registry_snapshot()["DOCUMENT_DERIVATIVE"]
     assert resolver.endswith("document_lifecycle.derived_access.document_derivative_resolver")
+
+
+def test_schema_parity_cli_is_directly_executable() -> None:
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "verify_platform_c_schema_parity.py"), "--help"],
+        cwd=ROOT.parent,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "--database-url" in completed.stdout

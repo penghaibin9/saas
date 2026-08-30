@@ -7,10 +7,16 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Iterable
+from pathlib import Path
+import sys
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import Inspector
-from sqlalchemy.sql.sqltypes import NullType
+from sqlalchemy.sql.sqltypes import Boolean, NullType
 
 from app.models import DocumentCompareResult, FileDerivedArtifact, StudentLifecycleFact
 
@@ -26,10 +32,14 @@ def _column_names(items: Iterable[dict]) -> tuple[str, ...]:
     return tuple(item["name"] for item in items)
 
 
-def _index_map(items: Iterable[dict]) -> dict[str, tuple[tuple[str, ...], bool]]:
+def _index_map(
+    items: Iterable[dict], *, unique_constraint_names: set[str],
+) -> dict[str, tuple[tuple[str, ...], bool]]:
     return {
         str(item["name"]): (tuple(item["column_names"]), bool(item.get("unique")))
         for item in items
+        if not item.get("duplicates_constraint")
+        and str(item["name"]) not in unique_constraint_names
     }
 
 
@@ -61,7 +71,16 @@ def _verify_table(inspector: Inspector, table) -> list[str]:
             )
         orm_affinity = column.type._type_affinity
         db_affinity = reflected["type"]._type_affinity
-        if orm_affinity is NullType or db_affinity is NullType or orm_affinity is not db_affinity:
+        mysql_boolean = (
+            orm_affinity is Boolean
+            and reflected["type"].__class__.__name__.upper() == "TINYINT"
+            and getattr(reflected["type"], "display_width", None) == 1
+        )
+        if (
+            orm_affinity is NullType
+            or db_affinity is NullType
+            or (orm_affinity is not db_affinity and not mysql_boolean)
+        ):
             failures.append(
                 f"{name}.{column.name}: type ORM={column.type!s} DB={reflected['type']!s}"
             )
@@ -81,7 +100,10 @@ def _verify_table(inspector: Inspector, table) -> list[str]:
         index.name: (tuple(column.name for column in index.columns), bool(index.unique))
         for index in table.indexes
     }
-    db_indexes = _index_map(inspector.get_indexes(name))
+    db_uniques = _unique_map(inspector.get_unique_constraints(name))
+    db_indexes = _index_map(
+        inspector.get_indexes(name), unique_constraint_names=set(db_uniques),
+    )
     if orm_indexes != db_indexes:
         failures.append(f"{name}: indexes ORM={orm_indexes} DB={db_indexes}")
 
@@ -90,7 +112,6 @@ def _verify_table(inspector: Inspector, table) -> list[str]:
         for constraint in table.constraints
         if constraint.__class__.__name__ == "UniqueConstraint" and constraint.name
     }
-    db_uniques = _unique_map(inspector.get_unique_constraints(name))
     if orm_uniques != db_uniques:
         failures.append(f"{name}: unique constraints ORM={orm_uniques} DB={db_uniques}")
     return failures
