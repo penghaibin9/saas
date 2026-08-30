@@ -561,6 +561,7 @@
       "backend/alembic/versions/20260828_sandbox_reset_immutable_guards.py",
       "backend/alembic/versions/20260830_internship_evaluation_placement_truth.py",
       "backend/alembic/versions/20260830_merge_ix_plat_c_heads.py",
+      "backend/alembic/versions/20260830_merge_ix_pr239.py",
       "backend/alembic/versions/73e91b9e47af_merge_sys14_workflow_and_internship_.py",
       "backend/alembic/versions/a1198e75cb72_merge_internship_aa_feedback_portal_.py"
     ],
@@ -2279,6 +2280,8 @@
       "e2e/specs/internship-placement-assignment-audit.spec.mjs",
       "e2e/specs/internship-s1-production-runtime.spec.mjs",
       "e2e/specs/internship-v8-advanced-golden-journeys.spec.mjs",
+      "e2e/tools/capture-internship-v8-seal-evidence.mjs",
+      "e2e/tools/generate-internship-v8-seal-results.mjs",
       "e2e/tools/measure-internship-v8-browser.mjs",
       "e2e/tools/prepare-internship-v8-browser-state.mjs",
       "e2e/tools/verify-internship-v8-golden-journeys.mjs",
@@ -2330,8 +2333,8 @@
     ]
   },
   "module": "INTERNSHIP",
-  "productExactSha": "27880c3910087cc0b02cdf7f2eb90981e5391d4c",
-  "runnerExactSha": "627d80c36",
+  "productExactSha": "06fd94f08ad0f7e9c2ba96789908245f81bd4773",
+  "runnerExactSha": "2868766d11495c9f68d779dc0125e006d7488758",
   "unclassifiedFiles": [],
   "unmappedApiAliases": [],
   "unmappedMigrations": [],
