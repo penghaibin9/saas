@@ -5,6 +5,15 @@ from app.services.sandbox_school_academic_flow_gap_seed import (
     _seed_applied_schedule_change_attendance,
     seed_academic_flow_gap_coverage,
 )
+from app.services.sandbox_school_curriculum_closure import (
+    EXPECTED_PROGRAMS,
+    EXPECTED_PROGRAMS_AFTER_FLOW_COVERAGE,
+    EXPECTED_PROGRAM_COURSES_AFTER_FLOW_COVERAGE,
+    EXPECTED_PROGRAM_COURSES_FINAL,
+    EXPECTED_SCHEDULE_ITEMS_AFTER_FLOW_COVERAGE,
+    EXPECTED_TOTAL_SCHEDULE_ITEMS_FINAL,
+    validate_school_academic_final_20k,
+)
 
 
 def test_all_24_academic_flows_have_strong_evidence_components():
@@ -34,3 +43,25 @@ def test_clean_reset_seeds_an_applied_change_that_reaches_attendance():
     assert 'status="SUBMITTED"' in helper
     assert 'occurrence = f"{origin.batch_id}:{target.id}:' in helper
     assert "_seed_applied_schedule_change_attendance" in orchestrator
+
+
+def test_final_scale_contract_counts_auditable_flow_versions():
+    validator = inspect.getsource(validate_school_academic_final_20k)
+    assert EXPECTED_PROGRAMS_AFTER_FLOW_COVERAGE == EXPECTED_PROGRAMS + 1
+    assert (
+        EXPECTED_PROGRAM_COURSES_AFTER_FLOW_COVERAGE
+        == EXPECTED_PROGRAM_COURSES_FINAL + 18
+    )
+    assert (
+        EXPECTED_SCHEDULE_ITEMS_AFTER_FLOW_COVERAGE
+        == EXPECTED_TOTAL_SCHEDULE_ITEMS_FINAL + 1
+    )
+    assert '"programs": EXPECTED_PROGRAMS_AFTER_FLOW_COVERAGE' in validator
+    assert (
+        '"programCourses": EXPECTED_PROGRAM_COURSES_AFTER_FLOW_COVERAGE'
+        in validator
+    )
+    assert (
+        '"scheduleItems": EXPECTED_SCHEDULE_ITEMS_AFTER_FLOW_COVERAGE'
+        in validator
+    )
