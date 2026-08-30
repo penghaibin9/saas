@@ -3,12 +3,8 @@
 ARCHIVED is permanent. Confirmation re-evaluates all archive domains in the same
 transaction and appends Manifest V1. A post-archive correction never reopens the term;
 it appends a ``PostArchiveCorrectionCase`` workflow row and, after a *different*
-operator gives second approval, invokes the designated GRADE/GRADUATION/SCHEDULE command to
+operator gives second approval, invokes the designated GRADE/GRADUATION command to
 append the new official fact and Manifest V(N+1) in one database transaction.
-
-Schedule correction is append-only as well: it publishes a complete replacement
-batch, advances the scope head and marks the old batch SUPERSEDED.  Existing schedule
-items and previous manifests remain queryable.
 """
 from __future__ import annotations
 
@@ -24,7 +20,7 @@ from app.services.db_service import _tid
 
 from . import academic_affairs_archive_service as archive_service
 
-_CORRECTION_TYPES = {"GRADE", "GRADUATION", "SCHEDULE"}
+_CORRECTION_TYPES = {"GRADE", "GRADUATION"}
 _CORRECTION_STATUSES = {"PENDING_SECOND_APPROVAL", "APPLIED", "REJECTED"}
 
 
@@ -293,7 +289,6 @@ def verify_manifest(user, batch_id) -> dict:
     """Verify immutable manifest chain, correction lineage and ARCHIVED projection."""
     from app.models import (
         AaArchiveBatch,
-        AaScheduleBatch,
         AcademicGrade,
         ArchiveManifest,
         GraduationDecisionFact,
@@ -435,15 +430,6 @@ def verify_manifest(user, batch_id) -> dict:
                 ).first()
                 if not fact or case.official_fact_type != "GRADUATION_DECISION":
                     problems.append(f"{prefix}:GRADUATION_FACT_LINEAGE_BROKEN")
-            elif case.business_type == "SCHEDULE":
-                fact = db.query(AaScheduleBatch).filter(
-                    AaScheduleBatch.id == int(case.official_fact_id),
-                    AaScheduleBatch.tenant_id == _tid(),
-                    AaScheduleBatch.status == "PUBLISHED",
-                    AaScheduleBatch.is_deleted.is_(False),
-                ).first()
-                if not fact or case.official_fact_type != "AA_SCHEDULE_BATCH":
-                    problems.append(f"{prefix}:SCHEDULE_FACT_LINEAGE_BROKEN")
             else:
                 problems.append(f"{prefix}:UNSUPPORTED_BUSINESS_TYPE")
         if batch.status != "ARCHIVED":
@@ -616,7 +602,7 @@ def create_correction_case(user, batch_id, *, business_type, target_ref, reason,
     reason = str(reason or "").strip()
     target_ref = str(target_ref or "").strip()
     if business_type not in _CORRECTION_TYPES:
-        raise AppException("VALIDATION_ERROR", "归档后纠错仅支持 GRADE/GRADUATION/SCHEDULE")
+        raise AppException("VALIDATION_ERROR", "归档后纠错仅支持 GRADE/GRADUATION")
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "归档后纠错原因至少 5 字")
     if not target_ref:
@@ -720,11 +706,6 @@ def approve_correction_case(user, case_id) -> dict:
         hashes = json.loads(previous.domain_hashes_json)
         max_ids = json.loads(previous.max_ids_json)
         previous_domain_hash = hashes.get(case.business_type)
-        # 课表更正会改变整个正式课表投影，而且历史环境可能来自早期（少于十三域）
-        # Manifest。更正事实落库后必须复用正式归档规则重新收集十三域证据，不能把旧的
-        # 不完整 counts/hashes 原样抄进新版本。GRADE/GRADUATION 保持既有增量语义。
-        if case.business_type == "SCHEDULE":
-            counts, hashes, max_ids = _live_manifest_parts(db, batch)
         correction_fact = {
             "caseId": str(case.id),
             "correctionNo": case.correction_no,
