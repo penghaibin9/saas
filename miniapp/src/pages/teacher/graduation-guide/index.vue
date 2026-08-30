@@ -260,6 +260,7 @@ export default {
     }
   },
   onLoad(options) {
+    uni.$on('graduation:teacher-batch-ready', this.onBatchReady)
     const tab = String((options && options.tab) || '').toLowerCase()
     if (TAB_KEYS.includes(tab)) this.tab = tab
     const kind = String((options && options.kind) || '').toLowerCase()
@@ -267,6 +268,7 @@ export default {
     this.load()
     if (this.tab !== 'review') this.switchTab(this.tab)
   },
+  onUnload() { uni.$off('graduation:teacher-batch-ready', this.onBatchReady) },
   onShow() {
     if (this._entered) {
       if (this.mode === 'list') this.reloadTab()
@@ -311,6 +313,7 @@ export default {
     }
   },
   methods: {
+    onBatchReady() { this.reloadTab() },
     toast,
     goPage(url) { go(url) },
     applyReviewTruth(d) {

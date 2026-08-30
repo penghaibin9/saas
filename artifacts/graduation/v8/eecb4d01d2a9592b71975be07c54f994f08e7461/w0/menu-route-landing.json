@@ -1,0 +1,14 @@
+{
+  "capturedBy": "real browser",
+  "routes": [
+    {"path":"/admin/graduation","expected":"dashboard","actual":"dashboard","exact":true},
+    {"path":"/admin/graduation/batches?panel=list","expected":"batch list","actual":"batch list","exact":true},
+    {"path":"/admin/graduation/batches?panel=stages&batchId=1","expected":"batch 1 stage timeline","actual":"batch list","exact":false,"friction":"DX-P1-02"},
+    {"path":"/admin/graduation/batches?panel=rules&batchId=1","expected":"batch 1 rules","actual":"batch list","exact":false,"friction":"DX-P1-02"},
+    {"path":"/admin/graduation/students?panel=progress","expected":"student progress local view","actual":"student progress local view","exact":true},
+    {"path":"/admin/graduation/topic-lib?panel=pending","expected":"pending topic review","actual":"pending topic review","exact":true},
+    {"path":"/admin/graduation/process?panel=taskbook","expected":"taskbook","actual":"taskbook with unselected student","exact":true,"note":"studentId deep link is still missing"},
+    {"path":"/portal/graduation","expected":"student workbench first","actual":"W7.5 feedback engineering block first","exact":false,"friction":"DX-P1-11/DX-P1-12"}
+  ],
+  "legacyQueryContract":"All previously published panel/tab/extension query values remain routable after IA compression."
+}

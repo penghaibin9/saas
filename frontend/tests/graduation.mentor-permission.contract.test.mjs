@@ -29,10 +29,11 @@ test('mentor routes and workspaces do not use retired mentor.manage alias', () =
   }
 })
 
-test('mentor workspace uses student.manage as the readable management boundary', () => {
-  for (const label of ['导师名单', '学生分配', '分配冲突检测']) {
+test('compressed mentor workspace keeps student.manage as the readable management boundary', () => {
+  for (const label of ['导师与分配', '分配冲突检测']) {
     assert.match(workspaces, new RegExp(`label: '${label}'[^\n]*graduationDesign\\.student\\.manage`))
   }
+  assert.doesNotMatch(workspaces, /label: '导师名单'|label: '学生分配'/)
 })
 
 test('mentor list separates manage, import, export and assignment permissions', () => {

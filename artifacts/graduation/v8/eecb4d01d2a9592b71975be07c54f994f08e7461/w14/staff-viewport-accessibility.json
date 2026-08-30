@@ -1,0 +1,77 @@
+[
+  {
+    "surface": "staff-pc",
+    "route": "http://127.0.0.1:5273/admin/graduation?batchId=2",
+    "screenshot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w14\\staff-dashboard-1920x1080.png",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "expectedViewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "bodyScrollWidth": 1920,
+    "bodyClientWidth": 1920,
+    "horizontalOverflow": false,
+    "visibleInteractiveCount": 50,
+    "unnamed": [],
+    "missingAlt": [],
+    "h1Count": 1,
+    "keyboardFocus": {
+      "tag": "INPUT",
+      "text": "",
+      "body": false
+    }
+  },
+  {
+    "surface": "staff-pc",
+    "route": "http://127.0.0.1:5273/admin/graduation?batchId=2",
+    "screenshot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w14\\staff-dashboard-1440x900.png",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "expectedViewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "bodyScrollWidth": 1440,
+    "bodyClientWidth": 1440,
+    "horizontalOverflow": false,
+    "visibleInteractiveCount": 49,
+    "unnamed": [],
+    "missingAlt": [],
+    "h1Count": 1,
+    "keyboardFocus": {
+      "tag": "INPUT",
+      "text": "",
+      "body": false
+    }
+  },
+  {
+    "surface": "staff-pc",
+    "route": "http://127.0.0.1:5273/admin/graduation?batchId=2",
+    "screenshot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w14\\staff-dashboard-1280x800.png",
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "expectedViewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "bodyScrollWidth": 1280,
+    "bodyClientWidth": 1280,
+    "horizontalOverflow": false,
+    "visibleInteractiveCount": 49,
+    "unnamed": [],
+    "missingAlt": [],
+    "h1Count": 1,
+    "keyboardFocus": {
+      "tag": "INPUT",
+      "text": "",
+      "body": false
+    }
+  }
+]

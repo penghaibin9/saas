@@ -552,8 +552,15 @@ def graduation_material_download(file_id: str, user=Depends(get_current_user)):
 
 
 @gd.get("/topics", summary="选题·浏览可选题目库（已入池未满员）")
-def graduation_topics(batchId: str = None, user=Depends(get_current_user)):
-    return success(stu.graduation_topics(user, batch_id=batchId))
+def graduation_topics(batchId: str | None = None, keyword: str | None = None,
+                      category: str | None = None, advisor: str | None = None,
+                      cursor: str | None = None,
+                      pageSize: int = Query(default=20, ge=1, le=30),
+                      user=Depends(get_current_user)):
+    return success(stu.graduation_topics(
+        user, batch_id=batchId, keyword=keyword, category=category, advisor=advisor,
+        cursor=cursor, page_size=pageSize,
+    ))
 
 
 @gd.get("/active-round", summary="选题·当前进行中轮次 + 我的志愿")

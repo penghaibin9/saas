@@ -18,6 +18,12 @@ export const ROLE = {
   EMPLOYMENT: 'employment', // 就业老师
   ACADEMIC: 'academic', // 教务老师
   COLLEGE_ADMIN: 'college_admin', // 学院管理员
+  GRADUATION_ADMIN: 'graduation_admin', // 校级毕设管理员
+  GD_COLLEGE_ADMIN: 'gd_college_admin', // 学院毕设管理员
+  GD_MAJOR_ADMIN: 'gd_major_admin', // 专业毕设负责人
+  GD_REVIEWER: 'gd_reviewer', // 正式评阅教师
+  GD_DEFENSE_SECRETARY: 'gd_defense_secretary', // 答辩秘书
+  GD_GRADE_ADMIN: 'gd_grade_admin', // 毕设成绩管理员
   GD_DEFENSE_EXPERT: 'gd_defense_expert' // 答辩评委（面板成员，仅评分权限，答辩秘书 GD_DEFENSE_SECRETARY 侧重分组管理不接此身份）
 }
 
@@ -32,6 +38,12 @@ const BACKEND_ROLE_TO_ROLE_KEY = Object.freeze({
   ACADEMIC_TEACHER: ROLE.ACADEMIC,
   ACADEMIC_ADMIN: ROLE.ACADEMIC,
   COLLEGE_ADMIN: ROLE.COLLEGE_ADMIN,
+  GRADUATION_ADMIN: ROLE.GRADUATION_ADMIN,
+  GD_COLLEGE_ADMIN: ROLE.GD_COLLEGE_ADMIN,
+  GD_MAJOR_ADMIN: ROLE.GD_MAJOR_ADMIN,
+  GD_REVIEWER: ROLE.GD_REVIEWER,
+  GD_DEFENSE_SECRETARY: ROLE.GD_DEFENSE_SECRETARY,
+  GD_GRADE_ADMIN: ROLE.GD_GRADE_ADMIN,
   GD_DEFENSE_EXPERT: ROLE.GD_DEFENSE_EXPERT
 })
 
@@ -186,6 +198,92 @@ export const roleConfigs = {
     ],
     permissionActions: ['college.overview', 'risk.handle', 'approval.handle', 'urge.send']
   },
+  // 毕设 specialist 身份必须在移动端显式存在。每种身份只呈现其高价值队列，
+  // 服务端仍按 currentRoleCode、关系和 batch context 裁剪数据，不在客户端放宽 Authority。
+  [ROLE.GRADUATION_ADMIN]: {
+    key: ROLE.GRADUATION_ADMIN,
+    label: '校级毕设管理员',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'SCHOOL',
+    dataScopeText: '本校毕业设计',
+    workbench: ['gd-oversight'],
+    quickActions: [
+      { key: 'gd-overview', label: '毕设总览', icon: '▦' },
+      { key: 'gd-grade', label: '成绩异常', icon: '⚠' },
+      { key: 'gd-defense', label: '答辩异常', icon: '🛡' }
+    ],
+    permissionActions: ['gd.overview', 'gd.grade.review', 'gd.defense.view']
+  },
+  [ROLE.GD_COLLEGE_ADMIN]: {
+    key: ROLE.GD_COLLEGE_ADMIN,
+    label: '学院毕设管理员',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'COLLEGE',
+    dataScopeText: '本学院毕业设计',
+    workbench: ['gd-oversight'],
+    quickActions: [
+      { key: 'gd-overview', label: '学院待办', icon: '▦' },
+      { key: 'gd-defense', label: '答辩安排', icon: '🛡' },
+      { key: 'gd-grade', label: '成绩复核', icon: '✓' }
+    ],
+    permissionActions: ['gd.overview', 'gd.defense.view', 'gd.grade.review']
+  },
+  [ROLE.GD_MAJOR_ADMIN]: {
+    key: ROLE.GD_MAJOR_ADMIN,
+    label: '专业毕设负责人',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'MAJOR',
+    dataScopeText: '本专业毕业设计',
+    workbench: ['gd-major'],
+    quickActions: [
+      { key: 'topic-review', label: '选题与变更', icon: '📝' },
+      { key: 'gd-overview', label: '过程异常', icon: '⚠' },
+      { key: 'gd-defense', label: '答辩安排', icon: '🛡' }
+    ],
+    permissionActions: ['gd.topic.review', 'gd.overview', 'gd.defense.view']
+  },
+  [ROLE.GD_REVIEWER]: {
+    key: ROLE.GD_REVIEWER,
+    label: '毕设评阅教师',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'ASSIGNED_REVIEWS',
+    dataScopeText: '分配给我的正式评阅',
+    workbench: ['gd-review'],
+    quickActions: [
+      { key: 'gd-peer-review', label: '我的评阅', icon: '▤' }
+    ],
+    permissionActions: ['gd.formalReview.read', 'gd.formalReview.submit']
+  },
+  [ROLE.GD_DEFENSE_SECRETARY]: {
+    key: ROLE.GD_DEFENSE_SECRETARY,
+    label: '答辩秘书',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'ASSIGNED_DEFENSE_GROUPS',
+    dataScopeText: '本人负责的答辩组',
+    workbench: ['gd-defense'],
+    quickActions: [
+      { key: 'gd-defense', label: '当日答辩', icon: '🛡' }
+    ],
+    permissionActions: ['gd.defense.view', 'gd.defense.confirm']
+  },
+  [ROLE.GD_GRADE_ADMIN]: {
+    key: ROLE.GD_GRADE_ADMIN,
+    label: '毕设成绩管理员',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'SCHOOL',
+    dataScopeText: '本校毕业设计成绩',
+    workbench: ['gd-grade'],
+    quickActions: [
+      { key: 'gd-grade', label: '成绩复核', icon: '✓' }
+    ],
+    permissionActions: ['gd.grade.read', 'gd.grade.review']
+  },
   [ROLE.GD_DEFENSE_EXPERT]: {
     key: ROLE.GD_DEFENSE_EXPERT,
     label: '答辩评委',
@@ -204,7 +302,8 @@ export const roleConfigs = {
 // 教师端「多身份切换」：同一个人可绑定多个教师身份（08B 3.2 当前工作上下文）
 export const teacherIdentities = [
   ROLE.COUNSELOR, ROLE.MENTOR, ROLE.INTERN_MENTOR, ROLE.EMPLOYMENT, ROLE.ACADEMIC, ROLE.COLLEGE_ADMIN,
-  ROLE.GD_DEFENSE_EXPERT
+  ROLE.GRADUATION_ADMIN, ROLE.GD_COLLEGE_ADMIN, ROLE.GD_MAJOR_ADMIN, ROLE.GD_REVIEWER,
+  ROLE.GD_DEFENSE_SECRETARY, ROLE.GD_DEFENSE_EXPERT, ROLE.GD_GRADE_ADMIN
 ]
 
 export function getRoleConfig(roleKey) {

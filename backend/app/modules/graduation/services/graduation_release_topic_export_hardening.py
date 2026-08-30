@@ -5,7 +5,7 @@ import base64
 import io
 from datetime import datetime
 from typing import Iterable
-from sqlalchemy import cast, func, or_, select, String
+from sqlalchemy import BigInteger, cast, func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException
 from app.models import GraduationAuditTrail, GraduationTopic
@@ -18,7 +18,12 @@ def _install_topic_export_hardening() -> None:
     def list_topic_history(page, page_size, keyword=None, topic_id=None, action=None):
         with session() as db:
             topic_scope = _topic_scope_select(db)
-            join_on = cast(GraduationTopic.id, String) == GraduationAuditTrail.biz_id
+            # Compare on the numeric side.  MySQL 8 assigns different default
+            # collations to CAST(... AS CHAR) and legacy VARCHAR audit columns,
+            # which makes an otherwise valid topic-history join fail with 1267.
+            # TOPIC audit ids are canonical numeric topic ids, so this also keeps
+            # the join independent from database/server collation defaults.
+            join_on = GraduationTopic.id == cast(GraduationAuditTrail.biz_id, BigInteger)
             filters = [
                 GraduationAuditTrail.tenant_id == _tid(), GraduationAuditTrail.biz_type == "TOPIC",
                 GraduationTopic.tenant_id == _tid(), GraduationTopic.is_deleted.is_(False),

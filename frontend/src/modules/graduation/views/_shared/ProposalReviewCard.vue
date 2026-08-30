@@ -4,6 +4,10 @@
     <LoadingState v-else-if="loading" />
     <template v-else-if="detail">
       <p v-if="formError" class="mp-form-err prc-conflict">{{ formError }}</p>
+      <aside v-if="reviewReceipt" class="prc-receipt" role="status">
+        <div><strong>{{ reviewReceipt.title }}</strong><span>{{ reviewReceipt.result }}</span><small>{{ reviewReceipt.next }}</small></div>
+        <button type="button" @click="reviewReceipt = null">关闭</button>
+      </aside>
       <GraduationDocumentReviewWorkspace
         :queue="[detail]" :current-index="0" :current-record="detail" :detail="detail"
         :files="secureVersionFiles" :versions="activeVersionHistory" :evidence-versions="secureVersionFiles" :canonical-file-version-id="canonicalFileVersionId"
@@ -25,7 +29,8 @@
             <div v-if="hasCarriedDraft" class="prc-draft-carry" data-testid="proposal-carried-draft">
               <strong>上一版本未提交草稿</strong>
               <p>{{ carriedDraft.comment }}</p>
-              <small>来源：开题记录 {{ carriedDraft.fromProposalId }} · FileVersion {{ carriedDraft.fromFileVersionId || '—' }}。该意见不会自动成为当前版本的有效批阅意见。</small>
+              <small>来源：该学生的上一版开题材料。该意见不会自动成为当前版本的有效批阅意见。</small>
+              <details><summary>技术证据</summary><small>开题记录 {{ carriedDraft.fromProposalId }} · FileVersion {{ carriedDraft.fromFileVersionId || '—' }}</small></details>
               <div class="prc-draft-carry__actions">
                 <button type="button" @click="applyCarriedDraft">带入到当前版本</button>
                 <button type="button" @click="discardCarriedDraft">清除旧草稿</button>
@@ -109,6 +114,7 @@ export default {
       loading: true, error: '', detail: null, versionHistory: [], comment: '', formError: '', submitting: false, defenseComment: '',
       activePreviewFileKey: null, activePreviewVersionId: null, conflictPreviewFile: null, versionConflict: null, previewDraftKey: '', draftFileVersionId: null,
       carriedDraft: null,
+      reviewReceipt: null,
       loadToken: 0
     }
   },
@@ -195,6 +201,7 @@ export default {
       this.previewDraftKey = ''
       this.draftFileVersionId = null
       this.carriedDraft = null
+      this.reviewReceipt = null
     },
     draftKey(fileVersionId = this.draftFileVersionId ?? this.canonicalFileVersionId) {
       return this.detail?.id && fileVersionId != null ? `gd-proposal-review-draft:${this.detail.id}:${fileVersionId}` : ''
@@ -340,6 +347,7 @@ export default {
       if (action === 'REJECT' && (!this.comment || this.comment.trim().length < 5)) { this.formError = '驳回原因必填且不少于 5 个字'; return }
       const proposalId = this.proposalId
       const detailId = this.detail.id
+      const targetName = this.detail.studentName || this.detail.student?.name || '当前学生'
       const draft = this.comment
       this.setSubmitting(true)
       try {
@@ -349,7 +357,12 @@ export default {
           this.clearDraft(); this.clearConflictCarry(); this.comment = ''
           await this.load()
           if (!this.sameTask(proposalId, detailId)) return
-          toast.success('批阅完成：' + res.data.statusLabel + '，已锁定 canonical FileVersion 并同步学生端')
+          this.reviewReceipt = {
+            title: `${targetName}的开题材料已处理`,
+            result: `服务器最新结论：${this.detail?.statusLabel || res.data.statusLabel}`,
+            next: action === 'APPROVE' ? '学生端已同步，可继续后续环节。' : '下一步由学生按意见修改并提交新版本。'
+          }
+          toast.success('批阅完成，服务器最新结论已回读并同步学生端')
           this.$emit('reviewed', res.data)
         } else if (isGraduationConflictResponse(res)) {
           const conflictMessage = graduationConflictMessage(res)
@@ -407,4 +420,5 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .prc{min-width:0}.prc-conflict{margin:0 0 10px;padding:10px 12px;border-radius:8px;background:var(--warning-50);color:var(--warning-700)}.prc-content{display:grid;gap:8px;padding:8px;border-radius:8px;background:var(--gray-50,#f8fafc);font-size:13px;color:var(--text-secondary);line-height:1.6}.prc-content p{margin:0}.prc-content b{color:var(--text-primary)}.prc-blocked{padding:8px;border-radius:8px;background:var(--warning-50,#fffbeb);color:var(--warning-700,#a16207);font-size:12px}.prc-draft-carry{display:grid;gap:7px;padding:10px;border:1px solid #f6c453;border-radius:9px;background:#fff9e8;color:#7a4d00;font-size:12px}.prc-draft-carry p{margin:0;padding:7px;border-radius:7px;background:#fff;white-space:pre-wrap;color:var(--text-primary)}.prc-draft-carry small{line-height:1.5}.prc-draft-carry__actions{display:flex;gap:7px}.prc-draft-carry__actions button{border:1px solid #e3b341;border-radius:7px;background:#fff;padding:5px 8px;color:#7a4d00;cursor:pointer}.prc-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.prc-actions>*{width:100%}.prc-bottom{margin-top:12px}.prc-bottom.is-compact{grid-template-columns:1fr}.mp-textarea{width:100%;resize:vertical}
+.prc-receipt{display:flex;align-items:center;gap:14px;margin-bottom:10px;padding:11px 12px;border:1px solid #b7ebc6;border-radius:9px;background:#f0fff4}.prc-receipt div{display:grid;gap:3px;flex:1}.prc-receipt strong{color:#137a43}.prc-receipt span{font-size:13px}.prc-receipt small{color:var(--text-tertiary)}.prc-receipt button{border:0;background:transparent;color:var(--primary-600);cursor:pointer}
 </style>

@@ -1,0 +1,16 @@
+{
+  "source": "frontend/src/modules/graduation/config/graduationWorkspaces.js",
+  "workspaceCount": 8,
+  "leafCount": 52,
+  "workspaces": [
+    {"key":"gd-workbench","label":"我的工作台","leaves":["毕设总览","待评阅开题","待评阅成果","我的答辩评分","毕设统计报表","毕设操作日志"]},
+    {"key":"gd-batch-impl","label":"批次与实施","leaves":["批次列表","阶段时间轴配置","规则配置","学生名单","学生进度","未选题学生","毕设资格认定","导师名单","学生分配","分配冲突检测"]},
+    {"key":"gd-topic-select","label":"题目与选题","leaves":["题目列表","待审核题目","学生选题结果","选题轮次","学生志愿与确认","匹配结果","容量冲突复核","题目调整申请"]},
+    {"key":"gd-process","label":"过程指导","leaves":["规范流程","任务书","指导记录","指导计划","导师评价","中期检查"]},
+    {"key":"gd-proposal-final","label":"开题与成果","leaves":["开题报告批阅","成果提交与批阅","毕设材料中心","查重记录","正式评阅分配","统一评阅中心","成果互查整改"]},
+    {"key":"gd-defense","label":"答辩与成绩","leaves":["答辩安排","延期答辩","答辩评分","答辩秘书确认","成绩台账","优秀成果认定","答辩专家库","成绩更正申诉"]},
+    {"key":"gd-risk-archive","label":"风险与归档","leaves":["问题预警","毕设材料归档","毕设统计"]},
+    {"key":"gd-templates","label":"模板与设置","leaves":["材料模板","任务书模板","开题模板","全部模板"]}
+  ],
+  "target": {"workspaceCount":8,"primaryLeafCount":24,"rule":"Removed sidebar leaves remain reachable through local views and legacy deep links."}
+}

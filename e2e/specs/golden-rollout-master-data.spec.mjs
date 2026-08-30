@@ -196,24 +196,30 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
     await expect(page.locator('.dt__tr').filter({ hasText: graduationFixture.title }).first()).toBeVisible()
 
     const topicContract = await page.evaluate(() => {
-      const root = document.querySelector('.mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af)')
+      const root = document.querySelector('.mps:has(.gd-actions):has(.gd-primary-tabs):has(.af)')
       const head = root?.querySelector(':scope > .mps__head')
-      const tabs = root?.querySelector('.mp-tabs')
-      const activeTab = root?.querySelector('.mp-tab.is-active')
+      const tabs = root?.querySelector('.gd-primary-tabs')
+      const activeTab = root?.querySelector('.gd-primary-tabs > .mp-tab.is-active')
+      const primaryTabs = root?.querySelectorAll('.gd-primary-tabs > .mp-tab')
+      const localViews = root?.querySelectorAll('.gd-local-views > button')
       const table = root?.querySelector('.dt')
-      if (!root || !head || !tabs || !activeTab || !table) return null
+      if (!root || !head || !tabs || !activeTab || !primaryTabs || !localViews || !table) return null
       return {
         headRadius: getComputedStyle(head).borderRadius,
         tabsRadius: getComputedStyle(tabs).borderRadius,
         activeTabRadius: getComputedStyle(activeTab).borderRadius,
-        tableRadius: getComputedStyle(table).borderRadius
+        tableRadius: getComputedStyle(table).borderRadius,
+        primaryTabCount: primaryTabs.length,
+        localViewCount: localViews.length
       }
     })
     expect(topicContract).not.toBeNull()
-    expect(topicContract.headRadius).toBe('17px')
+    expect(topicContract.headRadius).toBe('0px')
     expect(topicContract.tabsRadius).toBe('13px')
     expect(topicContract.activeTabRadius).toBe('9px')
-    expect(topicContract.tableRadius).toBe('16px')
+    expect(topicContract.tableRadius).toBe('15px')
+    expect(topicContract.primaryTabCount).toBe(5)
+    expect(topicContract.localViewCount).toBe(4)
 
     await capture(page, testInfo, 'rollout-master-graduation-topic-lib-b')
   })
