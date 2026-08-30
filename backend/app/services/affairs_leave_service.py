@@ -457,6 +457,12 @@ def approve(leave_id, user, comment="", expected_version=None) -> dict:
             _msg(db, x.student_id, "请假已通过", f"你的请假（{x.days}天）已通过审批",
                  "WORKFLOW_RESULT", x.id, event_code="LEAVE.APPROVED")
             _audit(db, x.id, "APPROVED", comment)
+            from app.modules.platform.document_lifecycle.fact_hooks import affairs_leave_approved
+            from app.services.message_identity import resolve_message_user_id
+
+            affairs_leave_approved(
+                db, leave=x, actor_id=resolve_message_user_id(user or {}) or None,
+            )
         db.commit()
         db.refresh(x)
         out = _resolve_class_names(db, [_row(x, s)])[0]

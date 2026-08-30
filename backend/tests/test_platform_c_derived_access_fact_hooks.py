@@ -46,21 +46,21 @@ class _Port:
 
 
 class _ScalarResult:
-    def __init__(self, row):
-        self.row = row
+    def __init__(self, rows):
+        self.rows = rows
 
-    def first(self):
-        return self.row
+    def all(self):
+        return self.rows
 
 
 class _ResolverDb:
-    def __init__(self, row=None):
-        self.row = row
+    def __init__(self, rows):
+        self.rows = list(rows)
         self.calls = 0
 
     def scalars(self, _statement):
         self.calls += 1
-        return _ScalarResult(self.row)
+        return _ScalarResult(self.rows.pop(0))
 
 
 def test_extracted_artifact_reauthorizes_source_on_every_read() -> None:
@@ -112,21 +112,28 @@ def test_derivative_resolver_rejects_forged_file_to_artifact_binding(monkeypatch
                 "sourceFileVersionId": "30", "sourceSha256": "a" * 64,
             },
         )
+        file_obj = SimpleNamespace(
+            id=900, tenant_id=101, is_deleted=False, biz_type="DOCUMENT_DERIVATIVE",
+        )
         allowed = access.document_derivative_resolver(
-            _ResolverDb(row=None),
-            SimpleNamespace(id=900, tenant_id=101, is_deleted=False),
+            _ResolverDb([[], []]), file_obj,
             [binding], {"userId": "7"}, "preview",
         )
         assert allowed is False
         assert auth_calls == []
 
+        artifact = SimpleNamespace(source_file_version_id=30, source_sha256="a" * 64)
         allowed = access.document_derivative_resolver(
-            _ResolverDb(row=77),
-            SimpleNamespace(id=900, tenant_id=101, is_deleted=False),
-            [binding], {"userId": "7"}, "preview",
+            _ResolverDb([[artifact], []]), file_obj, [binding], {"userId": "7"}, "preview",
         )
         assert allowed is True
         assert auth_calls[0]["source_file_version_id"] == 30
+
+        allowed = access.document_derivative_resolver(
+            _ResolverDb([[artifact], [SimpleNamespace()]]),
+            file_obj, [], {"userId": "7"}, "preview",
+        )
+        assert allowed is False
     finally:
         set_tenant(None)
 
@@ -168,7 +175,28 @@ def test_five_selected_fact_hooks_share_one_rollback_boundary() -> None:
         engine.dispose()
 
 
-def test_canonical_hooks_wait_for_c7_schema_and_registration_slot() -> None:
+def test_employment_projection_never_blocks_legacy_row_without_student_identity() -> None:
+    class _Scalars:
+        @staticmethod
+        def first():
+            return None
+
+    class _Db:
+        @staticmethod
+        def scalars(_statement):
+            return _Scalars()
+
+    result = employment_verified(
+        _Db(),
+        student=SimpleNamespace(
+            id=8, student_id=None, student_no="LEGACY-1", tenant_id=101, version=2,
+        ),
+        actor_id=7,
+    )
+    assert result is None
+
+
+def test_canonical_hooks_are_registered_in_c7_without_after_commit() -> None:
     root = Path("app")
     sites = {
         "modules/academic_affairs/services/academic_affairs_status_service.py": "academic_status_effective(",
@@ -179,5 +207,5 @@ def test_canonical_hooks_wait_for_c7_schema_and_registration_slot() -> None:
     }
     for relative, call in sites.items():
         source = (root / relative).read_text(encoding="utf-8")
-        assert call not in source
+        assert call in source
         assert "after_commit" not in source

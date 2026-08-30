@@ -237,3 +237,8 @@ from app.modules.platform.business_forms.models import (  # noqa: F401
     BusinessFormDefinition,
     BusinessFormVersion,
 )
+from app.modules.platform.document_lifecycle.models import (  # noqa: F401
+    DocumentCompareResult,
+    FileDerivedArtifact,
+    StudentLifecycleFact,
+)

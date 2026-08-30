@@ -1,18 +1,8 @@
-"""PLAT-C document intelligence and lifecycle projection private package.
+"""PLAT-C document intelligence and lifecycle projection package.
 
-This package is deliberately not registered in shared routers or model registries yet.
-PLAT-C's migration/registration slot may only run after the A+B integration head is
-available; private services and characterization tests can be developed independently.
+Package initialization stays side-effect free so shared ORM registration cannot recurse
+through File Center resolver imports. Consumers import concrete services from their
+own modules.
 """
 
-from app.modules.platform.document_lifecycle.exact_file_version_read_port import (
-    ExactFileVersionReadPort,
-    ExactSourceVersion,
-    IExactFileVersionReadPort,
-)
-
-__all__ = (
-    "ExactFileVersionReadPort",
-    "ExactSourceVersion",
-    "IExactFileVersionReadPort",
-)
+__all__: tuple[str, ...] = ()

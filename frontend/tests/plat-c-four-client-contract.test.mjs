@@ -32,8 +32,11 @@ test('teacher and student miniapp surfaces are distinct and summary-only', () =>
   assert.doesNotMatch(summary, /changes|generatedFileObjectId|download/i)
 })
 
-test('Student360 direct-domain sections are not replaced before C7 shadow registration', () => {
+test('Student360 keeps direct-domain sections while C7 registers timeline shadow parity', () => {
   const projection = read('backend/app/services/teacher_mobile_student360_projection_service.py')
-  assert.doesNotMatch(projection, /StudentLifecycleFact|timelineShadow/)
   assert.match(projection, /"sections"/)
+  assert.match(projection, /shadow_fact_timeline/)
+  assert.match(projection, /"timelineShadow"/)
+  assert.match(projection, /for event in events/)
+  assert.doesNotMatch(projection, /"timeline":\s*timeline_shadow/)
 })

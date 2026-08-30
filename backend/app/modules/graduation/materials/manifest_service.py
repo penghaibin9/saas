@@ -321,6 +321,9 @@ def file_archive(gd_student_id: int, archive_batch_no: str | None, user: dict) -
             detail=f"archiveBatchNo={requested};manifest={digest};revision={revision}",
         )
         notify_risk_rescan(db, student.id)
+        from app.modules.platform.document_lifecycle.fact_hooks import graduation_archived
+
+        graduation_archived(db, student=student, manifest=manifest, actor_id=_actor_id(user))
         db.flush()
         result = _manifest_view(db, manifest)
         db.commit()

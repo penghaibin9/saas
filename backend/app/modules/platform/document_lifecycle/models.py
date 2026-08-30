@@ -1,8 +1,4 @@
-"""PLAT-C private ORM declarations.
-
-Do not import this module from ``app.models`` or ``app.db.base`` until PLAT-C receives the
-third A -> B -> C migration/registration slot.
-"""
+"""PLAT-C ORM declarations registered in the third A -> B -> C migration slot."""
 from __future__ import annotations
 
 from datetime import datetime

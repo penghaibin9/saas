@@ -24,8 +24,20 @@ def academic_status_effective(db, *, student, academic_fact_version: int,
 
 
 def graduation_archived(db, *, student, manifest, actor_id: int | None):
+    college_raw = getattr(student, "college_id", None)
+    college_id = int(college_raw) if str(college_raw or "").isdigit() else None
+    if college_id is None:
+        from sqlalchemy import select
+        from app.models.student import StudentProfile
+
+        profile = db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == int(student.tenant_id),
+            StudentProfile.id == int(student.student_id),
+            StudentProfile.is_deleted.is_(False),
+        ).limit(1)).first()
+        college_id = int(profile.college_id) if profile and profile.college_id else None
     return record_in_session(db, LifecycleFactInput(
-        student_id=int(student.student_id), college_id=student.college_id,
+        student_id=int(student.student_id), college_id=college_id,
         source_module="graduation", fact_type="GRADUATION_ARCHIVED",
         source_biz_type="ARCHIVE_MANIFEST", source_biz_id=str(manifest.id),
         source_version=str(manifest.revision), event_time=manifest.frozen_at or datetime.utcnow(),
@@ -60,10 +72,11 @@ def employment_verified(db, *, student, actor_id: int | None):
             StudentProfile.is_deleted.is_(False),
         ).limit(1)).first()
         if profile is None:
-            # The selected first-scope hook requires a canonical StudentProfile identity.
-            # Fail closed in the same transaction instead of inventing a parallel student id.
-            from app.core.exceptions import AppException
-            raise AppException("DATA_CONFLICT", "就业记录缺少可解析的学生主档身份")
+            # Legacy employment rows can predate canonical StudentProfile linkage.  A read
+            # projection must never become the authority that blocks the valid employment
+            # mutation.  Do not invent an EmpStudent-based student identity; leave this row
+            # for reconciliation/backfill and emit no fact.
+            return None
         student_id = profile.id
     return record_in_session(db, LifecycleFactInput(
         student_id=int(student_id), college_id=None,

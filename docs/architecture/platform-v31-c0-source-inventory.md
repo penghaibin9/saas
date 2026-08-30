@@ -50,12 +50,9 @@ The PLAT-C private package contains no assignment to `FileVersion.is_current`,
   row per domain and the last ten `StudentStageEvent` rows.
 - Its `sections`, risk summaries and current statuses remain direct-domain reads. PLAT-C may later
   shadow only the timeline and must not switch sections to facts.
-- C4 now contains five private, transaction-only hook mappings and rollback/dedupe tests. They do
-  not open or commit sessions. Their canonical call sites remain deliberately unmodified until C7,
-  because the current single Alembic head does not contain `t_student_lifecycle_fact`; wiring them
-  earlier was reverse-tested against `test_aa_status_change.py` and correctly identified as a real
-  1146 regression. C7 must add each call immediately before the existing canonical commit (or inside
-  the caller-owned academic transaction), never through `after_commit`.
+- C4 contains five transaction-only hook mappings and rollback/dedupe tests. C7 registered each
+  mapping in the canonical mutation's existing session before commit (or inside the caller-owned
+  academic transaction). The hooks do not open or commit sessions and no `after_commit` path exists.
 - The resumable backfill remains a standalone script outside Alembic. It binds checkpoints to tenant
   and schema version, keyset-scans `StudentStageEvent`, bulk-resolves `StudentProfile`, excludes
   sandbox rows, and reports source/fact post-compare counts.
@@ -98,11 +95,12 @@ Verified in the independent PLAT-C worktree before any C7 registration:
   could not recreate `t_role_template` (1146); this is preserved as a real same-head gate blocker,
   not skipped or relabelled.
 
-C7 remains blocked at the 2026-08-30 B-session pre-read checkpoint: `origin/main` is
-`eecb4d01d2a9592b71975be07c54f994f08e7461`; the active B private ref has advanced through
-`18aedb8e34bb063ab50403697a632f962cec9c7e` to
-`7d34c69a39b047bcda0b6e817db078b4a35495b5`, still without a B migration or emitted
-`PLAT_B_INTEGRATION_HEAD`/`PLAT_B_ALEMBIC_HEAD`. A and B private refs remain divergent, no local or
-remote ref/marker proves an A+B integration head, and the PLAT-C worktree still resolves only the main Alembic head
-`20260829_pr236_main_merge`. Therefore no PLAT-C migration, model/base import, shared router/resolver,
-canonical fact-hook or Student360 shadow registration is present at C0-C6.
+C7 consumed B's emitted exact integration head
+`3439f5d04598b5c8199c8452c0929ba94b09f754`. That commit includes A head
+`342a73782ee9c12be4e0951f123bfe304dba93c0`, resolves the single B Alembic head
+`20260830_plat_b_forms`, and is an ancestor of
+the PLAT-C integration commit. C then registered revision `20260830_plat_c_lifecycle` with B as its
+`down_revision`, the three shared ORM models, the router, the source-bound derivative resolver, the
+five same-session canonical hooks, and Student360 timeline shadow metrics. Student360 `sections` and
+the returned legacy `timeline` remain direct-domain/`StudentStageEvent` truth; backfill remains the
+standalone resumable script under `backend/scripts/`.

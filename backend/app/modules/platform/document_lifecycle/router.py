@@ -1,4 +1,4 @@
-"""Private PLAT-C routes; shared registration is deferred to C7."""
+"""Production PLAT-C routes registered after the A+B integration order lock."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
