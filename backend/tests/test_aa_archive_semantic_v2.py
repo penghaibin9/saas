@@ -1,4 +1,5 @@
 """P0-10：十三域语义归档结构化合同。"""
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -46,6 +47,102 @@ def test_odd_and_even_week_items_do_not_conflict():
     ])
 
     assert conflicts == []
+
+
+class _OpeningQuery:
+    def __init__(self, rows):
+        self.rows = list(rows)
+
+    def filter(self, *_args, **_kwargs):
+        return self
+
+    def all(self):
+        return list(self.rows)
+
+
+class _OpeningDb:
+    def __init__(self, classes, courses):
+        self.classes = classes
+        self.courses = courses
+
+    def query(self, model):
+        if model.__name__ in {"SchoolClass", "StudentProfile"}:
+            return _OpeningQuery(self.classes)
+        if model.__name__ == "AaProgramCourse":
+            return _OpeningQuery(self.courses)
+        raise AssertionError(f"unexpected model: {model.__name__}")
+
+
+def test_historical_opening_projection_uses_one_canonical_program_per_class(monkeypatch):
+    from app.core.context import set_tenant
+    from app.modules.academic_affairs.services import academic_affairs_archive_rule_evaluator as policy
+
+    cutoff = datetime(2026, 7, 12, 23, 59)
+    term = SimpleNamespace(year_code="2025-2026", term_no=2, end_date=cutoff)
+    classes = [
+        SimpleNamespace(id=1, major_id=10, grade="2024", college_id=2),
+        SimpleNamespace(id=2, major_id=10, grade="2024", college_id=2),
+    ]
+    courses = [SimpleNamespace(id=91, course_id=501)]
+    calls = []
+
+    def resolve(_db, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            status="RESOLVED",
+            program=SimpleNamespace(id=70),
+            rule="MAJOR_GRADE_HISTORICAL_EFFECTIVE",
+            message="历史方案已解析",
+        )
+
+    monkeypatch.setattr(policy, "resolve_program_for_scope", resolve)
+    set_tenant({"tenantId": "1"})
+    try:
+        expected, structural = policy._expected_opening(
+            _OpeningDb(classes, courses), term
+        )
+    finally:
+        set_tenant(None)
+
+    assert structural == []
+    assert [row["key"] for row in expected] == [(501, 1), (501, 2)]
+    assert [call["class_id"] for call in calls] == [1, 2]
+    assert all(call["as_of"] == cutoff for call in calls)
+
+
+def test_historical_program_coverage_replays_binding_at_term_end(monkeypatch):
+    from app.core.context import set_tenant
+    from app.modules.academic_affairs.services import academic_affairs_archive_rule_evaluator as policy
+
+    cutoff = datetime(2026, 7, 12, 23, 59)
+    student = SimpleNamespace(
+        id=1, student_no="2024S0001", major_id=10, class_id=1,
+        grade="2024", college_id=2, student_status="REGISTERED",
+    )
+    captured = []
+
+    def resolve(_db, _student, **kwargs):
+        captured.append(kwargs)
+        return SimpleNamespace(
+            status="RESOLVED", program=SimpleNamespace(id=70),
+            rule="MAJOR_GRADE_HISTORICAL_EFFECTIVE", message="历史方案已解析",
+        )
+
+    monkeypatch.setattr(policy, "resolve_student_program", resolve)
+    monkeypatch.setattr(policy, "validate_program_db", lambda _db, _pid: {"issues": []})
+    set_tenant({"tenantId": "1"})
+    try:
+        result = policy.evaluate_program(
+            _OpeningDb([student], []),
+            SimpleNamespace(
+                id=4, year_code="2025-2026", term_no=2, end_date=cutoff,
+            ),
+        )
+    finally:
+        set_tenant(None)
+
+    assert result["result"] == "PASS"
+    assert captured == [{"tenant_id": 1, "as_of": cutoff}]
 
 
 def test_persisted_rule_summary_fits_existing_varchar_300_and_round_trips():
