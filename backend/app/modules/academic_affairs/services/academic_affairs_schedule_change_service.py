@@ -169,7 +169,7 @@ def _can_manage_all(ctx) -> bool:
     return ctx.scope_type == "TENANT_ALL"
 
 
-def _require_current_published_origin(db, batch, origin):
+def _require_current_published_origin(db, batch, origin, *, lock_scope=False):
     """Fail closed unless ``origin`` belongs to the current formal timetable truth.
 
     ``PUBLISHED`` is only a lifecycle label. Once a batch is superseded, a stale
@@ -177,6 +177,7 @@ def _require_current_published_origin(db, batch, origin):
     because all four timetable projections consume ScopeHead instead.
     """
     from app.models import AaScheduleScopeHead
+    from . import academic_affairs_schedule_truth_service as truth_service
 
     if not batch or batch.is_deleted or batch.status != "PUBLISHED":
         raise AppException(
@@ -186,13 +187,30 @@ def _require_current_published_origin(db, batch, origin):
         )
     scope_type = "COLLEGE" if batch.college_id else "SCHOOL"
     scope_id = int(batch.college_id or 0)
-    head = db.scalars(select(AaScheduleScopeHead).where(
-        AaScheduleScopeHead.tenant_id == _tid(),
-        AaScheduleScopeHead.term_id == int(batch.term_id),
-        AaScheduleScopeHead.scope_type == scope_type,
-        AaScheduleScopeHead.scope_id == scope_id,
-        AaScheduleScopeHead.is_deleted.is_(False),
-    )).first()
+    if lock_scope:
+        # Final approval and publication serialize on the same authority row.  Keep
+        # this lock until the caller commits the schedule mutation, otherwise a
+        # correction draft can replace the head between validation and apply.
+        head = truth_service.lock_scope_head(
+            db, int(batch.term_id), scope_type, scope_id,
+        )
+        db.refresh(batch)
+        if origin is not None:
+            db.refresh(origin)
+        if batch.is_deleted or batch.status != "PUBLISHED":
+            raise AppException(
+                "DATA_CONFLICT",
+                "该课位已发生变化或不再属于正式发布课表，请返回本人课表刷新后重新发起",
+                http_status=409,
+            )
+    else:
+        head = db.scalars(select(AaScheduleScopeHead).where(
+            AaScheduleScopeHead.tenant_id == _tid(),
+            AaScheduleScopeHead.term_id == int(batch.term_id),
+            AaScheduleScopeHead.scope_type == scope_type,
+            AaScheduleScopeHead.scope_id == scope_id,
+            AaScheduleScopeHead.is_deleted.is_(False),
+        )).first()
     if not head or int(head.active_batch_id or 0) != int(batch.id):
         raise AppException(
             "DATA_CONFLICT",
@@ -500,7 +518,7 @@ def _apply_schedule(db, x) -> dict:
     from app.models import AaScheduleBatch, AaScheduleItem, StudentProfile, User
     origin = db.get(AaScheduleItem, int(x.origin_item_id)) if x.origin_item_id else None
     batch = db.get(AaScheduleBatch, int(origin.batch_id)) if origin and origin.batch_id else None
-    _require_current_published_origin(db, batch, origin)
+    _require_current_published_origin(db, batch, origin, lock_scope=True)
     # 复核目标冲突仍为 0（并发防护）
     new_item_id = None
     if x.change_type in ("ADJUST", "MAKEUP"):

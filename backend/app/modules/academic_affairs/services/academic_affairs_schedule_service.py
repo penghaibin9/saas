@@ -504,8 +504,14 @@ def _item_row(x, source="CLASS_DERIVED", selection_record_id=None) -> dict:
 
 def _view(db, batch_id, extra_conds):
     from app.models import AaScheduleItem
+    if isinstance(batch_id, (list, tuple, set)):
+        batch_ids = sorted({int(value) for value in batch_id})
+    else:
+        batch_ids = [int(batch_id)]
+    if not batch_ids:
+        return []
     rows = db.scalars(select(AaScheduleItem).where(
-        AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id == int(batch_id),
+        AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id.in_(batch_ids),
         AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False),
         *extra_conds).order_by(AaScheduleItem.weekday, AaScheduleItem.slot_no)).all()
     return [_item_row(x) for x in rows]
@@ -523,7 +529,7 @@ def teacher_view(batch_id, user, teacher_key):
         return {"items": _view(db, batch_id, [AaScheduleItem.teacher_key == teacher_key])}
 
 
-def _enrolled_items(db, student_id):
+def _enrolled_items(db, student_id, batch_ids=None):
     """学生本人选课结果并入课表（10号卡）：批次 LOCKED 后，选课记录关联教学任务在已发布课表中
     的排课项(EFFECTIVE)标记 source=ENROLLED；LOCKED 前不并入（避免展示未定选课结果误导学生）。"""
     from app.models import AaScheduleItem, AaSelectionCourse, AaSelectionRecord
@@ -542,9 +548,16 @@ def _enrolled_items(db, student_id):
         tt_id, rec_id = task_to_record.get(c.id, (None, None))
         if not tt_id:
             continue
-        rows = db.query(AaScheduleItem).filter(
+        conds = [
             AaScheduleItem.tenant_id == _tid(), AaScheduleItem.task_id == tt_id,
-            AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False)).all()
+            AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False),
+        ]
+        if batch_ids is not None:
+            normalized_batch_ids = sorted({int(value) for value in batch_ids})
+            if not normalized_batch_ids:
+                continue
+            conds.append(AaScheduleItem.batch_id.in_(normalized_batch_ids))
+        rows = db.query(AaScheduleItem).filter(*conds).all()
         out.extend(_item_row(x, source="ENROLLED", selection_record_id=rec_id) for x in rows)
     return out
 
@@ -557,7 +570,7 @@ def student_view(batch_id, user, student_id):
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
         base_items = _view(db, batch_id, [AaScheduleItem.class_id == int(s.class_id)]) if s.class_id else []
-        items = base_items + _enrolled_items(db, s.id)
+        items = base_items + _enrolled_items(db, s.id, [batch_id])
         note = "" if s.class_id else "学生无行政班归属"
         return {"items": items, "note": note}
 
@@ -582,16 +595,19 @@ def list_batches(user, term_id=None, status=None, page=1, page_size=20):
 # 与既有 class_view/teacher_view/student_view（需先知道 batchId 的批次内三视图，供「课表批次/排课」页
 # 「三视图」下钻用）不同：以下入口面向导航菜单三级页，自动取「当前已发布批次」，无需先选批次。
 
-def _current_published_batch(db, term_id=None):
-    """Resolve the official schedule through the term-scoped authority head.
+def _current_published_batches(db, term_id=None):
+    """Resolve every official schedule scope for one teaching term.
 
     ``publish_at DESC`` across all terms is unsafe: a post-archive correction to an
     old term is legitimately newer than the current teaching schedule.  Teacher,
     student, class and room PC views must therefore use the same
     ``AaScheduleScopeHead.active_batch_id`` truth as the four-end mobile projection.
-    A same-term published fallback is kept only for pre-ScopeHead migrated data.
+    A term can contain one SCHOOL head and several COLLEGE heads, so returning only
+    one batch silently drops legitimate college timetables.  A same-term fallback
+    keeps only the newest batch per scope for pre-ScopeHead migrated data.
     """
-    from app.models import AaScheduleBatch, AaScheduleScopeHead, AaTerm
+    from app.models import AaScheduleBatch, AaTerm
+    from . import academic_affairs_schedule_truth_service as truth_service
 
     resolved_term_id = int(term_id) if term_id else None
     if resolved_term_id is None:
@@ -602,39 +618,49 @@ def _current_published_batch(db, term_id=None):
         ).order_by(AaTerm.id.desc()).limit(1)).first()
         resolved_term_id = int(current_term.id) if current_term else None
 
-    if resolved_term_id is not None:
-        head = db.scalars(select(AaScheduleScopeHead).where(
-            AaScheduleScopeHead.tenant_id == _tid(),
-            AaScheduleScopeHead.term_id == resolved_term_id,
-            AaScheduleScopeHead.scope_type == "SCHOOL",
-            AaScheduleScopeHead.scope_id == 0,
-            AaScheduleScopeHead.active_batch_id.is_not(None),
-            AaScheduleScopeHead.is_deleted.is_(False),
-        ).limit(1)).first()
-        if head is not None:
-            authoritative = db.scalars(select(AaScheduleBatch).where(
-                AaScheduleBatch.id == int(head.active_batch_id),
-                AaScheduleBatch.tenant_id == _tid(),
-                AaScheduleBatch.term_id == resolved_term_id,
-                AaScheduleBatch.status == "PUBLISHED",
-                AaScheduleBatch.is_deleted.is_(False),
-            )).first()
-            if authoritative is not None:
-                return authoritative
-        return db.scalars(select(AaScheduleBatch).where(
+    if resolved_term_id is None:
+        latest = db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.tenant_id == _tid(),
+            AaScheduleBatch.status == "PUBLISHED",
+            AaScheduleBatch.is_deleted.is_(False),
+        ).order_by(AaScheduleBatch.publish_at.desc(), AaScheduleBatch.id.desc()).limit(1)).first()
+        resolved_term_id = int(latest.term_id) if latest else None
+    if resolved_term_id is None:
+        return []
+
+    active_ids = truth_service.active_batch_ids(db, [resolved_term_id])
+    if active_ids:
+        rows = db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.id.in_(active_ids),
             AaScheduleBatch.tenant_id == _tid(),
             AaScheduleBatch.term_id == resolved_term_id,
             AaScheduleBatch.status == "PUBLISHED",
             AaScheduleBatch.is_deleted.is_(False),
-        ).order_by(AaScheduleBatch.publish_at.desc(), AaScheduleBatch.id.desc())).first()
+        )).all()
+        by_id = {int(row.id): row for row in rows}
+        authoritative = [by_id[batch_id] for batch_id in active_ids if batch_id in by_id]
+        if authoritative:
+            return authoritative
 
-    # Compatibility only: tenants not yet carrying a current-term marker or scope
-    # head still receive their latest formal batch instead of a hard failure.
-    return db.scalars(select(AaScheduleBatch).where(
+    legacy_rows = db.scalars(select(AaScheduleBatch).where(
         AaScheduleBatch.tenant_id == _tid(),
+        AaScheduleBatch.term_id == resolved_term_id,
         AaScheduleBatch.status == "PUBLISHED",
         AaScheduleBatch.is_deleted.is_(False),
-    ).order_by(AaScheduleBatch.publish_at.desc(), AaScheduleBatch.id.desc())).first()
+    ).order_by(AaScheduleBatch.publish_at.desc(), AaScheduleBatch.id.desc())).all()
+    latest_by_scope = {}
+    for row in legacy_rows:
+        scope = ("COLLEGE", int(row.college_id)) if row.college_id else ("SCHOOL", 0)
+        latest_by_scope.setdefault(scope, row)
+    return [latest_by_scope[key] for key in sorted(latest_by_scope)]
+
+
+def _batch_identity(batches) -> dict:
+    batch_ids = [str(batch.id) for batch in batches]
+    return {
+        "batchId": batch_ids[0] if len(batch_ids) == 1 else None,
+        "batchIds": batch_ids,
+    }
 
 
 def _week_in_range(row: dict, week) -> bool:
@@ -665,13 +691,14 @@ def class_schedule(user, class_id, term_id=None, week=None) -> dict:
             allowed = ctx.allowed_class_ids(db)
             if not allowed or int(class_id) not in allowed:
                 raise no_data_scope("该班级不在您的数据范围内")
-        batch = _current_published_batch(db, term_id)
-        if not batch:
-            return {"items": [], "batchId": None, "className": cls.class_name,
+        batches = _current_published_batches(db, term_id)
+        if not batches:
+            return {"items": [], "batchId": None, "batchIds": [], "className": cls.class_name,
                     "note": "该班级本学期暂无已发布课表"}
-        rows = _view(db, batch.id, [AaScheduleItem.class_id == int(class_id)])
+        identity = _batch_identity(batches)
+        rows = _view(db, [batch.id for batch in batches], [AaScheduleItem.class_id == int(class_id)])
         rows = [r for r in rows if _week_in_range(r, week)]
-        return {"items": rows, "batchId": str(batch.id), "className": cls.class_name, "note": ""}
+        return {"items": rows, **identity, "className": cls.class_name, "note": ""}
 
 
 def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
@@ -683,13 +710,15 @@ def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
         raise no_data_scope("仅能查看本人课表")
     from app.models import AaScheduleItem
     with session() as db:
-        batch = _current_published_batch(db, term_id)
-        if not batch:
-            return {"items": [], "batchId": None, "weeklyHours": 0, "note": "本学期暂无授课安排"}
-        rows = _view(db, batch.id, [AaScheduleItem.teacher_key == teacher_key])
+        batches = _current_published_batches(db, term_id)
+        if not batches:
+            return {"items": [], "batchId": None, "batchIds": [], "weeklyHours": 0,
+                    "note": "本学期暂无授课安排"}
+        identity = _batch_identity(batches)
+        rows = _view(db, [batch.id for batch in batches], [AaScheduleItem.teacher_key == teacher_key])
         weekly_hours = len(rows)
         rows = [r for r in rows if _week_in_range(r, week)]
-        return {"items": rows, "batchId": str(batch.id), "weeklyHours": weekly_hours, "note": ""}
+        return {"items": rows, **identity, "weeklyHours": weekly_hours, "note": ""}
 
 
 def room_schedule(user, classroom_id, term_id=None, week=None) -> dict:
@@ -705,13 +734,14 @@ def room_schedule(user, classroom_id, term_id=None, week=None) -> dict:
         candidates = {display}
         if c.room_name:
             candidates.add(c.room_name)
-        batch = _current_published_batch(db, term_id)
-        if not batch:
-            return {"items": [], "batchId": None, "classroomText": display,
+        batches = _current_published_batches(db, term_id)
+        if not batches:
+            return {"items": [], "batchId": None, "batchIds": [], "classroomText": display,
                     "note": "该教室本学期暂无已发布课表"}
-        rows = _view(db, batch.id, [AaScheduleItem.classroom_text.in_(list(candidates))])
+        identity = _batch_identity(batches)
+        rows = _view(db, [batch.id for batch in batches], [AaScheduleItem.classroom_text.in_(list(candidates))])
         rows = [r for r in rows if _week_in_range(r, week)]
-        return {"items": rows, "batchId": str(batch.id), "classroomText": display, "note": ""}
+        return {"items": rows, **identity, "classroomText": display, "note": ""}
 
 
 def student_schedule(user, student_id, term_id=None, week=None) -> dict:
@@ -730,15 +760,18 @@ def student_schedule(user, student_id, term_id=None, week=None) -> dict:
             allowed = ctx.allowed_class_ids(db) or set()
             if not s.class_id or int(s.class_id) not in allowed:
                 raise no_data_scope("该学生不在您的数据范围内")
-        batch = _current_published_batch(db, term_id)
-        if not batch:
-            return {"items": [], "batchId": None, "studentName": s.real_name, "studentNo": s.student_no,
+        batches = _current_published_batches(db, term_id)
+        if not batches:
+            return {"items": [], "batchId": None, "batchIds": [], "studentName": s.real_name,
+                    "studentNo": s.student_no,
                     "note": "该学生本学期暂无已发布课表"}
-        base_items = _view(db, batch.id, [AaScheduleItem.class_id == int(s.class_id)]) if s.class_id else []
-        items = base_items + _enrolled_items(db, s.id)
+        identity = _batch_identity(batches)
+        active_ids = [batch.id for batch in batches]
+        base_items = _view(db, active_ids, [AaScheduleItem.class_id == int(s.class_id)]) if s.class_id else []
+        items = base_items + _enrolled_items(db, s.id, active_ids)
         items = [r for r in items if _week_in_range(r, week)]
         note = "" if s.class_id else "学生无行政班归属"
-        return {"items": items, "batchId": str(batch.id), "studentName": s.real_name,
+        return {"items": items, **identity, "studentName": s.real_name,
                 "studentNo": s.student_no, "note": note}
 
 
@@ -765,13 +798,15 @@ def teaching_class_schedule(user, teaching_class_code, term_id=None, week=None) 
         task_ids = [t.id for t in tasks]
         teaching_class_name = next((t.teaching_class_name for t in tasks if t.teaching_class_name),
                                    teaching_class_code)
-        batch = _current_published_batch(db, term_id)
-        if not batch:
-            return {"items": [], "batchId": None, "teachingClassName": teaching_class_name,
+        batches = _current_published_batches(db, term_id)
+        if not batches:
+            return {"items": [], "batchId": None, "batchIds": [],
+                    "teachingClassName": teaching_class_name,
                     "note": "该教学班本学期暂无已发布课表"}
-        rows = _view(db, batch.id, [AaScheduleItem.task_id.in_(task_ids)])
+        identity = _batch_identity(batches)
+        rows = _view(db, [batch.id for batch in batches], [AaScheduleItem.task_id.in_(task_ids)])
         rows = [r for r in rows if _week_in_range(r, week)]
-        return {"items": rows, "batchId": str(batch.id), "teachingClassName": teaching_class_name, "note": ""}
+        return {"items": rows, **identity, "teachingClassName": teaching_class_name, "note": ""}
 
 
 def list_publish_records(user, term_id=None, batch_id=None, page=1, page_size=20):

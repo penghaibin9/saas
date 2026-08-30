@@ -61,3 +61,5 @@ def test_selection_projection_exposes_published_meeting_context():
     assert '"scheduleItems"' in source
     assert 'AaScheduleBatch.status == "PUBLISHED"' in source
     assert 'AaScheduleItem.status == "EFFECTIVE"' in source
+    assert "schedule_truth.active_batch_ids_by_term(db, term_ids)" in source
+    assert "latest_by_scope" in source

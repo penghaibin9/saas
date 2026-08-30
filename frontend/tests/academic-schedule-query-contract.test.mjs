@@ -32,3 +32,13 @@ test('schedule routes remain available for class teacher room student and teachi
     assert.match(routes, new RegExp(segment.replaceAll('/', '\\/')))
   }
 })
+
+test('semester schedule renders the union of formal scope batches without misleading print', () => {
+  const source = read('src/modules/academicAffairs/views/AaSemesterScheduleView.vue')
+  const backend = read('../backend/app/modules/academic_affairs/services/academic_affairs_schedule_service.py')
+
+  assert.match(backend, /def _current_published_batches/)
+  assert.match(backend, /"batchIds": batch_ids/)
+  assert.match(source, /this\.batchIds = res\.data\.batchIds/)
+  assert.match(source, /this\.batchIds\.length === 1/)
+})

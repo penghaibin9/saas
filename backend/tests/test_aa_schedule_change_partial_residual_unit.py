@@ -69,3 +69,19 @@ def test_adjust_window_cannot_move_weeks_outside_origin():
         _validate_adjust_window(_origin(), 0, 3, "ALL")
     with pytest.raises(AppException):
         _validate_adjust_window(_origin(week_parity="ODD"), 1, 3, "EVEN")
+
+
+def test_final_apply_serializes_with_scope_head_publication():
+    import inspect
+
+    from app.modules.academic_affairs.services import (
+        academic_affairs_schedule_change_service as service,
+    )
+
+    guard = inspect.getsource(service._require_current_published_origin)
+    apply_source = inspect.getsource(service._apply_schedule)
+
+    assert "truth_service.lock_scope_head" in guard
+    assert "db.refresh(batch)" in guard
+    assert "db.refresh(origin)" in guard
+    assert "lock_scope=True" in apply_source

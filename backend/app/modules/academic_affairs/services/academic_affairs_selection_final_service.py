@@ -437,6 +437,7 @@ def _student_course_schedule_projection(db, batches, courses) -> dict[int, list[
     published timetable is represented by an empty list instead of guessed client data.
     """
     from app.models import AaScheduleBatch, AaScheduleItem
+    from . import academic_affairs_schedule_truth_service as schedule_truth
 
     task_ids = sorted({
         int(course.teaching_task_id)
@@ -447,20 +448,37 @@ def _student_course_schedule_projection(db, batches, courses) -> dict[int, list[
     if not task_ids or not term_ids:
         return {}
 
-    published_batches = db.query(AaScheduleBatch).filter(
-        AaScheduleBatch.tenant_id == _base._core._tid(),
-        AaScheduleBatch.term_id.in_(term_ids),
-        AaScheduleBatch.status == "PUBLISHED",
-        AaScheduleBatch.is_deleted.is_(False),
-    ).order_by(
-        AaScheduleBatch.term_id,
-        AaScheduleBatch.publish_at.desc(),
-        AaScheduleBatch.id.desc(),
-    ).all()
-    current_batch_by_term = {}
-    for batch in published_batches:
-        current_batch_by_term.setdefault(int(batch.term_id), int(batch.id))
-    active_batch_ids = sorted(current_batch_by_term.values())
+    active_by_term = schedule_truth.active_batch_ids_by_term(db, term_ids)
+    missing_terms = [term_id for term_id in term_ids if not active_by_term.get(term_id)]
+    if missing_terms:
+        # Compatibility for tenants created before ScopeHead existed: retain one
+        # newest PUBLISHED batch per SCHOOL/COLLEGE scope, never one per whole term.
+        published_batches = db.query(AaScheduleBatch).filter(
+            AaScheduleBatch.tenant_id == _base._core._tid(),
+            AaScheduleBatch.term_id.in_(missing_terms),
+            AaScheduleBatch.status == "PUBLISHED",
+            AaScheduleBatch.is_deleted.is_(False),
+        ).order_by(
+            AaScheduleBatch.term_id,
+            AaScheduleBatch.publish_at.desc(),
+            AaScheduleBatch.id.desc(),
+        ).all()
+        latest_by_scope = {}
+        for batch in published_batches:
+            scope = (
+                int(batch.term_id),
+                "COLLEGE" if batch.college_id else "SCHOOL",
+                int(batch.college_id or 0),
+            )
+            latest_by_scope.setdefault(scope, int(batch.id))
+        for (term_id, _scope_type, _scope_id), batch_id in latest_by_scope.items():
+            active_by_term.setdefault(term_id, []).append(batch_id)
+
+    active_batch_ids = [
+        batch_id
+        for term_id in term_ids
+        for batch_id in active_by_term.get(term_id, [])
+    ]
     if not active_batch_ids:
         return {}
 

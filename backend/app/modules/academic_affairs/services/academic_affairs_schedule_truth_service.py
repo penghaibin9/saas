@@ -88,6 +88,63 @@ def active_batch_id(db, term_id, scope_type, scope_id):
     return int(head.active_batch_id) if head and head.active_batch_id else None
 
 
+def active_batch_ids_by_term(db, term_ids) -> dict[int, list[int]]:
+    """Return every valid formal schedule batch selected by ScopeHead.
+
+    A term may have one SCHOOL head and several COLLEGE heads.  Read-side
+    consumers must project the union instead of collapsing the term to the most
+    recently published batch.  The second query also fails closed when a stale
+    or corrupt head points at a deleted/non-PUBLISHED/wrong-term batch.
+    """
+    from app.models import AaScheduleBatch, AaScheduleScopeHead
+
+    normalized_terms = sorted({int(value) for value in term_ids or [] if value})
+    if not normalized_terms:
+        return {}
+
+    heads = db.query(AaScheduleScopeHead).filter(
+        AaScheduleScopeHead.tenant_id == _tid(),
+        AaScheduleScopeHead.term_id.in_(normalized_terms),
+        AaScheduleScopeHead.scope_type.in_([_SCHOOL, _COLLEGE]),
+        AaScheduleScopeHead.active_batch_id.is_not(None),
+        AaScheduleScopeHead.is_deleted.is_(False),
+    ).all()
+    candidate_ids = sorted({int(head.active_batch_id) for head in heads})
+    if not candidate_ids:
+        return {term_id: [] for term_id in normalized_terms}
+
+    batches = db.query(AaScheduleBatch).filter(
+        AaScheduleBatch.tenant_id == _tid(),
+        AaScheduleBatch.term_id.in_(normalized_terms),
+        AaScheduleBatch.id.in_(candidate_ids),
+        AaScheduleBatch.status == "PUBLISHED",
+        AaScheduleBatch.is_deleted.is_(False),
+    ).all()
+    valid_by_id = {int(batch.id): batch for batch in batches}
+    result = {term_id: [] for term_id in normalized_terms}
+    for head in sorted(
+        heads,
+        key=lambda row: (
+            int(row.term_id),
+            0 if str(row.scope_type or "").upper() == _SCHOOL else 1,
+            int(row.scope_id or 0),
+        ),
+    ):
+        batch = valid_by_id.get(int(head.active_batch_id))
+        if not batch or int(batch.term_id) != int(head.term_id):
+            continue
+        term_batches = result[int(head.term_id)]
+        if int(batch.id) not in term_batches:
+            term_batches.append(int(batch.id))
+    return result
+
+
+def active_batch_ids(db, term_ids) -> list[int]:
+    """Flatten :func:`active_batch_ids_by_term` while preserving scope order."""
+    by_term = active_batch_ids_by_term(db, term_ids)
+    return [batch_id for term_id in sorted(by_term) for batch_id in by_term[term_id]]
+
+
 def _supports_share_lock(db) -> bool:
     try:
         return db.get_bind().dialect.name == "mysql"

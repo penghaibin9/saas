@@ -25,12 +25,17 @@ def test_pc_schedule_views_resolve_the_current_term_scopehead():
         "app/modules/academic_affairs/services/academic_affairs_schedule_service.py"
     )
 
-    assert "def _current_published_batch" in source
+    truth = _read(
+        "app/modules/academic_affairs/services/academic_affairs_schedule_truth_service.py"
+    )
+
+    assert "def _current_published_batches" in source
     assert "AaTerm.is_current.is_(True)" in source
-    assert 'AaScheduleScopeHead.scope_type == "SCHOOL"' in source
-    assert "AaScheduleScopeHead.active_batch_id.is_not(None)" in source
-    assert "AaScheduleBatch.id == int(head.active_batch_id)" in source
-    assert "AaScheduleBatch.term_id == resolved_term_id" in source
+    assert "truth_service.active_batch_ids(db, [resolved_term_id])" in source
+    assert "AaScheduleItem.batch_id.in_(batch_ids)" in source
+    assert "def active_batch_ids_by_term" in truth
+    assert 'AaScheduleScopeHead.scope_type.in_([_SCHOOL, _COLLEGE])' in truth
+    assert 'AaScheduleBatch.status == "PUBLISHED"' in truth
 
 
 def test_archive_seed_uses_formal_thirteen_domain_manifest():
