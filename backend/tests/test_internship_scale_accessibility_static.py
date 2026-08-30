@@ -108,6 +108,7 @@ def test_teacher_mini_queues_are_server_paged_and_sql_scoped():
 def test_20k_runtime_probes_require_real_dataset_explain_query_latency_payload_and_browser_memory():
     scale = read("backend/scripts/measure_internship_v8_scale.py")
     browser = read("e2e/tools/measure-internship-v8-browser.mjs")
+    seed = read("backend/scripts/e2e_seed_internship_v8_scale.py")
     for token in (
         "--minimum-records",
         "20_000",
@@ -118,6 +119,7 @@ def test_20k_runtime_probes_require_real_dataset_explain_query_latency_payload_a
         "pythonPeakBytes",
         "EXPLAIN FORMAT=JSON",
         "refusing 20K certification",
+        "COLLATE utf8mb4_unicode_ci",
     ):
         assert token in scale
     for token in (
@@ -126,5 +128,17 @@ def test_20k_runtime_probes_require_real_dataset_explain_query_latency_payload_a
         "resourceTransferBytes",
         "usedJSHeapBytes",
         "--enable-precise-memory-info",
+        "authenticatedRoute",
+        "const contexts = new Map()",
+        "sessionStorage.setItem",
     ):
         assert token in browser
+    for token in (
+        "E2E_ALLOW_DESTRUCTIVE_TESTS",
+        "scale fixture refuses production APP_ENV",
+        "scale fixture requires a local database",
+        "scale fixture requires an e2e/test database",
+        "the final fixture is fixed at exactly 20000 records",
+        "INSERT IGNORE INTO t_internship_record",
+    ):
+        assert token in seed

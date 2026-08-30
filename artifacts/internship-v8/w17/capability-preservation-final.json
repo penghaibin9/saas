@@ -1,0 +1,27 @@
+{
+  "schema": "internship-v8-capability-preservation/1",
+  "stage": "W17",
+  "capabilities": [
+    { "id": "CP-IX-01", "status": "PASS", "evidence": ["artifacts/internship-v8/w2/today-work-contract.json", "artifacts/internship-v8/w9/student-pc-workbench-contract.json"] },
+    { "id": "CP-IX-02", "status": "PASS", "evidence": ["artifacts/internship-v8/w16/runtime-golden-journeys-seal.json"] },
+    { "id": "CP-IX-03", "status": "PASS", "evidence": ["artifacts/internship-v8/w5/enterprise-today-first-contract.json"] },
+    { "id": "CP-IX-04", "status": "PASS", "evidence": ["artifacts/internship-v8/w5/enterprise-today-first-contract.json"] },
+    { "id": "CP-IX-05", "status": "PASS", "evidence": ["artifacts/internship-v8/w5/enterprise-today-first-contract.json"] },
+    { "id": "CP-IX-06", "status": "PASS", "evidence": ["artifacts/internship-v8/w5/enterprise-today-first-contract.json"] },
+    { "id": "CP-IX-07", "status": "PASS", "evidence": ["artifacts/internship-v8/w16/runtime-golden-journeys-seal.json"] },
+    { "id": "CP-IX-08", "status": "PASS", "evidence": ["artifacts/internship-v8/w5/enterprise-today-first-contract.json"] },
+    { "id": "CP-IX-09", "status": "PASS", "evidence": ["artifacts/internship-v8/w6/compliance-agreement-now-contract.json"] },
+    { "id": "CP-IX-10", "status": "PASS", "evidence": ["artifacts/internship-v8/w6/compliance-agreement-now-contract.json", "artifacts/internship-v8/w14/archive-fileversion-recovery-employment-contract.json"] },
+    { "id": "CP-IX-11", "status": "PASS", "evidence": ["artifacts/internship-v8/w7/attendance-leave-now-contract.json"] },
+    { "id": "CP-IX-12", "status": "PASS", "evidence": ["artifacts/internship-v8/w8/report-guidance-visit-contract.json"] },
+    { "id": "CP-IX-13", "status": "PASS", "evidence": ["artifacts/internship-v8/w8/report-guidance-visit-contract.json"] },
+    { "id": "CP-IX-14", "status": "PASS", "evidence": ["artifacts/internship-v8/w12/risk-incident-evidence-contract.json"] },
+    { "id": "CP-IX-15", "status": "PASS", "evidence": ["artifacts/internship-v8/w13/evaluation-score-appeal-contract.json"] },
+    { "id": "CP-IX-16", "status": "PASS", "evidence": ["artifacts/internship-v8/w14/archive-fileversion-recovery-employment-contract.json"] },
+    { "id": "CP-IX-17", "status": "PASS", "evidence": ["artifacts/internship-v8/w14/archive-fileversion-recovery-employment-contract.json"] },
+    { "id": "CP-IX-18", "status": "PASS", "evidence": ["artifacts/internship-v8/w12/risk-incident-evidence-contract.json", "artifacts/internship-v8/w16/runtime-golden-journeys-seal.json"] },
+    { "id": "CP-IX-19", "status": "PASS", "evidence": ["artifacts/internship-v8/w16/runtime-golden-journeys-seal.json", "artifacts/internship-v8/w17/release-gates.json"] },
+    { "id": "CP-IX-20", "status": "PASS", "evidence": ["artifacts/internship-v8/w17/release-gates.json", "artifacts/internship-v8/w17/scale-20k.json"] }
+  ],
+  "summary": { "passed": 20, "total": 20, "status": "PASS" }
+}

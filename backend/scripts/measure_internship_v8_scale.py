@@ -79,7 +79,8 @@ EXPLAIN_QUERIES = (
               JOIN t_file_object fo ON fo.id=fb.file_id
               WHERE fb.tenant_id=:tid AND fa.tenant_id=:tid AND fv.tenant_id=:tid
                 AND fo.tenant_id=:tid AND fb.module_code='INTERNSHIP'
-                AND fb.batch_id=CAST(:bid AS CHAR) AND fb.is_current=1
+                AND fb.batch_id=(CAST(:bid AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci)
+                AND fb.is_current=1
                 AND fb.status='ACTIVE' AND fb.is_deleted=0 AND fa.is_deleted=0
                 AND fv.is_current=1 AND fv.is_deleted=0 AND fo.is_deleted=0
               GROUP BY fb.student_id

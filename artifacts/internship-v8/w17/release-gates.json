@@ -1,0 +1,42 @@
+{
+  "schema": "internship-v8-w17-release-gates/1",
+  "stage": "W17",
+  "sourceHead": "627d80c36",
+  "production": {
+    "contracts": "PASS",
+    "routePermissions": { "status": "PASS", "routes": 334, "files": 25, "publicAuthRoutes": 8 },
+    "sourceClosure": { "status": "PASS", "gaps": 0 },
+    "capacity": "PASS",
+    "fileClientContract": "PASS",
+    "documentPreview": "PASS",
+    "formalRouteDependencyGraph": { "status": "PASS", "layers": "A1-A6", "violations": 0 }
+  },
+  "clients": {
+    "staffPc": { "test": "PASS", "lint": "PASS_WITH_2_EXISTING_WARNINGS", "build": "PASS", "auditHigh": 0 },
+    "studentPc": { "test": "PASS", "lint": "PASS", "build": "PASS", "auditHigh": 0 },
+    "studentMiniTeacherMini": { "test": { "status": "PASS", "count": 225 }, "h5Build": "PASS", "mpWeixinBuild": "PASS", "auditHigh": 0 },
+    "enterprisePortal": { "test": { "status": "PASS", "count": 97 }, "lint": "PASS", "build": "PASS", "playwright": { "status": "PASS", "count": 6 }, "auditHigh": 0 }
+  },
+  "backend": {
+    "affectedStaticTests": { "status": "PASS", "count": 32 },
+    "postMainMysqlSmoke": { "status": "PASS", "count": 1 },
+    "alembicHeads": { "status": "PASS", "count": 1, "head": "20260830_merge_ix_plat_c" },
+    "migrationTimeTravelDebt": 0
+  },
+  "scale20k": {
+    "status": "PASS",
+    "serviceEvidence": "artifacts/internship-v8/w17/scale-20k.json",
+    "browserEvidence": "artifacts/internship-v8/w17/browser-scale-20k.json",
+    "datasetRecords": 20000,
+    "browserTargets": 5
+  },
+  "s5": {
+    "status": "PASS",
+    "phase": "RESTORE_VERIFIED",
+    "trackedTables": 55,
+    "uniqueIndexes": 7,
+    "fileBindingRestored": true,
+    "candidateOnlyObjectsRemoved": true
+  },
+  "result": "PASS"
+}

@@ -25,6 +25,7 @@ const longTaskBudgetMs = Number(process.env.INTERNSHIP_V8_LONG_TASK_BUDGET_MS ||
 const heapBudgetBytes = Number(process.env.INTERNSHIP_V8_HEAP_BUDGET_BYTES || 134217728)
 const browser = await chromium.launch({ headless: true, args: ['--enable-precise-memory-info'] })
 const results = []
+const contexts = new Map()
 try {
   for (const target of targets) {
     if (!target?.name || !target?.url || !target?.storageState) {
@@ -32,7 +33,17 @@ try {
     }
     const storageState = path.resolve(String(target.storageState))
     if (!fs.existsSync(storageState)) throw new Error(`${target.name}: storageState not found: ${storageState}`)
-    const context = await browser.newContext({ storageState })
+    const contextKey = JSON.stringify([storageState, target.sessionStorage || {}])
+    let context = contexts.get(contextKey)
+    if (!context) {
+      context = await browser.newContext({ storageState })
+      if (target.sessionStorage && typeof target.sessionStorage === 'object') {
+        await context.addInitScript((items) => {
+          for (const [key, value] of Object.entries(items)) sessionStorage.setItem(key, String(value))
+        }, target.sessionStorage)
+      }
+      contexts.set(contextKey, context)
+    }
     const page = await context.newPage()
     await page.addInitScript(() => {
       globalThis.__internshipV8LongTasks = []
@@ -70,19 +81,21 @@ try {
     })
     const checks = {
       http: Boolean(response && response.ok()),
+      authenticatedRoute: !new URL(page.url()).pathname.endsWith('/login'),
       longTaskSupported: metrics.longTaskSupported,
       longTask: metrics.longTaskMaxMs <= longTaskBudgetMs,
       memoryAvailable: Number.isFinite(metrics.usedJSHeapBytes),
       memory: Number.isFinite(metrics.usedJSHeapBytes) && metrics.usedJSHeapBytes <= heapBudgetBytes,
     }
     results.push({
-      name: target.name, url: target.url, status: response?.status() || null,
+      name: target.name, url: target.url, finalUrl: page.url(), status: response?.status() || null,
       budgets: { longTaskMaxMs: longTaskBudgetMs, usedJSHeapBytes: heapBudgetBytes },
       metrics, checks, passed: Object.values(checks).every(Boolean),
     })
-    await context.close()
+    await page.close()
   }
 } finally {
+  for (const context of contexts.values()) await context.close()
   await browser.close()
 }
 
