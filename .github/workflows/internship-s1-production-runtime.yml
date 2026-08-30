@@ -163,6 +163,7 @@ jobs:
             cat ../e2e/runtime-logs/s1-seed-backend.log
             exit 1
           fi
+          export E2E_API_BASE_URL='http://127.0.0.1:8000/api/v1'
           python scripts/e2e_bootstrap_graduation_accounts_ci.py
           python scripts/e2e_reset_graduation_passwords.py
           python scripts/e2e_verify_graduation_accounts.py
