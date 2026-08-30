@@ -1529,8 +1529,23 @@ def get_dashboard(batch_id=None) -> dict:
             GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
             GraduationProposal.is_deleted.is_(False), GraduationProposal.gd_student_id.in_(scope),
         ).order_by(GraduationProposal.submit_at.asc(), GraduationProposal.id.asc()).limit(8)).all()
+        pending_finals = db.scalars(select(GraduationFinal).where(
+            GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
+            GraduationFinal.is_deleted.is_(False), GraduationFinal.gd_student_id.in_(scope),
+        ).order_by(GraduationFinal.submit_at.asc(), GraduationFinal.id.asc()).limit(8)).all()
+        pending_student_ids = {
+            int(row.gd_student_id) for row in (*pending_proposals, *pending_finals)
+            if row.gd_student_id is not None
+        }
+        pending_students = {
+            int(row.id): row for row in db.scalars(select(GraduationStudent).where(
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.id.in_(pending_student_ids),
+                GraduationStudent.is_deleted.is_(False),
+            )).all()
+        } if pending_student_ids else {}
         for proposal in pending_proposals:
-            student = db.get(GraduationStudent, proposal.gd_student_id)
+            student = pending_students.get(int(proposal.gd_student_id))
             if not student:
                 continue
             today_work_items.append({
@@ -1543,12 +1558,8 @@ def get_dashboard(batch_id=None) -> dict:
                 "primaryAction": _action("批阅开题", "/admin/graduation/proposals", tab="PENDING_REVIEW", studentId=student.id),
             })
 
-        pending_finals = db.scalars(select(GraduationFinal).where(
-            GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
-            GraduationFinal.is_deleted.is_(False), GraduationFinal.gd_student_id.in_(scope),
-        ).order_by(GraduationFinal.submit_at.asc(), GraduationFinal.id.asc()).limit(8)).all()
         for final in pending_finals:
-            student = db.get(GraduationStudent, final.gd_student_id)
+            student = pending_students.get(int(final.gd_student_id))
             if not student:
                 continue
             today_work_items.append({

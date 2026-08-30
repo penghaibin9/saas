@@ -208,8 +208,14 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
       page.locator('.gbs__select'),
       ...dynamicTextMasks(page, [fixture.runId, fixture.batchName, fixture.topicTitle]),
     ]
-    await attachScreenshot(page, testInfo, 'gd-U3-final-B', 1440, 900, goldMasks)
-    await attachScreenshot(page, testInfo, 'gd-U3-final-B', 1280, 800, goldMasks)
+    const goldCandidateFailures = []
+    for (const [width, height] of [[1440, 900], [1280, 800]]) {
+      try {
+        await attachScreenshot(page, testInfo, 'gd-U3-final-B', width, height, goldMasks)
+      } catch (error) {
+        goldCandidateFailures.push(`${width}x${height}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
 
     const environment = await goldEnvironment(page, testInfo)
     const metaPath = testInfo.outputPath('gd-U3-final-B-meta.json')
@@ -235,5 +241,6 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
       viewports: [{ width: 1440, height: 900 }, { width: 1280, height: 800 }]
     }, null, 2), 'utf8')
     await testInfo.attach('gd-U3-final-B-meta', { path: metaPath, contentType: 'application/json' })
+    expect(goldCandidateFailures, 'all U3 Gold Candidate viewports must match').toEqual([])
   })
 })

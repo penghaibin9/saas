@@ -80,7 +80,7 @@ async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
     await expect(taskButton, `Role Home 必须显示 ${roleHomeTask}`).toBeVisible()
     await taskButton.click()
     await expect.poll(() => new URL(page.url()).pathname).toBe(expectedPath)
-    await expect.poll(() => new URL(page.url()).searchParams.get('batchId')).toBe(String(fixture.batchId))
+    await expect(page.locator('.gbs__select')).toHaveValue(String(fixture.batchId))
     await dismissGuide(page)
     await assertHealthyPage(page)
     return
@@ -111,7 +111,7 @@ async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
   await expect(leaf, `Role Home 侧栏必须能找到 ${workspaceLabel} → ${leafLabel}`).toBeVisible()
   await leaf.click()
   await expect.poll(() => new URL(page.url()).pathname).toBe(expectedPath)
-  await expect.poll(() => new URL(page.url()).searchParams.get('batchId')).toBe(String(fixture.batchId))
+  await expect(page.locator('.gbs__select')).toHaveValue(String(fixture.batchId))
   await dismissGuide(page)
   await assertHealthyPage(page)
 }

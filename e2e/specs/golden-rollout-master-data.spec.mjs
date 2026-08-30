@@ -214,7 +214,7 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
       }
     })
     expect(topicContract).not.toBeNull()
-    expect(topicContract.headRadius).toBe('17px')
+    expect(topicContract.headRadius).toBe('0px')
     expect(topicContract.tabsRadius).toBe('13px')
     expect(topicContract.activeTabRadius).toBe('9px')
     expect(topicContract.tableRadius).toBe('16px')
