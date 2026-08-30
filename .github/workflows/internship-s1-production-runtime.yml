@@ -139,24 +139,30 @@ jobs:
           python scripts/e2e_seed_playwright_tenants.py
           python scripts/e2e_seed_control_plane_school_iam.py
 
-      - name: Start temporary seed backend only
+      - name: Seed only the ten S1 smoke prerequisites through a temporary backend
         run: |
           set -euo pipefail
           mkdir -p e2e/runtime e2e/runtime-logs
           cd backend
           nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/s1-seed-backend.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/s1-seed-backend.pid
+          SEED_PID=$!
+          cleanup_seed_backend() {
+            kill "$SEED_PID" 2>/dev/null || true
+            wait "$SEED_PID" 2>/dev/null || true
+          }
+          trap cleanup_seed_backend EXIT
+          READY=0
           for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              READY=1
+              break
+            fi
             sleep 2
           done
-          cat ../e2e/runtime-logs/s1-seed-backend.log
-          exit 1
-
-      - name: Seed only the ten S1 smoke prerequisites
-        working-directory: backend
-        run: |
-          set -euo pipefail
+          if [ "$READY" != '1' ]; then
+            cat ../e2e/runtime-logs/s1-seed-backend.log
+            exit 1
+          fi
           python scripts/e2e_bootstrap_graduation_accounts_ci.py
           python scripts/e2e_reset_graduation_passwords.py
           python scripts/e2e_verify_graduation_accounts.py
@@ -167,18 +173,6 @@ jobs:
           test -s ../e2e/runtime/internship-fixture.json
           test -s ../e2e/runtime/internship-application-fixture.json
           test -s ../e2e/runtime/internship-s1-production-runtime.json
-
-      - name: Stop seed backend before production runtime
-        run: |
-          set -euo pipefail
-          PID="$(cat e2e/runtime-logs/s1-seed-backend.pid)"
-          kill "$PID"
-          for i in {1..30}; do
-            if ! kill -0 "$PID" 2>/dev/null; then exit 0; fi
-            sleep 1
-          done
-          echo "seed backend did not stop" >&2
-          exit 1
 
       - name: Build Staff PC production bundle
         working-directory: frontend
