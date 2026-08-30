@@ -433,6 +433,14 @@ def affairs_archive_manifest_resolver(db, file_obj, bindings: list[Any], user: d
     return bool(has_permission(user or {}, "studentAffairs.archive.view"))
 
 
+# PLAT-A keeps its resolver beside the domain-neutral package adapter. Importing
+# it here joins the existing File Center registry without creating an auth path.
+from app.modules.platform_integrity import file_access_resolver as _platform_integrity_file_access_resolver  # noqa: E402,F401
+from app.modules.platform.document_lifecycle.derived_access import document_derivative_resolver  # noqa: E402
+
+register_file_resolver("DOCUMENT_DERIVATIVE")(document_derivative_resolver)
+
+
 @register_file_resolver("MATERIAL_REQUIREMENT")
 def material_requirement_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
     """学工补交材料：本人或业务授权角色；心理/困难再叠加强敏感范围。"""

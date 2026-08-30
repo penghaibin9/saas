@@ -24,6 +24,7 @@ from app.modules.internship.services.internship_version import (
     versioned_update,
 )
 from app.services.db_service import _as_id, _iso, _tid, session
+from app.services.message_identity import resolve_message_user_id
 
 MATERIALS = [
     ("agreement", "三方协议"), ("checkin", "打卡记录"), ("weekly", "周报"),
@@ -315,6 +316,15 @@ def archive_student(user, internship_id, force=False, expected_version=None,
             "forceReason": (force_reason or "").strip(),
             "evidenceFileIds": evidence_file_ids or [],
         }, operator=_op_name(user))
+        from app.modules.platform.document_lifecycle.fact_hooks import internship_completed
+
+        internship_completed(
+            db,
+            record=record,
+            archive=archive,
+            source_version=archive_version,
+            actor_id=resolve_message_user_id(user or {}) or None,
+        )
         db.commit()
         return {
             "id": str(record.id), "completeness": completeness,
