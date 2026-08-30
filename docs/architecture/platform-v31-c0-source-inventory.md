@@ -64,7 +64,7 @@ The PLAT-C private package contains no assignment to `FileVersion.is_current`,
 
 Verified in the independent PLAT-C worktree before any C7 registration:
 
-- 59 PLAT-C backend characterization, security, rollback, visibility, worker and backfill tests pass;
+- 68 PLAT-C backend characterization, security, rollback, visibility, worker and backfill tests pass;
   the suite contains no skip or xfail.
 - Staff PC and Student PC production builds pass. Miniapp H5 and Weixin builds pass. The private
   four-client contract tests pass 3/3 and assert one real server contract, exact version/SHA inputs,
@@ -89,16 +89,20 @@ Verified in the independent PLAT-C worktree before any C7 registration:
   owners are stored as one-way hashes; neither path can persist credentials, tickets or raw URLs.
 - The credential guard also runs inside the sole `persist_job_spec` boundary, so an internal caller
   cannot bypass request preparation and directly store a credential-bearing `DerivedJobSpec`.
+- The mandatory C7 order lock is executable C-private tooling. It consumes only B's future exact
+  `PLAT_B_INTEGRATION_HEAD` and `PLAT_B_ALEMBIC_HEAD`, proves the integration commit is an ancestor of
+  current C HEAD and requires that B revision to be the single live Alembic head; every missing,
+  stale, sibling or unconsumed condition exits with `C_ORDER_LOCK=STOP` before migration work.
 - A canonical academic status smoke path passed after the premature fact hook was removed. A later
   full canonical fixture rebuild stopped before PLAT-C execution because the baseline MySQL fixture
   could not recreate `t_role_template` (1146); this is preserved as a real same-head gate blocker,
   not skipped or relabelled.
 
-C7 remains blocked at the 2026-08-30 re-review checkpoint: `origin/main` is
-`eecb4d01d2a9592b71975be07c54f994f08e7461`; A now has private head
-`67522ea88e5dd6a2984ae9177583fe20d4141e68` with migration
-`20260829_plat_a_integrity` based on `20260829_pr236_main_merge`; B has separate private head
-`18aedb8e34bb063ab50403697a632f962cec9c7e` and no migration. No local or remote ref proves an A+B
-integration head, and the PLAT-C worktree still resolves only the main Alembic head
+C7 remains blocked at the 2026-08-30 B-session pre-read checkpoint: `origin/main` is
+`eecb4d01d2a9592b71975be07c54f994f08e7461`; the active B private ref has advanced through
+`18aedb8e34bb063ab50403697a632f962cec9c7e` to
+`7d34c69a39b047bcda0b6e817db078b4a35495b5`, still without a B migration or emitted
+`PLAT_B_INTEGRATION_HEAD`/`PLAT_B_ALEMBIC_HEAD`. A and B private refs remain divergent, no local or
+remote ref/marker proves an A+B integration head, and the PLAT-C worktree still resolves only the main Alembic head
 `20260829_pr236_main_merge`. Therefore no PLAT-C migration, model/base import, shared router/resolver,
 canonical fact-hook or Student360 shadow registration is present at C0-C6.
