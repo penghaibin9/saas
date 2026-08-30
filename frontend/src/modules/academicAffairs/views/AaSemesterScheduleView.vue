@@ -108,7 +108,7 @@ export default {
     const u = currentUserFromToken() || {}
     return {
       DIMS, dim: 'class',
-      termId: '', batchId: '',
+      termId: '', batchId: '', batchIds: [],
       slots: [], items: [], note: '', loading: false, error: '',
       classId: '', className: '',
       teacherKey: '', selfKey: String(u.userId || u.loginName || ''),
@@ -136,7 +136,8 @@ export default {
       return (name ? `${name} · ` : '') + '本学期课表'
     },
     canPrint() {
-      return this.batchId && (this.dim === 'class' || this.dim === 'teacher') && this.hasSelection
+      return this.batchIds.length === 1 && this.batchId &&
+        (this.dim === 'class' || this.dim === 'teacher') && this.hasSelection
     }
   },
   created() {
@@ -146,7 +147,7 @@ export default {
   methods: {
     switchDim(key) {
       this.dim = key
-      this.items = []; this.note = ''; this.error = ''; this.batchId = ''
+      this.items = []; this.note = ''; this.error = ''; this.batchId = ''; this.batchIds = []
     },
     async initializeCurrentTerm() {
       try {
@@ -207,10 +208,12 @@ export default {
         this.items = res.data.items || []
         this.note = res.data.note || ''
         this.batchId = res.data.batchId || ''
+        this.batchIds = res.data.batchIds || (this.batchId ? [this.batchId] : [])
       } else {
         this.error = res.message
         this.items = []
         this.batchId = ''
+        this.batchIds = []
       }
     }
   }

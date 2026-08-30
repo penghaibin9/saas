@@ -128,17 +128,6 @@ function localDateKey(date) {
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
 }
-function activeInWeek(item, week) {
-  const current = Number(week)
-  if (!Number.isFinite(current) || current < 1) return false
-  const start = Number(item.startWeek || 1)
-  const end = Number(item.endWeek || start)
-  if (current < start || current > end) return false
-  const parity = String(item.weekParity || 'ALL').toUpperCase()
-  if (parity === 'ODD') return current % 2 === 1
-  if (parity === 'EVEN') return current % 2 === 0
-  return true
-}
 function unfinished(rows) {
   const done = new Set(['DONE', 'COMPLETED', 'APPROVED', 'REGISTERED', 'SUBMITTED', 'PUBLISHED', 'CLOSED'])
   return (rows || []).filter((row) => !done.has(String(row.status || row.registrationStatus || '').toUpperCase()))
@@ -152,7 +141,7 @@ export default {
   data() {
     return {
       status: null, state: 'loading', statusBarHeight: 20, entries: ENTRIES,
-      scheduleItems: [], currentWeek: null, examItems: [], examLoaded: false,
+      scheduleItems: [], todayItems: [], currentWeek: null, calendarSource: '', examItems: [], examLoaded: false,
       warningCount: 0, evaluationCount: 0, registrationCount: 0, returnedDeferCount: 0,
       retakeCount: 0, partialError: false, showAll: false
     }
@@ -170,15 +159,13 @@ export default {
       ].filter((item) => Number(item.count || 0) > 0)
     },
     todayCourses() {
-      const day = new Date().getDay() || 7
-      return this.scheduleItems
-        .filter((item) => Number(item.weekday) === day && activeInWeek(item, this.currentWeek))
-        .sort((a, b) => Number(a.slotNo || 0) - Number(b.slotNo || 0))
+      return this.todayItems
     },
     todayEmptyText() {
-      if (this.currentWeek == null) return '校历周次暂未加载'
-      if (Number(this.currentWeek) === 0) return '当前学期尚未开始'
-      return `第${this.currentWeek}周今天暂无课程`
+      if (this.calendarSource === 'HOLIDAY') return '今天是学校校历节假日'
+      if (this.calendarSource === 'SWAP_SOURCE') return '今天是调休停课日'
+      if (this.calendarSource === 'OUT_OF_TERM') return '今天不在当前学期教学日期范围内'
+      return this.currentWeek ? `第${this.currentWeek}周今天暂无课程` : '今天没有课程安排'
     },
     upcomingExam() {
       const today = localDateKey(new Date())
@@ -217,12 +204,16 @@ export default {
         studentApi.getMyRegistration(), studentApi.getMyDeferrals(), studentApi.getMakeupOptions()
       ])
       if (results[0].status === 'fulfilled') {
-        this.scheduleItems = rowsOf(results[0].value)
-        this.currentWeek = results[0].value && results[0].value.currentWeek != null
-          ? Number(results[0].value.currentWeek) : null
+        const schedule = results[0].value || {}
+        this.scheduleItems = rowsOf(schedule)
+        this.todayItems = schedule.todayItems || []
+        this.currentWeek = schedule.currentWeek != null ? Number(schedule.currentWeek) : null
+        this.calendarSource = schedule.calendarSource || ''
       } else {
         this.scheduleItems = []
+        this.todayItems = []
         this.currentWeek = null
+        this.calendarSource = ''
       }
       this.examLoaded = results[1].status === 'fulfilled'
       this.examItems = this.examLoaded ? rowsOf(results[1].value) : []

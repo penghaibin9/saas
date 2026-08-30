@@ -228,6 +228,42 @@ def test_c1_adjust_full_chain_applied(client, db_mode):
     assert (3, 2) in slots and (1, 1) not in slots
 
 
+def test_c1_partial_week_adjust_preserves_unmoved_origin_weeks(client, db_mode):
+    """A one-week adjustment must not erase the other 17 weeks from four-end timetables."""
+    from app.db.session import get_sessionmaker
+    from app.models import AaScheduleItem
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    submitted_response = _submit(
+        client, admin, origin, targetStartWeek=3, targetEndWeek=3,
+    )
+    assert submitted_response.status_code == 200, submitted_response.text
+    submitted = submitted_response.json()["data"]
+    _, final_response = _approve_all(client, submitted)
+    assert final_response.status_code == 200, final_response.text
+    applied = final_response.json()["data"]
+    assert applied["status"] == "APPLIED"
+    assert len(applied["applied"]["residualItemIds"]) == 2
+
+    db = get_sessionmaker()()
+    created_item_ids = [
+        int(value) for value in applied["applied"]["residualItemIds"]
+    ] + [int(applied["newItemId"])]
+    items = db.query(AaScheduleItem).filter(
+        AaScheduleItem.tenant_id == TID,
+        AaScheduleItem.id.in_(created_item_ids),
+        AaScheduleItem.status == "EFFECTIVE",
+        AaScheduleItem.is_deleted.is_(False),
+    ).all()
+    db.close()
+    patterns = {(item.weekday, item.slot_no, item.start_week, item.end_week) for item in items}
+    assert (1, 1, 1, 2) in patterns
+    assert (1, 1, 4, 18) in patterns
+    assert (3, 2, 3, 3) in patterns
+
+
 def test_c2_conflict_precheck_rejected(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")

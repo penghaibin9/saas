@@ -168,6 +168,107 @@ def _normalize_historical_schedule(db, tenant_id: int, term_id: int) -> dict:
     return {"scheduleBatchId": int(batch.id), "statusBefore": before, "statusAfter": "PUBLISHED"}
 
 
+def _close_historical_exam_and_makeup(db, tenant_id: int, term_id: int) -> dict:
+    """Close historical operational facts without deleting their evidence.
+
+    The old fixture had a finished makeup record under a PUBLISHED batch and an exam
+    discipline incident that had already produced a student-affairs case but did not
+    carry that case reference.  Both are real cross-domain links required by the live
+    archive policy.
+    """
+    from app.models import (
+        AaExamBatch,
+        AaExamCourse,
+        AaExamIncident,
+        AaExamRoom,
+        AaMakeupBatch,
+        AcademicMakeup,
+    )
+    from app.models.affairs_discipline import DisciplineCase
+
+    exam_batch_ids = list(db.scalars(select(AaExamBatch.id).where(
+        AaExamBatch.tenant_id == tenant_id,
+        AaExamBatch.term_id == int(term_id),
+        AaExamBatch.is_deleted.is_(False),
+    )).all())
+    exam_course_ids = list(db.scalars(select(AaExamCourse.id).where(
+        AaExamCourse.tenant_id == tenant_id,
+        AaExamCourse.batch_id.in_(exam_batch_ids or [0]),
+        AaExamCourse.is_deleted.is_(False),
+    )).all())
+    linked_incidents = 0
+    normalized_incidents = 0
+    relinked_incident_rooms = 0
+    incidents = list(db.scalars(select(AaExamIncident).where(
+        AaExamIncident.tenant_id == tenant_id,
+        AaExamIncident.exam_course_id.in_(exam_course_ids or [0]),
+        AaExamIncident.status == "ACTIVE",
+        AaExamIncident.is_deleted.is_(False),
+    )).all())
+    for incident in incidents:
+        room = db.scalars(select(AaExamRoom).where(
+            AaExamRoom.tenant_id == tenant_id,
+            AaExamRoom.exam_course_id == int(incident.exam_course_id),
+            AaExamRoom.is_deleted.is_(False),
+        ).order_by(AaExamRoom.room_seq, AaExamRoom.id).limit(1)).first()
+        if room is None:
+            raise RuntimeError(f"历史考场异常缺少有效考场 incident={incident.id}")
+        if incident.exam_room_id != int(room.id):
+            incident.exam_room_id = int(room.id)
+            relinked_incident_rooms += 1
+        if str(incident.incident_type or "").upper() == "ABSENT":
+            continue
+        if str(incident.incident_type or "").upper() != "DISCIPLINE_VIOLATION":
+            incident.incident_type = "DISCIPLINE_VIOLATION"
+            normalized_incidents += 1
+        if str(incident.discipline_case_ref or "").strip():
+            continue
+        discipline = db.scalars(select(DisciplineCase).where(
+            DisciplineCase.tenant_id == tenant_id,
+            DisciplineCase.student_id == int(incident.student_id),
+            DisciplineCase.status.in_(["EFFECTIVE", "REMOVED"]),
+            DisciplineCase.is_deleted.is_(False),
+        ).order_by(DisciplineCase.id.desc()).limit(1)).first()
+        if discipline is None:
+            raise RuntimeError(
+                f"历史考场违纪缺少学工处分闭环 incident={incident.id} student={incident.student_id}"
+            )
+        incident.discipline_case_ref = f"DISCIPLINE_CASE:{discipline.id}"
+        linked_incidents += 1
+
+    finished_batches = 0
+    makeup_batches = list(db.scalars(select(AaMakeupBatch).where(
+        AaMakeupBatch.tenant_id == tenant_id,
+        AaMakeupBatch.term_id == int(term_id),
+        AaMakeupBatch.is_deleted.is_(False),
+    )).all())
+    for makeup_batch in makeup_batches:
+        records = list(db.scalars(select(AcademicMakeup).where(
+            AcademicMakeup.tenant_id == tenant_id,
+            AcademicMakeup.batch_id == int(makeup_batch.id),
+            AcademicMakeup.is_deleted.is_(False),
+        )).all())
+        if records and all(
+            str(row.status or "").upper() == "FINISHED" and row.final_score is not None
+            for row in records
+        ):
+            if str(makeup_batch.status or "").upper() != "FINISHED":
+                makeup_batch.status = "FINISHED"
+                makeup_batch.remark = "补考成绩已正式发布并回写成绩事实，批次闭环"
+                finished_batches += 1
+        elif str(makeup_batch.status or "").upper() != "FINISHED":
+            raise RuntimeError(f"历史补考批次仍有未完成成绩 batch={makeup_batch.id}")
+    db.commit()
+    return {
+        "examIncidents": len(incidents),
+        "incidentTypesNormalized": normalized_incidents,
+        "incidentRoomsRelinked": relinked_incident_rooms,
+        "disciplineCasesLinked": linked_incidents,
+        "makeupBatches": len(makeup_batches),
+        "makeupBatchesClosed": finished_batches,
+    }
+
+
 def _course_identity_catalog(db, tenant_id: int) -> dict[str, dict[str, tuple[int | None, str]]]:
     """major_name -> canonical course name -> (course_id?, stable course_code)."""
     from app.models import AaCourse, Major
@@ -372,6 +473,7 @@ def seed_school_academic_archive_prerequisites_20k(db, tenant_id: int) -> dict:
         "programBindings": _seed_program_bindings(db, tenant_id),
         "springRegistration": _seed_spring_registration(db, tenant_id, int(term.id)),
         "historicalSchedule": _normalize_historical_schedule(db, tenant_id, int(term.id)),
+        "historicalExamAndMakeup": _close_historical_exam_and_makeup(db, tenant_id, int(term.id)),
         "historicalGrades": _normalize_grade_identities(db, tenant_id, int(term.id)),
     }
     result["validation"] = validate_school_academic_archive_prerequisites_20k(db, tenant_id)

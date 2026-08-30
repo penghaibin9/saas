@@ -109,6 +109,14 @@ def schedule_change_archive(
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/schedule-change/origin-items/{itemId}", summary="本人正式课位摘要（教师课表直达调停课）")
+def schedule_change_origin_item(
+    itemId: int = Path(...),
+    user=Depends(require_permission("academicAffairs.scheduleChange.apply")),
+):
+    return success(sched_change_svc.get_origin_item(itemId, user))
+
+
 @router.get("/schedule-change/{changeId}", summary="调停课详情（含通知单打印数据）")
 def schedule_change_detail(
     changeId: int = Path(...),

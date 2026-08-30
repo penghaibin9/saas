@@ -48,14 +48,20 @@ def _write_precheck_artifact(payload: dict) -> None:
 
 
 def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
-    from app.models import AaArchiveBatch, AaArchiveItem, AaTerm
+    from app.models import AaArchiveBatch, AaArchiveItem, AaTerm, ArchiveManifest, User
     from app.modules.academic_affairs.services import academic_affairs_archive_service as archive_service
+    from app.modules.academic_affairs.services import (
+        academic_affairs_archive_manifest_service as manifest_service,
+    )
     from app.services.sandbox_school_academic_affairs_reconcile import reconcile_exam_rooms
     from app.services.sandbox_school_academic_archive_prereq import (
         seed_school_academic_archive_prerequisites_20k,
     )
     from app.services.sandbox_school_academic_r11_runtime_seed import (
         seed_school_academic_r11_runtime_20k,
+    )
+    from app.services.sandbox_school_grade_relationship_reconcile import (
+        reconcile_sandbox_grade_relationships,
     )
     from app.services.sandbox_school_curriculum_closure import (
         prepare_school_curriculum_20k,
@@ -85,6 +91,10 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
     # 才能冻结 R11 所需独立教学班、名单版本、三类消费者、正式成绩回链和统计快照。
     # 这些运行事实在正式十三域归档预检之前落库，因此自身也必须接受同一归档策略审计。
     r11_runtime = seed_school_academic_r11_runtime_20k(db, tenant_id)
+
+    # Domain seed 先于课程库批量写入 17 万级历史成绩。待完整课程库、
+    # GradeTask 和名单已稳定后，统一回链学期/课程/不可变发布凭证；不更改任何分数。
+    grade_relationships = reconcile_sandbox_grade_relationships(db, tenant_id)
 
     historical_term = db.scalars(select(AaTerm).where(
         AaTerm.tenant_id == tenant_id,
@@ -168,13 +178,14 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
         }
         raise RuntimeError(f"2025-2026-2 正式十三域归档仍有阻断: {compact}")
 
+    archived_at = datetime(2026, 7, 20, 10, 30)
     batch = AaArchiveBatch(
         tenant_id=tenant_id,
         batch_name="2025-2026学年第二学期教务归档",
         term_id=int(historical_term.id),
         term_code=HISTORICAL_TERM_CODE,
         checked_at=datetime(2026, 7, 20, 10, 0),
-        archived_at=datetime(2026, 7, 20, 10, 30),
+        archived_at=archived_at,
         missing_count=0,
         remark="由正式十三域归档策略校验通过后生成的历史学期归档事实",
         status="ARCHIVED",
@@ -196,6 +207,45 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
             present=row["result"] == "PASS",
             remark=archive_service._persisted_remark(code, row),
         ))
+    db.flush()
+
+    # ARCHIVED 必须同时产生不可变 Manifest；直接只塞 batch/items 会让归档后纠错、
+    # 验证与审计链失去权威基线。复用正式十三域计算与哈希算法，不在 seed 复制第二套口径。
+    actor_id = db.scalar(select(User.id).where(
+        User.tenant_id == tenant_id,
+        User.login_name.like("sbx_aa%"),
+        User.status == "ACTIVE",
+        User.is_deleted.is_(False),
+    ).order_by(User.login_name).limit(1))
+    if actor_id is None:
+        raise RuntimeError("生成正式教务归档 Manifest 前必须存在可审计的教务管理员")
+    with _with_tenant_context(tenant_id):
+        counts, hashes, max_ids = manifest_service._live_manifest_parts(db, batch)
+    manifest_reason = "历史学期十三域完整性检查通过后正式封存"
+    manifest_payload = manifest_service._manifest_payload(
+        batch=batch,
+        version_no=1,
+        domain_counts=counts,
+        domain_hashes=hashes,
+        max_ids=max_ids,
+        reason=manifest_reason,
+    )
+    db.add(ArchiveManifest(
+        tenant_id=tenant_id,
+        term_id=int(historical_term.id),
+        version_no=1,
+        archive_batch_id=int(batch.id),
+        domain_counts_json=manifest_service._json(counts),
+        domain_hashes_json=manifest_service._json(hashes),
+        max_ids_json=manifest_service._json(max_ids),
+        manifest_hash=manifest_service._hash(manifest_payload),
+        reason=manifest_reason,
+        supersedes_id=None,
+        archived_at=archived_at,
+        archived_by=int(actor_id),
+        created_at=archived_at,
+        created_by=int(actor_id),
+    ))
     db.commit()
     validation = validate_school_academic_archive_20k(db, tenant_id)
     return {
@@ -205,6 +255,7 @@ def seed_school_academic_archive_20k(db, tenant_id: int) -> dict:
         "prerequisites": prerequisites,
         "examReconciliation": exam_reconciliation,
         "r11Runtime": r11_runtime,
+        "gradeRelationships": grade_relationships,
         "precheckElapsedMs": elapsed_ms,
         "precheckArtifact": "test-results/sandbox-20k/archive-precheck.json",
         "validation": validation,

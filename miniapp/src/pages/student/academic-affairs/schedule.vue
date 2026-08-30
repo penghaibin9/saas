@@ -3,6 +3,30 @@
     <MobileNavBar variant="brand" title="我的课表" :subtitle="termCode || '当前学期'" back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="items">
+        <view class="sc__today">
+          <view class="sc__today-head">
+            <view>
+              <text class="sc__today-kicker">今天 · {{ todayDateText }}</text>
+              <text class="sc__today-title">{{ todayItems.length ? `今天有 ${todayItems.length} 节课` : '今天没有课程安排' }}</text>
+              <text class="sc__today-note">{{ todayNote }}</text>
+            </view>
+            <text v-if="todayWeek" class="sc__today-week">第{{ todayWeek }}教学周</text>
+          </view>
+          <view v-if="todayItems.length" class="sc__today-list">
+            <view v-for="item in todayItems" :key="`today-${item.itemId}`" class="sc__today-item">
+              <view class="sc__today-time">
+                <text>第{{ item.slotNo }}节</text>
+                <text v-if="slotTime(item)">{{ slotTime(item) }}</text>
+              </view>
+              <view class="flex-1">
+                <text class="sc__course">{{ item.courseName }}</text>
+                <text class="sc__meta">{{ item.classroom || '教室待定' }} · {{ item.teacherName || '教师待定' }}</text>
+              </view>
+              <text v-if="item.source === 'ENROLLED'" class="sc__source">选课课程</text>
+            </view>
+          </view>
+          <view v-else class="sc__today-empty"><text>{{ todayEmptyText }}</text></view>
+        </view>
         <view class="sc__week card">
           <view>
             <text class="sc__week-title">{{ currentWeekText }}</text>
@@ -52,14 +76,21 @@ function activeInWeek(item, week) {
   return true
 }
 
+function timeRange(band) {
+  const start = String((band && band.startTime) || '').trim()
+  const end = String((band && band.endTime) || '').trim()
+  return start && end ? `${start}-${end}` : (start || end)
+}
+
 export default {
   data() {
     return {
       items: null, state: 'loading', WEEK, copying: false,
-      currentWeek: null, teachingWeeks: null, selectedWeek: 0, termCode: ''
+      currentWeek: null, teachingWeeks: null, selectedWeek: 0, termCode: '',
+      todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', timeBands: []
     }
   },
-  onLoad() { this.load() },
+  onShow() { this.load() },
   computed: {
     maxWeek() {
       const itemMax = Math.max(1, ...(this.items || []).map((item) => Number(item.endWeek || 1)))
@@ -83,6 +114,20 @@ export default {
       if (Number(this.currentWeek) === 0) return '当前学期尚未开始'
       return `当前第${this.currentWeek}周`
     },
+    todayDateText() {
+      const parts = String(this.todayDate || '').split('-').map(Number)
+      if (parts.length !== 3 || parts.some((value) => !value)) return '日期待确认'
+      return `${parts[1]}月${parts[2]}日`
+    },
+    todayNote() {
+      if (this.calendarSource === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
+      if (this.calendarSource === 'SWAP_SOURCE') return '学校校历标记今天为调休停课日，正式课表不执行。'
+      if (this.calendarSource === 'OUT_OF_TERM') return '今天不在当前学期教学日期范围内。'
+      return this.todayItems.length ? '已按学校校历、单双周和最新正式课表筛选。' : '已核对学校校历和最新正式课表。'
+    },
+    todayEmptyText() {
+      return this.items.length ? this.todayNote : '当前学期暂无已发布课表'
+    },
     emptyText() {
       return this.selectedWeek ? `第${this.selectedWeek}周暂无课程` : '暂无已发布课表'
     }
@@ -92,6 +137,14 @@ export default {
       const value = item.weekParity === 'ODD' ? '单周' : item.weekParity === 'EVEN' ? '双周' : '全周'
       return `${item.startWeek}-${item.endWeek}周·${value}`
     },
+    slotTime(item) {
+      const ranges = [...new Set((this.timeBands || [])
+        .filter((band) => Number(band.slotNo) === Number(item.slotNo))
+        .map(timeRange).filter(Boolean))]
+      if (ranges.length === 1) return ranges[0]
+      if (ranges.length > 1) return '按校区作息'
+      return ''
+    },
     onWeekChange(event) {
       this.selectedWeek = Number(event.detail.value) || 0
     },
@@ -99,6 +152,11 @@ export default {
       this.state = 'loading'
       studentApi.getMySchedule().then((data) => {
         this.items = data.items || []
+        this.todayItems = data.todayItems || []
+        this.todayDate = data.todayDate || ''
+        this.todayWeek = data.todayWeek != null ? Number(data.todayWeek) : null
+        this.calendarSource = data.calendarSource || ''
+        this.timeBands = data.timeBands || []
         this.currentWeek = data.currentWeek != null ? Number(data.currentWeek) : null
         this.teachingWeeks = data.teachingWeeks != null ? Number(data.teachingWeeks) : null
         this.termCode = data.termCode || ''
@@ -126,6 +184,18 @@ export default {
 
 <style scoped>
 .sc__week { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
+.sc__today { margin-bottom: var(--space-3); padding: var(--space-4); border: 1px solid rgba(22,163,74,.20); border-radius: 18px; background: linear-gradient(135deg, rgba(248,255,250,.98), rgba(238,249,242,.96)); box-shadow: var(--shadow-card); }
+.sc__today-head { display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; }
+.sc__today-kicker { display: block; color: #15803d; font-size: 10px; font-weight: 700; }
+.sc__today-title { display: block; margin-top: 4px; color: var(--text-primary); font-size: 18px; font-weight: 800; }
+.sc__today-note { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: 10px; line-height: 1.5; }
+.sc__today-week { flex-shrink: 0; padding: 4px 8px; border-radius: var(--radius-full); background: #fff; color: #15803d; font-size: 10px; }
+.sc__today-list { margin-top: var(--space-3); }
+.sc__today-item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); margin-top: var(--space-2); border-left: 3px solid #16a34a; border-radius: 12px; background: rgba(255,255,255,.88); }
+.sc__today-time { flex-shrink: 0; width: 82px; color: #15803d; font-size: var(--font-size-sm); font-weight: 700; }
+.sc__today-time text { display: block; }
+.sc__today-time text + text { margin-top: 2px; font-size: 10px; font-weight: 500; }
+.sc__today-empty { margin-top: var(--space-3); padding: var(--space-4); border: 1px dashed rgba(22,163,74,.25); border-radius: 12px; color: var(--text-tertiary); text-align: center; font-size: var(--font-size-xs); }
 .sc__week-title { display: block; color: var(--brand-primary); font-size: var(--font-size-lg); font-weight: 700; }
 .sc__week-sub { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .sc__week-picker { min-width: 88px; height: 34px; padding: 0 var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 34px; text-align: center; }

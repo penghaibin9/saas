@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
-    title="排课管理 · 规则与冲突"
-    subtitle="先配置可排时间、每日负荷和教室约束，再试排、分析漏排并处理冲突"
+    title="排课中心"
+    subtitle="数据准备 → 教师偏好 → 自动初排 → 人工微调 → 冲突与漏排 → 预发布 → 正式发布"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -11,8 +11,119 @@
       </button>
     </div>
 
+    <div v-if="tab === 'workbench'" class="mp-stack">
+      <AppSectionCard title="排课批次与当前进度">
+        <div class="aasg-workbench-filter">
+          <label class="aasg-field">
+            <span>课表批次</span>
+            <AppScheduleBatchPicker v-model="workbenchBatchId" @change="loadWorkbench" />
+          </label>
+          <AppButton size="small" :loading="workbenchLoading" :disabled="!workbenchBatchId" @click="loadWorkbench">刷新进度</AppButton>
+        </div>
+      </AppSectionCard>
+
+      <ErrorState v-if="workbenchError" :description="workbenchError" @retry="loadWorkbench" />
+      <LoadingState v-else-if="workbenchLoading" />
+      <template v-else-if="workbench">
+        <AppSectionCard :title="`${workbench.batchName || '排课批次'} · ${batchStatusLabel(workbench.batchStatus)}`">
+          <div class="aasg-flow" aria-label="排课业务流程">
+            <div v-for="(step, index) in workbench.workflow.steps" :key="step.key" :class="['aasg-flow-step', `is-${step.state}`]">
+              <span class="aasg-flow-index">{{ index + 1 }}</span>
+              <strong>{{ step.label }}</strong>
+            </div>
+          </div>
+          <div class="aasg-current-action">
+            <div>
+              <span>当前状态</span>
+              <strong>{{ currentStageLabel }}</strong>
+              <small>{{ workbench.workflow.nextAction.description }}</small>
+            </div>
+            <AppButton
+              variant="primary"
+              size="small"
+              :disabled="workbench.workflow.nextAction.code === 'BATCH_REISSUE' && !canCorrectSchedule"
+              :title="workbench.workflow.nextAction.code === 'BATCH_REISSUE' && !canCorrectSchedule ? '当前身份没有课表编辑权限' : ''"
+              @click="runWorkbenchAction(workbench.workflow.nextAction.code)"
+            >
+              下一步：{{ workbench.workflow.nextAction.label }}
+            </AppButton>
+          </div>
+          <AppInlineAlert
+            v-if="workbench.workflow.blockers.length"
+            type="warning"
+            title="当前阻断原因"
+            :description="workbench.workflow.blockers.join('；')"
+          />
+          <AppInlineAlert v-else type="success" title="当前步骤无阻断" description="可以按右侧“下一步”继续推进。" />
+        </AppSectionCard>
+
+        <div class="aasg-metric-grid">
+          <div v-for="card in workbenchCards" :key="card.label" :class="['aasg-metric', { 'is-alert': card.alert }]">
+            <span>{{ card.label }}</span>
+            <strong>{{ card.value }}</strong>
+            <small>{{ card.note }}</small>
+          </div>
+        </div>
+
+        <AppInlineAlert
+          v-if="hasPublishedGap && !canCorrectSchedule"
+          type="warning"
+          title="当前身份只能查看漏排"
+          description="请切换到拥有课表编辑权限的教务身份后创建纠错草稿；当前正式课表不会下线。"
+        />
+
+        <AppSectionCard v-if="hasPublishedGap && canCorrectSchedule" title="漏排任务处理中心">
+          <div class="aasg-repair-center">
+            <div class="aasg-repair-copy">
+              <span class="aasg-repair-kicker">当前正式课表不下线</span>
+              <strong>保留已排 {{ workbench.scheduledHours }} 节，只补剩余 {{ repairRemaining }} 节</strong>
+              <p>创建纠错草稿会复制当前全部有效课位。老师学生 PC 和老师学生小程序继续使用现在的正式课表；待纠错草稿补齐并通过发布门禁后，系统再一次性切换四端正式版本。</p>
+            </div>
+            <div class="aasg-repair-facts" aria-label="纠错草稿影响范围">
+              <div><span>应排</span><strong>{{ workbench.expectedHours }}</strong><small>节</small></div>
+              <div><span>直接保留</span><strong>{{ workbench.scheduledHours }}</strong><small>节</small></div>
+              <div class="is-gap"><span>继续补排</span><strong>{{ repairRemaining }}</strong><small>节</small></div>
+            </div>
+            <AppButton variant="primary" @click="openCorrectionDraft()">
+              创建纠错草稿（保留已排 {{ workbench.scheduledHours }} 节）
+            </AppButton>
+          </div>
+        </AppSectionCard>
+
+        <AppSectionCard title="排课任务队列">
+          <p v-if="hasPublishedGap && canCorrectSchedule" class="mp-note aasg-queue-note">当前是四端正在使用的正式版本，不能直接写入。点击“创建草稿后补排”，系统会先保留现有课位，再把你带到对应班级和教学任务。<template v-if="workbench.taskQueueTotal > workbench.taskQueue.length"> 当前显示优先级最高的 {{ workbench.taskQueue.length }} / {{ workbench.taskQueueTotal }} 项。</template></p>
+          <p v-else class="mp-note aasg-queue-note">默认把未排、部分漏排放在前面。教务员不需要记班级 ID 或教学任务 ID，点击“去排课”即可带入对应批次、班级和任务。<template v-if="workbench.taskQueueTotal > workbench.taskQueue.length"> 当前显示优先级最高的 {{ workbench.taskQueue.length }} / {{ workbench.taskQueueTotal }} 项。</template></p>
+          <EmptyState v-if="!workbench.taskQueue.length" title="当前没有待处理任务" description="教学任务已排齐；请继续检查冲突并进入预发布。" />
+          <DataTable v-else :columns="taskQueueColumns" :rows="workbench.taskQueue" row-key="taskId">
+            <template #cell-course="{ row }">
+              <div class="mp-cell-main">{{ row.courseName || row.courseCode || '未命名课程' }}</div>
+              <div class="mp-cell-sub">{{ row.className || '教学班待确认' }} · {{ row.teacherName || '教师待确认' }}</div>
+            </template>
+            <template #cell-progress="{ row }">
+              <div class="mp-cell-main">{{ row.scheduledSessions }} / {{ row.expectedSessions }} 节</div>
+              <div class="mp-cell-sub">剩余 {{ row.remainingSessions }} 节 · 总学时 {{ row.totalHours || '—' }}</div>
+            </template>
+            <template #cell-requirement="{ row }">
+              <div class="mp-cell-main">{{ weekRangeText(row) }}</div>
+              <div class="mp-cell-sub">{{ roomRequirementText(row.requiredRoomType) }}</div>
+            </template>
+            <template #cell-status="{ row }">
+              <StatusTag :type="row.issueType === 'NOT_READY' ? 'warning' : 'danger'" :label="row.issueLabel" dot />
+            </template>
+            <template #cell-ops="{ row }">
+              <button v-if="row.canSchedule && row.classId" class="mp-link" @click="openTask(row)">去排课</button>
+              <button v-else-if="hasPublishedGap && canCorrectSchedule && row.classId" class="mp-link" @click="openCorrectionDraft(row)">创建草稿后补排</button>
+              <button v-else-if="workbench.batchStatus === 'PUBLISHED'" class="mp-link" @click="openPublishedSchedule">查看正式课表</button>
+              <button v-else class="mp-link" @click="openTeachingTasks">完善任务</button>
+            </template>
+          </DataTable>
+        </AppSectionCard>
+      </template>
+      <EmptyState v-else title="请选择课表批次" description="选择批次后，系统会汇总教学任务、漏排、冲突、教师异议并给出下一步。" />
+    </div>
+
     <!-- V2-03 第一施工卡：排课规则中心 -->
-    <div v-if="tab === 'rules'" class="mp-stack">
+    <div v-else-if="tab === 'rules'" class="mp-stack">
       <AppInlineAlert
         type="info"
         title="规则只影响自动排课"
@@ -296,6 +407,7 @@ import { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorS
 import { AppButton } from '@/components/ui'
 import { AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard } from '@/components/common'
 import { academicAffairsApi, academicAffairsSchedulingApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 const MANAGE_ROLES = new Set(['PLATFORM_SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACADEMIC_ADMIN'])
@@ -310,10 +422,11 @@ export default {
   components: { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState, AppButton, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard },
   data() {
     return {
-      ctx: { currentRole: { roleName: '', roleCode: '' }, dataScope: { scopeName: '' } },
-      tab: 'rules',
-      tabs: [{ key: 'rules', label: '排课规则' }, { key: 'availability', label: '教师不可排时间' }, { key: 'auto', label: '自动排课' }, { key: 'conflict', label: '冲突报告' }],
+      ctx: { currentRole: { roleName: '', roleCode: '' }, dataScope: { scopeName: '' }, permissionPatterns: null },
+      tab: 'workbench',
+      tabs: [{ key: 'workbench', label: '排课工作台' }, { key: 'rules', label: '排课规则' }, { key: 'availability', label: '教师不可排时间' }, { key: 'auto', label: '自动排课' }, { key: 'conflict', label: '冲突报告' }],
       termId: '', termInfo: null,
+      workbenchBatchId: '', workbench: null, workbenchLoading: false, workbenchError: '',
       rules: [], catalog: [], timeSlots: [],
       ruleLoading: false, catalogLoading: false, ruleError: '', catalogError: '', termError: '', slotLoadWarning: '',
       editorVisible: false, editingRuleId: '', saving: false, formError: '',
@@ -322,17 +435,28 @@ export default {
       autoBatchId: '', autoResult: null, autoLoading: false,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
       confirmRequireReason: false, confirmReasonLabel: '',
+      correctionTargetTask: null,
       ruleColumns: [
         { key: 'rule', title: '业务参数' }, { key: 'scope', title: '生效范围', width: '190px' },
         { key: 'value', title: '当前配置' }, { key: 'status', title: '状态', width: '110px' },
         { key: 'ops', title: '操作', width: '130px' }
       ],
       missColumns: [{ key: 'course', title: '课程' }, { key: 'teacherName', title: '教师' }, { key: 'progress', title: '已排/需排' }, { key: 'reason', title: '漏排原因' }, { key: 'detail', title: '处置建议' }],
-      availColumns: [{ key: 'teacherName', title: '教师' }, { key: 'slot', title: '时段' }, { key: 'reason', title: '原因' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }]
+      availColumns: [{ key: 'teacherName', title: '教师' }, { key: 'slot', title: '时段' }, { key: 'reason', title: '原因' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
+      taskQueueColumns: [
+        { key: 'course', title: '课程 / 教师 / 教学班' },
+        { key: 'progress', title: '已排 / 应排', width: '170px' },
+        { key: 'requirement', title: '周次 / 教室要求', width: '180px' },
+        { key: 'status', title: '问题', width: '130px' },
+        { key: 'ops', title: '下一步', width: '100px' }
+      ]
     }
   },
   computed: {
     canManageRules() { return MANAGE_ROLES.has(String(this.ctx.currentRole.roleCode || '').toUpperCase()) },
+    canCorrectSchedule() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.schedule.edit') },
+    repairRemaining() { return Math.max(0, Number(this.workbench?.expectedHours || 0) - Number(this.workbench?.scheduledHours || 0)) },
+    hasPublishedGap() { return this.workbench?.batchStatus === 'PUBLISHED' && this.repairRemaining > 0 },
     termArchived() { return String(this.termInfo?.status || '').toUpperCase() === 'ARCHIVED' },
     canWriteRules() {
       return Boolean(
@@ -356,10 +480,29 @@ export default {
         grouped[row.reason].count += 1
       })
       return Object.values(grouped).sort((a, b) => b.count - a.count)
+    },
+    currentStageLabel() {
+      const current = this.workbench?.workflow?.steps?.find(row => row.state === 'current')
+      return current?.label || '状态待确认'
+    },
+    workbenchCards() {
+      if (!this.workbench) return []
+      const row = this.workbench
+      return [
+        { label: '教学任务', value: row.totalTasks, note: `已确认 ${row.confirmedTaskCount} · READY ${row.readyTaskCount}`, alert: row.notReadyTaskCount > 0 },
+        { label: '已排任务', value: row.scheduledTasks, note: `任务触达率 ${row.completionRate}%` },
+        { label: '未排 / 漏排', value: `${row.unplacedTaskCount} / ${row.partiallyScheduledTaskCount}`, note: `共 ${row.missingTaskCount} 个待补齐`, alert: row.missingTaskCount > 0 },
+        { label: '应排 / 已排节次', value: `${row.expectedHours} / ${row.scheduledHours}`, note: `剩余 ${Math.max(0, row.expectedHours - row.scheduledHours)} 节`, alert: row.expectedHours !== row.scheduledHours },
+        { label: '硬 / 软冲突', value: `${row.hardConflicts} / ${row.softConflicts}`, note: '硬冲突必须清零', alert: row.hardConflicts > 0 },
+        { label: '教师异议', value: row.teacherObjectionCount, note: `待处理偏好 ${row.pendingAvailabilityCount}`, alert: row.teacherObjectionCount > 0 }
+      ]
     }
   },
   watch: {
-    tab(value) { if (value === 'availability') this.loadAvails() }
+    tab(value) {
+      if (value === 'availability') this.loadAvails()
+      if (value === 'workbench' && this.workbenchBatchId) this.loadWorkbench()
+    }
   },
   async created() {
     const queryTab = this.$route?.query?.tab
@@ -369,6 +512,7 @@ export default {
     const current = await academicAffairsApi.getCurrentTerm()
     if (current.code === 0 && current.data?.termId) this.termId = String(current.data.termId)
     await this.onTermChange()
+    await this.selectDefaultWorkbenchBatch()
   },
   methods: {
     cloneValue(value) {
@@ -378,6 +522,73 @@ export default {
     async loadContext() {
       const response = await academicAffairsApi.getContext()
       if (response.code === 0) this.ctx = response.data
+    },
+    async selectDefaultWorkbenchBatch() {
+      const response = await academicAffairsApi.getScheduleBatches({ termId: this.termId || undefined, page: 1, pageSize: 100 })
+      if (response.code !== 0) return
+      const rows = response.data?.list || []
+      const preferred = rows.find(row => ['DRAFT', 'PRE_PUBLISHED'].includes(row.status)) || rows.find(row => row.status === 'PUBLISHED') || rows[0]
+      if (!preferred?.batchId) return
+      this.workbenchBatchId = String(preferred.batchId)
+      if (this.tab === 'workbench') await this.loadWorkbench()
+    },
+    async loadWorkbench(value) {
+      if (value !== undefined && value !== null && value !== '') this.workbenchBatchId = String(value)
+      if (!this.workbenchBatchId || this.workbenchLoading) return
+      this.workbenchLoading = true; this.workbenchError = ''
+      const response = await academicAffairsApi.getScheduleSummary(this.workbenchBatchId)
+      this.workbenchLoading = false
+      if (response.code === 0) this.workbench = response.data
+      else { this.workbench = null; this.workbenchError = response.message || '排课工作台加载失败' }
+    },
+    batchStatusLabel(status) {
+      return ({ DRAFT: '编排中', PRE_PUBLISHED: '预发布', PUBLISHED: '已正式发布', SUPERSEDED: '已被新版本替代', ARCHIVED: '已归档' })[status] || status || '状态待确认'
+    },
+    weekRangeText(row) { return row.startWeek && row.endWeek ? `第 ${row.startWeek}-${row.endWeek} 周` : '周次待确认' },
+    roomRequirementText(value) { return value ? `教室要求：${value}` : '教室类型不限' },
+    openTeachingTasks() { this.$router.push('/admin/academic-affairs/teaching-tasks') },
+    openPublishedSchedule() { this.$router.push(`/admin/academic-affairs/schedule/${this.workbenchBatchId}/views`) },
+    openTask(row) {
+      this.$router.push({
+        path: `/admin/academic-affairs/schedule/${this.workbenchBatchId}/edit`,
+        query: { classId: row.classId, className: row.className || '', taskId: row.taskId }
+      })
+    },
+    openCorrectionDraft(row = null) {
+      if (!this.hasPublishedGap || !this.canCorrectSchedule) return
+      this.correctionTargetTask = row
+      this.confirmRequireReason = true
+      this.confirmReasonLabel = '纠错原因（至少 5 个字）'
+      this.confirmTitle = '创建漏排纠错草稿'
+      this.confirmMessage = `系统会保留已排 ${this.workbench.scheduledHours} 节，只补剩余 ${this.repairRemaining} 节。创建期间老师学生 PC 和老师学生小程序继续使用当前正式课表，不会下线。`
+      this.pendingAction = (reason) => this.createCorrectionDraft(reason)
+      this.confirmVisible = true
+    },
+    async createCorrectionDraft(reason) {
+      const sourceBatchId = this.workbenchBatchId
+      const targetTask = this.correctionTargetTask
+      this.correctionTargetTask = null
+      const response = await academicAffairsApi.startScheduleCorrection(sourceBatchId, String(reason || '').trim())
+      if (response.code !== 0) {
+        toast.error(response.message || '创建纠错草稿失败')
+        return
+      }
+      this.workbenchBatchId = String(response.data.batchId)
+      await this.loadWorkbench()
+      toast.success(`已保留 ${response.data.scheduledSessions} 节现有课位，可继续补排剩余 ${response.data.remainingSessions} 节`)
+      if (targetTask?.classId) this.openTask(targetTask)
+    },
+    runWorkbenchAction(code) {
+      if (code === 'TEACHING_TASKS') return this.openTeachingTasks()
+      if (code === 'AVAILABILITY') { this.tab = 'availability'; return }
+      if (code === 'AUTO_DRY_RUN') { this.autoBatchId = this.workbenchBatchId; this.tab = 'auto'; return }
+      if (code === 'TASK_QUEUE') { document.querySelector('.aasg-queue-note')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return }
+      if (code === 'CONFLICTS') { this.conflictBatchId = this.workbenchBatchId; this.tab = 'conflict'; this.$nextTick(() => this.loadConflict()); return }
+      if (code === 'HANDLE_OBJECTIONS') return this.$router.push(`/admin/academic-affairs/schedule/${this.workbenchBatchId}/edit`)
+      if (['PRE_PUBLISH', 'PUBLISH'].includes(code)) return this.$router.push({ path: '/admin/academic-affairs/schedule/publish', query: { batchId: this.workbenchBatchId } })
+      if (code === 'BATCH_REISSUE') return this.openCorrectionDraft()
+      if (code === 'CHANGE_LEDGER') return this.$router.push('/admin/academic-affairs/schedule-change')
+      this.$router.push(`/admin/academic-affairs/schedule/${this.workbenchBatchId}/views`)
     },
     async loadCatalog() {
       this.catalogLoading = true; this.catalogError = ''
@@ -593,6 +804,36 @@ export default {
 .aasg-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color, #e5e7eb); margin-bottom: 16px; }
 .aasg-tab { padding: 8px 16px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--text-secondary, #64748b); border-bottom: 2px solid transparent; }
 .aasg-tab.is-active { color: var(--primary-color, #2563eb); border-bottom-color: var(--primary-color, #2563eb); font-weight: 600; }
+.aasg-workbench-filter { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.aasg-flow { display: grid; grid-template-columns: repeat(7, minmax(95px, 1fr)); gap: 8px; margin-bottom: 16px; }
+.aasg-flow-step { min-width: 0; padding: 10px 8px; border: 1px solid var(--border-200, #e5e7eb); border-radius: 8px; color: var(--text-secondary, #64748b); background: var(--fill-light, #f8fafc); text-align: center; }
+.aasg-flow-step strong { display: block; margin-top: 5px; font-size: 12px; }
+.aasg-flow-index { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 50%; background: var(--border-200, #e5e7eb); font-size: 12px; }
+.aasg-flow-step.is-completed { color: var(--success-color, #16a34a); border-color: #bbf7d0; background: #f0fdf4; }
+.aasg-flow-step.is-current { color: var(--primary-color, #2563eb); border-color: #93c5fd; background: #eff6ff; box-shadow: 0 0 0 2px rgb(37 99 235 / 8%); }
+.aasg-flow-step.is-current .aasg-flow-index { color: #fff; background: var(--primary-color, #2563eb); }
+.aasg-flow-step.is-completed .aasg-flow-index { color: #fff; background: var(--success-color, #16a34a); }
+.aasg-current-action { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px; margin-bottom: 12px; border-radius: 8px; background: var(--fill-light, #f8fafc); }
+.aasg-current-action > div { display: flex; flex-direction: column; gap: 3px; }
+.aasg-current-action span, .aasg-current-action small { color: var(--text-secondary, #64748b); font-size: 12px; }
+.aasg-metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.aasg-metric { min-width: 0; padding: 13px; border: 1px solid var(--border-200, #e5e7eb); border-radius: 8px; background: var(--bg-white, #fff); }
+.aasg-metric span, .aasg-metric small { display: block; color: var(--text-secondary, #64748b); font-size: 12px; }
+.aasg-metric strong { display: block; margin: 5px 0 3px; color: var(--text-900, #1f2329); font-size: 22px; line-height: 1.1; }
+.aasg-metric.is-alert { border-color: #fed7aa; background: #fff7ed; }
+.aasg-metric.is-alert strong { color: #c2410c; }
+.aasg-repair-center { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px 24px; align-items: center; padding: 18px; border: 1px solid #fdba74; border-radius: 10px; background: linear-gradient(135deg, #fff7ed 0%, #fff 72%); }
+.aasg-repair-copy { min-width: 0; }
+.aasg-repair-copy > strong { display: block; margin: 5px 0 7px; color: var(--text-900, #1f2329); font-size: 18px; }
+.aasg-repair-copy p { max-width: 760px; margin: 0; color: var(--text-secondary, #64748b); font-size: 13px; line-height: 1.7; }
+.aasg-repair-kicker { color: #c2410c; font-size: 12px; font-weight: 600; }
+.aasg-repair-facts { display: grid; grid-template-columns: repeat(3, minmax(88px, 1fr)); gap: 8px; }
+.aasg-repair-facts > div { min-width: 88px; padding: 10px 12px; border: 1px solid #fed7aa; border-radius: 8px; background: rgb(255 255 255 / 82%); text-align: center; }
+.aasg-repair-facts span, .aasg-repair-facts small { display: block; color: var(--text-secondary, #64748b); font-size: 11px; }
+.aasg-repair-facts strong { display: block; margin: 2px 0; color: var(--text-900, #1f2329); font-size: 20px; }
+.aasg-repair-facts .is-gap strong { color: #c2410c; }
+.aasg-repair-center > :last-child { grid-column: 1 / -1; justify-self: end; }
+.aasg-queue-note { margin: 0 0 12px; }
 .aasg-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
 .aasg-grow { flex: 1; }.aasg-field { display: flex; flex-direction: column; gap: 6px; min-width: 220px; color: var(--text-700, #4e5969); font-size: 13px; }
 .aasg-field.is-term { width: 280px; }.aasg-input { min-height: 36px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); }
@@ -611,6 +852,7 @@ export default {
 .aasg-section-title { font-weight: 500; margin: 12px 0 8px; }.aasg-conflicts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }.aasg-conflicts li { padding: 8px 12px; background: var(--fill-light, #f8fafc); border-radius: 6px; font-size: 13px; }
 .aasg-tag { display: inline-block; padding: 1px 8px; border-radius: 4px; margin-right: 8px; font-size: 12px; }.aasg-tag.is-hard { background: #fee2e2; color: #dc2626; }.aasg-tag.is-soft { background: #fef3c7; color: #d97706; }
 .aasg-reasons { display: flex; flex-wrap: wrap; gap: 8px; }.aasg-reason-chip { padding: 3px 10px; border-radius: 12px; background: #fef3c7; color: #b45309; font-size: 12px; }.aasg-advice, .aasg-sub { color: var(--text-secondary, #64748b); font-size: 12px; }
-@media (max-width: 900px) { .aasg-default-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.aasg-control-grid.is-two { grid-template-columns: 1fr; } }
-@media (max-width: 620px) { .aasg-default-grid { grid-template-columns: 1fr; }.aasg-field, .aasg-field.is-term { width: 100%; min-width: 0; } }
+@media (max-width: 1100px) { .aasg-flow { grid-template-columns: repeat(4, minmax(110px, 1fr)); }.aasg-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .aasg-default-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.aasg-control-grid.is-two { grid-template-columns: 1fr; }.aasg-repair-center { grid-template-columns: 1fr; }.aasg-repair-center > :last-child { grid-column: auto; } }
+@media (max-width: 620px) { .aasg-default-grid { grid-template-columns: 1fr; }.aasg-field, .aasg-field.is-term { width: 100%; min-width: 0; }.aasg-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }.aasg-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.aasg-current-action { align-items: stretch; flex-direction: column; }.aasg-repair-facts { grid-template-columns: 1fr; }.aasg-repair-center > :last-child { width: 100%; justify-content: center; } }
 </style>

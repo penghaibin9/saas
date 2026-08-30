@@ -46,6 +46,12 @@ def seed_academic_core_flows(db, tenant_id: int) -> dict:
         AaTeachingTask, AaTerm, AaTextbook, AaTextbookOrderBatch, AaTextbookOrderItem,
         AcademicGrade, AcademicStudent, SchoolClass, FileObject, Major, StudentProfile, User,
     )
+    from app.modules.academic_affairs.services import (
+        academic_affairs_archive_manifest_service as manifest_service,
+    )
+    from app.services.sandbox_school_relationship_reconcile import (
+        _repair_schedule_change_workflows,
+    )
 
     c = _classes()
     admin = _one(db, User, tenant_id, login_name="admin2")
@@ -447,16 +453,17 @@ def seed_academic_core_flows(db, tenant_id: int) -> dict:
         AaArchiveBatch.tenant_id == tenant_id, AaArchiveBatch.status == "ARCHIVED",
         AaArchiveBatch.is_deleted.is_(False),
     ).order_by(AaArchiveBatch.id.desc())).first()
-    domain_counts = {"STUDENT": 13000, "REGISTRATION": 33000, "TEACHING_TASK": 1792,
-                     "SCHEDULE": 1792, "EXAM": 1024, "GRADE": 52000}
-    manifest_payload = json.dumps(domain_counts, sort_keys=True)
-    manifest_v1 = _put(db, c["t_aa_archive_manifest"], tenant_id, {"archive_batch_id": archive_batch.id, "version_no": 1}, {
-        "term_id": archive_batch.term_id, "domain_counts_json": json.dumps(domain_counts),
-        "domain_hashes_json": json.dumps({key: _digest(f"{archive_batch.id}:{key}:{value}") for key, value in domain_counts.items()}),
-        "max_ids_json": json.dumps({"grade": grade_record.id, "exam": exam_course.id}),
-        "manifest_hash": _digest(manifest_payload), "reason": "历史学期十三域完整性检查通过后正式封存。",
-        "archived_at": archive_batch.archived_at or datetime(2026, 7, 20, 16), "archived_by": admin.id,
-    })
+    manifest_v1 = _one(
+        db, c["t_aa_archive_manifest"], tenant_id,
+        archive_batch_id=archive_batch.id, version_no=1,
+    )
+    if manifest_v1 is None:
+        raise RuntimeError("007 教务归档后更正缺少正式十三域 V1 Manifest")
+    domain_counts = json.loads(manifest_v1.domain_counts_json or "{}")
+    domain_hashes = json.loads(manifest_v1.domain_hashes_json or "{}")
+    max_ids = json.loads(manifest_v1.max_ids_json or "{}")
+    if len(domain_counts) != 13 or len(domain_hashes) != 13:
+        raise RuntimeError("007 教务归档后更正的 V1 Manifest 不是完整十三域清单")
     _put(db, c["t_aa_post_archive_correction_case"], tenant_id, {
         "archive_batch_id": archive_batch.id, "correction_no": 1
     }, {"business_type": "GRADE", "target_ref": f"acadGrade:{acad_grade.id}",
@@ -539,18 +546,29 @@ def seed_academic_core_flows(db, tenant_id: int) -> dict:
             "risk_level": "HIGH", "second_approved_by": admin.id, "applied_at": NOW,
             "official_fact_type": "AA_GRADE_CORRECTION", "official_fact_id": correction.id,
             "status": "APPLIED"})
-        manifest_v2_payload = json.dumps({"v1": manifest_v1.manifest_hash,
-                                          "correctionId": correction.id,
-                                          "activeGradeId": corrected_grade.id}, sort_keys=True)
+        correction_digest_payload = json.dumps({"v1": manifest_v1.manifest_hash,
+                                                 "correctionId": correction.id,
+                                                 "activeGradeId": corrected_grade.id}, sort_keys=True)
+        domain_hashes["GRADE"] = _digest(correction_digest_payload)
+        max_ids["GRADE"] = corrected_grade.id
+        manifest_v2_reason = "双人复核通过的归档后成绩更正；追加 V2 清单，不覆盖 V1。"
+        manifest_v2_payload = manifest_service._manifest_payload(
+            batch=archive_batch,
+            version_no=2,
+            domain_counts=domain_counts,
+            domain_hashes=domain_hashes,
+            max_ids=max_ids,
+            supersedes_id=manifest_v1.id,
+            reason=manifest_v2_reason,
+        )
         manifest_v2 = _put(db, c["t_aa_archive_manifest"], tenant_id, {
             "archive_batch_id": archive_batch.id, "version_no": 2
-        }, {"term_id": archive_batch.term_id, "domain_counts_json": json.dumps(domain_counts),
-            "domain_hashes_json": json.dumps({**{key: _digest(f"{archive_batch.id}:{key}:{value}")
-                                                    for key, value in domain_counts.items()},
-                                               "GRADE_CORRECTION": _digest(manifest_v2_payload)}),
-            "max_ids_json": json.dumps({"grade": corrected_grade.id, "exam": exam_course.id}),
-            "manifest_hash": _digest(manifest_v2_payload),
-            "reason": "双人复核通过的归档后成绩更正；追加 V2 清单，不覆盖 V1。",
+        }, {"term_id": archive_batch.term_id,
+            "domain_counts_json": manifest_service._json(domain_counts),
+            "domain_hashes_json": manifest_service._json(domain_hashes),
+            "max_ids_json": manifest_service._json(max_ids),
+            "manifest_hash": manifest_service._hash(manifest_v2_payload),
+            "reason": manifest_v2_reason,
             "supersedes_id": manifest_v1.id, "archived_at": NOW, "archived_by": admin.id})
         applied_case.resulting_manifest_id = manifest_v2.id
 
@@ -593,13 +611,16 @@ def seed_academic_core_flows(db, tenant_id: int) -> dict:
         "void_reason": "批量预生成前置校验发现学生尚未达到结业条件，未签发即作废并保留审计证据。",
         "status": "VOIDED"})
 
+    schedule_change_workflow = _repair_schedule_change_workflows(db, tenant_id)
     _put(db, c["t_acad_audit_trail"], tenant_id, {"biz_type": "ACADEMIC_CORE", "biz_id": MARKER, "action": "VALIDATE"}, {
         "operator": admin.real_name, "role_name": "教务处管理员",
         "detail": "选课、排课、考务、成绩、学籍、教材和归档关系校验通过。",
         "before_val": "PENDING", "after_val": "VALIDATED", "occurred_at": NOW,
     })
     db.commit()
-    return validate_academic_core_flows(db, tenant_id)
+    report = validate_academic_core_flows(db, tenant_id)
+    report["scheduleChangeWorkflow"] = schedule_change_workflow
+    return report
 
 
 def validate_academic_core_flows(db, tenant_id: int) -> dict:

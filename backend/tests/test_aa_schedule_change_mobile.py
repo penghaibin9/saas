@@ -196,6 +196,28 @@ def test_cross_scope_submit_403_via_mobile(client, db_mode):
     assert r.status_code == 403
 
 
+def test_pc_teacher_schedule_origin_handoff_is_self_only(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+
+    own = client.get(
+        f"{BASE}/schedule-change/origin-items/{origin}",
+        headers=_hdr(client, "academic01"),
+    )
+    assert own.status_code == 200, own.text
+    data = own.json()["data"]
+    assert data["itemId"] == origin
+    assert data["courseName"] == "高等数学"
+    assert data["batchName"]
+
+    forbidden = client.get(
+        f"{BASE}/schedule-change/origin-items/{origin}",
+        headers=_hdr(client, "teacher01"),
+    )
+    assert forbidden.status_code == 403
+
+
 def test_detail_ownership_guard_via_mobile(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")

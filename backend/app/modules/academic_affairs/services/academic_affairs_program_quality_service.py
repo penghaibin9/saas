@@ -47,6 +47,13 @@ def _issue(rule_code, level, message, *, object_id=None, field_path="", suggesti
     }
 
 
+def _course_credit_snapshot_mismatch_message(course_name, plan_credit, catalog_credit) -> str:
+    return (
+        f"课程“{course_name}”方案学分 {_number(plan_credit):g} "
+        f"与课程库 {_number(catalog_credit):g} 不一致"
+    )
+
+
 def _plan_term_no(year_code: str | None, term_no: int | None, grade_year: str | None) -> int | None:
     """按入学年级和学年学期推导培养方案第几学期。"""
     try:
@@ -185,7 +192,8 @@ def validate_program_db(db, program_id: int) -> dict:
                 module_actual[module] += credit
         if catalog and row.credit_snapshot is not None and abs(credit - _number(catalog.credit)) > 0.001:
             issues.append(_issue("COURSE_CREDIT_SNAPSHOT_MISMATCH", "WARNING",
-                                 f"课程“{catalog.course_name}”方案学分 {credit:g} 与课程库 { _number(catalog.credit):g } 不一致",
+                                 _course_credit_snapshot_mismatch_message(
+                                     catalog.course_name, credit, catalog.credit),
                                  object_id=row.id, field_path="credit", suggestion="确认是否保留历史快照或更新课程版本",
                                  fix_route=row_route))
         if catalog:

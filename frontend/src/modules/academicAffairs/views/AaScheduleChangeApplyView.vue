@@ -6,7 +6,33 @@
     :data-scope-name="scopeName"
   >
     <div class="mp-stack">
-      <form class="sc-form" @submit.prevent="onSubmit">
+      <AppSectionCard title="原安排" class="sc-origin-card">
+        <LoadingState v-if="originLoading" />
+        <ErrorState v-else-if="originError" :description="originError" @retry="loadOrigin" />
+        <EmptyState
+          v-else-if="!form.originItemId"
+          title="请先从本人课表选择一个课位"
+          description="系统会自动带入正式课位，不需要复制或填写任何内部 ID。"
+        >
+          <template #actions>
+            <AppButton variant="primary" @click="openMySchedule">打开本人课表</AppButton>
+          </template>
+        </EmptyState>
+        <div v-else-if="origin" class="sc-origin">
+          <div>
+            <strong>{{ origin.courseName || '课程' }}</strong>
+            <p>{{ origin.className || '教学班' }} · {{ origin.teacherName || '任课教师' }}</p>
+          </div>
+          <dl>
+            <div><dt>原时间</dt><dd>{{ weekdayLabel(origin.weekday) }} 第{{ origin.slotNo }}节</dd></div>
+            <div><dt>原周次</dt><dd>{{ origin.startWeek }}–{{ origin.endWeek }}周（{{ parityLabel(origin.weekParity) }}）</dd></div>
+            <div><dt>原教室</dt><dd>{{ origin.classroom || '待定' }}</dd></div>
+            <div><dt>正式批次</dt><dd>{{ origin.batchName || '已发布课表' }}</dd></div>
+          </dl>
+        </div>
+      </AppSectionCard>
+
+      <form v-if="origin" class="sc-form" @submit.prevent="onSubmit">
         <div class="sc-fld sc-fld--full">
           <label class="sc-lbl">变更类型 <i>*</i></label>
           <div class="sc-radio">
@@ -14,12 +40,6 @@
               <input type="radio" :value="t.value" v-model="form.changeType" /> {{ t.label }}
             </label>
           </div>
-        </div>
-
-        <div class="sc-fld">
-          <label class="sc-lbl">原课表项 ID <i>*</i></label>
-          <input class="sc-in" v-model.trim="form.originItemId" placeholder="已发布课表中的本人课位 itemId" />
-          <p class="sc-hint">从「课表·教师视图」复制原课位 itemId</p>
         </div>
 
         <div class="sc-fld sc-fld--full">
@@ -87,30 +107,37 @@
 
 <script>
 /** 发起调停课（/admin/academic-affairs/schedule-change/apply）：提交即冲突预检，冲突后端 409 → 单据不落库。 */
-import { ModulePageShell } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppQuickPhrases, AppSelect } from '@/components/common'
+import { AppQuickPhrases, AppSelect, AppSectionCard } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { scheduleChangeApi, CHANGE_TYPES } from '@/modules/academicAffairs/api/academic-schedule-change.api'
 import { toast } from '@/utils/toast'
 
 const EMPTY = () => ({
   changeType: 'ADJUST', originItemId: '', reason: '',
-  targetWeekday: 1, targetSlotNo: null, targetStartWeek: null, targetEndWeek: null,
+  targetWeekday: null, targetSlotNo: null, targetStartWeek: null, targetEndWeek: null,
   targetWeekParity: '', targetClassroom: '', makeupPlan: ''
 })
 
 export default {
   name: 'AaScheduleChangeApplyView',
-  components: { ModulePageShell, AppButton, AppQuickPhrases, AppSelect },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppQuickPhrases, AppSelect, AppSectionCard },
   props: { ctx: { type: Object, default: () => ({}) } },
   data() {
     return {
       CHANGE_TYPES, form: EMPTY(), submitting: false, err: '',
-      checkingConflict: false,
+      checkingConflict: false, origin: null, originLoading: false, originError: '',
       // undefined=未检测；null=检测通过无冲突；对象={type,conflictWith,detail}=有冲突
       conflictResult: undefined
     }
+  },
+  created() {
+    const query = this.$route?.query || {}
+    this.form.originItemId = String(query.originItemId || '').trim()
+    const requestedType = String(query.changeType || '').toUpperCase()
+    if (CHANGE_TYPES.some((item) => item.value === requestedType)) this.form.changeType = requestedType
+    if (this.form.originItemId) this.loadOrigin()
   },
   computed: {
     weekdayOptions() { return Array.from({ length: 7 }, (_, i) => ({ value: i + 1, label: `周${i + 1}` })) },
@@ -139,6 +166,26 @@ export default {
   },
   methods: {
     conflictTypeLabel(t) { return { TEACHER: '教师冲突', CLASS: '班级冲突', CLASSROOM: '教室冲突' }[t] || t },
+    weekdayLabel(value) { return `周${'一二三四五六日'[Number(value) - 1] || value || ''}` },
+    parityLabel(value) { return { ALL: '全周', ODD: '单周', EVEN: '双周' }[value] || '全周' },
+    openMySchedule() { this.$router.push('/admin/academic-affairs/schedule/teacher') },
+    async loadOrigin() {
+      if (!this.form.originItemId) return
+      this.originLoading = true
+      this.originError = ''
+      const res = await scheduleChangeApi.originItem(this.form.originItemId)
+      this.originLoading = false
+      if (res.code !== 0) {
+        this.origin = null
+        this.originError = res.message || '原课位已发生变化，请返回本人课表重新选择'
+        return
+      }
+      this.origin = res.data
+      this.form.targetStartWeek = res.data.startWeek || null
+      this.form.targetEndWeek = res.data.endWeek || null
+      this.form.targetWeekParity = res.data.weekParity || 'ALL'
+      this.form.targetClassroom = res.data.classroom || ''
+    },
     onPickReason(text) {
       const el = this.$refs.reasonInput
       const { value, selStart, selEnd } = insertAtCursor(el, this.form.reason, text)
@@ -169,7 +216,7 @@ export default {
       } finally { this.checkingConflict = false }
     },
     validate() {
-      if (!this.form.originItemId) return '请填写原课表项 ID'
+      if (!this.form.originItemId || !this.origin) return '请从本人课表重新选择要变更的课位'
       if (!this.form.reason || this.form.reason.length < 5) return '原因必填且不少于 5 字'
       if (this.form.changeType !== 'STOP' && (!this.form.targetWeekday || !this.form.targetSlotNo)) return '调课/补课须填写目标星期与节次'
       if (this.form.changeType === 'STOP' && !this.form.makeupPlan) return '停课须填写补课/后续安排'
@@ -216,7 +263,21 @@ export default {
 .sc-conflict__bad { margin: 0; font-size: 13px; color: var(--danger, #dc2626); font-weight: 600; }
 .sc-err { grid-column: 1 / -1; color: var(--danger, #dc2626); font-size: 12px; margin: 0; }
 .sc-btns { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--space-2); }
+.sc-origin-card { max-width: 900px; }
+.sc-origin { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 24px; align-items: start; }
+.sc-origin strong { font-size: 17px; color: var(--text-900, #1f2329); }
+.sc-origin p { margin: 5px 0 0; color: var(--text-500, #86909c); font-size: 13px; }
+.sc-origin dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; margin: 0; }
+.sc-origin dl div { min-width: 0; }
+.sc-origin dt { color: var(--text-500, #86909c); font-size: 11px; }
+.sc-origin dd { margin: 3px 0 0; color: var(--text-800, #272e3b); font-size: 13px; }
 .mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
 .mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+@media (max-width: 760px) {
+  .sc-form { grid-template-columns: 1fr; }
+  .sc-fld--full, .sc-err, .sc-btns { grid-column: 1; }
+  .sc-origin { grid-template-columns: 1fr; }
+  .sc-origin dl { grid-template-columns: 1fr; }
+}
 </style>

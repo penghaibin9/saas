@@ -2428,17 +2428,18 @@ def _today_term_ctx(db) -> dict:
 
 def _today_schedule_query(db, ctx):
     """今日在排课表项：当前学期已发布批次 + 今天星期 + 当前教学周命中（含单双周相容）。
-    复用 academic_affairs_schedule_service._current_published_batch 同一"当前已发布批次"取批口径。"""
-    from app.modules.academic_affairs.services.academic_affairs_schedule_service import _current_published_batch
+    复用 academic_affairs_schedule_service._current_published_batches 同一正式范围头取批口径。"""
+    from app.modules.academic_affairs.services.academic_affairs_schedule_service import _current_published_batches
     from app.models import AaScheduleItem
     if not ctx["term"] or ctx["weekNo"] is None:
         return [], None
-    batch = _current_published_batch(db, ctx["term"].id)
-    if not batch:
+    batches = _current_published_batches(db, ctx["term"].id)
+    if not batches:
         return [], None
     wk = ctx["weekNo"]
+    batch_ids = [int(batch.id) for batch in batches]
     rows = db.scalars(select(AaScheduleItem).where(
-        AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id == batch.id,
+        AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id.in_(batch_ids),
         AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False),
         AaScheduleItem.weekday == ctx["weekday"],
         AaScheduleItem.start_week <= wk, AaScheduleItem.end_week >= wk)
@@ -2450,7 +2451,7 @@ def _today_schedule_query(db, ctx):
         if r.week_parity == "EVEN":
             return wk % 2 == 0
         return True
-    return [r for r in rows if _parity_ok(r)], batch
+    return [r for r in rows if _parity_ok(r)], batches
 
 
 def _slot_time_map(db) -> dict:
