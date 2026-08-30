@@ -15,6 +15,7 @@ from sqlalchemy import and_, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.field_crypto import decrypt_sensitive, encrypt_sensitive, hash_sensitive
+from app.core.tenant_scoped import tenant_get
 from app.models import (InternshipAuditTrail, InternshipComplaint, InternshipRecord, RiskRecord,
                         StudentProfile)
 from app.services.db_service import _as_id, _iso, _tid, session
@@ -202,7 +203,7 @@ def list_complaints(page, page_size, status=None, enterprise_id=None, severity=N
                 continue
             stu_name = ""
             if c.student_id:
-                stu = db.get(StudentProfile, c.student_id)
+                stu = tenant_get(db, StudentProfile, c.student_id)
                 stu_name = (stu.real_name if stu else "") or ""
             items.append(_row(c, user, stu_name))
         total = len(items)

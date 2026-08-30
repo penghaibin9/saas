@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
 WEEKDAYS = range(1, 8)
@@ -244,7 +245,7 @@ def import_items(batch_id, user, items) -> dict:
             task_id = row.get("taskId")
             course_name = class_id = teacher_key = teacher_name = None
             if task_id:
-                t = db.get(AaTeachingTask, int(task_id))
+                t = tenant_get(db, AaTeachingTask, int(task_id))
                 if t:
                     course_name, class_id, teacher_key, teacher_name = t.course_name, t.class_id, t.teacher_key, t.teacher_name
             class_id = row.get("classId") or class_id
@@ -914,7 +915,7 @@ def move_item(item_id, user, body) -> dict:
         it = db.get(AaScheduleItem, int(item_id))
         if not it or it.is_deleted or it.tenant_id != _tid() or it.status != "EFFECTIVE":
             raise not_found("课表项不存在")
-        b = db.get(AaScheduleBatch, int(it.batch_id))
+        b = tenant_get(db, AaScheduleBatch, int(it.batch_id))
         if not b or b.status not in ("DRAFT", "PRE_PUBLISHED"):
             raise AppException("DATA_CONFLICT", "已发布课表不可拖拽调整（请走调停课）", http_status=409)
         weekday, slot_no = int(body.weekday), int(body.slotNo)

@@ -234,7 +234,7 @@ def internship_archive_package_resolver(
 
         package = db.scalars(select(InternshipEvidencePackage).where(
             InternshipEvidencePackage.tenant_id == int(file_obj.tenant_id),
-            InternshipEvidencePackage.package_file_id == str(file_obj.id),
+            getattr(InternshipEvidencePackage, "package_file_id") == str(file_obj.id),
             InternshipEvidencePackage.status == "READY",
             InternshipEvidencePackage.is_deleted.is_(False),
         )).first()

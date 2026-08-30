@@ -492,7 +492,7 @@ def export_exceptions(type=None, status=None, keyword=None, batch_id=None, user=
 
 def _exc_ctx(db, c: AttendanceException):
     rec = tenant_get(db, InternshipRecord, c.internship_id)
-    stu = db.get(StudentProfile, rec.student_id) if rec else None
+    stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
     return rec, stu
 
 

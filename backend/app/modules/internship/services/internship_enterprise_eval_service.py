@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import is_super_admin
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     InternshipAuditTrail, InternshipEnterpriseEval, InternshipRecord, StudentProfile,
 )
@@ -75,7 +76,10 @@ def _get(db, eval_id, *, lock=False):
 
 
 def _ctx(db, row):
-    return db.get(InternshipRecord, row.internship_id), db.get(StudentProfile, row.student_id)
+    return (
+        tenant_get(db, InternshipRecord, row.internship_id),
+        tenant_get(db, StudentProfile, row.student_id),
+    )
 
 
 def _scope_ctx(user):

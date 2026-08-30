@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     InternshipArchive, InternshipAuditTrail, InternshipEvidencePackage,
     InternshipRecord, StudentProfile,
@@ -165,7 +166,7 @@ def build_versioned_package(internship_id, user=None) -> dict:
             finally:
                 archive_zip.close()
 
-            student = db.get(StudentProfile, record.student_id)
+            student = tenant_get(db, StudentProfile, record.student_id)
             safe_student = _safe_name(getattr(student, "real_name", ""), "学生")
             meta = store_generated_path(
                 zip_path,

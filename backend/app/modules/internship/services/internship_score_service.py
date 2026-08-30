@@ -12,6 +12,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (InternshipAuditTrail, InternshipEnterpriseEval, InternshipFinalScore,
                         InternshipRecord, InternshipScoreConfig, StudentProfile)
 from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
@@ -60,15 +61,15 @@ def _trail(db, sid, action, detail=None, operator="系统"):
 
 
 def _get(db, sid) -> InternshipFinalScore:
-    s = db.get(InternshipFinalScore, _as_id(sid))
-    if not s or s.is_deleted or s.tenant_id != _tid():
+    s = tenant_get(db, InternshipFinalScore, _as_id(sid))
+    if not s or s.is_deleted:
         raise not_found("成绩不存在")
     return s
 
 
 def _ctx(db, s):
-    rec = db.get(InternshipRecord, s.internship_id)
-    stu = db.get(StudentProfile, s.student_id)
+    rec = tenant_get(db, InternshipRecord, s.internship_id)
+    stu = tenant_get(db, StudentProfile, s.student_id)
     return rec, stu
 
 
@@ -270,7 +271,7 @@ def compute(user, body) -> dict:
             InternshipRecord.is_deleted.is_(False)).with_for_update())
         if not rec or rec.is_deleted or rec.tenant_id != _tid():
             raise not_found("实习记录不存在")
-        stu = db.get(StudentProfile, rec.student_id)
+        stu = tenant_get(db, StudentProfile, rec.student_id)
         if not in_scope(scope, db, rec, stu):
             raise no_permission("只能核算本人指导或授权范围内学生成绩")
         enterprise_eval = _approved_enterprise_eval(db, rec.id)

@@ -313,7 +313,7 @@ def archive_student_in_session(db, user, internship_id, force=False,
     record = db.get(InternshipRecord, _as_id(internship_id))
     if not record or record.is_deleted or record.tenant_id != _tid():
         raise not_found("实习记录不存在")
-    student = db.get(StudentProfile, record.student_id)
+    student = tenant_get(db, StudentProfile, record.student_id)
     if not in_scope(scope, db, record, student):
         raise no_permission("只能归档本人数据范围内的学生")
 
@@ -700,7 +700,7 @@ def revoke_archive_in_session(db, user, internship_id, reason="",
         InternshipRecord.is_deleted.is_(False)).with_for_update())
     if not record:
         raise not_found("实习记录不存在")
-    student = db.get(StudentProfile, record.student_id)
+    student = tenant_get(db, StudentProfile, record.student_id)
     if not in_scope(scope, db, record, student):
         raise no_permission("只能撤销本人数据范围内的归档")
     archive = _archive_row(db, record.id)

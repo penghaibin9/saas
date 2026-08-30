@@ -14,6 +14,7 @@ from datetime import date, datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     InternshipAuditTrail,
     InternshipBatch,
@@ -432,7 +433,7 @@ def _bind_adjustment_evidence(
                 "businessType": "INTERNSHIP_SCORE_ADJUSTMENT",
             },
         )
-        file_obj = db.get(FileObject, int(file_id))
+        file_obj = tenant_get(db, FileObject, int(file_id))
         snapshots.append({
             "fileId": file_id,
             "fileVersion": int(file_obj.version or 0),

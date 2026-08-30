@@ -12,6 +12,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     InternshipAuditTrail, InternshipComplaint, InternshipIncident, InternshipRecord,
     RiskRecord, StudentProfile,
@@ -47,8 +48,8 @@ def _get(db, rid) -> RiskRecord:
 
 
 def _ctx(db, r):
-    rec = db.get(InternshipRecord, r.internship_id)
-    stu = db.get(StudentProfile, rec.student_id) if rec else None
+    rec = tenant_get(db, InternshipRecord, r.internship_id)
+    stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
     return rec, stu
 
 

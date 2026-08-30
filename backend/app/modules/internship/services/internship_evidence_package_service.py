@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 import app.models as models
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     FileObject, InternshipAuditTrail, InternshipBatch, InternshipEvidencePackage,
     InternshipRecord, StudentProfile,
@@ -144,12 +145,12 @@ def _attachment(db, file_id: str, user, prefix: str, entries, file_manifest, mis
 
 
 def _record_entries(db, rec, user, base: str, entries, files, missing):
-    student = db.get(StudentProfile, rec.student_id)
+    student = tenant_get(db, StudentProfile, rec.student_id)
     _add_json(entries, f"{base}evidence/student-profile.json",
               _safe_row(student) if student else None)
     _add_json(entries, f"{base}evidence/internship-record.json", _safe_row(rec))
-    company = db.get(getattr(models, "EmpCompany"), rec.enterprise_id) if rec.enterprise_id else None
-    position = db.get(getattr(models, "InternshipPosition"), rec.position_id) if rec.position_id else None
+    company = tenant_get(db, getattr(models, "EmpCompany"), rec.enterprise_id) if rec.enterprise_id else None
+    position = tenant_get(db, getattr(models, "InternshipPosition"), rec.position_id) if rec.position_id else None
     _add_json(entries, f"{base}evidence/company-position.json", {
         "company": _safe_row(company) if company else None,
         "position": _safe_row(position) if position else None,

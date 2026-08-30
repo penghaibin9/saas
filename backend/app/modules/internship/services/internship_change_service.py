@@ -10,6 +10,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (EmpCompany, InternshipAgreement, InternshipAuditTrail,
                         InternshipBatch, InternshipChangeRequest, InternshipPosition,
                         InternshipRecord, StudentProfile)
@@ -147,7 +148,7 @@ def validate_target_position(db, record: InternshipRecord, student: StudentProfi
         raise not_found("目标岗位所属企业不存在")
     if change_type == "CHANGE_ENTERPRISE" and record.enterprise_id and int(record.enterprise_id) == int(company.id):
         raise AppException("DATA_CONFLICT", "换实习单位必须选择不同企业的目标岗位")
-    batch = db.get(InternshipBatch, record.batch_id)
+    batch = tenant_get(db, InternshipBatch, record.batch_id)
     from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
     rights = evaluate_position_publishability(
         position, company, batch, student, operation="CHANGE_APPLY", db=db)
