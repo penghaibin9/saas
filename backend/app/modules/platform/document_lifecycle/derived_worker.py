@@ -19,6 +19,7 @@ from sqlalchemy import or_, select
 
 from app.core.context import current_tenant_id, set_tenant
 from app.core.exceptions import AppException
+from app.core.tenant_scoped import tenant_get
 from app.db.session import get_sessionmaker
 from app.models.file import FileAsset, FileJob, FileObject, FileVersion
 from app.modules.platform.document_lifecycle.file_job_dag import (
@@ -371,11 +372,13 @@ def claim_next_job(worker_id: str) -> int | None:
 def complete_job(job_id: int, *, artifact_writer: Callable[..., FileObject] | None = None) -> dict[str, Any]:
     db = get_sessionmaker()()
     previous_tenant = current_tenant_id()
+    job_tenant_id: int | None = None
     try:
         job = db.get(FileJob, int(job_id))
         if job is None or job.status != "RUNNING" or job.job_type not in JOB_TYPES:
             return {"processed": False, "reason": "job-not-running"}
-        set_tenant(int(job.tenant_id))
+        job_tenant_id = int(job.tenant_id)
+        set_tenant(job_tenant_id)
         payload = dict(job.payload_json or {})
         _assert_credential_free(payload)
         writer = artifact_writer or _store_artifact_bytes
@@ -392,7 +395,8 @@ def complete_job(job_id: int, *, artifact_writer: Callable[..., FileObject] | No
         return {"processed": True, "jobStatus": job.status, **result}
     except Exception as exc:  # worker must persist a bounded failure and retry state
         db.rollback()
-        job = db.get(FileJob, int(job_id))
+        job = tenant_get(db, FileJob, int(job_id), tenant_id=job_tenant_id) \
+            if job_tenant_id is not None else None
         if job is None:
             return {"processed": False, "reason": "job-missing"}
         exhausted = int(job.attempts or 0) >= int(job.max_attempts or 1)

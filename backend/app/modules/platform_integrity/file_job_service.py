@@ -1,13 +1,13 @@
 """Frozen evidence package jobs built on the existing FileJob authority."""
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime, timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, not_found
+from app.core.field_crypto import hash_sensitive
 from app.models.file import ArchiveManifest, FileJob
 from app.modules.platform_integrity.deterministic_package import STANDARD_PROFILE_V1
 from app.modules.platform_integrity.frozen_package_service import (
@@ -35,7 +35,10 @@ def _available_at_now() -> datetime:
 
 def package_job_dedupe_key(*, tenant_id: int, manifest_id: int, revision: int, manifest_sha256: str, profile_code: str) -> str:
     identity = f"{tenant_id}:{manifest_id}:{revision}:{manifest_sha256.lower()}:{profile_code.upper()}"
-    return f"FROZEN_PACKAGE:{hashlib.sha256(identity.encode('utf-8')).hexdigest()}"
+    digest = hash_sensitive(identity, "frozen_evidence_package_job")
+    if not digest:
+        raise AppException("FROZEN_PACKAGE_IDENTITY_INVALID", "冻结包任务身份不完整", http_status=422)
+    return f"FROZEN_PACKAGE:{digest}"
 
 
 def enqueue_frozen_package(db, *, manifest_id: int, profile_code: str = STANDARD_PROFILE_V1) -> FileJob:
