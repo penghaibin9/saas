@@ -100,4 +100,3 @@ def verify_c_order_lock(
         current_head=current,
         alembic_head=heads[0],
     )
-
