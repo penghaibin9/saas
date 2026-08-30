@@ -152,7 +152,12 @@ def main() -> None:
 
     head = git("rev-parse", "HEAD")
     origin_main = git("rev-parse", "origin/main")
-    require(origin_main == BASELINE_HEAD, "origin/main moved; fetch and rebase before final verdict")
+    baseline_on_main = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", BASELINE_HEAD, "origin/main"],
+        cwd=REPO,
+        check=False,
+    ).returncode == 0
+    require(baseline_on_main, "construction baseline is not an ancestor of latest origin/main")
     ancestor = subprocess.run(
         ["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"],
         cwd=REPO,

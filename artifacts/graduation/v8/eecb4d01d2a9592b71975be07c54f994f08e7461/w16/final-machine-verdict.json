@@ -1,9 +1,9 @@
 {
   "state": "MERGE_READY_HOLD",
-  "verificationHead": "be52db6548d0babb6808be6824294beda760016e",
+  "verificationHead": "a8cc0f99136d87023536d31576a8eb7fe919651b",
   "baselineMainHead": "eecb4d01d2a9592b71975be07c54f994f08e7461",
-  "originMainHead": "eecb4d01d2a9592b71975be07c54f994f08e7461",
-  "generatedAt": "2026-08-30T13:53:48.396646+08:00",
+  "originMainHead": "78c8673ea411d66fafd9839c98c3781ec24f39fc",
+  "generatedAt": "2026-08-30T18:06:49.615719+08:00",
   "delightScore": 98,
   "dxP0": 0,
   "dxP1": 0,
