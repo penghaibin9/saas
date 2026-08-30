@@ -97,7 +97,7 @@ export const studentApi = {
       method: 'POST', data: { ...body, clientSurface: 'MP_WEIXIN' }
     }),
   getGraduationActiveRound: () => real.gdActiveRound(),
-  getGraduationTopics: (batchId) => real.gdTopics(batchId),
+  getGraduationTopics: (params) => real.gdTopics(params),
   getMyGraduationChangeRequests: () => real.gdMyChangeRequests(),
   submitGraduationChoices: (roundId, choices) => real.gdSubmitChoices(roundId, choices),
   withdrawGraduationChoices: (roundId) => real.gdWithdrawChoices(roundId),

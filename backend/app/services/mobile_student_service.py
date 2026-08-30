@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
+import base64
+import binascii
 import random
 import time
 from contextvars import ContextVar
@@ -1153,15 +1155,70 @@ def _resolve_gd_student(db, u: dict):
 
 
 
-def graduation_topics(user: dict, batch_id: str | None = None) -> list:
-    """选题·浏览可选题目库（已入池「已审核+已确认」且未满员）。"""
+def _encode_topic_cursor(topic_id: int) -> str:
+    return base64.urlsafe_b64encode(f"topic:{int(topic_id)}".encode()).decode().rstrip("=")
+
+
+def _decode_topic_cursor(cursor: str | None) -> int | None:
+    if not cursor:
+        return None
+    try:
+        padded = str(cursor) + "=" * (-len(str(cursor)) % 4)
+        value = base64.urlsafe_b64decode(padded.encode()).decode()
+        prefix, raw_id = value.split(":", 1)
+        if prefix != "topic" or not raw_id.isdigit():
+            raise ValueError
+        return int(raw_id)
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        raise AppException("VALIDATION_ERROR", "题目分页游标无效，请刷新后重试")
+
+
+def graduation_topics(user: dict, batch_id: str | None = None, *, keyword: str | None = None,
+                      category: str | None = None, advisor: str | None = None,
+                      cursor: str | None = None, page_size: int = 20) -> dict:
+    """选题·可选题目库的真实游标分页；只返回已审核、已确认且仍有余量的题目。"""
     _require_student(user)
     if not db_enabled():
-        return []
-    from app.modules.graduation.services import graduation_topic_service as topic_svc
-    items, _ = topic_svc.list_topics(1, 500, batch_id=batch_id, review_status="APPROVED",
-                                     status="CONFIRMED", is_full=False)
-    return items
+        return {"items": [], "nextCursor": None, "total": 0, "hasMore": False}
+    from app.models import GraduationTopic
+
+    size = min(30, max(1, int(page_size or 20)))
+    cursor_id = _decode_topic_cursor(cursor)
+    with _session() as db:
+        filters = [
+            GraduationTopic.tenant_id == _tid(), GraduationTopic.is_deleted.is_(False),
+            GraduationTopic.review_status == "APPROVED", GraduationTopic.status == "CONFIRMED",
+            func.coalesce(GraduationTopic.selected, 0) < func.coalesce(GraduationTopic.capacity, 0),
+        ]
+        if batch_id:
+            filters.append(GraduationTopic.batch_id == int(batch_id))
+        if keyword and keyword.strip():
+            like = f"%{keyword.strip()}%"
+            filters.append(or_(GraduationTopic.title.like(like), GraduationTopic.topic_no.like(like),
+                               GraduationTopic.advisor_name.like(like), GraduationTopic.requirements.like(like)))
+        if category and category.strip():
+            filters.append(GraduationTopic.category == category.strip())
+        if advisor and advisor.strip():
+            filters.append(GraduationTopic.advisor_name.like(f"%{advisor.strip()}%"))
+
+        total = int(db.scalar(select(func.count()).select_from(GraduationTopic).where(*filters)) or 0)
+        page_filters = [*filters]
+        if cursor_id is not None:
+            page_filters.append(GraduationTopic.id < cursor_id)
+        rows = db.scalars(select(GraduationTopic).where(*page_filters).order_by(
+            GraduationTopic.id.desc()).limit(size + 1)).all()
+        has_more = len(rows) > size
+        page_rows = rows[:size]
+        items = [{
+            "id": str(topic.id), "topicNo": topic.topic_no or "", "title": topic.title or "",
+            "advisorName": topic.advisor_name or "导师待定", "category": topic.category or "未分类",
+            "requirements": topic.requirements or "", "capacity": int(topic.capacity or 0),
+            "selected": int(topic.selected or 0),
+            "remaining": max(0, int(topic.capacity or 0) - int(topic.selected or 0)),
+            "sourceType": topic.source_type or "", "sourceLabel": topic.source or "",
+        } for topic in page_rows]
+        next_cursor = _encode_topic_cursor(page_rows[-1].id) if has_more and page_rows else None
+        return {"items": items, "nextCursor": next_cursor, "total": total, "hasMore": has_more}
 
 
 def graduation_active_round(user: dict) -> dict | None:

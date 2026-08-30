@@ -597,9 +597,13 @@ export async function enrichGraduation(_unused) {
 
 /* ══════════ 选题管理：浏览题目库 / 提交志愿 / 课题变更申请（学生自服务，真实接口，不 mock 冒充） ══════════ */
 
-export const gdTopics = (batchId) => realRequest(
-  '/mobile/graduation/topics' + (batchId ? `?batchId=${encodeURIComponent(batchId)}` : '')
-)
+export const gdTopics = (batchOrParams = {}) => {
+  const params = typeof batchOrParams === 'object' ? batchOrParams : { batchId: batchOrParams }
+  const query = Object.entries({ pageSize: 20, ...params })
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join('&')
+  return realRequest(`/mobile/graduation/topics${query ? `?${query}` : ''}`)
+}
 export const gdActiveRound = () => realRequest('/mobile/graduation/active-round')
 export const gdSubmitChoices = (roundId, choices) =>
   realRequest('/mobile/graduation/choices', { method: 'POST', data: { roundId, choices } })

@@ -64,19 +64,32 @@
       </div>
       <EmptyState v-if="!rows.length" title="暂无成绩申诉" description="学生对已发布成绩发起申诉后在此复核" />
       <DataTable v-else :columns="appealCols" :rows="rows" row-key="id">
-        <template #cell-student="{ row }"><div class="mp-cell-main">{{ row.studentName }}</div><div class="mp-cell-sub">{{ row.reason }}</div></template>
+        <template #cell-student="{ row }">
+          <article class="ga-card">
+            <header><strong>{{ row.studentName }}</strong><span>{{ row.studentNo }}</span></header>
+            <div v-if="row.appealedGrade" class="ga-score">
+              <b>申诉对象：{{ formatPublishedAt(row.appealedGrade.publishedAt) }}发布的第 {{ row.appealedGrade.gradeVersion }} 版成绩</b>
+              <span>综合 {{ score(row.appealedGrade.totalScore) }} · 导师 {{ score(row.appealedGrade.advisorScore) }} / 评阅 {{ score(row.appealedGrade.reviewerScore) }} / 答辩 {{ score(row.appealedGrade.defenseScore) }}</span>
+            </div>
+            <div v-else class="ga-warning">该历史申诉缺少成绩版本快照，不能继续处理。</div>
+            <p><b>学生理由：</b>{{ row.reason }}</p>
+            <div :class="row.versionMatches ? 'ga-match' : 'ga-warning'">{{ row.versionMessage }}</div>
+            <button v-if="!row.versionMatches" class="mp-link" @click="openCurrentGrade(row)">查看当前成绩 →</button>
+            <details v-if="row.appealedGrade"><summary>版本校验证据</summary>申诉版本 {{ row.appealedGrade.gradeVersion }} · 当前版本 {{ row.currentGrade?.gradeVersion || '—' }}</details>
+          </article>
+        </template>
         <template #cell-status="{ row }"><StatusTag :type="row.status === 'APPROVED' ? 'success' : row.status === 'REJECTED' ? 'danger' : 'warning'" :label="row.statusLabel" dot /></template>
         <template #cell-actions="{ row }">
           <template v-if="row.status === 'PENDING'">
             <AppPermissionButton
-              :allowed="canReviewAppeal"
-              :reason="reviewAppealReason"
+              :allowed="canReviewAppeal && row.versionMatches"
+              :reason="row.versionMatches ? reviewAppealReason : row.versionMessage"
               variant="ghost"
               @click="askAppeal(row, 'APPROVE')"
             >受理</AppPermissionButton>
             <AppPermissionButton
-              :allowed="canReviewAppeal"
-              :reason="reviewAppealReason"
+              :allowed="canReviewAppeal && row.versionMatches"
+              :reason="row.versionMatches ? reviewAppealReason : row.versionMessage"
               variant="ghost"
               danger
               style="margin-left:var(--space-2)"
@@ -133,7 +146,7 @@ export default {
       appealTabs: [{ value: '', label: '全部' }, { value: 'PENDING', label: '待复核' }, { value: 'APPROVED', label: '已受理' }, { value: 'REJECTED', label: '已驳回' }],
       peerCols: [{ key: 'pair', title: '互查关系 / 意见' }, { key: 'status', title: '状态' }],
       expertCols: [{ key: 'expert', title: '专家' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '100px' }],
-      appealCols: [{ key: 'student', title: '学生 / 申诉理由' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '200px' }]
+      appealCols: [{ key: 'student', title: '申诉版本与理由' }, { key: 'status', title: '状态', width: '110px' }, { key: 'actions', title: '操作', width: '200px' }]
     }
   },
   computed: {
@@ -218,6 +231,7 @@ export default {
     },
     async askAppeal(row, action) {
       if (!this.canReviewAppeal) return toast.error(this.reviewAppealReason)
+      if (!row.versionMatches) return toast.error(row.versionMessage || '成绩版本已变化，请查看当前成绩')
       this.confirm = action === 'APPROVE'
         ? { visible: true, title: '受理申诉', message: `受理「${row.studentName}」的成绩申诉？受理后将撤回其成绩，走重新核算。`, type: 'primary', confirmText: '受理', requireReason: false, action: 'APPROVE', row }
         : {
@@ -231,7 +245,12 @@ export default {
       this.submitting = true
       const res = await graduationMoreApi.reviewAppeal(this.confirm.row.id, this.confirm.action, reason || '')
       this.submitting = false
-      if (res.code === 0) { toast.success('已复核'); this.confirm.visible = false; this.load() } else toast.error(res.message)
+      if (res.code === 0) { toast.success(this.confirm.action === 'APPROVE' ? '申诉已受理，原成绩已撤回并进入重新核算' : '申诉已驳回，学生端将看到复核理由'); this.confirm.visible = false; this.load() } else toast.error(res.message)
+    },
+    formatPublishedAt(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '原成绩发布时' },
+    score(value) { return value == null ? '—' : Number(value).toFixed(1).replace(/\.0$/, '') },
+    openCurrentGrade(row) {
+      this.$router.push({ path: '/admin/graduation/grade-ledger', query: { studentId: row.gdStudentId, source: 'grade-appeal' } })
     }
   }
 }
@@ -242,4 +261,5 @@ export default {
 .gm-tabs { display: flex; gap: var(--space-1); margin-bottom: var(--space-3); border-bottom: 1px solid var(--border-base); }
 .gm-tabs__item { padding: 8px 16px; font-size: var(--font-size-sm); color: var(--text-secondary); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; }
 .gm-tabs__item.is-active { color: var(--brand-primary); border-bottom-color: var(--brand-primary); font-weight: var(--font-weight-medium); }
+.ga-card{display:grid;gap:7px;min-width:360px}.ga-card header{display:flex;align-items:baseline;gap:8px}.ga-card header span,.ga-card details{color:var(--text-tertiary);font-size:12px}.ga-card p{margin:0;line-height:1.55}.ga-score{display:grid;gap:3px;padding:8px 10px;border-radius:8px;background:var(--gray-50,#f8fafc)}.ga-score span{color:var(--text-secondary);font-size:12px}.ga-match,.ga-warning{padding:6px 8px;border-radius:7px;font-size:12px}.ga-match{color:var(--success-700,#15803d);background:var(--success-50,#f0fdf4)}.ga-warning{color:var(--danger-700,#b91c1c);background:var(--danger-50,#fef2f2)}
 </style>

@@ -1,0 +1,14 @@
+{
+  "scale": 100,
+  "baseline": 82,
+  "target": 97,
+  "dimensions": [
+    {"name":"information hierarchy","score":13,"max":20,"reason":"52 leaves and ten/eleven equal-weight local views."},
+    {"name":"task immediacy","score":14,"max":20,"reason":"dashboard starts from aggregate counts instead of the next urgent task."},
+    {"name":"human language","score":15,"max":20,"reason":"raw stage/version/SHA/W7.5 language leaks into primary views."},
+    {"name":"continuity and receipts","score":16,"max":20,"reason":"strong flows but receipt/next actor/change diff are inconsistent."},
+    {"name":"cross-end consistency","score":12,"max":20,"reason":"mobile role coverage and error states silently disappear."},
+    {"name":"visual confidence","score":12,"max":20,"reason":"tables and action density obscure priority."}
+  ],
+  "criticalConditions":["DX-P0=0","DX-P1=0","all D-GATEs green","20K data volume green","eight Golden Journeys at L4"]
+}

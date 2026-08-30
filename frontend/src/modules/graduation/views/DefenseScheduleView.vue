@@ -49,9 +49,10 @@
         <template #cell-panel="{ row }">
           <div style="font-size: var(--font-size-sm)">组长：{{ row.chair }}</div>
           <div class="mp-cell-sub">
-            {{ row.members.length ? '评委：' + row.members.join('、') : '评委待安排' }} · 秘书：{{ row.secretary }}
+            {{ row.members.length ? '评委：' + memberNames(row).join('、') : '评委待安排' }} · 秘书：{{ row.secretary }}
           </div>
           <div v-if="row.conflict" class="mp-cell-sub" style="color: var(--danger-600)">⚠ {{ row.conflict }}</div>
+          <div v-else-if="!publishPreflight(row).ready" class="mp-cell-sub ds-preflight-warning">发布前：{{ publishPreflight(row).summary }}</div>
         </template>
         <template #cell-published="{ row }">
           <StatusTag :type="row.published ? 'success' : row.conflict ? 'danger' : 'warning'" :label="row.publishedLabel" dot />
@@ -61,8 +62,8 @@
           <button
             v-if="!row.published"
             class="mp-link"
-            :class="{ 'is-disabled': !canPublish || !!row.conflict }"
-            :title="row.conflict ? '存在评委与导师冲突，调整后方可发布' : publishReason"
+            :class="{ 'is-disabled': !canPublish || !publishPreflight(row).ready }"
+            :title="!publishPreflight(row).ready ? publishPreflight(row).summary : publishReason"
             style="margin-left: var(--space-2)"
             @click="askPublish(row)"
           >发布</button>
@@ -70,6 +71,10 @@
         </template>
       </DataTable>
       <p class="mp-note">评委回避：评委/组长不得是本组学生的指导教师，系统自动检测并拦截发布；单组学生 ≤ 30 人。导出答辩表含水印与导出留痕。</p>
+      <aside v-if="actionReceipt" class="ds-receipt" role="status">
+        <div><strong>{{ actionReceipt.title }}</strong><span>{{ actionReceipt.result }}</span><small>{{ actionReceipt.next }}</small></div>
+        <button type="button" @click="actionReceipt = null">关闭</button>
+      </aside>
     </div>
 
     <AppConfirmDialog
@@ -102,6 +107,7 @@ export default {
       batchStore: useGraduationBatchStore(),
       loading: true, error: '', rows: [], submitting: false,
       filterKey: 'all',
+      actionReceipt: null,
       confirm: { visible: false, title: '', message: '', row: null },
       columns: [
         { key: 'group', title: '答辩分组' },
@@ -220,16 +226,25 @@ export default {
       if (res.code === 0) {
         const n = res.data?.notified || 0
         const msg = res.data?.message || res.message
+        this.actionReceipt = {
+          title: `${row.groupName} · 通知结果`,
+          result: `服务器回执：已送达 ${n} 人；排队 ${res.data?.queued || 0} 人；待重试 ${Number(res.data?.pending || 0) + Number(res.data?.failed || 0)} 人`,
+          next: res.data?.pending || res.data?.failed ? '发送队列会继续重试，无需重复点击。' : '当前无需继续操作。'
+        }
         if (n > 0) toast.success(msg || `已向 ${n} 名学生发送答辩通知`)
         else toast.info(msg || '暂无可投递学生')
       } else toast.error(res.message || '通知失败')
     },
     askPublish(row) {
-      if (!this.canPublish || row.conflict) return
+      const preflight = this.publishPreflight(row)
+      if (!this.canPublish || !preflight.ready) {
+        if (!preflight.ready) toast.error(`暂不能发布：${preflight.summary}`)
+        return
+      }
       this.confirm = {
         visible: true,
         title: '发布答辩安排',
-        message: `确认发布「${row.groupName}」？发布后 ${row.studentCount} 名学生的学生端即时可见，发布动作写入留痕；后端将再次校验回避与完整性。`,
+        message: `发布前检查全部通过：${preflight.summary}。确认发布「${row.groupName}」？发布后 ${row.studentCount} 名学生的学生端即时可见，后端将再次校验回避与完整性。`,
         row
       }
     },
@@ -240,9 +255,15 @@ export default {
       const res = await graduationApi.publishDefenseSchedule(row.id)
       this.submitting = false
       if (res.code === 0) {
-        toast.success(row.groupName + ' 已发布：学生端即时可见，发布动作已留痕')
         this.confirm.visible = false
-        this.load()
+        await this.load()
+        const latest = this.rows.find(item => String(item.id) === String(row.id))
+        this.actionReceipt = {
+          title: `${row.groupName} 已发布`,
+          result: `服务器最新状态：${latest?.published ? '已发布' : '状态待确认'}；${row.studentCount} 名学生可见`,
+          next: '下一步：发送答辩通知；未送达项将进入重试队列。'
+        }
+        toast.success(row.groupName + ' 已发布，服务器最新状态已回读')
       } else {
         toast.error(res.message)
       }
@@ -264,6 +285,24 @@ export default {
       if (res.code === 0) this.rows = res.data.list
       else this.error = res.message
       this.loading = false
+    },
+    publishPreflight(row) {
+      const members = Array.isArray(row?.members) ? row.members : []
+      const missingJudges = (row?.chairMentorId ? 0 : 1) + members.filter(member => !(member?.mentorId || member?.expertId)).length
+      const gaps = {
+        missingJudges,
+        conflicts: row?.conflict ? 1 : 0,
+        missingLocation: !row?.location || row.location === '待定' ? 1 : 0,
+        missingTime: !row?.date || row.date === '待定' ? 1 : 0,
+        missingSecretary: row?.secretaryMentorId ? 0 : 1,
+        students: Number(row?.studentCount || 0)
+      }
+      const ready = !gaps.missingJudges && !gaps.conflicts && !gaps.missingLocation && !gaps.missingTime && !gaps.missingSecretary && gaps.students > 0
+      return { ...gaps, ready, summary: `缺稳定评委 ${gaps.missingJudges} · 回避冲突 ${gaps.conflicts} · 无地点 ${gaps.missingLocation} · 无时间 ${gaps.missingTime} · 缺秘书 ${gaps.missingSecretary} · 学生 ${gaps.students}` }
+    },
+    memberNames(row) {
+      return (Array.isArray(row?.members) ? row.members : [])
+        .map(member => typeof member === 'string' ? member : (member?.name || member?.teacherName || '未命名评委'))
     }
   }
 }
@@ -280,6 +319,7 @@ export default {
 .ds-chip--danger b { color: var(--danger, #dc2626); }
 .ds-chip--warning b { color: var(--warning-600, #d97706); }
 .ds-chip--success b { color: var(--success-600, #16a34a); }
+.ds-preflight-warning{color:var(--warning-700,#a16207)!important}.ds-receipt{display:flex;align-items:center;gap:14px;padding:11px 12px;border:1px solid #b7ebc6;border-radius:9px;background:#f0fff4}.ds-receipt div{display:grid;gap:3px;flex:1}.ds-receipt strong{color:#137a43}.ds-receipt span{font-size:13px}.ds-receipt small{color:var(--text-tertiary)}.ds-receipt button{border:0;background:transparent;color:var(--primary-600);cursor:pointer}
 .gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 @media (max-width: 700px) { .ds-summary .mp-note { width: 100%; margin-left: 0 !important; } }
 </style>

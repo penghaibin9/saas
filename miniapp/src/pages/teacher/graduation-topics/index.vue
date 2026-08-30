@@ -86,12 +86,14 @@ export default {
       choiceError: '', changeError: '', loadError: ''
     }
   },
-  onLoad() { this.load() },
+  onLoad() { uni.$on('graduation:teacher-batch-ready', this.onBatchReady); this.load() },
+  onUnload() { uni.$off('graduation:teacher-batch-ready', this.onBatchReady) },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
+    onBatchReady() { this.load() },
     switchTab(t) { if (this.tab !== t) this.tab = t },
     async load(done) {
       this.state = 'loading'
