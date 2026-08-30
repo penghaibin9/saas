@@ -49,6 +49,19 @@ EXPECTED_ORG_SCOPES: dict[str, int] = {
     "INTERN_MENTOR": 96,
 }
 
+EXPECTED_ORG_SCOPE_TYPES: dict[str, str] = {
+    "COLLEGE_ADMIN": "COLLEGE",
+    "STUDENT_AFFAIRS": "COLLEGE",
+    "PSYCHOLOGY_TEACHER": "COLLEGE",
+    "FUNDING_TEACHER": "COLLEGE",
+    "YOUTH_LEAGUE": "COLLEGE",
+    "GD_COLLEGE_ADMIN": "COLLEGE",
+    "GD_MAJOR_ADMIN": "MAJOR",
+    "EMPLOYMENT_TEACHER": "COLLEGE",
+    "GD_MENTOR": "ADVISOR",
+    "INTERN_MENTOR": "ADVISOR",
+}
+
 REQUIRED_ROLE_CODES = tuple(sorted({
     "SCHOOL_ADMIN", "STUDENT", "ACADEMIC_TEACHER", "ACADEMIC_ADMIN",
     "STUDENT_AFFAIRS_ADMIN", "COUNSELOR", "INTERN_MENTOR", "GD_MENTOR",
@@ -389,18 +402,24 @@ def validate_school_roles_20k(db, tenant_id: int) -> dict:
             )
         ) or 0)
 
-    scope_counts = {
-        role_code: int(count)
-        for role_code, count in db.execute(select(
-            TeacherStudentScope.role_code,
-            __import__("sqlalchemy").func.count(),
-        ).where(
-            TeacherStudentScope.tenant_id == tenant_id,
-            TeacherStudentScope.role_code.in_(tuple(EXPECTED_ORG_SCOPES)),
-            TeacherStudentScope.status == "ACTIVE",
-            TeacherStudentScope.is_deleted.is_(False),
-        ).group_by(TeacherStudentScope.role_code)).all()
-    }
+    scope_counts = {code: 0 for code in EXPECTED_ORG_SCOPES}
+    scope_rows = db.execute(select(
+        TeacherStudentScope.role_code,
+        TeacherStudentScope.scope_type,
+        __import__("sqlalchemy").func.count(),
+    ).where(
+        TeacherStudentScope.tenant_id == tenant_id,
+        TeacherStudentScope.role_code.in_(tuple(EXPECTED_ORG_SCOPES)),
+        TeacherStudentScope.status == "ACTIVE",
+        TeacherStudentScope.is_deleted.is_(False),
+    ).group_by(
+        TeacherStudentScope.role_code,
+        TeacherStudentScope.scope_type,
+    )).all()
+    for role_code, scope_type, count in scope_rows:
+        code = str(role_code or "").upper()
+        if str(scope_type or "").upper() == EXPECTED_ORG_SCOPE_TYPES.get(code):
+            scope_counts[code] += int(count)
     background_accounts = int(db.scalar(
         select(__import__("sqlalchemy").func.count()).select_from(User).where(
             User.tenant_id == tenant_id,

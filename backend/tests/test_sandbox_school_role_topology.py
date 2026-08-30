@@ -2,6 +2,7 @@
 from app.services.saas_role_templates import ROLE_TEMPLATE_BY_CODE
 from app.services.sandbox_school_role_reconcile import (
     EXPECTED_ORG_SCOPES,
+    EXPECTED_ORG_SCOPE_TYPES,
     REQUIRED_ROLE_CODES,
     SECONDARY_ROLE_ASSIGNMENT_COUNTS,
 )
@@ -35,3 +36,10 @@ def test_org_scope_plan_matches_eight_colleges_and_thirty_two_majors():
     assert EXPECTED_ORG_SCOPES["EMPLOYMENT_TEACHER"] == 8 * 4
     assert EXPECTED_ORG_SCOPES["GD_MENTOR"] == 96
     assert EXPECTED_ORG_SCOPES["INTERN_MENTOR"] == 96
+
+
+def test_org_scope_validation_does_not_count_sensitive_student_grants_twice():
+    assert set(EXPECTED_ORG_SCOPE_TYPES) == set(EXPECTED_ORG_SCOPES)
+    assert EXPECTED_ORG_SCOPE_TYPES["PSYCHOLOGY_TEACHER"] == "COLLEGE"
+    assert EXPECTED_ORG_SCOPE_TYPES["GD_MAJOR_ADMIN"] == "MAJOR"
+    assert EXPECTED_ORG_SCOPE_TYPES["GD_MENTOR"] == "ADVISOR"
