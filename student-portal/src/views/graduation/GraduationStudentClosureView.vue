@@ -1,8 +1,8 @@
 <template>
   <div class="gd-student-closure">
     <router-link class="frozen-package-entry" to="/graduation/evidence-package"><span>冻结证据包</span><strong>查看归档时固定的材料与业务快照 →</strong></router-link>
-    <GraduationFeedbackResubmitView />
     <GraduationWorkbenchView />
+    <GraduationFeedbackResubmitView />
   </div>
 </template>
 

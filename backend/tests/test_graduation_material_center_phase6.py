@@ -136,8 +136,17 @@ def test_production_material_center_route_and_ui_contract():
     assert "/admin/graduation/material-center" in workspace
     for label in ("全部材料", "学生完整性", "待审核", "安全异常"):
         assert label in page
-    for field in ("指导教师", "阶段 / 材料", "文件", "版本", "上传人 / 时间", "大小", "扫描", "审核", "归档"):
+    for field in ("学生", "材料", "当前文件", "提交信息", "文件安全", "审核结论", "归档结论", "操作"):
         assert field in page
+    for marker in (
+        "{{ stageLabel(row.stage) }}",
+        "{{ row.materialName }}",
+        "技术标识",
+        "当前第 {{ row.currentVersion || 0 }} 版",
+        "{{ row.uploadedAt || '尚未提交' }} · {{ sizeText(row.sizeBytes) }}",
+    ):
+        assert marker in page
+    assert "阶段 / 材料" not in page
     assert "AppConfirmDialog" in page and "FileVersionTimeline" in page
     assert "window.prompt" not in page and "window.confirm" not in page
     assert "createExport" not in page and "freezeManifest" not in page and "templateCatalog" not in page

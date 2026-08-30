@@ -90,6 +90,22 @@
               </template>
 
               <template v-else-if="step.key === 'topic'">
+                <div v-if="hasTopic" class="gd-topic-pinned" aria-label="当前已选课题">
+                  <span>当前已选课题（固定展示）</span>
+                  <strong>{{ my.topicTitle || '课题信息待同步' }}</strong>
+                  <em>{{ my.advisorName ? `指导教师：${my.advisorName}` : '指导教师待分配' }}</em>
+                </div>
+                <div v-if="topicBatchId()" class="gd-topic-filters">
+                  <input v-model.trim="topicKeyword" type="search" placeholder="搜索题目、编号或要求" @keyup.enter="loadTopics(true)" />
+                  <input v-model.trim="topicCategory" placeholder="分类，如：软件开发" @keyup.enter="loadTopics(true)" />
+                  <input v-model.trim="topicAdvisor" placeholder="指导教师" @keyup.enter="loadTopics(true)" />
+                  <button class="sp-btn sp-btn--ghost" :disabled="topicLoading" @click="loadTopics(true)">{{ topicLoading ? '查询中…' : '查询题目' }}</button>
+                  <span class="gd-topic-filters__scope">仅显示已审核、已确认且有余量的课题</span>
+                </div>
+                <div v-if="topicError" class="gd-topic-error" role="alert">
+                  <span>{{ topicError }}</span>
+                  <button class="sp-btn sp-btn--ghost" @click="loadTopics(true)">重试</button>
+                </div>
                 <template v-if="!hasTopic">
                   <p v-if="!round" class="sp-muted">当前没有开放的选题轮次，请等待管理员发布。</p>
                   <template v-else>
@@ -103,9 +119,12 @@
                     <div class="gd-topic-list">
                       <button v-for="topic in topics" :key="topic.id" class="gd-topic" :class="{ 'is-picked': selectedTopicIds.includes(String(topic.id)) }" @click="toggleTopic(topic.id)">
                         <b v-if="selectedTopicIds.includes(String(topic.id))">志愿 {{ selectedTopicIds.indexOf(String(topic.id)) + 1 }}</b>
-                        <strong>{{ topic.title }}</strong><span>{{ topic.advisorName || '导师待定' }}</span>
+                        <strong>{{ topic.title }}</strong>
+                        <span>{{ topic.advisorName || '导师待定' }} · {{ topic.category || '未分类' }}</span>
+                        <span>剩余 {{ topic.remaining ?? '—' }} / {{ topic.capacity ?? '—' }} 个名额</span>
                       </button>
                     </div>
+                    <button v-if="topicsHasMore" class="sp-btn sp-btn--ghost gd-topic-more" :disabled="topicLoading" @click="loadTopics(false)">{{ topicLoading ? '加载中…' : '加载更多题目' }}</button>
                     <div class="gd-step__actions">
                       <button class="sp-btn" :disabled="busy || !selectedTopicIds.length" @click="submitChoices">提交志愿</button>
                       <button v-if="canWithdrawChoices" class="sp-btn sp-btn--ghost" :disabled="busy" @click="withdrawChoices">退选志愿</button>
@@ -117,9 +136,12 @@
                   <div class="gd-topic-list">
                     <button v-for="topic in topics" :key="topic.id" class="gd-topic" :class="{ 'is-picked': String(changeTopicId) === String(topic.id) }" @click="changeTopicId = topic.id">
                       <b v-if="String(changeTopicId) === String(topic.id)">已选</b>
-                      <strong>{{ topic.title }}</strong><span>{{ topic.advisorName || '导师待定' }}</span>
+                      <strong>{{ topic.title }}</strong>
+                      <span>{{ topic.advisorName || '导师待定' }} · {{ topic.category || '未分类' }}</span>
+                      <span>剩余 {{ topic.remaining ?? '—' }} / {{ topic.capacity ?? '—' }} 个名额</span>
                     </button>
                   </div>
+                  <button v-if="topicsHasMore" class="sp-btn sp-btn--ghost gd-topic-more" :disabled="topicLoading" @click="loadTopics(false)">{{ topicLoading ? '加载中…' : '加载更多题目' }}</button>
                   <label>变更理由<textarea v-model.trim="changeReason" placeholder="变更理由（至少 5 字）" maxlength="200" /></label>
                   <button class="sp-btn" :disabled="busy || !changeTopicId || changeReason.trim().length < 5" @click="submitTopicChange">提交更换申请</button>
                   <div v-if="changeRequests.length" class="gd-change-list">
@@ -237,6 +259,13 @@ const peerOpinions = reactive({})
 const peerNotes = reactive({})
 const round = ref(null)
 const topics = ref([])
+const topicsNextCursor = ref('')
+const topicsHasMore = ref(false)
+const topicLoading = ref(false)
+const topicError = ref('')
+const topicKeyword = ref('')
+const topicCategory = ref('')
+const topicAdvisor = ref('')
 const selectedTopicIds = ref([])
 const changeRequests = ref([])
 const changeTopicId = ref('')
@@ -380,6 +409,38 @@ function topicBatchId() {
   return my.value.batchId || round.value?.batchId || ''
 }
 
+async function loadTopics(reset = true) {
+  const batchId = topicBatchId()
+  if (!batchId) {
+    if (reset) topics.value = []
+    topicsHasMore.value = false
+    topicsNextCursor.value = ''
+    return
+  }
+  if (topicLoading.value) return
+  topicLoading.value = true
+  topicError.value = ''
+  try {
+    const payload = await portalApi.graduationTopics({
+      batchId,
+      keyword: topicKeyword.value,
+      category: topicCategory.value,
+      advisor: topicAdvisor.value,
+      cursor: reset ? '' : topicsNextCursor.value,
+      pageSize: 20
+    })
+    const data = Array.isArray(payload) ? { items: payload, nextCursor: '', hasMore: false } : (payload || {})
+    topics.value = reset ? (data.items || []) : [...topics.value, ...(data.items || [])]
+    topicsNextCursor.value = data.nextCursor || ''
+    topicsHasMore.value = data.hasMore === true
+  } catch (e) {
+    if (reset) topics.value = []
+    topicError.value = e?.message || '题目库加载失败，请重试'
+  } finally {
+    topicLoading.value = false
+  }
+}
+
 const sections = {
   my: async () => { my.value = await portalApi.domainMy('graduation') },
   taskbook: async () => { taskbook.value = await portalApi.graduationTaskbook() },
@@ -433,12 +494,7 @@ async function handleAction(key) {
     }
   }
   if (key === 'topic' && expanded.value === 'topic') {
-    const batchId = topicBatchId()
-    if (batchId) {
-      try { topics.value = await portalApi.graduationTopics(batchId) } catch (e) { ui.notify(e?.message || '题目库加载失败') }
-    } else if (!hasTopic.value && !round.value) {
-      topics.value = []
-    }
+    await loadTopics(true)
     if (hasTopic.value) {
       changeTopicId.value = ''
       changeReason.value = ''
@@ -655,7 +711,9 @@ onMounted(load)
 .gd-files { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; color:#4e5969; font-size:13px; }.gd-file-actions{display:inline-flex;gap:4px}.gd-file { border:0; padding:5px 8px; border-radius:5px; color:var(--sp-primary); background:rgba(22,119,255,.08); cursor:pointer; font-size:12px; }.gd-file--download{color:#53647a;background:#f2f4f7}.gd-file:disabled { cursor:not-allowed; opacity:.6; }.gd-checklist { display:flex; flex-wrap:wrap; gap:7px 14px; margin:12px 0 0; padding:0; list-style:none; color:#4e5969; font-size:12px; }.gd-checklist li { color:#00a33a; }.gd-checklist li.is-missing { color:#f53f3f; }
 .gd-submit-preflight{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 10px;padding:9px 10px;border:1px solid #dce8f7;border-radius:7px;background:#f5f9ff;color:#53647a;font-size:12px}.gd-submit-preflight .sp-btn{margin:0}
 .gd-topic-list { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; margin:12px 0; }.gd-topic { position:relative; min-height:72px; padding:10px; text-align:left; cursor:pointer; background:#fff; border:1px solid #e5e6eb; border-radius:7px; }.gd-topic.is-picked { border-color:var(--sp-primary); background:rgba(22,119,255,.05); }.gd-topic b { position:absolute; right:8px; top:8px; color:var(--sp-primary); font-size:11px; }.gd-topic strong,.gd-topic span { display:block; padding-right:44px; }.gd-topic strong { font-size:13px; }.gd-topic span { color:#86909c; font-size:12px; margin-top:5px; }
+.gd-topic-pinned { display:grid; gap:5px; margin-bottom:12px; padding:12px 14px; border:1px solid rgba(22,119,255,.25); border-radius:8px; background:rgba(22,119,255,.05); }.gd-topic-pinned span { color:var(--sp-primary); font-size:12px; font-weight:600; }.gd-topic-pinned strong { color:#1d2129; font-size:14px; }.gd-topic-pinned em { color:#86909c; font-size:12px; font-style:normal; }
+.gd-topic-filters { display:grid; grid-template-columns:minmax(180px,2fr) repeat(2,minmax(130px,1fr)) auto; gap:8px; align-items:center; }.gd-topic-filters input { min-width:0; height:34px; padding:0 9px; border:1px solid #dcdfe6; border-radius:6px; font:inherit; }.gd-topic-filters .sp-btn { margin:0; white-space:nowrap; }.gd-topic-filters__scope { grid-column:1/-1; color:#86909c; font-size:12px; }.gd-topic-error { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:10px 0; padding:9px 10px; border:1px solid #ffccc7; border-radius:7px; background:#fff2f0; color:#a8071a; font-size:12px; }.gd-topic-error .sp-btn,.gd-topic-more { margin:0; }
 .gd-grade-box { margin-top:12px; padding:12px 14px; border-radius:8px; background:#f7fafc; border:1px solid #edf0f3; }.gd-grade-score { margin:0 0 6px; font-size:14px; color:#1d2129; }.gd-grade-score strong { font-size:20px; color:var(--sp-primary); }.gd-grade-box .sp-btn { margin-top:10px; }.gd-grade-box label { display:block; margin-top:10px; color:#4e5969; font-size:13px; }.gd-grade-box textarea { display:block; width:100%; min-height:72px; margin-top:6px; padding:9px 10px; font:inherit; border:1px solid #dcdfe6; border-radius:6px; resize:vertical; }
 .gd-peer { margin-top:16px; padding:16px 18px; }.gd-peer h2 { margin:0 0 6px; font-size:16px; }.gd-peer__item { margin-top:14px; padding-top:14px; border-top:1px solid #edf0f3; }.gd-peer__item header { display:flex; justify-content:space-between; gap:12px; align-items:center; }.gd-peer__item label { display:block; margin:10px 0; color:#4e5969; font-size:13px; }.gd-peer__item textarea { display:block; width:100%; min-height:72px; margin-top:6px; padding:9px 10px; font:inherit; border:1px solid #dcdfe6; border-radius:6px; resize:vertical; }
-@media (max-width: 760px) { .gd-hero { display:block; }.gd-hero .sp-btn { margin-top:12px; }.gd-summary { grid-template-columns:repeat(2, 1fr); }.gd-step { grid-template-columns:40px minmax(0, 1fr); }.gd-step article { margin-left:12px; }.gd-step__head { display:block; }.gd-step__head .sp-tag { margin-top:8px; } }
+@media (max-width: 760px) { .gd-hero { display:block; }.gd-hero .sp-btn { margin-top:12px; }.gd-summary { grid-template-columns:repeat(2, 1fr); }.gd-step { grid-template-columns:40px minmax(0, 1fr); }.gd-step article { margin-left:12px; }.gd-step__head { display:block; }.gd-step__head .sp-tag { margin-top:8px; }.gd-topic-filters { grid-template-columns:1fr; }.gd-topic-filters__scope { grid-column:auto; } }
 </style>

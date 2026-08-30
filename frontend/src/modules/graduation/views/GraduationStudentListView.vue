@@ -13,12 +13,22 @@
     </template>
 
     <div class="mp-stack">
-      <!-- 页内视图页签：同一名单的不同工作视图（原三级菜单入口收口至此，?panel= 深链不变） -->
-      <div class="mp-tabs">
+      <!-- 五个稳定主视图；旧 ?panel= 深链继续映射到各组内的次级视图。 -->
+      <div class="mp-tabs gd-primary-tabs" aria-label="学生主视图">
         <button
-          v-for="p in panelTabs"
-          :key="p.key"
+          v-for="g in primaryGroups"
+          :key="g.key"
           class="mp-tab"
+          :class="{ 'is-active': activeGroupKey === g.key }"
+          @click="switchGroup(g)"
+        >{{ g.label }}</button>
+      </div>
+      <div v-if="activeGroupPanels.length > 1" class="gd-local-views" aria-label="当前主视图的细分任务">
+        <span>当前视图</span>
+        <button
+          v-for="p in activeGroupPanels"
+          :key="p.key"
+          type="button"
           :class="{ 'is-active': activePanel === p.key }"
           @click="switchPanel(p.key)"
         >{{ p.label }}</button>
@@ -221,6 +231,14 @@ const PANEL_TABS = [
   { key: 'mentor', label: '已选题导师' }
 ]
 
+const PRIMARY_GROUPS = [
+  { key: 'roster', label: '名单', defaultPanel: 'roster', panels: ['roster'] },
+  { key: 'progress', label: '进度与风险', defaultPanel: 'progress', panels: ['progress', 'risk'] },
+  { key: 'relations', label: '关系与资格', defaultPanel: 'topic', panels: ['topic', 'mentor', 'eligibility', 'grouping'] },
+  { key: 'materials', label: '材料与答辩', defaultPanel: 'materials', panels: ['materials', 'defense'] },
+  { key: 'closure', label: '收口与归档', defaultPanel: 'grad-qual', panels: ['grad-qual', 'archive'] }
+]
+
 const PANEL_HINTS = {
   roster: '建档、导入、导出全量名单',
   progress: '按节点状态筛选（默认指导中）',
@@ -301,6 +319,7 @@ export default {
     return {
       batchStore: useGraduationBatchStore(),
       loading: true, error: '', submitting: false, activePanel: 'roster',
+      primaryGroups: PRIMARY_GROUPS,
       panelTabs: PANEL_TABS,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
       selectedIds: [],
@@ -311,6 +330,13 @@ export default {
     }
   },
   computed: {
+    activeGroupKey() {
+      return PRIMARY_GROUPS.find((group) => group.panels.includes(this.activePanel))?.key || 'roster'
+    },
+    activeGroupPanels() {
+      const group = PRIMARY_GROUPS.find((item) => item.key === this.activeGroupKey) || PRIMARY_GROUPS[0]
+      return group.panels.map((key) => PANEL_TABS.find((panel) => panel.key === key)).filter(Boolean)
+    },
     hasBatch() {
       return !!this.batchStore.selectedBatchId
     },
@@ -421,6 +447,10 @@ export default {
     this.loadGroupOpts()
   },
   methods: {
+    switchGroup(group) {
+      if (!group || group.key === this.activeGroupKey) return
+      this.switchPanel(group.defaultPanel)
+    },
     /** 页内页签切换：改路由 query，由 $route.query.panel watcher 统一应用视图 */
     switchPanel(p) {
       if (p === this.activePanel) return
@@ -597,5 +627,10 @@ export default {
 .mp-tabs { overflow-x: auto; scrollbar-width: thin; flex-wrap: nowrap; padding-bottom: 1px; }
 .mp-tab { flex: 0 0 auto; white-space: nowrap; }
 .mp-tab:hover:not(.is-active) { color: var(--text-primary); background: var(--gray-50, #f8fafc); border-radius: var(--radius-sm); }
+.gd-primary-tabs { overflow: visible; }
+.gd-local-views { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--gray-50, #f8fafc); }
+.gd-local-views > span { margin-right: 4px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.gd-local-views button { padding: 5px 10px; border: 1px solid transparent; border-radius: var(--radius-full); background: transparent; color: var(--text-secondary); cursor: pointer; }
+.gd-local-views button.is-active { border-color: var(--primary-200, #bfdbfe); background: var(--primary-50, #eff6ff); color: var(--primary-700, #1d4ed8); font-weight: 600; }
 @media (max-width: 700px) { .gd-actions { width: 100%; justify-content: space-between; } }
 </style>

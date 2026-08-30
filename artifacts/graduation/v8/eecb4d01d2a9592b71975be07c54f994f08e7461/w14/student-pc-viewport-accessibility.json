@@ -1,0 +1,92 @@
+[
+  {
+    "surface": "student-pc",
+    "route": "http://127.0.0.1:5300/portal/graduation",
+    "screenshot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w14\\student-pc-workbench-1920x1080.png",
+    "order": {
+      "workbench": true,
+      "extension": false,
+      "workbenchBeforeExtension": true
+    },
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "expectedViewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "bodyScrollWidth": 1920,
+    "bodyClientWidth": 1920,
+    "horizontalOverflow": false,
+    "visibleInteractiveCount": 30,
+    "unnamed": [],
+    "missingAlt": [],
+    "h1Count": 1,
+    "keyboardFocus": {
+      "tag": "BUTTON",
+      "text": "首页工作台",
+      "body": false
+    }
+  },
+  {
+    "surface": "student-pc",
+    "route": "http://127.0.0.1:5300/portal/graduation",
+    "screenshot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w14\\student-pc-workbench-1440x900.png",
+    "order": {
+      "workbench": true,
+      "extension": false,
+      "workbenchBeforeExtension": true
+    },
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "expectedViewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "bodyScrollWidth": 1440,
+    "bodyClientWidth": 1440,
+    "horizontalOverflow": false,
+    "visibleInteractiveCount": 30,
+    "unnamed": [],
+    "missingAlt": [],
+    "h1Count": 1,
+    "keyboardFocus": {
+      "tag": "BUTTON",
+      "text": "首页工作台",
+      "body": false
+    }
+  },
+  {
+    "surface": "student-pc",
+    "route": "http://127.0.0.1:5300/portal/graduation",
+    "screenshot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w14\\student-pc-workbench-1280x800.png",
+    "order": {
+      "workbench": true,
+      "extension": false,
+      "workbenchBeforeExtension": true
+    },
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "expectedViewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "bodyScrollWidth": 1280,
+    "bodyClientWidth": 1280,
+    "horizontalOverflow": false,
+    "visibleInteractiveCount": 30,
+    "unnamed": [],
+    "missingAlt": [],
+    "h1Count": 1,
+    "keyboardFocus": {
+      "tag": "BUTTON",
+      "text": "首页工作台",
+      "body": false
+    }
+  }
+]

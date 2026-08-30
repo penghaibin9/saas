@@ -146,6 +146,9 @@ export default {
     },
     reloadCurrentPage() {
       this.$nextTick(() => {
+        // H5 的 getCurrentPages().$vm 不保证指向业务页；显式事件让首次进入时
+        // 早于批次落盘的请求能在批次就绪后可靠重跑，且不放宽服务端身份校验。
+        if (typeof uni.$emit === 'function') uni.$emit('graduation:teacher-batch-ready')
         const pages = pageStack()
         const page = pages[pages.length - 1]
         const vm = page && page.$vm

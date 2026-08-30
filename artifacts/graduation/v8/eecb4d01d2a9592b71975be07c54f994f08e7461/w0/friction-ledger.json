@@ -1,0 +1,27 @@
+{
+  "baselineSha": "eecb4d01d2a9592b71975be07c54f994f08e7461",
+  "p0": [],
+  "p1": [
+    {"id":"DX-P1-01","title":"52 个叶子菜单造成重复导航","status":"OPEN","evidence":"menu-tree.json","target":"8 workspaces / 24 primary leaves; legacy routes preserved"},
+    {"id":"DX-P1-02","title":"批次阶段与规则入口不能精确落地","status":"OPEN","evidence":"baseline-browser/admin-batch-stages.png","target":"batchId + panel lands on the exact batch detail view"},
+    {"id":"DX-P1-03","title":"总览按数量而非紧急度排序","status":"OPEN","evidence":"baseline-browser/adminDashboard.png","target":"todayWorkItems ordered by CRITICAL > HIGH > OVERDUE > DUE_24H > RELEASE_BLOCKER > RETURNED > WAITING_REVIEW > NORMAL"},
+    {"id":"DX-P1-04","title":"学生页 11 个等权视图","status":"OPEN","evidence":"baseline-browser/adminStudents.png","target":"5 primary groups with preserved panel deep links"},
+    {"id":"DX-P1-05","title":"题目页 11 个等权视图与行操作拥挤","status":"OPEN","evidence":"baseline-browser/adminTopics.png","target":"5 primary groups and row-action restraint"},
+    {"id":"DX-P1-06","title":"材料中心 12 个原始技术列主导","status":"OPEN","evidence":"baseline-browser/admin-material-center.png","target":"human first columns; raw codes secondary"},
+    {"id":"DX-P1-07","title":"文件证据技术信息优先","status":"OPEN","evidence":"source audit","target":"human summary first; fileVersionId/SHA in expandable evidence"},
+    {"id":"DX-P1-08","title":"过程页默认要求再次搜索学生","status":"OPEN","evidence":"baseline-browser/teacher-pc-taskbook.png","target":"studentId + panel exact deep link"},
+    {"id":"DX-P1-09","title":"DefenseGrade 与专业队列命令归属重叠","status":"OPEN","evidence":"baseline-browser/admin-defense.png","target":"read-centric dossier; single primary command owner"},
+    {"id":"DX-P1-10","title":"成绩申诉缺少版本事实","status":"OPEN","evidence":"baseline-browser/admin-grade-ledger.png","target":"grade version/change/reason/receipt/next actor"},
+    {"id":"DX-P1-11","title":"学生 PC 先显示反馈块再显示工作台","status":"OPEN","evidence":"baseline-browser/student-pc-graduationFirst.png","target":"eight-step workbench is the first screen"},
+    {"id":"DX-P1-12","title":"默认界面泄漏 W7.5/FileVersion/SHA 工程语言","status":"OPEN","evidence":"baseline-browser/student-pc-graduationFirst.png","target":"human language by default; evidence expandable"},
+    {"id":"DX-P1-13","title":"题目接口硬上限 500 且无真实分页","status":"OPEN","evidence":"backend/app/services/mobile_student_service.py:1156","target":"cursor contract, pageSize <= 30, items/nextCursor/total/hasMore"},
+    {"id":"DX-P1-14","title":"学生 Mini 题目错误可静默为空","status":"OPEN","evidence":"source audit","target":"visible retryable error state"},
+    {"id":"DX-P1-15","title":"教师 Mini 任务书错误被 catch 吞掉","status":"OPEN","evidence":"miniapp/src/pages/teacher/graduation-taskbook/index.vue:152","target":"visible error, retry, correlation evidence"},
+    {"id":"DX-P1-16","title":"专业角色 Mini 映射缺口","status":"OPEN","evidence":"miniapp/src/config/roles.config.js","target":"supported high-value queue or explicit PC_ONLY_REASON for every role"},
+    {"id":"DX-P1-17","title":"写操作只用 toast 反馈","status":"OPEN","evidence":"source audit","target":"durable receipt with what changed and next actor"},
+    {"id":"DX-P1-18","title":"重新提交版本差异不一致","status":"OPEN","evidence":"source audit","target":"consistent V1 → V2 diff in proposal/final/appeal"},
+    {"id":"DX-P1-19","title":"receipt 与 nextActor 输出不一致","status":"OPEN","evidence":"source audit","target":"common receipt schema across commands"},
+    {"id":"DX-P1-20","title":"归档未知结果会诱导盲重试","status":"OPEN","evidence":"source audit","target":"UNKNOWN outcome with safe verify/reconcile path and no duplicate command"}
+  ],
+  "ordinaryRedPolicy":"Automatically repair reproducible in-scope failures and keep moving. Only hard external blockers may stop progression."
+}

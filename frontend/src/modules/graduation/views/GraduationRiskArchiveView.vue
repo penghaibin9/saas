@@ -11,6 +11,12 @@
       <button v-if="canStatsView" class="gp-tabs__item" :class="{ 'is-active': tab === 'stats' }" @click="switchTab('stats')">毕设统计</button>
     </div>
 
+    <aside v-if="actionReceipt" class="ra-receipt" :class="{ 'is-unknown': actionReceipt.unknown }" role="status">
+      <div><strong>{{ actionReceipt.title }}</strong><span>{{ actionReceipt.result }}</span><small>{{ actionReceipt.next }}</small></div>
+      <button v-if="actionReceipt.unknown" type="button" @click="verifyUnknownResult">刷新台账核对</button>
+      <button v-else type="button" @click="actionReceipt = null">关闭</button>
+    </aside>
+
     <!-- 问题预警：连续双栏处置 -->
     <div v-if="tab === 'risk' && canRiskView" class="mp-stack">
       <div v-if="hasBatch" class="rk-scan-bar">
@@ -242,6 +248,7 @@ export default {
       statsError: '',
       overview: null, collegeRows: [], statsLoading: true,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
+      actionReceipt: null,
       riskColumns: [{ key: 'risk', title: '风险 / 学生' }, { key: 'level', title: '等级' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '160px' }],
       archiveColumns: [{ key: 'student', title: '学生' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '200px' }],
       collegeColumns: [{ key: 'name', title: '学院/专业' }, { key: 'total', title: '学生数' }, { key: 'archived', title: '已归档' }, { key: 'highRisk', title: '高风险' }]
@@ -478,16 +485,30 @@ export default {
         res = await graduationRiskArchiveApi.batchFileArchive({ batchId: this.batchStore.selectedBatchId })
       }
       if (res && res.code === 0) {
+        let receipt
         if (action === 'batch-generate') {
           toast.success(`已提交 ${res.data.submitted}，跳过 ${res.data.skipped}（缺材料或未关闭风险）`)
+          receipt = { title: '批量生成提交已完成', result: `服务器结果：成功 ${res.data.submitted || 0} · 跳过 ${res.data.skipped || 0}`, next: '下一步：在归档队列核对清单，材料齐全后提交归档。' }
         } else if (action === 'batch-file') {
           toast.success(`已批量备案 ${res.data.filed} 份（跳过 ${res.data.skipped}）`)
+          receipt = { title: '批量备案已核对', result: `服务器结果：已备案 ${res.data.filed || 0} · 跳过 ${res.data.skipped || 0}`, next: res.data.reconciled ? '连接中断后已按归档批次号完成精确对账，无需再次提交。' : '备案记录已冻结，可进入导出或备份核验。' }
         } else {
-          toast.success('已更新')
+          const label = action === 'accept' ? '风险已受理' : action === 'process' ? '处理记录已保存' : action === 'close' ? '风险已关闭' : '归档已退回'
+          toast.success(label)
+          receipt = { title: label, result: '服务器已接受操作，列表将回读最新状态。', next: action === 'reject-archive' ? '下一步由学生或责任老师按退回原因补齐材料。' : '可继续处理下一条队列。' }
         }
         this.confirm.visible = false
-        if (action === 'reject-archive' || action === 'batch-file' || action === 'batch-generate') this.loadArchives()
-        else this.loadRisks()
+        if (action === 'reject-archive' || action === 'batch-file' || action === 'batch-generate') await this.loadArchives()
+        else await this.loadRisks()
+        this.actionReceipt = receipt
+      } else if (res && Number(res.code) === 503002) {
+        this.confirm.visible = false
+        this.actionReceipt = {
+          unknown: true,
+          title: '备案结果尚未完全确认',
+          result: res.message || `已核对 ${res.data?.filed || 0}/${res.data?.expectedExecutableCount || 0} 份`,
+          next: '不要直接重复提交。先刷新归档台账核对；如仍不完整，重新执行预览后再决定。'
+        }
       } else if (res) toast.error(res.message)
     },
     selectArchive(row) {
@@ -555,17 +576,20 @@ export default {
     async doGenerate(row) {
       if (!this.canArchivePreview) { toast.error('当前角色无归档生成权限'); return }
       const res = await graduationRiskArchiveApi.generateArchive(row.gdStudentId)
-      if (res.code === 0) { toast.success('已生成'); this.loadArchives() } else toast.error(res.message)
+      if (res.code === 0) { await this.loadArchives(); const latest = this.archiveRows.find(item => String(item.gdStudentId) === String(row.gdStudentId)); this.actionReceipt = { title: `${row.studentName} · 归档清单已生成`, result: `服务器最新状态：${latest?.statusLabel || '待提交'}`, next: latest?.missingItems?.length ? `仍缺 ${latest.missingItems.length} 项，点击缺件可直达补齐。` : '材料齐全后可提交归档。' }; toast.success('清单已生成，状态已回读') } else this.archiveWriteFailed(res)
     },
     async doSubmit(row) {
       if (!this.canArchiveFile) { toast.error('当前角色无归档提交权限'); return }
       const res = await graduationRiskArchiveApi.submitArchive(row.gdStudentId)
-      if (res.code === 0) { toast.success('已提交'); this.loadArchives() } else toast.error(res.message)
+      if (res.code === 0) { await this.loadArchives(); const latest = this.archiveRows.find(item => String(item.gdStudentId) === String(row.gdStudentId)); this.actionReceipt = { title: `${row.studentName} · 归档已提交`, result: `服务器最新状态：${latest?.statusLabel || '已提交'}`, next: '下一步由归档授权角色核验并备案。' }; toast.success('归档已提交，状态已回读') } else this.archiveWriteFailed(res)
     },
     async doFile(row) {
       if (!this.canArchiveFile) { toast.error('当前角色无归档备案权限'); return }
-      const res = await graduationRiskArchiveApi.fileArchive(row.gdStudentId)
-      if (res.code === 0) { toast.success('已归档'); this.loadArchives() } else toast.error(res.message)
+      // Reuse an existing filing number when present; otherwise let the backend
+      // allocate its deterministic daily number.  Passing the second argument is
+      // important because the API helper reserves it for archiveBatchNo.
+      const res = await graduationRiskArchiveApi.fileArchive(row.gdStudentId, row.archiveBatchNo || null)
+      if (res.code === 0) { await this.loadArchives(); const latest = this.archiveRows.find(item => String(item.gdStudentId) === String(row.gdStudentId)); this.actionReceipt = { title: `${row.studentName} · 已正式归档备案`, result: `服务器最新状态：${latest?.statusLabel || '已备案'}；真实版本清单已冻结`, next: '当前记录只读，可导出台账或执行备份核验。' }; toast.success('已归档，冻结状态已回读') } else this.archiveWriteFailed(res)
     },
     doReject(row) {
       if (!this.canArchiveFile) { toast.error('当前角色无归档驳回权限'); return }
@@ -680,6 +704,15 @@ export default {
       this.collegeRows = c.code === 0 ? c.data : []
       if (o.code !== 0) this.statsError = o.message || '统计加载失败'
       this.statsLoading = false
+    },
+    archiveWriteFailed(res) {
+      if (Number(res?.code) === 503001 || Number(res?.code) === 503002) {
+        this.actionReceipt = { unknown: true, title: '写入结果需要核对', result: res?.message || '连接中断，无法确认服务器是否已经完成操作。', next: '不要重复点击。先刷新归档台账，根据最新状态决定是否需要重新预览。' }
+      } else toast.error(res?.message || '归档操作未完成')
+    },
+    async verifyUnknownResult() {
+      await this.loadArchives()
+      this.actionReceipt = { title: '台账已刷新', result: '已从服务器重新读取当前归档状态。', next: '请按最新状态继续；若批量操作仍不完整，必须重新预览，不能复用旧执行凭证。' }
     }
   }
 }
@@ -723,5 +756,6 @@ export default {
 .ie-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-bottom: var(--space-3); }
 .mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
 .mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
+.ra-receipt{display:flex;align-items:center;gap:14px;margin-bottom:var(--space-3);padding:11px 12px;border:1px solid #b7ebc6;border-radius:9px;background:#f0fff4}.ra-receipt.is-unknown{border-color:#f6c453;background:#fff9e8}.ra-receipt div{display:grid;gap:3px;flex:1}.ra-receipt strong{color:#137a43}.ra-receipt.is-unknown strong{color:#8a5b00}.ra-receipt span{font-size:13px}.ra-receipt small{color:var(--text-tertiary)}.ra-receipt button{border:1px solid var(--border-light);border-radius:7px;background:#fff;padding:6px 9px;color:var(--primary-600);cursor:pointer}
 @media (max-width: 1100px) { .rk-split { flex-direction: column; } .rk-list, .rk-pane { width: 100%; box-sizing: border-box; } .rk-pane { padding: var(--space-3); } }
 </style>

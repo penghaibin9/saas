@@ -1,0 +1,76 @@
+[
+  {
+    "surface": "teacher-mini",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "workbenchShot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w14\\teacher-mini-workbench-390x844.png",
+    "taskbookShot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w14\\teacher-mini-taskbook-390x844.png",
+    "workbenchAudit": {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "expectedViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "bodyScrollWidth": 390,
+      "bodyClientWidth": 390,
+      "horizontalOverflow": false,
+      "missingAlt": []
+    },
+    "taskbookAudit": {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "expectedViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "bodyScrollWidth": 390,
+      "bodyClientWidth": 390,
+      "horizontalOverflow": false,
+      "missingAlt": []
+    }
+  },
+  {
+    "surface": "teacher-mini",
+    "viewport": {
+      "width": 375,
+      "height": 812
+    },
+    "workbenchShot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w14\\teacher-mini-workbench-375x812.png",
+    "taskbookShot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-graduation-v8\\artifacts\\graduation\\v8\\eecb4d01d2a9592b71975be07c54f994f08e7461\\w14\\teacher-mini-taskbook-375x812.png",
+    "workbenchAudit": {
+      "viewport": {
+        "width": 375,
+        "height": 812
+      },
+      "expectedViewport": {
+        "width": 375,
+        "height": 812
+      },
+      "bodyScrollWidth": 375,
+      "bodyClientWidth": 375,
+      "horizontalOverflow": false,
+      "missingAlt": []
+    },
+    "taskbookAudit": {
+      "viewport": {
+        "width": 375,
+        "height": 812
+      },
+      "expectedViewport": {
+        "width": 375,
+        "height": 812
+      },
+      "bodyScrollWidth": 375,
+      "bodyClientWidth": 375,
+      "horizontalOverflow": false,
+      "missingAlt": []
+    }
+  }
+]

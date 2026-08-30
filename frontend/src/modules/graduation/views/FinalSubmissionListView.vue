@@ -20,6 +20,11 @@
         <AppSearchBox v-model="filters.keyword" placeholder="搜索学生 / 学号 / 课题" @search="onFilterSearch" />
       </div>
 
+      <aside v-if="reviewReceipt" class="fr-receipt" role="status">
+        <div><strong>{{ reviewReceipt.title }}</strong><span>{{ reviewReceipt.result }}</span><small>{{ reviewReceipt.next }}</small></div>
+        <button type="button" @click="reviewReceipt = null">关闭</button>
+      </aside>
+
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc" />
@@ -78,16 +83,18 @@
               <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" @click="submitReview('APPROVE')">✓ 通过当前版本</AppPermissionButton>
               <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" @click="submitReview('REJECT')">↩ 退回当前版本</AppPermissionButton>
             </div>
-            <p class="mp-note">提交 payload 始终锁定服务端 canonical <code>expectedVersion + fileVersionId</code>；切换当前附件不会改变审核源版本，历史版本只读。</p>
+            <p class="mp-note">提交时始终锁定你正在阅读的当前正式版本；切换附件不会误审其他版本，历史版本只读。</p>
+            <details class="mp-note"><summary>技术证据</summary><code>expectedVersion + fileVersionId</code> 由服务端校验。</details>
           </template>
           <template v-else>
             <div class="mp-kv"><span class="mp-kv__k">批阅结果</span><span class="mp-kv__v">{{ selectedRow?.statusLabel || '—' }}</span></div>
-            <p class="mp-note">已批阅版本继续保留追溯；学生重交后会生成新的 FileVersion。</p>
+            <p class="mp-note">已批阅版本继续保留追溯；学生重交后会形成新的材料版本。</p>
           </template>
         </template>
       </GraduationDocumentReviewWorkspace>
 
-      <p class="mp-note">初稿 / 定稿顺序、查重超标、文件安全门和 canonical FileVersion 均由后端真实状态校验；历史版本来自公共版本时间线，不由前端伪造。</p>
+      <p class="mp-note">初稿 / 定稿顺序、查重超标和文件安全状态均由服务器校验；历史版本来自正式版本时间线。</p>
+      <details class="mp-note"><summary>技术证据</summary>审核命令绑定 canonical FileVersion；历史记录不可被前端改写。</details>
     </div>
     <AppPageGuide guide-key="graduation.gd-final-review" />
   </ModulePageShell>
@@ -149,6 +156,7 @@ export default {
       previewDraftKey: '',
       draftFileVersionId: null,
       versionConflict: null,
+      reviewReceipt: null,
       tabs: [
         { value: 'PENDING_REVIEW', label: '待审阅' },
         { value: 'APPROVED', label: '已通过' },
@@ -163,7 +171,7 @@ export default {
     pageSubtitle() {
       if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
       const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
-      if (!this.stats) return `${batch}左队列 → 中文档 → 右审核 · canonical FileVersion 锁定`
+      if (!this.stats) return `${batch}左队列 → 中文档 → 右审核 · 当前正式版本锁定`
       return `${batch}待审阅 ${this.statusCount('PENDING_REVIEW')} · 查重超标 ${this.stats.plagiarismOver ?? 0} · 安全版本审核`
     },
     emptyTitle() { return this.hasBatch ? '当前页签暂无成果提交' : '请先选择或创建毕设批次' },
@@ -442,6 +450,7 @@ export default {
       const reviewedIndex = Math.max(0, this.selIndex)
       const pendingQueue = this.filters.status === 'PENDING_REVIEW'
       const draft = this.comment
+      const targetName = this.selectedRow.studentName || '当前学生'
       this.submitting = true
       const res = await graduationApi.reviewFinal(this.selectedRow.id, {
         action,
@@ -453,8 +462,13 @@ export default {
       if (res.code === 0) {
         this.clearCommentDraft()
         this.comment = ''
-        toast.success(`批阅完成：${res.data.statusLabel}，服务端已锁定 canonical FileVersion`)
         await this.loadStats()
+        this.reviewReceipt = {
+          title: `${targetName}的成果材料已处理`,
+          result: `服务器最新结论：${res.data.statusLabel}；待审队列已回读`,
+          next: action === 'APPROVE' ? '该版本可进入正式评阅、答辩或成绩环节。' : '下一步由学生按意见修改并提交新版本。'
+        }
+        toast.success('批阅完成，服务器最新结论与待审队列已回读')
         if (!this.autoNext || !pendingQueue) {
           if (this.selectedRow) { this.selectedRow.status = res.data.status; this.selectedRow.statusLabel = res.data.statusLabel }
           await this.loadSelectedDetail()
@@ -498,4 +512,5 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .fr-workbench-stack{gap:var(--space-2)}.mp-tabs{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-1)}.mp-tab{padding:6px 10px}.fr-tab-count{margin-left:4px;font-size:var(--font-size-xs);color:var(--text-tertiary)}.mp-tab.is-active .fr-tab-count{color:inherit}.fr-filter-row{display:flex;max-width:420px}.fr-list__foot{padding:8px;display:flex;justify-content:center}.fr-review-blocked{padding:8px;border-radius:8px;background:var(--warning-50,#fffbeb);color:var(--warning-700,#a16207);font-size:12px}.fr-review-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.fr-review-actions>*{width:100%}.mp-textarea{width:100%;resize:vertical;min-height:96px}.mp-note code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.fr-receipt{display:flex;align-items:center;gap:14px;padding:11px 12px;border:1px solid #b7ebc6;border-radius:9px;background:#f0fff4}.fr-receipt div{display:grid;gap:3px;flex:1}.fr-receipt strong{color:#137a43}.fr-receipt span{font-size:13px}.fr-receipt small{color:var(--text-tertiary)}.fr-receipt button{border:0;background:transparent;color:var(--primary-600);cursor:pointer}
 </style>

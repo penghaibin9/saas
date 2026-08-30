@@ -20,6 +20,8 @@ yarn-debug.log*
 pnpm-debug.log*
 coverage/
 .cache/
+e2e/runtime-fixtures/
+e2e/artifacts/
 
 frontend/node_modules/
 frontend/dist/

@@ -1,0 +1,237 @@
+{
+  "implementationHead": "53c31ea6ed88b6bded9396bfa69efc430e544d62",
+  "generatedAt": "2026-08-30T13:20:32.559208+08:00",
+  "server": {
+    "mysqlVersion": "8.4.11",
+    "databaseName": "graduation_v8_e2e"
+  },
+  "batch": {
+    "id": 2,
+    "batch_no": "PW-E2E-202608300001"
+  },
+  "readOnly": true,
+  "journey": "GDJ-05",
+  "result": "MYSQL_PASS",
+  "evidence": {
+    "finals": {
+      "rowCount": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "rows": [],
+      "truncated": false
+    },
+    "plagiarism": {
+      "rowCount": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "rows": [],
+      "truncated": false
+    },
+    "formalReviews": {
+      "rowCount": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "rows": [],
+      "truncated": false
+    },
+    "materials": {
+      "rowCount": 36,
+      "sha256": "308f4378d9448b8e53e214fd64c865dbdb154c5640461b161560d5dbf462f94c",
+      "rows": [
+        {
+          "gd_student_id": 12,
+          "material_code": "TOPIC_ATTACHMENT",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "TASKBOOK",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "PROPOSAL_REPORT",
+          "business_status": "APPROVED",
+          "review_status": "APPROVED",
+          "current_version_id": 1,
+          "last_reviewed_version_id": 1,
+          "version": 2
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "PROPOSAL_DEFENSE",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "GUIDANCE_RECORD",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "MIDTERM_REPORT",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "THESIS_DRAFT",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "THESIS_FINAL",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "DESIGN_WORK",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "SOURCE_CODE",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "WORK_DESCRIPTION",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "PLAGIARISM_REPORT",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "REVIEW_ATTACHMENT",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "DEFENSE_RECORD",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "DEFENSE_SIGNED_SHEET",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "GRADE_MATERIAL",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "TEMPLATE_REFERENCE",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 12,
+          "material_code": "FINAL_ARCHIVE_PACKAGE",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 13,
+          "material_code": "TOPIC_ATTACHMENT",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        },
+        {
+          "gd_student_id": 13,
+          "material_code": "TASKBOOK",
+          "business_status": "MISSING",
+          "review_status": "NOT_SUBMITTED",
+          "current_version_id": null,
+          "last_reviewed_version_id": null,
+          "version": 0
+        }
+      ],
+      "truncated": true
+    }
+  },
+  "invariants": {
+    "reviewMissingBoundVersion": {
+      "rowCount": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "rows": [],
+      "truncated": false
+    },
+    "materialVersionMissing": {
+      "rowCount": 0,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "rows": [],
+      "truncated": false
+    }
+  },
+  "anomalyCount": 0
+}

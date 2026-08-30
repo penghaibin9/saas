@@ -206,7 +206,14 @@ export const portalApi = {
   rectifyGraduationPeer: (pid, note) => request(`/mobile/graduation/peer/${encodeURIComponent(pid)}/rectify`, { method: 'POST', body: { note } }),
   graduationArchive: () => request('/mobile/graduation/archive'),
   graduationActiveRound: () => request('/mobile/graduation/active-round'),
-  graduationTopics: (batchId) => request(`/mobile/graduation/topics${batchId ? `?batchId=${encodeURIComponent(batchId)}` : ''}`),
+  graduationTopics: (batchOrParams = {}) => {
+    const params = typeof batchOrParams === 'object' ? batchOrParams : { batchId: batchOrParams }
+    const query = new URLSearchParams()
+    Object.entries({ pageSize: 20, ...params }).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value))
+    })
+    return request(`/mobile/graduation/topics?${query.toString()}`)
+  },
   submitGraduationChoices: (roundId, choices) => request('/mobile/graduation/choices', { method: 'POST', body: { roundId, choices } }),
   withdrawGraduationChoices: (roundId) => request('/mobile/graduation/withdraw-choices', { method: 'POST', body: { roundId } }),
   requestGraduationTopicChange: (newTopicId, reason) => request('/mobile/graduation/change-request', { method: 'POST', body: { newTopicId, reason } }),
