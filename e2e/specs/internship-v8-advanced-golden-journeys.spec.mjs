@@ -104,7 +104,6 @@ test.describe('岗位实习 V8 advanced golden journeys：GJ05–GJ08', () => {
   test.setTimeout(240_000)
 
   let fixture
-  let enterpriseFixture
   let mentorToken
   let adminToken
   let weeklyId = ''
@@ -121,7 +120,6 @@ test.describe('岗位实习 V8 advanced golden journeys：GJ05–GJ08', () => {
       cwd: process.cwd(), env: process.env, stdio: 'inherit'
     })
     fixture = JSON.parse(await fs.readFile('./runtime/internship-v8-advanced-fixture.json', 'utf8'))
-    enterpriseFixture = JSON.parse(await fs.readFile('./runtime/internship-enterprise-position-fixture.json', 'utf8'))
     mentorToken = await roleToken(config.mentor, 'INTERN_MENTOR')
     adminToken = await roleToken(config.sandboxAdmin, 'SCHOOL_ADMIN')
     expect(mentorToken).not.toBe('')
@@ -356,7 +354,7 @@ test.describe('岗位实习 V8 advanced golden journeys：GJ05–GJ08', () => {
       await page.getByRole('button', { name: /登录/ }).click()
       await expect(page).toHaveURL(/\/enterprise\/(?:campaign-select|home)/)
       if (page.url().includes('/campaign-select')) {
-        await page.getByRole('button', { name: new RegExp(enterpriseFixture.campaignName) }).click()
+        await page.getByRole('button', { name: new RegExp(fixture.enterprise.campaignName) }).click()
         await expect(page).toHaveURL(/\/enterprise\/home/)
       }
       await page.goto(`${enterpriseBaseUrl}/evaluations`)

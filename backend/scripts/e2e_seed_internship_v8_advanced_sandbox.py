@@ -35,7 +35,11 @@ from app.models import (
     User,
     WeeklyReport,
 )
-from app.models.internship_enterprise_portal import InternshipEnterpriseMember
+from app.models.internship_enterprise_portal import (
+    InternshipCampaignEnterprise,
+    InternshipEnterpriseMember,
+    InternshipRecruitmentCampaign,
+)
 from app.modules.internship.services import internship_enterprise_access_service as enterprise_access_svc
 from app.services import system_role_shadow_service
 
@@ -44,7 +48,6 @@ TENANT_ID = 1000000000000000007
 TENANT_CODE = "sandbox-school"
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "e2e" / "runtime" / "internship-v8-advanced-fixture.json"
-ENTERPRISE_FIXTURE = ROOT / "e2e" / "runtime" / "internship-enterprise-position-fixture.json"
 
 
 def assert_safe_target() -> None:
@@ -107,28 +110,47 @@ def ensure_enterprise_collaboration_grant(
     *,
     batch: InternshipBatch,
     company_id: int,
-    login_name: str,
 ):
     """Establish the formal GJ08 precondition through the production Grant Authority."""
-    user = db.scalars(select(User).where(
-        User.tenant_id == TENANT_ID,
-        User.login_name == login_name,
-        User.is_deleted.is_(False),
-    )).first()
-    if user is None:
-        raise SystemExit(f"enterprise account {login_name!r} is missing")
     member = db.scalars(select(InternshipEnterpriseMember).where(
         InternshipEnterpriseMember.tenant_id == TENANT_ID,
-        InternshipEnterpriseMember.user_id == user.id,
         InternshipEnterpriseMember.company_id == company_id,
         InternshipEnterpriseMember.status == "ACTIVE",
         InternshipEnterpriseMember.is_deleted.is_(False),
-    )).first()
+    ).order_by(InternshipEnterpriseMember.id.desc())).first()
     if member is None:
-        raise SystemExit(f"active enterprise member for {login_name!r} is missing")
+        raise SystemExit(f"active enterprise member for company #{company_id} is missing")
+    user = db.scalars(select(User).where(
+        User.id == member.user_id,
+        User.tenant_id == TENANT_ID,
+        User.status == "ACTIVE",
+        User.is_deleted.is_(False),
+    )).first()
+    if user is None:
+        raise SystemExit(f"active enterprise account for company #{company_id} is missing")
+    campaign = db.scalars(
+        select(InternshipRecruitmentCampaign)
+        .join(
+            InternshipCampaignEnterprise,
+            InternshipCampaignEnterprise.campaign_id == InternshipRecruitmentCampaign.id,
+        )
+        .where(
+            InternshipRecruitmentCampaign.tenant_id == TENANT_ID,
+            InternshipRecruitmentCampaign.batch_id == batch.id,
+            InternshipRecruitmentCampaign.status == "OPEN",
+            InternshipRecruitmentCampaign.is_deleted.is_(False),
+            InternshipCampaignEnterprise.tenant_id == TENANT_ID,
+            InternshipCampaignEnterprise.company_id == company_id,
+            InternshipCampaignEnterprise.status == "ACCEPTED",
+            InternshipCampaignEnterprise.is_deleted.is_(False),
+        )
+        .order_by(InternshipRecruitmentCampaign.id.desc())
+    ).first()
+    if campaign is None:
+        raise SystemExit(f"accepted recruitment campaign for company #{company_id} and batch #{batch.id} is missing")
     valid_from = batch.start_date or (datetime.utcnow() - timedelta(days=1))
     valid_until = batch.end_date or (datetime.utcnow() + timedelta(days=180))
-    return enterprise_access_svc.issue_grant_in_tx(
+    enterprise_access_svc.issue_grant_in_tx(
         db,
         tenant_id=TENANT_ID,
         member_id=member.id,
@@ -138,6 +160,7 @@ def ensure_enterprise_collaboration_grant(
         valid_from=valid_from,
         valid_until=valid_until,
     )
+    return user.login_name, campaign.campaign_name
 
 
 def ensure_plan(db, *, batch: InternshipBatch, record: InternshipRecord) -> InternshipBatchPlan:
@@ -246,7 +269,12 @@ def ensure_change_target(db, *, batch: InternshipBatch, record: InternshipRecord
         company.status = "ACTIVE"
         company.blacklist = False
 
-    title = "GJ06 重新上岗质量工程岗"
+    base_title = "GJ06 重新上岗质量工程岗"
+    current_position = db.get(InternshipPosition, int(record.position_id or 0)) if record.position_id else None
+    # A repeated Browser replay must still perform a real position change. Alternate between two
+    # equally valid targets instead of weakening the production guard that rejects a no-op change.
+    suffix = "B" if current_position and current_position.title == f"{base_title} A" else "A"
+    title = f"{base_title} {suffix}"
     position = db.scalars(select(InternshipPosition).where(
         InternshipPosition.tenant_id == TENANT_ID,
         InternshipPosition.batch_id == batch.id,
@@ -304,8 +332,9 @@ def ensure_change_target(db, *, batch: InternshipBatch, record: InternshipRecord
 
 def ensure_score_facts(db, *, record: InternshipRecord) -> None:
     today = date.today()
-    if record.status != "ARCHIVED":
-        record.status = "ASSESSING"
+    # The journey seals the record again in GJ09. Re-open this isolated E2E record so a second
+    # exact-HEAD replay can execute GJ08 before exercising the real archive transition again.
+    record.status = "ASSESSING"
     record.risk_level = "NONE"
     company = one(db, EmpCompany, int(record.enterprise_id))
     position = one(db, InternshipPosition, int(record.position_id))
@@ -429,13 +458,10 @@ def main() -> int:
         target = ensure_change_target(db, batch=gj06_batch, record=gj06_record)
         gj07_record.status = "ONBOARD"
         gj07_record.risk_level = "NONE"
-        enterprise = json.loads(ENTERPRISE_FIXTURE.read_text(encoding="utf-8"))
-        enterprise_login = f"ix09_{enterprise['runId']}"
-        ensure_enterprise_collaboration_grant(
+        enterprise_login, enterprise_campaign_name = ensure_enterprise_collaboration_grant(
             db,
             batch=gj08_batch,
             company_id=int(gj08_record.enterprise_id),
-            login_name=enterprise_login,
         )
         ensure_score_facts(db, record=gj08_record)
         db.commit()
@@ -448,6 +474,7 @@ def main() -> int:
                 "username": enterprise_login,
                 "companyId": str(gj08_record.enterprise_id),
                 "companyName": gj08_record.enterprise_name,
+                "campaignName": enterprise_campaign_name,
             },
             "gj05": {"batchId": str(gj05_batch.id), "batchName": gj05_batch.batch_name, "internshipId": str(gj05_record.id), "planId": str(gj05_plan.id)},
             "gj06": {"batchId": str(gj06_batch.id), "batchName": gj06_batch.batch_name, "internshipId": str(gj06_record.id), "targetPositionId": str(target.id), "targetPositionName": target.title, "targetCompanyId": str(target.company_id), "targetCompanyName": target.company_name},

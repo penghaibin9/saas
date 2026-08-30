@@ -237,6 +237,8 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
 
     await loginMini(page, 'teacher', config.mentor)
     await page.goto(`${miniBaseUrl}/#/pages/teacher/agreement-confirm/index`)
+    await page.getByText('切换批次', { exact: false }).click()
+    await page.getByText(fixture.batchName, { exact: false }).last().click()
     await expect(page.getByText(fixture.studentName, { exact: false }).first()).toBeVisible()
     await expect(page.getByText(fixture.companyName, { exact: false }).first()).toBeVisible()
     await expect(page.getByText(fixture.positionName, { exact: false }).first()).toBeVisible()
