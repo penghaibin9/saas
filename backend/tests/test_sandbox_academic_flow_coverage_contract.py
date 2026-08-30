@@ -3,6 +3,7 @@ import inspect
 from app.services.sandbox_school_academic_flow_coverage import FLOWS
 from app.services.sandbox_school_academic_flow_gap_seed import (
     _seed_applied_schedule_change_attendance,
+    _seed_program_version_and_graduate,
     seed_academic_flow_gap_coverage,
 )
 from app.services.sandbox_school_curriculum_closure import (
@@ -79,3 +80,11 @@ def test_core_flow_keeps_schedule_approval_and_thirteen_domain_manifest_chains()
     assert "len(domain_counts) != 13" in source
     assert "manifest_service._manifest_payload" in source
     assert 'domain_hashes["GRADE"]' in source
+
+
+def test_graduation_sample_does_not_revoke_student_affairs_discipline_facts():
+    source = inspect.getsource(_seed_program_version_and_graduate)
+    assert "active_discipline_exists" in source
+    assert "~active_discipline_exists" in source
+    assert 'discipline.status = "REVOKED"' not in source
+    assert 'discipline.record_status = "REVOKED"' not in source

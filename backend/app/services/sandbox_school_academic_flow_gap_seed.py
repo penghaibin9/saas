@@ -336,6 +336,12 @@ def _seed_program_version_and_graduate(db, c, tenant_id, admin):
     from app.core.context import set_tenant
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as grad
 
+    active_discipline_exists = select(c["t_cs_discipline"].id).where(
+        c["t_cs_discipline"].tenant_id == tenant_id,
+        c["t_cs_discipline"].cs_student_id == c["t_cs_service_student"].id,
+        c["t_cs_discipline"].record_status == "ACTIVE",
+        c["t_cs_discipline"].is_deleted.is_(False),
+    ).correlate(c["t_cs_service_student"]).exists()
     candidates = list(db.scalars(select(c["t_student_profile"]).join(
         c["t_acad_student"], c["t_acad_student"].student_id == c["t_student_profile"].id
     ).join(c["t_internship_record"], c["t_internship_record"].student_id == c["t_student_profile"].id
@@ -353,6 +359,9 @@ def _seed_program_version_and_graduate(db, c, tenant_id, admin):
         c["t_cs_service_student"].is_deleted.is_(False),
         c["t_affairs_archive_package"].status == "ARCHIVED",
         c["t_affairs_archive_package"].is_deleted.is_(False),
+        # 毕业通过样例选择本来就没有生效处分的学生，不能为了让审核变绿
+        # 直接撤销学工事实并破坏处分主案→决定版本→投影三元链。
+        ~active_discipline_exists,
     ).order_by(c["t_student_profile"].id).limit(500)).all())
     candidate = candidates[0] if candidates else None
     if candidate is None:
@@ -427,23 +436,6 @@ def _seed_program_version_and_graduate(db, c, tenant_id, admin):
             c["t_acad_grade"].is_deleted.is_(False),
         )):
             elective.nature = "ELECTIVE"
-    cs = _one(db, c["t_cs_service_student"], tenant_id, student_id=candidate.id)
-    active_discipline_rows = db.scalars(select(c["t_cs_discipline"]).where(
-        c["t_cs_discipline"].tenant_id == tenant_id,
-        c["t_cs_discipline"].cs_student_id == cs.id,
-        c["t_cs_discipline"].record_status == "ACTIVE",
-        c["t_cs_discipline"].is_deleted.is_(False),
-    )).all()
-    for discipline in active_discipline_rows:
-        discipline.status = "REVOKED"
-        discipline.record_status = "REVOKED"
-        discipline.revoke_date = NOW - timedelta(days=30)
-        discipline.revoke_reason = "处分期满且教育考察合格，经正式解除流程批准。"
-        db.add(c["t_affairs_audit_trail"](
-            tenant_id=tenant_id, biz_type="DISCIPLINE", biz_id=discipline.id,
-            action="REVOKE", operator=admin.real_name, role_name="学生工作处",
-            detail=discipline.revoke_reason, occurred_at=discipline.revoke_date,
-        ))
     db.flush()
     set_tenant(tenant_id)
     batch = _put(db, c["t_aa_graduation_audit_batch"], tenant_id,
