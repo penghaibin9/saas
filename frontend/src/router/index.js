@@ -37,6 +37,9 @@ import systemRoutes from '@/modules/system/system.routes'
 import platformRoutes from '@/modules/platform/platform.routes'
 import studentAffairsRoutes from '@/modules/studentAffairs/studentAffairs.routes'
 import messageCenterRoutes from '@/modules/messageCenter/message-center.routes'
+import { coreControlRoutes } from '@/router/coreControl.routes'
+import { NAV_PLAN, PLATFORM_PLAN } from '@/config/navPlan'
+import { projectNavigationRoutePermissions } from '@/router/navigationRouteProjection'
 
 /**
  * 模块 routes 文件形态不一（部分为数组、部分为单个父路由对象），
@@ -44,7 +47,7 @@ import messageCenterRoutes from '@/modules/messageCenter/message-center.routes'
  * （含 corrections / risk-tags），AdminStudentLayout 的 registerStudentRoutes
  * 兜底注册以 router.hasRoute 为前置判断，正式接入后自动跳过，不会重复注册。
  */
-const moduleRoutes = [
+const moduleRoutes = projectNavigationRoutePermissions([
   studentRoutes,
   orientationRoutes,
   campusServiceRoutes,
@@ -59,7 +62,8 @@ const moduleRoutes = [
   platformRoutes,
   studentAffairsRoutes,
   messageCenterRoutes
-].flatMap((def) => (Array.isArray(def) ? def : [def]))
+].flatMap((def) => (Array.isArray(def) ? def : [def])), [...NAV_PLAN, PLATFORM_PLAN])
+const projectedCoreControlRoutes = projectNavigationRoutePermissions(coreControlRoutes, [...NAV_PLAN, PLATFORM_PLAN])
 
 const router = createRouter({
   history: createWebHistory(),
@@ -73,14 +77,7 @@ const router = createRouter({
       component: () => import('../views/PortalHomeView.vue'),
       meta: { public: true, title: '高校学生全生命周期管理平台' }
     },
-    {
-      /* PC-10-MODULE-MENU-BRIDGE-P0-FIX：PC 管理端工作台（10 模块入口可见），
-         菜单数据源 config/adminMenu.js；旧产品体验页保留在 /dev/preview 仅作存档。
-         PORTAL-ROOT 后由 / 迁到 /workbench，登录后默认落点即此路由。 */
-      path: '/workbench',
-      name: 'admin-workbench',
-      component: () => import('../views/AdminWorkbenchView.vue')
-    },
+    ...projectedCoreControlRoutes,
     {
       /* /admin 裸路径兜底：重定向到管理端工作台，避免白屏 */
       path: '/admin',
@@ -116,13 +113,6 @@ const router = createRouter({
       name: 'planned-placeholder',
       component: () => import('../views/admin/planned/PlannedPlaceholderView.vue'),
       meta: { title: '规划模块（待施工）' }
-    },
-    {
-      /* 帮助中心（PC-HELP-CENTER）：功能帮助 + 业务流程图，由顶部「功能/帮助」搜索命中进入 */
-      path: '/admin/help',
-      name: 'admin-help',
-      component: () => import('../views/admin/help/AdminHelpView.vue'),
-      meta: { title: '帮助中心' }
     },
     {
       /* 登录页（账号密码走浏览器 HttpOnly refresh transport；业务认证真值仍在后端） */
@@ -174,43 +164,6 @@ const router = createRouter({
       name: 'security-500',
       component: () => import('../views/security/Error500View.vue'),
       meta: { public: true, title: '服务异常' }
-    },
-    {
-      path: '/admin/workflow',
-      component: () => import('../views/admin/workflow/AdminWorkflowLayout.vue'),
-      meta: { moduleCode: 'WORKFLOW' },
-      children: [
-        {
-          path: '',
-          name: 'workflow-home',
-          component: () => import('../views/admin/workflow/WorkflowHomeView.vue'),
-          meta: { moduleCode: 'WORKFLOW', permissionKey: 'workflow.home.view', title: '权限与流程中心' }
-        },
-        {
-          path: 'processes',
-          name: 'workflow-processes',
-          component: () => import('../views/admin/workflow/WorkflowProcessesView.vue'),
-          meta: { moduleCode: 'WORKFLOW', permissionKey: 'workflow.process.view', title: '流程模板管理' }
-        },
-        {
-          path: 'tasks',
-          name: 'workflow-tasks',
-          component: () => import('../views/admin/workflow/WorkflowTasksView.vue'),
-          meta: { moduleCode: 'WORKFLOW', permissionKey: 'workflow.task.view', title: '审批任务中心' }
-        },
-        {
-          path: 'roles',
-          name: 'workflow-roles',
-          component: () => import('../views/admin/workflow/WorkflowRolesView.vue'),
-          meta: { moduleCode: 'WORKFLOW', permissionKey: 'workflow.role.view', title: '角色管理' }
-        },
-        {
-          path: 'permissions',
-          name: 'workflow-permissions',
-          component: () => import('../views/admin/workflow/WorkflowPermissionsView.vue'),
-          meta: { moduleCode: 'WORKFLOW', permissionKey: 'workflow.permission.view', title: '权限点管理' }
-        }
-      ]
     },
     /* /admin/student/* 由 studentRoutes 提供（含 8 条子路由），并入 moduleRoutes 统一接入。 */
     ...moduleRoutes

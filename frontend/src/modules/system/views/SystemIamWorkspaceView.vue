@@ -15,6 +15,11 @@
         <AppButton :loading="loading" @click="load">刷新</AppButton>
       </section>
 
+      <section v-if="activeSurface" class="focus card" aria-live="polite">
+        <div><span>当前子工作区</span><strong>{{ activeSurface.label }}</strong><small>{{ activeSurface.description }}</small></div>
+        <AppButton variant="primary" @click="go(activeSurface.targetPath)">进入{{ activeSurface.label }}</AppButton>
+      </section>
+
       <div v-if="error" class="error card">{{ error }}</div>
 
       <template v-else>
@@ -203,10 +208,10 @@ export default {
       scopeTargetType: 'COLLEGE', scopeTargetId: '', resourceType: 'STUDENT', resourceId: ''
     },
     surfaces: [
-      { key: 'roles', label: '角色', description: '唯一 Role / RolePermission Authority', path: '/admin/system/roles' },
-      { key: 'templates', label: '角色模板', description: 'immutable version、provenance、drift 与 impact', path: '/admin/system/roles?tab=templates' },
+      { key: 'roles', label: '角色', description: '唯一 Role / RolePermission Authority', path: '/admin/system/iam?surface=roles', targetPath: '/admin/system/roles?tab=members' },
+      { key: 'templates', label: '角色模板', description: 'immutable version、provenance、drift 与 impact', path: '/admin/system/iam?surface=templates', targetPath: '/admin/system/roles?tab=templates' },
       { key: 'members', label: '成员与业务身份', description: '角色成员、来源与复核', path: '/admin/system/role-assignments' },
-      { key: 'permissions', label: '菜单与操作权限', description: '只从权威 Permission Catalog 分配', path: '/admin/system/roles?tab=permissions' },
+      { key: 'permissions', label: '菜单与操作权限', description: '只从权威 Permission Catalog 分配', path: '/admin/system/iam?surface=permissions', targetPath: '/admin/system/roles?tab=permissions' },
       { key: 'dataScopes', label: '数据范围', description: '结构化 Scope，不用字符串角色猜范围', path: '/admin/system/scopes' },
       { key: 'delegations', label: '委托', description: '临时授权与工作移交', path: '/admin/system/delegations' },
       { key: 'securityChanges', label: '安全变更', description: '草稿、激活、回滚与审计', path: '/admin/system/security-changes' },
@@ -214,6 +219,10 @@ export default {
     ]
   }),
   computed: {
+    activeSurface() {
+      const key = String(this.$route.query.surface || '')
+      return this.surfaces.find((item) => item.key === key) || null
+    },
     filteredPermissions() {
       const q = this.permissionKeyword.toLowerCase()
       return (this.catalog.customRoleAssignablePermissions || []).filter((item) => !q || [item.permissionCode, item.moduleKey, item.featureKey, item.label].some((value) => String(value || '').toLowerCase().includes(q)))

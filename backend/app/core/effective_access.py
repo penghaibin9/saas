@@ -71,9 +71,14 @@ def _permission_digest(patterns: list[str]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def build_effective_access_context(user: dict | None) -> dict:
+def build_effective_access_context(
+    user: dict | None,
+    *,
+    module_keys: tuple[str, ...] | None = None,
+) -> dict:
     actor = dict(user or {})
-    base = get_effective_access_context(actor)
+    base = get_effective_access_context(actor, module_keys=module_keys) if module_keys is not None \
+        else get_effective_access_context(actor)
     tenant_id = _tenant_id(actor)
     patterns = list(base.get("permissionPatterns") or [])
     digest = _permission_digest(patterns)
@@ -130,7 +135,10 @@ def explain_tenant_access(
 ) -> dict:
     """Explain school-side IAM without pretending to replace domain guards."""
     actor = dict(user or {})
-    context = build_effective_access_context(actor)
+    # Access Explain evaluates one requested object/module.  Building the full
+    # cross-product module summary here made a single explanation scale with the
+    # global module registry and amplified configuration reads.
+    context = build_effective_access_context(actor, module_keys=(module_key,))
     checks: list[dict] = []
 
     if context.get("principalPlane") != "TENANT" or context.get("principalType") == "ENTERPRISE":

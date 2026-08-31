@@ -179,17 +179,31 @@ def _assignment_plan(pools: dict[str, list]) -> dict[str, list]:
 def _insert_role_bindings(db, tenant_id: int, role_ids: dict[str, int], plan: dict[str, list]) -> int:
     from app.models import UserRole
 
-    user_ids = {int(row.id) for rows in plan.values() for row in rows}
     target_role_ids = {role_ids[code] for code in plan}
-    existing = {
-        (int(uid), int(rid))
-        for uid, rid in db.execute(select(UserRole.user_id, UserRole.role_id).where(
-            UserRole.tenant_id == tenant_id,
-            UserRole.user_id.in_(user_ids),
-            UserRole.role_id.in_(target_role_ids),
-            UserRole.is_deleted.is_(False),
-        )).all()
+    desired = {
+        (int(user.id), int(role_ids[code]))
+        for code, users in plan.items()
+        for user in users
     }
+    existing_rows = list(db.scalars(select(UserRole).where(
+            UserRole.tenant_id == tenant_id,
+            UserRole.role_id.in_(target_role_ids),
+        )).all())
+    existing = {(int(row.user_id), int(row.role_id)): row for row in existing_rows}
+
+    # This routine is a reconciliation boundary, not an additive seed. Public
+    # demo accounts and prior E2E fixtures can legitimately carry one of these
+    # secondary roles before a rebuild; retaining them makes a rerun drift from
+    # the frozen 20K topology. Converge every managed role to the exact plan,
+    # while preserving the row for audit/unique-key-safe reactivation.
+    for key, row in existing.items():
+        if key in desired:
+            row.status = "ACTIVE"
+            row.is_deleted = False
+        else:
+            row.status = "INACTIVE"
+            row.is_deleted = True
+
     rows = []
     for code, users in plan.items():
         rid = role_ids[code]

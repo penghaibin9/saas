@@ -268,6 +268,7 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t SPECS < <(find specs -maxdepth 1 -type f -name '*.spec.mjs' \
+            ! -name 'control-plane-role-menu-projection.spec.mjs' \
             ! -name 'internship-s1-production-runtime.spec.mjs' \
             ! -name 'internship-leave-lifecycle.spec.mjs' \
             ! -name 'internship-leave-stats-xlsx-audit.spec.mjs' \

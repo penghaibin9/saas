@@ -25,5 +25,11 @@ export const productIamApi = {
     `/platform/product-iam/releases/${encodeURIComponent(id)}/publish`,
     { method: 'POST', body: { expectedVersion } },
     'Product IAM 发布失败'
-  )
+  ),
+  templateVersions: (code) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}`, {}, '角色模板版本加载失败'),
+  createTemplateDraft: (code, body) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/drafts`, { method: 'POST', body }, '角色模板草稿创建失败'),
+  updateTemplateDraft: (code, id, body) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/drafts/${encodeURIComponent(id)}`, { method: 'PUT', body }, '角色模板草稿保存失败'),
+  templateImpact: (code, id) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/drafts/${encodeURIComponent(id)}/impact`, {}, '角色模板影响分析失败'),
+  publishTemplate: (code, id, body) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/drafts/${encodeURIComponent(id)}/publish`, { method: 'POST', body }, '角色模板发布失败'),
+  rollbackTemplate: (code, body) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/rollback`, { method: 'POST', body }, '角色模板回滚草稿创建失败')
 }

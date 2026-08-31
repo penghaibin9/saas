@@ -1,0 +1,16 @@
+{
+  "exactHead": "06fd94f08ad0f7e9c2ba96789908245f81bd4773",
+  "authority": "GENERATED_FROM_NAV_PLAN_AND_PLATFORM_PLAN",
+  "digest": "fde1a6fd75f4d4f69924b1ea96ad1a930c36633493de53d713feeef46c52527a",
+  "counts": {
+    "total": 569,
+    "production": 568,
+    "productionVisible": 560,
+    "hidden": 8,
+    "planned": 1,
+    "school": 542,
+    "platform": 27
+  },
+  "productionProjectionCoverage": "100%",
+  "generatedContract": "shared/contracts/navigation-surface-contract.json"
+}

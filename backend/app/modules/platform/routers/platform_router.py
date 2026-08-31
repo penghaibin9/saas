@@ -188,6 +188,12 @@ def access_assignments(user=Depends(require_platform_principal)):
     return success({"items": _pam().list_records(_pam().ASSIGNMENT)})
 
 
+@_routes.get("/access-duty-matrix", summary="平台固定职责到权限与生产菜单解释矩阵")
+def access_duty_matrix(user=Depends(require_platform_principal)):
+    _cap(user, "access.review")
+    return success({"items": _pam().duty_matrix(), "arbitraryDutyCreation": False})
+
+
 @_routes.post("/access-assignments", summary="保存平台职责分配")
 def access_assignment_save(body: dict = Body(...), user=Depends(require_platform_principal)):
     _cap(user, "access.manage")
