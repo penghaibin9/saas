@@ -71,3 +71,25 @@ def test_published_system_template_digest_drift_fails_closed(monkeypatch):
     with pytest.raises(AppException) as caught:
         shadow.published_system_role_permissions(object(), "ACADEMIC_ADMIN")
     assert caught.value.code == "B8_SYSTEM_TEMPLATE_DRIFT"
+
+
+def test_school_role_writes_are_adapters_over_the_byte_frozen_bundle():
+    adapter = (ROOT / "backend/app/modules/system_admin/routers/system_router.py").read_text(encoding="utf-8")
+    for route in (
+        '@_replacements.get("/system/roles/{role_id}"',
+        '@_replacements.put("/system/users/{user_id}/roles"',
+        '@_replacements.post("/system/roles"',
+        '@_replacements.post("/system/roles/{role_id}/copy"',
+        '@_replacements.put("/system/roles/{role_id}/permissions"',
+        '@_replacements.get("/system/export/role-config/{role_id}"',
+    ):
+        assert route in adapter
+    assert "return _bundle.save_system_role_permissions" not in adapter
+    assert "published_system_role_permissions" in adapter
+    assert "学校运行时禁止创建全局权限" in adapter
+
+
+def test_custom_role_identity_creation_is_an_atomic_critical_audit_action():
+    from app.services import audit_log
+
+    assert "ROLE_CREATE" in audit_log.CRITICAL_ACTIONS

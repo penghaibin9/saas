@@ -12,6 +12,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 
 from . import academic_affairs_schedule_change_service as _legacy
 
@@ -260,7 +261,9 @@ def review(cid, user, action, comment="", *, expected_version=None) -> dict:
         if not origin:
             raise AppException("DATA_CONFLICT", "原课表项不存在，终审不能生效", http_status=409)
         from app.models import AaScheduleBatch
-        batch = db.get(AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
+        batch = tenant_get(
+            db, AaScheduleBatch, int(origin.batch_id), tenant_id=_legacy._tid()
+        ) if origin.batch_id else None
         _legacy._require_current_published_origin(db, batch, origin)
         if change.change_type in ("ADJUST", "STOP") and origin.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "原课表项已被其它操作变更，终审已回滚", http_status=409)

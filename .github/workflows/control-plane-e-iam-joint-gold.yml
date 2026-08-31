@@ -288,9 +288,11 @@ jobs:
 
       - name: Freeze exact-head joint evidence
         shell: bash
+        env:
+          CONTROL_REMOTE_REF: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/head', github.event.pull_request.number) || 'refs/heads/integration/control-plane-option-b-20260815' }}
         run: |
           set -euo pipefail
-          CONTROL_REMOTE="$(git ls-remote origin 'refs/heads/integration/control-plane-option-b-20260815' | awk '{print $1}')"
+          CONTROL_REMOTE="$(git ls-remote origin "$CONTROL_REMOTE_REF" | awk '{print $1}')"
           E_REMOTE="$(git ls-remote origin 'refs/pull/132/head' | awk '{print $1}')"
           test "$CONTROL_REMOTE" = "$CONTROL_HEAD"
           test "$E_REMOTE" = "$E_HEAD"

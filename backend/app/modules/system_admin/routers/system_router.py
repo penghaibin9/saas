@@ -219,6 +219,78 @@ def get_system_user(
         db.close()
 
 
+@_replacements.get("/system/roles/{role_id}", summary="学校角色详情（Control Plane Authority）")
+def get_system_role(
+    role_id: int,
+    user=Depends(require_permission("systemAdmin.role.view")),
+):
+    """Project the same role Authority used by assignment and authorization."""
+    from app.core.exceptions import AppException
+    from app.core.permission_catalog import permission_meta
+    from app.models import Role
+    from app.services.system_admin_catalog_service import (
+        build_permission_tree,
+        split_selection,
+        visible_codes_from_tree,
+    )
+
+    payload = _bundle.get_system_role(role_id, user=user)
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return payload
+
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        role = db.scalars(select(Role).where(
+            Role.id == int(role_id),
+            Role.tenant_id == tenant_id,
+            Role.is_deleted.is_(False),
+        )).first()
+        if role is None:
+            raise AppException("DATA_NOT_FOUND", "角色不存在")
+        permission_codes = sorted(_runtime_role_permission_codes(db, role, tenant_id=tenant_id))
+        tree = build_permission_tree(user)
+        visible = visible_codes_from_tree(tree)
+        selection = split_selection(permission_codes, tree)
+        read_only = []
+        legacy = []
+        unmapped = []
+        for code in sorted(set(permission_codes) - visible):
+            meta = permission_meta(code)
+            if code.startswith("system."):
+                reason = "legacy compatibility；新写入只允许 systemAdmin.*"
+                legacy.append(code)
+            elif meta is None:
+                reason = "未映射到 ACTIVE Permission Catalog"
+                unmapped.append(code)
+            elif not bool(meta.get("customRoleAssignable")):
+                reason = "Permission Catalog 标记为不可由 Custom Role 分配"
+            else:
+                reason = "超出当前操作者永久授权上限"
+            read_only.append({"permissionCode": code, "reason": reason})
+
+        data.update({
+            "version": int(role.version or 0),
+            "permissionCodes": permission_codes,
+            "menuKeys": selection["menuKeys"],
+            "buttonKeys": selection["buttonKeys"],
+            "editablePermissionCodes": sorted(set(permission_codes) & visible),
+            "readOnlyPreservedPermissions": read_only,
+            "readOnlyPreservedPermissionCodes": [item["permissionCode"] for item in read_only],
+            "legacyPermissionCodes": legacy,
+            "unmappedPermissionCodes": unmapped,
+            "permissionAuthority": (
+                "PUBLISHED_ROLE_TEMPLATE"
+                if str(role.role_type or "").upper() == "SYSTEM"
+                else "ROLE_PERMISSION_PINNED"
+            ),
+        })
+        return payload
+    finally:
+        db.close()
+
+
 @_replacements.put("/system/users/{user_id}/roles", summary="分配学校账号角色")
 def assign_system_user_roles(
     user_id: int,
@@ -355,12 +427,119 @@ def assign_system_user_roles(
     )
 
 
+@_replacements.post("/system/roles", summary="创建学校自定义角色")
+def create_system_role(
+    body: dict = Body(...),
+    user=Depends(require_permission("systemAdmin.role.create")),
+):
+    """Create the runtime identity and its stable pinned source atomically."""
+    import secrets
+
+    from app.core.exceptions import AppException
+    from app.models import CustomRoleSource, Role, RoleTemplate
+    from app.models.permission_governance import (
+        TEMPLATE_CATEGORY_SYSTEM_ROLE,
+        TEMPLATE_PLANE_TENANT,
+        TEMPLATE_PUBLISHED,
+    )
+    from app.modules.system_admin.policies.role_template_plane import assert_school_role_template_code
+
+    tenant_id = int(current_tenant_id() or 0)
+    name = str(body.get("name") or "").strip()
+    code = str(body.get("code") or "").strip().upper() or f"CUSTOM_{secrets.token_hex(4).upper()}"
+    if not name or not re.fullmatch(r"[A-Z][A-Z0-9_]{2,49}", code):
+        raise AppException("VALIDATION_ERROR", "角色名称必填，编码须为 3-50 位大写字母、数字或下划线")
+
+    db = get_sessionmaker()()
+    try:
+        if db.scalars(select(Role).where(
+            Role.tenant_id == tenant_id,
+            Role.role_code == code,
+        )).first():
+            raise AppException("DATA_CONFLICT", "角色编码已存在")
+        source_template_code = assert_school_role_template_code(
+            body.get("sourceTemplateCode") or "SCHOOL_ADMIN"
+        )
+        source_template = db.scalars(select(RoleTemplate).where(
+            RoleTemplate.tenant_id == 0,
+            RoleTemplate.template_code == source_template_code,
+            RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
+            RoleTemplate.template_category == TEMPLATE_CATEGORY_SYSTEM_ROLE,
+            RoleTemplate.publish_status == TEMPLATE_PUBLISHED,
+            RoleTemplate.status == "ACTIVE",
+            RoleTemplate.is_deleted.is_(False),
+        ).order_by(RoleTemplate.template_version.desc(), RoleTemplate.id.desc()).limit(1)).first()
+        if source_template is None:
+            raise AppException(
+                "B8_SYSTEM_TEMPLATE_DRIFT",
+                "自定义角色必须固定到已发布学校角色模板",
+                http_status=409,
+                details={"sourceTemplateCode": source_template_code},
+            )
+        role = Role(
+            tenant_id=tenant_id,
+            role_code=code,
+            role_name=name,
+            role_type="CUSTOM",
+            status="ACTIVE",
+            remark="SAAS_CUSTOM;authority=CONTROL_PLANE",
+        )
+        db.add(role)
+        db.flush()
+        from app.services.data_scope_service import save_role_scope_in_session
+
+        save_role_scope_in_session(
+            db,
+            role,
+            body.get("scopeCode") or "ASSIGNED",
+            target_json=(
+                body["scopeTarget"]
+                if "scopeTarget" in body
+                else body.get("targetJson")
+            ),
+        )
+        db.add(CustomRoleSource(
+            tenant_id=tenant_id,
+            role_id=int(role.id),
+            role_code=code,
+            source_template_code=source_template_code,
+            source_template_version=int(source_template.template_version or 1),
+            permission_codes_json={"items": []},
+            drift_json={"policy": "PINNED", "automaticUpgrade": False},
+            status="ACTIVE",
+        ))
+
+        from app.services import audit_log
+
+        audit_log.record_critical_in_session(
+            db,
+            "ROLE_CREATE",
+            f"role:{role.id}",
+            detail={
+                "roleCode": code,
+                "roleName": name,
+                "moduleCode": "systemAdmin",
+                "authoritySource": "ROLE_PERMISSION_PINNED",
+            },
+            tenant_id=tenant_id,
+            resource_id=str(role.id),
+        )
+        db.commit()
+        db.refresh(role)
+        return success(_bundle._role_row(role, 0), message="自定义角色已创建；请继续配置权限")
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 @_replacements.post("/system/roles/{role_id}/copy", summary="从预设或自定义角色复制学校自定义角色")
 def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.role.create"))):
     """Compatibility copy with canonical Authority, no runtime Permission creation."""
     from app.core.exceptions import AppException
     from app.core.permissions import assert_delegable_permission_codes
-    from app.models import Permission, Role, RolePermission
+    from app.models import DataScopeRule, Permission, Role, RolePermission
     from app.models.permission_governance import CustomRoleSource
 
     tenant_id = int(current_tenant_id() or 0)
@@ -399,6 +578,22 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
         source_template_code, source_template_version = _custom_role_source_snapshot(
             db, source, tenant_id=tenant_id,
         )
+        source_scope_rule = db.scalars(select(DataScopeRule).where(
+            DataScopeRule.tenant_id == tenant_id,
+            DataScopeRule.role_code == source.role_code,
+            DataScopeRule.status == "ACTIVE",
+            DataScopeRule.is_deleted.is_(False),
+        ).order_by(DataScopeRule.id.desc()).limit(1)).first()
+        source_scope_code = (
+            str(source_scope_rule.scope_type)
+            if source_scope_rule is not None
+            else _bundle._role_scope(source)
+        )
+        source_scope_target = (
+            dict(source_scope_rule.target_json or {})
+            if source_scope_rule is not None
+            else {}
+        )
         base = re.sub(
             r"[^A-Z0-9_]",
             "_",
@@ -423,9 +618,16 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
             status="ACTIVE",
             remark="SAAS_CUSTOM;authority=CONTROL_PLANE",
         )
-        _bundle._set_role_scope(role, _bundle._role_scope(source), user=user)
         db.add(role)
         db.flush()
+        from app.services.data_scope_service import save_role_scope_in_session
+
+        save_role_scope_in_session(
+            db,
+            role,
+            source_scope_code,
+            target_json=source_scope_target,
+        )
 
         db.add(CustomRoleSource(
             tenant_id=tenant_id,
@@ -434,7 +636,12 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
             source_template_code=source_template_code,
             source_template_version=source_template_version,
             permission_codes_json={"items": sorted(codes)},
-            drift_json={"compatibilityCopy": True, "authority": "CONTROL_PLANE"},
+            drift_json={
+                "compatibilityCopy": True,
+                "authority": "CONTROL_PLANE",
+                "policy": "DERIVED_PINNED",
+                "automaticUpgrade": False,
+            },
             status="ACTIVE",
         ))
 
@@ -485,8 +692,20 @@ def save_system_role_permissions(
     body: dict = Body(...),
     user=Depends(require_permission("systemAdmin.role.config")),
 ):
+    import hashlib
+    import json
+
+    from sqlalchemy import func
+
     from app.core.exceptions import AppException
-    from app.services.system_admin_catalog_service import expand_permission_patterns
+    from app.core.permission_catalog import permission_meta
+    from app.core.permissions import assert_delegable_permission_codes
+    from app.models import CustomRoleSource, Permission, Role, RolePermission, UserRole
+    from app.services.system_admin_catalog_service import (
+        build_permission_tree,
+        expand_permission_patterns,
+        visible_codes_from_tree,
+    )
 
     raw_codes = body.get("permissionCodes") or []
     if not isinstance(raw_codes, list):
@@ -500,6 +719,13 @@ def save_system_role_permissions(
             http_status=422,
             details={"permissionCodes": legacy_writes[:50]},
         )
+    codes = set(expand_permission_patterns(raw_code_set))
+    codes = {c for c in codes if c != "*" and not c.endswith(".*") and not c.startswith("*.")}
+    # A temporary grant must never become durable.  Enforce that security
+    # boundary before request-shape/catalog diagnostics so callers cannot use
+    # validation precedence to probe or persist delegated capabilities.
+    assert_delegable_permission_codes(user, codes)
+    _assert_custom_role_catalog_policy(codes)
     if body.get("expectedVersion") is None:
         raise AppException("VALIDATION_ERROR", "expectedVersion 必填", http_status=422)
     reason = str(body.get("reason") or "").strip()
@@ -510,11 +736,248 @@ def save_system_role_permissions(
         uuid.UUID(request_id)
     except (ValueError, TypeError, AttributeError):
         raise AppException("VALIDATION_ERROR", "requestId 必须是 UUID", http_status=422)
-    codes = set(expand_permission_patterns(raw_code_set))
-    codes = {c for c in codes if c != "*" and not c.endswith(".*") and not c.startswith("*.")}
-    _assert_custom_role_catalog_policy(codes)
-    _assert_permission_rows_exist(codes)
-    return _bundle.save_system_role_permissions(role_id, body=body, user=user)
+    visible = visible_codes_from_tree(build_permission_tree(user))
+    if not codes <= visible:
+        raise AppException(
+            "PERMISSION_AUTHORING_BOUNDARY",
+            "提交权限超出服务端可配置集合",
+            http_status=422,
+            details={"permissionCodes": sorted(codes - visible)[:50]},
+        )
+
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        role = db.scalars(select(Role).where(
+            Role.id == int(role_id),
+            Role.tenant_id == tenant_id,
+            Role.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if role is None:
+            raise AppException("DATA_NOT_FOUND", "角色不存在")
+        if str(role.role_type or "").upper() == "SYSTEM":
+            raise AppException("VALIDATION_ERROR", "预设角色由平台模板维护；请复制为自定义角色后再裁剪")
+        if int(role.version or 0) != int(body["expectedVersion"]):
+            raise AppException("DATA_CONFLICT", "角色权限已被他人修改，请刷新后重试", http_status=409)
+
+        source = db.scalars(select(CustomRoleSource).where(
+            CustomRoleSource.tenant_id == tenant_id,
+            CustomRoleSource.role_id == int(role.id),
+            CustomRoleSource.role_code == role.role_code,
+            CustomRoleSource.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if source is None:
+            raise AppException(
+                "CUSTOM_ROLE_BINDING_DRIFT",
+                "CUSTOM 角色缺少稳定 Role ↔ CustomRoleSource 绑定",
+                http_status=409,
+                details={"tenantId": tenant_id, "roleId": int(role.id)},
+            )
+
+        existing_links = list(db.scalars(select(RolePermission).where(
+            RolePermission.tenant_id == tenant_id,
+            RolePermission.role_id == int(role.id),
+        )).all())
+        existing_codes_by_id = {
+            int(permission.id): str(permission.permission_code)
+            for permission in db.scalars(select(Permission).join(
+                RolePermission, RolePermission.permission_id == Permission.id,
+            ).where(
+                RolePermission.tenant_id == tenant_id,
+                RolePermission.role_id == int(role.id),
+            )).all()
+        }
+        existing_codes = {
+            existing_codes_by_id[int(link.permission_id)]
+            for link in existing_links
+            if link.status == "ACTIVE" and not link.is_deleted and int(link.permission_id) in existing_codes_by_id
+        }
+        preserved = {code for code in existing_codes if code not in visible}
+        final_codes = sorted(preserved | codes)
+        permissions = {
+            item.permission_code: item
+            for item in db.scalars(select(Permission).where(
+                Permission.permission_code.in_(final_codes)
+            )).all()
+        } if final_codes else {}
+        missing = sorted(set(final_codes) - set(permissions))
+        if missing:
+            raise AppException(
+                "PERMISSION_CATALOG_DRIFT",
+                "角色权限缺少预置 Permission 行，学校运行时禁止创建",
+                http_status=409,
+                details={"permissionCodes": missing[:50]},
+            )
+
+        existing_by_permission_id = {int(link.permission_id): link for link in existing_links}
+        wanted_ids = {int(permissions[code].id) for code in final_codes}
+        for permission_id, link in existing_by_permission_id.items():
+            code = existing_codes_by_id.get(permission_id, "")
+            if permission_id in wanted_ids:
+                link.status = "ACTIVE"
+                link.is_deleted = False
+            elif code in visible:
+                link.status = "DISABLED"
+                link.is_deleted = True
+        for permission_id in wanted_ids - set(existing_by_permission_id):
+            db.add(RolePermission(
+                tenant_id=tenant_id,
+                role_id=int(role.id),
+                permission_id=permission_id,
+                status="ACTIVE",
+            ))
+
+        version_before = int(role.version or 0)
+        from app.services.data_scope_service import save_role_scope_in_session
+
+        scope_change = save_role_scope_in_session(
+            db,
+            role,
+            body.get("scopeCode"),
+            target_json=(
+                body["scopeTarget"]
+                if "scopeTarget" in body
+                else body.get("targetJson")
+            ),
+        )
+        scope_before = scope_change["before"] or {
+            "scopeCode": None,
+            "scopeTarget": {},
+            "version": None,
+        }
+        role.version = version_before + 1
+        source.permission_codes_json = {"items": final_codes}
+        source.drift_json = {
+            **(source.drift_json or {}),
+            "policy": "PINNED",
+            "automaticUpgrade": False,
+        }
+        source.status = "ACTIVE"
+        source.is_deleted = False
+
+        added = sorted(set(final_codes) - existing_codes)
+        removed = sorted(existing_codes - set(final_codes))
+        digest = lambda values: hashlib.sha256(
+            json.dumps(sorted(values), separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        high_risk = sorted(
+            code for code in set(added) | set(removed)
+            if str((permission_meta(code) or {}).get("riskLevel") or "").upper() in {"HIGH", "CRITICAL"}
+        )
+        affected_member_count = int(db.scalar(select(func.count(UserRole.id)).where(
+            UserRole.tenant_id == tenant_id,
+            UserRole.role_id == int(role.id),
+            UserRole.status == "ACTIVE",
+            UserRole.is_deleted.is_(False),
+        )) or 0)
+        scope_after = {
+            "scopeCode": scope_change["scopeCode"],
+            "scopeTarget": scope_change["scopeTarget"],
+            "version": scope_change["version"],
+        }
+
+        from app.services import audit_log
+
+        audit_log.record_critical_in_session(
+            db,
+            "ROLE_PERMISSION_SAVE",
+            f"role:{role.id}",
+            detail={
+                "roleCode": role.role_code,
+                "roleVersionBefore": version_before,
+                "roleVersionAfter": int(role.version or 0),
+                "reason": reason,
+                "requestId": request_id,
+                "beforePermissionDigest": digest(existing_codes),
+                "afterPermissionDigest": digest(final_codes),
+                "addedPermissionCodes": added,
+                "removedPermissionCodes": removed,
+                "readOnlyPreservedPermissionCodes": sorted(preserved),
+                "scopeBefore": scope_before,
+                "scopeAfter": scope_after,
+                "affectedMemberCount": affected_member_count,
+                "highRiskPermissionCodes": high_risk,
+                "moduleCode": "systemAdmin",
+                "authoritySource": "ROLE_PERMISSION_PINNED",
+            },
+            tenant_id=tenant_id,
+            resource_id=str(role.id),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    from app.services.auth_service_db import invalidate_tenant_subject_caches
+
+    cache_invalidated = True
+    try:
+        invalidate_tenant_subject_caches(tenant_id)
+    except Exception:
+        cache_invalidated = False
+    return success({
+        "id": str(role_id),
+        "permissionCount": len(final_codes),
+        "permissionCodes": final_codes,
+        "version": version_before + 1,
+        "scopeCode": scope_after["scopeCode"],
+        "beforePermissionDigest": digest(existing_codes),
+        "afterPermissionDigest": digest(final_codes),
+        "addedPermissionCodes": added,
+        "removedPermissionCodes": removed,
+        "readOnlyPreservedPermissionCodes": sorted(preserved),
+        "affectedMemberCount": affected_member_count,
+        "highRiskPermissionCodes": high_risk,
+        "cacheInvalidated": cache_invalidated,
+    }, message="权限配置已生效；该角色成员需重新登录")
+
+
+@_replacements.get("/system/export/role-config/{role_id}", summary="导出角色权限配置（真实 JSON，不含成员）")
+def export_role_config(
+    role_id: int,
+    user=Depends(require_permission("systemAdmin.role.view")),
+):
+    """Export the same permission Authority consumed by runtime authorization."""
+    from datetime import datetime
+
+    from app.core.exceptions import AppException
+    from app.models import Role
+
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        role = db.scalars(select(Role).where(
+            Role.id == int(role_id),
+            Role.tenant_id == tenant_id,
+            Role.is_deleted.is_(False),
+        )).first()
+        if role is None:
+            raise AppException("DATA_NOT_FOUND", "角色不存在")
+        codes = sorted(_runtime_role_permission_codes(db, role, tenant_id=tenant_id))
+        payload = {
+            "roleName": role.role_name,
+            "roleCode": role.role_code,
+            "roleType": "BUILTIN" if str(role.role_type or "").upper() == "SYSTEM" else "CUSTOM",
+            "scopeCode": _bundle._role_scope(role),
+            "permissionCount": len(codes),
+            "permissions": codes,
+            "permissionAuthority": (
+                "PUBLISHED_ROLE_TEMPLATE"
+                if str(role.role_type or "").upper() == "SYSTEM"
+                else "ROLE_PERMISSION_PINNED"
+            ),
+            "exportedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        return _bundle._json_response(
+            payload,
+            f"角色配置_{role.role_code}.json",
+            user,
+            f"角色配置「{role.role_name}」",
+        )
+    finally:
+        db.close()
 
 
 def _route_key(route) -> tuple[str, str]:

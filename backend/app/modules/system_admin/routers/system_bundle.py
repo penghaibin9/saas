@@ -192,7 +192,6 @@ def _role_row(role, member_count: int) -> dict:
         "memberCount": int(member_count or 0), "description": role.remark or "",
         "status": "ENABLED" if status in ("ACTIVE", "ENABLED") else "DISABLED",
         "statusLabel": "启用中" if status in ("ACTIVE", "ENABLED") else "已停用",
-        "version": int(role.version or 0),
         "updatedAt": str(getattr(role, "updated_at", "") or "")[:19],
     }
 
@@ -1498,10 +1497,10 @@ def assign_system_user_roles(user_id: int, body: dict = Body(...),
 
 @router.get("/system/roles/{role_id}", summary="学校角色详情（真实库）")
 def get_system_role(role_id: int, user=Depends(require_permission("systemAdmin.role.view"))):
-    from app.core.permission_catalog import permission_meta
+    from app.core.permissions import ROLE_PERMISSIONS
     from app.models import Permission, Role, RolePermission, User, UserRole
     from app.services.system_admin_catalog_service import (
-        build_permission_tree, split_selection, visible_codes_from_tree)
+        build_permission_tree, expand_permission_patterns, split_selection)
     tenant_id = current_tenant_id()
     db = get_sessionmaker()()
     try:
@@ -1519,39 +1518,16 @@ def get_system_role(role_id: int, user=Depends(require_permission("systemAdmin.r
             UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
             User.is_deleted.is_(False)).limit(50)).all()
         if str(role.role_type or "").upper() == "SYSTEM":
-            from app.services.system_role_shadow_service import published_system_role_permissions
-            permission_codes = list(published_system_role_permissions(db, role.role_code))
+            permission_codes = sorted(expand_permission_patterns(set(ROLE_PERMISSIONS.get(role.role_code, set()))))
         else:
             permission_codes = [row[0] for row in db.execute(select(Permission.permission_code).join(
                 RolePermission, RolePermission.permission_id == Permission.id).where(
                 RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id,
                 RolePermission.status == "ACTIVE", RolePermission.is_deleted.is_(False)).order_by(
                 Permission.permission_code)).all()]
-        tree = build_permission_tree(user)
-        visible = visible_codes_from_tree(tree)
-        selection = split_selection(permission_codes, tree)
-        read_only = []
-        legacy = []
-        unmapped = []
-        for code in sorted(set(permission_codes) - visible):
-            meta = permission_meta(code)
-            if code.startswith("system."):
-                reason = "legacy compatibility；新写入只允许 systemAdmin.*"
-                legacy.append(code)
-            elif meta is None:
-                reason = "未映射到 ACTIVE Permission Catalog"
-                unmapped.append(code)
-            elif not bool(meta.get("customRoleAssignable")):
-                reason = "Permission Catalog 标记为不可由 Custom Role 分配"
-            else:
-                reason = "超出当前操作者永久授权上限"
-            read_only.append({"permissionCode": code, "reason": reason})
+        selection = split_selection(permission_codes, build_permission_tree(user))
         return success({**_role_row(role, member_count), "permissionCodes": permission_codes,
                         "menuKeys": selection["menuKeys"], "buttonKeys": selection["buttonKeys"],
-                        "editablePermissionCodes": sorted(set(permission_codes) & visible),
-                        "readOnlyPreservedPermissions": read_only,
-                        "readOnlyPreservedPermissionCodes": [item["permissionCode"] for item in read_only],
-                        "legacyPermissionCodes": legacy, "unmappedPermissionCodes": unmapped,
                         "members": [{"id": str(mid), "name": name, "orgName": "—"} for mid, name in members],
                         "auditTrail": []})
     finally:
@@ -1645,11 +1621,8 @@ def copy_system_role(role_id: int, user=Depends(require_permission("systemAdmin.
 def save_system_role_permissions(role_id: int, body: dict = Body(...),
                                  user=Depends(require_permission("systemAdmin.role.config"))):
     from app.core.exceptions import AppException
-    import hashlib
-    import json
-    from app.core.permission_catalog import permission_meta
     from app.core.permissions import assert_delegable_permission_codes
-    from app.models import Permission, Role, RolePermission, UserRole
+    from app.models import Permission, Role, RolePermission
     from app.services.system_admin_catalog_service import build_permission_tree, expand_permission_patterns, visible_codes_from_tree
     tenant_id = current_tenant_id()
     raw_codes = body.get("permissionCodes") or []
@@ -1660,8 +1633,12 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
     if len(codes) > 500:
         raise AppException("VALIDATION_ERROR", "权限点超出学校角色可配置范围")
     assert_delegable_permission_codes(user, codes)
-    # 编辑边界永远由服务端 Catalog + Navigation projection 计算，拒绝客户端扩大 visible 集合。
-    visible = visible_codes_from_tree(build_permission_tree(user))
+    # 可见码集合：仅替换本页能展示的权限，页外已有权限保留，防止误伤实习/教务等码
+    raw_visible = body.get("visiblePermissionCodes")
+    if isinstance(raw_visible, list) and raw_visible:
+        visible = {str(c).strip() for c in raw_visible if str(c).strip()}
+    else:
+        visible = visible_codes_from_tree(build_permission_tree(user))
     db = get_sessionmaker()()
     try:
         role = db.scalars(select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id,
@@ -1672,10 +1649,7 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
             raise AppException("VALIDATION_ERROR", "预设角色由平台模板维护；请复制为自定义角色后再裁剪")
         expected_version = body.get("expectedVersion")
         if expected_version is not None and int(role.version or 0) != int(expected_version):
-            raise AppException("DATA_CONFLICT", "角色权限已被他人修改，请刷新后重试", http_status=409)
-        reason = str(body.get("reason") or "").strip()
-        request_id = str(body.get("requestId") or "").strip()
-        scope_before = {"scopeCode": _role_scope(role)}
+            raise AppException("DATA_CONFLICT", "角色权限已被他人修改，请刷新后重试")
         existing_links = list(db.scalars(select(RolePermission).where(
             RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id)).all())
         existing_by_perm_id = {rp.permission_id: rp for rp in existing_links}
@@ -1688,10 +1662,11 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
         final_codes = sorted(preserved | codes)
         permissions = {p.permission_code: p for p in db.scalars(select(Permission).where(
             Permission.permission_code.in_(final_codes))).all()} if final_codes else {}
-        missing_rows = sorted(set(final_codes) - set(permissions))
-        if missing_rows:
-            raise AppException("PERMISSION_CATALOG_DRIFT", "角色权限缺少预置 Permission 行，学校运行时禁止创建", http_status=409,
-                               details={"permissionCodes": missing_rows[:50]})
+        for code in final_codes:
+            if code not in permissions:
+                module, _, action = code.partition(".")
+                p = Permission(permission_code=code, permission_name=code, module_code=module, action=action or None)
+                db.add(p); db.flush(); permissions[code] = p
         wanted_ids = {permissions[c].id for c in final_codes}
         for permission_id, link in existing_by_perm_id.items():
             if permission_id in wanted_ids:
@@ -1710,26 +1685,10 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
         _set_role_scope(role, body.get("scopeCode") or _role_scope(role),
                         target_json=body.get("scopeTarget") or body.get("targetJson"), user=user)
         role.version = int(role.version or 0) + 1
-        added = sorted(set(final_codes) - existing_codes)
-        removed = sorted(existing_codes - set(final_codes))
-        digest = lambda values: hashlib.sha256(json.dumps(sorted(values), separators=(",", ":")).encode("utf-8")).hexdigest()
-        high_risk = sorted(code for code in set(added) | set(removed)
-                           if str((permission_meta(code) or {}).get("riskLevel") or "").upper() in {"HIGH", "CRITICAL"})
-        affected_member_count = int(db.scalar(select(func.count(UserRole.id)).where(
-            UserRole.tenant_id == tenant_id, UserRole.role_id == role.id,
-            UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False))) or 0)
-        scope_after = {"scopeCode": _role_scope(role), "scopeTarget": body.get("scopeTarget") or body.get("targetJson") or {}}
         from app.services import audit_log
         audit_log.record_critical_in_session(
             db, "ROLE_PERMISSION_SAVE", f"role:{role.id}",
             detail={"roleCode": role.role_code, "permissionCount": len(final_codes),
-                    "roleVersionBefore": int(role.version or 0) - 1, "roleVersionAfter": int(role.version or 0),
-                    "reason": reason, "requestId": request_id,
-                    "beforePermissionDigest": digest(existing_codes), "afterPermissionDigest": digest(final_codes),
-                    "addedPermissionCodes": added, "removedPermissionCodes": removed,
-                    "readOnlyPreservedPermissionCodes": sorted(preserved),
-                    "scopeBefore": scope_before, "scopeAfter": scope_after,
-                    "affectedMemberCount": affected_member_count, "highRiskPermissionCodes": high_risk,
                     "scopeCode": _role_scope(role), "preservedOutsideTree": len(preserved),
                     "moduleCode": "systemAdmin", "version": role.version},
             tenant_id=tenant_id, resource_id=str(role.id),
@@ -1744,12 +1703,8 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
             cache_ok = False
             cache_warn = str(cache_exc)[:200]
         payload = {"id": str(role.id), "permissionCount": len(final_codes), "scopeCode": _role_scope(role),
-                    "permissionCodes": final_codes, "version": int(role.version or 0),
-                    "beforePermissionDigest": digest(existing_codes), "afterPermissionDigest": digest(final_codes),
-                    "addedPermissionCodes": added, "removedPermissionCodes": removed,
-                    "readOnlyPreservedPermissionCodes": sorted(preserved),
-                    "affectedMemberCount": affected_member_count, "highRiskPermissionCodes": high_risk,
-                    "cacheInvalidated": cache_ok}
+                   "permissionCodes": final_codes, "version": int(role.version or 0),
+                   "cacheInvalidated": cache_ok}
         if not cache_ok:
             payload["warning"] = "权限已保存，但缓存失效失败，请人工刷新或通知成员重新登录"
         return success(payload, message="权限配置已生效；该角色成员需重新登录")

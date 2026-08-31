@@ -11,6 +11,7 @@ _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
     "PLATFORM_SUPPORT_SESSION_CHANGE",
     "PLATFORM_ACCESS_REVIEW_CHANGE",
     "ROLE_TEMPLATE_PUBLISH",
+    "ROLE_CREATE",
     "PLATFORM_PRODUCT_IAM_PUBLISH",
     "CUSTOM_ROLE_BINDING_RECONCILE",
     # Seven P1 closure writes that are deliberately committed in the same DB transaction

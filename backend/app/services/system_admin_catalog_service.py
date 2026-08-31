@@ -94,6 +94,16 @@ def _permission_node(entry: dict, *, node_type: str, label: str | None = None) -
 def _build_permission_tree(entries: dict[str, dict]) -> list[dict]:
     assigned: set[str] = set()
     modules: dict[str, list[dict]] = {}
+    navigated_codes = {
+        code
+        for surface in _navigation_surfaces()
+        if not surface.get("platformOnly")
+        and not surface.get("hidden")
+        and not surface.get("disabled")
+        and str(surface.get("status") or "") in {"implemented", "partial"}
+        for code in surface.get("permissionCodes") or []
+        if code in entries
+    }
 
     for surface in _navigation_surfaces():
         if surface.get("platformOnly") or surface.get("hidden") or surface.get("disabled"):
@@ -107,6 +117,16 @@ def _build_permission_tree(entries: dict[str, dict]) -> list[dict]:
         menu = _permission_node(entries[primary], node_type="MENU", label=surface.get("label"))
         menu["surfaceKey"] = surface.get("surfaceKey")
         menu["path"] = surface.get("path")
+        primary_entry = entries[primary]
+        feature_actions = sorted(
+            code for code, entry in entries.items()
+            if code not in assigned
+            and code not in navigated_codes
+            and code not in codes
+            and entry.get("moduleKey") == primary_entry.get("moduleKey")
+            and entry.get("featureKey") == primary_entry.get("featureKey")
+        )
+        codes.extend(feature_actions)
         for code in codes:
             assigned.add(code)
             if code != primary:
