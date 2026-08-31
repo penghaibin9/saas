@@ -14,8 +14,8 @@
         <template #cell-endAt="{ row }">{{ (row.endAt || '').slice(0, 10) || '—' }}</template>
         <template #cell-actions="{ row }">
           <div class="pcod__ops">
-            <AppButton v-if="row.status === 'unpaid'" variant="primary" @click="act(row, 'mark-paid')">标记已支付</AppButton>
-            <AppButton v-if="row.status === 'unpaid'" variant="danger" @click="act(row, 'cancel')">取消</AppButton>
+            <AppButton v-if="row.status === 'unpaid'" variant="primary" @click="openAction(row, 'mark-paid')">标记已支付</AppButton>
+            <AppButton v-if="row.status === 'unpaid'" variant="danger" @click="openAction(row, 'cancel')">取消</AppButton>
           </div>
         </template>
       </DataTable>
@@ -35,6 +35,36 @@
         <div class="pcod__form-ops">
           <AppButton variant="primary" :loading="saving" @click="submit">创建（未支付）</AppButton>
           <AppButton @click="createVisible = false">取消</AppButton>
+        </div>
+      </div>
+    </AppDrawer>
+
+    <AppDrawer
+      :visible="actionForm.visible"
+      :title="actionForm.action === 'mark-paid' ? '确认订单已支付' : '取消订单'"
+      mode="modal"
+      size="medium"
+      @update:visible="actionForm.visible = $event"
+    >
+      <div class="pcod__form">
+        <p class="pcod__action-note">
+          {{ actionForm.action === 'mark-paid'
+            ? '确认后将以该订单为商业 Authority 自动生效套餐、有效期与授权。'
+            : '取消后保留订单与审计流水，不会授予正式权益。' }}
+        </p>
+        <label class="pcod__field"><span>订单号</span><strong>{{ actionForm.row?.orderNo || '—' }}</strong></label>
+        <label class="pcod__field"><span>变更原因（至少 5 个字符）</span>
+          <AppTextInput v-model="actionForm.reason" placeholder="请输入可审计的变更原因" />
+        </label>
+        <div class="pcod__form-ops">
+          <AppButton
+            :variant="actionForm.action === 'mark-paid' ? 'primary' : 'danger'"
+            :loading="actionForm.saving"
+            @click="submitAction"
+          >
+            {{ actionForm.action === 'mark-paid' ? '确认已支付并生效' : '确认取消订单' }}
+          </AppButton>
+          <AppButton :disabled="actionForm.saving" @click="actionForm.visible = false">返回</AppButton>
         </div>
       </div>
     </AppDrawer>
@@ -68,6 +98,7 @@ export default {
       createVisible: false,
       queryTenantConsumed: false,
       form: { tenantId: '', packageCode: 'standard', amount: 49800, remark: '' },
+      actionForm: { visible: false, row: null, action: '', reason: '', saving: false },
       columns: [
         { key: 'orderNo', title: '订单号', width: '170px' },
         { key: 'tenantName', title: '学校', width: '190px' },
@@ -124,13 +155,24 @@ export default {
         toast.error(res.message)
       }
     },
-    async act(row, action) {
-      const reason = window.prompt('请输入订单变更原因（至少 5 个字符）')
-      if (!reason || reason.trim().length < 5) return
-      const res = await platformControlApi.orderAction(row.orderNo, action, { expectedVersion: Number(row.version || 1), reason: reason.trim() })
+    openAction(row, action) {
+      this.actionForm = { visible: true, row, action, reason: '', saving: false }
+    },
+    async submitAction() {
+      const reason = this.actionForm.reason.trim()
+      if (reason.length < 5) {
+        toast.error('变更原因至少 5 个字符')
+        return
+      }
+      const row = this.actionForm.row
+      const action = this.actionForm.action
+      this.actionForm.saving = true
+      const res = await platformControlApi.orderAction(row.orderNo, action, { expectedVersion: Number(row.version || 1), reason })
+      this.actionForm.saving = false
       if (res.code === 0) {
         if (res.data?.repairTaskRequired) toast.warning('支付事实已入账，但授权激活失败；交付验收已阻断，请按待修复项处理')
         else toast.success(action === 'mark-paid' ? '已入账并自动开通/续期' : '已取消')
+        this.actionForm.visible = false
         this.load()
       } else {
         toast.error(res.message)
@@ -176,5 +218,13 @@ export default {
   display: flex;
   gap: var(--space-2);
   margin-top: var(--space-2);
+}
+.pcod__action-note {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: 9px;
+  background: var(--color-primary-soft);
+  color: var(--text-secondary);
+  line-height: 1.6;
 }
 </style>
