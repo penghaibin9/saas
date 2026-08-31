@@ -192,7 +192,10 @@ jobs:
           assert data['neighborStudents'] == 20
           assert data['tenantPermissionUniverseCount'] > 400
           assert data['schoolAdminExplicitPermissionCount'] == data['tenantPermissionUniverseCount']
-          assert data['runtimeSchoolAdminWildcardStillPresent'] is True
+          assert data['legacySchoolAdminWildcardShadowStillPresent'] is True
+          assert data['legacyWildcardRuntimeReachable'] is False
+          assert data['runtimeSchoolAdminWildcardStillPresent'] is False
+          assert data['runtimeSchoolAdminWildcardRetired'] is True
           assert data['shadow']['unexplainedDriftCount'] == 0
           assert data['shadow']['planeViolationCount'] == 0
           assert data['shadow']['zeroUnexplainedDrift'] is True

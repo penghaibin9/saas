@@ -26,7 +26,15 @@ def test_b8_contract_freezes_four_resolvers_and_tenant_only_shadow():
 def test_b8_concrete_catalog_materializes_all_previously_legacy_concrete_codes():
     catalog = load_permission_catalog()
     extension = catalog["b8ConcreteCatalog"]
-    assert extension["count"] == 597
+    # The generated navigation contract contributes production-visible
+    # permission metadata to the same concrete tenant catalog. Keep the exact
+    # decomposition frozen so a count change cannot silently mask a regression.
+    assert extension["baseConcreteCount"] == 449
+    assert extension["postCutoverCompatibilityCount"] == 191
+    assert extension["count"] == 640
+    assert extension["count"] == (
+        extension["baseConcreteCount"] + extension["postCutoverCompatibilityCount"]
+    )
     assert runtime_wildcard_probe_codes() == {"*"}
     for code in (
         "academicAffairs.grade.view",

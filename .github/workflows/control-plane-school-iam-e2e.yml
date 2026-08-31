@@ -151,17 +151,25 @@ jobs:
         working-directory: backend
         run: python scripts/e2e_seed_control_plane_school_iam.py
 
-      - name: Verify wildcard retirement lock before school E2E
+      - name: Verify published-template runtime before school E2E
         working-directory: backend
         run: |
           python - <<'PY'
           from app.core.permissions import ROLE_PERMISSIONS
-          from app.services.system_role_shadow_service import active_tenant_permission_codes
+          from app.db.session import get_sessionmaker
+          from app.services.system_role_shadow_service import active_tenant_permission_codes, published_system_role_permissions
           assert '*' in ROLE_PERMISSIONS['SCHOOL_ADMIN']
           codes = set(active_tenant_permission_codes())
+          db = get_sessionmaker()()
+          try:
+              runtime = set(published_system_role_permissions(db, 'SCHOOL_ADMIN'))
+          finally:
+              db.close()
           assert len(codes) > 400
+          assert runtime == codes
+          assert '*' not in runtime
           assert not any(c.startswith('platform.') or c.startswith('enterprise.') for c in codes)
-          print(f'school_assignable_universe={len(codes)} wildcard_retirement_pending=true')
+          print(f'school_assignable_universe={len(codes)} wildcard_runtime_retired=true')
           PY
 
       - name: Start backend
@@ -254,7 +262,10 @@ jobs:
               'schemaVersion': 1,
               'card': 'CTRL-B8-SCHOOL-FULL-E2E',
               'headSha': expected,
-              'runtimeSchoolAdminWildcardStillPresent': True,
+              'legacySchoolAdminWildcardShadowStillPresent': True,
+              'legacyWildcardRuntimeReachable': False,
+              'runtimeSchoolAdminWildcardStillPresent': False,
+              'runtimeSchoolAdminWildcardRetired': True,
               'tenantPermissionUniverseCount': fixture['tenantPermissionUniverseCount'],
               'roleSecurityChange': role,
               'effectiveAccess': access,
@@ -266,12 +277,19 @@ jobs:
           print(json.dumps(artifact, ensure_ascii=False, sort_keys=True))
           PY
 
-      - name: Re-check wildcard retirement lock after E2E
+      - name: Re-check wildcard retirement after E2E
         working-directory: backend
         run: |
           python - <<'PY'
-          from app.core.permissions import ROLE_PERMISSIONS
-          assert '*' in ROLE_PERMISSIONS['SCHOOL_ADMIN'], 'school full E2E must not retire wildcard in the same card'
+          from app.db.session import get_sessionmaker
+          from app.services.system_role_shadow_service import active_tenant_permission_codes, published_system_role_permissions
+          db = get_sessionmaker()()
+          try:
+              runtime = set(published_system_role_permissions(db, 'SCHOOL_ADMIN'))
+          finally:
+              db.close()
+          assert runtime == set(active_tenant_permission_codes())
+          assert '*' not in runtime
           PY
 
       - name: Upload school IAM Gold candidate evidence

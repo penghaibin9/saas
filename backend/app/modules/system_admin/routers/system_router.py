@@ -6,6 +6,7 @@ other APIRoute object is reused verbatim from ``system_bundle``.
 from __future__ import annotations
 
 import re
+import uuid
 
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy import select
@@ -490,7 +491,26 @@ def save_system_role_permissions(
     raw_codes = body.get("permissionCodes") or []
     if not isinstance(raw_codes, list):
         raise AppException("VALIDATION_ERROR", "permissionCodes 必须为数组")
-    codes = set(expand_permission_patterns({str(code).strip() for code in raw_codes if str(code).strip()}))
+    raw_code_set = {str(code).strip() for code in raw_codes if str(code).strip()}
+    legacy_writes = sorted(code for code in raw_code_set if code.startswith("system."))
+    if legacy_writes:
+        raise AppException(
+            "LEGACY_PERMISSION_WRITE_FORBIDDEN",
+            "新角色写入只允许 canonical systemAdmin.* 权限码",
+            http_status=422,
+            details={"permissionCodes": legacy_writes[:50]},
+        )
+    if body.get("expectedVersion") is None:
+        raise AppException("VALIDATION_ERROR", "expectedVersion 必填", http_status=422)
+    reason = str(body.get("reason") or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "权限变更原因至少 5 个字符", http_status=422)
+    request_id = str(body.get("requestId") or "").strip()
+    try:
+        uuid.UUID(request_id)
+    except (ValueError, TypeError, AttributeError):
+        raise AppException("VALIDATION_ERROR", "requestId 必须是 UUID", http_status=422)
+    codes = set(expand_permission_patterns(raw_code_set))
     codes = {c for c in codes if c != "*" and not c.endswith(".*") and not c.startswith("*.")}
     _assert_custom_role_catalog_policy(codes)
     _assert_permission_rows_exist(codes)
@@ -522,3 +542,8 @@ def _compose_router() -> APIRouter:
 
 
 router = _compose_router()
+
+
+def __getattr__(name: str):
+    """Keep direct-call compatibility for I4 adapters and legacy tests."""
+    return getattr(_bundle, name)

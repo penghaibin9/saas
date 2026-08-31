@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import uuid
 
 import pytest
 
@@ -385,7 +386,7 @@ def test_staff_student_account_boundaries(seeded):
 
 
 def test_permission_tree_and_role_save_merge(seeded):
-    """权限树为真实 permissionCode；保存只替换可见码，页外码保留。"""
+    """权限树为真实 permissionCode；页外码显式只读展示并受版本锁保护。"""
     from app.api.v1 import system
     from app.services.db_service import session
     from app.models import Permission, RolePermission
@@ -403,9 +404,13 @@ def test_permission_tree_and_role_save_merge(seeded):
         db.add(RolePermission(tenant_id=TID, role_id=90, permission_id=p.id, status="ACTIVE", is_deleted=False))
         db.commit()
     assert outside not in visible
+    detail = system.get_system_role(90, user=ADMIN)["data"]
+    assert outside in detail["readOnlyPreservedPermissionCodes"]
     submit = sorted(c for c in visible if c.startswith("systemAdmin.user."))[:3] or sorted(visible)[:3]
     saved = system.save_system_role_permissions(
-        90, {"permissionCodes": submit, "visiblePermissionCodes": sorted(visible), "scopeCode": "COLLEGE"},
+        90, {"permissionCodes": submit, "scopeCode": "COLLEGE",
+             "expectedVersion": detail["version"], "reason": "回归验证权限调整",
+             "requestId": str(uuid.uuid4())},
         user=ADMIN)["data"]
     codes = set(saved["permissionCodes"])
     assert outside in codes
@@ -448,7 +453,7 @@ def test_governance_delegation_and_integration(seeded):
     assert any(x["id"] == row["id"] for x in listed)
     system.api_revoke_delegation(row["id"], {"reason": "提前结束顶岗"}, user=ADMIN)
     integ = system.api_save_integration({
-        "name": "教务同步", "endpoint": "https://example.edu/api", "credential": "secret-token-01"
+        "name": "教务同步", "endpoint": "https://1.1.1.1/api", "credential": "secret-token-01"
     }, user=ADMIN)["data"]
     assert integ["hasCredential"] is True
     job = system.api_enqueue_sync_job({"name": "全量同步", "integrationId": integ["id"], "forceFail": True},

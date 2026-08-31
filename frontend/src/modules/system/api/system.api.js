@@ -1077,19 +1077,18 @@ export const systemApi = {
     }
   },
 
-  async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode, visiblePermissionCodes } = {}) {
+  async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode, scopeTarget, expectedVersion, reason, requestId } = {}) {
     try {
       const permissionCodes = permissionCodesFromSelection(menuKeys, buttonKeys)
-      const visible = visiblePermissionCodes
-        || (_lastPermissionTreeVisibleCodes.length
-          ? _lastPermissionTreeVisibleCodes
-          : permissionCodes)
       const data = await request(`/system/roles/${encodeURIComponent(id)}/permissions`, {
         method: 'PUT',
         body: {
           permissionCodes,
-          visiblePermissionCodes: visible,
-          scopeCode
+          scopeCode,
+          scopeTarget: scopeTarget || {},
+          expectedVersion,
+          reason,
+          requestId
         }
       })
       return ok(data)

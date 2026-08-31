@@ -389,6 +389,16 @@
           v-model:menu-keys="perm.menuKeys"
           v-model:button-keys="perm.buttonKeys"
         />
+        <section v-if="perm.readOnlyPreserved.length" class="preserved-box">
+          <h4>保留权限（只读）</h4>
+          <p class="mp-note">这些权限不会被本次保存静默删除；原因逐项可见。</p>
+          <div v-for="item in perm.readOnlyPreserved" :key="item.permissionCode" class="preserved-row">
+            <code>{{ item.permissionCode }}</code><span>{{ item.reason }}</span>
+          </div>
+        </section>
+        <label class="reason-field">变更原因
+          <textarea v-model.trim="perm.reason" rows="3" minlength="5" placeholder="说明职责调整原因，至少 5 个字符" />
+        </label>
       </template>
       <template #footer>
         <span class="mp-note" style="margin-right: auto">保存后即时生效并留痕</span>
@@ -523,6 +533,9 @@ export default {
         menuKeys: [],
         buttonKeys: [],
         scopeCode: 'COLLEGE',
+        version: 0,
+        reason: '',
+        readOnlyPreserved: [],
         submitting: false
       },
       confirmDeprecate: false,
@@ -808,6 +821,9 @@ export default {
         menuKeys: [],
         buttonKeys: [],
         scopeCode: row.scopeCode,
+        version: Number(row.version || 0),
+        reason: '',
+        readOnlyPreserved: [],
         submitting: false
       }
       const [treeRes, detailRes] = await Promise.all([
@@ -820,14 +836,22 @@ export default {
         this.perm.menuKeys = detailRes.data.menuKeys || []
         this.perm.buttonKeys = detailRes.data.buttonKeys || []
         this.perm.scopeCode = detailRes.data.scopeCode || row.scopeCode
+        this.perm.version = Number(detailRes.data.version || row.version || 0)
+        this.perm.readOnlyPreserved = detailRes.data.readOnlyPreservedPermissions || []
       }
     },
     async submitPermission() {
+      if (this.perm.reason.length < 5) return toast.error('权限变更原因至少 5 个字符')
       this.perm.submitting = true
+      const rawId = Math.random().toString(16).slice(2).padEnd(32, '0').slice(0, 32)
+      const requestId = globalThis.crypto?.randomUUID?.() || `${rawId.slice(0, 8)}-${rawId.slice(8, 12)}-4${rawId.slice(13, 16)}-8${rawId.slice(17, 20)}-${rawId.slice(20, 32)}`
       const res = await systemApi.saveRolePermissions(this.perm.id, {
         menuKeys: this.perm.menuKeys,
         buttonKeys: this.perm.buttonKeys,
-        scopeCode: this.perm.scopeCode
+        scopeCode: this.perm.scopeCode,
+        expectedVersion: this.perm.version,
+        reason: this.perm.reason,
+        requestId
       })
       this.perm.submitting = false
       if (res.code === 0) {
