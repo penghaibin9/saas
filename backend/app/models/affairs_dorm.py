@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import (JSON, BigInteger, CheckConstraint, DateTime, Index,
+                        Integer, String, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -57,6 +58,144 @@ class DormBed(PKMixin, TenantMixin, CommonMixin, Base):
 
     __table_args__ = (UniqueConstraint("tenant_id", "room_id", "bed_no",
                                        name="uk_dorm_bed_room_no"),)
+
+
+class DormStay(PKMixin, TenantMixin, CommonMixin, Base):
+    """住宿历史 Authority；DormBed.student_id 仍只表示当前占用指针。"""
+    __tablename__ = "t_affairs_dorm_stay"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "source_type", "source_biz_id",
+            name="uk_dorm_stay_source",
+        ),
+        Index(
+            "ix_dorm_stay_student_status",
+            "tenant_id", "student_id", "status", "is_deleted",
+        ),
+        Index(
+            "ix_dorm_stay_bed_status",
+            "tenant_id", "bed_id", "status", "is_deleted",
+        ),
+    )
+
+    student_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="学生 Authority → t_student_profile.id",
+    )
+    bed_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="床位 Authority → t_affairs_dorm_bed.id",
+    )
+    building_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="楼栋稳定 ID 快照",
+    )
+    room_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="房间稳定 ID 快照",
+    )
+    stay_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="CURRENT_OCCUPANCY/ALLOCATION/TRANSFER/HISTORY_IMPORT",
+    )
+    source_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="DORM_BED_BACKFILL/ALLOCATION/TRANSFER/MANUAL",
+    )
+    source_biz_id: Mapped[str] = mapped_column(
+        String(100), nullable=False, comment="来源业务稳定键",
+    )
+    checkin_at: Mapped[datetime | None] = mapped_column(DateTime)
+    checkout_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="RESERVED/ACTIVE/ENDED/CANCELLED",
+    )
+    checkin_operator_id: Mapped[int | None] = mapped_column(BigInteger)
+    checkout_operator_id: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class DormAllocationBatch(PKMixin, TenantMixin, CommonMixin, Base):
+    """住宿分配批次；D3 才开放自动/人工/学生自选运行链。"""
+    __tablename__ = "t_affairs_dorm_allocation_batch"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "batch_no", name="uk_dorm_alloc_batch_no"),
+        Index(
+            "ix_dorm_alloc_batch_orientation",
+            "tenant_id", "orientation_batch_id", "is_deleted",
+        ),
+        Index(
+            "ix_dorm_alloc_batch_status_window",
+            "tenant_id", "status", "open_at", "close_at", "is_deleted",
+        ),
+        CheckConstraint("open_at < close_at", name="ck_dorm_alloc_batch_window"),
+        CheckConstraint(
+            "mode IN ('ADMIN_AUTO','ADMIN_MANUAL','STUDENT_SELECT','POST_CHECKIN_PUBLISH')",
+            name="ck_dorm_alloc_batch_mode",
+        ),
+        CheckConstraint(
+            "status IN ('DRAFT','PUBLISHED','CLOSED','CANCELLED')",
+            name="ck_dorm_alloc_batch_status",
+        ),
+    )
+
+    batch_no: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    academic_year: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="ORIENTATION/GENERAL/ROLLING",
+    )
+    orientation_batch_id: Mapped[int | None] = mapped_column(
+        BigInteger, comment="可选迎新批次 Authority → t_orientation_batch.id",
+    )
+    mode: Mapped[str] = mapped_column(
+        String(50), nullable=False,
+        comment="ADMIN_AUTO/ADMIN_MANUAL/STUDENT_SELECT/POST_CHECKIN_PUBLISH",
+    )
+    open_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    close_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="DRAFT/PUBLISHED/CLOSED/CANCELLED",
+    )
+    rules_json: Mapped[dict | None] = mapped_column(JSON)
+    resource_scope_json: Mapped[dict | None] = mapped_column(JSON)
+    student_scope_json: Mapped[dict | None] = mapped_column(JSON)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class DormAllocationItem(PKMixin, TenantMixin, CommonMixin, Base):
+    """一名学生在一个住宿分配批次中的唯一分配项。"""
+    __tablename__ = "t_affairs_dorm_allocation_item"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "allocation_batch_id", "student_id",
+            name="uk_dorm_alloc_item_student",
+        ),
+        Index(
+            "ix_dorm_alloc_item_bed_status",
+            "tenant_id", "bed_id", "status", "is_deleted",
+        ),
+        Index(
+            "ix_dorm_alloc_item_batch_status",
+            "tenant_id", "allocation_batch_id", "status", "is_deleted",
+        ),
+        CheckConstraint(
+            "status IN ('PENDING','PROPOSED','RESERVED','CONFIRMED','CONFLICT','CANCELLED')",
+            name="ck_dorm_alloc_item_status",
+        ),
+    )
+
+    allocation_batch_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="住宿分配批次稳定 ID",
+    )
+    student_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="学生 Authority → t_student_profile.id",
+    )
+    bed_id: Mapped[int | None] = mapped_column(
+        BigInteger, comment="提议/预留/确认的床位稳定 ID",
+    )
+    status: Mapped[str] = mapped_column(
+        String(50), nullable=False,
+        comment="PENDING/PROPOSED/RESERVED/CONFIRMED/CONFLICT/CANCELLED",
+    )
+    source: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="AUTO/MANUAL/STUDENT_SELECT/IMPORT",
+    )
+    conflict_code: Mapped[str | None] = mapped_column(String(100))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class DormTransfer(PKMixin, TenantMixin, CommonMixin, Base):
