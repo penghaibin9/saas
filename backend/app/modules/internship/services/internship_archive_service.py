@@ -411,6 +411,15 @@ def archive_student_in_session(db, user, internship_id, force=False,
         "forceReason": (force_reason or "").strip(),
         "evidenceFileIds": evidence_file_ids or [],
     }, operator=_op_name(user))
+    from app.modules.platform.document_lifecycle.fact_hooks import internship_completed
+
+    internship_completed(
+        db,
+        record=record,
+        archive=archive,
+        source_version=archive_version,
+        actor_id=resolve_message_user_id(user or {}) or None,
+    )
     return {
         "id": str(record.id), "completeness": completeness,
         "missing": missing, "archived": True,
@@ -477,15 +486,6 @@ def preflight_archive(internship_id, user=None) -> dict:
             "fileVersionCount": len(items),
             "unsafeFileCount": len(unsafe),
         }, operator=_op_name(user))
-        from app.modules.platform.document_lifecycle.fact_hooks import internship_completed
-
-        internship_completed(
-            db,
-            record=record,
-            archive=archive,
-            source_version=archive_version,
-            actor_id=resolve_message_user_id(user or {}) or None,
-        )
         db.commit()
         return {
             **detail,
