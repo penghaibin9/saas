@@ -5,6 +5,8 @@
       <AppExportButton :export-fn="exportFn" :has-permission="canBtn('internship.risk.export')" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
+    <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
+
     <div class="bar">
       <AppSearchBox v-model="keyword" placeholder="按学生姓名搜索" @search="reload" />
       <AppQuickFilterChips v-model="levelFilter" :options="levelOptions" allow-clear @change="reload" />
@@ -61,6 +63,11 @@
             </div>
             <div class="mp-card__body">
               <AppDescriptionList :items="summaryItems" :columns="2" />
+              <div v-if="detail.closeBlockers?.length" class="ws__blockers" role="alert">
+                <strong>关闭条件未满足</strong>
+                <span>{{ detail.closeBlockers.join('；') }}</span>
+                <button v-if="detail.sourceId" type="button" class="mp-link" @click="goSource">处理来源事项</button>
+              </div>
             </div>
           </section>
 
@@ -93,6 +100,8 @@
                 @click="openComplaintAction('REJECT')">判定不成立</AppPermissionButton>
               <AppPermissionButton v-if="detail.studentId && !detail.riskId && ['ACCEPTED','INVESTIGATING','RESOLVED'].includes(detail.status)" code="internship.complaint.intake" :allowed="canBtn('internship.complaint.intake')" variant="ghost"
                 @click="openComplaintAction('TO_RISK')">转风险单</AppPermissionButton>
+              <AppPermissionButton v-if="['RESOLVED','CLOSED'].includes(detail.status) && !detail.followupResult" code="internship.complaint.intake" :allowed="canBtn('internship.complaint.intake')" variant="secondary"
+                @click="openComplaintAction('FOLLOWUP')">完成回访</AppPermissionButton>
               <AppPermissionButton v-if="['RESOLVED','REJECTED'].includes(detail.status)" code="internship.complaint.intake" :allowed="canBtn('internship.complaint.intake')" variant="ghost"
                 @click="openComplaintAction('CLOSE')">关闭归档</AppPermissionButton>
               <span v-if="['CLOSED','WITHDRAWN'].includes(detail.status)" class="mp-note">该投诉已终结，仅保留留痕。</span>
@@ -108,7 +117,7 @@
                 @click="openAction('remind')">催办</AppPermissionButton>
               <AppPermissionButton v-if="detail.riskLevel !== 'HIGH'" code="internship.risk.handle" :allowed="canBtn('internship.risk.handle')" variant="ghost"
                 @click="openAction('escalate')">升级</AppPermissionButton>
-              <AppPermissionButton code="internship.risk.handle" :allowed="canBtn('internship.risk.handle')" variant="ghost" :danger="true"
+              <AppPermissionButton v-if="detail.closeAllowed" code="internship.risk.handle" :allowed="canBtn('internship.risk.handle')" variant="ghost" :danger="true"
                 @click="openAction('close')">关闭</AppPermissionButton>
             </template>
             <span v-else class="mp-note">该风险单已关闭归档，仅保留处置留痕。</span>
@@ -130,6 +139,7 @@ import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/compone
 import { AppStatusTag, AppRiskTag, AppConfirmDialog, AppExportButton, AppPermissionButton,
   AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import ConflictNotice from './components/ConflictNotice.vue'
 import { riskApi, complaintApi } from '@/modules/internship/api/leave-risk.api'
 import { canCode } from '@/modules/internship/composables/permission'
@@ -154,7 +164,7 @@ export default {
   components: { ModulePageShell, DualPaneWorkspace, LoadingState, ErrorState, EmptyState,
     AppStatusTag, AppRiskTag, AppConfirmDialog, AppExportButton, AppPermissionButton,
     AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppPagination,
-    ConflictNotice },
+    ActionReceipt, ConflictNotice },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
@@ -164,6 +174,7 @@ export default {
       selectedId: '', detail: null, detailLoading: false, detailError: '', queueDone: false,
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', reasonLabel: '说明', requireReason: true, submitting: false },
       pending: null,
+      lastReceipt: null,
       conflict: emptyConflict(),
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
@@ -178,7 +189,11 @@ export default {
         { label: '风险标题', value: d.riskTitle },
         { label: '风险等级', value: d.riskLevelLabel },
         { label: '来源模块', value: d.sourceModule },
+        { label: '来源身份', value: d.sourceType && d.sourceId ? `${d.sourceType} #${d.sourceId}` : '历史未结构化来源' },
+        { label: '来源状态', value: d.sourceStatusLabel || d.sourceStatus || '—' },
         { label: '当前状态', value: d.statusLabel },
+        { label: '最近事件', value: d.latestEvent || '—' },
+        { label: '当前动作', value: d.currentAction || '—' },
         { label: '当前责任人', value: d.ownerName || '未指派' },
         { label: '创建时间', value: d.createdAt },
         { label: '截止时间', value: d.deadlineAt || '未设置' },
@@ -367,6 +382,20 @@ export default {
         })
       }
     },
+    goSource() {
+      const d = this.detail || {}
+      if (d.sourceType === 'INCIDENT') {
+        this.$router.push({
+          path: '/admin/internship/compliance',
+          query: this.batchStore.withBatchQuery({ tab: 'incidents', id: d.sourceId })
+        })
+      } else if (d.sourceType === 'COMPLAINT') {
+        this.$router.push({
+          path: '/admin/internship/risk-disposal',
+          query: this.batchStore.withBatchQuery({ caseType: 'complaint', id: d.sourceId })
+        })
+      }
+    },
     openAction(kind) {
       if (this.complaintMode) return
       const d = this.detail
@@ -391,9 +420,10 @@ export default {
         RESOLVE: { title: '办结投诉', content: '填写办结结论（不少于 5 字）。', danger: false, confirmText: '办结', reasonLabel: '结论（≥5字）', requireReason: true },
         REJECT: { title: '判定不成立', content: '填写不成立理由（不少于 5 字）。', danger: true, confirmText: '不成立', reasonLabel: '理由（≥5字）', requireReason: true },
         CLOSE: { title: '关闭归档', content: '关闭该投诉并归档。', danger: false, confirmText: '关闭', reasonLabel: '', requireReason: false },
+        FOLLOWUP: { title: '投诉回访', content: '记录对投诉人的真实回访结果，完成关闭前的跟进事实。', danger: false, confirmText: '保存回访', reasonLabel: '回访结果', requireReason: true },
         TO_RISK: { title: '转风险单', content: '将本投诉转为实习风险单，保留双向链接。', danger: true, confirmText: '转风险', reasonLabel: '', requireReason: false }
       }[action]
-      this.pending = { id: d.id, kind: action, mode: 'complaint' }
+      this.pending = { id: d.id, kind: action, mode: 'complaint', expectedVersion: d.version }
       this.conflict = emptyConflict()
       this.cd = { visible: true, ...map, submitting: false }
     },
@@ -404,9 +434,10 @@ export default {
       let res
       try {
         if (p.mode === 'complaint') {
-          if (p.kind === 'TO_RISK') res = await complaintApi.toRisk(p.id)
+          if (p.kind === 'TO_RISK') res = await complaintApi.toRisk(p.id, p.expectedVersion)
+          else if (p.kind === 'FOLLOWUP') res = await complaintApi.followup(p.id, reason, p.expectedVersion)
           else {
-            const body = {}
+            const body = { expectedVersion: p.expectedVersion }
             if (p.kind === 'ACCEPT' && reason) body.ownerName = reason
             if (['RESOLVE', 'REJECT'].includes(p.kind)) body.conclusion = reason
             res = await complaintApi.transition(p.id, p.kind, body)
@@ -423,6 +454,15 @@ export default {
       if (!res || res.code !== 0) return toast.error((res && res.message) || '操作失败')
       this.conflict = emptyConflict()
       this.cd.visible = false
+      const data = res.data || {}
+      this.lastReceipt = {
+        id: data.id || p.id, version: data.version,
+        actionLabel: this.cd.confirmText || '处置完成',
+        objectLabel: p.mode === 'complaint' ? `投诉 ${this.detail?.complaintNo || p.id}` : `风险 ${this.detail?.riskCode || p.id}`,
+        status: data.status, statusLabel: data.statusLabel || data.status || '已提交',
+        auditText: '业务事实与审计 outbox 已在同一事务提交',
+        nextStep: data.nextStep || (data.status === 'CLOSED' ? '生成监管证据包或处理下一条' : '继续处理当前责任链')
+      }
       toast.success('操作成功，已写审计')
       if (p.kind === 'close' || p.kind === 'CLOSE') {
         await this.afterClose(p.id)
@@ -443,7 +483,7 @@ export default {
         latest: () => {
           const d = this.detail
           if (!d) throw new Error('最新详情未拉回')
-          if (this.pending && this.pending.mode === 'risk') this.pending.expectedVersion = d.version
+          if (this.pending) this.pending.expectedVersion = d.version
           return [
             { label: '最新状态', value: d.statusLabel || d.status || '' },
             { label: '当前责任人', value: d.ownerName || d.acceptedByName || '未指派' },
@@ -490,4 +530,5 @@ export default {
 .ws { display: flex; flex-direction: column; gap: var(--space-3); min-height: 320px; }
 .ws__tags { display: inline-flex; align-items: center; gap: var(--space-2); }
 .ws__actions { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-3) var(--space-4); background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.ws__blockers { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--danger-200, #fecaca); border-radius: 9px; background: var(--danger-50, #fef2f2); color: var(--danger-700, #b91c1c); font-size: 12px; }
 </style>

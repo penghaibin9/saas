@@ -20,7 +20,7 @@
       <article><span>当前学生</span><strong>{{ total }}</strong></article>
       <article><span>安全可用材料</span><strong>{{ summary.ready }}</strong></article>
       <article><span>待处理材料</span><strong :class="{ danger: summary.unsafe > 0 }">{{ summary.unsafe }}</strong></article>
-      <article><span>真实版本累计</span><strong>{{ summary.versionCount }}</strong></article>
+      <article><span>已登记安全版本</span><strong>{{ summary.versionCount }}</strong></article>
     </section>
 
     <section class="filter-bar">
@@ -88,7 +88,7 @@
             <div class="section-title">
               <div>
                 <strong>站内材料 Reader</strong>
-                <span>{{ activePreviewFile.categoryLabel || activePreviewFile.title }} · 当前 v{{ activePreviewFile.versionNo }} · FileVersion {{ activePreviewFile.versionId }}</span>
+                <span>{{ activePreviewFile.categoryLabel || activePreviewFile.title }} · 当前安全版本</span>
               </div>
               <AppStatusTag type="success" size="sm">只读当前安全版本</AppStatusTag>
             </div>
@@ -109,6 +109,8 @@
             />
           </section>
 
+          <details class="technical-evidence">
+            <summary>展开 FileVersion / Manifest 技术证据</summary>
           <section class="section-card">
             <div class="section-title">
               <div><strong>安全文件</strong><span>仅扫描通过且当前版本有效的材料允许站内预览或独立下载</span></div>
@@ -170,6 +172,7 @@
               </div>
             </template>
           </section>
+          </details>
         </template>
       </div>
     </section>
@@ -363,6 +366,9 @@ td { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: n
 .manifest-list { display: grid; gap: 7px; margin-top: 12px; }
 .manifest-list div { display: grid; grid-template-columns: minmax(0, 1fr) 90px 190px; gap: 12px; padding: 9px 10px; border: 1px solid #e7edf5; border-radius: 8px; }
 .manifest-list small { color: #758197; }
+.technical-evidence { margin-top: 14px; padding: 12px 14px; border: 1px dashed #cbd6e5; border-radius: 12px; background: #fff; color: #637086; }
+.technical-evidence > summary { cursor: pointer; font-weight: 700; }
+.technical-evidence > .section-card { margin-top: 12px; }
 .state { padding: 40px 20px; text-align: center; color: #758197; }
 .state.compact { padding: 22px; }
 .error-state { border: 1px solid #f1c7c7; border-radius: 12px; background: #fff7f7; color: #b42b2b; }

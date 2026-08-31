@@ -363,20 +363,40 @@ def get_internship_student_detail(record_id, user=None) -> dict:
 
 def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentProfile | None,
              class_name: str | None = None) -> dict:
+    missing_facts = []
+    if not c.exception_date:
+        missing_facts.append("异常时间")
+    if c.exception_type == "OUT_OF_RANGE":
+        if c.distance_km is None:
+            missing_facts.append("距打卡点")
+        if c.gps_accuracy is None:
+            missing_facts.append("定位精度")
+        if not c.address:
+            missing_facts.append("打卡地址")
+    elif c.exception_type == "MOCK_LOCATION":
+        if not c.device_risk_flag or str(c.device_risk_flag).lower() == "normal":
+            missing_facts.append("设备风险信号")
+    elif c.exception_type not in EXC_TYPE_LABEL:
+        missing_facts.append("异常类型")
     return {
         "id": str(c.id), "internId": str(c.internship_id),
         "studentName": stu.real_name if stu else "-",
         "className": class_name or "-",
         "enterpriseName": rec.enterprise_name if rec else "",
+        "positionName": rec.position_name if rec else "",
         "date": _iso(c.exception_date)[:16] if c.exception_date else "",
         "type": c.exception_type, "typeLabel": EXC_TYPE_LABEL.get(c.exception_type, c.exception_type),
         "distance": f"{c.distance_km} km" if c.distance_km else "—",
+        "accuracy": f"±{c.gps_accuracy} m" if c.gps_accuracy else "—",
+        "address": c.address or "",
         "deviceRisk": c.device_risk_flag or "正常", "note": c.student_note or "",
         "streak": f"连续 {c.streak_days} 天" if c.streak_days else "",
         "appealStatus": c.appeal_status or "", "appealNote": c.appeal_note or "",
         "appealFileId": c.appeal_file_id or "", "appealedAt": _iso(c.appealed_at),
         "status": c.status, "statusLabel": EXC_STATUS_LABEL.get(c.status, c.status),
         "version": int(c.version or 0),
+        "decisionFactsComplete": not missing_facts,
+        "missingDecisionFacts": missing_facts,
     }
 
 
@@ -472,40 +492,53 @@ def export_exceptions(type=None, status=None, keyword=None, batch_id=None, user=
 
 def _exc_ctx(db, c: AttendanceException):
     rec = tenant_get(db, InternshipRecord, c.internship_id)
-    stu = db.get(StudentProfile, rec.student_id) if rec else None
+    stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
     return rec, stu
 
 
 def list_attendance_exceptions(page, page_size, type=None, status=None, keyword=None, batch_id=None, user=None):
     with session() as db:
-        from app.modules.internship.services.internship_batch_context import batch_record_ids
-        _, record_ids = batch_record_ids(db, batch_id)
-        if not record_ids:
-            return [], 0
-        q = select(AttendanceException).where(AttendanceException.tenant_id == _tid(),
-                                              AttendanceException.is_deleted.is_(False),
-                                              AttendanceException.internship_id.in_(record_ids))
+        from app.models import SchoolClass
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
+        batch = resolve_batch(db, batch_id)
+        q = select(
+            AttendanceException, InternshipRecord, StudentProfile, SchoolClass.class_name,
+        ).join(
+            InternshipRecord, InternshipRecord.id == AttendanceException.internship_id,
+        ).join(
+            StudentProfile, StudentProfile.id == InternshipRecord.student_id,
+        ).outerjoin(
+            SchoolClass, SchoolClass.id == StudentProfile.class_id,
+        ).where(
+            AttendanceException.tenant_id == _tid(),
+            AttendanceException.is_deleted.is_(False),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.batch_id == batch.id,
+            InternshipRecord.is_deleted.is_(False),
+            StudentProfile.is_deleted.is_(False),
+        )
+        q = apply_internship_record_scope(q, user)
         if type:
             q = q.where(AttendanceException.exception_type == type)
         if status:
             q = q.where(AttendanceException.status == status)
-        rows = db.scalars(q.order_by(AttendanceException.exception_date.desc())).all()
-        scope = _current_scope(user)
-        rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map = _bulk_context(db, rows)
-        items = []
-        for c in rows:
-            rec = rec_map.get(c.internship_id)
-            stu = stu_map.get(rec.student_id) if rec else None
-            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
-                continue
-            if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map,
-                                     stu_college_name_map):  # P0-D
-                continue
-            cn = class_name_map.get(stu.class_id) if stu and stu.class_id else None
-            items.append(_exc_row(c, rec, stu, class_name=cn))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+        if keyword:
+            value = f"%{keyword.strip()}%"
+            q = q.where(or_(
+                StudentProfile.real_name.like(value), StudentProfile.student_no.like(value),
+            ))
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        if int(page_size or 0) <= 0:
+            return [], total
+        rows = db.execute(q.order_by(
+            AttendanceException.exception_date.desc(), AttendanceException.id.desc(),
+        ).offset(
+            (max(1, int(page)) - 1) * int(page_size),
+        ).limit(int(page_size))).all()
+        return [_exc_row(c, rec, stu, class_name=class_name)
+                for c, rec, stu, class_name in rows], total
 
 
 def get_exception_detail(exception_id, user=None) -> dict:
@@ -636,34 +669,45 @@ def _report_row(w: WeeklyReport, rec: InternshipRecord | None, stu: StudentProfi
 
 def list_weekly_reports(page, page_size, status=None, keyword=None, batch_id=None, user=None):
     with session() as db:
-        from app.modules.internship.services.internship_batch_context import batch_record_ids
-        _, record_ids = batch_record_ids(db, batch_id)
-        if not record_ids:
-            return [], 0
-        q = select(WeeklyReport).where(WeeklyReport.tenant_id == _tid(),
-                                       WeeklyReport.is_deleted.is_(False),
-                                       WeeklyReport.internship_id.in_(record_ids))
+        from app.models import SchoolClass
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
+        batch = resolve_batch(db, batch_id)
+        q = select(
+            WeeklyReport, InternshipRecord, StudentProfile, SchoolClass.class_name,
+        ).join(
+            InternshipRecord, InternshipRecord.id == WeeklyReport.internship_id,
+        ).join(
+            StudentProfile, StudentProfile.id == InternshipRecord.student_id,
+        ).outerjoin(
+            SchoolClass, SchoolClass.id == StudentProfile.class_id,
+        ).where(
+            WeeklyReport.tenant_id == _tid(), WeeklyReport.is_deleted.is_(False),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.batch_id == batch.id,
+            InternshipRecord.is_deleted.is_(False),
+            StudentProfile.is_deleted.is_(False),
+        )
+        q = apply_internship_record_scope(q, user)
         if status:
             q = q.where(WeeklyReport.status == status)
-        rows = db.scalars(q.order_by(WeeklyReport.submitted_at.is_(None),
-                                     WeeklyReport.submitted_at.desc(),
-                                     WeeklyReport.id.desc())).all()
-        scope = _current_scope(user)
-        rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map = _bulk_context(db, rows)
-        items = []
-        for w in rows:
-            rec = rec_map.get(w.internship_id)
-            stu = stu_map.get(rec.student_id) if rec else None
-            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
-                continue
-            if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map,
-                                     stu_college_name_map):  # P0-D
-                continue
-            cn = class_name_map.get(stu.class_id) if stu and stu.class_id else None
-            items.append(_report_row(w, rec, stu, class_name=cn))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+        if keyword:
+            value = f"%{keyword.strip()}%"
+            q = q.where(or_(
+                StudentProfile.real_name.like(value), StudentProfile.student_no.like(value),
+            ))
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        if int(page_size or 0) <= 0:
+            return [], total
+        rows = db.execute(q.order_by(
+            WeeklyReport.submitted_at.is_(None), WeeklyReport.submitted_at.desc(),
+            WeeklyReport.id.desc(),
+        ).offset(
+            (max(1, int(page)) - 1) * int(page_size),
+        ).limit(int(page_size))).all()
+        return [_report_row(w, rec, stu, class_name=class_name)
+                for w, rec, stu, class_name in rows], total
 
 
 def get_weekly_report_detail(report_id, user=None) -> dict:
@@ -844,6 +888,7 @@ def export_weekly_reports(status=None, keyword=None, batch_id=None, user=None) -
 def list_risk_students(page, page_size, level=None, status=None, keyword=None,
                        risk_code=None, batch_id=None, user=None):
     from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_risk_service import _source_truth
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=False)
         rec_ids = db.scalars(select(InternshipRecord.id).where(
@@ -875,6 +920,7 @@ def list_risk_students(page, page_size, level=None, status=None, keyword=None,
             if kw and kw not in (stu.real_name or "") and kw not in (stu.student_no or ""):
                 continue
             cn, _ = resolve_student_class_college_names(db, stu)
+            source = _source_truth(db, k)
             items.append({
                 "id": str(k.id), "internId": str(k.internship_id),
                 "studentName": stu.real_name if stu else "-",
@@ -882,6 +928,15 @@ def list_risk_students(page, page_size, level=None, status=None, keyword=None,
                 "className": cn or "-",
                 "source": f"{k.risk_code} {k.risk_title}",
                 "sourceDetail": k.source_module or "",
+                "sourceType": source.get("sourceType", ""),
+                "sourceId": source.get("sourceId", ""),
+                "sourceIntegrity": source.get("sourceIntegrity", "LEGACY_UNSCOPED"),
+                "sourceStatus": source.get("sourceStatus", ""),
+                "sourceStatusLabel": source.get("sourceStatusLabel", ""),
+                "latestEvent": source.get("latestEvent", k.last_follow_note or "风险单已创建"),
+                "currentAction": source.get("currentAction", "受理并核实风险来源"),
+                "closeAllowed": bool(source.get("closeAllowed", True)),
+                "closeBlockers": source.get("closeBlockers", []),
                 "level": k.risk_level, "riskLevel": k.risk_level,
                 "owner": k.owner_name or "", "ownerName": k.owner_name or "",
                 "deadline": _iso(k.deadline_at)[:10] if k.deadline_at else "",
@@ -889,6 +944,7 @@ def list_risk_students(page, page_size, level=None, status=None, keyword=None,
                 "lastFollow": k.last_follow_note or "—",
                 "lastFollowNote": k.last_follow_note or "",
                 "status": k.status, "statusLabel": RISK_STATUS_LABEL.get(k.status, k.status),
+                "version": int(k.version or 0),
                 "batchId": str(batch.id),
             })
         total = len(items)
@@ -1461,41 +1517,47 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
             InternshipRecord.is_deleted.is_(False),
             InternshipRecord.batch_id == batch.id,
         )
-        recs = db.scalars(q).all()
-        scope = _current_scope(user)
-        scoped = scope.get("mode") == "SCOPED"
-        if scoped:
-            # 原来逐行 db.get(StudentProfile) 再逐行推导班级/学院名，随批次人数线性放大成 N+1。
-            # 改用既有的批量预加载版本，判定口径与 _rec_in_scope 完全一致（见其 docstring）。
-            _rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map = (
-                _bulk_context(db, recs, id_attr="id"))
-            recs = [r for r in recs
-                    if _rec_in_scope_pre(scope, r, stu_map.get(r.student_id),
-                                         class_name_map, college_name_map,
-                                         stu_college_name_map)]
-        scoped_ids = [r.id for r in recs] or [0]
+        # 20K Authority：数据范围必须下推 SQL，工作台只加载最终命中的 4/5 条对象，
+        # 不能为了 8 条 Today First 在 Python 中装入整批学生再排序/过滤。
+        from app.modules.internship.services.internship_scope import (
+            apply_internship_record_scope,
+        )
+        scoped_query = apply_internship_record_scope(q, user).order_by(None)
+        scoped_ids = scoped_query.with_only_columns(
+            InternshipRecord.id, maintain_column_froms=True,
+        ).subquery()
+        scoped_id_select = select(scoped_ids.c.id)
         flow_map = {"PREPARING": 0, "READY": 0, "ONBOARD": 0, "ASSESSING": 0, "ARCHIVED": 0}
-        dest_none = 0
         progress_weights = {
             "PREPARING": 0.0, "READY": 0.25, "ONBOARD": 0.60, "ASSESSING": 0.85, "ARCHIVED": 1.0,
         }
-        weight_sum = 0.0
-        for r in recs:
-            flow_map[r.status] = flow_map.get(r.status, 0) + 1
-            if (r.destination_type or "NONE") == "NONE":
-                dest_none += 1
-            weight_sum += progress_weights.get(r.status, 0.0)
+        for status, count in db.execute(select(
+            InternshipRecord.status, func.count(),
+        ).where(
+            InternshipRecord.id.in_(scoped_id_select),
+        ).group_by(InternshipRecord.status)).all():
+            flow_map[status] = int(count or 0)
+        total_students = sum(flow_map.values())
+        dest_none = int(db.scalar(select(func.count()).select_from(
+            InternshipRecord,
+        ).where(
+            InternshipRecord.id.in_(scoped_id_select),
+            func.coalesce(InternshipRecord.destination_type, "NONE") == "NONE",
+        )) or 0)
+        weight_sum = sum(
+            progress_weights.get(status, 0.0) * count
+            for status, count in flow_map.items()
+        )
         preparing = flow_map["PREPARING"]
         ready = flow_map["READY"]
         onboard = flow_map["ONBOARD"]
-        total_students = len(recs)
         batch_progress = round(weight_sum / total_students * 100, 1) if total_students else 0
         onboard_rate = round(onboard / total_students * 100, 1) if total_students else 0
 
         def _cnt(model, *conds):
             q2 = select(func.count()).select_from(model).where(
                 model.tenant_id == _tid(), model.is_deleted.is_(False),
-                model.internship_id.in_(scoped_ids), *conds)
+                model.internship_id.in_(scoped_id_select), *conds)
             return db.scalar(q2) or 0
 
         pending_exc = _cnt(AttendanceException, AttendanceException.status == "PENDING_HANDLE")
@@ -1516,7 +1578,7 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
             select(RiskRecord).where(
                 RiskRecord.tenant_id == _tid(), RiskRecord.is_deleted.is_(False),
                 RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]),
-                RiskRecord.internship_id.in_(scoped_ids),
+                RiskRecord.internship_id.in_(scoped_id_select),
             ).order_by(level_order, RiskRecord.updated_at.desc(), RiskRecord.id.desc()).limit(5)
         ).all()
         # 这 5 条的记录与学生一次性取出，避免每条各查两次。
@@ -1543,6 +1605,153 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
                 "status": k.status,
                 "route": f"/admin/internship/risk-disposal?id={k.id}&batchId={batch.id}",
             })
+
+        # Today First concrete objects.  This is a read projection over the existing
+        # report / attendance / risk state machines; it deliberately does not create
+        # another todo table or another workflow authority.  The dashboard returns a
+        # bounded set of exact objects, and every command still executes on its owning
+        # detail/workbench route with that route's permission and optimistic lock.
+        report_rows = []
+        if _match("internship.report.review"):
+            report_rows = db.scalars(select(WeeklyReport).where(
+                WeeklyReport.tenant_id == _tid(),
+                WeeklyReport.is_deleted.is_(False),
+                WeeklyReport.internship_id.in_(scoped_id_select),
+                WeeklyReport.status == "PENDING_REVIEW",
+            ).order_by(
+                WeeklyReport.submitted_at.asc(), WeeklyReport.id.asc(),
+            ).limit(4)).all()
+        exception_rows = []
+        if _match("internship.attendance.review"):
+            exception_rows = db.scalars(select(AttendanceException).where(
+                AttendanceException.tenant_id == _tid(),
+                AttendanceException.is_deleted.is_(False),
+                AttendanceException.internship_id.in_(scoped_id_select),
+                AttendanceException.status == "PENDING_HANDLE",
+            ).order_by(
+                AttendanceException.streak_days.desc(),
+                AttendanceException.exception_date.asc(),
+                AttendanceException.id.asc(),
+            ).limit(4)).all()
+
+        work_internship_ids = {
+            int(row.internship_id) for row in [*report_rows, *exception_rows, *risk_rows]
+            if row.internship_id
+        }
+        work_rec_map = {}
+        if work_internship_ids:
+            work_rec_map = {int(row.id): row for row in db.scalars(select(
+                InternshipRecord,
+            ).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.id.in_(work_internship_ids),
+                InternshipRecord.id.in_(scoped_id_select),
+                InternshipRecord.is_deleted.is_(False),
+            )).all()}
+        work_student_ids = {int(row.student_id) for row in work_rec_map.values() if row.student_id}
+        work_student_map = {}
+        if work_student_ids:
+            work_student_map = {int(row.id): row for row in db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == _tid(),
+                StudentProfile.is_deleted.is_(False),
+                StudentProfile.id.in_(work_student_ids),
+            )).all()}
+
+        def _work_subject(internship_id):
+            record = work_rec_map.get(int(internship_id))
+            student = work_student_map.get(int(record.student_id)) if record else None
+            return record, student
+
+        work_candidates = []
+        if _match("internship.risk.handle"):
+            for row in risk_rows:
+                record, student = _work_subject(row.internship_id)
+                student_name = student.real_name if student else "学生待核实"
+                student_no = student.student_no if student else ""
+                level_label = {"HIGH": "高风险", "MEDIUM": "中风险", "LOW": "低风险"}.get(
+                    row.risk_level, "风险等级待核实")
+                status_label = RISK_STATUS_LABEL.get(row.status, "状态待核实")
+                work_candidates.append((
+                    0 if row.risk_level == "HIGH" else 2,
+                    row.deadline_at or row.updated_at or datetime.max,
+                    {
+                        "id": f"risk:{row.id}", "kind": "RISK", "objectId": str(row.id),
+                        "internshipId": str(row.internship_id), "studentName": student_name,
+                        "studentNo": student_no, "tone": "danger" if row.risk_level == "HIGH" else "warning",
+                        "title": f"{student_name} · {row.risk_title or row.risk_code}",
+                        "summary": f"{level_label} · {status_label}" +
+                                   (f" · 责任人 {row.owner_name}" if row.owner_name else " · 尚未明确责任人"),
+                        "whyHere": "风险单仍处于开放状态，需要核实事实、明确责任人与处置期限并持续留证。",
+                        "recentChange": f"{_iso(row.updated_at) or '时间待核实'} · {status_label}",
+                        "waitingOn": f"等待{row.owner_name}继续跟进" if row.owner_name else "等待领取并完成首次核实",
+                        "nextActor": "办理后由责任人继续跟进；满足关闭条件后进入复核。",
+                        "receipt": "动作会返回最新状态、版本和合法下一步，并写入风险审计时间线。",
+                        "primaryActionLabel": "进入风险处置",
+                        "route": f"/admin/internship/risk-disposal?id={row.id}&batchId={batch.id}",
+                        "sourceVersion": int(row.version or 0),
+                        "resumeKey": f"internship:risk:{row.id}:v{int(row.version or 0)}",
+                    },
+                ))
+        for row in exception_rows:
+            record, student = _work_subject(row.internship_id)
+            student_name = student.real_name if student else "学生待核实"
+            student_no = student.student_no if student else ""
+            type_label = EXC_TYPE_LABEL.get(row.exception_type, "打卡异常")
+            evidence = []
+            if row.streak_days:
+                evidence.append(f"连续 {row.streak_days} 天")
+            if row.distance_km is not None:
+                evidence.append(f"偏离 {row.distance_km:g} km")
+            if row.device_risk_flag:
+                evidence.append("设备信号待核实")
+            work_candidates.append((
+                1,
+                row.exception_date or row.updated_at or datetime.max,
+                {
+                    "id": f"attendance:{row.id}", "kind": "ATTENDANCE_EXCEPTION",
+                    "objectId": str(row.id), "internshipId": str(row.internship_id),
+                    "studentName": student_name, "studentNo": student_no,
+                    "tone": "danger" if (row.streak_days or 0) >= 3 else "warning",
+                    "title": f"{student_name} · {type_label}待核实",
+                    "summary": " · ".join(evidence) if evidence else "异常证据待人工核实",
+                    "whyHere": "考勤规则命中风险信号；定位、设备和围栏信息只能辅助人工判断，不能自动定性。",
+                    "recentChange": f"{_iso(row.exception_date) or '时间待核实'} · 系统标记待核实",
+                    "waitingOn": "等待有处理权限的教师核对完整证据并作出判断",
+                    "nextActor": "判定合理或异常后通知学生；转风险后由风险责任人继续跟进。",
+                    "receipt": "提交后返回判定结果、版本和审计记录；冲突时保留当前输入并要求刷新事实。",
+                    "primaryActionLabel": "核实异常",
+                    "route": f"/admin/internship/exceptions/{row.id}?batchId={batch.id}",
+                    "sourceVersion": int(row.version or 0),
+                    "resumeKey": f"internship:attendance-exception:{row.id}:v{int(row.version or 0)}",
+                },
+            ))
+        for row in report_rows:
+            record, student = _work_subject(row.internship_id)
+            student_name = student.real_name if student else "学生待核实"
+            student_no = student.student_no if student else ""
+            risk_hint = f" · 内容提示 {row.risk_flag}" if row.risk_flag else ""
+            work_candidates.append((
+                2 if row.risk_flag else 3,
+                row.submitted_at or row.updated_at or datetime.max,
+                {
+                    "id": f"report:{row.id}", "kind": "WEEKLY_REPORT", "objectId": str(row.id),
+                    "internshipId": str(row.internship_id), "studentName": student_name,
+                    "studentNo": student_no, "tone": "danger" if row.risk_flag else "warning",
+                    "title": f"{student_name} · 第 {row.week_number} 周周报",
+                    "summary": f"v{row.report_version} · {row.word_count} 字{risk_hint}",
+                    "whyHere": "学生已提交周报，等待指导教师核对正文、历史版本和风险提示后批阅。",
+                    "recentChange": f"{_iso(row.submitted_at or row.updated_at) or '时间待核实'} · 学生提交 v{row.report_version}",
+                    "waitingOn": "等待指导教师批阅",
+                    "nextActor": "通过后学生收到结果；退回后学生按具体原因补充并重交。",
+                    "receipt": "批阅结果、意见、版本和审计记录持久化；处理后可继续下一条。",
+                    "primaryActionLabel": "批阅周报",
+                    "route": f"/admin/internship/reports/{row.id}?batchId={batch.id}",
+                    "sourceVersion": int(row.version or 0),
+                    "resumeKey": f"internship:weekly-report:{row.id}:v{int(row.version or 0)}",
+                },
+            ))
+        work_candidates.sort(key=lambda item: (item[0], item[1], item[2]["id"]))
+        work_items = [item[2] for item in work_candidates[:8]]
 
         todos = []
         if pending_rep > 0 and _match("internship.report.review"):
@@ -1593,5 +1802,8 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
             "flow": [{"label": lbl, "value": flow_map[k], "active": k == "ONBOARD"}
                      for k, lbl in STATUS_LABEL.items()],
             "todos": todos,
+            "workItems": work_items,
+            "workItemTotal": pending_rep + pending_exc + risk_cnt,
+            "workItemLimit": 8,
             "riskAlerts": risk_alerts,
         }

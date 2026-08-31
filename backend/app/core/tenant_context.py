@@ -64,6 +64,11 @@ _MOCK_TENANTS = {
 _TENANT_NEUTRAL_NAMESPACES = (
     "/api/v1/auth",
     "/api/v1/platform",
+    # Enterprise browser auth resolves the school from the login/invite body or from the
+    # server-side refresh subject.  Binding it to DEFAULT_TENANT_CODE first can make a valid
+    # login fail because of an unrelated default-school guard.  Protected enterprise business
+    # routes intentionally remain tenant-bound.
+    "/api/v1/internship/enterprise-portal/auth",
 )
 _TENANT_NEUTRAL_EXACT_PATHS = frozenset({
     "/health",

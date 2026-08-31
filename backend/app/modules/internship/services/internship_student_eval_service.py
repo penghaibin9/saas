@@ -278,8 +278,7 @@ def review(user, eval_id, action: str, comment: str = "", expected_version=None,
             raise no_permission("只能审核本人数据范围内的学生鉴定")
         from app.modules.internship.services.internship_batch_context import assert_record_batch
         assert_record_batch(record, expected_batch_id)
-        _expected({"expectedVersion": expected_version}, row.version,
-                  required=expected_version is not None)
+        _expected({"expectedVersion": expected_version}, row.version, required=True)
         if row.submit_status != "SUBMITTED" or row.school_review_status != "PENDING":
             raise AppException("DATA_CONFLICT", "该鉴定已处理，请刷新")
         if action == "APPROVE" and not str(row.advisor_opinion or "").strip():

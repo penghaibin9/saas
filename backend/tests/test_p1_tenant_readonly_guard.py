@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from starlette.requests import Request
 
+from app.core.tenant_context import resolve_tenant_code
 from app.middleware.context import _demo_tenant_readonly_deny, _expired_tenant_readonly_deny
 
 
@@ -99,3 +100,22 @@ def test_bogus_super_admin_claim_without_userid_not_exempt():
                         resp = _expired_tenant_readonly_deny(_req("POST"))
     assert resp is not None
     assert resp.status_code == 403
+
+
+def test_enterprise_browser_auth_is_tenant_neutral_and_readonly_guard_exempt():
+    """Login/invite/refresh resolve their own tenant; business routes still use the guard."""
+    path = "/api/v1/internship/enterprise-portal/auth/browser-login"
+    request = _req("POST", path)
+
+    assert resolve_tenant_code(request) == ""
+    with patch("app.core.context.get_tenant", side_effect=RuntimeError("must not read default tenant")):
+        assert _expired_tenant_readonly_deny(request) is None
+        assert _demo_tenant_readonly_deny(request) is None
+
+    protected = _req("POST", "/api/v1/internship/enterprise-portal/evaluations")
+    with patch("app.core.context.get_current_user_ctx", return_value={"userId": "db-1"}):
+        with patch("app.core.context.get_tenant", return_value={"tenantId": "9"}):
+            with patch("app.db.session.db_enabled", return_value=True):
+                with patch("app.services.platform_service.tenant_status", return_value="expired"):
+                    with patch("app.services.audit_log.record"):
+                        assert _expired_tenant_readonly_deny(protected).status_code == 403

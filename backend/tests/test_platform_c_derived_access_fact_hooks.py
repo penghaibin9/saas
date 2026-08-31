@@ -209,3 +209,13 @@ def test_canonical_hooks_are_registered_in_c7_without_after_commit() -> None:
         source = (root / relative).read_text(encoding="utf-8")
         assert call in source
         assert "after_commit" not in source
+
+
+def test_internship_completion_fact_is_written_only_by_archive_mutation() -> None:
+    source = Path("app/modules/internship/services/internship_archive_service.py").read_text(
+        encoding="utf-8",
+    )
+    mutation = source[source.index("def archive_student_in_session"):source.index("def archive_student(")]
+    preflight = source[source.index("def preflight_archive"):]
+    assert "internship_completed(" in mutation
+    assert "internship_completed(" not in preflight

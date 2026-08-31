@@ -121,6 +121,7 @@
     "internship.communication.view",
     "internship.complaint.intake",
     "internship.complaint.view",
+    "internship.employment.view",
     "internship.enterprise.import",
     "internship.match.batch",
     "internship.match.conflict.view",

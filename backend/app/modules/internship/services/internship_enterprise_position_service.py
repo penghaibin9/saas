@@ -558,14 +558,51 @@ def dashboard_in_tx(db, *, context) -> dict:
     published = int(db.scalar(select(func.count()).select_from(base.where(InternshipPosition.status == "PUBLISHED").subquery())) or 0)
     pending = int(db.scalar(select(func.count()).select_from(base.where(InternshipPosition.status == "PENDING").subquery())) or 0)
     _rows, applicants = decision_svc.list_owned_applications_in_tx(db, context=context, page=1, page_size=1)
-    _rows, todo = decision_svc.list_owned_applications_in_tx(db, context=context, page=1, page_size=1, decision_status="PENDING")
+    pending_applications, todo = decision_svc.list_owned_applications_in_tx(
+        db, context=context, page=1, page_size=3, decision_status="PENDING")
     _rows, interview = decision_svc.list_owned_applications_in_tx(db, context=context, page=1, page_size=1, decision_status="INTERVIEW")
     _rows, accept_intent = decision_svc.list_owned_applications_in_tx(db, context=context, page=1, page_size=1, decision_status="ACCEPT_INTENT")
     tasks = []
-    if pending:
-        tasks.append({"key": "pending-positions", "title": f"{pending} 个岗位等待学校审核", "description": "待审核岗位不可继续编辑；如需修改先撤回到草稿。", "href": "/positions", "actionLabel": "查看岗位"})
-    if todo:
-        tasks.append({"key": "pending-applications", "title": f"{todo} 份报名申请待处理", "description": "仅企业管理员/HR可处理，所有决定继续由服务端校验招聘季和企业范围。", "href": "/applicants", "actionLabel": "处理报名"})
+    for application in pending_applications:
+        application_id = str(application.get("applicationId") or "")
+        student = dict(application.get("student") or {})
+        student_name = student.get("realName") or "学生"
+        position_title = application.get("positionTitle") or "申请岗位"
+        submitted_at = application.get("submittedAt") or "提交时间待核对"
+        tasks.append({
+            "key": f"application:{application_id}",
+            "objectType": "INTERNSHIP_APPLICATION",
+            "objectId": application_id,
+            "title": f"{student_name} · {position_title}",
+            "description": f"第 {int(application.get('volunteerNo') or 0)} 志愿，仍等待企业处理。",
+            "whyHere": "该报名属于当前企业与招聘季，企业决定尚未形成。",
+            "recentChange": f"学生提交于 {submitted_at}",
+            "waitingOn": "等待企业管理员或 HR 核对材料并作出企业决定",
+            "nextActor": "如选择拟接收，下一步仍由学校最终确认正式落岗",
+            "href": f"/applications/{application_id}",
+            "actionLabel": "处理这份报名",
+            "resumeKey": f"enterprise:application:{application_id}",
+        })
+    pending_positions = db.scalars(
+        base.where(InternshipPosition.status == "PENDING").order_by(
+            InternshipPosition.updated_at.desc(), InternshipPosition.id.desc()).limit(2)
+    ).all()
+    for position in pending_positions:
+        position_id = str(position.id)
+        tasks.append({
+            "key": f"position:{position_id}",
+            "objectType": "INTERNSHIP_POSITION",
+            "objectId": position_id,
+            "title": f"{position.title} · 待学校审核",
+            "description": "岗位已提交，当前不可直接编辑；确需修改时可从详情撤回到草稿。",
+            "whyHere": "学校尚未完成岗位发布审核。",
+            "recentChange": f"岗位版本 v{int(position.version or 0)}",
+            "waitingOn": "等待学校审核岗位发布条件",
+            "nextActor": "学校通过后岗位才会进入学生可见的正式岗位库",
+            "href": f"/positions/{position_id}/edit",
+            "actionLabel": "查看这个岗位",
+            "resumeKey": f"enterprise:position:{position_id}",
+        })
     return {
         "metrics": {
             "published": published,

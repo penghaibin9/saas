@@ -1814,21 +1814,8 @@ def student_detail(user: dict, student_id) -> dict:
 
 # ══════════ 六域教师页（真实结构，租户过滤 + scopeMode） ══════════
 
-def _advisor_map(ids: list) -> dict:
-    """internship_id → advisor_name（一次查询，供范围过滤）。"""
-    if not ids:
-        return {}
-    try:
-        with _session() as db:
-            from app.models import InternshipRecord
-            rows = db.scalars(select(InternshipRecord).where(
-                InternshipRecord.tenant_id == _tid(), InternshipRecord.id.in_(ids))).all()
-            return {r.id: (r.advisor_name or "") for r in rows}
-    except Exception:  # noqa: BLE001
-        return {}
-
-
-def internship(user: dict, batch_id=None) -> dict:
+def internship(user: dict, batch_id=None, *, weekly_page=1, exception_page=1,
+               page_size=20) -> dict:
     """教师·实习待批。
 
     实习域的查询按批次收敛，而请求中间件只把 x-internship-batch-id 绑给学生端路径
@@ -1844,10 +1831,13 @@ def internship(user: dict, batch_id=None) -> dict:
         return {"hasData": False, "weeklyReports": [], "abnormalCheckins": [], "stats": {}}
     scope = resolve_teacher_scope(u)
     source_errors: list[dict] = []
+    weekly_page = max(1, int(weekly_page or 1))
+    exception_page = max(1, int(exception_page or 1))
+    page_size = max(1, min(int(page_size or 20), 50))
 
-    def _src(source: str, fn, **kw):
+    def _src(source: str, fn, source_page: int, **kw):
         try:
-            return _safe_list(fn, 1, 50, **kw)
+            return _safe_list(fn, source_page, page_size, user=u, **kw)
         except Exception as exc:  # noqa: BLE001
             code = getattr(exc, "code", None) or "SOURCE_UNAVAILABLE"
             log.warning("mobile_teacher_internship_source_unavailable source=%s code=%s",
@@ -1857,37 +1847,40 @@ def internship(user: dict, batch_id=None) -> dict:
 
     batch_kw = {"batch_id": batch_id} if batch_id else {}
     reports, rtotal = _src("weeklyReportPending", internship_service.list_weekly_reports,
-                           status="PENDING_REVIEW", **batch_kw)
+                           weekly_page, status="PENDING_REVIEW", **batch_kw)
+    pending_report_total = rtotal
     overdue, ototal = _src("weeklyReportOverdue", internship_service.list_weekly_reports,
-                           status="OVERDUE", **batch_kw)
+                           weekly_page, status="OVERDUE", **batch_kw)
     excs, etotal = _src("attendanceException", internship_service.list_attendance_exceptions,
-                        status="PENDING_HANDLE", **batch_kw)
+                        exception_page, status="PENDING_HANDLE", **batch_kw)
     # 合并待批阅与逾期未交（去重 id）
     seen = {str(r.get("id")) for r in reports}
     for r in overdue:
         if str(r.get("id")) not in seen:
             reports.append(r)
             seen.add(str(r.get("id")))
-    rtotal = len(reports)
-    # 范围收敛：列表里只保留自己能处理的（看得见 = 批得了），与写操作范围一致
-    if scope["mode"] == "SCOPED":
-        adv = _advisor_map([int(r.get("internId") or 0) for r in reports] +
-                           [int(e.get("internId") or e.get("internshipId") or 0) for e in excs])
-        reports = [r for r in reports if scope_match_row(
-            scope, class_name=r.get("className"), advisor_name=adv.get(int(r.get("internId") or 0)),
-            student_no=r.get("studentNo"))]
-        excs = [e for e in excs if scope_match_row(
-            scope, class_name=e.get("className"),
-            advisor_name=adv.get(int(e.get("internId") or e.get("internshipId") or 0)),
-            student_no=e.get("studentNo"))]
-        rtotal, etotal = len(reports), len(excs)
+    rtotal += ototal
     stats = {}
     try:
-        stats = internship_service.get_dashboard_summary()
+        stats = internship_service.get_dashboard_summary(user=u, batch_id=batch_id)
     except Exception:  # noqa: BLE001
         stats = {"pendingReports": rtotal, "abnormal": etotal}
     return {"hasData": (rtotal + etotal) > 0, "weeklyReports": reports,
             "abnormalCheckins": excs, "stats": stats, "scopeMode": scope["mode"],
+            "pagination": {
+                "pageSize": page_size,
+                "weeklyPage": weekly_page,
+                "weeklyTotal": rtotal,
+                "weeklyPendingTotal": pending_report_total,
+                "weeklyOverdueTotal": ototal,
+                "weeklyHasMore": (
+                    weekly_page * page_size < pending_report_total
+                    or weekly_page * page_size < ototal
+                ),
+                "exceptionPage": exception_page,
+                "exceptionTotal": etotal,
+                "exceptionHasMore": exception_page * page_size < etotal,
+            },
             # 哪一块取不到显式告知，不把"取不到"静默显示成"没有待批"。
             "available": not source_errors, "errors": source_errors}
 

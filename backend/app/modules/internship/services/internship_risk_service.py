@@ -12,13 +12,22 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
-from app.models import InternshipAuditTrail, InternshipRecord, RiskRecord, StudentProfile
+from app.core.tenant_scoped import tenant_get
+from app.models import (
+    InternshipAuditTrail, InternshipComplaint, InternshipIncident, InternshipRecord,
+    RiskRecord, StudentProfile,
+)
 from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"PENDING_HANDLE": "待处理", "PROCESSING": "处理中",
                 "RESOLVED": "已化解", "CLOSED": "已关闭"}
 LEVEL_LABEL = {"HIGH": "高", "MEDIUM": "中", "LOW": "低"}
 LEVEL_ORDER = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
+INCIDENT_STATUS_LABEL = {
+    "REPORTED": "已上报", "EMERGENCY_HANDLING": "应急处置中",
+    "INVESTIGATING": "调查中", "RECTIFYING": "整改中",
+    "PENDING_REVIEW": "待复核", "CLOSED": "已关闭",
+}
 
 
 def _op_name(user) -> str:
@@ -39,19 +48,144 @@ def _get(db, rid) -> RiskRecord:
 
 
 def _ctx(db, r):
-    rec = db.get(InternshipRecord, r.internship_id)
-    stu = db.get(StudentProfile, rec.student_id) if rec else None
+    rec = tenant_get(db, InternshipRecord, r.internship_id)
+    stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
     return rec, stu
 
 
-def _row(r, rec, stu):
+def _source_truth(db, r) -> dict:
+    """Resolve the live source object; source names submitted by a client are never trusted."""
+    source_type = str(r.source_type or "").upper()
+    result = {
+        "sourceType": source_type,
+        "sourceId": str(r.source_id or ""),
+        "sourceVersion": int(r.source_version or 0) if r.source_version is not None else None,
+        "sourceStatus": "", "sourceStatusLabel": "",
+        "sourceIntegrity": "VERIFIED" if source_type and r.source_id else "LEGACY_UNSCOPED",
+        "latestEvent": r.last_follow_note or "风险单已创建，等待受理",
+        "currentAction": "查看处置留痕" if r.status in ("RESOLVED", "CLOSED") else "受理并核实风险来源",
+        "closeAllowed": True, "closeBlockers": [],
+        "regulatoryEvidenceReady": False,
+        "evidenceTarget": {
+            "packageType": "STUDENT", "targetId": str(r.internship_id),
+        },
+    }
+    if not source_type or not r.source_id:
+        if str(r.source_module or "").lower() in ("incident", "complaint"):
+            result.update({
+                "sourceIntegrity": "BROKEN",
+                "closeAllowed": False,
+                "closeBlockers": ["高风险来源身份缺失（source_type/source_id）"],
+                "currentAction": "先修复来源身份，禁止关闭",
+            })
+        return result
+    if source_type == "INCIDENT":
+        incident = db.scalar(select(InternshipIncident).where(
+            InternshipIncident.id == r.source_id,
+            InternshipIncident.tenant_id == _tid(),
+            InternshipIncident.is_deleted.is_(False),
+        ))
+        if (not incident or incident.internship_id != r.internship_id
+                or incident.risk_id != r.id):
+            result.update({
+                "sourceIntegrity": "BROKEN", "closeAllowed": False,
+                "closeBlockers": ["来源事故不存在、未反向关联本风险或不属于同一实习记录"],
+                "currentAction": "先修复事故关联，禁止关闭",
+            })
+            return result
+        blockers = []
+        if incident.status != "CLOSED": blockers.append("来源事故尚未关闭")
+        if not incident.investigation_conclusion: blockers.append("缺少调查结论")
+        if not incident.rectification_plan: blockers.append("缺少整改方案")
+        if not incident.responsibility_conclusion: blockers.append("缺少责任/复核结论")
+        if not incident.file_ids: blockers.append("缺少事故证据附件")
+        action = {
+            "REPORTED": "立即启动应急处置或调查",
+            "EMERGENCY_HANDLING": "记录应急结果并转入调查",
+            "INVESTIGATING": "补齐调查结论并进入整改",
+            "RECTIFYING": "补齐整改和复核事实后提交关闭",
+            "PENDING_REVIEW": "由有权人员复核并关闭事故",
+            "CLOSED": "关闭风险后生成学生监管证据包",
+        }.get(incident.status, "核对事故状态")
+        result.update({
+            "sourceStatus": incident.status,
+            "sourceStatusLabel": INCIDENT_STATUS_LABEL.get(incident.status, incident.status),
+            "latestEvent": f"事故{INCIDENT_STATUS_LABEL.get(incident.status, incident.status)}：{incident.summary or incident.incident_no}",
+            "currentAction": action, "closeAllowed": not blockers,
+            "closeBlockers": blockers,
+            "regulatoryEvidenceReady": incident.status == "CLOSED" and not blockers,
+            "sourceObject": {
+                "incidentNo": incident.incident_no, "severity": incident.severity,
+                "summary": incident.summary or "", "fileCount": len(incident.file_ids or []),
+            },
+        })
+        return result
+    if source_type == "COMPLAINT":
+        complaint = db.scalar(select(InternshipComplaint).where(
+            InternshipComplaint.id == r.source_id,
+            InternshipComplaint.tenant_id == _tid(),
+            InternshipComplaint.is_deleted.is_(False),
+        ))
+        if (not complaint or complaint.internship_id != r.internship_id
+                or complaint.risk_id != r.id):
+            result.update({
+                "sourceIntegrity": "BROKEN", "closeAllowed": False,
+                "closeBlockers": ["来源投诉不存在、未反向关联本风险或不属于同一实习记录"],
+                "currentAction": "先修复投诉关联，禁止关闭",
+            })
+            return result
+        blockers = []
+        if complaint.status not in ("RESOLVED", "CLOSED"):
+            blockers.append("来源投诉尚未办结")
+        if not complaint.followup_result:
+            blockers.append("投诉尚未完成回访")
+        result.update({
+            "sourceStatus": complaint.status,
+            "sourceStatusLabel": complaint.status,
+            "latestEvent": complaint.followup_result or complaint.conclusion or complaint.content or "投诉已转风险",
+            "currentAction": "关闭风险后生成学生监管证据包" if not blockers else "先完成投诉办结与回访",
+            "closeAllowed": not blockers, "closeBlockers": blockers,
+            "regulatoryEvidenceReady": complaint.status == "CLOSED" and not blockers,
+            "sourceObject": {
+                "complaintNo": complaint.complaint_no or "", "severity": complaint.severity,
+                "category": complaint.category or "企业投诉",
+            },
+        })
+    return result
+
+
+def _row(r, rec, stu, source_truth=None):
+    source = source_truth or {
+        "sourceType": str(r.source_type or "").upper(), "sourceId": str(r.source_id or ""),
+        "sourceVersion": int(r.source_version or 0) if r.source_version is not None else None,
+    }
+    actions = []
+    if r.status == "PENDING_HANDLE":
+        actions = ["HANDLE"]
+    elif r.status == "PROCESSING":
+        actions = ["FOLLOW", "REMIND"]
+        if r.risk_level != "HIGH": actions.append("ESCALATE")
+        if source.get("closeAllowed", True): actions.append("CLOSE")
     return {
         "id": str(r.id), "internId": str(r.internship_id),
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
         "advisorName": rec.advisor_name if rec else "", "enterpriseName": rec.enterprise_name if rec else "",
         "riskCode": r.risk_code, "riskTitle": r.risk_title,
         "riskLevel": r.risk_level, "riskLevelLabel": LEVEL_LABEL.get(r.risk_level, r.risk_level),
-        "sourceModule": r.source_module, "ownerName": r.owner_name or "",
+        "sourceModule": r.source_module,
+        "sourceType": source.get("sourceType", ""), "sourceId": source.get("sourceId", ""),
+        "sourceVersion": source.get("sourceVersion"),
+        "sourceStatus": source.get("sourceStatus", ""),
+        "sourceStatusLabel": source.get("sourceStatusLabel", ""),
+        "sourceIntegrity": source.get("sourceIntegrity", "LEGACY_UNSCOPED"),
+        "latestEvent": source.get("latestEvent", r.last_follow_note or "风险单已创建"),
+        "currentAction": source.get("currentAction", "受理并核实风险来源"),
+        "closeAllowed": bool(source.get("closeAllowed", True)),
+        "closeBlockers": source.get("closeBlockers", []),
+        "regulatoryEvidenceReady": bool(source.get("regulatoryEvidenceReady", False)),
+        "evidenceTarget": source.get("evidenceTarget"),
+        "sourceObject": source.get("sourceObject"), "allowedActions": actions,
+        "ownerName": r.owner_name or "",
         "deadlineAt": _iso(r.deadline_at) or "",
         "status": r.status, "statusLabel": STATUS_LABEL.get(r.status, r.status),
         "lastFollowAt": _iso(r.last_follow_at) or "", "lastFollowNote": r.last_follow_note or "",
@@ -146,6 +280,11 @@ def escalate(user, risk_id, level, note="", *, expected_version=None) -> dict:
         if LEVEL_ORDER.get(level, 0) <= LEVEL_ORDER.get(r.risk_level, 0):
             raise AppException("DATA_CONFLICT", f"当前等级已为{LEVEL_LABEL.get(r.risk_level)}，不可降级/平级升级")
         old = r.risk_level
+        if level == "HIGH":
+            from app.modules.internship.services.internship_audit_service import (
+                assert_high_risk_write_available,
+            )
+            assert_high_risk_write_available(db)
         now = datetime.utcnow()
         new_ver = versioned_update(
             db, RiskRecord, entity_id=r.id, tenant_id=_tid(), expected_version=ver,
@@ -172,6 +311,17 @@ def close(user, risk_id, result="RESOLVED", comment="", *, expected_version=None
         _owner_or_403(db, r, user, "只能关闭本人指导学生的风险")
         if r.status not in ("PROCESSING", "RESOLVED"):
             raise AppException("DATA_CONFLICT", "仅处理中/已化解的风险可关闭")
+        source = _source_truth(db, r)
+        if not source.get("closeAllowed", True):
+            raise AppException(
+                "DATA_CONFLICT", "来源事项尚未满足关闭条件，已阻止风险关闭",
+                details={"closeBlockers": source.get("closeBlockers", [])},
+            )
+        if r.risk_level == "HIGH" or source.get("sourceType") in ("INCIDENT", "COMPLAINT"):
+            from app.modules.internship.services.internship_audit_service import (
+                assert_high_risk_write_available,
+            )
+            assert_high_risk_write_available(db)
         new_status = "CLOSED"
         now = datetime.utcnow()
         new_ver = versioned_update(
@@ -182,7 +332,9 @@ def close(user, risk_id, result="RESOLVED", comment="", *, expected_version=None
                operator=_op_name(user))
         db.commit()
         return {"id": str(r.id), "status": new_status, "statusLabel": STATUS_LABEL[new_status],
-                "version": new_ver}
+                "version": new_ver,
+                "nextStep": "生成学生监管证据包" if source.get("sourceType") in ("INCIDENT", "COMPLAINT") else "处理下一条风险",
+                "evidenceTarget": source.get("evidenceTarget")}
 
 
 def student_help_report(user, body=None) -> dict:
@@ -216,6 +368,9 @@ def student_help_report(user, body=None) -> dict:
             owner_name=rec.advisor_name or None)
         db.add(r)
         db.flush()
+        r.source_type = "RISK"
+        r.source_id = r.id
+        r.source_version = int(r.version or 0)
         _trail(db, r.id, "STUDENT_HELP", {"title": title, "content": content[:200]},
                operator=(stu.real_name if stu else "学生"))
         if (rec.risk_level or "NONE") in ("NONE", "", "LOW") and level in ("MEDIUM", "HIGH"):
@@ -294,7 +449,7 @@ def list_risks(page, page_size, level=None, status=None, keyword=None, user=None
                 continue
             if not in_scope(scope, db, rec, stu):
                 continue
-            items.append(_row(r, rec, stu))
+            items.append(_row(r, rec, stu, _source_truth(db, r)))
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -310,7 +465,7 @@ def get_risk(rid, user=None) -> dict:
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "RISK",
             InternshipAuditTrail.target_id == r.id).order_by(InternshipAuditTrail.id)).all()
-        return {**_row(r, rec, stu),
+        return {**_row(r, rec, stu, _source_truth(db, r)),
                 "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
                                 "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
                                for t in trail]}

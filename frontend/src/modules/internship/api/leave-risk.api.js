@@ -25,6 +25,9 @@ const B = '/internship'
 export const leaveApi = {
   getLeaves(params = {}) { return callList(`${B}/leaves`, params) },
   getLeaveDetail(id) { return call(() => request(`${B}/leaves/${id}`)) },
+  markEvidenceViewed(id) {
+    return call(() => request(`${B}/leaves/${id}/evidence-viewed`, { method: 'POST' }))
+  },
   review(id, { action, comment, expectedVersion, version }) {
     return call(() => request(`${B}/leaves/${id}/review`, {
       method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version }
@@ -71,5 +74,14 @@ export const complaintApi = {
       method: 'POST', body: { ...(body || {}), action }
     }))
   },
-  toRisk(id) { return call(() => request(`${B}/complaints/${id}/to-risk`, { method: 'POST' })) }
+  toRisk(id, expectedVersion) {
+    return call(() => request(`${B}/complaints/${id}/to-risk`, {
+      method: 'POST', body: { expectedVersion }
+    }))
+  },
+  followup(id, result, expectedVersion) {
+    return call(() => request(`${B}/complaints/${id}/followup`, {
+      method: 'POST', body: { result, expectedVersion }
+    }))
+  }
 }

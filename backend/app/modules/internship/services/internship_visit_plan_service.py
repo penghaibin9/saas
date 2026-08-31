@@ -78,6 +78,7 @@ def _row(p):
         "planDate": p.plan_date or "", "timeWindow": p.time_window or "", "method": p.method,
         "location": p.location or "", "objective": p.objective or "",
         "status": p.status, "statusLabel": STATUS_LABEL.get(p.status, p.status),
+        "version": int(p.version or 0),
         "planType": p.plan_type, "remindAt": _iso(p.remind_at) or "",
         "visitId": str(p.visit_id) if p.visit_id else "", "completedAt": _iso(p.completed_at) or "",
         "cancelReason": p.cancel_reason or "", "createdAt": _iso(p.created_at) or "",

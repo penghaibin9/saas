@@ -13,6 +13,7 @@
       list-fallback="/admin/internship/exceptions"
       style="margin-bottom: var(--space-3)"
     />
+    <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
     <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-grid-2">
@@ -104,12 +105,14 @@ import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import ConflictNotice from './components/ConflictNotice.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AttendanceExceptionDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, ConflictNotice },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, LoadingState, ErrorState, EmptyState,
+    AppButton, ReviewQueueBar, ConflictNotice, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -121,6 +124,7 @@ export default {
       formError: '',
       submitting: false,
       conflict: emptyConflict(),
+      lastReceipt: null,
       actionOptions: [
         { value: 'REASONABLE', title: '标记合理', desc: '确认属正常外勤 / 客户现场，消除本条异常，不计入风险' },
         { value: 'ABNORMAL', title: '记为异常', desc: '核实不通过，计入异常统计，影响打卡率与考核' },
@@ -177,6 +181,14 @@ export default {
       })
       this.submitting = false
       if (res.code === 0) {
+        this.lastReceipt = {
+          id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel,
+          version: res.data?.version,
+          actionLabel: ({ REASONABLE: '标记合理', ABNORMAL: '记为异常', TO_RISK: '转风险跟进' })[this.action],
+          objectLabel: `${this.detail.studentName} · ${this.detail.date}`,
+          auditText: '异常更新与处理留痕已同事务提交',
+          nextStep: '可继续核对队列中的下一条异常'
+        }
         toast.success('处理完成：' + res.data.statusLabel + '，已留痕并同步学生端')
         this.comment = ''
         this.load()

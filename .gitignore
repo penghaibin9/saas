@@ -73,3 +73,4 @@ venv/
 # 本地 E2E 凭据与临时产物（含明文测试口令，禁止入库）
 backend/tmp/
 **/e2e_graduation_credentials.local.json
+e2e/runtime-fixtures/
