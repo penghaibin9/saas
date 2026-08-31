@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import fs from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
