@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from app.core.config import settings
 from app.core.context import current_tenant_id
 from app.core.response import success
-from app.core.permissions import require_any_permission, require_permission
+from app.core.permissions import require_any_permission, require_module, require_permission
 from app.db.session import db_enabled, get_sessionmaker
 
 router = APIRouter()
@@ -2842,20 +2842,32 @@ def api_revoke_delegation(delegation_id: str, body: dict = Body(...),
                    message="临时授权已回收")
 
 
-@router.get("/system/integrations", summary="接口连接列表")
+@router.get(
+    "/system/integrations",
+    summary="接口连接列表",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
 def api_list_integrations(user=Depends(require_permission("systemAdmin.integration.manage"))):
     from app.services import system_governance_service as gov
     items = gov.list_integrations()
     return success({"list": items, "total": len(items)})
 
 
-@router.post("/system/integrations", summary="保存接口连接")
+@router.post(
+    "/system/integrations",
+    summary="保存接口连接",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
 def api_save_integration(body: dict = Body(...), user=Depends(require_permission("systemAdmin.integration.manage"))):
     from app.services import system_governance_service as gov
     return success(gov.save_integration(user, body or {}), message="接口连接已保存")
 
 
-@router.post("/system/integrations/{integration_id}/rotate", summary="轮换接口凭证")
+@router.post(
+    "/system/integrations/{integration_id}/rotate",
+    summary="轮换接口凭证",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
 def api_rotate_integration(integration_id: str, body: dict = Body(...),
                            user=Depends(require_permission("systemAdmin.integration.manage"))):
     from app.services import system_governance_service as gov
@@ -2863,7 +2875,11 @@ def api_rotate_integration(integration_id: str, body: dict = Body(...),
                    message="凭证已轮换")
 
 
-@router.get("/system/sync-jobs", summary="同步任务列表")
+@router.get(
+    "/system/sync-jobs",
+    summary="同步任务列表",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
 def api_list_sync_jobs(user=Depends(require_any_permission(
         "systemAdmin.integration.sync.view", "systemAdmin.integration.manage"))):
     from app.services import system_governance_service as gov
@@ -2871,19 +2887,31 @@ def api_list_sync_jobs(user=Depends(require_any_permission(
     return success({"list": items, "total": len(items)})
 
 
-@router.post("/system/sync-jobs", summary="登记同步任务")
+@router.post(
+    "/system/sync-jobs",
+    summary="登记同步任务",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
 def api_enqueue_sync_job(body: dict = Body(...), user=Depends(require_permission("systemAdmin.integration.manage"))):
     from app.services import system_governance_service as gov
     return success(gov.enqueue_sync_job(user, body or {}), message="同步任务已登记")
 
 
-@router.post("/system/sync-jobs/{job_id}/retry", summary="重试同步任务")
+@router.post(
+    "/system/sync-jobs/{job_id}/retry",
+    summary="重试同步任务",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
 def api_retry_sync_job(job_id: str, user=Depends(require_permission("systemAdmin.integration.manage"))):
     from app.services import system_governance_service as gov
     return success(gov.retry_sync_job(user, job_id), message="已重试")
 
 
-@router.post("/system/sync-jobs/{job_id}/cancel", summary="取消同步任务")
+@router.post(
+    "/system/sync-jobs/{job_id}/cancel",
+    summary="取消同步任务",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
 def api_cancel_sync_job(job_id: str, body: dict = Body(...),
                         user=Depends(require_permission("systemAdmin.integration.manage"))):
     from app.services import system_governance_service as gov
@@ -2942,7 +2970,11 @@ def api_set_capability_setting(capability_key: str, body: dict = Body(...),
     ), message="模块开关已更新")
 
 
-@router.post("/system/integrations/{integration_id}/test", summary="测试接口连接（可达性，不伪造成功连接）")
+@router.post(
+    "/system/integrations/{integration_id}/test",
+    summary="测试接口连接（可达性，不伪造成功连接）",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
 def api_test_integration(integration_id: str, user=Depends(require_permission("systemAdmin.integration.manage"))):
     from app.services import system_governance_service as gov
     return success(gov.test_integration_connection(user, integration_id), message="连接测试完成")
