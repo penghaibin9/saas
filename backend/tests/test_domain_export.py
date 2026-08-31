@@ -10,6 +10,7 @@ MAIN_TID = 1000000000000000001
 def _seed_intern(db_mode):
     from app.db.session import get_sessionmaker
     from app.models import InternshipBatch, InternshipRecord, OrientationBatch
+    from app.services.orientation_flow_service import ensure_published_flow_version
     db = get_sessionmaker()()
     try:
         batch = InternshipBatch(
@@ -35,6 +36,7 @@ def _seed_intern(db_mode):
             intern_start_date=datetime(2026, 3, 2),
         )
         db.add(r)
+        flow_version = ensure_published_flow_version(db, MAIN_TID)
         orientation_batch = OrientationBatch(
             tenant_id=MAIN_TID,
             batch_name=f"通用导出迎新批次-{uuid4().hex[:6]}",
@@ -42,6 +44,7 @@ def _seed_intern(db_mode):
             year="2026",
             status="ACTIVE",
             planned_count=0,
+            flow_version_id=flow_version.id,
         )
         db.add(orientation_batch)
         db.commit()

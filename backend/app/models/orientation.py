@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Index, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import (JSON, BigInteger, Boolean, CheckConstraint, DateTime, Index,
+                        Integer, Numeric, String, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
@@ -159,7 +160,16 @@ class OrientationAuditTrail(PKMixin, TenantMixin, AuditTimeMixin, Base):
 class OrientationBatch(PKMixin, TenantMixin, CommonMixin, Base):
     """t_orientation_batch 迎新批次——组织整轮迎新的时间轴与状态骨架。"""
     __tablename__ = "t_orientation_batch"
-    __table_args__ = (UniqueConstraint("tenant_id", "batch_no", name="uk_ori_batch_no"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "batch_no", name="uk_ori_batch_no"),
+        CheckConstraint(
+            "status = 'DRAFT' OR flow_version_id IS NOT NULL",
+            name="ck_ori_batch_active_flow",
+        ),
+        Index(
+            "ix_ori_batch_flow_active", "tenant_id", "flow_version_id", "status", "is_deleted"
+        ),
+    )
 
     batch_name: Mapped[str] = mapped_column(String(200), nullable=False, comment="批次名称，如 2026 级新生迎新")
     batch_no: Mapped[str] = mapped_column(String(100), nullable=False, comment="批次编号")
@@ -171,6 +181,10 @@ class OrientationBatch(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT",
                                         comment="DRAFT 草稿 / ACTIVE 进行中 / CLOSED 已结束")
     planned_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="计划新生数")
+    flow_version_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        comment="冻结的迎新流程版本 → t_orientation_flow_version.id；草稿发布前可空",
+    )
     remark: Mapped[str | None] = mapped_column(String(500))
 
 
@@ -197,6 +211,116 @@ class OrientationFlowConfig(PKMixin, TenantMixin, CommonMixin, Base):
     required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, comment="是否必办")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     remark: Mapped[str | None] = mapped_column(String(500))
+
+
+class OrientationFlowVersion(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_orientation_flow_version 可发布、可追溯的迎新流程版本 Authority。"""
+    __tablename__ = "t_orientation_flow_version"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "version_no", name="uk_ori_flow_version_no"),
+        CheckConstraint(
+            "status IN ('DRAFT','PUBLISHED','RETIRED')",
+            name="ck_ori_flow_version_status",
+        ),
+        CheckConstraint(
+            "status <> 'PUBLISHED' OR published_at IS NOT NULL",
+            name="ck_ori_flow_version_publish_time",
+        ),
+        Index(
+            "ix_ori_flow_version_status",
+            "tenant_id", "status", "is_deleted", "version_no",
+        ),
+    )
+
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False, comment="租户内递增版本号")
+    version_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="DRAFT", comment="DRAFT/PUBLISHED/RETIRED"
+    )
+    source_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="MANUAL/LEGACY_CONFIG_BACKFILL"
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+    published_by: Mapped[int | None] = mapped_column(BigInteger)
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+
+class OrientationFlowStep(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_orientation_flow_step 某个已冻结流程版本内的步骤定义。"""
+    __tablename__ = "t_orientation_flow_step"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "flow_version_id", "step_key", name="uk_ori_flow_step_version_key"
+        ),
+        CheckConstraint("sort_order >= 0", name="ck_ori_flow_step_sort_order"),
+        Index(
+            "ix_ori_flow_step_version_order",
+            "tenant_id", "flow_version_id", "sort_order", "is_deleted",
+        ),
+    )
+
+    flow_version_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="流程版本 Authority → t_orientation_flow_version.id"
+    )
+    step_key: Mapped[str] = mapped_column(String(50), nullable=False)
+    step_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    remark: Mapped[str | None] = mapped_column(String(500))
+
+
+class OrientationStudentStep(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_orientation_student_step 新生步骤状态 Authority；steps_json 仅为兼容投影。"""
+    __tablename__ = "t_orientation_student_step"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "orientation_student_id", "step_key",
+            name="uk_ori_student_step_key",
+        ),
+        CheckConstraint(
+            "status IN ('NOT_STARTED','IN_PROGRESS','BLOCKED','DONE','WAIVED','NOT_REQUIRED')",
+            name="ck_ori_student_step_status",
+        ),
+        CheckConstraint(
+            "status <> 'WAIVED' OR (waived_at IS NOT NULL AND waived_by IS NOT NULL "
+            "AND waive_evidence_ref IS NOT NULL AND CHAR_LENGTH(TRIM(waive_reason)) >= 5)",
+            name="ck_ori_student_step_waiver_evidence",
+        ),
+        Index(
+            "ix_ori_student_step_student_status",
+            "tenant_id", "orientation_student_id", "status", "is_deleted",
+        ),
+        Index(
+            "ix_ori_student_step_flow_status",
+            "tenant_id", "flow_version_id", "status", "is_deleted",
+        ),
+    )
+
+    orientation_student_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="迎新学生过程实例 → t_orientation_student.id"
+    )
+    flow_version_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="该学生冻结的流程版本"
+    )
+    flow_step_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="冻结流程步骤 → t_orientation_flow_step.id"
+    )
+    step_key: Mapped[str] = mapped_column(String(50), nullable=False, comment="步骤业务键快照")
+    status: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="NOT_STARTED",
+        comment="NOT_STARTED/IN_PROGRESS/BLOCKED/DONE/WAIVED/NOT_REQUIRED",
+    )
+    status_source: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="LEGACY_STEPS_JSON/PROCESS_FACT/MANUAL_WAIVER/RULE"
+    )
+    source_biz_id: Mapped[str | None] = mapped_column(String(100))
+    blocked_reason: Mapped[str | None] = mapped_column(String(500))
+    status_changed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    waived_at: Mapped[datetime | None] = mapped_column(DateTime)
+    waived_by: Mapped[int | None] = mapped_column(BigInteger)
+    waive_reason: Mapped[str | None] = mapped_column(String(500))
+    waive_evidence_ref: Mapped[str | None] = mapped_column(String(200))
 
 
 class OrientationNoticeTask(PKMixin, TenantMixin, CommonMixin, Base):

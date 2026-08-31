@@ -8,6 +8,8 @@ from sqlalchemy import select
 from app.models import (College, GreenChannelApplication, Major, OrientationAuditTrail,
                         OrientationBatch, OrientationException, OrientationExceptionFollowup,
                         OrientationMaterial, OrientationStudent, SchoolClass)
+from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                    ensure_student_steps)
 
 TID = 1000000000000000001
 ALL_DONE = {"ACTIVATE": "DONE", "INFO": "DONE", "MATERIAL": "DONE", "PAYMENT": "DONE",
@@ -34,10 +36,12 @@ def seed_orientation(db, tenant_id: int = TID) -> dict:
         OrientationBatch.batch_no == "SEED-ORI-2026",
     )).first()
     if not batch:
+        flow_version = ensure_published_flow_version(db, tenant_id)
         batch = OrientationBatch(
             tenant_id=tenant_id, batch_name="2026级迎新种子批次", batch_no="SEED-ORI-2026",
             year="2026", status="ACTIVE", planned_count=12,
             remark="仅沙箱/测试种子；生产正式路径不得依赖此批次",
+            flow_version_id=flow_version.id,
         )
         db.add(batch)
         db.flush()
@@ -75,6 +79,7 @@ def seed_orientation(db, tenant_id: int = TID) -> dict:
             source_type="MANUAL", source_record_id=f"LQ2026{i + 1:06d}")
         db.add(s)
         db.flush()
+        ensure_student_steps(db, s, status_source="PROCESS_FACT")
         students.append(s)
 
     # 绿色通道申请（学生 7、8 申请）

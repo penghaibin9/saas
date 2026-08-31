@@ -221,19 +221,24 @@ def test_orientation_matches_on_admission_no(db_mode):
     """迎新用录取编号匹配，不是学号——搞错了会把所有候选人判成 unmatched。"""
     from app.db.session import get_sessionmaker
     from app.models import OrientationBatch, OrientationStudent
+    from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                        ensure_student_steps)
 
     mod = _load_script()
     db = get_sessionmaker()()
     try:
         p = _profile(db, "LQBF0008")
+        flow_version = ensure_published_flow_version(db, TID)
         batch = OrientationBatch(tenant_id=TID, batch_name="影子回填测试批次",
                                  batch_no="ORI-SHADOW-BF", year="2026", status="ACTIVE",
-                                 planned_count=1)
+                                 planned_count=1, flow_version_id=flow_version.id)
         db.add(batch); db.flush()
         row = OrientationStudent(tenant_id=TID, batch_id=batch.id, name="新生", admission_no="LQBF0008",
                                  stage="ADMITTED", report_status="NOT_REPORTED",
                                  source_type="MANUAL", source_record_id="LQBF0008")
         db.add(row)
+        db.flush()
+        ensure_student_steps(db, row, status_source="PROCESS_FACT")
         db.commit()
 
         res = mod.scan_domain(db, "orientation", TID, apply=True)

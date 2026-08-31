@@ -34,20 +34,25 @@ def _profile(db, no, name):
 def _orientation(db, name, admission_no, *, student_id=None, payment_status="UNPAID"):
     from sqlalchemy import select
     from app.models import OrientationBatch, OrientationStudent
+    from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                        ensure_student_steps)
     batch = db.scalars(select(OrientationBatch).where(
         OrientationBatch.tenant_id == TID,
         OrientationBatch.batch_no == "ORI-HOMONYM",
     )).first()
     if not batch:
+        flow_version = ensure_published_flow_version(db, TID)
         batch = OrientationBatch(tenant_id=TID, batch_name="同名隔离测试批次",
                                  batch_no="ORI-HOMONYM", year="2026", status="ACTIVE",
-                                 planned_count=2)
+                                 planned_count=2, flow_version_id=flow_version.id)
         db.add(batch); db.flush()
-    db.add(OrientationStudent(tenant_id=TID, batch_id=batch.id, student_id=student_id, name=name,
-                              identity_status="LINKED",
-                              admission_no=admission_no, payment_status=payment_status,
-                              report_status="NOT_REPORTED", record_status="ACTIVE",
-                              source_type="MANUAL", source_record_id=admission_no))
+    row = OrientationStudent(tenant_id=TID, batch_id=batch.id, student_id=student_id, name=name,
+                             identity_status="LINKED",
+                             admission_no=admission_no, payment_status=payment_status,
+                             report_status="NOT_REPORTED", record_status="ACTIVE",
+                             source_type="MANUAL", source_record_id=admission_no)
+    db.add(row); db.flush()
+    ensure_student_steps(db, row, status_source="PROCESS_FACT")
 
 
 def test_fk_linked_record_not_leaked_to_homonym(client, db_mode):

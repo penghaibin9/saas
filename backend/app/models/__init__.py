@@ -64,8 +64,10 @@ from app.models.orientation import (GreenChannelApplication, OrientationArchive,
                                      OrientationAuditTrail, OrientationBatch,
                                      OrientationCheckinPoint, OrientationException,
                                      OrientationExceptionFollowup, OrientationFlowConfig,
+                                     OrientationFlowStep, OrientationFlowVersion,
                                      OrientationMaterial, OrientationNoticeTask,
-                                     OrientationO1BackfillIssue, OrientationStudent)
+                                     OrientationO1BackfillIssue, OrientationStudent,
+                                     OrientationStudentStep)
 from app.models.campus_service import (CsAuditTrail, CsDiscipline, CsDormException,  # noqa: F401
                                         CsDormRecord, CsGrant, CsLeave, CsMentalRecord,
                                         CsServiceStudent, CsWorkOrder)

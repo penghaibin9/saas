@@ -11,6 +11,8 @@ from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, College
                         CsWorkOrder, EmpMaterial, EmpStudent, GraduationStudent, InternshipRecord,
                         Major, OrientationBatch, OrientationStudent, SchoolClass, StudentProfile,
                         UnifiedMessage, UnifiedTodo)
+from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                    ensure_student_steps)
 
 TID = 1000000000000000001
 DEMO_NAME = "张一鸣"
@@ -40,9 +42,11 @@ def seed_mobile_demo(db, tenant_id: int = TID) -> dict:
         OrientationBatch.batch_no == "MOBILE-DEMO-ORI",
     )).first()
     if not orientation_batch:
+        flow_version = ensure_published_flow_version(db, tenant_id)
         orientation_batch = OrientationBatch(
             tenant_id=tenant_id, batch_name="移动演示迎新批次", batch_no="MOBILE-DEMO-ORI",
             year="2023", status="CLOSED", planned_count=1, remark="移动演示历史批次",
+            flow_version_id=flow_version.id,
         )
         db.add(orientation_batch); db.flush()
 
@@ -56,7 +60,7 @@ def seed_mobile_demo(db, tenant_id: int = TID) -> dict:
                                 intern_end_date=datetime(2026, 8, 28)))
 
     # 迎新
-    db.add(OrientationStudent(tenant_id=tenant_id, batch_id=orientation_batch.id,
+    orientation_student = OrientationStudent(tenant_id=tenant_id, batch_id=orientation_batch.id,
                               name=DEMO_NAME, admission_no="LQ2023100001", student_id=prof.id,
                               identity_status="LINKED",
                               college_id=college.id, college_name=college.college_name,
@@ -68,7 +72,9 @@ def seed_mobile_demo(db, tenant_id: int = TID) -> dict:
                               steps_json={"ACTIVATE": "DONE", "INFO": "DONE", "MATERIAL": "DONE",
                                           "PAYMENT": "DONE", "DORM": "DONE", "CHECKIN": "DONE",
                                           "CONFIRM": "DONE"},
-                              source_type="MANUAL", source_record_id="LQ2023100001"))
+                              source_type="MANUAL", source_record_id="LQ2023100001")
+    db.add(orientation_student); db.flush()
+    ensure_student_steps(db, orientation_student, status_source="PROCESS_FACT")
     # 在校服务
     cs = CsServiceStudent(tenant_id=tenant_id, name=DEMO_NAME, student_no=DEMO_NO, class_name="软件2301班",
                           care_level="NORMAL", risk_level="LOW", counselor="李辅导")
