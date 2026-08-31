@@ -13,14 +13,14 @@ def test_role_member_and_audit_queries_are_page_bounded():
 
 def test_role_list_is_sql_paginated_and_member_counts_only_cover_current_page():
     root = Path(__file__).resolve().parents[2]
-    source = (root / "backend/app/modules/system_admin/routers/system_bundle.py").read_text(encoding="utf-8")
-    block = source.split("def list_system_roles(", 1)[1].split("def list_system_users(", 1)[0]
+    source = (root / "backend/app/modules/system_admin/routers/system_router.py").read_text(encoding="utf-8")
+    block = source.split("def list_system_roles(", 1)[1].split("def get_system_role(", 1)[0]
     assert "select(func.count()).select_from(stmt.order_by(None).subquery())" in block
     assert ".offset((page - 1) * page_size).limit(page_size)" in block
     assert "UserRole.role_id.in_(role_ids)" in block
     assert "DataScopeRule.role_code.in_(role_codes)" in block
     assert "scope_by_role.get" in block
-    assert '"version": int(getattr(role, "version", 0) or 0)' in source
+    assert '"version": int(role.version or 0)' in source
     assert "total = len(roles)" not in block
 
 

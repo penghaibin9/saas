@@ -219,6 +219,93 @@ def get_system_user(
         db.close()
 
 
+@_replacements.get("/system/roles", summary="学校预设角色与成员统计（Control Plane Authority）")
+def list_system_roles(
+    keyword: str = "",
+    type: str = "",
+    status: str = "",
+    page: int = 1,
+    page_size: int = 50,
+    user=Depends(require_permission("systemAdmin.role.view")),
+):
+    """Use SQL pagination and page-bounded member/scope aggregation."""
+    from sqlalchemy import func
+
+    from app.models import DataScopeRule, Role, UserRole
+    from app.services.data_scope_service import normalize_scope
+
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        stmt = select(Role).where(Role.tenant_id == tenant_id, Role.is_deleted.is_(False))
+        if keyword.strip():
+            like = f"%{keyword.strip()}%"
+            stmt = stmt.where(Role.role_name.like(like) | Role.role_code.like(like))
+        if type.upper() == "BUILTIN":
+            stmt = stmt.where(Role.role_type == "SYSTEM")
+        elif type.upper() == "CUSTOM":
+            stmt = stmt.where((Role.role_type != "SYSTEM") | Role.role_type.is_(None))
+        if status.upper() == "ENABLED":
+            stmt = stmt.where(Role.status.in_(("ACTIVE", "ENABLED")))
+        elif status.upper() == "DEPRECATED":
+            stmt = stmt.where(Role.status.notin_(("ACTIVE", "ENABLED")))
+
+        page = max(1, int(page or 1))
+        page_size = min(100, max(1, int(page_size or 50)))
+        total = int(db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0)
+        roles = list(db.scalars(
+            stmt.order_by(Role.role_type, Role.role_code, Role.id)
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all())
+        role_ids = [int(role.id) for role in roles]
+        counts = dict(db.execute(select(
+            UserRole.role_id, func.count(UserRole.id),
+        ).where(
+            UserRole.tenant_id == tenant_id,
+            UserRole.role_id.in_(role_ids) if role_ids else False,
+            UserRole.is_deleted.is_(False),
+            UserRole.status == "ACTIVE",
+        ).group_by(UserRole.role_id)).all()) if role_ids else {}
+
+        scope_by_role: dict[str, str] = {}
+        role_codes = [str(role.role_code or "") for role in roles]
+        if role_codes:
+            for role_code, scope_type in db.execute(select(
+                DataScopeRule.role_code, DataScopeRule.scope_type,
+            ).where(
+                DataScopeRule.tenant_id == tenant_id,
+                DataScopeRule.role_code.in_(role_codes),
+                DataScopeRule.status == "ACTIVE",
+                DataScopeRule.is_deleted.is_(False),
+            ).order_by(DataScopeRule.role_code, DataScopeRule.id.desc())).all():
+                scope_by_role.setdefault(str(role_code), normalize_scope(scope_type))
+
+        rows = []
+        for role in roles:
+            role_status = str(role.status or "").upper()
+            marker = str(role.remark or "")
+            fallback = marker.split(";scope=", 1)[1].split(";", 1)[0] if ";scope=" in marker else "ASSIGNED"
+            scope = scope_by_role.get(str(role.role_code or "")) or fallback
+            rows.append({
+                "id": str(role.id),
+                "name": role.role_name,
+                "code": role.role_code,
+                "type": "BUILTIN" if str(role.role_type or "").upper() == "SYSTEM" else "CUSTOM",
+                "typeLabel": "预设角色" if str(role.role_type or "").upper() == "SYSTEM" else "自定义角色",
+                "scopeCode": scope,
+                "scopeName": scope,
+                "memberCount": int(counts.get(role.id, 0)),
+                "description": role.remark or "",
+                "version": int(role.version or 0),
+                "status": "ENABLED" if role_status in ("ACTIVE", "ENABLED") else "DISABLED",
+                "statusLabel": "启用中" if role_status in ("ACTIVE", "ENABLED") else "已停用",
+                "updatedAt": str(getattr(role, "updated_at", "") or "")[:19],
+            })
+        return success({"list": rows, "total": total, "page": page, "pageSize": page_size})
+    finally:
+        db.close()
+
+
 @_replacements.get("/system/roles/{role_id}", summary="学校角色详情（Control Plane Authority）")
 def get_system_role(
     role_id: int,

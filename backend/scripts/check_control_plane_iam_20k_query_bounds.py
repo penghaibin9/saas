@@ -24,7 +24,7 @@ from app.models.permission_governance import (
     TEMPLATE_PUBLISHED,
     RoleTemplate,
 )
-from app.modules.system_admin.routers import system_bundle, system_i4_router
+from app.modules.system_admin.routers import system_i4_router, system_router
 from app.modules.system_admin.services import school_iam_workspace_service as school_iam
 from app.services.sandbox_service import SANDBOX_TID
 
@@ -114,7 +114,7 @@ def main() -> None:
         role_list, role_list_metric = _measure(
             "roleList",
             4,
-            lambda: system_bundle.list_system_roles(
+            lambda: system_router.list_system_roles(
                 keyword="", type="", status="", page=1, page_size=10, user=actor,
             ),
         )
