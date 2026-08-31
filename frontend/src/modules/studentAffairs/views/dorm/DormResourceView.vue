@@ -83,11 +83,26 @@
       </AppSectionCard>
 
       <AppSectionCard v-if="curRoom" :title="`三、床位 · ${curRoomNo}`">
+        <div v-if="selectedRoom" class="dorm-room-detail" aria-label="当前房间详情">
+          <div><span>房间</span><strong>{{ selectedRoom.roomNo }}</strong></div>
+          <div><span>楼层</span><strong>{{ selectedRoom.floorNo }} 层</strong></div>
+          <div><span>入住</span><strong>{{ roomOccupiedBeds }} / {{ selectedRoom.capacity || beds.length }}</strong></div>
+          <div><span>状态</span><strong>{{ roomStatusLabel(selectedRoom.status) }}</strong></div>
+        </div>
         <div class="bed-legend"><span class="is-vacant">空床</span><span class="is-occupied">已入住</span></div>
         <div class="sa-beds">
-          <span v-for="bd in beds" :key="bd.bedId" class="sa-bed" :class="bd.status === 'OCCUPIED' ? 'sa-bed--occ' : 'sa-bed--vac'">
-            <strong>{{ bd.bedNo }}</strong><small>{{ bd.status === 'OCCUPIED' ? (bd.occupantName || '已住') : '空床' }}</small>
-          </span>
+          <button
+            v-for="bd in beds"
+            :key="bd.bedId"
+            type="button"
+            class="sa-bed"
+            :class="bd.status === 'OCCUPIED' ? 'sa-bed--occ' : 'sa-bed--vac'"
+            @click="openBedAction(bd)"
+          >
+            <strong>{{ bd.bedNo }} 号床</strong>
+            <small>{{ bd.status === 'OCCUPIED' ? (bd.occupantName || '已住') : '空床' }}</small>
+            <small class="sa-bed__action">{{ bd.status === 'OCCUPIED' ? '查看入住与退宿 →' : '办理入住 →' }}</small>
+          </button>
           <span v-if="!beds.length" class="sa-empty">该房暂无床位。</span>
         </div>
       </AppSectionCard>
@@ -204,6 +219,12 @@ export default {
         { key: 'o', label: '已住', value: this.occ.occupiedBeds || 0, accent: 'primary' },
         { key: 'v', label: '空床', value: this.occ.vacantBeds || 0, accent: (this.occ.vacantBeds || 0) ? 'success' : 'warning' }
       ]
+    },
+    selectedRoom() {
+      return this.rooms.find((row) => String(row.roomId) === String(this.curRoom)) || null
+    },
+    roomOccupiedBeds() {
+      return this.beds.filter((bed) => bed.status === 'OCCUPIED').length
     }
   },
   mounted() { this.load() },
@@ -214,7 +235,17 @@ export default {
       try {
         const [bs, oc] = await Promise.all([studentAffairsApi.listDormBuildings(), studentAffairsApi.getDormOccupancy()])
         this.buildings = bs.data.items || []; this.occ = oc.data || {}
+        await this.applyRouteSelection()
       } catch (e) { this.errorMessage = e.message || '房源加载失败' } finally { this.loading = false }
+    },
+    async applyRouteSelection() {
+      const buildingId = String(this.$route.query.buildingId || '')
+      const building = this.buildings.find((row) => String(row.buildingId) === buildingId)
+      if (!building) return
+      await this.openBuilding(building)
+      const roomId = String(this.$route.query.roomId || '')
+      const room = this.rooms.find((row) => String(row.roomId) === roomId)
+      if (room) await this.openRoom(room)
     },
     async openBuilding(b) {
       this.curBuilding = b.buildingId; this.curBuildingName = b.buildingName; this.curRoom = ''; this.beds = []
@@ -225,6 +256,16 @@ export default {
       this.curRoom = r.roomId; this.curRoomNo = r.roomNo
       try { this.beds = (await studentAffairsApi.listDormBeds(r.roomId)).data.items || [] }
       catch (e) { this.errorMessage = e.message || '床位加载失败' }
+    },
+    openBedAction(bed) {
+      this.$router.push({
+        name: 'student-affairs-dorm-checkin',
+        query: {
+          buildingId: String(this.curBuilding),
+          roomId: String(this.curRoom),
+          bedId: String(bed.bedId)
+        }
+      })
     },
     createBuilding() {
       this.buildDlg = { visible: true, name: '', gender: 'MIXED', managerTeacherKey: '', autoFill: false,
@@ -287,6 +328,9 @@ export default {
 .dr-hint { margin: 0; padding: 9px 11px; border-radius: var(--radius-md); background: var(--bg-section); color: var(--text-secondary); font-size: var(--font-size-xs); }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .dorm-resource-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.dorm-room-detail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); margin-bottom: var(--space-3); }
+.dorm-room-detail > div { display: grid; gap: 3px; padding: var(--space-3); border-radius: var(--radius-md); background: var(--bg-section); }
+.dorm-room-detail span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .sa-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
 :deep(.dt__tr.sa-sel) .dt__td { background: var(--primary-50, var(--bg-subtle)); }
 :deep(.dt__tr.sa-sel) .dt__td:first-child { box-shadow: inset 3px 0 0 var(--primary-500); }
@@ -299,12 +343,13 @@ export default {
 .bed-legend .is-vacant::before { background: var(--success-500, #22c55e); }
 .bed-legend .is-occupied::before { background: var(--warning-500, #f59e0b); }
 .sa-beds { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--space-2); }
-.sa-bed { display: grid; gap: 3px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); font-size: var(--font-size-sm); }
+.sa-bed { display: grid; gap: 3px; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); font: inherit; font-size: var(--font-size-sm); text-align: left; cursor: pointer; }
 .sa-bed strong { font-size: var(--font-size-base); }
 .sa-bed small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-bed__action { margin-top: 4px; font-weight: 600; }
 .sa-bed--occ { background: var(--warning-50); color: var(--warning-700); }
 .sa-bed--vac { background: var(--success-50); color: var(--success-700); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 640px) { .sa-grid--metrics { grid-template-columns: 1fr; } .sa-beds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .sa-grid--metrics, .dorm-room-detail { grid-template-columns: 1fr; } .sa-beds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @import '@/styles/module-page.css';
 </style>

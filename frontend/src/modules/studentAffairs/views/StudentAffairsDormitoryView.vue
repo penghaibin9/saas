@@ -97,10 +97,22 @@
 
         <AppSectionCard title="床位管理 / 入住退宿">
           <div class="sa-bed-grid">
-            <button v-for="bed in beds" :key="bed.bedId" type="button" class="sa-bed">
+            <button
+              v-for="bed in beds"
+              :key="bed.bedId"
+              type="button"
+              class="sa-bed"
+              :aria-label="`${bed.bedNo}号床，${bed.status === 'OCCUPIED' ? '查看入住与退宿' : '办理入住'}`"
+              @click="openBedAction(bed)"
+            >
               <strong>{{ bed.bedNo }}</strong>
-              <AppStatusTag :status="bed.status" size="sm" />
+              <AppStatusTag
+                :type="bed.status === 'OCCUPIED' ? 'warning' : 'success'"
+                :label="bed.status === 'OCCUPIED' ? '已入住' : '空床'"
+                size="sm"
+              />
               <small>{{ bed.occupantName || '空床' }}</small>
+              <small class="sa-bed__action">{{ bed.status === 'OCCUPIED' ? '查看入住与退宿 →' : '办理入住 →' }}</small>
             </button>
           </div>
         </AppSectionCard>
@@ -228,6 +240,12 @@ export default {
           description: '办理入住、换床与退宿',
           path: '/admin/student-affairs/dorm/checkin',
           permission: 'studentAffairs.dorm.view'
+        },
+        {
+          title: '宿舍统计',
+          description: '按楼栋查看入住率并下钻房态',
+          path: '/admin/student-affairs/dorm/stats',
+          permission: 'studentAffairs.dorm.view'
         }
       ]
     },
@@ -246,6 +264,16 @@ export default {
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     go(path) { this.$router.push(path) },
+    openBedAction(bed) {
+      this.$router.push({
+        name: 'student-affairs-dorm-checkin',
+        query: {
+          buildingId: String(this.selectedBuildingId),
+          roomId: String(this.selectedRoomId),
+          bedId: String(bed.bedId)
+        }
+      })
+    },
     async load() {
       this.loading = true
       this.errorMessage = ''
@@ -377,6 +405,10 @@ export default {
   text-align: left;
   color: inherit;
   cursor: pointer;
+}
+.sa-bed__action {
+  color: var(--primary-700, #1d4ed8) !important;
+  font-weight: 600;
 }
 .sa-list small,
 .sa-bed small {

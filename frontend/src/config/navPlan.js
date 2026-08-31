@@ -173,6 +173,7 @@ export const NAV_PLAN = [
     ]),
     // 宿舍与公寓
     mod('sa-dorm', '宿舍与公寓', null, [
+      I('宿舍驾驶舱', '/admin/student-affairs/dormitory', 'studentAffairs.dorm.view'),
       I('房源管理', '/admin/student-affairs/dorm/resource', 'studentAffairs.dorm.view'),
       I('入住管理', '/admin/student-affairs/dorm/checkin', 'studentAffairs.dorm.view'),
       I('调宿与退宿', '/admin/student-affairs/dorm/transfer', 'studentAffairs.dorm.view'),
