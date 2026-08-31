@@ -53,7 +53,7 @@
       @confirm="doAdjust"
     >
       <div class="aa-adjust-form">
-        <label>调整任课教师<AppTeacherPicker v-model="adjust.teacherKey" placeholder="不变可留空" @change="onTeacherPicked" /></label>
+        <label>调整任课教师<AppTeacherPicker v-model="adjust.teacherKey" :query="teacherKeyQuery" placeholder="不变可留空" @change="onTeacherPicked" /></label>
         <label>周学时<input v-model.number="adjust.weeklyHours" type="number" min="0" class="aa-input" /></label>
         <label>总学时<input v-model.number="adjust.totalHours" type="number" min="0" class="aa-input" /></label>
         <label>起始周<input v-model.number="adjust.startWeek" type="number" min="1" class="aa-input" /></label>
@@ -87,7 +87,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true, error: '', all: [], filterStatus: '',
+      loading: true, error: '', all: [], filterStatus: '', teacherKeyQuery: { valueField: 'loginName' },
       pagination: { page: 1, pageSize: 20, total: 0 },
       adjust: { visible: false, submitting: false, taskId: '', origTeacherName: '', origTeacherKey: '',
                teacherName: '', teacherKey: '', weeklyHours: null, totalHours: null,

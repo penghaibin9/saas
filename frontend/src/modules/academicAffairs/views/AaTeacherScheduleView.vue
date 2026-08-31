@@ -13,7 +13,7 @@
       <div class="aa-filter">
         <label class="aa-filter__item aa-filter__item--grow">
           教师
-          <AppTeacherPicker v-model="teacherKey" placeholder="搜索教师姓名/工号" @change="onTeacherChange" />
+          <AppTeacherPicker v-model="teacherKey" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="onTeacherChange" />
         </label>
         <AppButton v-if="selfKey" @click="showSelfSchedule">查看本人课表</AppButton>
         <label class="aa-filter__item">
@@ -101,7 +101,7 @@ export default {
   data() {
     const u = currentUserFromToken() || {}
     return {
-      teacherKey: this.$route.params.teacherKey || '', teacherName: '',
+      teacherKey: this.$route.params.teacherKey || '', teacherName: '', teacherKeyQuery: { valueField: 'loginName' },
       selfKey: String(u.loginName || u.userId || ''),
       termId: '', week: null,
       slots: [], items: [], weeklyHours: 0, note: '', loading: false, error: '',

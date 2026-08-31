@@ -465,10 +465,15 @@ def emit_receiver_notice(
     )
 
 
-def try_process_pending_outbox(limit: int = 30, worker_id: str = "biz-inline") -> None:
+def try_process_pending_outbox(
+    limit: int = 30,
+    worker_id: str = "biz-inline",
+    *,
+    outbox_ids: list[int] | None = None,
+) -> None:
     """业务 commit 后尽力同步消费 outbox；失败由调度重试，绝不回滚业务。"""
     try:
-        process_pending_outbox(limit=limit, worker_id=worker_id)
+        process_pending_outbox(limit=limit, worker_id=worker_id, outbox_ids=outbox_ids)
     except Exception:  # noqa: BLE001
         log.exception("inline outbox drain failed worker=%s", worker_id)
 
@@ -609,17 +614,36 @@ def _deliver_outbox_row(db, row) -> None:
     row.lease_expires_at = None
 
 
-def process_pending_outbox(*, limit: int = 20, worker_id: str = "scheduler") -> int:
-    """领取并处理 PENDING/RETRY_WAIT 事件；返回成功条数。"""
+def process_pending_outbox(
+    *,
+    limit: int = 20,
+    worker_id: str = "scheduler",
+    outbox_ids: list[int] | None = None,
+) -> int:
+    """领取并处理 PENDING/RETRY_WAIT 事件；可精确领取本次业务事件，返回成功条数。"""
     from app.models import MessageEventOutbox
 
     done = 0
     now = _utc_now()
+    target_ids: list[int] = []
+    if outbox_ids is not None:
+        for value in outbox_ids:
+            try:
+                normalized = int(value)
+            except (TypeError, ValueError):
+                continue
+            if normalized > 0:
+                target_ids.append(normalized)
+        target_ids = sorted(set(target_ids))
+        if not target_ids:
+            return 0
+    scope = [MessageEventOutbox.tenant_id == _tid(), MessageEventOutbox.is_deleted.is_(False)]
+    if outbox_ids is not None:
+        scope.append(MessageEventOutbox.id.in_(target_ids))
     with session() as db:
         rows = db.scalars(
             select(MessageEventOutbox).where(
-                MessageEventOutbox.tenant_id == _tid(),
-                MessageEventOutbox.is_deleted.is_(False),
+                *scope,
                 or_(
                     and_(
                         MessageEventOutbox.status.in_(("PENDING", "RETRY_WAIT")),

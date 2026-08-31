@@ -219,7 +219,9 @@ def test_c10_teacher_search_selector(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     tid = _seed_teacher(db_mode, login="t_search01", name="张三")
     r = client.get(f"{BASE}/courses/teachers/search", headers=hdr, params={"keyword": "张三"}).json()
-    assert any(it["value"] == str(tid) for it in r["data"]["items"])
+    teacher = next(it for it in r["data"]["items"] if it["value"] == str(tid))
+    assert teacher["loginName"] == "t_search01"
+    assert teacher["teacherKey"] == "t_search01"
 
 
 def test_c11_student_forbidden_on_new_endpoints(client, db_mode):

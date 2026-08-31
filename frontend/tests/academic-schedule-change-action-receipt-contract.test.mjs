@@ -20,7 +20,7 @@ test('调停课审批回执区分学院流转、驳回和终审生效', () => {
   for (const contract of [
     'role="status"', 'receipt.changeId', 'statusLabel(receipt.status)', '学院审核已通过',
     '调停课申请已驳回', '终审完成，课表已生效', '新课位进入考勤',
-    'res.data.notified?.students', '查看单据与通知'
+    'res.data.applied?.notified?.students', '查看单据与通知'
   ]) assert.ok(approval.includes(contract), `调停课审批回执缺少：${contract}`)
   assert.ok(approval.includes('grid-template-columns: 1fr'), '窄屏回执必须单列')
 })

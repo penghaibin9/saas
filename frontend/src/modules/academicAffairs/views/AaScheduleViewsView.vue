@@ -19,7 +19,7 @@
         <label class="aa-filter__item">
           {{ currentTab.field }}
           <AppClassPicker v-if="tab === 'class'" v-model="query" placeholder="选择班级" />
-          <AppTeacherPicker v-else-if="tab === 'teacher'" v-model="query" placeholder="选择教师" />
+          <AppTeacherPicker v-else-if="tab === 'teacher'" v-model="query" :query="teacherKeyQuery" placeholder="选择教师" />
           <AppStudentPicker v-else v-model="query" placeholder="选择学生" />
         </label>
         <AppButton @click="loadView">查看课表</AppButton>
@@ -54,7 +54,10 @@ export default {
   components: { ModulePageShell, LoadingState, AppButton, AppSectionCard, AppPrintButton, AppClassPicker, AppTeacherPicker, AppStudentPicker, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { tabs: TABS, tab: 'class', query: '', slots: [], items: [], note: '', loading: false }
+    return {
+      tabs: TABS, tab: 'class', query: '', slots: [], items: [], note: '', loading: false,
+      teacherKeyQuery: { valueField: 'loginName' }
+    }
   },
   computed: {
     batchId() { return this.$route.params.batchId },

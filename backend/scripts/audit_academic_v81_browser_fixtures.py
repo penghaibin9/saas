@@ -19,6 +19,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.core.tenant_identity import SANDBOX_SCHOOL
+from app.core.permissions import has_permission
 from app.db.session import get_sessionmaker
 from app.models import (
     Role,
@@ -34,7 +35,16 @@ from app.services.sandbox_school_profile import PROFILE_STANDARD, classify_sandb
 TENANT_ID = int(SANDBOX_SCHOOL.tenant_id)
 TENANT_CODE = SANDBOX_SCHOOL.tenant_code
 ACTORS = {
-    "staffPc": {"loginName": "admin2", "requiredRole": "SCHOOL_ADMIN"},
+    "staffPc": {
+        "loginName": "admin2",
+        "requiredRole": "SCHOOL_ADMIN",
+        "requiredPermissions": [
+            "academicAffairs.schedule.view",
+            "academicAffairs.scheduleChange.view",
+            "academicAffairs.scheduleChange.collegeReview",
+            "academicAffairs.scheduleChange.academicReview",
+        ],
+    },
     "teacherMini": {"loginName": "sbx_t0257", "requiredRole": "ACADEMIC_TEACHER"},
     "studentPc": {"loginName": "2024S0002", "requiredRole": "STUDENT"},
     "studentMini": {"loginName": "2024S0002", "requiredRole": "STUDENT"},
@@ -80,7 +90,7 @@ def main() -> int:
             ).all()
         }
         role_rows = db.execute(
-            select(User.login_name, Role.role_code)
+            select(User.login_name, Role.id, Role.role_code)
             .join(UserRole, UserRole.user_id == User.id)
             .join(Role, Role.id == UserRole.role_id)
             .where(
@@ -94,8 +104,11 @@ def main() -> int:
             )
         ).all()
         roles: dict[str, list[str]] = {login: [] for login in logins}
-        for login, role in role_rows:
+        role_contexts: dict[str, dict[str, str]] = {}
+        for login, role_id, role in role_rows:
             roles[str(login)].append(str(role))
+            if str(role) == ACTORS.get("staffPc", {}).get("requiredRole") and str(login) == "admin2":
+                role_contexts[str(login)] = {"id": str(role_id), "code": str(role)}
 
         student_user = users.get("2024S0002")
         student_link = None
@@ -123,6 +136,17 @@ def main() -> int:
                 "notDeleted": bool(user and not user.is_deleted),
                 "requiredRole": spec["requiredRole"] in active_roles,
             }
+            required_permissions = list(spec.get("requiredPermissions") or [])
+            if required_permissions:
+                context = role_contexts.get(login) or {}
+                auth_user = {
+                    "tenantId": str(TENANT_ID),
+                    "currentRoleCode": context.get("code") or spec["requiredRole"],
+                    "activeContextId": f"role:{context.get('id')}" if context.get("id") else "",
+                }
+                checks["requiredPermissions"] = all(
+                    has_permission(auth_user, permission) for permission in required_permissions
+                )
             if surface.startswith("student"):
                 checks["stableStudentAccountLink"] = bool(
                     student_link and student and not student.is_deleted and student.student_no == login
@@ -135,6 +159,7 @@ def main() -> int:
                     "activeRoles": active_roles,
                     "userId": str(user.id) if user else None,
                     "checks": checks,
+                    "requiredPermissions": required_permissions,
                     "verdict": "PASS" if all(checks.values()) else "FAIL",
                 }
             )

@@ -371,7 +371,8 @@ def search_teachers(keyword="", limit=20) -> list[dict]:
         if kw:
             conds.append(or_(User.real_name.contains(kw), User.login_name.contains(kw)))
         rows = db.scalars(select(User).where(*conds).order_by(User.real_name).limit(limit)).all()
-        return [{"value": str(u.id), "label": f"{u.real_name}（{u.login_name}）"} for u in rows]
+        return [{"value": str(u.id), "label": f"{u.real_name}（{u.login_name}）",
+                 "loginName": u.login_name or "", "teacherKey": u.login_name or ""} for u in rows]
 
 
 # ═══════════ 课程材料 / 课程大纲（Tier1 R3，附件回链 t_file_object） ═══════════

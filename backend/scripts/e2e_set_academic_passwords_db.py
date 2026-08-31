@@ -1,15 +1,15 @@
-"""Activate two existing 20K actors for Academic Browser/Playwright journeys.
+"""Activate existing 20K actors for Academic Browser/Playwright journeys.
 
 The reference school already contains real teacher/student identities, schedules,
 registrations and stable account links.  Creating extra colleges, classes or
 student profiles would corrupt its exact 20K topology signature.  This utility
-therefore changes only the password hashes of one allow-listed teacher and one
-allow-listed student, then verifies both through the real login endpoint.
+therefore changes only the password hashes of one allow-listed college reviewer,
+one teacher and two students, then verifies them through the real login endpoint.
 
 Safety properties:
 - default is read-only ``--dry-run``;
 - the immutable ``sandbox-school`` tenant identity is checked before any write;
-- the two exact reference logins are hard-coded and their expected roles checked;
+- the exact reference logins are hard-coded and their expected roles checked;
 - it never creates organizations, profiles, accounts, roles or data scopes;
 - no password or password hash is printed;
 - credentials are written only to the existing ignored ``backend/tmp`` location.
@@ -44,14 +44,16 @@ _req = academic_e2e._req
 
 
 TARGET_ROLES = {
+    "sbx_aa001": "COLLEGE_ADMIN",
     "sbx_t0257": "ACADEMIC_TEACHER",
     "2024S0002": "STUDENT",
+    "2025S0001": "STUDENT",
 }
 
 
 def _target_logins() -> list[str]:
     values = list(TARGET_ROLES)
-    if values != ["sbx_t0257", "2024S0002"]:
+    if values != ["sbx_aa001", "sbx_t0257", "2024S0002", "2025S0001"]:
         raise RuntimeError("reference actor allow-list changed unexpectedly")
     return values
 
@@ -161,7 +163,7 @@ def main() -> int:
                 "plannedEntityCreates": 0,
                 "topologyPreserved": True,
             }, ensure_ascii=False, indent=2))
-            print("DRY_RUN PASS: no database writes; confirm changes two password hashes only")
+            print("DRY_RUN PASS: no database writes; confirm changes four password hashes only")
             return 0
 
         password_hash = hash_password(STABLE_PWD)

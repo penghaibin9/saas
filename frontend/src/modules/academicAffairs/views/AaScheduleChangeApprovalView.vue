@@ -130,7 +130,7 @@ export default {
             status,
             title: action === 'approve' ? (status === 'APPLIED' ? '终审完成，课表已生效' : '学院审核已通过') : '调停课申请已驳回',
             next: status === 'APPLIED'
-              ? `已通知 ${Number(res.data.notified?.students || 0)} 名学生和任课教师；新课位进入考勤`
+              ? `已通知 ${Number(res.data.applied?.notified?.students || 0)} 名学生和任课教师；新课位进入考勤`
               : (status === 'REJECTED' ? '任课教师查看原因后重新发起' : '教务处终审')
           }
           toast.success(action === 'approve' ? (res.data.status === 'APPLIED' ? '已终审通过，课表已改写' : '已通过，转教务处') : '已驳回')

@@ -47,7 +47,7 @@
       @confirm="doAssign"
     >
       <div class="aa-assign-form">
-        <label>任课教师<AppTeacherPicker v-model="assign.teacherKey" placeholder="选择任课教师" @change="onTeacherPicked" /></label>
+        <label>任课教师<AppTeacherPicker v-model="assign.teacherKey" :query="teacherKeyQuery" placeholder="选择任课教师" @change="onTeacherPicked" /></label>
         <label>周学时<input v-model.number="assign.weeklyHours" type="number" min="0" class="aa-input" /></label>
         <label>预计人数<input v-model.number="assign.expectedStudents" type="number" min="0" class="aa-input" /></label>
       </div>
@@ -73,7 +73,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true, error: '', rows: [], filterStatus: '',
+      loading: true, error: '', rows: [], filterStatus: '', teacherKeyQuery: { valueField: 'loginName' },
       statusOptions: [
         { value: '', label: '全部（默认按未完成分配优先）' },
         { value: 'PENDING_ASSIGN', label: '待分配' },

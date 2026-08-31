@@ -158,6 +158,58 @@ def test_emit_receiver_notice_writes_outbox_not_unified(db_mode):
             db.close()
 
 
+def test_targeted_outbox_drain_is_not_starved_by_older_backlog(db_mode):
+    """业务回执要求本次通知可立即可见：旧积压不得抢走 inline drain 的限额。"""
+    from app.db.session import get_sessionmaker
+    from app.models import MessageEventOutbox, UnifiedMessage
+    from app.services.message_event_outbox_service import emit_receiver_notice, process_pending_outbox
+
+    with _tenant_context():
+        db = get_sessionmaker()()
+        try:
+            older = emit_receiver_notice(
+                db,
+                event_code="FUNDING.NOTICE",
+                source_module="student-affairs",
+                source_biz_type="funding",
+                source_biz_id=900002,
+                receiver_id=71002,
+                title="旧积压",
+                content="旧积压正文",
+                receiver_as="user",
+                dedup_extra="targeted-drain-older",
+            )
+            target = emit_receiver_notice(
+                db,
+                event_code="FUNDING.NOTICE",
+                source_module="student-affairs",
+                source_biz_type="funding",
+                source_biz_id=900003,
+                receiver_id=71003,
+                title="本次业务通知",
+                content="本次业务正文",
+                receiver_as="user",
+                dedup_extra="targeted-drain-current",
+            )
+            db.commit()
+
+            assert process_pending_outbox(
+                limit=1,
+                worker_id="targeted-test",
+                outbox_ids=[target.id],
+            ) == 1
+            db.expire_all()
+            assert db.get(MessageEventOutbox, older.id).status == "PENDING"
+            assert db.get(MessageEventOutbox, target.id).status == "SUCCEEDED"
+            assert db.query(UnifiedMessage).filter_by(
+                tenant_id=MAIN,
+                source_biz_id=900003,
+                receiver_user_id=71003,
+            ).count() == 1
+        finally:
+            db.close()
+
+
 def test_rate_limit_unit():
     """频控逻辑：超限抛 429。"""
     from app.core.exceptions import AppException
