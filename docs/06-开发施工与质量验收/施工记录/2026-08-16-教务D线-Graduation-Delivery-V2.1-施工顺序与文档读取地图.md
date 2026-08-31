@@ -2,7 +2,7 @@
 
 > 固定仓库：`penghaibin9/saas`  
 > 固定分支：`agent/academic-d-graduation-delivery`  
-> 唯一当前施工总册：`D_教务Graduation_Delivery_当前代码精确施工总册_V2.1_20260816.md`  
+> 唯一当前施工总册：`docs/03-业务模块设计/教务中心/施工包/汇总总册/D_教务Graduation_Delivery_当前代码精确施工总册_V2.1_20260816.md`
 > 总册原文件 SHA-256：`ec4e6f105c2df399e336a943c955e53a1a839599915c95f09de6db56fdda6d2a`  
 > 创建基线：`main@414216c4a79ff035aee87d70b35572572f5c0535`
 
