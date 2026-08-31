@@ -16,7 +16,11 @@ function metricValue(key){
 }
 onMounted(async()=>{
   try{
-    const [dashboardResult,campaignResult]=await Promise.allSettled([enterpriseInternshipApi.dashboard(),enterpriseInternshipApi.campaigns()])
+    // Collaboration-only access must not even invoke a recruitment endpoint.  The
+    // API guard throws synchronously by design, so calling it before allSettled
+    // would surface as an unhandled Vue page error instead of a controlled state.
+    const dashboardRequest=context.recruitmentContextReady ? enterpriseInternshipApi.dashboard() : Promise.resolve(null)
+    const [dashboardResult,campaignResult]=await Promise.allSettled([dashboardRequest,enterpriseInternshipApi.campaigns()])
     if(dashboardResult.status==='fulfilled')data.value=dashboardResult.value
     else error.value=dashboardResult.reason?.message||'招聘工作台数据暂不可用'
     if(campaignResult.status==='fulfilled')campaigns.value=Array.isArray(campaignResult.value)?campaignResult.value:(campaignResult.value?.items||[])
