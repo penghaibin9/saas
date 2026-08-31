@@ -215,16 +215,10 @@ def _tenant_row(db, t, meta: dict) -> dict:
     teachers = db.scalar(select(func.count()).select_from(User).where(
         User.tenant_id == t.id, User.user_type.in_(("TEACHER", "STAFF")),
         User.is_deleted.is_(False), User.status == "ACTIVE")) or 0
-    # 首次开户状态只用于平台交付看板。平台只读观察学校的开户进度，
-    # 不得借此入口替学校创建师生账号或绕过学校侧的身份导入与预检。
-    if school_admins == 0:
-        onboarding_phase, onboarding_label = "WAITING_ADMIN", "待交付学校管理员"
-    elif users <= school_admins:
-        onboarding_phase, onboarding_label = "WAITING_IDENTITY_IMPORT", "待学校导入师生账号"
-    elif students == 0:
-        onboarding_phase, onboarding_label = "TEACHER_IMPORTED", "已导入教师，待导入学生"
-    else:
-        onboarding_phase, onboarding_label = "READY_FOR_ACCEPTANCE", "师生账号已导入，可上线验收"
+    # 账号数量只能用于容量观察，不能推导实施、验收或生产就绪状态。
+    # 权威交付状态由 platform_delivery_service 聚合真实状态机与证据记录。
+    onboarding_phase = "ACCOUNT_INVENTORY_ONLY"
+    onboarding_label = "只读账号统计（不代表交付就绪）"
     pkg = get_package(meta.get("packageCode", "professional"))
     feats = effective_features(t.id)
     return {
@@ -247,7 +241,7 @@ def _tenant_row(db, t, meta: dict) -> dict:
             "phase": onboarding_phase, "label": onboarding_label,
             "schoolAdminCount": school_admins, "teacherAccountCount": teachers,
             "studentAccountCount": students,
-            "readyForAcceptance": onboarding_phase == "READY_FOR_ACCEPTANCE",
+            "readyForAcceptance": False,
         },
         **{f"allow{k[0].upper()}{k[1:]}" if not k.startswith("allow") else k: v
            for k, v in {
@@ -266,14 +260,8 @@ def _tenant_row(db, t, meta: dict) -> dict:
 def _tenant_row_preloaded(t, meta: dict, *, students: int, users: int,
                           school_admins: int, teachers: int,
                           package_overrides: dict[str, dict], feature_override: dict | None) -> dict:
-    if school_admins == 0:
-        onboarding_phase, onboarding_label = "WAITING_ADMIN", "待交付学校管理员"
-    elif users <= school_admins:
-        onboarding_phase, onboarding_label = "WAITING_IDENTITY_IMPORT", "待学校导入师生账号"
-    elif students == 0:
-        onboarding_phase, onboarding_label = "TEACHER_IMPORTED", "已导入教师，待导入学生"
-    else:
-        onboarding_phase, onboarding_label = "READY_FOR_ACCEPTANCE", "师生账号已导入，可上线验收"
+    onboarding_phase = "ACCOUNT_INVENTORY_ONLY"
+    onboarding_label = "只读账号统计（不代表交付就绪）"
     code = str(meta.get("packageCode") or "professional")
     pkg = {**D.DEFAULT_PACKAGES.get(code, D.DEFAULT_PACKAGES["trial"]), **package_overrides.get(code, {})}
     feats = {**D.DEFAULT_FEATURES, **(pkg.get("features") or {}), **(feature_override or {})}
@@ -300,7 +288,7 @@ def _tenant_row_preloaded(t, meta: dict, *, students: int, users: int,
             "phase": onboarding_phase, "label": onboarding_label,
             "schoolAdminCount": school_admins, "teacherAccountCount": teachers,
             "studentAccountCount": students,
-            "readyForAcceptance": onboarding_phase == "READY_FOR_ACCEPTANCE",
+            "readyForAcceptance": False,
         },
         **{f"allow{k[0].upper()}{k[1:]}" if not k.startswith("allow") else k: bool(v)
            for k, v in {
@@ -388,6 +376,13 @@ def create_tenant(body: dict) -> dict:
     name = str(body.get("tenantName", "")).strip()
     if not code or not name:
         raise AppException("VALIDATION_ERROR", "tenantCode 与 tenantName 必填")
+    requested_package = str(body.get("packageCode") or "trial").strip()
+    if requested_package != "trial":
+        raise AppException(
+            "VALIDATION_ERROR",
+            "低层租户创建 primitive 只能建立试用租户；正式套餐必须由已支付订单生效",
+            http_status=422,
+        )
     admin_login = str(body.get("adminLoginName") or "").strip()
     admin_name = str(body.get("adminRealName") or "").strip()
     if bool(admin_login) != bool(admin_name):
@@ -412,7 +407,7 @@ def create_tenant(body: dict) -> dict:
         db.add(TenantBrandConfig(tenant_id=tid, platform_name="高校学生全生命周期管理平台",
                                  primary_color="#2563EB", watermark_text=f"{name}内部系统"))
         db.commit()
-    pkg = str(body.get("packageCode") or "trial")
+    pkg = "trial"
     days = get_package(pkg).get("durationDays", 30)
     now = datetime.now()
     put_config_json(tid, "TENANT_META", "-", {
@@ -675,7 +670,7 @@ def safe_rule(tenant_id: int, group: str, key: str):
 
 def list_orders(tenant_id: int | None = None, status: str | None = None) -> list[dict]:
     _require_db()
-    from app.models import PlatformOrder, Tenant
+    from app.models import PlatformConfig, PlatformOrder, Tenant
     with session() as db:
         q = select(PlatformOrder).where(PlatformOrder.is_deleted.is_(False))
         if tenant_id:
@@ -683,17 +678,43 @@ def list_orders(tenant_id: int | None = None, status: str | None = None) -> list
         if status:
             q = q.where(PlatformOrder.status == status)
         rows = db.scalars(q.order_by(PlatformOrder.id.desc())).all()
-        names = {t.id: t.school_name for t in db.scalars(select(Tenant)).all()}
-        return [{
-            "orderId": str(r.id), "orderNo": r.order_no, "tenantId": str(r.tenant_id),
-            "tenantName": names.get(r.tenant_id, "-"), "orderType": r.order_type,
-            "packageCode": r.package_code, "amount": float(r.amount or 0),
-            "paidAmount": float(r.paid_amount or 0), "status": r.status,
-            "startAt": r.start_at.isoformat(timespec="seconds") if r.start_at else None,
-            "endAt": r.end_at.isoformat(timespec="seconds") if r.end_at else None,
-            "remark": r.remark or "", "version": int(r.version or 1),
-            "createdAt": r.created_at.isoformat(timespec="seconds") if r.created_at else None,
-        } for r in rows]
+        tenants = {int(t.id): t for t in db.scalars(select(Tenant)).all()}
+        names = {tid: t.school_name for tid, t in tenants.items()}
+        tenant_ids = sorted({int(r.tenant_id) for r in rows})
+        metas = {
+            int(r.tenant_id): dict(r.config_json or {})
+            for r in db.scalars(select(PlatformConfig).where(
+                PlatformConfig.tenant_id.in_(tenant_ids or [-1]),
+                PlatformConfig.config_type == "TENANT_META",
+                PlatformConfig.config_key == "-",
+                PlatformConfig.is_deleted.is_(False),
+            )).all()
+        }
+        def activation(row) -> tuple[str, bool]:
+            if row.status != "paid":
+                return "NOT_APPLICABLE", False
+            tenant = tenants.get(int(row.tenant_id))
+            meta = metas.get(int(row.tenant_id), {})
+            active = bool(
+                tenant and tenant.status == "ACTIVE"
+                and str(meta.get("status") or "").lower() == "active"
+                and str(meta.get("packageCode") or "") == str(row.package_code or "")
+            )
+            return ("ACTIVE", False) if active else ("REPAIR_REQUIRED", True)
+        def order_row(row) -> dict:
+            activation_state, repair_required = activation(row)
+            return {
+                "orderId": str(row.id), "orderNo": row.order_no, "tenantId": str(row.tenant_id),
+                "tenantName": names.get(row.tenant_id, "-"), "orderType": row.order_type,
+                "packageCode": row.package_code, "amount": float(row.amount or 0),
+                "paidAmount": float(row.paid_amount or 0), "status": row.status,
+                "startAt": row.start_at.isoformat(timespec="seconds") if row.start_at else None,
+                "endAt": row.end_at.isoformat(timespec="seconds") if row.end_at else None,
+                "remark": row.remark or "", "version": int(row.version or 1),
+                "activationState": activation_state, "repairTaskRequired": repair_required,
+                "createdAt": row.created_at.isoformat(timespec="seconds") if row.created_at else None,
+            }
+        return [order_row(row) for row in rows]
 
 
 def create_order(body: dict) -> dict:
@@ -701,15 +722,32 @@ def create_order(body: dict) -> dict:
     from app.models import PlatformOrder
     tid = int(body.get("tenantId") or 0)
     get_tenant(tid)  # 校验租户存在
-    pkg = get_package(str(body.get("packageCode") or "basic"))
+    package_code = str(body.get("packageCode") or "basic").strip()
+    pkg = get_package(package_code)
+    if str(pkg.get("packageCode") or "") != package_code or package_code == "trial":
+        raise AppException("VALIDATION_ERROR", "订单 packageCode 必须是有效的正式套餐")
     days = int(body.get("durationDays") or pkg["durationDays"])
+    if not 1 <= days <= 3650:
+        raise AppException("VALIDATION_ERROR", "订单服务期必须在 1~3650 天")
+    order_type = str(body.get("orderType") or "NEW").strip().upper()
+    if order_type not in {"NEW", "RENEW", "UPGRADE", "ADDON"}:
+        raise AppException("VALIDATION_ERROR", "orderType 不支持")
     now = datetime.now()
+    service_start = now
+    current_meta = tenant_meta(tid)
+    if str(current_meta.get("status") or "").lower() == "active":
+        try:
+            current_expire = datetime.fromisoformat(str(current_meta.get("expireAt") or ""))
+            service_start = max(now, current_expire.replace(tzinfo=None))
+        except ValueError:
+            service_start = now
     with session() as db:
         o = PlatformOrder(
             tenant_id=tid, order_no=f"PO{now:%Y%m%d%H%M%S}{secrets.randbelow(900) + 100}",
-            order_type=str(body.get("orderType") or "NEW"), package_code=pkg["packageCode"],
+            order_type=order_type, package_code=pkg["packageCode"],
             amount=body.get("amount", pkg["price"]), paid_amount=0, status="unpaid",
-            start_at=now, end_at=now + timedelta(days=days), remark=str(body.get("remark") or ""))
+            start_at=service_start, end_at=service_start + timedelta(days=days),
+            remark=str(body.get("remark") or ""))
         db.add(o)
         db.commit()
         db.refresh(o)
@@ -735,6 +773,13 @@ def order_action(order_no: str, action: str, *, expected_version: int, reason: s
             o.status = "paid"
             o.paid_amount = o.amount
             o.version += 1
+            from app.services import audit_log
+            audit_log.record_critical_in_session(
+                db, "PLATFORM_ORDER_PAID", f"order:{o.order_no}",
+                detail={"tenantId": str(o.tenant_id), "packageCode": o.package_code,
+                        "reason": str(reason).strip(), "expectedVersion": int(expected_version)},
+                tenant_id=int(o.tenant_id), resource_id=str(o.id),
+            )
             db.commit()
             end_at = o.end_at.isoformat(timespec="seconds") if o.end_at else None
             from app.services.tenant_effective_state_service import get_effective_state, apply_transition
@@ -743,7 +788,14 @@ def order_action(order_no: str, action: str, *, expected_version: int, reason: s
                 apply_transition(
                     int(o.tenant_id), "convert-to-paid", reason=str(reason),
                     expected_version=int(state["version"]),
-                    payload={"packageCode": o.package_code, "durationDays": max(1, (o.end_at - o.start_at).days) if o.end_at and o.start_at else 365},
+                    payload={
+                        "packageCode": o.package_code,
+                        "durationDays": max(1, (o.end_at - o.start_at).days) if o.end_at and o.start_at else 365,
+                        "expireAt": o.end_at.isoformat(timespec="seconds") if o.end_at else None,
+                        "orderNo": o.order_no,
+                    },
+                    commercial_authority="PAID_ORDER",
+                    audit_action="PLATFORM_TENANT_CONVERT_PAID",
                 )
                 activated, repair = True, False
             except Exception:
@@ -757,6 +809,13 @@ def order_action(order_no: str, action: str, *, expected_version: int, reason: s
                 raise AppException("DATA_CONFLICT", "仅未支付订单可取消")
             o.status = "cancelled"
             o.version += 1
+            from app.services import audit_log
+            audit_log.record_critical_in_session(
+                db, "PLATFORM_ORDER_CANCEL", f"order:{o.order_no}",
+                detail={"tenantId": str(o.tenant_id), "reason": str(reason).strip(),
+                        "expectedVersion": int(expected_version)},
+                tenant_id=int(o.tenant_id), resource_id=str(o.id),
+            )
             db.commit()
             return {"orderNo": o.order_no, "status": "cancelled"}
         raise AppException("VALIDATION_ERROR", f"不支持的订单操作：{action}")

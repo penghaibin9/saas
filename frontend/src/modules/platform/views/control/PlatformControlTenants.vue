@@ -1,7 +1,7 @@
 <template>
-  <ModulePageShell title="租户学校管控" subtitle="开通 / 停用 / 试用 / 到期 / 套餐 / 容量，一站式托管" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
+  <ModulePageShell title="租户学校管控" subtitle="学校档案 / 停用 / 试用 / 到期 / 容量；新校统一由可恢复 Provisioning SAGA 开通" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
     <template #actions>
-      <AppButton variant="primary" @click="openCreate">+ 开通新学校</AppButton>
+      <AppButton variant="primary" @click="goProvisioning">+ 开通新学校</AppButton>
     </template>
     <div v-if="pickerHint" class="pct__hint">{{ pickerHint }}（点击行进入该学校的配置页）</div>
     <ModuleToolbar :actions="[]" :hint="`共 ${rows.length} 所学校`">
@@ -36,7 +36,7 @@
             <AppButton v-if="row.status === 'disabled'" variant="ghost" @click="act(row, 'enable')">启用</AppButton>
             <AppButton v-else variant="danger" @click="act(row, 'disable')">停用</AppButton>
             <AppButton v-if="row.status === 'trial'" variant="ghost" @click="act(row, 'extend-trial', { days: 7 })">延试用7天</AppButton>
-            <AppButton v-if="row.status !== 'active'" variant="ghost" @click="convert(row)">转正式</AppButton>
+            <AppButton v-if="row.status === 'trial' || row.status === 'expired'" variant="ghost" @click="goOrder(row)">录订单 / 续费</AppButton>
             <AppButton v-if="row.tenantCode === 'demo-school'" variant="warning" @click="act(row, 'reset-demo-data')">重置演示</AppButton>
             <AppButton v-if="row.tenantCode === 'sandbox-school'" variant="warning" @click="resetSandbox(row)">恢复演示数据</AppButton>
           </div>
@@ -45,57 +45,12 @@
       <EmptyState v-if="!rows.length" text="没有符合条件的学校" />
     </template>
 
-    <AppDrawer :visible="createVisible" title="开通新学校" mode="modal" size="xlarge" @update:visible="createVisible = $event">
-      <div v-if="createResult" class="pct__secret">
-        <strong>学校已开通，请立即保存管理员凭据</strong>
-        <p>学校编码：<code>{{ createResult.tenantCode }}</code></p>
-        <p>管理员账号：<code>{{ createResult.loginName }}</code></p>
-        <p>初始密码：<code>{{ createResult.initialPassword }}</code></p>
-        <small>密码仅本次显示；管理员首次登录后必须修改。角色模板已经自动初始化。</small>
-        <div class="pct__form-ops">
-          <AppButton variant="primary" @click="copyCredential">复制凭据</AppButton>
-          <AppButton @click="closeCreate">我已保存</AppButton>
-        </div>
-      </div>
-      <div v-else class="pct__form">
-        <label class="pct__field"><span>学校编码 *</span><AppTextInput v-model="form.tenantCode" placeholder="如 gz-tech（唯一）" /></label>
-        <label class="pct__field"><span>学校全称 *</span><AppTextInput v-model="form.tenantName" placeholder="如 广州科技职业技术学院" /></label>
-        <label class="pct__field"><span>初始套餐</span>
-          <AppSelect v-model="form.packageCode" :options="packageOptions" />
-        </label>
-        <label class="pct__field"><span>环境</span>
-          <AppSelect v-model="form.environment" :options="environmentOptions" />
-        </label>
-        <!-- 选择器内含多个原生 select，不用 label 包裹：点击 label 会把焦点转发到第一个 select -->
-        <div class="pct__field"><span>省 / 市</span>
-          <AppChinaRegionPicker
-            :model-value="regionText"
-            level="city"
-            placeholder="请选择学校所在省 / 市"
-            @change="onRegionChange"
-          />
-        </div>
-        <label class="pct__field"><span>联系人 / 电话</span>
-          <span class="pct__pair">
-            <AppTextInput v-model="form.contactName" placeholder="姓名" />
-            <AppTextInput v-model="form.contactPhone" type="tel" placeholder="手机号" />
-          </span>
-        </label>
-        <label class="pct__field"><span>首位学校管理员账号 *</span><AppTextInput v-model="form.adminLoginName" placeholder="如 admin（校内唯一）" /></label>
-        <label class="pct__field"><span>首位学校管理员姓名 *</span><AppTextInput v-model="form.adminRealName" placeholder="如 张老师" /></label>
-        <div class="pct__form-ops">
-          <AppButton variant="primary" :loading="saving" @click="submitCreate">开通</AppButton>
-          <AppButton @click="createVisible = false">取消</AppButton>
-        </div>
-      </div>
-    </AppDrawer>
   </ModulePageShell>
 </template>
 
 <script>
-import { AppButton, AppDrawer } from '@/components/ui'
+import { AppButton } from '@/components/ui'
 import { DataTable, EmptyState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
-import { AppSelect, AppTextInput, AppChinaRegionPicker } from '@/components/common'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { toast } from '@/utils/toast'
 
@@ -108,31 +63,16 @@ const STATUS = {
 
 export default {
   name: 'PlatformControlTenants',
-  components: { AppButton, AppDrawer, DataTable, EmptyState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag, AppSelect, AppTextInput, AppChinaRegionPicker },
+  components: { AppButton, DataTable, EmptyState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag },
   props: {
     targetTab: { type: String, default: '' }
   },
   data() {
     return {
       loading: true,
-      saving: false,
       rows: [],
-      packageOptions: [
-        { value: 'trial', label: '试用版（30 天）' },
-        { value: 'basic', label: '基础版' },
-        { value: 'standard', label: '标准版' },
-        { value: 'professional', label: '专业版' },
-        { value: 'private', label: '私有化版' }
-      ],
-      environmentOptions: [
-        { value: 'production', label: '生产环境' },
-        { value: 'demo', label: '演示环境' }
-      ],
       keyword: '',
       status: '',
-      createVisible: false,
-      createResult: null,
-      form: this.blankForm(),
       columns: [
         { key: 'tenantName', title: '学校', width: '240px' },
         { key: 'status', title: '状态', width: '90px' },
@@ -153,25 +93,12 @@ export default {
         users: '账号按学校管理'
       }
       return map[this.targetTab] || ''
-    },
-    /** 省、市在租户档案里是两列，这里合成一个文本喂给选择器做回显 */
-    regionText() {
-      return [this.form.province, this.form.city].filter(Boolean).join(' ')
     }
   },
   created() {
     this.load()
-    if (this.$route.meta && this.$route.meta.openCreate) this.createVisible = true
   },
   methods: {
-    /** 选择器给的是区划名，按后端两列结构分别写回；清空时一并置空，避免残留半截地区 */
-    onRegionChange(payload) {
-      this.form.province = payload.provinceName || ''
-      this.form.city = payload.cityName || ''
-    },
-    blankForm() {
-      return { tenantCode: '', tenantName: '', packageCode: 'trial', environment: 'production', province: '', city: '', contactName: '', contactPhone: '', adminLoginName: 'admin', adminRealName: '' }
-    },
     async load() {
       this.loading = true
       const res = await platformControlApi.listTenants({ keyword: this.keyword, status: this.status })
@@ -195,45 +122,11 @@ export default {
       const tab = this.targetTab || 'info'
       this.$router.push(`/admin/platform/tenants/${row.tenantId}?tab=${tab}`)
     },
-    openCreate() {
-      this.form = this.blankForm()
-      this.createResult = null
-      this.createVisible = true
+    goProvisioning() {
+      this.$router.push('/admin/platform/provisioning?create=1')
     },
-    async submitCreate() {
-      if (!this.form.tenantCode || !this.form.tenantName || !this.form.adminLoginName || !this.form.adminRealName) {
-        toast.error('学校编码、全称和首位管理员信息必填')
-        return
-      }
-      this.saving = true
-      const res = await platformControlApi.createTenant({ ...this.form })
-      this.saving = false
-      if (res.code === 0) {
-        toast.success(`已开通「${this.form.tenantName}」`)
-        const admin = res.data.schoolAdmin || {}
-        this.createResult = {
-          tenantCode: res.data.tenantCode,
-          loginName: admin.loginName,
-          initialPassword: admin.initialPassword
-        }
-        this.load()
-      } else {
-        toast.error(res.message)
-      }
-    },
-    async copyCredential() {
-      const value = `学校编码：${this.createResult.tenantCode}\n管理员账号：${this.createResult.loginName}\n初始密码：${this.createResult.initialPassword}`
-      try {
-        if (!navigator.clipboard) throw new Error('clipboard unavailable')
-        await navigator.clipboard.writeText(value)
-        toast.success('管理员凭据已复制')
-      } catch {
-        toast.info('浏览器未允许复制，请手动保存页面上的凭据')
-      }
-    },
-    closeCreate() {
-      this.createVisible = false
-      this.createResult = null
+    goOrder(row) {
+      this.$router.push(`/admin/platform/orders?tenantId=${row.tenantId}`)
     },
     async act(row, action, body = {}) {
       if (action === 'reset-demo-data') {
@@ -263,9 +156,6 @@ export default {
       } else {
         toast.error(res.message)
       }
-    },
-    async convert(row) {
-      return this.act(row, 'convert-to-paid', { packageCode: 'standard' })
     }
   }
 }
@@ -279,16 +169,6 @@ export default {
   color: var(--pri);
   font-size: var(--font-size-sm);
 }
-.pct__secret {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--warning-300, #f5c26b);
-  border-radius: 12px;
-  background: var(--warning-50, #fff8e8);
-}
-.pct__secret p { margin: 0; }
-.pct__secret code { user-select: all; font-weight: 700; }
 .pct__input {
   height: 34px;
   padding: 0 10px;
@@ -323,29 +203,5 @@ export default {
   display: flex;
   gap: var(--space-1);
   flex-wrap: wrap;
-}
-.pct__form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.pct__field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-.pct__field .pct__input {
-  width: 100%;
-}
-.pct__pair {
-  display: flex;
-  gap: var(--space-2);
-}
-.pct__form-ops {
-  display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
 }
 </style>

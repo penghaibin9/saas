@@ -304,6 +304,7 @@ def apply_transition(
     expected_version: int,
     payload: dict | None = None,
     audit_action: str | None = None,
+    commercial_authority: str | None = None,
 ) -> dict:
     from app.models import PlatformConfig, Tenant
     from app.services import platform_service
@@ -350,13 +351,35 @@ def apply_transition(
             tenant.status = "ACTIVE"
             meta.update({"status": "expired", "expireAt": (now - timedelta(seconds=1)).isoformat(timespec="seconds")})
         elif normalized == "convert-to-paid":
+            authority = str(commercial_authority or "").strip().upper()
+            if authority != "PAID_ORDER":
+                grant_type = str(data.get("exceptionGrantType") or "").strip().upper()
+                approval_ref = str(data.get("approvalRef") or "").strip()
+                if grant_type not in {"GIFT", "SPECIAL_APPROVAL"} or len(approval_ref) < 5:
+                    raise AppException(
+                        "COMMERCIAL_ORDER_REQUIRED",
+                        "正常转正式必须由已支付订单生效；赠送/特批需提供 exceptionGrantType 与 approvalRef",
+                        http_status=409,
+                    )
+                authority = "CONTROLLED_EXCEPTION"
             package = platform_service.get_package(str(data.get("packageCode") or "standard"))
             days = int(data.get("durationDays") or package["durationDays"])
+            expire_at = now + timedelta(days=days)
+            if authority == "PAID_ORDER" and data.get("expireAt"):
+                try:
+                    expire_at = datetime.fromisoformat(str(data["expireAt"])).replace(tzinfo=None)
+                except ValueError as exc:
+                    raise AppException("VALIDATION_ERROR", "订单 expireAt 格式无效") from exc
+                if expire_at <= now:
+                    raise AppException("DATA_CONFLICT", "订单服务截止时间必须晚于当前时间", http_status=409)
             tenant.status = "ACTIVE"
             meta.update({
                 "status": "active",
                 "packageCode": package["packageCode"],
-                "expireAt": (now + timedelta(days=days)).isoformat(timespec="seconds"),
+                "expireAt": expire_at.isoformat(timespec="seconds"),
+                "lastCommercialAuthority": authority,
+                "lastCommercialApprovalRef": str(data.get("approvalRef") or "")[:200],
+                "lastCommercialOrderNo": str(data.get("orderNo") or "")[:100],
             })
         elif normalized == "change-package":
             code = str(data.get("packageCode") or "")

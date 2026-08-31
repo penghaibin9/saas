@@ -30,8 +30,8 @@ export const PLATFORM_MANAGEMENT_ROADMAP_CATALOG = [
   {
     key: 'plt-tenancy', label: '租户生命周期', icon: '♜', description: '学校从试用、开通、运营、到期、停用到归档的全生命周期管理。',
     items: [
-      { key: 'plt-tenants', label: '租户学校', path: '/admin/platform/tenants', permissionKey: 'platform.tenant.view', view: 'tenants', actions: [action('tenant:create', '创建租户', 'HIGH'), action('tenant:update', '修改租户'), action('tenant:suspend', '停用租户', 'HIGH')] },
-      { key: 'plt-trials', label: '试用与线索', path: '/admin/platform/tenants?status=trial', permissionKey: 'platform.tenant.trial.manage', view: 'tenants', actions: [action('tenant:trial:create', '创建试用租户', 'HIGH'), action('tenant:trial:extend', '延长试用', 'HIGH'), action('tenant:trial:convert', '转为正式', 'HIGH')] },
+      { key: 'plt-tenants', label: '租户学校', path: '/admin/platform/tenants', permissionKey: 'platform.tenant.view', view: 'tenants', actions: [action('tenant:provision', '发起自动开户', 'HIGH'), action('tenant:update', '修改租户'), action('tenant:suspend', '停用租户', 'HIGH')] },
+      { key: 'plt-trials', label: '试用与线索', path: '/admin/platform/tenants?status=trial', permissionKey: 'platform.tenant.trial.manage', view: 'tenants', actions: [action('tenant:trial:provision', '发起试用开户', 'HIGH'), action('tenant:trial:extend', '延长试用', 'HIGH'), action('order:create', '录入正式订单', 'HIGH')] },
       { key: 'plt-tenant-transitions', label: '开通、停用与归档', path: '/admin/platform/tenant-transitions', permissionKey: 'platform.tenant.lifecycle.manage', view: 'capability', actions: [action('tenant:activate', '正式开通', 'HIGH'), action('tenant:readonly', '切换只读', 'HIGH'), action('tenant:archive', '归档租户', 'HIGH')] },
       { key: 'plt-tenant-contacts', label: '学校联系人与平台主管理员', path: '/admin/platform/tenant-contacts', permissionKey: 'platform.tenant.contact.manage', view: 'capability', actions: [action('tenant:contact:manage', '维护联系人'), action('tenant:admin:reset', '重置学校管理员', 'HIGH')] }
     ]

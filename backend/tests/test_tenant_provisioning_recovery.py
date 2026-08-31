@@ -100,6 +100,28 @@ def test_t02_duplicate_submission_does_not_duplicate_roles_or_admin(db_mode):
         db.close()
 
 
+def test_t02a_idempotency_key_cannot_be_reused_for_another_school(db_mode):
+    from app.services import tenant_provisioning_service as prov
+
+    key, code = _key(), _code()
+    admin = {"userId": "db-1", "currentRoleCode": "PLATFORM_SUPER_ADMIN"}
+    body = {
+        "idempotencyKey": key,
+        "tenantCode": code,
+        "tenantName": "PLAT04幂等学校A",
+        "adminLoginName": f"admin-{code}",
+        "adminRealName": "首位管理员",
+    }
+    assert prov.start_provisioning_job(admin, body)["status"] == "SUCCEEDED"
+    with pytest.raises(AppException) as exc:
+        prov.start_provisioning_job(admin, {
+            **body,
+            "tenantCode": _code(),
+            "tenantName": "PLAT04幂等学校B",
+        })
+    assert exc.value.code == "IDEMPOTENCY_CONFLICT"
+
+
 def test_t02b_first_admin_reveals_password_only_once(db_mode):
     from app.services import tenant_provisioning_service as prov
 
@@ -190,11 +212,22 @@ def test_t04b_full_flow_health_check_passes(db_mode):
     admin = {"userId": "db-1", "currentRoleCode": "PLATFORM_SUPER_ADMIN"}
     job = prov.start_provisioning_job(admin, {
         "idempotencyKey": key, "tenantCode": code, "tenantName": "PLAT04测试学校T04B",
+        "targetPackageCode": "standard",
         "adminLoginName": f"admin-{code}", "adminRealName": "首位管理员"})
     assert job["status"] == "SUCCEEDED"
+    assert job["provisioningState"] == "BOOTSTRAP_READY"
+    assert job["deliveryState"] == "IMPLEMENTATION_AND_ACCEPTANCE_REQUIRED"
     health_step = next(s for s in job["steps"] if s["stepCode"] == "HEALTH_CHECK")
     assert health_step["status"] == "SUCCEEDED"
     assert health_step["output"]["hasImplementationProject"] is True
+    assert health_step["output"]["readinessBoundary"] == "BOOTSTRAP_READY"
+    assert health_step["output"]["productionReady"] is False
+
+    # Provisioning 只完成基础开户；即使运营选择了意向付费套餐，也不能绕过订单授予权益。
+    from app.services import platform_service
+    meta = platform_service.tenant_meta(int(job["tenantId"]))
+    assert meta["packageCode"] == "trial"
+    assert meta["targetPackageCode"] == "standard"
 
 
 def test_cannot_cancel_succeeded_job(db_mode):

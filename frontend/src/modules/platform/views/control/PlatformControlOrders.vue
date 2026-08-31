@@ -9,6 +9,7 @@
         <template #cell-amount="{ row }">￥{{ (row.amount || 0).toLocaleString() }}</template>
         <template #cell-status="{ row }">
           <StatusTag :type="statusType(row.status)" :label="statusLabel(row.status)" />
+          <div v-if="row.repairTaskRequired" class="pcod__repair">已支付 · 激活待修复</div>
         </template>
         <template #cell-endAt="{ row }">{{ (row.endAt || '').slice(0, 10) || '—' }}</template>
         <template #cell-actions="{ row }">
@@ -65,6 +66,7 @@ export default {
         { value: 'private', label: '私有化版' }
       ],
       createVisible: false,
+      queryTenantConsumed: false,
       form: { tenantId: '', packageCode: 'standard', amount: 49800, remark: '' },
       columns: [
         { key: 'orderNo', title: '订单号', width: '170px' },
@@ -92,7 +94,12 @@ export default {
       else toast.error(orders.message)
       if (tenants.code === 0) {
         this.tenants = tenants.data.list || []
-        if (!this.form.tenantId && this.tenants.length) this.form.tenantId = this.tenants[0].tenantId
+        const requestedTenantId = String(this.$route.query.tenantId || '')
+        if (!this.queryTenantConsumed && requestedTenantId && this.tenants.some((item) => String(item.tenantId) === requestedTenantId)) {
+          this.form.tenantId = requestedTenantId
+          this.createVisible = true
+          this.queryTenantConsumed = true
+        } else if (!this.form.tenantId && this.tenants.length) this.form.tenantId = this.tenants[0].tenantId
       }
     },
     statusType(s) {
@@ -122,7 +129,8 @@ export default {
       if (!reason || reason.trim().length < 5) return
       const res = await platformControlApi.orderAction(row.orderNo, action, { expectedVersion: Number(row.version || 1), reason: reason.trim() })
       if (res.code === 0) {
-        toast.success(action === 'mark-paid' ? '已入账并自动开通/续期' : '已取消')
+        if (res.data?.repairTaskRequired) toast.warning('支付事实已入账，但授权激活失败；交付验收已阻断，请按待修复项处理')
+        else toast.success(action === 'mark-paid' ? '已入账并自动开通/续期' : '已取消')
         this.load()
       } else {
         toast.error(res.message)
@@ -137,6 +145,7 @@ export default {
   display: flex;
   gap: var(--space-1);
 }
+.pcod__repair { margin-top: 4px; color: var(--color-danger); font-size: var(--font-size-xs); font-weight: 700; }
 .pcod__form {
   display: flex;
   flex-direction: column;

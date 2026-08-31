@@ -194,6 +194,10 @@ export const platformControlApi = {
   compensateProvisioningStep: (jobId, stepCode, reason) => real('provisioning-job-compensate', `/platform/provisioning-jobs/${jobId}/compensate`, { method: 'POST', body: { stepCode, reason } }),
   flagProvisioningManualReview: (jobId, stepCode, reason) => real('provisioning-job-flag-manual', `/platform/provisioning-jobs/${jobId}/flag-manual-review`, { method: 'POST', body: { stepCode, reason } }),
   cancelProvisioningJob: (jobId, reason) => real('provisioning-job-cancel', `/platform/provisioning-jobs/${jobId}/cancel`, { method: 'POST', body: { reason } }),
+  listDeliveryReadModels: () => real('delivery-read-models', '/platform/deliveries'),
+  getDeliveryReadModel: (tenantId) => real('delivery-read-model', `/platform/tenants/${tenantId}/delivery`),
+  recordConsumerSmoke: (tenantId, body) => real('delivery-consumer-smoke', `/platform/tenants/${tenantId}/consumer-smoke`, { method: 'POST', body }),
+  acceptDelivery: (tenantId, body) => real('delivery-accept', `/platform/tenants/${tenantId}/delivery-acceptance`, { method: 'POST', body }),
 
   /* PLAT-09 事件、状态页与统一学校通知 */
   getIncidentsOverview: () => real('incidents-overview', '/platform/incidents/overview'),

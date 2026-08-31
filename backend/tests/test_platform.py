@@ -85,6 +85,21 @@ def _tenant_action(client, headers: dict, tenant_id: int | str, action: str, **p
     )
 
 
+def _buy_package(client, headers: dict, tenant_id: int | str, package_code: str) -> dict:
+    order = client.post("/api/v1/platform/orders", headers=headers, json={
+        "tenantId": str(tenant_id), "packageCode": package_code, "amount": 49800,
+    }).json()
+    assert order["code"] == 0, order
+    paid = client.post(
+        f"/api/v1/platform/orders/{order['data']['orderNo']}/mark-paid",
+        headers=headers,
+        json={"expectedVersion": order["data"]["version"], "reason": "测试确认订单已完成支付"},
+    ).json()
+    assert paid["code"] == 0, paid
+    assert paid["data"]["tenantActivated"] is True, paid
+    return paid["data"]
+
+
 # ── §一 强校验：非平台超管一律 403，拒绝写审计 ──
 
 def test_platform_requires_login(client):
@@ -112,6 +127,11 @@ def test_overview_and_tenant_lifecycle(client, db_mode):
     body = client.get("/api/v1/platform/overview", headers=h).json()
     assert body["code"] == 0 and body["data"]["tenantTotal"] >= 0
 
+    bypass = client.post("/api/v1/platform/tenants", headers=h, json={
+        "tenantCode": "t-paid-bypass", "tenantName": "禁止直开正式套餐", "packageCode": "standard",
+    }).json()
+    assert bypass["code"] == 422001
+
     created = client.post("/api/v1/platform/tenants", headers=h, json={
         "tenantCode": "t-life", "tenantName": "生命周期测试学院", "packageCode": "trial",
         "province": "广东省", "city": "东莞市", "contactName": "张三", "contactPhone": "13800001111",
@@ -126,7 +146,11 @@ def test_overview_and_tenant_lifecycle(client, db_mode):
     ext = _tenant_action(client, h, tid, "extend-trial", days=30).json()
     assert ext["code"] == 0
 
-    paid = _tenant_action(client, h, tid, "convert-to-paid", packageCode="standard").json()
+    direct = _tenant_action(client, h, tid, "convert-to-paid", packageCode="standard").json()
+    assert direct["code"] == 409001 and direct["bizCode"] == "COMMERCIAL_ORDER_REQUIRED"
+
+    _buy_package(client, h, tid, "standard")
+    paid = client.get(f"/api/v1/platform/tenants/{tid}", headers=h).json()
     assert paid["code"] == 0 and paid["data"]["status"] == "active" \
         and paid["data"]["packageCode"] == "standard"
 
@@ -173,7 +197,7 @@ def test_expired_tenant_readonly(client, auth_headers, db_mode):
                         json={"studentNo": "RO2026001", "realName": "只读测试"}).json()
     assert write["code"] == 403001 and write["bizCode"] == "MODULE_EXPIRED_READONLY"
 
-    _tenant_action(client, h, MAIN_TID, "convert-to-paid", packageCode="professional")
+    _buy_package(client, h, MAIN_TID, "professional")
     class_id = _seed_main_org_class()
     write2 = client.post("/api/v1/students", headers=auth_headers,
                          json={"studentNo": "RO2026001", "realName": "只读测试",
@@ -307,6 +331,11 @@ def test_order_mark_paid_activates_tenant(client, db_mode):
 
     got = client.get(f"/api/v1/platform/tenants/{t['tenantId']}", headers=h).json()["data"]
     assert got["status"] == "active" and got["packageCode"] == "standard"
+
+    first_expire = got["expireAt"]
+    _buy_package(client, h, t["tenantId"], "standard")
+    renewed = client.get(f"/api/v1/platform/tenants/{t['tenantId']}", headers=h).json()["data"]
+    assert renewed["expireAt"] > first_expire  # 续费从现有服务期末顺延，不吞掉剩余天数
 
 
 # ── §十二 公告 ──

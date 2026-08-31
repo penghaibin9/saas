@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException
 from app.db.session import get_sessionmaker
@@ -43,7 +44,10 @@ def _job_dto(job: ProvisioningJob, steps: list[ProvisioningStepRun]) -> dict:
     return {
         "jobId": str(job.id), "idempotencyKey": job.idempotency_key,
         "tenantCode": job.tenant_code, "tenantId": str(job.tenant_id) if job.tenant_id else None,
-        "status": job.status, "currentStep": job.current_step, "lastError": job.last_error,
+        "status": job.status,
+        "provisioningState": "BOOTSTRAP_READY" if job.status == STATUS_SUCCEEDED else job.status,
+        "deliveryState": "IMPLEMENTATION_AND_ACCEPTANCE_REQUIRED" if job.status == STATUS_SUCCEEDED else "NOT_READY",
+        "currentStep": job.current_step, "lastError": job.last_error,
         "version": int(job.version or 0),
         "steps": [{
             "stepCode": s.step_code, "status": s.status, "attemptCount": s.attempt_count,
@@ -66,6 +70,51 @@ def _step(db, job_id: int, code: str) -> ProvisioningStepRun:
         ProvisioningStepRun.job_id == job_id, ProvisioningStepRun.step_code == code)).first()
 
 
+def _assert_replay_compatible(db, job: ProvisioningJob, body: dict) -> None:
+    """Keep a retry from turning one idempotency key into another school."""
+    if str(job.tenant_code) != str(body.get("tenantCode") or "").strip():
+        raise AppException(
+            "IDEMPOTENCY_CONFLICT",
+            "同一 idempotencyKey 不得用于不同 tenantCode",
+            http_status=409,
+        )
+    original = dict(job.input_json or {})
+    if job.status == STATUS_SUCCEEDED and original != body:
+        raise AppException(
+            "IDEMPOTENCY_CONFLICT",
+            "已完成的开通任务不能使用相同 idempotencyKey 提交不同请求",
+            http_status=409,
+        )
+    succeeded = {
+        str(row.step_code)
+        for row in db.scalars(select(ProvisioningStepRun).where(
+            ProvisioningStepRun.job_id == job.id,
+            ProvisioningStepRun.status == STATUS_SUCCEEDED,
+            ProvisioningStepRun.is_deleted.is_(False),
+        )).all()
+    }
+    protected_by_step = {
+        "TENANT": {
+            "tenantName", "targetPackageCode", "packageCode", "environment",
+            "schoolType", "province", "city", "contactName", "contactPhone",
+        },
+        "FIRST_ADMIN": {"adminLoginName", "adminRealName"},
+        "IMPLEMENTATION_PROJECT": {"profileCode"},
+    }
+    protected = set().union(*(fields for step, fields in protected_by_step.items() if step in succeeded))
+    changed = sorted(
+        key for key in protected
+        if key in body and body.get(key) != original.get(key)
+    )
+    if changed:
+        raise AppException(
+            "IDEMPOTENCY_CONFLICT",
+            "开通步骤已生效，不能用相同 idempotencyKey 改写已消费的输入",
+            http_status=409,
+            details={"immutableFields": changed},
+        )
+
+
 def start_provisioning_job(user: dict, body: dict) -> dict:
     """按 idempotencyKey 幂等：命中已有任务直接返回其当前状态并续跑，不重新建任务。"""
     idempotency_key = str(body.get("idempotencyKey") or "").strip()
@@ -78,16 +127,27 @@ def start_provisioning_job(user: dict, body: dict) -> dict:
             ProvisioningJob.idempotency_key == idempotency_key,
             ProvisioningJob.is_deleted.is_(False))).first()
         if existing is None:
-            job = ProvisioningJob(
-                idempotency_key=idempotency_key, tenant_code=tenant_code, input_json=body,
-                status=STATUS_PENDING, requested_by=_actor_id(user))
-            db.add(job)
-            db.flush()
-            for code in STEP_ORDER:
-                db.add(ProvisioningStepRun(job_id=job.id, step_code=code, status=STATUS_PENDING))
-            db.commit()
-            job_id = job.id
-        else:
+            try:
+                job = ProvisioningJob(
+                    idempotency_key=idempotency_key, tenant_code=tenant_code, input_json=body,
+                    status=STATUS_PENDING, requested_by=_actor_id(user))
+                db.add(job)
+                db.flush()
+                for code in STEP_ORDER:
+                    db.add(ProvisioningStepRun(job_id=job.id, step_code=code, status=STATUS_PENDING))
+                db.commit()
+                existing = job
+            except IntegrityError:
+                # A concurrent identical request may win the unique-key insert.
+                # Reload its canonical job instead of leaking a database error.
+                db.rollback()
+                existing = db.scalars(select(ProvisioningJob).where(
+                    ProvisioningJob.idempotency_key == idempotency_key,
+                    ProvisioningJob.is_deleted.is_(False))).first()
+                if existing is None:
+                    raise
+        if existing is not None:
+            _assert_replay_compatible(db, existing, body)
             # 未成功的任务允许重新提交时补齐/修正输入（典型场景：FIRST_ADMIN 因缺字段失败，
             # 运营补上 adminLoginName 后用同一个 idempotencyKey 重新提交）；已成功的任务
             # 输入不再可变，防止篡改已经生效的开通记录。
@@ -107,11 +167,21 @@ def _actor_id(user: dict | None) -> int | None:
 def run_provisioning_job(job_id: int, *, user: dict | None = None) -> dict:
     """从第一个未 SUCCEEDED 的步骤续跑；任何一步失败立即停止，不跑后续步骤。"""
     with _session() as db:
-        job, steps = _load_job(db, job_id)
-        if job.status in (STATUS_SUCCEEDED, STATUS_CANCELLED):
-            return _job_dto(job, steps)
-        job.status = STATUS_RUNNING
+        # Atomic claim prevents two workers handling the same idempotency key
+        # from executing SAGA steps concurrently. A duplicate caller observes
+        # the current job; it never creates a second tenant or administrator.
+        claimed = db.execute(update(ProvisioningJob).where(
+            ProvisioningJob.id == int(job_id),
+            ProvisioningJob.is_deleted.is_(False),
+            ProvisioningJob.status.notin_((STATUS_SUCCEEDED, STATUS_CANCELLED, STATUS_RUNNING)),
+        ).values(
+            status=STATUS_RUNNING,
+            version=ProvisioningJob.version + 1,
+        ))
         db.commit()
+        job, steps = _load_job(db, job_id)
+        if int(claimed.rowcount or 0) == 0:
+            return _job_dto(job, steps)
 
         reveal_once: dict[str, dict] = {}
         for code in STEP_ORDER:
@@ -222,12 +292,17 @@ def _step_tenant(db, job: ProvisioningJob) -> dict:
         reused = False
 
     if not psvc.tenant_meta(tid):
-        pkg = str(body.get("packageCode") or "trial")
+        # Provisioning is the bootstrap owner, not the commercial entitlement
+        # owner.  The requested package remains an operator intent only; the
+        # new school starts on trial until an order is marked paid.
+        requested_pkg = str(body.get("targetPackageCode") or body.get("packageCode") or "trial")
+        pkg = "trial"
         from datetime import timedelta
         days = psvc.get_package(pkg).get("durationDays", 30)
         now = datetime.now()
         psvc.put_config_json(tid, "TENANT_META", "-", {
-            "status": "trial" if pkg == "trial" else "active", "packageCode": pkg,
+            "status": "trial", "packageCode": pkg,
+            "targetPackageCode": requested_pkg,
             "environment": body.get("environment", "production"),
             "schoolType": body.get("schoolType", "VOCATIONAL"),
             "province": body.get("province", ""), "city": body.get("city", ""),
@@ -280,7 +355,10 @@ def _step_capabilities(db, job: ProvisioningJob) -> dict:
     meta = psvc.tenant_meta(int(job.tenant_id))
     pkg_code = meta.get("packageCode") or "trial"
     pkg = psvc.get_package(pkg_code)
-    return {"packageCode": pkg_code, "maxStudents": pkg.get("maxStudents"),
+    requested = str((job.input_json or {}).get("targetPackageCode") or (job.input_json or {}).get("packageCode") or "trial")
+    return {"packageCode": pkg_code, "targetPackageCode": requested,
+           "commercialAuthority": "PAID_ORDER_REQUIRED",
+           "maxStudents": pkg.get("maxStudents"),
            "maxUsers": pkg.get("maxUsers"), "storageLimitMb": pkg.get("storageLimitMb")}
 
 
@@ -327,7 +405,8 @@ def _step_health_check(db, job: ProvisioningJob) -> dict:
     if not project:
         raise AppException("DATA_CONFLICT", "健康验证失败：实施项目缺失", http_status=409)
     return {"tenantActive": True, "hasAdminRole": True, "hasAdminUser": True,
-           "hasImplementationProject": True}
+           "hasImplementationProject": True, "readinessBoundary": "BOOTSTRAP_READY",
+           "productionReady": False}
 
 
 def retry_step(job_id: int, step_code: str, *, user: dict | None = None) -> dict:
