@@ -134,7 +134,8 @@ def _w0_pass(live_main: dict[str, Any], open_prs: dict[str, Any], migration: dic
         and live_main.get("githubEvidence", {}).get("mode") == "LIVE_GITHUB_API"
         and open_prs.get("githubEvidence", {}).get("mode") == "LIVE_GITHUB_API"
         and pr245.get("merged") is True
-        and pr245.get("mergeCommitSha") == origin_main
+        and isinstance(pr245.get("mergeCommitSha"), str)
+        and _is_ancestor(pr245["mergeCommitSha"], origin_main)
         and len(migration.get("alembicHeads") or []) == 1
     )
 
@@ -164,11 +165,44 @@ def _authority_gates(path: Path) -> list[dict[str, Any]]:
     return gates
 
 
-def _seal_pass(payload: dict[str, Any]) -> bool:
-    return payload.get("verdict") == "PASS" or payload.get("result") in {"PASS", "L4_SEALED"}
+def _seal_pass(payload: dict[str, Any], git_head: str | None = None) -> bool:
+    passed = payload.get("verdict") == "PASS" or payload.get("result") in {"PASS", "L4_SEALED"}
+    return bool(passed and (git_head is None or payload.get("gitHead") == git_head))
 
 
-def _journeys(artifacts: Path, local_gold: bool) -> tuple[list[dict[str, Any]], bool]:
+def _evidence_files_pass(payload: dict[str, Any], seal_path: Path, artifacts: Path) -> bool:
+    evidence = payload.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        return False
+    artifact_root = artifacts.resolve()
+    for raw in evidence:
+        if not isinstance(raw, str) or not raw.strip():
+            return False
+        candidate = (seal_path.parent / raw).resolve()
+        try:
+            candidate.relative_to(artifact_root)
+        except ValueError:
+            return False
+        if not candidate.is_file():
+            return False
+    return True
+
+
+def _release_pr_pass(live_main: dict[str, Any], git_head: str) -> bool:
+    pr = live_main.get("featurePullRequest")
+    return bool(
+        isinstance(pr, dict)
+        and isinstance(pr.get("number"), int)
+        and pr.get("state") == "open"
+        and pr.get("baseRef") == "main"
+        and pr.get("headSha") == git_head
+        and pr.get("mergeable") is True
+        and isinstance(pr.get("url"), str)
+        and pr["url"].startswith("https://github.com/")
+    )
+
+
+def _journeys(artifacts: Path, local_gold: bool, git_head: str) -> tuple[list[dict[str, Any]], bool]:
     rows = []
     for code, name in GOLDEN_JOURNEYS:
         seal_path = artifacts / "browser-replay" / f"{code}-seal.json"
@@ -188,9 +222,15 @@ def _journeys(artifacts: Path, local_gold: bool) -> tuple[list[dict[str, Any]], 
             key: "PASS" if provided.get(key) == "PASS" else "PENDING_BROWSER_REPLAY"
             for key in required
         }
+        evidence_pass = _evidence_files_pass(seal, seal_path, artifacts)
         result = (
             "L4_SEALED"
-            if seal.get("result") == "L4_SEALED" and all(value == "PASS" for value in conditions.values())
+            if (
+                _seal_pass(seal, git_head)
+                and seal.get("result") == "L4_SEALED"
+                and evidence_pass
+                and all(value == "PASS" for value in conditions.values())
+            )
             else "PENDING_L4_REPLAY"
         )
         rows.append(
@@ -199,6 +239,7 @@ def _journeys(artifacts: Path, local_gold: bool) -> tuple[list[dict[str, Any]], 
                 "name": name,
                 "result": result,
                 "conditions": conditions,
+                "evidenceFiles": "PASS" if evidence_pass else "FAIL_OR_MISSING",
                 "seal": str(seal_path),
                 "localGoldEvidence": "PASS" if local_gold else "FAIL_OR_MISSING",
             }
@@ -281,27 +322,38 @@ def main() -> int:
 
     junit = [_junit(artifacts / name) for name in JUNIT_EVIDENCE]
     local_gold = all(item["result"] == "PASS" for item in junit)
-    journeys, journeys_pass = _journeys(artifacts, local_gold)
+    journeys, journeys_pass = _journeys(artifacts, local_gold, git_head)
 
     live_main = _read_optional(artifacts / "live-main.json")
     open_prs = _read_optional(artifacts / "open-pr-classification.json")
     migration = _read_optional(artifacts / "migration-dag.json")
     w0_pass = _w0_pass(live_main, open_prs, migration, git_head)
+    release_pr_pass = _release_pr_pass(live_main, git_head)
     iam = _read_optional(artifacts / "iam-reconciliation.json")
-    iam_pass = _seal_pass(iam)
+    iam_path = artifacts / "iam-reconciliation.json"
+    iam_pass = _seal_pass(iam, git_head) and _evidence_files_pass(iam, iam_path, artifacts)
     d70 = _read_optional(artifacts / "dgate-aa-70-20k-performance.json")
-    d70_pass = _seal_pass(d70)
-    browser_perf = _read_optional(artifacts / "browser-replay/browser-performance-seal.json")
-    browser_perf_pass = _seal_pass(browser_perf)
-    browser_state = _read_optional(artifacts / "browser-replay/browser-state-recovery-seal.json")
-    browser_state_pass = _seal_pass(browser_state)
+    d70_pass = _seal_pass(d70, git_head)
+    browser_perf_path = artifacts / "browser-replay/browser-performance-seal.json"
+    browser_perf = _read_optional(browser_perf_path)
+    browser_perf_pass = _seal_pass(browser_perf, git_head) and _evidence_files_pass(browser_perf, browser_perf_path, artifacts)
+    browser_state_path = artifacts / "browser-replay/browser-state-recovery-seal.json"
+    browser_state = _read_optional(browser_state_path)
+    browser_state_pass = _seal_pass(browser_state, git_head) and _evidence_files_pass(browser_state, browser_state_path, artifacts)
     same_head = _read_optional(artifacts / "final-same-head-seal.json")
-    final_same_head = _seal_pass(same_head) and same_head.get("gitHead") == git_head
+    final_same_head = _seal_pass(same_head, git_head)
     final_main_payload = _read_optional(artifacts / "final-main-reconciliation.json")
+    try:
+        origin_main = _ref_sha("origin/main")
+    except subprocess.CalledProcessError:
+        origin_main = ""
     final_main = bool(
-        _seal_pass(final_main_payload)
-        and final_main_payload.get("gitHead") == git_head
+        _seal_pass(final_main_payload, git_head)
+        and final_main_payload.get("originMainSha") == origin_main
+        and origin_main
+        and _is_ancestor(origin_main, git_head)
         and final_main_payload.get("noAutoMergeMain") is True
+        and release_pr_pass
     )
 
     capability, capability_pass = _capabilities(artifacts, journeys, final_same_head)
@@ -343,6 +395,7 @@ def main() -> int:
         "implementationHead": git_head,
         "checks": {
             "w0": w0_pass,
+            "releasePullRequestMergeable": release_pr_pass,
             "localGold": local_gold,
             "iamReconciliation": iam_pass,
             "goldenJourneys12Of12L4": journeys_pass,

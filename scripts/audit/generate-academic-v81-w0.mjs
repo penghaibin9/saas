@@ -85,6 +85,16 @@ async function githubJson(path) {
   throw new Error(`GitHub ${path} failed after 3 attempts: ${lastError?.message || 'unknown error'}`)
 }
 
+async function githubPullWithMergeability(number) {
+  let pullRequest = null
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    pullRequest = await githubJson(`/pulls/${number}`)
+    if (typeof pullRequest.mergeable === 'boolean') return pullRequest
+    if (attempt < 4) await new Promise((resolveRetry) => setTimeout(resolveRetry, attempt * 750))
+  }
+  return pullRequest
+}
+
 function classificationFor(pr, mainSha) {
   const title = String(pr.title || '').toLowerCase()
   const head = String(pr.head?.ref || '').toLowerCase()
@@ -248,15 +258,25 @@ async function main() {
   let classified
   let pr239
   let pr241
+  let pr245
+  let featurePullRequest
   let githubEvidence = { mode: 'LIVE_GITHUB_API', reusedGeneratedAt: null, error: null }
   try {
-    const [openPrs, livePr239, livePr241] = await Promise.all([
+    const [openPrs, livePr239, livePr241, livePr245] = await Promise.all([
       githubJson('/pulls?state=open&per_page=100'), githubJson('/pulls/239'), githubJson('/pulls/241'),
+      githubJson('/pulls/245'),
     ])
     pr239 = livePr239
     pr241 = livePr241
+    pr245 = livePr245
+    const featureSummary = openPrs.find((pr) => pr.head?.ref === branch && pr.base?.ref === 'main')
+    featurePullRequest = featureSummary
+      ? await githubPullWithMergeability(featureSummary.number)
+      : null
     classified = openPrs.map((pr) => {
-      const [classification, reason] = classificationFor(pr, originMainSha)
+      const [classification, reason] = pr.head?.ref === branch
+        ? ['ACADEMIC_V81_FEATURE', 'current exact-head Academic V8.1 release pull request']
+        : classificationFor(pr, originMainSha)
       return {
         number: pr.number, title: pr.title, url: pr.html_url, draft: pr.draft,
         headRef: pr.head.ref, headSha: pr.head.sha, baseRef: pr.base.ref,
@@ -279,6 +299,11 @@ async function main() {
       state: previousLive.pr241.state, merged: previousLive.pr241.merged,
       merged_at: previousLive.pr241.mergedAt, merge_commit_sha: previousLive.pr241.mergeCommitSha,
     }
+    pr245 = {
+      state: previousLive.pr245.state, merged: previousLive.pr245.merged,
+      merged_at: previousLive.pr245.mergedAt, merge_commit_sha: previousLive.pr245.mergeCommitSha,
+    }
+    featurePullRequest = previousLive.featurePullRequest
     githubEvidence = {
       mode: 'EXACT_HEAD_SNAPSHOT_REUSED_AFTER_API_TIMEOUT',
       reusedGeneratedAt: previousLive.generatedAt,
@@ -329,6 +354,20 @@ async function main() {
       : 'Not asserted; rerun with --audit-started-clean only when separately verified.',
     pr239: { state: pr239.state, merged: pr239.merged, mergedAt: pr239.merged_at, mergeCommitSha: pr239.merge_commit_sha },
     pr241: { state: pr241.state, merged: pr241.merged, mergedAt: pr241.merged_at, mergeCommitSha: pr241.merge_commit_sha },
+    pr245: { state: pr245.state, merged: pr245.merged, mergedAt: pr245.merged_at, mergeCommitSha: pr245.merge_commit_sha },
+    featurePullRequest: featurePullRequest
+      ? {
+          number: featurePullRequest.number,
+          url: featurePullRequest.html_url || featurePullRequest.url,
+          state: featurePullRequest.state,
+          draft: Boolean(featurePullRequest.draft),
+          headRef: featurePullRequest.head?.ref || featurePullRequest.headRef,
+          headSha: featurePullRequest.head?.sha || featurePullRequest.headSha,
+          baseRef: featurePullRequest.base?.ref || featurePullRequest.baseRef,
+          mergeable: featurePullRequest.mergeable,
+          mergeableState: featurePullRequest.mergeable_state || featurePullRequest.mergeableState || null,
+        }
+      : null,
     githubEvidence,
   }
   const futureMain = {

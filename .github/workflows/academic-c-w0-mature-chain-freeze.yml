@@ -132,6 +132,7 @@ jobs:
               'backend/alembic/versions/20260821_aa_archive_correction_review.py',
               'backend/alembic/versions/20260821_merge_aa_archive_ctrl_teacher.py',
               'backend/alembic/versions/20260824_aa_grade_identity_head_version.py',
+              'backend/alembic/versions/20260829_aa_grade_identity_head_version.py',
           }
           changed = set(subprocess.check_output(
               ['git', 'diff', '--name-only', 'origin/main...HEAD'], text=True

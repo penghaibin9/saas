@@ -1128,11 +1128,12 @@ def export_transcript_xlsx(user, student_id, purpose="") -> bytes:
     if len(purpose) < 5:
         raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
     from app.models import StudentProfile
+    from app.core.tenant_scoped import tenant_get
     from app.services.xlsx_util import build_ledger_xlsx
 
     data = transcript(student_id, user)
     with _core.session() as db:
-        student = db.get(StudentProfile, int(student_id))
+        student = tenant_get(db, StudentProfile, int(student_id), tenant_id=_core._tid())
         label = (
             f"{student.real_name}（学号 {student.student_no}）"
             if student else f"学生ID {student_id}"
@@ -1302,11 +1303,19 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
         return result
 
     from app.models import AaGradeRecord, AcademicGrade, AcademicStudent
+    from app.core.tenant_scoped import tenant_get
 
     with _core.session() as db:
-        record = db.get(AaGradeRecord, int(record_id))
-        grade = db.get(AcademicGrade, int(record.acad_grade_id)) if record and record.acad_grade_id else None
-        academic_student = db.get(AcademicStudent, int(grade.acad_student_id)) if grade and grade.acad_student_id else None
+        tenant_id = _core._tid()
+        record = tenant_get(db, AaGradeRecord, int(record_id), tenant_id=tenant_id)
+        grade = (
+            tenant_get(db, AcademicGrade, int(record.acad_grade_id), tenant_id=tenant_id)
+            if record and record.acad_grade_id else None
+        )
+        academic_student = (
+            tenant_get(db, AcademicStudent, int(grade.acad_student_id), tenant_id=tenant_id)
+            if grade and grade.acad_student_id else None
+        )
         if grade:
             freeze_effective_grade_policy(
                 db,

@@ -65,15 +65,47 @@ def test_w0_accepts_feature_head_only_when_latest_main_is_its_ancestor(monkeypat
     monkeypatch.setattr(audit, "_ref_sha", lambda _ref: "main-sha")
     monkeypatch.setattr(audit, "_is_ancestor", lambda ancestor, descendant: (
         ancestor, descendant
-    ) == ("main-sha", "feature-sha"))
+    ) in {("main-sha", "feature-sha"), ("pr245-merge-sha", "main-sha")})
     live = {
         "headSha": "feature-sha",
         "originMainSha": "main-sha",
         "githubEvidence": {"mode": "LIVE_GITHUB_API"},
-        "pr245": {"merged": True, "mergeCommitSha": "main-sha"},
+        "pr245": {"merged": True, "mergeCommitSha": "pr245-merge-sha"},
     }
     prs = {"githubEvidence": {"mode": "LIVE_GITHUB_API"}}
     migration = {"alembicHeads": ["single-head"]}
     assert audit._w0_pass(live, prs, migration, "feature-sha") is True
     monkeypatch.setattr(audit, "_is_ancestor", lambda *_args: False)
     assert audit._w0_pass(live, prs, migration, "feature-sha") is False
+
+
+def test_release_pr_must_be_open_exact_head_main_based_and_mergeable():
+    live = {
+        "featurePullRequest": {
+            "number": 246,
+            "url": "https://github.com/penghaibin9/saas/pull/246",
+            "state": "open",
+            "baseRef": "main",
+            "headSha": "feature-sha",
+            "mergeable": True,
+        }
+    }
+    assert audit._release_pr_pass(live, "feature-sha") is True
+    live["featurePullRequest"]["mergeable"] = None
+    assert audit._release_pr_pass(live, "feature-sha") is False
+    live["featurePullRequest"]["mergeable"] = True
+    live["featurePullRequest"]["headSha"] = "stale-sha"
+    assert audit._release_pr_pass(live, "feature-sha") is False
+
+
+def test_evidence_files_must_exist_inside_artifact_root(tmp_path):
+    artifact_root = tmp_path / "artifacts"
+    seal_path = artifact_root / "browser-replay" / "AA-GJ-01-seal.json"
+    screenshot = seal_path.parent / "journey.png"
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"real-evidence")
+    assert audit._evidence_files_pass({"evidence": ["journey.png"]}, seal_path, artifact_root)
+    assert not audit._evidence_files_pass({"evidence": ["missing.png"]}, seal_path, artifact_root)
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"outside")
+    assert not audit._evidence_files_pass({"evidence": ["../../outside.png"]}, seal_path, artifact_root)

@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 from datetime import date, datetime, time
@@ -21,6 +22,33 @@ from sqlalchemy import inspect
 
 TENANT_ID = 1000000000000000007
 TENANT_CODE = "sandbox-school"
+
+
+def _validated_restore_database(source_database: str, requested: str | None) -> str | None:
+    if not requested:
+        return None
+    target = requested.strip()
+    safe_name = re.fullmatch(r"[A-Za-z0-9_]+", target) and re.search(
+        r"(?:^|_)(?:restore|recovery)(?:_|$)", target, re.IGNORECASE
+    )
+    if not safe_name or target == source_database:
+        raise SystemExit(
+            "--isolated-restore-database 必须是不同于源库、且名称含独立 restore/recovery 段的隔离库"
+        )
+    return target
+
+
+def _write_restore_target_guard(stream, target_database: str) -> None:
+    """Fail before trigger DDL when mysql is pointed at any unexpected schema."""
+    expected = target_database.replace("'", "''")
+    stream.write(f"SET @codex_expected_restore_database = '{expected}';\n")
+    stream.write(
+        "SET @codex_restore_guard_sql = IF(DATABASE() = @codex_expected_restore_database, "
+        "'DO 0', 'SELECT * FROM `__ACADEMIC_V81_RESTORE_TARGET_MISMATCH__`');\n"
+    )
+    stream.write("PREPARE codex_restore_guard FROM @codex_restore_guard_sql;\n")
+    stream.write("EXECUTE codex_restore_guard;\n")
+    stream.write("DEALLOCATE PREPARE codex_restore_guard;\n\n")
 
 
 def _trigger_specs(engine) -> list[dict[str, str]]:
@@ -111,7 +139,13 @@ def _literal(value: object) -> str:
     return "'" + text_value + "'"
 
 
-def _write_sqlalchemy_dump(engine, tables: list[str], output: Path, triggers: list[dict[str, str]]) -> None:
+def _write_sqlalchemy_dump(
+    engine,
+    tables: list[str],
+    output: Path,
+    triggers: list[dict[str, str]],
+    restore_database: str | None,
+) -> None:
     """Fallback export when local MySQL client tools are unavailable.
 
     This intentionally produces an INSERT-only logical backup for a schema already managed by
@@ -124,7 +158,9 @@ def _write_sqlalchemy_dump(engine, tables: list[str], output: Path, triggers: li
         stream.write(f"-- tenant_id={TENANT_ID} tenant_code={TENANT_CODE}\n")
         stream.write("SET NAMES utf8mb4;\n")
         stream.write("SET FOREIGN_KEY_CHECKS=0;\n")
-        _write_trigger_preamble(stream, engine, triggers)
+        if restore_database:
+            _write_restore_target_guard(stream, restore_database)
+            _write_trigger_preamble(stream, engine, triggers)
         stream.write("START TRANSACTION;\n\n")
         all_tables = [("t_tenant", "id"), *((table, "tenant_id") for table in tables)]
         for table, scope_column in all_tables:
@@ -147,13 +183,19 @@ def _write_sqlalchemy_dump(engine, tables: list[str], output: Path, triggers: li
                     stream.write(f"INSERT INTO {quote(table)} ({rendered_columns}) VALUES ({values});\n")
             stream.write("\n")
         stream.write("COMMIT;\n")
-        _write_trigger_epilogue(stream, engine, triggers)
+        if restore_database:
+            _write_trigger_epilogue(stream, engine, triggers)
         stream.write("SET FOREIGN_KEY_CHECKS=1;\n")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="创建仅含 007 sandbox-school 的 MySQL 逻辑备份")
     parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument(
+        "--isolated-restore-database",
+        default=None,
+        help="仅为指定的隔离 restore/recovery 库生成触发器暂停包装；默认绝不删除目标库触发器",
+    )
     args = parser.parse_args()
     binary = shutil.which("mysqldump")
 
@@ -163,7 +205,6 @@ def main() -> int:
         raise SystemExit("DB_ENABLED=false，无法备份真实 007")
     engine = get_engine()
     inspector = inspect(engine)
-    triggers = _trigger_specs(engine)
     tables = sorted(
         table for table in inspector.get_table_names()
         if "tenant_id" in {column["name"] for column in inspector.get_columns(table)}
@@ -180,6 +221,8 @@ def main() -> int:
     root.mkdir(parents=True, exist_ok=False)
     dump_file = root / "sandbox-school-007.sql"
     options, env, database = _mysql_options()
+    restore_database = _validated_restore_database(database, args.isolated_restore_database)
+    triggers = _trigger_specs(engine) if restore_database else []
     method = "MYSQLDUMP"
     if binary:
         with dump_file.open("wb") as stream:
@@ -187,10 +230,12 @@ def main() -> int:
             stream.write(f"-- tenant_id={TENANT_ID} tenant_code={TENANT_CODE}\n\n".encode())
             stream.write(b"SET NAMES utf8mb4;\n")
             stream.write(b"SET FOREIGN_KEY_CHECKS=0;\n")
-            from io import StringIO
-            trigger_preamble = StringIO()
-            _write_trigger_preamble(trigger_preamble, engine, triggers)
-            stream.write(trigger_preamble.getvalue().encode("utf-8"))
+            if restore_database:
+                from io import StringIO
+                trigger_preamble = StringIO()
+                _write_restore_target_guard(trigger_preamble, restore_database)
+                _write_trigger_preamble(trigger_preamble, engine, triggers)
+                stream.write(trigger_preamble.getvalue().encode("utf-8"))
             commands = [("t_tenant", f"id={TENANT_ID}"), *((table, f"tenant_id={TENANT_ID}") for table in tables)]
             for table, where in commands:
                 result = subprocess.run([binary, *options, f"--where={where}", database, table], stdout=stream,
@@ -198,13 +243,14 @@ def main() -> int:
                 if result.returncode:
                     raise RuntimeError(f"mysqldump 导出 {table} 失败：{result.stderr.decode(errors='replace')[:500]}")
                 stream.write(b"\n")
-            trigger_epilogue = StringIO()
-            _write_trigger_epilogue(trigger_epilogue, engine, triggers)
-            trigger_epilogue.write("SET FOREIGN_KEY_CHECKS=1;\n")
-            stream.write(trigger_epilogue.getvalue().encode("utf-8"))
+            if restore_database:
+                trigger_epilogue = StringIO()
+                _write_trigger_epilogue(trigger_epilogue, engine, triggers)
+                stream.write(trigger_epilogue.getvalue().encode("utf-8"))
+            stream.write(b"SET FOREIGN_KEY_CHECKS=1;\n")
     else:
         method = "SQLALCHEMY_INSERT_FALLBACK"
-        _write_sqlalchemy_dump(engine, tables, dump_file, triggers)
+        _write_sqlalchemy_dump(engine, tables, dump_file, triggers, restore_database)
     digest = hashlib.sha256(dump_file.read_bytes()).hexdigest()
     manifest = root / "sandbox-school-007-backup-manifest.json"
     manifest.write_text(
@@ -215,6 +261,8 @@ def main() -> int:
         f"  \"sha256\": \"{digest}\",\n"
         f"  \"sizeBytes\": {dump_file.stat().st_size},\n"
         f"  \"tenantScopedTableCount\": {len(tables)},\n"
+        f"  \"isolatedRestoreDatabase\": {json.dumps(restore_database)},\n"
+        f"  \"targetTriggersSuspended\": {str(bool(restore_database)).lower()},\n"
         f"  \"method\": \"{method}\"\n"
         "}\n",
         encoding="utf-8",

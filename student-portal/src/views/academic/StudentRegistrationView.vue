@@ -281,7 +281,7 @@ onMounted(load)
 .batch-card__defer-form textarea { min-height: 76px; resize: vertical; }
 .batch-card__actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line2); }
 .confirm-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: rgb(15 23 42 / 48%); backdrop-filter: blur(3px); }
-.confirm-dialog { width: min(520px, 100%); padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--bg1); box-shadow: 0 24px 70px rgb(15 23 42 / 22%); }
+.confirm-dialog { width: min(520px, 100%); padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface, #fff); box-shadow: 0 24px 70px rgb(15 23 42 / 22%); }
 .confirm-dialog__eyebrow { color: var(--pri); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
 .confirm-dialog h2 { margin: 8px 0; color: var(--t1); font-size: 20px; }
 .confirm-dialog > p { margin: 0; color: var(--t3); font-size: 13px; line-height: 1.65; }

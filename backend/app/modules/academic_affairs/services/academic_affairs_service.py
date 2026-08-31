@@ -2240,12 +2240,14 @@ def _class_name(db, class_id):
     return c.class_name if c else ""
 
 
-def _grade_progress(db) -> dict:
+def _grade_progress(db, allowed_class_ids: set[int] | None = None) -> dict:
     """成绩提交进度：按 t_aa_grade_task 状态计数 + 滞后任务（未开始/录入中/已退回）录入进度前 10 条。"""
     from app.models import AaGradeRecord, AaGradeTask, StudentProfile
     T = _tid()
-    rows = db.scalars(select(AaGradeTask).where(
-        AaGradeTask.tenant_id == T, AaGradeTask.is_deleted.is_(False))).all()
+    conds = [AaGradeTask.tenant_id == T, AaGradeTask.is_deleted.is_(False)]
+    if allowed_class_ids is not None:
+        conds.append(AaGradeTask.class_id.in_(allowed_class_ids))
+    rows = db.scalars(select(AaGradeTask).where(*conds)).all()
     counts = {}
     for t in rows:
         counts[t.status] = counts.get(t.status, 0) + 1
@@ -2289,7 +2291,7 @@ def _grade_progress(db) -> dict:
             "drillRoute": "aa-grade-overview"}
 
 
-def _exam_reminders(db, days_ahead=14) -> dict:
+def _exam_reminders(db, days_ahead=14, allowed_class_ids: set[int] | None = None) -> dict:
     """考试安排提醒：已确认批次(ARRANGED/PUBLISHED)内、未来 N 天已确认考试课程(CONFIRMED)。"""
     from app.models import AaExamBatch, AaExamCourse
     T = _tid()
@@ -2300,6 +2302,8 @@ def _exam_reminders(db, days_ahead=14) -> dict:
              AaExamCourse.status == "CONFIRMED", AaExamCourse.exam_date.isnot(None),
              AaExamCourse.exam_date >= today, AaExamCourse.exam_date <= until,
              AaExamBatch.status.in_(["ARRANGED", "PUBLISHED"])]
+    if allowed_class_ids is not None:
+        conds.append(AaExamCourse.class_id.in_(allowed_class_ids))
     total = db.scalar(select(func.count()).select_from(AaExamCourse)
                       .join(AaExamBatch, join).where(*conds)) or 0
     rows = db.execute(select(AaExamCourse, AaExamBatch).join(AaExamBatch, join).where(*conds)
@@ -2310,7 +2314,7 @@ def _exam_reminders(db, days_ahead=14) -> dict:
     return {"count": total, "windowDays": days_ahead, "items": items, "drillRoute": "aa-exam"}
 
 
-def _status_change_reminders(db) -> dict:
+def _status_change_reminders(db, allowed_class_ids: set[int] | None = None) -> dict:
     """学籍异动提醒：在途待审批（SUBMITTED/IN_REVIEW，不含注册类）。"""
     from app.models import AaStatusChange, StudentProfile
     T = _tid()
@@ -2319,6 +2323,8 @@ def _status_change_reminders(db) -> dict:
              AaStatusChange.status.in_(["SUBMITTED", "IN_REVIEW"])]
     join = and_(StudentProfile.id == AaStatusChange.student_id,
                StudentProfile.tenant_id == AaStatusChange.tenant_id)
+    if allowed_class_ids is not None:
+        conds.append(StudentProfile.class_id.in_(allowed_class_ids))
     total = db.scalar(select(func.count()).select_from(AaStatusChange)
                       .outerjoin(StudentProfile, join).where(*conds)) or 0
     rows = db.execute(select(AaStatusChange, StudentProfile).outerjoin(StudentProfile, join).where(*conds)
@@ -2334,7 +2340,7 @@ def _status_change_reminders(db) -> dict:
     return {"count": total, "items": items, "drillRoute": "aa-status-changes"}
 
 
-def _warning_reminders(db) -> dict:
+def _warning_reminders(db, allowed_class_ids: set[int] | None = None) -> dict:
     """学业预警提醒：在办（PENDING_HANDLE）学业预警，高等级优先。"""
     from app.models import AcademicStudent, AcademicWarning
     T = _tid()
@@ -2342,6 +2348,8 @@ def _warning_reminders(db) -> dict:
              AcademicWarning.is_deleted.is_(False), AcademicWarning.status == "PENDING_HANDLE"]
     join = and_(AcademicStudent.id == AcademicWarning.acad_student_id,
                AcademicStudent.tenant_id == AcademicWarning.tenant_id)
+    if allowed_class_ids is not None:
+        conds.append(AcademicStudent.class_id.in_(allowed_class_ids))
     total = db.scalar(select(func.count()).select_from(AcademicWarning)
                       .outerjoin(AcademicStudent, join).where(*conds)) or 0
     rows = db.execute(select(AcademicWarning, AcademicStudent).outerjoin(AcademicStudent, join).where(*conds)
@@ -2356,7 +2364,7 @@ def _warning_reminders(db) -> dict:
     return {"count": total, "items": items, "drillRoute": "aa-warnings"}
 
 
-def _graduation_warnings(db) -> dict:
+def _graduation_warnings(db, allowed_class_ids: set[int] | None = None) -> dict:
     """毕业资格预警：预审系统异常(SYSTEM_ABNORMAL)/待学院复核/待教务终审/延毕(DELAYED)。"""
     from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, StudentProfile
     T = _tid()
@@ -2366,8 +2374,10 @@ def _graduation_warnings(db) -> dict:
                  StudentProfile.tenant_id == AaGraduationAuditResult.tenant_id)
     conds = [AaGraduationAuditResult.tenant_id == T, AaGraduationAuditResult.is_deleted.is_(False),
              AaGraduationAuditResult.status.in_(_GRAD_WARNING_STATUSES)]
+    if allowed_class_ids is not None:
+        conds.append(StudentProfile.class_id.in_(allowed_class_ids))
     total = db.scalar(select(func.count()).select_from(AaGraduationAuditResult)
-                      .join(AaGraduationAuditBatch, join_b).where(*conds)) or 0
+                      .join(AaGraduationAuditBatch, join_b).outerjoin(StudentProfile, join_s).where(*conds)) or 0
     rows = db.execute(select(AaGraduationAuditResult, AaGraduationAuditBatch, StudentProfile)
                       .join(AaGraduationAuditBatch, join_b).outerjoin(StudentProfile, join_s).where(*conds)
                       .order_by(AaGraduationAuditResult.id.desc()).limit(10)).all()
@@ -2759,12 +2769,14 @@ def dashboard_reminders(user) -> dict:
     零新表：全部实时只读聚合既有业务表，不复制、不改写任何状态机（对齐 R9 教学质量看板同款只读聚合模式）。"""
     from app.core.affairs_security import build_affairs_context
     with session() as db:
-        build_affairs_context(user, db)  # 建立安全上下文（本期为全校聚合口径，与教学质量看板一致）
-        gp = _grade_progress(db)
-        ex = _exam_reminders(db)
-        sc = _status_change_reminders(db)
-        wr = _warning_reminders(db)
-        gr = _graduation_warnings(db)
+        security = build_affairs_context(user, db)
+        # None 表示租户全量；空集合表示未配置范围，所有明细与计数均 fail-closed。
+        allowed_class_ids = security.allowed_class_ids(db)
+        gp = _grade_progress(db, allowed_class_ids)
+        ex = _exam_reminders(db, allowed_class_ids=allowed_class_ids)
+        sc = _status_change_reminders(db, allowed_class_ids)
+        wr = _warning_reminders(db, allowed_class_ids)
+        gr = _graduation_warnings(db, allowed_class_ids)
         todos = _todos(gp, sc, wr, gr)
 
         ctx = _today_term_ctx(db)

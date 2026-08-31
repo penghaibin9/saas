@@ -30,3 +30,12 @@ def test_w0_browser_manifest_uses_real_workspace_captures_without_claiming_login
     assert "03-teacher-mini-login-viewport.png" in source
     assert "No password submission is claimed by this W0 baseline" in source
     assert "MULTI_SURFACE_LOGIN_CAPTURED_ROLE_REPLAY_PENDING" in source
+
+
+def test_w0_captures_pr245_and_exact_head_release_pr_mergeability():
+    source = _source()
+    assert "githubJson('/pulls/245')" in source
+    assert "githubPullWithMergeability" in source
+    assert "featurePullRequest" in source
+    assert "mergeableState" in source
+    assert "current exact-head Academic V8.1 release pull request" in source

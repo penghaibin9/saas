@@ -60,7 +60,7 @@ def upgrade() -> None:
             "t_aa_grade_identity_head",
             "version",
             existing_type=sa.Integer(),
-            nullable=False,
+            existing_nullable=False,
             server_default=sa.text("0"),
             comment="乐观锁",
         )
