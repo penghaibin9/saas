@@ -15,6 +15,7 @@ import _mysql_env  # noqa: F401
 from sqlalchemy import select
 
 from app.core.field_crypto import encrypt_sensitive, hash_sensitive
+from app.core.security import hash_password
 from app.db.session import get_sessionmaker
 from app.models import (
     EmpCompany,
@@ -31,9 +32,11 @@ from app.models import (
     InternshipProcessReport,
     InternshipRecord,
     InternshipVisit,
+    Role,
     StudentProfile,
     TeacherStudentScope,
     User,
+    UserRole,
     WeeklyReport,
 )
 from app.models.internship_enterprise_portal import (
@@ -76,21 +79,62 @@ def one(db, model, entity_id: int):
 
 
 def ensure_employment_scope(db, student: StudentProfile) -> None:
-    """Give the dedicated employment E2E identity an explicit student scope."""
+    """Normalize the dedicated employment identity and its explicit student scope."""
+    role = db.scalars(select(Role).where(
+        Role.tenant_id == TENANT_ID,
+        Role.role_code == "EMPLOYMENT_TEACHER",
+        Role.is_deleted.is_(False),
+    )).first()
+    if role is None:
+        raise SystemExit("published EMPLOYMENT_TEACHER role is missing")
+    role.status = "ACTIVE"
+
     user = db.scalars(select(User).where(
         User.tenant_id == TENANT_ID,
         User.login_name == "e2e_ix_employment",
-        User.is_deleted.is_(False),
     )).first()
     if user is None:
-        return
+        user = User(
+            tenant_id=TENANT_ID,
+            login_name="e2e_ix_employment",
+            real_name="E2E就业归档管理员",
+            password_hash=hash_password("E2eTest@2026"),
+            user_type="TEACHER",
+            status="ACTIVE",
+            must_change_password=False,
+        )
+        db.add(user)
+        db.flush()
+    else:
+        user.real_name = "E2E就业归档管理员"
+        user.password_hash = hash_password("E2eTest@2026")
+        user.user_type = "TEACHER"
+        user.status = "ACTIVE"
+        user.must_change_password = False
+        user.is_deleted = False
+
+    link = db.scalars(select(UserRole).where(
+        UserRole.tenant_id == TENANT_ID,
+        UserRole.user_id == user.id,
+        UserRole.role_id == role.id,
+    )).first()
+    if link is None:
+        db.add(UserRole(
+            tenant_id=TENANT_ID,
+            user_id=user.id,
+            role_id=role.id,
+            status="ACTIVE",
+        ))
+    else:
+        link.status = "ACTIVE"
+        link.is_deleted = False
+
     row = db.scalars(select(TeacherStudentScope).where(
         TeacherStudentScope.tenant_id == TENANT_ID,
         TeacherStudentScope.teacher_key == user.login_name,
         TeacherStudentScope.role_code == "EMPLOYMENT_TEACHER",
         TeacherStudentScope.scope_type == "STUDENT",
         TeacherStudentScope.ref_value == student.student_no,
-        TeacherStudentScope.is_deleted.is_(False),
     )).first()
     if row is None:
         db.add(TeacherStudentScope(
@@ -105,6 +149,7 @@ def ensure_employment_scope(db, student: StudentProfile) -> None:
     else:
         row.teacher_name = user.real_name
         row.status = "ACTIVE"
+        row.is_deleted = False
 
 
 def require_enterprise_collaborator(db):

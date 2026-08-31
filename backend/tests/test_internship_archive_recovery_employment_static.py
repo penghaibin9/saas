@@ -85,6 +85,20 @@ def test_archive_preflight_returns_fix_targets_file_safety_and_receipt():
     assert "/archive-packages/{package_id}/restore-check" in router
 
 
+def test_advanced_journey_normalizes_employment_login_role_and_scope():
+    seed = read("backend/scripts/e2e_seed_internship_v8_advanced_sandbox.py")
+    helper = seed[seed.index("def ensure_employment_scope"):seed.index("def require_enterprise_collaborator")]
+    for evidence in (
+        'Role.role_code == "EMPLOYMENT_TEACHER"',
+        'login_name="e2e_ix_employment"',
+        'password_hash=hash_password("E2eTest@2026")',
+        "db.add(UserRole(",
+        'TeacherStudentScope.scope_type == "STUDENT"',
+    ):
+        assert evidence in helper
+    assert "if user is None:\n        return" not in helper
+
+
 def test_batch_archive_package_is_bounded_streamed_and_manifest_authoritative():
     streaming = read("backend/app/modules/internship/services/internship_streaming_package_service.py")
     archive = read("backend/app/modules/internship/services/internship_archive_service.py")
