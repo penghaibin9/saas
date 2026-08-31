@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from types import SimpleNamespace
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -882,6 +882,197 @@ def _scoped_academic_students(db, user):
     return query.all()
 
 
+def _scoped_academic_student_query(db, user):
+    """Build the tenant/scope projection used by large grade read models.
+
+    Loading every ``AcademicStudent`` ORM object made the school-wide 20K grade
+    analysis spend most of its request budget hydrating fields that the report
+    never reads.  Keep the exact same tenant/scope predicate while projecting
+    just the academic-student key and class used by the grouping view.
+    """
+    from app.models import AcademicStudent, StudentProfile
+
+    query = db.query(
+        AcademicStudent.id.label("id"),
+        AcademicStudent.class_id.label("class_id"),
+    ).filter(
+        AcademicStudent.tenant_id == _core._tid(),
+        AcademicStudent.is_deleted.is_(False),
+    )
+    role = str((user or {}).get("currentRoleCode") or "").upper()
+    if role == "COLLEGE_ADMIN":
+        from app.core.affairs_security import build_affairs_context
+
+        context = build_affairs_context(user, db)
+        allowed = context.allowed_class_ids(db)
+        if allowed is not None:
+            profile_ids = select(StudentProfile.id).where(
+                StudentProfile.tenant_id == _core._tid(),
+                StudentProfile.class_id.in_(list(allowed) or [0]),
+                StudentProfile.is_deleted.is_(False),
+            )
+            query = query.filter(AcademicStudent.student_id.in_(profile_ids))
+    return query
+
+
+def _grade_analysis_filters(AcademicGrade, term):
+    filters = [
+        AcademicGrade.tenant_id == _core._tid(),
+        AcademicGrade.score.is_not(None),
+        AcademicGrade.record_status == "ACTIVE",
+        AcademicGrade.is_deleted.is_(False),
+    ]
+    if term:
+        filters.append(AcademicGrade.term == term)
+    return filters
+
+
+def _grade_analysis_has_competing_identity(db, AcademicGrade, scoped_students, filters) -> bool:
+    """Detect the only case that requires Python effective-attempt arbitration.
+
+    Legacy-name rows deliberately key by their own id and therefore can never
+    compete.  Stable course ids/codes may have multiple active attempts; those
+    must continue through ``resolve_effective_grade`` so the frozen strategy is
+    honoured exactly.
+    """
+    # Do not concatenate and COUNT(DISTINCT ...) across the whole 20K corpus:
+    # that forces MySQL to materialise every derived identity before it can
+    # answer.  Two bounded existence probes preserve the exact identity rules
+    # while allowing the course-attempt and course-code indexes to serve the
+    # common no-competing-attempt case.
+    stable_id_competition = db.query(func.count(AcademicGrade.id)).select_from(AcademicGrade).join(
+        scoped_students,
+        AcademicGrade.acad_student_id == scoped_students.c.id,
+    ).filter(
+        *filters,
+        AcademicGrade.course_id.is_not(None),
+    ).group_by(
+        AcademicGrade.acad_student_id,
+        AcademicGrade.course_id,
+    ).having(func.count(AcademicGrade.id) > 1).limit(1).first()
+    if stable_id_competition is not None:
+        return True
+
+    stable_code_competition = db.query(func.count(AcademicGrade.id)).select_from(AcademicGrade).join(
+        scoped_students,
+        AcademicGrade.acad_student_id == scoped_students.c.id,
+    ).filter(
+        *filters,
+        AcademicGrade.course_id.is_(None),
+        AcademicGrade.course_code.is_not(None),
+        AcademicGrade.course_code != "",
+    ).group_by(
+        AcademicGrade.acad_student_id,
+        AcademicGrade.course_code,
+        AcademicGrade.course_version,
+    ).having(func.count(AcademicGrade.id) > 1).limit(1).first()
+    return stable_code_competition is not None
+
+
+def _grade_analysis_aggregate_columns(AcademicGrade):
+    score = AcademicGrade.score
+    return [
+        func.count(AcademicGrade.id).label("total"),
+        func.sum(score).label("score_sum"),
+        func.sum(case((AcademicGrade.pass_status == "PASSED", 1), else_=0)).label("passed"),
+        func.max(score).label("max_score"),
+        func.min(score).label("min_score"),
+        func.sum(case((score >= 90, 1), else_=0)).label("b90"),
+        func.sum(case((score.between(80, 89), 1), else_=0)).label("b80"),
+        func.sum(case((score.between(70, 79), 1), else_=0)).label("b70"),
+        func.sum(case((score.between(60, 69), 1), else_=0)).label("b60"),
+        func.sum(case((score < 60, 1), else_=0)).label("b0"),
+    ]
+
+
+def _grade_analysis_stats_from_parts(*, total, score_sum, passed, max_score, min_score, buckets):
+    total = int(total or 0)
+    normalized = {key: int(value or 0) for key, value in buckets.items()}
+    if not total:
+        return _core._score_stats([], 0)
+    return {
+        "total": total,
+        "passRate": round(int(passed or 0) / total, 3),
+        "excellentRate": round(normalized["90-100"] / total, 3),
+        "goodRate": round(normalized["80-89"] / total, 3),
+        "avgScore": round(float(score_sum or 0) / total, 1),
+        "maxScore": int(max_score or 0),
+        "minScore": int(min_score or 0),
+        "distribution": [
+            {"range": key, "count": normalized[key]}
+            for key in ("90-100", "80-89", "70-79", "60-69", "0-59")
+        ],
+    }
+
+
+def _grade_analysis_stats_from_row(row):
+    return _grade_analysis_stats_from_parts(
+        total=row.total,
+        score_sum=row.score_sum,
+        passed=row.passed,
+        max_score=row.max_score,
+        min_score=row.min_score,
+        buckets={
+            "90-100": row.b90,
+            "80-89": row.b80,
+            "70-79": row.b70,
+            "60-69": row.b60,
+            "0-59": row.b0,
+        },
+    )
+
+
+def _grade_analysis_sql_fast_path(db, AcademicGrade, scoped_students, filters, dimension):
+    """Aggregate in MySQL when every stable course identity has one active row."""
+    if _grade_analysis_has_competing_identity(db, AcademicGrade, scoped_students, filters):
+        return None
+
+    columns = _grade_analysis_aggregate_columns(AcademicGrade)
+    query = db.query(*columns).select_from(AcademicGrade).join(
+        scoped_students,
+        AcademicGrade.acad_student_id == scoped_students.c.id,
+    ).filter(*filters)
+    if dimension not in {"course", "class"}:
+        return _grade_analysis_stats_from_row(query.one())
+
+    if dimension == "class":
+        group_key = func.coalesce(scoped_students.c.class_id, "未分班")
+    else:
+        group_key = func.coalesce(func.nullif(AcademicGrade.course_code, ""), AcademicGrade.course_name, "未命名课程")
+    rows = query.add_columns(group_key.label("name")).group_by(group_key).all()
+    result_rows = []
+    totals = {
+        "total": 0, "score_sum": 0, "passed": 0,
+        "max_score": None, "min_score": None,
+        "b90": 0, "b80": 0, "b70": 0, "b60": 0, "b0": 0,
+    }
+    for row in rows:
+        stats = _grade_analysis_stats_from_row(row)
+        stats["name"] = str(row.name or "未命名")
+        result_rows.append(stats)
+        totals["total"] += int(row.total or 0)
+        totals["score_sum"] += int(row.score_sum or 0)
+        totals["passed"] += int(row.passed or 0)
+        totals["max_score"] = max(
+            value for value in (totals["max_score"], int(row.max_score or 0)) if value is not None
+        )
+        row_min = int(row.min_score or 0)
+        totals["min_score"] = row_min if totals["min_score"] is None else min(totals["min_score"], row_min)
+        for key in ("b90", "b80", "b70", "b60", "b0"):
+            totals[key] += int(getattr(row, key) or 0)
+    result = _grade_analysis_stats_from_parts(
+        total=totals["total"], score_sum=totals["score_sum"], passed=totals["passed"],
+        max_score=totals["max_score"], min_score=totals["min_score"],
+        buckets={
+            "90-100": totals["b90"], "80-89": totals["b80"], "70-79": totals["b70"],
+            "60-69": totals["b60"], "0-59": totals["b0"],
+        },
+    )
+    result["dimension"] = dimension
+    result["rows"] = sorted(result_rows, key=lambda row: (-row["total"], row["name"]))
+    return result
+
+
 def transcript(student_id, user) -> dict:
     from app.models import AcademicGrade, AcademicStudent
 
@@ -1011,17 +1202,37 @@ def grade_analysis(user, term=None, dimension=None):
     from app.models import AcademicGrade
 
     with _core.session() as db:
-        students = _scoped_academic_students(db, user)
-        student_by_id = {int(row.id): row for row in students}
-        query = db.query(AcademicGrade).filter(
-            AcademicGrade.tenant_id == _core._tid(),
-            AcademicGrade.acad_student_id.in_(list(student_by_id) or [0]),
-            AcademicGrade.score.is_not(None),
-            AcademicGrade.record_status == "ACTIVE",
-            AcademicGrade.is_deleted.is_(False),
-        )
-        if term:
-            query = query.filter(AcademicGrade.term == term)
+        scoped_students = _scoped_academic_student_query(db, user).subquery()
+        filters = _grade_analysis_filters(AcademicGrade, term)
+        fast = _grade_analysis_sql_fast_path(db, AcademicGrade, scoped_students, filters, dimension)
+        if fast is not None:
+            fast["policyCode"] = "LATEST_FORMAL_SOURCE_V1"
+            return fast
+        # Projection rows retain every attribute used by the effective-grade
+        # policy without constructing tens of thousands of full ORM objects.
+        # Joining the scoped student projection also avoids serialising a 20K
+        # ``IN (...)`` predicate back to MySQL on every dashboard request.
+        query = db.query(
+            AcademicGrade.id,
+            AcademicGrade.acad_student_id,
+            AcademicGrade.course_id,
+            AcademicGrade.course_code,
+            AcademicGrade.course_version,
+            AcademicGrade.course_name,
+            AcademicGrade.nature,
+            AcademicGrade.credit_value,
+            AcademicGrade.score,
+            AcademicGrade.pass_status,
+            AcademicGrade.exam_type,
+            AcademicGrade.record_status,
+            AcademicGrade.source,
+            AcademicGrade.attempt_no,
+            AcademicGrade.effective_attempt_strategy,
+            scoped_students.c.class_id.label("student_class_id"),
+        ).join(
+            scoped_students,
+            AcademicGrade.acad_student_id == scoped_students.c.id,
+        ).filter(*filters)
         effective = [row for row in resolve_effective_grade(query.all()) if row.score is not None]
         all_scores = [int(row.score) for row in effective]
         passed = sum(1 for row in effective if str(row.pass_status or "").upper() == "PASSED")
@@ -1030,8 +1241,7 @@ def grade_analysis(user, term=None, dimension=None):
             groups = {}
             for row in effective:
                 if dimension == "class":
-                    student = student_by_id.get(int(row.acad_student_id))
-                    name = str(getattr(student, "class_id", None) or "未分班")
+                    name = str(row.student_class_id or "未分班")
                 else:
                     name = str(row.course_code or row.course_name or "未命名课程")
                 groups.setdefault(name, []).append(row)
