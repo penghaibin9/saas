@@ -88,9 +88,17 @@
         <view class="section-head"><text class="section-head__title">实习流程</text></view>
         <view class="card"><MobileTimeline :nodes="compliance.timeline && compliance.timeline.length ? compliance.timeline : i.timeline" /></view>
 
-        <view class="section-head"><text class="section-head__title">自助服务</text></view>
-        <view class="in__nav card">
-          <view v-for="n in navItems" :key="n.path" class="in__nav-item" @click="openSub(n.path)"><text class="in__nav-icon">{{ n.icon }}</text><text class="in__nav-label">{{ n.label }}</text></view>
+        <view class="section-head"><text class="section-head__title">阶段服务</text><text class="section-head__more">按当前实习状态整理</text></view>
+        <view class="in__service-groups">
+          <view v-for="group in serviceGroups" :key="group.key" class="in__service-group">
+            <view class="in__service-head">
+              <view><text class="in__service-title">{{ group.label }}</text><text class="in__service-hint">{{ group.hint }}</text></view>
+              <text class="in__service-count">{{ group.items.length }} 项</text>
+            </view>
+            <view class="in__nav card">
+              <view v-for="n in group.items" :key="n.path" class="in__nav-item" @click="openSub(n.path)"><text class="in__nav-icon">{{ n.icon }}</text><text class="in__nav-label">{{ n.label }}</text></view>
+            </view>
+          </view>
         </view>
       </view>
     </MobileGlobalState>
@@ -114,22 +122,22 @@ export default {
       i: null, state: 'loading', selectedBatchId: '', candidates: [],
       compliance: { items: [], blockers: [], warnings: [], timeline: [] }, complianceError: '',
       navItems: [
-        { label: '知情确认', path: '/pages/student/internship/consent/index', icon: '✅' },
-        { label: '安全教育', path: '/pages/student/internship/safety/index', icon: '⛑️' },
-        { label: '实习意向', path: '/pages/student/internship/intention/index', icon: '🎯' },
-        { label: '正式申请', path: '/pages/student/internship/application/index', icon: '📋' },
-        { label: '实习选岗', path: '/pages/student/internship/enterprises/index', icon: '🏢' },
-        { label: '三方协议', path: '/pages/student/internship/agreement/index', icon: '📄' },
-        { label: '实习保险', path: '/pages/student/internship/insurance/index', icon: '🛡️' },
-        { label: '实习计划', path: '/pages/student/internship/plan/index', icon: '🗂️' },
-        { label: '实习请假', path: '/pages/student/internship/leave/index', icon: '🗓️' },
-        { label: '补卡申请', path: '/pages/student/internship/makeup/index', icon: '📍' },
-        { label: '日报', path: '/pages/student/internship/process-report/index?type=daily', icon: '📝' },
-        { label: '月报', path: '/pages/student/internship/process-report/index?type=monthly', icon: '📑' },
-        { label: '实习总结', path: '/pages/student/internship/process-report/index?type=summary', icon: '📒' },
-        { label: '调岗退岗', path: '/pages/student/internship/change/index', icon: '🔄' },
-        { label: '实习求助', path: '/pages/student/internship/help/index', icon: '🆘' },
-        { label: '实习自评', path: '/pages/student/internship/self-eval/index', icon: '⭐' }
+        { label: '知情确认', path: '/pages/student/internship/consent/index', icon: '✅', stages: ['onboard'] },
+        { label: '安全教育', path: '/pages/student/internship/safety/index', icon: '⛑️', stages: ['onboard'] },
+        { label: '实习意向', path: '/pages/student/internship/intention/index', icon: '🎯', stages: ['selection'] },
+        { label: '正式申请', path: '/pages/student/internship/application/index', icon: '📋', stages: ['selection'] },
+        { label: '实习选岗', path: '/pages/student/internship/enterprises/index', icon: '🏢', stages: ['selection'] },
+        { label: '三方协议', path: '/pages/student/internship/agreement/index', icon: '📄', stages: ['onboard'] },
+        { label: '实习保险', path: '/pages/student/internship/insurance/index', icon: '🛡️', stages: ['onboard'] },
+        { label: '实习计划', path: '/pages/student/internship/plan/index', icon: '🗂️', stages: ['onboard', 'process'] },
+        { label: '实习请假', path: '/pages/student/internship/leave/index', icon: '🗓️', today: true },
+        { label: '补卡申请', path: '/pages/student/internship/makeup/index', icon: '📍', today: true },
+        { label: '日报', path: '/pages/student/internship/process-report/index?type=daily', icon: '📝', today: true },
+        { label: '月报', path: '/pages/student/internship/process-report/index?type=monthly', icon: '📑', stages: ['process'] },
+        { label: '实习总结', path: '/pages/student/internship/process-report/index?type=summary', icon: '📒', stages: ['result'] },
+        { label: '调岗退岗', path: '/pages/student/internship/change/index', icon: '🔄', stages: ['process'] },
+        { label: '实习求助', path: '/pages/student/internship/help/index', icon: '🆘', today: true },
+        { label: '实习自评', path: '/pages/student/internship/self-eval/index', icon: '⭐', stages: ['result'] }
       ]
     }
   },
@@ -140,9 +148,40 @@ export default {
     currentCandidateLabel() { return this.candidateLabels[this.candidateIndex] || this.i?.batch || '请选择批次' },
     visibleComplianceItems() { return (this.compliance.items || []).filter((x) => x.required || x.status !== 'NOT_APPLICABLE') },
     blockingReason() { return (this.compliance.blockers || []).map((x) => `${x.label}：${x.reason || x.statusLabel}`).join('；') },
-    completenessText() { const c = this.compliance.completeness; return c ? `${c.done}/${c.required}` : '' }
+    completenessText() { const c = this.compliance.completeness; return c ? `${c.done}/${c.required}` : '' },
+    currentStage() {
+      if (this.i?.historyMode || ['ASSESSING', 'ARCHIVED', 'ENDED'].includes(this.i?.statusText)) return 'result'
+      if (!this.i?.company || !this.i?.post) return 'selection'
+      if (this.i?.statusText === 'ONBOARD') return 'process'
+      return 'onboard'
+    },
+    serviceGroups() {
+      const actionRoute = String(this.compliance?.nextAction?.route || '').split('?')[0]
+      const required = actionRoute ? this.navItems.filter((item) => item.path.split('?')[0] === actionRoute) : []
+      const requiredPaths = new Set(required.map((item) => item.path))
+      const today = this.navItems.filter((item) => item.today && !requiredPaths.has(item.path))
+      const todayPaths = new Set(today.map((item) => item.path))
+      const stage = this.navItems.filter((item) => (item.stages || []).includes(this.currentStage) && !requiredPaths.has(item.path) && !todayPaths.has(item.path))
+      const stagePaths = new Set(stage.map((item) => item.path))
+      const more = this.navItems.filter((item) => !requiredPaths.has(item.path) && !todayPaths.has(item.path) && !stagePaths.has(item.path))
+      return [
+        { key: 'required', label: '当前必须做', hint: '来自学校合规任务', items: required },
+        { key: 'today', label: '今天', hint: '高频记录与即时求助', items: today },
+        { key: 'stage', label: '当前阶段服务', hint: '与你现在的实习阶段相关', items: stage },
+        { key: 'more', label: '更多服务', hint: '全部历史能力仍可进入', items: more }
+      ].filter((group) => group.items.length)
+    }
   },
-  onLoad() { this.restoreBatch(); this.load() },
+  onLoad(options = {}) {
+    const requestedBatchId = String(options.batchId || '').trim()
+    if (/^\d+$/.test(requestedBatchId)) {
+      this.selectedBatchId = requestedBatchId
+      this.persistBatch()
+    } else {
+      this.restoreBatch()
+    }
+    this.load()
+  },
   onShow() { if (this.i) this.load() },
   methods: {
     toast, go,
@@ -192,5 +231,11 @@ export default {
 .in__today-icon { font-size: 24px; }.in__today-title { font-size: var(--font-size-md); font-weight: var(--font-weight-medium); color: var(--text-primary); }.in__today-status { font-size: var(--font-size-sm); color: var(--success-600); }.in__today-status.is-warn { color: var(--warning-600); }.in__today-btn { margin-top: var(--space-2); font-size: var(--font-size-sm); color: var(--brand-primary); }
 .in__status-grid { display: flex; flex-wrap: wrap; }.in__status-item { width: 33.33%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: var(--space-2) 0; }.in__status-k { font-size: var(--font-size-xs); color: var(--text-tertiary); }
 .in__compliance-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-light); }.in__compliance-row:last-child { border-bottom: 0; }.in__compliance-row.is-clickable { cursor: pointer; }.in__compliance-label { display: block; color: var(--text-primary); font-size: var(--font-size-sm); }.in__compliance-reason { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); line-height: 1.5; }
-.in__nav { display: flex; flex-wrap: wrap; }.in__nav-item { width: 25%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--space-3) 0; }.in__nav-icon { font-size: 26px; line-height: 1; }.in__nav-label { font-size: var(--font-size-xs); color: var(--text-secondary); }
+.in__service-groups { display: flex; flex-direction: column; gap: var(--space-3); }
+.in__service-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-2); padding: 0 2px; }
+.in__service-title { display: block; color: var(--text-primary); font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); }
+.in__service-hint { display: block; margin-top: 2px; color: var(--text-tertiary); font-size: 10px; }
+.in__service-count { flex-shrink: 0; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.in__service-group:first-child .in__nav { border-color: var(--warning-300, #fcd34d); background: var(--warning-50, #fffbeb); }
+.in__nav { display: flex; flex-wrap: wrap; }.in__nav-item { width: 25%; min-height: var(--touch-target-min); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: var(--space-3) 0; }.in__nav-icon { font-size: 26px; line-height: 1; }.in__nav-label { font-size: var(--font-size-xs); color: var(--text-secondary); }
 </style>

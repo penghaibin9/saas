@@ -14,7 +14,7 @@
             <view class="ir__summary-metrics" v-if="tab === 'weekly'">
               <view class="ir__metric"><text>{{ weeklyPendingCount }}</text><text>待批阅</text></view>
               <view class="ir__metric is-danger"><text>{{ overdueCount }}</text><text>逾期</text></view>
-              <view class="ir__metric is-warning"><text>{{ weeklyRiskCount }}</text><text>风险提示</text></view>
+              <view class="ir__metric is-warning"><text>{{ weeklyRiskCount }}</text><text>已加载风险提示</text></view>
             </view>
             <view class="ir__summary-metrics" v-else-if="tab === 'visit'">
               <view class="ir__metric"><text>{{ visitPlans.length }}</text><text>巡访计划</text></view>
@@ -23,8 +23,8 @@
             </view>
             <view class="ir__summary-metrics" v-else>
               <view class="ir__metric is-danger"><text>{{ abnormalPendingCount }}</text><text>待处理</text></view>
-              <view class="ir__metric"><text>{{ abnormalCompletedCount }}</text><text>已处理</text></view>
-              <view class="ir__metric"><text>{{ data.abnormal.length }}</text><text>异常总数</text></view>
+              <view class="ir__metric"><text>{{ data.abnormal.length }}</text><text>已加载</text></view>
+              <view class="ir__metric"><text>{{ data.pagination?.exceptionTotal || 0 }}</text><text>待处理总数</text></view>
             </view>
           </view>
 
@@ -32,7 +32,7 @@
 
           <view v-if="tab !== 'visit' && sequentialItems.length > 1" class="ir__queue-bar">
             <text class="ir__queue-note">逐条处理 {{ sequentialItems.length }} 条{{ tab === 'weekly' ? '周报' : '异常' }}</text>
-            <text class="ir__queue-toggle" @click="sequentialMode ? stopSequential() : startSequential()">{{ sequentialMode ? '退出连续处理' : '连续处理' }}</text>
+            <button class="ir__queue-toggle" :aria-pressed="sequentialMode" @click="sequentialMode ? stopSequential() : startSequential()">{{ sequentialMode ? '退出连续处理' : '连续处理' }}</button>
           </view>
 
           <MobileSequentialQueue
@@ -72,17 +72,24 @@
               </view>
 
               <view v-else class="ir ir__queue-item is-risk">
-                <view class="row-between ir__head"><view class="flex-1 ir__identity"><text class="t-md t-bold">{{ item.student }}</text><text class="ir__company">{{ item.time || '时间待核对' }}</text></view><MobileStatusTag :status="item.status" :label="item.statusLabel" /></view>
+                <view class="row-between ir__head"><view class="flex-1 ir__identity"><text class="t-md t-bold">{{ item.student }}</text><text class="ir__company">{{ [item.className, item.company, item.post].filter(Boolean).join(' · ') || '实习信息待核对' }}</text></view><MobileStatusTag :status="item.status" :label="item.statusLabel" /></view>
                 <view class="ir__ck">
                   <view class="ir__ck-row"><text class="ir__label">异常类型</text><text class="ir__text is-danger">{{ item.type }}</text></view>
+                  <view class="ir__ck-row"><text class="ir__label">异常时间</text><text class="ir__text">{{ item.time || '—' }}</text></view>
                   <view class="ir__ck-row"><text class="ir__label">距离信息</text><text class="ir__text">{{ item.distance || '—' }}</text></view>
+                  <view class="ir__ck-row"><text class="ir__label">定位精度</text><text class="ir__text">{{ item.accuracy || '—' }}</text></view>
+                  <view class="ir__ck-row"><text class="ir__label">打卡地址</text><text class="ir__text flex-1">{{ item.address || '—' }}</text></view>
+                  <view class="ir__ck-row"><text class="ir__label">设备风险</text><text class="ir__text">{{ item.deviceRisk || '—' }}</text></view>
+                  <view v-if="item.streak" class="ir__ck-row"><text class="ir__label">连续异常</text><text class="ir__text">{{ item.streak }}</text></view>
                   <view class="ir__ck-row"><text class="ir__label">学生说明</text><text class="ir__text flex-1">{{ item.note || '学生未填写说明' }}</text></view>
+                  <view v-if="item.appealStatus || item.appealNote" class="ir__ck-row"><text class="ir__label">学生申诉</text><text class="ir__text flex-1">{{ item.appealNote || item.appealStatus }}</text></view>
                 </view>
+                <MobileInlineAlert v-if="!canDecideException(item)" type="danger" title="移动端证据不足，已禁止终态处理" :description="decisionFactMessage(item)" />
                 <view class="ir__next is-warning"><text class="ir__next-label">处理原则</text><text class="ir__next-text">超范围不直接认定作弊，应结合学生说明、定位信息和实际工作情况人工判断。</text></view>
                 <view class="ir__actions is-three">
-                  <button class="btn btn-ghost flex-1" :disabled="blocked" @click="ck(item, 'reject')">异常计入</button>
-                  <button class="ir__pass flex-1" :disabled="blocked" @click="ck(item, 'ok')">认定有效</button>
-                  <button class="ir__risk flex-1" :disabled="blocked" @click="ck(item, 'risk')">转风险</button>
+                  <button class="btn btn-ghost flex-1" :disabled="blocked || !canDecideException(item)" @click="ck(item, 'reject')">异常计入</button>
+                  <button class="ir__pass flex-1" :disabled="blocked || !canDecideException(item)" @click="ck(item, 'ok')">认定有效</button>
+                  <button class="ir__risk flex-1" :disabled="blocked || !canDecideException(item)" @click="ck(item, 'risk')">转风险</button>
                 </view>
                 <button v-if="sequentialConflict" class="btn btn-ghost" @click="restartSequential">已刷新，重新开始当前队列</button>
               </view>
@@ -125,8 +132,8 @@
                 <text v-else class="ir__done-text flex-1">该周报已完成批阅</text>
               </view>
             </view>
-            <view v-if="pagedFooter(data.reports) === 'more'" class="ir__paging" @click="pagedLoadMore">上拉加载更多</view>
-            <view v-else-if="pagedFooter(data.reports) === 'end'" class="ir__paging is-end">没有更多了</view>
+            <button v-if="queueFooter('weekly') === 'more'" class="ir__paging" :disabled="pagingBusy" @click="loadMoreQueue('weekly')">{{ pagingBusy ? '正在加载…' : '加载更多周报' }}</button>
+            <view v-else-if="queueFooter('weekly') === 'end'" class="ir__paging is-end">没有更多了</view>
           </view>
 
           <view v-else-if="tab === 'visit'" class="stack">
@@ -151,22 +158,29 @@
           <view v-else class="stack">
             <MobileGlobalState v-if="!data.abnormal.length" state="empty" title="暂无打卡异常" description="学生打卡异常（超范围或定位失败）会出现在这里。" />
             <view v-for="c in pagedSlice(data.abnormal)" :key="c.id" class="ir card is-risk">
-              <view class="row-between ir__head"><view class="flex-1 ir__identity"><text class="t-md t-bold">{{ c.student }}</text><text class="ir__company">{{ c.time || '时间待核对' }}</text></view><MobileStatusTag :status="c.status" :label="c.statusLabel" /></view>
+              <view class="row-between ir__head"><view class="flex-1 ir__identity"><text class="t-md t-bold">{{ c.student }}</text><text class="ir__company">{{ [c.className, c.company, c.post].filter(Boolean).join(' · ') || '实习信息待核对' }}</text></view><MobileStatusTag :status="c.status" :label="c.statusLabel" /></view>
               <view class="ir__ck">
                 <view class="ir__ck-row"><text class="ir__label">异常类型</text><text class="ir__text is-danger">{{ c.type }}</text></view>
+                <view class="ir__ck-row"><text class="ir__label">异常时间</text><text class="ir__text">{{ c.time || '—' }}</text></view>
                 <view class="ir__ck-row"><text class="ir__label">距离信息</text><text class="ir__text">{{ c.distance || '—' }}</text></view>
+                <view class="ir__ck-row"><text class="ir__label">定位精度</text><text class="ir__text">{{ c.accuracy || '—' }}</text></view>
+                <view class="ir__ck-row"><text class="ir__label">打卡地址</text><text class="ir__text flex-1">{{ c.address || '—' }}</text></view>
+                <view class="ir__ck-row"><text class="ir__label">设备风险</text><text class="ir__text">{{ c.deviceRisk || '—' }}</text></view>
+                <view v-if="c.streak" class="ir__ck-row"><text class="ir__label">连续异常</text><text class="ir__text">{{ c.streak }}</text></view>
                 <view class="ir__ck-row"><text class="ir__label">学生说明</text><text class="ir__text flex-1">{{ c.note || '学生未填写说明' }}</text></view>
+                <view v-if="c.appealStatus || c.appealNote" class="ir__ck-row"><text class="ir__label">学生申诉</text><text class="ir__text flex-1">{{ c.appealNote || c.appealStatus }}</text></view>
               </view>
+              <MobileInlineAlert v-if="!canDecideException(c)" type="danger" title="移动端证据不足，已禁止终态处理" :description="decisionFactMessage(c)" />
               <view class="ir__next is-warning"><text class="ir__next-label">处理原则</text><text class="ir__next-text">超范围不直接认定作弊；转风险会形成 canonical INT-R07 高风险单，必须填写原因。</text></view>
               <view class="ir__actions is-three" v-if="c.status === 'PENDING_HANDLE'">
-                <button class="btn btn-ghost flex-1" :disabled="acting" @click="ck(c, 'reject')">异常计入</button>
-                <button class="ir__pass flex-1" :disabled="acting" @click="ck(c, 'ok')">认定有效</button>
-                <button class="ir__risk flex-1" :disabled="acting" @click="ck(c, 'risk')">转风险</button>
+                <button class="btn btn-ghost flex-1" :disabled="acting || !canDecideException(c)" @click="ck(c, 'reject')">异常计入</button>
+                <button class="ir__pass flex-1" :disabled="acting || !canDecideException(c)" @click="ck(c, 'ok')">认定有效</button>
+                <button class="ir__risk flex-1" :disabled="acting || !canDecideException(c)" @click="ck(c, 'risk')">转风险</button>
               </view>
               <text v-else class="ir__done-text">该异常已处理</text>
             </view>
-            <view v-if="pagedFooter(data.abnormal) === 'more'" class="ir__paging" @click="pagedLoadMore">上拉加载更多</view>
-            <view v-else-if="pagedFooter(data.abnormal) === 'end'" class="ir__paging is-end">没有更多了</view>
+            <button v-if="queueFooter('abnormal') === 'more'" class="ir__paging" :disabled="pagingBusy" @click="loadMoreQueue('abnormal')">{{ pagingBusy ? '正在加载…' : '加载更多异常' }}</button>
+            <view v-else-if="queueFooter('abnormal') === 'end'" class="ir__paging is-end">没有更多了</view>
           </view>
         </view>
       </view>
@@ -192,15 +206,15 @@ export default {
       data: null, state: 'loading', tab: 'weekly', acting: false,
       tabs: [{ key: 'weekly', label: '周报批阅' }, { key: 'visit', label: '指导巡访' }, { key: 'abnormal', label: '打卡异常' }],
       visitPlans: [], visitState: 'loading', visitActing: false, visitTarget: null,
-      remindActingId: '', sequentialMode: false, sequentialIndex: 0, sequentialConflict: false
+      remindActingId: '', sequentialMode: false, sequentialIndex: 0, sequentialConflict: false,
+      pagingBusy: false
     }
   },
   computed: {
-    weeklyPendingCount() { return (this.data?.reports || []).filter((item) => item.status === 'PENDING_REVIEW').length },
-    overdueCount() { return (this.data?.reports || []).filter((item) => item.overdue).length },
+    weeklyPendingCount() { return Number(this.data?.pagination?.weeklyPendingTotal || 0) },
+    overdueCount() { return Number(this.data?.pagination?.weeklyOverdueTotal || 0) },
     weeklyRiskCount() { return (this.data?.reports || []).filter((item) => item.riskFlag).length },
-    abnormalPendingCount() { return (this.data?.abnormal || []).filter((item) => item.status === 'PENDING_HANDLE').length },
-    abnormalCompletedCount() { return (this.data?.abnormal || []).length - this.abnormalPendingCount },
+    abnormalPendingCount() { return Number(this.data?.pagination?.exceptionTotal || 0) },
     visitedStudentCount() { return this.visitPlans.reduce((total, plan) => total + (plan.students || []).filter((item) => item.visited).length, 0) },
     pendingVisitStudentCount() { return this.visitPlans.reduce((total, plan) => total + (plan.students || []).filter((item) => !item.visited).length, 0) },
     tabSummaryLabel() { return this.tab === 'weekly' ? '周报办理情况' : this.tab === 'visit' ? '指导巡访进度' : '打卡异常办理情况' },
@@ -228,7 +242,7 @@ export default {
     sequentialCurrent() { return this.sequentialItems[this.sequentialIndex] || null }
   },
   onLoad() { this.load(); this.loadVisits() },
-  onReachBottom() { if (!this.sequentialMode) this.pagedReachBottom() },
+  onReachBottom() { if (!this.sequentialMode && this.tab !== 'visit') this.loadMoreQueue(this.tab) },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     Promise.allSettled([this.load(), this.loadVisits()]).finally(() => uni.stopPullDownRefresh())
@@ -242,6 +256,38 @@ export default {
       if (!this.data) return []
       return this.tab === 'weekly' ? (this.data.reports || []) : (this.data.abnormal || [])
     },
+    queueFooter(kind) {
+      const list = kind === 'weekly' ? (this.data?.reports || []) : (this.data?.abnormal || [])
+      if (!list.length) return ''
+      if (this.pagerShown < list.length) return 'more'
+      const pagination = this.data?.pagination || {}
+      return (kind === 'weekly' ? pagination.weeklyHasMore : pagination.exceptionHasMore) ? 'more' : 'end'
+    },
+    async loadMoreQueue(kind) {
+      if (this.pagingBusy || !this.data || !['weekly', 'abnormal'].includes(kind)) return
+      const list = kind === 'weekly' ? this.data.reports : this.data.abnormal
+      if (this.pagerShown < list.length) { this.pagedLoadMore(); return }
+      const pagination = this.data.pagination || {}
+      const hasMore = kind === 'weekly' ? pagination.weeklyHasMore : pagination.exceptionHasMore
+      if (!hasMore) return
+      this.pagingBusy = true
+      try {
+        const next = await teacherApi.getWeeklyReports({
+          weeklyPage: kind === 'weekly' ? Number(pagination.weeklyPage || 1) + 1 : Number(pagination.weeklyPage || 1),
+          exceptionPage: kind === 'abnormal' ? Number(pagination.exceptionPage || 1) + 1 : Number(pagination.exceptionPage || 1),
+          pageSize: Number(pagination.pageSize || 20), append: true
+        })
+        const key = kind === 'weekly' ? 'reports' : 'abnormal'
+        const known = new Set((this.data[key] || []).map((item) => String(item.id)))
+        this.data[key].push(...(next[key] || []).filter((item) => !known.has(String(item.id))))
+        this.data.pagination = { ...pagination, ...(next.pagination || {}) }
+        this.pagedLoadMore()
+      } catch (e) {
+        toast(normalizeError(e).text)
+      } finally {
+        this.pagingBusy = false
+      }
+    },
     startSequential() {
       if (!this.sequentialItems.length || this.tab === 'visit') return
       this.sequentialMode = true; this.sequentialIndex = 0; this.sequentialConflict = false
@@ -249,11 +295,17 @@ export default {
     stopSequential() { this.sequentialMode = false; this.sequentialIndex = 0; this.sequentialConflict = false },
     restartSequential() { this.sequentialConflict = false; this.sequentialIndex = Math.max(0, Math.min(this.sequentialIndex, this.sequentialItems.length - 1)) },
     openSequentialItem(item) { if (item) toast(`${item.student || '当前学生'} · ${this.tab === 'weekly' ? item.week || '周报' : item.type || '异常'}`) },
+    canDecideException(item) { return !!item?.decisionFactsComplete && Number.isInteger(item?.expectedVersion) && item.expectedVersion >= 0 },
+    decisionFactMessage(item) {
+      const missing = Array.isArray(item?.missingDecisionFacts) ? item.missingDecisionFacts.filter(Boolean) : []
+      if (!Number.isInteger(item?.expectedVersion) || item.expectedVersion < 0) missing.push('对象版本')
+      return `缺少${missing.length ? missing.join('、') : '完整定位或设备'}事实。请刷新；仍不完整时改在 PC 端核对完整证据。`
+    },
     nextSequential() { if (!this.sequentialConflict && !this.acting && this.sequentialIndex < this.sequentialItems.length - 1) this.sequentialIndex += 1 },
     load(done) {
       this.state = 'loading'; this.pagedReset()
       const currentId = this.sequentialCurrent && String(this.sequentialCurrent.id)
-      const request = teacherApi.getWeeklyReports().then((d) => {
+      const request = teacherApi.getWeeklyReports({ weeklyPage: 1, exceptionPage: 1, pageSize: 20 }).then((d) => {
         d.reports.forEach((r) => { if (!r._body) r._body = 'idle' })
         this.data = d
         this.tabs[0].badge = d.reports.filter((r) => r.status === 'PENDING_REVIEW').length
@@ -355,6 +407,7 @@ export default {
     },
     ck(c, type) {
       if (this.acting) return
+      if (!this.canDecideException(c)) { toast(this.decisionFactMessage(c)); return }
       const isRisk = type === 'risk'
       const action = type === 'ok' ? 'REASONABLE' : isRisk ? 'TO_RISK' : 'ABNORMAL'
       const title = type === 'ok' ? '认定有效' : isRisk ? '转为高风险跟进' : '异常计入'
@@ -380,4 +433,5 @@ export default {
 
 <style scoped>
 .ir__tabs{padding-bottom:var(--space-3)}.ir__page{display:flex;flex-direction:column;gap:var(--space-3)}.ir__summary{display:flex;align-items:stretch;gap:var(--space-3);padding:var(--space-3)}.ir__summary-main{flex:1;min-width:0}.ir__summary-label{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary)}.ir__summary-value{display:flex;align-items:baseline;gap:4px;margin-top:4px}.ir__summary-value text:first-child{font-size:34px;line-height:1;font-weight:700;color:var(--teacher-700)}.ir__summary-value text:last-child{font-size:var(--font-size-sm);color:var(--text-secondary)}.ir__summary-note{display:block;margin-top:8px;font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.ir__summary-metrics{width:50%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--gray-50);border-radius:var(--radius-md);overflow:hidden}.ir__metric{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 3px;border-left:1px solid var(--border-light);text-align:center}.ir__metric:first-child{border-left:0}.ir__metric text:first-child{font-size:var(--font-size-lg);font-weight:700;color:var(--text-primary)}.ir__metric.is-danger text:first-child{color:var(--danger-600)}.ir__metric.is-warning text:first-child{color:var(--warning-700)}.ir__metric.is-success text:first-child{color:var(--success-700)}.ir__metric text:last-child{font-size:10px;line-height:1.25;color:var(--text-tertiary)}.ir{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3)}.ir.is-risk{border-left:4px solid var(--warning-500)}.ir__head{align-items:flex-start}.ir__identity{min-width:0}.ir__week{font-size:var(--font-size-xs);color:var(--teacher-700);background:var(--teacher-50);padding:2px 8px;border-radius:var(--radius-full)}.ir__company{display:block;font-size:var(--font-size-sm);color:var(--text-secondary);margin-top:3px;word-break:break-word}.ir__meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:var(--space-2);background:var(--gray-50);border-radius:var(--radius-md)}.ir__meta>view{min-width:0;display:flex;flex-direction:column;gap:3px}.ir__meta text:first-child{font-size:10px;color:var(--text-tertiary)}.ir__meta text:last-child{font-size:var(--font-size-xs);font-weight:600;color:var(--text-primary);word-break:break-word}.ir__meta>view.is-danger text:last-child{color:var(--danger-600)}.ir__body{padding:var(--space-2) var(--space-3);border:1px solid var(--border-light);border-radius:var(--radius-md)}.ir__section+.ir__section{margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px dashed var(--border-light)}.ir__bodybtn{text-align:center;padding:10px;border:1px solid var(--teacher-200,#bfdbfe);border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.ir__bodybtn text{font-size:var(--font-size-sm);color:var(--teacher-700)}.ir__bodyhint{font-size:var(--font-size-sm);color:var(--text-tertiary);text-align:center;padding:var(--space-3) 0}.ir__bodyhint.is-link{color:var(--danger-600)}.ir__label{font-size:var(--font-size-xs);font-weight:600;color:var(--text-tertiary)}.ir__text{display:block;font-size:var(--font-size-base);color:var(--text-primary);margin-top:4px;line-height:1.65;white-space:pre-wrap;word-break:break-word}.ir__text.is-danger{color:var(--danger-600)}.ir__ck{background:var(--gray-50);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3)}.ir__ck-row{display:flex;gap:var(--space-3);padding:5px 0}.ir__ck-row .ir__label{width:62px;flex-shrink:0}.ir__feedback{background:var(--success-50);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3)}.ir__feedback-label{font-size:var(--font-size-xs);font-weight:600;color:var(--success-700)}.ir__feedback-text{display:block;font-size:var(--font-size-sm);color:var(--text-primary);margin-top:4px;line-height:1.55;word-break:break-word}.ir__score{display:inline-block;margin-top:5px;font-size:var(--font-size-xs);color:var(--success-700)}.ir__next{display:flex;gap:10px;padding:10px 12px;border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.ir__next.is-warning{background:var(--warning-50,#fff7ed)}.ir__next-label{flex-shrink:0;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.ir__next-text{font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.ir__actions{display:flex;gap:var(--space-2)}.ir__actions.is-three button{font-size:var(--font-size-sm);padding-left:4px;padding-right:4px}.ir__pass{min-height:var(--touch-target-min);border-radius:var(--radius-md);border:none;background:var(--teacher-600);color:#fff;font-size:var(--font-size-md)}.ir__pass::after{border:none}.ir__risk{min-height:var(--touch-target-min);border-radius:var(--radius-md);border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600);font-size:var(--font-size-md)}.ir__risk::after{border:none}.ir__done-text{text-align:center;color:var(--text-tertiary);font-size:var(--font-size-sm);line-height:var(--touch-target-min)}.ir__paging{text-align:center;padding:var(--space-3) 0;font-size:var(--font-size-sm);color:var(--teacher-700)}.ir__paging.is-end{color:var(--text-tertiary)}.ir__visit-summary{display:flex;justify-content:space-between;gap:12px;padding:var(--space-2) var(--space-3);border-radius:var(--radius-md);background:var(--gray-50);font-size:var(--font-size-xs);color:var(--text-secondary)}.ir__visit-students{border-top:1px solid var(--border-light);padding-top:var(--space-2)}.ir__visit-row{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) 0;border-bottom:1px solid var(--border-light)}.ir__visit-row:last-child{border-bottom:0}.ir__visit-copy{min-width:0}.ir__visit-copy>text:last-child{display:block;margin-top:2px;font-size:10px;color:var(--text-tertiary)}.ir__visit-done{font-size:var(--font-size-sm);color:var(--success-600)}.ir__visit-btn{font-size:var(--font-size-sm);color:#fff;background:var(--teacher-600);border:none;border-radius:var(--radius-md);padding:7px 14px;flex-shrink:0}.ir__visit-btn[disabled]{background:var(--gray-300);color:var(--text-tertiary)}.ir__queue-bar{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)}.ir__queue-note{font-size:var(--font-size-sm);color:var(--text-secondary)}.ir__queue-toggle{font-size:var(--font-size-sm);color:var(--teacher-700);flex-shrink:0}.ir__queue-item{padding:0}@media(max-width:360px){.ir__summary{flex-direction:column}.ir__summary-metrics{width:100%}.ir__meta{grid-template-columns:1fr}.ir__ck-row{flex-direction:column;gap:3px}.ir__ck-row .ir__label{width:auto}.ir__actions.is-three{flex-direction:column}}
+.ir__paging{width:100%;border:0;background:transparent}.ir__paging::after{border:0}.ir__queue-toggle{margin:0;padding:0;border:0;background:transparent;line-height:var(--touch-target-min)}.ir__queue-toggle::after{border:0}
 </style>

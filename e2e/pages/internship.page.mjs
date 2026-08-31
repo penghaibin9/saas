@@ -30,22 +30,43 @@ export class StudentInternshipPage {
     this.fixture = fixture
   }
 
-  async openLeave() {
-    await this.page.goto(`${this.baseUrl}/internship`)
-    await expect(this.page.getByRole('button', { name: '实习请假' })).toBeVisible()
-    await expect(this.page.getByText('正在加载实习信息…', { exact: true })).toBeHidden()
-
+  async selectExactBatchIfNeeded() {
     const batchSelector = this.page.getByText('请选择要办理的实习批次', { exact: true })
-    if (await batchSelector.count()) {
-      await expect(batchSelector).toBeVisible()
+    if (await batchSelector.isVisible().catch(() => false)) {
       const targetBatch = this.page.getByRole('button').filter({ hasText: this.fixture.batchName }).first()
       await expect(targetBatch).toBeVisible()
+      const selected = this.page.waitForResponse((response) =>
+        apiPath(response) === '/api/v1/portal/internship/my'
+        && response.request().headers()['x-internship-batch-id'] === String(this.fixture.batchId)
+      )
       await targetBatch.click()
+      await selected
+      await expect(batchSelector).toBeHidden()
     }
+  }
+
+  async openGroupedTab(groupName, tabName) {
+    const tab = this.page.getByRole('button', { name: tabName, exact: true })
+    if (!(await tab.isVisible().catch(() => false))) {
+      const group = this.page.locator('details.sp-process-group').filter({ hasText: groupName }).first()
+      await expect(group).toBeVisible()
+      await group.locator('summary').click()
+    }
+    await expect(tab).toBeVisible()
+    await tab.click()
+  }
+
+  async openLeave() {
+    const initial = this.page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/my')
+    await this.page.goto(`${this.baseUrl}/internship`)
+    await initial
+
+    await this.selectExactBatchIfNeeded()
 
     await expect(this.page.getByText(this.fixture.companyName).first()).toBeVisible()
     await expect(this.page.getByText(this.fixture.positionName).first()).toBeVisible()
-    await this.page.getByRole('button', { name: '实习请假' }).click()
+    await this.openGroupedTab('在岗办理', '实习请假')
     await expect(this.page.getByText('发起请假', { exact: true })).toBeVisible()
     await expect(this.page.getByText('我的请假', { exact: true })).toBeVisible()
   }

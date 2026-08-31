@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "implementedAt": "2026-08-30T09:20:00Z",
+  "status": "IMPLEMENTED_STATIC_GATES_GREEN_RUNTIME_MYSQL_PENDING",
+  "scope": "Student PC internship workbench IA and local source truth states",
+  "experience": {
+    "nowActionBeforeNavigation": true,
+    "nowActionFields": [
+      "reason",
+      "recentChange",
+      "nextActor",
+      "exact existing view"
+    ],
+    "groups": {
+      "安排与入岗": ["overview", "plan", "insurance", "agreement"],
+      "选岗与申请": ["enterprises", "intention", "application"],
+      "在岗办理": ["checkin", "makeup", "leave", "report"],
+      "变更与结果": ["change", "help", "eval"]
+    },
+    "legacyCapabilitiesPreserved": 14,
+    "parallelTopLevelTabsRemoved": true,
+    "queryDeepLink": "?view=<legacy-tab-key>",
+    "batchContextPreserved": true
+  },
+  "sourceTruth": {
+    "states": ["IDLE", "LOADING", "READY", "EMPTY", "ERROR"],
+    "localRetry": true,
+    "errorCollapsedToEmpty": false,
+    "initialSources": ["agreement", "insurance", "plan", "current view"],
+    "allFourteenDomainsSeriallyFetched": false,
+    "sourceLoadingAfterViewSelection": "lazy and cached until a write or explicit retry"
+  },
+  "authority": {
+    "newWorkflowCreated": false,
+    "newPermissionCreated": false,
+    "newWriteEndpointCreated": false,
+    "writesRemainOnExistingPortalApiAndInternshipCoreApi": true
+  },
+  "verification": [
+    { "gate": "targeted V8 workbench contract", "result": "4 passed, 0 failed" },
+    { "gate": "student portal full node test suite", "result": "106 passed, 0 failed" },
+    { "gate": "student portal production build", "result": "GREEN" },
+    { "gate": "ESLint touched Student PC view", "result": "GREEN" },
+    {
+      "gate": "positive and negative browser runtime",
+      "result": "RUNTIME_BLOCKED",
+      "reason": "The isolated exact-head Docker MySQL stopped accepting handshakes after canonical migration and seed completion; SQLite substitution is prohibited."
+    }
+  ]
+}

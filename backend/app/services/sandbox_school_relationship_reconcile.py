@@ -103,7 +103,10 @@ def _repair_applied_partial_schedule_changes(db, tenant_id: int) -> dict:
     repaired_changes = []
     for change in changes:
         origin = tenant_get(
-            db, AaScheduleItem, int(change.origin_item_id or 0), tenant_id=tenant_id
+            db,
+            AaScheduleItem,
+            int(change.origin_item_id or 0),
+            tenant_id=tenant_id,
         )
         if not origin or origin.is_deleted or origin.status != "CHANGED":
             continue

@@ -209,7 +209,12 @@ export default {
       this.submitting = false
       if (res.code !== 0) return toast.error(res.message || '提交失败')
       toast.success('已保存并写审计')
-      this.backToList()
+      const query = { ...this.$route.query, panel: this.type, id: res.data.id, receipt: 'created' }
+      delete query.type
+      this.$router.push({
+        path: LIST_PATH,
+        query
+      })
     }
   }
 }

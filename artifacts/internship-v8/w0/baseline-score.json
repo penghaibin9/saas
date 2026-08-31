@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T08:18:09.624311Z",
+  "scoreType": "AUTHORITY_STATIC_PLUS_PARTIAL_RUNTIME_BASELINE",
+  "dimensions": [
+    {
+      "dimension": "找事效率",
+      "score": 0.55,
+      "max": 1.0
+    },
+    {
+      "dimension": "导航 IA",
+      "score": 0.45,
+      "max": 1.0
+    },
+    {
+      "dimension": "核心流程成熟度",
+      "score": 0.9,
+      "max": 1.0
+    },
+    {
+      "dimension": "决策效率",
+      "score": 0.78,
+      "max": 1.0
+    },
+    {
+      "dimension": "操作省力",
+      "score": 0.76,
+      "max": 1.0
+    },
+    {
+      "dimension": "4+1连续",
+      "score": 0.86,
+      "max": 1.0
+    },
+    {
+      "dimension": "Recovery",
+      "score": 0.88,
+      "max": 1.0
+    },
+    {
+      "dimension": "性能",
+      "score": 0.84,
+      "max": 1.0
+    },
+    {
+      "dimension": "信任/安全",
+      "score": 0.93,
+      "max": 1.0
+    },
+    {
+      "dimension": "发布可靠",
+      "score": 0.9,
+      "max": 1.0
+    }
+  ],
+  "total": 7.85,
+  "browserValidation": "PARTIAL_BASELINE_CAPTURED_FINAL_MATRIX_PENDING",
+  "claim10of10": false
+}

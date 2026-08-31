@@ -98,6 +98,12 @@ export const teacherInternshipApplications = (batchId, page = 1, pageSize = 20) 
 }
 export const teacherInternshipApplicationReview = (applicationId, batchId, body) =>
   realRequest(batchPath(`/mobile/teacher/internship/context/applications/${enc(applicationId)}/review`, batchId), { method: 'POST', data: body || {} })
+export const teacherInternshipChanges = (batchId, page = 1, pageSize = 20) => {
+  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/changes', batchId, page, pageSize)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipChangeReview = (changeId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/changes/${enc(changeId)}/review`, batchId), { method: 'POST', data: body || {} })
 
 /** 教师保险核验直接复用学校 PC 正式接口，权限、范围、版本契约完全同源。 */
 export const teacherInternshipInsurancePending = (batchId) => {
@@ -189,3 +195,12 @@ export const studentInternshipAgreementDetail = (agreementId) =>
   realRequest(`/mobile/internship/context/agreements/${enc(agreementId)}`)
 export const studentInternshipAgreementConfirm = (agreementId, body) =>
   realRequest(`/mobile/internship/context/agreements/${enc(agreementId)}/confirm`, { method: 'POST', data: body || {} })
+
+export const studentInternshipChanges = (batchId, internshipId) =>
+  realRequest(`/mobile/internship/context/changes?batchId=${encodeURIComponent(requireBatch(batchId))}&internshipId=${enc(internshipId)}`)
+export const studentInternshipChangeTargets = (batchId, internshipId, changeType, keyword = '', page = 1, pageSize = 20) =>
+  realRequest(`/mobile/internship/context/changes/target-positions?batchId=${encodeURIComponent(requireBatch(batchId))}&internshipId=${enc(internshipId)}&changeType=${enc(changeType)}&keyword=${enc(keyword)}&page=${enc(page)}&pageSize=${enc(pageSize)}`)
+export const studentInternshipChangeApply = (body) =>
+  realRequest('/mobile/internship/context/changes', { method: 'POST', data: body || {} })
+export const studentInternshipChangeWithdraw = (changeId, body) =>
+  realRequest(`/mobile/internship/context/changes/${enc(changeId)}/withdraw`, { method: 'POST', data: body || {} })

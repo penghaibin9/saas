@@ -20,7 +20,7 @@ from app.modules.internship.services import internship_student_profile_service a
 from app.modules.internship.services import internship_student_selection_service as selection_svc
 from app.modules.internship.services import internship_volunteer_group_service as group_svc
 from app.modules.internship.services import internship_volunteer_retry
-from app.services.db_service import _tid, session
+from app.services.db_service import _as_id, _tid, session
 
 
 def _expected_group_version(body: dict) -> int:
@@ -34,7 +34,12 @@ def _expected_group_version(body: dict) -> int:
     return value
 
 
-def _resolve_and_lock_group_in_tx(db, *, tenant_id: int, student_id: int, payload: dict):
+def _resolve_and_lock_group_in_tx(db, *, tenant_id: int, student_id: int, payload: dict, batch_id=None):
+    if batch_id not in (None, ""):
+        selected_batch_id = _as_id(batch_id)
+        if payload.get("batchId") not in (None, "") and _as_id(payload["batchId"]) != selected_batch_id:
+            raise AppException("DATA_CONFLICT", "请求批次与当前选择的实习批次不一致", http_status=409)
+        payload["batchId"] = selected_batch_id
     campaign, resolved_record = selection_svc._resolve_context_in_tx(
         db,
         tenant_id=tenant_id,
@@ -89,7 +94,7 @@ def _result(group: InternshipVolunteerGroup, record: InternshipRecord, rows: lis
     }
 
 
-def withdraw_my_submission(*, user: dict, body: dict) -> dict:
+def withdraw_my_submission(*, user: dict, body: dict, batch_id=None) -> dict:
     """Withdraw the whole current SUBMITTED group back to DRAFT without revalidating positions."""
     payload = dict(body or {})
     expected_group = _expected_group_version(payload)
@@ -99,7 +104,7 @@ def withdraw_my_submission(*, user: dict, body: dict) -> dict:
     with session() as db:
         def _operation():
             campaign, record, group = _resolve_and_lock_group_in_tx(
-                db, tenant_id=tenant_id, student_id=student_id, payload=payload,
+                db, tenant_id=tenant_id, student_id=student_id, payload=payload, batch_id=batch_id,
             )
             if int(group.version or 0) != expected_group:
                 raise AppException("DATA_CONFLICT", "志愿组版本已变化，请刷新后重试", http_status=409)
@@ -176,7 +181,7 @@ def withdraw_my_submission(*, user: dict, body: dict) -> dict:
         return _result(group, record, rows)
 
 
-def request_my_unlock(*, user: dict, body: dict) -> dict:
+def request_my_unlock(*, user: dict, body: dict, batch_id=None) -> dict:
     payload = dict(body or {})
     expected_group = _expected_group_version(payload)
     reason = str(payload.get("reason") or "").strip()
@@ -186,7 +191,7 @@ def request_my_unlock(*, user: dict, body: dict) -> dict:
     with session() as db:
         def _operation():
             campaign, record, group = _resolve_and_lock_group_in_tx(
-                db, tenant_id=tenant_id, student_id=student_id, payload=payload,
+                db, tenant_id=tenant_id, student_id=student_id, payload=payload, batch_id=batch_id,
             )
             current_version = int(group.version or 0)
             if group.unlock_requested_at is not None and group.unlock_request_reason == reason and group.status == "LOCKED":
@@ -206,12 +211,12 @@ def request_my_unlock(*, user: dict, body: dict) -> dict:
         return _result(group, record, rows)
 
 
-def list_my_submissions(*, user: dict) -> dict:
+def list_my_submissions(*, user: dict, batch_id=None) -> dict:
     tenant_id = _tid()
     student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
         campaign, record = selection_svc._resolve_context_in_tx(
-            db, tenant_id=tenant_id, student_id=student_id,
+            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id,
         )
         group = db.scalar(select(InternshipVolunteerGroup).where(
             InternshipVolunteerGroup.tenant_id == tenant_id,
@@ -247,7 +252,7 @@ def list_my_submissions(*, user: dict) -> dict:
         return {"items": items, "total": len(items)}
 
 
-def get_my_submission(*, user: dict, submission_version: int) -> dict:
+def get_my_submission(*, user: dict, submission_version: int, batch_id=None) -> dict:
     try:
         version = int(submission_version)
     except (TypeError, ValueError) as exc:
@@ -258,7 +263,7 @@ def get_my_submission(*, user: dict, submission_version: int) -> dict:
     student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
         campaign, record = selection_svc._resolve_context_in_tx(
-            db, tenant_id=tenant_id, student_id=student_id,
+            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id,
         )
         group = db.scalar(select(InternshipVolunteerGroup).where(
             InternshipVolunteerGroup.tenant_id == tenant_id,
@@ -290,7 +295,7 @@ def get_my_submission(*, user: dict, submission_version: int) -> dict:
         }
 
 
-def revoke_my_contact_consent(*, user: dict, body: dict) -> dict:
+def revoke_my_contact_consent(*, user: dict, body: dict, batch_id=None) -> dict:
     payload = dict(body or {})
     expected_group = _expected_group_version(payload)
     tenant_id = _tid()
@@ -299,7 +304,7 @@ def revoke_my_contact_consent(*, user: dict, body: dict) -> dict:
     with session() as db:
         def _operation():
             campaign, record, group = _resolve_and_lock_group_in_tx(
-                db, tenant_id=tenant_id, student_id=student_id, payload=payload,
+                db, tenant_id=tenant_id, student_id=student_id, payload=payload, batch_id=batch_id,
             )
             rows = _lock_applications_in_tx(
                 db, tenant_id=tenant_id, record_id=record.id, campaign_id=campaign.id,

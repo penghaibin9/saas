@@ -192,6 +192,7 @@ test.describe('岗位实习审计：IX-003 企业生命周期 + IX-005 岗位生
 
   test('IX-003/005：Student PC 只看到 server truth 的已发布、已准入岗位', async ({ page }) => {
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+    await page.evaluate((batchId) => sessionStorage.setItem('student_portal_internship_batch_v1', String(batchId)), fixture.batchId)
     await page.goto(`${config.studentBaseUrl}/internship/selection`)
     await expect(page.getByText(finalPositionTitle(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(companyName(), { exact: false }).first()).toBeVisible()
@@ -210,6 +211,7 @@ test.describe('岗位实习审计：IX-003 企业生命周期 + IX-005 岗位生
     await expect(row).toContainText('黑名单')
 
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+    await page.evaluate((batchId) => sessionStorage.setItem('student_portal_internship_batch_v1', String(batchId)), fixture.batchId)
     await page.goto(`${config.studentBaseUrl}/internship/selection`)
     await expect(page.getByText(finalPositionTitle(), { exact: false })).toHaveCount(0)
 

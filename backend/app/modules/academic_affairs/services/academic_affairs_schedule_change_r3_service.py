@@ -262,7 +262,7 @@ def review(cid, user, action, comment="", *, expected_version=None) -> dict:
             raise AppException("DATA_CONFLICT", "原课表项不存在，终审不能生效", http_status=409)
         from app.models import AaScheduleBatch
         batch = tenant_get(
-            db, AaScheduleBatch, int(origin.batch_id), tenant_id=_legacy._tid()
+            db, AaScheduleBatch, int(origin.batch_id), tenant_id=_legacy._tid(),
         ) if origin.batch_id else None
         _legacy._require_current_published_origin(db, batch, origin)
         if change.change_type in ("ADJUST", "STOP") and origin.status != "EFFECTIVE":

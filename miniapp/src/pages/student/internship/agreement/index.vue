@@ -66,12 +66,14 @@ export default {
       list: [],
       pageState: 'loading',
       detail: null,
-      submitting: false
+      submitting: false,
+      rejectReasonDraft: ''
     }
   },
   onLoad(q) {
     this._openId = q && q.id ? String(q.id) : ''
-    this.loadList()
+    if (this._openId) this.openExactDetail(this._openId)
+    else this.loadList()
   },
   methods: {
     statusHint(s) { return HINT[s] || '请查看详情' },
@@ -80,12 +82,19 @@ export default {
       studentApi.getInternshipAgreements().then((rows) => {
         this.list = rows || []
         this.pageState = 'ready'
-        if (this._openId) {
-          const hit = this.list.find((x) => String(x.id) === this._openId)
-          if (hit) this.openDetail(hit)
-          this._openId = ''
-        }
       }).catch(() => { this.pageState = 'error' })
+    },
+    openExactDetail(id) {
+      this.pageState = 'loading'
+      studentApi.getInternshipAgreementDetail(id).then((d) => {
+        this.detail = d
+        this.list = d ? [d] : []
+        this.pageState = 'ready'
+        this._openId = ''
+      }).catch((e) => {
+        this.pageState = 'error'
+        toast((e && e.message) || '加载协议详情失败')
+      })
     },
     openDetail(item) {
       this.pageState = 'loading'
@@ -98,6 +107,21 @@ export default {
       })
     },
     closeDetail() { this.detail = null },
+    contextPayload() {
+      return {
+        batchId: this.detail?.batchId,
+        internshipId: this.detail?.internId,
+        expectedVersion: this.detail?.version
+      }
+    },
+    submitError(e, fallback) {
+      const code = String(e?.code || e?.status || '')
+      if (code.includes('409') || code.includes('CONFLICT')) {
+        toast('协议已被其他操作更新，当前页面已保留；请重新打开核对，系统不会自动重放')
+        return
+      }
+      toast((e && e.message) || fallback)
+    },
     confirm() {
       if (this.submitting || !this.detail) return
       uni.showModal({
@@ -106,12 +130,14 @@ export default {
         success: (r) => {
           if (!r.confirm) return
           this.submitting = true
-          studentApi.confirmInternshipAgreement(this.detail.id, { action: 'CONFIRM' }).then(() => {
+          studentApi.confirmInternshipAgreement(this.detail.id, {
+            action: 'CONFIRM', ...this.contextPayload()
+          }).then(() => {
             toast('协议已确认')
             this.closeDetail()
             this.loadList()
           }).catch((e) => {
-            toast((e && e.message) || '确认失败，请稍后重试')
+            this.submitError(e, '确认失败，请稍后重试')
           }).finally(() => { this.submitting = false })
         }
       })
@@ -121,18 +147,23 @@ export default {
       uni.showModal({
         title: '驳回协议',
         editable: true,
+        content: this.rejectReasonDraft,
         placeholderText: '请填写驳回原因（不少于5字）',
         success: (r) => {
           if (!r.confirm) return
           const reason = (r.content || '').trim()
+          this.rejectReasonDraft = reason
           if (reason.length < 5) return toast('驳回原因不少于 5 字')
           this.submitting = true
-          studentApi.confirmInternshipAgreement(this.detail.id, { action: 'REJECT', reason }).then(() => {
+          studentApi.confirmInternshipAgreement(this.detail.id, {
+            action: 'REJECT', reason, ...this.contextPayload()
+          }).then(() => {
+            this.rejectReasonDraft = ''
             toast('已提交驳回')
             this.closeDetail()
             this.loadList()
           }).catch((e) => {
-            toast((e && e.message) || '驳回失败，请稍后重试')
+            this.submitError(e, '驳回失败，请稍后重试')
           }).finally(() => { this.submitting = false })
         }
       })

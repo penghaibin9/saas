@@ -24,7 +24,7 @@ test('U12 miniapp count uses batch-aware server totals, not loaded queue length'
 })
 
 test('U12 proposal and final re-read authoritative count while other queues keep local progression', () => {
-  const afterAction = page.match(/afterAction\(\) \{[\s\S]*?\n    \},\n    _confirm/)
+  const afterAction = page.match(/afterAction\(\) \{[\s\S]*?\r?\n    \},\r?\n    _confirm/)
   assert.ok(afterAction, 'afterAction block missing')
   assert.match(afterAction[0], /if \(kind !== 'proposal' && kind !== 'final'\) \{[\s\S]*?this\.queue\.splice\(this\.queueIndex, 1\)/)
   assert.match(afterAction[0], /graduationTeacherCountTruth\(\)/)
