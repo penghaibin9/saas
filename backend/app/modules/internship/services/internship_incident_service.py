@@ -253,12 +253,20 @@ def transition(iid, status, body=None, user=None):
             )
             assert_high_risk_write_available(db)
         submitted_file_ids = None
+        new_file_ids = []
         if "fileIds" in b:
             from app.services import file_service
             submitted_file_ids = [str(value) for value in (b.get("fileIds") or []) if value]
+            existing_file_ids = {str(value) for value in (x.file_ids or []) if value}
             for file_id in submitted_file_ids:
+                # Already-bound evidence belongs to this tenant-scoped incident and was
+                # authorized when reported. Re-authorizing it as a fresh upload after its
+                # biz type changed to INTERNSHIP_INCIDENT incorrectly rejects the evidence.
+                if file_id in existing_file_ids:
+                    continue
                 if not file_service.get_file_meta(file_id, user=user):
                     raise AppException("VALIDATION_ERROR", "事故证据附件不存在或无权访问")
+                new_file_ids.append(file_id)
         for key, attr in (
             ("investigationConclusion", "investigation_conclusion"),
             ("rectificationPlan", "rectification_plan"),
@@ -283,7 +291,7 @@ def transition(iid, status, body=None, user=None):
             x.closed_by_name = _op(user)
         x.version = int(x.version or 0) + 1
         if submitted_file_ids is not None:
-            for file_id in submitted_file_ids:
+            for file_id in new_file_ids:
                 file_service.bind_file_biz(
                     file_id, "INTERNSHIP_INCIDENT", str(x.id), user=user, db=db)
         _audit(db, x.id, "INTERNSHIP_INCIDENT", f"TRANSITION_{target}", user, {
