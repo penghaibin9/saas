@@ -60,7 +60,7 @@ def _audit(db, biz_id, action, detail=""):
 def _msg(db, receiver_id, title, content, mtype, biz_id):
     from app.services.message_event_outbox_service import emit_receiver_notice
     code = "SCHEDULE_CHANGE.RETURNED" if "RETURNED" in (mtype or "").upper() else "SCHEDULE_CHANGE.RESULT"
-    emit_receiver_notice(
+    row = emit_receiver_notice(
         db,
         event_code=code,
         source_module="academic-affairs",
@@ -72,6 +72,7 @@ def _msg(db, receiver_id, title, content, mtype, biz_id):
         receiver_as="user",
         dedup_extra=mtype,
     )
+    return int(row.id) if row is not None else None
 
 
 def _schedule_change_assignee(db, node, change):
@@ -290,6 +291,19 @@ def _create_adjust_residuals(db, change, origin) -> list[int]:
 
 
 _TERMINAL_STATES = ("APPLIED", "REJECTED", "CANCELLED")
+_COLLEGE_OPERATOR_ROLES = frozenset({"COLLEGE_ADMIN", "COLLEGE_SA"})
+
+
+def _uses_college_change_scope(ctx, user) -> bool:
+    """Only college operators consume the college branch of the change ledger.
+
+    A teacher may legitimately carry an additional college scope for other
+    academic-affairs reads.  That scope must not replace the teacher_key owner
+    rule for the teacher's own schedule-change applications; otherwise submit
+    succeeds by ownership while list/detail immediately hide the new document.
+    """
+    role = str((user or {}).get("currentRoleCode") or "").strip().upper()
+    return ctx.scope_type == "COLLEGE" and role in _COLLEGE_OPERATOR_ROLES
 
 
 def get_origin_item(item_id, user) -> dict:
@@ -472,12 +486,16 @@ def review(cid, user, action, comment="") -> dict:
             if inst:
                 inst.status = "REJECTED"
             _todo_done(db, x.id)
-            _msg(db, x.applicant_id or 0, f"{L_CT[x.change_type]}未通过", comment.strip(),
-                 "WORKFLOW_RESULT", x.id)
+            outbox_id = _msg(db, x.applicant_id or 0, f"{L_CT[x.change_type]}未通过", comment.strip(),
+                             "WORKFLOW_RESULT", x.id)
             _audit(db, x.id, "REJECT", comment.strip())
             db.commit()
             from app.services.message_event_outbox_service import try_process_pending_outbox
-            try_process_pending_outbox(worker_id="aa-sched-change-inline")
+            try_process_pending_outbox(
+                limit=1,
+                worker_id="aa-sched-change-inline",
+                outbox_ids=[outbox_id] if outbox_id else None,
+            )
             db.refresh(x)
             return _row(x)
 
@@ -506,10 +524,15 @@ def review(cid, user, action, comment="") -> dict:
             inst.status = "APPROVED"
         _audit(db, x.id, "APPROVE", "终审通过")
         applied = _apply_schedule(db, x)
+        outbox_ids = applied.pop("_outboxIds", [])
         _todo_done(db, x.id)
         db.commit()
         from app.services.message_event_outbox_service import try_process_pending_outbox
-        try_process_pending_outbox(worker_id="aa-sched-change-inline")
+        try_process_pending_outbox(
+            limit=max(1, len(outbox_ids)),
+            worker_id="aa-sched-change-inline",
+            outbox_ids=outbox_ids,
+        )
         db.refresh(x)
         out = _row(x)
         out["applied"] = applied
@@ -570,12 +593,15 @@ def _apply_schedule(db, x) -> dict:
     title = f"{L_CT[x.change_type]}通知：{x.course_name or ''}"
     content = _notice_text(x)
     teacher_notified = 0
+    outbox_ids: list[int] = []
     if x.teacher_key:
         acc = db.scalars(select(User).where(
             User.tenant_id == _tid(), User.login_name == x.teacher_key,
             User.is_deleted.is_(False), User.status == "ACTIVE")).first()
         if acc:
-            _msg(db, acc.id, title, content, "STATUS_CHANGED", x.id)
+            outbox_id = _msg(db, acc.id, title, content, "STATUS_CHANGED", x.id)
+            if outbox_id:
+                outbox_ids.append(outbox_id)
             teacher_notified = 1
     students = 0
     if x.class_id:
@@ -590,13 +616,16 @@ def _apply_schedule(db, x) -> dict:
                    StudentProfile.class_id == int(x.class_id),
                    StudentProfile.is_deleted.is_(False))).all()
         for (uid,) in rows:
-            _msg(db, uid, title, content, "STATUS_CHANGED", x.id)
+            outbox_id = _msg(db, uid, title, content, "STATUS_CHANGED", x.id)
+            if outbox_id:
+                outbox_ids.append(outbox_id)
             students += 1
     _audit(db, x.id, "APPLIED", f"newItem={new_item_id},pushed={students}生+{teacher_notified}师")
     return {"status": "APPLIED", "newItemId": str(new_item_id or ""),
             "residualItemIds": [str(value) for value in residual_item_ids],
             "originKept": "CHANGED(历史留痕)",
-            "notified": {"students": int(students), "teacher": teacher_notified, "channel": "STATUS_CHANGED"}}
+            "notified": {"students": int(students), "teacher": teacher_notified, "channel": "STATUS_CHANGED"},
+            "_outboxIds": outbox_ids}
 
 
 def _notice_text(x) -> str:
@@ -649,7 +678,7 @@ def get_change(cid, user) -> dict:
         x = _load(db, cid)
         ctx = build_affairs_context(user, db)
         if not _can_manage_all(ctx):
-            if ctx.scope_type == "COLLEGE":
+            if _uses_college_change_scope(ctx, user):
                 allowed = ctx.allowed_class_ids(db)
                 if not x.class_id or int(x.class_id) not in (allowed or set()):
                     raise no_data_scope("该调停课单不在您的数据范围内")
@@ -684,7 +713,7 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
             conds.append(AaScheduleChange.created_at <= date_to + " 23:59:59")
         # 范围收敛：TENANT_ALL 全量；COLLEGE 按所辖班级；其余(教师) 仅本人课位
         if not _can_manage_all(ctx):
-            if ctx.scope_type == "COLLEGE":
+            if _uses_college_change_scope(ctx, user):
                 allowed = ctx.allowed_class_ids(db)
                 if not allowed:
                     return [], 0
@@ -737,7 +766,7 @@ def stats(user, term_id=None, dimension=None):
         if term_id:
             conds.append(AaScheduleChange.term_id == int(term_id))
         if not _can_manage_all(ctx):
-            if ctx.scope_type == "COLLEGE":
+            if _uses_college_change_scope(ctx, user):
                 allowed = ctx.allowed_class_ids(db)
                 if not allowed:
                     return dict(_EMPTY_STATS)

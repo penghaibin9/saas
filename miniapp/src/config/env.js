@@ -23,6 +23,12 @@ function resolveApiBaseUrl() {
     if (env.PROD && /^http:\/\//i.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url)) {
       url = url.replace(/^http:\/\//i, 'https://')
     }
+    // H5 本地开发通过 Vite /api 反代访问本机后端，保持浏览器会话、
+    // HttpOnly Cookie 与 JSON 响应都在同源边界内。微信开发构建没有
+    // window，仍保留显式绝对地址，不改变原生小程序网络契约。
+    if (env.DEV && typeof window !== 'undefined' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url)) {
+      return ''
+    }
     return url
   }
 

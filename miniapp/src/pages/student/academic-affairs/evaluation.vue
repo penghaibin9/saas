@@ -5,7 +5,7 @@
       <view class="page-pad stack" v-if="d">
         <text class="ev__hint">仅展示本人正式教学班内的课程。答卷匿名保存，提交后不可重复提交。</text>
         <view class="list-group" v-if="d.list && d.list.length">
-          <view v-for="t in d.list" :key="t.taskId" class="list-row ev__item">
+          <view v-for="t in d.list" :key="t.taskId" class="list-row ev__item" :class="{ 'is-target': String(t.taskId) === targetId }">
             <view class="flex-1">
               <text class="t-md">{{ t.courseName || '课程' }}</text>
               <text class="ev__sub">{{ t.teacherName || '教师' }} · {{ t.batchName || '评教批次' }}</text>
@@ -62,7 +62,7 @@ const STATUS = {
 
 export default {
   data() {
-    return { d: null, state: 'loading', active: null, score: '90', comment: '', submitting: '' }
+    return { d: null, state: 'loading', active: null, score: '90', comment: '', submitting: '', targetId: '' }
   },
   computed: {
     canSubmit() {
@@ -70,7 +70,7 @@ export default {
       return this.active && this.active.canSubmit && !Number.isNaN(n) && n >= 0 && n <= 100
     }
   },
-  onLoad() { this.load() },
+  onLoad(options = {}) { this.targetId = String(options.id || ''); this.load() },
   methods: {
     statusText(status) { return STATUS[String(status || '').toUpperCase()] || '窗口未开放' },
     load() {
@@ -114,6 +114,7 @@ export default {
 <style scoped>
 .ev__hint { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-bottom: var(--space-2); }
 .ev__item { align-items: center; gap: var(--space-2); }
+.ev__item.is-target { border: 1px solid var(--brand-primary); box-shadow: 0 0 0 2px var(--brand-50); }
 .ev__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
 .ev__state { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 4px; }
 .ev__state.is-open { color: var(--primary-600); }

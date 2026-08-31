@@ -6,6 +6,12 @@
     :data-scope-name="scopeName"
   >
     <div class="mp-stack">
+      <section v-if="receipt" class="sc-receipt" role="status">
+        <div><strong>✓ {{ receipt.title }}</strong><span>{{ receipt.courseName }} · 单据 {{ receipt.changeId }}</span></div>
+        <div><small>当前结果</small><b>{{ statusLabel(receipt.status) }}</b></div>
+        <div><small>下一步</small><b>{{ receipt.next }}</b></div>
+        <AppButton size="small" variant="ghost" @click="goReceipt">查看单据与通知</AppButton>
+      </section>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -46,6 +52,7 @@
 /** 调停课审批工作台（/admin/academic-affairs/schedule-change/approval）：学院/教务处两级审批。 */
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
+import { AppButton } from '@/components/ui'
 import { scheduleChangeApi, CHANGE_TYPES, CHANGE_STATUS } from '@/modules/academicAffairs/api/academic-schedule-change.api'
 import { toast } from '@/utils/toast'
 
@@ -54,12 +61,13 @@ const EMPTY = () => ({ changeType: '', status: '' })
 
 export default {
   name: 'AaScheduleChangeApprovalView',
-  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
+  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppButton },
   props: { ctx: { type: Object, default: () => ({}) } },
   data() {
     return {
       loading: true, error: '', submitting: false,
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY(),
+      receipt: null,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, action: null, row: null },
       columns: [
         { key: 'course', title: '课程 / 班级·教师' },
@@ -115,6 +123,16 @@ export default {
           ? await scheduleChangeApi.approve(row.changeId, row.version, reason || '')
           : await scheduleChangeApi.reject(row.changeId, row.version, reason || '')
         if (res.code === 0) {
+          const status = res.data.status
+          this.receipt = {
+            changeId: row.changeId,
+            courseName: row.courseName || '课程',
+            status,
+            title: action === 'approve' ? (status === 'APPLIED' ? '终审完成，课表已生效' : '学院审核已通过') : '调停课申请已驳回',
+            next: status === 'APPLIED'
+              ? `已通知 ${Number(res.data.applied?.notified?.students || 0)} 名学生和任课教师；新课位进入考勤`
+              : (status === 'REJECTED' ? '任课教师查看原因后重新发起' : '教务处终审')
+          }
           toast.success(action === 'approve' ? (res.data.status === 'APPLIED' ? '已终审通过，课表已改写' : '已通过，转教务处') : '已驳回')
           this.confirm.visible = false
           await this.load()
@@ -127,6 +145,10 @@ export default {
           } else toast.error(res.message)
         }
       } finally { this.submitting = false }
+    },
+    goReceipt() {
+      if (!this.receipt?.changeId) return
+      this.$router.push(`/admin/academic-affairs/print/schedule-change/${this.receipt.changeId}/notice`)
     }
   }
 }
@@ -139,4 +161,7 @@ export default {
 .sc-arrow { margin: 0 6px; color: var(--t3, #94a3b8); }
 .sc-stop { color: var(--warning, #d97706); font-weight: 600; font-size: 12px; }
 .mp-link--danger { color: var(--danger, #dc2626); }
+.sc-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(180px,auto) auto; align-items: center; gap: 18px; padding: 13px 15px; border: 1px solid #a7d7b4; border-radius: 11px; background: #f3fbf5; }
+.sc-receipt strong, .sc-receipt span, .sc-receipt small, .sc-receipt b { display: block; }.sc-receipt strong { color: #15803d; }.sc-receipt span, .sc-receipt small { margin-top: 3px; color: #64748b; font-size: 11px; }.sc-receipt b { margin-top: 3px; font-size: 12px; }
+@media (max-width: 760px) { .sc-receipt { grid-template-columns: 1fr; gap: 10px; } }
 </style>

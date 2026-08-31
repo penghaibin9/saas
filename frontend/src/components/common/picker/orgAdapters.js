@@ -143,7 +143,13 @@ export function createTeacherPickerAdapter() {
     const qs = params.toString()
     const data = await request(`/directory/teachers${qs ? `?${qs}` : ''}`)
     return (Array.isArray(data) ? data : data?.items || []).map((t) => ({
-      value: String(t.value ?? t.id),
+      // Most cross-domain personnel forms persist the user id. Academic
+      // scheduling, teaching and invigilation instead persist the stable
+      // teacher_key/login name. Callers must opt into that contract so a
+      // directory id can never silently produce an empty timetable.
+      value: String(query?.valueField === 'loginName'
+        ? (t.loginName ?? t.teacherKey ?? t.value ?? t.id)
+        : (t.value ?? t.id)),
       label: String(t.label ?? t.name ?? ''),
       desc: t.loginName || ''
     }))
@@ -152,7 +158,7 @@ export function createTeacherPickerAdapter() {
     search: fetchTeachers,
     async resolve(value, query = {}) {
       const values = Array.isArray(value) ? value : [value]
-      // 按 id 回显：先按空关键字取一页，取不到再不强求（选择器会退回显示原值）
+      // 按调用方声明的稳定值回显：先按空关键字取一页，取不到再不强求。
       const options = await fetchTeachers('', query)
       const hit = values.map((v) => options.find((o) => String(o.value) === String(v))).filter(Boolean)
       return Array.isArray(value) ? hit : hit[0]

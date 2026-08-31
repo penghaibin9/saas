@@ -149,7 +149,7 @@
     >
       <div class="aa-teacher-form">
         <label>授课教师
-          <AppTeacherPicker v-model="teacherEditor.teacherKey" placeholder="选择正式教师账号" />
+          <AppTeacherPicker v-model="teacherEditor.teacherKey" :query="teacherKeyQuery" placeholder="选择正式教师账号" />
         </label>
         <label>关系角色
           <input class="aa-input" :value="teacherRoleLabel(teacherEditor.roleType)" disabled />
@@ -210,7 +210,7 @@ export default {
       loading: true, error: '', teachingClass: null,
       previewing: false, saving: false, rosterImpact: null,
       rosterForm: { studentIds: [], reason: '' },
-      teacherEditor: emptyTeacherEditor(),
+      teacherEditor: emptyTeacherEditor(), teacherKeyQuery: { valueField: 'loginName' },
       teacherDeactivate: { visible: false, submitting: false, relationId: '', teacherName: '', reason: '' },
       teacherColumns: [{ key: 'teacher', title: '教师' }, { key: 'roleType', title: '角色' }, { key: 'weeks', title: '授课周次' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '120px' }],
       memberColumns: [{ key: 'student', title: '学生' }, { key: 'classId', title: '行政班ID' }, { key: 'source', title: '成员来源' }, { key: 'status', title: '状态' }],

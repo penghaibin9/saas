@@ -45,7 +45,7 @@
         <div class="aa-filter">
           <label class="aa-filter__item">
             教师
-            <AppTeacherPicker v-model="teacherKey" placeholder="搜索教师姓名/工号" @change="onTeacherChange" />
+            <AppTeacherPicker v-model="teacherKey" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="onTeacherChange" />
           </label>
           <AppButton v-if="selfKey" @click="showSelfSchedule">查看本人课表</AppButton>
           <AppButton variant="primary" :disabled="!teacherKey" @click="load">查询</AppButton>
@@ -117,7 +117,7 @@ export default {
       termId: '', week: 1, currentWeekNo: 0, weekRange: '',
       slots: [], items: [], note: '', loading: false, error: '',
       classId: '', className: '',
-      teacherKey: '', teacherName: '', selfKey: String(u.userId || u.loginName || ''),
+      teacherKey: '', teacherName: '', teacherKeyQuery: { valueField: 'loginName' }, selfKey: String(u.loginName || u.userId || ''),
       classroomId: '', classroomText: '',
       studentId: '', studentName: '',
       teachingClassCode: '', teachingClassName: ''

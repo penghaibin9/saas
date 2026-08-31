@@ -19,12 +19,15 @@ def upgrade() -> None:
     # insert grade-identity rows after an application rollback. Removing the
     # default belongs to a later contract migration once N-1 is retired.
     # Some production-like databases received this expand-phase column through
-    # a repair run before their Alembic version table advanced.  Treat that
-    # schema-ahead state as already expanded so backup restores can continue
-    # through the canonical migration path without an unsafe manual stamp.
-    bind = op.get_bind()
-    columns = {column["name"] for column in sa.inspect(bind).get_columns("t_aa_grade_identity_head")}
-    if "version" not in columns:
+    # a repair run before their Alembic version table advanced. Treat only the
+    # exact compatible schema-ahead shape as already expanded; incompatible
+    # columns remain a hard failure instead of being silently stamped over.
+    columns = {
+        column["name"]: column
+        for column in sa.inspect(op.get_bind()).get_columns("t_aa_grade_identity_head")
+    }
+    existing = columns.get("version")
+    if existing is None:
         op.add_column(
             "t_aa_grade_identity_head",
             sa.Column(
@@ -35,10 +38,38 @@ def upgrade() -> None:
                 comment="乐观锁",
             ),
         )
+        return
+
+    # MySQL DDL is non-transactional. A prior interrupted/manual rollout can
+    # leave the expand column present while alembic_version is still behind.
+    # Accept only the exact compatible shape; never stamp over an incompatible
+    # column and never silently weaken the optimistic-lock contract.
+    default = str(existing.get("default") or "").strip("'\"")
+    compatible = (
+        isinstance(existing.get("type"), sa.Integer)
+        and existing.get("nullable") is False
+        and default == "0"
+    )
+    if not compatible:
+        raise RuntimeError(
+            "existing t_aa_grade_identity_head.version is incompatible with "
+            "20260829_aa_grade_head_ver"
+        )
+    if existing.get("comment") != "乐观锁":
+        op.alter_column(
+            "t_aa_grade_identity_head",
+            "version",
+            existing_type=sa.Integer(),
+            existing_nullable=False,
+            server_default=sa.text("0"),
+            comment="乐观锁",
+        )
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    columns = {column["name"] for column in sa.inspect(bind).get_columns("t_aa_grade_identity_head")}
+    columns = {
+        column["name"]
+        for column in sa.inspect(op.get_bind()).get_columns("t_aa_grade_identity_head")
+    }
     if "version" in columns:
         op.drop_column("t_aa_grade_identity_head", "version")

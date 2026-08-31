@@ -279,7 +279,7 @@
             <span>{{ p.teacherName || p.teacherKey }} · {{ p.patrolDate || '—' }} {{ p.startTime || '' }}-{{ p.endTime || '' }} · {{ p.areaScope || '全场' }}</span>
           </li>
         </ul>
-        <AppFormItem label="巡考教师" required><AppTeacherPicker v-model="patrolForm.teacherKey" :disabled="saving" @change="onPatrolTeacherPicked" /></AppFormItem>
+        <AppFormItem label="巡考教师" required><AppTeacherPicker v-model="patrolForm.teacherKey" :query="teacherKeyQuery" :disabled="saving" @change="onPatrolTeacherPicked" /></AppFormItem>
         <AppFormItem label="巡考日期"><AppDatePicker v-model="patrolForm.patrolDate" :disabled="saving" /></AppFormItem>
         <AppFormItem label="开始时间"><AppTimePicker v-model="patrolForm.startTime" :disabled="saving" /></AppFormItem>
         <AppFormItem label="结束时间"><AppTimePicker v-model="patrolForm.endTime" :disabled="saving" /></AppFormItem>
@@ -322,7 +322,7 @@ export default {
       autoPlanVisible: false, autoPlanError: '', autoPlan: { dates: [''], sessions: [{ start: '', end: '' }], maxPerDayPerClass: 1 },
       schedVisible: false, schedCourse: null, sched: { examDate: '', startTime: '', endTime: '' },
       arrangeVisible: false, arrangeCourse: null, arrangeRooms: [], roomForm: { classroomId: '', classroomText: '', capacity: 50 },
-      patrolVisible: false, patrols: [], patrolForm: { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }, patrolError: '',
+      patrolVisible: false, patrols: [], patrolForm: { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }, patrolError: '', teacherKeyQuery: { valueField: 'loginName' },
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
       autoArranging: false, autoResult: null,
       courseColumns: [
