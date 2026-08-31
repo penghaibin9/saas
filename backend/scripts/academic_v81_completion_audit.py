@@ -100,6 +100,45 @@ def _head() -> str:
     return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
 
 
+def _ref_sha(ref: str) -> str:
+    root = Path(__file__).resolve().parents[2]
+    return subprocess.check_output(["git", "rev-parse", ref], cwd=root, text=True).strip()
+
+
+def _is_ancestor(ancestor: str, descendant: str) -> bool:
+    root = Path(__file__).resolve().parents[2]
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=root,
+        check=False,
+    ).returncode == 0
+
+
+def _w0_pass(live_main: dict[str, Any], open_prs: dict[str, Any], migration: dict[str, Any], git_head: str) -> bool:
+    """Validate a feature-head audit against the latest fetched main.
+
+    A construction branch is expected to contain commits beyond ``origin/main``;
+    requiring all three SHAs to be equal made W0 impossible to pass honestly after
+    the first implementation commit.  Freeze the feature head exactly, verify the
+    independently fetched main SHA, and require that main to be an ancestor instead.
+    """
+    try:
+        origin_main = _ref_sha("origin/main")
+    except subprocess.CalledProcessError:
+        return False
+    pr245 = live_main.get("pr245") if isinstance(live_main.get("pr245"), dict) else {}
+    return bool(
+        live_main.get("headSha") == git_head
+        and live_main.get("originMainSha") == origin_main
+        and _is_ancestor(origin_main, git_head)
+        and live_main.get("githubEvidence", {}).get("mode") == "LIVE_GITHUB_API"
+        and open_prs.get("githubEvidence", {}).get("mode") == "LIVE_GITHUB_API"
+        and pr245.get("merged") is True
+        and pr245.get("mergeCommitSha") == origin_main
+        and len(migration.get("alembicHeads") or []) == 1
+    )
+
+
 def _junit(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {"file": str(path), "present": False, "result": "MISSING"}
@@ -247,12 +286,7 @@ def main() -> int:
     live_main = _read_optional(artifacts / "live-main.json")
     open_prs = _read_optional(artifacts / "open-pr-classification.json")
     migration = _read_optional(artifacts / "migration-dag.json")
-    w0_pass = bool(
-        live_main.get("headSha") == live_main.get("originMainSha") == git_head
-        and live_main.get("githubEvidence", {}).get("mode") == "LIVE_GITHUB_API"
-        and open_prs.get("githubEvidence", {}).get("mode") == "LIVE_GITHUB_API"
-        and len(migration.get("alembicHeads") or []) == 1
-    )
+    w0_pass = _w0_pass(live_main, open_prs, migration, git_head)
     iam = _read_optional(artifacts / "iam-reconciliation.json")
     iam_pass = _seal_pass(iam)
     d70 = _read_optional(artifacts / "dgate-aa-70-20k-performance.json")

@@ -59,3 +59,21 @@ def test_all_28_capabilities_have_explicit_journey_coverage():
         f"CP-AA-{number:02d}" for number in range(1, 29)
     }
     assert all(audit.CAPABILITY_JOURNEYS.values())
+
+
+def test_w0_accepts_feature_head_only_when_latest_main_is_its_ancestor(monkeypatch):
+    monkeypatch.setattr(audit, "_ref_sha", lambda _ref: "main-sha")
+    monkeypatch.setattr(audit, "_is_ancestor", lambda ancestor, descendant: (
+        ancestor, descendant
+    ) == ("main-sha", "feature-sha"))
+    live = {
+        "headSha": "feature-sha",
+        "originMainSha": "main-sha",
+        "githubEvidence": {"mode": "LIVE_GITHUB_API"},
+        "pr245": {"merged": True, "mergeCommitSha": "main-sha"},
+    }
+    prs = {"githubEvidence": {"mode": "LIVE_GITHUB_API"}}
+    migration = {"alembicHeads": ["single-head"]}
+    assert audit._w0_pass(live, prs, migration, "feature-sha") is True
+    monkeypatch.setattr(audit, "_is_ancestor", lambda *_args: False)
+    assert audit._w0_pass(live, prs, migration, "feature-sha") is False
