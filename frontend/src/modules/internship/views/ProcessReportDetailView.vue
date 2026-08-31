@@ -13,6 +13,7 @@
       list-fallback="/admin/internship/reports?type=daily"
       style="margin-bottom: var(--space-3)"
     />
+    <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
     <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-grid-2">
@@ -70,6 +71,7 @@ import { AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea } from '@/co
 import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
 import ConflictNotice from './components/ConflictNotice.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
@@ -77,10 +79,12 @@ import { APPROVE_REPORT_SHORT, REJECT_PROCESS_REPORT } from '@/modules/internshi
 
 export default {
   name: 'ProcessReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, ConflictNotice },
+  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea,
+    LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, ConflictNotice, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false, conflict: emptyConflict() }
+    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '',
+      submitting: false, conflict: emptyConflict(), lastReceipt: null }
   },
   computed: {
     activeChips() { return this.action === 'RETURN' ? REJECT_PROCESS_REPORT : APPROVE_REPORT_SHORT },
@@ -132,6 +136,13 @@ export default {
       })
       this.submitting = false
       if (res.code === 0) {
+        this.lastReceipt = {
+          id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel,
+          version: res.data?.version, actionLabel: action === 'APPROVE' ? '过程报告通过' : '过程报告退回修改',
+          objectLabel: `${this.detail.studentName} · ${this.detail.reportTypeLabel} ${this.detail.periodKey}`,
+          auditText: '报告状态、评语与审批留痕已同事务提交',
+          nextStep: action === 'RETURN' ? '等待学生修正后重交' : '可继续批阅队列下一篇'
+        }
         toast.success('批阅完成')
         this.load()
         // 连续批阅：有下一条自动跳转，无则提示队列完成

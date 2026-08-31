@@ -13,6 +13,8 @@ from datetime import datetime
 
 from sqlalchemy import select, text
 
+from app.core.tenant_scoped import tenant_get
+
 
 _ACTIVE_CHANGE_STATUSES = ("SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW")
 
@@ -100,7 +102,12 @@ def _repair_applied_partial_schedule_changes(db, tenant_id: int) -> dict:
     inserted = 0
     repaired_changes = []
     for change in changes:
-        origin = db.get(AaScheduleItem, int(change.origin_item_id or 0))
+        origin = tenant_get(
+            db,
+            AaScheduleItem,
+            int(change.origin_item_id or 0),
+            tenant_id=tenant_id,
+        )
         if not origin or origin.is_deleted or origin.status != "CHANGED":
             continue
         start_week = int(change.target_start_week or origin.start_week)

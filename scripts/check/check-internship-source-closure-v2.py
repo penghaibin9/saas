@@ -21,7 +21,10 @@ from collections import deque
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / "artifacts/internship/final-audit/source-manifest/source-closure.json"
+OUT = (ROOT / os.getenv(
+    "INTERNSHIP_S6_JSON_OUT",
+    "artifacts/internship/final-audit/source-manifest/source-closure.json",
+)).resolve()
 
 tracked = {
     line.strip()

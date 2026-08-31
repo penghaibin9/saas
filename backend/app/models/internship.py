@@ -289,6 +289,12 @@ class InternshipEnterpriseEval(PKMixin, TenantMixin, CommonMixin, Base):
     recorded_at: Mapped[datetime | None] = mapped_column(DateTime)
     source_file_id: Mapped[str | None] = mapped_column(String(64))
     enterprise_contact_id: Mapped[int | None] = mapped_column(BigInteger)
+    placement_snapshot_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True, comment="评价提交时的正式安置快照；旧安置评价不得作用于新岗位")
+    enterprise_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True, comment="评价提交时的企业主键快照")
+    position_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True, comment="评价提交时的岗位主键快照")
     source_remark: Mapped[str | None] = mapped_column(String(500))
     submit_status: Mapped[str] = mapped_column(String(20), nullable=False, default="SUBMITTED",
                                                comment="DRAFT/SUBMITTED")
@@ -351,7 +357,7 @@ class InternshipScoreConfig(PKMixin, TenantMixin, CommonMixin, Base):
 
 class InternshipFinalScore(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_final_score 实习最终成绩（五项加权核算）。一名学生一条。
-    状态机：PENDING_CALC 待核算 → PENDING_REVIEW 待复核 → PUBLISHED 已发布 → WITHDRAWN 已撤回 → ARCHIVED 已归档。
+    状态机：PENDING_CALC 待核算 → PENDING_REVIEW 待复核 → PENDING_PUBLISH 待发布 → PUBLISHED 已发布 → WITHDRAWN 已撤回 → ARCHIVED 已归档。
     缺项(incomplete)不得发布。"""
     __tablename__ = "t_internship_final_score"
     __table_args__ = (
@@ -379,7 +385,7 @@ class InternshipFinalScore(PKMixin, TenantMixin, CommonMixin, Base):
     incomplete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, comment="是否缺项")
     incomplete_reason: Mapped[str | None] = mapped_column(String(300), comment="缺哪几项")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING_CALC",
-                                        comment="PENDING_CALC/PENDING_REVIEW/PUBLISHED/WITHDRAWN/ARCHIVED")
+                                        comment="PENDING_CALC/PENDING_REVIEW/PENDING_PUBLISH/PUBLISHED/WITHDRAWN/ARCHIVED")
     reviewed_by_name: Mapped[str | None] = mapped_column(String(50))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     published_by_name: Mapped[str | None] = mapped_column(String(50))

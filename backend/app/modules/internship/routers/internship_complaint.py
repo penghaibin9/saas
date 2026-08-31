@@ -47,10 +47,15 @@ def transition(complaint_id: int, body: dict = Body(...), user=Depends(require_p
 
 
 @router.post("/{complaint_id}/to-risk", summary="投诉转风险单（保留双向链接）")
-def to_risk(complaint_id: int, user=Depends(require_permission(_P_INTAKE))):
-    return success(svc.to_risk(complaint_id, user=user), message="已转风险单")
+def to_risk(complaint_id: int, body: dict = Body(default={}),
+            user=Depends(require_permission(_P_INTAKE))):
+    return success(svc.to_risk(
+        complaint_id, user=user, expected_version=(body or {}).get("expectedVersion")),
+        message="已转风险单")
 
 
 @router.post("/{complaint_id}/followup", summary="投诉回访（办结/关闭后）")
 def followup(complaint_id: int, body: dict = Body(default=None), user=Depends(require_permission(_P_INTAKE))):
-    return success(svc.followup(complaint_id, (body or {}).get("result", ""), user=user), message="已回访")
+    return success(svc.followup(
+        complaint_id, (body or {}).get("result", ""), user=user,
+        expected_version=(body or {}).get("expectedVersion")), message="已回访")

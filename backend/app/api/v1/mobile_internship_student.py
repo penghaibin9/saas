@@ -248,6 +248,21 @@ def my_selected_changes(
         user, batch_id=batchId, internship_id=internshipId))
 
 
+@router.get("/context/changes/target-positions", summary="本人当前批次可申请的真实目标岗位")
+def my_change_target_positions(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    changeType: str = Query(default="CHANGE_POSITION"),
+    keyword: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=50),
+    user=Depends(get_current_user),
+):
+    return success(changes.list_target_positions(
+        user, batch_id=batchId, internship_id=internshipId,
+        keyword=keyword, change_type=changeType, page=page, page_size=pageSize))
+
+
 @router.post("/context/changes", summary="按当前批次和版本发起实习变更")
 def apply_selected_change(
     body: dict = Body(...),

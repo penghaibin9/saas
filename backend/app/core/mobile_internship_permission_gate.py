@@ -45,6 +45,8 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("POST", re.compile(r"^context/plan-tasks/[^/]+/review$"), "internship.task.review"),
     ("GET", re.compile(r"^context/applications$"), "internship.application.view"),
     ("POST", re.compile(r"^context/applications/[^/]+/review$"), "internship.application.review"),
+    ("GET", re.compile(r"^context/changes$"), "internship.change.view"),
+    ("POST", re.compile(r"^context/changes/[^/]+/review$"), "internship.change.review"),
     ("GET", re.compile(r"^visit-plans$"), "internship.visit.view"),
     ("POST", re.compile(r"^visit-plans/record$"), "internship.visit.manage"),
     ("POST", re.compile(r"^weekly/[^/]+/(review|remind)$"), "internship.report.review"),

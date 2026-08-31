@@ -141,6 +141,14 @@ def makeup_detail(makeup_id: str, user=Depends(require_permission("internship.ma
     return success(mk.get_makeup(makeup_id, user=user))
 
 
+@router.post("/makeups/{makeup_id}/evidence-viewed", summary="补卡审批证据已查看（按当前版本留痕）")
+def makeup_evidence_viewed(makeup_id: str,
+                           user=Depends(require_permission("internship.makeup.review"))):
+    result = mk.mark_evidence_viewed(user, makeup_id)
+    audit_log.record("查看补卡审批证据", f"internship-makeup:{makeup_id}", detail=result)
+    return success(result, message="证据查看已留痕")
+
+
 @router.post("/makeups/{makeup_id}/approve", summary="补卡·通过（owner 校验，真实补写打卡）")
 def makeup_approve(makeup_id: str, body: dict = Body(default={}), user=Depends(require_permission("internship.makeup.review"))):
     result = mk.review(user, makeup_id, "APPROVE", (body or {}).get("comment") or "",
@@ -224,7 +232,10 @@ def guidance_detail(guidance_id: str, user=Depends(require_permission("internshi
 
 @router.post("/guidances/{guidance_id}/void", summary="撤销指导记录（owner）")
 def void_guidance(guidance_id: str, body: dict = Body(default={}), user=Depends(require_permission("internship.guidance.manage"))):
-    result = gd.void_guidance(user, guidance_id, (body or {}).get("reason") or "")
+    b = body or {}
+    result = gd.void_guidance(
+        user, guidance_id, b.get("reason") or "",
+        expected_version=b.get("expectedVersion", b.get("version")))
     audit_log.record("撤销指导记录", f"internship-guidance:{guidance_id}", detail=result)
     return success(result, message="已撤销")
 
@@ -267,7 +278,9 @@ def visit_detail(visit_id: str, user=Depends(require_permission("internship.visi
 @router.post("/visits/{visit_id}/rectify", summary="巡访整改跟进（owner，说明必填）")
 def visit_rectify(visit_id: str, body: dict = Body(...), user=Depends(require_permission("internship.visit.manage"))):
     b = body or {}
-    result = vis.rectify_follow(user, visit_id, (b.get("status") or "").upper(), b.get("note") or "")
+    result = vis.rectify_follow(
+        user, visit_id, (b.get("status") or "").upper(), b.get("note") or "",
+        expected_version=b.get("expectedVersion", b.get("version")))
     audit_log.record("巡访整改跟进", f"internship-visit:{visit_id}", detail=result)
     return success(result, message="已跟进")
 
@@ -429,6 +442,14 @@ def leaves(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
 @router.get("/leaves/{leave_id}", summary="请假详情（含附件/审批留痕）")
 def leave_detail(leave_id: str, user=Depends(require_permission("internship.leave.view"))):
     return success(lv.get_leave(leave_id, user=user))
+
+
+@router.post("/leaves/{leave_id}/evidence-viewed", summary="请假审批证据已查看（按当前版本留痕）")
+def leave_evidence_viewed(leave_id: str,
+                          user=Depends(require_permission("internship.leave.review"))):
+    result = lv.mark_evidence_viewed(user, leave_id)
+    audit_log.record("查看请假审批证据", f"internship-leave:{leave_id}", detail=result)
+    return success(result, message="证据查看已留痕")
 
 
 @router.post("/leaves/{leave_id}/review", summary="审批请假（通过/驳回，驳回原因≥5字，owner）")
@@ -604,7 +625,9 @@ def student_eval_advisor_comment(eval_id: str, body: dict = Body(...), user=Depe
 @router.post("/student-evals/{eval_id}/review", summary="学校审核学生鉴定（通过/退回，退回原因≥5字）")
 def student_eval_review(eval_id: str, body: dict = Body(...), user=Depends(require_permission("internship.eval.self.review"))):
     b = body or {}
-    result = se.review(user, eval_id, (b.get("action") or "").upper(), b.get("comment") or "")
+    result = se.review(
+        user, eval_id, (b.get("action") or "").upper(), b.get("comment") or "",
+        expected_version=b.get("expectedVersion", b.get("version")))
     audit_log.record("审核学生鉴定", f"internship-student-eval:{eval_id}", detail=result)
     return success(result, message="审核完成")
 
@@ -659,7 +682,15 @@ def score_detail(score_id: str, user=Depends(require_permission("internship.scor
     return success(score.get_score(score_id, user=user))
 
 
-@router.post("/scores/{score_id}/publish", summary="发布成绩（待复核→已发布，缺项拒绝）")
+@router.post("/scores/{score_id}/review", summary="独立复核成绩（待复核→待发布）")
+def score_review(score_id: str, body: dict | None = Body(default=None),
+                 user=Depends(require_permission("internship.score.manage"))):
+    result = score.review(user, score_id, (body or {}).get("expectedVersion", (body or {}).get("version")))
+    audit_log.record("复核实习成绩", f"internship-score:{score_id}", detail=result)
+    return success(result, message="复核完成，成绩已进入待发布")
+
+
+@router.post("/scores/{score_id}/publish", summary="发布成绩（待发布→已发布，缺项拒绝）")
 def score_publish(score_id: str, body: dict | None = Body(default=None),
                   user=Depends(require_permission("internship.score.publish"))):
     result = score.publish(user, score_id, (body or {}).get("expectedVersion", (body or {}).get("version")))
@@ -667,7 +698,7 @@ def score_publish(score_id: str, body: dict | None = Body(default=None),
     return success(result, message="成绩已发布")
 
 
-@router.post("/scores/{score_id}/return", summary="退回重算（待复核→待核算）")
+@router.post("/scores/{score_id}/return", summary="退回重算（待复核/待发布→待核算）")
 def score_return(score_id: str, body: dict = Body(default={}), user=Depends(require_permission("internship.score.manage"))):
     result = score.return_recalc(user, score_id, (body or {}).get("reason") or "",
                                  (body or {}).get("expectedVersion", (body or {}).get("version")))
@@ -683,7 +714,7 @@ def score_withdraw(score_id: str, body: dict = Body(...), user=Depends(require_p
     return success(result, message="已撤回")
 
 
-@router.post("/scores/{score_id}/archive", summary="归档成绩（已发布→已归档）")
+@router.post("/scores/{score_id}/archive", summary="兼容路由：独立成绩归档已禁用，统一随实习总档案冻结")
 def score_archive(score_id: str, body: dict | None = Body(default=None),
                   user=Depends(require_permission("internship.score.manage"))):
     result = score.archive(user, score_id, (body or {}).get("expectedVersion", (body or {}).get("version")))

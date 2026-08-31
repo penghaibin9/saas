@@ -7,6 +7,34 @@
       <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
     </template>
 
+    <section v-if="!error" class="ag-now" aria-label="当前协议办理对象">
+      <header class="ag-now__head">
+        <div>
+          <span class="ag-now__eyebrow">AGREEMENT NOW</span>
+          <h2>当前阶段先办这 {{ priorityRows.length }} 份协议</h2>
+          <p>按服务端当前页顺序展示；实际下发、确认、驳回与归档仍在协议档案页完成。</p>
+        </div>
+        <span>{{ activeStepLabel }}</span>
+      </header>
+      <div v-if="loading" class="ag-now__state">正在读取当前协议对象…</div>
+      <div v-else-if="priorityRows.length" class="ag-now__list">
+        <article v-for="row in priorityRows" :key="row.id" class="ag-now__item">
+          <div class="ag-now__identity">
+            <small>{{ row.studentNo }} · {{ row.statusLabel }}</small>
+            <strong>{{ row.studentName }} · {{ row.enterpriseName || '企业待确认' }}</strong>
+            <span>{{ row.positionName || '岗位待确认' }}</span>
+          </div>
+          <dl>
+            <div><dt>为什么到这里</dt><dd>{{ agreementWhy(row) }}</dd></div>
+            <div><dt>最近状态</dt><dd>{{ agreementRecent(row) }}</dd></div>
+            <div><dt>下一责任人</dt><dd>{{ agreementNextActor(row) }}</dd></div>
+          </dl>
+          <AppButton variant="primary" size="sm" @click="openDossier(row)">{{ agreementActionLabel(row) }} →</AppButton>
+        </article>
+      </div>
+      <div v-else class="ag-now__state">当前阶段没有待办理协议，可切换流程步骤查看其他状态。</div>
+    </section>
+
     <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
     <nav class="ag-flow" aria-label="三方协议办理流程">
@@ -140,6 +168,8 @@ export default {
       if (this.loading || this.error) return []
       return [{ label: '协议/申请总数', value: this.total }]
     },
+    priorityRows() { return this.rows.slice(0, 3) },
+    activeStepLabel() { return this.flowSteps.find((step) => step.panel === this.activePanel)?.label || '协议办理' },
     statusSelectOptions() { return Object.entries(STATUS_MAP).map(([value, label]) => ({ value, label })) },
     templateSelectOptions() {
       return [{ value: '', label: '自动使用默认启用模板' }].concat(
@@ -177,6 +207,28 @@ export default {
       this.$router.replace({ path: this.$route.path, query: this.batchStore.withBatchQuery({ ...this.$route.query, panel }) })
     },
     confirmTone(s) { return s === 'CONFIRMED' ? 'success' : s === 'REJECTED' ? 'danger' : 'warning' },
+    agreementWhy(row) {
+      return ({
+        DRAFT: '协议草稿已生成，等待学校下发', PENDING_STUDENT: '协议已下发，等待学生确认',
+        PENDING_ENTERPRISE: '学生已确认，等待企业确认与签署材料', PENDING_SCHOOL: '企业已确认，等待学校复核',
+        EFFECTIVE: '三方确认已完成，等待归档留存', REJECTED: '上一确认方已驳回，需要查看原因后修正',
+        VOIDED: '协议已作废，仅保留审计档案', ARCHIVED: '协议已归档，可查看完整证据链'
+      })[row.status] || '协议状态已变化，需要进入档案核对服务端事实'
+    },
+    agreementRecent(row) {
+      const when = row.updatedAt ? String(row.updatedAt).replace('T', ' ').replace('Z', '').slice(0, 16) : '当前版本'
+      return `${when} · ${row.statusLabel || STATUS_MAP[row.status] || '状态待确认'} · v${row.version ?? '-'}`
+    },
+    agreementNextActor(row) {
+      return ({
+        DRAFT: '学校协议经办人', PENDING_STUDENT: '学生本人', PENDING_ENTERPRISE: '企业联系人',
+        PENDING_SCHOOL: '学校协议经办人', EFFECTIVE: '档案经办人', REJECTED: '协议发起人',
+        VOIDED: '无需继续办理', ARCHIVED: '无需继续办理'
+      })[row.status] || '协议经办人'
+    },
+    agreementActionLabel(row) {
+      return ({ DRAFT: '继续下发', PENDING_STUDENT: '跟进学生', PENDING_ENTERPRISE: '跟进企业', PENDING_SCHOOL: '学校确认', EFFECTIVE: '办理归档' })[row.status] || '查看档案'
+    },
     goTemplates() { this.$router.push({ path: '/admin/internship/agreement-templates', query: this.batchStore.withBatchQuery() }) },
     openDossier(row) { this.$router.push({ path: `/admin/internship/agreements/${row.id}`, query: this.batchStore.withBatchQuery() }) },
     exportFn() {
@@ -252,6 +304,13 @@ export default {
 </script>
 
 <style scoped>
+.ag-now { overflow: hidden; margin-bottom: var(--space-3); border: 1px solid color-mix(in srgb, var(--pri) 24%, var(--card-b)); border-radius: 14px; background: var(--card); box-shadow: 0 14px 38px rgba(30,64,175,.08); }
+.ag-now__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 16px 18px; background: linear-gradient(120deg, var(--pri-bg), #fff 72%); }
+.ag-now__head > div { display: grid; gap: 3px; }.ag-now__head h2 { margin: 0; color: var(--t1); font-size: 17px; }.ag-now__head p { margin: 0; color: var(--t3); font-size: 12px; }
+.ag-now__head > span { padding: 4px 9px; border-radius: 999px; background: #fff; color: var(--pri); font-size: 12px; font-weight: 700; }.ag-now__eyebrow { color: var(--pri); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.ag-now__list { display: grid; gap: 10px; padding: 14px; }.ag-now__item { display: grid; grid-template-columns: minmax(170px,.9fr) minmax(0,2fr) auto; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--card-b); border-left: 4px solid var(--warning-500,#f59e0b); border-radius: 10px; }
+.ag-now__identity { display: grid; gap: 3px; min-width: 0; }.ag-now__identity small { color: var(--pri); font-weight: 700; }.ag-now__identity strong,.ag-now__identity span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.ag-now__identity span { color: var(--t3); font-size: 12px; }
+.ag-now__item dl { display: grid; grid-template-columns: 1.25fr 1fr .8fr; gap: 8px; margin: 0; }.ag-now__item dl div { min-width: 0; padding: 8px 10px; border-radius: 8px; background: var(--fill-2,#f8fafc); }.ag-now__item dt { margin-bottom: 3px; color: var(--t3); font-size: 10px; font-weight: 700; }.ag-now__item dd { margin: 0; color: var(--t2); font-size: 12px; line-height: 1.45; }.ag-now__state { padding: 24px; color: var(--t3); font-size: 13px; text-align: center; }
 .ag-flow { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--card-b); border-radius: 12px; background: linear-gradient(100deg, var(--pri-bg), var(--card) 54%); box-shadow: var(--s1); overflow-x: auto; }
 .ag-flow__title { flex: 0 0 auto; padding: 0 8px 0 2px; color: var(--t2); font-size: 12px; font-weight: var(--font-weight-semibold); }
 .ag-flow__step { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 6px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--t2); cursor: pointer; font-size: 12px; transition: .16s ease; }
@@ -267,4 +326,5 @@ export default {
 .ag-body { white-space: pre-wrap; word-break: break-word; background: var(--bg-subtle, #f8fafc); border: 1px solid var(--border-light); border-radius: 8px; padding: 10px; font-size: 12px; max-height: 240px; overflow: auto; margin: 0; }
 .file { font-size: var(--font-size-xs); }
 .att { font-size: var(--font-size-xs); color: var(--success-700); margin-left: var(--space-2); }
+@media (max-width: 900px) { .ag-now__item { grid-template-columns: 1fr; } .ag-now__item dl { grid-template-columns: 1fr; } .ag-now__head { align-items: flex-start; flex-direction: column; } }
 </style>

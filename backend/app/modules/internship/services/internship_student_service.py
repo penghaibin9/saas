@@ -581,6 +581,7 @@ def unassign_position_in_tx(db, record: InternshipRecord, expected_version=None,
     record.position_id = None
     record.enterprise_id = None
     record.mentor_contact_id = None
+    record.current_placement_snapshot_id = None
     record.position_name = None
     record.enterprise_name = None
     record.enterprise_mentor_name = None

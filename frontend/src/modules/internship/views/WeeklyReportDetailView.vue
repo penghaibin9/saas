@@ -13,6 +13,7 @@
       list-fallback="/admin/internship/reports"
       style="margin-bottom: var(--space-3)"
     />
+    <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
     <ErrorState v-if="error" :description="error" @retry="load" @back="$router.back()" />
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-grid-2">
@@ -35,6 +36,30 @@
             </div>
             <div v-if="detail.attachments && detail.attachments.length" style="margin-top: var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap">
               <AppStatusTag v-for="a in detail.attachments" :key="a" type="info">📎 {{ a }}</AppStatusTag>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="resubmitComparison" class="mp-card wr-compare">
+          <div class="mp-card__head">
+            <span class="mp-card__title">退回重交 · 前后版本对比</span>
+            <AppStatusTag type="info">{{ resubmitComparison.before.version }} → {{ resubmitComparison.after.version }}</AppStatusTag>
+          </div>
+          <div class="mp-card__body">
+            <p class="wr-compare__reason"><b>上次退回意见：</b>{{ resubmitComparison.before.comment || '未记录具体意见' }}</p>
+            <div class="wr-compare__grid">
+              <article>
+                <header><span>BEFORE</span><b>{{ resubmitComparison.before.version }} · 已退回</b></header>
+                <p><strong>本周工作</strong>{{ resubmitComparison.before.content?.work || '—' }}</p>
+                <p><strong>学习收获</strong>{{ resubmitComparison.before.content?.harvest || '—' }}</p>
+                <p><strong>下周计划</strong>{{ resubmitComparison.before.content?.plan || '—' }}</p>
+              </article>
+              <article class="is-after">
+                <header><span>AFTER</span><b>{{ resubmitComparison.after.version }} · 当前重交</b></header>
+                <p><strong>本周工作</strong>{{ resubmitComparison.after.content?.work || '—' }}</p>
+                <p><strong>学习收获</strong>{{ resubmitComparison.after.content?.harvest || '—' }}</p>
+                <p><strong>下周计划</strong>{{ resubmitComparison.after.content?.plan || '—' }}</p>
+              </article>
             </div>
           </div>
         </section>
@@ -123,6 +148,7 @@ import { AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips } from '@/com
 import { AppButton } from '@/components/ui'
 import ReviewQueueBar from './components/ReviewQueueBar.vue'
 import ConflictNotice from './components/ConflictNotice.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
@@ -131,14 +157,21 @@ import { APPROVE_WEEKLY, REJECT_WEEKLY } from '@/modules/internship/constants/pr
 
 export default {
   name: 'WeeklyReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips, LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, ConflictNotice },
+  components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips,
+    LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, ConflictNotice, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false, openVersions: [], conflict: emptyConflict() }
+    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false,
+      openVersions: [], conflict: emptyConflict(), lastReceipt: null }
   },
   computed: {
     canReview() { return canCode(this.ctx, 'internship.report.review') },
     activeChips() { return this.action === 'RETURN' ? REJECT_WEEKLY : APPROVE_WEEKLY },
+    resubmitComparison() {
+      const versions = this.detail?.versions || []
+      if (!this.detail?.isResubmit || versions.length < 2) return null
+      return { before: versions[versions.length - 2], after: versions[versions.length - 1] }
+    },
     trailRecords() {
       return (this.detail?.trail || []).map((t, i) => ({
         id: i,
@@ -202,6 +235,13 @@ export default {
       })
       this.submitting = false
       if (res.code === 0) {
+        this.lastReceipt = {
+          id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel,
+          version: res.data?.version, actionLabel: action === 'APPROVE' ? '周报通过' : '周报退回修改',
+          objectLabel: `${this.detail.studentName} · ${this.detail.week}`,
+          auditText: action === 'RETURN' ? '当前正文快照、退回意见与状态已同事务提交' : '批阅结果与审批留痕已同事务提交',
+          nextStep: action === 'RETURN' ? '等待学生按意见修正并生成新报告版本' : '学生可查看结果；可继续批阅下一篇'
+        }
         toast.success('批阅完成：' + res.data.statusLabel + '，已留痕并同步学生端')
         this.comment = ''
         this.load()
@@ -237,4 +277,6 @@ export default {
 .wr-ver__toggle { margin-top: var(--space-1); padding: 0; border: 0; background: none; color: var(--color-primary); cursor: pointer; font-size: var(--font-size-sm); }
 .wr-ver__body { margin-top: var(--space-2); padding: var(--space-2); border-radius: var(--radius-sm); background: var(--color-bg-subtle, #f6f7f9); }
 .wr-ver__body p { margin: 0 0 var(--space-1); font-size: var(--font-size-sm); line-height: 1.7; white-space: pre-wrap; }
+.wr-compare { border-color: var(--warning-200,#fde68a); }.wr-compare__reason { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: var(--warning-50,#fffbeb); color: var(--t2); font-size: 12px; }.wr-compare__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }.wr-compare__grid article { min-width: 0; padding: 12px; border: 1px solid var(--card-b); border-radius: 10px; background: var(--fill-2,#f8fafc); }.wr-compare__grid article.is-after { border-color: var(--success-200,#a7f3d0); background: var(--success-50,#ecfdf5); }.wr-compare__grid header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }.wr-compare__grid header span { color: var(--pri); font-size: 10px; font-weight: 800; letter-spacing: .1em; }.wr-compare__grid header b { color: var(--t2); font-size: 12px; }.wr-compare__grid p { display: grid; gap: 3px; margin: 0 0 9px; color: var(--t2); font-size: 12px; line-height: 1.55; white-space: pre-wrap; }.wr-compare__grid p strong { color: var(--t3); font-size: 10px; }
+@media (max-width: 820px) { .wr-compare__grid { grid-template-columns: 1fr; } }
 </style>

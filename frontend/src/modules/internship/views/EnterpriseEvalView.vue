@@ -10,6 +10,7 @@
     </template>
 
     <div class="mp-stack">
+      <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
       <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
       <div class="bar">
@@ -110,6 +111,7 @@ import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, A
   AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { enterpriseEvalApi } from '@/modules/internship/api/enterprise-eval.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
@@ -140,7 +142,7 @@ export default {
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
-    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination },
+    AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination, ActionReceipt },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
@@ -149,6 +151,7 @@ export default {
       detail: { loading: false, error: '', data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, submitting: false },
       pending: null,
+      lastReceipt: null,
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
   },
@@ -247,16 +250,21 @@ export default {
     },
     openReview(r, action) {
       const ap = action === 'APPROVE'
-      this.pending = { id: r.id, action }
+      this.pending = { id: r.id, action, version: r.version, studentName: r.studentName }
       this.cd = { visible: true, title: ap ? '企业评价 · 通过' : '企业评价 · 退回',
         content: `${ap ? '通过' : '退回'}「${r.studentName}」的企业评价，意见将写入审计。`,
         danger: !ap, confirmText: ap ? '通过' : '退回', requireReason: !ap, submitting: false }
     },
     async onConfirm({ reason }) {
       this.cd.submitting = true
-      const res = await enterpriseEvalApi.review(this.pending.id, { action: this.pending.action, comment: reason || '' })
+      const res = await enterpriseEvalApi.review(this.pending.id, { action: this.pending.action,
+        comment: reason || '', expectedVersion: this.pending.version })
       this.cd.submitting = false
       if (res.code !== 0) return toast.error(res.message || '操作失败')
+      this.lastReceipt = { actionLabel: this.pending.action === 'APPROVE' ? '企业评价已通过' : '企业评价已退回',
+        objectLabel: this.pending.studentName, id: res.data.id, version: res.data.version,
+        statusLabel: res.data.reviewStatusLabel || res.data.reviewStatus,
+        auditText: '当前安置评价与审核版本已提交', nextStep: this.pending.action === 'APPROVE' ? '成绩核算将读取该安置版本' : '等待企业或原录入人修改重交' }
       this.cd.visible = false; toast.success('审核完成，已写审计')
       await this.advanceAfterReview(this.pending.id)
     },

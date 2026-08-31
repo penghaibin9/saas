@@ -389,7 +389,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 就业教师：实习就业转化 + 归档统计（跨中心与就业域衔接），不介入日常实习审批
     "EMPLOYMENT_TEACHER": {
         *_WORKBENCH_SELF,
-        "employment.*", "internship.dashboard.view",
+        "employment.*", "internship.dashboard.view", "internship.batch.view",
         "internship.employment.view", "internship.archive.view", "internship.archive.package",
         "internship.stats.view", "internship.stats.enterprise.view",
         "internship.stats.position.view", "internship.stats.score.view",

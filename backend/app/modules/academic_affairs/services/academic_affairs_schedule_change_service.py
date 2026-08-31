@@ -17,6 +17,7 @@ from sqlalchemy import and_, func, select
 from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.modules.academic_affairs.services.academic_affairs_schedule_service import _detect_conflict
 from app.services.db_service import _iso, _tid, session
 
@@ -318,7 +319,7 @@ def get_origin_item(item_id, user) -> dict:
         origin = db.get(AaScheduleItem, int(item_id))
         if not origin or origin.is_deleted or origin.tenant_id != _tid():
             raise not_found("原课位不存在或已发生变化")
-        batch = db.get(AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
+        batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
         if origin.status != "EFFECTIVE":
             raise AppException(
                 "DATA_CONFLICT",
@@ -366,7 +367,7 @@ def conflict_check(body, user) -> dict:
         origin = db.get(AaScheduleItem, int(origin_id))
         if not origin or origin.is_deleted or origin.tenant_id != _tid():
             raise not_found("原课表项不存在")
-        batch = db.get(AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
+        batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
         _require_current_published_origin(db, batch, origin)
         ctx = build_affairs_context(user, db)
         if not _can_manage_all(ctx):
@@ -399,7 +400,7 @@ def submit(body, user) -> dict:
             raise not_found("原课表项不存在")
         if origin.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "原课表项已变更/失效，不可再发起调停课")
-        b = db.get(AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
+        b = tenant_get(db, AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
         _require_current_published_origin(db, b, origin)
         # 数据范围(COURSE)：非 TENANT_ALL 角色须为本人任课课位
         if not _can_manage_all(ctx):
@@ -529,8 +530,8 @@ def review(cid, user, action, comment="") -> dict:
 def _apply_schedule(db, x) -> dict:
     """终审通过后改写课表：原课位标 CHANGED(保留历史)，调课/补课生成新项并回链本单，STATUS_CHANGED 通知师生。"""
     from app.models import AaScheduleBatch, AaScheduleItem, StudentProfile, User
-    origin = db.get(AaScheduleItem, int(x.origin_item_id)) if x.origin_item_id else None
-    batch = db.get(AaScheduleBatch, int(origin.batch_id)) if origin and origin.batch_id else None
+    origin = tenant_get(db, AaScheduleItem, int(x.origin_item_id)) if x.origin_item_id else None
+    batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id)) if origin and origin.batch_id else None
     _require_current_published_origin(db, batch, origin, lock_scope=True)
     # 复核目标冲突仍为 0（并发防护）
     new_item_id = None

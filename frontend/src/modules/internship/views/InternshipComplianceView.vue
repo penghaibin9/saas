@@ -8,6 +8,7 @@
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-stack">
+      <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
       <AppInlineAlert
         v-if="!batchStore.selectedBatchId"
         type="warning"
@@ -35,18 +36,53 @@
           </div>
         </div>
 
+        <section v-if="activeTab === 'overview' && !statsError" class="mp-card compliance-now">
+          <div class="mp-card__head compliance-now__head">
+            <div>
+              <span class="compliance-now__eyebrow">ONBOARD GATE FIRST</span>
+              <strong>当前上岗阻断 · {{ onboardingBlockedRows.length }} 人</strong>
+              <p class="mp-note">先处理真实学生，再看批次指标；门禁结论与学生详情、协议和归档复用同一服务端规则版本。</p>
+            </div>
+            <span class="status-pill">规则 {{ stats.ruleVersion || '-' }}</span>
+          </div>
+          <div v-if="onboardingBlockedRows.length" class="compliance-now__list">
+            <article v-for="row in onboardingBlockedRows" :key="row.internshipId" class="compliance-now__item">
+              <div class="compliance-now__identity">
+                <span>待补齐上岗事实</span>
+                <strong>{{ row.studentNo }} · {{ row.studentName }}</strong>
+                <small>{{ row.advisorName ? `指导教师：${row.advisorName}` : '指导教师待确认' }}</small>
+              </div>
+              <dl>
+                <div><dt>为什么到这里</dt><dd>{{ blockerText(row.blockers) }}</dd></div>
+                <div><dt>最近核验</dt><dd>{{ fmt(stats.evaluatedAt) }} · {{ row.recordStatus }}</dd></div>
+                <div><dt>下一责任人</dt><dd>{{ blockerOwner(row.blockerCodes) }}</dd></div>
+              </dl>
+              <AppButton size="sm" @click="openStudent(row)">打开学生合规链 →</AppButton>
+            </article>
+          </div>
+          <div v-else class="compliance-now__empty">
+            <strong>当前没有上岗阻断</strong>
+            <span>仍可查看归档门禁、特殊备案、事故和证据包。</span>
+          </div>
+        </section>
+
         <nav class="work-tabs" aria-label="合规办理工作区">
-          <button
-            v-for="tabItem in tabs"
-            :key="tabItem.key"
-            type="button"
-            class="work-tab"
-            :class="{ 'is-active': activeTab === tabItem.key }"
-            @click="activeTab = tabItem.key"
-          >
-            {{ tabItem.label }}
-            <span v-if="tabItem.count != null" class="tab-count">{{ tabItem.count }}</span>
-          </button>
+          <div v-for="group in tabGroups" :key="group.key" class="work-tabs__group">
+            <span class="work-tabs__label">{{ group.label }}</span>
+            <div class="work-tabs__buttons">
+              <button
+                v-for="tabItem in group.items"
+                :key="tabItem.key"
+                type="button"
+                class="work-tab"
+                :class="{ 'is-active': activeTab === tabItem.key }"
+                @click="activeTab = tabItem.key"
+              >
+                {{ tabItem.label }}
+                <span v-if="tabItem.count != null" class="tab-count">{{ tabItem.count }}</span>
+              </button>
+            </div>
+          </div>
         </nav>
 
         <AppInlineAlert
@@ -263,8 +299,20 @@
             </div>
             <AppButton :disabled="acting || !incidentFormValid" @click="reportIncident">提交事故报告</AppButton>
           </section>
-          <section class="mp-card"><div class="mp-card__head"><strong>事故处置台账</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>编号</th><th>学生</th><th>等级</th><th>状态</th><th>摘要</th><th>附件</th><th>版本</th><th>合法下一步</th></tr></thead><tbody>
-            <tr v-for="row in workbench.incidents || []" :key="row.id"><td>{{ row.incidentNo }}</td><td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ severityText(row.severity) }}</td><td>{{ complianceStatusText(row.status) }}</td><td>{{ row.summary }}</td><td>{{ row.fileIds?.length || 0 }}</td><td>{{ row.version }}</td><td class="action-cell"><button v-for="target in incidentTargets(row)" :key="target" type="button" class="mp-link" @click="openAction('incident-transition', row, target)">{{ incidentTargetText(target) }}</button></td></tr>
+          <section class="mp-card"><div class="mp-card__head"><strong>事故处置台账</strong></div><div class="table-wrap"><table class="mp-table incident-table"><thead><tr><th>编号 / 风险源</th><th>学生</th><th>严重度</th><th>状态</th><th>最近事件</th><th>当前动作</th><th>版本</th><th>合法下一步</th></tr></thead><tbody>
+            <tr v-for="row in incidentRows" :key="row.id" :class="{ 'is-focus': String($route.query.id || '') === String(row.id) }">
+              <td><strong>{{ row.incidentNo }}</strong><div class="cell-sub">{{ row.riskId ? `风险 #${row.riskId}` : '未派生风险' }}</div></td>
+              <td>{{ row.studentNo }} · {{ row.studentName }}</td><td>{{ severityText(row.severity) }}</td><td>{{ complianceStatusText(row.status) }}</td>
+              <td><span>{{ row.latestEvent }}</span><div class="cell-sub">证据 {{ row.fileIds?.length || 0 }} 份</div></td>
+              <td><strong>{{ row.currentAction }}</strong><div v-if="row.closeBlockers?.length" class="cell-error">{{ row.closeBlockers.join('；') }}</div></td>
+              <td>v{{ row.version }}</td><td class="action-cell">
+                <button v-for="target in incidentTargets(row)" :key="target" type="button" class="mp-link"
+                  :disabled="target === 'CLOSED' && !row.closeAllowed"
+                  :title="target === 'CLOSED' && row.closeBlockers?.length ? row.closeBlockers.join('；') : ''"
+                  @click="openAction('incident-transition', row, target)">{{ incidentTargetText(target) }}</button>
+                <button v-if="row.status === 'CLOSED' && row.evidenceTarget?.targetId && can('internship.evidence.export')" type="button" class="mp-link" @click="generateIncidentEvidence(row)">生成监管证据包</button>
+              </td>
+            </tr>
             <tr v-if="showEmpty(workbench.incidents)"><td colspan="8" class="empty-cell">暂无事故记录</td></tr>
           </tbody></table></div></section>
 
@@ -331,6 +379,7 @@
         <label v-if="dialog.showInvestigation">调查结论<textarea v-model.trim="dialog.investigationConclusion" rows="3" maxlength="2000" /></label>
         <label v-if="dialog.showInvestigation">整改方案<textarea v-model.trim="dialog.rectificationPlan" rows="3" maxlength="2000" /></label>
         <label v-if="dialog.showInvestigation">责任/复核结论<textarea v-model.trim="dialog.responsibilityConclusion" rows="3" maxlength="2000" /></label>
+        <label v-if="dialog.showEvidenceUpload">事故证据附件<input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.mp4" @change="uploadDialogEvidence" /><span class="file-note">{{ fileText(dialog.fileIds) }}</span></label>
         <label>{{ dialog.commentLabel }}<textarea v-model.trim="dialog.comment" rows="4" maxlength="1000" :placeholder="dialog.commentPlaceholder" /></label>
         <div v-if="dialogError" class="dialog-error">{{ dialogError }}</div>
         <div class="dialog-actions"><AppButton variant="ghost" :disabled="acting" @click="closeDialog">取消</AppButton><AppButton :disabled="acting" @click="confirmDialog">{{ acting ? '处理中…' : dialog.confirmText }}</AppButton></div>
@@ -345,6 +394,7 @@ import { AppButton } from '@/components/ui'
 import { AppInlineAlert } from '@/components/common'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import ConflictNotice from './components/ConflictNotice.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { complianceApi } from '@/modules/internship/api/compliance.api'
 import { getPermissionPatterns } from '@/security/permissionGate'
@@ -394,20 +444,20 @@ function emptyDialog() {
   return {
     open: false, kind: '', row: null, action: '', level: '', title: '', description: '',
     comment: '', commentLabel: '办理意见', commentPlaceholder: '', confirmText: '确认办理',
-    showScore: false, score: 100, showInvestigation: false,
-    investigationConclusion: '', rectificationPlan: '', responsibilityConclusion: ''
+    showScore: false, score: 100, showInvestigation: false, showEvidenceUpload: false,
+    investigationConclusion: '', rectificationPlan: '', responsibilityConclusion: '', fileIds: []
   }
 }
 
 export default {
   name: 'InternshipComplianceView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppInlineAlert, ConflictNotice },
+  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppInlineAlert, ActionReceipt, ConflictNotice },
   props: { ctx: { type: Object, required: true } },
   data: () => ({
     loading: false, acting: false, error: '', activeTab: 'overview',
     stats: {}, workbench: {}, auditHealth: null, selectedFilter: 'ALL', forms: freshForms(),
     filingTypes: FILING_TYPES, exemptionChecks: EXEMPTION_CHECKS,
-    dialog: emptyDialog(), dialogError: '', conflict: emptyConflict(),
+    dialog: emptyDialog(), dialogError: '', conflict: emptyConflict(), lastReceipt: null,
     // 首屏只拉 summary + 6 个统计数字；哪个 Tab 打开过、明细分组才会被拉过一次并缓存在这里。
     loadedGroups: new Set(), groupLoading: false, groupError: '',
     // 只允许当前 Tab 发起的最新分组请求控制 loading/error；旧 Tab 的请求可以回填缓存，但不能污染当前 UI。
@@ -422,6 +472,12 @@ export default {
     batchStore() { return useInternshipBatchStore() },
     metrics() { return this.stats.metrics || [] },
     students() { return this.stats.drilldowns?.ALL || [] },
+    onboardingBlockedRows() { return (this.stats.drilldowns?.BLOCKED || []).slice(0, 5) },
+    incidentRows() {
+      const rows = [...(this.workbench.incidents || [])]
+      const focusId = String(this.$route.query.id || '')
+      return focusId ? rows.sort((a, b) => Number(String(b.id) === focusId) - Number(String(a.id) === focusId)) : rows
+    },
     selectedMetric() { return this.metrics.find((item) => item.drilldownFilter === this.selectedFilter) },
     drilldownRows() { return this.stats.drilldowns?.[this.selectedFilter] || [] },
     nowLocal() {
@@ -467,9 +523,25 @@ export default {
         { key: 'exemptions', label: '豁免审批', count: counts.exemptionPending || 0 },
         { key: 'evidence', label: '监管证据包', count: counts.packageReady || 0 }
       ]
+    },
+    tabGroups() {
+      const tabs = Object.fromEntries(this.tabs.map((item) => [item.key, item]))
+      return [
+        { key: 'onboard', label: '上岗门禁', items: [tabs.overview, tabs.consents, tabs.safety, tabs.filings] },
+        { key: 'incident', label: '事故处置', items: [tabs.incidents] },
+        { key: 'exception', label: '例外审批', items: [tabs.exemptions] },
+        { key: 'evidence', label: '监管留痕', items: [tabs.evidence] }
+      ]
     }
   },
   watch: {
+    '$route.query.tab': {
+      immediate: true,
+      handler(value) {
+        const next = value && Object.prototype.hasOwnProperty.call(TAB_GROUP, value) ? value : 'overview'
+        if (this.activeTab !== next) this.activeTab = next
+      }
+    },
     'batchStore.selectedBatchId': { immediate: true, handler() { this.load() } },
     activeTab(tab) { this.ensureGroupLoaded(tab) }
   },
@@ -481,6 +553,14 @@ export default {
     fmt(value) { return value ? String(value).replace('T', ' ').replace('Z', '').slice(0, 16) : '-' },
     fileText(ids) { return ids?.length ? `已上传 ${ids.length} 个文件` : '尚未上传' },
     blockerText(items) { return items?.length ? items.map((item) => `${item.label}：${item.reason}`).join('；') : '无' },
+    blockerOwner(codes) {
+      const owners = {
+        enterpriseAccess: '企业准入经办人', studentConsent: '学生本人', guardianConsent: '已绑定监护人',
+        safetyEducation: '学生与安全教育审核人', insurance: '保险核验经办人', agreement: '协议当前确认方',
+        specialFiling: '学院 / 学校备案审核人', workRights: '岗位审核经办人', emergency: '应急预案责任人'
+      }
+      return (codes || []).map((code) => owners[code] || '合规经办人').filter((value, index, all) => all.indexOf(value) === index).join('、') || '合规经办人'
+    },
     filingTypeText(value) { return FILING_TYPES.find((item) => item.value === value)?.label || (value ? '其他备案类型' : '-') },
     exemptionCheckText(value) { return EXEMPTION_CHECKS.find((item) => item.value === value)?.label || (value ? '其他检查项' : '-') },
     complianceStatusText(value) { return COMPLIANCE_STATUS_LABELS[value] || (value ? '状态待确认' : '-') },
@@ -583,6 +663,14 @@ export default {
         // 所以不能把它降级成一个一闪而过的错误 toast。
         if (onConflict && isConflict(result)) { await onConflict(result); return false }
         if (result.code !== 0) throw new Error(result.message || '操作失败')
+        const data = result.data || {}
+        this.lastReceipt = data.id ? {
+          id: data.id, version: data.version, actionLabel: successMessage,
+          objectLabel: `合规对象 ${data.id}`, status: data.status,
+          statusLabel: this.complianceStatusText(data.status),
+          auditText: '业务事实与审计 outbox 已在同一事务提交',
+          nextStep: data.nextStep || (data.status === 'CLOSED' ? '生成监管证据包' : '继续当前责任链')
+        } : this.lastReceipt
         this.$message?.success?.(successMessage)
         if (resetForm) this.forms[resetForm] = freshForms()[resetForm]
         await this.load()
@@ -601,6 +689,16 @@ export default {
       if (result.code !== 0) { this.$message?.error?.(result.message || '材料上传失败'); return }
       const fileId = result.data?.fileId || result.data?.id
       if (fileId) this.forms[formKey][field] = [...new Set([...(this.forms[formKey][field] || []), String(fileId)])]
+    },
+    async uploadDialogEvidence(event) {
+      const file = event.target.files?.[0]
+      if (!file) return
+      if (file.size > 20 * 1024 * 1024) { event.target.value = ''; this.$message?.warning?.('单个文件不能超过20MB'); return }
+      const result = await complianceApi.uploadEvidence(file, 'INTERNSHIP_INCIDENT')
+      event.target.value = ''
+      if (result.code !== 0) { this.$message?.error?.(result.message || '事故证据上传失败'); return }
+      const fileId = result.data?.fileId || result.data?.id
+      if (fileId) this.dialog.fileIds = [...new Set([...(this.dialog.fileIds || []), String(fileId)])]
     },
     createConsent() {
       if (!this.consentFormValid) return this.$message?.warning?.(this.statsError ? '学生选择暂不可用，请先重试合规统计' : '请选择学生，正文版本不少于2字，完整正文不少于20字')
@@ -634,7 +732,11 @@ export default {
     },
     incidentTargets(row) {
       const targets = ({ REPORTED: ['EMERGENCY_HANDLING', 'INVESTIGATING'], EMERGENCY_HANDLING: ['INVESTIGATING'], INVESTIGATING: ['RECTIFYING', 'PENDING_REVIEW'], RECTIFYING: ['PENDING_REVIEW'], PENDING_REVIEW: ['CLOSED'] })[row.status] || []
-      return targets.filter((target) => target !== 'CLOSED' || (row.fileIds || []).length > 0)
+      return targets
+    },
+    generateIncidentEvidence(row) {
+      const target = row.evidenceTarget || {}
+      return this.run(complianceApi.generateEvidencePackage(target.packageType, target.targetId), '事故监管证据包已生成')
     },
     async createEmergency() {
       if (!this.emergencyFormValid) return this.$message?.warning?.('请检查预案名称、责任人、联系电话、处置步骤和附件')
@@ -671,7 +773,7 @@ export default {
       if (kind === 'revoke-consent') { dialog.title = '作废知情确认任务'; dialog.description = '作废后学生或监护人无法再确认，必须重新下发新任务。'; dialog.commentLabel = '作废原因（至少5字）'; dialog.commentPlaceholder = '说明作废原因'; dialog.confirmText = '确认作废' }
       if (kind === 'safety-review') { dialog.title = action === 'APPROVE' ? '通过安全教育审核' : '退回安全教育记录'; dialog.showScore = action === 'APPROVE'; dialog.commentLabel = action === 'APPROVE' ? '审核备注（可选）' : '退回原因（至少5字）'; dialog.confirmText = action === 'APPROVE' ? '确认通过' : '确认退回' }
       if (kind === 'filing-review') { dialog.title = `${level === 'SCHOOL' ? '学校' : '学院'}${action === 'APPROVE' ? '通过' : '退回'}特殊备案`; dialog.commentLabel = action === 'APPROVE' ? '审核意见（可选）' : '退回原因（至少5字）'; dialog.confirmText = action === 'APPROVE' ? '确认通过' : '确认退回' }
-      if (kind === 'incident-transition') { dialog.title = this.incidentTargetText(action); dialog.showInvestigation = ['PENDING_REVIEW', 'CLOSED'].includes(action); dialog.investigationConclusion = row.investigationConclusion || ''; dialog.rectificationPlan = row.rectificationPlan || ''; dialog.responsibilityConclusion = row.responsibilityConclusion || ''; dialog.commentLabel = '流转说明（可选）'; dialog.confirmText = '确认流转' }
+      if (kind === 'incident-transition') { dialog.title = this.incidentTargetText(action); dialog.showInvestigation = ['PENDING_REVIEW', 'CLOSED'].includes(action); dialog.showEvidenceUpload = action === 'CLOSED'; dialog.investigationConclusion = row.investigationConclusion || ''; dialog.rectificationPlan = row.rectificationPlan || ''; dialog.responsibilityConclusion = row.responsibilityConclusion || ''; dialog.fileIds = [...(row.fileIds || [])]; dialog.commentLabel = '流转说明（可选）'; dialog.confirmText = '确认流转' }
       if (kind === 'emergency-review') { dialog.title = action === 'APPROVE' ? '通过应急预案' : '退回应急预案'; dialog.commentLabel = action === 'APPROVE' ? '审核意见（可选）' : '退回原因（至少5字）'; dialog.confirmText = action === 'APPROVE' ? '确认通过' : '确认退回' }
       if (kind === 'exemption-review') { dialog.title = action === 'APPROVE' ? '批准合规豁免' : '拒绝合规豁免'; dialog.commentLabel = action === 'APPROVE' ? '批准意见（建议说明替代控制）' : '拒绝原因（至少5字）'; dialog.confirmText = action === 'APPROVE' ? '确认批准' : '确认拒绝' }
       this.dialog = dialog; this.dialogError = ''; this.conflict = emptyConflict()
@@ -716,7 +818,7 @@ export default {
       if (dialog.kind === 'revoke-consent') { promise = complianceApi.revokeConsent(dialog.row.id, { expectedVersion: dialog.row.version, reason: comment }); successMessage = '知情任务已作废' }
       if (dialog.kind === 'safety-review') { promise = complianceApi.reviewSafetyCompletion(dialog.row.id, { action: dialog.action, score: dialog.showScore ? Number(dialog.score) : null, comment, expectedVersion: dialog.row.version }); successMessage = '安全教育审核完成' }
       if (dialog.kind === 'filing-review') { promise = complianceApi.reviewFiling(dialog.row.id, dialog.level, dialog.action.toLowerCase(), { expectedVersion: dialog.row.version, comment }); successMessage = '备案状态已更新' }
-      if (dialog.kind === 'incident-transition') { promise = complianceApi.transitionIncident(dialog.row.id, { status: dialog.action, expectedVersion: dialog.row.version, comment, investigationConclusion: dialog.investigationConclusion, rectificationPlan: dialog.rectificationPlan, responsibilityConclusion: dialog.responsibilityConclusion }); successMessage = `事故已流转至${this.incidentTargetText(dialog.action)}` }
+      if (dialog.kind === 'incident-transition') { promise = complianceApi.transitionIncident(dialog.row.id, { status: dialog.action, expectedVersion: dialog.row.version, comment, investigationConclusion: dialog.investigationConclusion, rectificationPlan: dialog.rectificationPlan, responsibilityConclusion: dialog.responsibilityConclusion, fileIds: dialog.fileIds }); successMessage = `事故已流转至${this.incidentTargetText(dialog.action)}` }
       if (dialog.kind === 'emergency-review') { promise = complianceApi.reviewEmergencyPlan(dialog.row.id, dialog.action, { expectedVersion: dialog.row.version, comment }); successMessage = '应急预案状态已更新' }
       if (dialog.kind === 'exemption-review') { promise = complianceApi.reviewExemption(dialog.row.id, { action: dialog.action, comment, expectedVersion: dialog.row.version }); successMessage = '豁免审批完成' }
       if (!promise) { this.dialogError = '未知操作，已阻止提交'; return }
@@ -730,6 +832,16 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .workbench-head,.head-actions,.mp-card__head,.dialog-head,.dialog-actions{display:flex;align-items:center;justify-content:space-between;gap:16px}.workbench-head p{margin:5px 0 0}.status-pill,.tab-count{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:var(--color-primary-light,#eef4ff);color:var(--color-primary);padding:3px 9px;font-size:12px}.work-tabs{display:flex;gap:8px;overflow-x:auto;padding:2px}.work-tab{border:1px solid var(--border-color);background:#fff;border-radius:8px;padding:9px 13px;cursor:pointer;white-space:nowrap}.work-tab.is-active{border-color:var(--color-primary);color:var(--color-primary);background:var(--color-primary-light,#eef4ff)}.tab-count{margin-left:5px;padding:1px 6px}.metric-card{text-align:left;cursor:pointer}.metric-card.is-active{outline:2px solid var(--color-primary)}.action-panel{border-left:4px solid var(--color-primary)}.form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:14px 0}.form-grid label,.action-dialog label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--text-secondary)}.form-grid input,.form-grid select,.form-grid textarea,.action-dialog input,.action-dialog textarea{box-sizing:border-box;width:100%;border:1px solid var(--border-color);border-radius:7px;padding:9px 10px;background:#fff;color:var(--text-primary)}.form-grid .span-2{grid-column:span 2}.form-grid .span-3{grid-column:1/-1}.checkbox-label{flex-direction:row!important;align-items:center}.checkbox-label input{width:auto}.field-help,.file-note,.cell-sub{color:var(--text-tertiary);font-size:12px}.file-note{align-self:end;padding-bottom:10px}.table-wrap{overflow-x:auto}.mp-table{width:100%;border-collapse:collapse;min-width:900px}.consent-table{min-width:1180px}.mp-table th,.mp-table td{padding:10px;border-bottom:1px solid var(--border-color);text-align:left;vertical-align:top;font-size:13px}.mp-table th{color:var(--text-secondary);font-weight:600;background:#fafbfc}.empty-cell{text-align:center!important;color:var(--text-tertiary);padding:24px!important}.mp-link,.danger-link{border:0;background:transparent;padding:3px 5px;cursor:pointer;color:var(--color-primary);white-space:nowrap}.danger-link{color:var(--color-danger,#d92d20)}.mp-link:disabled,.danger-link:disabled{opacity:.5;cursor:not-allowed}.action-cell{white-space:nowrap}.state-tag{display:inline-flex;border-radius:999px;padding:3px 8px;font-size:12px;background:#f2f4f7;color:#475467}.state-tag.is-success{background:#ecfdf3;color:#067647}.state-tag.is-danger{background:#fff1f0;color:#b42318}.state-tag.is-warn{background:#fff7e6;color:#8b5c00}.state-tag.is-muted{background:#f2f4f7;color:#667085}.cell-error{max-width:220px;color:#b42318;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}.hash-cell{max-width:230px;word-break:break-all;font-family:monospace;font-size:12px}.dialog-mask{position:fixed;inset:0;z-index:3000;background:rgba(16,24,40,.45);display:flex;align-items:center;justify-content:center;padding:20px}.action-dialog{width:min(560px,94vw);max-height:88vh;overflow:auto;background:#fff;border-radius:12px;padding:20px;box-shadow:0 24px 70px rgba(16,24,40,.25);display:flex;flex-direction:column;gap:14px}.dialog-close{border:0;background:transparent;font-size:24px;cursor:pointer;color:#667085}.dialog-actions{justify-content:flex-end;margin-top:4px}.dialog-error{padding:9px 11px;border-radius:7px;background:#fff1f0;color:#b42318;font-size:13px}
+.compliance-now{overflow:hidden;border-color:color-mix(in srgb,var(--color-primary) 24%,var(--border-color));box-shadow:0 14px 38px rgba(30,64,175,.08)}
+.compliance-now__head{align-items:flex-end;background:linear-gradient(120deg,var(--color-primary-light,#eef4ff),#fff 70%)}
+.compliance-now__head>div{display:grid;gap:4px}.compliance-now__eyebrow{color:var(--color-primary);font-size:10px;font-weight:800;letter-spacing:.12em}
+.compliance-now__list{display:grid;gap:10px;padding:14px}.compliance-now__item{display:grid;grid-template-columns:minmax(155px,.8fr) minmax(0,2fr) auto;align-items:center;gap:14px;padding:13px;border:1px solid var(--border-color);border-left:4px solid var(--color-warning,#f59e0b);border-radius:10px;background:#fff}
+.compliance-now__identity{display:grid;gap:3px}.compliance-now__identity>span{color:var(--color-warning,#b45309);font-size:10px;font-weight:800}.compliance-now__identity small{color:var(--text-tertiary)}
+.compliance-now__item dl{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:9px;margin:0}.compliance-now__item dl div{min-width:0;padding:8px 10px;border-radius:8px;background:#f8fafc}.compliance-now__item dt{margin-bottom:3px;color:var(--text-tertiary);font-size:10px;font-weight:700}.compliance-now__item dd{margin:0;color:var(--text-secondary);font-size:12px;line-height:1.45}
+.compliance-now__empty{display:grid;gap:4px;padding:24px;text-align:center;color:var(--text-secondary)}.compliance-now__empty span{font-size:12px}
+.work-tabs{gap:10px}.work-tabs__group{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding:5px;border:1px solid var(--border-color);border-radius:10px;background:#f8fafc}.work-tabs__label{padding:0 5px;color:var(--text-tertiary);font-size:10px;font-weight:800;letter-spacing:.06em}.work-tabs__buttons{display:flex;gap:4px}.work-tabs__group .work-tab{border-color:transparent;background:transparent;padding:8px 11px}.work-tabs__group .work-tab.is-active{background:#fff;box-shadow:0 2px 6px rgba(30,64,175,.08)}
+.incident-table{min-width:1280px}.incident-table td{max-width:260px}.incident-table strong{display:block;line-height:1.45}.incident-table tr.is-focus td{background:var(--color-primary-light,#eef4ff)}
 @media(max-width:900px){.form-grid{grid-template-columns:1fr 1fr}.form-grid .span-3{grid-column:1/-1}}
-@media(max-width:640px){.form-grid{grid-template-columns:1fr}.form-grid .span-2,.form-grid .span-3{grid-column:auto}.workbench-head{align-items:flex-start;flex-direction:column}.head-actions{width:100%}.action-dialog{padding:16px}}
+@media(max-width:900px){.compliance-now__item{grid-template-columns:1fr}.compliance-now__item dl{grid-template-columns:1fr}}
+@media(max-width:640px){.form-grid{grid-template-columns:1fr}.form-grid .span-2,.form-grid .span-3{grid-column:auto}.workbench-head{align-items:flex-start;flex-direction:column}.head-actions{width:100%}.action-dialog{padding:16px}.compliance-now__head{align-items:flex-start}}
 </style>

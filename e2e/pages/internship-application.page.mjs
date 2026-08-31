@@ -22,10 +22,41 @@ export class StudentInternshipApplicationPage {
     this.fixture = fixture
   }
 
+  async selectExactBatchIfNeeded() {
+    const selector = this.page.getByText('请选择要办理的实习批次', { exact: true })
+    if (await selector.isVisible().catch(() => false)) {
+      const target = this.page.getByRole('button').filter({ hasText: this.fixture.batchName }).first()
+      await expect(target).toBeVisible()
+      const selected = this.page.waitForResponse((response) =>
+        apiPath(response) === '/api/v1/portal/internship/my'
+        && response.request().headers()['x-internship-batch-id'] === String(this.fixture.batchId)
+      )
+      await target.click()
+      await selected
+      await expect(selector).toBeHidden()
+    }
+  }
+
+  async openApplicationTab() {
+    const button = this.page.getByRole('button', { name: '正式申请', exact: true })
+    if (!(await button.isVisible().catch(() => false))) {
+      const group = this.page.locator('details.sp-process-group').filter({ hasText: '选岗与申请' }).first()
+      await expect(group).toBeVisible()
+      if (!(await group.evaluate((element) => element.open))) {
+        await group.locator('summary').click()
+      }
+    }
+    await expect(button).toBeVisible()
+    await button.click()
+  }
+
   async open() {
+    const initial = this.page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/my')
     await this.page.goto(`${this.baseUrl}/internship`)
-    await expect(this.page.getByRole('button', { name: '正式申请' })).toBeVisible()
-    await this.page.getByRole('button', { name: '正式申请' }).click()
+    await initial
+    await this.selectExactBatchIfNeeded()
+    await this.openApplicationTab()
     await expect(this.page.getByText('提交正式申请', { exact: true })).toBeVisible()
     await expect(this.page.getByText('我的申请', { exact: true })).toBeVisible()
   }
@@ -83,16 +114,23 @@ export class StudentInternshipApplicationPage {
 
   async expectRejectedFeedback(note, rejectReason) {
     await this.open()
+    const reloaded = this.page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/my')
     await this.page.reload()
-    await expect(this.page.getByRole('button', { name: '正式申请' })).toBeVisible()
-    await this.page.getByRole('button', { name: '正式申请' }).click()
+    await reloaded
+    await this.selectExactBatchIfNeeded()
+    await this.openApplicationTab()
     await expect(this.page.getByText(note, { exact: false }).first()).toBeVisible()
     await expect(this.page.getByText(`驳回原因：${rejectReason}`, { exact: false }).first()).toBeVisible()
     await expect(this.page.getByText(/已驳回|REJECTED/).first()).toBeVisible()
   }
 
   async expectApprovedAndLanded({ companyName, positionName }) {
+    const initial = this.page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/my')
     await this.page.goto(`${this.baseUrl}/internship`)
+    await initial
+    await this.selectExactBatchIfNeeded()
     await expect(this.page.getByRole('button', { name: '我的实习' })).toBeVisible()
     await expect(this.page.getByText(companyName, { exact: false }).first()).toBeVisible()
     await expect(this.page.getByText(positionName, { exact: false }).first()).toBeVisible()

@@ -41,6 +41,49 @@ async function loginStudentMini(page) {
   await expect(page).toHaveURL(/#\/pages\/student\/home\/index/)
 }
 
+async function selectStudentBatch(page, fixture) {
+  const selector = page.getByText('请选择要办理的实习批次', { exact: true })
+  if (await selector.isVisible().catch(() => false)) {
+    const target = page.getByRole('button').filter({ hasText: fixture.batchName }).first()
+    await expect(target).toBeVisible()
+    const selected = page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/my'
+      && response.request().headers()['x-internship-batch-id'] === String(fixture.batchId)
+    )
+    await target.click()
+    await selected
+    await expect(selector).toBeHidden()
+  }
+}
+
+async function openStudentInternship(page, fixture) {
+  const initial = page.waitForResponse((response) =>
+    apiPath(response) === '/api/v1/portal/internship/my')
+  await page.goto(`${config.studentBaseUrl}/internship`)
+  await initial
+  await selectStudentBatch(page, fixture)
+}
+
+async function openStudentSelection(page, fixture) {
+  await openStudentInternship(page, fixture)
+  const entry = page.getByRole('button', { name: '企业岗位库', exact: true })
+  if (!(await entry.isVisible().catch(() => false))) {
+    const group = page.locator('details.sp-process-group').filter({ hasText: '选岗与申请' }).first()
+    await expect(group).toBeVisible()
+    if (!(await group.evaluate((element) => element.open))) {
+      await group.locator('summary').click()
+    }
+  }
+  await expect(entry).toBeVisible()
+  const context = page.waitForResponse((response) =>
+    apiPath(response) === '/api/v1/portal/internship/catalog/context'
+    && response.request().headers()['x-internship-batch-id'] === String(fixture.batchId)
+  )
+  await entry.click()
+  await context
+  await expect(page).toHaveURL(/\/internship\/selection/)
+}
+
 test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导教师分配', () => {
   test.describe.configure({ mode: 'serial', retries: 0 })
 
@@ -165,7 +208,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
 
   test('IX-009：Student PC 真实加入志愿并整组投递 canonical application', async ({ page }) => {
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
-    await page.goto(`${config.studentBaseUrl}/internship/selection`)
+    await openStudentSelection(page, fixture)
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
 
     const savePromise = page.waitForResponse((response) =>
@@ -260,7 +303,7 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
     expect(advisorPayload.body?.data?.advisorName).toBe(ADVISOR_NAME)
 
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
-    await page.goto(`${config.studentBaseUrl}/internship`)
+    await openStudentInternship(page, fixture)
     await expect(page.getByText(companyName(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(ADVISOR_NAME, { exact: false }).first()).toBeVisible()
@@ -288,13 +331,13 @@ test.describe('岗位实习审计：IX-009 岗位匹配、正式落岗与指导�
       apiPath(response) === '/api/v1/portal/internship/catalog/positions'
         && response.request().method() === 'GET'
     )
-    await page.goto(`${config.studentBaseUrl}/internship/selection`)
+    await openStudentSelection(page, fixture)
     const catalogPayload = await payloadOf(await catalogPromise)
     expect(catalogPayload.body?.code, catalogPayload.text).toBe(0)
     const catalogItems = Array.isArray(catalogPayload.body?.data?.items) ? catalogPayload.body.data.items : []
     expect(catalogItems.some((item) => String(item?.positionId || item?.id || '') === String(positionId))).toBeFalsy()
     await expect(page.locator('.catalog-panel').getByText(positionTitle(), { exact: false })).toHaveCount(0)
-    await page.goto(`${config.studentBaseUrl}/internship`)
+    await openStudentInternship(page, fixture)
     await expect(page.getByText(positionTitle(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(companyName(), { exact: false }).first()).toBeVisible()
     await expect(page.getByText(ADVISOR_NAME, { exact: false }).first()).toBeVisible()

@@ -1,7 +1,7 @@
 """Student mobile thin facade for A03 selection Authority."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, Header, Query
 
 from app.api.v1 import file_contract
 from app.core.permissions import require_module
@@ -18,6 +18,12 @@ router = APIRouter(
     tags=["学生移动端-实习选岗Authority"],
     dependencies=[Depends(require_module("internship"))],
 )
+
+
+def _selected_batch_id(
+    value: str | None = Header(default=None, alias="X-Internship-Batch-Id"),
+) -> str | None:
+    return value
 
 
 def _volunteer_contract(result: dict) -> dict:
@@ -40,8 +46,10 @@ def _volunteer_contract(result: dict) -> dict:
 
 
 @router.get("/catalog/context", summary="本人当前招聘季选岗上下文")
-def get_catalog_context(user=Depends(get_current_user)):
-    return success(catalog_svc.get_catalog_context(user=user))
+def get_catalog_context(
+    user=Depends(get_current_user), batch_id=Depends(_selected_batch_id),
+):
+    return success(catalog_svc.get_catalog_context(user=user, batch_id=batch_id))
 
 
 @router.get("/catalog/positions", summary="本人当前招聘季可选岗位")
@@ -63,8 +71,9 @@ def list_catalog_positions(
     majorMatched: bool | None = Query(default=None),
     remuneration: float | None = Query(default=None, ge=0),
     user=Depends(get_current_user),
+    batch_id=Depends(_selected_batch_id),
 ):
-    return success(catalog_svc.list_catalog_positions(user=user, params={
+    return success(catalog_svc.list_catalog_positions(user=user, batch_id=batch_id, params={
         "page": page,
         "pageSize": pageSize,
         "sort": sort,
@@ -85,13 +94,19 @@ def list_catalog_positions(
 
 
 @router.get("/catalog/positions/{position_id}", summary="本人当前招聘季岗位详情")
-def get_catalog_position(position_id: int, user=Depends(get_current_user)):
-    return success(catalog_svc.get_catalog_position(user=user, position_id=position_id))
+def get_catalog_position(
+    position_id: int, user=Depends(get_current_user), batch_id=Depends(_selected_batch_id),
+):
+    return success(catalog_svc.get_catalog_position(
+        user=user, position_id=position_id, batch_id=batch_id))
 
 
 @router.get("/catalog/companies/{company_id}", summary="本人当前招聘季企业公开资料")
-def get_catalog_company(company_id: int, user=Depends(get_current_user)):
-    return success(catalog_svc.get_catalog_company(user=user, company_id=company_id))
+def get_catalog_company(
+    company_id: int, user=Depends(get_current_user), batch_id=Depends(_selected_batch_id),
+):
+    return success(catalog_svc.get_catalog_company(
+        user=user, company_id=company_id, batch_id=batch_id))
 
 
 @router.get("/context/profile", summary="本人实习档案")
@@ -142,8 +157,11 @@ def create_profile_pdf_preview(body: dict = Body(...), user=Depends(get_current_
 
 
 @router.get("/context/volunteers", summary="本人当前招聘季三志愿")
-def get_my_volunteers(user=Depends(get_current_user)):
-    return success(_volunteer_contract(selection_svc.get_my_volunteers(user=user)))
+def get_my_volunteers(
+    user=Depends(get_current_user), batch_id=Depends(_selected_batch_id),
+):
+    return success(_volunteer_contract(selection_svc.get_my_volunteers(
+        user=user, batch_id=batch_id)))
 
 
 @router.put("/context/volunteers", summary="原子保存本人三志愿草稿")
@@ -153,39 +171,60 @@ def save_my_volunteer_draft(body: dict = Body(...), user=Depends(get_current_use
 
 
 @router.get("/context/volunteers/material-preview", summary="提交前企业视角材料预览证据")
-def get_my_material_preview(user=Depends(get_current_user)):
-    return success(selection_svc.get_my_material_preview(user=user))
+def get_my_material_preview(
+    user=Depends(get_current_user), batch_id=Depends(_selected_batch_id),
+):
+    return success(selection_svc.get_my_material_preview(user=user, batch_id=batch_id))
 
 
 @router.post("/context/volunteers/submit", summary="按预览与档案版本原子提交三志愿")
-def submit_my_volunteers(body: dict = Body(...), user=Depends(get_current_user)):
-    result = selection_svc.submit_my_saved_volunteers(user=user, body=body or {})
+def submit_my_volunteers(
+    body: dict = Body(...), user=Depends(get_current_user), batch_id=Depends(_selected_batch_id),
+):
+    result = selection_svc.submit_my_saved_volunteers(
+        user=user, body=body or {}, batch_id=batch_id)
     return success(_volunteer_contract(result), message="志愿已整组提交")
 
 
 @router.post("/context/volunteers/withdraw", summary="按版本整组撤回已提交志愿")
-def withdraw_my_volunteers(body: dict = Body(...), user=Depends(get_current_user)):
-    result = action_svc.withdraw_my_submission(user=user, body=body or {})
+def withdraw_my_volunteers(
+    body: dict = Body(...), user=Depends(get_current_user), batch_id=Depends(_selected_batch_id),
+):
+    result = action_svc.withdraw_my_submission(
+        user=user, body=body or {}, batch_id=batch_id)
     return success(_volunteer_contract(result), message="志愿已整组撤回，可重新修改")
 
 
 @router.post("/context/volunteers/unlock-request", summary="按版本申请修改企业拟接收锁定志愿")
-def request_my_volunteer_unlock(body: dict = Body(...), user=Depends(get_current_user)):
-    result = action_svc.request_my_unlock(user=user, body=body or {})
+def request_my_volunteer_unlock(
+    body: dict = Body(...), user=Depends(get_current_user), batch_id=Depends(_selected_batch_id),
+):
+    result = action_svc.request_my_unlock(
+        user=user, body=body or {}, batch_id=batch_id)
     return success(_volunteer_contract(result), message="改志愿申请已提交")
 
 
 @router.get("/context/volunteers/submissions", summary="本人不可变投递版本历史")
-def list_my_submission_history(user=Depends(get_current_user)):
-    return success(action_svc.list_my_submissions(user=user))
+def list_my_submission_history(
+    user=Depends(get_current_user), batch_id=Depends(_selected_batch_id),
+):
+    return success(action_svc.list_my_submissions(user=user, batch_id=batch_id))
 
 
 @router.get("/context/volunteers/submissions/{submission_version}", summary="本人指定不可变投递版本")
-def get_my_submission_version(submission_version: int, user=Depends(get_current_user)):
-    return success(action_svc.get_my_submission(user=user, submission_version=submission_version))
+def get_my_submission_version(
+    submission_version: int,
+    user=Depends(get_current_user),
+    batch_id=Depends(_selected_batch_id),
+):
+    return success(action_svc.get_my_submission(
+        user=user, submission_version=submission_version, batch_id=batch_id))
 
 
 @router.post("/context/volunteers/contact-consent/revoke", summary="撤销当前投递联系方式共享授权")
-def revoke_my_contact_consent(body: dict = Body(...), user=Depends(get_current_user)):
-    result = action_svc.revoke_my_contact_consent(user=user, body=body or {})
+def revoke_my_contact_consent(
+    body: dict = Body(...), user=Depends(get_current_user), batch_id=Depends(_selected_batch_id),
+):
+    result = action_svc.revoke_my_contact_consent(
+        user=user, body=body or {}, batch_id=batch_id)
     return success(_volunteer_contract(result), message="联系方式共享授权已撤销")

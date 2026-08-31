@@ -2,6 +2,10 @@
   <view class="page-wrap se">
     <MobileGlobalState :state="pageState" @retry="load">
       <view class="page-pad stack" v-if="loaded">
+        <view v-if="receipt" class="card se__receipt">
+          <view class="row-between"><text class="t-bold">✓ 自评已提交</text><text>v{{ receipt.version }}</text></view>
+          <text>鉴定 #{{ receipt.id }} · {{ receipt.statusLabel }}</text><text>{{ receipt.nextStep }}</text>
+        </view>
         <view class="card se__head">
           <view class="row-between">
             <text class="card-title">实习自评 / 鉴定</text>
@@ -11,6 +15,7 @@
           <text v-if="evalData?.version" class="se__version">记录版本 {{ evalData.version }}</text>
         </view>
         <MobileInlineAlert v-if="historyMode" type="info" title="历史实习记录" description="历史批次仅可查看鉴定，不可重新提交。" />
+        <MobileInlineAlert v-else-if="conflictText" type="warning" title="版本已变化，草稿已保留" :description="conflictText" />
         <MobileInlineAlert v-else-if="evalData?.reviewStatus === 'RETURNED'" type="warning" title="鉴定已退回" :description="evalData.reviewComment || '请按审核意见修改后重新提交。修改正文后旧指导意见将失效。'" />
         <MobileInlineAlert v-else-if="pendingReview" type="info" title="鉴定正在审核" description="当前版本已提交，不能继续覆盖；如需修改，请等待学校退回。" />
         <view class="card se__form">
@@ -72,6 +77,7 @@ export default {
     return {
       pageState: 'loading', loaded: false, submitting: false,
       evalData: null, historyMode: false,
+      receipt: null, conflictText: '',
       form: { selfSummary: '', selfHarvest: '', selfProblem: '', enterpriseRating: null, enterpriseFeedback: '', positionRating: null, positionFeedback: '' },
       ratingLabels: ['1 分', '2 分', '3 分', '4 分', '5 分']
     }
@@ -114,16 +120,20 @@ export default {
       if (String(this.form.selfSummary || '').trim().length < 20) return toast('实习总结至少20个字')
       this.submitting = true
       try {
-        await studentApi.submitInternshipSelfEval({
+        const result = await studentApi.submitInternshipSelfEval({
           ...this.form,
           ...(this.evalData?.id ? { expectedVersion: this.evalData.version } : {})
         })
+        this.receipt = { id: result?.id || '', version: result?.version,
+          statusLabel: result?.reviewStatusLabel || result?.reviewStatus || '待审核',
+          nextStep: '等待导师填写评价并由学校审核' }
+        this.conflictText = ''
         toast('自评已提交，等待指导意见和学校审核')
         await this.load()
       } catch (e) {
         if (String(e?.code || '').includes('409') || e?.code === 'DATA_CONFLICT') {
-          toast('鉴定状态已变化，正在刷新')
-          await this.load()
+          this.conflictText = '服务端鉴定版本已更新。当前输入没有丢失；请核对后手动返回并刷新，再决定是否重新提交。系统不会自动重放。'
+          toast('版本已变化，当前草稿已保留')
         } else toast(e?.message || '提交失败，请稍后重试')
       } finally { this.submitting = false }
     }
@@ -132,6 +142,7 @@ export default {
 </script>
 
 <style scoped>
+.se__receipt{display:flex;flex-direction:column;gap:5px;padding:var(--space-3);border-color:var(--success-300,#86efac);background:var(--success-50,#f0fdf4);font-size:var(--font-size-xs);color:var(--text-secondary)}
 .se__hint,.se__version { display:block;margin-top:6px;font-size:var(--font-size-sm);color:var(--text-secondary); }
 .se__version { font-size:var(--font-size-xs);color:var(--text-tertiary); }
 .se__field { margin-bottom:14px; }

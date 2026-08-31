@@ -11,7 +11,7 @@ test('A02 targeted workflow enforces locked production dependency audit with evi
   assert.match(workflow,/check-production-audit-report\.mjs audit-production\.json/)
   assert.match(workflow,/check-npm-production-audit\.mjs/)
   assert.match(workflow,/audit-production\.json/)
-  assert.match(workflow,/enterprise-portal\n\s+\.\.\/\.github\/security\/npm-production-audit-waivers\.json/)
+  assert.match(workflow,/enterprise-portal\r?\n\s+\.\.\/\.github\/security\/npm-production-audit-waivers\.json/)
   assert.match(workflow,/a02-enterprise-portal-npm-audit/)
   assert.match(workflow,/if-no-files-found: error/)
   assert.match(workflow,/retention-days: 14/)

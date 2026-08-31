@@ -48,7 +48,8 @@ def _row(g, rec, stu):
         "topic": g.topic or "", "content": g.content or "", "problemType": g.problem_type or "",
         "suggestion": g.suggestion or "", "nextFollowDate": g.next_follow_date or "",
         "toRisk": bool(g.to_risk), "notifyCounselor": bool(g.notify_counselor),
-        "status": g.status, "createdAt": _iso(g.created_at) or "",
+        "status": g.status, "version": int(g.version or 0),
+        "createdAt": _iso(g.created_at) or "",
     }
 
 
@@ -137,19 +138,28 @@ def create(user, body) -> dict:
         return {"id": str(g.id), "riskId": str(risk_id) if risk_id else None}
 
 
-def void_guidance(user, gid, reason="") -> dict:
+def void_guidance(user, gid, reason="", *, expected_version=None) -> dict:
+    from app.modules.internship.services.internship_version import (
+        extract_expected_version, versioned_update,
+    )
     scope, in_scope = _scope_ctx(user)
     with session() as db:
         g = _get(db, gid)
         rec, stu = _ctx(db, g)
         if not in_scope(scope, db, rec, stu):
             raise no_permission("只能撤销本人指导学生的指导记录")
-        g.is_deleted = True
-        g.status = "VOIDED"
-        g.version += 1
+        current_version = int(g.version or 0)
+        client_version = extract_expected_version(
+            {"expectedVersion": expected_version}, required=False)
+        if client_version is not None and client_version != current_version:
+            raise AppException("DATA_CONFLICT", "指导记录已被其他人更新，请刷新后重试")
+        new_ver = versioned_update(
+            db, InternshipGuidance, entity_id=g.id, tenant_id=_tid(),
+            expected_version=current_version, expected_status=g.status,
+            values={"is_deleted": True, "status": "VOIDED"})
         _trail(db, g.id, "VOID", {"reason": reason}, operator=_op_name(user))
         db.commit()
-        return {"id": str(g.id), "status": "VOIDED"}
+        return {"id": str(g.id), "status": "VOIDED", "version": new_ver}
 
 
 def list_guidances(page, page_size, keyword=None, batch_id=None, user=None) -> tuple[list[dict], int]:

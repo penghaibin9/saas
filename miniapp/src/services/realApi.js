@@ -244,8 +244,8 @@ export const teacherLeaveAckReturn = (leaveId, note) =>
 export const teacherInternshipRisks = () => realRequest('/mobile/teacher/internship/risks')
 export const teacherInternshipRiskHandle = (riskId, body) =>
   realRequest(`/mobile/teacher/internship/risks/${riskId}/handle`, { method: 'POST', data: body || {} })
-export const teacherInternshipRiskFollow = (riskId, note) =>
-  realRequest(`/mobile/teacher/internship/risks/${riskId}/follow`, { method: 'POST', data: { note } })
+export const teacherInternshipRiskFollow = (riskId, body) =>
+  realRequest(`/mobile/teacher/internship/risks/${riskId}/follow`, { method: 'POST', data: body || {} })
 export const teacherInternshipRiskClose = (riskId, body) =>
   realRequest(`/mobile/teacher/internship/risks/${riskId}/close`, { method: 'POST', data: body || {} })
 

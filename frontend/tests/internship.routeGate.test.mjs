@@ -153,7 +153,7 @@ test('菜单缓存：同 ctxKey+同权限命中缓存；权限或 permissionVers
 
   const b = getVisibleNavPlan({ includePlanned: false, permissionPatterns: ['*'], ctxKey: V2 })
   const bMods = b.find((g) => g.key === 'internship')
-  assert.ok(bMods && bMods.children.length === 12, '升权后（新 permissionVersion）应见全部 12 个二级域')
+  assert.ok(bMods && bMods.children.length === 11, '升权后（新 permissionVersion）应见全部 11 个业务工作区')
   assert.notEqual(b, elevatedSameContext, 'permissionVersion 变化必须创建新的缓存投影')
   assert.notEqual(bMods && bMods.children.length, aMods ? aMods.children.length : 0, '换权限后投影必须变化')
 })
