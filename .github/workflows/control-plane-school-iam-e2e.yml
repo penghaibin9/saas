@@ -13,9 +13,18 @@ on:
       - 'backend/app/services/permission_bundle_service.py'
       - 'backend/app/services/system_role_shadow_service.py'
       - 'backend/scripts/e2e_seed_control_plane_school_iam.py'
+      - 'backend/scripts/e2e_seed_control_plane_role_projection.py'
       - 'frontend/src/modules/system/**'
+      - 'frontend/src/config/adminMenu.js'
+      - 'frontend/src/layouts/BasePortalLayout.vue'
+      - 'frontend/src/security/permissionGate.js'
+      - 'frontend/tests/admin-menu-custom-role-projection.test.mjs'
+      - 'frontend/tests/approval-route-permission-gate.test.mjs'
+      - 'frontend/tests/control-plane-v2-platform-access-contract.test.mjs'
       - 'e2e/specs/system-role-security-change.spec.mjs'
       - 'e2e/specs/system-effective-access.spec.mjs'
+      - 'e2e/specs/control-plane-role-menu-projection.spec.mjs'
+      - 'shared/contracts/navigation-surface-contract.json'
       - 'shared/contracts/permission-catalog.json'
       - '.github/workflows/control-plane-school-iam-e2e.yml'
   pull_request:
@@ -29,9 +38,18 @@ on:
       - 'backend/app/services/permission_bundle_service.py'
       - 'backend/app/services/system_role_shadow_service.py'
       - 'backend/scripts/e2e_seed_control_plane_school_iam.py'
+      - 'backend/scripts/e2e_seed_control_plane_role_projection.py'
       - 'frontend/src/modules/system/**'
+      - 'frontend/src/config/adminMenu.js'
+      - 'frontend/src/layouts/BasePortalLayout.vue'
+      - 'frontend/src/security/permissionGate.js'
+      - 'frontend/tests/admin-menu-custom-role-projection.test.mjs'
+      - 'frontend/tests/approval-route-permission-gate.test.mjs'
+      - 'frontend/tests/control-plane-v2-platform-access-contract.test.mjs'
       - 'e2e/specs/system-role-security-change.spec.mjs'
       - 'e2e/specs/system-effective-access.spec.mjs'
+      - 'e2e/specs/control-plane-role-menu-projection.spec.mjs'
+      - 'shared/contracts/navigation-surface-contract.json'
       - 'shared/contracts/permission-catalog.json'
       - '.github/workflows/control-plane-school-iam-e2e.yml'
 
@@ -70,6 +88,7 @@ env:
   E2E_STAFF_BASE_URL: http://127.0.0.1:5173
   E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
   E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  DEPLOYED_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   school-iam-e2e:
@@ -138,6 +157,7 @@ jobs:
           set -euo pipefail
           pip install -r requirements.txt
           python -m py_compile scripts/e2e_seed_control_plane_school_iam.py
+          python -m py_compile scripts/e2e_seed_control_plane_role_projection.py
           test "$(alembic heads | wc -l | tr -d ' ')" = "1"
           alembic upgrade head
           alembic current
@@ -205,6 +225,10 @@ jobs:
         run: |
           node --check specs/system-role-security-change.spec.mjs
           node --check specs/system-effective-access.spec.mjs
+          node --check specs/control-plane-role-menu-projection.spec.mjs
+          node --test ../frontend/tests/admin-menu-custom-role-projection.test.mjs
+          node --test ../frontend/tests/approval-route-permission-gate.test.mjs
+          node --test ../frontend/tests/control-plane-v2-platform-access-contract.test.mjs
 
       - name: Install Chromium
         working-directory: e2e
@@ -277,6 +301,141 @@ jobs:
           print(json.dumps(artifact, ensure_ascii=False, sort_keys=True))
           PY
 
+      - name: Seed real W12 role-projection browser sessions
+        working-directory: backend
+        run: python scripts/e2e_seed_control_plane_role_projection.py
+
+      - name: Build and start exact-head production staff PC
+        env:
+          VITE_API_BASE_URL: http://127.0.0.1:8000
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm run build
+          nohup npm run preview -- --host 127.0.0.1 --port 5174 > ../e2e/runtime-logs/frontend-production.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend-production.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:5174/workbench >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/frontend-production.log
+          exit 1
+
+      - name: Run W12 production role/menu projection matrix
+        working-directory: e2e
+        env:
+          E2E_STAFF_BASE_URL: http://127.0.0.1:5174
+        run: npx playwright test specs/control-plane-role-menu-projection.spec.mjs --workers=1 --retries=0
+
+      - name: Validate W12 role/menu projection evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected = os.environ['E2E_EXPECTED_SHA']
+          evidence = json.loads(Path('e2e/test-results/control-plane-role-projection-evidence.json').read_text(encoding='utf-8'))
+          role_security = json.loads(Path('e2e/test-results/system-role-security-change-evidence.json').read_text(encoding='utf-8'))
+          effective_access = json.loads(Path('e2e/test-results/system-effective-access-evidence.json').read_text(encoding='utf-8'))
+          expected_roles = {
+              'SCHOOL_ADMIN', 'SYS_ADMIN', 'ACADEMIC_ADMIN', 'COLLEGE_ADMIN',
+              'ACADEMIC_TEACHER', 'STUDENT_AFFAIRS', 'COUNSELOR', 'INTERN_MENTOR',
+              'GRADUATION_ADMIN', 'E2E_CUSTOM_MENU', 'PLATFORM_COMMERCIAL',
+              'PLATFORM_OPERATIONS', 'PLATFORM_SECURITY_AUDITOR',
+              'PLATFORM_SUPER_ADMIN',
+          }
+          assert evidence['headSha'] == expected
+          assert evidence['realSignedBrowserSessions'] is True
+          assert evidence['mockSuccess'] is False
+          assert evidence['roleCount'] == 14
+          roles = evidence['roles']
+          assert {item['roleCode'] for item in roles} == expected_roles
+          required = {
+              'realBrowserRefresh', 'menuVisible', 'menuHidden', 'realClick',
+              'directUrlDenied', 'positiveApiAllowed', 'crossPlaneDenied',
+              'crossTenantDenied',
+          }
+          for item in roles:
+              assert all(item.get(key) is True for key in required), item
+              assert item.get('dataScope'), item
+          root = next(item for item in roles if item['roleCode'] == 'PLATFORM_SUPER_ADMIN')
+          assert root['productIamRootBrowser'] is True
+          assert root['productIamTemplateVisible'] is True
+          assert root['roleTemplatePublishMfa'] is True
+          assert root['roleTemplateMenuImpact'] is True
+          assert root['staleTemplateVersionDenied'] is True
+          assert root['roleTemplatePinnedCustomUnaffected'] is True
+          assert root['customRoleSaveAndRelog'] is True
+          assert root['customRoleStaleVersionDenied'] is True
+          assert root['legacyPermissionReadOnlyPreserved'] is True
+          assert root['accessExplainFinalDecision'] is True
+          school_admin = next(item for item in roles if item['roleCode'] == 'SCHOOL_ADMIN')
+          assert school_admin['schoolAdminProductIamDenied'] is True
+          assert role_security['headSha'] == expected
+          assert effective_access['headSha'] == expected
+
+          journeys = [
+              {
+                  'id': 'IAM-GJ-01',
+                  'name': 'Product IAM root browser and school-plane denial',
+                  'assertions': ['productIamRootBrowser', 'productIamTemplateVisible', 'schoolAdminProductIamDenied'],
+              },
+              {
+                  'id': 'IAM-GJ-02',
+                  'name': 'RoleTemplate draft impact MFA publish and stale-write denial',
+                  'assertions': ['roleTemplatePublishMfa', 'roleTemplateMenuImpact', 'staleTemplateVersionDenied'],
+              },
+              {
+                  'id': 'IAM-GJ-03',
+                  'name': 'Pinned custom role remains unchanged after template publish',
+                  'assertions': ['roleTemplatePinnedCustomUnaffected'],
+              },
+              {
+                  'id': 'IAM-GJ-04',
+                  'name': 'Custom role save stale 409 cache invalidation and password relog',
+                  'assertions': ['customRoleSaveAndRelog', 'customRoleStaleVersionDenied'],
+              },
+              {
+                  'id': 'IAM-GJ-05',
+                  'name': 'Legacy permission is visible and preserved read-only',
+                  'assertions': ['legacyPermissionReadOnlyPreserved'],
+              },
+              {
+                  'id': 'IAM-GJ-06',
+                  'name': 'DataScope and cross-tenant effective-access separation',
+                  'assertions': ['allRolesHaveDataScope', 'crossTenantDenied', 'moduleEntitlementDenied'],
+              },
+              {
+                  'id': 'IAM-GJ-07',
+                  'name': 'Platform duties school roles menu and API cross-plane isolation',
+                  'assertions': ['fourteenRealRoles', 'allCrossPlaneDenied', 'allDirectUrlsDenied'],
+              },
+              {
+                  'id': 'IAM-GJ-08',
+                  'name': 'Access Explain returns an auditable final decision',
+                  'assertions': ['accessExplainFinalDecision', 'roleSecurityActivationAndRollback'],
+              },
+          ]
+          golden = {
+              'schemaVersion': 1,
+              'card': 'CTRL-IAM-W12-GOLDEN-JOURNEYS',
+              'headSha': expected,
+              'journeyCount': len(journeys),
+              'allSealed': True,
+              'evidenceAuthority': ['REAL_BROWSER', 'REAL_API', 'MYSQL', 'REDIS_SESSION_ROTATION'],
+              'journeys': [{**item, 'status': 'L4_SEALED'} for item in journeys],
+          }
+
+          target = Path('artifacts/control-plane/iam-role-menu-projection-w12.json')
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True), encoding='utf-8')
+          golden_target = Path('artifacts/control-plane/iam-golden-journeys-w12.json')
+          golden_target.write_text(json.dumps(golden, ensure_ascii=False, indent=2, sort_keys=True), encoding='utf-8')
+          print(json.dumps({'headSha': expected, 'roleCount': len(roles), 'w12': 'L4_SEALED'}, sort_keys=True))
+          PY
+
       - name: Re-check wildcard retirement after E2E
         working-directory: backend
         run: |
@@ -300,6 +459,8 @@ jobs:
           path: |
             artifacts/control-plane/school-iam-full-e2e.json
             artifacts/control-plane/school-iam-permission-catalog.json
+            artifacts/control-plane/iam-role-menu-projection-w12.json
+            artifacts/control-plane/iam-golden-journeys-w12.json
             e2e/test-results/
             e2e/runtime-logs/
           if-no-files-found: warn

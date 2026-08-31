@@ -9,15 +9,21 @@ on:
       - 'backend/app/core/permission_catalog.py'
       - 'backend/app/core/permissions.py'
       - 'backend/app/models/permission_governance.py'
+      - 'backend/app/modules/system_admin/routers/system_bundle.py'
+      - 'backend/app/modules/system_admin/routers/system_i4_router.py'
+      - 'backend/app/modules/system_admin/services/school_iam_authority_projection_service.py'
+      - 'backend/app/modules/system_admin/services/school_iam_access_explain_service.py'
       - 'backend/app/services/system_role_shadow_service.py'
       - 'backend/app/services/sandbox_school_master_seed.py'
       - 'backend/app/services/sandbox_school_role_reconcile.py'
       - 'backend/app/services/sandbox_school_mentor_workload.py'
       - 'backend/scripts/check_control_plane_b8_topology.py'
+      - 'backend/scripts/check_control_plane_iam_20k_query_bounds.py'
       - 'backend/scripts/prime_sandbox_neighbor_sentinel.py'
       - 'backend/scripts/reset_sandbox_school.py'
       - 'backend/scripts/check_sandbox_20k_school.py'
       - 'shared/contracts/permission-catalog.json'
+      - 'shared/contracts/navigation-surface-contract.json'
       - '.github/workflows/control-plane-b8-20k-topology.yml'
   pull_request:
     branches:
@@ -26,15 +32,21 @@ on:
       - 'backend/app/core/permission_catalog.py'
       - 'backend/app/core/permissions.py'
       - 'backend/app/models/permission_governance.py'
+      - 'backend/app/modules/system_admin/routers/system_bundle.py'
+      - 'backend/app/modules/system_admin/routers/system_i4_router.py'
+      - 'backend/app/modules/system_admin/services/school_iam_authority_projection_service.py'
+      - 'backend/app/modules/system_admin/services/school_iam_access_explain_service.py'
       - 'backend/app/services/system_role_shadow_service.py'
       - 'backend/app/services/sandbox_school_master_seed.py'
       - 'backend/app/services/sandbox_school_role_reconcile.py'
       - 'backend/app/services/sandbox_school_mentor_workload.py'
       - 'backend/scripts/check_control_plane_b8_topology.py'
+      - 'backend/scripts/check_control_plane_iam_20k_query_bounds.py'
       - 'backend/scripts/prime_sandbox_neighbor_sentinel.py'
       - 'backend/scripts/reset_sandbox_school.py'
       - 'backend/scripts/check_sandbox_20k_school.py'
       - 'shared/contracts/permission-catalog.json'
+      - 'shared/contracts/navigation-surface-contract.json'
       - '.github/workflows/control-plane-b8-20k-topology.yml'
 
 permissions:
@@ -60,6 +72,8 @@ env:
   FAST_TEST_SCHEMA: '0'
   B8_TOPOLOGY_EVIDENCE_PATH: ../artifacts/control-plane/b8-20k-topology.json
   B8_TOPOLOGY_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  IAM_20K_QUERY_EVIDENCE_PATH: ../artifacts/control-plane/iam-20k-query-bounds.json
+  IAM_20K_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   mysql-b8-20k-topology:
@@ -120,6 +134,7 @@ jobs:
           set -euo pipefail
           test "$(alembic heads | wc -l | tr -d ' ')" = "1"
           python -m py_compile scripts/check_control_plane_b8_topology.py
+          python -m py_compile scripts/check_control_plane_iam_20k_query_bounds.py
           python -m py_compile scripts/prime_sandbox_neighbor_sentinel.py
           python -m py_compile app/services/system_role_shadow_service.py
           mysql -h127.0.0.1 -uroot -proot -e '
@@ -157,6 +172,12 @@ jobs:
         run: |
           set -euo pipefail
           PYTHONPATH=. python scripts/check_control_plane_b8_topology.py
+
+      - name: Prove W13 20K IAM query bounds
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python scripts/check_control_plane_iam_20k_query_bounds.py
 
       - name: Validate exact-head topology evidence
         run: |
@@ -203,6 +224,33 @@ jobs:
           print(json.dumps(data, ensure_ascii=False, sort_keys=True))
           PY
 
+      - name: Validate exact-head W13 query-bound evidence
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          expected_sha = '${{ github.event.pull_request.head.sha || github.sha }}'
+          data = json.loads(Path('artifacts/control-plane/iam-20k-query-bounds.json').read_text(encoding='utf-8'))
+          assert data['schemaVersion'] == 1
+          assert data['card'] == 'IAM_W13_20K_QUERY_BOUNDS'
+          assert data['headSha'] == expected_sha
+          assert data['scale']['students'] >= 20000
+          assert data['scale']['accessExplainSubjectRoles'] == 1
+          assert data['allBounded'] is True
+          checks = data['checks']
+          assert checks['roleList']['selectCount'] <= 4
+          assert checks['roleMembers']['selectCount'] <= 3
+          assert checks['roleAudit']['selectCount'] <= 3
+          assert checks['permissionTree']['selectCount'] == 0
+          assert checks['navigationPreview']['selectCount'] == 0
+          assert checks['roleTemplateImpact']['selectCount'] <= 8
+          assert checks['roleTemplateImpact']['affectedUserCountAuthority'] == 'DB_COUNT_DISTINCT_USER_ROLE'
+          assert checks['accessExplainSingleObject']['selectCount'] <= 60
+          print(json.dumps(data, ensure_ascii=False, sort_keys=True))
+          PY
+
       - name: Upload B8-02 topology evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -213,5 +261,6 @@ jobs:
             artifacts/control-plane/b8-20k-permission-catalog.json
             artifacts/control-plane/b8-20k-school-acceptance.log
             artifacts/control-plane/b8-20k-rebuild.log
+            artifacts/control-plane/iam-20k-query-bounds.json
           if-no-files-found: warn
           retention-days: 14

@@ -156,6 +156,13 @@ def _is_last_active_school_admin(db, tenant_id: int, user_id: int) -> bool:
     return int(active_admins or 0) <= 1
 
 
+def _role_scope_from_remark(role) -> str:
+    """Read-only fallback for pre-DataScopeRule roles."""
+    marker = str(role.remark or "")
+    prefix = ";scope="
+    return marker.split(prefix, 1)[1].split(";", 1)[0] if prefix in marker else "ASSIGNED"
+
+
 def _role_scope(role) -> str:
     """只读兼容：优先结构化规则，历史 Role.remark 仅作回落。"""
     try:
@@ -165,9 +172,7 @@ def _role_scope(role) -> str:
             return coded
     except Exception:
         pass
-    marker = str(role.remark or "")
-    prefix = ";scope="
-    return marker.split(prefix, 1)[1].split(";", 1)[0] if prefix in marker else "ASSIGNED"
+    return _role_scope_from_remark(role)
 
 
 def _set_role_scope(role, scope_code: str, *, target_json: dict | None = None, user: dict | None = None) -> None:
@@ -182,14 +187,19 @@ def _set_role_scope(role, scope_code: str, *, target_json: dict | None = None, u
     role.remark = (remark + ";permMode=DB;scopeSource=RULE").lstrip(";")
 
 
-def _role_row(role, member_count: int) -> dict:
+_SCOPE_UNLOADED = object()
+
+
+def _role_row(role, member_count: int, *, scope_code=_SCOPE_UNLOADED) -> dict:
     status = str(role.status or "").upper()
+    scope = _role_scope(role) if scope_code is _SCOPE_UNLOADED else (scope_code or _role_scope_from_remark(role))
     return {
         "id": str(role.id), "name": role.role_name, "code": role.role_code,
         "type": "BUILTIN" if str(role.role_type or "").upper() == "SYSTEM" else "CUSTOM",
         "typeLabel": "预设角色" if str(role.role_type or "").upper() == "SYSTEM" else "自定义角色",
-        "scopeCode": _role_scope(role), "scopeName": _role_scope(role),
+        "scopeCode": scope, "scopeName": scope,
         "memberCount": int(member_count or 0), "description": role.remark or "",
+        "version": int(getattr(role, "version", 0) or 0),
         "status": "ENABLED" if status in ("ACTIVE", "ENABLED") else "DISABLED",
         "statusLabel": "启用中" if status in ("ACTIVE", "ENABLED") else "已停用",
         "updatedAt": str(getattr(role, "updated_at", "") or "")[:19],
@@ -401,7 +411,8 @@ def list_system_roles(
     if not db_enabled():
         from app.core.exceptions import AppException
         raise AppException("UNAUTHORIZED", "角色目录需启用数据库")
-    from app.models import Role, UserRole
+    from app.models import DataScopeRule, Role, UserRole
+    from app.services.data_scope_service import normalize_scope
     tenant_id = current_tenant_id()
     db = get_sessionmaker()()
     try:
@@ -417,15 +428,43 @@ def list_system_roles(
             stmt = stmt.where(Role.status.in_(("ACTIVE", "ENABLED")))
         elif status.upper() == "DEPRECATED":
             stmt = stmt.where(Role.status.notin_(("ACTIVE", "ENABLED")))
-        roles = db.scalars(stmt.order_by(Role.role_type, Role.role_code)).all()
+        page = max(1, int(page or 1)); page_size = min(100, max(1, int(page_size or 50)))
+        total = int(db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0)
+        roles = list(db.scalars(
+            stmt.order_by(Role.role_type, Role.role_code, Role.id)
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all())
+        role_ids = [int(role.id) for role in roles]
         counts = dict(db.execute(
             select(UserRole.role_id, func.count(UserRole.id))
-            .where(UserRole.tenant_id == tenant_id, UserRole.is_deleted.is_(False), UserRole.status == "ACTIVE")
+            .where(
+                UserRole.tenant_id == tenant_id,
+                UserRole.role_id.in_(role_ids) if role_ids else False,
+                UserRole.is_deleted.is_(False),
+                UserRole.status == "ACTIVE",
+            )
             .group_by(UserRole.role_id)
-        ).all())
-        page = max(1, int(page or 1)); page_size = min(100, max(1, int(page_size or 50)))
-        total = len(roles); start = (page - 1) * page_size
-        return success({"list": [_role_row(role, counts.get(role.id, 0)) for role in roles[start:start + page_size]],
+        ).all()) if role_ids else {}
+        role_codes = [str(role.role_code or "") for role in roles]
+        scope_by_role: dict[str, str] = {}
+        if role_codes:
+            for role_code, scope_type in db.execute(select(
+                DataScopeRule.role_code, DataScopeRule.scope_type
+            ).where(
+                DataScopeRule.tenant_id == tenant_id,
+                DataScopeRule.role_code.in_(role_codes),
+                DataScopeRule.status == "ACTIVE",
+                DataScopeRule.is_deleted.is_(False),
+            ).order_by(DataScopeRule.role_code, DataScopeRule.id.desc())).all():
+                scope_by_role.setdefault(str(role_code), normalize_scope(scope_type))
+        return success({"list": [
+            _role_row(
+                role,
+                counts.get(role.id, 0),
+                scope_code=scope_by_role.get(str(role.role_code or "")),
+            )
+            for role in roles
+        ],
                         "total": total, "page": page, "pageSize": page_size})
     finally:
         db.close()
@@ -1497,6 +1536,7 @@ def assign_system_user_roles(user_id: int, body: dict = Body(...),
 
 @router.get("/system/roles/{role_id}", summary="学校角色详情（真实库）")
 def get_system_role(role_id: int, user=Depends(require_permission("systemAdmin.role.view"))):
+    from app.core.permission_catalog import permission_meta
     from app.core.permissions import ROLE_PERMISSIONS
     from app.models import Permission, Role, RolePermission, User, UserRole
     from app.services.system_admin_catalog_service import (
@@ -1525,9 +1565,31 @@ def get_system_role(role_id: int, user=Depends(require_permission("systemAdmin.r
                 RolePermission.tenant_id == tenant_id, RolePermission.role_id == role.id,
                 RolePermission.status == "ACTIVE", RolePermission.is_deleted.is_(False)).order_by(
                 Permission.permission_code)).all()]
-        selection = split_selection(permission_codes, build_permission_tree(user))
+        tree = build_permission_tree(user)
+        selection = split_selection(permission_codes, tree)
+        visible_codes = set(selection["menuKeys"]) | set(selection["buttonKeys"])
+        read_only_preserved = []
+        for code in permission_codes:
+            if code in visible_codes:
+                continue
+            meta = permission_meta(code) or {}
+            if code.startswith("system."):
+                reason = "历史 system.* 兼容权限；禁止新写，仅在保存时只读保留"
+            elif not meta:
+                reason = "权限目录已无此历史权限；禁止编辑，仅只读保留"
+            elif not bool(meta.get("customRoleAssignable")):
+                reason = "Permission Catalog 标记为不可由学校自定义角色编辑"
+            else:
+                reason = "当前操作者无权转授；仅只读保留"
+            read_only_preserved.append({
+                "permissionCode": code,
+                "label": meta.get("label") or code,
+                "reason": reason,
+                "editable": False,
+            })
         return success({**_role_row(role, member_count), "permissionCodes": permission_codes,
                         "menuKeys": selection["menuKeys"], "buttonKeys": selection["buttonKeys"],
+                        "readOnlyPreservedPermissions": read_only_preserved,
                         "members": [{"id": str(mid), "name": name, "orgName": "—"} for mid, name in members],
                         "auditTrail": []})
     finally:

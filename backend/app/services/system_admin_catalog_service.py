@@ -11,7 +11,12 @@ from functools import lru_cache
 from pathlib import Path
 
 from app.core.permission_catalog import load_permission_catalog
-from app.core.permissions import has_permission
+from app.core.permissions import (
+    ROLE_PERMISSION_DENY,
+    _match,
+    _role_of,
+    get_effective_permission_patterns,
+)
 
 _CONTRACT_ROOT = Path(__file__).resolve().parents[3] / "shared" / "contracts"
 _NAVIGATION_CONTRACT = _CONTRACT_ROOT / "navigation-surface-contract.json"
@@ -156,10 +161,15 @@ def _build_permission_tree(entries: dict[str, dict]) -> list[dict]:
 
 def build_permission_tree(user: dict) -> list[dict]:
     """Build the complete operator-editable tree from Catalog + navigation."""
+    # Fetch the actor's Authority once. Calling ``has_permission`` for every
+    # catalog row reloaded the same DB role/template hundreds of times.
+    patterns = get_effective_permission_patterns(user)
+    denied = ROLE_PERMISSION_DENY.get(_role_of(user), ())
     entries = {
         str(item["permissionCode"]): item
         for item in _assignable_catalog_entries()
-        if has_permission(user, str(item["permissionCode"]))
+        if _match(str(item["permissionCode"]), patterns)
+        and (str(item["permissionCode"]) not in denied or "*" in patterns)
     }
     return _build_permission_tree(entries)
 

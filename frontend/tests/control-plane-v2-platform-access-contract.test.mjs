@@ -10,6 +10,7 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8')
 const gate = read('src/security/platformAccessGate.js')
 const router = read('src/router/index.js')
 const login = read('src/views/PlatformLoginView.vue')
+const layout = read('src/layouts/BasePortalLayout.vue')
 
 test('P-02 platform entry is principal-first and capability-second', () => {
   assert.match(gate, /export function isPlatformPrincipal\(\)/)
@@ -35,4 +36,10 @@ test('P-02 delegated homes map to exact supported duties', () => {
     assert.ok(gate.includes(`return '${pair[1]}'`))
   }
   assert.match(gate, /normalized\.has\('\*'\).*return \['platform\.\*'\]/s)
+})
+
+test('P-02 platform rail lands on the first duty-authorized workspace', () => {
+  assert.match(layout, /const firstAllowed = this\.menus\.find\(\(item\) => item\?\.path\)\?\.path/)
+  assert.match(layout, /path: firstAllowed \|\| this\.\$route\?\.path \|\| '\/security\/403'/)
+  assert.doesNotMatch(layout, /label: '平台运营', path: '\/admin\/platform\/overview'/)
 })

@@ -257,18 +257,23 @@ def get_system_role(
         legacy = []
         unmapped = []
         for code in sorted(set(permission_codes) - visible):
-            meta = permission_meta(code)
+            meta = permission_meta(code) or {}
             if code.startswith("system."):
-                reason = "legacy compatibility；新写入只允许 systemAdmin.*"
+                reason = "历史 system.* 兼容权限；禁止新写，仅在保存时只读保留"
                 legacy.append(code)
-            elif meta is None:
-                reason = "未映射到 ACTIVE Permission Catalog"
+            elif not meta:
+                reason = "未映射到 ACTIVE Permission Catalog；禁止编辑，仅只读保留"
                 unmapped.append(code)
             elif not bool(meta.get("customRoleAssignable")):
-                reason = "Permission Catalog 标记为不可由 Custom Role 分配"
+                reason = "Permission Catalog 标记为不可由 Custom Role 分配；仅只读保留"
             else:
-                reason = "超出当前操作者永久授权上限"
-            read_only.append({"permissionCode": code, "reason": reason})
+                reason = "超出当前操作者永久授权上限；仅只读保留"
+            read_only.append({
+                "permissionCode": code,
+                "label": meta.get("label") or code,
+                "reason": reason,
+                "editable": False,
+            })
 
         data.update({
             "version": int(role.version or 0),

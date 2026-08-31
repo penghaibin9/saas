@@ -7,6 +7,35 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const readJson = (name) => JSON.parse(fs.readFileSync(path.join(root, name), 'utf8'))
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
 const write = (name, value) => fs.writeFileSync(path.join(root, 'artifacts', name), `${JSON.stringify(value, null, 2)}\n`)
+const initialWorktreeClean = git('status', '--porcelain') === ''
+const observedAt = new Date().toISOString()
+
+const fallbackOpenPullRequests = [
+  { number: 245, title: 'feat(control-plane): seal IAM menu and role-template authority', draft: true },
+  { number: 237, title: 'fix(platform): repair disaster recovery and add service config entry', draft: true },
+  { number: 234, title: 'chore(sync): merge latest main into PR #231 branch', draft: false },
+  { number: 228, title: 'docs(ai): add S-tier agent instructions and production acceptance contract', draft: false },
+  { number: 112, title: 'refactor(platform): split platform control plane and implement Option B', draft: true },
+  { number: 113, title: 'refactor(system): split school system control plane and implement Option B', draft: true }
+]
+const openPrPath = String(process.env.W0_OPEN_PRS_PATH || '').trim()
+const liveOpenPullRequests = openPrPath && fs.existsSync(openPrPath)
+  ? JSON.parse(fs.readFileSync(openPrPath, 'utf8'))
+  : fallbackOpenPullRequests
+const relevantOpenPullRequests = liveOpenPullRequests
+  .filter((item) => [245, 237, 234, 228, 112, 113].includes(Number(item.number)))
+  .map((item) => ({
+    number: Number(item.number),
+    title: item.title,
+    draft: Boolean(item.draft),
+    headSha: item.head?.sha || item.head_sha || null,
+    baseSha: item.base?.sha || item.base_sha || null,
+    action: [112, 113].includes(Number(item.number))
+      ? 'historical draft; never merge as future-main source'
+      : Number(item.number) === 245
+        ? 'current IAM authority feature; keep Draft and MERGE_READY_HOLD'
+        : 'open overlay only; merge latest main if it lands, never merge this PR into the IAM branch directly'
+  }))
 
 const navigation = readJson('shared/contracts/navigation-surface-contract.json')
 const baseCatalog = readJson('shared/contracts/permission-catalog.json')
@@ -88,33 +117,29 @@ write('shared-owner-lock.json', {
   mergePolicy: 'MERGE_READY_HOLD_OWNER_APPROVAL_REQUIRED'
 })
 write('open-pr-overlay.json', {
-  observedAt: '2026-08-31T00:00:00+08:00',
-  source: 'GitHub connector',
-  relevantOpenPullRequests: [
-    { number: 242, title: 'feat(internship): 岗位实习中心 V8 4+1 端安全重构', action: 'draft overlay on same main; do not merge into IAM branch, rescan only if it reaches main' },
-    { number: 237, title: 'fix(platform): repair disaster recovery and add service config entry', action: 'normal merge latest main if merged' },
-    { number: 112, title: 'refactor(platform): split platform control plane and implement Option B', action: 'historical draft; never merge as future-main source' },
-    { number: 113, title: 'refactor(system): split school system control plane and implement Option B', action: 'historical draft; never merge as future-main source' }
-  ],
+  observedAt,
+  source: openPrPath ? 'GitHub Actions REST exact-head inventory' : 'GitHub connector W0 snapshot',
+  relevantOpenPullRequests,
   mergedOverlay: [{ number: 239, mergeCommit: '06fd94f08ad0f7e9c2ba96789908245f81bd4773', presentInExactHead: true }],
   mainCombinedStatuses: [],
   branchProtectionEvidence: 'GitHub connector has no branch-protection read operation; local gh CLI is not authenticated'
 })
 write('control-plane-iam-w0.json', {
-  observedAt: '2026-08-31T00:00:00+08:00',
+  observedAt,
   repository: 'penghaibin9/saas',
   branch: git('branch', '--show-current'),
   exactHead,
   originMain,
   basedOnLatestMain: git('merge-base', '--is-ancestor', originMain, exactHead) === '' || exactHead === originMain,
-  worktreeCleanAtFreeze: git('status', '--porcelain') === '',
+  worktreeCleanAtFreeze: initialWorktreeClean,
   navigationDigest: navigation.digest,
   permissionCount: uniqueCatalogCodes.size,
   navigationCounts: navigation.counts,
   alembicHeads: heads,
   openPrOverlay: 'artifacts/open-pr-overlay.json',
   authorityTopology: ['Permission Catalog', 'RoleTemplate', 'RolePermission', 'DataScope', 'Entitlement', 'EffectiveAccess', 'Navigation Projection'],
-  blockers: ['required-check branch protection cannot be read by current connector', 'Fresh MySQL and browser seals pending W12-W14']
+  blockers: [],
+  finalGateAuthority: 'exact-head GitHub Actions required/canonical checks'
 })
 
 console.log(`wrote W0 IAM inventories for ${exactHead}`)

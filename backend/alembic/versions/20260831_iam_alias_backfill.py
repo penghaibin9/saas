@@ -1,7 +1,7 @@
 """Canonicalize persisted RoleTemplate ``system.*`` permission aliases.
 
 Revision ID: 20260831_iam_alias_backfill
-Revises: 20260830_pr239_240_merge
+Revises: 20260830_merge_ix_pr239
 
 The compatibility alias map remains a read-only bridge.  Persisted normalized
 RoleTemplate permissions and their JSON snapshots are moved to canonical
@@ -20,7 +20,7 @@ from alembic import op
 from sqlalchemy import inspect
 
 revision = "20260831_iam_alias_backfill"
-down_revision = "20260830_pr239_240_merge"
+down_revision = "20260830_merge_ix_pr239"
 branch_labels = None
 depends_on = None
 
