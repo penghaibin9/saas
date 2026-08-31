@@ -98,10 +98,14 @@ def _stu_row(s: OrientationStudent, *, detail: bool = False) -> dict:
         # profileStudentId 才是绑定的学籍档案 id（未绑定为空）。
         "id": str(s.id), "studentId": str(s.id),
         "profileStudentId": str(s.student_id) if s.student_id else "",
-        "name": s.name,
+        "name": s.name, "batchId": str(s.batch_id),
         "admissionNo": s.admission_no, "gender": s.gender or "", "collegeName": s.college_name or "",
-        "majorName": s.major_name or "", "classId": s.class_id or "", "className": s.class_name or "",
-        "grade": s.grade or "", "phone": mask_phone_encrypted(s.phone_encrypted),
+        "collegeId": str(s.college_id) if s.college_id else "",
+        "majorName": s.major_name or "", "majorId": str(s.major_id) if s.major_id else "",
+        "classId": str(s.class_id) if s.class_id else "", "className": s.class_name or "",
+        "grade": s.grade or "", "admissionType": s.admission_type or "",
+        "identityStatus": s.identity_status,
+        "phone": mask_phone_encrypted(s.phone_encrypted),
         "idCard": mask_id_card_encrypted(s.id_card_encrypted), "origin": s.origin or "",
         "stage": s.stage, "stageLabel": L_STAGE.get(s.stage, s.stage),
         "reportStatus": s.report_status, "reportStatusLabel": L_REPORT.get(s.report_status, s.report_status),
@@ -132,8 +136,8 @@ def _page(items, page, page_size):
 
 # ═══ 学生台账 ═══
 
-def list_students(page, page_size, keyword=None, class_id=None, stage=None, report_status=None,
-                  payment_status=None, risk_level=None, user=None):
+def list_students(page, page_size, keyword=None, class_id=None, batch_id=None, stage=None,
+                  report_status=None, payment_status=None, risk_level=None, user=None):
     with session() as db:
         q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
                                              OrientationStudent.is_deleted.is_(False),
@@ -166,8 +170,16 @@ def list_students(page, page_size, keyword=None, class_id=None, stage=None, repo
             q = q.where(OrientationStudent.payment_status == payment_status)
         if risk_level:
             q = q.where(OrientationStudent.risk_level == risk_level)
+        if batch_id not in (None, ""):
+            try:
+                q = q.where(OrientationStudent.batch_id == int(batch_id))
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "batchId 须为数字")
         if class_id:
-            q = q.where(OrientationStudent.class_id == class_id)
+            try:
+                q = q.where(OrientationStudent.class_id == int(class_id))
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "classId 须为数字")
         if keyword:
             kw = f"%{keyword.strip()}%"
             q = q.where(or_(OrientationStudent.name.like(kw),
@@ -215,20 +227,60 @@ def create_student(body: dict, *, db=None) -> dict:
     from contextlib import nullcontext
     owns_session = db is None
     with (session() if owns_session else nullcontext(db)) as db:
+        try:
+            batch_id = int(body.get("batchId") or 0)
+        except (TypeError, ValueError):
+            batch_id = 0
+        batch = db.get(OrientationBatch, batch_id) if batch_id else None
+        if not batch or batch.is_deleted or int(batch.tenant_id) != int(_tid()):
+            raise AppException("VALIDATION_ERROR", "请选择本校有效迎新批次")
+        if batch.status == "CLOSED":
+            raise AppException("INVALID_STATE", "已结束迎新批次不可新增名单")
+
+        from app.services.student_org_validator import validate_student_org_path
+        org = validate_student_org_path(
+            db,
+            tenant_id=_tid(),
+            college_id=body.get("collegeId"),
+            major_id=body.get("majorId"),
+            class_id=body.get("classId"),
+            actor=get_current_user_ctx() or {},
+            require_complete_org=True,
+        )
+        from app.models import College, Major, SchoolClass
+        college = db.get(College, org.college_id)
+        major = db.get(Major, org.major_id)
+        school_class = db.get(SchoolClass, org.class_id)
+
         dup = db.scalars(select(OrientationStudent).where(
             OrientationStudent.tenant_id == _tid(), OrientationStudent.admission_no == adm,
             OrientationStudent.is_deleted.is_(False))).first()
         if dup:
             raise AppException("DATA_CONFLICT", f"录取编号 {adm} 已存在")
+        source_type = "DOMAIN_IMPORT" if body.get("sourceType") == "DOMAIN_IMPORT" else "MANUAL"
+        source_record_id = str(body.get("sourceRecordId") or adm).strip()
+        source_dup = db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.batch_id == batch_id,
+            OrientationStudent.source_type == source_type,
+            OrientationStudent.source_record_id == source_record_id,
+        )).first()
+        if source_dup:
+            raise AppException("DATA_CONFLICT", f"来源记录 {source_record_id} 已导入该批次")
         from app.core.field_crypto import encrypt_field
         s = OrientationStudent(
-            tenant_id=_tid(), name=name, admission_no=adm, major_name=body.get("majorName"),
-            class_id=body.get("classId"), class_name=body.get("className"),
+            tenant_id=_tid(), batch_id=batch_id, name=name, admission_no=adm,
+            college_id=org.college_id, college_name=college.college_name,
+            major_id=org.major_id, major_name=major.major_name,
+            class_id=org.class_id, class_name=school_class.class_name,
+            gender=body.get("gender"), grade=body.get("grade"),
+            admission_type=body.get("admissionType"),
             phone_encrypted=encrypt_field(body.get("phone")),
             id_card_encrypted=encrypt_field(body.get("idCard")),
             origin=body.get("origin"), counselor=body.get("counselor"),
             stage="ADMITTED", report_status="NOT_REPORTED",
-            steps_json=_default_steps_json())
+            steps_json=_default_steps_json(), source_type=source_type,
+            source_record_id=source_record_id)
         # 可选绑定学籍档案：优先 profileStudentId（与列表 studentId=迎新台账PK 区分）；
         # 兼容旧入参 studentId（仅当其指向真实学籍档案时才绑定，避免把迎新 PK 误当档案 id）。
         raw_sid = body.get("profileStudentId")
@@ -244,6 +296,9 @@ def create_student(body: dict, *, db=None) -> dict:
             if not prof or prof.is_deleted or int(prof.tenant_id) != int(_tid()):
                 raise AppException("VALIDATION_ERROR", "profileStudentId 对应学籍不存在或不属于本校")
             s.student_id = sid_int
+            s.identity_status = "LINKED"
+        else:
+            s.identity_status = "UNLINKED"
         db.add(s)
         db.flush()
         _audit(db, "STUDENT", s.id, "新增新生记录", f"{name}（{adm}）")
@@ -259,13 +314,30 @@ def update_student(sid, body: dict) -> dict:
     with session() as db:
         s = _get_student(db, sid)
         field_map = {
-            "name": "name", "majorName": "major_name", "classId": "class_id",
-            "className": "class_name", "origin": "origin", "counselor": "counselor",
+            "name": "name", "origin": "origin", "counselor": "counselor",
             "reportStatus": "report_status", "building": "building", "room": "room",
         }
         for k, col in field_map.items():
             if body.get(k) is not None:
                 setattr(s, col, body[k])
+        if body.get("classId") not in (None, ""):
+            from app.services.student_org_validator import validate_student_org_path
+            org = validate_student_org_path(
+                db,
+                tenant_id=_tid(),
+                college_id=body.get("collegeId"),
+                major_id=body.get("majorId"),
+                class_id=body.get("classId"),
+                actor=get_current_user_ctx() or {},
+                require_complete_org=True,
+            )
+            from app.models import College, Major, SchoolClass
+            college = db.get(College, org.college_id)
+            major = db.get(Major, org.major_id)
+            school_class = db.get(SchoolClass, org.class_id)
+            s.college_id, s.college_name = org.college_id, college.college_name
+            s.major_id, s.major_name = org.major_id, major.major_name
+            s.class_id, s.class_name = org.class_id, school_class.class_name
         phone = body.get("phone")
         if phone is not None and phone.strip() and "*" not in phone:
             from app.core.field_crypto import encrypt_field

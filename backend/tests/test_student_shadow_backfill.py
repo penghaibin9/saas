@@ -220,20 +220,27 @@ def test_all_four_shadow_domains_are_covered(db_mode, domain):
 def test_orientation_matches_on_admission_no(db_mode):
     """迎新用录取编号匹配，不是学号——搞错了会把所有候选人判成 unmatched。"""
     from app.db.session import get_sessionmaker
-    from app.models import OrientationStudent
+    from app.models import OrientationBatch, OrientationStudent
 
     mod = _load_script()
     db = get_sessionmaker()()
     try:
         p = _profile(db, "LQBF0008")
-        row = OrientationStudent(tenant_id=TID, name="新生", admission_no="LQBF0008",
-                                 stage="ADMITTED", report_status="NOT_REPORTED")
+        batch = OrientationBatch(tenant_id=TID, batch_name="影子回填测试批次",
+                                 batch_no="ORI-SHADOW-BF", year="2026", status="ACTIVE",
+                                 planned_count=1)
+        db.add(batch); db.flush()
+        row = OrientationStudent(tenant_id=TID, batch_id=batch.id, name="新生", admission_no="LQBF0008",
+                                 stage="ADMITTED", report_status="NOT_REPORTED",
+                                 source_type="MANUAL", source_record_id="LQBF0008")
         db.add(row)
         db.commit()
 
         res = mod.scan_domain(db, "orientation", TID, apply=True)
         db.commit()
         assert res["counts"]["matched"] == 1
-        assert int(db.get(OrientationStudent, row.id).student_id) == p.id
+        linked = db.get(OrientationStudent, row.id)
+        assert int(linked.student_id) == p.id
+        assert linked.identity_status == "LINKED"
     finally:
         db.close()

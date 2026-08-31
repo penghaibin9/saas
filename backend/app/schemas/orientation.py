@@ -9,9 +9,15 @@ from pydantic import BaseModel, Field
 class StudentCreate(BaseModel):
     name: str = Field(..., min_length=1)
     admissionNo: str = Field(..., min_length=1)
+    batchId: int = Field(..., gt=0)
+    collegeId: Optional[int] = Field(default=None, gt=0)
+    majorId: Optional[int] = Field(default=None, gt=0)
     majorName: Optional[str] = None
-    classId: Optional[str] = None
+    classId: int = Field(..., gt=0)
     className: Optional[str] = None
+    gender: Optional[str] = None
+    grade: Optional[str] = None
+    admissionType: Optional[str] = None
     phone: Optional[str] = None
     idCard: Optional[str] = None
     origin: Optional[str] = None
@@ -21,7 +27,9 @@ class StudentCreate(BaseModel):
 class StudentUpdate(BaseModel):
     name: Optional[str] = None
     majorName: Optional[str] = None
-    classId: Optional[str] = None
+    collegeId: Optional[int] = Field(default=None, gt=0)
+    majorId: Optional[int] = Field(default=None, gt=0)
+    classId: Optional[int] = Field(default=None, gt=0)
     className: Optional[str] = None
     origin: Optional[str] = None
     counselor: Optional[str] = None

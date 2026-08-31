@@ -64,7 +64,7 @@ test('A1 student export is scoped, purpose-bound, watermarked, audited and downl
   assert.match(exportDialog, /v-model\.trim="purpose"/)
   assert.match(exportDialog, /downloadXlsxFromApi\(res\.data\)/)
   assert.match(backendExport, /elif domain == "orientation"/)
-  assert.match(backendExport, /fn\(1, MAX_EXPORT_ROWS, user=user\)/)
+  assert.match(backendExport, /fn\(1, MAX_EXPORT_ROWS, user=user, batch_id=orientation_batch_id\)/)
   assert.match(backendAuth, /studentAffairs\.orientation\.import/)
   assert.match(backendAuth, /studentAffairs\.orientation\.export/)
 })

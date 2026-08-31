@@ -46,6 +46,107 @@ _NAMESPACE = "DOMAIN_IMPORT"
 MAX_IMPORT_ROWS = 5000
 
 
+def _orientation_authority_catalog() -> dict:
+    """Load exact-code orientation authorities once for one Dry-Run.
+
+    Codes are deliberately not collapsed to a single dict entry: duplicate
+    master codes must surface as an error instead of silently selecting one.
+    """
+    from collections import defaultdict
+    from app.models import College, Major, OrientationBatch, OrientationStudent, SchoolClass
+
+    db = get_sessionmaker()()
+    try:
+        batches, colleges, majors, classes = defaultdict(list), defaultdict(list), defaultdict(list), defaultdict(list)
+        for row in db.scalars(select(OrientationBatch).where(
+                OrientationBatch.tenant_id == _tid(), OrientationBatch.is_deleted.is_(False))).all():
+            batches[str(row.batch_no or "").strip()].append(row)
+        for row in db.scalars(select(College).where(
+                College.tenant_id == _tid(), College.is_deleted.is_(False))).all():
+            if str(row.code or "").strip():
+                colleges[str(row.code).strip()].append(row)
+        for row in db.scalars(select(Major).where(
+                Major.tenant_id == _tid(), Major.is_deleted.is_(False))).all():
+            if str(row.code or "").strip():
+                majors[(int(row.college_id), str(row.code).strip())].append(row)
+        for row in db.scalars(select(SchoolClass).where(
+                SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False))).all():
+            if str(row.class_code or "").strip():
+                classes[(int(row.major_id), str(row.class_code).strip())].append(row)
+        source_keys = {(int(batch_id), str(source_id)) for batch_id, source_id in db.execute(select(
+            OrientationStudent.batch_id, OrientationStudent.source_record_id
+        ).where(
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.source_type == "DOMAIN_IMPORT",
+        )).all()}
+        return {"batches": batches, "colleges": colleges, "majors": majors,
+                "classes": classes, "sourceKeys": source_keys}
+    finally:
+        db.close()
+
+
+def _one(catalog: dict, key, field: str, label: str):
+    rows = catalog.get(key, [])
+    if not rows:
+        return None, {"field": field, "rawValue": key[-1] if isinstance(key, tuple) else key,
+                      "message": f"{label}不存在或不属于本校"}
+    if len(rows) > 1:
+        return None, {"field": field, "rawValue": key[-1] if isinstance(key, tuple) else key,
+                      "message": f"{label}在本校存在重复代码，禁止自动选择，请先修复组织主数据"}
+    return rows[0], None
+
+
+def _prepare_orientation_row(raw: dict, catalog: dict) -> tuple[dict | None, dict | None]:
+    batch_no = str(raw.get("batchNo") or raw.get("迎新批次编号") or "").strip()
+    college_code = str(raw.get("collegeCode") or raw.get("学院代码") or "").strip()
+    major_code = str(raw.get("majorCode") or raw.get("专业代码") or "").strip()
+    class_code = str(raw.get("classCode") or raw.get("班级代码") or "").strip()
+    for field, value, label in (
+        ("batchNo", batch_no, "迎新批次编号"), ("collegeCode", college_code, "学院代码"),
+        ("majorCode", major_code, "专业代码"), ("classCode", class_code, "班级代码"),
+    ):
+        if not value:
+            return None, {"field": field, "rawValue": "", "message": f"{label}必填"}
+
+    batch, error = _one(catalog["batches"], batch_no, "batchNo", "迎新批次")
+    if error:
+        return None, error
+    if batch.status == "CLOSED":
+        return None, {"field": "batchNo", "rawValue": batch_no, "message": "已结束迎新批次不可再导入名单"}
+    college, error = _one(catalog["colleges"], college_code, "collegeCode", "学院代码")
+    if error:
+        return None, error
+    major, error = _one(catalog["majors"], (int(college.id), major_code), "majorCode", "该学院下的专业代码")
+    if error:
+        return None, error
+    school_class, error = _one(catalog["classes"], (int(major.id), class_code), "classCode", "该专业下的班级代码")
+    if error:
+        return None, error
+
+    admission_no = str(raw.get("admissionNo") or raw.get("录取编号") or "").strip()
+    candidate_no = str(raw.get("candidateNo") or raw.get("候选人编号") or "").strip()
+    source_record_id = candidate_no or admission_no
+    source_key = (int(batch.id), source_record_id)
+    if source_key in catalog["sourceKeys"]:
+        return None, {"field": "candidateNo", "rawValue": source_record_id,
+                      "message": "该批次来源记录已成功导入"}
+    return {
+        "name": str(raw.get("name") or raw.get("姓名") or "").strip(),
+        "admissionNo": admission_no,
+        "batchId": int(batch.id),
+        "collegeId": int(college.id), "collegeName": college.college_name,
+        "majorId": int(major.id), "majorName": major.major_name,
+        "classId": int(school_class.id), "className": school_class.class_name,
+        "gender": raw.get("gender") or raw.get("性别"),
+        "idCard": raw.get("idCard") or raw.get("身份证号"),
+        "phone": raw.get("phone") or raw.get("手机号"),
+        "grade": raw.get("grade") or raw.get("年级"),
+        "origin": raw.get("origin") or raw.get("生源地"),
+        "admissionType": raw.get("admissionType") or raw.get("录取类型"),
+        "sourceType": "DOMAIN_IMPORT", "sourceRecordId": source_record_id,
+    }, None
+
+
 def _import_service(mod_name):
     import importlib
     import pkgutil
@@ -116,7 +217,8 @@ def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user
     key_field, _, list_path, key_label = DOMAINS[domain]
     existing = _existing_keys(domain, list_path, key_field)
     known_master = _master_student_nos(domain)
-    ok_rows, errors, seen = [], [], set()
+    orientation_catalog = _orientation_authority_catalog() if domain == "orientation" else None
+    ok_rows, errors, seen, seen_sources = [], [], set(), set()
     for i, row in enumerate(rows, start=2):
         name = str(row.get("name") or row.get("姓名") or "").strip()
         key = str(row.get(key_field) or row.get(key_label) or "").strip()
@@ -138,8 +240,23 @@ def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user
                            "message": f"{key_label} {key} 没有学籍档案，本域不能凭表格建学生。"
                                       "请先在「教务中心 → 学籍导入/补录」或「系统管理 → 学生导入与账号开通」建档"})
             continue
-        seen.add(key)
-        ok_rows.append({"name": name, key_field: key, "className": row.get("className") or row.get("班级")})
+        if domain == "orientation":
+            normalized, error = _prepare_orientation_row(row, orientation_catalog)
+            if error:
+                errors.append({"rowIndex": i, **error})
+                continue
+            source_key = (normalized["batchId"], normalized["sourceRecordId"])
+            if source_key in seen_sources:
+                errors.append({"rowIndex": i, "field": "candidateNo",
+                               "rawValue": normalized["sourceRecordId"],
+                               "message": "批次内来源编号在文件中重复"})
+                continue
+            seen_sources.add(source_key)
+            seen.add(key)
+            ok_rows.append(normalized)
+        else:
+            seen.add(key)
+            ok_rows.append({"name": name, key_field: key, "className": row.get("className") or row.get("班级")})
     batch_no = f"IMP{uuid.uuid4().hex[:10]}"
     status = "DRY_RUN_PASSED" if not errors else "DRY_RUN_FAILED"
     actor = user or get_current_user_ctx() or {}

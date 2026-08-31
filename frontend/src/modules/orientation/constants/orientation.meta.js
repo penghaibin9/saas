@@ -198,9 +198,19 @@ export const importTemplates = {
     name: '新生录取名单导入模板',
     fileName: '新生导入模板.xlsx',
     fields: [
+      { key: 'batchNo', label: '迎新批次编号', required: true, example: 'ORI-2026' },
       { key: 'admissionNo', label: '录取编号', required: true, example: 'LQ2026010001' },
+      { key: 'candidateNo', label: '候选人编号', required: false, example: 'CAND-0001' },
       { key: 'name', label: '姓名', required: true, example: '示例姓名' },
-      { key: 'className', label: '班级', required: false, example: '示例班级' }
+      { key: 'gender', label: '性别', required: false, example: '男' },
+      { key: 'idCard', label: '身份证号', required: false, example: '' },
+      { key: 'phone', label: '手机号', required: false, example: '' },
+      { key: 'collegeCode', label: '学院代码', required: true, example: 'COL-INFO' },
+      { key: 'majorCode', label: '专业代码', required: true, example: 'MAJ-SOFTWARE' },
+      { key: 'classCode', label: '班级代码', required: true, example: 'CLS-2601' },
+      { key: 'grade', label: '年级', required: false, example: '2026' },
+      { key: 'origin', label: '生源地', required: false, example: '湖南长沙' },
+      { key: 'admissionType', label: '录取类型', required: false, example: '统招' }
     ]
   }
 }
@@ -212,7 +222,7 @@ export const exportOptions = {
   ],
   fieldGroups: {
     studentList: [
-      { key: 'ledger', label: '迎新综合台账', fields: ['姓名', '录取编号', '班级', '报到状态', '缴费状态', '宿舍状态', '风险'] }
+      { key: 'ledger', label: '迎新综合台账', fields: ['迎新批次编号', '姓名', '录取编号', '学院', '专业', '班级', '报到状态', '缴费状态', '宿舍状态', '风险'] }
     ]
   },
   maskDefault: true,

@@ -394,12 +394,13 @@ export async function createExport(listKey, payload = {}) {
   if (listKey !== 'studentList') return fail('当前仅支持迎新综合台账导出', 400001)
   const purpose = String(payload.purpose || '').trim()
   if (purpose.length < 5) return fail('导出用途必填且不少于 5 个字', 400001)
+  if (!payload.batchId) return fail('请先选择迎新批次，禁止跨批次导出', 400001)
   return callData(async () => {
     const idempotencyKey = globalThis.crypto?.randomUUID?.() || `orientation-export-${Date.now()}`
     const data = await request('/export/domain/orientation', {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
-      body: { purpose }
+      body: { purpose, batchId: payload.batchId }
     })
     return {
       ...data,
