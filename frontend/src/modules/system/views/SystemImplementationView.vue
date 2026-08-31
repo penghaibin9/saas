@@ -72,6 +72,20 @@
             </div>
           </section>
 
+          <section v-if="pageKey === 'mapping' && !relationBatch" class="mp-card">
+            <header class="mp-card__head"><span class="mp-card__title">复用已完成的教师导入</span><span class="mp-note">从规范数据交换任务生成真实业务关系候选，无需重复上传</span></header>
+            <div class="mp-card__body impl-actions">
+              <select v-model="relationSourceBatchNo" aria-label="已完成的教师导入任务">
+                <option value="">请选择已完成的教师导入任务</option>
+                <option v-for="item in completedIdentityImports" :key="item.id" :value="item.adapterRef">
+                  教师导入 #{{ item.id }} · {{ item.totalRows }} 行 · {{ importCompletedAt(item) }}
+                </option>
+              </select>
+              <button class="mp-btn mp-btn--primary" :disabled="saving || !relationSourceBatchNo" @click="discoverRelationsFromCompletedImport">生成业务关系候选</button>
+              <span v-if="!completedIdentityImports.length" class="mp-note">当前没有可复用的已完成教师导入任务。</span>
+            </div>
+          </section>
+
           <section v-if="pageKey === 'mapping' && mapping" class="mp-card">
             <header class="mp-card__head"><span class="mp-card__title">第二步：确认组织树候选</span><span class="mp-note">编码、规范化名称和完整父级路径才能自动匹配</span></header>
             <div class="mp-card__body">
@@ -145,13 +159,13 @@
 
           <section v-if="pageKey === 'installed' || pageKey === 'changes'" class="mp-card">
             <header class="mp-card__head"><span class="mp-card__title">安装版本链</span></header>
-              <div class="mp-card__body"><p v-if="!installations.length" class="mp-note">尚未应用配置快照。</p><div v-for="i in installations" :key="i.id" class="impl-candidate"><div><b>{{ i.installationNo }}</b><small>{{ i.profileCode }} · {{ i.appliedAt }} · {{ i.snapshotHash }}</small></div><StatusTag :label="i.status" :type="i.status === 'APPLIED' ? 'success' : 'info'" /><button v-if="pageKey === 'changes' && i.status === 'APPLIED'" class="mp-btn mp-btn--danger" :disabled="saving" @click="createChange(i)">从此版本开始变更</button></div><div v-if="pageKey === 'changes' && project?.changeSourceInstallationId" class="impl-actions"><button class="mp-btn" :disabled="saving" @click="analyzeChange">运行影响分析</button><small v-if="changeAnalysis">风险 {{ changeAnalysis.riskLevel }} · 变更段 {{ changeAnalysis.changedSections?.length || 0 }} · 受影响配置 {{ JSON.stringify(changeAnalysis.affectedTableCounts) }}</small></div></div>
+              <div class="mp-card__body"><p v-if="!installations.length" class="mp-note">尚未应用配置快照。</p><div v-for="i in installations" :key="i.id" class="impl-candidate"><div><b>{{ i.installationNo }}</b><small>{{ i.profileCode }} · {{ i.appliedAt }} · {{ i.snapshotHash }}</small></div><StatusTag :label="i.status" :type="i.status === 'APPLIED' ? 'success' : 'info'" /><button v-if="pageKey === 'changes' && i.status === 'APPLIED'" class="mp-btn mp-btn--danger" :disabled="saving" @click="createChange(i)">从此版本开始变更</button></div><div v-if="pageKey === 'changes' && project?.changeSourceInstallationId" class="impl-actions"><button class="mp-btn" :disabled="saving" @click="analyzeChange">运行影响分析</button><small v-if="changeAnalysis">风险 {{ changeAnalysis.riskLevel }} · 变更段 {{ changeAnalysis.changedSections?.length || 0 }} · {{ affectedCountsText(changeAnalysis.affectedTableCounts) }}</small></div></div>
           </section>
 
           <section v-if="pageKey === 'acceptance'" class="mp-card">
             <div v-if="project.status === 'ACCEPTED' && project.acceptanceDigest" class="mp-note">验收摘要已冻结：{{ project.acceptanceDigest }}（{{ project.acceptanceSummary?.checks?.length || 0 }} 项检查）</div>
             <header class="mp-card__head"><span class="mp-card__title">12类上线检查</span></header>
-            <div class="mp-card__body"><div class="impl-actions"><button class="mp-btn mp-btn--primary" :disabled="saving" @click="runChecks">运行全部检查</button><input v-model.trim="acceptForm.comment" placeholder="验收意见" /><input v-model.trim="acceptForm.confirmText" placeholder="输入：确认验收" /><button class="mp-btn mp-btn--danger" :disabled="saving || project.status !== 'READY_FOR_ACCEPTANCE'" @click="accept">验收封板</button></div><div v-for="c in project.checks" :key="c.code" class="impl-candidate"><StatusTag :type="c.result === 'PASS' ? 'success' : 'danger'" :label="c.result" /><b>{{ c.name }}</b><small>{{ c.severity }} · {{ JSON.stringify(c.evidence) }}</small><button v-if="c.result !== 'PASS' && c.severity !== 'BLOCKER'" class="mp-btn" :disabled="saving" @click="confirmCheck(c)">责任确认</button></div></div>
+            <div class="mp-card__body"><div class="impl-actions"><button class="mp-btn mp-btn--primary" :disabled="saving" @click="runChecks">运行全部检查</button><input v-model.trim="acceptForm.comment" placeholder="验收意见" /><input v-model.trim="acceptForm.confirmText" placeholder="输入：确认验收" /><button class="mp-btn mp-btn--danger" :disabled="saving || project.status !== 'READY_FOR_ACCEPTANCE'" @click="accept">验收封板</button></div><div v-for="c in project.checks" :key="c.code" class="impl-candidate"><StatusTag :type="c.result === 'PASS' ? 'success' : 'danger'" :label="c.result" /><div><b>{{ c.name }}</b><small>{{ c.severity }} · {{ checkEvidenceText(c) }}</small></div><button v-if="c.result !== 'PASS' && c.severity !== 'BLOCKER'" class="mp-btn" :disabled="saving" @click="confirmCheck(c)">责任确认</button></div></div>
           </section>
 
           <section v-if="project.status === 'PREVIEW_READY'" class="mp-card">
@@ -210,6 +224,7 @@
 <script>
 import { ModulePageShell, ModuleHero, StatusTag, LoadingState, ErrorState } from '@/components/business'
 import { implementationApi } from '@/modules/system/api/implementation.api'
+import { dataExchangeApi } from '@/modules/system/api/dataExchange.api'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
 
@@ -218,15 +233,38 @@ const PAGES = { overview: ['实施总览', '查看12类进度、阻断项和下�
 export default {
   name: 'SystemImplementationView', components: { ModulePageShell, ModuleHero, StatusTag, LoadingState, ErrorState },
   props: { ctx: { type: Object, required: true } },
-  data() { return { loading: true, saving: false, error: '', catalog: { profiles: [], sections: [] }, project: null, installations: [], changeAnalysis: null, mapping: null, identityFile: null, identityPreview: null, refreshedPreview: null, relationBatch: null, runtimePresets: null, sectionDrafts: {}, createForm: { projectName: '学校首次实施', profileCode: 'HIGHER_VOCATIONAL' }, applyForm: { reason: '', confirmText: '' }, mappingApply: { reason: '', confirmText: '' }, relationApply: { reason: '', confirmText: '' }, relationRollback: { reason: '', confirmText: '' }, policyForm: { workflowCodes: [], reason: '', confirmText: '' }, acceptForm: { comment: '', confirmText: '' } } },
+  data() { return { loading: true, saving: false, error: '', catalog: { profiles: [], sections: [] }, project: null, installations: [], changeAnalysis: null, mapping: null, identityFile: null, identityPreview: null, refreshedPreview: null, relationBatch: null, completedIdentityImports: [], relationSourceBatchNo: '', runtimePresets: null, sectionDrafts: {}, createForm: { projectName: '学校首次实施', profileCode: 'HIGHER_VOCATIONAL' }, applyForm: { reason: '', confirmText: '' }, mappingApply: { reason: '', confirmText: '' }, relationApply: { reason: '', confirmText: '' }, relationRollback: { reason: '', confirmText: '' }, policyForm: { workflowCodes: [], reason: '', confirmText: '' }, acceptForm: { comment: '', confirmText: '' } } },
   computed: { pageKey() { return this.$route.meta.implementationPageKey || 'overview' }, page() { const p = PAGES[this.pageKey]; return { title: p[0], subtitle: p[1] } }, sectionMap() { return Object.fromEntries((this.project?.sections || []).map((x) => [x.code, x])) }, heroStats() { return [{ label: '状态', value: this.project?.status || '未创建', tone: 'primary' }, { label: '完成度', value: `${this.project?.progress || 0}%`, tone: 'success' }, { label: '安装版本', value: String(this.installations.length), tone: 'info' }] } },
   watch: { '$route.meta.implementationPageKey': 'load' }, created() { this.load() },
   methods: {
     typeLabel(type) { return ({ COLLEGE: '学院/部门', MAJOR: '专业', CLASS: '班级' })[type] || type },
     relationTone(status) { return ({ READY: 'success', ALREADY: 'info', CONFLICT: 'warning', BLOCKED: 'danger' })[status] || 'info' },
+    importCompletedAt(item) { return item.confirmedAt ? new Date(item.confirmedAt).toLocaleString('zh-CN', { hour12: false }) : '已完成' },
+    affectedCountsText(counts = {}) { const labels = { sections: '实施配置', workflows: '流程', workbenches: '工作台', notifications: '通知模板', relations: '业务关系' }; const parts = Object.entries(counts || {}).map(([key, value]) => `${labels[key] || key} ${value}`); return parts.length ? `受影响：${parts.join('、')}` : '无受影响配置' },
+    checkEvidenceText(check) {
+      const e = check?.evidence || {}
+      const boolText = (value) => value ? '是' : '否'
+      const moduleNames = { ORIENTATION: '迎新', STUDENT_AFFAIRS: '学工', ACADEMIC_AFFAIRS: '教务', INTERNSHIP: '实习', GRADUATION: '毕设', EMPLOYMENT: '就业' }
+      const entitlementBlocked = e.entitlement?.blocked || []
+      const text = {
+        school_opening: `${e.schoolLevel || '未确认'} · ${e.deliveryMode || '未确认'} · 计划 ${e.targetDays || 0} 天`,
+        role_permission: `已发布角色 ${e.roles || 0} 个 · 职责分离：${boolText(e.separationOfDuties)}`,
+        organization: `${e.colleges || 0} 个学院 · ${e.majors || 0} 个专业 · ${e.classes || 0} 个班级`,
+        identity_import: `${e.accounts || 0} 个账号 · ${e.students || 0} 名学生`,
+        business_relation: `已应用 ${e.appliedBatches || 0} 批 · ${e.appliedItems || 0} 条真实关系`,
+        workflow: `已安装 ${e.installed || 0} 条 · 待确认政策 ${e.pendingPolicyConfirmation || 0} 条`,
+        dictionary_numbering: `国家/行业标准代码：${boolText(e.useNationalCodes)} · 编号责任：${e.numberingOwner || '未确认'}`,
+        security_audit: `首次改密：${boolText(e.firstLoginChangePassword)} · 导出水印：${boolText(e.exportWatermark)} · 会话 ${e.sessionMinutes || 0} 分钟`,
+        menu_workbench: `已安装 ${e.roleWorkbenches || 0} 个角色工作台`,
+        message_notification: `已安装 ${e.templates || 0} 个通知模板`,
+        go_live_check: `前置检查 ${e.precedingChecks || 0} 项 · 未通过 ${e.precedingFailures || 0} 项`,
+        module_business: `已选择 ${(e.modules || []).map((code) => moduleNames[code] || code).join('、') || '0 个模块'} · 专业标准入口：${boolText(e.includeProfessionalStandards)} · ${entitlementBlocked.length ? `授权阻断 ${entitlementBlocked.length} 项` : '无商业授权阻断'}`,
+      }
+      return text[check?.code] || (e.configured === true ? '配置已完成' : '暂无可展示证据')
+    },
     hydrateMapping(raw) { if (!raw?.candidates) return null; raw.candidates.forEach((x) => { x.uiAction = x.recommendation.action; x.uiTargetId = x.recommendation.targetId || '' }); raw.roleSuggestions.forEach((x) => { x.uiRoleCodes = x.currentRoleCodes || x.suggestedRoleCodes.join(',') }); return raw },
     hydrateRelation(raw) { if (!raw?.candidates) return null; raw.candidates.forEach((x) => { x.uiAction = x.recommendation.action === 'REVIEW' ? '' : x.recommendation.action }); return raw },
-    async load() { this.loading = true; this.error = ''; try { const [catalog, project] = await Promise.all([implementationApi.catalog(), implementationApi.current()]); this.catalog = catalog; this.project = project; this.sectionDrafts = Object.fromEntries(catalog.sections.map((s) => [s.code, JSON.parse(JSON.stringify(this.sectionMap[s.code]?.config || s.defaultConfig))])); this.mapping = this.hydrateMapping(this.sectionMap.identity_import?.config?.mapping); this.installations = ['installed', 'changes'].includes(this.pageKey) ? await implementationApi.installations() : []; if (project && this.pageKey === 'mapping') { const batches = await implementationApi.relationBatches(project.id); this.relationBatch = this.hydrateRelation(batches[0]) } if (project && this.pageKey === 'wizard' && ['APPLIED', 'VERIFYING', 'READY_FOR_ACCEPTANCE', 'ACCEPTED'].includes(project.status)) { const runtime = await implementationApi.runtimePresets(project.id); this.runtimePresets = { ...runtime, workflows: runtime.workflows || [], workbenches: runtime.workbenches || [], notifications: runtime.notifications || [] }; this.policyForm.workflowCodes = this.runtimePresets.workflows.filter((x) => !x.policyConfirmed).map((x) => x.code) } } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false } },
+    async load() { this.loading = true; this.error = ''; try { const [catalog, project] = await Promise.all([implementationApi.catalog(), implementationApi.current()]); this.catalog = catalog; this.project = project; this.sectionDrafts = Object.fromEntries(catalog.sections.map((s) => [s.code, JSON.parse(JSON.stringify(this.sectionMap[s.code]?.config || s.defaultConfig))])); this.mapping = this.hydrateMapping(this.sectionMap.identity_import?.config?.mapping); this.installations = ['installed', 'changes'].includes(this.pageKey) ? await implementationApi.installations() : []; if (project && this.pageKey === 'mapping') { const [batches, jobs] = await Promise.all([implementationApi.relationBatches(project.id), dataExchangeApi.list({ jobType: 'IMPORT', status: 'SUCCEEDED', keyword: 'IDENTITY_TEACHER', visibility: 'OWN', page: 1, pageSize: 20 })]); this.relationBatch = this.hydrateRelation(batches[0]); this.completedIdentityImports = (jobs.list || []).filter((item) => item.jobType === 'IMPORT' && item.importType === 'IDENTITY_TEACHER' && item.status === 'SUCCEEDED' && item.adapterRef); if (!this.relationSourceBatchNo && this.completedIdentityImports.length) this.relationSourceBatchNo = this.completedIdentityImports[0].adapterRef } if (project && this.pageKey === 'wizard' && ['APPLIED', 'VERIFYING', 'READY_FOR_ACCEPTANCE', 'ACCEPTED'].includes(project.status)) { const runtime = await implementationApi.runtimePresets(project.id); this.runtimePresets = { ...runtime, workflows: runtime.workflows || [], workbenches: runtime.workbenches || [], notifications: runtime.notifications || [] }; this.policyForm.workflowCodes = this.runtimePresets.workflows.filter((x) => !x.policyConfirmed).map((x) => x.code) } } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false } },
     async action(fn, message) { this.saving = true; try { await fn(); toast.success(message); await this.load() } catch (e) { toast.error(e.message || '操作失败') } finally { this.saving = false } },
     createProject() { this.action(() => implementationApi.create(this.createForm), '实施项目已创建') },
     createChange(installation) { const name = window.prompt('请输入变更项目名称', `${installation.profileCode} 变更项目`); if (name === null) return; this.action(async () => { this.project = await implementationApi.createChange(installation.id, { projectName: name.trim() }); this.changeAnalysis = null }, '变更项目已创建') },
@@ -239,6 +277,7 @@ export default {
     confirmMapping() { const organizationDecisions = this.mapping.candidates.map((x) => ({ candidateId: x.candidateId, action: x.uiAction, targetId: x.uiTargetId })); const roleDecisions = this.mapping.roleSuggestions.map((x) => ({ loginName: x.loginName, roleCodes: x.uiRoleCodes })); this.action(async () => { const result = await implementationApi.confirmMapping(this.project.id, { projectVersion: this.project.version, organizationDecisions, roleDecisions }); this.mapping = this.hydrateMapping(result) }, '匹配已确认') },
     async applyMapping() { this.saving = true; try { const result = await implementationApi.applyMapping(this.project.id, { ...this.mappingApply, projectVersion: this.project.version }); this.refreshedPreview = result.refreshedPreview; this.mapping.status = 'APPLIED'; toast.success('组织与角色已安装，原文件已重检') } catch (e) { toast.error(e.message || '安装失败') } finally { this.saving = false } },
     async confirmAccounts() { this.saving = true; try { const batchNo = this.refreshedPreview.batchNo; const res = await systemApi.confirmIdentityImportBatch(batchNo); if (res.code !== 0) throw new Error(res.message); toast.success(res.data.receipt); if ((this.identityPreview?.relations?.suggested || 0) > 0) { this.relationBatch = this.hydrateRelation(await implementationApi.discoverRelations(this.project.id, batchNo)); this.project.version = this.relationBatch.projectVersion; toast.success('师生账号已创建，业务关系候选已生成') } else { await this.load() } } catch (e) { toast.error(e.message || '创建账号失败') } finally { this.saving = false } },
+    async discoverRelationsFromCompletedImport() { const selected = this.completedIdentityImports.find((item) => item.adapterRef === this.relationSourceBatchNo); if (!selected) { toast.error('请选择已完成的教师导入任务'); return } this.saving = true; try { this.relationBatch = this.hydrateRelation(await implementationApi.discoverRelations(this.project.id, selected.adapterRef)); this.project.version = this.relationBatch.projectVersion; toast.success('业务关系候选已生成') } catch (e) { toast.error(e.message || '生成业务关系候选失败') } finally { this.saving = false } },
     confirmRelations() { const decisions = this.relationBatch.candidates.map((x) => ({ candidateId: x.candidateId, action: x.uiAction })); this.action(async () => { this.relationBatch = this.hydrateRelation(await implementationApi.confirmRelations(this.project.id, { batchNo: this.relationBatch.batchNo, projectVersion: this.project.version, decisions })); this.project.version = this.relationBatch.projectVersion }, '业务关系决定已确认') },
     applyRelations() { this.action(async () => { this.relationBatch = this.hydrateRelation(await implementationApi.applyRelations(this.project.id, { batchNo: this.relationBatch.batchNo, projectVersion: this.project.version, ...this.relationApply })); this.project.version = this.relationBatch.projectVersion }, '业务关系已写入真实业务主表') },
     rollbackRelations() { this.action(async () => { this.relationBatch = this.hydrateRelation(await implementationApi.rollbackRelations(this.project.id, this.relationBatch.batchNo, { projectVersion: this.project.version, ...this.relationRollback })); this.project.version = this.relationBatch.projectVersion }, '业务关系已安全回滚') },

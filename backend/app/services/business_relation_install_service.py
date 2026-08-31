@@ -266,9 +266,26 @@ def _derived_relations(entry: dict) -> list[dict]:
     return rows
 
 
+def _expand_staging_entry(entry: dict) -> dict:
+    """Expose normalized staging rows to post-confirmation relation discovery.
+
+    Canonical teacher/student imports intentionally keep only a bounded staging
+    marker in the shared batch.  Account confirmation expands that marker only
+    for its own transaction, so relation discovery must independently reopen the
+    same verified, repeatable row authority instead of treating the batch as an
+    empty legacy workbook.
+    """
+    payload = entry.get("payload") or {}
+    if payload.get("_staging"):
+        from app.services.identity_import_staging_service import expand_staging_marker
+
+        entry["payload"] = expand_staging_marker(payload)
+    return entry
+
+
 def discover(user: dict, project_id: int, import_batch_no: str) -> dict:
     tenant_id = _tid()
-    entry = get_batch(user, tenant_id, import_batch_no)
+    entry = _expand_staging_entry(get_batch(user, tenant_id, import_batch_no))
     if not entry.get("identityConfirmed"):
         raise AppException("DATA_CONFLICT", "请先确认创建师生账号，再生成业务关系候选")
     if entry.get("relationErrors"):
