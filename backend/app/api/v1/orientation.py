@@ -75,9 +75,9 @@ def progress_blocked(sid: str, body: BlockedBody, user=Depends(require_staff)):
     return success(svc.update_blocked(sid, body.blockedStep, body.blockedReason), message="已更新")
 
 
-@router.post("/progress/{sid}/resolve", summary="标记卡点人工已处理")
+@router.post("/progress/{sid}/resolve", summary="人工豁免卡点（原因和审计证据必填）")
 def progress_resolve(sid: str, body: NoteBody = Body(default=NoteBody()), user=Depends(require_staff)):
-    return success(svc.resolve_blocked(sid, body.note), message="已处理")
+    return success(svc.resolve_blocked(sid, body.note), message="已记录人工豁免")
 
 
 @router.get("/payments", summary="缴费列表")

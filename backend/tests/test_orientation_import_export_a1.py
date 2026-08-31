@@ -28,6 +28,7 @@ def _headers(role: str) -> dict[str, str]:
 def _authority() -> dict[str, int]:
     from app.db.session import get_sessionmaker
     from app.models import College, Major, OrientationBatch, SchoolClass
+    from app.services.orientation_flow_service import ensure_published_flow_version
 
     db = get_sessionmaker()()
     try:
@@ -42,9 +43,11 @@ def _authority() -> dict[str, int]:
             tenant_id=TID, major_id=major.id, class_name="A1软件2601班",
             class_code="A1-CLS", grade="2026", status="ACTIVE",
         )
+        flow_version = ensure_published_flow_version(db, TID)
         batch = OrientationBatch(
             tenant_id=TID, batch_name="A1 2026迎新", batch_no="A1-ORI-2026",
             year="2026", status="ACTIVE", planned_count=1,
+            flow_version_id=flow_version.id,
         )
         db.add_all([school_class, batch])
         db.commit()

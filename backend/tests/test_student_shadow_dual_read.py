@@ -364,6 +364,7 @@ def test_domain_import_orientation_still_allows_new_candidates(db_mode, ctx):
     from app.db.session import get_sessionmaker
     from app.models import College, Major, OrientationBatch, SchoolClass
     from app.services import domain_import_service as dis
+    from app.services.orientation_flow_service import ensure_published_flow_version
 
     db = get_sessionmaker()()
     try:
@@ -374,9 +375,10 @@ def test_domain_import_orientation_still_allows_new_candidates(db_mode, ctx):
         db.add(major); db.flush()
         school_class = SchoolClass(tenant_id=TID, major_id=major.id, class_name="候选人班",
                                    class_code="CAND-CLS", grade="2026", status="ACTIVE")
+        flow_version = ensure_published_flow_version(db, TID)
         batch = OrientationBatch(tenant_id=TID, batch_name="候选人批次",
                                  batch_no="CAND-ORI", year="2026", status="ACTIVE",
-                                 planned_count=1)
+                                 planned_count=1, flow_version_id=flow_version.id)
         db.add_all([school_class, batch]); db.commit()
     finally:
         db.close()

@@ -8,6 +8,7 @@ TID = 1000000000000000001
 
 def _authority(db):
     from app.models import College, Major, OrientationBatch, SchoolClass
+    from app.services.orientation_flow_service import ensure_published_flow_version
 
     college = College(tenant_id=TID, college_name="O1信息学院", code="O1-COL", status="ACTIVE")
     db.add(college); db.flush()
@@ -16,8 +17,10 @@ def _authority(db):
     db.add(major); db.flush()
     school_class = SchoolClass(tenant_id=TID, major_id=major.id, class_name="O1软件2601班",
                                class_code="O1-CLS", grade="2026", status="ACTIVE")
+    flow_version = ensure_published_flow_version(db, TID)
     batch = OrientationBatch(tenant_id=TID, batch_name="O1 2026迎新", batch_no="O1-ORI-2026",
                              year="2026", status="ACTIVE", planned_count=3)
+    batch.flow_version_id = flow_version.id
     db.add_all([school_class, batch]); db.commit()
     return {"college": college.id, "major": major.id, "class": school_class.id, "batch": batch.id}
 

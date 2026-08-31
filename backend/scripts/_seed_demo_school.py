@@ -17,6 +17,8 @@ from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, Attenda
                         OrientationBatch, OrientationStudent, SchoolClass, StudentContact,
                         StudentProfile, TeacherStudentScope, UnifiedMessage,
                         UnifiedTodo, WeeklyReport, WorkflowInstance, WorkflowTask)
+from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                    ensure_student_steps)
 
 TID2 = 1000000000000000003
 DEMO_NAME = "张同学"
@@ -40,9 +42,11 @@ def seed_demo_school(db) -> dict:
     college = db.get(College, major.college_id) if major else None
     if not major or not college:
         raise RuntimeError("演示学校迎新种子组织链不完整")
+    flow_version = ensure_published_flow_version(db, TID2)
     orientation_batch = OrientationBatch(
         tenant_id=TID2, batch_name="演示学校2026迎新", batch_no="DEMO-SCHOOL-ORI-2026",
         year="2026", status="CLOSED", planned_count=1, remark="演示学校历史批次",
+        flow_version_id=flow_version.id,
     )
     db.add(orientation_batch); db.flush()
 
@@ -58,7 +62,7 @@ def seed_demo_school(db) -> dict:
                           verified_status="VERIFIED"))
 
     # 迎新（已完成态，展示全流程）
-    db.add(OrientationStudent(tenant_id=TID2, batch_id=orientation_batch.id,
+    orientation_student = OrientationStudent(tenant_id=TID2, batch_id=orientation_batch.id,
                               name=DEMO_NAME, admission_no=f"LQ{DEMO_NO}", student_id=p.id,
                               identity_status="LINKED",
                               college_id=college.id, college_name=college.college_name,
@@ -70,7 +74,9 @@ def seed_demo_school(db) -> dict:
                               steps_json={"ACTIVATE": "DONE", "INFO": "DONE", "MATERIAL": "DONE",
                                           "PAYMENT": "DONE", "DORM": "DONE", "CHECKIN": "DONE",
                                           "CONFIRM": "DONE"},
-                              source_type="MANUAL", source_record_id=f"LQ{DEMO_NO}"))
+                              source_type="MANUAL", source_record_id=f"LQ{DEMO_NO}")
+    db.add(orientation_student); db.flush()
+    ensure_student_steps(db, orientation_student, status_source="PROCESS_FACT")
     # 在校服务：一条已批请假 + 一条待审请假（教师可现场演示审批）+ 一条已结工单
     cs = CsServiceStudent(tenant_id=TID2, name=DEMO_NAME, student_no=DEMO_NO, student_id=p.id,
                           class_name=DEMO_CLASS, care_level="NORMAL", risk_level="LOW",

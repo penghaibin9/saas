@@ -14,6 +14,11 @@ from app.models import (GreenChannelApplication, OrientationArchive, Orientation
                         OrientationNoticeTask, OrientationStudent, StudentProfile)
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
 from app.services.db_service import _iso, _tid, session
+from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                    ensure_student_steps,
+                                                    set_student_step_status,
+                                                    student_flow_steps,
+                                                    student_step_projection)
 
 L_STAGE = {"ADMITTED": "已录取", "PRE_STUDENT_VERIFIED": "预报到已核验",
            "REGISTERED_PENDING_ENROLLMENT": "已报到待注册", "ENROLLED": "已入学",
@@ -46,27 +51,8 @@ REGISTRATION_STEPS = [
 ]
 
 
-def _active_steps(db) -> list[dict]:
-    """报到环节清单：优先读 t_orientation_flow_config（enabled=True 按 sort_order），
-    尚未配置（如全新租户、批次未跑过 seed）时退回默认 7 环节常量。
-    真正让「报到流程配置」页面的启停生效——之前进度统计/漏斗恒用写死常量，配置了等于没配置。"""
-    rows = db.scalars(select(OrientationFlowConfig).where(
-        OrientationFlowConfig.tenant_id == _tid(), OrientationFlowConfig.is_deleted.is_(False),
-        OrientationFlowConfig.enabled.is_(True)).order_by(OrientationFlowConfig.sort_order)).all()
-    if not rows:
-        return REGISTRATION_STEPS
-    return [{"key": r.step_key, "label": r.step_name} for r in rows]
-
-
 def _default_steps_json() -> dict:
     return {s["key"]: "TODO" for s in REGISTRATION_STEPS}
-
-
-def _merged_steps_json(raw: dict | None) -> dict:
-    base = _default_steps_json()
-    if raw:
-        base.update(raw)
-    return base
 
 
 def _op():
@@ -76,9 +62,11 @@ def _op():
 
 def _audit(db, biz_type, biz_id, action, detail="", before="", after=""):
     name, role = _op()
-    db.add(OrientationAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=str(biz_id),
-                                 action=action, operator=name, role_name=role, detail=detail,
-                                 before_val=before, after_val=after, occurred_at=datetime.utcnow()))
+    row = OrientationAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=str(biz_id),
+                                action=action, operator=name, role_name=role, detail=detail,
+                                before_val=before, after_val=after, occurred_at=datetime.utcnow())
+    db.add(row)
+    return row
 
 
 def _get_student(db, sid) -> OrientationStudent:
@@ -92,7 +80,7 @@ def _amt(v) -> float:
     return float(v or 0)
 
 
-def _stu_row(s: OrientationStudent, *, detail: bool = False) -> dict:
+def _stu_row(s: OrientationStudent, *, db=None, detail: bool = False) -> dict:
     row = {
         # studentId 固定为迎新台账主键，避免绑定学籍后与 StudentProfile.id 混用导致详情/操作串号。
         # profileStudentId 才是绑定的学籍档案 id（未绑定为空）。
@@ -121,7 +109,9 @@ def _stu_row(s: OrientationStudent, *, detail: bool = False) -> dict:
         "updateTime": _iso(s.updated_at),
     }
     if detail:
-        row["steps"] = _merged_steps_json(s.steps_json)
+        if db is None:
+            raise RuntimeError("detail serialization requires canonical step session")
+        row["steps"] = student_step_projection(db, s)
         row["voidReason"] = s.void_reason or ""
         row["checkinTime"] = _iso(s.checkin_time) or ""
         row["exceptionNote"] = s.exception_note or ""
@@ -208,8 +198,8 @@ def get_student_detail(sid) -> dict:
             OrientationAuditTrail.tenant_id == _tid(),
             OrientationAuditTrail.biz_id == str(s.id)).order_by(OrientationAuditTrail.id.desc()).limit(20)).all()
         return {
-            "student": _stu_row(s, detail=True),
-            "steps": [dict(x) for x in REGISTRATION_STEPS],
+            "student": _stu_row(s, db=db, detail=True),
+            "steps": student_flow_steps(db, s),
             "greenChannels": [_gc_row(g) for g in gcs],
             "materials": [_mat_row(m) for m in mats],
             "exceptions": [_exc_row(e) for e in excs],
@@ -301,6 +291,7 @@ def create_student(body: dict, *, db=None) -> dict:
             s.identity_status = "UNLINKED"
         db.add(s)
         db.flush()
+        ensure_student_steps(db, s, status_source="PROCESS_FACT")
         _audit(db, "STUDENT", s.id, "新增新生记录", f"{name}（{adm}）")
         if owns_session:
             db.commit()
@@ -373,9 +364,8 @@ def verify_student(sid, passed: bool = True, reason: str = "") -> dict:
             before = s.stage
             s.stage = "PRE_STUDENT_VERIFIED"
             s.exception_note = ""
-            steps = _merged_steps_json(s.steps_json)
-            steps["INFO"] = "DONE"
-            s.steps_json = steps
+            set_student_step_status(db, s, "INFO", "DONE", status_source="PROCESS_FACT",
+                                    source_biz_id=f"student:{s.id}:verify")
             _audit(db, "STUDENT", s.id, "信息核验通过", before=before, after="PRE_STUDENT_VERIFIED")
         else:
             if not reason or len(reason.strip()) < 5:
@@ -393,7 +383,6 @@ def verify_student(sid, passed: bool = True, reason: str = "") -> dict:
 
 def list_progress(page, page_size, keyword=None, blocked_only="NO"):
     with session() as db:
-        active_keys = [s["key"] for s in _active_steps(db)]
         q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
                                              OrientationStudent.is_deleted.is_(False),
                                              OrientationStudent.record_status == "ACTIVE")
@@ -408,9 +397,10 @@ def list_progress(page, page_size, keyword=None, blocked_only="NO"):
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
         items = []
         for r in rows:
-            steps = r.steps_json or {}
+            steps = student_step_projection(db, r)
+            active_keys = [step["key"] for step in student_flow_steps(db, r)]
             # 只按当前启用的环节计分母/分子——停用的环节不再拖累进度分数（真正让流程配置生效）
-            done = sum(1 for k in active_keys if steps.get(k) == "DONE")
+            done = sum(1 for k in active_keys if steps.get(k) in ("DONE", "WAIVED", "NOT_REQUIRED"))
             items.append({"id": str(r.id), "name": r.name, "admissionNo": r.admission_no,
                           "className": r.class_name or "",
                           "progress": f"{done}/{len(active_keys) or 7}",
@@ -426,15 +416,19 @@ def update_blocked(sid, blocked_step=None, blocked_reason=None) -> dict:
         raise AppException("VALIDATION_ERROR", "卡点说明必填且不少于 5 字")
     with session() as db:
         s = _get_student(db, sid)
-        steps = _merged_steps_json(s.steps_json)
         if blocked_step is not None:
             step_key = blocked_step or None
+            if step_key is None and s.blocked_step:
+                raise AppException("INVALID_STATE", "清除卡点须走业务事实完成或人工豁免")
             s.blocked_step = step_key
             if step_key:
-                steps[step_key] = "BLOCKED"
+                set_student_step_status(
+                    db, s, step_key, "BLOCKED", status_source="PROCESS_FACT",
+                    source_biz_id=f"student:{s.id}:blocked",
+                    blocked_reason=str(blocked_reason or s.blocked_reason or "").strip(),
+                )
         if blocked_reason is not None:
             s.blocked_reason = blocked_reason or None
-        s.steps_json = steps
         s.version += 1
         _audit(db, "PROGRESS", s.id, "编辑卡点事项", blocked_reason or "")
         db.commit()
@@ -442,19 +436,34 @@ def update_blocked(sid, blocked_step=None, blocked_reason=None) -> dict:
 
 
 def resolve_blocked(sid, note="") -> dict:
+    note = str(note or "").strip()
+    if len(note) < 5:
+        raise AppException("VALIDATION_ERROR", "人工豁免原因必填且不少于 5 字")
     with session() as db:
         s = _get_student(db, sid)
         prev = s.blocked_step or ""
-        steps = _merged_steps_json(s.steps_json)
-        if prev:
-            steps[prev] = "DONE"
-        s.steps_json = steps
+        if not prev:
+            raise AppException("INVALID_STATE", "当前新生没有待处理卡点")
+        audit = _audit(db, "PROGRESS", s.id, "人工豁免卡点", note,
+                       before="BLOCKED", after="WAIVED")
+        db.flush()
+        actor = str((get_current_user_ctx() or {}).get("userId") or "").strip()
+        raw_actor = actor[3:] if actor.startswith("db-") else actor
+        try:
+            actor_id = int(raw_actor)
+        except (TypeError, ValueError):
+            import zlib
+            actor_id = (zlib.crc32(actor.encode("utf-8")) & 0x7FFFFFFF) or 1
+        set_student_step_status(
+            db, s, prev, "WAIVED", status_source="MANUAL_WAIVER",
+            source_biz_id=f"audit:{audit.id}", waived_by=actor_id, waive_reason=note,
+            waive_evidence_ref=f"orientation-audit:{audit.id}",
+        )
         s.blocked_step = None
         s.blocked_reason = None
         s.version += 1
-        _audit(db, "PROGRESS", s.id, "标记人工已处理", note)
         db.commit()
-        return {"id": str(s.id)}
+        return {"id": str(s.id), "stepStatus": "WAIVED"}
 
 
 # ═══ 缴费 ═══
@@ -533,12 +542,14 @@ def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=Fals
                 stu.green_channel_status = "APPROVED"
                 if stu.payment_status in ("UNPAID", "PARTIAL"):
                     stu.payment_status = "GREEN_CHANNEL"
-                steps = _merged_steps_json(stu.steps_json)
+                steps = student_step_projection(db, stu)
                 if stu.blocked_step == "PAYMENT" or steps.get("PAYMENT") == "BLOCKED":
                     stu.blocked_step = None
                     stu.blocked_reason = None
-                    steps["PAYMENT"] = "DONE"
-                    stu.steps_json = steps
+                    set_student_step_status(
+                        db, stu, "PAYMENT", "DONE", status_source="PROCESS_FACT",
+                        source_biz_id=f"green-channel:{g.id}",
+                    )
                     audit_detail = (audit_detail + "；绿色通道通过，缴费卡点自动解除").lstrip("；")
             elif target_status == "REJECTED":
                 stu.green_channel_status = "REJECTED"
@@ -577,13 +588,11 @@ def student_submit_collect(sid, phone: str = "", origin: str = "") -> dict:
             s.phone_encrypted = encrypt_field(phone)
         if origin:
             s.origin = origin
-        steps = _merged_steps_json(s.steps_json)
-        steps["INFO"] = "DONE"
+        set_student_step_status(db, s, "INFO", "DONE", status_source="PROCESS_FACT",
+                                source_biz_id=f"student:{s.id}:collect")
         if s.blocked_step == "INFO":
             s.blocked_step = None
             s.blocked_reason = None
-            steps["INFO"] = "DONE"
-        s.steps_json = steps
         if s.report_status == "NOT_REPORTED":
             s.report_status = "PREPARED"
         s.version += 1
@@ -654,9 +663,8 @@ def teacher_checkin_by_admission_no(admission_no: str, operator_name: str = "") 
         before = s.report_status
         s.report_status = "CHECKED_IN"
         s.checkin_time = datetime.utcnow()
-        steps = _merged_steps_json(s.steps_json)
-        steps["CHECKIN"] = "DONE"
-        s.steps_json = steps
+        set_student_step_status(db, s, "CHECKIN", "DONE", status_source="PROCESS_FACT",
+                                source_biz_id=f"student:{s.id}:checkin")
         s.version += 1
         _audit(db, "CHECKIN", s.id, "现场报到核验通过",
               f"核验人：{operator_name or '迎新老师'}", before, "CHECKED_IN")
@@ -710,8 +718,10 @@ def _refresh_material_status(db, stu):
         if stu.blocked_step == "MATERIAL":
             stu.blocked_step = None
             stu.blocked_reason = None
-            if stu.steps_json:
-                stu.steps_json = {**stu.steps_json, "MATERIAL": "DONE"}
+            set_student_step_status(
+                db, stu, "MATERIAL", "DONE", status_source="PROCESS_FACT",
+                source_biz_id=f"student:{stu.id}:materials-approved",
+            )
 
 
 def approve_material(mid, comment=""):
@@ -815,8 +825,8 @@ def batch_confirm_checkin(ids: list) -> dict:
                 continue
             s.dorm_status = "CHECKED_IN"
             s.checkin_time = datetime.utcnow()
-            if s.steps_json:
-                s.steps_json = {**s.steps_json, "DORM": "DONE"}
+            set_student_step_status(db, s, "DORM", "DONE", status_source="PROCESS_FACT",
+                                    source_biz_id=f"student:{s.id}:dorm-checkin")
             s.version += 1
             _audit(db, "DORM", s.id, "批量确认入住")
             cnt += 1
@@ -1014,11 +1024,14 @@ def get_dashboard() -> dict:
         gc_total = db.scalar(select(func.count()).select_from(GreenChannelApplication).where(
             GreenChannelApplication.tenant_id == _tid(),
             GreenChannelApplication.is_deleted.is_(False))) or 0
-        step_funnel = []
-        for step in _active_steps(db):
-            key = step["key"]
-            done = sum(1 for r in rows if (_merged_steps_json(r.steps_json).get(key) == "DONE"))
-            step_funnel.append({"key": key, "label": step["label"], "done": done})
+        funnel = {}
+        for student in rows:
+            projection = student_step_projection(db, student)
+            for step in student_flow_steps(db, student):
+                item = funnel.setdefault(step["key"], {**step, "done": 0})
+                if projection.get(step["key"]) in ("DONE", "WAIVED"):
+                    item["done"] += 1
+        step_funnel = list(funnel.values())
         return {
             "batchName": "2026 级迎新批次", "batchPeriod": "2026-09-01 ~ 2026-09-15",
             "updateTime": _iso(datetime.now()),
@@ -1070,6 +1083,7 @@ def _batch_row(b: OrientationBatch) -> dict:
         "startDate": _iso(b.start_date) or "", "endDate": _iso(b.end_date) or "",
         "reportStartDate": _iso(b.report_start_date) or "", "reportEndDate": _iso(b.report_end_date) or "",
         "status": b.status, "statusLabel": L_BATCH.get(b.status, b.status),
+        "flowVersionId": str(b.flow_version_id) if b.flow_version_id else "",
         "plannedCount": int(b.planned_count or 0), "remark": b.remark or "",
         "updateTime": _iso(b.updated_at),
     }
@@ -1150,6 +1164,8 @@ def activate_batch(bid) -> dict:
         b = _get_batch(db, bid)
         if b.status != "DRAFT":
             raise AppException("INVALID_STATE", "仅草稿批次可启用")
+        if not b.flow_version_id:
+            b.flow_version_id = ensure_published_flow_version(db, b.tenant_id).id
         b.status = "ACTIVE"
         b.version += 1
         _audit(db, "BATCH", b.id, "启用迎新批次", before="DRAFT", after="ACTIVE")

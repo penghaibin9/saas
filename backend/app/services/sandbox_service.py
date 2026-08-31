@@ -350,7 +350,7 @@ def seed_sandbox(db) -> dict:
         profile_class = db.get(SchoolClass, p.class_id)
         profile_major = db.get(Major, p.major_id)
         profile_college = db.get(College, p.college_id)
-        db.add(OrientationStudent(tenant_id=SANDBOX_TID, batch_id=orientation_batch.id,
+        orientation_student = OrientationStudent(tenant_id=SANDBOX_TID, batch_id=orientation_batch.id,
                                   name=SBX_STUDENT_NAME,
                                   admission_no=f"LQ{SBX_STUDENT_NO}", student_id=p.id,
                                   identity_status="LINKED",
@@ -362,7 +362,10 @@ def seed_sandbox(db) -> dict:
                                   material_status="APPROVED", dorm_status="CHECKED_IN",
                                   building="沙箱1号楼", room="1-101-1", risk_level="LOW",
                                   steps_json={"ACTIVATE": "DONE", "CHECKIN": "DONE"},
-                                  source_type="MANUAL", source_record_id=f"LQ{SBX_STUDENT_NO}"))
+                                  source_type="MANUAL", source_record_id=f"LQ{SBX_STUDENT_NO}")
+        db.add(orientation_student); db.flush()
+        from app.services.orientation_flow_service import ensure_student_steps
+        ensure_student_steps(db, orientation_student, status_source="PROCESS_FACT")
         cs = CsServiceStudent(tenant_id=SANDBOX_TID, name=SBX_STUDENT_NAME, student_no=SBX_STUDENT_NO,
                               student_id=p.id, class_name=SBX_CLASS, care_level="NORMAL",
                               risk_level="LOW", counselor=SBX_TEACHER_NAME, record_status="ACTIVE")

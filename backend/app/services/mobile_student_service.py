@@ -166,15 +166,19 @@ def _empty(reason="尚未建立你的学生档案或暂无数据"):
     return {"hasData": False, "note": reason}
 
 
-def _orientation_payload(o) -> dict:
+def _orientation_payload(o, db=None) -> dict:
     if not o:
         return _empty("你暂无迎新报到记录")
+    if db is None:
+        raise RuntimeError("orientation payload requires canonical step session")
+    from app.services.orientation_flow_service import student_step_projection
+    steps = student_step_projection(db, o)
     return {"hasData": True, "reportStatus": o.report_status, "paymentStatus": o.payment_status,
             "materialStatus": o.material_status, "dormStatus": o.dorm_status,
             "greenChannelStatus": o.green_channel_status,
             "building": o.building or "", "room": o.room or "",
             "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
-            "steps": [{"key": k, "status": v} for k, v in (o.steps_json or {}).items()],
+            "steps": [{"key": k, "status": v} for k, v in steps.items()],
             "admissionNo": o.admission_no, "name": o.name,
             "reportCodeValid": o.report_status not in ("CHECKED_IN", "COLLEGE_CONFIRMED"),
             "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
@@ -313,7 +317,7 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
             "hasData": True,
         }
         if include_home:
-            result["orientation"] = _orientation_payload(ori)
+            result["orientation"] = _orientation_payload(ori, db)
             result["orientationBatch"] = _orientation_batch_status_db(db)
             # V3 §5.2 学分完成率的真值来源。acad 已在本 session 内解析，不新增查询。
             # required_credits 可为空（培养方案未解析）——此时必须保持 None，
@@ -756,7 +760,7 @@ def orientation_my(user: dict) -> dict:
         if not stu:
             return _empty()
         from app.models import OrientationStudent
-        return _orientation_payload(_resolve_domain_student(db, OrientationStudent, stu))
+        return _orientation_payload(_resolve_domain_student(db, OrientationStudent, stu), db)
 
 
 def _resolve_orientation_student(db, u: dict):
