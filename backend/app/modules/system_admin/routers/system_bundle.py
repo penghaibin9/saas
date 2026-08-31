@@ -213,17 +213,13 @@ def _student_account_meta(db, account) -> dict:
     try:
         from app.models import (College, Major, SchoolClass, StudentAccountLink,
                                 StudentProfile)
-        from app.core.tenant_scoped import tenant_get
         link = db.scalars(select(StudentAccountLink).where(
             StudentAccountLink.tenant_id == account.tenant_id,
             StudentAccountLink.user_id == account.id,
             StudentAccountLink.link_status == "ACTIVE",
             StudentAccountLink.is_deleted.is_(False),
         )).first()
-        sp = (
-            tenant_get(db, StudentProfile, link.student_id, tenant_id=account.tenant_id)
-            if link is not None else None
-        )
+        sp = db.get(StudentProfile, link.student_id) if link is not None else None
         if sp is None:
             sp = db.scalars(select(StudentProfile).where(
                 StudentProfile.tenant_id == account.tenant_id,
@@ -238,18 +234,9 @@ def _student_account_meta(db, account) -> dict:
                 "studentStatus": "UNBOUND", "studentStatusLabel": "未绑定学生主档",
                 "currentStage": "", "profileBound": False,
             }
-        college = (
-            tenant_get(db, College, sp.college_id, tenant_id=account.tenant_id)
-            if sp.college_id else None
-        )
-        major = (
-            tenant_get(db, Major, sp.major_id, tenant_id=account.tenant_id)
-            if sp.major_id else None
-        )
-        cls = (
-            tenant_get(db, SchoolClass, sp.class_id, tenant_id=account.tenant_id)
-            if sp.class_id else None
-        )
+        college = db.get(College, sp.college_id) if sp.college_id else None
+        major = db.get(Major, sp.major_id) if sp.major_id else None
+        cls = db.get(SchoolClass, sp.class_id) if sp.class_id else None
         student_status = str(sp.student_status or sp.status or "").upper()
         return {
             "studentId": str(sp.id), "studentNo": sp.student_no,
