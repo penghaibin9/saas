@@ -44,7 +44,7 @@
           </div>
         </section>
 
-        <section v-if="preview" class="mp-card">
+        <section v-if="preview && project.status === 'PREVIEW_READY'" class="mp-card">
           <header class="mp-card__head">
             <span class="mp-card__title">应用前确认</span>
             <span class="mp-note">快照哈希 {{ shortHash }}</span>
@@ -172,7 +172,7 @@ export default {
       return (this.runtime && this.runtime.pendingPolicyConfirmation) || 0
     },
     notInstalledCount() {
-      if (!this.preview || !this.preview.impact) return 0
+      if (this.project?.status !== 'PREVIEW_READY' || !this.preview || !this.preview.impact) return 0
       return this.preview.impact.workflows.toCreate.length + this.preview.impact.workbenches.toCreate.length
     },
     shortHash() {
@@ -243,6 +243,10 @@ export default {
         toast.success(`该快照已应用过，沿用安装版本 ${res.installationNo || ''}`)
       } else {
         toast.success('已完成')
+      }
+      if (this.pendingAction === 'apply') {
+        this.preview = null
+        this.idempotencyKey = ''
       }
       this.confirmOpen = false
       await this.load()
