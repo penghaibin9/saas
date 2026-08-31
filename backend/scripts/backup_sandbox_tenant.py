@@ -23,6 +23,51 @@ TENANT_ID = 1000000000000000007
 TENANT_CODE = "sandbox-school"
 
 
+def _trigger_specs(engine) -> list[dict[str, str]]:
+    """Return portable trigger definitions for an already-migrated restore target.
+
+    Tenant backups are restored into a schema that already owns its production triggers.
+    Some AFTER INSERT triggers materialise lock rows, so leaving them enabled while the
+    corresponding backed-up lock rows are inserted makes an otherwise clean restore fail
+    with duplicate keys.  Capture every schema trigger and recreate it after the atomic
+    data import instead of silently changing restored facts.
+    """
+    with engine.connect() as connection:
+        rows = connection.exec_driver_sql(
+            """
+            SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION,
+                   EVENT_OBJECT_TABLE, ACTION_STATEMENT
+              FROM information_schema.TRIGGERS
+             WHERE TRIGGER_SCHEMA = DATABASE()
+             ORDER BY TRIGGER_NAME
+            """
+        ).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def _write_trigger_preamble(stream, engine, triggers: list[dict[str, str]]) -> None:
+    quote = engine.dialect.identifier_preparer.quote
+    stream.write("-- Suspend migrated-schema triggers so backed-up materialized rows restore exactly.\n")
+    for trigger in triggers:
+        stream.write(f"DROP TRIGGER IF EXISTS {quote(trigger['TRIGGER_NAME'])};\n")
+    stream.write("\n")
+
+
+def _write_trigger_epilogue(stream, engine, triggers: list[dict[str, str]]) -> None:
+    quote = engine.dialect.identifier_preparer.quote
+    if not triggers:
+        return
+    stream.write("\nDELIMITER $$\n")
+    for trigger in triggers:
+        stream.write(
+            f"CREATE TRIGGER {quote(trigger['TRIGGER_NAME'])} "
+            f"{trigger['ACTION_TIMING']} {trigger['EVENT_MANIPULATION']} "
+            f"ON {quote(trigger['EVENT_OBJECT_TABLE'])} FOR EACH ROW "
+            f"{trigger['ACTION_STATEMENT']}$$\n"
+        )
+    stream.write("DELIMITER ;\n")
+
+
 def _mysql_options() -> tuple[list[str], dict[str, str], str]:
     import _mysql_env  # noqa: F401 - load backend/.env without printing credentials
     from app.core.config import settings
@@ -66,7 +111,7 @@ def _literal(value: object) -> str:
     return "'" + text_value + "'"
 
 
-def _write_sqlalchemy_dump(engine, tables: list[str], output: Path) -> None:
+def _write_sqlalchemy_dump(engine, tables: list[str], output: Path, triggers: list[dict[str, str]]) -> None:
     """Fallback export when local MySQL client tools are unavailable.
 
     This intentionally produces an INSERT-only logical backup for a schema already managed by
@@ -77,10 +122,18 @@ def _write_sqlalchemy_dump(engine, tables: list[str], output: Path) -> None:
     with engine.connect() as connection, output.open("w", encoding="utf-8", newline="\n") as stream:
         stream.write("-- sandbox-school 007 tenant-scoped SQLAlchemy logical backup\n")
         stream.write(f"-- tenant_id={TENANT_ID} tenant_code={TENANT_CODE}\n")
-        stream.write("SET FOREIGN_KEY_CHECKS=0;\nSTART TRANSACTION;\n\n")
+        stream.write("SET NAMES utf8mb4;\n")
+        stream.write("SET FOREIGN_KEY_CHECKS=0;\n")
+        _write_trigger_preamble(stream, engine, triggers)
+        stream.write("START TRANSACTION;\n\n")
         all_tables = [("t_tenant", "id"), *((table, "tenant_id") for table in tables)]
         for table, scope_column in all_tables:
-            columns = [column["name"] for column in inspect(engine).get_columns(table)]
+            # Generated columns must be omitted: MySQL computes them and rejects explicit
+            # values even when the value equals the generated expression.
+            columns = [
+                column["name"] for column in inspect(engine).get_columns(table)
+                if not column.get("computed")
+            ]
             rendered_columns = ", ".join(quote(column) for column in columns)
             result = connection.execution_options(stream_results=True).exec_driver_sql(
                 f"SELECT {rendered_columns} FROM {quote(table)} WHERE {quote(scope_column)} = %s", (TENANT_ID,)
@@ -93,7 +146,9 @@ def _write_sqlalchemy_dump(engine, tables: list[str], output: Path) -> None:
                     values = ", ".join(_literal(value) for value in row)
                     stream.write(f"INSERT INTO {quote(table)} ({rendered_columns}) VALUES ({values});\n")
             stream.write("\n")
-        stream.write("COMMIT;\nSET FOREIGN_KEY_CHECKS=1;\n")
+        stream.write("COMMIT;\n")
+        _write_trigger_epilogue(stream, engine, triggers)
+        stream.write("SET FOREIGN_KEY_CHECKS=1;\n")
 
 
 def main() -> int:
@@ -108,6 +163,7 @@ def main() -> int:
         raise SystemExit("DB_ENABLED=false，无法备份真实 007")
     engine = get_engine()
     inspector = inspect(engine)
+    triggers = _trigger_specs(engine)
     tables = sorted(
         table for table in inspector.get_table_names()
         if "tenant_id" in {column["name"] for column in inspector.get_columns(table)}
@@ -129,6 +185,12 @@ def main() -> int:
         with dump_file.open("wb") as stream:
             stream.write(b"-- sandbox-school 007 tenant-scoped backup\n")
             stream.write(f"-- tenant_id={TENANT_ID} tenant_code={TENANT_CODE}\n\n".encode())
+            stream.write(b"SET NAMES utf8mb4;\n")
+            stream.write(b"SET FOREIGN_KEY_CHECKS=0;\n")
+            from io import StringIO
+            trigger_preamble = StringIO()
+            _write_trigger_preamble(trigger_preamble, engine, triggers)
+            stream.write(trigger_preamble.getvalue().encode("utf-8"))
             commands = [("t_tenant", f"id={TENANT_ID}"), *((table, f"tenant_id={TENANT_ID}") for table in tables)]
             for table, where in commands:
                 result = subprocess.run([binary, *options, f"--where={where}", database, table], stdout=stream,
@@ -136,9 +198,13 @@ def main() -> int:
                 if result.returncode:
                     raise RuntimeError(f"mysqldump 导出 {table} 失败：{result.stderr.decode(errors='replace')[:500]}")
                 stream.write(b"\n")
+            trigger_epilogue = StringIO()
+            _write_trigger_epilogue(trigger_epilogue, engine, triggers)
+            trigger_epilogue.write("SET FOREIGN_KEY_CHECKS=1;\n")
+            stream.write(trigger_epilogue.getvalue().encode("utf-8"))
     else:
         method = "SQLALCHEMY_INSERT_FALLBACK"
-        _write_sqlalchemy_dump(engine, tables, dump_file)
+        _write_sqlalchemy_dump(engine, tables, dump_file, triggers)
     digest = hashlib.sha256(dump_file.read_bytes()).hexdigest()
     manifest = root / "sandbox-school-007-backup-manifest.json"
     manifest.write_text(
