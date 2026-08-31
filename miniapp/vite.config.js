@@ -55,5 +55,13 @@ function stripMockPayloadInProduction() {
 
 // uni-app + Vue3 独立工程配置。仅服务小程序端，不影响 PC frontend。
 export default defineConfig({
-  plugins: [stripMockPayloadInProduction(), uni()]
+  plugins: [stripMockPayloadInProduction(), uni()],
+  server: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_DEV_API_PROXY_TARGET || 'http://127.0.0.1:8000',
+        changeOrigin: true
+      }
+    }
+  }
 })

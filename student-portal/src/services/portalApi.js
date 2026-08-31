@@ -1,7 +1,7 @@
 /**
  * 学生 PC 门户 · API 门面。只暴露门户允许调用的接口（严格边界）。
  */
-import { request, uploadFile } from './request'
+import { request } from './request'
 import fileSdk from './fileSdk'
 
 const q = (obj) => {

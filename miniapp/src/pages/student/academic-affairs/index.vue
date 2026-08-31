@@ -14,7 +14,7 @@
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad aa__body" v-if="status">
         <view v-if="partialError" class="aa__partial" @click="load">
-          <text>部分教务数据暂未更新</text><text>点击重试</text>
+          <text>{{ failedSources.join('、') || '部分教务数据' }}暂未更新</text><text>点击重试</text>
         </view>
 
         <view v-if="taskCues.length" class="card aa__tasks">
@@ -136,6 +136,33 @@ function pendingEvaluationCount(data) {
   if (data && Number.isFinite(Number(data.pending))) return Number(data.pending)
   return rowsOf(data).filter((row) => row && row.canSubmit === true && row.submitted !== true).length
 }
+function taskTarget(key, row) {
+  if (!row) return ''
+  const base = {
+    registration: '/pages/student/academic-affairs/registration',
+    evaluation: '/pages/student/academic-affairs/evaluation',
+    warning: '/pages/student/academic-affairs/warning',
+    defer: '/pages/student/academic-affairs/exam',
+    makeup: '/pages/student/academic-affairs/makeup'
+  }[key]
+  const id = {
+    registration: row.batchId,
+    evaluation: row.taskId,
+    warning: row.warningId || row.id,
+    defer: row.deferId || row.id,
+    makeup: row.gradeId || row.sourceId || row.acadGradeId || row.id
+  }[key]
+  return base && id ? `${base}?id=${encodeURIComponent(id)}` : (base || '')
+}
+function taskDetail(key, row) {
+  if (!row) return ''
+  if (key === 'registration') return row.batchName || '完成开放批次注册'
+  if (key === 'evaluation') return `${row.courseName || '课程'} · ${row.teacherName || '授课教师'}`
+  if (key === 'warning') return row.reason || row.warningName || '查看原因与处理要求'
+  if (key === 'defer') return `${row.courseName || '缓考申请'} · ${row.returnReason || row.reviewNote || '退回待补充'}`
+  if (key === 'makeup') return `${row.courseName || '未通过课程'} · 可报名重修`
+  return ''
+}
 
 export default {
   data() {
@@ -143,7 +170,8 @@ export default {
       status: null, state: 'loading', statusBarHeight: 20, entries: ENTRIES,
       scheduleItems: [], todayItems: [], currentWeek: null, calendarSource: '', examItems: [], examLoaded: false,
       warningCount: 0, evaluationCount: 0, registrationCount: 0, returnedDeferCount: 0,
-      retakeCount: 0, partialError: false, showAll: false
+      retakeCount: 0, partialError: false, failedSources: [], showAll: false,
+      taskTargets: {}, taskDetails: {}
     }
   },
   computed: {
@@ -151,11 +179,11 @@ export default {
     otherEntries() { return this.entries.filter((x) => !COMMON_KEYS.has(x.key)) },
     taskCues() {
       return [
-        { key: 'registration', icon: '🪪', title: '完成学期注册', description: '存在尚未完成的注册批次', count: this.registrationCount, route: '/pages/student/academic-affairs/registration' },
-        { key: 'evaluation', icon: '⭐', title: '完成学生评教', description: '开放窗口内课程等待匿名评价', count: this.evaluationCount, route: '/pages/student/academic-affairs/evaluation' },
-        { key: 'warning', icon: '⚠️', title: '跟进学业预警', description: '查看原因、责任老师和处理要求', count: this.warningCount, route: '/pages/student/academic-affairs/warning' },
-        { key: 'defer', icon: '🗓', title: '补充缓考材料', description: '存在退回待重新提交的缓考申请', count: this.returnedDeferCount, route: '/pages/student/academic-affairs/exam' },
-        { key: 'makeup', icon: '📝', title: '处理补考重修', description: '存在可报名的当前有效未通过课程', count: this.retakeCount, route: '/pages/student/academic-affairs/makeup' }
+        { key: 'registration', icon: '🪪', title: '完成学期注册', description: this.taskDetails.registration || '存在尚未完成的注册批次', count: this.registrationCount, route: this.taskTargets.registration || '/pages/student/academic-affairs/registration' },
+        { key: 'evaluation', icon: '⭐', title: '完成学生评教', description: this.taskDetails.evaluation || '开放窗口内课程等待匿名评价', count: this.evaluationCount, route: this.taskTargets.evaluation || '/pages/student/academic-affairs/evaluation' },
+        { key: 'warning', icon: '⚠️', title: '跟进学业预警', description: this.taskDetails.warning || '查看原因、责任老师和处理要求', count: this.warningCount, route: this.taskTargets.warning || '/pages/student/academic-affairs/warning' },
+        { key: 'defer', icon: '🗓', title: '补充缓考材料', description: this.taskDetails.defer || '存在退回待重新提交的缓考申请', count: this.returnedDeferCount, route: this.taskTargets.defer || '/pages/student/academic-affairs/exam' },
+        { key: 'makeup', icon: '📝', title: '处理补考重修', description: this.taskDetails.makeup || '存在可报名的当前有效未通过课程', count: this.retakeCount, route: this.taskTargets.makeup || '/pages/student/academic-affairs/makeup' }
       ].filter((item) => Number(item.count || 0) > 0)
     },
     todayCourses() {
@@ -192,6 +220,9 @@ export default {
     async load() {
       this.state = 'loading'
       this.partialError = false
+      this.failedSources = []
+      this.taskTargets = {}
+      this.taskDetails = {}
       try {
         this.status = await studentApi.getMyAcadStatus()
       } catch (e) {
@@ -217,13 +248,30 @@ export default {
       }
       this.examLoaded = results[1].status === 'fulfilled'
       this.examItems = this.examLoaded ? rowsOf(results[1].value) : []
-      this.warningCount = results[2].status === 'fulfilled' ? unfinished(rowsOf(results[2].value)).length : 0
-      this.evaluationCount = results[3].status === 'fulfilled' ? pendingEvaluationCount(results[3].value) : 0
-      this.registrationCount = results[4].status === 'fulfilled' ? unfinished(rowsOf(results[4].value)).length : 0
-      this.returnedDeferCount = results[5].status === 'fulfilled'
-        ? rowsOf(results[5].value).filter((row) => String(row.status || '').toUpperCase() === 'RETURNED').length : 0
+      const warningRows = results[2].status === 'fulfilled' ? unfinished(rowsOf(results[2].value)) : []
+      const evaluationRows = results[3].status === 'fulfilled'
+        ? rowsOf(results[3].value).filter((row) => row && row.canSubmit === true && row.submitted !== true) : []
+      const registrationRows = results[4].status === 'fulfilled' ? unfinished(rowsOf(results[4].value)) : []
+      const deferRows = results[5].status === 'fulfilled'
+        ? rowsOf(results[5].value).filter((row) => String(row.status || '').toUpperCase() === 'RETURNED') : []
+      this.warningCount = warningRows.length
+      this.evaluationCount = Number(results[3].status === 'fulfilled' ? pendingEvaluationCount(results[3].value) : 0)
+      this.registrationCount = registrationRows.length
+      this.returnedDeferCount = deferRows.length
       const makeup = results[6].status === 'fulfilled' ? (results[6].value || {}) : {}
       this.retakeCount = (makeup.retakeOptions || []).length
+      const firstByKey = {
+        registration: registrationRows[0], evaluation: evaluationRows[0], warning: warningRows[0],
+        defer: deferRows[0], makeup: (makeup.retakeOptions || [])[0]
+      }
+      Object.entries(firstByKey).forEach(([key, row]) => {
+        const target = taskTarget(key, row)
+        const detail = taskDetail(key, row)
+        if (target) this.taskTargets[key] = target
+        if (detail) this.taskDetails[key] = detail
+      })
+      const sourceNames = ['课表', '考试', '学业预警', '学生评教', '学期注册', '缓考申请', '补考重修资格']
+      this.failedSources = results.map((result, index) => result.status === 'rejected' ? sourceNames[index] : '').filter(Boolean)
       this.partialError = results.some((result) => result.status === 'rejected') || this.currentWeek == null
       this.state = 'ready'
     }

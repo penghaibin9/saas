@@ -268,7 +268,7 @@ export default {
           this.checks = (this.project.checks || []).map((c) => ({ ...c }))
           try {
             this.runtime = await implementationApi.runtimePresets(this.project.id)
-          } catch (e) {
+          } catch {
             this.runtime = null
           }
         }

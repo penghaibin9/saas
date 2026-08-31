@@ -323,6 +323,53 @@ def test_c6_course_scope_denied(client, db_mode):
     assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"
 
 
+def test_teacher_with_incidental_college_scope_still_reads_own_change(client, db_mode):
+    """Teacher ownership must not be replaced by an unrelated college read scope."""
+    from app.db.session import get_sessionmaker
+    from app.models import College, TeacherStudentScope
+
+    ids = _seed(db_mode)
+    db = get_sessionmaker()()
+    other = College(tenant_id=TID, college_name="教师附加范围学院", status="ACTIVE")
+    db.add(other)
+    db.flush()
+    db.add(TeacherStudentScope(
+        tenant_id=TID,
+        teacher_key="academic01",
+        teacher_name="academic01",
+        role_code="ACADEMIC_TEACHER",
+        scope_type="COLLEGE",
+        ref_value=other.college_name,
+        status="ACTIVE",
+    ))
+    db.commit()
+    db.close()
+
+    admin = _hdr(client, "school_admin01")
+    bid = _batch(client, admin)
+    origin = _item(
+        client,
+        admin,
+        bid,
+        ids["class"],
+        teacherKey="academic01",
+        teacherName="任课教师",
+    )
+    _publish_batch(client, admin, bid)
+
+    teacher = _hdr(client, "academic01")
+    submitted = _submit(client, teacher, origin)
+    assert submitted.status_code == 200, submitted.text
+    change_id = submitted.json()["data"]["changeId"]
+
+    ledger = client.get(f"{BASE}/schedule-change", headers=teacher)
+    assert ledger.status_code == 200, ledger.text
+    assert [row["changeId"] for row in ledger.json()["data"]["items"]] == [change_id]
+    detail = client.get(f"{BASE}/schedule-change/{change_id}", headers=teacher)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["data"]["teacherKey"] == "academic01"
+
+
 def test_c7_reject_requires_reason(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,8 +21,17 @@ PAIRS = (
 
 
 def git_blob_sha(path: Path) -> str:
-    data = path.read_bytes()
-    return hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
+    """Hash the clean-filtered worktree file like Git does on every OS."""
+    try:
+        rel = path.relative_to(ROOT).as_posix()
+        return subprocess.check_output(
+            ["git", "hash-object", f"--path={rel}", str(path)],
+            cwd=ROOT,
+            text=True,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError, ValueError):
+        data = path.read_bytes()
+        return hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
 
 
 def main() -> int:

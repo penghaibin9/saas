@@ -26,6 +26,34 @@ test('teacher schedule responses expose a display name instead of forcing intern
   assert.match(backend, /"teacherName": next/)
 })
 
+test('academic teacher selectors submit the stable login name as teacher_key', () => {
+  const adapter = read('src/components/common/picker/orgAdapters.js')
+  const academicAdapter = read('src/modules/academicAffairs/pickerAdapters.js')
+  const teacherDirectory = read('../backend/app/modules/academic_affairs/services/academic_affairs_course_service.py')
+  assert.match(adapter, /query\?\.valueField === 'loginName'/)
+  assert.match(adapter, /t\.loginName \?\? t\.teacherKey/)
+  assert.match(academicAdapter, /query\?\.valueField === 'loginName'/)
+  assert.match(academicAdapter, /firstDefined\(t, \['loginName', 'teacherKey'\]\)/)
+  assert.match(teacherDirectory, /"loginName": u\.login_name or ""/)
+
+  for (const view of [
+    'AaScheduleViewsView.vue',
+    'AaTeacherScheduleView.vue',
+    'AaWeekScheduleView.vue',
+    'AaSemesterScheduleView.vue',
+    'AaScheduleExportView.vue',
+    'AaTaskDetailView.vue',
+    'AaTaskAdjustView.vue',
+    'AaTeacherAssignConsoleView.vue',
+    'AaTeachingClassDetailView.vue',
+    'AaExamConsoleView.vue'
+  ]) {
+    const source = read(`src/modules/academicAffairs/views/${view}`)
+    assert.match(source, /teacherKeyQuery: \{ valueField: 'loginName' \}/, view)
+    assert.match(source, /<AppTeacherPicker[^>]+:query="teacherKeyQuery"/, view)
+  }
+})
+
 test('schedule routes remain available for class teacher room student and teaching class queries', () => {
   const routes = read('src/modules/academicAffairs/academic-affairs.routes.js')
   for (const segment of ['schedule/class/', 'schedule/teacher/', 'schedule/room/', 'schedule/student/', 'schedule/teaching-class/']) {

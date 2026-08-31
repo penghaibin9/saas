@@ -324,6 +324,13 @@ function inflightKey(method, effectivePath, data, auth) {
   return `${method}|${effectivePath}|${stablePayload(data)}|${identity}`
 }
 
+function normalizeJsonResponseBody(value) {
+  if (typeof value !== 'string') return value
+  const text = value.trim()
+  if (!text || (text[0] !== '{' && text[0] !== '[')) return value
+  try { return JSON.parse(text) } catch { return value }
+}
+
 function executeRealRequest(path, effectivePath, {
   method, data, auth, _retried, _rawPage, _expectedGeneration
 }) {
@@ -344,7 +351,10 @@ function executeRealRequest(path, effectivePath, {
       header,
       timeout: ENV.requestTimeout,
       success: (res) => {
-        const body = res.data
+        // Some H5 adapters expose an application/json response as text while
+        // native miniapp runtimes expose the parsed object. Normalize only
+        // syntactically valid JSON; malformed/non-JSON bodies still fail closed.
+        const body = normalizeJsonResponseBody(res.data)
         if (body && body.code === 401001 && auth && !_retried && !path.startsWith('/auth/')) {
           refreshOrReuseCurrentSession(requestSnapshot)
             .then(() => realRequest(path, {

@@ -63,7 +63,7 @@
         </header>
         <StateBlock v-if="!retakeOptions.length" type="empty" text="暂无可报名重修课程" />
         <div v-else class="option-list">
-          <article v-for="option in retakeOptions" :key="retakeKey(option)" class="option-item">
+          <article v-for="option in retakeOptions" :key="retakeKey(option)" class="option-item" :class="{ 'is-target': retakeKey(option) === focusOptionId }">
             <header>
               <div>
                 <strong>{{ option.courseName || '课程名称待补充' }}</strong>
@@ -140,16 +140,19 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import { portalApi } from '../../services/portalApi'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
+const route = useRoute()
+const focusOptionId = computed(() => String(route.query.optionId || ''))
 const loading = ref(true)
 const error = ref('')
 const actingKey = ref('')
-const tab = ref('overview')
+const tab = ref(['overview', 'retake', 'exemption'].includes(String(route.query.tab)) ? String(route.query.tab) : 'overview')
 const overview = ref({})
 const options = ref({ retakeOptions: [], exemptionOptions: [] })
 const retakeReasons = reactive({})
@@ -293,6 +296,7 @@ onMounted(load)
 .section-head span { margin-top: 4px; color: var(--t3); font-size: 12px; }
 .record-list, .option-list { display: grid; gap: 10px; }
 .record-item, .option-item { padding: 14px; border: 1px solid var(--line2); border-radius: 11px; }
+.option-item.is-target { border-color: #60a5fa; box-shadow: 0 0 0 3px #dbeafe; }
 .record-item > header, .option-item > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .record-item > header strong, .record-item > header span, .option-item > header strong, .option-item > header span { display: block; }
 .record-item > header strong, .option-item > header strong { color: var(--t1); font-size: 14px; }
