@@ -129,25 +129,25 @@ function workbenchOnly(leaf) {
  * - 正式环境缺权限集：fail-closed，只保留工作台，禁止按粗角色放大菜单。
  * - 开发/测试环境：允许角色白名单降级，便于本地排障，但后端仍是最终权限边界。
  */
-function canSeeCandidate(candidate, ctx) {
+function canSeeCandidate(leaf, ctx) {
   const rt = roleType(ctx)
-  if (candidate.platformOnly && rt !== ROLE_TYPE.PLATFORM) return false
-  if (rt === ROLE_TYPE.PLATFORM && candidate.moduleCode !== 'PLATFORM') return false
-  if (candidate.sensitive && rt === ROLE_TYPE.COUNSELOR) return false
+  if (leaf.platformOnly && rt !== ROLE_TYPE.PLATFORM) return false
+  if (rt === ROLE_TYPE.PLATFORM && leaf.moduleCode !== 'PLATFORM') return false
+  if (leaf.sensitive && rt === ROLE_TYPE.COUNSELOR) return false
 
   const patterns = ctx && ctx.permissionPatterns
   if (Array.isArray(patterns)) {
-    const anyKeys = candidate.permissionAny || []
-    const allKeys = candidate.permissionAll || []
+    const anyKeys = leaf.permissionAny || []
+    const allKeys = leaf.permissionAll || []
     if (anyKeys.length) return anyKeys.some((key) => matchPermission(patterns, key))
-    if (candidate.permissionKey) return matchPermission(patterns, candidate.permissionKey)
+    if (leaf.permissionKey) return matchPermission(patterns, leaf.permissionKey)
     if (allKeys.length) return allKeys.every((key) => matchPermission(patterns, key))
-    return workbenchOnly(candidate)
+    return workbenchOnly(leaf)
   }
 
-  if (import.meta.env && import.meta.env.PROD) return workbenchOnly(candidate)
-  if (rt) return (ROLE_MODULE_ALLOW[rt] || ['WORKBENCH']).includes(candidate.moduleCode)
-  return workbenchOnly(candidate)
+  if (import.meta.env && import.meta.env.PROD) return workbenchOnly(leaf)
+  if (rt) return (ROLE_MODULE_ALLOW[rt] || ['WORKBENCH']).includes(leaf.moduleCode)
+  return workbenchOnly(leaf)
 }
 
 function visibleLeaf(leaf, ctx) {
