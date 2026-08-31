@@ -1080,16 +1080,20 @@ export const systemApi = {
   async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode, scopeTarget, expectedVersion, reason, requestId } = {}) {
     try {
       const permissionCodes = permissionCodesFromSelection(menuKeys, buttonKeys)
+      const body = {
+        permissionCodes,
+        scopeCode,
+        expectedVersion,
+        reason,
+        requestId
+      }
+      // The role editor currently changes the scope code, not CUSTOM target
+      // membership. Omitting an untouched target lets the backend preserve the
+      // existing structured target instead of interpreting `{}` as a clear.
+      if (scopeTarget !== undefined) body.scopeTarget = scopeTarget
       const data = await request(`/system/roles/${encodeURIComponent(id)}/permissions`, {
         method: 'PUT',
-        body: {
-          permissionCodes,
-          scopeCode,
-          scopeTarget: scopeTarget || {},
-          expectedVersion,
-          reason,
-          requestId
-        }
+        body
       })
       return ok(data)
     } catch (error) {
