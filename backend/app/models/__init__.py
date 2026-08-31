@@ -199,7 +199,8 @@ from app.models.config_governance import (ConfigActivation,  # noqa: F401  (SYS-
 from app.models.permission_governance import (CustomRoleSource,  # noqa: F401  (SYS-06 权限包与角色模板)
                                               PermissionBundle,
                                               PermissionBundleItem,
-                                              RoleTemplate, WildcardRetirement)
+                                              RoleTemplate, RoleTemplatePermission,
+                                              WildcardRetirement)
 from app.models.scope_policy import (ScopePolicyDecisionLog,  # noqa: F401  (SYS-08 组织安全树与显式DENY)
                                      ScopePolicyTarget)
 from app.models.security_change import (SecurityActivation,  # noqa: F401  (SYS-09 安全变更与激活)

@@ -1,0 +1,40 @@
+{
+  "observedAt": "2026-08-31T00:00:00+08:00",
+  "repository": "penghaibin9/saas",
+  "branch": "codex/control-plane-iam-menu-v1",
+  "exactHead": "06fd94f08ad0f7e9c2ba96789908245f81bd4773",
+  "originMain": "06fd94f08ad0f7e9c2ba96789908245f81bd4773",
+  "basedOnLatestMain": true,
+  "worktreeCleanAtFreeze": false,
+  "navigationDigest": "fde1a6fd75f4d4f69924b1ea96ad1a930c36633493de53d713feeef46c52527a",
+  "permissionCount": 704,
+  "navigationCounts": {
+    "total": 569,
+    "production": 568,
+    "productionVisible": 560,
+    "hidden": 8,
+    "planned": 1,
+    "school": 542,
+    "platform": 27
+  },
+  "alembicHeads": [
+    {
+      "revision": "20260831_iam_alias_backfill",
+      "file": "20260831_iam_alias_backfill.py"
+    }
+  ],
+  "openPrOverlay": "artifacts/open-pr-overlay.json",
+  "authorityTopology": [
+    "Permission Catalog",
+    "RoleTemplate",
+    "RolePermission",
+    "DataScope",
+    "Entitlement",
+    "EffectiveAccess",
+    "Navigation Projection"
+  ],
+  "blockers": [
+    "required-check branch protection cannot be read by current connector",
+    "Fresh MySQL and browser seals pending W12-W14"
+  ]
+}

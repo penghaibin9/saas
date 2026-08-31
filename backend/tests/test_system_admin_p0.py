@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import uuid
 
 import pytest
 
@@ -20,7 +21,10 @@ def seeded(db_mode):
     """在干净真库里种：1 管理员账号(id=1) + 1 目标教师账号(id=2) + 1 自定义角色 + 学院/班级/学生 + 审计若干。"""
     from app.services.db_service import session
     from app.core.security import hash_password
-    from app.models import (College, Role, SchoolClass, SecurityAuditLog, StudentProfile, User, UserRole)
+    from sqlalchemy import select
+
+    from app.models import (College, CustomRoleSource, Role, RoleTemplate, SchoolClass,
+                            SecurityAuditLog, StudentProfile, User, UserRole)
     set_tenant({"tenantId": TID})
     set_current_user(ADMIN)
     with session() as db:
@@ -32,7 +36,20 @@ def seeded(db_mode):
                     role_type="CUSTOM", status="ACTIVE", remark="SAAS_CUSTOM;scope=COLLEGE;permMode=DB")
         role_sys = Role(id=91, tenant_id=TID, role_code="SCHOOL_ADMIN", role_name="学校管理员",
                         role_type="SYSTEM", status="ACTIVE", remark="")
-        db.add(role); db.add(role_sys)
+        db.add(role); db.add(role_sys); db.flush()
+        source_template = db.scalar(select(RoleTemplate).where(
+            RoleTemplate.tenant_id == 0,
+            RoleTemplate.template_code == "SCHOOL_ADMIN",
+            RoleTemplate.publish_status == "PUBLISHED",
+            RoleTemplate.is_deleted.is_(False),
+        ).order_by(RoleTemplate.template_version.desc(), RoleTemplate.id.desc()).limit(1))
+        assert source_template is not None
+        db.add(CustomRoleSource(
+            tenant_id=TID, role_id=90, role_code="CUSTOM_AAA",
+            source_template_code="SCHOOL_ADMIN", source_template_version=int(source_template.template_version),
+            permission_codes_json={"items": []},
+            drift_json={"policy": "PINNED", "automaticUpgrade": False}, status="ACTIVE",
+        ))
         college = College(id=10, tenant_id=TID, college_name="信息工程学院", status="ACTIVE")
         db.add(college)
         cls_empty = SchoolClass(id=20, tenant_id=TID, major_id=1, class_name="软件2301", status="ACTIVE")
@@ -133,6 +150,30 @@ def test_role_rename_and_disable(seeded):
         link.status = "DISABLED"; link.is_deleted = True; db.commit()
     res = system.set_system_role_status(90, {"action": "DISABLE", "reason": "不再使用该角色"}, user=ADMIN)["data"]
     assert res["status"] == "DISABLED"
+
+
+def test_create_custom_role_binds_stable_pinned_source(seeded):
+    from sqlalchemy import select
+
+    from app.api.v1 import system
+    from app.models import CustomRoleSource
+    from app.services.db_service import session
+
+    created = system.create_system_role(
+        {"name": "课程材料管理员", "code": "COURSE_MATERIAL_ADMIN", "scopeCode": "COLLEGE"},
+        user=ADMIN,
+    )["data"]
+    with session() as db:
+        source = db.scalar(select(CustomRoleSource).where(
+            CustomRoleSource.tenant_id == TID,
+            CustomRoleSource.role_id == int(created["id"]),
+            CustomRoleSource.role_code == "COURSE_MATERIAL_ADMIN",
+            CustomRoleSource.is_deleted.is_(False),
+        ))
+    assert source is not None
+    assert source.source_template_code == "SCHOOL_ADMIN"
+    assert source.permission_codes_json == {"items": []}
+    assert source.drift_json["automaticUpgrade"] is False
 
 
 def test_org_node_disable_guards(seeded):
@@ -385,7 +426,7 @@ def test_staff_student_account_boundaries(seeded):
 
 
 def test_permission_tree_and_role_save_merge(seeded):
-    """权限树为真实 permissionCode；保存只替换可见码，页外码保留。"""
+    """权限树为真实 permissionCode；页外码显式只读展示并受版本锁保护。"""
     from app.api.v1 import system
     from app.services.db_service import session
     from app.models import Permission, RolePermission
@@ -403,9 +444,25 @@ def test_permission_tree_and_role_save_merge(seeded):
         db.add(RolePermission(tenant_id=TID, role_id=90, permission_id=p.id, status="ACTIVE", is_deleted=False))
         db.commit()
     assert outside not in visible
+    detail = system.get_system_role(90, user=ADMIN)["data"]
+    assert outside in detail["readOnlyPreservedPermissionCodes"]
     submit = sorted(c for c in visible if c.startswith("systemAdmin.user."))[:3] or sorted(visible)[:3]
+    with pytest.raises(AppException) as missing_version:
+        system.save_system_role_permissions(
+            90, {"permissionCodes": submit, "scopeCode": "COLLEGE", "reason": "回归验证权限调整"},
+            user=ADMIN,
+        )
+    assert missing_version.value.http_status == 422
+    with pytest.raises(AppException) as missing_reason:
+        system.save_system_role_permissions(
+            90, {"permissionCodes": submit, "scopeCode": "COLLEGE", "expectedVersion": detail["version"]},
+            user=ADMIN,
+        )
+    assert missing_reason.value.http_status == 422
     saved = system.save_system_role_permissions(
-        90, {"permissionCodes": submit, "visiblePermissionCodes": sorted(visible), "scopeCode": "COLLEGE"},
+        90, {"permissionCodes": submit, "scopeCode": "COLLEGE",
+             "expectedVersion": detail["version"], "reason": "回归验证权限调整",
+             "requestId": str(uuid.uuid4())},
         user=ADMIN)["data"]
     codes = set(saved["permissionCodes"])
     assert outside in codes
@@ -413,19 +470,42 @@ def test_permission_tree_and_role_save_merge(seeded):
 
 
 def test_copy_school_admin_expands_star(seeded):
-    """复制 SCHOOL_ADMIN 不得落库字面量 *。"""
+    """复制 SYSTEM 角色读取 Published RoleTemplate，绑定 pinned 来源且不创建 Permission。"""
     from app.api.v1 import system
     from app.services.db_service import session
-    from app.models import Permission, RolePermission
+    from app.models import CustomRoleSource, Permission, RolePermission
     from sqlalchemy import select
+    with session() as db:
+        permission_count_before = len(db.scalars(select(Permission.id)).all())
     copied = system.copy_system_role(91, user=ADMIN)["data"]
     role_id = int(copied["id"])
     with session() as db:
         codes = set(db.scalars(select(Permission.permission_code).join(
             RolePermission, RolePermission.permission_id == Permission.id).where(
             RolePermission.role_id == role_id, RolePermission.status == "ACTIVE")).all())
+        source = db.scalar(select(CustomRoleSource).where(
+            CustomRoleSource.tenant_id == TID,
+            CustomRoleSource.role_id == role_id,
+            CustomRoleSource.is_deleted.is_(False),
+        ))
+        permission_count_after = len(db.scalars(select(Permission.id)).all())
     assert "*" not in codes
     assert codes
+    assert source is not None
+    assert source.source_template_code == "SCHOOL_ADMIN"
+    assert source.drift_json["automaticUpgrade"] is False
+    assert set(source.permission_codes_json["items"]) == codes
+    assert permission_count_after == permission_count_before
+
+
+def test_system_role_detail_reads_published_template_authority(seeded):
+    from app.api.v1 import system
+
+    detail = system.get_system_role(91, user=ADMIN)["data"]
+    assert detail["permissionAuthority"] == "PUBLISHED_ROLE_TEMPLATE"
+    assert detail["version"] >= 0
+    assert "*" not in detail["permissionCodes"]
+    assert detail["permissionCodes"]
 
 
 def test_system_info_requires_auth_and_real_caps(seeded):
@@ -448,7 +528,7 @@ def test_governance_delegation_and_integration(seeded):
     assert any(x["id"] == row["id"] for x in listed)
     system.api_revoke_delegation(row["id"], {"reason": "提前结束顶岗"}, user=ADMIN)
     integ = system.api_save_integration({
-        "name": "教务同步", "endpoint": "https://example.edu/api", "credential": "secret-token-01"
+        "name": "教务同步", "endpoint": "https://1.1.1.1/api", "credential": "secret-token-01"
     }, user=ADMIN)["data"]
     assert integ["hasCredential"] is True
     job = system.api_enqueue_sync_job({"name": "全量同步", "integrationId": integ["id"], "forceFail": True},

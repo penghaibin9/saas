@@ -585,8 +585,12 @@ def has_permission(user: dict, code: str) -> bool:
     return _match(code, patterns)
 
 
-def get_effective_access_context(user: dict) -> dict:
-    """前后端共用的访问上下文：权限模式 + 模块四态摘要 + 版本戳。"""
+def get_effective_access_context(
+    user: dict,
+    *,
+    module_keys: Iterable[str] | None = None,
+) -> dict:
+    """前后端共用的访问上下文；Access Explain 可只读取目标模块。"""
     patterns = get_effective_permission_patterns(user)
     role = _role_of(user)
     tenant_id = int(user.get("tenantId") or 0) or None
@@ -603,7 +607,12 @@ def get_effective_access_context(user: dict) -> dict:
         try:
             from app.core.module_registry import all_module_keys
             from app.services.module_access_service import module_access_state
-            for mk in all_module_keys():
+            requested_module_keys = (
+                tuple(sorted({str(key).strip() for key in module_keys if str(key).strip()}))
+                if module_keys is not None
+                else tuple(all_module_keys())
+            )
+            for mk in requested_module_keys:
                 st = module_access_state(tenant_id, mk)
                 module_states[mk] = st
                 if st.get("entitled") and st.get("enabled"):

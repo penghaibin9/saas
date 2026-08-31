@@ -16,6 +16,17 @@
         <article><strong>{{ openReviews }}</strong><span>进行中访问复核</span></article>
       </section>
 
+      <section class="panel table-panel">
+        <h3>职责 → 权限 → 生产菜单解释矩阵</h3>
+        <p class="hint">平台主管职责是固定受控模板；本工作区不允许任意新建 Duty 或勾选 platform.*。</p>
+        <table>
+          <thead><tr><th>职责</th><th>Capabilities</th><th>platform.* 权限</th><th>生产菜单</th><th>高危保证</th></tr></thead>
+          <tbody>
+            <tr v-for="item in dutyMatrix" :key="item.dutyCode"><td><strong>{{ item.dutyCode }}</strong></td><td>{{ (item.capabilities || []).join(' / ') }}</td><td class="matrix-list">{{ (item.permissionCodes || []).join(' / ') || '无直接权限投影' }}</td><td class="matrix-list">{{ (item.menuPreview || []).map((menu) => menu.label).join(' / ') || '无生产菜单' }}</td><td>{{ (item.highRiskActions || []).length ? `${item.highRiskActions.length} 项需 recent-auth；CRITICAL 需 MFA` : '无高危动作' }}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
       <section class="forms">
         <form class="panel" @submit.prevent="saveAssignment">
           <h3>分配平台职责</h3>
@@ -206,7 +217,7 @@ export default {
   components: { AppButton, ModulePageShell },
   data() {
     return {
-      assignments: [], elevations: [], sessions: [], reviews: [], error: '', saving: '',
+      assignments: [], elevations: [], sessions: [], reviews: [], dutyMatrix: [], error: '', saving: '',
       actionType: '', actionTarget: null, actionReason: '', selectedReview: null, reviewDecisions: {}, reviewCloseReason: '',
       supportWorkspace: emptyWorkspace(), mfaExpiryTimer: null,
       dutyOptions: [
@@ -244,10 +255,10 @@ export default {
     },
     async load() {
       this.error = ''
-      const [a, e, s, r] = await Promise.all([platformPamApi.listAssignments(), platformPamApi.listElevations(), platformPamApi.listSupportSessions(), platformPamApi.listReviews()])
-      const failed = [a, e, s, r].find((item) => item.code !== 0)
+      const [a, e, s, r, matrix] = await Promise.all([platformPamApi.listAssignments(), platformPamApi.listElevations(), platformPamApi.listSupportSessions(), platformPamApi.listReviews(), platformPamApi.dutyMatrix()])
+      const failed = [a, e, s, r, matrix].find((item) => item.code !== 0)
       if (failed) { this.error = failed.message; return }
-      this.assignments = a.data.items || []; this.elevations = e.data.items || []; this.sessions = s.data.items || []; this.reviews = r.data.items || []
+      this.assignments = a.data.items || []; this.elevations = e.data.items || []; this.sessions = s.data.items || []; this.reviews = r.data.items || []; this.dutyMatrix = matrix.data.items || []
       if (this.supportWorkspace.session) {
         const fresh = this.sessions.find((item) => item.id === this.supportWorkspace.session.id)
         if (!fresh || !this.isActive(fresh)) this.closeSupportWorkspace()

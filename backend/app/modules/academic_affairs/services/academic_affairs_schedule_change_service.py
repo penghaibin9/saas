@@ -317,10 +317,10 @@ def get_origin_item(item_id, user) -> dict:
     from app.models import AaScheduleBatch, AaScheduleItem
 
     with session() as db:
-        origin = db.get(AaScheduleItem, int(item_id))
+        origin = tenant_get(db, AaScheduleItem, int(item_id), tenant_id=_tid())
         if not origin or origin.is_deleted or origin.tenant_id != _tid():
             raise not_found("原课位不存在或已发生变化")
-        batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
+        batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()) if origin.batch_id else None
         if origin.status != "EFFECTIVE":
             raise AppException(
                 "DATA_CONFLICT",
@@ -365,10 +365,10 @@ def conflict_check(body, user) -> dict:
     if tw is None or ts is None:
         raise AppException("VALIDATION_ERROR", "目标星期/节次必填")
     with session() as db:
-        origin = db.get(AaScheduleItem, int(origin_id))
+        origin = tenant_get(db, AaScheduleItem, int(origin_id), tenant_id=_tid())
         if not origin or origin.is_deleted or origin.tenant_id != _tid():
             raise not_found("原课表项不存在")
-        batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
+        batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()) if origin.batch_id else None
         _require_current_published_origin(db, batch, origin)
         ctx = build_affairs_context(user, db)
         if not _can_manage_all(ctx):
@@ -396,12 +396,14 @@ def submit(body, user) -> dict:
     with session() as db:
         from app.models import AaScheduleBatch, AaScheduleChange, AaScheduleItem
         ctx = build_affairs_context(user, db)
-        origin = db.get(AaScheduleItem, int(body.originItemId)) if getattr(body, "originItemId", None) else None
+        origin = tenant_get(
+            db, AaScheduleItem, int(body.originItemId), tenant_id=_tid()
+        ) if getattr(body, "originItemId", None) else None
         if not origin or origin.is_deleted or origin.tenant_id != _tid():
             raise not_found("原课表项不存在")
         if origin.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "原课表项已变更/失效，不可再发起调停课")
-        b = tenant_get(db, AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
+        b = tenant_get(db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()) if origin.batch_id else None
         _require_current_published_origin(db, b, origin)
         # 数据范围(COURSE)：非 TENANT_ALL 角色须为本人任课课位
         if not _can_manage_all(ctx):
@@ -540,8 +542,12 @@ def review(cid, user, action, comment="") -> dict:
 def _apply_schedule(db, x) -> dict:
     """终审通过后改写课表：原课位标 CHANGED(保留历史)，调课/补课生成新项并回链本单，STATUS_CHANGED 通知师生。"""
     from app.models import AaScheduleBatch, AaScheduleItem, StudentProfile, User
-    origin = tenant_get(db, AaScheduleItem, int(x.origin_item_id)) if x.origin_item_id else None
-    batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id)) if origin and origin.batch_id else None
+    origin = tenant_get(
+        db, AaScheduleItem, int(x.origin_item_id), tenant_id=_tid()
+    ) if x.origin_item_id else None
+    batch = tenant_get(
+        db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()
+    ) if origin and origin.batch_id else None
     _require_current_published_origin(db, batch, origin, lock_scope=True)
     # 复核目标冲突仍为 0（并发防护）
     new_item_id = None

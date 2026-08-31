@@ -31,6 +31,7 @@ from app.models.permission_governance import (
 
 ROOT = Path(__file__).resolve().parents[5]
 MANIFEST_PATH = ROOT / "shared/contracts/module-manifest.json"
+NAVIGATION_PATH = ROOT / "shared/contracts/navigation-surface-contract.json"
 CONFIG_TYPE = "PLATFORM_PRODUCT_IAM_RELEASE"
 
 
@@ -41,6 +42,33 @@ def _hash(payload) -> str:
 
 def _module_manifest() -> dict:
     return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+
+
+def _navigation_contract() -> dict:
+    return json.loads(NAVIGATION_PATH.read_text(encoding="utf-8"))
+
+
+def _menu_preview(permission_codes: set[str], surfaces: list[dict]) -> list[dict]:
+    preview = []
+    for item in surfaces:
+        if item.get("platformOnly") or item.get("hidden") or item.get("disabled"):
+            continue
+        if str(item.get("status") or "") not in {"implemented", "partial"}:
+            continue
+        key = item.get("permissionKey")
+        any_codes = set(item.get("permissionAny") or [])
+        all_codes = set(item.get("permissionAll") or [])
+        allowed = (
+            (not key and not any_codes and not all_codes)
+            or (bool(key) and key in permission_codes)
+            or (bool(any_codes) and bool(any_codes & permission_codes))
+            or (bool(all_codes) and all_codes <= permission_codes)
+        )
+        if allowed:
+            preview.append({field: item.get(field) for field in (
+                "groupKey", "moduleKey", "workspaceKey", "surfaceKey", "label", "path", "entryType"
+            )})
+    return preview
 
 
 def _published_templates(db) -> list[dict]:
@@ -76,6 +104,7 @@ def _published_templates(db) -> list[dict]:
             "templateVersion": int(item.template_version or 0),
             "permissionCount": len(permissions),
             "permissionDigest": item.permission_digest or _hash(permissions),
+            "permissions": permissions,
         })
     return result
 
@@ -83,6 +112,7 @@ def _published_templates(db) -> list[dict]:
 def source_snapshot() -> dict:
     manifest = _module_manifest()
     catalog = load_permission_catalog()
+    navigation_contract = _navigation_contract()
     modules = manifest.get("modules") or []
     internship = [item for item in modules if item.get("moduleKey") == "internship"]
     forbidden = [
@@ -110,6 +140,12 @@ def source_snapshot() -> dict:
         }
         for item in modules
     ]
+    navigation_surfaces = list(navigation_contract.get("surfaces") or [])
+    for template in templates:
+        permission_codes = set(template.pop("permissions", []))
+        template["permissionCodes"] = sorted(permission_codes)
+        template["menuPreview"] = _menu_preview(permission_codes, navigation_surfaces)
+        template["menuCount"] = len(template["menuPreview"])
     permissions = [
         {k: item.get(k) for k in (
             "permissionCode", "label", "plane", "moduleKey", "featureKey", "riskLevel",
@@ -122,6 +158,8 @@ def source_snapshot() -> dict:
         "modules": modules,
         "permissions": permissions,
         "navigation": navigation,
+        "navigationSurfaces": navigation_surfaces,
+        "navigationDigest": navigation_contract.get("digest") or _hash(navigation_surfaces),
         "roleTemplates": templates,
     }
     snapshot["sourceDigest"] = _hash(snapshot)

@@ -245,7 +245,7 @@ def import_items(batch_id, user, items) -> dict:
             task_id = row.get("taskId")
             course_name = class_id = teacher_key = teacher_name = None
             if task_id:
-                t = tenant_get(db, AaTeachingTask, int(task_id))
+                t = tenant_get(db, AaTeachingTask, int(task_id), tenant_id=_tid())
                 if t:
                     course_name, class_id, teacher_key, teacher_name = t.course_name, t.class_id, t.teacher_key, t.teacher_name
             class_id = row.get("classId") or class_id
@@ -428,7 +428,7 @@ def teacher_object(batch_id, user, item_id, reason) -> dict:
             raise not_found("课表批次不存在")
         if b.status != "PRE_PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅预发布批次可提出异议")
-        it = db.get(AaScheduleItem, int(item_id))
+        it = tenant_get(db, AaScheduleItem, int(item_id), tenant_id=_tid())
         if not it or it.is_deleted or it.tenant_id != _tid() or it.batch_id != b.id:
             raise not_found("排课条目不存在")
         keys = _derive_keys(user)
@@ -915,7 +915,7 @@ def move_item(item_id, user, body) -> dict:
         it = db.get(AaScheduleItem, int(item_id))
         if not it or it.is_deleted or it.tenant_id != _tid() or it.status != "EFFECTIVE":
             raise not_found("课表项不存在")
-        b = tenant_get(db, AaScheduleBatch, int(it.batch_id))
+        b = tenant_get(db, AaScheduleBatch, int(it.batch_id), tenant_id=_tid())
         if not b or b.status not in ("DRAFT", "PRE_PUBLISHED"):
             raise AppException("DATA_CONFLICT", "已发布课表不可拖拽调整（请走调停课）", http_status=409)
         weekday, slot_no = int(body.weekday), int(body.slotNo)

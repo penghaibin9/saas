@@ -132,11 +132,12 @@ def published_template_allows(db, role_code: str, permission_code: str) -> bool:
 
 
 def published_system_role_permissions(db, role_code: str) -> tuple[str, ...]:
-    """Return the normalized published SYSTEM-role snapshot only when it exactly matches B8 Authority truth.
+    """Return the latest valid published SYSTEM-role template.
 
-    Role-assignment governance must consume this function rather than the legacy
-    ROLE_PERMISSIONS patterns. Missing templates, DENY rows, stale snapshots, or
-    cross-plane rows fail closed as Authority drift.
+    Published RoleTemplate is the runtime authority. Legacy ROLE_PERMISSIONS is
+    retained only for bootstrap/shadow evidence and is not an equality gate.
+    Missing templates, DENY rows, invalid planes/lifecycle, or digest drift fail
+    closed.
     """
     normalized_role = str(role_code or "").strip().upper()
     if not is_school_role_template_code(normalized_role):
@@ -154,10 +155,11 @@ def published_system_role_permissions(db, role_code: str) -> tuple[str, ...]:
         code for code in allowed | denied
         if code not in universe or code.startswith("platform.") or code.startswith("enterprise.")
     )
-    if template is None or denied or invalid or allowed != expected:
+    digest_mismatch = bool(template) and str(template.permission_digest or "") != _digest(allowed)
+    if template is None or denied or invalid or digest_mismatch:
         raise AppException(
             "B8_SYSTEM_TEMPLATE_DRIFT",
-            "SYSTEM 角色发布模板与 Control Plane Authority 不一致",
+            "SYSTEM 角色发布模板自身完整性校验失败",
             http_status=409,
             details={
                 "roleCode": normalized_role,
@@ -166,6 +168,9 @@ def published_system_role_permissions(db, role_code: str) -> tuple[str, ...]:
                 "actualCount": len(allowed),
                 "denyCount": len(denied),
                 "invalidPermissionCodes": invalid[:20],
+                "permissionDigestMismatch": digest_mismatch,
+                "legacyShadowAdded": sorted(allowed - expected)[:20],
+                "legacyShadowRemoved": sorted(expected - allowed)[:20],
             },
         )
     return tuple(sorted(allowed))

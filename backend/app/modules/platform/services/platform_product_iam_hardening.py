@@ -101,6 +101,25 @@ for _name in dir(_base):
     globals()[_name] = getattr(_base, _name)
 
 
+def source_snapshot() -> dict:
+    snapshot = _base.source_snapshot()
+    try:
+        deployed = _deployed_commit_sha()
+        provenance_status = "VERIFIED"
+    except AppException:
+        deployed = None
+        provenance_status = "UNAVAILABLE"
+    snapshot["provenance"] = {
+        "deployedCommitSha": deployed,
+        "status": provenance_status,
+        "sourceDigest": snapshot.get("sourceDigest"),
+        "navigationDigest": snapshot.get("navigationDigest"),
+        "permissionCatalogDigest": _base._hash(snapshot.get("permissions") or []),
+        "roleTemplateDigest": _base._hash(snapshot.get("roleTemplates") or []),
+    }
+    return snapshot
+
+
 def __getattr__(name: str):
     return getattr(_base, name)
 

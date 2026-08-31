@@ -18,6 +18,10 @@ def upgrade() -> None:
     # Expand phase: keep a server default so the previous release can still
     # insert grade-identity rows after an application rollback. Removing the
     # default belongs to a later contract migration once N-1 is retired.
+    # Some production-like databases received this expand-phase column through
+    # a repair run before their Alembic version table advanced. Treat only the
+    # exact compatible schema-ahead shape as already expanded; incompatible
+    # columns remain a hard failure instead of being silently stamped over.
     columns = {
         column["name"]: column
         for column in sa.inspect(op.get_bind()).get_columns("t_aa_grade_identity_head")
