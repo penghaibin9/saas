@@ -408,7 +408,12 @@ export const teacherAcademicTaskAct = (taskId, action, reason) =>
   realRequest(`/mobile/teacher/academic/tasks/${taskId}/act`, { method: 'POST', data: { action, reason: reason || '' } })
 
 export const teacherAcademicMySchedule = (termId, week) =>
-  realRequest('/mobile/teacher/academic/schedule/mine', { data: { termId: termId || '', week: week || '' } })
+  realRequest('/mobile/teacher/academic/schedule/mine', {
+    data: {
+      ...(termId ? { termId } : {}),
+      ...(week ? { week } : {})
+    }
+  })
 export const teacherAcademicScheduleConflictCheck = (body) =>
   realRequest('/mobile/teacher/academic/schedule-changes/conflict-check', { method: 'POST', data: body })
 export const teacherAcademicScheduleSubmit = (body) =>

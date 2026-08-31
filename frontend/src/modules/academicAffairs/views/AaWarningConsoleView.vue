@@ -9,6 +9,13 @@
       <button v-for="t in tabs" :key="t.key" :class="['aawc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
     </div>
 
+    <section v-if="actionReceipt" class="aawc-receipt" role="status">
+      <div><strong>✓ {{ actionReceipt.title }}</strong><span>{{ actionReceipt.studentName }} · 预警 {{ actionReceipt.warningId }}</span></div>
+      <div><small>处理结果</small><b>{{ actionReceipt.result }}</b></div>
+      <div><small>下一步</small><b>{{ actionReceipt.next }}</b></div>
+      <AppButton size="small" variant="ghost" @click="reopenReceipt">查看该生预警</AppButton>
+    </section>
+
     <!-- 预警看板 -->
     <div v-if="tab === 'dashboard'" class="mp-stack">
       <AppInlineAlert v-if="scanResult" type="success" :message="scanResultText" />
@@ -298,6 +305,7 @@ export default {
       ],
       rulesLoading: true, rulesError: '', rules: [], ruleEdits: {}, ruleSaving: '',
       detailVisible: false, detailLoading: false, detailError: '', detailId: '', detail: null,
+      actionReceipt: null,
       assignVisible: false, assignForm: { ownerId: '', ownerName: '' },
       followVisible: false, followForm: { way: 'TALK', content: '', result: '', nextPlan: '' },
       escalateVisible: false, closeVisible: false, voidVisible: false, acting: false,
@@ -342,9 +350,11 @@ export default {
   async created() {
     const c = await academicAffairsApi.getContext()
     if (c.code === 0) this.ctx = c.data
-    const q = this.$route && this.$route.query && this.$route.query.tab
+    const query = (this.$route && this.$route.query) || {}
+    const q = query.tab
     if (q && this.tabs.some((t) => t.key === q)) this.tab = q
     this.enter()
+    if (query.warningId) await this.openFollowup(query.warningId)
   },
   methods: {
     onOwnerPicked(value, items) {
@@ -469,12 +479,27 @@ export default {
       if (this.tab === 'followup') this.loadFollowList()
       else if (this.category) this.loadList()
     },
+    recordActionReceipt(title, result, next) {
+      this.actionReceipt = {
+        title, result, next,
+        warningId: this.detailId,
+        studentName: this.detail?.student?.studentName || '学生'
+      }
+    },
+    reopenReceipt() {
+      if (!this.actionReceipt?.warningId) return
+      this.tab = 'followup'
+      this.openFollowup(this.actionReceipt.warningId)
+    },
     async submitAssign() {
       if (!this.assignForm.ownerName) { toast.error('请填写跟进人姓名'); return }
       this.acting = true
       const res = await api.assign(this.detailId, this.assignForm.ownerId || undefined, this.assignForm.ownerName)
       this.acting = false
-      if (res.code === 0) { toast.success('已指派'); this.assignVisible = false; this.assignForm = { ownerId: '', ownerName: '' }; this.reloadDetailAndList() }
+      if (res.code === 0) {
+        this.recordActionReceipt('跟进责任已指派', this.assignForm.ownerName, '跟进人记录干预并填写下一步计划')
+        toast.success('已指派'); this.assignVisible = false; this.assignForm = { ownerId: '', ownerName: '' }; this.reloadDetailAndList()
+      }
       else toast.error(res.message)
     },
     async submitFollowup() {
@@ -482,13 +507,17 @@ export default {
       this.acting = true
       const res = await api.addIntervention(this.detailId, this.followForm)
       this.acting = false
-      if (res.code === 0) { toast.success('跟进已记录'); this.followVisible = false; this.followForm = { way: 'TALK', content: '', result: '', nextPlan: '' }; this.reloadDetailAndList() }
+      if (res.code === 0) {
+        this.recordActionReceipt('预警跟进已记录', this.wayLabel(this.followForm.way), this.followForm.nextPlan || '继续观察证据变化并按计划复查')
+        toast.success('跟进已记录'); this.followVisible = false; this.followForm = { way: 'TALK', content: '', result: '', nextPlan: '' }; this.reloadDetailAndList()
+      }
       else toast.error(res.message)
     },
     async remind() {
       const res = await api.remind(this.detailId)
       if (res.code === 0) {
         const n = res.data && res.data.notified
+        this.recordActionReceipt('预警提醒已发送', `${Number(n || 0)} 条站内通知`, '等待学生与责任老师处理；必要时继续跟进')
         toast.success(n ? `已提醒，推送通知 ${n} 条` : '已提醒（未解析到可通知对象，请检查该生班级/辅导员绑定）')
         this.reloadDetailAndList()
       } else toast.error(res.message)
@@ -497,19 +526,19 @@ export default {
       this.acting = true
       const res = await api.escalate(this.detailId, reason)
       this.acting = false
-      if (res.code === 0) { toast.success('已升级'); this.escalateVisible = false; this.reloadDetailAndList() } else toast.error(res.message)
+      if (res.code === 0) { this.recordActionReceipt('预警已升级', '高风险预警', '学院教务或教务处继续跟进关闭'); toast.success('已升级'); this.escalateVisible = false; this.reloadDetailAndList() } else toast.error(res.message)
     },
     async submitClose({ reason }) {
       this.acting = true
       const res = await api.close(this.detailId, reason)
       this.acting = false
-      if (res.code === 0) { toast.success('已关闭'); this.closeVisible = false; this.reloadDetailAndList() } else toast.error(res.message)
+      if (res.code === 0) { this.recordActionReceipt('预警已关闭', '关闭并保留审计记录', '学生端刷新后显示最新处理结果'); toast.success('已关闭'); this.closeVisible = false; this.reloadDetailAndList() } else toast.error(res.message)
     },
     async submitVoid({ reason }) {
       this.acting = true
       const res = await api.void(this.detailId, reason)
       this.acting = false
-      if (res.code === 0) { toast.success('已作废'); this.voidVisible = false; this.reloadDetailAndList() } else toast.error(res.message)
+      if (res.code === 0) { this.recordActionReceipt('误报预警已作废', '逻辑作废，证据链保留', '无需学生继续处理；可从台账追溯'); toast.success('已作废'); this.voidVisible = false; this.reloadDetailAndList() } else toast.error(res.message)
     }
   }
 }
@@ -520,6 +549,8 @@ export default {
 .aawc-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color, #e5e7eb); margin-bottom: 16px; flex-wrap: wrap; }
 .aawc-tab { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--text-secondary, #64748b); border-bottom: 2px solid transparent; white-space: nowrap; }
 .aawc-tab.is-active { color: var(--primary-color, #2563eb); border-bottom-color: var(--primary-color, #2563eb); font-weight: 600; }
+.aawc-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(200px,auto) auto; align-items: center; gap: 18px; margin-bottom: 16px; padding: 13px 15px; border: 1px solid #a7d7b4; border-radius: 11px; background: #f3fbf5; }
+.aawc-receipt strong, .aawc-receipt span, .aawc-receipt small, .aawc-receipt b { display: block; }.aawc-receipt strong { color: #15803d; }.aawc-receipt span, .aawc-receipt small { margin-top: 3px; color: #64748b; font-size: 11px; }.aawc-receipt b { margin-top: 3px; font-size: 12px; }
 .aawc-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
 .aa-filter { display: flex; gap: 12px; align-items: center; }
 .aa-select { height: 32px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; }
@@ -535,6 +566,7 @@ export default {
 .aawc-bar-track { flex: 1; height: 10px; background: var(--fill-light, #f1f5f9); border-radius: 5px; overflow: hidden; }
 .aawc-bar-fill { display: block; height: 100%; background: var(--primary-color, #2563eb); border-radius: 5px; }
 .aawc-bar-count { width: 40px; text-align: right; font-size: 13px; color: var(--text-secondary, #64748b); }
+@media (max-width: 760px) { .aawc-receipt { grid-template-columns: 1fr; gap: 10px; } }
 .aawc-rule-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--fill-light, #f8fafc); border-radius: 10px; }
 .aawc-rule-label { font-size: 14px; font-weight: 500; }
 .aawc-rule-edit { display: flex; align-items: center; gap: 8px; }

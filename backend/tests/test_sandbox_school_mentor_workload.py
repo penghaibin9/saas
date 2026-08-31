@@ -3,6 +3,7 @@ import inspect
 
 from app.services.sandbox_school_blueprint import MAJOR_CLASS_COUNTS_PER_GRADE
 from app.services.sandbox_school_mentor_workload import validate_school_mentor_workload_20k
+from app.services.sandbox_school_graduation_mentor_reconcile import reconcile_graduation_mentor_workload
 from app.services.sandbox_school_mentor_pool import (
     EXPECTED_GRADUATION_MENTORS,
     EXPECTED_INTERNSHIP_MENTORS,
@@ -38,3 +39,10 @@ def test_non_mentor_scope_validation_reuses_the_canonical_scope_type():
     source = inspect.getsource(validate_school_mentor_workload_20k)
     assert "EXPECTED_ORG_SCOPE_TYPES" in source
     assert "TeacherStudentScope.scope_type == EXPECTED_ORG_SCOPE_TYPES[code]" in source
+
+
+def test_graduation_mentor_reconcile_only_mutates_and_counts_current_batch():
+    source = inspect.getsource(reconcile_graduation_mentor_workload)
+    assert 'GraduationBatch.batch_no == "GD-2027"' in source
+    assert "GraduationTopic.batch_id == int(current_batch_id)" in source
+    assert "GraduationStudent.batch_id == int(current_batch_id)" in source

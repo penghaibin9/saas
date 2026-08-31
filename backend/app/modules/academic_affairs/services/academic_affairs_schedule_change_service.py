@@ -289,6 +289,19 @@ def _create_adjust_residuals(db, change, origin) -> list[int]:
 
 
 _TERMINAL_STATES = ("APPLIED", "REJECTED", "CANCELLED")
+_COLLEGE_OPERATOR_ROLES = frozenset({"COLLEGE_ADMIN", "COLLEGE_SA"})
+
+
+def _uses_college_change_scope(ctx, user) -> bool:
+    """Only college operators consume the college branch of the change ledger.
+
+    A teacher may legitimately carry an additional college scope for other
+    academic-affairs reads.  That scope must not replace the teacher_key owner
+    rule for the teacher's own schedule-change applications; otherwise submit
+    succeeds by ownership while list/detail immediately hide the new document.
+    """
+    role = str((user or {}).get("currentRoleCode") or "").strip().upper()
+    return ctx.scope_type == "COLLEGE" and role in _COLLEGE_OPERATOR_ROLES
 
 
 def get_origin_item(item_id, user) -> dict:
@@ -642,7 +655,7 @@ def get_change(cid, user) -> dict:
         x = _load(db, cid)
         ctx = build_affairs_context(user, db)
         if not _can_manage_all(ctx):
-            if ctx.scope_type == "COLLEGE":
+            if _uses_college_change_scope(ctx, user):
                 allowed = ctx.allowed_class_ids(db)
                 if not x.class_id or int(x.class_id) not in (allowed or set()):
                     raise no_data_scope("该调停课单不在您的数据范围内")
@@ -677,7 +690,7 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
             conds.append(AaScheduleChange.created_at <= date_to + " 23:59:59")
         # 范围收敛：TENANT_ALL 全量；COLLEGE 按所辖班级；其余(教师) 仅本人课位
         if not _can_manage_all(ctx):
-            if ctx.scope_type == "COLLEGE":
+            if _uses_college_change_scope(ctx, user):
                 allowed = ctx.allowed_class_ids(db)
                 if not allowed:
                     return [], 0
@@ -730,7 +743,7 @@ def stats(user, term_id=None, dimension=None):
         if term_id:
             conds.append(AaScheduleChange.term_id == int(term_id))
         if not _can_manage_all(ctx):
-            if ctx.scope_type == "COLLEGE":
+            if _uses_college_change_scope(ctx, user):
                 allowed = ctx.allowed_class_ids(db)
                 if not allowed:
                     return dict(_EMPTY_STATS)

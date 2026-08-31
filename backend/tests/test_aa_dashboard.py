@@ -131,9 +131,11 @@ def _seed_today_panels(db_mode):
                             class_name="软件2601", teacher_key="T-DB01", teacher_name="看板教师",
                             status="SUBMITTED", current_node="COLLEGE_REVIEW", reason="看板联调用例"))
     db.add(AaGradeTask(tenant_id=TID, term_id=t.id, course_name="看板联调课", class_id=9001,
-                       teacher_key="T-DB01", status="SUBMITTED", submitted_at=datetime.utcnow()))
+                       teacher_key="T-DB01", status="SUBMITTED", submitted_at=datetime.utcnow(),
+                       deadline_at=datetime.utcnow() + timedelta(days=3)))
     db.add(AcademicWarning(tenant_id=TID, acad_student_id=1, warn_type="MULTI_FAIL", level="HIGH",
-                           reason="看板联调预警", status="PENDING_HANDLE"))
+                           reason="看板联调预警", status="PENDING_HANDLE", owner="看板辅导员",
+                           deadline=(local_today + timedelta(days=2)).date().isoformat()))
     db.commit()
     db.close()
 
@@ -177,6 +179,21 @@ def test_dashboard_today_panels_reflect_seeded_schedule(client, db_mode):
     assert by_key["scheduleChange"]["points"][-1]["value"] >= 1
     assert by_key["gradeSubmit"]["points"][-1]["value"] >= 1
     assert by_key["warning"]["points"][-1]["value"] >= 1
+
+    # AA-DX-P1-04：待办不能只返回分类总数；每条必须能解释责任并精确落到业务对象。
+    todo_groups = {group["key"]: group for group in data["todos"]}
+    grade_item = next(item for item in todo_groups["gradeReview"]["items"]
+                      if "看板联调课" in item["title"])
+    warning_item = next(item for item in todo_groups["warningHandle"]["items"]
+                        if "看板联调预警" in item["title"])
+    required = {"businessId", "entityType", "title", "reason", "ownerRole", "deadline",
+                "recentChange", "primaryAction", "nextStep", "exactRoute"}
+    assert required.issubset(grade_item)
+    assert required.issubset(warning_item)
+    assert grade_item["exactRoute"].endswith(f"taskId={grade_item['businessId']}")
+    assert warning_item["exactRoute"].endswith(f"warningId={warning_item['businessId']}")
+    assert grade_item["deadline"] and warning_item["deadline"]
+    assert warning_item["ownerRole"] == "看板辅导员"
 
 
 def test_dashboard_reminders_student_forbidden_403(client, db_mode):

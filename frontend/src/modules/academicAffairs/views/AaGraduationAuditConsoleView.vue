@@ -10,6 +10,11 @@
     </template>
 
     <div class="mp-stack">
+      <section v-if="actionReceipt" class="agc-receipt" role="status">
+        <div><strong>✓ {{ actionReceipt.title }}</strong><span>{{ actionReceipt.subject }} · {{ actionReceipt.businessId }}</span></div>
+        <div><small>处理结果</small><b>{{ actionReceipt.result }}</b></div>
+        <div><small>下一步</small><b>{{ actionReceipt.next }}</b></div>
+      </section>
       <section class="agc-overview" aria-label="毕业审核批次健康概览">
         <div class="agc-overview__top">
           <div class="agc-overview__copy">
@@ -399,6 +404,7 @@ export default {
       loading: false, error: '',
       pagination: freshPagination(),
       detail: { visible: false, row: null }, detailBusy: false,
+      actionReceipt: null,
       finalConclusion: 'GRADUATED',
       finalDlg: { visible: false, submitting: false },
       archiveDlg: { visible: false },
@@ -507,6 +513,11 @@ export default {
     if (q && q.batchId && this.batches.some((b) => b.batchId === q.batchId)) this.batchId = q.batchId
     else if (this.batches.length) this.batchId = (this.batches.find((b) => b.status !== 'ARCHIVED') || this.batches[0]).batchId
     await this.loadTab()
+    if (q && q.resultId) {
+      const res = await academicAffairsApi.getGradResult(q.resultId)
+      if (res.code === 0) this.openDetail(res.data)
+      else toast.error(res.message || '指定毕业审核结果加载失败')
+    }
   },
   methods: {
     gradItemColor, overallColor,
@@ -748,6 +759,13 @@ export default {
       if (this.detailBusy || !this.canCollegeReject(this.detail.row)) return
       this.collegeRejectDlg.visible = true
     },
+    recordActionReceipt(row, title, result, next) {
+      this.actionReceipt = {
+        title, result, next,
+        subject: row?.realName || row?.studentName || '毕业审核对象',
+        businessId: row?.resultId ? `结果 ${row.resultId}` : `批次 ${this.batchId}`
+      }
+    },
     async doCollegeReject({ reason } = {}) {
       if (this.detailBusy || !this.detail.row) return
       const note = String(reason || '').trim()
@@ -756,6 +774,7 @@ export default {
       try {
         const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, 'REJECT', note)
         if (res.code === 0) {
+          this.recordActionReceipt(this.detail.row, '学院审核已退回', '已记录退回原因', '责任人员治理阻断证据后重新预审')
           toast.success('已处理')
           this.collegeRejectDlg.visible = false
           this.detail.visible = false
@@ -773,6 +792,7 @@ export default {
       try {
         const res = await academicAffairsApi.collegeReviewGrad(this.detail.row.resultId, 'APPROVE', '')
         if (res.code === 0) {
+          this.recordActionReceipt(this.detail.row, '学院审核已通过', '进入教务终审队列', '教务处核对十一项证据并形成终审结论')
           toast.success('已处理')
           this.detail.visible = false
           await this.loadTab()
@@ -811,6 +831,7 @@ export default {
         }
         const res = await academicAffairsApi.finalGrad(resultId, this.finalConclusion, true)
         if (res.code === 0) {
+          this.recordActionReceipt(fresh.data, '毕业资格终审完成', CONCLUSION_LABEL[this.finalConclusion] || this.finalConclusion, '终审结论已写入学籍；进入证书与批次归档')
           toast.success('终审完成，已写学籍')
           this.finalDlg.visible = false
           this.detail.visible = false
@@ -834,6 +855,8 @@ export default {
       try {
         const res = await academicAffairsApi.archiveGradBatch(batchId)
         if (res.code === 0) {
+          const batch = this.currentBatch
+          this.recordActionReceipt({ realName: batch?.batchName }, '毕业审核批次已归档', `${res.data.archived} 条正式结果`, '归档结果只读；后续变更必须走正式纠错链')
           toast.success(`已归档 ${res.data.archived} 条`)
           this.archiveDlg.visible = false
           await this.loadBatches()
@@ -861,6 +884,8 @@ export default {
     linear-gradient(135deg, #fff 0%, #f9fbff 60%, #f1f6ff 100%);
   box-shadow: 0 20px 48px -40px rgba(37, 99, 235, .55);
 }
+.agc-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(220px,auto); align-items: center; gap: 18px; padding: 13px 15px; border: 1px solid #a7d7b4; border-radius: 11px; background: #f3fbf5; }
+.agc-receipt strong, .agc-receipt span, .agc-receipt small, .agc-receipt b { display: block; }.agc-receipt strong { color: #15803d; }.agc-receipt span, .agc-receipt small { margin-top: 3px; color: #64748b; font-size: 11px; }.agc-receipt b { margin-top: 3px; font-size: 12px; }
 .agc-overview__top {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
@@ -1041,6 +1066,7 @@ export default {
   .agc-metrics article { border-bottom: 1px solid #e8eef7; }
 }
 @media (max-width: 760px) {
+  .agc-receipt { grid-template-columns: 1fr; gap: 10px; }
   .agc-overview__top { padding: 20px; }
   .agc-overview__copy h2 { font-size: 21px; }
   .agc-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }

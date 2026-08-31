@@ -2254,6 +2254,17 @@ def _grade_progress(db) -> dict:
     order = {"RETURNED": 0, "INPUTTING": 1, "NOT_STARTED": 2}
     lagging = sorted([t for t in rows if t.status in ("NOT_STARTED", "INPUTTING", "RETURNED")],
                      key=lambda t: order.get(t.status, 9))
+    def task_common(t):
+        deadline = _iso(t.deadline_at) if getattr(t, "deadline_at", None) else ""
+        changed_at = getattr(t, "updated_at", None) or getattr(t, "created_at", None)
+        return {
+            "gradeTaskId": str(t.id), "courseName": t.course_name or "",
+            "className": _class_name(db, t.class_id), "teacherKey": t.teacher_key or "",
+            "status": t.status, "statusLabel": _GRADE_STATUS_LABEL.get(t.status, t.status),
+            "deadline": deadline,
+            "recentChange": f"{_iso(changed_at)} · {_GRADE_STATUS_LABEL.get(t.status, t.status)}" if changed_at else _GRADE_STATUS_LABEL.get(t.status, t.status),
+        }
+
     pending = []
     for t in lagging[:10]:
         entered = db.scalar(select(func.count()).select_from(AaGradeRecord).where(
@@ -2264,15 +2275,18 @@ def _grade_progress(db) -> dict:
             roster_total = db.scalar(select(func.count()).select_from(StudentProfile).where(
                 StudentProfile.tenant_id == T, StudentProfile.class_id == t.class_id,
                 StudentProfile.is_deleted.is_(False))) or 0
-        pending.append({
-            "gradeTaskId": str(t.id), "courseName": t.course_name or "",
-            "className": _class_name(db, t.class_id), "teacherKey": t.teacher_key or "",
-            "status": t.status, "statusLabel": _GRADE_STATUS_LABEL.get(t.status, t.status),
+        pending.append({**task_common(t),
             "enteredCount": entered, "rosterCount": roster_total,
             "progressRate": round(entered / roster_total * 100, 1) if roster_total else 0.0})
+    review_rows = sorted(
+        [t for t in rows if t.status in ("SUBMITTED", "ACADEMIC_REVIEW")],
+        key=lambda t: (0 if t.status == "SUBMITTED" else 1, t.deadline_at or datetime.max, t.id),
+    )
+    review_tasks = [task_common(t) for t in review_rows[:10]]
     return {"totalTasks": total, "counts": counts,
             "submittedRate": round(done / total * 100, 1) if total else 0.0,
-            "pendingTasks": pending, "drillRoute": "aa-grade-overview"}
+            "pendingTasks": pending, "reviewTasks": review_tasks,
+            "drillRoute": "aa-grade-overview"}
 
 
 def _exam_reminders(db, days_ahead=14) -> dict:
@@ -2312,7 +2326,10 @@ def _status_change_reminders(db) -> dict:
     items = [{"changeId": str(x.id), "studentName": s.real_name if s else "",
               "changeType": x.change_type, "changeTypeLabel": _CHANGE_TYPE_LABEL.get(x.change_type, x.change_type),
               "status": x.status, "currentNode": x.current_node or "",
-              "submittedAt": _iso(x.created_at) if getattr(x, "created_at", None) else ""}
+              "submittedAt": _iso(x.created_at) if getattr(x, "created_at", None) else "",
+              "deadline": "",
+              "recentChange": f"{_iso(x.updated_at)} · 流转至 {x.current_node or x.status}" if getattr(x, "updated_at", None) else (x.current_node or x.status),
+              "exactRoute": f"/admin/academic-affairs/status-changes/{x.id}"}
              for x, s in rows]
     return {"count": total, "items": items, "drillRoute": "aa-status-changes"}
 
@@ -2331,7 +2348,10 @@ def _warning_reminders(db) -> dict:
                       .order_by(AcademicWarning.id.desc()).limit(30)).all()
     order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
     items = sorted([{"warningId": str(w.id), "studentName": a.name if a else "",
-                     "level": w.level, "reason": w.reason or "", "status": w.status}
+                     "level": w.level, "reason": w.reason or "", "status": w.status,
+                     "owner": w.owner or "", "deadline": w.deadline or "",
+                     "recentChange": f"{_iso(w.updated_at)} · 待处置" if getattr(w, "updated_at", None) else "待处置",
+                     "exactRoute": f"/admin/academic-affairs/warnings/console?tab=followup&warningId={w.id}"}
                     for w, a in rows], key=lambda x: order.get(x["level"], 9))[:10]
     return {"count": total, "items": items, "drillRoute": "aa-warnings"}
 
@@ -2352,26 +2372,95 @@ def _graduation_warnings(db) -> dict:
                       .join(AaGraduationAuditBatch, join_b).outerjoin(StudentProfile, join_s).where(*conds)
                       .order_by(AaGraduationAuditResult.id.desc()).limit(10)).all()
     items = [{"resultId": str(r.id), "studentName": s.real_name if s else "",
+              "batchId": str(b.id),
               "batchName": b.batch_name, "overall": r.overall or "", "conclusion": r.conclusion or "",
-              "status": r.status} for r, b, s in rows]
+              "status": r.status, "deadline": "",
+              "recentChange": f"{_iso(r.updated_at)} · {r.status}" if getattr(r, "updated_at", None) else r.status,
+              "exactRoute": f"/admin/academic-affairs/graduation/audit-console?tab=reason&batchId={b.id}&resultId={r.id}"}
+             for r, b, s in rows]
     return {"count": total, "items": items, "drillRoute": "aa-graduation"}
 
 
-def _todos(grade_counts, sc_count, warn_count, grad_count) -> list:
-    """教务待办：跨模块待处理事项计数聚合（点击直达对应处理页）。"""
+def _todos(grade_progress, status_changes, warnings, graduation) -> list:
+    """教务待办：保留分类总数，同时给出可执行的具体业务任务与精确落点。"""
+    grade_counts = grade_progress.get("counts", {})
+    sc_count = status_changes.get("count", 0)
+    warn_count = warnings.get("count", 0)
+    grad_count = graduation.get("count", 0)
     review_pending = grade_counts.get("SUBMITTED", 0) + grade_counts.get("ACADEMIC_REVIEW", 0)
     lagging = (grade_counts.get("NOT_STARTED", 0) + grade_counts.get("INPUTTING", 0)
               + grade_counts.get("RETURNED", 0))
+
+    grade_review_items = []
+    for row in grade_progress.get("reviewTasks", []):
+        is_college = row.get("status") == "SUBMITTED"
+        grade_review_items.append({
+            "businessId": row["gradeTaskId"], "entityType": "GRADE_TASK",
+            "title": f"{row.get('courseName') or '未命名课程'} · {row.get('className') or '未关联班级'}",
+            "reason": "教师已提交成绩，等待学院完整性与合理性审核" if is_college else "学院审核已通过，等待教务终审发布",
+            "ownerRole": "学院成绩审核人" if is_college else "教务成绩发布人",
+            "deadline": row.get("deadline") or "", "recentChange": row.get("recentChange") or "",
+            "primaryAction": "进入学院审核" if is_college else "进入教务终审",
+            "nextStep": "审核通过后进入教务终审" if is_college else "核验无误后发布成绩",
+            "exactRoute": (f"/admin/academic-affairs/grade-college-review?taskId={row['gradeTaskId']}"
+                           if is_college else f"/admin/academic-affairs/grade-publish?taskId={row['gradeTaskId']}"),
+        })
+
+    grade_lagging_items = [{
+        "businessId": row["gradeTaskId"], "entityType": "GRADE_TASK",
+        "title": f"{row.get('courseName') or '未命名课程'} · {row.get('className') or '未关联班级'}",
+        "reason": f"成绩任务{row.get('statusLabel') or row.get('status')}，已录 {row.get('enteredCount', 0)}/{row.get('rosterCount', 0)} 人",
+        "ownerRole": f"任课教师 {row.get('teacherKey')}" if row.get("teacherKey") else "任课教师（待分配）",
+        "deadline": row.get("deadline") or "", "recentChange": row.get("recentChange") or "",
+        "primaryAction": "继续录入成绩", "nextStep": "完成全班成绩并提交学院审核",
+        "exactRoute": f"/admin/academic-affairs/grade-entry?taskId={row['gradeTaskId']}",
+    } for row in grade_progress.get("pendingTasks", [])]
+
+    status_items = [{
+        "businessId": row["changeId"], "entityType": "STATUS_CHANGE",
+        "title": f"{row.get('studentName') or '未关联学生'} · {row.get('changeTypeLabel') or row.get('changeType')}",
+        "reason": f"异动申请正在 {row.get('currentNode') or '审批节点'} 等待处理",
+        "ownerRole": f"学籍异动审批人（{row.get('currentNode') or '当前节点'}）",
+        "deadline": row.get("deadline") or "", "recentChange": row.get("recentChange") or "",
+        "primaryAction": "查看并审批", "nextStep": "审批决定将进入下一节点或退回申请人",
+        "exactRoute": row.get("exactRoute") or f"/admin/academic-affairs/status-changes/{row['changeId']}",
+    } for row in status_changes.get("items", [])]
+
+    warning_items = [{
+        "businessId": row["warningId"], "entityType": "ACADEMIC_WARNING",
+        "title": f"{row.get('studentName') or '未关联学生'} · {row.get('reason') or '学业风险待核实'}",
+        "reason": f"{row.get('level') or '未分级'} 预警尚未形成处置闭环",
+        "ownerRole": row.get("owner") or "学业预警管理员（待指派）",
+        "deadline": row.get("deadline") or "", "recentChange": row.get("recentChange") or "",
+        "primaryAction": "进入预警处置", "nextStep": "指派跟进人并记录干预结果",
+        "exactRoute": row.get("exactRoute") or f"/admin/academic-affairs/warnings/console?tab=followup&warningId={row['warningId']}",
+    } for row in warnings.get("items", [])]
+
+    grad_owner = {
+        "COLLEGE_REVIEW": "学院毕业审核人", "ACADEMIC_REVIEW": "教务毕业终审人",
+        "SYSTEM_ABNORMAL": "教务毕业预审治理人", "DELAYED": "教务毕业审核人",
+    }
+    graduation_items = [{
+        "businessId": row["resultId"], "entityType": "GRADUATION_AUDIT_RESULT",
+        "title": f"{row.get('studentName') or '未关联学生'} · {row.get('batchName') or '毕业审核批次'}",
+        "reason": f"毕业资格结果处于 {row.get('status') or '待处理'} 状态",
+        "ownerRole": grad_owner.get(row.get("status"), "教务毕业审核人"),
+        "deadline": row.get("deadline") or "", "recentChange": row.get("recentChange") or "",
+        "primaryAction": "核对毕业资格", "nextStep": "核验十一项证据并形成审核结论",
+        "exactRoute": row.get("exactRoute") or f"/admin/academic-affairs/graduation/audit-console?resultId={row['resultId']}",
+    } for row in graduation.get("items", [])]
+
     return [
         {"key": "gradeReview", "label": "成绩待审核（学院/教务）", "count": review_pending,
-         "drillRoute": "aa-grade-college-review"},
+         "drillRoute": "aa-grade-college-review", "items": grade_review_items},
         {"key": "gradeLagging", "label": "成绩未提交（未开始/录入中/已退回）", "count": lagging,
-         "drillRoute": "aa-grade-overview"},
+         "drillRoute": "aa-grade-overview", "items": grade_lagging_items},
         {"key": "statusChangeReview", "label": "学籍异动待审批", "count": sc_count,
-         "drillRoute": "aa-status-changes"},
-        {"key": "warningHandle", "label": "学业预警待处置", "count": warn_count, "drillRoute": "aa-warnings"},
+         "drillRoute": "aa-status-changes", "items": status_items},
+        {"key": "warningHandle", "label": "学业预警待处置", "count": warn_count,
+         "drillRoute": "aa-warnings-console", "items": warning_items},
         {"key": "graduationReview", "label": "毕业资格待复核/异常", "count": grad_count,
-         "drillRoute": "aa-graduation"},
+         "drillRoute": "aa-graduation-audit-console", "items": graduation_items},
     ]
 
 
@@ -2676,7 +2765,7 @@ def dashboard_reminders(user) -> dict:
         sc = _status_change_reminders(db)
         wr = _warning_reminders(db)
         gr = _graduation_warnings(db)
-        todos = _todos(gp["counts"], sc["count"], wr["count"], gr["count"])
+        todos = _todos(gp, sc, wr, gr)
 
         ctx = _today_term_ctx(db)
         today_rows, today_batch = _today_schedule_query(db, ctx)

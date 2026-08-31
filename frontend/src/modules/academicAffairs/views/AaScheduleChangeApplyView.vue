@@ -6,6 +6,15 @@
     :data-scope-name="scopeName"
   >
     <div class="mp-stack">
+      <section v-if="receipt" class="sc-receipt" role="status">
+        <div><strong>✓ 调停课申请已提交</strong><span>{{ receipt.courseName }} · 单据 {{ receipt.changeId }}</span></div>
+        <div><small>当前结果</small><b>{{ receipt.statusLabel }}</b></div>
+        <div><small>下一责任</small><b>学院教务审核人</b></div>
+        <div class="sc-receipt__actions">
+          <AppButton size="small" variant="ghost" @click="goReceipt">查看申请详情</AppButton>
+          <AppButton size="small" @click="openMySchedule">继续从课表选择</AppButton>
+        </div>
+      </section>
       <AppSectionCard title="原安排" class="sc-origin-card">
         <LoadingState v-if="originLoading" />
         <ErrorState v-else-if="originError" :description="originError" @retry="loadOrigin" />
@@ -128,6 +137,7 @@ export default {
     return {
       CHANGE_TYPES, form: EMPTY(), submitting: false, err: '',
       checkingConflict: false, origin: null, originLoading: false, originError: '',
+      receipt: null,
       // undefined=未检测；null=检测通过无冲突；对象={type,conflictWith,detail}=有冲突
       conflictResult: undefined
     }
@@ -235,13 +245,24 @@ export default {
         if (!body.targetWeekParity) delete body.targetWeekParity
         const res = await scheduleChangeApi.submit(body)
         if (res.code === 0) {
+          this.receipt = {
+            changeId: res.data.changeId,
+            courseName: res.data.courseName || this.origin.courseName || '课程',
+            statusLabel: '待学院审核'
+          }
           toast.success('调停课已提交，进入学院审核')
-          this.$router.push('/admin/academic-affairs/schedule-change')
+          this.form = EMPTY()
+          this.origin = null
+          this.conflictResult = undefined
         } else {
           this.err = res.message || '提交失败'
           toast.error(this.err)
         }
       } finally { this.submitting = false }
+    },
+    goReceipt() {
+      if (!this.receipt?.changeId) return
+      this.$router.push(`/admin/academic-affairs/print/schedule-change/${this.receipt.changeId}/notice`)
     }
   }
 }
@@ -271,6 +292,8 @@ export default {
 .sc-origin dl div { min-width: 0; }
 .sc-origin dt { color: var(--text-500, #86909c); font-size: 11px; }
 .sc-origin dd { margin: 3px 0 0; color: var(--text-800, #272e3b); font-size: 13px; }
+.sc-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto; align-items: center; gap: 18px; max-width: 900px; padding: 13px 15px; border: 1px solid #a7d7b4; border-radius: 11px; background: #f3fbf5; }
+.sc-receipt strong, .sc-receipt span, .sc-receipt small, .sc-receipt b { display: block; }.sc-receipt strong { color: #15803d; }.sc-receipt span, .sc-receipt small { margin-top: 3px; color: #64748b; font-size: 11px; }.sc-receipt b { margin-top: 3px; font-size: 12px; }.sc-receipt__actions { display: flex; gap: 8px; }
 .mp-btn { padding: 7px 16px; border: 1px solid var(--line, #d9dee8); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
 .mp-btn--primary { background: var(--pri, #2563eb); color: #fff; border-color: var(--pri, #2563eb); }
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -279,5 +302,7 @@ export default {
   .sc-fld--full, .sc-err, .sc-btns { grid-column: 1; }
   .sc-origin { grid-template-columns: 1fr; }
   .sc-origin dl { grid-template-columns: 1fr; }
+  .sc-receipt { grid-template-columns: 1fr; gap: 10px; }
+  .sc-receipt__actions { align-items: stretch; flex-direction: column; }
 }
 </style>
