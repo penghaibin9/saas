@@ -46,13 +46,14 @@
 
       <AppSectionCard title="选床入住 / 退宿">
         <p class="sa-section-hint">按顺序选择楼栋和房间。床位列表会显示当前状态与入住学生，避免在不同房间间反复查找。</p>
+        <AppInlineAlert v-if="routeNotice" type="info" :description="routeNotice" />
         <div class="sa-toolbar dorm-picker-bar">
           <AppDormBuildingPicker v-model="curBuilding" :options="buildingOptions" placeholder="选择楼栋" class="sa-pick" @change="loadRooms" />
           <AppDormRoomPicker v-model="curRoom" :options="roomOptions" :query="{ buildingId: curBuilding }" placeholder="选择房间" class="sa-pick"
                      :disabled="!curBuilding" @change="loadBeds" />
         </div>
         <template v-if="curRoom">
-          <DataTable v-if="beds.length" :columns="bedColumns" :rows="beds" row-key="bedId">
+          <DataTable v-if="beds.length" :columns="bedColumns" :rows="beds" row-key="bedId" :row-class="bedRowClass">
             <template #cell-bedNo="{ row }"><span class="mp-cell-main">{{ row.bedNo }} 号床</span></template>
             <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'OCCUPIED' ? 'warning' : 'success'" :label="row.status === 'OCCUPIED' ? '已住' : '空床'" /></template>
             <template #cell-occupant="{ row }"><span :class="row.occupantName ? 'dorm-occupied' : 'sa-muted'">{{ row.occupantName || '暂无学生' }}</span></template>
@@ -127,7 +128,7 @@ export default {
     return {
       bedColumns: BED_COLUMNS,
       loading: true, actioning: false, errorMessage: '', config: {}, buildings: [], curBuilding: '',
-      rooms: [], curRoom: '', beds: [],
+      rooms: [], curRoom: '', beds: [], routeBedId: '', routeNotice: '',
       inDlg: { visible: false, bedId: '', bedLabel: '', studentId: '', error: '' },
       outDlg: { visible: false, bedId: '', who: '', version: null },
       modeDlg: { visible: false }
@@ -156,7 +157,39 @@ export default {
       try {
         const [cfg, bs] = await Promise.all([studentAffairsApi.getDormConfig(), studentAffairsApi.listDormBuildings()])
         this.config = cfg.data || {}; this.buildings = bs.data.items || []
+        await this.applyRouteSelection()
       } catch (e) { this.errorMessage = e.message || '加载失败' } finally { this.loading = false }
+    },
+    async applyRouteSelection() {
+      this.routeNotice = ''
+      const buildingId = String(this.$route.query.buildingId || '')
+      if (!buildingId) return
+      const building = this.buildings.find((row) => String(row.buildingId) === buildingId)
+      if (!building) {
+        this.routeNotice = '目标楼栋不在当前数据范围内，请从可见楼栋重新选择。'
+        return
+      }
+      this.curBuilding = buildingId
+      await this.loadRooms()
+      const roomId = String(this.$route.query.roomId || '')
+      const room = this.rooms.find((row) => String(row.roomId) === roomId)
+      if (!room) {
+        if (roomId) this.routeNotice = '目标房间已不可用，请从当前楼栋重新选择。'
+        return
+      }
+      this.curRoom = roomId
+      await this.loadBeds()
+      const bedId = String(this.$route.query.bedId || '')
+      const bed = this.beds.find((row) => String(row.bedId) === bedId)
+      if (!bed) {
+        if (bedId) this.routeNotice = '目标床位已不可用，请核对当前房间的最新床位状态。'
+        return
+      }
+      this.routeBedId = bedId
+      this.routeNotice = `已定位 ${building.buildingName || '目标楼栋'} / ${room.roomNo || '目标房间'} / ${bed.bedNo} 号床，请核对实时状态后办理。`
+    },
+    bedRowClass(row) {
+      return String(row.bedId) === String(this.routeBedId) ? 'sa-sel' : ''
     },
     async loadRooms() {
       this.curRoom = ''; this.beds = []

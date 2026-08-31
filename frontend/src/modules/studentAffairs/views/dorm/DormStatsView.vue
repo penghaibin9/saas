@@ -27,6 +27,7 @@
           <template #cell-vacant="{ row }"><strong :class="row.vacantBeds ? 'dorm-stats-vacant' : 'dorm-stats-full'">{{ row.vacantBeds }}</strong></template>
           <template #cell-total="{ row }">{{ row.totalBeds }}</template>
           <template #cell-rate="{ row }"><span class="dorm-stats-rate" :class="{ 'is-full': row.totalBeds && !row.vacantBeds }">{{ rate(row) }}</span></template>
+          <template #cell-actions="{ row }"><AppButton size="sm" variant="secondary" @click="drillBuilding(row)">查看房态</AppButton></template>
         </DataTable>
         <p v-else class="sa-empty">当前数据范围内暂无楼栋统计。请先维护宿舍房源，或检查宿管楼栋数据范围。</p>
       </AppSectionCard>
@@ -36,6 +37,7 @@
 
 <script>
 import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard } from '@/components/common'
+import { AppButton } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
 
@@ -44,12 +46,13 @@ const BUILDING_COLUMNS = [
   { key: 'gender', title: '性别' },
   { key: 'vacant', title: '空床' },
   { key: 'total', title: '总床' },
-  { key: 'rate', title: '入住率' }
+  { key: 'rate', title: '入住率' },
+  { key: 'actions', title: '下钻', align: 'right', width: '110px' }
 ]
 
 export default {
   name: 'DormStatsView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, DataTable },
+  components: { AppButton, AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, DataTable },
   data() { return { buildingColumns: BUILDING_COLUMNS, loading: true, errorMessage: '', occ: {}, buildings: [] } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
@@ -71,6 +74,12 @@ export default {
         const [oc, bs] = await Promise.all([studentAffairsApi.getDormOccupancy(), studentAffairsApi.listDormBuildings()])
         this.occ = oc.data || {}; this.buildings = bs.data.items || []
       } catch (e) { this.errorMessage = e.message || '宿舍统计加载失败' } finally { this.loading = false }
+    },
+    drillBuilding(building) {
+      this.$router.push({
+        name: 'student-affairs-dorm-resource',
+        query: { buildingId: String(building.buildingId) }
+      })
     },
     rate(b) { return b.totalBeds ? Math.round((b.totalBeds - b.vacantBeds) / b.totalBeds * 100) + '%' : '—' },
     genderLabel(g) { return ({ MALE: '男寝', FEMALE: '女寝', MIXED: '混合' })[g] || g }
