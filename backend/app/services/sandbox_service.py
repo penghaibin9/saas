@@ -190,7 +190,7 @@ def seed_sandbox(db) -> dict:
     from app.core.security import hash_password
     from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, College, CsLeave,
                             CsServiceStudent, EmpJob, EmpStudent, GraduationProposal,
-                            GraduationStudent, InternshipRecord, Major, OrientationStudent,
+                            GraduationStudent, InternshipRecord, Major, OrientationBatch, OrientationStudent,
                             Role, SchoolClass, StudentContact, StudentProfile, TeacherStudentScope,
                             Tenant, TenantBrandConfig, UnifiedMessage, UnifiedTodo, User,
                             UserRole, WeeklyReport, WorkflowInstance, WorkflowTask)
@@ -343,13 +343,26 @@ def seed_sandbox(db) -> dict:
         out["internshipFull"] = seed_internship(db, SANDBOX_TID)
         out["employmentFull"] = seed_employment(db, SANDBOX_TID)
         out["graduationFull"] = seed_graduation(db, SANDBOX_TID)
-        db.add(OrientationStudent(tenant_id=SANDBOX_TID, name=SBX_STUDENT_NAME,
+        orientation_batch = db.scalars(select(OrientationBatch).where(
+            OrientationBatch.tenant_id == SANDBOX_TID,
+            OrientationBatch.batch_no == "SEED-ORI-2026",
+        )).one()
+        profile_class = db.get(SchoolClass, p.class_id)
+        profile_major = db.get(Major, p.major_id)
+        profile_college = db.get(College, p.college_id)
+        db.add(OrientationStudent(tenant_id=SANDBOX_TID, batch_id=orientation_batch.id,
+                                  name=SBX_STUDENT_NAME,
                                   admission_no=f"LQ{SBX_STUDENT_NO}", student_id=p.id,
-                                  class_name=SBX_CLASS, grade="2026级", stage="ENROLLED",
+                                  identity_status="LINKED",
+                                  college_id=p.college_id, college_name=profile_college.college_name,
+                                  major_id=p.major_id, major_name=profile_major.major_name,
+                                  class_id=p.class_id, class_name=profile_class.class_name,
+                                  grade="2026级", stage="ENROLLED",
                                   report_status="CHECKED_IN", payment_status="PAID",
                                   material_status="APPROVED", dorm_status="CHECKED_IN",
                                   building="沙箱1号楼", room="1-101-1", risk_level="LOW",
-                                  steps_json={"ACTIVATE": "DONE", "CHECKIN": "DONE"}))
+                                  steps_json={"ACTIVATE": "DONE", "CHECKIN": "DONE"},
+                                  source_type="MANUAL", source_record_id=f"LQ{SBX_STUDENT_NO}"))
         cs = CsServiceStudent(tenant_id=SANDBOX_TID, name=SBX_STUDENT_NAME, student_no=SBX_STUDENT_NO,
                               student_id=p.id, class_name=SBX_CLASS, care_level="NORMAL",
                               risk_level="LOW", counselor=SBX_TEACHER_NAME, record_status="ACTIVE")

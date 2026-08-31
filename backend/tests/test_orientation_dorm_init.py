@@ -18,7 +18,11 @@ TID = 1000000000000000091
 
 def _seed_orientation(db, allocated=2, unassigned=1):
     """建 allocated 个已分配（同楼同房 101）+ unassigned 个未分配迎新学生。返回已分配 student_id 列表。"""
-    from app.models import OrientationStudent, StudentProfile
+    from app.models import OrientationBatch, OrientationStudent, StudentProfile
+    batch = OrientationBatch(tenant_id=TID, batch_name="宿舍初始化测试批次",
+                             batch_no="ORI-DORM-INIT", year="2026", status="ACTIVE",
+                             planned_count=allocated + unassigned)
+    db.add(batch); db.flush()
     ids = []
     for i in range(1, allocated + unassigned + 1):
         sp = StudentProfile(tenant_id=TID, student_no=f"2026O{i:04d}", real_name=f"新生{i}",
@@ -26,10 +30,12 @@ def _seed_orientation(db, allocated=2, unassigned=1):
         db.add(sp); db.flush()
         is_alloc = i <= allocated
         db.add(OrientationStudent(
-            tenant_id=TID, name=f"新生{i}", admission_no=f"LQ2026O{i:04d}", student_id=sp.id,
+            tenant_id=TID, batch_id=batch.id, name=f"新生{i}", admission_no=f"LQ2026O{i:04d}", student_id=sp.id,
+            identity_status="LINKED",
             class_name="电商2601班", grade="2026级", stage="ENROLLED",
             dorm_status="CHECKED_IN" if is_alloc else "UNASSIGNED",
-            building="1号楼" if is_alloc else None, room="101" if is_alloc else None))
+            building="1号楼" if is_alloc else None, room="101" if is_alloc else None,
+            source_type="MANUAL", source_record_id=f"LQ2026O{i:04d}"))
         if is_alloc:
             ids.append(sp.id)
     db.commit()

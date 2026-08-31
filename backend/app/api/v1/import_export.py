@@ -104,15 +104,23 @@ def _limit_operation(user: dict, operation: str, *, user_limit: int, tenant_limi
 
 _DOMAIN_IMPORT_TEMPLATES = {
     "orientation": {
-        "headers": ["姓名", "录取编号", "班级"],
-        "required": ["姓名", "录取编号"],
-        "sample": ["示例姓名", "LQ2026000001", "示例班级"],
+        "headers": ["迎新批次编号", "录取编号", "候选人编号", "姓名", "性别", "身份证号", "手机号",
+                    "学院代码", "专业代码", "班级代码", "年级", "生源地", "录取类型"],
+        "required": ["迎新批次编号", "录取编号", "姓名", "学院代码", "专业代码", "班级代码"],
+        "sample": ["ORI-2026", "LQ2026000001", "CAND-0001", "示例姓名", "男", "", "",
+                   "COL-INFO", "MAJ-SOFTWARE", "CLS-2601", "2026", "湖南长沙", "统招"],
         "notes": [
-            "姓名、录取编号必填；录取编号在本校迎新台账及当前文件内必须唯一。",
+            "批次、学院、专业、班级必须使用本校已维护的唯一代码；系统解析为稳定 ID，不按名称猜测。",
+            "姓名、录取编号必填；录取编号及批次内来源编号必须唯一。",
             "请勿修改字段名；只读取“导入模板”工作表，单次最多 5000 行。",
             "预检有任一错误时整批不得确认，请修正文件后重新上传。",
         ],
-        "header_map": {"姓名": "name", "录取编号": "admissionNo", "班级": "className"},
+        "header_map": {
+            "迎新批次编号": "batchNo", "录取编号": "admissionNo", "候选人编号": "candidateNo",
+            "姓名": "name", "性别": "gender", "身份证号": "idCard", "手机号": "phone",
+            "学院代码": "collegeCode", "专业代码": "majorCode", "班级代码": "classCode",
+            "年级": "grade", "生源地": "origin", "录取类型": "admissionType",
+        },
         "filename": "迎新新生录取名单导入模板.xlsx",
     },
 }
@@ -223,7 +231,7 @@ def export_domain(domain: str, body: dict = Body(default={}), user=Depends(requi
         batch_id=batch_id,
     )
     detail = {"taskId": task["taskId"], "rows": task["rowCount"]}
-    if auth.domain == "internship":
+    if auth.domain in {"internship", "orientation"}:
         detail["batchId"] = str(batch_id or "")
     audit_log.record("EXPORT", f"{auth.domain}-xlsx", detail=detail)
     idempotency_finish(handle, task)

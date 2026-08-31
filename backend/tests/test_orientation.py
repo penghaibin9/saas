@@ -8,11 +8,28 @@ MAIN_TID = 1000000000000000001
 
 def _seed(_db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import (GreenChannelApplication, OrientationException, OrientationMaterial,
-                            OrientationStudent)
+    from app.models import (College, GreenChannelApplication, Major, OrientationBatch,
+                            OrientationException, OrientationMaterial, OrientationStudent,
+                            SchoolClass)
     db = get_sessionmaker()()
     try:
-        s = OrientationStudent(tenant_id=MAIN_TID, name="新生甲", admission_no="LQ2026999001",
+        college = College(tenant_id=MAIN_TID, college_name="迎新测试学院", code="ORI-TEST-COL", status="ACTIVE")
+        db.add(college); db.flush()
+        major = Major(tenant_id=MAIN_TID, college_id=college.id, major_name="迎新测试专业",
+                      code="ORI-TEST-MAJ", status="ACTIVE")
+        db.add(major); db.flush()
+        school_class = SchoolClass(tenant_id=MAIN_TID, major_id=major.id,
+                                   class_name="软件2601班", class_code="ORI-TEST-CLS",
+                                   grade="2026", status="ACTIVE")
+        batch = OrientationBatch(tenant_id=MAIN_TID, batch_name="测试迎新批次",
+                                 batch_no="ORI-TEST-2026", year="2026", status="ACTIVE",
+                                 planned_count=2)
+        db.add_all([school_class, batch]); db.flush()
+        s = OrientationStudent(tenant_id=MAIN_TID, batch_id=batch.id,
+                               name="新生甲", admission_no="LQ2026999001",
+                               college_id=college.id, college_name=college.college_name,
+                               major_id=major.id, major_name=major.major_name,
+                               class_id=school_class.id,
                                class_name="软件2601班", phone_encrypted="13800009999",
                                id_card_encrypted="330102200801019999", stage="ADMITTED",
                                report_status="PREPARED", payment_status="UNPAID",
@@ -20,7 +37,7 @@ def _seed(_db_mode):
                                building="梧桐苑1号楼", room="1-301-1", counselor="李辅导",
                                steps_json={"ACTIVATE": "DONE", "PAYMENT": "BLOCKED"},
                                blocked_step="PAYMENT", blocked_reason="未缴费", payable_amount=8600,
-                               paid_amount=0)
+                               paid_amount=0, source_type="MANUAL", source_record_id="LQ2026999001")
         db.add(s)
         db.flush()
         gc = GreenChannelApplication(tenant_id=MAIN_TID, ori_student_id=s.id, apply_type="生源地助学贷款",
@@ -31,7 +48,8 @@ def _seed(_db_mode):
                                    description="缴费异常", risk_level="MEDIUM", status="OPEN", handler="李辅导")
         db.add_all([gc, mat, exc])
         db.commit()
-        return {"student": s.id, "gc": gc.id, "mat": mat.id, "exc": exc.id}
+        return {"student": s.id, "gc": gc.id, "mat": mat.id, "exc": exc.id,
+                "batch": batch.id, "class": school_class.id}
     finally:
         db.close()
 
@@ -50,13 +68,15 @@ def test_students_and_detail(client, auth_headers, db_mode):
 
 
 def test_create_and_void_student(client, auth_headers, db_mode):
-    _seed(db_mode)
+    ids = _seed(db_mode)
     c = client.post("/api/v1/orientation/students", headers=auth_headers,
-                    json={"name": "新生乙", "admissionNo": "LQ2026999002"}).json()
+                    json={"name": "新生乙", "admissionNo": "LQ2026999002",
+                          "batchId": ids["batch"], "classId": ids["class"]}).json()
     assert c["code"] == 0
     sid = c["data"]["id"]
     dup = client.post("/api/v1/orientation/students", headers=auth_headers,
-                      json={"name": "x", "admissionNo": "LQ2026999002"}).json()
+                      json={"name": "x", "admissionNo": "LQ2026999002",
+                            "batchId": ids["batch"], "classId": ids["class"]}).json()
     assert dup["code"] == 409001
     bad = client.post(f"/api/v1/orientation/students/{sid}/void", headers=auth_headers,
                       json={"reason": "x"}).json()

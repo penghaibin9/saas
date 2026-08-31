@@ -27,10 +27,12 @@ def dashboard(user=Depends(require_staff)):
 
 @router.get("/students", summary="新生台账列表")
 def students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-             keyword: Optional[str] = None, classId: Optional[str] = None, stage: Optional[str] = None,
+             keyword: Optional[str] = None, classId: Optional[str] = None,
+             batchId: Optional[str] = None, stage: Optional[str] = None,
              reportStatus: Optional[str] = None, paymentStatus: Optional[str] = None,
              riskLevel: Optional[str] = None, user=Depends(require_staff)):
-    items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId, stage=stage,
+    items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId,
+                                     batch_id=batchId, stage=stage,
                                      report_status=reportStatus, payment_status=paymentStatus,
                                      risk_level=riskLevel, user=user)
     return success(paginate(items, total, page, pageSize))

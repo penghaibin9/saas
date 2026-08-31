@@ -25,18 +25,47 @@ def _headers(role: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _authority() -> dict[str, int]:
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, OrientationBatch, SchoolClass
+
+    db = get_sessionmaker()()
+    try:
+        college = College(tenant_id=TID, college_name="A1信息学院", code="A1-COL", status="ACTIVE")
+        db.add(college)
+        db.flush()
+        major = Major(tenant_id=TID, college_id=college.id, major_name="A1软件专业",
+                      code="A1-MAJ", status="ACTIVE")
+        db.add(major)
+        db.flush()
+        school_class = SchoolClass(
+            tenant_id=TID, major_id=major.id, class_name="A1软件2601班",
+            class_code="A1-CLS", grade="2026", status="ACTIVE",
+        )
+        batch = OrientationBatch(
+            tenant_id=TID, batch_name="A1 2026迎新", batch_no="A1-ORI-2026",
+            year="2026", status="ACTIVE", planned_count=1,
+        )
+        db.add_all([school_class, batch])
+        db.commit()
+        return {"batch": batch.id, "college": college.id, "major": major.id, "class": school_class.id}
+    finally:
+        db.close()
+
+
 def _xlsx(rows: list[list[str]]) -> bytes:
     from app.services.xlsx_util import build_template_xlsx
 
     return build_template_xlsx(
-        ["姓名", "录取编号", "班级"],
+        ["迎新批次编号", "录取编号", "候选人编号", "姓名", "学院代码", "专业代码", "班级代码", "录取类型"],
         samples=rows,
-        required=["姓名", "录取编号"],
+        required=["迎新批次编号", "录取编号", "姓名", "学院代码", "专业代码", "班级代码"],
     )
 
 
 def test_orientation_real_file_import_export_roundtrip(client, db_mode):
     headers = _headers("SCHOOL_ADMIN")
+    ids = _authority()
 
     template_response = client.get(
         "/api/v1/import/domain/orientation/template",
@@ -46,7 +75,7 @@ def test_orientation_real_file_import_export_roundtrip(client, db_mode):
     template = template_response.json()["data"]
     assert template["filename"].endswith(".xlsx")
     workbook = load_workbook(io.BytesIO(base64.b64decode(template["contentBase64"])), read_only=True)
-    assert workbook["导入模板"]["A1"].value == "姓名 *"
+    assert workbook["导入模板"]["A1"].value == "迎新批次编号 *"
     assert workbook["导入模板"]["B1"].value == "录取编号 *"
     workbook.close()
 
@@ -56,7 +85,8 @@ def test_orientation_real_file_import_export_roundtrip(client, db_mode):
         files={
             "file": (
                 "orientation-a1.xlsx",
-                _xlsx([["A1测试新生", "A1-LQ-0001", "A1测试班"]]),
+                _xlsx([["A1-ORI-2026", "A1-LQ-0001", "A1-CAND-0001", "A1测试新生",
+                        "A1-COL", "A1-MAJ", "A1-CLS", "统招"]]),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         },
@@ -77,14 +107,16 @@ def test_orientation_real_file_import_export_roundtrip(client, db_mode):
     assert receipt["status"] == "SUCCESS"
     assert receipt["insertedRows"] == 1
 
-    list_response = client.get("/api/v1/orientation/students", headers=headers)
+    list_response = client.get(
+        f"/api/v1/orientation/students?batchId={ids['batch']}", headers=headers,
+    )
     assert list_response.status_code == 200
     assert [row["admissionNo"] for row in list_response.json()["data"]["items"]] == ["A1-LQ-0001"]
 
     export_response = client.post(
         "/api/v1/export/domain/orientation",
         headers={**headers, "Idempotency-Key": "a1-orientation-export"},
-        json={"purpose": "A1迎新导出验收"},
+        json={"purpose": "A1迎新导出验收", "batchId": ids["batch"]},
     )
     assert export_response.status_code == 200
     task = export_response.json()["data"]
@@ -102,7 +134,8 @@ def test_orientation_real_file_import_export_roundtrip(client, db_mode):
     exported = load_workbook(io.BytesIO(download_response.content), read_only=True)
     sheet = exported.active
     assert "A1迎新导出验收" in sheet["A1"].value
-    assert sheet["A3"].value == "A1测试新生"
+    assert sheet["A3"].value == "A1-ORI-2026"
+    assert sheet["B3"].value == "A1测试新生"
     exported.close()
 
 

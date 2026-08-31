@@ -22,7 +22,8 @@ DOMAINS = {
                     ("实习单位", "enterpriseName"), ("岗位", "positionName"), ("状态", "statusLabel"),
                     ("风险", "riskLabel")]),
     "orientation": ("迎新新生台账", "orientation_service.list_students",
-                    [("姓名", "name"), ("录取编号", "admissionNo"), ("班级", "className"),
+                    [("迎新批次编号", "batchNo"), ("姓名", "name"), ("录取编号", "admissionNo"),
+                     ("学院", "collegeName"), ("专业", "majorName"), ("班级", "className"),
                      ("报到状态", "reportStatusLabel"), ("缴费状态", "paymentStatusLabel"),
                      ("宿舍状态", "dormStatusLabel"), ("风险", "riskLabel")]),
     "campus-service": ("在校服务台账", "campus_service_service.list_students",
@@ -95,8 +96,20 @@ def _call_list(path, *, domain: str, user: dict, batch_id=None):
             )
         elif domain == "orientation":
             # 迎新导出与教师 PC 列表共用同一学工 dataScope，禁止通用导出绕过
-            # 班级/学生范围直接扫描全租户新生台账。
-            items, total = fn(1, MAX_EXPORT_ROWS, user=user)
+            # 班级/学生范围直接扫描全租户新生台账；O1 后批次也是必选事实边界。
+            from app.models import OrientationBatch
+            with session() as db:
+                try:
+                    orientation_batch_id = int(batch_id)
+                except (TypeError, ValueError):
+                    raise AppException("VALIDATION_ERROR", "迎新导出必须指定有效 batchId")
+                batch = db.get(OrientationBatch, orientation_batch_id)
+                if not batch or batch.is_deleted or int(batch.tenant_id) != int(_tid()):
+                    raise AppException("VALIDATION_ERROR", "迎新导出批次不存在或不属于本校")
+                batch_no = batch.batch_no
+            items, total = fn(1, MAX_EXPORT_ROWS, user=user, batch_id=orientation_batch_id)
+            for item in items:
+                item["batchNo"] = batch_no
         else:
             items, total = fn(1, MAX_EXPORT_ROWS)
     if total > MAX_EXPORT_ROWS:
@@ -136,8 +149,13 @@ def export_domain(domain: str, purpose: str, user: dict | None = None, *, batch_
             "VALIDATION_ERROR",
             "岗位实习导出必须指定 batchId，禁止无批次导出全历史",
         )
+    if domain == "orientation" and (batch_id is None or not str(batch_id).strip()):
+        raise AppException(
+            "VALIDATION_ERROR",
+            "迎新导出必须指定 batchId，禁止跨批次导出全历史",
+        )
     title, list_path, cols = DOMAINS[domain]
-    if domain == "internship":
+    if domain in {"internship", "orientation"}:
         items, total = _call_list(list_path, domain=domain, user=user, batch_id=batch_id)
     else:
         items, total = _call_list(list_path, domain=domain, user=user)

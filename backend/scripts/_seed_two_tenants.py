@@ -19,7 +19,7 @@ from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, Attenda
                         College, CsLeave, CsServiceStudent, CsWorkOrder, EmpFollowup, EmpJob,
                         EmpMaterial, EmpStudent, GraduationFinal, GraduationProposal,
                         GraduationStudent, InternshipCheckin, InternshipRecord, Major,
-                        OrientationStudent, SchoolClass, StudentContact, StudentProfile,
+                        OrientationBatch, OrientationStudent, SchoolClass, StudentContact, StudentProfile,
                         TeacherStudentScope, Tenant, TenantBrandConfig, UnifiedMessage,
                         UnifiedTodo, User, WeeklyReport, WorkflowInstance, WorkflowTask)
 
@@ -135,17 +135,37 @@ def seed_demo_tenant(db) -> dict:
         OrientationStudent.name == "演示学生7")).first()
     if flag is None:
         # 迎新：待完成 + 异常（已完成=张同学既有）
-        db.add(OrientationStudent(tenant_id=DEMO_TID, name="演示学生6", admission_no="LQ2026D0007",
-                                  class_name=DEMO_CLASSES[0], grade="2026级", stage="PRE_REGISTER",
+        orientation_batch = db.scalars(select(OrientationBatch).where(
+            OrientationBatch.tenant_id == DEMO_TID,
+            OrientationBatch.batch_no == "DEMO-ORI-2026",
+        )).first()
+        if not orientation_batch:
+            orientation_batch = OrientationBatch(
+                tenant_id=DEMO_TID, batch_name="演示学校2026迎新", batch_no="DEMO-ORI-2026",
+                year="2026", status="ACTIVE", planned_count=2,
+                remark="演示租户种子批次",
+            )
+            db.add(orientation_batch); db.flush()
+        class_a, class_b = classes[0], classes[min(1, len(classes) - 1)]
+        col_a, maj_a, _ = _org_of(class_a)
+        col_b, maj_b, _ = _org_of(class_b)
+        db.add(OrientationStudent(tenant_id=DEMO_TID, batch_id=orientation_batch.id,
+                                  name="演示学生6", admission_no="LQ2026D0007",
+                                  college_id=col_a, major_id=maj_a, class_id=class_a.id,
+                                  class_name=class_a.class_name, grade="2026级", stage="PRE_REGISTER",
                                   report_status="NOT_REPORTED", payment_status="UNPAID",
                                   material_status="NOT_SUBMITTED", dorm_status="NOT_ASSIGNED",
-                                  risk_level="LOW", steps_json={"ACTIVATE": "DONE", "INFO": "PENDING"}))
-        db.add(OrientationStudent(tenant_id=DEMO_TID, name="演示学生7", admission_no="LQ2026D0008",
-                                  class_name=DEMO_CLASSES[1], grade="2026级", stage="PRE_REGISTER",
+                                  risk_level="LOW", steps_json={"ACTIVATE": "DONE", "INFO": "PENDING"},
+                                  source_type="MANUAL", source_record_id="LQ2026D0007"))
+        db.add(OrientationStudent(tenant_id=DEMO_TID, batch_id=orientation_batch.id,
+                                  name="演示学生7", admission_no="LQ2026D0008",
+                                  college_id=col_b, major_id=maj_b, class_id=class_b.id,
+                                  class_name=class_b.class_name, grade="2026级", stage="PRE_REGISTER",
                                   report_status="NOT_REPORTED", payment_status="UNPAID",
                                   material_status="REJECTED", dorm_status="NOT_ASSIGNED",
                                   blocked_step="MATERIAL", blocked_reason="身份材料照片模糊需重传",
-                                  risk_level="MEDIUM", steps_json={"ACTIVATE": "DONE", "MATERIAL": "REJECTED"}))
+                                  risk_level="MEDIUM", steps_json={"ACTIVATE": "DONE", "MATERIAL": "REJECTED"},
+                                  source_type="MANUAL", source_record_id="LQ2026D0008"))
         # 在校服务：已退回样例（待审+已通过=张同学既有）
         cs8 = CsServiceStudent(tenant_id=DEMO_TID, name="演示学生8", student_no="2026D0008",
                                class_name=DEMO_CLASSES[0], care_level="NORMAL", risk_level="LOW",

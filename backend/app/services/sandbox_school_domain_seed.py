@@ -166,6 +166,11 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
         "planned_count": len(roster_2026),
         "remark": "当前处于线上预报到与到校准备阶段",
     }])
+    orientation_batch = db.scalars(select(OrientationBatch).where(
+        OrientationBatch.tenant_id == tenant_id,
+        OrientationBatch.batch_no == "ORI-2026-FALL",
+        OrientationBatch.is_deleted.is_(False),
+    )).one()
 
     rows = []
     for stu in roster_2026:
@@ -211,13 +216,17 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
         risk = "HIGH" if seq % 250 == 0 else ("MEDIUM" if seq % 50 == 0 else "LOW")
         rows.append({
             "tenant_id": tenant_id,
+            "batch_id": orientation_batch.id,
             "student_id": stu["id"],
+            "identity_status": "LINKED",
             "name": stu["name"],
             "admission_no": f"LQ2026{seq:06d}",
             "gender": stu["gender"],
             "college_name": stu["college_name"],
             "major_name": stu["major_name"],
-            "class_id": str(stu["class_id"]),
+            "college_id": stu["college_id"],
+            "major_id": stu["major_id"],
+            "class_id": stu["class_id"],
             "class_name": stu["class_name"],
             "grade": "2026级",
             "phone_encrypted": stu["phone_encrypted"],
@@ -238,6 +247,8 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
             "blocked_reason": blocked_reason,
             "payable_amount": 8800,
             "paid_amount": 0 if payment_status == "UNPAID" else 8800,
+            "source_type": "DOMAIN_IMPORT",
+            "source_record_id": f"LQ2026{seq:06d}",
         })
     _bulk_insert(db, OrientationStudent, rows, chunk_size=1000)
     db.flush()

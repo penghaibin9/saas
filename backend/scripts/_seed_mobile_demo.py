@@ -7,9 +7,10 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
-from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, CsLeave, CsServiceStudent,
+from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, College, CsLeave, CsServiceStudent,
                         CsWorkOrder, EmpMaterial, EmpStudent, GraduationStudent, InternshipRecord,
-                        OrientationStudent, StudentProfile, UnifiedMessage, UnifiedTodo)
+                        Major, OrientationBatch, OrientationStudent, SchoolClass, StudentProfile,
+                        UnifiedMessage, UnifiedTodo)
 
 TID = 1000000000000000001
 DEMO_NAME = "张一鸣"
@@ -29,6 +30,21 @@ def seed_mobile_demo(db, tenant_id: int = TID) -> dict:
     prof.grade = "2023"
     prof.current_stage = "INTERNSHIP"
     now = datetime.now()
+    school_class = db.get(SchoolClass, prof.class_id)
+    major = db.get(Major, prof.major_id)
+    college = db.get(College, prof.college_id)
+    if not school_class or not major or not college:
+        raise RuntimeError("移动演示迎新种子需要学生已绑定完整稳定组织")
+    orientation_batch = db.scalars(select(OrientationBatch).where(
+        OrientationBatch.tenant_id == tenant_id,
+        OrientationBatch.batch_no == "MOBILE-DEMO-ORI",
+    )).first()
+    if not orientation_batch:
+        orientation_batch = OrientationBatch(
+            tenant_id=tenant_id, batch_name="移动演示迎新批次", batch_no="MOBILE-DEMO-ORI",
+            year="2023", status="CLOSED", planned_count=1, remark="移动演示历史批次",
+        )
+        db.add(orientation_batch); db.flush()
 
     # 实习：首条实习记录本就 link 到首个学生（=现在的李晓萌），确保存在
     rec = db.scalars(select(InternshipRecord).where(InternshipRecord.tenant_id == tenant_id,
@@ -40,14 +56,19 @@ def seed_mobile_demo(db, tenant_id: int = TID) -> dict:
                                 intern_end_date=datetime(2026, 8, 28)))
 
     # 迎新
-    db.add(OrientationStudent(tenant_id=tenant_id, name=DEMO_NAME, admission_no="LQ2023100001",
-                              student_id=prof.id, class_name="软件2301班", grade="2023级",
+    db.add(OrientationStudent(tenant_id=tenant_id, batch_id=orientation_batch.id,
+                              name=DEMO_NAME, admission_no="LQ2023100001", student_id=prof.id,
+                              identity_status="LINKED",
+                              college_id=college.id, college_name=college.college_name,
+                              major_id=major.id, major_name=major.major_name,
+                              class_id=school_class.id, class_name=school_class.class_name, grade="2023级",
                               stage="ENROLLED", report_status="CHECKED_IN", payment_status="PAID",
                               material_status="APPROVED", dorm_status="CHECKED_IN", building="梧桐苑1号楼",
                               room="1-302-2", risk_level="LOW",
                               steps_json={"ACTIVATE": "DONE", "INFO": "DONE", "MATERIAL": "DONE",
                                           "PAYMENT": "DONE", "DORM": "DONE", "CHECKIN": "DONE",
-                                          "CONFIRM": "DONE"}))
+                                          "CONFIRM": "DONE"},
+                              source_type="MANUAL", source_record_id="LQ2023100001"))
     # 在校服务
     cs = CsServiceStudent(tenant_id=tenant_id, name=DEMO_NAME, student_no=DEMO_NO, class_name="软件2301班",
                           care_level="NORMAL", risk_level="LOW", counselor="李辅导")

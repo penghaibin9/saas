@@ -32,10 +32,22 @@ def _profile(db, no, name):
 
 
 def _orientation(db, name, admission_no, *, student_id=None, payment_status="UNPAID"):
-    from app.models import OrientationStudent
-    db.add(OrientationStudent(tenant_id=TID, student_id=student_id, name=name,
+    from sqlalchemy import select
+    from app.models import OrientationBatch, OrientationStudent
+    batch = db.scalars(select(OrientationBatch).where(
+        OrientationBatch.tenant_id == TID,
+        OrientationBatch.batch_no == "ORI-HOMONYM",
+    )).first()
+    if not batch:
+        batch = OrientationBatch(tenant_id=TID, batch_name="同名隔离测试批次",
+                                 batch_no="ORI-HOMONYM", year="2026", status="ACTIVE",
+                                 planned_count=2)
+        db.add(batch); db.flush()
+    db.add(OrientationStudent(tenant_id=TID, batch_id=batch.id, student_id=student_id, name=name,
+                              identity_status="LINKED",
                               admission_no=admission_no, payment_status=payment_status,
-                              report_status="NOT_REPORTED", record_status="ACTIVE"))
+                              report_status="NOT_REPORTED", record_status="ACTIVE",
+                              source_type="MANUAL", source_record_id=admission_no))
 
 
 def test_fk_linked_record_not_leaked_to_homonym(client, db_mode):

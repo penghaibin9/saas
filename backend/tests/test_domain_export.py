@@ -9,7 +9,7 @@ MAIN_TID = 1000000000000000001
 
 def _seed_intern(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import InternshipBatch, InternshipRecord
+    from app.models import InternshipBatch, InternshipRecord, OrientationBatch
     db = get_sessionmaker()()
     try:
         batch = InternshipBatch(
@@ -35,8 +35,18 @@ def _seed_intern(db_mode):
             intern_start_date=datetime(2026, 3, 2),
         )
         db.add(r)
+        orientation_batch = OrientationBatch(
+            tenant_id=MAIN_TID,
+            batch_name=f"通用导出迎新批次-{uuid4().hex[:6]}",
+            batch_no=f"ORI-EXP-{uuid4().hex[:8]}",
+            year="2026",
+            status="ACTIVE",
+            planned_count=0,
+        )
+        db.add(orientation_batch)
         db.commit()
-        return {"recordId": r.id, "batchId": batch.id}
+        return {"recordId": r.id, "batchId": batch.id,
+                "orientationBatchId": orientation_batch.id}
     finally:
         db.close()
 
@@ -92,6 +102,8 @@ def test_export_all_six_domains(client, auth_headers, db_mode, monkeypatch):
         body = {"purpose": f"{d} 台账合规导出"}
         if d == "internship":
             body["batchId"] = str(seeded["batchId"])
+        if d == "orientation":
+            body["batchId"] = str(seeded["orientationBatchId"])
         r = client.post(f"/api/v1/export/domain/{d}", headers=auth_headers, json=body).json()
         assert r["code"] == 0 and r["data"]["status"] == "SUCCESS", (d, r)
 

@@ -14,18 +14,29 @@ class OrientationStudent(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_orientation_student"
     __table_args__ = (
         UniqueConstraint("tenant_id", "admission_no", name="uk_ori_admission_no"),
+        UniqueConstraint("tenant_id", "batch_id", "source_type", "source_record_id",
+                         name="uk_ori_batch_source_record"),
         Index("ix_ori_student_tenant_profile_active", "tenant_id", "student_id", "is_deleted"),
+        Index("ix_ori_student_batch_active", "tenant_id", "batch_id", "is_deleted"),
+        Index("ix_ori_student_org_active", "tenant_id", "college_id", "major_id", "class_id", "is_deleted"),
     )
 
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False,
+                                          comment="迎新批次 Authority → t_orientation_batch.id")
     student_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="关联 t_student_profile.id（可空）")
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     admission_no: Mapped[str] = mapped_column(String(50), nullable=False, comment="录取编号")
     gender: Mapped[str | None] = mapped_column(String(10))
     college_name: Mapped[str | None] = mapped_column(String(100))
     major_name: Mapped[str | None] = mapped_column(String(100))
-    class_id: Mapped[str | None] = mapped_column(String(50))
+    college_id: Mapped[int | None] = mapped_column(BigInteger, comment="稳定学院 ID → t_college.id")
+    major_id: Mapped[int | None] = mapped_column(BigInteger, comment="稳定专业 ID → t_major.id")
+    class_id: Mapped[int | None] = mapped_column(BigInteger, comment="稳定班级 ID → t_class.id")
+    class_ref_legacy: Mapped[str | None] = mapped_column(String(50),
+                                                        comment="O1 前字符串班级引用，只读兼容快照")
     class_name: Mapped[str | None] = mapped_column(String(100))
     grade: Mapped[str | None] = mapped_column(String(20))
+    admission_type: Mapped[str | None] = mapped_column(String(50), comment="录取类型")
     phone_encrypted: Mapped[str | None] = mapped_column(String(500), comment="手机号（演示占位明文，响应脱敏）")
     id_card_encrypted: Mapped[str | None] = mapped_column(String(500), comment="身份证（脱敏）")
     origin: Mapped[str | None] = mapped_column(String(100), comment="生源地")
@@ -48,6 +59,26 @@ class OrientationStudent(PKMixin, TenantMixin, CommonMixin, Base):
     paid_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), default=0)
     checkin_time: Mapped[datetime | None] = mapped_column(DateTime)
     exception_note: Mapped[str | None] = mapped_column(String(500))
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False,
+                                             comment="MANUAL/DOMAIN_IMPORT/LEGACY_BACKFILL")
+    source_record_id: Mapped[str] = mapped_column(String(200), nullable=False,
+                                                  comment="批次内来源业务键")
+    identity_status: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="UNLINKED",
+        comment="UNLINKED/LINKED；是否已绑定 StudentProfile",
+    )
+
+
+class OrientationO1BackfillIssue(Base):
+    """O1 无法自动判定的旧班级引用；只读迁移对账清单。"""
+    __tablename__ = "t_orientation_o1_backfill_issue"
+
+    orientation_student_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    issue_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    legacy_class_ref: Mapped[str | None] = mapped_column(String(50))
+    detail: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class GreenChannelApplication(PKMixin, TenantMixin, CommonMixin, Base):
