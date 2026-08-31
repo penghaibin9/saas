@@ -84,7 +84,14 @@
         <AppTextInput v-model="assignCounselor" placeholder="请输入辅导员姓名" />
       </AppConfirmDialog>
 
-      <ImportDialog v-model:visible="importVisible" :template="importTemplate" :validate-fn="validateImportFn" :import-fn="confirmImportFn" @imported="load" />
+      <ImportDialog
+        v-model:visible="importVisible"
+        :template="importTemplate"
+        :download-template-fn="downloadImportTemplateFn"
+        :validate-fn="validateImportFn"
+        :import-fn="confirmImportFn"
+        @imported="load"
+      />
       <ExportDialog
         v-model:visible="exportVisible"
         title="导出报到台账"
@@ -412,8 +419,11 @@ export default {
         this.submitting = false
       }
     },
-    validateImportFn(fileName) {
-      return api.validateImport('studentList', fileName)
+    downloadImportTemplateFn() {
+      return api.downloadImportTemplate('studentList')
+    },
+    validateImportFn(file) {
+      return api.validateImport('studentList', file)
     },
     confirmImportFn(payload) {
       return api.confirmImport('studentList', payload)

@@ -93,6 +93,10 @@ def _call_list(path, *, domain: str, user: dict, batch_id=None):
                 batch_id=batch_id,
                 user=user,
             )
+        elif domain == "orientation":
+            # 迎新导出与教师 PC 列表共用同一学工 dataScope，禁止通用导出绕过
+            # 班级/学生范围直接扫描全租户新生台账。
+            items, total = fn(1, MAX_EXPORT_ROWS, user=user)
         else:
             items, total = fn(1, MAX_EXPORT_ROWS)
     if total > MAX_EXPORT_ROWS:

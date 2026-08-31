@@ -78,7 +78,7 @@
  * EditDrawer — 通用新增/编辑抽屉（模块局部组件）。
  * Props:
  *  - fields: [{ key, label, type: 'text'|'select'|'date'|'number'|'textarea'|'region', options?, required?, placeholder?, disabled? }]
- *    字段定义来自 mock/api（fieldColumns / statusOptions），不在组件内写死业务字段。
+ *    字段定义来自模块展示配置（fieldColumns / statusOptions），不在组件内写死业务字段。
  *    type='region' 渲染省市区县选择器，值为区划文本；可用 regionLevel:'city' 只到市。
  *  - model: 编辑时传入原记录（null = 新增）
  * Emits: submit(formData)

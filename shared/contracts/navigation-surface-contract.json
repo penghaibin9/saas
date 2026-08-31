@@ -5,7 +5,7 @@
     "frontend/src/config/navPlan.js#NAV_PLAN",
     "frontend/src/config/navPlan.js#PLATFORM_PLAN"
   ],
-  "digest": "17b5987e3ffbedc0234d900ac735720782575a23bd553465e6a9f9e346e6682a",
+  "digest": "545f5a34c224e8b76f4139ec5e7bf11946cff7c2862a0431bf884ef80f2b5ac3",
   "counts": {
     "total": 571,
     "production": 570,
@@ -761,11 +761,11 @@
       "surfaceKey": "sa-orientation-01",
       "label": "迎新看板",
       "path": "/admin/orientation",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -782,11 +782,11 @@
       "surfaceKey": "sa-orientation-02",
       "label": "迎新批次",
       "path": "/admin/orientation/batches",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -803,11 +803,11 @@
       "surfaceKey": "sa-orientation-03",
       "label": "新生数据",
       "path": "/admin/orientation/data",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -824,11 +824,11 @@
       "surfaceKey": "sa-orientation-04",
       "label": "新生信息核验",
       "path": "/admin/orientation/verify",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -845,11 +845,11 @@
       "surfaceKey": "sa-orientation-05",
       "label": "报到资格",
       "path": "/admin/orientation/qualification",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -866,11 +866,11 @@
       "surfaceKey": "sa-orientation-06",
       "label": "报到流程配置",
       "path": "/admin/orientation/flow-config",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -887,11 +887,11 @@
       "surfaceKey": "sa-orientation-07",
       "label": "新生报到",
       "path": "/admin/orientation/students",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -908,11 +908,11 @@
       "surfaceKey": "sa-orientation-08",
       "label": "报到进度",
       "path": "/admin/orientation/progress",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -929,11 +929,11 @@
       "surfaceKey": "sa-orientation-09",
       "label": "缴费状态",
       "path": "/admin/orientation/payment",
-      "permissionKey": "orientation.payment.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.payment.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -950,11 +950,11 @@
       "surfaceKey": "sa-orientation-10",
       "label": "绿色通道",
       "path": "/admin/orientation/green-channels",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -971,11 +971,11 @@
       "surfaceKey": "sa-orientation-11",
       "label": "材料审核",
       "path": "/admin/orientation/materials",
-      "permissionKey": "orientation.material.review",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.material.review"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -992,11 +992,11 @@
       "surfaceKey": "sa-orientation-12",
       "label": "宿舍预分配",
       "path": "/admin/orientation/dorm-preassign",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1013,11 +1013,11 @@
       "surfaceKey": "sa-orientation-13",
       "label": "宿舍入住",
       "path": "/admin/orientation/dorm",
-      "permissionKey": "orientation.dorm.confirm",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.dorm.confirm"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1034,11 +1034,11 @@
       "surfaceKey": "sa-orientation-14",
       "label": "现场报到点",
       "path": "/admin/orientation/checkin-points",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1055,11 +1055,11 @@
       "surfaceKey": "sa-orientation-15",
       "label": "异常学生",
       "path": "/admin/orientation/exceptions",
-      "permissionKey": "orientation.exception.handle",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.exception.handle"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1076,11 +1076,11 @@
       "surfaceKey": "sa-orientation-16",
       "label": "未报到学生",
       "path": "/admin/orientation/no-show",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1097,11 +1097,11 @@
       "surfaceKey": "sa-orientation-17",
       "label": "迎新通知",
       "path": "/admin/orientation/notices",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1118,11 +1118,11 @@
       "surfaceKey": "sa-orientation-18",
       "label": "迎新统计",
       "path": "/admin/orientation/statistics",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1139,11 +1139,11 @@
       "surfaceKey": "sa-orientation-19",
       "label": "迎新归档",
       "path": "/admin/orientation/archive",
-      "permissionKey": "orientation.student.view",
+      "permissionKey": "studentAffairs.orientation.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "orientation.student.view"
+        "studentAffairs.orientation.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
