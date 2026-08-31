@@ -151,6 +151,7 @@
     "orientation.import",
     "studentAffairs.export",
     "studentAffairs.orientation.export",
+    "studentAffairs.orientation.import",
     "studentAffairs.orientation.manage",
     "studentAffairs.orientation.view",
     "academicAffairs.calendarArchive.manage",

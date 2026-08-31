@@ -768,6 +768,42 @@ export const STUDENT_AFFAIRS_PERMISSION_CATALOG = [
     "deprecatedAliases": []
   },
   {
+    "permissionCode": "studentAffairs.orientation.export",
+    "label": "orientation·导出",
+    "domain": "orientation",
+    "riskLevel": "HIGH",
+    "allowedScopes": [
+      "TENANT_ALL",
+      "COLLEGE",
+      "CLASS"
+    ],
+    "deprecatedAliases": []
+  },
+  {
+    "permissionCode": "studentAffairs.orientation.import",
+    "label": "orientation·import",
+    "domain": "orientation",
+    "riskLevel": "MEDIUM",
+    "allowedScopes": [
+      "TENANT_ALL",
+      "COLLEGE",
+      "CLASS"
+    ],
+    "deprecatedAliases": []
+  },
+  {
+    "permissionCode": "studentAffairs.orientation.manage",
+    "label": "orientation·维护",
+    "domain": "orientation",
+    "riskLevel": "MEDIUM",
+    "allowedScopes": [
+      "TENANT_ALL",
+      "COLLEGE",
+      "CLASS"
+    ],
+    "deprecatedAliases": []
+  },
+  {
     "permissionCode": "studentAffairs.orientation.view",
     "label": "orientation·查看",
     "domain": "orientation",

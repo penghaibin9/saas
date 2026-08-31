@@ -32,7 +32,7 @@ def students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200)
              riskLevel: Optional[str] = None, user=Depends(require_staff)):
     items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId, stage=stage,
                                      report_status=reportStatus, payment_status=paymentStatus,
-                                     risk_level=riskLevel)
+                                     risk_level=riskLevel, user=user)
     return success(paginate(items, total, page, pageSize))
 
 

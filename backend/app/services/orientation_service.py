@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import false, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -11,7 +11,7 @@ from app.core.tenant_scoped import tenant_get
 from app.models import (GreenChannelApplication, OrientationArchive, OrientationAuditTrail,
                         OrientationBatch, OrientationCheckinPoint, OrientationException,
                         OrientationExceptionFollowup, OrientationFlowConfig, OrientationMaterial,
-                        OrientationNoticeTask, OrientationStudent)
+                        OrientationNoticeTask, OrientationStudent, StudentProfile)
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
 from app.services.db_service import _iso, _tid, session
 
@@ -133,11 +133,31 @@ def _page(items, page, page_size):
 # ═══ 学生台账 ═══
 
 def list_students(page, page_size, keyword=None, class_id=None, stage=None, report_status=None,
-                  payment_status=None, risk_level=None):
+                  payment_status=None, risk_level=None, user=None):
     with session() as db:
         q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
                                              OrientationStudent.is_deleted.is_(False),
                                              OrientationStudent.record_status == "ACTIVE")
+        # 迎新台账只有已绑定 StudentProfile 的记录才可证明属于班级/学生范围。
+        # 未绑定记录对范围角色 fail-closed；TENANT_ALL 才能查看。这一裁决同时被
+        # 通用导出复用，避免列表收敛而导出泄露全校数据。
+        from app.core.affairs_security import student_directory_scope
+        class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(
+                OrientationStudent.student_id.in_(student_ids)
+                if student_ids else false()
+            )
+        elif class_ids is not None:
+            if not class_ids:
+                q = q.where(false())
+            else:
+                scoped_profiles = select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(),
+                    StudentProfile.is_deleted.is_(False),
+                    StudentProfile.class_id.in_(class_ids),
+                )
+                q = q.where(OrientationStudent.student_id.in_(scoped_profiles))
         if stage:
             q = q.where(OrientationStudent.stage == stage)
         if report_status:

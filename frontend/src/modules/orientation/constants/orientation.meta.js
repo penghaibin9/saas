@@ -1,5 +1,5 @@
 ﻿/**
- * 数字迎新中心 — 前端展示层元数据（角色/字典/列配置，非业务 mock 数据）。
+ * 数字迎新中心 — 前端展示层元数据（字典/列配置，非业务权限或业务数据）。
  * 业务数据一律走真实后端 /api/v1/orientation/*。
  */
 
@@ -7,123 +7,6 @@ export const nowText = () => {
   const d = new Date()
   const p = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
-
-/* ---------------- 租户品牌 ---------------- */
-export const tenantBrandConfig = {
-  tenantId: 'tenant-demo-001',
-  schoolName: '演示职业技术学院',
-  platformDisplayName: '高校学生全生命周期管理平台',
-  schoolLogo: '/assets/tenant/demo-logo.svg',
-  schoolBadge: '/assets/tenant/demo-badge.svg',
-  tenantBrandColor: '#2563EB',
-  watermarkText: '演示职业技术学院 · 数字迎新中心'
-}
-
-/* ---------------- 角色与数据范围 ---------------- */
-export const roles = [
-  { roleId: 'COUNSELOR', roleName: '辅导员', dataScope: { code: 'CLASS', name: '软件2601班 / 软件2602班' } },
-  { roleId: 'ORI_TEACHER', roleName: '学院迎新老师', dataScope: { code: 'COLLEGE', name: '信息工程学院' } },
-  { roleId: 'FINANCE_TEACHER', roleName: '财务老师', dataScope: { code: 'SCHOOL', name: '全校（缴费与绿色通道）' } },
-  { roleId: 'DORM_TEACHER', roleName: '宿管老师', dataScope: { code: 'POINT', name: '梧桐苑 1-3 号楼' } },
-  { roleId: 'COLLEGE_ADMIN', roleName: '学院管理员', dataScope: { code: 'COLLEGE', name: '信息工程学院' } }
-]
-
-export const state = { currentRoleId: 'ORI_TEACHER' }
-
-/* ---------------- 权限动作 ---------------- */
-const FULL = {
-  'orientation.student.create': true,
-  'orientation.student.view': true,
-  'orientation.student.edit': true,
-  'orientation.student.void': true,
-  'orientation.student.import': true,
-  'orientation.student.export': true,
-  'orientation.student.batchRemind': true,
-  'orientation.student.batchAssign': true,
-  'orientation.progress.edit': true,
-  'orientation.progress.export': true,
-  'orientation.progress.manualResolve': true,
-  'orientation.payment.view': true,
-  'orientation.payment.export': true,
-  'orientation.greenchannel.review': true,
-  'orientation.material.review': true,
-  'orientation.material.export': true,
-  'orientation.dorm.edit': true,
-  'orientation.dorm.confirm': true,
-  'orientation.dorm.export': true,
-  'orientation.dorm.markException': true,
-  'orientation.exception.handle': true,
-  'orientation.exception.escalate': true,
-  'orientation.exception.export': true,
-  'orientation.followup.create': true,
-  'orientation.followup.edit': true,
-  'orientation.audit.view': true,
-  'orientation.columns.setting': true
-}
-
-export const permissionActionsByRole = {
-  COUNSELOR: {
-    actions: {
-      ...FULL,
-      'orientation.student.import': false,
-      'orientation.student.batchAssign': false,
-      'orientation.greenchannel.review': false,
-      'orientation.dorm.edit': false,
-      'orientation.dorm.confirm': false,
-      'orientation.dorm.markException': false
-    },
-    hidden: [],
-    disabledReason: '辅导员仅可维护本班新生的报到与跟进信息'
-  },
-  ORI_TEACHER: { actions: FULL, disabledReason: '' },
-  FINANCE_TEACHER: {
-    actions: {
-      ...FULL,
-      'orientation.student.create': false,
-      'orientation.student.edit': false,
-      'orientation.student.void': false,
-      'orientation.student.import': false,
-      'orientation.student.batchAssign': false,
-      'orientation.progress.edit': false,
-      'orientation.progress.manualResolve': false,
-      'orientation.material.review': false,
-      'orientation.dorm.edit': false,
-      'orientation.dorm.confirm': false,
-      'orientation.dorm.markException': false,
-      'orientation.exception.handle': false,
-      'orientation.exception.escalate': false,
-      'orientation.followup.create': false,
-      'orientation.followup.edit': false
-    },
-    hidden: ['orientation.student.import', 'orientation.dorm.export'],
-    disabledReason: '财务老师仅负责缴费状态与绿色通道审核'
-  },
-  DORM_TEACHER: {
-    actions: {
-      ...FULL,
-      'orientation.student.create': false,
-      'orientation.student.edit': false,
-      'orientation.student.void': false,
-      'orientation.student.import': false,
-      'orientation.student.export': false,
-      'orientation.student.batchRemind': false,
-      'orientation.student.batchAssign': false,
-      'orientation.progress.edit': false,
-      'orientation.progress.export': false,
-      'orientation.progress.manualResolve': false,
-      'orientation.payment.export': false,
-      'orientation.greenchannel.review': false,
-      'orientation.material.review': false,
-      'orientation.material.export': false,
-      'orientation.exception.escalate': false,
-      'orientation.followup.create': false,
-      'orientation.followup.edit': false
-    },
-    hidden: ['orientation.student.import', 'orientation.student.export', 'orientation.payment.export', 'orientation.material.export'],
-    disabledReason: '宿管老师仅负责宿舍入住确认与异常标记'
-  },
-  COLLEGE_ADMIN: { actions: FULL, disabledReason: '' }
 }
 
 /* ---------------- 字典 ---------------- */
@@ -212,35 +95,6 @@ export const statusOptions = {
   ]
 }
 
-export const filterOptions = {
-  colleges: [
-    { value: 'C01', label: '信息工程学院' },
-    { value: 'C02', label: '智能制造学院' }
-  ],
-  classes: [
-    { value: 'NCL01', label: '软件2601班' },
-    { value: 'NCL02', label: '软件2602班' },
-    { value: 'NCL03', label: '大数据2601班' },
-    { value: 'NCL04', label: '机电2601班' }
-  ],
-  buildings: [
-    { value: 'B01', label: '梧桐苑 1 号楼' },
-    { value: 'B02', label: '梧桐苑 2 号楼' },
-    { value: 'B03', label: '梧桐苑 3 号楼' }
-  ]
-}
-
-/* ---------------- 报到环节定义 ---------------- */
-export const registrationSteps = [
-  { key: 'ACTIVATE', label: '账号激活' },
-  { key: 'INFO', label: '信息核对' },
-  { key: 'MATERIAL', label: '材料上传' },
-  { key: 'PAYMENT', label: '缴费/绿色通道' },
-  { key: 'DORM', label: '宿舍确认' },
-  { key: 'CHECKIN', label: '现场报到' },
-  { key: 'CONFIRM', label: '学院确认' }
-]
-
 /* ---------------- 列设置 ---------------- */
 export const fieldColumns = {
   studentList: [
@@ -323,8 +177,7 @@ export const fieldColumns = {
 export const batchActions = {
   studentList: [
     { key: 'batchRemind', label: '批量提醒', permission: 'orientation.student.batchRemind' },
-    { key: 'batchAssign', label: '批量分配辅导员', permission: 'orientation.student.batchAssign' },
-    { key: 'batchExport', label: '导出选中', permission: 'orientation.student.export' }
+    { key: 'batchAssign', label: '批量分配辅导员', permission: 'orientation.student.batchAssign' }
   ],
   progressList: [{ key: 'batchRemind', label: '批量提醒未完成学生', permission: 'orientation.student.batchRemind' }],
   materialList: [
@@ -346,10 +199,8 @@ export const importTemplates = {
     fileName: '新生导入模板.xlsx',
     fields: [
       { key: 'admissionNo', label: '录取编号', required: true, example: 'LQ2026010001' },
-      { key: 'name', label: '姓名', required: true, example: '李明' },
-      { key: 'idCard', label: '身份证号', required: true, example: '330102200801011234' },
-      { key: 'majorName', label: '录取专业', required: true, example: '软件技术' },
-      { key: 'phone', label: '联系电话', required: false, example: '13800001111' }
+      { key: 'name', label: '姓名', required: true, example: '示例姓名' },
+      { key: 'className', label: '班级', required: false, example: '示例班级' }
     ]
   }
 }
@@ -357,29 +208,15 @@ export const importTemplates = {
 /* ---------------- 导出配置 ---------------- */
 export const exportOptions = {
   scopes: [
-    { value: 'FILTERED', label: '当前筛选结果' },
-    { value: 'SELECTED', label: '仅选中记录' },
-    { value: 'SCOPE_ALL', label: '数据范围内全部' }
+    { value: 'SCOPE_ALL', label: '当前账号数据范围内全部迎新台账' }
   ],
   fieldGroups: {
     studentList: [
-      { key: 'base', label: '基础信息', fields: ['姓名', '录取编号', '班级', '学生阶段'] },
-      { key: 'report', label: '报到信息', fields: ['报到状态', '缴费状态', '材料状态', '宿舍状态'] },
-      { key: 'sensitive', label: '敏感信息（默认脱敏）', sensitive: true, fields: ['手机号', '身份证号（仅脱敏）'] }
-    ],
-    progressList: [{ key: 'base', label: '进度报表', fields: ['姓名', '班级', '各环节完成情况', '当前卡点', '卡点说明'] }],
-    paymentList: [
-      { key: 'base', label: '缴费信息', fields: ['姓名', '班级', '应缴金额', '已缴金额', '缴费状态', '绿色通道状态'] }
-    ],
-    materialList: [{ key: 'base', label: '审核记录', fields: ['姓名', '材料类型', '提交时间', '审核状态', '审核人', '审核意见'] }],
-    dormList: [
-      { key: 'base', label: '住宿名单', fields: ['姓名', '班级', '楼栋', '房间/床位', '入住状态', '入住时间'] },
-      { key: 'sensitive', label: '敏感信息（默认脱敏）', sensitive: true, fields: ['手机号'] }
-    ],
-    exceptionList: [{ key: 'base', label: '异常名单', fields: ['姓名', '班级', '异常类型', '异常描述', '风险等级', '处理状态'] }]
+      { key: 'ledger', label: '迎新综合台账', fields: ['姓名', '录取编号', '班级', '报到状态', '缴费状态', '宿舍状态', '风险'] }
+    ]
   },
   maskDefault: true,
   idCardPlainForbidden: true,
-  watermarkNote: '导出文件将自动嵌入水印（学校名 · 操作人 · 时间 · 用途），并写入审计日志。',
+  watermarkNote: '服务端固定按当前账号数据范围导出，并写入学校名、操作人、时间和用途水印。',
   auditNotice: '本次导出行为将被完整记录并可追溯，请确认导出用途合规。'
 }

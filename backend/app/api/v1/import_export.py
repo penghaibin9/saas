@@ -102,6 +102,70 @@ def _limit_operation(user: dict, operation: str, *, user_limit: int, tenant_limi
         raise AppException("RATE_LIMITED", f"操作过于频繁（每分钟最多 {user_limit} 次），请稍后再试")
 
 
+_DOMAIN_IMPORT_TEMPLATES = {
+    "orientation": {
+        "headers": ["姓名", "录取编号", "班级"],
+        "required": ["姓名", "录取编号"],
+        "sample": ["示例姓名", "LQ2026000001", "示例班级"],
+        "notes": [
+            "姓名、录取编号必填；录取编号在本校迎新台账及当前文件内必须唯一。",
+            "请勿修改字段名；只读取“导入模板”工作表，单次最多 5000 行。",
+            "预检有任一错误时整批不得确认，请修正文件后重新上传。",
+        ],
+        "header_map": {"姓名": "name", "录取编号": "admissionNo", "班级": "className"},
+        "filename": "迎新新生录取名单导入模板.xlsx",
+    },
+}
+
+
+def _domain_import_template(domain: str, user: dict) -> tuple[object, dict]:
+    auth = enforce_import_perm(user, domain)
+    template = _DOMAIN_IMPORT_TEMPLATES.get(auth.domain)
+    if not template:
+        raise AppException("VALIDATION_ERROR", f"域 {domain} 暂未配置文件导入模板")
+    return auth, template
+
+
+@import_router.get("/domain/{domain}/template", summary="下载域导入模板（真实 xlsx）")
+def import_domain_template(domain: str, user=Depends(require_staff)):
+    from app.services import xlsx_util
+
+    auth, template = _domain_import_template(domain, user)
+    content = xlsx_util.build_template_xlsx(
+        template["headers"],
+        sample=template["sample"],
+        notes=template["notes"],
+        required=template["required"],
+    )
+    audit_log.record("IMPORT_TEMPLATE", f"{auth.domain}-template")
+    return success(xlsx_util.pack_xlsx_result(content, template["filename"], 0))
+
+
+@import_router.post("/domain/{domain}/validate-file", summary="上传 xlsx 并执行域导入 Dry-Run")
+async def import_domain_validate_file(
+    domain: str,
+    file: UploadFile = File(...),
+    user=Depends(require_staff),
+):
+    from app.services import domain_import_service, xlsx_util
+
+    auth, template = _domain_import_template(domain, user)
+    content = await xlsx_util.read_safe_upload(file)
+    rows = xlsx_util.read_xlsx(content, template["header_map"])
+    result = domain_import_service.dry_run(
+        auth.domain,
+        rows,
+        namespace=auth.import_namespace,
+        user=user,
+    )
+    audit_log.record(
+        "IMPORT",
+        f"{auth.domain}-file-dry-run",
+        detail={"batchNo": result["batchNo"], "errors": result["errorRows"]},
+    )
+    return success(result, message="校验完成")
+
+
 @import_router.post("/domain/{domain}/validate", summary="域白名单通用导入 Dry-Run 校验")
 def import_domain_validate(domain: str, body: dict = Body(...), user=Depends(require_staff)):
     from app.services import domain_import_service
