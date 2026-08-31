@@ -152,7 +152,7 @@ export function setToken(t) {
 export function getRefreshToken() {
   return ''
 }
-export function setRefreshToken(_t) {}
+export function setRefreshToken() {}
 export function clearSession() {
   _advanceSession('')
   for (const key of [TOKEN_KEY, REFRESH_KEY, INTERNSHIP_BATCH_KEY, GD_TEMP_FILES_KEY]) {

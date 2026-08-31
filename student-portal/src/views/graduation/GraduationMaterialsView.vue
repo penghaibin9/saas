@@ -63,8 +63,6 @@ import { useUiStore } from '../../stores/ui'
 const ui = useUiStore()
 const loading = ref(true); const busy = ref(false); const error = ref(''); const library = ref(null); const manifest = ref(null)
 const pending = reactive({}); const readerFile = ref(null); const readerVersions = ref([])
-const LARGE_CODES = new Set(['THESIS_DRAFT', 'THESIS_FINAL', 'DESIGN_WORK', 'SOURCE_CODE', 'WORK_DESCRIPTION'])
-
 async function load() { loading.value = true; error.value = ''; try { library.value = await portalApi.graduationMaterialLibrary() } catch (e) { error.value = e?.message || '材料库加载失败' } finally { loading.value = false } }
 function count(status) { return (library.value?.items || []).filter(item => item.businessStatus === status).length }
 function reviewCount(status) { return (library.value?.items || []).filter(item => item.reviewStatus === status).length }
