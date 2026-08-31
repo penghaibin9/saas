@@ -613,7 +613,14 @@ def rollback(user: dict, project_id: int, batch_no: str, body: dict) -> dict:
                     if old: old.status = "ACTIVE"; old.ended_at = None
                 _recount_mentor(db, tenant_id, before.get("mentor_id")); _recount_mentor(db, tenant_id, after.get("mentor_id"))
             if after.get("scope_created") and after.get("scope_id"):
-                scope = db.get(TeacherStudentScope, int(after["scope_id"]))
+                from app.core.tenant_scoped import tenant_get
+
+                scope = tenant_get(
+                    db,
+                    TeacherStudentScope,
+                    int(after["scope_id"]),
+                    tenant_id=tenant_id,
+                )
                 if scope and not scope.is_deleted:
                     scope.is_deleted = True; scope.status = "DISABLED"; scope.version += 1; scope.updated_by = actor
             target.version += 1; target.updated_by = actor

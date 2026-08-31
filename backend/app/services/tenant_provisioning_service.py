@@ -19,6 +19,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException
+from app.core.tenant_scoped import tenant_get
 from app.db.session import get_sessionmaker
 from app.models.tenant_provisioning import ProvisioningJob, ProvisioningStepRun
 
@@ -57,7 +58,9 @@ def _job_dto(job: ProvisioningJob, steps: list[ProvisioningStepRun]) -> dict:
 
 
 def _load_job(db, job_id: int) -> tuple[ProvisioningJob, list[ProvisioningStepRun]]:
-    job = db.get(ProvisioningJob, int(job_id))
+    # Provisioning jobs are owned by the platform control plane and must remain
+    # recoverable before a tenant request context exists.
+    job = tenant_get(db, ProvisioningJob, int(job_id), allow_cross_tenant=True)
     if not job or job.is_deleted:
         raise AppException("DATA_NOT_FOUND", "开通任务不存在", http_status=404)
     steps = db.scalars(select(ProvisioningStepRun).where(
@@ -505,7 +508,8 @@ def manual_review_queue() -> list[dict]:
             ProvisioningStepRun.is_deleted.is_(False))).all()
         out = []
         for step in rows:
-            job = db.get(ProvisioningJob, step.job_id)
+            # The platform review queue intentionally spans tenant jobs.
+            job = tenant_get(db, ProvisioningJob, step.job_id, allow_cross_tenant=True)
             out.append({"jobId": str(step.job_id), "tenantCode": job.tenant_code if job else None,
                        "stepCode": step.step_code, "error": step.error_message,
                        "attemptCount": step.attempt_count})
