@@ -53,6 +53,7 @@ def _orientation(db, name, admission_no, *, student_id=None, payment_status="UNP
                              source_type="MANUAL", source_record_id=admission_no)
     db.add(row); db.flush()
     ensure_student_steps(db, row, status_source="PROCESS_FACT")
+    return row
 
 
 def test_fk_linked_record_not_leaked_to_homonym(client, db_mode):
@@ -91,7 +92,15 @@ def test_own_fk_linked_record_still_visible(client, db_mode):
     from app.db.session import get_sessionmaker
     db = get_sessionmaker()()
     c_id = _profile(db, "HM-C", "李独名")
-    _orientation(db, "李独名", "ADM-C", student_id=c_id, payment_status="PAID")
+    orientation = _orientation(db, "李独名", "ADM-C", student_id=c_id, payment_status="PAID")
+    from datetime import datetime
+    from app.models import OrientationPaymentAccount
+    db.add(OrientationPaymentAccount(
+        tenant_id=TID, orientation_student_id=orientation.id, student_id=c_id,
+        payable_amount=100, paid_amount=100, status="PAID",
+        source_type="LEGACY_BACKFILL", source_biz_id=f"homonym:{orientation.id}",
+        synced_at=datetime.utcnow(),
+    ))
     db.commit(); db.close()
 
     r = client.get("/api/v1/mobile/orientation/my", headers=_stu_token("李独名", "HM-C")).json()

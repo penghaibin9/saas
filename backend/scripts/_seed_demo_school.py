@@ -37,7 +37,15 @@ def seed_demo_school(db) -> dict:
         SchoolClass.tenant_id == TID2, SchoolClass.is_deleted.is_(False),
     ).order_by(SchoolClass.id)).first()
     if not school_class:
-        raise RuntimeError("演示学校迎新种子需要先维护稳定班级 Authority")
+        # Core and focused test seeders may invoke this module before the broader
+        # two-tenant demo seed. Bootstrap only tenant/org authority, not domain data.
+        from _seed_two_tenants import ensure_demo_tenant_org
+        ensure_demo_tenant_org(db)
+        school_class = db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == TID2, SchoolClass.is_deleted.is_(False),
+        ).order_by(SchoolClass.id)).first()
+    if not school_class:
+        raise RuntimeError("演示学校迎新种子无法建立稳定班级 Authority")
     major = db.get(Major, school_class.major_id)
     college = db.get(College, major.college_id) if major else None
     if not major or not college:

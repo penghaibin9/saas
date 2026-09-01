@@ -590,7 +590,7 @@ class OrientationStudentStep(PKMixin, TenantMixin, CommonMixin, Base):
         ),
         CheckConstraint(
             "status <> 'WAIVED' OR (waived_at IS NOT NULL AND waived_by IS NOT NULL "
-            "AND waive_evidence_ref IS NOT NULL AND CHAR_LENGTH(TRIM(waive_reason)) >= 5)",
+            "AND waive_evidence_ref IS NOT NULL AND LENGTH(TRIM(waive_reason)) >= 5)",
             name="ck_ori_student_step_waiver_evidence",
         ),
         Index(

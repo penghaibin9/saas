@@ -18,6 +18,7 @@ from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
 from app.services.db_service import _iso, _tid, session
 from app.services.orientation_flow_service import (ensure_published_flow_version,
                                                     ensure_student_steps,
+                                                    initialize_batch_student_steps,
                                                     set_student_step_status,
                                                     student_flow_steps,
                                                     student_step_projection)
@@ -1452,11 +1453,15 @@ def assign_batch_student_numbers(bid, body: dict) -> dict:
             "assignedCount": 0 if dry_run else len(rows),
             "sample": numbers[:5], "dryRun": dry_run,
         }
-        if dry_run or not rows:
+        if dry_run:
             return result
         for row, number in zip(rows, numbers):
             row.student_no = number
             row.version = int(row.version or 0) + 1
+        # Bulk roster readiness is one operation: every candidate in the batch must
+        # receive the frozen canonical step rows, including candidates that already
+        # had a student number before this assignment.
+        initialize_batch_student_steps(db, batch.id, status_source="PROCESS_FACT")
         _audit(
             db, "BATCH", batch.id, "批量自动编制新生学号",
             f"count={len(rows)}; prefix={prefix}; start={start}; width={width}",

@@ -2085,6 +2085,7 @@ def orientation_dashboard(user: dict) -> dict:
 
 def orientation_today_checkins(user: dict) -> dict:
     """今日签名凭证确认记录；旧 checkin_time 投影不再作为列表 Authority。"""
+    _require_teacher(user)
     from app.services.orientation_checkin_service import today_records
     return today_records(user)
 

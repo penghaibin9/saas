@@ -60,9 +60,9 @@ def _count(db, model, tid: int) -> int:
 
 # ═══════════════ demo-school 正式演示租户 ═══════════════
 
-def seed_demo_tenant(db) -> dict:
-    out = {}
-    # 租户存在 + 名称对齐（唯一的 upsert：只改演示租户展示名）
+
+def ensure_demo_tenant_org(db) -> list[SchoolClass]:
+    """Create only the stable demo tenant and organization authority, idempotently."""
     t = db.get(Tenant, DEMO_TID)
     if t is None:
         db.add(Tenant(id=DEMO_TID, tenant_code=DEMO_CODE, school_name=DEMO_NAME,
@@ -73,14 +73,7 @@ def seed_demo_tenant(db) -> dict:
                                  watermark_text="演示职校内部系统"))
     elif (t.school_name or "") != DEMO_NAME:
         t.school_name = DEMO_NAME
-
-    # 账号（弱密码仅演示租户；hash 落库）
-    _add_user(db, DEMO_TID, "admin", "陈管理", "ADMIN")
-    _add_user(db, DEMO_TID, "teacher", DEMO_TEACHER_NAME, "TEACHER")
-    _add_user(db, DEMO_TID, "student", DEMO_STUDENT_NAME, "STUDENT")
-    out["accounts"] = "admin/teacher/student"
-
-    # 组织：2 学院 / 3 专业 / 3 班级
+    db.flush()
     if _count(db, College, DEMO_TID) == 0:
         c1 = College(tenant_id=DEMO_TID, code="D01", college_name="信息工程学院", status="ACTIVE")
         c2 = College(tenant_id=DEMO_TID, code="D02", college_name="现代服务学院", status="ACTIVE")
@@ -92,9 +85,23 @@ def seed_demo_tenant(db) -> dict:
         for m, cname in ((m1, DEMO_CLASSES[0]), (m2, DEMO_CLASSES[1]), (m3, DEMO_CLASSES[2])):
             db.add(SchoolClass(tenant_id=DEMO_TID, major_id=m.id,
                                class_name=cname, grade="2026", status="ACTIVE"))
-        out["org"] = "2学院/3专业/3班级"
     db.flush()
-    classes = db.scalars(select(SchoolClass).where(SchoolClass.tenant_id == DEMO_TID)).all()
+    return list(db.scalars(select(SchoolClass).where(
+        SchoolClass.tenant_id == DEMO_TID,
+        SchoolClass.is_deleted.is_(False),
+    ).order_by(SchoolClass.id)).all())
+
+
+def seed_demo_tenant(db) -> dict:
+    out = {}
+    classes = ensure_demo_tenant_org(db)
+    out["org"] = "2学院/3专业/3班级"
+    # 账号（弱密码仅演示租户；hash 落库）
+    _add_user(db, DEMO_TID, "admin", "陈管理", "ADMIN")
+    _add_user(db, DEMO_TID, "teacher", DEMO_TEACHER_NAME, "TEACHER")
+    _add_user(db, DEMO_TID, "student", DEMO_STUDENT_NAME, "STUDENT")
+    out["accounts"] = "admin/teacher/student"
+
     majors = {m.id: m for m in db.scalars(select(Major).where(Major.tenant_id == DEMO_TID)).all()}
 
     def _org_of(k):
