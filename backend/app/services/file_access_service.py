@@ -46,6 +46,8 @@ _FILE_VIEW_PERMISSION = {
     "INTERNSHIP": "internship.student.material.view",
     "COURSE_MATERIAL": "academicAffairs.course.view",
     "ATTACHMENT": "studentAffairs.student.view",
+    "ORIENTATION_MATERIAL": "studentAffairs.orientation.view",
+    "ORIENTATION_GREEN_CHANNEL": "studentAffairs.orientation.view",
 }
 
 STATUS_TEXT = {

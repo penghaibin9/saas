@@ -40,7 +40,7 @@ def students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200)
 
 @router.get("/students/{sid}", summary="新生详情")
 def student_detail(sid: str, user=Depends(require_staff)):
-    return success(svc.get_student_detail(sid))
+    return success(svc.get_student_detail(sid, user=user))
 
 
 @router.post("/students", summary="新增新生")
@@ -116,18 +116,18 @@ def materials(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200
               keyword: Optional[str] = None, status: Optional[str] = None,
               materialType: Optional[str] = None, user=Depends(require_staff)):
     items, total = svc.list_materials(page, pageSize, keyword=keyword, status=status,
-                                      material_type=materialType)
+                                      material_type=materialType, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/materials/{mid}/approve", summary="材料通过")
 def mat_approve(mid: str, body: CommentBody = Body(default=CommentBody()), user=Depends(require_staff)):
-    return success(svc.approve_material(mid, body.comment), message="已通过")
+    return success(svc.approve_material(mid, body.comment, user=user), message="已通过")
 
 
 @router.post("/materials/{mid}/return", summary="材料退回（原因≥5字）")
 def mat_return(mid: str, body: ReasonBody, user=Depends(require_staff)):
-    return success(svc.return_material(mid, body.reason), message="已退回")
+    return success(svc.return_material(mid, body.reason, user=user), message="已退回")
 
 
 @router.get("/dorms", summary="宿舍入住列表")

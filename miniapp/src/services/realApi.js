@@ -173,9 +173,10 @@ const NEUTRAL_ORIENTATION = {
   hasData: false, _real: true,
   batch: '', overallStatus: 'NOT_REPORTED', overallText: '暂无迎新报到记录',
   reportCode: { code: '', valid: false, note: '暂无迎新报到记录，如需办理请联系辅导员' },
+  selfService: { available: false, information: {}, arrivalPlan: null, materials: [] },
   greenChannelStatus: 'NOT_APPLIED', dorm: { building: '', room: '', status: '' },
   payStatus: '', materialStatus: '', blocked: null, steps: [], contacts: [],
-  identity: { name: '', gender: '', collegeName: '', majorName: '', className: '', grade: '',
+  identity: { name: '', admissionNo: '', gender: '', collegeName: '', majorName: '', className: '', grade: '',
     origin: '', phoneMasked: '' }
 }
 
@@ -193,9 +194,10 @@ export async function enrichOrientation() {
     greenChannelStatus: r.greenChannelStatus || 'NOT_APPLIED',
     blocked: r.blockedStep ? { step: r.blockedStep, reason: r.blockedReason } : null,
     steps: (r.steps || []).map((s) => ({ key: s.key, status: s.status })),
-    reportCode: { code: r.admissionNo || '',
-      valid: !!r.reportCodeValid, note: r.reportCodeValid ? '现场核验时出示' : '已完成现场报到，二维码已失效' },
-    identity: { name: r.name || '', gender: r.gender || '', collegeName: r.collegeName || '',
+    // O5 前不生成安全报到凭证；录取编号只在身份信息中展示。
+    reportCode: { code: '', valid: false, note: '正式电子报到凭证尚未签发' },
+    selfService: r.selfService || { available: false, information: {}, arrivalPlan: null, materials: [] },
+    identity: { name: r.name || '', admissionNo: r.admissionNo || '', gender: r.gender || '', collegeName: r.collegeName || '',
       majorName: r.majorName || '', className: r.className || '', grade: r.grade || '',
       origin: r.origin || '', phoneMasked: r.phoneMasked || '' },
     // 后端暂不下发辅导员/招生办联系人，绝不用示例姓名电话冒充真实联系人
@@ -210,6 +212,10 @@ export const orientationBatchStatus = () =>
 /** 预报到信息采集 / 绿色通道申请（本人提交，业务错误透出不兜底） */
 export const orientationCollectSubmit = (body) =>
   realRequest('/mobile/orientation/collect', { method: 'POST', data: body || {} })
+export const orientationArrivalSubmit = (body) =>
+  realRequest('/mobile/orientation/arrival', { method: 'PUT', data: body || {} })
+export const orientationMaterialSubmit = (body) =>
+  realRequest('/mobile/orientation/materials', { method: 'POST', data: body || {} })
 export const orientationGreenChannelSubmit = (body) =>
   realRequest('/mobile/orientation/green-channel', { method: 'POST', data: body })
 

@@ -64,7 +64,7 @@ from app.models.orientation import (GreenChannelApplication, OrientationArchive,
                                      OrientationAuditTrail, OrientationBatch,
                                      OrientationCheckinPoint, OrientationException,
                                      OrientationExceptionFollowup, OrientationFlowConfig,
-                                     OrientationFlowStep, OrientationFlowVersion,
+                                     OrientationArrivalPlan, OrientationFlowStep, OrientationFlowVersion,
                                      OrientationMaterial, OrientationNoticeTask,
                                      OrientationO1BackfillIssue, OrientationStudent,
                                      OrientationStudentStep)

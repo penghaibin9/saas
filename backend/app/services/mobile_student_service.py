@@ -180,7 +180,8 @@ def _orientation_payload(o, db=None) -> dict:
             "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
             "steps": [{"key": k, "status": v} for k, v in steps.items()],
             "admissionNo": o.admission_no, "name": o.name,
-            "reportCodeValid": o.report_status not in ("CHECKED_IN", "COLLEGE_CONFIRMED"),
+            # O5 才签发可核验报到凭证；录取编号只是展示事实，绝不冒充安全报到码。
+            "reportCodeValid": False, "reportCodeStatus": "NOT_ISSUED",
             "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
             "className": o.class_name or "", "grade": o.grade or "", "origin": o.origin or "",
             "phoneMasked": mask_phone_encrypted(o.phone_encrypted)}
@@ -760,7 +761,17 @@ def orientation_my(user: dict) -> dict:
         if not stu:
             return _empty()
         from app.models import OrientationStudent
-        return _orientation_payload(_resolve_domain_student(db, OrientationStudent, stu), db)
+        result = _orientation_payload(_resolve_domain_student(db, OrientationStudent, stu), db)
+    if not result.get("hasData"):
+        return result
+    try:
+        from app.services.orientation_self_service import snapshot
+        result["selfService"] = {"available": True, **snapshot(u)}
+    except AppException as exc:
+        if exc.code not in {"NO_PERMISSION", "DATA_NOT_FOUND", "DATA_CONFLICT"}:
+            raise
+        result["selfService"] = {"available": False, "reason": exc.message}
+    return result
 
 
 def _resolve_orientation_student(db, u: dict):
@@ -773,19 +784,37 @@ def _resolve_orientation_student(db, u: dict):
 
 
 def orientation_collect_submit(user: dict, body: dict) -> dict:
-    """预报到信息采集（学生自助）：确认联系电话/生源地。"""
+    """预报到信息采集（学生自助）：稳定学生主档 + 紧急联系人。"""
     u = _require_student(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持提交")
-    with _session() as db:
-        o = _resolve_orientation_student(db, u)
-        if not o:
-            raise AppException("NOT_FOUND", "未找到你的迎新报到记录，请联系辅导员")
-        oid = o.id
-    from app.services.orientation_service import student_submit_collect
-    result = student_submit_collect(oid, phone=(body or {}).get("phone", ""), origin=(body or {}).get("origin", ""))
+    from app.services.orientation_self_service import submit_information
+    result = submit_information(u, body or {})
+    oid = result["id"]
     invalidate_home_cache(u, "todo", "case")
     audit_log.record("学生提交预报到信息", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
+    return result
+
+
+def orientation_arrival_submit(user: dict, body: dict) -> dict:
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持提交")
+    from app.services.orientation_self_service import submit_arrival_plan
+    result = submit_arrival_plan(u, body or {})
+    invalidate_home_cache(u, "todo", "case")
+    audit_log.record("学生提交迎新到校计划", f"orientation-arrival:{result['id']}")
+    return result
+
+
+def orientation_material_submit(user: dict, body: dict) -> dict:
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持提交")
+    from app.services.orientation_self_service import submit_material
+    result = submit_material(u, body or {})
+    invalidate_home_cache(u, "todo", "case")
+    audit_log.record("学生提交迎新材料", f"orientation-material:{result['id']}")
     return result
 
 
