@@ -37,7 +37,7 @@
 
       <button class="account-button" :class="{ 'account-button--teacher': isTeacher, 'is-disabled': accLoading }" :disabled="accLoading" plain @click="onAccountLogin">{{ accLoading ? '登录中…' : (isTeacher ? '进入教师工作台' : '进入学生首页') }}</button>
       <view class="agreement">
-        <view class="agreement__box" :class="{ 'agreement__box--checked': agree, 'agreement__box--teacher-checked': agree && isTeacher }" @click="agree = !agree"><text v-if="agree">✓</text></view>
+        <view class="agreement__box" :class="{ on: agree, 'agreement__box--checked': agree, 'agreement__box--teacher-checked': agree && isTeacher }" @click="agree = !agree"><text v-if="agree">✓</text></view>
         <text @click="agree = !agree">我已阅读并同意学校提供的</text><text class="agreement__link" :class="{ 'agreement__link--teacher': isTeacher }" @click.stop="openDoc('terms')">《用户协议》</text><text @click="agree = !agree">与</text><text class="agreement__link" :class="{ 'agreement__link--teacher': isTeacher }" @click.stop="openDoc('privacy')">《隐私政策》</text>
       </view>
     </view>
