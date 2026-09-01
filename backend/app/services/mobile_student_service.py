@@ -175,15 +175,41 @@ def _orientation_payload(o, db=None) -> dict:
     from app.services.orientation_qualification_service import evaluate
     steps = student_step_projection(db, o)
     qualification = evaluate(db, o)
-    from app.services.orientation_checkin_service import token_status
+    from app.services.orientation_checkin_service import _dorm_projection, token_status
+    from app.models import OrientationBatch, OrientationCheckinPoint, OrientationCheckinRecord
     checkin_credential = token_status(db, o, qualification=qualification)
+    batch = db.get(OrientationBatch, int(o.batch_id))
+    dorm = _dorm_projection(db, o)
+    contacts = []
+    contact_name = o.counselor or ""
+    contact_phone = ""
+    if o.class_id:
+        from app.core.field_crypto import decrypt_field
+        from app.models import SchoolClass, User
+        school_class = db.get(SchoolClass, int(o.class_id))
+        if (school_class and not school_class.is_deleted
+                and int(school_class.tenant_id) == int(o.tenant_id)
+                and school_class.counselor_id):
+            counselor = db.get(User, int(school_class.counselor_id))
+            if counselor and not counselor.is_deleted and int(counselor.tenant_id) == int(o.tenant_id):
+                contact_name = counselor.real_name or contact_name
+                contact_phone = decrypt_field(counselor.phone_encrypted) or ""
+    if contact_name:
+        contacts.append({"role": "辅导员", "name": contact_name, "phone": contact_phone})
+    checkin_record = db.scalars(select(OrientationCheckinRecord).where(
+        OrientationCheckinRecord.tenant_id == o.tenant_id,
+        OrientationCheckinRecord.orientation_student_id == o.id,
+        OrientationCheckinRecord.is_deleted.is_(False),
+    ).order_by(OrientationCheckinRecord.id.desc())).first()
+    checkin_point = db.get(OrientationCheckinPoint, int(checkin_record.checkin_point_id)) if checkin_record else None
     payment_fact = qualification.get("facts", {}).get("payment", {})
     payment_status = ("GREEN_CHANNEL" if payment_fact.get("greenChannelApproved")
                       else payment_fact.get("status") or "UNAVAILABLE")
-    return {"hasData": True, "reportStatus": o.report_status, "paymentStatus": payment_status,
+    return {"hasData": True, "batchName": batch.batch_name if batch else "",
+            "reportStatus": o.report_status, "paymentStatus": payment_status,
             "materialStatus": o.material_status, "dormStatus": o.dorm_status,
             "greenChannelStatus": o.green_channel_status,
-            "building": o.building or "", "room": o.room or "",
+            "building": o.building or "", "room": o.room or "", "dorm": dorm,
             "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
             "steps": [{"key": k, "status": v} for k, v in steps.items()],
             "admissionNo": o.admission_no, "name": o.name,
@@ -193,6 +219,11 @@ def _orientation_payload(o, db=None) -> dict:
             "reportCodeValid": checkin_credential["status"] == "ISSUED",
             "reportCodeStatus": checkin_credential["status"],
             "checkinCredential": checkin_credential,
+            "checkin": {
+                "completedAt": _iso(checkin_record.checked_in_at) if checkin_record else "",
+                "pointName": checkin_point.name if checkin_point else "",
+            },
+            "contacts": contacts,
             "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
             "className": o.class_name or "", "grade": o.grade or "", "origin": o.origin or "",
             "phoneMasked": mask_phone_encrypted(o.phone_encrypted)}

@@ -40,6 +40,12 @@ PRECHECK_STEPS = {"ACTIVATE", "INFO", "MATERIAL", "PAYMENT", "DORM"}
 TERMINAL_STEP = {"DONE", "WAIVED", "NOT_REQUIRED"}
 PAYMENT_PASS = {"PAID", "WAIVED", "DEFERRED"}
 BLOCKING_EXCEPTION = {"OPEN", "PROCESSING", "ESCALATED"}
+CHECKIN_HARD_BLOCKER_CODES = {
+    "FLOW_CONFIGURATION_MISSING",
+    "IDENTITY_NOT_LINKED",
+    "ACCOUNT_NOT_LINKED",
+    "OPEN_EXCEPTION_IDENTITY",
+}
 
 
 def _actor_id(user=None) -> int | None:
@@ -63,6 +69,23 @@ def _block(code: str, step: str, message: str, *, review: bool = False) -> dict:
         "message": message,
         "kind": "MANUAL_REVIEW" if review else "BLOCKING",
     }
+
+
+def _blocks_on_site_checkin(item: dict) -> bool:
+    """Only identity and the student's own information confirmation stop arrival.
+
+    Materials, payment, dorm allocation and their operational exceptions remain
+    visible follow-ups for the school.  They still prevent the final college
+    confirmation through the strict ``verdict`` below, but do not make a student
+    wait outside the check-in desk for work that belongs to back-office teams.
+    """
+    code = str(item.get("code") or "")
+    step = str(item.get("step") or "")
+    if code in CHECKIN_HARD_BLOCKER_CODES:
+        return True
+    if code in {"REQUIRED_STEP_INCOMPLETE", "STEP_BLOCKED"}:
+        return step in {"ACTIVATE", "INFO"}
+    return False
 
 
 def _flow_context(db, student):
@@ -315,6 +338,8 @@ def evaluate(db, student: OrientationStudent, *, persist: bool = False, actor_id
             seen.add(key)
             deduped.append(item)
     blockers = deduped
+    checkin_blockers = [item for item in blockers if _blocks_on_site_checkin(item)]
+    checkin_follow_ups = [item for item in blockers if not _blocks_on_site_checkin(item)]
     if any(item["kind"] == "MANUAL_REVIEW" for item in blockers):
         verdict = "MANUAL_REVIEW"
     elif blockers:
@@ -338,6 +363,11 @@ def evaluate(db, student: OrientationStudent, *, persist: bool = False, actor_id
         }[verdict],
         "blockers": blockers, "facts": facts, "ruleVersion": RULE_VERSION,
         "inputHash": digest,
+        "checkinEligibility": {
+            "eligible": not checkin_blockers,
+            "blockers": checkin_blockers,
+            "followUps": checkin_follow_ups,
+        },
     }
     if persist:
         decision = db.scalars(select(OrientationQualificationDecision).where(

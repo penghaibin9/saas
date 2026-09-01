@@ -229,6 +229,13 @@ def test_o5_signed_preflight_one_time_confirm_and_finalize(client, db_mode, auth
     ).count() == 1
     db.close()
 
+    mine = client.get("/api/v1/mobile/orientation/my", headers=student_headers)
+    assert mine.status_code == 200, mine.text
+    mine_data = mine.json()["data"]
+    assert mine_data["batchName"] == "O4资格批次"
+    assert mine_data["dorm"]["label"] == "O4资格楼 / 401 / 1床"
+    assert mine_data["checkin"]["pointName"] == "O5学院现场报到点"
+
     cannot_reissue = client.post("/api/v1/mobile/orientation/checkin-token", headers=student_headers)
     assert cannot_reissue.status_code == 409
 

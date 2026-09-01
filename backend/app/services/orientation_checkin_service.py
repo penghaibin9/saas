@@ -138,7 +138,8 @@ def token_status(db, student: OrientationStudent, *, qualification: dict | None 
     ).order_by(OrientationCheckinToken.id.desc())).first()
     finalized = student.stage == "ENROLLED" or student.report_status == "COLLEGE_CONFIRMED"
     checked = student.report_status in ("CHECKED_IN", "COLLEGE_CONFIRMED")
-    can_issue = decision.get("verdict") == "QUALIFIED" and not checked and not finalized
+    checkin_eligibility = decision.get("checkinEligibility") or {}
+    can_issue = bool(checkin_eligibility.get("eligible")) and not checked and not finalized
     status = "FINALIZED" if finalized else "CHECKED_IN" if checked else "ELIGIBLE" if can_issue else "BLOCKED"
     active_issued = bool(
         latest and latest.status == "ISSUED"
@@ -153,8 +154,8 @@ def token_status(db, student: OrientationStudent, *, qualification: dict | None 
         "note": (
             "学院已完成入学确认" if finalized else
             "已完成现场报到，等待学院确认" if checked else
-            "资格通过，可签发一次性报到凭证" if can_issue else
-            "当前资格未通过，不能签发现场报到凭证"
+            "可签发一次性报到凭证；学校办理事项不影响到校核验" if can_issue else
+            "请先完成身份与个人信息核验"
         ),
     }
 
@@ -306,10 +307,10 @@ def preflight(raw_token: str, user: dict) -> dict:
             raise not_found("报到凭证对应的新生记录不存在")
         assert_orientation_student_scope(db, student, user)
         decision = evaluate(db, student)
-        if decision["verdict"] != "QUALIFIED":
+        if not (decision.get("checkinEligibility") or {}).get("eligible"):
             raise AppException(
                 "ORIENTATION_QUALIFICATION_CHANGED",
-                "学生报到资格已变化，请先处理阻断项",
+                "学生身份或个人信息状态已变化，请先处理阻断项",
                 http_status=409,
                 details={"verdict": decision["verdict"], "blockers": decision["blockers"]},
             )
@@ -437,8 +438,8 @@ def confirm(raw_token: str, checkin_point_id, user: dict) -> dict:
         if prior:
             raise AppException("ORIENTATION_ALREADY_CHECKED_IN", "该生已完成现场报到，请勿重复确认", http_status=409)
         decision = evaluate(db, student)
-        if decision["verdict"] != "QUALIFIED":
-            raise AppException("ORIENTATION_QUALIFICATION_CHANGED", "学生报到资格已变化，请重新核查", http_status=409)
+        if not (decision.get("checkinEligibility") or {}).get("eligible"):
+            raise AppException("ORIENTATION_QUALIFICATION_CHANGED", "学生身份或个人信息状态已变化，请重新核查", http_status=409)
         now = datetime.utcnow()
         record = OrientationCheckinRecord(
             tenant_id=_tid(), batch_id=student.batch_id,

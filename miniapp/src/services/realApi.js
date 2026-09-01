@@ -176,6 +176,7 @@ const NEUTRAL_ORIENTATION = {
   selfService: { available: false, information: {}, arrivalPlan: null, materials: [] },
   greenChannelStatus: 'NOT_APPLIED', dorm: { building: '', room: '', status: '' },
   payStatus: '', payment: {}, materialStatus: '', qualification: null, blocked: null, steps: [], contacts: [],
+  checkin: { completedAt: '', pointName: '' },
   identity: { name: '', admissionNo: '', gender: '', collegeName: '', majorName: '', className: '', grade: '',
     origin: '', phoneMasked: '' }
 }
@@ -194,9 +195,13 @@ export async function enrichOrientation() {
   const currentStepIndex = rawSteps.findIndex((item) => !['DONE', 'WAIVED', 'NOT_REQUIRED'].includes(item.status))
   return {
     hasData: true, _real: true,
-    batch: r.batchName || '迎新报到',
+    batch: r.batchName || r.selfService?.batch?.name || '迎新报到',
     overallStatus: r.reportStatus, overallText: stMap[r.reportStatus] || r.reportStatus || '',
-    dorm: { building: r.building || '', room: r.room || '', status: r.dormStatus || '' },
+    dorm: {
+      building: r.building || '', room: r.room || '', status: r.dorm?.status || r.dormStatus || '',
+      label: r.dorm?.label || [r.building, r.room].filter(Boolean).join(' / '),
+      buildingId: r.dorm?.buildingId || '', roomId: r.dorm?.roomId || '', bedId: r.dorm?.bedId || ''
+    },
     payStatus: r.paymentStatus || '', payment: r.payment || {}, materialStatus: r.materialStatus || '',
     qualification: r.qualification || null,
     greenChannelStatus: r.greenChannelStatus || 'NOT_APPLIED',
@@ -212,12 +217,12 @@ export async function enrichOrientation() {
       expiresAt: r.checkinCredential?.expiresAt || '',
       note: r.checkinCredential?.note || '正式电子报到凭证尚未签发'
     },
+    checkin: r.checkin || { completedAt: '', pointName: '' },
     selfService: r.selfService || { available: false, information: {}, arrivalPlan: null, materials: [] },
     identity: { name: r.name || '', admissionNo: r.admissionNo || '', gender: r.gender || '', collegeName: r.collegeName || '',
       majorName: r.majorName || '', className: r.className || '', grade: r.grade || '',
       origin: r.origin || '', phoneMasked: r.phoneMasked || '' },
-    // 后端暂不下发辅导员/招生办联系人，绝不用示例姓名电话冒充真实联系人
-    contacts: []
+    contacts: Array.isArray(r.contacts) ? r.contacts : []
   }
 }
 

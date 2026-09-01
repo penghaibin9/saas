@@ -184,6 +184,15 @@ def test_o4_server_verdict_green_idempotency_payment_cas_and_exception(
     initial_data = initial.json()["data"]
     assert initial_data["verdict"] == "NOT_QUALIFIED"
     assert {item["code"] for item in initial_data["blockers"]} >= {"PAYMENT_INCOMPLETE"}
+    assert initial_data["checkinEligibility"]["eligible"] is True
+    assert {
+        item["code"] for item in initial_data["checkinEligibility"]["followUps"]
+    } >= {"PAYMENT_INCOMPLETE"}
+    # 财务同步属于学校后台事项：不阻止学生领取到校二维码，学院最终确认仍用严格 verdict。
+    issued_before_payment = client.post(
+        "/api/v1/mobile/orientation/checkin-token", headers=student_headers,
+    )
+    assert issued_before_payment.status_code == 200, issued_before_payment.text
 
     submit_body = {
         "applyType": "缓缴学费", "applyAmount": 100, "remark": "家庭困难申请缓缴",
@@ -256,6 +265,7 @@ def test_o4_server_verdict_green_idempotency_payment_cas_and_exception(
     )
     assert blocked.status_code == 200
     assert blocked.json()["data"]["verdict"] == "NOT_QUALIFIED"
+    assert blocked.json()["data"]["checkinEligibility"]["eligible"] is False
     assert any(
         item["code"] == "OPEN_EXCEPTION_IDENTITY"
         for item in blocked.json()["data"]["blockers"]

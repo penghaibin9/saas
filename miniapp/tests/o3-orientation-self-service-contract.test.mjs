@@ -35,12 +35,23 @@ test('O3 does not disguise the admission number as a report credential', () => {
 
 test('orientation overview refreshes on return and gives one clear next action', () => {
   assert.match(overview, /onShow\(\) \{ this\.load\(\) \}/)
-  assert.match(overview, /下一步/)
+  assert.match(overview, /你现在只需要做/)
   assert.match(overview, /materialsWaitingReview/)
-  assert.match(overview, /材料已提交，等待审核/)
+  assert.match(overview, /学校正在办理/)
+  assert.match(overview, /不需要你重复提交/)
+  assert.match(overview, /出示你的报到二维码/)
   assert.match(arrival, /start="minDate"/)
   assert.match(arrival, /已为你预选今天/)
   assert.match(arrival, /setTimeout\(\(\) => back\(\), 700\)/)
+})
+
+test('orientation completion hands useful results back to the student', () => {
+  assert.match(overview, /你的入学安排/)
+  assert.match(overview, /dormArrangement/)
+  assert.match(overview, /checkinSummary/)
+  assert.match(overview, /遇到问题直接联系辅导员/)
+  assert.match(credential, /辅导员或现场核验人员扫码/)
+  assert.match(credential, /await this\.issue\(true\)/)
 })
 
 test('orientation timeline has student-facing titles and status labels', () => {
