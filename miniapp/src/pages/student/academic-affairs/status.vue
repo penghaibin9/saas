@@ -167,7 +167,7 @@ export default {
         this.transferOptions = opt || { majors: [], classes: [], majorClasses: {} }
         for (const c of (d && d.changes) || []) {
           if (c.status === 'RETURNED' && this.resubmitReasons[c.changeId] === undefined) {
-            this.$set ? this.$set(this.resubmitReasons, c.changeId, c.reason || '') : (this.resubmitReasons[c.changeId] = c.reason || '')
+            this.resubmitReasons[c.changeId] = c.reason || ''
           }
         }
         this.state = 'ready'

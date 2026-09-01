@@ -16,9 +16,9 @@
 
     <template v-else-if="data">
       <view class="gdex__summary">
-        <view><text>延期状态</text><text class="gdex__summary-value">{{ data.defenseDelay ? data.defenseDelay.statusLabel : '未申请' }}</text></view>
-        <view><text>优秀成果</text><text class="gdex__summary-value">{{ data.excellentOutcome ? data.excellentOutcome.statusLabel : '暂无认定' }}</text></view>
-        <view class="gdex__summary-wide"><text>下一步</text><text class="gdex__summary-value">{{ nextStep }}</text></view>
+        <view class="gdex__summary-item"><text>延期状态</text><text class="gdex__summary-value">{{ data.defenseDelay ? data.defenseDelay.statusLabel : '未申请' }}</text></view>
+        <view class="gdex__summary-item"><text>优秀成果</text><text class="gdex__summary-value">{{ data.excellentOutcome ? data.excellentOutcome.statusLabel : '暂无认定' }}</text></view>
+        <view class="gdex__summary-item gdex__summary-wide"><text>下一步</text><text class="gdex__summary-value">{{ nextStep }}</text></view>
       </view>
 
       <view v-if="data.defenseDelay" class="gdex__card">
@@ -28,10 +28,10 @@
         </view>
         <text class="gdex__text">理由：{{ data.defenseDelay.reason }}</text>
         <view class="gdex__timeline">
-          <text :class="{ done: data.defenseDelay.advisorReviewedBy }">导师：{{ data.defenseDelay.advisorComment || (data.defenseDelay.advisorReviewedBy ? '已处理' : '待处理') }}</text>
-          <text :class="{ done: data.defenseDelay.majorReviewedBy }">专业：{{ data.defenseDelay.majorComment || (data.defenseDelay.majorReviewedBy ? '已处理' : '待处理') }}</text>
-          <text :class="{ done: data.defenseDelay.collegeReviewedBy }">学院：{{ data.defenseDelay.collegeComment || (data.defenseDelay.collegeReviewedBy ? '已处理' : '待处理') }}</text>
-          <text :class="{ done: data.defenseDelay.plannedDefenseDate }">排期：{{ data.defenseDelay.plannedDefenseDate ? `${data.defenseDelay.plannedDefenseDate} · ${data.defenseDelay.defenseGroupName || '答辩组待发布'}` : '待安排' }}</text>
+          <text class="gdex__timeline-item" :class="{ 'is-done': data.defenseDelay.advisorReviewedBy }">导师：{{ data.defenseDelay.advisorComment || (data.defenseDelay.advisorReviewedBy ? '已处理' : '待处理') }}</text>
+          <text class="gdex__timeline-item" :class="{ 'is-done': data.defenseDelay.majorReviewedBy }">专业：{{ data.defenseDelay.majorComment || (data.defenseDelay.majorReviewedBy ? '已处理' : '待处理') }}</text>
+          <text class="gdex__timeline-item" :class="{ 'is-done': data.defenseDelay.collegeReviewedBy }">学院：{{ data.defenseDelay.collegeComment || (data.defenseDelay.collegeReviewedBy ? '已处理' : '待处理') }}</text>
+          <text class="gdex__timeline-item" :class="{ 'is-done': data.defenseDelay.plannedDefenseDate }">排期：{{ data.defenseDelay.plannedDefenseDate ? `${data.defenseDelay.plannedDefenseDate} · ${data.defenseDelay.defenseGroupName || '答辩组待发布'}` : '待安排' }}</text>
         </view>
       </view>
 
@@ -118,7 +118,7 @@ export default {
 <style scoped>
 .gdex { margin:0 var(--page-padding-mobile) var(--space-3); padding:var(--space-3); border:1px solid var(--border-light); border-radius:var(--radius-lg); background:var(--bg-card); overflow:hidden; }
 .gdex__head { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-2); }.gdex__head-main { flex:1; min-width:0; }.gdex__title { display:block; font-size:var(--font-size-base); font-weight:var(--font-weight-medium); color:var(--text-primary); }.gdex__hint,.gdex__text,.gdex__sub { display:block; margin-top:4px; font-size:var(--font-size-xs); line-height:1.55; color:var(--text-secondary); word-break:break-word; }.gdex__refresh,.gdex__status { flex:none; font-size:var(--font-size-xs); color:var(--primary-600); }.gdex__status.muted { color:var(--text-tertiary); }
-.gdex__summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-2); margin-top:var(--space-3); }.gdex__summary > view { min-width:0; padding:var(--space-2); border-radius:var(--radius-md); background:var(--primary-50); color:var(--text-tertiary); font-size:var(--font-size-xs); }.gdex__summary-wide { grid-column:1 / -1; }.gdex__summary-value { display:block; margin-top:4px; color:var(--text-primary); font-weight:var(--font-weight-medium); word-break:break-word; }
+.gdex__summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-2); margin-top:var(--space-3); }.gdex__summary-item { min-width:0; padding:var(--space-2); border-radius:var(--radius-md); background:var(--primary-50); color:var(--text-tertiary); font-size:var(--font-size-xs); }.gdex__summary-wide { grid-column:1 / -1; }.gdex__summary-value { display:block; margin-top:4px; color:var(--text-primary); font-weight:var(--font-weight-medium); word-break:break-word; }
 .gdex__state { margin-top:var(--space-3); padding:var(--space-3); border-radius:var(--radius-md); background:var(--gray-50); color:var(--text-secondary); font-size:var(--font-size-sm); }.gdex__state--error { border:1px solid var(--danger-100); background:var(--danger-50); }.gdex__error { display:block; color:var(--danger-600); line-height:1.5; }.gdex__retry { margin-top:var(--space-2); min-height:36px; line-height:36px; font-size:var(--font-size-sm); }
-.gdex__card { margin-top:var(--space-3); padding:var(--space-3); border:1px solid var(--border-light); border-radius:var(--radius-md); background:var(--gray-50); overflow:hidden; }.gdex__card--action { border-color:var(--primary-200); background:var(--primary-50); }.gdex__timeline { margin-top:var(--space-2); padding-left:var(--space-2); border-left:2px solid var(--border-light); }.gdex__timeline text { display:block; margin-top:5px; color:var(--text-tertiary); font-size:var(--font-size-xs); line-height:1.5; word-break:break-word; }.gdex__timeline text.done { color:var(--success-600); }.gdex__ta { width:100%; min-height:82px; margin:var(--space-2) 0; padding:var(--space-2); box-sizing:border-box; border:1px solid var(--border-base); border-radius:var(--radius-md); background:var(--bg-card); }.gdex__ph { color:var(--text-tertiary); }.gdex__submit-row { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); color:var(--text-tertiary); font-size:var(--font-size-xs); }.gdex__submit { width:auto; margin:0; padding:0 var(--space-4); white-space:nowrap; }
+.gdex__card { margin-top:var(--space-3); padding:var(--space-3); border:1px solid var(--border-light); border-radius:var(--radius-md); background:var(--gray-50); overflow:hidden; }.gdex__card--action { border-color:var(--primary-200); background:var(--primary-50); }.gdex__timeline { margin-top:var(--space-2); padding-left:var(--space-2); border-left:2px solid var(--border-light); }.gdex__timeline-item { display:block; margin-top:5px; color:var(--text-tertiary); font-size:var(--font-size-xs); line-height:1.5; word-break:break-word; }.gdex__timeline-item.is-done { color:var(--success-600); }.gdex__ta { width:100%; min-height:82px; margin:var(--space-2) 0; padding:var(--space-2); box-sizing:border-box; border:1px solid var(--border-base); border-radius:var(--radius-md); background:var(--bg-card); }.gdex__ph { color:var(--text-tertiary); }.gdex__submit-row { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); color:var(--text-tertiary); font-size:var(--font-size-xs); }.gdex__submit { width:auto; margin:0; padding:0 var(--space-4); white-space:nowrap; }
 </style>

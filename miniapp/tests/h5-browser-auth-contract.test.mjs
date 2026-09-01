@@ -72,7 +72,8 @@ test('shared request layer accepts valid JSON text from H5 but keeps malformed r
 })
 
 test('local H5 uses a same-origin API proxy while native miniapp keeps its explicit origin',()=>{
-  assert.match(env,/env\.DEV && typeof window !== 'undefined'/)
+  assert.match(env,/BUILD_DEV && typeof window !== 'undefined'/)
+  assert.doesNotMatch(env,/(?<![\w.])env\.DEV\b/)
   assert.match(env,/localhost\|127\\\.0\\\.0\\\.1/)
   assert.match(vite,/['"]\/api['"]\s*:/)
   assert.match(vite,/VITE_DEV_API_PROXY_TARGET/)

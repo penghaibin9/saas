@@ -1,5 +1,6 @@
 <template>
   <view class="map">
+    <MobilePrivacyGate />
     <view class="row-between map__hd">
       <text class="map__label">
         {{ label }}<text v-if="required" class="map__req"> *</text>

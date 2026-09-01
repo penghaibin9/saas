@@ -1,5 +1,6 @@
 <template>
   <view class="page-shell">
+    <MobilePrivacyGate />
     <view class="head"><text class="eyebrow">PLAT-B</text><text class="title">{{ title }}</text><text class="hint">版本与规则来自服务端，提交进入原业务流程。</text></view>
     <view v-if="state === 'loading'" class="state">正在加载表单…</view>
     <view v-else-if="state === 'error'" class="state error"><text>{{ error }}</text><button size="mini" @click="load">重试</button></view>

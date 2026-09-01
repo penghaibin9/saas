@@ -67,7 +67,7 @@
 import { teacherApi } from '@/services/teacherApi'
 import { affairsContractApi } from '@/services/affairsContractApi'
 import { normalizeError } from '@/services/request'
-import { toast } from '@/utils/nav'
+import { decodeQueryText, toast } from '@/utils/nav'
 
 const TYPE_OPTS = [
   { value: 'DAILY', label: '日常谈心' }, { value: 'ACADEMIC', label: '学业关心' },
@@ -112,9 +112,9 @@ export default {
       if (q.mode !== 'create' || !studentId) return
       const student = {
         studentId,
-        name: q.studentName ? decodeURIComponent(q.studentName) : '当前学生',
-        studentNo: q.studentNo ? decodeURIComponent(q.studentNo) : '',
-        className: q.className ? decodeURIComponent(q.className) : ''
+        name: decodeQueryText(q.studentName, '当前学生'),
+        studentNo: decodeQueryText(q.studentNo),
+        className: decodeQueryText(q.className)
       }
       student.label = `${student.name} · ${student.className || student.studentNo || '当前学生'}`
       this.students = [student]

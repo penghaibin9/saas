@@ -143,6 +143,7 @@ import { runAction } from '@/services/actionRouter'
 import { getTeacherWorkbenchVersion } from '@/utils/viewFreshness'
 import { deadlineText, isOverdue, fromNow } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 
 const WORKBENCH_TTL_MS = 20_000
 const GRAD_CLASSES = ['g1', 'g4', 'g3', 'g5', 'g2', 'g7', 'g6', 'g8']
@@ -213,7 +214,7 @@ export default {
   },
   onLoad() {
     this._pageActive = true
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
   },
   onShow() {
     this._pageActive = true

@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap ins">
+    <MobilePrivacyGate />
     <MobileGlobalState :state="pageState" @retry="load">
       <view class="page-pad stack">
         <MobileInlineAlert v-if="historyMode" type="info" title="历史实习记录" description="历史批次仅可查看保险信息，不可重新提交。" />

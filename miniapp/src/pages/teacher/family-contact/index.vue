@@ -73,7 +73,7 @@
 <script>
 import { teacherApi } from '@/services/teacherApi'
 import { createSubmitLock, normalizeError } from '@/services/request'
-import { toast } from '@/utils/nav'
+import { decodeQueryText, toast } from '@/utils/nav'
 
 const submitLock = createSubmitLock(1500)
 const TYPES = [
@@ -103,9 +103,9 @@ export default {
       if (q.mode !== 'create' || !studentId) return
       this.students = [{
         studentId,
-        name: q.studentName ? decodeURIComponent(q.studentName) : '当前学生',
-        studentNo: q.studentNo ? decodeURIComponent(q.studentNo) : '',
-        className: q.className ? decodeURIComponent(q.className) : ''
+        name: decodeQueryText(q.studentName, '当前学生'),
+        studentNo: decodeQueryText(q.studentNo),
+        className: decodeQueryText(q.className)
       }]
       const type = String(q.contactType || '').toUpperCase()
       const idx = TYPES.findIndex((item) => item.key === type)

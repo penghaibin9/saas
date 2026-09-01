@@ -72,6 +72,7 @@ import { fromNow, deadlineText } from '@/utils/format'
 import { toast, go } from '@/utils/nav'
 import { canNavigate, disabledReasonOf, runAction } from '@/services/actionRouter'
 import { stashDetail, stashSearchPool } from '@/utils/msgStash'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 const TAB_ICON = { todo: '☑', notice: '📢', progress: '⏱', course: '📖' }
 const TAB_GRAD = { todo: 'g1', notice: 'g1', progress: 'g3', course: 'g4' }
 const PAGE_SIZE = 20
@@ -87,7 +88,7 @@ export default {
   },
   onLoad() {
     this._pageActive = true
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
     this.load({ reset: true })
   },
   onShow() {

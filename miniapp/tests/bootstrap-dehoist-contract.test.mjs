@@ -114,6 +114,7 @@ test('S1.5-G1 仍走 performance adapter 的高频页必须先显式安装；T8 
 test('S1.5-G2 生产构建剥离 mock 数据体', () => {
   assert.match(viteConfig, /miniapp-v3-strip-mock-payload-in-production/)
   assert.match(viteConfig, /env\.command === 'build' && env\.mode !== 'development'/)
+  assert.match(viteConfig, /replace\(\/\\\\\/g, '\/'\)/, 'Windows 路径必须先统一为正斜杠，否则生产 transform 不会命中 mock 目录')
 })
 
 test('S1.5-G2 release finalize 产出机器可读三包报告并按 V3 预算判定', () => {

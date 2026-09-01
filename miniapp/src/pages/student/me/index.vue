@@ -58,6 +58,7 @@ import { useSessionStore } from '@/stores/session'
 import { ENV } from '@/config/env'
 import { go, relaunch, toast } from '@/utils/nav'
 import { studentApi } from '@/services/studentApi'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 export default {
   computed: {
     // 仅演示（mock）模式标注"演示环境"；真实后端/生产构建只显示版本号，避免误导真实用户
@@ -91,7 +92,7 @@ export default {
   onShow() {
     const session = useSessionStore()
     this.user = session.mockUser || {}
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
   },
   methods: {
     go, toast,

@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap lv">
+    <MobilePrivacyGate />
     <MobileGlobalState :state="pageState" @retry="loadList">
       <view class="page-pad stack">
         <view class="card lv__head">

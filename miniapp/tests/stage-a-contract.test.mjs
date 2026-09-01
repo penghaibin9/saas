@@ -165,6 +165,44 @@ test('release script never writes an empty appid and can resolve it from .env.pr
   assert.match(release, /APPID_PATTERN = \/\^wx\[0-9a-fA-F\]\{16\}\$\//)
 })
 
+test('release script forces legal-domain checks in private DevTools config', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /PROJECT_PRIVATE_JSON/)
+  assert.match(release, /privateConfig\.setting\s*=\s*\{[\s\S]*urlCheck:\s*true/)
+})
+
+test('WeChat permission descriptions stay within the 30-character upload limit', () => {
+  const manifest = JSON.parse(read('src/manifest.json'))
+  const permissions = manifest['mp-weixin']?.permission || {}
+  for (const [scope, config] of Object.entries(permissions)) {
+    const length = Array.from(String(config?.desc || '').trim()).length
+    assert.ok(length <= 30, `${scope}.desc is ${length} characters; WeChat allows at most 30`)
+  }
+
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /PERMISSION_DESC_MAX_LENGTH = 30/)
+  assert.match(release, /Object\.entries\(appConfig\.permission \|\| \{\}\)/)
+})
+
+test('release build rejects unsupported selectors in custom component WXSS', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /findUnsupportedComponentSelectors/)
+  assert.match(release, /config\.component !== true/)
+  assert.match(release, /标签、ID、属性或伪类选择器/)
+})
+
+test('release build rejects mock payload files left in the production output', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /normalizeRelative\(item\)\.startsWith\('mock\/'\)/)
+  assert.match(release, /生产包仍包含未剥离的 mock 数据体/)
+})
+
+test('release build rejects leaked local build paths', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /VITE_ROOT_DIR/)
+  assert.match(release, /构建产物泄露本机绝对路径/)
+})
+
 test('release build fails at the proactive 1.80 MiB split threshold', () => {
   const release = read('scripts/finalize-mp-weixin-release.mjs')
   // V3 S1.5：main.js 不再全局安装高频适配（那会把两端 API 与 mock 图重新提升进主包），

@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap">
+    <MobilePrivacyGate />
     <MobileNavBar variant="teacher" title="企业评价" subtitle="纸质材料代录 · 独立审核 · 退回重交" show-back />
 
     <view class="ee__tabs">

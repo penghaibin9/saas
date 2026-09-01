@@ -71,13 +71,14 @@
 <script>
 import { studentApi } from '@/services/studentApi'
 import { toast, go } from '@/utils/nav'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 
 const GRAD_CLASSES = ['g1', 'g3', 'g4', 'g5', 'g7', 'g6', 'g2', 'g8']
 
 export default {
   data() { return { data: null, state: 'loading', keyword: '', statusBarHeight: 20 } },
   onLoad() {
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
     this.load()
   },
   computed: {

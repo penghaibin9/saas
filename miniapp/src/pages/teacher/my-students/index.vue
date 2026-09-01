@@ -52,7 +52,7 @@
 <script>
 import { teacherStudentV3Api, TEACHER_STUDENT_PAGE_SIZE } from '@/services/teacherStudentV3Api'
 import { toastError } from '@/services/request'
-import { go } from '@/utils/nav'
+import { decodeQueryText, go } from '@/utils/nav'
 
 export default {
   data() {
@@ -71,7 +71,7 @@ export default {
   },
   onLoad(q) {
     this.classId = (q && q.classId) || ''
-    this.className = (q && q.className) ? decodeURIComponent(q.className) : ''
+    this.className = decodeQueryText(q && q.className)
     this.reload()
   },
   onReachBottom() {
