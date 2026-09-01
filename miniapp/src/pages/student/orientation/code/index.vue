@@ -2,27 +2,24 @@
   <view class="page-wrap">
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="o">
-        <view class="card oq__ticket" :class="{ 'is-invalid': !o.reportCode.valid }">
-          <text class="oq__ticket-label">报到码</text>
+        <view class="card oq__ticket is-invalid">
+          <text class="oq__ticket-label">正式电子报到凭证</text>
           <view class="oq__code-box">
-            <text class="oq__code">{{ formattedCode }}</text>
+            <text class="oq__code">尚未签发</text>
           </view>
           <text class="oq__note">{{ o.reportCode.note }}</text>
-          <view v-if="!o.reportCode.valid" class="oq__done-badge">已核验</view>
         </view>
 
         <view class="card oq__identity">
           <text class="card-title">身份信息</text>
           <view class="oq__row"><text class="oq__k">姓名</text><text class="oq__v">{{ o.identity.name }}</text></view>
+          <view class="oq__row"><text class="oq__k">录取编号</text><text class="oq__v">{{ o.identity.admissionNo || '—' }}</text></view>
           <view class="oq__row"><text class="oq__k">学院</text><text class="oq__v">{{ o.identity.collegeName || '—' }}</text></view>
           <view class="oq__row"><text class="oq__k">专业</text><text class="oq__v">{{ o.identity.majorName || '—' }}</text></view>
           <view class="oq__row"><text class="oq__k">班级</text><text class="oq__v">{{ o.identity.className || '待分班' }}</text></view>
         </view>
 
-        <MobileInlineAlert
-          :type="o.reportCode.valid ? 'info' : 'success'"
-          :description="o.reportCode.valid ? '请在现场报到窗口向迎新老师出示此报到码完成核验。' : '你已完成现场报到核验，此码已失效。'"
-        />
+        <MobileInlineAlert type="info" description="正式报到凭证将在资格校验通过后由学校签发。录取编号不是核验凭证，请勿截图冒用。" />
       </view>
     </MobileGlobalState>
   </view>
@@ -33,12 +30,6 @@ import { studentApi } from '@/services/studentApi'
 export default {
   data() { return { o: null, state: 'loading' } },
   onLoad() { this.load() },
-  computed: {
-    formattedCode() {
-      const c = (this.o && this.o.reportCode.code) || ''
-      return c.replace(/(.{4})/g, '$1 ').trim()
-    }
-  },
   methods: {
     load() {
       this.state = 'loading'

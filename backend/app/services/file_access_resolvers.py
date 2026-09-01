@@ -219,6 +219,52 @@ def scoped_binding_resolver(db, file_obj, bindings: list[Any], user: dict, actio
     return subject_allowed
 
 
+@register_file_resolver("ORIENTATION_MATERIAL", "ORIENTATION_GREEN_CHANNEL")
+def orientation_file_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """迎新材料只按父业务行的稳定 student_id 与实时教师数据范围授权。"""
+    if db is None:
+        return False
+    try:
+        from app.models import GreenChannelApplication, OrientationMaterial, OrientationStudent
+
+        biz_type = str(file_obj.biz_type or "").upper()
+        raw_id = str(file_obj.biz_id or "").strip()
+        if not raw_id.isdigit():
+            return False
+        if biz_type == "ORIENTATION_MATERIAL":
+            child = db.scalars(select(OrientationMaterial).where(
+                OrientationMaterial.tenant_id == int(file_obj.tenant_id),
+                OrientationMaterial.id == int(raw_id),
+                OrientationMaterial.is_deleted.is_(False),
+            )).first()
+        else:
+            child = db.scalars(select(GreenChannelApplication).where(
+                GreenChannelApplication.tenant_id == int(file_obj.tenant_id),
+                GreenChannelApplication.id == int(raw_id),
+                GreenChannelApplication.is_deleted.is_(False),
+            )).first()
+        if not child:
+            return False
+        orientation = db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == int(file_obj.tenant_id),
+            OrientationStudent.id == int(child.ori_student_id),
+            OrientationStudent.is_deleted.is_(False),
+        )).first()
+        if not orientation or not orientation.student_id:
+            return False
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            from app.services.mobile_student_service import resolve_student
+            profile = resolve_student(db, user or {})
+            return bool(profile and int(profile.id) == int(orientation.student_id))
+        if not has_permission(user or {}, "studentAffairs.orientation.view"):
+            return False
+        from app.services.orientation_service import assert_orientation_student_scope
+        assert_orientation_student_scope(db, orientation, user)
+        return True
+    except Exception:
+        return False
+
+
 @register_file_resolver("ARCHIVE_PACKAGE", "ARCHIVE_BATCH_PACKAGE")
 def internship_archive_package_resolver(
     db, file_obj, bindings: list[Any], user: dict, action: str,

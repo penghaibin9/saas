@@ -101,17 +101,86 @@ class GreenChannelApplication(PKMixin, TenantMixin, CommonMixin, Base):
 class OrientationMaterial(PKMixin, TenantMixin, CommonMixin, Base):
     """t_orientation_material 迎新材料审核。"""
     __tablename__ = "t_orientation_material"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "client_submission_id", name="uk_ori_material_client_submission"
+        ),
+        CheckConstraint(
+            "status IN ('UPLOADED','APPROVED','RETURNED','REJECTED')",
+            name="ck_ori_material_status",
+        ),
+        CheckConstraint("submission_no > 0", name="ck_ori_material_submission_no"),
+        Index(
+            "ix_ori_material_student_current",
+            "tenant_id", "student_id", "material_type", "is_current", "is_deleted",
+        ),
+    )
 
     ori_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True, comment="稳定学生 Authority → t_student_profile.id；历史未绑定可空"
+    )
     material_type: Mapped[str] = mapped_column(String(50), nullable=False,
                                                comment="ID_CARD/ADMISSION_LETTER/PHOTO/ARCHIVE/AID_PROOF")
     file_name: Mapped[str | None] = mapped_column(String(300))
+    submission_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    supersedes_material_id: Mapped[int | None] = mapped_column(BigInteger)
+    source_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="LEGACY_BACKFILL",
+        comment="LEGACY_BACKFILL/STUDENT_SELF_SERVICE",
+    )
+    client_submission_id: Mapped[str | None] = mapped_column(String(100))
+    asset_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    file_version_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     submit_time: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="UPLOADED",
                                         comment="UPLOADED/APPROVED/RETURNED/REJECTED")
     reviewer: Mapped[str | None] = mapped_column(String(100))
     review_time: Mapped[datetime | None] = mapped_column(DateTime)
     return_reason: Mapped[str | None] = mapped_column(String(500))
+
+
+class OrientationArrivalPlan(PKMixin, TenantMixin, CommonMixin, Base):
+    """t_orientation_arrival_plan 学生预报到到校计划 Authority（每名迎新学生一行）。"""
+    __tablename__ = "t_orientation_arrival_plan"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "ori_student_id", name="uk_ori_arrival_student"
+        ),
+        CheckConstraint(
+            "arrival_mode IN ('TRAIN','AIR','COACH','SELF_DRIVE','CITY_TRANSIT','OTHER')",
+            name="ck_ori_arrival_mode",
+        ),
+        CheckConstraint(
+            "status IN ('SUBMITTED','CANCELLED')", name="ck_ori_arrival_status"
+        ),
+        CheckConstraint(
+            "companion_count >= 0 AND companion_count <= 20",
+            name="ck_ori_arrival_companion_count",
+        ),
+        CheckConstraint(
+            "status <> 'SUBMITTED' OR submitted_at IS NOT NULL",
+            name="ck_ori_arrival_submit_time",
+        ),
+        Index(
+            "ix_ori_arrival_student_profile",
+            "tenant_id", "student_id", "status", "is_deleted",
+        ),
+    )
+
+    ori_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, index=True, comment="稳定学生 Authority → t_student_profile.id"
+    )
+    arrival_mode: Mapped[str] = mapped_column(String(30), nullable=False)
+    planned_arrival_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    station_name: Mapped[str | None] = mapped_column(String(200))
+    transport_no: Mapped[str | None] = mapped_column(String(100))
+    pickup_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    companion_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED")
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class OrientationException(PKMixin, TenantMixin, CommonMixin, Base):

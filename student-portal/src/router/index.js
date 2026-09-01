@@ -25,6 +25,10 @@ const routes = [
       { path: 'business-forms/:formCode/:versionId', name: 'business-form', meta: { modulePath: 'internship' }, component: () => import('../views/forms/BusinessFormView.vue') },
       { path: 'employment', name: 'employment', meta: { modulePath: 'employment' }, component: () => import('../views/employment/EmploymentView.vue') },
       { path: 'orientation', name: 'orientation', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
+      { path: 'orientation/info', name: 'orientation-info', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
+      { path: 'orientation/arrival', name: 'orientation-arrival', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
+      { path: 'orientation/materials', name: 'orientation-materials', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
+      { path: 'orientation/green-channel', name: 'orientation-green', meta: { modulePath: 'orientation' }, component: () => import('../views/orientation/OrientationView.vue') },
       // SP-D04：离校与迎新相隔整个学制，权限、路由与消息 target 都不该混在一起。
       // 正式入口独立成 /departure；Orientation 的旧「离校」tab 保留为兼容入口并引导过来，
       // 不删除历史路径。（不使用 /clearance——仓库里那是"清考"语义。）

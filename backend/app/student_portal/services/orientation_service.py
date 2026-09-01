@@ -20,6 +20,16 @@ def collect(user: dict, body: dict) -> dict:
     return stu.orientation_collect_submit(user, body or {})
 
 
+def arrival(user: dict, body: dict) -> dict:
+    """提交/更新本人到校计划。"""
+    return stu.orientation_arrival_submit(user, body or {})
+
+
+def material(user: dict, body: dict) -> dict:
+    """提交本人迎新材料的正式文件版本。"""
+    return stu.orientation_material_submit(user, body or {})
+
+
 def green_channel(user: dict, body: dict) -> dict:
     """绿色通道申请（本人）。"""
     return stu.orientation_green_channel_submit(user, body or {})

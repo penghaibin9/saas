@@ -509,6 +509,16 @@ def orientation_collect(body: dict = Body(default={}), user=Depends(get_current_
     return success(stu.orientation_collect_submit(user, body), message="已提交")
 
 
+@router.put("/orientation/arrival", summary="提交到校计划（本人·乐观锁）")
+def orientation_arrival(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.orientation_arrival_submit(user, body), message="到校计划已保存")
+
+
+@router.post("/orientation/materials", summary="提交迎新材料（本人·正式文件版本）")
+def orientation_material(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.orientation_material_submit(user, body), message="材料已提交")
+
+
 @router.post("/orientation/green-channel", summary="绿色通道申请（本人提交，待审核）")
 def orientation_green_channel(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.orientation_green_channel_submit(user, body), message="已提交")

@@ -12,12 +12,12 @@
               <text class="or__hero-sub">{{ heroSub }}</text>
             </view>
           </view>
-          <view class="or__code" :class="{ 'is-invalid': !o.reportCode.valid }" @click="go('/pages/student/orientation/code/index')">
+          <view class="or__code is-invalid">
             <view class="flex-1">
               <text class="or__code-label">报到码</text>
-              <text class="or__code-value">{{ o.reportCode.code }}</text>
+              <text class="or__code-value">{{ o.reportCode.code || '尚未签发' }}</text>
             </view>
-            <text class="or__code-note">{{ o.reportCode.valid ? '查看电子报到码 ›' : o.reportCode.note }}</text>
+            <text class="or__code-note">{{ o.reportCode.note }}</text>
           </view>
         </view>
 
@@ -25,6 +25,12 @@
         <view v-if="!reportDone" class="or__actions">
           <view class="or__action" @click="go('/pages/student/orientation/collect/index')">
             <text class="or__action-ic">📝</text><text>预报到信息采集</text>
+          </view>
+          <view class="or__action" @click="go('/pages/student/orientation/arrival/index')">
+            <text class="or__action-ic">🚆</text><text>到校计划</text>
+          </view>
+          <view class="or__action" @click="go('/pages/student/orientation/materials/index')">
+            <text class="or__action-ic">📎</text><text>迎新材料</text>
           </view>
           <view v-if="o.greenChannelStatus === 'NOT_APPLIED'" class="or__action" @click="go('/pages/student/orientation/green-channel/index')">
             <text class="or__action-ic">🤝</text><text>绿色通道申请</text>

@@ -67,6 +67,8 @@ export const studentApi = {
       () => mockRequest(M.studentOrientation)),
   getOrientationBatchStatus: () => real.orientationBatchStatus(),
   submitOrientationCollect: (body) => real.orientationCollectSubmit(body),
+  submitOrientationArrival: (body) => real.orientationArrivalSubmit(body),
+  submitOrientationMaterial: (body) => real.orientationMaterialSubmit(body),
   submitOrientationGreenChannel: (body) => real.orientationGreenChannelSubmit(body),
   getServices: () =>
     realFirstStrict('student.campus',

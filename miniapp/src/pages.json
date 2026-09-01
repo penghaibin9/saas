@@ -23,6 +23,8 @@
         {"path": "profile/index", "style": {"navigationBarTitleText": "我的档案"}},
         {"path": "orientation/index", "style": {"navigationBarTitleText": "迎新报到"}},
         {"path": "orientation/collect/index", "style": {"navigationBarTitleText": "预报到信息采集"}},
+        {"path": "orientation/arrival/index", "style": {"navigationBarTitleText": "到校计划"}},
+        {"path": "orientation/materials/index", "style": {"navigationBarTitleText": "迎新材料"}},
         {"path": "orientation/code/index", "style": {"navigationBarTitleText": "电子报到码"}},
         {"path": "orientation/green-channel/index", "style": {"navigationBarTitleText": "绿色通道申请"}},
         {"path": "campus-service/index", "style": {"navigationBarTitleText": "在校服务", "navigationStyle": "custom"}},

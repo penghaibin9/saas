@@ -76,6 +76,17 @@ def _get_student(db, sid) -> OrientationStudent:
     return s
 
 
+def assert_orientation_student_scope(db, student: OrientationStudent, user=None) -> None:
+    """教师端迎新详情/审核/文件统一复用稳定学籍数据范围；未绑定行仅全校范围可见。"""
+    from app.core.affairs_security import build_affairs_context, no_data_scope
+    ctx = build_affairs_context(user or get_current_user_ctx() or {}, db)
+    if ctx.scope_type == "TENANT_ALL":
+        return
+    if not student.student_id:
+        raise no_data_scope("迎新记录尚未绑定稳定学生主档，不在当前账号可证明的数据范围内")
+    ctx.require_student(db, int(student.student_id))
+
+
 def _amt(v) -> float:
     return float(v or 0)
 
@@ -182,9 +193,10 @@ def list_students(page, page_size, keyword=None, class_id=None, batch_id=None, s
         return [_stu_row(r) for r in rows], total
 
 
-def get_student_detail(sid) -> dict:
+def get_student_detail(sid, user=None) -> dict:
     with session() as db:
         s = _get_student(db, sid)
+        assert_orientation_student_scope(db, s, user)
         gcs = db.scalars(select(GreenChannelApplication).where(
             GreenChannelApplication.tenant_id == _tid(),
             GreenChannelApplication.ori_student_id == s.id).order_by(GreenChannelApplication.id)).all()
@@ -634,10 +646,17 @@ def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: s
                 biz_id=g.id,
                 actor=actor or {},
                 subject_type="STUDENT",
-                subject_id=s.id,
+                subject_id=s.student_id or s.id,
                 relation_type="BUSINESS_EVIDENCE",
                 module_code="ORIENTATION",
-                scope={"orientationStudentId": str(s.id), "applyType": apply_type},
+                student_id=s.student_id,
+                batch_id=str(s.batch_id),
+                college_id=s.college_id,
+                class_id=s.class_id,
+                scope={
+                    "orientationStudentId": str(s.id), "studentId": str(s.student_id or ""),
+                    "applyType": apply_type,
+                },
             )
         _audit(db, "GREEN_CHANNEL", g.id, "学生提交绿色通道申请",
               f"{apply_type} ¥{_amt(apply_amount):.0f}")
@@ -681,37 +700,57 @@ def _mat_row(m: OrientationMaterial, stu: OrientationStudent | None = None) -> d
             "name": stu.name if stu else "", "className": stu.class_name if stu else "",
             "materialType": m.material_type, "materialTypeLabel": L_MATTYPE.get(m.material_type, m.material_type),
             "fileName": m.file_name or "", "submitTime": _iso(m.submit_time) or "",
+            "submissionNo": int(m.submission_no or 1), "isCurrent": bool(m.is_current),
+            "assetId": str(m.asset_id or ""), "fileVersionId": str(m.file_version_id or ""),
             "status": m.status, "statusLabel": L_MAT.get(m.status, m.status),
             "reviewer": m.reviewer or "", "reviewTime": _iso(m.review_time) or "",
             "returnReason": m.return_reason or ""}
 
 
-def list_materials(page, page_size, keyword=None, status=None, material_type=None):
+def list_materials(page, page_size, keyword=None, status=None, material_type=None, user=None):
     with session() as db:
-        q = select(OrientationMaterial).where(OrientationMaterial.tenant_id == _tid(),
-                                              OrientationMaterial.is_deleted.is_(False))
+        q = select(OrientationMaterial, OrientationStudent).join(
+            OrientationStudent,
+            (OrientationStudent.id == OrientationMaterial.ori_student_id)
+            & (OrientationStudent.tenant_id == OrientationMaterial.tenant_id),
+        ).where(
+            OrientationMaterial.tenant_id == _tid(),
+            OrientationMaterial.is_deleted.is_(False),
+            OrientationMaterial.is_current.is_(True),
+            OrientationStudent.is_deleted.is_(False),
+            OrientationStudent.record_status == "ACTIVE",
+        )
+        from app.core.affairs_security import student_directory_scope
+        class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(
+                OrientationStudent.student_id.in_(student_ids) if student_ids else false()
+            )
+        elif class_ids is not None:
+            if not class_ids:
+                q = q.where(false())
+            else:
+                q = q.where(OrientationStudent.student_id.in_(select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                    StudentProfile.class_id.in_(class_ids),
+                )))
         if status:
             q = q.where(OrientationMaterial.status == status)
         if material_type:
             q = q.where(OrientationMaterial.material_type == material_type)
-        rows = db.scalars(q.order_by(OrientationMaterial.id.desc())).all()
-        # 消 N+1：一次批量取回本批材料涉及的迎新学生，替代循环内逐行 db.get（行为等价）。
-        sids = {int(m.ori_student_id) for m in rows if m.ori_student_id}
-        stu_map = {s.id: s for s in db.scalars(select(OrientationStudent).where(
-            OrientationStudent.id.in_(sids))).all()} if sids else {}
-        items = []
-        for m in rows:
-            stu = stu_map.get(int(m.ori_student_id)) if m.ori_student_id else None
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_mat_row(m, stu))
-        return _page(items, page, page_size)
+        if keyword:
+            q = q.where(OrientationStudent.name.like(f"%{keyword.strip()}%"))
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.execute(q.order_by(OrientationMaterial.id.desc())
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+        return [_mat_row(material, student) for material, student in rows], total
 
 
 def _refresh_material_status(db, stu):
     mats = db.scalars(select(OrientationMaterial).where(
         OrientationMaterial.tenant_id == _tid(),
         OrientationMaterial.ori_student_id == stu.id,
+        OrientationMaterial.is_current.is_(True),
         OrientationMaterial.is_deleted.is_(False))).all()
     if mats and all(m.status == "APPROVED" for m in mats):
         stu.material_status = "APPROVED"
@@ -724,11 +763,17 @@ def _refresh_material_status(db, stu):
             )
 
 
-def approve_material(mid, comment=""):
+def approve_material(mid, comment="", user=None):
     with session() as db:
         m = db.get(OrientationMaterial, int(mid))
         if not m or m.is_deleted or m.tenant_id != _tid():
             raise not_found("材料不存在")
+        if not m.is_current:
+            raise AppException("DATA_CONFLICT", "历史材料版本不可审核")
+        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
+        if not stu:
+            raise not_found("材料所属迎新记录不存在")
+        assert_orientation_student_scope(db, stu, user)
         if m.status == "APPROVED":
             raise AppException("DATA_CONFLICT", "该材料已通过")
         before = m.status
@@ -737,21 +782,30 @@ def approve_material(mid, comment=""):
         m.reviewer = name
         m.review_time = datetime.utcnow()
         m.version += 1
-        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
-        if stu:
-            _refresh_material_status(db, stu)
+        if m.file_version_id:
+            from app.models.file import FileVersion
+            version = tenant_get(db, FileVersion, m.file_version_id)
+            if version:
+                version.status = "APPROVED"
+        _refresh_material_status(db, stu)
         _audit(db, "MATERIAL", m.id, "审核通过", comment, before, "APPROVED")
         db.commit()
         return {"id": str(m.id), "status": "APPROVED"}
 
 
-def return_material(mid, reason):
+def return_material(mid, reason, user=None):
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
         m = db.get(OrientationMaterial, int(mid))
         if not m or m.is_deleted or m.tenant_id != _tid():
             raise not_found("材料不存在")
+        if not m.is_current:
+            raise AppException("DATA_CONFLICT", "历史材料版本不可审核")
+        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
+        if not stu:
+            raise not_found("材料所属迎新记录不存在")
+        assert_orientation_student_scope(db, stu, user)
         before = m.status
         name, _ = _op()
         m.status = "RETURNED"
@@ -759,9 +813,12 @@ def return_material(mid, reason):
         m.review_time = datetime.utcnow()
         m.return_reason = reason.strip()
         m.version += 1
-        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
-        if stu:
-            stu.material_status = "RETURNED"
+        if m.file_version_id:
+            from app.models.file import FileVersion
+            version = tenant_get(db, FileVersion, m.file_version_id)
+            if version:
+                version.status = "REJECTED"
+        stu.material_status = "RETURNED"
         _audit(db, "MATERIAL", m.id, "退回材料", reason.strip(), before, "RETURNED")
         db.commit()
         return {"id": str(m.id), "status": "RETURNED"}
