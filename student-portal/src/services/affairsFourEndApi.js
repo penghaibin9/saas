@@ -53,6 +53,10 @@ export const affairsFourEndApi = {
   downloadMaterial: (fileId, fileName = '补交材料') => downloadFile(`/files/download/${enc(fileId)}`, fileName),
 
   // 宿舍正式调宿
+  dormSelectOptions: () => request('/mobile/affairs/dorm/select-options'),
+  dormSelectRooms: (buildingId) => request(`/mobile/affairs/dorm/buildings/${enc(buildingId)}/rooms`),
+  dormSelectBeds: (roomId) => request(`/mobile/affairs/dorm/rooms/${enc(roomId)}/beds`),
+  selfSelectDormBed: (bedId) => request(`/mobile/affairs/dorm/beds/${enc(bedId)}/self-select`, { method: 'POST', body: {} }),
   dormTransferOptions: () => loadAllTransferPages('/mobile/affairs/dorm/transfer-options'),
   dormTransferRooms: (buildingId) => loadAllTransferPages(`/mobile/affairs/dorm/transfer-buildings/${enc(buildingId)}/rooms`),
   dormTransferBeds: (roomId) => request(`/mobile/affairs/dorm/transfer-rooms/${enc(roomId)}/beds`),

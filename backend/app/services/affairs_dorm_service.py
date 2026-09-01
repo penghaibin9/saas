@@ -446,9 +446,8 @@ def checkin(bed_id, user, student_id) -> dict:
 # ── 学校级"学生自选宿舍"开关（规则中心）──
 
 def is_self_select_enabled() -> bool:
-    from app.services.platform_service import get_config_json
-    cfg = get_config_json(_tid(), _DORM_CFG_TYPE, _SELF_SELECT_KEY)
-    return bool(cfg.get("enabled", False)) if cfg else False
+    from app.services.dorm_allocation_service import public_config
+    return bool(public_config().get("selfSelectEnabled"))
 
 
 # 学生端提醒文案（前端/小程序直接展示，无需自己拼）
@@ -457,29 +456,28 @@ _NOTICE_ON = "已开放学生自选宿舍，请在开放时段内选择空床完
 
 
 def get_dorm_config(user) -> dict:
-    """前端/小程序据此决定是否显示"学生自选床位"入口，并直接展示 studentNotice。"""
-    on = is_self_select_enabled()
-    return {"selfSelectEnabled": on,
-            "assignMode": "SELF_SELECT" if on else "COUNSELOR_ASSIGN",
-            "studentNotice": _NOTICE_ON if on else _NOTICE_OFF}
+    """兼容读接口；D3 起仅投影已发布且处于时间窗的分配批次。"""
+    from app.services.dorm_allocation_service import public_config
+    return public_config()
 
 
 def set_self_select(user, enabled: bool) -> dict:
-    """学校管理员开/关学生自选宿舍。"""
-    from app.services.platform_service import put_config_json
-    put_config_json(_tid(), _DORM_CFG_TYPE, _SELF_SELECT_KEY, {"enabled": bool(enabled)})
-    _n, _r, _u = _op()
-    with session() as db:
-        _audit(db, "DORM_CONFIG", 0, "SET_SELF_SELECT", f"enabled={bool(enabled)}")
-        db.commit()
-    return get_dorm_config(user)
+    """旧全局开关退出权威，避免绕过批次学生/资源池与时间窗。"""
+    raise AppException(
+        "INVALID_STATE",
+        "学生自选由住宿分配批次和时间窗控制，请在‘分配计划’中发布。",
+    )
 
 
 def self_select_checkin(bed_id, user, student_id) -> dict:
-    """学生自选床位入住（学生端调用）。学校未放开 → 403，引导找辅导员分配。"""
-    if not is_self_select_enabled():
-        raise no_permission(_NOTICE_OFF)
-    return checkin(bed_id, user, student_id)
+    """兼容旧学生入口，最终权威仍是分配项与床位的原子确认。"""
+    from app.services.mobile_student_service import resolve_student
+    from app.services.dorm_allocation_service import student_select_bed
+    with session() as db:
+        student = resolve_student(db, user)
+        if not student or int(student.id) != int(student_id):
+            raise no_permission("学生自选仅允许操作本人分配项")
+    return student_select_bed(user, int(bed_id))
 
 
 def checkout(bed_id, user, expected_version=None) -> dict:

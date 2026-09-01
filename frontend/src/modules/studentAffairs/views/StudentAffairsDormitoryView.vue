@@ -230,6 +230,12 @@ export default {
     roomStateEntries() {
       return [
         {
+          title: '分配计划',
+          description: '创建批次、Dry Run、人工调整并发布冻结资源池',
+          path: '/admin/student-affairs/dorm/allocation',
+          permission: 'studentAffairs.dorm.view'
+        },
+        {
           title: '房源管理',
           description: '查看楼栋、房间、床位真实状态',
           path: '/admin/student-affairs/dorm/resource',

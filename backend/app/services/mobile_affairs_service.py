@@ -184,10 +184,10 @@ def discipline_my(user) -> dict:
 
 
 def dorm_my(user) -> dict:
-    """我的宿舍：当前床位 + 学校自选开关(决定是否显示选床入口)。"""
+    """我的宿舍：D4 正式入住事实 + D3 批次分配/预留投影。"""
     from app.models import DormBed, DormBuilding, DormRoom
     from app.core.tenant_scoped import tenant_get
-    from app.services import affairs_dorm_service as dorm
+    from app.services import dorm_allocation_service as allocation
     with session() as db:
         stu = _me(db, user)
         bed = db.scalars(select(DormBed).where(
@@ -200,7 +200,7 @@ def dorm_my(user) -> dict:
             my_bed = {"bedId": str(bed.id), "building": b.building_name if b else "",
                       "room": room.room_no if room else "", "bedNo": bed.bed_no,
                       "occupiedAt": _iso(bed.occupied_at)}
-    cfg = dorm.get_dorm_config(user)  # selfSelectEnabled + studentNotice
+    cfg = allocation.student_config(user)
     return {"myBed": my_bed, "hasBed": bool(my_bed), **cfg}
 
 
@@ -231,50 +231,37 @@ def overview_my(user) -> dict:
 # ═══════════ 学生自选床位（受学校开关控制）═══════════
 
 def dorm_select_options(user) -> dict:
-    """选床可选项：先回配置，放开时按本人性别列可选楼(带空床数)。"""
-    from app.services import affairs_dorm_service as dorm
-    with session() as db:
-        stu = _me(db, user)
-        gender = stu.gender
-    cfg = dorm.get_dorm_config(user)
-    if not cfg["selfSelectEnabled"]:
-        return {**cfg, "buildings": []}
-    buildings, _ = dorm.list_buildings(user, gender=gender)
-    return {**cfg, "buildings": buildings}
+    """仅返回本人所属已发布批次的冻结资源池。"""
+    from app.services.dorm_allocation_service import student_options
+    return student_options(user)
 
 
 def _require_self_select_on(user):
-    from app.services import affairs_dorm_service as dorm
-    if not dorm.is_self_select_enabled():
-        raise no_permission(dorm._NOTICE_OFF)
+    from app.services.dorm_allocation_service import student_config
+    if not student_config(user).get("canSelfSelect"):
+        raise no_permission("当前没有可用的学生自选住宿批次")
 
 
 def dorm_rooms(user, building_id, floor=None) -> dict:
-    """学生浏览某楼房间（选床级联，仅学校放开自选时可用）。"""
-    from app.services import affairs_dorm_service as dorm
-    with session() as db:
-        _me(db, user)
-    _require_self_select_on(user)
-    items, total = dorm.list_rooms(building_id, user, floor)
-    return {"items": items, "total": total}
+    """学生浏览本人批次冻结资源池内某楼房间。"""
+    from app.services.dorm_allocation_service import student_rooms
+    result = student_rooms(user, int(building_id))
+    if floor is not None:
+        result["items"] = [row for row in result["items"] if int(row.get("floorNo") or 0) == int(floor)]
+        result["total"] = len(result["items"])
+    return result
 
 
 def dorm_beds(user, room_id) -> dict:
-    """学生浏览某房床位（选床级联，仅学校放开自选时可用）。"""
-    from app.services import affairs_dorm_service as dorm
-    with session() as db:
-        _me(db, user)
-    _require_self_select_on(user)
-    return {"items": dorm.list_beds(room_id, user)}
+    """学生浏览本人批次冻结资源池内某房空床。"""
+    from app.services.dorm_allocation_service import student_beds
+    return student_beds(user, int(room_id))
 
 
 def dorm_self_select(user, bed_id) -> dict:
-    """学生自选某空床入住本人。学校未放开→403（含提醒文案）。只能给自己选。"""
-    from app.services import affairs_dorm_service as dorm
-    with session() as db:
-        stu = _me(db, user)
-        sid = stu.id
-    return dorm.self_select_checkin(bed_id, user, sid)
+    """原子确认本人批次分配项；仅预留床位，不伪造正式入住。"""
+    from app.services.dorm_allocation_service import student_select_bed
+    return student_select_bed(user, int(bed_id))
 
 
 def talk_my(user) -> dict:

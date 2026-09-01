@@ -1,14 +1,14 @@
 <template>
   <AppPageShell
     title="入住管理"
-    subtitle="按楼→房→床选定空床为学生办理入住，或办理退宿；学校可开关「学生自选宿舍」。"
+    subtitle="本页办理正式入住与退宿；学生自选由「分配计划」的批次、资源池和时间窗控制。"
     role-name="学工处 / 辅导员 / 宿管"
     data-scope-name="宿管限负责楼栋"
     watermark-purpose="宿舍入住管理"
   >
     <template #actions>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" code="studentAffairs.dorm.allocation.manage" variant="secondary" :loading="actioning" @click="toggleSelfSelect">
-        {{ config.selfSelectEnabled ? '关闭学生自选' : '开放学生自选' }}
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="$router.push('/admin/student-affairs/dorm/allocation')">
+        管理分配计划
       </AppPermissionButton>
     </template>
 
@@ -21,8 +21,8 @@
           <p class="sa-summary-strip__text">{{ config.studentNotice || '选择楼栋和房间后查看床位。空床可办理入住，已住床位可办理退宿。' }}</p>
         </div>
         <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" code="studentAffairs.dorm.allocation.manage" variant="secondary" :loading="actioning" @click="toggleSelfSelect">
-            {{ config.selfSelectEnabled ? '关闭学生自选' : '开放学生自选' }}
+          <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="$router.push('/admin/student-affairs/dorm/allocation')">
+            管理分配计划
           </AppPermissionButton>
         </div>
       </section>
@@ -87,16 +87,6 @@
       :submitting="actioning" @confirm="submitCheckout"
     />
 
-    <AppConfirmDialog
-      v-model:visible="modeDlg.visible"
-      :title="config.selfSelectEnabled ? '关闭学生自选宿舍' : '开放学生自选宿舍'"
-      :type="config.selfSelectEnabled ? 'warning' : 'primary'"
-      :confirm-text="config.selfSelectEnabled ? '确认关闭' : '确认开放'"
-      :description="config.selfSelectEnabled
-        ? '关闭后学生端将无法自选床位，改回由辅导员/宿管统一分配。已选定的床位不受影响。'
-        : '开放后学生可在学生端自行选择空床位。该开关对全校生效。'"
-      :submitting="actioning" @confirm="submitToggle"
-    />
   </AppPageShell>
 </template>
 
@@ -130,8 +120,7 @@ export default {
       loading: true, actioning: false, errorMessage: '', config: {}, buildings: [], curBuilding: '',
       rooms: [], curRoom: '', beds: [], routeBedId: '', routeNotice: '',
       inDlg: { visible: false, bedId: '', bedLabel: '', studentId: '', error: '' },
-      outDlg: { visible: false, bedId: '', who: '', version: null },
-      modeDlg: { visible: false }
+      outDlg: { visible: false, bedId: '', who: '', version: null }
     }
   },
   computed: {
@@ -233,16 +222,6 @@ export default {
       } finally {
         this.actioning = false
       }
-    },
-    toggleSelfSelect() { this.modeDlg.visible = true },
-    async submitToggle() {
-      const next = !this.config.selfSelectEnabled
-      this.actioning = true; this.errorMessage = ''
-      try {
-        this.config = (await studentAffairsApi.setDormSelfSelect(next)).data
-        await this.load()
-        this.modeDlg.visible = false
-      } catch (e) { this.errorMessage = e.message } finally { this.actioning = false }
     },
     async runAction(fn) {
       this.actioning = true; this.errorMessage = ''

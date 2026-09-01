@@ -798,6 +798,38 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/dorm/occupancy'))
   },
 
+  /** D3 住宿分配批次：列表、草稿、Dry Run、人工调整与发布。 */
+  listDormAllocationBatches({ status = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/dorm/allocation-batches', { params }))
+  },
+  createDormAllocationBatch(body) {
+    return callStrict(() => request('/student-affairs/dorm/allocation-batches', { method: 'POST', body }))
+  },
+  getDormAllocationBatch(batchId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}`))
+  },
+  dryRunDormAllocation(batchId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/dry-run`, { method: 'POST' }))
+  },
+  manualAssignDorm(batchId, studentId, bedId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/manual-assign`, { method: 'POST', body: { studentId: String(studentId), bedId: String(bedId) } }))
+  },
+  publishDormAllocation(batchId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/publish`, { method: 'POST' }))
+  },
+  async downloadDormAllocationConflicts(batchId) {
+    try {
+      const blob = await requestBlob(`/student-affairs/dorm/allocation-batches/${batchId}/conflicts.xlsx`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = '住宿分配异常行.xlsx'; document.body.appendChild(a); a.click()
+      a.remove(); URL.revokeObjectURL(url)
+      return ok(true)
+    } catch (e) { return toErr(e) }
+  },
+
   /** 学生入住某床（回写我的宿舍）。 */
   checkinBed(bedId, studentId) {
     return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkin`, { method: 'POST', body: { studentId: String(studentId) } }))
