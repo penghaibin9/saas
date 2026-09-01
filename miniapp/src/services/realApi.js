@@ -175,7 +175,7 @@ const NEUTRAL_ORIENTATION = {
   reportCode: { code: '', valid: false, note: '暂无迎新报到记录，如需办理请联系辅导员' },
   selfService: { available: false, information: {}, arrivalPlan: null, materials: [] },
   greenChannelStatus: 'NOT_APPLIED', dorm: { building: '', room: '', status: '' },
-  payStatus: '', materialStatus: '', blocked: null, steps: [], contacts: [],
+  payStatus: '', payment: {}, materialStatus: '', qualification: null, blocked: null, steps: [], contacts: [],
   identity: { name: '', admissionNo: '', gender: '', collegeName: '', majorName: '', className: '', grade: '',
     origin: '', phoneMasked: '' }
 }
@@ -190,7 +190,8 @@ export async function enrichOrientation() {
     batch: r.batchName || '迎新报到',
     overallStatus: r.reportStatus, overallText: stMap[r.reportStatus] || r.reportStatus || '',
     dorm: { building: r.building || '', room: r.room || '', status: r.dormStatus || '' },
-    payStatus: r.paymentStatus || '', materialStatus: r.materialStatus || '',
+    payStatus: r.paymentStatus || '', payment: r.payment || {}, materialStatus: r.materialStatus || '',
+    qualification: r.qualification || null,
     greenChannelStatus: r.greenChannelStatus || 'NOT_APPLIED',
     blocked: r.blockedStep ? { step: r.blockedStep, reason: r.blockedReason } : null,
     steps: (r.steps || []).map((s) => ({ key: s.key, status: s.status })),

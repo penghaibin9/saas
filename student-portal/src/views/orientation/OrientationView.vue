@@ -18,6 +18,13 @@
           <FlowSteps :steps="flowSteps" />
         </section>
         <section class="sp-card">
+          <div class="sp-panel__head">报到资格 <StatusTag :text="qualificationText" :tone="qualificationTone" /></div>
+          <p class="sp-muted">资格由学校服务器按当前正式材料、缴费/绿色通道、住宿和异常事实统一计算。</p>
+          <ul v-if="my.qualification?.blockers?.length" class="qualification-blockers">
+            <li v-for="item in my.qualification.blockers" :key="`${item.code}-${item.step}`">{{ item.message }}</li>
+          </ul>
+        </section>
+        <section class="sp-card">
           <div class="sp-panel__head">报到信息</div>
           <dl class="desc">
             <div><dt>录取通知号</dt><dd>{{ my.admissionNo || '—' }}</dd></div>
@@ -27,6 +34,8 @@
             <div><dt>宿舍楼</dt><dd>{{ my.building || '—' }}</dd></div>
             <div><dt>房间/床位</dt><dd>{{ my.room || '—' }}</dd></div>
             <div><dt>缴费状态</dt><dd><StatusTag :text="payText(my.paymentStatus)" :tone="my.paymentStatus==='PAID'?'success':'warn'" /></dd></div>
+            <div><dt>应缴金额</dt><dd>¥{{ my.payment?.payableAmount || '0.00' }}</dd></div>
+            <div><dt>已缴金额</dt><dd>¥{{ my.payment?.paidAmount || '0.00' }}</dd></div>
             <div><dt>材料状态</dt><dd><StatusTag :text="matText(my.materialStatus)" :tone="my.materialStatus==='APPROVED'?'success':'warn'" /></dd></div>
             <div><dt>绿色通道</dt><dd><StatusTag :text="gcText(my.greenChannelStatus)" :tone="my.greenChannelStatus==='APPROVED'?'success':my.greenChannelStatus==='NOT_APPLIED'?'default':'warn'" /></dd></div>
           </dl>
@@ -161,8 +170,11 @@ function payText(s) { return PAY[s] || s || '—' }
 function matText(s) { return MAT[s] || s || '—' }
 function gcText(s) { return GC[s] || s || '—' }
 
-const flowSteps = computed(() => (my.value.steps || []).map((s) => ({ name: stepLabel(s.key), state: s.status === 'DONE' ? 'done' : s.status === 'BLOCKED' ? 'todo' : 'current' })))
-const allDone = computed(() => (my.value.steps || []).length > 0 && (my.value.steps || []).every((s) => s.status === 'DONE'))
+const terminalStep = (status) => ['DONE', 'WAIVED', 'NOT_REQUIRED'].includes(status)
+const flowSteps = computed(() => (my.value.steps || []).map((s) => ({ name: stepLabel(s.key), state: terminalStep(s.status) ? 'done' : s.status === 'BLOCKED' ? 'todo' : 'current' })))
+const allDone = computed(() => (my.value.steps || []).length > 0 && (my.value.steps || []).every((s) => terminalStep(s.status)))
+const qualificationText = computed(() => my.value.qualification?.verdictLabel || '资格待计算')
+const qualificationTone = computed(() => ({ QUALIFIED: 'success', NOT_QUALIFIED: 'danger', MANUAL_REVIEW: 'warn' })[my.value.qualification?.verdict] || 'default')
 const selfService = computed(() => my.value.selfService || { available: false, information: {}, arrivalPlan: null, materials: [] })
 const MATERIALS = { ID_CARD: '身份证明', ADMISSION_LETTER: '录取通知书', PHOTO: '证件照', ARCHIVE: '纸质档案凭证' }
 function materialLabel(k) { return MATERIALS[k] || k }
@@ -197,7 +209,7 @@ async function submitArrival() {
   catch (e) { ui.notify(e?.message || '到校计划保存失败') } finally { busy.value = false }
 }
 function pickMaterial(event) { materialFile.value = event.target.files?.[0] || null }
-function clientSubmissionId() { return globalThis.crypto?.randomUUID?.() || `o3-${Date.now()}-${Math.random().toString(16).slice(2)}` }
+function clientSubmissionId() { return globalThis.crypto.randomUUID() }
 async function submitMaterial() {
   if (!materialFile.value) return
   busy.value = true
@@ -209,7 +221,7 @@ async function submitMaterial() {
 }
 async function submitGreen() {
   busy.value = true
-  try { await portalApi.orientationGreenChannel({ applyType: greenForm.type, reason: greenForm.reason }); ui.notify('绿色通道申请已提交'); await router.push('/orientation'); await load() }
+  try { await portalApi.orientationGreenChannel({ applyType: greenForm.type, remark: greenForm.reason, clientRequestId: clientSubmissionId() }); ui.notify('绿色通道申请已提交'); await router.push('/orientation'); await load() }
   catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
 onMounted(load)
@@ -226,6 +238,7 @@ onMounted(load)
 .material-list { border-top:1px solid var(--line); }
 .material-row { display:flex; justify-content:space-between; gap:20px; padding:14px 0; border-bottom:1px solid var(--line); }
 .return-reason { max-width:280px; margin-top:6px; color:#B42318; font-size:12px; text-align:right; }
+.qualification-blockers { margin:12px 0 0; padding-left:20px; color:#B42318; line-height:1.7; font-size:13px; }
 .notebox { margin-top: 14px; padding: 12px 16px; background: var(--warn-bg); border: 1px solid #FBE3B8; border-radius: 10px; font-size: 12.5px; color: #8A5300; line-height: 1.6; }
 @media (max-width: 900px) { .desc { grid-template-columns: 1fr 1fr; } .two, .material-submit { grid-template-columns: 1fr; } }
 </style>

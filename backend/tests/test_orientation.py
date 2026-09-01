@@ -106,10 +106,10 @@ def test_create_and_void_student(client, auth_headers, db_mode):
 def test_green_channel_closed_loop(client, auth_headers, db_mode):
     ids = _seed(db_mode)
     bad = client.post(f"/api/v1/orientation/green-channels/{ids['gc']}/reject", headers=auth_headers,
-                      json={"reason": "x"}).json()
+                      json={"expectedVersion": 0, "reason": "x"}).json()
     assert bad["code"] == 422001
     ok = client.post(f"/api/v1/orientation/green-channels/{ids['gc']}/approve", headers=auth_headers,
-                     json={"remark": "材料齐全予以通过"}).json()
+                     json={"expectedVersion": 0, "remark": "材料齐全予以通过"}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
     # 通过后学生缴费状态转绿色通道，并解除 PAYMENT 卡点
     det = client.get(f"/api/v1/orientation/students/{ids['student']}", headers=auth_headers).json()
@@ -117,7 +117,7 @@ def test_green_channel_closed_loop(client, auth_headers, db_mode):
     assert det["data"]["student"]["blockedStep"] == ""
     assert det["data"]["student"]["steps"]["PAYMENT"] == "DONE"
     dup = client.post(f"/api/v1/orientation/green-channels/{ids['gc']}/approve", headers=auth_headers,
-                      json={}).json()
+                      json={"expectedVersion": 0}).json()
     assert dup["code"] == 409001
 
 

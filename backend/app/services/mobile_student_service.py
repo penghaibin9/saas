@@ -172,14 +172,21 @@ def _orientation_payload(o, db=None) -> dict:
     if db is None:
         raise RuntimeError("orientation payload requires canonical step session")
     from app.services.orientation_flow_service import student_step_projection
+    from app.services.orientation_qualification_service import evaluate
     steps = student_step_projection(db, o)
-    return {"hasData": True, "reportStatus": o.report_status, "paymentStatus": o.payment_status,
+    qualification = evaluate(db, o)
+    payment_fact = qualification.get("facts", {}).get("payment", {})
+    payment_status = ("GREEN_CHANNEL" if payment_fact.get("greenChannelApproved")
+                      else payment_fact.get("status") or "UNAVAILABLE")
+    return {"hasData": True, "reportStatus": o.report_status, "paymentStatus": payment_status,
             "materialStatus": o.material_status, "dormStatus": o.dorm_status,
             "greenChannelStatus": o.green_channel_status,
             "building": o.building or "", "room": o.room or "",
             "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
             "steps": [{"key": k, "status": v} for k, v in steps.items()],
             "admissionNo": o.admission_no, "name": o.name,
+            "qualification": qualification,
+            "payment": payment_fact,
             # O5 才签发可核验报到凭证；录取编号只是展示事实，绝不冒充安全报到码。
             "reportCodeValid": False, "reportCodeStatus": "NOT_ISSUED",
             "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
@@ -833,6 +840,7 @@ def orientation_green_channel_submit(user: dict, body: dict) -> dict:
     result = student_submit_green_channel(
         oid, b.get("applyType", ""), b.get("applyAmount", 0), b.get("remark", ""),
         file_ids=_attachment_ids(b), actor=u,
+        client_request_id=b.get("clientRequestId", ""),
     )
     invalidate_home_cache(u, "todo", "case")
     audit_log.record("学生提交绿色通道申请", f"orientation-student:{oid}", detail={"realName": u.get("realName")})

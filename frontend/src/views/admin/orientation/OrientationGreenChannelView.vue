@@ -140,9 +140,9 @@ export default {
     async onConfirm(reason) {
       const row = this.confirmRow; if (!row) return
       let res
-      if (this.confirmMode === 'approve') res = await api.approveGreenChannel(row.id, { remark: '' })
-      else if (this.confirmMode === 'return') res = await api.returnGreenChannel(row.id, { reason })
-      else if (this.confirmMode === 'reject') res = await api.rejectGreenChannel(row.id, { reason })
+      if (this.confirmMode === 'approve') res = await api.approveGreenChannel(row.id, { remark: '', expectedVersion: row.version })
+      else if (this.confirmMode === 'return') res = await api.returnGreenChannel(row.id, { reason, expectedVersion: row.version })
+      else if (this.confirmMode === 'reject') res = await api.rejectGreenChannel(row.id, { reason, expectedVersion: row.version })
       if (res && res.code === 0) { toast.success('已处理'); this.confirmVisible = false; await this.load() }
       else toast.error((res && res.message) || '操作失败')
     }

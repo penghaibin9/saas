@@ -7,7 +7,8 @@ from sqlalchemy import func, select
 
 from app.core.exceptions import AppException
 from app.models import (OrientationBatch, OrientationFlowConfig, OrientationFlowStep,
-                        OrientationFlowVersion, OrientationStudentStep)
+                        OrientationFlowVersion, OrientationMaterialRequirement,
+                        OrientationStudentStep)
 
 DEFAULT_ORIENTATION_STEPS = (
     ("ACTIVATE", "账号激活"),
@@ -99,6 +100,20 @@ def ensure_published_flow_version(db, tenant_id: int) -> OrientationFlowVersion:
             required=required,
             sort_order=sort_order,
             remark=remark,
+        ))
+    for index, (material_type, material_name, required) in enumerate((
+        ("ID_CARD", "身份证明", True),
+        ("ADMISSION_LETTER", "录取通知书", True),
+        ("PHOTO", "证件照", False),
+        ("ARCHIVE", "纸质档案凭证", False),
+    ), start=1):
+        db.add(OrientationMaterialRequirement(
+            tenant_id=tenant_id, flow_version_id=version.id,
+            material_type=material_type, material_name=material_name,
+            required=required, requires_scan_clean=True,
+            allowed_exts_json=["pdf", "png", "jpg", "jpeg"],
+            max_size_bytes=10 * 1024 * 1024, sort_order=index * 10,
+            source_type="DEFAULT_BACKFILL",
         ))
     db.flush()
     return version
