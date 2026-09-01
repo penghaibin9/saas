@@ -154,6 +154,12 @@ def enrollment_finalize(sid: str, body: dict = Body(...), user=Depends(require_s
     return success(finalize(sid, body, user=user), message="学院确认已完成")
 
 
+@router.post("/students/{sid}/activate", summary="激活迎新学生主档与登录账号")
+def enrollment_activate(sid: str, body: dict = Body(...), user=Depends(require_staff)):
+    from app.services.orientation_enrollment_finalize_service import activate
+    return success(activate(sid, body, user=user), message="学生身份与账号已激活")
+
+
 @router.get("/materials", summary="材料审核列表")
 def materials(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
               keyword: Optional[str] = None, status: Optional[str] = None,

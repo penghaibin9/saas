@@ -54,7 +54,10 @@ class OrientationEnrollmentFinalizeService:
     """Named application service required by the orientation construction manual."""
 
     @staticmethod
-    def _profile(db, student: OrientationStudent, body: dict, actor: dict | None):
+    def _profile(
+        db, student: OrientationStudent, body: dict, actor: dict | None,
+        *, operation_label: str = "学院确认建档",
+    ):
         if student.student_id:
             profile = db.get(StudentProfile, int(student.student_id))
             if (
@@ -81,7 +84,7 @@ class OrientationEnrollmentFinalizeService:
             current_stage=ADMITTED,
             student_status="NORMAL",
             require_complete_org=True,
-            remark=f"由迎新台账 {student.id} 学院确认建档",
+            remark=f"由迎新台账 {student.id} {operation_label}",
         )
         resolution = master.resolve_student_for_import(
             db, tenant_id=int(student.tenant_id), cmd=cmd,
@@ -115,7 +118,10 @@ class OrientationEnrollmentFinalizeService:
         return profile
 
     @staticmethod
-    def _account(db, profile: StudentProfile, student: OrientationStudent, body: dict):
+    def _account(
+        db, profile: StudentProfile, student: OrientationStudent, body: dict,
+        *, source: str = "ORIENTATION_FINALIZE", operation_label: str = "学院确认",
+    ):
         from app.services import student_account_link_service as links
         from app.services.saas_role_service import ensure_builtin_roles, ensure_user_roles
 
@@ -163,13 +169,86 @@ class OrientationEnrollmentFinalizeService:
             }
         links.bind_in_session(
             db, tenant_id=int(student.tenant_id), student_id=int(profile.id),
-            user_id=int(account.id), source="ORIENTATION_FINALIZE",
+            user_id=int(account.id), source=source,
             login_name=account.login_name, student_no=profile.student_no,
-            remark=f"迎新台账 {student.id} 学院确认",
+            remark=f"迎新台账 {student.id} {operation_label}",
         )
         ensure_builtin_roles(db, int(student.tenant_id))
         ensure_user_roles(db, int(student.tenant_id), int(account.id), ["STUDENT"])
         return account, initial_credential
+
+    @classmethod
+    def activate(cls, orientation_student_id, body: dict, *, user=None) -> dict:
+        """Create/link the student identity before signed on-site check-in.
+
+        Domain XLSX import intentionally does not create login accounts.  This
+        explicit staff action is the governed ACTIVATE step that bridges an
+        imported candidate into student self-service without weakening the
+        signed check-in requirement.
+        """
+        from app.services import student_account_link_service as links
+        from app.services.orientation_flow_service import set_student_step_status
+        from app.services.orientation_service import _audit, assert_orientation_student_scope
+
+        actor = user or get_current_user_ctx() or {}
+        _actor_id(actor)
+        request_id = str((body or {}).get("clientRequestId") or "").strip()
+        if len(request_id) < 12 or len(request_id) > 100:
+            raise AppException("VALIDATION_ERROR", "clientRequestId 长度须为 12-100 个字符")
+        with session() as db:
+            student = db.scalars(select(OrientationStudent).where(
+                OrientationStudent.id == int(orientation_student_id),
+                OrientationStudent.tenant_id == _tid(),
+                OrientationStudent.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if not student:
+                raise not_found("新生记录不存在")
+            assert_orientation_student_scope(db, student, actor)
+
+            profile = db.get(StudentProfile, int(student.student_id)) if student.student_id else None
+            existing_uid = (
+                links.get_user_id_by_student(
+                    db, tenant_id=int(student.tenant_id), student_id=int(profile.id),
+                ) if profile and not profile.is_deleted else None
+            )
+            if profile and existing_uid and student.identity_status == "LINKED":
+                account = db.get(User, int(existing_uid))
+                if account and not account.is_deleted and account.status == "ACTIVE":
+                    return {
+                        "orientationStudentId": str(student.id),
+                        "studentId": str(profile.id), "studentNo": profile.student_no,
+                        "accountUserId": str(account.id), "identityStatus": "LINKED",
+                        "version": int(student.version or 0), "idempotent": True,
+                        "initialCredential": None,
+                    }
+
+            check_version(student.version, (body or {}).get("expectedVersion"))
+            profile = cls._profile(
+                db, student, body, actor, operation_label="迎新账号激活建档",
+            )
+            account, initial_credential = cls._account(
+                db, profile, student, body, source="ORIENTATION_ACTIVATE",
+                operation_label="账号激活",
+            )
+            student.student_id = profile.id
+            student.identity_status = "LINKED"
+            set_student_step_status(
+                db, student, "ACTIVATE", "DONE", status_source="PROCESS_FACT",
+                source_biz_id=f"orientation-activate:{request_id}",
+            )
+            student.version = int(student.version or 0) + 1
+            _audit(
+                db, "ACTIVATE", student.id, "迎新学生身份与账号激活",
+                f"studentId={profile.id}; userId={account.id}; studentNo={profile.student_no}",
+            )
+            db.commit()
+            return {
+                "orientationStudentId": str(student.id),
+                "studentId": str(profile.id), "studentNo": profile.student_no,
+                "accountUserId": str(account.id), "identityStatus": "LINKED",
+                "version": int(student.version or 0), "idempotent": False,
+                "initialCredential": initial_credential,
+            }
 
     @classmethod
     def finalize(cls, orientation_student_id, body: dict, *, user=None) -> dict:
@@ -294,3 +373,4 @@ class OrientationEnrollmentFinalizeService:
 
 
 finalize = OrientationEnrollmentFinalizeService.finalize
+activate = OrientationEnrollmentFinalizeService.activate

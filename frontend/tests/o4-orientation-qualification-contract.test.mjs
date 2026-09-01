@@ -44,3 +44,11 @@ test('O4 miniapp forwards canonical server qualification and payment facts', () 
   assert.match(miniApi, /qualification: r\.qualification \|\| null/)
   assert.match(miniApi, /payment: r\.payment \|\| \{\}/)
 })
+
+test('O5 imported candidates use an explicit identity activation before signed check-in', () => {
+  assert.match(api, /activateOrientationIdentity/)
+  assert.match(api, /\/orientation\/students\/\$\{id\}\/activate/)
+  assert.match(qualification, /orientation\.identity\.activate/)
+  assert.match(qualification, /激活学生账号/)
+  assert.match(qualification, /initialCredential/)
+})

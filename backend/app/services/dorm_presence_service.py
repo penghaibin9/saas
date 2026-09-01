@@ -6,12 +6,13 @@ Provider 报错或没有可用事件时一律 UNKNOWN，绝不把“没数据”
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException
+from app.core.timeutil import tenant_tz, to_utc_naive
 from app.services.db_service import _iso, _tid, session
 
 CONFIG_KEY = "DORM_PRESENCE_POLICY"
@@ -104,11 +105,12 @@ class DatabasePresenceProvider(DormPresenceProvider):
         event_time = (raw or {}).get("eventTime")
         if isinstance(event_time, str):
             try:
-                event_time = datetime.fromisoformat(event_time.replace("Z", "+00:00")).replace(tzinfo=None)
+                event_time = datetime.fromisoformat(event_time.replace("Z", "+00:00"))
             except ValueError as exc:
                 raise AppException("VALIDATION_ERROR", "eventTime 格式非法") from exc
         if not isinstance(event_time, datetime):
             raise AppException("VALIDATION_ERROR", "eventTime 必填")
+        event_time = to_utc_naive(event_time)
         return {
             "provider": self.code, "provider_event_id": provider_event_id,
             "student_id": student_id, "building_id": building_id,
@@ -159,6 +161,17 @@ def _parse_clock(value: str, key: str) -> time:
         raise AppException("CONFIG_INVALID", f"归寝规则 {key} 必须为 HH:MM") from exc
 
 
+def _local_clock_utc(moment: datetime, clock: time) -> datetime:
+    """Return a tenant-local wall-clock cutoff as UTC-naive database time."""
+    utc_moment = (
+        moment.replace(tzinfo=timezone.utc)
+        if moment.tzinfo is None else moment.astimezone(timezone.utc)
+    )
+    local_day = utc_moment.astimezone(tenant_tz()).date()
+    local_cutoff = datetime.combine(local_day, clock, tzinfo=tenant_tz())
+    return local_cutoff.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def _provider(code: str) -> DormPresenceProvider:
     return NonePresenceProvider() if code == "NONE" else DatabasePresenceProvider(code)
 
@@ -193,6 +206,8 @@ def evaluate_presence(
     if int(student_id or 0) <= 0 or int(building_id or 0) <= 0:
         raise AppException("DATA_INCONSISTENT", "归寝研判拒绝 student_id=0 或无楼栋记录")
     moment = now or datetime.utcnow()
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(timezone.utc).replace(tzinfo=None)
     rule = {**DEFAULT_POLICY, **(policy or _policy())}
     leave = _active_leave(db, int(student_id), moment)
     if leave:
@@ -214,13 +229,13 @@ def evaluate_presence(
         return _status_payload("UNKNOWN", event=event, policy=rule, reason="STALE_EVENT")
     if event.event_type == "IN":
         curfew = _parse_clock(str(rule.get("curfewTime")), "curfewTime")
-        deadline = datetime.combine(event.event_time.date(), curfew) + timedelta(
+        deadline = _local_clock_utc(event.event_time, curfew) + timedelta(
             minutes=int(rule.get("lateGraceMinutes") or 0)
         )
         status = "LATE_RETURN" if event.event_time > deadline else "IN_DORM"
         return _status_payload(status, event=event, policy=rule)
     judgement = _parse_clock(str(rule.get("notReturnTime")), "notReturnTime")
-    judgement_at = datetime.combine(moment.date(), judgement)
+    judgement_at = _local_clock_utc(moment, judgement)
     status = "NOT_RETURNED" if moment >= judgement_at else "OUT"
     return _status_payload(status, event=event, policy=rule)
 

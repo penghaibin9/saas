@@ -140,7 +140,8 @@ def test_d6_none_unknown_leave_manual_event_scope_and_four_end_contract(client, 
     assert on_leave["statusCounts"]["NOT_RETURNED"] == 0
 
     # MANUAL 只用于受控人工/适配器测试：事件必须绑定真实在住学生，幂等且不接受生物原始数据。
-    fixed_now = datetime(2026, 9, 1, 23, 45)
+    # Database timestamps are UTC-naive: 15:45 UTC is 23:45 in Asia/Shanghai.
+    fixed_now = datetime(2026, 9, 1, 15, 45)
     manual_policy = {
         **presence.DEFAULT_POLICY, "provider": "MANUAL", "notReturnTime": "23:30",
         "curfewTime": "22:30", "lateGraceMinutes": 15,
@@ -153,7 +154,7 @@ def test_d6_none_unknown_leave_manual_event_scope_and_four_end_contract(client, 
         raw = {
             "providerEventId": "D6-MANUAL-OUT-001", "studentId": student_id,
             "buildingId": building_id, "eventType": "OUT",
-            "eventTime": (fixed_now - timedelta(hours=1)).isoformat(),
+            "eventTime": "2026-09-01T22:45:00+08:00",
             "deviceRef": "manual-duty-desk", "result": "SUCCESS",
             "rawRefHash": "a" * 64,
         }
@@ -166,7 +167,24 @@ def test_d6_none_unknown_leave_manual_event_scope_and_four_end_contract(client, 
             now=fixed_now, policy=manual_policy,
         )
         assert result["status"] == "NOT_RETURNED"
+        before_local_cutoff = presence.evaluate_presence(
+            db, student_id=student_id, building_id=building_id,
+            now=datetime(2026, 9, 1, 15, 20), policy=manual_policy,
+        )
+        assert before_local_cutoff["status"] == "OUT"
         assert db.query(DormAccessEvent).filter_by(student_id=student_id).count() == 1
+
+        late_in = {
+            **raw, "providerEventId": "D6-MANUAL-IN-001", "eventType": "IN",
+            "eventTime": "2026-09-01T22:50:00+08:00",
+        }
+        presence.store_normalized_event(db, late_in, provider_code="MANUAL")
+        db.commit()
+        late = presence.evaluate_presence(
+            db, student_id=student_id, building_id=building_id,
+            now=datetime(2026, 9, 1, 15, 0), policy=manual_policy,
+        )
+        assert late["status"] == "LATE_RETURN"
         try:
             presence.store_normalized_event(db, {
                 **raw, "providerEventId": "D6-BAD-BIOMETRIC", "faceTemplate": "forbidden",

@@ -7,6 +7,77 @@ from pathlib import Path
 from test_orientation_o4_qualification import TID, _seed, _student_headers
 
 
+def test_o5_imported_candidate_activates_identity_before_signed_checkin(
+    client, db_mode, auth_headers,
+):
+    from app.db.session import get_sessionmaker
+    from app.models import OrientationPaymentAccount, OrientationStudent, StudentAccountLink
+
+    ids = _seed(db_mode)
+    db = get_sessionmaker()()
+    try:
+        orientation = db.get(OrientationStudent, ids["orientation"])
+        payment = db.query(OrientationPaymentAccount).filter_by(
+            tenant_id=TID, orientation_student_id=orientation.id,
+        ).first()
+        payment.status = "PAID"
+        payment.paid_amount = payment.payable_amount
+        link = db.query(StudentAccountLink).filter_by(
+            tenant_id=TID, student_id=ids["profile"], link_status="ACTIVE",
+        ).first()
+        db.delete(link)
+        orientation.student_id = None
+        orientation.identity_status = "UNLINKED"
+        expected_version = int(orientation.version or 0)
+        db.commit()
+    finally:
+        db.close()
+
+    blocked = client.get(
+        f"/api/v1/orientation/qualifications/{ids['orientation']}", headers=auth_headers,
+    )
+    assert blocked.status_code == 200, blocked.text
+    assert any(
+        item["code"] == "IDENTITY_NOT_LINKED"
+        for item in blocked.json()["data"]["blockers"]
+    )
+
+    body = {
+        "expectedVersion": expected_version,
+        "studentNo": ids["studentNo"],
+        "clientRequestId": "o5-activate-imported-0001",
+    }
+    activated = client.post(
+        f"/api/v1/orientation/students/{ids['orientation']}/activate",
+        headers=auth_headers, json=body,
+    )
+    assert activated.status_code == 200, activated.text
+    activated_data = activated.json()["data"]
+    assert activated_data["identityStatus"] == "LINKED"
+    assert activated_data["studentId"] == str(ids["profile"])
+
+    replay = client.post(
+        f"/api/v1/orientation/students/{ids['orientation']}/activate",
+        headers=auth_headers, json=body,
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["data"]["idempotent"] is True
+
+    qualified = client.post(
+        f"/api/v1/orientation/qualifications/{ids['orientation']}/recalculate",
+        headers=auth_headers,
+    )
+    assert qualified.status_code == 200, qualified.text
+    assert qualified.json()["data"]["verdict"] == "QUALIFIED"
+
+    student_headers = _student_headers(
+        ids["user"], ids["profile"], ids["studentNo"], ids["name"],
+    )
+    issued = client.post("/api/v1/mobile/orientation/checkin-token", headers=student_headers)
+    assert issued.status_code == 200, issued.text
+    assert issued.json()["data"]["token"].startswith("oci1.")
+
+
 def test_o5_signed_preflight_one_time_confirm_and_finalize(client, db_mode, auth_headers, monkeypatch):
     from app.db.session import get_sessionmaker
     from app.models import (

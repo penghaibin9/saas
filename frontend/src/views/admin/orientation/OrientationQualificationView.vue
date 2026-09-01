@@ -47,6 +47,23 @@
       />
 
       <AppConfirmDialog
+        v-model:visible="activateVisible"
+        title="激活学生身份与账号"
+        :message="activateRow ? `为「${activateRow.name}」建立或绑定正式学生主档和登录账号，随后学生才能登录并领取签名报到凭证。` : ''"
+        type="primary"
+        confirm-text="确认激活"
+        :confirm-disabled="!activateStudentNo.trim()"
+        :submitting="activating"
+        @confirm="onActivateConfirm"
+      >
+        <div class="oq-finalize-field">
+          <label>正式学号</label>
+          <AppTextInput v-model="activateStudentNo" placeholder="请输入学校正式学号" />
+          <small>导入不会隐式创建账号；此处是受控、留痕的账号激活步骤。</small>
+        </div>
+      </AppConfirmDialog>
+
+      <AppConfirmDialog
         v-model:visible="finalizeVisible"
         title="学院最终确认入学"
         :message="finalizeRow ? `确认「${finalizeRow.name}」已完成现场报到，并将正式学生主档推进到在读阶段。` : ''"
@@ -102,6 +119,7 @@ export default {
     return {
       ctx: null, loading: true, error: '', rows: [], total: 0, page: 1, pageSize: 10,
       filters: EMPTY_FILTERS(), confirmVisible: false, confirmRow: null,
+      activateVisible: false, activateRow: null, activateStudentNo: '', activating: false,
       finalizeVisible: false, finalizeRow: null, finalizeStudentNo: '', finalizing: false,
       credentialVisible: false, credential: null
     }
@@ -166,12 +184,19 @@ export default {
         { key: 'student', label: '学生详情' },
         { key: 'recalculate', label: '按当前事实重算' }
       ]
+      const identityBlocked = !row.profileStudentId || row.blockers?.some((item) => ['IDENTITY_NOT_LINKED', 'ACCOUNT_NOT_LINKED'].includes(item.code))
+      if (identityBlocked && this.perms['orientation.identity.activate']?.allowed) actions.push({ key: 'activate', label: '激活学生账号' })
       if (row.canFinalize && this.perms['orientation.enrollment.finalize']?.allowed) actions.push({ key: 'finalize', label: '学院确认入学' })
       return actions
     },
     onRowAction(key, row) {
       if (key === 'student') this.$router.push(`/admin/orientation/students/${row.id}`)
       if (key === 'recalculate') { this.confirmRow = row; this.confirmVisible = true }
+      if (key === 'activate') {
+        this.activateRow = row
+        this.activateStudentNo = row.studentNo || ''
+        this.activateVisible = true
+      }
       if (key === 'finalize') {
         this.finalizeRow = row
         this.finalizeStudentNo = row.studentNo || ''
@@ -183,6 +208,26 @@ export default {
       const res = await api.recalculateOrientationQualification(row.id)
       if (res && res.code === 0) { toast.success(`资格已重算：${res.data.verdictLabel}`); this.confirmVisible = false; await this.load() }
       else toast.error((res && res.message) || '资格重算失败')
+    },
+    async onActivateConfirm() {
+      if (!this.activateRow || this.activating) return
+      this.activating = true
+      const clientRequestId = globalThis.crypto?.randomUUID?.() || `orientation-activate-${Date.now()}`
+      try {
+        const res = await api.activateOrientationIdentity(this.activateRow.id, {
+          expectedVersion: this.activateRow.version,
+          studentNo: this.activateStudentNo.trim(),
+          clientRequestId
+        })
+        if (!res || res.code !== 0) return toast.error(res?.message || '账号激活失败')
+        this.activateVisible = false
+        toast.success('学生身份与账号已激活，可登录领取报到凭证')
+        this.credential = res.data.initialCredential || null
+        if (this.credential) this.credentialVisible = true
+        await this.load()
+      } finally {
+        this.activating = false
+      }
     },
     async onFinalizeConfirm() {
       if (!this.finalizeRow || this.finalizing) return
