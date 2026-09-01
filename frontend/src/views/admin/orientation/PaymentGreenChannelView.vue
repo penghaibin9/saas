@@ -405,7 +405,7 @@ export default {
       } finally { this.submitting = false }
     },
     exportFn(payload) {
-      return api.createExport(this.tab === 'payment' ? 'paymentList' : 'paymentList', payload)
+      return api.createExport(this.tab === 'payment' ? 'paymentList' : 'greenChannelList', payload)
     }
   }
 }

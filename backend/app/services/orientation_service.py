@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import false, func, or_, select
+from sqlalchemy import case, false, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -1152,40 +1152,112 @@ def list_audit(page, page_size, biz_type=None, keyword=None):
 
 # ═══ 看板 ═══
 
-def get_dashboard() -> dict:
+def get_dashboard(user=None, batch_id=None) -> dict:
     with session() as db:
-        rows = db.scalars(select(OrientationStudent).where(
+        batch_query = select(OrientationBatch).where(
+            OrientationBatch.tenant_id == _tid(), OrientationBatch.is_deleted.is_(False),
+        )
+        if batch_id not in (None, ""):
+            try:
+                batch_query = batch_query.where(OrientationBatch.id == int(batch_id))
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "batchId 须为数字") from None
+        else:
+            batch_query = batch_query.order_by(
+                case((OrientationBatch.status == "ACTIVE", 0), else_=1),
+                OrientationBatch.id.desc(),
+            )
+        batch = db.scalars(batch_query.limit(1)).first()
+        q = select(OrientationStudent).where(
             OrientationStudent.tenant_id == _tid(), OrientationStudent.is_deleted.is_(False),
-            OrientationStudent.record_status == "ACTIVE")).all()
+            OrientationStudent.record_status == "ACTIVE",
+            OrientationStudent.batch_id == (int(batch.id) if batch else -1),
+        )
+        from app.core.affairs_security import student_directory_scope
+        class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(OrientationStudent.student_id.in_(student_ids) if student_ids else false())
+        elif class_ids is not None:
+            q = q.where(OrientationStudent.student_id.in_(select(StudentProfile.id).where(
+                StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                StudentProfile.class_id.in_(class_ids or {-1}),
+            )))
+        rows = db.scalars(q.order_by(OrientationStudent.id)).all()
+        scoped_ids = [int(row.id) for row in rows]
         total = len(rows)
-        paid = sum(1 for r in rows if r.payment_status in ("PAID", "GREEN_CHANNEL", "DEFERRED"))
+        paid_ids = set(db.scalars(select(OrientationPaymentAccount.orientation_student_id).where(
+            OrientationPaymentAccount.tenant_id == _tid(),
+            OrientationPaymentAccount.orientation_student_id.in_(scoped_ids or [-1]),
+            OrientationPaymentAccount.status.in_(("PAID", "WAIVED", "DEFERRED")),
+            OrientationPaymentAccount.is_deleted.is_(False),
+        )).all())
+        paid_ids.update(db.scalars(select(GreenChannelApplication.ori_student_id).where(
+            GreenChannelApplication.tenant_id == _tid(),
+            GreenChannelApplication.ori_student_id.in_(scoped_ids or [-1]),
+            GreenChannelApplication.status == "APPROVED",
+            GreenChannelApplication.is_deleted.is_(False),
+        )).all())
+        paid = len(paid_ids)
         pending_gc = db.scalar(select(func.count()).select_from(GreenChannelApplication).where(
             GreenChannelApplication.tenant_id == _tid(),
+            GreenChannelApplication.ori_student_id.in_(scoped_ids or [-1]),
             GreenChannelApplication.status.in_(["SUBMITTED", "REVIEWING"]),
             GreenChannelApplication.is_deleted.is_(False))) or 0
         pending_mat = db.scalar(select(func.count()).select_from(OrientationMaterial).where(
-            OrientationMaterial.tenant_id == _tid(), OrientationMaterial.status == "UPLOADED",
+            OrientationMaterial.tenant_id == _tid(),
+            OrientationMaterial.ori_student_id.in_(scoped_ids or [-1]),
+            OrientationMaterial.is_current.is_(True), OrientationMaterial.status == "UPLOADED",
             OrientationMaterial.is_deleted.is_(False))) or 0
         open_exc = db.scalar(select(func.count()).select_from(OrientationException).where(
             OrientationException.tenant_id == _tid(),
+            OrientationException.ori_student_id.in_(scoped_ids or [-1]),
             OrientationException.status.in_(["OPEN", "PROCESSING", "ESCALATED"]),
             OrientationException.is_deleted.is_(False))) or 0
         rate = lambda a, b: f"{(a / b * 100):.1f}%" if b else "0%"  # noqa: E731
-        prepared = sum(1 for r in rows if r.report_status in ("PREPARED", "CHECKED_IN", "COLLEGE_CONFIRMED"))
-        checked_in = sum(1 for r in rows if r.report_status in ("CHECKED_IN", "COLLEGE_CONFIRMED"))
+        from app.models import OrientationCheckinRecord
+        checked_in = int(db.scalar(select(func.count()).select_from(OrientationCheckinRecord).where(
+            OrientationCheckinRecord.tenant_id == _tid(),
+            OrientationCheckinRecord.orientation_student_id.in_(scoped_ids or [-1]),
+            OrientationCheckinRecord.status == "CONFIRMED",
+            OrientationCheckinRecord.is_deleted.is_(False),
+        )) or 0)
         gc_total = db.scalar(select(func.count()).select_from(GreenChannelApplication).where(
             GreenChannelApplication.tenant_id == _tid(),
+            GreenChannelApplication.ori_student_id.in_(scoped_ids or [-1]),
             GreenChannelApplication.is_deleted.is_(False))) or 0
+        from app.models import OrientationFlowStep, OrientationStudentStep
+        step_labels = {
+            row.step_key: row.step_name
+            for row in db.scalars(select(OrientationFlowStep).where(
+                OrientationFlowStep.tenant_id == _tid(),
+                OrientationFlowStep.flow_version_id == (int(batch.flow_version_id) if batch and batch.flow_version_id else -1),
+                OrientationFlowStep.enabled.is_(True), OrientationFlowStep.is_deleted.is_(False),
+            ).order_by(OrientationFlowStep.sort_order, OrientationFlowStep.id)).all()
+        }
+        steps = db.scalars(select(OrientationStudentStep).where(
+            OrientationStudentStep.tenant_id == _tid(),
+            OrientationStudentStep.orientation_student_id.in_(scoped_ids or [-1]),
+            OrientationStudentStep.is_deleted.is_(False),
+        ).order_by(OrientationStudentStep.flow_step_id, OrientationStudentStep.id)).all()
+        prepared_ids = {
+            int(step.orientation_student_id) for step in steps
+            if step.step_key == "INFO" and step.status in ("DONE", "WAIVED", "NOT_REQUIRED")
+        }
+        prepared = len(prepared_ids)
         funnel = {}
-        for student in rows:
-            projection = student_step_projection(db, student)
-            for step in student_flow_steps(db, student):
-                item = funnel.setdefault(step["key"], {**step, "done": 0})
-                if projection.get(step["key"]) in ("DONE", "WAIVED"):
-                    item["done"] += 1
+        for step in steps:
+            item = funnel.setdefault(step.step_key, {
+                "key": step.step_key, "label": step_labels.get(step.step_key, step.step_key), "done": 0,
+            })
+            if step.status in ("DONE", "WAIVED", "NOT_REQUIRED"):
+                item["done"] += 1
         step_funnel = list(funnel.values())
+        start = (batch.report_start_date or batch.start_date) if batch else None
+        end = (batch.report_end_date or batch.end_date) if batch else None
         return {
-            "batchName": "2026 级迎新批次", "batchPeriod": "2026-09-01 ~ 2026-09-15",
+            "batchId": str(batch.id) if batch else "",
+            "batchName": batch.batch_name if batch else "当前无迎新批次",
+            "batchPeriod": f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d}" if start and end else "未配置报到周期",
             "updateTime": _iso(datetime.now()),
             "kpis": [
                 {"key": "total", "label": "新生总数", "value": str(total), "trend": "", "trendQuality": "neutral"},

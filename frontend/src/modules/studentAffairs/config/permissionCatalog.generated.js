@@ -409,6 +409,18 @@ export const STUDENT_AFFAIRS_PERMISSION_CATALOG = [
     "deprecatedAliases": []
   },
   {
+    "permissionCode": "studentAffairs.dorm.export",
+    "label": "dorm·导出",
+    "domain": "dorm",
+    "riskLevel": "HIGH",
+    "allowedScopes": [
+      "TENANT_ALL",
+      "DORM_BUILDING",
+      "CLASS"
+    ],
+    "deprecatedAliases": []
+  },
+  {
     "permissionCode": "studentAffairs.dorm.exception.handle",
     "label": "dorm·处置",
     "domain": "dorm",

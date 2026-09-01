@@ -186,11 +186,12 @@ def _dorm_scope_building_ids(db, user):
 
 # ═══════════ 楼栋 ═══════════
 
-def _building_row(b, vacant=None, total=None) -> dict:
+def _building_row(b, vacant=None, total=None, occupied=None, locked=None) -> dict:
     return {"buildingId": str(b.id), "buildingName": b.building_name,
             "buildingCode": b.building_code or "", "genderLimit": b.gender_limit,
             "managerTeacherKey": b.manager_teacher_key or "", "floorCount": b.floor_count,
-            "status": b.status, "vacantBeds": vacant, "totalBeds": total}
+            "status": b.status, "vacantBeds": vacant, "totalBeds": total,
+            "occupiedBeds": occupied, "lockedBeds": locked}
 
 
 def create_building(body, user) -> dict:
@@ -284,6 +285,8 @@ def list_buildings(user, gender=None, page=1, page_size=50):
                 DormBed.building_id.label("building_id"),
                 func.count(DormBed.id).label("bed_total"),
                 func.sum(case((DormBed.status == "VACANT", 1), else_=0)).label("vacant_total"),
+                func.sum(case((DormBed.status == "OCCUPIED", 1), else_=0)).label("occupied_total"),
+                func.sum(case((DormBed.status == "LOCKED", 1), else_=0)).label("locked_total"),
             )
             .where(DormBed.tenant_id == _tid(), DormBed.is_deleted.is_(False))
             .group_by(DormBed.building_id)
@@ -294,6 +297,8 @@ def list_buildings(user, gender=None, page=1, page_size=50):
                 DormBuilding,
                 func.coalesce(bed_stats.c.vacant_total, 0),
                 func.coalesce(bed_stats.c.bed_total, 0),
+                func.coalesce(bed_stats.c.occupied_total, 0),
+                func.coalesce(bed_stats.c.locked_total, 0),
             )
             .outerjoin(bed_stats, bed_stats.c.building_id == DormBuilding.id)
             .where(*conds)
@@ -301,8 +306,9 @@ def list_buildings(user, gender=None, page=1, page_size=50):
             .offset((page - 1) * page_size).limit(page_size)
         ).all()
         return [
-            _building_row(building, int(vacant or 0), int(bed_total or 0))
-            for building, vacant, bed_total in rows
+            _building_row(building, int(vacant or 0), int(bed_total or 0),
+                          int(occupied or 0), int(locked or 0))
+            for building, vacant, bed_total, occupied, locked in rows
         ], total
 
 
@@ -700,13 +706,18 @@ def occupancy_stats(user):
     with session() as db:
         scope = _dorm_scope_building_ids(db, user)
         conds_total = [DormBed.tenant_id == _tid(), DormBed.is_deleted.is_(False)]
-        conds_occ = conds_total + [DormBed.status == "OCCUPIED"]
         if scope is not None:
             conds_total.append(DormBed.building_id.in_(list(scope)) if scope else DormBed.building_id.in_([-1]))
-            conds_occ.append(DormBed.building_id.in_(list(scope)) if scope else DormBed.building_id.in_([-1]))
-        total = db.scalar(select(func.count()).select_from(DormBed).where(*conds_total)) or 0
-        occupied = db.scalar(select(func.count()).select_from(DormBed).where(*conds_occ)) or 0
-        return {"totalBeds": total, "occupiedBeds": occupied, "vacantBeds": total - occupied,
+        total, occupied, vacant, locked = db.execute(select(
+            func.count(DormBed.id),
+            func.sum(case((DormBed.status == "OCCUPIED", 1), else_=0)),
+            func.sum(case((DormBed.status == "VACANT", 1), else_=0)),
+            func.sum(case((DormBed.status == "LOCKED", 1), else_=0)),
+        ).where(*conds_total)).one()
+        total, occupied, vacant, locked = (int(total or 0), int(occupied or 0),
+                                            int(vacant or 0), int(locked or 0))
+        return {"totalBeds": total, "occupiedBeds": occupied, "vacantBeds": vacant,
+                "lockedBeds": locked,
                 "occupancyRate": round(occupied / total, 3) if total else 0.0}
 
 

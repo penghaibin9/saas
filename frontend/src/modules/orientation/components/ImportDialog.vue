@@ -41,6 +41,9 @@
             <span v-if="validation.errorCount">请修正全部错误后重新上传，系统不会跳过错误行写入。</span>
             <span v-else>整批预检通过，可以原子确认写入。</span>
           </div>
+          <AppButton v-if="validation.errorCount && validation.errorWorkbookUrl" variant="secondary" @click="downloadErrors">
+            下载迎新导入错误行.xlsx
+          </AppButton>
           <p v-if="!validation.rows.length" class="imd__ok">全部数据校验通过。</p>
           <table class="imd__table">
             <thead>
@@ -202,6 +205,12 @@ export default {
       } finally {
         this.busy = false
       }
+    },
+    downloadErrors() {
+      downloadXlsxFromApi({
+        downloadUrl: this.validation.errorWorkbookUrl,
+        filename: '迎新导入错误行.xlsx'
+      })
     }
   }
 }

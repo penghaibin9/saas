@@ -53,11 +53,6 @@ const ACTION_PERMISSION = Object.freeze({
 const UNSUPPORTED_ACTIONS = Object.freeze({
   'orientation.student.batchRemind': '当前后端尚未提供迎新批量提醒正式能力',
   'orientation.student.batchAssign': '当前后端尚未提供迎新批量分配辅导员正式能力',
-  'orientation.progress.export': '当前仅支持迎新综合台账导出，进度明细导出未配置',
-  'orientation.payment.export': '当前仅支持迎新综合台账导出，缴费明细导出未配置',
-  'orientation.material.export': '当前仅支持迎新综合台账导出，材料明细导出未配置',
-  'orientation.dorm.export': '当前仅支持迎新综合台账导出，住宿明细导出未配置',
-  'orientation.exception.export': '当前仅支持迎新综合台账导出，异常明细导出未配置',
   'orientation.followup.edit': '当前后端尚未提供异常跟进编辑正式能力'
 })
 
@@ -383,6 +378,7 @@ export async function validateImport(listKey, file) {
       validCount: Number(data.okRows || 0),
       errorCount: Number(data.errorRows || 0),
       canConfirm: data.status === 'DRY_RUN_PASSED' && Number(data.okRows || 0) > 0,
+      errorWorkbookUrl: data.errorWorkbookUrl || '',
       rows: (data.errors || []).map((row) => ({
         row: row.rowIndex,
         data: `${row.field || '字段'}：${row.rawValue ?? ''}`,
@@ -413,16 +409,27 @@ export async function confirmImport(listKey, payload = {}) {
 
 export async function createExport(listKey, payload = {}) {
   if (!payload.auditConfirmed) return fail('请先勾选导出审计确认')
-  if (listKey !== 'studentList') return fail('当前仅支持迎新综合台账导出', 400001)
+  const reportTypes = {
+    studentList: 'students', orientationStudents: 'students', progressList: 'progress', materialList: 'materials',
+    paymentList: 'payment', greenChannelList: 'green-channel', dormList: 'dorm',
+    exceptionList: 'exceptions', noShowList: 'no-show', checkinList: 'checkin'
+  }
+  const reportType = reportTypes[listKey]
+  if (!reportType) return fail('当前列表未配置生产台账导出', 400001)
   const purpose = String(payload.purpose || '').trim()
   if (purpose.length < 5) return fail('导出用途必填且不少于 5 个字', 400001)
-  if (!payload.batchId) return fail('请先选择迎新批次，禁止跨批次导出', 400001)
   return callData(async () => {
+    let batchId = payload.batchId
+    if (!batchId) {
+      const batches = await request('/orientation/batches', { params: { status: 'ACTIVE', page: 1, pageSize: 1 } })
+      batchId = batches?.items?.[0]?.id
+    }
+    if (!batchId) throw new Error('当前没有进行中的迎新批次，无法生成批次台账')
     const idempotencyKey = globalThis.crypto?.randomUUID?.() || `orientation-export-${Date.now()}`
     const data = await request('/export/domain/orientation', {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
-      body: { purpose, batchId: payload.batchId }
+      body: { purpose, batchId, reportType }
     })
     return {
       ...data,

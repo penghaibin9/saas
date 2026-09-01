@@ -49,6 +49,7 @@ _PERMISSION_CODES = (
     "studentAffairs.discipline.view",
     "studentAffairs.dorm.allocation.manage",
     "studentAffairs.dorm.check.view",
+    "studentAffairs.dorm.export",
     "studentAffairs.dorm.exception.handle",
     "studentAffairs.dorm.inspection.manage",
     "studentAffairs.dorm.resource.manage",
