@@ -1147,10 +1147,12 @@ def affairs_dorm_pending(user: dict) -> dict:
                     if class_id in allowed:
                         kept.append(x)
                 exceptions = kept
+    from app.services import dorm_presence_service as presence
     return {
         "transfers": transfers,
         "exceptions": exceptions,
         "allocationSummary": allocation.teacher_summary(u),
+        "presenceSummary": presence.teacher_summary(u),
         "total": len(transfers) + len(exceptions),
     }
 

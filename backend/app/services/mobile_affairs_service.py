@@ -208,7 +208,13 @@ def dorm_my(user) -> dict:
                       "stayId": str(stays[0].id),
                       "occupiedAt": _iso(stays[0].checkin_at or bed.occupied_at)}
     cfg = allocation.student_config(user)
-    return {"myBed": my_bed, "hasBed": bool(my_bed), **cfg}
+    from app.services import dorm_presence_service as presence
+    return {
+        "myBed": my_bed, "hasBed": bool(my_bed),
+        "presence": presence.my_presence(user),
+        "presenceProvider": presence.provider_status(user),
+        **cfg,
+    }
 
 
 def dorm_stays_my(user) -> dict:

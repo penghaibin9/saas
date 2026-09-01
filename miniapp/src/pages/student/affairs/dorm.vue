@@ -15,6 +15,12 @@
         <view class="dm__empty" v-else><text>暂无住宿安排</text></view>
 
         <view class="dm__notice" v-if="notice"><text class="dm__notice-icon">ℹ️</text><text class="dm__notice-t">{{ notice }}</text></view>
+        <view class="dm__presence">
+          <view class="row-between"><text class="dm__step-t">归寝状态</text><MobileStatusTag :label="presenceLabel" :type="presenceTone" /></view>
+          <text class="dm__history-reason">{{ cfg.presence?.summary || '暂无可靠归寝数据' }}</text>
+          <text class="dm__history-route">最近可靠事件：{{ fmtTime(cfg.presence?.lastEventAt) }}</text>
+          <text v-if="cfg.presence?.status === 'UNKNOWN'" class="dm__unknown">“未知”表示 Provider 未配置或无可靠数据，不等同于“未归”。</text>
+        </view>
         <MobileInlineAlert v-if="pendingTransfer" type="warning" title="已有调宿申请处理中" :description="`当前状态：${statusLabel(pendingTransfer.status || pendingTransfer.currentNode)}。审批完成或驳回前不能重复提交。`" />
         <MobileInlineAlert v-if="transferError" type="warning" title="调宿记录暂不可用" :description="transferError" />
         <MobileInlineAlert v-if="optionError" type="warning" title="可选床位加载失败" :description="optionError" />
@@ -87,6 +93,15 @@
         </view>
       </view>
     </MobileGlobalState>
+    <view v-if="confirmDlg.visible" class="dm__mask" @click.self="confirmDlg.visible = false">
+      <view class="dm__dialog">
+        <text class="dm__dialog-title">{{ cfg.hasBed ? '确认提交调宿' : '确认床位' }}</text>
+        <text class="dm__dialog-line" v-if="cfg.hasBed">当前：{{ confirmDlg.current }}</text>
+        <text class="dm__dialog-line">目标：{{ selectedBedLabel }}</text>
+        <text class="dm__dialog-note">{{ cfg.hasBed ? '审批完成前原床不变。' : '确认后床位将为你预留，变更须走正式调宿。' }}</text>
+        <view class="dm__dialog-actions"><button class="dm__dialog-cancel" @click="confirmDlg.visible = false">取消</button><button class="dm__dialog-ok" @click="confirmSubmit">{{ cfg.hasBed ? '提交申请' : '确认床位' }}</button></view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -104,7 +119,7 @@ export default {
       cfg: null, state: 'loading', buildings: [], rooms: [], beds: [], transfers: [], stays: [], rectifications: [],
       transferError: '', optionError: '', optionsLoading: false,
       sel: { building: '', room: '', bed: '' }, submitting: false,
-      transferReason: '', rectNotes: {}, rectFiles: {}, _lock: createSubmitLock()
+      transferReason: '', rectNotes: {}, rectFiles: {}, confirmDlg: { visible: false, current: '', reason: '' }, _lock: createSubmitLock()
     }
   },
   computed: {
@@ -115,6 +130,8 @@ export default {
       return this.cfg.selfSelectEnabled ? '已开放首次选床' : '等待学校分配'
     },
     pendingTransfer() { return this.transfers.find((x) => PENDING.includes(x.status || x.currentNode)) || null },
+    presenceLabel() { return this.cfg?.presence?.statusLabel || '未知' },
+    presenceTone() { return ({ IN_DORM: 'success', ON_LEAVE: 'primary', LATE_RETURN: 'warning', NOT_RETURNED: 'danger' })[this.cfg?.presence?.status] || 'default' },
     canChoose() { return !!(this.cfg && (this.cfg.hasBed ? !this.pendingTransfer : this.cfg.canSelfSelect)) },
     notice() {
       if (!this.cfg) return ''
@@ -211,12 +228,13 @@ export default {
       const reason = this.transferReason.trim()
       if (this.cfg.hasBed && (reason.length < 5 || reason.length > 300)) return safeToast('调宿原因需5-300字')
       const current = this.cfg.hasBed && this.cfg.myBed ? `${this.cfg.myBed.building} / ${this.cfg.myBed.room}室 / ${this.cfg.myBed.bedNo}床` : '尚未入住'
-      uni.showModal({
-        title: this.cfg.hasBed ? '确认提交调宿' : '确认床位',
-        content: this.cfg.hasBed ? `当前：${current}\n目标：${this.selectedBedLabel}\n\n审批完成前原床不变。` : `目标：${this.selectedBedLabel}\n\n确认后床位将为你预留，变更须走正式调宿。`,
-        confirmText: this.cfg.hasBed ? '提交申请' : '确认床位',
-        success: (r) => { if (r.confirm) this.doSubmit(reason) }
-      })
+      this.confirmDlg = { visible: true, current, reason }
+    },
+    confirmSubmit() {
+      if (this.submitting) return
+      const reason = this.confirmDlg.reason
+      this.confirmDlg.visible = false
+      this.doSubmit(reason)
     },
     doSubmit(reason) {
       this.submitting = true
@@ -233,4 +251,6 @@ export default {
 .dm__bed--reserved { background: #1d4ed8 !important; }
 .dm__bed { background: var(--brand-primary); color: #fff; border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: var(--space-4); }.dm__bed-t { display: block; font-size: var(--font-size-sm); opacity: 0.85; }.dm__bed-v { display: block; font-size: 18px; font-weight: 700; margin-top: 4px; }.dm__empty { text-align: center; color: var(--text-tertiary); padding: var(--space-4); }.dm__notice { display: flex; gap: var(--space-2); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-card); margin-bottom: var(--space-4); }.dm__notice-t { color: var(--text-secondary); font-size: var(--font-size-base); line-height: 1.6; }.dm__step-t { display: block; font-weight: 600; margin-bottom: var(--space-3); }.dm__label { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-2); }.dm__chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }.dm__chip { padding: 8px 14px; border-radius: var(--radius-full); background: var(--bg-card); font-size: var(--font-size-sm); border: 1px solid var(--border-base); color: var(--text-secondary); }.dm__chip.is-on { background: var(--brand-primary); color: #fff; border-color: var(--brand-primary); }.dm__chip.is-full { opacity: 0.4; }.dm__field { margin-top: var(--space-4); }.dm__textarea { width: 100%; min-height: 80px; box-sizing: border-box; border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 10px; background: #fff; }.dm__req { color: #dc2626; }.dm__confirm { margin-top: var(--space-5); }.dm__btn { background: var(--brand-primary); color: #fff; border-radius: var(--radius-full); padding: 12px; font-size: var(--font-size-base); }.dm__target { margin-top: 12px; padding: 10px; border-radius: 8px; background: #eff6ff; }.dm__target-k, .dm__target-v { display: block; }.dm__target-k { color: #64748b; font-size: 12px; }.dm__target-v { margin-top: 3px; color: #1d4ed8; font-weight: 600; }.dm__loading, .dm__counter, .dm__empty-text { display: block; margin-top: 6px; color: #94a3b8; font-size: 12px; }.dm__counter { text-align: right; }.dm__history { margin-top: var(--space-5); }.dm__history-row { padding: 10px 0; border-bottom: 1px solid var(--border-base); font-size: 13px; }.dm__history-status, .dm__history-route, .dm__history-reason { display: block; }.dm__history-status { font-weight: 600; color: #334155; }.dm__history-route { margin-top: 4px; color: #1d4ed8; }.dm__history-reason { margin-top: 3px; color: var(--text-tertiary); }
 .dm__rect { padding:12px;margin-bottom:10px;border:1px solid var(--border-base);border-radius:10px;background:#fff }.row-between { display:flex;justify-content:space-between;gap:8px }.dm__deadline { color:#64748b;font-size:11px }.dm__deadline.overdue { color:#dc2626 }.dm__rect-form { display:grid;gap:8px;margin-top:10px }.dm__secondary { margin-top:9px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:9px;font-size:13px }.dm__uploaded { display:block;margin-top:6px;color:#166534;font-size:12px }
+.dm__presence { margin:12px 0;padding:12px;border:1px solid #dbeafe;border-radius:10px;background:#f8fafc }.dm__unknown { display:block;margin-top:7px;color:#475569;font-size:12px;line-height:1.55 }
+.dm__mask { position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:24px }.dm__dialog { width:100%;max-width:360px;box-sizing:border-box;padding:20px;border-radius:16px;background:#fff;box-shadow:0 20px 60px rgba(15,23,42,.25) }.dm__dialog-title,.dm__dialog-line,.dm__dialog-note { display:block }.dm__dialog-title { font-size:18px;font-weight:700;color:#0f172a;margin-bottom:14px }.dm__dialog-line { color:#334155;line-height:1.7 }.dm__dialog-note { margin-top:10px;color:#64748b;font-size:13px }.dm__dialog-actions { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px }.dm__dialog-cancel,.dm__dialog-ok { border-radius:10px;font-size:14px }.dm__dialog-cancel { background:#f1f5f9;color:#334155 }.dm__dialog-ok { background:#2563eb;color:#fff }
 </style>

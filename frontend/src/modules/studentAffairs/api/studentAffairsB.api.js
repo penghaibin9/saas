@@ -203,6 +203,14 @@ export const studentAffairsApi = {
     return pass(core.getDormInspectionTemplates())
   },
 
+  getDormPresenceProvider() {
+    return pass(core.getDormPresenceProvider())
+  },
+
+  listDormPresence(params = {}) {
+    return pass(core.getDormPresence(params))
+  },
+
   createDormCheckTask(body) {
     return pass(core.createDormCheckTask(body))
   },
