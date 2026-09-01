@@ -8,6 +8,9 @@ const api = read('../src/services/realApi.js')
 const arrival = read('../src/pages/student/orientation/arrival/index.vue')
 const materials = read('../src/pages/student/orientation/materials/index.vue')
 const credential = read('../src/pages/student/orientation/code/index.vue')
+const overview = read('../src/pages/student/orientation/index.vue')
+const timeline = read('../src/components/MobileTimeline.vue')
+const statusTag = read('../src/components/MobileStatusTag.vue')
 
 test('O3 student miniapp exposes canonical arrival and material submission', () => {
   assert.match(pages, /orientation\/arrival\/index/)
@@ -28,4 +31,22 @@ test('O3 does not disguise the admission number as a report credential', () => {
   assert.match(credential, /尚未签发/)
   assert.match(credential, /identity\.admissionNo/)
   assert.doesNotMatch(api, /reportCode:\s*\{\s*code:\s*r\.admissionNo/)
+})
+
+test('orientation overview refreshes on return and gives one clear next action', () => {
+  assert.match(overview, /onShow\(\) \{ this\.load\(\) \}/)
+  assert.match(overview, /下一步/)
+  assert.match(overview, /materialsWaitingReview/)
+  assert.match(overview, /材料已提交，等待审核/)
+  assert.match(arrival, /start="minDate"/)
+  assert.match(arrival, /已为你预选今天/)
+  assert.match(arrival, /setTimeout\(\(\) => back\(\), 700\)/)
+})
+
+test('orientation timeline has student-facing titles and status labels', () => {
+  assert.match(api, /ORIENTATION_STEP_LABELS/)
+  assert.match(api, /title: ORIENTATION_STEP_LABELS\[s\.key\]/)
+  assert.match(statusTag, /DONE: \{ label: '已完成'/)
+  assert.match(statusTag, /DOING: \{ label: '办理中'/)
+  assert.match(timeline, /'DONE', 'WAIVED', 'NOT_REQUIRED'/)
 })

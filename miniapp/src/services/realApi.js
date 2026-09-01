@@ -180,11 +180,18 @@ const NEUTRAL_ORIENTATION = {
     origin: '', phoneMasked: '' }
 }
 
+const ORIENTATION_STEP_LABELS = {
+  ACTIVATE: '账号激活', INFO: '信息核对', MATERIAL: '材料审核', PAYMENT: '缴费 / 绿色通道',
+  DORM: '宿舍安排', CHECKIN: '现场报到', CONFIRM: '学院确认'
+}
+
 export async function enrichOrientation() {
   const r = await realRequest('/mobile/orientation/my')
   if (!r || !r.hasData) return { ...NEUTRAL_ORIENTATION, overallText: (r && r.message) || NEUTRAL_ORIENTATION.overallText }
   const stMap = { NOT_REPORTED: '未报到', PREPARED: '预报到完成', CHECKED_IN: '已现场报到',
     COLLEGE_CONFIRMED: '学院已确认' }
+  const rawSteps = r.steps || []
+  const currentStepIndex = rawSteps.findIndex((item) => !['DONE', 'WAIVED', 'NOT_REQUIRED'].includes(item.status))
   return {
     hasData: true, _real: true,
     batch: r.batchName || '迎新报到',
@@ -194,7 +201,10 @@ export async function enrichOrientation() {
     qualification: r.qualification || null,
     greenChannelStatus: r.greenChannelStatus || 'NOT_APPLIED',
     blocked: r.blockedStep ? { step: r.blockedStep, reason: r.blockedReason } : null,
-    steps: (r.steps || []).map((s) => ({ key: s.key, status: s.status })),
+    steps: rawSteps.map((s, index) => ({
+      key: s.key, title: ORIENTATION_STEP_LABELS[s.key] || '报到事项', status: s.status,
+      current: index === currentStepIndex
+    })),
     reportCode: {
       code: '', valid: r.reportCodeStatus === 'ISSUED',
       status: r.reportCodeStatus || 'BLOCKED',
