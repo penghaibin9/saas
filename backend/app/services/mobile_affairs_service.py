@@ -185,7 +185,7 @@ def discipline_my(user) -> dict:
 
 def dorm_my(user) -> dict:
     """我的宿舍：D4 正式入住事实 + D3 批次分配/预留投影。"""
-    from app.models import DormBed, DormBuilding, DormRoom
+    from app.models import DormBed, DormBuilding, DormRoom, DormStay
     from app.core.tenant_scoped import tenant_get
     from app.services import dorm_allocation_service as allocation
     with session() as db:
@@ -193,15 +193,27 @@ def dorm_my(user) -> dict:
         bed = db.scalars(select(DormBed).where(
             DormBed.tenant_id == _tid(), DormBed.student_id == stu.id,
             DormBed.status == "OCCUPIED", DormBed.is_deleted.is_(False))).first()
+        stays = db.scalars(select(DormStay).where(
+            DormStay.tenant_id == _tid(), DormStay.student_id == stu.id,
+            DormStay.status == "ACTIVE", DormStay.is_deleted.is_(False))).all()
+        if (bed is None) != (len(stays) == 0) or len(stays) > 1 \
+                or (bed and int(stays[0].bed_id) != int(bed.id)):
+            raise AppException("DATA_INCONSISTENT", "当前床位与住宿历史不一致，请联系宿管核对")
         my_bed = None
         if bed:
             b = tenant_get(db, DormBuilding, int(bed.building_id))
             room = tenant_get(db, DormRoom, int(bed.room_id))
             my_bed = {"bedId": str(bed.id), "building": b.building_name if b else "",
                       "room": room.room_no if room else "", "bedNo": bed.bed_no,
-                      "occupiedAt": _iso(bed.occupied_at)}
+                      "stayId": str(stays[0].id),
+                      "occupiedAt": _iso(stays[0].checkin_at or bed.occupied_at)}
     cfg = allocation.student_config(user)
     return {"myBed": my_bed, "hasBed": bool(my_bed), **cfg}
+
+
+def dorm_stays_my(user) -> dict:
+    from app.services.affairs_dorm_stay_service import my_stays
+    return my_stays(user)
 
 
 def overview_my(user) -> dict:

@@ -13,12 +13,15 @@ test('teacher miniapp approves the version visible in the list', () => {
   assert.doesNotMatch(source, /version:\s*detail\.version/)
 })
 
-test('PC dorm checkout sends the visible bed version', () => {
-  const api = read('frontend/src/modules/studentAffairs/api/dormReliability.api.js')
+test('PC dorm checkout creates a formal request with the visible bed version', () => {
+  const api = read('frontend/src/modules/studentAffairs/api/studentAffairs.api.js')
   const page = read('frontend/src/modules/studentAffairs/views/dorm/DormCheckinView.vue')
-  assert.match(api, /body:\s*\{\s*version\s*\}/)
+  assert.match(api, /createDormCheckout\(body\)/)
   assert.match(page, /version:\s*bd\.version/)
-  assert.match(page, /dormReliabilityApi\.checkout\(this\.outDlg\.bedId, this\.outDlg\.version\)/)
+  assert.match(page, /studentAffairsApi\.createDormCheckout/)
+  assert.match(page, /expectedBedVersion:\s*Number\(this\.outDlg\.version\)/)
+  assert.match(page, /clientRequestId:\s*this\.outDlg\.clientRequestId/)
+  assert.match(page, /宿管确认前床位和住宿关系保持不变/)
 })
 
 test('student activity checkin never exposes manual checkin action', () => {

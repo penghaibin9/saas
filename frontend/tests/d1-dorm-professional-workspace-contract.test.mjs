@@ -36,7 +36,7 @@ test('D1 room state has an exact building-room-bed drill chain into current-bed 
   assert.match(resource, /bedId: String\(bed\.bedId\)/)
   assert.match(checkin, /this\.routeBedId = bedId/)
   assert.match(checkin, /studentAffairsApi\.dormCheckin/)
-  assert.match(checkin, /dormReliabilityApi\.checkout/)
+  assert.match(checkin, /studentAffairsApi\.createDormCheckout/)
 })
 
 test('D1 statistics drill down to authoritative room state instead of browser aggregates', () => {

@@ -835,9 +835,35 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkin`, { method: 'POST', body: { studentId: String(studentId) } }))
   },
 
-  /** 退宿（释放床位）。 */
-  checkoutBed(bedId) {
-    return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkout`, { method: 'POST', body: {} }))
+  /** 兼容退宿入口：仅发起正式退宿单，不立即释放床位。 */
+  checkoutBed(bedId, version) {
+    return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkout`, { method: 'POST', body: { version } }))
+  },
+
+  createDormCheckout(body) {
+    return callStrict(() => request('/student-affairs/dorm/checkout-requests', { method: 'POST', body }))
+  },
+
+  listDormCheckouts({ status = '', studentId = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    if (studentId) params.studentId = studentId
+    return callStrict(() => request('/student-affairs/dorm/checkout-requests', { params }))
+  },
+
+  confirmDormCheckout(requestId, version) {
+    return callStrict(() => request(`/student-affairs/dorm/checkout-requests/${requestId}/confirm`, { method: 'POST', body: { version } }))
+  },
+
+  cancelDormCheckout(requestId, version, reason) {
+    return callStrict(() => request(`/student-affairs/dorm/checkout-requests/${requestId}/cancel`, { method: 'POST', body: { version, reason } }))
+  },
+
+  listDormStays({ status = '', studentId = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    if (studentId) params.studentId = studentId
+    return callStrict(() => request('/student-affairs/dorm/stays', { params }))
   },
 
   /** 发起调宿（原床释放/新床占用走审批）。body: { studentId, toBedId, reason } */

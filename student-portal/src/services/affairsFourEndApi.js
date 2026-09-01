@@ -62,6 +62,7 @@ export const affairsFourEndApi = {
   dormTransferBeds: (roomId) => request(`/mobile/affairs/dorm/transfer-rooms/${enc(roomId)}/beds`),
   submitDormTransfer: (toBedId, reason) => request('/mobile/affairs/dorm/transfers', { method: 'POST', body: { toBedId, reason } }),
   myDormTransfers: () => request('/mobile/affairs/dorm/transfers/my'),
+  myDormStays: () => request('/mobile/affairs/dorm/stays/my'),
 
   // 正式第二课堂成绩单与申诉
   secondClassReport: () => request('/mobile/affairs/second-class/report'),

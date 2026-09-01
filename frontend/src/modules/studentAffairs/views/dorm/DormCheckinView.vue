@@ -31,7 +31,7 @@
         <div class="sa-workflow-step" data-step="1"><strong>选择楼栋</strong><br>仅展示当前角色可管理的楼栋</div>
         <div class="sa-workflow-step" data-step="2"><strong>选择房间</strong><br>查看房间空床数量和床位清单</div>
         <div class="sa-workflow-step" data-step="3"><strong>核对床位</strong><br>确认空床或当前入住学生</div>
-        <div class="sa-workflow-step" data-step="4"><strong>办理结果</strong><br>入住占床、退宿释放床位并刷新台账</div>
+        <div class="sa-workflow-step" data-step="4"><strong>办理结果</strong><br>入住写住宿历史；退宿进入宿管确认后释放床位</div>
       </div>
 
       <AppSectionCard title="分配模式说明">
@@ -83,9 +83,21 @@
 
     <AppConfirmDialog
       v-model:visible="outDlg.visible" title="办理退宿" type="warning" confirm-text="确认退宿"
-      :description="`确认为 ${outDlg.who} 办理退宿？该床位将立即释放为空床。`"
+      :description="`为 ${outDlg.who} 发起正式退宿单；宿管确认前床位和住宿关系保持不变。`"
       :submitting="actioning" @confirm="submitCheckout"
-    />
+    >
+      <AppFormItem label="退宿类型" required>
+        <select v-model="outDlg.requestType" class="sa-native-select" :disabled="actioning">
+          <option value="GRADUATION">毕业</option><option value="LEAVE_OF_ABSENCE">休学</option>
+          <option value="WITHDRAWAL">退学</option><option value="DAY_STUDENT">转走读</option>
+          <option value="SPECIAL">特殊退宿</option>
+        </select>
+      </AppFormItem>
+      <AppFormItem label="退宿原因（5-500字）" required>
+        <AppTextarea v-model="outDlg.reason" :rows="3" :maxlength="500" :disabled="actioning" />
+      </AppFormItem>
+      <AppInlineAlert v-if="outDlg.error" type="danger" :description="outDlg.error" />
+    </AppConfirmDialog>
 
   </AppPageShell>
 </template>
@@ -93,11 +105,11 @@
 <script>
 import {
   AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-  AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker
+  AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker,
+  AppTextarea
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
-import { dormReliabilityApi } from '@/modules/studentAffairs/api/dormReliability.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 
 const BED_COLUMNS = [
@@ -112,7 +124,8 @@ export default {
   props: { ctx: { type: Object, default: null } },
   components: {
     AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, DataTable
+    AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker,
+    AppTextarea, DataTable
   },
   data() {
     return {
@@ -120,7 +133,7 @@ export default {
       loading: true, actioning: false, errorMessage: '', config: {}, buildings: [], curBuilding: '',
       rooms: [], curRoom: '', beds: [], routeBedId: '', routeNotice: '',
       inDlg: { visible: false, bedId: '', bedLabel: '', studentId: '', error: '' },
-      outDlg: { visible: false, bedId: '', who: '', version: null }
+      outDlg: { visible: false, bedId: '', who: '', version: null, requestType: 'SPECIAL', reason: '', clientRequestId: '', error: '' }
     }
   },
   computed: {
@@ -205,17 +218,24 @@ export default {
     checkout(bd) {
       this.outDlg = {
         visible: true, bedId: bd.bedId,
-        who: bd.occupantName || `${bd.bedNo} 号床`, version: bd.version
+        who: bd.occupantName || `${bd.bedNo} 号床`, version: bd.version,
+        requestType: 'SPECIAL', reason: '', clientRequestId: `checkout:${globalThis.crypto.randomUUID()}`, error: ''
       }
     },
     async submitCheckout() {
+      const reason = (this.outDlg.reason || '').trim()
+      if (reason.length < 5 || reason.length > 500) { this.outDlg.error = '退宿原因需5-500字'; return }
       this.actioning = true; this.errorMessage = ''
       try {
-        await dormReliabilityApi.checkout(this.outDlg.bedId, this.outDlg.version)
-        await this.loadRooms2()
+        await studentAffairsApi.createDormCheckout({
+          bedId: Number(this.outDlg.bedId), expectedBedVersion: Number(this.outDlg.version),
+          requestType: this.outDlg.requestType, reason,
+          clientRequestId: this.outDlg.clientRequestId
+        })
         this.outDlg.visible = false
+        await this.$router.push({ path: '/admin/student-affairs/dorm/transfer', query: { tab: 'checkout' } })
       } catch (e) {
-        this.errorMessage = e.message || '退宿失败'
+        this.outDlg.error = e.message || '退宿单发起失败'
         await this.loadBeds().catch(() => {})
         const latest = this.beds.find((x) => String(x.bedId) === String(this.outDlg.bedId))
         if (latest) this.outDlg.version = latest.version
@@ -251,6 +271,7 @@ export default {
 .dorm-picker-bar { padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-section); }
 .sa-actions { display: flex; gap: var(--space-2); }
 .dorm-occupied { color: var(--text-primary); font-weight: 600; }
+.sa-native-select { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-primary); }
 @media (max-width: 720px) { .sa-mode-card { grid-template-columns: 1fr; } .sa-pick { width: 100%; flex-basis: 100%; } }
 @import '@/styles/module-page.css';
 </style>
