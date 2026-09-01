@@ -66,6 +66,7 @@ import PasswordResetDialog from '../../components/auth/PasswordResetDialog.vue'
 import { portalApi } from '../../services/portalApi'
 
 const REMEMBER_KEY = 'student_portal_login_name'
+const TENANT_KEY = 'student_portal_tenant_code'
 const router = useRouter()
 const route = useRoute()
 const session = useSessionStore()
@@ -92,6 +93,7 @@ onMounted(() => {
       loginName.value = saved
       remember.value = true
     }
+    if (!tenantCode.value) tenantCode.value = localStorage.getItem(TENANT_KEY) || ''
   } catch {
     // 隐私模式可能禁用本地存储，不影响登录。
   }
@@ -131,6 +133,8 @@ async function doLogin() {
     try {
       if (remember.value) localStorage.setItem(REMEMBER_KEY, loginName.value)
       else localStorage.removeItem(REMEMBER_KEY)
+      if (tenantCode.value) localStorage.setItem(TENANT_KEY, tenantCode.value)
+      else localStorage.removeItem(TENANT_KEY)
     } catch {
       // 记住账号失败不阻断真实认证链路。
     }

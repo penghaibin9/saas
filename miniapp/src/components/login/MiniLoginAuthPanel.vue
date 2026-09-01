@@ -77,6 +77,7 @@ import { useSessionStore } from '@/stores/session'
 import { studentApi } from '@/services/studentApi'
 import { clearTokens, commitNewSessionTokens, realRequest } from '@/services/request'
 import { go, relaunch, toast } from '@/utils/nav'
+import { getLastTenantCode, saveLastTenantCode } from '@/utils/tenantPreference'
 
 export default {
   name: 'MiniLoginAuthPanel',
@@ -84,16 +85,17 @@ export default {
     entry: { type: String, required: true, validator: (value) => ['student', 'teacher'].includes(value) }
   },
   data() {
+    const rememberedTenantCode = getLastTenantCode()
     return {
       brand: tenantBrandConfig,
       agree: false,
-      tenantOpen: false,
-      account: { tenantCode: '', loginName: '', password: '' },
+      tenantOpen: !!rememberedTenantCode,
+      account: { tenantCode: rememberedTenantCode, loginName: '', password: '' },
       accLoading: false,
       wxLoading: false,
       binding: false,
       wxToken: '',
-      bindForm: { tenantCode: '', loginName: '', password: '' },
+      bindForm: { tenantCode: rememberedTenantCode, loginName: '', password: '' },
       accountCaptcha: { required: false, id: '', code: '', image: '', nonce: `mini-account-${Date.now()}-${Math.random()}` },
       bindCaptcha: { required: false, id: '', code: '', image: '', nonce: `mini-bind-${Date.now()}-${Math.random()}` },
       bindLoading: false,
@@ -176,7 +178,10 @@ export default {
           clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI',
           captchaId: this.accountCaptcha.id || undefined, captchaCode: this.accountCaptcha.code || undefined, clientNonce: this.accountCaptcha.nonce
         }
-      }).then(this.completeLogin).catch((error) => { this.handleCaptchaError(error, 'account'); toast(error?.message || '登录失败，请稍后重试') }).finally(() => { this.accLoading = false })
+      }).then((data) => {
+        saveLastTenantCode(this.account.tenantCode)
+        this.completeLogin(data)
+      }).catch((error) => { this.handleCaptchaError(error, 'account'); toast(error?.message || '登录失败，请稍后重试') }).finally(() => { this.accLoading = false })
     },
     wechatLogin() {
       if (this.wxLoading) return
@@ -212,7 +217,10 @@ export default {
           const selected = accounts[tapIndex]
           if (!selected) return
           realRequest('/auth/wx-select', { method: 'POST', auth: false, data: { wxToken: data.wxToken, tenantCode: selected.tenantCode } })
-            .then(this.completeLogin).catch((error) => toast(error?.message || '学校账号登录失败，请重试'))
+            .then((loginData) => {
+              saveLastTenantCode(selected.tenantCode)
+              this.completeLogin(loginData)
+            }).catch((error) => toast(error?.message || '学校账号登录失败，请重试'))
         }
       })
     },
@@ -231,14 +239,18 @@ export default {
           clientType: this.isTeacher ? 'TEACHER_MINI' : 'STUDENT_MINI',
           captchaId: this.bindCaptcha.id || undefined, captchaCode: this.bindCaptcha.code || undefined, clientNonce: this.bindCaptcha.nonce
         }
-      }).then((data) => { this.binding = false; this.completeLogin(data) })
+      }).then((data) => {
+        saveLastTenantCode(this.bindForm.tenantCode)
+        this.binding = false
+        this.completeLogin(data)
+      })
         .catch((error) => { this.handleCaptchaError(error, 'bind'); toast(error?.message || '绑定失败，请检查账号密码') })
         .finally(() => { this.bindLoading = false })
     },
     cancelBind() {
       this.binding = false
       this.wxToken = ''
-      this.bindForm = { tenantCode: '', loginName: '', password: '' }
+      this.bindForm = { tenantCode: getLastTenantCode(), loginName: '', password: '' }
     },
     focusAccount() { toast('请使用学校分配的学号和密码登录办理迎新事项') },
     switchEntry() { relaunch('/pages/login/index') },
