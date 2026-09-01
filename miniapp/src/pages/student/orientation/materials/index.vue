@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap">
+    <MobilePrivacyGate />
     <MobileGlobalState :state="state" @retry="load">
       <view v-if="o" class="page-pad stack">
         <MobileInlineAlert v-if="!available" type="warning" :description="o.selfService?.reason || '当前预报到未开放'" />

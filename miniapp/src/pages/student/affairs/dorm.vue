@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap">
+    <MobilePrivacyGate />
     <MobileNavBar variant="brand" title="我的宿舍" :subtitle="subtitle" back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="cfg">

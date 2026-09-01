@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap">
+    <MobilePrivacyGate />
     <MobileNavBar variant="teacher" title="宿舍现场工作台" subtitle="调宿 / 巡检 / 整改复查" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad">
