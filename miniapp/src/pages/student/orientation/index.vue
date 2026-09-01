@@ -12,10 +12,10 @@
               <text class="or__hero-sub">{{ heroSub }}</text>
             </view>
           </view>
-          <view class="or__code is-invalid">
+          <view class="or__code" :class="{ 'is-invalid': !o.reportCode.canIssue }" @click="go('/pages/student/orientation/code/index')">
             <view class="flex-1">
-              <text class="or__code-label">报到码</text>
-              <text class="or__code-value">{{ o.reportCode.code || '尚未签发' }}</text>
+              <text class="or__code-label">一次性现场报到凭证</text>
+              <text class="or__code-value">{{ reportCodeText }}</text>
             </view>
             <text class="or__code-note">{{ o.reportCode.note }}</text>
           </view>
@@ -91,6 +91,10 @@ export default {
     },
     qualificationText() { return (this.o && this.o.qualification && this.o.qualification.verdictLabel) || '资格待计算' },
     qualificationBlockers() { return (this.o && this.o.qualification && this.o.qualification.blockers) || [] },
+    reportCodeText() {
+      const status = this.o?.reportCode?.status
+      return ({ ELIGIBLE: '点击签发', ISSUED: '点击刷新', CHECKED_IN: '已完成报到', FINALIZED: '学院已确认' })[status] || '暂不可签发'
+    },
     paymentText() { return ({ PAID: '已缴清', PARTIAL: '部分缴费', UNPAID: '未缴费', WAIVED: '已减免', DEFERRED: '已批准缓缴', GREEN_CHANNEL: '绿色通道' })[this.o && this.o.payStatus] || '待同步' }
   },
   methods: {

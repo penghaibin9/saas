@@ -174,6 +174,7 @@ export const portalApi = {
   orientationMaterial: (body) => request('/portal/orientation/materials', { method: 'POST', body }),
   uploadOrientationMaterial: (file) => fileSdk.upload(file, { bizType: 'ORIENTATION_MATERIAL' }),
   orientationGreenChannel: (body) => request('/portal/orientation/green-channel', { method: 'POST', body }),
+  orientationCheckinToken: () => request('/portal/orientation/checkin-token', { method: 'POST' }),
   orientationPrint: (body) => request('/portal/orientation/print', { method: 'POST', body }),
   serviceHallCatalog: () => request('/portal/service-hall/catalog'),
   // SP-M05/M07：待办/通知/服务进度是三个独立 Authority，各自真实数据库分页。

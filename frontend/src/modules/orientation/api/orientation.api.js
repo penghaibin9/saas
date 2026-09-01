@@ -27,6 +27,7 @@ const ACTION_PERMISSION = Object.freeze({
   'orientation.student.export': 'studentAffairs.orientation.export',
   'orientation.student.batchRemind': 'studentAffairs.orientation.manage',
   'orientation.student.batchAssign': 'studentAffairs.orientation.manage',
+  'orientation.enrollment.finalize': 'studentAffairs.orientation.manage',
   'orientation.progress.edit': 'studentAffairs.orientation.manage',
   'orientation.progress.export': 'studentAffairs.orientation.export',
   'orientation.progress.manualResolve': 'studentAffairs.orientation.manage',
@@ -292,6 +293,10 @@ export async function getOrientationQualification(id) {
 
 export async function recalculateOrientationQualification(id) {
   return callData(() => request(`/orientation/qualifications/${id}/recalculate`, { method: 'POST' }))
+}
+
+export async function finalizeOrientationEnrollment(id, payload) {
+  return callData(() => request(`/orientation/students/${id}/finalize`, { method: 'POST', body: payload }))
 }
 
 /* ---------------- 材料审核 ---------------- */

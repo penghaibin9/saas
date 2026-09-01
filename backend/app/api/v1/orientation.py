@@ -148,6 +148,12 @@ def qualification_recalculate(sid: str, user=Depends(require_staff)):
     return success(qualification_detail(sid, user=user, recalculate=True), message="资格已重算")
 
 
+@router.post("/students/{sid}/finalize", summary="学院最终确认并进入正式学生生命周期")
+def enrollment_finalize(sid: str, body: dict = Body(...), user=Depends(require_staff)):
+    from app.services.orientation_enrollment_finalize_service import finalize
+    return success(finalize(sid, body, user=user), message="学院确认已完成")
+
+
 @router.get("/materials", summary="材料审核列表")
 def materials(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
               keyword: Optional[str] = None, status: Optional[str] = None,

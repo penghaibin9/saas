@@ -385,6 +385,97 @@ class OrientationCheckinPoint(PKMixin, TenantMixin, CommonMixin, Base):
     remark: Mapped[str | None] = mapped_column(String(500))
 
 
+class OrientationCheckinToken(PKMixin, TenantMixin, CommonMixin, Base):
+    """一次性现场报到凭证状态；只保存 nonce 摘要，不保存可重放的原始 token。"""
+    __tablename__ = "t_orientation_checkin_token"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "nonce_hash", name="uk_ori_checkin_token_nonce"),
+        CheckConstraint(
+            "status IN ('ISSUED','CONSUMED','REVOKED','EXPIRED')",
+            name="ck_ori_checkin_token_status",
+        ),
+        CheckConstraint(
+            "batch_id > 0 AND orientation_student_id > 0",
+            name="ck_ori_checkin_token_subject",
+        ),
+        Index(
+            "ix_ori_checkin_token_student_status",
+            "tenant_id", "orientation_student_id", "status", "expires_at", "is_deleted",
+        ),
+    )
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    orientation_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    nonce_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    issued_by: Mapped[int | None] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ISSUED")
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    consumed_by: Mapped[int | None] = mapped_column(BigInteger)
+    checkin_record_id: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class OrientationCheckinRecord(PKMixin, TenantMixin, CommonMixin, Base):
+    """教师对签名凭证完成 preflight 后形成的唯一现场报到事实。"""
+    __tablename__ = "t_orientation_checkin_record"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "orientation_student_id", name="uk_ori_checkin_record_student"
+        ),
+        UniqueConstraint("tenant_id", "token_id", name="uk_ori_checkin_record_token"),
+        UniqueConstraint("tenant_id", "nonce_hash", name="uk_ori_checkin_record_nonce"),
+        CheckConstraint("checkin_method = 'SIGNED_TOKEN'", name="ck_ori_checkin_method"),
+        CheckConstraint("status = 'CONFIRMED'", name="ck_ori_checkin_record_status"),
+        Index(
+            "ix_ori_checkin_record_point_time",
+            "tenant_id", "checkin_point_id", "checked_in_at", "is_deleted",
+        ),
+        Index(
+            "ix_ori_checkin_record_operator_time",
+            "tenant_id", "checked_in_by", "checked_in_at", "is_deleted",
+        ),
+    )
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    orientation_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    checkin_point_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    token_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    nonce_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    checked_in_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    checked_in_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    checkin_method: Mapped[str] = mapped_column(String(30), nullable=False, default="SIGNED_TOKEN")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="CONFIRMED")
+
+
+class OrientationEnrollmentFinalize(PKMixin, TenantMixin, CommonMixin, Base):
+    """学院最终确认的幂等事务回执，关联正式学生主档与生命周期阶段。"""
+    __tablename__ = "t_orientation_enrollment_finalize"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "orientation_student_id", name="uk_ori_finalize_student"
+        ),
+        UniqueConstraint("tenant_id", "request_id", name="uk_ori_finalize_request"),
+        CheckConstraint("to_stage = 'ENROLLED'", name="ck_ori_finalize_stage"),
+        CheckConstraint("status = 'FINALIZED'", name="ck_ori_finalize_status"),
+        Index(
+            "ix_ori_finalize_profile_time",
+            "tenant_id", "student_id", "finalized_at", "is_deleted",
+        ),
+    )
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    orientation_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    request_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    student_no_snapshot: Mapped[str] = mapped_column(String(50), nullable=False)
+    from_stage: Mapped[str | None] = mapped_column(String(50))
+    to_stage: Mapped[str] = mapped_column(String(50), nullable=False, default="ENROLLED")
+    finalized_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    finalized_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="FINALIZED")
+
+
 class OrientationFlowConfig(PKMixin, TenantMixin, CommonMixin, Base):
     """t_orientation_flow_config 报到流程配置——每个环节一行。"""
     __tablename__ = "t_orientation_flow_config"

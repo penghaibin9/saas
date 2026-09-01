@@ -35,6 +35,12 @@ def green_channel(user: dict, body: dict) -> dict:
     return stu.orientation_green_channel_submit(user, body or {})
 
 
+def checkin_token(user: dict) -> dict:
+    """资格通过后显式签发一次性 HMAC 报到凭证。"""
+    from app.services.orientation_checkin_service import issue_for_student
+    return issue_for_student(user)
+
+
 def print_receipt(user: dict, body: dict) -> dict:
     """打印迎新报到回执（PORTAL_PRINT + 水印）。"""
     _require_student(user)

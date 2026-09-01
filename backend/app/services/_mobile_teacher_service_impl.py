@@ -2063,15 +2063,13 @@ def orientation(user):
 
 
 def orientation_checkin(user: dict, admission_no: str) -> dict:
-    """现场报到核验（迎新老师扫码/录入报到码）：写操作，需审计。"""
-    u = _require_teacher(user)
-    if not db_enabled():
-        raise AppException("VALIDATION_ERROR", "演示模式不支持核验")
-    result = orientation_service.teacher_checkin_by_admission_no(admission_no, u.get("realName") or "")
-    from app.services import audit_log
-    audit_log.record("迎新现场报到核验", f"orientation-student:{result['id']}",
-                     detail={"operator": u.get("realName"), "student": result.get("name")})
-    return result
+    """Legacy admission-number check-in is intentionally closed by O5."""
+    _require_teacher(user)
+    raise AppException(
+        "DEPRECATED_WRITE_PATH",
+        "录取编号不再作为安全报到凭证，请使用签名凭证预检与确认接口",
+        http_status=410,
+    )
 
 
 def orientation_dashboard(user: dict) -> dict:
@@ -2086,22 +2084,9 @@ def orientation_dashboard(user: dict) -> dict:
 
 
 def orientation_today_checkins(user: dict) -> dict:
-    """今日已核验（现场报到）新生列表——供核验页下方展示，供教师核对不重复核验。"""
-    _require_teacher(user)
-    if not db_enabled():
-        return {"hasData": False, "list": []}
-    from app.models import OrientationStudent
-    now = datetime.utcnow()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    with _session() as db:
-        rows = db.scalars(select(OrientationStudent).where(
-            OrientationStudent.tenant_id == _tid(), OrientationStudent.is_deleted.is_(False),
-            OrientationStudent.checkin_time.is_not(None),
-            OrientationStudent.checkin_time >= today_start,
-        ).order_by(OrientationStudent.checkin_time.desc())).all()
-        items = [{"id": str(r.id), "name": r.name, "className": r.class_name or "",
-                  "checkinTime": _iso(r.checkin_time)} for r in rows]
-        return {"hasData": len(items) > 0, "list": items, "total": len(items)}
+    """今日签名凭证确认记录；旧 checkin_time 投影不再作为列表 Authority。"""
+    from app.services.orientation_checkin_service import today_records
+    return today_records(user)
 
 
 def internship_visit_plans(user: dict) -> dict:

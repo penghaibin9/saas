@@ -195,8 +195,13 @@ export async function enrichOrientation() {
     greenChannelStatus: r.greenChannelStatus || 'NOT_APPLIED',
     blocked: r.blockedStep ? { step: r.blockedStep, reason: r.blockedReason } : null,
     steps: (r.steps || []).map((s) => ({ key: s.key, status: s.status })),
-    // O5 前不生成安全报到凭证；录取编号只在身份信息中展示。
-    reportCode: { code: '', valid: false, note: '正式电子报到凭证尚未签发' },
+    reportCode: {
+      code: '', valid: r.reportCodeStatus === 'ISSUED',
+      status: r.reportCodeStatus || 'BLOCKED',
+      canIssue: !!r.checkinCredential?.canIssue,
+      expiresAt: r.checkinCredential?.expiresAt || '',
+      note: r.checkinCredential?.note || '正式电子报到凭证尚未签发'
+    },
     selfService: r.selfService || { available: false, information: {}, arrivalPlan: null, materials: [] },
     identity: { name: r.name || '', admissionNo: r.admissionNo || '', gender: r.gender || '', collegeName: r.collegeName || '',
       majorName: r.majorName || '', className: r.className || '', grade: r.grade || '',
@@ -219,10 +224,16 @@ export const orientationMaterialSubmit = (body) =>
   realRequest('/mobile/orientation/materials', { method: 'POST', data: body || {} })
 export const orientationGreenChannelSubmit = (body) =>
   realRequest('/mobile/orientation/green-channel', { method: 'POST', data: body })
+export const orientationCheckinToken = () =>
+  realRequest('/mobile/orientation/checkin-token', { method: 'POST' })
 
-/** 迎新老师·现场报到核验 / 今日已核验列表 */
-export const teacherOrientationCheckin = (admissionNo) =>
-  realRequest('/mobile/teacher/orientation/checkin', { method: 'POST', data: { admissionNo } })
+/** 迎新老师·签名凭证 preflight → confirm / 今日已核验列表 */
+export const teacherOrientationCheckinPoints = () =>
+  realRequest('/mobile/teacher/orientation/checkin-points')
+export const teacherOrientationCheckinPreflight = (token) =>
+  realRequest('/mobile/teacher/orientation/checkin/preflight', { method: 'POST', data: { token } })
+export const teacherOrientationCheckinConfirm = (token, checkinPointId) =>
+  realRequest('/mobile/teacher/orientation/checkin/confirm', { method: 'POST', data: { token, checkinPointId } })
 export const teacherOrientationTodayCheckins = () =>
   realRequest('/mobile/teacher/orientation/today-checkins')
 export const teacherOrientationDashboard = () =>
