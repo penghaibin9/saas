@@ -62,6 +62,11 @@
           </view>
         </view>
         <view v-else-if="!transferError" class="dm__history"><text class="dm__step-t">我的调宿申请</text><text class="dm__empty-text">暂无调宿申请</text></view>
+        <view class="dm__history">
+          <text class="dm__step-t">住宿历史</text>
+          <view v-for="x in stays" :key="x.stayId" class="dm__history-row"><text class="dm__history-status">{{ stayStatusLabel(x.status) }}</text><text class="dm__history-route">{{ x.bedLabel || ('床位 #' + x.bedId) }}</text><text class="dm__history-reason">{{ (x.checkinAt || '未记录') + ' → ' + (x.checkoutAt || '当前') }}</text></view>
+          <text v-if="!stays.length" class="dm__empty-text">暂无住宿历史</text>
+        </view>
       </view>
     </MobileGlobalState>
   </view>
@@ -77,7 +82,7 @@ const PENDING = ['SUBMITTED', 'COUNSELOR_REVIEW', 'DORM_MANAGER_REVIEW', 'DORM_R
 export default {
   data() {
     return {
-      cfg: null, state: 'loading', buildings: [], rooms: [], beds: [], transfers: [],
+      cfg: null, state: 'loading', buildings: [], rooms: [], beds: [], transfers: [], stays: [],
       transferError: '', optionError: '', optionsLoading: false,
       sel: { building: '', room: '', bed: '' }, submitting: false,
       transferReason: '', _lock: createSubmitLock()
@@ -107,14 +112,16 @@ export default {
   onLoad() { this.load() },
   methods: {
     statusLabel(s) { return ({ SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核', DORM_REVIEW: '宿管审核', EXECUTED: '已执行', REJECTED: '已驳回', CANCELLED: '已取消' })[s] || s || '处理中' },
+    stayStatusLabel(s) { return ({ RESERVED: '待入住', ACTIVE: '当前在住', ENDED: '已退宿', CANCELLED: '已取消' })[String(s || '').toUpperCase()] || '状态待确认' },
     showError(e, fallback) { const n = normalizeError(e); safeToast(n.text || (e && e.message) || fallback); if (n.kind === 'conflict') this.load(); return n },
     async load() {
       this.state = 'loading'; this.sel = { building: '', room: '', bed: '' }; this.rooms = []; this.beds = []; this.transferError = ''; this.optionError = ''
-      const [dormResult, transferResult] = await Promise.allSettled([studentApi.getMyDorm(), affairsContractApi.getMyDormTransfers()])
+      const [dormResult, transferResult, stayResult] = await Promise.allSettled([studentApi.getMyDorm(), affairsContractApi.getMyDormTransfers(), affairsContractApi.getMyDormStays()])
       if (dormResult.status === 'rejected') { this.state = 'error'; this.showError(dormResult.reason, '宿舍信息加载失败'); return }
       this.cfg = dormResult.value
       if (transferResult.status === 'fulfilled') this.transfers = (transferResult.value && transferResult.value.items) || []
       else { this.transfers = []; this.transferError = normalizeError(transferResult.reason).text || '调宿记录加载失败，请稍后重试' }
+      this.stays = stayResult.status === 'fulfilled' ? ((stayResult.value && stayResult.value.items) || []) : []
       this.state = 'ready'
       if (this.cfg.hasBed && !this.pendingTransfer) this.loadTransferOptions()
       else if (!this.cfg.hasBed && (this.cfg.canSelfSelect || this.cfg.selfSelectEnabled)) this.loadSelfSelectOptions()

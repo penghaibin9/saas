@@ -238,6 +238,11 @@ def install() -> None:
                 if len(current_beds) != 1 or int(current_beds[0].id) != int(transfer.from_bed_id):
                     raise AppException("DATA_CONFLICT", "学生当前床位已变化，请重新申请")
                 old_bed = current_beds[0]
+                from app.services.affairs_dorm_stay_service import execute_transfer
+                execute_transfer(
+                    db, transfer=transfer, student=student,
+                    old_bed=old_bed, target_bed=target, user=user,
+                )
                 target.student_id, target.status, target.occupied_at = int(student.id), "OCCUPIED", datetime.utcnow()
                 target.version = int(target.version or 0) + 1
                 target.cs_dorm_record_id = dorm._writeback_dorm_record(

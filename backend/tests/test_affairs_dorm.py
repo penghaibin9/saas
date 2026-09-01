@@ -84,9 +84,11 @@ def test_m2_cascade_checkin_writeback(client, db_mode):
     assert next(x for x in rooms if x["roomId"] == rid)["vacantBeds"] == 3
     # 回写 t_cs_dorm_record
     from app.db.session import get_sessionmaker
-    from app.models import CsDormRecord
+    from app.models import CsDormRecord, DormStay
     db = get_sessionmaker()()
     assert db.query(CsDormRecord).filter_by(building="紫荆1号楼", status="IN").count() == 1
+    stay = db.query(DormStay).filter_by(student_id=ids["sm2"], status="ACTIVE").one()
+    assert stay.bed_id == int(beds[0]["bedId"]) and stay.checkin_at is not None
     db.close()
 
 
@@ -124,10 +126,92 @@ def test_m4_transfer_executes(client, db_mode):
     assert r["data"]["status"] == "EXECUTED"
     # 原床释放、新床占用
     from app.db.session import get_sessionmaker
-    from app.models import DormBed
+    from app.models import DormBed, DormStay
     db = get_sessionmaker()()
     assert db.get(DormBed, int(old_bed)).status == "VACANT"
     assert db.get(DormBed, int(new_bed)).status == "OCCUPIED"
+    stays = db.query(DormStay).filter_by(student_id=ids["sm"]).order_by(DormStay.id).all()
+    assert [x.status for x in stays] == ["ENDED", "ACTIVE"]
+    assert stays[0].bed_id == int(old_bed) and stays[0].checkout_at is not None
+    assert stays[1].bed_id == int(new_bed) and stays[1].source_type == "TRANSFER"
+    db.close()
+
+
+def test_m4_d4_formal_checkout_blocks_transfer_then_confirms(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    counselor = role_headers("COUNSELOR", login_name="counselor01", real_name="测试辅导员")
+    manager = role_headers("DORM_MANAGER", login_name="dorm01", real_name="宿管·李")
+    bid = _make_building(client, admin)
+    room1, beds1 = _first_bed(client, admin, bid, floor=1)
+    _, beds2 = _first_bed(client, admin, bid, floor=2)
+    old_bed, target_bed = beds1[0]["bedId"], beds2[0]["bedId"]
+    assert client.post(f"{BASE}/dorm/beds/{old_bed}/checkin", headers=admin,
+                       json={"studentId": str(ids["sm"])}).status_code == 200
+    transfer = client.post(f"{BASE}/dorm/transfers", headers=counselor, json={
+        "studentId": str(ids["sm"]), "toBedId": str(target_bed),
+        "reason": "已发起调宿时不能并发退宿",
+    }).json()["data"]
+    latest_bed = next(x for x in client.get(
+        f"{BASE}/dorm/rooms/{room1}/beds", headers=admin,
+    ).json()["data"]["items"] if x["bedId"] == old_bed)
+    requested = client.post(f"{BASE}/dorm/checkout-requests", headers=admin, json={
+        "bedId": int(old_bed), "expectedBedVersion": latest_bed["version"],
+        "requestType": "DAY_STUDENT", "reason": "学生申请转为走读并办理退宿",
+        "clientRequestId": "d4-checkout-blocked-0001",
+    })
+    assert requested.status_code == 200, requested.text
+    request = requested.json()["data"]
+    assert request["status"] == "BLOCKED"
+    assert request["blockers"][0]["code"] == "TRANSFER_IN_PROGRESS"
+    replay = client.post(f"{BASE}/dorm/checkout-requests", headers=admin, json={
+        "bedId": int(old_bed), "expectedBedVersion": latest_bed["version"],
+        "requestType": "DAY_STUDENT", "reason": "学生申请转为走读并办理退宿",
+        "clientRequestId": "d4-checkout-blocked-0001",
+    })
+    assert replay.status_code == 200
+    assert replay.json()["data"]["requestId"] == request["requestId"]
+    duplicate = client.post(f"{BASE}/dorm/checkout-requests", headers=admin, json={
+        "bedId": int(old_bed), "expectedBedVersion": latest_bed["version"],
+        "requestType": "DAY_STUDENT", "reason": "重复发起的另一张退宿单",
+        "clientRequestId": "d4-checkout-blocked-0002",
+    })
+    assert duplicate.status_code == 409
+    blocked = client.post(
+        f"{BASE}/dorm/checkout-requests/{request['requestId']}/confirm",
+        headers=manager, json={"version": request["version"]},
+    )
+    assert blocked.status_code == 409
+
+    rejected = client.post(f"{BASE}/dorm/transfers/{transfer['transferId']}/review",
+                           headers=counselor, json={
+        "action": "REJECT", "reason": "转走读改办退宿流程", "version": transfer["version"],
+    })
+    assert rejected.status_code == 200
+    listed = client.get(f"{BASE}/dorm/checkout-requests", headers=manager).json()["data"]["items"]
+    current = next(x for x in listed if x["requestId"] == request["requestId"])
+    confirmed = client.post(
+        f"{BASE}/dorm/checkout-requests/{request['requestId']}/confirm",
+        headers=manager, json={"version": current["version"]},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    confirmed_row = confirmed.json()["data"]
+    assert confirmed_row["status"] == "CONFIRMED"
+    repeated_confirm = client.post(
+        f"{BASE}/dorm/checkout-requests/{request['requestId']}/confirm",
+        headers=manager, json={"version": confirmed_row["version"]},
+    )
+    assert repeated_confirm.status_code == 409
+
+    from app.db.session import get_sessionmaker
+    from app.models import CsDormRecord, DormBed, DormCheckoutRequest, DormStay
+    db = get_sessionmaker()()
+    assert db.get(DormBed, int(old_bed)).status == "VACANT"
+    stay = db.query(DormStay).filter_by(student_id=ids["sm"]).one()
+    assert stay.status == "ENDED" and stay.checkout_at is not None
+    checkout = db.get(DormCheckoutRequest, int(request["requestId"]))
+    assert checkout.status == "CONFIRMED" and checkout.confirmed_by is not None
+    assert db.query(CsDormRecord).filter_by(status="OUT", record_status="INACTIVE").count() == 1
     db.close()
 
 

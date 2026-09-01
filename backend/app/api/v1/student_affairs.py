@@ -1418,6 +1418,22 @@ class DormCheckoutBody(BaseModel):
     version: int = Field(..., description="当前床位乐观锁版本（必填）")
 
 
+class DormCheckoutRequestCreate(BaseModel):
+    bedId: int = Field(..., gt=0)
+    expectedBedVersion: int = Field(..., ge=0)
+    requestType: str = Field(
+        ...,
+        description="GRADUATION/LEAVE_OF_ABSENCE/WITHDRAWAL/DAY_STUDENT/SPECIAL",
+    )
+    reason: str = Field(..., min_length=5, max_length=500)
+    clientRequestId: str = Field(..., min_length=8, max_length=100)
+
+
+class DormCheckoutActionBody(BaseModel):
+    version: int = Field(..., ge=0, description="退宿单乐观锁版本")
+    reason: Optional[str] = Field(None, max_length=500)
+
+
 class DormAllocationBatchCreate(BaseModel):
     batchNo: str = Field(..., min_length=1, max_length=100)
     name: str = Field(..., min_length=1, max_length=200)
@@ -1578,10 +1594,79 @@ def dorm_checkin(body: CheckinBody, bedId: int = Path(...),
     return success(dorm_svc.checkin(bedId, user, body.studentId), message="已入住")
 
 
-@router.post("/dorm/beds/{bedId}/checkout", summary="退宿（释放床位）")
+@router.post("/dorm/beds/{bedId}/checkout", summary="兼容入口：发起正式退宿单（不立即释放床位）")
 def dorm_checkout(body: DormCheckoutBody, bedId: int = Path(...),
                   user=Depends(require_permission("studentAffairs.dorm.allocation.manage"))):
-    return success(dorm_svc.checkout(bedId, user, body.version), message="已退宿")
+    return success(dorm_svc.checkout(bedId, user, body.version), message="退宿单已发起，待宿管确认")
+
+
+@router.post("/dorm/checkout-requests", summary="发起正式退宿单")
+def dorm_checkout_request_create(
+    body: DormCheckoutRequestCreate,
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage")),
+):
+    from app.services import affairs_dorm_stay_service as stay_svc
+    return success(stay_svc.create_checkout_request(
+        bed_id=body.bedId, expected_bed_version=body.expectedBedVersion,
+        request_type=body.requestType, reason=body.reason,
+        client_request_id=body.clientRequestId, user=user,
+    ), message="退宿单已发起")
+
+
+@router.get("/dorm/checkout-requests", summary="退宿单列表（按学工/楼栋数据范围）")
+def dorm_checkout_requests(
+    status: Optional[str] = None,
+    studentId: Optional[int] = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(require_permission("studentAffairs.dorm.view")),
+):
+    from app.services import affairs_dorm_stay_service as stay_svc
+    items, total = stay_svc.list_checkout_requests(
+        user, status=status, student_id=studentId, page=page, page_size=pageSize,
+    )
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/dorm/checkout-requests/{requestId}/confirm", summary="宿管确认退宿并释放床位")
+def dorm_checkout_request_confirm(
+    body: DormCheckoutActionBody,
+    requestId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage")),
+):
+    from app.services import affairs_dorm_stay_service as stay_svc
+    return success(
+        stay_svc.confirm_checkout(requestId, expected_version=body.version, user=user),
+        message="退宿已确认，床位已释放",
+    )
+
+
+@router.post("/dorm/checkout-requests/{requestId}/cancel", summary="取消待确认退宿单")
+def dorm_checkout_request_cancel(
+    body: DormCheckoutActionBody,
+    requestId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage")),
+):
+    from app.services import affairs_dorm_stay_service as stay_svc
+    return success(stay_svc.cancel_checkout(
+        requestId, expected_version=body.version,
+        reason=body.reason or "", user=user,
+    ), message="退宿单已取消")
+
+
+@router.get("/dorm/stays", summary="住宿历史（DormStay Authority）")
+def dorm_stays(
+    studentId: Optional[int] = None,
+    status: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(require_permission("studentAffairs.dorm.view")),
+):
+    from app.services import affairs_dorm_stay_service as stay_svc
+    items, total = stay_svc.list_stays(
+        user, student_id=studentId, status=status, page=page, page_size=pageSize,
+    )
+    return success(paginate(items, total, page, pageSize))
 
 
 class DormConfigBody(BaseModel):

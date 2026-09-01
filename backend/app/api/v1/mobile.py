@@ -1795,6 +1795,11 @@ def affairs_dorm_my(user=Depends(get_current_user)):
     return success(aff.dorm_my(user))
 
 
+@router.get("/affairs/dorm/stays/my", summary="学工·我的住宿历史（DormStay Authority）")
+def affairs_dorm_stays_my(user=Depends(get_current_user)):
+    return success(aff.dorm_stays_my(user))
+
+
 @router.get("/affairs/dorm/select-options", summary="学工·本人批次自选的冻结资源池")
 def affairs_dorm_options(user=Depends(get_current_user)):
     return success(aff.dorm_select_options(user))

@@ -64,6 +64,7 @@ export const affairsContractApi = {
     method: 'POST', data: { toBedId, reason }
   }),
   getMyDormTransfers: () => realRequest('/mobile/affairs/dorm/transfers/my'),
+  getMyDormStays: () => realRequest('/mobile/affairs/dorm/stays/my'),
   secureActivityCheckin: (activityId, token) => realRequest(`/mobile/affairs/activities/${activityId}/secure-checkin`, {
     method: 'POST', data: { token }
   }),

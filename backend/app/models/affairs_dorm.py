@@ -76,6 +76,16 @@ class DormStay(PKMixin, TenantMixin, CommonMixin, Base):
             "ix_dorm_stay_bed_status",
             "tenant_id", "bed_id", "status", "is_deleted",
         ),
+        CheckConstraint(
+            "status IN ('RESERVED','ACTIVE','ENDED','CANCELLED')",
+            name="ck_dorm_stay_status",
+        ),
+        CheckConstraint(
+            "(status IN ('RESERVED','ACTIVE') AND checkout_at IS NULL) "
+            "OR (status='ENDED' AND checkout_at IS NOT NULL) "
+            "OR status='CANCELLED'",
+            name="ck_dorm_stay_lifecycle",
+        ),
     )
 
     student_id: Mapped[int] = mapped_column(
@@ -106,6 +116,83 @@ class DormStay(PKMixin, TenantMixin, CommonMixin, Base):
     )
     checkin_operator_id: Mapped[int | None] = mapped_column(BigInteger)
     checkout_operator_id: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class DormCheckoutRequest(PKMixin, TenantMixin, CommonMixin, Base):
+    """正式退宿单；确认前不释放床位，毕业批退只通过来源键接入。"""
+    __tablename__ = "t_affairs_dorm_checkout_request"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "client_request_id", name="uk_dorm_checkout_client_request",
+        ),
+        UniqueConstraint(
+            "tenant_id", "source_type", "source_biz_id", name="uk_dorm_checkout_source",
+        ),
+        Index(
+            "ix_dorm_checkout_student_status",
+            "tenant_id", "student_id", "status", "is_deleted",
+        ),
+        Index(
+            "ix_dorm_checkout_building_status",
+            "tenant_id", "building_id", "status", "is_deleted",
+        ),
+        CheckConstraint(
+            "request_type IN ('GRADUATION','LEAVE_OF_ABSENCE','WITHDRAWAL','DAY_STUDENT','SPECIAL')",
+            name="ck_dorm_checkout_request_type",
+        ),
+        CheckConstraint(
+            "source_type IN ('MANUAL','GRADUATION_BATCH')",
+            name="ck_dorm_checkout_source_type",
+        ),
+        CheckConstraint(
+            "status IN ('PENDING_CONFIRMATION','BLOCKED','CONFIRMED','CANCELLED')",
+            name="ck_dorm_checkout_status",
+        ),
+        CheckConstraint(
+            "status <> 'CONFIRMED' OR (confirmed_at IS NOT NULL AND confirmed_by IS NOT NULL)",
+            name="ck_dorm_checkout_confirmed",
+        ),
+        CheckConstraint(
+            "status <> 'CANCELLED' OR (cancelled_at IS NOT NULL AND cancelled_by IS NOT NULL)",
+            name="ck_dorm_checkout_cancelled",
+        ),
+    )
+
+    student_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="学生 Authority → t_student_profile.id",
+    )
+    stay_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="发起时 ACTIVE DormStay 稳定 ID",
+    )
+    bed_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="发起时当前床位稳定 ID",
+    )
+    building_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    room_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    request_type: Mapped[str] = mapped_column(
+        String(50), nullable=False,
+        comment="GRADUATION/LEAVE_OF_ABSENCE/WITHDRAWAL/DAY_STUDENT/SPECIAL",
+    )
+    source_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="MANUAL/GRADUATION_BATCH",
+    )
+    source_biz_id: Mapped[str | None] = mapped_column(
+        String(100), comment="毕业批退等上游稳定来源键；人工发起为空",
+    )
+    client_request_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    blockers_json: Mapped[list | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(
+        String(50), nullable=False,
+        comment="PENDING_CONFIRMATION/BLOCKED/CONFIRMED/CANCELLED",
+    )
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    requested_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    confirmed_by: Mapped[int | None] = mapped_column(BigInteger)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    cancelled_by: Mapped[int | None] = mapped_column(BigInteger)
+    cancel_reason: Mapped[str | None] = mapped_column(String(500))
 
 
 class DormAllocationBatch(PKMixin, TenantMixin, CommonMixin, Base):

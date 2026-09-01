@@ -40,5 +40,13 @@ def install() -> None:
             "title": "调宿申请未通过",
             "require_ack": False,
         },
+        "DORM.CHECKOUT.CONFIRMED": {
+            "source_module": "student-affairs",
+            "category": "BUSINESS",
+            "priority": "IMPORTANT",
+            "message_type": "WORKFLOW_RESULT",
+            "title": "退宿已办理",
+            "require_ack": False,
+        },
     })
     _INSTALLED = True

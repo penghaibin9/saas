@@ -155,8 +155,28 @@ export const studentAffairsApi = {
     return pass(core.checkinBed(bedId, studentId))
   },
 
-  dormCheckout(bedId) {
-    return pass(core.checkoutBed(bedId))
+  dormCheckout(bedId, version) {
+    return pass(core.checkoutBed(bedId, version))
+  },
+
+  createDormCheckout(body) {
+    return pass(core.createDormCheckout(body))
+  },
+
+  listDormCheckouts(params = {}) {
+    return pass(core.listDormCheckouts(params))
+  },
+
+  confirmDormCheckout(requestId, version) {
+    return pass(core.confirmDormCheckout(requestId, version))
+  },
+
+  cancelDormCheckout(requestId, version, reason) {
+    return pass(core.cancelDormCheckout(requestId, version, reason))
+  },
+
+  listDormStays(params = {}) {
+    return pass(core.listDormStays(params))
   },
 
   setDormSelfSelect(enabled) {

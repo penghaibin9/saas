@@ -56,7 +56,7 @@ def install() -> None:
                 raise AppException("DATA_CONFLICT", "该学生已有床位，请通过正式调宿流程变更")
             if existing and int(existing[0].id) == int(target.id):
                 raise AppException("DATA_CONFLICT", "该学生已入住此床位")
-            if target.status != "VACANT" or target.student_id is not None:
+            if target.status not in ("VACANT", "LOCKED") or target.student_id is not None:
                 raise AppException("DATA_CONFLICT", "该床位已被占用或锁定")
             building = db.get(DormBuilding, int(target.building_id))
             if not building or building.is_deleted or building.tenant_id != _tid():
@@ -66,10 +66,8 @@ def install() -> None:
             room = db.get(DormRoom, int(target.room_id))
             if not room or room.is_deleted or room.tenant_id != _tid():
                 raise not_found("房间不存在")
-            target.student_id = int(student.id)
-            target.status = "OCCUPIED"
-            target.occupied_at = datetime.utcnow()
-            target.version = int(target.version or 0) + 1
+            from app.services.affairs_dorm_stay_service import activate_checkin
+            activate_checkin(db, bed=target, student=student, user=user)
             record_id = dorm._writeback_dorm_record(
                 db, student.id, building.building_name, room.room_no, target.bed_no,
             )

@@ -120,6 +120,7 @@ from app.models.affairs_mental import PsyReferral  # noqa: F401
 from app.models.affairs_psy_survey import PsySurveySubmission  # noqa: F401  (心理健康自评·独立新文件)
 from app.models.affairs_dorm import (DormAllocationBatch,  # noqa: F401
                                      DormAllocationItem, DormBed, DormBuilding,
+                                     DormCheckoutRequest,
                                      DormCheckRecord, DormCheckTask, DormRoom,
                                      DormStay, DormTransfer)
 from app.models.affairs_archive import ArchiveBatch, ArchivePackage  # noqa: F401

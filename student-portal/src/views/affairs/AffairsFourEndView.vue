@@ -98,6 +98,7 @@
           <div class="actions"><button class="sp-btn sp-btn--ghost" :disabled="busy" @click="closeDormForm">取消</button><button class="sp-btn" :disabled="busy || !validDormAction" @click="submitDormAction">{{ dorm.hasBed ? '核对并提交调宿' : '核对并确认床位' }}</button></div>
         </div>
         <div class="section-title">调宿申请记录</div><p v-if="dormTransferError" class="sp-notice">{{ dormTransferError }}</p><AutoTable v-else :rows="dormTransfers" :columns="DORM_TRANSFER_COLS" empty="暂无调宿申请" />
+        <div class="section-title">住宿历史</div><AutoTable :rows="dormStays" :columns="DORM_STAY_COLS" empty="暂无住宿历史" />
       </section>
 
       <section v-else-if="tab === 'discipline'" class="sp-card">
@@ -150,6 +151,17 @@ const DORM_TRANSFER_COLS = [
   { key: 'createdAt', label: '申请时间' }, { key: 'status', label: '状态' },
   { key: 'reviewNote', label: '审核意见' }
 ]
+const DORM_STAY_STATUS = {
+  RESERVED: '待入住',
+  ACTIVE: '当前在住',
+  ENDED: '已退宿',
+  CANCELLED: '已取消'
+}
+const DORM_STAY_COLS = [
+  { key: 'bedLabel', label: '楼 / 房 / 床' }, { key: 'checkinAt', label: '入住时间' },
+  { key: 'checkoutAt', label: '退宿时间' },
+  { key: 'status', label: '状态', formatter: (value) => DORM_STAY_STATUS[String(value || '').toUpperCase()] || '状态待确认' }
+]
 const PSY_HISTORY_COLS = [
   { key: 'submittedAt', label: '测评时间' }, { key: 'resultLevel', label: '结果等级' },
   { key: 'resultText', label: '结果说明' }, { key: 'status', label: '状态' }
@@ -177,7 +189,7 @@ const tabError = computed(() => errors[tab.value] || '')
 const loading = computed(() => !!loadingTabs[tab.value])
 const activeTabLabel = computed(() => tabs.find((item) => item.key === tab.value)?.label || '学工数据')
 
-const leave = ref({ items: [] }); const aid = ref({ items: [] }); const funding = ref({ items: [] }); const dorm = ref({}); const discipline = ref({ items: [] }); const psy = ref({ questions: [] }); const psyHistory = ref({ items: [] }); const activities = ref({ available: [], mine: [] }); const talk = ref({ items: [] }); const aidBatches = ref([]); const fundingBatches = ref([]); const secondClass = ref({ items: [], byType: [] }); const creditAppeals = ref([]); const dormTransfers = ref([]); const dormTransferError = ref('')
+const leave = ref({ items: [] }); const aid = ref({ items: [] }); const funding = ref({ items: [] }); const dorm = ref({}); const discipline = ref({ items: [] }); const psy = ref({ questions: [] }); const psyHistory = ref({ items: [] }); const activities = ref({ available: [], mine: [] }); const talk = ref({ items: [] }); const aidBatches = ref([]); const fundingBatches = ref([]); const secondClass = ref({ items: [], byType: [] }); const creditAppeals = ref([]); const dormTransfers = ref([]); const dormStays = ref([]); const dormTransferError = ref('')
 const leaveForm = reactive({ leaveType: 'PERSONAL', startTime: '', endTime: '', reason: '' }); const extendId = ref(''); const extendForm = reactive({ newEndTime: '', reason: '' }); const aidForm = reactive({ batchId: '', applyLevel: 'GENERAL', memberCount: null, annualIncome: null, debt: null, specialTags: '', statement: '', confirm: false }); const fundForm = reactive({ projectType: 'SCHOLARSHIP', batchId: '', statement: '', confirm: false }); const aidObjections = reactive({}); const fundAppeals = reactive({}); const disciplineAppeals = reactive({}); const psyAnswers = reactive({}); const dormBuildings = ref([]); const dormRooms = ref([]); const dormBeds = ref([]); const dormForm = reactive({ visible: false, buildingId: '', roomId: '', bedId: '', reason: '' }); const modal = reactive({ type: '', title: '', notice: '', item: null, form: {} })
 
 const dateText = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -213,7 +225,7 @@ const TAB_LOADERS = {
   leave: [{ load: () => portalApi.affairsLeave(), apply: (value) => { leave.value = value || { items: [] } } }],
   aid: [{ load: () => portalApi.affairsAid(), apply: (value) => { aid.value = value || { items: [] } } }, { load: () => portalApi.affairsAidBatches(), apply: (value) => { aidBatches.value = value?.items || [] } }],
   funding: [{ load: () => portalApi.affairsFunding(), apply: (value) => { funding.value = value || { items: [] } } }, { load: () => portalApi.affairsFundingBatches(), apply: (value) => { fundingBatches.value = value?.items || [] } }],
-  dorm: [{ load: () => portalApi.affairsDorm(), apply: (value) => { dorm.value = value || {} } }, { load: () => affairsFourEndApi.myDormTransfers(), optional: true, apply: (value) => { dormTransferError.value = ''; dormTransfers.value = value?.items || [] }, fail: () => { dormTransfers.value = []; dormTransferError.value = '调宿申请记录暂时无法读取，当前宿舍与床位信息仍可正常查看。' } }],
+  dorm: [{ load: () => portalApi.affairsDorm(), apply: (value) => { dorm.value = value || {} } }, { load: () => affairsFourEndApi.myDormTransfers(), optional: true, apply: (value) => { dormTransferError.value = ''; dormTransfers.value = value?.items || [] }, fail: () => { dormTransfers.value = []; dormTransferError.value = '调宿申请记录暂时无法读取，当前宿舍与床位信息仍可正常查看。' } }, { load: () => affairsFourEndApi.myDormStays(), apply: (value) => { dormStays.value = value?.items || [] } }],
   discipline: [{ load: () => portalApi.affairsDiscipline(), apply: (value) => { discipline.value = value || { items: [] } } }],
   psy: [{ load: () => portalApi.affairsPsyQuestions(), apply: (value) => { psy.value = value || { questions: [] } } }, { load: () => portalApi.affairsPsyHistory(), apply: (value) => { psyHistory.value = value || { items: [] } } }],
   activity: [{ load: () => portalApi.affairsActivitiesMy(), apply: (value) => { activities.value = value || { available: [], mine: [] } } }, { load: () => affairsFourEndApi.secondClassReport(), apply: (value) => { secondClass.value = { items: [], byType: [], ...(value || {}) } } }, { load: () => affairsFourEndApi.myCreditAppeals(), apply: (value) => { creditAppeals.value = value?.items || [] } }],
