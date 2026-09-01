@@ -277,6 +277,11 @@ def batch_activate(bid: str, user=Depends(require_staff)):
     return success(svc.activate_batch(bid), message="已启用")
 
 
+@router.post("/batches/{bid}/student-numbers/assign", summary="批次内为未分配学号的新生一键自动编号（最多2万）")
+def batch_assign_student_numbers(bid: str, body: dict = Body(...), user=Depends(require_staff)):
+    return success(svc.assign_batch_student_numbers(bid, body), message="学号批量处理完成")
+
+
 @router.post("/batches/{bid}/close", summary="结束批次（进行中→已结束）")
 def batch_close(bid: str, user=Depends(require_staff)):
     return success(svc.close_batch(bid), message="已结束")

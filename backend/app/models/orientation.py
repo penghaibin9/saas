@@ -15,6 +15,7 @@ class OrientationStudent(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_orientation_student"
     __table_args__ = (
         UniqueConstraint("tenant_id", "admission_no", name="uk_ori_admission_no"),
+        UniqueConstraint("tenant_id", "student_no", name="uk_ori_reserved_student_no"),
         UniqueConstraint("tenant_id", "batch_id", "source_type", "source_record_id",
                          name="uk_ori_batch_source_record"),
         Index("ix_ori_student_tenant_profile_active", "tenant_id", "student_id", "is_deleted"),
@@ -27,6 +28,9 @@ class OrientationStudent(PKMixin, TenantMixin, CommonMixin, Base):
     student_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="关联 t_student_profile.id（可空）")
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     admission_no: Mapped[str] = mapped_column(String(50), nullable=False, comment="录取编号")
+    student_no: Mapped[str | None] = mapped_column(
+        String(50), comment="学校预分配正式学号；新生自助激活时作为学生主档与登录名 Authority"
+    )
     gender: Mapped[str | None] = mapped_column(String(10))
     college_name: Mapped[str | None] = mapped_column(String(100))
     major_name: Mapped[str | None] = mapped_column(String(100))
@@ -68,6 +72,32 @@ class OrientationStudent(PKMixin, TenantMixin, CommonMixin, Base):
         String(50), nullable=False, default="UNLINKED",
         comment="UNLINKED/LINKED；是否已绑定 StudentProfile",
     )
+
+
+class OrientationActivationChallenge(PKMixin, TenantMixin, CommonMixin, Base):
+    """新生自助激活的一次性身份核验凭证；不保存身份证尾号或微信 openid。"""
+    __tablename__ = "t_orientation_activation_challenge"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "orientation_student_id", name="uk_ori_activation_student"
+        ),
+        UniqueConstraint("token_hash", name="uk_ori_activation_token_hash"),
+        Index("ix_ori_activation_expiry", "status", "expires_at"),
+    )
+
+    orientation_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    client_nonce_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="VERIFIED",
+        comment="VERIFIED/COMPLETED/EXPIRED",
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    verified_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    client_request_id: Mapped[str | None] = mapped_column(String(100))
+    bound_user_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    wechat_bound: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class OrientationO1BackfillIssue(Base):

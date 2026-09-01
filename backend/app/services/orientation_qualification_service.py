@@ -409,7 +409,7 @@ def list_qualifications(page: int, page_size: int, *, keyword=None, verdict=None
                 "className": row.class_name or "", "reportStatus": row.report_status,
                 "stage": row.stage, "version": int(row.version or 0),
                 "profileStudentId": str(row.student_id or ""),
-                "studentNo": profile.student_no if profile else "",
+                "studentNo": profile.student_no if profile else (row.student_no or ""),
                 "canFinalize": decision["verdict"] == "QUALIFIED" and row.report_status == "CHECKED_IN",
                 **decision,
             })

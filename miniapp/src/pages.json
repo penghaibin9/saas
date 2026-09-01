@@ -22,6 +22,7 @@
         {"path": "home/index", "style": {"navigationBarTitleText": "首页", "navigationStyle": "custom", "enablePullDownRefresh": true}},
         {"path": "profile/index", "style": {"navigationBarTitleText": "我的档案"}},
         {"path": "orientation/index", "style": {"navigationBarTitleText": "迎新报到"}},
+        {"path": "orientation/activate/index", "style": {"navigationBarTitleText": "新生自助激活", "navigationStyle": "custom"}},
         {"path": "orientation/collect/index", "style": {"navigationBarTitleText": "预报到信息采集"}},
         {"path": "orientation/arrival/index", "style": {"navigationBarTitleText": "到校计划"}},
         {"path": "orientation/materials/index", "style": {"navigationBarTitleText": "迎新材料"}},

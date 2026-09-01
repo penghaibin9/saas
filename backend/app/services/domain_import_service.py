@@ -44,7 +44,9 @@ DOMAINS = {
 # 单一命名空间：batch_no 全局唯一（uuid 生成），peek_batch 在拿到 domain 之前就要能按
 # batch_no 单独查到批次，故不像 migration_import_service 那样按域分命名空间。
 _NAMESPACE = "DOMAIN_IMPORT"
-MAX_IMPORT_ROWS = 5000
+# One ordinary intake can exceed ten thousand students.  Keep the import a single
+# governed dry-run/confirm operation instead of forcing operators to split files.
+MAX_IMPORT_ROWS = 20_000
 
 
 def _orientation_authority_catalog() -> dict:
@@ -134,6 +136,7 @@ def _prepare_orientation_row(raw: dict, catalog: dict) -> tuple[dict | None, dic
     return {
         "name": str(raw.get("name") or raw.get("姓名") or "").strip(),
         "admissionNo": admission_no,
+        "studentNo": str(raw.get("studentNo") or raw.get("学号") or "").strip(),
         "batchId": int(batch.id),
         "collegeId": int(college.id), "collegeName": college.college_name,
         "majorId": int(major.id), "majorName": major.major_name,

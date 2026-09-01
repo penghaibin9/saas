@@ -67,11 +67,12 @@ class OrientationEnrollmentFinalizeService:
                 raise AppException("DATA_CONFLICT", "迎新记录绑定的学生主档无效，请先修复身份关联")
             return profile
 
-        student_no = str((body or {}).get("studentNo") or "").strip()
+        student_no = str((body or {}).get("studentNo") or student.student_no or "").strip()
         if not student_no:
             raise AppException("VALIDATION_ERROR", "未绑定主档的新生须填写正式学号")
         from app.services import student_master_application_service as master
 
+        from app.core.field_crypto import decrypt_field
         cmd = StudentCreateCommand(
             student_no=student_no,
             real_name=student.name,
@@ -81,6 +82,8 @@ class OrientationEnrollmentFinalizeService:
             college_id=student.college_id,
             major_id=student.major_id,
             class_id=student.class_id,
+            phone=decrypt_field(student.phone_encrypted),
+            id_card=decrypt_field(student.id_card_encrypted),
             current_stage=ADMITTED,
             student_status="NORMAL",
             require_complete_org=True,
@@ -121,6 +124,7 @@ class OrientationEnrollmentFinalizeService:
     def _account(
         db, profile: StudentProfile, student: OrientationStudent, body: dict,
         *, source: str = "ORIENTATION_FINALIZE", operation_label: str = "学院确认",
+        initial_password: str | None = None,
     ):
         from app.services import student_account_link_service as links
         from app.services.saas_role_service import ensure_builtin_roles, ensure_user_roles
@@ -152,21 +156,38 @@ class OrientationEnrollmentFinalizeService:
                 User.is_deleted.is_(False),
             ).order_by(User.id)).first()
         if not account:
-            temporary_password = "Stu@" + secrets.token_urlsafe(9)
+            temporary_password = initial_password or ("Stu@" + secrets.token_urlsafe(9))
             account = User(
                 tenant_id=student.tenant_id,
                 login_name=profile.student_no,
                 real_name=profile.real_name,
                 password_hash=hash_password(temporary_password),
-                user_type="STUDENT", status="ACTIVE", must_change_password=True,
+                user_type="STUDENT", status="ACTIVE",
+                must_change_password=initial_password is None,
             )
             db.add(account)
             db.flush()
-            initial_credential = {
-                "loginName": account.login_name,
-                "temporaryPassword": temporary_password,
-                "mustChangePassword": True,
-            }
+            if initial_password is None:
+                initial_credential = {
+                    "loginName": account.login_name,
+                    "temporaryPassword": temporary_password,
+                    "mustChangePassword": True,
+                }
+        elif initial_password is not None:
+            # Self-activation promises the reserved student number as the durable login name.
+            # A legacy pre-account may still use the admission number; normalize it here.
+            collision = db.scalars(select(User.id).where(
+                User.tenant_id == student.tenant_id,
+                User.login_name == profile.student_no,
+                User.id != account.id,
+                User.is_deleted.is_(False),
+            )).first()
+            if collision:
+                raise AppException("DATA_CONFLICT", "该学号已被其他登录账号占用，请联系学校管理员")
+            account.login_name = profile.student_no
+            account.password_hash = hash_password(initial_password)
+            account.must_change_password = False
+            account.version = int(account.version or 0) + 1
         links.bind_in_session(
             db, tenant_id=int(student.tenant_id), student_id=int(profile.id),
             user_id=int(account.id), source=source,

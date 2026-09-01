@@ -65,6 +65,7 @@ def seed_orientation(db, tenant_id: int = TID) -> dict:
         s = OrientationStudent(
             tenant_id=tenant_id, batch_id=batch.id, name=f"新生{i + 1:02d}",
             admission_no=f"LQ2026{i + 1:06d}",
+            student_no=f"2026YX{i + 1:04d}",
             gender="男" if i % 2 == 0 else "女", college_id=college.id,
             college_name=college.college_name, major_id=major.id, major_name=major.major_name,
             class_id=school_class.id, class_name=school_class.class_name, grade="2026级",

@@ -61,7 +61,7 @@ from app.models.identity_import_batch import IdentityImportBatch  # noqa: F401
 from app.models.shared_import_batch import SharedImportBatch  # noqa: F401
 from app.models.internship_agreement_template import InternshipAgreementTemplate  # noqa: F401  (实习协议模板库·独立文件)
 from app.models.orientation import (GreenChannelApplication, OrientationArchive,  # noqa: F401
-                                     OrientationAuditTrail, OrientationBatch,
+                                     OrientationActivationChallenge, OrientationAuditTrail, OrientationBatch,
                                      OrientationCheckinPoint, OrientationCheckinRecord,
                                      OrientationCheckinToken, OrientationEnrollmentFinalize,
                                      OrientationException,

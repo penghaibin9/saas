@@ -467,6 +467,10 @@ export async function activateOrientationBatch(id) {
   return callData(() => request(`/orientation/batches/${id}/activate`, { method: 'POST' }))
 }
 
+export async function assignOrientationBatchStudentNumbers(id, payload = {}) {
+  return callData(() => request(`/orientation/batches/${id}/student-numbers/assign`, { method: 'POST', body: payload }))
+}
+
 export async function closeOrientationBatch(id) {
   return callData(() => request(`/orientation/batches/${id}/close`, { method: 'POST' }))
 }

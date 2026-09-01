@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 
 from sqlalchemy import case, false, func, or_, select
 
@@ -12,7 +13,7 @@ from app.models import (GreenChannelApplication, OrientationArchive, Orientation
                         OrientationBatch, OrientationCheckinPoint, OrientationException,
                         OrientationExceptionFollowup, OrientationFlowConfig, OrientationMaterial,
                         OrientationNoticeTask, OrientationPaymentAccount, OrientationStudent,
-                        StudentProfile)
+                        StudentProfile, User)
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
 from app.services.db_service import _iso, _tid, session
 from app.services.orientation_flow_service import (ensure_published_flow_version,
@@ -99,7 +100,8 @@ def _stu_row(s: OrientationStudent, *, db=None, detail: bool = False) -> dict:
         "id": str(s.id), "studentId": str(s.id),
         "profileStudentId": str(s.student_id) if s.student_id else "",
         "name": s.name, "batchId": str(s.batch_id),
-        "admissionNo": s.admission_no, "gender": s.gender or "", "collegeName": s.college_name or "",
+        "admissionNo": s.admission_no, "studentNo": s.student_no or "",
+        "gender": s.gender or "", "collegeName": s.college_name or "",
         "collegeId": str(s.college_id) if s.college_id else "",
         "majorName": s.major_name or "", "majorId": str(s.major_id) if s.major_id else "",
         "classId": str(s.class_id) if s.class_id else "", "className": s.class_name or "",
@@ -273,6 +275,7 @@ def create_student(body: dict, *, db=None) -> dict:
         from app.core.field_crypto import encrypt_field
         s = OrientationStudent(
             tenant_id=_tid(), batch_id=batch_id, name=name, admission_no=adm,
+            student_no=str(body.get("studentNo") or "").strip() or None,
             college_id=org.college_id, college_name=college.college_name,
             major_id=org.major_id, major_name=major.major_name,
             class_id=org.class_id, class_name=school_class.class_name,
@@ -1395,6 +1398,71 @@ def activate_batch(bid) -> dict:
         _audit(db, "BATCH", b.id, "启用迎新批次", before="DRAFT", after="ACTIVE")
         db.commit()
         return {"id": str(b.id), "status": b.status}
+
+
+def assign_batch_student_numbers(bid, body: dict) -> dict:
+    """Assign up to 20k reserved student numbers in one transaction; never requires per-row clicks."""
+    prefix = str((body or {}).get("prefix") or "").strip().upper()
+    try:
+        start = int((body or {}).get("startNumber") or 1)
+        width = int((body or {}).get("width") or 6)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "起始序号和序号位数必须是整数")
+    dry_run = bool((body or {}).get("dryRun", False))
+    if not re.fullmatch(r"[A-Z0-9-]{1,30}", prefix):
+        raise AppException("VALIDATION_ERROR", "学号前缀仅支持 1-30 位字母、数字或短横线")
+    if start < 0 or start > 999_999_999 or width < 4 or width > 10:
+        raise AppException("VALIDATION_ERROR", "起始序号须为非负整数，序号位数须为 4-10 位")
+    with session() as db:
+        batch = _get_batch(db, bid)
+        rows = list(db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.batch_id == batch.id,
+            or_(OrientationStudent.student_no.is_(None), OrientationStudent.student_no == ""),
+            OrientationStudent.record_status == "ACTIVE",
+            OrientationStudent.is_deleted.is_(False),
+        ).order_by(OrientationStudent.id).with_for_update()).all())
+        if len(rows) > 20_000:
+            raise AppException("VALIDATION_ERROR", "单批次最多自动编制 20000 个学号")
+        numbers = [f"{prefix}{start + index:0{width}d}" for index in range(len(rows))]
+        if any(len(number) > 50 for number in numbers):
+            raise AppException("VALIDATION_ERROR", "生成后的学号长度不能超过 50 位")
+        collisions: set[str] = set()
+        if numbers:
+            collisions |= set(db.scalars(select(OrientationStudent.student_no).where(
+                OrientationStudent.tenant_id == _tid(),
+                OrientationStudent.student_no.in_(numbers),
+            )).all())
+            collisions |= set(db.scalars(select(StudentProfile.student_no).where(
+                StudentProfile.tenant_id == _tid(),
+                StudentProfile.student_no.in_(numbers),
+            )).all())
+            collisions |= set(db.scalars(select(User.login_name).where(
+                User.tenant_id == _tid(), User.login_name.in_(numbers),
+                User.is_deleted.is_(False),
+            )).all())
+        if collisions:
+            sample = sorted(value for value in collisions if value)[:10]
+            raise AppException(
+                "DATA_CONFLICT", "拟生成的学号已被占用，请调整前缀或起始序号",
+                details={"collisionSample": sample, "collisionCount": len(collisions)},
+            )
+        result = {
+            "batchId": str(batch.id), "missingCount": len(rows),
+            "assignedCount": 0 if dry_run else len(rows),
+            "sample": numbers[:5], "dryRun": dry_run,
+        }
+        if dry_run or not rows:
+            return result
+        for row, number in zip(rows, numbers):
+            row.student_no = number
+            row.version = int(row.version or 0) + 1
+        _audit(
+            db, "BATCH", batch.id, "批量自动编制新生学号",
+            f"count={len(rows)}; prefix={prefix}; start={start}; width={width}",
+        )
+        db.commit()
+        return result
 
 
 def close_batch(bid) -> dict:
