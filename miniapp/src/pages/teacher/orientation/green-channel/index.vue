@@ -28,9 +28,9 @@
             </view>
 
             <view v-if="a.status === 'SUBMITTED' || a.status === 'REVIEWING'" class="gc__actions">
-              <button class="btn btn-ghost flex-1" @click="act(a, 'RETURN')">退回</button>
-              <button class="gc__reject flex-1" @click="act(a, 'REJECT')">驳回</button>
-              <button class="gc__approve flex-1" @click="act(a, 'APPROVE')">通过</button>
+              <button class="btn btn-ghost flex-1" @click="openReview(a, 'RETURN')">退回</button>
+              <button class="gc__reject flex-1" @click="openReview(a, 'REJECT')">驳回</button>
+              <button class="gc__approve flex-1" @click="openReview(a, 'APPROVE')">通过</button>
             </view>
             <view v-else class="gc__done">
               <text class="gc__done-text">已{{ a.statusLabel || a.status }}</text>
@@ -39,6 +39,25 @@
         </view>
       </view>
     </MobileGlobalState>
+    <view v-if="reviewDialog.visible" class="gc__dialog-mask" @click.self="closeReview">
+      <view class="gc__dialog">
+        <text class="gc__dialog-title">{{ reviewDialog.label }}绿色通道</text>
+        <text class="gc__dialog-copy">{{ reviewDialog.studentName }} · {{ reviewDialog.applyType }}</text>
+        <textarea
+          v-if="reviewDialog.needsComment"
+          v-model="reviewDialog.comment"
+          class="gc__dialog-input"
+          maxlength="1000"
+          :placeholder="'请填写' + reviewDialog.label + '意见（不少于5字）'"
+        />
+        <text v-else class="gc__dialog-description">确认通过该学生的绿色通道申请？通过后将按服务端资格规则重新计算缴费卡点。</text>
+        <text v-if="reviewDialog.error" class="gc__dialog-error">{{ reviewDialog.error }}</text>
+        <view class="gc__dialog-actions">
+          <button class="gc__dialog-cancel" :disabled="acting" @click="closeReview">取消</button>
+          <button class="gc__dialog-confirm" :disabled="acting" @click="submitReview">{{ acting ? '提交中…' : '确认' + reviewDialog.label }}</button>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -47,7 +66,8 @@ import { realRequest } from '@/services/request'
 import { toast } from '@/utils/nav'
 import { getStatusBarHeight } from '@/utils/deviceInfo'
 export default {
-  data() { return { list: null, state: 'loading', acting: false, statusBarHeight: 20 } },
+  data() { return { list: null, state: 'loading', acting: false, statusBarHeight: 20,
+    reviewDialog: { visible: false, target: null, action: '', label: '', needsComment: false, studentName: '', applyType: '', comment: '', error: '' } } },
   onLoad() {
     this.statusBarHeight = getStatusBarHeight()
     this.load()
@@ -64,32 +84,52 @@ export default {
         .catch(() => { this.state = 'error' })
         .finally(() => { if (done) done() })
     },
-    act(a, type) {
+    openReview(a, type) {
       if (this.acting) return
       const label = { APPROVE: '通过', REJECT: '驳回', RETURN: '退回' }[type]
-      const need = type !== 'APPROVE'
-      uni.showModal({
-        title: label + '绿色通道',
-        editable: need,
-        placeholderText: need ? ('请填写' + label + '意见（不少于5字）') : '',
-        content: need ? '' : ('确认通过「' + (a.name || '该学生') + '」的绿色通道申请？'),
-        success: (r) => {
-          if (!r.confirm || this.acting) return
-          const comment = (r.content || '').trim()
-          if (need && comment.length < 5) { toast(label + '意见不少于5字'); return }
-          this.acting = true
-          realRequest('/mobile/teacher/orientation/green-channels/' + a.id + '/review',
-            { method: 'POST', data: { action: type, comment, expectedVersion: a.version } })
-            .then(() => { toast('已' + label); this.load() })
-            .catch((e) => {
-              const code = e && String(e.code)
-              if (code && code.startsWith('409')) { toast('该申请已终审，正在刷新'); this.load() }
-              else if (code && code.startsWith('403')) { toast((e && e.message) || '没有权限处理该申请') }
-              else { toast((e && e.message) || (label + '失败，请重试')) }
-            })
-            .finally(() => { this.acting = false })
+      this.reviewDialog = {
+        visible: true, target: a, action: type, label,
+        needsComment: type !== 'APPROVE', studentName: a.name || '该学生',
+        applyType: a.applyType || '绿色通道', comment: '', error: ''
+      }
+    },
+    closeReview() {
+      if (this.acting) return
+      this.reviewDialog.visible = false
+      this.reviewDialog.target = null
+    },
+    submitReview() {
+      if (this.acting || !this.reviewDialog.target) return
+      const dialog = this.reviewDialog
+      const comment = String(dialog.comment || '').trim()
+      if (dialog.needsComment && comment.length < 5) {
+        dialog.error = dialog.label + '意见不少于5字'
+        return
+      }
+      dialog.error = ''
+      this.acting = true
+      const target = dialog.target
+      realRequest('/mobile/teacher/orientation/green-channels/' + target.id + '/review', {
+        method: 'POST',
+        data: { action: dialog.action, comment, expectedVersion: target.version }
+      }).then(() => {
+        toast('已' + dialog.label)
+        this.reviewDialog.visible = false
+        this.reviewDialog.target = null
+        this.load()
+      }).catch((e) => {
+        const code = e && String(e.code)
+        if (code && code.startsWith('409')) {
+          toast('该申请已终审，正在刷新')
+          this.reviewDialog.visible = false
+          this.reviewDialog.target = null
+          this.load()
+        } else {
+          dialog.error = (e && e.message) || (code && code.startsWith('403')
+            ? '没有权限处理该申请'
+            : dialog.label + '失败，请重试')
         }
-      })
+      }).finally(() => { this.acting = false })
     }
   }
 }
@@ -112,4 +152,16 @@ export default {
 .gc__approve::after { border: none; }
 .gc__done { text-align: center; padding: var(--space-2); margin-top: var(--space-2); }
 .gc__done-text { font-size: var(--font-size-sm); color: var(--text-tertiary); }
+.gc__dialog-mask { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(15,23,42,.45); }
+.gc__dialog { width: 100%; max-width: 360px; box-sizing: border-box; padding: 20px; border-radius: 16px; background: #fff; box-shadow: 0 20px 60px rgba(15,23,42,.25); }
+.gc__dialog-title,.gc__dialog-copy,.gc__dialog-description,.gc__dialog-error { display: block; }
+.gc__dialog-title { color: #0f172a; font-size: 18px; font-weight: 700; }
+.gc__dialog-copy { margin-top: 8px; color: #475569; font-size: 13px; }
+.gc__dialog-description { margin-top: 14px; color: #475569; font-size: 13px; line-height: 1.65; }
+.gc__dialog-input { width: 100%; min-height: 100px; box-sizing: border-box; margin-top: 14px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; }
+.gc__dialog-error { margin-top: 8px; color: #dc2626; font-size: 12px; }
+.gc__dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+.gc__dialog-cancel,.gc__dialog-confirm { border-radius: 10px; font-size: 14px; }
+.gc__dialog-cancel { background: #f1f5f9; color: #334155; }
+.gc__dialog-confirm { background: var(--teacher-600); color: #fff; }
 </style>

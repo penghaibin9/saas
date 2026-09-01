@@ -92,6 +92,96 @@ def test_x1_dorm_dry_run_error_workbook_and_atomic_reject(client, db_mode, auth_
     assert confirm.status_code >= 400 or confirm.json()["code"] != 0
 
 
+def test_x1_dorm_confirm_commits_batch_receipt_with_business_rows(
+    client, db_mode, auth_headers, monkeypatch,
+):
+    """The SharedImportBatch receipt and dorm resources share one DB commit."""
+    from app.db.session import get_sessionmaker
+    from app.models import SharedImportBatch
+    from app.services import shared_import_batch_service
+
+    content = _resource_xlsx([
+        ["X1-ATOMIC", "X1原子公寓", "混合", 2, "201", "单人间", 1, "201-1", "启用"],
+    ])
+    preview_response = client.post(
+        "/api/v1/import/domain/dorm/validate-file", headers=auth_headers,
+        files={"file": ("dorm-x1-atomic.xlsx", content,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    preview = preview_response.json()["data"]
+    assert preview["status"] == "DRY_RUN_PASSED"
+
+    # If the orchestration-level finish were lost, the domain transaction must
+    # already have persisted SUCCESS with the exact public result.
+    monkeypatch.setattr(shared_import_batch_service, "finish", lambda *args, **kwargs: None)
+    confirmed = client.post(
+        "/api/v1/import/domain/confirm",
+        headers={**auth_headers, "Idempotency-Key": "x1-dorm-atomic-receipt"},
+        json={"domain": "dorm", "batchNo": preview["batchNo"]},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    db = get_sessionmaker()()
+    try:
+        batch = db.query(SharedImportBatch).filter_by(
+            tenant_id=1000000000000000001,
+            namespace="DOMAIN_IMPORT",
+            batch_no=preview["batchNo"],
+        ).one()
+        assert batch.status == "SUCCESS"
+        assert batch.claim_token is None
+        assert batch.public_result_json["createdBeds"] == 1
+    finally:
+        db.close()
+
+
+def test_x1_dorm_confirm_revalidates_room_after_dry_run(client, db_mode, auth_headers):
+    from app.db.session import get_sessionmaker
+    from app.models import DormBed, DormBuilding, DormRoom
+
+    content = _resource_xlsx([
+        ["X1-DRIFT", "X1漂移公寓", "男", 3, "301", "标准双人间", 2, "301-1", "启用"],
+        ["X1-DRIFT", "X1漂移公寓", "男", 3, "301", "标准双人间", 2, "301-2", "启用"],
+    ])
+    preview_response = client.post(
+        "/api/v1/import/domain/dorm/validate-file", headers=auth_headers,
+        files={"file": ("dorm-x1-drift.xlsx", content,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    preview = preview_response.json()["data"]
+    assert preview["status"] == "DRY_RUN_PASSED"
+
+    db = get_sessionmaker()()
+    try:
+        building = DormBuilding(
+            tenant_id=1000000000000000001, building_code="X1-DRIFT",
+            building_name="X1漂移公寓", gender_limit="MALE", floor_count=3,
+            status="ENABLED",
+        )
+        db.add(building); db.flush()
+        room = DormRoom(
+            tenant_id=1000000000000000001, building_id=building.id,
+            floor_no=3, room_no="301", capacity=3,
+            room_type="标准三人间", status="ENABLED",
+        )
+        db.add(room); db.commit()
+        room_id = int(room.id)
+    finally:
+        db.close()
+
+    confirmed = client.post(
+        "/api/v1/import/domain/confirm", headers=auth_headers,
+        json={"domain": "dorm", "batchNo": preview["batchNo"]},
+    )
+    assert confirmed.status_code == 409, confirmed.text
+    db = get_sessionmaker()()
+    try:
+        assert db.query(DormBed).filter_by(
+            tenant_id=1000000000000000001, room_id=room_id,
+        ).count() == 0
+    finally:
+        db.close()
+
+
 def test_x1_orientation_production_report_variants(client, db_mode, auth_headers, monkeypatch):
     from test_orientation_import_export_a1 import _authority
     from app.api.v1 import import_export as import_export_api

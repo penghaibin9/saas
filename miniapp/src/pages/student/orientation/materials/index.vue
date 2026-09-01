@@ -27,11 +27,12 @@
 import { studentApi } from '@/services/studentApi'
 import { chooseSingleFile, uploadBusinessFile } from '@/services/fileApi'
 import { toast } from '@/utils/nav'
+import { createClientRequestId } from '@/utils/clientRequestId'
 
 const types = ['ID_CARD', 'ADMISSION_LETTER', 'PHOTO', 'ARCHIVE']
 const labels = { ID_CARD: '身份证明', ADMISSION_LETTER: '录取通知书', PHOTO: '证件照', ARCHIVE: '纸质档案凭证' }
 export default {
-  data() { return { o: null, state: 'loading', uploading: false, submitting: false, typeIndex: 0, typeLabels: types.map((x) => labels[x]), fileId: '', fileName: '' } },
+  data() { return { o: null, state: 'loading', uploading: false, submitting: false, typeIndex: 0, typeLabels: types.map((x) => labels[x]), fileId: '', fileName: '', clientSubmissionId: '' } },
   computed: {
     available() { return !!this.o?.selfService?.available },
     materials() { return this.o?.selfService?.materials || [] }
@@ -49,6 +50,7 @@ export default {
         if (!file) return
         const result = await uploadBusinessFile(file, { bizType: 'ORIENTATION_MATERIAL' })
         this.fileId = result.fileId; this.fileName = result.fileName || file.name || '迎新材料'
+        this.clientSubmissionId = createClientRequestId('orientation-material')
         toast('文件已上传，请提交审核')
       } catch (e) { toast(e?.message || '文件上传失败') } finally { this.uploading = false }
     },
@@ -56,8 +58,9 @@ export default {
       if (!this.fileId) return toast('请先选择文件')
       this.submitting = true
       try {
-        await studentApi.submitOrientationMaterial({ materialType: types[this.typeIndex], fileId: this.fileId, clientSubmissionId: `mini-o3-${Date.now()}-${Math.random().toString(16).slice(2)}` })
-        toast('材料已提交'); this.fileId = ''; this.fileName = ''; await this.load()
+        if (!this.clientSubmissionId) this.clientSubmissionId = createClientRequestId('orientation-material')
+        await studentApi.submitOrientationMaterial({ materialType: types[this.typeIndex], fileId: this.fileId, clientSubmissionId: this.clientSubmissionId })
+        toast('材料已提交'); this.fileId = ''; this.fileName = ''; this.clientSubmissionId = ''; await this.load()
       } catch (e) { toast(e?.message || '材料提交失败') } finally { this.submitting = false }
     }
   }

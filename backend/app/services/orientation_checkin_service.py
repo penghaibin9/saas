@@ -14,6 +14,7 @@ from sqlalchemy import or_, select
 from app.core.config import settings
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.timeutil import local_today_bounds_utc
 from app.models import (
     DormBed,
     DormBuilding,
@@ -139,12 +140,16 @@ def token_status(db, student: OrientationStudent, *, qualification: dict | None 
     checked = student.report_status in ("CHECKED_IN", "COLLEGE_CONFIRMED")
     can_issue = decision.get("verdict") == "QUALIFIED" and not checked and not finalized
     status = "FINALIZED" if finalized else "CHECKED_IN" if checked else "ELIGIBLE" if can_issue else "BLOCKED"
-    if latest and latest.status == "ISSUED" and latest.expires_at > datetime.utcnow() and can_issue:
+    active_issued = bool(
+        latest and latest.status == "ISSUED"
+        and latest.expires_at > datetime.utcnow() and can_issue
+    )
+    if active_issued:
         status = "ISSUED"
     return {
         "status": status,
         "canIssue": can_issue,
-        "expiresAt": _iso(latest.expires_at) if latest and latest.status == "ISSUED" else None,
+        "expiresAt": _iso(latest.expires_at) if active_issued else None,
         "note": (
             "学院已完成入学确认" if finalized else
             "已完成现场报到，等待学院确认" if checked else
@@ -178,7 +183,10 @@ def issue_for_student(user: dict) -> dict:
         # second that is persisted so a token issued in the upper half-second
         # can never fail its own record-consistency check.
         now = datetime.utcnow().replace(microsecond=0)
-        if not batch or batch.is_deleted or batch.status != "ACTIVE":
+        if (
+            not batch or batch.is_deleted or int(batch.tenant_id) != int(_tid())
+            or batch.status != "ACTIVE"
+        ):
             raise AppException("INVALID_STATE", "迎新批次当前未开放", http_status=409)
         if batch.report_start_date and now < batch.report_start_date:
             raise AppException("INVALID_STATE", "现场报到尚未开始", http_status=409)
@@ -243,7 +251,10 @@ def _load_token(db, raw_token: str, *, for_update: bool = False):
         or int(row.expires_at.replace(tzinfo=timezone.utc).timestamp()) != claims["expires_at"]
     ):
         raise AppException("INVALID_CHECKIN_TOKEN", "报到凭证与签发记录不一致", http_status=400)
-    if datetime.utcnow() >= row.expires_at:
+    # A consumed credential is a transaction receipt as well as a one-time secret.
+    # Allow confirm retries to return the existing record even after the original
+    # credential expires; an unconsumed credential still fails closed at expiry.
+    if datetime.utcnow() >= row.expires_at and row.status != "CONSUMED":
         raise AppException("CHECKIN_TOKEN_EXPIRED", "报到凭证已过期，请学生刷新后重试", http_status=409)
     return claims, row
 
@@ -257,9 +268,18 @@ def _dorm_projection(db, student: OrientationStudent) -> dict:
     ).order_by(DormStay.id.desc())).first()
     if not stay:
         return {"status": "UNASSIGNED", "label": "未分配宿舍"}
-    bed = db.get(DormBed, int(stay.bed_id))
-    room = db.get(DormRoom, int(stay.room_id))
-    building = db.get(DormBuilding, int(stay.building_id))
+    bed = db.scalars(select(DormBed).where(
+        DormBed.id == int(stay.bed_id), DormBed.tenant_id == _tid(),
+        DormBed.is_deleted.is_(False),
+    )).first()
+    room = db.scalars(select(DormRoom).where(
+        DormRoom.id == int(stay.room_id), DormRoom.tenant_id == _tid(),
+        DormRoom.is_deleted.is_(False),
+    )).first()
+    building = db.scalars(select(DormBuilding).where(
+        DormBuilding.id == int(stay.building_id), DormBuilding.tenant_id == _tid(),
+        DormBuilding.is_deleted.is_(False),
+    )).first()
     return {
         "status": stay.status,
         "label": " / ".join(x for x in (
@@ -457,11 +477,12 @@ def today_records(user: dict) -> dict:
     from app.services.orientation_service import assert_orientation_student_scope
 
     _require_teacher(user)
-    start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    start, end = local_today_bounds_utc()
     with session() as db:
         rows = list(db.scalars(select(OrientationCheckinRecord).where(
             OrientationCheckinRecord.tenant_id == _tid(),
             OrientationCheckinRecord.checked_in_at >= start,
+            OrientationCheckinRecord.checked_in_at < end,
             OrientationCheckinRecord.status == "CONFIRMED",
             OrientationCheckinRecord.is_deleted.is_(False),
         ).order_by(OrientationCheckinRecord.checked_in_at.desc())).all())

@@ -32,9 +32,12 @@ test('O4 payment and green-channel writes carry real concurrency and idempotency
   assert.match(payment, /expectedVersion: this\.paymentTarget\.paymentVersion/)
   assert.match(payment, /expectedVersion: this\.detailTarget\.version/)
   assert.match(green, /expectedVersion: row\.version/)
-  assert.match(studentPc, /clientRequestId: clientSubmissionId\(\)/)
-  assert.match(miniGreen, /clientRequestId: createClientRequestId\(\)/)
-  assert.match(miniTeacher, /expectedVersion: a\.version/)
+  assert.match(studentPc, /clientSubmissionId: materialRequestId\.value/)
+  assert.match(studentPc, /clientRequestId: greenRequestId\.value/)
+  assert.match(miniGreen, /clientRequestId: this\.clientRequestId/)
+  assert.match(miniTeacher, /expectedVersion: target\.version/)
+  assert.match(miniTeacher, /reviewDialog/)
+  assert.doesNotMatch(miniTeacher, /uni\.showModal/)
 })
 
 test('O4 miniapp forwards canonical server qualification and payment facts', () => {

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
@@ -233,8 +234,10 @@ def dry_run(tenant_id: int, rows: list[dict], *, namespace: str, user: dict | No
     }
 
 
-def confirm(tenant_id: int, rows: list[dict]) -> dict:
-    from app.models import AffairsAuditTrail, DormBed, DormBuilding, DormRoom
+def confirm(tenant_id: int, rows: list[dict], *, batch_no: str | None = None,
+            claim_token: str | None = None) -> dict:
+    from app.models import (AffairsAuditTrail, DormBed, DormBuilding, DormRoom,
+                            SharedImportBatch)
 
     db = get_sessionmaker()()
     try:
@@ -293,6 +296,16 @@ def confirm(tenant_id: int, rows: list[dict]) -> dict:
                     db.add(room)
                     db.flush()
                     created_rooms += 1
+                elif (
+                    int(room.floor_no) != int(item["floorNo"])
+                    or int(room.capacity) != int(item["capacity"])
+                    or (room.room_type or "STANDARD") != item["roomType"]
+                    or room.status != item["roomStatus"]
+                ):
+                    raise AppException(
+                        "DATA_CONFLICT",
+                        f"确认时房间属性已变化：{item['buildingCode']}/{item['roomNo']}，请重新 Dry Run",
+                    )
                 rooms[room_key] = room
             duplicate = db.scalars(select(DormBed.id).where(
                 DormBed.tenant_id == int(tenant_id), DormBed.room_id == int(room.id),
@@ -305,18 +318,59 @@ def confirm(tenant_id: int, rows: list[dict]) -> dict:
                 bed_no=item["bedNo"], status="VACANT",
             ))
             created_beds += 1
+        db.flush()
+        # Lock and validate each affected room after all new beds are visible in this
+        # transaction.  This closes the Dry-Run → confirm race where another task adds
+        # a different bed and silently pushes a room beyond its declared capacity.
+        for room in rooms.values():
+            bed_ids = list(db.scalars(select(DormBed.id).where(
+                DormBed.tenant_id == int(tenant_id),
+                DormBed.room_id == int(room.id),
+                DormBed.is_deleted.is_(False),
+            ).with_for_update()).all())
+            if len(bed_ids) != int(room.capacity):
+                raise AppException(
+                    "DATA_CONFLICT",
+                    f"确认时房间 {room.room_no} 的有效床位数为 {len(bed_ids)}，"
+                    f"与容量 {room.capacity} 不一致，请重新 Dry Run",
+                )
+        result = {
+            "insertedRows": created_beds, "createdBuildings": created_buildings,
+            "createdRooms": created_rooms, "createdBeds": created_beds,
+        }
         operator = get_current_user_ctx() or {}
         db.add(AffairsAuditTrail(
             tenant_id=int(tenant_id), biz_type="DORM_RESOURCE_IMPORT", action="IMPORT",
             operator=operator.get("realName") or str(operator.get("userId") or "系统"),
             role_name=str(operator.get("currentRoleCode") or ""),
-            detail=f"楼栋{created_buildings}，房间{created_rooms}，床位{created_beds}",
+            detail=(f"batchNo={batch_no or '-'}；楼栋{created_buildings}，"
+                    f"房间{created_rooms}，床位{created_beds}"),
         ))
+        if batch_no or claim_token:
+            if not batch_no or not claim_token:
+                raise AppException("DATA_CONFLICT", "宿舍导入确认缺少批次租约")
+            batch = db.scalars(select(SharedImportBatch).where(
+                SharedImportBatch.tenant_id == int(tenant_id),
+                SharedImportBatch.namespace == "DOMAIN_IMPORT",
+                SharedImportBatch.batch_no == batch_no,
+                SharedImportBatch.is_deleted.is_(False),
+            ).with_for_update()).first()
+            if (
+                not batch or batch.status != "CONFIRMING"
+                or batch.claim_token != claim_token
+            ):
+                raise AppException("DATA_CONFLICT", "宿舍导入确认租约已失效")
+            now = datetime.utcnow()
+            public_result = {"batchNo": batch_no, "status": "SUCCESS", **result}
+            batch.status = "SUCCESS"
+            batch.public_result_json = public_result
+            batch.confirmed_at = now
+            batch.claim_token = None
+            batch.claim_started_at = None
+            batch.expires_at = now + timedelta(days=7)
+            batch.version = int(batch.version or 0) + 1
         db.commit()
-        return {
-            "insertedRows": created_beds, "createdBuildings": created_buildings,
-            "createdRooms": created_rooms, "createdBeds": created_beds,
-        }
+        return result
     except Exception:
         db.rollback()
         raise

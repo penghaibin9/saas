@@ -96,6 +96,28 @@ test('teacher editable decisions reopen with the previous text after non-conflic
   assert.doesNotMatch(dorm, /uni\.showModal/)
 })
 
+test('orientation and dorm review surfaces use in-page dialogs, stable request ids, and supported metric accents', () => {
+  const green = read('miniapp/src/pages/teacher/orientation/green-channel/index.vue')
+  const requestIds = read('miniapp/src/utils/clientRequestId.js')
+  const inspection = read('miniapp/src/pages/teacher/dorm-review/index.vue')
+  const studentDorm = read('miniapp/src/pages/student/affairs/dorm.vue')
+  const portalOrientation = read('student-portal/src/views/orientation/OrientationView.vue')
+  const metricPages = [
+    read('frontend/src/modules/studentAffairs/views/dorm/DormResourceView.vue'),
+    read('frontend/src/modules/studentAffairs/views/dorm/DormStatsView.vue'),
+    read('frontend/src/modules/studentAffairs/views/dorm/DormTransferView.vue'),
+    read('frontend/src/modules/studentAffairs/views/dorm/DormExceptionView.vue')
+  ]
+  assert.match(green, /reviewDialog\.visible/)
+  assert.doesNotMatch(green, /uni\.showModal/)
+  assert.match(requestIds, /student_lifecycle_client_request_sequence/)
+  assert.match(inspection, /clientRequestId: this\.inspection\.clientRequestId/)
+  assert.match(studentDorm, /clientRequestId: this\.rectRequestIds\[x\.rectificationId\]/)
+  assert.match(portalOrientation, /clientRequestId: greenRequestId\.value/)
+  assert.doesNotMatch(portalOrientation, /演示租户为只读/)
+  for (const source of metricPages) assert.doesNotMatch(source, /accent:\s*['"]info['"]/)
+})
+
 test('mental follow-up and talk records keep inline text until success', () => {
   const mental = read('miniapp/src/pages/teacher/affairs/mental/index.vue')
   const talk = read('miniapp/src/pages/teacher/affairs/talk/index.vue')

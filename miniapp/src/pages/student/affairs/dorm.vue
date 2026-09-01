@@ -110,6 +110,7 @@ import { studentApi } from '@/services/studentApi'
 import { affairsContractApi } from '@/services/affairsContractApi'
 import { safeToast, createSubmitLock, normalizeError } from '@/services/request'
 import fileSdk from '@/services/fileSdk'
+import { createClientRequestId } from '@/utils/clientRequestId'
 
 const PENDING = ['SUBMITTED', 'COUNSELOR_REVIEW', 'DORM_MANAGER_REVIEW', 'DORM_REVIEW', 'PENDING']
 
@@ -119,7 +120,7 @@ export default {
       cfg: null, state: 'loading', buildings: [], rooms: [], beds: [], transfers: [], stays: [], rectifications: [],
       transferError: '', optionError: '', optionsLoading: false,
       sel: { building: '', room: '', bed: '' }, submitting: false,
-      transferReason: '', rectNotes: {}, rectFiles: {}, confirmDlg: { visible: false, current: '', reason: '' }, _lock: createSubmitLock()
+      transferReason: '', rectNotes: {}, rectFiles: {}, rectRequestIds: {}, confirmDlg: { visible: false, current: '', reason: '' }, _lock: createSubmitLock()
     }
   },
   computed: {
@@ -210,6 +211,7 @@ export default {
         this.submitting = true
         const uploaded = await fileSdk.upload(selected, { bizType: 'TEMP_PRIVATE' })
         this.rectFiles[x.rectificationId] = { fileId: String(uploaded.fileId || uploaded.id), fileName: uploaded.fileName || selected.name || '整改照片' }
+        this.rectRequestIds[x.rectificationId] = createClientRequestId('dorm-rectify')
       } catch (e) { this.showError(e, '照片上传失败') }
       finally { this.submitting = false }
     },
@@ -218,7 +220,9 @@ export default {
       if (note.length < 5 || !file) return safeToast('请填写至少5字整改说明并上传照片')
       this.submitting = true
       try {
-        await affairsContractApi.submitDormRectification(x.rectificationId, { expectedVersion: x.version, note, fileIds: [file.fileId], clientRequestId: `dorm-rectify-${Date.now()}-${Math.random().toString(16).slice(2)}`.slice(0, 100) })
+        if (!this.rectRequestIds[x.rectificationId]) this.rectRequestIds[x.rectificationId] = createClientRequestId('dorm-rectify')
+        await affairsContractApi.submitDormRectification(x.rectificationId, { expectedVersion: x.version, note, fileIds: [file.fileId], clientRequestId: this.rectRequestIds[x.rectificationId] })
+        delete this.rectRequestIds[x.rectificationId]
         safeToast('整改已提交复检', 'success'); await this.load()
       } catch (e) { this.showError(e, '整改提交失败') }
       finally { this.submitting = false }
