@@ -22,8 +22,8 @@ router = APIRouter(prefix="/orientation", tags=["数字迎新"],
 
 
 @router.get("/dashboard", summary="迎新看板")
-def dashboard(user=Depends(require_staff)):
-    return success(svc.get_dashboard())
+def dashboard(batchId: Optional[str] = None, user=Depends(require_staff)):
+    return success(svc.get_dashboard(user=user, batch_id=batchId))
 
 
 @router.get("/students", summary="新生台账列表")

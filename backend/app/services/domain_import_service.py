@@ -31,6 +31,7 @@ _REQUIRE_MASTER_PROFILE = {"campus-service", "academic", "employment"}
 DOMAINS = {
     "orientation": ("admissionNo", "orientation_service.create_student",
                     "orientation_service.list_students", "录取编号"),
+    "dorm": ("bedNo", "", "", "床号"),
     "campus-service": ("studentNo", "campus_service_service.create_student",
                        "campus_service_service.list_students", "学号"),
     "academic": ("studentNo", "academic_service.create_student",
@@ -214,6 +215,11 @@ def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user
                            f"单次导入不能超过 {MAX_IMPORT_ROWS} 行，当前 {len(rows)} 行，请拆分后重试")
     if domain == "student-affairs":
         return _dry_run_student_affairs(rows, namespace=namespace, user=user)
+    if domain == "dorm":
+        from app.services import dorm_resource_import_service
+        return dorm_resource_import_service.dry_run(
+            _tid(), rows, namespace=_NAMESPACE, user=user,
+        )
     key_field, _, list_path, key_label = DOMAINS[domain]
     existing = _existing_keys(domain, list_path, key_field)
     known_master = _master_student_nos(domain)
@@ -269,7 +275,11 @@ def dry_run(domain: str, rows: list[dict], *, namespace: str | None = None, user
                           {"domain": domain, "rows": ok_rows}, errors=errors,
                           operator_key=created_by)
     return {"batchNo": batch_no, "status": status, "totalRows": len(rows),
-            "okRows": len(ok_rows), "errorRows": len(errors), "errors": errors[:50]}
+            "okRows": len(ok_rows), "errorRows": len(errors), "errors": errors[:50],
+            "errorWorkbookUrl": (
+                f"/api/v1/import/domain/orientation/batches/{batch_no}/errors.xlsx"
+                if domain == "orientation" and errors else None
+            )}
 
 
 def peek_batch(batch_no: str) -> dict | None:
@@ -320,6 +330,10 @@ def confirm(batch_no: str) -> dict:
     try:
         if domain == "student-affairs":
             result = _confirm_student_affairs(rows)
+            public_result = {"batchNo": batch_no, "status": "SUCCESS", **result}
+        elif domain == "dorm":
+            from app.services import dorm_resource_import_service
+            result = dorm_resource_import_service.confirm(_tid(), rows)
             public_result = {"batchNo": batch_no, "status": "SUCCESS", **result}
         else:
             inserted = _confirm_master_domain_rows(domain, rows)

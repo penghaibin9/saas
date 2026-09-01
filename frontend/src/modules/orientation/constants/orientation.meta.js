@@ -223,7 +223,15 @@ export const exportOptions = {
   fieldGroups: {
     studentList: [
       { key: 'ledger', label: '迎新综合台账', fields: ['迎新批次编号', '姓名', '录取编号', '学院', '专业', '班级', '报到状态', '缴费状态', '宿舍状态', '风险'] }
-    ]
+    ],
+    progressList: [{ key: 'ledger', label: '报到进度', fields: ['姓名', '录取编号', '已完成环节', '受阻环节', '现场报到'] }],
+    materialList: [{ key: 'ledger', label: '材料审核', fields: ['姓名', '材料类型', '文件名', '审核状态', '审核人', '退回原因'] }],
+    paymentList: [
+      { key: 'payment', label: '缴费状态', fields: ['姓名', '应缴金额', '实缴金额', '缴费状态', '事实来源'] },
+      { key: 'green', label: '绿色通道', fields: ['姓名', '申请类型', '申请金额', '审核状态', '审核人'] }
+    ],
+    dormList: [{ key: 'ledger', label: '住宿安排', fields: ['姓名', '录取编号', '学院', '班级', '楼栋', '房间', '住宿状态'] }],
+    exceptionList: [{ key: 'ledger', label: '迎新异常', fields: ['姓名', '异常类型', '异常说明', '风险等级', '状态', '处理人'] }]
   },
   maskDefault: true,
   idCardPlainForbidden: true,

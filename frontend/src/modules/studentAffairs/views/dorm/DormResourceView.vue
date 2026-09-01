@@ -7,9 +7,19 @@
     watermark-purpose="宿舍房源管理"
   >
     <template #actions>
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" variant="secondary" :loading="actioning" @click="downloadTemplate">
+        下载房源模板
+      </AppPermissionButton>
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" variant="secondary" :loading="actioning" @click="$refs.resourceFile.click()">
+        导入房源 xlsx
+      </AppPermissionButton>
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.export')" code="studentAffairs.dorm.export" variant="secondary" :loading="actioning" @click="exportDlg.visible = true">
+        导出房源台账
+      </AppPermissionButton>
       <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.resource.manage')" code="studentAffairs.dorm.resource.manage" :loading="actioning" @click="createBuilding">
         新建楼栋（可一键铺床）
       </AppPermissionButton>
+      <input ref="resourceFile" class="dorm-file-input" type="file" accept=".xlsx" @change="onResourceFile" />
     </template>
 
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载房源台账..." @retry="load"
@@ -159,11 +169,33 @@
         <AppButton variant="primary" :loading="actioning" @click="submitGenerate">铺满</AppButton>
       </template>
     </AppDrawer>
+
+    <AppConfirmDialog
+      v-model:visible="importConfirmVisible"
+      title="确认导入宿舍房源"
+      :message="importPreview ? `Dry Run 已通过 ${importPreview.okRows} 行。确认后将在一个事务内创建楼栋、房间和床位。` : ''"
+      confirm-text="确认写入房源"
+      :submitting="actioning"
+      @confirm="confirmResourceImport"
+    />
+
+    <AppDrawer :visible="exportDlg.visible" title="导出房源台账" mode="modal" size="medium" @close="exportDlg.visible = false">
+      <div class="dr-form">
+        <div class="dorm-form-note">导出只包含当前账号楼栋数据范围，文件带操作人、用途、时间水印并写入审计。</div>
+        <AppFormItem label="导出用途" required>
+          <AppTextInput v-model="exportDlg.purpose" placeholder="例如：2026年秋季宿舍房源核对" :disabled="actioning" />
+        </AppFormItem>
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="actioning" @click="exportDlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :disabled="exportDlg.purpose.trim().length < 5" :loading="actioning" @click="exportResources">生成并下载</AppButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
-import { AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput, AppPageShell,
+import { AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard, AppNumberInput, AppPageShell,
   AppPermissionButton, AppSectionCard, AppSelect, AppTeacherPicker, AppTextInput } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
@@ -197,7 +229,7 @@ const ROOM_COLUMNS = [
 export default {
   name: 'DormResourceView',
   props: { ctx: { type: Object, default: null } },
-  components: { AppButton, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
+  components: { AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
     AppNumberInput, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTeacherPicker, AppTextInput, DataTable },
   data() {
     return {
@@ -207,7 +239,9 @@ export default {
       loading: true, actioning: false, errorMessage: '', buildings: [], occ: {},
       curBuilding: '', curBuildingName: '', rooms: [], curRoom: '', curRoomNo: '', beds: [],
       buildDlg: { visible: false, name: '', gender: 'MIXED', managerTeacherKey: '', autoFill: false, floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' },
-      genDlg: { visible: false, buildingId: '', buildingName: '', floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' }
+      genDlg: { visible: false, buildingId: '', buildingName: '', floors: 6, roomsPerFloor: 10, bedsPerRoom: 4, error: '' },
+      importConfirmVisible: false, importPreview: null,
+      exportDlg: { visible: false, purpose: '' }
     }
   },
   computed: {
@@ -230,6 +264,47 @@ export default {
   mounted() { this.load() },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    async downloadTemplate() {
+      this.actioning = true
+      try { await studentAffairsApi.downloadDormResourceTemplate() }
+      catch (e) { this.errorMessage = e.message || '模板下载失败' }
+      finally { this.actioning = false }
+    },
+    async onResourceFile(event) {
+      const file = event.target.files?.[0]
+      event.target.value = ''
+      if (!file) return
+      this.actioning = true; this.errorMessage = ''
+      try {
+        const result = await studentAffairsApi.validateDormResourceFile(file)
+        this.importPreview = result.data
+        if (result.data.status === 'DRY_RUN_PASSED' && result.data.okRows > 0) {
+          this.importConfirmVisible = true
+        } else {
+          this.errorMessage = `Dry Run 未通过：${result.data.errorRows || 0} 项错误，已下载错误工作簿。`
+          if (result.data.batchNo) await studentAffairsApi.downloadDormImportErrors(result.data.batchNo)
+        }
+      } catch (e) { this.errorMessage = e.message || '房源预检失败' }
+      finally { this.actioning = false }
+    },
+    async confirmResourceImport() {
+      if (!this.importPreview?.batchNo) return
+      this.actioning = true
+      try {
+        await studentAffairsApi.confirmDormResourceImport(this.importPreview.batchNo)
+        this.importConfirmVisible = false; this.importPreview = null
+        await this.load()
+      } catch (e) { this.errorMessage = e.message || '房源导入失败' }
+      finally { this.actioning = false }
+    },
+    async exportResources() {
+      this.actioning = true
+      try {
+        await studentAffairsApi.exportDormLedger('resources', this.exportDlg.purpose.trim())
+        this.exportDlg.visible = false; this.exportDlg.purpose = ''
+      } catch (e) { this.errorMessage = e.message || '房源台账导出失败' }
+      finally { this.actioning = false }
+    },
     async load() {
       this.loading = true; this.errorMessage = ''
       try {
@@ -312,12 +387,13 @@ export default {
     genderLabel(g) { return ({ MALE: '男寝', FEMALE: '女寝', MIXED: '混合' })[g] || g },
     /** 房间状态：建房时写入 ENABLED（见 affairs_dorm_service 铺床逻辑）；
      *  未收录取值原样显示，避免后端新增状态时显示成空白 */
-    roomStatusLabel(s) { return ({ ENABLED: '启用', DISABLED: '停用', MAINTENANCE: '维修中' })[s] || s || '—' }
+    roomStatusLabel(s) { return ({ ENABLED: '启用', DISABLED: '停用', MAINTAIN: '维修中', MAINTENANCE: '维修中' })[s] || s || '—' }
   }
 }
 </script>
 
 <style scoped>
+.dorm-file-input { display: none; }
 .dr-form { display: flex; flex-direction: column; gap: var(--space-3); }
 .dorm-form-note { padding: 10px 12px; border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
 .dr-check { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); color: var(--text-secondary); font-size: var(--font-size-sm); }

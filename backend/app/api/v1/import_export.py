@@ -5,8 +5,11 @@
 from __future__ import annotations
 
 import uuid
+from io import BytesIO
+from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, Header
+from fastapi.responses import StreamingResponse
 
 from app.api.v1.file_contract import validated_local_file_response
 from app.core.config import settings
@@ -123,6 +126,23 @@ _DOMAIN_IMPORT_TEMPLATES = {
         },
         "filename": "迎新新生录取名单导入模板.xlsx",
     },
+    "dorm": {
+        "headers": ["楼栋编码", "楼栋名称", "性别属性", "楼层", "房号", "房型", "容量", "床号", "房间状态"],
+        "required": ["楼栋编码", "楼栋名称", "性别属性", "楼层", "房号", "容量", "床号", "房间状态"],
+        "sample": ["DORM-A", "学生公寓A栋", "男", "5", "501", "标准四人间", "4", "501-1", "启用"],
+        "notes": [
+            "每行代表一个床位；同一房间须提供全部床号，床位行数必须等于房间容量。",
+            "楼栋编码是稳定业务键；已存在编码只在名称、性别属性完全一致时复用。",
+            "性别属性填写男/女/混合；房间状态填写启用/停用/维修。",
+            "上传只执行 Dry Run；有任一错误时整批禁止确认，修正后重新上传。",
+        ],
+        "header_map": {
+            "楼栋编码": "buildingCode", "楼栋名称": "buildingName", "性别属性": "genderLimit",
+            "楼层": "floorNo", "房号": "roomNo", "房型": "roomType", "容量": "capacity",
+            "床号": "bedNo", "房间状态": "roomStatus",
+        },
+        "filename": "宿舍房源导入模板.xlsx",
+    },
 }
 
 
@@ -174,6 +194,42 @@ async def import_domain_validate_file(
     return success(result, message="校验完成")
 
 
+@import_router.get("/domain/{domain}/batches/{batch_no}/errors.xlsx", summary="下载域导入错误行 xlsx")
+def import_domain_error_workbook(domain: str, batch_no: str, user=Depends(require_staff)):
+    from app.services import domain_import_service, shared_import_batch_service, xlsx_util
+
+    auth = enforce_import_perm(user, domain)
+    domain_import_service.assert_confirm_allowed(user, batch_no, auth)
+    row = shared_import_batch_service.get(
+        int(current_tenant_id() or 0), "DOMAIN_IMPORT", batch_no,
+    )
+    payload = row.get("payload") or {}
+    if payload.get("domain") != auth.domain:
+        raise not_found("导入批次不存在或已过期，请重新校验")
+    errors = row.get("errors") or []
+    filename = "迎新导入错误行.xlsx" if auth.domain == "orientation" else "宿舍房源导入错误行.xlsx"
+    content = xlsx_util.build_ledger_xlsx(
+        "导入错误行",
+        ["Excel行号", "错误字段", "原值", "错误原因"],
+        [[item.get("rowIndex") or "", item.get("field") or "", item.get("rawValue") or "", item.get("message") or ""]
+         for item in errors],
+        watermark="仅包含本次 Dry Run 未通过项；修正原模板后重新上传，不会自动写入业务数据。",
+    )
+    audit_log.record(
+        "IMPORT_ERROR_EXPORT", f"{auth.domain}-errors",
+        detail={"batchNo": batch_no, "rows": len(errors)},
+    )
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @import_router.post("/domain/{domain}/validate", summary="域白名单通用导入 Dry-Run 校验")
 def import_domain_validate(domain: str, body: dict = Body(...), user=Depends(require_staff)):
     from app.services import domain_import_service
@@ -215,11 +271,13 @@ def export_domain(domain: str, body: dict = Body(default={}), user=Depends(requi
     auth = enforce_export_perm(user, domain)
     purpose = str(body.get("purpose") or "")
     batch_id = body.get("batchId")
+    report_type = body.get("reportType")
     cached, handle = idempotency_begin(
         user,
         "domain-export",
         idempotency_key,
-        {"domain": auth.domain, "purpose": purpose, "batchId": str(batch_id or "")},
+        {"domain": auth.domain, "purpose": purpose, "batchId": str(batch_id or ""),
+         "reportType": str(report_type or "")},
     )
     if cached is not None:
         return success(cached, message="导出完成（幂等重放）")
@@ -229,10 +287,13 @@ def export_domain(domain: str, body: dict = Body(default={}), user=Depends(requi
         purpose,
         user=user,
         batch_id=batch_id,
+        report_type=report_type,
     )
     detail = {"taskId": task["taskId"], "rows": task["rowCount"]}
     if auth.domain in {"internship", "orientation"}:
         detail["batchId"] = str(batch_id or "")
+    if report_type:
+        detail["reportType"] = str(report_type)
     audit_log.record("EXPORT", f"{auth.domain}-xlsx", detail=detail)
     idempotency_finish(handle, task)
     return success(task, message="导出完成")

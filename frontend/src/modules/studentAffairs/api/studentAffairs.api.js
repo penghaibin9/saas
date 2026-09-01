@@ -8,6 +8,7 @@
 import { request, requestBlob, requestUpload } from '@/services/http/client'
 import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
 import { setPermissionPatterns } from '@/security/permissionGate'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 
 function buildCtxKey(ctx, permissionPatterns) {
   const cr = ctx?.currentRole || {}
@@ -796,6 +797,50 @@ export const studentAffairsApi = {
   /** 宿舍入住率统计。 */
   getOccupancy() {
     return callStrict(() => request('/student-affairs/dorm/occupancy'))
+  },
+
+  async downloadDormResourceTemplate() {
+    return callStrict(async () => {
+      const data = await request('/import/domain/dorm/template')
+      downloadXlsxFromApi(data)
+      return data
+    })
+  },
+
+  validateDormResourceFile(file) {
+    return callStrict(() => requestUpload('/import/domain/dorm/validate-file', file))
+  },
+
+  confirmDormResourceImport(batchNo) {
+    const key = globalThis.crypto?.randomUUID?.() || `dorm-import-${Date.now()}`
+    return callStrict(() => request('/import/domain/confirm', {
+      method: 'POST', headers: { 'Idempotency-Key': key },
+      body: { domain: 'dorm', batchNo }
+    }))
+  },
+
+  async downloadDormImportErrors(batchNo) {
+    try {
+      const blob = await requestBlob(`/import/domain/dorm/batches/${batchNo}/errors.xlsx`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = '宿舍房源导入错误行.xlsx'; document.body.appendChild(a); a.click()
+      a.remove(); URL.revokeObjectURL(url)
+      return ok(true)
+    } catch (e) { return toErr(e) }
+  },
+
+  exportDormLedger(reportType, purpose) {
+    const key = globalThis.crypto?.randomUUID?.() || `dorm-export-${Date.now()}`
+    return callStrict(async () => {
+      const data = await request('/export/domain/dorm', {
+        method: 'POST', headers: { 'Idempotency-Key': key },
+        body: { reportType, purpose }
+      })
+      const payload = { ...data, downloadUrl: `/api/v1/export/tasks/${data.taskId}/download` }
+      downloadXlsxFromApi(payload)
+      return payload
+    })
   },
 
   /** D3 住宿分配批次：列表、草稿、Dry Run、人工调整与发布。 */

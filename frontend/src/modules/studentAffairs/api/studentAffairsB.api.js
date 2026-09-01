@@ -123,6 +123,26 @@ export const studentAffairsApi = {
     return pass(core.getBuildings(params))
   },
 
+  downloadDormResourceTemplate() {
+    return pass(core.downloadDormResourceTemplate())
+  },
+
+  validateDormResourceFile(file) {
+    return pass(core.validateDormResourceFile(file))
+  },
+
+  confirmDormResourceImport(batchNo) {
+    return pass(core.confirmDormResourceImport(batchNo))
+  },
+
+  downloadDormImportErrors(batchNo) {
+    return pass(core.downloadDormImportErrors(batchNo))
+  },
+
+  exportDormLedger(reportType, purpose) {
+    return pass(core.exportDormLedger(reportType, purpose))
+  },
+
   listAllDormBuildings(params = {}) {
     return collectPaged((page, pageSize) => core.getBuildings({ ...params, page, pageSize }))
   },
