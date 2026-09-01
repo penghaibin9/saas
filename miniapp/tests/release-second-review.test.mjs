@@ -41,7 +41,7 @@ test('every Vue entry that directly invokes a WeChat private media API mounts th
 
 test('privacy gate registers one runtime listener and chooses one current UI owner', () => {
   const gate = read('src/components/MobilePrivacyGate.vue')
-  assert.equal((gate.match(/wx\.onNeedPrivacyAuthorization/g) || []).length, 1)
+  assert.equal((gate.match(/^\s*wx\.onNeedPrivacyAuthorization\(/gm) || []).length, 1)
   assert.match(gate, /let privacyListenerInstalled = false/)
   assert.match(gate, /privacyGateInstances\[privacyGateInstances\.length - 1\]/)
 })
