@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException
-from app.core.field_crypto import encrypt_field, hash_sensitive, mask_phone_encrypted
+from app.core.field_crypto import decrypt_field, encrypt_field, hash_sensitive, mask_phone_encrypted
 from app.core.optimistic_lock import require_expected_version
 from app.models import (
     FileObject,
@@ -212,19 +212,46 @@ def snapshot(user: dict) -> dict:
 def submit_information(user: dict, body: dict) -> dict:
     if (body or {}).get("confirmed") is not True:
         raise AppException("VALIDATION_ERROR", "请确认所填信息真实有效")
-    phone = _phone((body or {}).get("phone"), "联系电话")
-    emergency_phone = _phone((body or {}).get("emergencyPhone"), "紧急联系人电话")
+    requested_phone = _text((body or {}).get("phone"), 20)
+    requested_emergency_phone = _text((body or {}).get("emergencyPhone"), 20)
+    use_existing_phone = (body or {}).get("useExistingPhone") is True
+    use_existing_emergency = (body or {}).get("useExistingEmergencyPhone") is True
     emergency_name = _text((body or {}).get("emergencyContactName"), 100)
     origin = _text((body or {}).get("origin"), 100)
     if not emergency_name or not origin:
         raise AppException("VALIDATION_ERROR", "生源地、紧急联系人姓名均必填")
     with session() as db:
         profile, orientation, _batch = _own_context(db, user, lock=True)
-        _upsert_contact(db, student_id=profile.id, contact_type="PHONE", value=phone)
-        _upsert_contact(
-            db, student_id=profile.id, contact_type="EMERGENCY_PHONE",
-            value=emergency_phone, contact_name=emergency_name,
-        )
+        phone_contact = _contact(db, profile.id, "PHONE")
+        emergency_contact = _contact(db, profile.id, "EMERGENCY_PHONE")
+        if requested_phone:
+            phone = _phone(requested_phone, "联系电话")
+            _upsert_contact(db, student_id=profile.id, contact_type="PHONE", value=phone)
+        elif use_existing_phone:
+            encrypted = (
+                phone_contact.contact_value_encrypted if phone_contact
+                else orientation.phone_encrypted
+            )
+            phone = _phone(decrypt_field(encrypted), "已留存联系电话")
+            if phone_contact is None:
+                _upsert_contact(db, student_id=profile.id, contact_type="PHONE", value=phone)
+        else:
+            raise AppException("VALIDATION_ERROR", "联系电话格式不正确")
+
+        if requested_emergency_phone:
+            emergency_phone = _phone(requested_emergency_phone, "紧急联系人电话")
+            _upsert_contact(
+                db, student_id=profile.id, contact_type="EMERGENCY_PHONE",
+                value=emergency_phone, contact_name=emergency_name,
+            )
+        elif use_existing_emergency:
+            encrypted = emergency_contact.contact_value_encrypted if emergency_contact else None
+            emergency_phone = _phone(decrypt_field(encrypted), "已留存紧急联系人电话")
+            if emergency_contact.contact_name != emergency_name:
+                emergency_contact.contact_name = emergency_name
+                emergency_contact.version = int(emergency_contact.version or 0) + 1
+        else:
+            raise AppException("VALIDATION_ERROR", "紧急联系人电话格式不正确")
         orientation.phone_encrypted = encrypt_field(phone)  # 兼容教师端只读投影
         orientation.origin = origin
         set_student_step_status(

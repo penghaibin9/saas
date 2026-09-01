@@ -23,3 +23,11 @@ test('newcomer can verify, set password, bind WeChat and enter orientation', () 
     pkg.root === 'pages/student' && pkg.pages.some((item) => item.path === 'orientation/activate/index')
   ))
 })
+
+test('pre-arrival collection reuses masked stored phones without forcing re-entry', () => {
+  const page = read('src/pages/student/orientation/collect/index.vue')
+  assert.match(page, /useExistingPhone/)
+  assert.match(page, /useExistingEmergencyPhone/)
+  assert.match(page, /留空沿用/)
+  assert.doesNotMatch(page, /if \(!\(\/\^\\d\{6,20\}\$\/\.test\(phone\)\)\)/)
+})

@@ -17,7 +17,7 @@
           <view class="oc__field">
             <text class="oc__label">手机号</text>
             <input class="oc__input" v-model="phone" type="number" maxlength="20"
-              :placeholder="o.identity.phoneMasked || '请输入常用手机号'" placeholder-class="oc__ph" />
+              :placeholder="existingPhoneMasked ? `已留存 ${existingPhoneMasked}（留空沿用）` : '请输入常用手机号'" placeholder-class="oc__ph" />
           </view>
           <view class="oc__field">
             <text class="oc__label">生源地</text>
@@ -29,7 +29,8 @@
           </view>
           <view class="oc__field">
             <text class="oc__label">紧急电话</text>
-            <input class="oc__input" v-model="emergencyPhone" type="number" maxlength="20" placeholder="请输入联系电话" placeholder-class="oc__ph" />
+            <input class="oc__input" v-model="emergencyPhone" type="number" maxlength="20"
+              :placeholder="existingEmergencyPhoneMasked ? `已留存 ${existingEmergencyPhoneMasked}（留空沿用）` : '请输入联系电话'" placeholder-class="oc__ph" />
           </view>
           <view class="oc__confirm" @click="confirmed = !confirmed"><text>{{ confirmed ? '☑' : '☐' }}</text><text>我确认信息真实有效并用于迎新联络</text></view>
         </view>
@@ -52,7 +53,7 @@ import { toast, back } from '@/utils/nav'
 const submitLock = createSubmitLock(1500)
 
 export default {
-  data() { return { o: null, state: 'loading', phone: '', origin: '', emergencyContactName: '', emergencyPhone: '', confirmed: false, submitting: false } },
+  data() { return { o: null, state: 'loading', phone: '', existingPhoneMasked: '', origin: '', emergencyContactName: '', emergencyPhone: '', existingEmergencyPhoneMasked: '', confirmed: false, submitting: false } },
   onLoad() { this.load() },
   methods: {
     load() {
@@ -60,19 +61,29 @@ export default {
       studentApi.getOrientation().then((d) => {
         this.o = d
         const info = (d.selfService && d.selfService.information) || {}
+        this.existingPhoneMasked = info.phoneMasked || d.identity.phoneMasked || ''
         this.origin = info.origin || d.identity.origin || ''
         this.emergencyContactName = info.emergencyContactName || ''
+        this.existingEmergencyPhoneMasked = info.emergencyPhoneMasked || ''
         this.state = 'ready'
       }).catch(() => { this.state = 'error' })
     },
     submit() {
       if (this.submitting) return
       const phone = this.phone.trim()
-      if (!(/^\d{6,20}$/.test(phone))) { toast('请输入有效手机号'); return }
-      if (!this.origin.trim() || !this.emergencyContactName.trim() || !(/^\d{6,20}$/.test(this.emergencyPhone.trim()))) { toast('请完整填写生源地和紧急联系人'); return }
+      const emergencyPhone = this.emergencyPhone.trim()
+      const useExistingPhone = !phone && !!this.existingPhoneMasked
+      const useExistingEmergencyPhone = !emergencyPhone && !!this.existingEmergencyPhoneMasked
+      if (!useExistingPhone && !(/^\d{6,20}$/.test(phone))) { toast('请输入有效手机号'); return }
+      if (!this.origin.trim() || !this.emergencyContactName.trim() || (!useExistingEmergencyPhone && !(/^\d{6,20}$/.test(emergencyPhone)))) { toast('请完整填写生源地和紧急联系人'); return }
       if (!this.confirmed) { toast('请先确认信息真实有效'); return }
       this.submitting = true
-      submitLock.run(() => studentApi.submitOrientationCollect({ phone, origin: this.origin.trim(), emergencyContactName: this.emergencyContactName.trim(), emergencyPhone: this.emergencyPhone.trim(), confirmed: true }))
+      submitLock.run(() => studentApi.submitOrientationCollect({
+        phone: phone || undefined, useExistingPhone,
+        origin: this.origin.trim(), emergencyContactName: this.emergencyContactName.trim(),
+        emergencyPhone: emergencyPhone || undefined, useExistingEmergencyPhone,
+        confirmed: true
+      }))
         .then(() => {
           uni.showToast({ title: '提交成功', icon: 'success' })
           setTimeout(() => back(), 700)
