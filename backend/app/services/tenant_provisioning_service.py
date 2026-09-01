@@ -13,9 +13,9 @@ login_name是否已存在、角色是否已存在）。
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException
@@ -35,6 +35,7 @@ STATUS_CANCELLED = "CANCELLED"
 
 STEP_NEEDS_MANUAL_REVIEW = "NEEDS_MANUAL_REVIEW"
 STEP_COMPENSATED = "COMPENSATED"
+RUNNING_LEASE_MINUTES = 15
 
 
 def _session():
@@ -82,6 +83,12 @@ def _assert_replay_compatible(db, job: ProvisioningJob, body: dict) -> None:
             http_status=409,
         )
     original = dict(job.input_json or {})
+    if job.status == STATUS_RUNNING and original != body:
+        raise AppException(
+            "IDEMPOTENCY_CONFLICT",
+            "开通任务正在执行，不能同时改写请求输入",
+            http_status=409,
+        )
     if job.status == STATUS_SUCCEEDED and original != body:
         raise AppException(
             "IDEMPOTENCY_CONFLICT",
@@ -173,10 +180,15 @@ def run_provisioning_job(job_id: int, *, user: dict | None = None) -> dict:
         # Atomic claim prevents two workers handling the same idempotency key
         # from executing SAGA steps concurrently. A duplicate caller observes
         # the current job; it never creates a second tenant or administrator.
+        stale_before = datetime.utcnow() - timedelta(minutes=RUNNING_LEASE_MINUTES)
         claimed = db.execute(update(ProvisioningJob).where(
             ProvisioningJob.id == int(job_id),
             ProvisioningJob.is_deleted.is_(False),
-            ProvisioningJob.status.notin_((STATUS_SUCCEEDED, STATUS_CANCELLED, STATUS_RUNNING)),
+            ProvisioningJob.status.notin_((STATUS_SUCCEEDED, STATUS_CANCELLED)),
+            or_(
+                ProvisioningJob.status != STATUS_RUNNING,
+                ProvisioningJob.updated_at < stale_before,
+            ),
         ).values(
             status=STATUS_RUNNING,
             version=ProvisioningJob.version + 1,
@@ -328,7 +340,7 @@ def _step_roles(db, job: ProvisioningJob) -> dict:
 
 
 def _step_first_admin(db, job: ProvisioningJob) -> dict:
-    from app.models import User
+    from app.models import Role, User, UserRole
     from app.services import platform_service as psvc
 
     body = job.input_json or {}
@@ -340,6 +352,32 @@ def _step_first_admin(db, job: ProvisioningJob) -> dict:
     existing = db.scalars(select(User).where(
         User.tenant_id == job.tenant_id, User.login_name == login)).first()
     if existing:
+        admin_role = db.scalars(select(Role).where(
+            Role.tenant_id == job.tenant_id,
+            Role.role_code == "SCHOOL_ADMIN",
+            Role.is_deleted.is_(False),
+            Role.status.in_(("ACTIVE", "ENABLED")),
+        )).first()
+        active_assignment = None
+        if admin_role is not None:
+            active_assignment = db.scalars(select(UserRole).where(
+                UserRole.tenant_id == job.tenant_id,
+                UserRole.user_id == existing.id,
+                UserRole.role_id == admin_role.id,
+                UserRole.is_deleted.is_(False),
+                UserRole.status == "ACTIVE",
+            )).first()
+        if (
+            existing.is_deleted
+            or existing.user_type != "SCHOOL_ADMIN"
+            or existing.status != "ACTIVE"
+            or active_assignment is None
+        ):
+            raise AppException(
+                "DATA_CONFLICT",
+                "首位管理员登录名已被不兼容账号占用，禁止误复用",
+                http_status=409,
+            )
         return {"userId": str(existing.id), "loginName": login, "reused": True}
     # 复用 platform_service 真实创建逻辑（含套餐账号上限校验、临时密码哈希存储、
     # 内置SCHOOL_ADMIN角色兜底）；临时密码只在这次返回值里出现一次，不落库明文，
@@ -476,6 +514,8 @@ def cancel_job(job_id: int, *, reason: str, user: dict | None = None) -> dict:
         job, steps = _load_job(db, job_id)
         if job.status == STATUS_SUCCEEDED:
             raise AppException("DATA_CONFLICT", "已成功的开通任务不可取消", http_status=409)
+        if job.status == STATUS_RUNNING:
+            raise AppException("DATA_CONFLICT", "开通任务正在执行，不能并发取消", http_status=409)
         job.status = STATUS_CANCELLED
         job.last_error = reason
         db.commit()

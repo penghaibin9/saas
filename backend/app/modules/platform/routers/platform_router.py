@@ -173,6 +173,23 @@ def delegated_order_cancel(
     return success(out)
 
 
+@_routes.post("/orders/{order_no}/repair-activation", summary="修复已支付订单授权（delegated order.manage）")
+def delegated_order_activation_repair(
+    order_no: str,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("order.manage")),
+):
+    from app.services import platform_service as svc
+
+    out = svc.order_action(
+        order_no,
+        "repair-activation",
+        expected_version=_bundle._expected_version(body, operation="订单激活修复"),
+        reason=body.get("reason"),
+    )
+    return success(out, message="订单授权激活已修复")
+
+
 @_routes.post("/tenants/{tenant_id}/convert-to-paid", summary="赠送/特批转正式（正常客户必须走订单）")
 def delegated_tenant_convert_exception(
     tenant_id: int,

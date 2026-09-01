@@ -66,14 +66,14 @@
             <StatusTag :type="stepStatusTone(row.status)" :label="platformStatusLabel(row.status)" dot />
           </template>
           <template #cell-ops="{ row }">
-            <button v-if="row.status === 'FAILED'" class="mp-link" @click="retryStep(row)">重试</button>
-            <button v-if="row.status === 'FAILED'" class="mp-link" @click="compensateStep(row)">补偿</button>
-            <button v-if="row.status === 'FAILED' || row.status === 'COMPENSATED'" class="mp-link" @click="flagManual(row)">转人工</button>
+            <button v-if="row.status === 'FAILED'" class="mp-link" @click.stop="retryStep(row)">重试</button>
+            <button v-if="row.status === 'FAILED'" class="mp-link" @click.stop="compensateStep(row)">补偿</button>
+            <button v-if="row.status === 'FAILED' || row.status === 'COMPENSATED'" class="mp-link" @click.stop="flagManual(row)">转人工</button>
           </template>
         </DataTable>
         <div class="pcp__form">
-          <button v-if="selected.status !== 'SUCCEEDED' && selected.status !== 'CANCELLED'" class="mp-link" @click="resumeJob">续跑</button>
-          <button v-if="selected.status !== 'SUCCEEDED' && selected.status !== 'CANCELLED'" class="mp-link" @click="cancelJob">取消任务</button>
+          <button v-if="!['SUCCEEDED', 'CANCELLED', 'RUNNING'].includes(selected.status)" class="mp-link" @click="resumeJob">续跑</button>
+          <button v-if="!['SUCCEEDED', 'CANCELLED', 'RUNNING'].includes(selected.status)" class="mp-link" @click="cancelJob">取消任务</button>
         </div>
       </AppCard>
     </template>

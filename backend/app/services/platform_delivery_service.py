@@ -88,6 +88,7 @@ def _read_models(tenant_id: int | None = None) -> list[dict]:
     )
     from app.models.tenant_provisioning import ProvisioningJob, ProvisioningStepRun
     from app.services import platform_defaults as defaults
+    from app.services import platform_service
     from app.services.tenant_effective_state_service import effective_state_from_records
 
     db = get_sessionmaker()()
@@ -110,6 +111,10 @@ def _read_models(tenant_id: int | None = None) -> list[dict]:
             PlatformConfig.is_deleted.is_(False),
         )).all())
         metas, smoke_by_tenant, acceptance_by_tenant = _config_maps(config_rows)
+        deployed_head = ""
+        if smoke_by_tenant:
+            from app.modules.platform.services.platform_product_iam_hardening import deployed_commit_sha
+            deployed_head = deployed_commit_sha()
 
         paid_orders = _latest_by_tenant(db.scalars(select(PlatformOrder).where(
             PlatformOrder.tenant_id.in_(ids),
@@ -199,7 +204,7 @@ def _read_models(tenant_id: int | None = None) -> list[dict]:
             effective_package = str(meta.get("packageCode") or "")
             if paid_order is None:
                 commercial_state = "TRIAL_ONLY"
-            elif tenant_state == "ACTIVE" and paid_package and paid_package == effective_package:
+            elif platform_service.paid_order_activation_state(paid_order, tenant, meta)[0] == "ACTIVE":
                 commercial_state = "PAID_ACTIVE"
             else:
                 commercial_state = "PAID_REPAIR_REQUIRED"
@@ -219,14 +224,23 @@ def _read_models(tenant_id: int | None = None) -> list[dict]:
                 and acceptance_digest
                 and smoke.get("acceptanceDigest") == acceptance_digest
             )
-            consumer_smoke_state = "PASS" if smoke_matches_acceptance else (
-                str(smoke.get("status") or "NOT_RUN") if smoke else "NOT_RUN"
+            smoke_matches_head = bool(
+                smoke_matches_acceptance
+                and deployed_head
+                and str(smoke.get("exactHead") or "").lower() == deployed_head
             )
+            if smoke_matches_head:
+                consumer_smoke_state = "PASS"
+            elif smoke_matches_acceptance:
+                consumer_smoke_state = "STALE_HEAD"
+            else:
+                consumer_smoke_state = str(smoke.get("status") or "NOT_RUN") if smoke else "NOT_RUN"
 
             acceptance_row = acceptance_by_tenant.get(tid)
             platform_acceptance = dict(acceptance_row.config_json or {}) if acceptance_row else {}
             acceptance_current = bool(
                 platform_acceptance
+                and consumer_smoke_state == "PASS"
                 and acceptance_digest
                 and platform_acceptance.get("acceptanceDigest") == acceptance_digest
                 and platform_acceptance.get("consumerEvidenceDigest") == smoke.get("evidenceDigest")
@@ -264,6 +278,8 @@ def _read_models(tenant_id: int | None = None) -> list[dict]:
                 "entitlementState": entitlement_state,
                 "consumerSmokeState": consumer_smoke_state,
                 "consumerEvidenceDigest": smoke.get("evidenceDigest") or "",
+                "consumerExactHead": smoke.get("exactHead") or "",
+                "deployedExactHead": deployed_head,
                 "blockerCodes": [item["code"] for item in blockers],
                 "platformAcceptanceState": platform_acceptance_state,
             }
@@ -286,6 +302,7 @@ def _read_models(tenant_id: int | None = None) -> list[dict]:
                 "entitlementState": entitlement_state,
                 "consumerSmokeState": consumer_smoke_state,
                 "consumerSmoke": smoke,
+                "deployedExactHead": deployed_head,
                 "platformAcceptanceState": platform_acceptance_state,
                 "platformAcceptance": platform_acceptance,
                 "accountCounts": {

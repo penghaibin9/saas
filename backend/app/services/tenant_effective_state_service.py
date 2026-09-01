@@ -362,7 +362,10 @@ def apply_transition(
                         http_status=409,
                     )
                 authority = "CONTROLLED_EXCEPTION"
-            package = platform_service.get_package(str(data.get("packageCode") or "standard"))
+            requested_package = str(data.get("packageCode") or "standard").strip()
+            package = platform_service.get_package(requested_package)
+            if requested_package == "trial" or str(package.get("packageCode") or "") != requested_package:
+                raise AppException("VALIDATION_ERROR", "转正式必须选择有效的正式套餐", http_status=422)
             days = int(data.get("durationDays") or package["durationDays"])
             expire_at = now + timedelta(days=days)
             if authority == "PAID_ORDER" and data.get("expireAt"):

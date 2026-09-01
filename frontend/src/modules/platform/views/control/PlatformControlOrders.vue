@@ -16,6 +16,7 @@
           <div class="pcod__ops">
             <AppButton v-if="row.status === 'unpaid'" variant="primary" @click="openAction(row, 'mark-paid')">标记已支付</AppButton>
             <AppButton v-if="row.status === 'unpaid'" variant="danger" @click="openAction(row, 'cancel')">取消</AppButton>
+            <AppButton v-if="row.repairTaskRequired" variant="warning" @click="openAction(row, 'repair-activation')">修复激活</AppButton>
           </div>
         </template>
       </DataTable>
@@ -30,7 +31,7 @@
         <label class="pcod__field"><span>套餐</span>
           <AppSelect v-model="form.packageCode" :options="packageOptions" />
         </label>
-        <label class="pcod__field"><span>金额（元）</span><AppNumberInput v-model="form.amount" :min="0" :precision="2" /></label>
+        <label class="pcod__field"><span>金额（元）</span><AppNumberInput v-model="form.amount" :min="0.01" :precision="2" /></label>
         <label class="pcod__field"><span>备注</span><AppTextInput v-model="form.remark" /></label>
         <div class="pcod__form-ops">
           <AppButton variant="primary" :loading="saving" @click="submit">创建（未支付）</AppButton>
@@ -41,16 +42,14 @@
 
     <AppDrawer
       :visible="actionForm.visible"
-      :title="actionForm.action === 'mark-paid' ? '确认订单已支付' : '取消订单'"
+      :title="actionTitle"
       mode="modal"
       size="medium"
       @update:visible="actionForm.visible = $event"
     >
       <div class="pcod__form">
         <p class="pcod__action-note">
-          {{ actionForm.action === 'mark-paid'
-            ? '确认后将以该订单为商业 Authority 自动生效套餐、有效期与授权。'
-            : '取消后保留订单与审计流水，不会授予正式权益。' }}
+          {{ actionNote }}
         </p>
         <label class="pcod__field"><span>订单号</span><strong>{{ actionForm.row?.orderNo || '—' }}</strong></label>
         <label class="pcod__field"><span>变更原因（至少 5 个字符）</span>
@@ -58,11 +57,11 @@
         </label>
         <div class="pcod__form-ops">
           <AppButton
-            :variant="actionForm.action === 'mark-paid' ? 'primary' : 'danger'"
+            :variant="actionForm.action === 'cancel' ? 'danger' : 'primary'"
             :loading="actionForm.saving"
             @click="submitAction"
           >
-            {{ actionForm.action === 'mark-paid' ? '确认已支付并生效' : '确认取消订单' }}
+            {{ actionButtonText }}
           </AppButton>
           <AppButton :disabled="actionForm.saving" @click="actionForm.visible = false">返回</AppButton>
         </div>
@@ -112,6 +111,21 @@ export default {
   },
   created() {
     this.load()
+  },
+  computed: {
+    actionTitle() {
+      return { 'mark-paid': '确认订单已支付', cancel: '取消订单', 'repair-activation': '修复订单授权激活' }[this.actionForm.action] || '订单操作'
+    },
+    actionNote() {
+      return {
+        'mark-paid': '确认后将以该订单为商业 Authority 自动生效套餐、有效期与授权。',
+        cancel: '取消后保留订单与审计流水，不会授予正式权益。',
+        'repair-activation': '支付事实已经入账；本次只重试该订单对应的套餐与有效期激活，并保留修复审计。'
+      }[this.actionForm.action] || ''
+    },
+    actionButtonText() {
+      return { 'mark-paid': '确认已支付并生效', cancel: '确认取消订单', 'repair-activation': '确认修复激活' }[this.actionForm.action] || '确认'
+    }
   },
   methods: {
     async load() {
@@ -171,7 +185,7 @@ export default {
       this.actionForm.saving = false
       if (res.code === 0) {
         if (res.data?.repairTaskRequired) toast.warning('支付事实已入账，但授权激活失败；交付验收已阻断，请按待修复项处理')
-        else toast.success(action === 'mark-paid' ? '已入账并自动开通/续期' : '已取消')
+        else toast.success({ 'mark-paid': '已入账并自动开通/续期', cancel: '已取消', 'repair-activation': '订单授权激活已修复' }[action] || '操作成功')
         this.actionForm.visible = false
         this.load()
       } else {

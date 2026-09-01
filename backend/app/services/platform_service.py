@@ -4,6 +4,7 @@ from __future__ import annotations
 import secrets
 import uuid
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import case, func, select
 
@@ -668,6 +669,34 @@ def safe_rule(tenant_id: int, group: str, key: str):
 
 # ═══ 订单 ═══
 
+def paid_order_activation_state(order, tenant, meta: dict) -> tuple[str, bool]:
+    """Return activation truth without mistaking a previous renewal for this order.
+
+    Historical paid rows used a virtual version of 1 and predate the
+    ``lastCommercialOrderNo`` marker, so they retain the legacy package/status
+    check. New payments advance to version 2 before activation and version 3
+    only after this exact order has updated TENANT_META.
+    """
+    if str(order.status or "").lower() != "paid":
+        return "NOT_APPLICABLE", False
+    base_active = bool(
+        tenant and tenant.status == "ACTIVE"
+        and str(meta.get("status") or "").lower() == "active"
+        and str(meta.get("packageCode") or "") == str(order.package_code or "")
+    )
+    stored_version = int(order.version or 0)
+    if stored_version < 2:
+        return ("ACTIVE", False) if base_active else ("REPAIR_REQUIRED", True)
+    expected_expire = order.end_at.isoformat(timespec="seconds") if order.end_at else ""
+    exact_order_active = bool(
+        base_active
+        and stored_version >= 3
+        and str(meta.get("lastCommercialOrderNo") or "") == str(order.order_no)
+        and str(meta.get("expireAt") or "") == expected_expire
+    )
+    return ("ACTIVE", False) if exact_order_active else ("REPAIR_REQUIRED", True)
+
+
 def list_orders(tenant_id: int | None = None, status: str | None = None) -> list[dict]:
     _require_db()
     from app.models import PlatformConfig, PlatformOrder, Tenant
@@ -690,19 +719,10 @@ def list_orders(tenant_id: int | None = None, status: str | None = None) -> list
                 PlatformConfig.is_deleted.is_(False),
             )).all()
         }
-        def activation(row) -> tuple[str, bool]:
-            if row.status != "paid":
-                return "NOT_APPLICABLE", False
-            tenant = tenants.get(int(row.tenant_id))
-            meta = metas.get(int(row.tenant_id), {})
-            active = bool(
-                tenant and tenant.status == "ACTIVE"
-                and str(meta.get("status") or "").lower() == "active"
-                and str(meta.get("packageCode") or "") == str(row.package_code or "")
-            )
-            return ("ACTIVE", False) if active else ("REPAIR_REQUIRED", True)
         def order_row(row) -> dict:
-            activation_state, repair_required = activation(row)
+            activation_state, repair_required = paid_order_activation_state(
+                row, tenants.get(int(row.tenant_id)), metas.get(int(row.tenant_id), {}),
+            )
             return {
                 "orderId": str(row.id), "orderNo": row.order_no, "tenantId": str(row.tenant_id),
                 "tenantName": names.get(row.tenant_id, "-"), "orderType": row.order_type,
@@ -720,18 +740,33 @@ def list_orders(tenant_id: int | None = None, status: str | None = None) -> list
 def create_order(body: dict) -> dict:
     _require_db()
     from app.models import PlatformOrder
-    tid = int(body.get("tenantId") or 0)
+    try:
+        tid = int(body.get("tenantId") or 0)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "tenantId 格式无效", http_status=422) from exc
     get_tenant(tid)  # 校验租户存在
     package_code = str(body.get("packageCode") or "basic").strip()
     pkg = get_package(package_code)
     if str(pkg.get("packageCode") or "") != package_code or package_code == "trial":
         raise AppException("VALIDATION_ERROR", "订单 packageCode 必须是有效的正式套餐")
-    days = int(body.get("durationDays") or pkg["durationDays"])
+    try:
+        days = int(body.get("durationDays") or pkg["durationDays"])
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "订单服务期格式无效", http_status=422) from exc
     if not 1 <= days <= 3650:
         raise AppException("VALIDATION_ERROR", "订单服务期必须在 1~3650 天")
     order_type = str(body.get("orderType") or "NEW").strip().upper()
-    if order_type not in {"NEW", "RENEW", "UPGRADE", "ADDON"}:
+    if order_type not in {"NEW", "RENEW", "UPGRADE"}:
         raise AppException("VALIDATION_ERROR", "orderType 不支持")
+    try:
+        amount = Decimal(str(body.get("amount", pkg["price"]))).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "订单金额格式无效", http_status=422) from exc
+    if not amount.is_finite() or amount <= 0 or amount > Decimal("9999999999.99"):
+        raise AppException("VALIDATION_ERROR", "正式订单金额必须大于 0 且不超过字段上限", http_status=422)
+    remark = str(body.get("remark") or "").strip()
+    if len(remark) > 500:
+        raise AppException("VALIDATION_ERROR", "订单备注不能超过 500 个字符", http_status=422)
     now = datetime.now()
     service_start = now
     current_meta = tenant_meta(tid)
@@ -743,81 +778,160 @@ def create_order(body: dict) -> dict:
             service_start = now
     with session() as db:
         o = PlatformOrder(
-            tenant_id=tid, order_no=f"PO{now:%Y%m%d%H%M%S}{secrets.randbelow(900) + 100}",
+            tenant_id=tid, order_no=f"PO{now:%Y%m%d%H%M%S}{secrets.token_hex(4).upper()}",
             order_type=order_type, package_code=pkg["packageCode"],
-            amount=body.get("amount", pkg["price"]), paid_amount=0, status="unpaid",
+            amount=amount, paid_amount=0, status="unpaid",
             start_at=service_start, end_at=service_start + timedelta(days=days),
-            remark=str(body.get("remark") or ""))
+            remark=remark)
         db.add(o)
         db.commit()
         db.refresh(o)
         return {"orderId": str(o.id), "orderNo": o.order_no, "status": o.status, "version": int(o.version or 1)}
 
 
+def _activate_paid_order(
+    order_no: str,
+    *,
+    expected_version: int,
+    reason: str,
+    repaired: bool,
+) -> dict:
+    """Activate one paid order under an order-row lock and seal the exact order."""
+    from app.models import PlatformOrder, Tenant
+    from app.services.tenant_effective_state_service import get_effective_state, apply_transition
+
+    with session() as db:
+        order = db.scalars(select(PlatformOrder).where(
+            PlatformOrder.order_no == order_no,
+            PlatformOrder.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not order:
+            raise not_found("订单不存在")
+        current_version = max(1, int(order.version or 0))
+        if int(expected_version) != current_version:
+            raise AppException(
+                "DATA_CONFLICT", "订单已更新，请刷新后重试", http_status=409,
+                details={"expectedVersion": expected_version, "currentVersion": current_version},
+            )
+        if str(order.status or "").lower() != "paid":
+            raise AppException("DATA_CONFLICT", "只有已支付且待激活的订单可以修复", http_status=409)
+
+        tenant = db.scalars(select(Tenant).where(
+            Tenant.id == int(order.tenant_id), Tenant.is_deleted.is_(False),
+        )).first()
+        meta = tenant_meta(int(order.tenant_id))
+        expected_expire = order.end_at.isoformat(timespec="seconds") if order.end_at else ""
+        already_applied = bool(
+            tenant and tenant.status == "ACTIVE"
+            and str(meta.get("status") or "").lower() == "active"
+            and str(meta.get("packageCode") or "") == str(order.package_code or "")
+            and str(meta.get("lastCommercialOrderNo") or "") == str(order.order_no)
+            and str(meta.get("expireAt") or "") == expected_expire
+        )
+        if not already_applied:
+            state = get_effective_state(int(order.tenant_id), strict=True)
+            apply_transition(
+                int(order.tenant_id), "convert-to-paid", reason=reason,
+                expected_version=int(state["version"]),
+                payload={
+                    "packageCode": order.package_code,
+                    "durationDays": max(1, (order.end_at - order.start_at).days)
+                    if order.end_at and order.start_at else 365,
+                    "expireAt": expected_expire or None,
+                    "orderNo": order.order_no,
+                },
+                commercial_authority="PAID_ORDER",
+                audit_action="PLATFORM_TENANT_CONVERT_PAID",
+            )
+
+        order.version = current_version + 1
+        if repaired:
+            from app.services import audit_log
+            audit_log.record_critical_in_session(
+                db, "PLATFORM_ORDER_ACTIVATION_REPAIRED", f"order:{order.order_no}",
+                detail={"tenantId": str(order.tenant_id), "reason": reason,
+                        "expectedVersion": int(expected_version), "alreadyApplied": already_applied},
+                tenant_id=int(order.tenant_id), resource_id=str(order.id),
+            )
+        db.commit()
+        return {
+            "orderNo": order.order_no,
+            "status": "paid",
+            "tenantActivated": True,
+            "repairTaskRequired": False,
+            "expireAt": expected_expire or None,
+            "version": int(order.version),
+        }
+
+
 def order_action(order_no: str, action: str, *, expected_version: int, reason: str) -> dict:
-    """mark-paid：标记支付并自动开通/续期（试用转正式）；cancel：取消未支付订单。"""
+    """Pay, repair activation, or cancel an order with explicit optimistic locking."""
     _require_db()
+    reason_text = str(reason or "").strip()
+    if len(reason_text) < 5:
+        raise AppException("VALIDATION_ERROR", "订单变更原因至少5个字符")
+    if action == "repair-activation":
+        return _activate_paid_order(
+            order_no,
+            expected_version=int(expected_version),
+            reason=reason_text,
+            repaired=True,
+        )
+
     from app.models import PlatformOrder
     with session() as db:
-        o = db.scalars(select(PlatformOrder).where(PlatformOrder.order_no == order_no,
-                                                   PlatformOrder.is_deleted.is_(False))).first()
+        o = db.scalars(select(PlatformOrder).where(
+            PlatformOrder.order_no == order_no,
+            PlatformOrder.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not o:
             raise not_found("订单不存在")
-        if int(expected_version) != int(o.version or 1):
+        current_version = max(1, int(o.version or 0))
+        if int(expected_version) != current_version:
             raise AppException("DATA_CONFLICT", "订单已更新，请刷新后重试", http_status=409)
-        if len(str(reason or "").strip()) < 5:
-            raise AppException("VALIDATION_ERROR", "订单变更原因至少5个字符")
         if action == "mark-paid":
             if o.status != "unpaid":
                 raise AppException("DATA_CONFLICT", f"订单状态为 {o.status}，不能标记支付")
             o.status = "paid"
             o.paid_amount = o.amount
-            o.version += 1
+            o.version = current_version + 1
             from app.services import audit_log
             audit_log.record_critical_in_session(
                 db, "PLATFORM_ORDER_PAID", f"order:{o.order_no}",
                 detail={"tenantId": str(o.tenant_id), "packageCode": o.package_code,
-                        "reason": str(reason).strip(), "expectedVersion": int(expected_version)},
+                        "reason": reason_text, "expectedVersion": int(expected_version)},
                 tenant_id=int(o.tenant_id), resource_id=str(o.id),
             )
             db.commit()
             end_at = o.end_at.isoformat(timespec="seconds") if o.end_at else None
-            from app.services.tenant_effective_state_service import get_effective_state, apply_transition
-            state = get_effective_state(int(o.tenant_id), strict=True)
             try:
-                apply_transition(
-                    int(o.tenant_id), "convert-to-paid", reason=str(reason),
-                    expected_version=int(state["version"]),
-                    payload={
-                        "packageCode": o.package_code,
-                        "durationDays": max(1, (o.end_at - o.start_at).days) if o.end_at and o.start_at else 365,
-                        "expireAt": o.end_at.isoformat(timespec="seconds") if o.end_at else None,
-                        "orderNo": o.order_no,
-                    },
-                    commercial_authority="PAID_ORDER",
-                    audit_action="PLATFORM_TENANT_CONVERT_PAID",
+                return _activate_paid_order(
+                    order_no,
+                    expected_version=int(o.version),
+                    reason=reason_text,
+                    repaired=False,
                 )
-                activated, repair = True, False
             except Exception:
-                # Payment truth is not rolled back. Reconciliation exposes a
-                # repairable paid-but-unprovisioned item instead of hiding it.
-                activated, repair = False, True
-            return {"orderNo": o.order_no, "status": "paid", "tenantActivated": activated,
-                    "repairTaskRequired": repair, "expireAt": end_at}
+                # Payment truth is durable. The exact order stays at version 2
+                # and is exposed as repairable instead of hiding the failure.
+                return {
+                    "orderNo": o.order_no, "status": "paid", "tenantActivated": False,
+                    "repairTaskRequired": True, "expireAt": end_at, "version": int(o.version),
+                }
         if action == "cancel":
             if o.status != "unpaid":
                 raise AppException("DATA_CONFLICT", "仅未支付订单可取消")
             o.status = "cancelled"
-            o.version += 1
+            o.version = current_version + 1
             from app.services import audit_log
             audit_log.record_critical_in_session(
                 db, "PLATFORM_ORDER_CANCEL", f"order:{o.order_no}",
-                detail={"tenantId": str(o.tenant_id), "reason": str(reason).strip(),
+                detail={"tenantId": str(o.tenant_id), "reason": reason_text,
                         "expectedVersion": int(expected_version)},
                 tenant_id=int(o.tenant_id), resource_id=str(o.id),
             )
             db.commit()
-            return {"orderNo": o.order_no, "status": "cancelled"}
+            return {"orderNo": o.order_no, "status": "cancelled", "version": int(o.version)}
         raise AppException("VALIDATION_ERROR", f"不支持的订单操作：{action}")
 
 

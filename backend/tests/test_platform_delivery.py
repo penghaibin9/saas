@@ -205,6 +205,15 @@ def test_delivery_requires_current_complete_consumer_evidence(client, db_mode, m
     assert replay["data"]["platformAcceptanceState"] == "ACCEPTED"
 
     monkeypatch.setenv("DEPLOYED_COMMIT_SHA", "c" * 40)
+    drifted = client.get(
+        f"/api/v1/platform/tenants/{TENANT_ID}/delivery", headers=headers,
+    ).json()
+    assert drifted["code"] == 0, drifted
+    assert drifted["data"]["consumerSmokeState"] == "STALE_HEAD"
+    assert drifted["data"]["platformAcceptanceState"] == "STALE"
+    assert drifted["data"]["deliveryState"] == "BLOCKED"
+    assert drifted["data"]["deployedExactHead"] == "c" * 40
+
     next_head = client.post(
         f"/api/v1/platform/tenants/{TENANT_ID}/consumer-smoke",
         headers=headers,

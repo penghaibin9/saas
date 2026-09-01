@@ -33,6 +33,7 @@ _legacy.CRITICAL_ACTIONS = frozenset(set(_legacy.CRITICAL_ACTIONS) | {
     "PLATFORM_DELIVERY_ACCEPTED",
     "PLATFORM_ORDER_PAID",
     "PLATFORM_ORDER_CANCEL",
+    "PLATFORM_ORDER_ACTIVATION_REPAIRED",
 })
 
 from app.services.audit_log_legacy import *  # noqa: F401,F403,E402

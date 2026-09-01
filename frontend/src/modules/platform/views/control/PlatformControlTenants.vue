@@ -33,12 +33,12 @@
         <template #cell-expireAt="{ row }">{{ fmt(row.expireAt) }}</template>
         <template #cell-actions="{ row }">
           <div class="pct__ops">
-            <AppButton v-if="row.status === 'disabled'" variant="ghost" @click="act(row, 'enable')">启用</AppButton>
-            <AppButton v-else variant="danger" @click="act(row, 'disable')">停用</AppButton>
-            <AppButton v-if="row.status === 'trial'" variant="ghost" @click="act(row, 'extend-trial', { days: 7 })">延试用7天</AppButton>
-            <AppButton v-if="row.status === 'trial' || row.status === 'expired'" variant="ghost" @click="goOrder(row)">录订单 / 续费</AppButton>
-            <AppButton v-if="row.tenantCode === 'demo-school'" variant="warning" @click="act(row, 'reset-demo-data')">重置演示</AppButton>
-            <AppButton v-if="row.tenantCode === 'sandbox-school'" variant="warning" @click="resetSandbox(row)">恢复演示数据</AppButton>
+            <AppButton v-if="row.status === 'disabled'" variant="ghost" @click.stop="act(row, 'enable')">启用</AppButton>
+            <AppButton v-else variant="danger" @click.stop="act(row, 'disable')">停用</AppButton>
+            <AppButton v-if="row.status === 'trial'" variant="ghost" @click.stop="act(row, 'extend-trial', { days: 7 })">延试用7天</AppButton>
+            <AppButton v-if="row.status === 'trial' || row.status === 'expired'" variant="ghost" @click.stop="goOrder(row)">录订单 / 续费</AppButton>
+            <AppButton v-if="row.tenantCode === 'demo-school'" variant="warning" @click.stop="act(row, 'reset-demo-data')">重置演示</AppButton>
+            <AppButton v-if="row.tenantCode === 'sandbox-school'" variant="warning" @click.stop="resetSandbox(row)">恢复演示数据</AppButton>
           </div>
         </template>
       </DataTable>

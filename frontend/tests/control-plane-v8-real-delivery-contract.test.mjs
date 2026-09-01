@@ -10,6 +10,7 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8')
 
 const tenants = read('src/modules/platform/views/control/PlatformControlTenants.vue')
 const provisioning = read('src/modules/platform/views/control/PlatformProvisioningView.vue')
+const orders = read('src/modules/platform/views/control/PlatformControlOrders.vue')
 const onboarding = read('src/modules/platform/views/PlatformOnboardingCheckView.vue')
 const routes = read('src/modules/platform/platform.routes.js')
 const api = read('src/modules/platform/api/platformControl.api.js')
@@ -41,4 +42,16 @@ test('platform acceptance reads canonical delivery evidence without count fallba
   assert.match(api, /\/platform\/deliveries/)
   assert.match(api, /consumer-smoke/)
   assert.match(api, /delivery-acceptance/)
+})
+
+test('paid-order activation failures expose a real audited repair action', () => {
+  assert.match(orders, /repairTaskRequired/)
+  assert.match(orders, /repair-activation/)
+  assert.match(orders, /修复订单授权激活/)
+  assert.match(orders, /:min="0\.01"/)
+})
+
+test('running Provisioning jobs cannot be cancelled or resumed from the UI', () => {
+  assert.match(provisioning, /\['SUCCEEDED', 'CANCELLED', 'RUNNING'\]\.includes\(selected\.status\)/)
+  assert.match(provisioning, /@click\.stop="retryStep\(row\)"/)
 })
