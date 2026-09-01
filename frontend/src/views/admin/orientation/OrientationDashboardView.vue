@@ -66,7 +66,7 @@
 </template>
 
 <script>
-/** 页面 1：/admin/orientation 数字迎新首页 / 管理看板（数据全部来自 mock/api）。 */
+/** 页面 1：/admin/orientation 数字迎新首页 / 管理看板（数据全部来自迎新正式 API）。 */
 import { ModulePageShell, ModuleHero, LoadingState, ErrorState, RiskTag } from '@/components/business'
 import { getOrientationContext, getOrientationDashboard } from '@/modules/orientation/api/orientation.api'
 

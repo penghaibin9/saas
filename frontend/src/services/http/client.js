@@ -469,6 +469,10 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
     method: 'POST',
     auth: false,
     forceProbe: true,
+    // Password verification plus first-worker role/session warm-up can exceed the
+    // ordinary 4s production read timeout on modest school servers. Keep the
+    // larger budget scoped to interactive login so normal API failures stay fast.
+    timeoutMs: 15000,
     headers: browserSessionHeaders(),
     body: { loginName, password, tenantCode: tenantCode || undefined,
       clientType: challenge.clientType || 'PC', captchaId: challenge.captchaId || undefined,

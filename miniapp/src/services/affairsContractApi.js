@@ -64,6 +64,14 @@ export const affairsContractApi = {
     method: 'POST', data: { toBedId, reason }
   }),
   getMyDormTransfers: () => realRequest('/mobile/affairs/dorm/transfers/my'),
+  getMyDormStays: () => realRequest('/mobile/affairs/dorm/stays/my'),
+  getMyDormRectifications: (status = '') => realRequest(`/mobile/affairs/dorm/rectifications/my?pageSize=200${status ? `&status=${encodeURIComponent(status)}` : ''}`),
+  startDormRectification: (rectificationId, expectedVersion) => realRequest(`/mobile/affairs/dorm/rectifications/${rectificationId}/start`, {
+    method: 'POST', data: { expectedVersion }
+  }),
+  submitDormRectification: (rectificationId, data) => realRequest(`/mobile/affairs/dorm/rectifications/${rectificationId}/submit`, {
+    method: 'POST', data
+  }),
   secureActivityCheckin: (activityId, token) => realRequest(`/mobile/affairs/activities/${activityId}/secure-checkin`, {
     method: 'POST', data: { token }
   }),
@@ -136,6 +144,13 @@ export const affairsContractApi = {
   handleDormException: (exceptionId, note, version) => realRequest(`/mobile/teacher/affairs/dorm/exceptions/${exceptionId}/handle`, {
     method: 'POST', data: { note, version }
   }),
+  getDormInspectionTemplates: () => realRequest('/mobile/teacher/affairs/dorm/inspection-templates'),
+  getDormInspectionTasks: (status = '') => realRequest(`/mobile/teacher/affairs/dorm/check-tasks?pageSize=200${status ? `&status=${encodeURIComponent(status)}` : ''}`),
+  getDormInspectionRooms: (buildingId) => loadAllTransferPages(`/student-affairs/dorm/buildings/${buildingId}/rooms`),
+  getDormInspectionBeds: (roomId) => realRequest(`/student-affairs/dorm/rooms/${roomId}/beds?pageSize=200`),
+  submitDormInspectionRecord: (taskId, data) => realRequest(`/mobile/teacher/affairs/dorm/check-tasks/${taskId}/records`, { method: 'POST', data }),
+  getDormRectifications: (status = '') => realRequest(`/mobile/teacher/affairs/dorm/rectifications?pageSize=200${status ? `&status=${encodeURIComponent(status)}` : ''}`),
+  recheckDormRectification: (rectificationId, data) => realRequest(`/mobile/teacher/affairs/dorm/rectifications/${rectificationId}/recheck`, { method: 'POST', data }),
   recordTalk: (talkId, data, version) => realRequest(`/mobile/teacher/talk/${talkId}/record`, {
     method: 'POST', data: { ...(data || {}), version }
   }),

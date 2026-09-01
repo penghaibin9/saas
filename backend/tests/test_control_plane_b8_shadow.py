@@ -30,8 +30,8 @@ def test_b8_concrete_catalog_materializes_all_previously_legacy_concrete_codes()
     # permission metadata to the same concrete tenant catalog. Keep the exact
     # decomposition frozen so a count change cannot silently mask a regression.
     assert extension["baseConcreteCount"] == 449
-    assert extension["postCutoverCompatibilityCount"] == 191
-    assert extension["count"] == 640
+    assert extension["postCutoverCompatibilityCount"] == 192
+    assert extension["count"] == 641
     assert extension["count"] == (
         extension["baseConcreteCount"] + extension["postCutoverCompatibilityCount"]
     )

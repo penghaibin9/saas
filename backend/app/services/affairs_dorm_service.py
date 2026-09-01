@@ -15,6 +15,7 @@ from sqlalchemy import and_, case, func, or_, select, update
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, no_permission, not_found
 from app.core.pagination import normalize_page
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
 GENDER_LIMITS = ("MALE", "FEMALE", "MIXED")
@@ -46,9 +47,9 @@ def _counselor_assignee_id(db, student_id) -> int:
     from app.models import SchoolClass, StudentProfile
     if not student_id:
         return 0
-    s = db.get(StudentProfile, int(student_id))
+    s = tenant_get(db, StudentProfile, int(student_id))
     if s and s.class_id:
-        c = db.get(SchoolClass, int(s.class_id))
+        c = tenant_get(db, SchoolClass, int(s.class_id))
         if c and c.counselor_id:
             return int(c.counselor_id)
     return 0
@@ -186,11 +187,12 @@ def _dorm_scope_building_ids(db, user):
 
 # ═══════════ 楼栋 ═══════════
 
-def _building_row(b, vacant=None, total=None) -> dict:
+def _building_row(b, vacant=None, total=None, occupied=None, locked=None) -> dict:
     return {"buildingId": str(b.id), "buildingName": b.building_name,
             "buildingCode": b.building_code or "", "genderLimit": b.gender_limit,
             "managerTeacherKey": b.manager_teacher_key or "", "floorCount": b.floor_count,
-            "status": b.status, "vacantBeds": vacant, "totalBeds": total}
+            "status": b.status, "vacantBeds": vacant, "totalBeds": total,
+            "occupiedBeds": occupied, "lockedBeds": locked}
 
 
 def create_building(body, user) -> dict:
@@ -284,6 +286,8 @@ def list_buildings(user, gender=None, page=1, page_size=50):
                 DormBed.building_id.label("building_id"),
                 func.count(DormBed.id).label("bed_total"),
                 func.sum(case((DormBed.status == "VACANT", 1), else_=0)).label("vacant_total"),
+                func.sum(case((DormBed.status == "OCCUPIED", 1), else_=0)).label("occupied_total"),
+                func.sum(case((DormBed.status == "LOCKED", 1), else_=0)).label("locked_total"),
             )
             .where(DormBed.tenant_id == _tid(), DormBed.is_deleted.is_(False))
             .group_by(DormBed.building_id)
@@ -294,6 +298,8 @@ def list_buildings(user, gender=None, page=1, page_size=50):
                 DormBuilding,
                 func.coalesce(bed_stats.c.vacant_total, 0),
                 func.coalesce(bed_stats.c.bed_total, 0),
+                func.coalesce(bed_stats.c.occupied_total, 0),
+                func.coalesce(bed_stats.c.locked_total, 0),
             )
             .outerjoin(bed_stats, bed_stats.c.building_id == DormBuilding.id)
             .where(*conds)
@@ -301,8 +307,9 @@ def list_buildings(user, gender=None, page=1, page_size=50):
             .offset((page - 1) * page_size).limit(page_size)
         ).all()
         return [
-            _building_row(building, int(vacant or 0), int(bed_total or 0))
-            for building, vacant, bed_total in rows
+            _building_row(building, int(vacant or 0), int(bed_total or 0),
+                          int(occupied or 0), int(locked or 0))
+            for building, vacant, bed_total, occupied, locked in rows
         ], total
 
 
@@ -432,7 +439,7 @@ def checkin(bed_id, user, student_id) -> dict:
             raise AppException("DATA_CONFLICT", "该床位刚刚已被其他人占用，请刷新后重试")
         db.refresh(bed)
         _release_student_beds(db, s.id, exclude_bed_id=bed.id)
-        room = db.get(DormRoom, int(bed.room_id))
+        room = tenant_get(db, DormRoom, int(bed.room_id))
         rec_id = _writeback_dorm_record(db, s.id, b.building_name if b else "",
                                         room.room_no if room else "", bed.bed_no)
         bed.cs_dorm_record_id = rec_id
@@ -446,9 +453,8 @@ def checkin(bed_id, user, student_id) -> dict:
 # ── 学校级"学生自选宿舍"开关（规则中心）──
 
 def is_self_select_enabled() -> bool:
-    from app.services.platform_service import get_config_json
-    cfg = get_config_json(_tid(), _DORM_CFG_TYPE, _SELF_SELECT_KEY)
-    return bool(cfg.get("enabled", False)) if cfg else False
+    from app.services.dorm_allocation_service import public_config
+    return bool(public_config().get("selfSelectEnabled"))
 
 
 # 学生端提醒文案（前端/小程序直接展示，无需自己拼）
@@ -457,29 +463,28 @@ _NOTICE_ON = "已开放学生自选宿舍，请在开放时段内选择空床完
 
 
 def get_dorm_config(user) -> dict:
-    """前端/小程序据此决定是否显示"学生自选床位"入口，并直接展示 studentNotice。"""
-    on = is_self_select_enabled()
-    return {"selfSelectEnabled": on,
-            "assignMode": "SELF_SELECT" if on else "COUNSELOR_ASSIGN",
-            "studentNotice": _NOTICE_ON if on else _NOTICE_OFF}
+    """兼容读接口；D3 起仅投影已发布且处于时间窗的分配批次。"""
+    from app.services.dorm_allocation_service import public_config
+    return public_config()
 
 
 def set_self_select(user, enabled: bool) -> dict:
-    """学校管理员开/关学生自选宿舍。"""
-    from app.services.platform_service import put_config_json
-    put_config_json(_tid(), _DORM_CFG_TYPE, _SELF_SELECT_KEY, {"enabled": bool(enabled)})
-    _n, _r, _u = _op()
-    with session() as db:
-        _audit(db, "DORM_CONFIG", 0, "SET_SELF_SELECT", f"enabled={bool(enabled)}")
-        db.commit()
-    return get_dorm_config(user)
+    """旧全局开关退出权威，避免绕过批次学生/资源池与时间窗。"""
+    raise AppException(
+        "INVALID_STATE",
+        "学生自选由住宿分配批次和时间窗控制，请在‘分配计划’中发布。",
+    )
 
 
 def self_select_checkin(bed_id, user, student_id) -> dict:
-    """学生自选床位入住（学生端调用）。学校未放开 → 403，引导找辅导员分配。"""
-    if not is_self_select_enabled():
-        raise no_permission(_NOTICE_OFF)
-    return checkin(bed_id, user, student_id)
+    """兼容旧学生入口，最终权威仍是分配项与床位的原子确认。"""
+    from app.services.mobile_student_service import resolve_student
+    from app.services.dorm_allocation_service import student_select_bed
+    with session() as db:
+        student = resolve_student(db, user)
+        if not student or int(student.id) != int(student_id):
+            raise no_permission("学生自选仅允许操作本人分配项")
+    return student_select_bed(user, int(bed_id))
 
 
 def checkout(bed_id, user, expected_version=None) -> dict:
@@ -493,7 +498,7 @@ def checkout(bed_id, user, expected_version=None) -> dict:
             raise AppException("DATA_CONFLICT", "该床位无人入住")
         atomic_claim_version(db, bed, expected_version)
         if bed.cs_dorm_record_id:
-            rec = db.get(CsDormRecord, int(bed.cs_dorm_record_id))
+            rec = tenant_get(db, CsDormRecord, int(bed.cs_dorm_record_id))
             if rec:
                 rec.status, rec.record_status = "OUT", "INACTIVE"
         bed.student_id, bed.status, bed.occupied_at, bed.cs_dorm_record_id, bed.version = \
@@ -554,14 +559,14 @@ def review_transfer(transfer_id, user, action, reason="", expected_version=None)
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("调宿申请不存在")
         if t.to_bed_id:
-            to_bed_for_scope = db.get(DormBed, int(t.to_bed_id))
+            to_bed_for_scope = tenant_get(db, DormBed, int(t.to_bed_id))
             if to_bed_for_scope:
                 _require_dorm_scope(db, to_bed_for_scope.building_id, user)
         if t.status not in TRANSFER_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该调宿当前状态不可审批")
         atomic_claim_version(db, t, expected_version)
         from app.models import StudentProfile
-        stu = db.get(StudentProfile, int(t.student_id)) if t.student_id else None
+        stu = tenant_get(db, StudentProfile, int(t.student_id)) if t.student_id else None
         stu_name = (stu.real_name if stu else "") or ""
         if action == "REJECT":
             if not reason or len(reason.strip()) < 5:
@@ -575,7 +580,7 @@ def review_transfer(transfer_id, user, action, reason="", expected_version=None)
                 nxt = TRANSFER_NODES[i + 1]
                 t.current_node, t.status, t.version = nxt, nxt, t.version + 1
                 _todo_done(db, t.id, TODO_TRANSFER)
-                to_bed = db.get(DormBed, int(t.to_bed_id)) if t.to_bed_id else None
+                to_bed = tenant_get(db, DormBed, int(t.to_bed_id)) if t.to_bed_id else None
                 building_id = to_bed.building_id if to_bed else None
                 _push_dorm_manager_todos(
                     db, biz_id=t.id, building_id=building_id, student_id=t.student_id,
@@ -588,8 +593,8 @@ def review_transfer(transfer_id, user, action, reason="", expected_version=None)
                 if not to_bed or to_bed.status != "VACANT":
                     raise AppException("DATA_CONFLICT", "目标床位已被占用，调宿无法执行")
                 _release_student_beds(db, t.student_id)  # 释放原床
-                b = db.get(DormBuilding, int(to_bed.building_id))
-                room = db.get(DormRoom, int(to_bed.room_id))
+                b = tenant_get(db, DormBuilding, int(to_bed.building_id))
+                room = tenant_get(db, DormRoom, int(to_bed.room_id))
                 rec_id = _writeback_dorm_record(db, t.student_id, b.building_name if b else "",
                                                 room.room_no if room else "", to_bed.bed_no)
                 to_bed.student_id, to_bed.status, to_bed.occupied_at = t.student_id, "OCCUPIED", datetime.utcnow()
@@ -677,7 +682,7 @@ def submit_check_record(task_id, user, body) -> dict:
             building_id = task.building_id or (room.building_id if room else None)
             stu_name = ""
             if sid_int:
-                sp = db.get(StudentProfile, sid_int)
+                sp = tenant_get(db, StudentProfile, sid_int)
                 stu_name = (sp.real_name if sp else "") or ""
             _push_dorm_manager_todos(
                 db, biz_id=exc.id, building_id=building_id, student_id=sid_int,
@@ -702,13 +707,18 @@ def occupancy_stats(user):
     with session() as db:
         scope = _dorm_scope_building_ids(db, user)
         conds_total = [DormBed.tenant_id == _tid(), DormBed.is_deleted.is_(False)]
-        conds_occ = conds_total + [DormBed.status == "OCCUPIED"]
         if scope is not None:
             conds_total.append(DormBed.building_id.in_(list(scope)) if scope else DormBed.building_id.in_([-1]))
-            conds_occ.append(DormBed.building_id.in_(list(scope)) if scope else DormBed.building_id.in_([-1]))
-        total = db.scalar(select(func.count()).select_from(DormBed).where(*conds_total)) or 0
-        occupied = db.scalar(select(func.count()).select_from(DormBed).where(*conds_occ)) or 0
-        return {"totalBeds": total, "occupiedBeds": occupied, "vacantBeds": total - occupied,
+        total, occupied, vacant, locked = db.execute(select(
+            func.count(DormBed.id),
+            func.sum(case((DormBed.status == "OCCUPIED", 1), else_=0)),
+            func.sum(case((DormBed.status == "VACANT", 1), else_=0)),
+            func.sum(case((DormBed.status == "LOCKED", 1), else_=0)),
+        ).where(*conds_total)).one()
+        total, occupied, vacant, locked = (int(total or 0), int(occupied or 0),
+                                            int(vacant or 0), int(locked or 0))
+        return {"totalBeds": total, "occupiedBeds": occupied, "vacantBeds": vacant,
+                "lockedBeds": locked,
                 "occupancyRate": round(occupied / total, 3) if total else 0.0}
 
 
@@ -858,7 +868,7 @@ def _resolve_exception_student(db, exception_id, cs_student_id):
     from app.models import CsServiceStudent, DormBed, DormCheckRecord, DormRoom, StudentProfile
     real_name, student_no, global_sid = "", "", None
     if cs_student_id:
-        cs = db.get(CsServiceStudent, int(cs_student_id))
+        cs = tenant_get(db, CsServiceStudent, int(cs_student_id))
         if cs and not cs.is_deleted:
             # CsServiceStudent 行确实存在——即使它没连 student_id（未做新旧数据对齐），也不能把
             # cs_student_id（CsServiceStudent 主键序列）误当 StudentProfile 主键去查，两套序列独立，
@@ -880,7 +890,7 @@ def _resolve_exception_student(db, exception_id, cs_student_id):
             DormCheckRecord.tenant_id == _tid(), DormCheckRecord.related_exception_id == exception_id,
             DormCheckRecord.is_deleted.is_(False))).first()
         if rec and rec.room_id:
-            room = db.get(DormRoom, int(rec.room_id))
+            room = tenant_get(db, DormRoom, int(rec.room_id))
             if room:
                 building_id = room.building_id
     return real_name, student_no, building_id, global_sid
@@ -988,8 +998,35 @@ def list_exceptions(user, status=None, page=1, page_size=50, student_id=None):
         from app.models import AffairsRiskRecord, User
         from app.services.affairs_risk_service import L_RISK
         exception_ids = [int(x.id) for x in rows]
-        risks = db.scalars(select(AffairsRiskRecord).where(AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.source == "DORM", AffairsRiskRecord.source_ref_id.in_(exception_ids), AffairsRiskRecord.is_deleted.is_(False))).all() if exception_ids else []
-        risk_by_exception = {int(r.source_ref_id): r for r in risks if r.source_ref_id}
+        check_links = db.scalars(select(DormCheckRecord).where(
+            DormCheckRecord.tenant_id == _tid(),
+            DormCheckRecord.related_exception_id.in_(exception_ids or [-1]),
+            DormCheckRecord.is_deleted.is_(False),
+        )).all() if exception_ids else []
+        risk_id_by_exception = {
+            int(row.related_exception_id): int(row.related_risk_id)
+            for row in check_links if row.related_exception_id and row.related_risk_id
+        }
+        linked_risk_ids = set(risk_id_by_exception.values())
+        risks = db.scalars(select(AffairsRiskRecord).where(
+            AffairsRiskRecord.tenant_id == _tid(),
+            AffairsRiskRecord.source == "DORM",
+            or_(
+                AffairsRiskRecord.id.in_(linked_risk_ids or {-1}),
+                AffairsRiskRecord.source_ref_id.in_(exception_ids or [-1]),
+            ),
+            AffairsRiskRecord.is_deleted.is_(False),
+        )).all() if exception_ids else []
+        risk_by_id = {int(r.id): r for r in risks}
+        risk_by_exception = {
+            exception_id: risk_by_id[risk_id]
+            for exception_id, risk_id in risk_id_by_exception.items()
+            if risk_id in risk_by_id
+        }
+        # 兼容 D5 前以异常/检查记录 ID 直接作为 source_ref_id 的历史风险。
+        for risk in risks:
+            if risk.source_ref_id and int(risk.source_ref_id) in exception_ids:
+                risk_by_exception.setdefault(int(risk.source_ref_id), risk)
         owner_ids = {int(r.owner_id) for r in risks if r.owner_id}
         owners = db.scalars(select(User).where(User.tenant_id == _tid(), User.id.in_(owner_ids), User.is_deleted.is_(False))).all() if owner_ids else []
         owner_name_by_id = {int(u.id): (u.real_name or u.login_name or "") for u in owners}

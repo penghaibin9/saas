@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, false, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -11,9 +12,16 @@ from app.core.tenant_scoped import tenant_get
 from app.models import (GreenChannelApplication, OrientationArchive, OrientationAuditTrail,
                         OrientationBatch, OrientationCheckinPoint, OrientationException,
                         OrientationExceptionFollowup, OrientationFlowConfig, OrientationMaterial,
-                        OrientationNoticeTask, OrientationStudent)
+                        OrientationNoticeTask, OrientationPaymentAccount, OrientationStudent,
+                        StudentProfile, User)
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
 from app.services.db_service import _iso, _tid, session
+from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                    ensure_student_steps,
+                                                    initialize_batch_student_steps,
+                                                    set_student_step_status,
+                                                    student_flow_steps,
+                                                    student_step_projection)
 
 L_STAGE = {"ADMITTED": "已录取", "PRE_STUDENT_VERIFIED": "预报到已核验",
            "REGISTERED_PENDING_ENROLLMENT": "已报到待注册", "ENROLLED": "已入学",
@@ -46,27 +54,8 @@ REGISTRATION_STEPS = [
 ]
 
 
-def _active_steps(db) -> list[dict]:
-    """报到环节清单：优先读 t_orientation_flow_config（enabled=True 按 sort_order），
-    尚未配置（如全新租户、批次未跑过 seed）时退回默认 7 环节常量。
-    真正让「报到流程配置」页面的启停生效——之前进度统计/漏斗恒用写死常量，配置了等于没配置。"""
-    rows = db.scalars(select(OrientationFlowConfig).where(
-        OrientationFlowConfig.tenant_id == _tid(), OrientationFlowConfig.is_deleted.is_(False),
-        OrientationFlowConfig.enabled.is_(True)).order_by(OrientationFlowConfig.sort_order)).all()
-    if not rows:
-        return REGISTRATION_STEPS
-    return [{"key": r.step_key, "label": r.step_name} for r in rows]
-
-
 def _default_steps_json() -> dict:
     return {s["key"]: "TODO" for s in REGISTRATION_STEPS}
-
-
-def _merged_steps_json(raw: dict | None) -> dict:
-    base = _default_steps_json()
-    if raw:
-        base.update(raw)
-    return base
 
 
 def _op():
@@ -76,9 +65,11 @@ def _op():
 
 def _audit(db, biz_type, biz_id, action, detail="", before="", after=""):
     name, role = _op()
-    db.add(OrientationAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=str(biz_id),
-                                 action=action, operator=name, role_name=role, detail=detail,
-                                 before_val=before, after_val=after, occurred_at=datetime.utcnow()))
+    row = OrientationAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=str(biz_id),
+                                action=action, operator=name, role_name=role, detail=detail,
+                                before_val=before, after_val=after, occurred_at=datetime.utcnow())
+    db.add(row)
+    return row
 
 
 def _get_student(db, sid) -> OrientationStudent:
@@ -88,20 +79,36 @@ def _get_student(db, sid) -> OrientationStudent:
     return s
 
 
+def assert_orientation_student_scope(db, student: OrientationStudent, user=None) -> None:
+    """教师端迎新详情/审核/文件统一复用稳定学籍数据范围；未绑定行仅全校范围可见。"""
+    from app.core.affairs_security import build_affairs_context, no_data_scope
+    ctx = build_affairs_context(user or get_current_user_ctx() or {}, db)
+    if ctx.scope_type == "TENANT_ALL":
+        return
+    if not student.student_id:
+        raise no_data_scope("迎新记录尚未绑定稳定学生主档，不在当前账号可证明的数据范围内")
+    ctx.require_student(db, int(student.student_id))
+
+
 def _amt(v) -> float:
     return float(v or 0)
 
 
-def _stu_row(s: OrientationStudent, *, detail: bool = False) -> dict:
+def _stu_row(s: OrientationStudent, *, db=None, detail: bool = False) -> dict:
     row = {
         # studentId 固定为迎新台账主键，避免绑定学籍后与 StudentProfile.id 混用导致详情/操作串号。
         # profileStudentId 才是绑定的学籍档案 id（未绑定为空）。
         "id": str(s.id), "studentId": str(s.id),
         "profileStudentId": str(s.student_id) if s.student_id else "",
-        "name": s.name,
-        "admissionNo": s.admission_no, "gender": s.gender or "", "collegeName": s.college_name or "",
-        "majorName": s.major_name or "", "classId": s.class_id or "", "className": s.class_name or "",
-        "grade": s.grade or "", "phone": mask_phone_encrypted(s.phone_encrypted),
+        "name": s.name, "batchId": str(s.batch_id),
+        "admissionNo": s.admission_no, "studentNo": s.student_no or "",
+        "gender": s.gender or "", "collegeName": s.college_name or "",
+        "collegeId": str(s.college_id) if s.college_id else "",
+        "majorName": s.major_name or "", "majorId": str(s.major_id) if s.major_id else "",
+        "classId": str(s.class_id) if s.class_id else "", "className": s.class_name or "",
+        "grade": s.grade or "", "admissionType": s.admission_type or "",
+        "identityStatus": s.identity_status,
+        "phone": mask_phone_encrypted(s.phone_encrypted),
         "idCard": mask_id_card_encrypted(s.id_card_encrypted), "origin": s.origin or "",
         "stage": s.stage, "stageLabel": L_STAGE.get(s.stage, s.stage),
         "reportStatus": s.report_status, "reportStatusLabel": L_REPORT.get(s.report_status, s.report_status),
@@ -117,7 +124,9 @@ def _stu_row(s: OrientationStudent, *, detail: bool = False) -> dict:
         "updateTime": _iso(s.updated_at),
     }
     if detail:
-        row["steps"] = _merged_steps_json(s.steps_json)
+        if db is None:
+            raise RuntimeError("detail serialization requires canonical step session")
+        row["steps"] = student_step_projection(db, s)
         row["voidReason"] = s.void_reason or ""
         row["checkinTime"] = _iso(s.checkin_time) or ""
         row["exceptionNote"] = s.exception_note or ""
@@ -132,12 +141,32 @@ def _page(items, page, page_size):
 
 # ═══ 学生台账 ═══
 
-def list_students(page, page_size, keyword=None, class_id=None, stage=None, report_status=None,
-                  payment_status=None, risk_level=None):
+def list_students(page, page_size, keyword=None, class_id=None, batch_id=None, stage=None,
+                  report_status=None, payment_status=None, risk_level=None, user=None):
     with session() as db:
         q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
                                              OrientationStudent.is_deleted.is_(False),
                                              OrientationStudent.record_status == "ACTIVE")
+        # 迎新台账只有已绑定 StudentProfile 的记录才可证明属于班级/学生范围。
+        # 未绑定记录对范围角色 fail-closed；TENANT_ALL 才能查看。这一裁决同时被
+        # 通用导出复用，避免列表收敛而导出泄露全校数据。
+        from app.core.affairs_security import student_directory_scope
+        class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(
+                OrientationStudent.student_id.in_(student_ids)
+                if student_ids else false()
+            )
+        elif class_ids is not None:
+            if not class_ids:
+                q = q.where(false())
+            else:
+                scoped_profiles = select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(),
+                    StudentProfile.is_deleted.is_(False),
+                    StudentProfile.class_id.in_(class_ids),
+                )
+                q = q.where(OrientationStudent.student_id.in_(scoped_profiles))
         if stage:
             q = q.where(OrientationStudent.stage == stage)
         if report_status:
@@ -146,8 +175,16 @@ def list_students(page, page_size, keyword=None, class_id=None, stage=None, repo
             q = q.where(OrientationStudent.payment_status == payment_status)
         if risk_level:
             q = q.where(OrientationStudent.risk_level == risk_level)
+        if batch_id not in (None, ""):
+            try:
+                q = q.where(OrientationStudent.batch_id == int(batch_id))
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "batchId 须为数字")
         if class_id:
-            q = q.where(OrientationStudent.class_id == class_id)
+            try:
+                q = q.where(OrientationStudent.class_id == int(class_id))
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "classId 须为数字")
         if keyword:
             kw = f"%{keyword.strip()}%"
             q = q.where(or_(OrientationStudent.name.like(kw),
@@ -160,9 +197,10 @@ def list_students(page, page_size, keyword=None, class_id=None, stage=None, repo
         return [_stu_row(r) for r in rows], total
 
 
-def get_student_detail(sid) -> dict:
+def get_student_detail(sid, user=None) -> dict:
     with session() as db:
         s = _get_student(db, sid)
+        assert_orientation_student_scope(db, s, user)
         gcs = db.scalars(select(GreenChannelApplication).where(
             GreenChannelApplication.tenant_id == _tid(),
             GreenChannelApplication.ori_student_id == s.id).order_by(GreenChannelApplication.id)).all()
@@ -176,8 +214,8 @@ def get_student_detail(sid) -> dict:
             OrientationAuditTrail.tenant_id == _tid(),
             OrientationAuditTrail.biz_id == str(s.id)).order_by(OrientationAuditTrail.id.desc()).limit(20)).all()
         return {
-            "student": _stu_row(s, detail=True),
-            "steps": [dict(x) for x in REGISTRATION_STEPS],
+            "student": _stu_row(s, db=db, detail=True),
+            "steps": student_flow_steps(db, s),
             "greenChannels": [_gc_row(g) for g in gcs],
             "materials": [_mat_row(m) for m in mats],
             "exceptions": [_exc_row(e) for e in excs],
@@ -195,20 +233,61 @@ def create_student(body: dict, *, db=None) -> dict:
     from contextlib import nullcontext
     owns_session = db is None
     with (session() if owns_session else nullcontext(db)) as db:
+        try:
+            batch_id = int(body.get("batchId") or 0)
+        except (TypeError, ValueError):
+            batch_id = 0
+        batch = db.get(OrientationBatch, batch_id) if batch_id else None
+        if not batch or batch.is_deleted or int(batch.tenant_id) != int(_tid()):
+            raise AppException("VALIDATION_ERROR", "请选择本校有效迎新批次")
+        if batch.status == "CLOSED":
+            raise AppException("INVALID_STATE", "已结束迎新批次不可新增名单")
+
+        from app.services.student_org_validator import validate_student_org_path
+        org = validate_student_org_path(
+            db,
+            tenant_id=_tid(),
+            college_id=body.get("collegeId"),
+            major_id=body.get("majorId"),
+            class_id=body.get("classId"),
+            actor=get_current_user_ctx() or {},
+            require_complete_org=True,
+        )
+        from app.models import College, Major, SchoolClass
+        college = db.get(College, org.college_id)
+        major = db.get(Major, org.major_id)
+        school_class = db.get(SchoolClass, org.class_id)
+
         dup = db.scalars(select(OrientationStudent).where(
             OrientationStudent.tenant_id == _tid(), OrientationStudent.admission_no == adm,
             OrientationStudent.is_deleted.is_(False))).first()
         if dup:
             raise AppException("DATA_CONFLICT", f"录取编号 {adm} 已存在")
+        source_type = "DOMAIN_IMPORT" if body.get("sourceType") == "DOMAIN_IMPORT" else "MANUAL"
+        source_record_id = str(body.get("sourceRecordId") or adm).strip()
+        source_dup = db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.batch_id == batch_id,
+            OrientationStudent.source_type == source_type,
+            OrientationStudent.source_record_id == source_record_id,
+        )).first()
+        if source_dup:
+            raise AppException("DATA_CONFLICT", f"来源记录 {source_record_id} 已导入该批次")
         from app.core.field_crypto import encrypt_field
         s = OrientationStudent(
-            tenant_id=_tid(), name=name, admission_no=adm, major_name=body.get("majorName"),
-            class_id=body.get("classId"), class_name=body.get("className"),
+            tenant_id=_tid(), batch_id=batch_id, name=name, admission_no=adm,
+            student_no=str(body.get("studentNo") or "").strip() or None,
+            college_id=org.college_id, college_name=college.college_name,
+            major_id=org.major_id, major_name=major.major_name,
+            class_id=org.class_id, class_name=school_class.class_name,
+            gender=body.get("gender"), grade=body.get("grade"),
+            admission_type=body.get("admissionType"),
             phone_encrypted=encrypt_field(body.get("phone")),
             id_card_encrypted=encrypt_field(body.get("idCard")),
             origin=body.get("origin"), counselor=body.get("counselor"),
             stage="ADMITTED", report_status="NOT_REPORTED",
-            steps_json=_default_steps_json())
+            steps_json=_default_steps_json(), source_type=source_type,
+            source_record_id=source_record_id)
         # 可选绑定学籍档案：优先 profileStudentId（与列表 studentId=迎新台账PK 区分）；
         # 兼容旧入参 studentId（仅当其指向真实学籍档案时才绑定，避免把迎新 PK 误当档案 id）。
         raw_sid = body.get("profileStudentId")
@@ -224,8 +303,18 @@ def create_student(body: dict, *, db=None) -> dict:
             if not prof or prof.is_deleted or int(prof.tenant_id) != int(_tid()):
                 raise AppException("VALIDATION_ERROR", "profileStudentId 对应学籍不存在或不属于本校")
             s.student_id = sid_int
+            s.identity_status = "LINKED"
+        else:
+            s.identity_status = "UNLINKED"
         db.add(s)
         db.flush()
+        ensure_student_steps(db, s, status_source="PROCESS_FACT")
+        db.add(OrientationPaymentAccount(
+            tenant_id=_tid(), orientation_student_id=s.id, student_id=s.student_id,
+            payable_amount=0, paid_amount=0, status="UNPAID",
+            source_type="LEGACY_BACKFILL", source_biz_id=f"orientation-student:{s.id}",
+            synced_at=datetime.utcnow(),
+        ))
         _audit(db, "STUDENT", s.id, "新增新生记录", f"{name}（{adm}）")
         if owns_session:
             db.commit()
@@ -239,13 +328,30 @@ def update_student(sid, body: dict) -> dict:
     with session() as db:
         s = _get_student(db, sid)
         field_map = {
-            "name": "name", "majorName": "major_name", "classId": "class_id",
-            "className": "class_name", "origin": "origin", "counselor": "counselor",
+            "name": "name", "origin": "origin", "counselor": "counselor",
             "reportStatus": "report_status", "building": "building", "room": "room",
         }
         for k, col in field_map.items():
             if body.get(k) is not None:
                 setattr(s, col, body[k])
+        if body.get("classId") not in (None, ""):
+            from app.services.student_org_validator import validate_student_org_path
+            org = validate_student_org_path(
+                db,
+                tenant_id=_tid(),
+                college_id=body.get("collegeId"),
+                major_id=body.get("majorId"),
+                class_id=body.get("classId"),
+                actor=get_current_user_ctx() or {},
+                require_complete_org=True,
+            )
+            from app.models import College, Major, SchoolClass
+            college = tenant_get(db, College, org.college_id)
+            major = tenant_get(db, Major, org.major_id)
+            school_class = tenant_get(db, SchoolClass, org.class_id)
+            s.college_id, s.college_name = org.college_id, college.college_name
+            s.major_id, s.major_name = org.major_id, major.major_name
+            s.class_id, s.class_name = org.class_id, school_class.class_name
         phone = body.get("phone")
         if phone is not None and phone.strip() and "*" not in phone:
             from app.core.field_crypto import encrypt_field
@@ -281,9 +387,8 @@ def verify_student(sid, passed: bool = True, reason: str = "") -> dict:
             before = s.stage
             s.stage = "PRE_STUDENT_VERIFIED"
             s.exception_note = ""
-            steps = _merged_steps_json(s.steps_json)
-            steps["INFO"] = "DONE"
-            s.steps_json = steps
+            set_student_step_status(db, s, "INFO", "DONE", status_source="PROCESS_FACT",
+                                    source_biz_id=f"student:{s.id}:verify")
             _audit(db, "STUDENT", s.id, "信息核验通过", before=before, after="PRE_STUDENT_VERIFIED")
         else:
             if not reason or len(reason.strip()) < 5:
@@ -301,7 +406,6 @@ def verify_student(sid, passed: bool = True, reason: str = "") -> dict:
 
 def list_progress(page, page_size, keyword=None, blocked_only="NO"):
     with session() as db:
-        active_keys = [s["key"] for s in _active_steps(db)]
         q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
                                              OrientationStudent.is_deleted.is_(False),
                                              OrientationStudent.record_status == "ACTIVE")
@@ -316,9 +420,10 @@ def list_progress(page, page_size, keyword=None, blocked_only="NO"):
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
         items = []
         for r in rows:
-            steps = r.steps_json or {}
+            steps = student_step_projection(db, r)
+            active_keys = [step["key"] for step in student_flow_steps(db, r)]
             # 只按当前启用的环节计分母/分子——停用的环节不再拖累进度分数（真正让流程配置生效）
-            done = sum(1 for k in active_keys if steps.get(k) == "DONE")
+            done = sum(1 for k in active_keys if steps.get(k) in ("DONE", "WAIVED", "NOT_REQUIRED"))
             items.append({"id": str(r.id), "name": r.name, "admissionNo": r.admission_no,
                           "className": r.class_name or "",
                           "progress": f"{done}/{len(active_keys) or 7}",
@@ -334,15 +439,19 @@ def update_blocked(sid, blocked_step=None, blocked_reason=None) -> dict:
         raise AppException("VALIDATION_ERROR", "卡点说明必填且不少于 5 字")
     with session() as db:
         s = _get_student(db, sid)
-        steps = _merged_steps_json(s.steps_json)
         if blocked_step is not None:
             step_key = blocked_step or None
+            if step_key is None and s.blocked_step:
+                raise AppException("INVALID_STATE", "清除卡点须走业务事实完成或人工豁免")
             s.blocked_step = step_key
             if step_key:
-                steps[step_key] = "BLOCKED"
+                set_student_step_status(
+                    db, s, step_key, "BLOCKED", status_source="PROCESS_FACT",
+                    source_biz_id=f"student:{s.id}:blocked",
+                    blocked_reason=str(blocked_reason or s.blocked_reason or "").strip(),
+                )
         if blocked_reason is not None:
             s.blocked_reason = blocked_reason or None
-        s.steps_json = steps
         s.version += 1
         _audit(db, "PROGRESS", s.id, "编辑卡点事项", blocked_reason or "")
         db.commit()
@@ -350,61 +459,128 @@ def update_blocked(sid, blocked_step=None, blocked_reason=None) -> dict:
 
 
 def resolve_blocked(sid, note="") -> dict:
+    note = str(note or "").strip()
+    if len(note) < 5:
+        raise AppException("VALIDATION_ERROR", "人工豁免原因必填且不少于 5 字")
     with session() as db:
         s = _get_student(db, sid)
         prev = s.blocked_step or ""
-        steps = _merged_steps_json(s.steps_json)
-        if prev:
-            steps[prev] = "DONE"
-        s.steps_json = steps
+        if not prev:
+            raise AppException("INVALID_STATE", "当前新生没有待处理卡点")
+        audit = _audit(db, "PROGRESS", s.id, "人工豁免卡点", note,
+                       before="BLOCKED", after="WAIVED")
+        db.flush()
+        actor = str((get_current_user_ctx() or {}).get("userId") or "").strip()
+        raw_actor = actor[3:] if actor.startswith("db-") else actor
+        try:
+            actor_id = int(raw_actor)
+        except (TypeError, ValueError):
+            import zlib
+            actor_id = (zlib.crc32(actor.encode("utf-8")) & 0x7FFFFFFF) or 1
+        set_student_step_status(
+            db, s, prev, "WAIVED", status_source="MANUAL_WAIVER",
+            source_biz_id=f"audit:{audit.id}", waived_by=actor_id, waive_reason=note,
+            waive_evidence_ref=f"orientation-audit:{audit.id}",
+        )
         s.blocked_step = None
         s.blocked_reason = None
         s.version += 1
-        _audit(db, "PROGRESS", s.id, "标记人工已处理", note)
         db.commit()
-        return {"id": str(s.id)}
+        return {"id": str(s.id), "stepStatus": "WAIVED"}
 
 
 # ═══ 缴费 ═══
 
-def list_payments(page, page_size, keyword=None, payment_status=None):
+def list_payments(page, page_size, keyword=None, payment_status=None, user=None):
     with session() as db:
-        q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
-                                             OrientationStudent.is_deleted.is_(False),
-                                             OrientationStudent.record_status == "ACTIVE")
+        q = (select(OrientationPaymentAccount, OrientationStudent)
+             .join(OrientationStudent, (
+                 OrientationStudent.id == OrientationPaymentAccount.orientation_student_id
+             ) & (OrientationStudent.tenant_id == OrientationPaymentAccount.tenant_id))
+             .where(
+                 OrientationPaymentAccount.tenant_id == _tid(),
+                 OrientationPaymentAccount.is_deleted.is_(False),
+                 OrientationStudent.is_deleted.is_(False),
+                 OrientationStudent.record_status == "ACTIVE",
+             ))
+        from app.core.affairs_security import student_directory_scope
+        class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(
+                OrientationStudent.student_id.in_(student_ids) if student_ids else false()
+            )
+        elif class_ids is not None:
+            if not class_ids:
+                q = q.where(false())
+            else:
+                q = q.where(OrientationStudent.student_id.in_(select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                    StudentProfile.class_id.in_(class_ids),
+                )))
         if payment_status:
-            q = q.where(OrientationStudent.payment_status == payment_status)
+            if payment_status == "GREEN_CHANNEL":
+                q = q.where(OrientationStudent.green_channel_status == "APPROVED")
+            else:
+                q = q.where(OrientationPaymentAccount.status == payment_status)
         if keyword:
-            q = q.where(OrientationStudent.name.like(f"%{keyword.strip()}%"))
+            value = f"%{keyword.strip()}%"
+            q = q.where(or_(OrientationStudent.name.like(value),
+                            OrientationStudent.admission_no.like(value)))
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
-        rows = db.scalars(q.order_by(OrientationStudent.id)
+        rows = db.execute(q.order_by(OrientationStudent.id)
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [{"id": str(r.id), "name": r.name, "className": r.class_name or "",
-                  "payableAmount": f"¥{_amt(r.payable_amount):.0f}", "paidAmount": f"¥{_amt(r.paid_amount):.0f}",
-                  "paymentStatus": r.payment_status, "paymentStatusLabel": L_PAY.get(r.payment_status, r.payment_status),
-                  "phone": mask_phone_encrypted(r.phone_encrypted)} for r in rows]
+        items = [{"id": str(r.id), "paymentAccountId": str(account.id),
+                  "paymentVersion": int(account.version or 0),
+                  "name": r.name, "admissionNo": r.admission_no,
+                  "className": r.class_name or "",
+                  "payableAmount": f"¥{_amt(account.payable_amount):.0f}",
+                  "paidAmount": f"¥{_amt(account.paid_amount):.0f}",
+                  "paymentStatus": "GREEN_CHANNEL" if r.green_channel_status == "APPROVED" else account.status,
+                  "paymentStatusLabel": ("绿色通道" if r.green_channel_status == "APPROVED"
+                                           else L_PAY.get(account.status, account.status)),
+                  "greenChannelStatus": r.green_channel_status,
+                  "phone": mask_phone_encrypted(r.phone_encrypted)} for account, r in rows]
         return items, total
 
 
 # ═══ 绿色通道 ═══
 
-def _gc_row(g: GreenChannelApplication, stu: OrientationStudent | None = None) -> dict:
+def _gc_row(g: GreenChannelApplication, stu: OrientationStudent | None = None,
+            attachments=None) -> dict:
     return {"id": str(g.id), "studentId": str(g.ori_student_id),
+            "profileStudentId": str(g.student_id or ""), "version": int(g.version or 0),
             "name": stu.name if stu else "", "className": stu.class_name if stu else "",
             "applyType": g.apply_type, "applyAmount": _amt(g.apply_amount),
             "submitTime": _iso(g.submit_time) or "", "status": g.status,
             "statusLabel": L_GC.get(g.status, g.status), "reviewer": g.reviewer or "",
             "reviewTime": _iso(g.review_time) or "", "rejectReason": g.reject_reason or "",
-            "remark": g.remark or ""}
+            "remark": g.remark or "", "attachments": list(attachments or [])}
 
 
-def list_green_channels(page, page_size, keyword=None, status=None):
+def list_green_channels(page, page_size, keyword=None, status=None, user=None):
     with session() as db:
         # P1-4：join 学生表消 N+1（此前每行一次 db.get），keyword/分页全部下沉 DB
         q = (select(GreenChannelApplication, OrientationStudent)
              .join(OrientationStudent, OrientationStudent.id == GreenChannelApplication.ori_student_id)
              .where(GreenChannelApplication.tenant_id == _tid(),
-                    GreenChannelApplication.is_deleted.is_(False)))
+                    GreenChannelApplication.is_deleted.is_(False),
+                    OrientationStudent.tenant_id == _tid(),
+                    OrientationStudent.is_deleted.is_(False),
+                    OrientationStudent.record_status == "ACTIVE"))
+        from app.core.affairs_security import student_directory_scope
+        class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(
+                OrientationStudent.student_id.in_(student_ids) if student_ids else false()
+            )
+        elif class_ids is not None:
+            if not class_ids:
+                q = q.where(false())
+            else:
+                q = q.where(OrientationStudent.student_id.in_(select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                    StudentProfile.class_id.in_(class_ids),
+                )))
         if status:
             q = q.where(GreenChannelApplication.status == status)
         if keyword:
@@ -412,18 +588,42 @@ def list_green_channels(page, page_size, keyword=None, status=None):
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
         rows = db.execute(q.order_by(GreenChannelApplication.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        return [_gc_row(g, stu) for g, stu in rows], total
+        ids = [str(g.id) for g, _ in rows]
+        attachments = {value: [] for value in ids}
+        if ids:
+            from app.models.file import FileBinding, FileObject
+            file_rows = db.execute(select(FileBinding.biz_id, FileObject.file_name).join(
+                FileObject,
+                (FileObject.id == FileBinding.file_id)
+                & (FileObject.tenant_id == FileBinding.tenant_id),
+            ).where(
+                FileBinding.tenant_id == _tid(),
+                FileBinding.biz_type == "ORIENTATION_GREEN_CHANNEL",
+                FileBinding.biz_id.in_(ids),
+                FileBinding.is_current.is_(True), FileBinding.status == "ACTIVE",
+                FileBinding.is_deleted.is_(False), FileObject.is_deleted.is_(False),
+            )).all()
+            for biz_id, file_name in file_rows:
+                attachments.setdefault(str(biz_id), []).append(file_name)
+        return [_gc_row(g, stu, attachments.get(str(g.id))) for g, stu in rows], total
 
 
-def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=False, action_label=""):
+def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=False,
+            action_label="", expected_version=None, user=None):
     if need_reason and (not reason or len(reason.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "原因必填且不少于 5 字")
     with session() as db:
-        g = db.get(GreenChannelApplication, int(gid))
+        g = db.scalars(select(GreenChannelApplication).where(
+            GreenChannelApplication.tenant_id == _tid(),
+            GreenChannelApplication.id == int(gid),
+            GreenChannelApplication.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("绿色通道申请不存在")
         if g.status in ("APPROVED", "REJECTED"):
             raise AppException("DATA_CONFLICT", "该申请已终审，请刷新")
+        if expected_version is None or int(expected_version) != int(g.version or 0):
+            raise AppException("APPROVAL_VERSION_CONFLICT", "申请状态已变化，请刷新后重试")
         before = g.status
         name, _ = _op()
         g.status = target_status
@@ -437,36 +637,44 @@ def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=Fals
         stu = tenant_get(db, OrientationStudent, g.ori_student_id)
         audit_detail = reason or ""
         if stu:
+            assert_orientation_student_scope(db, stu, user)
             if target_status == "APPROVED":
                 stu.green_channel_status = "APPROVED"
                 if stu.payment_status in ("UNPAID", "PARTIAL"):
                     stu.payment_status = "GREEN_CHANNEL"
-                steps = _merged_steps_json(stu.steps_json)
+                steps = student_step_projection(db, stu)
                 if stu.blocked_step == "PAYMENT" or steps.get("PAYMENT") == "BLOCKED":
                     stu.blocked_step = None
                     stu.blocked_reason = None
-                    steps["PAYMENT"] = "DONE"
-                    stu.steps_json = steps
+                    set_student_step_status(
+                        db, stu, "PAYMENT", "DONE", status_source="PROCESS_FACT",
+                        source_biz_id=f"green-channel:{g.id}",
+                    )
                     audit_detail = (audit_detail + "；绿色通道通过，缴费卡点自动解除").lstrip("；")
             elif target_status == "REJECTED":
                 stu.green_channel_status = "REJECTED"
             elif target_status == "RETURNED":
                 stu.green_channel_status = "RETURNED"
+            from app.services.orientation_qualification_service import evaluate
+            evaluate(db, stu, persist=True, actor_id=None)
         _audit(db, "GREEN_CHANNEL", g.id, action_label, audit_detail or action_label, before, target_status)
         db.commit()
-        return {"id": str(g.id), "status": target_status}
+        return {"id": str(g.id), "status": target_status, "version": int(g.version or 0)}
 
 
-def approve_green_channel(gid, remark=""):
-    return _gc_act(gid, "APPROVED", "remark", remark, False, "审核通过")
+def approve_green_channel(gid, remark="", expected_version=None, user=None):
+    return _gc_act(gid, "APPROVED", "remark", remark, False, "审核通过",
+                   expected_version=expected_version, user=user)
 
 
-def reject_green_channel(gid, reason):
-    return _gc_act(gid, "REJECTED", "reject", reason, True, "驳回申请")
+def reject_green_channel(gid, reason, expected_version=None, user=None):
+    return _gc_act(gid, "REJECTED", "reject", reason, True, "驳回申请",
+                   expected_version=expected_version, user=user)
 
 
-def return_green_channel(gid, reason):
-    return _gc_act(gid, "RETURNED", "reject", reason, True, "退回补充")
+def return_green_channel(gid, reason, expected_version=None, user=None):
+    return _gc_act(gid, "RETURNED", "reject", reason, True, "退回补充",
+                   expected_version=expected_version, user=user)
 
 
 # ═══ 学生自助（移动端·预报到信息采集 + 绿色通道申请）+ 现场报到核验 ═══
@@ -485,13 +693,11 @@ def student_submit_collect(sid, phone: str = "", origin: str = "") -> dict:
             s.phone_encrypted = encrypt_field(phone)
         if origin:
             s.origin = origin
-        steps = _merged_steps_json(s.steps_json)
-        steps["INFO"] = "DONE"
+        set_student_step_status(db, s, "INFO", "DONE", status_source="PROCESS_FACT",
+                                source_biz_id=f"student:{s.id}:collect")
         if s.blocked_step == "INFO":
             s.blocked_step = None
             s.blocked_reason = None
-            steps["INFO"] = "DONE"
-        s.steps_json = steps
         if s.report_status == "NOT_REPORTED":
             s.report_status = "PREPARED"
         s.version += 1
@@ -502,7 +708,8 @@ def student_submit_collect(sid, phone: str = "", origin: str = "") -> dict:
 
 
 def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: str = "",
-                                 file_ids=None, actor: dict | None = None) -> dict:
+                                 file_ids=None, actor: dict | None = None,
+                                 client_request_id: str = "") -> dict:
     """绿色通道申请（学生自助提交，等待辅导员/资助中心审核）。
 
     V3 §8.1：附件以 TEMP_PRIVATE fileId 传入，正式绑定在本函数的事务里由 canonical
@@ -512,12 +719,33 @@ def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: s
     apply_type = (apply_type or "").strip()
     if not apply_type:
         raise AppException("VALIDATION_ERROR", "请选择困难类型")
+    client_request_id = str(client_request_id or "").strip()
+    if len(client_request_id) < 8:
+        raise AppException("VALIDATION_ERROR", "clientRequestId 必填")
     with session() as db:
-        s = _get_student(db, sid)
+        s = db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(), OrientationStudent.id == int(sid),
+            OrientationStudent.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not s:
+            raise not_found("新生记录不存在")
+        prior = db.scalars(select(GreenChannelApplication).where(
+            GreenChannelApplication.tenant_id == _tid(),
+            GreenChannelApplication.client_request_id == client_request_id,
+            GreenChannelApplication.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if prior:
+            if (int(prior.ori_student_id) == int(s.id)
+                    and prior.apply_type == apply_type
+                    and _amt(prior.apply_amount) == _amt(apply_amount)
+                    and (prior.remark or "") == (remark or "").strip()):
+                return _gc_row(prior, s)
+            raise AppException("IDEMPOTENCY_CONFLICT", "clientRequestId 已用于其他绿色通道申请")
         if s.green_channel_status in ("SUBMITTED", "REVIEWING", "APPROVED"):
             raise AppException("DATA_CONFLICT", "已有申请正在处理或已通过，无需重复提交")
         g = GreenChannelApplication(
-            tenant_id=_tid(), ori_student_id=s.id, apply_type=apply_type,
+            tenant_id=_tid(), ori_student_id=s.id, student_id=s.student_id,
+            client_request_id=client_request_id, apply_type=apply_type,
             apply_amount=_amt(apply_amount), submit_time=datetime.utcnow(),
             status="SUBMITTED", remark=(remark or "").strip())
         db.add(g)
@@ -533,45 +761,31 @@ def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: s
                 biz_id=g.id,
                 actor=actor or {},
                 subject_type="STUDENT",
-                subject_id=s.id,
+                subject_id=s.student_id or s.id,
                 relation_type="BUSINESS_EVIDENCE",
                 module_code="ORIENTATION",
-                scope={"orientationStudentId": str(s.id), "applyType": apply_type},
+                student_id=s.student_id,
+                batch_id=str(s.batch_id),
+                college_id=s.college_id,
+                class_id=s.class_id,
+                scope={
+                    "orientationStudentId": str(s.id), "studentId": str(s.student_id or ""),
+                    "applyType": apply_type,
+                },
             )
         _audit(db, "GREEN_CHANNEL", g.id, "学生提交绿色通道申请",
               f"{apply_type} ¥{_amt(apply_amount):.0f}")
         db.commit()
-        return {"id": str(g.id), "status": g.status}
+        return _gc_row(g, s)
 
 
 def teacher_checkin_by_admission_no(admission_no: str, operator_name: str = "") -> dict:
-    """现场报到核验（迎新老师扫码/录入报到码核验）：按录取编号查到新生台账，
-    完成现场报到——CHECKIN 环节置完成，报到状态推进为已现场报到。"""
-    admission_no = (admission_no or "").strip()
-    if not admission_no:
-        raise AppException("VALIDATION_ERROR", "请提供报到码")
-    with session() as db:
-        s = db.scalars(select(OrientationStudent).where(
-            OrientationStudent.tenant_id == _tid(), OrientationStudent.admission_no == admission_no,
-            OrientationStudent.is_deleted.is_(False))).first()
-        if not s:
-            raise not_found("未查到该报到码对应的新生记录")
-        if s.report_status in ("CHECKED_IN", "COLLEGE_CONFIRMED"):
-            raise AppException("DATA_CONFLICT",
-                f"{s.name} 已于 {_iso(s.checkin_time) or '此前'} 完成现场报到，无需重复核验")
-        before = s.report_status
-        s.report_status = "CHECKED_IN"
-        s.checkin_time = datetime.utcnow()
-        steps = _merged_steps_json(s.steps_json)
-        steps["CHECKIN"] = "DONE"
-        s.steps_json = steps
-        s.version += 1
-        _audit(db, "CHECKIN", s.id, "现场报到核验通过",
-              f"核验人：{operator_name or '迎新老师'}", before, "CHECKED_IN")
-        db.commit()
-        return {"id": str(s.id), "name": s.name, "className": s.class_name or "",
-                "collegeName": s.college_name or "", "reportStatus": s.report_status,
-                "checkinTime": _iso(s.checkin_time)}
+    """O5 closes the insecure admission-number write path."""
+    raise AppException(
+        "DEPRECATED_WRITE_PATH",
+        "录取编号只是展示事实，不能作为现场报到凭证；请使用签名凭证流程",
+        http_status=410,
+    )
 
 
 # ═══ 材料审核 ═══
@@ -581,52 +795,80 @@ def _mat_row(m: OrientationMaterial, stu: OrientationStudent | None = None) -> d
             "name": stu.name if stu else "", "className": stu.class_name if stu else "",
             "materialType": m.material_type, "materialTypeLabel": L_MATTYPE.get(m.material_type, m.material_type),
             "fileName": m.file_name or "", "submitTime": _iso(m.submit_time) or "",
+            "submissionNo": int(m.submission_no or 1), "isCurrent": bool(m.is_current),
+            "assetId": str(m.asset_id or ""), "fileVersionId": str(m.file_version_id or ""),
             "status": m.status, "statusLabel": L_MAT.get(m.status, m.status),
             "reviewer": m.reviewer or "", "reviewTime": _iso(m.review_time) or "",
             "returnReason": m.return_reason or ""}
 
 
-def list_materials(page, page_size, keyword=None, status=None, material_type=None):
+def list_materials(page, page_size, keyword=None, status=None, material_type=None, user=None):
     with session() as db:
-        q = select(OrientationMaterial).where(OrientationMaterial.tenant_id == _tid(),
-                                              OrientationMaterial.is_deleted.is_(False))
+        q = select(OrientationMaterial, OrientationStudent).join(
+            OrientationStudent,
+            (OrientationStudent.id == OrientationMaterial.ori_student_id)
+            & (OrientationStudent.tenant_id == OrientationMaterial.tenant_id),
+        ).where(
+            OrientationMaterial.tenant_id == _tid(),
+            OrientationMaterial.is_deleted.is_(False),
+            OrientationMaterial.is_current.is_(True),
+            OrientationStudent.is_deleted.is_(False),
+            OrientationStudent.record_status == "ACTIVE",
+        )
+        from app.core.affairs_security import student_directory_scope
+        class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(
+                OrientationStudent.student_id.in_(student_ids) if student_ids else false()
+            )
+        elif class_ids is not None:
+            if not class_ids:
+                q = q.where(false())
+            else:
+                q = q.where(OrientationStudent.student_id.in_(select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                    StudentProfile.class_id.in_(class_ids),
+                )))
         if status:
             q = q.where(OrientationMaterial.status == status)
         if material_type:
             q = q.where(OrientationMaterial.material_type == material_type)
-        rows = db.scalars(q.order_by(OrientationMaterial.id.desc())).all()
-        # 消 N+1：一次批量取回本批材料涉及的迎新学生，替代循环内逐行 db.get（行为等价）。
-        sids = {int(m.ori_student_id) for m in rows if m.ori_student_id}
-        stu_map = {s.id: s for s in db.scalars(select(OrientationStudent).where(
-            OrientationStudent.id.in_(sids))).all()} if sids else {}
-        items = []
-        for m in rows:
-            stu = stu_map.get(int(m.ori_student_id)) if m.ori_student_id else None
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_mat_row(m, stu))
-        return _page(items, page, page_size)
+        if keyword:
+            q = q.where(OrientationStudent.name.like(f"%{keyword.strip()}%"))
+        total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = db.execute(q.order_by(OrientationMaterial.id.desc())
+                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+        return [_mat_row(material, student) for material, student in rows], total
 
 
 def _refresh_material_status(db, stu):
     mats = db.scalars(select(OrientationMaterial).where(
         OrientationMaterial.tenant_id == _tid(),
         OrientationMaterial.ori_student_id == stu.id,
+        OrientationMaterial.is_current.is_(True),
         OrientationMaterial.is_deleted.is_(False))).all()
     if mats and all(m.status == "APPROVED" for m in mats):
         stu.material_status = "APPROVED"
         if stu.blocked_step == "MATERIAL":
             stu.blocked_step = None
             stu.blocked_reason = None
-            if stu.steps_json:
-                stu.steps_json = {**stu.steps_json, "MATERIAL": "DONE"}
+            set_student_step_status(
+                db, stu, "MATERIAL", "DONE", status_source="PROCESS_FACT",
+                source_biz_id=f"student:{stu.id}:materials-approved",
+            )
 
 
-def approve_material(mid, comment=""):
+def approve_material(mid, comment="", user=None):
     with session() as db:
         m = db.get(OrientationMaterial, int(mid))
         if not m or m.is_deleted or m.tenant_id != _tid():
             raise not_found("材料不存在")
+        if not m.is_current:
+            raise AppException("DATA_CONFLICT", "历史材料版本不可审核")
+        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
+        if not stu:
+            raise not_found("材料所属迎新记录不存在")
+        assert_orientation_student_scope(db, stu, user)
         if m.status == "APPROVED":
             raise AppException("DATA_CONFLICT", "该材料已通过")
         before = m.status
@@ -635,21 +877,32 @@ def approve_material(mid, comment=""):
         m.reviewer = name
         m.review_time = datetime.utcnow()
         m.version += 1
-        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
-        if stu:
-            _refresh_material_status(db, stu)
+        if m.file_version_id:
+            from app.models.file import FileVersion
+            version = tenant_get(db, FileVersion, m.file_version_id)
+            if version:
+                version.status = "APPROVED"
+        _refresh_material_status(db, stu)
+        from app.services.orientation_qualification_service import evaluate
+        evaluate(db, stu, persist=True, actor_id=None)
         _audit(db, "MATERIAL", m.id, "审核通过", comment, before, "APPROVED")
         db.commit()
         return {"id": str(m.id), "status": "APPROVED"}
 
 
-def return_material(mid, reason):
+def return_material(mid, reason, user=None):
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
         m = db.get(OrientationMaterial, int(mid))
         if not m or m.is_deleted or m.tenant_id != _tid():
             raise not_found("材料不存在")
+        if not m.is_current:
+            raise AppException("DATA_CONFLICT", "历史材料版本不可审核")
+        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
+        if not stu:
+            raise not_found("材料所属迎新记录不存在")
+        assert_orientation_student_scope(db, stu, user)
         before = m.status
         name, _ = _op()
         m.status = "RETURNED"
@@ -657,9 +910,14 @@ def return_material(mid, reason):
         m.review_time = datetime.utcnow()
         m.return_reason = reason.strip()
         m.version += 1
-        stu = tenant_get(db, OrientationStudent, m.ori_student_id)
-        if stu:
-            stu.material_status = "RETURNED"
+        if m.file_version_id:
+            from app.models.file import FileVersion
+            version = tenant_get(db, FileVersion, m.file_version_id)
+            if version:
+                version.status = "REJECTED"
+        stu.material_status = "RETURNED"
+        from app.services.orientation_qualification_service import evaluate
+        evaluate(db, stu, persist=True, actor_id=None)
         _audit(db, "MATERIAL", m.id, "退回材料", reason.strip(), before, "RETURNED")
         db.commit()
         return {"id": str(m.id), "status": "RETURNED"}
@@ -723,8 +981,8 @@ def batch_confirm_checkin(ids: list) -> dict:
                 continue
             s.dorm_status = "CHECKED_IN"
             s.checkin_time = datetime.utcnow()
-            if s.steps_json:
-                s.steps_json = {**s.steps_json, "DORM": "DONE"}
+            set_student_step_status(db, s, "DORM", "DONE", status_source="PROCESS_FACT",
+                                    source_biz_id=f"student:{s.id}:dorm-checkin")
             s.version += 1
             _audit(db, "DORM", s.id, "批量确认入住")
             cnt += 1
@@ -898,37 +1156,112 @@ def list_audit(page, page_size, biz_type=None, keyword=None):
 
 # ═══ 看板 ═══
 
-def get_dashboard() -> dict:
+def get_dashboard(user=None, batch_id=None) -> dict:
     with session() as db:
-        rows = db.scalars(select(OrientationStudent).where(
+        batch_query = select(OrientationBatch).where(
+            OrientationBatch.tenant_id == _tid(), OrientationBatch.is_deleted.is_(False),
+        )
+        if batch_id not in (None, ""):
+            try:
+                batch_query = batch_query.where(OrientationBatch.id == int(batch_id))
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "batchId 须为数字") from None
+        else:
+            batch_query = batch_query.order_by(
+                case((OrientationBatch.status == "ACTIVE", 0), else_=1),
+                OrientationBatch.id.desc(),
+            )
+        batch = db.scalars(batch_query.limit(1)).first()
+        q = select(OrientationStudent).where(
             OrientationStudent.tenant_id == _tid(), OrientationStudent.is_deleted.is_(False),
-            OrientationStudent.record_status == "ACTIVE")).all()
+            OrientationStudent.record_status == "ACTIVE",
+            OrientationStudent.batch_id == (int(batch.id) if batch else -1),
+        )
+        from app.core.affairs_security import student_directory_scope
+        class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(OrientationStudent.student_id.in_(student_ids) if student_ids else false())
+        elif class_ids is not None:
+            q = q.where(OrientationStudent.student_id.in_(select(StudentProfile.id).where(
+                StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                StudentProfile.class_id.in_(class_ids or {-1}),
+            )))
+        rows = db.scalars(q.order_by(OrientationStudent.id)).all()
+        scoped_ids = [int(row.id) for row in rows]
         total = len(rows)
-        paid = sum(1 for r in rows if r.payment_status in ("PAID", "GREEN_CHANNEL", "DEFERRED"))
+        paid_ids = set(db.scalars(select(OrientationPaymentAccount.orientation_student_id).where(
+            OrientationPaymentAccount.tenant_id == _tid(),
+            OrientationPaymentAccount.orientation_student_id.in_(scoped_ids or [-1]),
+            OrientationPaymentAccount.status.in_(("PAID", "WAIVED", "DEFERRED")),
+            OrientationPaymentAccount.is_deleted.is_(False),
+        )).all())
+        paid_ids.update(db.scalars(select(GreenChannelApplication.ori_student_id).where(
+            GreenChannelApplication.tenant_id == _tid(),
+            GreenChannelApplication.ori_student_id.in_(scoped_ids or [-1]),
+            GreenChannelApplication.status == "APPROVED",
+            GreenChannelApplication.is_deleted.is_(False),
+        )).all())
+        paid = len(paid_ids)
         pending_gc = db.scalar(select(func.count()).select_from(GreenChannelApplication).where(
             GreenChannelApplication.tenant_id == _tid(),
+            GreenChannelApplication.ori_student_id.in_(scoped_ids or [-1]),
             GreenChannelApplication.status.in_(["SUBMITTED", "REVIEWING"]),
             GreenChannelApplication.is_deleted.is_(False))) or 0
         pending_mat = db.scalar(select(func.count()).select_from(OrientationMaterial).where(
-            OrientationMaterial.tenant_id == _tid(), OrientationMaterial.status == "UPLOADED",
+            OrientationMaterial.tenant_id == _tid(),
+            OrientationMaterial.ori_student_id.in_(scoped_ids or [-1]),
+            OrientationMaterial.is_current.is_(True), OrientationMaterial.status == "UPLOADED",
             OrientationMaterial.is_deleted.is_(False))) or 0
         open_exc = db.scalar(select(func.count()).select_from(OrientationException).where(
             OrientationException.tenant_id == _tid(),
+            OrientationException.ori_student_id.in_(scoped_ids or [-1]),
             OrientationException.status.in_(["OPEN", "PROCESSING", "ESCALATED"]),
             OrientationException.is_deleted.is_(False))) or 0
         rate = lambda a, b: f"{(a / b * 100):.1f}%" if b else "0%"  # noqa: E731
-        prepared = sum(1 for r in rows if r.report_status in ("PREPARED", "CHECKED_IN", "COLLEGE_CONFIRMED"))
-        checked_in = sum(1 for r in rows if r.report_status in ("CHECKED_IN", "COLLEGE_CONFIRMED"))
+        from app.models import OrientationCheckinRecord
+        checked_in = int(db.scalar(select(func.count()).select_from(OrientationCheckinRecord).where(
+            OrientationCheckinRecord.tenant_id == _tid(),
+            OrientationCheckinRecord.orientation_student_id.in_(scoped_ids or [-1]),
+            OrientationCheckinRecord.status == "CONFIRMED",
+            OrientationCheckinRecord.is_deleted.is_(False),
+        )) or 0)
         gc_total = db.scalar(select(func.count()).select_from(GreenChannelApplication).where(
             GreenChannelApplication.tenant_id == _tid(),
+            GreenChannelApplication.ori_student_id.in_(scoped_ids or [-1]),
             GreenChannelApplication.is_deleted.is_(False))) or 0
-        step_funnel = []
-        for step in _active_steps(db):
-            key = step["key"]
-            done = sum(1 for r in rows if (_merged_steps_json(r.steps_json).get(key) == "DONE"))
-            step_funnel.append({"key": key, "label": step["label"], "done": done})
+        from app.models import OrientationFlowStep, OrientationStudentStep
+        step_labels = {
+            row.step_key: row.step_name
+            for row in db.scalars(select(OrientationFlowStep).where(
+                OrientationFlowStep.tenant_id == _tid(),
+                OrientationFlowStep.flow_version_id == (int(batch.flow_version_id) if batch and batch.flow_version_id else -1),
+                OrientationFlowStep.enabled.is_(True), OrientationFlowStep.is_deleted.is_(False),
+            ).order_by(OrientationFlowStep.sort_order, OrientationFlowStep.id)).all()
+        }
+        steps = db.scalars(select(OrientationStudentStep).where(
+            OrientationStudentStep.tenant_id == _tid(),
+            OrientationStudentStep.orientation_student_id.in_(scoped_ids or [-1]),
+            OrientationStudentStep.is_deleted.is_(False),
+        ).order_by(OrientationStudentStep.flow_step_id, OrientationStudentStep.id)).all()
+        prepared_ids = {
+            int(step.orientation_student_id) for step in steps
+            if step.step_key == "INFO" and step.status in ("DONE", "WAIVED", "NOT_REQUIRED")
+        }
+        prepared = len(prepared_ids)
+        funnel = {}
+        for step in steps:
+            item = funnel.setdefault(step.step_key, {
+                "key": step.step_key, "label": step_labels.get(step.step_key, step.step_key), "done": 0,
+            })
+            if step.status in ("DONE", "WAIVED", "NOT_REQUIRED"):
+                item["done"] += 1
+        step_funnel = list(funnel.values())
+        start = (batch.report_start_date or batch.start_date) if batch else None
+        end = (batch.report_end_date or batch.end_date) if batch else None
         return {
-            "batchName": "2026 级迎新批次", "batchPeriod": "2026-09-01 ~ 2026-09-15",
+            "batchId": str(batch.id) if batch else "",
+            "batchName": batch.batch_name if batch else "当前无迎新批次",
+            "batchPeriod": f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d}" if start and end else "未配置报到周期",
             "updateTime": _iso(datetime.now()),
             "kpis": [
                 {"key": "total", "label": "新生总数", "value": str(total), "trend": "", "trendQuality": "neutral"},
@@ -978,6 +1311,7 @@ def _batch_row(b: OrientationBatch) -> dict:
         "startDate": _iso(b.start_date) or "", "endDate": _iso(b.end_date) or "",
         "reportStartDate": _iso(b.report_start_date) or "", "reportEndDate": _iso(b.report_end_date) or "",
         "status": b.status, "statusLabel": L_BATCH.get(b.status, b.status),
+        "flowVersionId": str(b.flow_version_id) if b.flow_version_id else "",
         "plannedCount": int(b.planned_count or 0), "remark": b.remark or "",
         "updateTime": _iso(b.updated_at),
     }
@@ -1058,11 +1392,82 @@ def activate_batch(bid) -> dict:
         b = _get_batch(db, bid)
         if b.status != "DRAFT":
             raise AppException("INVALID_STATE", "仅草稿批次可启用")
+        if not b.flow_version_id:
+            b.flow_version_id = ensure_published_flow_version(db, b.tenant_id).id
         b.status = "ACTIVE"
         b.version += 1
         _audit(db, "BATCH", b.id, "启用迎新批次", before="DRAFT", after="ACTIVE")
         db.commit()
         return {"id": str(b.id), "status": b.status}
+
+
+def assign_batch_student_numbers(bid, body: dict) -> dict:
+    """Assign up to 20k reserved student numbers in one transaction; never requires per-row clicks."""
+    prefix = str((body or {}).get("prefix") or "").strip().upper()
+    try:
+        start = int((body or {}).get("startNumber") or 1)
+        width = int((body or {}).get("width") or 6)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "起始序号和序号位数必须是整数")
+    dry_run = bool((body or {}).get("dryRun", False))
+    if not re.fullmatch(r"[A-Z0-9-]{1,30}", prefix):
+        raise AppException("VALIDATION_ERROR", "学号前缀仅支持 1-30 位字母、数字或短横线")
+    if start < 0 or start > 999_999_999 or width < 4 or width > 10:
+        raise AppException("VALIDATION_ERROR", "起始序号须为非负整数，序号位数须为 4-10 位")
+    with session() as db:
+        batch = _get_batch(db, bid)
+        rows = list(db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.batch_id == batch.id,
+            or_(OrientationStudent.student_no.is_(None), OrientationStudent.student_no == ""),
+            OrientationStudent.record_status == "ACTIVE",
+            OrientationStudent.is_deleted.is_(False),
+        ).order_by(OrientationStudent.id).with_for_update()).all())
+        if len(rows) > 20_000:
+            raise AppException("VALIDATION_ERROR", "单批次最多自动编制 20000 个学号")
+        numbers = [f"{prefix}{start + index:0{width}d}" for index in range(len(rows))]
+        if any(len(number) > 50 for number in numbers):
+            raise AppException("VALIDATION_ERROR", "生成后的学号长度不能超过 50 位")
+        collisions: set[str] = set()
+        if numbers:
+            collisions |= set(db.scalars(select(OrientationStudent.student_no).where(
+                OrientationStudent.tenant_id == _tid(),
+                OrientationStudent.student_no.in_(numbers),
+            )).all())
+            collisions |= set(db.scalars(select(StudentProfile.student_no).where(
+                StudentProfile.tenant_id == _tid(),
+                StudentProfile.student_no.in_(numbers),
+            )).all())
+            collisions |= set(db.scalars(select(User.login_name).where(
+                User.tenant_id == _tid(), User.login_name.in_(numbers),
+                User.is_deleted.is_(False),
+            )).all())
+        if collisions:
+            sample = sorted(value for value in collisions if value)[:10]
+            raise AppException(
+                "DATA_CONFLICT", "拟生成的学号已被占用，请调整前缀或起始序号",
+                details={"collisionSample": sample, "collisionCount": len(collisions)},
+            )
+        result = {
+            "batchId": str(batch.id), "missingCount": len(rows),
+            "assignedCount": 0 if dry_run else len(rows),
+            "sample": numbers[:5], "dryRun": dry_run,
+        }
+        if dry_run:
+            return result
+        for row, number in zip(rows, numbers):
+            row.student_no = number
+            row.version = int(row.version or 0) + 1
+        # Bulk roster readiness is one operation: every candidate in the batch must
+        # receive the frozen canonical step rows, including candidates that already
+        # had a student number before this assignment.
+        initialize_batch_student_steps(db, batch.id, status_source="PROCESS_FACT")
+        _audit(
+            db, "BATCH", batch.id, "批量自动编制新生学号",
+            f"count={len(rows)}; prefix={prefix}; start={start}; width={width}",
+        )
+        db.commit()
+        return result
 
 
 def close_batch(bid) -> dict:

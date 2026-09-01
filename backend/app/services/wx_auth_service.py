@@ -75,6 +75,47 @@ def _temporary_wx_token(openid: str, purpose: str) -> str:
     return create_access_token({"wxOpenid": openid, "purpose": purpose}, expires_in=10 * 60)
 
 
+def openid_from_bind_token(wx_token: str) -> str:
+    """Decode a short-lived wx_bind token without exposing openid to clients."""
+    try:
+        claims = decode_token(wx_token)
+    except Exception:  # noqa: BLE001
+        raise AppException("UNAUTHORIZED", "微信绑定凭证无效或已过期，请重新扫码进入")
+    if claims.get("purpose") != "wx_bind" or not claims.get("wxOpenid"):
+        raise AppException("UNAUTHORIZED", "微信绑定凭证无效")
+    return str(claims["wxOpenid"])
+
+
+def bind_openid_in_session(db, openid: str, user) -> None:
+    """Bind a proved campus account inside the caller's transaction."""
+    from app.models import User, WxAccountBinding
+
+    existing = db.scalars(select(WxAccountBinding).where(
+        WxAccountBinding.wx_openid == openid,
+        WxAccountBinding.tenant_id == user.tenant_id,
+        WxAccountBinding.is_deleted.is_(False),
+    ).with_for_update()).first()
+    if existing and existing.user_id != user.id:
+        raise AppException("DATA_CONFLICT", "该微信已绑定本校其他账号")
+    if existing:
+        existing.status = "ACTIVE"
+        existing.user_id = user.id
+    else:
+        db.add(WxAccountBinding(
+            tenant_id=user.tenant_id, wx_openid=openid,
+            user_id=user.id, status="ACTIVE",
+        ))
+    legacy_user = db.scalars(select(User).where(
+        User.wx_openid == openid,
+        User.is_deleted.is_(False),
+    ).order_by(User.id).with_for_update()).first()
+    if (legacy_user and int(legacy_user.tenant_id) == int(user.tenant_id)
+            and int(legacy_user.id) != int(user.id)):
+        raise AppException("DATA_CONFLICT", "该微信已绑定本校其他账号")
+    if legacy_user is None:
+        user.wx_openid = openid
+
+
 def wx_login(js_code: str, *, bind_another: bool = False) -> dict:
     """一键登录：code→openid→查绑定。已绑定返回完整登录结果；未绑定返回 {needBind, wxToken}。"""
     if not db_enabled():
@@ -131,13 +172,7 @@ def wx_bind(wx_token: str, login_name: str, password: str,
     """首次绑定：用 wx_login 返回的 wxToken(携带 openid) + 学号/工号+密码，校验后绑定 openid 并登录。"""
     if not db_enabled():
         raise AppException("UNAUTHORIZED", "微信登录需启用数据库（DB_ENABLED=true）")
-    try:
-        claims = decode_token(wx_token)
-    except Exception:  # noqa: BLE001
-        raise AppException("UNAUTHORIZED", "微信绑定令牌无效或已过期，请重新发起微信登录")
-    if claims.get("purpose") != "wx_bind" or not claims.get("wxOpenid"):
-        raise AppException("UNAUTHORIZED", "微信绑定令牌无效")
-    openid = claims["wxOpenid"]
+    openid = openid_from_bind_token(wx_token)
     login_name = (login_name or "").strip()
     if not login_name or not password:
         raise AppException("VALIDATION_ERROR", "请输入学号/工号与密码")
@@ -160,19 +195,7 @@ def wx_bind(wx_token: str, login_name: str, password: str,
                 raise AppException('CAPTCHA_REQUIRED', '账号、学校编码或密码不正确，请输入验证码后继续',
                                    details={'captchaRequired': True, 'scene': 'WX_BIND'}, http_status=401)
             raise AppException('UNAUTHORIZED', '账号、学校编码或密码不正确')
-        from app.models import WxAccountBinding
-        existing = db.scalars(select(WxAccountBinding).where(
-            WxAccountBinding.wx_openid == openid, WxAccountBinding.tenant_id == user.tenant_id,
-            WxAccountBinding.is_deleted.is_(False))).first()
-        if existing and existing.user_id != user.id:
-            raise AppException("DATA_CONFLICT", "该微信已绑定本校其他账号")
-        if not existing:
-            db.add(WxAccountBinding(tenant_id=user.tenant_id, wx_openid=openid,
-                                    user_id=user.id, status="ACTIVE"))
-        # 旧列只保留首个绑定，避免破坏已有版本；多校绑定只写新表。
-        legacy_user = _find_legacy_user_by_openid(db, openid)
-        if legacy_user is None:
-            user.wx_openid = openid
+        bind_openid_in_session(db, openid, user)
         db.commit()
         db.refresh(user)
         reset_login_failures(lock_key)

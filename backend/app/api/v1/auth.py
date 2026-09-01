@@ -196,6 +196,58 @@ def wx_bind(body: WxBindRequest):
     return success(result, message="绑定成功")
 
 
+class OrientationActivationVerifyRequest(BaseModel):
+    tenantCode: str = Field(..., min_length=1, max_length=50, description="二维码自动携带的学校代码")
+    admissionNo: str = Field(..., min_length=2, max_length=50, description="录取编号")
+    idCardLast6: str = Field(..., min_length=6, max_length=6, pattern=r"^[0-9Xx]{6}$")
+    clientNonce: str = Field(..., min_length=8, max_length=128)
+
+
+class OrientationActivationCompleteRequest(BaseModel):
+    activationToken: str = Field(..., min_length=20, max_length=200)
+    clientNonce: str = Field(..., min_length=8, max_length=128)
+    newPassword: str = Field(..., min_length=8, max_length=128)
+    confirmPassword: str = Field(..., min_length=8, max_length=128)
+    wxToken: str | None = Field(None, min_length=10, max_length=2000)
+    clientRequestId: str = Field(..., min_length=12, max_length=100)
+    clientType: str = Field("STUDENT_MINI", max_length=40)
+
+
+@router.post("/orientation-activation/verify", summary="新生自助激活：核验录取号与身份证后六位")
+def verify_orientation_activation(body: OrientationActivationVerifyRequest):
+    from app.services.orientation_activation_service import verify_admission_identity
+    result = verify_admission_identity(
+        tenant_code=body.tenantCode,
+        admission_no=body.admissionNo,
+        id_card_last6=body.idCardLast6,
+        client_nonce=body.clientNonce,
+    )
+    audit.record("新生自助激活-身份核验", method="POST",
+                 path="/api/v1/auth/orientation-activation/verify",
+                 status_code=200, target_type="orientation", target_id="verified")
+    return success(result, message="录取身份核验通过")
+
+
+@router.post("/orientation-activation/complete", summary="新生自助激活：设密、绑定微信并自动登录")
+def complete_orientation_activation(body: OrientationActivationCompleteRequest):
+    if body.newPassword != body.confirmPassword:
+        raise AppException("VALIDATION_ERROR", "两次输入的密码不一致")
+    from app.services.orientation_activation_service import complete_activation
+    result = complete_activation(
+        activation_token=body.activationToken,
+        client_nonce=body.clientNonce,
+        new_password=body.newPassword,
+        client_request_id=body.clientRequestId,
+        wx_token=body.wxToken,
+        client_type=body.clientType,
+    )
+    audit.record("新生自助激活-完成", method="POST",
+                 path="/api/v1/auth/orientation-activation/complete",
+                 status_code=200, target_type="orientation",
+                 target_id=(result.get("activation") or {}).get("orientationStudentId", "-"))
+    return success(result, message="账号已激活，正在进入迎新")
+
+
 class ChangePasswordRequest(BaseModel):
     oldPassword: str = Field(..., min_length=1, description="原密码")
     newPassword: str = Field(..., min_length=8, description="新密码（至少8位）")

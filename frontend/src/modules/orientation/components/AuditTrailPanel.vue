@@ -23,7 +23,7 @@
 <script>
 /**
  * AuditTrailPanel — 操作留痕时间线（模块局部组件）。
- * Props: logs [{ id, time, operator, roleName?, action, detail, before?, after? }]（来自 mock/api auditLogs）
+ * Props: logs [{ id, time, operator, roleName?, action, detail, before?, after? }]（来自迎新审计 API）
  */
 export default {
   name: 'AuditTrailPanel',

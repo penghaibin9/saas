@@ -13,6 +13,7 @@ from app.core.security import get_current_user
 from app.modules.internship.services import internship_makeup_service as mk
 from app.modules.academic_affairs.services import mobile_academic_affairs_service as aa
 from app.services import affairs_activity_service as activity_svc
+from app.services import dorm_inspection_service as dorm_inspection_svc
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_agenda_projection_service as agenda
 from app.services import mobile_case_projection_service as cases
@@ -509,9 +510,25 @@ def orientation_collect(body: dict = Body(default={}), user=Depends(get_current_
     return success(stu.orientation_collect_submit(user, body), message="已提交")
 
 
+@router.put("/orientation/arrival", summary="提交到校计划（本人·乐观锁）")
+def orientation_arrival(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.orientation_arrival_submit(user, body), message="到校计划已保存")
+
+
+@router.post("/orientation/materials", summary="提交迎新材料（本人·正式文件版本）")
+def orientation_material(body: dict = Body(...), user=Depends(get_current_user)):
+    return success(stu.orientation_material_submit(user, body), message="材料已提交")
+
+
 @router.post("/orientation/green-channel", summary="绿色通道申请（本人提交，待审核）")
 def orientation_green_channel(body: dict = Body(...), user=Depends(get_current_user)):
     return success(stu.orientation_green_channel_submit(user, body), message="已提交")
+
+
+@router.post("/orientation/checkin-token", summary="签发本人一次性现场报到凭证")
+def orientation_checkin_token(user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import issue_for_student
+    return success(issue_for_student(user), message="报到凭证已签发")
 
 
 @router.get("/campus-service/my", summary="我的在校服务")
@@ -730,6 +747,24 @@ def teacher_orientation(user=Depends(get_current_user)):
 def teacher_orientation_checkin(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.orientation_checkin(user, body.get("admissionNo") or body.get("code") or ""),
                    message="核验通过")
+
+
+@router.get("/teacher/orientation/checkin-points", summary="迎新老师·本人可用现场报到点")
+def teacher_orientation_checkin_points(user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import list_teacher_points
+    return success(list_teacher_points(user))
+
+
+@router.post("/teacher/orientation/checkin/preflight", summary="迎新老师·签名凭证预检（只读）")
+def teacher_orientation_checkin_preflight(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import preflight
+    return success(preflight(body.get("token") or "", user))
+
+
+@router.post("/teacher/orientation/checkin/confirm", summary="迎新老师·确认现场报到")
+def teacher_orientation_checkin_confirm(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import confirm
+    return success(confirm(body.get("token") or "", body.get("checkinPointId"), user), message="现场报到已确认")
 
 
 @router.get("/teacher/orientation/today-checkins", summary="迎新老师·今日已核验列表")
@@ -1780,12 +1815,17 @@ def affairs_discipline_appeal(user=Depends(get_current_user), body: dict = Body(
     return success(portal_aff.discipline_appeal(user, body or {}), message="申辩已提交")
 
 
-@router.get("/affairs/dorm/my", summary="学工·我的宿舍（含自选开关）")
+@router.get("/affairs/dorm/my", summary="学工·我的宿舍（含批次分配投影）")
 def affairs_dorm_my(user=Depends(get_current_user)):
     return success(aff.dorm_my(user))
 
 
-@router.get("/affairs/dorm/select-options", summary="学工·自选床位可选项（按本人性别，受学校开关控制）")
+@router.get("/affairs/dorm/stays/my", summary="学工·我的住宿历史（DormStay Authority）")
+def affairs_dorm_stays_my(user=Depends(get_current_user)):
+    return success(aff.dorm_stays_my(user))
+
+
+@router.get("/affairs/dorm/select-options", summary="学工·本人批次自选的冻结资源池")
 def affairs_dorm_options(user=Depends(get_current_user)):
     return success(aff.dorm_select_options(user))
 
@@ -1800,9 +1840,47 @@ def affairs_dorm_beds(room_id: int, user=Depends(get_current_user)):
     return success(aff.dorm_beds(user, room_id))
 
 
-@router.post("/affairs/dorm/beds/{bed_id}/self-select", summary="学工·学生自选床位入住本人（未放开→403）")
+@router.post("/affairs/dorm/beds/{bed_id}/self-select", summary="学工·原子确认本人批次床位（不等于正式入住）")
 def affairs_dorm_self_select(bed_id: int, user=Depends(get_current_user)):
-    return success(aff.dorm_self_select(user, bed_id), message="已入住")
+    return success(aff.dorm_self_select(user, bed_id), message="床位已确认")
+
+
+@router.get("/affairs/dorm/rectifications/my", summary="学生·我的宿舍整改与历史")
+def affairs_dorm_rectifications_my(
+    status: str | None = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_rectifications(
+        user, status=status, page=page, page_size=pageSize,
+    )
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/affairs/dorm/rectifications/{rectification_id}", summary="学生·本人宿舍整改详情")
+def affairs_dorm_rectification_detail(rectification_id: int, user=Depends(get_current_user)):
+    return success(dorm_inspection_svc.get_rectification(rectification_id, user))
+
+
+@router.post("/affairs/dorm/rectifications/{rectification_id}/start", summary="学生·开始本人宿舍整改")
+def affairs_dorm_rectification_start(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.start_rectification(
+        rectification_id, expected_version=body.get("expectedVersion"), user=user,
+    ), message="已开始整改")
+
+
+@router.post("/affairs/dorm/rectifications/{rectification_id}/submit", summary="学生·提交本人整改证据")
+def affairs_dorm_rectification_submit(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.submit_rectification(rectification_id, body or {}, user), message="整改已提交复检")
 
 
 # ── 学生端·学生活动（D 包波次1，本人报名/签到）──
@@ -1829,6 +1907,90 @@ def affairs_activity_checkin(activity_id: int, body: dict = Body(default={}), us
 @router.get("/teacher/affairs/dorm/pending", summary="辅导员/宿管·调宿与宿舍异常待办")
 def teacher_affairs_dorm_pending(user=Depends(get_current_user)):
     return success(tea.affairs_dorm_pending(user))
+
+
+@router.get("/teacher/affairs/dorm/inspection-templates", summary="教师·宿舍检查模板")
+def teacher_affairs_dorm_inspection_templates(user=Depends(get_current_user)):
+    return success(dorm_inspection_svc.list_templates(user))
+
+
+@router.get("/teacher/affairs/dorm/check-tasks", summary="教师·现场检查任务")
+def teacher_affairs_dorm_check_tasks(
+    status: str | None = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_tasks(user, status, page, pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/teacher/affairs/dorm/check-tasks/{task_id}/records", summary="教师·任务逐房记录")
+def teacher_affairs_dorm_check_records(
+    task_id: int,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(100, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_records(task_id, user, page, pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.post("/teacher/affairs/dorm/check-tasks/{task_id}/records", summary="教师·现场逐房检查并上传证据")
+def teacher_affairs_dorm_check_record(
+    task_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.submit_record(task_id, body or {}, user), message="检查结果已提交")
+
+
+@router.get("/teacher/affairs/dorm/rectifications", summary="教师·宿舍整改待办与历史")
+def teacher_affairs_dorm_rectifications(
+    status: str | None = None,
+    mine: bool = False,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_rectifications(
+        user, status=status, page=page, page_size=pageSize, mine=mine,
+    )
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/teacher/affairs/dorm/rectifications/{rectification_id}", summary="教师·宿舍整改详情")
+def teacher_affairs_dorm_rectification_detail(rectification_id: int, user=Depends(get_current_user)):
+    return success(dorm_inspection_svc.get_rectification(rectification_id, user))
+
+
+@router.post("/teacher/affairs/dorm/rectifications/{rectification_id}/start", summary="教师·开始房间级整改")
+def teacher_affairs_dorm_rectification_start(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.start_rectification(
+        rectification_id, expected_version=body.get("expectedVersion"), user=user,
+    ), message="已开始整改")
+
+
+@router.post("/teacher/affairs/dorm/rectifications/{rectification_id}/submit", summary="教师·提交房间级整改证据")
+def teacher_affairs_dorm_rectification_submit(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.submit_rectification(rectification_id, body or {}, user), message="整改已提交复检")
+
+
+@router.post("/teacher/affairs/dorm/rectifications/{rectification_id}/recheck", summary="教师·宿舍整改复检")
+def teacher_affairs_dorm_rectification_recheck(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.recheck_rectification(rectification_id, body or {}, user), message="复检结果已保存")
 
 
 @router.post("/teacher/affairs/dorm/transfers/{transfer_id}/review",

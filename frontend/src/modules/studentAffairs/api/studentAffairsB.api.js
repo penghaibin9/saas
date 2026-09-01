@@ -123,6 +123,26 @@ export const studentAffairsApi = {
     return pass(core.getBuildings(params))
   },
 
+  downloadDormResourceTemplate() {
+    return pass(core.downloadDormResourceTemplate())
+  },
+
+  validateDormResourceFile(file) {
+    return pass(core.validateDormResourceFile(file))
+  },
+
+  confirmDormResourceImport(batchNo) {
+    return pass(core.confirmDormResourceImport(batchNo))
+  },
+
+  downloadDormImportErrors(batchNo) {
+    return pass(core.downloadDormImportErrors(batchNo))
+  },
+
+  exportDormLedger(reportType, purpose) {
+    return pass(core.exportDormLedger(reportType, purpose))
+  },
+
   listAllDormBuildings(params = {}) {
     return collectPaged((page, pageSize) => core.getBuildings({ ...params, page, pageSize }))
   },
@@ -155,8 +175,28 @@ export const studentAffairsApi = {
     return pass(core.checkinBed(bedId, studentId))
   },
 
-  dormCheckout(bedId) {
-    return pass(core.checkoutBed(bedId))
+  dormCheckout(bedId, version) {
+    return pass(core.checkoutBed(bedId, version))
+  },
+
+  createDormCheckout(body) {
+    return pass(core.createDormCheckout(body))
+  },
+
+  listDormCheckouts(params = {}) {
+    return pass(core.listDormCheckouts(params))
+  },
+
+  confirmDormCheckout(requestId, version) {
+    return pass(core.confirmDormCheckout(requestId, version))
+  },
+
+  cancelDormCheckout(requestId, version, reason) {
+    return pass(core.cancelDormCheckout(requestId, version, reason))
+  },
+
+  listDormStays(params = {}) {
+    return pass(core.listDormStays(params))
   },
 
   setDormSelfSelect(enabled) {
@@ -179,6 +219,18 @@ export const studentAffairsApi = {
     return pass(core.getDormCheckTasks(params))
   },
 
+  getDormInspectionTemplates() {
+    return pass(core.getDormInspectionTemplates())
+  },
+
+  getDormPresenceProvider() {
+    return pass(core.getDormPresenceProvider())
+  },
+
+  listDormPresence(params = {}) {
+    return pass(core.getDormPresence(params))
+  },
+
   createDormCheckTask(body) {
     return pass(core.createDormCheckTask(body))
   },
@@ -189,6 +241,26 @@ export const studentAffairsApi = {
 
   submitDormCheckRecord(taskId, body) {
     return pass(core.submitDormCheckRecord(taskId, body))
+  },
+
+  listDormRectifications(params = {}) {
+    return pass(core.getDormRectifications(params))
+  },
+
+  getDormRectification(rectificationId) {
+    return pass(core.getDormRectification(rectificationId))
+  },
+
+  startDormRectification(rectificationId, expectedVersion) {
+    return pass(core.startDormRectification(rectificationId, expectedVersion))
+  },
+
+  submitDormRectification(rectificationId, body) {
+    return pass(core.submitDormRectification(rectificationId, body))
+  },
+
+  recheckDormRectification(rectificationId, body) {
+    return pass(core.recheckDormRectification(rectificationId, body))
   },
 
   listDormExceptions(params = {}) {

@@ -1,4 +1,5 @@
 import { downloadFile, request, uploadFile } from './request'
+import fileSdk from './fileSdk'
 
 const enc = encodeURIComponent
 
@@ -53,11 +54,21 @@ export const affairsFourEndApi = {
   downloadMaterial: (fileId, fileName = '补交材料') => downloadFile(`/files/download/${enc(fileId)}`, fileName),
 
   // 宿舍正式调宿
+  dormSelectOptions: () => request('/mobile/affairs/dorm/select-options'),
+  dormSelectRooms: (buildingId) => request(`/mobile/affairs/dorm/buildings/${enc(buildingId)}/rooms`),
+  dormSelectBeds: (roomId) => request(`/mobile/affairs/dorm/rooms/${enc(roomId)}/beds`),
+  selfSelectDormBed: (bedId) => request(`/mobile/affairs/dorm/beds/${enc(bedId)}/self-select`, { method: 'POST', body: {} }),
   dormTransferOptions: () => loadAllTransferPages('/mobile/affairs/dorm/transfer-options'),
   dormTransferRooms: (buildingId) => loadAllTransferPages(`/mobile/affairs/dorm/transfer-buildings/${enc(buildingId)}/rooms`),
   dormTransferBeds: (roomId) => request(`/mobile/affairs/dorm/transfer-rooms/${enc(roomId)}/beds`),
   submitDormTransfer: (toBedId, reason) => request('/mobile/affairs/dorm/transfers', { method: 'POST', body: { toBedId, reason } }),
   myDormTransfers: () => request('/mobile/affairs/dorm/transfers/my'),
+  myDormStays: () => request('/mobile/affairs/dorm/stays/my'),
+  myDormRectifications: (params = {}) => request('/mobile/affairs/dorm/rectifications/my', { params }),
+  getDormRectification: (id) => request(`/mobile/affairs/dorm/rectifications/${enc(id)}`),
+  startDormRectification: (id, expectedVersion) => request(`/mobile/affairs/dorm/rectifications/${enc(id)}/start`, { method: 'POST', body: { expectedVersion } }),
+  uploadDormEvidence: (file) => fileSdk.upload(file, { bizType: 'TEMP_PRIVATE', bizId: '' }),
+  submitDormRectification: (id, body) => request(`/mobile/affairs/dorm/rectifications/${enc(id)}/submit`, { method: 'POST', body }),
 
   // 正式第二课堂成绩单与申诉
   secondClassReport: () => request('/mobile/affairs/second-class/report'),

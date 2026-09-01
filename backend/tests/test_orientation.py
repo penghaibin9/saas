@@ -8,11 +8,31 @@ MAIN_TID = 1000000000000000001
 
 def _seed(_db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import (GreenChannelApplication, OrientationException, OrientationMaterial,
-                            OrientationStudent)
+    from app.models import (College, GreenChannelApplication, Major, OrientationBatch,
+                            OrientationException, OrientationMaterial, OrientationStudent,
+                            SchoolClass)
+    from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                        ensure_student_steps)
     db = get_sessionmaker()()
     try:
-        s = OrientationStudent(tenant_id=MAIN_TID, name="新生甲", admission_no="LQ2026999001",
+        college = College(tenant_id=MAIN_TID, college_name="迎新测试学院", code="ORI-TEST-COL", status="ACTIVE")
+        db.add(college); db.flush()
+        major = Major(tenant_id=MAIN_TID, college_id=college.id, major_name="迎新测试专业",
+                      code="ORI-TEST-MAJ", status="ACTIVE")
+        db.add(major); db.flush()
+        school_class = SchoolClass(tenant_id=MAIN_TID, major_id=major.id,
+                                   class_name="软件2601班", class_code="ORI-TEST-CLS",
+                                   grade="2026", status="ACTIVE")
+        flow_version = ensure_published_flow_version(db, MAIN_TID)
+        batch = OrientationBatch(tenant_id=MAIN_TID, batch_name="测试迎新批次",
+                                 batch_no="ORI-TEST-2026", year="2026", status="ACTIVE",
+                                 planned_count=2, flow_version_id=flow_version.id)
+        db.add_all([school_class, batch]); db.flush()
+        s = OrientationStudent(tenant_id=MAIN_TID, batch_id=batch.id,
+                               name="新生甲", admission_no="LQ2026999001",
+                               college_id=college.id, college_name=college.college_name,
+                               major_id=major.id, major_name=major.major_name,
+                               class_id=school_class.id,
                                class_name="软件2601班", phone_encrypted="13800009999",
                                id_card_encrypted="330102200801019999", stage="ADMITTED",
                                report_status="PREPARED", payment_status="UNPAID",
@@ -20,9 +40,10 @@ def _seed(_db_mode):
                                building="梧桐苑1号楼", room="1-301-1", counselor="李辅导",
                                steps_json={"ACTIVATE": "DONE", "PAYMENT": "BLOCKED"},
                                blocked_step="PAYMENT", blocked_reason="未缴费", payable_amount=8600,
-                               paid_amount=0)
+                               paid_amount=0, source_type="MANUAL", source_record_id="LQ2026999001")
         db.add(s)
         db.flush()
+        ensure_student_steps(db, s, status_source="PROCESS_FACT")
         gc = GreenChannelApplication(tenant_id=MAIN_TID, ori_student_id=s.id, apply_type="生源地助学贷款",
                                      apply_amount=8600, submit_time=datetime.utcnow(), status="REVIEWING")
         mat = OrientationMaterial(tenant_id=MAIN_TID, ori_student_id=s.id, material_type="AID_PROOF",
@@ -31,7 +52,8 @@ def _seed(_db_mode):
                                    description="缴费异常", risk_level="MEDIUM", status="OPEN", handler="李辅导")
         db.add_all([gc, mat, exc])
         db.commit()
-        return {"student": s.id, "gc": gc.id, "mat": mat.id, "exc": exc.id}
+        return {"student": s.id, "gc": gc.id, "mat": mat.id, "exc": exc.id,
+                "batch": batch.id, "class": school_class.id}
     finally:
         db.close()
 
@@ -50,13 +72,28 @@ def test_students_and_detail(client, auth_headers, db_mode):
 
 
 def test_create_and_void_student(client, auth_headers, db_mode):
-    _seed(db_mode)
+    ids = _seed(db_mode)
     c = client.post("/api/v1/orientation/students", headers=auth_headers,
-                    json={"name": "新生乙", "admissionNo": "LQ2026999002"}).json()
+                    json={"name": "新生乙", "admissionNo": "LQ2026999002",
+                          "batchId": ids["batch"], "classId": ids["class"]}).json()
     assert c["code"] == 0
     sid = c["data"]["id"]
+    from sqlalchemy import func, select
+    from app.db.session import get_sessionmaker
+    from app.models import OrientationStudentStep
+    db = get_sessionmaker()()
+    try:
+        canonical_count = db.scalar(select(func.count()).select_from(OrientationStudentStep).where(
+            OrientationStudentStep.tenant_id == MAIN_TID,
+            OrientationStudentStep.orientation_student_id == int(sid),
+            OrientationStudentStep.is_deleted.is_(False),
+        ))
+        assert canonical_count == 7
+    finally:
+        db.close()
     dup = client.post("/api/v1/orientation/students", headers=auth_headers,
-                      json={"name": "x", "admissionNo": "LQ2026999002"}).json()
+                      json={"name": "x", "admissionNo": "LQ2026999002",
+                            "batchId": ids["batch"], "classId": ids["class"]}).json()
     assert dup["code"] == 409001
     bad = client.post(f"/api/v1/orientation/students/{sid}/void", headers=auth_headers,
                       json={"reason": "x"}).json()
@@ -69,10 +106,10 @@ def test_create_and_void_student(client, auth_headers, db_mode):
 def test_green_channel_closed_loop(client, auth_headers, db_mode):
     ids = _seed(db_mode)
     bad = client.post(f"/api/v1/orientation/green-channels/{ids['gc']}/reject", headers=auth_headers,
-                      json={"reason": "x"}).json()
+                      json={"expectedVersion": 0, "reason": "x"}).json()
     assert bad["code"] == 422001
     ok = client.post(f"/api/v1/orientation/green-channels/{ids['gc']}/approve", headers=auth_headers,
-                     json={"remark": "材料齐全予以通过"}).json()
+                     json={"expectedVersion": 0, "remark": "材料齐全予以通过"}).json()
     assert ok["code"] == 0 and ok["data"]["status"] == "APPROVED"
     # 通过后学生缴费状态转绿色通道，并解除 PAYMENT 卡点
     det = client.get(f"/api/v1/orientation/students/{ids['student']}", headers=auth_headers).json()
@@ -80,7 +117,7 @@ def test_green_channel_closed_loop(client, auth_headers, db_mode):
     assert det["data"]["student"]["blockedStep"] == ""
     assert det["data"]["student"]["steps"]["PAYMENT"] == "DONE"
     dup = client.post(f"/api/v1/orientation/green-channels/{ids['gc']}/approve", headers=auth_headers,
-                      json={}).json()
+                      json={"expectedVersion": 0}).json()
     assert dup["code"] == 409001
 
 
@@ -153,7 +190,47 @@ def test_progress_blocked_and_resolve(client, auth_headers, db_mode):
     assert resolved["code"] == 0
     det2 = client.get(f"/api/v1/orientation/students/{ids['student']}", headers=auth_headers).json()
     assert det2["data"]["student"]["blockedStep"] == ""
-    assert det2["data"]["student"]["steps"]["MATERIAL"] == "DONE"
+    assert det2["data"]["student"]["steps"]["MATERIAL"] == "WAIVED"
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import OrientationStudentStep
+    db = get_sessionmaker()()
+    try:
+        canonical = db.scalars(select(OrientationStudentStep).where(
+            OrientationStudentStep.tenant_id == MAIN_TID,
+            OrientationStudentStep.orientation_student_id == ids["student"],
+            OrientationStudentStep.step_key == "MATERIAL",
+        )).one()
+        assert canonical.status == "WAIVED"
+        assert canonical.status_source == "MANUAL_WAIVER"
+        assert canonical.waived_by and canonical.waived_at
+        assert canonical.waive_reason == "已人工处理"
+        assert canonical.waive_evidence_ref.startswith("orientation-audit:")
+    finally:
+        db.close()
+
+
+def test_canonical_student_step_overwrites_tampered_json_projection(client, auth_headers, db_mode):
+    ids = _seed(db_mode)
+    first = client.get(
+        f"/api/v1/orientation/students/{ids['student']}", headers=auth_headers
+    ).json()
+    assert first["data"]["student"]["steps"]["PAYMENT"] == "BLOCKED"
+
+    from app.db.session import get_sessionmaker
+    from app.models import OrientationStudent
+    db = get_sessionmaker()()
+    try:
+        student = db.get(OrientationStudent, ids["student"])
+        student.steps_json = {**(student.steps_json or {}), "PAYMENT": "DONE"}
+        db.commit()
+    finally:
+        db.close()
+
+    second = client.get(
+        f"/api/v1/orientation/students/{ids['student']}", headers=auth_headers
+    ).json()
+    assert second["data"]["student"]["steps"]["PAYMENT"] == "BLOCKED"
 
 
 def test_update_dorm(client, auth_headers, db_mode):
@@ -252,6 +329,7 @@ def test_checkin_point_crud(client, auth_headers, db_mode):
 
 
 def test_flow_config(client, auth_headers, db_mode):
+    ids = _seed(db_mode)
     lst = client.get("/api/v1/orientation/flow-config", headers=auth_headers).json()
     assert lst["code"] == 0 and len(lst["data"]) == 7  # 首次自动 seed 7 环节
     fid = lst["data"][3]["id"]
@@ -259,6 +337,36 @@ def test_flow_config(client, auth_headers, db_mode):
     assert upd["code"] == 0 and upd["data"]["enabled"] is False
     again = client.get("/api/v1/orientation/flow-config", headers=auth_headers).json()
     assert again["code"] == 0 and len(again["data"]) == 7  # 不重复 seed
+
+    created = client.post("/api/v1/orientation/batches", headers=auth_headers, json={
+        "batchName": "下一届冻结版本测试", "batchNo": "ORI-NEXT-FLOW-VERSION", "year": "2027",
+    }).json()
+    assert created["code"] == 0
+    activated = client.post(
+        f"/api/v1/orientation/batches/{created['data']['id']}/activate", headers=auth_headers
+    ).json()
+    assert activated["code"] == 0
+
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import OrientationBatch, OrientationFlowStep
+    db = get_sessionmaker()()
+    try:
+        old_batch = db.get(OrientationBatch, ids["batch"])
+        new_batch = db.get(OrientationBatch, int(created["data"]["id"]))
+        assert old_batch.flow_version_id != new_batch.flow_version_id
+        old_payment = db.scalars(select(OrientationFlowStep).where(
+            OrientationFlowStep.flow_version_id == old_batch.flow_version_id,
+            OrientationFlowStep.step_key == "PAYMENT",
+        )).one()
+        new_payment = db.scalars(select(OrientationFlowStep).where(
+            OrientationFlowStep.flow_version_id == new_batch.flow_version_id,
+            OrientationFlowStep.step_key == "PAYMENT",
+        )).one()
+        assert old_payment.enabled is True
+        assert new_payment.enabled is False
+    finally:
+        db.close()
 
 
 def test_notice_send(client, auth_headers, db_mode):

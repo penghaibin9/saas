@@ -409,6 +409,18 @@ export const STUDENT_AFFAIRS_PERMISSION_CATALOG = [
     "deprecatedAliases": []
   },
   {
+    "permissionCode": "studentAffairs.dorm.export",
+    "label": "dorm·导出",
+    "domain": "dorm",
+    "riskLevel": "HIGH",
+    "allowedScopes": [
+      "TENANT_ALL",
+      "DORM_BUILDING",
+      "CLASS"
+    ],
+    "deprecatedAliases": []
+  },
+  {
     "permissionCode": "studentAffairs.dorm.exception.handle",
     "label": "dorm·处置",
     "domain": "dorm",
@@ -759,6 +771,42 @@ export const STUDENT_AFFAIRS_PERMISSION_CATALOG = [
     "permissionCode": "studentAffairs.org.view",
     "label": "org·查看",
     "domain": "org",
+    "riskLevel": "MEDIUM",
+    "allowedScopes": [
+      "TENANT_ALL",
+      "COLLEGE",
+      "CLASS"
+    ],
+    "deprecatedAliases": []
+  },
+  {
+    "permissionCode": "studentAffairs.orientation.export",
+    "label": "orientation·导出",
+    "domain": "orientation",
+    "riskLevel": "HIGH",
+    "allowedScopes": [
+      "TENANT_ALL",
+      "COLLEGE",
+      "CLASS"
+    ],
+    "deprecatedAliases": []
+  },
+  {
+    "permissionCode": "studentAffairs.orientation.import",
+    "label": "orientation·import",
+    "domain": "orientation",
+    "riskLevel": "MEDIUM",
+    "allowedScopes": [
+      "TENANT_ALL",
+      "COLLEGE",
+      "CLASS"
+    ],
+    "deprecatedAliases": []
+  },
+  {
+    "permissionCode": "studentAffairs.orientation.manage",
+    "label": "orientation·维护",
+    "domain": "orientation",
     "riskLevel": "MEDIUM",
     "allowedScopes": [
       "TENANT_ALL",

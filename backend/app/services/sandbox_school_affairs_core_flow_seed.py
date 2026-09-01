@@ -214,7 +214,7 @@ def seed_affairs_core_flows(db, tenant_id: int) -> dict:
         "planned_at": NOW - timedelta(days=2), "status": "DONE",
     })
     _put(db, DormCheckRecord, tenant_id, {"task_id": task.id, "room_id": room.id}, {
-        "result": "需整改", "issue_type": "POWER_SAFETY",
+        "result": "ABNORMAL", "issue_type": "POWER_SAFETY",
         "detail": "插线板放置位置不规范；现场已断电并完成安全教育。",
         "rectify_deadline": NOW + timedelta(days=1),
         "student_ids_json": json.dumps([bed.student_id for bed in occupied_beds if bed.room_id == room.id]),

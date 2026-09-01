@@ -166,17 +166,64 @@ def _empty(reason="尚未建立你的学生档案或暂无数据"):
     return {"hasData": False, "note": reason}
 
 
-def _orientation_payload(o) -> dict:
+def _orientation_payload(o, db=None) -> dict:
     if not o:
         return _empty("你暂无迎新报到记录")
-    return {"hasData": True, "reportStatus": o.report_status, "paymentStatus": o.payment_status,
+    if db is None:
+        raise RuntimeError("orientation payload requires canonical step session")
+    from app.services.orientation_flow_service import student_step_projection
+    from app.services.orientation_qualification_service import evaluate
+    steps = student_step_projection(db, o)
+    qualification = evaluate(db, o)
+    from app.services.orientation_checkin_service import _dorm_projection, token_status
+    from app.models import OrientationBatch, OrientationCheckinPoint, OrientationCheckinRecord
+    checkin_credential = token_status(db, o, qualification=qualification)
+    batch = db.get(OrientationBatch, int(o.batch_id))
+    dorm = _dorm_projection(db, o)
+    contacts = []
+    contact_name = o.counselor or ""
+    contact_phone = ""
+    if o.class_id:
+        from app.core.field_crypto import decrypt_field
+        from app.models import SchoolClass, User
+        school_class = db.get(SchoolClass, int(o.class_id))
+        if (school_class and not school_class.is_deleted
+                and int(school_class.tenant_id) == int(o.tenant_id)
+                and school_class.counselor_id):
+            counselor = db.get(User, int(school_class.counselor_id))
+            if counselor and not counselor.is_deleted and int(counselor.tenant_id) == int(o.tenant_id):
+                contact_name = counselor.real_name or contact_name
+                contact_phone = decrypt_field(counselor.phone_encrypted) or ""
+    if contact_name:
+        contacts.append({"role": "辅导员", "name": contact_name, "phone": contact_phone})
+    checkin_record = db.scalars(select(OrientationCheckinRecord).where(
+        OrientationCheckinRecord.tenant_id == o.tenant_id,
+        OrientationCheckinRecord.orientation_student_id == o.id,
+        OrientationCheckinRecord.is_deleted.is_(False),
+    ).order_by(OrientationCheckinRecord.id.desc())).first()
+    checkin_point = tenant_get(db, OrientationCheckinPoint, int(checkin_record.checkin_point_id)) if checkin_record else None
+    payment_fact = qualification.get("facts", {}).get("payment", {})
+    payment_status = ("GREEN_CHANNEL" if payment_fact.get("greenChannelApproved")
+                      else payment_fact.get("status") or "UNAVAILABLE")
+    return {"hasData": True, "batchName": batch.batch_name if batch else "",
+            "reportStatus": o.report_status, "paymentStatus": payment_status,
             "materialStatus": o.material_status, "dormStatus": o.dorm_status,
             "greenChannelStatus": o.green_channel_status,
-            "building": o.building or "", "room": o.room or "",
+            "building": o.building or "", "room": o.room or "", "dorm": dorm,
             "blockedStep": o.blocked_step or "", "blockedReason": o.blocked_reason or "",
-            "steps": [{"key": k, "status": v} for k, v in (o.steps_json or {}).items()],
+            "steps": [{"key": k, "status": v} for k, v in steps.items()],
             "admissionNo": o.admission_no, "name": o.name,
-            "reportCodeValid": o.report_status not in ("CHECKED_IN", "COLLEGE_CONFIRMED"),
+            "qualification": qualification,
+            "payment": payment_fact,
+            # 只返回签发资格/状态；原始一次性 token 仅由显式签发端点返回。
+            "reportCodeValid": checkin_credential["status"] == "ISSUED",
+            "reportCodeStatus": checkin_credential["status"],
+            "checkinCredential": checkin_credential,
+            "checkin": {
+                "completedAt": _iso(checkin_record.checked_in_at) if checkin_record else "",
+                "pointName": checkin_point.name if checkin_point else "",
+            },
+            "contacts": contacts,
             "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
             "className": o.class_name or "", "grade": o.grade or "", "origin": o.origin or "",
             "phoneMasked": mask_phone_encrypted(o.phone_encrypted)}
@@ -313,7 +360,7 @@ def me_overview(user: dict, include_home: bool = False) -> dict:
             "hasData": True,
         }
         if include_home:
-            result["orientation"] = _orientation_payload(ori)
+            result["orientation"] = _orientation_payload(ori, db)
             result["orientationBatch"] = _orientation_batch_status_db(db)
             # V3 §5.2 学分完成率的真值来源。acad 已在本 session 内解析，不新增查询。
             # required_credits 可为空（培养方案未解析）——此时必须保持 None，
@@ -756,7 +803,17 @@ def orientation_my(user: dict) -> dict:
         if not stu:
             return _empty()
         from app.models import OrientationStudent
-        return _orientation_payload(_resolve_domain_student(db, OrientationStudent, stu))
+        result = _orientation_payload(_resolve_domain_student(db, OrientationStudent, stu), db)
+    if not result.get("hasData"):
+        return result
+    try:
+        from app.services.orientation_self_service import snapshot
+        result["selfService"] = {"available": True, **snapshot(u)}
+    except AppException as exc:
+        if exc.code not in {"NO_PERMISSION", "DATA_NOT_FOUND", "DATA_CONFLICT"}:
+            raise
+        result["selfService"] = {"available": False, "reason": exc.message}
+    return result
 
 
 def _resolve_orientation_student(db, u: dict):
@@ -769,19 +826,37 @@ def _resolve_orientation_student(db, u: dict):
 
 
 def orientation_collect_submit(user: dict, body: dict) -> dict:
-    """预报到信息采集（学生自助）：确认联系电话/生源地。"""
+    """预报到信息采集（学生自助）：稳定学生主档 + 紧急联系人。"""
     u = _require_student(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持提交")
-    with _session() as db:
-        o = _resolve_orientation_student(db, u)
-        if not o:
-            raise AppException("NOT_FOUND", "未找到你的迎新报到记录，请联系辅导员")
-        oid = o.id
-    from app.services.orientation_service import student_submit_collect
-    result = student_submit_collect(oid, phone=(body or {}).get("phone", ""), origin=(body or {}).get("origin", ""))
+    from app.services.orientation_self_service import submit_information
+    result = submit_information(u, body or {})
+    oid = result["id"]
     invalidate_home_cache(u, "todo", "case")
     audit_log.record("学生提交预报到信息", f"orientation-student:{oid}", detail={"realName": u.get("realName")})
+    return result
+
+
+def orientation_arrival_submit(user: dict, body: dict) -> dict:
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持提交")
+    from app.services.orientation_self_service import submit_arrival_plan
+    result = submit_arrival_plan(u, body or {})
+    invalidate_home_cache(u, "todo", "case")
+    audit_log.record("学生提交迎新到校计划", f"orientation-arrival:{result['id']}")
+    return result
+
+
+def orientation_material_submit(user: dict, body: dict) -> dict:
+    u = _require_student(user)
+    if not db_enabled():
+        raise AppException("VALIDATION_ERROR", "演示模式不支持提交")
+    from app.services.orientation_self_service import submit_material
+    result = submit_material(u, body or {})
+    invalidate_home_cache(u, "todo", "case")
+    audit_log.record("学生提交迎新材料", f"orientation-material:{result['id']}")
     return result
 
 
@@ -800,6 +875,7 @@ def orientation_green_channel_submit(user: dict, body: dict) -> dict:
     result = student_submit_green_channel(
         oid, b.get("applyType", ""), b.get("applyAmount", 0), b.get("remark", ""),
         file_ids=_attachment_ids(b), actor=u,
+        client_request_id=b.get("clientRequestId", ""),
     )
     invalidate_home_cache(u, "todo", "case")
     audit_log.record("学生提交绿色通道申请", f"orientation-student:{oid}", detail={"realName": u.get("realName")})

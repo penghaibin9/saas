@@ -88,7 +88,9 @@ test.describe.serial('Golden rollout · Student Affairs domain hubs · A/B', () 
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/dormitory/)
     await expect(page.getByRole('heading', { name: '宿舍管理', exact: true })).toBeVisible()
-    await expect(page.getByText(dormBuildingName, { exact: true })).toBeVisible()
+    // A Playwright retry reruns beforeAll and may leave an earlier same-run fixture.
+    // The contract is that the newly created resource is visible, not globally unique text.
+    await expect(page.getByText(dormBuildingName, { exact: true }).first()).toBeVisible()
     await expect(page.getByText('总床位', { exact: true })).toBeVisible()
     await expect(page.getByText('16', { exact: true }).first()).toBeVisible()
     await expect(page.getByText('房间管理', { exact: true })).toBeVisible()
@@ -97,7 +99,7 @@ test.describe.serial('Golden rollout · Student Affairs domain hubs · A/B', () 
     const archive = page.locator('.app-desc-list').last()
     const assignItem = archive.locator('.app-desc-list__item').first()
     const assignValue = assignItem.locator('.app-desc-list__value')
-    await expect(assignValue).toContainText('COUNSELOR_ASSIGN')
+    await expect(assignValue).toContainText('BATCH_CONTROLLED')
 
     const archiveStyle = await archive.evaluate((el) => {
       const s = getComputedStyle(el)
@@ -132,7 +134,7 @@ test.describe.serial('Golden rollout · Student Affairs domain hubs · A/B', () 
     await expect(archive).toBeVisible()
     const columns = await archive.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length)
     expect(columns).toBe(1)
-    await expect(archive.locator('.app-desc-list__value').first()).toContainText('COUNSELOR_ASSIGN')
+    await expect(archive.locator('.app-desc-list__value').first()).toContainText('BATCH_CONTROLLED')
     await expectNoHorizontalOverflow(page)
   })
 

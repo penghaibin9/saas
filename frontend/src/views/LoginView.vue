@@ -69,6 +69,7 @@ import ForcePasswordChangeView from '@/views/ForcePasswordChangeView.vue'
 import { toast } from '@/utils/toast'
 
 const REMEMBER_KEY = 'staff_login_name'
+const TENANT_KEY = 'staff_tenant_code'
 
 export default {
   name: 'LoginView',
@@ -94,6 +95,7 @@ export default {
         this.form.loginName = saved
         this.remember = true
       }
+      if (!this.form.tenantCode) this.form.tenantCode = localStorage.getItem(TENANT_KEY) || ''
     } catch {
       // 隐私模式可能禁用本地存储，不影响登录。
     }
@@ -128,6 +130,8 @@ export default {
         try {
           if (this.remember) localStorage.setItem(REMEMBER_KEY, this.form.loginName)
           else localStorage.removeItem(REMEMBER_KEY)
+          if (this.form.tenantCode) localStorage.setItem(TENANT_KEY, this.form.tenantCode)
+          else localStorage.removeItem(TENANT_KEY)
         } catch {
           // 记住账号失败不阻断真实认证链路。
         }

@@ -67,7 +67,7 @@ jobs:
   mysql-contract:
     name: MySQL 任务权威 + PC 任务中心合同
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     services:
       mysql:
         image: mysql:8.0

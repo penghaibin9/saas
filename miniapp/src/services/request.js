@@ -410,6 +410,17 @@ export function realRequest(path, {
   method = 'GET', data, auth = true, _retried = false, _rawPage = false, _expectedGeneration = null
 } = {}) {
   const normalizedMethod = String(method || 'GET').toUpperCase()
+  // H5 access tokens intentionally live in memory only. After F5 the per-tab HttpOnly
+  // refresh cookie is still valid, but there is no bearer token to attach to the first
+  // business request. Restore the access token before that request instead of relying on
+  // every runtime to surface a non-2xx response through uni.request's success callback.
+  if (auth && !_retried && !String(path || '').startsWith('/auth/') && !getToken() && getRefreshToken()) {
+    const expectedGeneration = currentSessionGeneration()
+    return _refreshOnce(expectedGeneration).then(() => realRequest(path, {
+      method: normalizedMethod, data, auth, _retried: true, _rawPage,
+      _expectedGeneration: expectedGeneration
+    }))
+  }
   let effectivePath
   try { effectivePath = withTeacherGraduationContext(path) } catch (e) { return Promise.reject(e) }
 

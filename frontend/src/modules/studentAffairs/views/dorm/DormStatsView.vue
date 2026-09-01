@@ -6,12 +6,17 @@
     data-scope-name="宿管限负责楼栋"
     watermark-purpose="宿舍统计查看"
   >
+    <template #actions>
+      <AppPermissionButton :allowed="canExport" code="studentAffairs.dorm.export" variant="secondary" :loading="exporting" @click="exportVisible = true">
+        导出宿舍台账
+      </AppPermissionButton>
+    </template>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载宿舍统计..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
       <section class="sa-summary-strip">
         <div class="sa-summary-strip__content">
           <span class="sa-summary-strip__eyebrow">当前床位结论</span>
-          <h2 class="sa-summary-strip__title">总床位 {{ occ.totalBeds || 0 }} 张，已入住 {{ occ.occupiedBeds || 0 }} 张，空床 {{ occ.vacantBeds || 0 }} 张</h2>
+          <h2 class="sa-summary-strip__title">总床位 {{ occ.totalBeds || 0 }} 张，已入住 {{ occ.occupiedBeds || 0 }} 张，空床 {{ occ.vacantBeds || 0 }} 张，锁定 {{ occ.lockedBeds || 0 }} 张</h2>
           <p class="sa-summary-strip__text">当前范围入住率 {{ occ.occupancyRate != null ? Math.round(occ.occupancyRate * 100) + '%' : '—' }}。优先核查入住率异常偏高、无空床或空床长期较多的楼栋。</p>
         </div>
       </section>
@@ -25,40 +30,75 @@
           <template #cell-name="{ row }"><span class="mp-cell-main">{{ row.buildingName }}</span></template>
           <template #cell-gender="{ row }"><span class="dorm-stats-gender">{{ genderLabel(row.genderLimit) }}</span></template>
           <template #cell-vacant="{ row }"><strong :class="row.vacantBeds ? 'dorm-stats-vacant' : 'dorm-stats-full'">{{ row.vacantBeds }}</strong></template>
+          <template #cell-locked="{ row }">{{ row.lockedBeds || 0 }}</template>
           <template #cell-total="{ row }">{{ row.totalBeds }}</template>
-          <template #cell-rate="{ row }"><span class="dorm-stats-rate" :class="{ 'is-full': row.totalBeds && !row.vacantBeds }">{{ rate(row) }}</span></template>
+          <template #cell-rate="{ row }"><span class="dorm-stats-rate" :class="{ 'is-full': row.totalBeds && row.occupiedBeds === row.totalBeds }">{{ rate(row) }}</span></template>
+          <template #cell-actions="{ row }"><AppButton size="sm" variant="secondary" @click="drillBuilding(row)">查看房态</AppButton></template>
         </DataTable>
         <p v-else class="sa-empty">当前数据范围内暂无楼栋统计。请先维护宿舍房源，或检查宿管楼栋数据范围。</p>
       </AppSectionCard>
     </AppGlobalState>
+
+    <AppDrawer :visible="exportVisible" title="导出宿舍生产台账" mode="modal" size="medium" @close="exportVisible = false">
+      <div class="dorm-export-form">
+        <p>文件固定按当前账号楼栋范围生成，并记录用途、操作人、水印、ExportTask 与审计。</p>
+        <AppFormItem label="台账类型" required><AppSelect v-model="exportType" :options="EXPORT_TYPES" /></AppFormItem>
+        <AppFormItem label="导出用途" required><AppTextInput v-model="exportPurpose" placeholder="例如：2026年秋季宿舍台账核对" /></AppFormItem>
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="exporting" @click="exportVisible = false">取消</AppButton>
+        <AppButton variant="primary" :disabled="exportPurpose.trim().length < 5" :loading="exporting" @click="exportLedger">生成并下载</AppButton>
+      </template>
+    </AppDrawer>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard } from '@/components/common'
+import { AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppSectionCard, AppSelect, AppTextInput } from '@/components/common'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
+import { canCode } from '@/modules/studentAffairs/composables/permission'
+
+const EXPORT_TYPES = [
+  { value: 'resources', label: '房源台账.xlsx' },
+  { value: 'residents', label: '住宿学生台账.xlsx' },
+  { value: 'vacant', label: '空床台账.xlsx' },
+  { value: 'allocation', label: '住宿分配结果.xlsx' },
+  { value: 'transfer', label: '调宿台账.xlsx' },
+  { value: 'checkout', label: '退宿台账.xlsx' },
+  { value: 'inspection', label: '检查整改台账.xlsx' },
+  { value: 'exceptions', label: '宿舍异常台账.xlsx' },
+  { value: 'presence', label: '归寝异常台账.xlsx' }
+]
 
 const BUILDING_COLUMNS = [
   { key: 'name', title: '楼栋' },
   { key: 'gender', title: '性别' },
   { key: 'vacant', title: '空床' },
+  { key: 'locked', title: '锁定' },
   { key: 'total', title: '总床' },
-  { key: 'rate', title: '入住率' }
+  { key: 'rate', title: '入住率' },
+  { key: 'actions', title: '下钻', align: 'right', width: '110px' }
 ]
 
 export default {
   name: 'DormStatsView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, DataTable },
-  data() { return { buildingColumns: BUILDING_COLUMNS, loading: true, errorMessage: '', occ: {}, buildings: [] } },
+  props: { ctx: { type: Object, default: null } },
+  components: { AppButton, AppDrawer, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell,
+    AppPermissionButton, AppSectionCard, AppSelect, AppTextInput, DataTable },
+  data() { return { buildingColumns: BUILDING_COLUMNS, EXPORT_TYPES, loading: true, errorMessage: '', occ: {}, buildings: [],
+    exportVisible: false, exporting: false, exportType: 'resources', exportPurpose: '' } },
   computed: {
+    canExport() { return canCode(this.ctx, 'studentAffairs.dorm.export') },
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     metricCards() {
       const rate = this.occ.occupancyRate != null ? Math.round(this.occ.occupancyRate * 100) : 0
       return [
         { key: 't', label: '总床位', value: this.occ.totalBeds || 0, accent: 'primary' },
-        { key: 'o', label: '已住', value: this.occ.occupiedBeds || 0, accent: 'info' },
+        { key: 'o', label: '已住', value: this.occ.occupiedBeds || 0, accent: 'primary' },
         { key: 'v', label: '空床', value: this.occ.vacantBeds || 0, accent: (this.occ.vacantBeds || 0) ? 'success' : 'warning' },
+        { key: 'l', label: '锁定床位', value: this.occ.lockedBeds || 0, accent: 'warning' },
         { key: 'r', label: '入住率', value: rate + '%', accent: 'primary' }
       ]
     }
@@ -72,7 +112,21 @@ export default {
         this.occ = oc.data || {}; this.buildings = bs.data.items || []
       } catch (e) { this.errorMessage = e.message || '宿舍统计加载失败' } finally { this.loading = false }
     },
-    rate(b) { return b.totalBeds ? Math.round((b.totalBeds - b.vacantBeds) / b.totalBeds * 100) + '%' : '—' },
+    drillBuilding(building) {
+      this.$router.push({
+        name: 'student-affairs-dorm-resource',
+        query: { buildingId: String(building.buildingId) }
+      })
+    },
+    async exportLedger() {
+      this.exporting = true; this.errorMessage = ''
+      try {
+        await studentAffairsApi.exportDormLedger(this.exportType, this.exportPurpose.trim())
+        this.exportVisible = false; this.exportPurpose = ''
+      } catch (e) { this.errorMessage = e.message || '宿舍台账导出失败' }
+      finally { this.exporting = false }
+    },
+    rate(b) { return b.totalBeds ? Math.round((b.occupiedBeds || 0) / b.totalBeds * 100) + '%' : '—' },
     genderLabel(g) { return ({ MALE: '男寝', FEMALE: '女寝', MIXED: '混合' })[g] || g }
   }
 }
@@ -86,6 +140,8 @@ export default {
 .dorm-stats-full { color: var(--danger-700, #b91c1c); font-variant-numeric: tabular-nums; }
 .dorm-stats-rate { display: inline-block; min-width: 54px; padding: 3px 8px; border-radius: var(--radius-full); background: var(--primary-50); color: var(--primary-700); text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
 .dorm-stats-rate.is-full { background: var(--warning-50); color: var(--warning-800, #92400e); }
+.dorm-export-form { display: grid; gap: var(--space-3); }
+.dorm-export-form p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 640px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
 @import '@/styles/module-page.css';

@@ -34,7 +34,9 @@ async function loginTeacherMini(page, account) {
   const fields = page.getByRole('textbox')
   await fields.nth(0).fill(account.username)
   await fields.nth(1).fill(account.password)
-  await page.getByText('填写', { exact: true }).click()
+  if ((await fields.count()) < 3) {
+    await page.getByText('填写', { exact: true }).click()
+  }
   await fields.nth(2).fill(account.tenant)
   await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
   await page.getByText('进入教师工作台', { exact: true }).click()
