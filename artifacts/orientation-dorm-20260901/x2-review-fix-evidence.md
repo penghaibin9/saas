@@ -2,7 +2,7 @@
 
 ## 复审结论
 
-本轮针对数字迎新、智慧宿舍、学校数据库导入及管理端/学生门户/教师小程序关键链路做了二次复审。发现的问题均已修复并补充回归覆盖，自动化测试、生产构建、全新 MySQL 迁移和真实浏览器验收全部通过。
+本轮针对数字迎新、智慧宿舍、学校数据库导入及管理端/学生门户/教师小程序关键链路做了二次复审。发现的问题均已修复并补充回归覆盖；随后重新拉取 GitHub 最新 `origin/main`，从最新主线建立新分支并完整迁移 16 个施工提交。
 
 ## 本轮修复
 
@@ -21,6 +21,16 @@
 - Python 语法检查与 `git diff --check` 通过。
 - 已知输出仅含既有弃用、CSS `@import` 顺序及 bundle 体积提示，无失败项。
 
+## GitHub 最新主线同步复验
+
+- 最新主线基线：`eb43e135c8d4c74f52e0f24318d4113575aab2fd`。
+- 新分支从该提交直接建立，迁移后相对 `origin/main` 为 `behind 0`。
+- 最新主线新增微信隐私门禁检查后，补齐宿舍学生页、迎新材料页、教师宿舍现场页的 `MobilePrivacyGate`。
+- 管理端全量 Node 测试、lint、production build 与 21 路由预渲染通过。
+- 学生门户 `124 passed`，lint 与 production build 通过。
+- 小程序在最新主线下 `255 passed`，H5 与微信小程序 production build 通过。
+- 后端本轮变更文件 `py_compile` 通过；此前同一业务改动的 MySQL 相关全量为 `69 passed`。
+
 ## 数据库验证
 
 - 使用独立 MySQL 8.4 数据库 `saas_x2_review_runtime` 从空库执行完整 Alembic upgrade 成功。
@@ -36,5 +46,5 @@
 
 ## 分支说明
 
-- 工作分支：`codex/orientation-dorm-20260901`。
-- 本轮未合并 `origin/main`：复审前确认双方各有独立提交，但变更路径无重叠；保留当前工作分支提交历史，采用普通非强制推送。
+- 工作分支：`codex/orientation-dorm-review-latest-20260901`。
+- 分支基线为同步后的最新 `origin/main`；保留完整施工提交历史，采用普通非强制推送。
