@@ -881,6 +881,18 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/dorm/inspection-templates'))
   },
 
+  /** 归寝 Provider 与真实健康状态；NONE 必须显示未配置/DISABLED。 */
+  getDormPresenceProvider() {
+    return callStrict(() => request('/student-affairs/dorm/presence/provider'))
+  },
+
+  /** 当前归寝名单；UNKNOWN 与 NOT_RETURNED 严格分开。 */
+  getDormPresence({ status = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/dorm/presence', { params }))
+  },
+
   /** 发布宿舍检查任务，并冻结模板快照。 */
   createDormCheckTask(body) {
     return callStrict(() => request('/student-affairs/dorm/check-tasks', { method: 'POST', body }))

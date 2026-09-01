@@ -1750,6 +1750,29 @@ def dorm_inspection_templates(user=Depends(require_permission("studentAffairs.do
     return success(dorm_inspection_svc.list_templates(user))
 
 
+@router.get("/dorm/presence/provider", summary="归寝 Provider、健康状态与生效规则")
+def dorm_presence_provider(user=Depends(require_permission("studentAffairs.dorm.view"))):
+    from app.services import dorm_presence_service as presence_svc
+    return success(presence_svc.provider_status(user))
+
+
+@router.get("/dorm/presence", summary="当前归寝状态名单（宿管限负责楼栋）")
+def dorm_presence_list(
+    status: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(require_permission("studentAffairs.dorm.view")),
+):
+    from app.services import dorm_presence_service as presence_svc
+    items, total, counts = presence_svc.list_presence(
+        user, status=status, page=page, page_size=pageSize,
+    )
+    return success({
+        "items": items, "total": total, "page": page, "pageSize": pageSize,
+        "statusCounts": counts,
+    })
+
+
 @router.post("/dorm/check-tasks", summary="发布宿舍检查任务（冻结模板快照）")
 def dorm_check_task(body: CheckTaskCreate,
                     user=Depends(require_permission("studentAffairs.dorm.inspection.manage"))):

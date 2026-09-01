@@ -449,3 +449,32 @@ class DormRectification(PKMixin, TenantMixin, CommonMixin, Base):
         Index("ix_dorm_rectification_student_status", "tenant_id", "student_id", "status", "is_deleted"),
         Index("ix_dorm_rectification_deadline", "tenant_id", "status", "deadline_at", "is_deleted"),
     )
+
+
+class DormAccessEvent(PKMixin, TenantMixin, CommonMixin, Base):
+    """Provider 标准化出入事件；不保存生物特征、模板、向量或原始图片。"""
+
+    __tablename__ = "t_affairs_dorm_access_event"
+
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_event_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    building_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    event_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    device_ref: Mapped[str | None] = mapped_column(String(160))
+    result: Mapped[str] = mapped_column(String(32), nullable=False, default="SUCCESS")
+    raw_ref_hash: Mapped[str | None] = mapped_column(String(64), comment="外部合规原始记录引用的不可逆哈希")
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "provider", "provider_event_id", name="uk_dorm_access_provider_event"),
+        CheckConstraint(
+            "provider IN ('MANUAL','ACCESS_GATE','FACE_GATE','THIRD_PARTY_CAMPUS')",
+            name="ck_dorm_access_provider",
+        ),
+        CheckConstraint("event_type IN ('IN','OUT')", name="ck_dorm_access_event_type"),
+        CheckConstraint("student_id > 0 AND building_id > 0", name="ck_dorm_access_real_subject"),
+        Index("ix_dorm_access_student_time", "tenant_id", "student_id", "event_time", "is_deleted"),
+        Index("ix_dorm_access_building_time", "tenant_id", "building_id", "event_time", "is_deleted"),
+        Index("ix_dorm_access_provider_time", "tenant_id", "provider", "event_time", "is_deleted"),
+    )
