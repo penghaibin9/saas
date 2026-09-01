@@ -16,8 +16,9 @@ test('O1 student ledger selects a real batch for list, create and export', () =>
   assert.match(view, /this\.batches\.find\(\(row\) => row\.status !== 'CLOSED'\)/)
   assert.match(view, /batchId: this\.filters\.batchId/)
   assert.match(view, /请先在筛选条件中选择一个迎新批次/)
-  assert.match(api, /if \(!payload\.batchId\) return fail\('请先选择迎新批次，禁止跨批次导出'/)
-  assert.match(api, /body: \{ purpose, batchId: payload\.batchId \}/)
+  assert.match(api, /request\('\/orientation\/batches', \{ params: \{ status: 'ACTIVE', page: 1, pageSize: 1 \} \}\)/)
+  assert.match(api, /if \(!batchId\) throw new Error\('当前没有进行中的迎新批次，无法生成批次台账'/)
+  assert.match(api, /body: \{ purpose, batchId, reportType \}/)
 })
 
 test('O1 import template exposes the full code-based authority contract', () => {

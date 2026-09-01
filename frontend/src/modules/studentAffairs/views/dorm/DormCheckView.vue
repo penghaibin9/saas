@@ -180,9 +180,10 @@ const RECHECK_ACTIONS = [
   { value: 'RETURN', label: '退回继续整改' },
   { value: 'ESCALATE', label: '升级处置（仅高危）' }
 ]
+let requestSequence = 0
 
 function requestId(prefix) {
-  const token = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const token = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${++requestSequence}`
   return `${prefix}-${token}`.slice(0, 100)
 }
 

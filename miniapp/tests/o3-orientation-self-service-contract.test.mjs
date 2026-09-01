@@ -20,7 +20,10 @@ test('O3 student miniapp exposes canonical arrival and material submission', () 
 })
 
 test('O3 does not disguise the admission number as a report credential', () => {
-  assert.match(api, /reportCode: \{ code: '', valid: false, note: '正式电子报到凭证尚未签发' \}/)
+  assert.match(api, /status: r\.reportCodeStatus \|\| 'BLOCKED'/)
+  assert.match(api, /canIssue: !!r\.checkinCredential\?\.canIssue/)
+  assert.match(api, /expiresAt: r\.checkinCredential\?\.expiresAt \|\| ''/)
+  assert.match(api, /note: r\.checkinCredential\?\.note \|\| '正式电子报到凭证尚未签发'/)
   assert.match(credential, /尚未签发/)
   assert.match(credential, /identity\.admissionNo/)
   assert.doesNotMatch(api, /reportCode:\s*\{\s*code:\s*r\.admissionNo/)

@@ -28,16 +28,15 @@ from app.models import (
     StudentProfile,
 )
 from app.services.db_service import _iso, _tid, session
+from app.services.message_identity import resolve_message_user_id
 
 TOKEN_PREFIX = "oci1"
 TOKEN_TTL_MINUTES = 10
 
 
 def _actor_id(user=None) -> int | None:
-    raw = str((user or get_current_user_ctx() or {}).get("userId") or "")
-    if raw.startswith("db-"):
-        raw = raw[3:]
-    return int(raw) if raw.isdigit() and int(raw) > 0 else None
+    actor_id = resolve_message_user_id(user or get_current_user_ctx() or {})
+    return actor_id if actor_id > 0 else None
 
 
 def _b64(data: bytes) -> str:
@@ -175,7 +174,10 @@ def issue_for_student(user: dict) -> dict:
                 details={"verdict": decision.get("verdict"), "blockers": decision.get("blockers", [])},
             )
         batch = db.get(OrientationBatch, int(student.batch_id))
-        now = datetime.utcnow()
+        # MySQL DATETIME(0) may round fractional seconds.  Sign exactly the same
+        # second that is persisted so a token issued in the upper half-second
+        # can never fail its own record-consistency check.
+        now = datetime.utcnow().replace(microsecond=0)
         if not batch or batch.is_deleted or batch.status != "ACTIVE":
             raise AppException("INVALID_STATE", "迎新批次当前未开放", http_status=409)
         if batch.report_start_date and now < batch.report_start_date:
