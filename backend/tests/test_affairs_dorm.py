@@ -262,27 +262,21 @@ def test_m6_one_step_building(client, db_mode):
     assert occ["totalBeds"] == 36  # 3×2×6
 
 
-def test_m7_self_select_toggle(client, db_mode):
+def test_m7_legacy_self_select_toggle_is_retired(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     bid = _make_building(client, hdr)
     _, beds = _first_bed(client, hdr, bid)
-    # 默认关：配置显示辅导员分配 + 给学生的提醒文案
+    # D3 起旧全局开关退出权威；只有已发布批次+时间窗可开放自选。
     cfg_off = client.get(f"{BASE}/dorm/config", headers=hdr).json()["data"]
-    assert cfg_off["selfSelectEnabled"] is False and cfg_off["assignMode"] == "COUNSELOR_ASSIGN"
-    assert "辅导员" in cfg_off["studentNotice"]  # 关闭时提醒学生
-    # 学生自选 → 403，错误信息即提醒文案
+    assert cfg_off["selfSelectEnabled"] is False and cfg_off["assignMode"] == "BATCH_CONTROLLED"
+    assert "批次" in cfg_off["studentNotice"]
+    # 管理员不能借旧 self-select 端点冒充学生。
     r403 = client.post(f"{BASE}/dorm/beds/{beds[0]['bedId']}/self-select", headers=hdr,
                        json={"studentId": str(ids["sm"])})
-    assert r403.status_code == 403 and "辅导员" in r403.text
-    # 辅导员分配（普通 checkin）始终可用 —— 不受开关影响
+    assert r403.status_code == 403
+    # 正式入住办理仍是独立业务链。
     assert client.post(f"{BASE}/dorm/beds/{beds[1]['bedId']}/checkin", headers=hdr,
                        json={"studentId": str(ids["sm"])}).status_code == 200
-    # 学校放开
-    client.put(f"{BASE}/dorm/config/self-select", headers=hdr, json={"enabled": True})
-    cfg = client.get(f"{BASE}/dorm/config", headers=hdr).json()["data"]
-    assert cfg["selfSelectEnabled"] is True and cfg["assignMode"] == "SELF_SELECT"
-    # 放开后由尚未入住的学生自选；已有床学生必须走正式调宿流程。
-    r = client.post(f"{BASE}/dorm/beds/{beds[2]['bedId']}/self-select", headers=hdr,
-                    json={"studentId": str(ids["sm2"])}).json()
-    assert r["data"]["status"] == "OCCUPIED"
+    retired = client.put(f"{BASE}/dorm/config/self-select", headers=hdr, json={"enabled": True})
+    assert retired.status_code == 400 and "分配计划" in retired.text

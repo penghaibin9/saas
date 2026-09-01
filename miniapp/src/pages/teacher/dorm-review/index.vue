@@ -3,6 +3,12 @@
     <MobileNavBar variant="teacher" title="宿舍待办" subtitle="调宿审批 / 异常处置" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad">
+        <view class="allocation-summary">
+          <view><text>{{ allocationSummary.activeBatchCount || 0 }}</text><small>当前开放批次</small></view>
+          <view><text>{{ allocationSummary.pendingSelectionCount || 0 }}</text><small>待学生选床</small></view>
+          <view><text>{{ allocationSummary.reservedCount || 0 }}</text><small>已预留床位</small></view>
+          <view><text>{{ allocationSummary.conflictCount || 0 }}</text><small>Dry Run 异常</small></view>
+        </view>
         <view class="seg">
           <button class="seg__btn" :class="{ on: tab === 'transfer' }" @click="tab = 'transfer'">调宿待审 ({{ transfers.length }})</button>
           <button class="seg__btn" :class="{ on: tab === 'exception' }" @click="tab = 'exception'">异常待处置 ({{ exceptions.length }})</button>
@@ -52,7 +58,7 @@ import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
 export default {
-  data() { return { state: 'loading', acting: false, tab: 'transfer', transfers: [], exceptions: [] } },
+  data() { return { state: 'loading', acting: false, tab: 'transfer', transfers: [], exceptions: [], allocationSummary: {} } },
   onLoad(q) { if (q && q.tab === 'exception') this.tab = 'exception'; this.load() },
   onShow() { if (this.state === 'ready') this.load() },
   methods: {
@@ -68,7 +74,7 @@ export default {
     },
     load() {
       this.state = 'loading'
-      teacherApi.getAffairsDormPending().then((d) => { this.transfers = (d && d.transfers) || []; this.exceptions = (d && d.exceptions) || []; this.state = 'ready' })
+      teacherApi.getAffairsDormPending().then((d) => { this.transfers = (d && d.transfers) || []; this.exceptions = (d && d.exceptions) || []; this.allocationSummary = (d && d.allocationSummary) || {}; this.state = 'ready' })
         .catch((e) => { this.state = 'error'; this.showError(e, '宿舍待办加载失败') })
     },
     showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); if (n.kind === 'conflict') this.load(); return n },
@@ -118,6 +124,10 @@ export default {
 </script>
 
 <style scoped>
+.allocation-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; }
+.allocation-summary view { padding: 9px 4px; border-radius: 9px; background: #eff6ff; text-align: center; }
+.allocation-summary text { display: block; color: #1d4ed8; font-size: 18px; font-weight: 700; }
+.allocation-summary small { display: block; color: #64748b; font-size: 10px; margin-top: 3px; }
 .seg { display: flex; gap: 8px; margin-bottom: 12px; }
 .seg__btn { flex: 1; font-size: 13px; background: #f1f5f9; color: #334155; border: none; border-radius: 8px; padding: 8px; }
 .seg__btn.on { background: #2563eb; color: #fff; }

@@ -1780,12 +1780,12 @@ def affairs_discipline_appeal(user=Depends(get_current_user), body: dict = Body(
     return success(portal_aff.discipline_appeal(user, body or {}), message="申辩已提交")
 
 
-@router.get("/affairs/dorm/my", summary="学工·我的宿舍（含自选开关）")
+@router.get("/affairs/dorm/my", summary="学工·我的宿舍（含批次分配投影）")
 def affairs_dorm_my(user=Depends(get_current_user)):
     return success(aff.dorm_my(user))
 
 
-@router.get("/affairs/dorm/select-options", summary="学工·自选床位可选项（按本人性别，受学校开关控制）")
+@router.get("/affairs/dorm/select-options", summary="学工·本人批次自选的冻结资源池")
 def affairs_dorm_options(user=Depends(get_current_user)):
     return success(aff.dorm_select_options(user))
 
@@ -1800,9 +1800,9 @@ def affairs_dorm_beds(room_id: int, user=Depends(get_current_user)):
     return success(aff.dorm_beds(user, room_id))
 
 
-@router.post("/affairs/dorm/beds/{bed_id}/self-select", summary="学工·学生自选床位入住本人（未放开→403）")
+@router.post("/affairs/dorm/beds/{bed_id}/self-select", summary="学工·原子确认本人批次床位（不等于正式入住）")
 def affairs_dorm_self_select(bed_id: int, user=Depends(get_current_user)):
-    return success(aff.dorm_self_select(user, bed_id), message="已入住")
+    return success(aff.dorm_self_select(user, bed_id), message="床位已确认")
 
 
 # ── 学生端·学生活动（D 包波次1，本人报名/签到）──

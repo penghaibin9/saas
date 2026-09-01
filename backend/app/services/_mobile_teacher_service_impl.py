@@ -1100,6 +1100,7 @@ def affairs_dorm_pending(user: dict) -> dict:
         return {"transfers": [], "exceptions": [], "total": 0}
     from app.core.affairs_security import build_affairs_context
     from app.services import affairs_dorm_service as dorm
+    from app.services import dorm_allocation_service as allocation
     from app.services.db_service import session as _session
     role = str((u or {}).get("currentRoleCode") or "").upper()
     with _session() as db:
@@ -1149,6 +1150,7 @@ def affairs_dorm_pending(user: dict) -> dict:
     return {
         "transfers": transfers,
         "exceptions": exceptions,
+        "allocationSummary": allocation.teacher_summary(u),
         "total": len(transfers) + len(exceptions),
     }
 

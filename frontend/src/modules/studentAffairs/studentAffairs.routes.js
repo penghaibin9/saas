@@ -363,7 +363,13 @@ const studentAffairsRoutes = [
         component: () => import('@/modules/studentAffairs/views/mental/MentalStatsView.vue'),
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       },
-      /* 宿舍与公寓 6 页（房源/入住/调宿退宿/检查/异常/统计）——对接 /student-affairs/dorm/* 后端，宿管 DORM_BUILDING 范围 */
+      /* 宿舍与公寓 7 页（分配/房源/入住/调宿退宿/检查/异常/统计）——对接 /student-affairs/dorm/* 后端 */
+      {
+        path: 'dorm/allocation',
+        name: 'student-affairs-dorm-allocation',
+        component: () => import('@/modules/studentAffairs/views/dorm/DormAllocationView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '分配计划', requiresAuth: true, permissionKey: 'studentAffairs.dorm.view' }
+      },
       {
         path: 'dorm/resource',
         name: 'student-affairs-dorm-resource',

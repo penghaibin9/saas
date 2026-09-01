@@ -130,6 +130,10 @@ class DormAllocationBatch(PKMixin, TenantMixin, CommonMixin, Base):
             "status IN ('DRAFT','PUBLISHED','CLOSED','CANCELLED')",
             name="ck_dorm_alloc_batch_status",
         ),
+        CheckConstraint(
+            "status <> 'PUBLISHED' OR published_at IS NOT NULL",
+            name="ck_dorm_alloc_batch_publish_time",
+        ),
     )
 
     batch_no: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -163,6 +167,10 @@ class DormAllocationItem(PKMixin, TenantMixin, CommonMixin, Base):
         UniqueConstraint(
             "tenant_id", "allocation_batch_id", "student_id",
             name="uk_dorm_alloc_item_student",
+        ),
+        UniqueConstraint(
+            "tenant_id", "allocation_batch_id", "bed_id",
+            name="uk_dorm_alloc_item_bed",
         ),
         Index(
             "ix_dorm_alloc_item_bed_status",

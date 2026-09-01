@@ -60,7 +60,7 @@ test('student portal affairs loads tabs on demand and refreshes only the affecte
   assert.match(source, /if \(!viewActive \|\| loadEpoch\[key\] !== epoch\) return/)
   assert.match(source, /await loadTab\(refreshKey, \{ force: true \}\)/)
   assert.match(source, /'请假提交失败', 'leave'/)
-  assert.match(source, /'调宿提交失败', 'dorm'/)
+  assert.match(source, /'调宿提交失败' : '选床失败', 'dorm'/)
   assert.doesNotMatch(source, /const tasks = \{ leave: portalApi\.affairsLeave\(\), aid: portalApi\.affairsAid\(\)/)
   assert.doesNotMatch(source, /await reload\(\)/)
 })

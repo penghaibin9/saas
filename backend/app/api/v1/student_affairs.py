@@ -1,9 +1,12 @@
 """13A 学工中心 API（/api/v1/student-affairs/*）—— P1：首页三角色视图 + 班级/班干部骨架。"""
 from __future__ import annotations
 
+from io import BytesIO
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Path, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, condecimal
 
 from app.core.response import success, paginate
@@ -23,6 +26,7 @@ from app.services import affairs_class_service as class_svc
 from app.services import affairs_dashboard_service as svc
 from app.services import affairs_discipline_service as disc_svc
 from app.services import affairs_dorm_service as dorm_svc
+from app.services import dorm_allocation_service as dorm_allocation_svc
 from app.services import affairs_funding_ext_service as fext_svc
 from app.services import affairs_funding_service as funding_svc
 from app.services import affairs_leave_service as leave_svc
@@ -1414,6 +1418,25 @@ class DormCheckoutBody(BaseModel):
     version: int = Field(..., description="当前床位乐观锁版本（必填）")
 
 
+class DormAllocationBatchCreate(BaseModel):
+    batchNo: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=200)
+    academicYear: str = Field(..., min_length=1, max_length=20)
+    sourceType: str = Field("ORIENTATION", description="ORIENTATION/DAILY")
+    orientationBatchId: Optional[str] = None
+    mode: str = Field(..., description="ADMIN_AUTO/ADMIN_MANUAL/STUDENT_SELECT/POST_CHECKIN_PUBLISH")
+    openAt: str
+    closeAt: str
+    rules: dict = Field(default_factory=dict)
+    resourceScope: dict = Field(default_factory=dict)
+    studentScope: dict = Field(default_factory=dict)
+
+
+class DormAllocationManualBody(BaseModel):
+    studentId: int = Field(..., gt=0)
+    bedId: int = Field(..., gt=0)
+
+
 class TransferSubmit(BaseModel):
     studentId: str = Field(..., min_length=1)
     toBedId: str = Field(..., min_length=1)
@@ -1475,6 +1498,78 @@ def dorm_beds(roomId: int = Path(...), user=Depends(require_permission("studentA
 @router.get("/dorm/occupancy", summary="宿舍入住率统计")
 def dorm_occupancy(user=Depends(require_permission("studentAffairs.dorm.view"))):
     return success(dorm_svc.occupancy_stats(user))
+
+
+@router.get("/dorm/allocation-batches", summary="住宿分配批次列表（按数据范围）")
+def dorm_allocation_batches(
+    status: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
+    user=Depends(require_permission("studentAffairs.dorm.view")),
+):
+    items, total = dorm_allocation_svc.list_batches(user, page, pageSize, status)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/dorm/allocation-batches", summary="新建住宿分配批次")
+def dorm_allocation_batch_create(
+    body: DormAllocationBatchCreate,
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage")),
+):
+    return success(dorm_allocation_svc.create_batch(body.model_dump(), user), message="分配批次已创建")
+
+
+@router.get("/dorm/allocation-batches/{batchId}", summary="住宿分配批次明细")
+def dorm_allocation_batch_detail(
+    batchId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.view")),
+):
+    return success(dorm_allocation_svc.detail(batchId, user))
+
+
+@router.post("/dorm/allocation-batches/{batchId}/dry-run", summary="Dry Run 住宿分配")
+def dorm_allocation_batch_dry_run(
+    batchId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage")),
+):
+    return success(dorm_allocation_svc.dry_run(batchId, user), message="Dry Run 已完成")
+
+
+@router.post("/dorm/allocation-batches/{batchId}/manual-assign", summary="人工调整草稿分配项")
+def dorm_allocation_batch_manual_assign(
+    body: DormAllocationManualBody,
+    batchId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage")),
+):
+    return success(dorm_allocation_svc.manual_assign(
+        batchId, body.studentId, body.bedId, user,
+    ), message="已保存人工分配提议")
+
+
+@router.post("/dorm/allocation-batches/{batchId}/publish", summary="发布住宿分配并冻结资源/学生池")
+def dorm_allocation_batch_publish(
+    batchId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage")),
+):
+    return success(dorm_allocation_svc.publish(batchId, user), message="分配批次已发布")
+
+
+@router.get("/dorm/allocation-batches/{batchId}/conflicts.xlsx", summary="下载 Dry Run 异常行")
+def dorm_allocation_batch_conflicts(
+    batchId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.allocation.manage")),
+):
+    content = dorm_allocation_svc.conflict_workbook(batchId, user)
+    filename = "住宿分配异常行.xlsx"
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.post("/dorm/beds/{bedId}/checkin", summary="学生入住某床（回写我的宿舍）")
