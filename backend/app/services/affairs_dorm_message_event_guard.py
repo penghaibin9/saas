@@ -48,5 +48,37 @@ def install() -> None:
             "title": "退宿已办理",
             "require_ack": False,
         },
+        "DORM.RECTIFICATION.CREATED": {
+            "source_module": "student-affairs",
+            "category": "BUSINESS",
+            "priority": "IMPORTANT",
+            "message_type": "ACTION_REQUIRED",
+            "title": "宿舍检查有待整改项",
+            "require_ack": False,
+        },
+        "DORM.RECTIFICATION.RETURNED": {
+            "source_module": "student-affairs",
+            "category": "BUSINESS",
+            "priority": "IMPORTANT",
+            "message_type": "RETURNED_NOTICE",
+            "title": "宿舍整改复检未通过",
+            "require_ack": False,
+        },
+        "DORM.RECTIFICATION.CLOSED": {
+            "source_module": "student-affairs",
+            "category": "BUSINESS",
+            "priority": "NORMAL",
+            "message_type": "WORKFLOW_RESULT",
+            "title": "宿舍整改已通过复检",
+            "require_ack": False,
+        },
+        "DORM.RECTIFICATION.ESCALATED": {
+            "source_module": "student-affairs",
+            "category": "RISK",
+            "priority": "URGENT",
+            "message_type": "RISK_ALERT",
+            "title": "宿舍整改已升级处置",
+            "require_ack": False,
+        },
     })
     _INSTALLED = True

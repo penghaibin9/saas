@@ -13,6 +13,7 @@ from app.core.security import get_current_user
 from app.modules.internship.services import internship_makeup_service as mk
 from app.modules.academic_affairs.services import mobile_academic_affairs_service as aa
 from app.services import affairs_activity_service as activity_svc
+from app.services import dorm_inspection_service as dorm_inspection_svc
 from app.services import mobile_affairs_service as aff
 from app.services import mobile_agenda_projection_service as agenda
 from app.services import mobile_case_projection_service as cases
@@ -1820,6 +1821,44 @@ def affairs_dorm_self_select(bed_id: int, user=Depends(get_current_user)):
     return success(aff.dorm_self_select(user, bed_id), message="床位已确认")
 
 
+@router.get("/affairs/dorm/rectifications/my", summary="学生·我的宿舍整改与历史")
+def affairs_dorm_rectifications_my(
+    status: str | None = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_rectifications(
+        user, status=status, page=page, page_size=pageSize,
+    )
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/affairs/dorm/rectifications/{rectification_id}", summary="学生·本人宿舍整改详情")
+def affairs_dorm_rectification_detail(rectification_id: int, user=Depends(get_current_user)):
+    return success(dorm_inspection_svc.get_rectification(rectification_id, user))
+
+
+@router.post("/affairs/dorm/rectifications/{rectification_id}/start", summary="学生·开始本人宿舍整改")
+def affairs_dorm_rectification_start(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.start_rectification(
+        rectification_id, expected_version=body.get("expectedVersion"), user=user,
+    ), message="已开始整改")
+
+
+@router.post("/affairs/dorm/rectifications/{rectification_id}/submit", summary="学生·提交本人整改证据")
+def affairs_dorm_rectification_submit(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.submit_rectification(rectification_id, body or {}, user), message="整改已提交复检")
+
+
 # ── 学生端·学生活动（D 包波次1，本人报名/签到）──
 @router.get("/affairs/my-activities", summary="学工·我的活动（可报名+已报名，真分页）")
 def affairs_my_activities(
@@ -1844,6 +1883,90 @@ def affairs_activity_checkin(activity_id: int, body: dict = Body(default={}), us
 @router.get("/teacher/affairs/dorm/pending", summary="辅导员/宿管·调宿与宿舍异常待办")
 def teacher_affairs_dorm_pending(user=Depends(get_current_user)):
     return success(tea.affairs_dorm_pending(user))
+
+
+@router.get("/teacher/affairs/dorm/inspection-templates", summary="教师·宿舍检查模板")
+def teacher_affairs_dorm_inspection_templates(user=Depends(get_current_user)):
+    return success(dorm_inspection_svc.list_templates(user))
+
+
+@router.get("/teacher/affairs/dorm/check-tasks", summary="教师·现场检查任务")
+def teacher_affairs_dorm_check_tasks(
+    status: str | None = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_tasks(user, status, page, pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/teacher/affairs/dorm/check-tasks/{task_id}/records", summary="教师·任务逐房记录")
+def teacher_affairs_dorm_check_records(
+    task_id: int,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(100, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_records(task_id, user, page, pageSize)
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.post("/teacher/affairs/dorm/check-tasks/{task_id}/records", summary="教师·现场逐房检查并上传证据")
+def teacher_affairs_dorm_check_record(
+    task_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.submit_record(task_id, body or {}, user), message="检查结果已提交")
+
+
+@router.get("/teacher/affairs/dorm/rectifications", summary="教师·宿舍整改待办与历史")
+def teacher_affairs_dorm_rectifications(
+    status: str | None = None,
+    mine: bool = False,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user),
+):
+    items, total = dorm_inspection_svc.list_rectifications(
+        user, status=status, page=page, page_size=pageSize, mine=mine,
+    )
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/teacher/affairs/dorm/rectifications/{rectification_id}", summary="教师·宿舍整改详情")
+def teacher_affairs_dorm_rectification_detail(rectification_id: int, user=Depends(get_current_user)):
+    return success(dorm_inspection_svc.get_rectification(rectification_id, user))
+
+
+@router.post("/teacher/affairs/dorm/rectifications/{rectification_id}/start", summary="教师·开始房间级整改")
+def teacher_affairs_dorm_rectification_start(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.start_rectification(
+        rectification_id, expected_version=body.get("expectedVersion"), user=user,
+    ), message="已开始整改")
+
+
+@router.post("/teacher/affairs/dorm/rectifications/{rectification_id}/submit", summary="教师·提交房间级整改证据")
+def teacher_affairs_dorm_rectification_submit(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.submit_rectification(rectification_id, body or {}, user), message="整改已提交复检")
+
+
+@router.post("/teacher/affairs/dorm/rectifications/{rectification_id}/recheck", summary="教师·宿舍整改复检")
+def teacher_affairs_dorm_rectification_recheck(
+    rectification_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(dorm_inspection_svc.recheck_rectification(rectification_id, body or {}, user), message="复检结果已保存")
 
 
 @router.post("/teacher/affairs/dorm/transfers/{transfer_id}/review",

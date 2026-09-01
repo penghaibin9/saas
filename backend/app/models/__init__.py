@@ -122,7 +122,8 @@ from app.models.affairs_psy_survey import PsySurveySubmission  # noqa: F401  (å¿
 from app.models.affairs_dorm import (DormAllocationBatch,  # noqa: F401
                                      DormAllocationItem, DormBed, DormBuilding,
                                      DormCheckoutRequest,
-                                     DormCheckRecord, DormCheckTask, DormRoom,
+                                     DormCheckRecord, DormCheckTask,
+                                     DormRectification, DormRoom,
                                      DormStay, DormTransfer)
 from app.models.affairs_archive import ArchiveBatch, ArchivePackage  # noqa: F401
 from app.models.affairs_activity import (AffairsActivity,  # noqa: F401

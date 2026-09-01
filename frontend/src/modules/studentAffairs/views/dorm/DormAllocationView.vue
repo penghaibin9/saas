@@ -58,11 +58,20 @@
         </AppSectionCard>
       </div>
     </AppGlobalState>
+    <AppConfirmDialog
+      v-model:visible="publishConfirm.visible"
+      title="确认发布住宿分配批次"
+      type="warning"
+      message="发布后学生范围与精确床位资源池将冻结；学生确认后如需变更，必须走正式调宿流程。"
+      confirm-text="确认发布"
+      :submitting="actioning"
+      @confirm="confirmPublishBatch"
+    />
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppConfirmDialog, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { getOrientationBatches } from '@/modules/orientation/api/orientation.api'
@@ -74,8 +83,8 @@ function initialForm() { const now = new Date(); const close = new Date(now.getT
 export default {
   name: 'DormAllocationView',
   props: { ctx: { type: Object, default: null } },
-  components: { AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag, DataTable },
-  data() { return { loading: true, actioning: false, errorMessage: '', showCreate: false, statusFilter: '', batches: [], buildings: [], orientationBatches: [], selectedId: '', detail: null, drySummary: null, form: initialForm(), manual: { studentId: '', bedId: '' }, columns: [{ key: 'student', title: '学生' }, { key: 'status', title: '分配状态' }, { key: 'bed', title: '床位' }, { key: 'conflict', title: '异常码' }] } },
+  components: { AppConfirmDialog, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag, DataTable },
+  data() { return { loading: true, actioning: false, errorMessage: '', showCreate: false, statusFilter: '', batches: [], buildings: [], orientationBatches: [], selectedId: '', detail: null, drySummary: null, publishConfirm: { visible: false }, form: initialForm(), manual: { studentId: '', bedId: '' }, columns: [{ key: 'student', title: '学生' }, { key: 'status', title: '分配状态' }, { key: 'bed', title: '床位' }, { key: 'conflict', title: '异常码' }] } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     canView() { return canCode(this.ctx, 'studentAffairs.dorm.view') },
@@ -96,7 +105,8 @@ export default {
     async createBatch() { if (!this.createValid) return; const payload = { ...this.form, resourceScope: { buildingIds: this.form.buildingIds.map(Number) }, studentScope: {}, rules: { ...this.form.rules } }; delete payload.buildingIds; await this.act(() => studentAffairsApi.createDormAllocationBatch(payload), async (row) => { this.form = initialForm(); this.showCreate = false; this.selectedId = row.batchId; await this.load() }) },
     async dryRun() { await this.act(() => studentAffairsApi.dryRunDormAllocation(this.selectedId), async (data) => { this.drySummary = data.summary; await this.loadDetail(this.selectedId) }) },
     async manualAssign() { await this.act(() => studentAffairsApi.manualAssignDorm(this.selectedId, this.manual.studentId, this.manual.bedId), async () => { this.manual = { studentId: '', bedId: '' }; await this.loadDetail(this.selectedId) }) },
-    async publishBatch() { if (!window.confirm('发布后学生范围与精确床位资源池将冻结，学生确认后不能自行更换。确认继续？')) return; await this.act(() => studentAffairsApi.publishDormAllocation(this.selectedId), async () => { await this.load() }) },
+    publishBatch() { this.publishConfirm.visible = true },
+    async confirmPublishBatch() { const data = await this.act(() => studentAffairsApi.publishDormAllocation(this.selectedId), async () => { await this.load() }); if (data) this.publishConfirm.visible = false },
     async downloadConflicts() { await this.act(() => studentAffairsApi.downloadDormAllocationConflicts(this.selectedId)) }
   }
 }

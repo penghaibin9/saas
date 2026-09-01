@@ -986,8 +986,35 @@ def list_exceptions(user, status=None, page=1, page_size=50, student_id=None):
         from app.models import AffairsRiskRecord, User
         from app.services.affairs_risk_service import L_RISK
         exception_ids = [int(x.id) for x in rows]
-        risks = db.scalars(select(AffairsRiskRecord).where(AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.source == "DORM", AffairsRiskRecord.source_ref_id.in_(exception_ids), AffairsRiskRecord.is_deleted.is_(False))).all() if exception_ids else []
-        risk_by_exception = {int(r.source_ref_id): r for r in risks if r.source_ref_id}
+        check_links = db.scalars(select(DormCheckRecord).where(
+            DormCheckRecord.tenant_id == _tid(),
+            DormCheckRecord.related_exception_id.in_(exception_ids or [-1]),
+            DormCheckRecord.is_deleted.is_(False),
+        )).all() if exception_ids else []
+        risk_id_by_exception = {
+            int(row.related_exception_id): int(row.related_risk_id)
+            for row in check_links if row.related_exception_id and row.related_risk_id
+        }
+        linked_risk_ids = set(risk_id_by_exception.values())
+        risks = db.scalars(select(AffairsRiskRecord).where(
+            AffairsRiskRecord.tenant_id == _tid(),
+            AffairsRiskRecord.source == "DORM",
+            or_(
+                AffairsRiskRecord.id.in_(linked_risk_ids or {-1}),
+                AffairsRiskRecord.source_ref_id.in_(exception_ids or [-1]),
+            ),
+            AffairsRiskRecord.is_deleted.is_(False),
+        )).all() if exception_ids else []
+        risk_by_id = {int(r.id): r for r in risks}
+        risk_by_exception = {
+            exception_id: risk_by_id[risk_id]
+            for exception_id, risk_id in risk_id_by_exception.items()
+            if risk_id in risk_by_id
+        }
+        # 兼容 D5 前以异常/检查记录 ID 直接作为 source_ref_id 的历史风险。
+        for risk in risks:
+            if risk.source_ref_id and int(risk.source_ref_id) in exception_ids:
+                risk_by_exception.setdefault(int(risk.source_ref_id), risk)
         owner_ids = {int(r.owner_id) for r in risks if r.owner_id}
         owners = db.scalars(select(User).where(User.tenant_id == _tid(), User.id.in_(owner_ids), User.is_deleted.is_(False))).all() if owner_ids else []
         owner_name_by_id = {int(u.id): (u.real_name or u.login_name or "") for u in owners}

@@ -1,4 +1,5 @@
 import { downloadFile, request, uploadFile } from './request'
+import fileSdk from './fileSdk'
 
 const enc = encodeURIComponent
 
@@ -63,6 +64,11 @@ export const affairsFourEndApi = {
   submitDormTransfer: (toBedId, reason) => request('/mobile/affairs/dorm/transfers', { method: 'POST', body: { toBedId, reason } }),
   myDormTransfers: () => request('/mobile/affairs/dorm/transfers/my'),
   myDormStays: () => request('/mobile/affairs/dorm/stays/my'),
+  myDormRectifications: (params = {}) => request('/mobile/affairs/dorm/rectifications/my', { params }),
+  getDormRectification: (id) => request(`/mobile/affairs/dorm/rectifications/${enc(id)}`),
+  startDormRectification: (id, expectedVersion) => request(`/mobile/affairs/dorm/rectifications/${enc(id)}/start`, { method: 'POST', body: { expectedVersion } }),
+  uploadDormEvidence: (file) => fileSdk.upload(file, { bizType: 'TEMP_PRIVATE', bizId: '' }),
+  submitDormRectification: (id, body) => request(`/mobile/affairs/dorm/rectifications/${enc(id)}/submit`, { method: 'POST', body }),
 
   // 正式第二课堂成绩单与申诉
   secondClassReport: () => request('/mobile/affairs/second-class/report'),

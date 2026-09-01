@@ -36,6 +36,7 @@ def _seed(db_mode):
     db.commit()
     db.close()
     ensure_workflow_assignees([ids["sm"], ids["sf"], ids["sm2"]])
+    ensure_role_user("SCHOOL_ADMIN", login_name="school_admin01", real_name="陈校")
     # 楼栋 managerTeacherKey 必须解析到真实、启用中的数据库宿管用户。
     ensure_role_user("DORM_MANAGER", login_name="dorm01", real_name="宿管·李")
     ensure_role_user("DORM_MANAGER", login_name="other", real_name="宿管·王")
@@ -240,19 +241,41 @@ def test_m8_student_abnormal_binds_real_risk(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     bid = _make_building(client, hdr)
-    rid, _ = _first_bed(client, hdr, bid)
+    rid, beds = _first_bed(client, hdr, bid)
+    assert client.post(f"{BASE}/dorm/beds/{beds[0]['bedId']}/checkin", headers=hdr,
+                       json={"studentId": str(ids["sm"])}).status_code == 200
     task = client.post(f"{BASE}/dorm/check-tasks", headers=hdr, json={
         "taskName": "夜查", "buildingId": str(bid), "checkType": "NIGHT_ABSENCE"}).json()["data"]["taskId"]
     # 夜不归宿不指定学生 → 400
     assert client.post(f"{BASE}/dorm/check-tasks/{task}/records", headers=hdr, json={
         "roomId": str(rid), "result": "ABNORMAL", "issueType": "NIGHT_ABSENCE",
         "detail": "23:00 未归宿且失联"}).status_code == 400
-    # 指定真实学生 → 生成绑该生的风险
+    # 指定当前真实住宿学生，并按冻结模板逐项提交 HIGH 异常 + CLEAN 文件证据。
+    from app.db.session import get_sessionmaker
+    from app.models import FileObject, User
+    db = get_sessionmaker()()
+    owner = db.query(User).filter_by(tenant_id=TID, login_name="school_admin01").one()
+    evidence = FileObject(
+        tenant_id=TID, file_key="d5/night-absence.jpg", file_name="夜查现场.jpg",
+        ext="jpg", mime_type="image/jpeg", size_bytes=128, sha256="8" * 64,
+        biz_type="TEMP_PRIVATE", owner_user_id=owner.id, visibility="PRIVATE",
+        status="AVAILABLE", storage_backend="local", storage_zone="ACTIVE",
+        upload_source="USER", scan_required=True, scan_status="CLEAN",
+    )
+    db.add(evidence)
+    db.commit()
+    file_id = str(evidence.id)
+    db.close()
     r = client.post(f"{BASE}/dorm/check-tasks/{task}/records", headers=hdr, json={
         "roomId": str(rid), "result": "ABNORMAL", "issueType": "NIGHT_ABSENCE",
-        "detail": "23:00 未归宿且失联", "studentId": str(ids["sm"])}).json()
+        "detail": "23:00 未归宿且失联", "studentId": str(ids["sm"]),
+        "clientRequestId": "d5-night-risk-0001", "fileIds": [file_id],
+        "itemResults": [
+            {"itemCode": "PRESENCE", "status": "FAIL", "score": 0},
+            {"itemCode": "CONTACT", "status": "PASS", "score": 30},
+        ],
+    }).json()
     assert r["data"]["relatedRiskId"]
-    from app.db.session import get_sessionmaker
     from app.models import AffairsRiskRecord
     db = get_sessionmaker()()
     risk = db.query(AffairsRiskRecord).filter_by(source="DORM").first()

@@ -26,6 +26,7 @@ from app.services import affairs_class_service as class_svc
 from app.services import affairs_dashboard_service as svc
 from app.services import affairs_discipline_service as disc_svc
 from app.services import affairs_dorm_service as dorm_svc
+from app.services import dorm_inspection_service as dorm_inspection_svc
 from app.services import dorm_allocation_service as dorm_allocation_svc
 from app.services import affairs_funding_ext_service as fext_svc
 from app.services import affairs_funding_service as funding_svc
@@ -1466,18 +1467,49 @@ class DormReviewBody(BaseModel):
 
 
 class CheckTaskCreate(BaseModel):
-    taskName: str = Field(..., min_length=1)
-    buildingId: Optional[str] = None
-    checkType: str = Field("HYGIENE", description="HYGIENE/SAFETY/CONTRABAND/NIGHT_ABSENCE")
-    checkerKey: Optional[str] = None
+    taskName: str = Field(..., min_length=2, max_length=200)
+    buildingId: str = Field(..., min_length=1)
+    checkType: str = Field(
+        "HYGIENE",
+        description="HYGIENE/SAFETY/CONTRABAND/NIGHT_ABSENCE/FIRE_SAFETY/FACILITY/OTHER",
+    )
+    floorScope: list[int] = Field(default_factory=list)
+    templateKey: Optional[str] = Field(None, max_length=160)
+    templateVersion: Optional[int] = Field(None, ge=1)
+    plannedAt: Optional[str] = None
+    checkerUserId: Optional[str] = None
+    clientRequestId: Optional[str] = Field(None, min_length=8, max_length=100)
 
 
 class CheckRecordBody(BaseModel):
-    roomId: Optional[str] = None
+    roomId: str = Field(..., min_length=1)
     result: str = Field(..., description="NORMAL/ABNORMAL")
+    severity: Optional[str] = Field(None, description="由逐项结果计算；兼容旧端时可传")
+    itemResults: list[dict] = Field(default_factory=list)
     issueType: Optional[str] = None
     detail: Optional[str] = Field("", max_length=1000)
-    studentId: Optional[str] = Field(None, description="涉事学生（夜不归宿必填；异常→风险绑真实学生，SEC-4）")
+    studentId: Optional[str] = Field(None, description="可选涉事学生；必须当前入住该房间")
+    fileIds: list[str] = Field(default_factory=list)
+    rectifyDeadline: Optional[str] = None
+    clientRequestId: Optional[str] = Field(None, min_length=8, max_length=100)
+
+
+class DormRectificationStartBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
+
+
+class DormRectificationSubmitBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
+    note: str = Field(..., min_length=5, max_length=1000)
+    fileIds: list[str] = Field(..., min_length=1, max_length=9)
+    clientRequestId: str = Field(..., min_length=8, max_length=100)
+
+
+class DormRectificationRecheckBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
+    action: str = Field(..., description="PASS/RETURN/ESCALATE")
+    note: str = Field(..., min_length=5, max_length=1000)
+    fileIds: list[str] = Field(default_factory=list, max_length=9)
 
 
 @router.post("/dorm/buildings", summary="新建楼栋（带层数/房数/床位则一键铺满）")
@@ -1713,30 +1745,86 @@ def dorm_transfer_review(body: DormReviewBody, transferId: int = Path(...),
                    message="已处理")
 
 
-@router.post("/dorm/check-tasks", summary="建宿舍检查任务")
+@router.get("/dorm/inspection-templates", summary="宿舍检查模板与生效风险阈值")
+def dorm_inspection_templates(user=Depends(require_permission("studentAffairs.dorm.view"))):
+    return success(dorm_inspection_svc.list_templates(user))
+
+
+@router.post("/dorm/check-tasks", summary="发布宿舍检查任务（冻结模板快照）")
 def dorm_check_task(body: CheckTaskCreate,
                     user=Depends(require_permission("studentAffairs.dorm.inspection.manage"))):
-    return success(dorm_svc.create_check_task(body, user), message="已创建")
+    return success(dorm_inspection_svc.create_task(body, user), message="检查任务已发布")
 
 
 @router.get("/dorm/check-tasks", summary="宿舍检查任务列表（宿管仅本人楼栋）")
 def dorm_check_tasks(status: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
                      user=Depends(require_permission("studentAffairs.dorm.view"))):
-    items, total = dorm_svc.list_check_tasks(user, status, page, pageSize)
+    items, total = dorm_inspection_svc.list_tasks(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
-@router.post("/dorm/check-tasks/{taskId}/records", summary="录检查结果（异常→风险，须绑真实学生）")
+@router.post("/dorm/check-tasks/{taskId}/records", summary="逐房提交检查结果与正式文件证据")
 def dorm_check_record(body: CheckRecordBody, taskId: int = Path(...),
                       user=Depends(require_permission("studentAffairs.dorm.inspection.manage"))):
-    return success(dorm_svc.submit_check_record(taskId, user, body), message="已记录")
+    return success(dorm_inspection_svc.submit_record(taskId, body, user), message="检查结果已提交")
 
 
 @router.get("/dorm/check-tasks/{taskId}/records", summary="某检查任务的记录列表")
 def dorm_check_records(taskId: int = Path(...), page: int = Query(1, ge=1), pageSize: int = Query(100, ge=1, le=200),
                        user=Depends(require_permission("studentAffairs.dorm.view"))):
-    items, total = dorm_svc.list_check_records(taskId, user, page, pageSize)
+    items, total = dorm_inspection_svc.list_records(taskId, user, page, pageSize)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/dorm/rectifications", summary="宿舍整改列表（楼栋数据范围）")
+def dorm_rectifications(
+    status: Optional[str] = None,
+    mine: bool = False,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(require_permission("studentAffairs.dorm.view")),
+):
+    items, total = dorm_inspection_svc.list_rectifications(
+        user, status=status, page=page, page_size=pageSize, mine=mine,
+    )
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/dorm/rectifications/{rectificationId}", summary="宿舍整改详情与证据链")
+def dorm_rectification_detail(
+    rectificationId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.view")),
+):
+    return success(dorm_inspection_svc.get_rectification(rectificationId, user))
+
+
+@router.post("/dorm/rectifications/{rectificationId}/start", summary="宿管开始房间级整改")
+def dorm_rectification_start(
+    body: DormRectificationStartBody,
+    rectificationId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.inspection.manage")),
+):
+    return success(dorm_inspection_svc.start_rectification(
+        rectificationId, expected_version=body.expectedVersion, user=user,
+    ), message="已开始整改")
+
+
+@router.post("/dorm/rectifications/{rectificationId}/submit", summary="宿管提交房间级整改证据")
+def dorm_rectification_submit(
+    body: DormRectificationSubmitBody,
+    rectificationId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.inspection.manage")),
+):
+    return success(dorm_inspection_svc.submit_rectification(rectificationId, body, user), message="整改已提交复检")
+
+
+@router.post("/dorm/rectifications/{rectificationId}/recheck", summary="宿舍整改复检")
+def dorm_rectification_recheck(
+    body: DormRectificationRecheckBody,
+    rectificationId: int = Path(...),
+    user=Depends(require_permission("studentAffairs.dorm.inspection.manage")),
+):
+    return success(dorm_inspection_svc.recheck_rectification(rectificationId, body, user), message="复检结果已保存")
 
 
 @router.get("/dorm/exceptions", summary="宿舍异常列表（含夜不归宿；宿管仅本人楼栋）")
