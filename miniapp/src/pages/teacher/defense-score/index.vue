@@ -113,7 +113,7 @@ export default {
           absent: !!d.myAbsent,
           absentReason: d.myAbsentReason || ''
         }
-        this.$set ? this.$set(this.drafts, d.gdStudentId, draft) : (this.drafts[d.gdStudentId] = draft)
+        this.drafts[d.gdStudentId] = draft
       }
     },
     submit(d) {

@@ -56,6 +56,7 @@
 import { studentApi } from '@/services/studentApi'
 import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
+import { getDeviceDigest } from '@/utils/deviceInfo'
 
 export default {
   data() {
@@ -116,10 +117,7 @@ export default {
       finally { this.submitting = false }
     },
     deviceDigest() {
-      try {
-        const s = uni.getSystemInfoSync()
-        return [s.platform, s.model, s.system, s.appVersion].filter(Boolean).join('|')
-      } catch (e) { return 'miniapp-device' }
+      return getDeviceDigest()
     },
     commitment() {
       if (!this.completion || this.completionStatus !== 'IN_PROGRESS' || this.submitting) return

@@ -1,10 +1,10 @@
 import { fileURLToPath } from 'node:url'
-import { dirname, resolve, sep } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import uni from '@dcloudio/vite-plugin-uni'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const MOCK_ROOT = resolve(here, 'src', 'mock') + sep
+const MOCK_ROOT = resolve(here, 'src', 'mock').replace(/\\/g, '/') + '/'
 
 /**
  * V3 S1.5：生产构建不得把 mock 数据体打进小程序包。
@@ -30,7 +30,9 @@ function stripMockPayloadInProduction() {
     },
     transform(code, id) {
       if (!active) return null
-      const file = id.split('?')[0]
+      // Vite/Rollup 在 Windows 上可能给出正斜杠模块 id；统一分隔符后再判断，
+      // 否则 MOCK_ROOT 使用反斜杠时 transform 永远不会命中，生产包会完整携带演示数据。
+      const file = id.split('?')[0].replace(/\\/g, '/')
       if (!file.startsWith(MOCK_ROOT)) return null
 
       const named = new Set()

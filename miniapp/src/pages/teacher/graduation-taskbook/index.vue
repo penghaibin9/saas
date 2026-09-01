@@ -164,7 +164,7 @@ export default {
       if (!this.drafts[t.id]) {
         const draft = { content: t.content || '', progressPlan: t.progressPlan || '',
           outcomeRequirement: t.outcomeRequirement || '', reason: '' }
-        this.$set ? this.$set(this.drafts, t.id, draft) : (this.drafts[t.id] = draft)
+        this.drafts[t.id] = draft
       }
     },
     submitChange(t) {

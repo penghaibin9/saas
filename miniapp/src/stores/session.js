@@ -7,6 +7,7 @@ import { getRoleConfig, hasAction, roleKeyFromBackendRole, ROLE } from '@/config
 import { mockStudentUser, mockTeacherUser } from '@/mock/user'
 import { switchRoleReal } from '@/services/realApi'
 import { clearTokens, registerForceLogoutHandler, shouldTryReal } from '@/services/request'
+import { ENV } from '@/config/env'
 import { setForcePasswordChange } from '@/security/passwordChangeGate'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 
@@ -141,8 +142,10 @@ export const useSessionStore = defineStore('session', {
           const d = await switchRoleReal(ctx.contextId || ctx.id, 'MP')
           this.currentRole = roleKey
           this.applyRealUser(d)
-        } else {
+        } else if (ENV.allowMockFallback) {
           this.currentRole = roleKey
+        } else {
+          throw { code: 'NETWORK', message: '网络不可用，无法安全切换身份' }
         }
         this.persist()
       } catch (e) {

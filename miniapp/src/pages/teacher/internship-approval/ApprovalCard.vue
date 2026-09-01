@@ -35,7 +35,9 @@
       <button
         v-if="hasEvidence"
         class="evidence-button"
+        :class="{ 'is-disabled': viewing || acting }"
         :disabled="viewing || acting"
+        plain
         @click="$emit('view-evidence', { kind, item })"
       >{{ viewing ? '正在打开…' : (evidenceViewed ? '再次查看材料' : '查看材料并留痕') }}</button>
       <text v-else-if="evidenceRequired" class="block-reason">缺少规则要求的材料，后端将拒绝通过。</text>
@@ -48,12 +50,16 @@
     <view class="actions">
       <button
         class="reject flex-1"
+        :class="{ 'is-disabled': acting || viewing || !canReview }"
         :disabled="acting || viewing || !canReview"
+        plain
         @click="$emit('review', { kind, item, action: 'REJECT' })"
       >驳回</button>
       <button
         class="approve flex-1"
+        :class="{ 'is-disabled': acting || viewing || !canReview || approveBlocked }"
         :disabled="acting || viewing || !canReview || approveBlocked"
+        plain
         @click="$emit('review', { kind, item, action: 'APPROVE' })"
       >{{ approveText }}</button>
     </view>
@@ -107,5 +113,5 @@ export default {
 </script>
 
 <style scoped>
-.item-card{display:flex;flex-direction:column;gap:14rpx}.title{font-size:30rpx;font-weight:600}.sub{display:block;margin-top:4rpx;color:var(--text-tertiary);font-size:24rpx}.detail{display:flex;gap:20rpx;font-size:26rpx}.key{width:130rpx;color:var(--text-tertiary);flex-shrink:0}.content{line-height:1.55}.history-box{padding:18rpx 20rpx;border-radius:14rpx;background:var(--warning-50,#fff7ed);border:1px solid var(--warning-200,#fed7aa)}.history-title{display:block;color:var(--warning-800,#9a3412);font-size:24rpx;font-weight:600}.history-content{display:block;margin-top:6rpx;color:var(--text-primary);font-size:25rpx;line-height:1.5}.history-time{display:block;margin-top:6rpx;color:var(--text-tertiary);font-size:22rpx}.evidence-box{padding:18rpx 20rpx;border-radius:14rpx;background:var(--gray-50);border:1px solid var(--border-base)}.evidence-box.required{border-color:var(--warning-300,#fdba74)}.evidence-box.missing{background:var(--danger-50,#fef2f2);border-color:var(--danger-300,#fca5a5)}.evidence-title{display:block;font-size:25rpx;font-weight:600}.evidence-hint{display:block;margin-top:5rpx;color:var(--text-tertiary);font-size:22rpx;line-height:1.45}.evidence-button{margin-top:14rpx;min-height:72rpx;border:1px solid var(--teacher-500);background:var(--bg-card);color:var(--teacher-700);border-radius:12rpx;font-size:25rpx}.evidence-button::after{border:0}.block-reason{display:block;margin-top:10rpx;color:var(--danger-600);font-size:23rpx}.permission-tip{padding:14rpx 18rpx;border-radius:12rpx;background:var(--gray-100);color:var(--text-secondary);font-size:23rpx}.permission-tip.warning{background:var(--warning-50,#fff7ed);color:var(--warning-800,#9a3412)}.actions{display:flex;gap:16rpx;margin-top:4rpx}.reject,.approve{min-height:88rpx;border-radius:16rpx;font-size:28rpx}.reject{border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600)}.approve{border:0;background:var(--teacher-600);color:#fff}.reject::after,.approve::after{border:0}.reject[disabled],.approve[disabled],.evidence-button[disabled]{opacity:.55}
+.item-card{display:flex;flex-direction:column;gap:14rpx}.title{font-size:30rpx;font-weight:600}.sub{display:block;margin-top:4rpx;color:var(--text-tertiary);font-size:24rpx}.detail{display:flex;gap:20rpx;font-size:26rpx}.key{width:130rpx;color:var(--text-tertiary);flex-shrink:0}.content{line-height:1.55}.history-box{padding:18rpx 20rpx;border-radius:14rpx;background:var(--warning-50,#fff7ed);border:1px solid var(--warning-200,#fed7aa)}.history-title{display:block;color:var(--warning-800,#9a3412);font-size:24rpx;font-weight:600}.history-content{display:block;margin-top:6rpx;color:var(--text-primary);font-size:25rpx;line-height:1.5}.history-time{display:block;margin-top:6rpx;color:var(--text-tertiary);font-size:22rpx}.evidence-box{padding:18rpx 20rpx;border-radius:14rpx;background:var(--gray-50);border:1px solid var(--border-base)}.evidence-box.required{border-color:var(--warning-300,#fdba74)}.evidence-box.missing{background:var(--danger-50,#fef2f2);border-color:var(--danger-300,#fca5a5)}.evidence-title{display:block;font-size:25rpx;font-weight:600}.evidence-hint{display:block;margin-top:5rpx;color:var(--text-tertiary);font-size:22rpx;line-height:1.45}.evidence-button{margin-top:14rpx;min-height:72rpx;border:1px solid var(--teacher-500);background:var(--bg-card);color:var(--teacher-700);border-radius:12rpx;font-size:25rpx}.block-reason{display:block;margin-top:10rpx;color:var(--danger-600);font-size:23rpx}.permission-tip{padding:14rpx 18rpx;border-radius:12rpx;background:var(--gray-100);color:var(--text-secondary);font-size:23rpx}.permission-tip.warning{background:var(--warning-50,#fff7ed);color:var(--warning-800,#9a3412)}.actions{display:flex;gap:16rpx;margin-top:4rpx}.reject,.approve{min-height:88rpx;border-radius:16rpx;font-size:28rpx}.reject{border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600)}.approve{border:0;background:var(--teacher-600);color:#fff}.is-disabled{opacity:.55}
 </style>

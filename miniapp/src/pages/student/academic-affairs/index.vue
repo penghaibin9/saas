@@ -91,6 +91,7 @@
 <script>
 import { studentApi } from '@/services/studentApi'
 import { go } from '@/utils/nav'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 
 const ST = { REGISTERED: '在籍注册', NORMAL: '在籍', SUSPENDED: '休学中', RETAINED: '留级',
   WITHDRAWN: '已退学', GRADUATED: '已毕业', COMPLETED: '已结业', PENDING_REGISTER: '待注册' }
@@ -202,7 +203,7 @@ export default {
     }
   },
   onLoad() {
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
     this.load()
   },
   methods: {

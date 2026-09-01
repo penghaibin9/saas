@@ -203,6 +203,7 @@ import { getStudentHomeVersion } from '@/utils/viewFreshness'
 import { deadlineText } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
 import { canNavigate, disabledReasonOf, runAction } from '@/services/actionRouter'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 
 const HOME_TTL_MS = 20_000
 const GRAD_CLASSES = ['g1', 'g3', 'g7', 'g4', 'g5', 'g6', 'g2', 'g8']
@@ -286,7 +287,7 @@ export default {
   },
   onLoad() {
     this._pageActive = true
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
     this.load({ force: true })
   },
   onShow() {
