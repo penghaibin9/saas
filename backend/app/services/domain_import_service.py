@@ -333,7 +333,9 @@ def confirm(batch_no: str) -> dict:
             public_result = {"batchNo": batch_no, "status": "SUCCESS", **result}
         elif domain == "dorm":
             from app.services import dorm_resource_import_service
-            result = dorm_resource_import_service.confirm(_tid(), rows)
+            result = dorm_resource_import_service.confirm(
+                _tid(), rows, batch_no=batch_no, claim_token=claim_token,
+            )
             public_result = {"batchNo": batch_no, "status": "SUCCESS", **result}
         else:
             inserted = _confirm_master_domain_rows(domain, rows)

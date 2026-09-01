@@ -139,7 +139,7 @@ export default {
     },
     metricCards() {
       return [
-        { key: 'p', label: '归寝未知', value: this.presenceCounts.UNKNOWN ?? '—', accent: 'info' },
+        { key: 'p', label: '归寝未知', value: this.presenceCounts.UNKNOWN ?? '—', accent: 'warning' },
         { key: 'n', label: '确认未归', value: this.presenceCounts.NOT_RETURNED ?? '—', accent: 'warning' },
         { key: 't', label: '异常待处置', value: this.statusCounts === null ? '—' : (this.statusCounts.PENDING_HANDLE || 0), accent: 'risk' }
       ]

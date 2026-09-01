@@ -96,7 +96,7 @@ export default {
       const rate = this.occ.occupancyRate != null ? Math.round(this.occ.occupancyRate * 100) : 0
       return [
         { key: 't', label: '总床位', value: this.occ.totalBeds || 0, accent: 'primary' },
-        { key: 'o', label: '已住', value: this.occ.occupiedBeds || 0, accent: 'info' },
+        { key: 'o', label: '已住', value: this.occ.occupiedBeds || 0, accent: 'primary' },
         { key: 'v', label: '空床', value: this.occ.vacantBeds || 0, accent: (this.occ.vacantBeds || 0) ? 'success' : 'warning' },
         { key: 'l', label: '锁定床位', value: this.occ.lockedBeds || 0, accent: 'warning' },
         { key: 'r', label: '入住率', value: rate + '%', accent: 'primary' }

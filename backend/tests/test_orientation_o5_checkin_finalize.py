@@ -1,12 +1,13 @@
 """O5 signed check-in and enrollment finalize golden path (run in final gate)."""
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 from test_orientation_o4_qualification import TID, _seed, _student_headers
 
 
-def test_o5_signed_preflight_one_time_confirm_and_finalize(client, db_mode, auth_headers):
+def test_o5_signed_preflight_one_time_confirm_and_finalize(client, db_mode, auth_headers, monkeypatch):
     from app.db.session import get_sessionmaker
     from app.models import (
         OrientationCheckinPoint, OrientationEnrollmentFinalize,
@@ -85,6 +86,26 @@ def test_o5_signed_preflight_one_time_confirm_and_finalize(client, db_mode, auth
     )
     assert replay.status_code == 200
     assert replay.json()["data"]["idempotent"] is True
+
+    # A lost response may be retried after the original ten-minute credential
+    # expires.  Consumption remains one-time, but the existing receipt must still
+    # be returned idempotently instead of turning into a false expiry failure.
+    from app.services import orientation_checkin_service as checkin_service
+    real_datetime = checkin_service.datetime
+
+    class AfterTokenExpiry(real_datetime):
+        @classmethod
+        def utcnow(cls):
+            return real_datetime.utcnow() + timedelta(minutes=11)
+
+    monkeypatch.setattr(checkin_service, "datetime", AfterTokenExpiry)
+    delayed_replay = client.post(
+        "/api/v1/mobile/teacher/orientation/checkin/confirm",
+        headers=auth_headers, json={"token": token, "checkinPointId": str(point_id)},
+    )
+    assert delayed_replay.status_code == 200, delayed_replay.text
+    assert delayed_replay.json()["data"]["idempotent"] is True
+    monkeypatch.setattr(checkin_service, "datetime", real_datetime)
     legacy = client.post(
         "/api/v1/mobile/teacher/orientation/checkin",
         headers=auth_headers, json={"admissionNo": "O4-ADMISSION-001"},

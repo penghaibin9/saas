@@ -176,8 +176,16 @@ const collectForm = reactive({ phone: '', origin: '', emergencyContactName: '', 
 const arrivalForm = reactive({ arrivalMode: 'TRAIN', plannedArrivalDate: '', plannedArrivalTime: '', stationName: '', transportNo: '', pickupRequired: false, companionCount: 0, expectedVersion: 0 })
 const materialForm = reactive({ materialType: 'ID_CARD' })
 const materialFile = ref(null)
+const materialUploaded = ref(null)
+const materialRequestId = ref('')
 const greenForm = reactive({ type: 'POVERTY', reason: '' })
 const checkinToken = reactive({ token: '', qrDataUrl: '', expiresAt: '' })
+let requestSequence = 0
+function createRequestId(prefix) {
+  const suffix = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${(++requestSequence).toString(36)}`
+  return `${prefix}-${suffix}`.slice(0, 100)
+}
+const greenRequestId = ref(createRequestId('orientation-green'))
 
 const studentName = computed(() => session.user?.realName || '同学')
 const STEP_LABELS = { INFO: '信息采集', CHECKIN: '到校报到', CONFIRM: '注册确认', PAYMENT: '缴费', MATERIAL: '材料审核', DORM: '宿舍入住', ACTIVATE: '一卡通激活' }
@@ -220,7 +228,7 @@ async function load() {
 async function submitCollect() {
   busy.value = true
   try { await portalApi.orientationCollect({ ...collectForm }); ui.notify('信息已保存'); await load() }
-  catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
+  catch (e) { ui.notify(e?.message || '信息提交失败，请稍后重试') } finally { busy.value = false }
 }
 async function submitArrival() {
   busy.value = true
@@ -231,21 +239,26 @@ async function submitArrival() {
   }
   catch (e) { ui.notify(e?.message || '到校计划保存失败') } finally { busy.value = false }
 }
-function pickMaterial(event) { materialFile.value = event.target.files?.[0] || null }
-function clientSubmissionId() { return globalThis.crypto.randomUUID() }
+function pickMaterial(event) {
+  materialFile.value = event.target.files?.[0] || null
+  materialUploaded.value = null
+  materialRequestId.value = materialFile.value ? createRequestId('orientation-material') : ''
+}
 async function submitMaterial() {
   if (!materialFile.value) return
   busy.value = true
   try {
-    const uploaded = await portalApi.uploadOrientationMaterial(materialFile.value)
-    await portalApi.orientationMaterial({ materialType: materialForm.materialType, fileId: uploaded.fileId, clientSubmissionId: clientSubmissionId() })
-    ui.notify('材料已提交'); materialFile.value = null; await load()
+    const uploaded = materialUploaded.value || await portalApi.uploadOrientationMaterial(materialFile.value)
+    materialUploaded.value = uploaded
+    if (!materialRequestId.value) materialRequestId.value = createRequestId('orientation-material')
+    await portalApi.orientationMaterial({ materialType: materialForm.materialType, fileId: uploaded.fileId, clientSubmissionId: materialRequestId.value })
+    ui.notify('材料已提交'); materialFile.value = null; materialUploaded.value = null; materialRequestId.value = ''; await load()
   } catch (e) { ui.notify(e?.message || '材料提交失败') } finally { busy.value = false }
 }
 async function submitGreen() {
   busy.value = true
-  try { await portalApi.orientationGreenChannel({ applyType: greenForm.type, remark: greenForm.reason, clientRequestId: clientSubmissionId() }); ui.notify('绿色通道申请已提交'); await router.push('/orientation'); await load() }
-  catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
+  try { await portalApi.orientationGreenChannel({ applyType: greenForm.type, remark: greenForm.reason, clientRequestId: greenRequestId.value }); greenRequestId.value = createRequestId('orientation-green'); ui.notify('绿色通道申请已提交'); await router.push('/orientation'); await load() }
+  catch (e) { ui.notify(e?.message || '绿色通道申请提交失败，请稍后重试') } finally { busy.value = false }
 }
 async function issueCheckinToken() {
   if (busy.value) return

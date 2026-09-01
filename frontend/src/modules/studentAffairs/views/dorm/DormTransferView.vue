@@ -231,8 +231,8 @@ export default {
       return [
         { key: 'p', label: '待审批', value: pending, accent: 'warning' },
         { key: 'e', label: '已执行', value: s === null ? '—' : Number(s.EXECUTED || 0), accent: 'primary' },
-        { key: 'r', label: '已驳回', value: s === null ? '—' : Number(s.REJECTED || 0), accent: 'info' },
-        { key: 't', label: '合计', value: s === null ? '—' : Number(s.ALL || Object.values(s).reduce((a, b) => a + Number(b || 0), 0)), accent: 'info' }
+        { key: 'r', label: '已驳回', value: s === null ? '—' : Number(s.REJECTED || 0), accent: 'risk' },
+        { key: 't', label: '合计', value: s === null ? '—' : Number(s.ALL || Object.values(s).reduce((a, b) => a + Number(b || 0), 0)), accent: 'primary' }
       ]
     },
     buildingOptions() { return this.buildings.map((b) => ({ value: String(b.buildingId), label: b.buildingName || `楼栋 #${b.buildingId}` })) },

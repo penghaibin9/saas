@@ -16,7 +16,8 @@ test('O3 student miniapp exposes canonical arrival and material submission', () 
   assert.match(api, /\/mobile\/orientation\/materials'.*method: 'POST'/)
   assert.match(arrival, /expectedVersion: Number\(this\.form\.expectedVersion \|\| 0\)/)
   assert.match(materials, /bizType: 'ORIENTATION_MATERIAL'/)
-  assert.match(materials, /clientSubmissionId:/)
+  assert.match(materials, /clientSubmissionId: this\.clientSubmissionId/)
+  assert.doesNotMatch(materials, /Math\.random/)
 })
 
 test('O3 does not disguise the admission number as a report credential', () => {
