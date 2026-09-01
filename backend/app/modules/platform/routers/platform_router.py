@@ -144,7 +144,16 @@ def delegated_order_paid(
     body: dict = Body(...),
     user=Depends(require_platform_capability("order.manage")),
 ):
-    return _bundle.order_paid(order_no=order_no, body=body, user=user)
+    from app.services import platform_service as svc
+
+    out = svc.order_action(
+        order_no,
+        "mark-paid",
+        expected_version=_bundle._expected_version(body, operation="订单变更"),
+        reason=body.get("reason"),
+    )
+    message = "已入账，但自动激活失败，已进入待修复队列" if out.get("repairTaskRequired") else "已入账并开通"
+    return success(out, message=message)
 
 
 @_routes.post("/orders/{order_no}/cancel", summary="取消订单（delegated order.manage）")
@@ -153,7 +162,121 @@ def delegated_order_cancel(
     body: dict = Body(...),
     user=Depends(require_platform_capability("order.manage")),
 ):
-    return _bundle.order_cancel(order_no=order_no, body=body, user=user)
+    from app.services import platform_service as svc
+
+    out = svc.order_action(
+        order_no,
+        "cancel",
+        expected_version=_bundle._expected_version(body, operation="订单变更"),
+        reason=body.get("reason"),
+    )
+    return success(out)
+
+
+@_routes.post("/orders/{order_no}/repair-activation", summary="修复已支付订单授权（delegated order.manage）")
+def delegated_order_activation_repair(
+    order_no: str,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("order.manage")),
+):
+    from app.services import platform_service as svc
+
+    out = svc.order_action(
+        order_no,
+        "repair-activation",
+        expected_version=_bundle._expected_version(body, operation="订单激活修复"),
+        reason=body.get("reason"),
+    )
+    return success(out, message="订单授权激活已修复")
+
+
+@_routes.post("/tenants/{tenant_id}/convert-to-paid", summary="赠送/特批转正式（正常客户必须走订单）")
+def delegated_tenant_convert_exception(
+    tenant_id: int,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("commercial.manage")),
+):
+    from app.services.tenant_effective_state_service import apply_transition
+
+    out = apply_transition(
+        tenant_id,
+        "convert-to-paid",
+        reason=body.get("reason"),
+        expected_version=_bundle._expected_version(body, operation="租户变更"),
+        payload=body,
+        audit_action="PLATFORM_TENANT_CONVERT_PAID",
+    )
+    return success(out, message="受控例外授权已生效")
+
+
+@_routes.post("/tenants/{tenant_id}/transitions/{action}", summary="租户生命周期权威变更")
+def delegated_tenant_transition_apply(
+    tenant_id: int,
+    action: str,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("commercial.manage")),
+):
+    from app.services.tenant_effective_state_service import apply_transition
+
+    audit_actions = {
+        "enable": "PLATFORM_TENANT_ENABLE",
+        "disable": "PLATFORM_TENANT_DISABLE",
+        "extend-trial": "PLATFORM_TENANT_EXTEND_TRIAL",
+        "convert-to-paid": "PLATFORM_TENANT_CONVERT_PAID",
+        "expire": "PLATFORM_TENANT_EXPIRE",
+        "change-package": "PLATFORM_TENANT_CHANGE_PACKAGE",
+        "quota": "PLATFORM_TENANT_QUOTA",
+    }
+    normalized_action = str(action or "").strip().lower()
+    out = apply_transition(
+        tenant_id,
+        normalized_action,
+        reason=body.get("reason"),
+        expected_version=_bundle._expected_version(body, operation="租户变更"),
+        payload=body,
+        audit_action=audit_actions.get(normalized_action),
+    )
+    return success(out)
+
+
+@_routes.get("/deliveries", summary="学校交付只读聚合（delegated tenant.view）")
+def delegated_deliveries(user=Depends(require_platform_capability("tenant.view"))):
+    from app.services import platform_delivery_service as delivery
+
+    items = delivery.list_delivery_read_models()
+    return success({"items": items, "total": len(items)})
+
+
+@_routes.get("/tenants/{tenant_id}/delivery", summary="单校交付只读聚合（delegated tenant.view）")
+def delegated_tenant_delivery(
+    tenant_id: int,
+    user=Depends(require_platform_capability("tenant.view")),
+):
+    from app.services import platform_delivery_service as delivery
+
+    return success(delivery.get_delivery_read_model(tenant_id))
+
+
+@_routes.post("/tenants/{tenant_id}/consumer-smoke", summary="冻结 exact-head 控制面消费者证据")
+def delegated_consumer_smoke_record(
+    tenant_id: int,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("provisioning.manage")),
+):
+    from app.services import platform_delivery_service as delivery
+
+    return success(delivery.record_consumer_smoke(user, tenant_id, body), message="Consumer Smoke 证据已冻结")
+
+
+@_routes.post("/tenants/{tenant_id}/delivery-acceptance", summary="引用学校摘要确认平台交付")
+def delegated_delivery_accept(
+    tenant_id: int,
+    body: dict = Body(...),
+    user=Depends(require_platform_capability("provisioning.manage")),
+):
+    from app.services import platform_delivery_service as delivery
+
+    return success(delivery.accept_delivery(user, tenant_id, body), message="平台交付已确认")
 
 
 @_routes.get("/audit-logs", summary="全平台审计（delegated audit.view）")
