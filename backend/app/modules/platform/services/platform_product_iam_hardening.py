@@ -52,6 +52,15 @@ def _deployed_commit_sha() -> str:
     )
 
 
+def deployed_commit_sha() -> str:
+    """Return the server-attested immutable deployment commit.
+
+    Product IAM drafts and exact-head delivery evidence share this provenance
+    boundary so a browser-supplied SHA can never become release truth.
+    """
+    return _deployed_commit_sha()
+
+
 def _assert_expected_commit(expected: str, deployed: str) -> None:
     value = str(expected or "").strip().lower()
     if not value:

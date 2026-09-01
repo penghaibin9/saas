@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Depends
 from sqlalchemy import select
 
 from app.core.context import current_tenant_id
-from app.core.permissions import require_any_permission, require_permission
+from app.core.permissions import require_any_permission, require_module, require_permission
 from app.core.response import success
 from app.db.session import get_sessionmaker
 from app.modules.system_admin.routers import school_iam_router as _school_iam
@@ -172,6 +172,105 @@ def get_system_context(user=Depends(require_any_permission(
                 data["permissionActions"] = actions
             actions["effectiveAccess"] = {key: access.get(key) for key in _EFFECTIVE_ACCESS_KEYS}
     return payload
+
+
+@_replacements.get(
+    "/system/integrations",
+    summary="接口连接列表",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
+def api_list_integrations(
+    user=Depends(require_permission("systemAdmin.integration.manage")),
+):
+    return _bundle.api_list_integrations(user=user)
+
+
+@_replacements.post(
+    "/system/integrations",
+    summary="保存接口连接",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
+def api_save_integration(
+    body: dict = Body(...),
+    user=Depends(require_permission("systemAdmin.integration.manage")),
+):
+    return _bundle.api_save_integration(body=body, user=user)
+
+
+@_replacements.post(
+    "/system/integrations/{integration_id}/rotate",
+    summary="轮换接口凭证",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
+def api_rotate_integration(
+    integration_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("systemAdmin.integration.manage")),
+):
+    return _bundle.api_rotate_integration(integration_id=integration_id, body=body, user=user)
+
+
+@_replacements.post(
+    "/system/integrations/{integration_id}/test",
+    summary="测试接口连接（可达性，不伪造成功连接）",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
+def api_test_integration(
+    integration_id: str,
+    user=Depends(require_permission("systemAdmin.integration.manage")),
+):
+    return _bundle.api_test_integration(integration_id=integration_id, user=user)
+
+
+@_replacements.get(
+    "/system/sync-jobs",
+    summary="同步任务列表",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
+def api_list_sync_jobs(
+    user=Depends(require_any_permission(
+        "systemAdmin.integration.sync.view",
+        "systemAdmin.integration.manage",
+    )),
+):
+    return _bundle.api_list_sync_jobs(user=user)
+
+
+@_replacements.post(
+    "/system/sync-jobs",
+    summary="登记同步任务",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
+def api_enqueue_sync_job(
+    body: dict = Body(...),
+    user=Depends(require_permission("systemAdmin.integration.manage")),
+):
+    return _bundle.api_enqueue_sync_job(body=body, user=user)
+
+
+@_replacements.post(
+    "/system/sync-jobs/{job_id}/retry",
+    summary="重试同步任务",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
+def api_retry_sync_job(
+    job_id: str,
+    user=Depends(require_permission("systemAdmin.integration.manage")),
+):
+    return _bundle.api_retry_sync_job(job_id=job_id, user=user)
+
+
+@_replacements.post(
+    "/system/sync-jobs/{job_id}/cancel",
+    summary="取消同步任务",
+    dependencies=[Depends(require_module("apiAccess"))],
+)
+def api_cancel_sync_job(
+    job_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("systemAdmin.integration.manage")),
+):
+    return _bundle.api_cancel_sync_job(job_id=job_id, body=body, user=user)
 
 
 @_replacements.get("/system/users/{user_id}", summary="学校账号详情（真实库）")

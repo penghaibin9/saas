@@ -1,0 +1,38 @@
+{
+  "baseExactHead": "057bb7073eeffa454f81f1c8c2120ff89f1f5091",
+  "catalog": {
+    "platform": {
+      "source": "frontend/src/modules/platform/platformManagementCatalog.js",
+      "sourceBlobAtBase": "7cac59124379c31e9d1aabb4ed248018e6dbfb16",
+      "roadmapItems": 37,
+      "productionItems": 27,
+      "capabilityOnlyItems": 10,
+      "productionGroups": 7
+    },
+    "system": {
+      "source": "frontend/src/modules/system/systemManagementCatalog.js",
+      "sourceBlobAtBase": "e23325a149b21916be76efe474f2c1a1db9afb81",
+      "productionGroups": 9,
+      "productionItems": 48
+    }
+  },
+  "formalRouteGraph": {
+    "platformSource": "frontend/src/modules/platform/platform.routes.js",
+    "platformSourceBlobAtBase": "ab32d60a1a1eff5b16f4fae8a48433ffcf8c6362",
+    "systemSource": "frontend/src/modules/system/system.routes.js",
+    "systemSourceBlobAtBase": "cc8f3c3c31f57eb0932d7aff3f37faec96b6d0ed",
+    "backendPlatformOwner": "backend/app/modules/platform/routers/platform_router.py + platform_bundle.py",
+    "backendSystemOwner": "backend/app/modules/system_admin/routers/system_control_plane_router.py + system_bundle.py + data_exchange_router.py + backend/app/api/v1/implementation.py"
+  },
+  "mockReachability": {
+    "productionTenantComponent": "frontend/src/modules/platform/views/control/PlatformControlTenants.vue",
+    "legacyTenantComponent": "frontend/src/modules/platform/views/PlatformTenantListView.vue",
+    "legacyImportedByFormalPlatformRoutes": false,
+    "legacyClassification": "LEGACY/DEMO/COMPAT ONLY",
+    "productionWriteChainUsesPlatformControlApi": true
+  },
+  "browserBaseline": {
+    "status": "PENDING",
+    "reason": "Run only after W1-W17 control-plane authority fixes and isolated real-school fixture are ready."
+  }
+}

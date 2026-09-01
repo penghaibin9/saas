@@ -114,8 +114,8 @@ const platformRoutes = {
     {
       path: 'tenants/create',
       name: 'platform-tenant-create',
-      component: () => import('@/modules/platform/views/control/PlatformControlTenants.vue'),
-      meta: { moduleCode: 'PLATFORM', title: '开通新学校', requiresAuth: true, permissionKey: 'platform.tenant.manage', openCreate: true }
+      redirect: '/admin/platform/provisioning?create=1',
+      meta: { moduleCode: 'PLATFORM', title: '开通新学校（统一到自动交付）', requiresAuth: true, permissionKey: 'platform.provision.run.view', provisioningRedirect: true }
     },
     {
       path: 'features',

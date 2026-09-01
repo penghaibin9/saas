@@ -4,6 +4,8 @@ import fs from 'node:fs'
 
 const catalog = fs.readFileSync(new URL('../src/modules/system/systemManagementCatalog.js', import.meta.url), 'utf8')
 const routes = fs.readFileSync(new URL('../src/modules/system/system.routes.js', import.meta.url), 'utf8')
+const workspace = fs.readFileSync(new URL('../src/modules/system/views/SystemImplementationWorkspaceView.vue', import.meta.url), 'utf8')
+const legacyView = fs.readFileSync(new URL('../src/modules/system/views/SystemImplementationView.vue', import.meta.url), 'utf8')
 
 test('implementation center exposes eight real menu leaves and routes', () => {
   assert.equal((catalog.match(/key: 'sys-implementation',/g) || []).length, 1)
@@ -25,4 +27,24 @@ test('implementation center exposes eight real menu leaves and routes', () => {
 test('all implementation routes have backend permission keys', () => {
   const permissionMatches = routes.match(/systemAdmin\.implementation\.[a-z.]+/g) || []
   assert.equal(new Set(permissionMatches).size >= 7, true)
+})
+
+test('implementation workspace clears an applied preview and never reports stale install work', () => {
+  assert.match(workspace, /preview && project\.status === 'PREVIEW_READY'/)
+  assert.match(workspace, /this\.project\?\.status !== 'PREVIEW_READY'/)
+  assert.match(workspace, /this\.preview = null\s+this\.idempotencyKey = ''/)
+})
+
+test('implementation center reuses canonical teacher imports for business relations', () => {
+  assert.match(legacyView, /dataExchangeApi\.list\(\{ jobType: 'IMPORT', status: 'SUCCEEDED', keyword: 'IDENTITY_TEACHER'/)
+  assert.match(legacyView, /discoverRelationsFromCompletedImport/)
+  assert.match(legacyView, /复用已完成的教师导入/)
+  assert.doesNotMatch(legacyView, /请输入(?:教师)?导入(?:任务|批次)(?:编号|ID)/)
+})
+
+test('implementation acceptance evidence is human readable', () => {
+  assert.match(legacyView, /checkEvidenceText\(c\)/)
+  assert.match(legacyView, /affectedCountsText\(changeAnalysis\.affectedTableCounts\)/)
+  assert.doesNotMatch(legacyView, /JSON\.stringify\(c\.evidence\)/)
+  assert.doesNotMatch(legacyView, /JSON\.stringify\(changeAnalysis\.affectedTableCounts\)/)
 })

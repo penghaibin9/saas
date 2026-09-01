@@ -278,3 +278,50 @@ def test_http_endpoint_rejects_private_ip_endpoint(client, tenant_ctx):
     body = r.json()
     assert body["code"] != 0
     assert r.status_code in (400, 422)
+
+
+def test_unentitled_api_access_denies_integration_and_sync_routes(client, db_mode):
+    """CTRL-GJ-12: standard 包未购买 apiAccess，直调接口与同步任务必须 fail-closed。"""
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import Tenant
+    from app.services import platform_service as platform
+
+    tenant_id = 1000000000000000099
+    db = get_sessionmaker()()
+    try:
+        if db.get(Tenant, tenant_id) is None:
+            db.add(Tenant(
+                id=tenant_id,
+                tenant_code="integration-standard",
+                school_name="标准版未购接口能力测试学校",
+                status="ACTIVE",
+            ))
+            db.commit()
+    finally:
+        db.close()
+    platform.put_config_json(
+        tenant_id,
+        "TENANT_META",
+        "-",
+        {"status": "active", "packageCode": "standard"},
+    )
+    token = create_access_token({
+        "userId": "u-standard-school-admin",
+        "realName": "标准版学校管理员",
+        "userType": "SCHOOL_ADMIN",
+        "tid": "integration-standard",
+        "tenantId": str(tenant_id),
+        "activeContextId": "ctx-standard-school-admin",
+        "currentRoleCode": "SCHOOL_ADMIN",
+        "clientType": "PC",
+    })
+    headers = {"Authorization": f"Bearer {token}"}
+
+    for method, path in (
+        ("get", "/api/v1/system/integrations"),
+        ("get", "/api/v1/system/sync-jobs"),
+    ):
+        response = getattr(client, method)(path, headers=headers)
+        assert response.status_code == 403, response.json()
+        assert response.json()["bizCode"] == "NO_PERMISSION"
