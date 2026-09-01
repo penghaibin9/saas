@@ -7,11 +7,13 @@ const ROOT = process.cwd()
 const OUTPUT_DIR = path.resolve(ROOT, 'dist/build/mp-weixin')
 const APP_JSON = path.join(OUTPUT_DIR, 'app.json')
 const PROJECT_JSON = path.join(OUTPUT_DIR, 'project.config.json')
+const PROJECT_PRIVATE_JSON = path.join(OUTPUT_DIR, 'project.private.config.json')
 const RELEASE_INFO = path.join(OUTPUT_DIR, 'RELEASE_INFO.txt')
 const PACKAGE_REPORT = path.join(OUTPUT_DIR, 'miniapp-package-report.json')
 const ENV_PRODUCTION = path.resolve(ROOT, '.env.production')
 const SRC_MANIFEST = path.resolve(ROOT, 'src/manifest.json')
 const APPID_PATTERN = /^wx[0-9a-fA-F]{16}$/
+const PERMISSION_DESC_MAX_LENGTH = 30
 /** 微信开发者工具的游客/测试号：可以预览调试，但无法上传代码。 */
 const TOURIST_APPID = 'touristappid'
 const TEXT_EXTENSIONS = new Set(['.js', '.json', '.wxml', '.wxss', '.wxs', '.sjs', '.txt'])
@@ -29,6 +31,7 @@ const V3_PACKAGE_BUDGET = {
   'pages/teacher': 950 * 1024
 }
 const TOP_FILE_COUNT = 20
+const WXSS_COMPONENT_TAG_PATTERN = /(^|[\s>+~])(view|text|button|input|textarea|image|scroll-view|swiper|swiper-item|picker|form|label|switch|slider|navigator|web-view|video|canvas|map)(?=$|[\s.:>#\[])/
 
 function fail(message) {
   throw new Error(`[mp-weixin release] ${message}`)
@@ -55,6 +58,24 @@ async function walk(dir) {
 
 function normalizeRelative(file) {
   return path.relative(OUTPUT_DIR, file).split(path.sep).join('/')
+}
+
+function findUnsupportedComponentSelectors(text) {
+  const code = text.replace(/\/\*[\s\S]*?\*\//g, '')
+  const unsupported = new Set()
+  const rulePattern = /(?:^|})\s*([^@{}][^{]*)\{/g
+  let match
+  while ((match = rulePattern.exec(code))) {
+    for (const rawSelector of match[1].split(',')) {
+      const selector = rawSelector.trim()
+      if (!selector) continue
+      const hasUnsupportedPseudo = /:(?!host(?:\b|\())[-a-zA-Z]+/.test(selector)
+      if (selector.includes('#') || selector.includes('[') || hasUnsupportedPseudo || WXSS_COMPONENT_TAG_PATTERN.test(selector)) {
+        unsupported.add(selector)
+      }
+    }
+  }
+  return [...unsupported]
 }
 
 async function readTextOrEmpty(file) {
@@ -114,6 +135,14 @@ async function main() {
   const appConfig = await readJson(APP_JSON)
   const projectConfig = await readJson(PROJECT_JSON)
 
+  for (const [scope, config] of Object.entries(appConfig.permission || {})) {
+    const description = String((config && config.desc) || '').trim()
+    const length = Array.from(description).length
+    if (length > PERMISSION_DESC_MAX_LENGTH) {
+      fail(`${scope}.desc 超过微信 ${PERMISSION_DESC_MAX_LENGTH} 字限制（当前 ${length} 字）`)
+    }
+  }
+
   const { pages, subPackages } = collectPages(appConfig)
   const requiredPages = [
     'pages/login/index',
@@ -138,6 +167,25 @@ async function main() {
   const uploadReady = APPID_PATTERN.test(projectConfig.appid)
   await fs.writeFile(PROJECT_JSON, `${JSON.stringify(projectConfig, null, 2)}\n`, 'utf8')
 
+  // 开发者工具会让 project.private.config.json 覆盖项目配置。若这里保留
+  // urlCheck=false，本地预览会放过未配置的 request 合法域名，直到真机才失败。
+  // 发布构建必须让两份配置保持一致，避免形成上线验证盲区。
+  let hasPrivateConfig = true
+  try {
+    await fs.access(PROJECT_PRIVATE_JSON)
+  } catch (error) {
+    if (error?.code === 'ENOENT') hasPrivateConfig = false
+    else throw error
+  }
+  if (hasPrivateConfig) {
+    const privateConfig = await readJson(PROJECT_PRIVATE_JSON)
+    privateConfig.setting = {
+      ...(privateConfig.setting || {}),
+      urlCheck: true
+    }
+    await fs.writeFile(PROJECT_PRIVATE_JSON, `${JSON.stringify(privateConfig, null, 2)}\n`, 'utf8')
+  }
+
   let files = await walk(OUTPUT_DIR)
   const sourceMaps = files.filter((file) => file.endsWith('.map'))
   await Promise.all(sourceMaps.map((file) => fs.unlink(file)))
@@ -154,6 +202,28 @@ async function main() {
   if (!apiBaseFound) fail(`构建产物未注入正式 API：${expectedApiBase}`)
   if (cleartextApiFiles.length) {
     fail(`构建产物包含非本机 HTTP 明文地址：${[...new Set(cleartextApiFiles)].join(', ')}`)
+  }
+
+  const leakedBuildPathFiles = []
+  for (const file of textFiles) {
+    const text = await fs.readFile(file, 'utf8')
+    if (/VITE_ROOT_DIR|[A-Za-z]:\\\\Users\\\\[^"']+|(?:^|["'\s])\/(?:Users|home)\/[^/]+\//.test(text)) {
+      leakedBuildPathFiles.push(normalizeRelative(file))
+    }
+  }
+  if (leakedBuildPathFiles.length) {
+    fail(`构建产物泄露本机绝对路径：${[...new Set(leakedBuildPathFiles)].join(', ')}`)
+  }
+
+  const mockPayloadFiles = []
+  for (const file of files.filter((item) => normalizeRelative(item).startsWith('mock/') && item.endsWith('.js'))) {
+    const text = await fs.readFile(file, 'utf8')
+    if (!/Object\.freeze\(\[\]\)/.test(text) && text.trim() !== '"use strict";') {
+      mockPayloadFiles.push(normalizeRelative(file))
+    }
+  }
+  if (mockPayloadFiles.length) {
+    fail(`生产包仍包含未剥离的 mock 数据体：${mockPayloadFiles.join(', ')}`)
   }
 
   // WXSS 解析器既不支持省略元素名的伪类（`> :first-child` → error at token `:`），
@@ -174,6 +244,26 @@ async function main() {
     fail(
       '以下 WXSS 含微信不支持的选择器（">" 后直接跟伪类，或使用通配符 "*"）；' +
       `请改写为具体类名选择器：${badSelectorFiles.join(', ')}`
+    )
+  }
+
+  const badComponentSelectors = []
+  for (const jsonFile of files.filter((file) => file.endsWith('.json'))) {
+    let config
+    try { config = JSON.parse(await fs.readFile(jsonFile, 'utf8')) } catch (error) { continue }
+    if (config.component !== true) continue
+    const wxssFile = jsonFile.replace(/\.json$/i, '.wxss')
+    const wxss = await readTextOrEmpty(wxssFile)
+    if (!wxss) continue
+    const selectors = findUnsupportedComponentSelectors(wxss)
+    if (selectors.length) {
+      badComponentSelectors.push(`${normalizeRelative(wxssFile)}: ${selectors.join(', ')}`)
+    }
+  }
+  if (badComponentSelectors.length) {
+    fail(
+      '自定义组件 WXSS 只能使用兼容的类选择器；检测到标签、ID、属性或伪类选择器：' +
+      badComponentSelectors.join('; ')
     )
   }
 

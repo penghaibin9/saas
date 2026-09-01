@@ -1,11 +1,11 @@
 <template>
-  <view class="mini-login" :class="{ 'is-teacher': isTeacher }">
-    <view class="hero">
+  <view class="mini-login">
+    <view class="hero" :class="{ 'hero--teacher': isTeacher }">
       <view class="hero__glow" />
       <view class="brand">
         <image v-if="brand.logo" :src="brand.logo" class="brand__logo-img" mode="aspectFit" />
         <text v-else class="brand__logo">{{ logoText }}</text>
-        <view><text class="brand__name">{{ platformName }}</text><text class="brand__sub">{{ isTeacher ? '教师与管理人员专用' : '学生个人服务入口' }}</text></view>
+        <view class="brand__copy"><text class="brand__name">{{ platformName }}</text><text class="brand__sub">{{ isTeacher ? '教师与管理人员专用' : '学生个人服务入口' }}</text></view>
       </view>
       <view class="hero__copy">
         <text class="hero__eyebrow">{{ isTeacher ? '移动工作台' : '掌上服务门户' }}</text>
@@ -16,14 +16,14 @@
 
     <view class="auth-card">
       <view class="auth-card__head">
-        <view><text class="auth-card__title">{{ isTeacher ? '教师端登录' : '学生端登录' }}</text><text class="auth-card__sub">优先使用微信一键登录，首次使用需绑定一次校园账号。</text></view>
-        <text class="entry-badge">{{ isTeacher ? '教师端' : '学生端' }}</text>
+        <view class="auth-card__copy"><text class="auth-card__title">{{ isTeacher ? '教师端登录' : '学生端登录' }}</text><text class="auth-card__sub">优先使用微信一键登录，首次使用需绑定一次校园账号。</text></view>
+        <text class="entry-badge" :class="{ 'entry-badge--teacher': isTeacher }">{{ isTeacher ? '教师端' : '学生端' }}</text>
       </view>
 
       <!-- #ifdef MP-WEIXIN -->
-      <button class="wx-button" :disabled="wxLoading" @click="wechatLogin">{{ wxLoading ? '登录中…' : '微信一键登录' }}</button>
+      <button class="wx-button" :class="{ 'is-disabled': wxLoading }" :disabled="wxLoading" plain @click="wechatLogin">{{ wxLoading ? '登录中…' : '微信一键登录' }}</button>
       <!-- #endif -->
-      <view class="divider"><view /><text>其他登录方式</text><view /></view>
+      <view class="divider"><view class="divider__line" /><text>其他登录方式</text><view class="divider__line" /></view>
 
       <text class="section-title">使用{{ isTeacher ? '工号' : '学号' }}和密码登录</text>
       <input v-model="account.loginName" class="field" :placeholder="isTeacher ? '工号 / 手机号' : '学号 / 手机号'" placeholder-class="field__placeholder" />
@@ -31,14 +31,14 @@
       <text class="forgot-entry" @click="openPasswordReset">忘记密码？短信验证后自助重置</text>
       <view v-if="accountCaptcha.required" class="captcha-row"><input v-model="accountCaptcha.code" class="field captcha-row__input" type="number" maxlength="6" placeholder="图形验证码" /><image class="captcha-row__image" :src="accountCaptcha.image" mode="aspectFill" @click="loadCaptcha('account')" /></view>
       <view class="tenant-box" @click="tenantOpen = !tenantOpen">
-        <view><text class="tenant-box__title">学校编码</text><text class="tenant-box__hint">仅多校同账号时填写</text></view><text>{{ tenantOpen ? '收起' : '填写' }}</text>
+        <view class="tenant-box__copy"><text class="tenant-box__title">学校编码</text><text class="tenant-box__hint">仅多校同账号时填写</text></view><text>{{ tenantOpen ? '收起' : '填写' }}</text>
       </view>
       <input v-if="tenantOpen" v-model="account.tenantCode" class="field field--tenant" placeholder="请输入学校编码" placeholder-class="field__placeholder" />
 
-      <button class="account-button" :disabled="accLoading" @click="onAccountLogin">{{ accLoading ? '登录中…' : (isTeacher ? '进入教师工作台' : '进入学生首页') }}</button>
+      <button class="account-button" :class="{ 'account-button--teacher': isTeacher, 'is-disabled': accLoading }" :disabled="accLoading" plain @click="onAccountLogin">{{ accLoading ? '登录中…' : (isTeacher ? '进入教师工作台' : '进入学生首页') }}</button>
       <view class="agreement">
-        <view class="agreement__box" :class="{ on: agree }" @click="agree = !agree"><text v-if="agree">✓</text></view>
-        <text @click="agree = !agree">我已阅读并同意学校提供的</text><text class="agreement__link" @click.stop="openDoc('terms')">《用户协议》</text><text @click="agree = !agree">与</text><text class="agreement__link" @click.stop="openDoc('privacy')">《隐私政策》</text>
+        <view class="agreement__box" :class="{ 'agreement__box--checked': agree, 'agreement__box--teacher-checked': agree && isTeacher }" @click="agree = !agree"><text v-if="agree">✓</text></view>
+        <text @click="agree = !agree">我已阅读并同意学校提供的</text><text class="agreement__link" :class="{ 'agreement__link--teacher': isTeacher }" @click.stop="openDoc('terms')">《用户协议》</text><text @click="agree = !agree">与</text><text class="agreement__link" :class="{ 'agreement__link--teacher': isTeacher }" @click.stop="openDoc('privacy')">《隐私政策》</text>
       </view>
     </view>
 
@@ -49,10 +49,10 @@
     </view>
 
     <view class="feature-row">
-      <view v-for="item in features" :key="item.title"><text class="feature-row__mark">{{ item.mark }}</text><text class="feature-row__title">{{ item.title }}</text><text class="feature-row__sub">{{ item.sub }}</text></view>
+      <view v-for="item in features" :key="item.title" class="feature-row__item"><text class="feature-row__mark" :class="{ 'feature-row__mark--teacher': isTeacher }">{{ item.mark }}</text><text class="feature-row__title">{{ item.title }}</text><text class="feature-row__sub">{{ item.sub }}</text></view>
     </view>
-    <view class="role-note"><text>{{ isTeacher ? '登录后进入岗位工作台' : '仅展示本人数据' }}</text><text>{{ isTeacher ? '辅导员、指导教师、教务人员等按角色匹配首页与数据范围。' : '服务事项、材料、进度与消息都与当前账号本人关联。' }}</text></view>
-    <text class="switch-entry" @click="switchEntry">切换身份</text>
+    <view class="role-note"><text class="role-note__title">{{ isTeacher ? '登录后进入岗位工作台' : '仅展示本人数据' }}</text><text class="role-note__detail">{{ isTeacher ? '辅导员、指导教师、教务人员等按角色匹配首页与数据范围。' : '服务事项、材料、进度与消息都与当前账号本人关联。' }}</text></view>
+    <text class="role-switch-link" @click="switchEntry">切换身份</text>
     <view class="footer"><text>技术支持：湖南跃科信息工程有限公司</text><text>湘ICP备2026031107号</text></view>
 
     <view v-if="binding" class="bind-mask" @click.self="cancelBind">
@@ -64,7 +64,7 @@
         <input v-model="bindForm.password" class="field" type="password" password placeholder="密码" placeholder-class="field__placeholder" />
         <view v-if="bindCaptcha.required" class="captcha-row"><input v-model="bindCaptcha.code" class="field captcha-row__input" type="number" maxlength="6" placeholder="图形验证码" /><image class="captcha-row__image" :src="bindCaptcha.image" mode="aspectFill" @click="loadCaptcha('bind')" /></view>
         <input v-model="bindForm.tenantCode" class="field" placeholder="学校编码（仅多校同账号时填写）" placeholder-class="field__placeholder" />
-        <button class="account-button" :disabled="bindLoading" @click="submitBind">{{ bindLoading ? '绑定中…' : '绑定并登录' }}</button>
+        <button class="account-button" :class="{ 'account-button--teacher': isTeacher, 'is-disabled': bindLoading }" :disabled="bindLoading" plain @click="submitBind">{{ bindLoading ? '绑定中…' : '绑定并登录' }}</button>
         <text class="bind-sheet__cancel" @click="cancelBind">取消</text>
       </view>
     </view>
@@ -254,19 +254,21 @@ export default {
 
 <style scoped>
 .mini-login { min-height: 100vh; padding-bottom: calc(26px + env(safe-area-inset-bottom)); color: #10233f; background: #f4f7fb; }
-.hero { position: relative; overflow: hidden; min-height: 284px; padding: calc(28px + env(safe-area-inset-top)) 22px 48px; color: #fff; background: linear-gradient(155deg, #174a78, #1b708f 60%, #1a9a9a); border-radius: 0 0 34px 34px; }.is-teacher .hero { background: linear-gradient(155deg, #163d88, #205bc5 60%, #2877df); }.hero__glow { position: absolute; width: 260px; height: 260px; right: -100px; top: -100px; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; box-shadow: 0 0 0 55px rgba(255,255,255,.035); }
-.brand { position: relative; display: flex; align-items: center; gap: 11px; }.brand__logo,.brand__logo-img { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border: 1px solid rgba(255,255,255,.32); border-radius: 11px; background: rgba(255,255,255,.14); }.brand view { display: flex; flex-direction: column; }.brand__name { font-size: 14px; font-weight: 600; }.brand__sub { margin-top: 2px; color: rgba(255,255,255,.67); font-size: 10px; }
+.hero { position: relative; overflow: hidden; min-height: 284px; padding: calc(28px + env(safe-area-inset-top)) 22px 48px; color: #fff; background: linear-gradient(155deg, #174a78, #1b708f 60%, #1a9a9a); border-radius: 0 0 34px 34px; }.hero--teacher { background: linear-gradient(155deg, #163d88, #205bc5 60%, #2877df); }.hero__glow { position: absolute; width: 260px; height: 260px; right: -100px; top: -100px; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; box-shadow: 0 0 0 55px rgba(255,255,255,.035); }
+.brand { position: relative; display: flex; align-items: center; gap: 11px; }.brand__logo,.brand__logo-img { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border: 1px solid rgba(255,255,255,.32); border-radius: 11px; background: rgba(255,255,255,.14); }.brand__copy { display: flex; flex-direction: column; }.brand__name { font-size: 14px; font-weight: 600; }.brand__sub { margin-top: 2px; color: rgba(255,255,255,.67); font-size: 10px; }
 .hero__copy { position: relative; display: flex; flex-direction: column; min-width: 0; margin-top: 32px; }.hero__eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 2px; opacity: .72; }.hero__title { display: block; max-width: 100%; margin-top: 10px; font-size: 24px; font-weight: 700; line-height: 1.35; white-space: pre-line; word-break: break-all; }.hero__desc { display: block; max-width: 330px; margin-top: 12px; color: rgba(255,255,255,.76); font-size: 12px; line-height: 1.7; white-space: normal; word-break: break-all; }
-.auth-card { position: relative; margin: -25px 16px 0; padding: 22px 20px; border: 1px solid #e4eaf1; border-radius: 22px; background: #fff; box-shadow: 0 18px 45px -28px rgba(16,35,63,.45); }.auth-card__head { display: flex; justify-content: space-between; gap: 14px; }.auth-card__head > view { flex: 1; min-width: 0; display: flex; flex-direction: column; }.auth-card__title { font-size: 20px; font-weight: 700; }.auth-card__sub { display: block; margin-top: 6px; color: #718096; font-size: 11px; line-height: 1.5; white-space: normal; word-break: break-all; }.entry-badge { flex: none; align-self: flex-start; padding: 5px 9px; border-radius: 999px; color: #0f766e; background: #eaf8f5; font-size: 10px; }.is-teacher .entry-badge { color: #1f56c9; background: #eef4ff; }
-button::after { border: none; }.wx-button,.account-button { display: flex; align-items: center; justify-content: center; height: 47px; margin: 18px 0 0; border: 0; border-radius: 11px; color: #fff; background: #07c160; font-size: 14px; font-weight: 600; }.account-button { background: linear-gradient(135deg, #15948b, #0f766e); }.is-teacher .account-button { background: linear-gradient(135deg, #2f70ea, #1f56c9); }.wx-button[disabled],.account-button[disabled] { opacity: .62; }
-.divider { display: flex; align-items: center; gap: 11px; margin: 18px 0; color: #9aa7b8; font-size: 10px; }.divider view { flex: 1; height: 1px; background: #e7ebf0; }.section-title { display: block; margin-bottom: 10px; color: #40536d; font-size: 12px; font-weight: 600; }.field { box-sizing: border-box; width: 100%; height: 46px; margin-top: 10px; padding: 0 13px; border: 1px solid #dce4ed; border-radius: 10px; color: #10233f; background: #f9fbfd; font-size: 13px; }.field__placeholder { color: #9aa7b8; }.field--tenant { margin-top: 8px; }
-.tenant-box { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #f8fafc; color: #536780; font-size: 11px; }.tenant-box view { display: flex; flex-direction: column; }.tenant-box__title { color: #40536d; font-size: 12px; font-weight: 600; }.tenant-box__hint { margin-top: 2px; color: #9aa7b8; font-size: 9px; }
+.auth-card { position: relative; margin: -25px 16px 0; padding: 22px 20px; border: 1px solid #e4eaf1; border-radius: 22px; background: #fff; box-shadow: 0 18px 45px -28px rgba(16,35,63,.45); }.auth-card__head { display: flex; justify-content: space-between; gap: 14px; }.auth-card__copy { flex: 1; min-width: 0; display: flex; flex-direction: column; }.auth-card__title { font-size: 20px; font-weight: 700; }.auth-card__sub { display: block; margin-top: 6px; color: #718096; font-size: 11px; line-height: 1.5; white-space: normal; word-break: break-all; }.entry-badge { flex: none; align-self: flex-start; padding: 5px 9px; border-radius: 999px; color: #0f766e; background: #eaf8f5; font-size: 10px; }.entry-badge--teacher { color: #1f56c9; background: #eef4ff; }
+.wx-button,.account-button { display: flex; align-items: center; justify-content: center; height: 47px; margin: 18px 0 0; border: 0; border-radius: 11px; color: #fff; background: #07c160; font-size: 14px; font-weight: 600; }.account-button { background: linear-gradient(135deg, #15948b, #0f766e); }.account-button--teacher { background: linear-gradient(135deg, #2f70ea, #1f56c9); }.is-disabled { opacity: .62; }
+.divider { display: flex; align-items: center; gap: 11px; margin: 18px 0; color: #9aa7b8; font-size: 10px; }.divider__line { flex: 1; height: 1px; background: #e7ebf0; }.section-title { display: block; margin-bottom: 10px; color: #40536d; font-size: 12px; font-weight: 600; }.field { box-sizing: border-box; width: 100%; height: 46px; margin-top: 10px; padding: 0 13px; border: 1px solid #dce4ed; border-radius: 10px; color: #10233f; background: #f9fbfd; font-size: 13px; }.field__placeholder { color: #9aa7b8; }.field--tenant { margin-top: 8px; }
+.tenant-box { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #f8fafc; color: #536780; font-size: 11px; }.tenant-box__copy { display: flex; flex-direction: column; }.tenant-box__title { color: #40536d; font-size: 12px; font-weight: 600; }.tenant-box__hint { margin-top: 2px; color: #9aa7b8; font-size: 9px; }
 .forgot-entry { display: block; margin-top: 10px; color: #0f766e; text-align: right; font-size: 11px; }
-.agreement { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 0; margin-top: 14px; color: #7c899a; font-size: 10px; line-height: 1.6; }.agreement__box { flex: none; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 8px; border: 1px solid #d9e0e8; border-radius: 4px; color: #fff; }.agreement__box.on { border-color: #15948b; background: #15948b; }.is-teacher .agreement__box.on { border-color: #2563eb; background: #2563eb; }.agreement__link { color: #15948b; }.is-teacher .agreement__link { color: #2563eb; }
+.agreement { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 0; margin-top: 14px; color: #7c899a; font-size: 10px; line-height: 1.6; }.agreement__box { flex: none; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 8px; border: 1px solid #d9e0e8; border-radius: 4px; color: #fff; }.agreement__box--checked { border-color: #15948b; background: #15948b; }.agreement__box--teacher-checked { border-color: #2563eb; background: #2563eb; }.agreement__link { color: #15948b; }.agreement__link--teacher { color: #2563eb; }
 .orientation-card,.role-note { display: flex; flex-direction: column; margin: 12px 16px 0; padding: 15px 17px; border: 1px solid #bfe7df; border-radius: 15px; background: #effaf7; }.orientation-card__badge { color: #0f766e; font-size: 10px; font-weight: 600; }.orientation-card__title { margin-top: 5px; font-size: 14px; font-weight: 700; }.orientation-card__desc { margin-top: 4px; color: #536780; font-size: 10px; }
-.feature-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 14px 16px 0; }.feature-row > view { display: flex; flex-direction: column; align-items: center; padding: 14px 5px; border: 1px solid #e7ecf2; border-radius: 14px; background: #fff; }.feature-row__mark { display: flex; align-items: center; justify-content: center; width: 31px; height: 31px; border-radius: 10px; color: #0f766e; background: #eaf8f5; font-size: 12px; font-weight: 700; }.is-teacher .feature-row__mark { color: #1f56c9; background: #eef4ff; }.feature-row__title { margin-top: 7px; font-size: 11px; font-weight: 600; }.feature-row__sub { margin-top: 2px; color: #8b98aa; font-size: 9px; }
-.role-note { border-color: #e7ecf2; background: #fff; }.role-note text:first-child { font-size: 12px; font-weight: 600; }.role-note text:last-child { margin-top: 5px; color: #7f8da0; font-size: 10px; line-height: 1.6; }.switch-entry { display: block; margin: 17px auto 0; color: #536780; text-align: center; font-size: 11px; }.footer { display: flex; flex-direction: column; align-items: center; gap: 3px; margin-top: 17px; color: #9aa7b8; font-size: 9px; }
+.feature-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 14px 16px 0; }.feature-row__item { display: flex; flex-direction: column; align-items: center; padding: 14px 5px; border: 1px solid #e7ecf2; border-radius: 14px; background: #fff; }.feature-row__mark { display: flex; align-items: center; justify-content: center; width: 31px; height: 31px; border-radius: 10px; color: #0f766e; background: #eaf8f5; font-size: 12px; font-weight: 700; }.feature-row__mark--teacher { color: #1f56c9; background: #eef4ff; }.feature-row__title { margin-top: 7px; font-size: 11px; font-weight: 600; }.feature-row__sub { margin-top: 2px; color: #8b98aa; font-size: 9px; }
+.role-note { border-color: #e7ecf2; background: #fff; }.role-note__title { font-size: 12px; font-weight: 600; }.role-note__detail { margin-top: 5px; color: #7f8da0; font-size: 10px; line-height: 1.6; }.role-switch-link { display: block; margin: 17px auto 0; color: #536780; text-align: center; font-size: 11px; }.footer { display: flex; flex-direction: column; align-items: center; gap: 3px; margin-top: 17px; color: #9aa7b8; font-size: 9px; }
 .bind-mask { position: fixed; z-index: 1000; inset: 0; display: flex; align-items: flex-end; background: rgba(16,35,63,.46); }.bind-sheet { width: 100%; padding: 13px 20px calc(20px + env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: #fff; }.bind-sheet__handle { width: 42px; height: 4px; margin: 0 auto 16px; border-radius: 4px; background: #d9e0e8; }.bind-sheet__title,.bind-sheet__sub,.bind-sheet__cancel { display: block; }.bind-sheet__title { font-size: 18px; font-weight: 700; }.bind-sheet__sub { margin: 7px 0 4px; color: #718096; font-size: 11px; line-height: 1.55; }.bind-sheet__cancel { padding: 15px 0 3px; color: #718096; text-align: center; font-size: 12px; }
+/* #ifdef H5 */
 @media (min-width: 520px) { .mini-login { width: 430px; min-height: 100vh; margin: 0 auto; box-shadow: 0 0 35px rgba(16,35,63,.12); } }
+/* #endif */
 .captcha-row { display: flex; align-items: center; gap: 16rpx; margin-top: 16rpx; }.captcha-row__input { flex: 1; margin: 0; }.captcha-row__image { width: 260rpx; height: 88rpx; border: 1rpx solid #dbe3ed; border-radius: 14rpx; background: #f8fafc; }
 </style>

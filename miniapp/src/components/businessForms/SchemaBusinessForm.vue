@@ -7,7 +7,7 @@
     <template v-else>
       <view v-for="entry in visibleFields" :key="entry.field.code" class="field">
         <text class="label">{{ entry.field.label }}<text v-if="entry.state.required" class="required">*</text></text>
-        <textarea v-if="entry.field.type === 'textarea'" :disabled="entry.state.readonly" :value="values[entry.field.code] || ''" @input="set(entry.field.code, $event.detail.value)" />
+        <textarea v-if="entry.field.type === 'textarea'" class="form-control" :disabled="entry.state.readonly" :value="values[entry.field.code] || ''" @input="set(entry.field.code, $event.detail.value)" />
         <picker v-else-if="entry.field.type === 'select'" :disabled="entry.state.readonly" :range="entry.field.options || []" range-key="label" @change="select(entry.field, $event.detail.value)">
           <view class="picker-value">{{ selectLabel(entry.field) || '请选择' }}</view>
         </picker>
@@ -15,7 +15,7 @@
         <picker v-else-if="entry.field.type === 'date' || entry.field.type === 'datetime'" :mode="entry.field.type === 'date' ? 'date' : 'time'" :disabled="entry.state.readonly" @change="set(entry.field.code, $event.detail.value)">
           <view class="picker-value">{{ values[entry.field.code] || '请选择' }}</view>
         </picker>
-        <input v-else :type="entry.field.type === 'number' ? 'number' : 'text'" :disabled="entry.state.readonly" :value="values[entry.field.code] ?? ''" @input="set(entry.field.code, entry.field.type === 'number' && $event.detail.value !== '' ? Number($event.detail.value) : $event.detail.value)" />
+        <input v-else class="form-control" :type="entry.field.type === 'number' ? 'number' : 'text'" :disabled="entry.state.readonly" :value="values[entry.field.code] ?? ''" @input="set(entry.field.code, entry.field.type === 'number' && $event.detail.value !== '' ? Number($event.detail.value) : $event.detail.value)" />
       </view>
       <button type="primary" @click="submit">提交</button>
     </template>
@@ -80,6 +80,6 @@ function submit() {
 .field { padding: 20rpx 0; border-bottom: 1rpx solid #eef1f5; }
 .label { color: #344054; font-size: 28rpx; }
 .required { color: #d92d20; margin-left: 4rpx; }
-.picker-value, input, textarea { min-height: 72rpx; padding: 12rpx; background: #f8fafc; border-radius: 10rpx; }
+.picker-value, .form-control { min-height: 72rpx; padding: 12rpx; background: #f8fafc; border-radius: 10rpx; }
 .unsupported { padding: 24rpx; color: #b42318; background: #fee4e2; border-radius: 12rpx; }
 </style>

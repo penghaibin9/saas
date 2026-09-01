@@ -5,6 +5,7 @@
         v-for="item in items"
         :key="item.key"
         class="mseg__item"
+        plain
         :class="{ 'is-active': item.key === modelValue }"
         role="tab"
         :aria-selected="item.key === modelValue"
@@ -45,7 +46,6 @@ export default {
   border: 1px solid var(--border-base);
   line-height: 1.4;
 }
-.mseg__item::after { border: 0; }
 .mseg__item.is-active {
   background: var(--brand-primary);
   color: #fff;

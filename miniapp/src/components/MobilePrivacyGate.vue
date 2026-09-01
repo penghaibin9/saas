@@ -8,10 +8,11 @@
         请阅读并同意<text class="pg__link" @click="openDoc">《{{ contractName || '隐私政策' }}》</text>后继续。
       </text>
       <view class="pg__acts">
-        <button class="pg__btn pg__btn--ghost" @click="onDisagree">拒绝</button>
+        <button class="pg__btn pg__btn--ghost" plain @click="onDisagree">拒绝</button>
         <button
           id="pg-agree-btn"
           class="pg__btn pg__btn--primary"
+          plain
           open-type="agreePrivacyAuthorization"
           @agreeprivacyauthorization="onAgree"
         >同意并继续</button>
@@ -80,7 +81,6 @@ export default {
 .pg__link { color: var(--brand-primary); }
 .pg__acts { display: flex; gap: 10px; margin-top: 20px; }
 .pg__btn { flex: 1; height: 42px; line-height: 42px; border-radius: 8px; font-size: 14px; border: none; }
-.pg__btn::after { border: none; }
 .pg__btn--ghost { background: var(--bg-page, #f3f4f6); color: var(--text-secondary); }
 .pg__btn--primary { background: var(--brand-primary); color: #fff; }
 </style>

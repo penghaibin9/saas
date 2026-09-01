@@ -1,5 +1,6 @@
 <template>
   <view class="page-wrap">
+    <MobilePrivacyGate />
     <MobileNavBar variant="teacher" title="现场报到核验" show-back />
     <view class="page-pad">
       <view class="ov__scan card" @click="scan">

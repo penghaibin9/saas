@@ -45,10 +45,11 @@
 <script>
 import { realRequest } from '@/services/request'
 import { toast } from '@/utils/nav'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
 export default {
   data() { return { list: null, state: 'loading', acting: false, statusBarHeight: 20 } },
   onLoad() {
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
     this.load()
   },
   onPullDownRefresh() {

@@ -12,6 +12,16 @@ function secureTarget(url) {
   return url
 }
 
+/**
+ * uni-app 在不同入口下可能返回已解码或仍带百分号编码的 query。直接调用
+ * decodeURIComponent 会让包含孤立 `%` 的外部深链在 onLoad 阶段抛异常并白屏。
+ */
+export function decodeQueryText(value, fallback = '') {
+  const source = String(value == null ? '' : value)
+  if (!source) return fallback
+  try { return decodeURIComponent(source) } catch (e) { return source }
+}
+
 export function go(url) {
   const target = secureTarget(url)
   // 本工程使用自定义底部 Tab（pages.json 无原生 tabBar），uni.switchTab 永远会失败，
@@ -38,4 +48,4 @@ export function back() {
 export function toast(title, icon = 'none') {
   uni.showToast({ title, icon })
 }
-export default { go, relaunch, back, toast }
+export default { go, relaunch, back, toast, decodeQueryText }
