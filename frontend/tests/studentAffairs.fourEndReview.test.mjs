@@ -84,11 +84,16 @@ test('teacher editable decisions reopen with the previous text after non-conflic
   const leave = read('miniapp/src/pages/teacher/affairs-leave/index.vue')
   const review = read('miniapp/src/pages/teacher/affairs-review/index.vue')
   const dorm = read('miniapp/src/pages/teacher/dorm-review/index.vue')
-  for (const source of [leave, review, dorm]) {
+  for (const source of [leave, review]) {
     assert.match(source, /content:\s*initial/)
     assert.match(source, /n\.kind !== 'conflict'/)
     assert.match(source, /setTimeout\(/)
   }
+  assert.match(dorm, /value:\s*initial/)
+  assert.match(dorm, /v-model="actionDlg\.value"/)
+  assert.match(dorm, /n\.kind !== 'conflict'/)
+  assert.match(dorm, /setTimeout\(/)
+  assert.doesNotMatch(dorm, /uni\.showModal/)
 })
 
 test('mental follow-up and talk records keep inline text until success', () => {

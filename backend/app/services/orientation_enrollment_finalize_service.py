@@ -26,15 +26,14 @@ from app.models import (
     User,
 )
 from app.services.db_service import _iso, _tid, audit_insert_in_session, session
+from app.services.message_identity import resolve_message_user_id
 
 
 def _actor_id(user=None) -> int:
-    raw = str((user or get_current_user_ctx() or {}).get("userId") or "")
-    if raw.startswith("db-"):
-        raw = raw[3:]
-    if not raw.isdigit() or int(raw) <= 0:
+    actor_id = resolve_message_user_id(user or get_current_user_ctx() or {})
+    if actor_id <= 0:
         raise AppException("NO_PERMISSION", "无法识别学院确认操作人", http_status=403)
-    return int(raw)
+    return actor_id
 
 
 def _payload(row: OrientationEnrollmentFinalize, *, idempotent=False, credential=None) -> dict:

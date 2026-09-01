@@ -249,7 +249,7 @@ export default {
     metricCards() {
       return [
         { key: 'b', label: '楼栋数', value: this.buildings.length, accent: 'primary' },
-        { key: 't', label: '总床位', value: this.occ.totalBeds || 0, accent: 'info' },
+        { key: 't', label: '总床位', value: this.occ.totalBeds || 0, accent: 'primary' },
         { key: 'o', label: '已住', value: this.occ.occupiedBeds || 0, accent: 'primary' },
         { key: 'v', label: '空床', value: this.occ.vacantBeds || 0, accent: (this.occ.vacantBeds || 0) ? 'success' : 'warning' }
       ]

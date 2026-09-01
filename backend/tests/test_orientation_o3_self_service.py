@@ -136,7 +136,8 @@ def test_o3_information_arrival_material_file_authority_and_fail_closed(
     assert info.json()["data"]["reportStatus"] == "PREPARED"
 
     mine = client.get(f"{PORTAL}/my", headers=headers).json()["data"]
-    assert mine["reportCodeValid"] is False and mine["reportCodeStatus"] == "NOT_ISSUED"
+    assert mine["reportCodeValid"] is False and mine["reportCodeStatus"] == "BLOCKED"
+    assert mine["checkinCredential"]["canIssue"] is False
     assert mine["selfService"]["available"] is True
     assert mine["selfService"]["information"] == {
         "origin": "湖南长沙", "phoneMasked": "138****8000",
