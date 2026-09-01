@@ -25,5 +25,5 @@ qcloud-python-sts>=3.1,<4.0
 # SYS-05 业务关系注册表 YAML。
 PyYAML>=6.0,<7.0
 # 短信真实 Provider。
-alibabacloud_dysmsapi20170525>=3.1,<4.0
+alibabacloud_dysmsapi20170525>=4.6.0,<5.0
 tencentcloud-sdk-python-sms>=3.0,<4.0
