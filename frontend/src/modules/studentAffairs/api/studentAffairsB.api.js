@@ -199,6 +199,10 @@ export const studentAffairsApi = {
     return pass(core.getDormCheckTasks(params))
   },
 
+  getDormInspectionTemplates() {
+    return pass(core.getDormInspectionTemplates())
+  },
+
   createDormCheckTask(body) {
     return pass(core.createDormCheckTask(body))
   },
@@ -209,6 +213,26 @@ export const studentAffairsApi = {
 
   submitDormCheckRecord(taskId, body) {
     return pass(core.submitDormCheckRecord(taskId, body))
+  },
+
+  listDormRectifications(params = {}) {
+    return pass(core.getDormRectifications(params))
+  },
+
+  getDormRectification(rectificationId) {
+    return pass(core.getDormRectification(rectificationId))
+  },
+
+  startDormRectification(rectificationId, expectedVersion) {
+    return pass(core.startDormRectification(rectificationId, expectedVersion))
+  },
+
+  submitDormRectification(rectificationId, body) {
+    return pass(core.submitDormRectification(rectificationId, body))
+  },
+
+  recheckDormRectification(rectificationId, body) {
+    return pass(core.recheckDormRectification(rectificationId, body))
   },
 
   listDormExceptions(params = {}) {

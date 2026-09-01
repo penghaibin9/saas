@@ -13,6 +13,7 @@
 export const ROLE = {
   STUDENT: 'student',
   COUNSELOR: 'counselor', // 辅导员 / 班主任
+  DORM_MANAGER: 'dorm_manager', // 宿管 / 公寓管理员
   MENTOR: 'mentor', // 毕业设计指导教师
   INTERN_MENTOR: 'intern_mentor', // 实习指导教师
   EMPLOYMENT: 'employment', // 就业老师
@@ -30,6 +31,7 @@ export const ROLE = {
 const BACKEND_ROLE_TO_ROLE_KEY = Object.freeze({
   STUDENT: ROLE.STUDENT,
   COUNSELOR: ROLE.COUNSELOR,
+  DORM_MANAGER: ROLE.DORM_MANAGER,
   GD_MENTOR: ROLE.MENTOR,
   MENTOR: ROLE.MENTOR,
   INTERN_MENTOR: ROLE.INTERN_MENTOR,
@@ -94,6 +96,20 @@ export const roleConfigs = {
       { key: 'orientationVerify', label: '迎新核验', icon: '▣' }
     ],
     permissionActions: ['approval.handle', 'risk.handle', 'student.contact', 'care.create', 'student360.view']
+  },
+  [ROLE.DORM_MANAGER]: {
+    key: ROLE.DORM_MANAGER,
+    label: '宿管',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'DORM_BUILDING',
+    dataScopeText: '本人负责楼栋',
+    workbench: ['dorm-review', 'risk'],
+    quickActions: [
+      { key: 'dormReview', label: '宿舍待办', icon: '🏠' },
+      { key: 'risk', label: '宿舍风险', icon: '⚠' }
+    ],
+    permissionActions: ['dorm.inspect', 'dorm.recheck', 'dorm.exception.handle']
   },
   [ROLE.MENTOR]: {
     key: ROLE.MENTOR,
@@ -301,7 +317,7 @@ export const roleConfigs = {
 
 // 教师端「多身份切换」：同一个人可绑定多个教师身份（08B 3.2 当前工作上下文）
 export const teacherIdentities = [
-  ROLE.COUNSELOR, ROLE.MENTOR, ROLE.INTERN_MENTOR, ROLE.EMPLOYMENT, ROLE.ACADEMIC, ROLE.COLLEGE_ADMIN,
+  ROLE.COUNSELOR, ROLE.DORM_MANAGER, ROLE.MENTOR, ROLE.INTERN_MENTOR, ROLE.EMPLOYMENT, ROLE.ACADEMIC, ROLE.COLLEGE_ADMIN,
   ROLE.GRADUATION_ADMIN, ROLE.GD_COLLEGE_ADMIN, ROLE.GD_MAJOR_ADMIN, ROLE.GD_REVIEWER,
   ROLE.GD_DEFENSE_SECRETARY, ROLE.GD_DEFENSE_EXPERT, ROLE.GD_GRADE_ADMIN
 ]

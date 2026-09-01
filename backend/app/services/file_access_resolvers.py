@@ -265,6 +265,71 @@ def orientation_file_resolver(db, file_obj, bindings: list[Any], user: dict, act
         return False
 
 
+@register_file_resolver("DORM_CHECK_RECORD", "DORM_RECTIFICATION")
+def dorm_inspection_file_resolver(db, file_obj, bindings: list[Any], user: dict, action: str) -> bool:
+    """宿舍巡检证据只按父业务行与实时楼栋/本人范围授权。"""
+    if db is None:
+        return False
+    try:
+        from app.models import DormCheckRecord, DormCheckTask, DormRectification
+
+        biz_type = str(file_obj.biz_type or "").upper()
+        raw_id = str(file_obj.biz_id or "").strip()
+        if not raw_id.isdigit():
+            return False
+        tenant_id = int(file_obj.tenant_id)
+        student_id = None
+        if biz_type == "DORM_CHECK_RECORD":
+            record = db.scalars(select(DormCheckRecord).where(
+                DormCheckRecord.tenant_id == tenant_id,
+                DormCheckRecord.id == int(raw_id),
+                DormCheckRecord.is_deleted.is_(False),
+            )).first()
+            if not record:
+                return False
+            task = db.scalars(select(DormCheckTask).where(
+                DormCheckTask.tenant_id == tenant_id,
+                DormCheckTask.id == int(record.task_id),
+                DormCheckTask.is_deleted.is_(False),
+            )).first()
+            if not task:
+                return False
+            building_id = int(task.building_id or 0)
+            for item in bindings:
+                if item.is_deleted or item.status != "ACTIVE":
+                    continue
+                scope = item.scope_json or {}
+                raw_student = str(scope.get("studentId") or "").strip()
+                if raw_student.isdigit():
+                    student_id = int(raw_student)
+                    break
+        else:
+            rect = db.scalars(select(DormRectification).where(
+                DormRectification.tenant_id == tenant_id,
+                DormRectification.id == int(raw_id),
+                DormRectification.is_deleted.is_(False),
+            )).first()
+            if not rect:
+                return False
+            building_id = int(rect.building_id)
+            student_id = int(rect.student_id) if rect.student_id else None
+
+        if str(user.get("userType") or "").upper() == "STUDENT":
+            if not student_id:
+                return False
+            from app.services.mobile_student_service import resolve_student
+            profile = resolve_student(db, user or {})
+            return bool(profile and int(profile.id) == student_id)
+
+        if not has_permission(user or {}, "studentAffairs.dorm.view"):
+            return False
+        from app.services import affairs_dorm_service as dorm_service
+        dorm_service._require_dorm_scope(db, building_id, user or {})
+        return True
+    except Exception:
+        return False
+
+
 @register_file_resolver("ARCHIVE_PACKAGE", "ARCHIVE_BATCH_PACKAGE")
 def internship_archive_package_resolver(
     db, file_obj, bindings: list[Any], user: dict, action: str,

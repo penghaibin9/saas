@@ -19,6 +19,24 @@
         <MobileInlineAlert v-if="transferError" type="warning" title="调宿记录暂不可用" :description="transferError" />
         <MobileInlineAlert v-if="optionError" type="warning" title="可选床位加载失败" :description="optionError" />
 
+        <view class="dm__history">
+          <text class="dm__step-t">检查整改</text>
+          <view v-for="x in rectifications" :key="x.rectificationId" class="dm__rect">
+            <view class="row-between"><text class="dm__history-status">{{ rectStatusLabel(x.status) }} · {{ severityLabel(x.severity) }}</text><text class="dm__deadline" :class="{ overdue: x.overdue }">{{ fmtTime(x.deadlineAt) }}</text></view>
+            <text class="dm__history-route">{{ x.buildingName }} · {{ x.roomNo }}室</text>
+            <text class="dm__history-reason">{{ x.requirement }}</text>
+            <button v-if="x.allowedActions && x.allowedActions.includes('START')" class="dm__secondary" :disabled="submitting" @click="startRect(x)">开始整改</button>
+            <view v-if="x.allowedActions && x.allowedActions.includes('SUBMIT')" class="dm__rect-form">
+              <textarea v-model="rectNotes[x.rectificationId]" class="dm__textarea" maxlength="1000" placeholder="整改说明（5-1000字）" />
+              <button class="dm__secondary" :disabled="submitting" @click="uploadRectPhoto(x)">{{ rectFiles[x.rectificationId] ? '重新上传照片' : '上传整改照片' }}</button>
+              <text v-if="rectFiles[x.rectificationId]" class="dm__uploaded">已上传：{{ rectFiles[x.rectificationId].fileName }}</text>
+              <button class="dm__btn" :disabled="submitting || (rectNotes[x.rectificationId] || '').trim().length < 5 || !rectFiles[x.rectificationId]" @click="submitRect(x)">提交复检</button>
+            </view>
+            <text v-if="x.status === 'WAITING_RECHECK'" class="dm__uploaded">整改证据已提交，等待宿管复检。</text>
+          </view>
+          <text v-if="!rectifications.length" class="dm__empty-text">暂无整改任务</text>
+        </view>
+
         <view v-if="canChoose" class="dm__select">
           <view class="dm__step-t">{{ cfg.hasBed ? '申请调宿：选择目标床位' : '首次选床：选择床位' }}</view>
 
@@ -76,16 +94,17 @@
 import { studentApi } from '@/services/studentApi'
 import { affairsContractApi } from '@/services/affairsContractApi'
 import { safeToast, createSubmitLock, normalizeError } from '@/services/request'
+import fileSdk from '@/services/fileSdk'
 
 const PENDING = ['SUBMITTED', 'COUNSELOR_REVIEW', 'DORM_MANAGER_REVIEW', 'DORM_REVIEW', 'PENDING']
 
 export default {
   data() {
     return {
-      cfg: null, state: 'loading', buildings: [], rooms: [], beds: [], transfers: [], stays: [],
+      cfg: null, state: 'loading', buildings: [], rooms: [], beds: [], transfers: [], stays: [], rectifications: [],
       transferError: '', optionError: '', optionsLoading: false,
       sel: { building: '', room: '', bed: '' }, submitting: false,
-      transferReason: '', _lock: createSubmitLock()
+      transferReason: '', rectNotes: {}, rectFiles: {}, _lock: createSubmitLock()
     }
   },
   computed: {
@@ -113,15 +132,19 @@ export default {
   methods: {
     statusLabel(s) { return ({ SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核', DORM_REVIEW: '宿管审核', EXECUTED: '已执行', REJECTED: '已驳回', CANCELLED: '已取消' })[s] || s || '处理中' },
     stayStatusLabel(s) { return ({ RESERVED: '待入住', ACTIVE: '当前在住', ENDED: '已退宿', CANCELLED: '已取消' })[String(s || '').toUpperCase()] || '状态待确认' },
+    rectStatusLabel(s) { return ({ OPEN: '待整改', RECTIFYING: '整改中', WAITING_RECHECK: '待复检', CLOSED: '已关闭', ESCALATED: '已升级' })[s] || s },
+    severityLabel(s) { return ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '重大风险' })[s] || s },
+    fmtTime(value) { return String(value || '').slice(0, 16).replace('T', ' ') || '—' },
     showError(e, fallback) { const n = normalizeError(e); safeToast(n.text || (e && e.message) || fallback); if (n.kind === 'conflict') this.load(); return n },
     async load() {
       this.state = 'loading'; this.sel = { building: '', room: '', bed: '' }; this.rooms = []; this.beds = []; this.transferError = ''; this.optionError = ''
-      const [dormResult, transferResult, stayResult] = await Promise.allSettled([studentApi.getMyDorm(), affairsContractApi.getMyDormTransfers(), affairsContractApi.getMyDormStays()])
+      const [dormResult, transferResult, stayResult, rectResult] = await Promise.allSettled([studentApi.getMyDorm(), affairsContractApi.getMyDormTransfers(), affairsContractApi.getMyDormStays(), affairsContractApi.getMyDormRectifications()])
       if (dormResult.status === 'rejected') { this.state = 'error'; this.showError(dormResult.reason, '宿舍信息加载失败'); return }
       this.cfg = dormResult.value
       if (transferResult.status === 'fulfilled') this.transfers = (transferResult.value && transferResult.value.items) || []
       else { this.transfers = []; this.transferError = normalizeError(transferResult.reason).text || '调宿记录加载失败，请稍后重试' }
       this.stays = stayResult.status === 'fulfilled' ? ((stayResult.value && stayResult.value.items) || []) : []
+      this.rectifications = rectResult.status === 'fulfilled' ? ((rectResult.value && rectResult.value.items) || []) : []
       this.state = 'ready'
       if (this.cfg.hasBed && !this.pendingTransfer) this.loadTransferOptions()
       else if (!this.cfg.hasBed && (this.cfg.canSelfSelect || this.cfg.selfSelectEnabled)) this.loadSelfSelectOptions()
@@ -156,6 +179,33 @@ export default {
       } catch (e) { this.optionError = normalizeError(e).text || '床位加载失败' }
       finally { this.optionsLoading = false }
     },
+    async startRect(x) {
+      if (this.submitting) return
+      this.submitting = true
+      try { await affairsContractApi.startDormRectification(x.rectificationId, x.version); safeToast('已开始整改', 'success'); await this.load() }
+      catch (e) { this.showError(e, '开始整改失败') }
+      finally { this.submitting = false }
+    },
+    async uploadRectPhoto(x) {
+      if (this.submitting) return
+      try {
+        const selected = await fileSdk.choose(); if (!selected) return
+        this.submitting = true
+        const uploaded = await fileSdk.upload(selected, { bizType: 'TEMP_PRIVATE' })
+        this.rectFiles[x.rectificationId] = { fileId: String(uploaded.fileId || uploaded.id), fileName: uploaded.fileName || selected.name || '整改照片' }
+      } catch (e) { this.showError(e, '照片上传失败') }
+      finally { this.submitting = false }
+    },
+    async submitRect(x) {
+      const note = String(this.rectNotes[x.rectificationId] || '').trim(); const file = this.rectFiles[x.rectificationId]
+      if (note.length < 5 || !file) return safeToast('请填写至少5字整改说明并上传照片')
+      this.submitting = true
+      try {
+        await affairsContractApi.submitDormRectification(x.rectificationId, { expectedVersion: x.version, note, fileIds: [file.fileId], clientRequestId: `dorm-rectify-${Date.now()}-${Math.random().toString(16).slice(2)}`.slice(0, 100) })
+        safeToast('整改已提交复检', 'success'); await this.load()
+      } catch (e) { this.showError(e, '整改提交失败') }
+      finally { this.submitting = false }
+    },
     confirm() {
       if (this.submitting || !this.sel.bed || this.pendingTransfer) return
       const reason = this.transferReason.trim()
@@ -182,4 +232,5 @@ export default {
 <style scoped>
 .dm__bed--reserved { background: #1d4ed8 !important; }
 .dm__bed { background: var(--brand-primary); color: #fff; border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: var(--space-4); }.dm__bed-t { display: block; font-size: var(--font-size-sm); opacity: 0.85; }.dm__bed-v { display: block; font-size: 18px; font-weight: 700; margin-top: 4px; }.dm__empty { text-align: center; color: var(--text-tertiary); padding: var(--space-4); }.dm__notice { display: flex; gap: var(--space-2); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-card); margin-bottom: var(--space-4); }.dm__notice-t { color: var(--text-secondary); font-size: var(--font-size-base); line-height: 1.6; }.dm__step-t { display: block; font-weight: 600; margin-bottom: var(--space-3); }.dm__label { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin: var(--space-3) 0 var(--space-2); }.dm__chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }.dm__chip { padding: 8px 14px; border-radius: var(--radius-full); background: var(--bg-card); font-size: var(--font-size-sm); border: 1px solid var(--border-base); color: var(--text-secondary); }.dm__chip.is-on { background: var(--brand-primary); color: #fff; border-color: var(--brand-primary); }.dm__chip.is-full { opacity: 0.4; }.dm__field { margin-top: var(--space-4); }.dm__textarea { width: 100%; min-height: 80px; box-sizing: border-box; border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 10px; background: #fff; }.dm__req { color: #dc2626; }.dm__confirm { margin-top: var(--space-5); }.dm__btn { background: var(--brand-primary); color: #fff; border-radius: var(--radius-full); padding: 12px; font-size: var(--font-size-base); }.dm__target { margin-top: 12px; padding: 10px; border-radius: 8px; background: #eff6ff; }.dm__target-k, .dm__target-v { display: block; }.dm__target-k { color: #64748b; font-size: 12px; }.dm__target-v { margin-top: 3px; color: #1d4ed8; font-weight: 600; }.dm__loading, .dm__counter, .dm__empty-text { display: block; margin-top: 6px; color: #94a3b8; font-size: 12px; }.dm__counter { text-align: right; }.dm__history { margin-top: var(--space-5); }.dm__history-row { padding: 10px 0; border-bottom: 1px solid var(--border-base); font-size: 13px; }.dm__history-status, .dm__history-route, .dm__history-reason { display: block; }.dm__history-status { font-weight: 600; color: #334155; }.dm__history-route { margin-top: 4px; color: #1d4ed8; }.dm__history-reason { margin-top: 3px; color: var(--text-tertiary); }
+.dm__rect { padding:12px;margin-bottom:10px;border:1px solid var(--border-base);border-radius:10px;background:#fff }.row-between { display:flex;justify-content:space-between;gap:8px }.dm__deadline { color:#64748b;font-size:11px }.dm__deadline.overdue { color:#dc2626 }.dm__rect-form { display:grid;gap:8px;margin-top:10px }.dm__secondary { margin-top:9px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:9px;font-size:13px }.dm__uploaded { display:block;margin-top:6px;color:#166534;font-size:12px }
 </style>

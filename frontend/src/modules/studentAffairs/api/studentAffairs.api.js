@@ -876,12 +876,17 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/dorm/transfers/${transferId}/review`, { method: 'POST', body: { action, reason, version } }))
   },
 
-  /** 建宿舍检查任务。body: { taskName, buildingId?, checkType HYGIENE/SAFETY/CONTRABAND/NIGHT_ABSENCE, checkerKey? } */
+  /** 生效宿舍检查模板、证据要求与风险阈值。 */
+  getDormInspectionTemplates() {
+    return callStrict(() => request('/student-affairs/dorm/inspection-templates'))
+  },
+
+  /** 发布宿舍检查任务，并冻结模板快照。 */
   createDormCheckTask(body) {
     return callStrict(() => request('/student-affairs/dorm/check-tasks', { method: 'POST', body }))
   },
 
-  /** 录检查结果（ABNORMAL 异常说明≥5字 → 回写异常表 + 生成风险单）。body: { roomId?, result NORMAL/ABNORMAL, issueType?, detail } */
+  /** 逐房提交模板结果与 FileObject 证据。 */
   submitDormCheckRecord(taskId, body) {
     return callStrict(() => request(`/student-affairs/dorm/check-tasks/${taskId}/records`, { method: 'POST', body }))
   },
@@ -914,6 +919,28 @@ export const studentAffairsApi = {
   /** 某检查任务的记录列表。 */
   getDormCheckRecords(taskId, { page = 1, pageSize = 100 } = {}) {
     return callStrict(() => request(`/student-affairs/dorm/check-tasks/${taskId}/records`, { params: { page, pageSize } }))
+  },
+
+  getDormRectifications({ status = '', mine = false, page = 1, pageSize = 50 } = {}) {
+    const params = { mine, page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/dorm/rectifications', { params }))
+  },
+
+  getDormRectification(rectificationId) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}`))
+  },
+
+  startDormRectification(rectificationId, expectedVersion) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}/start`, { method: 'POST', body: { expectedVersion } }))
+  },
+
+  submitDormRectification(rectificationId, body) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}/submit`, { method: 'POST', body }))
+  },
+
+  recheckDormRectification(rectificationId, body) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}/recheck`, { method: 'POST', body }))
   },
 
   /** 宿舍异常列表。 */
