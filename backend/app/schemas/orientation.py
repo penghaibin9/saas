@@ -60,6 +60,25 @@ class CommentBody(BaseModel):
     comment: Optional[str] = Field(default="")
 
 
+class GreenApproveBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
+    remark: Optional[str] = Field(default="")
+
+
+class GreenReasonBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
+    reason: str = Field(..., min_length=5)
+
+
+class PaymentSyncBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0)
+    payableAmount: float = Field(..., ge=0)
+    paidAmount: float = Field(..., ge=0)
+    status: str = Field(..., min_length=1)
+    sourceType: str = Field(default="MANUAL_VERIFIED")
+    sourceBizId: str = Field(..., min_length=3)
+
+
 class DormBody(BaseModel):
     building: Optional[str] = None
     room: Optional[str] = None

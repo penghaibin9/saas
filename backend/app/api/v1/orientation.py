@@ -10,7 +10,8 @@ from app.core.response import paginate, success
 from app.core.security import require_staff
 from app.schemas.orientation import (ArchiveCreate, BatchCreate, BatchUpdate, BlockedBody,
                                       CommentBody, DormBody, ExceptionCreate, FlowUpdate, FollowUpBody,
-                                      IdsBody, NoteBody, NoticeCreate, PointCreate, PointUpdate,
+                                      GreenApproveBody, GreenReasonBody, IdsBody, NoteBody,
+                                      NoticeCreate, PaymentSyncBody, PointCreate, PointUpdate,
                                       ReasonBody, RemarkBody, StudentCreate, StudentUpdate, VerifyBody)
 from app.services import orientation_service as svc
 
@@ -84,31 +85,67 @@ def progress_resolve(sid: str, body: NoteBody = Body(default=NoteBody()), user=D
 def payments(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
              keyword: Optional[str] = None, paymentStatus: Optional[str] = None,
              user=Depends(require_staff)):
-    items, total = svc.list_payments(page, pageSize, keyword=keyword, payment_status=paymentStatus)
+    items, total = svc.list_payments(page, pageSize, keyword=keyword,
+                                     payment_status=paymentStatus, user=user)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.put("/payments/{sid}", summary="同步/人工核验缴费事实（CAS）")
+def payment_sync(sid: str, body: PaymentSyncBody, user=Depends(require_staff)):
+    from app.services.orientation_qualification_service import sync_payment
+    return success(sync_payment(sid, body.model_dump(), user=user), message="缴费事实已更新")
 
 
 @router.get("/green-channels", summary="绿色通道列表")
 def green_channels(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                    keyword: Optional[str] = None, status: Optional[str] = None,
                    user=Depends(require_staff)):
-    items, total = svc.list_green_channels(page, pageSize, keyword=keyword, status=status)
+    items, total = svc.list_green_channels(page, pageSize, keyword=keyword, status=status, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/green-channels/{gid}/approve", summary="绿色通道通过")
-def gc_approve(gid: str, body: RemarkBody = Body(default=RemarkBody()), user=Depends(require_staff)):
-    return success(svc.approve_green_channel(gid, body.remark), message="已通过")
+def gc_approve(gid: str, body: GreenApproveBody, user=Depends(require_staff)):
+    return success(svc.approve_green_channel(
+        gid, body.remark, body.expectedVersion, user=user,
+    ), message="已通过")
 
 
 @router.post("/green-channels/{gid}/reject", summary="绿色通道驳回（原因≥5字）")
-def gc_reject(gid: str, body: ReasonBody, user=Depends(require_staff)):
-    return success(svc.reject_green_channel(gid, body.reason), message="已驳回")
+def gc_reject(gid: str, body: GreenReasonBody, user=Depends(require_staff)):
+    return success(svc.reject_green_channel(
+        gid, body.reason, body.expectedVersion, user=user,
+    ), message="已驳回")
 
 
 @router.post("/green-channels/{gid}/return", summary="绿色通道退回（原因≥5字）")
-def gc_return(gid: str, body: ReasonBody, user=Depends(require_staff)):
-    return success(svc.return_green_channel(gid, body.reason), message="已退回")
+def gc_return(gid: str, body: GreenReasonBody, user=Depends(require_staff)):
+    return success(svc.return_green_channel(
+        gid, body.reason, body.expectedVersion, user=user,
+    ), message="已退回")
+
+
+@router.get("/qualifications", summary="服务端报到资格列表")
+def qualifications(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                   keyword: Optional[str] = None, verdict: Optional[str] = None,
+                   user=Depends(require_staff)):
+    from app.services.orientation_qualification_service import list_qualifications
+    items, total = list_qualifications(
+        page, pageSize, keyword=keyword, verdict=verdict, user=user,
+    )
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/qualifications/{sid}", summary="服务端报到资格详情")
+def qualification_detail(sid: str, user=Depends(require_staff)):
+    from app.services.orientation_qualification_service import qualification_detail
+    return success(qualification_detail(sid, user=user))
+
+
+@router.post("/qualifications/{sid}/recalculate", summary="重算并保存报到资格决策")
+def qualification_recalculate(sid: str, user=Depends(require_staff)):
+    from app.services.orientation_qualification_service import qualification_detail
+    return success(qualification_detail(sid, user=user, recalculate=True), message="资格已重算")
 
 
 @router.get("/materials", summary="材料审核列表")

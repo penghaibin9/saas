@@ -1,14 +1,14 @@
 <template>
   <ModulePageShell
     title="报到资格"
-    subtitle="综合核验 / 材料 / 缴费 / 卡点判定新生是否具备报到资格；受阻可人工放行（留痕）"
+    subtitle="服务端综合身份、必交材料、缴费/绿通、住宿、异常与冻结流程，返回可解释资格结论"
     :role-name="roleName"
     :data-scope-name="dataScopeName"
     watermark-purpose="报到资格判定"
   >
     <NoPermissionState v-if="noPermission" @back="$router.back()" />
     <template v-else>
-      <ModuleToolbar :actions="[]" :hint="`共 ${total} 名新生 · 资格由核验/材料/缴费/卡点综合判定`" />
+      <ModuleToolbar :actions="[]" :hint="`共 ${total} 名新生 · 当前页面只展示服务端资格真值`" />
 
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
@@ -24,10 +24,10 @@
         @page-change="turnPage"
       >
         <template #cell-qualification="{ row }">
-          <StatusTag :type="verdict(row).type" :label="verdict(row).label" dot />
+          <StatusTag :type="qualificationType(row.verdict)" :label="row.verdictLabel" dot />
         </template>
         <template #cell-blockedReason="{ row }">
-          <span :class="{ 'oq-muted': !row.blockedReason }">{{ row.blockedReason || '—' }}</span>
+          <span :class="{ 'oq-muted': !row.blockers?.length }">{{ blockerText(row) }}</span>
         </template>
         <template #cell-actions="{ row }">
           <TableActionColumn :actions="rowActions(row)" @action="(key) => onRowAction(key, row)" />
@@ -36,12 +36,10 @@
 
       <AppConfirmDialog
         v-model:visible="confirmVisible"
-        title="人工放行"
-        :message="confirmRow ? `对「${confirmRow.name}」人工放行，解除当前卡点、准予报到（需说明理由）。` : ''"
-        type="danger"
-        confirm-text="确认放行"
-        require-reason
-        reason-label="放行理由（≥5 字）"
+        title="重新计算报到资格"
+        :message="confirmRow ? `将按当前服务器真实材料、缴费、绿色通道、住宿和异常事实重算「${confirmRow.name}」的报到资格。` : ''"
+        type="primary"
+        confirm-text="确认重算"
         @confirm="onConfirm"
       />
     </template>
@@ -49,14 +47,14 @@
 </template>
 
 <script>
-/** /admin/orientation/qualification 报到资格判定 + 人工放行（真实走 /orientation/students 与 /orientation/progress/:id/resolve）。 */
+/** /admin/orientation/qualification：只展示服务端 OrientationQualificationService 裁决。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { AppConfirmDialog } from '@/components/common'
 import { TableActionColumn, NoPermissionState } from '@/modules/orientation/components'
 import * as api from '@/modules/orientation/api/orientation.api'
 import { toast } from '@/utils/toast'
 
-const EMPTY_FILTERS = () => ({ keyword: '' })
+const EMPTY_FILTERS = () => ({ keyword: '', verdict: '' })
 
 export default {
   name: 'OrientationQualificationView',
@@ -76,7 +74,14 @@ export default {
     perms() { return this.ctx?.permissionActions || {} },
     noPermission() { const p = this.perms['orientation.student.view']; return p ? !p.allowed : false },
     filterFields() {
-      return [{ key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 录取编号' }]
+      return [
+        { key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 录取编号' },
+        { key: 'verdict', label: '资格结论', type: 'select', options: [
+          { value: 'QUALIFIED', label: '具备报到资格' },
+          { value: 'NOT_QUALIFIED', label: '暂不具备报到资格' },
+          { value: 'MANUAL_REVIEW', label: '需人工核查' }
+        ] }
+      ]
     },
     tableColumns() {
       return [
@@ -84,8 +89,7 @@ export default {
         { key: 'className', title: '班级' },
         { key: 'qualification', title: '报到资格' },
         { key: 'blockedReason', title: '受阻原因' },
-        { key: 'materialStatusLabel', title: '材料' },
-        { key: 'paymentStatusLabel', title: '缴费' },
+        { key: 'ruleVersion', title: '规则版本' },
         { key: 'actions', title: '操作' }
       ]
     }
@@ -99,32 +103,34 @@ export default {
     async load() {
       this.loading = true; this.error = ''
       try {
-        const res = await api.getOrientationStudents({ ...this.filters, page: this.page, pageSize: this.pageSize })
+        const res = await api.getOrientationQualifications({ ...this.filters, page: this.page, pageSize: this.pageSize })
         if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
       } catch (e) { this.error = e.message || '加载失败' } finally { this.loading = false }
     },
     search() { this.page = 1; this.load() },
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
     turnPage(p) { this.page = p; this.load() },
-    verdict(row) {
-      if (row.blockedStep) return { type: 'danger', label: '受阻', code: 'BLOCKED' }
-      if (row.stage !== 'PRE_STUDENT_VERIFIED') return { type: 'warning', label: '待核验', code: 'PENDING' }
-      return { type: 'success', label: '合格', code: 'QUALIFIED' }
+    qualificationType(verdict) {
+      return ({ QUALIFIED: 'success', NOT_QUALIFIED: 'danger', MANUAL_REVIEW: 'warning' })[verdict] || 'default'
+    },
+    blockerText(row) {
+      return row.blockers?.length ? row.blockers.map((item) => item.message).join('；') : '—'
     },
     rowActions(row) {
-      const blocked = !!row.blockedStep
       return [
-        { key: 'release', label: '人工放行', disabled: !blocked, disabledReason: blocked ? '' : '该生无卡点，无需放行' }
+        { key: 'student', label: '学生详情' },
+        { key: 'recalculate', label: '按当前事实重算' }
       ]
     },
     onRowAction(key, row) {
-      if (key === 'release') { this.confirmRow = row; this.confirmVisible = true }
+      if (key === 'student') this.$router.push(`/admin/orientation/students/${row.id}`)
+      if (key === 'recalculate') { this.confirmRow = row; this.confirmVisible = true }
     },
-    async onConfirm(reason) {
+    async onConfirm() {
       const row = this.confirmRow; if (!row) return
-      const res = await api.resolveBlockedIssue(row.id, { note: reason })
-      if (res && res.code === 0) { toast.success('已人工放行'); this.confirmVisible = false; await this.load() }
-      else toast.error((res && res.message) || '放行失败')
+      const res = await api.recalculateOrientationQualification(row.id)
+      if (res && res.code === 0) { toast.success(`资格已重算：${res.data.verdictLabel}`); this.confirmVisible = false; await this.load() }
+      else toast.error((res && res.message) || '资格重算失败')
     }
   }
 }

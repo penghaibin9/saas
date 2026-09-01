@@ -21,6 +21,16 @@
           </view>
         </view>
 
+        <view class="section-head"><text class="section-head__title">报到资格与缴费</text></view>
+        <view class="card stack-sm">
+          <view class="row-between">
+            <text class="t-md t-bold">{{ qualificationText }}</text>
+            <text class="or__qualification" :class="{ 'is-ok': o.qualification && o.qualification.verdict === 'QUALIFIED' }">{{ o.qualification ? o.qualification.ruleVersion : '待计算' }}</text>
+          </view>
+          <text class="or__payment">缴费状态：{{ paymentText }} · 应缴 ¥{{ o.payment && o.payment.payableAmount || '0.00' }} · 已缴 ¥{{ o.payment && o.payment.paidAmount || '0.00' }}</text>
+          <text v-for="item in qualificationBlockers" :key="item.code + item.step" class="or__blocker">{{ item.message }}</text>
+        </view>
+
         <!-- 快捷操作 -->
         <view v-if="!reportDone" class="or__actions">
           <view class="or__action" @click="go('/pages/student/orientation/collect/index')">
@@ -78,7 +88,10 @@ export default {
       if (this.reportDone) return '全部报到环节已完成，欢迎加入！'
       if (this.o.blocked && this.o.blocked.reason) return '报到卡点：' + this.o.blocked.reason
       return '报到进行中，请尽快完成剩余报到环节'
-    }
+    },
+    qualificationText() { return (this.o && this.o.qualification && this.o.qualification.verdictLabel) || '资格待计算' },
+    qualificationBlockers() { return (this.o && this.o.qualification && this.o.qualification.blockers) || [] },
+    paymentText() { return ({ PAID: '已缴清', PARTIAL: '部分缴费', UNPAID: '未缴费', WAIVED: '已减免', DEFERRED: '已批准缓缴', GREEN_CHANNEL: '绿色通道' })[this.o && this.o.payStatus] || '待同步' }
   },
   methods: {
     go,
@@ -109,4 +122,8 @@ export default {
 .or__actions { display: flex; gap: var(--space-3); }
 .or__action { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-4) var(--space-2); box-shadow: var(--shadow-card); font-size: var(--font-size-sm); color: var(--text-secondary); }
 .or__action-ic { font-size: 22px; }
+.or__qualification { font-size: var(--font-size-xs); color: var(--warning-600); }
+.or__qualification.is-ok { color: var(--success-600); }
+.or__payment { font-size: var(--font-size-sm); color: var(--text-secondary); }
+.or__blocker { font-size: var(--font-size-sm); color: var(--danger-600); line-height: 1.5; }
 </style>

@@ -261,20 +261,37 @@ export async function getPaymentStatusList(params = {}) {
   return callList('/orientation/payments', params)
 }
 
+export async function syncOrientationPayment(id, payload) {
+  return callData(() => request(`/orientation/payments/${id}`, { method: 'PUT', body: payload }))
+}
+
 export async function getGreenChannelApplications(params = {}) {
   return callList('/orientation/green-channels', params)
 }
 
-export async function approveGreenChannel(id, { remark = '' } = {}) {
-  return callData(() => request(`/orientation/green-channels/${id}/approve`, { method: 'POST', body: { remark } }))
+export async function approveGreenChannel(id, { remark = '', expectedVersion } = {}) {
+  return callData(() => request(`/orientation/green-channels/${id}/approve`, { method: 'POST', body: { remark, expectedVersion } }))
 }
 
-export async function rejectGreenChannel(id, { reason }) {
-  return callData(() => request(`/orientation/green-channels/${id}/reject`, { method: 'POST', body: { reason } }))
+export async function rejectGreenChannel(id, { reason, expectedVersion }) {
+  return callData(() => request(`/orientation/green-channels/${id}/reject`, { method: 'POST', body: { reason, expectedVersion } }))
 }
 
-export async function returnGreenChannel(id, { reason }) {
-  return callData(() => request(`/orientation/green-channels/${id}/return`, { method: 'POST', body: { reason } }))
+export async function returnGreenChannel(id, { reason, expectedVersion }) {
+  return callData(() => request(`/orientation/green-channels/${id}/return`, { method: 'POST', body: { reason, expectedVersion } }))
+}
+
+/* ---------------- 报到资格（服务端唯一裁决） ---------------- */
+export async function getOrientationQualifications(params = {}) {
+  return callList('/orientation/qualifications', params)
+}
+
+export async function getOrientationQualification(id) {
+  return callData(() => request(`/orientation/qualifications/${id}`))
+}
+
+export async function recalculateOrientationQualification(id) {
+  return callData(() => request(`/orientation/qualifications/${id}/recalculate`, { method: 'POST' }))
 }
 
 /* ---------------- 材料审核 ---------------- */

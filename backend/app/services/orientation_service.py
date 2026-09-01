@@ -11,7 +11,8 @@ from app.core.tenant_scoped import tenant_get
 from app.models import (GreenChannelApplication, OrientationArchive, OrientationAuditTrail,
                         OrientationBatch, OrientationCheckinPoint, OrientationException,
                         OrientationExceptionFollowup, OrientationFlowConfig, OrientationMaterial,
-                        OrientationNoticeTask, OrientationStudent, StudentProfile)
+                        OrientationNoticeTask, OrientationPaymentAccount, OrientationStudent,
+                        StudentProfile)
 from app.core.field_crypto import mask_id_card_encrypted, mask_phone_encrypted
 from app.services.db_service import _iso, _tid, session
 from app.services.orientation_flow_service import (ensure_published_flow_version,
@@ -304,6 +305,12 @@ def create_student(body: dict, *, db=None) -> dict:
         db.add(s)
         db.flush()
         ensure_student_steps(db, s, status_source="PROCESS_FACT")
+        db.add(OrientationPaymentAccount(
+            tenant_id=_tid(), orientation_student_id=s.id, student_id=s.student_id,
+            payable_amount=0, paid_amount=0, status="UNPAID",
+            source_type="LEGACY_BACKFILL", source_biz_id=f"orientation-student:{s.id}",
+            synced_at=datetime.utcnow(),
+        ))
         _audit(db, "STUDENT", s.id, "新增新生记录", f"{name}（{adm}）")
         if owns_session:
             db.commit()
@@ -480,44 +487,96 @@ def resolve_blocked(sid, note="") -> dict:
 
 # ═══ 缴费 ═══
 
-def list_payments(page, page_size, keyword=None, payment_status=None):
+def list_payments(page, page_size, keyword=None, payment_status=None, user=None):
     with session() as db:
-        q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
-                                             OrientationStudent.is_deleted.is_(False),
-                                             OrientationStudent.record_status == "ACTIVE")
+        q = (select(OrientationPaymentAccount, OrientationStudent)
+             .join(OrientationStudent, (
+                 OrientationStudent.id == OrientationPaymentAccount.orientation_student_id
+             ) & (OrientationStudent.tenant_id == OrientationPaymentAccount.tenant_id))
+             .where(
+                 OrientationPaymentAccount.tenant_id == _tid(),
+                 OrientationPaymentAccount.is_deleted.is_(False),
+                 OrientationStudent.is_deleted.is_(False),
+                 OrientationStudent.record_status == "ACTIVE",
+             ))
+        from app.core.affairs_security import student_directory_scope
+        class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(
+                OrientationStudent.student_id.in_(student_ids) if student_ids else false()
+            )
+        elif class_ids is not None:
+            if not class_ids:
+                q = q.where(false())
+            else:
+                q = q.where(OrientationStudent.student_id.in_(select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                    StudentProfile.class_id.in_(class_ids),
+                )))
         if payment_status:
-            q = q.where(OrientationStudent.payment_status == payment_status)
+            if payment_status == "GREEN_CHANNEL":
+                q = q.where(OrientationStudent.green_channel_status == "APPROVED")
+            else:
+                q = q.where(OrientationPaymentAccount.status == payment_status)
         if keyword:
-            q = q.where(OrientationStudent.name.like(f"%{keyword.strip()}%"))
+            value = f"%{keyword.strip()}%"
+            q = q.where(or_(OrientationStudent.name.like(value),
+                            OrientationStudent.admission_no.like(value)))
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
-        rows = db.scalars(q.order_by(OrientationStudent.id)
+        rows = db.execute(q.order_by(OrientationStudent.id)
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [{"id": str(r.id), "name": r.name, "className": r.class_name or "",
-                  "payableAmount": f"¥{_amt(r.payable_amount):.0f}", "paidAmount": f"¥{_amt(r.paid_amount):.0f}",
-                  "paymentStatus": r.payment_status, "paymentStatusLabel": L_PAY.get(r.payment_status, r.payment_status),
-                  "phone": mask_phone_encrypted(r.phone_encrypted)} for r in rows]
+        items = [{"id": str(r.id), "paymentAccountId": str(account.id),
+                  "paymentVersion": int(account.version or 0),
+                  "name": r.name, "admissionNo": r.admission_no,
+                  "className": r.class_name or "",
+                  "payableAmount": f"¥{_amt(account.payable_amount):.0f}",
+                  "paidAmount": f"¥{_amt(account.paid_amount):.0f}",
+                  "paymentStatus": "GREEN_CHANNEL" if r.green_channel_status == "APPROVED" else account.status,
+                  "paymentStatusLabel": ("绿色通道" if r.green_channel_status == "APPROVED"
+                                           else L_PAY.get(account.status, account.status)),
+                  "greenChannelStatus": r.green_channel_status,
+                  "phone": mask_phone_encrypted(r.phone_encrypted)} for account, r in rows]
         return items, total
 
 
 # ═══ 绿色通道 ═══
 
-def _gc_row(g: GreenChannelApplication, stu: OrientationStudent | None = None) -> dict:
+def _gc_row(g: GreenChannelApplication, stu: OrientationStudent | None = None,
+            attachments=None) -> dict:
     return {"id": str(g.id), "studentId": str(g.ori_student_id),
+            "profileStudentId": str(g.student_id or ""), "version": int(g.version or 0),
             "name": stu.name if stu else "", "className": stu.class_name if stu else "",
             "applyType": g.apply_type, "applyAmount": _amt(g.apply_amount),
             "submitTime": _iso(g.submit_time) or "", "status": g.status,
             "statusLabel": L_GC.get(g.status, g.status), "reviewer": g.reviewer or "",
             "reviewTime": _iso(g.review_time) or "", "rejectReason": g.reject_reason or "",
-            "remark": g.remark or ""}
+            "remark": g.remark or "", "attachments": list(attachments or [])}
 
 
-def list_green_channels(page, page_size, keyword=None, status=None):
+def list_green_channels(page, page_size, keyword=None, status=None, user=None):
     with session() as db:
         # P1-4：join 学生表消 N+1（此前每行一次 db.get），keyword/分页全部下沉 DB
         q = (select(GreenChannelApplication, OrientationStudent)
              .join(OrientationStudent, OrientationStudent.id == GreenChannelApplication.ori_student_id)
              .where(GreenChannelApplication.tenant_id == _tid(),
-                    GreenChannelApplication.is_deleted.is_(False)))
+                    GreenChannelApplication.is_deleted.is_(False),
+                    OrientationStudent.tenant_id == _tid(),
+                    OrientationStudent.is_deleted.is_(False),
+                    OrientationStudent.record_status == "ACTIVE"))
+        from app.core.affairs_security import student_directory_scope
+        class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
+        if student_ids is not None:
+            q = q.where(
+                OrientationStudent.student_id.in_(student_ids) if student_ids else false()
+            )
+        elif class_ids is not None:
+            if not class_ids:
+                q = q.where(false())
+            else:
+                q = q.where(OrientationStudent.student_id.in_(select(StudentProfile.id).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                    StudentProfile.class_id.in_(class_ids),
+                )))
         if status:
             q = q.where(GreenChannelApplication.status == status)
         if keyword:
@@ -525,18 +584,42 @@ def list_green_channels(page, page_size, keyword=None, status=None):
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
         rows = db.execute(q.order_by(GreenChannelApplication.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        return [_gc_row(g, stu) for g, stu in rows], total
+        ids = [str(g.id) for g, _ in rows]
+        attachments = {value: [] for value in ids}
+        if ids:
+            from app.models.file import FileBinding, FileObject
+            file_rows = db.execute(select(FileBinding.biz_id, FileObject.file_name).join(
+                FileObject,
+                (FileObject.id == FileBinding.file_id)
+                & (FileObject.tenant_id == FileBinding.tenant_id),
+            ).where(
+                FileBinding.tenant_id == _tid(),
+                FileBinding.biz_type == "ORIENTATION_GREEN_CHANNEL",
+                FileBinding.biz_id.in_(ids),
+                FileBinding.is_current.is_(True), FileBinding.status == "ACTIVE",
+                FileBinding.is_deleted.is_(False), FileObject.is_deleted.is_(False),
+            )).all()
+            for biz_id, file_name in file_rows:
+                attachments.setdefault(str(biz_id), []).append(file_name)
+        return [_gc_row(g, stu, attachments.get(str(g.id))) for g, stu in rows], total
 
 
-def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=False, action_label=""):
+def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=False,
+            action_label="", expected_version=None, user=None):
     if need_reason and (not reason or len(reason.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "原因必填且不少于 5 字")
     with session() as db:
-        g = db.get(GreenChannelApplication, int(gid))
+        g = db.scalars(select(GreenChannelApplication).where(
+            GreenChannelApplication.tenant_id == _tid(),
+            GreenChannelApplication.id == int(gid),
+            GreenChannelApplication.is_deleted.is_(False),
+        ).with_for_update()).first()
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("绿色通道申请不存在")
         if g.status in ("APPROVED", "REJECTED"):
             raise AppException("DATA_CONFLICT", "该申请已终审，请刷新")
+        if expected_version is None or int(expected_version) != int(g.version or 0):
+            raise AppException("APPROVAL_VERSION_CONFLICT", "申请状态已变化，请刷新后重试")
         before = g.status
         name, _ = _op()
         g.status = target_status
@@ -550,6 +633,7 @@ def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=Fals
         stu = tenant_get(db, OrientationStudent, g.ori_student_id)
         audit_detail = reason or ""
         if stu:
+            assert_orientation_student_scope(db, stu, user)
             if target_status == "APPROVED":
                 stu.green_channel_status = "APPROVED"
                 if stu.payment_status in ("UNPAID", "PARTIAL"):
@@ -567,21 +651,26 @@ def _gc_act(gid, target_status, reason_field=None, reason=None, need_reason=Fals
                 stu.green_channel_status = "REJECTED"
             elif target_status == "RETURNED":
                 stu.green_channel_status = "RETURNED"
+            from app.services.orientation_qualification_service import evaluate
+            evaluate(db, stu, persist=True, actor_id=None)
         _audit(db, "GREEN_CHANNEL", g.id, action_label, audit_detail or action_label, before, target_status)
         db.commit()
-        return {"id": str(g.id), "status": target_status}
+        return {"id": str(g.id), "status": target_status, "version": int(g.version or 0)}
 
 
-def approve_green_channel(gid, remark=""):
-    return _gc_act(gid, "APPROVED", "remark", remark, False, "审核通过")
+def approve_green_channel(gid, remark="", expected_version=None, user=None):
+    return _gc_act(gid, "APPROVED", "remark", remark, False, "审核通过",
+                   expected_version=expected_version, user=user)
 
 
-def reject_green_channel(gid, reason):
-    return _gc_act(gid, "REJECTED", "reject", reason, True, "驳回申请")
+def reject_green_channel(gid, reason, expected_version=None, user=None):
+    return _gc_act(gid, "REJECTED", "reject", reason, True, "驳回申请",
+                   expected_version=expected_version, user=user)
 
 
-def return_green_channel(gid, reason):
-    return _gc_act(gid, "RETURNED", "reject", reason, True, "退回补充")
+def return_green_channel(gid, reason, expected_version=None, user=None):
+    return _gc_act(gid, "RETURNED", "reject", reason, True, "退回补充",
+                   expected_version=expected_version, user=user)
 
 
 # ═══ 学生自助（移动端·预报到信息采集 + 绿色通道申请）+ 现场报到核验 ═══
@@ -615,7 +704,8 @@ def student_submit_collect(sid, phone: str = "", origin: str = "") -> dict:
 
 
 def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: str = "",
-                                 file_ids=None, actor: dict | None = None) -> dict:
+                                 file_ids=None, actor: dict | None = None,
+                                 client_request_id: str = "") -> dict:
     """绿色通道申请（学生自助提交，等待辅导员/资助中心审核）。
 
     V3 §8.1：附件以 TEMP_PRIVATE fileId 传入，正式绑定在本函数的事务里由 canonical
@@ -625,12 +715,33 @@ def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: s
     apply_type = (apply_type or "").strip()
     if not apply_type:
         raise AppException("VALIDATION_ERROR", "请选择困难类型")
+    client_request_id = str(client_request_id or "").strip()
+    if len(client_request_id) < 8:
+        raise AppException("VALIDATION_ERROR", "clientRequestId 必填")
     with session() as db:
-        s = _get_student(db, sid)
+        s = db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(), OrientationStudent.id == int(sid),
+            OrientationStudent.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not s:
+            raise not_found("新生记录不存在")
+        prior = db.scalars(select(GreenChannelApplication).where(
+            GreenChannelApplication.tenant_id == _tid(),
+            GreenChannelApplication.client_request_id == client_request_id,
+            GreenChannelApplication.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if prior:
+            if (int(prior.ori_student_id) == int(s.id)
+                    and prior.apply_type == apply_type
+                    and _amt(prior.apply_amount) == _amt(apply_amount)
+                    and (prior.remark or "") == (remark or "").strip()):
+                return _gc_row(prior, s)
+            raise AppException("IDEMPOTENCY_CONFLICT", "clientRequestId 已用于其他绿色通道申请")
         if s.green_channel_status in ("SUBMITTED", "REVIEWING", "APPROVED"):
             raise AppException("DATA_CONFLICT", "已有申请正在处理或已通过，无需重复提交")
         g = GreenChannelApplication(
-            tenant_id=_tid(), ori_student_id=s.id, apply_type=apply_type,
+            tenant_id=_tid(), ori_student_id=s.id, student_id=s.student_id,
+            client_request_id=client_request_id, apply_type=apply_type,
             apply_amount=_amt(apply_amount), submit_time=datetime.utcnow(),
             status="SUBMITTED", remark=(remark or "").strip())
         db.add(g)
@@ -661,7 +772,7 @@ def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: s
         _audit(db, "GREEN_CHANNEL", g.id, "学生提交绿色通道申请",
               f"{apply_type} ¥{_amt(apply_amount):.0f}")
         db.commit()
-        return {"id": str(g.id), "status": g.status}
+        return _gc_row(g, s)
 
 
 def teacher_checkin_by_admission_no(admission_no: str, operator_name: str = "") -> dict:
@@ -788,6 +899,8 @@ def approve_material(mid, comment="", user=None):
             if version:
                 version.status = "APPROVED"
         _refresh_material_status(db, stu)
+        from app.services.orientation_qualification_service import evaluate
+        evaluate(db, stu, persist=True, actor_id=None)
         _audit(db, "MATERIAL", m.id, "审核通过", comment, before, "APPROVED")
         db.commit()
         return {"id": str(m.id), "status": "APPROVED"}
@@ -819,6 +932,8 @@ def return_material(mid, reason, user=None):
             if version:
                 version.status = "REJECTED"
         stu.material_status = "RETURNED"
+        from app.services.orientation_qualification_service import evaluate
+        evaluate(db, stu, persist=True, actor_id=None)
         _audit(db, "MATERIAL", m.id, "退回材料", reason.strip(), before, "RETURNED")
         db.commit()
         return {"id": str(m.id), "status": "RETURNED"}

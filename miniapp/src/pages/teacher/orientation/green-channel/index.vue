@@ -79,7 +79,7 @@ export default {
           if (need && comment.length < 5) { toast(label + '意见不少于5字'); return }
           this.acting = true
           realRequest('/mobile/teacher/orientation/green-channels/' + a.id + '/review',
-            { method: 'POST', data: { action: type, comment } })
+            { method: 'POST', data: { action: type, comment, expectedVersion: a.version } })
             .then(() => { toast('已' + label); this.load() })
             .catch((e) => {
               const code = e && String(e.code)

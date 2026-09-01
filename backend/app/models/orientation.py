@@ -85,8 +85,23 @@ class OrientationO1BackfillIssue(Base):
 class GreenChannelApplication(PKMixin, TenantMixin, CommonMixin, Base):
     """t_green_channel_application 绿色通道申请。"""
     __tablename__ = "t_green_channel_application"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "client_request_id", name="uk_ori_green_client_request"),
+        CheckConstraint(
+            "status IN ('SUBMITTED','REVIEWING','APPROVED','RETURNED','REJECTED','WITHDRAWN')",
+            name="ck_ori_green_status",
+        ),
+        CheckConstraint("apply_amount >= 0", name="ck_ori_green_amount"),
+        Index("ix_ori_green_student_status", "tenant_id", "student_id", "status", "is_deleted"),
+    )
 
     ori_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True, comment="稳定学生 Authority → t_student_profile.id；旧未绑定记录可空"
+    )
+    client_request_id: Mapped[str | None] = mapped_column(
+        String(100), comment="学生端提交幂等号；旧记录可空"
+    )
     apply_type: Mapped[str] = mapped_column(String(50), nullable=False, comment="助学贷款/缓缴/减免/分期")
     apply_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), default=0)
     submit_time: Mapped[datetime | None] = mapped_column(DateTime)
@@ -181,6 +196,107 @@ class OrientationArrivalPlan(PKMixin, TenantMixin, CommonMixin, Base):
     companion_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED")
     submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class OrientationMaterialRequirement(PKMixin, TenantMixin, CommonMixin, Base):
+    """冻结流程版本的材料要求；资格引擎只读取此表，不在前端硬编码必交材料。"""
+    __tablename__ = "t_orientation_material_requirement"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "flow_version_id", "material_type",
+            name="uk_ori_material_requirement_type",
+        ),
+        CheckConstraint("sort_order >= 0", name="ck_ori_material_requirement_sort"),
+        Index(
+            "ix_ori_material_requirement_flow",
+            "tenant_id", "flow_version_id", "required", "is_deleted",
+        ),
+    )
+
+    flow_version_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="冻结流程版本 → t_orientation_flow_version.id"
+    )
+    material_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    material_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    requires_scan_clean: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    allowed_exts_json: Mapped[list | None] = mapped_column(JSON)
+    max_size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="DEFAULT_BACKFILL",
+        comment="DEFAULT_BACKFILL/MANUAL",
+    )
+
+
+class OrientationPaymentAccount(PKMixin, TenantMixin, CommonMixin, Base):
+    """迎新缴费当前事实；OrientationStudent 金额/状态仅为兼容投影。"""
+    __tablename__ = "t_orientation_payment_account"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "orientation_student_id", name="uk_ori_payment_student"
+        ),
+        UniqueConstraint(
+            "tenant_id", "source_type", "source_biz_id", name="uk_ori_payment_source"
+        ),
+        CheckConstraint(
+            "status IN ('UNPAID','PARTIAL','PAID','WAIVED','DEFERRED')",
+            name="ck_ori_payment_status",
+        ),
+        CheckConstraint(
+            "source_type IN ('FINANCE_SYNC','MANUAL_VERIFIED','LEGACY_BACKFILL')",
+            name="ck_ori_payment_source_type",
+        ),
+        CheckConstraint(
+            "payable_amount >= 0 AND paid_amount >= 0",
+            name="ck_ori_payment_amount",
+        ),
+        CheckConstraint(
+            "status <> 'PAID' OR paid_amount >= payable_amount",
+            name="ck_ori_payment_paid_amount",
+        ),
+        Index(
+            "ix_ori_payment_student_status", "tenant_id", "student_id", "status", "is_deleted"
+        ),
+    )
+
+    orientation_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    student_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    payable_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    paid_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="UNPAID")
+    source_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    source_biz_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    verified_by: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class OrientationQualificationDecision(PKMixin, TenantMixin, CommonMixin, Base):
+    """资格引擎最近一次可审计决策；输入事实可重算，前端不得自行裁决。"""
+    __tablename__ = "t_orientation_qualification_decision"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "orientation_student_id", name="uk_ori_qualification_student"
+        ),
+        CheckConstraint(
+            "verdict IN ('QUALIFIED','NOT_QUALIFIED','MANUAL_REVIEW')",
+            name="ck_ori_qualification_verdict",
+        ),
+        Index(
+            "ix_ori_qualification_verdict",
+            "tenant_id", "verdict", "evaluated_at", "is_deleted",
+        ),
+    )
+
+    orientation_student_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    student_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    verdict: Mapped[str] = mapped_column(String(30), nullable=False)
+    blockers_json: Mapped[list | None] = mapped_column(JSON)
+    facts_json: Mapped[dict | None] = mapped_column(JSON)
+    rule_version: Mapped[str] = mapped_column(String(50), nullable=False, default="O4.1")
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    evaluated_by: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class OrientationException(PKMixin, TenantMixin, CommonMixin, Base):

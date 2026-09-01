@@ -44,7 +44,10 @@ def test_orientation_submit_without_record(client, db_mode):
     assert client.post(f"{PORTAL}/orientation/collect", headers=h,
                        json={"phone": "13800138000", "origin": "湖南长沙"}).json()["code"] != 0
     assert client.post(f"{PORTAL}/orientation/green-channel", headers=h,
-                       json={"applyType": "缓交学费", "applyAmount": 5000}).json()["code"] != 0
+                       json={
+                           "applyType": "缓交学费", "applyAmount": 5000,
+                           "clientRequestId": "or-002-no-record-green-0001",
+                       }).json()["code"] != 0
 
 
 def test_service_hall_catalog(client, db_mode):
