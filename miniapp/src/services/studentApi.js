@@ -70,6 +70,7 @@ export const studentApi = {
   submitOrientationArrival: (body) => real.orientationArrivalSubmit(body),
   submitOrientationMaterial: (body) => real.orientationMaterialSubmit(body),
   submitOrientationGreenChannel: (body) => real.orientationGreenChannelSubmit(body),
+  issueOrientationCheckinToken: () => real.orientationCheckinToken(),
   getServices: () =>
     realFirstStrict('student.campus',
       () => real.enrichCampusService({ categories: M.serviceCategories, items: M.serviceItems }),

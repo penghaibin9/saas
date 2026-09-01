@@ -525,6 +525,12 @@ def orientation_green_channel(body: dict = Body(...), user=Depends(get_current_u
     return success(stu.orientation_green_channel_submit(user, body), message="已提交")
 
 
+@router.post("/orientation/checkin-token", summary="签发本人一次性现场报到凭证")
+def orientation_checkin_token(user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import issue_for_student
+    return success(issue_for_student(user), message="报到凭证已签发")
+
+
 @router.get("/campus-service/my", summary="我的在校服务")
 def campus_service_my(user=Depends(get_current_user)):
     return success(stu.campus_service_my(user))
@@ -741,6 +747,24 @@ def teacher_orientation(user=Depends(get_current_user)):
 def teacher_orientation_checkin(body: dict = Body(...), user=Depends(get_current_user)):
     return success(tea.orientation_checkin(user, body.get("admissionNo") or body.get("code") or ""),
                    message="核验通过")
+
+
+@router.get("/teacher/orientation/checkin-points", summary="迎新老师·本人可用现场报到点")
+def teacher_orientation_checkin_points(user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import list_teacher_points
+    return success(list_teacher_points(user))
+
+
+@router.post("/teacher/orientation/checkin/preflight", summary="迎新老师·签名凭证预检（只读）")
+def teacher_orientation_checkin_preflight(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import preflight
+    return success(preflight(body.get("token") or "", user))
+
+
+@router.post("/teacher/orientation/checkin/confirm", summary="迎新老师·确认现场报到")
+def teacher_orientation_checkin_confirm(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.services.orientation_checkin_service import confirm
+    return success(confirm(body.get("token") or "", body.get("checkinPointId"), user), message="现场报到已确认")
 
 
 @router.get("/teacher/orientation/today-checkins", summary="迎新老师·今日已核验列表")

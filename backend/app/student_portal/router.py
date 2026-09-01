@@ -666,6 +666,11 @@ def orientation_green_channel(user=Depends(get_current_user), body: dict = Body(
     return success(orientation.green_channel(user, body))
 
 
+@router.post("/orientation/checkin-token", summary="签发本人一次性现场报到凭证")
+def orientation_checkin_token(user=Depends(get_current_user)):
+    return success(orientation.checkin_token(user), message="报到凭证已签发")
+
+
 @router.post("/orientation/print", summary="打印迎新报到回执（本人）")
 def orientation_print(user=Depends(get_current_user), body: dict = Body(...)):
     return success(orientation.print_receipt(user, body))

@@ -24,6 +24,24 @@
             <li v-for="item in my.qualification.blockers" :key="`${item.code}-${item.step}`">{{ item.message }}</li>
           </ul>
         </section>
+        <section class="sp-card checkin-card">
+          <div>
+            <div class="sp-panel__head">一次性现场报到凭证 <StatusTag :text="credentialStatusText" :tone="my.checkinCredential?.canIssue ? 'success' : 'default'" /></div>
+            <p class="sp-muted">凭证含学校、迎新批次、本人迎新记录、随机数、有效期和服务器签名；录取编号不能代替本凭证。</p>
+            <p v-if="checkinToken.expiresAt" class="credential-expiry">有效至 {{ checkinToken.expiresAt.replace('T', ' ').slice(0, 19) }}</p>
+            <button class="sp-btn" :disabled="busy || !my.checkinCredential?.canIssue" @click="issueCheckinToken">
+              {{ checkinToken.token ? '刷新一次性凭证' : '签发一次性凭证' }}
+            </button>
+          </div>
+          <div v-if="checkinToken.qrDataUrl" class="credential-qr">
+            <img :src="checkinToken.qrDataUrl" alt="一次性现场报到二维码" />
+            <small>仅供现场教师扫码，过期或使用后立即失效</small>
+          </div>
+          <div v-else-if="checkinToken.token" class="credential-fallback">
+            <strong>二维码组件暂不可用</strong>
+            <small>请向现场教师出示本页，不要使用录取编号替代。</small>
+          </div>
+        </section>
         <section class="sp-card">
           <div class="sp-panel__head">报到信息</div>
           <dl class="desc">
@@ -159,6 +177,7 @@ const arrivalForm = reactive({ arrivalMode: 'TRAIN', plannedArrivalDate: '', pla
 const materialForm = reactive({ materialType: 'ID_CARD' })
 const materialFile = ref(null)
 const greenForm = reactive({ type: 'POVERTY', reason: '' })
+const checkinToken = reactive({ token: '', qrDataUrl: '', expiresAt: '' })
 
 const studentName = computed(() => session.user?.realName || '同学')
 const STEP_LABELS = { INFO: '信息采集', CHECKIN: '到校报到', CONFIRM: '注册确认', PAYMENT: '缴费', MATERIAL: '材料审核', DORM: '宿舍入住', ACTIVATE: '一卡通激活' }
@@ -175,6 +194,10 @@ const flowSteps = computed(() => (my.value.steps || []).map((s) => ({ name: step
 const allDone = computed(() => (my.value.steps || []).length > 0 && (my.value.steps || []).every((s) => terminalStep(s.status)))
 const qualificationText = computed(() => my.value.qualification?.verdictLabel || '资格待计算')
 const qualificationTone = computed(() => ({ QUALIFIED: 'success', NOT_QUALIFIED: 'danger', MANUAL_REVIEW: 'warn' })[my.value.qualification?.verdict] || 'default')
+const credentialStatusText = computed(() => ({
+  BLOCKED: '暂不可签发', ELIGIBLE: '可签发', ISSUED: '已签发',
+  CHECKED_IN: '已现场报到', FINALIZED: '学院已确认'
+})[my.value.checkinCredential?.status] || '待核验')
 const selfService = computed(() => my.value.selfService || { available: false, information: {}, arrivalPlan: null, materials: [] })
 const MATERIALS = { ID_CARD: '身份证明', ADMISSION_LETTER: '录取通知书', PHOTO: '证件照', ARCHIVE: '纸质档案凭证' }
 function materialLabel(k) { return MATERIALS[k] || k }
@@ -224,6 +247,20 @@ async function submitGreen() {
   try { await portalApi.orientationGreenChannel({ applyType: greenForm.type, remark: greenForm.reason, clientRequestId: clientSubmissionId() }); ui.notify('绿色通道申请已提交'); await router.push('/orientation'); await load() }
   catch (e) { ui.notify(e?.message || '提交失败（演示租户为只读）') } finally { busy.value = false }
 }
+async function issueCheckinToken() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const data = await portalApi.orientationCheckinToken()
+    Object.assign(checkinToken, data || {})
+    ui.notify('一次性报到凭证已签发，请在有效期内使用')
+    await load()
+  } catch (e) {
+    ui.notify(e?.message || '报到凭证签发失败')
+  } finally {
+    busy.value = false
+  }
+}
 onMounted(load)
 </script>
 
@@ -240,5 +277,11 @@ onMounted(load)
 .return-reason { max-width:280px; margin-top:6px; color:#B42318; font-size:12px; text-align:right; }
 .qualification-blockers { margin:12px 0 0; padding-left:20px; color:#B42318; line-height:1.7; font-size:13px; }
 .notebox { margin-top: 14px; padding: 12px 16px; background: var(--warn-bg); border: 1px solid #FBE3B8; border-radius: 10px; font-size: 12.5px; color: #8A5300; line-height: 1.6; }
-@media (max-width: 900px) { .desc { grid-template-columns: 1fr 1fr; } .two, .material-submit { grid-template-columns: 1fr; } }
+.checkin-card { display:grid; grid-template-columns:minmax(0,1fr) 220px; align-items:center; gap:24px; }
+.credential-qr { display:grid; justify-items:center; gap:8px; }
+.credential-qr img { width:200px; height:200px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+.credential-qr small, .credential-fallback small { color:var(--t3); text-align:center; }
+.credential-expiry { font-size:13px; color:#067647; }
+.credential-fallback { display:grid; gap:8px; padding:18px; border:1px dashed var(--line); border-radius:10px; text-align:center; }
+@media (max-width: 900px) { .desc { grid-template-columns: 1fr 1fr; } .two, .material-submit, .checkin-card { grid-template-columns: 1fr; } }
 </style>

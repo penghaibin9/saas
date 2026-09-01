@@ -776,32 +776,12 @@ def student_submit_green_channel(sid, apply_type: str, apply_amount=0, remark: s
 
 
 def teacher_checkin_by_admission_no(admission_no: str, operator_name: str = "") -> dict:
-    """现场报到核验（迎新老师扫码/录入报到码核验）：按录取编号查到新生台账，
-    完成现场报到——CHECKIN 环节置完成，报到状态推进为已现场报到。"""
-    admission_no = (admission_no or "").strip()
-    if not admission_no:
-        raise AppException("VALIDATION_ERROR", "请提供报到码")
-    with session() as db:
-        s = db.scalars(select(OrientationStudent).where(
-            OrientationStudent.tenant_id == _tid(), OrientationStudent.admission_no == admission_no,
-            OrientationStudent.is_deleted.is_(False))).first()
-        if not s:
-            raise not_found("未查到该报到码对应的新生记录")
-        if s.report_status in ("CHECKED_IN", "COLLEGE_CONFIRMED"):
-            raise AppException("DATA_CONFLICT",
-                f"{s.name} 已于 {_iso(s.checkin_time) or '此前'} 完成现场报到，无需重复核验")
-        before = s.report_status
-        s.report_status = "CHECKED_IN"
-        s.checkin_time = datetime.utcnow()
-        set_student_step_status(db, s, "CHECKIN", "DONE", status_source="PROCESS_FACT",
-                                source_biz_id=f"student:{s.id}:checkin")
-        s.version += 1
-        _audit(db, "CHECKIN", s.id, "现场报到核验通过",
-              f"核验人：{operator_name or '迎新老师'}", before, "CHECKED_IN")
-        db.commit()
-        return {"id": str(s.id), "name": s.name, "className": s.class_name or "",
-                "collegeName": s.college_name or "", "reportStatus": s.report_status,
-                "checkinTime": _iso(s.checkin_time)}
+    """O5 closes the insecure admission-number write path."""
+    raise AppException(
+        "DEPRECATED_WRITE_PATH",
+        "录取编号只是展示事实，不能作为现场报到凭证；请使用签名凭证流程",
+        http_status=410,
+    )
 
 
 # ═══ 材料审核 ═══

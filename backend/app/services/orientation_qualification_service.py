@@ -403,9 +403,15 @@ def list_qualifications(page: int, page_size: int, *, keyword=None, verdict=None
             decision = evaluate(db, row)
             if verdict and decision["verdict"] != str(verdict).upper():
                 continue
+            profile = db.get(StudentProfile, int(row.student_id)) if row.student_id else None
             items.append({
                 "id": str(row.id), "name": row.name, "admissionNo": row.admission_no,
-                "className": row.class_name or "", **decision,
+                "className": row.class_name or "", "reportStatus": row.report_status,
+                "stage": row.stage, "version": int(row.version or 0),
+                "profileStudentId": str(row.student_id or ""),
+                "studentNo": profile.student_no if profile else "",
+                "canFinalize": decision["verdict"] == "QUALIFIED" and row.report_status == "CHECKED_IN",
+                **decision,
             })
         total = len(items)
         start = (max(1, page) - 1) * page_size

@@ -175,6 +175,8 @@ def _orientation_payload(o, db=None) -> dict:
     from app.services.orientation_qualification_service import evaluate
     steps = student_step_projection(db, o)
     qualification = evaluate(db, o)
+    from app.services.orientation_checkin_service import token_status
+    checkin_credential = token_status(db, o, qualification=qualification)
     payment_fact = qualification.get("facts", {}).get("payment", {})
     payment_status = ("GREEN_CHANNEL" if payment_fact.get("greenChannelApproved")
                       else payment_fact.get("status") or "UNAVAILABLE")
@@ -187,8 +189,10 @@ def _orientation_payload(o, db=None) -> dict:
             "admissionNo": o.admission_no, "name": o.name,
             "qualification": qualification,
             "payment": payment_fact,
-            # O5 才签发可核验报到凭证；录取编号只是展示事实，绝不冒充安全报到码。
-            "reportCodeValid": False, "reportCodeStatus": "NOT_ISSUED",
+            # 只返回签发资格/状态；原始一次性 token 仅由显式签发端点返回。
+            "reportCodeValid": checkin_credential["status"] == "ISSUED",
+            "reportCodeStatus": checkin_credential["status"],
+            "checkinCredential": checkin_credential,
             "gender": o.gender or "", "collegeName": o.college_name or "", "majorName": o.major_name or "",
             "className": o.class_name or "", "grade": o.grade or "", "origin": o.origin or "",
             "phoneMasked": mask_phone_encrypted(o.phone_encrypted)}
