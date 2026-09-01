@@ -345,9 +345,9 @@ def update_student(sid, body: dict) -> dict:
                 require_complete_org=True,
             )
             from app.models import College, Major, SchoolClass
-            college = db.get(College, org.college_id)
-            major = db.get(Major, org.major_id)
-            school_class = db.get(SchoolClass, org.class_id)
+            college = tenant_get(db, College, org.college_id)
+            major = tenant_get(db, Major, org.major_id)
+            school_class = tenant_get(db, SchoolClass, org.class_id)
             s.college_id, s.college_name = org.college_id, college.college_name
             s.major_id, s.major_name = org.major_id, major.major_name
             s.class_id, s.class_name = org.class_id, school_class.class_name

@@ -15,6 +15,7 @@ from sqlalchemy import and_, case, func, or_, select, update
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, no_permission, not_found
 from app.core.pagination import normalize_page
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
 GENDER_LIMITS = ("MALE", "FEMALE", "MIXED")
@@ -46,9 +47,9 @@ def _counselor_assignee_id(db, student_id) -> int:
     from app.models import SchoolClass, StudentProfile
     if not student_id:
         return 0
-    s = db.get(StudentProfile, int(student_id))
+    s = tenant_get(db, StudentProfile, int(student_id))
     if s and s.class_id:
-        c = db.get(SchoolClass, int(s.class_id))
+        c = tenant_get(db, SchoolClass, int(s.class_id))
         if c and c.counselor_id:
             return int(c.counselor_id)
     return 0
@@ -438,7 +439,7 @@ def checkin(bed_id, user, student_id) -> dict:
             raise AppException("DATA_CONFLICT", "该床位刚刚已被其他人占用，请刷新后重试")
         db.refresh(bed)
         _release_student_beds(db, s.id, exclude_bed_id=bed.id)
-        room = db.get(DormRoom, int(bed.room_id))
+        room = tenant_get(db, DormRoom, int(bed.room_id))
         rec_id = _writeback_dorm_record(db, s.id, b.building_name if b else "",
                                         room.room_no if room else "", bed.bed_no)
         bed.cs_dorm_record_id = rec_id
@@ -497,7 +498,7 @@ def checkout(bed_id, user, expected_version=None) -> dict:
             raise AppException("DATA_CONFLICT", "该床位无人入住")
         atomic_claim_version(db, bed, expected_version)
         if bed.cs_dorm_record_id:
-            rec = db.get(CsDormRecord, int(bed.cs_dorm_record_id))
+            rec = tenant_get(db, CsDormRecord, int(bed.cs_dorm_record_id))
             if rec:
                 rec.status, rec.record_status = "OUT", "INACTIVE"
         bed.student_id, bed.status, bed.occupied_at, bed.cs_dorm_record_id, bed.version = \
@@ -558,14 +559,14 @@ def review_transfer(transfer_id, user, action, reason="", expected_version=None)
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("调宿申请不存在")
         if t.to_bed_id:
-            to_bed_for_scope = db.get(DormBed, int(t.to_bed_id))
+            to_bed_for_scope = tenant_get(db, DormBed, int(t.to_bed_id))
             if to_bed_for_scope:
                 _require_dorm_scope(db, to_bed_for_scope.building_id, user)
         if t.status not in TRANSFER_NODES:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该调宿当前状态不可审批")
         atomic_claim_version(db, t, expected_version)
         from app.models import StudentProfile
-        stu = db.get(StudentProfile, int(t.student_id)) if t.student_id else None
+        stu = tenant_get(db, StudentProfile, int(t.student_id)) if t.student_id else None
         stu_name = (stu.real_name if stu else "") or ""
         if action == "REJECT":
             if not reason or len(reason.strip()) < 5:
@@ -579,7 +580,7 @@ def review_transfer(transfer_id, user, action, reason="", expected_version=None)
                 nxt = TRANSFER_NODES[i + 1]
                 t.current_node, t.status, t.version = nxt, nxt, t.version + 1
                 _todo_done(db, t.id, TODO_TRANSFER)
-                to_bed = db.get(DormBed, int(t.to_bed_id)) if t.to_bed_id else None
+                to_bed = tenant_get(db, DormBed, int(t.to_bed_id)) if t.to_bed_id else None
                 building_id = to_bed.building_id if to_bed else None
                 _push_dorm_manager_todos(
                     db, biz_id=t.id, building_id=building_id, student_id=t.student_id,
@@ -592,8 +593,8 @@ def review_transfer(transfer_id, user, action, reason="", expected_version=None)
                 if not to_bed or to_bed.status != "VACANT":
                     raise AppException("DATA_CONFLICT", "目标床位已被占用，调宿无法执行")
                 _release_student_beds(db, t.student_id)  # 释放原床
-                b = db.get(DormBuilding, int(to_bed.building_id))
-                room = db.get(DormRoom, int(to_bed.room_id))
+                b = tenant_get(db, DormBuilding, int(to_bed.building_id))
+                room = tenant_get(db, DormRoom, int(to_bed.room_id))
                 rec_id = _writeback_dorm_record(db, t.student_id, b.building_name if b else "",
                                                 room.room_no if room else "", to_bed.bed_no)
                 to_bed.student_id, to_bed.status, to_bed.occupied_at = t.student_id, "OCCUPIED", datetime.utcnow()
@@ -681,7 +682,7 @@ def submit_check_record(task_id, user, body) -> dict:
             building_id = task.building_id or (room.building_id if room else None)
             stu_name = ""
             if sid_int:
-                sp = db.get(StudentProfile, sid_int)
+                sp = tenant_get(db, StudentProfile, sid_int)
                 stu_name = (sp.real_name if sp else "") or ""
             _push_dorm_manager_todos(
                 db, biz_id=exc.id, building_id=building_id, student_id=sid_int,
@@ -867,7 +868,7 @@ def _resolve_exception_student(db, exception_id, cs_student_id):
     from app.models import CsServiceStudent, DormBed, DormCheckRecord, DormRoom, StudentProfile
     real_name, student_no, global_sid = "", "", None
     if cs_student_id:
-        cs = db.get(CsServiceStudent, int(cs_student_id))
+        cs = tenant_get(db, CsServiceStudent, int(cs_student_id))
         if cs and not cs.is_deleted:
             # CsServiceStudent 行确实存在——即使它没连 student_id（未做新旧数据对齐），也不能把
             # cs_student_id（CsServiceStudent 主键序列）误当 StudentProfile 主键去查，两套序列独立，
@@ -889,7 +890,7 @@ def _resolve_exception_student(db, exception_id, cs_student_id):
             DormCheckRecord.tenant_id == _tid(), DormCheckRecord.related_exception_id == exception_id,
             DormCheckRecord.is_deleted.is_(False))).first()
         if rec and rec.room_id:
-            room = db.get(DormRoom, int(rec.room_id))
+            room = tenant_get(db, DormRoom, int(rec.room_id))
             if room:
                 building_id = room.building_id
     return real_name, student_no, building_id, global_sid

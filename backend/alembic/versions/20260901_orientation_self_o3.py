@@ -75,12 +75,9 @@ def upgrade() -> None:
         SET m.submission_no=ranked.seq,
             m.is_current=(ranked.reverse_seq=1)
     """))
-    op.alter_column("t_orientation_material", "submission_no", existing_type=sa.Integer(), nullable=False)
-    op.alter_column("t_orientation_material", "is_current", existing_type=sa.Boolean(), nullable=False)
-    op.alter_column(
-        "t_orientation_material", "source_type", existing_type=sa.String(50),
-        nullable=False, comment="LEGACY_BACKFILL/STUDENT_SELF_SERVICE",
-    )
+    # Keep same-release columns nullable for N-1 rollback compatibility. O3
+    # writers populate them and the backfill above covers existing rows; a later
+    # migration can enforce NOT NULL after the rolling-deploy window closes.
     op.create_unique_constraint(
         "uk_ori_material_client_submission", "t_orientation_material",
         ["tenant_id", "client_submission_id"],

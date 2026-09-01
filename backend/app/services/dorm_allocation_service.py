@@ -7,6 +7,7 @@ from io import BytesIO
 from sqlalchemy import and_, func, or_, select, update
 
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (DormAllocationBatch, DormAllocationItem, DormBed, DormBuilding,
                         DormRoom, DormStay, OrientationBatch, OrientationStudent,
                         OrientationStudentStep, StudentProfile)
@@ -644,9 +645,9 @@ def current_student_allocation(db, student_id: int) -> dict | None:
         "openAt": _iso(batch.open_at), "closeAt": _iso(batch.close_at),
     }
     if item.bed_id and not hidden:
-        bed = db.get(DormBed, int(item.bed_id))
-        room = db.get(DormRoom, int(bed.room_id)) if bed else None
-        building = db.get(DormBuilding, int(bed.building_id)) if bed else None
+        bed = tenant_get(db, DormBed, int(item.bed_id))
+        room = tenant_get(db, DormRoom, int(bed.room_id)) if bed else None
+        building = tenant_get(db, DormBuilding, int(bed.building_id)) if bed else None
         result.update({
             "bedId": str(bed.id) if bed else "", "bedNo": bed.bed_no if bed else "",
             "room": room.room_no if room else "", "building": building.building_name if building else "",

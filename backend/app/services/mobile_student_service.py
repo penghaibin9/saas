@@ -201,7 +201,7 @@ def _orientation_payload(o, db=None) -> dict:
         OrientationCheckinRecord.orientation_student_id == o.id,
         OrientationCheckinRecord.is_deleted.is_(False),
     ).order_by(OrientationCheckinRecord.id.desc())).first()
-    checkin_point = db.get(OrientationCheckinPoint, int(checkin_record.checkin_point_id)) if checkin_record else None
+    checkin_point = tenant_get(db, OrientationCheckinPoint, int(checkin_record.checkin_point_id)) if checkin_record else None
     payment_fact = qualification.get("facts", {}).get("payment", {})
     payment_status = ("GREEN_CHANNEL" if payment_fact.get("greenChannelApproved")
                       else payment_fact.get("status") or "UNAVAILABLE")

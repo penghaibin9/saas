@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.core.context import get_request_meta
 from app.core.exceptions import AppException
 from app.core.field_crypto import decrypt_field
+from app.core.tenant_scoped import tenant_get
 from app.db.session import db_enabled, get_sessionmaker
 from app.models import (
     OrientationActivationChallenge,
@@ -240,7 +241,7 @@ def complete_activation(*, activation_token: str, client_nonce: str, new_passwor
         if challenge.status == "COMPLETED":
             if challenge.client_request_id != request_id or not challenge.bound_user_id:
                 raise AppException("UNAUTHORIZED", "激活凭证已使用，请直接登录")
-            account = db.get(User, int(challenge.bound_user_id))
+            account = tenant_get(db, User, int(challenge.bound_user_id), tenant_id=challenge.tenant_id)
             if not account or account.is_deleted or account.status != "ACTIVE":
                 raise AppException("DATA_CONFLICT", "已激活账号当前不可用，请联系学校管理员")
             result = build_login_result(db, account, client_type=client)
@@ -312,7 +313,7 @@ def complete_activation(*, activation_token: str, client_nonce: str, new_passwor
             tenant_id=student.tenant_id, resource_id=str(student.id),
         )
         db.commit()
-        account = db.get(User, int(account.id))
+        account = tenant_get(db, User, int(account.id), tenant_id=student.tenant_id)
         result = build_login_result(db, account, client_type=client)
         result["activation"] = {
             "completed": True, "idempotent": False,

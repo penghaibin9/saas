@@ -16,6 +16,7 @@ from sqlalchemy import select
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import has_permission
+from app.core.tenant_scoped import tenant_get
 from app.core.rbac09_permission_bundles import (
     FILE_GOVERNANCE_VIEW,
     FILE_SCAN_RETRY,
@@ -385,7 +386,7 @@ def list_business_files(biz_type: str, biz_id: str, *, user: dict | None = None)
         ).order_by(FileBinding.version_no.desc(), FileBinding.id.desc())).all()
         results: list[dict[str, Any]] = []
         for binding in bindings:
-            file_obj = db.get(FileObject, binding.file_id)
+            file_obj = tenant_get(db, FileObject, binding.file_id)
             if not file_obj:
                 continue
             file_bindings = [item for item in bindings if item.file_id == binding.file_id]

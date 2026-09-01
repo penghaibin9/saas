@@ -16,6 +16,7 @@ from sqlalchemy import and_, func, select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.optimistic_lock import atomic_claim_version
 from app.core.permissions import has_permission
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
 POLICY_KEY = "DORM_INSPECTION_POLICY"
@@ -825,11 +826,11 @@ def _assert_rect_access(db, rect, user: dict, *, staff_permission: str = "studen
 
 def _rect_row(db, rect, *, user: dict) -> dict:
     from app.models import DormBuilding, DormCheckRecord, DormCheckTask, DormRoom, StudentProfile
-    task = db.get(DormCheckTask, int(rect.task_id))
-    record = db.get(DormCheckRecord, int(rect.check_record_id))
-    room = db.get(DormRoom, int(rect.room_id))
-    building = db.get(DormBuilding, int(rect.building_id))
-    student = db.get(StudentProfile, int(rect.student_id)) if rect.student_id else None
+    task = tenant_get(db, DormCheckTask, int(rect.task_id))
+    record = tenant_get(db, DormCheckRecord, int(rect.check_record_id))
+    room = tenant_get(db, DormRoom, int(rect.room_id))
+    building = tenant_get(db, DormBuilding, int(rect.building_id))
+    student = tenant_get(db, StudentProfile, int(rect.student_id)) if rect.student_id else None
     inspection_files = _files_for(db, "DORM_CHECK_RECORD", [int(rect.check_record_id)]).get(int(rect.check_record_id), [])
     rect_files = _files_for(db, "DORM_RECTIFICATION", [int(rect.id)]).get(int(rect.id), [])
     is_student = str((user or {}).get("userType") or "").upper() == "STUDENT"
@@ -963,8 +964,8 @@ def submit_rectification(rectification_id: int, body: Any, user: dict) -> dict:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该整改当前不可提交")
         expected = payload.get("expectedVersion")
         atomic_claim_version(db, rect, expected)
-        room = db.get(DormRoom, int(rect.room_id))
-        student = db.get(StudentProfile, int(rect.student_id)) if rect.student_id else student_actor
+        room = tenant_get(db, DormRoom, int(rect.room_id))
+        student = tenant_get(db, StudentProfile, int(rect.student_id)) if rect.student_id else student_actor
         _bind_files(
             db, file_ids=file_ids, biz_type="DORM_RECTIFICATION", biz_id=rect.id,
             relation_type="RECTIFICATION_EVIDENCE", actor=user, student=student, room=room,
@@ -1012,8 +1013,8 @@ def recheck_rectification(rectification_id: int, body: Any, user: dict) -> dict:
             label="高风险复检照片证据",
         )
         atomic_claim_version(db, rect, payload.get("expectedVersion"))
-        room = db.get(DormRoom, int(rect.room_id))
-        student = db.get(StudentProfile, int(rect.student_id)) if rect.student_id else None
+        room = tenant_get(db, DormRoom, int(rect.room_id))
+        student = tenant_get(db, StudentProfile, int(rect.student_id)) if rect.student_id else None
         _bind_files(
             db, file_ids=file_ids, biz_type="DORM_RECTIFICATION", biz_id=rect.id,
             relation_type="RECHECK_EVIDENCE", actor=user, student=student, room=room,
@@ -1021,8 +1022,8 @@ def recheck_rectification(rectification_id: int, body: Any, user: dict) -> dict:
         )
         now = datetime.utcnow()
         rect.recheck_note, rect.rechecked_at, rect.rechecked_by_user_id = note, now, _actor_user_id(user)
-        record = db.get(DormCheckRecord, int(rect.check_record_id))
-        exception = db.get(CsDormException, int(rect.related_exception_id)) if rect.related_exception_id else None
+        record = tenant_get(db, DormCheckRecord, int(rect.check_record_id))
+        exception = tenant_get(db, CsDormException, int(rect.related_exception_id)) if rect.related_exception_id else None
         if action == "PASS":
             rect.status, rect.closed_at = "CLOSED", now
             if record: record.status = "CLOSED"

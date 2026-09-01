@@ -11,6 +11,7 @@ from app.core.exceptions import AppException, check_version, not_found
 from app.core.security import hash_password
 from app.core.student_lifecycle import ADMITTED, ENROLLED
 from app.core.student_master_contract import SOURCE_ADMISSION, StudentCreateCommand
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     GreenChannelApplication,
     OrientationArrivalPlan,
@@ -98,7 +99,7 @@ class OrientationEnrollmentFinalizeService:
             db, tenant_id=int(student.tenant_id), cmd=cmd,
             resolution=resolution, actor=actor,
         )
-        profile = db.get(StudentProfile, int(result.student_id))
+        profile = tenant_get(db, StudentProfile, int(result.student_id), tenant_id=student.tenant_id)
         student.student_id = profile.id
         student.identity_status = "LINKED"
         for model in (
@@ -233,7 +234,7 @@ class OrientationEnrollmentFinalizeService:
                 ) if profile and not profile.is_deleted else None
             )
             if profile and existing_uid and student.identity_status == "LINKED":
-                account = db.get(User, int(existing_uid))
+                account = tenant_get(db, User, int(existing_uid), tenant_id=student.tenant_id)
                 if account and not account.is_deleted and account.status == "ACTIVE":
                     return {
                         "orientationStudentId": str(student.id),

@@ -15,6 +15,7 @@ from sqlalchemy import false, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     DormBed,
     DormStay,
@@ -433,7 +434,7 @@ def list_qualifications(page: int, page_size: int, *, keyword=None, verdict=None
             decision = evaluate(db, row)
             if verdict and decision["verdict"] != str(verdict).upper():
                 continue
-            profile = db.get(StudentProfile, int(row.student_id)) if row.student_id else None
+            profile = tenant_get(db, StudentProfile, int(row.student_id)) if row.student_id else None
             items.append({
                 "id": str(row.id), "name": row.name, "admissionNo": row.admission_no,
                 "className": row.class_name or "", "reportStatus": row.report_status,

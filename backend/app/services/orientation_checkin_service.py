@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.core.timeutil import local_today_bounds_utc
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     DormBed,
     DormBuilding,
@@ -387,8 +388,8 @@ def _assert_point(db, point_id, user) -> OrientationCheckinPoint:
 
 
 def _record_payload(db, record: OrientationCheckinRecord) -> dict:
-    student = db.get(OrientationStudent, int(record.orientation_student_id))
-    point = db.get(OrientationCheckinPoint, int(record.checkin_point_id))
+    student = tenant_get(db, OrientationStudent, int(record.orientation_student_id))
+    point = tenant_get(db, OrientationCheckinPoint, int(record.checkin_point_id))
     return {
         "id": str(record.id),
         "studentId": str(record.orientation_student_id),
@@ -489,7 +490,7 @@ def today_records(user: dict) -> dict:
         ).order_by(OrientationCheckinRecord.checked_in_at.desc())).all())
         visible = []
         for row in rows:
-            student = db.get(OrientationStudent, int(row.orientation_student_id))
+            student = tenant_get(db, OrientationStudent, int(row.orientation_student_id))
             try:
                 assert_orientation_student_scope(db, student, user)
             except AppException:

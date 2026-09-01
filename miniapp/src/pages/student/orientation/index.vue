@@ -187,7 +187,11 @@ export default {
     qualificationBlockers() {
       return this.o?.qualification?.blockers || []
     },
+    qualificationVerdict() {
+      return this.o && this.o.qualification ? this.o.qualification.verdict : ''
+    },
     schoolItems() {
+      if (this.qualificationVerdict === 'QUALIFIED') return []
       const messages = this.qualificationBlockers
         .filter((item) => !this.isStudentAction(item))
         .map((item) => this.friendlySchoolMessage(item))

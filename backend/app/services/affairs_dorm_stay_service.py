@@ -14,6 +14,7 @@ from sqlalchemy import and_, func, select
 
 from app.core.exceptions import AppException, not_found
 from app.core.optimistic_lock import atomic_claim_version
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
 ACTIVE_TRANSFER_STATUSES = ("COUNSELOR_REVIEW", "DORM_MANAGER_REVIEW")
@@ -321,8 +322,8 @@ def create_checkout_request(*, bed_id: int, expected_bed_version, request_type: 
         db.commit(); db.refresh(row)
         return _checkout_row(
             row, student=student, bed=bed,
-            room=db.get(DormRoom, int(bed.room_id)),
-            building=db.get(DormBuilding, int(bed.building_id)), blockers=blockers,
+            room=tenant_get(db, DormRoom, int(bed.room_id)),
+            building=tenant_get(db, DormBuilding, int(bed.building_id)), blockers=blockers,
         )
 
 
@@ -398,8 +399,8 @@ def confirm_checkout(request_id: int, *, expected_version, user) -> dict:
                 db, "DORM_CHECKOUT", row.id, "CONFIRMED",
                 f"student={row.student_id};stay={row.stay_id};bed={row.bed_id}",
             )
-            room = db.get(DormRoom, int(row.room_id))
-            building = db.get(DormBuilding, int(row.building_id))
+            room = tenant_get(db, DormRoom, int(row.room_id))
+            building = tenant_get(db, DormBuilding, int(row.building_id))
             db.commit(); db.refresh(row)
             return _checkout_row(
                 row, student=student, bed=bed, room=room, building=building, blockers=[],

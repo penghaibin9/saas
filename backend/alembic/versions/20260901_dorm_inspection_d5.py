@@ -248,8 +248,8 @@ def upgrade() -> None:
             published_at=CASE WHEN status IN ('PUBLISHED','RUNNING','DONE') THEN created_at ELSE NULL END,
             completed_at=CASE WHEN status='DONE' THEN updated_at ELSE NULL END
     """))
-    op.alter_column(TASK, "template_key", existing_type=sa.String(160), nullable=False)
-    op.alter_column(TASK, "template_version", existing_type=sa.Integer(), nullable=False)
+    # Keep new columns nullable for N-1 rollback compatibility. Runtime writers
+    # always populate them; a later migration can tighten the database contract.
     op.create_unique_constraint("uk_dorm_check_task_client_request", TASK, ["tenant_id", "client_request_id"])
     op.create_check_constraint(
         "ck_dorm_check_task_type", TASK,
@@ -284,7 +284,8 @@ def upgrade() -> None:
               ELSE 'MEDIUM' END,
             inspected_at=created_at
     """))
-    op.alter_column(RECORD, "severity", existing_type=sa.String(20), nullable=False)
+    # Keep the newly added column nullable while N-1 application instances may
+    # still write this table during a rolling deployment.
     op.create_unique_constraint(
         "uk_dorm_check_record_client_request", RECORD,
         ["tenant_id", "task_id", "client_request_id"],
