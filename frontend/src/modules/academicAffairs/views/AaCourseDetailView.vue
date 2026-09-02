@@ -153,7 +153,7 @@ export default {
   },
   methods: {
     reviewStatusColor, inReview, canSubmit,
-    statusLabel(s) { return REVIEW_STATUS[s] || s || '' },
+    statusLabel(s) { return REVIEW_STATUS[s] || (s ? '状态待确认' : '') },
     examLabel(m) { return EXAM_MODE[m] || m || '' },
     async doSubmit() {
       if (this.acting) return

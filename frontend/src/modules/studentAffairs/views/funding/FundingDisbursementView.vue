@@ -227,7 +227,7 @@ export default {
     secondaryError() { return [this.batchError, this.statsError].filter(Boolean).join('；') },
     exportStatusText() {
       const status = this.exportJob?.status || 'CREATED'
-      return ({ CREATED: '等待处理', RUNNING: '正在生成', SUCCEEDED: '已完成', FAILED: '生成失败', DEAD: '多次失败，需处理', EXPIRED: '已过期', REVOKED: '已撤销' })[status] || status
+      return ({ CREATED: '等待处理', RUNNING: '正在生成', SUCCEEDED: '已完成', FAILED: '生成失败', DEAD: '多次失败，需处理', EXPIRED: '已过期', REVOKED: '已撤销' })[status] || (status ? '状态待确认' : '—')
     },
     batchOptions() {
       return this.batches.map((batch) => ({
@@ -451,7 +451,7 @@ export default {
         if (response.bizCode === 'APPROVAL_VERSION_CONFLICT') await this.loadRecords()
       }
     },
-    typeLabel(type) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[type] || type || '' },
+    typeLabel(type) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[type] || (type ? '类型待确认' : '') },
     amountText(amount) { return (amount == null || amount === '') ? '—' : (typeof amount === 'number' ? `¥${amount}` : amount) },
     statusType(status) { return ({ PENDING: 'warning', ISSUED: 'success', FAILED: 'danger', RETURNED: 'default' })[status] || 'default' }
   }

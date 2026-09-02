@@ -367,7 +367,7 @@ export default {
   computed: {
     visibilityOptions() {
       const labels = { OWN: '本人任务', MODULE: '本模块任务', TENANT: '全校任务' }
-      return this.allowedVisibilities.map((value) => ({ value, label: labels[value] || value }))
+      return this.allowedVisibilities.map((value) => ({ value, label: labels[value] || (value ? '待确认' : '—') }))
     },
     visibilityLabel() {
       return { OWN: '仅本人创建', MODULE: `模块：${this.moduleLabel(this.moduleCode)}`, TENANT: '全校授权视图' }[this.visibility]
@@ -397,7 +397,7 @@ export default {
       return labels[row.importType || row.exportType] || row.importType || row.exportType || '数据交换任务'
     },
     moduleLabel(code) {
-      return { SYSTEM: '系统管理', ACADEMIC_AFFAIRS: '教务中心' }[code] || code || '未标注模块'
+      return { SYSTEM: '系统管理', ACADEMIC_AFFAIRS: '教务中心' }[code] || (code ? '待确认' : '未标注模块')
     },
     statusLabel(status) {
       return {
@@ -405,7 +405,7 @@ export default {
         VALIDATION_FAILED: '预检失败', CONFIRMING: '确认中', CREATED: '待生成',
         RUNNING: '生成中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消',
         EXPIRED: '已过期', REVOKED: '已撤销'
-      }[status] || status || '未知'
+      }[status] || (status ? '状态待确认' : '未知')
     },
     statusClass(status) {
       if (status === 'SUCCEEDED') return 'success'

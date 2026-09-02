@@ -25,7 +25,7 @@
           </div>
           <div v-if="(overview.auditGaps || []).length" class="mp-card__body">
             <p v-for="g in overview.auditGaps" :key="g.auditId" class="sav-warn">
-              {{ g.action }} · 缺失字段：{{ g.missing.join('、') }}
+              {{ auditActionLabel(g) }} · 缺失字段：{{ g.missing.map(fieldLabel).join('、') }}
             </p>
           </div>
         </section>
@@ -36,7 +36,7 @@
             <span class="mp-note">高危动作自动做完整性判定</span>
           </header>
           <div class="mp-card__body sav-filters">
-            <input v-model.trim="filterAction" class="sav-input" placeholder="动作码，如 PLATFORM_CHANGE_ROLLBACK" @keyup.enter="load" />
+            <input v-model.trim="filterAction" class="sav-input" placeholder="按动作名称或编码查询" @keyup.enter="load" />
             <button class="mp-link" @click="load">查询</button>
             <button class="mp-link" @click="askCreatePack">登记证据包导出</button>
           </div>
@@ -44,12 +44,12 @@
             <EmptyState v-if="!evidence.length" title="暂无记录" description="" />
             <DataTable v-else :columns="evidenceColumns" :rows="evidence" row-key="auditId">
               <template #cell-scope="{ row }">
-                <div class="mp-cell-main">{{ row.action }}</div>
-                <div class="mp-cell-sub">{{ row.resource }} · trace {{ row.requestId }}</div>
+                <div class="mp-cell-main">{{ auditActionLabel(row) }}</div>
+                <div class="mp-cell-sub">{{ resourceLabel(row.resource) }} · 请求编号 {{ row.requestId }}</div>
               </template>
               <template #cell-actor="{ row }">{{ row.actorName || row.actorId || '—' }}</template>
               <template #cell-result="{ row }">
-                <StatusTag :type="row.result === 'SUCCESS' ? 'success' : 'danger'" :label="row.result" dot />
+                <StatusTag :type="row.result === 'SUCCESS' ? 'success' : 'danger'" :label="auditResultLabel(row)" dot />
               </template>
             </DataTable>
           </div>
@@ -60,7 +60,7 @@
           <div class="mp-card__body">
             <ul class="sav-list">
               <li v-for="p in packs" :key="p.jobId">
-                任务 {{ p.jobId }} · 范围：{{ p.scopeSnapshot.actionPrefixAllowlist ? p.scopeSnapshot.actionPrefixAllowlist.join('、') : '不受限（全量审计权限）' }}
+                任务 {{ p.jobId }} · 范围：{{ p.scopeSnapshot.actionPrefixAllowlist ? `${p.scopeSnapshot.actionPrefixAllowlist.length} 个受控动作范围` : '不受限（全量审计权限）' }}
               </li>
             </ul>
           </div>
@@ -85,6 +85,10 @@ import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, Err
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord, safeLocalizedText } from '@/utils/presentationSafety'
+
+const FIELD_LABELS = { actor_id: '操作人', action: '动作', resource: '业务对象', occurred_at: '操作时间', request_id: '请求编号', result: '结果', tenant_id: '学校范围', ip_address: '网络地址' }
+const RESOURCE_LABELS = { USER: '用户', ROLE: '角色', PERMISSION: '权限', ORGANIZATION: '组织', FILE: '文件', TENANT: '学校', CONFIG: '系统配置', WORKFLOW: '审批流程' }
 
 export default {
   name: 'SystemAuditView',
@@ -113,6 +117,10 @@ export default {
   },
   created() { this.load() },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
+    auditResultLabel(row) { return presentAuditRecord(row).displayResult },
+    fieldLabel(value) { return FIELD_LABELS[value] || (value ? '必要信息' : '—') },
+    resourceLabel(value) { return safeLocalizedText({ value, dictionary: RESOURCE_LABELS, unknownLabel: '相关业务对象' }) },
     askCreatePack() {
       this.dialogOpen = true
     },

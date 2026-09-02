@@ -403,7 +403,7 @@ export default {
     },
     /** 风险等级展示映射（不向老师透出内部英文枚举） */
     levelLabel(level) {
-      return { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }[level] || level
+      return { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }[level] || (level ? '等级待确认' : '—')
     },
     selectRisk(row) {
       this.riskSelKey = String(row.id)

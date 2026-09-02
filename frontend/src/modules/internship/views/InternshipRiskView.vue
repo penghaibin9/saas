@@ -34,7 +34,7 @@
           <div class="mp-cell-sub">{{ row.className }}</div>
         </template>
         <template #cell-source="{ row }">
-          <div class="mp-cell-main" style="font-size: var(--font-size-sm)">{{ row.source }}</div>
+          <div class="mp-cell-main" style="font-size: var(--font-size-sm)">{{ sourceText(row.source) }}</div>
           <div class="mp-cell-sub">{{ row.sourceDetail }}</div>
         </template>
         <template #cell-level="{ row }">
@@ -75,6 +75,7 @@ import { internshipApi } from '@/modules/internship/api/internship.api'
 import { riskApi } from '@/modules/internship/api/leave-risk.api'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
+import { safeLocalizedText } from '@/utils/presentationSafety'
 
 const EMPTY_FILTERS = () => ({ level: '', status: '', riskCode: '' })
 const PANEL_PRESETS = {
@@ -160,6 +161,7 @@ export default {
     }
   },
   methods: {
+    sourceText(value) { return safeLocalizedText({ value, unknownLabel: '其他风险来源' }) },
     exportFn() {
       if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
       return riskApi.exportRisks({ ...this.filters, batchId: this.batchStore.selectedBatchId })

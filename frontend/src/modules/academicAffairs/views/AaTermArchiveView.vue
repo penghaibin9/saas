@@ -67,9 +67,9 @@ export default {
     this.load()
   },
   methods: {
-    termStatusLabel(s) { return TERM_STATUS_LABEL[s] || s || '' },
+    termStatusLabel(s) { return TERM_STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     termStatusType(s) { return TERM_STATUS_TYPE[s] || 'default' },
-    batchStatusLabel(s) { return BATCH_STATUS_LABEL[s] || s || '' },
+    batchStatusLabel(s) { return BATCH_STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     batchStatusType(s) { return BATCH_STATUS_TYPE[s] || 'default' },
     async load() {
       this.loading = true

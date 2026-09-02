@@ -58,7 +58,7 @@ export const PLATFORM_MANAGEMENT_ROADMAP_CATALOG = [
   {
     key: 'plt-standards', label: '全局标准与发布', icon: '☲', description: '统一角色模板、全局规则和版本发布，学校只能在受控范围内使用。',
     items: [
-      { key: 'plt-product-iam', label: 'Product IAM', path: '/admin/platform/product-iam', permissionKey: 'platform.productIam.view', view: 'product-iam', actions: [action('platform.productIam.manage', '管理角色模板草稿', 'HIGH'), action('platform.productIam.publish', '发布角色模板', 'HIGH')] },
+      { key: 'plt-product-iam', label: '产品身份与权限', path: '/admin/platform/product-iam', permissionKey: 'platform.productIam.view', view: 'product-iam', actions: [action('platform.productIam.manage', '管理角色模板草稿', 'HIGH'), action('platform.productIam.publish', '发布角色模板', 'HIGH')] },
       { key: 'plt-role-templates', label: '平台角色模板', path: '/admin/platform/role-templates', permissionKey: 'platform.role-template.manage', view: 'capability', actions: [action('role-template:publish', '发布角色模板', 'HIGH')] },
       { key: 'plt-global-rules', label: '全局字典与规则', path: '/admin/platform/dictionaries', permissionKey: 'platform.dict.view', view: 'dictionaries', actions: [action('rule:global:update', '更新全局规则', 'HIGH')] },
       { key: 'plt-releases', label: '版本发布与灰度开关', path: '/admin/platform/releases', permissionKey: 'platform.release.manage', view: 'capability', actions: [action('release:canary:start', '开始灰度发布', 'HIGH'), action('release:rollback', '回滚发布', 'HIGH')] },
@@ -77,7 +77,7 @@ export const PLATFORM_MANAGEMENT_ROADMAP_CATALOG = [
     key: 'plt-reliability', label: '集成与运行保障', icon: '↔', description: '平台连接、密钥、同步、存储和运行健康必须可观测、可重试、可审计。',
     items: [
       { key: 'plt-integrations', label: '平台级接口与连接', path: '/admin/platform/integrations', permissionKey: 'platform.integration.view', view: 'integrations', actions: [action('integration:connection:manage', '维护接口连接', 'HIGH'), action('integration:test', '测试连接')] },
-      { key: 'plt-api-access', label: 'API、密钥与 Webhook', path: '/admin/platform/api-access', permissionKey: 'platform.api.view', view: 'api-access', actions: [action('api:credential:rotate', '轮换密钥', 'HIGH'), action('webhook:redeliver', '重新投递 Webhook')] },
+      { key: 'plt-api-access', label: '接口、密钥与回调通知', path: '/admin/platform/api-access', permissionKey: 'platform.api.view', view: 'api-access', actions: [action('api:credential:rotate', '轮换密钥', 'HIGH'), action('webhook:redeliver', '重新投递回调通知')] },
       { key: 'plt-operations', label: '同步任务、资源与服务健康', path: '/admin/platform/sync', permissionKey: 'platform.sync.view', view: 'sync', actions: [action('operation:job:retry', '重试运行任务', 'HIGH'), action('operation:storage:test', '测试文件存储', 'HIGH')] }
     ]
   },

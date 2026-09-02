@@ -143,7 +143,7 @@ export default {
     onItemClick(it) {
       this.selectedItem = it
     },
-    weekdayLabel(value) { return `周${'一二三四五六日'[Number(value) - 1] || value || ''}` },
+    weekdayLabel(value) { return `周${'一二三四五六日'[Number(value) - 1] || (value ? '待确认' : '')}` },
     parityLabel(value) { return { ALL: '全周', ODD: '单周', EVEN: '双周' }[value] || '全周' },
     applyChange(changeType) {
       const originItemId = this.selectedItem?.itemId || this.selectedItem?.scheduleItemId

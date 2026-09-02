@@ -65,7 +65,7 @@ export default {
   },
   created() { this.load() },
   methods: {
-    sLabel(s) { return _SL[s] || s },
+    sLabel(s) { return _SL[s] || '状态待确认' },
     sType(s) { return s === 'APPROVED' ? 'success' : s === 'REJECTED' ? 'danger' : 'primary' },
     async load() {
       this.loading = true

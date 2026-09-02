@@ -102,7 +102,7 @@
           </div>
           <div class="aa-actions">
             <AppButton variant="primary" :loading="deadlineSaving" @click="saveDeadline">{{ task.deadlineReady ? '延长截止时间' : '设置截止时间' }}</AppButton>
-            <span class="mp-note">截止时间是 GradeTask 持久化事实；不会拿学期结束时间代替。逾期提交由应用预检 + MySQL 原子门禁双重阻断。</span>
+            <span class="mp-note">截止时间以成绩录入任务中的持久化记录为准，不使用学期结束时间替代。逾期提交由应用预检与数据库原子门禁双重阻断。</span>
           </div>
         </AppSectionCard>
 
@@ -173,7 +173,7 @@
                 <AppButton :disabled="schemeDraft.length >= 12" @click="addComponent">新增成绩项</AppButton>
                 <AppButton variant="primary" :loading="schemeSaving" @click="saveScheme">保存方案</AppButton>
               </div>
-              <p v-else class="mp-note">方案状态：{{ dynamicData.scheme?.status }}。已开始录分或任务状态已变化，当前只读。</p>
+              <p v-else class="mp-note">方案状态：{{ schemeStatusLabel(dynamicData.scheme?.status) }}。已开始录分或任务状态已变化，当前只读。</p>
             </template>
           </AppSectionCard>
 
@@ -323,7 +323,8 @@ export default {
   },
   created() { this.loadTasks() },
   methods: {
-    statusLabel(status) { return TASK_STATUS[status] || status || '未知' },
+    schemeStatusLabel(value) { return ({ DRAFT: '草稿', PUBLISHED: '已发布', ACTIVE: '生效中', LOCKED: '已锁定', ARCHIVED: '已归档' })[value] || (value ? '状态待确认' : '未设置') },
+    statusLabel(status) { return TASK_STATUS[status] || (status ? '状态待确认' : '未知') },
     statusColor(status) {
       if (['PUBLISHED', 'ARCHIVED'].includes(status)) return 'success'
       if (['RETURNED'].includes(status)) return 'warning'

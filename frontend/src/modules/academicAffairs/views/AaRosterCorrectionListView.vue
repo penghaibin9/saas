@@ -204,8 +204,8 @@ export default {
   methods: {
     // 本模块 getContext().permissionActions 恒为 {}（真实权限边界始终以后端为准，见 API 文件头注释）；
     // 不做客户端按钮级权限遮蔽，越权由后端 403 + toast 提示（与本模块其余真实页面口径一致）。
-    statusLabel(s) { return STATUS_LABEL[s] || s || '' },
-    statusText(s) { return STUDENT_STATUS_TEXT[s] || s || '' },
+    statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
+    statusText(s) { return STUDENT_STATUS_TEXT[s] || (s ? '状态待确认' : '') },
     statusColor(s) {
       if (s === 'APPROVED') return 'success'
       if (s === 'REJECTED') return 'danger'

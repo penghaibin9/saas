@@ -169,7 +169,7 @@ export default {
       this.openCreate()
     },
     contactTypeLabel(t) {
-      return CONTACT_TYPE[t] || t || '—'
+      return CONTACT_TYPE[t] || (t ? '类型待确认' : '—')
     },
     onPick() {
       this.page = 1; this.contactFocusId = ''; this.focusNotice = ''

@@ -1,7 +1,7 @@
 <template>
   <section class="plat-c-workbench" aria-label="文档智能与学生生命周期">
     <header>
-      <div><p class="eyebrow">PLAT-C</p><h2>文档比较与学生里程碑</h2></div>
+      <div><p class="eyebrow">文档能力</p><h2>文档比较与学生里程碑</h2></div>
       <p class="hint">所有结果按源版本实时授权；任一侧失权后比较结果不可读取。</p>
     </header>
 
@@ -9,7 +9,7 @@
       <article class="panel">
         <h3>不可变版本</h3>
         <form class="inline" @submit.prevent="loadVersions">
-          <label>FileAsset ID <input v-model.trim="assetId" inputmode="numeric" required /></label>
+          <label>文件编号 <input v-model.trim="assetId" inputmode="numeric" required /></label>
           <button :disabled="busy">读取授权版本</button>
         </form>
         <p v-if="error" class="error" role="alert">{{ error }}</p>
@@ -17,7 +17,7 @@
           <label v-for="item in versions" :key="item.fileVersionId">
             <input v-model="selected" type="checkbox" :value="item.fileVersionId"
               :disabled="selected.length >= 2 && !selected.includes(item.fileVersionId)" />
-            <span>V{{ item.versionNo }}</span><small>{{ item.ext }} · {{ size(item.sizeBytes) }}</small>
+            <span>第 {{ item.versionNo }} 版</span><small>{{ item.ext }} · {{ size(item.sizeBytes) }}</small>
           </label>
         </div>
         <div class="actions">
@@ -25,15 +25,15 @@
           <button :disabled="selected.length !== 2 || busy" @click="compareSelected">比较所选版本</button>
           <button v-if="jobId" :disabled="busy" @click="refreshJob">刷新处理状态</button>
         </div>
-        <p v-if="jobId" class="status">任务 {{ jobId }}：{{ jobStatus }}</p>
+        <p v-if="jobId" class="status">任务 {{ jobId }}：{{ platformStatusLabel(jobStatus) }}</p>
         <dl v-if="comparison?.summary" class="summary">
           <div v-for="key in ['added','removed','modified','unchanged']" :key="key">
-            <dt>{{ key }}</dt><dd>{{ comparison.summary[key] || 0 }}</dd>
+            <dt>{{ changeTypeLabel(key) }}</dt><dd>{{ comparison.summary[key] || 0 }}</dd>
           </div>
         </dl>
         <ol v-if="comparison?.changes?.length" class="changes">
           <li v-for="(change, index) in comparison.changes" :key="index">
-            <strong>{{ change.status }}</strong>
+            <strong>{{ platformStatusLabel(change.status) }}</strong>
             <span>段落 {{ change.left?.paragraph || '—' }} → {{ change.right?.paragraph || '—' }}</span>
           </li>
         </ol>
@@ -42,15 +42,24 @@
       <article class="panel">
         <h3>跨域里程碑</h3>
         <form class="inline" @submit.prevent="loadTimeline">
-          <label>Student ID <input v-model.trim="studentId" inputmode="numeric" required /></label>
-          <label>模块 <input v-model.trim="sourceModule" placeholder="全部" /></label>
+          <label>学生编号 <input v-model.trim="studentId" inputmode="numeric" required /></label>
+          <label>模块
+            <select v-model="sourceModule">
+              <option value="">全部</option>
+              <option value="academic-affairs">教务管理</option>
+              <option value="graduation">毕业管理</option>
+              <option value="internship">岗位实习</option>
+              <option value="employment">就业服务</option>
+              <option value="student-affairs">学生事务</option>
+            </select>
+          </label>
           <button :disabled="busy">读取</button>
         </form>
         <ol class="timeline">
           <li v-for="item in timeline" :key="item.id">
             <time>{{ formatTime(item.eventTime) }}</time>
-            <div><strong>{{ item.title }}</strong><p>{{ item.summary || item.factType }}</p></div>
-            <button disabled title="等待 typed navigation adapter">打开</button>
+            <div><strong>{{ item.title }}</strong><p>{{ item.summary || factTypeLabel(item.factType) }}</p></div>
+            <button disabled title="导航适配完成后可用">打开</button>
           </li>
         </ol>
         <p v-if="!busy && timelineLoaded && !timeline.length" class="empty">当前授权范围内暂无里程碑。</p>
@@ -61,6 +70,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { documentLifecycleApi as api } from '../api/document-lifecycle.api'
 
 const props = defineProps({ initialStudentId: { type: [String, Number], default: '' } })
@@ -105,7 +115,15 @@ async function loadTimeline() {
   const data = await run(() => api.lifecycle(studentId.value, { sourceModule: sourceModule.value || undefined, pageSize: 50 }))
   timeline.value = data?.items || []; timelineLoaded.value = true
 }
-const size = bytes => `${Math.max(0, Number(bytes || 0) / 1024).toFixed(1)} KB`
+const changeTypeLabel = value => ({ added: '新增', removed: '删除', modified: '修改', unchanged: '未变化' })[value] || '其他变化'
+const factTypeLabel = value => ({
+  ACADEMIC_STATUS_EFFECTIVE: '学籍变更已生效',
+  GRADUATION_ARCHIVED: '毕业档案已归档',
+  INTERNSHIP_COMPLETED: '岗位实习已完成',
+  EMPLOYMENT_VERIFIED: '就业信息已核验',
+  AFFAIRS_LEAVE_APPROVED: '请假申请已批准'
+})[String(value || '').toUpperCase()] || '学生生命周期里程碑'
+const size = bytes => `${Math.max(0, Number(bytes || 0) / 1024).toFixed(1)} 千字节`
 const formatTime = value => value ? new Date(value).toLocaleString('zh-CN') : '—'
 </script>
 

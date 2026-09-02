@@ -453,8 +453,8 @@ export default {
         if (response.bizCode === 'APPROVAL_VERSION_CONFLICT') await this.loadAppeals()
       }
     },
-    discLabel(type) { return DISC[type] || type },
-    deliveryLabel(method) { return DELIVERY[method] || method },
+    discLabel(type) { return DISC[type] || (type ? '类型待确认' : '—') },
+    deliveryLabel(method) { return DELIVERY[method] || (method ? '方式待确认' : '—') },
     appealType(status) {
       return ({
         SUBMITTED: 'warning', REVIEWING: 'processing', UPHELD: 'default',

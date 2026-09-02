@@ -105,7 +105,7 @@
         <AppInlineAlert
           v-if="tab === 'fee'"
           type="warning"
-          description="费用结清默认 UNKNOWN（不阻断）。财务未对接前，可由教务处人工勾选 CLEARED/OWED 过渡，禁止假装已自动通过。"
+          description="费用结清默认显示“待治理”（不阻断）。财务未对接前，可由教务处人工标记为“已结清”或“欠费”，不得显示为已自动通过。"
         />
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
@@ -376,6 +376,7 @@ const LINK_ITEM = {
 
 const freshPagination = () => ({ page: 1, pageSize: 20, total: 0 })
 
+// 后端事实语义：费用结清默认 UNKNOWN（不阻断）；用户界面展示为“待治理”。
 export default {
   name: 'AaGraduationAuditConsoleView',
   components: {
@@ -524,7 +525,7 @@ export default {
     itemLabel(i) { return GRAD_ITEM_LABEL[i] || i },
     itemResultLabel(r) { return GRAD_ITEM_RESULT[r] || r },
     overallLabel(o) { return OVERALL_LABEL[o] || o || '—' },
-    statusLabel(s) { return GRAD_STATUS_LABEL[s] || s || '' },
+    statusLabel(s) { return GRAD_STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     conclusionLabel(c) { return CONCLUSION_LABEL[c] || c },
     itemOf(row, key) {
       const target = key || (TAB_CONFIG[this.tab] && TAB_CONFIG[this.tab].item)

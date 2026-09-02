@@ -24,7 +24,7 @@ def _deployed_commit_sha() -> str:
             return configured
         raise AppException(
             "PRODUCT_IAM_PROVENANCE_UNAVAILABLE",
-            "DEPLOYED_COMMIT_SHA 已配置但不是有效的 40 位 Git SHA，禁止创建或发布 Product IAM 版本",
+            "部署提交摘要已配置但格式无效，禁止创建或发布产品身份与权限版本",
             http_status=503,
         )
 
@@ -47,7 +47,7 @@ def _deployed_commit_sha() -> str:
 
     raise AppException(
         "PRODUCT_IAM_PROVENANCE_UNAVAILABLE",
-        "部署环境既没有有效 DEPLOYED_COMMIT_SHA，也没有可验证的不可变 .release-commit，禁止创建或发布 Product IAM 版本",
+        "部署环境没有可验证的不可变发布提交摘要，禁止创建或发布产品身份与权限版本",
         http_status=503,
     )
 
@@ -70,7 +70,7 @@ def _assert_expected_commit(expected: str, deployed: str) -> None:
     if value != deployed:
         raise AppException(
             "PRODUCT_IAM_SOURCE_COMMIT_MISMATCH",
-            "客户端期望的代码提交与当前部署提交不一致，拒绝生成 Product IAM 草稿",
+            "客户端期望的代码提交与当前部署提交不一致，拒绝生成产品身份与权限草稿",
             http_status=409,
             details={"expectedSourceCommitSha": value, "deployedCommitSha": deployed},
         )
@@ -95,7 +95,7 @@ def publish_release(release_id: str, *, expected_version: int, actor: dict) -> d
         if stored != deployed:
             raise AppException(
                 "PRODUCT_IAM_SOURCE_COMMIT_DRIFT",
-                "Product IAM 草稿对应的部署提交已不是当前部署提交，必须重新生成草稿",
+                "产品身份与权限草稿对应的部署提交已不是当前部署提交，必须重新生成草稿",
                 http_status=409,
                 details={"draftCommitSha": stored, "deployedCommitSha": deployed},
             )

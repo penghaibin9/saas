@@ -17,14 +17,14 @@ async function call(path, options, fallback) {
 }
 
 export const productIamApi = {
-  source: () => call('/platform/product-iam/source', {}, 'Product IAM 真值加载失败'),
-  releases: () => call('/platform/product-iam/releases', {}, 'Product IAM 发布记录加载失败'),
-  createRelease: (body) => call('/platform/product-iam/releases', { method: 'POST', body }, 'Product IAM 草稿创建失败'),
-  impact: (id) => call(`/platform/product-iam/releases/${encodeURIComponent(id)}/impact`, {}, 'Product IAM 影响分析失败'),
+  source: () => call('/platform/product-iam/source', {}, '产品身份与权限真值加载失败'),
+  releases: () => call('/platform/product-iam/releases', {}, '产品身份与权限发布记录加载失败'),
+  createRelease: (body) => call('/platform/product-iam/releases', { method: 'POST', body }, '产品身份与权限草稿创建失败'),
+  impact: (id) => call(`/platform/product-iam/releases/${encodeURIComponent(id)}/impact`, {}, '产品身份与权限影响分析失败'),
   publish: (id, expectedVersion) => call(
     `/platform/product-iam/releases/${encodeURIComponent(id)}/publish`,
     { method: 'POST', body: { expectedVersion } },
-    'Product IAM 发布失败'
+    '产品身份与权限发布失败'
   ),
   templateVersions: (code) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}`, {}, '角色模板版本加载失败'),
   createTemplateDraft: (code, body) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/drafts`, { method: 'POST', body }, '角色模板草稿创建失败'),

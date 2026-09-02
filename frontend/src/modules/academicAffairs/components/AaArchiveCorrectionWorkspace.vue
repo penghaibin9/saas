@@ -307,7 +307,7 @@ export default {
       }
     },
     businessLabel(v) { return v === 'GRADE' ? '成绩' : v === 'GRADUATION' ? '毕业结论' : v },
-    statusLabel(v) { return STATUS_LABEL[v] || v },
+    statusLabel(v) { return STATUS_LABEL[v] || (v ? '待确认' : '—') },
     statusType(v) { return v === 'APPLIED' ? 'success' : v === 'REJECTED' ? 'warning' : 'primary' },
     factState(row) { return String(row?.result || (row?.present ? 'PASS' : 'BLOCKED')).toUpperCase() },
     factLabel(row) { return FACT_LABEL[this.factState(row)] || '待确认' },

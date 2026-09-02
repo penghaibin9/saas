@@ -7,7 +7,7 @@
 
     <div class="spcfg__main">
       <label class="spcfg__switch">
-        <input v-model="form.enabled" type="checkbox" /> 启用学生 PC 门户
+        <input v-model="form.enabled" type="checkbox" /> 启用学生电脑门户
       </label>
       <span class="spcfg__muted">当前套餐：{{ pkgName }}（超出套餐上限的功能，学生端最终一律关闭）</span>
     </div>
@@ -93,7 +93,7 @@ export default {
       },
       featureLabels: {
         upload: '大文件上传', export: '导出', proofDownload: '证明下载', profileCorrection: '信息更正',
-        messageReceipt: '消息回执', materialCenter: '材料中心', workItems: '自助办理', aiAssistant: 'AI 助手'
+        messageReceipt: '消息回执', materialCenter: '材料中心', workItems: '自助办理', aiAssistant: '智能助手'
       },
       packages: [
         { code: 'trial', name: '试用版' }, { code: 'standard', name: '标准版' },

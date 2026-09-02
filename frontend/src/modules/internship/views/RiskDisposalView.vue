@@ -27,7 +27,7 @@
               <span class="mp-note">{{ row.className }}</span>
               <AppRiskTag :level="row.level" class="queue__lvl" />
             </div>
-            <div class="queue__src" :title="row.source">{{ row.source }}</div>
+            <div class="queue__src">{{ sourceText(row.source) }}</div>
             <div class="queue__meta">
               <AppStatusTag :status="row.status" />
               <span class="mp-note">截止 {{ row.deadline || '未设置' }}</span>
@@ -146,6 +146,7 @@ import { canCode } from '@/modules/internship/composables/permission'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
+import { safeLocalizedText } from '@/utils/presentationSafety'
 
 const LEVEL_OPTIONS = [{ label: '高', value: 'HIGH' }, { label: '中', value: 'MEDIUM' }, { label: '低', value: 'LOW' }]
 const STATUS_OPTIONS = [{ label: '待处理', value: 'PENDING_HANDLE' }, { label: '处理中', value: 'PROCESSING' }, { label: '已关闭', value: 'CLOSED' }]
@@ -188,9 +189,9 @@ export default {
         { label: '风险编码', value: d.riskCode },
         { label: '风险标题', value: d.riskTitle },
         { label: '风险等级', value: d.riskLevelLabel },
-        { label: '来源模块', value: d.sourceModule },
-        { label: '来源身份', value: d.sourceType && d.sourceId ? `${d.sourceType} #${d.sourceId}` : '历史未结构化来源' },
-        { label: '来源状态', value: d.sourceStatusLabel || d.sourceStatus || '—' },
+        { label: '来源模块', value: this.sourceModuleLabel(d.sourceModule) },
+        { label: '来源身份', value: d.sourceType && d.sourceId ? `${this.sourceTypeLabel(d.sourceType)} #${d.sourceId}` : '历史未结构化来源' },
+        { label: '来源状态', value: d.sourceStatusLabel || (d.sourceStatus ? '状态待确认' : '—') },
         { label: '当前状态', value: d.statusLabel },
         { label: '最近事件', value: d.latestEvent || '—' },
         { label: '当前动作', value: d.currentAction || '—' },
@@ -252,6 +253,9 @@ export default {
     }
   },
   methods: {
+    sourceText(value) { return safeLocalizedText({ value, unknownLabel: '其他风险来源' }) },
+    sourceModuleLabel(value) { return safeLocalizedText({ value, dictionary: { INTERNSHIP: '实习管理', ATTENDANCE: '考勤打卡', AGREEMENT: '实习协议', ENTERPRISE: '实习企业', WEEKLY_REPORT: '实习周报', COMPLAINT: '投诉反馈' }, unknownLabel: '其他业务模块' }) },
+    sourceTypeLabel(value) { return safeLocalizedText({ value, dictionary: { ATTENDANCE: '考勤记录', AGREEMENT: '实习协议', ENTERPRISE: '实习企业', WEEKLY_REPORT: '实习周报', COMPLAINT: '投诉记录', MANUAL: '人工登记' }, unknownLabel: '业务记录' }) },
     canBtn(code) { return canCode(this.ctx, code) },
     /** navPlan 使用 stage=pending|processing|closed；部分入口仍用 panel= */
     syncRouteFilters() {

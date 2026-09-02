@@ -145,7 +145,7 @@ export default {
   created() { this.load(); this.loadRecords() },
   methods: {
     scheduleBatchColor,
-    statusLabel(s) { return SCHEDULE_BATCH_STATUS[s] || s || '' },
+    statusLabel(s) { return SCHEDULE_BATCH_STATUS[s] || (s ? '状态待确认' : '') },
     openPublished(row) { this.$router.push(`/admin/academic-affairs/schedule/${row.batchId}/views`) },
     openChangeLedger(row) { this.$router.push({ path: '/admin/academic-affairs/schedule-change', query: { termId: row.termId || '' } }) },
     openWorkbench(row) { this.$router.push({ path: '/admin/academic-affairs/scheduling', query: { batchId: row?.batchId || '' } }) },

@@ -146,8 +146,8 @@ export default {
     if (this.filters.termId) await this.load()
   },
   methods: {
-    statusLabel(value) { return LABELS[value] || value || '—' },
-    responsibilityLabel(value) { return RESPONSIBILITY[value] || value || '—' },
+    statusLabel(value) { return LABELS[value] || (value ? '待确认' : '—') },
+    responsibilityLabel(value) { return RESPONSIBILITY[value] || (value ? '待确认' : '—') },
     statusType(value) {
       if (value === 'READY') return 'success'
       if (['MISSING_TASK', 'DUPLICATE_TASK', 'COURSE_UNRESOLVED', 'TERM_UNRESOLVED', 'NO_CLASS', 'OVER_OPENED'].includes(value)) return 'danger'

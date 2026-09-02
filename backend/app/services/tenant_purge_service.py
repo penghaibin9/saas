@@ -69,7 +69,7 @@ def _purge_file_objects(tenant_id: int) -> dict:
         if legal_hold:
             raise AppException(
                 "TENANT_PURGE_LEGAL_HOLD",
-                "仍有文件处于 Legal Hold，禁止物理销毁",
+                "仍有文件处于司法保全中，禁止物理销毁",
                 http_status=409,
                 details={"legalHoldFileCount": legal_hold},
             )
@@ -93,7 +93,7 @@ def _purge_file_objects(tenant_id: int) -> dict:
         for file_id in ids:
             decision, _ = cleanup._mark_pending(tenant_id=int(tenant_id), file_id=int(file_id), now=now)
             if decision == "LEGAL_HOLD":
-                raise AppException("TENANT_PURGE_LEGAL_HOLD", "销毁期间出现新的 Legal Hold，已停止", http_status=409)
+                raise AppException("TENANT_PURGE_LEGAL_HOLD", "销毁期间出现新的司法保全要求，已停止", http_status=409)
             if decision == "ACTIVE_REFERENCE":
                 skipped += 1
                 continue

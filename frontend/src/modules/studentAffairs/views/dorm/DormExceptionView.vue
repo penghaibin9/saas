@@ -26,8 +26,8 @@
       <section class="presence-provider" :class="{ 'is-disabled': !provider.configured }">
         <div><span>门禁 Provider</span><strong>{{ provider.providerLabel || '未配置' }}</strong></div>
         <div><span>最后同步</span><strong>{{ provider.lastSyncAt ? provider.lastSyncAt.slice(0, 16).replace('T', ' ') : '—' }}</strong></div>
-        <div><span>健康状态</span><strong>{{ provider.healthStatus || 'DISABLED' }}</strong></div>
-        <p>{{ provider.notice || '未接入归寝数据' }}。UNKNOWN 表示缺少可靠事实，不等同于未归。</p>
+        <div><span>健康状态</span><strong>{{ providerHealthLabel(provider.healthStatus) }}</strong></div>
+        <p>{{ provider.notice || '未接入归寝数据' }}。“归寝未知”表示缺少可靠事实，不等同于未归。</p>
       </section>
 
       <div class="sa-grid sa-grid--metrics">
@@ -57,7 +57,7 @@
           <template #cell-type="{ row }"><strong>{{ typeLabel(row.excType) }}</strong></template>
           <template #cell-detail="{ row }"><span class="dorm-exception-detail sa-cell-wrap">{{ row.detail || '—' }}</span></template>
           <template #cell-relatedRisk="{ row }">
-            <button v-if="row.relatedRisk?.riskId" type="button" class="dorm-risk-link" @click="goRisk(row)">{{ row.relatedRisk.riskLevel }} · {{ row.relatedRisk.statusLabel || row.relatedRisk.status }}<span v-if="row.relatedRisk.ownerName"> · {{ row.relatedRisk.ownerName }}</span> →</button>
+            <button v-if="row.relatedRisk?.riskId" type="button" class="dorm-risk-link" @click="goRisk(row)">{{ riskLevelLabel(row.relatedRisk.riskLevel) }} · {{ riskStatusLabel(row.relatedRisk.status, row.relatedRisk.statusLabel) }}<span v-if="row.relatedRisk.ownerName"> · {{ row.relatedRisk.ownerName }}</span> →</button>
             <span v-else class="sa-muted">未生成风险</span>
           </template>
           <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'HANDLED' ? 'success' : 'warning'" :label="row.status === 'HANDLED' ? '已处置' : '待处置'" /></template>
@@ -153,6 +153,11 @@ export default {
     '$route.query'() { this.applyRouteFilters(); this.load() }
   },
   methods: {
+    riskLevelLabel(value) { return ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '紧急风险' })[value] || (value ? '等级待确认' : '—') },
+    riskStatusLabel(status, providedLabel = '') { return providedLabel || ({ PENDING_HANDLE: '待处理', PROCESSING: '处理中', CLOSED: '已关闭', RESOLVED: '已解决' })[status] || (status ? '状态待确认' : '—') },
+    providerHealthLabel(status) {
+      return { HEALTHY: '运行正常', DEGRADED: '服务降级', DISABLED: '未启用', ERROR: '连接异常' }[status] || (status ? '状态待确认' : '未启用')
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     applyRouteFilters() {
       const q = this.$route.query || {}

@@ -198,7 +198,7 @@
           <thead><tr><th>类型</th><th>模块</th><th>开始</th><th>结束</th></tr></thead>
           <tbody>
             <tr v-for="w in detail.data.windows" :key="w.windowType + w.moduleCode">
-              <td>{{ w.windowType }}</td><td>{{ w.moduleCode }}</td>
+              <td>{{ windowTypeLabel(w.windowType) }}</td><td>{{ moduleLabel(w.moduleCode) }}</td>
               <td>{{ fmt(w.startAt) }}</td><td>{{ fmt(w.endAt) }}</td>
             </tr>
           </tbody>
@@ -211,7 +211,7 @@
           <tbody>
             <tr v-for="(t, i) in detail.data.transitions" :key="i">
               <td>{{ fmt(t.occurredAt) }}</td>
-              <td>{{ t.fromStatus || '—' }} → {{ t.toStatus }}</td>
+              <td>{{ statusLabel(t.fromStatus) }} → {{ statusLabel(t.toStatus) }}</td>
               <td>{{ t.reason || '—' }}</td>
             </tr>
           </tbody>
@@ -259,6 +259,9 @@ const ACTION_TIP = {
   DRAFT: '退回草稿以便修改学期信息。'
 }
 
+const WINDOW_TYPE_LABEL = { REGISTRATION: '报到注册', COURSE_SELECTION: '选课', GRADE_ENTRY: '成绩录入', MAKEUP_REGISTRATION: '补考报名', RETAKE_REGISTRATION: '重修报名', GRADUATION_AUDIT: '毕业审核', ARCHIVE: '学期归档' }
+const MODULE_LABEL = { SYSTEM: '系统管理', ACADEMIC_AFFAIRS: '教务中心', STUDENT_AFFAIRS: '学工中心', STUDENT: '学生管理', INTERNSHIP: '实习管理', EMPLOYMENT: '就业管理', GRADUATION: '毕业设计' }
+
 export default {
   name: 'SystemAcademicCalendarView',
   components: { ModulePageShell, LoadingState, ErrorState, EmptyState, StatusTag, AppButton, AppDrawer },
@@ -286,8 +289,10 @@ export default {
   },
   created() { this.load() },
   methods: {
-    statusLabel(s) { return STATUS_LABEL[s] || s },
-    actionLabel(s) { return ACTION_LABEL[s] || s },
+    statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '—') },
+    actionLabel(s) { return ACTION_LABEL[s] || (s ? '状态待确认' : '—') },
+    windowTypeLabel(value) { return WINDOW_TYPE_LABEL[value] || (value ? '其他业务窗口' : '—') },
+    moduleLabel(value) { return MODULE_LABEL[value] || (value ? '其他业务模块' : '—') },
     fmt(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '—' },
     fmtDate(value) { return value ? String(value).slice(0, 10) : '—' },
 

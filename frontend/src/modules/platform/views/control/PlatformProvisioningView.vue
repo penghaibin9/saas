@@ -21,7 +21,7 @@
         <AppSectionHeader title="新建开通任务" />
         <div class="pcp__form">
           <span class="pcp__request-key">请求号 {{ form.idempotencyKey }}</span>
-          <input v-model.trim="form.tenantCode" class="pcp__input" placeholder="租户代码 tenantCode" />
+          <input v-model.trim="form.tenantCode" class="pcp__input" placeholder="租户代码" />
           <input v-model.trim="form.tenantName" class="pcp__input" placeholder="学校名称" />
           <select v-model="form.targetPackageCode" class="pcp__input" aria-label="意向套餐">
             <option value="trial">试用版</option><option value="basic">基础版</option>
@@ -62,6 +62,7 @@
         <AppSectionHeader :title="`任务详情：${selected.tenantCode}（${selected.jobId}）`" />
         <p v-if="selected.lastError" class="pcp__error">最近错误：{{ selected.lastError }}</p>
         <DataTable :columns="stepColumns" :rows="selected.steps" row-key="stepCode">
+          <template #cell-stepCode="{ row }">{{ stepLabel(row.stepCode) }}</template>
           <template #cell-status="{ row }">
             <StatusTag :type="stepStatusTone(row.status)" :label="platformStatusLabel(row.status)" dot />
           </template>
@@ -120,6 +121,12 @@ export default {
   },
   methods: {
     platformStatusLabel,
+    stepLabel(code) {
+      return ({
+        TENANT: '创建租户', ROLES: '初始化角色', FIRST_ADMIN: '创建首位管理员',
+        CAPABILITIES: '开通功能能力', IMPLEMENTATION_PROJECT: '创建实施项目', HEALTH_CHECK: '运行健康检查'
+      })[code] || '其他开户步骤'
+    },
     statusTone(s) {
       return { RUNNING: 'warning', SUCCEEDED: 'success', FAILED: 'danger', COMPENSATING: 'warning', CANCELLED: 'default', PENDING: 'default', WAITING_INPUT: 'warning' }[s] || 'default'
     },
@@ -136,7 +143,7 @@ export default {
       }
       const res = await platformControlApi.startProvisioningJob({ ...this.form })
       if (res.code === 0) {
-        toast.success(res.data.provisioningState === 'BOOTSTRAP_READY' ? '基础开户已完成；学校实施与验收仍需继续' : '开通任务已受理：' + res.data.status)
+        toast.success(res.data.provisioningState === 'BOOTSTRAP_READY' ? '基础开户已完成；学校实施与验收仍需继续' : '开通任务已受理：' + platformStatusLabel(res.data.status))
         this.revealedPassword = res.data.revealOnce?.FIRST_ADMIN?.initialPassword || ''
         this.credentialRevealed = false
         this.showCreate = false

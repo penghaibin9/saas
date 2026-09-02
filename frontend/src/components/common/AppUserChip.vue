@@ -179,7 +179,7 @@ export default {
     },
     roleLabel() {
       const code = this.user?.currentRoleCode
-      return ROLE_LABEL[code] || code || ''
+      return ROLE_LABEL[code] || (code ? '其他业务角色' : '')
     },
     tenantName() {
       const tid = this.user?.tenantId

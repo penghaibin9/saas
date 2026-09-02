@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="材料与档案中心"
-    subtitle="统一登记缺项、审核学生补交版本，并查看公共文件版本与真实档案 Manifest。"
+    subtitle="统一登记缺项、审核学生补交版本，并查看公共文件版本与真实档案清单。"
     role-name="辅导员 / 学院学工 / 学工处 / 心理专项授权角色"
     data-scope-name="后端先按业务权限、班级/学院范围与强敏感逐生授权过滤"
     watermark-purpose="学工材料与档案"
@@ -23,15 +23,15 @@
 
       <AppInlineAlert
         type="warning"
-        description="心理与困难认定材料不会先拉全量再前端隐藏；无专项权限或学生范围时，后端列表、总数、文件和 Manifest 均不可枚举。"
+        description="心理与困难认定材料不会先拉全量再前端隐藏；无专项权限或学生范围时，后端列表、总数、文件和档案清单均不可查看。"
       />
 
-      <AppSectionCard v-if="activePreviewVersion" title="站内材料 Reader">
+      <AppSectionCard v-if="activePreviewVersion" title="站内材料阅读器">
         <div class="reader-head">
           <div>
             <strong>{{ activePreviewVersion.fileName }}</strong>
             <small>
-              v{{ activePreviewVersion.versionNo }} · FileVersion {{ activePreviewVersion.fileVersionId }} ·
+              第 {{ activePreviewVersion.versionNo }} 版 · 文件版本 {{ activePreviewVersion.fileVersionId }} ·
               {{ activePreviewVersion.current ? '当前公共版本' : '历史不可变版本' }}
             </small>
           </div>
@@ -85,13 +85,13 @@
             <tbody>
               <tr v-for="row in requirements" :id="`material-requirement-${row.requirementId}`" :key="row.requirementId" :class="{ selectedRow: activeRequirement?.requirementId === row.requirementId, focusRow: String(row.requirementId) === focusRequirementId }" @click="openRequirement(row)">
                 <td @click.stop><input type="checkbox" :disabled="!canRemind(row)" :checked="selected.has(row.requirementId)" @change="toggle(row)" /></td>
-                <td><strong>{{ studentLine(row) }}</strong><small>{{ bizTitleLine(row) }}</small><small class="tech-trace">{{ bizLabel(row.bizType) }} #{{ row.bizId }} · 学生 #{{ row.studentId }} · asset {{ row.assetId || '待回填' }}</small></td>
+                <td><strong>{{ studentLine(row) }}</strong><small>{{ bizTitleLine(row) }}</small><small class="tech-trace">{{ bizLabel(row.bizType) }} #{{ row.bizId }} · 学生 #{{ row.studentId }} · 材料编号 {{ row.assetId || '待回填' }}</small></td>
                 <td><strong>{{ row.itemName }}</strong><small>{{ row.requirementReason || row.itemCode }}</small><span class="sensitivity" :class="sensitivityClass(row.sensitivityLevel)">{{ sensitivityText(row.sensitivityLevel) }}</span></td>
-                <td><span class="status" :class="statusClass(row.status)">{{ row.statusLabel || row.status }}</span><small :class="{ overdue: row.overdue }">{{ row.dueAt ? `截止 ${fmt(row.dueAt)}` : '未设截止时间' }}</small></td>
+                <td><span class="status" :class="statusClass(row.status)">{{ operationStatusLabel(row.status, row.statusLabel) }}</span><small :class="{ overdue: row.overdue }">{{ row.dueAt ? `截止 ${fmt(row.dueAt)}` : '未设截止时间' }}</small></td>
                 <td>
                   <template v-if="row.currentSubmission">
-                    <strong>v{{ row.currentSubmission.versionNo }} · {{ row.currentSubmission.fileName }}</strong>
-                    <small>versionId {{ row.currentSubmission.fileVersionId || '待回填' }} · {{ row.currentSubmission.statusLabel }}</small>
+                    <strong>第 {{ row.currentSubmission.versionNo }} 版 · {{ row.currentSubmission.fileName }}</strong>
+                    <small>版本编号 {{ row.currentSubmission.fileVersionId || '待回填' }} · {{ operationStatusLabel(row.currentSubmission.status, row.currentSubmission.statusLabel) }}</small>
                     <div class="inline-actions"><button class="text-btn" @click.stop="preview(row.currentSubmission)">站内预览</button><button class="text-btn" @click.stop="download(row.currentSubmission)">下载</button></div>
                   </template>
                   <span v-else>尚未提交</span>
@@ -118,29 +118,29 @@
         <AppSectionCard title="历史版本（不可覆盖）">
           <div v-if="!activeRequirement.versions?.length" class="empty">暂无提交版本</div>
           <article v-for="version in activeRequirement.versions || []" :key="version.submissionId" class="version-card" :class="{ previewing: previewIdentity(version) === previewIdentity(activePreviewVersion) }">
-            <div><strong>v{{ version.versionNo }} · {{ version.fileName }}</strong><small>submission {{ version.submissionId }} · fileVersion {{ version.fileVersionId || '待回填' }}</small></div>
-            <div><span class="status" :class="statusClass(version.status)">{{ version.statusLabel }}</span><small>{{ fmt(version.submittedAt) }}</small></div>
+            <div><strong>第 {{ version.versionNo }} 版 · {{ version.fileName }}</strong><small>提交编号 {{ version.submissionId }} · 文件版本 {{ version.fileVersionId || '待回填' }}</small></div>
+            <div><span class="status" :class="statusClass(version.status)">{{ operationStatusLabel(version.status, version.statusLabel) }}</span><small>{{ fmt(version.submittedAt) }}</small></div>
             <div class="inline-actions"><button class="text-btn" @click="preview(version)">站内预览</button><button class="text-btn" @click="download(version)">下载</button></div>
           </article>
         </AppSectionCard>
 
-        <AppSectionCard title="最新真实档案 Manifest">
+        <AppSectionCard title="最新真实档案清单">
           <div v-if="manifestLoading" class="empty">正在读取档案清单…</div>
           <div v-else-if="manifestError" class="empty">{{ manifestError }}</div>
           <div v-else-if="!manifest" class="empty">该学生尚未完成档案冻结，或当前角色无档案查看权限</div>
           <template v-else>
-            <dl class="manifest-meta"><div><dt>Manifest ID</dt><dd>{{ manifest.manifestId }}</dd></div><div><dt>Revision</dt><dd>{{ manifest.revision }}</dd></div><div><dt>状态</dt><dd>{{ manifest.status }}</dd></div><div><dt>SHA-256</dt><dd class="mono">{{ manifest.manifestSha256 }}</dd></div></dl>
-            <div class="table-wrap"><table><thead><tr><th>材料</th><th>versionId</th><th>文件</th><th>扫描</th><th>审核</th><th>SHA-256</th></tr></thead><tbody><tr v-for="item in manifest.items || []" :key="`${item.materialCode}-${item.versionId}`"><td>{{ item.materialCode }}</td><td class="mono">{{ item.versionId }}</td><td>{{ item.fileName }}</td><td>{{ item.scanResult }}</td><td>{{ item.reviewStatus }}</td><td class="mono">{{ shortHash(item.sha256) }}</td></tr></tbody></table></div>
+            <dl class="manifest-meta"><div><dt>清单编号</dt><dd>{{ manifest.manifestId }}</dd></div><div><dt>修订号</dt><dd>{{ manifest.revision }}</dd></div><div><dt>状态</dt><dd>{{ operationStatusLabel(manifest.status, manifest.statusLabel) }}</dd></div><div><dt>文件摘要（SHA-256）</dt><dd class="mono">{{ manifest.manifestSha256 }}</dd></div></dl>
+            <div class="table-wrap"><table><thead><tr><th>材料</th><th>版本编号</th><th>文件</th><th>扫描</th><th>审核</th><th>文件摘要</th></tr></thead><tbody><tr v-for="item in manifest.items || []" :key="`${item.materialCode}-${item.versionId}`"><td>{{ item.materialName || item.materialCode }}</td><td class="mono">{{ item.versionId }}</td><td>{{ item.fileName }}</td><td>{{ scanResultLabel(item.scanResult) }}</td><td>{{ reviewStatusLabel(item.reviewStatus) }}</td><td class="mono">{{ shortHash(item.sha256) }}</td></tr></tbody></table></div>
           </template>
         </AppSectionCard>
       </div>
 
       <AppSectionCard title="安全批次与逐条结果">
         <div class="batch-grid">
-          <article v-for="job in batchJobs" :key="job.batchJobId" class="batch-card" :class="{ active: activeBatch?.batchJobId === job.batchJobId }" @click="openBatch(job)"><div><strong>{{ job.batchNo }}</strong><small>{{ job.statusLabel || job.status }} · 成功 {{ job.successCount }} / 失败 {{ job.failureCount }}</small></div><button v-if="(job.allowedActions || []).includes('RETRY_FAILED')" class="secondary small" :disabled="acting === `retry-${job.batchJobId}`" @click.stop="retry(job)">重试失败项</button></article>
+          <article v-for="job in batchJobs" :key="job.batchJobId" class="batch-card" :class="{ active: activeBatch?.batchJobId === job.batchJobId }" @click="openBatch(job)"><div><strong>{{ job.batchNo }}</strong><small>{{ operationStatusLabel(job.status, job.statusLabel) }} · 成功 {{ job.successCount }} / 失败 {{ job.failureCount }}</small></div><button v-if="(job.allowedActions || []).includes('RETRY_FAILED')" class="secondary small" :disabled="acting === `retry-${job.batchJobId}`" @click.stop="retry(job)">重试失败项</button></article>
           <p v-if="!batchJobs.length" class="empty">暂无批次记录</p>
         </div>
-        <div v-if="activeBatch" class="batch-detail"><h4>{{ activeBatch.batchNo }} · {{ activeBatch.statusLabel }}</h4><table><thead><tr><th>记录</th><th>动作</th><th>结果</th><th>尝试次数</th><th>失败原因</th></tr></thead><tbody><tr v-for="item in activeBatch.items || []" :key="item.itemId"><td>{{ item.itemKey }}</td><td>{{ item.action }}</td><td><span class="status" :class="statusClass(item.status)">{{ item.status }}</span></td><td>{{ item.attemptCount }}</td><td>{{ item.errorMessage || '—' }}</td></tr></tbody></table></div>
+        <div v-if="activeBatch" class="batch-detail"><h4>{{ activeBatch.batchNo }} · {{ operationStatusLabel(activeBatch.status, activeBatch.statusLabel) }}</h4><table><thead><tr><th>记录</th><th>动作</th><th>结果</th><th>尝试次数</th><th>失败原因</th></tr></thead><tbody><tr v-for="item in activeBatch.items || []" :key="item.itemId"><td>{{ item.itemKey }}</td><td>{{ batchActionLabel(item.action) }}</td><td><span class="status" :class="statusClass(item.status)">{{ operationStatusLabel(item.status, item.statusLabel) }}</span></td><td>{{ item.attemptCount }}</td><td>{{ item.errorMessage || '—' }}</td></tr></tbody></table></div>
       </AppSectionCard>
     </AppGlobalState>
   </AppPageShell>
@@ -151,6 +151,12 @@ import { AppGlobalState, AppInlineAlert, AppPageShell, AppPagination, AppSection
 import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
 import { affairsOperationsApi } from '@/modules/studentAffairs/api/operations.api'
 import { toast } from '@/utils/toast'
+import { safeLocalizedText } from '@/utils/presentationSafety'
+
+const OPERATION_STATUS_LABELS = { MISSING: '待补交', RETURNED: '退回重补', PENDING_REVIEW: '待审核', ACCEPTED: '已验收', WAIVED: '已免交', CREATED: '等待处理', RUNNING: '处理中', SUCCEEDED: '已完成', FAILED: '失败', DEAD: '多次失败，需处理', EXPIRED: '已过期', REVOKED: '已撤销', ACTIVE: '生效中', FROZEN: '已冻结' }
+const SCAN_RESULT_LABELS = { CLEAN: '已通过', NOT_REQUIRED: '无需扫描', PENDING: '待扫描', INFECTED: '未通过', FAILED: '扫描失败' }
+const REVIEW_STATUS_LABELS = { PENDING: '待审核', ACCEPTED: '已验收', RETURNED: '已退回', WAIVED: '已免交', APPROVED: '已通过', REJECTED: '未通过' }
+const BATCH_ACTION_LABELS = { CREATE: '创建', GENERATE: '生成', REMIND: '提醒', RETRY: '重试', RETRY_FAILED: '重试失败项', ARCHIVE: '归档', FREEZE: '冻结' }
 
 export default {
   name: 'MaterialOperationsView',
@@ -195,6 +201,10 @@ export default {
     '$route.query'() { this.applyRouteFocus(); this.applyRouteBizContext() }
   },
   methods: {
+    operationStatusLabel(status, providedLabel = '') { return providedLabel || safeLocalizedText({ value: status, dictionary: OPERATION_STATUS_LABELS, unknownLabel: '状态待确认' }) },
+    scanResultLabel(value) { return safeLocalizedText({ value, dictionary: SCAN_RESULT_LABELS, unknownLabel: '扫描结果待确认' }) },
+    reviewStatusLabel(value) { return safeLocalizedText({ value, dictionary: REVIEW_STATUS_LABELS, unknownLabel: '审核结果待确认' }) },
+    batchActionLabel(value) { return safeLocalizedText({ value, dictionary: BATCH_ACTION_LABELS, unknownLabel: '业务操作' }) },
     fmt(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' },
     previewIdentity(version) {
       if (!version?.fileId || !version?.fileVersionId) return ''
@@ -222,7 +232,7 @@ export default {
       return this.loadRequirements()
     },
     shortHash(value) { const text = String(value || ''); return text ? `${text.slice(0, 10)}…${text.slice(-8)}` : '-' },
-    bizLabel(value) { return this.bizTypes.find((x) => x.value === value)?.label || value },
+    bizLabel(value) { return this.bizTypes.find((x) => x.value === value)?.label || (value ? '待确认' : '—') },
     studentLine(row) {
       const c = row.businessContext || {}
       const parts = [c.studentName, c.studentNo, c.className].filter(Boolean)
@@ -236,7 +246,7 @@ export default {
     allows(row, action) { return (row.allowedActions || []).includes(action) },
     canRemind(row) { return ['MISSING', 'RETURNED'].includes(row.status) && row.version !== undefined && row.version !== null },
     statusClass(status) { return { ACCEPTED: 'ok', SUCCESS: 'ok', WAIVED: 'ok', APPROVED: 'ok', PENDING_REVIEW: 'wait', SUBMITTED: 'wait', MISSING: 'warn', RETURNED: 'warn', REJECTED: 'bad', FAILED: 'bad', PARTIAL_SUCCESS: 'warn', SUPERSEDED: 'muted' }[status] || '' },
-    sensitivityText(value) { return { PERSONAL: '个人', SENSITIVE: '敏感', HIGHLY_SENSITIVE: '强敏感' }[value] || value || '敏感' },
+    sensitivityText(value) { return { PERSONAL: '个人', SENSITIVE: '敏感', HIGHLY_SENSITIVE: '强敏感' }[value] || (value ? '待确认' : '敏感') },
     sensitivityClass(value) { return value === 'HIGHLY_SENSITIVE' ? 'high' : (value === 'SENSITIVE' ? 'sensitive' : '') },
     async load() { this.loading = true; this.errorMessage = ''; try { await Promise.all([this.loadRequirements(), this.loadBatches()]) } catch (e) { this.errorMessage = e?.message || '材料工作台加载失败' } finally { this.loading = false } },
     async applyRouteBizContext() {

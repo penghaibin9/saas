@@ -7,11 +7,11 @@
           <small>操作回执 · {{ receipt.actionLabel || '已完成' }}</small>
           <strong>{{ receipt.objectLabel || '业务对象已更新' }}</strong>
         </div>
-        <AppStatusTag :type="tone">{{ receipt.statusLabel || receipt.status || '成功' }}</AppStatusTag>
+        <AppStatusTag :type="tone">{{ statusLabel }}</AppStatusTag>
       </div>
       <dl class="acr__facts">
-        <div><dt>对象 ID</dt><dd>{{ receipt.id || '—' }}</dd></div>
-        <div><dt>服务端版本</dt><dd>{{ receipt.version == null ? '—' : 'v' + receipt.version }}</dd></div>
+        <div><dt>对象编号</dt><dd>{{ receipt.id || '—' }}</dd></div>
+        <div><dt>服务端版本</dt><dd>{{ receipt.version == null ? '—' : '第 ' + receipt.version + ' 版' }}</dd></div>
         <div><dt>审计结果</dt><dd>{{ receipt.auditText || '动作与业务更新已提交' }}</dd></div>
         <div><dt>下一步</dt><dd>{{ receipt.nextStep || '可继续处理下一条' }}</dd></div>
       </dl>
@@ -33,6 +33,10 @@ export default {
   emits: ['close'],
   props: { receipt: { type: Object, default: null } },
   computed: {
+    statusLabel() {
+      if (this.receipt?.statusLabel) return this.receipt.statusLabel
+      return { SUCCESS: '成功', COMPLETED: '已完成', APPROVED: '已通过', BLOCKED: '已阻断', FAILED: '失败', REJECTED: '已驳回', WARNING: '需关注', PENDING: '待处理', UNKNOWN: '待确认' }[String(this.receipt?.status || '').toUpperCase()] || (this.receipt?.status ? '状态待确认' : '成功')
+    },
     tone() {
       if (this.receipt?.type) return this.receipt.type
       const status = String(this.receipt?.status || '').toUpperCase()

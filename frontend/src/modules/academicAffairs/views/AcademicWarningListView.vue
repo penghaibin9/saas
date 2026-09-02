@@ -224,10 +224,10 @@ export default {
       return pa && !pa.allowed ? pa.reason : ''
     },
     typeLabel(v) {
-      return (this.ctx.statusOptions.warningType.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.warningType.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     statusLabel(v) {
-      return (this.ctx.statusOptions.warningStatus.find((o) => o.value === v) || {}).label || v
+      return (this.ctx.statusOptions.warningStatus.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—')
     },
     onPageChange(page) {
       this.pagination.page = page

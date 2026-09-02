@@ -540,7 +540,7 @@ export default {
       return STATUS_TYPE[s] || 'default'
     },
     batchStatusLabel(s) {
-      return BATCH_STATUS[s] || s
+      return BATCH_STATUS[s] || (s ? '状态待确认' : '—')
     },
     async loadBatches() {
       const res = await studentAffairsApi.getAidBatches({ page: 1, pageSize: 100 })

@@ -289,8 +289,8 @@ export default {
     },
     canBtn(code) { return canCode(this.ctx, code) },
     fmt(v) { return v ? formatDateTime(v) : '' },
-    extLabel(v) { return EXT_LABEL[v] || v },
-    cancelLabel(v) { return CANCEL_LABEL[v] || v },
+    extLabel(v) { return EXT_LABEL[v] || (v ? '待确认' : '—') },
+    cancelLabel(v) { return CANCEL_LABEL[v] || (v ? '待确认' : '—') },
     itemIndex(id) {
       const index = this.rows.findIndex((row) => String(row.id) === String(id))
       return (this.page - 1) * this.pageSize + index + 1

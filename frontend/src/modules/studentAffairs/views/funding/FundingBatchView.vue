@@ -170,8 +170,8 @@ export default {
       this.saving = false
     },
     projectName(id) { const p = this.projects.find((x) => x.projectId === id); return p ? p.projectName : ('项目#' + id) },
-    typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[t] || t || '' },
-    statusLabel(s) { return BATCH_STATUS[s] || s || '—' },
+    typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[t] || (t ? '类型待确认' : '') },
+    statusLabel(s) { return BATCH_STATUS[s] || (s ? '状态待确认' : '—') },
     statusType(s) {
       if (s === 'OPEN') return 'success'
       if (['REVIEWING', 'PUBLICITY'].includes(s)) return 'processing'

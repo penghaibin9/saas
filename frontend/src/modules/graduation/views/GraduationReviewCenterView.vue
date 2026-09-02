@@ -72,7 +72,7 @@
         <template v-else-if="activeTask && detail">
           <div class="w74-case-head">
             <span class="w74-case-type">{{ caseLabel(activeTask.caseType) }}</span>
-            <span :class="['w74-status', `is-${String(activeTask.statusGroup || '').toLowerCase()}`]">{{ activeTask.statusLabel || activeTask.status }}</span>
+            <span :class="['w74-status', `is-${String(activeTask.statusGroup || '').toLowerCase()}`]">{{ taskStatusLabel(activeTask) }}</span>
             <span v-if="activeTask.overdue" class="w74-overdue">已逾期</span>
           </div>
 
@@ -278,7 +278,8 @@ export default {
     this.previewProvider?.dispose?.()
   },
   methods: {
-    caseLabel(type) { return CASE_OPTIONS.find((item) => item.value === type)?.label || type || '任务' },
+    taskStatusLabel(task) { return task?.statusLabel || (task?.status ? '状态待确认' : '—') },
+    caseLabel(type) { return CASE_OPTIONS.find((item) => item.value === type)?.label || (type ? '类型待确认' : '任务') },
     versionKey(item) { return item?.fileVersionId ?? item?.versionId ?? item?.id ?? null },
     fileKey(item) { return item?.fileKey ?? item?.fileId ?? this.versionKey(item) },
     draftKey() {

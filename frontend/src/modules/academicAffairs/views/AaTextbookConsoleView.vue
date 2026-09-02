@@ -205,7 +205,7 @@ export default {
     rowKey(row) {
       return row.textbookId || row.selectionId || row.reviewBatchId || row.orderBatchId || row.distributionBatchId || row.feeId
     },
-    statusLabel(status) { return LABELS[status] || status || '—' },
+    statusLabel(status) { return LABELS[status] || (status ? '状态待确认' : '—') },
     statusType(status) {
       if (['PAID', 'APPROVED', 'ARRIVED', 'ARCHIVED', 'COMPLETED'].includes(status)) return 'success'
       if (['CANCELLED', 'RETURNED', 'WAIVED'].includes(status)) return 'info'

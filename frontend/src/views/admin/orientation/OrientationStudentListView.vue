@@ -275,7 +275,7 @@ export default {
       return { ...action, disabled: p ? !p.allowed : false, disabledReason: p?.reason }
     },
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     async init() {
       const [ctx, status, filter, cols, batch, tpl, exp, batches] = await Promise.all([

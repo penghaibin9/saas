@@ -127,13 +127,13 @@
           <div class="mp-kv"><span class="mp-kv__k">专业</span><span class="mp-kv__v">{{ detail.data.majorName || '未设置' }}</span></div>
           <div class="mp-kv"><span class="mp-kv__k">年级 / 班级</span><span class="mp-kv__v">{{ [detail.data.grade, detail.data.className].filter(Boolean).join(' / ') || '未设置' }}</span></div>
           <div class="mp-kv"><span class="mp-kv__k">学籍状态</span><span class="mp-kv__v">{{ detail.data.studentStatusLabel }}</span></div>
-          <div class="mp-kv"><span class="mp-kv__k">生命周期阶段</span><span class="mp-kv__v">{{ detail.data.currentStage || '未设置' }}</span></div>
+          <div class="mp-kv"><span class="mp-kv__k">生命周期阶段</span><span class="mp-kv__v">{{ stageLabel(detail.data.currentStage) }}</span></div>
         </template>
         <div v-else class="mp-kv"><span class="mp-kv__k">业务归属</span><span class="mp-kv__v">{{ detail.data.orgName }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">手机号</span><span class="mp-kv__v">{{ maskPhone(detail.data.phone) }} <span class="mp-note" :title="reason('viewSensitiveFull')">（完整号码需审计授权）</span></span></div>
         <div class="mp-kv"><span class="mp-kv__k">邮箱</span><span class="mp-kv__v">{{ maskEmail(detail.data.email) }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">状态</span><span class="mp-kv__v"><StatusTag :type="statusTone(detail.data.status)" :label="detail.data.statusLabel" dot /></span></div>
-        <div class="mp-kv"><span class="mp-kv__k">账号来源</span><span class="mp-kv__v">{{ detail.data.source }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">账号来源</span><span class="mp-kv__v">{{ sourceLabel(detail.data.source) }}</span></div>
 
         <template v-if="!isStudent">
           <h4 class="su-sec">角色与数据范围</h4>
@@ -144,7 +144,7 @@
         </template>
         <template v-else>
           <h4 class="su-sec">身份绑定</h4>
-          <div class="mp-kv"><span class="mp-kv__k">固定身份</span><span class="mp-kv__v">学生（STUDENT，不可改为教职工角色）</span></div>
+          <div class="mp-kv"><span class="mp-kv__k">固定身份</span><span class="mp-kv__v">学生（固定身份，不可改为教职工角色）</span></div>
           <div class="mp-kv"><span class="mp-kv__k">学生主档</span><span class="mp-kv__v">{{ detail.data.profileBound ? '已稳定绑定' : '未绑定，需进入账号异常排查' }}</span></div>
         </template>
 
@@ -163,7 +163,7 @@
           <thead><tr><th>操作人</th><th>动作</th><th>影响</th><th>时间</th></tr></thead>
           <tbody>
             <tr v-for="(a, i) in detail.data.auditTrail" :key="i">
-              <td class="is-who">{{ a.who }}</td><td>{{ a.action }}</td><td>{{ a.affected }}</td><td>{{ a.time }}</td>
+              <td class="is-who">{{ a.who }}</td><td>{{ auditActionLabel(a) }}</td><td>{{ a.affected }}</td><td>{{ a.time }}</td>
             </tr>
           </tbody>
         </table>
@@ -291,6 +291,10 @@ import RoleScopeEditor from '@/modules/system/components/RoleScopeEditor.vue'
 import ExportDialog from '@/modules/system/components/ExportDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord } from '@/utils/presentationSafety'
+
+const STAGE_LABELS = { ORIENTATION: '迎新报到', ENROLLED: '在校学习', INTERNSHIP: '岗位实习', GRADUATION: '毕业审核', EMPLOYMENT: '就业跟踪', ALUMNI: '校友阶段', ARCHIVED: '已归档' }
+const SOURCE_LABELS = { MANUAL: '人工创建', IMPORT: '批量导入', ORIENTATION: '迎新建档', SYNC: '外部系统同步', SYSTEM: '系统生成', API: '接口同步' }
 
 const EMPTY_FILTERS = () => ({
   keyword: '', role: '', status: '', collegeId: '', classId: '', grade: '', studentStatus: ''
@@ -463,6 +467,9 @@ export default {
     }
   },
   methods: {
+    stageLabel(value) { return STAGE_LABELS[value] || (value ? '阶段待确认' : '未设置') },
+    sourceLabel(value) { return SOURCE_LABELS[value] || (/\p{Script=Han}/u.test(String(value || '')) ? value : (value ? '来源待确认' : '未设置')) },
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     can(key) {
       const pa = this.ctx.permissionActions[key]
       return !!(pa && pa.visible && pa.allowed)

@@ -78,7 +78,7 @@ export default {
   created() { this.load() },
   methods: {
     nodeLabel(n) { return n ? (NODE_LABEL[n] || n) : '—' },
-    statusLabel(s) { return STATUS_LABEL[s] || s || '' },
+    statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     async load() {
       this.loading = true; this.error = ''
       const res = await academicAffairsApi.getStatusChanges({ ...this.filters, page: this.page, pageSize: this.pageSize })

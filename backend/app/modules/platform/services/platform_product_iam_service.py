@@ -194,10 +194,10 @@ def list_releases() -> list[dict]:
 def create_release_draft(*, reason: str, source_commit_sha: str, actor: dict, request_id: str) -> dict:
     reason = str(reason or "").strip()
     if len(reason) < 5:
-        raise AppException("VALIDATION_ERROR", "Product IAM 发布草稿必须填写至少5个字符的原因")
+        raise AppException("VALIDATION_ERROR", "产品身份与权限发布草稿必须填写至少 5 个字符的原因")
     raw_request = str(request_id or "").strip()
     if len(raw_request) < 8:
-        raise AppException("IDEMPOTENCY_KEY_REQUIRED", "创建 Product IAM 草稿必须提供 requestId", http_status=422)
+        raise AppException("IDEMPOTENCY_KEY_REQUIRED", "创建产品身份与权限草稿必须提供请求编号", http_status=422)
     snapshot = source_snapshot()
     key = "product-iam-" + hashlib.sha256(raw_request.encode()).hexdigest()[:32]
     db = get_sessionmaker()()
@@ -211,7 +211,7 @@ def create_release_draft(*, reason: str, source_commit_sha: str, actor: dict, re
         command_digest = _hash({"reason": reason, "sourceCommitSha": source_commit_sha, "sourceDigest": snapshot["sourceDigest"]})
         if existing is not None:
             if (existing.config_json or {}).get("commandDigest") != command_digest:
-                raise AppException("IDEMPOTENCY_CONFLICT", "相同 requestId 已用于不同 Product IAM 草稿", http_status=409)
+                raise AppException("IDEMPOTENCY_CONFLICT", "相同请求编号已用于不同的产品身份与权限草稿", http_status=409)
             return _row(existing)
         row = PlatformConfig(
             tenant_id=0,
@@ -251,7 +251,7 @@ def impact(release_id: str) -> dict:
             PlatformConfig.is_deleted.is_(False),
         )).first()
         if target is None:
-            raise AppException("DATA_NOT_FOUND", "Product IAM release 不存在", http_status=404)
+            raise AppException("DATA_NOT_FOUND", "产品身份与权限发布版本不存在", http_status=404)
         previous = db.scalars(select(PlatformConfig).where(
             PlatformConfig.tenant_id == 0,
             PlatformConfig.config_type == CONFIG_TYPE,
@@ -297,11 +297,11 @@ def publish_release(release_id: str, *, expected_version: int, actor: dict) -> d
             PlatformConfig.is_deleted.is_(False),
         ).with_for_update()).first()
         if row is None:
-            raise AppException("DATA_NOT_FOUND", "Product IAM release 不存在", http_status=404)
+            raise AppException("DATA_NOT_FOUND", "产品身份与权限发布版本不存在", http_status=404)
         if row.status != "DRAFT":
-            raise AppException("IMMUTABLE_RELEASE", "已发布 Product IAM 版本不可再次修改或发布", http_status=409)
+            raise AppException("IMMUTABLE_RELEASE", "已发布的产品身份与权限版本不可再次修改或发布", http_status=409)
         if int(row.version or 0) != int(expected_version):
-            raise AppException("DATA_CONFLICT", "Product IAM 草稿已变化，请刷新后重试", http_status=409)
+            raise AppException("DATA_CONFLICT", "产品身份与权限草稿已变化，请刷新后重试", http_status=409)
         data = dict(row.config_json or {})
         if data.get("sourceDigest") != current_source.get("sourceDigest"):
             raise AppException(

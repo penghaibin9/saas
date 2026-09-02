@@ -489,7 +489,7 @@ export default {
       if (!this.workbench) return []
       const row = this.workbench
       return [
-        { label: '教学任务', value: row.totalTasks, note: `已确认 ${row.confirmedTaskCount} · READY ${row.readyTaskCount}`, alert: row.notReadyTaskCount > 0 },
+        { label: '教学任务', value: row.totalTasks, note: `已确认 ${row.confirmedTaskCount} · 已就绪 ${row.readyTaskCount}`, alert: row.notReadyTaskCount > 0 },
         { label: '已排任务', value: row.scheduledTasks, note: `任务触达率 ${row.completionRate}%` },
         { label: '未排 / 漏排', value: `${row.unplacedTaskCount} / ${row.partiallyScheduledTaskCount}`, note: `共 ${row.missingTaskCount} 个待补齐`, alert: row.missingTaskCount > 0 },
         { label: '应排 / 已排节次', value: `${row.expectedHours} / ${row.scheduledHours}`, note: `剩余 ${Math.max(0, row.expectedHours - row.scheduledHours)} 节`, alert: row.expectedHours !== row.scheduledHours },
@@ -542,7 +542,7 @@ export default {
       else { this.workbench = null; this.workbenchError = response.message || '排课工作台加载失败' }
     },
     batchStatusLabel(status) {
-      return ({ DRAFT: '编排中', PRE_PUBLISHED: '预发布', PUBLISHED: '已正式发布', SUPERSEDED: '已被新版本替代', ARCHIVED: '已归档' })[status] || status || '状态待确认'
+      return ({ DRAFT: '编排中', PRE_PUBLISHED: '预发布', PUBLISHED: '已正式发布', SUPERSEDED: '已被新版本替代', ARCHIVED: '已归档' })[status] || (status ? '状态待确认' : '状态待确认')
     },
     weekRangeText(row) { return row.startWeek && row.endWeek ? `第 ${row.startWeek}-${row.endWeek} 周` : '周次待确认' },
     roomRequirementText(value) { return value ? `教室要求：${value}` : '教室类型不限' },
@@ -738,7 +738,7 @@ export default {
       if (meta.control === 'BOOLEAN') return value ? '开启' : '关闭'
       return '—'
     },
-    dimLabel(value) { return ({ TEACHER: '教师冲突', CLASS: '班级冲突', CLASSROOM: '教室冲突' })[value] || value },
+    dimLabel(value) { return ({ TEACHER: '教师冲突', CLASS: '班级冲突', CLASSROOM: '教室冲突' })[value] || (value ? '待确认' : '—') },
     async loadAvails() {
       const response = await api.listAvailability({ termId: this.termId || undefined })
       this.avails = response.code === 0 ? (response.data.items || []) : []

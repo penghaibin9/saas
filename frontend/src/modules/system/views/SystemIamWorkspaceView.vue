@@ -113,49 +113,49 @@
         <section id="access-explain" class="card explain-card">
           <header class="section-head"><div><h3>Access Explain</h3><p class="muted">解释“某个学校成员为什么能/不能访问具体对象”。IAM 通过不等于业务最终允许；Scope Target 与 Resource Context 会交给 canonical Domain Guard 裁决，缺失上下文时后端继续 fail-closed。</p></div></header>
           <form class="explain-form" @submit.prevent="explainAccess">
-            <label>学校成员 User ID<input v-model.trim="explain.userId" required inputmode="numeric" placeholder="例如 1024" /></label>
+            <label>学校成员编号<input v-model.trim="explain.userId" required inputmode="numeric" placeholder="例如 1024" /></label>
             <label>模块<input v-model.trim="explain.moduleKey" required /></label>
             <label>权限
               <select v-model="explain.permissionCode" required>
                 <option v-for="item in explainPermissionOptions" :key="item.permissionCode" :value="item.permissionCode">{{ item.permissionCode }}</option>
               </select>
             </label>
-            <label>Scope Target 类型
+            <label>数据范围目标类型
               <select v-model="explain.scopeTargetType" required>
                 <option value="COLLEGE">学院</option><option value="MAJOR">专业</option><option value="CLASS">班级</option><option value="TERMINAL">终端范围</option>
               </select>
             </label>
-            <label>Scope Target ID<input v-model.trim="explain.scopeTargetId" required placeholder="学院/专业/班级 ID" /></label>
-            <label>Resource 类型
+            <label>数据范围目标编号<input v-model.trim="explain.scopeTargetId" required placeholder="学院、专业或班级编号" /></label>
+            <label>业务对象类型
               <select v-model="explain.resourceType" required>
                 <option value="STUDENT">学生</option><option value="INTERN_STUDENT">实习学生</option><option value="GRADUATION_STUDENT">毕设学生</option><option value="USER">用户</option><option value="CLASS">班级</option><option value="MAJOR">专业</option><option value="COLLEGE">学院</option><option value="BUILDING">楼栋</option><option value="DORM_BUILDING">宿舍楼</option>
               </select>
             </label>
-            <label>Resource ID<input v-model.trim="explain.resourceId" required placeholder="被解释的具体对象 ID" /></label>
+            <label>业务对象编号<input v-model.trim="explain.resourceId" required placeholder="被解释的具体对象编号" /></label>
             <AppButton variant="primary" type="submit" :loading="explaining">解释访问</AppButton>
           </form>
 
           <div v-if="explainResult" class="decision" :class="decisionClass">
-            <div class="decision-head"><strong>{{ decisionTitle }}</strong><span class="mono">{{ explainResult.reasonCode || '—' }}</span></div>
+            <div class="decision-head"><strong>{{ decisionTitle }}</strong><span>{{ reasonCodeLabel(explainResult.reasonCode) }}</span></div>
             <p>{{ explainResult.message || decisionMessage }}</p>
-            <p v-if="explainResult.subject" class="muted">成员：{{ explainResult.subject.realName || explainResult.subject.loginName }} · {{ explainResult.subject.loginName }} · {{ explainResult.subject.status }}</p>
+            <p v-if="explainResult.subject" class="muted">成员：{{ explainResult.subject.realName || explainResult.subject.loginName }} · {{ explainResult.subject.loginName }} · {{ memberStatusLabel(explainResult.subject.status) }}</p>
             <div class="context-evidence">
-              <span>最终裁决：<strong>{{ explainResult.finalDecision || '—' }}</strong></span>
-              <span>Scope：<strong>{{ explainResult.scopeTargetType || '—' }}:{{ explainResult.scopeTargetId || '—' }}</strong></span>
-              <span>Resource：<strong>{{ explainResult.resourceType || '—' }}</strong> · {{ explainResult.resourceIdSupplied ? 'ID 已提供' : 'ID 缺失' }}</span>
+              <span>最终裁决：<strong>{{ decisionLabel(explainResult.finalDecision) }}</strong></span>
+              <span>数据范围：<strong>{{ scopeTypeLabel(explainResult.scopeTargetType) }}：{{ explainResult.scopeTargetId || '—' }}</strong></span>
+              <span>业务对象：<strong>{{ resourceTypeLabel(explainResult.resourceType) }}</strong> · {{ explainResult.resourceIdSupplied ? '编号已提供' : '编号缺失' }}</span>
             </div>
-            <div v-if="explainResult.catalog" class="enterprise-warning">该权限不是学校可分配权限。企业成员授权必须回 EnterpriseMember / AccessGrant。</div>
+            <div v-if="explainResult.catalog" class="enterprise-warning">该权限不是学校可分配权限。企业成员授权必须回到企业成员与访问授权功能办理。</div>
             <div v-if="explainResult.roles?.length" class="table-wrap">
               <table class="explain-table">
-                <thead><tr><th>角色</th><th>IAM</th><th>模板来源</th><th>Drift</th><th>升级 Impact</th><th>原因 / Scope</th><th>真值证据</th></tr></thead>
+                <thead><tr><th>角色</th><th>身份权限</th><th>模板来源</th><th>配置偏移</th><th>升级影响</th><th>原因 / 数据范围</th><th>真实证据</th></tr></thead>
                 <tbody>
                   <tr v-for="role in explainResult.roles" :key="role.roleId">
-                    <td><strong>{{ role.roleName }}</strong><small class="mono">{{ role.roleCode }} · {{ role.roleType }} · role v{{ role.roleVersion }}</small></td>
+                    <td><strong>{{ role.roleName }}</strong><small>角色编号 {{ role.roleCode }} · {{ roleTypeLabel(role.roleType) }} · 第 {{ role.roleVersion }} 版</small></td>
                     <td>{{ role.decision?.iamAllowed ? '通过' : '未通过' }}</td>
                     <td>{{ provenanceText(role.templateProvenance) }}</td>
                     <td :class="{ 'danger-text': role.drift?.detected }">{{ driftText(role.drift) }}</td>
                     <td>{{ impactText(role.templateImpact) }}</td>
-                    <td><span class="mono">{{ role.decision?.reasonCode || '—' }}</span><small>{{ scopeText(role.decision?.dataScope) }}</small></td>
+                    <td><span>{{ reasonCodeLabel(role.decision?.reasonCode) }}</span><small>{{ scopeText(role.decision?.dataScope) }}</small></td>
                     <td class="actions"><button class="link" @click="loadRoleEvidence(role, 'members', 1)">成员</button><button class="link" @click="loadRoleEvidence(role, 'audit', 1)">审计</button></td>
                   </tr>
                 </tbody>
@@ -166,17 +166,17 @@
 
         <section v-if="roleEvidence" class="card evidence-card">
           <header class="section-head">
-            <div><h3>{{ roleEvidence.title }}</h3><p class="muted">接口真分页：pageSize={{ roleEvidence.pageSize }}，总数 {{ roleEvidence.total }}。不会把前 50 条 preview 冒充完整结果。</p></div>
+            <div><h3>{{ roleEvidence.title }}</h3><p class="muted">服务端真实分页：每页 {{ roleEvidence.pageSize }} 条，总数 {{ roleEvidence.total }}。不会把前 50 条预览数据当作完整结果。</p></div>
             <button class="link" @click="roleEvidence = null">关闭</button>
           </header>
           <div class="table-wrap">
             <table v-if="roleEvidence.type === 'members'">
-              <thead><tr><th>User ID</th><th>姓名</th><th>登录名</th><th>状态</th></tr></thead>
+              <thead><tr><th>用户编号</th><th>姓名</th><th>登录名</th><th>状态</th></tr></thead>
               <tbody><tr v-for="item in roleEvidence.items" :key="item.id"><td class="mono">{{ item.id }}</td><td>{{ item.name }}</td><td class="mono">{{ item.loginName }}</td><td>{{ memberStatusLabel(item.status) }}</td></tr></tbody>
             </table>
             <table v-else>
-              <thead><tr><th>时间</th><th>操作</th><th>操作者</th><th>结果</th><th>traceId</th><th>detail</th></tr></thead>
-              <tbody><tr v-for="item in roleEvidence.items" :key="item.id"><td>{{ item.createdAt || '—' }}</td><td>{{ item.action }}</td><td>{{ item.operatorName || item.operatorId || '—' }}</td><td>{{ item.result }}</td><td class="mono">{{ item.traceId || '—' }}</td><td class="mono detail">{{ compactJson(item.detail) }}</td></tr></tbody>
+              <thead><tr><th>时间</th><th>操作</th><th>操作者</th><th>结果</th><th>问题编号</th><th>详情</th></tr></thead>
+              <tbody><tr v-for="item in roleEvidence.items" :key="item.id"><td>{{ item.createdAt || '—' }}</td><td>{{ auditRecord(item).displayAction }}</td><td>{{ item.operatorName || item.operatorId || '—' }}</td><td>{{ auditRecord(item).displayResult }}</td><td class="mono">{{ item.traceId || '—' }}</td><td class="detail">{{ detailSummary(item.detail) }}</td></tr></tbody>
             </table>
           </div>
           <div class="pager">
@@ -195,6 +195,13 @@ import { AppButton } from '@/components/ui'
 import { ModulePageShell } from '@/components/business'
 import { schoolIamApi } from '@/modules/system/api/schoolIam.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord } from '@/utils/presentationSafety'
+
+const REASON_LABELS = { MODULE_NOT_ENTITLED: '模块未授权', PERMISSION_DENIED: '权限不足', PERMISSION_NOT_SCHOOL_ASSIGNABLE: '学校不可分配', SCOPE_DENIED: '超出数据范围', RESOURCE_NOT_FOUND: '业务对象不存在', ALLOWED: '允许访问', ROLE_INACTIVE: '角色未生效' }
+const DECISION_LABELS = { ALLOW: '允许', DENY: '拒绝', NOT_EVALUATED: '待业务裁决', PENDING: '待确认' }
+const SCOPE_TYPE_LABELS = { COLLEGE: '学院', MAJOR: '专业', CLASS: '班级', TERMINAL: '终端范围', TENANT: '全校', SELF: '本人' }
+const RESOURCE_TYPE_LABELS = { STUDENT: '学生', INTERN_STUDENT: '实习学生', GRADUATION_STUDENT: '毕设学生', USER: '用户', CLASS: '班级', MAJOR: '专业', COLLEGE: '学院', BUILDING: '楼栋', DORM_BUILDING: '宿舍楼' }
+const ROLE_TYPE_LABELS = { SYSTEM: '系统角色', CUSTOM: '自定义角色', TEMPLATE: '模板角色', BUSINESS: '业务角色' }
 
 export default {
   name: 'SystemIamWorkspaceView',
@@ -208,14 +215,14 @@ export default {
       scopeTargetType: 'COLLEGE', scopeTargetId: '', resourceType: 'STUDENT', resourceId: ''
     },
     surfaces: [
-      { key: 'roles', label: '角色', description: '唯一 Role / RolePermission Authority', path: '/admin/system/iam?surface=roles', targetPath: '/admin/system/roles?tab=members' },
-      { key: 'templates', label: '角色模板', description: 'immutable version、provenance、drift 与 impact', path: '/admin/system/iam?surface=templates', targetPath: '/admin/system/roles?tab=templates' },
+      { key: 'roles', label: '角色', description: '统一管理角色与角色权限', path: '/admin/system/iam?surface=roles', targetPath: '/admin/system/roles?tab=members' },
+      { key: 'templates', label: '角色模板', description: '管理不可变版本、来源、配置偏移与升级影响', path: '/admin/system/iam?surface=templates', targetPath: '/admin/system/roles?tab=templates' },
       { key: 'members', label: '成员与业务身份', description: '角色成员、来源与复核', path: '/admin/system/role-assignments' },
-      { key: 'permissions', label: '菜单与操作权限', description: '只从权威 Permission Catalog 分配', path: '/admin/system/iam?surface=permissions', targetPath: '/admin/system/roles?tab=permissions' },
-      { key: 'dataScopes', label: '数据范围', description: '结构化 Scope，不用字符串角色猜范围', path: '/admin/system/scopes' },
+      { key: 'permissions', label: '菜单与操作权限', description: '只从权威权限目录分配', path: '/admin/system/iam?surface=permissions', targetPath: '/admin/system/roles?tab=permissions' },
+      { key: 'dataScopes', label: '数据范围', description: '使用结构化范围，不根据角色名称猜测范围', path: '/admin/system/scopes' },
       { key: 'delegations', label: '委托', description: '临时授权与工作移交', path: '/admin/system/delegations' },
       { key: 'securityChanges', label: '安全变更', description: '草稿、激活、回滚与审计', path: '/admin/system/security-changes' },
-      { key: 'accessExplain', label: 'Access Explain', description: '解释权限、Scope、模板漂移、成员与审计证据', path: '#access-explain' }
+      { key: 'accessExplain', label: '访问解释', description: '解释权限、数据范围、模板偏移、成员与审计证据', path: '#access-explain' }
     ]
   }),
   computed: {
@@ -254,6 +261,18 @@ export default {
   },
   created() { this.load() },
   methods: {
+    auditRecord(row) { return presentAuditRecord(row) },
+    reasonCodeLabel(value) { return REASON_LABELS[value] || (value ? '其他判定原因' : '—') },
+    decisionLabel(value) { return DECISION_LABELS[value] || (value ? '裁决待确认' : '—') },
+    scopeTypeLabel(value) { return SCOPE_TYPE_LABELS[value] || (value ? '其他数据范围' : '—') },
+    resourceTypeLabel(value) { return RESOURCE_TYPE_LABELS[value] || (value ? '其他业务对象' : '—') },
+    roleTypeLabel(value) { return ROLE_TYPE_LABELS[value] || (value ? '其他角色类型' : '—') },
+    detailSummary(value) {
+      if (!value) return '无补充详情'
+      if (typeof value === 'string' && /[\u3400-\u9fff]/.test(value)) return value
+      if (typeof value === 'object') return `已记录 ${Object.keys(value).length} 项结构化详情`
+      return '已记录补充详情'
+    },
     memberStatusLabel(status) {
       return { ACTIVE: '正常', DISABLED: '已停用', LOCKED: '已锁定', EXPIRED: '已过期' }[status] || '状态待确认'
     },

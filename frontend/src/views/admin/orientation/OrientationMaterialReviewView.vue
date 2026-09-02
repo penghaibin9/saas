@@ -217,7 +217,7 @@ export default {
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     canOperate(target) {
       if (!target || target.status !== 'UPLOADED') return false

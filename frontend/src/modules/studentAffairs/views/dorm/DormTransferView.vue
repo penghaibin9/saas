@@ -301,8 +301,8 @@ export default {
       } catch (e) { this.errorMessage = e.message || '调宿加载失败' } finally { this.loading = false }
     },
     onPageChange(page) { this.pagination.page = page; this.load() },
-    checkoutTypeLabel(value) { return ({ GRADUATION: '毕业', LEAVE_OF_ABSENCE: '休学', WITHDRAWAL: '退学', DAY_STUDENT: '转走读', SPECIAL: '特殊退宿' }[value] || value) },
-    checkoutStatusLabel(value) { return ({ PENDING_CONFIRMATION: '待宿管确认', BLOCKED: '存在阻断', CONFIRMED: '已退宿', CANCELLED: '已取消' }[value] || value) },
+    checkoutTypeLabel(value) { return ({ GRADUATION: '毕业', LEAVE_OF_ABSENCE: '休学', WITHDRAWAL: '退学', DAY_STUDENT: '转走读', SPECIAL: '特殊退宿' }[value] || (value ? '待确认' : '—')) },
+    checkoutStatusLabel(value) { return ({ PENDING_CONFIRMATION: '待宿管确认', BLOCKED: '存在阻断', CONFIRMED: '已退宿', CANCELLED: '已取消' }[value] || (value ? '待确认' : '—')) },
     confirmCheckout(row) {
       if (!row.allowedActions?.includes('CONFIRM')) return
       this.checkoutConfirmDlg = {
@@ -380,7 +380,7 @@ export default {
     },
     isPending(s) { return PENDING_STATUSES.includes(s) },
     nodeLabel(n) { return ({ COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核', DORM_REVIEW: '宿管审核' })[n] || (n || '—') },
-    statusLabel(s) { return ({ SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核', DORM_REVIEW: '宿管审核', EXECUTED: '已执行', REJECTED: '已驳回', CANCELLED: '已取消' })[s] || s },
+    statusLabel(s) { return ({ SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核', DORM_REVIEW: '宿管审核', EXECUTED: '已执行', REJECTED: '已驳回', CANCELLED: '已取消' })[s] || (s ? '状态待确认' : '—') },
     statusKind(s) { if (s === 'EXECUTED') return 'success'; if (s === 'REJECTED') return 'danger'; if (this.isPending(s)) return 'warning'; return 'info' }
   }
 }

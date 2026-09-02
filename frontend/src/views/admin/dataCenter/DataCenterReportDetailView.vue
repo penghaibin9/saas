@@ -53,7 +53,7 @@
             <DataTable v-else :columns="metricColumns" :rows="detail.metrics" row-key="id">
               <template #cell-metric="{ row }">
                 <div class="mp-cell-main">{{ row.name }}</div>
-                <div class="mp-cell-sub">{{ row.caliberLabel }} · {{ row.source }}</div>
+                <div class="mp-cell-sub">{{ row.caliberLabel }} · {{ sourceLabel(row.source) }}</div>
               </template>
               <template #cell-value="{ row }"><strong>{{ row.value }}</strong> {{ row.unit }}</template>
               <template #cell-mom="{ row }">{{ row.mom }}</template>
@@ -89,8 +89,8 @@
             <div class="mp-kv"><span class="mp-kv__k">统计口径</span><span class="mp-kv__v">{{ detail.config.caliberLabel }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ detail.config.scopeName }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">负责人</span><span class="mp-kv__v">{{ detail.config.ownerName }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">当前配置版本</span><span class="mp-kv__v">v{{ detail.version }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">已发布版本</span><span class="mp-kv__v">{{ detail.publishedVersion ? 'v' + detail.publishedVersion : '未发布' }}</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">当前配置版本</span><span class="mp-kv__v">第 {{ detail.version }} 版</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">已发布版本</span><span class="mp-kv__v">{{ detail.publishedVersion ? '第 ' + detail.publishedVersion + ' 版' : '未发布' }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">创建时间</span><span class="mp-kv__v">{{ detail.config.createdAt }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">最近更新</span><span class="mp-kv__v">{{ detail.config.updatedAt }}</span></div>
             <p class="mp-note" style="margin-top: var(--space-3)">{{ detail.description }}</p>
@@ -105,7 +105,7 @@
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">发布版本历史</span>
-            <span class="mp-note">append-only 冻结版本</span>
+            <span class="mp-note">只追加、不可覆盖的冻结版本</span>
           </div>
           <div class="mp-card__body">
             <ErrorState v-if="versionsError" :description="versionsError" @retry="loadVersions" />
@@ -148,7 +148,7 @@
                 <tr v-for="a in audits" :key="a.id">
                   <td class="is-who">{{ a.userName }} · {{ a.roleName }}</td>
                   <td>{{ a.time }}</td>
-                  <td>{{ a.action }}</td>
+                  <td>{{ auditActionLabel(a) }}</td>
                   <td>{{ a.detail }}</td>
                 </tr>
               </tbody>
@@ -183,6 +183,9 @@ import {
 import { AppGlobalState, AppConfirmDialog } from '@/components/common'
 import { dataCenterApi } from '@/modules/dataCenter/api/dataCenter.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord, safeLocalizedText } from '@/utils/presentationSafety'
+
+const SOURCE_LABELS = { STUDENT: '学生管理', STUDENT_AFFAIRS: '学工中心', ACADEMIC_AFFAIRS: '教务中心', INTERNSHIP: '实习管理', GRADUATION: '毕业设计', EMPLOYMENT: '就业管理', ORIENTATION: '迎新管理', SYSTEM: '系统管理', MANUAL: '人工填报', AGGREGATE: '综合统计' }
 
 export default {
   name: 'DataCenterReportDetailView',
@@ -226,7 +229,7 @@ export default {
     },
     metaSources() {
       const rows = (this.detail && this.detail.meta && this.detail.meta.source) || []
-      return rows.length ? rows.map((x) => x.module || x).join('、') : '尚未形成已发布来源快照'
+      return rows.length ? rows.map((x) => this.sourceLabel(x.module || x)).join('、') : '尚未形成已发布来源快照'
     },
     qualityFlags() {
       const flags = this.detail && this.detail.meta && this.detail.meta.qualityFlags
@@ -257,7 +260,7 @@ export default {
       if (!this.detail) return ''
       return this.stateAction.key === 'withdrawReport'
         ? `撤回「${this.detail.name}」后，已发布版本仍永久保留；当前入口不再展示冻结指标，撤回后可继续编辑工作副本。`
-        : `发布「${this.detail.name}」将由服务端读取当前真实统计并冻结一个 append-only 版本。任一上游失败则整次发布失败。`
+        : `发布「${this.detail.name}」将由服务端读取当前真实统计并冻结一个只追加、不可覆盖的版本。任一上游失败则整次发布失败。`
     }
   },
   watch: {
@@ -267,6 +270,8 @@ export default {
     if (this.viewAllowed) this.load()
   },
   methods: {
+    sourceLabel(value) { return safeLocalizedText({ value, dictionary: SOURCE_LABELS, unknownLabel: '其他业务数据' }) },
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     async load() {
       this.loading = true
       this.error = ''

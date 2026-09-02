@@ -3,7 +3,7 @@
     <header>
       <div>
         <h3>{{ title }}</h3>
-        <p>来源：{{ providerCode || '未声明' }} · 策略版本：{{ policyVersion || '未评估' }}</p>
+        <p>来源：{{ providerLabel }} · 策略版本：{{ policyVersion || '未评估' }}</p>
       </div>
       <span :class="['summary', summaryClass]">
         {{ summaryLabel }}
@@ -13,7 +13,7 @@
       <li v-for="item in items" :key="item.code" :class="`state-${item.state}`">
         <div>
           <strong>{{ item.label }}</strong>
-          <small>{{ item.code }} · {{ stateLabel(item.state) }}</small>
+          <small>{{ stateLabel(item.state) }}</small>
         </div>
         <p v-if="item.reason">{{ item.reason }}</p>
       </li>
@@ -32,6 +32,10 @@ const props = defineProps({
 
 const items = computed(() => props.assessment?.items || [])
 const providerCode = computed(() => props.assessment?.providerCode || props.assessment?.provider_code || '')
+const providerLabel = computed(() => ({
+  STUDENT: '学生档案', GRADUATION: '毕业管理', INTERNSHIP: '岗位实习',
+  AFFAIRS: '学生事务', TODO: '待办中心'
+})[String(providerCode.value).toUpperCase()] || '未声明')
 const policyVersion = computed(() => props.assessment?.policyVersion || props.assessment?.policy_version || '')
 const evaluated = computed(() => items.value.length > 0 && typeof props.assessment?.blocking === 'boolean')
 const summaryClass = computed(() => !evaluated.value ? 'unknown' : props.assessment.blocking ? 'blocking' : 'passing')

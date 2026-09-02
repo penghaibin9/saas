@@ -100,7 +100,7 @@ export default {
       this.assign.teacherName = items?.[0]?.raw?.teacherName || items?.[0]?.label || ''
     },
     taskColor,
-    statusLabel(s) { return TASK_STATUS[s] || s || '' },
+    statusLabel(s) { return TASK_STATUS[s] || (s ? '状态待确认' : '') },
     onPageChange(p) { this.pagination.page = p; this.load() },
     async load() {
       this.loading = true

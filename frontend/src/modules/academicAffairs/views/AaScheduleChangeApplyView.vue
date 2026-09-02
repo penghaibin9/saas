@@ -175,8 +175,8 @@ export default {
     'form.targetClassroom'() { this.conflictResult = undefined }
   },
   methods: {
-    conflictTypeLabel(t) { return { TEACHER: '教师冲突', CLASS: '班级冲突', CLASSROOM: '教室冲突' }[t] || t },
-    weekdayLabel(value) { return `周${'一二三四五六日'[Number(value) - 1] || value || ''}` },
+    conflictTypeLabel(t) { return { TEACHER: '教师冲突', CLASS: '班级冲突', CLASSROOM: '教室冲突' }[t] || (t ? '类型待确认' : '—') },
+    weekdayLabel(value) { return `周${'一二三四五六日'[Number(value) - 1] || (value ? '待确认' : '')}` },
     parityLabel(value) { return { ALL: '全周', ODD: '单周', EVEN: '双周' }[value] || '全周' },
     openMySchedule() { this.$router.push('/admin/academic-affairs/schedule/teacher') },
     async loadOrigin() {

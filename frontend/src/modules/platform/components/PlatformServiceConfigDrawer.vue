@@ -3,7 +3,6 @@
     <div class="psc-config">
       <div class="psc-config__mode">
         <StatusTag type="info" :label="guide.mode" />
-        <span>{{ serviceCode }}</span>
       </div>
       <p class="psc-config__summary">{{ guide.summary }}</p>
 
@@ -11,7 +10,6 @@
         <h4>配置项</h4>
         <ul>
           <li v-for="item in guide.items" :key="item.key">
-            <code>{{ item.key }}</code>
             <span>{{ item.label }}</span>
           </li>
         </ul>
@@ -34,18 +32,18 @@ const DEPLOY_NOTICE = '这类参数决定进程启动、网络连接或系统密
 const GUIDES = Object.freeze({
   API_GATEWAY: {
     mode: '部署环境管理',
-    summary: '后端 API 的来源白名单、访问限流、令牌与进程参数由服务器部署配置统一管理。',
+    summary: '后端接口的来源白名单、访问限流、凭证与进程参数由服务器部署配置统一管理。',
     items: [
-      { key: 'CORS_ORIGINS', label: '允许访问 API 的前端来源' },
+      { key: 'CORS_ORIGINS', label: '允许访问接口的前端来源' },
       { key: 'TENANT_API_RATE_LIMIT_PER_SECOND', label: '租户级接口限流' },
       { key: 'USER_API_RATE_LIMIT_PER_SECOND', label: '用户级接口限流' },
-      { key: 'JWT_* / WEB_CONCURRENCY', label: '令牌与 API 进程参数' }
+      { key: 'JWT_* / WEB_CONCURRENCY', label: '凭证与接口进程参数' }
     ],
     notice: DEPLOY_NOTICE
   },
   MYSQL: {
     mode: '部署环境管理',
-    summary: 'MySQL 是平台主数据源，连接地址、账号、密码和连接池必须随部署发布并经过迁移检查。',
+    summary: '关系型数据库是平台主数据源，连接地址、账号、密码和连接池必须随部署发布并经过迁移检查。',
     items: [
       { key: 'DB_HOST / DB_PORT / DB_NAME', label: '数据库地址与库名' },
       { key: 'DB_USER / DB_PASSWORD', label: '数据库凭证（禁止页面回显）' },
@@ -56,9 +54,9 @@ const GUIDES = Object.freeze({
   },
   REDIS: {
     mode: '部署环境管理',
-    summary: 'Redis 承载缓存、限流和分布式运行状态，连接信息由部署环境提供。',
+    summary: '缓存服务承载缓存、限流和分布式运行状态，连接信息由部署环境提供。',
     items: [
-      { key: 'REDIS_URL', label: 'Redis 连接串' },
+      { key: 'REDIS_URL', label: '缓存服务连接串' },
       { key: 'REDIS_KEY_PREFIX', label: '键空间前缀' },
       { key: 'REDIS_CONNECT_TIMEOUT', label: '连接超时' },
       { key: 'REDIS_SOCKET_TIMEOUT', label: '读写超时' }
@@ -69,26 +67,26 @@ const GUIDES = Object.freeze({
     mode: '部署环境管理',
     summary: '小程序登录和订阅消息使用微信平台密钥与模板，密钥只允许从服务器安全环境注入。',
     items: [
-      { key: 'WX_APPID', label: '微信小程序 AppID' },
-      { key: 'WX_SECRET', label: '微信小程序 AppSecret（敏感）' },
+      { key: 'WX_APPID', label: '微信小程序应用标识' },
+      { key: 'WX_SECRET', label: '微信小程序应用密钥（敏感）' },
       { key: 'WX_SUBSCRIBE_TEMPLATE_*', label: '退回、审批、考试和实习提醒模板' },
-      { key: 'MINIAPP_API_BASE_URL', label: '小程序端 API 地址' }
+      { key: 'MINIAPP_API_BASE_URL', label: '小程序端接口地址' }
     ],
     notice: DEPLOY_NOTICE
   },
   PC_ADMIN: {
     mode: '构建与部署管理',
-    summary: 'PC 管理端的 API 地址、域名、静态资源和反向代理由前端构建与 Nginx 部署管理。',
+    summary: '电脑管理端的接口地址、域名、静态资源和反向代理由前端构建与网页服务器部署管理。',
     items: [
-      { key: 'API_BASE_URL', label: '管理端访问的后端 API 地址' },
+      { key: 'API_BASE_URL', label: '管理端访问的后端接口地址' },
       { key: 'CORS_ORIGINS', label: '后端允许的管理端来源' },
       { key: 'Nginx / HTTPS', label: '域名、证书、缓存和反向代理' }
     ],
     notice: DEPLOY_NOTICE
   },
   STUDENT_PORTAL: {
-    mode: '部署 + 租户配置',
-    summary: '学生门户的域名与 API 地址属于部署配置；每所学校的门户功能和品牌在租户详情中配置。',
+    mode: '部署与租户配置',
+    summary: '学生门户的域名与接口地址属于部署配置；每所学校的门户功能和品牌在租户详情中配置。',
     items: [
       { key: 'PORTAL / API URL', label: '门户域名和后端地址' },
       { key: 'CORS_ORIGINS', label: '后端允许的门户来源' },
@@ -98,7 +96,7 @@ const GUIDES = Object.freeze({
   },
   WORKER: {
     mode: '部署环境管理',
-    summary: '后台 Worker 和调度器需要独立进程、队列与互斥配置，必须随服务部署管理。',
+    summary: '后台任务程序和调度器需要独立进程、队列与互斥配置，必须随服务部署管理。',
     items: [
       { key: 'SCHEDULER_MODE', label: '内嵌或独立调度器模式' },
       { key: 'WEB_CONCURRENCY / MULTI_INSTANCE', label: '进程与多实例模式' },
@@ -108,7 +106,7 @@ const GUIDES = Object.freeze({
   },
   CLAMAV: {
     mode: '部署环境管理',
-    summary: '病毒扫描由 ClamAV 守护进程和文件扫描 Worker 共同完成，连接与重试参数属于服务器配置。',
+    summary: '病毒扫描由防病毒服务和文件扫描任务程序共同完成，连接与重试参数属于服务器配置。',
     items: [
       { key: 'CLAMAV_ENABLED / CLAMAV_HOST / CLAMAV_PORT', label: '扫描服务开关和地址' },
       { key: 'CLAMAV_CONNECT_TIMEOUT / CLAMAV_READ_TIMEOUT', label: '连接与扫描超时' },
@@ -118,7 +116,7 @@ const GUIDES = Object.freeze({
   },
   SMS_GATEWAY: {
     mode: '部署环境管理',
-    summary: '短信发送已接腾讯云/阿里云 Provider，但访问密钥、签名和模板目前由服务器安全环境注入。',
+    summary: '短信发送已接腾讯云或阿里云服务商，但访问密钥、签名和模板目前由服务器安全环境注入。',
     items: [
       { key: 'SMS_ENABLED / SMS_PROVIDER', label: '短信总开关和服务商' },
       { key: 'SMS_ACCESS_KEY_ID / SMS_ACCESS_KEY_SECRET', label: '服务商访问密钥（敏感）' },
@@ -162,7 +160,7 @@ export default {
 .psc-config__summary { margin: 0; color: var(--text-secondary); line-height: 1.7; }
 .psc-config__section h4 { margin: 0 0 var(--space-2); color: var(--t1); }
 .psc-config__section ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-2); }
-.psc-config__section li { display: grid; grid-template-columns: minmax(180px, 1fr) 1.4fr; gap: var(--space-3); padding: var(--space-2); border: 1px solid var(--border-light); border-radius: var(--radius-sm); }
+.psc-config__section li { display: block; padding: var(--space-2); border: 1px solid var(--border-light); border-radius: var(--radius-sm); }
 .psc-config__section code { color: var(--primary-700); overflow-wrap: anywhere; }
 .psc-config__section span { color: var(--text-secondary); }
 .psc-config__notice { padding: var(--space-3); border-radius: var(--radius-md); background: var(--bg-section-blue, #eef2ff); }

@@ -89,6 +89,18 @@ export function safeEnumLabel({ value, dictionary = {}, unknownLabel = '待确�
   return dictionary[key] || dictionary[key.toUpperCase()] || unknownLabel
 }
 
+/**
+ * 后端有些审计说明、风险来源既可能返回中文文案，也可能返回英文枚举码。
+ * 已经是中文的业务文案原样保留；未收录的英文码统一收口，避免把技术值展示给用户。
+ */
+export function safeLocalizedText({ value, dictionary = {}, unknownLabel = '待确认' } = {}) {
+  const key = String(value ?? '').trim()
+  if (!key) return '—'
+  const mapped = dictionary[key] || dictionary[key.toUpperCase()]
+  if (mapped) return mapped
+  return /[\u3400-\u9fff]/.test(key) ? key : unknownLabel
+}
+
 const AUDIT_ACTION_LABELS = Object.freeze({
   CREATE: '创建', UPDATE: '修改', DELETE: '删除', SUBMIT: '提交',
   APPLY: '提交申请', RESUBMIT: '重新提交',

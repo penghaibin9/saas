@@ -259,7 +259,7 @@ export default {
       return f ? f.label : s
     },
     pkgStatusLabel(s) {
-      return PKG_STATUS[s] || s
+      return PKG_STATUS[s] || (s ? '状态待确认' : '—')
     },
     selectBatch(b) {
       this.current = b

@@ -95,9 +95,9 @@ export default {
   methods: {
     unwrap(res) { if (!res || res.code !== 0) throw new Error(res?.message || '操作失败'); return res.data },
     fmt(value) { return String(value || '').slice(0, 16).replace('T', ' ') },
-    modeLabel(value) { return ({ ADMIN_AUTO: '管理员自动', ADMIN_MANUAL: '管理员人工', STUDENT_SELECT: '学生自选', POST_CHECKIN_PUBLISH: '报到后公布' })[value] || value },
-    statusLabel(value) { return ({ DRAFT: '草稿', PUBLISHED: '已发布', CLOSED: '已关闭', CANCELLED: '已取消' })[value] || value },
-    itemStatusLabel(value) { return ({ PENDING: '待学生选床', PROPOSED: '待发布', RESERVED: '已预留', CONFIRMED: '学生已确认', CONFLICT: '异常', CANCELLED: '已取消' })[value] || value },
+    modeLabel(value) { return ({ ADMIN_AUTO: '管理员自动', ADMIN_MANUAL: '管理员人工', STUDENT_SELECT: '学生自选', POST_CHECKIN_PUBLISH: '报到后公布' })[value] || (value ? '待确认' : '—') },
+    statusLabel(value) { return ({ DRAFT: '草稿', PUBLISHED: '已发布', CLOSED: '已关闭', CANCELLED: '已取消' })[value] || (value ? '待确认' : '—') },
+    itemStatusLabel(value) { return ({ PENDING: '待学生选床', PROPOSED: '待发布', RESERVED: '已预留', CONFIRMED: '学生已确认', CONFLICT: '异常', CANCELLED: '已取消' })[value] || (value ? '待确认' : '—') },
     async load() { this.loading = true; this.errorMessage = ''; try { const [batchRes, buildingRes, oriRes] = await Promise.all([studentAffairsApi.listDormAllocationBatches({ status: this.statusFilter, pageSize: 200 }), studentAffairsApi.getBuildings({ pageSize: 200 }), getOrientationBatches({ page: 1, pageSize: 200 })]); this.batches = this.unwrap(batchRes).items || []; this.buildings = this.unwrap(buildingRes).items || []; if (oriRes.code !== 0) throw new Error(oriRes.message); this.orientationBatches = oriRes.data?.list || []; if (this.selectedId) await this.loadDetail(this.selectedId) } catch (e) { this.errorMessage = e.message || '加载失败' } finally { this.loading = false } },
     async selectBatch(row) { this.selectedId = row.batchId; this.drySummary = row.rules?._dryRun || null; await this.loadDetail(row.batchId) },
     async loadDetail(id) { try { this.detail = this.unwrap(await studentAffairsApi.getDormAllocationBatch(id)); this.drySummary = this.detail.batch.rules?._dryRun || this.drySummary } catch (e) { this.errorMessage = e.message } },

@@ -72,7 +72,7 @@
               <tbody>
                 <tr v-for="r in summary.recentOps" :key="r.id">
                   <td class="is-who">{{ r.who }}</td>
-                  <td>{{ r.action }}</td>
+                  <td>{{ auditActionLabel(r) }}</td>
                   <td>{{ r.time }}</td>
                 </tr>
               </tbody>
@@ -89,6 +89,7 @@
 import { ModulePageShell, ModuleToolbar, ModuleHero, StatusTag, RiskTag, LoadingState, ErrorState } from '@/components/business'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 
 export default {
   name: 'SystemDashboardView',
@@ -112,6 +113,7 @@ export default {
     this.load()
   },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     onToolbar(key) {
       if (key === 'importUsers') this.$router.push('/admin/system/identity-import/students')
       if (key === 'viewOperationLogs') this.$router.push('/admin/system/logs')

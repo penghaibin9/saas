@@ -405,7 +405,7 @@ test('W12 real Browser Role/Menu Projection Seal covers every school role, platf
           }
 
           await page.goto(new URL('/admin/platform/product-iam', config.staffBaseUrl).toString())
-          await expect(page.getByText('Product IAM', { exact: true }).first()).toBeVisible()
+          await expect(page.getByText('产品身份与权限', { exact: true }).first()).toBeVisible()
           await expect(page.getByText('岗位实习模块边界正常', { exact: true })).toBeVisible()
           golden.productIamRootBrowser = true
           golden.productIamTemplateVisible = true

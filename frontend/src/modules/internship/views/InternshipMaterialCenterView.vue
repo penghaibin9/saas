@@ -150,24 +150,24 @@
 
           <section class="section-card manifest-card">
             <div class="section-title">
-              <div><strong>归档 Manifest</strong><span>归档时冻结文件名、大小、哈希、扫描结论和真实版本号</span></div>
+              <div><strong>归档清单</strong><span>归档时冻结文件名、大小、文件摘要、扫描结论和真实版本号</span></div>
               <AppStatusTag v-if="selected.manifest" :type="manifestTone(selected.manifest.status)">
-                {{ selected.manifest.status }}
+                {{ manifestStatusLabel(selected.manifest.status) }}
               </AppStatusTag>
             </div>
             <div v-if="!selected.manifest" class="state compact">尚未生成归档版本清单</div>
             <template v-else>
               <dl class="manifest-meta">
-                <div><dt>清单版本</dt><dd>revision {{ selected.manifest.revision }}</dd></div>
-                <div><dt>Manifest ID</dt><dd class="mono">{{ selected.manifest.id }}</dd></div>
+                <div><dt>清单版本</dt><dd>第 {{ selected.manifest.revision }} 次修订</dd></div>
+                <div><dt>清单编号</dt><dd class="mono">{{ selected.manifest.id }}</dd></div>
                 <div><dt>文件版本数</dt><dd>{{ selected.manifest.items.length }}</dd></div>
-                <div><dt>Manifest SHA-256</dt><dd class="mono" :title="selected.manifest.manifestSha256">{{ selected.manifest.manifestSha256 }}</dd></div>
+                <div><dt>清单文件摘要（SHA-256）</dt><dd class="mono" :title="selected.manifest.manifestSha256">{{ selected.manifest.manifestSha256 }}</dd></div>
               </dl>
               <div class="manifest-list">
                 <div v-for="item in selected.manifest.items" :key="`${item.versionId}-${item.materialCode}`">
                   <span>{{ item.materialCode }}</span>
-                  <strong>v{{ item.versionId }}</strong>
-                  <small>{{ item.scanResult }} · {{ shortHash(item.sha256) }}</small>
+                  <strong>第 {{ item.versionId }} 版</strong>
+                  <small>{{ scanResultLabel(item.scanResult) }} · 摘要 {{ shortHash(item.sha256) }}</small>
                 </div>
               </div>
             </template>
@@ -310,14 +310,16 @@ export default {
       return text ? `${text.slice(0, 10)}…${text.slice(-8)}` : '-'
     },
     statusText(value) {
-      return { READY: '安全可用', UNSAFE: '存在待处理', NOT_SYNCED: '尚未同步' }[value] || value || '未知'
+      return { READY: '安全可用', UNSAFE: '存在待处理', NOT_SYNCED: '尚未同步' }[value] || (value ? '待确认' : '未知')
     },
     statusTone(value) {
       return { READY: 'success', UNSAFE: 'danger', NOT_SYNCED: 'default' }[value] || 'default'
     },
     manifestTone(value) {
       return ['FROZEN', 'PACKAGED'].includes(value) ? 'success' : (value === 'REVOKED' ? 'danger' : 'warning')
-    }
+    },
+    manifestStatusLabel(value) { return ({ DRAFT: '草稿', FROZEN: '已冻结', PACKAGED: '已打包', REVOKED: '已撤销', PENDING: '生成中' })[value] || (value ? '状态待确认' : '—') },
+    scanResultLabel(value) { return ({ CLEAN: '已通过', NOT_REQUIRED: '无需扫描', PENDING: '待扫描', INFECTED: '未通过', FAILED: '扫描失败' })[value] || (value ? '扫描结果待确认' : '—') }
   }
 }
 </script>

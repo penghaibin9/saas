@@ -92,7 +92,7 @@ export default {
   },
   created() { this.load() },
   methods: {
-    statusLabel(s) { return STATUS[s] || s },
+    statusLabel(s) { return STATUS[s] || '状态待确认' },
     statusColor(s) {
       if (s === 'ADJUSTED') return 'success'
       if (s === 'REJECTED') return 'danger'

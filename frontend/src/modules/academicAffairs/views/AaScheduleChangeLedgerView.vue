@@ -100,7 +100,7 @@ export default {
   created() { this.load(); this.loadStats() },
   methods: {
     typeTone(t) { return { ADJUST: 'processing', STOP: 'warning', MAKEUP: 'info' }[t] || 'default' },
-    statusLabel(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).label || s },
+    statusLabel(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).label || (s ? '状态待确认' : '—') },
     statusTone(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).tone || 'default' },
     cancellable(row) { return ['SUBMITTED', 'COLLEGE_REVIEW'].includes(row.status) },
     async load() {
