@@ -53,8 +53,8 @@ test('V6 all direct writes freeze action batch student panel and route, then rer
   assert.match(source, /this\.batchStore\.selectBatch\(snapshot\.batchId\)/)
 })
 
-test('V6 canonical grade actions keep their original service methods and state order', () => {
-  assert.match(source, /graduationDefenseGradeApi\.calculateGrade/)
+test('V6 canonical grade actions keep their original form/API responsibilities and state order', () => {
+  assert.match(source, /openForm\('calculate'\)/)
   assert.match(source, /graduationDefenseGradeApi\.reviewGrade\(ctx\.studentId, \{ action: 'APPROVE' \}\)/)
   assert.match(source, /graduationDefenseGradeApi\.publishGrade\(ctx\.studentId\)/)
   assert.match(source, /openForm\('withdraw'\)/)
