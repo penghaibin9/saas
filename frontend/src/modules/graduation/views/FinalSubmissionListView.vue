@@ -475,8 +475,8 @@ export default {
       this.replaceListQuery({ page: String(page), sel: undefined })
       this.load()
     },
-    select(row) {
-      if (!row || this.submitting) return
+    select(row, { force = false } = {}) {
+      if (!row || (this.submitting && !force)) return
       this.saveCommentDraft()
       this.selKey = this.rowKey(row)
       this.comment = ''
@@ -595,7 +595,7 @@ export default {
       else target = this.rows.find((row) => row.status === 'PENDING_REVIEW') || this.rows[0]
       this._selectIndexAfterLoad = null
       this._selectLastAfterLoad = false
-      if (target && !this.isNarrow) this.select(target)
+      if (target && !this.isNarrow) this.select(target, { force: true })
     },
     openDossier(row) {
       if (this.submitting) return
