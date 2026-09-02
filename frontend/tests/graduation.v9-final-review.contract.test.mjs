@@ -69,13 +69,15 @@ test('U3 locks every context-changing interaction while a canonical command is s
   assert.match(source, /if \(this\.isNarrow \|\| this\.submitting\) return/)
   assert.match(source, /switchTab\(value\) \{[\s\S]*if \(this\.submitting\) return/)
   assert.match(source, /turnPage\(page\) \{[\s\S]*if \(this\.submitting\) return/)
-  assert.match(source, /select\(row\) \{[\s\S]*if \(!row \|\| this\.submitting\) return/)
+  assert.match(source, /select\(row, \{ force = false \} = \{\}\) \{[\s\S]*if \(!row \|\| \(this\.submitting && !force\)\) return/)
   assert.match(source, /selectPreviewFile\(item\) \{[\s\S]*if \(!item \|\| this\.submitting\) return/)
   assert.match(source, /step\(delta\) \{[\s\S]*if \(this\.submitting\) return/)
   assert.match(source, /submitReview\(action\) \{[\s\S]*if \(this\.submitting \|\| !this\.canReview/)
   assert.match(source, /finally \{[\s\S]*this\.submitting = false/)
   assert.match(workspace, /function emitUnlocked\(event, payload\)[\s\S]*if \(props\.submitting\) return/)
   assert.match(workspace, /allowDownload && !submitting/)
+  assert.match(workspace, /is-command-locked/)
+  assert.match(workspace, /is-submitting \.gd-review-workspace__queue\{pointer-events:none\}/)
 })
 
 test('U3 list, stats and detail reads are latest-wins and URL state is reloadable', () => {
