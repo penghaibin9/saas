@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""SEED_ONLY prerequisites for GD-012/013/016/017/019 targeted Browser First.
+
+Only prerequisite truth is inserted into isolated E2E MySQL. Target business commands
+are executed by real browser UI in Playwright.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+from sqlalchemy import select
+
+from app.core.config import settings
+from app.db.session import get_sessionmaker
+from app.models import FileObject, GraduationBatch, GraduationFinal, GraduationGrade, GraduationMentor, GraduationStudent, StudentProfile
+
+TENANT_ID = 1000000000000000007
+RUN_ID = str(os.getenv("GITHUB_RUN_ID") or "local").strip()
+BATCH_NO = f"GD-GAP5-{RUN_ID}"
+BATCH_NAME = f"E2E GD五项补测 {RUN_ID}"
+STUDENTS = {
+    "A": ("E2E20260001", "E2E学生A"),
+    "B": ("E2E20260002", "E2E学生B"),
+    "C": ("E2E20260003", "E2E学生C"),
+}
+MENTORS = {
+    "A": ("e2e_advisor_a", "E2E指导教师A", "副教授"),
+    "B": ("e2e_advisor_b", "E2E指导教师B", "副教授"),
+    "R": ("e2e_reviewer", "E2E评阅教师", "讲师"),
+}
+
+
+def _mentor(db, key: str) -> GraduationMentor:
+    teacher_no, teacher_name, title = MENTORS[key]
+    row = db.scalars(select(GraduationMentor).where(
+        GraduationMentor.tenant_id == TENANT_ID,
+        GraduationMentor.teacher_no == teacher_no,
+        GraduationMentor.is_deleted.is_(False),
+    )).first()
+    if row is None:
+        row = GraduationMentor(
+            tenant_id=TENANT_ID,
+            teacher_no=teacher_no,
+            teacher_name=teacher_name,
+            mentor_type="INTERNAL",
+            title=title,
+            research_direction="GD五项精准补测",
+            max_capacity=20,
+            current_count=0,
+            qualification_status="QUALIFIED",
+        )
+        db.add(row)
+        db.flush()
+    else:
+        row.teacher_name = teacher_name
+        row.title = title
+        row.qualification_status = "QUALIFIED"
+        row.is_deleted = False
+    return row
+
+
+def _ensure_student(db, batch, profile, *, name: str, mentor: GraduationMentor | None, stage: str) -> GraduationStudent:
+    row = db.scalars(select(GraduationStudent).where(
+        GraduationStudent.tenant_id == TENANT_ID,
+        GraduationStudent.batch_id == batch.id,
+        GraduationStudent.student_id == profile.id,
+        GraduationStudent.is_deleted.is_(False),
+    )).first()
+    if row is None:
+        row = GraduationStudent(
+            tenant_id=TENANT_ID,
+            batch_id=batch.id,
+            student_id=profile.id,
+            student_no=profile.student_no,
+            name=name,
+            class_id=str(profile.class_id or ""),
+            college_id=str(profile.college_id or ""),
+            major_id=str(profile.major_id or ""),
+            eligibility_status="QUALIFIED",
+            mentor_id=mentor.id if mentor else None,
+            advisor_name=mentor.teacher_name if mentor else None,
+            stage=stage,
+            record_status="ACTIVE",
+        )
+        db.add(row)
+        db.flush()
+    else:
+        row.eligibility_status = "QUALIFIED"
+        row.stage = stage
+        row.record_status = "ACTIVE"
+        row.is_deleted = False
+        row.mentor_id = mentor.id if mentor else None
+        row.advisor_name = mentor.teacher_name if mentor else None
+    return row
+
+
+def _ensure_approved_final(db, gd_student: GraduationStudent, *, key: str, label: str) -> tuple[FileObject, GraduationFinal]:
+    """Create only the frozen approved-final prerequisite required by the real UI contracts."""
+    payload = (f"{label} approved final prerequisite {RUN_ID}\n" * 20).encode("utf-8")
+    digest = hashlib.sha256(payload).hexdigest()
+    file_key = f"graduation/gap5/{RUN_ID}/{key}-final.txt"
+    target = Path(settings.UPLOAD_DIR or "./uploads") / file_key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(payload)
+
+    file_row = db.scalars(select(FileObject).where(
+        FileObject.tenant_id == TENANT_ID,
+        FileObject.file_key == file_key,
+        FileObject.is_deleted.is_(False),
+    )).first()
+    if file_row is None:
+        file_row = FileObject(
+            tenant_id=TENANT_ID,
+            file_key=file_key,
+            file_name=f"{label}-冻结定稿-{RUN_ID}.txt",
+            ext="txt",
+            mime_type="text/plain",
+            size_bytes=len(payload),
+            sha256=digest,
+            biz_type="GRADUATION_MATERIAL",
+            biz_id=str(gd_student.id),
+            visibility="PRIVATE",
+            security_level="NORMAL",
+            status="AVAILABLE",
+            storage_backend="local",
+            storage_zone="ACTIVE",
+            object_key=file_key,
+            upload_source="SYSTEM",
+            scan_required=False,
+            scan_status="NOT_REQUIRED",
+            available_at=datetime.now(timezone.utc),
+        )
+        db.add(file_row)
+        db.flush()
+
+    version = f"v-gap5-{key}-1"
+    final = db.scalars(select(GraduationFinal).where(
+        GraduationFinal.tenant_id == TENANT_ID,
+        GraduationFinal.gd_student_id == gd_student.id,
+        GraduationFinal.final_type == "定稿",
+        GraduationFinal.version == version,
+        GraduationFinal.is_deleted.is_(False),
+    )).first()
+    if final is None:
+        final = GraduationFinal(
+            tenant_id=TENANT_ID,
+            gd_student_id=gd_student.id,
+            final_type="定稿",
+            version=version,
+            submit_at=datetime.now(timezone.utc),
+            plagiarism_rate="8.0%",
+            plagiarism_status="已检测",
+            status="APPROVED",
+            active_key=None,
+            reviewer="E2E补测审核",
+            review_comment="正式定稿前置条件已由 SEED_ONLY 建立",
+            review_time=datetime.now(timezone.utc),
+            attachments_json=[{"fileId": str(file_row.id), "fileName": file_row.file_name}],
+        )
+        db.add(final)
+        db.flush()
+    else:
+        final.status = "APPROVED"
+        final.attachments_json = [{"fileId": str(file_row.id), "fileName": file_row.file_name}]
+    return file_row, final
+
+
+def main() -> int:
+    if os.getenv("E2E_ALLOW_DESTRUCTIVE_TESTS") != "true":
+        raise SystemExit("E2E_ALLOW_DESTRUCTIVE_TESTS=true is required")
+    if not any(x in str(os.getenv("DATABASE_URL") or "").lower() for x in ("e2e", "test")):
+        raise SystemExit("refusing non-E2E database")
+
+    db = get_sessionmaker()()
+    try:
+        profiles = {}
+        for key, (student_no, _) in STUDENTS.items():
+            profile = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == TENANT_ID,
+                StudentProfile.student_no == student_no,
+                StudentProfile.is_deleted.is_(False),
+            )).first()
+            if not profile:
+                raise SystemExit(f"missing canonical E2E student profile: {student_no}")
+            profiles[key] = profile
+
+        mentor_a = _mentor(db, "A")
+        mentor_b = _mentor(db, "B")
+        reviewer = _mentor(db, "R")
+
+        batch = db.scalars(select(GraduationBatch).where(
+            GraduationBatch.tenant_id == TENANT_ID,
+            GraduationBatch.batch_no == BATCH_NO,
+        )).first()
+        if batch is None:
+            batch = GraduationBatch(
+                tenant_id=TENANT_ID,
+                batch_name=BATCH_NAME,
+                batch_no=BATCH_NO,
+                academic_year="2025-2026",
+                grade_year="2026届",
+                planned_count=3,
+                status="RUNNING",
+                archive_status="NOT_ARCHIVED",
+                stage_config=[],
+                rules_config={},
+            )
+            db.add(batch)
+            db.flush()
+        else:
+            batch.status = "RUNNING"
+            batch.is_deleted = False
+
+        gd_a = _ensure_student(db, batch, profiles["A"], name=STUDENTS["A"][1], mentor=mentor_a, stage="DEFENSE")
+        # Student B is the GD-012 reviewer and GD-013 delay applicant. FINAL_CHECK is an allowed defense/delay stage.
+        gd_b = _ensure_student(db, batch, profiles["B"], name=STUDENTS["B"][1], mentor=mentor_a, stage="FINAL_CHECK")
+        # Student C intentionally has no topic, guaranteeing a GD-R01 risk on real scan.
+        gd_c = _ensure_student(db, batch, profiles["C"], name=STUDENTS["C"][1], mentor=None, stage="TOPIC_SELECTING")
+
+        # A needs a frozen final for GD-012 peer-review binding. B separately needs an APPROVED final because
+        # the real defense eligible-student endpoint refuses students without one.
+        file_row, final = _ensure_approved_final(db, gd_a, key="gd012", label="GD012")
+        _, defense_final = _ensure_approved_final(db, gd_b, key="gd013", label="GD013")
+
+        grade = db.scalars(select(GraduationGrade).where(
+            GraduationGrade.tenant_id == TENANT_ID,
+            GraduationGrade.gd_student_id == gd_a.id,
+            GraduationGrade.is_deleted.is_(False),
+        )).first()
+        if grade is None:
+            grade = GraduationGrade(
+                tenant_id=TENANT_ID,
+                gd_student_id=gd_a.id,
+                advisor_score=92,
+                reviewer_score=91,
+                defense_score=93,
+                total_score=92,
+                grade_level="优秀",
+                status="PUBLISHED",
+                calculated_at=datetime.now(timezone.utc),
+                reviewed_by="E2E补测",
+                reviewed_at=datetime.now(timezone.utc),
+                published_by="E2E补测",
+                published_at=datetime.now(timezone.utc),
+            )
+            db.add(grade)
+        else:
+            grade.total_score = 92
+            grade.grade_level = "优秀"
+            grade.status = "PUBLISHED"
+            grade.published_at = datetime.now(timezone.utc)
+
+        db.commit()
+        fixture = {
+            "runId": RUN_ID,
+            "batchId": str(batch.id),
+            "batchNo": batch.batch_no,
+            "batchName": batch.batch_name,
+            "mentorId": str(mentor_a.id),
+            "mentorBId": str(mentor_b.id),
+            "reviewerMentorId": str(reviewer.id),
+            "students": {
+                "A": {"gdStudentId": str(gd_a.id), "studentNo": STUDENTS["A"][0], "name": STUDENTS["A"][1]},
+                "B": {"gdStudentId": str(gd_b.id), "studentNo": STUDENTS["B"][0], "name": STUDENTS["B"][1]},
+                "C": {"gdStudentId": str(gd_c.id), "studentNo": STUDENTS["C"][0], "name": STUDENTS["C"][1]},
+            },
+            "fileId": str(file_row.id),
+            "finalId": str(final.id),
+            "defenseFinalId": str(defense_final.id),
+        }
+        out = Path("../e2e/runtime-logs/gap-five-fixture.json")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(fixture, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(json.dumps(fixture, ensure_ascii=False))
+        return 0
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

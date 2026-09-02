@@ -1,0 +1,404 @@
+name: Graduation final Release Seal tail S2 S4 S5 S6
+
+# Existing-head trigger for the audit-only tail seal.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/graduation-release-seal-tail-pr.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graduation-release-seal-tail-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-seal-tail:
+    name: S2 material / S4 truth / S5 restore / S6 manifest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: graduation_release_seal
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+      clamav:
+        image: clamav/clamav:stable
+        ports:
+          - 3310:3310
+
+    env:
+      PRODUCT_EXACT_SHA: a9540a86d8594c3e0ad8bfdb86d5cafe1a2fc8fe
+      EXPECTED_MAIN_SHA: 84bf29dc41bb2affa03c6345938ab0ca672b6eda
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      DB_DRIVER: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: graduation_release_seal
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/graduation_release_seal?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/graduation_release_seal?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/13
+      REDIS_KEY_PREFIX: graduation-release-seal-tail
+      JWT_SECRET: graduation-release-seal-secret-at-least-32-bytes
+      JWT_SECRET_KEY: graduation-release-seal-secret-at-least-32-bytes
+      MOCK_LOGIN_ENABLED: 'false'
+      INTERNAL_OPS_TOKEN: graduation-release-seal-ops-token
+      SCHEDULER_MODE: external
+      UPLOAD_DIR: /tmp/graduation-release-seal-uploads
+      FILE_STORAGE_BACKEND: local
+      FILE_ALLOW_ZIP: 'true'
+      CLAMAV_ENABLED: 'true'
+      FILE_SCAN_REQUIRED: 'true'
+      CLAMAV_HOST: 127.0.0.1
+      CLAMAV_PORT: '3310'
+      CLAMAV_CONNECT_TIMEOUT: '2'
+      CLAMAV_READ_TIMEOUT: '60'
+      FILE_SCAN_MAX_ATTEMPTS: '3'
+      FILE_SCAN_RETRY_BASE_SECONDS: '1'
+      GRADUATION_ACCEPTANCE_TENANT_ID: '1000000000000000003'
+      BACKUP_DIR: /tmp/graduation-release-seal-backup
+      KEEP_DAYS: '2'
+      MIN_LOCAL_BACKUP_SETS: '2'
+      REQUIRE_UPLOAD_BACKUP: '1'
+      BACKUP_REQUIRE_OFFSITE: 'true'
+      BACKUP_RCLONE_REMOTE: /tmp/graduation-release-seal-offsite
+      BACKUP_REQUIRE_IMMUTABLE_REMOTE: 'false'
+      MAX_BACKUP_AGE_SECONDS: '3600'
+      MAX_RESTORE_SECONDS: '900'
+      REQUIRED_RESTORE_TABLES: alembic_version,t_tenant,t_import_job,t_export_job,t_file_object,t_gd_archive_record,t_archive_manifest
+      MIN_RESTORE_TABLES: '10'
+      MIN_RESTORE_INDEXES: '10'
+      MIN_RESTORE_FOREIGN_KEYS: '1'
+      MIN_ACTIVE_TENANTS: '2'
+      MIN_RESTORED_LOCAL_FILE_OBJECTS: '1'
+      MIN_RESTORED_HASHED_FILE_OBJECTS: '1'
+      RESTORE_EVIDENCE_FILE: /tmp/graduation-release-seal-restore-evidence.txt
+      RESTORE_SOURCE_COMMIT: a9540a86d8594c3e0ad8bfdb86d5cafe1a2fc8fe
+
+    steps:
+      - name: Checkout product exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: a9540a86d8594c3e0ad8bfdb86d5cafe1a2fc8fe
+          fetch-depth: 0
+
+      - name: Seal exact product and current main ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_EXACT_SHA"
+          git fetch origin main --no-tags
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA"
+          git merge-base --is-ancestor "$EXPECTED_MAIN_SHA" "$PRODUCT_EXACT_SHA"
+          echo "PRODUCT_EXACT_SHA=$PRODUCT_EXACT_SHA"
+          echo "MAIN_SHA=$EXPECTED_MAIN_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install tail dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y default-mysql-client rclone
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Wait for real ClamAV
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import time
+          from app.services.clamav_client import ClamAVClient
+          last = None
+          for _ in range(180):
+              try:
+                  client = ClamAVClient()
+                  if client.ping():
+                      print(client.version())
+                      raise SystemExit(0)
+              except Exception as exc:
+                  last = exc
+              time.sleep(2)
+          raise SystemExit(f"ClamAV did not become ready: {last}")
+          PY
+
+      - name: Build exact-head MySQL and real login accounts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          mysql -h 127.0.0.1 -uroot -proot -e "SET GLOBAL log_bin_trust_function_creators = 1"
+          test "$(alembic heads | wc -l | tr -d ' ')" = '1'
+          alembic upgrade head
+          alembic current
+          python scripts/_seed_login_accounts_only.py
+          EXPECTED="$(mysql -h 127.0.0.1 -uroot -proot -Nse 'SELECT version_num FROM graduation_release_seal.alembic_version LIMIT 1')"
+          test -n "$EXPECTED"
+          echo "EXPECTED_ALEMBIC_VERSION=$EXPECTED" >> "$GITHUB_ENV"
+
+      - name: S2 tail · material/export with real SCHOOL_ADMIN auth context
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('tests/graduation_material_center_mysql_acceptance.py').read_text(encoding='utf-8')
+          old = '''    user = {"userId": "1", "realName": "材料域验收管理员", "currentRoleCode": "SCHOOL_ADMIN",
+                  "userType": "ADMIN", "permissions": ["*"]}
+'''
+          new = '''    from app.core.security import decode_token
+              from app.services.auth_service_db import login_with_password
+              login = login_with_password("admin", "123456", tenant_code="demo-school", client_type="PC")
+              user = decode_token(login["accessToken"])
+              assert user.get("currentRoleCode") == "SCHOOL_ADMIN", user
+              assert user.get("tenantId") == str(tenant_id), user
+'''.replace('              ', '    ')
+          assert old in source, 'legacy acceptance user fixture changed; refuse blind overlay'
+          patched = source.replace(old, new, 1)
+          target = Path('/tmp/graduation_material_center_release_acceptance.py')
+          target.write_text(patched, encoding='utf-8')
+          print('release tail uses real password login + decoded SCHOOL_ADMIN JWT; no permission bypass')
+          PY
+          PYTHONPATH=. python /tmp/graduation_material_center_release_acceptance.py | tee /tmp/graduation-material-mysql.log
+          python - <<'PY'
+          import inspect
+          from app.modules.graduation.materials import export_service
+          src = inspect.getsource(export_service.run_export_job)
+          assert 'if row.status == "SUCCEEDED"' in src
+          assert 'row.status not in {"CREATED", "FAILED"}' in src
+          assert 'row.status = "FAILED"' in src
+          print('S2 material/export retry-idempotency contract present')
+          PY
+
+      - name: S4 · Authoritative graduation truth and cross-module contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_academic_graduation_truth_guard.py \
+            tests/test_graduation_package9_contract.py \
+            tests/test_graduation_specialist_batch_context_permissions.py \
+            -p no:warnings | tee /tmp/graduation-s4-truth.log
+
+      - name: S5 · Validate recovery governance and seed canonical FileObject
+        run: |
+          set -euo pipefail
+          python scripts/check/data-governance-contracts.py
+          bash -n deploy/backup/backup-mysql.sh
+          bash -n deploy/backup/backup-runner.sh
+          bash -n deploy/backup/restore-drill.sh
+          rm -rf "$UPLOAD_DIR"
+          cd backend
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib, os
+          from pathlib import Path
+          from sqlalchemy import select
+          from app.core.context import set_current_user, set_tenant
+          from app.db.session import get_sessionmaker
+          from app.models import FileObject, Tenant, User
+          from app.services import file_service
+
+          db = get_sessionmaker()()
+          try:
+              tenant = db.scalar(select(Tenant).where(Tenant.tenant_code == 'demo-school', Tenant.is_deleted.is_(False)).limit(1))
+              assert tenant is not None
+              actor_row = db.scalar(select(User).where(User.tenant_id == tenant.id, User.is_deleted.is_(False)).order_by(User.id.asc()).limit(1))
+              assert actor_row is not None
+              tenant_id, actor_id = int(tenant.id), int(actor_row.id)
+              login_name = str(actor_row.login_name or 'restore-drill')
+          finally:
+              db.close()
+          actor = {'tenantId': str(tenant_id), 'userId': str(actor_id), 'loginName': login_name}
+          payload = b'graduation-release-seal-fileobject-proof\n'
+          set_tenant({'tenantId': str(tenant_id)}); set_current_user(actor)
+          try:
+              meta = file_service.store_bytes(payload, 'graduation-release-seal.txt', biz_type='ATTACHMENT', user=actor, visibility='PRIVATE')
+          finally:
+              set_current_user(None); set_tenant(None)
+          file_id = int(meta['fileId'])
+          db = get_sessionmaker()()
+          try:
+              row = db.get(FileObject, file_id)
+              assert row is not None and not row.is_deleted
+              assert int(row.size_bytes or -1) == len(payload)
+              assert str(row.sha256 or '').lower() == hashlib.sha256(payload).hexdigest()
+              file_key, size_bytes, sha256 = str(row.file_key), int(row.size_bytes), str(row.sha256).lower()
+          finally:
+              db.close()
+          physical = Path(os.environ['UPLOAD_DIR']) / file_key
+          assert physical.is_file()
+          assert physical.stat().st_size == size_bytes
+          assert hashlib.sha256(physical.read_bytes()).hexdigest() == sha256
+          Path('/tmp/graduation-release-fileobject.txt').write_text(
+              f'file_id={file_id}\nfile_key={file_key}\nsize_bytes={size_bytes}\nsha256={sha256}\n', encoding='utf-8')
+          PY
+
+      - name: S5 · Produce verified offsite backup set
+        run: |
+          set -euo pipefail
+          rm -rf "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
+          mkdir -p "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE"
+          bash deploy/backup/backup-runner.sh
+
+      - name: S5 · Restore only from offsite objects into clean MySQL
+        run: |
+          set -euo pipefail
+          STAGE=/tmp/graduation-release-seal-offsite-stage
+          rm -rf "$STAGE" "$BACKUP_DIR"
+          mkdir -p "$STAGE"
+          rclone copy "$BACKUP_RCLONE_REMOTE" "$STAGE"
+          MANIFEST="$(find "$STAGE" -maxdepth 1 -name 'manifest_*.json' | sort | tail -n1)"
+          test -s "$MANIFEST"
+          test -s "${MANIFEST}.sha256"
+          echo "RESTORE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+          bash deploy/backup/restore-drill.sh "$MANIFEST" graduation_release_restored
+
+      - name: S5 · Verify restored Alembic head and boot application
+        run: |
+          set -euo pipefail
+          test "$(mysql -h 127.0.0.1 -uroot -proot -Nse 'SELECT version_num FROM graduation_release_restored.alembic_version LIMIT 1')" = "$EXPECTED_ALEMBIC_VERSION"
+          cd backend
+          DATABASE_URL='mysql+pymysql://root:root@127.0.0.1:3306/graduation_release_restored?charset=utf8mb4' \
+          TEST_DATABASE_URL='mysql+pymysql://root:root@127.0.0.1:3306/graduation_release_restored?charset=utf8mb4' \
+          DB_NAME='graduation_release_restored' \
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/graduation-release-restored-backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8000/health >/dev/null
+          curl -fsS -H "X-Ops-Token: $INTERNAL_OPS_TOKEN" http://127.0.0.1:8000/health/ready > /tmp/graduation-release-ready.json
+          python - <<'PY'
+          import json, urllib.request
+          def login(tenant, username):
+              req = urllib.request.Request(
+                  'http://127.0.0.1:8000/api/v1/auth/login',
+                  data=json.dumps({'tenantCode': tenant, 'loginName': username, 'password': '123456', 'clientType': 'PC'}).encode(),
+                  headers={'Content-Type': 'application/json'}, method='POST')
+              with urllib.request.urlopen(req, timeout=10) as response:
+                  body = json.loads(response.read())
+              assert body.get('code') == 0, body
+              return body
+          demo = login('demo-school', 'admin')
+          sandbox = login('sandbox-school', 'admin2')
+          assert (demo.get('data') or {}) != (sandbox.get('data') or {})
+          PY
+          test "$(git rev-parse HEAD)" = "$PRODUCT_EXACT_SHA"
+          grep -Fqx "source_commit=$PRODUCT_EXACT_SHA" "$RESTORE_EVIDENCE_FILE"
+          grep -Eq '^manifest_sha256=[0-9a-f]{64}$' "$RESTORE_EVIDENCE_FILE"
+          grep -Eq '^local_file_object_count=[1-9][0-9]*$' "$RESTORE_EVIDENCE_FILE"
+          grep -Eq '^local_file_object_hashed_count=[1-9][0-9]*$' "$RESTORE_EVIDENCE_FILE"
+          cd "$(dirname "$RESTORE_EVIDENCE_FILE")"
+          sha256sum -c "$(basename "$RESTORE_EVIDENCE_FILE").sha256"
+
+      - name: S6 · Freeze exact source manifest with zero unclassified files
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+          import json, os, subprocess
+          from pathlib import Path
+
+          base = os.environ['EXPECTED_MAIN_SHA']
+          head = os.environ['PRODUCT_EXACT_SHA']
+          files = [line.strip() for line in subprocess.check_output(
+              ['git', 'diff', '--name-only', f'{base}..{head}'], text=True).splitlines() if line.strip()]
+          categories = {
+              'migration': [], 'backendProduct': [], 'backendTests': [],
+              'frontendProduct': [], 'frontendTests': [], 'releaseChecks': [],
+          }
+          unclassified = []
+          for path in files:
+              if path.startswith('backend/alembic/versions/'):
+                  categories['migration'].append(path)
+              elif path.startswith('backend/app/'):
+                  categories['backendProduct'].append(path)
+              elif path.startswith('backend/tests/'):
+                  categories['backendTests'].append(path)
+              elif path.startswith('frontend/src/'):
+                  categories['frontendProduct'].append(path)
+              elif path.startswith('frontend/tests/'):
+                  categories['frontendTests'].append(path)
+              elif path.startswith('scripts/check/'):
+                  categories['releaseChecks'].append(path)
+              else:
+                  unclassified.append(path)
+          payload = {
+              'baseSha': base,
+              'productExactSha': head,
+              'changedFileCount': len(files),
+              'categories': categories,
+              'unclassifiedFiles': unclassified,
+          }
+          Path('/tmp/graduation-release-source-manifest.json').write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(payload, ensure_ascii=False, indent=2))
+          assert files, 'source manifest unexpectedly empty'
+          assert not unclassified, unclassified
+          assert any(path.endswith('20260824_gd_archive_version_audit_columns.py') for path in categories['migration'])
+          assert any(path.endswith('manifest_service.py') for path in categories['backendProduct'])
+          assert any(path.endswith('file_service.py') for path in categories['backendProduct'])
+          PY
+          test "$(git rev-parse HEAD)" = "$PRODUCT_EXACT_SHA"
+
+      - name: Enforce precise release seal tail
+        run: |
+          set -euo pipefail
+          test -s /tmp/graduation-material-mysql.log
+          test -s /tmp/graduation-s4-truth.log
+          test -s /tmp/graduation-release-ready.json
+          test -s "$RESTORE_EVIDENCE_FILE"
+          test -s /tmp/graduation-release-source-manifest.json
+          python - <<'PY'
+          import json
+          data = json.load(open('/tmp/graduation-release-source-manifest.json', encoding='utf-8'))
+          assert data['unclassifiedFiles'] == []
+          print('Graduation precise S2-tail/S4/S5/S6 RELEASE SEAL PASS')
+          PY
+
+      - name: Upload release seal tail evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-release-seal-tail-${{ github.run_id }}
+          path: |
+            /tmp/graduation-material-mysql.log
+            /tmp/graduation-s4-truth.log
+            /tmp/graduation-release-ready.json
+            /tmp/graduation-release-restored-backend.log
+            /tmp/graduation-release-fileobject.txt
+            /tmp/graduation-release-seal-restore-evidence.txt
+            /tmp/graduation-release-seal-restore-evidence.txt.sha256
+            /tmp/graduation-release-source-manifest.json
+            /tmp/graduation-release-seal-offsite-stage/manifest_*.json
+            /tmp/graduation-release-seal-offsite-stage/manifest_*.json.sha256
+          if-no-files-found: warn
+          retention-days: 30

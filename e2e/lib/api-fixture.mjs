@@ -277,6 +277,7 @@ export async function prepareGraduationFixture() {
     batchName: batch.batchName,
     gdStudentId: String(gdStudent.id),
     studentNo: config.student.username,
+    studentName: String(gdStudent.name || profile.realName || profile.name || ''),
     mentorName: 'E2E指导教师A',
     topicTitle: topic.title
   }

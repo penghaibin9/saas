@@ -1,0 +1,362 @@
+name: Graduation five-gap Browser First
+# Audit-only trigger revision: five-gap DB seal aligned to the product todo contract.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/graduation-gap-five-browser-audit-pr.yml'
+      - 'e2e/specs/graduation-gap-five-browser-audit.spec.mjs'
+      - 'e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs'
+      - 'e2e/scripts/graduation-gap-five-seed.py'
+      - 'e2e/scripts/graduation-gap-five-db-audit.py'
+      - 'e2e/scripts/graduation-gap-five-runner-align.py'
+  push:
+    branches:
+      - audit/graduation-real-browser-20260823
+    paths:
+      - '.github/workflows/graduation-gap-five-browser-audit-pr.yml'
+      - 'e2e/specs/graduation-gap-five-browser-audit.spec.mjs'
+      - 'e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs'
+      - 'e2e/scripts/graduation-gap-five-seed.py'
+      - 'e2e/scripts/graduation-gap-five-db-audit.py'
+      - 'e2e/scripts/graduation-gap-five-runner-align.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graduation-five-gap-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  five-gap-browser-audit:
+    name: GD-012/013/016/017/019 / Chromium / MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: e2e_root
+          MYSQL_DATABASE: student_lifecycle_e2e
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pe2e_root"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping" --health-interval=5s --health-timeout=3s --health-retries=20
+
+    env:
+      CI: 'true'
+      PYTHONPATH: .
+      APP_ENV: test
+      DEPLOYMENT_MODE: local
+      TRUSTED_PROXY_IPS: 127.0.0.1/32
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:e2e_root@127.0.0.1:3306/student_lifecycle_e2e?charset=utf8mb4
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: e2e_root
+      DB_NAME: student_lifecycle_e2e
+      REDIS_URL: redis://127.0.0.1:6379/12
+      REDIS_KEY_PREFIX: graduation-five-gap
+      JWT_SECRET: graduation-five-gap-only-not-production
+      JWT_SECRET_KEY: graduation-five-gap-only-not-production
+      MOCK_LOGIN_ENABLED: 'false'
+      SMS_ENABLED: 'false'
+      SCHEDULER_MODE: external
+      E2E_ALLOW_DESTRUCTIVE_TESTS: 'true'
+      E2E_API_BASE_URL: http://127.0.0.1:8000/api/v1
+      E2E_STAFF_BASE_URL: http://127.0.0.1:5173
+      E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
+      E2E_MINIAPP_BASE_URL: http://127.0.0.1:5188
+      E2E_EXPECTED_SHA: 8e40c380a3717781c74c9b751f74f0ed166a3b7f
+
+    steps:
+      - name: Checkout product exact HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: 8e40c380a3717781c74c9b751f74f0ed166a3b7f
+          fetch-depth: 0
+
+      - name: Assert exact product HEAD
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          echo "PRODUCT_EXACT_HEAD=$actual"
+          test "$actual" = "$E2E_EXPECTED_SHA"
+
+      - name: Checkout five-gap audit harness only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: audit-harness
+          sparse-checkout: |
+            e2e/specs/graduation-gap-five-browser-audit.spec.mjs
+            e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs
+            e2e/scripts/graduation-gap-five-seed.py
+            e2e/scripts/graduation-gap-five-db-audit.py
+            e2e/scripts/graduation-gap-five-runner-align.py
+          sparse-checkout-cone-mode: false
+
+      - name: Inject only five-gap audit harness
+        run: |
+          set -euo pipefail
+          cp audit-harness/e2e/specs/graduation-gap-five-browser-audit.spec.mjs e2e/specs/
+          cp audit-harness/e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs e2e/specs/
+          mkdir -p e2e/scripts
+          cp audit-harness/e2e/scripts/graduation-gap-five-seed.py e2e/scripts/
+          cp audit-harness/e2e/scripts/graduation-gap-five-db-audit.py e2e/scripts/
+          cp audit-harness/e2e/scripts/graduation-gap-five-runner-align.py e2e/scripts/
+          rm -rf audit-harness
+          python3 e2e/scripts/graduation-gap-five-runner-align.py
+          test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
+          bad="$(git status --porcelain | awk '{print $2}' | grep -v '^e2e/' || true)"
+          test -z "$bad"
+          git status --short
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            student-portal/package-lock.json
+            miniapp/package-lock.json
+
+      - name: Audit harness syntax preflight
+        run: |
+          set -euo pipefail
+          python -m py_compile e2e/scripts/graduation-gap-five-seed.py e2e/scripts/graduation-gap-five-db-audit.py e2e/scripts/graduation-gap-five-runner-align.py
+          node --check e2e/specs/graduation-gap-five-browser-audit.spec.mjs
+          node --check e2e/specs/graduation-gd013-gd019-gap-audit.spec.mjs
+
+      - name: Install backend, migrate MySQL, seed IAM and tenants
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          alembic heads
+          alembic upgrade head
+          alembic current
+          python scripts/bootstrap_control_plane_school_iam_authority.py
+          python scripts/e2e_seed_playwright_tenants.py
+          python scripts/e2e_seed_control_plane_school_iam.py
+
+      - name: Start real backend
+        run: |
+          set -euo pipefail
+          mkdir -p e2e/runtime-logs e2e/test-results
+          cd backend
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/backend.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          cat ../e2e/runtime-logs/backend.log
+          exit 1
+
+      - name: Bootstrap real graduation identities
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python scripts/e2e_bootstrap_graduation_accounts_ci.py
+          python scripts/e2e_reset_graduation_passwords.py
+          python - <<'PY'
+          from scripts import e2e_reset_graduation_passwords as reset
+          reset.E2E_LOGINS = ['e2e_major_admin']
+          raise SystemExit(reset.main())
+          PY
+          python scripts/e2e_verify_graduation_accounts.py
+
+      - name: SEED_ONLY five-gap prerequisites
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python ../e2e/scripts/graduation-gap-five-seed.py
+          test -f ../e2e/runtime-logs/gap-five-fixture.json
+          cat ../e2e/runtime-logs/gap-five-fixture.json
+
+      - name: Start Staff PC
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/frontend.pid
+
+      - name: Start Student PC
+        env:
+          VITE_BASE: /portal/
+          VITE_API_BASE_URL: /
+          VITE_PROXY_TARGET: http://127.0.0.1:8000
+        run: |
+          set -euo pipefail
+          cd student-portal
+          npm ci
+          nohup npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/student-portal.pid
+
+      - name: Start Student Mini H5
+        env:
+          VITE_USE_MOCK: 'false'
+          VITE_API_BASE_URL: http://127.0.0.1:8000
+        run: |
+          set -euo pipefail
+          cd miniapp
+          npm ci
+          nohup npm run dev:h5 -- --host 127.0.0.1 --port 5188 > ../e2e/runtime-logs/miniapp.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/miniapp.pid
+
+      - name: Wait for targeted browser surfaces
+        run: |
+          set -euo pipefail
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://127.0.0.1:5188/; do
+            ok=''
+            for i in {1..60}; do
+              if curl -fsS "$url" >/dev/null; then ok=1; break; fi
+              sleep 2
+            done
+            if [ -z "$ok" ]; then
+              echo "Application not ready: $url"
+              cat e2e/runtime-logs/*.log || true
+              exit 1
+            fi
+          done
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          set -euo pipefail
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: GD-012 Browser First · peer assign/review/rectify
+        id: gd012
+        continue-on-error: true
+        working-directory: e2e
+        run: |
+          set +e
+          npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep '成果互查：管理员分配'
+          rc=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd012-junit.xml
+          mkdir -p runtime-logs
+          if [ "$rc" -eq 0 ]; then echo success > runtime-logs/gd012.outcome; else echo failure > runtime-logs/gd012.outcome; fi
+          exit "$rc"
+
+      - name: GD-013 Browser First · defense schedule/conflict/publish/delay
+        id: gd013
+        if: always()
+        continue-on-error: true
+        working-directory: e2e
+        run: |
+          set +e
+          npx playwright test specs/graduation-gd013-gd019-gap-audit.spec.mjs --grep '真实编排冲突'
+          rc1=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd013-schedule-junit.xml
+          npx playwright test specs/graduation-gd013-gd019-gap-audit.spec.mjs --grep '学生延期申请'
+          rc2=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd013-delay-junit.xml
+          mkdir -p runtime-logs
+          if [ "$rc1" -eq 0 ] && [ "$rc2" -eq 0 ]; then echo success > runtime-logs/gd013.outcome; else echo failure > runtime-logs/gd013.outcome; fi
+          if [ "$rc1" -ne 0 ] || [ "$rc2" -ne 0 ]; then exit 1; fi
+
+      - name: GD-016 Browser First · excellent outcome three-stage review
+        id: gd016
+        if: always()
+        continue-on-error: true
+        working-directory: e2e
+        run: |
+          set +e
+          npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep '优秀成果：导师提名'
+          rc=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd016-junit.xml
+          mkdir -p runtime-logs
+          if [ "$rc" -eq 0 ]; then echo success > runtime-logs/gd016.outcome; else echo failure > runtime-logs/gd016.outcome; fi
+          exit "$rc"
+
+      - name: GD-017 Browser First · risk scan/accept/process/close
+        id: gd017
+        if: always()
+        continue-on-error: true
+        working-directory: e2e
+        run: |
+          set +e
+          npx playwright test specs/graduation-gap-five-browser-audit.spec.mjs --grep '风险：真实扫描'
+          rc=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd017-junit.xml
+          mkdir -p runtime-logs
+          if [ "$rc" -eq 0 ]; then echo success > runtime-logs/gd017.outcome; else echo failure > runtime-logs/gd017.outcome; fi
+          exit "$rc"
+
+      - name: GD-019 Browser First · message/stats/XLSX projections
+        id: gd019
+        if: always()
+        continue-on-error: true
+        working-directory: e2e
+        run: |
+          set +e
+          npx playwright test specs/graduation-gd013-gd019-gap-audit.spec.mjs --grep '答辩 XLSX 真实 UI 导出'
+          rc=$?
+          test -f test-results/junit.xml && cp test-results/junit.xml test-results/gd019-junit.xml
+          mkdir -p runtime-logs
+          if [ "$rc" -eq 0 ]; then echo success > runtime-logs/gd019.outcome; else echo failure > runtime-logs/gd019.outcome; fi
+          exit "$rc"
+
+      - name: Direct MySQL five-gap evidence seal
+        id: dbseal
+        if: always()
+        continue-on-error: true
+        working-directory: backend
+        run: |
+          set +e
+          python ../e2e/scripts/graduation-gap-five-db-audit.py
+          rc=$?
+          mkdir -p ../e2e/runtime-logs
+          if [ "$rc" -eq 0 ]; then echo success > ../e2e/runtime-logs/dbseal.outcome; else echo failure > ../e2e/runtime-logs/dbseal.outcome; fi
+          exit "$rc"
+
+      - name: Enforce five targeted evidence gates
+        if: always()
+        run: |
+          set -euo pipefail
+          GD012="$(cat e2e/runtime-logs/gd012.outcome)"
+          GD013="$(cat e2e/runtime-logs/gd013.outcome)"
+          GD016="$(cat e2e/runtime-logs/gd016.outcome)"
+          GD017="$(cat e2e/runtime-logs/gd017.outcome)"
+          GD019="$(cat e2e/runtime-logs/gd019.outcome)"
+          DBSEAL="$(cat e2e/runtime-logs/dbseal.outcome)"
+          printf 'GD-012=%s\nGD-013=%s\nGD-016=%s\nGD-017=%s\nGD-019=%s\nDB-SEAL=%s\n' "$GD012" "$GD013" "$GD016" "$GD017" "$GD019" "$DBSEAL"
+          test "$GD012" = success
+          test "$GD013" = success
+          test "$GD016" = success
+          test "$GD017" = success
+          test "$GD019" = success
+          test "$DBSEAL" = success
+
+      - name: Upload five-gap Browser First evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graduation-five-gap-${{ github.run_id }}
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+            e2e/runtime-logs/
+          if-no-files-found: warn
+          retention-days: 14
