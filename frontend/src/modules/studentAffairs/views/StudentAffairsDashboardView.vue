@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="今日工作"
-    subtitle="聚合当前身份范围内的统一待办、请假返校、风险、困难资助与处分事项，直接进入现有真实业务工作页。"
+    subtitle="聚合当前身份范围内的待办、请假返校、风险、困难资助与处分事项，先看结论，再逐项处理。"
     :role-name="dashboard.viewLabel"
     :data-scope-name="scopeLabel"
     watermark-purpose="学工今日工作查看"
@@ -79,7 +79,7 @@
               <AppSectionCard
                 class="sa-priority-panel"
                 title="现在先处理"
-                subtitle="风险与逾期优先；每条队列进入现有真实业务工作页。"
+                subtitle="风险与逾期优先；每条队列进入对应业务工作页。"
                 compact
                 no-padding
               >
@@ -87,34 +87,33 @@
                   <span class="sa-priority-rule">风险 / 超期优先</span>
                 </template>
 
-                <div class="sa-work-queue" role="list" aria-label="当前业务队列">
-                  <button
-                    v-for="item in todoItems"
-                    :key="item.key"
-                    type="button"
-                    role="listitem"
-                    class="sa-work-queue__row"
-                    :class="[{ 'is-disabled': !item.path }, `is-${item.tone}`]"
-                    :disabled="!item.path"
-                    :aria-label="item.path ? `${item.label}，${item.value}${item.unit}，${item.action}` : `${item.label}，当前身份无业务入口`"
-                    @click="go(item.path)"
-                  >
-                    <span class="sa-queue-icon" aria-hidden="true">{{ item.icon }}</span>
-                    <span class="sa-queue-copy">
-                      <span class="sa-queue-title">
-                        <strong>{{ item.label }}</strong>
-                        <AppStatusTag :type="item.statusType" :label="item.statusLabel" />
+                <ul class="sa-work-queue" aria-label="当前业务队列">
+                  <li v-for="item in todoItems" :key="item.key">
+                    <button
+                      type="button"
+                      class="sa-work-queue__row"
+                      :class="[{ 'is-disabled': !item.path }, `is-${item.tone}`]"
+                      :disabled="!item.path"
+                      :aria-label="item.path ? `${item.label}，${item.value}${item.unit}，${item.action}` : `${item.label}，当前身份无业务入口`"
+                      @click="go(item.path)"
+                    >
+                      <span class="sa-queue-icon" aria-hidden="true">{{ item.icon }}</span>
+                      <span class="sa-queue-copy">
+                        <span class="sa-queue-title">
+                          <strong>{{ item.label }}</strong>
+                          <AppStatusTag :type="item.statusType" :label="item.statusLabel" />
+                        </span>
+                        <span class="sa-queue-hint">{{ item.hint }}</span>
+                        <span class="sa-queue-meta">按当前身份与数据范围汇总</span>
                       </span>
-                      <span class="sa-queue-hint">{{ item.hint }}</span>
-                      <span class="sa-queue-meta">按当前身份与数据范围汇总</span>
-                    </span>
-                    <span class="sa-queue-count">
-                      <strong>{{ item.value }}</strong>
-                      <small v-if="item.value !== '—'">{{ item.unit }}</small>
-                    </span>
-                    <span class="sa-queue-action">{{ item.path ? item.action : '无权限' }}</span>
-                  </button>
-                </div>
+                      <span class="sa-queue-count">
+                        <strong>{{ item.value }}</strong>
+                        <small v-if="item.value !== '—'">{{ item.unit }}</small>
+                      </span>
+                      <span class="sa-queue-action">{{ item.path ? item.action : '无权限' }}</span>
+                    </button>
+                  </li>
+                </ul>
               </AppSectionCard>
             </div>
 
@@ -123,33 +122,36 @@
                 <div class="sa-scope-grid">
                   <div>
                     <span>当前身份</span>
-                    <strong>{{ dashboard.viewLabel || '当前角色' }}</strong>
+                    <strong :title="dashboard.viewLabel || '当前角色'">{{ dashboard.viewLabel || '当前角色' }}</strong>
                   </div>
                   <div>
                     <span>数据范围</span>
-                    <strong>{{ scopeLabel }}</strong>
+                    <strong :title="scopeLabel">{{ scopeLabel }}</strong>
                   </div>
                 </div>
-                <p class="sa-fact-note"><span aria-hidden="true">✓</span> 权限、数据范围与业务动作均由服务端校验。</p>
+                <p class="sa-fact-note"><span aria-hidden="true">✓</span> 页面只显示当前身份可查看、可进入的工作范围。</p>
               </AppSectionCard>
 
               <AppSectionCard class="sa-dashboard-panel sa-risk-panel" title="风险摘要" compact>
                 <template #header-extra>
-                  <AppRiskTag v-if="riskOpenCount > 0" :level="riskLevel" :label="`最高${riskLevelLabel}`" />
+                  <AppRiskTag v-if="riskOpenCount > 0" :level="riskLevel" :label="`最高等级：${riskLevelLabel}`" />
                   <AppStatusTag v-else type="success" label="当前无未关闭风险" />
                 </template>
                 <div class="sa-risk-kpis">
                   <div>
-                    <span>高危 / 危急</span>
-                    <strong>{{ elevatedRiskCount }}</strong>
+                    <span>高风险</span>
+                    <strong>{{ highRiskCount }}</strong>
+                  </div>
+                  <div>
+                    <span>危急风险</span>
+                    <strong>{{ criticalRiskCount }}</strong>
                   </div>
                   <div>
                     <span>未关闭风险</span>
                     <strong>{{ riskOpenCount }}</strong>
                   </div>
                 </div>
-                <div class="sa-risk-progress" aria-hidden="true"><span :style="{ width: `${riskExposurePercent}%` }" /></div>
-                <p class="sa-fact-note">进入风险页后继续使用真实状态、责任关系和当前可执行动作。</p>
+                <p class="sa-fact-note">进入风险页后，按当前状态、责任人和可用动作继续处理。</p>
               </AppSectionCard>
 
               <AppSectionCard class="sa-dashboard-panel sa-entry-panel" title="高频入口" compact>
@@ -188,6 +190,7 @@
             subtitle="当前权限与数据范围内的真实操作留痕。"
             compact
           >
+            <p v-if="auditError" class="sa-audit-warning" role="status">{{ auditError }}</p>
             <AppAuditTrail :records="auditLogs" compact empty-text="暂无可展示审计记录" />
           </AppSectionCard>
         </div>
@@ -243,6 +246,16 @@ const RISK_LABEL = {
   LOW: '低'
 }
 
+const EMPTY_DASHBOARD = {
+  summaryCards: [],
+  moduleCards: [],
+  view: '',
+  viewLabel: '',
+  scopeMode: '',
+  scopeLabel: '',
+  riskSummary: {}
+}
+
 export default {
   name: 'StudentAffairsDashboardView',
   props: { ctx: { type: Object, default: null } },
@@ -261,8 +274,9 @@ export default {
     return {
       loading: true,
       errorMessage: '',
-      dashboard: { summaryCards: [], moduleCards: [], view: '', viewLabel: '', scopeMode: '', scopeLabel: '', riskSummary: {} },
-      auditLogs: []
+      dashboard: { ...EMPTY_DASHBOARD },
+      auditLogs: [],
+      auditError: ''
     }
   },
   computed: {
@@ -283,7 +297,7 @@ export default {
         return '系统已按最小权限关闭业务数据。请联系学校管理员配置学工数据范围后重试。'
       }
       if (!this.loading && !this.metricCards.length) {
-        return '当前接口未返回可展示的聚合字段，请刷新后重试；页面不会用空值或缓存冒充真实数据。'
+        return '当前暂未取得可用的学工汇总，请刷新后重试。系统不会把加载失败显示为 0。'
       }
       return ''
     },
@@ -336,49 +350,49 @@ export default {
       return this.heroMetrics.find((item) => item.key === 'pendingTodo')?.path || ''
     },
     journeySteps() {
-      return ['读取真实聚合', '角色投影', '进入业务队列', '返回上下文', '审计沉淀']
+      return ['查看今日全局', '处理当前待办', '核查重点风险', '谈话 / 家校', '回访并留痕']
     },
     todoItems() {
       const card = (key) => this.metricCards.find((item) => item.key === key) || {}
       const rows = [
         {
           key: 'riskStudents', icon: '险', label: '风险与重点学生', tone: 'danger',
-          statusLabel: '未关闭', statusType: 'danger', action: '进入风险',
-          hint: '查看未关闭风险学生，进入后按真实状态与责任关系继续处置。',
+          statusLabel: '未关闭', statusType: 'danger', action: '查看风险',
+          hint: '查看未关闭风险学生，按当前状态与责任人继续处置。',
           value: this.cardValue(card('riskStudents')), unit: card('riskStudents').unit || '人',
           path: card('riskStudents').drillPath
         },
         {
           key: 'overdueLeave', icon: '返', label: '逾期未销假', tone: 'warning',
-          statusLabel: '已逾期', statusType: 'danger', action: '核实返校',
+          statusLabel: '已逾期', statusType: 'danger', action: '查看逾期',
           hint: '核查应返校但尚未完成销假确认的请假记录。',
           value: this.cardValue(card('overdueLeave')), unit: card('overdueLeave').unit || '件',
           path: card('overdueLeave').drillPath
         },
         {
           key: 'pendingLeave', icon: '假', label: '请假待审批', tone: 'primary',
-          statusLabel: '待审批', statusType: 'processing', action: '开始审批',
+          statusLabel: '待审批', statusType: 'processing', action: '查看待审',
           hint: '按辅导员、学院与学工处当前审批节点进入连续处理。',
           value: this.cardValue(card('pendingLeave')), unit: card('pendingLeave').unit || '件',
           path: card('pendingLeave').drillPath
         },
         {
           key: 'pendingAid', icon: '困', label: '困难认定材料与审核', tone: 'warning',
-          statusLabel: '待认定', statusType: 'warning', action: '进入审核',
+          statusLabel: '待认定', statusType: 'warning', action: '查看认定',
           hint: '进入困难认定工作台核对材料、资格与当前审核节点。',
           value: this.cardValue(card('pendingAid')), unit: card('pendingAid').unit || '件',
           path: card('pendingAid').drillPath
         },
         {
           key: 'pendingFunding', icon: '奖', label: '奖助评审与公示', tone: 'success',
-          statusLabel: '待评审', statusType: 'warning', action: '处理奖助',
+          statusLabel: '待评审', statusType: 'warning', action: '查看奖助',
           hint: '进入奖助工作台继续资格核对、评审与公示流程。',
           value: this.cardValue(card('pendingFunding')), unit: card('pendingFunding').unit || '件',
           path: card('pendingFunding').drillPath
         },
         {
           key: 'pendingDiscipline', icon: '纪', label: '处分审批与解除', tone: 'violet',
-          statusLabel: '待处理', statusType: 'warning', action: '进入处分',
+          statusLabel: '待处理', statusType: 'warning', action: '查看处分',
           hint: '进入处分工作台处理审批、生效或解除节点，并保留完整审计链路。',
           value: this.cardValue(card('pendingDiscipline')), unit: card('pendingDiscipline').unit || '件',
           path: card('pendingDiscipline').drillPath
@@ -406,21 +420,23 @@ export default {
       return focus.length ? `${lead}；先核查 ${focus.join('与')}。` : `${lead}。`
     },
     conclusionDetail() {
-      const elevated = this.elevatedRiskCount
       const prefix = `${this.dashboard.viewLabel || '当前身份'} · ${this.scopeLabel}`
-      if (elevated > 0) {
-        return `${prefix}。其中高危或危急风险 ${elevated} 人；请假、困难、奖助和处分队列均可直接进入原业务页处理。`
-      }
-      return `${prefix}。当前结论仅使用服务端聚合字段，不展示无真实来源的优先学生名单或推荐动作。`
+      const riskParts = []
+      if (this.criticalRiskCount > 0) riskParts.push(`危急风险 ${this.criticalRiskCount} 人`)
+      if (this.highRiskCount > 0) riskParts.push(`高风险 ${this.highRiskCount} 人`)
+      const riskText = riskParts.length ? `${riskParts.join('、')}；` : ''
+      return `${prefix}。${riskText}请假、困难、奖助和处分事项均可从下方队列继续处理。`
     },
     riskOpenCount() {
       const summary = this.dashboard.riskSummary || {}
       if (summary.openStudentCount != null) return Number(summary.openStudentCount) || 0
       return this.metricNumber('riskStudents')
     },
-    elevatedRiskCount() {
-      const summary = this.dashboard.riskSummary || {}
-      return (Number(summary.highCount) || 0) + (Number(summary.criticalCount) || 0)
+    highRiskCount() {
+      return Number(this.dashboard.riskSummary?.highCount) || 0
+    },
+    criticalRiskCount() {
+      return Number(this.dashboard.riskSummary?.criticalCount) || 0
     },
     riskLevel() {
       const card = this.metricCards.find((item) => item.key === 'riskStudents') || {}
@@ -431,10 +447,6 @@ export default {
     },
     riskLevelLabel() {
       return RISK_LABEL[this.riskLevel] || '待确认'
-    },
-    riskExposurePercent() {
-      if (!this.riskOpenCount) return 0
-      return Math.min(100, Math.round((this.elevatedRiskCount / this.riskOpenCount) * 100))
     },
     quickEntries() {
       const student = this.metricCards.find((item) => item.key === 'studentTotal') || {}
@@ -474,12 +486,16 @@ export default {
     async load() {
       this.loading = true
       this.errorMessage = ''
+      this.auditError = ''
       try {
         const [dashboardRes, auditRes] = await Promise.all([
           studentAffairsApi.getDashboard(),
-          studentAffairsApi.getAuditLogs({ page: 1, pageSize: 8 }).catch(() => ({ data: [] }))
+          studentAffairsApi.getAuditLogs({ page: 1, pageSize: 8 }).catch((e) => {
+            this.auditError = e?.message || '最近处理与审计暂不可用'
+            return { data: [] }
+          })
         ])
-        this.dashboard = dashboardRes.data
+        this.dashboard = dashboardRes.data || { ...EMPTY_DASHBOARD }
         this.auditLogs = auditRes.data || []
       } catch (e) {
         this.errorMessage = e?.message || '学工今日工作加载失败'
@@ -753,10 +769,17 @@ export default {
 .sa-work-queue {
   display: grid;
   gap: 6px;
+  margin: 0;
   padding: 8px;
+  list-style: none;
+}
+.sa-work-queue > li {
+  min-width: 0;
+  list-style: none;
 }
 .sa-work-queue__row {
   display: grid;
+  width: 100%;
   grid-template-columns: 38px minmax(0, 1fr) 58px 88px;
   align-items: center;
   gap: 9px;
@@ -871,9 +894,10 @@ export default {
 .sa-scope-grid,
 .sa-risk-kpis {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
 }
+.sa-scope-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sa-risk-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .sa-scope-grid > div,
 .sa-risk-kpis > div {
   min-width: 0;
@@ -904,7 +928,7 @@ export default {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sa-risk-kpis > div:first-child strong { color: var(--danger-600); }
+.sa-risk-kpis > div:nth-child(-n + 2) strong { color: var(--danger-600); }
 .sa-fact-note {
   display: flex;
   align-items: flex-start;
@@ -915,19 +939,6 @@ export default {
   line-height: 18px;
 }
 .sa-fact-note > span { color: var(--success-700); font-weight: 800; }
-.sa-risk-progress {
-  height: 6px;
-  margin-top: 8px;
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  background: var(--gray-100);
-}
-.sa-risk-progress > span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--warning-500), var(--danger-500));
-}
 
 .sa-dashboard-services {
   display: grid;
@@ -1002,6 +1013,16 @@ export default {
 .sa-cross-center button:not(:disabled):hover { border-color: var(--primary-300); background: var(--primary-50); }
 .sa-cross-center button:disabled { color: var(--text-tertiary); cursor: not-allowed; opacity: 0.58; }
 
+.sa-audit-warning {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--warning-100);
+  border-radius: 8px;
+  background: var(--warning-50);
+  color: var(--warning-700);
+  font-size: 12px;
+  line-height: 18px;
+}
 .sa-dashboard-panel--audit :deep(.app-section-card__body) {
   max-height: 220px;
   overflow-y: auto;
