@@ -6,11 +6,8 @@
         <span>{{ currentIndex + 1 }} / {{ queue.length }}</span>
       </div>
       <button
-        v-for="(item, index) in queue"
-        :key="queueKey(item, index)"
-        type="button"
-        :class="{ 'is-active': index === currentIndex }"
-        :disabled="submitting"
+        v-for="(item, index) in queue" :key="queueKey(item, index)" type="button"
+        :class="{ 'is-active': index === currentIndex }" :disabled="submitting"
         @click="emitUnlocked('select', item)"
       >
         <span class="gdq-name">{{ item.studentName || '学生' }}</span>
