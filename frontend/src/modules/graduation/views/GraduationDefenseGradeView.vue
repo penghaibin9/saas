@@ -495,9 +495,9 @@ export default {
       }
       state.loading = true
       state.error = ''
-      const queue = this.activeBatchQueue()
+      const q = this.activeBatchQueue()
       try {
-        const res = await graduationDefenseGradeApi.getGrades({ keyword: snapshot.keyword, status: queue.status || undefined, missingType: queue.missingType || undefined, batchId: snapshot.batchId, page: snapshot.page, pageSize: state.pageSize })
+        const res = await graduationDefenseGradeApi.getGrades({ keyword: snapshot.keyword, status: q.status || undefined, missingType: q.missingType || undefined, batchId: snapshot.batchId, page: snapshot.page, pageSize: state.pageSize })
         if (
           token !== this.batchLoadToken
           || snapshot.batchId !== String(this.batchStore.selectedBatchId || '')
