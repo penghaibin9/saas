@@ -40,3 +40,33 @@ test('V8 student and topic pages expose five primary groups while preserving eve
     assert.ok(topics.includes(`'${panel}'`), `topic legacy panel ${panel} must remain`)
   }
 })
+
+test('V6 student ledger keeps the real master, read-only academic mirror and recoverable work context', async () => {
+  const source = await read('../src/modules/graduation/views/GraduationStudentListView.vue')
+
+  assert.match(source, /毕业资格是教务只读镜像/)
+  assert.match(source, /教务只读镜像/)
+  assert.ok(!source.includes('gdStudentApi.setGradQual'), 'graduation UI must not write the academic graduation qualification mirror')
+
+  for (const queryKey of ['batchId', 'panel', 'page', 'keyword', 'returnTo']) {
+    assert.ok(source.includes(queryKey), `student work context must preserve ${queryKey}`)
+  }
+  assert.match(source, /buildListQuery\(overrides = \{\}\)/)
+  assert.match(source, /studentReturnQuery\(panel = this\.activePanel\)/)
+  assert.match(source, /returnTo: this\.currentListPath\(panel\)/)
+
+  assert.match(source, /loadToken/)
+  assert.match(source, /statsToken/)
+  assert.match(source, /token !== this\.loadToken/)
+  assert.match(source, /token !== this\.statsToken/)
+  assert.match(source, /String\(batchId\) !== String\(this\.batchStore\.selectedBatchId\)/)
+
+  assert.match(source, /AppExcelImportDrawer/)
+  assert.match(source, /downloadImportTemplate/)
+  assert.match(source, /uploadImportXlsx/)
+  assert.match(source, /importConfirm\(rows, previewToken\)/)
+  assert.match(source, /downloadImportErrors/)
+  for (const step of ['下载模板', '上传并预览', '下载错误行', '确认导入并留痕']) {
+    assert.match(source, new RegExp(step))
+  }
+})
