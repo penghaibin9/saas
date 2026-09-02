@@ -19,7 +19,7 @@ import { dirname, resolve } from 'node:path'
 const here = dirname(fileURLToPath(import.meta.url))
 const MINIAPP = resolve(here, '..')
 const REPO = resolve(MINIAPP, '..')
-const OUTPUT = resolve(REPO, 'miniapp-v3-handoff.json')
+const OUTPUT = resolve(REPO, 'artifacts/release-seals/miniapp-v3-handoff.json')
 const SEAL_SUBJECT = 'chore(miniapp-v3): seal exact-head handoff'
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
@@ -145,7 +145,7 @@ const REQUIRED_FIELDS = [
 
 function verify() {
   if (!existsSync(OUTPUT)) {
-    console.error('[handoff] 缺少 miniapp-v3-handoff.json，先运行生成命令')
+    console.error('[handoff] 缺少 artifacts/release-seals/miniapp-v3-handoff.json，先运行生成命令')
     return 1
   }
   const stored = JSON.parse(read(OUTPUT))
