@@ -75,16 +75,30 @@ test('U10 material notice deep-links to one authorized requirement on all consum
   assert.match(miniDetail, /runAction\(/)
 })
 
-test('U11 dashboard priority rows reuse permission-filtered drill paths', () => {
+test('U11 V6 dashboard keeps real drill paths and removes duplicate KPI presentation', () => {
   const view = read('frontend/src/modules/studentAffairs/views/StudentAffairsDashboardView.vue')
-  assert.match(view, /path: card\('pendingTodo'\)\.drillPath/)
-  assert.match(view, /path: card\('pendingLeave'\)\.drillPath/)
-  assert.match(view, /path: card\('riskStudents'\)\.drillPath/)
+  for (const key of [
+    'pendingTodo',
+    'pendingLeave',
+    'overdueLeave',
+    'pendingAid',
+    'pendingFunding',
+    'pendingDiscipline',
+    'riskStudents'
+  ]) {
+    assert.match(view, new RegExp(`path: card\\('${key}'\\)\\.drillPath`))
+  }
   assert.match(view, /@click="go\(item\.path\)"/)
-  assert.match(view, /class="sa-dashboard-metrics"/)
-  assert.match(view, /class="sa-dashboard-workspace"/)
-  assert.match(view, /class="sa-dashboard-services"/)
+  assert.match(view, /class="sa-v6-dashboard"/)
+  assert.match(view, /class="sa-v6-hero"/)
+  assert.match(view, /class="sa-v6-flow"/)
+  assert.match(view, /sa-v6-queue-card/)
+  assert.match(view, /sa-v6-scope-card/)
+  assert.match(view, /sa-v6-risk-card/)
+  assert.match(view, /sa-v6-entry-card/)
   assert.match(view, /sa-dashboard-panel--audit/)
-  assert.doesNotMatch(view, /class="sa-grid sa-grid--metrics"/)
-  assert.doesNotMatch(view, /class="sa-grid sa-grid--two"/)
+  assert.doesNotMatch(view, /AppMetricCard/)
+  assert.doesNotMatch(view, /sa-dashboard-metrics/)
+  assert.doesNotMatch(view, /sa-grid--priority/)
+  assert.doesNotMatch(view, /priorityStudents|recommendedAction|dormExceptionCount/)
 })
