@@ -230,6 +230,8 @@ jobs:
           python scripts/check/validate-github-workflows.py
       - name: 仓库卫生门禁（禁止产物与未登记大文件）
         run: python scripts/check/check-repo-hygiene.py --fail-on-duplicates
+      - name: 当前有效文档链接门禁
+        run: python scripts/check/check-active-doc-links.py
       - name: 扫描不应入库的文件
         run: |
           set -e

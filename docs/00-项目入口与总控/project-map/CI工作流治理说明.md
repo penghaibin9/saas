@@ -1,6 +1,6 @@
 # CI 工作流治理说明
 
-> 更新：2026-08-31
+> 更新：2026-09-02
 > 机器清单：`docs/00-项目入口与总控/ci-workflow-inventory.json`
 
 当前 106 个工作流已经逐个登记名称、负责人、用途、触发配置、最后配置分支、生命周期和替代关系。分类结果由 `python scripts/maintenance/generate-workflow-inventory.py` 生成：

@@ -44,6 +44,8 @@ backend/test-results/
 # Codex / local-agent runtime evidence is local-only.
 .codex-artifacts/
 .codex-temp/
+.worktrees/
+outputs/
 
 # Python and test caches at any depth.
 **/__pycache__/
