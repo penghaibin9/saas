@@ -1,16 +1,22 @@
 <template>
   <AppPageShell
-    title="学工看板"
-    subtitle="聚合今日待办、学生风险、请假审批和跨系统入口，数据按当前身份范围返回。"
+    class="sa-v6-page-shell"
+    title="今日工作"
+    subtitle="聚合当前身份可见的待办、请假返校、风险、困难资助与处分事项，直接进入现有真实业务工作页。"
     :role-name="dashboard.viewLabel"
     :data-scope-name="scopeLabel"
-    watermark-purpose="学工看板查看"
+    watermark-purpose="学工今日工作查看"
   >
     <template #actions>
       <span class="sa-updated-hint">
         数据更新于 <AppDateDisplay :value="dashboard.updatedAt" mode="datetime" empty-text="—" />
       </span>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.dashboard.view')" code="studentAffairs.dashboard.view" variant="secondary" @click="load">
+      <AppPermissionButton
+        :allowed="canBtn('studentAffairs.dashboard.view')"
+        code="studentAffairs.dashboard.view"
+        variant="secondary"
+        @click="load"
+      >
         刷新
       </AppPermissionButton>
       <AppExportButton :export-fn="exportLedger" :has-permission="true" />
@@ -18,109 +24,204 @@
 
     <AppGlobalState
       :state="pageState"
-      :description="errorMessage"
-      loading-text="正在加载学工看板真实数据…"
+      :title="stateTitle"
+      :description="stateDescription"
+      loading-text="正在加载学工今日工作真实数据…"
       @retry="load"
       @back="$router.push('/workbench')"
     >
-      <div class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前工作范围 · {{ scopeLabel }}</span>
-          <h3 class="sa-summary-strip__title">先处理待办和未关闭风险，再进入各业务台账</h3>
-          <p class="sa-summary-strip__text">{{ riskSummary }} 今日待办、请假审批和重点学生提醒均按当前身份的数据范围汇总。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
-            查看未关闭风险
-          </AppPermissionButton>
-        </div>
-      </div>
-
-      <div class="sa-grid sa-grid--priority">
-        <AppSectionCard title="今日优先处理">
-          <ul class="sa-list">
-            <li v-for="item in todoItems" :key="item.key" :class="{ 'is-actionable': item.path }" @click="go(item.path)">
-              <span>
-                <strong>{{ item.label }}</strong>
-                <small>{{ item.hint }}</small>
-              </span>
-              <span class="sa-list__action"><AppStatusTag :type="item.count > 0 ? 'warning' : 'success'" :label="`${item.count} 件`" /><button v-if="item.path" type="button" :aria-label="`打开${item.label}`">去处理 <b>→</b></button></span>
-            </li>
-          </ul>
-        </AppSectionCard>
-
-        <AppSectionCard title="学生风险结论">
-          <div class="sa-risk-row">
-            <AppRiskTag :level="riskLevel" />
-            <span>{{ riskSummary }}</span>
+      <div class="sa-v6-dashboard">
+        <section class="sa-v6-hero" aria-labelledby="sa-v6-hero-title">
+          <div class="sa-v6-hero__copy">
+            <span class="sa-v6-hero__eyebrow">TODAY · 当前运行结论</span>
+            <h2 id="sa-v6-hero-title">{{ heroConclusion }}</h2>
+            <p>{{ heroGuidance }}</p>
           </div>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
-            进入风险预警
-          </AppPermissionButton>
-        </AppSectionCard>
-      </div>
+          <dl class="sa-v6-hero__metrics" aria-label="今日工作关键指标">
+            <div v-for="item in heroMetrics" :key="item.key" class="sa-v6-hero__metric">
+              <dt>{{ item.label }}</dt>
+              <dd>{{ formatCount(item.value) }}</dd>
+            </div>
+          </dl>
+        </section>
 
-      <div class="sa-dashboard-section-head">
-        <div>
-          <h2>核心业务指标</h2>
-          <p>点击有权限的指标卡，可直接进入对应业务台账。</p>
+        <ol class="sa-v6-flow" aria-label="今日工作闭环">
+          <li v-for="(step, index) in workflowSteps" :key="step" :class="{ 'is-active': index === 0 }">
+            <span class="sa-v6-flow__index">{{ index + 1 }}</span>
+            <span>{{ step }}</span>
+          </li>
+        </ol>
+
+        <div class="sa-v6-workspace">
+          <AppSectionCard
+            class="sa-v6-panel sa-v6-queue-card"
+            title="现在先处理"
+            subtitle="按风险、逾期与当前节点排序；每条进入已有业务工作页"
+            compact
+            no-padding
+          >
+            <template #header-extra>
+              <span class="sa-v6-scope-note">{{ scopeLabel }}</span>
+            </template>
+
+            <div class="sa-v6-queue" aria-label="当前业务队列">
+              <button
+                v-for="item in businessQueues"
+                :key="item.key"
+                type="button"
+                class="sa-v6-queue-row"
+                :class="[`is-${item.tone}`, { 'is-zero': item.count === 0 }]"
+                :disabled="!item.path"
+                :title="item.path ? `进入${item.label}` : '当前身份无权进入或未配置可用入口'"
+                @click="go(item.path)"
+              >
+                <span class="sa-v6-queue-row__icon" aria-hidden="true">{{ item.icon }}</span>
+                <span class="sa-v6-queue-row__copy">
+                  <span class="sa-v6-queue-row__title">
+                    <strong>{{ item.label }}</strong>
+                    <AppStatusTag :type="item.statusType" :label="item.statusLabel" />
+                  </span>
+                  <span class="sa-v6-queue-row__description">{{ item.description }}</span>
+                  <span class="sa-v6-queue-row__meta">按当前数据范围 · 原业务流程</span>
+                </span>
+                <span class="sa-v6-queue-row__count">
+                  <strong>{{ formatCount(item.count) }}</strong>
+                  <small>{{ item.unit }}</small>
+                </span>
+                <span class="sa-v6-queue-row__action">
+                  {{ item.path ? item.action : '无可用入口' }}
+                  <span v-if="item.path" aria-hidden="true">→</span>
+                </span>
+              </button>
+            </div>
+          </AppSectionCard>
+
+          <aside class="sa-v6-side" aria-label="今日工作辅助信息">
+            <AppSectionCard
+              class="sa-v6-panel sa-v6-scope-card"
+              title="当前工作范围"
+              subtitle="身份、数据范围和业务动作仍按系统规则校验"
+              compact
+            >
+              <div class="sa-v6-scope-grid">
+                <div>
+                  <span>当前身份</span>
+                  <strong>{{ dashboard.viewLabel || '按当前身份' }}</strong>
+                </div>
+                <div>
+                  <span>范围口径</span>
+                  <strong>{{ scopeLabel }}</strong>
+                </div>
+                <div>
+                  <span>范围学生</span>
+                  <strong>{{ formatCount(cardValue('studentTotal')) }}</strong>
+                </div>
+                <div>
+                  <span>范围班级</span>
+                  <strong>{{ formatCount(cardValue('classTotal')) }}</strong>
+                </div>
+              </div>
+              <p class="sa-v6-card-note">权限、数据范围和业务动作会在目标工作页再次校验。</p>
+            </AppSectionCard>
+
+            <AppSectionCard
+              class="sa-v6-panel sa-v6-risk-card"
+              title="风险摘要"
+              subtitle="只展示当前范围的真实聚合"
+              compact
+            >
+              <template #header-extra>
+                <AppRiskTag v-if="cardValue('riskStudents')" :level="riskLevel" />
+                <AppStatusTag v-else type="success" label="暂无风险" />
+              </template>
+              <div class="sa-v6-risk-numbers">
+                <div><span>高危 / 危急</span><strong>{{ formatCount(urgentRiskCount) }}</strong></div>
+                <div><span>未关闭风险</span><strong>{{ formatCount(cardValue('riskStudents')) }}</strong></div>
+              </div>
+              <div class="sa-v6-risk-meter" aria-hidden="true">
+                <span :style="{ width: `${riskMeterPercent}%` }" />
+              </div>
+              <p class="sa-v6-card-note">进入风险页后按当前状态、责任人和最新记录继续处理。</p>
+              <AppPermissionButton
+                :allowed="canBtn('studentAffairs.risk.view')"
+                code="studentAffairs.risk.view"
+                variant="secondary"
+                @click="go(cardPath('riskStudents'))"
+              >
+                进入风险工作台
+              </AppPermissionButton>
+            </AppSectionCard>
+
+            <AppSectionCard
+              class="sa-v6-panel sa-v6-entry-card"
+              title="高频入口"
+              subtitle="对象查询与跨业务协作"
+              compact
+            >
+              <div v-if="highFrequencyEntries.length" class="sa-v6-entry-grid">
+                <button
+                  v-for="entry in highFrequencyEntries"
+                  :key="entry.path"
+                  type="button"
+                  class="sa-v6-entry"
+                  @click="go(entry.path)"
+                >
+                  <span class="sa-v6-entry__icon" aria-hidden="true">{{ entry.icon }}</span>
+                  <span><strong>{{ entry.label }}</strong><small>{{ entry.hint }}</small></span>
+                </button>
+              </div>
+              <p v-else class="sa-v6-card-note">当前身份暂无可用的跨业务入口。</p>
+            </AppSectionCard>
+          </aside>
         </div>
-      </div>
 
-      <div class="sa-dashboard-metrics" aria-label="学工核心业务指标">
-        <AppMetricCard
-          v-for="card in metricCards"
-          :key="card.key"
-          :title="card.label"
-          :value="card.value"
-          :unit="card.unit"
-          :accent="metricAccent(card.key)"
-          :drillable="!!card.drillPath"
-          :drill-target="card.drillPath"
-          @drill="go"
-        />
-      </div>
-
-      <div class="sa-dashboard-workspace">
-        <div class="sa-dashboard-services">
-          <AppSectionCard class="sa-dashboard-panel" title="常用学工业务" subtitle="高频工作直接进入对应台账">
-            <div class="sa-dashboard-actions">
-              <AppPermissionButton :allowed="canBtn('studentAffairs.leave.view')" code="studentAffairs.leave.view" variant="secondary" @click="go('/admin/student-affairs/leave')">
-                请假审批
-              </AppPermissionButton>
-              <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="go('/admin/student-affairs/dorm/exception')">
-                宿舍异常
-              </AppPermissionButton>
-              <AppPermissionButton :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" variant="secondary" @click="go('/admin/student-affairs/risk?status=OPEN')">
-                风险预警
-              </AppPermissionButton>
+        <div class="sa-v6-support-grid">
+          <AppSectionCard
+            class="sa-v6-panel sa-dashboard-panel--audit"
+            title="最近处理与审计"
+            subtitle="当前权限范围内的真实操作留痕"
+            compact
+          >
+            <div v-if="auditUnavailable" class="sa-v6-inline-warning" role="status">
+              审计列表暂不可用；今日工作真实聚合仍可使用，稍后刷新重试。
             </div>
+            <AppAuditTrail :records="auditLogs" compact empty-text="暂无可展示审计记录" />
           </AppSectionCard>
 
-          <AppSectionCard class="sa-dashboard-panel" title="数字迎新" subtitle="新生报到与异常情况汇总">
-            <div class="sa-dashboard-bridge">
-              <p>查看迎新批次、报到进度和异常学生，快速进入迎新工作区。</p>
-              <AppPermissionButton :allowed="canBtn('orientation.dashboard.view') || canBtn('studentAffairs.orientation.view')" code="studentAffairs.orientation.view" variant="secondary" @click="go('/admin/orientation')">
-                打开数字迎新
+          <AppSectionCard
+            class="sa-v6-panel sa-v6-bridge-card"
+            title="跨中心协同"
+            subtitle="风险仍回到各中心正式工作页处理"
+            compact
+          >
+            <div class="sa-v6-bridge-actions">
+              <AppPermissionButton
+                :allowed="canBtn('studentAffairs.orientation.view')"
+                code="studentAffairs.orientation.view"
+                variant="secondary"
+                @click="go('/admin/orientation')"
+              >
+                数字迎新
               </AppPermissionButton>
-            </div>
-          </AppSectionCard>
-
-          <AppSectionCard class="sa-dashboard-panel" title="跨中心风险" subtitle="集中查看其他中心的学生风险">
-            <div class="sa-dashboard-actions">
-              <AppPermissionButton :allowed="canBtn('internship.risk.view')" code="internship.risk.view" variant="secondary" @click="go('/admin/internship/risks')">
+              <AppPermissionButton
+                :allowed="canBtn('internship.risk.view')"
+                code="internship.risk.view"
+                variant="secondary"
+                @click="go('/admin/internship/risks')"
+              >
                 岗位实习风险
               </AppPermissionButton>
-              <AppPermissionButton :allowed="canBtn('graduation.risk.view')" code="graduation.risk.view" variant="secondary" @click="go('/admin/graduation/risk-archive?panel=risk')">
+              <AppPermissionButton
+                :allowed="canBtn('graduation.risk.view')"
+                code="graduation.risk.view"
+                variant="secondary"
+                @click="go('/admin/graduation/risk-archive?panel=risk')"
+              >
                 毕业设计风险
               </AppPermissionButton>
             </div>
           </AppSectionCard>
         </div>
-
-        <AppSectionCard class="sa-dashboard-panel sa-dashboard-panel--audit" title="最近操作记录" subtitle="当前权限范围内的真实操作留痕">
-          <AppAuditTrail :records="auditLogs" compact empty-text="暂无可展示审计记录" />
-        </AppSectionCard>
       </div>
     </AppGlobalState>
   </AppPageShell>
@@ -132,7 +233,6 @@ import {
   AppDateDisplay,
   AppExportButton,
   AppGlobalState,
-  AppMetricCard,
   AppPageShell,
   AppPermissionButton,
   AppRiskTag,
@@ -142,7 +242,7 @@ import {
 import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 
-/** 卡片 key → 权限码；无权限时不下钻（避免假入口） */
+/** 指标 key → 页面权限；无权限时不生成可点击下钻。 */
 const CARD_PERM = {
   studentTotal: 'studentAffairs.student.view',
   classTotal: 'studentAffairs.class.view',
@@ -167,6 +267,8 @@ const FALLBACK_DRILL = {
   riskStudents: '/admin/student-affairs/risk?status=OPEN'
 }
 
+const WORKFLOW_STEPS = ['发现事项', '确认优先级', '进入业务办理', '返回今日队列', '审计沉淀']
+
 export default {
   name: 'StudentAffairsDashboardView',
   props: { ctx: { type: Object, default: null } },
@@ -175,7 +277,6 @@ export default {
     AppDateDisplay,
     AppExportButton,
     AppGlobalState,
-    AppMetricCard,
     AppPageShell,
     AppPermissionButton,
     AppRiskTag,
@@ -186,15 +287,41 @@ export default {
     return {
       loading: true,
       errorMessage: '',
-      dashboard: { summaryCards: [], moduleCards: [], viewLabel: '', scopeMode: '', scopeLabel: '' },
-      auditLogs: []
+      dashboard: {
+        summaryCards: [],
+        moduleCards: [],
+        riskSummary: {},
+        view: '',
+        viewLabel: '',
+        scopeMode: '',
+        scopeType: '',
+        scopeLabel: ''
+      },
+      auditLogs: [],
+      auditUnavailable: false,
+      workflowSteps: WORKFLOW_STEPS
     }
   },
   computed: {
+    hasNoScope() {
+      return this.dashboard.scopeMode === 'NONE' || this.dashboard.scopeType === 'NONE'
+    },
     pageState() {
       if (this.loading) return 'loading'
       if (this.errorMessage) return 'error'
+      if (this.hasNoScope) return 'empty'
       return this.metricCards.length ? 'ready' : 'empty'
+    },
+    stateTitle() {
+      if (this.hasNoScope) return '当前账号未配置学工数据范围'
+      if (!this.loading && !this.errorMessage && !this.metricCards.length) return '当前范围暂无可展示的学工数据'
+      return ''
+    },
+    stateDescription() {
+      if (this.errorMessage) return this.errorMessage
+      if (this.hasNoScope) return '系统已按最小权限关闭业务数据展示，请联系学校管理员配置负责学院、班级或学生范围。'
+      if (!this.loading && !this.metricCards.length) return '当前接口没有返回可用指标，请刷新后重试；系统不会用示例数字替代真实结果。'
+      return ''
     },
     metricCards() {
       return (this.dashboard.summaryCards || []).map((card) => {
@@ -206,6 +333,12 @@ export default {
         return { ...card, drillPath }
       })
     },
+    cardMap() {
+      return this.metricCards.reduce((map, card) => {
+        map[card.key] = card
+        return map
+      }, {})
+    },
     scopeLabel() {
       if (this.dashboard.scopeLabel) return this.dashboard.scopeLabel
       const map = {
@@ -216,205 +349,809 @@ export default {
       }
       return map[this.dashboard.scopeMode] || '按当前身份'
     },
-    todoItems() {
-      const card = (key) => this.metricCards.find((c) => c.key === key) || {}
-      // 宿舍异常无与学工首页同口径可信统计：不展示假宿舍卡，也不用逾期销假顶替
+    heroMetrics() {
       return [
-        { key: 'todo', label: '今日待办', count: card('pendingTodo').value || 0, hint: '按当前身份可见的统一待办', path: card('pendingTodo').drillPath },
-        { key: 'leave', label: '请假审批概览', count: card('pendingLeave').value || 0, hint: '待辅导员/学院/学工处处理', path: card('pendingLeave').drillPath },
-        { key: 'focus', label: '重点学生提醒', count: card('riskStudents').value || 0, hint: '来自风险预警未关闭学生', path: card('riskStudents').drillPath }
+        { key: 'pendingTodo', label: '统一待办', value: this.cardValue('pendingTodo') },
+        { key: 'pendingLeave', label: '待审请假', value: this.cardValue('pendingLeave') },
+        { key: 'overdueLeave', label: '逾期未销假', value: this.cardValue('overdueLeave') },
+        { key: 'riskStudents', label: '未关闭风险', value: this.cardValue('riskStudents') }
+      ]
+    },
+    urgentRiskCount() {
+      const summary = this.dashboard.riskSummary || {}
+      return this.toCount(summary.highCount) + this.toCount(summary.criticalCount)
+    },
+    heroConclusion() {
+      const overdue = this.cardValue('overdueLeave')
+      const urgentRisk = this.urgentRiskCount
+      const pendingTodo = this.cardValue('pendingTodo')
+      const clauses = []
+      if (overdue) clauses.push(`先核查 ${this.formatCount(overdue)} 条逾期未销假`)
+      if (urgentRisk) clauses.push(`关注 ${this.formatCount(urgentRisk)} 名高危或危急学生`)
+      if (pendingTodo) clauses.push(`再处理 ${this.formatCount(pendingTodo)} 项统一待办`)
+      if (!clauses.length && this.cardValue('riskStudents')) {
+        return `当前范围有 ${this.formatCount(this.cardValue('riskStudents'))} 名未关闭风险学生，暂无高危或危急等级，继续按队列跟进。`
+      }
+      if (!clauses.length) return '当前范围暂无高危风险与逾期未销假，继续检查各业务待审队列。'
+      return `今天${clauses.join('，')}。`
+    },
+    heroGuidance() {
+      const map = {
+        COUNSELOR: '按风险、逾期和审批节点查看本人负责学生；每项都进入现有真实业务工作页。',
+        COLLEGE_SA: '先核查本院班级与责任范围内的积压，再下钻到原业务工作页处理。',
+        SA_ADMIN: '先看全校风险和业务域积压；普通个案仍由对应责任人按权限办理。'
+      }
+      return map[this.dashboard.view] || '当前页面只重新编排真实汇总与原业务入口，不改变原业务流程。'
+    },
+    businessQueues() {
+      const card = (key) => this.cardMap[key] || {}
+      const riskCount = this.cardValue('riskStudents')
+      const overdueCount = this.cardValue('overdueLeave')
+      const todoCount = this.cardValue('pendingTodo')
+      const leaveCount = this.cardValue('pendingLeave')
+      const aidCount = this.cardValue('pendingAid')
+      const fundingCount = this.cardValue('pendingFunding')
+      const disciplineCount = this.cardValue('pendingDiscipline')
+      return [
+        {
+          key: 'riskStudents',
+          label: '风险与重点学生',
+          description: '未关闭风险学生与超时跟进，进入后按当前状态显示可执行动作。',
+          icon: '险',
+          count: riskCount,
+          unit: card('riskStudents').unit || '人',
+          path: card('riskStudents').drillPath,
+          action: '进入风险',
+          tone: riskCount ? 'danger' : 'success',
+          statusType: riskCount ? 'danger' : 'success',
+          statusLabel: this.urgentRiskCount ? '优先处理' : (riskCount ? '当前队列' : '暂无风险')
+        },
+        {
+          key: 'overdueLeave',
+          label: '逾期未销假',
+          description: '已超过应返校时间，先核实返校事实，再决定是否联动风险或家校。',
+          icon: '返',
+          count: overdueCount,
+          unit: card('overdueLeave').unit || '件',
+          path: card('overdueLeave').drillPath,
+          action: '核实返校',
+          tone: overdueCount ? 'warning' : 'success',
+          statusType: overdueCount ? 'warning' : 'success',
+          statusLabel: overdueCount ? '已超期' : '无超期'
+        },
+        {
+          key: 'pendingTodo',
+          label: '统一待办',
+          description: '当前身份可见的统一待办，进入待办中心继续按原流程处理。',
+          icon: '办',
+          count: todoCount,
+          unit: card('pendingTodo').unit || '件',
+          path: card('pendingTodo').drillPath,
+          action: '查看待办',
+          tone: todoCount ? 'primary' : 'success',
+          statusType: todoCount ? 'info' : 'success',
+          statusLabel: todoCount ? '当前节点' : '已清零'
+        },
+        {
+          key: 'pendingLeave',
+          label: '请假待审批',
+          description: '按辅导员、学院或学工处当前审批节点显示，完成后读取最新业务状态。',
+          icon: '假',
+          count: leaveCount,
+          unit: card('pendingLeave').unit || '件',
+          path: card('pendingLeave').drillPath,
+          action: '开始审批',
+          tone: leaveCount ? 'primary' : 'success',
+          statusType: leaveCount ? 'info' : 'success',
+          statusLabel: leaveCount ? '待当前节点' : '已清零'
+        },
+        {
+          key: 'pendingAid',
+          label: '困难认定材料与审核',
+          description: '核验材料、资格和当前审核节点；敏感信息继续受权限与审计约束。',
+          icon: '困',
+          count: aidCount,
+          unit: card('pendingAid').unit || '件',
+          path: card('pendingAid').drillPath,
+          action: '进入审核',
+          tone: aidCount ? 'warning' : 'success',
+          statusType: aidCount ? 'warning' : 'success',
+          statusLabel: aidCount ? '待审核' : '已清零'
+        },
+        {
+          key: 'pendingFunding',
+          label: '奖助评审与发放',
+          description: '困难资格、项目规则、评审节点和银行结果仍保持各自真实合同。',
+          icon: '助',
+          count: fundingCount,
+          unit: card('pendingFunding').unit || '件',
+          path: card('pendingFunding').drillPath,
+          action: '处理资助',
+          tone: fundingCount ? 'warning' : 'success',
+          statusType: fundingCount ? 'warning' : 'success',
+          statusLabel: fundingCount ? '待评审' : '已清零'
+        },
+        {
+          key: 'pendingDiscipline',
+          label: '处分审批与教育跟进',
+          description: '处分生效后继续衔接送达、教育谈话、家校、回访和解除评估。',
+          icon: '纪',
+          count: disciplineCount,
+          unit: card('pendingDiscipline').unit || '件',
+          path: card('pendingDiscipline').drillPath,
+          action: '进入处分',
+          tone: disciplineCount ? 'violet' : 'success',
+          statusType: disciplineCount ? 'warning' : 'success',
+          statusLabel: disciplineCount ? '待处理' : '已清零'
+        }
       ]
     },
     riskLevel() {
-      const card = this.metricCards.find((c) => c.key === 'riskStudents') || {}
-      const fromCard = card.topRiskLevel
-      const fromSummary = (this.dashboard && this.dashboard.riskSummary && this.dashboard.riskSummary.topRiskLevel) || ''
-      const level = String(fromCard || fromSummary || 'NONE').toUpperCase()
+      const card = this.cardMap.riskStudents || {}
+      const summary = this.dashboard.riskSummary || {}
+      const level = String(card.topRiskLevel || summary.topRiskLevel || 'NONE').toUpperCase()
       if (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(level)) return level
       return 'LOW'
     },
-    riskSummary() {
-      const rs = (this.dashboard && this.dashboard.riskSummary) || {}
-      const card = this.metricCards.find((c) => c.key === 'riskStudents') || {}
-      const count = Number(rs.openStudentCount != null ? rs.openStudentCount : (card.value || 0))
-      const top = rs.topRiskLevel || card.topRiskLevel || ''
-      if (!count) return '当前范围暂无未关闭风险。'
-      const label = ({ CRITICAL: '危急', HIGH: '高', MEDIUM: '中', LOW: '低' })[top] || top
-      return `当前范围内有 ${count} 名学生存在未关闭风险${label ? `（最高等级：${label}）` : ''}。`
+    riskMeterPercent() {
+      const total = this.cardValue('riskStudents')
+      if (!total) return 0
+      return Math.min(100, Math.round((this.urgentRiskCount / total) * 100))
+    },
+    highFrequencyEntries() {
+      return [
+        {
+          label: '学生主档',
+          hint: '唯一找学生入口',
+          icon: '生',
+          path: '/admin/student/list',
+          allowed: this.canAny(['student.profile.view', 'studentAffairs.student.view'])
+        },
+        {
+          label: '材料校验',
+          hint: '跨业务材料动作',
+          icon: '材',
+          path: '/admin/student-affairs/material-operations',
+          allowed: this.canBtn('studentAffairs.dashboard.view')
+        },
+        {
+          label: '数字迎新',
+          hint: '报到与异常',
+          icon: '新',
+          path: '/admin/orientation',
+          allowed: this.canBtn('studentAffairs.orientation.view')
+        },
+        {
+          label: '宿舍异常',
+          hint: '进入真实宿舍队列',
+          icon: '宿',
+          path: '/admin/student-affairs/dorm/exception',
+          allowed: this.canBtn('studentAffairs.dorm.view')
+        }
+      ].filter((entry) => entry.allowed)
     }
   },
   created() {
     this.load()
   },
   methods: {
-    canBtn(code) { return canCode(this.ctx, code) },
+    canBtn(code) {
+      return canCode(this.ctx, code)
+    },
+    canAny(codes) {
+      return codes.some((code) => this.canBtn(code))
+    },
+    toCount(value) {
+      const count = Number(value)
+      return Number.isFinite(count) && count > 0 ? count : 0
+    },
+    formatCount(value) {
+      return new Intl.NumberFormat('zh-CN').format(this.toCount(value))
+    },
+    cardValue(key) {
+      return this.toCount(this.cardMap[key]?.value)
+    },
+    cardPath(key) {
+      return this.cardMap[key]?.drillPath || ''
+    },
     async load() {
       this.loading = true
       this.errorMessage = ''
+      this.auditUnavailable = false
       try {
-        const [dashboardRes, auditRes] = await Promise.all([
+        const [dashboardRes, auditResult] = await Promise.all([
           studentAffairsApi.getDashboard(),
-          studentAffairsApi.getAuditLogs().catch(() => ({ data: [] }))
+          studentAffairsApi.getAuditLogs()
+            .then((res) => ({ ok: true, res }))
+            .catch(() => ({ ok: false, res: { data: [] } }))
         ])
-        this.dashboard = dashboardRes.data
-        this.auditLogs = auditRes.data || []
+        this.dashboard = dashboardRes.data || this.dashboard
+        this.auditLogs = auditResult.res?.data || []
+        this.auditUnavailable = !auditResult.ok
       } catch (e) {
-        this.errorMessage = e?.message || '学工看板加载失败'
+        this.errorMessage = e?.message || '学工今日工作加载失败'
       } finally {
         this.loading = false
       }
-    },
-    metricAccent(key) {
-      if (['riskStudents', 'overdueLeave'].includes(key)) return 'risk'
-      if (['pendingTodo', 'pendingLeave', 'pendingAid', 'pendingFunding', 'pendingDiscipline'].includes(key)) return 'warning'
-      return 'primary'
     },
     go(path) {
       if (!path) return
       this.$router.push(path)
     },
     exportLedger() {
-      return studentAffairsApi.exportProfileLedger({ purpose: '学工看板范围学生台账导出' })
+      return studentAffairsApi.exportProfileLedger({ purpose: '学工今日工作范围学生台账导出' })
     }
   }
 }
 </script>
 
 <style scoped>
-.sa-grid {
-  display: grid;
-  gap: var(--space-4);
+.sa-v6-page-shell {
+  gap: 10px;
 }
-.sa-grid--priority {
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-  margin-bottom: var(--space-4);
-}
-.sa-dashboard-section-head { margin: 4px 0 10px; }
-.sa-dashboard-section-head h2 { margin: 0; color: var(--text-primary); font-size: 17px; line-height: 1.4; }
-.sa-dashboard-section-head p { margin: 3px 0 0; color: var(--text-tertiary); font-size: 12px; line-height: 1.5; }
-.sa-dashboard-metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
+.sa-v6-page-shell :deep(.mps__head) {
+  min-height: 42px;
+  align-items: center;
   gap: 12px;
-  margin-bottom: 18px;
 }
-.sa-dashboard-metrics > :deep(.app-metric-card) {
-  min-height: 108px;
-  max-height: none;
-  padding: 15px 16px;
-  border-radius: 13px;
-  box-shadow: none;
+.sa-v6-page-shell :deep(.mps__title) {
+  font-size: 22px;
+  line-height: 28px;
 }
-.sa-dashboard-metrics :deep(.app-metric-card__title) { min-height: 18px; font-size: 12px; }
-.sa-dashboard-metrics :deep(.app-metric-card__value) { font-size: 32px; }
-.sa-dashboard-metrics :deep(.app-metric-card__unit) { font-size: 13px; }
-.sa-dashboard-metrics :deep(.app-metric-card__footer) { min-height: 4px; }
-.sa-dashboard-metrics > :deep(.is-accent-warning) {
-  background: linear-gradient(150deg, #fff 66%, color-mix(in srgb, var(--warning-50, #fffaeb) 74%, #fff));
+.sa-v6-page-shell :deep(.mps__subtitle) {
+  max-width: 720px;
+  margin-top: 1px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.sa-dashboard-metrics > :deep(.is-accent-risk) {
-  background: linear-gradient(150deg, #fff 66%, color-mix(in srgb, var(--danger-50, #fef3f2) 76%, #fff));
-}
-.sa-dashboard-workspace {
+.sa-v6-dashboard {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(330px, 0.34fr);
-  align-items: stretch;
-  gap: 16px;
-}
-.sa-dashboard-services {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: stretch;
-  gap: 16px;
+  gap: 8px;
   min-width: 0;
 }
-.sa-dashboard-panel {
-  height: 100%;
-  overflow: hidden;
-  border-radius: 14px;
-  box-shadow: none;
-}
-.sa-dashboard-panel :deep(.app-section-card__head) { padding: 14px 16px 12px; }
-.sa-dashboard-panel :deep(.app-section-card__title) { font-size: 15px; }
-.sa-dashboard-panel :deep(.app-section-card__body) { padding: 16px; }
-.sa-dashboard-actions {
+.sa-v6-hero {
+  position: relative;
+  isolation: isolate;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 80px;
+  overflow: hidden;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--pri) 22%, var(--card-b));
+  border-radius: var(--radius-xl);
+  background: linear-gradient(112deg, color-mix(in srgb, var(--pri-bg) 70%, var(--bg-card)), var(--bg-card) 72%);
+  box-shadow: var(--shadow-card);
+}
+.sa-v6-hero::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--btn-p-bg);
+  content: '';
+}
+.sa-v6-hero__copy {
+  min-width: 0;
+  padding-left: 4px;
+}
+.sa-v6-hero__eyebrow {
+  color: var(--primary-600);
+  font-size: 12px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.04em;
+}
+.sa-v6-hero h2 {
+  margin: 2px 0 1px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 19px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 25px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-hero p {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-hero__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 84px);
+  margin: 0;
+}
+.sa-v6-hero__metric {
+  min-width: 0;
+  padding: 2px 10px;
+  border-left: 1px solid var(--border-light);
+}
+.sa-v6-hero__metric dt {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-hero__metric dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 28px;
+}
+.sa-v6-flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  min-height: 36px;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  list-style: none;
+}
+.sa-v6-flow li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+.sa-v6-flow li:not(:last-child)::after {
+  position: absolute;
+  right: -3px;
+  color: var(--text-disabled);
+  content: '—';
+}
+.sa-v6-flow li.is-active {
+  color: var(--primary-700);
+  font-weight: var(--font-weight-semibold);
+}
+.sa-v6-flow__index {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--primary-100);
+  border-radius: var(--radius-full);
+  background: var(--primary-50);
+  color: var(--primary-600);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.sa-v6-flow li.is-active .sa-v6-flow__index {
+  border-color: var(--primary-600);
+  background: var(--primary-600);
+  color: var(--text-inverse);
+}
+.sa-v6-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.62fr) minmax(300px, 0.72fr);
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+}
+.sa-v6-panel {
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+}
+.sa-v6-panel :deep(.app-section-card__head) {
+  padding: 9px 12px;
+}
+.sa-v6-panel :deep(.app-section-card__title) {
+  font-size: 15px;
+  line-height: 21px;
+}
+.sa-v6-panel :deep(.app-section-card__subtitle) {
+  margin-top: 0;
+  font-size: 12px;
+  line-height: 17px;
+}
+.sa-v6-panel :deep(.app-section-card__body) {
+  padding: 12px;
+}
+.sa-v6-queue-card :deep(.app-section-card__body) {
+  padding: 6px 8px 8px;
+}
+.sa-v6-scope-note {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--primary-100);
+  border-radius: var(--radius-full);
+  background: var(--primary-50);
+  color: var(--primary-700);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+}
+.sa-v6-queue {
+  display: grid;
+  gap: 5px;
+}
+.sa-v6-queue-row {
+  --sa-v6-tone: var(--primary-600);
+  --sa-v6-soft: var(--primary-50);
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 58px 88px;
+  align-items: center;
+  gap: 10px;
+  min-height: 63px;
+  padding: 7px 8px;
+  border: 1px solid var(--border-base);
+  border-left: 3px solid var(--sa-v6-tone);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  text-align: left;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+.sa-v6-queue-row:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--sa-v6-tone) 42%, var(--border-base));
+  background: color-mix(in srgb, var(--sa-v6-soft) 58%, var(--bg-card));
+  transform: translateX(1px);
+}
+.sa-v6-queue-row:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--sa-v6-tone) 55%, var(--bg-card));
+  outline-offset: 2px;
+}
+.sa-v6-queue-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.sa-v6-queue-row.is-zero {
+  border-left-color: var(--success-600);
+}
+.sa-v6-queue-row.is-danger {
+  --sa-v6-tone: var(--danger-600);
+  --sa-v6-soft: var(--danger-50);
+}
+.sa-v6-queue-row.is-warning {
+  --sa-v6-tone: var(--warning-600);
+  --sa-v6-soft: var(--warning-50);
+}
+.sa-v6-queue-row.is-success {
+  --sa-v6-tone: var(--success-600);
+  --sa-v6-soft: var(--success-50);
+}
+.sa-v6-queue-row.is-violet {
+  --sa-v6-tone: var(--t2);
+  --sa-v6-soft: var(--bg-section);
+}
+.sa-v6-queue-row__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--sa-v6-soft);
+  color: var(--sa-v6-tone);
+  font-size: 13px;
+  font-weight: var(--font-weight-bold);
+}
+.sa-v6-queue-row__copy {
+  min-width: 0;
+}
+.sa-v6-queue-row__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.sa-v6-queue-row__title strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-queue-row__description,
+.sa-v6-queue-row__meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-queue-row__description {
+  margin-top: 1px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 17px;
+}
+.sa-v6-queue-row__meta {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+.sa-v6-queue-row__count {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 3px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.sa-v6-queue-row__count strong {
+  color: var(--text-primary);
+  font-size: 23px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 26px;
+}
+.sa-v6-queue-row__count small {
+  font-size: 12px;
+}
+.sa-v6-queue-row__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--sa-v6-tone) 26%, var(--border-base));
+  border-radius: var(--radius-md);
+  background: var(--sa-v6-soft);
+  color: var(--sa-v6-tone);
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+.sa-v6-side {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.sa-v6-scope-grid,
+.sa-v6-risk-numbers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
-.sa-dashboard-actions :deep(.app-perm-btn),
-.sa-dashboard-actions :deep(.app-button) { width: 100%; }
-.sa-dashboard-bridge { display: grid; align-content: space-between; gap: 14px; min-height: 88px; }
-.sa-dashboard-bridge p { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.65; }
-.sa-dashboard-bridge :deep(.app-perm-btn) { justify-self: start; }
+.sa-v6-scope-grid > div,
+.sa-v6-risk-numbers > div {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-section);
+}
+.sa-v6-scope-grid span,
+.sa-v6-risk-numbers span {
+  display: block;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-scope-grid strong,
+.sa-v6-risk-numbers strong {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 23px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-risk-numbers strong {
+  color: var(--danger-600);
+  font-size: 22px;
+}
+.sa-v6-card-note {
+  margin: 8px 0 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+.sa-v6-risk-meter {
+  height: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--bg-section);
+}
+.sa-v6-risk-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--warning-600);
+}
+.sa-v6-risk-card :deep(.app-perm-btn),
+.sa-v6-risk-card :deep(.app-button) {
+  width: 100%;
+  margin-top: 8px;
+}
+.sa-v6-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+.sa-v6-entry {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 6px 7px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-section);
+  color: var(--text-primary);
+  text-align: left;
+}
+.sa-v6-entry:hover {
+  border-color: var(--primary-100);
+  background: var(--primary-50);
+}
+.sa-v6-entry:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
+}
+.sa-v6-entry__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--primary-50);
+  color: var(--primary-600);
+  font-size: 12px;
+  font-weight: var(--font-weight-bold);
+}
+.sa-v6-entry strong,
+.sa-v6-entry small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-entry strong {
+  font-size: 12px;
+  line-height: 17px;
+}
+.sa-v6-entry small {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+.sa-v6-support-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.55fr);
+  gap: 10px;
+}
 .sa-dashboard-panel--audit :deep(.app-section-card__body) {
-  max-height: 205px;
+  max-height: 218px;
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
-.sa-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.sa-v6-inline-warning {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--warning-100);
+  border-radius: var(--radius-md);
+  background: var(--warning-50);
+  color: var(--warning-700);
+  font-size: 12px;
+  line-height: 18px;
+}
+.sa-v6-bridge-actions {
   display: grid;
-  gap: var(--space-3);
+  gap: 8px;
 }
-.sa-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--border-light);
-}
-.sa-list li:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-.sa-list li.is-actionable { cursor: pointer; border-radius: var(--radius-md); padding: var(--space-2); margin: calc(var(--space-2) * -1); transition: background .15s ease, transform .15s ease; }
-.sa-list li.is-actionable:hover { background: var(--primary-50); transform: translateX(2px); }
-.sa-list__action { display: inline-flex; align-items: center; gap: var(--space-2); }
-.sa-list__action button { border: 0; color: var(--primary-700); background: transparent; font-weight: var(--font-weight-medium); cursor: pointer; white-space: nowrap; }
-.sa-list__action b { margin-left: 3px; }
-.sa-list small {
-  display: block;
-  color: var(--text-tertiary);
-  margin-top: 2px;
-}
-.sa-risk-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.sa-risk-row {
-  margin-bottom: var(--space-3);
-  line-height: 1.6;
+.sa-v6-bridge-actions :deep(.app-perm-btn),
+.sa-v6-bridge-actions :deep(.app-button) {
+  width: 100%;
 }
 .sa-updated-hint {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--font-size-xs);
   color: var(--text-tertiary);
+  font-size: 12px;
 }
-@media (max-width: 1500px) {
-  .sa-dashboard-workspace { grid-template-columns: 1fr; }
-  .sa-dashboard-panel--audit :deep(.app-section-card__body) { max-height: 260px; }
+@media (max-width: 1450px) {
+  .sa-v6-page-shell :deep(.mps__subtitle) {
+    max-width: 580px;
+  }
+  .sa-v6-hero__metrics {
+    grid-template-columns: repeat(4, 72px);
+  }
+  .sa-v6-workspace {
+    grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.62fr);
+  }
+  .sa-v6-queue-row {
+    grid-template-columns: 36px minmax(0, 1fr) 52px 82px;
+    gap: 8px;
+  }
 }
-@media (max-width: 1120px) and (min-width: 961px) {
-  .sa-dashboard-services { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sa-dashboard-services > :last-child { grid-column: 1 / -1; }
+@media (max-width: 1180px) {
+  .sa-v6-hero {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .sa-v6-hero__metrics {
+    grid-template-columns: repeat(2, 76px);
+  }
+  .sa-v6-workspace,
+  .sa-v6-support-grid {
+    grid-template-columns: 1fr;
+  }
+  .sa-v6-side {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 @media (max-width: 960px) {
-  .sa-grid--priority { grid-template-columns: 1fr; }
-  .sa-dashboard-services { grid-template-columns: 1fr; }
-  .sa-dashboard-panel--audit :deep(.app-section-card__body) { max-height: 280px; }
+  .sa-v6-page-shell :deep(.mps__subtitle) {
+    max-width: 100%;
+    white-space: normal;
+  }
+  .sa-v6-hero {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .sa-v6-hero h2,
+  .sa-v6-hero p {
+    white-space: normal;
+  }
+  .sa-v6-hero__metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .sa-v6-side {
+    grid-template-columns: 1fr;
+  }
 }
 @media (max-width: 720px) {
-  .sa-dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sa-v6-flow {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .sa-v6-flow li {
+    justify-content: flex-start;
+  }
+  .sa-v6-flow li::after {
+    display: none;
+  }
+  .sa-v6-queue-row {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+  }
+  .sa-v6-queue-row__count {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .sa-v6-queue-row__action {
+    grid-column: 2 / 4;
+    width: max-content;
+  }
+  .sa-v6-entry-grid,
+  .sa-v6-scope-grid,
+  .sa-v6-risk-numbers {
+    grid-template-columns: 1fr;
+  }
 }
-@media (max-width: 460px) {
-  .sa-dashboard-metrics { grid-template-columns: 1fr; }
+@media (prefers-reduced-motion: reduce) {
+  .sa-v6-queue-row {
+    transition: none;
+  }
 }
 </style>
