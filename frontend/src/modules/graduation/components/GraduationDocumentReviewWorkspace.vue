@@ -13,7 +13,7 @@
         <span class="gdq-name">{{ item.studentName || '学生' }}</span>
         <span class="gdq-class">{{ item.className || '' }}</span>
         <small>{{ item.topicTitle || '未填写课题' }}</small>
-        <small>{{ item.statusLabel || item.status || '' }}</small>
+        <small>{{ recordStatusLabel(item.status, item.statusLabel) }}</small>
       </button>
       <slot name="queue-footer" />
     </aside>
@@ -50,7 +50,7 @@
         <div><span>学生</span><b>{{ currentRecord?.studentName || '—' }}</b></div>
         <div><span>班级</span><b>{{ currentRecord?.className || '—' }}</b></div>
         <div><span>指导教师</span><b>{{ currentRecord?.advisorName || '—' }}</b></div>
-        <div><span>当前状态</span><b>{{ currentRecord?.statusLabel || currentRecord?.status || '—' }}</b></div>
+        <div><span>当前状态</span><b>{{ recordStatusLabel(currentRecord?.status, currentRecord?.statusLabel) }}</b></div>
         <div v-if="currentRecord?.plagiarismRate"><span>查重</span><b>{{ currentRecord.plagiarismRate }}</b></div>
       </div>
       <button type="button" class="gd-review-workspace__dossier" :disabled="submitting" @click="$emit('openStudentDossier', currentRecord)">查看学生完整档案 →</button>
@@ -59,6 +59,10 @@
 </template>
 
 <script setup>
+import { safeLocalizedText } from '@/utils/presentationSafety'
+
+const RECORD_STATUS_LABELS = { DRAFT: '草稿', SUBMITTED: '已提交', REVIEWING: '审核中', APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', ARCHIVED: '已归档', COMPLETED: '已完成' }
+const recordStatusLabel = (status, providedLabel = '') => providedLabel || safeLocalizedText({ value: status, dictionary: RECORD_STATUS_LABELS, unknownLabel: '状态待确认' })
 import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
 import FileEvidencePanel from './FileEvidencePanel.vue'
 

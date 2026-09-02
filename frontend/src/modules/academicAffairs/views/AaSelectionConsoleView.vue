@@ -226,7 +226,7 @@
           <AppTeachingTaskPicker
             v-model="courseForm.teachingTaskId"
             :remote-search="searchSelectionTasks"
-            placeholder="选择当前批次学期的 READY 教学任务"
+            placeholder="选择当前批次学期的已就绪教学任务"
             :disabled="saving"
             @change="onSelectionTaskChange"
           />
@@ -400,7 +400,7 @@ export default {
         if (this.current) await this.select(this.current)
       } else toast.error(res.message)
     },
-    statusLabel(s) { return _LABEL[s] || s },
+    statusLabel(s) { return _LABEL[s] || (s ? '状态待确认' : '—') },
     statusType(s) {
       if (s === 'OPEN') return 'success'
       if (s === 'CLOSED') return 'warning'
@@ -505,7 +505,7 @@ export default {
       this.stats = st.code === 0 ? st.data : null
       this.rounds = rd.code === 0 ? (rd.data.items || []) : []
     },
-    roundStatusLabel(s) { return { DRAFT: '草稿', OPEN: '进行中', CLOSED: '已关闭', DRAWN: '已摇号' }[s] || s },
+    roundStatusLabel(s) { return { DRAFT: '草稿', OPEN: '进行中', CLOSED: '已关闭', DRAWN: '已摇号' }[s] || (s ? '状态待确认' : '—') },
     roundStatusType(s) {
       if (s === 'OPEN') return 'success'
       if (s === 'DRAWN') return 'default'
@@ -592,7 +592,7 @@ export default {
         academicAffairsApi.listAllTasks({ status: 'READY', page: 1, pageSize: 500 })
       ])
       if (batchRes.code !== 0) throw new Error(batchRes.message || '当前学期教学任务批次加载失败')
-      if (taskRes.code !== 0) throw new Error(taskRes.message || 'READY 教学任务加载失败')
+      if (taskRes.code !== 0) throw new Error(taskRes.message || '已就绪教学任务加载失败')
       const allowedBatchIds = new Set((batchRes.data?.list || []).map((row) => String(row.batchId)))
       const key = String(keyword || '').trim().toLowerCase()
       return (taskRes.data?.list || [])
@@ -618,7 +618,7 @@ export default {
     },
     async submitCourse() {
       if (!this.courseForm.teachingTaskId || !this.courseForm.courseId) {
-        this.courseError = '请选择当前批次学期的 READY 教学任务'
+        this.courseError = '请选择当前批次学期的已就绪教学任务'
         return
       }
       this.saving = true

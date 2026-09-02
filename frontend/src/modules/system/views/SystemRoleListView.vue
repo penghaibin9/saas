@@ -228,7 +228,7 @@
           <tbody>
             <tr v-for="(a, i) in detail.data.auditTrail" :key="i">
               <td class="is-who">{{ a.who }}</td>
-              <td>{{ a.action }}</td>
+              <td>{{ auditActionLabel(a) }}</td>
               <td>{{ a.affected }}</td>
               <td>{{ a.time }}</td>
             </tr>
@@ -449,6 +449,7 @@ import PermissionTreeEditor from '@/modules/system/components/PermissionTreeEdit
 import { systemApi } from '@/modules/system/api/system.api'
 import { schoolIamApi } from '@/modules/system/api/schoolIam.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 
 const EMPTY_FILTERS = () => ({ keyword: '', type: '', status: '' })
 
@@ -617,6 +618,7 @@ export default {
     }
   },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     syncTabFromRoute() {
       const tab = String(this.$route.query.tab || '')
       if (tab === 'templates' || tab === 'members' || tab === 'permissions') this.routeTab = tab
@@ -914,7 +916,7 @@ export default {
     },
 
     wildcardStatusLabel(s) {
-      return { PENDING: '待处理', PLANNED: '已排期', RETIRED: '已退役' }[s] || s
+      return { PENDING: '待处理', PLANNED: '已排期', RETIRED: '已退役' }[s] || (s ? '状态待确认' : '—')
     },
 
     /**

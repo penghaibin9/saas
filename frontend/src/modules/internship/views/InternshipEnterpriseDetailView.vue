@@ -116,7 +116,7 @@
                 <td>{{ x.inspectors || '—' }}</td>
                 <td class="ed-cell-wrap">{{ x.conclusion || '—' }}</td>
                 <td>{{ x.validUntil || '—' }}</td>
-                <td><AppStatusTag :status="x.status">{{ x.statusLabel || x.status }}</AppStatusTag></td>
+                <td><AppStatusTag :status="x.status">{{ recordStatusLabel(x.status, x.statusLabel) }}</AppStatusTag></td>
                 <td>{{ x.reviewedByName || '—' }}</td>
                 <td class="ed-ops">
                   <AppPermissionButton v-if="x.status === 'DRAFT'" code="internship.enterprise.inspection.manage"
@@ -298,6 +298,7 @@ export default {
     }
   },
   methods: {
+    recordStatusLabel(status, providedLabel = '') { return providedLabel || (status ? '状态待确认' : '—') },
     can(key) { const p = this.perms[key]; return !!(p && p.allowed) },
     async loadInspections() {
       this.inspectionsError = ''

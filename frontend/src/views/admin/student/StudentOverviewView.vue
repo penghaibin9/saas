@@ -77,7 +77,7 @@
                 <tr v-for="a in summary.recentAudits" :key="a.id">
                   <td>{{ a.time }}</td>
                   <td class="is-who">{{ a.operator }}（{{ a.roleName }}）</td>
-                  <td>{{ a.action }}</td>
+                  <td>{{ auditActionLabel(a) }}</td>
                   <td>{{ a.targetName }}</td>
                 </tr>
               </tbody>
@@ -110,6 +110,7 @@ import {
   EmptyState
 } from '@/components/business'
 import { studentApi } from '@/modules/student/api/student.api'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 
 export default {
   name: 'StudentOverviewView',
@@ -148,6 +149,7 @@ export default {
     this.load()
   },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     statusLabel(v) {
       const hit = this.ctx.statusOptions.studentStatus.find((o) => o.value === v)
       return hit ? hit.label : v

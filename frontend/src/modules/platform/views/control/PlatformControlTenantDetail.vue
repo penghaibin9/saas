@@ -38,12 +38,12 @@
             <li><span>商业存储上限</span><b>{{ formatBytes(tenant360.storage?.commercialStorageLimitBytes) }}</b></li>
             <li><span>学校治理配额</span><b>{{ formatBytes(tenant360.storage?.schoolGovernanceQuotaBytes) }}</b></li>
             <li><span>真实占用（文件+预留）</span><b>{{ formatBytes(tenant360.storage?.actualOccupancyBytes) }}</b></li>
-            <li v-if="tenant360.effectiveState?.mismatch"><span>状态一致性</span><b class="ptd__danger">Tenant 与 TENANT_META 不一致</b></li>
+            <li v-if="tenant360.effectiveState?.mismatch"><span>状态一致性</span><b class="ptd__danger">租户主状态与租户元数据不一致</b></li>
           </ul>
           <div class="ptd__quota">
             <label class="ptd__field"><span>学生上限</span><input v-model.number="quota.maxStudents" type="number" class="ptd__input" /></label>
             <label class="ptd__field"><span>账号上限</span><input v-model.number="quota.maxUsers" type="number" class="ptd__input" /></label>
-            <label class="ptd__field"><span>存储上限(MB)</span><input v-model.number="quota.storageLimitMb" type="number" class="ptd__input" /></label>
+            <label class="ptd__field"><span>存储上限（兆字节）</span><input v-model.number="quota.storageLimitMb" type="number" class="ptd__input" /></label>
             <AppButton variant="primary" @click="saveQuota">保存容量</AppButton>
           </div>
         </AppCard>
@@ -54,23 +54,23 @@
         <div class="ptd__switches">
           <label v-for="k in featureKeys" :key="k" class="ptd__switch">
             <input v-model="features[k]" type="checkbox" />
-            <span>{{ featureLabels[k] || k }}</span>
+            <span>{{ featureLabels[k] || '待命名功能' }}</span>
           </label>
         </div>
         <div class="ptd__ops"><AppButton variant="primary" :loading="saving" @click="saveFeatures">保存功能开关</AppButton></div>
       </AppCard>
 
       <AppCard v-else-if="tab === 'studentPortal'" class="ptd__panel">
-        <AppSectionHeader title="学生 PC 门户配置（保存后写审计；关闭的模块/功能，学生端菜单隐藏且后端 403）" />
+        <AppSectionHeader title="学生电脑门户配置（保存后写审计；关闭的模块或功能，学生端菜单隐藏且后端拒绝访问）" />
         <StudentPortalConfigPanel :tenant-id="tid" />
       </AppCard>
 
       <div v-else-if="tab === 'rules'" class="ptd__rules">
         <AppCard v-for="(kv, group) in rules" :key="group" class="ptd__panel">
-          <AppSectionHeader :title="ruleGroupLabels[group] || group" />
+          <AppSectionHeader :title="ruleGroupLabels[group] || '其他规则'" />
           <div class="ptd__rule-grid">
             <label v-for="(v, k) in kv" :key="k" class="ptd__field ptd__field--rule">
-              <span :title="k">{{ ruleLabels[k] || k }}</span>
+              <span>{{ ruleLabels[k] || '待命名规则项' }}</span>
               <input v-if="typeof v === 'boolean'" v-model="kv[k]" type="checkbox" class="ptd__check" />
               <input v-else-if="typeof v === 'number'" v-model.number="kv[k]" type="number" class="ptd__input ptd__input--sm" />
               <input v-else v-model="kv[k]" class="ptd__input" />
@@ -90,7 +90,7 @@
             <input v-model="row.needApproval" type="checkbox" @change="saveWorkflow(row)" />
           </template>
           <template #cell-approverRoleCodes="{ row }">
-            <span class="ptd__roles">{{ (row.approverRoleCodes || []).join(' / ') || '—' }}</span>
+            <span class="ptd__roles">{{ roleLabels(row.approverRoleCodes) }}</span>
           </template>
           <template #cell-timeoutHours="{ row }">
             <input v-model.number="row.timeoutHours" type="number" class="ptd__input ptd__input--sm" @change="saveWorkflow(row)" />
@@ -124,6 +124,7 @@
           <template #cell-status="{ row }">
             <StatusTag :type="row.status === 'ACTIVE' ? 'success' : 'default'" :label="row.status === 'ACTIVE' ? '启用' : '停用'" />
           </template>
+          <template #cell-userType="{ row }">{{ platformRoleLabel(row.userType) }}</template>
           <template #cell-lastLoginAt="{ row }">{{ fmt(row.lastLoginAt) || '从未登录' }}</template>
           <template #cell-actions="{ row }">
             <div class="ptd__ops ptd__ops--row">
@@ -154,6 +155,13 @@ import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, Statu
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import StudentPortalConfigPanel from '@/modules/platform/components/StudentPortalConfigPanel.vue'
 import TenantOffboardingPanel from '@/modules/platform/components/TenantOffboardingPanel.vue'
+import {
+  PLATFORM_FEATURE_LABELS,
+  PLATFORM_RULE_GROUP_LABELS,
+  PLATFORM_RULE_LABELS,
+  platformRoleLabel,
+  platformStatusLabel
+} from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
 const STATUS = { trial: ['warning', '试用中'], active: ['success', '正式'], expired: ['danger', '已到期'], disabled: ['default', '已停用'] }
@@ -179,31 +187,16 @@ export default {
         { key: 'workflows', label: '审批流' },
         { key: 'brand', label: '品牌' },
         { key: 'users', label: '账号' },
-        { key: 'studentPortal', label: '学生PC门户' },
+        { key: 'studentPortal', label: '学生电脑门户' },
         { key: 'offboarding', label: '退租与数据销毁' }
       ],
       quota: { maxStudents: 0, maxUsers: 0, storageLimitMb: 0 },
       features: {},
       featureKeys: [],
-      featureLabels: {
-        studentProfile: '学生主档', student360: '学生360', orientation: '数字迎新', campusService: '在校服务',
-        approval: '审批中心', todoMessage: '待办与消息', fileUpload: '文件上传', studentImport: '学生导入',
-        studentExport: '学生导出', auditLog: '审计日志', graduation: '毕业设计', internship: '岗位实习',
-        employment: '就业服务', riskWarning: '风险预警', miniapp: '小程序端', customBrand: '自定义品牌',
-        workflowConfig: '流程配置', dataExport: '数据导出', apiAccess: 'API 访问'
-      },
+      featureLabels: PLATFORM_FEATURE_LABELS,
       rules: null,
-      ruleGroupLabels: {
-        student: '学生档案规则', approval: '审批规则', import: '导入规则', export: '导出规则',
-        file: '文件规则', risk: '风险预警规则', message: '消息提醒规则', security: '安全规则', trial: '试用与到期规则'
-      },
-      ruleLabels: {
-        rejectReasonRequired: '驳回必填原因', rejectReasonMinLength: '驳回原因最少字数',
-        exportNeedPurpose: '导出必填用途', exportPurposeMinLength: '导出用途最少字数',
-        importMaxRows: '单次导入最大行数', uploadMaxSizeMb: '上传大小上限(MB)',
-        exportWatermarkEnabled: '导出水印', exportPhoneMasked: '导出手机号脱敏', exportIdCardMasked: '导出身份证脱敏',
-        loginFailMaxTimes: '登录失败锁定次数', loginFailLockMinutes: '锁定分钟数'
-      },
+      ruleGroupLabels: PLATFORM_RULE_GROUP_LABELS,
+      ruleLabels: PLATFORM_RULE_LABELS,
       workflowRows: [],
       wfColumns: [
         { key: 'workflowName', title: '审批流', width: '180px' },
@@ -245,7 +238,7 @@ export default {
       return (STATUS[this.tenant.status] || ['default'])[0]
     },
     statusLabel() {
-      return (STATUS[this.tenant.status] || ['default', this.tenant.status])[1]
+      return (STATUS[this.tenant.status] || ['default', '状态待确认'])[1]
     }
   },
   created() {
@@ -259,7 +252,11 @@ export default {
     },
     formatBytes(value) {
       if (value === null || value === undefined) return '未配置'
-      return `${(Number(value || 0) / 1024 / 1024 / 1024).toFixed(2)} GiB`
+      return `${(Number(value || 0) / 1024 / 1024 / 1024).toFixed(2)} 吉字节`
+    },
+    platformRoleLabel,
+    roleLabels(values) {
+      return (values || []).map((value) => platformRoleLabel(value)).join(' / ') || '—'
     },
     async load() {
       this.loading = true
@@ -318,7 +315,9 @@ export default {
       const preview = await platformControlApi.previewTenantTransition(this.tid, action, body)
       if (preview.code !== 0) return toast.error(preview.message)
       const warnings = (preview.data.warnings || []).join('；')
-      if (!window.confirm(`${preview.data.fromStatus} → ${preview.data.toStatus}${warnings ? `\n${warnings}` : ''}\n确认执行？`)) return
+      const fromStatus = platformStatusLabel(preview.data.fromStatus)
+      const toStatus = platformStatusLabel(preview.data.toStatus)
+      if (!window.confirm(`${fromStatus} → ${toStatus}${warnings ? `\n${warnings}` : ''}\n确认执行？`)) return
       const res = await platformControlApi.applyTenantTransition(this.tid, action, body)
       if (res.code === 0) { toast.success('变更已生效'); await this.load() }
       else toast.error(res.message)

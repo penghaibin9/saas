@@ -57,7 +57,7 @@ const platformRoutes = {
       path: 'product-iam',
       name: 'platform-product-iam',
       component: () => import('@/modules/platform/views/control/PlatformProductIamView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: 'Product IAM', requiresAuth: true, permissionKey: 'platform.productIam.view' }
+      meta: { moduleCode: 'PLATFORM', title: '产品身份与权限', requiresAuth: true, permissionKey: 'platform.productIam.view' }
     },
     {
       // PLAT-08：服务目录、依赖与租户影响地图
@@ -103,7 +103,7 @@ const platformRoutes = {
       path: 'api-access',
       name: 'platform-api-access',
       component: () => import('@/modules/platform/views/PlatformApiAccessView.vue'),
-      meta: { moduleCode: 'PLATFORM', title: 'API 访问与 Webhook', requiresAuth: true, permissionKey: 'platform.api.view' }
+      meta: { moduleCode: 'PLATFORM', title: '接口访问与回调通知', requiresAuth: true, permissionKey: 'platform.api.view' }
     },
     {
       path: 'overview',

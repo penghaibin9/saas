@@ -27,7 +27,7 @@ export default {
   computed: { pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } } },
   created() { this.load() },
   methods: {
-    actionLabel(value) { return ACTIONS[value] || value },
+    actionLabel(value) { return ACTIONS[value] || (value ? '待确认' : '—') },
     detailText(row) { const d = row.detail || {}; return d.title || d.reason || (d.toUserId ? `调整至教职工账号 ${d.toUserId}` : '—') },
     reload() { this.page = 1; this.load() }, onPageChange(page) { this.page = page; this.load() },
     async load() { this.loading = true; this.error = ''; const res = await internStudentApi.getAssignmentLogs({ page: this.page, pageSize: this.pageSize, keyword: this.keyword }); this.loading = false; if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else { this.error = res.message; this.rows = []; this.total = 0 } }

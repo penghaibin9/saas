@@ -110,7 +110,7 @@ export default {
     },
     setType(k) { if (this.activeType === k) return; this.activeType = k; this.load() },
     setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.load() },
-    typeLabel(t) { return TYPE_LABELS[t] || t || '—' },
+    typeLabel(t) { return TYPE_LABELS[t] || (t ? '类型待确认' : '—') },
     statusType(s) {
       if (s === 'COMPLETED' || s === 'CLOSED') return 'success'
       if (s === 'FOLLOW_UP') return 'processing'

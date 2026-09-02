@@ -268,7 +268,7 @@ export default {
       const res = await studentAffairsApi.getActivityParticipants(a.activityId)
       if (res.code === 0 && res.data) this.pv.list = res.data.items || []
     },
-    typeLabel(t) { return TYPE[t] || t },
+    typeLabel(t) { return TYPE[t] || (t ? '类型待确认' : '—') },
     creditUnit(t) { return t === 'VOLUNTEER_HOUR' ? ' 时长' : (t === 'MORAL' ? ' 积分' : ' 学时') },
     statusType(s) {
       if (s === 'CONFIRMED' || s === 'ARCHIVED') return 'success'
@@ -277,7 +277,7 @@ export default {
       if (s === 'DRAFT') return 'default'
       return 'processing'
     },
-    signupLabel(s) { return ({ ENROLLED: '已报名', WAITLIST: '候补', CANCELLED: '已取消', CHECKED_IN: '已签到', CONFIRMED: '已确认' })[s] || s }
+    signupLabel(s) { return ({ ENROLLED: '已报名', WAITLIST: '候补', CANCELLED: '已取消', CHECKED_IN: '已签到', CONFIRMED: '已确认' })[s] || (s ? '状态待确认' : '—') }
   }
 }
 </script>

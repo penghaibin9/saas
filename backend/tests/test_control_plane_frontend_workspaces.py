@@ -46,9 +46,9 @@ def test_b7_school_iam_workspace_consumes_canonical_endpoints():
     assert "/audit" in api
     for surface in ("roles", "templates", "members", "permissions", "dataScopes", "delegations", "securityChanges", "accessExplain"):
         assert surface in view
-    assert "enterprise.internship.*" in view
-    assert "EnterpriseMember / AccessGrant" in view
-    assert "DOMAIN_GUARD" in view or "Domain Guard" in view
+    assert "企业实习权限" in view
+    assert "企业成员和访问授权" in view
+    assert "业务守卫" in view
 
 
 def test_b7_exposes_real_template_provenance_drift_and_school_scoped_impact():
@@ -91,9 +91,9 @@ def test_b7_reuses_20k_safe_member_and_security_audit_pagination():
     assert 'Role.tenant_id == int(tenant_id)' in i4
     assert "roleMembers" in api and "roleAudit" in api
     assert "loadRoleEvidence" in view
-    assert "SecurityAuditLog" in view
+    assert "安全审计日志" in view
     assert "evidencePages" in view
-    assert "不会把前 50 条 preview 冒充完整结果" in view
+    assert "不会把前 50 条预览数据当作完整结果" in view
 
 
 def test_role_list_member_count_opens_paginated_member_directory():
@@ -114,7 +114,7 @@ def test_role_list_member_count_opens_paginated_member_directory():
 def test_b6_b7_do_not_create_second_permission_authority_in_frontend():
     product = _read("frontend/src/modules/platform/views/control/PlatformProductIamView.vue")
     school = _read("frontend/src/modules/system/views/SystemIamWorkspaceView.vue")
-    assert "Permission Catalog" in product
-    assert "Permission Catalog" in school
+    assert "权限目录" in product
+    assert "权限目录" in school
     assert "productIamApi.source()" in product
     assert "schoolIamApi.permissionCatalog()" in school

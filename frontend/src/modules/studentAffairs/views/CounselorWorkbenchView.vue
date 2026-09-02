@@ -113,7 +113,7 @@ export default {
       this.talks = (tk.code === 0 && tk.data) ? (tk.data.items || tk.data.list || []) : []
       this.loading = false
     },
-    sourceLabel(s) { return SRC[s] || s || '—' },
+    sourceLabel(s) { return SRC[s] || (s ? '状态待确认' : '—') },
     levelLabel(l) { return LEVEL[l] || l || '—' },
     riskType(l) { return ({ LOW: 'default', MEDIUM: 'warning', HIGH: 'danger', CRITICAL: 'danger' })[l] || 'default' },
     talkType(s) { return ({ PLANNED: 'warning', FOLLOW_UP: 'warning', COMPLETED: 'success', CLOSED: 'default' })[s] || 'processing' }

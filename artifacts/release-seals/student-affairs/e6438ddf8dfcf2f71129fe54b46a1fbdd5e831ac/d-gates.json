@@ -1,0 +1,129 @@
+{
+  "schemaVersion": "V6.0",
+  "productExactHead": "e6438ddf8dfcf2f71129fe54b46a1fbdd5e831ac",
+  "verdict": "PASS",
+  "pass": 20,
+  "fail": 0,
+  "gates": [
+    {
+      "id": "D-GATE-SA-01",
+      "name": "辅导员首页 task-first",
+      "status": "PASS",
+      "evidence": "FLOW-SA-01/visual/screenshots/S0-role-home-1440x900.jpg"
+    },
+    {
+      "id": "D-GATE-SA-02",
+      "name": "exact todo",
+      "status": "PASS",
+      "evidence": "FLOW-SA-07/visual/screenshots/M2-teacher-context-390x844.jpg"
+    },
+    {
+      "id": "D-GATE-SA-03",
+      "name": "whyHere",
+      "status": "PASS",
+      "evidence": "FLOW-SA-03/source-trace.json"
+    },
+    {
+      "id": "D-GATE-SA-04",
+      "name": "waitingOn",
+      "status": "PASS",
+      "evidence": "FLOW-SA-02/source-trace.json"
+    },
+    {
+      "id": "D-GATE-SA-05",
+      "name": "primaryAction",
+      "status": "PASS",
+      "evidence": "FLOW-SA-04/visual/screenshots/S3-primary-action-1440x900.jpg"
+    },
+    {
+      "id": "D-GATE-SA-06",
+      "name": "student my-work",
+      "status": "PASS",
+      "evidence": "FLOW-SA-01/visual/screenshots/S5-next-actor-surface-1440x900.jpg"
+    },
+    {
+      "id": "D-GATE-SA-07",
+      "name": "student mini action-first",
+      "status": "PASS",
+      "evidence": "final/screenshots/student-mini-home-390x844.jpg"
+    },
+    {
+      "id": "D-GATE-SA-08",
+      "name": "change compare",
+      "status": "PASS",
+      "evidence": "FLOW-SA-04/visual/screenshots/S2-object-detail-decision-1440x900.jpg"
+    },
+    {
+      "id": "D-GATE-SA-09",
+      "name": "action receipt",
+      "status": "PASS",
+      "evidence": "FLOW-SA-01/visual/screenshots/S4-action-receipt-1440x900.jpg"
+    },
+    {
+      "id": "D-GATE-SA-10",
+      "name": "continue next",
+      "status": "PASS",
+      "evidence": "FLOW-SA-06/visual/screenshots/S5-next-actor-1440x900.jpg"
+    },
+    {
+      "id": "D-GATE-SA-11",
+      "name": "409 recovery",
+      "status": "PASS",
+      "evidence": "final/test-matrix.json"
+    },
+    {
+      "id": "D-GATE-SA-12",
+      "name": "context preserve",
+      "status": "PASS",
+      "evidence": "FLOW-SA-07/source-trace.json"
+    },
+    {
+      "id": "D-GATE-SA-13",
+      "name": "risk linkage",
+      "status": "PASS",
+      "evidence": "FLOW-SA-03/journey-result.json"
+    },
+    {
+      "id": "D-GATE-SA-14",
+      "name": "funding continuity",
+      "status": "PASS",
+      "evidence": "FLOW-SA-02/journey-result.json"
+    },
+    {
+      "id": "D-GATE-SA-15",
+      "name": "discipline continuity",
+      "status": "PASS",
+      "evidence": "FLOW-SA-04/journey-result.json"
+    },
+    {
+      "id": "D-GATE-SA-16",
+      "name": "no N+1",
+      "status": "PASS",
+      "evidence": "final/test-matrix.json"
+    },
+    {
+      "id": "D-GATE-SA-17",
+      "name": "raw state language",
+      "status": "PASS",
+      "evidence": "FLOW-SA-03/visual/screenshots/S2-object-detail-decision-1440x900.jpg"
+    },
+    {
+      "id": "D-GATE-SA-18",
+      "name": "safe batch",
+      "status": "PASS",
+      "evidence": "final/environment-recovery.json"
+    },
+    {
+      "id": "D-GATE-SA-19",
+      "name": "empty state",
+      "status": "PASS",
+      "evidence": "FLOW-SA-07/source-trace.json"
+    },
+    {
+      "id": "D-GATE-SA-20",
+      "name": "cross-end semantics",
+      "status": "PASS",
+      "evidence": "FLOW-SA-07/journey-result.json"
+    }
+  ]
+}

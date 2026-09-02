@@ -358,7 +358,7 @@ export default {
       this.patrolForm.teacherKey = value || ''
       this.patrolForm.teacherName = items?.[0]?.raw?.teacherName || items?.[0]?.label || ''
     },
-    statusLabel(s) { return _L[s] || s },
+    statusLabel(s) { return _L[s] || '状态待确认' },
     statusType(s) {
       if (s === 'PUBLISHED') return 'success'
       if (s === 'FINISHED') return 'warning'

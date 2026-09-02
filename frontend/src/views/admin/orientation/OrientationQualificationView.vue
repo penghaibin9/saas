@@ -171,7 +171,7 @@ export default {
       return ({ QUALIFIED: 'success', NOT_QUALIFIED: 'danger', MANUAL_REVIEW: 'warning' })[verdict] || 'default'
     },
     reportText(status) {
-      return ({ NOT_REPORTED: '未现场报到', CHECKED_IN: '已现场报到', COLLEGE_CONFIRMED: '学院已确认' })[status] || status || '—'
+      return ({ NOT_REPORTED: '未现场报到', CHECKED_IN: '已现场报到', COLLEGE_CONFIRMED: '学院已确认' })[status] || (status ? '状态待确认' : '—')
     },
     reportType(status) {
       return ({ CHECKED_IN: 'warning', COLLEGE_CONFIRMED: 'success' })[status] || 'default'

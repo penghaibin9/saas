@@ -5,7 +5,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { matchPermission, getVisibleNavPlan, searchNavPlan } from '../src/config/navPlan.js'
+import { NAV_PLAN, matchPermission, getVisibleNavPlan, navPlanStats, searchNavPlan } from '../src/config/navPlan.js'
 
 function internshipLeaves(plan) {
   const g = plan.find((x) => x.key === 'internship')
@@ -77,6 +77,24 @@ test('ctxKey 不同 → 缓存不串味（不同身份得到不同投影）', ()
   const b = getVisibleNavPlan({ includePlanned: false, permissionPatterns: [], ctxKey: 'k2' })
   assert.equal(a.find((g) => g.key === 'internship').children.length, 11)
   assert.equal(b.find((g) => g.key === 'internship'), undefined)
+})
+
+test('无独立入口但已有真实子页的学工二级模块是可展开容器，不再误报待施工', () => {
+  const studentAffairs = NAV_PLAN.find((group) => group.key === 'student-affairs')
+  const workbench = studentAffairs.children.find((mod) => mod.key === 'sa-workbench')
+  assert.equal(workbench.path, undefined)
+  assert.equal(workbench.entryType, 'CONTAINER')
+  assert.equal(workbench.status, 'implemented')
+  assert.equal(workbench.disabled, false)
+})
+
+test('navPlanStats 分开统计 implemented/partial/planned/unauthorized，并保留兼容字段', () => {
+  const row = navPlanStats().find((item) => item.key === 'student-affairs')
+  for (const key of ['implemented', 'partial', 'planned', 'unauthorized', 'containers', 'total']) {
+    assert.equal(Number.isInteger(row[key]), true, `${key} 应为整数`)
+  }
+  assert.ok(row.containers > 0, '学工应包含无独立入口的可展开容器')
+  assert.equal(row.total, row.implemented + row.partial + row.planned + row.unauthorized)
 })
 
 // ── P6 §11.3 全角色菜单快照矩阵（权限集对齐后端 ROLE_PERMISSIONS 实习模板）──

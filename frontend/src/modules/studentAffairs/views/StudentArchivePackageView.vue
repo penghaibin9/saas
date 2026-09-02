@@ -64,7 +64,7 @@ export default {
       const res = await studentAffairsApi.getArchiveBatch(this.selBatch)
       if (res.code === 0 && res.data) this.packages = res.data.packages || []
     },
-    pkgLabel(s) { return PKG[s] || s || '—' },
+    pkgLabel(s) { return PKG[s] || (s ? '状态待确认' : '—') },
     pkgType(s) { return ({ READY: 'success', ARCHIVED: 'success', MISSING: 'warning', PENDING: 'default', COLLECTING: 'processing' })[s] || 'default' },
     missText(p) {
       const m = p.missingItems || p.missing || p.missingList

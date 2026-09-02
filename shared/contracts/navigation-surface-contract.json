@@ -5,7 +5,7 @@
     "frontend/src/config/navPlan.js#NAV_PLAN",
     "frontend/src/config/navPlan.js#PLATFORM_PLAN"
   ],
-  "digest": "2aec8c2c9f31d1e0fcddf7b9d3151b6c611d04a06ebb5383a37c4be9efe1ff8e",
+  "digest": "789b99a5b2b95a9503c2b5770549096a4d9ce6a8bab0051b78da1bd5b0db275a",
   "counts": {
     "total": 572,
     "production": 571,
@@ -11840,7 +11840,7 @@
       "workspaceKey": "plt-standards",
       "workspaceLabel": "全局标准与发布",
       "surfaceKey": "plt-product-iam",
-      "label": "Product IAM",
+      "label": "产品身份与权限",
       "path": "/admin/platform/product-iam",
       "permissionKey": "platform.productIam.view",
       "permissionAny": [],
@@ -11924,7 +11924,7 @@
       "workspaceKey": "plt-reliability",
       "workspaceLabel": "集成与运行保障",
       "surfaceKey": "plt-api-access",
-      "label": "API、密钥与 Webhook",
+      "label": "接口、密钥与回调通知",
       "path": "/admin/platform/api-access",
       "permissionKey": "platform.api.view",
       "permissionAny": [],

@@ -177,7 +177,7 @@ export default {
       return `授权${TYPE_LABELS[scopeType] || '范围'}`
     },
     scopeTypeOptions(assignment) {
-      return (assignment.allowedScopeTypes || []).map((value) => ({ value, label: TYPE_LABELS[value] || value }))
+      return (assignment.allowedScopeTypes || []).map((value) => ({ value, label: TYPE_LABELS[value] || (value ? '待确认' : '—') }))
     },
     scopeOptions(scopeType) {
       const options = []

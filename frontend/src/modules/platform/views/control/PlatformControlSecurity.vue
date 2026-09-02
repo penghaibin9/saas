@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="安全策略" subtitle="登录锁定 / 密码与验证码策略 / 令牌时长 / 限流 / 跨域 / 平台高危操作 MFA，越界值将被后端拒绝（不允许不设防）" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
+  <ModulePageShell title="安全策略" subtitle="登录锁定 / 密码与验证码策略 / 凭证时长 / 限流 / 跨域 / 平台高危操作二次认证，越界值将被后端拒绝（不允许不设防）" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
     <PlatformMfaPanel />
 
     <LoadingState v-if="loading" text="正在加载安全参数…" />
@@ -15,7 +15,7 @@
       </div>
       <div class="pcs__ops">
         <AppButton variant="primary" :loading="saving" @click="save">保存安全参数</AppButton>
-        <span class="pcs__tip">保存即生效；密码、验证码、锁定和令牌参数会直接进入登录 runtime，越界值由后端拒绝。</span>
+        <span class="pcs__tip">保存即生效；密码、验证码、锁定和凭证参数会直接进入登录流程，越界值由后端拒绝。</span>
       </div>
     </AppCard>
   </ModulePageShell>
@@ -42,14 +42,14 @@ export default {
         { key: 'loginFailLockMinutes', label: '锁定时长（分钟）', type: 'number' },
         { key: 'passwordMinLength', label: '密码最小长度', type: 'number' },
         { key: 'captchaAfterFailures', label: '连续失败后启用验证码（次）', type: 'number' },
-        { key: 'accessTokenExpireMinutes', label: 'AccessToken 有效期（分钟）', type: 'number' },
-        { key: 'refreshTokenExpireDays', label: 'RefreshToken 有效期（天）', type: 'number' },
-        { key: 'uploadMaxSizeMb', label: '上传大小上限（MB）', type: 'number' },
+        { key: 'accessTokenExpireMinutes', label: '访问凭证有效期（分钟）', type: 'number' },
+        { key: 'refreshTokenExpireDays', label: '续期凭证有效期（天）', type: 'number' },
+        { key: 'uploadMaxSizeMb', label: '上传大小上限（兆字节）', type: 'number' },
         { key: 'exportRateLimitPerMinute', label: '导出限流（次/分钟）', type: 'number' },
         { key: 'uploadRateLimitPerMinute', label: '上传限流（次/分钟）', type: 'number' },
         { key: 'normalApiRateLimitPerMinute', label: '普通接口限流（次/分钟）', type: 'number' },
         { key: 'corsAllowedOrigins', label: '允许跨域来源（逗号分隔）', type: 'text' },
-        { key: 'docsEnabledInProduction', label: '生产环境开放 /docs', type: 'bool' }
+        { key: 'docsEnabledInProduction', label: '生产环境开放接口文档', type: 'bool' }
       ]
     }
   },

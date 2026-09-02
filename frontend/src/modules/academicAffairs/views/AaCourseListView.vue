@@ -89,7 +89,7 @@ export default {
   created() { this.load() },
   methods: {
     reviewStatusColor,
-    statusLabel(s) { return REVIEW_STATUS[s] || s || '' },
+    statusLabel(s) { return REVIEW_STATUS[s] || (s ? '状态待确认' : '') },
     onPageChange(p) { this.pagination.page = p; this.load() },
     search() { this.pagination.page = 1; this.load() },
     reset() { this.filters = { keyword: '', category: '', nature: '', status: '' }; this.search() },

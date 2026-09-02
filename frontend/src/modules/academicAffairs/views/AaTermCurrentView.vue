@@ -126,7 +126,7 @@ export default {
     this.load()
   },
   methods: {
-    statusLabel(s) { return STATUS_LABEL[s] || s || '' },
+    statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     statusType(s) { return STATUS_TYPE[s] || 'default' },
     isResolvedCurrent(row) {
       return Boolean(this.current?.termId) && String(row.termId) === String(this.current.termId)

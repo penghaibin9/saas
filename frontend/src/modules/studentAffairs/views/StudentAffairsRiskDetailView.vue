@@ -28,7 +28,7 @@
           <h2 class="sa-summary-strip__title">{{ detail.title || '风险记录' }}</h2>
           <p class="sa-summary-strip__text">
             {{ detail.realName || '未命名学生' }} · {{ detail.studentNo || detail.studentId }}；
-            当前状态：{{ detail.statusLabel || detail.status || '—' }}；责任人：{{ ownerLabel(detail) }}。
+            当前状态：{{ riskStatusLabel(detail.status, detail.statusLabel) }}；责任人：{{ ownerLabel(detail) }}。
           </p>
         </div>
         <div class="risk-summary__level">
@@ -178,7 +178,7 @@ export default {
         { label: '来源', value: this.sourceLabel(x.source) },
         { label: '来源编号', value: x.sourceRefId },
         { label: '风险等级', value: x.riskLevel },
-        { label: '状态', value: x.statusLabel || x.status },
+        { label: '状态', value: this.riskStatusLabel(x.status, x.statusLabel) },
         { label: '责任人', value: this.ownerLabel(x) },
         { key: 'detail', label: '风险明细', value: x.detail, span: 2 },
         { label: '归档状态', value: x.isArchived ? '已归档' : '未归档' },
@@ -203,6 +203,7 @@ export default {
     this.load()
   },
   methods: {
+    riskStatusLabel(status, providedLabel = '') { return providedLabel || (status ? '状态待确认' : '—') },
     canBtn(code) { return canCode(this.ctx, code) },
     canAct(action) {
       const acts = this.detail && Array.isArray(this.detail.allowedActions)
@@ -300,7 +301,7 @@ export default {
         DORM: '宿舍异常',
         MENTAL: '心理关注',
         MANUAL: '人工建单'
-      })[source] || source || '未设置'
+      })[source] || (source ? '来源待确认' : '未设置')
     }
   }
 }

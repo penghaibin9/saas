@@ -156,7 +156,7 @@ export default {
   created() { this.load() },
   methods: {
     fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' },
-    sourceLabel(s) { return SOURCE_LABEL[s] || s || '—' },
+    sourceLabel(s) { return SOURCE_LABEL[s] || (s ? '状态待确认' : '—') },
     sourceTagType(s) {
       if (s === 'TENANT' || s === 'ORG_UNIT' || s === 'TERM') return 'processing'
       if (s === 'TENANT_LEGACY') return 'info'

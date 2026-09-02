@@ -162,10 +162,10 @@ export default {
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     scanText(status) {
-      return { CLEAN: '已通过', NOT_REQUIRED: '无需扫描', PENDING: '待扫描', INFECTED: '未通过' }[status] || status || '未知'
+      return { CLEAN: '已通过', NOT_REQUIRED: '无需扫描', PENDING: '待扫描', INFECTED: '未通过' }[status] || (status ? '状态待确认' : '未知')
     },
     async load() {
       this.loading = true

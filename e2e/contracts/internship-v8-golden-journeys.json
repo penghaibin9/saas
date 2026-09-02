@@ -24,7 +24,7 @@
       "truthTables": ["InternshipBatch", "InternshipRecord", "InternshipBatchParticipant", "InternshipAdvisor", "AuditLog"],
       "capabilities": ["CP-IX-01", "CP-IX-02", "CP-IX-09", "CP-IX-18", "CP-IX-19"],
       "playwrightSpecs": ["e2e/specs/internship-batch-lifecycle-audit.spec.mjs", "e2e/specs/internship-placement-assignment-audit.spec.mjs"],
-      "staticEvidence": ["artifacts/internship-v8/w3/staff-dashboard-contract.json", "artifacts/internship-v8/w9/student-pc-workbench-contract.json"],
+      "staticEvidence": ["frontend/tests/internship.today-work.contract.test.mjs", "student-portal/tests/internship-v8-workbench-contract.test.mjs"],
       "sealStatus": "L4_SEALED"
     },
     {
@@ -38,7 +38,7 @@
       "truthTables": ["InternshipEnterprise", "InternshipRecruitmentCampaign", "InternshipPosition", "InternshipVolunteerGroup", "InternshipApplication", "InternshipEnterpriseDecision", "InternshipPlacement", "InternshipRecord", "MessageOutbox"],
       "capabilities": ["CP-IX-03", "CP-IX-04", "CP-IX-05", "CP-IX-06", "CP-IX-07", "CP-IX-08", "CP-IX-18", "CP-IX-19"],
       "playwrightSpecs": ["e2e/specs/internship-enterprise-position-lifecycle-audit.spec.mjs", "e2e/specs/internship-placement-assignment-audit.spec.mjs"],
-      "staticEvidence": ["artifacts/internship-v8/w5/enterprise-today-first-contract.json"],
+      "staticEvidence": ["enterprise-portal/tests/internship-v8-today-first-contract.test.mjs"],
       "sealStatus": "L4_SEALED"
     },
     {
@@ -52,7 +52,7 @@
       "truthTables": ["InternshipApplication", "InternshipConsent", "InternshipSafetyCourse", "InternshipSafetyCompletion", "InternshipInsurance", "InternshipAgreement", "MessageOutbox"],
       "capabilities": ["CP-IX-02", "CP-IX-09", "CP-IX-10", "CP-IX-16", "CP-IX-18", "CP-IX-19"],
       "playwrightSpecs": ["e2e/specs/internship-application-rejection-resubmit-audit.spec.mjs", "e2e/specs/internship-agreement-lifecycle-audit.spec.mjs"],
-      "staticEvidence": ["artifacts/internship-v8/w6/compliance-agreement-now-contract.json"],
+      "staticEvidence": ["frontend/tests/internship.compliance-agreement-now.contract.test.mjs"],
       "sealStatus": "L4_SEALED"
     },
     {
@@ -66,7 +66,7 @@
       "truthTables": ["InternshipCheckin", "InternshipAttendanceException", "InternshipMakeup", "InternshipLeave", "InternshipRisk", "AuditLog"],
       "capabilities": ["CP-IX-02", "CP-IX-11", "CP-IX-14", "CP-IX-18", "CP-IX-19"],
       "playwrightSpecs": ["e2e/specs/internship-leave-lifecycle.spec.mjs", "e2e/specs/internship-leave-stats-xlsx-audit.spec.mjs"],
-      "staticEvidence": ["artifacts/internship-v8/w7/attendance-leave-now-contract.json"],
+      "staticEvidence": ["frontend/tests/internship.attendance-leave-now.contract.test.mjs"],
       "sealStatus": "L4_SEALED"
     },
     {
@@ -80,7 +80,7 @@
       "truthTables": ["InternshipPlan", "InternshipPlanTask", "InternshipWeeklyReport", "InternshipProcessReport", "InternshipGuidance", "InternshipVisitPlan", "InternshipVisit", "FileVersion", "MessageOutbox"],
       "capabilities": ["CP-IX-02", "CP-IX-12", "CP-IX-13", "CP-IX-16", "CP-IX-18", "CP-IX-19"],
       "playwrightSpecs": ["e2e/specs/internship-v8-advanced-golden-journeys.spec.mjs"],
-      "staticEvidence": ["artifacts/internship-v8/w8/report-guidance-visit-contract.json"],
+      "staticEvidence": ["frontend/tests/internship.report-guidance-now.contract.test.mjs"],
       "sealStatus": "L4_SEALED"
     },
     {
@@ -94,7 +94,7 @@
       "truthTables": ["InternshipChangeRequest", "InternshipPlacement", "InternshipRecord", "InternshipPosition", "InternshipAgreement", "InternshipAdvisor", "AuditLog"],
       "capabilities": ["CP-IX-02", "CP-IX-03", "CP-IX-04", "CP-IX-07", "CP-IX-09", "CP-IX-10", "CP-IX-18", "CP-IX-19"],
       "playwrightSpecs": ["e2e/specs/internship-v8-advanced-golden-journeys.spec.mjs"],
-      "staticEvidence": ["artifacts/internship-v8/w11/change-reonboard-contract.json"],
+      "staticEvidence": ["frontend/tests/internship.change-reonboard.contract.test.mjs", "backend/tests/test_internship_atomic_change_static.py"],
       "sealStatus": "L4_SEALED"
     },
     {
@@ -108,7 +108,7 @@
       "truthTables": ["InternshipRisk", "InternshipComplaint", "InternshipIncident", "InternshipIncidentHistory", "InternshipEmergencyPlan", "InternshipRectification", "InternshipEvidencePackage", "MessageOutbox"],
       "capabilities": ["CP-IX-02", "CP-IX-03", "CP-IX-14", "CP-IX-16", "CP-IX-18", "CP-IX-19"],
       "playwrightSpecs": ["e2e/specs/internship-v8-advanced-golden-journeys.spec.mjs"],
-      "staticEvidence": ["artifacts/internship-v8/w12/risk-incident-evidence-contract.json"],
+      "staticEvidence": ["frontend/tests/internship.risk-incident-evidence.contract.test.mjs", "backend/tests/test_internship_risk_incident_evidence_static.py"],
       "sealStatus": "L4_SEALED"
     },
     {
@@ -122,7 +122,7 @@
       "truthTables": ["InternshipEnterpriseEvaluation", "InternshipStudentEvaluation", "InternshipFinalScore", "InternshipScoreAppeal", "InternshipPlacementSnapshot", "MessageOutbox"],
       "capabilities": ["CP-IX-03", "CP-IX-07", "CP-IX-15", "CP-IX-18", "CP-IX-19"],
       "playwrightSpecs": ["e2e/specs/internship-v8-advanced-golden-journeys.spec.mjs"],
-      "staticEvidence": ["artifacts/internship-v8/w13/evaluation-score-appeal-contract.json"],
+      "staticEvidence": ["frontend/tests/internship.evaluation-score-appeal.contract.test.mjs", "enterprise-portal/tests/internship-v8-evaluation-placement-contract.test.mjs", "miniapp/tests/internship-v8-evaluation-score-contract.test.mjs", "student-portal/tests/internship-v8-evaluation-appeal-contract.test.mjs"],
       "sealStatus": "L4_SEALED"
     },
     {
@@ -136,7 +136,7 @@
       "truthTables": ["FileObject", "FileVersion", "FileBinding", "InternshipArchive", "InternshipArchivePackage", "InternshipArchiveManifest", "AuditLog"],
       "capabilities": ["CP-IX-02", "CP-IX-10", "CP-IX-15", "CP-IX-16", "CP-IX-17", "CP-IX-18", "CP-IX-19", "CP-IX-20"],
       "playwrightSpecs": ["e2e/specs/internship-agreement-lifecycle-audit.spec.mjs"],
-      "staticEvidence": ["artifacts/internship-v8/w14/archive-fileversion-recovery-employment-contract.json"],
+      "staticEvidence": ["frontend/tests/internship.archive-fileversion-recovery-employment.contract.test.mjs", "backend/tests/test_internship_archive_recovery_employment_static.py"],
       "sealStatus": "L4_SEALED"
     }
   ]

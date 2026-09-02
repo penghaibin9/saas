@@ -233,7 +233,7 @@ export default {
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     progressWidth(row) {
       const [done, all] = String(row.progress || '0/7').split('/').map(Number)

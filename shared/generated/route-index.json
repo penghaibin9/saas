@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-08-31T03:15:47.105Z",
-  "exactCount": 489,
+  "generatedAt": "2026-09-02T03:56:46.530Z",
+  "exactCount": 490,
   "patternCount": 77,
-  "redirectCount": 58,
+  "redirectCount": 59,
   "aliasCount": 0,
   "exact": [
     "/",
@@ -381,6 +381,7 @@
     "/admin/student-affairs/discipline/students",
     "/admin/student-affairs/discipline/students/:id",
     "/admin/student-affairs/discipline/work-orders",
+    "/admin/student-affairs/dorm/allocation",
     "/admin/student-affairs/dorm/check",
     "/admin/student-affairs/dorm/checkin",
     "/admin/student-affairs/dorm/exception",
@@ -718,6 +719,10 @@
     {
       "from": "/admin/messages",
       "to": "/admin/messages/inbox"
+    },
+    {
+      "from": "/admin/platform/tenants/create",
+      "to": "/admin/platform/provisioning"
     },
     {
       "from": "/admin/platform/tenant-lifecycle",

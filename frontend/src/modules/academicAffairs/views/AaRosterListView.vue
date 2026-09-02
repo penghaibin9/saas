@@ -107,7 +107,7 @@ export default {
   },
   methods: {
     statusLabel(s) {
-      return STATUS_LABEL[s] || s || ''
+      return STATUS_LABEL[s] || (s ? '状态待确认' : '')
     },
     goChange(row) {
       this.$router.push({

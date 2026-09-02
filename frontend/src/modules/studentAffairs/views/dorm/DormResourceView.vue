@@ -387,7 +387,7 @@ export default {
     genderLabel(g) { return ({ MALE: '男寝', FEMALE: '女寝', MIXED: '混合' })[g] || g },
     /** 房间状态：建房时写入 ENABLED（见 affairs_dorm_service 铺床逻辑）；
      *  未收录取值原样显示，避免后端新增状态时显示成空白 */
-    roomStatusLabel(s) { return ({ ENABLED: '启用', DISABLED: '停用', MAINTAIN: '维修中', MAINTENANCE: '维修中' })[s] || s || '—' }
+    roomStatusLabel(s) { return ({ ENABLED: '启用', DISABLED: '停用', MAINTAIN: '维修中', MAINTENANCE: '维修中' })[s] || (s ? '状态待确认' : '—') }
   }
 }
 </script>

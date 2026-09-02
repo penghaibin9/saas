@@ -18,7 +18,7 @@ for cmd in python3 nginx mysql mysqldump redis-cli curl rsync gzip sha256sum sys
   command -v "$cmd" >/dev/null 2>&1 && pass "$cmd 已安装" || failure "$cmd 未安装"
 done
 for cmd in node npm; do
-  command -v "$cmd" >/dev/null 2>&1 && pass "$cmd 已安装" || warning "$cmd 未安装；只能使用预先构建好的三端 dist"
+  command -v "$cmd" >/dev/null 2>&1 && pass "$cmd 已安装" || warning "$cmd 未安装；只能使用预先构建好的四个客户端 dist"
 done
 
 cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf 0)"
@@ -146,7 +146,8 @@ for path in \
   deploy/systemd/school-lifecycle-scheduler.service \
   deploy/systemd/school-lifecycle-file-scan.service \
   deploy/nginx/school-lifecycle.systemd.conf.example \
-  student-portal/package.json; do
+  student-portal/package.json \
+  enterprise-portal/package.json; do
   [ -f "$ROOT/$path" ] && pass "$path" || failure "缺少 $path"
 done
 

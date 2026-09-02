@@ -448,10 +448,10 @@ export default {
       this.$router.replace({ query: q }).catch(() => {})
     },
     projectTypeLabel(t) {
-      return PROJECT_TYPE[t] || t || '—'
+      return PROJECT_TYPE[t] || (t ? '类型待确认' : '—')
     },
     batchStatusLabel(s) {
-      return BATCH_STATUS[s] || s
+      return BATCH_STATUS[s] || (s ? '状态待确认' : '—')
     },
     statusType(s) {
       return STATUS_TYPE[s] || 'default'

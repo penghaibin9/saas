@@ -241,14 +241,14 @@ export default {
   created() { this.load() },
   methods: {
     backToClasses() { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes' } }) },
-    classTypeLabel(value) { return ({ ADMIN: '行政班开课', SELECTION: '选课教学班', MERGED: '合班教学班', RETAKE: '重修教学班', LAYERED: '分层教学班' })[value] || value || '—' },
-    classStatusLabel(value) { return ({ ACTIVE: '使用中', ARCHIVED: '已归档' })[value] || value || '—' },
-    taskStatusLabel(value) { return ({ PENDING_ASSIGN: '待分配', ASSIGNED: '已分配', TEACHER_CONFIRMED: '教师已确认', READY: '已就绪', MERGED: '已并入合班', REJECTED_BY_TEACHER: '教师已退回' })[value] || value || '—' },
-    teacherRoleLabel(value) { return ({ PRIMARY: '主讲', CO_TEACHER: '协同授课' })[value] || value || '—' },
-    relationStatusLabel(value) { return ({ ACTIVE: '生效', INACTIVE: '历史关系' })[value] || value || '—' },
-    memberStatusLabel(value) { return ({ ACTIVE: '当前成员', REMOVED: '已移出' })[value] || value || '—' },
-    versionStatusLabel(value) { return ({ LOCKED: '当前生效', SUPERSEDED: '历史版本' })[value] || value || '—' },
-    sourceLabel(value) { return ({ ADMIN_CLASS: '行政班初始化', SELECTION_LOCK: '选课锁定', MANUAL: '人工版本', RETAKE: '重修名单' })[value] || value || '—' },
+    classTypeLabel(value) { return ({ ADMIN: '行政班开课', SELECTION: '选课教学班', MERGED: '合班教学班', RETAKE: '重修教学班', LAYERED: '分层教学班' })[value] || (value ? '待确认' : '—') },
+    classStatusLabel(value) { return ({ ACTIVE: '使用中', ARCHIVED: '已归档' })[value] || (value ? '待确认' : '—') },
+    taskStatusLabel(value) { return ({ PENDING_ASSIGN: '待分配', ASSIGNED: '已分配', TEACHER_CONFIRMED: '教师已确认', READY: '已就绪', MERGED: '已并入合班', REJECTED_BY_TEACHER: '教师已退回' })[value] || (value ? '待确认' : '—') },
+    teacherRoleLabel(value) { return ({ PRIMARY: '主讲', CO_TEACHER: '协同授课' })[value] || (value ? '待确认' : '—') },
+    relationStatusLabel(value) { return ({ ACTIVE: '生效', INACTIVE: '历史关系' })[value] || (value ? '待确认' : '—') },
+    memberStatusLabel(value) { return ({ ACTIVE: '当前成员', REMOVED: '已移出' })[value] || (value ? '待确认' : '—') },
+    versionStatusLabel(value) { return ({ LOCKED: '当前生效', SUPERSEDED: '历史版本' })[value] || (value ? '待确认' : '—') },
+    sourceLabel(value) { return ({ ADMIN_CLASS: '行政班初始化', SELECTION_LOCK: '选课锁定', MANUAL: '人工版本', RETAKE: '重修名单' })[value] || (value ? '待确认' : '—') },
     async load() {
       if (!this.teachingClassId) { this.error = '缺少教学班ID'; this.loading = false; return }
       this.loading = true; this.error = ''

@@ -57,7 +57,7 @@ export default {
   },
   created() { this.load() },
   methods: {
-    statusLabel(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).label || s },
+    statusLabel(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).label || (s ? '状态待确认' : '—') },
     parity(p) { return { ALL: '全周', ODD: '单周', EVEN: '双周' }[p] || (p || '') },
     async load() {
       this.loading = true; this.error = ''

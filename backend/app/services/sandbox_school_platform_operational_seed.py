@@ -301,7 +301,7 @@ def seed_platform_operational_coverage(db, tenant_id: int) -> dict:
         "source_id": standard_source.id, "category_code": "51", "category_name": "电子与信息大类",
         "major_class_code": "5102", "major_class_name": "计算机类", "major_name": "软件技术",
         "directory_status": "ACTIVE", "effective_date": date(2021, 3, 12),
-        "metadata_json": {"standardCovered": True, "source": "tmp/moe-standards-manifest.json"},
+        "metadata_json": {"standardCovered": True, "source": "backend/reference-data/moe/moe-standards-manifest.json"},
     })
     document = _global_put(db, NationalStandardDocument, {
         "standard_code": "MOE-2025-HIGHER_VOCATIONAL_SPECIALIST-510203", "version_label": "2025",

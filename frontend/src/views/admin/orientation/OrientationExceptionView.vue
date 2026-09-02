@@ -271,7 +271,7 @@ export default {
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     perm(key) {
       return this.perms[key] || { allowed: true, visible: true, reason: '' }

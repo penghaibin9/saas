@@ -104,7 +104,7 @@ export default {
   },
   methods: {
     scheduleBatchColor,
-    statusLabel(s) { return SCHEDULE_BATCH_STATUS[s] || s || '' },
+    statusLabel(s) { return SCHEDULE_BATCH_STATUS[s] || (s ? '状态待确认' : '') },
     onPageChange(p) { this.pagination.page = p; this.load() },
     openChangeLedger(row) { this.$router.push({ path: '/admin/academic-affairs/schedule-change', query: { termId: row.termId || '' } }) },
     async createBatch() {

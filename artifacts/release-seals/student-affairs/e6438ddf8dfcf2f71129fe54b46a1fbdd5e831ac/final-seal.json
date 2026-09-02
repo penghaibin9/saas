@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "V6.0",
+  "sealedAt": "2026-08-30T16:50:00+08:00",
+  "productExactHead": "e6438ddf8dfcf2f71129fe54b46a1fbdd5e831ac",
+  "branch": "codex/student-affairs-delight-20260830",
+  "verdict": "STUDENT_AFFAIRS_DELIGHT_GO",
+  "conditions": {
+    "scoreAtLeast92": true,
+    "dxP0Zero": true,
+    "dxP1Zero": true,
+    "sevenGoldenJourneysL4": true,
+    "twentyDGatesPass": true,
+    "twentyKBounded": true,
+    "fourEndsConsistent": true,
+    "productionBuildsPass": true,
+    "mainNotMerged": true
+  },
+  "evidenceRoot": "artifacts/student-affairs/delight/e6438ddf8dfcf2f71129fe54b46a1fbdd5e831ac"
+}

@@ -507,7 +507,7 @@ def test_clients_use_file_center_download_and_have_visible_entries():
     assert "/platform-integrity/exceptions" in staff_api
     assert "/graduation/manifests/${encodeURIComponent(manifestId)}/frozen-package" in staff_api
     assert "fileSdk.download" in staff_view
-    for label in ("Critical", "Today New", "7d Unresolved", "进入业务", "复检"):
+    for label in ("紧急", "今日新增", "七日未解决", "进入业务", "复检"):
         assert label in staff_view
     assert "/portal/graduation/frozen-package" in portal_api
     assert "fileSdk.download" in portal_view

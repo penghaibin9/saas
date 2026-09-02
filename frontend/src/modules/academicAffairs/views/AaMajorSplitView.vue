@@ -155,9 +155,9 @@ export default {
     if (m.code === 0) this.majorOptions = (m.data.list || []).map((x) => ({ label: x.majorName, value: String(x.id || x.majorId) }))
   },
   methods: {
-    stLabel(s) { return _L[s] || s },
+    stLabel(s) { return _L[s] || '状态待确认' },
     stType(s) { return s === 'OPEN' ? 'success' : s === 'CONFIRMED' ? 'default' : s === 'ALLOCATED' ? 'warning' : 'primary' },
-    volLabel(s) { return _VL[s] || s },
+    volLabel(s) { return _VL[s] || '分流方式待确认' },
     volType(s) { return s === 'ALLOCATED' || s === 'CONFIRMED' ? 'success' : s === 'UNALLOCATED' ? 'danger' : 'primary' },
     majorName(id) { const o = this.options.find((x) => String(x.majorId) === String(id)); return o ? o.majorName : id },
     async load() {

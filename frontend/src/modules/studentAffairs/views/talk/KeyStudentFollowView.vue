@@ -81,7 +81,7 @@ export default {
       else this.errorMessage = rk.message || '加载失败'
       this.loading = false
     },
-    sourceLabel(s) { return SRC[s] || s || '—' },
+    sourceLabel(s) { return SRC[s] || (s ? '状态待确认' : '—') },
     levelLabel(l) { return LEVEL[l] || l || '—' }
   }
 }

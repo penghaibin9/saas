@@ -517,7 +517,7 @@ export default {
     }
   },
   methods: {
-    classStatusLabel(v) { return CLASS_STATUS[v] || v || '' },
+    classStatusLabel(v) { return CLASS_STATUS[v] || (v ? '待确认' : '') },
     switchTab(key) {
       this.tab = key
       this.pagination.page = 1
@@ -700,10 +700,10 @@ export default {
 
     // ═══════════ 班级调整申请单（08号卡：批量组织调整） ═══════════
     adjustTypeLabel(v) {
-      return { MERGE: '合班登记', SPLIT: '拆班登记', DISBAND: '停用撤销', GRADUATE_CLEAR: '毕业清班' }[v] || v
+      return { MERGE: '合班登记', SPLIT: '拆班登记', DISBAND: '停用撤销', GRADUATE_CLEAR: '毕业清班' }[v] || (v ? '待确认' : '—')
     },
     adjustStatusLabel(v) {
-      return { DRAFT: '草稿', CHECKED: '已核对', EXECUTED: '已执行', CANCELLED: '已撤销' }[v] || v
+      return { DRAFT: '草稿', CHECKED: '已核对', EXECUTED: '已执行', CANCELLED: '已撤销' }[v] || (v ? '待确认' : '—')
     },
     adjustStatusType(v) {
       return { DRAFT: 'default', CHECKED: 'warning', EXECUTED: 'success', CANCELLED: 'default' }[v] || 'default'

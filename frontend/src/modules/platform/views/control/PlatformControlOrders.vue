@@ -6,6 +6,7 @@
     <LoadingState v-if="loading" text="正在加载订单…" />
     <template v-else>
       <DataTable :columns="columns" :rows="rows" row-key="orderNo">
+        <template #cell-packageCode="{ row }">{{ packageLabel(row.packageCode) }}</template>
         <template #cell-amount="{ row }">￥{{ (row.amount || 0).toLocaleString() }}</template>
         <template #cell-status="{ row }">
           <StatusTag :type="statusType(row.status)" :label="statusLabel(row.status)" />
@@ -118,7 +119,7 @@ export default {
     },
     actionNote() {
       return {
-        'mark-paid': '确认后将以该订单为商业 Authority 自动生效套餐、有效期与授权。',
+        'mark-paid': '确认后将以该订单作为商业权威依据，自动生效套餐、有效期与授权。',
         cancel: '取消后保留订单与审计流水，不会授予正式权益。',
         'repair-activation': '支付事实已经入账；本次只重试该订单对应的套餐与有效期激活，并保留修复审计。'
       }[this.actionForm.action] || ''
@@ -128,6 +129,9 @@ export default {
     }
   },
   methods: {
+    packageLabel(code) {
+      return ({ basic: '基础版', standard: '标准版', professional: '专业版', private: '私有化版', trial: '试用版' })[code] || '套餐待确认'
+    },
     async load() {
       this.loading = true
       const [orders, tenants] = await Promise.all([
@@ -151,7 +155,7 @@ export default {
       return (STATUS[s] || ['default', s])[0]
     },
     statusLabel(s) {
-      return (STATUS[s] || ['default', s])[1]
+      return (STATUS[s] || ['default', '状态待确认'])[1]
     },
     async submit() {
       if (!this.form.tenantId) {

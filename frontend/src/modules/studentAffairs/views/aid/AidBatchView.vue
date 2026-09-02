@@ -137,7 +137,7 @@ export default {
       }
       this.saving = false
     },
-    statusLabel(s) { return BATCH_STATUS[s] || s || '—' },
+    statusLabel(s) { return BATCH_STATUS[s] || (s ? '状态待确认' : '—') },
     statusType(s) {
       if (s === 'OPEN') return 'success'
       if (['REVIEWING', 'PUBLICITY'].includes(s)) return 'processing'

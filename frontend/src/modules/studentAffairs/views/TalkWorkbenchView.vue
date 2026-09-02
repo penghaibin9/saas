@@ -349,7 +349,7 @@ export default {
       this.$router.replace({ query: q }).catch(() => {})
     },
     talkTypeLabel(t) {
-      return TALK_TYPE[t] || t || '—'
+      return TALK_TYPE[t] || (t ? '类型待确认' : '—')
     },
     statusType(s) {
       return STATUS_TYPE[s] || 'default'

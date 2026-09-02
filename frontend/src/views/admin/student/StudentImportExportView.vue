@@ -133,7 +133,7 @@
               <tr v-for="a in audits" :key="a.id">
                 <td>{{ a.time }}</td>
                 <td class="is-who">{{ a.operator }}（{{ a.roleName }}）</td>
-                <td>{{ a.action }}</td>
+                <td>{{ auditActionLabel(a) }}</td>
                 <td>{{ a.targetName }}</td>
                 <td>{{ a.detail }}</td>
               </tr>
@@ -170,6 +170,7 @@ import AccountImportBoundaryNotice from '@/components/common/AccountImportBounda
 import { AppButton } from '@/components/ui'
 import { studentApi } from '@/modules/student/api/student.api'
 import { toast } from '@/utils/toast'
+import { presentAuditRecord } from '@/utils/presentationSafety'
 
 export default {
   name: 'StudentImportExportView',
@@ -223,6 +224,7 @@ export default {
     this.refreshAudits()
   },
   methods: {
+    auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     reason(key) {
       const pa = this.ctx.permissionActions[key]
       return pa && !pa.allowed ? pa.reason : ''

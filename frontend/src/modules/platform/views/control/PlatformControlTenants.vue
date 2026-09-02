@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="租户学校管控" subtitle="学校档案 / 停用 / 试用 / 到期 / 容量；新校统一由可恢复 Provisioning SAGA 开通" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
+  <ModulePageShell title="租户学校管控" subtitle="学校档案 / 停用 / 试用 / 到期 / 容量；新校统一由可恢复的自动开户任务开通" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
     <template #actions>
       <AppButton variant="primary" @click="goProvisioning">+ 开通新学校</AppButton>
     </template>
@@ -113,7 +113,7 @@ export default {
       return (STATUS[s] || ['default', s])[0]
     },
     statusLabel(s) {
-      return (STATUS[s] || ['default', s])[1]
+      return (STATUS[s] || ['default', '状态待确认'])[1]
     },
     fmt(v) {
       return v ? String(v).replace('T', ' ').slice(0, 10) : '—'

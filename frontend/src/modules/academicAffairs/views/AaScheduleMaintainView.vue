@@ -14,7 +14,7 @@
       <div class="aa-filter">
         <label class="aa-filter__item">班级<AppClassPicker v-model="classId" placeholder="选择班级" @change="onClassPicked" /></label>
         <AppButton @click="loadClass">载入课表</AppButton>
-        <span class="mp-note">排课新增只接受同学期 READY 教学任务；班级选择只决定当前课表视图与可选任务范围。</span>
+        <span class="mp-note">排课新增只接受同学期“已就绪”教学任务；班级选择只决定当前课表视图与可选任务范围。</span>
       </div>
 
       <AppInlineAlert v-if="lastConflict" type="error" :message="lastConflict" />
@@ -65,12 +65,12 @@
     >
       <div class="aa-assign-form">
         <label class="aa-assign-form__wide">
-          READY 教学任务
+          已就绪教学任务
           <AppSelect
             v-model="add.taskId"
             :options="taskOptions"
             :disabled="taskLoading"
-            :placeholder="taskLoading ? '正在读取 READY 教学任务…' : (taskOptions.length ? '选择教学任务' : '当前班级无 READY 教学任务')"
+            :placeholder="taskLoading ? '正在读取已就绪教学任务…' : (taskOptions.length ? '选择教学任务' : '当前班级无已就绪教学任务')"
             @change="onTaskPicked"
           />
         </label>
@@ -268,11 +268,11 @@ export default {
         this.taskBatchIds = allowedBatches
 
         const tasks = await academicAffairsApi.listAllTasks({ status: 'READY', page: 1, pageSize: 500 })
-        if (tasks.code !== 0) throw new Error(tasks.message || 'READY 教学任务读取失败')
+        if (tasks.code !== 0) throw new Error(tasks.message || '已就绪教学任务读取失败')
         this.readyTasks = (tasks.data?.list || []).filter((task) => allowedBatches.has(String(task.batchId)))
       } catch (error) {
         this.readyTasks = []
-        this.taskLoadError = error?.message || 'READY 教学任务读取失败'
+        this.taskLoadError = error?.message || '已就绪教学任务读取失败'
       } finally {
         this.taskLoading = false
       }
@@ -344,7 +344,7 @@ export default {
       this.onItemMove({ item, weekday: Number(slot.weekday), slotNo: Number(slot.slotNo) })
     },
     async doAdd() {
-      if (!this.add.taskId) { toast.error('请先选择 READY 教学任务'); return }
+      if (!this.add.taskId) { toast.error('请先选择已就绪教学任务'); return }
       const task = this.selectedTask
       if (!task) { toast.error('教学任务已失效，请刷新后重新选择'); return }
       if (this.classId && String(task.classId || '') !== String(this.classId)) {

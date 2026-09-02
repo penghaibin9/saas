@@ -340,13 +340,13 @@ export default {
       finally { this.actioning = false }
     },
     fmt(value) { return String(value || '').slice(0, 16).replace('T', ' ') || '—' },
-    typeLabel(t) { return ({ HYGIENE: '卫生', SAFETY: '安全', CONTRABAND: '违禁品', NIGHT_ABSENCE: '夜不归宿', FIRE_SAFETY: '消防安全', FACILITY: '设施设备', OTHER: '其他' })[t] || t },
-    severityLabel(value) { return ({ NONE: '正常', LOW: '低', MEDIUM: '中', HIGH: '高风险', CRITICAL: '重大风险' })[value] || value || '—' },
-    rectStatusLabel(value) { return ({ OPEN: '待整改', RECTIFYING: '整改中', WAITING_RECHECK: '待复检', CLOSED: '已关闭', ESCALATED: '已升级' })[value] || value },
+    typeLabel(t) { return ({ HYGIENE: '卫生', SAFETY: '安全', CONTRABAND: '违禁品', NIGHT_ABSENCE: '夜不归宿', FIRE_SAFETY: '消防安全', FACILITY: '设施设备', OTHER: '其他' })[t] || (t ? '类型待确认' : '—') },
+    severityLabel(value) { return ({ NONE: '正常', LOW: '低', MEDIUM: '中', HIGH: '高风险', CRITICAL: '重大风险' })[value] || (value ? '待确认' : '—') },
+    rectStatusLabel(value) { return ({ OPEN: '待整改', RECTIFYING: '整改中', WAITING_RECHECK: '待复检', CLOSED: '已关闭', ESCALATED: '已升级' })[value] || (value ? '待确认' : '—') },
     rectStatusType(value) { return ({ OPEN: 'warning', RECTIFYING: 'processing', WAITING_RECHECK: 'warning', CLOSED: 'success', ESCALATED: 'danger' })[value] || 'default' },
     /** 检查任务状态：取值见 affairs_dorm_service.create（RUNNING）与模型默认值（DRAFT）；
      *  未收录的取值原样显示，避免把后端新增状态误显示成空白 */
-    statusLabel(s) { return ({ DRAFT: '草稿', RUNNING: '进行中', DONE: '已完成', CLOSED: '已结束' })[s] || s || '—' }
+    statusLabel(s) { return ({ DRAFT: '草稿', RUNNING: '进行中', DONE: '已完成', CLOSED: '已结束' })[s] || (s ? '状态待确认' : '—') }
   }
 }
 </script>

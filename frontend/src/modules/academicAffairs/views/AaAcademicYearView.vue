@@ -96,9 +96,9 @@ export default {
     this.load()
   },
   methods: {
-    yearStatusLabel(s) { return YEAR_STATUS_LABEL[s] || s || '' },
+    yearStatusLabel(s) { return YEAR_STATUS_LABEL[s] || (s ? '学年状态待确认' : '') },
     yearStatusType(s) { return YEAR_STATUS_TYPE[s] || 'default' },
-    termStatusLabel(s) { return TERM_STATUS_LABEL[s] || s || '' },
+    termStatusLabel(s) { return TERM_STATUS_LABEL[s] || (s ? '学期状态待确认' : '') },
     termStatusType(s) { return TERM_STATUS_TYPE[s] || 'default' },
     isResolvedCurrentYear(row) {
       return Boolean(this.currentContext?.yearCode) && String(row.yearCode) === String(this.currentContext.yearCode)

@@ -107,8 +107,8 @@ export default {
     },
     setType(k) { if (this.activeType === k) return; this.activeType = k; this.page = 1; this.load() },
     setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.page = 1; this.load() },
-    typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[t] || t || '—' },
-    sourceLabel(s) { return ({ SELF: '自主申请', RECOMMEND: '推荐' })[s] || s || '—' },
+    typeLabel(t) { return ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款' })[t] || (t ? '类型待确认' : '—') },
+    sourceLabel(s) { return ({ SELF: '自主申请', RECOMMEND: '推荐' })[s] || (s ? '状态待确认' : '—') },
     amountText(a) { return (a == null || a === '') ? '—' : (typeof a === 'number' ? ('¥' + a) : a) },
     statusType(s) {
       if (s === 'GRANTED') return 'success'

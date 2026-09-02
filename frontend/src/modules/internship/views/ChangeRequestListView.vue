@@ -90,7 +90,7 @@
                 </div>
                 <div v-if="detail.data.targetPosition" class="change-impact__truth">
                   <span>目标岗位：{{ detail.data.targetPosition.exists ? '存在' : '已失效' }}</span>
-                  <span>状态：{{ detail.data.targetPosition.status }}</span>
+                  <span>状态：{{ positionStatusLabel(detail.data.targetPosition.status) }}</span>
                   <span>剩余：{{ detail.data.targetPosition.remaining }} / {{ detail.data.targetPosition.headcount || 0 }}</span>
                   <span>同批次：{{ detail.data.targetPosition.sameBatch ? '是' : '否' }}</span>
                   <span>当前可分配：{{ detail.data.targetPosition.capacityAvailable ? '是' : '否' }}</span>
@@ -214,6 +214,7 @@ export default {
     }
   },
   methods: {
+    positionStatusLabel(value) { return ({ OPEN: '招聘中', ACTIVE: '招聘中', PAUSED: '已暂停', CLOSED: '已关闭', FILLED: '已招满', CANCELLED: '已取消' })[value] || (value ? '状态待确认' : '—') },
     switchTab(v) {
       const map = { PENDING: 'pending', APPROVED: 'approved', REJECTED: 'rejected', '': 'all' }
       const panel = map[v] || 'all'

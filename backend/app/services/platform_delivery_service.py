@@ -253,11 +253,11 @@ def _read_models(tenant_id: int | None = None) -> list[dict]:
             checks = (
                 (tenant_state == "ACTIVE", "TENANT_NOT_ACTIVE", "租户必须处于正式可写状态"),
                 (commercial_state == "PAID_ACTIVE", "COMMERCIAL_NOT_ACTIVE", "必须存在已支付且已生效的订单授权"),
-                (provisioning_state == "BOOTSTRAP_READY", "PROVISIONING_NOT_READY", "Provisioning SAGA 尚未达到基础开户完成"),
+                (provisioning_state == "BOOTSTRAP_READY", "PROVISIONING_NOT_READY", "自动开户任务尚未达到基础开户完成"),
                 (first_admin_state == "PASSWORD_CHANGED", "FIRST_ADMIN_NOT_CHANGED", "首位管理员尚未完成真实首登强制改密"),
-                (implementation_state == "ACCEPTED" and bool(acceptance_digest), "IMPLEMENTATION_NOT_ACCEPTED", "学校实施尚未 ACCEPTED 并冻结摘要"),
+                (implementation_state == "ACCEPTED" and bool(acceptance_digest), "IMPLEMENTATION_NOT_ACCEPTED", "学校实施尚未验收并冻结摘要"),
                 (entitlement_state == "PASS", "ENTITLEMENT_NOT_READY", "订单与有效套餐授权不一致"),
-                (consumer_smoke_state == "PASS", "CONSUMER_SMOKE_NOT_PASS", "控制面 Consumer Smoke 尚未在当前学校验收摘要上通过"),
+                (consumer_smoke_state == "PASS", "CONSUMER_SMOKE_NOT_PASS", "控制面消费端冒烟验证尚未在当前学校验收摘要上通过"),
             )
             for passed, code, message in checks:
                 if not passed:

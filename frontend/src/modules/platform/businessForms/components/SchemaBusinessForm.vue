@@ -1,6 +1,6 @@
 <template>
   <form class="schema-business-form" @submit.prevent="submit">
-    <div v-if="unsupported" class="unsupported" role="alert">FORM_CLIENT_UNSUPPORTED：请切换到受支持的 PC 端。</div>
+    <div v-if="unsupported" class="unsupported" role="alert">当前终端不受支持，请切换到电脑端。</div>
     <template v-else>
       <label v-for="entry in visibleFields" :key="entry.field.code" class="field-row">
         <span>{{ entry.field.label }}<b v-if="entry.state.required">*</b></span>

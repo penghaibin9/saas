@@ -43,7 +43,7 @@ test('every production navigation permission resolves to the Permission Catalog'
   assert.deepEqual(missing, [])
 })
 
-test('Product IAM and School IAM are explicit production surfaces', () => {
+test('产品身份与权限与学校身份与权限都是明确的生产界面', () => {
   const byPath = new Map(contract.surfaces.map((item) => [item.path, item]))
   assert.equal(byPath.get('/admin/platform/product-iam')?.permissionKey, 'platform.productIam.view')
   assert.equal(byPath.get('/admin/system/iam')?.permissionKey, 'systemAdmin.role.view')
