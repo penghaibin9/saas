@@ -84,7 +84,7 @@ def test_remaining_formal_legacy_routes_are_fail_closed_capability_shells():
 def test_capability_shell_has_no_executable_fake_business_action():
     src = _read(FRONT / "views" / "PlatformCapabilityView.vue")
     assert "capabilityKey" in src
-    assert "未接真实 API 的能力仅展示合同与边界" in src
+    assert "未接真实后端接口的能力仅展示合同与边界" in src
     assert "@click" not in src
     assert "toast." not in src
 

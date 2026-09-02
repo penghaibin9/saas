@@ -30,4 +30,4 @@ def test_w4_selection_console_is_teaching_task_first():
     assert "teachingTaskId: this.courseForm.teachingTaskId," in source
     assert "courseId: this.courseForm.courseId," in source
     assert "teachingTaskId: this.courseForm.teachingTaskId || undefined" not in source
-    assert "请选择当前批次学期的 READY 教学任务" in source
+    assert "请选择当前批次学期的已就绪教学任务" in source
