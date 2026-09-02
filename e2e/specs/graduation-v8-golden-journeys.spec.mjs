@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { test, expect } from '../lib/observability.mjs'
@@ -8,10 +9,9 @@ import { prepareGraduationTeacherMobileGoldFixture, u8TeacherAccount } from '../
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 
 const MINI_BASE_URL = process.env.E2E_MINIAPP_BASE_URL || 'http://127.0.0.1:5188'
-const ARTIFACT_DIR = fileURLToPath(new URL(
-  '../../artifacts/graduation/v8/eecb4d01d2a9592b71975be07c54f994f08e7461/w15/browser/',
-  import.meta.url
-))
+const ARTIFACT_DIR = process.env.E2E_ARTIFACT_DIR
+  ? path.resolve(process.env.E2E_ARTIFACT_DIR, 'graduation-v8/golden-journeys')
+  : fileURLToPath(new URL('../artifacts/graduation-v8/golden-journeys/', import.meta.url))
 const DEFENSE_EXPERT = {
   tenant: process.env.E2E_GRADUATION_DEFENSE_TENANT || 'sandbox-school',
   username: process.env.E2E_GRADUATION_DEFENSE_USERNAME || 'e2e_defense_a',

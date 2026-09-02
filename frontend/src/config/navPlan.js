@@ -60,14 +60,19 @@ const _SC_VIEW_ANY = ['academicAffairs.statusChange.view',
 const _CORRECTION_ANY = ['academicAffairs.roster.correction.view',
   'academicAffairs.roster.correction.review']
 
-/** 二级模块：有 path=已实现入口，无 path=待施工入口。
+/** 二级模块：有 path=已实现入口；无独立入口但含已实现子页=可展开容器；
+ *  只有既无 path、也无已实现/部分能力子页时才是待施工。
  *  第 5 参 permissionKey：无子叶时用于整块过滤（如「我的待办」「领导驾驶舱」二级入口）。 */
 function mod(key, label, path, children, permissionKey) {
+  const childList = children || []
+  const hasLiveChild = childList.some((child) => child.status === 'implemented' || child.status === 'partial')
   const s = path
     ? { path, status: 'implemented', disabled: false, badge: '' }
+    : hasLiveChild
+      ? { status: 'implemented', disabled: false, badge: '', entryType: 'CONTAINER' }
     : { status: 'planned', disabled: true, badge: '待施工' }
   return {
-    key, label, ...s, children: children || [],
+    key, label, ...s, children: childList,
     ...(permissionKey ? { permissionKey } : {})
   }
 }
@@ -1080,19 +1085,24 @@ export function searchNavPlan(query, permissionPatterns = null) {
   return out
 }
 
-/** 统计：各一级下 implemented / planned 数量（供校验报告与开发进度看板用） */
+/** 统计：各一级下精确状态数量（供校验报告与开发进度看板用）。
+ *  implemented/planned/total 保留为兼容字段；partial/unauthorized/containers 为精确扩展字段。 */
 export function navPlanStats() {
   return NAV_PLAN.map((group) => {
-    let impl = 0
-    let planned = 0
+    const counts = { implemented: 0, partial: 0, planned: 0, unauthorized: 0, containers: 0 }
     for (const mod2 of group.children) {
       const nodes = [mod2, ...mod2.children]
       for (const nd of nodes) {
-        if (nd.status === 'implemented') impl++
-        else planned++
+        if (Object.prototype.hasOwnProperty.call(counts, nd.status)) counts[nd.status]++
+        if (nd.entryType === 'CONTAINER') counts.containers++
       }
     }
-    return { key: group.key, label: group.label, implemented: impl, planned, total: impl + planned }
+    return {
+      key: group.key,
+      label: group.label,
+      ...counts,
+      total: counts.implemented + counts.partial + counts.planned + counts.unauthorized
+    }
   })
 }
 

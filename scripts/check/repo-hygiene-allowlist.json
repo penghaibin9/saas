@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "maxTrackedFileBytes": 5242880,
+  "largeFileAllowlist": [
+    "backend/reference-data/moe/moe-professional-profiles.json",
+    "docs/04-UI与全端交互/ui/fable5-miniapp-final/小程序设计.pdf",
+    "docs/04-UI与全端交互/assets/diagrams/岗位实习/岗位实习中心流程泳道图-高清母版4x.png",
+    "docs/04-UI与全端交互/assets/diagrams/岗位实习/岗位实习中心流程泳道图-彩色帮助文档版-高清4x.png",
+    "docs/04-UI与全端交互/assets/diagrams/岗位实习/岗位实习中心流程泳道图-官网2x.png",
+    "docs/04-UI与全端交互/assets/diagrams/岗位实习/岗位实习中心流程泳道图-彩色帮助文档版.png",
+    "docs/04-UI与全端交互/assets/diagrams/岗位实习/岗位实习中心业务流程-帮助文档版-高清2x.png",
+    "docs/04-UI与全端交互/assets/diagrams/岗位实习/岗位实习中心全流程-官网公开版-高清2x.png"
+  ],
+  "duplicateAllowedPrefixes": [
+    "backend/tests/fixtures/",
+    "e2e/fixtures/"
+  ],
+  "duplicateAllowedGroups": [
+    {
+      "reason": "离线原型包必须在各自目录保留相对 support.js，避免直接打开 HTML 时失效",
+      "paths": [
+        "docs/03-业务模块设计/岗位实习中心/ui/fable5-pc-final/PC岗位实习中心/support.js",
+        "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/support.js",
+        "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/support.js",
+        "docs/04-UI与全端交互/ui/fable5-pc-final/PC岗位实习中心/support.js",
+        "docs/04-UI与全端交互/ui/fable5-pc-final/PC岗位实习中心/uploads/support.js",
+        "docs/04-UI与全端交互/ui/pc-ui-v2/support.js"
+      ]
+    },
+    {
+      "reason": "就业与迎新模块仍是独立构建边界，组件共享改造需单独回归",
+      "paths": [
+        "frontend/src/modules/employment/components/DeleteConfirmDialog.vue",
+        "frontend/src/modules/orientation/components/DeleteConfirmDialog.vue"
+      ]
+    },
+    {
+      "reason": "三个业务域的表格动作列属于独立模块入口，暂不跨域移动源码",
+      "paths": [
+        "frontend/src/modules/employment/components/TableActionColumn.vue",
+        "frontend/src/modules/internship/components/TableActionColumn.vue",
+        "frontend/src/modules/orientation/components/TableActionColumn.vue"
+      ]
+    },
+    {
+      "reason": "miniapp 发布根需要本地组件副本，mobile/shared 为共享源镜像",
+      "paths": [
+        "miniapp/src/components/MobileStudentCard.vue",
+        "mobile/shared/components/MobileStudentCard.vue"
+      ]
+    },
+    {
+      "reason": "miniapp 发布根需要本地组件副本，mobile/shared 为共享源镜像",
+      "paths": [
+        "miniapp/src/components/MobileRiskTag.vue",
+        "mobile/shared/components/MobileRiskTag.vue"
+      ]
+    },
+    {
+      "reason": "管理端与学生门户为独立 Vite 应用，登录组件尚未迁入共享包",
+      "paths": [
+        "frontend/src/components/auth/LoginCaptcha.vue",
+        "student-portal/src/components/auth/LoginCaptcha.vue"
+      ]
+    },
+    {
+      "reason": "小程序与学生门户的表单运行时由不同打包器消费",
+      "paths": [
+        "miniapp/src/components/businessForms/schemaRuntime.js",
+        "student-portal/src/components/businessForms/schemaRuntime.js"
+      ]
+    },
+    {
+      "reason": "miniapp 发布根需要本地组件副本，mobile/shared 为共享源镜像",
+      "paths": [
+        "miniapp/src/components/MobileInlineAlert.vue",
+        "mobile/shared/components/MobileInlineAlert.vue"
+      ]
+    },
+    {
+      "reason": "miniapp 发布根需要本地组件副本，mobile/shared 为共享源镜像",
+      "paths": [
+        "miniapp/src/components/MobileSafeAreaBar.vue",
+        "mobile/shared/components/MobileSafeAreaBar.vue"
+      ]
+    },
+    {
+      "reason": "就业与迎新模块仍是独立构建边界，组件共享改造需单独回归",
+      "paths": [
+        "frontend/src/modules/employment/components/AuditTrailPanel.vue",
+        "frontend/src/modules/orientation/components/AuditTrailPanel.vue"
+      ]
+    },
+    {
+      "reason": "三个业务域仍是独立模块入口，权限空状态共享改造需单独回归",
+      "paths": [
+        "frontend/src/modules/employment/components/NoPermissionState.vue",
+        "frontend/src/modules/internship/components/NoPermissionState.vue",
+        "frontend/src/modules/orientation/components/NoPermissionState.vue"
+      ]
+    },
+    {
+      "reason": "就业与迎新模块仍是独立构建边界，导入组件共享改造需单独回归",
+      "paths": [
+        "frontend/src/modules/employment/components/ImportDialog.vue",
+        "frontend/src/modules/orientation/components/ImportDialog.vue"
+      ]
+    },
+    {
+      "reason": "miniapp 发布根需要本地组件副本，mobile/shared 为共享源镜像",
+      "paths": [
+        "miniapp/src/components/MobileSensitiveText.vue",
+        "mobile/shared/components/MobileSensitiveText.vue"
+      ]
+    },
+    {
+      "reason": "就业与迎新模块仍是独立构建边界，批量操作组件共享改造需单独回归",
+      "paths": [
+        "frontend/src/modules/employment/components/BatchActionBar.vue",
+        "frontend/src/modules/orientation/components/BatchActionBar.vue"
+      ]
+    },
+    {
+      "reason": "miniapp 发布根需要本地组件副本，mobile/shared 为共享源镜像",
+      "paths": [
+        "miniapp/src/components/MobileActionCard.vue",
+        "mobile/shared/components/MobileActionCard.vue"
+      ]
+    },
+    {
+      "reason": "就业与迎新模块仍是独立构建边界，列设置组件共享改造需单独回归",
+      "paths": [
+        "frontend/src/modules/employment/components/ColumnSettings.vue",
+        "frontend/src/modules/orientation/components/ColumnSettings.vue"
+      ]
+    },
+    {
+      "reason": "miniapp 发布根需要本地工具副本，mobile/shared 为共享源镜像",
+      "paths": [
+        "miniapp/src/utils/sensitive.js",
+        "mobile/shared/utils/sensitive.js"
+      ]
+    },
+    {
+      "reason": "miniapp 发布根需要本地组件副本，mobile/shared 为共享源镜像",
+      "paths": [
+        "miniapp/src/components/MobileTodoCard.vue",
+        "mobile/shared/components/MobileTodoCard.vue"
+      ]
+    }
+  ]
+}

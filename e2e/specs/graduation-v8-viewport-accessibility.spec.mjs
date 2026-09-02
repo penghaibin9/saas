@@ -18,10 +18,9 @@ const MOBILE_VIEWPORTS = [
   { width: 375, height: 812 }
 ]
 const MINI_BASE_URL = process.env.E2E_MINIAPP_BASE_URL || 'http://127.0.0.1:5188'
-const ARTIFACT_DIR = fileURLToPath(new URL(
-  '../../artifacts/graduation/v8/eecb4d01d2a9592b71975be07c54f994f08e7461/w14/',
-  import.meta.url
-))
+const ARTIFACT_DIR = process.env.E2E_ARTIFACT_DIR
+  ? path.resolve(process.env.E2E_ARTIFACT_DIR, 'graduation-v8/viewport-accessibility')
+  : fileURLToPath(new URL('../artifacts/graduation-v8/viewport-accessibility/', import.meta.url))
 
 async function settle(page) {
   await page.evaluate(async () => {

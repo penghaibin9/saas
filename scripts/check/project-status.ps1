@@ -1,4 +1,4 @@
-﻿# ==========================================================
+# ==========================================================
 #  项目状态一览：目录、文件、git、端口，一眼看清现状
 #  只读检查，不改任何东西。
 #  用法（在项目根目录的 PowerShell 里执行）：
@@ -33,7 +33,7 @@ $null = Check-Item 'miniapp/node_modules（小程序依赖）'                 '
 $null = Check-Item 'backend/requirements.txt（Python/FastAPI 后端）'    'backend\requirements.txt' '存在则后端走 uvicorn，端口 8000'
 $null = Check-Item 'backend/app/main.py（FastAPI 入口）'                'backend\app\main.py' '还没写好入口时后端脚本会自动跳过'
 $null = Check-Item 'backend/package.json（Node 底座，旧）'              'backend\package.json'
-$null = Check-Item '旧 AI 执行状态（历史快照）' 'docs\08-历史记录与归档\ai-handoff\AI执行状态-20260704-历史快照.md'
+$null = Check-Item 'docs/00-项目入口与总控/project-status.json（AI 交接文件）'                       'docs/00-项目入口与总控/project-status.json'
 $null = Check-Item 'scripts/dev/（一键启动脚本）'                       'scripts\dev\start-all.ps1'
 $null = Check-Item 'scripts/check/（自检脚本）'                         'scripts\check\smoke-check.mjs'
 $null = Check-Item 'docs/dev-run/（新手运行文档）'                      'docs\dev-run\README.md'
