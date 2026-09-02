@@ -135,13 +135,20 @@
                 <AppStatusTag v-else type="success" label="暂无风险" />
               </template>
               <div class="sa-v6-risk-numbers">
-                <div><span>高危 / 危急</span><strong>{{ formatCount(urgentRiskCount) }}</strong></div>
-                <div><span>未关闭风险</span><strong>{{ formatCount(cardValue('riskStudents')) }}</strong></div>
+                <div>
+                  <span>危急风险</span>
+                  <strong>{{ formatCount(criticalRiskCount) }}</strong>
+                </div>
+                <div>
+                  <span>高风险</span>
+                  <strong>{{ formatCount(highRiskCount) }}</strong>
+                </div>
+                <div>
+                  <span>未关闭风险</span>
+                  <strong>{{ formatCount(cardValue('riskStudents')) }}</strong>
+                </div>
               </div>
-              <div class="sa-v6-risk-meter" aria-hidden="true">
-                <span :style="{ width: `${riskMeterPercent}%` }" />
-              </div>
-              <p class="sa-v6-card-note">进入风险页后按当前状态、责任人和最新记录继续处理。</p>
+              <p class="sa-v6-card-note">各等级按服务端口径分别展示，不在浏览器合并去重。</p>
               <AppPermissionButton
                 :allowed="canBtn('studentAffairs.risk.view')"
                 code="studentAffairs.risk.view"
@@ -155,7 +162,7 @@
             <AppSectionCard
               class="sa-v6-panel sa-v6-entry-card"
               title="高频入口"
-              subtitle="对象查询与跨业务协作"
+              subtitle="找学生与进入专项工作区"
               compact
             >
               <div v-if="highFrequencyEntries.length" class="sa-v6-entry-grid">
@@ -167,10 +174,13 @@
                   @click="go(entry.path)"
                 >
                   <span class="sa-v6-entry__icon" aria-hidden="true">{{ entry.icon }}</span>
-                  <span><strong>{{ entry.label }}</strong><small>{{ entry.hint }}</small></span>
+                  <span>
+                    <strong>{{ entry.label }}</strong>
+                    <small>{{ entry.hint }}</small>
+                  </span>
                 </button>
               </div>
-              <p v-else class="sa-v6-card-note">当前身份暂无可用的跨业务入口。</p>
+              <p v-else class="sa-v6-card-note">当前身份暂无可用的高频入口。</p>
             </AppSectionCard>
           </aside>
         </div>
@@ -268,6 +278,7 @@ const FALLBACK_DRILL = {
 }
 
 const WORKFLOW_STEPS = ['发现事项', '确认优先级', '进入业务办理', '返回今日队列', '审计沉淀']
+const NUMBER_FORMATTER = new Intl.NumberFormat('zh-CN')
 
 export default {
   name: 'StudentAffairsDashboardView',
@@ -304,7 +315,9 @@ export default {
   },
   computed: {
     hasNoScope() {
-      return this.dashboard.scopeMode === 'NONE' || this.dashboard.scopeType === 'NONE'
+      return this.dashboard.scopeMode === 'NONE' ||
+        this.dashboard.scopeType === 'NONE' ||
+        this.dashboard.scopeLabel === '无数据范围'
     },
     pageState() {
       if (this.loading) return 'loading'
@@ -314,23 +327,29 @@ export default {
     },
     stateTitle() {
       if (this.hasNoScope) return '当前账号未配置学工数据范围'
-      if (!this.loading && !this.errorMessage && !this.metricCards.length) return '当前范围暂无可展示的学工数据'
+      if (!this.loading && !this.errorMessage && !this.metricCards.length) {
+        return '当前范围暂无可展示的学工数据'
+      }
       return ''
     },
     stateDescription() {
       if (this.errorMessage) return this.errorMessage
-      if (this.hasNoScope) return '系统已按最小权限关闭业务数据展示，请联系学校管理员配置负责学院、班级或学生范围。'
-      if (!this.loading && !this.metricCards.length) return '当前接口没有返回可用指标，请刷新后重试；系统不会用示例数字替代真实结果。'
+      if (this.hasNoScope) {
+        return '系统已按最小权限关闭业务数据展示，请联系学校管理员配置负责学院、班级或学生范围。'
+      }
+      if (!this.loading && !this.metricCards.length) {
+        return '当前接口没有返回可用指标，请刷新后重试；系统不会用示例数字替代真实结果。'
+      }
       return ''
     },
     metricCards() {
       return (this.dashboard.summaryCards || []).map((card) => {
-        const perm = CARD_PERM[card.key]
-        const allowed = !perm || this.canBtn(perm)
-        const drillPath = allowed
-          ? (card.drillPath || FALLBACK_DRILL[card.key] || '')
-          : ''
-        return { ...card, drillPath }
+        const permission = CARD_PERM[card.key]
+        const allowed = !permission || this.canBtn(permission)
+        return {
+          ...card,
+          drillPath: allowed ? (card.drillPath || FALLBACK_DRILL[card.key] || '') : ''
+        }
       })
     },
     cardMap() {
@@ -357,20 +376,26 @@ export default {
         { key: 'riskStudents', label: '未关闭风险', value: this.cardValue('riskStudents') }
       ]
     },
-    urgentRiskCount() {
-      const summary = this.dashboard.riskSummary || {}
-      return this.toCount(summary.highCount) + this.toCount(summary.criticalCount)
+    highRiskCount() {
+      return this.toCount(this.dashboard.riskSummary?.highCount)
+    },
+    criticalRiskCount() {
+      return this.toCount(this.dashboard.riskSummary?.criticalCount)
     },
     heroConclusion() {
       const overdue = this.cardValue('overdueLeave')
-      const urgentRisk = this.urgentRiskCount
       const pendingTodo = this.cardValue('pendingTodo')
       const clauses = []
       if (overdue) clauses.push(`先核查 ${this.formatCount(overdue)} 条逾期未销假`)
-      if (urgentRisk) clauses.push(`关注 ${this.formatCount(urgentRisk)} 名高危或危急学生`)
+      if (this.criticalRiskCount) {
+        clauses.push(`优先关注 ${this.formatCount(this.criticalRiskCount)} 名危急风险学生`)
+      }
+      if (this.highRiskCount) {
+        clauses.push(`关注 ${this.formatCount(this.highRiskCount)} 名高风险学生`)
+      }
       if (pendingTodo) clauses.push(`再处理 ${this.formatCount(pendingTodo)} 项统一待办`)
       if (!clauses.length && this.cardValue('riskStudents')) {
-        return `当前范围有 ${this.formatCount(this.cardValue('riskStudents'))} 名未关闭风险学生，暂无高危或危急等级，继续按队列跟进。`
+        return `当前范围有 ${this.formatCount(this.cardValue('riskStudents'))} 名未关闭风险学生，继续按队列跟进。`
       }
       if (!clauses.length) return '当前范围暂无高危风险与逾期未销假，继续检查各业务待审队列。'
       return `今天${clauses.join('，')}。`
@@ -396,7 +421,7 @@ export default {
         {
           key: 'riskStudents',
           label: '风险与重点学生',
-          description: '未关闭风险学生与超时跟进，进入后按当前状态显示可执行动作。',
+          description: '当前范围未关闭风险学生，进入后按状态、责任人和最新记录继续处理。',
           icon: '险',
           count: riskCount,
           unit: card('riskStudents').unit || '人',
@@ -404,12 +429,14 @@ export default {
           action: '进入风险',
           tone: riskCount ? 'danger' : 'success',
           statusType: riskCount ? 'danger' : 'success',
-          statusLabel: this.urgentRiskCount ? '优先处理' : (riskCount ? '当前队列' : '暂无风险')
+          statusLabel: this.criticalRiskCount
+            ? '危急优先'
+            : (this.highRiskCount ? '高风险' : (riskCount ? '当前队列' : '暂无风险'))
         },
         {
           key: 'overdueLeave',
           label: '逾期未销假',
-          description: '已超过应返校时间，先核实返校事实，再决定是否联动风险或家校。',
+          description: '已超过应返校时间，先核实返校事实，再由原业务页判断后续动作。',
           icon: '返',
           count: overdueCount,
           unit: card('overdueLeave').unit || '件',
@@ -447,40 +474,40 @@ export default {
         },
         {
           key: 'pendingAid',
-          label: '困难认定材料与审核',
-          description: '核验材料、资格和当前审核节点；敏感信息继续受权限与审计约束。',
+          label: '困难认定待处理',
+          description: '进入认定工作台核验申请、资格、材料和当前审核节点。',
           icon: '困',
           count: aidCount,
           unit: card('pendingAid').unit || '件',
           path: card('pendingAid').drillPath,
-          action: '进入审核',
+          action: '进入认定',
           tone: aidCount ? 'warning' : 'success',
           statusType: aidCount ? 'warning' : 'success',
-          statusLabel: aidCount ? '待审核' : '已清零'
+          statusLabel: aidCount ? '待处理' : '已清零'
         },
         {
           key: 'pendingFunding',
-          label: '奖助评审与发放',
-          description: '困难资格、项目规则、评审节点和银行结果仍保持各自真实合同。',
+          label: '奖助申请待评审',
+          description: '进入资助工作台核对资格、项目规则和当前评审节点。',
           icon: '助',
           count: fundingCount,
           unit: card('pendingFunding').unit || '件',
           path: card('pendingFunding').drillPath,
-          action: '处理资助',
+          action: '进入评审',
           tone: fundingCount ? 'warning' : 'success',
           statusType: fundingCount ? 'warning' : 'success',
           statusLabel: fundingCount ? '待评审' : '已清零'
         },
         {
           key: 'pendingDiscipline',
-          label: '处分审批与教育跟进',
-          description: '处分生效后继续衔接送达、教育谈话、家校、回访和解除评估。',
+          label: '处分事项待处理',
+          description: '进入处分工作台处理审批或解除节点，生效后再衔接教育跟进。',
           icon: '纪',
           count: disciplineCount,
           unit: card('pendingDiscipline').unit || '件',
           path: card('pendingDiscipline').drillPath,
           action: '进入处分',
-          tone: disciplineCount ? 'violet' : 'success',
+          tone: disciplineCount ? 'neutral' : 'success',
           statusType: disciplineCount ? 'warning' : 'success',
           statusLabel: disciplineCount ? '待处理' : '已清零'
         }
@@ -493,11 +520,6 @@ export default {
       if (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].includes(level)) return level
       return 'LOW'
     },
-    riskMeterPercent() {
-      const total = this.cardValue('riskStudents')
-      if (!total) return 0
-      return Math.min(100, Math.round((this.urgentRiskCount / total) * 100))
-    },
     highFrequencyEntries() {
       return [
         {
@@ -508,13 +530,6 @@ export default {
           allowed: this.canAny(['student.profile.view', 'studentAffairs.student.view'])
         },
         {
-          label: '材料校验',
-          hint: '跨业务材料动作',
-          icon: '材',
-          path: '/admin/student-affairs/material-operations',
-          allowed: this.canBtn('studentAffairs.dashboard.view')
-        },
-        {
           label: '数字迎新',
           hint: '报到与异常',
           icon: '新',
@@ -523,7 +538,7 @@ export default {
         },
         {
           label: '宿舍异常',
-          hint: '进入真实宿舍队列',
+          hint: '真实宿舍队列',
           icon: '宿',
           path: '/admin/student-affairs/dorm/exception',
           allowed: this.canBtn('studentAffairs.dorm.view')
@@ -546,7 +561,7 @@ export default {
       return Number.isFinite(count) && count > 0 ? count : 0
     },
     formatCount(value) {
-      return new Intl.NumberFormat('zh-CN').format(this.toCount(value))
+      return NUMBER_FORMATTER.format(this.toCount(value))
     },
     cardValue(key) {
       return this.toCount(this.cardMap[key]?.value)
@@ -568,8 +583,8 @@ export default {
         this.dashboard = dashboardRes.data || this.dashboard
         this.auditLogs = auditResult.res?.data || []
         this.auditUnavailable = !auditResult.ok
-      } catch (e) {
-        this.errorMessage = e?.message || '学工今日工作加载失败'
+      } catch (error) {
+        this.errorMessage = error?.message || '学工今日工作加载失败'
       } finally {
         this.loading = false
       }
@@ -587,29 +602,28 @@ export default {
 
 <style scoped>
 .sa-v6-page-shell {
-  gap: 10px;
+  gap: var(--space-2);
 }
 .sa-v6-page-shell :deep(.mps__head) {
-  min-height: 42px;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .sa-v6-page-shell :deep(.mps__title) {
-  font-size: 22px;
-  line-height: 28px;
+  font-size: var(--font-size-2xl);
+  line-height: 1.25;
 }
 .sa-v6-page-shell :deep(.mps__subtitle) {
   max-width: 720px;
-  margin-top: 1px;
+  margin-top: 0;
   overflow: hidden;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .sa-v6-dashboard {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 .sa-v6-hero {
@@ -618,38 +632,41 @@ export default {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  min-height: 80px;
+  min-height: 72px;
   overflow: hidden;
-  padding: 10px 14px;
+  padding: var(--space-2) var(--space-4);
   border: 1px solid color-mix(in srgb, var(--pri) 22%, var(--card-b));
   border-radius: var(--radius-xl);
-  background: linear-gradient(112deg, color-mix(in srgb, var(--pri-bg) 70%, var(--bg-card)), var(--bg-card) 72%);
+  background: linear-gradient(
+    112deg,
+    color-mix(in srgb, var(--pri-bg) 72%, var(--bg-card)),
+    var(--bg-card) 72%
+  );
   box-shadow: var(--shadow-card);
 }
 .sa-v6-hero::before {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 4px;
+  width: var(--space-1);
   background: var(--btn-p-bg);
   content: '';
 }
 .sa-v6-hero__copy {
   min-width: 0;
-  padding-left: 4px;
 }
 .sa-v6-hero__eyebrow {
   color: var(--primary-600);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   letter-spacing: 0.04em;
 }
 .sa-v6-hero h2 {
-  margin: 2px 0 1px;
+  margin: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 19px;
+  font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
-  line-height: 25px;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -657,43 +674,43 @@ export default {
   margin: 0;
   overflow: hidden;
   color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .sa-v6-hero__metrics {
   display: grid;
-  grid-template-columns: repeat(4, 84px);
+  grid-template-columns: repeat(4, minmax(74px, 90px));
   margin: 0;
 }
 .sa-v6-hero__metric {
   min-width: 0;
-  padding: 2px 10px;
+  padding: 0 var(--space-3);
   border-left: 1px solid var(--border-light);
 }
 .sa-v6-hero__metric dt {
   overflow: hidden;
   color: var(--text-tertiary);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .sa-v6-hero__metric dd {
   margin: 0;
   color: var(--text-primary);
-  font-size: 24px;
+  font-size: var(--font-size-metric-sm);
   font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
-  line-height: 28px;
+  line-height: 1.2;
 }
 .sa-v6-flow {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  min-height: 36px;
+  min-height: 32px;
   margin: 0;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border-base);
   border-radius: var(--radius-lg);
   background: var(--bg-card);
@@ -705,16 +722,16 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-1);
   min-width: 0;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
 }
 .sa-v6-flow li:not(:last-child)::after {
   position: absolute;
-  right: -3px;
+  right: calc(var(--space-1) * -1);
   color: var(--text-disabled);
   content: '—';
 }
@@ -725,8 +742,8 @@ export default {
 .sa-v6-flow__index {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: var(--space-5);
+  height: var(--space-5);
   border: 1px solid var(--primary-100);
   border-radius: var(--radius-full);
   background: var(--primary-50);
@@ -743,7 +760,7 @@ export default {
   display: grid;
   grid-template-columns: minmax(0, 1.62fr) minmax(300px, 0.72fr);
   align-items: start;
-  gap: 10px;
+  gap: var(--space-3);
   min-width: 0;
 }
 .sa-v6-panel {
@@ -752,48 +769,48 @@ export default {
   box-shadow: var(--shadow-card);
 }
 .sa-v6-panel :deep(.app-section-card__head) {
-  padding: 9px 12px;
+  padding: var(--space-2) var(--space-3);
 }
 .sa-v6-panel :deep(.app-section-card__title) {
-  font-size: 15px;
-  line-height: 21px;
+  font-size: var(--font-size-md);
+  line-height: 1.35;
 }
 .sa-v6-panel :deep(.app-section-card__subtitle) {
   margin-top: 0;
-  font-size: 12px;
-  line-height: 17px;
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
 }
 .sa-v6-panel :deep(.app-section-card__body) {
-  padding: 12px;
+  padding: var(--space-3);
 }
 .sa-v6-queue-card :deep(.app-section-card__body) {
-  padding: 6px 8px 8px;
+  padding: var(--space-1) var(--space-2) var(--space-2);
 }
 .sa-v6-scope-note {
   display: inline-flex;
   align-items: center;
   min-height: 26px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   border: 1px solid var(--primary-100);
   border-radius: var(--radius-full);
   background: var(--primary-50);
   color: var(--primary-700);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
 }
 .sa-v6-queue {
   display: grid;
-  gap: 5px;
+  gap: var(--space-1);
 }
 .sa-v6-queue-row {
   --sa-v6-tone: var(--primary-600);
   --sa-v6-soft: var(--primary-50);
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 58px 88px;
+  grid-template-columns: 38px minmax(0, 1fr) 64px 92px;
   align-items: center;
-  gap: 10px;
-  min-height: 63px;
-  padding: 7px 8px;
+  gap: var(--space-2);
+  min-height: 64px;
+  padding: var(--space-2);
   border: 1px solid var(--border-base);
   border-left: 3px solid var(--sa-v6-tone);
   border-radius: var(--radius-lg);
@@ -830,8 +847,8 @@ export default {
   --sa-v6-tone: var(--success-600);
   --sa-v6-soft: var(--success-50);
 }
-.sa-v6-queue-row.is-violet {
-  --sa-v6-tone: var(--t2);
+.sa-v6-queue-row.is-neutral {
+  --sa-v6-tone: var(--text-secondary);
   --sa-v6-soft: var(--bg-section);
 }
 .sa-v6-queue-row__icon {
@@ -839,10 +856,10 @@ export default {
   place-items: center;
   width: 36px;
   height: 36px;
-  border-radius: 11px;
+  border-radius: var(--radius-lg);
   background: var(--sa-v6-soft);
   color: var(--sa-v6-tone);
-  font-size: 13px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
 }
 .sa-v6-queue-row__copy {
@@ -851,14 +868,14 @@ export default {
 .sa-v6-queue-row__title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 .sa-v6-queue-row__title strong {
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
-  line-height: 20px;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -870,63 +887,67 @@ export default {
   white-space: nowrap;
 }
 .sa-v6-queue-row__description {
-  margin-top: 1px;
   color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 17px;
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
 }
 .sa-v6-queue-row__meta {
   color: var(--text-tertiary);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
 }
 .sa-v6-queue-row__count {
   display: flex;
   align-items: baseline;
   justify-content: flex-end;
-  gap: 3px;
+  gap: var(--space-1);
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 .sa-v6-queue-row__count strong {
   color: var(--text-primary);
-  font-size: 23px;
+  font-size: var(--font-size-metric-sm);
   font-weight: var(--font-weight-semibold);
-  line-height: 26px;
+  line-height: 1.15;
 }
 .sa-v6-queue-row__count small {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .sa-v6-queue-row__action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-height: 32px;
-  padding: 0 8px;
+  gap: var(--space-1);
+  min-height: 36px;
+  padding: 0 var(--space-2);
   border: 1px solid color-mix(in srgb, var(--sa-v6-tone) 26%, var(--border-base));
   border-radius: var(--radius-md);
   background: var(--sa-v6-soft);
   color: var(--sa-v6-tone);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;
 }
 .sa-v6-side {
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
   min-width: 0;
 }
 .sa-v6-scope-grid,
 .sa-v6-risk-numbers {
   display: grid;
+  gap: var(--space-2);
+}
+.sa-v6-scope-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+}
+.sa-v6-risk-numbers {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .sa-v6-scope-grid > div,
 .sa-v6-risk-numbers > div {
   min-width: 0;
-  padding: 8px 9px;
+  padding: var(--space-2);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   background: var(--bg-section);
@@ -936,65 +957,53 @@ export default {
   display: block;
   overflow: hidden;
   color: var(--text-tertiary);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .sa-v6-scope-grid strong,
 .sa-v6-risk-numbers strong {
   display: block;
-  margin-top: 2px;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 18px;
   font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
-  line-height: 23px;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sa-v6-scope-grid strong {
+  font-size: var(--font-size-lg);
+}
 .sa-v6-risk-numbers strong {
   color: var(--danger-600);
-  font-size: 22px;
+  font-size: var(--font-size-xl);
 }
 .sa-v6-card-note {
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--text-tertiary);
-  font-size: 12px;
-  line-height: 18px;
-}
-.sa-v6-risk-meter {
-  height: 6px;
-  margin-top: 8px;
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  background: var(--bg-section);
-}
-.sa-v6-risk-meter span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--warning-600);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
 }
 .sa-v6-risk-card :deep(.app-perm-btn),
 .sa-v6-risk-card :deep(.app-button) {
   width: 100%;
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 .sa-v6-entry-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
 }
 .sa-v6-entry {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   min-width: 0;
-  min-height: 46px;
-  padding: 6px 7px;
+  min-height: 48px;
+  padding: var(--space-2);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   background: var(--bg-section);
@@ -1014,10 +1023,10 @@ export default {
   place-items: center;
   width: 30px;
   height: 30px;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   background: var(--primary-50);
   color: var(--primary-600);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
 }
 .sa-v6-entry strong,
@@ -1028,18 +1037,18 @@ export default {
   white-space: nowrap;
 }
 .sa-v6-entry strong {
-  font-size: 12px;
-  line-height: 17px;
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
 }
 .sa-v6-entry small {
   color: var(--text-tertiary);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
 }
 .sa-v6-support-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.55fr);
-  gap: 10px;
+  gap: var(--space-3);
 }
 .sa-dashboard-panel--audit :deep(.app-section-card__body) {
   max-height: 218px;
@@ -1047,18 +1056,18 @@ export default {
   scrollbar-gutter: stable;
 }
 .sa-v6-inline-warning {
-  margin-bottom: 8px;
-  padding: 8px 10px;
+  margin-bottom: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--warning-100);
   border-radius: var(--radius-md);
   background: var(--warning-50);
   color: var(--warning-700);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
 }
 .sa-v6-bridge-actions {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .sa-v6-bridge-actions :deep(.app-perm-btn),
 .sa-v6-bridge-actions :deep(.app-button) {
@@ -1067,31 +1076,30 @@ export default {
 .sa-updated-hint {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 @media (max-width: 1450px) {
   .sa-v6-page-shell :deep(.mps__subtitle) {
-    max-width: 580px;
+    max-width: 560px;
   }
   .sa-v6-hero__metrics {
-    grid-template-columns: repeat(4, 72px);
+    grid-template-columns: repeat(4, minmax(68px, 78px));
   }
   .sa-v6-workspace {
     grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.62fr);
   }
   .sa-v6-queue-row {
-    grid-template-columns: 36px minmax(0, 1fr) 52px 82px;
-    gap: 8px;
+    grid-template-columns: 36px minmax(0, 1fr) 56px 86px;
+  }
+  .sa-v6-risk-numbers {
+    grid-template-columns: repeat(3, minmax(72px, 1fr));
   }
 }
 @media (max-width: 1180px) {
-  .sa-v6-hero {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
   .sa-v6-hero__metrics {
-    grid-template-columns: repeat(2, 76px);
+    grid-template-columns: repeat(2, minmax(78px, 1fr));
   }
   .sa-v6-workspace,
   .sa-v6-support-grid {
@@ -1099,6 +1107,9 @@ export default {
   }
   .sa-v6-side {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .sa-v6-entry-grid {
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 960px) {
@@ -1108,7 +1119,7 @@ export default {
   }
   .sa-v6-hero {
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: var(--space-2);
   }
   .sa-v6-hero h2,
   .sa-v6-hero p {
@@ -1120,11 +1131,14 @@ export default {
   .sa-v6-side {
     grid-template-columns: 1fr;
   }
+  .sa-v6-entry-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 @media (max-width: 720px) {
   .sa-v6-flow {
     grid-template-columns: 1fr;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .sa-v6-flow li {
     justify-content: flex-start;
@@ -1145,8 +1159,9 @@ export default {
   }
   .sa-v6-entry-grid,
   .sa-v6-scope-grid,
-  .sa-v6-risk-numbers {
-    grid-template-columns: 1fr;
+  .sa-v6-risk-numbers,
+  .sa-v6-hero__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (prefers-reduced-motion: reduce) {
