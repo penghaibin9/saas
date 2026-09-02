@@ -13,12 +13,15 @@ test('teacher miniapp approves the version visible in the list', () => {
   assert.doesNotMatch(source, /version:\s*detail\.version/)
 })
 
-test('PC dorm checkout sends the visible bed version', () => {
-  const api = read('frontend/src/modules/studentAffairs/api/dormReliability.api.js')
+test('PC dorm checkout creates a formal request with the visible bed version', () => {
+  const api = read('frontend/src/modules/studentAffairs/api/studentAffairs.api.js')
   const page = read('frontend/src/modules/studentAffairs/views/dorm/DormCheckinView.vue')
-  assert.match(api, /body:\s*\{\s*version\s*\}/)
+  assert.match(api, /createDormCheckout\(body\)/)
   assert.match(page, /version:\s*bd\.version/)
-  assert.match(page, /dormReliabilityApi\.checkout\(this\.outDlg\.bedId, this\.outDlg\.version\)/)
+  assert.match(page, /studentAffairsApi\.createDormCheckout/)
+  assert.match(page, /expectedBedVersion:\s*Number\(this\.outDlg\.version\)/)
+  assert.match(page, /clientRequestId:\s*this\.outDlg\.clientRequestId/)
+  assert.match(page, /宿管确认前床位和住宿关系保持不变/)
 })
 
 test('student activity checkin never exposes manual checkin action', () => {
@@ -60,7 +63,7 @@ test('student portal affairs loads tabs on demand and refreshes only the affecte
   assert.match(source, /if \(!viewActive \|\| loadEpoch\[key\] !== epoch\) return/)
   assert.match(source, /await loadTab\(refreshKey, \{ force: true \}\)/)
   assert.match(source, /'请假提交失败', 'leave'/)
-  assert.match(source, /'调宿提交失败', 'dorm'/)
+  assert.match(source, /'调宿提交失败' : '选床失败', 'dorm'/)
   assert.doesNotMatch(source, /const tasks = \{ leave: portalApi\.affairsLeave\(\), aid: portalApi\.affairsAid\(\)/)
   assert.doesNotMatch(source, /await reload\(\)/)
 })
@@ -81,11 +84,38 @@ test('teacher editable decisions reopen with the previous text after non-conflic
   const leave = read('miniapp/src/pages/teacher/affairs-leave/index.vue')
   const review = read('miniapp/src/pages/teacher/affairs-review/index.vue')
   const dorm = read('miniapp/src/pages/teacher/dorm-review/index.vue')
-  for (const source of [leave, review, dorm]) {
+  for (const source of [leave, review]) {
     assert.match(source, /content:\s*initial/)
     assert.match(source, /n\.kind !== 'conflict'/)
     assert.match(source, /setTimeout\(/)
   }
+  assert.match(dorm, /value:\s*initial/)
+  assert.match(dorm, /v-model="actionDlg\.value"/)
+  assert.match(dorm, /n\.kind !== 'conflict'/)
+  assert.match(dorm, /setTimeout\(/)
+  assert.doesNotMatch(dorm, /uni\.showModal/)
+})
+
+test('orientation and dorm review surfaces use in-page dialogs, stable request ids, and supported metric accents', () => {
+  const green = read('miniapp/src/pages/teacher/orientation/green-channel/index.vue')
+  const requestIds = read('miniapp/src/utils/clientRequestId.js')
+  const inspection = read('miniapp/src/pages/teacher/dorm-review/index.vue')
+  const studentDorm = read('miniapp/src/pages/student/affairs/dorm.vue')
+  const portalOrientation = read('student-portal/src/views/orientation/OrientationView.vue')
+  const metricPages = [
+    read('frontend/src/modules/studentAffairs/views/dorm/DormResourceView.vue'),
+    read('frontend/src/modules/studentAffairs/views/dorm/DormStatsView.vue'),
+    read('frontend/src/modules/studentAffairs/views/dorm/DormTransferView.vue'),
+    read('frontend/src/modules/studentAffairs/views/dorm/DormExceptionView.vue')
+  ]
+  assert.match(green, /reviewDialog\.visible/)
+  assert.doesNotMatch(green, /uni\.showModal/)
+  assert.match(requestIds, /student_lifecycle_client_request_sequence/)
+  assert.match(inspection, /clientRequestId: this\.inspection\.clientRequestId/)
+  assert.match(studentDorm, /clientRequestId: this\.rectRequestIds\[x\.rectificationId\]/)
+  assert.match(portalOrientation, /clientRequestId: greenRequestId\.value/)
+  assert.doesNotMatch(portalOrientation, /演示租户为只读/)
+  for (const source of metricPages) assert.doesNotMatch(source, /accent:\s*['"]info['"]/)
 })
 
 test('mental follow-up and talk records keep inline text until success', () => {

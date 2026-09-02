@@ -29,12 +29,25 @@
 
         <section class="exd__section">
           <div class="exd__label">脱敏与水印</div>
-          <label class="exd__check">
+          <label v-if="hasSensitiveOptions" class="exd__check">
             <input v-model="mask" type="checkbox" :disabled="options.idCardPlainForbidden && hasSensitive" />
             敏感字段脱敏导出（手机号 / 身份证 / 薪资）
           </label>
-          <p v-if="options.idCardPlainForbidden" class="exd__hint">身份证号仅支持脱敏导出，平台不提供明文导出。</p>
+          <p v-else class="exd__hint">本导出不包含手机号、身份证号或薪资等敏感明文字段。</p>
+          <p v-if="hasSensitiveOptions && options.idCardPlainForbidden" class="exd__hint">身份证号仅支持脱敏导出，平台不提供明文导出。</p>
           <p class="exd__hint">{{ options.watermarkNote }}</p>
+        </section>
+
+        <section class="exd__section">
+          <label class="exd__label" for="orientation-export-purpose">导出用途（必填，不少于 5 个字）</label>
+          <textarea
+            id="orientation-export-purpose"
+            v-model.trim="purpose"
+            class="exd__purpose"
+            rows="3"
+            maxlength="200"
+            placeholder="例如：2026级迎新现场报到核对"
+          />
         </section>
 
         <section class="exd__section exd__section--audit">
@@ -46,7 +59,7 @@
 
         <div v-if="result" class="exd__result">
           已生成导出文件：<b>{{ result.fileName }}</b>
-          <div class="exd__result-meta">水印：{{ result.watermarkText }} · 审计编号：{{ result.auditId }}</div>
+          <div class="exd__result-meta">共 {{ result.rowCount ?? 0 }} 行 · 水印：{{ result.watermarkText }} · 审计编号：{{ result.auditId }}</div>
         </div>
       </div>
 
@@ -54,7 +67,7 @@
         <span class="exd__scope-tip">数据范围：{{ dataScopeName }}</span>
         <div class="exd__ops">
           <AppButton variant="ghost" @click="close">取消</AppButton>
-          <AppButton variant="primary" :disabled="!auditConfirmed || !fieldGroups.length" :loading="busy" @click="doExport">
+          <AppButton variant="primary" :disabled="!auditConfirmed || !fieldGroups.length || purpose.length < 5" :loading="busy" @click="doExport">
             确认导出
           </AppButton>
         </div>
@@ -68,11 +81,12 @@
  * ExportDialog — 通用导出弹窗（模块局部组件）。
  * 覆盖：导出范围 / 字段选择 / 数据范围限制提示 / 脱敏选项（默认开）/ 水印说明 / 审计确认。
  * Props:
- *  - options: mock/api exportOptions 下发（scopes/fieldGroups/maskDefault/watermarkNote/auditNotice）
+ *  - options: 后端能力对应的导出范围与固定字段说明
  *  - exportFn(payload)：页面注入的 api 调用
  */
 import { AppButton } from '@/components/ui'
 import { toast } from '@/utils/toast'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 
 export default {
   name: 'ExportDialog',
@@ -87,9 +101,12 @@ export default {
   },
   emits: ['update:visible', 'exported'],
   data() {
-    return { scope: 'FILTERED', fieldGroups: [], mask: true, auditConfirmed: false, busy: false, result: null }
+    return { scope: 'SCOPE_ALL', fieldGroups: [], mask: true, purpose: '', auditConfirmed: false, busy: false, result: null }
   },
   computed: {
+    hasSensitiveOptions() {
+      return (this.options.fieldGroups || []).some((g) => g.sensitive)
+    },
     hasSensitive() {
       return (this.options.fieldGroups || []).some((g) => g.sensitive && this.fieldGroups.includes(g.key))
     }
@@ -97,9 +114,10 @@ export default {
   watch: {
     visible(v) {
       if (v) {
-        this.scope = 'FILTERED'
+        this.scope = this.options.scopes?.[0]?.value || 'SCOPE_ALL'
         this.fieldGroups = (this.options.fieldGroups || []).filter((g) => !g.sensitive).map((g) => g.key)
         this.mask = this.options.maskDefault !== false
+        this.purpose = ''
         this.auditConfirmed = false
         this.result = null
       }
@@ -116,10 +134,12 @@ export default {
           scope: this.scope,
           fieldGroups: this.fieldGroups,
           mask: this.mask || this.hasSensitive,
+          purpose: this.purpose,
           auditConfirmed: this.auditConfirmed
         })
         if (res.code === 0) {
           this.result = res.data
+          downloadXlsxFromApi(res.data)
           this.$emit('exported', res.data)
         } else {
           toast.error(res.message)
@@ -210,6 +230,17 @@ export default {
   margin: var(--space-1) 0 0;
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
+}
+.exd__purpose {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-base);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
 }
 .exd__section--audit {
   padding: var(--space-3);

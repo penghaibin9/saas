@@ -50,9 +50,10 @@ function resolveApiBaseUrl() {
  * 并确保后端(uvicorn)已启动+种子数据就绪，否则各页会等超时(requestTimeout)后回退 mock 骨架。
  */
 function resolveUseMock() {
+  const env = { PROD: BUILD_PROD, VITE_USE_MOCK: BUILD_USE_MOCK }
   // 生产构建的数据真实性是硬约束：即使运维误配 VITE_USE_MOCK=true，也不得展示 mock 数据。
-  if (BUILD_PROD) return false
-  const v = BUILD_USE_MOCK
+  if (env && env.PROD) return false
+  const v = env && env.VITE_USE_MOCK
   if (v !== undefined && v !== null && String(v).trim() !== '') {
     const s = String(v).trim().toLowerCase()
     return !(s === 'false' || s === '0' || s === 'no' || s === 'off')

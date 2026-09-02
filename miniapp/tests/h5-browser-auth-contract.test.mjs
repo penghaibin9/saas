@@ -62,6 +62,8 @@ test('H5 refresh sentinel is non-secret and only preserves the existing single-f
   assert.match(installer,/if \(isRefresh\) next\.data = \{\}/)
   assert.match(request,/if \(!snapshot\.refreshToken\)/)
   assert.match(request,/if \(_refreshing && _refreshing\.generation === expectedGeneration\)/)
+  assert.match(request,/!getToken\(\) && getRefreshToken\(\)/)
+  assert.match(request,/return _refreshOnce\(expectedGeneration\)\.then/)
 })
 
 test('shared request layer accepts valid JSON text from H5 but keeps malformed responses fail-closed',()=>{

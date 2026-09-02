@@ -23,6 +23,8 @@ def test_dorm_risk_enrichment_is_page_batched():
     import inspect
     from app.services import affairs_dorm_service
     src = inspect.getsource(affairs_dorm_service.list_exceptions)
-    assert "AffairsRiskRecord.source_ref_id.in_(exception_ids)" in src and "User.id.in_(owner_ids)" in src and "risk_by_exception.get(int(x.id))" in src
+    assert "AffairsRiskRecord.source_ref_id.in_(exception_ids" in src
+    assert "AffairsRiskRecord.id.in_(linked_risk_ids" in src
+    assert "User.id.in_(owner_ids)" in src and "risk_by_exception.get(int(x.id))" in src
     loop = src.split("for x in rows:", 1)[1]
     assert "db.get(AffairsRiskRecord" not in loop and "db.get(User" not in loop

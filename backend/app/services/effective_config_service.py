@@ -135,6 +135,28 @@ SEED_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "risk_level": "HIGH",
         "consumer_json": {"items": ["affairs_funding_service.apply"]},
     },
+    {
+        "config_key": "DORM_PRESENCE_POLICY",
+        "domain_code": "STUDENT_AFFAIRS",
+        "config_name": "宿舍归寝 Provider 与研判规则",
+        "value_type": "JSON",
+        "default_json": {"value": {
+            "policyVersion": 1,
+            "provider": "NONE",
+            "curfewTime": "22:30",
+            "lateGraceMinutes": 15,
+            "notReturnTime": "23:30",
+            "noEventHours": 24,
+            "consecutiveAnomalyThreshold": 3,
+        }},
+        "platform_floor_json": {},
+        "school_editable": True,
+        "risk_level": "HIGH",
+        "consumer_json": {"items": [
+            "dorm_presence_service.provider_status",
+            "dorm_presence_service.evaluate_presence",
+        ]},
+    },
 )
 
 

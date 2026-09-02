@@ -39,6 +39,19 @@ test('every Vue entry that directly invokes a WeChat private media API mounts th
   assert.deepEqual(offenders, [])
 })
 
+test('privacy gate registers one runtime listener and chooses one current UI owner', () => {
+  const gate = read('src/components/MobilePrivacyGate.vue')
+  assert.equal((gate.match(/^\s*wx\.onNeedPrivacyAuthorization\(/gm) || []).length, 1)
+  assert.match(gate, /let privacyListenerInstalled = false/)
+  assert.match(gate, /privacyGateInstances\[privacyGateInstances\.length - 1\]/)
+})
+
+test('graduation delay timeline keeps all four rows on the same visual contract', () => {
+  const panel = read('src/components/MobileGraduationExtensionPanel.vue')
+  assert.equal((panel.match(/class="gdex__timeline-item"/g) || []).length, 4)
+  assert.doesNotMatch(panel, /:class="\{ done:/)
+})
+
 test('page deep-link text uses the malformed-percent-safe query decoder', () => {
   const offenders = walk(path.join(ROOT, 'src/pages'))
     .filter((file) => file.endsWith('.vue'))

@@ -76,6 +76,14 @@ test('teacher login accepts the backend academic role codes', () => {
   assert.match(roles, /ACADEMIC_ADMIN: ROLE\.ACADEMIC/)
 })
 
+test('teacher login accepts dorm managers and preserves the building data scope', () => {
+  const roles = read('src/config/roles.config.js')
+  assert.match(roles, /DORM_MANAGER: ROLE\.DORM_MANAGER/)
+  assert.match(roles, /\[ROLE\.DORM_MANAGER\][\s\S]*?dataScope: 'DORM_BUILDING'/)
+  assert.match(roles, /\[ROLE\.DORM_MANAGER\][\s\S]*?key: 'dormReview'/)
+  assert.match(roles, /teacherIdentities = \[[\s\S]*?ROLE\.DORM_MANAGER/)
+})
+
 test('real teacher contexts drive identity switching with canonical role keys', () => {
   const roles = read('src/config/roles.config.js')
   const session = read('src/stores/session.js')

@@ -8,6 +8,7 @@
 import { request, requestBlob, requestUpload } from '@/services/http/client'
 import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
 import { setPermissionPatterns } from '@/security/permissionGate'
+import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 
 function buildCtxKey(ctx, permissionPatterns) {
   const cr = ctx?.currentRole || {}
@@ -798,14 +799,116 @@ export const studentAffairsApi = {
     return callStrict(() => request('/student-affairs/dorm/occupancy'))
   },
 
+  async downloadDormResourceTemplate() {
+    return callStrict(async () => {
+      const data = await request('/import/domain/dorm/template')
+      downloadXlsxFromApi(data)
+      return data
+    })
+  },
+
+  validateDormResourceFile(file) {
+    return callStrict(() => requestUpload('/import/domain/dorm/validate-file', file))
+  },
+
+  confirmDormResourceImport(batchNo) {
+    const key = globalThis.crypto?.randomUUID?.() || `dorm-import-${Date.now()}`
+    return callStrict(() => request('/import/domain/confirm', {
+      method: 'POST', headers: { 'Idempotency-Key': key },
+      body: { domain: 'dorm', batchNo }
+    }))
+  },
+
+  async downloadDormImportErrors(batchNo) {
+    try {
+      const blob = await requestBlob(`/import/domain/dorm/batches/${batchNo}/errors.xlsx`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = '宿舍房源导入错误行.xlsx'; document.body.appendChild(a); a.click()
+      a.remove(); URL.revokeObjectURL(url)
+      return ok(true)
+    } catch (e) { return toErr(e) }
+  },
+
+  exportDormLedger(reportType, purpose) {
+    const key = globalThis.crypto?.randomUUID?.() || `dorm-export-${Date.now()}`
+    return callStrict(async () => {
+      const data = await request('/export/domain/dorm', {
+        method: 'POST', headers: { 'Idempotency-Key': key },
+        body: { reportType, purpose }
+      })
+      const payload = { ...data, downloadUrl: `/api/v1/export/tasks/${data.taskId}/download` }
+      downloadXlsxFromApi(payload)
+      return payload
+    })
+  },
+
+  /** D3 住宿分配批次：列表、草稿、Dry Run、人工调整与发布。 */
+  listDormAllocationBatches({ status = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/dorm/allocation-batches', { params }))
+  },
+  createDormAllocationBatch(body) {
+    return callStrict(() => request('/student-affairs/dorm/allocation-batches', { method: 'POST', body }))
+  },
+  getDormAllocationBatch(batchId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}`))
+  },
+  dryRunDormAllocation(batchId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/dry-run`, { method: 'POST' }))
+  },
+  manualAssignDorm(batchId, studentId, bedId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/manual-assign`, { method: 'POST', body: { studentId: String(studentId), bedId: String(bedId) } }))
+  },
+  publishDormAllocation(batchId) {
+    return callStrict(() => request(`/student-affairs/dorm/allocation-batches/${batchId}/publish`, { method: 'POST' }))
+  },
+  async downloadDormAllocationConflicts(batchId) {
+    try {
+      const blob = await requestBlob(`/student-affairs/dorm/allocation-batches/${batchId}/conflicts.xlsx`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = '住宿分配异常行.xlsx'; document.body.appendChild(a); a.click()
+      a.remove(); URL.revokeObjectURL(url)
+      return ok(true)
+    } catch (e) { return toErr(e) }
+  },
+
   /** 学生入住某床（回写我的宿舍）。 */
   checkinBed(bedId, studentId) {
     return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkin`, { method: 'POST', body: { studentId: String(studentId) } }))
   },
 
-  /** 退宿（释放床位）。 */
-  checkoutBed(bedId) {
-    return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkout`, { method: 'POST', body: {} }))
+  /** 兼容退宿入口：仅发起正式退宿单，不立即释放床位。 */
+  checkoutBed(bedId, version) {
+    return callStrict(() => request(`/student-affairs/dorm/beds/${bedId}/checkout`, { method: 'POST', body: { version } }))
+  },
+
+  createDormCheckout(body) {
+    return callStrict(() => request('/student-affairs/dorm/checkout-requests', { method: 'POST', body }))
+  },
+
+  listDormCheckouts({ status = '', studentId = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    if (studentId) params.studentId = studentId
+    return callStrict(() => request('/student-affairs/dorm/checkout-requests', { params }))
+  },
+
+  confirmDormCheckout(requestId, version) {
+    return callStrict(() => request(`/student-affairs/dorm/checkout-requests/${requestId}/confirm`, { method: 'POST', body: { version } }))
+  },
+
+  cancelDormCheckout(requestId, version, reason) {
+    return callStrict(() => request(`/student-affairs/dorm/checkout-requests/${requestId}/cancel`, { method: 'POST', body: { version, reason } }))
+  },
+
+  listDormStays({ status = '', studentId = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    if (studentId) params.studentId = studentId
+    return callStrict(() => request('/student-affairs/dorm/stays', { params }))
   },
 
   /** 发起调宿（原床释放/新床占用走审批）。body: { studentId, toBedId, reason } */
@@ -818,12 +921,29 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/dorm/transfers/${transferId}/review`, { method: 'POST', body: { action, reason, version } }))
   },
 
-  /** 建宿舍检查任务。body: { taskName, buildingId?, checkType HYGIENE/SAFETY/CONTRABAND/NIGHT_ABSENCE, checkerKey? } */
+  /** 生效宿舍检查模板、证据要求与风险阈值。 */
+  getDormInspectionTemplates() {
+    return callStrict(() => request('/student-affairs/dorm/inspection-templates'))
+  },
+
+  /** 归寝 Provider 与真实健康状态；NONE 必须显示未配置/DISABLED。 */
+  getDormPresenceProvider() {
+    return callStrict(() => request('/student-affairs/dorm/presence/provider'))
+  },
+
+  /** 当前归寝名单；UNKNOWN 与 NOT_RETURNED 严格分开。 */
+  getDormPresence({ status = '', page = 1, pageSize = 50 } = {}) {
+    const params = { page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/dorm/presence', { params }))
+  },
+
+  /** 发布宿舍检查任务，并冻结模板快照。 */
   createDormCheckTask(body) {
     return callStrict(() => request('/student-affairs/dorm/check-tasks', { method: 'POST', body }))
   },
 
-  /** 录检查结果（ABNORMAL 异常说明≥5字 → 回写异常表 + 生成风险单）。body: { roomId?, result NORMAL/ABNORMAL, issueType?, detail } */
+  /** 逐房提交模板结果与 FileObject 证据。 */
   submitDormCheckRecord(taskId, body) {
     return callStrict(() => request(`/student-affairs/dorm/check-tasks/${taskId}/records`, { method: 'POST', body }))
   },
@@ -856,6 +976,28 @@ export const studentAffairsApi = {
   /** 某检查任务的记录列表。 */
   getDormCheckRecords(taskId, { page = 1, pageSize = 100 } = {}) {
     return callStrict(() => request(`/student-affairs/dorm/check-tasks/${taskId}/records`, { params: { page, pageSize } }))
+  },
+
+  getDormRectifications({ status = '', mine = false, page = 1, pageSize = 50 } = {}) {
+    const params = { mine, page, pageSize }
+    if (status) params.status = status
+    return callStrict(() => request('/student-affairs/dorm/rectifications', { params }))
+  },
+
+  getDormRectification(rectificationId) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}`))
+  },
+
+  startDormRectification(rectificationId, expectedVersion) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}/start`, { method: 'POST', body: { expectedVersion } }))
+  },
+
+  submitDormRectification(rectificationId, body) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}/submit`, { method: 'POST', body }))
+  },
+
+  recheckDormRectification(rectificationId, body) {
+    return callStrict(() => request(`/student-affairs/dorm/rectifications/${rectificationId}/recheck`, { method: 'POST', body }))
   },
 
   /** 宿舍异常列表。 */

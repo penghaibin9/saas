@@ -23,6 +23,8 @@ from app.services.sandbox_school_blueprint import (
     REFERENCE_DATE,
 )
 from app.services.sandbox_school_master_seed import _bulk_insert, validate_school_master
+from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                    initialize_batch_student_steps)
 
 REFERENCE_NOW = datetime(2026, 8, 13, 9, 0)
 EXPECTED_ACADEMIC_STUDENTS = GRADE_STUDENT_COUNTS["2024"] + GRADE_STUDENT_COUNTS["2025"]
@@ -153,6 +155,7 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
         OrientationStudent,
     )
 
+    flow_version = ensure_published_flow_version(db, tenant_id)
     _bulk_insert(db, OrientationBatch, [{
         "tenant_id": tenant_id,
         "batch_name": "2026级新生迎新与报到",
@@ -164,8 +167,14 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
         "report_end_date": datetime(2026, 9, 7),
         "status": "ACTIVE",
         "planned_count": len(roster_2026),
+        "flow_version_id": flow_version.id,
         "remark": "当前处于线上预报到与到校准备阶段",
     }])
+    orientation_batch = db.scalars(select(OrientationBatch).where(
+        OrientationBatch.tenant_id == tenant_id,
+        OrientationBatch.batch_no == "ORI-2026-FALL",
+        OrientationBatch.is_deleted.is_(False),
+    )).one()
 
     rows = []
     for stu in roster_2026:
@@ -211,13 +220,17 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
         risk = "HIGH" if seq % 250 == 0 else ("MEDIUM" if seq % 50 == 0 else "LOW")
         rows.append({
             "tenant_id": tenant_id,
+            "batch_id": orientation_batch.id,
             "student_id": stu["id"],
+            "identity_status": "LINKED",
             "name": stu["name"],
             "admission_no": f"LQ2026{seq:06d}",
             "gender": stu["gender"],
             "college_name": stu["college_name"],
             "major_name": stu["major_name"],
-            "class_id": str(stu["class_id"]),
+            "college_id": stu["college_id"],
+            "major_id": stu["major_id"],
+            "class_id": stu["class_id"],
             "class_name": stu["class_name"],
             "grade": "2026级",
             "phone_encrypted": stu["phone_encrypted"],
@@ -238,9 +251,14 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
             "blocked_reason": blocked_reason,
             "payable_amount": 8800,
             "paid_amount": 0 if payment_status == "UNPAID" else 8800,
+            "source_type": "DOMAIN_IMPORT",
+            "source_record_id": f"LQ2026{seq:06d}",
         })
     _bulk_insert(db, OrientationStudent, rows, chunk_size=1000)
     db.flush()
+    canonical_step_rows = initialize_batch_student_steps(
+        db, orientation_batch.id, status_source="PROCESS_FACT"
+    )
 
     ori_by_sid = {
         int(sid): int(oid)
@@ -321,6 +339,7 @@ def _seed_orientation(db, tenant_id: int, roster_2026: list[dict]) -> dict:
     db.commit()
     return {
         "students": len(rows),
+        "studentSteps": canonical_step_rows,
         "greenChannels": len(green_rows),
         "materials": len(material_rows),
         "exceptions": len(exception_rows),

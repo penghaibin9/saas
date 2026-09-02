@@ -31,6 +31,17 @@
         </template>
       </DataTable>
 
+      <AppDrawer v-model:visible="paymentVisible" :title="paymentTarget ? `核验缴费 · ${paymentTarget.name}` : '核验缴费'" mode="modal" size="medium">
+        <div class="ori-payment-form">
+          <label><span>应缴金额（元）</span><input v-model.number="paymentEdit.payableAmount" type="number" min="0" step="0.01" /></label>
+          <label><span>已缴金额（元）</span><input v-model.number="paymentEdit.paidAmount" type="number" min="0" step="0.01" /></label>
+          <label><span>缴费状态</span><select v-model="paymentEdit.status"><option value="UNPAID">未缴费</option><option value="PARTIAL">部分缴费</option><option value="PAID">已缴清</option><option value="WAIVED">已减免</option><option value="DEFERRED">已批准缓缴</option></select></label>
+          <label><span>财务/核验流水号</span><input v-model.trim="paymentEdit.sourceBizId" maxlength="160" placeholder="用于幂等和审计，不可留空" /></label>
+          <div class="ori-inline-note">保存后将按当前缴费事实自动重算该生报到资格。</div>
+        </div>
+        <template #footer><div class="ori-issue-footer"><AppButton variant="secondary" @click="paymentVisible = false">取消</AppButton><AppButton variant="primary" :loading="submitting" @click="savePayment">保存并重算资格</AppButton></div></template>
+      </AppDrawer>
+
       <!-- 绿色通道详情 -->
       <AppDrawer v-model:visible="detailVisible" :title="detailTarget ? `绿色通道申请 · ${detailTarget.name}` : '申请详情'" mode="modal" size="large">
         <template v-if="detailTarget">
@@ -155,6 +166,9 @@ export default {
       exportOpts: {},
       detailVisible: false,
       detailTarget: null,
+      paymentVisible: false,
+      paymentTarget: null,
+      paymentEdit: { payableAmount: 0, paidAmount: 0, status: 'UNPAID', sourceBizId: '' },
       approveVisible: false,
       rejectVisible: false,
       returnVisible: false,
@@ -279,6 +293,7 @@ export default {
       if (this.tab === 'payment') {
         return [
           { key: 'student', label: '学生详情' },
+          { key: 'payment', label: '核验缴费', disabled: this.reviewPerm ? !this.reviewPerm.allowed : false, disabledReason: this.reviewPerm?.reason },
           { key: 'green', label: '查看绿色通道', disabled: row.greenChannelStatus === 'NOT_APPLIED', disabledReason: '该生未申请绿色通道' }
         ]
       }
@@ -290,6 +305,16 @@ export default {
     },
     onRowAction(key, row) {
       if (key === 'student') this.$router.push(`/admin/orientation/students/${row.id}`)
+      if (key === 'payment') {
+        const amount = (value) => Number(String(value || '0').replace(/[^\d.-]/g, '')) || 0
+        this.paymentTarget = row
+        this.paymentEdit = {
+          payableAmount: amount(row.payableAmount), paidAmount: amount(row.paidAmount),
+          status: row.paymentStatus === 'GREEN_CHANNEL' ? 'DEFERRED' : row.paymentStatus,
+          sourceBizId: `manual-${row.id}-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}`
+        }
+        this.paymentVisible = true
+      }
       if (key === 'green') {
         this.tab = 'green'
         this.filters = { ...EMPTY_FILTERS(), keyword: row.name }
@@ -320,7 +345,7 @@ export default {
     async onApprove() {
       this.submitting = true
       try {
-        const res = await api.approveGreenChannel(this.detailTarget.id, {})
+        const res = await api.approveGreenChannel(this.detailTarget.id, { expectedVersion: this.detailTarget.version })
         if (res.code === 0) {
           toast.success('申请已通过，缴费环节解除阻塞，已留痕')
           this.approveVisible = false
@@ -334,7 +359,7 @@ export default {
     async onReject({ reason }) {
       this.submitting = true
       try {
-        const res = await api.rejectGreenChannel(this.detailTarget.id, { reason })
+        const res = await api.rejectGreenChannel(this.detailTarget.id, { reason, expectedVersion: this.detailTarget.version })
         if (res.code === 0) {
           toast.success('申请已驳回，原因已通知学生并留痕')
           this.rejectVisible = false
@@ -348,7 +373,7 @@ export default {
     async onReturn({ reason }) {
       this.submitting = true
       try {
-        const res = await api.returnGreenChannel(this.detailTarget.id, { reason })
+        const res = await api.returnGreenChannel(this.detailTarget.id, { reason, expectedVersion: this.detailTarget.version })
         if (res.code === 0) {
           toast.success('申请已退回补充，原因已通知学生并留痕')
           this.returnVisible = false
@@ -359,8 +384,28 @@ export default {
         this.submitting = false
       }
     },
+    async savePayment() {
+      if (!this.paymentTarget || !this.paymentEdit.sourceBizId || this.submitting) return
+      if (this.paymentEdit.status === 'PAID' && Number(this.paymentEdit.paidAmount) < Number(this.paymentEdit.payableAmount)) {
+        toast.error('“已缴清”时已缴金额不能小于应缴金额')
+        return
+      }
+      this.submitting = true
+      try {
+        const res = await api.syncOrientationPayment(this.paymentTarget.id, {
+          ...this.paymentEdit,
+          sourceType: 'MANUAL_VERIFIED',
+          expectedVersion: this.paymentTarget.paymentVersion
+        })
+        if (res.code === 0) {
+          toast.success(`缴费已核验，资格结论：${res.data.qualification.verdictLabel}`)
+          this.paymentVisible = false
+          await this.load()
+        } else toast.error(res.message)
+      } finally { this.submitting = false }
+    },
     exportFn(payload) {
-      return api.createExport(this.tab === 'payment' ? 'paymentList' : 'paymentList', payload)
+      return api.createExport(this.tab === 'payment' ? 'paymentList' : 'greenChannelList', payload)
     }
   }
 }
@@ -403,4 +448,7 @@ export default {
   justify-content: flex-end;
   gap: var(--space-2);
 }
+.ori-payment-form { display:grid; gap:var(--space-4); }
+.ori-payment-form label { display:grid; gap:var(--space-2); font-size:var(--font-size-sm); color:var(--text-secondary); }
+.ori-payment-form input, .ori-payment-form select { min-height:40px; border:1px solid var(--border-light); border-radius:var(--radius-md); padding:0 var(--space-3); background:var(--bg-card); color:var(--text-primary); }
 </style>

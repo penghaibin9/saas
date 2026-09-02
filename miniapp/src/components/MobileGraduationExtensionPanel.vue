@@ -30,8 +30,8 @@
         <view class="gdex__timeline">
           <text class="gdex__timeline-item" :class="{ 'is-done': data.defenseDelay.advisorReviewedBy }">导师：{{ data.defenseDelay.advisorComment || (data.defenseDelay.advisorReviewedBy ? '已处理' : '待处理') }}</text>
           <text class="gdex__timeline-item" :class="{ 'is-done': data.defenseDelay.majorReviewedBy }">专业：{{ data.defenseDelay.majorComment || (data.defenseDelay.majorReviewedBy ? '已处理' : '待处理') }}</text>
-          <text :class="{ done: data.defenseDelay.collegeReviewedBy }">学院：{{ data.defenseDelay.collegeComment || (data.defenseDelay.collegeReviewedBy ? '已处理' : '待处理') }}</text>
-          <text :class="{ done: data.defenseDelay.plannedDefenseDate }">排期：{{ data.defenseDelay.plannedDefenseDate ? `${data.defenseDelay.plannedDefenseDate} · ${data.defenseDelay.defenseGroupName || '答辩组待发布'}` : '待安排' }}</text>
+          <text class="gdex__timeline-item" :class="{ 'is-done': data.defenseDelay.collegeReviewedBy }">学院：{{ data.defenseDelay.collegeComment || (data.defenseDelay.collegeReviewedBy ? '已处理' : '待处理') }}</text>
+          <text class="gdex__timeline-item" :class="{ 'is-done': data.defenseDelay.plannedDefenseDate }">排期：{{ data.defenseDelay.plannedDefenseDate ? `${data.defenseDelay.plannedDefenseDate} · ${data.defenseDelay.defenseGroupName || '答辩组待发布'}` : '待安排' }}</text>
         </view>
       </view>
 

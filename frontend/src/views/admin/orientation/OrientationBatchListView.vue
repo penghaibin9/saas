@@ -55,6 +55,24 @@
         reason-label="作废原因（≥5 字）"
         @confirm="onConfirm"
       />
+
+      <AppConfirmDialog
+        v-model:visible="numberingVisible"
+        title="一键批量生成学号"
+        :message="numberingRow ? `为「${numberingRow.batchName}」中尚未分配学号的新生按名单顺序一次性编号；已有学号不会改动。` : ''"
+        type="primary"
+        confirm-text="确认批量生成"
+        :confirm-disabled="!numberingForm.prefix.trim()"
+        :submitting="numberingSubmitting"
+        @confirm="onNumberingConfirm"
+      >
+        <div class="ob-numbering-grid">
+          <label>学号前缀<AppTextInput v-model="numberingForm.prefix" placeholder="如 2026YX" /></label>
+          <label>起始序号<AppTextInput v-model="numberingForm.startNumber" type="number" placeholder="1" /></label>
+          <label>序号位数<AppTextInput v-model="numberingForm.width" type="number" placeholder="4" /></label>
+        </div>
+        <small class="ob-numbering-note">适用于万人名单：一次提交整批完成，不需要逐个新生操作。</small>
+      </AppConfirmDialog>
     </template>
   </ModulePageShell>
 </template>
@@ -62,7 +80,7 @@
 <script>
 /** /admin/orientation/batches 迎新批次（列表 / 新建 / 编辑 / 启用 / 结束 / 作废；真实走后端 /orientation/batches）。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
-import { AppConfirmDialog } from '@/components/common'
+import { AppConfirmDialog, AppTextInput } from '@/components/common'
 import { EditDrawer, TableActionColumn, NoPermissionState } from '@/modules/orientation/components'
 import * as api from '@/modules/orientation/api/orientation.api'
 import { toast } from '@/utils/toast'
@@ -86,6 +104,7 @@ export default {
     LoadingState,
     ErrorState,
     AppConfirmDialog,
+    AppTextInput,
     EditDrawer,
     TableActionColumn,
     NoPermissionState
@@ -107,6 +126,10 @@ export default {
       confirmVisible: false,
       confirmMode: '',
       confirmRow: null,
+      numberingVisible: false,
+      numberingRow: null,
+      numberingSubmitting: false,
+      numberingForm: { prefix: '', startNumber: 1, width: 4 },
       statusTagType: { DRAFT: 'default', ACTIVE: 'success', CLOSED: 'info' }
     }
   },
@@ -255,6 +278,7 @@ export default {
     rowActions(row) {
       return [
         { key: 'edit', label: '编辑', disabled: row.status === 'CLOSED', disabledReason: row.status === 'CLOSED' ? '已结束批次不可编辑' : '' },
+        { key: 'numbers', label: '一键生成学号', disabled: row.status === 'CLOSED', disabledReason: row.status === 'CLOSED' ? '已结束批次不可再编号' : '' },
         { key: 'activate', label: '启用', disabled: row.status !== 'DRAFT', disabledReason: row.status !== 'DRAFT' ? '仅草稿可启用' : '' },
         { key: 'close', label: '结束', disabled: row.status !== 'ACTIVE', disabledReason: row.status !== 'ACTIVE' ? '仅进行中可结束' : '' },
         { key: 'void', label: '作废', disabled: row.status === 'ACTIVE', disabledReason: row.status === 'ACTIVE' ? '进行中批次不可作废' : '' }
@@ -262,6 +286,12 @@ export default {
     },
     onRowAction(key, row) {
       if (key === 'edit') return this.openEdit(row)
+      if (key === 'numbers') {
+        this.numberingRow = row
+        this.numberingForm = { prefix: `${row.year || ''}YX`, startNumber: 1, width: 4 }
+        this.numberingVisible = true
+        return
+      }
       this.confirmMode = key
       this.confirmRow = row
       this.confirmVisible = true
@@ -280,7 +310,31 @@ export default {
       } else {
         toast.error((res && res.message) || '操作失败')
       }
+    },
+    async onNumberingConfirm() {
+      if (!this.numberingRow || this.numberingSubmitting) return
+      this.numberingSubmitting = true
+      try {
+        const res = await api.assignOrientationBatchStudentNumbers(this.numberingRow.id, {
+          prefix: this.numberingForm.prefix.trim(),
+          startNumber: Number(this.numberingForm.startNumber || 1),
+          width: Number(this.numberingForm.width || 4)
+        })
+        if (res?.code === 0) {
+          toast.success(`已为 ${res.data.assignedCount} 名新生生成学号`)
+          this.numberingVisible = false
+          await this.load()
+        } else toast.error(res?.message || '批量生成失败')
+      } finally {
+        this.numberingSubmitting = false
+      }
     }
   }
 }
 </script>
+
+<style scoped>
+.ob-numbering-grid { display: grid; gap: 12px; margin-top: 14px; }
+.ob-numbering-grid label { display: grid; gap: 6px; color: var(--text-secondary); font-size: var(--font-size-sm); }
+.ob-numbering-note { display: block; margin-top: 12px; color: var(--text-tertiary); }
+</style>

@@ -109,7 +109,7 @@ def test_mb3_discipline_count_only(client, db_mode):
     assert d["activeCount"] == 1 and "detailNote" in d  # 仅数量+提示，无明细
 
 
-def test_mb4_dorm_self_select_toggle_flow(client, db_mode):
+def test_mb4_dorm_legacy_global_switch_is_not_authority(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     # 建男寝 + 铺床
@@ -117,27 +117,16 @@ def test_mb4_dorm_self_select_toggle_flow(client, db_mode):
         "buildingName": "紫荆1号楼", "genderLimit": "MALE",
         "floors": 1, "roomsPerFloor": 2, "bedsPerRoom": 4}).json()["data"]["buildingId"]
     stu = _stu_token("张三", "MB13A01")
-    # 默认关：选项含提醒、无楼；我的宿舍显示未放开
+    # 无已发布批次：选项为空，由服务端返回批次提醒。
     opt = client.get(f"{MB}/affairs/dorm/select-options", headers=stu).json()["data"]
-    assert opt["selfSelectEnabled"] is False and opt["buildings"] == [] and "辅导员" in opt["studentNotice"]
+    assert opt["selfSelectEnabled"] is False and opt["buildings"] == [] and "批次" in opt["studentNotice"]
     rooms = client.get(f"{BASE}/dorm/buildings/{bid}/rooms?floor=1", headers=admin).json()["data"]["items"]
     beds = client.get(f"{BASE}/dorm/rooms/{rooms[0]['roomId']}/beds", headers=admin).json()["data"]["items"]
     assert client.post(f"{MB}/affairs/dorm/beds/{beds[0]['bedId']}/self-select", headers=stu).status_code == 403
     # 关闭时学生也不能浏览房/床 → 403
     assert client.get(f"{MB}/affairs/dorm/buildings/{bid}/rooms", headers=stu).status_code == 403
-    # 学校放开
-    client.put(f"{BASE}/dorm/config/self-select", headers=admin, json={"enabled": True})
-    opt2 = client.get(f"{MB}/affairs/dorm/select-options", headers=stu).json()["data"]
-    assert opt2["selfSelectEnabled"] is True and len(opt2["buildings"]) == 1
-    # 放开后学生走 mobile 级联浏览房→床
-    mrooms = client.get(f"{MB}/affairs/dorm/buildings/{bid}/rooms", headers=stu).json()["data"]["items"]
-    assert len(mrooms) == 2  # 1层2间
-    mbeds = client.get(f"{MB}/affairs/dorm/rooms/{mrooms[0]['roomId']}/beds", headers=stu).json()["data"]["items"]
-    # 学生自选入住本人
-    r = client.post(f"{MB}/affairs/dorm/beds/{mbeds[0]['bedId']}/self-select", headers=stu).json()
-    assert r["data"]["status"] == "OCCUPIED"
-    mine = client.get(f"{MB}/affairs/dorm/my", headers=stu).json()["data"]
-    assert mine["hasBed"] is True and mine["myBed"]["building"] == "紫荆1号楼"
+    retired = client.put(f"{BASE}/dorm/config/self-select", headers=admin, json={"enabled": True})
+    assert retired.status_code == 400 and "分配计划" in retired.text
 
 
 def test_mb5_teacher_affairs_cards(client, db_mode):
