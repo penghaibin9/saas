@@ -1,12 +1,12 @@
 # 学校试点部署 Runbook
 
 > 目标：一所学校、真实账号、真实业务数据的受控试点。**任何 FAIL 都禁止导入真实学生数据。**
-> 当前推荐部署：2C4G/2U4G Linux + systemd + MySQL 8 + Redis + Nginx + ClamAV。管理 PC、miniapp H5、学生 PC 必须来自同一个 release。
+> 当前推荐部署：2C4G/2U4G Linux + systemd + MySQL 8 + Redis + Nginx + ClamAV。管理 PC、miniapp H5、学生 PC、企业协同 PC 必须来自同一个 release。
 > **备份/恢复只认 `deploy/README-data-governance.md`。** 正式 Linux 生产不要单独 cron 调底层 `backup-mysql.sh` 绕过 manifest、异地校验和 watchdog。
 
 ## 0. 服务器与外部依赖
 
-1. 安装 MySQL 8、Redis、Nginx、Python 3、Node/npm（或准备好三端预构建产物）。
+1. 安装 MySQL 8、Redis、Nginx、Python 3、Node/npm（或准备好四个客户端预构建产物）。
 2. 安装并启动 `clamd`，确认 TCP `3310` 或 Unix Socket 可连接。正式环境 Office/Excel/ZIP/CSV 等高风险附件是 fail-closed；没有 ClamAV 会导致材料不能进入业务。
 3. 域名解析到服务器，只对公网开放 80/443；8000、3306、6379、3310 不直接暴露公网。
 4. 配置 HTTPS 证书，把 `deploy/nginx/school-lifecycle.systemd.conf.example` 替换真实域名/证书路径后放进 Nginx。该模板同时提供 `/`、`/miniapp/`、`/portal/`、`/api/`，并拒绝 `/uploads/`、`/exports/` 静态直读。
@@ -86,8 +86,8 @@ sudo ENV_FILE=/etc/school-lifecycle/backend.env \
 - 数据库 current 等于动态 Alembic head；
 - ClamAV PING/命令链正常；
 - COS 模式真实小对象 write/delete，或 local 存储合同可用；
-- 管理 PC、miniapp H5、学生 PC 三端构建产物及原子链接存在；
-- 使用 `PUBLIC_BASE_URL` + `curl --resolve` 真正穿过本机 443/TLS/server_name，三端页面必须 200；
+- 管理 PC、miniapp H5、学生 PC、企业协同 PC 四个客户端构建产物及原子链接存在；
+- 使用 `PUBLIC_BASE_URL` + `curl --resolve` 真正穿过本机 443/TLS/server_name，四个客户端页面必须 200；
 - `/` 与 `/portal/index.html` 必须真实返回 HSTS、CSP、X-Frame-Options、X-Content-Type-Options；
 - 公网 `/uploads/*`、`/exports/*` 必须真实 404，不能只看 Nginx 配置文本；
 - 公网与后端本机未登录业务访问都必须被拒绝；

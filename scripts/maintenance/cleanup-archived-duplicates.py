@@ -5,14 +5,15 @@ import hashlib
 import json
 import shutil
 import subprocess
+from datetime import date
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-ORIGINAL_REPO = ROOT.parent.parent
 REPORT = ROOT / "artifacts" / "release-seals" / "repo-hygiene.json"
 MANIFEST = ROOT / "docs" / "00-项目入口与总控" / "duplicate-resolution-20260831.json"
-BACKUP_ROOT = ORIGINAL_REPO / "_local-backup" / "repo-cleanup-20260831" / "duplicate-files"
+LOCAL_BACKUP = ROOT / "_local-backup"
+BACKUP_ROOT = LOCAL_BACKUP / f"repo-cleanup-{date.today():%Y%m%d}" / "duplicate-files"
 EXPLICIT_CANONICALS = {
     "docs/03-业务模块设计/数字迎新中心/03-数字迎新API.md":
         "docs/05-数据接口权限与安全/api/03-数字迎新API.md",
@@ -104,8 +105,11 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true", help="Back up exact files and remove them from Git.")
     args = parser.parse_args()
 
-    if ROOT.name != "repo-consolidation" or ROOT.parent.name != ".worktrees":
-        raise SystemExit(f"refusing unexpected worktree: {ROOT}")
+    git_root = subprocess.check_output(
+        ["git", "rev-parse", "--show-toplevel"], cwd=ROOT, encoding="utf-8"
+    ).strip()
+    if Path(git_root).resolve() != ROOT.resolve():
+        raise SystemExit(f"refusing unexpected repository root: {git_root}")
     payload = json.loads(REPORT.read_text(encoding="utf-8"))
     new_resolutions: list[dict[str, str]] = []
     for group in payload.get("duplicateGroups", []):
@@ -160,7 +164,7 @@ def main() -> int:
         print("PREVIEW ONLY. Nothing was removed.")
         return 0
 
-    if not inside(BACKUP_ROOT, ORIGINAL_REPO / "_local-backup"):
+    if not inside(BACKUP_ROOT, LOCAL_BACKUP):
         raise SystemExit(f"unsafe backup path: {BACKUP_ROOT}")
     for item in new_resolutions:
         relative = item["removedPath"]

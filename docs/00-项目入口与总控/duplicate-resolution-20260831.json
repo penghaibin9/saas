@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "strategy": "remove archived byte-identical copies after local backup",
-  "backupRoot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统\\_local-backup\\repo-cleanup-20260831\\duplicate-files",
+  "backupRoot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统\\_local-backup\\repo-cleanup-20260902\\duplicate-files",
   "applied": true,
   "resolutions": [
     {

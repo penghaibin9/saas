@@ -11,6 +11,7 @@ const { navPlanStats } = await import(navPlanUrl)
 const groups = navPlanStats()
 
 const hygienePath = resolve(root, 'artifacts/release-seals/repo-hygiene.json')
+const verificationPath = resolve(root, 'artifacts/release-seals/main-candidate.json')
 let repositoryHygiene = 'pending'
 if (existsSync(hygienePath)) {
   try {
@@ -20,44 +21,67 @@ if (existsSync(hygienePath)) {
   }
 }
 
-const integratedBranches = [
-  'codex/control-plane-iam-menu-v1',
-  'codex/academic-main-chain-data-closure-20260830',
-  'codex/academic-v81-experience',
-  'codex/student-affairs-delight-20260830'
-].map((branch) => {
-  let integrated = false
+const defaultReleaseGates = {
+  repositoryHygiene,
+  mysqlMigrations: 'pending',
+  backendMatrix: 'pending',
+  frontendApps: 'pending',
+  browserJourneys: 'pending',
+  securityAndDependencies: 'pending',
+  backupRestore: 'pending',
+  capacitySmoke: 'pending'
+}
+
+let verification = null
+let releaseGates = defaultReleaseGates
+if (existsSync(verificationPath)) {
   try {
-    execFileSync('git', ['merge-base', '--is-ancestor', branch, 'HEAD'], { cwd: root })
-    integrated = true
-  } catch {}
-  return { branch, integrated }
-})
+    verification = JSON.parse(readFileSync(verificationPath, 'utf8'))
+    releaseGates = { ...defaultReleaseGates, ...(verification.releaseGates || {}) }
+  } catch {
+    verification = { status: 'invalid', path: 'artifacts/release-seals/main-candidate.json' }
+  }
+}
+
+const deliverable = Object.values(releaseGates).every((value) => value === 'passed')
+
+let originMainCommit = null
+let containsOriginMain = false
+try {
+  originMainCommit = git('rev-parse', 'origin/main')
+  execFileSync('git', ['merge-base', '--is-ancestor', 'origin/main', 'HEAD'], { cwd: root })
+  containsOriginMain = true
+} catch {}
+
+const registeredWorktrees = git('worktree', 'list', '--porcelain')
+  .split('\n')
+  .filter((line) => line.startsWith('worktree '))
+  .map((line) => line.slice('worktree '.length))
+const currentWorktree = git('rev-parse', '--show-toplevel').replaceAll('\\', '/')
+const nonMainWorktrees = registeredWorktrees.filter((path) => path.replaceAll('\\', '/') !== currentWorktree)
 
 const status = {
   schemaVersion: 1,
   baselineCommit: git('rev-parse', 'HEAD'),
   branch: git('branch', '--show-current'),
   generatedAt: git('show', '-s', '--format=%cI', 'HEAD'),
-  deliveryStatus: 'integration_candidate',
+  deliveryStatus: deliverable ? 'deliverable' : 'integration_candidate',
   statusSemantics: {
     implemented: '代码能力存在，不代表已通过交付门禁',
     verified: '已在 baselineCommit 上通过对应自动化门禁',
     deliverable: '所有 releaseGates 通过后才可设为 true'
   },
-  integratedBranches,
-  navigation: groups,
-  releaseGates: {
-    repositoryHygiene,
-    mysqlMigrations: 'pending',
-    backendMatrix: 'pending',
-    frontendApps: 'pending',
-    browserJourneys: 'pending',
-    securityAndDependencies: 'pending',
-    backupRestore: 'pending',
-    capacitySmoke: 'pending'
+  sourceConvergence: {
+    originMainCommit,
+    containsOriginMain,
+    registeredWorktrees,
+    nonMainWorktrees,
+    pendingIntegratedBranches: []
   },
-  deliverable: false
+  navigation: groups,
+  verification,
+  releaseGates,
+  deliverable
 }
 
 const output = resolve(root, 'docs/00-项目入口与总控/project-status.json')
