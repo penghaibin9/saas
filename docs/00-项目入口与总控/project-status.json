@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "dd0bc0a6f78f38a1f5eb2032d9694b57cc24fc16",
+  "branch": "main",
+  "generatedAt": "2026-09-02T08:31:09+08:00",
+  "deliveryStatus": "integration_candidate",
+  "statusSemantics": {
+    "implemented": "代码能力存在，不代表已通过交付门禁",
+    "verified": "已在 baselineCommit 上通过对应自动化门禁",
+    "deliverable": "所有 releaseGates 通过后才可设为 true"
+  },
+  "sourceConvergence": {
+    "originMainCommit": "fd2be9382c9fce7ed7bde5cec003ed7c4d1151c6",
+    "containsOriginMain": true,
+    "registeredWorktrees": [
+      "C:/Users/10850/Desktop/职校学生全生命周期系统"
+    ],
+    "nonMainWorktrees": [],
+    "pendingIntegratedBranches": []
+  },
+  "navigation": [
+    {
+      "key": "workbench",
+      "label": "工作台",
+      "implemented": 23,
+      "partial": 0,
+      "planned": 2,
+      "unauthorized": 0,
+      "containers": 0,
+      "total": 25
+    },
+    {
+      "key": "student-affairs",
+      "label": "学工中心",
+      "implemented": 103,
+      "partial": 0,
+      "planned": 0,
+      "unauthorized": 0,
+      "containers": 12,
+      "total": 103
+    },
+    {
+      "key": "academic-affairs",
+      "label": "教务中心",
+      "implemented": 292,
+      "partial": 0,
+      "planned": 0,
+      "unauthorized": 0,
+      "containers": 0,
+      "total": 292
+    },
+    {
+      "key": "graduation",
+      "label": "毕业设计中心",
+      "implemented": 32,
+      "partial": 0,
+      "planned": 0,
+      "unauthorized": 0,
+      "containers": 0,
+      "total": 32
+    },
+    {
+      "key": "internship",
+      "label": "岗位实习中心",
+      "implemented": 111,
+      "partial": 0,
+      "planned": 0,
+      "unauthorized": 0,
+      "containers": 0,
+      "total": 111
+    },
+    {
+      "key": "system",
+      "label": "系统管理",
+      "implemented": 57,
+      "partial": 0,
+      "planned": 0,
+      "unauthorized": 0,
+      "containers": 0,
+      "total": 57
+    }
+  ],
+  "verification": null,
+  "releaseGates": {
+    "repositoryHygiene": "passed",
+    "mysqlMigrations": "pending",
+    "backendMatrix": "pending",
+    "frontendApps": "pending",
+    "browserJourneys": "pending",
+    "securityAndDependencies": "pending",
+    "backupRestore": "pending",
+    "capacitySmoke": "pending"
+  },
+  "deliverable": false
+}

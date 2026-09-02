@@ -1,0 +1,1393 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "dd0bc0a6f78f38a1f5eb2032d9694b57cc24fc16",
+  "generatedAt": "2026-09-02T08:31:09+08:00",
+  "summary": {
+    "legacy-wave": 57,
+    "domain-candidate": 32,
+    "stable": 17
+  },
+  "workflows": [
+    {
+      "path": ".github/workflows/academic-a-final-same-head-gold.yml",
+      "name": "Academic A Final Same-Head Gold",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-a-semester-core\n    paths:\n      - .github/workflows/academic-a-final-same-head-gold.yml\n      - backend/alembic/versions/20260817_aa_prog_expand.py\n      - backend/app/models/academic_affairs_program_extensions.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_program_course_formation_provenance_inventory_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_*.py\n      - backend/app/modules/academic_affairs/services/academic_file_exchange_service.py\n      - backend/app/services/data_exchange_confirm_service.py\n      - backend/app/services/data_exchange_confirm_legacy.py\n      - backend/app/services/xlsx_util.py\n      - backend/tests/test_aa_course_catalog_confirm_permission_toctou.py\n      - backend/tests/test_aa_program_*.py\n      - backend/tests/test_aa_school_setup_program_*.py\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-a-semester-core"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-affairs-stage4-authoritative-final.yml",
+      "name": "教务第四阶段权威最终验收",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches:\n      - integrate/academic-affairs-final-20260729",
+      "lastConfiguredBranches": [
+        "integrate/academic-affairs-final-20260729"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-affairs-stage4-source-fidelity.yml",
+      "name": "教务第四阶段施工源完整性核验",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches:\n      - integrate/academic-affairs-final-20260729",
+      "lastConfiguredBranches": [
+        "integrate/academic-affairs-final-20260729"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-archive-correction-w1.yml",
+      "name": "Academic Archive Correction W1",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches:\n      - fix/academic-archive-correction-w1-20260821\n    paths:\n      - 'backend/alembic/versions/20260821_aa_archive_correction_review.py'\n      - 'backend/app/models/academic_affairs_stage_c3.py'\n      - 'backend/app/modules/academic_affairs/routers/archive_correction_router.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_archive_correction_review_service.py'\n      - 'backend/tests/test_stage_c3_correction_router_contract.py'\n      - 'backend/tests/test_stage_c3_correction_end_to_end.py'\n      - 'backend/tests/test_stage_c3_correction_reject.py'\n      - 'backend/scripts/e2e_seed_academic_archive_correction_w1.py'\n      - 'frontend/src/modules/academicAffairs/api/academic-archive-correction.api.js'\n      - 'frontend/src/modules/academicAffairs/components/AaArchiveCorrectionWorkspace.vue'\n      - 'frontend/src/modules/academicAffairs/views/AaArchiveConsoleView.vue'\n      - 'frontend/tests/academic-archive-correction-contract.test.mjs'\n      - 'e2e/specs/academic-archive-correction-w1.spec.mjs'\n      - '.github/workflows/academic-archive-correction-w1.yml'\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/alembic/versions/20260821_aa_archive_correction_review.py'\n      - 'backend/app/models/academic_affairs_stage_c3.py'\n      - 'backend/app/modules/academic_affairs/routers/archive_correction_router.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_archive_correction_review_service.py'\n      - 'backend/tests/test_stage_c3_correction_router_contract.py'\n      - 'backend/tests/test_stage_c3_correction_end_to_end.py'\n      - 'backend/tests/test_stage_c3_correction_reject.py'\n      - 'backend/scripts/e2e_seed_academic_archive_correction_w1.py'\n      - 'frontend/src/modules/academicAffairs/api/academic-archive-correction.api.js'\n      - 'frontend/src/modules/academicAffairs/components/AaArchiveCorrectionWorkspace.vue'\n      - 'frontend/src/modules/academicAffairs/views/AaArchiveConsoleView.vue'\n      - 'frontend/tests/academic-archive-correction-contract.test.mjs'\n      - 'e2e/specs/academic-archive-correction-w1.spec.mjs'\n      - '.github/workflows/academic-archive-correction-w1.yml'",
+      "lastConfiguredBranches": [
+        "fix/academic-archive-correction-w1-20260821",
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-current-main-integration-rehearsal.yml",
+      "name": "Academic B Current Main Integration Rehearsal",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-b-schedule-selection\n    paths:\n      - .github/workflows/academic-b-current-main-integration-rehearsal.yml\n      - backend/app/modules/academic_affairs/routers/course_selection_router.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection*.py\n      - backend/tests/test_aa_selection*.py\n      - backend/tests/test_aa_prerequisite*.py\n      - backend/tests/test_aa_student_identity_legacy_entry_guards.py\n      - backend/tests/test_stage_d_selection_trace.py\n      - backend/tests/test_stage_d_integration_contract.py\n      - backend/tests/test_aa_main_permission_middleware_compat.py\n      - backend/tests/test_aa_route_registration_main_compat.py\n      - backend/tests/test_aa_frontend_p0_contracts.py\n      - frontend/src/modules/academicAffairs/api/academic-affairs.api.js\n      - frontend/src/modules/academicAffairs/views/AaSelectionConsoleView.vue\n      - frontend/src/modules/academicAffairs/views/AaScheduleMaintainView.vue\n      - frontend/tests/academic-b-*.mjs\n      - frontend/tests/academic-schedule-task-first-contract.test.mjs\n      - student-portal/src/services/portalApi.js\n      - student-portal/src/views/academic/StudentSelectionView.vue\n      - student-portal/tests/academic-b-*.mjs\n      - miniapp/src/services/realApi.js\n      - miniapp/src/services/studentApi.js\n      - miniapp/src/pages/student/academic-affairs/selection.vue\n      - miniapp/tests/academic-b-*.mjs\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w0-freeze.yml",
+      "name": "Academic B W0 Authority Freeze",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:",
+      "lastConfiguredBranches": [],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w1-final-seal.yml",
+      "name": "Academic B W1 Final Seal",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:",
+      "lastConfiguredBranches": [],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w2-authority-consumers.yml",
+      "name": "Academic B W2 Authority Consumers",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:",
+      "lastConfiguredBranches": [],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w3-schedule-real-click.yml",
+      "name": "Academic B W3 Schedule Real Click",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches: [agent/academic-b-schedule-selection]\n    paths:\n      - 'backend/scripts/e2e_seed_academic_b_w3_schedule.py'\n      - 'e2e/specs/academic-b-schedule-w3-final.spec.mjs'\n      - '.github/workflows/academic-b-w3-schedule-real-click.yml'",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w3-schedule-task-first.yml",
+      "name": "Academic B W3 Schedule Task First",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches: [agent/academic-b-schedule-selection]\n    paths:\n      - 'frontend/src/modules/academicAffairs/views/AaScheduleMaintainView.vue'\n      - 'frontend/tests/academic-schedule-task-first-contract.test.mjs'\n      - '.github/workflows/academic-b-w3-schedule-task-first.yml'",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w4-formation-handoff.yml",
+      "name": "Academic B W4 Formation Handoff",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - integration/academic-school-gold\n    paths:\n      - .github/workflows/academic-b-w4-formation-handoff.yml\n      - .github/workflows/academic-b-w4-formation-real-click.yml\n      - backend/alembic/versions/20260816_academic_int_ac4_schema.py\n      - backend/alembic/versions/20260817_aa_prog_expand.py\n      - backend/alembic/versions/20260817_academic_int_program_series.py\n      - backend/alembic/versions/20260818_academic_main_int_merge.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_formation_dependency.py\n      - backend/scripts/e2e_seed_academic_b_w4_formation.py\n      - backend/tests/test_aa_program_expand_schema_int.py\n      - backend/tests/test_academic_int_main_lineage_convergence.py\n      - backend/tests/test_aa_selection_w4_formation_handoff.py\n      - backend/tests/test_aa_selection_w4_task_identity.py\n      - backend/tests/test_aa_selection_read_production_contract.py\n      - e2e/specs/academic-b-selection-w4-formation.spec.mjs\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w4-formation-real-click.yml",
+      "name": "Academic B W4 Formation Real Click",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - integration/academic-school-gold\n    paths:\n      - 'backend/alembic/versions/20260816_academic_int_ac4_schema.py'\n      - 'backend/alembic/versions/20260817_aa_prog_expand.py'\n      - 'backend/alembic/versions/20260817_academic_int_program_series.py'\n      - 'backend/alembic/versions/20260818_academic_main_int_merge.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py'\n      - 'backend/scripts/e2e_seed_academic_b_w4_formation.py'\n      - 'frontend/src/utils/presentationSafety.js'\n      - 'frontend/tests/ui-presentation-safety.test.mjs'\n      - 'e2e/specs/academic-b-selection-w4-formation.spec.mjs'\n      - '.github/workflows/academic-b-w4-formation-real-click.yml'\n      - '.github/workflows/academic-b-w4-formation-handoff.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w4-selection-real-click.yml",
+      "name": "Academic B W4 Selection Supply Real Click",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches: [agent/academic-b-schedule-selection]\n    paths:\n      - 'backend/scripts/e2e_seed_academic_b_w4_selection.py'\n      - 'e2e/specs/academic-b-selection-w4-final.spec.mjs'\n      - '.github/workflows/academic-b-w4-selection-real-click.yml'",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w4-task-identity.yml",
+      "name": "Academic B W4 Task Identity",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches: [agent/academic-b-schedule-selection]\n    paths:\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py'\n      - 'backend/app/modules/academic_affairs/routers/course_selection_router.py'\n      - 'backend/tests/test_aa_selection_w4_task_identity.py'\n      - 'frontend/src/modules/academicAffairs/views/AaSelectionConsoleView.vue'\n      - 'backend/tests/test_aa_selection_w4_ui_contract.py'\n      - '.github/workflows/academic-b-w4-task-identity.yml'",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w5-student-projection-clients.yml",
+      "name": "Academic B W5 Student Projection Clients",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-b-schedule-selection\n    paths:\n      - student-portal/src/views/academic/StudentSelectionView.vue\n      - student-portal/tests/academic-b-selection-preflight-client.test.mjs\n      - miniapp/src/pages/student/academic-affairs/selection.vue\n      - miniapp/tests/academic-b-selection-preflight-client.test.mjs\n      - .github/workflows/academic-b-w5-student-projection-clients.yml\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w5-student-projection-contract.yml",
+      "name": "Academic B W5 Student Projection Contract",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-b-schedule-selection\n    paths:\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_read_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_read_core_service.py\n      - backend/tests/test_aa_selection_student_projection_contract.py\n      - .github/workflows/academic-b-w5-student-projection-contract.yml\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w5-student-projection-mysql.yml",
+      "name": "Academic B W5 Student Projection MySQL",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-b-schedule-selection\n    paths:\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_read_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_read_core_service.py\n      - backend/tests/test_aa_selection_student_projection_contract.py\n      - backend/tests/test_aa_selection_student_projection_mysql.py\n      - backend/tests/test_aa_selection_student_projection_states_mysql.py\n      - backend/tests/test_aa_selection_read_production_contract.py\n      - .github/workflows/academic-b-w5-student-projection-mysql.yml\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w5-student-projection-real-click.yml",
+      "name": "Academic B W5 Student Projection Real Click",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches: [agent/academic-b-schedule-selection]\n    paths:\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_read_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_selection_read_core_service.py'\n      - 'student-portal/src/views/academic/StudentSelectionView.vue'\n      - 'miniapp/src/pages/student/academic-affairs/selection.vue'\n      - 'backend/scripts/e2e_seed_academic_b_w5_selection.py'\n      - 'e2e/specs/academic-b-selection-w5-final.spec.mjs'\n      - '.github/workflows/academic-b-w5-student-projection-real-click.yml'",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w6-fcfs-peak-mysql.yml",
+      "name": "Academic B W6 FCFS Peak MySQL",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-b-schedule-selection\n    paths:\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py\n      - backend/tests/test_aa_selection_w6_fcfs_peak_mysql.py\n      - .github/workflows/academic-b-w6-fcfs-peak-mysql.yml\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w6-lock-drop-order-mysql.yml",
+      "name": "Academic B W6 LOCK Drop Order MySQL",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-b-schedule-selection\n    paths:\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_service.py\n      - backend/tests/test_aa_selection_w6_lock_drop_order_mysql.py\n      - .github/workflows/academic-b-w6-lock-drop-order-mysql.yml\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w6-lottery-concurrency-mysql.yml",
+      "name": "Academic B W6 Lottery Concurrency MySQL",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-b-schedule-selection\n    paths:\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_round_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_round_core_service.py\n      - backend/tests/test_aa_selection_w6_lottery_concurrency_mysql.py\n      - .github/workflows/academic-b-w6-lottery-concurrency-mysql.yml\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-b-w6-roster-reconcile-mysql.yml",
+      "name": "Academic B W6 Roster Reconcile MySQL",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-b-schedule-selection\n    paths:\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_final_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_teaching_roster_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_selection_roster_projection_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_roster_consumer_service.py\n      - backend/tests/test_aa_selection_w6_roster_reconcile_mysql.py\n      - .github/workflows/academic-b-w6-roster-reconcile-mysql.yml\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-b-schedule-selection"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-c-w0-mature-chain-freeze.yml",
+      "name": "Academic C W0 Mature Chain Freeze",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_occurrence_consumer.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_warning_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_roster_consumer_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_facade.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_correction_command.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_recheck_service.py'\n      - 'backend/tests/test_academic_c_closure_contract.py'\n      - 'backend/tests/test_aa_attendance_task_binding.py'\n      - 'backend/tests/test_aa_attendance_admin_special_contract.py'\n      - 'backend/tests/test_aa_attendance_warning_source_contract.py'\n      - 'backend/tests/test_aa_attendance_applied_change_contract.py'\n      - 'backend/tests/test_aa_attendance_expected_schedule_item_contract.py'\n      - 'backend/tests/test_aa_attendance_occurrence_concurrency.py'\n      - 'backend/tests/test_aa_attendance_published_occurrence_contract.py'\n      - 'backend/tests/test_aa_attendance_class_options_formal_schedule.py'\n      - 'backend/tests/test_aa_teaching_roster_unification.py'\n      - 'backend/tests/test_aa_roster_consumers_r9.py'\n      - 'backend/tests/test_aa_exam_facade_contract_and_changes.py'\n      - 'backend/tests/test_aa_exam_fact_guards.py'\n      - 'backend/tests/test_aa_effective_grade_identity.py'\n      - 'backend/tests/test_aa_effective_grade_policy_snapshot.py'\n      - 'backend/tests/test_aa_mobile_effective_grade_policy.py'\n      - 'backend/tests/test_aa_grade_recheck_concurrency.py'\n      - 'backend/tests/test_aa_p0_hardening_20260804.py'\n      - 'frontend/tests/academic-attendance-source-contract.test.mjs'\n      - 'miniapp/tests/academic-attendance-source-contract.test.mjs'\n      - '.github/workflows/academic-c-w0-mature-chain-freeze.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-c-w2-teacher-today-browser.yml",
+      "name": "Academic C W2 Teacher Today Browser Seal",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-c-teaching-execution\n    paths:\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_execution_state_service.py'\n      - 'backend/app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py'\n      - 'backend/scripts/e2e_seed_academic_c_teacher_today.py'\n      - 'miniapp/src/pages/teacher/academic-affairs/index.vue'\n      - 'miniapp/src/pages/teacher/academic-affairs/attendance.vue'\n      - 'miniapp/tests/academic-teacher-today-contract.test.mjs'\n      - 'e2e/specs/academic-c-teacher-today.spec.mjs'\n      - '.github/workflows/academic-c-w2-teacher-today-browser.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-c-teaching-execution"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-c-w2-teacher-today.yml",
+      "name": "Academic C W2 Teacher Today Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_today_execution_state_service.py'\n      - 'backend/app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py'\n      - 'backend/tests/test_aa_teacher_today_scopehead_contract.py'\n      - 'backend/tests/test_aa_teacher_today_public_wiring_contract.py'\n      - 'backend/tests/test_aa_teacher_today_visibility_contract.py'\n      - 'backend/tests/test_aa_teacher_today_execution_state_contract.py'\n      - 'miniapp/src/pages/teacher/academic-affairs/index.vue'\n      - 'miniapp/src/pages/teacher/academic-affairs/attendance.vue'\n      - 'miniapp/tests/academic-teacher-today-contract.test.mjs'\n      - 'miniapp/tests/academic-attendance-source-contract.test.mjs'\n      - '.github/workflows/academic-c-w2-teacher-today.yml'\n  push:\n    branches:\n      - agent/academic-c-teaching-execution\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-c-teaching-execution",
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-c-w3-exam-delivery-targeted.yml",
+      "name": "Academic C W3 Exam Delivery Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-c-teaching-execution\n    paths:\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_publish_delivery_guard.py'\n      - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'\n      - 'backend/tests/test_aa_exam_publish_delivery_contract.py'\n      - '.github/workflows/academic-c-w3-exam-delivery-targeted.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-c-teaching-execution"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-c-w3-exam-incident-targeted.yml",
+      "name": "Academic C W3 Exam Incident Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-c-teaching-execution\n    paths:\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_incident_workbench_service.py'\n      - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'\n      - 'backend/tests/test_aa_exam_incident_workbench_contract.py'\n      - '.github/workflows/academic-c-w3-exam-incident-targeted.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-c-teaching-execution"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-c-w3-exam-targeted.yml",
+      "name": "Academic C W3 Exam Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-c-teaching-execution\n    paths:\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_print_service.py'\n      - 'backend/app/modules/academic_affairs/services/student_exam_read_service.py'\n      - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'\n      - 'backend/tests/test_aa_exam_formal_print_contract.py'\n      - 'backend/tests/test_aa_exam_formal_print_wiring_contract.py'\n      - 'backend/tests/test_aa_student_exam_deferrable_contract.py'\n      - 'frontend/src/modules/academicAffairs/api/academic-exam-formal-print.api.js'\n      - 'frontend/src/modules/academicAffairs/views/AaExamSeatingPrintView.vue'\n      - 'frontend/tests/academic-exam-formal-print-source-contract.test.mjs'\n      - 'miniapp/src/pages/student/academic-affairs/exam.vue'\n      - 'miniapp/tests/academic-student-exam-source-contract.test.mjs'\n      - '.github/workflows/academic-c-w3-exam-targeted.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-c-teaching-execution"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-c-w3-invigilation-targeted.yml",
+      "name": "Academic C W3 Invigilation Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - agent/academic-c-teaching-execution\n    paths:\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_invigilation_workbench_service.py'\n      - 'backend/app/modules/academic_affairs/services/mobile_academic_affairs_public_service.py'\n      - 'backend/tests/test_aa_exam_invigilation_workbench_contract.py'\n      - 'backend/tests/test_aa_exam_invigilation_mobile_wiring_contract.py'\n      - 'miniapp/src/pages/teacher/academic-affairs/index.vue'\n      - 'miniapp/tests/academic-invigilation-workbench-source-contract.test.mjs'\n      - '.github/workflows/academic-c-w3-invigilation-targeted.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "agent/academic-c-teaching-execution"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-c-w345-pr-final.yml",
+      "name": "Academic C W3 W4 W5 PR Final",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/alembic/versions/20260818_aa_grade_task_deadline.py'\n      - 'backend/alembic/versions/20260818_merge_prog_grade_deadline.py'\n      - 'backend/alembic/versions/20260821_aa_archive_correction_review.py'\n      - 'backend/alembic/versions/20260821_merge_aa_archive_ctrl_teacher.py'\n      - 'backend/app/modules/academic_affairs/routers/grade_core_router.py'\n      - 'backend/app/modules/academic_affairs/routers/mobile_grade_entry_router.py'\n      - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_public_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_guard.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_attendance_teacher_relation_read_guard.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_deadline_scheduler_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_task_read_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_teacher_relation_authority.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_xlsx_path_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_message_event_guard.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade_reminder_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_print_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_file_exchange_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_semester_pilot_service.py'\n      - 'backend/app/services/data_exchange_confirm_legacy.py'\n      - 'backend/app/services/xlsx_util.py'\n      - 'backend/scripts/run_scheduled_jobs.py'\n      - 'backend/scripts/e2e_academic_affairs_live_flow.py'\n      - 'backend/scripts/e2e_academic_affairs_round3.py'\n      - 'backend/tests/test_academic_c_closure_contract.py'\n      - 'backend/tests/test_aa_grade_deadline_scheduler.py'\n      - 'frontend/src/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue'\n      - 'frontend/src/modules/academicAffairs/views/AaTeachingClassDetailView.vue'\n      - 'frontend/src/modules/academicAffairs/views/AaExamSeatingPrintView.vue'\n      - 'frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue'\n      - 'frontend/src/modules/academicAffairs/views/AaScheduleMaintainView.vue'\n      - 'frontend/src/modules/academicAffairs/views/AaCourseListView.vue'\n      - 'frontend/src/modules/academicAffairs/views/AaProgramListView.vue'\n      - 'frontend/src/modules/academicAffairs/views/AaSemesterPilotView.vue'\n      - 'frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js'\n      - 'frontend/src/modules/academicAffairs/api/academic-exam-formal-print.api.js'\n      - 'frontend/src/modules/academicAffairs/api/grade-reminder.api.js'\n      - 'frontend/tests/academic-schedule-task-first-contract.test.mjs'\n      - 'frontend/tests/w5-production-closeout-contract.test.mjs'\n      - '.github/workflows/academic-c-w345-pr-final.yml'",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-d-current-main-merge-review.yml",
+      "name": "Academic D Current Main Merge Review",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - \"backend/app/modules/academic_affairs/services/student_program_resolution_service.py\"\n      - \"backend/app/modules/academic_affairs/services/academic_affairs_program_activation_service.py\"\n      - \"backend/app/modules/academic_affairs/services/academic_affairs_graduation_service.py\"\n      - \"backend/app/modules/academic_affairs/services/academic_affairs_graduation_immutable_service.py\"\n      - \"frontend/src/modules/academicAffairs/views/AaArchiveConsoleView.vue\"\n      - \"frontend/src/modules/academicAffairs/views/AaGraduationBatchView.vue\"\n      - \"frontend/src/modules/academicAffairs/views/AaGraduationResultView.vue\"\n      - \"frontend/src/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue\"\n      - \"frontend/src/modules/academicAffairs/views/AaEvaluationConsoleView.vue\"\n      - \"student-portal/src/views/academic/StudentGraduationAuditView.vue\"\n      - \"frontend/tests/pr147-merge-review-ui-contract.test.mjs\"\n      - \"frontend/tests/pr147-pagination-control-contract.test.mjs\"\n      - \"frontend/tests/stage-d-archive-precheck-contract.test.mjs\"\n      - \"frontend/tests/stage-d-graduation-audit-console-contract.test.mjs\"\n      - \"frontend/tests/stage-d-evaluation-console-production-contract.test.mjs\"\n      - \"student-portal/tests/academic-d-w5-graduation-truth.test.mjs\"\n      - \".github/workflows/academic-d-current-main-merge-review.yml\"",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-d-evaluation-concurrency-one-shot.yml",
+      "name": "Academic D Evaluation Concurrency One Shot",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - \"backend/app/modules/academic_affairs/services/__init__.py\"\n      - \"backend/app/modules/academic_affairs/routers/evaluation_core_router.py\"\n      - \"backend/app/modules/academic_affairs/services/academic_affairs_evaluation_facade.py\"\n      - \"backend/app/modules/academic_affairs/services/academic_affairs_evaluation_public_service.py\"\n      - \"backend/app/modules/academic_affairs/services/academic_affairs_evaluation_submit_roster_guard.py\"\n      - \"backend/app/modules/academic_affairs/services/academic_affairs_evaluation_scale_service.py\"\n      - \"backend/app/modules/academic_affairs/services/academic_affairs_evaluation_term_facade.py\"\n      - \"backend/app/modules/academic_affairs/services/academic_affairs_evaluation_appeal_service.py\"\n      - \"backend/app/services/sandbox_school_academic_quality_seed.py\"\n      - \"backend/scripts/academic_d_evaluation_concurrency_probe.py\"\n      - \"backend/scripts/academic_d_evaluation_deadline_burst_probe.py\"\n      - \"backend/scripts/academic_d_w5_final_gold_replay.sh\"\n      - \"backend/scripts/academic_d_w5_same_head_matrix.py\"\n      - \"backend/scripts/academic_d_w5_upstream_freeze.py\"\n      - \"backend/scripts/academic_d_w5_integrated_browser.sh\"\n      - \"backend/tests/test_academic_d_w5_same_head_matrix.py\"\n      - \"backend/tests/test_academic_d_w5_upstream_freeze.py\"\n      - \"backend/tests/test_aa_evaluation.py\"\n      - \"backend/tests/test_aa_evaluation_student_anonymity.py\"\n      - \"backend/tests/test_aa_evaluation_d_w3_close_submit_lock.py\"\n      - \"backend/tests/test_aa_evaluation_d_w3_submission_fact_authority.py\"\n      - \"backend/tests/test_aa_evaluation_d_w3_appeal_state.py\"\n      - \"backend/tests/test_aa_evaluation_d_w3_scope_guard.py\"\n      - \"backend/tests/test_sandbox_school_academic_quality_truth.py\"\n      - \"student-portal/src/views/academic/StudentGraduationAuditView.vue\"\n      - \"student-portal/tests/academic-d-w5-graduation-truth.test.mjs\"\n      - \"e2e/specs/academic-d-w5-student-graduation.spec.mjs\"\n      - \".github/workflows/academic-d-evaluation-concurrency-one-shot.yml\"",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-d-mysql-pitr-one-shot.yml",
+      "name": "Academic D MySQL PITR One Shot",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - \"deploy/backup/pitr-drill.sh\"\n      - \".github/workflows/academic-d-mysql-pitr-one-shot.yml\"\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-exam-incident-w2.yml",
+      "name": "Academic Exam Incident W2",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - fix/academic-exam-incident-w2-20260821\n    paths:\n      - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_incident_lifecycle_service.py'\n      - 'backend/tests/test_aa_exam_incident_lifecycle.py'\n      - 'backend/tests/test_aa_exam_incident_concurrency.py'\n      - 'backend/tests/test_aa_exam_incident_workbench_contract.py'\n      - 'backend/tests/test_aa_exam_fact_guards.py'\n      - 'backend/tests/test_aa_exam_formal_print_contract.py'\n      - 'backend/tests/test_aa_exam_formal_print_wiring_contract.py'\n      - 'backend/scripts/e2e_seed_academic_exam_incident_w2.py'\n      - 'frontend/src/modules/academicAffairs/api/academic-exam-incident.api.js'\n      - 'frontend/src/modules/academicAffairs/components/AaExamIncidentWorkbench.vue'\n      - 'frontend/src/modules/academicAffairs/views/AaExamConsoleView.vue'\n      - 'frontend/tests/academic-exam-incident-w2-contract.test.mjs'\n      - 'frontend/tests/academic-exam-formal-print-source-contract.test.mjs'\n      - 'e2e/specs/academic-exam-incident-w2.spec.mjs'\n      - '.github/workflows/academic-exam-incident-w2.yml'\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/app/modules/academic_affairs/routers/exam_incident_closure_router.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_exam_incident_lifecycle_service.py'\n      - 'backend/tests/test_aa_exam_incident_lifecycle.py'\n      - 'backend/tests/test_aa_exam_incident_concurrency.py'\n      - 'backend/tests/test_aa_exam_incident_workbench_contract.py'\n      - 'backend/tests/test_aa_exam_fact_guards.py'\n      - 'backend/tests/test_aa_exam_formal_print_contract.py'\n      - 'backend/tests/test_aa_exam_formal_print_wiring_contract.py'\n      - 'backend/scripts/e2e_seed_academic_exam_incident_w2.py'\n      - 'frontend/src/modules/academicAffairs/api/academic-exam-incident.api.js'\n      - 'frontend/src/modules/academicAffairs/components/AaExamIncidentWorkbench.vue'\n      - 'frontend/src/modules/academicAffairs/views/AaExamConsoleView.vue'\n      - 'frontend/tests/academic-exam-incident-w2-contract.test.mjs'\n      - 'frontend/tests/academic-exam-formal-print-source-contract.test.mjs'\n      - 'e2e/specs/academic-exam-incident-w2.spec.mjs'\n      - '.github/workflows/academic-exam-incident-w2.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "fix/academic-exam-incident-w2-20260821",
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-file-exchange-center.yml",
+      "name": "Academic file exchange center",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - 'backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py'\n      - 'backend/app/modules/academic_affairs/routers/academic_export_compat_router.py'\n      - 'backend/app/modules/academic_affairs/routers/academic_affairs_bundle.py'\n      - 'backend/app/modules/academic_affairs/services/academic_file_exchange_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_export_compat_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_file_exchange_spec.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_adapter.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_workbook_adapter.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_authority_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_confirm_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_binding_confirm_service.py'\n      - 'backend/app/services/data_exchange_confirm_service.py'\n      - 'backend/app/services/data_exchange_confirm_legacy.py'\n      - 'backend/tests/test_academic_file_exchange_center.py'\n      - 'backend/tests/test_academic_export_compat.py'\n      - 'backend/tests/test_aa_course_catalog_confirm_permission_toctou.py'\n      - 'backend/tests/test_aa_program_file_exchange_shared_int.py'\n      - 'backend/tests/test_aa_program_file_exchange_shared_mysql_int.py'\n      - 'backend/tests/test_aa_program_xlsx_path_source_contract.py'\n      - 'frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js'\n      - 'frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue'\n      - 'docs/architecture/file-capability-inventory.d/07-academic-file-exchange.yaml'\n      - 'docs/architecture/file-capability-inventory.d/07-academic-program-workbook.yaml'\n      - '.github/workflows/academic-file-exchange-center.yml'\n  push:\n    branches:\n      - audit/file-capability-inventory\n    paths:\n      - 'backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py'\n      - 'backend/app/modules/academic_affairs/routers/academic_export_compat_router.py'\n      - 'backend/app/modules/academic_affairs/routers/academic_affairs_bundle.py'\n      - 'backend/app/modules/academic_affairs/services/academic_file_exchange_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_export_compat_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_file_exchange_spec.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_adapter.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_preview_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_workbook_adapter.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_authority_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_definition_confirm_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_school_setup_program_binding_confirm_service.py'\n      - 'backend/app/services/data_exchange_confirm_service.py'\n      - 'backend/app/services/data_exchange_confirm_legacy.py'\n      - 'backend/tests/test_academic_file_exchange_center.py'\n      - 'backend/tests/test_academic_export_compat.py'\n      - 'backend/tests/test_aa_course_catalog_confirm_permission_toctou.py'\n      - 'backend/tests/test_aa_program_file_exchange_shared_int.py'\n      - 'backend/tests/test_aa_program_file_exchange_shared_mysql_int.py'\n      - 'backend/tests/test_aa_program_xlsx_path_source_contract.py'\n      - 'frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js'\n      - 'frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue'\n      - 'docs/architecture/file-capability-inventory.d/07-academic-file-exchange.yaml'\n      - 'docs/architecture/file-capability-inventory.d/07-academic-program-workbook.yaml'\n      - '.github/workflows/academic-file-exchange-center.yml'",
+      "lastConfiguredBranches": [
+        "audit/file-capability-inventory"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/academic-int-ac4-schema-targeted.yml",
+      "name": "Academic INT A-C4 Schema Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - integration/academic-school-gold\n    paths:\n      - .github/workflows/academic-int-ac4-schema-targeted.yml",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-int-c1-attendance-schema-targeted.yml",
+      "name": "Academic INT C-C1 Attendance Expand Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - integration/academic-school-gold\n    paths:\n      - .github/workflows/academic-int-c1-attendance-schema-targeted.yml",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-int-c1-dual-write-targeted.yml",
+      "name": "Academic INT C-C1 Dual Write Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - integration/academic-school-gold\n    paths:\n      - .github/workflows/academic-int-c1-dual-write-targeted.yml",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-int-c1-frozen-overlay-targeted.yml",
+      "name": "Academic INT C-C1 Frozen Overlay Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - integration/academic-school-gold\n    paths:\n      - .github/workflows/academic-int-c1-frozen-overlay-targeted.yml",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-int-c1-legacy-source-backfill-targeted.yml",
+      "name": "Academic INT C-C1 Legacy Source Backfill Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - integration/academic-school-gold\n    paths:\n      - .github/workflows/academic-int-c1-legacy-source-backfill-targeted.yml",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-int-c1-soft-delete-guard-targeted.yml",
+      "name": "Academic INT C-C1 Soft Delete Guard Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - integration/academic-school-gold\n    paths:\n      - .github/workflows/academic-int-c1-soft-delete-guard-targeted.yml",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-int-control-plane-convergence.yml",
+      "name": "Academic INT Control Plane Alembic Convergence",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  push:\n    branches:\n      - integration/academic-school-gold\n    paths:\n      - 'backend/alembic/versions/20260817_academic_int_control_plane_merge.py'\n      - '.github/workflows/academic-int-control-plane-convergence.yml'",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/academic-int-program-series-inventory.yml",
+      "name": "Academic INT Program Series Inventory",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  push:\n    branches:\n      - integration/academic-school-gold\n    paths:\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_program_series_inventory.py'\n      - 'backend/tests/test_academic_int_program_series_inventory.py'\n      - '.github/workflows/academic-int-program-series-inventory.yml'",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/academic-int-program-series-targeted.yml",
+      "name": "Academic INT Program Stable Series Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - tmp/academic-int-program-series-green-20260817\n      - tmp/academic-int-program-series-green-v2-20260818\n      - tmp/academic-int-program-series-green-v3-20260818\n      - integration/academic-school-gold\n    paths:\n      - 'backend/alembic/versions/20260817_academic_int_program_series.py'\n      - 'backend/app/models/academic_affairs.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_program_core_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_program_authority_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_program_service.py'\n      - 'backend/tests/test_academic_int_program_series_schema_red.py'\n      - 'backend/tests/test_academic_int_program_series_mysql.py'\n      - '.github/workflows/academic-int-program-series-targeted.yml'",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold",
+        "tmp/academic-int-program-series-green-20260817",
+        "tmp/academic-int-program-series-green-v2-20260818",
+        "tmp/academic-int-program-series-green-v3-20260818"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/academic-int-task-program-course-provenance-targeted.yml",
+      "name": "Academic INT Task ProgramCourse Provenance Targeted",
+      "owner": "academic-affairs",
+      "purpose": "教务域",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - tmp/academic-int-task-program-course-provenance-green-20260818\n      - integration/academic-school-gold\n    paths:\n      - 'backend/alembic/versions/20260818_academic_int_task_program_course_provenance.py'\n      - 'backend/app/models/academic_affairs.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_task_generation_service.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_task_formation_provenance_service.py'\n      - 'backend/tests/test_academic_int_task_program_course_provenance_contract.py'\n      - 'backend/tests/test_academic_int_task_program_course_provenance_mysql.py'\n      - '.github/workflows/academic-int-task-program-course-provenance-targeted.yml'",
+      "lastConfiguredBranches": [
+        "integration/academic-school-gold",
+        "tmp/academic-int-task-program-course-provenance-green-20260818"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/auth-login-redis-e2e.yml",
+      "name": "Auth Login Redis E2E",
+      "owner": "identity-and-access",
+      "purpose": "认证与权限",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  push:\n    branches: [\"**\"]\n    paths:\n      - \"backend/Dockerfile\"\n      - \"backend/app/api/v1/auth.py\"\n      - \"backend/app/core/config.py\"\n      - \"backend/app/core/redis_client.py\"\n      - \"backend/app/core/token_store.py\"\n      - \"backend/app/services/auth_challenge_service.py\"\n      - \"backend/app/services/auth_service_db.py\"\n      - \"backend/app/services/wx_auth_service.py\"\n      - \"backend/app/student_portal/router.py\"\n      - \"backend/app/student_portal/services/guardian_service.py\"\n      - \"backend/scripts/check_production_redis.py\"\n      - \"backend/scripts/_seed_login_accounts_only.py\"\n      - \"backend/tests/test_auth_challenge_service.py\"\n      - \"backend/tests/test_auth_captcha_redis_fail_closed.py\"\n      - \"frontend/package.json\"\n      - \"frontend/package-lock.json\"\n      - \"frontend/src/components/auth/LoginCaptcha.vue\"\n      - \"frontend/src/services/http/client.js\"\n      - \"frontend/src/views/LoginView.vue\"\n      - \"frontend/src/views/PlatformLoginView.vue\"\n      - \"student-portal/package.json\"\n      - \"student-portal/package-lock.json\"\n      - \"student-portal/src/components/auth/LoginCaptcha.vue\"\n      - \"student-portal/src/router/index.js\"\n      - \"student-portal/src/services/portalApi.js\"\n      - \"student-portal/src/services/request.js\"\n      - \"student-portal/src/stores/session.js\"\n      - \"student-portal/src/views/login/LoginView.vue\"\n      - \"student-portal/tests/auth-error-details.test.mjs\"\n      - \"miniapp/src/components/login/MiniLoginAuthPanel.vue\"\n      - \"miniapp/src/services/request.js\"\n      - \"scripts/e2e/auth_login_redis_click.py\"\n      - \"deploy/README-auth-redis.md\"\n      - \"deploy/auth-redis.production.env.example\"\n      - \"deploy/docker/docker-compose.mysql.yml\"\n      - \"deploy/env/backend.systemd.env.example\"\n      - \"deploy/start-backend-production.sh\"\n      - \"deploy/systemd/school-lifecycle-backend.service\"\n      - \".github/workflows/auth-login-redis-e2e.yml\"\n  pull_request:\n    branches: [\"**\"]\n    paths:\n      - \"backend/Dockerfile\"\n      - \"backend/app/api/v1/auth.py\"\n      - \"backend/app/core/config.py\"\n      - \"backend/app/core/redis_client.py\"\n      - \"backend/app/core/token_store.py\"\n      - \"backend/app/services/auth_challenge_service.py\"\n      - \"backend/app/services/auth_service_db.py\"\n      - \"backend/app/services/wx_auth_service.py\"\n      - \"backend/app/student_portal/router.py\"\n      - \"backend/app/student_portal/services/guardian_service.py\"\n      - \"backend/scripts/check_production_redis.py\"\n      - \"backend/scripts/_seed_login_accounts_only.py\"\n      - \"backend/tests/test_auth_challenge_service.py\"\n      - \"backend/tests/test_auth_captcha_redis_fail_closed.py\"\n      - \"frontend/package.json\"\n      - \"frontend/package-lock.json\"\n      - \"frontend/src/components/auth/LoginCaptcha.vue\"\n      - \"frontend/src/services/http/client.js\"\n      - \"frontend/src/views/LoginView.vue\"\n      - \"frontend/src/views/PlatformLoginView.vue\"\n      - \"student-portal/package.json\"\n      - \"student-portal/package-lock.json\"\n      - \"student-portal/src/components/auth/LoginCaptcha.vue\"\n      - \"student-portal/src/router/index.js\"\n      - \"student-portal/src/services/portalApi.js\"\n      - \"student-portal/src/services/request.js\"\n      - \"student-portal/src/stores/session.js\"\n      - \"student-portal/src/views/login/LoginView.vue\"\n      - \"student-portal/tests/auth-error-details.test.mjs\"\n      - \"miniapp/src/components/login/MiniLoginAuthPanel.vue\"\n      - \"miniapp/src/services/request.js\"\n      - \"scripts/e2e/auth_login_redis_click.py\"\n      - \"deploy/README-auth-redis.md\"\n      - \"deploy/auth-redis.production.env.example\"\n      - \"deploy/docker/docker-compose.mysql.yml\"\n      - \"deploy/env/backend.systemd.env.example\"\n      - \"deploy/start-backend-production.sh\"\n      - \"deploy/systemd/school-lifecycle-backend.service\"\n      - \".github/workflows/auth-login-redis-e2e.yml\"\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "**"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/backend-pytest-academic-cluster.yml",
+      "name": "Backend pytest academic mainline debt probes",
+      "owner": "backend-platform",
+      "purpose": "后端测试",
+      "lifecycle": "stable",
+      "triggers": "on:\n  push:\n    branches:\n      - fix/backend-pytest-debt-20260810\n    paths:\n      - 'backend/tests/test_aa_home_task_routes_v2.py'\n      - 'backend/tests/test_aa_main_migration_compat.py'\n      - 'backend/tests/test_aa_mobile_grade_entry_v2.py'\n      - 'backend/tests/test_aa_semester_pilot_r11.py'\n      - 'backend/tests/test_aa_service_entrypoint_integrity.py'\n      - 'backend/tests/test_aa_stage4_real_smoke.py'\n      - 'backend/tests/test_aa_student_exam_public_facade.py'\n      - 'backend/tests/test_aa_student_exam_workspace.py'\n      - 'backend/tests/test_aa_student_level_exam_workspace.py'\n      - 'backend/tests/test_aa_student_major_split_workspace.py'\n      - 'backend/tests/test_aa_student_makeup_workspace.py'\n      - 'backend/tests/test_aa_student_portal_design_tokens.py'\n      - 'backend/tests/test_aa_student_readonly_workspaces.py'\n      - 'backend/tests/test_aa_student_textbook_workspace.py'\n      - 'backend/tests/test_aa_student_transcript_safety.py'\n      - 'backend/tests/test_sa17_delivery_gaps.py'\n      - 'backend/tests/test_saas_role_templates_unit.py'\n      - 'scripts/check/backend-known-failures-main.txt'\n      - 'scripts/check/sanitize_pytest_junit.py'\n      - 'scripts/check/summarize_pytest_junit_diagnostics.py'\n      - '.github/workflows/backend-pytest-academic-cluster.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "fix/backend-pytest-debt-20260810"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/backend-pytest-academic-core-cluster.yml",
+      "name": "Backend pytest academic core debt probes",
+      "owner": "backend-platform",
+      "purpose": "后端测试",
+      "lifecycle": "stable",
+      "triggers": "on:\n  push:\n    branches:\n      - fix/backend-pytest-debt-20260810\n    paths:\n      - 'backend/tests/test_aa_course.py'\n      - 'backend/tests/test_aa_dashboard.py'\n      - 'backend/tests/test_aa_grade.py'\n      - 'backend/tests/test_aa_orgs.py'\n      - 'backend/tests/test_aa_program_tier1_r3.py'\n      - 'backend/tests/test_aa_teaching_plan_r3.py'\n      - 'backend/tests/test_aa_textbook*.py'\n      - 'backend/tests/test_aa_warning.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_course*.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_dashboard*.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_grade*.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_org*.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_program*.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_teaching_plan*.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_textbook*.py'\n      - 'backend/app/modules/academic_affairs/services/academic_affairs_warning*.py'\n      - 'scripts/check/backend-known-failures-main.txt'\n      - '.github/workflows/backend-pytest-academic-core-cluster.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "fix/backend-pytest-debt-20260810"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/backend-pytest-baseline-shards.yml",
+      "name": "Backend pytest debt baseline - 4 shards",
+      "owner": "backend-platform",
+      "purpose": "后端测试",
+      "lifecycle": "stable",
+      "triggers": "on:\n  workflow_dispatch:\n  pull_request:\n    branches: [main]\n    paths:\n      - scripts/check/backend-full-baseline-trigger.txt",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/backend-pytest-db-mode-cluster.yml",
+      "name": "Backend pytest DB-mode cluster",
+      "owner": "backend-platform",
+      "purpose": "后端测试",
+      "lifecycle": "stable",
+      "triggers": "on:\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/tests/test_db_mode.py'\n      - 'backend/app/**'\n      - 'backend/alembic/**'\n      - 'backend/requirements.txt'\n      - 'scripts/check/sanitize_pytest_junit.py'\n      - 'scripts/check/summarize_pytest_junit_diagnostics.py'\n      - '.github/workflows/backend-pytest-db-mode-cluster.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/backend-pytest-error-cluster.yml",
+      "name": "Backend pytest error cluster",
+      "owner": "backend-platform",
+      "purpose": "后端测试",
+      "lifecycle": "stable",
+      "triggers": "on:\n  pull_request:\n    branches: [main]\n    paths:\n      - .github/workflows/backend-pytest-error-cluster.yml\n      - scripts/check/summarize_pytest_junit_diagnostics.py\n      - scripts/check/sanitize_pytest_junit.py\n      - backend/conftest.py\n      - backend/tests/conftest.py\n      - backend/tests/test_demo_tenants_login.py\n      - backend/tests/test_sandbox_13a_seed.py\n      - backend/tests/test_wx_login.py\n      - backend/tests/test_graduation_package9_contract.py\n      - backend/tests/test_auth_captcha_redis_fail_closed.py\n      - backend/tests/test_auth_challenge_service.py\n      - backend/scripts/_seed_demo_school.py\n      - backend/scripts/_seed_two_tenants.py\n      - backend/scripts/_seed_sandbox_coverage.py\n      - backend/scripts/_seed_graduation.py\n      - backend/app/services/sandbox_service.py\n      - backend/app/services/auth_challenge_service.py\n      - backend/app/modules/graduation/services/graduation_package9_guard.py\n      - backend/app/modules/graduation/services/graduation_archive_consistency.py\n      - backend/app/db/**\n      - backend/app/models/**\n      - backend/app/core/security.py\n      - backend/app/core/config.py\n      - backend/app/api/v1/auth.py",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/backend-pytest-nonacademic-debt-clusters.yml",
+      "name": "Backend pytest non-academic debt probes",
+      "owner": "backend-platform",
+      "purpose": "后端测试",
+      "lifecycle": "stable",
+      "triggers": "on:\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/tests/test_student_affairs_p0_p1_closeout.py'\n      - 'backend/tests/test_student_shadow_dual_read.py'\n      - 'backend/tests/test_saas_role_templates_unit.py'\n      - 'backend/tests/test_teacher_identity_p0b.py'\n      - 'backend/tests/test_academic_graduation_truth_guard.py'\n      - 'backend/tests/test_domain_export.py'\n      - 'backend/tests/test_load_smoke.py'\n      - 'backend/tests/test_security_hardening.py'\n      - 'backend/tests/test_portal_guardian.py'\n      - 'backend/tests/test_p0_new_security.py'\n      - 'backend/tests/test_p0_txn_audit_delivery.py'\n      - 'backend/tests/test_p1_tenant_context_required.py'\n      - 'backend/tests/test_student_portal_config.py'\n      - 'backend/app/**'\n      - 'backend/requirements.txt'\n      - 'scripts/check/sanitize_pytest_junit.py'\n      - 'scripts/check/summarize_pytest_junit_diagnostics.py'\n      - '.github/workflows/backend-pytest-nonacademic-debt-clusters.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/backend-pytest-rbac-scope-cluster.yml",
+      "name": "Backend pytest RBAC scope cluster",
+      "owner": "backend-platform",
+      "purpose": "后端测试",
+      "lifecycle": "stable",
+      "triggers": "on:\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/tests/test_p1_tenant_context_required.py'\n      - 'backend/tests/test_rbac09_file_data_exchange_permissions.py'\n      - 'backend/tests/test_students_scope.py'\n      - 'backend/tests/test_teacher_scope.py'\n      - 'backend/app/**'\n      - 'backend/alembic/**'\n      - 'backend/requirements.txt'\n      - 'scripts/check/sanitize_pytest_junit.py'\n      - 'scripts/check/summarize_pytest_junit_diagnostics.py'\n      - '.github/workflows/backend-pytest-rbac-scope-cluster.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/backup-restore-drill.yml",
+      "name": "Backup restore drill",
+      "owner": "site-reliability",
+      "purpose": "备份恢复",
+      "lifecycle": "stable",
+      "triggers": "on:\n  schedule:\n    - cron: '45 18 * * 0'\n  workflow_dispatch:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - \"deploy/backup/restore-drill.sh\"\n      - \"backend/alembic/versions/**\"\n      - \"backend/app/models/**\"\n      - \".github/workflows/backup-restore-drill.yml\"",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/capacity-load-gates.yml",
+      "name": "容量与可观测性闸门",
+      "owner": "site-reliability",
+      "purpose": "容量",
+      "lifecycle": "stable",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - \"performance/**\"\n      - \"scripts/check/check-capacity-load-gates.mjs\"\n      - \"backend/app/api/v1/mobile_performance.py\"\n      - \"backend/app/services/teacher_mobile_messages_v3_service.py\"\n      - \"backend/scripts/explain_mobile_v3_queries.py\"\n      - \"backend/scripts/seed_mobile_capacity_school.py\"\n      - \"backend/tests/test_mobile_capacity_harness_v3.py\"\n      - \"miniapp/src/pages/teacher/messages/**\"\n      - \"miniapp/src/services/teacherMessagesV3Api.js\"\n      - \".github/workflows/capacity-load-gates.yml\"\n  workflow_dispatch:\n    inputs:\n      target_base_url:\n        description: \"预发环境 HTTPS 根地址；禁止填写文件服务地址\"\n        required: true\n        type: string\n      profile:\n        description: \"负载档位；300以上必须先配置仓库解锁变量\"\n        required: true\n        default: smoke\n        type: choice\n        options:\n          - smoke\n          - baseline\n          - p300\n          - p500\n          - p1000\n          - p3000\n      scenario:\n        description: \"只读核心场景\"\n        required: true\n        default: mixed\n        type: choice\n        options:\n          - student\n          - teacher\n          - mixed\n      identity_mode:\n        description: \"cold=容量身份分布证据；warm=小池复用缓存诊断（不可证明容量）\"\n        required: true\n        default: cold\n        type: choice\n        options:\n          - cold\n          - warm\n      warm_identity_pool:\n        description: \"warm 模式复用的身份池大小\"\n        required: true\n        default: \"5\"\n        type: choice\n        options:\n          - \"5\"\n          - \"10\"\n          - \"20\"\n  schedule:\n    # 北京时间每天 02:30；远程任务仅在已配置目标与Secrets时运行。\n    - cron: \"30 18 * * *\"",
+      "lastConfiguredBranches": [],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "name": "CI",
+      "owner": "release-engineering",
+      "purpose": "核心 CI",
+      "lifecycle": "stable",
+      "triggers": "on:\n  push:\n    branches: [ \"main\" ]\n  pull_request:\n    branches: [ \"**\" ]\n  schedule:\n    - cron: \"0 18 * * *\"",
+      "lastConfiguredBranches": [
+        "**",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/control-plane-b2-pam-gold.yml",
+      "name": "Control Plane B2 PAM Gold",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches: [integration/control-plane-option-b-20260815]\n    paths:\n      - 'backend/app/core/platform_assurance.py'\n      - 'backend/app/modules/platform/services/platform_access_governance_*.py'\n      - 'backend/app/modules/platform/routers/platform_router.py'\n      - 'backend/app/models/customer_success.py'\n      - 'backend/app/services/customer_health_service.py'\n      - 'backend/tests/test_platform_control_plane_access.py'\n      - 'backend/tests/test_control_plane_platform_pam_gold.py'\n      - 'frontend/src/modules/platform/views/control/PlatformAccessView.vue'\n      - '.github/workflows/control-plane-b2-pam-gold.yml'\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/app/core/platform_assurance.py'\n      - 'backend/app/modules/platform/services/platform_access_governance_*.py'\n      - 'backend/app/modules/platform/routers/platform_router.py'\n      - 'backend/app/models/customer_success.py'\n      - 'backend/app/services/customer_health_service.py'\n      - 'backend/tests/test_platform_control_plane_access.py'\n      - 'backend/tests/test_control_plane_platform_pam_gold.py'\n      - 'frontend/src/modules/platform/views/control/PlatformAccessView.vue'\n      - '.github/workflows/control-plane-b2-pam-gold.yml'",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/control-plane-b8-20k-topology.yml",
+      "name": "Control Plane B8 20K IAM Topology",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches:\n      - integration/control-plane-option-b-20260815\n    paths:\n      - 'backend/app/core/permission_catalog.py'\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/models/permission_governance.py'\n      - 'backend/app/modules/system_admin/routers/system_bundle.py'\n      - 'backend/app/modules/system_admin/routers/system_i4_router.py'\n      - 'backend/app/modules/system_admin/services/school_iam_authority_projection_service.py'\n      - 'backend/app/modules/system_admin/services/school_iam_access_explain_service.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/app/services/sandbox_school_master_seed.py'\n      - 'backend/app/services/sandbox_school_role_reconcile.py'\n      - 'backend/app/services/sandbox_school_mentor_workload.py'\n      - 'backend/scripts/check_control_plane_b8_topology.py'\n      - 'backend/scripts/check_control_plane_iam_20k_query_bounds.py'\n      - 'backend/scripts/prime_sandbox_neighbor_sentinel.py'\n      - 'backend/scripts/reset_sandbox_school.py'\n      - 'backend/scripts/check_sandbox_20k_school.py'\n      - 'shared/contracts/permission-catalog.json'\n      - 'shared/contracts/navigation-surface-contract.json'\n      - '.github/workflows/control-plane-b8-20k-topology.yml'\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/app/core/permission_catalog.py'\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/models/permission_governance.py'\n      - 'backend/app/modules/system_admin/routers/system_bundle.py'\n      - 'backend/app/modules/system_admin/routers/system_i4_router.py'\n      - 'backend/app/modules/system_admin/services/school_iam_authority_projection_service.py'\n      - 'backend/app/modules/system_admin/services/school_iam_access_explain_service.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/app/services/sandbox_school_master_seed.py'\n      - 'backend/app/services/sandbox_school_role_reconcile.py'\n      - 'backend/app/services/sandbox_school_mentor_workload.py'\n      - 'backend/scripts/check_control_plane_b8_topology.py'\n      - 'backend/scripts/check_control_plane_iam_20k_query_bounds.py'\n      - 'backend/scripts/prime_sandbox_neighbor_sentinel.py'\n      - 'backend/scripts/reset_sandbox_school.py'\n      - 'backend/scripts/check_sandbox_20k_school.py'\n      - 'shared/contracts/permission-catalog.json'\n      - 'shared/contracts/navigation-surface-contract.json'\n      - '.github/workflows/control-plane-b8-20k-topology.yml'",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/control-plane-b8-shadow.yml",
+      "name": "Control Plane B8 SYSTEM Shadow",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/app/core/permission_catalog.py'\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/models/permission_governance.py'\n      - 'backend/app/modules/platform/services/platform_product_iam_service.py'\n      - 'backend/app/modules/system_admin/policies/role_template_plane.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/scripts/check_control_plane_b8_shadow.py'\n      - 'backend/tests/test_control_plane_b8_shadow.py'\n      - 'scripts/check/check-permission-catalog.py'\n      - 'shared/contracts/permission-catalog.json'\n      - 'shared/contracts/permission-catalog-b8-concrete.json'\n      - 'shared/contracts/permission-catalog-b8-compatibility.json'\n      - 'shared/contracts/control-plane/b8-system-shadow.json'\n      - '.github/workflows/control-plane-b8-shadow.yml'\n  push:\n    branches: [integration/control-plane-option-b-20260815]\n    paths:\n      - 'backend/app/core/permission_catalog.py'\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/models/permission_governance.py'\n      - 'backend/app/modules/platform/services/platform_product_iam_service.py'\n      - 'backend/app/modules/system_admin/policies/role_template_plane.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/scripts/check_control_plane_b8_shadow.py'\n      - 'backend/tests/test_control_plane_b8_shadow.py'\n      - 'scripts/check/check-permission-catalog.py'\n      - 'shared/contracts/permission-catalog.json'\n      - 'shared/contracts/permission-catalog-b8-concrete.json'\n      - 'shared/contracts/permission-catalog-b8-compatibility.json'\n      - 'shared/contracts/control-plane/b8-system-shadow.json'\n      - '.github/workflows/control-plane-b8-shadow.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/control-plane-critical-mutation-matrix.yml",
+      "name": "Control Plane Critical Mutation Matrix",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches: [integration/control-plane-option-b-20260815]\n    paths:\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/modules/platform/services/platform_access_governance_*.py'\n      - 'backend/app/services/audit_log*.py'\n      - 'backend/app/services/db_service.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/app/services/tenant_effective_state_service.py'\n      - 'backend/app/modules/system_admin/routers/system_router.py'\n      - 'backend/app/api/v1/system.py'\n      - 'backend/tests/test_control_plane_critical_mutation_matrix.py'\n      - 'backend/tests/test_control_plane_system_role_authority_runtime.py'\n      - 'backend/tests/test_critical_audit_atomicity.py'\n      - 'backend/tests/file_scan_mysql_acceptance.py'\n      - '.github/workflows/control-plane-i4-identity-production-gold.yml'\n      - '.github/workflows/control-plane-critical-mutation-matrix.yml'\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/modules/platform/services/platform_access_governance_*.py'\n      - 'backend/app/services/audit_log*.py'\n      - 'backend/app/services/db_service.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/app/services/tenant_effective_state_service.py'\n      - 'backend/app/modules/system_admin/routers/system_router.py'\n      - 'backend/app/api/v1/system.py'\n      - 'backend/tests/test_control_plane_critical_mutation_matrix.py'\n      - 'backend/tests/test_control_plane_system_role_authority_runtime.py'\n      - 'backend/tests/test_critical_audit_atomicity.py'\n      - 'backend/tests/file_scan_mysql_acceptance.py'\n      - '.github/workflows/control-plane-i4-identity-production-gold.yml'\n      - '.github/workflows/control-plane-critical-mutation-matrix.yml'",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/control-plane-e-iam-joint-gold.yml",
+      "name": "Control Plane E x IAM Joint Gold",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches: [integration/control-plane-option-b-20260815]\n    paths:\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/services/module_access_service.py'\n      - 'backend/app/services/scope_policy_service.py'\n      - 'backend/tests/e_iam_joint_gold.py'\n      - 'backend/tests/test_scope_policy_inheritance.py'\n      - 'shared/contracts/permission-catalog*.json'\n      - 'scripts/check/check-permission-catalog.py'\n      - '.github/workflows/control-plane-e-iam-joint-gold.yml'\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/services/module_access_service.py'\n      - 'backend/app/services/scope_policy_service.py'\n      - 'backend/tests/e_iam_joint_gold.py'\n      - 'backend/tests/test_scope_policy_inheritance.py'\n      - 'shared/contracts/permission-catalog*.json'\n      - 'scripts/check/check-permission-catalog.py'\n      - '.github/workflows/control-plane-e-iam-joint-gold.yml'",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/control-plane-i4-20k.yml",
+      "name": "Control Plane I4 20K Identity Gold Probe",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/app/models/data_exchange.py'\n      - 'backend/app/services/identity_import_staging_service.py'\n      - 'backend/app/services/identity_import_service.py'\n      - 'backend/app/services/data_exchange_job_service.py'\n      - 'backend/app/services/school_onboarding_service.py'\n      - 'backend/app/services/saas_role_service.py'\n      - 'backend/app/core/security_legacy.py'\n      - 'backend/scripts/check_control_plane_i4_20k_identity.py'\n      - 'shared/contracts/control-plane/i4-20k-preflight.json'\n      - 'backend/tests/test_control_plane_i4_preflight.py'\n      - '.github/workflows/control-plane-i4-20k.yml'\n  push:\n    branches:\n      - integration/control-plane-option-b-20260815\n    paths:\n      - 'backend/app/models/data_exchange.py'\n      - 'backend/app/services/identity_import_staging_service.py'\n      - 'backend/app/services/identity_import_service.py'\n      - 'backend/app/services/data_exchange_job_service.py'\n      - 'backend/app/services/school_onboarding_service.py'\n      - 'backend/app/services/saas_role_service.py'\n      - 'backend/app/core/security_legacy.py'\n      - 'backend/scripts/check_control_plane_i4_20k_identity.py'\n      - 'shared/contracts/control-plane/i4-20k-preflight.json'\n      - 'backend/tests/test_control_plane_i4_preflight.py'\n      - '.github/workflows/control-plane-i4-20k.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/control-plane-i4-identity-production-gold.yml",
+      "name": "Control Plane I4 Identity Production Gold",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches: [integration/control-plane-option-b-20260815]\n    paths:\n      - 'backend/app/modules/system_admin/routers/data_exchange_router.py'\n      - 'backend/app/modules/system_admin/services/identity_import_control_plane_service.py'\n      - 'backend/app/services/identity_import_file_service.py'\n      - 'backend/app/services/school_onboarding_service.py'\n      - 'backend/app/services/identity_import_scan_orchestrator.py'\n      - 'backend/app/services/identity_import_staging_service.py'\n      - 'backend/app/services/file_scan_*.py'\n      - 'backend/app/services/clamav_client.py'\n      - 'backend/app/workers/file_scan_worker.py'\n      - 'backend/app/workers/identity_import_worker.py'\n      - 'backend/tests/test_file_identity_import_scan.py'\n      - 'backend/tests/test_control_plane_i4_dual_template_staging.py'\n      - 'backend/tests/test_identity_import_major_scope.py'\n      - 'backend/tests/file_scan_mysql_acceptance.py'\n      - 'backend/scripts/check_control_plane_i4_20k_identity.py'\n      - '.github/workflows/control-plane-i4-identity-production-gold.yml'\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/app/modules/system_admin/routers/data_exchange_router.py'\n      - 'backend/app/modules/system_admin/services/identity_import_control_plane_service.py'\n      - 'backend/app/services/identity_import_file_service.py'\n      - 'backend/app/services/school_onboarding_service.py'\n      - 'backend/app/services/identity_import_scan_orchestrator.py'\n      - 'backend/app/services/identity_import_staging_service.py'\n      - 'backend/app/services/file_scan_*.py'\n      - 'backend/app/services/clamav_client.py'\n      - 'backend/app/workers/file_scan_worker.py'\n      - 'backend/app/workers/identity_import_worker.py'\n      - 'backend/tests/test_file_identity_import_scan.py'\n      - 'backend/tests/test_control_plane_i4_dual_template_staging.py'\n      - 'backend/tests/test_identity_import_major_scope.py'\n      - 'backend/tests/file_scan_mysql_acceptance.py'\n      - 'backend/scripts/check_control_plane_i4_20k_identity.py'\n      - '.github/workflows/control-plane-i4-identity-production-gold.yml'",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/control-plane-p0-execution-closure.yml",
+      "name": "Control Plane P0 Execution Closure",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches: [\"main\"]\n    paths:\n      - \"backend/app/api/v1/control_plane_auth.py\"\n      - \"backend/app/api/v1/control_plane_offboarding.py\"\n      - \"backend/app/api/v1/router.py\"\n      - \"backend/app/db/base.py\"\n      - \"backend/app/models/auth_risk.py\"\n      - \"backend/app/models/recovery_run.py\"\n      - \"backend/app/models/tenant_offboarding.py\"\n      - \"backend/app/models/employment_recommendation.py\"\n      - \"backend/app/services/auth_risk_service.py\"\n      - \"backend/app/services/control_plane_auth_service.py\"\n      - \"backend/app/services/control_plane_p0_auth_guard.py\"\n      - \"backend/app/services/control_plane_p0_dr_guard.py\"\n      - \"backend/app/services/control_plane_p0_offboarding_guard.py\"\n      - \"backend/app/services/control_plane_p0_runtime.py\"\n      - \"backend/app/services/effective_security_policy_service.py\"\n      - \"backend/app/services/machine_recovery_evidence_service.py\"\n      - \"backend/app/services/platform_mfa_service.py\"\n      - \"backend/app/services/tenant_offboarding_service.py\"\n      - \"backend/app/services/tenant_purge_registry.py\"\n      - \"backend/app/services/tenant_purge_service.py\"\n      - \"backend/scripts/record_recovery_evidence.py\"\n      - \"backend/alembic/versions/20260820_control_plane_*.py\"\n      - \"backend/alembic/versions/20260820_teacher_emp_recommendation.py\"\n      - \"backend/alembic/versions/20260821_merge_ctrl_teacher_heads.py\"\n      - \"backend/tests/test_control_plane_p0_execution_closure.py\"\n      - \"backend/tests/test_control_plane_p0_review_hardening.py\"\n      - \"backend/tests/test_restore_verification_workflow.py\"\n      - \"deploy/backup/machine-*.sh\"\n      - \"deploy/systemd/school-lifecycle-backup.service\"\n      - \"frontend/src/modules/platform/views/control/PlatformDisasterRecoveryView.vue\"\n      - \".github/workflows/control-plane-p0-execution-closure.yml\"\n  push:\n    branches: [\"main\"]\n    paths:\n      - \"backend/app/api/v1/control_plane_auth.py\"\n      - \"backend/app/api/v1/control_plane_offboarding.py\"\n      - \"backend/app/api/v1/router.py\"\n      - \"backend/app/db/base.py\"\n      - \"backend/app/models/auth_risk.py\"\n      - \"backend/app/models/recovery_run.py\"\n      - \"backend/app/models/tenant_offboarding.py\"\n      - \"backend/app/models/employment_recommendation.py\"\n      - \"backend/app/services/auth_risk_service.py\"\n      - \"backend/app/services/control_plane_auth_service.py\"\n      - \"backend/app/services/control_plane_p0_auth_guard.py\"\n      - \"backend/app/services/control_plane_p0_dr_guard.py\"\n      - \"backend/app/services/control_plane_p0_offboarding_guard.py\"\n      - \"backend/app/services/control_plane_p0_runtime.py\"\n      - \"backend/app/services/effective_security_policy_service.py\"\n      - \"backend/app/services/machine_recovery_evidence_service.py\"\n      - \"backend/app/services/platform_mfa_service.py\"\n      - \"backend/app/services/tenant_offboarding_service.py\"\n      - \"backend/app/services/tenant_purge_registry.py\"\n      - \"backend/app/services/tenant_purge_service.py\"\n      - \"backend/scripts/record_recovery_evidence.py\"\n      - \"backend/alembic/versions/20260820_control_plane_*.py\"\n      - \"backend/alembic/versions/20260820_teacher_emp_recommendation.py\"\n      - \"backend/alembic/versions/20260821_merge_ctrl_teacher_heads.py\"\n      - \"backend/tests/test_control_plane_p0_execution_closure.py\"\n      - \"backend/tests/test_control_plane_p0_review_hardening.py\"\n      - \"backend/tests/test_restore_verification_workflow.py\"\n      - \"deploy/backup/machine-*.sh\"\n      - \"deploy/systemd/school-lifecycle-backup.service\"\n      - \"frontend/src/modules/platform/views/control/PlatformDisasterRecoveryView.vue\"\n      - \".github/workflows/control-plane-p0-execution-closure.yml\"\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/control-plane-school-admin-post-cutover-compatibility.yml",
+      "name": "Control Plane SCHOOL_ADMIN Post-Cutover Compatibility",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches: [integration/control-plane-option-b-20260815]\n    paths:\n      - 'backend/conftest.py'\n      - 'backend/app/core/permission_catalog.py'\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/core/school_admin_permission_resolver.py'\n      - 'backend/app/services/school_iam_authority_service.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/tests/test_import_export_p0_authz.py'\n      - 'backend/tests/test_aa_p0_authz.py'\n      - 'backend/tests/test_aa_archive.py'\n      - 'backend/tests/test_control_plane_b8_shadow.py'\n      - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'\n      - 'scripts/check/check-permission-catalog.py'\n      - 'shared/contracts/permission-catalog.json'\n      - 'shared/contracts/permission-catalog-b8-concrete.json'\n      - 'shared/contracts/permission-catalog-b8-compatibility.json'\n      - '.github/workflows/control-plane-school-admin-post-cutover-compatibility.yml'\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/conftest.py'\n      - 'backend/app/core/permission_catalog.py'\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/core/school_admin_permission_resolver.py'\n      - 'backend/app/services/school_iam_authority_service.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/tests/test_import_export_p0_authz.py'\n      - 'backend/tests/test_aa_p0_authz.py'\n      - 'backend/tests/test_aa_archive.py'\n      - 'backend/tests/test_control_plane_b8_shadow.py'\n      - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'\n      - 'scripts/check/check-permission-catalog.py'\n      - 'shared/contracts/permission-catalog.json'\n      - 'shared/contracts/permission-catalog-b8-concrete.json'\n      - 'shared/contracts/permission-catalog-b8-compatibility.json'\n      - '.github/workflows/control-plane-school-admin-post-cutover-compatibility.yml'",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/control-plane-school-admin-retirement-preflight.yml",
+      "name": "Control Plane SCHOOL_ADMIN Retirement Preflight",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches:\n      - integration/control-plane-option-b-20260815\n    paths:\n      - 'backend/app/core/school_admin_permission_resolver.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/scripts/check_control_plane_school_admin_retirement_preflight.py'\n      - 'backend/tests/test_control_plane_school_admin_retirement_preflight.py'\n      - 'shared/contracts/control-plane/school-admin-wildcard-retirement.json'\n      - 'shared/contracts/permission-catalog.json'\n      - 'shared/contracts/permission-catalog-b8-concrete.json'\n      - '.github/workflows/control-plane-school-admin-retirement-preflight.yml'\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/app/core/school_admin_permission_resolver.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/scripts/check_control_plane_school_admin_retirement_preflight.py'\n      - 'backend/tests/test_control_plane_school_admin_retirement_preflight.py'\n      - 'shared/contracts/control-plane/school-admin-wildcard-retirement.json'\n      - 'shared/contracts/permission-catalog.json'\n      - 'shared/contracts/permission-catalog-b8-concrete.json'\n      - '.github/workflows/control-plane-school-admin-retirement-preflight.yml'",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/control-plane-school-admin-runtime-cutover.yml",
+      "name": "Control Plane SCHOOL_ADMIN Runtime Cutover",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches:\n      - integration/control-plane-option-b-20260815\n    paths:\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/core/school_admin_permission_resolver.py'\n      - 'backend/app/services/school_iam_authority_service.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/app/services/role_assignment_service.py'\n      - 'backend/scripts/bootstrap_control_plane_school_iam_authority.py'\n      - 'backend/scripts/check_control_plane_school_admin_runtime_cutover.py'\n      - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'\n      - 'backend/tests/test_role_assignment_privilege_boundary.py'\n      - 'shared/contracts/control-plane/school-admin-wildcard-retirement.json'\n      - 'shared/contracts/permission-catalog.json'\n      - 'shared/contracts/permission-catalog-b8-concrete.json'\n      - '.github/workflows/control-plane-school-admin-runtime-cutover.yml'\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/core/school_admin_permission_resolver.py'\n      - 'backend/app/services/school_iam_authority_service.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/app/services/role_assignment_service.py'\n      - 'backend/scripts/bootstrap_control_plane_school_iam_authority.py'\n      - 'backend/scripts/check_control_plane_school_admin_runtime_cutover.py'\n      - 'backend/tests/test_control_plane_school_admin_runtime_cutover.py'\n      - 'backend/tests/test_role_assignment_privilege_boundary.py'\n      - 'shared/contracts/control-plane/school-admin-wildcard-retirement.json'\n      - 'shared/contracts/permission-catalog.json'\n      - 'shared/contracts/permission-catalog-b8-concrete.json'\n      - '.github/workflows/control-plane-school-admin-runtime-cutover.yml'",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/control-plane-school-iam-b7-authority.yml",
+      "name": "Control Plane B7 School IAM Authority",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches: [integration/control-plane-option-b-20260815]\n    paths:\n      - 'backend/app/modules/system_admin/services/school_iam_workspace_service.py'\n      - 'backend/app/modules/system_admin/services/school_iam_authority_projection_service.py'\n      - 'backend/app/models/permission_governance.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/tests/test_control_plane_school_iam_workspace.py'\n      - '.github/workflows/control-plane-school-iam-b7-authority.yml'\n  pull_request:\n    branches: [main]\n    paths:\n      - 'backend/app/modules/system_admin/services/school_iam_workspace_service.py'\n      - 'backend/app/modules/system_admin/services/school_iam_authority_projection_service.py'\n      - 'backend/app/models/permission_governance.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/tests/test_control_plane_school_iam_workspace.py'\n      - '.github/workflows/control-plane-school-iam-b7-authority.yml'",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/control-plane-school-iam-e2e.yml",
+      "name": "Control Plane School IAM E2E",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches:\n      - integration/control-plane-option-b-20260815\n    paths:\n      - 'backend/app/core/effective_access.py'\n      - 'backend/app/core/permission_catalog.py'\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/modules/system_admin/**'\n      - 'backend/app/services/permission_bundle_service.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/scripts/e2e_seed_control_plane_school_iam.py'\n      - 'backend/scripts/e2e_seed_control_plane_role_projection.py'\n      - 'frontend/src/modules/system/**'\n      - 'frontend/src/config/adminMenu.js'\n      - 'frontend/src/layouts/BasePortalLayout.vue'\n      - 'frontend/src/security/permissionGate.js'\n      - 'frontend/tests/admin-menu-custom-role-projection.test.mjs'\n      - 'frontend/tests/approval-route-permission-gate.test.mjs'\n      - 'frontend/tests/control-plane-v2-platform-access-contract.test.mjs'\n      - 'e2e/specs/system-role-security-change.spec.mjs'\n      - 'e2e/specs/system-effective-access.spec.mjs'\n      - 'e2e/specs/control-plane-role-menu-projection.spec.mjs'\n      - 'shared/contracts/navigation-surface-contract.json'\n      - 'shared/contracts/permission-catalog.json'\n      - '.github/workflows/control-plane-school-iam-e2e.yml'\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/app/core/effective_access.py'\n      - 'backend/app/core/permission_catalog.py'\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/modules/system_admin/**'\n      - 'backend/app/services/permission_bundle_service.py'\n      - 'backend/app/services/system_role_shadow_service.py'\n      - 'backend/scripts/e2e_seed_control_plane_school_iam.py'\n      - 'backend/scripts/e2e_seed_control_plane_role_projection.py'\n      - 'frontend/src/modules/system/**'\n      - 'frontend/src/config/adminMenu.js'\n      - 'frontend/src/layouts/BasePortalLayout.vue'\n      - 'frontend/src/security/permissionGate.js'\n      - 'frontend/tests/admin-menu-custom-role-projection.test.mjs'\n      - 'frontend/tests/approval-route-permission-gate.test.mjs'\n      - 'frontend/tests/control-plane-v2-platform-access-contract.test.mjs'\n      - 'e2e/specs/system-role-security-change.spec.mjs'\n      - 'e2e/specs/system-effective-access.spec.mjs'\n      - 'e2e/specs/control-plane-role-menu-projection.spec.mjs'\n      - 'shared/contracts/navigation-surface-contract.json'\n      - 'shared/contracts/permission-catalog.json'\n      - '.github/workflows/control-plane-school-iam-e2e.yml'",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/control-plane-targeted.yml",
+      "name": "Control Plane Targeted",
+      "owner": "control-plane",
+      "purpose": "控制面",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - integration/control-plane-option-b-20260815\n    paths:\n      - 'backend/app/api/v1/system.py'\n      - 'backend/app/api/v1/platform.py'\n      - 'backend/app/api/v1/route_registration.py'\n      - 'backend/app/modules/system_admin/**'\n      - 'backend/app/modules/platform/**'\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/core/permission_catalog.py'\n      - 'backend/app/core/effective_access.py'\n      - 'backend/app/models/rbac.py'\n      - 'backend/app/models/permission_governance.py'\n      - 'backend/app/models/data_exchange.py'\n      - 'backend/app/services/security_change_service.py'\n      - 'backend/app/services/permission_bundle_service.py'\n      - 'backend/app/services/identity_import_service.py'\n      - 'backend/app/services/identity_import_scan_orchestrator.py'\n      - 'backend/app/services/identity_import_staging_service.py'\n      - 'backend/app/services/data_exchange_confirm_service.py'\n      - 'backend/app/services/data_exchange_cleanup_service.py'\n      - 'backend/alembic/versions/20260815_control_plane_*.py'\n      - 'frontend/src/modules/system/**'\n      - 'frontend/src/modules/platform/**'\n      - 'shared/contracts/**'\n      - 'scripts/check/check-control-plane-*.py'\n      - 'scripts/check/check-permission-catalog.py'\n      - 'backend/tests/test_control_plane_*'\n      - 'backend/tests/test_permission_catalog_contract.py'\n      - '.github/workflows/control-plane-targeted.yml'\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/app/api/v1/system.py'\n      - 'backend/app/api/v1/platform.py'\n      - 'backend/app/api/v1/route_registration.py'\n      - 'backend/app/modules/system_admin/**'\n      - 'backend/app/modules/platform/**'\n      - 'backend/app/core/permissions.py'\n      - 'backend/app/core/permission_catalog.py'\n      - 'backend/app/core/effective_access.py'\n      - 'backend/app/models/rbac.py'\n      - 'backend/app/models/permission_governance.py'\n      - 'backend/app/models/data_exchange.py'\n      - 'backend/app/services/security_change_service.py'\n      - 'backend/app/services/permission_bundle_service.py'\n      - 'backend/app/services/identity_import_service.py'\n      - 'backend/app/services/identity_import_scan_orchestrator.py'\n      - 'backend/app/services/identity_import_staging_service.py'\n      - 'backend/app/services/data_exchange_confirm_service.py'\n      - 'backend/app/services/data_exchange_cleanup_service.py'\n      - 'backend/alembic/versions/20260815_control_plane_*.py'\n      - 'frontend/src/modules/system/**'\n      - 'frontend/src/modules/platform/**'\n      - 'shared/contracts/**'\n      - 'scripts/check/check-control-plane-*.py'\n      - 'scripts/check/check-permission-catalog.py'\n      - 'backend/tests/test_control_plane_*'\n      - 'backend/tests/test_permission_catalog_contract.py'\n      - '.github/workflows/control-plane-targeted.yml'",
+      "lastConfiguredBranches": [
+        "integration/control-plane-option-b-20260815",
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/data-exchange-job-center.yml",
+      "name": "Data exchange job center",
+      "owner": "platform-foundation",
+      "purpose": "数据治理",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - 'backend/app/core/rbac09_permission_bundles.py'\n      - 'backend/app/models/data_exchange.py'\n      - 'backend/app/services/data_exchange_job_service.py'\n      - 'backend/app/services/data_exchange_confirm_service.py'\n      - 'backend/app/services/data_exchange_cleanup_service.py'\n      - 'backend/app/services/identity_import_service.py'\n      - 'backend/app/services/identity_import_scan_orchestrator.py'\n      - 'backend/app/services/identity_import_staging_service.py'\n      - 'backend/app/services/file_access_service.py'\n      - 'backend/app/api/v1/data_exchange.py'\n      - 'backend/app/modules/system_admin/routers/data_exchange_*.py'\n      - 'backend/app/modules/system_admin/routers/identity_import_compat_router.py'\n      - 'backend/app/modules/system_admin/services/identity_import_control_plane_service.py'\n      - 'backend/app/modules/system_admin/services/identity_import_idempotency_service.py'\n      - 'backend/app/api/v1/file_governance.py'\n      - 'backend/app/api/v1/migration.py'\n      - 'backend/alembic/versions/0147_data_exchange_job_center.py'\n      - 'backend/alembic/versions/20260815_control_plane_identity_staging.py'\n      - 'backend/tests/test_data_exchange_job_center.py'\n      - 'backend/tests/test_rbac09_file_data_exchange_permissions.py'\n      - 'backend/tests/test_control_plane_identity_import_contract.py'\n      - 'backend/tests/test_control_plane_identity_import_idempotency.py'\n      - 'backend/tests/test_control_plane_identity_import_staging.py'\n      - 'frontend/src/modules/system/**'\n      - '.github/workflows/data-exchange-job-center.yml'\n  push:\n    branches:\n      - audit/file-capability-inventory\n      - integration/control-plane-option-b-20260815\n    paths:\n      - 'backend/app/core/rbac09_permission_bundles.py'\n      - 'backend/app/models/data_exchange.py'\n      - 'backend/app/services/data_exchange_job_service.py'\n      - 'backend/app/services/data_exchange_confirm_service.py'\n      - 'backend/app/services/data_exchange_cleanup_service.py'\n      - 'backend/app/services/identity_import_service.py'\n      - 'backend/app/services/identity_import_scan_orchestrator.py'\n      - 'backend/app/services/identity_import_staging_service.py'\n      - 'backend/app/services/file_access_service.py'\n      - 'backend/app/api/v1/data_exchange.py'\n      - 'backend/app/modules/system_admin/routers/data_exchange_*.py'\n      - 'backend/app/modules/system_admin/routers/identity_import_compat_router.py'\n      - 'backend/app/modules/system_admin/services/identity_import_control_plane_service.py'\n      - 'backend/app/modules/system_admin/services/identity_import_idempotency_service.py'\n      - 'backend/app/api/v1/file_governance.py'\n      - 'backend/app/api/v1/migration.py'\n      - 'backend/alembic/versions/0147_data_exchange_job_center.py'\n      - 'backend/alembic/versions/20260815_control_plane_identity_staging.py'\n      - 'backend/tests/test_data_exchange_job_center.py'\n      - 'backend/tests/test_rbac09_file_data_exchange_permissions.py'\n      - 'backend/tests/test_control_plane_identity_import_contract.py'\n      - 'backend/tests/test_control_plane_identity_import_idempotency.py'\n      - 'backend/tests/test_control_plane_identity_import_staging.py'\n      - 'frontend/src/modules/system/**'\n      - '.github/workflows/data-exchange-job-center.yml'",
+      "lastConfiguredBranches": [
+        "audit/file-capability-inventory",
+        "integration/control-plane-option-b-20260815"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/data-governance-contracts.yml",
+      "name": "Data governance contracts",
+      "owner": "platform-foundation",
+      "purpose": "数据治理",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches: [main]\n    paths:\n      - 'deploy/backup/**'\n      - 'deploy/env/backup.env.example'\n      - 'deploy/systemd/school-lifecycle-backup*'\n      - 'deploy/README-data-governance.md'\n      - 'docs/07-部署运维交付与商业化/deploy/生产上线runbook.md'\n      - 'docs/07-部署运维交付与商业化/deploy/学校试点部署Runbook.md'\n      - 'docs/07-部署运维交付与商业化/deploy/10-2U4G非容器部署准备与执行手册.md'\n      - 'docs/07-部署运维交付与商业化/ops/备份恢复演练手册.md'\n      - 'docs/07-部署运维交付与商业化/ops/10校SaaS上线性能与容灾基线.md'\n      - '.github/dependabot.yml'\n      - '.github/workflows/data-governance-contracts.yml'\n      - '.github/workflows/backup-restore-drill.yml'\n      - 'scripts/check/data-governance-contracts.py'\n      - '.gitignore'\n      - '**/*.env'\n      - '**/rclone.conf'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/file-capability-inventory.yml",
+      "name": "File capability inventory",
+      "owner": "platform-foundation",
+      "purpose": "文件底座",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - \"backend/app/**\"\n      - \"frontend/src/**\"\n      - \"student-portal/src/**\"\n      - \"miniapp/src/**\"\n      - \"docs/architecture/file-center-*.md\"\n      - \"docs/architecture/file-capability-inventory.yaml\"\n      - \"docs/architecture/file-capability-inventory.d/**\"\n      - \"scripts/audit_file_capabilities.py\"\n      - \"scripts/check_new_file_capabilities.py\"\n      - \".github/workflows/file-capability-inventory.yml\"\n  push:\n    branches:\n      - main\n      - audit/file-capability-inventory\n    paths:\n      - \"backend/app/**\"\n      - \"frontend/src/**\"\n      - \"student-portal/src/**\"\n      - \"miniapp/src/**\"\n      - \"docs/architecture/file-center-*.md\"\n      - \"docs/architecture/file-capability-inventory.yaml\"\n      - \"docs/architecture/file-capability-inventory.d/**\"\n      - \"scripts/audit_file_capabilities.py\"\n      - \"scripts/check_new_file_capabilities.py\"\n      - \".github/workflows/file-capability-inventory.yml\"",
+      "lastConfiguredBranches": [
+        "audit/file-capability-inventory",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/file-center-access-clients.yml",
+      "name": "File center access and clients",
+      "owner": "platform-foundation",
+      "purpose": "文件底座",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - \"backend/app/api/v1/file.py\"\n      - \"backend/app/api/v1/files.py\"\n      - \"backend/app/api/v1/file_contract.py\"\n      - \"backend/app/api/v1/mobile_graduation_material_center.py\"\n      - \"backend/app/models/file.py\"\n      - \"backend/app/modules/graduation/services/graduation_peer_consistency.py\"\n      - \"backend/app/services/affairs_archive_file_guard.py\"\n      - \"backend/app/services/affairs_archive_service.py\"\n      - \"backend/app/services/file_access_service.py\"\n      - \"backend/app/services/file_access_resolvers.py\"\n      - \"backend/app/services/file_service.py\"\n      - \"backend/app/services/file_version_service.py\"\n      - \"backend/alembic/versions/0146_file_center_access_and_clients.py\"\n      - \"backend/tests/test_file_access_service.py\"\n      - \"backend/tests/test_graduation_peer_preview_contract.py\"\n      - \"backend/tests/file_access_mysql_acceptance.py\"\n      - \"frontend/src/services/file/**\"\n      - \"frontend/src/components/file/**\"\n      - \"frontend/tests/document-preview-w6-docx-contract.test.mjs\"\n      - \"student-portal/src/services/fileSdk.js\"\n      - \"student-portal/src/services/request.js\"\n      - \"student-portal/src/components/file/**\"\n      - \"student-portal/src/views/graduation/GraduationMaterialsView.vue\"\n      - \"student-portal/src/views/graduation/GraduationWorkbenchView.vue\"\n      - \"student-portal/tests/document-preview-contract.test.mjs\"\n      - \"miniapp/src/services/fileApi.js\"\n      - \"miniapp/src/services/fileSdk.js\"\n      - \"miniapp/src/components/file/**\"\n      - \"miniapp/src/pages/student/graduation/index.vue\"\n      - \"miniapp/src/pages/teacher/graduation-guide/index.vue\"\n      - \"miniapp/tests/document-preview-w4-contract.test.mjs\"\n      - \"docs/architecture/document-preview-contract.md\"\n      - \"docs/architecture/file-capability-inventory.d/10-document-preview-platform.yaml\"\n      - \"scripts/check/check-file-client-contract.mjs\"\n      - \"scripts/check/check-document-preview-contract.mjs\"\n      - \".github/workflows/file-center-access-clients.yml\"",
+      "lastConfiguredBranches": [],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/file-center-cos-production.yml",
+      "name": "File center COS production",
+      "owner": "platform-foundation",
+      "purpose": "文件底座",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - 'backend/alembic/versions/0152_file_center_cos_production.py'\n      - 'backend/app/api/v1/file.py'\n      - 'backend/app/api/v1/file_contract.py'\n      - 'backend/app/models/file.py'\n      - 'backend/app/services/storage/**'\n      - 'backend/app/commands/migrate_files_to_cos.py'\n      - 'backend/app/workers/file_scan_worker.py'\n      - 'backend/requirements.txt'\n      - 'backend/tests/test_file_center_cos_production.py'\n      - 'frontend/src/services/file/fileSdk.js'\n      - 'frontend/src/services/file/cosBrowserSdk.js'\n      - 'docs/architecture/file-capability-inventory.d/08-cos-production.yaml'\n      - '.github/workflows/file-center-cos-production.yml'\n  push:\n    branches: [audit/file-capability-inventory]\n    paths:\n      - 'backend/alembic/versions/0152_file_center_cos_production.py'\n      - 'backend/app/api/v1/file.py'\n      - 'backend/app/api/v1/file_contract.py'\n      - 'backend/app/models/file.py'\n      - 'backend/app/services/storage/**'\n      - 'backend/app/commands/migrate_files_to_cos.py'\n      - 'backend/app/workers/file_scan_worker.py'\n      - 'backend/requirements.txt'\n      - 'backend/tests/test_file_center_cos_production.py'\n      - 'frontend/src/services/file/fileSdk.js'\n      - 'frontend/src/services/file/cosBrowserSdk.js'\n      - 'docs/architecture/file-capability-inventory.d/08-cos-production.yaml'\n      - '.github/workflows/file-center-cos-production.yml'",
+      "lastConfiguredBranches": [
+        "audit/file-capability-inventory"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/file-center-final-acceptance.yml",
+      "name": "File center final acceptance",
+      "owner": "platform-foundation",
+      "purpose": "文件底座",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - 'backend/app/api/v1/file*.py'\n      - 'backend/app/models/file.py'\n      - 'backend/app/services/file**'\n      - 'backend/app/services/storage/**'\n      - 'backend/app/services/xlsx_util.py'\n      - 'backend/app/modules/system_admin/routers/system_bundle.py'\n      - 'backend/app/workers/file_*worker.py'\n      - 'backend/app/modules/**/material*'\n      - 'backend/app/modules/academic_affairs/**'\n      - 'backend/alembic/versions/015*.py'\n      - 'backend/tests/test_file*.py'\n      - 'backend/tests/test_*material*.py'\n      - 'backend/tests/test_academic*.py'\n      - 'frontend/src/services/file/**'\n      - 'frontend/src/modules/system/**'\n      - 'frontend/src/modules/academicAffairs/**'\n      - 'student-portal/src/**'\n      - 'miniapp/src/**'\n      - 'scripts/audit_file_center_calls.py'\n      - 'scripts/audit_file_capabilities.py'\n      - 'scripts/check_new_file_capabilities.py'\n      - 'docs/architecture/file-center-stage10-closure.md'\n      - 'docs/architecture/file-capability-inventory*'\n      - '.github/workflows/file-center-final-acceptance.yml'\n  push:\n    branches: [audit/file-capability-inventory]",
+      "lastConfiguredBranches": [
+        "audit/file-capability-inventory"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/file-center-final-merge-closeout-v3.yml",
+      "name": "PR25 final authoritative merge closeout",
+      "owner": "platform-foundation",
+      "purpose": "文件底座",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches: [audit/file-capability-inventory]\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "audit/file-capability-inventory"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/file-center-security-foundation.yml",
+      "name": "File center security foundation",
+      "owner": "platform-foundation",
+      "purpose": "文件底座",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - \"backend/app/api/v1/file.py\"\n      - \"backend/app/api/v1/files.py\"\n      - \"backend/app/models/file.py\"\n      - \"backend/app/services/clamav_client.py\"\n      - \"backend/app/services/file_content_security.py\"\n      - \"backend/app/services/file_scan_*.py\"\n      - \"backend/app/services/file_service.py\"\n      - \"backend/app/workers/file_scan_worker.py\"\n      - \"backend/alembic/versions/*file*security*foundation*.py\"\n      - \"backend/tests/test_file_scan_*.py\"\n      - \"backend/tests/file_scan_mysql_acceptance.py\"\n      - \".github/workflows/file-center-security-foundation.yml\"\n  push:\n    branches:\n      - audit/file-capability-inventory\n    paths:\n      - \"backend/app/api/v1/file.py\"\n      - \"backend/app/api/v1/files.py\"\n      - \"backend/app/models/file.py\"\n      - \"backend/app/services/clamav_client.py\"\n      - \"backend/app/services/file_content_security.py\"\n      - \"backend/app/services/file_scan_*.py\"\n      - \"backend/app/services/file_service.py\"\n      - \"backend/app/workers/file_scan_worker.py\"\n      - \"backend/alembic/versions/*file*security*foundation*.py\"\n      - \"backend/tests/test_file_scan_*.py\"\n      - \"backend/tests/file_scan_mysql_acceptance.py\"\n      - \".github/workflows/file-center-security-foundation.yml\"",
+      "lastConfiguredBranches": [
+        "audit/file-capability-inventory"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/file-storage-governance.yml",
+      "name": "File storage governance",
+      "owner": "platform-foundation",
+      "purpose": "文件底座",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - 'backend/alembic/versions/0153_file_storage_governance.py'\n      - 'backend/app/api/v1/file.py'\n      - 'backend/app/api/v1/file_governance.py'\n      - 'backend/app/api/v1/files.py'\n      - 'backend/app/models/file.py'\n      - 'backend/app/services/file_storage_governance_service.py'\n      - 'backend/app/services/file_storage_cleanup_service.py'\n      - 'backend/app/services/file_storage_quota_reservation_service.py'\n      - 'backend/app/services/file_upload_session_cleanup_service.py'\n      - 'backend/app/services/storage/__init__.py'\n      - 'backend/app/services/storage/governed.py'\n      - 'backend/app/workers/file_governance_worker.py'\n      - 'backend/tests/test_file_storage_governance.py'\n      - 'frontend/src/modules/system/api/fileStorageGovernance.api.js'\n      - 'frontend/src/modules/system/views/SystemFileStorageGovernanceView.vue'\n      - 'frontend/src/modules/system/system.routes.js'\n      - 'frontend/src/modules/system/systemManagementCatalog.js'\n      - 'docs/architecture/file-capability-inventory.d/09-storage-governance.yaml'\n      - '.github/workflows/file-storage-governance.yml'\n  push:\n    branches: [audit/file-capability-inventory]\n    paths:\n      - 'backend/alembic/versions/0153_file_storage_governance.py'\n      - 'backend/app/api/v1/file.py'\n      - 'backend/app/api/v1/file_governance.py'\n      - 'backend/app/api/v1/files.py'\n      - 'backend/app/models/file.py'\n      - 'backend/app/services/file_storage_governance_service.py'\n      - 'backend/app/services/file_storage_cleanup_service.py'\n      - 'backend/app/services/file_storage_quota_reservation_service.py'\n      - 'backend/app/services/file_upload_session_cleanup_service.py'\n      - 'backend/app/services/storage/__init__.py'\n      - 'backend/app/services/storage/governed.py'\n      - 'backend/app/workers/file_governance_worker.py'\n      - 'backend/tests/test_file_storage_governance.py'\n      - 'frontend/src/modules/system/api/fileStorageGovernance.api.js'\n      - 'frontend/src/modules/system/views/SystemFileStorageGovernanceView.vue'\n      - 'frontend/src/modules/system/system.routes.js'\n      - 'frontend/src/modules/system/systemManagementCatalog.js'\n      - 'docs/architecture/file-capability-inventory.d/09-storage-governance.yaml'\n      - '.github/workflows/file-storage-governance.yml'",
+      "lastConfiguredBranches": [
+        "audit/file-capability-inventory"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/graduation-package9-validation.yml",
+      "name": "Graduation Package 9 Validation",
+      "owner": "graduation-design",
+      "purpose": "毕业设计",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - \"backend/app/modules/graduation/**\"\n      - \"backend/app/models/graduation.py\"\n      - \"backend/alembic/versions/**\"\n      - \"backend/tests/test_graduation*.py\"\n      - \".github/workflows/graduation-package9-validation.yml\"\n  push:\n    branches-ignore:\n      - main\n    paths:\n      - \"backend/app/modules/graduation/**\"\n      - \"backend/app/models/graduation.py\"\n      - \"backend/alembic/versions/**\"\n      - \"backend/tests/test_graduation*.py\"\n      - \".github/workflows/graduation-package9-validation.yml\"\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/graduation-targeted-repair.yml",
+      "name": "Graduation Targeted Validation",
+      "owner": "graduation-design",
+      "purpose": "毕业设计",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/graduation-v9-scope.yml",
+      "name": "Graduation V9 Scope Gate",
+      "owner": "graduation-design",
+      "purpose": "毕业设计",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'frontend/src/modules/graduation/**'\n      - 'backend/app/modules/graduation/**'\n      - 'backend/tests/test_graduation*'\n      - 'scripts/check/check-graduation-v9-scope*'\n      - '.github/workflows/graduation-v9-scope.yml'",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/graduation-w77-exact-head-e2e.yml",
+      "name": "Graduation W7.7 Exact-Head E2E",
+      "owner": "graduation-design",
+      "purpose": "毕业设计",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  pull_request:\n    paths:\n      - 'backend/app/modules/graduation/**'\n      - 'backend/app/api/v1/student_portal_graduation_guard.py'\n      - 'backend/app/models/graduation_review_evidence.py'\n      - 'backend/tests/test_graduation_review_w7*.py'\n      - 'backend/tests/test_graduation_student_feedback_w75_pc_contract.py'\n      - 'backend/tests/graduation_legacy_review_archive_plugin.py'\n      - 'backend/tests/graduation_legacy_review_submit_plugin.py'\n      - 'backend/alembic/versions/**gd_review**'\n      - 'student-portal/src/views/graduation/**'\n      - 'student-portal/src/views/messages/**'\n      - 'student-portal/src/services/graduationW75Api.js'\n      - 'student-portal/src/components/file/viewer/**'\n      - 'e2e/pages/graduation.page.mjs'\n      - 'e2e/specs/graduation-lifecycle.spec.mjs'\n      - 'e2e/lib/**'\n      - '.github/workflows/graduation-w77-exact-head-e2e.yml'",
+      "lastConfiguredBranches": [],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/help-center-quality.yml",
+      "name": "Help Center Quality",
+      "owner": "release-engineering",
+      "purpose": "核心 CI",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - 'docs/help/**'\n      - 'frontend/src/config/helpContent.js'\n      - 'frontend/src/config/help/**'\n      - 'frontend/src/config/helpCenterCore.js'\n      - 'frontend/src/config/helpCenterModel.js'\n      - 'frontend/src/config/helpCenterRuntime.js'\n      - 'frontend/src/config/__tests__/**'\n      - 'frontend/src/views/admin/help/**'\n      - 'frontend/src/views/help/**'\n      - 'frontend/src/main.js'\n      - 'frontend/public/help/**'\n      - 'miniapp/.env.production'\n      - 'miniapp/src/pages/common/help/**'\n      - 'miniapp/src/pages/student/me/**'\n      - 'miniapp/src/pages/teacher/me/**'\n      - 'miniapp/src/pages.json'\n      - 'miniapp/src/config/env.js'\n      - 'miniapp/tests/help-center-entry.test.mjs'\n      - 'backend/app/api/v1/help_metrics.py'\n      - 'backend/app/api/v1/router.py'\n      - 'backend/app/services/help_metrics_service.py'\n      - 'backend/tests/test_help_metrics.py'\n      - 'backend/app/services/affairs_mental_service.py'\n      - 'backend/tests/test_affairs_mental_scope_stable_identity.py'\n      - 'scripts/validate_help_center.py'\n      - '.github/workflows/help-center-quality.yml'\n      - '.github/workflows/miniapp-mp-weixin-release.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/internship-e-series-final-gate.yml",
+      "name": "Internship E-series Final Gate",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - 'backend/app/modules/internship/**'\n      - 'backend/app/models/internship*'\n      - 'backend/tests/test_internship_e_series_final_mysql.py'\n      - 'backend/tests/test_internship_enterprise_*.py'\n      - 'backend/tests/test_internship_volunteer_*.py'\n      - 'backend/tests/test_internship_placement_snapshot_mysql.py'\n      - 'enterprise-portal/**'\n      - 'student-portal/**'\n      - 'miniapp/**'\n      - '.github/workflows/internship-e-series-final-gate.yml'",
+      "lastConfiguredBranches": [],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/internship-enterprise-portal.yml",
+      "name": "Internship Enterprise Portal",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "stable",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - \"enterprise-portal/**\"\n      - \".github/workflows/internship-enterprise-portal.yml\"",
+      "lastConfiguredBranches": [],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/internship-final-residual-closeout-r3.yml",
+      "name": "internship-final-residual-closeout-r3",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - fix/internship-prelaunch-p1p2-20260828",
+      "lastConfiguredBranches": [
+        "fix/internship-prelaunch-p1p2-20260828"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/internship-final-residual-closeout-r4.yml",
+      "name": "internship-final-residual-closeout-r4",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  push:\n    branches:\n      - fix/internship-prelaunch-p1p2-20260828",
+      "lastConfiguredBranches": [
+        "fix/internship-prelaunch-p1p2-20260828"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/internship-material-center.yml",
+      "name": "Internship material center",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - 'backend/app/models/file.py'\n      - 'backend/app/modules/internship/services/internship_material_center_*.py'\n      - 'backend/app/modules/internship/services/internship_material_preview_access.py'\n      - 'backend/app/modules/internship/routers/internship_material_center.py'\n      - 'backend/app/api/v1/route_registration.py'\n      - 'backend/alembic/versions/0148_internship_material_center.py'\n      - 'backend/tests/test_internship_material_center.py'\n      - 'backend/tests/test_internship_material_preview_contract.py'\n      - 'backend/tests/internship_material_center_mysql_acceptance.py'\n      - 'frontend/src/components/file/viewer/**'\n      - 'frontend/src/modules/internship/api/material-center.api.js'\n      - 'frontend/src/modules/internship/views/InternshipMaterialCenterView.vue'\n      - 'frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue'\n      - 'frontend/src/modules/internship/routes.js'\n      - 'frontend/tests/document-preview-w5-internship-contract.test.mjs'\n      - '.github/workflows/internship-material-center.yml'\n  push:\n    branches:\n      - audit/file-capability-inventory\n    paths:\n      - 'backend/app/models/file.py'\n      - 'backend/app/modules/internship/services/internship_material_center_*.py'\n      - 'backend/app/modules/internship/services/internship_material_preview_access.py'\n      - 'backend/app/modules/internship/routers/internship_material_center.py'\n      - 'backend/app/api/v1/route_registration.py'\n      - 'backend/alembic/versions/0148_internship_material_center.py'\n      - 'backend/tests/test_internship_material_center.py'\n      - 'backend/tests/test_internship_material_preview_contract.py'\n      - 'backend/tests/internship_material_center_mysql_acceptance.py'\n      - 'frontend/src/components/file/viewer/**'\n      - 'frontend/src/modules/internship/api/material-center.api.js'\n      - 'frontend/src/modules/internship/views/InternshipMaterialCenterView.vue'\n      - 'frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue'\n      - 'frontend/src/modules/internship/routes.js'\n      - 'frontend/tests/document-preview-w5-internship-contract.test.mjs'\n      - '.github/workflows/internship-material-center.yml'",
+      "lastConfiguredBranches": [
+        "audit/file-capability-inventory"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/internship-rc-agreement-browser-first.yml",
+      "name": "Internship RC IX-011 Browser First",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/scripts/e2e_seed_internship_agreement_sandbox.py'\n      - 'backend/scripts/e2e_verify_internship_agreement_db.py'\n      - 'backend/app/api/v1/route_registration.py'\n      - 'backend/app/modules/internship/routers/internship_agreement_document.py'\n      - 'backend/app/modules/internship/services/internship_agreement_service.py'\n      - 'backend/app/modules/internship/services/internship_agreement_template_service.py'\n      - 'backend/app/student_portal/internship_router.py'\n      - 'backend/tests/test_internship_agreement_document_route_registration.py'\n      - 'frontend/src/modules/internship/views/AgreementView.vue'\n      - 'frontend/src/modules/internship/views/AgreementDetailView.vue'\n      - 'frontend/src/modules/internship/api/agreement.api.js'\n      - 'student-portal/src/views/internship/InternshipView.vue'\n      - 'student-portal/src/services/internshipCoreApi.js'\n      - 'miniapp/src/pages/student/internship/agreement/index.vue'\n      - 'miniapp/src/pages/teacher/agreement-confirm/index.vue'\n      - 'miniapp/src/services/internshipApi.js'\n      - 'miniapp/src/services/studentApi.js'\n      - 'e2e/specs/internship-agreement-lifecycle-audit.spec.mjs'\n      - '.github/actions/internship-e2e-*/**'\n      - '.github/workflows/internship-rc-agreement-browser-first.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/internship-rc-enterprise-position-browser-first.yml",
+      "name": "Internship RC IX-003 IX-005 Browser First",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/scripts/e2e_seed_internship_enterprise_position_sandbox.py'\n      - 'backend/scripts/e2e_verify_internship_enterprise_position_db.py'\n      - 'backend/app/modules/internship/services/internship_participant_service.py'\n      - 'backend/app/modules/internship/services/internship_student_catalog_facade_service.py'\n      - 'backend/app/modules/internship/services/internship_student_position_eligibility_service.py'\n      - 'frontend/src/modules/internship/views/EnterpriseFormView.vue'\n      - 'frontend/src/modules/internship/views/InternshipPositionDetailView.vue'\n      - 'e2e/specs/internship-enterprise-position-lifecycle-audit.spec.mjs'\n      - 'e2e/lib/internship-enterprise-position-browser.mjs'\n      - '.github/actions/internship-e2e-*/**'\n      - '.github/workflows/internship-rc-enterprise-position-browser-first.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/internship-rc-placement-browser-first.yml",
+      "name": "Internship RC IX-009 Browser First",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/scripts/e2e_seed_internship_enterprise_position_sandbox.py'\n      - 'backend/scripts/e2e_verify_internship_placement_db.py'\n      - 'backend/app/modules/internship/services/internship_student_service.py'\n      - 'backend/app/modules/internship/services/internship_match_service.py'\n      - 'backend/app/modules/internship/services/internship_assignment_snapshot_authority.py'\n      - 'backend/app/modules/internship/services/internship_student_selection_service.py'\n      - 'backend/app/modules/internship/services/internship_student_selection_actions_service.py'\n      - 'backend/app/modules/internship/services/internship_application_material_snapshot_service.py'\n      - 'backend/app/modules/internship/services/internship_student_position_eligibility_service.py'\n      - 'backend/app/modules/internship/schemas/internship_student.py'\n      - 'backend/app/modules/internship/routers/internship_student.py'\n      - 'frontend/src/modules/internship/views/AdminInternshipLayout.vue'\n      - 'frontend/src/modules/internship/views/InternshipMatchListView.vue'\n      - 'frontend/src/modules/internship/views/InternshipStudentListView.vue'\n      - 'frontend/src/modules/internship/api/match.api.js'\n      - 'frontend/src/modules/internship/api/internship-student.api.js'\n      - 'frontend/src/modules/internship/pickerAdapters.js'\n      - 'student-portal/src/views/internship/InternshipSelectionView.vue'\n      - 'student-portal/src/views/internship/InternshipView.vue'\n      - 'student-portal/src/services/internshipSelectionApi.js'\n      - 'miniapp/src/pages/student/internship/index.vue'\n      - 'miniapp/src/components/login/MiniLoginAuthPanel.vue'\n      - 'e2e/specs/internship-placement-assignment-audit.spec.mjs'\n      - 'e2e/lib/internship-enterprise-position-browser.mjs'\n      - '.github/actions/internship-e2e-*/**'\n      - '.github/workflows/internship-rc-placement-browser-first.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/internship-rc-targeted-browser-first.yml",
+      "name": "Internship RC Targeted Browser First",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/app/modules/internship/**'\n      - 'backend/tests/test_internship*.py'\n      - 'backend/scripts/e2e_*internship*.py'\n      - 'frontend/src/modules/internship/**'\n      - 'student-portal/src/**'\n      - 'e2e/specs/internship-*.mjs'\n      - 'e2e/pages/internship-*.mjs'\n      - 'e2e/lib/internship-*.mjs'\n      - '.github/actions/internship-e2e-*/**'\n      - '.github/workflows/internship-rc-targeted-browser-first.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/internship-rc-worker-outbox-ack-browser-first.yml",
+      "name": "Internship RC Worker Outbox ACK Browser First",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/scripts/e2e_seed_student_v3_realtask.py'\n      - 'backend/scripts/e2e_force_student_v3_ack_delivery.py'\n      - 'backend/scripts/e2e_drain_student_v3_message_delivery.py'\n      - 'backend/scripts/run_scheduled_jobs.py'\n      - 'backend/app/services/message_delivery_service.py'\n      - 'backend/app/services/message_event_outbox_service.py'\n      - 'backend/app/services/message_campaign_service.py'\n      - 'backend/app/services/message_channel_delivery_service.py'\n      - 'backend/app/services/tenant_effective_state_service.py'\n      - 'backend/app/student_portal/**'\n      - 'miniapp/src/pages/student/messages/**'\n      - 'miniapp/src/pages/common/message-detail/**'\n      - 'miniapp/src/services/**'\n      - 'e2e/specs/student-v3-real-task.spec.mjs'\n      - 'e2e/lib/**'\n      - 'e2e/playwright.config.mjs'\n      - '.github/actions/internship-e2e-*/**'\n      - '.github/workflows/internship-rc-worker-outbox-ack-browser-first.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/internship-s1-production-runtime.yml",
+      "name": "Internship S1 Production Runtime",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/scripts/e2e_seed_internship_s1_production_runtime.py'\n      - 'backend/app/**'\n      - 'frontend/**'\n      - 'student-portal/**'\n      - 'miniapp/**'\n      - 'enterprise-portal/**'\n      - 'deploy/nginx/**'\n      - 'deploy/systemd/**'\n      - 'e2e/specs/internship-s1-production-runtime.spec.mjs'\n      - 'e2e/playwright.s1.config.mjs'\n      - '.github/workflows/internship-s1-production-runtime.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/internship-s3-native-handoff.yml",
+      "name": "Internship S3 Native Handoff",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  workflow_dispatch:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - '.github/workflows/internship-s3-native-handoff.yml'",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/internship-s5-migration-recovery.yml",
+      "name": "Internship S5 Migration Recovery",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'backend/scripts/e2e_verify_internship_s5_recovery.py'\n      - 'backend/scripts/e2e_run_internship_s5_recovery.sh'\n      - 'backend/scripts/e2e_seed_internship_sandbox.py'\n      - 'backend/tests/test_internship_guardian_consent_route_registration.py'\n      - 'backend/app/api/v1/route_registration.py'\n      - 'backend/alembic/**'\n      - 'backend/app/models/internship.py'\n      - 'backend/app/models/file.py'\n      - 'deploy/backup/**'\n      - '.github/workflows/internship-s5-migration-recovery.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/internship-s6-source-closure.yml",
+      "name": "Internship S6 Source Closure",
+      "owner": "internship",
+      "purpose": "岗位实习",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - 'frontend/src/modules/internship/**'\n      - 'frontend/src/config/navPlan.js'\n      - 'frontend/src/router/**'\n      - 'student-portal/src/views/internship/**'\n      - 'student-portal/src/views/messages/**'\n      - 'student-portal/src/views/home/**'\n      - 'student-portal/src/router/**'\n      - 'student-portal/src/platform/**'\n      - 'student-portal/src/services/**'\n      - 'miniapp/src/pages/**'\n      - 'miniapp/src/config/**'\n      - 'miniapp/src/services/**'\n      - 'miniapp/src/stores/**'\n      - 'miniapp/src/pages.json'\n      - 'backend/app/modules/internship/**'\n      - 'backend/app/models/internship.py'\n      - 'backend/app/models/internship_*.py'\n      - 'backend/app/api/v1/route_registration.py'\n      - 'backend/app/api/v1/*internship*.py'\n      - 'backend/app/services/*internship*.py'\n      - 'backend/app/student_portal/**internship*.py'\n      - 'backend/alembic/versions/**'\n      - 'backend/scripts/run_scheduled_jobs.py'\n      - 'enterprise-portal/**'\n      - 'e2e/lib/internship-enterprise-position-browser.mjs'\n      - 'scripts/check/check-internship-source-closure-v2.py'\n      - '.github/actions/internship-e2e-*/**'\n      - '.github/workflows/internship-*.yml'\n      - '.github/workflows/playwright-production-e2e.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/main-canonical-release-gate.yml",
+      "name": "Main",
+      "owner": "release-engineering",
+      "purpose": "核心 CI",
+      "lifecycle": "stable",
+      "triggers": "on:\n  pull_request:\n    branches: [main]\n  push:\n    branches: [main]\n  schedule:\n    - cron: \"0 19 * * *\"\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/miniapp-mp-weixin-release.yml",
+      "name": "小程序阶段A生产闸门",
+      "owner": "mobile-clients",
+      "purpose": "移动端",
+      "lifecycle": "stable",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches:\n      - agent/miniapp-mp-weixin-release-hardening-20260729\n    paths:\n      - miniapp/**\n      - backend/app/api/v1/mobile.py\n      - backend/app/services/mobile_student_service.py\n      - backend/app/services/mobile_teacher_service.py\n      - backend/tests/test_mobile_stage_a_contracts.py\n      - scripts/check/scan-fixed-demo-credentials.mjs\n      - .github/workflows/miniapp-mp-weixin-release.yml\n  pull_request:\n    branches:\n      - main\n    paths:\n      - miniapp/**\n      - backend/app/api/v1/mobile.py\n      - backend/app/services/mobile_student_service.py\n      - backend/app/services/mobile_teacher_service.py\n      - backend/tests/test_mobile_stage_a_contracts.py\n      - scripts/check/scan-fixed-demo-credentials.mjs\n      - .github/workflows/miniapp-mp-weixin-release.yml",
+      "lastConfiguredBranches": [
+        "agent/miniapp-mp-weixin-release-hardening-20260729",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/miniapp-teacher-v3-t8-handoff.yml",
+      "name": "Teacher Miniapp V3 T8 Handoff",
+      "owner": "mobile-clients",
+      "purpose": "移动端",
+      "lifecycle": "legacy-wave",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - 'miniapp/**'\n      - 'miniapp-v3-handoff.json'\n      - 'backend/alembic/versions/**'\n      - '.github/workflows/miniapp-teacher-v3-t8-handoff.yml'\n  workflow_dispatch:",
+      "lastConfiguredBranches": [],
+      "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
+      "decision": "remove-after-protection-check"
+    },
+    {
+      "path": ".github/workflows/playwright-production-e2e.yml",
+      "name": "Playwright production interaction E2E",
+      "owner": "quality-engineering",
+      "purpose": "浏览器验收",
+      "lifecycle": "stable",
+      "triggers": "on:\n  workflow_dispatch:\n  pull_request:\n    paths:\n      - 'backend/**'\n      - 'frontend/**'\n      - 'student-portal/**'\n      - 'enterprise-portal/**'\n      - 'miniapp/**'\n      - 'e2e/**'\n      - '.github/workflows/playwright-production-e2e.yml'",
+      "lastConfiguredBranches": [],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/production-dependency-audit.yml",
+      "name": "Production npm dependency audit",
+      "owner": "security",
+      "purpose": "依赖安全",
+      "lifecycle": "stable",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - \"frontend/package.json\"\n      - \"frontend/package-lock.json\"\n      - \"student-portal/package.json\"\n      - \"student-portal/package-lock.json\"\n      - \"miniapp/package.json\"\n      - \"miniapp/package-lock.json\"\n      - \"e2e/package.json\"\n      - \"scripts/check/check-npm-production-audit.mjs\"\n      - \"scripts/check/check-npm-production-audit.test.mjs\"\n      - \".github/security/npm-production-audit-waivers.json\"\n      - \".github/workflows/production-dependency-audit.yml\"\n  workflow_dispatch:",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/sandbox-20k-data-gate.yml",
+      "name": "Sandbox 20K Real-School Data Gate",
+      "owner": "release-engineering",
+      "purpose": "核心 CI",
+      "lifecycle": "domain-candidate",
+      "triggers": "on:\n  workflow_dispatch:\n  pull_request:\n    branches: [main]\n    paths:\n      - backend/app/services/sandbox_school_*.py\n      - backend/app/services/sandbox_service.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_archive_rule_evaluator.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_archive_term_scope.py\n      - backend/app/modules/academic_affairs/services/academic_affairs_effective_grade_policy_service.py\n      - backend/app/api/v1/sandbox_story_api.py\n      - backend/app/api/v1/router.py\n      - backend/scripts/reset_sandbox_school.py\n      - backend/scripts/prime_sandbox_neighbor_sentinel.py\n      - backend/scripts/clean_sandbox_legacy_data.py\n      - backend/scripts/check_sandbox_20k_school.py\n      - backend/scripts/check_sandbox_20k_rebuild_budget.py\n      - backend/scripts/_seed_sandbox_coverage.py\n      - backend/scripts/academic_d_w5_r11_real_school.py\n      - backend/tests/test_academic_d_w5_r11_real_school_script.py\n      - backend/tests/test_sandbox_school_blueprint.py\n      - backend/tests/test_sandbox_school_professional_catalog.py\n      - backend/tests/test_sandbox_school_role_topology.py\n      - backend/tests/test_sandbox_school_mentor_workload.py\n      - backend/tests/test_sandbox_school_employment.py\n      - backend/tests/test_sandbox_school_rebuild_budget.py\n      - backend/tests/test_sandbox_school_legacy_cleanup.py\n      - backend/tests/test_sandbox_school_curriculum_closure.py\n      - backend/tests/test_sandbox_school_security_contract.py\n      - backend/tests/test_academic_affairs_archive_term_scope.py\n      - backend/tests/test_sandbox_story_reset_route.py\n      - docs/06-开发施工与质量验收/施工记录/20K真实学校演示沙箱数据标准-2026-08-13.md\n      - .github/workflows/sandbox-20k-data-gate.yml",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/student-affairs-final-acceptance.yml",
+      "name": "Student Affairs Final Acceptance",
+      "owner": "student-affairs",
+      "purpose": "学工域",
+      "lifecycle": "stable",
+      "triggers": "on:\n  workflow_dispatch:\n  push:\n    branches:\n      - audit/student-affairs-p0-p1-closeout-20260803\n    paths:\n      - backend/app/api/v1/affairs_*.py\n      - backend/app/api/v1/mobile.py\n      - backend/app/api/v1/router.py\n      - backend/app/api/v1/student_affairs.py\n      - backend/app/main.py\n      - backend/scripts/run_scheduled_jobs.py\n      - backend/app/core/affairs_*.py\n      - backend/app/core/student_affairs_permission_registry.py\n      - backend/app/models/affairs_repair_job.py\n      - backend/app/services/affairs_*.py\n      - backend/alembic/versions/0165_affairs_repair_job.py\n      - backend/tests/test_affairs*.py\n      - backend/tests/test_portal_affairs*.py\n      - backend/tests/test_student_affairs_p0_p1_closeout.py\n      - frontend/src/modules/studentAffairs/**\n      - frontend/src/components/common/excel/AppExportButton.vue\n      - frontend/tests/studentAffairs*.test.mjs\n      - student-portal/src/**/affairs/**\n      - student-portal/src/main.js\n      - miniapp/src/**/affairs/**\n      - miniapp/src/services/**\n      - miniapp/src/main.js\n      - scripts/audit_student_affairs_surface.py\n      - .github/workflows/student-affairs-final-acceptance.yml\n  pull_request:\n    branches: [main]\n    paths:\n      - backend/app/api/v1/affairs_*.py\n      - backend/app/api/v1/mobile.py\n      - backend/app/api/v1/router.py\n      - backend/app/api/v1/student_affairs.py\n      - backend/app/main.py\n      - backend/scripts/run_scheduled_jobs.py\n      - backend/app/core/affairs_*.py\n      - backend/app/core/student_affairs_permission_registry.py\n      - backend/app/models/affairs_repair_job.py\n      - backend/app/services/affairs_*.py\n      - backend/alembic/versions/0165_affairs_repair_job.py\n      - backend/tests/test_affairs*.py\n      - backend/tests/test_portal_affairs*.py\n      - backend/tests/test_student_affairs_p0_p1_closeout.py\n      - frontend/src/modules/studentAffairs/**\n      - frontend/src/components/common/excel/AppExportButton.vue\n      - frontend/tests/studentAffairs*.test.mjs\n      - student-portal/src/**/affairs/**\n      - student-portal/src/main.js\n      - miniapp/src/**/affairs/**\n      - miniapp/src/services/**\n      - miniapp/src/main.js\n      - scripts/audit_student_affairs_surface.py\n      - .github/workflows/student-affairs-final-acceptance.yml",
+      "lastConfiguredBranches": [
+        "audit/student-affairs-p0-p1-closeout-20260803",
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    },
+    {
+      "path": ".github/workflows/student-portal-v5-full-review.yml",
+      "name": "Student Portal V5 Full Review",
+      "owner": "student-client",
+      "purpose": "学生门户",
+      "lifecycle": "stable",
+      "triggers": "on:\n  pull_request:\n    branches:\n      - main\n    paths:\n      - student-portal/src/**\n      - student-portal/review/**\n      - student-portal/package.json\n      - student-portal/package-lock.json\n      - docs/reviews/student-portal-v5-full-review/REVIEW_REPORT.md\n      - .github/workflows/student-portal-v5-full-review.yml",
+      "lastConfiguredBranches": [
+        "main"
+      ],
+      "replacedBy": null,
+      "decision": "retain-or-review"
+    }
+  ]
+}
