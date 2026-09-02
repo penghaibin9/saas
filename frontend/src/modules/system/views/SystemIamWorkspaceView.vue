@@ -1,16 +1,16 @@
 <template>
   <ModulePageShell
-    title="学校 IAM 工作区"
-    subtitle="角色、模板、成员、权限、数据范围、委托、安全变更与 Access Explain 使用同一套学校权限真值"
+    title="学校权限工作区"
+    subtitle="角色、模板、成员、权限、数据范围、委托、安全变更与访问解释使用同一套学校权限真值"
     role-name="学校系统管理员 / 安全管理员"
     data-scope-name="当前学校租户"
   >
     <div class="iam-page">
       <section class="hero card">
         <div>
-          <p class="eyebrow">B7 · School IAM Workspace</p>
-          <h3>学校管理员管学校身份，不接管企业成员 IAM</h3>
-          <p class="muted">企业 `COMPANY_ADMIN / HR / MENTOR` 与 `enterprise.internship.*` 由 EnterpriseMember / AccessGrant 管理，不能在这里随便加给学校用户。</p>
+          <p class="eyebrow">B7 · 学校权限管理工作区</p>
+          <h3>学校管理员管理学校身份，不接管企业成员权限</h3>
+          <p class="muted">企业管理员、人力资源人员、企业导师及企业实习权限由企业成员和访问授权功能管理，不能在这里随意分配给学校用户。</p>
         </div>
         <AppButton :loading="loading" @click="load">刷新</AppButton>
       </section>
@@ -27,13 +27,13 @@
           <article class="card"><strong>{{ summary.roleCount || 0 }}</strong><span>学校角色</span></article>
           <article class="card"><strong>{{ summary.memberCount || 0 }}</strong><span>学校成员</span></article>
           <article class="card"><strong>{{ catalog.customRoleAssignablePermissions?.length || 0 }}</strong><span>自定义角色可分配权限</span></article>
-          <article class="card"><strong>{{ summary.customRoleMissingProvenanceCount || 0 }}</strong><span>缺少模板来源的 CUSTOM Role</span></article>
+          <article class="card"><strong>{{ summary.customRoleMissingProvenanceCount || 0 }}</strong><span>缺少模板来源的自定义角色</span></article>
           <article class="card"><strong>{{ catalog.enterprisePermissionCount || 0 }}</strong><span>企业权限（仅可见，不可学校分配）</span></article>
         </section>
 
         <section v-if="summary.customRoleMissingProvenanceCount" class="warning card">
-          <strong>存在 CUSTOM Role provenance 缺口</strong>
-          <span>这些角色仍以 RolePermission 为运行时真值，但无法证明来自哪个 RoleTemplate 版本；发布/回滚前必须先修复来源登记。</span>
+          <strong>存在自定义角色来源缺口</strong>
+          <span>这些角色仍以角色权限为运行时真值，但无法证明来自哪个角色模板版本；发布或回滚前必须先修复来源登记。</span>
         </section>
 
         <section class="surface-grid">
@@ -44,20 +44,20 @@
 
         <section class="card">
           <header class="section-head">
-            <div><h3>学校可分配 Permission Catalog</h3><p class="muted">此处来自 Control Plane 权威目录；`enterprise.internship.*` 不出现在可分配清单。</p></div>
-            <label class="search">搜索<input v-model.trim="permissionKeyword" placeholder="permissionCode / 模块 / Feature" /></label>
+            <div><h3>学校可分配权限目录</h3><p class="muted">此处来自平台控制面的权威目录；企业实习权限不会出现在学校可分配清单中。</p></div>
+            <label class="search">搜索<input v-model.trim="permissionKeyword" placeholder="权限编码 / 模块 / 功能" /></label>
           </header>
           <div class="recruitment-box">
             <strong>岗位实习 · 招聘季学校侧权限</strong>
-            <span v-for="item in catalog.internshipRecruitmentPermissions || []" :key="item.permissionCode" class="permission-chip">{{ item.permissionCode }}</span>
-            <span v-if="!(catalog.internshipRecruitmentPermissions || []).length" class="danger-text">招聘季权限未进入 Catalog，禁止继续配置</span>
+            <span v-for="item in catalog.internshipRecruitmentPermissions || []" :key="item.permissionCode" class="permission-chip">{{ permissionDisplayLabel(item) }}</span>
+            <span v-if="!(catalog.internshipRecruitmentPermissions || []).length" class="danger-text">招聘季权限未进入权限目录，禁止继续配置</span>
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>permissionCode</th><th>模块 / Feature</th><th>风险</th><th>自定义角色</th></tr></thead>
+              <thead><tr><th>权限编码</th><th>模块 / 功能</th><th>风险</th><th>自定义角色</th></tr></thead>
               <tbody>
                 <tr v-for="item in filteredPermissions" :key="item.permissionCode">
-                  <td class="mono">{{ item.permissionCode }}</td><td>{{ item.moduleKey }} / {{ item.featureKey || '—' }}</td><td>{{ item.riskLevel }}</td><td>{{ item.customRoleAssignable ? '可分配' : '仅系统策略' }}</td>
+                  <td>{{ permissionDisplayLabel(item) }}</td><td>{{ moduleFeatureLabel(item) }}</td><td>{{ riskLevelLabel(item.riskLevel) }}</td><td>{{ item.customRoleAssignable ? '可分配' : '仅系统策略' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -65,18 +65,18 @@
         </section>
 
         <section class="card">
-          <header class="section-head"><div><h3>学校角色模板</h3><p class="muted">已发布模板 immutable；CUSTOM Role 永远 pinned 到来源版本，升级前先看本校 impact。</p></div><button class="link" @click="go('/admin/system/roles?tab=templates')">进入模板管理</button></header>
+          <header class="section-head"><div><h3>学校角色模板</h3><p class="muted">已发布模板不可修改；自定义角色始终固定到来源版本，升级前需先查看本校影响。</p></div><button class="link" @click="go('/admin/system/roles?tab=templates')">进入模板管理</button></header>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>模板</th><th>当前版本</th><th>权限数</th><th>本校 pinned Role</th><th>来源版本分布</th><th>Permission Digest</th><th>操作</th></tr></thead>
+              <thead><tr><th>模板</th><th>当前版本</th><th>权限数</th><th>本校已绑定角色</th><th>来源版本分布</th><th>权限摘要</th><th>操作</th></tr></thead>
               <tbody>
                 <tr v-for="item in templates" :key="`${item.templateCode}-${item.templateVersion}`">
-                  <td><strong>{{ item.templateName || item.templateCode }}</strong><small class="mono">{{ item.templateCode }}</small></td>
-                  <td>v{{ item.templateVersion }}</td>
+                  <td><strong>{{ item.templateName || '角色模板' }}</strong></td>
+                  <td>第 {{ item.templateVersion }} 版</td>
                   <td>{{ item.permissions?.length || 0 }}</td>
                   <td>{{ item.schoolPinnedCustomRoleCount || 0 }}</td>
-                  <td class="mono">{{ (item.schoolPinnedSourceVersions || []).map((v) => `v${v}`).join('、') || '—' }}</td>
-                  <td class="mono muted">{{ item.permissionDigest || '—' }}</td>
+                  <td>{{ (item.schoolPinnedSourceVersions || []).map((v) => `第 ${v} 版`).join('、') || '—' }}</td>
+                  <td>{{ item.permissionDigest ? '已生成' : '—' }}</td>
                   <td><button class="link" :disabled="impactLoading === item.id" @click="loadTemplateImpact(item)">影响</button></td>
                 </tr>
                 <tr v-if="!templates.length"><td colspan="7" class="muted">暂无已发布学校角色模板</td></tr>
@@ -87,37 +87,37 @@
 
         <section v-if="templateImpact" class="card impact-card">
           <header class="section-head">
-            <div><h3>模板影响 · {{ templateImpact.templateCode }} v{{ templateImpact.templateVersion }}</h3><p class="muted">只计算当前学校租户；不会展示其他学校 pinned roles。自动升级固定为 false。</p></div>
+            <div><h3>模板影响 · {{ templateImpact.templateCode }} 第 {{ templateImpact.templateVersion }} 版</h3><p class="muted">只计算当前学校租户；不会展示其他学校已绑定角色。自动升级固定为关闭。</p></div>
             <button class="link" @click="templateImpact = null">关闭</button>
           </header>
           <div class="impact-summary">
-            <span>受影响 pinned Role：<strong>{{ templateImpact.affectedPinnedCustomRoleCount || 0 }}</strong></span>
-            <span>当前发布版本：<strong>v{{ templateImpact.currentPublishedTemplateVersion || '—' }}</strong></span>
+            <span>受影响的已绑定角色：<strong>{{ templateImpact.affectedPinnedCustomRoleCount || 0 }}</strong></span>
+            <span>当前发布版本：<strong>第 {{ templateImpact.currentPublishedTemplateVersion || '—' }} 版</strong></span>
             <span>自动升级：<strong>{{ templateImpact.automaticUpgrade ? '是' : '否' }}</strong></span>
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>角色</th><th>来源模板版本</th><th>Role version</th><th>运行时漂移</th><th>若切到此版本将新增</th><th>将移除</th></tr></thead>
+              <thead><tr><th>角色</th><th>来源模板版本</th><th>角色版本</th><th>运行时漂移</th><th>若切到此版本将新增</th><th>将移除</th></tr></thead>
               <tbody>
                 <tr v-for="role in templateImpact.roles || []" :key="role.roleCode">
-                  <td><strong>{{ role.roleCode }}</strong><small v-if="role.runtimeRoleMissing" class="danger-text">运行时 Role 缺失</small></td>
-                  <td>v{{ role.sourceTemplateVersion }}</td><td>v{{ role.roleVersion ?? '—' }}</td>
+                  <td><strong>{{ role.roleName || '自定义角色' }}</strong><small v-if="role.runtimeRoleMissing" class="danger-text">运行时角色缺失</small></td>
+                  <td>第 {{ role.sourceTemplateVersion }} 版</td><td>第 {{ role.roleVersion ?? '—' }} 版</td>
                   <td>{{ deltaText(role.runtimeVsRecorded) }}</td><td>{{ listText(role.wouldAdd) }}</td><td>{{ listText(role.wouldRemove) }}</td>
                 </tr>
-                <tr v-if="!(templateImpact.roles || []).length"><td colspan="6" class="muted">本校没有 pinned 到该模板的 CUSTOM Role。</td></tr>
+                <tr v-if="!(templateImpact.roles || []).length"><td colspan="6" class="muted">本校没有绑定到该模板的自定义角色。</td></tr>
               </tbody>
             </table>
           </div>
         </section>
 
         <section id="access-explain" class="card explain-card">
-          <header class="section-head"><div><h3>Access Explain</h3><p class="muted">解释“某个学校成员为什么能/不能访问具体对象”。IAM 通过不等于业务最终允许；Scope Target 与 Resource Context 会交给 canonical Domain Guard 裁决，缺失上下文时后端继续 fail-closed。</p></div></header>
+          <header class="section-head"><div><h3>访问解释</h3><p class="muted">解释“某个学校成员为什么能或不能访问具体对象”。身份权限通过不等于业务最终允许；数据范围目标与业务对象上下文会交给权威业务守卫裁决，缺失上下文时后端将继续按拒绝处理。</p></div></header>
           <form class="explain-form" @submit.prevent="explainAccess">
             <label>学校成员编号<input v-model.trim="explain.userId" required inputmode="numeric" placeholder="例如 1024" /></label>
             <label>模块<input v-model.trim="explain.moduleKey" required /></label>
             <label>权限
               <select v-model="explain.permissionCode" required>
-                <option v-for="item in explainPermissionOptions" :key="item.permissionCode" :value="item.permissionCode">{{ item.permissionCode }}</option>
+                <option v-for="item in explainPermissionOptions" :key="item.permissionCode" :value="item.permissionCode">{{ permissionDisplayLabel(item) }}</option>
               </select>
             </label>
             <label>数据范围目标类型
@@ -150,7 +150,7 @@
                 <thead><tr><th>角色</th><th>身份权限</th><th>模板来源</th><th>配置偏移</th><th>升级影响</th><th>原因 / 数据范围</th><th>真实证据</th></tr></thead>
                 <tbody>
                   <tr v-for="role in explainResult.roles" :key="role.roleId">
-                    <td><strong>{{ role.roleName }}</strong><small>角色编号 {{ role.roleCode }} · {{ roleTypeLabel(role.roleType) }} · 第 {{ role.roleVersion }} 版</small></td>
+                    <td><strong>{{ role.roleName }}</strong><small>{{ roleTypeLabel(role.roleType) }} · 第 {{ role.roleVersion }} 版</small></td>
                     <td>{{ role.decision?.iamAllowed ? '通过' : '未通过' }}</td>
                     <td>{{ provenanceText(role.templateProvenance) }}</td>
                     <td :class="{ 'danger-text': role.drift?.detected }">{{ driftText(role.drift) }}</td>
@@ -202,6 +202,8 @@ const DECISION_LABELS = { ALLOW: '允许', DENY: '拒绝', NOT_EVALUATED: '待�
 const SCOPE_TYPE_LABELS = { COLLEGE: '学院', MAJOR: '专业', CLASS: '班级', TERMINAL: '终端范围', TENANT: '全校', SELF: '本人' }
 const RESOURCE_TYPE_LABELS = { STUDENT: '学生', INTERN_STUDENT: '实习学生', GRADUATION_STUDENT: '毕设学生', USER: '用户', CLASS: '班级', MAJOR: '专业', COLLEGE: '学院', BUILDING: '楼栋', DORM_BUILDING: '宿舍楼' }
 const ROLE_TYPE_LABELS = { SYSTEM: '系统角色', CUSTOM: '自定义角色', TEMPLATE: '模板角色', BUSINESS: '业务角色' }
+const RISK_LEVEL_LABELS = { LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '重大风险' }
+const MODULE_LABELS = { internship: '实习管理', student: '学生管理', academic: '教务管理', graduation: '毕业管理', system: '系统管理', platform: '平台管理' }
 
 export default {
   name: 'SystemIamWorkspaceView',
@@ -249,19 +251,25 @@ export default {
     },
     decisionTitle() {
       if (this.explainResult?.allowed) return '最终允许'
-      if (this.explainResult?.iamAllowed && this.explainResult?.finalDecision === 'NOT_EVALUATED') return 'IAM 已通过，业务最终裁决未执行'
+      if (this.explainResult?.iamAllowed && this.explainResult?.finalDecision === 'NOT_EVALUATED') return '身份权限已通过，业务最终裁决未执行'
       return '拒绝'
     },
     decisionMessage() {
       if (this.explainResult?.reasonCode === 'MODULE_NOT_ENTITLED') return '学校未购买或未获得该模块授权。'
       if (this.explainResult?.reasonCode === 'PERMISSION_DENIED') return '当前有效角色不包含该权限。'
-      if (this.explainResult?.reasonCode === 'PERMISSION_NOT_SCHOOL_ASSIGNABLE') return '该权限不属于学校 IAM 分配面。'
-      return '请根据 reasonCode 与角色判定链处理。'
+      if (this.explainResult?.reasonCode === 'PERMISSION_NOT_SCHOOL_ASSIGNABLE') return '该权限不属于学校权限分配范围。'
+      return '请根据判定原因与角色判定链处理。'
     }
   },
   created() { this.load() },
   methods: {
     auditRecord(row) { return presentAuditRecord(row) },
+    permissionDisplayLabel(item) { return item?.label || '权限项' },
+    moduleFeatureLabel(item) {
+      const moduleLabel = MODULE_LABELS[String(item?.moduleKey || '').toLowerCase()] || '业务模块'
+      return item?.featureLabel ? `${moduleLabel} / ${item.featureLabel}` : moduleLabel
+    },
+    riskLevelLabel(value) { return RISK_LEVEL_LABELS[String(value || '').toUpperCase()] || '风险待确认' },
     reasonCodeLabel(value) { return REASON_LABELS[value] || (value ? '其他判定原因' : '—') },
     decisionLabel(value) { return DECISION_LABELS[value] || (value ? '裁决待确认' : '—') },
     scopeTypeLabel(value) { return SCOPE_TYPE_LABELS[value] || (value ? '其他数据范围' : '—') },
@@ -289,14 +297,14 @@ export default {
     },
     provenanceText(value) {
       if (!value) return '—'
-      if (value.provenanceStatus === 'LEGACY_SYSTEM_ROLE') return `SYSTEM legacy · ${value.upgradePolicy}`
-      if (value.provenanceStatus === 'MISSING_CUSTOM_ROLE_SOURCE') return 'CUSTOM · 来源登记缺失'
-      const current = value.currentTemplateVersion == null ? '当前模板缺失' : `当前 v${value.currentTemplateVersion}`
-      return `${value.sourceTemplateCode || '—'} v${value.sourceTemplateVersion ?? '—'} · ${current} · ${value.upgradePolicy || 'DERIVED_PINNED'}`
+      if (value.provenanceStatus === 'LEGACY_SYSTEM_ROLE') return '历史系统角色'
+      if (value.provenanceStatus === 'MISSING_CUSTOM_ROLE_SOURCE') return '自定义角色 · 来源登记缺失'
+      const current = value.currentTemplateVersion == null ? '当前模板缺失' : `当前第 ${value.currentTemplateVersion} 版`
+      return `来源第 ${value.sourceTemplateVersion ?? '—'} 版 · ${current} · 固定来源版本`
     },
     driftText(value) {
       if (!value) return '—'
-      if (value.notApplicableReason) return value.b8RetirementPending ? `B8 待退 wildcard：${this.listText(value.wildcards)}` : value.notApplicableReason
+      if (value.notApplicableReason) return value.b8RetirementPending ? `待移除通配权限：${this.listText(value.wildcards)}` : '不适用'
       if (value.provenanceMissing) return '来源缺失，无法证明模板链'
       const runtime = value.runtimeVsRecorded || {}
       const runtimeChanged = (runtime.addedInRuntime || []).length + (runtime.removedFromRuntime || []).length
@@ -305,12 +313,12 @@ export default {
     },
     impactText(value) {
       if (!value) return '—'
-      if (value.status !== 'READY') return value.status || '—'
-      return `目标 v${value.targetTemplateVersion ?? '—'}：+${(value.wouldAdd || []).length} / -${(value.wouldRemove || []).length}；自动升级=否`
+      if (value.status !== 'READY') return '影响分析待完成'
+      return `目标第 ${value.targetTemplateVersion ?? '—'} 版：新增 ${(value.wouldAdd || []).length} 项，移除 ${(value.wouldRemove || []).length} 项；自动升级已关闭`
     },
     scopeText(value) {
-      if (!value) return '待业务 Scope 裁决'
-      return typeof value === 'string' ? value : JSON.stringify(value)
+      if (!value) return '待业务数据范围裁决'
+      return typeof value === 'string' && /[\u3400-\u9fff]/.test(value) ? value : '已记录数据范围'
     },
     go(path) {
       if (path.startsWith('#')) return document.querySelector(path)?.scrollIntoView({ behavior: 'smooth' })
@@ -345,7 +353,7 @@ export default {
       this.roleEvidence = {
         role,
         type,
-        title: `${role.roleName} · ${type === 'audit' ? 'SecurityAuditLog' : '角色成员'}`,
+        title: `${role.roleName} · ${type === 'audit' ? '安全审计日志' : '角色成员'}`,
         items: data.items || [],
         total: Number(data.total || 0),
         page: Number(data.page || page),
@@ -359,9 +367,9 @@ export default {
     },
     async explainAccess() {
       const id = Number(this.explain.userId)
-      if (!Number.isInteger(id) || id <= 0) return toast.error('请输入有效的学校成员 User ID')
+      if (!Number.isInteger(id) || id <= 0) return toast.error('请输入有效的学校成员编号')
       if (!this.explain.scopeTargetType || !this.explain.scopeTargetId || !this.explain.resourceType || !this.explain.resourceId) {
-        return toast.error('Access Explain 必须提供完整的 Scope Target 与 Resource Context')
+        return toast.error('访问解释必须提供完整的数据范围目标与业务对象信息')
       }
       this.explaining = true
       const res = await schoolIamApi.accessExplain(id, this.explain)
