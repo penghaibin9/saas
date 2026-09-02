@@ -1,7 +1,14 @@
 <template>
   <div class="w74-center">
     <section class="w74-summary" aria-label="评阅中心摘要">
-      <button v-for="card in summaryCards" :key="card.key" type="button" class="w74-summary__card" @click="applySummaryCard(card)">
+      <button
+        v-for="card in summaryCards"
+        :key="card.key"
+        type="button"
+        class="w74-summary__card"
+        :disabled="submitting"
+        @click="applySummaryCard(card)"
+      >
         <span>{{ card.label }}</span>
         <strong>{{ card.value }}</strong>
         <small>{{ card.hint }}</small>
@@ -16,28 +23,41 @@
       <div class="w74-filter-group">
         <span class="w74-filter-label">材料类型</span>
         <button
-          v-for="item in caseOptions" :key="item.value" type="button"
+          v-for="item in caseOptions"
+          :key="item.value"
+          type="button"
           :class="['w74-chip', { 'is-active': filters.caseType === item.value }]"
+          :disabled="submitting"
           @click="setCaseType(item.value)"
         >{{ item.label }}</button>
       </div>
       <div class="w74-filter-group">
         <span class="w74-filter-label">队列状态</span>
         <button
-          v-for="item in statusOptions" :key="item.value" type="button"
+          v-for="item in statusOptions"
+          :key="item.value"
+          type="button"
           :class="['w74-chip', { 'is-active': filters.statusGroup === item.value }]"
+          :disabled="submitting"
           @click="setStatusGroup(item.value)"
         >{{ item.label }}</button>
       </div>
       <div class="w74-toolbar__search">
-        <input v-model.trim="filters.keyword" type="search" placeholder="学生 / 学号 / 班级 / 课题" @input="scheduleReload" />
-        <label><input v-model="filters.reviewerOnly" type="checkbox" @change="reloadFromFirstPage" /> 只看分配给我的正式评阅</label>
+        <input
+          v-model.trim="filters.keyword"
+          type="search"
+          :disabled="submitting"
+          placeholder="学生 / 学号 / 班级 / 课题"
+          @input="scheduleReload"
+        />
+        <label><input v-model="filters.reviewerOnly" type="checkbox" :disabled="submitting" @change="reloadFromFirstPage" /> 只看分配给我的正式评阅</label>
+        <span class="w74-toolbar__context">第 {{ page }} 页 · {{ total }} 条</span>
         <button type="button" class="w74-refresh" :disabled="loading || submitting" @click="loadAll({ preserveSelection: true })">刷新</button>
       </div>
     </section>
 
     <div v-if="error" class="w74-state w74-state--error">
-      <strong>评阅中心加载失败</strong><span>{{ error }}</span><button type="button" @click="loadAll()">重试</button>
+      <strong>评阅中心加载失败</strong><span>{{ error }}</span><button type="button" :disabled="submitting" @click="loadAll()">重试</button>
     </div>
     <div v-else-if="loading && !queue.length" class="w74-state">正在加载评阅队列…</div>
     <div v-else-if="!queue.length" class="w74-state">
@@ -47,16 +67,33 @@
     <GraduationDocumentReviewWorkspace
       v-else
       queue-title="统一评阅队列"
-      :queue="queue" :current-index="activeIndex" :current-record="currentRecord" :detail="detail"
-      :files="previewFiles" :versions="previewFiles" :evidence-versions="previewFiles"
-      :canonical-file-version-id="targetFileVersionId" :review-ready="taskReviewReady"
-      :expected-version="expectedVersion" :comment="form.opinion" :submitting="submitting"
-      :auto-next="autoNext" mode="final" :provider="previewProvider" :descriptor="previewDescriptor"
-      :active-file-key="activeFileKey" :active-version-id="activeVersionId"
-      :version-conflict="versionConflict" :allow-download="false"
-      @select="selectTask" @previous="move(-1)" @next="move(1)"
-      @select-file="selectPreview" @select-version="selectPreview"
-      @update:auto-next="autoNext = $event" @reload="reloadCurrent({ preserveDraft: true })"
+      :queue="queue"
+      :current-index="activeIndex"
+      :current-record="currentRecord"
+      :detail="detail"
+      :files="previewFiles"
+      :versions="previewFiles"
+      :evidence-versions="previewFiles"
+      :canonical-file-version-id="targetFileVersionId"
+      :review-ready="taskReviewReady"
+      :expected-version="expectedVersion"
+      :comment="form.opinion"
+      :submitting="submitting"
+      :auto-next="autoNext"
+      mode="final"
+      :provider="previewProvider"
+      :descriptor="previewDescriptor"
+      :active-file-key="activeFileKey"
+      :active-version-id="activeVersionId"
+      :version-conflict="versionConflict"
+      :allow-download="false"
+      @select="selectTask"
+      @previous="move(-1)"
+      @next="move(1)"
+      @select-file="selectPreview"
+      @select-version="selectPreview"
+      @update:auto-next="autoNext = $event"
+      @reload="reloadCurrent({ preserveDraft: true })"
       @open-student-dossier="openStudentDossier"
     >
       <template #queue-footer>
@@ -76,6 +113,12 @@
             <span v-if="activeTask.overdue" class="w74-overdue">已逾期</span>
           </div>
 
+          <div class="w74-command-intent" data-testid="canonical-write-intent">
+            <span>本次正式写入</span>
+            <strong>{{ canonicalTargetLabel }}</strong>
+            <small>记录 {{ activeTask.recordId || '—' }} · 只统一任务入口，不合并业务写入</small>
+          </div>
+
           <div v-if="activeTask.blockingReasons?.length" class="w74-blockers">
             <strong>当前阻断</strong>
             <ul><li v-for="item in activeTask.blockingReasons" :key="item.code">{{ item.message }}</li></ul>
@@ -85,38 +128,29 @@
           </div>
           <p v-if="formError" class="w74-form-error">{{ formError }}</p>
 
-          <section class="w74-feedback">
-            <div class="w74-section-title"><strong>历史反馈</strong><span>{{ feedbackHistory.length }} 条</span></div>
-            <div v-if="!feedbackHistory.length" class="w74-muted">暂无历史批阅反馈</div>
-            <div v-else class="w74-feedback-list">
-              <article v-for="item in feedbackHistory" :key="item.id || `${item.stage}-${item.roundNo}`">
-                <div><b>{{ item.result || item.stage }}</b><span>第 {{ item.roundNo || '—' }} 轮</span></div>
-                <p>{{ item.summary || '未填写文字意见' }}</p>
-                <small>FileVersion {{ item.fileVersionId || '—' }} · {{ item.createdAt || '' }}</small>
-              </article>
-            </div>
-          </section>
-
           <section v-if="canShowWriteForm" class="w74-write-form">
-            <div class="w74-section-title"><strong>结构化反馈</strong><span>草稿绑定当前任务 + FileVersion</span></div>
+            <div class="w74-section-title"><strong>本次结构化反馈</strong><span>草稿绑定当前任务 + FileVersion</span></div>
             <div class="w74-category-list">
               <button
-                v-for="item in categoryOptions" :key="item" type="button"
+                v-for="item in categoryOptions"
+                :key="item"
+                type="button"
                 :class="['w74-category', { 'is-active': form.categories.includes(item) }]"
+                :disabled="submitting"
                 @click="toggleCategory(item)"
               >{{ item }}</button>
             </div>
             <label class="w74-field">
               <span>问题清单 <small>每行一项</small></span>
-              <textarea v-model="form.issuesText" rows="3" placeholder="例如：第 3 章论证与数据结论不一致" @input="saveDraft"></textarea>
+              <textarea v-model="form.issuesText" rows="3" :disabled="submitting" placeholder="例如：第 3 章论证与数据结论不一致" @input="saveDraft"></textarea>
             </label>
             <label v-if="activeTask.caseType === 'FORMAL_REVIEW'" class="w74-field">
               <span>评阅评分 <small>0–100</small></span>
-              <input v-model="form.score" type="number" min="0" max="100" step="1" @input="saveDraft" />
+              <input v-model="form.score" type="number" min="0" max="100" step="1" :disabled="submitting" @input="saveDraft" />
             </label>
             <label class="w74-field">
               <span>{{ activeTask.caseType === 'FORMAL_REVIEW' ? '评阅意见' : '批阅意见' }}</span>
-              <textarea v-model="form.opinion" rows="5" placeholder="写明结论、主要问题和修改建议…" @input="saveDraft"></textarea>
+              <textarea v-model="form.opinion" rows="5" :disabled="submitting" placeholder="写明结论、主要问题和修改建议…" @input="saveDraft"></textarea>
             </label>
 
             <div v-if="canSubmitFormal" class="w74-actions">
@@ -130,9 +164,21 @@
 
           <section v-if="canReturnFormalAction" class="w74-return-form">
             <div class="w74-section-title"><strong>退回重评</strong><span>仅已完成正式评阅</span></div>
-            <label class="w74-field"><span>退回原因</span><textarea v-model="form.returnReason" rows="3" placeholder="至少 5 个字" @input="saveDraft"></textarea></label>
+            <label class="w74-field"><span>退回原因</span><textarea v-model="form.returnReason" rows="3" :disabled="submitting" placeholder="至少 5 个字" @input="saveDraft"></textarea></label>
             <button type="button" class="w74-warning" :disabled="!canReturnFormal || submitting" @click="returnFormal">退回重评</button>
           </section>
+
+          <details class="w74-feedback">
+            <summary><strong>历史反馈</strong><span>{{ feedbackHistory.length }} 条 · 展开查看</span></summary>
+            <div v-if="!feedbackHistory.length" class="w74-muted">暂无历史批阅反馈</div>
+            <div v-else class="w74-feedback-list">
+              <article v-for="item in feedbackHistory" :key="item.id || `${item.stage}-${item.roundNo}`">
+                <div><b>{{ item.result || item.stage }}</b><span>第 {{ item.roundNo || '—' }} 轮</span></div>
+                <p>{{ item.summary || '未填写文字意见' }}</p>
+                <small>FileVersion {{ item.fileVersionId || '—' }} · {{ item.createdAt || '' }}</small>
+              </article>
+            </div>
+          </details>
         </template>
       </template>
     </GraduationDocumentReviewWorkspace>
@@ -263,14 +309,26 @@ export default {
     },
     canReturnFormal() {
       return Boolean(this.canReturnFormalAction && String(this.form.returnReason || '').trim().length >= 5)
+    },
+    canonicalTargetLabel() {
+      return {
+        PROPOSAL: '开题报告原业务记录',
+        FINAL_DRAFT: '成果初稿原业务记录',
+        FINAL: '成果定稿原业务记录',
+        FORMAL_REVIEW: '正式评阅冻结任务'
+      }[this.activeTask?.caseType] || '当前业务原记录'
     }
   },
   watch: {
-    '$route.query.batchId'(next, prev) {
-      if (prev != null && String(next || '') !== String(prev || '')) this.loadAll()
+    '$route.query': {
+      deep: true,
+      handler(query) { this.onRouteQueryChanged(query) }
     }
   },
-  created() { this.loadAll() },
+  created() {
+    this.applyInitialRouteState(this.$route.query)
+    this.loadAll()
+  },
   beforeUnmount() {
     this.saveDraft()
     if (this.searchTimer) clearTimeout(this.searchTimer)
@@ -282,6 +340,68 @@ export default {
     caseLabel(type) { return CASE_OPTIONS.find((item) => item.value === type)?.label || (type ? '类型待确认' : '任务') },
     versionKey(item) { return item?.fileVersionId ?? item?.versionId ?? item?.id ?? null },
     fileKey(item) { return item?.fileKey ?? item?.fileId ?? this.versionKey(item) },
+    routeText(value) { return Array.isArray(value) ? String(value[0] || '') : String(value || '') },
+    routeBoolean(value) { return ['1', 'true', 'yes'].includes(this.routeText(value).toLowerCase()) },
+    routePage(value) {
+      const page = Number.parseInt(this.routeText(value), 10)
+      return Number.isFinite(page) && page > 0 ? page : 1
+    },
+    routeCaseType(value) {
+      const type = this.routeText(value).toUpperCase()
+      return CASE_OPTIONS.some((item) => item.value === type) ? type : ''
+    },
+    routeStatusGroup(value) {
+      const status = this.routeText(value).toUpperCase()
+      return STATUS_OPTIONS.some((item) => item.value === status) ? status : ''
+    },
+    applyInitialRouteState(query) {
+      this.filters.caseType = this.routeCaseType(query.caseType)
+      this.filters.statusGroup = this.routeStatusGroup(query.statusGroup)
+      this.filters.keyword = this.routeText(query.keyword)
+      this.filters.reviewerOnly = this.routeBoolean(query.reviewerOnly)
+      this.page = this.routePage(query.page)
+    },
+    onRouteQueryChanged(query) {
+      const next = {
+        caseType: this.routeCaseType(query.caseType),
+        statusGroup: this.routeStatusGroup(query.statusGroup),
+        keyword: this.routeText(query.keyword),
+        reviewerOnly: this.routeBoolean(query.reviewerOnly),
+        page: this.routePage(query.page)
+      }
+      const changed = next.caseType !== this.filters.caseType
+        || next.statusGroup !== this.filters.statusGroup
+        || next.keyword !== this.filters.keyword
+        || next.reviewerOnly !== this.filters.reviewerOnly
+        || next.page !== this.page
+      if (!changed || this.submitting) return
+      this.saveDraft()
+      this.filters.caseType = next.caseType
+      this.filters.statusGroup = next.statusGroup
+      this.filters.keyword = next.keyword
+      this.filters.reviewerOnly = next.reviewerOnly
+      this.page = next.page
+      this.loadAll()
+    },
+    buildRouteQuery(overrides = {}) {
+      const keyword = String(this.filters.keyword || '').trim()
+      const query = {
+        ...this.$route.query,
+        caseType: this.filters.caseType || undefined,
+        statusGroup: this.filters.statusGroup || undefined,
+        keyword: keyword || undefined,
+        reviewerOnly: this.filters.reviewerOnly ? '1' : undefined,
+        page: String(this.page),
+        ...overrides
+      }
+      Object.keys(query).forEach((key) => {
+        if (query[key] == null || query[key] === '') delete query[key]
+      })
+      return query
+    },
+    replaceRouteQuery(overrides = {}) {
+      return this.$router.replace({ query: this.buildRouteQuery(overrides) })
+    },
     draftKey() {
       return this.activeTask?.caseKey && this.targetFileVersionId != null
         ? `gd-review-center-draft:v1:${this.activeTask.caseKey}:${this.targetFileVersionId}` : ''
@@ -318,6 +438,7 @@ export default {
       return chunks.join('\n\n')
     },
     toggleCategory(item) {
+      if (this.submitting) return
       const hit = this.form.categories.indexOf(item)
       if (hit >= 0) this.form.categories.splice(hit, 1)
       else this.form.categories.push(item)
@@ -344,6 +465,7 @@ export default {
     reloadFromFirstPage() {
       if (this.submitting) return
       this.page = 1; this.loadQueueOnly()
+      void this.replaceRouteQuery({ page: '1' })
     },
     async loadSummary(token = this.loadToken) {
       const data = await graduationReviewCenterApi.summary()
@@ -416,8 +538,8 @@ export default {
       this.formError = ''
       if (this.dossierOpen) this.closeDossier()
     },
-    async selectTask(task) {
-      if (!task) return
+    async selectTask(task, { force = false } = {}) {
+      if (!task || (this.submitting && !force)) return
       this.saveDraft()
       if (this.dossierOpen) this.closeDossier()
       const token = ++this.selectionToken
@@ -448,7 +570,7 @@ export default {
       if ((!force && this.submitting) || !this.activeTask) return
       if (preserveDraft) this.saveDraft()
       const task = this.activeTask
-      await this.selectTask(task)
+      await this.selectTask(task, { force })
     },
     move(step) {
       if (this.submitting) return
@@ -465,6 +587,7 @@ export default {
     async changePage(next) {
       if (this.submitting || next < 1 || next > this.pageCount || next === this.page) return
       this.page = next
+      await this.replaceRouteQuery({ page: String(next) })
       await this.loadQueueOnly()
     },
     async submitBusiness(action) {
@@ -545,7 +668,7 @@ export default {
         if (sameIndex >= 0) target = this.queue[sameIndex + 1] || (sameIndex > 0 ? this.queue[sameIndex - 1] : this.queue[sameIndex])
         else target = this.queue[Math.min(oldIndex, this.queue.length - 1)]
       } else target = sameIndex >= 0 ? this.queue[sameIndex] : this.queue[Math.min(oldIndex, this.queue.length - 1)]
-      await this.selectTask(target)
+      await this.selectTask(target, { force: true })
     },
     async openStudentDossier(record) {
       if (this.submitting) return
@@ -576,6 +699,6 @@ export default {
 </script>
 
 <style scoped>
-.w74-center{display:grid;gap:12px;min-width:0}.w74-summary{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px}.w74-summary__card{display:grid;gap:2px;text-align:left;padding:11px 12px;border:1px solid var(--border-light,#e2e8f0);border-radius:10px;background:#fff;cursor:pointer}.w74-summary__card span,.w74-summary__card small{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-summary__card strong{font-size:22px;color:var(--text-primary,#0f172a)}.w74-summary-warning{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid #fcd34d;border-radius:9px;background:#fffbeb;color:#92400e;font-size:12px}.w74-toolbar{display:grid;gap:9px;padding:10px 12px;border:1px solid var(--border-light,#e2e8f0);border-radius:10px;background:#fff}.w74-filter-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.w74-filter-label{width:64px;font-size:12px;color:var(--text-tertiary,#64748b)}.w74-chip,.w74-category{border:1px solid var(--border-light,#e2e8f0);border-radius:999px;background:#fff;padding:5px 9px;font-size:12px;color:var(--text-secondary,#475569);cursor:pointer}.w74-chip.is-active,.w74-category.is-active{border-color:var(--brand-primary,#2563eb);background:var(--primary-50,#eff6ff);color:var(--brand-primary,#2563eb)}.w74-toolbar__search{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--border-light,#e2e8f0)}.w74-toolbar__search input[type=search]{flex:1 1 300px;min-width:220px;border:1px solid var(--border-base,#cbd5e1);border-radius:8px;padding:7px 9px}.w74-toolbar__search label{font-size:12px;color:var(--text-secondary,#475569)}.w74-refresh,.w74-pagination button{border:1px solid var(--border-light,#e2e8f0);border-radius:7px;background:#fff;padding:6px 9px;cursor:pointer}.w74-state{min-height:120px;display:grid;place-content:center;justify-items:center;gap:5px;border:1px dashed var(--border-light,#e2e8f0);border-radius:10px;color:var(--text-secondary,#475569);background:#fff}.w74-state--error{color:#b91c1c}.w74-state button{margin-top:5px}.w74-pagination{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px;font-size:11px;color:var(--text-tertiary,#64748b)}.w74-case-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.w74-case-type,.w74-status,.w74-overdue{font-size:11px;border-radius:999px;padding:3px 7px;background:#f1f5f9;color:#475569}.w74-overdue{background:#fff1f2;color:#be123c}.w74-status.is-returned{background:#fff7ed;color:#c2410c}.w74-status.is-done{background:#ecfdf5;color:#047857}.w74-blockers,.w74-history-lock,.w74-form-error{padding:8px 9px;border-radius:8px;font-size:12px}.w74-blockers{background:#fff7ed;color:#9a3412}.w74-blockers ul{margin:5px 0 0;padding-left:18px}.w74-history-lock{background:#eff6ff;color:#1d4ed8;line-height:1.5}.w74-form-error{margin:0;background:#fef2f2;color:#b91c1c}.w74-feedback,.w74-write-form,.w74-return-form{display:grid;gap:8px;padding-top:8px;border-top:1px solid var(--border-light,#e2e8f0)}.w74-section-title{display:flex;justify-content:space-between;gap:8px;align-items:center}.w74-section-title span,.w74-muted{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-feedback-list{display:grid;gap:6px;max-height:180px;overflow:auto}.w74-feedback-list article{display:grid;gap:3px;padding:7px;border-radius:7px;background:#f8fafc}.w74-feedback-list article>div{display:flex;justify-content:space-between;gap:6px;font-size:11px}.w74-feedback-list p{margin:0;white-space:pre-wrap;font-size:12px;line-height:1.5}.w74-feedback-list small{color:var(--text-tertiary,#64748b)}.w74-category-list{display:flex;gap:5px;flex-wrap:wrap}.w74-field{display:grid;gap:4px}.w74-field>span{font-size:12px;font-weight:600;color:var(--text-primary,#0f172a)}.w74-field small{font-weight:400;color:var(--text-tertiary,#64748b)}.w74-field textarea,.w74-field input{width:100%;box-sizing:border-box;border:1px solid var(--border-base,#cbd5e1);border-radius:8px;padding:7px 8px;font:inherit;resize:vertical}.w74-actions{display:grid;gap:7px}.w74-actions--two{grid-template-columns:1fr 1fr}.w74-primary,.w74-warning{border-radius:8px;padding:7px 10px;cursor:pointer}.w74-primary{border:1px solid var(--brand-primary,#2563eb);background:var(--brand-primary,#2563eb);color:#fff}.w74-warning{border:1px solid #f59e0b;background:#fffbeb;color:#a16207}.w74-primary:disabled,.w74-warning:disabled,.w74-refresh:disabled,.w74-pagination button:disabled{opacity:.5;cursor:not-allowed}.w74-review-loading{padding:18px 8px;text-align:center;color:var(--text-tertiary,#64748b);font-size:12px}.w74-modal{position:fixed;inset:0;z-index:1500;display:grid;place-items:center;padding:24px;background:rgba(15,23,42,.45)}.w74-modal__panel{width:min(680px,100%);max-height:80vh;overflow:auto;border-radius:14px;background:#fff;box-shadow:0 24px 60px rgba(15,23,42,.24)}.w74-modal__panel header,.w74-modal__panel footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border-light,#e2e8f0)}.w74-modal__panel footer{justify-content:flex-end;border-top:1px solid var(--border-light,#e2e8f0);border-bottom:0}.w74-modal__panel header div{display:grid}.w74-modal__panel header small{color:var(--text-tertiary,#64748b)}.w74-modal__panel header button{border:0;background:transparent;font-size:24px;cursor:pointer}.w74-dossier-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px}.w74-dossier-grid div{display:grid;gap:3px}.w74-dossier-grid span{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-dossier-grid b{font-size:13px;color:var(--text-primary,#0f172a)}
-@media(max-width:1400px){.w74-summary{grid-template-columns:repeat(3,1fr)}}@media(max-width:900px){.w74-summary{grid-template-columns:repeat(2,1fr)}.w74-dossier-grid{grid-template-columns:1fr}}
+.w74-center{display:grid;gap:10px;min-width:0}.w74-summary{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px}.w74-summary__card{display:grid;gap:2px;text-align:left;padding:10px 12px;border:1px solid var(--border-light,#e2e8f0);border-radius:10px;background:#fff;cursor:pointer;transition:border-color .15s ease,transform .15s ease}.w74-summary__card:hover:not(:disabled){border-color:var(--primary-200,#bfdbfe);transform:translateY(-1px)}.w74-summary__card:disabled{cursor:not-allowed;opacity:.58}.w74-summary__card span,.w74-summary__card small{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-summary__card strong{font-size:22px;color:var(--text-primary,#0f172a)}.w74-summary-warning{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid #fcd34d;border-radius:9px;background:#fffbeb;color:#92400e;font-size:12px}.w74-toolbar{display:grid;gap:8px;padding:9px 11px;border:1px solid var(--border-light,#e2e8f0);border-radius:10px;background:#fff}.w74-filter-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.w74-filter-label{width:64px;font-size:12px;color:var(--text-tertiary,#64748b)}.w74-chip,.w74-category{border:1px solid var(--border-light,#e2e8f0);border-radius:999px;background:#fff;padding:5px 9px;font-size:12px;color:var(--text-secondary,#475569);cursor:pointer}.w74-chip.is-active,.w74-category.is-active{border-color:var(--brand-primary,#2563eb);background:var(--primary-50,#eff6ff);color:var(--brand-primary,#2563eb)}.w74-chip:disabled,.w74-category:disabled{cursor:not-allowed;opacity:.58}.w74-toolbar__search{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:7px;border-top:1px solid var(--border-light,#e2e8f0)}.w74-toolbar__search input[type=search]{flex:1 1 300px;min-width:220px;border:1px solid var(--border-base,#cbd5e1);border-radius:8px;padding:7px 9px}.w74-toolbar__search label{font-size:12px;color:var(--text-secondary,#475569)}.w74-toolbar__context{margin-left:auto;color:var(--text-tertiary,#64748b);font-size:11px}.w74-refresh,.w74-pagination button{border:1px solid var(--border-light,#e2e8f0);border-radius:7px;background:#fff;padding:6px 9px;cursor:pointer}.w74-state{min-height:120px;display:grid;place-content:center;justify-items:center;gap:5px;border:1px dashed var(--border-light,#e2e8f0);border-radius:10px;color:var(--text-secondary,#475569);background:#fff}.w74-state--error{color:#b91c1c}.w74-state button{margin-top:5px}.w74-pagination{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px;font-size:11px;color:var(--text-tertiary,#64748b)}.w74-case-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.w74-case-type,.w74-status,.w74-overdue{font-size:11px;border-radius:999px;padding:3px 7px;background:#f1f5f9;color:#475569}.w74-overdue{background:#fff1f2;color:#be123c}.w74-status.is-returned{background:#fff7ed;color:#c2410c}.w74-status.is-done{background:#ecfdf5;color:#047857}.w74-command-intent{display:grid;gap:2px;padding:8px 9px;border:1px solid var(--primary-100,#dbeafe);border-radius:8px;background:linear-gradient(110deg,var(--primary-50,#eff6ff),#fff)}.w74-command-intent span,.w74-command-intent small{color:var(--text-tertiary,#64748b);font-size:10px}.w74-command-intent strong{color:var(--primary-800,#1e40af);font-size:13px}.w74-blockers,.w74-history-lock,.w74-form-error{padding:8px 9px;border-radius:8px;font-size:12px}.w74-blockers{background:#fff7ed;color:#9a3412}.w74-blockers ul{margin:5px 0 0;padding-left:18px}.w74-history-lock{background:#eff6ff;color:#1d4ed8;line-height:1.5}.w74-form-error{margin:0;background:#fef2f2;color:#b91c1c}.w74-feedback,.w74-write-form,.w74-return-form{display:grid;gap:8px;padding-top:8px;border-top:1px solid var(--border-light,#e2e8f0)}.w74-feedback summary{display:flex;justify-content:space-between;gap:8px;align-items:center;cursor:pointer;list-style:none}.w74-feedback summary::-webkit-details-marker{display:none}.w74-feedback summary span,.w74-section-title span,.w74-muted{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-feedback[open] summary{margin-bottom:8px}.w74-section-title{display:flex;justify-content:space-between;gap:8px;align-items:center}.w74-feedback-list{display:grid;gap:6px;max-height:180px;overflow:auto}.w74-feedback-list article{display:grid;gap:3px;padding:7px;border-radius:7px;background:#f8fafc}.w74-feedback-list article>div{display:flex;justify-content:space-between;gap:6px;font-size:11px}.w74-feedback-list p{margin:0;white-space:pre-wrap;font-size:12px;line-height:1.5}.w74-feedback-list small{color:var(--text-tertiary,#64748b)}.w74-category-list{display:flex;gap:5px;flex-wrap:wrap}.w74-field{display:grid;gap:4px}.w74-field>span{font-size:12px;font-weight:600;color:var(--text-primary,#0f172a)}.w74-field small{font-weight:400;color:var(--text-tertiary,#64748b)}.w74-field textarea,.w74-field input{width:100%;box-sizing:border-box;border:1px solid var(--border-base,#cbd5e1);border-radius:8px;padding:7px 8px;font:inherit;resize:vertical}.w74-field textarea:disabled,.w74-field input:disabled{cursor:not-allowed;background:var(--gray-50,#f8fafc);opacity:.7}.w74-actions{display:grid;gap:7px}.w74-actions--two{grid-template-columns:1fr 1fr}.w74-primary,.w74-warning{border-radius:8px;padding:7px 10px;cursor:pointer}.w74-primary{border:1px solid var(--brand-primary,#2563eb);background:var(--brand-primary,#2563eb);color:#fff}.w74-warning{border:1px solid #f59e0b;background:#fffbeb;color:#a16207}.w74-primary:disabled,.w74-warning:disabled,.w74-refresh:disabled,.w74-pagination button:disabled{opacity:.5;cursor:not-allowed}.w74-review-loading{padding:18px 8px;text-align:center;color:var(--text-tertiary,#64748b);font-size:12px}.w74-modal{position:fixed;inset:0;z-index:1500;display:grid;place-items:center;padding:24px;background:rgba(15,23,42,.45)}.w74-modal__panel{width:min(680px,100%);max-height:80vh;overflow:auto;border-radius:14px;background:#fff;box-shadow:0 24px 60px rgba(15,23,42,.24)}.w74-modal__panel header,.w74-modal__panel footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border-light,#e2e8f0)}.w74-modal__panel footer{justify-content:flex-end;border-top:1px solid var(--border-light,#e2e8f0);border-bottom:0}.w74-modal__panel header div{display:grid}.w74-modal__panel header small{color:var(--text-tertiary,#64748b)}.w74-modal__panel header button{border:0;background:transparent;font-size:24px;cursor:pointer}.w74-dossier-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px}.w74-dossier-grid div{display:grid;gap:3px}.w74-dossier-grid span{font-size:11px;color:var(--text-tertiary,#64748b)}.w74-dossier-grid b{font-size:13px;color:var(--text-primary,#0f172a)}
+@media(max-width:1400px){.w74-summary{grid-template-columns:repeat(3,1fr)}}@media(max-width:900px){.w74-summary{grid-template-columns:repeat(2,1fr)}.w74-dossier-grid{grid-template-columns:1fr}.w74-toolbar__context{margin-left:0}.w74-actions--two{grid-template-columns:1fr}}
 </style>
