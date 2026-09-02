@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "dd0bc0a6f78f38a1f5eb2032d9694b57cc24fc16",
-  "generatedAt": "2026-09-02T08:31:09+08:00",
+  "baselineCommit": "58c2bc95727032f2b8a0560ba71156f10beaab22",
+  "generatedAt": "2026-09-02T09:45:28+08:00",
   "summary": {
     "legacy-wave": 57,
     "domain-candidate": 32,
@@ -1320,7 +1320,7 @@
       "owner": "mobile-clients",
       "purpose": "移动端",
       "lifecycle": "legacy-wave",
-      "triggers": "on:\n  pull_request:\n    paths:\n      - 'miniapp/**'\n      - 'miniapp-v3-handoff.json'\n      - 'backend/alembic/versions/**'\n      - '.github/workflows/miniapp-teacher-v3-t8-handoff.yml'\n  workflow_dispatch:",
+      "triggers": "on:\n  pull_request:\n    paths:\n      - 'miniapp/**'\n      - 'artifacts/release-seals/miniapp-v3-handoff.json'\n      - 'backend/alembic/versions/**'\n      - '.github/workflows/miniapp-teacher-v3-t8-handoff.yml'\n  workflow_dispatch:",
       "lastConfiguredBranches": [],
       "replacedBy": ".github/workflows/main-canonical-release-gate.yml",
       "decision": "remove-after-protection-check"

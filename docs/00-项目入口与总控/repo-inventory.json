@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "dd0bc0a6f78f38a1f5eb2032d9694b57cc24fc16",
+  "baselineCommit": "58c2bc95727032f2b8a0560ba71156f10beaab22",
   "branch": "main",
-  "generatedAt": "2026-09-02T08:31:09+08:00",
+  "generatedAt": "2026-09-02T09:45:28+08:00",
   "summary": {
-    "fileCount": 6942,
-    "totalBytes": 217998487,
+    "fileCount": 6940,
+    "totalBytes": 218001224,
     "categories": {
       "backend": 3149,
       "delivery": 163,
       "documentation": 1270,
       "frontend-app": 2036,
-      "generated-evidence": 52,
-      "repository-root": 20,
+      "generated-evidence": 54,
+      "repository-root": 16,
       "tooling": 137,
       "verification": 115
     }
@@ -909,8 +909,8 @@
     {
       "path": ".github/workflows/miniapp-teacher-v3-t8-handoff.yml",
       "category": "delivery",
-      "sizeBytes": 748,
-      "sha256": "1911a648150ad63fd56487641d4e8f0c5e29644ee9b94873e650757bf778c865",
+      "sizeBytes": 771,
+      "sha256": "78db540df7f57b594d6fc4408a2a6d27c43389e7dbd1d0f997c57bffea223034",
       "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
@@ -959,30 +959,6 @@
       "category": "repository-root",
       "sizeBytes": 2093,
       "sha256": "f2983cdf0c5569b8461f634cf8804ea6d97814b50010540aef4dfab139b5fa79",
-      "gitStatus": "tracked",
-      "recommendedAction": "keep"
-    },
-    {
-      "path": ".snapshots/config.json",
-      "category": "repository-root",
-      "sizeBytes": 2855,
-      "sha256": "062cb76690bb6fc4a32b799b36968458628854b650937e90d91e2163f43a76b7",
-      "gitStatus": "tracked",
-      "recommendedAction": "keep"
-    },
-    {
-      "path": ".snapshots/readme.md",
-      "category": "repository-root",
-      "sizeBytes": 409,
-      "sha256": "0ab695ae4c6c2bae966a796fa9c1c29fce82c4381dc5ca6fad2cdf38f5f8af64",
-      "gitStatus": "tracked",
-      "recommendedAction": "keep"
-    },
-    {
-      "path": ".snapshots/sponsors.md",
-      "category": "repository-root",
-      "sizeBytes": 2391,
-      "sha256": "b255d6d45f4f0f2476c5294f04a2f5681a7e9bf7259b4e3f1f0899f12759bbc3",
       "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
@@ -1327,6 +1303,22 @@
       "category": "generated-evidence",
       "sizeBytes": 2039,
       "sha256": "f0653da5a685386ae70c93fd6c16046d6b3eeffd736078d2f8b8d32648d55005",
+      "gitStatus": "tracked",
+      "recommendedAction": "keep"
+    },
+    {
+      "path": "artifacts/release-seals/main-candidate.json",
+      "category": "generated-evidence",
+      "sizeBytes": 3684,
+      "sha256": "1c7361ff176db733d46593987bcc6b3780c0ff405c42ce1655a9e4776e7c5eca",
+      "gitStatus": "untracked-planned",
+      "recommendedAction": "keep"
+    },
+    {
+      "path": "artifacts/release-seals/miniapp-v3-handoff.json",
+      "category": "generated-evidence",
+      "sizeBytes": 774,
+      "sha256": "84cf80098609107685f3bb761f15630c503a88371edca3cc1f688362f4a17b48",
       "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
@@ -27006,8 +26998,8 @@
       "path": "docs/00-项目入口与总控/ci-workflow-inventory.json",
       "category": "documentation",
       "sizeBytes": 161761,
-      "sha256": "7554f545fa797dad7c561a611df3428d85c07bed6032d38e2440ca81cf1929a2",
-      "gitStatus": "untracked-planned",
+      "sha256": "855099b91926049dacea0624be85c452447e9d521153170ff567c201010bf966",
+      "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
     {
@@ -27141,9 +27133,9 @@
     {
       "path": "docs/00-项目入口与总控/project-status.json",
       "category": "documentation",
-      "sizeBytes": 2337,
-      "sha256": "0dee107e44f966f2d7b658c1dbf841f6e44bd88e61ac27567ff76042b4c8bbd1",
-      "gitStatus": "untracked-planned",
+      "sizeBytes": 6398,
+      "sha256": "87b7897e632cfedb9ed7a635dd6ca4d474a90c6b7988c76993280bab37d67b21",
+      "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
     {
@@ -37165,8 +37157,8 @@
     {
       "path": "e2e/contracts/internship-v8-golden-journeys.json",
       "category": "verification",
-      "sizeBytes": 12304,
-      "sha256": "1632a746a8178ecbe61f5f689f43d57e0d87c93c8e446e6a0190b572b73f1f57",
+      "sizeBytes": 12727,
+      "sha256": "dbf0bc4a619a2a6440a1c0c8967345bbf07297329e2489b5dad1e5dc0e660dd0",
       "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
@@ -49963,14 +49955,6 @@
       "recommendedAction": "keep"
     },
     {
-      "path": "miniapp-v3-handoff.json",
-      "category": "repository-root",
-      "sizeBytes": 774,
-      "sha256": "84cf80098609107685f3bb761f15630c503a88371edca3cc1f688362f4a17b48",
-      "gitStatus": "tracked",
-      "recommendedAction": "keep"
-    },
-    {
       "path": "miniapp/.env.example",
       "category": "frontend-app",
       "sizeBytes": 1602,
@@ -50077,16 +50061,16 @@
     {
       "path": "miniapp/scripts/generate-v3-handoff.mjs",
       "category": "frontend-app",
-      "sizeBytes": 7842,
-      "sha256": "e1e4a19e7bc798d2f96006b0c909f55f6ff1df791b62ae897c9ca87b63da13e1",
+      "sizeBytes": 7888,
+      "sha256": "3400ec382c7ba2221ea06bb4fde735ee1b7a8af40d3b0de0f661f5c7fbf60b59",
       "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
     {
       "path": "miniapp/scripts/verify-v3-handoff-downstream.mjs",
       "category": "frontend-app",
-      "sizeBytes": 3617,
-      "sha256": "a319ff91e6a05f521669d13059a8b0c59ad597055a006d2270db6ce103c2e806",
+      "sizeBytes": 3663,
+      "sha256": "565ec57bc0cffcbaf9697ed734f15dec037c55be6587aa08c05b19b2eb9161fa",
       "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
@@ -52429,16 +52413,16 @@
     {
       "path": "miniapp/tests/handoff-contract.test.mjs",
       "category": "frontend-app",
-      "sizeBytes": 3163,
-      "sha256": "14da672d37e6bf6e8bfb04f288b8e0c9ad15e6ab431d20be02dd604cd3476d38",
+      "sizeBytes": 3191,
+      "sha256": "d2cec1c86cba784a8dcf1e325162be1a513604e871e0ea29115d0d496b9edc92",
       "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
     {
       "path": "miniapp/tests/handoff-exact-head-contract.test.mjs",
       "category": "frontend-app",
-      "sizeBytes": 1606,
-      "sha256": "ec30469e7778d3911b2c28a7b6482f29eb358edaa8edd89fae83bfba1c43b84d",
+      "sizeBytes": 1629,
+      "sha256": "1d0a8204fcb35881cbde8427b7d47c3e23fa8ac636089676b9b2fb245995948c",
       "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
@@ -52645,8 +52629,8 @@
     {
       "path": "miniapp/tests/teacher-v3-t8-handoff-file-contract.test.mjs",
       "category": "frontend-app",
-      "sizeBytes": 896,
-      "sha256": "db2cda138f2283f4ecda1d3cba6a91aca40945610dce852e441ac82f183f5d1c",
+      "sizeBytes": 919,
+      "sha256": "1cef272503dda8b8bc85b1f959b6a18caf2d19c6517a2f6ab7ccf336f0dbbfc1",
       "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
@@ -53605,8 +53589,8 @@
     {
       "path": "scripts/maintenance/cleanup-local-artifacts.ps1",
       "category": "tooling",
-      "sizeBytes": 2844,
-      "sha256": "a87b144b98858615a2bcfb4196834c1aac459ae20e897e0add53ef45d13812a5",
+      "sizeBytes": 2879,
+      "sha256": "47d3ca08d07e5db249d664359ae4df7bf99fa3f83624c379a7d68a69092f0b6d",
       "gitStatus": "tracked",
       "recommendedAction": "keep"
     },
