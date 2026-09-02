@@ -1,10 +1,10 @@
 <template>
   <AppPageShell
-    title="风险预警"
-    subtitle="聚合学业、请假、宿舍、心理等来源的风险记录，PC 端负责分派、处置、升级和闭环入口。"
-    role-name="学工角色"
-    data-scope-name="学工数据范围"
-    watermark-purpose="学工风险预警查看"
+    title="风险与重点学生"
+    subtitle="按当前身份和数据范围汇总风险记录；先看结论，再分派、处置、跟进和闭环。"
+    :role-name="roleName"
+    :data-scope-name="scopeName"
+    watermark-purpose="学工风险与重点学生查看"
   >
     <template #actions>
       <AppPermissionButton
@@ -17,15 +17,21 @@
       >
         扫描超时
       </AppPermissionButton>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.risk.create')" code="studentAffairs.risk.create" :loading="actioning" @click="createRisk">
+      <AppPermissionButton
+        :allowed="canBtn('studentAffairs.risk.create')"
+        code="studentAffairs.risk.create"
+        :loading="actioning"
+        @click="createRisk"
+      >
         新建风险
       </AppPermissionButton>
     </template>
 
     <AppGlobalState
       :state="pageState"
-      :description="errorMessage"
-      loading-text="正在加载学工风险预警数据..."
+      :title="stateTitle"
+      :description="stateDescription"
+      loading-text="正在加载风险与重点学生真实数据…"
       @retry="load"
       @back="$router.push('/admin/student-affairs/dashboard')"
     >
@@ -35,144 +41,254 @@
         :pending="pendingCount"
         :overdue="stats && stats.overdue"
         :filter-summary="taskFilterSummary"
-        next-hint="优先分派或处置超时、高危风险记录。"
-        :degraded="!!errorMessage"
+        next-hint="优先分派或处置高危、危急和已超时记录。"
+        :degraded="statsDegraded"
         @clear-filter="clearTaskFilters"
       />
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
-      </div>
 
-      <AppSectionCard v-if="isRulePanel" title="风险规则摘要">
-        <div class="sa-rules">
-          <div v-for="rule in ruleItems" :key="rule.title" class="sa-rule">
-            <strong>{{ rule.title }}</strong>
-            <span>{{ rule.desc }}</span>
+      <template v-if="isRulePanel">
+        <section class="risk-rule-hero">
+          <span>RISK RULES · 规则真值</span>
+          <h2>规则只解释服务端如何识别与流转风险，不在浏览器复制状态机。</h2>
+          <p>创建、分派、处置、跟进、接管和关闭均继续由后端权限、数据范围、责任关系、状态和版本号共同裁定。</p>
+        </section>
+        <AppSectionCard title="风险规则摘要" subtitle="规则说明不扩大任何业务权限">
+          <div class="sa-rules">
+            <div v-for="rule in ruleItems" :key="rule.title" class="sa-rule">
+              <strong>{{ rule.title }}</strong>
+              <span>{{ rule.desc }}</span>
+            </div>
           </div>
-        </div>
-      </AppSectionCard>
+        </AppSectionCard>
+      </template>
 
-      <AppSectionCard v-else title="风险学生与处置">
-        <nav class="sa-queues" aria-label="风险快捷队列">
-          <button
-            v-for="q in quickQueues"
-            :key="q.key"
-            type="button"
-            class="sa-queue"
-            :class="[`is-${q.tone}`, { 'is-on': activeQueue === q.key, 'is-empty': q.count === 0 }]"
-            :aria-pressed="activeQueue === q.key ? 'true' : 'false'"
-            @click="selectQueue(q.key)"
-          >
-            <span class="sa-queue__dot" aria-hidden="true"></span>
-            <span class="sa-queue__label">{{ q.label }}</span>
-            <span v-if="q.count !== null" class="sa-queue__count">{{ q.count }}</span>
-          </button>
-        </nav>
+      <template v-else>
+        <section class="risk-hero" aria-labelledby="risk-hero-title">
+          <div class="risk-hero__copy">
+            <span class="risk-hero__eyebrow">RISK · 当前运行结论</span>
+            <h2 id="risk-hero-title">{{ riskConclusion }}</h2>
+            <p>{{ riskConclusionHint }}</p>
+          </div>
+          <div class="risk-hero__metrics" aria-label="风险关键指标">
+            <article v-for="item in heroMetrics" :key="item.key" class="risk-hero-metric">
+              <span>{{ item.label }}</span>
+              <strong :class="{ 'is-gap': item.isGap, 'is-alert': item.alert }">{{ item.value }}</strong>
+              <small>{{ item.hint }}</small>
+            </article>
+          </div>
+        </section>
 
-        <div v-if="studentFilterLabel" class="sa-student-filter">
-          <span>{{ studentFilterLabel }}</span>
-          <button type="button" class="mp-link" @click="clearStudentFilter">清除筛选</button>
-        </div>
-        <div class="sa-toolbar">
-          <AppSelect v-model="filters.source" class="sa-filter" :options="SOURCE_OPTIONS" placeholder="" @change="reload" />
-          <AppSelect v-model="filters.riskLevel" class="sa-filter" :options="LEVEL_FILTER_OPTIONS" placeholder="" @change="reload" />
-          <AppSelect v-model="filters.status" class="sa-filter" :options="STATUS_FILTER_OPTIONS" placeholder="" @change="onStatusSelect" />
-          <span v-if="scanResult" class="sa-scan">{{ scanResult }}</span>
+        <div v-if="statsDegraded" class="risk-gap" role="status">
+          <span aria-hidden="true">!</span>
+          <div>
+            <strong>风险记录可读取，但服务端聚合统计暂不可用</strong>
+            <p>高危、未闭环、待分派和超时数字统一标记 DATA GAP；页面不会使用当前分页记录冒充全局统计。</p>
+          </div>
+          <button type="button" @click="load">重新加载</button>
         </div>
 
-        <DataTable
-          v-if="risks.length || pagination.total > 0"
-          :columns="riskColumns"
-          :rows="risks"
-          row-key="riskId"
-          :pagination="pagination"
-          @page-change="onPageChange"
+        <div class="risk-truthbar" role="note">
+          <span class="risk-truthbar__mark" aria-hidden="true">真</span>
+          <div>
+            <strong>真实边界</strong>
+            <p>队列数字来自服务端同谓词统计；行级按钮只认该行的 allowedActions，“我来处理”只认 canClaim，所有写操作继续提交 version。</p>
+          </div>
+          <AppStatusTag type="warning" label="全局重点学生聚合 · DATA GAP" />
+        </div>
+
+        <AppSectionCard
+          class="risk-loop-card"
+          title="学生问题黄金闭环"
+          subtitle="风险中心负责识别、分派和处置；学生360、谈心家校与回访承担背景和持续跟踪"
         >
-          <template #cell-student="{ row }">
-            <div class="mp-cell-main">{{ row.realName || '未命名学生' }}</div>
-            <div class="mp-cell-sub">{{ row.studentNo || row.studentId }}</div>
-          </template>
-          <template #cell-source="{ row }">{{ sourceLabel(row.source) }}</template>
-          <template #cell-riskLevel="{ row }"><AppRiskTag :level="row.riskLevel" /></template>
-          <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
-          <template #cell-owner="{ row }">{{ ownerLabel(row) }}</template>
-          <template #cell-summary="{ row }">
-            <div class="mp-cell-main">{{ row.title || '风险记录' }}</div>
-            <div v-if="row.mentalMasked" class="mp-cell-sub">心理来源明细已按角色脱敏</div>
-          </template>
-          <template #cell-actions="{ row }">
-            <div class="sa-actions" :aria-label="`${row.realName || '该学生'}的可用操作`">
-              <!-- 推荐主动作：按状态机推出「这条现在最该做的一件事」，只是视觉层级，
-                   动作本身仍来自 row.allowedActions，不比它更宽。 -->
-              <div v-if="primaryAction(row)" class="sa-actions__recommended">
-                <span class="sa-actions__hint">推荐下一步</span>
-                <AppPermissionButton
-                  class="sa-actions__primary"
-                  :allowed="canBtn(primaryAction(row).code)"
-                  :code="primaryAction(row).code"
-                  size="sm"
-                  variant="primary"
-                  :loading="isRowActioning(row, primaryAction(row).key)"
-                  :disabled="isOtherRowActioning(row, primaryAction(row).key)"
-                  :native-title="`推荐下一步：${primaryAction(row).label}`"
-                  @click="primaryAction(row).run(row)"
-                >
-                  <span>{{ primaryAction(row).label }}</span>
-                  <span class="sa-actions__arrow" aria-hidden="true">→</span>
-                </AppPermissionButton>
-              </div>
+          <ol class="risk-loop" aria-label="学生问题闭环">
+            <li v-for="(step, index) in studentLoopSteps" :key="step.title" :class="{ 'is-current': index === 2 }">
+              <span>{{ index + 1 }}</span>
+              <strong>{{ step.title }}</strong>
+              <small>{{ step.subtitle }}</small>
+            </li>
+          </ol>
+        </AppSectionCard>
 
-              <!-- 我来处理：仅当服务端下发 canClaim（本人有处置资格且该行可 ASSIGN）。 -->
-              <AppPermissionButton
-                v-if="row.canClaim"
-                class="sa-actions__claim"
-                :allowed="canBtn('studentAffairs.risk.assign')"
-                code="studentAffairs.risk.assign"
-                size="sm"
-                variant="secondary"
-                :loading="isRowActioning(row, 'CLAIM')"
-                :disabled="isOtherRowActioning(row, 'CLAIM')"
-                native-title="跳过责任人选择，直接分派给我"
-                @click="claim(row)"
-              ><span class="sa-actions__claim-dot" aria-hidden="true"></span>我来处理</AppPermissionButton>
+        <section v-if="focusRisk" class="risk-focus" aria-labelledby="risk-focus-title">
+          <div class="risk-focus__main">
+            <span class="risk-focus__eyebrow">当前页优先焦点 · 非全局排名</span>
+            <div class="risk-focus__title-row">
+              <h3 id="risk-focus-title">{{ focusRisk.realName || '未命名学生' }}</h3>
+              <AppRiskTag :level="focusRisk.riskLevel" />
+              <AppStatusTag :type="statusKind(focusRisk.status)" :label="focusRisk.statusLabel || focusRisk.status" />
+            </div>
+            <p>{{ focusRisk.studentNo || focusRisk.studentId }} · {{ sourceLabel(focusRisk.source) }} · {{ focusRisk.title || '风险记录' }}</p>
+            <small>{{ focusRisk.mentalMasked ? '心理来源明细已按角色脱敏；' : '' }}责任人：{{ ownerLabel(focusRisk) }}</small>
+          </div>
+          <div class="risk-focus__actions">
+            <AppPermissionButton
+              :allowed="canBtn('studentAffairs.student.view')"
+              code="studentAffairs.student.view"
+              variant="secondary"
+              @click="goStudent360(focusRisk)"
+            >
+              学生360
+            </AppPermissionButton>
+            <AppPermissionButton
+              v-if="focusRisk.canClaim"
+              :allowed="canBtn('studentAffairs.risk.assign')"
+              code="studentAffairs.risk.assign"
+              variant="secondary"
+              :loading="isRowActioning(focusRisk, 'CLAIM')"
+              :disabled="isOtherRowActioning(focusRisk, 'CLAIM')"
+              @click="claim(focusRisk)"
+            >
+              我来处理
+            </AppPermissionButton>
+            <AppPermissionButton
+              v-if="primaryAction(focusRisk)"
+              :allowed="canBtn(primaryAction(focusRisk).code)"
+              :code="primaryAction(focusRisk).code"
+              :loading="isRowActioning(focusRisk, primaryAction(focusRisk).key)"
+              :disabled="isOtherRowActioning(focusRisk, primaryAction(focusRisk).key)"
+              @click="primaryAction(focusRisk).run(focusRisk)"
+            >
+              {{ primaryAction(focusRisk).label }}
+            </AppPermissionButton>
+          </div>
+        </section>
 
-              <div class="sa-actions__secondary">
+        <AppSectionCard title="风险学生与处置" subtitle="筛选和快捷队列均提交服务端，列表不是浏览器内的二次统计">
+          <nav class="sa-queues" aria-label="风险快捷队列">
+            <button
+              v-for="q in quickQueues"
+              :key="q.key"
+              type="button"
+              class="sa-queue"
+              :class="[`is-${q.tone}`, { 'is-on': activeQueue === q.key, 'is-empty': q.count === 0 }]"
+              :aria-pressed="activeQueue === q.key ? 'true' : 'false'"
+              @click="selectQueue(q.key)"
+            >
+              <span class="sa-queue__dot" aria-hidden="true" />
+              <span class="sa-queue__label">{{ q.label }}</span>
+              <span v-if="q.count !== null" class="sa-queue__count">{{ q.count }}</span>
+            </button>
+          </nav>
+
+          <div v-if="studentFilterLabel" class="sa-student-filter">
+            <span>{{ studentFilterLabel }}</span>
+            <button type="button" class="mp-link" @click="clearStudentFilter">清除筛选</button>
+          </div>
+
+          <div class="sa-toolbar">
+            <AppSelect v-model="filters.source" class="sa-filter" :options="SOURCE_OPTIONS" placeholder="" @change="reload" />
+            <AppSelect v-model="filters.riskLevel" class="sa-filter" :options="LEVEL_FILTER_OPTIONS" placeholder="" @change="reload" />
+            <AppSelect v-model="filters.status" class="sa-filter" :options="STATUS_FILTER_OPTIONS" placeholder="" @change="onStatusSelect" />
+            <span v-if="scanResult" class="sa-scan">{{ scanResult }}</span>
+          </div>
+
+          <DataTable
+            v-if="risks.length || pagination.total > 0"
+            :columns="riskColumns"
+            :rows="risks"
+            row-key="riskId"
+            :pagination="pagination"
+            @page-change="onPageChange"
+          >
+            <template #cell-student="{ row }">
+              <button type="button" class="risk-student-link" @click="goStudent360(row)">
+                <span>{{ row.realName || '未命名学生' }}</span>
+                <small>{{ row.studentNo || row.studentId }}</small>
+              </button>
+            </template>
+            <template #cell-source="{ row }">{{ sourceLabel(row.source) }}</template>
+            <template #cell-riskLevel="{ row }"><AppRiskTag :level="row.riskLevel" /></template>
+            <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
+            <template #cell-owner="{ row }">{{ ownerLabel(row) }}</template>
+            <template #cell-summary="{ row }">
+              <div class="mp-cell-main">{{ row.title || '风险记录' }}</div>
+              <div v-if="row.mentalMasked" class="mp-cell-sub">心理来源明细已按角色脱敏</div>
+            </template>
+            <template #cell-actions="{ row }">
+              <div class="sa-actions" :aria-label="`${row.realName || '该学生'}的可用操作`">
+                <div v-if="primaryAction(row)" class="sa-actions__recommended">
+                  <span class="sa-actions__hint">推荐下一步</span>
+                  <AppPermissionButton
+                    class="sa-actions__primary"
+                    :allowed="canBtn(primaryAction(row).code)"
+                    :code="primaryAction(row).code"
+                    size="sm"
+                    variant="primary"
+                    :loading="isRowActioning(row, primaryAction(row).key)"
+                    :disabled="isOtherRowActioning(row, primaryAction(row).key)"
+                    :native-title="`推荐下一步：${primaryAction(row).label}`"
+                    @click="primaryAction(row).run(row)"
+                  >
+                    <span>{{ primaryAction(row).label }}</span>
+                    <span class="sa-actions__arrow" aria-hidden="true">→</span>
+                  </AppPermissionButton>
+                </div>
+
                 <AppPermissionButton
-                  v-for="a in secondaryActions(row)"
-                  :key="a.key"
-                  :allowed="canBtn(a.code)"
-                  :code="a.code"
+                  v-if="row.canClaim"
+                  class="sa-actions__claim"
+                  :allowed="canBtn('studentAffairs.risk.assign')"
+                  code="studentAffairs.risk.assign"
                   size="sm"
                   variant="secondary"
-                  :loading="isRowActioning(row, a.key)"
-                  :disabled="isOtherRowActioning(row, a.key)"
-                  @click="a.run(row)"
-                >{{ a.label }}</AppPermissionButton>
-
-                <AppPermissionButton class="sa-actions__detail" :allowed="canBtn('studentAffairs.risk.view')" code="studentAffairs.risk.view" size="sm" variant="ghost" @click="$router.push(`/admin/student-affairs/risk/${row.riskId}`)">
-                  查看详情
+                  :loading="isRowActioning(row, 'CLAIM')"
+                  :disabled="isOtherRowActioning(row, 'CLAIM')"
+                  native-title="跳过责任人选择，直接分派给我"
+                  @click="claim(row)"
+                >
+                  <span class="sa-actions__claim-dot" aria-hidden="true" />我来处理
                 </AppPermissionButton>
+
+                <div class="sa-actions__secondary">
+                  <AppPermissionButton
+                    v-for="a in secondaryActions(row)"
+                    :key="a.key"
+                    :allowed="canBtn(a.code)"
+                    :code="a.code"
+                    size="sm"
+                    variant="secondary"
+                    :loading="isRowActioning(row, a.key)"
+                    :disabled="isOtherRowActioning(row, a.key)"
+                    @click="a.run(row)"
+                  >{{ a.label }}</AppPermissionButton>
+                  <AppPermissionButton
+                    class="sa-actions__detail"
+                    :allowed="canBtn('studentAffairs.risk.view')"
+                    code="studentAffairs.risk.view"
+                    size="sm"
+                    variant="ghost"
+                    @click="$router.push(`/admin/student-affairs/risk/${row.riskId}`)"
+                  >
+                    查看详情
+                  </AppPermissionButton>
+                </div>
               </div>
-            </div>
-          </template>
-        </DataTable>
-        <p v-else class="sa-empty">当前范围内暂无风险记录</p>
-      </AppSectionCard>
+            </template>
+          </DataTable>
+
+          <div v-else class="risk-empty">
+            <span aria-hidden="true">✓</span>
+            <strong>当前条件下暂无风险记录</strong>
+            <p>这是当前服务端筛选结果，不代表其他数据范围或其他条件下没有风险。</p>
+            <button v-if="taskFilterSummary" type="button" @click="clearTaskFilters">清除筛选</button>
+          </div>
+        </AppSectionCard>
+      </template>
     </AppGlobalState>
 
     <AppDrawer :visible="createDlg.visible" title="新建风险记录" mode="modal" size="medium" @close="createDlg.visible = false">
       <div class="sa-form">
         <AppFormItem label="学生" required>
-          <AppStudentPicker v-model="createDlg.studentId"
-                            placeholder="按姓名 / 学号搜索" :disabled="actioning" />
+          <AppStudentPicker v-model="createDlg.studentId" placeholder="按姓名 / 学号搜索" :disabled="actioning" />
         </AppFormItem>
         <AppFormItem label="风险等级" required>
           <AppSelect v-model="createDlg.riskLevel" :options="RISK_LEVELS" :disabled="actioning" />
         </AppFormItem>
         <AppFormItem label="风险标题" required>
-          <AppTextInput v-model="createDlg.title" placeholder="一句话概括，如：连续两周未到课" :disabled="actioning" />
+          <AppTextInput v-model="createDlg.title" placeholder="一句话概括风险事实" :disabled="actioning" />
         </AppFormItem>
-        <AppFormItem label="风险详情" required hint="写清时间、表现、已了解到的情况，供责任人接手">
+        <AppFormItem label="风险详情" required hint="写清时间、表现和已了解情况，供责任人接手">
           <AppTextarea v-model="createDlg.detail" :rows="4" :disabled="actioning" />
         </AppFormItem>
         <AppInlineAlert v-if="createDlg.error" type="danger" :description="createDlg.error" />
@@ -184,20 +300,32 @@
     </AppDrawer>
 
     <AppConfirmDialog
-      v-model:visible="assignDlg.visible" title="分派责任人" type="primary" confirm-text="确认分派"
-      :submitting="actioning" @confirm="submitAssign"
+      v-model:visible="assignDlg.visible"
+      title="分派责任人"
+      type="primary"
+      confirm-text="确认分派"
+      :submitting="actioning"
+      @confirm="submitAssign"
     >
       <AppFormItem label="责任人" required>
-        <AppRiskOwnerPicker v-model="assignDlg.ownerId"
-                          placeholder="按姓名 / 工号搜索"
-                          data-scope-hint="仅可选持学工风险处置角色的在职账号" />
+        <AppRiskOwnerPicker
+          v-model="assignDlg.ownerId"
+          placeholder="按姓名 / 工号搜索"
+          data-scope-hint="仅可选持学工风险处置角色的在职账号"
+        />
       </AppFormItem>
     </AppConfirmDialog>
 
     <AppConfirmDialog
-      v-model:visible="processDlg.visible" :title="processDialog.title" type="primary" :confirm-text="processDialog.confirmText"
-      require-reason :reason-label="processDialog.reasonLabel" phrase-scene-key="sa.risk.handle"
-      :submitting="actioning" @confirm="submitProcess"
+      v-model:visible="processDlg.visible"
+      :title="processDialog.title"
+      type="primary"
+      :confirm-text="processDialog.confirmText"
+      require-reason
+      :reason-label="processDialog.reasonLabel"
+      phrase-scene-key="sa.risk.handle"
+      :submitting="actioning"
+      @confirm="submitProcess"
     />
   </AppPageShell>
 </template>
@@ -208,15 +336,14 @@ import {
   AppFormItem,
   AppGlobalState,
   AppInlineAlert,
-  AppMetricCard,
   AppPageShell,
   AppPermissionButton,
+  AppRiskOwnerPicker,
   AppRiskTag,
   AppSectionCard,
   AppSelect,
   AppStatusTag,
   AppStudentPicker,
-  AppRiskOwnerPicker,
   AppTextInput,
   AppTextarea
 } from '@/components/common'
@@ -283,17 +410,16 @@ export default {
     AppFormItem,
     AppGlobalState,
     AppInlineAlert,
-    AppMetricCard,
     AppPageShell,
     AppPermissionButton,
-    AppRiskTag,
-    AppSelect,
-    AppStudentPicker,
     AppRiskOwnerPicker,
+    AppRiskTag,
+    AppSectionCard,
+    AppSelect,
+    AppStatusTag,
+    AppStudentPicker,
     AppTextInput,
     AppTextarea,
-    AppSectionCard,
-    AppStatusTag,
     DataTable,
     TaskContextBar
   },
@@ -316,12 +442,7 @@ export default {
       createDlg: { visible: false, studentId: '', riskLevel: 'MEDIUM', title: '', detail: '', error: '' },
       assignDlg: { visible: false, riskId: '', ownerId: '', version: null },
       processDlg: { visible: false, riskId: '', version: null, action: 'PROCESS' },
-      filters: {
-        source: '',
-        riskLevel: '',
-        status: '',
-        studentId: ''
-      },
+      filters: { source: '', riskLevel: '', status: '', studentId: '' },
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
       activeQueue: 'ALL',
       routeIntentConsumed: false
@@ -340,7 +461,7 @@ export default {
     taskFilterSummary() {
       if (this.studentFilterLabel) return this.studentFilterLabel
       const parts = []
-      if (this.filters.source) parts.push(`来源：${this.filters.source}`)
+      if (this.filters.source) parts.push(`来源：${this.sourceLabel(this.filters.source)}`)
       if (this.filters.riskLevel) parts.push(`等级：${this.filters.riskLevel}`)
       if (this.filters.status) parts.push(`状态：${this.filters.status}`)
       return parts.join('；')
@@ -354,7 +475,7 @@ export default {
       let name = f.studentName || ''
       let no = f.studentNo || ''
       const id = f.studentId || ''
-      if ((!name || !no) && id && this.risks && this.risks.length) {
+      if ((!name || !no) && id && this.risks.length) {
         const hit = this.risks.find((x) => String(x.studentId) === String(id))
         if (hit) {
           if (!name) name = hit.realName || ''
@@ -365,13 +486,86 @@ export default {
       return `当前学生筛选：#${id}`
     },
     pageState() {
+      if (!this.canBtn('studentAffairs.risk.view')) return 'forbidden'
       if (this.loading) return 'loading'
       if (this.errorMessage) return 'error'
       return 'ready'
     },
+    stateTitle() {
+      if (this.pageState === 'forbidden') return '当前身份无权查看风险记录'
+      if (this.pageState === 'error') return '风险与重点学生加载失败'
+      return ''
+    },
+    stateDescription() {
+      if (this.pageState === 'forbidden') return '请切换具备 studentAffairs.risk.view 的真实身份，或联系管理员核对角色与数据范围。'
+      return this.errorMessage
+    },
+    statsDegraded() {
+      return !this.loading && !this.errorMessage && !this.stats
+    },
     canScanTimeout() {
       const role = (this.ctx?.currentRoleCode || this.ctx?.currentRole?.roleCode || '').toUpperCase()
       return SCAN_ROLES.has(role) && this.canBtn('studentAffairs.risk.handle')
+    },
+    riskConclusion() {
+      if (!this.stats) return this.risks.length ? '风险记录已加载，聚合结论暂不可用。' : '当前条件下没有返回风险记录。'
+      const high = Number(this.stats.highCritical || 0)
+      const overdue = Number(this.stats.overdue || 0)
+      const unassigned = Number(this.stats.unassigned || 0)
+      const open = Number(this.stats.open || 0)
+      if (!high && !overdue && !unassigned && !open) return '当前范围暂无未闭环风险，继续保持常态关注。'
+      const fragments = []
+      if (high) fragments.push(`${high} 条高危或危急`)
+      if (overdue) fragments.push(`${overdue} 条已超时`)
+      if (unassigned) fragments.push(`${unassigned} 条待分派`)
+      return `当前有 ${open} 条未闭环风险${fragments.length ? `，其中${fragments.join('、')}` : ''}。`
+    },
+    riskConclusionHint() {
+      if (!this.stats) return '当前分页记录不会被用来推算全局重点学生人数；统计恢复后再给出全局结论。'
+      if (Number(this.stats.highCritical || 0) || Number(this.stats.overdue || 0)) return '先处置高危、危急与超时记录，再处理普通待分派和持续跟进。'
+      if (Number(this.stats.unassigned || 0)) return '当前首要任务是明确责任人，随后进入处置与跟进。'
+      return '按责任人持续推进未闭环记录，并在事实充分后由原状态机关闭。'
+    },
+    heroMetrics() {
+      if (!this.stats) {
+        return [
+          { key: 'high', label: '高危 / 危急', value: 'DATA GAP', hint: '等待服务端聚合', isGap: true },
+          { key: 'open', label: '未闭环', value: 'DATA GAP', hint: '不以当前页冒充', isGap: true },
+          { key: 'unassigned', label: '待分派', value: 'DATA GAP', hint: '等待服务端聚合', isGap: true },
+          { key: 'overdue', label: '已超时', value: 'DATA GAP', hint: '等待服务端聚合', isGap: true }
+        ]
+      }
+      const high = Number(this.stats.highCritical || 0)
+      const open = Number(this.stats.open || 0)
+      const unassigned = Number(this.stats.unassigned || 0)
+      const overdue = Number(this.stats.overdue || 0)
+      return [
+        { key: 'high', label: '高危 / 危急', value: high, hint: '服务端同口径', alert: high > 0 },
+        { key: 'open', label: '未闭环', value: open, hint: '当前数据范围', alert: open > 0 },
+        { key: 'unassigned', label: '待分派', value: unassigned, hint: '需明确责任人', alert: unassigned > 0 },
+        { key: 'overdue', label: '已超时', value: overdue, hint: '需优先处置', alert: overdue > 0 }
+      ]
+    },
+    focusRisk() {
+      if (!this.risks.length) return null
+      const levelRank = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 }
+      const statusRank = { ESCALATED: 6, NEW: 5, ASSIGNED: 4, PROCESSING: 3, FOLLOWING: 2, CLOSED: 0 }
+      return [...this.risks].sort((a, b) => {
+        const level = (levelRank[b.riskLevel] || 0) - (levelRank[a.riskLevel] || 0)
+        if (level) return level
+        if (Boolean(a.overdue) !== Boolean(b.overdue)) return b.overdue ? 1 : -1
+        return (statusRank[b.status] || 0) - (statusRank[a.status] || 0)
+      })[0]
+    },
+    studentLoopSteps() {
+      return [
+        { title: '今日发现', subtitle: '统一待办与来源事实' },
+        { title: '学生360', subtitle: '查看完整背景' },
+        { title: '风险处置', subtitle: '分派并明确责任' },
+        { title: '谈话家校', subtitle: '形成真实沟通' },
+        { title: '回访', subtitle: '按约定时间跟进' },
+        { title: '关闭沉淀', subtitle: '留痕并回到画像' }
+      ]
     },
     processDialog() {
       return ({
@@ -380,44 +574,24 @@ export default {
         TAKEOVER: { title: '接管升级风险', confirmText: '确认接管', reasonLabel: '接管说明（≥5字）' }
       })[this.processDlg.action] || { title: '记录风险动作', confirmText: '确认', reasonLabel: '办理说明（≥5字）' }
     },
-    /**
-     * 快捷队列。数字直接取服务端 stats——后端用同一份谓词算卡片和过滤，
-     * 所以「点进去看到的条数」必然等于这里显示的数字（有合同用例锁住）。
-     * 「我负责的」传 ownerId=me 由服务端认自己是谁：/rbac/current-context 不返回
-     * userId，前端拿不到自己的数字 id，也不该把身份解析规则复制到浏览器里。
-     */
     quickQueues() {
       const s = this.stats || {}
       const list = [
-        { key: 'ALL', label: '全部', tone: 'neutral', count: Number(s.total ?? this.total) },
-        { key: 'HIGH', label: '高危 / 危急', tone: 'risk', count: Number(s.highCritical || 0) },
-        { key: 'OVERDUE', label: '已超时', tone: 'risk', count: Number(s.overdue || 0) },
-        { key: 'UNASSIGNED', label: '待分派', tone: 'warning', count: Number(s.unassigned || 0) },
+        { key: 'ALL', label: '全部', tone: 'neutral', count: this.stats ? Number(s.total ?? this.total) : null },
+        { key: 'HIGH', label: '高危 / 危急', tone: 'risk', count: this.stats ? Number(s.highCritical || 0) : null },
+        { key: 'OVERDUE', label: '已超时', tone: 'risk', count: this.stats ? Number(s.overdue || 0) : null },
+        { key: 'UNASSIGNED', label: '待分派', tone: 'warning', count: this.stats ? Number(s.unassigned || 0) : null },
         { key: 'FOLLOWING', label: '持续跟进', tone: 'neutral', count: null }
       ]
       list.splice(4, 0, { key: 'MINE', label: '我负责的', tone: 'primary', count: null })
       return list
     },
-    metricCards() {
-      const s = this.stats || {}
-      const high = Number(s.highCritical || 0)
-      const open = Number(s.open || 0)
-      const unassigned = Number(s.unassigned || 0)
-      const overdue = Number(s.overdue || 0)
-      return [
-        { key: 'total', label: '风险记录', value: Number(s.total ?? this.total), accent: 'primary' },
-        { key: 'high', label: '高危/危急', value: high, accent: high ? 'risk' : 'success' },
-        { key: 'open', label: '未闭环', value: open, accent: open ? 'warning' : 'success' },
-        { key: 'unassigned', label: '待分派', value: unassigned, accent: unassigned ? 'warning' : 'success' },
-        { key: 'overdue', label: '超时', value: overdue, accent: overdue ? 'risk' : 'success' }
-      ]
-    },
     ruleItems() {
       return [
         { title: '来源去重', desc: '同一学生、同一来源、同一来源单据重复建单由后端拦截。' },
-        { title: '心理明细脱敏', desc: '心理来源明细只对授权角色展示，普通辅导员只看到脱敏摘要。' },
-        { title: '处置后关闭', desc: '风险关闭前必须存在处置记录，关闭后写入学生成长时间线。' },
-        { title: '超时扫描', desc: '可由学工管理员手动触发自动分派与升级；接口幂等。' }
+        { title: '心理明细脱敏', desc: '心理来源明细只对授权角色展示，普通角色仅看到脱敏摘要。' },
+        { title: '行级动作收口', desc: '页面只展示服务端 allowedActions 允许的动作，不以前端角色猜测。' },
+        { title: '超时扫描', desc: '仅授权管理角色可触发，实际分派、升级、通知和审计均由服务端执行。' }
       ]
     }
   },
@@ -448,12 +622,6 @@ export default {
       this.routeIntentConsumed = true
       this.createRisk()
     },
-    /**
-     * 行级动作以服务端下发的 allowedActions 为准（fail-closed）。
-     * canBtn 只表示"这个角色有没有这类权限"，无法表达"这条记录当前状态下、
-     * 以当前责任关系能不能做"——只看它会显示出后端必然拒绝的按钮。
-     * 后端未下发时一律不显示，不得回落成全开。
-     */
     canAction(row, action) {
       return Array.isArray(row && row.allowedActions) && row.allowedActions.includes(action)
     },
@@ -463,10 +631,6 @@ export default {
     isOtherRowActioning(row, action) {
       return !!this.rowActioning.riskId && !this.isRowActioning(row, action)
     },
-    /**
-     * 行级动作目录。key 与后端 RISK_TRANSITIONS 的动作名一一对应，
-     * 前端只负责「怎么排版」，不负责「能不能做」——能不能做只看 row.allowedActions。
-     */
     actionCatalog() {
       return {
         ASSIGN: { key: 'ASSIGN', label: '分派', code: 'studentAffairs.risk.assign', run: (r) => this.assign(r) },
@@ -475,11 +639,6 @@ export default {
         TAKEOVER: { key: 'TAKEOVER', label: '上级接管', code: 'studentAffairs.risk.handle', run: (r) => this.process(r, 'TAKEOVER') }
       }
     },
-    /**
-     * 推荐主动作：NEW→分派、已分派→记录处置、处置中→继续跟进、已升级→上级接管。
-     * 纯视觉层级，不新增状态机；候选动作必须同时出现在 row.allowedActions 里，
-     * 否则不推荐（宁可没有主按钮，也不给一个后端会拒的按钮）。
-     */
     primaryAction(row) {
       const catalog = this.actionCatalog()
       for (const key of ['ASSIGN', 'PROCESS', 'FOLLOW', 'TAKEOVER']) {
@@ -487,18 +646,13 @@ export default {
       }
       return null
     },
-    /** 主动作之外仍可执行的动作，放次级区域，避免一行堆满按钮。 */
     secondaryActions(row) {
       const primary = this.primaryAction(row)
       const catalog = this.actionCatalog()
       return ['ASSIGN', 'PROCESS', 'FOLLOW', 'TAKEOVER']
-        .filter((k) => this.canAction(row, k) && (!primary || primary.key !== k))
-        .map((k) => catalog[k])
+        .filter((key) => this.canAction(row, key) && (!primary || primary.key !== key))
+        .map((key) => catalog[key])
     },
-    /**
-     * 我来处理：复用既有 ASSIGN 命令，ownerId 传 me 由服务端解析成本人，
-     * 服务端仍走 _validate_owner / 状态机 / 乐观锁 / 待办 / 通知 / 审计。
-     */
     async claim(row) {
       await this.runRowAction(row, 'CLAIM', () => studentAffairsApi.assignRisk(row.riskId, 'me', row.version))
     },
@@ -510,7 +664,6 @@ export default {
       this.filters.riskLevel = q.riskLevel ? String(q.riskLevel) : this.filters.riskLevel
       if (q.status != null && q.status !== '') {
         const resolved = resolveTodoStatus('risk', q.status)
-        // PENDING/OPEN/DONE/OVERDUE 等公共语义：下拉用 activeKey；后端 OPEN/PENDING 已识别
         this.filters.status = resolved.activeKey === 'CLOSED' ? 'CLOSED'
           : (resolved.activeKey === 'ESCALATED' ? 'ESCALATED'
             : (['PENDING', 'OPEN'].includes(resolved.activeKey) ? resolved.activeKey
@@ -533,14 +686,12 @@ export default {
       this.$router.replace({ query: q }).catch(() => {})
       this.reload()
     },
-    /** 切换快捷队列：条件变了必须回第一页，否则会停在新条件下不存在的页码。 */
     selectQueue(key) {
       this.activeQueue = this.activeQueue === key && key !== 'ALL' ? 'ALL' : key
       this.scanResult = ''
       this.pagination.page = 1
       this.load()
     },
-    /** 队列 → 服务端只读过滤参数。全部交给后端做 SQL 条件，前端不做本地筛。 */
     queueParams() {
       switch (this.activeQueue) {
         case 'HIGH': return { priority: 'HIGH_CRITICAL' }
@@ -582,12 +733,15 @@ export default {
     },
     ownerLabel(row) {
       if (!row.ownerId) return '待分派'
-      if (row.ownerName) {
-        return row.ownerLoginName
-          ? `${row.ownerName} / ${row.ownerLoginName}`
-          : row.ownerName
-      }
+      if (row.ownerName) return row.ownerLoginName ? `${row.ownerName} / ${row.ownerLoginName}` : row.ownerName
       return '责任人账号异常'
+    },
+    goStudent360(row) {
+      if (!row?.studentId) return
+      this.$router.push({
+        path: `/admin/student/${row.studentId}`,
+        query: { from: 'risk', riskId: row.riskId || undefined, tab: 'risk' }
+      })
     },
     createRisk() {
       const sid = this.studentFilter?.studentId
@@ -610,12 +764,7 @@ export default {
       if (ok) d.visible = false
     },
     assign(risk) {
-      this.assignDlg = {
-        visible: true,
-        riskId: risk.riskId,
-        ownerId: risk.ownerId || '',
-        version: risk.version
-      }
+      this.assignDlg = { visible: true, riskId: risk.riskId, ownerId: risk.ownerId || '', version: risk.version }
     },
     async submitAssign() {
       const d = this.assignDlg
@@ -707,121 +856,318 @@ export default {
 </script>
 
 <style scoped>
+@import '@/styles/module-page.css';
+
 .sa-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 }
-.sa-grid--metrics {
+.risk-rule-hero,
+.risk-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--hero-bd);
+  border-radius: var(--radius-xl);
+  background: var(--hero-grad);
+  box-shadow: var(--hero-shadow);
+  color: var(--hero-tx);
+}
+.risk-rule-hero {
+  padding: var(--space-6);
+}
+.risk-rule-hero > span,
+.risk-hero__eyebrow,
+.risk-focus__eyebrow {
+  color: var(--hero-dim);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: .08em;
+}
+.risk-rule-hero h2 {
+  margin: var(--space-2) 0;
+  font-size: var(--font-size-xl);
+}
+.risk-rule-hero p {
+  max-width: 920px;
+  margin: 0;
+  color: var(--hero-sub);
+  line-height: 1.7;
+}
+.risk-hero {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
+  grid-template-columns: minmax(0, 1fr) minmax(420px, .72fr);
+  gap: var(--space-6);
+  padding: var(--space-6);
 }
-.sa-toolbar {
-  display: flex;
-  flex-wrap: wrap;
+.risk-hero::before {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--hero-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hero-grid) 1px, transparent 1px);
+  background-size: 28px 28px;
+  content: '';
+  pointer-events: none;
+}
+.risk-hero__copy,
+.risk-hero__metrics {
+  position: relative;
+  z-index: 1;
+}
+.risk-hero__copy {
+  display: grid;
+  align-content: center;
+}
+.risk-hero__copy h2 {
+  max-width: 920px;
+  margin: var(--space-2) 0;
+  font-size: var(--font-size-2xl);
+  line-height: 1.45;
+}
+.risk-hero__copy p {
+  margin: 0;
+  color: var(--hero-sub);
+  line-height: 1.7;
+}
+.risk-hero__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.risk-hero-metric {
+  display: grid;
+  align-content: center;
+  min-height: 92px;
+  padding: var(--space-3);
+  border: 1px solid var(--hero-chip-bd);
+  border-radius: var(--radius-lg);
+  background: var(--hero-chip-bg);
+}
+.risk-hero-metric span,
+.risk-hero-metric small {
+  color: var(--hero-sub);
+  font-size: var(--font-size-xs);
+}
+.risk-hero-metric strong {
+  margin: 2px 0;
+  color: var(--hero-tx);
+  font-size: var(--font-size-metric);
+  font-variant-numeric: tabular-nums;
+}
+.risk-hero-metric strong.is-alert {
+  color: var(--hero-warn);
+}
+.risk-hero-metric strong.is-gap {
+  font-size: var(--font-size-sm);
+  letter-spacing: .04em;
+}
+.risk-gap,
+.risk-truthbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--primary-100);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
 }
-
-/* 快捷队列：一排可切换的胶囊，数字直接来自服务端 stats，
-   点进去的列表条数与这里显示的一致（后端同一份谓词）。 */
+.risk-gap > span,
+.risk-truthbar__mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-base);
+  background: var(--primary-50);
+  color: var(--primary-700);
+  font-weight: var(--font-weight-bold);
+}
+.risk-gap p,
+.risk-truthbar p {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.65;
+}
+.risk-gap button,
+.risk-empty button {
+  border: 0;
+  background: transparent;
+  color: var(--primary-700);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+.risk-loop {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.risk-loop li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-height: 86px;
+  padding: var(--space-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-section);
+  text-align: center;
+}
+.risk-loop li > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--primary-100);
+  color: var(--primary-700);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+.risk-loop li strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+.risk-loop li small {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+}
+.risk-loop li.is-current {
+  border-color: var(--primary-500);
+  background: var(--primary-50);
+}
+.risk-loop li.is-current > span {
+  background: var(--primary-600);
+  color: var(--text-inverse);
+}
+.risk-focus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--danger-100);
+  border-radius: var(--radius-xl);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+.risk-focus__eyebrow {
+  color: var(--danger-600);
+}
+.risk-focus__title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-1) 0;
+}
+.risk-focus h3,
+.risk-focus p,
+.risk-focus small {
+  margin: 0;
+}
+.risk-focus h3 {
+  color: var(--text-primary);
+  font-size: var(--font-size-xl);
+}
+.risk-focus p {
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+.risk-focus small {
+  color: var(--text-tertiary);
+}
+.risk-focus__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.sa-toolbar,
 .sa-queues {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+.sa-queues {
   margin-bottom: var(--space-4);
   padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border-light, #eef0f4);
+  border-bottom: 1px solid var(--border-light);
+}
+.sa-toolbar {
+  margin-bottom: var(--space-4);
 }
 .sa-queue {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 7px 14px 7px 11px;
-  border: 1px solid var(--border-light, #e5e8ee);
-  border-radius: 999px;
-  background: var(--bg-card, #fff);
-  color: var(--text-secondary, #5a6473);
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full);
+  background: var(--bg-card);
+  color: var(--text-secondary);
   font: inherit;
-  font-size: var(--font-size-sm, 13px);
-  line-height: 1.2;
+  font-size: var(--font-size-sm);
   cursor: pointer;
-  transition: border-color 0.16s ease, background 0.16s ease,
-              color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
-.sa-queue:hover {
-  border-color: var(--queue-accent, var(--primary-400, #93b4fd));
-  color: var(--text-primary, #1f2937);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.06);
+.sa-queue:hover,
+.sa-queue.is-on {
+  border-color: var(--queue-accent, var(--primary-500));
+  background: var(--queue-soft, var(--primary-50));
+  color: var(--queue-strong, var(--primary-700));
 }
-.sa-queue:focus-visible {
-  outline: 2px solid var(--queue-accent, var(--primary-600, #2563eb));
-  outline-offset: 2px;
+.sa-queue.is-on {
+  font-weight: var(--font-weight-semibold);
 }
 .sa-queue__dot {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
-  background: var(--queue-accent, var(--text-tertiary, #98a2b3));
-  flex: none;
+  border-radius: var(--radius-full);
+  background: var(--queue-accent, var(--text-tertiary));
 }
-.sa-queue__label { white-space: nowrap; }
 .sa-queue__count {
   min-width: 20px;
   padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--bg-subtle, #f2f4f7);
-  color: var(--text-secondary, #5a6473);
-  font-size: var(--font-size-xs, 12px);
+  border-radius: var(--radius-full);
+  background: var(--bg-section);
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
-/* 选中态：整枚胶囊染成该队列的语义色，一眼看出当前在看哪一队 */
-.sa-queue.is-on {
-  border-color: var(--queue-accent, var(--primary-600, #2563eb));
-  background: var(--queue-soft, var(--primary-50, #eff6ff));
-  color: var(--queue-strong, var(--primary-700, #1d4ed8));
-  font-weight: var(--font-weight-medium, 500);
-}
 .sa-queue.is-on .sa-queue__count {
-  background: var(--queue-accent, var(--primary-600, #2563eb));
-  color: #fff;
+  background: var(--queue-accent, var(--primary-600));
+  color: var(--text-inverse);
 }
-/* 语义色：高危/超时=红，待分派=橙，我负责的=蓝，全部/跟进=中性 */
 .sa-queue.is-risk {
-  --queue-accent: var(--danger-600, #dc2626);
-  --queue-soft: var(--danger-50, #fef2f2);
-  --queue-strong: var(--danger-700, #b91c1c);
+  --queue-accent: var(--danger-600);
+  --queue-soft: var(--danger-50);
+  --queue-strong: var(--danger-700);
 }
 .sa-queue.is-warning {
-  --queue-accent: var(--warning-600, #d97706);
-  --queue-soft: var(--warning-50, #fffbeb);
-  --queue-strong: var(--warning-700, #b45309);
+  --queue-accent: var(--warning-600);
+  --queue-soft: var(--warning-50);
+  --queue-strong: var(--warning-700);
 }
 .sa-queue.is-primary {
-  --queue-accent: var(--primary-600, #2563eb);
-  --queue-soft: var(--primary-50, #eff6ff);
-  --queue-strong: var(--primary-700, #1d4ed8);
+  --queue-accent: var(--primary-600);
+  --queue-soft: var(--primary-50);
+  --queue-strong: var(--primary-700);
 }
 .sa-queue.is-neutral {
-  --queue-accent: var(--text-tertiary, #98a2b3);
-  --queue-soft: var(--bg-subtle, #f2f4f7);
-  --queue-strong: var(--text-primary, #1f2937);
+  --queue-accent: var(--text-tertiary);
+  --queue-soft: var(--bg-section);
+  --queue-strong: var(--text-primary);
 }
-/* 数字为 0 的队列淡出：让老师一眼看出哪几队真的有事要做。
-   仍可点击（点进去是"当前没有"的空态，比按钮直接消失更好理解）。 */
 .sa-queue.is-empty:not(.is-on) {
-  opacity: 0.55;
-}
-.sa-queue.is-empty:not(.is-on):hover {
-  opacity: 1;
-}
-@media (max-width: 720px) {
-  .sa-queues { gap: 6px; }
-  .sa-queue { padding: 6px 10px 6px 8px; }
+  opacity: .58;
 }
 .sa-student-filter {
   display: flex;
@@ -830,26 +1176,37 @@ export default {
   gap: var(--space-2);
   margin-bottom: var(--space-3);
   padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warning-100);
   border-radius: var(--radius-md);
-  background: var(--warning-50, #fffbeb);
-  border: 1px solid var(--warning-200, #fde68a);
-  font-size: var(--font-size-sm);
+  background: var(--warning-50);
   color: var(--text-primary);
+  font-size: var(--font-size-sm);
 }
 .sa-filter {
-  width: 150px;
+  width: 154px;
 }
 .sa-scan {
-  color: var(--warning-700);
-  background: var(--warning-50);
-  border: 1px solid var(--warning-200);
-  border-radius: var(--radius-base);
   padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warning-100);
+  border-radius: var(--radius-base);
+  background: var(--warning-50);
+  color: var(--warning-700);
 }
-.sa-rule span {
-  display: block;
+.risk-student-link {
+  display: grid;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.risk-student-link span {
+  font-weight: var(--font-weight-semibold);
+}
+.risk-student-link small {
   color: var(--text-tertiary);
-  margin-top: 2px;
 }
 .sa-actions {
   display: flex;
@@ -870,46 +1227,38 @@ export default {
   left: 9px;
   z-index: 1;
   padding: 0 5px;
-  border-radius: 999px;
-  background: var(--primary-50, #eff6ff);
-  color: var(--primary-700, #1d4ed8);
+  border-radius: var(--radius-full);
+  background: var(--primary-50);
+  color: var(--primary-700);
   font-size: 9px;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   line-height: 15px;
   letter-spacing: .08em;
   white-space: nowrap;
 }
 .sa-actions__primary :deep(.app-button) {
   min-width: 96px;
-  padding-inline: 13px 11px;
-  border-radius: 10px;
-  box-shadow: 0 8px 18px -10px var(--glow, rgba(37, 99, 235, .65));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--btn-p-shadow);
 }
 .sa-actions__arrow {
   margin-left: 2px;
-  font-size: 15px;
-  line-height: 1;
   transition: transform .16s ease;
 }
 .sa-actions__primary:hover .sa-actions__arrow {
   transform: translateX(2px);
 }
 .sa-actions__claim :deep(.app-button) {
-  border-color: var(--primary-200, #bfdbfe);
-  background: var(--primary-50, #eff6ff);
-  color: var(--primary-700, #1d4ed8);
-  font-weight: 600;
-}
-.sa-actions__claim :deep(.app-button:hover:not(:disabled)) {
-  border-color: var(--primary-400, #60a5fa);
-  background: #fff;
+  border-color: var(--primary-100);
+  background: var(--primary-50);
+  color: var(--primary-700);
+  font-weight: var(--font-weight-semibold);
 }
 .sa-actions__claim-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
-  background: var(--primary-500, #3b82f6);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, .12);
+  border-radius: var(--radius-full);
+  background: var(--primary-500);
 }
 .sa-actions__secondary {
   display: inline-flex;
@@ -918,30 +1267,34 @@ export default {
   flex-wrap: wrap;
   gap: 3px;
 }
-.sa-actions__secondary :deep(.app-button) {
-  padding-inline: 9px;
-}
 .sa-actions__detail :deep(.app-button) {
-  color: var(--text-tertiary, #8a94a3);
-}
-@media (max-width: 1080px) {
-  .sa-actions {
-    min-width: 210px;
-  }
-  .sa-actions__hint {
-    position: static;
-    align-self: center;
-    margin-right: 4px;
-  }
-  .sa-actions__recommended {
-    padding-top: 0;
-    align-items: center;
-  }
-}
-.sa-empty {
   color: var(--text-tertiary);
-  padding: var(--space-4);
+}
+.risk-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8);
   text-align: center;
+}
+.risk-empty > span {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-full);
+  background: var(--success-50);
+  color: var(--success-700);
+  font-size: var(--font-size-xl);
+}
+.risk-empty strong {
+  color: var(--text-primary);
+}
+.risk-empty p {
+  max-width: 560px;
+  margin: 0;
+  color: var(--text-tertiary);
+  line-height: 1.65;
 }
 .sa-rules {
   display: grid;
@@ -949,15 +1302,47 @@ export default {
   gap: var(--space-3);
 }
 .sa-rule {
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-base);
   padding: var(--space-4);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-section);
 }
-@media (max-width: 960px) {
-  .sa-grid--metrics,
+.sa-rule span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  line-height: 1.65;
+}
+@media (max-width: 1180px) {
+  .risk-hero {
+    grid-template-columns: 1fr;
+  }
+  .risk-loop {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 820px) {
+  .risk-hero__metrics,
+  .sa-rules {
+    grid-template-columns: 1fr 1fr;
+  }
+  .risk-focus,
+  .risk-gap,
+  .risk-truthbar {
+    grid-template-columns: 1fr;
+  }
+  .risk-focus__actions {
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 620px) {
+  .risk-hero__metrics,
+  .risk-loop,
   .sa-rules {
     grid-template-columns: 1fr;
   }
+  .sa-filter {
+    width: 100%;
+  }
 }
-@import '@/styles/module-page.css';
 </style>
