@@ -23,50 +23,77 @@
     </EmptyState>
 
     <div v-else class="mp-stack gdb-page">
-      <section class="mp-card gdb-work" aria-label="今天先做这些">
-        <div class="mp-card__head">
-          <div>
-            <span class="gdb-work__eyebrow">按紧急度与职责排序</span>
-            <span class="mp-card__title">今天先做这些</span>
-          </div>
-          <span class="gdb-work__count">{{ topWorkItems.length }} 项在手</span>
-        </div>
-        <div v-if="topWorkItems.length" class="mp-card__body gdb-work-list">
-          <article v-for="item in topWorkItems" :key="item.id" class="gdb-work-item" :class="'is-' + item.priority.toLowerCase()">
-            <div class="gdb-work-item__priority">{{ priorityLabel(item.priority) }}</div>
-            <div class="gdb-work-item__main">
-              <div class="gdb-work-item__identity">
-                <strong>{{ item.student?.name || '待确认对象' }}</strong>
-                <span>{{ item.business }}</span>
-              </div>
-              <p>{{ item.whyHere }}</p>
-              <div class="gdb-work-item__facts">
-                <span>当前等待：{{ item.waitingOn || '待确认' }}</span>
-                <span>下一棒：{{ item.nextActor || '待确认' }}</span>
-                <span v-if="item.dueAt">要求完成：{{ item.dueAt }}</span>
-                <span>最近变化：{{ item.recentChange || '暂无新变化' }}</span>
-              </div>
-            </div>
-            <button type="button" class="mp-btn mp-btn--primary" @click="goWorkItem(item)">{{ item.primaryAction?.label || '去处理' }} →</button>
-          </article>
-        </div>
-        <div v-else class="mp-card__body gdb-work-empty">
-          <span>✓</span>
-          <div><strong>当前职责范围内没有紧急工作</strong><p>可以继续查看本批次整体进度与后续风险。</p></div>
-        </div>
-      </section>
-
       <section class="gdb-overview" aria-label="今日毕业设计结论">
         <div class="gdb-overview__conclusion">
-          <span class="gdb-overview__eyebrow">今日结论</span>
+          <span class="gdb-overview__eyebrow">先看结论，再处理任务</span>
           <strong>{{ priorityConclusion }}</strong>
           <p>{{ priorityDetail }}</p>
+          <div class="gdb-overview__context" aria-label="当前工作范围">
+            <span>{{ hero.batchName || batchStore.selectedBatchName || '当前批次' }}</span>
+            <span>{{ ctx.currentRole.roleName }}</span>
+            <span>{{ ctx.dataScope.scopeName }}</span>
+          </div>
         </div>
         <div class="gdb-kpis" aria-label="当前批次关键指标">
           <div v-for="s in keyStats" :key="s.label" class="gdb-kpi">
             <span class="gdb-kpi__value">{{ s.value }}</span>
             <span class="gdb-kpi__label">{{ s.label }}</span>
             <span v-if="s.trend" class="gdb-kpi__trend">{{ s.trend }}</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="mp-card gdb-work" aria-label="今天先做这些">
+        <div class="mp-card__head gdb-work__head">
+          <div>
+            <span class="gdb-work__eyebrow">已按紧急度和职责排好顺序</span>
+            <span class="mp-card__title">今天先做这些</span>
+          </div>
+          <div class="gdb-work__summary">
+            <span>{{ workItems.length }} 项在手</span>
+            <small v-if="workItems.length">逐项处理后回到这里复核</small>
+          </div>
+        </div>
+        <div v-if="workItems.length" class="mp-card__body gdb-work-list">
+          <article
+            v-for="(item, index) in workItems"
+            :key="workItemKey(item, index)"
+            class="gdb-work-item"
+            :class="[priorityClass(item.priority), { 'is-lead': index === 0 }]"
+          >
+            <div class="gdb-work-item__priority">
+              <span>{{ priorityLabel(item.priority) }}</span>
+              <small v-if="index === 0">先处理</small>
+            </div>
+            <div class="gdb-work-item__main">
+              <div class="gdb-work-item__identity">
+                <strong>{{ item.student?.name || '待确认对象' }}</strong>
+                <span>{{ item.business || '毕业设计事项' }}</span>
+                <small v-if="studentMeta(item.student)">{{ studentMeta(item.student) }}</small>
+              </div>
+              <p>{{ item.whyHere || '请进入任务查看当前情况。' }}</p>
+              <div class="gdb-work-item__facts">
+                <span><b>当前等待</b>{{ item.waitingOn || '待确认' }}</span>
+                <span><b>下一责任人</b>{{ item.nextActor || '待确认' }}</span>
+                <span v-if="item.dueAt"><b>要求完成</b>{{ item.dueAt }}</span>
+                <span><b>最近变化</b>{{ item.recentChange || '暂无新变化' }}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="mp-btn mp-btn--primary gdb-work-item__action"
+              :aria-label="`${item.primaryAction?.label || '去处理'}：${item.student?.name || item.business || '毕业设计事项'}`"
+              @click="goWorkItem(item)"
+            >
+              {{ item.primaryAction?.label || '去处理' }} →
+            </button>
+          </article>
+        </div>
+        <div v-else class="mp-card__body gdb-work-empty">
+          <span>✓</span>
+          <div>
+            <strong>当前职责范围内没有紧急工作</strong>
+            <p>可以继续查看本批次整体进度与后续风险。</p>
           </div>
         </div>
       </section>
@@ -91,7 +118,7 @@
                 <span class="gdb-todo__label">{{ t.label }}</span>
                 <span class="gdb-todo__hint">{{ t.hint }}</span>
               </span>
-              <span class="gdb-todo__action">去处理 <b>→</b></span>
+              <span class="gdb-todo__action">去队列 <b>→</b></span>
             </button>
           </div>
         </section>
@@ -163,7 +190,7 @@
         </div>
       </section>
 
-      <p class="mp-note">看板数字来自当前批次与当前数据范围；待办和风险均可带着 batch/filter 直接下钻到真实处理队列。</p>
+      <p class="mp-note">看板数字来自当前批次与当前数据范围；工作项沿用服务端顺序，操作会带着当前批次和筛选条件进入真实处理队列。</p>
     </div>
   </ModulePageShell>
 </template>
@@ -173,6 +200,18 @@
 import { ModulePageShell, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
+
+const EMPTY_HERO = () => ({
+  stats: [],
+  flow: [],
+  todos: [],
+  todayWorkItems: [],
+  riskAlerts: [],
+  moduleStats: [],
+  batchName: '',
+  batchRange: '',
+  batchStatus: ''
+})
 
 const TODO_TARGETS = {
   t1: { path: '/admin/graduation/proposals', query: { tab: 'PENDING_REVIEW' } },
@@ -191,7 +230,7 @@ export default {
       batchStore: useGraduationBatchStore(),
       loading: true,
       error: '',
-      hero: { stats: [], flow: [], todos: [], todayWorkItems: [], riskAlerts: [], moduleStats: [], batchName: '', batchRange: '', batchStatus: '' }
+      hero: EMPTY_HERO()
     }
   },
   computed: {
@@ -205,7 +244,7 @@ export default {
       return status ? `${name} · ${status}` : name
     },
     toolbarActions() {
-      const pa = this.ctx.permissionActions
+      const pa = this.ctx.permissionActions || {}
       return [
         { key: 'createBatch', label: '＋ 新增毕设批次', variant: 'primary' },
         { key: 'importStudents', label: '导入学生名单' },
@@ -220,26 +259,31 @@ export default {
         }))
     },
     keyStats() {
-      return (this.hero.stats || []).slice(0, 5)
+      return (Array.isArray(this.hero.stats) ? this.hero.stats : []).slice(0, 5)
     },
-    topWorkItems() {
-      return (this.hero.todayWorkItems || []).slice(0, 6)
+    workItems() {
+      return Array.isArray(this.hero.todayWorkItems) ? this.hero.todayWorkItems : []
+    },
+    firstWorkItem() {
+      return this.workItems[0] || null
     },
     todoLoad() {
-      return (this.hero.todos || []).reduce((sum, item) => sum + Math.max(0, Number(item.count) || 0), 0)
+      return (Array.isArray(this.hero.todos) ? this.hero.todos : [])
+        .reduce((sum, item) => sum + Math.max(0, Number(item.count) || 0), 0)
     },
     highRiskCount() {
-      const stat = (this.hero.stats || []).find((item) => item.label === '高风险学生')
+      const stat = (Array.isArray(this.hero.stats) ? this.hero.stats : [])
+        .find((item) => item.label === '高风险学生')
       return Math.max(0, Number(stat?.value) || 0)
     },
     priorityTodo() {
-      return (this.hero.todos || [])
+      return (Array.isArray(this.hero.todos) ? this.hero.todos : [])
         .filter((item) => Number(item.count) > 0)
         .slice()
         .sort((a, b) => Number(b.count) - Number(a.count))[0] || null
     },
     priorityConclusion() {
-      const first = this.topWorkItems[0]
+      const first = this.firstWorkItem
       if (first) return `先处理「${first.student?.name || first.business} · ${first.business}」。`
       if (!this.todoLoad && !this.highRiskCount) return '当前批次暂无待处理事项，继续关注过程进度与后续风险。'
       if (this.highRiskCount) return `今日待办量 ${this.todoLoad}，其中高风险 ${this.highRiskCount} 条；先处理高风险学生。`
@@ -248,7 +292,7 @@ export default {
         : `今日待办量 ${this.todoLoad}。`
     },
     priorityDetail() {
-      const first = this.topWorkItems[0]
+      const first = this.firstWorkItem
       return first?.whyHere || '全部数字均按当前批次与当前角色数据范围统计；处理完成后返回看板复核待办和风险变化。'
     }
   },
@@ -265,15 +309,20 @@ export default {
       if (!this.batchStore.selectedBatchId) {
         this.loading = false
         this.error = ''
-        this.hero = { stats: [], flow: [], todos: [], todayWorkItems: [], riskAlerts: [], moduleStats: [], batchName: '', batchRange: '', batchStatus: '' }
+        this.hero = EMPTY_HERO()
         return
       }
       this.loading = true
       this.error = ''
-      const res = await graduationApi.getDashboardSummary({ batchId: this.batchStore.selectedBatchId })
-      if (res.code === 0) this.hero = res.data
-      else this.error = res.message
-      this.loading = false
+      try {
+        const res = await graduationApi.getDashboardSummary({ batchId: this.batchStore.selectedBatchId })
+        if (res.code === 0) this.hero = { ...EMPTY_HERO(), ...(res.data || {}) }
+        else this.error = res.message || '毕业设计总览加载失败，请稍后重试。'
+      } catch (error) {
+        this.error = error?.message || '毕业设计总览加载失败，请检查网络后重试。'
+      } finally {
+        this.loading = false
+      }
     },
     routeWithBatch(path, query = {}) {
       const [pathname, rawQuery = ''] = String(path || '').split('?')
@@ -294,11 +343,21 @@ export default {
     goTodo(todo) {
       this.$router.push(this.todoTarget(todo))
     },
+    workItemKey(item, index) {
+      return item?.id || `${item?.priority || 'NORMAL'}-${item?.student?.id || item?.student?.name || 'item'}-${index}`
+    },
+    priorityClass(priority) {
+      return `is-${String(priority || 'NORMAL').toLowerCase()}`
+    },
     priorityLabel(priority) {
       return {
         CRITICAL: '立即处理', HIGH: '高优先', OVERDUE: '已逾期', DUE_24H: '24 小时内',
         RELEASE_BLOCKER: '阻塞发布', RETURNED: '已退回', WAITING_REVIEW: '等待评阅', NORMAL: '常规'
       }[priority] || '待处理'
+    },
+    studentMeta(student) {
+      if (!student || typeof student !== 'object') return ''
+      return [student.studentNo, student.className, student.majorName].filter(Boolean).join(' · ')
     },
     goWorkItem(item) {
       const action = item?.primaryAction || {}
@@ -330,50 +389,65 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .gdb-page { gap: var(--space-3); }
+.gdb-overview {
+  display: grid;
+  grid-template-columns: minmax(300px, .95fr) minmax(0, 1.5fr);
+  gap: var(--space-4);
+  align-items: stretch;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: var(--radius-lg, 12px);
+  color: #fff;
+  background:
+    radial-gradient(circle at 92% 10%, rgba(255, 255, 255, .16), transparent 26%),
+    linear-gradient(120deg, var(--primary-900, #123a78), var(--primary-600, #2563eb));
+  box-shadow: 0 16px 34px -24px rgba(37, 99, 235, .72);
+}
+.gdb-overview__conclusion { align-self: center; min-width: 0; }
+.gdb-overview__eyebrow { display: block; margin-bottom: 6px; color: rgba(255, 255, 255, .72); font-size: var(--font-size-xs); font-weight: 700; letter-spacing: .08em; }
+.gdb-overview__conclusion strong { display: block; font-size: 19px; line-height: 1.45; }
+.gdb-overview__conclusion p { margin: 7px 0 0; color: rgba(255, 255, 255, .78); font-size: var(--font-size-xs); line-height: 1.6; }
+.gdb-overview__context { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.gdb-overview__context span { max-width: 100%; padding: 4px 8px; overflow: hidden; border: 1px solid rgba(255, 255, 255, .18); border-radius: var(--radius-full); background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .84); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.gdb-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.gdb-kpi { display: grid; align-content: center; min-width: 0; padding: 11px 12px; border: 1px solid rgba(255, 255, 255, .16); border-radius: var(--radius-md); background: rgba(255, 255, 255, .09); }
+.gdb-kpi__value { display: block; font-size: 23px; font-weight: 700; line-height: 1.2; }
+.gdb-kpi__label { display: block; margin-top: 4px; overflow: hidden; color: rgba(255, 255, 255, .88); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
+.gdb-kpi__trend { display: block; margin-top: 2px; overflow: hidden; color: rgba(255, 255, 255, .64); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .gdb-work { overflow: hidden; border-color: var(--primary-100, #dbeafe); box-shadow: 0 14px 32px -28px rgba(37, 99, 235, .46); }
-.gdb-work .mp-card__head > div { display: grid; gap: 2px; }
-.gdb-work__eyebrow { color: var(--primary-600, #2563eb); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
-.gdb-work__count { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.gdb-work__head > div:first-child { display: grid; gap: 2px; }
+.gdb-work__eyebrow { color: var(--primary-600, #2563eb); font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+.gdb-work__summary { display: grid; justify-items: end; gap: 1px; margin-left: auto; color: var(--text-secondary); font-size: var(--font-size-xs); }
+.gdb-work__summary small { color: var(--text-tertiary); font-size: 11px; }
 .gdb-work-list { display: grid; gap: 8px; }
-.gdb-work-item { display: grid; grid-template-columns: 82px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: 12px; border: 1px solid var(--border-light); border-left: 4px solid var(--primary-300, #93c5fd); border-radius: var(--radius-md); background: var(--card); }
-.gdb-work-item.is-critical, .gdb-work-item.is-high { border-left-color: var(--danger-500, #ef4444); background: linear-gradient(90deg, var(--danger-50, #fef2f2), #fff 34%); }
-.gdb-work-item.is-overdue, .gdb-work-item.is-due_24h, .gdb-work-item.is-release_blocker { border-left-color: var(--warning-500, #f59e0b); background: linear-gradient(90deg, var(--warning-50, #fffbeb), #fff 34%); }
-.gdb-work-item__priority { color: var(--text-secondary); font-size: var(--font-size-xs); font-weight: 700; }
+.gdb-work-item { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: 12px; border: 1px solid var(--border-light); border-left: 4px solid var(--primary-300, #93c5fd); border-radius: var(--radius-md); background: var(--card); }
+.gdb-work-item.is-lead { border-color: var(--primary-200, #bfdbfe); border-left-color: var(--primary-600, #2563eb); box-shadow: 0 10px 24px -22px rgba(37, 99, 235, .7); }
+.gdb-work-item.is-critical, .gdb-work-item.is-high { border-left-color: var(--danger-500, #ef4444); background: linear-gradient(90deg, var(--danger-50, #fef2f2), var(--card) 34%); }
+.gdb-work-item.is-overdue, .gdb-work-item.is-due_24h, .gdb-work-item.is-release_blocker { border-left-color: var(--warning-500, #f59e0b); background: linear-gradient(90deg, var(--warning-50, #fffbeb), var(--card) 34%); }
+.gdb-work-item__priority { display: grid; align-content: center; justify-items: start; gap: 3px; color: var(--text-secondary); font-size: var(--font-size-xs); font-weight: 700; }
+.gdb-work-item__priority span { padding: 3px 7px; border-radius: var(--radius-full); background: var(--gray-100); white-space: nowrap; }
+.gdb-work-item.is-critical .gdb-work-item__priority span, .gdb-work-item.is-high .gdb-work-item__priority span { color: var(--danger-700, #b91c1c); background: var(--danger-100, #fee2e2); }
+.gdb-work-item.is-overdue .gdb-work-item__priority span, .gdb-work-item.is-due_24h .gdb-work-item__priority span, .gdb-work-item.is-release_blocker .gdb-work-item__priority span { color: var(--warning-800, #92400e); background: var(--warning-100, #fef3c7); }
+.gdb-work-item__priority small { color: var(--primary-600, #2563eb); font-size: 10px; }
 .gdb-work-item__main { min-width: 0; }
-.gdb-work-item__identity { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.gdb-work-item__identity { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
 .gdb-work-item__identity strong { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; }
-.gdb-work-item__identity span { flex: none; color: var(--primary-700, #1d4ed8); font-size: var(--font-size-xs); font-weight: 600; }
-.gdb-work-item p { margin: 4px 0; color: var(--text-secondary); font-size: var(--font-size-sm); }
-.gdb-work-item__facts { display: flex; flex-wrap: wrap; gap: 4px var(--space-3); color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.gdb-work-item__identity > span { flex: none; color: var(--primary-700, #1d4ed8); font-size: var(--font-size-xs); font-weight: 700; }
+.gdb-work-item__identity small { min-width: 0; overflow: hidden; color: var(--text-tertiary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.gdb-work-item p { margin: 4px 0 7px; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.5; }
+.gdb-work-item__facts { display: flex; flex-wrap: wrap; gap: 5px 14px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.gdb-work-item__facts span { display: inline-flex; min-width: 0; gap: 4px; }
+.gdb-work-item__facts b { flex: none; color: var(--text-secondary); font-weight: 600; }
+.gdb-work-item__action { justify-self: end; white-space: nowrap; }
 .gdb-work-empty { display: flex; align-items: center; gap: var(--space-3); color: var(--text-secondary); }
 .gdb-work-empty > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--success-50, #ecfdf5); color: var(--success-700, #047857); font-weight: 700; }
 .gdb-work-empty p { margin: 3px 0 0; color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.gdb-overview {
-  display: grid;
-  grid-template-columns: minmax(280px, .9fr) minmax(0, 1.5fr);
-  gap: var(--space-4);
-  align-items: stretch;
-  padding: var(--space-4);
-  border-radius: var(--radius-lg, 12px);
-  color: #fff;
-  background: linear-gradient(120deg, var(--primary-900, #123a78), var(--primary-600, #2563eb));
-  box-shadow: 0 10px 28px rgba(37, 99, 235, .16);
-}
-.gdb-overview__conclusion { align-self: center; min-width: 0; }
-.gdb-overview__eyebrow { display: block; margin-bottom: 5px; color: rgba(255, 255, 255, .72); font-size: var(--font-size-xs); font-weight: 600; letter-spacing: .08em; }
-.gdb-overview__conclusion strong { display: block; font-size: 18px; line-height: 1.45; }
-.gdb-overview__conclusion p { margin: 7px 0 0; color: rgba(255, 255, 255, .75); font-size: var(--font-size-xs); line-height: 1.55; }
-.gdb-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-.gdb-kpi { min-width: 0; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, .16); border-radius: var(--radius-md); background: rgba(255, 255, 255, .08); }
-.gdb-kpi__value { display: block; font-size: 22px; font-weight: 700; line-height: 1.2; }
-.gdb-kpi__label { display: block; margin-top: 4px; color: rgba(255, 255, 255, .86); font-size: var(--font-size-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gdb-kpi__trend { display: block; margin-top: 2px; color: rgba(255, 255, 255, .62); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gdb-priority-grid { align-items: stretch; }
 .gdb-priority-card, .gdb-risk-card { min-height: 0; }
 .gdb-todos { display: grid; gap: 6px; }
 .gdb-todo { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); width: 100%; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: inherit; text-align: left; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
-.gdb-todo:hover { background: var(--gray-50); border-color: var(--border-light); }
-.gdb-todo:focus-visible, .gdb-modstat:focus-visible, .gdb-risk-row:focus-visible { outline: 2px solid var(--primary-400, #60a5fa); outline-offset: 2px; }
+.gdb-todo:hover { border-color: var(--border-light); background: var(--gray-50); }
+.gdb-todo:focus-visible, .gdb-modstat:focus-visible, .gdb-risk-row:focus-visible, .gdb-work-item__action:focus-visible { outline: 2px solid var(--primary-400, #60a5fa); outline-offset: 2px; }
 .gdb-todo__count { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-full); color: var(--primary-700, #1d4ed8); background: var(--primary-50, #eff6ff); font-weight: var(--font-weight-bold); }
 .gdb-todo.is-danger .gdb-todo__count { color: var(--danger-700, #b91c1c); background: var(--danger-50, #fef2f2); }
 .gdb-todo__copy { display: grid; gap: 2px; min-width: 0; }
@@ -402,7 +476,7 @@ export default {
 .gdb-flow__label { overflow: hidden; max-width: 100%; color: var(--text-secondary); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
 .gdb-modstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .gdb-modstat { padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--card); color: inherit; text-align: left; cursor: pointer; }
-.gdb-modstat:hover { background: var(--gray-50); border-color: var(--primary-200, #bfdbfe); }
+.gdb-modstat:hover { border-color: var(--primary-200, #bfdbfe); background: var(--gray-50); }
 .gdb-modstat__val { color: var(--primary-700, #1d4ed8); font-size: 18px; font-weight: 700; }
 .gdb-modstat__label { margin-top: 2px; color: var(--text-primary); font-size: var(--font-size-xs); font-weight: 600; }
 .gdb-modstat__hint { margin-top: 2px; overflow: hidden; color: var(--text-tertiary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -412,8 +486,10 @@ export default {
   .gdb-flow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
+  .gdb-work__head { align-items: flex-start; }
+  .gdb-work__summary { justify-items: start; width: 100%; margin-left: 0; }
   .gdb-work-item { grid-template-columns: 1fr; }
-  .gdb-work-item > .mp-btn { justify-self: start; }
+  .gdb-work-item__action { justify-self: start; }
   .gdb-priority-grid { grid-template-columns: 1fr; }
   .gdb-overview { padding: var(--space-3); }
   .gdb-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
