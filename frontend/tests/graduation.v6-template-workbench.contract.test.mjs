@@ -24,10 +24,10 @@ test('V6 template list restores type status and page without changing routes', (
 })
 
 test('V6 archived templates are read-only and cannot re-enter write commands', () => {
-  assert.match(source, /row\.status === 'ARCHIVED'/)
+  assert.match(source, /v-if="row\.status === 'ARCHIVED'"/)
   assert.match(source, /归档只读/)
-  assert.match(source, /row\.status !== 'ARCHIVED'/)
-  assert.match(source, /row\.status === 'ARCHIVED'\) return/)
+  assert.match(source, /openEdit\(row\)[\s\S]*row\.status === 'ARCHIVED'\) return/)
+  assert.match(source, /doStatus\(row, action\)[\s\S]*row\.status === 'ARCHIVED'\) return/)
   assert.match(source, /归档后永久只读，但历史引用继续保留/)
 })
 
