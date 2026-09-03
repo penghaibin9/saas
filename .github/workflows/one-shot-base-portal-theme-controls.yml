@@ -15,45 +15,12 @@ jobs:
           fetch-depth: 0
 
       - name: Replace non-semantic theme spans with native buttons
-        run: |
-          python - <<'PY'
-          from pathlib import Path
+        run: python .github/scripts/patch_base_portal_theme_controls.py
 
-          path = Path('frontend/src/layouts/BasePortalLayout.vue')
-          text = path.read_text(encoding='utf-8')
-          old = '''        <div class="bpl-thdots" title="主题皮肤 themePreference">
-          <span
-            v-for="t in themeOptions"
-            :key="t.key"
-            class="bpl-thdot"
-            :class="['bpl-thdot--' + t.key, { 'is-on': theme === t.key }]"
-            :title="t.label"
-            @click="setTheme(t.key)"
-          />
-        </div>'''
-          new = '''        <div class="bpl-thdots" role="group" aria-label="界面主题">
-          <button
-            v-for="t in themeOptions"
-            :key="t.key"
-            type="button"
-            class="bpl-thdot"
-            :class="['bpl-thdot--' + t.key, { 'is-on': theme === t.key }]"
-            :title="t.label"
-            :aria-label="`切换到${t.label}主题`"
-            :aria-pressed="theme === t.key"
-            @click="setTheme(t.key)"
-          />
-        </div>'''
-          if old in text:
-              path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          elif new not in text:
-              raise SystemExit('theme-control block does not match the audited baseline')
-          PY
+      - name: Validate and commit the exact shell fix
+        run: |
           git diff --check
           git diff -- frontend/src/layouts/BasePortalLayout.vue
-
-      - name: Commit the exact shell fix
-        run: |
           if git diff --quiet -- frontend/src/layouts/BasePortalLayout.vue; then
             echo "theme controls already patched"
             exit 0
