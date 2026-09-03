@@ -35,7 +35,8 @@ test('V6 student panel and grade-ledger reads are latest-wins and context-bound'
 })
 
 test('V6 grade ledger uses server pagination and queues instead of filtering the current page', () => {
-  assert.match(source, /graduationDefenseGradeApi\.getGrades\(\{ keyword: snapshot\.keyword, status: queue\.status \|\| undefined, missingType: queue\.missingType \|\| undefined, batchId: snapshot\.batchId, page: snapshot\.page, pageSize: state\.pageSize \}\)/)
+  assert.match(source, /const q = this\.activeBatchQueue\(\)/)
+  assert.match(source, /graduationDefenseGradeApi\.getGrades\(\{ keyword: snapshot\.keyword, status: q\.status \|\| undefined, missingType: q\.missingType \|\| undefined, batchId: snapshot\.batchId, page: snapshot\.page, pageSize: state\.pageSize \}\)/)
   assert.match(source, /state\.total = Number\(res\.data\?\.total\) \|\| 0/)
   assert.match(source, /页面不会在当前页二次筛选冒充全量/)
   assert.match(source, /核算 → 复核 → 发布 → 撤回/)
