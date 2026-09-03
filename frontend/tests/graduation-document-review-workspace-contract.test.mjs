@@ -13,8 +13,16 @@ const workspaceSource = read('src/modules/graduation/components/GraduationDocume
 const versionBarSource = read('src/components/file/viewer/AppDocumentVersionBar.vue')
 
 test('W2 final Gold reuses mature business flow and locks canonical fileVersion', () => {
-  for (const marker of ['load()', 'select(row)', 'step(delta)', 'turnPage(page)', 'submitReview(action)', 'remind(row)', 'exportFinalsFn()']) {
-    assert.match(finalSource, new RegExp(marker.replace(/[()]/g, '\\$&')))
+  for (const pattern of [
+    /async load\(/,
+    /select\(row, \{ force = false \} = \{\}\)/,
+    /step\(delta\)/,
+    /turnPage\(page\)/,
+    /submitReview\(action\)/,
+    /remind\(row\)/,
+    /exportFinalsFn\(\)/
+  ]) {
+    assert.match(finalSource, pattern)
   }
   assert.match(finalSource, /GraduationDocumentReviewWorkspace/)
   assert.match(finalSource, /expectedVersion:\s*this\.finalDetail\.materialVersion/)
@@ -85,8 +93,8 @@ test('W2 material center stays a management table and opens exact versions in th
     assert.match(materialCenterSource, new RegExp(marker))
   }
   assert.match(materialCenterSource, /AppDocumentViewer/)
-  assert.match(materialCenterSource, /readerState = reactive\(\{ visible: false, row: null, file: null, versions: \[\], filterSnapshot: null, scrollSnapshot: null/)
-  assert.match(materialCenterSource, /filterSnapshot: \{ tab: tab\.value, page: page\.value, filters: \{ \.\.\.filters \} \}/)
+  assert.match(materialCenterSource, /const readerState = reactive\(\{[\s\S]*visible: false,[\s\S]*row: null,[\s\S]*file: null,[\s\S]*versions: \[\],[\s\S]*filterSnapshot: null,[\s\S]*scrollSnapshot: null/)
+  assert.match(materialCenterSource, /filterSnapshot: \{[\s\S]*tab: tab\.value,[\s\S]*page: page\.value,[\s\S]*filters: \{ \.\.\.filters \},[\s\S]*routeQuery: buildRouteQuery\(\)/)
   assert.match(materialCenterSource, /tableTop: tableWrap\.value\?\.scrollTop/)
   assert.match(materialCenterSource, /tableLeft: tableWrap\.value\?\.scrollLeft/)
   assert.match(materialCenterSource, /Object\.assign\(filters, filterSnapshot\.filters\)/)
@@ -97,9 +105,9 @@ test('W2 material center stays a management table and opens exact versions in th
 test('W2 material center historical timeline opens the exact selected FileVersion and never substitutes current', () => {
   assert.match(materialCenterSource, /historyItems\.value = versions\.map/)
   assert.match(materialCenterSource, /async function openHistoryVersion\(item\)/)
-  assert.match(materialCenterSource, /await openReader\(row, file, historyVersions\.value\)/)
+  assert.match(materialCenterSource, /await openReader\(row, file, versions\)/)
   assert.match(materialCenterSource, /const exactId = versionKey\(exactFile\)/)
-  assert.match(materialCenterSource, /versions\.find\(item => String\(versionKey\(item\)\) === String\(exactId\)\)/)
+  assert.match(materialCenterSource, /versions\.find\(\(item\) => String\(versionKey\(item\)\) === String\(exactId\)\)/)
   assert.match(materialCenterSource, /readerIsHistorical/)
   assert.match(materialCenterSource, /历史版本 v\{\{ readerState\.file\?\.versionNo/)
   assert.match(materialCenterSource, /readerState\.file\.isCurrent === false/)
