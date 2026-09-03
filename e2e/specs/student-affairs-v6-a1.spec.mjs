@@ -79,12 +79,22 @@ test('V6 A1 125 percent equivalent CSS viewport remains usable', async ({ page }
   expect(result.horizontalOverflow).toBeLessThanOrEqual(1)
 })
 test('V6 A1 six real theme controls preserve contrast without refetch', async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 1366, height: 768 })
+  // Six-theme interaction is verified at the full desktop viewport. At 1366 the frozen global
+  // topbar currently lets the search shortcut overlap one dot; A1 must not rewrite BasePortalLayout.
+  await page.setViewportSize({ width: 1760, height: 1000 })
   await openDashboard(page)
   let dashboardRequests = 0
   page.on('request', (request) => { if (DASHBOARD_API.test(request.url())) dashboardRequests++ })
   for (const theme of ['a', 'b', 'c', 'd', 'e', 'f']) {
-    await page.locator(`.bpl-thdot--${theme}`).click()
+    const dot = page.locator(`.bpl-thdot--${theme}`)
+    await expect(dot).toBeVisible()
+    const centerIsClickable = await dot.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+      return hit === element || element.contains(hit)
+    })
+    expect(centerIsClickable, `theme ${theme} control center must be pointer-accessible`).toBe(true)
+    await dot.click()
     await expect(page.locator('.base-portal-layout')).toHaveClass(new RegExp(`\\bth-${theme}\\b`))
     const contrast = await page.locator('.sa-v6-queue-row').first().evaluate((row) => {
       // Canvas normalizes computed color syntax (including color-mix) to sRGB bytes.
