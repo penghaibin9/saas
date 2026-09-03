@@ -84,7 +84,7 @@
 }
 
 /* At desktop widths the shortcut badge is supplementary; hide it before it can
- * overlap the six theme controls. Search itself, its input and ⌘/Ctrl+K remain.
+ * overlap the six theme controls. Search itself, its input and Cmd/Ctrl+K remain.
  */
 @media (max-width: 1450px) {
   #app .base-portal-layout .bpl-topbar {
@@ -142,6 +142,17 @@
 
   #app .base-portal-layout .bpl-thdot::before {
     inset: 3px;
+  }
+}
+
+/* Preserve the pre-existing compact-shell rule below the six-theme desktop
+ * breakpoint. At 125% on a 1366 display, the equivalent 1093 CSS px viewport
+ * must keep the work area usable instead of forcing the theme group into the
+ * search, help or user controls. Theme preference remains stored and applied.
+ */
+@media (max-width: 1100px) {
+  #app .base-portal-layout .bpl-thdots {
+    display: none;
   }
 }
 
