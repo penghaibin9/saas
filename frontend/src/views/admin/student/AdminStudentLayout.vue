@@ -5,6 +5,9 @@
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
+    <template #menu>
+      <StudentAffairsWorkspaceNav v-if="ctx" :ctx="ctx" />
+    </template>
     <router-view v-if="ctx" :key="ctxVersion" :ctx="ctx" />
     <LoadingState v-else text="正在加载学生中心…" />
   </BasePortalLayout>
@@ -14,15 +17,17 @@
 /**
  * AdminStudentLayout — /admin/student 父布局。
  * P6：已移除「演示角色」假切换；切身份须走真实 /auth/switch-role。
+ * V6：学生主档与学生360继续使用原路由，但在学工教师 PC 中归入「唯一学生360」工作区投影。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState } from '@/components/business'
 import { studentApi } from '@/modules/student/api/student.api'
 import { registerStudentRoutes } from '@/modules/student/student.routes'
+import StudentAffairsWorkspaceNav from '@/modules/studentAffairs/components/StudentAffairsWorkspaceNav.vue'
 
 export default {
   name: 'AdminStudentLayout',
-  components: { BasePortalLayout, LoadingState },
+  components: { BasePortalLayout, LoadingState, StudentAffairsWorkspaceNav },
   data() {
     return { ctx: null, ctxVersion: 0 }
   },

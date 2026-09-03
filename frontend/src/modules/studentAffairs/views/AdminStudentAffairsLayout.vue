@@ -5,6 +5,10 @@
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
+    <template #menu>
+      <StudentAffairsWorkspaceNav v-if="ctx" :ctx="ctx" />
+    </template>
+
     <ErrorState
       v-if="loadError"
       title="无法加载学工身份上下文"
@@ -27,11 +31,10 @@
 
 <script>
 /**
- * AdminStudentAffairsLayout — /admin/student-affairs 父布局。
- * 2026-07-12：从硬编码横向 tab 改为 navPlan 驱动（对齐 AdminInternshipLayout），
- * 侧栏二级/三级由 BasePortalLayout + navPlan.js「学工中心」组统一渲染，让学工中心 14 二级真正显示；
- * 禁止在此硬编码业务菜单。品牌名 / 角色 / 数据范围来自 studentAffairsApi.getContext()，ctx 下发给子路由。
- * W5：看板/风险/请假按权限展示服务器 SLA 真值；责任台账页额外挂临时代班到期幂等同步兜底，不改业务菜单。
+ * AdminStudentAffairsLayout — /admin/student-affairs 与兼容 campus-service 学工页父布局。
+ *
+ * V6：完整 navPlan 继续作为搜索与能力事实目录；教师左侧改为 12 个工作区 + 当前工作区三级页投影。
+ * 真实 route、permission、ctx、数据范围和旧地址保持不变。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
 import { LoadingState, ErrorState } from '@/components/business'
@@ -39,12 +42,20 @@ import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.a
 import { studentAffairsPickerAdapters } from '@/modules/studentAffairs/pickerAdapters'
 import StudentAffairsSlaStrip from '@/modules/studentAffairs/components/StudentAffairsSlaStrip.vue'
 import CounselorTempExpiryPanel from '@/modules/studentAffairs/components/CounselorTempExpiryPanel.vue'
+import StudentAffairsWorkspaceNav from '@/modules/studentAffairs/components/StudentAffairsWorkspaceNav.vue'
 import { matchPermission } from '@/config/navPlan'
 import router from '@/router'
 
 export default {
   name: 'AdminStudentAffairsLayout',
-  components: { BasePortalLayout, LoadingState, ErrorState, StudentAffairsSlaStrip, CounselorTempExpiryPanel },
+  components: {
+    BasePortalLayout,
+    LoadingState,
+    ErrorState,
+    StudentAffairsSlaStrip,
+    CounselorTempExpiryPanel,
+    StudentAffairsWorkspaceNav
+  },
   provide() {
     return { appPickerAdapters: studentAffairsPickerAdapters }
   },
@@ -61,9 +72,12 @@ export default {
     },
     showSla() {
       const path = String(this.$route.path || '')
-      const operationalPage = path === '/admin/student-affairs/dashboard' || path.startsWith('/admin/student-affairs/risk') || path.startsWith('/admin/student-affairs/leave')
+      const operationalPage = path === '/admin/student-affairs/dashboard' ||
+        path.startsWith('/admin/student-affairs/risk') ||
+        path.startsWith('/admin/student-affairs/leave')
       if (!operationalPage) return false
-      return matchPermission(this.permissionPatterns, 'studentAffairs.stats.view') || matchPermission(this.permissionPatterns, 'studentAffairs.dashboard.view')
+      return matchPermission(this.permissionPatterns, 'studentAffairs.stats.view') ||
+        matchPermission(this.permissionPatterns, 'studentAffairs.dashboard.view')
     },
     showTempExpiry() {
       return this.$route.name === 'student-affairs-counselor-assignments'
