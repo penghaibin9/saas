@@ -140,7 +140,16 @@ test('V6 A1 real scoped counselor and keyboard drilldown', async ({ page }, test
 })
 test('V6 A1 sandbox admin real-clicks every queue, quick entry and cross-center entry', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 })
+  const contextPromise = page.waitForResponse((res) => /\/api\/v1\/rbac\/current-context(?:\?|$)/.test(res.url()))
   await openDashboard(page)
+  const contextResponse = await contextPromise
+  expect(contextResponse.status()).toBe(200)
+  const context = await contextResponse.json()
+  expect(context.code).toBe(0)
+  // The real fixture owns these canonical permissions. Missing UI is a defect, not an excuse to skip.
+  for (const code of ['studentAffairs.orientation.view', 'internship.risk.view', 'graduationDesign.risk.view']) {
+    expect(context.data.permissionPatterns, `fixture must be authorized for ${code}`).toContain(code)
+  }
   const clicked = []
   const queues = [
     ['riskStudents', '/admin/student-affairs/risk', { status: 'OPEN' }],
@@ -191,6 +200,10 @@ test('V6 A1 sandbox admin real-clicks every queue, quick entry and cross-center 
     await expect(button, `${label} cross-center entry must be visible for sandbox admin`).toBeEnabled()
     await button.click()
     await expectDestination(page, pathname, query)
+    if (key === 'cross-graduation') {
+      await expect(page.locator('.gp-tabs__item').filter({ hasText: /^问题预警$/ })).toBeVisible()
+      await expect(page.locator('.gp-tabs__item').filter({ hasText: /^问题预警$/ })).toHaveClass(/is-active/)
+    }
     clicked.push({ key, url: page.url() })
     await returnToDashboard(page)
   }

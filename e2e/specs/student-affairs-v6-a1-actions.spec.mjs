@@ -68,8 +68,11 @@ test('V6 A1 error retry restores real data through a browser click', async ({ pa
   await expect(page.locator('.sa-v6-page-shell')).toContainText('未取得有效的学工汇总')
   await capture(page, testInfo, 'v6-a1-retry-before')
   const responsePromise = page.waitForResponse((res) => DASHBOARD_API.test(res.url()) && res.request().method() === 'GET')
-  // The page-level refresh remains the stable retry entry in the shared shell.
-  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  // Exercise the error panel's actual recovery control, not the toolbar refresh.
+  const retry = page.locator('.ags-error').getByRole('button', { name: '重试', exact: true })
+  await expect(retry).toBeVisible()
+  await expect(retry).toBeEnabled()
+  await retry.click()
   const response = await responsePromise
   expect(response.status()).toBe(200)
   expect((await response.json()).code).toBe(0)
@@ -142,4 +145,30 @@ test('V6 A1 export click completes authenticated xlsx download', async ({ page }
   await expect(button).toBeEnabled()
   await expect(page.locator('.sa-v6-dashboard')).toBeVisible()
   await capture(page, testInfo, 'v6-a1-export-completed')
+})
+
+test('V6 A1 audit degradation recovers with a real refresh click', async ({ page }, testInfo) => {
+  await open(page)
+  const audit = page.locator('.sa-dashboard-panel--audit')
+  await expect(audit).not.toContainText('正在读取操作记录')
+  const auditApi = /\/api\/v1\/audit\/logs(?:\?|$)/
+  // Isolate a single failure; the second refresh must retrieve the real audit endpoint.
+  await page.route(auditApi, (route) => route.fulfill({
+    status: 503, contentType: 'application/json',
+    body: JSON.stringify({ code: 503001, message: 'E2E audit unavailable' })
+  }), { times: 1 })
+  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect(audit).toContainText('操作记录暂不可用')
+  await expect(audit).not.toContainText('暂无可展示审计记录')
+  await expect(page.locator('.sa-v6-queue-row')).toHaveCount(7)
+  await capture(page, testInfo, 'v6-a1-audit-recovery-before')
+  const responsePromise = page.waitForResponse((res) => auditApi.test(res.url()) && res.request().method() === 'GET')
+  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  const response = await responsePromise
+  expect(response.status()).toBe(200)
+  expect((await response.json()).code).toBe(0)
+  await expect(audit).not.toContainText('操作记录暂不可用')
+  await expect(audit).not.toContainText('正在读取操作记录')
+  await expect(page.locator('.sa-v6-queue-row')).toHaveCount(7)
+  await capture(page, testInfo, 'v6-a1-audit-recovery-real-api')
 })

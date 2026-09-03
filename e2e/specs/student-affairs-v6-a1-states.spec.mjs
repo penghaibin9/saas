@@ -107,7 +107,8 @@ for (const failure of [
     const shell = page.locator('.sa-v6-page-shell')
     await expect(page.locator('.sa-v6-dashboard')).toHaveCount(0)
     await expect(shell).toContainText(failure.title)
-    await expect(shell).toContainText(failure.safeCopy)
+    // The description must explain the failure; the title alone cannot satisfy this assertion.
+    await expect(shell.locator('.ags-desc')).toContainText(failure.safeCopy)
     await expect(shell).not.toContainText(`E2E ${failure.label}`)
     await capture(page, testInfo, `v6-a1-state-${failure.label}`)
   })
