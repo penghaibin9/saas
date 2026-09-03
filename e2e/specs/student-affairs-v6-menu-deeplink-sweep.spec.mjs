@@ -52,7 +52,7 @@ async function waitForDashboard(page) {
 async function openWorkspace(page, label) {
   const button = page.locator('[data-workspace]').filter({ hasText: label }).first()
   await expect(button, `${label} workspace must exist`).toBeVisible()
-  await button.click()
+  if (await button.getAttribute('aria-expanded') !== 'true') await button.click()
   await expect(button).toHaveAttribute('aria-expanded', 'true')
   await expect(page.locator('[data-nav-path]:visible').first(), `${label} must expose at least one permitted third-level entry`).toBeVisible()
 }
@@ -84,6 +84,8 @@ async function expectDeepLink(page, rawPath) {
 test('V6 student-affairs sidebar real-clicks every visible third-level deep link', async ({ page }, testInfo) => {
   test.setTimeout(15 * 60 * 1000)
   await page.setViewportSize({ width: 1366, height: 768 })
+  // Validate the same curated menu a teacher sees in production; DEV planned placeholders are not business links.
+  await page.addInitScript(() => window.localStorage.setItem('navPlannerView', '0'))
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
   await page.goto(`${config.staffBaseUrl}${DASHBOARD}`)
   await waitForDashboard(page)
