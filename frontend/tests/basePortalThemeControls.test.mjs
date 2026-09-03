@@ -36,6 +36,11 @@ test('responsive hardening is loaded last and keeps a visible keyboard focus', (
   assert.match(styles, /touch-action:\s*manipulation/)
 })
 
+test('desktop themes remain clickable while the pre-existing compact shell hides the group below 1100px', () => {
+  assert.match(styles, /@media \(max-width: 1280px\)[\s\S]*?\.bpl-thdot[\s\S]*?width:\s*22px[\s\S]*?height:\s*22px/)
+  assert.match(styles, /@media \(max-width: 1100px\)[\s\S]*?\.bpl-thdots[\s\S]*?display:\s*none/)
+})
+
 test('all six existing theme swatches remain represented without changing theme keys', () => {
   for (const key of ['a', 'b', 'c', 'd', 'e', 'f']) {
     assert.match(styles, new RegExp(`\\.bpl-thdot--${key}\\s*\\{`))
