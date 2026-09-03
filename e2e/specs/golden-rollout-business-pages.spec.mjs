@@ -110,18 +110,22 @@ test.describe.serial('Golden rollout · representative business pages', () => {
     graduationFixture = await prepareGraduationDashboardFixture()
   })
 
-  test('Student affairs dashboard · Screenshot C', async ({ page }, testInfo) => {
+  test('Student affairs dashboard · V6 today workbench', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     await page.goto(`${config.staffBaseUrl}/admin/student-affairs/dashboard`)
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/dashboard/)
-    await expect(page.locator('.sa-summary-strip')).toBeVisible()
-    await expect(page.locator('.sa-grid--priority')).toBeVisible()
-    await expect(page.locator('.sa-dashboard-metrics')).toBeVisible()
-    await expect(page.locator('body')).not.toContainText('正在加载学工看板真实数据…')
+    await expect(page.locator('.sa-v6-dashboard')).toBeVisible()
+    await expect(page.locator('.sa-v6-hero')).toBeVisible()
+    await expect(page.locator('.sa-v6-flow')).toBeVisible()
+    await expect(page.locator('.sa-v6-queue-card')).toBeVisible()
+    await expect(page.locator('.sa-v6-scope-card')).toBeVisible()
+    await expect(page.locator('.sa-v6-risk-card')).toBeVisible()
+    await expect(page.locator('.sa-v6-queue-row')).toHaveCount(7)
+    await expect(page.locator('body')).not.toContainText('正在加载学工今日工作真实数据…')
 
-    await capture(page, testInfo, 'rollout-student-affairs-c')
+    await capture(page, testInfo, 'rollout-student-affairs-v6-a1')
   })
 
   test('Internship dashboard · Screenshot C', async ({ page }, testInfo) => {
