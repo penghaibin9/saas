@@ -169,4 +169,5 @@ test('visual correction is A1-only, preserves SLA and readable text', () => {
   assert.match(source, /:global\(\.student-affairs-ui-scope:has\(> \.sa-v6-page-shell\) > \.sa-context-stack\)/); assert.match(source, /order: 2/)
   assert.doesNotMatch(source, /\.sa-context-stack[^}]*display:\s*none/); assert.doesNotMatch(source, /font-size:\s*(?:[0-9]|1[01])px/)
   assert.match(source, /<ul class="sa-v6-queue"/); assert.match(source, /:focus-visible/)
+  assert.match(source, /\.sa-v6-scope-grid dd\s*\{[\s\S]*?overflow:\s*hidden;[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/)
 })

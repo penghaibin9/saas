@@ -701,6 +701,13 @@ export default {
   color: var(--text-primary);
   font-weight: 600;
 }
+.sa-v6-scope-grid dd {
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sa-v6-risk-numbers dd {
   white-space: nowrap;
   overflow-wrap: normal;

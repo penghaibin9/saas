@@ -258,4 +258,25 @@ test('V6 A1 test-injected long scope and large counters do not overflow', async 
   const result = await evidence(page, testInfo, 'v6-a1-test-injected-extreme')
   expect(result.horizontalOverflow).toBeLessThanOrEqual(1)
   await expect(page.locator('[data-metric="pendingTodo"] dd')).toHaveText('123,456')
+  const scopeValue = page.locator('.sa-v6-scope-grid > div:nth-child(2) dd')
+  const scopeVisual = await scopeValue.evaluate((element) => {
+    const style = getComputedStyle(element)
+    const rect = element.getBoundingClientRect()
+    return {
+      text: element.textContent,
+      title: element.getAttribute('title'),
+      height: rect.height,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      overflow: style.overflow,
+      textOverflow: style.textOverflow,
+      whiteSpace: style.whiteSpace
+    }
+  })
+  expect(scopeVisual.title).toBe(scopeVisual.text)
+  expect(scopeVisual.whiteSpace).toBe('nowrap')
+  expect(scopeVisual.overflow).toBe('hidden')
+  expect(scopeVisual.textOverflow).toBe('ellipsis')
+  expect(scopeVisual.height).toBeLessThanOrEqual(24)
+  expect(scopeVisual.scrollWidth).toBeGreaterThan(scopeVisual.clientWidth)
 })
