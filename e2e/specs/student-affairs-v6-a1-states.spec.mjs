@@ -79,10 +79,22 @@ test('V6 A1 no-scope response fails closed in the real browser', async ({ page }
 })
 
 for (const failure of [
-  { status: 403, code: 403001, title: '当前身份无权查看学工今日工作', label: 'forbidden' },
-  { status: 503, code: 503001, title: '学工今日工作加载失败', label: 'error' }
+  {
+    status: 403,
+    code: 403001,
+    title: '当前身份无权查看学工今日工作',
+    safeCopy: /没有.*权限|无权/,
+    label: 'forbidden'
+  },
+  {
+    status: 503,
+    code: 503001,
+    title: '学工今日工作加载失败',
+    safeCopy: /系统服务暂时不可用|稍后重试/,
+    label: 'error'
+  }
 ]) {
-  test(`V6 A1 ${failure.label} response has an honest full-page state`, async ({ page }, testInfo) => {
+  test(`V6 A1 ${failure.label} response has an honest and sanitized full-page state`, async ({ page }, testInfo) => {
     await login(page)
     await page.route(DASHBOARD_API, async (route) => {
       await route.fulfill({
@@ -92,9 +104,11 @@ for (const failure of [
       })
     })
     await page.goto(`${config.staffBaseUrl}${ROUTE}`)
+    const shell = page.locator('.sa-v6-page-shell')
     await expect(page.locator('.sa-v6-dashboard')).toHaveCount(0)
-    await expect(page.locator('.sa-v6-page-shell')).toContainText(failure.title)
-    await expect(page.locator('.sa-v6-page-shell')).toContainText(`E2E ${failure.label}`)
+    await expect(shell).toContainText(failure.title)
+    await expect(shell).toContainText(failure.safeCopy)
+    await expect(shell).not.toContainText(`E2E ${failure.label}`)
     await capture(page, testInfo, `v6-a1-state-${failure.label}`)
   })
 }
