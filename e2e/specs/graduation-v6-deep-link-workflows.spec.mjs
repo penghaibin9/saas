@@ -28,8 +28,8 @@ async function assertPageFit(page, label) {
     document: document.documentElement.scrollWidth,
     body: document.body.scrollWidth,
     formShells: document.querySelectorAll('.gd-form-shell').length,
-    sections: document.querySelectorAll('.gd-form-section').length,
-    asides: document.querySelectorAll('.gd-form-aside-card').length,
+    sections: document.querySelectorAll('.gd-form-section, .gbf-section, .tlf-section, .dfg-section, .gsf-section, .dgf-fields, .dgf-command').length,
+    asides: document.querySelectorAll('.gd-form-aside-card, .gbf-aside-card, .tlf-aside-card, .dfg-aside-card, .gsf-aside-card, .dgf-aside-card').length,
   }))
   expect(result.document, `${label} document horizontal overflow`).toBeLessThanOrEqual(result.viewport + 2)
   expect(result.body, `${label} body horizontal overflow`).toBeLessThanOrEqual(result.viewport + 2)
@@ -100,6 +100,35 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
     await expect(page.locator('body')).not.toContainText(/保存失败|页面加载失败|路由加载失败/)
   })
 
+  test('student create is a real-master relation workspace and cannot submit an empty shell', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+    const returnTo = `/admin/graduation/students?panel=roster&batchId=${fixture.batchId}&page=2&keyword=E2E`
+    await page.goto(route(config.staffBaseUrl, '/admin/graduation/students/create', {
+      batchId: fixture.batchId,
+      source: 'students',
+      returnPanel: 'roster',
+      returnTo
+    }))
+    await dismissGuide(page)
+
+    await expect(page.getByRole('heading', { name: '新建毕设学生档案', exact: true })).toBeVisible()
+    await expect(page.getByText('选择学校学生主档', { exact: true })).toBeVisible()
+    await expect(page.getByText('建立批次与指导关系', { exact: true })).toBeVisible()
+    await expect(page.getByText('保存前检查', { exact: true })).toBeVisible()
+    await expect(page.getByText('建档后的下一步', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '确认建档', exact: true })).toBeDisabled()
+
+    await capture(page, testInfo, 'gd-v6-deep-student-create', 1440, 900)
+    await capture(page, testInfo, 'gd-v6-deep-student-create', 1280, 800)
+
+    await page.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`/admin/graduation/students\\?.*batchId=${fixture.batchId}`))
+    await expect(page).toHaveURL(/panel=roster/)
+    await expect(page).toHaveURL(/page=2/)
+    await expect(page).toHaveURL(/keyword=E2E/)
+  })
+
   test('topic application keeps real review semantics and persists a draft', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
@@ -136,6 +165,44 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
     expect(created?.id || created?.topicId).toBeTruthy()
     await expect(page).toHaveURL(/\/admin\/graduation\/topic-lib/)
     await expect(page.locator('body')).not.toContainText(/题目保存失败|页面加载失败|路由加载失败/)
+  })
+
+  test('defense score action deep link shows the actual student, role boundary and completion rail', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+    const returnTo = `/admin/graduation/defense-scoring?batchId=${fixture.batchId}&studentId=${fixture.gdStudentId}&panel=defense&queue=mine`
+    await page.goto(route(config.staffBaseUrl, `/admin/graduation/defense-grade/${fixture.gdStudentId}/form`, {
+      formKey: 'scoreEntry',
+      batchId: fixture.batchId,
+      studentId: fixture.gdStudentId,
+      panel: 'defense',
+      queue: 'mine',
+      returnRoute: 'graduation-defense-scoring',
+      returnTo
+    }))
+    await dismissGuide(page)
+
+    await expect(page.getByRole('heading', { name: '录入本人答辩评分', exact: true })).toBeVisible()
+    await expect(page.getByText('答辩评委职责', { exact: true })).toBeVisible()
+    await expect(page.getByText('仅本人评分', { exact: true })).toBeVisible()
+    await expect(page.getByText('职责严格分离', { exact: true })).toBeVisible()
+    await expect(page.getByText('提交后的真实流转', { exact: true })).toBeVisible()
+    await expect(page.locator('.dgf-context')).toContainText(fixture.studentNo)
+
+    const judge = page.getByLabel(/评委姓名/)
+    const score = page.getByLabel(/答辩评分/)
+    await judge.fill('E2E指导教师A')
+    await score.fill('88')
+    await expect(page.getByRole('button', { name: '提交本人评分', exact: true })).toBeEnabled()
+
+    await capture(page, testInfo, 'gd-v6-deep-defense-score', 1440, 900)
+    await capture(page, testInfo, 'gd-v6-deep-defense-score', 1280, 800)
+
+    await page.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(page).toHaveURL(/\/admin\/graduation\/defense-scoring/)
+    await expect(page).toHaveURL(new RegExp(`batchId=${fixture.batchId}`))
+    await expect(page).toHaveURL(new RegExp(`studentId=${fixture.gdStudentId}`))
+    await expect(page).toHaveURL(/queue=mine/)
   })
 
   test('defense group create continues into real student assignment instead of ending at a blank form', async ({ page }, testInfo) => {
@@ -176,11 +243,17 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
 
     const summaryPath = testInfo.outputPath('graduation-v6-deep-link-workflows.json')
     await fs.writeFile(summaryPath, JSON.stringify({
-      contract: 'graduation-v6-deep-link-workflows-v1',
+      contract: 'graduation-v6-deep-link-workflows-v2',
       head: process.env.GITHUB_SHA || 'local',
       batchId: fixture.batchId,
       createdGroupId: groupId,
-      workflows: ['batch-create', 'topic-draft-create', 'defense-group-create-to-student-assignment']
+      workflows: [
+        'batch-create',
+        'student-create-empty-guard-and-return-context',
+        'topic-draft-create',
+        'defense-score-role-workspace-and-return-context',
+        'defense-group-create-to-student-assignment'
+      ]
     }, null, 2), 'utf8')
     await testInfo.attach('graduation-v6-deep-link-workflows', { path: summaryPath, contentType: 'application/json' })
   })
