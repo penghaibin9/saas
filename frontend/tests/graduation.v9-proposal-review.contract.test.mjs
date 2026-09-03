@@ -73,3 +73,19 @@ test('U2 makes the selected review subject and submit lock visible above the can
   assert.match(source, /正在提交，禁止切换对象/)
   assert.match(source, /class="pr-lock" role="status"/)
 })
+
+test('U2 compact card removes duplicate queue, subject summary and auto-next chrome', () => {
+  assert.match(card, /class="prc" :class="\{ 'is-compact': compact \}"/)
+  for (const selector of [
+    'gd-review-workspace__queue',
+    'gd-review-workspace__business-bar',
+    'gd-review-workspace__auto',
+    'gd-review-workspace__summary',
+    'gd-review-workspace__dossier'
+  ]) {
+    assert.match(card, new RegExp(`prc\\.is-compact[\\s\\S]*${selector}`))
+  }
+  assert.match(card, /gd-review-workspace\.is-narrow\)\{grid-template-columns:minmax\(0,1fr\) 300px!important/)
+  assert.match(card, /max-width:1180px/)
+  assert.match(card, /gd-review-workspace__review\)\{position:sticky/)
+})
