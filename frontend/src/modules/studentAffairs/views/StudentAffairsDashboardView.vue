@@ -473,7 +473,7 @@ export default {
 }
 .sa-v6-hero__metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(72px, 84px));
+  grid-template-columns: repeat(4, minmax(max-content, 1fr));
   margin: 0;
 }
 .sa-v6-hero__metrics > div {
@@ -673,7 +673,14 @@ export default {
   margin: 0;
 }
 .sa-v6-scope-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.sa-v6-risk-numbers { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sa-v6-risk-numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sa-v6-risk-numbers > div:last-child {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
 .sa-v6-scope-grid > div,
 .sa-v6-risk-numbers > div {
   min-width: 0;
@@ -695,6 +702,8 @@ export default {
   font-weight: 600;
 }
 .sa-v6-risk-numbers dd {
+  white-space: nowrap;
+  overflow-wrap: normal;
   font-size: var(--font-size-xl);
   font-variant-numeric: tabular-nums;
 }
