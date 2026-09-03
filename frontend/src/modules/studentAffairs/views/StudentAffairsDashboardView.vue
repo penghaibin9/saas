@@ -3,12 +3,25 @@
     <template #actions>
       <AppPermissionButton :allowed="canView && !loading" code="studentAffairs.dashboard.view" variant="secondary" @click="load">刷新</AppPermissionButton>
       <AppExportButton :export-fn="exportLedger" :has-permission="pageState === 'ready'" />
-      <button class="sa-v6-button" type="button" :disabled="!cardPath('pendingTodo')" @click="go(cardPath('pendingTodo'))">全部待办</button>
+      <button
+        class="sa-v6-button"
+        data-action="all-todo"
+        type="button"
+        :disabled="!cardPath('pendingTodo')"
+        @click="go(cardPath('pendingTodo'))"
+      >全部待办</button>
     </template>
 
     <!-- A new request must not retain the shared state component's previous ready content. -->
-    <AppGlobalState :key="requestId" :state="pageState" :title="stateTitle" :description="stateDescription"
-      loading-text="正在加载学工今日工作真实数据…" @retry="load" @back="$router.push('/workbench')">
+    <AppGlobalState
+      :key="requestId"
+      :state="pageState"
+      :title="stateTitle"
+      :description="stateDescription"
+      loading-text="正在加载学工今日工作真实数据…"
+      @retry="load"
+      @back="$router.push('/workbench')"
+    >
       <div v-if="pageState === 'ready'" class="sa-v6-dashboard">
         <section class="sa-v6-hero" aria-labelledby="sa-v6-hero-title">
           <div class="sa-v6-hero__summary">
@@ -18,29 +31,49 @@
             </div>
             <dl class="sa-v6-hero__metrics" aria-label="今日工作关键指标">
               <div v-for="item in heroMetrics" :key="item.key" :data-metric="item.key">
-                <dt>{{ item.label }}</dt><dd :title="formatCount(item.value)">{{ formatCount(item.value) }}</dd>
+                <dt>{{ item.label }}</dt>
+                <dd :title="formatCount(item.value)">{{ formatCount(item.value) }}</dd>
               </div>
             </dl>
           </div>
           <ol class="sa-v6-flow" aria-label="今日工作闭环">
-            <li v-for="(step, index) in workflowSteps" :key="step" :class="{ 'is-active': index === 0 }"><span>{{ index + 1 }}</span>{{ step }}</li>
+            <li v-for="(step, index) in workflowSteps" :key="step" :class="{ 'is-active': index === 0 }">
+              <span>{{ index + 1 }}</span>{{ step }}
+            </li>
           </ol>
         </section>
 
         <div class="sa-v6-workspace">
           <AppSectionCard class="sa-v6-panel sa-v6-queue-card" title="现在先处理" compact no-padding>
-            <template #header-extra><span class="sa-v6-scope-note" :title="scopeLabel">{{ scopeLabel }}</span></template>
+            <template #header-extra>
+              <span class="sa-v6-scope-note" :title="scopeLabel">{{ scopeLabel }}</span>
+            </template>
             <ul class="sa-v6-queue" aria-label="当前业务队列">
               <li v-for="item in businessQueues" :key="item.key">
-                <button type="button" class="sa-v6-queue-row" :class="`is-${item.tone}`" :data-queue="item.key"
-                  :disabled="!item.path" :title="item.path ? item.description : '当前身份无可用入口'" @click="go(item.path)">
+                <button
+                  type="button"
+                  class="sa-v6-queue-row"
+                  :class="`is-${item.tone}`"
+                  :data-queue="item.key"
+                  :disabled="!item.path"
+                  :title="item.path ? item.description : '当前身份无可用入口'"
+                  @click="go(item.path)"
+                >
                   <span class="sa-v6-queue-row__icon" aria-hidden="true">{{ item.icon }}</span>
                   <span class="sa-v6-queue-row__copy">
-                    <span class="sa-v6-queue-row__title"><strong>{{ item.label }}</strong><AppStatusTag :type="item.statusType" :label="item.statusLabel" /></span>
+                    <span class="sa-v6-queue-row__title">
+                      <strong>{{ item.label }}</strong>
+                      <AppStatusTag :type="item.statusType" :label="item.statusLabel" />
+                    </span>
                     <span class="sa-v6-queue-row__description" :title="item.description">{{ item.description }}</span>
                   </span>
-                  <span class="sa-v6-queue-row__count"><strong>{{ formatCount(item.count) }}</strong><small v-if="item.count !== null">{{ item.unit }}</small></span>
-                  <span class="sa-v6-queue-row__action">{{ item.path ? item.action : '无可用入口' }}<span v-if="item.path" aria-hidden="true"> →</span></span>
+                  <span class="sa-v6-queue-row__count">
+                    <strong>{{ formatCount(item.count) }}</strong>
+                    <small v-if="item.count !== null">{{ item.unit }}</small>
+                  </span>
+                  <span class="sa-v6-queue-row__action">
+                    {{ item.path ? item.action : '无可用入口' }}<span v-if="item.path" aria-hidden="true"> →</span>
+                  </span>
                 </button>
               </li>
             </ul>
@@ -56,10 +89,15 @@
               </dl>
               <p class="sa-v6-note">数据更新于 <AppDateDisplay :value="dashboard.updatedAt" mode="datetime" empty-text="未提供" /></p>
             </AppSectionCard>
+
             <AppSectionCard class="sa-v6-panel sa-v6-risk-card" title="风险摘要" compact>
               <template #header-extra>
                 <AppRiskTag v-if="cardValue('riskStudents') > 0 && riskLevel" :level="riskLevel" />
-                <AppStatusTag v-else :type="cardValue('riskStudents') === 0 ? 'success' : 'warning'" :label="cardValue('riskStudents') === 0 ? '无未关闭风险' : '摘要待核实'" />
+                <AppStatusTag
+                  v-else
+                  :type="cardValue('riskStudents') === 0 ? 'success' : 'warning'"
+                  :label="cardValue('riskStudents') === 0 ? '无未关闭风险' : '摘要待核实'"
+                />
               </template>
               <dl class="sa-v6-risk-numbers">
                 <div><dt>危急风险</dt><dd>{{ formatCount(criticalRiskCount) }}</dd></div>
@@ -67,11 +105,27 @@
                 <div><dt>未关闭风险</dt><dd>{{ formatCount(cardValue('riskStudents')) }}</dd></div>
               </dl>
               <p class="sa-v6-note">优先核查危急风险，再按责任人持续跟进。</p>
-              <button class="sa-v6-button sa-v6-risk-link" type="button" :disabled="!cardPath('riskStudents')" @click="go(cardPath('riskStudents'))">进入风险工作台</button>
+              <button
+                class="sa-v6-button sa-v6-risk-link"
+                data-action="risk-workbench"
+                type="button"
+                :disabled="!cardPath('riskStudents')"
+                @click="go(cardPath('riskStudents'))"
+              >进入风险工作台</button>
             </AppSectionCard>
+
             <AppSectionCard class="sa-v6-panel sa-v6-entry-card" title="高频入口" compact>
               <div class="sa-v6-entry-grid">
-                <button v-for="entry in highFrequencyEntries" :key="entry.path" type="button" class="sa-v6-entry" :title="entry.hint" @click="go(entry.path)"><strong>{{ entry.label }}</strong><small>{{ entry.hint }}</small></button>
+                <button
+                  v-for="entry in highFrequencyEntries"
+                  :key="entry.path"
+                  type="button"
+                  class="sa-v6-entry"
+                  :title="entry.hint"
+                  @click="go(entry.path)"
+                >
+                  <strong>{{ entry.label }}</strong><small>{{ entry.hint }}</small>
+                </button>
               </div>
               <p v-if="!highFrequencyEntries.length" class="sa-v6-note">当前身份暂无可用入口。</p>
             </AppSectionCard>
@@ -86,7 +140,15 @@
             <AppAuditTrail v-else :records="auditLogs" compact empty-text="暂无可展示审计记录" />
           </AppSectionCard>
           <AppSectionCard class="sa-v6-panel" title="跨中心协同" compact>
-            <div class="sa-v6-bridge-actions"><button v-for="entry in crossCenterEntries" :key="entry.path" class="sa-v6-button" type="button" @click="go(entry.path)">{{ entry.label }}</button></div>
+            <div class="sa-v6-bridge-actions">
+              <button
+                v-for="entry in crossCenterEntries"
+                :key="entry.path"
+                class="sa-v6-button"
+                type="button"
+                @click="go(entry.path)"
+              >{{ entry.label }}</button>
+            </div>
             <p v-if="!crossCenterEntries.length" class="sa-v6-note">当前身份暂无跨中心入口。</p>
           </AppSectionCard>
         </div>
@@ -123,9 +185,18 @@ export default {
   props: { ctx: { type: Object, default: null } },
   components: { AppAuditTrail, AppDateDisplay, AppExportButton, AppGlobalState, AppPageShell, AppPermissionButton, AppRiskTag, AppSectionCard, AppStatusTag },
   data() {
-    return { loading: true, errorMessage: '', errorKind: 'error', dashboard: emptyDashboard(),
-      auditLogs: [], auditLoading: false, auditUnavailable: false, requestId: 0, loadedContext: '',
-      workflowSteps: ['发现事项', '确认优先级', '进入业务办理', '返回今日队列', '审计沉淀'] }
+    return {
+      loading: true,
+      errorMessage: '',
+      errorKind: 'error',
+      dashboard: emptyDashboard(),
+      auditLogs: [],
+      auditLoading: false,
+      auditUnavailable: false,
+      requestId: 0,
+      loadedContext: '',
+      workflowSteps: ['发现事项', '确认优先级', '进入业务办理', '返回今日队列', '审计沉淀']
+    }
   },
   computed: {
     contextKey() {
@@ -206,10 +277,14 @@ export default {
       ]
       return rows.map((row) => {
         const count = this.cardValue(row.key)
-        return { ...row, count, unit: card(row.key).unit || row.unit || '件',
+        return {
+          ...row,
+          count,
+          unit: card(row.key).unit || row.unit || '件',
           tone: count === null ? 'neutral' : count === 0 ? 'success' : row.tone,
           statusType: count === null ? 'warning' : count === 0 ? 'success' : row.tone === 'danger' ? 'danger' : 'info',
-          statusLabel: count === null ? '汇总未取得' : count === 0 ? '当前无事项' : row.key === 'overdueLeave' ? '已逾期' : '待查看' }
+          statusLabel: count === null ? '汇总未取得' : count === 0 ? '当前无事项' : row.key === 'overdueLeave' ? '已逾期' : '待查看'
+        }
       })
     },
     riskLevel() {
@@ -245,7 +320,10 @@ export default {
       const count = Number(value)
       return Number.isSafeInteger(count) && count >= 0 ? count : null
     },
-    formatCount(value) { const count = this.toCount(value); return count === null ? '—' : FORMATTER.format(count) },
+    formatCount(value) {
+      const count = this.toCount(value)
+      return count === null ? '—' : FORMATTER.format(count)
+    },
     cardValue(key) { return this.toCount(this.cardMap[key]?.value) },
     cardPath(key) { return this.cardMap[key]?.drillPath || '' },
     safeDrill(path, fallback) {
@@ -261,7 +339,10 @@ export default {
         if (!result || result.code !== 0 || !Array.isArray(result.data)) throw new Error('操作记录格式异常')
         this.auditLogs = result.data
       } catch {
-        if (this.isCurrent(id, key)) { this.auditLogs = []; this.auditUnavailable = true }
+        if (this.isCurrent(id, key)) {
+          this.auditLogs = []
+          this.auditUnavailable = true
+        }
       } finally {
         if (this.isCurrent(id, key)) this.auditLoading = false
       }
@@ -277,7 +358,10 @@ export default {
       this.auditLogs = []
       this.auditUnavailable = false
       this.auditLoading = false
-      if (!this.canView) { this.loading = false; return }
+      if (!this.canView) {
+        this.loading = false
+        return
+      }
       try {
         const result = await studentAffairsApi.getDashboard()
         if (!this.isCurrent(id, key)) return
@@ -286,7 +370,10 @@ export default {
           throw new Error('未取得有效的学工汇总，请重试。')
         }
         this.dashboard = { ...emptyDashboard(), ...result.data }
-        if (!this.hasNoScope) { this.auditLoading = true; this.loadAudit(id, key) }
+        if (!this.hasNoScope) {
+          this.auditLoading = true
+          this.loadAudit(id, key)
+        }
       } catch (error) {
         if (!this.isCurrent(id, key)) return
         this.dashboard = emptyDashboard()
@@ -299,7 +386,11 @@ export default {
     },
     go(path) {
       if (!path || this.pageState !== 'ready') return
-      const entries = [...this.metricCards.map((card) => ({ path: card.drillPath })), ...this.highFrequencyEntries, ...this.crossCenterEntries]
+      const entries = [
+        ...this.metricCards.map((card) => ({ path: card.drillPath })),
+        ...this.highFrequencyEntries,
+        ...this.crossCenterEntries
+      ]
       if (entries.some((entry) => entry.path === path)) this.$router.push(path)
     },
     exportLedger() {
@@ -311,87 +402,407 @@ export default {
 </script>
 
 <style scoped>
-.sa-v6-page-shell { gap: var(--space-2); min-width: 0; }
-.sa-v6-page-shell :deep(.mps__head) { flex-wrap: nowrap; align-items: center; gap: var(--space-3); }
+.sa-v6-page-shell {
+  gap: var(--space-1);
+  min-width: 0;
+}
+.sa-v6-page-shell :deep(.mps__head) {
+  min-height: 36px;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-2);
+}
 .sa-v6-page-shell :deep(.mps__title-wrap) { min-width: 0; }
-.sa-v6-page-shell :deep(.mps__title) { font-size: var(--font-size-2xl); line-height: 1.25; }
-.sa-v6-page-shell :deep(.mps__meta) { flex: none; }
-.sa-v6-dashboard { display: grid; gap: var(--space-2); min-width: 0; }
-.sa-v6-hero { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-4); border: 1px solid var(--border-base); border-top: 3px solid var(--pri); border-radius: var(--radius-xl); background: linear-gradient(110deg, var(--pri-bg), var(--bg-card) 72%); }
-.sa-v6-hero__summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); }
-.sa-v6-hero__copy { min-width: 0; }
-.sa-v6-hero h2 { margin: 0; color: var(--text-primary); font-size: var(--font-size-xl); line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sa-v6-hero p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sa-v6-hero__metrics { display: grid; grid-template-columns: repeat(4, minmax(88px, auto)); margin: 0; }
-.sa-v6-hero__metrics > div { padding: 0 var(--space-2); border-left: 1px solid var(--border-light); }
-.sa-v6-hero__metrics dt { color: var(--text-secondary); font-size: var(--font-size-xs); white-space: nowrap; }
-.sa-v6-hero__metrics dd { margin: 0; color: var(--text-primary); font-size: var(--font-size-metric-sm); font-weight: 600; font-variant-numeric: tabular-nums; }
-.sa-v6-flow { display: flex; justify-content: space-between; gap: var(--space-2); margin: 0; padding: var(--space-1) 0 0; border-top: 1px solid var(--border-light); list-style: none; }
-.sa-v6-flow li { display: flex; align-items: center; gap: var(--space-1); min-height: 24px; font-size: var(--font-size-xs); color: var(--text-secondary); }
-.sa-v6-flow li > span { display: grid; place-items: center; width: var(--space-5); height: var(--space-5); border-radius: var(--radius-full); color: var(--pri); background: var(--pri-bg); }
-.sa-v6-flow .is-active > span { color: var(--text-inverse); background: var(--pri); }
-.sa-v6-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 296px; align-items: start; gap: var(--space-3); min-width: 0; }
-.sa-v6-panel { min-width: 0; border-radius: var(--radius-xl); overflow: hidden; }
-.sa-v6-panel :deep(.app-section-card__head) { padding: var(--space-2) var(--space-3); }
-.sa-v6-panel :deep(.app-section-card__title) { font-size: var(--font-size-md); line-height: 1.5; }
-.sa-v6-panel :deep(.app-section-card__body) { padding: var(--space-3); }
-.sa-v6-queue-card :deep(.app-section-card__body) { padding: var(--space-1) var(--space-2) var(--space-2); }
-.sa-v6-scope-note { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--font-size-xs); }
-.sa-v6-queue { display: grid; gap: var(--space-1); padding: 0; margin: 0; list-style: none; }
+.sa-v6-page-shell :deep(.mps__title) {
+  font-size: var(--font-size-xl);
+  line-height: 1.35;
+}
+.sa-v6-page-shell :deep(.mps__meta) {
+  min-width: 0;
+  flex: none;
+  gap: var(--space-1);
+}
+.sa-v6-page-shell :deep(.mps__actions) { gap: var(--space-1); }
+.sa-v6-dashboard {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.sa-v6-hero {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-base);
+  border-top: 3px solid var(--pri);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(110deg, var(--pri-bg), var(--bg-card) 72%);
+}
+.sa-v6-hero__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 38px;
+}
+.sa-v6-hero__copy {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.sa-v6-hero h2 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  line-height: 24px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-hero p {
+  margin: 0;
+  min-width: 0;
+  max-width: 430px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-hero__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(72px, 84px));
+  margin: 0;
+}
+.sa-v6-hero__metrics > div {
+  min-width: 0;
+  padding: 0 var(--space-2);
+  border-left: 1px solid var(--border-light);
+}
+.sa-v6-hero__metrics dt {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-hero__metrics dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-1);
+  min-height: 20px;
+  margin: 0;
+  padding: 2px 0 0;
+  border-top: 1px solid var(--border-light);
+  list-style: none;
+}
+.sa-v6-flow li {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 18px;
+  white-space: nowrap;
+}
+.sa-v6-flow li > span {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: var(--radius-full);
+  color: var(--pri);
+  background: var(--pri-bg);
+}
+.sa-v6-flow .is-active > span {
+  color: var(--text-inverse);
+  background: var(--pri);
+}
+.sa-v6-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  align-items: start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.sa-v6-panel {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+}
+.sa-v6-panel :deep(.app-section-card__head) {
+  min-height: 36px !important;
+  align-items: center !important;
+  padding: var(--space-1) var(--space-3) !important;
+}
+.sa-v6-panel :deep(.app-section-card__head-main),
+.sa-v6-panel :deep(.app-section-card__head-extra) {
+  align-items: center !important;
+}
+.sa-v6-panel :deep(.app-section-card__title) {
+  font-size: var(--font-size-md);
+  line-height: 22px;
+}
+.sa-v6-panel :deep(.app-section-card__body) { padding: var(--space-2); }
+.sa-v6-queue-card :deep(.app-section-card__body) {
+  padding: var(--space-1) var(--space-2) var(--space-2) !important;
+}
+.sa-v6-scope-note {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-queue {
+  display: grid;
+  gap: var(--space-1);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
 .sa-v6-queue li { min-width: 0; }
-.sa-v6-queue-row { --row-tone: var(--pri); --row-soft: var(--pri-bg); width: 100%; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto 94px; align-items: center; gap: var(--space-2); min-height: 64px; padding: var(--space-2); border: 1px solid var(--border-base); border-left: 3px solid var(--row-tone); border-radius: var(--radius-lg); background: var(--bg-card); text-align: left; color: var(--text-primary); }
+.sa-v6-queue-row {
+  --row-tone: var(--pri);
+  --row-soft: var(--pri-bg);
+  width: 100%;
+  min-height: 60px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto 94px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-base);
+  border-left: 3px solid var(--row-tone);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  text-align: left;
+}
 .sa-v6-queue-row.is-danger { --row-tone: var(--danger-600); --row-soft: var(--danger-50); }
 .sa-v6-queue-row.is-warning { --row-tone: var(--warning-700); --row-soft: var(--warning-50); }
 .sa-v6-queue-row.is-success { --row-tone: var(--success-700); --row-soft: var(--success-50); }
 .sa-v6-queue-row.is-neutral { --row-tone: var(--text-secondary); --row-soft: var(--bg-section); }
-.sa-v6-queue-row:not(:disabled):hover { border-color: var(--row-tone); background: var(--row-soft); }
+.sa-v6-queue-row:not(:disabled):hover {
+  border-color: var(--row-tone);
+  background: var(--row-soft);
+}
 .sa-v6-queue-row:disabled { cursor: not-allowed; }
-.sa-v6-queue-row__icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--radius-lg); color: var(--row-tone); background: var(--row-soft); font-weight: 600; }
+.sa-v6-queue-row__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-lg);
+  color: var(--row-tone);
+  background: var(--row-soft);
+  font-weight: 600;
+}
 .sa-v6-queue-row__copy { min-width: 0; }
-.sa-v6-queue-row__title { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
+.sa-v6-queue-row__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
 .sa-v6-queue-row__title strong { font-size: var(--font-size-sm); }
-.sa-v6-queue-row__description { display: block; margin-top: var(--space-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--font-size-xs); }
-.sa-v6-queue-row__count { display: flex; align-items: baseline; gap: var(--space-1); font-variant-numeric: tabular-nums; }
-.sa-v6-queue-row__count strong { font-size: var(--font-size-2xl); font-weight: 600; }
-.sa-v6-queue-row__count small { font-size: var(--font-size-xs); color: var(--text-secondary); }
-.sa-v6-queue-row__action { min-height: 36px; display: grid; grid-auto-flow: column; align-items: center; justify-content: center; color: var(--row-tone); background: var(--row-soft); border: 1px solid var(--border-base); border-radius: var(--radius-md); font-size: var(--font-size-xs); }
-.sa-v6-side { display: grid; gap: var(--space-3); min-width: 0; }
-.sa-v6-scope-grid, .sa-v6-risk-numbers { display: grid; gap: var(--space-2); margin: 0; }
+.sa-v6-queue-row__description {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-v6-queue-row__count {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+.sa-v6-queue-row__count strong {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+}
+.sa-v6-queue-row__count small {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+.sa-v6-queue-row__action {
+  min-height: 36px;
+  display: grid;
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--row-tone);
+  background: var(--row-soft);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+}
+.sa-v6-side {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.sa-v6-scope-grid,
+.sa-v6-risk-numbers {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
 .sa-v6-scope-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .sa-v6-risk-numbers { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.sa-v6-scope-grid > div, .sa-v6-risk-numbers > div { min-width: 0; padding: var(--space-2); border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-section); }
-.sa-v6-scope-grid dt, .sa-v6-risk-numbers dt { color: var(--text-secondary); font-size: var(--font-size-xs); }
-.sa-v6-scope-grid dd, .sa-v6-risk-numbers dd { margin: var(--space-1) 0 0; color: var(--text-primary); font-weight: 600; overflow-wrap: anywhere; }
-.sa-v6-risk-numbers dd { font-size: var(--font-size-xl); font-variant-numeric: tabular-nums; }
-.sa-v6-note { margin: var(--space-2) 0 0; font-size: var(--font-size-xs); color: var(--text-secondary); line-height: 1.5; }
-.sa-v6-button { min-height: 36px; padding: 0 var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--pri-bg); color: var(--pri); font: inherit; white-space: nowrap; }
-.sa-v6-button:disabled { cursor: not-allowed; color: var(--text-secondary); background: var(--bg-section); }
-.sa-v6-risk-link { width: 100%; margin-top: var(--space-2); }
-.sa-v6-entry-grid { display: grid; gap: var(--space-2); }
-.sa-v6-entry { padding: var(--space-2); min-height: 40px; display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: space-between; text-align: left; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-section); color: var(--text-primary); }
-.sa-v6-entry strong, .sa-v6-entry small { font-size: var(--font-size-xs); }
+.sa-v6-scope-grid > div,
+.sa-v6-risk-numbers > div {
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-section);
+}
+.sa-v6-scope-grid dt,
+.sa-v6-risk-numbers dt {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+.sa-v6-scope-grid dd,
+.sa-v6-risk-numbers dd {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.sa-v6-risk-numbers dd {
+  font-size: var(--font-size-xl);
+  font-variant-numeric: tabular-nums;
+}
+.sa-v6-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+.sa-v6-button {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-md);
+  background: var(--pri-bg);
+  color: var(--pri);
+  font: inherit;
+  white-space: nowrap;
+}
+.sa-v6-button:disabled {
+  cursor: not-allowed;
+  color: var(--text-secondary);
+  background: var(--bg-section);
+}
+.sa-v6-risk-link {
+  width: 100%;
+  margin-top: var(--space-2);
+}
+.sa-v6-entry-grid {
+  display: grid;
+  gap: var(--space-2);
+}
+.sa-v6-entry {
+  min-height: 40px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-section);
+  color: var(--text-primary);
+  text-align: left;
+}
+.sa-v6-entry strong,
+.sa-v6-entry small { font-size: var(--font-size-xs); }
 .sa-v6-entry small { color: var(--text-secondary); }
-.sa-v6-support-grid { display: grid; grid-template-columns: minmax(0, 1fr) 296px; gap: var(--space-3); }
-.sa-dashboard-panel--audit :deep(.app-section-card__body) { max-height: 240px; overflow: auto; }
-.sa-v6-bridge-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.sa-v6-inline-warning { margin: 0; padding: var(--space-2) var(--space-3); background: var(--warning-50); color: var(--warning-700); border: 1px solid var(--warning-100); border-radius: var(--radius-md); font-size: var(--font-size-xs); }
-.sa-v6-page-shell button:focus-visible { outline: 2px solid var(--pri); outline-offset: 2px; }
+.sa-v6-support-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  gap: var(--space-2);
+}
+.sa-dashboard-panel--audit :deep(.app-section-card__body) {
+  max-height: 240px;
+  overflow: auto;
+}
+.sa-v6-bridge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.sa-v6-inline-warning {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--warning-50);
+  color: var(--warning-700);
+  border: 1px solid var(--warning-100);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+}
+.sa-v6-page-shell button:focus-visible {
+  outline: 2px solid var(--pri);
+  outline-offset: 2px;
+}
 /* The SLA is read-only. Preserve its DOM, fetch and error states, and keep Risk/Leave unchanged. */
-:global(.student-affairs-ui-scope:has(> .sa-v6-page-shell)) { display: flex; flex-direction: column; }
+:global(.student-affairs-ui-scope:has(> .sa-v6-page-shell)) {
+  display: flex;
+  flex-direction: column;
+}
 :global(.student-affairs-ui-scope > .sa-v6-page-shell) { order: 1; }
-:global(.student-affairs-ui-scope:has(> .sa-v6-page-shell) > .sa-context-stack) { order: 2; margin: var(--space-4) 0 0; }
+:global(.student-affairs-ui-scope:has(> .sa-v6-page-shell) > .sa-context-stack) {
+  order: 2;
+  margin: var(--space-4) 0 0;
+}
 @media (max-width: 1180px) {
-  .sa-v6-workspace, .sa-v6-support-grid { grid-template-columns: 1fr; }
+  .sa-v6-workspace,
+  .sa-v6-support-grid { grid-template-columns: 1fr; }
   .sa-v6-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sa-v6-hero__summary { grid-template-columns: 1fr; gap: var(--space-2); }
+  .sa-v6-hero__summary {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+  .sa-v6-hero__copy { display: grid; gap: 0; }
   .sa-v6-hero__metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
   .sa-v6-page-shell :deep(.mps__head) { flex-wrap: wrap; }
   .sa-v6-side { grid-template-columns: 1fr; }
-  .sa-v6-flow { flex-wrap: wrap; }
+  .sa-v6-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sa-v6-queue-row { grid-template-columns: 36px minmax(0, 1fr) auto; }
-  .sa-v6-queue-row__action { grid-column: 2 / -1; justify-self: end; padding-inline: var(--space-2); }
-  .sa-v6-hero h2, .sa-v6-hero p, .sa-v6-queue-row__description { white-space: normal; }
+  .sa-v6-queue-row__action {
+    grid-column: 2 / -1;
+    justify-self: end;
+    padding-inline: var(--space-2);
+  }
+  .sa-v6-hero h2,
+  .sa-v6-hero p,
+  .sa-v6-queue-row__description { white-space: normal; }
 }
 </style>
