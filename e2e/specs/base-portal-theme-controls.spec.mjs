@@ -28,6 +28,10 @@ async function openShell(page, viewport) {
   })
 }
 
+async function expectPath(page, pathname) {
+  await expect.poll(() => new URL(page.url()).pathname).toBe(pathname)
+}
+
 async function capture(page, testInfo, name) {
   const path = testInfo.outputPath(`${name}.png`)
   await page.screenshot({ path, fullPage: false, animations: 'disabled', caret: 'hide' })
@@ -119,4 +123,33 @@ test('BasePortal theme controls follow native Tab, Space and Enter behavior', as
   const focusOutline = await second.evaluate((element) => getComputedStyle(element).outlineStyle)
   expect(focusOutline).not.toBe('none')
   await capture(page, testInfo, 'base-portal-theme-keyboard-1366x768')
+})
+
+test('BasePortal functional search, page help and messages remain real-clickable at 1366', async ({ page }, testInfo) => {
+  await openShell(page, { width: 1366, height: 768 })
+
+  const helpButton = page.locator('.bpl-help__btn')
+  await helpButton.click()
+  await expect(page.locator('.bpl-help__panel')).toBeVisible()
+  const popupPromise = page.waitForEvent('popup')
+  await page.locator('.bpl-help__opt').filter({ hasText: '本页帮助' }).click()
+  const helpPage = await popupPromise
+  await expectPath(helpPage, '/admin/help')
+  await helpPage.close()
+
+  const functionInput = page.locator('.bpl-cmdk--fn input')
+  await functionInput.fill('请假审批')
+  const leaveResult = page.locator('.bpl-cmdk__panel .bpl-cmdk__opt').filter({ hasText: '请假审批' }).first()
+  await expect(leaveResult).toBeVisible()
+  await leaveResult.click()
+  await expectPath(page, '/admin/student-affairs/leave')
+  await page.goBack()
+  await expectPath(page, '/admin/student-affairs/dashboard')
+  await expect(page.locator('.base-portal-layout')).toBeVisible()
+
+  await page.locator('.bpl-bell').click()
+  await expectPath(page, '/admin/messages/inbox')
+  await page.goBack()
+  await expectPath(page, '/admin/student-affairs/dashboard')
+  await capture(page, testInfo, 'base-portal-search-help-message-1366x768')
 })
