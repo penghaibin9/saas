@@ -53,6 +53,11 @@ async function expectDestination(page, path, query = {}) {
     await expect.poll(() => new URL(page.url()).searchParams.get(key)).toBe(value)
   }
 }
+async function returnToDashboard(page) {
+  await page.goBack()
+  await expectDestination(page, ROUTE)
+  await expect(page.locator('.sa-v6-dashboard')).toBeVisible()
+}
 for (const [width, height, minimumRows] of [[1760, 1000, 4], [1440, 900, 4], [1366, 768, 3], [1280, 800, 3]]) {
   test(`V6 A1 real API ${width}x${height}: first working row and complete records`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height })
@@ -78,15 +83,13 @@ test('V6 A1 125 percent equivalent CSS viewport remains usable', async ({ page }
   expect(result.completeRows).toBeGreaterThanOrEqual(3)
   expect(result.horizontalOverflow).toBeLessThanOrEqual(1)
 })
-test('V6 A1 six real theme controls preserve contrast without refetch', async ({ page }, testInfo) => {
-  // Six-theme interaction is verified at the full desktop viewport. At 1366 the frozen global
-  // topbar currently lets the search shortcut overlap one dot; A1 must not rewrite BasePortalLayout.
-  await page.setViewportSize({ width: 1760, height: 1000 })
+test('V6 A1 six real theme controls preserve contrast at 1366 without refetch', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1366, height: 768 })
   await openDashboard(page)
   let dashboardRequests = 0
   page.on('request', (request) => { if (DASHBOARD_API.test(request.url())) dashboardRequests++ })
   for (const theme of ['a', 'b', 'c', 'd', 'e', 'f']) {
-    const dot = page.locator(`.bpl-thdot--${theme}`)
+    const dot = page.locator(`button.bpl-thdot--${theme}`)
     await expect(dot).toBeVisible()
     const centerIsClickable = await dot.evaluate((element) => {
       const rect = element.getBoundingClientRect()
@@ -96,6 +99,8 @@ test('V6 A1 six real theme controls preserve contrast without refetch', async ({
     expect(centerIsClickable, `theme ${theme} control center must be pointer-accessible`).toBe(true)
     await dot.click()
     await expect(page.locator('.base-portal-layout')).toHaveClass(new RegExp(`\\bth-${theme}\\b`))
+    await expect(dot).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('button.bpl-thdot[aria-pressed="true"]')).toHaveCount(1)
     const contrast = await page.locator('.sa-v6-queue-row').first().evaluate((row) => {
       // Canvas normalizes computed color syntax (including color-mix) to sRGB bytes.
       const canvas = document.createElement('canvas'); canvas.width = 1; canvas.height = 1
@@ -131,11 +136,12 @@ test('V6 A1 real scoped counselor and keyboard drilldown', async ({ page }, test
   await expect(risk).toBeEnabled(); await risk.focus(); await expect(risk).toBeFocused()
   await page.keyboard.press('Enter')
   await expectDestination(page, '/admin/student-affairs/risk', { status: 'OPEN' })
-  await page.goBack(); await expect(page.locator('.sa-v6-dashboard')).toBeVisible()
+  await returnToDashboard(page)
 })
-test('V6 A1 sandbox admin real-clicks every primary queue and returns', async ({ page }, testInfo) => {
+test('V6 A1 sandbox admin real-clicks every queue, quick entry and cross-center entry', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await openDashboard(page)
+  const clicked = []
   const queues = [
     ['riskStudents', '/admin/student-affairs/risk', { status: 'OPEN' }],
     ['overdueLeave', '/admin/student-affairs/leave/ledger', { status: 'OVERDUE' }],
@@ -145,25 +151,55 @@ test('V6 A1 sandbox admin real-clicks every primary queue and returns', async ({
     ['pendingFunding', '/admin/student-affairs/funding', { status: 'REVIEW' }],
     ['pendingDiscipline', '/admin/student-affairs/discipline', { status: 'REVIEW' }]
   ]
-  const clicked = []
   for (const [key, pathname, query] of queues) {
     const row = page.locator(`[data-queue="${key}"]`)
     await expect(row, `${key} must remain a real authorized entry for sandbox admin`).toBeEnabled()
     await row.click()
     await expectDestination(page, pathname, query)
     clicked.push({ key, url: page.url() })
-    await page.goBack()
-    await expect(page.locator('.sa-v6-dashboard')).toBeVisible()
+    await returnToDashboard(page)
   }
+
   const allTodo = page.locator('[data-action="all-todo"]')
   await expect(allTodo).toBeEnabled()
   await allTodo.click()
   await expectDestination(page, '/admin/approval/todos')
   clicked.push({ key: 'all-todo', url: page.url() })
+  await returnToDashboard(page)
+
+  const quickEntries = [
+    ['quick-student', '学生主档', '/admin/student/list', {}],
+    ['quick-orientation', '数字迎新', '/admin/orientation', {}],
+    ['quick-dorm', '宿舍异常', '/admin/student-affairs/dorm/exception', {}]
+  ]
+  for (const [key, label, pathname, query] of quickEntries) {
+    const button = page.locator('.sa-v6-entry-card').getByRole('button', { name: label, exact: true })
+    await expect(button, `${label} quick entry must be visible for sandbox admin`).toBeEnabled()
+    await button.click()
+    await expectDestination(page, pathname, query)
+    clicked.push({ key, url: page.url() })
+    await returnToDashboard(page)
+  }
+
+  const crossCenterEntries = [
+    ['cross-orientation', '数字迎新', '/admin/orientation', {}],
+    ['cross-internship', '岗位实习风险', '/admin/internship/risks', {}],
+    ['cross-graduation', '毕业设计风险', '/admin/graduation/risk-archive', { panel: 'risk' }]
+  ]
+  for (const [key, label, pathname, query] of crossCenterEntries) {
+    const button = page.locator('.sa-v6-bridge-actions').getByRole('button', { name: label, exact: true })
+    await expect(button, `${label} cross-center entry must be visible for sandbox admin`).toBeEnabled()
+    await button.click()
+    await expectDestination(page, pathname, query)
+    clicked.push({ key, url: page.url() })
+    await returnToDashboard(page)
+  }
+
   await testInfo.attach('v6-a1-real-click-destinations', {
     body: JSON.stringify(clicked, null, 2),
     contentType: 'application/json'
   })
+  expect(clicked).toHaveLength(14)
 })
 test('V6 A1 test-injected missing values and malformed refresh remain honest', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1366, height: 768 })
