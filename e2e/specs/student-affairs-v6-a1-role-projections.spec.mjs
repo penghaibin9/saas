@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
@@ -6,6 +8,16 @@ const ROUTE = '/admin/student-affairs/dashboard'
 const DASHBOARD_API = /\/api\/v1\/student-affairs\/dashboard(?:\?|$)/
 const PASSWORD = process.env.E2E_STUDENT_AFFAIRS_PASSWORD || 'E2eTest@2026'
 const affairsAccount = (username) => ({ tenant: config.sandboxAdmin.tenant, username, password: PASSWORD })
+const execFileAsync = promisify(execFile)
+
+test.beforeAll(async () => {
+  const { stdout } = await execFileAsync(
+    'python',
+    ['../backend/scripts/e2e_bootstrap_affairs_college_ci.py'],
+    { timeout: 120_000, maxBuffer: 1024 * 1024 }
+  )
+  expect(stdout).toContain('[e2e-affairs-college] ready:')
+})
 
 async function loginAndOpen(page, account) {
   const responsePromise = page.waitForResponse((response) => DASHBOARD_API.test(response.url()) && response.request().method() === 'GET')
