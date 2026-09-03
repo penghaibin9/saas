@@ -2,13 +2,14 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-const [topic, mentor, defense] = await Promise.all([
+const [topic, mentor, defense, group] = await Promise.all([
   readFile(new URL('../src/modules/graduation/views/GraduationStudentAssignTopicView.vue', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/graduation/views/GraduationMentorAssignView.vue', import.meta.url), 'utf8'),
-  readFile(new URL('../src/modules/graduation/views/GraduationStudentDefenseView.vue', import.meta.url), 'utf8')
+  readFile(new URL('../src/modules/graduation/views/GraduationStudentDefenseView.vue', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/graduation/views/GraduationStudentGroupView.vue', import.meta.url), 'utf8')
 ])
 
-for (const [name, source] of [['topic', topic], ['mentor', mentor], ['defense', defense]]) {
+for (const [name, source] of [['topic', topic], ['mentor', mentor], ['defense', defense], ['group', group]]) {
   test(`V6 ${name} relationship page is a real workflow rather than a one-field white page`, () => {
     assert.match(source, /GraduationFormPageShell/)
     assert.match(source, /#context/)
@@ -51,8 +52,18 @@ test('V6 defense-group assignment preserves the canonical API and exact group re
   assert.match(defense, /分配不等于发布/)
 })
 
+test('V6 process grouping distinguishes single and batch writes and verifies a durable result', () => {
+  assert.match(group, /batchMode/)
+  assert.match(group, /recordIds/)
+  assert.match(group, /gdStudentApi\.batchSetStudentGroup\(\{ recordIds: target\.recordIds, groupName: target\.groupName, reason: target\.reason \}\)/)
+  assert.match(group, /gdStudentApi\.setStudentGroup\(target\.studentId, \{ groupName: target\.groupName, reason: target\.reason \}\)/)
+  assert.match(group, /String\(latest\.data\?\.studentGroup \|\| ''\) !== target\.groupName/)
+  assert.match(group, /服务器未报告实际更新人数/)
+  assert.match(group, /不会修改行政班级、指导教师、题目、答辩组或最终毕业资格/)
+})
+
 test('V6 relationship pages preserve batch page keyword and precise returnTo context', () => {
-  for (const source of [topic, mentor, defense]) {
+  for (const source of [topic, mentor, defense, group]) {
     assert.match(source, /returnTo/)
     assert.match(source, /batchId/)
   }
@@ -60,4 +71,5 @@ test('V6 relationship pages preserve batch page keyword and precise returnTo con
   assert.match(mentor, /query\.set\('page'/)
   assert.match(defense, /query\.set\('keyword'/)
   assert.match(defense, /query\.set\('page'/)
+  assert.match(group, /for \(const key of \['batchId', 'page', 'keyword', 'source'\]\)/)
 })
