@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import process from 'node:process'
 import test from 'node:test'
 import vm from 'node:vm'
 
