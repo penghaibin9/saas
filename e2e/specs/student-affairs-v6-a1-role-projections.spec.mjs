@@ -35,9 +35,9 @@ async function capture(page, testInfo, label) {
 }
 
 for (const role of [
-  { username: 'e2e_sa_admin', view: 'SA_ADMIN', label: '学工处（全校）', scope: '全校' },
-  { username: 'e2e_college_admin', view: 'COLLEGE_SA', label: '学院学工（本院）', scope: '本院' },
-  { username: 'e2e_counselor_a', view: 'COUNSELOR', label: '辅导员（本班）', scope: '辅导员' }
+  { username: 'e2e_sa_admin', view: 'SA_ADMIN', label: '学工处（全校）', mode: 'ADMIN_TENANT' },
+  { username: 'e2e_college_admin', view: 'COLLEGE_SA', label: '学院学工（本院）' },
+  { username: 'e2e_counselor_a', view: 'COUNSELOR', label: '辅导员（本班）', mode: 'SCOPED' }
 ]) {
   test(`V6 A1 real ${role.view} projection and risk drilldown`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1366, height: 768 })
@@ -45,8 +45,12 @@ for (const role of [
     expect(envelope.code).toBe(0)
     expect(envelope.data.view).toBe(role.view)
     expect(envelope.data.viewLabel).toBe(role.label)
+    expect(envelope.data.scopeLabel).toEqual(expect.any(String))
+    expect(envelope.data.scopeLabel.length).toBeGreaterThan(0)
+    if (role.mode) expect(envelope.data.scopeMode).toBe(role.mode)
+    else expect(envelope.data.scopeMode).not.toBe('NONE')
     await expect(page.locator('.sa-v6-scope-card')).toContainText(role.label)
-    await expect(page.locator('.sa-v6-scope-card')).toContainText(role.scope)
+    await expect(page.locator('.sa-v6-scope-card')).toContainText(envelope.data.scopeLabel)
 
     const geometry = await page.locator('[data-queue="riskStudents"]').evaluate((row) => {
       const rect = row.getBoundingClientRect()
