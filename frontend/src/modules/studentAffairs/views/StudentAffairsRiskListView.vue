@@ -228,6 +228,7 @@ import { canCode } from '@/modules/studentAffairs/composables/permission'
 import { resolveTodoStatus, readStudentFilter } from '@/modules/studentAffairs/utils/todoFilterSemantics'
 import { resolveRiskQueueIntent } from '@/modules/studentAffairs/utils/riskRouteQueueIntent'
 import { resolveRiskQueueIntent } from '@/modules/studentAffairs/utils/riskRouteQueueIntent'
+import { resolveRiskQueueIntent } from '@/modules/studentAffairs/utils/riskRouteQueueIntent'
 
 const RISK_COLUMNS = [
   { key: 'student', title: '学生', width: '160px' },

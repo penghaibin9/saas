@@ -333,6 +333,7 @@ import { projectStudentAffairsWorkspaceDeepLinks } from '@/config/studentAffairs
 import { projectStudentAffairsWorkspaceDeepLinks } from '@/config/studentAffairsWorkspaceDeepLinks'
 import { projectStudentAffairsWorkspaceDeepLinks } from '@/config/studentAffairsWorkspaceDeepLinks'
 import { projectStudentAffairsWorkspaceDeepLinks } from '@/config/studentAffairsWorkspaceDeepLinks'
+import { projectStudentAffairsWorkspaceDeepLinks } from '@/config/studentAffairsWorkspaceDeepLinks'
 import { toast } from '@/utils/toast'
 import router from '@/router'
 
@@ -1581,6 +1582,19 @@ export default {
   padding-block: 8px 6px;
   border-radius: 11px;
 }
+/* 学工 V6 只在带 workspaceTitle 的投影中收紧一级轨并给三级标签足够宽度。 */
+.bpl-aside--workspace {
+  width: 214px;
+  padding: 12px 9px 14px;
+}
+.base-portal-layout:has(.bpl-aside--workspace) .bpl-rail {
+  width: 68px;
+}
+.base-portal-layout:has(.bpl-aside--workspace) .bpl-rail__item {
+  width: 56px;
+  padding-block: 8px 6px;
+  border-radius: 11px;
+}
 .bpl-aside.is-hidden {
   display: none;
 }
@@ -1776,6 +1790,26 @@ export default {
 }
 .bpl-tree .bpl-tree__leaf.is-active::before {
   background: var(--pri);
+}
+/* D() 低频页面在当前工作区中可见，但用轻量类型标识与主工作台区分。 */
+.bpl-tree .bpl-tree__leaf.is-contextual {
+  color: var(--t2);
+  background: color-mix(in srgb, var(--bg-card) 72%, var(--pri-bg));
+}
+.bpl-tree .bpl-tree__leaf.is-contextual:hover,
+.bpl-tree .bpl-tree__leaf.is-contextual.is-active {
+  color: var(--pri);
+  background: var(--pri-bg);
+}
+.bpl-tree .bpl-tree__leaf .bpl-planbadge--implemented {
+  color: var(--t3);
+  background: var(--bg-section);
+  border: 1px solid var(--border-light);
+}
+.bpl-tree .bpl-tree__leaf.is-contextual.is-active .bpl-planbadge--implemented {
+  color: var(--pri);
+  border-color: var(--pri-100);
+  background: var(--bg-card);
 }
 /* D() 低频页面在当前工作区中可见，但用轻量类型标识与主工作台区分。 */
 .bpl-tree .bpl-tree__leaf.is-contextual {
