@@ -8,6 +8,8 @@ import './styles/high-contrast-skin.css'
 import './styles/stage-b-responsive-nav.css'
 // 顶栏六主题控件：原生按钮、键盘 Focus，以及 1366/1280 下与搜索区的防重叠收口。
 import './styles/base-portal-theme-controls.css'
+// 学工 V6 彩色业务工作台：仅在 A1 页面出现时覆盖公共壳和今日工作视觉，必须最后加载。
+import './styles/student-affairs-v6-color-workbench.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
