@@ -1,5 +1,5 @@
 <template>
-  <div class="prc">
+  <div class="prc" :class="{ 'is-compact': compact }">
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <template v-else-if="detail">
@@ -421,4 +421,13 @@ export default {
 @import '@/styles/module-page.css';
 .prc{min-width:0}.prc-conflict{margin:0 0 10px;padding:10px 12px;border-radius:8px;background:var(--warning-50);color:var(--warning-700)}.prc-content{display:grid;gap:8px;padding:8px;border-radius:8px;background:var(--gray-50,#f8fafc);font-size:13px;color:var(--text-secondary);line-height:1.6}.prc-content p{margin:0}.prc-content b{color:var(--text-primary)}.prc-blocked{padding:8px;border-radius:8px;background:var(--warning-50,#fffbeb);color:var(--warning-700,#a16207);font-size:12px}.prc-draft-carry{display:grid;gap:7px;padding:10px;border:1px solid #f6c453;border-radius:9px;background:#fff9e8;color:#7a4d00;font-size:12px}.prc-draft-carry p{margin:0;padding:7px;border-radius:7px;background:#fff;white-space:pre-wrap;color:var(--text-primary)}.prc-draft-carry small{line-height:1.5}.prc-draft-carry__actions{display:flex;gap:7px}.prc-draft-carry__actions button{border:1px solid #e3b341;border-radius:7px;background:#fff;padding:5px 8px;color:#7a4d00;cursor:pointer}.prc-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.prc-actions>*{width:100%}.prc-bottom{margin-top:12px}.prc-bottom.is-compact{grid-template-columns:1fr}.mp-textarea{width:100%;resize:vertical}
 .prc-receipt{display:flex;align-items:center;gap:14px;margin-bottom:10px;padding:11px 12px;border:1px solid #b7ebc6;border-radius:9px;background:#f0fff4}.prc-receipt div{display:grid;gap:3px;flex:1}.prc-receipt strong{color:#137a43}.prc-receipt span{font-size:13px}.prc-receipt small{color:var(--text-tertiary)}.prc-receipt button{border:0;background:transparent;color:var(--primary-600);cursor:pointer}
+/* ProposalListView 已提供唯一队列、当前学生和自动下一条。紧凑模式只保留正文、版本证据和正式批阅区，避免“队列套队列”和学生信息重复。 */
+.prc.is-compact :deep(.gd-review-workspace__queue),
+.prc.is-compact :deep(.gd-review-workspace__business-bar),
+.prc.is-compact :deep(.gd-review-workspace__auto),
+.prc.is-compact :deep(.gd-review-workspace__summary),
+.prc.is-compact :deep(.gd-review-workspace__dossier){display:none!important}
+.prc.is-compact :deep(.gd-review-workspace.is-narrow){grid-template-columns:minmax(0,1fr) 300px!important;gap:10px;align-items:start}
+.prc.is-compact :deep(.gd-review-workspace__review){position:sticky;top:12px;max-height:calc(100vh - 170px);overflow:auto}
+@media(max-width:1180px){.prc.is-compact :deep(.gd-review-workspace.is-narrow){grid-template-columns:1fr!important}.prc.is-compact :deep(.gd-review-workspace__review){position:static;max-height:none;overflow:visible}}
 </style>
