@@ -9,6 +9,7 @@ const read = (path) => readFileSync(resolve(here, '..', path), 'utf8')
 
 const shell = read('src/modules/graduation/views/_shared/GraduationFormPageShell.vue')
 const batch = read('src/modules/graduation/views/GraduationBatchFormView.vue')
+const studentForm = read('src/modules/graduation/views/GraduationStudentFormView.vue')
 const topic = read('src/modules/graduation/views/TopicLibFormView.vue')
 const defense = read('src/modules/graduation/views/DefenseGroupFormView.vue')
 const reviewWorkspace = read('src/modules/graduation/components/GraduationDocumentReviewWorkspace.vue')
@@ -42,6 +43,23 @@ test('batch deep link is a guided business workflow and still writes the canonic
   assert.match(batch, /beforeRouteLeave/)
   assert.match(batch, /next\(false\)/)
   assert.match(batch, /validateRange/)
+})
+
+test('student create deep link uses the school master and keeps the canonical three-field API contract', () => {
+  for (const marker of ['选择学校学生主档', '建立批次与指导关系', '保存前检查', '建档后的下一步']) {
+    assert.match(studentForm, new RegExp(marker))
+  }
+  assert.match(studentForm, /AppGraduationCandidateStudentPicker/)
+  assert.match(studentForm, /AppGraduationDesignBatchPicker/)
+  assert.match(studentForm, /AppGraduationMentorPicker/)
+  assert.match(studentForm, /studentId: target\.studentId/)
+  assert.match(studentForm, /advisorName: target\.advisorName \|\| undefined/)
+  assert.match(studentForm, /if \(target\.batchId\) body\.batchId = target\.batchId/)
+  assert.match(studentForm, /gdStudentApi\.createStudent\(body\)/)
+  assert.match(studentForm, /safeReturnTo/)
+  assert.match(studentForm, /beforeRouteLeave/)
+  assert.match(studentForm, /next\(false\)/)
+  assert.doesNotMatch(studentForm, /createStudentProfile|毕业资格.*(?:写入|修改)/)
 })
 
 test('topic application deep link explains the real review handoff without bypassing topic APIs', () => {
@@ -114,10 +132,10 @@ test('teacher miniapp reads the same FileVersion, uses an authorized ticket and 
 
 test('student miniapp keeps high-frequency status and deliberately hands large thesis upload to student PC', () => {
   assert.match(studentMini, /毕业设计/)
-  assert.match(studentMini, /学生PC/)
+  assert.match(studentMini, /学生\s*PC/)
   assert.match(studentMini, /论文/)
   assert.match(studentMini, /material/)
   assert.match(studentMini, /fileSdk\.upload/)
   assert.match(studentMini, /onPullDownRefresh/)
-  assert.match(studentMini, /大型论文、作品或源代码请到学生 PC 上传/)
+  assert.match(studentMini, /(?:正式|大型)论文[^\n<]*学生\s*PC/)
 })
