@@ -1,0 +1,50 @@
+name: One-shot student-affairs V6 workspace sidebar patch
+
+on:
+  push:
+    branches:
+      - feat/student-affairs-v6-a1-on-theme-shell
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/student-affairs-v6-a1-on-theme-shell
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply audited workspace and deep-link patch
+        run: python .github/scripts/patch_student_affairs_workspace_sidebar.py
+
+      - name: Validate generated contracts before commit
+        run: |
+          set -euo pipefail
+          python -m py_compile .github/scripts/patch_student_affairs_workspace_sidebar.py
+          node --check e2e/specs/student-affairs-v6-a1-sidebar-deeplinks.spec.mjs
+          node --test frontend/tests/studentAffairs.v6WorkspaceNav.test.mjs
+          git diff --check
+
+      - name: Commit generated production and test files
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- frontend/src/config/navPlan.js frontend/src/layouts/BasePortalLayout.vue frontend/tests/studentAffairs.v6WorkspaceNav.test.mjs e2e/specs/student-affairs-v6-a1-sidebar-deeplinks.spec.mjs; then
+            echo "workspace sidebar already patched"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/config/navPlan.js frontend/src/layouts/BasePortalLayout.vue frontend/tests/studentAffairs.v6WorkspaceNav.test.mjs e2e/specs/student-affairs-v6-a1-sidebar-deeplinks.spec.mjs
+          git commit -m "feat(student-affairs): design 12-workspace sidebar and real deep links [workspace-sidebar-patched]"
+          git push origin HEAD:feat/student-affairs-v6-a1-on-theme-shell
