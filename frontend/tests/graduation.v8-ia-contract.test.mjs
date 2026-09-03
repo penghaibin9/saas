@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import vm from 'node:vm'
 
@@ -69,6 +72,46 @@ test('V6 student ledger keeps the real master, read-only academic mirror and rec
   assert.match(source, /downloadImportErrors/)
   for (const step of ['下载模板', '上传并预览', '下载错误行', '确认导入并留痕']) {
     assert.match(source, new RegExp(step))
+  }
+})
+
+test('V6 entry guidance lives in business pages without duplicating the module header', async () => {
+  const [layout, students] = await Promise.all([
+    read('../src/modules/graduation/views/AdminGraduationLayout.vue'),
+    read('../src/modules/graduation/views/GraduationStudentListView.vue')
+  ])
+  const template = layout.match(/<template>([\s\S]*?)<\/template>\s*<script>/)?.[1]
+  assert.ok(template, 'the actual module template must be inspected')
+  assert.doesNotMatch(template, /gd-page-intro/)
+  assert.equal((template.match(/<GraduationBatchStrip\b/g) || []).length, 1, 'retain exactly one canonical batch selector')
+  assert.match(template, /class="gd-business-view"/)
+  assert.match(template, /v-if="canRenderBusiness"/)
+  assert.match(template, /<router-view\b[^>]*:ctx="businessCtx"/)
+  assert.match(students, /<ModulePageShell\b/)
+  assert.match(students, /:title="pageTitle"/)
+  assert.match(students, /:subtitle="pageSubtitle"/)
+  assert.match(students, /\{\{ workConclusion \}\}/)
+  assert.match(students, /\{\{ workHint \}\}/)
+  assert.match(students, /<AppPageGuide guide-key="graduation\.gd-students"/)
+})
+
+test('V6 IA evidence identifies actual checkout and rejects runtime source replacement in CI', async (t) => {
+  const root = new URL('../../', import.meta.url)
+  const paths = [
+    'frontend/tests/graduation.v8-ia-contract.test.mjs',
+    'frontend/src/modules/graduation/views/AdminGraduationLayout.vue',
+    'frontend/src/modules/graduation/views/GraduationStudentListView.vue'
+  ]
+  const inGithubActions = process.env.GITHUB_ACTIONS === 'true'
+  const gitOptions = { cwd: fileURLToPath(root), encoding: 'utf8', timeout: 10000, maxBuffer: 4 * 1024 * 1024 }
+  const checkout = inGithubActions ? execFileSync('git', ['rev-parse', 'HEAD'], gitOptions).trim() : 'local-worktree'
+  for (const path of paths) {
+    const actual = await readFile(new URL(path, root), 'utf8')
+    t.diagnostic(JSON.stringify({ contract: 'V6-IA-checkout-v1', checkout, eventSha: process.env.GITHUB_SHA || null, path, sha256: createHash('sha256').update(actual).digest('hex') }))
+    if (inGithubActions) {
+      const committed = execFileSync('git', ['show', `HEAD:${path}`], gitOptions)
+      assert.equal(actual, committed, `${path} changed after checkout; do not attribute this run to unchanged HEAD source`)
+    }
   }
 })
 
