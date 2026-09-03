@@ -138,11 +138,10 @@ test('V6 A1 real scoped counselor and keyboard drilldown', async ({ page }, test
   await expectDestination(page, '/admin/student-affairs/risk', { status: 'OPEN' })
   await returnToDashboard(page)
 })
-test('V6 A1 sandbox admin real-clicks every authorized queue, quick entry and cross-center entry', async ({ page }, testInfo) => {
+test('V6 A1 sandbox admin real-clicks every queue, quick entry and cross-center entry', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await openDashboard(page)
   const clicked = []
-  const unavailable = []
   const queues = [
     ['riskStudents', '/admin/student-affairs/risk', { status: 'OPEN' }],
     ['overdueLeave', '/admin/student-affairs/leave/ledger', { status: 'OVERDUE' }],
@@ -189,23 +188,18 @@ test('V6 A1 sandbox admin real-clicks every authorized queue, quick entry and cr
   ]
   for (const [key, label, pathname, query] of crossCenterEntries) {
     const button = page.locator('.sa-v6-bridge-actions').getByRole('button', { name: label, exact: true })
-    if (await button.count()) {
-      await expect(button, `${label} visible cross-center entry must be enabled`).toBeEnabled()
-      await button.click()
-      await expectDestination(page, pathname, query)
-      clicked.push({ key, url: page.url() })
-      await returnToDashboard(page)
-    } else {
-      unavailable.push({ key, reason: 'current account lacks the required permission; UI correctly omitted the entry' })
-    }
+    await expect(button, `${label} cross-center entry must be visible for sandbox admin`).toBeEnabled()
+    await button.click()
+    await expectDestination(page, pathname, query)
+    clicked.push({ key, url: page.url() })
+    await returnToDashboard(page)
   }
 
   await testInfo.attach('v6-a1-real-click-destinations', {
-    body: JSON.stringify({ clicked, unavailable }, null, 2),
+    body: JSON.stringify(clicked, null, 2),
     contentType: 'application/json'
   })
-  expect(clicked).toHaveLength(11 + crossCenterEntries.length - unavailable.length)
-  expect(clicked.filter((item) => item.key.startsWith('cross-')).length).toBeGreaterThanOrEqual(1)
+  expect(clicked).toHaveLength(14)
 })
 test('V6 A1 test-injected missing values and malformed refresh remain honest', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1366, height: 768 })

@@ -304,7 +304,7 @@ export default {
       return [
         { label: '数字迎新', path: '/admin/orientation', code: 'studentAffairs.orientation.view' },
         { label: '岗位实习风险', path: '/admin/internship/risks', code: 'internship.risk.view' },
-        { label: '毕业设计风险', path: '/admin/graduation/risk-archive?panel=risk', code: 'graduation.risk.view' }
+        { label: '毕业设计风险', path: '/admin/graduation/risk-archive?panel=risk', code: 'graduationDesign.risk.view' }
       ].filter((entry) => this.canBtn(entry.code))
     }
   },
