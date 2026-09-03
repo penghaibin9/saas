@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import vm from 'node:vm'
 
 import { GRADUATION_WORKSPACES } from '../src/modules/graduation/config/graduationWorkspaces.js'
 
@@ -69,4 +70,114 @@ test('V6 student ledger keeps the real master, read-only academic mirror and rec
   for (const step of ['下载模板', '上传并预览', '下载错误行', '确认导入并留痕']) {
     assert.match(source, new RegExp(step))
   }
+})
+
+// Load the real Options API methods without mounting Vue. Component imports are
+// inert bindings; no lifecycle hooks or network requests are run by the harness.
+async function studentNavigationHarness({ writeEnabled = true, panel = 'roster' } = {}) {
+  const source = await read('../src/modules/graduation/views/GraduationStudentListView.vue')
+  const script = source.match(/<script\b[^>]*>([\s\S]*?)<\/script>/)?.[1]
+  assert.ok(script, 'student ledger must expose its actual Options API script')
+  const body = script.replace(/^import\s+[\s\S]*?\s+from\s+(['"])[^'"]+\1[^\S\n]*;?[^\S\n]*$/gm, '')
+    .replace(/export\s+default\s+/, 'globalThis.studentOptions = ')
+  const sandbox = Object.fromEntries([
+    'ModulePageShell', 'ModuleToolbar', 'AdvancedFilter', 'DataTable',
+    'StatusTag', 'RiskTag', 'LoadingState', 'ErrorState', 'EmptyState',
+    'AppConfirmDialog', 'AppSensitiveText', 'AppExportButton', 'AppPageGuide',
+    'AppExcelImportDrawer'
+  ].map((name) => [name, {}]))
+  vm.runInNewContext(body, sandbox, { timeout: 1000 })
+  assert.ok(sandbox.studentOptions?.methods)
+
+  const pushes = []
+  const query = { panel, batchId: 'batch-a', source: 'dashboard' }
+  const context = {
+    writeEnabled,
+    activePanel: panel,
+    page: 3,
+    filters: { keyword: '  张老师  ' },
+    batchStore: { selectedBatchId: 'batch-a' },
+    selectedIds: ['student-1', 'student-2'],
+    importVisible: false,
+    $route: { query },
+    $router: {
+      push(target) { pushes.push(target); return Promise.resolve() },
+      resolve({ path, query: routeQuery }) {
+        const params = new URLSearchParams()
+        for (const [key, value] of Object.entries(routeQuery || {})) {
+          if (value != null) params.set(key, String(value))
+        }
+        return { fullPath: `${path}?${params.toString()}` }
+      }
+    }
+  }
+  for (const [name, method] of Object.entries(sandbox.studentOptions.methods)) {
+    context[name] = method.bind(context)
+  }
+  return { context, pushes, query }
+}
+
+function assertStudentReturnContext(target, panel = 'roster') {
+  assert.equal(target.query.batchId, 'batch-a')
+  assert.equal(target.query.returnPanel, panel)
+  const returnUrl = new URL(target.query.returnTo, 'https://example.test')
+  assert.equal(returnUrl.pathname, '/admin/graduation/students')
+  assert.equal(returnUrl.searchParams.get('batchId'), 'batch-a')
+  assert.equal(returnUrl.searchParams.get('panel'), panel)
+  assert.equal(returnUrl.searchParams.get('page'), '3')
+  assert.equal(returnUrl.searchParams.get('keyword'), '张老师')
+  assert.equal(returnUrl.searchParams.get('source'), 'dashboard')
+}
+
+test('V6 student creation uses the canonical route and preserves batch and list return context', async () => {
+  const { context, pushes, query } = await studentNavigationHarness()
+  context.onToolbar('create')
+  assert.equal(pushes.length, 1)
+  assert.equal(pushes[0].path, '/admin/graduation/students/create')
+  assertStudentReturnContext(pushes[0])
+  assert.deepEqual(query, { panel: 'roster', batchId: 'batch-a', source: 'dashboard' }, 'navigation must not mutate the router query')
+})
+
+test('V6 read-only student context cannot initiate creation, import, grouping or archiving', async () => {
+  const { context, pushes } = await studentNavigationHarness({ writeEnabled: false })
+  let archiveCalls = 0
+  context.askBatchArchive = () => { archiveCalls += 1 }
+  for (const action of ['create', 'import', 'batchGroup', 'batchArchive']) context.onToolbar(action)
+  assert.equal(pushes.length, 0)
+  assert.equal(context.importVisible, false)
+  assert.equal(archiveCalls, 0)
+})
+
+test('V6 student detail and assignment links keep their canonical object and source queue', async () => {
+  const { context, pushes } = await studentNavigationHarness({ panel: 'topic' })
+  const row = { id: 'student-17' }
+  context.openDetail(row)
+  context.openAssignTopic(row)
+  context.openAdvisor(row)
+  context.openGroup(row)
+  context.openDefense(row)
+  assert.deepEqual(pushes.map((target) => target.path), [
+    '/admin/graduation/students/student-17',
+    '/admin/graduation/students/student-17/assign-topic',
+    '/admin/graduation/mentors/assign/student-17',
+    '/admin/graduation/students/student-17/group',
+    '/admin/graduation/students/student-17/defense-group'
+  ])
+  for (const target of pushes) assertStudentReturnContext(target, 'topic')
+})
+
+test('V6 batch grouping retains selected IDs and grouping return context', async () => {
+  const { context, pushes } = await studentNavigationHarness({ panel: 'grouping' })
+  context.onToolbar('batchGroup')
+  assert.equal(pushes.length, 1)
+  assert.equal(pushes[0].path, '/admin/graduation/students/_batch/group')
+  assert.equal(pushes[0].query.ids, 'student-1,student-2')
+  assertStudentReturnContext(pushes[0], 'grouping')
+})
+
+test('V6 import opens the existing import flow without creating an alternate route', async () => {
+  const { context, pushes } = await studentNavigationHarness()
+  context.onToolbar('import')
+  assert.equal(context.importVisible, true)
+  assert.equal(pushes.length, 0)
 })
