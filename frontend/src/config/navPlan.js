@@ -48,6 +48,14 @@ function H(label, path, permissionKey, entryType, opts) {
   return { label, path, status: 'implemented', disabled: false, badge: '', hidden: true,
     ...(permissionKey ? { permissionKey } : {}), ...(entryType ? { entryType } : {}), ...(opts || {}) }
 }
+/** 搜索深链：不占侧栏，但可由顶部功能搜索命中；详情页仍用 H()，禁止无对象参数的假跳转。 */
+function D(label, path, permissionKey, entryType, opts) {
+  return {
+    ...I(label, path, permissionKey, entryType, opts),
+    hidden: true,
+    searchable: true
+  }
+}
 /** 学生主档查看页的权限口径：两组角色后端都放行（完整字段 / 最小字段），菜单与路由必须同口径。
  *  见 backend/app/api/v1/student.py::list_students 与 student.routes.js。 */
 const _STU_VIEW_ANY = ['student.profile.view', 'studentAffairs.student.view']
@@ -59,11 +67,12 @@ const _SC_VIEW_ANY = ['academicAffairs.statusChange.view',
   'academicAffairs.statusChange.officeReview']
 const _CORRECTION_ANY = ['academicAffairs.roster.correction.view',
   'academicAffairs.roster.correction.review']
+const _STU_CREATE_ANY = ['student.profile.create', 'student.profile.manage']
 
 /** 二级模块：有 path=已实现入口；无独立入口但含已实现子页=可展开容器；
  *  只有既无 path、也无已实现/部分能力子页时才是待施工。
  *  第 5 参 permissionKey：无子叶时用于整块过滤（如「我的待办」「领导驾驶舱」二级入口）。 */
-function mod(key, label, path, children, permissionKey) {
+function mod(key, label, path, children, permissionKey, opts) {
   const childList = children || []
   const hasLiveChild = childList.some((child) => child.status === 'implemented' || child.status === 'partial')
   const s = path
@@ -73,7 +82,8 @@ function mod(key, label, path, children, permissionKey) {
     : { status: 'planned', disabled: true, badge: '待施工' }
   return {
     key, label, ...s, children: childList,
-    ...(permissionKey ? { permissionKey } : {})
+    ...(permissionKey ? { permissionKey } : {}),
+    ...(opts || {})
   }
 }
 /** 一级模块 */
@@ -119,144 +129,449 @@ export const NAV_PLAN = [
 
   /* ═══════════ 一级②：学工中心 ═══════════ */
   grp('student-affairs', '学工中心', 'studentAffairs', [
-    /* 本组对齐学工中心业务入口；状态以代码真实路由为准。 */
-    mod('sa-workbench', '学工工作台', null, [
-      I('学工总览', '/admin/student-affairs/dashboard', 'studentAffairs.dashboard.view'),
-      /* 旧辅导员双首页已统一到 /workbench；菜单只保留统一「我的工作台」 */
-      I('我的工作台', '/workbench', 'workbench.home.view')
-    ]),
-    // 正式菜单只保留学生主档列表；学生360从主档详情进入；旧 /admin/student-affairs/profile 保留 redirect
-    // 菜单口径必须与 student.routes.js 的路由守卫一致，否则「菜单可见 → 点进去跳 403」。
-    // 主档查看页用 permissionAny：student.profile.view（学院/教务/学工管理员，返回完整字段）
-    // 或 studentAffairs.student.view（辅导员/心理/资助/团委，后端返回最小字段），
-    // 二者后端都放行（api/v1/student.py list_students），只写单键会把其中一组角色误挡。
-    mod('sa-profile', '学生主档', '/admin/student/list', [
-      I('学生列表', '/admin/student/list', null, null, { permissionAny: _STU_VIEW_ANY }),
-      I('学籍异动台账', '/admin/student/status', null, null, { permissionAny: _SC_VIEW_ANY }),
-      I('风险标签', '/admin/student/risk-tags', 'studentAffairs.risk.view'),
-      I('信息更正审核', '/admin/student/corrections', null, null, { permissionAny: _CORRECTION_ANY }),
-      I('身份核验', '/admin/student/identity', null, null, { permissionAny: _STU_VIEW_ANY }),
-      I('导入学生', '/admin/student/import', null, null, { permissionAny: _STU_VIEW_ANY }),
-      I('数据导出', '/admin/student/import-export', 'student.export'),
-      H('学生360详情', '/admin/student-affairs/profile', null, 'DETAIL', { permissionAny: _STU_VIEW_ANY })
-    ]),
-    // 班级列表/画像/材料原指向同一路由 → 收敛为「班级管理」；画像/材料从班级页内进入
-    mod('sa-classes', '班级与辅导员', null, [
-      I('班级管理', '/admin/campus-service/classes', 'studentAffairs.class.view'),
-      I('辅导员责任台账', '/admin/student-affairs/counselor-assignments', 'studentAffairs.class.view'),
-      I('辅导员考评', '/admin/student-affairs/counselor-eval', 'studentAffairs.counselorEval.view')
-    ]),
-    // 数字迎新：19 个已实现功能页直接作为三级菜单展示。
-    // 此前收敛成单一入口，但迎新模块并没有对应的内部导航，导致真实页面全部失去菜单入口。
+    mod('sa-workbench', '今日工作', '/admin/student-affairs/dashboard', [
+      I('今日工作台', '/admin/student-affairs/dashboard', 'studentAffairs.dashboard.view', 'WORKBENCH', {
+        sectionKey: 'start', sectionLabel: '开始工作'
+      }),
+      I('统一待办', '/admin/approval/todos', 'approval.todo.view', 'TASK_QUEUE', {
+        sectionKey: 'start', sectionLabel: '开始工作'
+      }),
+      H('旧辅导员工作台', '/admin/student-affairs/workbench', 'studentAffairs.dashboard.view', 'COMPAT', {
+        activeLabel: '今日工作台'
+      })
+    ], null, {
+      ordinal: '01',
+      description: '今天先处理什么',
+      sectionKey: 'wave-1',
+      sectionLabel: '第一波 · 高频主线',
+      permissionAny: ['studentAffairs.dashboard.view', 'approval.todo.view']
+    }),
+
+    mod('sa-profile', '唯一学生360', '/admin/student/list', [
+      I('学生主档', '/admin/student/list', null, 'WORKBENCH', {
+        permissionAny: _STU_VIEW_ANY, sectionKey: 'student', sectionLabel: '学生对象'
+      }),
+      D('学生补录', '/admin/student/list/new', null, 'ACTION', {
+        permissionAny: _STU_CREATE_ANY, activeLabel: '学生主档',
+        sectionKey: 'student', sectionLabel: '学生对象'
+      }),
+      H('学生360详情', '/admin/student', null, 'DETAIL', {
+        permissionAny: _STU_VIEW_ANY, activeLabel: '学生主档', matchPrefix: true
+      }),
+      H('旧学工画像入口', '/admin/student-affairs/profile', 'studentAffairs.student.view', 'COMPAT', {
+        activeLabel: '学生主档'
+      }),
+      I('班级管理', '/admin/campus-service/classes', 'studentAffairs.class.view', 'WORKBENCH', {
+        sectionKey: 'responsibility', sectionLabel: '班级与责任'
+      }),
+      H('班级详情', '/admin/campus-service/classes', 'studentAffairs.class.view', 'DETAIL', {
+        activeLabel: '班级管理', matchPrefix: true
+      }),
+      I('辅导员责任台账', '/admin/student-affairs/counselor-assignments', 'studentAffairs.class.view', 'CONFIG_VIEW', {
+        sectionKey: 'responsibility', sectionLabel: '班级与责任'
+      }),
+      I('辅导员考评', '/admin/student-affairs/counselor-eval', 'studentAffairs.counselorEval.view', 'ANALYTICS_VIEW', {
+        sectionKey: 'responsibility', sectionLabel: '班级与责任'
+      }),
+      I('学籍异动台账', '/admin/student/status', null, 'LEDGER', {
+        permissionAny: _SC_VIEW_ANY, sectionKey: 'governance', sectionLabel: '数据治理'
+      }),
+      I('信息更正审核', '/admin/student/corrections', null, 'TASK_QUEUE', {
+        permissionAny: _CORRECTION_ANY, sectionKey: 'governance', sectionLabel: '数据治理'
+      }),
+      I('身份核验', '/admin/student/identity', null, 'CAPABILITY_ONLY', {
+        permissionAny: _STU_VIEW_ANY, sectionKey: 'governance', sectionLabel: '数据治理'
+      }),
+      I('数据导入', '/admin/student/import', null, 'ACTION', {
+        permissionAny: _STU_VIEW_ANY, sectionKey: 'governance', sectionLabel: '数据治理'
+      }),
+      I('数据导出', '/admin/student/import-export', 'student.export', 'LEDGER', {
+        sectionKey: 'governance', sectionLabel: '数据治理'
+      })
+    ], null, {
+      ordinal: '02',
+      description: '围绕学生看完整背景',
+      sectionKey: 'wave-1',
+      sectionLabel: '第一波 · 高频主线',
+      legacyKeys: ['sa-classes'],
+      permissionAny: [
+        ..._STU_VIEW_ANY,
+        ..._SC_VIEW_ANY,
+        ..._CORRECTION_ANY,
+        ..._STU_CREATE_ANY,
+        'studentAffairs.class.view',
+        'studentAffairs.counselorEval.view',
+        'student.export'
+      ]
+    }),
+
+    mod('sa-risk', '风险与重点学生', '/admin/student-affairs/risk', [
+      I('风险工作台', '/admin/student-affairs/risk', 'studentAffairs.risk.view', 'TASK_QUEUE', {
+        sectionKey: 'risk', sectionLabel: '风险处置'
+      }),
+      I('重点学生跟进', '/admin/student-affairs/talk/key-follow', 'studentAffairs.talk.view', 'TASK_QUEUE', {
+        sectionKey: 'risk', sectionLabel: '风险处置'
+      }),
+      I('人工风险标签', '/admin/student/risk-tags', 'studentAffairs.risk.view', 'CONFIG_VIEW', {
+        sectionKey: 'support', sectionLabel: '支持能力'
+      }),
+      H('风险处置详情', '/admin/student-affairs/risk', 'studentAffairs.risk.view', 'DETAIL', {
+        activeLabel: '风险工作台', matchPrefix: true
+      })
+    ], null, {
+      ordinal: '03',
+      description: '按学生聚合多来源风险',
+      sectionKey: 'wave-1',
+      sectionLabel: '第一波 · 高频主线',
+      permissionAny: ['studentAffairs.risk.view', 'studentAffairs.talk.view']
+    }),
+
+    mod('sa-talks', '谈心家校与回访', '/admin/student-affairs/talk', [
+      I('谈心谈话', '/admin/student-affairs/talk', 'studentAffairs.talk.view', 'WORKBENCH', {
+        sectionKey: 'handle', sectionLabel: '沟通与跟进'
+      }),
+      I('家校联系', '/admin/student-affairs/family', 'studentAffairs.homeSchool.view', 'WORKBENCH', {
+        sectionKey: 'handle', sectionLabel: '沟通与跟进'
+      }),
+      I('家校回执', '/admin/student-affairs/family/receipts', 'studentAffairs.homeSchool.view', 'TASK_QUEUE', {
+        sectionKey: 'handle', sectionLabel: '沟通与跟进'
+      }),
+      I('谈话台账', '/admin/student-affairs/talk/ledger', 'studentAffairs.talk.view', 'LEDGER', {
+        sectionKey: 'record', sectionLabel: '台账与分析'
+      }),
+      I('谈话统计', '/admin/student-affairs/talk/stats', 'studentAffairs.talk.view', 'ANALYTICS_VIEW', {
+        sectionKey: 'record', sectionLabel: '台账与分析'
+      })
+    ], null, {
+      ordinal: '04',
+      description: '处置后形成闭环',
+      sectionKey: 'wave-1',
+      sectionLabel: '第一波 · 高频主线',
+      permissionAny: ['studentAffairs.talk.view', 'studentAffairs.homeSchool.view']
+    }),
+
+    mod('sa-leave', '请假与返校', '/admin/student-affairs/leave', [
+      I('请假审批', '/admin/student-affairs/leave', 'studentAffairs.leave.view', 'TASK_QUEUE', {
+        sectionKey: 'handle', sectionLabel: '当前办理'
+      }),
+      I('销假与续假', '/admin/student-affairs/leave/followup', 'studentAffairs.leave.view', 'TASK_QUEUE', {
+        sectionKey: 'handle', sectionLabel: '当前办理'
+      }),
+      I('逾期未销假', '/admin/student-affairs/leave/ledger?status=OVERDUE', 'studentAffairs.leave.view', 'TASK_QUEUE', {
+        sectionKey: 'handle', sectionLabel: '当前办理'
+      }),
+      I('请假台账', '/admin/student-affairs/leave/ledger', 'studentAffairs.leave.view', 'LEDGER', {
+        sectionKey: 'record', sectionLabel: '台账与分析'
+      }),
+      I('请假统计', '/admin/student-affairs/leave/stats', 'studentAffairs.leave.view', 'ANALYTICS_VIEW', {
+        sectionKey: 'record', sectionLabel: '台账与分析'
+      })
+    ], null, {
+      ordinal: '05',
+      description: '申请 → 返校 → 超期',
+      sectionKey: 'wave-2',
+      sectionLabel: '第二波 · 业务闭环',
+      permissionAny: ['studentAffairs.leave.view']
+    }),
+
+    mod('sa-aid', '困难与资助', '/admin/student-affairs/aid', [
+      I('困难认定', '/admin/student-affairs/aid', 'studentAffairs.aid.view', 'WORKBENCH', {
+        sectionKey: 'difficulty', sectionLabel: '困难认定'
+      }),
+      D('认定批次', '/admin/student-affairs/aid/batches', 'studentAffairs.aid.view', 'CONFIG_VIEW', {
+        activeLabel: '困难认定', sectionKey: 'difficulty', sectionLabel: '困难认定'
+      }),
+      I('困难学生库', '/admin/student-affairs/aid/difficult-students', 'studentAffairs.aid.view', 'LEDGER', {
+        sectionKey: 'difficulty', sectionLabel: '困难认定'
+      }),
+      I('困难认定公示', '/admin/student-affairs/aid/publicity', 'studentAffairs.aid.view', 'TASK_QUEUE', {
+        sectionKey: 'difficulty', sectionLabel: '困难认定'
+      }),
+      D('困难认定异议', '/admin/student-affairs/aid/objections', 'studentAffairs.aid.view', 'TASK_QUEUE', {
+        activeLabel: '困难认定公示', sectionKey: 'difficulty', sectionLabel: '困难认定'
+      }),
+      I('困难认定台账', '/admin/student-affairs/aid/ledger', 'studentAffairs.aid.view', 'LEDGER', {
+        sectionKey: 'difficulty', sectionLabel: '困难认定'
+      }),
+      D('困难认定统计', '/admin/student-affairs/aid/stats', 'studentAffairs.stats.view', 'ANALYTICS_VIEW', {
+        activeLabel: '困难认定台账', sectionKey: 'difficulty', sectionLabel: '困难认定'
+      }),
+
+      I('奖助评审', '/admin/student-affairs/funding', 'studentAffairs.funding.view', 'WORKBENCH', {
+        sectionKey: 'funding', sectionLabel: '奖助评审与发放'
+      }),
+      I('资助项目', '/admin/student-affairs/funding/projects', 'studentAffairs.funding.view', 'CONFIG_VIEW', {
+        sectionKey: 'funding', sectionLabel: '奖助评审与发放'
+      }),
+      D('资助批次', '/admin/student-affairs/funding/batches', 'studentAffairs.funding.view', 'CONFIG_VIEW', {
+        activeLabel: '资助项目', sectionKey: 'funding', sectionLabel: '奖助评审与发放'
+      }),
+      I('资助公示', '/admin/student-affairs/funding/publicity', 'studentAffairs.funding.view', 'TASK_QUEUE', {
+        sectionKey: 'funding', sectionLabel: '奖助评审与发放'
+      }),
+      D('资助公示申诉', '/admin/student-affairs/funding/appeals', 'studentAffairs.funding.view', 'TASK_QUEUE', {
+        activeLabel: '资助公示', sectionKey: 'funding', sectionLabel: '奖助评审与发放'
+      }),
+      I('资助发放', '/admin/student-affairs/funding/disbursements', 'studentAffairs.funding.view', 'TASK_QUEUE', {
+        sectionKey: 'funding', sectionLabel: '奖助评审与发放'
+      }),
+      D('助学金管理', '/admin/campus-service/grants', 'studentAffairs.funding.view', 'CONFIG_VIEW', {
+        activeLabel: '奖助评审', sectionKey: 'funding', sectionLabel: '奖助评审与发放'
+      }),
+      I('资助台账', '/admin/student-affairs/funding/ledger', 'studentAffairs.funding.view', 'LEDGER', {
+        sectionKey: 'funding', sectionLabel: '奖助评审与发放'
+      }),
+      D('资助统计', '/admin/student-affairs/funding/stats', 'studentAffairs.stats.view', 'ANALYTICS_VIEW', {
+        activeLabel: '资助台账', sectionKey: 'funding', sectionLabel: '奖助评审与发放'
+      }),
+
+      I('勤工助学', '/admin/student-affairs/funding/work-study', 'studentAffairs.funding.workstudy.manage', 'WORKBENCH', {
+        sectionKey: 'special', sectionLabel: '专项资助'
+      }),
+      I('助学贷款', '/admin/student-affairs/funding/loans', 'studentAffairs.funding.loan.manage', 'WORKBENCH', {
+        sectionKey: 'special', sectionLabel: '专项资助'
+      }),
+      I('减免与临时补助', '/admin/student-affairs/funding/fee-reductions', 'studentAffairs.funding.reduction.manage', 'WORKBENCH', {
+        sectionKey: 'special', sectionLabel: '专项资助'
+      })
+    ], null, {
+      ordinal: '06',
+      description: '认定 → 资助 → 发放',
+      sectionKey: 'wave-2',
+      sectionLabel: '第二波 · 业务闭环',
+      legacyKeys: ['sa-difficulty'],
+      permissionAny: [
+        'studentAffairs.aid.view',
+        'studentAffairs.funding.view',
+        'studentAffairs.stats.view',
+        'studentAffairs.funding.workstudy.manage',
+        'studentAffairs.funding.loan.manage',
+        'studentAffairs.funding.reduction.manage'
+      ]
+    }),
+
+    mod('sa-discipline', '违纪处分与教育', '/admin/student-affairs/discipline', [
+      I('处分工作台', '/admin/student-affairs/discipline', 'studentAffairs.discipline.view', 'WORKBENCH', {
+        sectionKey: 'handle', sectionLabel: '处分办理'
+      }),
+      I('送达与申诉复核', '/admin/student-affairs/discipline/appeals', 'studentAffairs.discipline.view', 'TASK_QUEUE', {
+        sectionKey: 'handle', sectionLabel: '处分办理'
+      }),
+      I('违纪台账', '/admin/student-affairs/discipline/ledger', 'studentAffairs.discipline.view', 'LEDGER', {
+        sectionKey: 'record', sectionLabel: '台账与分析'
+      }),
+      I('处分统计', '/admin/student-affairs/discipline/stats', 'studentAffairs.stats.view', 'ANALYTICS_VIEW', {
+        sectionKey: 'record', sectionLabel: '台账与分析'
+      })
+    ], null, {
+      ordinal: '07',
+      description: '处分 → 教育 → 回访',
+      sectionKey: 'wave-2',
+      sectionLabel: '第二波 · 业务闭环',
+      permissionAny: ['studentAffairs.discipline.view', 'studentAffairs.stats.view']
+    }),
+
+    mod('sa-dorm', '宿舍与公寓', '/admin/student-affairs/dormitory', [
+      I('宿舍驾驶舱', '/admin/student-affairs/dormitory', 'studentAffairs.dorm.view', 'WORKBENCH', {
+        sectionKey: 'resource', sectionLabel: '房源与入住'
+      }),
+      I('房源管理', '/admin/student-affairs/dorm/resource', 'studentAffairs.dorm.view', 'CONFIG_VIEW', {
+        sectionKey: 'resource', sectionLabel: '房源与入住'
+      }),
+      I('分配计划', '/admin/student-affairs/dorm/allocation', 'studentAffairs.dorm.view', 'CONFIG_VIEW', {
+        sectionKey: 'resource', sectionLabel: '房源与入住'
+      }),
+      I('入住管理', '/admin/student-affairs/dorm/checkin', 'studentAffairs.dorm.view', 'WORKBENCH', {
+        sectionKey: 'resource', sectionLabel: '房源与入住'
+      }),
+      I('调宿与退宿', '/admin/student-affairs/dorm/transfer', 'studentAffairs.dorm.view', 'TASK_QUEUE', {
+        sectionKey: 'operation', sectionLabel: '调整与质量'
+      }),
+      I('宿舍检查', '/admin/student-affairs/dorm/check', 'studentAffairs.dorm.view', 'TASK_QUEUE', {
+        sectionKey: 'operation', sectionLabel: '调整与质量'
+      }),
+      I('宿舍异常', '/admin/student-affairs/dorm/exception', 'studentAffairs.dorm.view', 'TASK_QUEUE', {
+        sectionKey: 'operation', sectionLabel: '调整与质量'
+      }),
+      I('宿舍统计', '/admin/student-affairs/dorm/stats', 'studentAffairs.dorm.view', 'ANALYTICS_VIEW', {
+        sectionKey: 'operation', sectionLabel: '调整与质量'
+      })
+    ], null, {
+      ordinal: '08',
+      description: '房源 → 入住 → 异常',
+      sectionKey: 'wave-2',
+      sectionLabel: '第二波 · 业务闭环',
+      permissionAny: ['studentAffairs.dorm.view']
+    }),
+
+    mod('sa-activities', '活动与成长', '/admin/student-affairs/activity', [
+      I('活动运营', '/admin/student-affairs/activity', 'studentAffairs.activity.view', 'WORKBENCH', {
+        sectionKey: 'activity', sectionLabel: '活动与成果'
+      }),
+      I('志愿服务', '/admin/student-affairs/activity/volunteer', 'studentAffairs.activity.view', 'LEDGER', {
+        sectionKey: 'activity', sectionLabel: '活动与成果'
+      }),
+      I('第二课堂积分', '/admin/student-affairs/activity/second-class', 'studentAffairs.activity.view', 'LEDGER', {
+        sectionKey: 'activity', sectionLabel: '活动与成果'
+      }),
+      I('积分申诉', '/admin/student-affairs/activity/credit-appeals', 'studentAffairs.activity.view', 'TASK_QUEUE', {
+        sectionKey: 'activity', sectionLabel: '活动与成果'
+      }),
+      I('活动统计', '/admin/student-affairs/activity/stats', 'studentAffairs.stats.view', 'ANALYTICS_VIEW', {
+        sectionKey: 'activity', sectionLabel: '活动与成果'
+      }),
+      I('社团管理', '/admin/student-affairs/activity/clubs', 'studentAffairs.club.view', 'WORKBENCH', {
+        sectionKey: 'organization', sectionLabel: '社团与组织'
+      }),
+      I('学生干部与组织', '/admin/student-affairs/activity/organizations', 'studentAffairs.org.view', 'WORKBENCH', {
+        sectionKey: 'organization', sectionLabel: '社团与组织'
+      }),
+      I('党团建设', '/admin/student-affairs/activity/party-league', 'studentAffairs.league.view', 'WORKBENCH', {
+        sectionKey: 'organization', sectionLabel: '社团与组织'
+      })
+    ], null, {
+      ordinal: '09',
+      description: '活动成果沉淀成长事实',
+      sectionKey: 'wave-3',
+      sectionLabel: '第三波 · 生命周期 / 专项',
+      permissionAny: [
+        'studentAffairs.activity.view',
+        'studentAffairs.stats.view',
+        'studentAffairs.club.view',
+        'studentAffairs.org.view',
+        'studentAffairs.league.view'
+      ]
+    }),
+
     mod('sa-orientation', '数字迎新', '/admin/orientation', [
-      I('迎新看板', '/admin/orientation', 'studentAffairs.orientation.view'),
-      I('迎新批次', '/admin/orientation/batches', 'studentAffairs.orientation.view'),
-      I('新生数据', '/admin/orientation/data', 'studentAffairs.orientation.view'),
-      I('新生信息核验', '/admin/orientation/verify', 'studentAffairs.orientation.view'),
-      I('报到资格', '/admin/orientation/qualification', 'studentAffairs.orientation.view'),
-      I('报到流程配置', '/admin/orientation/flow-config', 'studentAffairs.orientation.view'),
-      I('新生报到', '/admin/orientation/students', 'studentAffairs.orientation.view'),
-      I('报到进度', '/admin/orientation/progress', 'studentAffairs.orientation.view'),
-      I('缴费状态', '/admin/orientation/payment', 'studentAffairs.orientation.view'),
-      I('绿色通道', '/admin/orientation/green-channels', 'studentAffairs.orientation.view'),
-      I('材料审核', '/admin/orientation/materials', 'studentAffairs.orientation.view'),
-      I('宿舍预分配', '/admin/orientation/dorm-preassign', 'studentAffairs.orientation.view'),
-      I('宿舍入住', '/admin/orientation/dorm', 'studentAffairs.orientation.view'),
-      I('现场报到点', '/admin/orientation/checkin-points', 'studentAffairs.orientation.view'),
-      I('异常学生', '/admin/orientation/exceptions', 'studentAffairs.orientation.view'),
-      I('未报到学生', '/admin/orientation/no-show', 'studentAffairs.orientation.view'),
-      I('迎新通知', '/admin/orientation/notices', 'studentAffairs.orientation.view'),
-      I('迎新统计', '/admin/orientation/statistics', 'studentAffairs.orientation.view'),
-      I('迎新归档', '/admin/orientation/archive', 'studentAffairs.orientation.view')
-    ]),
-    // 请假销假
-    mod('sa-leave', '请假销假', null, [
-      I('请假审批', '/admin/student-affairs/leave', 'studentAffairs.leave.view'),
-      I('销假与续假', '/admin/student-affairs/leave/followup', 'studentAffairs.leave.view'),
-      I('请假台账', '/admin/student-affairs/leave/ledger', 'studentAffairs.leave.view'),
-      I('请假统计', '/admin/student-affairs/leave/stats', 'studentAffairs.leave.view')
-    ]),
-    // 宿舍与公寓
-    mod('sa-dorm', '宿舍与公寓', null, [
-      I('宿舍驾驶舱', '/admin/student-affairs/dormitory', 'studentAffairs.dorm.view'),
-      I('房源管理', '/admin/student-affairs/dorm/resource', 'studentAffairs.dorm.view'),
-      I('入住管理', '/admin/student-affairs/dorm/checkin', 'studentAffairs.dorm.view'),
-      I('调宿与退宿', '/admin/student-affairs/dorm/transfer', 'studentAffairs.dorm.view'),
-      I('宿舍检查', '/admin/student-affairs/dorm/check', 'studentAffairs.dorm.view'),
-      I('宿舍异常（含夜不归宿）', '/admin/student-affairs/dorm/exception', 'studentAffairs.dorm.view'),
-      I('宿舍统计', '/admin/student-affairs/dorm/stats', 'studentAffairs.dorm.view')
-    ]),
-    // 风险预警与处置
-    mod('sa-risk', '风险预警与处置', null, [
-      I('风险预警（看板/学生/处置）', '/admin/student-affairs/risk', 'studentAffairs.risk.view')
-    ]),
-    // 困难认定
-    mod('sa-difficulty', '困难认定', null, [
-      I('认定批次', '/admin/student-affairs/aid/batches', 'studentAffairs.aid.view'),
-      I('认定申请与审核（工作台）', '/admin/student-affairs/aid', 'studentAffairs.aid.view'),
-      I('公示待办', '/admin/student-affairs/aid/publicity', 'studentAffairs.aid.view'),
-      I('认定台账', '/admin/student-affairs/aid/ledger', 'studentAffairs.aid.view'),
-      I('困难学生库', '/admin/student-affairs/aid/difficult-students', 'studentAffairs.aid.view'),
-      I('认定统计', '/admin/student-affairs/aid/stats', 'studentAffairs.stats.view'),
-      I('异议复核', '/admin/student-affairs/aid/objections', 'studentAffairs.aid.view')
-    ]),
-    // 奖助勤贷补
-    mod('sa-aid', '奖助勤贷补', null, [
-      I('资助项目', '/admin/student-affairs/funding/projects', 'studentAffairs.funding.view'),
-      I('资助批次', '/admin/student-affairs/funding/batches', 'studentAffairs.funding.view'),
-      I('申请评审（工作台）', '/admin/student-affairs/funding', 'studentAffairs.funding.view'),
-      I('公示待办', '/admin/student-affairs/funding/publicity', 'studentAffairs.funding.view'),
-      I('公示申诉', '/admin/student-affairs/funding/appeals', 'studentAffairs.funding.view'),
-      I('发放台账', '/admin/student-affairs/funding/disbursements', 'studentAffairs.funding.view'),
-      I('资助统计', '/admin/student-affairs/funding/stats', 'studentAffairs.stats.view'),
-      I('助学金管理', '/admin/campus-service/grants', 'studentAffairs.funding.view'),
-      I('勤工助学', '/admin/student-affairs/funding/work-study', 'studentAffairs.funding.workstudy.manage'),
-      I('助学贷款', '/admin/student-affairs/funding/loans', 'studentAffairs.funding.loan.manage'),
-      I('减免与临时补助', '/admin/student-affairs/funding/fee-reductions', 'studentAffairs.funding.reduction.manage')
-    ]),
-    // 违纪处分
-    mod('sa-discipline', '违纪处分', null, [
-      I('处分工作台（登记/审批/生效/解除）', '/admin/student-affairs/discipline', 'studentAffairs.discipline.view'),
-      I('送达与申诉复核', '/admin/student-affairs/discipline/appeals', 'studentAffairs.discipline.view'),
-      I('违纪台账（含投影对账）', '/admin/student-affairs/discipline/ledger', 'studentAffairs.discipline.view'),
-      I('处分统计', '/admin/student-affairs/discipline/stats', 'studentAffairs.stats.view')
-    ]),
-    // 谈心家校
-    mod('sa-talks', '谈心家校', null, [
-      I('谈心谈话（计划/记录/跟进）', '/admin/student-affairs/talk', 'studentAffairs.talk.view'),
-      I('谈话台账', '/admin/student-affairs/talk/ledger', 'studentAffairs.talk.view'),
-      I('谈话统计', '/admin/student-affairs/talk/stats', 'studentAffairs.talk.view'),
-      I('家校联系', '/admin/student-affairs/family', 'studentAffairs.homeSchool.view'),
-      I('重点学生跟进', '/admin/student-affairs/talk/key-follow', 'studentAffairs.talk.view'),
-      I('家校回执', '/admin/student-affairs/family/receipts', 'studentAffairs.homeSchool.view')
-    ]),
-    // 心理关注
-    mod('sa-mental', '心理关注', null, [
-      I('心理关注名单', '/admin/student-affairs/mental', 'studentAffairs.risk.psyDetail.view'),
-      I('心理预警摘要', '/admin/student-affairs/mental/summary', 'studentAffairs.risk.view'),
-      I('谈话转介与回访', '/admin/student-affairs/mental/referrals', 'studentAffairs.risk.psyDetail.view'),
-      I('危机升级', '/admin/student-affairs/mental/crisis', 'studentAffairs.risk.psyDetail.view'),
-      I('心理统计', '/admin/student-affairs/mental/stats', 'studentAffairs.stats.view')
-    ]),
-    // 活动二课与社团
-    mod('sa-activities', '活动二课与社团', null, [
-      I('学生活动（发布/报名/签到/确认）', '/admin/student-affairs/activity', 'studentAffairs.activity.view'),
-      I('志愿服务时长', '/admin/student-affairs/activity/volunteer', 'studentAffairs.activity.view'),
-      I('第二课堂积分', '/admin/student-affairs/activity/second-class', 'studentAffairs.activity.view'),
-      I('第二课堂积分申诉', '/admin/student-affairs/activity/credit-appeals', 'studentAffairs.activity.view'),
-      I('活动统计', '/admin/student-affairs/activity/stats', 'studentAffairs.stats.view'),
-      I('社团管理', '/admin/student-affairs/activity/clubs', 'studentAffairs.club.view'),
-      I('学生干部与组织', '/admin/student-affairs/activity/organizations', 'studentAffairs.org.view'),
-      I('党团建设', '/admin/student-affairs/activity/party-league', 'studentAffairs.league.view')
-    ]),
-    // 统计与档案
-    mod('sa-archive-stats', '统计与档案', null, [
-      I('学工统计', '/admin/student-affairs/stats', 'studentAffairs.stats.view'),
-      I('统计驾驶舱', '/admin/student-affairs/stats/cockpit', 'studentAffairs.stats.view'),
-      I('学工归档', '/admin/student-affairs/archive', 'studentAffairs.archive.view'),
-      I('学生档案包', '/admin/student-affairs/archive/packages', 'studentAffairs.archive.view')
-    ])
-  ]),
+      I('迎新总览', '/admin/orientation', 'studentAffairs.orientation.view', 'WORKBENCH', {
+        sectionKey: 'stage-1', sectionLabel: '阶段 1 · 总览'
+      }),
+      I('批次与规则', '/admin/orientation/batches', 'studentAffairs.orientation.view', 'CONFIG_VIEW', {
+        sectionKey: 'stage-1', sectionLabel: '阶段 1 · 总览'
+      }),
+      D('报到流程配置', '/admin/orientation/flow-config', 'studentAffairs.orientation.view', 'CONFIG_VIEW', {
+        activeLabel: '批次与规则', sectionKey: 'stage-1', sectionLabel: '阶段 1 · 总览'
+      }),
+      D('现场报到点', '/admin/orientation/checkin-points', 'studentAffairs.orientation.view', 'CONFIG_VIEW', {
+        activeLabel: '批次与规则', sectionKey: 'stage-1', sectionLabel: '阶段 1 · 总览'
+      }),
+
+      I('新生底账', '/admin/orientation/students', 'studentAffairs.orientation.view', 'WORKBENCH', {
+        sectionKey: 'stage-2', sectionLabel: '阶段 2 · 新生底账'
+      }),
+      H('新生详情', '/admin/orientation/students', 'studentAffairs.orientation.view', 'DETAIL', {
+        activeLabel: '新生底账', matchPrefix: true
+      }),
+      D('新生数据', '/admin/orientation/data', 'studentAffairs.orientation.view', 'LEDGER', {
+        activeLabel: '新生底账', sectionKey: 'stage-2', sectionLabel: '阶段 2 · 新生底账'
+      }),
+      D('新生信息核验', '/admin/orientation/verify', 'studentAffairs.orientation.view', 'TASK_QUEUE', {
+        activeLabel: '新生底账', sectionKey: 'stage-2', sectionLabel: '阶段 2 · 新生底账'
+      }),
+
+      I('报到资格', '/admin/orientation/qualification', 'studentAffairs.orientation.view', 'TASK_QUEUE', {
+        sectionKey: 'stage-3', sectionLabel: '阶段 3 · 资格闸门'
+      }),
+
+      I('报到办理', '/admin/orientation/progress', 'studentAffairs.orientation.view', 'WORKBENCH', {
+        sectionKey: 'stage-4', sectionLabel: '阶段 4 · 报到办理'
+      }),
+      D('缴费与绿色通道', '/admin/orientation/payment', 'studentAffairs.orientation.view', 'TASK_QUEUE', {
+        activeLabel: '报到办理', sectionKey: 'stage-4', sectionLabel: '阶段 4 · 报到办理'
+      }),
+      H('旧绿色通道入口', '/admin/orientation/green-channels', 'studentAffairs.orientation.view', 'COMPAT', {
+        activeLabel: '报到办理'
+      }),
+      D('材料审核', '/admin/orientation/materials', 'studentAffairs.orientation.view', 'TASK_QUEUE', {
+        activeLabel: '报到办理', sectionKey: 'stage-4', sectionLabel: '阶段 4 · 报到办理'
+      }),
+      D('宿舍预分配', '/admin/orientation/dorm-preassign', 'studentAffairs.orientation.view', 'CONFIG_VIEW', {
+        activeLabel: '报到办理', sectionKey: 'stage-4', sectionLabel: '阶段 4 · 报到办理'
+      }),
+      D('宿舍入住', '/admin/orientation/dorm', 'studentAffairs.orientation.view', 'TASK_QUEUE', {
+        activeLabel: '报到办理', sectionKey: 'stage-4', sectionLabel: '阶段 4 · 报到办理'
+      }),
+
+      I('异常闭环', '/admin/orientation/exceptions', 'studentAffairs.orientation.view', 'TASK_QUEUE', {
+        sectionKey: 'stage-5', sectionLabel: '阶段 5 · 异常闭环'
+      }),
+      D('未报到学生', '/admin/orientation/no-show', 'studentAffairs.orientation.view', 'TASK_QUEUE', {
+        activeLabel: '异常闭环', sectionKey: 'stage-5', sectionLabel: '阶段 5 · 异常闭环'
+      }),
+      D('迎新通知', '/admin/orientation/notices', 'studentAffairs.orientation.view', 'ACTION', {
+        activeLabel: '异常闭环', sectionKey: 'stage-5', sectionLabel: '阶段 5 · 异常闭环'
+      }),
+
+      I('统计归档', '/admin/orientation/statistics', 'studentAffairs.orientation.view', 'ANALYTICS_VIEW', {
+        sectionKey: 'stage-6', sectionLabel: '阶段 6 · 统计归档'
+      }),
+      D('迎新归档', '/admin/orientation/archive', 'studentAffairs.orientation.view', 'ARCHIVE', {
+        activeLabel: '统计归档', sectionKey: 'stage-6', sectionLabel: '阶段 6 · 统计归档'
+      })
+    ], null, {
+      ordinal: '10',
+      description: '新生 → 报到 → 归档',
+      sectionKey: 'wave-3',
+      sectionLabel: '第三波 · 生命周期 / 专项',
+      permissionAny: ['studentAffairs.orientation.view']
+    }),
+
+    mod('sa-mental', '心理专项', '/admin/student-affairs/mental/summary', [
+      I('心理预警摘要', '/admin/student-affairs/mental/summary', 'studentAffairs.risk.view', 'WORKBENCH', {
+        sectionKey: 'summary', sectionLabel: '必要摘要'
+      }),
+      I('心理关注名单', '/admin/student-affairs/mental', 'studentAffairs.risk.psyDetail.view', 'WORKBENCH', {
+        sectionKey: 'specialist', sectionLabel: '专项授权'
+      }),
+      I('转介与回访', '/admin/student-affairs/mental/referrals', 'studentAffairs.risk.psyDetail.view', 'TASK_QUEUE', {
+        sectionKey: 'specialist', sectionLabel: '专项授权'
+      }),
+      I('危机升级', '/admin/student-affairs/mental/crisis', 'studentAffairs.risk.psyDetail.view', 'TASK_QUEUE', {
+        sectionKey: 'specialist', sectionLabel: '专项授权'
+      }),
+      I('心理统计', '/admin/student-affairs/mental/stats', 'studentAffairs.stats.view', 'ANALYTICS_VIEW', {
+        sectionKey: 'specialist', sectionLabel: '专项授权'
+      })
+    ], null, {
+      ordinal: '11',
+      description: '按角色显示敏感工作区',
+      sectionKey: 'wave-3',
+      sectionLabel: '第三波 · 生命周期 / 专项',
+      permissionAny: [
+        'studentAffairs.risk.view',
+        'studentAffairs.risk.psyDetail.view',
+        'studentAffairs.stats.view'
+      ]
+    }),
+
+    mod('sa-archive-stats', '统计与档案', '/admin/student-affairs/stats/cockpit', [
+      I('统计驾驶舱', '/admin/student-affairs/stats/cockpit', 'studentAffairs.stats.view', 'ANALYTICS_VIEW', {
+        sectionKey: 'stats', sectionLabel: '统计分析'
+      }),
+      I('学工统计', '/admin/student-affairs/stats', 'studentAffairs.stats.view', 'ANALYTICS_VIEW', {
+        sectionKey: 'stats', sectionLabel: '统计分析'
+      }),
+      I('学工归档', '/admin/student-affairs/archive', 'studentAffairs.archive.view', 'ARCHIVE', {
+        sectionKey: 'archive', sectionLabel: '正式归档'
+      }),
+      I('学生档案包', '/admin/student-affairs/archive/packages', 'studentAffairs.archive.view', 'DETAIL', {
+        sectionKey: 'archive', sectionLabel: '正式归档'
+      }),
+      H('档案包详情', '/admin/student-affairs/archive/packages', 'studentAffairs.archive.view', 'DETAIL', {
+        activeLabel: '学生档案包', matchPrefix: true
+      })
+    ], null, {
+      ordinal: '12',
+      description: '领导聚合与正式归档',
+      sectionKey: 'wave-3',
+      sectionLabel: '第三波 · 生命周期 / 专项',
+      permissionAny: ['studentAffairs.stats.view', 'studentAffairs.archive.view']
+    })
+  ], {
+    workspaceTitle: '学工业务工作区',
+    workspaceDescription: '完整能力继续保留；日常菜单只告诉老师现在要完成什么工作。'
+  }),
 
   /* ═══════════ 一级③：教务中心 ═══════════ */
   grp('academic-affairs', '教务中心', 'academicAffairs', [
@@ -890,6 +1205,10 @@ export function getVisibleNavPlan({ includePlanned = false, permissionPatterns =
     if (applyPerm && mod2.permissionKey && !matchPermission(permissionPatterns, mod2.permissionKey)) {
       return false
     }
+    if (applyPerm && Array.isArray(mod2.permissionAny) && mod2.permissionAny.length
+        && !mod2.permissionAny.some((key) => matchPermission(permissionPatterns, key))) {
+      return false
+    }
     if (mod2.children.length === 0) return includePlanned || mod2.status === 'implemented' || mod2.status === 'partial'
     if (mod2.children.some(keepLeaf)) return true
     return includePlanned && (mod2.status === 'implemented' || mod2.status === 'partial')
@@ -898,7 +1217,16 @@ export function getVisibleNavPlan({ includePlanned = false, permissionPatterns =
     ...group,
     children: group.children
       .filter(keepMod)
-      .map((mod2) => ({ ...mod2, children: mod2.children.filter(keepLeaf) }))
+      .map((mod2) => {
+        const children = mod2.children.filter(keepLeaf)
+        const primaryVisible = children.some((leaf) => leaf.path === mod2.path)
+        const fallbackPath = children.find((leaf) => leaf.path)?.path || null
+        return {
+          ...mod2,
+          path: applyPerm && mod2.path && !primaryVisible ? fallbackPath : mod2.path,
+          children
+        }
+      })
   })).filter((group) => group.children.length > 0)
   _navPlanVisibleCache.set(cacheKey, result)
   return result
@@ -992,7 +1320,11 @@ const FLAT_NAV_INDEX = (() => {
         disabled: mod2.disabled,
         badge: mod2.badge,
         isLeaf: false,
-        hidden: false
+        hidden: false,
+        searchable: false,
+        permissionKey: mod2.permissionKey || null,
+        permissionAny: mod2.permissionAny || null,
+        children: mod2.children
       })
       mod2.children.forEach((leaf, i) => {
         rows.push({
@@ -1008,7 +1340,12 @@ const FLAT_NAV_INDEX = (() => {
           badge: leaf.badge,
           isLeaf: true,
           hidden: !!leaf.hidden,
-          permissionKey: leaf.permissionKey || null
+          searchable: !!leaf.searchable,
+          activeLabel: leaf.activeLabel || '',
+          matchPrefix: !!leaf.matchPrefix,
+          permissionKey: leaf.permissionKey || null,
+          permissionAny: leaf.permissionAny || null,
+          source: leaf
         })
       })
     }
@@ -1034,8 +1371,8 @@ export function findActiveInPlan(path, fullPath = '') {
       const cur = splitNavRef(ref)
       const prefixOnly = !cand.query && cur.path !== cand.path && cur.path.startsWith(`${cand.path}/`)
       if (prefixOnly) {
-        // 父路径（如 /admin/internship）不可抢占子路由高亮
-        score = cand.path.length - 500
+        // 普通父路径不可抢占子路由；显式 matchPrefix 的隐藏详情归属可映射到可见工作区。
+        score = row.matchPrefix ? cand.path.length - 0.5 : cand.path.length - 500
       } else {
         score = row.path.length + (cand.query ? 1000 : 0)
       }
@@ -1045,8 +1382,13 @@ export function findActiveInPlan(path, fullPath = '') {
         score = cp.length
       }
     }
-    if (score > best.score) {
-      best = { groupKey: row.groupKey, modKey: row.modKey, leafKey: row.isLeaf ? row.label : '', score }
+    if (score > best.score || (score === best.score && row.isLeaf && !best.leafKey)) {
+      best = {
+        groupKey: row.groupKey,
+        modKey: row.modKey,
+        leafKey: row.isLeaf ? (row.activeLabel || row.label) : '',
+        score
+      }
     }
   }
   return { groupKey: best.groupKey, modKey: best.modKey, leafKey: best.leafKey }
@@ -1067,12 +1409,27 @@ export function searchNavPlan(query, permissionPatterns = null) {
   if (_navSearchCache.has(cacheKey)) return _navSearchCache.get(cacheKey)
   const out = []
   for (const row of FLAT_NAV_INDEX) {
-    if (row.hidden) continue  // 隐藏的兼容入口不进搜索
-    if (applyPerm && row.permissionKey && !matchPermission(permissionPatterns, row.permissionKey)) continue  // 无权限页面不进搜索
+    if (row.hidden && !row.searchable) continue  // 兼容/详情不进搜索；D() 搜索深链保留
+    if (applyPerm && row.permissionKey && !matchPermission(permissionPatterns, row.permissionKey)) continue
+    if (applyPerm && Array.isArray(row.permissionAny) && row.permissionAny.length
+        && !row.permissionAny.some((key) => matchPermission(permissionPatterns, key))) continue
     if (!row.label.toLowerCase().includes(q)) continue
+    let resolvedPath = row.path
+    if (!row.isLeaf && applyPerm) {
+      const visibleChildren = (row.children || []).filter((leaf) => {
+        if (leaf.hidden && !leaf.searchable) return false
+        if (leaf.permissionKey && !matchPermission(permissionPatterns, leaf.permissionKey)) return false
+        if (Array.isArray(leaf.permissionAny) && leaf.permissionAny.length
+            && !leaf.permissionAny.some((key) => matchPermission(permissionPatterns, key))) return false
+        return !!leaf.path
+      })
+      const primary = visibleChildren.find((leaf) => leaf.path === row.path)
+      resolvedPath = (primary || visibleChildren[0] || {}).path || null
+      if (!resolvedPath) continue
+    }
     out.push({
       label: row.label,
-      path: row.path,
+      path: resolvedPath,
       status: row.status,
       disabled: row.disabled,
       badge: row.badge,

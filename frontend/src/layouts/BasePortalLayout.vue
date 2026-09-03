@@ -203,42 +203,79 @@
       </aside>
 
       <!-- 左二级 196px 浅色业务导航（分组小标题 + 计数徽标）；无 ctx 时回退为旧版单栏菜单 -->
-      <aside class="bpl-aside" :class="{ 'is-hidden': hideAside, 'bpl-aside--subnav': !!ctx }">
+      <aside
+        class="bpl-aside"
+        :class="{
+          'is-hidden': hideAside,
+          'bpl-aside--subnav': !!ctx,
+          'bpl-aside--workspace': !!(planGroup && planGroup.workspaceTitle)
+        }"
+      >
         <!-- navPlan 驱动的「完整二级 + 三级」施工地图（12 个业务模块 layout：有 ctx、无自定义 #menu）。
              implemented/partial 可点；planned 灰色「待施工」不可点，点击仅 toast；角色可见性见 isPlannerView。 -->
-        <nav v-if="ctx && !$slots.menu" class="bpl-tree">
-          <div class="bpl-submods__label">{{ planGroupLabel }}</div>
-          <template v-for="m in planMods" :key="m.key">
-            <!-- 二级模块（有 children 显示展开箭头） -->
-            <a
-              class="bpl-submods__item bpl-tree__mod"
-              :class="{ 'is-active': m.key === planActiveModKey, 'is-disabled': m.disabled && !m.children.length }"
-              href="javascript:void(0)"
-              @click="onTreeMod(m)"
-            >
-              <span
-                v-if="m.children.length"
-                class="bpl-tree__caret"
-                :class="{ 'is-open': isExpanded(m.key) }"
-              >▸</span>
-              <span v-else class="bpl-tree__caret bpl-tree__caret--sp" />
-              <span class="bpl-submods__lb" :title="m.label">{{ m.label }}</span>
-              <span v-if="m.badge && m.status !== 'planned'" class="bpl-planbadge" :class="'bpl-planbadge--' + m.status">{{ m.badge }}</span>
-            </a>
-            <!-- 三级页面（展开时缩进显示） -->
-            <div v-if="m.children.length && isExpanded(m.key)" class="bpl-tree__leaves">
-              <a
-                v-for="leaf in m.children"
-                :key="leafKey(m, leaf)"
-                class="bpl-menu__item bpl-tree__leaf"
-                :class="{ 'is-active': isLeafActive(m, leaf), 'is-disabled': leaf.disabled }"
-                href="javascript:void(0)"
-                @click="onPlanLeaf(leaf, m)"
-              >
-                <span class="bpl-menu__label" :title="leaf.label">{{ leaf.label }}</span>
-                <span v-if="leaf.badge && leaf.status !== 'planned'" class="bpl-planbadge" :class="'bpl-planbadge--' + leaf.status">{{ leaf.badge }}</span>
-              </a>
+        <nav v-if="ctx && !$slots.menu" class="bpl-tree" :aria-label="planGroupTitle">
+          <div class="bpl-tree__workspace-head">
+            <strong>{{ planGroupTitle }}</strong>
+            <span v-if="planGroupDescription">{{ planGroupDescription }}</span>
+          </div>
+          <template v-for="section in planSections" :key="section.key">
+            <div v-if="section.label" class="bpl-tree__section">
+              <span>{{ section.label }}</span>
+              <small>{{ section.mods.length }}</small>
             </div>
+            <template v-for="m in section.mods" :key="m.key">
+              <!-- 二级工作区：编号 + 业务名称 + 一句话用途；点击进入主页面并展开三级。 -->
+              <button
+                type="button"
+                class="bpl-submods__item bpl-tree__mod"
+                :class="{ 'is-active': m.key === planActiveModKey, 'is-disabled': m.disabled && !m.children.length }"
+                :data-workspace="m.key"
+                :aria-expanded="m.children.length ? String(isExpanded(m.key)) : undefined"
+                :aria-current="m.key === planActiveModKey ? 'page' : undefined"
+                @click="onTreeMod(m)"
+              >
+                <span v-if="m.ordinal" class="bpl-tree__num" aria-hidden="true">{{ m.ordinal }}</span>
+                <span
+                  v-else-if="m.children.length"
+                  class="bpl-tree__caret"
+                  :class="{ 'is-open': isExpanded(m.key) }"
+                >▸</span>
+                <span v-else class="bpl-tree__caret bpl-tree__caret--sp" />
+                <span class="bpl-tree__mod-copy">
+                  <span class="bpl-submods__lb" :title="m.label">{{ m.label }}</span>
+                  <small v-if="m.description" :title="m.description">{{ m.description }}</small>
+                </span>
+                <span v-if="m.badge && m.status !== 'planned'" class="bpl-planbadge" :class="'bpl-planbadge--' + m.status">{{ m.badge }}</span>
+                <span
+                  v-if="m.ordinal && m.children.length"
+                  class="bpl-tree__caret bpl-tree__caret--tail"
+                  :class="{ 'is-open': isExpanded(m.key) }"
+                  aria-hidden="true"
+                >▸</span>
+              </button>
+              <!-- 三级页面：按业务阶段分组；低频 D() 深链由顶部搜索进入，不占侧栏。 -->
+              <div v-if="m.children.length && isExpanded(m.key)" class="bpl-tree__leaves">
+                <template v-for="leafSection in leafSections(m)" :key="`${m.key}/${leafSection.key}`">
+                  <div v-if="leafSection.label" class="bpl-tree__leaf-section">{{ leafSection.label }}</div>
+                  <button
+                    v-for="leaf in leafSection.leaves"
+                    :key="leafKey(m, leaf)"
+                    type="button"
+                    class="bpl-menu__item bpl-tree__leaf"
+                    :class="{ 'is-active': isLeafActive(m, leaf), 'is-disabled': leaf.disabled }"
+                    :data-leaf="leaf.label"
+                    :data-nav-path="leaf.path || ''"
+                    :aria-current="isLeafActive(m, leaf) ? 'page' : undefined"
+                    :aria-disabled="leaf.disabled ? 'true' : undefined"
+                    :title="[leaf.label, leaf.description].filter(Boolean).join(' · ')"
+                    @click="onPlanLeaf(leaf, m)"
+                  >
+                    <span class="bpl-menu__label">{{ leaf.label }}</span>
+                    <span v-if="leaf.badge && leaf.status !== 'planned'" class="bpl-planbadge" :class="'bpl-planbadge--' + leaf.status">{{ leaf.badge }}</span>
+                  </button>
+                </template>
+              </div>
+            </template>
           </template>
         </nav>
         <slot v-else name="menu">
@@ -563,11 +600,30 @@ export default {
     planGroupLabel() {
       return this.planGroup ? this.planGroup.label : ''
     },
+    planGroupTitle() {
+      return this.planGroup?.workspaceTitle || this.planGroupLabel
+    },
+    planGroupDescription() {
+      return this.planGroup?.workspaceDescription || ''
+    },
     planMods() {
       return this.planGroup ? this.planGroup.children : []
     },
     planActiveModKey() {
       return this.planActive.modKey || (this.planMods[0] && this.planMods[0].key) || ''
+    },
+    planSections() {
+      const sections = []
+      for (const mod2 of this.planMods) {
+        const key = mod2.sectionKey || '__default'
+        let section = sections[sections.length - 1]
+        if (!section || section.key !== key) {
+          section = { key, label: mod2.sectionLabel || '', mods: [] }
+          sections.push(section)
+        }
+        section.mods.push(mod2)
+      }
+      return sections
     },
     /* 按当前路由定位应高亮的唯一三级叶子（复用 findActiveInPlan 拍平索引，避免遍历 planMods 全部叶子） */
     routeActiveLeafKey() {
@@ -764,6 +820,19 @@ export default {
       this.stuBlurTimer = setTimeout(() => {
         this.stuOpen = false
       }, 150)
+    },
+    leafSections(mod2) {
+      const sections = []
+      for (const leaf of (mod2?.children || [])) {
+        const key = leaf.sectionKey || '__default'
+        let section = sections[sections.length - 1]
+        if (!section || section.key !== key) {
+          section = { key, label: leaf.sectionLabel || '', leaves: [] }
+          sections.push(section)
+        }
+        section.leaves.push(leaf)
+      }
+      return sections
     },
     /* 二级模块是否展开：未手动记录时，默认展开「当前路由所属二级」 */
     isExpanded(key) {
@@ -1823,4 +1892,163 @@ export default {
     font-weight: var(--font-weight-semibold);
   }
 }
+
+/* ══ 学工 V6 工作区侧栏：三波 / 12 工作区 / 分阶段三级深链 ══ */
+.bpl-aside--workspace {
+  width: 228px;
+  padding: 12px 10px;
+}
+.bpl-tree__workspace-head {
+  position: sticky;
+  top: -12px;
+  z-index: 3;
+  margin: -2px -2px 8px;
+  padding: 10px 10px 11px;
+  border-bottom: 1px solid var(--dv);
+  background: color-mix(in srgb, var(--bg-sidebar) 94%, transparent);
+  backdrop-filter: blur(10px);
+}
+.bpl-tree__workspace-head strong {
+  display: block;
+  color: var(--t1);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: var(--font-weight-bold);
+}
+.bpl-tree__workspace-head span {
+  display: block;
+  margin-top: 3px;
+  color: var(--t3);
+  font-size: 12px;
+  line-height: 18px;
+}
+.bpl-tree__section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 6px 4px;
+  color: var(--t3);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: var(--font-weight-semibold);
+}
+.bpl-tree__section::after {
+  flex: 1;
+  height: 1px;
+  background: var(--dv);
+  content: '';
+}
+.bpl-tree__section small {
+  order: 3;
+  min-width: 18px;
+  color: var(--t3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.bpl-tree .bpl-tree__mod {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 2px;
+  padding: 6px 7px;
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+.bpl-tree .bpl-tree__mod:hover {
+  border-color: color-mix(in srgb, var(--pri) 18%, var(--card-b));
+}
+.bpl-tree .bpl-tree__mod.is-active {
+  border-color: color-mix(in srgb, var(--pri) 22%, var(--card-b));
+  background: var(--pri-bg);
+}
+.bpl-tree__num {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 8px;
+  background: var(--primary-100, var(--pri-100));
+  color: var(--pri);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.bpl-tree__mod-copy {
+  min-width: 0;
+  flex: 1;
+}
+.bpl-tree__mod-copy .bpl-submods__lb {
+  display: block;
+  color: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: var(--font-weight-semibold);
+}
+.bpl-tree__mod-copy > small {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--t3);
+  font-size: 12px;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bpl-tree__caret--tail {
+  margin-left: 1px;
+}
+.bpl-tree__leaves {
+  margin: 2px 0 8px 22px;
+}
+.bpl-tree__leaf-section {
+  margin: 6px 8px 2px 17px;
+  color: var(--t3);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: var(--font-weight-semibold);
+}
+.bpl-tree .bpl-tree__leaf {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px 6px 30px;
+  appearance: none;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t2);
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+}
+.bpl-tree .bpl-tree__leaf:hover {
+  background: color-mix(in srgb, var(--pri-bg) 72%, transparent);
+}
+.bpl-tree .bpl-tree__leaf.is-active {
+  background: var(--pri-bg);
+  color: var(--pri);
+  font-weight: var(--font-weight-semibold);
+}
+.bpl-tree .bpl-tree__leaf:focus-visible,
+.bpl-tree .bpl-tree__mod:focus-visible {
+  outline: 2px solid var(--pri);
+  outline-offset: 1px;
+}
+.bpl-tree .bpl-tree__leaf .bpl-menu__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 1450px) {
+  .bpl-aside--workspace {
+    width: 218px;
+  }
+}
+
 </style>
