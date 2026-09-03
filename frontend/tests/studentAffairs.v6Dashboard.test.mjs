@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
+import { setImmediate } from 'node:timers'
 
 // Execute the actual page logic; replace only IO and component/permission collaborators.
 const source = fs.readFileSync(new URL('../src/modules/studentAffairs/views/StudentAffairsDashboardView.vue', import.meta.url), 'utf8')
