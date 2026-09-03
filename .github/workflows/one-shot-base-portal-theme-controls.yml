@@ -1,63 +1,10 @@
 name: One-shot BasePortal theme controls patch
 
-on:
-  push:
-    branches:
-      - fix/base-portal-theme-controls-1366-20260903
-
-permissions:
-  contents: write
+on: [push]
 
 jobs:
   patch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: fix/base-portal-theme-controls-1366-20260903
-          fetch-depth: 0
-
-      - name: Replace non-semantic theme spans with native buttons
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('frontend/src/layouts/BasePortalLayout.vue')
-          text = path.read_text(encoding='utf-8')
-          old = '''        <div class="bpl-thdots" title="主题皮肤 themePreference">
-          <span
-            v-for="t in themeOptions"
-            :key="t.key"
-            class="bpl-thdot"
-            :class="['bpl-thdot--' + t.key, { 'is-on': theme === t.key }]"
-            :title="t.label"
-            @click="setTheme(t.key)"
-          />
-        </div>'''
-          new = '''        <div class="bpl-thdots" role="group" aria-label="界面主题">
-          <button
-            v-for="t in themeOptions"
-            :key="t.key"
-            type="button"
-            class="bpl-thdot"
-            :class="['bpl-thdot--' + t.key, { 'is-on': theme === t.key }]"
-            :title="t.label"
-            :aria-label="`切换到${t.label}主题`"
-            :aria-pressed="theme === t.key"
-            @click="setTheme(t.key)"
-          />
-        </div>'''
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one theme-control block, got {text.count(old)}')
-          path.write_text(text.replace(old, new), encoding='utf-8')
-          PY
-          git diff --check
-          git diff -- frontend/src/layouts/BasePortalLayout.vue
-
-      - name: Commit the exact shell fix
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/src/layouts/BasePortalLayout.vue
-          git commit -m "fix(shell): make theme controls native buttons [theme-controls-patched]"
-          git push origin HEAD:fix/base-portal-theme-controls-1366-20260903
+      - name: Validate temporary workflow
+        run: echo "temporary workflow is valid"
