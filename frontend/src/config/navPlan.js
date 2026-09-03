@@ -209,6 +209,21 @@ export const NAV_PLAN = [
       I('风险工作台', '/admin/student-affairs/risk', 'studentAffairs.risk.view', 'TASK_QUEUE', {
         sectionKey: 'risk', sectionLabel: '风险处置'
       }),
+      D('高危 / 危急', '/admin/student-affairs/risk?priority=HIGH_CRITICAL', 'studentAffairs.risk.view', 'TASK_QUEUE', {
+        activeLabel: '风险工作台', sectionKey: 'risk', sectionLabel: '风险快捷队列'
+      }),
+      D('超时待跟进', '/admin/student-affairs/risk?overdueOnly=true', 'studentAffairs.risk.view', 'TASK_QUEUE', {
+        activeLabel: '风险工作台', sectionKey: 'risk', sectionLabel: '风险快捷队列'
+      }),
+      D('待分派风险', '/admin/student-affairs/risk?unassignedOnly=true', 'studentAffairs.risk.view', 'TASK_QUEUE', {
+        activeLabel: '风险工作台', sectionKey: 'risk', sectionLabel: '风险快捷队列'
+      }),
+      D('我负责的风险', '/admin/student-affairs/risk?ownerId=me', 'studentAffairs.risk.view', 'TASK_QUEUE', {
+        activeLabel: '风险工作台', sectionKey: 'risk', sectionLabel: '风险快捷队列'
+      }),
+      D('持续跟进风险', '/admin/student-affairs/risk?status=FOLLOWING', 'studentAffairs.risk.view', 'TASK_QUEUE', {
+        activeLabel: '风险工作台', sectionKey: 'risk', sectionLabel: '风险快捷队列'
+      }),
       I('重点学生跟进', '/admin/student-affairs/talk/key-follow', 'studentAffairs.talk.view', 'TASK_QUEUE', {
         sectionKey: 'risk', sectionLabel: '风险处置'
       }),

@@ -262,9 +262,15 @@
                     :key="leafKey(m, leaf)"
                     type="button"
                     class="bpl-menu__item bpl-tree__leaf"
-                    :class="{ 'is-active': isLeafActive(m, leaf), 'is-disabled': leaf.disabled }"
+                    :class="{
+                      'is-active': isLeafActive(m, leaf),
+                      'is-disabled': leaf.disabled,
+                      'is-contextual': leaf.contextualDeepLink
+                    }"
                     :data-leaf="leaf.label"
                     :data-nav-path="leaf.path || ''"
+                    :data-deep-link="leaf.contextualDeepLink ? 'true' : undefined"
+                    :data-entry-type="leaf.entryType || ''"
                     :aria-current="isLeafActive(m, leaf) ? 'page' : undefined"
                     :aria-disabled="leaf.disabled ? 'true' : undefined"
                     :title="[leaf.label, leaf.description].filter(Boolean).join(' · ')"
@@ -323,6 +329,7 @@ import { getVisibleAdminMenu, findActiveMenu, searchSearchAliases } from '@/conf
 import { searchHelp, findHelpForRoute } from '@/config/helpContent'
 import { guideCount, replayGuide } from '@/utils/guideBus'
 import { getVisibleNavPlan, findActiveInPlan, searchNavPlan, navRefMatches, navRefExactMatch } from '@/config/navPlan'
+import { projectStudentAffairsWorkspaceDeepLinks } from '@/config/studentAffairsWorkspaceDeepLinks'
 import { toast } from '@/utils/toast'
 import router from '@/router'
 
@@ -590,12 +597,15 @@ export default {
     },
     planGroup() {
       const gk = this.railActiveKey
+      const permissionPatterns = (this.ctx && this.ctx.permissionPatterns) || null
       // 日常视角按当前身份权限集投影；planner(校管/平台)看完整能力目录。ctxKey 保证切身份/改权后缓存失效。
-      return getVisibleNavPlan({
+      const group = getVisibleNavPlan({
         includePlanned: this.isPlannerView,
-        permissionPatterns: (this.ctx && this.ctx.permissionPatterns) || null,
+        permissionPatterns,
         ctxKey: (this.ctx && this.ctx.ctxKey) || ''
       }).find((g) => g.key === gk) || null
+      // 学工 V6：高频三级保持原排序；D() 真实低频页只补进当前展开工作区，H() 对象详情仍不铺菜单。
+      return projectStudentAffairsWorkspaceDeepLinks(group, permissionPatterns)
     },
     planGroupLabel() {
       return this.planGroup ? this.planGroup.label : ''
@@ -1516,6 +1526,19 @@ export default {
   background: var(--bg-sidebar);
   padding: 16px 12px;
 }
+/* 学工 V6 只在带 workspaceTitle 的投影中收紧一级轨并给三级标签足够宽度。 */
+.bpl-aside--workspace {
+  width: 214px;
+  padding: 12px 9px 14px;
+}
+.base-portal-layout:has(.bpl-aside--workspace) .bpl-rail {
+  width: 68px;
+}
+.base-portal-layout:has(.bpl-aside--workspace) .bpl-rail__item {
+  width: 56px;
+  padding-block: 8px 6px;
+  border-radius: 11px;
+}
 .bpl-aside.is-hidden {
   display: none;
 }
@@ -1711,6 +1734,26 @@ export default {
 }
 .bpl-tree .bpl-tree__leaf.is-active::before {
   background: var(--pri);
+}
+/* D() 低频页面在当前工作区中可见，但用轻量类型标识与主工作台区分。 */
+.bpl-tree .bpl-tree__leaf.is-contextual {
+  color: var(--t2);
+  background: color-mix(in srgb, var(--bg-card) 72%, var(--pri-bg));
+}
+.bpl-tree .bpl-tree__leaf.is-contextual:hover,
+.bpl-tree .bpl-tree__leaf.is-contextual.is-active {
+  color: var(--pri);
+  background: var(--pri-bg);
+}
+.bpl-tree .bpl-tree__leaf .bpl-planbadge--implemented {
+  color: var(--t3);
+  background: var(--bg-section);
+  border: 1px solid var(--border-light);
+}
+.bpl-tree .bpl-tree__leaf.is-contextual.is-active .bpl-planbadge--implemented {
+  color: var(--pri);
+  border-color: var(--pri-100);
+  background: var(--bg-card);
 }
 .bpl-menu__item {
   display: flex;
