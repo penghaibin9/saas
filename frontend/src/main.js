@@ -6,6 +6,8 @@ import './styles/element-theme.css'
 import './styles/high-contrast-skin.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
+// 顶栏六主题控件：原生按钮、键盘 Focus，以及 1366/1280 下与搜索区的防重叠收口。
+import './styles/base-portal-theme-controls.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
