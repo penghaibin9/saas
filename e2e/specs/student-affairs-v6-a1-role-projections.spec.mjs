@@ -13,7 +13,7 @@ const execFileAsync = promisify(execFile)
 test.beforeAll(async () => {
   const { stdout } = await execFileAsync(
     'python',
-    ['../backend/scripts/e2e_bootstrap_affairs_college_ci.py'],
+    ['scripts/e2e_bootstrap_affairs_college_ci.py'],
     { timeout: 120_000, maxBuffer: 1024 * 1024 }
   )
   expect(stdout).toContain('[e2e-affairs-college] ready:')
