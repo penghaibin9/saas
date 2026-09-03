@@ -125,8 +125,18 @@ test('BasePortal theme controls follow native Tab, Space and Enter behavior', as
   await capture(page, testInfo, 'base-portal-theme-keyboard-1366x768')
 })
 
-test('BasePortal functional search, page help and messages remain real-clickable at 1366', async ({ page }, testInfo) => {
+test('BasePortal student search, functional search, page help and messages remain real-clickable at 1366', async ({ page }, testInfo) => {
   await openShell(page, { width: 1366, height: 768 })
+
+  const studentInput = page.locator('.bpl-cmdk--stu input')
+  await studentInput.fill('E2E20260001')
+  const studentResult = page.locator('.bpl-cmdk--stu .bpl-cmdk__opt').filter({ hasText: 'E2E20260001' }).first()
+  await expect(studentResult).toBeVisible()
+  await studentResult.click()
+  await expect.poll(() => new URL(page.url()).pathname).toMatch(/^\/admin\/student\/[^/]+$/)
+  await page.goBack()
+  await expectPath(page, '/admin/student-affairs/dashboard')
+  await expect(page.locator('.base-portal-layout')).toBeVisible()
 
   const helpButton = page.locator('.bpl-help__btn')
   await helpButton.click()
