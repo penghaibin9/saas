@@ -104,17 +104,21 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     await student.open()
     await student.signTaskbookIfNeeded()
 
-    // The full interaction suite may already have completed the same run-scoped
-    // proposal before this visual test starts. Reuse that canonical state instead
-    // of trying to submit an already-approved proposal a second time.
+    // The browser suite shares one run-scoped graduation fixture. Reuse any
+    // canonical proposal that is already pending or approved instead of opening
+    // a form that no longer exists in those states.
     const proposalStep = student.step('开题')
-    const alreadyApproved = await proposalStep.getByText(/已通过|通过/).count() > 0
-    if (!alreadyApproved) {
+    const proposalStateText = await proposalStep.innerText()
+    const alreadyApproved = /已通过|书面开题通过/.test(proposalStateText)
+    const awaitingReview = /待.*审|已提交/.test(proposalStateText)
+    if (!alreadyApproved && !awaitingReview) {
       await student.submitProposal({
         suffix: `${fixture.runId}-u3`,
         fileName: `u3-proposal-${fixture.runId}.pdf`
       })
+    }
 
+    if (!alreadyApproved) {
       await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
       const staff = new StaffGraduationPage(page, config.staffBaseUrl, fixture)
       await staff.openProposals('PENDING_REVIEW')
