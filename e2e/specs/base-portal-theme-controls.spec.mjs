@@ -102,6 +102,7 @@ test('BasePortal theme controls follow native Tab, Space and Enter behavior', as
   await openShell(page, { width: 1366, height: 768 })
   const search = page.locator('.bpl-cmdk--fn input')
   await search.focus()
+  await page.keyboard.press('Escape')
   await page.keyboard.press('Tab')
   const first = page.locator('button.bpl-thdot--e')
   await expect(first).toBeFocused()
