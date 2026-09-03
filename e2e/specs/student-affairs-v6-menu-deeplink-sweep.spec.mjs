@@ -17,6 +17,20 @@ const WORKSPACES = [
   '心理专项',
   '统计与档案'
 ]
+const REQUIRED_CONTEXTUAL_PATHS = [
+  '/admin/student/list/new',
+  '/admin/student-affairs/risk?priority=HIGH_CRITICAL',
+  '/admin/student-affairs/risk?overdueOnly=true',
+  '/admin/student-affairs/risk?unassignedOnly=true',
+  '/admin/student-affairs/risk?ownerId=me',
+  '/admin/student-affairs/risk?status=FOLLOWING',
+  '/admin/student-affairs/aid/batches',
+  '/admin/student-affairs/funding/batches',
+  '/admin/orientation/flow-config',
+  '/admin/orientation/payment',
+  '/admin/orientation/materials',
+  '/admin/orientation/archive'
+]
 
 async function dismissGuide(page) {
   for (const selector of ['.app-step-guide__mask', '.tour-mask']) {
@@ -84,7 +98,9 @@ test('V6 student-affairs sidebar real-clicks every visible third-level deep link
       const leaves = await page.locator('[data-nav-path]:visible').evaluateAll((nodes) => nodes.map((node) => ({
         path: node.dataset.navPath,
         leaf: node.dataset.leaf || '',
-        label: (node.textContent || '').replace(/\s+/g, ' ').trim()
+        label: (node.textContent || '').replace(/\s+/g, ' ').trim(),
+        deepLink: node.dataset.deepLink === 'true',
+        entryType: node.dataset.entryType || ''
       })).filter((item) => item.path))
 
       for (const item of leaves) {
@@ -113,14 +129,28 @@ test('V6 student-affairs sidebar real-clicks every visible third-level deep link
     })
   }
 
+  const contextual = clicked.filter((item) => item.deepLink)
+  const contextualPaths = new Set(contextual.map((item) => item.path))
   const viewportPath = testInfo.outputPath('v6-sidebar-all-visible-deeplinks-1366.png')
   await page.screenshot({ path: viewportPath, fullPage: false, animations: 'disabled', caret: 'hide' })
   await testInfo.attach('v6-sidebar-all-visible-deeplinks-1366', { path: viewportPath, contentType: 'image/png' })
   await testInfo.attach('v6-sidebar-deeplink-click-matrix', {
-    body: JSON.stringify({ workspaces: WORKSPACES, uniquePaths: seenPaths.size, clicked, failures }, null, 2),
+    body: JSON.stringify({
+      workspaces: WORKSPACES,
+      uniquePaths: seenPaths.size,
+      contextualCount: contextual.length,
+      contextualTypes: [...new Set(contextual.map((item) => item.entryType))].sort(),
+      clicked,
+      failures
+    }, null, 2),
     contentType: 'application/json'
   })
 
-  expect(clicked.length, 'The visible V6 sidebar must expose a meaningful set of third-level routes').toBeGreaterThanOrEqual(24)
+  expect(clicked.length, 'The visible V6 sidebar must expose a meaningful set of third-level routes').toBeGreaterThanOrEqual(40)
+  expect(contextual.length, 'Search-only real routes must now be directly usable within their active workspaces').toBeGreaterThanOrEqual(20)
+  expect(contextual.every((item) => item.entryType), 'Every contextual link must explain its business entry type').toBe(true)
+  for (const path of REQUIRED_CONTEXTUAL_PATHS) {
+    expect(contextualPaths, `required contextual path ${path}`).toContain(path)
+  }
   expect(failures, 'Every visible permitted third-level route must resolve and return').toEqual([])
 })
