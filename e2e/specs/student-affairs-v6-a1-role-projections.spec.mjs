@@ -5,14 +5,11 @@ import { StaffLoginPage } from '../pages/login.page.mjs'
 const ROUTE = '/admin/student-affairs/dashboard'
 const DASHBOARD_API = /\/api\/v1\/student-affairs\/dashboard(?:\?|$)/
 const PASSWORD = process.env.E2E_STUDENT_AFFAIRS_PASSWORD || 'E2eTest@2026'
+const affairsAccount = (username) => ({ tenant: config.sandboxAdmin.tenant, username, password: PASSWORD })
 
-async function loginAndOpen(page, username) {
+async function loginAndOpen(page, account) {
   const responsePromise = page.waitForResponse((response) => DASHBOARD_API.test(response.url()) && response.request().method() === 'GET')
-  await new StaffLoginPage(page, config.staffBaseUrl).login({
-    tenant: config.sandboxAdmin.tenant,
-    username,
-    password: PASSWORD
-  })
+  await new StaffLoginPage(page, config.staffBaseUrl).login(account)
   await page.goto(`${config.staffBaseUrl}${ROUTE}`)
   const response = await responsePromise
   const body = await response.json()
@@ -35,13 +32,13 @@ async function capture(page, testInfo, label) {
 }
 
 for (const role of [
-  { username: 'e2e_sa_admin', view: 'SA_ADMIN', label: '学工处（全校）', mode: 'ADMIN_TENANT' },
-  { username: 'e2e_college_admin', view: 'COLLEGE_SA', label: '学院学工（本院）' },
-  { username: 'e2e_counselor_a', view: 'COUNSELOR', label: '辅导员（本班）', mode: 'SCOPED' }
+  { account: config.sandboxAdmin, view: 'SA_ADMIN', label: '学工处（全校）', mode: 'ADMIN_TENANT' },
+  { account: affairsAccount('e2e_college_admin'), view: 'COLLEGE_SA', label: '学院学工（本院）' },
+  { account: affairsAccount('e2e_counselor_a'), view: 'COUNSELOR', label: '辅导员（本班）', mode: 'SCOPED' }
 ]) {
   test(`V6 A1 real ${role.view} projection and risk drilldown`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1366, height: 768 })
-    const envelope = await loginAndOpen(page, role.username)
+    const envelope = await loginAndOpen(page, role.account)
     expect(envelope.code).toBe(0)
     expect(envelope.data.view).toBe(role.view)
     expect(envelope.data.viewLabel).toBe(role.label)
