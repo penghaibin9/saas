@@ -131,6 +131,13 @@ nav_path.write_text(nav, encoding='utf-8')
 
 risk_path = Path('frontend/src/modules/studentAffairs/views/StudentAffairsRiskListView.vue')
 risk = risk_path.read_text(encoding='utf-8')
+risk = replace_once(
+    risk,
+    "import { resolveTodoStatus, readStudentFilter } from '@/modules/studentAffairs/utils/todoFilterSemantics'\n",
+    "import { resolveTodoStatus, readStudentFilter } from '@/modules/studentAffairs/utils/todoFilterSemantics'\n"
+    "import { resolveRiskQueueIntent } from '@/modules/studentAffairs/utils/riskRouteQueueIntent'\n",
+    'risk intent import'
+)
 old_apply = """    applyRouteFilters() {
       const q = this.$route.query || {}
       this.studentFilter = readStudentFilter(q)
@@ -153,12 +160,7 @@ new_apply = """    applyRouteFilters() {
       this.filters.source = q.source ? String(q.source) : this.filters.source
       this.filters.riskLevel = q.riskLevel ? String(q.riskLevel) : this.filters.riskLevel
       // V6 侧栏快捷队列只投影既有服务端过滤参数；不在浏览器本地筛选或扩大 allowedActions。
-      this.activeQueue = String(q.priority || '') === 'HIGH_CRITICAL' ? 'HIGH'
-        : String(q.overdueOnly || '').toLowerCase() === 'true' ? 'OVERDUE'
-          : String(q.unassignedOnly || '').toLowerCase() === 'true' ? 'UNASSIGNED'
-            : String(q.ownerId || '') === 'me' ? 'MINE'
-              : String(q.status || '').toUpperCase() === 'FOLLOWING' ? 'FOLLOWING'
-                : 'ALL'
+      this.activeQueue = resolveRiskQueueIntent(q)
       if (q.status != null && q.status !== '') {
         const resolved = resolveTodoStatus('risk', q.status)
         // PENDING/OPEN/DONE/OVERDUE 等公共语义：下拉用 activeKey；后端 OPEN/PENDING 已识别
