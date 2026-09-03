@@ -1,0 +1,35 @@
+name: One-shot cleanup student affairs V6 contextual deep links
+
+on: [push]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-cleanup-student-affairs-v6-contextual-deeplinks
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    if: github.ref == 'refs/heads/feat/student-affairs-v6-a1-on-theme-shell'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/student-affairs-v6-a1-on-theme-shell
+          fetch-depth: 0
+
+      - name: Normalize the product files
+        run: python .github/scripts/cleanup_student_affairs_v6_contextual_deeplinks.py
+
+      - name: Commit the normalized files and remove this temporary runner
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/layouts/BasePortalLayout.vue frontend/src/modules/studentAffairs/views/StudentAffairsRiskListView.vue
+          git rm .github/scripts/cleanup_student_affairs_v6_contextual_deeplinks.py
+          git rm .github/workflows/one-shot-cleanup-student-affairs-v6-contextual-deeplinks.yml
+          git commit -m "fix(student-affairs): normalize contextual deep-link implementation"
+          git push origin HEAD:feat/student-affairs-v6-a1-on-theme-shell
