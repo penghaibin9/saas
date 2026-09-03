@@ -47,6 +47,12 @@ async function evidence(page, testInfo, label) {
   await testInfo.attach(`${label}-geometry`, { body: JSON.stringify(result, null, 2), contentType: 'application/json' })
   return result
 }
+async function expectDestination(page, path, query = {}) {
+  await expect.poll(() => new URL(page.url()).pathname).toBe(path)
+  for (const [key, value] of Object.entries(query)) {
+    await expect.poll(() => new URL(page.url()).searchParams.get(key)).toBe(value)
+  }
+}
 for (const [width, height, minimumRows] of [[1760, 1000, 4], [1440, 900, 4], [1366, 768, 3], [1280, 800, 3]]) {
   test(`V6 A1 real API ${width}x${height}: first working row and complete records`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height })
@@ -114,8 +120,40 @@ test('V6 A1 real scoped counselor and keyboard drilldown', async ({ page }, test
   const risk = page.locator('[data-queue="riskStudents"]')
   await expect(risk).toBeEnabled(); await risk.focus(); await expect(risk).toBeFocused()
   await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/\/admin\/student-affairs\/risk\?status=OPEN/)
+  await expectDestination(page, '/admin/student-affairs/risk', { status: 'OPEN' })
   await page.goBack(); await expect(page.locator('.sa-v6-dashboard')).toBeVisible()
+})
+test('V6 A1 sandbox admin real-clicks every primary queue and returns', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openDashboard(page)
+  const queues = [
+    ['riskStudents', '/admin/student-affairs/risk', { status: 'OPEN' }],
+    ['overdueLeave', '/admin/student-affairs/leave/ledger', { status: 'OVERDUE' }],
+    ['pendingTodo', '/admin/approval/todos', {}],
+    ['pendingLeave', '/admin/student-affairs/leave', {}],
+    ['pendingAid', '/admin/student-affairs/aid', { status: 'REVIEW' }],
+    ['pendingFunding', '/admin/student-affairs/funding', { status: 'REVIEW' }],
+    ['pendingDiscipline', '/admin/student-affairs/discipline', { status: 'REVIEW' }]
+  ]
+  const clicked = []
+  for (const [key, pathname, query] of queues) {
+    const row = page.locator(`[data-queue="${key}"]`)
+    await expect(row, `${key} must remain a real authorized entry for sandbox admin`).toBeEnabled()
+    await row.click()
+    await expectDestination(page, pathname, query)
+    clicked.push({ key, url: page.url() })
+    await page.goBack()
+    await expect(page.locator('.sa-v6-dashboard')).toBeVisible()
+  }
+  const allTodo = page.locator('[data-action="all-todo"]')
+  await expect(allTodo).toBeEnabled()
+  await allTodo.click()
+  await expectDestination(page, '/admin/approval/todos')
+  clicked.push({ key: 'all-todo', url: page.url() })
+  await testInfo.attach('v6-a1-real-click-destinations', {
+    body: JSON.stringify(clicked, null, 2),
+    contentType: 'application/json'
+  })
 })
 test('V6 A1 test-injected missing values and malformed refresh remain honest', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1366, height: 768 })
