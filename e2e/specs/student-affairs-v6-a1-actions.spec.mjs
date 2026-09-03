@@ -94,13 +94,18 @@ test('V6 A1 export click completes authenticated xlsx download', async ({ page }
   expect(envelope.code).toBe(0)
   expect(envelope.data.taskId).toEqual(expect.any(String))
   expect(envelope.data.purpose).toBe(EXPORT_PURPOSE)
-  expect(envelope.data.downloadUrl).toContain('/export/tasks/')
+  // The wire response is an ExportTask; the frontend adapter builds its download URL.
+  expect(envelope.data.status).toBe('SUCCESS')
+  expect(envelope.data.taskId).toMatch(/^\d+$/)
+  expect(envelope.data.fileName).toMatch(/\.xlsx$/i)
+  expect(Number.isSafeInteger(envelope.data.rowCount)).toBe(true)
+  expect(envelope.data.rowCount).toBeGreaterThanOrEqual(0)
   const fileResponse = await fileResponsePromise
   expect(fileResponse.status()).toBe(200)
   expect(new URL(fileResponse.url()).pathname).toContain(`/export/tasks/${envelope.data.taskId}/download`)
   expect(fileResponse.headers()['content-type']).toContain('spreadsheetml.sheet')
   const download = await downloadPromise
-  expect(download.suggestedFilename()).toMatch(/\.xlsx$/i)
+  expect(download.suggestedFilename()).toBe(envelope.data.fileName)
   expect(await download.failure()).toBeNull()
   const temporary = await mkdtemp(path.join(tmpdir(), 'a1-xlsx-'))
   try {
