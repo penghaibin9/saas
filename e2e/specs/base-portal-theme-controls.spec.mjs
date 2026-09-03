@@ -148,16 +148,33 @@ test('BasePortal student search, functional search, page help and messages remai
   await helpPage.close()
 
   const functionInput = page.locator('.bpl-cmdk--fn input')
-  await functionInput.fill('请假审批')
-  const leaveResult = page.locator('.bpl-cmdk--fn .bpl-cmdk__opt').filter({
-    has: page.locator('.bpl-cmdk__opt-lb', { hasText: /^请假审批$/ })
-  }).first()
-  await expect(leaveResult).toBeVisible()
-  await leaveResult.click()
-  await expectPath(page, '/admin/student-affairs/leave')
+  // Function aliases and help results have different destinations. Match the intended label,
+  // not a keyword also present in a help task's description.
+  await functionInput.fill('我的待办')
+  const approvalResult = page.locator('.bpl-cmdk--fn .bpl-cmdk__opt').filter({
+    has: page.locator('.bpl-cmdk__opt-lb', { hasText: /^工作台 \/ 审批中心$/ })
+  })
+  await expect(approvalResult).toHaveCount(1)
+  await expect(approvalResult).toBeVisible()
+  await expect(approvalResult).not.toHaveClass(/is-disabled/)
+  await approvalResult.click()
+  await expectPath(page, '/admin/approval')
   await page.goBack()
   await expectPath(page, '/admin/student-affairs/dashboard')
   await expect(page.locator('.base-portal-layout')).toBeVisible()
+
+  await functionInput.fill('请假审批')
+  const leaveHelpResult = page.locator('.bpl-cmdk--fn .bpl-cmdk__opt').filter({
+    has: page.locator('.bpl-cmdk__opt-lb', { hasText: /^学生请假后怎么审批、续假、销假和处理逾期$/ })
+  })
+  await expect(leaveHelpResult).toHaveCount(1)
+  const searchHelpPopup = page.waitForEvent('popup')
+  await leaveHelpResult.click()
+  const leaveHelp = await searchHelpPopup
+  await expectPath(leaveHelp, '/admin/help')
+  expect(new URL(leaveHelp.url()).searchParams.get('topic')).toBeTruthy()
+  await expectPath(page, '/admin/student-affairs/dashboard')
+  await leaveHelp.close()
 
   await page.locator('.bpl-bell').click()
   await expectPath(page, '/admin/messages/inbox')
