@@ -173,7 +173,7 @@ test('V6 A1 sandbox admin real-clicks every queue, quick entry and cross-center 
     ['quick-dorm', '宿舍异常', '/admin/student-affairs/dorm/exception', {}]
   ]
   for (const [key, label, pathname, query] of quickEntries) {
-    const button = page.locator('.sa-v6-entry-card').getByRole('button', { name: label, exact: true })
+    const button = page.locator('.sa-v6-entry-card .sa-v6-entry').filter({ hasText: label }).first()
     await expect(button, `${label} quick entry must be visible for sandbox admin`).toBeEnabled()
     await button.click()
     await expectDestination(page, pathname, query)
