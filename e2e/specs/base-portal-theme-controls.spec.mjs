@@ -149,7 +149,9 @@ test('BasePortal student search, functional search, page help and messages remai
 
   const functionInput = page.locator('.bpl-cmdk--fn input')
   await functionInput.fill('请假审批')
-  const leaveResult = page.locator('.bpl-cmdk__panel .bpl-cmdk__opt').filter({ hasText: '请假审批' }).first()
+  const leaveResult = page.locator('.bpl-cmdk--fn .bpl-cmdk__opt').filter({
+    has: page.locator('.bpl-cmdk__opt-lb', { hasText: /^请假审批$/ })
+  }).first()
   await expect(leaveResult).toBeVisible()
   await leaveResult.click()
   await expectPath(page, '/admin/student-affairs/leave')
