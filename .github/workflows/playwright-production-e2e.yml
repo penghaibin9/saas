@@ -263,7 +263,34 @@ jobs:
           npm install
           npx playwright install --with-deps chromium
 
+      - name: A1 focused real-browser acceptance
+        id: a1_browser
+        if: startsWith(github.head_ref || github.ref_name, 'feat/student-affairs-v6-a1')
+        working-directory: e2e
+        timeout-minutes: 12
+        run: |
+          set -uo pipefail
+          set +e
+          npx playwright test specs/base-portal-theme-controls.spec.mjs specs/student-affairs-v6-a1*.spec.mjs
+          RESULT=$?
+          set -e
+          mkdir -p a1-preflight
+          if [ -d playwright-report ]; then cp -a playwright-report a1-preflight/; fi
+          if [ -d test-results ]; then cp -a test-results a1-preflight/; fi
+          printf '{"head":"%s","exitCode":%s,"scope":"A1 focused browser acceptance"}\n' "$(git rev-parse HEAD)" "$RESULT" > a1-preflight/manifest.json
+          exit "$RESULT"
+
+      - name: Upload A1 focused browser evidence
+        if: always() && (steps.a1_browser.outcome == 'success' || steps.a1_browser.outcome == 'failure')
+        uses: actions/upload-artifact@v4
+        with:
+          name: a1-browser-evidence-${{ github.run_id }}
+          path: e2e/a1-preflight/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Run interaction E2E
+        if: ${{ !cancelled() && (success() || steps.a1_browser.outcome == 'success' || steps.a1_browser.outcome == 'failure') }}
         working-directory: e2e
         run: |
           set -euo pipefail
