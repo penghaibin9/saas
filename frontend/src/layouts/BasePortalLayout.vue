@@ -92,13 +92,16 @@
         </div>
       </div>
       <div class="bpl-top-r">
-        <div class="bpl-thdots" title="主题皮肤 themePreference">
-          <span
+        <div class="bpl-thdots" role="group" aria-label="界面主题">
+          <button
             v-for="t in themeOptions"
             :key="t.key"
+            type="button"
             class="bpl-thdot"
             :class="['bpl-thdot--' + t.key, { 'is-on': theme === t.key }]"
             :title="t.label"
+            :aria-label="`切换到${t.label}主题`"
+            :aria-pressed="theme === t.key"
             @click="setTheme(t.key)"
           />
         </div>

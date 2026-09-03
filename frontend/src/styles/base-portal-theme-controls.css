@@ -1,0 +1,153 @@
+/*
+ * BasePortalLayout six-theme control hardening.
+ *
+ * Scope: semantic hit targets, focus state and 1366/1280 topbar collision avoidance.
+ * No route, theme token, menu, search, scope, help, message or user behavior changes.
+ */
+#app .base-portal-layout .bpl-thdots {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+}
+
+#app .base-portal-layout .bpl-thdot {
+  --bpl-theme-swatch: linear-gradient(135deg, #60a5fa, #2f6bff);
+  position: relative;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 4px;
+  appearance: none;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  touch-action: manipulation;
+}
+
+#app .base-portal-layout .bpl-thdot::before {
+  position: absolute;
+  inset: 4px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: var(--bpl-theme-swatch);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--card-b) 72%, transparent);
+  content: '';
+}
+
+#app .base-portal-layout .bpl-thdot--a {
+  --bpl-theme-swatch: linear-gradient(135deg, #60a5fa, #2f6bff);
+}
+#app .base-portal-layout .bpl-thdot--b {
+  --bpl-theme-swatch: linear-gradient(135deg, #3e86de, #0d2a55);
+}
+#app .base-portal-layout .bpl-thdot--c {
+  --bpl-theme-swatch: linear-gradient(135deg, #8a9ac8, #5b6c9e);
+}
+#app .base-portal-layout .bpl-thdot--d {
+  --bpl-theme-swatch: linear-gradient(135deg, #5ca894, #3e8e7e);
+}
+#app .base-portal-layout .bpl-thdot--e {
+  --bpl-theme-swatch: linear-gradient(135deg, #f8fafc, #cbd5e1);
+}
+#app .base-portal-layout .bpl-thdot--e::before {
+  border-color: #cbd5e1;
+}
+#app .base-portal-layout .bpl-thdot--f {
+  --bpl-theme-swatch: linear-gradient(135deg, #4b5563, #111827);
+}
+
+#app .base-portal-layout .bpl-thdot.is-on {
+  border-color: transparent;
+  box-shadow: none;
+}
+#app .base-portal-layout .bpl-thdot.is-on::before {
+  border-color: var(--bg-card, #fff);
+  box-shadow:
+    0 0 0 1.5px var(--pri),
+    0 0 8px var(--glow);
+}
+#app .base-portal-layout .bpl-thdot:hover::before {
+  transform: scale(1.08);
+}
+#app .base-portal-layout .bpl-thdot:focus-visible {
+  outline: 2px solid var(--pri);
+  outline-offset: 1px;
+}
+
+/* At desktop widths the shortcut badge is supplementary; hide it before it can
+ * overlap the six theme controls. Search itself, its input and ⌘/Ctrl+K remain.
+ */
+@media (max-width: 1450px) {
+  #app .base-portal-layout .bpl-topbar {
+    gap: 8px;
+    padding-inline: 14px;
+  }
+
+  #app .base-portal-layout .bpl-brand {
+    min-width: 176px;
+  }
+
+  #app .base-portal-layout .bpl-brand__sch {
+    max-width: 176px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #app .base-portal-layout .bpl-search {
+    max-width: 520px;
+    margin-inline: 4px;
+    gap: 6px;
+  }
+
+  #app .base-portal-layout .bpl-cmdk--stu {
+    flex-basis: 180px;
+  }
+
+  #app .base-portal-layout .bpl-cmdk--fn kbd {
+    display: none;
+  }
+
+  #app .base-portal-layout .bpl-top-r {
+    min-width: 0;
+    gap: 5px;
+  }
+
+  #app .base-portal-layout .bpl-scope {
+    max-width: 132px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 1280px) {
+  #app .base-portal-layout .bpl-search {
+    max-width: 470px;
+  }
+
+  #app .base-portal-layout .bpl-thdot {
+    flex-basis: 22px;
+    width: 22px;
+    height: 22px;
+    padding: 3px;
+  }
+
+  #app .base-portal-layout .bpl-thdot::before {
+    inset: 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app .base-portal-layout .bpl-thdot,
+  #app .base-portal-layout .bpl-thdot::before {
+    transition: none;
+  }
+}
