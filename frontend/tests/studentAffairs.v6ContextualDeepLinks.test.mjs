@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import test from 'node:test'
 import { getVisibleNavPlan } from '../src/config/navPlan.js'
 import {
   countContextualWorkspaceDeepLinks,
   projectStudentAffairsWorkspaceDeepLinks
 } from '../src/config/studentAffairsWorkspaceDeepLinks.js'
+
+const basePortal = fs.readFileSync(new URL('../src/layouts/BasePortalLayout.vue', import.meta.url), 'utf8')
+const riskView = fs.readFileSync(new URL('../src/modules/studentAffairs/views/StudentAffairsRiskListView.vue', import.meta.url), 'utf8')
 
 function project(patterns = ['*']) {
   const group = getVisibleNavPlan({
@@ -23,7 +27,7 @@ function workspace(group, key) {
 
 test('contextual projection exposes real D links without exposing H details or compat routes', () => {
   const group = project()
-  assert.ok(countContextualWorkspaceDeepLinks(group) >= 14)
+  assert.ok(countContextualWorkspaceDeepLinks(group) >= 20)
   const contextual = group.children.flatMap((item) => item.children).filter((leaf) => leaf.contextualDeepLink)
   assert.ok(contextual.every((leaf) => leaf.searchable && !leaf.hidden && leaf.path))
   assert.ok(contextual.every((leaf) => !['DETAIL', 'COMPAT'].includes(leaf.entryType)))
@@ -31,11 +35,15 @@ test('contextual projection exposes real D links without exposing H details or c
   assert.equal(contextual.some((leaf) => leaf.label === '旧绿色通道入口'), false)
 })
 
-test('student, aid and orientation workspaces gain their existing low-frequency real pages', () => {
+test('student, risk, aid and orientation workspaces gain their existing low-frequency real pages', () => {
   const group = project()
   assert.deepEqual(
     workspace(group, 'sa-profile').children.filter((leaf) => leaf.contextualDeepLink).map((leaf) => leaf.label),
     ['学生补录']
+  )
+  assert.deepEqual(
+    workspace(group, 'sa-risk').children.filter((leaf) => leaf.contextualDeepLink).map((leaf) => leaf.label),
+    ['高危 / 危急', '超时待跟进', '待分派风险', '我负责的风险', '持续跟进风险']
   )
   assert.deepEqual(
     workspace(group, 'sa-aid').children.filter((leaf) => leaf.contextualDeepLink).map((leaf) => leaf.label),
@@ -73,4 +81,14 @@ test('contextual entries retain business-stage grouping and explicit type badges
   assert.equal(payment.badge, '队列')
   assert.equal(archive.sectionKey, 'stage-6')
   assert.equal(archive.badge, '归档')
+})
+
+test('projection wiring and visual overrides are present exactly once', () => {
+  const baseImport = "import { projectStudentAffairsWorkspaceDeepLinks } from '@/config/studentAffairsWorkspaceDeepLinks'"
+  const riskImport = "import { resolveRiskQueueIntent } from '@/modules/studentAffairs/utils/riskRouteQueueIntent'"
+  assert.equal(basePortal.split(baseImport).length - 1, 1)
+  assert.equal(basePortal.split('return projectStudentAffairsWorkspaceDeepLinks(group, permissionPatterns)').length - 1, 1)
+  assert.equal(basePortal.split('/* V6 学工工作区：一级轨与当前工作区的低频真实三级页。 */').length - 1, 1)
+  assert.equal(riskView.split(riskImport).length - 1, 1)
+  assert.equal(riskView.split('this.activeQueue = resolveRiskQueueIntent(q)').length - 1, 1)
 })
