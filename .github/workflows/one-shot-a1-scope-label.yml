@@ -1,0 +1,35 @@
+name: One-shot A1 long-scope readability patch
+
+on:
+  push:
+    branches:
+      - feat/student-affairs-v6-a1-on-theme-shell
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/student-affairs-v6-a1-on-theme-shell
+          fetch-depth: 0
+
+      - name: Apply audited A1 scope-label patch
+        run: python .github/scripts/patch_a1_scope_label.py
+
+      - name: Validate and commit product plus regression gates
+        run: |
+          git diff --check
+          git diff -- frontend/src/modules/studentAffairs/views/StudentAffairsDashboardView.vue frontend/tests/studentAffairs.v6Dashboard.test.mjs e2e/specs/student-affairs-v6-a1.spec.mjs
+          if git diff --quiet -- frontend/src/modules/studentAffairs/views/StudentAffairsDashboardView.vue frontend/tests/studentAffairs.v6Dashboard.test.mjs e2e/specs/student-affairs-v6-a1.spec.mjs; then
+            echo "A1 long-scope contract already applied"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/modules/studentAffairs/views/StudentAffairsDashboardView.vue frontend/tests/studentAffairs.v6Dashboard.test.mjs e2e/specs/student-affairs-v6-a1.spec.mjs
+          git commit -m "fix(student-affairs): keep long scope labels readable in A1"
+          git push origin HEAD:feat/student-affairs-v6-a1-on-theme-shell
