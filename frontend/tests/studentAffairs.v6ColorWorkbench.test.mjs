@@ -48,8 +48,7 @@ test('visual work keeps the real A1 data boundary and does not add sample studen
 
 test('A1 remains isolated from A2 and keeps both real Student360 implementations intact', () => {
   assert.doesNotMatch(dashboard, /StudentDetailView|StudentAffairsProfileDetailView/)
-  assert.match(student360, /studentApi\.getStudentProfile\(studentId\)/)
-  assert.match(student360, /studentApi\.getStudentTimeline\(studentId/)
+  assert.match(student360, /studentApi\.getStudentDetail\(this\.\$route\.params\.studentId\)/)
   assert.match(affairsProfile, /studentAffairsApi\.getStudentProfile\(this\.studentId\)/)
   assert.match(affairsProfile, /studentAffairsApi\.getStudentTimeline\(this\.studentId/)
 })
