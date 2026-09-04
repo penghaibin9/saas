@@ -1,11 +1,25 @@
 import { getTeacherGraduationBatch, realRequest, setTeacherGraduationBatch } from './request'
 
+function currentPageOptions() {
+  try {
+    if (typeof getCurrentPages !== 'function') return {}
+    const pages = getCurrentPages()
+    const page = pages && pages[pages.length - 1]
+    return page?.options || page?.$page?.options || page?.$page?.fullPath?.query || {}
+  } catch {
+    return {}
+  }
+}
+
 function normalizeTaskContext(options = {}) {
+  const route = currentPageOptions()
   return {
-    batchId: String(options.batchId || ''),
-    kind: String(options.kind || '').toLowerCase(),
-    gdStudentId: String(options.gdStudentId || ''),
-    recordId: String(options.recordId || '')
+    batchId: String(options.batchId || route.batchId || ''),
+    kind: String(options.kind || route.kind || '').toLowerCase(),
+    gdStudentId: String(options.gdStudentId || route.gdStudentId || ''),
+    recordId: String(options.recordId || route.recordId || ''),
+    materialVersion: String(options.materialVersion || route.materialVersion || ''),
+    fileVersionId: String(options.fileVersionId || route.fileVersionId || '')
   }
 }
 
@@ -21,10 +35,10 @@ function exactQueue(rows, context, idKey) {
 /**
  * 教师小程序毕业设计跨端计数真值。
  *
- * - batchId 必须来自当前显式批次或精确任务深链；
- * - queue 只承载服务端当前页可操作记录；
+ * - batchId 来自显式批次或当前页面精确任务深链；
  * - proposalTotal/finalTotal 是服务端 authoritative count；
- * - 精确任务模式同时锁定 kind + gdStudentId + recordId，找不到时 fail-closed；
+ * - 精确任务同时锁定 kind/gdStudentId/recordId/materialVersion/fileVersionId；
+ * - 找不到精确任务时 fail-closed，不漂移到队列第一条；
  * - 不允许 mock 回退，也不在客户端重算 total。
  */
 export async function graduationTeacherCountTruth(options = {}) {
@@ -66,8 +80,8 @@ export async function graduationTeacherCountTruth(options = {}) {
       version: f.version || '', plagiarismRate: f.plagiarismRate || '—'
     }))
 
-  const reviewQueue = context.kind === 'final' ? proposalRows : exactQueue(proposalRows, context, 'proposalId')
-  const finalQueue = context.kind === 'proposal' ? finalRows : exactQueue(finalRows, context, 'finalId')
+  const reviewQueue = context.kind === 'proposal' ? exactQueue(proposalRows, context, 'proposalId') : proposalRows
+  const finalQueue = context.kind === 'final' ? exactQueue(finalRows, context, 'finalId') : finalRows
   const exactMode = Boolean(context.kind && (context.recordId || context.gdStudentId))
   const targetQueue = context.kind === 'final' ? finalQueue : context.kind === 'proposal' ? reviewQueue : null
   if (exactMode && !targetQueue?.length) {
