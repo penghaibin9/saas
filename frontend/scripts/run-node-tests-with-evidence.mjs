@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, createWriteStream } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import process from 'node:process'
 
 const args = ['--test', ...process.argv.slice(2)]
 const evidenceDir = join(tmpdir(), 'student-affairs-build-evidence')
