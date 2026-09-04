@@ -101,13 +101,16 @@ async function ensurePendingFinal(page, fixture) {
   await student.signTaskbookIfNeeded()
 
   const proposalStep = student.step('开题')
-  const proposalText = await proposalStep.innerText()
-  const proposalApproved = /已通过|书面开题通过/.test(proposalText)
-  const proposalPending = /待.*审|已提交/.test(proposalText)
-  if (!proposalApproved && !proposalPending) {
-    await student.submitProposal({ suffix: `${fixture.runId}-cross-client`, fileName: `cross-client-proposal-${fixture.runId}.pdf` })
+  const proposalAction = proposalStep.locator('.gd-step__actions > button').first()
+  if (await proposalAction.isVisible().catch(() => false)) {
+    await student.submitProposal({
+      suffix: `${fixture.runId}-cross-client`,
+      fileName: `cross-client-proposal-${fixture.runId}.pdf`
+    })
   }
-  if (!proposalApproved) {
+  const proposalStatus = (await proposalStep.locator('.sp-tag').innerText()).trim()
+  expect(proposalStatus, 'proposal must be pending review or approved before final prerequisite').toMatch(/待审核|已提交|审核中|已通过/)
+  if (proposalStatus !== '已通过') {
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
     const staff = new StaffGraduationPage(page, config.staffBaseUrl, fixture)
     await staff.openProposals('PENDING_REVIEW')
@@ -123,12 +126,12 @@ async function ensurePendingFinal(page, fixture) {
   await student.open()
   const finalStep = page.locator('.gd-step').filter({ has: page.getByRole('heading', { name: /成果/ }) }).first()
   await expect(finalStep).toBeVisible()
-  const finalText = await finalStep.innerText()
-  if (/待.*审|已提交/.test(finalText)) return
+  const finalStatus = (await finalStep.locator('.sp-tag').innerText()).trim()
+  if (/待审核|已提交|审核中|已通过/.test(finalStatus)) return
 
   let fileInput = finalStep.locator('input[type=file]')
   if (!(await fileInput.count())) {
-    const openFinal = finalStep.getByRole('button').filter({ hasText: /提交|修改|重交|完善|成果/ }).first()
+    const openFinal = finalStep.locator('.gd-step__actions > button').first()
     await expect(openFinal).toBeVisible()
     await openFinal.click()
     fileInput = finalStep.locator('input[type=file]')
@@ -153,7 +156,7 @@ async function ensurePendingFinal(page, fixture) {
   ])
   const submitted = await expectBusinessSuccess(submitResponse, '学生 PC 提交毕业论文')
   expect(submitted?.status).toBe('PENDING_REVIEW')
-  await expect(finalStep).toContainText(/待.*审|已提交/)
+  await expect(finalStep.locator('.sp-tag')).toContainText(/待审核|已提交|审核中/)
 }
 
 test.describe.serial('V6 · one real thesis across student PC, teacher PC and teacher miniapp', () => {

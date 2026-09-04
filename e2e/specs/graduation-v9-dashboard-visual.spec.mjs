@@ -158,15 +158,23 @@ test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
       await expect(page.locator('.gdb-todos')).toBeVisible()
     }
 
-    const firstRisk = envelope?.data?.riskAlerts?.[0]
-    if (firstRisk?.id) {
-      await page.locator('.gdb-risk-row').first().click()
+    const riskRows = page.locator('.gdb-risk-row')
+    if (await riskRows.count()) {
+      const firstRiskRow = riskRows.first()
+      const rowText = await firstRiskRow.innerText()
+      const visibleRisk = (envelope?.data?.riskAlerts || []).find((risk) =>
+        rowText.includes(String(risk.code || '')) && rowText.includes(String(risk.title || ''))
+      )
+      expect(visibleRisk?.id, `visible risk row must map to server risk: ${rowText}`).toBeTruthy()
+      await firstRiskRow.click()
       await expectRoute(page, {
         path: '/admin/graduation/risk-archive',
         batchId,
         panel: 'risk',
-        rsel: String(firstRisk.id)
+        rsel: String(visibleRisk.id)
       })
+    } else {
+      await expect(page.locator('.gdb-risk-empty')).toBeVisible()
     }
 
     const environment = await goldEnvironment(page, testInfo)

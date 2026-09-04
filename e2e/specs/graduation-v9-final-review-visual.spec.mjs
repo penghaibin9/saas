@@ -106,21 +106,20 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     await student.open()
     await student.signTaskbookIfNeeded()
 
-    // The browser suite shares one run-scoped graduation fixture. Reuse any
-    // canonical proposal that is already pending or approved instead of opening
-    // a form that no longer exists in those states.
+    // Read the actual status tag and available action. The step description always
+    // says “等待审核”, so broad page text cannot prove that a proposal was submitted.
     const proposalStep = student.step('开题')
-    const proposalStateText = await proposalStep.innerText()
-    const alreadyApproved = /已通过|书面开题通过/.test(proposalStateText)
-    const awaitingReview = /待.*审|已提交/.test(proposalStateText)
-    if (!alreadyApproved && !awaitingReview) {
+    const proposalAction = proposalStep.locator('.gd-step__actions > button').first()
+    if (await proposalAction.isVisible().catch(() => false)) {
       await student.submitProposal({
         suffix: `${fixture.runId}-u3`,
         fileName: `u3-proposal-${fixture.runId}.pdf`
       })
     }
 
-    if (!alreadyApproved) {
+    const proposalStatus = (await proposalStep.locator('.sp-tag').innerText()).trim()
+    expect(proposalStatus, 'proposal must be pending review or already approved before final prerequisite').toMatch(/待审核|已提交|审核中|已通过/)
+    if (proposalStatus !== '已通过') {
       await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
       const staff = new StaffGraduationPage(page, config.staffBaseUrl, fixture)
       await staff.openProposals('PENDING_REVIEW')
@@ -152,12 +151,12 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     // attempt already completed the real upload + submit and only the later visual
     // assertion failed, the canonical final is now pending review. Reuse that state
     // rather than creating a duplicate final/FileVersion on retry.
-    const finalStateText = await finalStep.innerText()
-    const alreadySubmitted = /待.*审|已提交/.test(finalStateText)
+    const finalStatus = (await finalStep.locator('.sp-tag').innerText()).trim()
+    const alreadySubmitted = /待审核|已提交|审核中|已通过/.test(finalStatus)
     if (!alreadySubmitted) {
       let fileInput = finalStep.locator('input[type=file]')
       if (!(await fileInput.count())) {
-        const openFinal = finalStep.getByRole('button').filter({ hasText: /提交|修改|重交|完善|成果/ }).first()
+        const openFinal = finalStep.locator('.gd-step__actions > button').first()
         await expect(openFinal).toBeVisible()
         await openFinal.click()
         fileInput = finalStep.locator('input[type=file]')
@@ -187,7 +186,7 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
       const submitted = await expectBrowserApiSuccess(submitResponse, '学生提交论文成果')
       expect(submitted?.status).toBe('PENDING_REVIEW')
     } else {
-      expect(finalStateText).toMatch(/待.*审|已提交/)
+      expect(finalStatus).toMatch(/待审核|已提交|审核中|已通过/)
     }
 
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
