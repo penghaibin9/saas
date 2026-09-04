@@ -41,7 +41,7 @@ test('V6 preview keeps the existing ticket timeout size abort and scan gate inst
   assert.match(api, /const limit = previewSourceByteLimit\(descriptor\)/)
   assert.match(api, /PREVIEW_FETCH_TIMEOUT_MS/)
   assert.match(api, /AbortController/)
-  assert.match(api, /createPreviewTicket/)
+  assert.match(api, /issueMaterialTicket/)
   assert.match(api, /readyForBusiness/)
   for (const limit of ['DOCX_PREVIEW_MAX_SOURCE_BYTES', 'PDF_PREVIEW_MAX_SOURCE_BYTES', 'IMAGE_PREVIEW_MAX_SOURCE_BYTES']) {
     assert.ok(viewerContract.includes(limit), `missing kind-specific preview limit ${limit}`)
