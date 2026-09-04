@@ -69,8 +69,9 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
     await expect(page.getByText('实施边界', { exact: false }).first()).toBeVisible()
     await expect(page.getByText('保存后的下一步', { exact: true })).toBeVisible()
 
-    const name = `E2E 深链批次 ${fixture.runId}`
-    const number = `GD-DL-${String(fixture.runId).replace(/[^A-Za-z0-9]/g, '').slice(-16)}`
+    const retrySuffix = testInfo.retry ? `-r${testInfo.retry}` : ''
+    const name = `E2E 深链批次 ${fixture.runId}${retrySuffix}`
+    const number = `GD-DL-${String(fixture.runId).replace(/[^A-Za-z0-9]/g, '').slice(-12)}${retrySuffix}`
     await page.getByLabel('批次名称', { exact: false }).fill(name)
     await page.getByLabel('批次编号', { exact: false }).fill(number)
     await page.getByLabel('毕业届次', { exact: true }).fill('2026届')
@@ -160,10 +161,15 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
     await dismissGuide(page)
 
     await expect(page.getByRole('heading', { name: '录入本人答辩评分', exact: true })).toBeVisible()
-    await expect(page.getByText('答辩评委职责', { exact: true })).toBeVisible()
-    await expect(page.getByText('当前登录评委', { exact: true })).toBeVisible()
-    await expect(page.getByText('身份已锁定', { exact: true })).toBeVisible()
-    await expect(page.getByText('评分人来自登录身份与答辩组席位，不能在页面中修改。', { exact: true })).toBeVisible()
+    const command = page.locator('.dgf-command')
+    await expect(command).toBeVisible()
+    await expect(command).toContainText('答辩评委职责')
+    await expect(command).toContainText('提交本人评分')
+    const actor = page.locator('.dgf-actor')
+    await expect(actor).toBeVisible()
+    await expect(actor).toContainText('当前登录评委')
+    await expect(actor).toContainText('身份已锁定')
+    await expect(actor).toContainText('评分人来自登录身份与答辩组席位，不能在页面中修改。')
     await expect(page.getByLabel(/评委姓名/)).toHaveCount(0)
     await expect(page.locator('.dgf-context')).toContainText(fixture.studentNo)
 

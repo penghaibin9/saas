@@ -59,11 +59,13 @@ async function expectDecisionAboveFold(page) {
   expect(viewport).toBeTruthy()
   const review = page.locator('.gd-review-workspace__review')
   const targets = [
-    ['审核材料', review.getByText('本次审核材料', { exact: true })],
-    ['当前提交版本', review.getByText(/当前提交第 \d+ 版/).first()],
-    ['校验证据入口', review.getByText(/查看文件校验证据与历史版本/).first()],
-    ['通过当前版本', page.getByRole('button', { name: /通过当前版本/ })],
-    ['退回当前版本', page.getByRole('button', { name: /退回当前版本/ })]
+    ['审核命令合同', review.locator('[data-testid="review-command-contract"]')],
+    ['提交版本', review.getByText('提交版本', { exact: true })],
+    ['文件版本', review.getByText('文件版本', { exact: true })],
+    ['文件状态', review.getByText('文件状态', { exact: true })],
+    ['文件证据入口', review.locator('.gd-review-workspace__evidence > summary')],
+    ['通过当前版本', review.getByRole('button', { name: /通过当前版本/ })],
+    ['退回当前版本', review.getByRole('button', { name: /退回当前版本/ })]
   ]
   for (const [label, locator] of targets) {
     await expect(locator, `${label} must be visible`).toBeVisible()
@@ -200,13 +202,15 @@ test.describe.serial('V9.2 U3 · final review production visual', () => {
     await expect(workspace).toBeVisible()
     await expect(queue).toContainText(fixture.topicTitle)
     await expect(document).toContainText(fixture.topicTitle)
-    await expect(review).toContainText('本次审核材料')
-    await expect(review).toContainText(/当前提交第 \d+ 版/)
-    await expect(review).toContainText('校验证据与历史版本')
+    await expect(review.locator('[data-testid="review-command-contract"]')).toBeVisible()
+    await expect(review).toContainText('提交版本')
+    await expect(review).toContainText('文件版本')
+    await expect(review).toContainText('文件状态')
+    await expect(review.locator('.gd-review-workspace__evidence > summary')).toBeVisible()
     await expect(review).toContainText('SHA-256')
     await expect(review).toContainText('查重')
-    await expect(page.getByRole('button', { name: /通过当前版本/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /退回当前版本/ })).toBeVisible()
+    await expect(review.getByRole('button', { name: /通过当前版本/ })).toBeVisible()
+    await expect(review.getByRole('button', { name: /退回当前版本/ })).toBeVisible()
 
     const goldMasks = [
       page.locator('.gbs__select'),

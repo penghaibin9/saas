@@ -5,6 +5,7 @@ on:
     paths:
       - 'frontend/src/modules/graduation/**'
       - 'frontend/src/components/business/EmptyState.vue'
+      - 'student-portal/**'
       - 'miniapp/src/pages/teacher/graduation-*/**'
       - 'e2e/specs/graduation-v9-*-visual.spec.mjs'
       - 'e2e/specs/graduation-v9-*-visual.spec.mjs-snapshots/**'
@@ -103,6 +104,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             frontend/package-lock.json
+            student-portal/package-lock.json
             miniapp/package-lock.json
 
       - name: Install backend and verify artifact safety
@@ -145,25 +147,28 @@ jobs:
           python scripts/e2e_reset_graduation_passwords.py
           python scripts/e2e_verify_graduation_accounts.py
 
-      - name: Start staff PC and teacher miniapp H5
-        env:
-          VITE_USE_MOCK: 'false'
-          VITE_API_BASE_URL: http://127.0.0.1:8000
+      - name: Start staff PC, student PC and teacher miniapp H5
         run: |
           set -euo pipefail
           cd frontend
           npm ci
-          nohup npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
+          nohup env VITE_USE_MOCK=false VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
           echo $! > ../e2e/runtime-logs/frontend.pid
+
+          cd ../student-portal
+          npm ci
+          nohup env VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
+          echo $! > ../e2e/runtime-logs/student-portal.pid
+
           cd ../miniapp
           npm ci
-          nohup npm run dev:h5 -- --host 127.0.0.1 --port 5188 > ../e2e/runtime-logs/miniapp.log 2>&1 &
+          nohup env VITE_USE_MOCK=false VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev:h5 -- --host 127.0.0.1 --port 5188 > ../e2e/runtime-logs/miniapp.log 2>&1 &
           echo $! > ../e2e/runtime-logs/miniapp.pid
 
       - name: Wait for candidate applications
         run: |
           set -euo pipefail
-          for url in http://127.0.0.1:5173/login http://127.0.0.1:5188/; do
+          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://127.0.0.1:5188/; do
             ready=''
             for i in {1..60}; do
               if curl -fsS "$url" >/dev/null; then ready=1; break; fi

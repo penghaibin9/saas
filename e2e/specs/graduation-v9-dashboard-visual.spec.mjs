@@ -49,6 +49,33 @@ async function expectPrimaryActionRoute(page, { action, batchId }) {
   })
 }
 
+async function expectProjectedWorkItems(page, todayWorkItems) {
+  await expect(page.locator('.gdb-work')).toBeVisible()
+  await expect(page.locator('.gdb-focus')).toBeVisible()
+
+  if (!todayWorkItems.length) {
+    await expect(page.locator('.gdb-focus--empty')).toBeVisible()
+    await expect(page.locator('.gdb-work-row')).toHaveCount(0)
+    return
+  }
+
+  const first = todayWorkItems[0]
+  const focus = page.locator('.gdb-focus')
+  await expect(focus).toContainText(first.student?.name || first.business)
+  await expect(focus).toContainText(first.business)
+  await expect(focus).toContainText(first.waitingOn)
+  await expect(focus).toContainText(first.nextActor)
+  await expect(focus.locator('.gdb-focus__action')).toContainText(first.primaryAction.label)
+
+  const remaining = todayWorkItems.slice(1)
+  await expect(page.locator('.gdb-work-row')).toHaveCount(remaining.length)
+  if (remaining.length) {
+    const nextRow = page.locator('.gdb-work-row').first()
+    await expect(nextRow).toContainText(remaining[0].student?.name || remaining[0].business)
+    await expect(nextRow).toContainText(remaining[0].business)
+  }
+}
+
 test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
   let fixture
 
@@ -79,28 +106,18 @@ test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
     await expect(page.locator('.gdb-page')).toBeVisible()
     await expect(page.locator('.gdb-overview')).toBeVisible()
     await expect(page.locator('.gdb-kpis .gdb-kpi')).toHaveCount(5)
-    await expect(page.getByText('今日优先', { exact: true })).toBeVisible()
     await expect(page.locator('.gdb-todos')).toBeVisible()
-    await expect(page.locator('.gdb-work-item')).toHaveCount(todayWorkItems.length)
-    await expect(page.locator('.gdb-work__summary')).toContainText(`${todayWorkItems.length} 项在手`)
+    await expectProjectedWorkItems(page, todayWorkItems)
     await expect(page.locator('body')).not.toContainText(/正在加载毕业设计中心|真实接口不可用|权限上下文加载失败/)
 
     const firstPageSection = await page.locator('.gdb-page > section').first().getAttribute('class')
     expect(firstPageSection).toContain('gdb-overview')
 
     if (todayWorkItems.length) {
-      const first = todayWorkItems[0]
-      const firstRow = page.locator('.gdb-work-item').first()
-      await expect(firstRow).toContainText(first.student?.name || first.business)
-      await expect(firstRow).toContainText(first.business)
-      await expect(firstRow).toContainText(first.waitingOn)
-      await expect(firstRow).toContainText(first.nextActor)
-      await expect(firstRow.locator('.gdb-work-item__action')).toContainText(first.primaryAction.label)
-
-      await firstRow.locator('.gdb-work-item__action').click()
-      await expectPrimaryActionRoute(page, { action: first.primaryAction, batchId: fixture.batchId })
+      await page.locator('.gdb-focus__action').click()
+      await expectPrimaryActionRoute(page, { action: todayWorkItems[0].primaryAction, batchId: fixture.batchId })
       await page.goto(dashboardUrl)
-      await expect(page.locator('.gdb-work-item')).toHaveCount(todayWorkItems.length)
+      await expectProjectedWorkItems(page, todayWorkItems)
     }
 
     await settleVisual(page)
