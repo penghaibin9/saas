@@ -63,7 +63,7 @@ test('archive writes use frozen identifiers and unknown outcomes never invite bl
   assert.match(source, /createSingleArchiveSnapshot\(action, row\)/)
   assert.match(source, /gdStudentId: String\(row\?\.gdStudentId \|\| ''\)/)
   assert.match(source, /archiveBatchNo: row\?\.archiveBatchNo \|\| ''/)
-  assert.match(source, /fileArchive\(snapshot\.gdStudentId, snapshot\.archiveBatchNo \|\| null, \{ batchId: snapshot\.batchId \}\)/)
+  assert.match(source, /fileArchive\(\s*snapshot\.gdStudentId,\s*snapshot\.archiveBatchNo \|\| null,\s*\{ batchId: snapshot\.batchId \}\s*\)/)
   assert.match(source, /\[503001, 503002\]\.includes\(Number\(res\?\.code\)\)/)
   assert.match(source, /不要(?:直接)?重复(?:点击|提交)/)
   assert.match(source, /刷新(?:归档)?台账核对/)
