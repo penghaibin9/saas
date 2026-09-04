@@ -6,9 +6,58 @@ PROFILE="${BROWSER_RUNTIME_PROFILE:-graduation}"
 EXPECTED_SHA="${E2E_EXPECTED_SHA:?E2E_EXPECTED_SHA is required}"
 VERIFY_GOLD="${VERIFY_GOLD_MANIFEST:-false}"
 LOG_DIR="$ROOT/e2e/runtime-logs"
+BACKEND_HEALTH_URL="http://127.0.0.1:8000/health"
+CURRENT_PHASE="init"
 mkdir -p "$LOG_DIR"
 
-log() { printf '\n[browser-runtime] %s\n' "$*"; }
+log() { printf '\n[browser-runtime] phase=%s %s\n' "$CURRENT_PHASE" "$*"; }
+
+phase() {
+  CURRENT_PHASE="$1"
+  shift
+  log "$*"
+}
+
+fail() {
+  echo "[browser-runtime] phase=$CURRENT_PHASE ERROR: $*" >&2
+  tail -n 200 "$LOG_DIR"/*.log 2>/dev/null || true
+  exit 1
+}
+
+wait_for_url() {
+  local url="$1"
+  local label="$2"
+  local attempts="${3:-90}"
+  local attempt
+
+  for ((attempt = 1; attempt <= attempts; attempt += 1)); do
+    if curl -fsS --max-time 5 "$url" >/dev/null; then
+      echo "[browser-runtime] phase=$CURRENT_PHASE ready=$label url=$url attempt=$attempt"
+      return 0
+    fi
+    sleep 2
+  done
+
+  fail "$label did not become ready at $url"
+}
+
+require_backend_ready() {
+  local consumer="$1"
+  if ! curl -fsS --max-time 5 "$BACKEND_HEALTH_URL" >/dev/null; then
+    fail "API-dependent bootstrap '$consumer' attempted before backend readiness"
+  fi
+}
+
+run_api_bootstrap() {
+  local label="$1"
+  shift
+  require_backend_ready "$label"
+  log "api-bootstrap=$label"
+  (
+    cd "$ROOT/backend"
+    "$@"
+  )
+}
 
 if [[ "$PROFILE" != "graduation" && "$PROFILE" != "full" ]]; then
   echo "unsupported BROWSER_RUNTIME_PROFILE=$PROFILE" >&2
@@ -17,20 +66,23 @@ fi
 
 cd "$ROOT"
 ACTUAL_SHA="$(git rev-parse HEAD)"
-log "exact-head actual=$ACTUAL_SHA expected=$EXPECTED_SHA profile=$PROFILE"
+phase "exact-head" "actual=$ACTUAL_SHA expected=$EXPECTED_SHA profile=$PROFILE"
 test "$ACTUAL_SHA" = "$EXPECTED_SHA"
 if [[ "$VERIFY_GOLD" == "true" ]]; then
   git diff --exit-code -- e2e/gold/graduation-v9-gold-manifest.json
 fi
 
-log "install backend and verify the complete workflow/action/bootstrap safety graph"
+phase "architecture-contract" "verify the shared workflow/action/bootstrap ownership and phase graph"
+node scripts/check/check-graduation-browser-architecture.mjs
+
+phase "backend-dependencies" "install backend and run the complete runtime safety contract"
 python -m pip install -r backend/requirements.txt
 (
   cd backend
   pytest tests/test_playwright_artifact_safety.py -q -p no:warnings
 )
 
-log "migrate one isolated MySQL and seed common school authority"
+phase "database-foundation" "migrate one isolated MySQL and seed common school authority"
 (
   cd backend
   test "$(python -m alembic heads | grep -c '(head)')" = '1'
@@ -42,10 +94,9 @@ log "migrate one isolated MySQL and seed common school authority"
 )
 
 if [[ "$PROFILE" == "full" ]]; then
-  log "materialize full-suite organization prerequisites before canonical account import"
+  phase "database-domain-prerequisites" "materialize DB-only full-suite organization and academic facts"
   (
     cd backend
-    python scripts/e2e_bootstrap_affairs_counselor_ci.py
     python scripts/e2e_seed_academic_b_selection.py
     python scripts/e2e_seed_academic_b_w3_schedule.py
     python scripts/e2e_seed_academic_b_w4_selection.py
@@ -63,6 +114,7 @@ PY
     python scripts/e2e_seed_academic_exam_incident_w2.py
   )
   for fixture in \
+    e2e/academic-b-w1-fixture.json \
     e2e/academic-b-w3-fixture.json \
     e2e/academic-b-w4-fixture.json \
     e2e/academic-b-w4-formation-fixture.json \
@@ -72,16 +124,29 @@ PY
   done
 fi
 
-log "import and verify the canonical graduation identities after organization prerequisites"
+phase "backend-api" "start backend before every API-dependent identity bootstrap"
 (
   cd backend
-  python scripts/e2e_bootstrap_graduation_accounts_ci.py
-  python scripts/e2e_reset_graduation_passwords.py
-  python scripts/e2e_verify_graduation_accounts.py
+  nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > "$LOG_DIR/backend.log" 2>&1 &
+  echo $! > "$LOG_DIR/backend.pid"
 )
+wait_for_url "$BACKEND_HEALTH_URL" "backend API"
+
+phase "api-identity-bootstrap" "import and verify canonical identities through production APIs"
+run_api_bootstrap "graduation canonical identity import" \
+  python scripts/e2e_bootstrap_graduation_accounts_ci.py
+run_api_bootstrap "graduation password normalization" \
+  python scripts/e2e_reset_graduation_passwords.py
+run_api_bootstrap "graduation identity verification" \
+  python scripts/e2e_verify_graduation_accounts.py
 
 if [[ "$PROFILE" == "full" ]]; then
-  log "materialize identity-dependent full-suite fixtures"
+  run_api_bootstrap "student-affairs counselor canonical identity" \
+    python scripts/e2e_bootstrap_affairs_counselor_ci.py
+fi
+
+if [[ "$PROFILE" == "full" ]]; then
+  phase "identity-dependent-fixtures" "materialize facts that depend on canonical user identities"
   (
     cd backend
     python scripts/e2e_seed_academic_b_w5_selection.py
@@ -90,16 +155,14 @@ if [[ "$PROFILE" == "full" ]]; then
   test -s e2e/academic-b-w5-fixture.json
 fi
 
-log "start backend and message delivery worker"
+phase "background-workers" "start message delivery only after canonical identity state is stable"
 (
   cd backend
-  nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > "$LOG_DIR/backend.log" 2>&1 &
-  echo $! > "$LOG_DIR/backend.pid"
   nohup python -c "import time; from scripts.run_scheduled_jobs import job_delivery_and_outbox; exec('while True:\\n    job_delivery_and_outbox()\\n    time.sleep(2)')" > "$LOG_DIR/message-delivery.log" 2>&1 &
   echo $! > "$LOG_DIR/message-delivery.pid"
 )
 
-log "install and start staff PC"
+phase "client-surfaces" "install and start staff PC"
 (
   cd frontend
   npm ci
@@ -123,11 +186,10 @@ log "install and start teacher miniapp H5"
   echo $! > "$LOG_DIR/miniapp.pid"
 )
 
-URLS=(
-  "http://127.0.0.1:8000/health"
-  "http://127.0.0.1:5173/login"
-  "http://127.0.0.1:5199/portal/login"
-  "http://127.0.0.1:5188/"
+CLIENT_URLS=(
+  "http://127.0.0.1:5173/login|staff PC"
+  "http://127.0.0.1:5199/portal/login|student PC"
+  "http://127.0.0.1:5188/|teacher miniapp H5"
 )
 
 if [[ "$PROFILE" == "full" ]]; then
@@ -138,28 +200,16 @@ if [[ "$PROFILE" == "full" ]]; then
     nohup env VITE_BASE=/enterprise/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5202 > "$LOG_DIR/enterprise-portal.log" 2>&1 &
     echo $! > "$LOG_DIR/enterprise-portal.pid"
   )
-  URLS+=("http://127.0.0.1:5202/enterprise/login")
+  CLIENT_URLS+=("http://127.0.0.1:5202/enterprise/login|enterprise portal")
 fi
 
-log "wait for runtime readiness"
-for url in "${URLS[@]}"; do
-  ready=''
-  for _ in {1..90}; do
-    if curl -fsS "$url" >/dev/null; then
-      ready=1
-      break
-    fi
-    sleep 2
-  done
-  if [[ -z "$ready" ]]; then
-    echo "application not ready: $url" >&2
-    tail -n 200 "$LOG_DIR"/*.log 2>/dev/null || true
-    exit 1
-  fi
-  echo "[browser-runtime] ready $url"
+phase "client-readiness" "wait for every browser surface after the backend and fixtures are stable"
+for entry in "${CLIENT_URLS[@]}"; do
+  IFS='|' read -r url label <<< "$entry"
+  wait_for_url "$url" "$label"
 done
 
-log "install Playwright once for this runtime"
+phase "playwright-dependencies" "install Playwright once for this runtime"
 (
   cd e2e
   npm ci
@@ -178,6 +228,16 @@ payload = {
     'mockLogin': os.environ.get('MOCK_LOGIN_ENABLED'),
     'database': 'mysql-8.4',
     'redisDatabase': os.environ.get('REDIS_URL', '').rsplit('/', 1)[-1],
+    'phaseModel': [
+        'database-foundation',
+        'database-domain-prerequisites',
+        'backend-api',
+        'api-identity-bootstrap',
+        'identity-dependent-fixtures',
+        'background-workers',
+        'client-surfaces',
+        'playwright-dependencies',
+    ],
     'surfaces': ['backend', 'staff-pc', 'student-pc', 'teacher-miniapp-h5'] + (
         ['enterprise-portal'] if os.environ.get('BROWSER_RUNTIME_PROFILE') == 'full' else []
     ),
@@ -187,4 +247,4 @@ Path('e2e/runtime-logs/runtime-provenance.json').write_text(
 )
 PY
 
-log "runtime ready"
+phase "ready" "runtime ready"

@@ -1,5 +1,5 @@
 name: 'Unified browser runtime'
-description: 'Bootstrap one exact-head MySQL/Redis/browser runtime for functional, graduation, and Gold evidence suites.'
+description: 'Bootstrap one exact-head, phase-ordered MySQL/Redis/browser runtime for functional, graduation, and Gold evidence suites.'
 inputs:
   profile:
     description: 'Runtime profile: graduation or full.'
@@ -14,7 +14,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: 'Bootstrap exact-head browser runtime'
+    - name: 'Bootstrap exact-head phased browser runtime'
       shell: bash
       env:
         BROWSER_RUNTIME_PROFILE: ${{ inputs.profile }}
