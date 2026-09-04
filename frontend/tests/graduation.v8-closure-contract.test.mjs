@@ -6,12 +6,13 @@ const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
 
 test('dashboard concrete work exposes the complete human handoff context', async () => {
   const source = await read('../src/modules/graduation/views/GraduationDashboardView.vue')
-  for (const token of ['item.whyHere', 'item.waitingOn', 'item.nextActor', 'item.recentChange', 'item.primaryAction']) {
-    assert.ok(source.includes(token), `missing dashboard flow context ${token}`)
+  for (const token of ['firstWorkItem.whyHere', 'firstWorkItem.waitingOn', 'firstWorkItem.nextActor', 'firstWorkItem.recentChange', 'firstWorkItem.primaryAction']) {
+    assert.ok(source.includes(token), `missing promoted dashboard flow context ${token}`)
   }
   assert.match(source, /<b>当前等待<\/b>/)
   assert.match(source, /<b>下一责任人<\/b>/)
-  assert.match(source, /goWorkItem\(item\)/)
+  assert.match(source, /@click="goWorkItem\(firstWorkItem\)"/)
+  assert.match(source, /remainingWorkItems\(\) \{ return this\.workItems\.slice\(1\) \}/)
 })
 
 test('material and review writes expose human receipts backed by server readback', async () => {
@@ -57,10 +58,13 @@ test('grade appeals show the bound published version and block stale mutations',
   assert.match(source, /source: 'grade-appeal'/)
 })
 
-test('archive writes use idempotent identifiers and unknown outcomes never invite blind retry', async () => {
+test('archive writes use frozen identifiers and unknown outcomes never invite blind retry', async () => {
   const source = await read('../src/modules/graduation/views/GraduationRiskArchiveView.vue')
-  assert.match(source, /fileArchive\(row\.gdStudentId, row\.archiveBatchNo \|\| null\)/)
-  assert.match(source, /Number\(res\?\.code\) === 503001[\s\S]*Number\(res\?\.code\) === 503002/)
+  assert.match(source, /createSingleArchiveSnapshot\(action, row\)/)
+  assert.match(source, /gdStudentId: String\(row\?\.gdStudentId \|\| ''\)/)
+  assert.match(source, /archiveBatchNo: row\?\.archiveBatchNo \|\| ''/)
+  assert.match(source, /fileArchive\(snapshot\.gdStudentId, snapshot\.archiveBatchNo \|\| null, \{ batchId: snapshot\.batchId \}\)/)
+  assert.match(source, /\[503001, 503002\]\.includes\(Number\(res\?\.code\)\)/)
   assert.match(source, /不要(?:直接)?重复(?:点击|提交)/)
   assert.match(source, /刷新(?:归档)?台账核对/)
   assert.match(source, /必须重新预览/)
