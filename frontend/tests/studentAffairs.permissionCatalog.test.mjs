@@ -52,11 +52,15 @@ test('关键普通菜单页面导航与路由权限一致', async () => {
   }
 })
 
-test('学生画像兼容入口使用隐藏 DETAIL + permissionAny，覆盖路由权限', async () => {
+test('公共学生360为正式对象中心，旧学工画像仍是隐藏且权限安全的详情下钻', async () => {
   const { nav, routes } = await sources()
   assert.match(
     nav,
-    /H\('学生360详情',\s*'\/admin\/student-affairs\/profile',\s*null,\s*'DETAIL',\s*\{\s*permissionAny:\s*_STU_VIEW_ANY\s*\}\)/
+    /H\('学生360详情',\s*'\/admin\/student',\s*null,\s*'DETAIL',\s*\{[\s\S]{0,180}?permissionAny:\s*_STU_VIEW_ANY[\s\S]{0,180}?matchPrefix:\s*true[\s\S]{0,80}?\}\)/
+  )
+  assert.match(
+    nav,
+    /H\('学工画像兼容详情',\s*'\/admin\/student-affairs\/profile',\s*null,\s*'DETAIL',\s*\{[\s\S]{0,180}?permissionAny:\s*_STU_VIEW_ANY[\s\S]{0,180}?matchPrefix:\s*true[\s\S]{0,80}?\}\)/
   )
   const routePermission = routePermissionForPath(routes, 'profile')
   const escapedRoutePermission = routePermission.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

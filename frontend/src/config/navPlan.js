@@ -158,8 +158,10 @@ export const NAV_PLAN = [
       H('学生360详情', '/admin/student', null, 'DETAIL', {
         permissionAny: _STU_VIEW_ANY, activeLabel: '学生主档', matchPrefix: true
       }),
-      H('旧学工画像入口', '/admin/student-affairs/profile', 'studentAffairs.student.view', 'COMPAT', {
-        activeLabel: '学生主档'
+      H('学工画像兼容详情', '/admin/student-affairs/profile', null, 'DETAIL', {
+        permissionAny: _STU_VIEW_ANY,
+        activeLabel: '学生主档',
+        matchPrefix: true
       }),
       I('班级管理', '/admin/campus-service/classes', 'studentAffairs.class.view', 'WORKBENCH', {
         sectionKey: 'responsibility', sectionLabel: '班级与责任'
@@ -1397,7 +1399,7 @@ export function findActiveInPlan(path, fullPath = '') {
         score = cp.length
       }
     }
-    if (score > best.score || (score === best.score && row.isLeaf && !best.leafKey)) {
+    if (score > best.score || (score === best.score && row.isLeaf && !best.leafKey && row.groupKey === 'student-affairs')) {
       best = {
         groupKey: row.groupKey,
         modKey: row.modKey,

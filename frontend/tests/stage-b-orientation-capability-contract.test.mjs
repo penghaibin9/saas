@@ -37,7 +37,10 @@ test('A1 orientation permissions come only from real current-context patterns', 
 test('A1 routes and navigation use the canonical backend orientation view permission', () => {
   assert.match(routes, /permissionKey: 'studentAffairs\.orientation\.view'/)
   assert.doesNotMatch(routes, /permissionKey: 'orientation\./)
-  const orientationNav = navPlan.slice(navPlan.indexOf("mod('sa-orientation'"), navPlan.indexOf("mod('sa-leave'"))
+  const orientationStart = navPlan.indexOf("mod('sa-orientation'")
+  const orientationEnd = navPlan.indexOf("mod('sa-mental'", orientationStart)
+  assert.ok(orientationStart >= 0 && orientationEnd > orientationStart)
+  const orientationNav = navPlan.slice(orientationStart, orientationEnd)
   assert.match(orientationNav, /studentAffairs\.orientation\.view/)
   assert.doesNotMatch(orientationNav, /'orientation\./)
 })

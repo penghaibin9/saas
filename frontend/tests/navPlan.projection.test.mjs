@@ -79,21 +79,28 @@ test('ctxKey 不同 → 缓存不串味（不同身份得到不同投影）', ()
   assert.equal(b.find((g) => g.key === 'internship'), undefined)
 })
 
-test('无独立入口但已有真实子页的学工二级模块是可展开容器，不再误报待施工', () => {
+test('V6 学工十二个业务工作区均有真实安全落点，不再依赖无入口容器', () => {
   const studentAffairs = NAV_PLAN.find((group) => group.key === 'student-affairs')
+  assert.equal(studentAffairs.children.length, 12)
   const workbench = studentAffairs.children.find((mod) => mod.key === 'sa-workbench')
-  assert.equal(workbench.path, undefined)
-  assert.equal(workbench.entryType, 'CONTAINER')
+  assert.equal(workbench.path, '/admin/student-affairs/dashboard')
   assert.equal(workbench.status, 'implemented')
   assert.equal(workbench.disabled, false)
+  for (const workspace of studentAffairs.children) {
+    assert.match(workspace.path, /^\/admin\//, `${workspace.key} 必须有真实站内落点`)
+    assert.ok(workspace.children.length > 0, `${workspace.key} 必须保留三级业务入口`)
+  }
 })
 
-test('navPlanStats 分开统计 implemented/partial/planned/unauthorized，并保留兼容字段', () => {
+test('navPlanStats 精确反映 V6 工作区已经从容器升级为真实落点', () => {
+  const studentAffairs = NAV_PLAN.find((group) => group.key === 'student-affairs')
   const row = navPlanStats().find((item) => item.key === 'student-affairs')
   for (const key of ['implemented', 'partial', 'planned', 'unauthorized', 'containers', 'total']) {
     assert.equal(Number.isInteger(row[key]), true, `${key} 应为整数`)
   }
-  assert.ok(row.containers > 0, '学工应包含无独立入口的可展开容器')
+  const expectedContainers = studentAffairs.children.filter((item) => item.entryType === 'CONTAINER').length
+  assert.equal(expectedContainers, 0)
+  assert.equal(row.containers, expectedContainers)
   assert.equal(row.total, row.implemented + row.partial + row.planned + row.unauthorized)
 })
 

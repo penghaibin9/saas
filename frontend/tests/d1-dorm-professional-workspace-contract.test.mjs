@@ -13,17 +13,19 @@ const inspection = read('../src/modules/studentAffairs/views/dorm/DormCheckView.
 const exception = read('../src/modules/studentAffairs/views/dorm/DormExceptionView.vue')
 const stats = read('../src/modules/studentAffairs/views/dorm/DormStatsView.vue')
 
-test('D1 publishes one professional dorm cockpit and six real workspaces', () => {
+test('D1 publishes one professional dorm cockpit and the complete real workspace chain', () => {
   for (const [label, path] of [
     ['宿舍驾驶舱', '/admin/student-affairs/dormitory'],
     ['房源管理', '/admin/student-affairs/dorm/resource'],
+    ['分配计划', '/admin/student-affairs/dorm/allocation'],
     ['入住管理', '/admin/student-affairs/dorm/checkin'],
     ['调宿与退宿', '/admin/student-affairs/dorm/transfer'],
     ['宿舍检查', '/admin/student-affairs/dorm/check'],
-    ['宿舍异常（含夜不归宿）', '/admin/student-affairs/dorm/exception'],
+    ['宿舍异常', '/admin/student-affairs/dorm/exception'],
     ['宿舍统计', '/admin/student-affairs/dorm/stats']
   ]) {
-    assert.match(nav, new RegExp(`I\\('${label.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}', '${path.replaceAll('/', '\\/')}', 'studentAffairs\\.dorm\\.view'\\)`))
+    const signature = `I('${label}', '${path}', 'studentAffairs.dorm.view'`
+    assert.ok(nav.includes(signature), `${label} 必须保留真实路由和宿舍查看权限`)
   }
   assert.match(routes, /path: 'dormitory'[\s\S]*permissionKey: 'studentAffairs\.dorm\.view'/)
 })
