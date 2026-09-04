@@ -2,10 +2,11 @@ import { getTeacherGraduationBatch, realRequest, setTeacherGraduationBatch } fro
 
 function currentPageOptions() {
   try {
-    if (typeof getCurrentPages !== 'function') return {}
-    const pages = getCurrentPages()
+    const getPages = globalThis.getCurrentPages
+    if (typeof getPages !== 'function') return {}
+    const pages = getPages()
     const page = pages && pages[pages.length - 1]
-    return page?.options || page?.$page?.options || page?.$page?.fullPath?.query || {}
+    return page?.options || page?.$page?.options || {}
   } catch {
     return {}
   }
