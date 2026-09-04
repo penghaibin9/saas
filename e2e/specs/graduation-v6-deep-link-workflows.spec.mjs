@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
+import { graduationRoles } from '../lib/graduation-role-accounts.mjs'
 import { loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import { ensureDefenseScoringContext } from '../lib/graduation-scenario-fixture.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
@@ -160,7 +161,7 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
     const scoringFixture = await ensureDefenseScoringContext(adminApi, fixture)
     await page.setViewportSize({ width: 1440, height: 900 })
     const login = new StaffLoginPage(page, config.staffBaseUrl)
-    await login.login(config.defenseExpert)
+    await login.login(graduationRoles.defenseExpert)
     await expect(page.locator('.uchip__role')).toContainText(/答辩专家|评委|GD_DEFENSE_EXPERT/)
     const returnTo = `/admin/graduation/defense-scoring?batchId=${scoringFixture.batchId}&studentId=${scoringFixture.gdStudentId}&panel=defense&queue=mine`
     await page.goto(route(config.staffBaseUrl, `/admin/graduation/defense-grade/${scoringFixture.gdStudentId}/form`, {

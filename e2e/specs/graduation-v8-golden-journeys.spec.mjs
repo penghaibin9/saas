@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
+import { graduationRoles } from '../lib/graduation-role-accounts.mjs'
 import { items, loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import { ensureArchiveProjection } from '../lib/graduation-scenario-fixture.mjs'
 import { prepareGraduationTeacherMobileGoldFixture, u8TeacherAccount } from '../lib/graduation-u8-fixture.mjs'
@@ -121,9 +122,6 @@ async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
     await expect(workspace).toBeVisible()
     await workspace.click()
     await expect(leaf, `Role Home 侧栏必须展开 ${workspaceLabel}`).toBeVisible()
-    // Parent workspaces have their own default route. Wait until that first
-    // navigation and its API traffic settle before clicking a child; otherwise
-    // the parent route can complete after the leaf route and overwrite panel.
     await settle(page)
   }
   await expect(leaf, `Role Home 侧栏必须能找到 ${workspaceLabel} → ${entryLabel}`).toBeVisible()
@@ -319,7 +317,7 @@ test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys',
     const context = await page.context().browser().newContext()
     const handoff = await context.newPage()
     try {
-      await loginTeacherMini(handoff, config.defenseExpert)
+      await loginTeacherMini(handoff, graduationRoles.defenseExpert)
       await handoff.getByText('答辩评分', { exact: true }).click()
       await expect(handoff.getByText(/答辩评分/).first()).toBeVisible()
       const screenshotC = await capture(handoff, 'GDJ-06', 'C-handoff')

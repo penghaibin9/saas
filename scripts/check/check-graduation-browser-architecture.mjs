@@ -22,6 +22,7 @@ const action = read('.github/actions/browser-runtime/action.yml')
 const bootstrap = read('scripts/e2e/bootstrap-browser-runtime.sh')
 const runner = read('scripts/e2e/run-browser-suite.sh')
 const e2eConfig = read('e2e/lib/config.mjs')
+const graduationRoleAccounts = read('e2e/lib/graduation-role-accounts.mjs')
 const scenario = read('e2e/lib/graduation-scenario-fixture.mjs')
 const deepLink = read('e2e/specs/graduation-v6-deep-link-workflows.spec.mjs')
 const journeys = read('e2e/specs/graduation-v8-golden-journeys.spec.mjs')
@@ -162,22 +163,22 @@ assert.match(scenario, /FINAL_PENDING/)
 assert.match(scenario, /documentPages = 20/)
 assert.match(scenario, /expectRenderedPdfCanvas/)
 
-// Role actors are centralized. A mentor/admin account must never masquerade as
-// an authenticated defense judge merely because it can render a shared shell.
-assert.match(e2eConfig, /defenseExpert: account\('E2E_GRADUATION_DEFENSE'/)
-assert.match(e2eConfig, /defenseChair: account\('E2E_GRADUATION_DEFENSE_B'/)
-assert.match(e2eConfig, /defenseSecretary: account\('E2E_GRADUATION_SECRETARY'/)
+// Graduation-only actors belong to a module registry, not the shared config.
+assert.doesNotMatch(e2eConfig, /E2E_GRADUATION_(?:REVIEWER|DEFENSE|SECRETARY)/)
+assert.match(graduationRoleAccounts, /reviewer: account\('E2E_GRADUATION_REVIEWER'/)
+assert.match(graduationRoleAccounts, /defenseExpert: account\('E2E_GRADUATION_DEFENSE'/)
+assert.match(graduationRoleAccounts, /defenseChair: account\('E2E_GRADUATION_DEFENSE_B'/)
+assert.match(graduationRoleAccounts, /defenseSecretary: account\('E2E_GRADUATION_SECRETARY'/)
 assert.match(scenario, /ensureDefenseScoringContext/)
 assert.match(scenario, /memberMentorIds: \[Number\(expert\.id\)\]/)
 assert.match(scenario, /Defense group .* did not read back as published/)
-assert.match(deepLink, /login\.login\(config\.defenseExpert\)/)
+assert.match(deepLink, /login\.login\(graduationRoles\.defenseExpert\)/)
 assert.match(deepLink, /ensureDefenseScoringContext\(adminApi, fixture\)/)
 assert.doesNotMatch(deepLink, /login\(config\.mentor\)[\s\S]{0,1200}formKey: 'scoreEntry'/)
 assert.doesNotMatch(journeys, /const DEFENSE_EXPERT\s*=/)
-assert.match(journeys, /loginTeacherMini\(handoff, config\.defenseExpert\)/)
+assert.match(journeys, /loginTeacherMini\(handoff, graduationRoles\.defenseExpert\)/)
 
-// Exact miniapp task deep links open review directly. Tests must assert the
-// frozen task identity instead of waiting for an intermediate list page.
+// Exact miniapp task deep links open review directly.
 assert.match(crossClient, /exact-task-direct-review/)
 assert.match(crossClient, /成果批阅 · 第 1 \/ 1 条/)
 assert.doesNotMatch(crossClient, /getByText\('成果待批阅'[\s\S]{0,600}去批阅成果/)
@@ -187,7 +188,6 @@ assert.match(scenario, /ensureArchiveProjection/)
 assert.match(scenario, /Archive projection did not read back/)
 assert.match(journeys, /ensureArchiveProjection\(adminApi, fixture\)/)
 assert.match(journeys, /'毕设材料归档': \{ panel: 'archive' \}/)
-assert.match(journeys, /Parent workspaces have their own default route/)
 assert.match(journeys, /assertRoleHomeDestination\(page, entryLabel, expectedPath\)/)
 
-console.log('[graduation-browser-architecture] GREEN: one browser owner, one style owner, phased runtime, real role actors, exact task locks, readback scenarios and manual Gold policy')
+console.log('[graduation-browser-architecture] GREEN: one browser owner, one style owner, phased runtime, module-local actors, exact task locks, readback scenarios and manual Gold policy')

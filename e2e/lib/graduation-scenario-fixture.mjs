@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { expect } from './observability.mjs'
 import { config } from './config.mjs'
+import { graduationRoles } from './graduation-role-accounts.mjs'
 import { items } from './api-fixture.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 import { StaffGraduationPage, StudentGraduationPage } from '../pages/graduation.page.mjs'
@@ -264,15 +265,15 @@ async function ensureScenarioMentor(adminApi, account, {
  * account merely because it can render the page shell.
  */
 export async function ensureDefenseScoringContext(adminApi, fixture) {
-  const expert = await ensureScenarioMentor(adminApi, config.defenseExpert, {
+  const expert = await ensureScenarioMentor(adminApi, graduationRoles.defenseExpert, {
     teacherName: 'E2E答辩专家A',
     title: '副教授'
   })
-  const chair = await ensureScenarioMentor(adminApi, config.defenseChair, {
+  const chair = await ensureScenarioMentor(adminApi, graduationRoles.defenseChair, {
     teacherName: 'E2E答辩专家B',
     title: '教授'
   })
-  const secretary = await ensureScenarioMentor(adminApi, config.defenseSecretary, {
+  const secretary = await ensureScenarioMentor(adminApi, graduationRoles.defenseSecretary, {
     teacherName: 'E2E学院秘书',
     title: '讲师'
   })
@@ -325,7 +326,7 @@ export async function ensureDefenseScoringContext(adminApi, fixture) {
     return String(seat.mentorId || '') === String(expert.id)
       || String(seat.name || seat.teacherName || '') === String(expert.teacherName || 'E2E答辩专家A')
   })
-  if (!expertIsSeated) throw new Error(`Defense expert ${config.defenseExpert.username} is not on group ${group.id}.`)
+  if (!expertIsSeated) throw new Error(`Defense expert ${graduationRoles.defenseExpert.username} is not on group ${group.id}.`)
 
   return {
     ...fixture,
