@@ -3,8 +3,8 @@
  * Module-local only. No route, permission, API, state-machine or file contract changes.
  */
 
-/* Deep-link pages: remove permanent training-manual cards. Contextual errors and
- * dynamic completion conditions remain visible; detailed rules belong in help. */
+/* Remove permanent training-manual cards. Dynamic errors, completion gaps and
+ * server state remain visible; long boundary explanations belong in help. */
 .gd-business-view .gsf-warning,
 .gd-business-view .gma-warning,
 .gd-business-view .sdg-warning,
@@ -28,12 +28,9 @@
   padding: 9px !important;
 }
 
-/* Material center: current batch and three operational states stay visible,
- * while the six metrics become a compact strip and the ledger moves up. */
-.gd-business-view .mc-page {
-  gap: 7px !important;
-}
-
+/* Material center: keep all six real metrics, but compress them into one strip
+ * so the ledger enters the first fold. */
+.gd-business-view .mc-page { gap: 7px !important; }
 .gd-business-view .mc-hero {
   min-height: 42px;
   padding: 7px 10px !important;
@@ -41,18 +38,13 @@
   background: var(--bg-card, #fff) !important;
   box-shadow: none !important;
 }
-
 .gd-business-view .mc-hero > div:first-child {
   display: flex;
   align-items: baseline;
   min-width: 0;
   gap: 7px;
 }
-
-.gd-business-view .mc-hero > div:first-child > span {
-  display: none;
-}
-
+.gd-business-view .mc-hero > div:first-child > span { display: none; }
 .gd-business-view .mc-hero h2 {
   margin: 0 !important;
   overflow: hidden;
@@ -60,26 +52,23 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .gd-business-view .mc-hero p {
   margin: 0 !important;
   overflow: hidden;
   color: var(--text-tertiary, #64748b) !important;
-  font-size: 10px !important;
+  font-size: 0 !important;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .gd-business-view .mc-hero p::before {
-  content: '仅审核当前提交版本 · ';
+  content: '仅审核当前提交版本；历史版本只读，文件未通过安全检查时不可预览。';
+  font-size: 10px;
 }
-
 .gd-business-view .mc-summary {
   display: grid !important;
   grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
   gap: 4px !important;
 }
-
 .gd-business-view .mc-summary article {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) auto !important;
@@ -89,7 +78,6 @@
   padding: 4px 7px !important;
   border-radius: 7px !important;
 }
-
 .gd-business-view .mc-summary article > span {
   overflow: hidden;
   color: var(--text-tertiary, #64748b);
@@ -97,64 +85,38 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.gd-business-view .mc-summary article > strong {
-  font-size: 14px !important;
-}
-
-.gd-business-view .mc-summary article > small {
-  display: none !important;
-}
-
-.gd-business-view .mc-tabs {
-  min-height: 34px;
-}
-
+.gd-business-view .mc-summary article > strong { font-size: 14px !important; }
+.gd-business-view .mc-summary article > small { display: none !important; }
+.gd-business-view .mc-tabs { min-height: 34px; }
 .gd-business-view .mc-tabs button {
   min-height: 32px;
   padding: 5px 11px !important;
   font-size: 11px;
 }
-
 .gd-business-view .mc-filters {
   grid-template-columns: minmax(190px, 1.4fr) repeat(3, minmax(120px, .75fr)) auto !important;
   gap: 6px !important;
   padding: 7px 9px !important;
   border-radius: 9px !important;
 }
-
-.gd-business-view .mc-filters label {
-  gap: 2px !important;
-  font-size: 9px !important;
-}
-
+.gd-business-view .mc-filters label { gap: 2px !important; font-size: 9px !important; }
 .gd-business-view .mc-filters input,
 .gd-business-view .mc-filters select {
   min-height: 32px;
   padding: 5px 7px !important;
   font-size: 11px;
 }
-
 .gd-business-view .mc-filters button {
   min-height: 32px;
   padding: 5px 9px !important;
   font-size: 10px;
 }
+.gd-business-view .mc-panel { border-radius: 9px !important; }
+.gd-business-view .mc-table-wrap { max-height: calc(100vh - 310px) !important; }
 
-.gd-business-view .mc-panel {
-  border-radius: 9px !important;
-}
-
-.gd-business-view .mc-table-wrap {
-  max-height: calc(100vh - 310px) !important;
-}
-
-/* Risk and archive: rules remain available as a horizontal evidence strip;
- * the real queue/detail split must enter the first fold. */
-.gd-business-view .ra-panel {
-  gap: 7px !important;
-}
-
+/* Risk and archive: retain all 13 service rules as a horizontal evidence strip;
+ * the queue/detail split becomes the dominant first-fold surface. */
+.gd-business-view .ra-panel { gap: 7px !important; }
 .gd-business-view .rk-command,
 .gd-business-view .ar-command {
   min-height: 48px;
@@ -163,60 +125,30 @@
   border-radius: 9px !important;
   box-shadow: none !important;
 }
-
 .gd-business-view .rk-command__headline,
-.gd-business-view .ar-command__copy {
-  gap: 1px !important;
-}
-
+.gd-business-view .ar-command__copy { gap: 1px !important; }
 .gd-business-view .rk-command__headline > span,
-.gd-business-view .ar-command__copy > span {
-  font-size: 8px !important;
-}
-
+.gd-business-view .ar-command__copy > span { font-size: 8px !important; }
 .gd-business-view .rk-command__headline strong,
-.gd-business-view .ar-command__copy strong {
-  font-size: 11px !important;
-}
-
+.gd-business-view .ar-command__copy strong { font-size: 11px !important; }
 .gd-business-view .rk-command__headline small,
-.gd-business-view .ar-command__copy small {
-  display: none !important;
-}
-
-.gd-business-view .rk-command__metrics {
-  gap: 3px !important;
-}
-
+.gd-business-view .ar-command__copy small { display: none !important; }
+.gd-business-view .rk-command__metrics { gap: 3px !important; }
 .gd-business-view .rk-command__metrics div {
   min-height: 30px;
   padding: 3px 5px !important;
   border-radius: 6px !important;
 }
-
-.gd-business-view .rk-command__metrics b {
-  font-size: 13px !important;
-}
-
-.gd-business-view .rk-command__metrics span {
-  font-size: 8px !important;
-}
-
+.gd-business-view .rk-command__metrics b { font-size: 13px !important; }
+.gd-business-view .rk-command__metrics span { font-size: 8px !important; }
 .gd-business-view .rk-rules {
   padding: 5px 7px !important;
   border-radius: 8px !important;
 }
-
-.gd-business-view .rk-rules__head {
-  margin-bottom: 4px !important;
-}
-
+.gd-business-view .rk-rules__head { margin-bottom: 4px !important; }
 .gd-business-view .rk-rules__head strong,
 .gd-business-view .rk-rules__head span,
-.gd-business-view .rk-rules__head small {
-  font-size: 8px !important;
-}
-
+.gd-business-view .rk-rules__head small { font-size: 8px !important; }
 .gd-business-view .rk-rules__grid {
   display: flex !important;
   max-width: 100%;
@@ -224,7 +156,6 @@
   overflow-x: auto;
   scrollbar-width: thin;
 }
-
 .gd-business-view .rk-rules__grid span {
   flex: 0 0 auto;
   min-width: auto !important;
@@ -232,15 +163,8 @@
   border-radius: 5px !important;
   font-size: 8px !important;
 }
-
-.gd-business-view .ra-filter {
-  margin: 0 !important;
-}
-
-.gd-business-view .rk-split {
-  gap: 8px !important;
-}
-
+.gd-business-view .ra-filter { margin: 0 !important; }
+.gd-business-view .rk-split { gap: 8px !important; }
 .gd-business-view .rk-list,
 .gd-business-view .rk-pane {
   padding: 9px !important;
@@ -248,26 +172,13 @@
 }
 
 @media (max-width: 1180px) {
-  .gd-business-view .mc-summary {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  }
-  .gd-business-view .mc-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-  .gd-business-view .mc-table-wrap {
-    max-height: none !important;
-  }
+  .gd-business-view .mc-summary { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .gd-business-view .mc-filters { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .gd-business-view .mc-table-wrap { max-height: none !important; }
 }
 
 @media (max-width: 760px) {
-  .gd-business-view .mc-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-  .gd-business-view .mc-hero > div:first-child {
-    display: grid;
-    gap: 2px;
-  }
-  .gd-business-view .mc-hero p {
-    white-space: normal;
-  }
+  .gd-business-view .mc-summary { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .gd-business-view .mc-hero > div:first-child { display: grid; gap: 2px; }
+  .gd-business-view .mc-hero p { white-space: normal; }
 }
