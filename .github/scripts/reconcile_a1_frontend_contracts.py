@@ -59,9 +59,8 @@ replace_once(
     ['宿舍异常', '/admin/student-affairs/dorm/exception'],
     ['宿舍统计', '/admin/student-affairs/dorm/stats']
   ]) {
-    const escapedLabel = label.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')
-    const escapedPath = path.replaceAll('/', '\\/')
-    assert.match(nav, new RegExp(`I\\('${escapedLabel}', '${escapedPath}', 'studentAffairs\\.dorm\\.view'`))
+    const signature = `I('${label}', '${path}', 'studentAffairs.dorm.view'`
+    assert.ok(nav.includes(signature), `${label} 必须保留真实路由和宿舍查看权限`)
   }
   assert.match(routes, /path: 'dormitory'[\\s\\S]*permissionKey: 'studentAffairs\\.dorm\\.view'/)
 })""",
