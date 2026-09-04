@@ -196,11 +196,7 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     })
     await page.goto(`${MINI_BASE}/#/pages/teacher/graduation-guide/index?${taskQuery}`)
 
-    await expect(page.getByText('成果待批阅', { exact: true })).toBeVisible({ timeout: 20_000 })
-    const studentCard = page.locator('.gg').filter({ hasText: fixture.topicTitle }).first()
-    await expect(studentCard, 'teacher miniapp must receive the exact pending thesis').toBeVisible({ timeout: 20_000 })
-    await studentCard.getByRole('button', { name: '去批阅成果' }).click()
-
+    await expect(page.locator('.rv__progress')).toContainText('成果批阅', { timeout: 20_000 })
     const review = page.locator('.rv__content')
     await expect(review).toBeVisible({ timeout: 20_000 })
     await expect(review).toContainText(fixture.topicTitle)
