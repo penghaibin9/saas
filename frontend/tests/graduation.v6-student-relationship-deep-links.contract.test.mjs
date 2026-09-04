@@ -27,7 +27,8 @@ for (const [name, source] of [['topic', topic], ['mentor', mentor], ['defense', 
 
 test('V6 topic assignment preserves the canonical API and confirms the exact topic relation from the student master', () => {
   assert.match(topic, /gdStudentApi\.assignTopic\(target\.studentId, \{ topicId: target\.topicId \}\)/)
-  assert.match(topic, /String\(latest\.data\?\.topicId \|\| ''\) !== target\.topicId/)
+  assert.match(topic, /const latestTopicId = String\(latest\.data\?\.topicId \|\| ''\)/)
+  assert.match(topic, /latest\.code !== 0 \|\| latestTopicId !== target\.topicId/)
   assert.match(topic, /不会自动改导师/)
   assert.match(topic, /批次、题目状态、容量和学生当前阶段/)
 })
