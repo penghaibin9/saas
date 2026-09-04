@@ -12,7 +12,7 @@ const CARD_ALLOW = {
   ],
   CI_ARCH: [
     /^\.github\/actions\/browser-runtime\/action\.yml$/,
-    /^\.github\/workflows\/(?:playwright-production-e2e|graduation-browser-gate|graduation-v6-gold-candidate)\.yml$/,
+    /^\.github\/workflows\/(?:playwright-production-e2e|graduation-browser-gate|graduation-v6-gold-candidate|graduation-w77-exact-head-e2e)\.yml$/,
     /^scripts\/e2e\/(?:bootstrap-browser-runtime\.sh|run-browser-suite\.sh|build-graduation-gold-candidate\.py)$/,
     /^scripts\/check\/check-graduation-browser-architecture\.mjs$/,
     /^backend\/tests\/test_playwright_artifact_safety\.py$/,
