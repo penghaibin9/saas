@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const workflowRoot = path.join(root, '.github/workflows')
+const graduationStyleRoot = path.join(root, 'frontend/src/modules/graduation/styles')
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 const mustIndex = (source, marker) => {
   const index = source.indexOf(marker)
@@ -23,6 +24,9 @@ const runner = read('scripts/e2e/run-browser-suite.sh')
 const scenario = read('e2e/lib/graduation-scenario-fixture.mjs')
 const finalVisual = read('e2e/specs/graduation-v9-final-review-visual.spec.mjs')
 const crossClient = read('e2e/specs/graduation-v6-thesis-cross-client.spec.mjs')
+const mainEntry = read('frontend/src/main.js')
+const graduationLayout = read('frontend/src/modules/graduation/views/AdminGraduationLayout.vue')
+const graduationStyles = read('frontend/src/modules/graduation/styles/graduation-workspaces.css')
 const legacyW77 = '.github/workflows/graduation-w77-exact-head-e2e.yml'
 
 assert.equal(
@@ -46,6 +50,29 @@ for (const name of fs.readdirSync(workflowRoot).filter((entry) => /\.ya?ml$/.tes
     `${name} directly owns the canonical Graduation lifecycle browser suite; use graduation-browser-gate.yml`,
   )
 }
+
+const graduationStyleFiles = fs.readdirSync(graduationStyleRoot)
+  .filter((entry) => entry.endsWith('.css'))
+  .sort()
+assert.deepEqual(
+  graduationStyleFiles,
+  ['graduation-workspaces.css'],
+  'Graduation presentation must have one stable module-local stylesheet; round/hotfix files are forbidden',
+)
+assert.doesNotMatch(
+  mainEntry,
+  /modules\/graduation\/styles/,
+  'frontend/src/main.js must not broadcast Graduation page styles to the whole application',
+)
+assert.match(
+  graduationLayout,
+  /@\/modules\/graduation\/styles\/graduation-workspaces\.css/,
+  'AdminGraduationLayout must own the one Graduation workspace stylesheet',
+)
+assert.match(graduationStyles, /\.gd-business-view/)
+assert.match(graduationStyles, /\.gd-student-page/)
+assert.match(graduationStyles, /\.mc-summary/)
+assert.match(graduationStyles, /\.rk-rules/)
 
 assert.match(action, /bootstrap-browser-runtime\.sh/)
 assert.match(bootstrap, /python -m alembic upgrade head/)
@@ -132,4 +159,4 @@ assert.match(scenario, /FINAL_PENDING/)
 assert.match(scenario, /documentPages = 20/)
 assert.match(scenario, /expectRenderedPdfCanvas/)
 
-console.log('[graduation-browser-architecture] GREEN: one browser owner, phased runtime, targeted backend proofs, centralized scenarios and manual Gold policy')
+console.log('[graduation-browser-architecture] GREEN: one browser owner, one style owner, phased runtime, targeted backend proofs, centralized scenarios and manual Gold policy')

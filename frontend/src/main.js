@@ -6,8 +6,6 @@ import './styles/element-theme.css'
 import './styles/high-contrast-skin.css'
 // Stage B / B3：窄屏管理端仍保留可操作的一/二级导航，不再要求用户拉宽窗口。
 import './styles/stage-b-responsive-nav.css'
-// 毕业设计 V6 第三轮：仅压缩学生台 125% 缩放折叠线，不改变任何业务合同。
-import './modules/graduation/styles/round3-fold-hardening.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
