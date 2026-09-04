@@ -2,9 +2,10 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-const [view, api] = await Promise.all([
+const [view, api, viewerContract] = await Promise.all([
   readFile(new URL('../src/modules/graduation/views/GraduationMaterialCenterView.vue', import.meta.url), 'utf8'),
-  readFile(new URL('../src/modules/graduation/api/graduation-material-center.api.js', import.meta.url), 'utf8')
+  readFile(new URL('../src/modules/graduation/api/graduation-material-center.api.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/file/viewer/viewer-contract.js', import.meta.url), 'utf8')
 ])
 
 test('V6 material center restores the complete seven-field work context', () => {
@@ -36,11 +37,15 @@ test('V6 preview keeps the existing ticket timeout size abort and scan gate inst
   assert.match(view, /当前版本未通过安全门，禁止预览/)
   assert.ok(!view.includes('window.open('), 'material center must not open a permanent direct file URL')
 
-  assert.match(api, /DEFAULT_MAX_PREVIEW_BYTES/)
-  assert.match(api, /DEFAULT_PREVIEW_TIMEOUT_MS/)
+  assert.match(api, /previewSourceByteLimit/)
+  assert.match(api, /const limit = previewSourceByteLimit\(descriptor\)/)
+  assert.match(api, /PREVIEW_FETCH_TIMEOUT_MS/)
   assert.match(api, /AbortController/)
   assert.match(api, /createPreviewTicket/)
   assert.match(api, /readyForBusiness/)
+  for (const limit of ['DOCX_PREVIEW_MAX_SOURCE_BYTES', 'PDF_PREVIEW_MAX_SOURCE_BYTES', 'IMAGE_PREVIEW_MAX_SOURCE_BYTES']) {
+    assert.ok(viewerContract.includes(limit), `missing kind-specific preview limit ${limit}`)
+  }
 })
 
 test('V6 material review freezes record canonical FileVersion expectedVersion batch and route', () => {
