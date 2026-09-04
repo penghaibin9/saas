@@ -1,12 +1,26 @@
 import { getTeacherGraduationBatch, realRequest, setTeacherGraduationBatch } from './request'
 
+function parseQuery(raw = '') {
+  const query = String(raw || '').replace(/^.*?\?/, '')
+  if (!query || query === raw && !String(raw).includes('?')) return {}
+  return query.split('&').reduce((result, part) => {
+    const [key, ...rest] = part.split('=')
+    if (!key) return result
+    try { result[decodeURIComponent(key)] = decodeURIComponent(rest.join('=') || '') } catch { result[key] = rest.join('=') || '' }
+    return result
+  }, {})
+}
+
 function currentPageOptions() {
   try {
     const getPages = globalThis.getCurrentPages
-    if (typeof getPages !== 'function') return {}
-    const pages = getPages()
-    const page = pages && pages[pages.length - 1]
-    return page?.options || page?.$page?.options || {}
+    if (typeof getPages === 'function') {
+      const pages = getPages()
+      const page = pages && pages[pages.length - 1]
+      const options = page?.options || page?.$page?.options
+      if (options && Object.keys(options).length) return options
+    }
+    return parseQuery(globalThis.location?.hash || globalThis.location?.search || '')
   } catch {
     return {}
   }
