@@ -9,6 +9,7 @@ import { StaffGraduationPage, StudentGraduationPage } from '../pages/graduation.
 
 const BACKEND_DIR = fileURLToPath(new URL('../../backend/', import.meta.url))
 const MINI_BASE = process.env.E2E_MINIAPP_BASE_URL || 'http://127.0.0.1:5188'
+const TEACHER_BATCH_KEY = 'gx_gd_teacher_batch_v1'
 
 async function dismissGuide(page) {
   for (const mask of [page.locator('.app-step-guide__mask'), page.locator('.tour-mask')]) {
@@ -46,9 +47,7 @@ function buildPreviewablePdf(label) {
   }
   const xrefOffset = Buffer.byteLength(body, 'ascii')
   body += `xref\n0 ${objects.length}\n0000000000 65535 f \n`
-  for (let id = 1; id < objects.length; id += 1) {
-    body += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`
-  }
+  for (let id = 1; id < objects.length; id += 1) body += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`
   body += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
   return Buffer.from(body, 'ascii')
 }
@@ -65,29 +64,29 @@ async function loginTeacherMini(page) {
   await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 15_000 })
 }
 
+async function setTeacherBatch(page, fixture) {
+  await page.evaluate(({ key, batch }) => {
+    window.localStorage.setItem(key, JSON.stringify(batch))
+  }, {
+    key: TEACHER_BATCH_KEY,
+    batch: { id: String(fixture.batchId), name: fixture.batchName || '', status: 'RUNNING' }
+  })
+}
+
 async function expectRenderedPdfCanvas(page) {
   const adapter = page.locator('[data-preview-adapter="pdf"]')
   await expect(adapter, 'teacher PC must select the PDF adapter').toBeVisible({ timeout: 30_000 })
   const canvas = adapter.locator('canvas').first()
   await expect(canvas, 'teacher PC must render the thesis into a real PDF.js canvas').toBeVisible({ timeout: 30_000 })
   await expect.poll(async () => canvas.evaluate((node) => ({
-    width: Number(node.width || 0),
-    height: Number(node.height || 0),
-    cssWidth: Math.round(node.getBoundingClientRect().width),
-    cssHeight: Math.round(node.getBoundingClientRect().height)
-  })), {
-    message: 'PDF canvas must have real bitmap and visible dimensions'
-  }).toMatchObject({
-    width: expect.any(Number),
-    height: expect.any(Number),
-    cssWidth: expect.any(Number),
-    cssHeight: expect.any(Number)
+    width: Number(node.width || 0), height: Number(node.height || 0),
+    cssWidth: Math.round(node.getBoundingClientRect().width), cssHeight: Math.round(node.getBoundingClientRect().height)
+  })), { message: 'PDF canvas must have real bitmap and visible dimensions' }).toMatchObject({
+    width: expect.any(Number), height: expect.any(Number), cssWidth: expect.any(Number), cssHeight: expect.any(Number)
   })
   const size = await canvas.evaluate((node) => ({
-    width: Number(node.width || 0),
-    height: Number(node.height || 0),
-    cssWidth: node.getBoundingClientRect().width,
-    cssHeight: node.getBoundingClientRect().height
+    width: Number(node.width || 0), height: Number(node.height || 0),
+    cssWidth: node.getBoundingClientRect().width, cssHeight: node.getBoundingClientRect().height
   }))
   expect(size.width).toBeGreaterThan(100)
   expect(size.height).toBeGreaterThan(100)
@@ -106,10 +105,7 @@ async function ensurePendingFinal(page, fixture) {
   const proposalApproved = /已通过|书面开题通过/.test(proposalText)
   const proposalPending = /待.*审|已提交/.test(proposalText)
   if (!proposalApproved && !proposalPending) {
-    await student.submitProposal({
-      suffix: `${fixture.runId}-cross-client`,
-      fileName: `cross-client-proposal-${fixture.runId}.pdf`
-    })
+    await student.submitProposal({ suffix: `${fixture.runId}-cross-client`, fileName: `cross-client-proposal-${fixture.runId}.pdf` })
   }
   if (!proposalApproved) {
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
@@ -119,21 +115,13 @@ async function ensurePendingFinal(page, fixture) {
     await staff.approve()
   }
 
-  execFileSync(
-    'python',
-    ['scripts/e2e_seed_graduation_final_prerequisite.py', fixture.gdStudentId],
-    {
-      cwd: BACKEND_DIR,
-      env: { ...process.env, PYTHONPATH: BACKEND_DIR },
-      encoding: 'utf8'
-    }
-  )
+  execFileSync('python', ['scripts/e2e_seed_graduation_final_prerequisite.py', fixture.gdStudentId], {
+    cwd: BACKEND_DIR, env: { ...process.env, PYTHONPATH: BACKEND_DIR }, encoding: 'utf8'
+  })
 
   await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
   await student.open()
-  const finalStep = page.locator('.gd-step').filter({
-    has: page.getByRole('heading', { name: /成果/ })
-  }).first()
+  const finalStep = page.locator('.gd-step').filter({ has: page.getByRole('heading', { name: /成果/ }) }).first()
   await expect(finalStep).toBeVisible()
   const finalText = await finalStep.innerText()
   if (/待.*审|已提交/.test(finalText)) return
@@ -152,9 +140,7 @@ async function ensurePendingFinal(page, fixture) {
     return response.request().method() === 'POST' && target.pathname.endsWith('/files')
   })
   await fileInput.setInputFiles({
-    name: `cross-client-thesis-${fixture.runId}.pdf`,
-    mimeType: 'application/pdf',
-    buffer: buildPreviewablePdf(fixture.runId)
+    name: `cross-client-thesis-${fixture.runId}.pdf`, mimeType: 'application/pdf', buffer: buildPreviewablePdf(fixture.runId)
   })
   const uploaded = await expectBusinessSuccess(await uploadPromise, '学生 PC 上传毕业论文')
   expect(uploaded?.fileId).toBeTruthy()
@@ -162,9 +148,7 @@ async function ensurePendingFinal(page, fixture) {
   const submitButton = finalStep.getByRole('button', { name: /提交论文成果/ })
   await expect(submitButton).toBeEnabled()
   const [submitResponse] = await Promise.all([
-    page.waitForResponse((response) =>
-      response.request().method() === 'POST' && response.url().includes('/portal/graduation/final/submit')
-    ),
+    page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes('/portal/graduation/final/submit')),
     submitButton.click()
   ])
   const submitted = await expectBusinessSuccess(submitResponse, '学生 PC 提交毕业论文')
@@ -175,9 +159,7 @@ async function ensurePendingFinal(page, fixture) {
 test.describe.serial('V6 · one real thesis across student PC, teacher PC and teacher miniapp', () => {
   let fixture
 
-  test.beforeAll(async () => {
-    fixture = await prepareGraduationFixture()
-  })
+  test.beforeAll(async () => { fixture = await prepareGraduationFixture() })
 
   test('same canonical FileVersion is visible and previewable on all required surfaces', async ({ page }, testInfo) => {
     test.setTimeout(8 * 60_000)
@@ -190,11 +172,15 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     const workspace = page.locator('.gd-review-workspace')
     await expect(workspace).toBeVisible()
     await expect(workspace.locator('.gd-review-workspace__queue')).toContainText(fixture.topicTitle)
+    await expect.poll(() => new URL(page.url()).searchParams.get('sel'), { message: 'teacher PC must expose the exact selected final record in URL' }).toMatch(/^\d+$/)
+    const recordId = String(new URL(page.url()).searchParams.get('sel'))
     const command = page.getByTestId('review-command-contract')
-    await expect(command).toContainText('FileVersion')
-    await expect(command).toContainText('已通过')
+    await expect(command).toContainText('文件版本')
+    await expect(command).toContainText('可以批阅')
+    const materialVersion = (await command.locator('div').nth(0).locator('b').innerText()).trim()
     const fileVersionId = (await command.locator('div').nth(1).locator('b').innerText()).trim()
-    expect(fileVersionId, 'teacher PC must expose the exact canonical FileVersion').toMatch(/^\d+$/)
+    expect(materialVersion).toMatch(/^\d+$/)
+    expect(fileVersionId).toMatch(/^\d+$/)
     await expectRenderedPdfCanvas(page)
 
     const pcShot = testInfo.outputPath('cross-client-thesis-teacher-pc.png')
@@ -203,10 +189,16 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
 
     await page.setViewportSize({ width: 390, height: 844 })
     await loginTeacherMini(page)
-    await page.goto(`${MINI_BASE}/#/pages/teacher/graduation-guide/index`)
+    await setTeacherBatch(page, fixture)
+    const taskQuery = new URLSearchParams({
+      tab: 'review', kind: 'final', batchId: String(fixture.batchId),
+      gdStudentId: String(fixture.gdStudentId), recordId, materialVersion, fileVersionId
+    })
+    await page.goto(`${MINI_BASE}/#/pages/teacher/graduation-guide/index?${taskQuery}`)
+
     await expect(page.getByText('成果待批阅', { exact: true })).toBeVisible({ timeout: 20_000 })
     const studentCard = page.locator('.gg').filter({ hasText: fixture.topicTitle }).first()
-    await expect(studentCard, 'teacher miniapp must receive the same pending thesis').toBeVisible({ timeout: 20_000 })
+    await expect(studentCard, 'teacher miniapp must receive the exact pending thesis').toBeVisible({ timeout: 20_000 })
     await studentCard.getByRole('button', { name: '去批阅成果' }).click()
 
     const review = page.locator('.rv__content')
@@ -241,11 +233,13 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
         && /\/api\/v1\/mobile\/teacher\/graduation\/final\/[^/]+$/.test(new URL(response.url()).pathname)
       )
       await confirmCurrent.click()
-      await expectBusinessSuccess(await revalidatePromise, '教师小程序预览返回后重验论文版本')
+      const fresh = await expectBusinessSuccess(await revalidatePromise, '教师小程序预览返回后重验论文版本')
+      expect(String(fresh?.materialVersion || '')).toBe(materialVersion)
+      expect(String(fresh?.fileVersionId || '')).toBe(fileVersionId)
       await expect(page.locator('.rv__foot').getByRole('button', { name: '通过' })).toBeEnabled()
       await expect(page.locator('.rv__foot').getByRole('button', { name: '退回' })).toBeEnabled()
     }
-    await expect(page.locator('body')).not.toContainText(/版本已变化|旧版审核已锁定|真实接口不可用/)
+    await expect(page.locator('body')).not.toContainText(/版本已变化|旧版审核已锁定|批次与当前选择不一致|指定的毕业设计待办不在当前批次/)
 
     const miniShot = testInfo.outputPath('cross-client-thesis-teacher-miniapp.png')
     await page.screenshot({ path: miniShot, fullPage: false, animations: 'disabled', caret: 'hide' })
