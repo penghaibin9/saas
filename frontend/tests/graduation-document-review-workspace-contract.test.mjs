@@ -14,16 +14,9 @@ const versionBarSource = read('src/components/file/viewer/AppDocumentVersionBar.
 
 test('W2 final Gold reuses mature business flow and locks canonical fileVersion', () => {
   for (const pattern of [
-    /async load\(/,
-    /select\(row, \{ force = false \} = \{\}\)/,
-    /step\(delta\)/,
-    /turnPage\(page\)/,
-    /submitReview\(action\)/,
-    /remind\(row\)/,
-    /exportFinalsFn\(\)/
-  ]) {
-    assert.match(finalSource, pattern)
-  }
+    /async load\(/, /select\(row, \{ force = false \} = \{\}\)/, /step\(delta\)/,
+    /turnPage\(page\)/, /submitReview\(action\)/, /remind\(row\)/, /exportFinalsFn\(\)/
+  ]) assert.match(finalSource, pattern)
   assert.match(finalSource, /GraduationDocumentReviewWorkspace/)
   assert.match(finalSource, /expectedVersion:\s*this\.finalDetail\.materialVersion/)
   assert.match(finalSource, /fileVersionId:\s*this\.finalDetail\.fileVersionId/)
@@ -54,19 +47,16 @@ test('W2 final conflicts pin the old descriptor, fail closed and reload server t
 })
 
 test('W2 proposal reuses the same workspace and preserves proposal, audit and defense authorities', () => {
-  assert.match(proposalSource, /GraduationDocumentReviewWorkspace/)
-  assert.match(proposalSource, /选题背景/)
-  assert.match(proposalSource, /研究方案与进度/)
-  assert.match(proposalSource, /预期成果/)
-  assert.match(proposalSource, /AppAuditTrail/)
-  assert.match(proposalSource, /holdProposalDefense/)
-  assert.match(proposalSource, /reviewProposal/)
-  assert.match(proposalSource, /expectedVersion:\s*this\.detail\.materialVersion/)
-  assert.match(proposalSource, /fileVersionId:\s*this\.detail\.fileVersionId/)
-  assert.match(proposalSource, /proposalVersions\(recordId\)/)
-  assert.match(proposalSource, /gd-proposal-review-draft:\$\{this\.detail\.id\}:\$\{fileVersionId\}/)
-  assert.match(proposalSource, /draftFileVersionId = oldCanonical/)
-  assert.match(proposalSource, /conflictPreviewFile = oldActiveFile/)
+  for (const pattern of [
+    /GraduationDocumentReviewWorkspace/, /选题背景/, /研究方案与进度/, /预期成果/,
+    /AppAuditTrail/, /holdProposalDefense/, /reviewProposal/,
+    /expectedVersion:\s*this\.detail\.materialVersion/,
+    /fileVersionId:\s*this\.detail\.fileVersionId/,
+    /proposalVersions\(recordId\)/,
+    /gd-proposal-review-draft:\$\{this\.detail\.id\}:\$\{fileVersionId\}/,
+    /draftFileVersionId = oldCanonical/,
+    /conflictPreviewFile = oldActiveFile/
+  ]) assert.match(proposalSource, pattern)
   assert.doesNotMatch(proposalSource, /ProposalPdfViewer|SecureFileList|previewVersion\(/)
 })
 
@@ -77,21 +67,17 @@ test('W2 proposal business-object switch never silently inherits the previous te
 })
 
 test('W2 proposal stale-review conflict preserves the old draft but requires explicit carry into the new business version', () => {
-  assert.match(proposalSource, /gd-proposal-review-conflict-carry:v1/)
-  assert.match(proposalSource, /fromProposalId/)
-  assert.match(proposalSource, /fromFileVersionId/)
-  assert.match(proposalSource, /String\(this\.carriedDraft\.projectId\) === String\(this\.detail\.projectId\)/)
-  assert.match(proposalSource, /上一版本未提交草稿/)
-  assert.match(proposalSource, /不会自动成为当前版本的有效批阅意见/)
-  assert.match(proposalSource, /applyCarriedDraft\(\)/)
-  assert.match(proposalSource, /discardCarriedDraft\(\)/)
-  assert.match(proposalSource, /this\.stashConflictCarry\(draft\)[\s\S]*this\.\$emit\('conflict'/)
+  for (const pattern of [
+    /gd-proposal-review-conflict-carry:v1/, /fromProposalId/, /fromFileVersionId/,
+    /String\(this\.carriedDraft\.projectId\) === String\(this\.detail\.projectId\)/,
+    /上一版本未提交草稿/, /不会自动成为当前版本的有效批阅意见/,
+    /applyCarriedDraft\(\)/, /discardCarriedDraft\(\)/,
+    /this\.stashConflictCarry\(draft\)[\s\S]*this\.\$emit\('conflict'/
+  ]) assert.match(proposalSource, pattern)
 })
 
 test('W2 material center stays a management table and opens exact versions in the same-page fullscreen Reader', () => {
-  for (const marker of ['mc-summary', 'mc-tabs', 'mc-filters', 'mc-table-wrap', 'mc-pagebar', 'AppConfirmDialog', 'FileVersionTimeline']) {
-    assert.match(materialCenterSource, new RegExp(marker))
-  }
+  for (const marker of ['mc-summary', 'mc-tabs', 'mc-filters', 'mc-table-wrap', 'mc-pagebar', 'AppConfirmDialog', 'FileVersionTimeline']) assert.match(materialCenterSource, new RegExp(marker))
   assert.match(materialCenterSource, /AppDocumentViewer/)
   assert.match(materialCenterSource, /const readerState = reactive\(\{[\s\S]*visible: false,[\s\S]*row: null,[\s\S]*file: null,[\s\S]*versions: \[\],[\s\S]*filterSnapshot: null,[\s\S]*scrollSnapshot: null/)
   assert.match(materialCenterSource, /filterSnapshot: \{[\s\S]*tab: tab\.value,[\s\S]*page: page\.value,[\s\S]*filters: \{ \.\.\.filters \},[\s\S]*routeQuery: buildRouteQuery\(\)/)
@@ -120,8 +106,8 @@ test('W2 version bar labels history from server isCurrent rather than treating s
 })
 
 test('W2 workspace keeps transport and domain commands outside the public Viewer', () => {
-  assert.match(workspaceSource, /grid-template-columns:272px minmax\(0,1fr\) 340px/)
-  assert.match(workspaceSource, /grid-template-columns:220px minmax\(0,1fr\) 290px/)
+  assert.match(workspaceSource, /grid-template-columns:250px minmax\(0,1fr\) 318px/)
+  assert.match(workspaceSource, /grid-template-columns:205px minmax\(0,1fr\) 280px/)
   assert.match(workspaceSource, /@media\(max-width:1279px\)/)
   assert.match(workspaceSource, /max-width:100%/)
   assert.match(workspaceSource, /AppDocumentViewer/)
@@ -130,11 +116,16 @@ test('W2 workspace keeps transport and domain commands outside the public Viewer
   assert.doesNotMatch(workspaceSource, /issueMaterialTicket|fileSdk|reviewFinal|reviewProposal|submitReview|material-center\/files/)
 })
 
-test('W2 workspace puts security evidence and review controls before secondary summary chrome', () => {
+test('W2 workspace keeps command identity visible while folding technical evidence and duplicate subject chrome', () => {
+  assert.match(workspaceSource, /data-testid="review-command-contract"/)
+  assert.match(workspaceSource, /<details class="gd-review-workspace__evidence">/)
+  assert.match(workspaceSource, /<summary>文件证据与历史版本<\/summary>/)
+  assert.match(workspaceSource, /<details class="gd-review-workspace__subject">/)
+  assert.match(workspaceSource, /<summary>当前学生与业务状态<\/summary>/)
   const evidence = workspaceSource.indexOf('<FileEvidencePanel')
   const review = workspaceSource.indexOf('<slot name="review" />')
   const summary = workspaceSource.indexOf('<div class="gd-review-workspace__summary">')
   assert.ok(evidence >= 0 && review > evidence && summary > review)
-  assert.match(workspaceSource, /gd-page-intro:has\(\+ \.gd-business-view \.gd-review-workspace\)/)
   assert.match(workspaceSource, /gd-business-view:has\(\.gd-review-workspace\)>\.gd-scope-alert\.app-inline-alert/)
+  assert.doesNotMatch(workspaceSource, /gd-page-intro:has/)
 })
