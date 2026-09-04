@@ -23,7 +23,9 @@ jobs:
   browser-e2e:
     name: real browser / real API / isolated MySQL
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The production suite now includes the 24-page × five-viewport graduation audit.
+    # Keep the timeout above the observed setup + browser duration; a timeout is not a pass.
+    timeout-minutes: 90
 
     services:
       mysql:

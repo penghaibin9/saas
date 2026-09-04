@@ -1,0 +1,22 @@
+/*
+ * Graduation V6 · round 3 fold hardening.
+ * Keep the student operational table inside the 1366×768 / 125% fold without
+ * changing routes, APIs, batch semantics, permissions, or business state.
+ * The selectors are module-scoped; !important is intentional because the
+ * source component uses a later-injected scoped media rule at the same width.
+ */
+@media (min-width: 981px) and (max-width: 1180px) {
+  .gd-student-page {
+    gap: 8px !important;
+  }
+
+  .gd-student-page .gd-student-hero {
+    grid-template-columns: minmax(250px, 0.9fr) minmax(0, 1.45fr) !important;
+    gap: 10px !important;
+    padding: 10px 12px !important;
+  }
+
+  .gd-student-page .gd-student-hero__metrics {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  }
+}
