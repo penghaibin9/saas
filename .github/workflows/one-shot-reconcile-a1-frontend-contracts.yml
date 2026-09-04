@@ -1,0 +1,61 @@
+name: One-shot reconcile A1 frontend contracts
+
+on: [push]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-reconcile-a1-frontend-contracts
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    if: github.ref == 'refs/heads/feat/student-affairs-v6-a1-on-theme-shell'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/student-affairs-v6-a1-on-theme-shell
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Reconcile audited frontend contracts
+        run: python .github/scripts/reconcile_a1_frontend_contracts.py
+
+      - name: Regenerate frontend navigation surface authority
+        run: node scripts/generate-navigation-surface-contract.mjs
+
+      - name: Run focused frontend gates
+        working-directory: frontend
+        run: |
+          node --test \
+            tests/d1-dorm-professional-workspace-contract.test.mjs \
+            tests/navPlan.projection.test.mjs \
+            tests/navPlan.studentStatus.test.mjs \
+            tests/navigation-surface-contract.test.mjs \
+            tests/stage-b-orientation-capability-contract.test.mjs \
+            tests/studentAffairs.permissionCatalog.test.mjs \
+            tests/studentAffairs.v6WorkspaceNav.test.mjs \
+            tests/studentAffairs.v6ColorWorkbench.test.mjs
+
+      - name: Commit reconciled frontend contracts and self-remove
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            frontend/src/config/navPlan.js \
+            frontend/tests/d1-dorm-professional-workspace-contract.test.mjs \
+            frontend/tests/navPlan.projection.test.mjs \
+            frontend/tests/stage-b-orientation-capability-contract.test.mjs \
+            frontend/tests/studentAffairs.permissionCatalog.test.mjs \
+            shared/contracts/navigation-surface-contract.json
+          git rm .github/scripts/reconcile_a1_frontend_contracts.py
+          git rm .github/workflows/one-shot-reconcile-a1-frontend-contracts.yml
+          git commit -m "fix(frontend): reconcile A1 V6 navigation contracts"
+          git push origin HEAD:feat/student-affairs-v6-a1-on-theme-shell
