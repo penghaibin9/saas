@@ -7,30 +7,23 @@
   >
     <header class="gd-form-head">
       <button type="button" class="gd-form-back" :disabled="busy" @click="goBack">
-        <span aria-hidden="true">←</span>
-        {{ backLabel }}
+        <span aria-hidden="true">←</span>{{ backLabel }}
       </button>
       <div class="gd-form-head__titles">
         <span class="gd-form-head__eyebrow">{{ eyebrow }}</span>
         <h3 class="gd-form-head__title">{{ title }}</h3>
         <p v-if="subtitle" class="gd-form-head__subtitle">{{ subtitle }}</p>
       </div>
-      <div v-if="$slots.headerActions" class="gd-form-head__actions">
-        <slot name="headerActions" />
-      </div>
+      <span v-if="statusText" class="gd-form-status" :class="`is-${statusTone}`">{{ statusText }}</span>
+      <div v-if="$slots.headerActions" class="gd-form-head__actions"><slot name="headerActions" /></div>
     </header>
 
-    <div v-if="$slots.context" class="gd-form-context">
-      <slot name="context" />
-    </div>
+    <div v-if="$slots.context" class="gd-form-context"><slot name="context" /></div>
+    <p v-if="purpose" class="gd-form-purpose"><span>{{ purpose }}</span></p>
 
     <div class="gd-form-body" :class="{ 'gd-form-body--aside': hasAside }">
-      <main class="gd-form-content">
-        <slot />
-      </main>
-      <aside v-if="hasAside" class="gd-form-aside" aria-label="办理条件与下一步">
-        <slot name="aside" />
-      </aside>
+      <main class="gd-form-content"><slot /></main>
+      <aside v-if="hasAside" class="gd-form-aside" aria-label="办理条件与下一步"><slot name="aside" /></aside>
     </div>
 
     <footer v-if="$slots.footer" class="gd-form-footer">
@@ -40,67 +33,48 @@
   </section>
 
   <div v-else class="gd-form-page" :class="{ 'is-busy': busy }" :aria-busy="busy ? 'true' : 'false'">
-    <nav class="gd-form-page__trail" aria-label="毕业设计办理路径">
-      <button type="button" class="gd-form-back" :disabled="busy" @click="goBack">
-        <span aria-hidden="true">←</span>
-        {{ backLabel }}
-      </button>
-      <div class="gd-form-page__crumb">
-        <span>毕业设计中心</span>
-        <b aria-hidden="true">/</b>
-        <strong>{{ title }}</strong>
-      </div>
-      <span v-if="statusText" class="gd-form-status" :class="`is-${statusTone}`">{{ statusText }}</span>
-    </nav>
-
     <ModulePageShell
       :title="title"
       :subtitle="subtitle"
       :role-name="ctx.currentRole.roleName"
       :data-scope-name="ctx.dataScope.scopeName"
     >
-      <section class="gd-form-shell gd-form-shell--page" :class="{ 'has-aside': hasAside }">
-        <header v-if="purpose || $slots.headerActions" class="gd-form-purpose">
-          <div>
-            <span>{{ eyebrow }}</span>
-            <strong v-if="purpose">{{ purpose }}</strong>
-          </div>
-          <div v-if="$slots.headerActions" class="gd-form-head__actions">
-            <slot name="headerActions" />
-          </div>
-        </header>
+      <template #actions>
+        <button type="button" class="gd-form-back" :disabled="busy" @click="goBack">
+          <span aria-hidden="true">←</span>{{ backLabel }}
+        </button>
+        <span v-if="statusText" class="gd-form-status" :class="`is-${statusTone}`">{{ statusText }}</span>
+        <slot name="headerActions" />
+      </template>
 
-        <div v-if="$slots.context" class="gd-form-context">
-          <slot name="context" />
-        </div>
+      <section class="gd-form-shell gd-form-shell--page" :class="{ 'has-aside': hasAside }">
+        <div v-if="$slots.context" class="gd-form-context"><slot name="context" /></div>
+        <p v-if="purpose" class="gd-form-purpose">
+          <b>{{ eyebrow }}</b><span>{{ purpose }}</span>
+        </p>
 
         <div class="gd-form-body" :class="{ 'gd-form-body--aside': hasAside }">
-          <main class="gd-form-content">
-            <slot />
-          </main>
-          <aside v-if="hasAside" class="gd-form-aside" aria-label="办理条件与下一步">
-            <slot name="aside" />
-          </aside>
+          <main class="gd-form-content"><slot /></main>
+          <aside v-if="hasAside" class="gd-form-aside" aria-label="办理条件与下一步"><slot name="aside" /></aside>
         </div>
-      </section>
 
-      <AppStickyFooter v-if="$slots.footer" raised>
-        <span v-if="busy" class="gd-form-footer__busy" role="status">正在提交，请勿切换页面或重复点击</span>
-        <slot name="footer" />
-      </AppStickyFooter>
+        <footer v-if="$slots.footer" class="gd-form-footer gd-form-footer--sticky">
+          <span v-if="busy" class="gd-form-footer__busy" role="status">正在提交，请勿切换页面或重复点击</span>
+          <slot name="footer" />
+        </footer>
+      </section>
     </ModulePageShell>
   </div>
 </template>
 
 <script>
 import { ModulePageShell } from '@/components/business'
-import { AppStickyFooter } from '@/components/common'
 
 const SAFE_PREFIX = '/admin/graduation/'
 
 export default {
   name: 'GraduationFormPageShell',
-  components: { ModulePageShell, AppStickyFooter },
+  components: { ModulePageShell },
   emits: ['blocked-back'],
   props: {
     ctx: { type: Object, required: true },
@@ -117,7 +91,6 @@ export default {
     backLabel: { type: String, default: '返回列表' },
     backTo: { type: String, default: '' },
     busy: { type: Boolean, default: false },
-    /** page = 独立整页；inline = 嵌在列表筛选栏下方 */
     layout: {
       type: String,
       default: 'page',
@@ -129,9 +102,7 @@ export default {
       return Boolean(this.$slots.aside)
     },
     safeReturnTo() {
-      const raw = Array.isArray(this.$route.query.returnTo)
-        ? this.$route.query.returnTo[0]
-        : this.$route.query.returnTo
+      const raw = Array.isArray(this.$route.query.returnTo) ? this.$route.query.returnTo[0] : this.$route.query.returnTo
       const value = String(raw || '').trim()
       return value.startsWith(SAFE_PREFIX) ? value : ''
     },
@@ -156,65 +127,90 @@ export default {
 @import '@/styles/module-page.css';
 
 .gd-form-page {
-  display: grid;
   min-width: 0;
-  gap: 10px;
   min-height: 100%;
 }
 
-.gd-form-page__trail {
-  display: flex;
-  align-items: center;
+.gd-form-shell {
   min-width: 0;
-  gap: 12px;
-  padding: 10px 14px;
-  border: 1px solid var(--border-light, #e2e8f0);
-  border-radius: 12px;
+  overflow: visible;
+  border: 1px solid var(--border-light, #e1e8f2);
+  border-radius: 11px;
   background: var(--bg-card, #fff);
-  box-shadow: 0 4px 16px rgba(15, 40, 90, .04);
+  box-shadow: 0 6px 20px rgba(15, 40, 90, .045);
 }
 
-.gd-form-page__crumb {
+.gd-form-shell--inline {
+  margin-top: 2px;
+  overflow: hidden;
+}
+
+.gd-form-head {
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 7px;
-  color: var(--text-tertiary, #64748b);
-  font-size: 12px;
+  gap: 10px;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--border-light, #e8edf5);
+  background: var(--bg-subtle, #f8fafc);
 }
 
-.gd-form-page__crumb strong {
-  overflow: hidden;
+.gd-form-head__titles {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+}
+
+.gd-form-head__eyebrow {
+  color: var(--primary-600, #2563eb);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .06em;
+}
+
+.gd-form-head__title {
+  margin: 0;
   color: var(--text-primary, #0f172a);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.gd-form-head__subtitle {
+  margin: 1px 0 0;
+  overflow: hidden;
+  color: var(--text-tertiary, #64748b);
+  font-size: 11px;
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.gd-form-page__crumb b {
-  color: var(--border-base, #cbd5e1);
-  font-weight: 400;
+.gd-form-head__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
 }
 
 .gd-form-back {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 5px;
-  min-height: 34px;
-  padding: 0 11px;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 10px;
   border: 1px solid var(--border-base, #d7deea);
   border-radius: 8px;
   background: var(--bg-card, #fff);
   color: var(--text-secondary, #475569);
   cursor: pointer;
   font-size: 12px;
-  transition: border-color .15s ease, color .15s ease, box-shadow .15s ease;
 }
 
 .gd-form-back:hover:not(:disabled) {
   border-color: var(--primary-300, #93c5fd);
   color: var(--primary-700, #1d4ed8);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, .09);
 }
 
 .gd-form-back:disabled {
@@ -223,10 +219,10 @@ export default {
 }
 
 .gd-form-status {
-  margin-left: auto;
-  padding: 4px 9px;
+  flex: none;
+  padding: 4px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 650;
   white-space: nowrap;
 }
@@ -236,109 +232,52 @@ export default {
 .gd-form-status.is-warning { background: #fff7ed; color: #b45309; }
 .gd-form-status.is-danger { background: #fef2f2; color: #b91c1c; }
 
-.gd-form-shell {
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--border-light, #e1e8f2);
-  border-radius: 14px;
-  background: var(--bg-card, #fff);
-  box-shadow: 0 10px 30px rgba(15, 40, 90, .06);
-}
-
-.gd-form-shell--inline {
-  margin-top: 2px;
-}
-
-.gd-form-head {
-  display: flex;
-  align-items: flex-start;
-  min-width: 0;
-  gap: 14px;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--border-light, #e8edf5);
-  background: linear-gradient(135deg, #f7fbff 0%, #fff 76%);
-}
-
-.gd-form-head__titles {
-  display: grid;
-  flex: 1;
-  min-width: 0;
-  gap: 2px;
-}
-
-.gd-form-head__eyebrow,
-.gd-form-purpose span {
-  color: var(--primary-600, #2563eb);
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: .08em;
-}
-
-.gd-form-head__title {
-  margin: 0;
-  color: var(--text-primary, #0f172a);
-  font-size: 18px;
-  line-height: 1.35;
-}
-
-.gd-form-head__subtitle {
-  margin: 2px 0 0;
-  color: var(--text-secondary, #64748b);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.gd-form-head__actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-}
-
-.gd-form-purpose {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-  gap: 16px;
-  padding: 11px 16px;
-  border-bottom: 1px solid var(--border-light, #e8edf5);
-  background: linear-gradient(135deg, #f7fbff 0%, #fff 76%);
-}
-
-.gd-form-purpose > div:first-child {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.gd-form-purpose strong {
-  color: var(--text-primary, #0f172a);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
 .gd-form-context {
   display: flex;
   align-items: stretch;
   min-width: 0;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: 6px;
+  padding: 7px 11px;
   overflow-x: auto;
   border-bottom: 1px solid var(--border-light, #edf1f7);
   background: var(--bg-subtle, #f8fafc);
 }
 
+.gd-form-purpose {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light, #edf1f7);
+  color: var(--text-secondary, #475569);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.gd-form-purpose b {
+  flex: none;
+  color: var(--primary-700, #1d4ed8);
+  font-size: 9px;
+  letter-spacing: .05em;
+}
+
+.gd-form-purpose span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .gd-form-body {
   min-width: 0;
-  padding: 18px;
+  padding: 13px;
 }
 
 .gd-form-body--aside {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);
+  grid-template-columns: minmax(0, 1fr) minmax(225px, 270px);
   align-items: start;
-  gap: 16px;
+  gap: 12px;
 }
 
 .gd-form-content,
@@ -348,25 +287,34 @@ export default {
 
 .gd-form-aside {
   position: sticky;
-  top: 12px;
+  top: 10px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .gd-form-footer {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  min-height: 58px;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 9px 13px;
   border-top: 1px solid var(--border-light, #e8edf5);
-  background: var(--bg-subtle, #f8fafc);
+  background: rgba(255, 255, 255, .97);
+}
+
+.gd-form-footer--sticky {
+  position: sticky;
+  bottom: 0;
+  box-shadow: 0 -5px 14px rgba(15, 40, 90, .055);
 }
 
 .gd-form-footer__busy {
   margin-right: auto;
   color: var(--warning-700, #a16207);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .is-busy .gd-form-body {
@@ -378,14 +326,14 @@ export default {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   min-width: 0;
-  gap: 14px 16px;
+  gap: 11px 13px;
 }
 
 :deep(.ie-fld) {
   display: grid;
   align-content: start;
   min-width: 0;
-  gap: 6px;
+  gap: 5px;
   margin: 0;
 }
 
@@ -395,9 +343,9 @@ export default {
 
 :deep(.ie-lbl) {
   color: var(--text-secondary, #475569);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 650;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 :deep(.ie-lbl i) {
@@ -408,22 +356,21 @@ export default {
 :deep(.ie-in) {
   width: 100%;
   min-width: 0;
-  min-height: 40px;
+  min-height: 38px;
   box-sizing: border-box;
-  padding: 8px 10px;
+  padding: 7px 9px;
   border: 1px solid var(--border-base, #cfd8e6);
   border-radius: 8px;
   outline: none;
   background: var(--bg-card, #fff);
   color: var(--text-primary, #0f172a);
-  font-size: 13px;
-  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+  font-size: 12px;
 }
 
 :deep(textarea.ie-in) {
-  min-height: 88px;
+  min-height: 78px;
   resize: vertical;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 :deep(.ie-in:focus) {
@@ -439,187 +386,174 @@ export default {
 :deep(.ie-hint) {
   margin: 0;
   color: var(--text-tertiary, #64748b);
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 :deep(.ie-err) {
   grid-column: 1 / -1;
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid var(--danger-200, #fecaca);
   border-radius: 8px;
   background: var(--danger-50, #fef2f2);
   color: var(--danger-700, #b91c1c);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
 }
 
 :deep(.gd-form-section) {
   grid-column: 1 / -1;
-  display: grid;
-  min-width: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px 16px;
-  padding: 16px;
+  overflow: hidden;
   border: 1px solid var(--border-light, #e2e8f0);
-  border-radius: 12px;
+  border-radius: 9px;
   background: var(--bg-card, #fff);
 }
 
 :deep(.gd-form-section__head) {
-  grid-column: 1 / -1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border-light, #edf1f7);
+  gap: 10px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--border-light, #e8edf5);
+  background: var(--bg-subtle, #f8fafc);
 }
 
-:deep(.gd-form-section__head > div) {
+:deep(.gd-form-section__head > div:first-child) {
   display: grid;
-  min-width: 0;
-  gap: 2px;
+  gap: 1px;
 }
 
 :deep(.gd-form-section__head span) {
   color: var(--primary-600, #2563eb);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 750;
-  letter-spacing: .06em;
+  letter-spacing: .05em;
 }
 
 :deep(.gd-form-section__head strong) {
   color: var(--text-primary, #0f172a);
-  font-size: 14px;
+  font-size: 12px;
 }
 
 :deep(.gd-form-section__head small) {
   color: var(--text-tertiary, #64748b);
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: 9px;
+  line-height: 1.35;
 }
 
-:deep(.gd-form-section__full) {
-  grid-column: 1 / -1;
+:deep(.gd-form-section > .ie-fld),
+:deep(.gd-form-section > .ie-form),
+:deep(.gd-form-section > .gd-form-grid) {
+  margin: 0 11px;
+}
+
+:deep(.gd-form-section > .ie-fld:first-of-type),
+:deep(.gd-form-section > .ie-form:first-of-type),
+:deep(.gd-form-section > .gd-form-grid:first-of-type) {
+  margin-top: 11px;
+}
+
+:deep(.gd-form-section > .ie-fld:last-child),
+:deep(.gd-form-section > .ie-form:last-child),
+:deep(.gd-form-section > .gd-form-grid:last-child) {
+  margin-bottom: 11px;
 }
 
 :deep(.gd-form-aside-card) {
   display: grid;
-  gap: 9px;
-  padding: 14px;
+  gap: 5px;
+  padding: 10px;
   border: 1px solid var(--border-light, #e2e8f0);
-  border-radius: 11px;
+  border-radius: 9px;
   background: var(--bg-card, #fff);
 }
 
 :deep(.gd-form-aside-card > span) {
-  color: var(--primary-600, #2563eb);
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: .06em;
+  color: var(--text-tertiary, #64748b);
+  font-size: 9px;
 }
 
 :deep(.gd-form-aside-card > strong) {
   color: var(--text-primary, #0f172a);
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 11px;
 }
 
 :deep(.gd-form-aside-card > p) {
   margin: 0;
-  color: var(--text-secondary, #64748b);
-  font-size: 11px;
-  line-height: 1.6;
+  color: var(--text-secondary, #475569);
+  font-size: 9px;
+  line-height: 1.45;
 }
 
 :deep(.gd-form-checklist) {
   display: grid;
-  gap: 7px;
-  margin: 0;
+  gap: 5px;
+  margin: 2px 0 0;
   padding: 0;
   list-style: none;
 }
 
 :deep(.gd-form-checklist li) {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  color: var(--text-secondary, #475569);
-  font-size: 11px;
-  line-height: 1.45;
+  position: relative;
+  padding-left: 17px;
+  color: var(--text-tertiary, #64748b);
+  font-size: 9px;
 }
 
 :deep(.gd-form-checklist li::before) {
-  content: '○';
-  flex: none;
-  color: var(--text-tertiary, #94a3b8);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  display: grid;
+  width: 13px;
+  height: 13px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--gray-100, #f1f5f9);
+  content: '·';
+}
+
+:deep(.gd-form-checklist li.is-ready) {
+  color: var(--success-700, #047857);
 }
 
 :deep(.gd-form-checklist li.is-ready::before) {
+  background: var(--success-50, #ecfdf5);
   content: '✓';
-  color: var(--success-600, #16a34a);
-  font-weight: 800;
 }
 
-@media (max-width: 1080px) {
-  .gd-form-body--aside {
-    grid-template-columns: minmax(0, 1fr) 250px;
-  }
-}
-
-@media (max-width: 860px) {
+@media (max-width: 1060px) {
   .gd-form-body--aside {
     grid-template-columns: 1fr;
   }
-
   .gd-form-aside {
     position: static;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 640px) {
-  .gd-form-page__crumb,
-  .gd-form-status {
-    display: none;
+@media (max-width: 760px) {
+  .gd-form-head__subtitle,
+  .gd-form-purpose span {
+    white-space: normal;
   }
-
-  .gd-form-page__trail,
-  .gd-form-head {
-    padding: 10px 12px;
-  }
-
-  .gd-form-head {
+  .gd-form-context {
     flex-wrap: wrap;
+    overflow: visible;
   }
-
-  .gd-form-head__actions {
-    width: 100%;
-  }
-
   .gd-form-body {
-    padding: 12px;
+    padding: 10px;
   }
-
-  .gd-form-aside,
-  :deep(.ie-form),
-  :deep(.gd-form-section) {
+  :deep(.ie-form) {
     grid-template-columns: 1fr;
   }
-
-  :deep(.ie-fld--full),
-  :deep(.gd-form-section),
-  :deep(.gd-form-section__head),
-  :deep(.gd-form-section__full) {
-    grid-column: 1;
+  .gd-form-aside {
+    grid-template-columns: 1fr;
   }
-
   .gd-form-footer {
     flex-wrap: wrap;
   }
-
   .gd-form-footer__busy {
     width: 100%;
   }
