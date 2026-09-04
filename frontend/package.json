@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{js,vue,css}\"",
-    "test": "node --test"
+    "test": "node scripts/run-node-tests-with-evidence.mjs"
   },
   "dependencies": {
     "@vant/area-data": "^2.1.0",
