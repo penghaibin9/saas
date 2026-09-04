@@ -47,8 +47,8 @@ test('U3 keeps the five-second decision surface in the shared Reader workspace',
   assert.match(workspace, /gd-review-workspace__business-bar/)
   assert.match(workspace, /gd-review-workspace__conflict/)
   assert.match(workspace, /FileEvidencePanel/)
-  assert.match(workspace, /grid-template-columns:272px minmax\(0,1fr\) 340px/)
-  assert.match(workspace, /grid-template-columns:220px minmax\(0,1fr\) 290px/)
+  assert.match(workspace, /grid-template-columns:250px minmax\(0,1fr\) 318px/)
+  assert.match(workspace, /grid-template-columns:205px minmax\(0,1fr\) 280px/)
   assert.match(workspace, /gd-review-workspace\.is-narrow\{grid-template-columns:1fr\}/)
 })
 
@@ -56,11 +56,12 @@ test('U3 makes record, expectedVersion, canonical FileVersion and safety gate vi
   assert.match(source, /class="fr-selected-summary"/)
   assert.match(source, /提交中，已锁定对象与版本/)
   assert.match(workspace, /data-testid="review-command-contract"/)
-  assert.match(workspace, />业务版本</)
-  assert.match(workspace, />FileVersion</)
-  assert.match(workspace, />安全门</)
+  assert.match(workspace, />提交版本</)
+  assert.match(workspace, />文件版本</)
+  assert.match(workspace, />文件状态</)
   assert.match(workspace, /expectedVersion \?\? '—'/)
   assert.match(workspace, /canonicalFileVersionId \?\? '—'/)
+  assert.match(workspace, /reviewReady && !versionConflict/)
 })
 
 test('U3 locks every context-changing interaction while a canonical command is submitting', () => {
