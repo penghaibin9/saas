@@ -86,18 +86,23 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     })
     await page.goto(`${MINI_BASE}/#/pages/teacher/graduation-guide/index?${taskQuery}`)
 
-    await expect(page.getByText('成果待批阅', { exact: true })).toBeVisible({ timeout: 20_000 })
-    const studentCard = page.locator('.gg').filter({ hasText: fixture.topicTitle }).first()
-    await expect(studentCard, 'teacher miniapp must receive the exact pending thesis').toBeVisible({ timeout: 20_000 })
-    await studentCard.getByRole('button', { name: '去批阅成果' }).click()
-
+    // An exact task deep link intentionally bypasses the list page and opens the
+    // frozen review record directly. The old “成果待批阅” list-title assertion
+    // contradicted the task-lock architecture and made a correct handoff fail.
+    await expect(page.getByText(/成果批阅 · 第 1 \/ 1 条/).first()).toBeVisible({ timeout: 20_000 })
     const review = page.locator('.rv__content')
     await expect(review).toBeVisible({ timeout: 20_000 })
     await expect(review).toContainText(fixture.topicTitle)
+    await expect(page.locator('.rv__batch')).toContainText(fixture.batchName)
     const versionRow = page.locator('.rv__att').filter({ hasText: `FileVersion ${fileVersionId}` }).first()
     await expect(versionRow, 'teacher miniapp must show the same canonical FileVersion as teacher PC').toBeVisible({ timeout: 20_000 })
     await expect(page.locator('.rv__foot').getByRole('button', { name: '通过' })).toBeEnabled()
     await expect(page.locator('.rv__foot').getByRole('button', { name: '退回' })).toBeEnabled()
+
+    const exactUrl = page.url()
+    for (const [key, value] of taskQuery.entries()) {
+      expect(decodeURIComponent(exactUrl), `teacher miniapp exact task URL must retain ${key}`).toContain(`${key}=${value}`)
+    }
 
     const ticketPromise = page.waitForResponse((response) =>
       response.request().method() === 'POST'
@@ -146,7 +151,8 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
       recordId,
       materialVersion,
       fileVersionId,
-      scenarioFactory: 'graduation-scenario-fixture.ensureFinalPending'
+      scenarioFactory: 'graduation-scenario-fixture.ensureFinalPending',
+      miniappEntry: 'exact-task-direct-review'
     }, null, 2), 'utf8'))
     await testInfo.attach('cross-client-thesis-identity', { path: evidence, contentType: 'application/json' })
   })

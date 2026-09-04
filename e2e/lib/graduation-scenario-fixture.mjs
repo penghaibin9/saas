@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { expect } from './observability.mjs'
 import { config } from './config.mjs'
+import { items } from './api-fixture.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 import { StaffGraduationPage, StudentGraduationPage } from '../pages/graduation.page.mjs'
 
@@ -200,4 +201,177 @@ export async function expectRenderedPdfCanvas(page) {
   expect(size.height).toBeGreaterThan(100)
   expect(size.cssWidth).toBeGreaterThan(100)
   expect(size.cssHeight).toBeGreaterThan(100)
+}
+
+function graduationStudentEntity(data) {
+  return data?.student || data || null
+}
+
+function dateTimeAfterDays(days) {
+  const date = new Date(Date.now() + Number(days || 0) * 24 * 60 * 60 * 1000)
+  return date.toISOString().slice(0, 16).replace('T', ' ')
+}
+
+async function ensureScenarioMentor(adminApi, account, {
+  teacherName,
+  title = '副教授',
+  researchDirection = '毕业设计评阅与答辩'
+}) {
+  const read = async () => items(await adminApi.get('/graduation/gd-mentors', {
+    keyword: account.username,
+    page: 1,
+    pageSize: 200
+  })).find((row) => String(row.teacherNo || '') === String(account.username))
+
+  let mentor = await read()
+  if (!mentor) {
+    mentor = await adminApi.post('/graduation/gd-mentors', {
+      teacherNo: account.username,
+      teacherName,
+      mentorType: 'INTERNAL',
+      title,
+      researchDirection,
+      maxCapacity: 30,
+      submitReview: true,
+      remark: 'Playwright shared graduation role fixture'
+    })
+  }
+
+  const status = String(mentor.qualificationStatus || mentor.reviewStatus || '').toUpperCase()
+  if (!['QUALIFIED', 'APPROVED'].includes(status)) {
+    try {
+      await adminApi.post(`/graduation/gd-mentors/${mentor.id}/review`, {
+        action: 'APPROVE',
+        comment: 'Playwright shared graduation role fixture approved'
+      })
+    } catch (error) {
+      if (!/已审核|无需审核|状态|APPROVED|QUALIFIED/i.test(String(error?.message || ''))) throw error
+    }
+    mentor = await read() || mentor
+  }
+
+  const latestStatus = String(mentor.qualificationStatus || mentor.reviewStatus || '').toUpperCase()
+  if (!['QUALIFIED', 'APPROVED'].includes(latestStatus)) {
+    throw new Error(`Graduation mentor ${account.username} did not read back as approved; got ${latestStatus || 'EMPTY'}.`)
+  }
+  return mentor
+}
+
+/**
+ * Build one stable defense context for the dedicated judge account. The helper
+ * owns the full relation graph: authenticated account -> gd mentor -> published
+ * defense group -> exact graduation student. Tests must not use a mentor/admin
+ * account merely because it can render the page shell.
+ */
+export async function ensureDefenseScoringContext(adminApi, fixture) {
+  const expert = await ensureScenarioMentor(adminApi, config.defenseExpert, {
+    teacherName: 'E2E答辩专家A',
+    title: '副教授'
+  })
+  const chair = await ensureScenarioMentor(adminApi, config.defenseChair, {
+    teacherName: 'E2E答辩专家B',
+    title: '教授'
+  })
+  const secretary = await ensureScenarioMentor(adminApi, config.defenseSecretary, {
+    teacherName: 'E2E学院秘书',
+    title: '讲师'
+  })
+
+  const groupName = `Playwright 评委工作区 ${fixture.runId}`
+  const readGroup = async () => items(await adminApi.get('/graduation/defense-groups', {
+    batchId: fixture.batchId,
+    keyword: groupName,
+    page: 1,
+    pageSize: 200
+  })).find((row) => String(row.groupName || '') === groupName)
+
+  let group = await readGroup()
+  if (!group) {
+    group = await adminApi.post('/graduation/defense-groups', {
+      groupName,
+      batchId: Number(fixture.batchId),
+      defenseDate: dateTimeAfterDays(14),
+      location: '实训楼 A302',
+      chair: chair.teacherName || 'E2E答辩专家B',
+      chairMentorId: Number(chair.id),
+      members: [expert.teacherName || 'E2E答辩专家A'],
+      memberMentorIds: [Number(expert.id)],
+      secretary: secretary.teacherName || 'E2E学院秘书',
+      secretaryMentorId: Number(secretary.id)
+    }, { batchId: fixture.batchId })
+  }
+
+  let student = graduationStudentEntity(await adminApi.get(`/graduation/gd-students/${fixture.gdStudentId}`))
+  if (String(student?.defenseGroupId || '') !== String(group.id)) {
+    await adminApi.post(`/graduation/defense-groups/${group.id}/assign`, {
+      studentIds: [String(fixture.gdStudentId)]
+    }, { batchId: fixture.batchId })
+    student = graduationStudentEntity(await adminApi.get(`/graduation/gd-students/${fixture.gdStudentId}`))
+  }
+  if (String(student?.defenseGroupId || '') !== String(group.id)) {
+    throw new Error(`Defense group ${group.id} did not read back on student ${fixture.gdStudentId}.`)
+  }
+
+  group = await adminApi.get(`/graduation/defense-groups/${group.id}`, { batchId: fixture.batchId })
+  if (!group.published) {
+    await adminApi.post(`/graduation/defense-groups/${group.id}/publish`, {}, { batchId: fixture.batchId })
+    group = await adminApi.get(`/graduation/defense-groups/${group.id}`, { batchId: fixture.batchId })
+  }
+  if (!group.published) throw new Error(`Defense group ${group.id} did not read back as published.`)
+
+  const seats = group.memberDetails || group.members || []
+  const expertIsSeated = seats.some((seat) => {
+    if (typeof seat === 'string') return seat === (expert.teacherName || 'E2E答辩专家A')
+    return String(seat.mentorId || '') === String(expert.id)
+      || String(seat.name || seat.teacherName || '') === String(expert.teacherName || 'E2E答辩专家A')
+  })
+  if (!expertIsSeated) throw new Error(`Defense expert ${config.defenseExpert.username} is not on group ${group.id}.`)
+
+  return {
+    ...fixture,
+    defenseGroupId: String(group.id),
+    defenseExpertMentorId: String(expert.id),
+    defenseExpertName: expert.teacherName || 'E2E答辩专家A'
+  }
+}
+
+/**
+ * Archive fixtures are read-before-write and server-readback. The browser must
+ * never navigate to the archive queue based only on a successful POST response.
+ */
+export async function ensureArchiveProjection(adminApi, fixture, { timeoutMs = 30_000 } = {}) {
+  const query = {
+    batchId: fixture.batchId,
+    keyword: fixture.studentNo,
+    page: 1,
+    pageSize: 200
+  }
+  const read = async () => items(await adminApi.get('/graduation/gd-archives', query)).find((row) =>
+    String(row.gdStudentId || '') === String(fixture.gdStudentId)
+      || String(row.studentNo || '') === String(fixture.studentNo)
+  )
+
+  let archive = await read()
+  if (!archive) {
+    try {
+      await adminApi.post(`/graduation/gd-archives/${fixture.gdStudentId}/generate`, {}, {
+        batchId: fixture.batchId
+      })
+    } catch (error) {
+      if (!/已生成|重复|存在|DATA_CONFLICT/i.test(String(error?.message || ''))) throw error
+    }
+  }
+
+  const deadline = Date.now() + timeoutMs
+  while (!archive && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    archive = await read()
+  }
+  if (!archive) {
+    throw new Error(`Archive projection did not read back for gdStudentId=${fixture.gdStudentId}, batchId=${fixture.batchId}.`)
+  }
+  if (archive.batchId != null && String(archive.batchId) !== String(fixture.batchId)) {
+    throw new Error(`Archive projection crossed batch boundary: expected ${fixture.batchId}, got ${archive.batchId}.`)
+  }
+  return archive
 }

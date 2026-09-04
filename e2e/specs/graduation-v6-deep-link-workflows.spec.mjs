@@ -2,7 +2,8 @@ import fs from 'node:fs/promises'
 
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
-import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { ensureDefenseScoringContext } from '../lib/graduation-scenario-fixture.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
 
 async function dismissGuide(page) {
@@ -56,7 +57,12 @@ function route(base, path, params = {}) {
 
 test.describe.serial('V6 · graduation deep-link create workflows', () => {
   let fixture
-  test.beforeAll(async () => { fixture = await prepareGraduationFixture() })
+  let adminApi
+
+  test.beforeAll(async () => {
+    fixture = await prepareGraduationFixture()
+    adminApi = await loginApi(config.sandboxAdmin)
+  })
 
   test('batch create uses accessible labels and persists through the real API', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 900 })
@@ -151,11 +157,14 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
   })
 
   test('defense score locks the authenticated judge and preserves return context', async ({ page }, testInfo) => {
+    const scoringFixture = await ensureDefenseScoringContext(adminApi, fixture)
     await page.setViewportSize({ width: 1440, height: 900 })
-    await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
-    const returnTo = `/admin/graduation/defense-scoring?batchId=${fixture.batchId}&studentId=${fixture.gdStudentId}&panel=defense&queue=mine`
-    await page.goto(route(config.staffBaseUrl, `/admin/graduation/defense-grade/${fixture.gdStudentId}/form`, {
-      formKey: 'scoreEntry', batchId: fixture.batchId, studentId: fixture.gdStudentId,
+    const login = new StaffLoginPage(page, config.staffBaseUrl)
+    await login.login(config.defenseExpert)
+    await expect(page.locator('.uchip__role')).toContainText(/答辩专家|评委|GD_DEFENSE_EXPERT/)
+    const returnTo = `/admin/graduation/defense-scoring?batchId=${scoringFixture.batchId}&studentId=${scoringFixture.gdStudentId}&panel=defense&queue=mine`
+    await page.goto(route(config.staffBaseUrl, `/admin/graduation/defense-grade/${scoringFixture.gdStudentId}/form`, {
+      formKey: 'scoreEntry', batchId: scoringFixture.batchId, studentId: scoringFixture.gdStudentId,
       panel: 'defense', queue: 'mine', returnRoute: 'graduation-defense-scoring', returnTo
     }))
     await dismissGuide(page)
@@ -170,8 +179,9 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
     await expect(actor).toContainText('当前登录评委')
     await expect(actor).toContainText('身份已锁定')
     await expect(actor).toContainText('评分人来自登录身份与答辩组席位，不能在页面中修改。')
+    await expect(actor).toContainText(scoringFixture.defenseExpertName)
     await expect(page.getByLabel(/评委姓名/)).toHaveCount(0)
-    await expect(page.locator('.dgf-context')).toContainText(fixture.studentNo)
+    await expect(page.locator('.dgf-context')).toContainText(scoringFixture.studentNo)
 
     await page.getByLabel(/答辩评分/).fill('88')
     await expect(page.getByRole('button', { name: '提交本人评分', exact: true })).toBeEnabled()
@@ -180,8 +190,8 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
 
     await page.getByRole('button', { name: '取消', exact: true }).click()
     await expect(page).toHaveURL(/\/admin\/graduation\/defense-scoring/)
-    await expect(page).toHaveURL(new RegExp(`batchId=${fixture.batchId}`))
-    await expect(page).toHaveURL(new RegExp(`studentId=${fixture.gdStudentId}`))
+    await expect(page).toHaveURL(new RegExp(`batchId=${scoringFixture.batchId}`))
+    await expect(page).toHaveURL(new RegExp(`studentId=${scoringFixture.gdStudentId}`))
     await expect(page).toHaveURL(/queue=mine/)
   })
 
@@ -219,9 +229,9 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
 
     const summaryPath = testInfo.outputPath('graduation-v6-deep-link-workflows.json')
     await fs.writeFile(summaryPath, JSON.stringify({
-      contract: 'graduation-v6-deep-link-workflows-v3', head: process.env.GITHUB_SHA || 'local',
+      contract: 'graduation-v6-deep-link-workflows-v4', head: process.env.GITHUB_SHA || 'local',
       batchId: fixture.batchId, createdGroupId: groupId,
-      workflows: ['batch-create', 'student-create-empty-guard', 'topic-draft-create', 'defense-score-auth-actor', 'defense-group-create-to-assignment']
+      workflows: ['batch-create', 'student-create-empty-guard', 'topic-draft-create', 'defense-score-real-role-and-seat', 'defense-group-create-to-assignment']
     }, null, 2), 'utf8')
     await testInfo.attach('graduation-v6-deep-link-workflows', { path: summaryPath, contentType: 'application/json' })
   })
