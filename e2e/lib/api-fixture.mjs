@@ -103,12 +103,15 @@ function academicYear() {
   return `${year}-${year + 1}`
 }
 
+function expectedStateError(error, patterns) {
+  const message = String(error?.message || '')
+  return patterns.some((pattern) => pattern.test(message))
+}
+
 async function findStudentProfile(api, studentNo) {
   const data = await api.get('/students', { keyword: studentNo, page: 1, pageSize: 50 })
   const row = items(data).find((item) => String(item.studentNo || item.loginName || '') === studentNo)
-  if (!row) {
-    throw new Error(`Student profile ${studentNo} is not visible to the school-wide E2E administrator.`)
-  }
+  if (!row) throw new Error(`Student profile ${studentNo} is not visible to the school-wide E2E administrator.`)
   return row
 }
 
@@ -129,29 +132,40 @@ async function ensureBatch(api, runId) {
     })
   }
 
-  if (String(batch.status || '').toUpperCase() !== 'RUNNING') {
-    await api.post(`/graduation/batches/${batch.id}/rules`, {
-      rules: {
-        score: { advisorWeight: 0.4, reviewerWeight: 0.3, defenseWeight: 0.3 },
-        plagiarism: { thresholdPercent: 20, mustPassToDefense: true }
-      }
-    })
-    await api.post(`/graduation/batches/${batch.id}/stages`, {
-      stages: [
-        { code: 'TOPIC', name: '选题', startDate: isoDay(-45), endDate: isoDay(-1) },
-        { code: 'PROPOSAL', name: '开题', startDate: isoDay(0), endDate: isoDay(30) },
-        { code: 'MIDTERM', name: '中期', startDate: isoDay(31), endDate: isoDay(60) },
-        { code: 'SUBMISSION', name: '成果', startDate: isoDay(61), endDate: isoDay(90) },
-        { code: 'PLAGIARISM', name: '查重', startDate: isoDay(91), endDate: isoDay(100) },
-        { code: 'REVIEW', name: '评阅', startDate: isoDay(101), endDate: isoDay(110) },
-        { code: 'DEFENSE', name: '答辩', startDate: isoDay(111), endDate: isoDay(125) },
-        { code: 'GRADE', name: '成绩', startDate: isoDay(126), endDate: isoDay(145) }
-      ]
-    })
-    const activated = await api.post(`/graduation/batches/${batch.id}/activate`, {})
-    batch = { ...batch, ...(activated || {}), status: 'RUNNING' }
+  const status = String(batch.status || 'DRAFT').toUpperCase()
+  if (status === 'RUNNING') return batch
+  if (!['DRAFT', 'UNCONFIGURED'].includes(status)) {
+    throw new Error(`E2E graduation batch ${batchNo} is ${status}; retries must not reopen a closed or archived batch.`)
   }
-  return batch
+
+  await api.post(`/graduation/batches/${batch.id}/rules`, {
+    rules: {
+      score: { advisorWeight: 0.4, reviewerWeight: 0.3, defenseWeight: 0.3 },
+      plagiarism: { thresholdPercent: 20, mustPassToDefense: true }
+    }
+  })
+  await api.post(`/graduation/batches/${batch.id}/stages`, {
+    stages: [
+      { code: 'TOPIC', name: '选题', startDate: isoDay(-45), endDate: isoDay(-1) },
+      { code: 'PROPOSAL', name: '开题', startDate: isoDay(0), endDate: isoDay(30) },
+      { code: 'MIDTERM', name: '中期', startDate: isoDay(31), endDate: isoDay(60) },
+      { code: 'SUBMISSION', name: '成果', startDate: isoDay(61), endDate: isoDay(90) },
+      { code: 'PLAGIARISM', name: '查重', startDate: isoDay(91), endDate: isoDay(100) },
+      { code: 'REVIEW', name: '评阅', startDate: isoDay(101), endDate: isoDay(110) },
+      { code: 'DEFENSE', name: '答辩', startDate: isoDay(111), endDate: isoDay(125) },
+      { code: 'GRADE', name: '成绩', startDate: isoDay(126), endDate: isoDay(145) }
+    ]
+  })
+  const activated = await api.post(`/graduation/batches/${batch.id}/activate`, {})
+  return { ...batch, ...(activated || {}), status: 'RUNNING' }
+}
+
+function graduationStudentEntity(data) {
+  return data?.student || data || null
+}
+
+async function readGdStudent(api, recordId) {
+  return graduationStudentEntity(await api.get(`/graduation/gd-students/${recordId}`))
 }
 
 async function ensureGdStudent(api, batchId, profile) {
@@ -166,10 +180,25 @@ async function ensureGdStudent(api, batchId, profile) {
       remark: 'Playwright isolated fixture'
     })
   }
-  await api.post(`/graduation/gd-students/${row.id}/eligibility`, {
-    status: 'QUALIFIED', reason: 'Playwright 独立测试库资格准备'
-  })
-  return row
+
+  let current = await readGdStudent(api, row.id)
+  const eligibility = String(current?.eligibilityStatus || current?.eligibility?.status || '').toUpperCase()
+  if (eligibility !== 'QUALIFIED') {
+    try {
+      await api.post(`/graduation/gd-students/${row.id}/eligibility`, {
+        status: 'QUALIFIED', reason: 'Playwright 独立测试库资格准备'
+      })
+    } catch (error) {
+      if (!expectedStateError(error, [/已经认定/i, /已认定/i, /QUALIFIED/i, /无需重复/i, /状态/i])) throw error
+    }
+    current = await readGdStudent(api, row.id)
+  }
+
+  const latestEligibility = String(current?.eligibilityStatus || current?.eligibility?.status || '').toUpperCase()
+  if (latestEligibility !== 'QUALIFIED') {
+    throw new Error(`E2E graduation student ${row.id} eligibility did not read back as QUALIFIED; got ${latestEligibility || 'EMPTY'}.`)
+  }
+  return current
 }
 
 async function ensureMentor(api) {
@@ -189,14 +218,17 @@ async function ensureMentor(api) {
       remark: 'Playwright isolated fixture'
     })
   }
-  if (!['QUALIFIED', 'APPROVED'].includes(mentor.qualificationStatus || mentor.reviewStatus)) {
+  if (!['QUALIFIED', 'APPROVED'].includes(String(mentor.qualificationStatus || mentor.reviewStatus || '').toUpperCase())) {
     try {
-      mentor = await api.post(`/graduation/gd-mentors/${mentor.id}/review`, {
+      await api.post(`/graduation/gd-mentors/${mentor.id}/review`, {
         action: 'APPROVE', comment: 'Playwright 独立测试库导师资格通过'
       })
     } catch (error) {
-      if (!/已审核|无需审核|状态/.test(error.message)) throw error
+      if (!expectedStateError(error, [/已审核/i, /无需审核/i, /状态/i, /APPROVED/i, /QUALIFIED/i])) throw error
     }
+    mentor = items(await api.get('/graduation/gd-mentors', {
+      keyword: config.mentor.username, page: 1, pageSize: 200
+    })).find((item) => item.teacherNo === config.mentor.username) || mentor
   }
   return mentor
 }
@@ -221,45 +253,70 @@ async function ensureTopic(api, batchId, runId) {
       submitReview: true
     })
   }
-  if (!['APPROVED'].includes(topic.reviewStatus)) {
+  if (String(topic.reviewStatus || '').toUpperCase() !== 'APPROVED') {
     try {
-      topic = await api.post(`/graduation/gd-topics/${topic.id}/review`, {
+      await api.post(`/graduation/gd-topics/${topic.id}/review`, {
         action: 'APPROVE', comment: 'Playwright 独立测试库课题审核通过'
       })
     } catch (error) {
-      if (!/已审核|无需审核|状态/.test(error.message)) throw error
+      if (!expectedStateError(error, [/已审核/i, /无需审核/i, /状态/i, /APPROVED/i])) throw error
     }
+    topic = items(await api.get('/graduation/gd-topics', {
+      batchId, keyword: title, archiveView: 'active', page: 1, pageSize: 200
+    })).find((item) => item.title === title) || topic
   }
   return topic
+}
+
+async function ensureMentorAssignment(api, gdStudent, mentor) {
+  let current = await readGdStudent(api, gdStudent.id)
+  const sameMentor = String(current?.mentorId || '') === String(mentor.id)
+    || String(current?.advisorName || '') === String(mentor.teacherName || 'E2E指导教师A')
+  if (!sameMentor) {
+    try {
+      await api.post('/graduation/gd-mentor-assignments/assign', {
+        gdStudentId: String(gdStudent.id),
+        mentorId: String(mentor.id),
+        reason: 'Playwright 学生—导师—管理员完整流程'
+      })
+    } catch (error) {
+      if (!expectedStateError(error, [/已分配/i, /已有导师/i, /重复/i, /ACTIVE/i, /存在/i])) throw error
+    }
+    current = await readGdStudent(api, gdStudent.id)
+  }
+  if (!current?.advisorName) throw new Error(`E2E mentor assignment for student ${gdStudent.id} was not visible after readback.`)
+  return current
+}
+
+async function ensureTopicAssignment(api, gdStudent, topic) {
+  let current = await readGdStudent(api, gdStudent.id)
+  if (String(current?.topicId || '') !== String(topic.id)) {
+    try {
+      await api.post(`/graduation/gd-students/${gdStudent.id}/assign-topic`, { topicId: String(topic.id) })
+    } catch (error) {
+      if (!expectedStateError(error, [/已分配/i, /重复/i, /已选/i, /存在/i])) throw error
+    }
+    current = await readGdStudent(api, gdStudent.id)
+  }
+  if (String(current?.topicId || '') !== String(topic.id)) {
+    throw new Error(`E2E topic assignment for student ${gdStudent.id} did not read back topic ${topic.id}.`)
+  }
+  return current
 }
 
 export async function prepareGraduationFixture() {
   const rawRun = process.env.GITHUB_RUN_ID || `${Date.now()}`
   const runId = String(rawRun).replace(/\D/g, '').slice(-12) || String(Date.now()).slice(-12)
-
   const admin = await loginApi(config.sandboxAdmin)
 
   const batch = await ensureBatch(admin, runId)
   const profile = await findStudentProfile(admin, config.student.username)
-  const gdStudent = await ensureGdStudent(admin, batch.id, profile)
+  let gdStudent = await ensureGdStudent(admin, batch.id, profile)
   const mentor = await ensureMentor(admin)
-
-  try {
-    await admin.post('/graduation/gd-mentor-assignments/assign', {
-      gdStudentId: String(gdStudent.id),
-      mentorId: String(mentor.id),
-      reason: 'Playwright 学生—导师—管理员完整流程'
-    })
-  } catch (error) {
-    if (!/已分配|已有导师|重复|ACTIVE|存在/.test(error.message)) throw error
-  }
+  gdStudent = await ensureMentorAssignment(admin, gdStudent, mentor)
 
   const topic = await ensureTopic(admin, batch.id, runId)
-  try {
-    await admin.post(`/graduation/gd-students/${gdStudent.id}/assign-topic`, { topicId: String(topic.id) })
-  } catch (error) {
-    if (!/已分配|重复|已选|存在/.test(error.message)) throw error
-  }
+  gdStudent = await ensureTopicAssignment(admin, gdStudent, topic)
 
   const existingTaskbook = await admin.get(`/graduation/gd-taskbooks/${gdStudent.id}`, {
     batchId: String(batch.id)
@@ -277,7 +334,9 @@ export async function prepareGraduationFixture() {
     batchName: batch.batchName,
     gdStudentId: String(gdStudent.id),
     studentNo: config.student.username,
-    mentorName: 'E2E指导教师A',
+    mentorName: mentor.teacherName || 'E2E指导教师A',
+    mentorId: String(mentor.id),
+    topicId: String(topic.id),
     topicTitle: topic.title
   }
 }
