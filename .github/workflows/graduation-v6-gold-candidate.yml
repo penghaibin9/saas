@@ -1,30 +1,25 @@
 name: Graduation V6 Gold Candidate
 
 on:
-  pull_request:
-    paths:
-      - 'frontend/src/modules/graduation/**'
-      - 'frontend/src/components/business/EmptyState.vue'
-      - 'student-portal/**'
-      - 'miniapp/src/pages/teacher/graduation-*/**'
-      - 'e2e/specs/graduation-v9-*-visual.spec.mjs'
-      - 'e2e/specs/graduation-v9-*-visual.spec.mjs-snapshots/**'
-      - 'e2e/gold/**'
-      - 'e2e/lib/graduation-gold.mjs'
-      - '.github/workflows/graduation-v6-gold-candidate.yml'
+  workflow_dispatch:
+    inputs:
+      head_sha:
+        description: Exact reviewed commit SHA. Leave blank to use the selected branch HEAD.
+        required: false
+        type: string
 
 concurrency:
-  group: graduation-v6-gold-candidate-${{ github.ref }}
-  cancel-in-progress: true
+  group: graduation-gold-candidate-${{ inputs.head_sha || github.sha }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
   candidate:
-    name: exact-head candidate / no auto-promotion
+    name: reviewed candidate / no auto-promotion
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     services:
       mysql:
@@ -64,11 +59,11 @@ jobs:
       DB_PASSWORD: e2e_root
       DB_NAME: student_lifecycle_e2e
       REDIS_URL: redis://127.0.0.1:6379/14
-      REDIS_KEY_PREFIX: graduation-v6-gold-candidate
+      REDIS_KEY_PREFIX: graduation-gold-${{ github.run_id }}
       REDIS_CONNECT_TIMEOUT: '2'
       REDIS_SOCKET_TIMEOUT: '2'
-      JWT_SECRET: graduation-v6-gold-candidate-only-not-production
-      JWT_SECRET_KEY: graduation-v6-gold-candidate-only-not-production
+      JWT_SECRET: graduation-gold-only-not-production
+      JWT_SECRET_KEY: graduation-gold-only-not-production
       MOCK_LOGIN_ENABLED: 'false'
       SMS_ENABLED: 'false'
       SCHEDULER_MODE: external
@@ -78,19 +73,13 @@ jobs:
       E2E_STUDENT_BASE_URL: http://127.0.0.1:5199/portal
       E2E_ENTERPRISE_BASE_URL: http://127.0.0.1:5202/enterprise
       E2E_MINIAPP_BASE_URL: http://127.0.0.1:5188
-      E2E_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      E2E_EXPECTED_SHA: ${{ inputs.head_sha || github.sha }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.E2E_EXPECTED_SHA }}
           fetch-depth: 0
-
-      - name: Assert exact PR HEAD and unchanged frozen manifest before capture
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$E2E_EXPECTED_SHA"
-          git diff --exit-code -- e2e/gold/graduation-v9-gold-manifest.json
 
       - uses: actions/setup-python@v5
         with:
@@ -106,143 +95,25 @@ jobs:
             frontend/package-lock.json
             student-portal/package-lock.json
             miniapp/package-lock.json
+            e2e/package-lock.json
 
-      - name: Install backend and verify artifact safety
-        working-directory: backend
-        run: |
-          pip install -r requirements.txt
-          pytest tests/test_playwright_artifact_safety.py -q -p no:warnings
+      - name: Bootstrap unified graduation Gold runtime
+        uses: ./.github/actions/browser-runtime
+        with:
+          profile: graduation
+          head_sha: ${{ env.E2E_EXPECTED_SHA }}
+          verify_gold_manifest: 'true'
 
-      - name: Migrate isolated MySQL and seed school authority
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          test "$(python -m alembic heads | grep -c '(head)')" = '1'
-          python -m alembic upgrade head
-          python ../scripts/check/check-migrated-schema-parity.py
-          python scripts/bootstrap_control_plane_school_iam_authority.py
-          python scripts/e2e_seed_playwright_tenants.py
-          python scripts/e2e_seed_control_plane_school_iam.py
+      - name: Generate exact-head candidates and immutable inventory
+        run: bash scripts/e2e/run-browser-suite.sh graduation-gold
 
-      - name: Start backend and message worker
-        run: |
-          set -euo pipefail
-          mkdir -p e2e/runtime-logs
-          cd backend
-          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../e2e/runtime-logs/backend.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/backend.pid
-          nohup python -c "import time; from scripts.run_scheduled_jobs import job_delivery_and_outbox; exec('while True:\\n    job_delivery_and_outbox()\\n    time.sleep(2)')" > ../e2e/runtime-logs/message-delivery.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/message-delivery.pid
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then exit 0; fi
-            sleep 2
-          done
-          cat ../e2e/runtime-logs/backend.log
-          exit 1
-
-      - name: Import and verify dedicated graduation accounts
-        working-directory: backend
-        run: |
-          python scripts/e2e_bootstrap_graduation_accounts_ci.py
-          python scripts/e2e_reset_graduation_passwords.py
-          python scripts/e2e_verify_graduation_accounts.py
-
-      - name: Start staff PC, student PC and teacher miniapp H5
-        run: |
-          set -euo pipefail
-          cd frontend
-          npm ci
-          nohup env VITE_USE_MOCK=false VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5173 > ../e2e/runtime-logs/frontend.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/frontend.pid
-
-          cd ../student-portal
-          npm ci
-          nohup env VITE_BASE=/portal/ VITE_API_BASE_URL=/ VITE_PROXY_TARGET=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5199 > ../e2e/runtime-logs/student-portal.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/student-portal.pid
-
-          cd ../miniapp
-          npm ci
-          nohup env VITE_USE_MOCK=false VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev:h5 -- --host 127.0.0.1 --port 5188 > ../e2e/runtime-logs/miniapp.log 2>&1 &
-          echo $! > ../e2e/runtime-logs/miniapp.pid
-
-      - name: Wait for candidate applications
-        run: |
-          set -euo pipefail
-          for url in http://127.0.0.1:5173/login http://127.0.0.1:5199/portal/login http://127.0.0.1:5188/; do
-            ready=''
-            for i in {1..60}; do
-              if curl -fsS "$url" >/dev/null; then ready=1; break; fi
-              sleep 2
-            done
-            test -n "$ready"
-          done
-
-      - name: Install Playwright Chromium
-        working-directory: e2e
-        run: |
-          npm install
-          npx playwright install --with-deps chromium
-
-      - name: Generate exact-head Gold candidates without committing or promoting
-        working-directory: e2e
-        run: |
-          set -euo pipefail
-          npx playwright test \
-            specs/graduation-v9-dashboard-visual.spec.mjs \
-            specs/graduation-v9-final-review-visual.spec.mjs \
-            specs/graduation-v9-process-visual.spec.mjs \
-            specs/graduation-v9-archive-visual.spec.mjs \
-            specs/graduation-v9-teacher-mobile-visual.spec.mjs \
-            --retries=0 --update-snapshots=all --update-source-method=overwrite
-
-      - name: Build immutable candidate inventory
+      - name: Publish candidate summary
         if: always()
-        working-directory: e2e
         run: |
-          set -euo pipefail
-          mkdir -p gold-candidate
-          python - <<'PY'
-          import hashlib
-          import json
-          from pathlib import Path
-
-          manifest = json.loads(Path('gold/graduation-v9-gold-manifest.json').read_text(encoding='utf-8'))
-          rows = []
-          for baseline in manifest['baselines']:
-              candidate = Path('specs') / f"{baseline['spec']}-snapshots" / baseline['frozenFile']
-              if not candidate.is_file():
-                  raise SystemExit(f"missing candidate: {candidate}")
-              digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
-              rows.append({
-                  'card': baseline['card'],
-                  'spec': baseline['spec'],
-                  'logicalName': baseline['logicalName'],
-                  'frozenFile': baseline['frozenFile'],
-                  'baselineSha256': baseline['sha256'],
-                  'candidateSha256': digest,
-                  'changed': digest != baseline['sha256'],
-                  'path': str(candidate),
-              })
-          if len(rows) != manifest['baselineCount']:
-              raise SystemExit(f"candidate count {len(rows)} != manifest baselineCount {manifest['baselineCount']}")
-          Path('gold-candidate/candidate-inventory.json').write_text(
-              json.dumps({'head': __import__('os').environ['E2E_EXPECTED_SHA'], 'baselines': rows}, ensure_ascii=False, indent=2),
-              encoding='utf-8',
-          )
-          Path('gold-candidate/sha256sum.txt').write_text(
-              ''.join(f"{row['candidateSha256']}  {row['path']}\n" for row in rows),
-              encoding='utf-8',
-          )
-          print(json.dumps({'changed': [row['logicalName'] for row in rows if row['changed']]}, ensure_ascii=False))
-          PY
-          git diff --binary -- specs/*graduation-v9-*-visual.spec.mjs-snapshots > gold-candidate/candidate.patch || true
-          git status --short -- specs/*graduation-v9-*-visual.spec.mjs-snapshots > gold-candidate/status.txt
-          {
-            echo "head=$E2E_EXPECTED_SHA"
-            echo "runId=$GITHUB_RUN_ID"
-            echo "policy=no-auto-promotion"
-          } > gold-candidate/provenance.txt
-          test -s gold-candidate/sha256sum.txt
+          echo '## Graduation Gold candidate' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Trigger: manual, after functional browser gate review' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Policy: candidate only; no baseline commit or auto-promotion' >> "$GITHUB_STEP_SUMMARY"
+          test ! -f e2e/gold-candidate/candidate-inventory.json || cat e2e/gold-candidate/candidate-inventory.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload candidate snapshots and provenance
         if: always()
@@ -253,8 +124,9 @@ jobs:
             e2e/specs/graduation-v9-*-visual.spec.mjs-snapshots/*.png
             e2e/gold-candidate/
             e2e/test-results/
+            e2e/gate-results/
             e2e/playwright-report/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Upload candidate service logs

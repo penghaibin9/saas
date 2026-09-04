@@ -1,0 +1,23 @@
+name: 'Unified browser runtime'
+description: 'Bootstrap one exact-head MySQL/Redis/browser runtime for functional, graduation, and Gold evidence suites.'
+inputs:
+  profile:
+    description: 'Runtime profile: graduation or full.'
+    required: true
+  head_sha:
+    description: 'Exact commit SHA that must be checked out.'
+    required: true
+  verify_gold_manifest:
+    description: 'Verify that the frozen graduation Gold manifest has not changed.'
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: 'Bootstrap exact-head browser runtime'
+      shell: bash
+      env:
+        BROWSER_RUNTIME_PROFILE: ${{ inputs.profile }}
+        E2E_EXPECTED_SHA: ${{ inputs.head_sha }}
+        VERIFY_GOLD_MANIFEST: ${{ inputs.verify_gold_manifest }}
+      run: bash "$GITHUB_WORKSPACE/scripts/e2e/bootstrap-browser-runtime.sh"

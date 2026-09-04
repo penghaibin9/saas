@@ -1,42 +1,38 @@
-name: Playwright production interaction E2E
+name: Graduation Browser Functional Gate
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'backend/**'
-      - '!backend/app/modules/graduation/**'
-      - '!backend/tests/test_graduation*'
-      - '!backend/scripts/e2e_*graduation*'
-      - 'frontend/**'
-      - '!frontend/src/modules/graduation/**'
-      - '!frontend/tests/graduation*'
-      - 'student-portal/**'
-      - '!student-portal/src/views/graduation/**'
-      - 'enterprise-portal/**'
-      - 'miniapp/**'
-      - '!miniapp/src/pages/student/graduation/**'
-      - '!miniapp/src/pages/teacher/graduation-*/**'
-      - '!miniapp/src/services/graduation*'
-      - 'e2e/**'
-      - '!e2e/specs/graduation*.spec.mjs'
-      - '!e2e/lib/graduation*.mjs'
-      - '!e2e/pages/graduation.page.mjs'
+      - 'backend/app/modules/graduation/**'
+      - 'backend/tests/test_graduation*'
+      - 'backend/scripts/e2e_*graduation*'
+      - 'frontend/src/modules/graduation/**'
+      - 'frontend/tests/graduation*'
+      - 'frontend/src/components/business/EmptyState.vue'
+      - 'student-portal/src/views/graduation/**'
+      - 'miniapp/src/pages/student/graduation/**'
+      - 'miniapp/src/pages/teacher/graduation-*/**'
+      - 'miniapp/src/services/graduation*'
+      - 'e2e/specs/graduation*.spec.mjs'
+      - 'e2e/lib/graduation*.mjs'
+      - 'e2e/pages/graduation.page.mjs'
       - '.github/actions/browser-runtime/**'
       - 'scripts/e2e/bootstrap-browser-runtime.sh'
       - 'scripts/e2e/run-browser-suite.sh'
-      - '.github/workflows/playwright-production-e2e.yml'
+      - 'scripts/check/check-graduation-browser-architecture.mjs'
+      - '.github/workflows/graduation-browser-gate.yml'
 
 concurrency:
-  group: playwright-functional-${{ github.event.pull_request.number || github.ref }}
+  group: graduation-browser-functional-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  browser-e2e:
-    name: real browser / real API / isolated MySQL
+  graduation-browser:
+    name: real roles / real APIs / 24-page audit
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -78,11 +74,11 @@ jobs:
       DB_PASSWORD: e2e_root
       DB_NAME: student_lifecycle_e2e
       REDIS_URL: redis://127.0.0.1:6379/14
-      REDIS_KEY_PREFIX: playwright-functional-${{ github.run_id }}
+      REDIS_KEY_PREFIX: graduation-functional-${{ github.run_id }}
       REDIS_CONNECT_TIMEOUT: '2'
       REDIS_SOCKET_TIMEOUT: '2'
-      JWT_SECRET: playwright-e2e-only-not-production
-      JWT_SECRET_KEY: playwright-e2e-only-not-production
+      JWT_SECRET: graduation-functional-only-not-production
+      JWT_SECRET_KEY: graduation-functional-only-not-production
       MOCK_LOGIN_ENABLED: 'false'
       SMS_ENABLED: 'false'
       SCHEDULER_MODE: external
@@ -113,53 +109,56 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             student-portal/package-lock.json
-            enterprise-portal/package-lock.json
             miniapp/package-lock.json
             e2e/package-lock.json
 
-      - name: Bootstrap unified full browser runtime
+      - name: Verify graduation browser gate architecture
+        run: node scripts/check/check-graduation-browser-architecture.mjs
+
+      - name: Bootstrap unified graduation browser runtime
         uses: ./.github/actions/browser-runtime
         with:
-          profile: full
+          profile: graduation
           head_sha: ${{ env.E2E_EXPECTED_SHA }}
-          verify_gold_manifest: 'false'
+          verify_gold_manifest: 'true'
 
-      - name: Run non-graduation functional browser suite
-        run: bash scripts/e2e/run-browser-suite.sh production-non-graduation
+      - name: Run graduation functional, cross-client and 24-page suites
+        run: bash scripts/e2e/run-browser-suite.sh graduation-functional
 
-      - name: Publish browser gate summary
+      - name: Publish graduation browser summary
         if: always()
         run: |
-          echo '## Production browser gate' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Runtime: one exact-head MySQL/Redis environment' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Scope: non-graduation functional specs; visual and graduation suites are separate gates' >> "$GITHUB_STEP_SUMMARY"
-          test ! -f e2e/gate-results/production-non-graduation.json || cat e2e/gate-results/production-non-graduation.json >> "$GITHUB_STEP_SUMMARY"
+          echo '## Graduation browser functional gate' >> "$GITHUB_STEP_SUMMARY"
+          echo '- One exact-head runtime: MySQL + Redis + backend + staff PC + student PC + teacher miniapp H5' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Includes functional flows, cross-client FileVersion verification, deep links, roles, accessibility, and 24-page audit' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Excludes Gold promotion; visual candidates are a separate manual gate' >> "$GITHUB_STEP_SUMMARY"
+          test ! -f e2e/gate-results/graduation-functional.json || cat e2e/gate-results/graduation-functional.json >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload Playwright HTML report
+      - name: Upload graduation browser report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-html-report-${{ github.run_id }}
+          name: graduation-browser-report-${{ github.run_id }}
           path: e2e/playwright-report/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload screenshots, video, traces and gate results
+      - name: Upload graduation browser evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-evidence-${{ github.run_id }}
+          name: graduation-browser-evidence-${{ github.run_id }}
           path: |
             e2e/test-results/
             e2e/gate-results/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload service logs and provenance
+      - name: Upload graduation runtime logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-service-logs-${{ github.run_id }}
+          name: graduation-browser-logs-${{ github.run_id }}
           path: e2e/runtime-logs/
           if-no-files-found: warn
           retention-days: 14
