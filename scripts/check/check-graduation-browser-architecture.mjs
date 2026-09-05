@@ -21,7 +21,7 @@ function contract(name, check) {
     results.push({ name, status: 'FAIL', message: error?.message || String(error) })
     console.error(`[graduation-browser-architecture] FAIL ${name}`)
     console.error(error?.stack || error)
-    console.error(JSON.stringify({ contract: 'graduation-browser-architecture-v4', results }, null, 2))
+    console.error(JSON.stringify({ contract: 'graduation-browser-architecture-v5', results }, null, 2))
     process.exitCode = 1
     throw error
   }
@@ -221,8 +221,16 @@ contract('exact-miniapp-task-contract', () => {
     'exact task must not wait for the bypassed list title')
   assert.equal(crossClient.includes("page.locator('.rv__task')"), false,
     'exact task must not depend on a nonexistent shell node')
-  assert.ok(crossClient.includes('window.localStorage.getItem(key)'),
-    'exact task must verify the persisted batch authority')
+  assert.ok(crossClient.includes('教师小程序读取成果批阅详情'),
+    'exact task must read the real mobile detail API')
+  assert.ok(crossClient.includes('mobileDetail?.gdStudentId'),
+    'exact task must verify the same graduation student')
+  assert.ok(crossClient.includes('mobileDetail?.materialVersion'),
+    'exact task must verify the same material version')
+  assert.ok(crossClient.includes('mobileDetail?.fileVersionId'),
+    'exact task must verify the same file version')
+  assert.equal(crossClient.includes('window.localStorage.getItem'), false,
+    'local storage must not be the cross-client source of truth')
   for (const key of ['batchId', 'gdStudentId', 'recordId', 'materialVersion', 'fileVersionId']) {
     assert.ok(crossClient.includes(key), `exact task evidence missing ${key}`)
   }
@@ -241,7 +249,7 @@ contract('archive-readback-and-leaf-query', () => {
 })
 
 console.log(JSON.stringify({
-  contract: 'graduation-browser-architecture-v4',
+  contract: 'graduation-browser-architecture-v5',
   status: 'GREEN',
   passed: results.length,
   results
