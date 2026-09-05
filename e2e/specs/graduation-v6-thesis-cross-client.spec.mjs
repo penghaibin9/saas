@@ -87,13 +87,18 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     await page.goto(`${MINI_BASE}/#/pages/teacher/graduation-guide/index?${taskQuery}`)
 
     // An exact task deep link intentionally bypasses the list page and opens the
-    // frozen review record directly. Validate the visible task identity instead
-    // of depending on an intermediate list-only batch node.
+    // frozen review record directly. Verify the visible business object and the
+    // persisted batch authority instead of depending on a nonexistent shell node.
     await expect(page.getByText(/成果批阅 · 第 1 \/ 1 条/).first()).toBeVisible({ timeout: 20_000 })
     const review = page.locator('.rv__content')
     await expect(review).toBeVisible({ timeout: 20_000 })
     await expect(review).toContainText(fixture.topicTitle)
-    await expect(page.locator('.rv__task')).toContainText(`批次：${fixture.batchName}`)
+    const selectedBatch = await page.evaluate((key) => {
+      try { return JSON.parse(window.localStorage.getItem(key) || '{}') } catch { return {} }
+    }, TEACHER_BATCH_KEY)
+    expect(String(selectedBatch?.id || '')).toBe(String(fixture.batchId))
+    expect(String(selectedBatch?.name || '')).toBe(String(fixture.batchName || ''))
+
     const versionRow = page.locator('.rv__att').filter({ hasText: `FileVersion ${fileVersionId}` }).first()
     await expect(versionRow, 'teacher miniapp must show the same canonical FileVersion as teacher PC').toBeVisible({ timeout: 20_000 })
     await expect(page.locator('.rv__foot').getByRole('button', { name: '通过' })).toBeEnabled()
