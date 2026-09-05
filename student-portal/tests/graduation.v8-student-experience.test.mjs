@@ -26,7 +26,9 @@ test('topic selection uses searchable true cursor pages and keeps the approved t
   for (const token of ['topicKeyword', 'topicCategory', 'topicAdvisor', 'topicsNextCursor', 'topicsHasMore']) {
     assert.ok(page.includes(token), `missing ${token}`)
   }
-  assert.match(page, /当前已选课题（固定展示）/)
+  assert.match(page, /v-if="hasTopic" class="gd-topic-pinned" aria-label="当前已选课题"/)
+  assert.match(page, /\{\{ my\.topicTitle \|\| '课题信息待同步' \}\}/,
+    'the pinned card must show the server-owned selected topic, not a filtered candidate')
   assert.match(page, /剩余 \{\{ topic\.remaining/)
   assert.match(page, /loadTopics\(false\)/)
   assert.match(api, /pageSize: 20/)

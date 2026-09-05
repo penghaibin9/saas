@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { graduationTemplateCopy } from './graduation-template-copy.mjs'
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
@@ -132,7 +133,10 @@ test('W2 workspace shows teacher decisions while keeping exact version identity 
   const summary = workspaceSource.indexOf('<div class="gd-review-workspace__summary">')
   assert.ok(evidence >= 0 && review > evidence && summary > review)
   assert.match(workspaceSource, /gd-business-view:has\(\.gd-review-workspace\)>\.gd-scope-alert\.app-inline-alert/)
-  assert.doesNotMatch(workspaceSource.split('<script setup>')[0], /canonical|FileVersion|业务版本与文件版本已锁定/)
+  const copy = graduationTemplateCopy(workspaceSource)
+  assert.doesNotMatch(copy.text, /canonical|FileVersion|业务版本与文件版本已锁定/)
+  assert.doesNotMatch(copy.directOutputs.join(' '), /canonicalFileVersionId|fileVersionId/,
+    'raw file identity must not be rendered as the primary teacher-facing value')
 })
 
 test('W2 workspace queue is keyboard and screen-reader explicit', () => {

@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { graduationTemplateCopy } from './graduation-template-copy.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const read = (rel) => fs.readFileSync(path.resolve(here, rel), 'utf8')
@@ -31,9 +32,10 @@ test('U3 pending review reloads the same server page before selecting the next f
   assert.match(source, /Number\.isInteger\(this\._selectIndexAfterLoad\)/)
 })
 
-test('U3 preserves the secure canonical FileVersion review gate', () => {
+test('U3 preserves the secure canonical FileVersion review gate in the actual command', () => {
   assert.match(source, /finalDetail\?\.reviewReady/)
-  assert.match(source, /expectedVersion \+ fileVersionId/)
+  assert.match(source, /expectedVersion:\s*this\.finalDetail\.materialVersion/)
+  assert.match(source, /fileVersionId:\s*this\.finalDetail\.fileVersionId/)
   assert.match(source, /canonicalFileVersionId/)
   assert.match(source, /versionConflict/)
   assert.match(workspace, /FileEvidencePanel/)
@@ -52,16 +54,19 @@ test('U3 keeps the five-second decision surface in the shared Reader workspace',
   assert.match(workspace, /gd-review-workspace\.is-narrow\{grid-template-columns:1fr\}/)
 })
 
-test('U3 makes record, expectedVersion, canonical FileVersion and safety gate visible before the command', () => {
+test('U3 displays business version and review readiness while retaining exact machine evidence', () => {
   assert.match(source, /class="fr-selected-summary"/)
   assert.match(source, /提交中，已锁定对象与版本/)
   assert.match(workspace, /data-testid="review-command-contract"/)
-  assert.match(workspace, />提交版本</)
-  assert.match(workspace, />文件版本</)
-  assert.match(workspace, />文件状态</)
-  assert.match(workspace, /expectedVersion \?\? '—'/)
-  assert.match(workspace, /canonicalFileVersionId \?\? '—'/)
+  assert.match(workspace, /:data-material-version="expectedVersion \?\? ''"/)
+  assert.match(workspace, /:data-file-version-id="canonicalFileVersionId \?\? ''"/)
   assert.match(workspace, /reviewReady && !versionConflict/)
+  const copy = graduationTemplateCopy(workspace)
+  for (const label of ['提交版次', '文件核对', '批阅状态', '可以批阅', '暂不可批阅']) {
+    assert.ok(copy.text.includes(label), `teacher decision surface missing ${label}`)
+  }
+  assert.doesNotMatch(copy.text, /expectedVersion|canonical FileVersion/)
+  assert.doesNotMatch(copy.directOutputs.join(' '), /canonicalFileVersionId|fileVersionId/)
 })
 
 test('U3 locks every context-changing interaction while a canonical command is submitting', () => {

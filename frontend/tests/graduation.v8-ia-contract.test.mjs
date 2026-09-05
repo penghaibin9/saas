@@ -23,8 +23,11 @@ test('V8 keeps eight workspaces and compresses the primary sidebar to 24 entries
 test('V8 legacy batch query routes land on the requested batch configuration view', async () => {
   const source = await read('../src/modules/graduation/views/GraduationBatchListView.vue')
   assert.match(source, /query\.batchId/)
-  assert.match(source, /tab: panel/)
-  assert.match(source, /`\/admin\/graduation\/batches\/\$\{batchId\}`/)
+  assert.match(source, /panel === 'stages' \|\| panel === 'rules'/)
+  assert.match(source, /name: 'graduation-batch-detail'/)
+  assert.match(source, /params: \{ id: batchId \}/)
+  assert.match(source, /query: \{ tab: panel, batchId \}/,
+    'named navigation must preserve both the requested panel and the batch identity')
 })
 
 test('V8 student and topic pages expose five primary groups while preserving every legacy panel', async () => {

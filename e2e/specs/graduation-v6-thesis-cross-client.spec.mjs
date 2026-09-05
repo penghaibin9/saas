@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
-import { prepareGraduationFixture } from '../lib/api-fixture.mjs'
+import { loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
 import {
   dismissGraduationGuide,
   ensureFinalPending,
@@ -23,15 +24,37 @@ async function loginTeacherMini(page) {
   await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 15_000 })
 }
 
-function assertMobileIdentity(mobileDetail, fixture, recordId, materialVersion, fileVersionId) {
-  // The canonical final DTO calls GraduationStudent.id "projectId". The
-  // material library uses "gdStudentId"; both denote the same domain identity,
-  // never the school StudentProfile.id. Verify record and version separately.
-  expect(String(mobileDetail?.gdStudentId || mobileDetail?.projectId || '')).toBe(String(fixture.gdStudentId))
-  expect(String(mobileDetail?.id || '')).toBe(recordId)
-  expect(String(mobileDetail?.studentNo || '')).toBe(String(fixture.studentNo))
-  expect(String(mobileDetail?.materialVersion ?? '')).toBe(materialVersion)
-  expect(String(mobileDetail?.fileVersionId || '')).toBe(fileVersionId)
+function assertLibraryIdentity(library, fixture, identity) {
+  expect(String(library?.gdStudentId || '')).toBe(String(fixture.gdStudentId))
+  expect(String(library?.studentNo || '')).toBe(String(fixture.studentNo))
+  expect(String(library?.batchId || '')).toBe(String(fixture.batchId))
+  const materials = (library?.items || []).filter((row) => String(row.materialId || '') === identity.materialId)
+  expect(materials, 'the exact review material must belong to this authorised student library').toHaveLength(1)
+  const material = materials[0]
+  expect(String(material.currentVersionId || '')).toBe(identity.fileVersionId)
+  expect(String(material.version ?? '')).toBe(identity.materialVersion)
+  expect(material.currentVersion?.readyForBusiness).toBe(true)
+  return material.currentVersion
+}
+
+function assertMobileIdentity(mobileDetail, fixture, identity, library) {
+  // The mobile review DTO deliberately omits gdStudentId, projectId and
+  // studentNo. Prove ownership through its materialId -> authorised student
+  // library relation instead of inventing fields or dropping the identity gate.
+  const current = assertLibraryIdentity(library, fixture, identity)
+  expect(String(mobileDetail?.id || '')).toBe(identity.recordId)
+  expect(String(mobileDetail?.materialId || '')).toBe(identity.materialId)
+  expect(String(mobileDetail?.studentName || '')).toBe(String(library.studentName))
+  expect(String(mobileDetail?.topicTitle || '')).toBe(String(fixture.topicTitle))
+  expect(String(mobileDetail?.materialVersion ?? '')).toBe(identity.materialVersion)
+  expect(String(mobileDetail?.fileVersionId || '')).toBe(identity.fileVersionId)
+  expect(mobileDetail?.reviewReady).toBe(true)
+  const versions = (mobileDetail?.currentSafeVersions || []).filter((row) =>
+    String(row.versionId || row.fileVersionId || '') === identity.fileVersionId
+  )
+  expect(versions, 'mobile must expose the same immutable current file').toHaveLength(1)
+  expect(String(versions[0].fileId)).toBe(String(current.fileId))
+  expect(String(versions[0].sha256 || versions[0].sourceSha256 || '').toLowerCase()).toBe(identity.sha256)
 }
 
 test.describe.serial('V6 · one real thesis across student PC, teacher PC and teacher miniapp', () => {
@@ -43,10 +66,10 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
 
   test('same canonical FileVersion is visible and previewable on all required surfaces', async ({ page }, testInfo) => {
     test.setTimeout(8 * 60_000)
-    await ensureFinalPending(page, fixture, {
-      suffix: `cross-client-${testInfo.retry || 0}`,
-      documentPages: 20
+    const submission = await ensureFinalPending(page, fixture, {
+      suffix: `cross-client-${testInfo.retry || 0}`, documentPages: 20
     })
+    expect(submission.state, 'preview acceptance requires a real pending review task').toBe('PENDING_REVIEW')
 
     const studentShot = testInfo.outputPath('cross-client-thesis-student-pc-submitted.png')
     await expect(page.locator('[data-step-key="final"]')).toBeVisible()
@@ -66,8 +89,8 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     await expect(target, 'select the same student, never whichever queue entry is first').toHaveCount(1)
     await target.click()
     await expect.poll(() => new URL(page.url()).searchParams.get('sel'), {
-      message: 'teacher PC must expose the exact selected final record in URL'
-    }).toMatch(/^\d+$/)
+      message: 'teacher PC must expose the exact submitted final record in URL'
+    }).toBe(String(submission.submitted.id))
 
     const recordId = String(new URL(page.url()).searchParams.get('sel'))
     const command = page.getByTestId('review-command-contract')
@@ -78,6 +101,23 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     const fileVersionId = String(await command.getAttribute('data-file-version-id') || '')
     expect(materialVersion).toMatch(/^\d+$/)
     expect(fileVersionId).toMatch(/^\d+$/)
+    const mentorApi = await loginApi(config.mentor)
+    const params = { batchId: fixture.batchId }
+    const pcDetail = await mentorApi.get(`/graduation/finals/${recordId}`, params)
+    expect(String(pcDetail.id)).toBe(recordId)
+    expect(String(pcDetail.materialVersion)).toBe(materialVersion)
+    expect(String(pcDetail.fileVersionId)).toBe(fileVersionId)
+    const readLibrary = () => mentorApi.get(`/graduation/material-center/students/${fixture.gdStudentId}`, {
+      ...params, includeHistory: true
+    })
+    const library = await readLibrary()
+    const identity = { recordId, materialVersion, fileVersionId, materialId: String(pcDetail.materialId || '') }
+    expect(identity.materialId).toMatch(/^\d+$/)
+    const current = assertLibraryIdentity(library, fixture, identity)
+    identity.fileId = String(current.fileId || '')
+    identity.sha256 = String(current.sha256 || current.sourceSha256 || '').toLowerCase()
+    expect(identity.fileId).toMatch(/^\d+$/)
+    expect(identity.sha256, 'authoritative file digest is required, not just a matching filename').toMatch(/^[a-f0-9]{64}$/)
     await expectRenderedPdfCanvas(page)
     await dismissGraduationGuide(page)
 
@@ -100,7 +140,7 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     const detailPromise = page.waitForResponse(isExactMobileDetail)
     await page.goto(`${MINI_BASE}/#/pages/teacher/graduation-guide/index?${taskQuery}`)
     const mobileDetail = await expectGraduationBusinessSuccess(await detailPromise, '教师小程序读取成果批阅详情')
-    assertMobileIdentity(mobileDetail, fixture, recordId, materialVersion, fileVersionId)
+    assertMobileIdentity(mobileDetail, fixture, identity, library)
 
     await expect(page.getByText(/成果批阅 · 第 1 \/ 1 条/).first()).toBeVisible({ timeout: 20_000 })
     const review = page.locator('.rv__content')
@@ -117,27 +157,28 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     }
     const ticketPromise = page.waitForResponse((response) =>
       response.request().method() === 'POST'
-      && /\/api\/v1\/mobile\/graduation\/material-center\/files\/[^/]+\/ticket$/.test(new URL(response.url()).pathname)
+      && new URL(response.url()).pathname.endsWith(`/api/v1/mobile/graduation/material-center/files/${identity.fileId}/ticket`)
     )
     const previewPromise = page.waitForResponse((response) =>
       response.request().method() === 'GET'
-      && /\/api\/v1\/mobile\/graduation\/material-center\/files\/[^/]+\/preview$/.test(new URL(response.url()).pathname)
+      && new URL(response.url()).pathname.endsWith(`/api/v1/mobile/graduation/material-center/files/${identity.fileId}/preview`)
       && new URL(response.url()).searchParams.has('ticket')
     )
     await versionRow.click()
-    const ticketData = await expectGraduationBusinessSuccess(await ticketPromise, '教师小程序签发论文预览票据')
+    const ticketData = await expectGraduationBusinessSuccess(await ticketPromise, '教师小程序签发同一论文的预览票据')
     expect(ticketData?.ticket || ticketData?.url || ticketData?.previewUrl).toBeTruthy()
     const previewResponse = await previewPromise
     expect(previewResponse.ok(), `teacher miniapp PDF preview HTTP ${previewResponse.status()}`).toBeTruthy()
     const previewBytes = await previewResponse.body()
     expect(previewBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-')
+    expect(createHash('sha256').update(previewBytes).digest('hex'), 'mobile preview bytes must match the canonical uploaded PDF').toBe(identity.sha256)
 
     const confirmCurrent = page.getByRole('button', { name: '确认当前版本' })
     if (await confirmCurrent.isVisible().catch(() => false)) {
       const revalidatePromise = page.waitForResponse(isExactMobileDetail)
       await confirmCurrent.click()
       const fresh = await expectGraduationBusinessSuccess(await revalidatePromise, '教师小程序预览返回后重验论文版本')
-      assertMobileIdentity(fresh, fixture, recordId, materialVersion, fileVersionId)
+      assertMobileIdentity(fresh, fixture, identity, await readLibrary())
       await expect(page.locator('.rv__foot').getByRole('button', { name: '通过' })).toBeEnabled()
       await expect(page.locator('.rv__foot').getByRole('button', { name: '退回' })).toBeEnabled()
     }
@@ -153,7 +194,7 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
       head: process.env.E2E_EXPECTED_SHA || process.env.GITHUB_SHA || 'local',
       coverage: 'student-PC submission and teacher-PC/miniapp-H5 preview, not full lifecycle or native WeChat',
       batchId: String(fixture.batchId), gdStudentId: String(fixture.gdStudentId),
-      recordId, materialVersion, fileVersionId,
+      ...identity, ownershipProof: 'authorised student library -> materialId -> immutable FileVersion -> mobile review record',
       scenarioFactory: 'graduation-scenario-fixture.ensureFinalPending',
       miniappEntry: 'exact-task-direct-review'
     }, null, 2), 'utf8'))

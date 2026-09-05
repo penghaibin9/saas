@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import vm from 'node:vm'
+import { graduationTemplateCopy } from './graduation-template-copy.mjs'
 
 const layout = fs.readFileSync(new URL('../src/modules/graduation/views/AdminGraduationLayout.vue', import.meta.url), 'utf8')
 const batchStrip = fs.readFileSync(new URL('../src/modules/graduation/views/_shared/GraduationBatchStrip.vue', import.meta.url), 'utf8')
@@ -249,7 +250,11 @@ test('G10 student PC keeps one complete eight-step flow and promotes the next re
   assert.match(studentWorkbench, /const finalFiles = computed\(\(\) => \(final\.value\.items \|\| \[\]\)\.flatMap/)
   assert.doesNotMatch(studentWorkbench, /const finalFiles = computed\(\(\) => \[\.\.\.proposalFiles\.value/)
   assert.match(studentWorkbench, /互查任务只开放学校分配的正式定稿/)
-  assert.doesNotMatch(studentWorkbench.split('<script setup>')[0], /peerId|fileId 组合授权|真实材料/)
+  const copy = graduationTemplateCopy(studentWorkbench)
+  assert.doesNotMatch(copy.text, /peerId|fileId 组合授权|真实材料/)
+  assert.doesNotMatch(copy.directOutputs.join(' '), /peerId|fileId/)
+  assert.match(studentWorkbench, /:read-only="Boolean\(readerFile\?\.peerId\)"/,
+    'hiding technical identifiers must not remove peer-review read-only enforcement')
 })
 
 test('G10 teacher process workbench keeps teacher duties and removes duplicated training content', () => {

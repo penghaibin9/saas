@@ -1,4 +1,4 @@
-import { expect } from './observability.mjs'
+import { test, expect } from './observability.mjs'
 import { config } from './config.mjs'
 import { graduationRoles } from './graduation-role-accounts.mjs'
 import { items, loginApi } from './api-fixture.mjs'
@@ -184,6 +184,10 @@ export async function ensureMidtermApproved(page, fixture) {
   return read()
 }
 
+function approvedFinal(snapshot) {
+  return (snapshot?.items || []).find((row) => row.type === '定稿' && row.status === FINAL_APPROVED) || null
+}
+
 export async function ensureFinalPending(page, fixture, {
   suffix = 'scenario', documentPages = 20
 } = {}) {
@@ -195,11 +199,17 @@ export async function ensureFinalPending(page, fixture, {
   const finalStep = page.locator('[data-step-key="final"]')
   await expect(finalStep).toBeVisible()
   const snapshot = await read()
-  const pending = (snapshot?.items || []).find((row) => row.status === FINAL_PENDING)
-  if (pending) return { reused: true, submitted: pending, state: FINAL_PENDING }
-  const latest = snapshot?.items?.[0]
-  if (latest?.status === FINAL_APPROVED) return { reused: true, state: FINAL_APPROVED, approved: true }
+  const pending = (snapshot?.items || []).filter((row) => row.status === FINAL_PENDING)
+  expect(pending.length, 'do not silently choose between multiple pending business records').toBeLessThanOrEqual(1)
+  if (pending.length) return { reused: true, submitted: pending[0], state: FINAL_PENDING }
+  // An approved draft is NOT an approved final. It enables the next submission.
+  if (snapshot?.finalApproved === true) {
+    const final = approvedFinal(snapshot)
+    expect(final, 'finalApproved must point to an approved 定稿 record').not.toBeNull()
+    return { reused: true, submitted: final, state: FINAL_APPROVED, approved: true }
+  }
   expect(Boolean(snapshot?.canSubmitDraft || snapshot?.canSubmitFinal), snapshot?.hint || 'final submission must be allowed').toBe(true)
+  const finalType = snapshot.canSubmitFinal ? '定稿' : '初稿'
 
   let fileInput = finalStep.locator('input[type=file]')
   if (!(await fileInput.count())) {
@@ -213,7 +223,7 @@ export async function ensureFinalPending(page, fixture, {
     response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/files')
   )
   await fileInput.setInputFiles({
-    name: `thesis-${fixture.runId}-${suffix}.pdf`, mimeType: 'application/pdf',
+    name: `thesis-${fixture.runId}-${suffix}-${finalType}.pdf`, mimeType: 'application/pdf',
     buffer: buildGraduationScenarioPdf(`${fixture.runId}-${suffix}`, documentPages)
   })
   const uploaded = await expectGraduationBusinessSuccess(await uploadPromise, '学生 PC 上传毕业论文')
@@ -225,47 +235,91 @@ export async function ensureFinalPending(page, fixture, {
       && new URL(candidate.url()).pathname.endsWith('/portal/graduation/final/submit')),
     submit.click()
   ])
-  const submitted = await expectGraduationBusinessSuccess(response, '学生 PC 提交毕业论文')
+  expect(response.request().postDataJSON()?.finalType, 'the UI must submit the correct draft/final phase').toBe(finalType)
+  const submitted = await expectGraduationBusinessSuccess(response, `学生 PC 提交论文${finalType}`)
   expect(submitted?.status).toBe(FINAL_PENDING)
   await expect.poll(async () => (await read())?.items?.some((row) =>
-    String(row.id) === String(submitted.id) && row.status === FINAL_PENDING
-  ), { message: 'submitted final must persist for the same student', timeout: 30_000 }).toBe(true)
-  return { reused: false, submitted }
+    String(row.id) === String(submitted.id) && row.type === finalType && row.status === FINAL_PENDING
+  ), { message: 'submitted draft/final must persist for the same student', timeout: 30_000 }).toBe(true)
+  return { reused: false, submitted, state: FINAL_PENDING }
 }
 
-async function readFinalRecord(adminApi, fixture) {
-  const rows = items(await adminApi.get('/graduation/finals', {
-    batchId: fixture.batchId, keyword: fixture.studentNo, page: 1, pageSize: 200
-  }))
-  return rows.find((row) => String(row.gdStudentId || row.projectId || '') === String(fixture.gdStudentId)) || null
+/** Read, preview and approve the exact pending submission through the mentor PC. */
+async function approveFinalInBrowser(page, fixture, row, { timeoutMs }) {
+  const mentorApi = await loginApi(config.mentor)
+  const params = { batchId: fixture.batchId }
+  const detail = await mentorApi.get(`/graduation/finals/${row.id}`, params)
+  expect(String(detail?.id || '')).toBe(String(row.id))
+  expect(detail?.status).toBe(FINAL_PENDING)
+  expect(detail?.reviewReady, 'scan and current-version gates must allow review').toBe(true)
+  expect(String(detail?.fileVersionId || '')).toMatch(/^\d+$/)
+  expect(detail?.materialVersion).not.toBeNull()
+  expect(detail?.materialVersion).not.toBeUndefined()
+
+  await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
+  const query = new URLSearchParams({ ...params, tab: FINAL_PENDING, sel: String(row.id) })
+  await page.goto(`${config.staffBaseUrl}/admin/graduation/finals?${query}`)
+  await dismissGraduationGuide(page)
+  await expect.poll(() => new URL(page.url()).searchParams.get('sel')).toBe(String(row.id))
+  const workspace = page.locator('.gd-review-workspace')
+  await expect(workspace).toContainText(fixture.topicTitle)
+  const command = page.getByTestId('review-command-contract')
+  await expect(command).toHaveAttribute('data-material-version', String(detail.materialVersion))
+  await expect(command).toHaveAttribute('data-file-version-id', String(detail.fileVersionId))
+  await expectRenderedPdfCanvas(page)
+  await page.locator('#gd-final-review-comment').fill(`已在线核对论文${row.type}内容及当前提交版本，审核通过。`)
+  await test.info().attach(`mentor-${row.type}-${row.id}-document-review`, {
+    body: await page.screenshot({ fullPage: false, animations: 'disabled', caret: 'hide' }),
+    contentType: 'image/png'
+  })
+  const [response] = await Promise.all([
+    page.waitForResponse((candidate) => candidate.request().method() === 'POST'
+      && new URL(candidate.url()).pathname.endsWith(`/graduation/finals/${row.id}/review`)),
+    page.getByRole('button', { name: /通过当前版本/ }).click()
+  ])
+  const body = response.request().postDataJSON()
+  expect(body?.action).toBe('APPROVE')
+  expect(String(body?.fileVersionId || '')).toBe(String(detail.fileVersionId))
+  expect(String(body?.expectedVersion ?? '')).toBe(String(detail.materialVersion))
+  await expectGraduationBusinessSuccess(response, `导师 PC 阅读并审核论文${row.type}`)
+  const studentApi = await loginApi(fixture?.studentAccount || config.student)
+  await expect.poll(async () => (await studentApi.get('/portal/graduation/final'))?.items?.some((item) =>
+    String(item.id) === String(row.id) && item.type === row.type && item.status === FINAL_APPROVED
+  ), { message: 'mentor review must read back on the submitting student account', timeout: timeoutMs }).toBe(true)
+  await test.info().attach(`mentor-${row.type}-${row.id}-review-receipt`, {
+    body: Buffer.from(JSON.stringify({
+      head: process.env.E2E_EXPECTED_SHA || process.env.GITHUB_SHA || 'local',
+      batchId: String(fixture.batchId), gdStudentId: String(fixture.gdStudentId),
+      recordId: String(row.id), type: row.type, fileVersionId: String(detail.fileVersionId),
+      reviewedMaterialVersion: detail.materialVersion, status: FINAL_APPROVED,
+      transport: 'teacher-PC-browser-command-and-student-API-readback'
+    }, null, 2)), contentType: 'application/json'
+  })
 }
 
-/** Isolated defense setup is not counted as the four-client acceptance journey. */
+/** Draft approval must be followed by a separately submitted and approved final. */
 export async function ensureFinalApproved(page, adminApi, fixture, {
   suffix = 'defense-prerequisite', documentPages = 20, timeoutMs = 30_000
 } = {}) {
-  await ensureFinalPending(page, fixture, { suffix, documentPages })
-  let row = await readFinalRecord(adminApi, fixture)
-  if (!row) throw new Error(`Final record did not read back for graduation student ${fixture.gdStudentId}.`)
-  if (row.status !== FINAL_APPROVED) {
-    const mentorApi = await loginApi(config.mentor)
-    const detail = await mentorApi.get(`/graduation/finals/${row.id}`, { batchId: fixture.batchId })
-    if (!detail?.fileVersionId || detail?.materialVersion == null) {
-      throw new Error(`Final record ${row.id} is missing canonical version evidence.`)
-    }
-    await mentorApi.post(`/graduation/finals/${row.id}/review`, {
-      action: 'APPROVE', comment: 'Playwright isolated defense prerequisite approval',
-      expectedVersion: detail.materialVersion, fileVersionId: detail.fileVersionId
-    }, { batchId: fixture.batchId })
+  const studentApi = await loginApi(fixture?.studentAccount || config.student)
+  const read = () => studentApi.get('/portal/graduation/final')
+  for (let phase = 0; phase < 2; phase += 1) {
+    const snapshot = await read()
+    if (snapshot?.finalApproved === true && approvedFinal(snapshot)) break
+    const result = await ensureFinalPending(page, fixture, { suffix: `${suffix}-${phase}`, documentPages })
+    if (result.approved) break
+    expect(result.submitted, 'the pending submission must have a stable business record').toBeTruthy()
+    await approveFinalInBrowser(page, fixture, result.submitted, { timeoutMs })
   }
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    row = await readFinalRecord(adminApi, fixture)
-    const student = graduationStudentEntity(await adminApi.get(`/graduation/gd-students/${fixture.gdStudentId}`))
-    if (row?.status === FINAL_APPROVED && DEFENSE_ELIGIBLE_STAGES.has(String(student?.stage || ''))) return { final: row, student }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-  throw new Error(`Final approval did not read back with a defense-eligible stage for student ${fixture.gdStudentId}.`)
+  const snapshot = await read()
+  const final = approvedFinal(snapshot)
+  expect(snapshot?.finalApproved, 'defense requires formal final approval, not draft approval').toBe(true)
+  expect(final, 'defense must reference the approved 定稿 record').not.toBeNull()
+  const student = graduationStudentEntity(await adminApi.get(`/graduation/gd-students/${fixture.gdStudentId}`))
+  expect(String(student?.id || '')).toBe(String(fixture.gdStudentId))
+  expect(String(student?.batchId || '')).toBe(String(fixture.batchId))
+  expect(DEFENSE_ELIGIBLE_STAGES.has(String(student?.stage || '')), 'approved final must retain a defense-eligible stage').toBe(true)
+  return { final, student }
 }
 
 export async function expectRenderedPdfCanvas(page) {
@@ -285,14 +339,9 @@ function dateTimeAfterDays(days) {
 }
 
 async function ensureDefenseEligibleStudent(page, adminApi, fixture) {
-  let student = graduationStudentEntity(await adminApi.get(`/graduation/gd-students/${fixture.gdStudentId}`))
-  if (!DEFENSE_ELIGIBLE_STAGES.has(String(student?.stage || '').toUpperCase())) {
-    await ensureFinalApproved(page, adminApi, fixture)
-    student = graduationStudentEntity(await adminApi.get(`/graduation/gd-students/${fixture.gdStudentId}`))
-  }
-  const stage = String(student?.stage || '').toUpperCase()
-  if (!DEFENSE_ELIGIBLE_STAGES.has(stage)) throw new Error(`Graduation student ${fixture.gdStudentId} did not read back in a defense-eligible stage; got ${stage || 'EMPTY'}.`)
-  return student
+  // FINAL_CHECK is necessary but insufficient: the canonical final must also
+  // be approved. Always read both predicates; never infer approval from stage.
+  return (await ensureFinalApproved(page, adminApi, fixture)).student
 }
 
 async function ensureScenarioMentor(adminApi, account, {
