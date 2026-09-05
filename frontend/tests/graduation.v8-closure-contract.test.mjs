@@ -27,12 +27,13 @@ test('material and review writes expose human receipts backed by server readback
   assert.match(materials, /actionReceipt/)
   assert.match(materials, /readReviewTruth/)
   assert.match(materials, /api\.studentLibrary\(target\.gdStudentId, true\)/)
-  assert.match(materials, /服务器材料台账尚未回读到目标状态/)
+  assert.match(materials, /最新材料状态尚未确认/)
+  assert.match(materials, /最新结论：/)
   for (const source of [proposal, finalReview]) {
     assert.match(source, /reviewReceipt/)
     assert.match(source, /await this\.load/)
   }
-  for (const source of [materials, proposal, finalReview]) {
+  for (const source of [proposal, finalReview]) {
     assert.match(source, /服务器最新/)
   }
 })
