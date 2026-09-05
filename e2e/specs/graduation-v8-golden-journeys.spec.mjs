@@ -6,7 +6,7 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { graduationRoles } from '../lib/graduation-role-accounts.mjs'
 import { items, loginApi, prepareGraduationFixture } from '../lib/api-fixture.mjs'
-import { ensureArchiveProjection } from '../lib/graduation-scenario-fixture.mjs'
+import { dismissGraduationGuide, ensureArchiveProjection } from '../lib/graduation-scenario-fixture.mjs'
 import { prepareGraduationTeacherMobileGoldFixture, u8TeacherAccount } from '../lib/graduation-u8-fixture.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
 
@@ -14,44 +14,30 @@ const MINI_BASE_URL = process.env.E2E_MINIAPP_BASE_URL || 'http://127.0.0.1:5188
 const ARTIFACT_DIR = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR, 'graduation-v8/golden-journeys')
   : fileURLToPath(new URL('../artifacts/graduation-v8/golden-journeys/', import.meta.url))
-
 let fixture
 let teacherFixture
 let adminApi
 
 async function settle(page) {
-  await page.evaluate(async () => {
-    if (document.fonts?.ready) await document.fonts.ready
-  })
+  await page.evaluate(async () => { if (document.fonts?.ready) await document.fonts.ready })
   await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {})
   await page.waitForTimeout(150)
 }
-
-async function dismissGuide(page) {
-  for (const mask of [page.locator('.app-step-guide__mask'), page.locator('.tour-mask')]) {
-    if (await mask.isVisible().catch(() => false)) {
-      const skip = page.getByRole('button', { name: /跳过引导|跳过/ }).first()
-      if (await skip.isVisible().catch(() => false)) await skip.click()
-      await mask.waitFor({ state: 'hidden', timeout: 3_000 }).catch(() => {})
-    }
-  }
-}
+const dismissGuide = dismissGraduationGuide
 
 async function capture(page, journey, phase) {
   await fs.mkdir(ARTIFACT_DIR, { recursive: true })
   await settle(page)
   await dismissGuide(page)
-  const path = `${ARTIFACT_DIR}/${journey}-${phase}.png`
-  await page.screenshot({ path, fullPage: false, animations: 'disabled', caret: 'hide' })
-  return path
+  const target = `${ARTIFACT_DIR}/${journey}-${phase}.png`
+  await page.screenshot({ path: target, fullPage: false, animations: 'disabled', caret: 'hide' })
+  await test.info().attach(`${journey}-${phase}`, { path: target, contentType: 'image/png' })
+  return target
 }
 
 async function assertHealthyPage(page) {
   await expect(page.locator('body')).not.toContainText(/真实接口不可用|权限上下文加载失败|登录已失效|数据加载出现问题/)
-  const fit = await page.evaluate(() => ({
-    width: window.innerWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }))
+  const fit = await page.evaluate(() => ({ width: window.innerWidth, scrollWidth: document.documentElement.scrollWidth }))
   expect(fit.scrollWidth, JSON.stringify(fit)).toBeLessThanOrEqual(fit.width + 1)
 }
 
@@ -65,13 +51,9 @@ const ROLE_HOME_QUERY = {
 }
 
 async function assertRoleHomeDestination(page, entryLabel, expectedPath) {
-  await expect.poll(() => new URL(page.url()).pathname, {
-    message: `${entryLabel} must land on ${expectedPath}`
-  }).toBe(expectedPath)
+  await expect.poll(() => new URL(page.url()).pathname, { message: `${entryLabel} must land on ${expectedPath}` }).toBe(expectedPath)
   for (const [key, expected] of Object.entries(ROLE_HOME_QUERY[entryLabel] || {})) {
-    await expect.poll(() => new URL(page.url()).searchParams.get(key), {
-      message: `${entryLabel} must preserve ${key}=${expected}`
-    }).toBe(expected)
+    await expect.poll(() => new URL(page.url()).searchParams.get(key), { message: `${entryLabel} must preserve ${key}=${expected}` }).toBe(expected)
   }
   await expect.poll(() => new URL(page.url()).searchParams.get('batchId'), {
     message: `${entryLabel} must preserve the selected graduation batch`
@@ -82,20 +64,14 @@ async function assertRoleHomeDestination(page, entryLabel, expectedPath) {
 async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
   await page.setViewportSize({ width: 1440, height: 900 })
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
-
   const graduationRail = page.locator('.bpl-rail__item').filter({ hasText: '毕业设计中心' }).first()
   await expect(graduationRail).toBeVisible()
   await graduationRail.click()
   await expect(page).toHaveURL(/\/admin\/graduation(?:\?|$)/)
-  await page.evaluate((batchId) => localStorage.setItem('graduation.selectedBatchId', batchId), fixture.batchId)
   await page.goto(`${config.staffBaseUrl}/admin/graduation?batchId=${encodeURIComponent(fixture.batchId)}`)
   await dismissGuide(page)
   await expect(page.locator('.gbs__select')).toHaveValue(String(fixture.batchId))
-
-  const roleHomeTask = {
-    '待评阅开题': '开题材料待审阅',
-    '待评阅成果': '成果待审阅',
-  }[entryLabel]
+  const roleHomeTask = { '待评阅开题': '开题材料待审阅', '待评阅成果': '成果待审阅' }[entryLabel]
   if (roleHomeTask) {
     const taskButton = page.getByRole('button').filter({ hasText: roleHomeTask }).first()
     await expect(taskButton, `Role Home 必须显示 ${roleHomeTask}`).toBeVisible()
@@ -105,14 +81,9 @@ async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
     await assertHealthyPage(page)
     return
   }
-
   const workspaceByEntry = {
-    '批次与规则': '批次与实施',
-    '题目库': '题目与选题',
-    '过程指导台': '过程指导',
-    '答辩安排': '答辩与成绩',
-    '成绩台账': '答辩与成绩',
-    '毕设材料归档': '风险与归档',
+    '批次与规则': '批次与实施', '题目库': '题目与选题', '过程指导台': '过程指导',
+    '答辩安排': '答辩与成绩', '成绩台账': '答辩与成绩', '毕设材料归档': '风险与归档'
   }
   const workspaceLabel = workspaceByEntry[entryLabel]
   expect(workspaceLabel, `缺少 ${entryLabel} 的 Role Home 工作区映射`).toBeTruthy()
@@ -164,8 +135,7 @@ async function openStudentFromRoleHome(page, { materials = false } = {}) {
 }
 
 async function firstVisible(locator) {
-  const count = await locator.count()
-  for (let index = 0; index < count; index += 1) {
+  for (let index = 0; index < await locator.count(); index += 1) {
     const candidate = locator.nth(index)
     if (await candidate.isVisible().catch(() => false)) return candidate
   }
@@ -187,16 +157,20 @@ async function clickFirstVisible(page, names) {
 
 async function writeMeta(journey, payload) {
   await fs.mkdir(ARTIFACT_DIR, { recursive: true })
-  await fs.writeFile(`${ARTIFACT_DIR}/${journey}-seal.json`, JSON.stringify({
-    journey,
-    result: 'BROWSER_PASS',
-    batchId: fixture.batchId,
-    gdStudentId: fixture.gdStudentId,
-    ...payload,
+  const target = `${ARTIFACT_DIR}/${journey}-seal.json`
+  await fs.writeFile(target, JSON.stringify({
+    journey, result: 'NAVIGATION_PASS',
+    coverage: 'role-home navigation and readback only; not completed business lifecycle',
+    head: process.env.E2E_EXPECTED_SHA || process.env.GITHUB_SHA || 'local',
+    batchId: fixture.batchId, gdStudentId: fixture.gdStudentId, ...payload
   }, null, 2), 'utf8')
+  await test.info().attach(`${journey}-navigation-evidence`, { path: target, contentType: 'application/json' })
 }
 
-test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys', () => {
+// These navigation checks have independent browser contexts and no write
+// dependency on a previous test. One missing button must not skip seven routes.
+test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => {
+  test.describe.configure({ mode: 'default' })
   test.beforeAll(async () => {
     fixture = await prepareGraduationFixture()
     teacherFixture = await prepareGraduationTeacherMobileGoldFixture()
@@ -206,13 +180,12 @@ test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys',
   test('GDJ-01 batch, student and mentor handoff', async ({ page }) => {
     await openStaffFromRoleHome(page, '批次与规则', '/admin/graduation/batches')
     const screenshotA = await capture(page, 'GDJ-01', 'A-first-screen')
-    const row = page.locator('.dt__tr').filter({ hasText: fixture.batchName }).first()
-    await expect(row).toBeVisible()
-    await row.getByRole('button', { name: '详情/配置' }).click()
+    const row = page.locator('.dt__tr').filter({ has: page.locator(`.gd-batch-identity[data-batch-id="${fixture.batchId}"]`) })
+    await expect(row).toHaveCount(1)
+    await row.getByRole('button', { name: `打开${fixture.batchName}详情配置`, exact: true }).click()
     await expect(page).toHaveURL(new RegExp(`/admin/graduation/batches/${fixture.batchId}`))
     await assertHealthyPage(page)
     const screenshotB = await capture(page, 'GDJ-01', 'B-action-receipt')
-
     const context = await page.context().browser().newContext()
     const handoff = await context.newPage()
     try {
@@ -235,13 +208,11 @@ test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys',
     const action = '搜索真实题目并打开详情'
     await assertHealthyPage(page)
     const screenshotB = await capture(page, 'GDJ-02', 'B-action-receipt')
-
     const context = await page.context().browser().newContext()
     const handoff = await context.newPage()
     try {
       await openStudentFromRoleHome(handoff)
-      const topicStep = handoff.locator('.gd-step').filter({ hasText: /选题|题目/ }).first()
-      await expect(topicStep).toBeVisible()
+      await expect(handoff.locator('.gd-step').filter({ hasText: /选题|题目/ }).first()).toBeVisible()
       const screenshotC = await capture(handoff, 'GDJ-02', 'C-handoff')
       const topics = await adminApi.get('/graduation/gd-topics', { batchId: fixture.batchId, page: 1, pageSize: 30, archiveView: 'active' })
       await writeMeta('GDJ-02', { screenshotA, screenshotB, screenshotC, action, serverTruth: { topicCount: items(topics).length, stableTopic: fixture.topicTitle } })
@@ -256,7 +227,6 @@ test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys',
     await queueItem.click()
     await expect(page.locator('.gd-review-workspace__document')).toBeVisible()
     const screenshotB = await capture(page, 'GDJ-03', 'B-action-receipt')
-
     const context = await page.context().browser().newContext()
     const handoff = await context.newPage()
     try {
@@ -276,7 +246,6 @@ test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys',
     const action = await clickFirstVisible(page, ['指导记录', '中期检查', '任务书'])
     await assertHealthyPage(page)
     const screenshotB = await capture(page, 'GDJ-04', 'B-action-receipt')
-
     const context = await page.context().browser().newContext()
     const handoff = await context.newPage()
     try {
@@ -295,7 +264,6 @@ test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys',
     const action = await clickFirstVisible(page, ['待评阅', '全部', '已退回'])
     await assertHealthyPage(page)
     const screenshotB = await capture(page, 'GDJ-05', 'B-action-receipt')
-
     const context = await page.context().browser().newContext()
     const handoff = await context.newPage()
     try {
@@ -313,7 +281,6 @@ test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys',
     const action = await clickFirstVisible(page, ['＋ 新增答辩组', '答辩分组', '待发布', '已发布', '刷新'])
     await assertHealthyPage(page)
     const screenshotB = await capture(page, 'GDJ-06', 'B-action-receipt')
-
     const context = await page.context().browser().newContext()
     const handoff = await context.newPage()
     try {
@@ -332,7 +299,6 @@ test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys',
     const action = await clickFirstVisible(page, ['成绩', '待核算', '待复核', '已发布'])
     await assertHealthyPage(page)
     const screenshotB = await capture(page, 'GDJ-07', 'B-action-receipt')
-
     const context = await page.context().browser().newContext()
     const handoff = await context.newPage()
     try {
@@ -354,7 +320,6 @@ test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys',
     await archiveRow.click()
     await expect(page.getByText(/归档核验/).first()).toBeVisible()
     const screenshotB = await capture(page, 'GDJ-08', 'B-action-receipt')
-
     const context = await page.context().browser().newContext()
     const handoff = await context.newPage()
     try {
@@ -363,15 +328,9 @@ test.describe.serial('Graduation V8 W15 · eight zero-training Golden Journeys',
       const screenshotC = await capture(handoff, 'GDJ-08', 'C-handoff')
       const archives = await adminApi.get('/graduation/gd-archives', { batchId: fixture.batchId, page: 1, pageSize: 30 })
       await writeMeta('GDJ-08', {
-        screenshotA,
-        screenshotB,
-        screenshotC,
+        screenshotA, screenshotB, screenshotC,
         action: '从风险与归档工作区进入精确归档页并读取逐项缺口',
-        serverTruth: {
-          archiveCount: items(archives).length,
-          archiveId: String(archiveProjection.id || archiveProjection.archiveId || ''),
-          archiveStatus: archiveProjection.status || ''
-        }
+        serverTruth: { archiveCount: items(archives).length, archiveId: String(archiveProjection.id || archiveProjection.archiveId || ''), archiveStatus: archiveProjection.status || '' }
       })
     } finally { await context.close() }
   })

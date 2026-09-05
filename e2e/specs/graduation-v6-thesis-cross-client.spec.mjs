@@ -23,6 +23,17 @@ async function loginTeacherMini(page) {
   await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 15_000 })
 }
 
+function assertMobileIdentity(mobileDetail, fixture, recordId, materialVersion, fileVersionId) {
+  // The canonical final DTO calls GraduationStudent.id "projectId". The
+  // material library uses "gdStudentId"; both denote the same domain identity,
+  // never the school StudentProfile.id. Verify record and version separately.
+  expect(String(mobileDetail?.gdStudentId || mobileDetail?.projectId || '')).toBe(String(fixture.gdStudentId))
+  expect(String(mobileDetail?.id || '')).toBe(recordId)
+  expect(String(mobileDetail?.studentNo || '')).toBe(String(fixture.studentNo))
+  expect(String(mobileDetail?.materialVersion ?? '')).toBe(materialVersion)
+  expect(String(mobileDetail?.fileVersionId || '')).toBe(fileVersionId)
+}
+
 test.describe.serial('V6 · one real thesis across student PC, teacher PC and teacher miniapp', () => {
   let fixture
 
@@ -37,13 +48,23 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
       documentPages: 20
     })
 
+    const studentShot = testInfo.outputPath('cross-client-thesis-student-pc-submitted.png')
+    await expect(page.locator('[data-step-key="final"]')).toBeVisible()
+    await page.locator('[data-step-key="final"]').scrollIntoViewIfNeeded()
+    await page.screenshot({ path: studentShot, fullPage: false, animations: 'disabled', caret: 'hide' })
+    await testInfo.attach('cross-client-thesis-student-pc-submitted', { path: studentShot, contentType: 'image/png' })
+
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
     await page.goto(`${config.staffBaseUrl}/admin/graduation/finals?batchId=${encodeURIComponent(fixture.batchId)}&tab=PENDING_REVIEW`)
     await dismissGraduationGuide(page)
 
     const workspace = page.locator('.gd-review-workspace')
     await expect(workspace).toBeVisible()
-    await expect(workspace.locator('.gd-review-workspace__queue')).toContainText(fixture.topicTitle)
+    const queue = workspace.locator('.gd-review-workspace__queue')
+    await expect(queue).toContainText(fixture.topicTitle)
+    const target = queue.getByRole('button').filter({ hasText: fixture.topicTitle })
+    await expect(target, 'select the same student, never whichever queue entry is first').toHaveCount(1)
+    await target.click()
     await expect.poll(() => new URL(page.url()).searchParams.get('sel'), {
       message: 'teacher PC must expose the exact selected final record in URL'
     }).toMatch(/^\d+$/)
@@ -58,6 +79,7 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     expect(materialVersion).toMatch(/^\d+$/)
     expect(fileVersionId).toMatch(/^\d+$/)
     await expectRenderedPdfCanvas(page)
+    await dismissGraduationGuide(page)
 
     const pcShot = testInfo.outputPath('cross-client-thesis-teacher-pc.png')
     await page.screenshot({ path: pcShot, fullPage: false, animations: 'disabled', caret: 'hide' })
@@ -66,29 +88,24 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     await page.setViewportSize({ width: 390, height: 844 })
     await loginTeacherMini(page)
     const taskQuery = new URLSearchParams({
-      tab: 'review',
-      kind: 'final',
-      batchId: String(fixture.batchId),
-      gdStudentId: String(fixture.gdStudentId),
-      recordId,
-      materialVersion,
-      fileVersionId
+      tab: 'review', kind: 'final', batchId: String(fixture.batchId),
+      gdStudentId: String(fixture.gdStudentId), recordId, materialVersion, fileVersionId
     })
-    const detailPromise = page.waitForResponse((response) =>
-      response.request().method() === 'GET'
-      && new URL(response.url()).pathname.endsWith(`/api/v1/mobile/teacher/graduation/final/${recordId}`)
-    )
+    const isExactMobileDetail = (response) => {
+      const url = new URL(response.url())
+      return response.request().method() === 'GET'
+        && url.pathname.endsWith(`/api/v1/mobile/teacher/graduation/final/${recordId}`)
+        && url.searchParams.get('batchId') === String(fixture.batchId)
+    }
+    const detailPromise = page.waitForResponse(isExactMobileDetail)
     await page.goto(`${MINI_BASE}/#/pages/teacher/graduation-guide/index?${taskQuery}`)
     const mobileDetail = await expectGraduationBusinessSuccess(await detailPromise, '教师小程序读取成果批阅详情')
-    expect(String(mobileDetail?.gdStudentId || '')).toBe(String(fixture.gdStudentId))
-    expect(String(mobileDetail?.materialVersion || '')).toBe(materialVersion)
-    expect(String(mobileDetail?.fileVersionId || '')).toBe(fileVersionId)
+    assertMobileIdentity(mobileDetail, fixture, recordId, materialVersion, fileVersionId)
 
     await expect(page.getByText(/成果批阅 · 第 1 \/ 1 条/).first()).toBeVisible({ timeout: 20_000 })
     const review = page.locator('.rv__content')
     await expect(review).toBeVisible({ timeout: 20_000 })
     await expect(review).toContainText(fixture.topicTitle)
-
     const versionRow = page.locator('.rv__att').filter({ hasText: `FileVersion ${fileVersionId}` }).first()
     await expect(versionRow, 'teacher miniapp must show the same canonical FileVersion as teacher PC').toBeVisible({ timeout: 20_000 })
     await expect(page.locator('.rv__foot').getByRole('button', { name: '通过' })).toBeEnabled()
@@ -98,7 +115,6 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     for (const [key, value] of taskQuery.entries()) {
       expect(decodeURIComponent(exactUrl), `teacher miniapp exact task URL must retain ${key}`).toContain(`${key}=${value}`)
     }
-
     const ticketPromise = page.waitForResponse((response) =>
       response.request().method() === 'POST'
       && /\/api\/v1\/mobile\/graduation\/material-center\/files\/[^/]+\/ticket$/.test(new URL(response.url()).pathname)
@@ -118,22 +134,16 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
 
     const confirmCurrent = page.getByRole('button', { name: '确认当前版本' })
     if (await confirmCurrent.isVisible().catch(() => false)) {
-      const revalidatePromise = page.waitForResponse((response) =>
-        response.request().method() === 'GET'
-        && /\/api\/v1\/mobile\/teacher\/graduation\/final\/[^/]+$/.test(new URL(response.url()).pathname)
-      )
+      const revalidatePromise = page.waitForResponse(isExactMobileDetail)
       await confirmCurrent.click()
       const fresh = await expectGraduationBusinessSuccess(await revalidatePromise, '教师小程序预览返回后重验论文版本')
-      expect(String(fresh?.materialVersion || '')).toBe(materialVersion)
-      expect(String(fresh?.fileVersionId || '')).toBe(fileVersionId)
+      assertMobileIdentity(fresh, fixture, recordId, materialVersion, fileVersionId)
       await expect(page.locator('.rv__foot').getByRole('button', { name: '通过' })).toBeEnabled()
       await expect(page.locator('.rv__foot').getByRole('button', { name: '退回' })).toBeEnabled()
     }
-
     await expect(page.locator('body')).not.toContainText(
       /版本已变化|旧版审核已锁定|批次与当前选择不一致|指定的毕业设计待办不在当前批次/
     )
-
     const miniShot = testInfo.outputPath('cross-client-thesis-teacher-miniapp.png')
     await page.screenshot({ path: miniShot, fullPage: false, animations: 'disabled', caret: 'hide' })
     await testInfo.attach('cross-client-thesis-teacher-miniapp', { path: miniShot, contentType: 'image/png' })
@@ -141,11 +151,9 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     const evidence = testInfo.outputPath('cross-client-thesis-identity.json')
     await import('node:fs/promises').then(({ writeFile }) => writeFile(evidence, JSON.stringify({
       head: process.env.E2E_EXPECTED_SHA || process.env.GITHUB_SHA || 'local',
-      batchId: String(fixture.batchId),
-      gdStudentId: String(fixture.gdStudentId),
-      recordId,
-      materialVersion,
-      fileVersionId,
+      coverage: 'student-PC submission and teacher-PC/miniapp-H5 preview, not full lifecycle or native WeChat',
+      batchId: String(fixture.batchId), gdStudentId: String(fixture.gdStudentId),
+      recordId, materialVersion, fileVersionId,
       scenarioFactory: 'graduation-scenario-fixture.ensureFinalPending',
       miniappEntry: 'exact-task-direct-review'
     }, null, 2), 'utf8'))
