@@ -21,7 +21,7 @@ function leafKey(leaf) {
 }
 
 function hasPermission(leaf, permissionPatterns) {
-  if (!Array.isArray(permissionPatterns)) return true
+  if (!Array.isArray(permissionPatterns) || !permissionPatterns.length) return false
   if (leaf.permissionKey && !matchPermission(permissionPatterns, leaf.permissionKey)) return false
   if (Array.isArray(leaf.permissionAny) && leaf.permissionAny.length &&
       !leaf.permissionAny.some((code) => matchPermission(permissionPatterns, code))) {
@@ -82,6 +82,7 @@ function getSearchableDeepLinkIndex() {
  */
 export function projectStudentAffairsWorkspaceDeepLinks(group, permissionPatterns) {
   if (!group || group.key !== STUDENT_AFFAIRS_GROUP) return group
+  if (!Array.isArray(permissionPatterns) || !permissionPatterns.length) return group
   const rawGroup = rawStudentAffairsGroup()
   if (!rawGroup) return group
   const rawMods = new Map(rawGroup.children.map((item) => [item.key, item]))
@@ -116,7 +117,7 @@ export function projectStudentAffairsWorkspaceDeepLinks(group, permissionPattern
  */
 export function searchStudentAffairsWorkspaceDeepLinks(query, permissionPatterns) {
   const q = String(query || '').trim()
-  if (!q || !Array.isArray(permissionPatterns)) return []
+  if (!q || !Array.isArray(permissionPatterns) || !permissionPatterns.length) return []
   const index = getSearchableDeepLinkIndex()
 
   return searchNavPlan(q, permissionPatterns)

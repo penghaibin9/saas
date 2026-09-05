@@ -8,6 +8,13 @@
   --sa-v6-nav-w: 232px;
   --sa-v6-page-x: 16px;
   --sa-v6-row-h: 66px;
+  /* A1 使用浅色顶栏，必须同步覆盖高对比皮肤遗留的深色顶栏文字变量。 */
+  --hc-topbar-text: var(--text-primary);
+  --hc-topbar-muted: var(--text-tertiary);
+  --hc-topbar-control-bg: var(--bg-section);
+  --hc-topbar-control-hover: var(--bg-card);
+  --hc-topbar-control-border: var(--border-base);
+  --hc-topbar-control-text: var(--text-secondary);
   background: var(--bg-page);
 }
 

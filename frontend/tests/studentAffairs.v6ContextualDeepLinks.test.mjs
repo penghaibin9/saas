@@ -15,10 +15,11 @@ const adminLayout = fs.readFileSync(new URL('../src/modules/studentAffairs/views
 const riskView = fs.readFileSync(new URL('../src/modules/studentAffairs/views/StudentAffairsRiskListView.vue', import.meta.url), 'utf8')
 
 function project(patterns = ['*']) {
+  const patternKey = Array.isArray(patterns) ? patterns.join(',') : 'missing'
   const group = getVisibleNavPlan({
     includePlanned: false,
     permissionPatterns: patterns,
-    ctxKey: `deep-links-${patterns.join(',')}`
+    ctxKey: `deep-links-${patternKey}`
   }).find((item) => item.key === 'student-affairs')
   return projectStudentAffairsWorkspaceDeepLinks(group, patterns)
 }
@@ -79,9 +80,13 @@ test('search-only D links reuse canonical search, stay permission-scoped and hid
   assert.equal(searchStudentAffairsWorkspaceDeepLinks('资助批次', ['studentAffairs.aid.view']).length, 0)
   assert.equal(searchStudentAffairsWorkspaceDeepLinks('助学金管理', ['*']).length, 0)
   assert.equal(searchStudentAffairsWorkspaceDeepLinks('报到流程配置', null).length, 0)
+  assert.equal(searchStudentAffairsWorkspaceDeepLinks('报到流程配置', []).length, 0)
 })
 
 test('deep-link permissions remain fail-closed and never modify the cached visible tree', () => {
+  assert.equal(countContextualWorkspaceDeepLinks(project(null)), 0)
+  assert.equal(countContextualWorkspaceDeepLinks(project([])), 0)
+
   const aidOnly = project(['studentAffairs.aid.view'])
   const aid = workspace(aidOnly, 'sa-aid')
   const labels = aid.children.map((leaf) => leaf.label)
@@ -119,7 +124,9 @@ test('projection and search adapter reuse the public shell without a second sear
   assert.doesNotMatch(deepLinkSource, /searchText\s*=|searchText\.includes/)
   assert.equal(studentAffairsPortal.split('searchStudentAffairsWorkspaceDeepLinks(query, permissionPatterns)').length - 1, 1)
   assert.equal(studentAffairsPortal.split('const baseResults = baseFnResults.call(this)').length - 1, 1)
-  assert.equal(studentAffairsPortal.split('const exactPaths = new Set').length - 1, 1)
+  assert.equal(studentAffairsPortal.split('const adaptedByPath = new Map').length - 1, 1)
+  assert.equal(studentAffairsPortal.split('const merged = baseResults.map').length - 1, 1)
+  assert.doesNotMatch(studentAffairsPortal, /return \[\.\.\.deepLinks,/)
   assert.equal(studentAffairsPortal.split('baseFnQueryWatcher.call(this, q, previousQuery)').length - 1, 1)
   assert.equal(studentAffairsPortal.split("if (String(q || '').trim()) this.fnOpen = true").length - 1, 1)
   assert.equal(adminLayout.split("import BasePortalLayout from '@/modules/studentAffairs/components/StudentAffairsPortalLayout.js'").length - 1, 1)

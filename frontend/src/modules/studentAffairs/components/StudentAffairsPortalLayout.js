@@ -37,9 +37,20 @@ export default {
         disabled: false,
         badge: item.badge || ''
       }))
-      const exactPaths = new Set(deepLinks.map((item) => item.to).filter(Boolean))
+      const adaptedByPath = new Map(deepLinks.map((item) => [item.to, item]))
+      const adaptedPaths = new Set()
+      const merged = baseResults.map((item) => {
+        const adapted = item.to ? adaptedByPath.get(item.to) : null
+        if (!adapted || adaptedPaths.has(item.to)) return item
+        adaptedPaths.add(item.to)
+        return adapted
+      })
+      for (const item of deepLinks) {
+        if (!adaptedPaths.has(item.to)) merged.push(item)
+      }
+
       const seen = new Set()
-      return [...deepLinks, ...baseResults.filter((item) => !item.to || !exactPaths.has(item.to))]
+      return merged
         .filter((item) => {
           const key = `${item.label}|${item.to || ''}`
           if (seen.has(key)) return false

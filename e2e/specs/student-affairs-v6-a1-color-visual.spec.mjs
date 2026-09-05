@@ -72,6 +72,18 @@ async function visualGeometry(page) {
         paddingRight: parseFloat(style.paddingRight)
       }
     }
+    const tone = (node, pseudo = null) => {
+      if (!node) return { color: '', average: null, opacity: 0 }
+      const style = getComputedStyle(node, pseudo)
+      const channels = String(style.color || '').match(/[\d.]+/g)?.slice(0, 3).map(Number) || []
+      return {
+        color: style.color,
+        average: channels.length === 3 ? channels.reduce((sum, value) => sum + value, 0) / 3 : null,
+        opacity: Number(style.opacity || 1)
+      }
+    }
+    const brand = document.querySelector('.bpl-brand__nm')
+    const searchInputs = [...document.querySelectorAll('.bpl-cmdk__input')]
     const rows = [...document.querySelectorAll('.sa-v6-queue-row')].map((node) => {
       const rect = node.getBoundingClientRect()
       return { top: rect.top, bottom: rect.bottom, height: rect.height }
@@ -87,6 +99,19 @@ async function visualGeometry(page) {
       main: box('.bpl-main'),
       hero: box('.sa-v6-hero__summary'),
       flow: box('.sa-v6-flow'),
+      topbarContent: {
+        brand: {
+          text: brand?.textContent || '',
+          width: brand?.getBoundingClientRect().width || 0,
+          ...tone(brand)
+        },
+        studentSearch: tone(searchInputs[0]),
+        studentPlaceholder: tone(searchInputs[0], '::placeholder'),
+        functionSearch: tone(searchInputs[1]),
+        functionPlaceholder: tone(searchInputs[1], '::placeholder'),
+        help: tone(document.querySelector('.bpl-help__btn')),
+        bell: tone(document.querySelector('.bpl-bell'))
+      },
       rows,
       iconColors,
       overflowX: document.documentElement.scrollWidth - innerWidth,
@@ -120,6 +145,22 @@ for (const viewport of [{ width: 1366, height: 768 }, { width: 1760, height: 100
     expect(new Set(result.iconColors).size).toBeGreaterThanOrEqual(3)
     expect(result.overflowX).toBeLessThanOrEqual(1)
     expect(result.visibleText).not.toMatch(/DATA GAP|permissionKey|allowedActions|API\s|route\s/i)
+
+    expect(result.topbarContent.brand.text.trim().length).toBeGreaterThanOrEqual(8)
+    expect(result.topbarContent.brand.width).toBeGreaterThan(100)
+    for (const surface of [
+      result.topbarContent.brand,
+      result.topbarContent.studentSearch,
+      result.topbarContent.studentPlaceholder,
+      result.topbarContent.functionSearch,
+      result.topbarContent.functionPlaceholder,
+      result.topbarContent.help,
+      result.topbarContent.bell
+    ]) {
+      expect(surface.opacity).toBeGreaterThanOrEqual(0.9)
+      expect(surface.average).not.toBeNull()
+      expect(surface.average).toBeLessThan(190)
+    }
 
     const path = testInfo.outputPath(`color-v6-a1-${viewport.width}x${viewport.height}.png`)
     await page.screenshot({ path, fullPage: false, animations: 'disabled', caret: 'hide' })
