@@ -45,12 +45,26 @@ test('U4 only loads the current student current tab and rejects stale student re
   assert.match(view, /epoch === this\.contextToken/)
 })
 
-test('U4 first fold exposes frozen WorkContext, recent fact and server-state gate conclusion', () => {
+test('U4 first fold uses teacher-facing work language instead of engineering copy', () => {
   assert.match(view, /class="gp-context-board"/)
-  assert.match(view, /冻结工作上下文/)
-  assert.match(view, /最近事实/)
-  assert.match(view, /节点准入/)
+  assert.match(view, /当前办理/)
+  assert.match(view, /最近记录/)
+  assert.match(view, /当前结论/)
   assert.match(view, /recentFact\(\)/)
   assert.match(view, /gateConclusion\(\)/)
-  assert.match(view, /真实准入仍由服务端状态机判断/)
+  assert.doesNotMatch(view, /冻结工作上下文|不在浏览器聚合|节点准入/)
+})
+
+test('U4 teacher workbench does not impersonate student taskbook or rectification actions', () => {
+  assert.match(view, /等待学生在学生端确认任务书/)
+  assert.match(view, /等待学生提交整改说明/)
+  assert.doesNotMatch(view, /代学生确认/)
+  assert.doesNotMatch(view, /doConfirmTaskbook/)
+  assert.doesNotMatch(view, /openRectifySubmit/)
+})
+
+test('U4 duplicate training-manual tab is removed from the operational workbench', () => {
+  assert.doesNotMatch(view, /value: 'workflow'/)
+  assert.doesNotMatch(view, /GRADUATION_MANUAL_WORKFLOW|GRADUATION_MANUAL_GATES/)
+  assert.doesNotMatch(view, /class="gp-panel gp-workflow"/)
 })
