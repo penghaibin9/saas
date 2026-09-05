@@ -21,7 +21,7 @@ function contract(name, check) {
     results.push({ name, status: 'FAIL', message: error?.message || String(error) })
     console.error(`[graduation-browser-architecture] FAIL ${name}`)
     console.error(error?.stack || error)
-    console.error(JSON.stringify({ contract: 'graduation-browser-architecture-v5', results }, null, 2))
+    console.error(JSON.stringify({ contract: 'graduation-browser-architecture-v6', results }, null, 2))
     process.exitCode = 1
     throw error
   }
@@ -165,10 +165,33 @@ contract('shared-graduation-scenarios', () => {
       `${name} must not own a duplicate final fixture`)
   }
   for (const marker of [
-    'ensureProposalApproved', 'ensureFinalPending', 'ensureFinalApproved',
-    'PROPOSAL_APPROVED', 'FINAL_PENDING', 'documentPages = 20',
-    'expectRenderedPdfCanvas', "action: 'APPROVE'", 'expectedVersion:', 'fileVersionId:'
+    'ensureProposalApproved', 'ensureMidtermApproved', 'ensureFinalPending', 'ensureFinalApproved',
+    'PROPOSAL_APPROVED', 'FINAL_PENDING', 'documentPages = 20', 'expectRenderedPdfCanvas'
   ]) assert.ok(scenario.includes(marker), `scenario factory missing ${marker}`)
+  assert.doesNotMatch(scenario, /execFileSync|e2e_seed_graduation_final_prerequisite\.py/,
+    'business stage progression must not use direct database fixtures')
+
+  const approvalStart = markerIndex(scenario, 'async function approveFinalInBrowser(', 'browser-issued-review')
+  const approvalEnd = markerIndex(scenario, 'export async function ensureFinalApproved(', 'browser-issued-review')
+  assert.ok(approvalEnd > approvalStart)
+  const approval = scenario.slice(approvalStart, approvalEnd)
+  assert.match(approval, /await expectRenderedPdfCanvas\(page\)/,
+    'the mentor must read a rendered document before approving')
+  assert.match(approval, /page\.getByRole\('button', \{ name: \/通过当前版本\/ \}\)\.click\(\)/,
+    'approval must originate from the actual teacher-PC button')
+  assert.match(approval, /const body = response\.request\(\)\.postDataJSON\(\)/,
+    'inspect the payload emitted by the browser, not a fabricated API command')
+  assert.match(approval, /expect\(body\?\.action\)\.toBe\('APPROVE'\)/)
+  assert.match(approval, /expect\(String\(body\?\.fileVersionId \|\| ''\)\)\.toBe\(String\(detail\.fileVersionId\)\)/)
+  assert.match(approval, /expect\(String\(body\?\.expectedVersion \?\? ''\)\)\.toBe\(String\(detail\.materialVersion\)\)/)
+  assert.ok(approval.includes('studentApi.get(\'/portal/graduation/final\')'),
+    'the submitting student must read back the mentor decision')
+  assert.doesNotMatch(approval, /(?:adminApi|mentorApi)\.post\(/,
+    'the scenario must not bypass the browser to approve a final')
+  assert.match(scenario, /row\.type === '定稿' && row\.status === FINAL_APPROVED/,
+    'draft approval alone cannot satisfy the defense prerequisite')
+  assert.match(scenario, /expect\(snapshot\?\.finalApproved,[^\n]*\)\.toBe\(true\)/,
+    'defense must require the canonical server finalApproved gate')
 })
 
 contract('scenario-isolation-and-real-role-actors', () => {
@@ -223,12 +246,23 @@ contract('exact-miniapp-task-contract', () => {
     'exact task must not depend on a nonexistent shell node')
   assert.ok(crossClient.includes('教师小程序读取成果批阅详情'),
     'exact task must read the real mobile detail API')
-  assert.ok(crossClient.includes('mobileDetail?.gdStudentId'),
-    'exact task must verify the same graduation student')
+  // The existing mobile DTO omits student identity. Preserve the identity
+  // invariant through its canonical material relation, not invented fields.
+  assert.match(crossClient, /function assertLibraryIdentity\(library, fixture, identity\)/)
+  assert.match(crossClient, /library\?\.gdStudentId/)
+  assert.match(crossClient, /library\?\.studentNo/)
+  assert.match(crossClient, /library\?\.batchId/)
+  assert.match(crossClient, /row\.materialId \|\| ''\) === identity\.materialId/)
+  assert.match(crossClient, /mobileDetail\?\.materialId/)
+  assert.match(crossClient, /mobileDetail\?\.id/)
   assert.ok(crossClient.includes('mobileDetail?.materialVersion'),
     'exact task must verify the same material version')
   assert.ok(crossClient.includes('mobileDetail?.fileVersionId'),
     'exact task must verify the same file version')
+  assert.match(crossClient, /createHash\('sha256'\)\.update\(previewBytes\)\.digest\('hex'\)/,
+    'verify that authorised mobile preview bytes equal the uploaded immutable PDF')
+  assert.doesNotMatch(crossClient, /mobileDetail\?\.(?:gdStudentId|projectId|studentNo)/,
+    'do not require fields absent from the canonical mobile review DTO')
   assert.equal(crossClient.includes('window.localStorage.getItem'), false,
     'local storage must not be the cross-client source of truth')
   for (const key of ['batchId', 'gdStudentId', 'recordId', 'materialVersion', 'fileVersionId']) {
@@ -249,7 +283,7 @@ contract('archive-readback-and-leaf-query', () => {
 })
 
 console.log(JSON.stringify({
-  contract: 'graduation-browser-architecture-v5',
+  contract: 'graduation-browser-architecture-v6',
   status: 'GREEN',
   passed: results.length,
   results
