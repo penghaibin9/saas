@@ -36,7 +36,12 @@ test.describe.serial('V6 · defense secretary confirmation writes the complete r
 
   test('real secretary role confirms two genuine judge scores and reads both records back', async ({ page }, testInfo) => {
     test.setTimeout(8 * 60_000)
-    const scoringFixture = await ensureDefenseScoringContext(page, adminApi, fixture)
+    const scoringFixture = await ensureDefenseScoringContext(page, adminApi, {
+      ...fixture,
+      // t_gd_defense_group.group_name is VARCHAR(50). Keep the deterministic
+      // E2E group identity inside the production contract without weakening it.
+      runId: `secretary-${fixture.batchId}-${fixture.gdStudentId}`
+    })
     const scoreParams = {
       batchId: scoringFixture.batchId,
       gdStudentId: scoringFixture.gdStudentId,
