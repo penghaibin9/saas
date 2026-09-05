@@ -10,7 +10,6 @@ import {
 import { StaffLoginPage } from '../pages/login.page.mjs'
 
 const MINI_BASE = process.env.E2E_MINIAPP_BASE_URL || 'http://127.0.0.1:5188'
-const TEACHER_BATCH_KEY = 'gx_gd_teacher_batch_v1'
 
 async function loginTeacherMini(page) {
   await page.goto(`${MINI_BASE}/#/pages/login/teacher/index`)
@@ -22,15 +21,6 @@ async function loginTeacherMini(page) {
   await page.getByText('我已阅读并同意学校提供的', { exact: false }).click()
   await page.getByText('进入教师工作台', { exact: true }).click()
   await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 15_000 })
-}
-
-async function setTeacherBatch(page, fixture) {
-  await page.evaluate(({ key, batch }) => {
-    window.localStorage.setItem(key, JSON.stringify(batch))
-  }, {
-    key: TEACHER_BATCH_KEY,
-    batch: { id: String(fixture.batchId), name: fixture.batchName || '', status: 'RUNNING' }
-  })
 }
 
 test.describe.serial('V6 · one real thesis across student PC, teacher PC and teacher miniapp', () => {
@@ -60,10 +50,11 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
 
     const recordId = String(new URL(page.url()).searchParams.get('sel'))
     const command = page.getByTestId('review-command-contract')
-    await expect(command).toContainText('文件版本')
+    await expect(command).toContainText('提交版次')
+    await expect(command).toContainText('文件核对')
     await expect(command).toContainText('可以批阅')
-    const materialVersion = (await command.locator('div').nth(0).locator('b').innerText()).trim()
-    const fileVersionId = (await command.locator('div').nth(1).locator('b').innerText()).trim()
+    const materialVersion = String(await command.getAttribute('data-material-version') || '')
+    const fileVersionId = String(await command.getAttribute('data-file-version-id') || '')
     expect(materialVersion).toMatch(/^\d+$/)
     expect(fileVersionId).toMatch(/^\d+$/)
     await expectRenderedPdfCanvas(page)
@@ -74,7 +65,6 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
 
     await page.setViewportSize({ width: 390, height: 844 })
     await loginTeacherMini(page)
-    await setTeacherBatch(page, fixture)
     const taskQuery = new URLSearchParams({
       tab: 'review',
       kind: 'final',
@@ -84,20 +74,20 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
       materialVersion,
       fileVersionId
     })
+    const detailPromise = page.waitForResponse((response) =>
+      response.request().method() === 'GET'
+      && new URL(response.url()).pathname.endsWith(`/api/v1/mobile/teacher/graduation/final/${recordId}`)
+    )
     await page.goto(`${MINI_BASE}/#/pages/teacher/graduation-guide/index?${taskQuery}`)
+    const mobileDetail = await expectGraduationBusinessSuccess(await detailPromise, '教师小程序读取成果批阅详情')
+    expect(String(mobileDetail?.gdStudentId || '')).toBe(String(fixture.gdStudentId))
+    expect(String(mobileDetail?.materialVersion || '')).toBe(materialVersion)
+    expect(String(mobileDetail?.fileVersionId || '')).toBe(fileVersionId)
 
-    // An exact task deep link intentionally bypasses the list page and opens the
-    // frozen review record directly. Verify the visible business object and the
-    // persisted batch authority instead of depending on a nonexistent shell node.
     await expect(page.getByText(/成果批阅 · 第 1 \/ 1 条/).first()).toBeVisible({ timeout: 20_000 })
     const review = page.locator('.rv__content')
     await expect(review).toBeVisible({ timeout: 20_000 })
     await expect(review).toContainText(fixture.topicTitle)
-    const selectedBatch = await page.evaluate((key) => {
-      try { return JSON.parse(window.localStorage.getItem(key) || '{}') } catch { return {} }
-    }, TEACHER_BATCH_KEY)
-    expect(String(selectedBatch?.id || '')).toBe(String(fixture.batchId))
-    expect(String(selectedBatch?.name || '')).toBe(String(fixture.batchName || ''))
 
     const versionRow = page.locator('.rv__att').filter({ hasText: `FileVersion ${fileVersionId}` }).first()
     await expect(versionRow, 'teacher miniapp must show the same canonical FileVersion as teacher PC').toBeVisible({ timeout: 20_000 })
