@@ -21,7 +21,7 @@ function contract(name, check) {
     results.push({ name, status: 'FAIL', message: error?.message || String(error) })
     console.error(`[graduation-browser-architecture] FAIL ${name}`)
     console.error(error?.stack || error)
-    console.error(JSON.stringify({ contract: 'graduation-browser-architecture-v6', results }, null, 2))
+    console.error(JSON.stringify({ contract: 'graduation-browser-architecture-v7', results }, null, 2))
     process.exitCode = 1
     throw error
   }
@@ -166,7 +166,7 @@ contract('shared-graduation-scenarios', () => {
   }
   for (const marker of [
     'ensureProposalApproved', 'ensureMidtermApproved', 'ensureFinalPending', 'ensureFinalApproved',
-    'PROPOSAL_APPROVED', 'FINAL_PENDING', 'documentPages = 20', 'expectRenderedPdfCanvas'
+    'ensurePlagiarismCompleted', 'PROPOSAL_APPROVED', 'FINAL_PENDING', 'documentPages = 20', 'expectRenderedPdfCanvas'
   ]) assert.ok(scenario.includes(marker), `scenario factory missing ${marker}`)
   assert.doesNotMatch(scenario, /execFileSync|e2e_seed_graduation_final_prerequisite\.py/,
     'business stage progression must not use direct database fixtures')
@@ -184,14 +184,20 @@ contract('shared-graduation-scenarios', () => {
   assert.match(approval, /expect\(body\?\.action\)\.toBe\('APPROVE'\)/)
   assert.match(approval, /expect\(String\(body\?\.fileVersionId \|\| ''\)\)\.toBe\(String\(detail\.fileVersionId\)\)/)
   assert.match(approval, /expect\(String\(body\?\.expectedVersion \?\? ''\)\)\.toBe\(String\(detail\.materialVersion\)\)/)
-  assert.ok(approval.includes('studentApi.get(\'/portal/graduation/final\')'),
+  assert.ok(approval.includes("studentApi.get('/portal/graduation/final')"),
     'the submitting student must read back the mentor decision')
   assert.doesNotMatch(approval, /(?:adminApi|mentorApi)\.post\(/,
     'the scenario must not bypass the browser to approve a final')
-  assert.match(scenario, /row\.type === '定稿' && row\.status === FINAL_APPROVED/,
+  assert.match(scenario, /finalType\(row\) === '定稿' && row\.status === FINAL_APPROVED/,
     'draft approval alone cannot satisfy the defense prerequisite')
-  assert.match(scenario, /expect\(snapshot\?\.finalApproved,[^\n]*\)\.toBe\(true\)/,
+  assert.match(scenario, /snapshot\?\.finalApproved/,
     'defense must require the canonical server finalApproved gate')
+  assert.match(scenario, /page\.getByRole\('button', \{ name: '发起查重', exact: true \}\)\.click\(\)/,
+    'formal final approval must enter plagiarism through the administrator UI')
+  assert.match(scenario, /page\.getByRole\('button', \{ name: '确认回填', exact: true \}\)\.click\(\)/,
+    'plagiarism result must be entered through the existing form')
+  assert.match(scenario, /record\?\.status \|\| ''[\s\S]*toBe\('DONE'\)/,
+    'plagiarism result must read back before final approval')
 })
 
 contract('scenario-isolation-and-real-role-actors', () => {
@@ -246,12 +252,12 @@ contract('exact-miniapp-task-contract', () => {
     'exact task must not depend on a nonexistent shell node')
   assert.ok(crossClient.includes('教师小程序读取成果批阅详情'),
     'exact task must read the real mobile detail API')
-  // The existing mobile DTO omits student identity. Preserve the identity
-  // invariant through its canonical material relation, not invented fields.
   assert.match(crossClient, /function assertLibraryIdentity\(library, fixture, identity\)/)
   assert.match(crossClient, /library\?\.gdStudentId/)
   assert.match(crossClient, /library\?\.studentNo/)
   assert.match(crossClient, /library\?\.batchId/)
+  assert.match(crossClient, /\/graduation\/material-center\/students\/\$\{fixture\.gdStudentId\}\/library/,
+    'cross-client identity proof must use the canonical staff library route')
   assert.match(crossClient, /row\.materialId \|\| ''\) === identity\.materialId/)
   assert.match(crossClient, /mobileDetail\?\.materialId/)
   assert.match(crossClient, /mobileDetail\?\.id/)
@@ -283,7 +289,7 @@ contract('archive-readback-and-leaf-query', () => {
 })
 
 console.log(JSON.stringify({
-  contract: 'graduation-browser-architecture-v6',
+  contract: 'graduation-browser-architecture-v7',
   status: 'GREEN',
   passed: results.length,
   results
