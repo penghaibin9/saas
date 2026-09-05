@@ -175,12 +175,42 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
       for (const row of snapshot.items) expect(String(row.gdStudentId)).toBe(String(scoringFixture.gdStudentId))
       return snapshot.items
     }
+
+    // Seed one genuine score from the other seated judge through the same production
+    // scoring API. This turns the later "other judges unchanged" comparison into a
+    // real isolation check instead of a vacuous zero-record assertion.
+    const chairApi = await loginApi(graduationRoles.defenseChair)
+    const chairComment = `另一名评委隔离基线。${scoringFixture.runId}`
+    const chairReceipt = await chairApi.post('/graduation/gd-defense-scores/entry', {
+      gdStudentId: String(scoringFixture.gdStudentId),
+      judgeName: 'E2E答辩专家B',
+      score: 77,
+      comment: chairComment,
+      absent: false,
+      absentReason: ''
+    })
+    expect(String(chairReceipt?.id || '')).toMatch(/^\d+$/)
+    expect(String(chairReceipt?.gdStudentId || '')).toBe(String(scoringFixture.gdStudentId))
+    expect(String(chairReceipt?.defenseGroupId || '')).toBe(String(scoringFixture.defenseGroupId))
+    expect(String(chairReceipt?.judgeMentorId || '')).toMatch(/^\d+$/)
+    expect(String(chairReceipt?.judgeMentorId || '')).not.toBe(String(scoringFixture.defenseExpertMentorId))
+    expect(chairReceipt?.score).toBe(77)
+    expect(chairReceipt?.status).toBe('SCORED')
+
     const before = await readScores(adminApi)
     const roundNo = Math.max(1, ...before.map(row => Number(row.roundNo)))
+    expect(Number(chairReceipt.roundNo)).toBe(roundNo)
     const otherJudges = rows => rows
       .filter(row => String(row.judgeMentorId || '') !== String(scoringFixture.defenseExpertMentorId))
       .sort((a, b) => String(a.id).localeCompare(String(b.id)))
     const othersBefore = otherJudges(before)
+    expect(othersBefore.length, 'the isolation check requires at least one pre-existing other-judge score').toBeGreaterThan(0)
+    expect(othersBefore.some(row => String(row.id) === String(chairReceipt.id)
+      && String(row.judgeMentorId || '') === String(chairReceipt.judgeMentorId)
+      && Number(row.roundNo) === roundNo
+      && row.score === 77
+      && row.status === 'SCORED'
+      && row.comment === chairComment), 'the other judge baseline must read back before the target judge submits').toBe(true)
 
     await page.setViewportSize({ width: 1440, height: 900 })
     const login = new StaffLoginPage(page, config.staffBaseUrl)
@@ -245,7 +275,8 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
         && persisted.score === 88 && persisted.absent === false && persisted.comment === comment
         && String(persisted.defenseGroupId) === String(scoringFixture.defenseGroupId)
     }, { message: 'the authenticated judge must read exactly their own saved score from the server', timeout: 30_000 }).toBe(true)
-    expect(otherJudges(await readScores(adminApi)), 'submitting one score must not change another judge record').toEqual(othersBefore)
+    const othersAfter = otherJudges(await readScores(adminApi))
+    expect(othersAfter, 'submitting one score must not change another judge record').toEqual(othersBefore)
 
     await expect(page).toHaveURL(/\/admin\/graduation\/defense-scoring/)
     await expect(page).toHaveURL(new RegExp(`batchId=${scoringFixture.batchId}`))
@@ -268,6 +299,8 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
         batchId: String(scoringFixture.batchId), gdStudentId: String(scoringFixture.gdStudentId),
         transport: 'judge-PC-submit-independent-API-readback-and-reloaded-ledger',
         score: persisted, otherJudgeRecordsCompared: othersBefore.length,
+        otherJudgeBaseline: othersBefore,
+        otherJudgeRecordsAfter: othersAfter,
         coverage: 'one judge score; not secretary confirmation, grade publication, archive or native WeChat'
       }, null, 2)), contentType: 'application/json'
     })
