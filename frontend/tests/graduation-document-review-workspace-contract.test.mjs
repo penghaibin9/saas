@@ -116,10 +116,15 @@ test('W2 workspace keeps transport and domain commands outside the public Viewer
   assert.doesNotMatch(workspaceSource, /issueMaterialTicket|fileSdk|reviewFinal|reviewProposal|submitReview|material-center\/files/)
 })
 
-test('W2 workspace keeps command identity visible while folding technical evidence and duplicate subject chrome', () => {
+test('W2 workspace shows teacher decisions while keeping exact version identity in data attributes', () => {
   assert.match(workspaceSource, /data-testid="review-command-contract"/)
+  assert.match(workspaceSource, /:data-material-version="expectedVersion \?\? ''"/)
+  assert.match(workspaceSource, /:data-file-version-id="canonicalFileVersionId \?\? ''"/)
+  assert.match(workspaceSource, /<span>提交版次<\/span>/)
+  assert.match(workspaceSource, /<span>文件核对<\/span>/)
+  assert.match(workspaceSource, /<span>批阅状态<\/span>/)
   assert.match(workspaceSource, /<details class="gd-review-workspace__evidence">/)
-  assert.match(workspaceSource, /<summary>文件证据与历史版本<\/summary>/)
+  assert.match(workspaceSource, /<summary>文件检查与历史版本<\/summary>/)
   assert.match(workspaceSource, /<details class="gd-review-workspace__subject">/)
   assert.match(workspaceSource, /<summary>当前学生与业务状态<\/summary>/)
   const evidence = workspaceSource.indexOf('<FileEvidencePanel')
@@ -127,5 +132,12 @@ test('W2 workspace keeps command identity visible while folding technical eviden
   const summary = workspaceSource.indexOf('<div class="gd-review-workspace__summary">')
   assert.ok(evidence >= 0 && review > evidence && summary > review)
   assert.match(workspaceSource, /gd-business-view:has\(\.gd-review-workspace\)>\.gd-scope-alert\.app-inline-alert/)
-  assert.doesNotMatch(workspaceSource, /gd-page-intro:has/)
+  assert.doesNotMatch(workspaceSource.split('<script setup>')[0], /canonical|FileVersion|业务版本与文件版本已锁定/)
+})
+
+test('W2 workspace queue is keyboard and screen-reader explicit', () => {
+  assert.match(workspaceSource, /queue\.length \? currentIndex \+ 1 : 0/)
+  assert.match(workspaceSource, /:aria-current="index === currentIndex \? 'true' : undefined"/)
+  assert.match(workspaceSource, /:aria-label="`\$\{item\.studentName/)
+  assert.match(workspaceSource, /gd-review-workspace__queue>button:focus-visible/)
 })
