@@ -31,7 +31,7 @@ async function assertPageFit(page, label) {
     body: document.body.scrollWidth,
     formShells: document.querySelectorAll('.gd-form-shell').length,
     sections: document.querySelectorAll('.gd-form-section, .gbf-section, .tlf-section, .dfg-section, .gsf-section, .dgf-fields, .dgf-command').length,
-    asides: document.querySelectorAll('.gd-form-aside, .gd-form-aside-card, .gbf-aside-card, .tlf-aside-card, .dfg-aside-card, .gsf-aside-card, .dgf-aside-card').length,
+    asides: document.querySelectorAll('.gd-form-aside, .gd-form-aside-card, .gbf-aside-card, .tlf-aside-card, .dfg-aside-card, .gsf-aside-card, .dgf-aside-card, .dgf-command').length,
   }))
   expect(result.document, `${label} document horizontal overflow`).toBeLessThanOrEqual(result.viewport + 2)
   expect(result.body, `${label} body horizontal overflow`).toBeLessThanOrEqual(result.viewport + 2)
