@@ -124,15 +124,18 @@ export default {
   watch: {
     '$route.query.batchId': {
       immediate: true,
-      async handler(id) {
+      handler(id) {
         const store = useGraduationBatchStore()
-        await store.ensureLoaded({ batchIdFromUrl: id || '', force: !store.initialized })
+        const loading = store.ensureLoaded({ batchIdFromUrl: id || '', force: !store.initialized })
         // BasePortalLayout owns generic leaf navigation and may complete its
         // path-only push after this module has emitted a batch-aware target.
-        // Graduation owns the selected batch, so repair only a missing query
-        // from the store; never replace an explicit batchId from the URL.
-        if (!id && this.$route.path.startsWith('/admin/graduation')) {
-          await this.syncBatchToUrl()
+        // Keep the watcher entry synchronous for Vue/test lifecycle safety;
+        // only schedule a repair when the live Graduation route truly lost its
+        // query. Explicit URL batchId always remains authoritative.
+        if (!id && this.$route?.path?.startsWith('/admin/graduation')) {
+          void Promise.resolve(loading)
+            .then(() => this.syncBatchToUrl?.())
+            .catch(() => {})
         }
       }
     },

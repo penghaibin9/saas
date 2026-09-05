@@ -65,8 +65,9 @@ test('backend sensitive routers keep batchId mandatory', () => {
 })
 
 test('graduation layout repairs a missing batch query after generic leaf navigation without overriding explicit batchId', () => {
-  assert.match(layout, /async handler\(id\)[\s\S]*await store\.ensureLoaded\(\{ batchIdFromUrl: id \|\| '', force: !store\.initialized \}\)/)
-  assert.match(layout, /if \(!id && this\.\$route\.path\.startsWith\('\/admin\/graduation'\)\)[\s\S]*await this\.syncBatchToUrl\(\)/)
+  assert.match(layout, /handler\(id\)[\s\S]*const loading = store\.ensureLoaded\(\{ batchIdFromUrl: id \|\| '', force: !store\.initialized \}\)/)
+  assert.match(layout, /if \(!id && this\.\$route\?\.path\?\.startsWith\('\/admin\/graduation'\)\)[\s\S]*Promise\.resolve\(loading\)[\s\S]*this\.syncBatchToUrl\?\.\(\)/)
+  assert.doesNotMatch(layout, /async handler\(id\)/)
   assert.match(layout, /async syncBatchToUrl\(\)/)
   assert.match(layout, /const cur = this\.\$route\.query\.batchId \? String\(this\.\$route\.query\.batchId\) : ''/)
   assert.match(layout, /if \(next && next !== cur\)[\s\S]*router\.replace\(\{ query: \{ \.\.\.this\.\$route\.query, batchId: next \} \}\)/)
