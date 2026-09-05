@@ -6,7 +6,7 @@
         <h1>按步骤完成我的毕业设计</h1>
         <p>每一步对应实际提交、审核或整改结果；时间和要求以学校当前批次为准。</p>
       </div>
-      <button class="sp-btn sp-btn--ghost" :disabled="loading" @click="load">刷新进度</button>
+      <button class="sp-btn sp-btn--ghost" :disabled="loading || busy" @click="load">刷新进度</button>
     </section>
 
     <StateBlock v-if="loading" type="loading" text="正在加载你的毕业设计流程…" />
@@ -164,16 +164,13 @@
               </template>
 
               <template v-else-if="step.key === 'proposal'">
-                <label>选题背景与研究依据<textarea v-model.trim="proposalForm.background" placeholder="说明研究背景、问题与依据" /></label>
-                <label>研究方案与进度计划<textarea v-model.trim="proposalForm.plan" placeholder="说明技术路线、实施计划和阶段安排" /></label>
-                <label>预期成果<textarea v-model.trim="proposalForm.outcome" placeholder="可填写预期成果、交付形式等" /></label>
-                <label>开题主文档（PDF / Word / ZIP，仅 1 份）<input type="file" accept=".pdf,.doc,.docx,.zip" @change="pickFiles('proposal', $event)" /></label>
+                <label>选题背景与研究依据<textarea v-model.trim="proposalForm.background" :disabled="busy" placeholder="说明研究背景、问题与依据" /></label>
+                <label>研究方案与进度计划<textarea v-model.trim="proposalForm.plan" :disabled="busy" placeholder="说明技术路线、实施计划和阶段安排" /></label>
+                <label>预期成果<textarea v-model.trim="proposalForm.outcome" :disabled="busy" placeholder="可填写预期成果、交付形式等" /></label>
+                <label>开题主文档（PDF / Word / ZIP，仅 1 份）<input type="file" accept=".pdf,.doc,.docx,.zip" :disabled="busy" @change="pickFiles('proposal', $event)" /></label>
                 <p class="sp-muted">{{ attachmentText('proposal') }}</p>
-                <div v-if="attachments.proposal[0]" class="gd-submit-preflight">
-                  <span>安全状态：{{ attachments.proposal[0].statusText || attachments.proposal[0].scanStatus || '待确认' }}</span>
-                  <button v-if="canPreviewPending(attachments.proposal[0])" class="sp-btn sp-btn--ghost" :disabled="busy" @click="openPendingReader(attachments.proposal[0])">预览我将提交的文件</button>
-                </div>
-                <button class="sp-btn" :disabled="busy || !proposalForm.background || !proposalForm.plan || (attachments.proposal[0] && !attachments.proposal[0].readyForBusiness)" @click="submitProposal">提交开题报告</button>
+                <GraduationUploadStatus v-if="attachments.proposal[0]" v-model:file="attachments.proposal[0]" class="gd-submit-preflight" :locked="busy" @preview="openPendingReader(attachments.proposal[0])" />
+                <button class="sp-btn" :disabled="busy || !proposalForm.background || !proposalForm.plan || (attachments.proposal[0] && !graduationUploadReady(attachments.proposal[0]))" @click="submitProposal">提交开题报告</button>
               </template>
 
               <template v-else-if="step.key === 'midterm'">
@@ -183,13 +180,10 @@
 
               <template v-else-if="step.key === 'final'">
                 <p class="sp-muted">本次将提交：{{ final.canSubmitFinal ? '定稿' : '初稿' }}。提交后进入教师评阅与文件安全检查，查重结果由学校回填。</p>
-                <label>论文主文档（PDF / Word / ZIP，仅 1 份）<input type="file" accept=".pdf,.doc,.docx,.zip" @change="pickFiles('final', $event)" /></label>
+                <label>论文主文档（PDF / Word / ZIP，仅 1 份）<input type="file" accept=".pdf,.doc,.docx,.zip" :disabled="busy" @change="pickFiles('final', $event)" /></label>
                 <p class="sp-muted">{{ attachmentText('final') }}</p>
-                <div v-if="attachments.final[0]" class="gd-submit-preflight">
-                  <span>安全状态：{{ attachments.final[0].statusText || attachments.final[0].scanStatus || '待确认' }}</span>
-                  <button v-if="canPreviewPending(attachments.final[0])" class="sp-btn sp-btn--ghost" :disabled="busy" @click="openPendingReader(attachments.final[0])">预览我将提交的文件</button>
-                </div>
-                <button class="sp-btn" :disabled="busy || !attachments.final.length || !attachments.final[0].readyForBusiness" @click="submitFinal">提交论文成果</button>
+                <GraduationUploadStatus v-if="attachments.final[0]" v-model:file="attachments.final[0]" class="gd-submit-preflight" :locked="busy" @preview="openPendingReader(attachments.final[0])" />
+                <button class="sp-btn" :disabled="busy || !graduationUploadReady(attachments.final[0])" @click="submitFinal">提交论文成果</button>
               </template>
             </div>
           </article>
@@ -245,7 +239,9 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import StudentDocumentViewer from '../../components/file/viewer/StudentDocumentViewer.vue'
+import GraduationUploadStatus from '../../components/graduation/GraduationUploadStatus.vue'
 import { fileSdk } from '../../services/fileSdk'
+import { graduationUploadReady, readGraduationUpload } from '../../services/graduationUploadReadiness'
 import { portalApi } from '../../services/portalApi'
 import { useUiStore } from '../../stores/ui'
 
@@ -509,6 +505,7 @@ async function afterAction(keys) {
 }
 
 async function handleAction(key) {
+  if (busy.value) return
   expanded.value = expanded.value === key ? '' : key
   if (key === 'taskbook' && expanded.value === 'taskbook') {
     taskbookAck.value = false
@@ -585,17 +582,18 @@ async function submitTopicChange() {
 
 async function pickFiles(kind, event) {
   const file = Array.from(event.target.files || [])[0]
-  if (!file) return
+  event.target.value = ''
+  if (!file || busy.value) return
   busy.value = true
+  attachments[kind].splice(0)
   try {
     const uploaded = await portalApi.uploadGraduationMaterial(file)
     attachments[kind].splice(0, attachments[kind].length, uploaded)
-    ui.notify(uploaded.readyForBusiness ? '主文档已上传，可以先预览确认后再提交' : '主文档已上传，等待安全扫描完成后再提交')
-  } catch (e) { ui.notify(e?.message || '主文档上传失败') } finally { busy.value = false; event.target.value = '' }
+  } catch (e) { ui.notify(e?.message || '主文档上传失败') } finally { busy.value = false }
 }
 
 function canPreviewPending(file) {
-  return Boolean(file?.fileId && file?.readyForBusiness && file?.canPreview)
+  return Boolean(graduationUploadReady(file) && file.canPreview)
 }
 
 function openMaterialReader(file) {
@@ -646,16 +644,30 @@ async function downloadReaderFile(file) {
   return downloadMaterial(file)
 }
 
+async function checkedPendingFile(kind) {
+  const expected = { ...attachments[kind][0] }
+  const fresh = await readGraduationUpload(expected, (fileId) => fileSdk.metadata(fileId))
+  if (String(attachments[kind][0]?.fileId || '') !== String(expected.fileId)) {
+    throw new Error('待提交文件已变化，请核对后重新提交')
+  }
+  attachments[kind][0] = fresh
+  if (!graduationUploadReady(fresh)) throw new Error('文件尚未通过安全检查，请等待或重新检查文件状态')
+  return fresh
+}
+
 async function submitProposal() {
-  if (!proposalForm.background || !proposalForm.plan) return
+  if (busy.value || !proposalForm.background || !proposalForm.plan) return
+  if (attachments.proposal[0] && !graduationUploadReady(attachments.proposal[0])) return
+  const target = Object.freeze({ ...proposalForm, expectedVersion: materialVersion('PROPOSAL_REPORT') })
   busy.value = true
   try {
+    const fresh = attachments.proposal[0] ? await checkedPendingFile('proposal') : null
     await portalApi.submitGraduationProposal({
-      ...proposalForm,
-      attachments: attachments.proposal.map((item) => item.fileId),
-      expectedVersion: materialVersion('PROPOSAL_REPORT')
+      ...target,
+      attachments: fresh ? [fresh.fileId] : []
     })
-    ui.notify('开题报告已提交，等待指导教师审阅'); expanded.value = ''; await afterAction(['proposal', 'my'])
+    attachments.proposal.splice(0)
+    ui.notify('开题报告已提交，等待指导教师审阅'); expanded.value = ''; await afterAction(['proposal', 'my', 'materials'])
   } catch (e) { ui.notify(e?.message || '开题报告提交失败') } finally { busy.value = false }
 }
 
@@ -665,15 +677,18 @@ async function submitRectify() {
 }
 
 async function submitFinal() {
+  if (busy.value || !graduationUploadReady(attachments.final[0])) return
+  const isFinal = final.value.canSubmitFinal
+  const target = Object.freeze({
+    finalType: isFinal ? '定稿' : '初稿',
+    expectedVersion: materialVersion(isFinal ? 'THESIS_FINAL' : 'THESIS_DRAFT')
+  })
   busy.value = true
   try {
-    const isFinal = final.value.canSubmitFinal
-    await portalApi.submitGraduationFinal({
-      finalType: isFinal ? '定稿' : '初稿',
-      attachments: attachments.final.map((item) => item.fileId),
-      expectedVersion: materialVersion(isFinal ? 'THESIS_FINAL' : 'THESIS_DRAFT')
-    })
-    ui.notify('论文成果已提交，等待审阅'); expanded.value = ''; await afterAction(['final', 'my'])
+    const fresh = await checkedPendingFile('final')
+    await portalApi.submitGraduationFinal({ ...target, attachments: [fresh.fileId] })
+    attachments.final.splice(0)
+    ui.notify('论文成果已提交，等待审阅'); expanded.value = ''; await afterAction(['final', 'my', 'materials'])
   } catch (e) { ui.notify(e?.message || '论文提交失败') } finally { busy.value = false }
 }
 
@@ -738,7 +753,7 @@ onMounted(load)
 .gd-check { display:flex !important; align-items:center; gap:8px; cursor:pointer; }.gd-check input { margin:0; }
 .gd-change-list { margin:12px 0; display:grid; gap:8px; }.gd-change-item { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:8px 10px; background:#fff; border:1px solid #edf0f3; border-radius:6px; font-size:13px; color:#4e5969; }.gd-change-item em { font-style:normal; color:var(--sp-primary); flex-shrink:0; }
 .gd-files { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; color:#4e5969; font-size:13px; }.gd-file-actions{display:inline-flex;gap:4px}.gd-file { border:0; padding:5px 8px; border-radius:5px; color:var(--sp-primary); background:rgba(22,119,255,.08); cursor:pointer; font-size:12px; }.gd-file--download{color:#53647a;background:#f2f4f7}.gd-file:disabled { cursor:not-allowed; opacity:.6; }.gd-checklist { display:flex; flex-wrap:wrap; gap:7px 14px; margin:12px 0 0; padding:0; list-style:none; color:#4e5969; font-size:12px; }.gd-checklist li { color:#00a33a; }.gd-checklist li.is-missing { color:#f53f3f; }
-.gd-submit-preflight{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 10px;padding:9px 10px;border:1px solid #dce8f7;border-radius:7px;background:#f5f9ff;color:#53647a;font-size:12px}.gd-submit-preflight .sp-btn{margin:0}
+.gd-submit-preflight{margin:8px 0 10px}
 .gd-topic-list { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; margin:12px 0; }.gd-topic { position:relative; min-height:72px; padding:10px; text-align:left; cursor:pointer; background:#fff; border:1px solid #e5e6eb; border-radius:7px; }.gd-topic.is-picked { border-color:var(--sp-primary); background:rgba(22,119,255,.05); }.gd-topic b { position:absolute; right:8px; top:8px; color:var(--sp-primary); font-size:11px; }.gd-topic strong,.gd-topic span { display:block; padding-right:44px; }.gd-topic strong { font-size:13px; }.gd-topic span { color:#86909c; font-size:12px; margin-top:5px; }
 .gd-topic-pinned { display:grid; gap:5px; margin-bottom:12px; padding:12px 14px; border:1px solid rgba(22,119,255,.25); border-radius:8px; background:rgba(22,119,255,.05); }.gd-topic-pinned span { color:var(--sp-primary); font-size:12px; font-weight:600; }.gd-topic-pinned strong { color:#1d2129; font-size:14px; }.gd-topic-pinned em { color:#86909c; font-size:12px; font-style:normal; }
 .gd-topic-filters { display:grid; grid-template-columns:minmax(180px,2fr) repeat(2,minmax(130px,1fr)) auto; gap:8px; align-items:center; }.gd-topic-filters input { min-width:0; height:34px; padding:0 9px; border:1px solid #dcdfe6; border-radius:6px; font:inherit; }.gd-topic-filters .sp-btn { margin:0; white-space:nowrap; }.gd-topic-filters__scope { grid-column:1/-1; color:#86909c; font-size:12px; }.gd-topic-error { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:10px 0; padding:9px 10px; border:1px solid #ffccc7; border-radius:7px; background:#fff2f0; color:#a8071a; font-size:12px; }.gd-topic-error .sp-btn,.gd-topic-more { margin:0; }
