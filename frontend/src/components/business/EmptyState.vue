@@ -1,5 +1,5 @@
 <template>
-  <AppGlobalState class="app-empty-state" state="empty" :title="title" :description="description" @back="$emit('back')">
+  <AppGlobalState state="empty" :title="title" :description="description" @back="$emit('back')">
     <template v-if="$slots.actions" #actions><slot name="actions" /></template>
   </AppGlobalState>
 </template>
