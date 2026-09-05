@@ -21,5 +21,8 @@ export const graduationRoles = Object.freeze({
   }),
   defenseSecretary: account('E2E_GRADUATION_SECRETARY', {
     tenant: 'sandbox-school', username: 'e2e_college_secretary', password: 'E2eTest@2026'
+  }),
+  defenseStudent: account('E2E_GRADUATION_DEFENSE_STUDENT', {
+    tenant: 'sandbox-school', username: 'E2E20260002', password: 'E2eTest@2026'
   })
 })
