@@ -56,7 +56,7 @@ const SCREENS = GRADUATION_WORKSPACES.flatMap((workspace) => workspace.children)
   })
 
 const CHUNKS = Array.from({ length: 4 }, (_, index) => SCREENS.slice(index * 6, index * 6 + 6))
-const EMPTY_SELECTORS = ['.empty-state', '.mp-empty', '.app-empty-state', '[data-state="empty"]']
+const EMPTY_SELECTORS = ['.empty-state', '.mp-empty', '.ags-empty', '[data-state="empty"]']
 const ERROR_SELECTORS = ['.error-state', '.app-error-state', '[data-state="error"]', '.forbidden-state', '[data-state="forbidden"]']
 const LOADING_SELECTORS = ['.loading-state', '.app-loading-state', '[data-state="loading"]', '.skeleton', '.app-skeleton']
 
