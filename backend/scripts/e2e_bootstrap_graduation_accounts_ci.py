@@ -52,7 +52,7 @@ def _teacher_workbook() -> bytes:
         build_teacher_template(),
         [
             ["e2e_academic_admin", "E2E教务管理员", "教务处", "教务管理员",
-             "ACADEMIC_ADMIN,GRADUATION_ADMIN", "", ""],
+             "ACADEMIC_ADMIN,GRADUATION_ADMIN,GD_GRADE_ADMIN", "", ""],
             ["e2e_college_secretary", "E2E学院秘书", COLLEGE, "学院秘书",
              "GD_COLLEGE_ADMIN,GD_DEFENSE_SECRETARY", "COLLEGE", COLLEGE],
             ["e2e_major_admin", "E2E专业负责人", COLLEGE, "专业负责人",
