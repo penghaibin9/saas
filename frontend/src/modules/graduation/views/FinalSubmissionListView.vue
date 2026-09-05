@@ -32,6 +32,7 @@
           :key="t.value"
           class="mp-tab"
           :class="{ 'is-active': filters.status === t.value }"
+          :aria-pressed="filters.status === t.value ? 'true' : 'false'"
           :disabled="submitting"
           @click="switchTab(t.value)"
         >
@@ -115,24 +116,26 @@
             <p class="mp-note">本操作会创建真实站内消息并写入催办留痕。</p>
           </template>
           <template v-else-if="selectedRow?.status === 'PENDING_REVIEW'">
-            <div v-if="!canReview" class="fr-review-blocked">{{ reviewReason }}（以下操作已置灰）</div>
-            <label class="mp-note">批阅意见（退回时必填，≥5 字）</label>
+            <div v-if="!canReview" class="fr-review-blocked" role="status">{{ reviewReason }}（以下操作已置灰）</div>
+            <label class="mp-note" for="gd-final-review-comment">批阅意见（退回时必填，≥5 字）</label>
             <textarea
+              id="gd-final-review-comment"
               v-model="comment"
               class="mp-textarea"
               rows="5"
               :disabled="submitting"
+              :aria-describedby="formError ? 'gd-final-review-error' : undefined"
               placeholder="批阅意见将同步学生端…"
               @input="saveCommentDraft"
             ></textarea>
             <AppTemplateChips v-if="canReview && !submitting" size="compact" :options="REJECT_REASON_CHIPS" @pick="appendComment" />
-            <p v-if="formError" class="mp-form-err">{{ formError }}</p>
+            <p v-if="formError" id="gd-final-review-error" class="mp-form-err" role="alert">{{ formError }}</p>
             <div class="fr-review-actions">
               <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="primary" :loading="submitting" @click="submitReview('APPROVE')">✓ 通过当前版本</AppPermissionButton>
               <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" @click="submitReview('REJECT')">↩ 退回当前版本</AppPermissionButton>
             </div>
-            <p class="mp-note">正式命令始终绑定当前记录、业务版本和 canonical FileVersion；历史版本只读。</p>
-            <details class="mp-note"><summary>命令校验证据</summary><code>expectedVersion + fileVersionId</code> 由服务端原子校验。</details>
+            <p class="mp-note">系统只处理当前提交版本；学生重交后，已批阅版本保留为只读记录。</p>
+            <details class="mp-note"><summary>版本一致性说明</summary>提交时系统会再次核对当前材料版本，版本变化时自动阻止旧版批阅。</details>
           </template>
           <template v-else>
             <div class="mp-kv"><span class="mp-kv__k">批阅结果</span><span class="mp-kv__v">{{ selectedRow?.statusLabel || '—' }}</span></div>
@@ -141,7 +144,7 @@
         </template>
       </GraduationDocumentReviewWorkspace>
 
-      <p class="mp-note">筛选、分页和当前对象均写入 URL；初稿 / 定稿顺序、查重阈值与文件安全状态仍由服务器校验。</p>
+      <p class="mp-note">初稿、定稿、查重和文件安全均以当前批次规则与最新材料状态为准。</p>
     </div>
     <AppPageGuide guide-key="graduation.gd-final-review" />
   </ModulePageShell>
@@ -275,7 +278,7 @@ export default {
       if (this.detailError) return '成果安全版本详情加载失败'
       if (this.finalDetail?.migrationRequired) return '历史材料尚未完成公共版本回填'
       if (!this.finalDetail?.reviewReady) return '当前材料版本未通过安全门禁'
-      if (this.versionConflict) return '学生已提交新版本，请切换最新 canonical version 后重新核验'
+      if (this.versionConflict) return '学生已提交新版本，请切换最新提交版本后重新核验'
       if (this.activePreviewFile?.isCurrent === false) return '当前正在阅读历史版本，历史版本只读不可批阅'
       return ''
     },
