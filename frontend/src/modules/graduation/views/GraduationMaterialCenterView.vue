@@ -4,17 +4,17 @@
       <div>
         <span>毕业设计材料中心</span>
         <h2>{{ batchStore.selectedBatchName || '当前批次' }}</h2>
-        <p>按学生、材料、文件版本和安全状态办理；审核只作用于当前 canonical FileVersion。</p>
+        <p>集中查看学生材料、审核状态和归档缺口；只审核当前提交版本，历史版本用于追溯。</p>
       </div>
       <div class="mc-hero__actions">
-        <span v-if="commandLocked" class="mc-lock-note">审核提交中 · 工作上下文已锁定</span>
+        <span v-if="commandLocked" class="mc-lock-note" role="status">审核提交中 · 当前审核对象已锁定</span>
         <button type="button" :disabled="loading || commandLocked" @click="load">
           {{ loading ? '刷新中…' : '刷新数据' }}
         </button>
       </div>
     </header>
 
-    <aside v-if="actionReceipt" class="mc-receipt" role="status">
+    <aside v-if="actionReceipt" class="mc-receipt" role="status" aria-live="polite">
       <div>
         <strong>{{ actionReceipt.title }}</strong>
         <span>{{ actionReceipt.result }}</span>
@@ -23,7 +23,7 @@
       <button type="button" :disabled="commandLocked" @click="actionReceipt = null">知道了</button>
     </aside>
 
-    <div v-if="error" class="mc-error">
+    <div v-if="error" class="mc-error" role="alert">
       <strong>加载失败</strong><span>{{ error }}</span>
       <button type="button" :disabled="commandLocked" @click="load">重试</button>
     </div>
@@ -42,16 +42,18 @@
           :key="item.key"
           type="button"
           :class="{ active: tab === item.key }"
+          :aria-pressed="tab === item.key"
           :disabled="commandLocked"
           @click="changeTab(item.key)"
         >{{ item.label }}</button>
       </nav>
 
-      <section class="mc-filters">
+      <section class="mc-filters" aria-label="材料筛选">
         <label>
           关键词
           <input
             v-model.trim="filters.keyword"
+            type="search"
             :disabled="commandLocked"
             placeholder="姓名、学号、题目或文件名"
             @keyup.enter="search"
@@ -75,13 +77,13 @@
           </select>
         </label>
         <label>
-          扫描状态
+          文件状态
           <select v-model="filters.scanStatus" :disabled="commandLocked || tab === 'security'">
             <option value="">全部</option>
-            <option value="CLEAN">安全</option>
-            <option value="PENDING">待扫描</option>
-            <option value="ERROR">失败</option>
-            <option value="INFECTED">感染</option>
+            <option value="CLEAN">可查看</option>
+            <option value="PENDING">检查中</option>
+            <option value="ERROR">检查失败</option>
+            <option value="INFECTED">风险文件</option>
           </select>
         </label>
         <div>
@@ -91,14 +93,14 @@
       </section>
 
       <section class="mc-panel">
-        <div v-if="loading" class="mc-empty">正在加载真实材料数据…</div>
-        <div v-else-if="!rows.length" class="mc-empty">当前筛选下没有数据。</div>
+        <div v-if="loading" class="mc-empty">正在加载材料台账…</div>
+        <div v-else-if="!rows.length" class="mc-empty">当前筛选下没有材料。</div>
         <div v-else ref="tableWrap" class="mc-table-wrap">
           <table v-if="tab !== 'students'">
             <thead>
               <tr>
                 <th>学生</th><th>材料</th><th>当前文件</th><th>提交信息</th>
-                <th>文件安全</th><th>审核结论</th><th>归档结论</th><th>操作</th>
+                <th>文件状态</th><th>审核结论</th><th>归档结论</th><th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -110,7 +112,7 @@
                 </td>
                 <td>
                   <span>{{ stageLabel(row.stage) }}</span><strong>{{ row.materialName }}</strong>
-                  <details><summary>技术标识</summary><small>{{ row.materialCode || '—' }}</small></details>
+                  <details><summary>材料编号</summary><small>{{ row.materialCode || '—' }}</small></details>
                 </td>
                 <td :title="row.fileName">
                   <strong>{{ row.fileName || '尚未提交' }}</strong>
@@ -124,9 +126,9 @@
                 <td>{{ reviewLabel(row.reviewStatus) }}</td>
                 <td>{{ archiveLabel(row.archiveStatus) }}</td>
                 <td class="actions">
-                  <button v-if="row.readyForBusiness" type="button" :disabled="commandLocked" @click="openReader(row)">安全预览</button>
+                  <button v-if="row.readyForBusiness" type="button" :disabled="commandLocked" @click="openReader(row)">在线查看</button>
                   <button v-if="row.readyForBusiness" type="button" :disabled="commandLocked" @click="download(row)">下载</button>
-                  <button type="button" :disabled="commandLocked" @click="history(row)">版本</button>
+                  <button type="button" :disabled="commandLocked" @click="history(row)">历史版本</button>
                   <button v-if="row.allowedActions?.includes('review')" type="button" :disabled="commandLocked" @click="openReview(row)">通过</button>
                   <button v-if="row.allowedActions?.includes('review')" type="button" :disabled="commandLocked" @click="openReject(row)">退回</button>
                 </td>
@@ -138,13 +140,13 @@
             <thead>
               <tr>
                 <th>学生 / 学号</th><th>学院 / 专业 / 班级</th><th>指导教师</th><th>题目</th>
-                <th>应交</th><th>缺失</th><th>待审</th><th>退回</th><th>安全异常</th><th>归档结论</th><th>操作</th>
+                <th>应交</th><th>缺失</th><th>待审</th><th>退回</th><th>文件异常</th><th>归档结论</th><th>操作</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="row in rows" :key="row.gdStudentId">
                 <td><strong>{{ row.studentName }}</strong><small>{{ row.studentNo }}</small></td>
-                <td><span>{{ row.collegeId || '-' }} / {{ row.majorId || '-' }}</span><small>{{ row.className || row.classId || '-' }}</small></td>
+                <td><span>{{ row.collegeName || row.collegeId || '-' }} / {{ row.majorName || row.majorId || '-' }}</span><small>{{ row.className || row.classId || '-' }}</small></td>
                 <td>{{ row.advisorName || '-' }}</td><td>{{ row.topicTitle || '-' }}</td>
                 <td>{{ row.requiredCount }}</td><td>{{ row.missingCount }}</td><td>{{ row.pendingReviewCount }}</td>
                 <td>{{ row.returnedCount }}</td><td>{{ row.scanAbnormalCount }}</td>
@@ -167,7 +169,7 @@
     <div v-if="historyVisible" class="mc-modal-mask" @click.self="closeHistory">
       <section class="mc-modal" role="dialog" aria-modal="true" aria-label="材料历史版本">
         <header>
-          <div><strong>{{ historyTitle }}</strong><span>不可变文件版本时间线</span></div>
+          <div><strong>{{ historyTitle }}</strong><span>历史版本仅供追溯，不能覆盖当前提交版本</span></div>
           <button type="button" :disabled="commandLocked" @click="closeHistory">关闭</button>
         </header>
         <FileVersionTimeline :items="historyItems" @select="openHistoryVersion" />
@@ -181,12 +183,12 @@
           <strong>{{ readerState.row?.studentName || '—' }} / {{ readerState.row?.materialName || readerState.file?.fileName || '材料' }} / v{{ readerState.file?.versionNo || readerState.row?.currentVersion || '—' }}</strong>
           <span>{{ scanLabel(readerState.file?.scanStatus || readerState.row?.scanStatus) }}</span>
           <span>{{ reviewLabel(readerState.row?.reviewStatus) }}</span>
-          <b v-if="readerIsHistorical">历史版本 v{{ readerState.file?.versionNo || '—' }} · 只读追溯</b>
-          <b v-else>当前版本 · 安全阅读</b>
+          <b v-if="readerIsHistorical">历史版本 v{{ readerState.file?.versionNo || '—' }} · 只读</b>
+          <b v-else>当前提交版本</b>
         </div>
-        <button v-if="readerState.file?.canDownload" type="button" :disabled="commandLocked" @click="downloadReaderFile">下载当前阅读版</button>
+        <button v-if="readerState.file?.canDownload" type="button" :disabled="commandLocked" @click="downloadReaderFile">下载当前版本</button>
       </header>
-      <div v-if="readerState.error" class="mc-reader__error">{{ readerState.error }}</div>
+      <div v-if="readerState.error" class="mc-reader__error" role="alert">{{ readerState.error }}</div>
       <main class="mc-reader__body">
         <AppDocumentViewer
           v-if="readerDescriptor"
@@ -203,7 +205,7 @@
           @download="downloadReaderFile"
           @preview-error="onReaderError"
         />
-        <div v-else class="mc-reader__empty">当前版本未通过安全门，禁止预览。</div>
+        <div v-else class="mc-reader__empty">文件安全检查未通过，暂不能预览。</div>
       </main>
     </div>
 
@@ -249,7 +251,7 @@ const tabs = [
   { key: 'files', label: '全部材料' },
   { key: 'students', label: '学生完整性' },
   { key: 'pending', label: '待审核' },
-  { key: 'security', label: '安全异常' }
+  { key: 'security', label: '文件异常' }
 ]
 const stages = [
   ['TOPIC', '选题'], ['TASKBOOK', '任务书'], ['PROPOSAL', '开题'], ['GUIDANCE', '过程指导'],
@@ -306,17 +308,17 @@ const cards = computed(() => {
   const filtered = summary.value.filteredSummary || {}
   const archive = summary.value.archiveSummary || {}
   return [
-    { label: '筛选学生', value: filtered.expectedStudents || 0, hint: '随当前条件变化' },
-    { label: '缺材料', value: filtered.missingStudents || 0, hint: '筛选口径' },
-    { label: '待审核', value: filtered.pendingReviewStudents || 0, hint: '筛选口径' },
-    { label: '安全异常', value: filtered.scanAbnormalStudents || 0, hint: '筛选口径' },
-    { label: '全规则可归档', value: archive.archiveReadyStudents || 0, hint: '完整规则口径' },
-    { label: '已归档', value: archive.archivedStudents || 0, hint: '冻结记录' }
+    { label: '学生', value: filtered.expectedStudents || 0, hint: '当前筛选' },
+    { label: '缺件', value: filtered.missingStudents || 0, hint: '需要补交' },
+    { label: '待审', value: filtered.pendingReviewStudents || 0, hint: '需要处理' },
+    { label: '文件异常', value: filtered.scanAbnormalStudents || 0, hint: '需要核验' },
+    { label: '可归档', value: archive.archiveReadyStudents || 0, hint: '材料齐全' },
+    { label: '已归档', value: archive.archivedStudents || 0, hint: '已经完成' }
   ]
 })
 const reviewMessage = computed(() => {
   const row = reviewRow.value
-  return row ? `${row.studentName} · ${row.materialName} · v${row.currentVersion} · FileVersion ${row.currentVersionId || '—'}` : ''
+  return row ? `${row.studentName} · ${row.materialName} · 当前第 ${row.currentVersion || 0} 版` : ''
 })
 const readerVersionId = computed(() => readerState.file?.fileVersionId ?? readerState.file?.versionId ?? null)
 const readerDescriptor = computed(() => readerState.file?.canPreview ? api.previewDescriptor(readerState.file) : null)
@@ -492,13 +494,13 @@ function stageLabel(value) {
 
 function scanLabel(value) {
   return ({
-    CLEAN: '安全，可用于业务',
-    PASSED: '安全，可用于业务',
-    PENDING: '安全检查中',
-    ERROR: '安全检查失败',
-    INFECTED: '发现风险文件',
+    CLEAN: '可查看',
+    PASSED: '可查看',
+    PENDING: '检查中',
+    ERROR: '检查失败',
+    INFECTED: '风险文件',
     NOT_REQUIRED: '无需检查'
-  })[String(value || '').toUpperCase()] || '安全状态待确认'
+  })[String(value || '').toUpperCase()] || '待确认'
 }
 
 function reviewLabel(value) {
@@ -583,7 +585,7 @@ async function openReader(row, exactFile = null, knownVersions = null) {
     if (!target?.canPreview) {
       error.value = target?.statusText
         ? `该版本${target.statusText}，不能预览`
-        : '当前版本未通过安全门，禁止预览'
+        : '文件安全检查未通过，暂不能预览'
       return
     }
     readerState.row = { ...row }
@@ -608,7 +610,7 @@ function selectReaderVersion(file) {
   if (!target.canPreview) {
     readerState.error = target.statusText
       ? `该历史版本${target.statusText}，不能预览`
-      : '该历史版本未通过安全门，不能预览'
+      : '该历史版本未通过安全检查，不能预览'
     return
   }
   readerState.file = target
@@ -783,20 +785,20 @@ async function confirmReview(action, payload) {
     const expectedStatus = action === 'APPROVE' ? 'APPROVED' : 'RETURNED'
     const latestStatus = String(latest?.reviewStatus || '').toUpperCase()
     if (!latest || latestStatus !== expectedStatus) {
-      throw new Error('审核命令已返回，但服务器材料台账尚未回读到目标状态；请刷新核对，勿重复提交。')
+      throw new Error('审核请求已提交，但最新材料状态尚未确认；请刷新核对，勿重复提交。')
     }
     if (!loaded && tab.value !== 'pending') {
-      throw new Error('审核已写入，但当前列表刷新失败；请重新打开材料中心核对。')
+      throw new Error('审核已完成，但当前列表刷新失败；请重新打开材料中心核对。')
     }
 
     actionReceipt.value = {
       title: `${target.studentName} · ${target.materialName} 已处理`,
-      result: `服务器最新结论：${reviewLabel(latestStatus)} · FileVersion ${target.fileVersionId}`,
+      result: `最新结论：${reviewLabel(latestStatus)} · 当前提交版本已核对`,
       next: action === 'APPROVE'
         ? '该版本已进入后续完整性与归档校验。'
         : '下一步由学生按退回原因补交新版本。'
     }
-    toast.success('材料审核已完成，服务器最新状态已回读')
+    toast.success('材料审核已完成，最新状态已确认')
   } catch (failure) {
     if (token === reviewToken && reviewSnapshot.value === target) {
       error.value = failure?.message || '审核失败'
@@ -862,7 +864,7 @@ watch(batchId, (nextBatchId) => {
 
 onBeforeRouteLeave((_to, _from, next) => {
   if (commandLocked.value) {
-    toast.info('当前材料审核正在等待服务器回执，请完成后再离开')
+    toast.info('当前材料审核正在等待处理结果，请完成后再离开')
     next(false)
     return
   }
