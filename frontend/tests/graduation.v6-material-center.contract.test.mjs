@@ -30,11 +30,11 @@ test('V6 material list history and reader requests are latest-wins and batch-bou
   assert.match(view, /onBeforeUnmount\([\s\S]*\+\+listToken[\s\S]*\+\+historyToken[\s\S]*\+\+readerToken[\s\S]*\+\+reviewToken/)
 })
 
-test('V6 preview keeps the existing ticket timeout size abort and scan gate instead of exposing permanent URLs', () => {
+test('V6 preview keeps ticket timeout size abort and scan gate instead of exposing permanent URLs', () => {
   assert.match(view, /const previewProvider = api\.createPreviewProvider\(\)/)
   assert.match(view, /:provider="previewProvider"/)
   assert.match(view, /target\?\.canPreview/)
-  assert.match(view, /当前版本未通过安全门，禁止预览/)
+  assert.match(view, /文件安全检查未通过，暂不能预览/)
   assert.ok(!view.includes('window.open('), 'material center must not open a permanent direct file URL')
 
   assert.match(api, /previewSourceByteLimit/)
@@ -48,7 +48,7 @@ test('V6 preview keeps the existing ticket timeout size abort and scan gate inst
   }
 })
 
-test('V6 material review freezes record canonical FileVersion expectedVersion batch and route', () => {
+test('V6 material review freezes record current FileVersion expectedVersion batch and route', () => {
   assert.match(view, /function freezeReviewTarget\(row, action, reason\)/)
   assert.match(view, /materialId: String\(row\.materialId\)/)
   assert.match(view, /fileVersionId: String\(row\.currentVersionId\)/)
@@ -59,7 +59,7 @@ test('V6 material review freezes record canonical FileVersion expectedVersion ba
   assert.match(view, /async function readReviewTruth\(target, token\)/)
   assert.match(view, /api\.studentLibrary\(target\.gdStudentId, true\)/)
   assert.match(view, /latestStatus !== expectedStatus/)
-  assert.match(view, /服务器材料台账尚未回读到目标状态/)
+  assert.match(view, /最新材料状态尚未确认/)
   assert.match(view, /onBeforeRouteLeave/)
   assert.match(view, /next\(false\)/)
 })
@@ -87,4 +87,13 @@ test('V6 every context-changing control is locked while review truth is in fligh
   for (const method of ['changeTab', 'search', 'reset', 'goto', 'openReader', 'history', 'openStudent']) {
     assert.match(view, new RegExp(`function ${method}\\([\\s\\S]*?commandLocked\\.value`), `${method} must fail closed during a review command`)
   }
+})
+
+test('V6 teacher-facing copy hides implementation vocabulary without weakening evidence contracts', () => {
+  const template = view.split('<script setup>')[0]
+  assert.doesNotMatch(template, /canonical FileVersion|工作上下文|技术标识|服务器材料台账/)
+  assert.match(template, /当前提交版本/)
+  assert.match(template, /材料编号/)
+  assert.match(template, /文件异常/)
+  assert.match(template, /aria-pressed="tab === item\.key"/)
 })
