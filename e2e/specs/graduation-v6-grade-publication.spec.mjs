@@ -207,6 +207,35 @@ async function confirmDefenseAsSecretary(page, fixture, scoringFixture, adminApi
   return { roundNo, chair, expert, confirmation, confirmed }
 }
 
+async function closePriorGradeRetryBatches(adminApi, retry) {
+  const attempt = Number(retry || 0)
+  if (attempt <= 0) return []
+
+  const runBase = String(process.env.GITHUB_RUN_ID || '').replace(/\D/g, '').slice(-12)
+  if (!runBase) return []
+  const batchPrefix = `PW-E2E-${runBase}-grade-publication-r`
+  const batches = items(await adminApi.get('/graduation/batches', {
+    keyword: batchPrefix,
+    page: 1,
+    pageSize: 200
+  }))
+  const closed = []
+
+  for (const batch of batches) {
+    const batchNo = String(batch.batchNo || '')
+    const match = batchNo.match(/-r(\d+)$/)
+    if (!batchNo.startsWith(batchPrefix) || !match || Number(match[1]) >= attempt) continue
+    if (String(batch.status || '').toUpperCase() !== 'RUNNING') continue
+
+    const receipt = await adminApi.post(`/graduation/batches/${batch.id}/close`, {})
+    expect(String(receipt?.status || '').toUpperCase()).toBe('CLOSED')
+    const readback = await adminApi.get(`/graduation/batches/${batch.id}`)
+    expect(String(readback?.status || '').toUpperCase()).toBe('CLOSED')
+    closed.push(String(batch.id))
+  }
+  return closed
+}
+
 async function openGradeWindow(adminApi, fixture) {
   await adminApi.post(`/graduation/batches/${fixture.batchId}/stages`, {
     stages: [
@@ -224,19 +253,26 @@ async function openGradeWindow(adminApi, fixture) {
   expect(String(batch?.status || '').toUpperCase()).toBe('RUNNING')
   const grade = (batch?.stages || []).find(row => String(row?.code || row?.key || '').toUpperCase() === 'GRADE')
   expect(grade, 'isolated grade-publication batch must contain a GRADE stage').toBeTruthy()
-  expect(String(grade.startDate || '').slice(0, 10)).toBeLessThanOrEqual(dateAfterDays(0))
-  expect(String(grade.endDate || '').slice(0, 10)).toBeGreaterThanOrEqual(dateAfterDays(0))
+
+  const today = Date.parse(`${dateAfterDays(0)}T00:00:00Z`)
+  const gradeStart = Date.parse(`${String(grade.startDate || '').slice(0, 10)}T00:00:00Z`)
+  const gradeEnd = Date.parse(`${String(grade.endDate || '').slice(0, 10)}T00:00:00Z`)
+  expect(Number.isFinite(gradeStart), 'GRADE startDate must be a parseable ISO date').toBe(true)
+  expect(Number.isFinite(gradeEnd), 'GRADE endDate must be a parseable ISO date').toBe(true)
+  expect(gradeStart).toBeLessThanOrEqual(today)
+  expect(gradeEnd).toBeGreaterThanOrEqual(today)
   return batch
 }
 
 test.describe.serial('V6 · grade calculation, review, publication and student readback', () => {
   test('grade admin publishes authoritative scores and the exact student reads them back', async ({ page }, testInfo) => {
     test.setTimeout(12 * 60_000)
+    const adminApi = await loginApi(config.sandboxAdmin)
+    const closedPriorBatchIds = await closePriorGradeRetryBatches(adminApi, testInfo.retry)
     const fixture = await prepareGraduationFixture({
       studentAccount: gradeStudent,
       fixtureKey: `grade-publication-r${testInfo.retry || 0}`
     })
-    const adminApi = await loginApi(config.sandboxAdmin)
 
     const { final } = await ensureFinalApproved(page, adminApi, fixture, {
       suffix: `grade-publication-final-r${testInfo.retry || 0}`,
@@ -427,6 +463,10 @@ test.describe.serial('V6 · grade calculation, review, publication and student r
           schoolReadback: serverGrade,
           studentApiReadback: studentGrade,
           studentPortalReadback: portalReload
+        },
+        retryCleanup: {
+          attempt: Number(testInfo.retry || 0),
+          closedPriorBatchIds
         },
         coverage: 'formal review + real secretary confirmation + GD_GRADE_ADMIN browser calculate/review/publish + exact student PC readback; archive execution and native WeChat remain separate gates'
       }, null, 2)),
