@@ -58,10 +58,15 @@ function route(base, path, params = {}) {
 
 test.describe.serial('V6 · graduation deep-link create workflows', () => {
   let fixture
+  let defenseFixture
   let adminApi
 
   test.beforeAll(async () => {
     fixture = await prepareGraduationFixture()
+    defenseFixture = await prepareGraduationFixture({
+      studentAccount: graduationRoles.defenseStudent,
+      fixtureKey: 'defense-score'
+    })
     adminApi = await loginApi(config.sandboxAdmin)
   })
 
@@ -158,7 +163,7 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
   })
 
   test('defense score locks the authenticated judge and preserves return context', async ({ page }, testInfo) => {
-    const scoringFixture = await ensureDefenseScoringContext(adminApi, fixture)
+    const scoringFixture = await ensureDefenseScoringContext(page, adminApi, defenseFixture)
     await page.setViewportSize({ width: 1440, height: 900 })
     const login = new StaffLoginPage(page, config.staffBaseUrl)
     await login.login(graduationRoles.defenseExpert)
@@ -230,9 +235,9 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
 
     const summaryPath = testInfo.outputPath('graduation-v6-deep-link-workflows.json')
     await fs.writeFile(summaryPath, JSON.stringify({
-      contract: 'graduation-v6-deep-link-workflows-v4', head: process.env.GITHUB_SHA || 'local',
-      batchId: fixture.batchId, createdGroupId: groupId,
-      workflows: ['batch-create', 'student-create-empty-guard', 'topic-draft-create', 'defense-score-real-role-and-seat', 'defense-group-create-to-assignment']
+      contract: 'graduation-v6-deep-link-workflows-v5', head: process.env.GITHUB_SHA || 'local',
+      batchId: fixture.batchId, defenseBatchId: defenseFixture.batchId, createdGroupId: groupId,
+      workflows: ['batch-create', 'student-create-empty-guard', 'topic-draft-create', 'defense-score-isolated-student-real-role-and-seat', 'defense-group-create-to-assignment']
     }, null, 2), 'utf8')
     await testInfo.attach('graduation-v6-deep-link-workflows', { path: summaryPath, contentType: 'application/json' })
   })
