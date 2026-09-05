@@ -7,6 +7,7 @@ const css = fs.readFileSync(new URL('../src/styles/student-affairs-v6-color-work
 const dashboard = fs.readFileSync(new URL('../src/modules/studentAffairs/views/StudentAffairsDashboardView.vue', import.meta.url), 'utf8')
 const student360 = fs.readFileSync(new URL('../src/views/admin/student/StudentDetailView.vue', import.meta.url), 'utf8')
 const affairsProfile = fs.readFileSync(new URL('../src/modules/studentAffairs/views/StudentAffairsProfileDetailView.vue', import.meta.url), 'utf8')
+const affairsFacade = fs.readFileSync(new URL('../src/modules/studentAffairs/api/studentAffairsB.api.js', import.meta.url), 'utf8')
 
 const scopedRoot = '#app .base-portal-layout:has(.sa-v6-page-shell)'
 
@@ -49,6 +50,8 @@ test('visual work keeps the real A1 data boundary and does not add sample studen
 test('A1 remains isolated from A2 and keeps both real Student360 implementations intact', () => {
   assert.doesNotMatch(dashboard, /StudentDetailView|StudentAffairsProfileDetailView/)
   assert.match(student360, /studentApi\.getStudentDetail\(this\.\$route\.params\.studentId\)/)
-  assert.match(affairsProfile, /studentAffairsApi\.getStudentProfile\(this\.studentId\)/)
-  assert.match(affairsProfile, /studentAffairsApi\.getStudentTimeline\(this\.studentId/)
+  assert.match(affairsProfile, /studentAffairsApi\.getProfile\(this\.studentId\)/)
+  assert.match(affairsProfile, /studentAffairsApi\.getTimeline\(this\.studentId\)/)
+  assert.match(affairsFacade, /getProfile\(studentId\)\s*\{[\s\S]*?core\.getStudentProfile\(studentId\)/)
+  assert.match(affairsFacade, /getTimeline\(studentId,\s*params\s*=\s*\{\}\)\s*\{[\s\S]*?core\.getStudentTimeline\(studentId,\s*params\)/)
 })
