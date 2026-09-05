@@ -108,6 +108,12 @@ function expectedStateError(error, patterns) {
   return patterns.some((pattern) => pattern.test(message))
 }
 
+function fixtureIdentity(rawRun, fixtureKey = '') {
+  const base = String(rawRun).replace(/\D/g, '').slice(-12) || String(Date.now()).slice(-12)
+  const key = String(fixtureKey || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  return key ? `${base}-${key}` : base
+}
+
 async function findStudentProfile(api, studentNo) {
   const data = await api.get('/students', { keyword: studentNo, page: 1, pageSize: 50 })
   const row = items(data).find((item) => String(item.studentNo || item.loginName || '') === studentNo)
@@ -168,11 +174,11 @@ async function readGdStudent(api, recordId) {
   return graduationStudentEntity(await api.get(`/graduation/gd-students/${recordId}`))
 }
 
-async function ensureGdStudent(api, batchId, profile) {
+async function ensureGdStudent(api, batchId, profile, studentNo) {
   const rows = items(await api.get('/graduation/gd-students', {
-    batchId, keyword: config.student.username, page: 1, pageSize: 200
+    batchId, keyword: studentNo, page: 1, pageSize: 200
   }))
-  let row = rows.find((item) => String(item.studentNo || '') === config.student.username)
+  let row = rows.find((item) => String(item.studentNo || '') === studentNo)
   if (!row) {
     row = await api.post('/graduation/gd-students', {
       studentId: String(profile.id || profile.studentId),
@@ -304,14 +310,19 @@ async function ensureTopicAssignment(api, gdStudent, topic) {
   return current
 }
 
-export async function prepareGraduationFixture() {
+export async function prepareGraduationFixture({
+  studentAccount = config.student,
+  fixtureKey = ''
+} = {}) {
   const rawRun = process.env.GITHUB_RUN_ID || `${Date.now()}`
-  const runId = String(rawRun).replace(/\D/g, '').slice(-12) || String(Date.now()).slice(-12)
+  const runId = fixtureIdentity(rawRun, fixtureKey)
+  const studentNo = String(studentAccount?.username || '').trim()
+  if (!studentNo) throw new Error('Graduation fixture requires a student account username.')
   const admin = await loginApi(config.sandboxAdmin)
 
   const batch = await ensureBatch(admin, runId)
-  const profile = await findStudentProfile(admin, config.student.username)
-  let gdStudent = await ensureGdStudent(admin, batch.id, profile)
+  const profile = await findStudentProfile(admin, studentNo)
+  let gdStudent = await ensureGdStudent(admin, batch.id, profile, studentNo)
   const mentor = await ensureMentor(admin)
   gdStudent = await ensureMentorAssignment(admin, gdStudent, mentor)
 
@@ -330,10 +341,12 @@ export async function prepareGraduationFixture() {
 
   return {
     runId,
+    fixtureKey: String(fixtureKey || ''),
+    studentAccount: { ...studentAccount },
     batchId: String(batch.id),
     batchName: batch.batchName,
     gdStudentId: String(gdStudent.id),
-    studentNo: config.student.username,
+    studentNo,
     mentorName: mentor.teacherName || 'E2E指导教师A',
     mentorId: String(mentor.id),
     topicId: String(topic.id),
