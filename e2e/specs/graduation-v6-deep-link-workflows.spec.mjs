@@ -162,8 +162,26 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
     await expect(page).toHaveURL(/\/admin\/graduation\/topic-lib/)
   })
 
-  test('defense score locks the authenticated judge and preserves return context', async ({ page }, testInfo) => {
+  test('defense score saves the authenticated judge score and reads it back after reload', async ({ page }, testInfo) => {
+    test.setTimeout(8 * 60_000)
     const scoringFixture = await ensureDefenseScoringContext(page, adminApi, defenseFixture)
+    const scoreParams = {
+      batchId: scoringFixture.batchId, gdStudentId: scoringFixture.gdStudentId, page: 1, pageSize: 200
+    }
+    const readScores = async (api) => {
+      const snapshot = await api.get('/graduation/gd-defense-scores', scoreParams)
+      expect(Array.isArray(snapshot?.items), 'score readback must be a real paginated ledger').toBe(true)
+      expect(snapshot.items.length, 'never compare a truncated score ledger').toBe(Number(snapshot.total))
+      for (const row of snapshot.items) expect(String(row.gdStudentId)).toBe(String(scoringFixture.gdStudentId))
+      return snapshot.items
+    }
+    const before = await readScores(adminApi)
+    const roundNo = Math.max(1, ...before.map(row => Number(row.roundNo)))
+    const otherJudges = rows => rows
+      .filter(row => String(row.judgeMentorId || '') !== String(scoringFixture.defenseExpertMentorId))
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+    const othersBefore = otherJudges(before)
+
     await page.setViewportSize({ width: 1440, height: 900 })
     const login = new StaffLoginPage(page, config.staffBaseUrl)
     await login.login(graduationRoles.defenseExpert)
@@ -189,16 +207,70 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
     await expect(page.getByLabel(/评委姓名/)).toHaveCount(0)
     await expect(page.locator('.dgf-context')).toContainText(scoringFixture.studentNo)
 
+    const comment = `已核对本轮答辩表现，提交本人评分。${scoringFixture.runId}`
     await page.getByLabel(/答辩评分/).fill('88')
+    await page.getByLabel('答辩评语', { exact: false }).fill(comment)
     await expect(page.getByRole('button', { name: '提交本人评分', exact: true })).toBeEnabled()
     await capture(page, testInfo, 'gd-v6-deep-defense-score', 1440, 900)
     await capture(page, testInfo, 'gd-v6-deep-defense-score', 1280, 800)
 
-    await page.getByRole('button', { name: '取消', exact: true }).click()
+    const [response] = await Promise.all([
+      page.waitForResponse(candidate => candidate.request().method() === 'POST'
+        && new URL(candidate.url()).pathname.endsWith('/graduation/gd-defense-scores/entry')),
+      page.getByRole('button', { name: '提交本人评分', exact: true }).click()
+    ])
+    const payload = response.request().postDataJSON()
+    expect(new URL(response.url()).searchParams.get('batchId')).toBe(String(scoringFixture.batchId))
+    expect(String(payload.gdStudentId)).toBe(String(scoringFixture.gdStudentId))
+    expect(payload.judgeName).toBe(scoringFixture.defenseExpertName)
+    expect(payload.score).toBe(88)
+    expect(payload.absent).toBe(false)
+    const receipt = await expectBusinessSuccess(response, '评委 PC 真正提交本人答辩评分')
+    expect(String(receipt.id)).toMatch(/^\d+$/)
+    expect(String(receipt.judgeMentorId)).toBe(String(scoringFixture.defenseExpertMentorId))
+    expect(String(receipt.defenseGroupId)).toBe(String(scoringFixture.defenseGroupId))
+    expect(Number(receipt.roundNo)).toBe(roundNo)
+    expect(receipt.status).toBe('SCORED')
+    expect(receipt.score).toBe(88)
+
+    const judgeApi = await loginApi(graduationRoles.defenseExpert)
+    let persisted
+    await expect.poll(async () => {
+      const rows = await readScores(judgeApi)
+      const mine = rows.filter(row => String(row.judgeMentorId) === String(scoringFixture.defenseExpertMentorId)
+        && Number(row.roundNo) === roundNo)
+      if (mine.length !== 1) return false
+      persisted = mine[0]
+      return String(persisted.id) === String(receipt.id) && persisted.status === 'SCORED'
+        && persisted.score === 88 && persisted.absent === false && persisted.comment === comment
+        && String(persisted.defenseGroupId) === String(scoringFixture.defenseGroupId)
+    }, { message: 'the authenticated judge must read exactly their own saved score from the server', timeout: 30_000 }).toBe(true)
+    expect(otherJudges(await readScores(adminApi)), 'submitting one score must not change another judge record').toEqual(othersBefore)
+
     await expect(page).toHaveURL(/\/admin\/graduation\/defense-scoring/)
     await expect(page).toHaveURL(new RegExp(`batchId=${scoringFixture.batchId}`))
     await expect(page).toHaveURL(new RegExp(`studentId=${scoringFixture.gdStudentId}`))
     await expect(page).toHaveURL(/queue=mine/)
+    await page.reload()
+    await dismissGuide(page)
+    await expect(page.locator('.gp-context')).toContainText(scoringFixture.studentNo)
+    const savedRow = page.locator('.gp-timeline-item')
+      .filter({ hasText: scoringFixture.defenseExpertName }).filter({ hasText: `（第${roundNo}轮）` })
+    await expect(savedRow).toHaveCount(1)
+    await expect(savedRow).toContainText('88')
+    await expect(savedRow).toContainText('已评分')
+    await testInfo.attach('defense-score-saved-after-reload', {
+      body: await page.screenshot({ fullPage: false, animations: 'disabled', caret: 'hide' }), contentType: 'image/png'
+    })
+    await testInfo.attach('defense-score-persistence-receipt', {
+      body: Buffer.from(JSON.stringify({
+        head: process.env.E2E_EXPECTED_SHA || process.env.GITHUB_SHA || 'local',
+        batchId: String(scoringFixture.batchId), gdStudentId: String(scoringFixture.gdStudentId),
+        transport: 'judge-PC-submit-independent-API-readback-and-reloaded-ledger',
+        score: persisted, otherJudgeRecordsCompared: othersBefore.length,
+        coverage: 'one judge score; not secretary confirmation, grade publication, archive or native WeChat'
+      }, null, 2)), contentType: 'application/json'
+    })
   })
 
   test('defense group create continues into student assignment', async ({ page }, testInfo) => {
@@ -235,9 +307,9 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
 
     const summaryPath = testInfo.outputPath('graduation-v6-deep-link-workflows.json')
     await fs.writeFile(summaryPath, JSON.stringify({
-      contract: 'graduation-v6-deep-link-workflows-v5', head: process.env.GITHUB_SHA || 'local',
+      contract: 'graduation-v6-deep-link-workflows-v6', head: process.env.E2E_EXPECTED_SHA || process.env.GITHUB_SHA || 'local',
       batchId: fixture.batchId, defenseBatchId: defenseFixture.batchId, createdGroupId: groupId,
-      workflows: ['batch-create', 'student-create-empty-guard', 'topic-draft-create', 'defense-score-isolated-student-real-role-and-seat', 'defense-group-create-to-assignment']
+      workflows: ['batch-create', 'student-create-empty-guard', 'topic-draft-create', 'defense-score-browser-save-api-readback-and-reload', 'defense-group-create-to-assignment']
     }, null, 2), 'utf8')
     await testInfo.attach('graduation-v6-deep-link-workflows', { path: summaryPath, contentType: 'application/json' })
   })

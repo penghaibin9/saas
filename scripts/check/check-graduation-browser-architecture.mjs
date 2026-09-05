@@ -196,8 +196,29 @@ contract('shared-graduation-scenarios', () => {
     'formal final approval must enter plagiarism through the administrator UI')
   assert.match(scenario, /page\.getByRole\('button', \{ name: '确认回填', exact: true \}\)\.click\(\)/,
     'plagiarism result must be entered through the existing form')
-  assert.match(scenario, /record\?\.status \|\| ''[\s\S]*toBe\('DONE'\)/,
-    'plagiarism result must read back before final approval')
+
+  // Validate the strengthened exact-record readback, not the obsolete
+  // status-only polling expression. Browser execution remains the final proof.
+  const plagiarismStart = markerIndex(scenario, 'async function ensurePlagiarismCompleted(', 'plagiarism-readback')
+  assert.ok(plagiarismStart < approvalStart)
+  const plagiarism = scenario.slice(plagiarismStart, approvalStart)
+  const pollStart = plagiarism.lastIndexOf('await expect.poll(')
+  assert.ok(pollStart >= 0, 'plagiarism result requires awaited server polling')
+  const poll = semanticSource(plagiarism.slice(pollStart))
+  for (const predicate of [
+    'record = relevant(await readRows())',
+    "String(record?.id) === checkId && record.status === 'DONE'",
+    '&& record.overThreshold === false',
+    "&& Number(String(record.rate).replace('%', '')) === 12",
+    ').toBe(true)',
+    'assertCompleted(record)'
+  ]) assert.ok(poll.includes(predicate), `plagiarism exact readback missing ${predicate}`)
+  assert.ok(plagiarism.includes("String(item.gdFinalId || '') === String(row.id)"),
+    'plagiarism must bind the current final, never a previous document')
+  assert.ok(plagiarism.includes("String(item.gdStudentId || '') === String(fixture.gdStudentId)"),
+    'plagiarism must bind the intended student')
+  assert.ok(approval.includes("if (finalType(row) === '定稿') await ensurePlagiarismCompleted(page, fixture, row)"),
+    'final approval must await the exact plagiarism prerequisite')
 })
 
 contract('scenario-isolation-and-real-role-actors', () => {

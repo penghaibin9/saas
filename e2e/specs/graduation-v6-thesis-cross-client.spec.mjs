@@ -24,6 +24,22 @@ async function loginTeacherMini(page) {
   await expect(page).toHaveURL(/pages\/teacher\/workbench\/index/, { timeout: 15_000 })
 }
 
+// uni-app H5 may render uni-button rather than a native HTML button. Assert
+// its visible label AND disabled signals; toBeEnabled alone ignores the
+// disabled attribute on custom elements and would give a false positive.
+async function expectMiniControlState(control, label, disabled = false) {
+  await expect(control, `unique ${label} control`).toHaveCount(1)
+  await expect(control).toBeVisible()
+  await expect(control).toHaveText(label)
+  await expect.poll(() => control.evaluate(node => {
+    const blocked = element => element.disabled === true
+      || element.hasAttribute('disabled')
+      || element.getAttribute('aria-disabled') === 'true'
+      || element.classList.contains('uni-button-disabled')
+    return blocked(node) || Array.from(node.querySelectorAll('button, uni-button')).some(blocked)
+  }), { message: `${label} must expose its real ${disabled ? 'locked' : 'enabled'} state` }).toBe(disabled)
+}
+
 function assertLibraryIdentity(library, fixture, identity) {
   expect(String(library?.gdStudentId || '')).toBe(String(fixture.gdStudentId))
   expect(String(library?.studentNo || '')).toBe(String(fixture.studentNo))
@@ -61,7 +77,7 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     fixture = await prepareGraduationFixture()
   })
 
-  test('same canonical FileVersion is visible and previewable on all required surfaces', async ({ page }, testInfo) => {
+  test('same canonical FileVersion is read on PC and downloaded through the H5 preview path', async ({ page }, testInfo) => {
     test.setTimeout(8 * 60_000)
     const submission = await ensureFinalPending(page, fixture, {
       suffix: `cross-client-${testInfo.retry || 0}`, documentPages: 20
@@ -145,8 +161,10 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     await expect(review).toContainText(fixture.topicTitle)
     const versionRow = page.locator('.rv__att').filter({ hasText: `FileVersion ${fileVersionId}` }).first()
     await expect(versionRow, 'teacher miniapp must show the same canonical FileVersion as teacher PC').toBeVisible({ timeout: 20_000 })
-    await expect(page.locator('.rv__foot').getByRole('button', { name: '通过' })).toBeEnabled()
-    await expect(page.locator('.rv__foot').getByRole('button', { name: '退回' })).toBeEnabled()
+    const pass = page.locator('.rv__foot .rv__pass')
+    const reject = page.locator('.rv__foot .rv__return')
+    await expectMiniControlState(pass, '通过')
+    await expectMiniControlState(reject, '退回')
 
     const exactUrl = page.url()
     for (const [key, value] of taskQuery.entries()) {
@@ -170,15 +188,28 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     expect(previewBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-')
     expect(createHash('sha256').update(previewBytes).digest('hex'), 'mobile preview bytes must match the canonical uploaded PDF').toBe(identity.sha256)
 
-    const confirmCurrent = page.getByRole('button', { name: '确认当前版本' })
-    if (await confirmCurrent.isVisible().catch(() => false)) {
+    let returnConfirmationVerified = false
+    const confirmCurrent = page.locator('.rv__preview-confirm .rv__confirm')
+    if (await confirmCurrent.isVisible()) {
+      await expectMiniControlState(pass, '通过', true)
+      await expectMiniControlState(reject, '退回', true)
+      await expectMiniControlState(confirmCurrent, '确认当前版本')
       const revalidatePromise = page.waitForResponse(isExactMobileDetail)
       await confirmCurrent.click()
       const fresh = await expectGraduationBusinessSuccess(await revalidatePromise, '教师小程序预览返回后重验论文版本')
       assertMobileIdentity(fresh, fixture, identity, await readLibrary())
-      await expect(page.locator('.rv__foot').getByRole('button', { name: '通过' })).toBeEnabled()
-      await expect(page.locator('.rv__foot').getByRole('button', { name: '退回' })).toBeEnabled()
+      await expectMiniControlState(pass, '通过')
+      await expectMiniControlState(reject, '退回')
+      returnConfirmationVerified = true
     }
+    // A fresh H5 task read is mandatory even where native openDocument is not
+    // implemented by the browser. Never label that as a native WeChat test.
+    const reloadPromise = page.waitForResponse(isExactMobileDetail)
+    await page.reload()
+    const reloaded = await expectGraduationBusinessSuccess(await reloadPromise, '教师 H5 重新进入后回读同一论文任务')
+    assertMobileIdentity(reloaded, fixture, identity, await readLibrary())
+    await expectMiniControlState(pass, '通过')
+    await expectMiniControlState(reject, '退回')
     await expect(page.locator('body')).not.toContainText(
       /版本已变化|旧版审核已锁定|批次与当前选择不一致|指定的毕业设计待办不在当前批次/
     )
@@ -189,7 +220,8 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     const evidence = testInfo.outputPath('cross-client-thesis-identity.json')
     await import('node:fs/promises').then(({ writeFile }) => writeFile(evidence, JSON.stringify({
       head: process.env.E2E_EXPECTED_SHA || process.env.GITHUB_SHA || 'local',
-      coverage: 'student-PC submission and teacher-PC/miniapp-H5 preview, not full lifecycle or native WeChat',
+      coverage: 'student-PC submission, teacher-PC PDF rendering, teacher-H5 authorised preview bytes and fresh task read; not full lifecycle or native WeChat',
+      nativeWeChatVerified: false, returnConfirmationVerified,
       batchId: String(fixture.batchId), gdStudentId: String(fixture.gdStudentId),
       ...identity, ownershipProof: 'authorised student library -> materialId -> immutable FileVersion -> mobile review record',
       scenarioFactory: 'graduation-scenario-fixture.ensureFinalPending',
