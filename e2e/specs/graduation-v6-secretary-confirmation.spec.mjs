@@ -139,13 +139,13 @@ test.describe.serial('V6 · defense secretary confirmation writes the complete r
     expect(expertPersisted?.judgeName).toBe(expertReceipt.judgeName)
     expect(String(chairPersisted?.defenseGroupId)).toBe(String(scoringFixture.defenseGroupId))
     expect(String(expertPersisted?.defenseGroupId)).toBe(String(scoringFixture.defenseGroupId))
+    await expect(page.getByText('本轮成绩已确认', { exact: true })).toBeVisible()
 
     await page.reload()
     await dismissGuide(page)
     await expect(page.locator('.gp-context')).toContainText(scoringFixture.studentNo)
     await expect(page.locator('.gp-timeline-item').filter({ hasText: 'E2E答辩专家A' })).toContainText(/88.*已确认/)
     await expect(page.locator('.gp-timeline-item').filter({ hasText: 'E2E答辩专家B' })).toContainText(/77.*已确认/)
-    await expect(page.getByText('本轮成绩已确认', { exact: true })).toBeVisible()
 
     await testInfo.attach('defense-secretary-confirmation-receipt', {
       body: Buffer.from(JSON.stringify({
