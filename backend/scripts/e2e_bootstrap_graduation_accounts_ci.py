@@ -55,6 +55,8 @@ def _teacher_workbook() -> bytes:
              "ACADEMIC_ADMIN,GRADUATION_ADMIN", "", ""],
             ["e2e_college_secretary", "E2E学院秘书", COLLEGE, "学院秘书",
              "GD_COLLEGE_ADMIN", "COLLEGE", COLLEGE],
+            ["e2e_defense_secretary", "E2E答辩秘书", COLLEGE, "答辩秘书",
+             "GD_DEFENSE_SECRETARY", "", ""],
             ["e2e_major_admin", "E2E专业负责人", COLLEGE, "专业负责人",
              "GD_MAJOR_ADMIN", "MAJOR", MAJOR],
             ["e2e_advisor_a", "E2E指导教师A", COLLEGE, "指导教师",
