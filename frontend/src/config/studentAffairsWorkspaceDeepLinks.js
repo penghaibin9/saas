@@ -1,4 +1,4 @@
-import { NAV_PLAN, matchPermission } from './navPlan.js'
+import { NAV_PLAN, matchPermission, searchNavPlan } from './navPlan.js'
 
 const STUDENT_AFFAIRS_GROUP = 'student-affairs'
 const COMPATIBILITY_ONLY_PATHS = new Set([
@@ -59,6 +59,21 @@ function rawStudentAffairsGroup() {
   return NAV_PLAN.find((item) => item.key === STUDENT_AFFAIRS_GROUP) || null
 }
 
+let searchableDeepLinkIndex = null
+function getSearchableDeepLinkIndex() {
+  if (searchableDeepLinkIndex) return searchableDeepLinkIndex
+  const index = new Map()
+  const rawGroup = rawStudentAffairsGroup()
+  for (const rawMod of rawGroup?.children || []) {
+    for (const rawLeaf of rawMod.children || []) {
+      if (!isSearchableDeepLink(rawLeaf)) continue
+      index.set(rawLeaf.path, { leaf: rawLeaf, mod: rawMod })
+    }
+  }
+  searchableDeepLinkIndex = index
+  return index
+}
+
 /**
  * 将 navPlan 中 D() 登记的真实低频页面，仅投影到当前展开工作区的三级区域。
  *
@@ -96,36 +111,28 @@ export function projectStudentAffairsWorkspaceDeepLinks(group, permissionPattern
 }
 
 /**
- * 为学工门户的功能搜索补回 D() 深链。
- * 搜索严格按当前权限集过滤；权限上下文缺失时 fail-closed，且兼容重定向永不作为新入口暴露。
+ * 将公共 searchNavPlan 的同一权威搜索结果，适配为学工低频 D() 页的短标题结果。
+ * 不再自行扫描、匹配或排序查询文本；权限、缓存与搜索顺序均由 navPlan 统一负责。
  */
 export function searchStudentAffairsWorkspaceDeepLinks(query, permissionPatterns) {
-  const q = String(query || '').trim().toLowerCase()
+  const q = String(query || '').trim()
   if (!q || !Array.isArray(permissionPatterns)) return []
-  const rawGroup = rawStudentAffairsGroup()
-  if (!rawGroup) return []
-  const results = []
+  const index = getSearchableDeepLinkIndex()
 
-  for (const rawMod of rawGroup.children || []) {
-    for (const rawLeaf of rawMod.children || []) {
-      if (!isSearchableDeepLink(rawLeaf)) continue
-      if (!hasPermission(rawLeaf, permissionPatterns)) continue
-      const searchText = [rawLeaf.label, rawLeaf.sectionLabel, rawLeaf.description, rawMod.label]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-      if (!searchText.includes(q)) continue
-      results.push({
+  return searchNavPlan(q, permissionPatterns)
+    .map((result) => {
+      const source = index.get(result.path)
+      if (!source || !hasPermission(source.leaf, permissionPatterns)) return null
+      return {
         groupKey: STUDENT_AFFAIRS_GROUP,
-        label: rawLeaf.label,
-        path: rawLeaf.path,
-        badge: ENTRY_TYPE_LABELS[rawLeaf.entryType] || '',
-        sub: [rawMod.label, rawLeaf.sectionLabel].filter(Boolean).join(' · ')
-      })
-    }
-  }
-
-  return results.slice(0, 16)
+        label: source.leaf.label,
+        path: source.leaf.path,
+        badge: ENTRY_TYPE_LABELS[source.leaf.entryType] || '',
+        sub: [source.mod.label, source.leaf.sectionLabel].filter(Boolean).join(' · ')
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 16)
 }
 
 export function countContextualWorkspaceDeepLinks(group) {

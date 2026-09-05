@@ -9,6 +9,7 @@ import {
 } from '../src/config/studentAffairsWorkspaceDeepLinks.js'
 
 const basePortal = fs.readFileSync(new URL('../src/layouts/BasePortalLayout.vue', import.meta.url), 'utf8')
+const deepLinkSource = fs.readFileSync(new URL('../src/config/studentAffairsWorkspaceDeepLinks.js', import.meta.url), 'utf8')
 const studentAffairsPortal = fs.readFileSync(new URL('../src/modules/studentAffairs/components/StudentAffairsPortalLayout.js', import.meta.url), 'utf8')
 const adminLayout = fs.readFileSync(new URL('../src/modules/studentAffairs/views/AdminStudentAffairsLayout.vue', import.meta.url), 'utf8')
 const riskView = fs.readFileSync(new URL('../src/modules/studentAffairs/views/StudentAffairsRiskListView.vue', import.meta.url), 'utf8')
@@ -59,7 +60,7 @@ test('student, risk, aid and orientation workspaces gain their existing low-freq
   )
 })
 
-test('search-only D links are permission-scoped and compatibility redirects remain hidden', () => {
+test('search-only D links reuse canonical search, stay permission-scoped and hide compatibility redirects', () => {
   assert.deepEqual(
     searchStudentAffairsWorkspaceDeepLinks('报到流程配置', ['studentAffairs.orientation.view'])
       .map(({ label, path }) => ({ label, path })),
@@ -69,6 +70,11 @@ test('search-only D links are permission-scoped and compatibility redirects rema
     searchStudentAffairsWorkspaceDeepLinks('资助批次', ['studentAffairs.funding.view'])
       .map(({ label, path }) => ({ label, path })),
     [{ label: '资助批次', path: '/admin/student-affairs/funding/batches' }]
+  )
+  assert.deepEqual(
+    searchStudentAffairsWorkspaceDeepLinks('困难认定异议', ['*'])
+      .map(({ label, path }) => ({ label, path })),
+    [{ label: '困难认定异议', path: '/admin/student-affairs/aid/objections' }]
   )
   assert.equal(searchStudentAffairsWorkspaceDeepLinks('资助批次', ['studentAffairs.aid.view']).length, 0)
   assert.equal(searchStudentAffairsWorkspaceDeepLinks('助学金管理', ['*']).length, 0)
@@ -103,14 +109,19 @@ test('contextual entries retain business-stage grouping and explicit type badges
   assert.equal(archive.badge, '归档')
 })
 
-test('projection and search wiring reuse the public shell without mutating it', () => {
+test('projection and search adapter reuse the public shell without a second search authority', () => {
   const baseImport = "import { projectStudentAffairsWorkspaceDeepLinks } from '@/config/studentAffairsWorkspaceDeepLinks'"
   const riskImport = "import { resolveRiskQueueIntent } from '@/modules/studentAffairs/utils/riskRouteQueueIntent'"
   assert.equal(basePortal.split(baseImport).length - 1, 1)
   assert.equal(basePortal.split('return projectStudentAffairsWorkspaceDeepLinks(group, permissionPatterns)').length - 1, 1)
   assert.equal(basePortal.split('/* V6 学工工作区：一级轨与当前工作区的低频真实三级页。 */').length - 1, 1)
+  assert.equal(deepLinkSource.split('searchNavPlan(q, permissionPatterns)').length - 1, 1)
+  assert.doesNotMatch(deepLinkSource, /searchText\s*=|searchText\.includes/)
   assert.equal(studentAffairsPortal.split('searchStudentAffairsWorkspaceDeepLinks(query, permissionPatterns)').length - 1, 1)
   assert.equal(studentAffairsPortal.split('const baseResults = baseFnResults.call(this)').length - 1, 1)
+  assert.equal(studentAffairsPortal.split('const exactPaths = new Set').length - 1, 1)
+  assert.equal(studentAffairsPortal.split('baseFnQueryWatcher.call(this, q, previousQuery)').length - 1, 1)
+  assert.equal(studentAffairsPortal.split("if (String(q || '').trim()) this.fnOpen = true").length - 1, 1)
   assert.equal(adminLayout.split("import BasePortalLayout from '@/modules/studentAffairs/components/StudentAffairsPortalLayout.js'").length - 1, 1)
   assert.equal(riskView.split(riskImport).length - 1, 1)
   assert.equal(riskView.split('this.activeQueue = resolveRiskQueueIntent(q)').length - 1, 1)
