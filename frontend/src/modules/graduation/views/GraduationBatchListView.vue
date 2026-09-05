@@ -16,42 +16,49 @@
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <!-- 空态分两种：筛选无果 ≠ 真的还没建。前者给「清空筛选」，后者给「怎么开始」。 -->
       <EmptyState
         v-else-if="!rows.length && filtered"
         title="没有符合条件的批次"
         description="当前筛选条件下没有批次。可以放宽条件，或清空筛选看全部。"
       >
         <template #actions>
-          <button class="mp-btn" @click="reset">清空筛选</button>
+          <button type="button" class="mp-btn" @click="reset">清空筛选</button>
         </template>
       </EmptyState>
       <EmptyState
         v-else-if="!rows.length"
         title="还没有毕设批次"
-        description="批次是一届毕业设计的容器——学生、题目、导师、答辩、成绩都挂在批次下。建好批次并配好阶段时间轴，才能开始选题。"
+        description="先建立本届毕业设计批次并设置阶段时间，才能导入学生、分配导师和开放选题。"
       >
         <template #actions>
-          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/batches/create')">＋ 新建批次</button>
-          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-batch-create')">怎么建批次？</button>
+          <button type="button" class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/batches/create')">＋ 新建批次</button>
+          <button type="button" class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-batch-create')">查看建批说明</button>
         </template>
       </EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-batch="{ row }">
-          <div class="mp-cell-main">{{ row.batchName }}</div>
-          <div class="mp-cell-sub">{{ row.batchNo }} · {{ row.gradeYear || '—' }} · {{ row.academicYear || '—' }}</div>
+          <div class="gd-batch-identity" :data-batch-id="String(row.id)">
+            <div class="mp-cell-main">{{ row.batchName }}</div>
+            <div class="mp-cell-sub">{{ row.batchNo }} · {{ row.gradeYear || '—' }} · {{ row.academicYear || '—' }}</div>
+          </div>
         </template>
         <template #cell-range="{ row }">
           <AppDateDisplay :value="row.startDate" /> ~ <AppDateDisplay :value="row.endDate" />
         </template>
         <template #cell-status="{ row }"><StatusTag :type="row.statusTone" :label="row.statusLabel" dot /></template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="openDetail(row)">详情/配置</button>
-          <button v-if="editable(row)" class="mp-link" style="margin-left: var(--space-2)" @click="openEdit(row)">编辑</button>
-          <button v-if="row.status === 'DRAFT'" class="mp-link" style="margin-left: var(--space-2)" @click="askState(row, 'activate')">启用</button>
-          <button v-else-if="row.status === 'RUNNING'" class="mp-link" style="margin-left: var(--space-2)" @click="askState(row, 'close')">结束</button>
-          <button v-else-if="row.status === 'CLOSED'" class="mp-link" style="margin-left: var(--space-2)" @click="askState(row, 'archive')">归档</button>
-          <button v-if="row.status === 'DRAFT'" class="mp-link mp-link--danger" style="margin-left: var(--space-2)" @click="askVoid(row)">作废</button>
+          <button
+            type="button"
+            class="mp-link"
+            :data-batch-id="String(row.id)"
+            :aria-label="`打开${row.batchName}详情配置`"
+            @click="openDetail(row)"
+          >详情/配置</button>
+          <button v-if="editable(row)" type="button" class="mp-link" style="margin-left: var(--space-2)" :aria-label="`编辑${row.batchName}`" @click="openEdit(row)">编辑</button>
+          <button v-if="row.status === 'DRAFT'" type="button" class="mp-link" style="margin-left: var(--space-2)" @click="askState(row, 'activate')">启用</button>
+          <button v-else-if="row.status === 'RUNNING'" type="button" class="mp-link" style="margin-left: var(--space-2)" @click="askState(row, 'close')">结束</button>
+          <button v-else-if="row.status === 'CLOSED'" type="button" class="mp-link" style="margin-left: var(--space-2)" @click="askState(row, 'archive')">归档</button>
+          <button v-if="row.status === 'DRAFT'" type="button" class="mp-link mp-link--danger" style="margin-left: var(--space-2)" @click="askVoid(row)">作废</button>
         </template>
       </DataTable>
     </div>
@@ -61,13 +68,11 @@
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
       :reason-label="confirm.reasonLabel" :submitting="submitting" @confirm="onConfirm"
     />
-    <!-- 首次进入本模块时的 4 步说明；「已看过」存后端偏好，顶栏「?」可重看 -->
     <AppPageGuide guide-key="graduation.gd-batches" />
   </ModulePageShell>
 </template>
 
 <script>
-/** 毕设批次列表（/admin/graduation/batches）：生产级只走真实后端；建/改/阶段+规则配置/状态机/作废/Excel台账导出。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton, AppPageGuide } from '@/components/common'
@@ -78,10 +83,10 @@ import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', dateStart: '', dateEnd: '' })
 
-
 export default {
   name: 'GraduationBatchListView',
-  components: { AppPageGuide, 
+  components: {
+    AppPageGuide,
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppConfirmDialog, AppDateDisplay, AppExportButton
   },
@@ -102,6 +107,9 @@ export default {
     }
   },
   computed: {
+    filtered() {
+      return Object.values(this.filters).some((value) => String(value || '').trim())
+    },
     filterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '批次名称 / 编号 / 届' },
@@ -112,12 +120,23 @@ export default {
   },
   created() { this.applyPanel(this.$route.query.panel, true) },
   watch: {
-    '$route.query.panel'(p) { this.applyPanel(p, false) },
+    '$route.query.panel'(panel) { this.applyPanel(panel, false) },
     '$route.query.batchId'() { this.applyPanel(this.$route.query.panel, false) }
   },
   methods: {
     editable(row) { return !['CLOSED', 'ARCHIVED', 'VOIDED'].includes(row.status) },
-    /** 按左侧三级菜单的 ?panel= 切换到对应视图/动作（每个 panel 是独立 ref，点击都能导航） */
+    batchRoute(row, routeName, query = {}) {
+      const id = String(row?.id || '').trim()
+      if (!id) {
+        toast.error('批次标识缺失，请刷新列表后重试')
+        return null
+      }
+      return {
+        name: routeName,
+        params: { id },
+        query: { batchId: id, ...query }
+      }
+    },
     applyPanel(panel, initial) {
       panel = panel || 'list'
       if (panel === 'create') {
@@ -130,16 +149,19 @@ export default {
         this.filters.status = panel === 'running' ? 'RUNNING' : 'ARCHIVED'; this.page = 1; this.load(); return
       }
       if (panel === 'stages' || panel === 'rules') {
-        const batchId = this.$route.query.batchId
+        const batchId = String(this.$route.query.batchId || '').trim()
         if (batchId) {
-          this.$router.replace({ path: `/admin/graduation/batches/${batchId}`, query: { tab: panel } })
+          this.$router.replace({
+            name: 'graduation-batch-detail',
+            params: { id: batchId },
+            query: { tab: panel, batchId }
+          })
           return
         }
         this.preferredTab = panel; this.filters.status = ''; this.page = 1; this.load()
-        if (!initial) toast.info(panel === 'stages' ? '点某个批次「详情/配置」即可编辑阶段时间轴' : '点某个批次「详情/配置」即可编辑规则')
+        if (!initial) toast.info(panel === 'stages' ? '选择一个批次即可维护阶段时间' : '选择一个批次即可维护规则')
         return
       }
-      // list（默认）
       this.preferredTab = 'stages'; this.filters.status = ''; this.page = 1; this.load()
     },
     async load() {
@@ -150,20 +172,26 @@ export default {
     },
     search() { this.page = 1; this.load() },
     reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
-    turnPage(p) { this.page = p; this.load() },
+    turnPage(page) { this.page = page; this.load() },
     onToolbar(key) {
       if (key === 'create') this.$router.push('/admin/graduation/batches/create')
     },
     openEdit(row) {
-      this.$router.push(`/admin/graduation/batches/${row.id}/edit`)
+      const target = this.batchRoute(row, 'graduation-batch-edit')
+      if (target) this.$router.push(target)
     },
     openDetail(row) {
       const tab = this.preferredTab === 'rules' ? 'rules' : 'stages'
-      this.$router.push({ path: `/admin/graduation/batches/${row.id}`, query: { tab } })
+      const target = this.batchRoute(row, 'graduation-batch-detail', { tab })
+      if (target) this.$router.push(target)
     },
     askState(row, action) {
-      const m = { activate: { t: '启用批次', c: '确认启用', type: 'primary' }, close: { t: '结束批次', c: '确认结束', type: 'warning' }, archive: { t: '归档批次', c: '确认归档', type: 'primary' } }[action]
-      this.confirm = { visible: true, title: m.t, message: `确认对「${row.batchName}」执行「${m.t}」？`, type: m.type, confirmText: m.c, requireReason: false, action, row }
+      const meta = {
+        activate: { title: '启用批次', confirmText: '确认启用', type: 'primary' },
+        close: { title: '结束批次', confirmText: '确认结束', type: 'warning' },
+        archive: { title: '归档批次', confirmText: '确认归档', type: 'primary' }
+      }[action]
+      this.confirm = { visible: true, title: meta.title, message: `确认对「${row.batchName}」执行「${meta.title}」？`, type: meta.type, confirmText: meta.confirmText, requireReason: false, action, row }
     },
     askVoid(row) {
       this.confirm = { visible: true, title: '作废批次', message: `确认作废「${row.batchName}」？（仅草稿可作废，不可恢复）`, type: 'danger', confirmText: '确认作废', requireReason: true, reasonLabel: '作废原因', action: 'void', row }
@@ -198,4 +226,5 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .mp-actions { flex-wrap: wrap; }
+.gd-batch-identity { min-width: 0; }
 </style>
