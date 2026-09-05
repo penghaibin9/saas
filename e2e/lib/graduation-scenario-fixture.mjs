@@ -241,13 +241,29 @@ export async function ensureFinalPending(page, fixture, { suffix = 'scenario', d
 
 async function ensurePlagiarismCompleted(page, fixture, row) {
   if (finalType(row) !== '定稿') return null
+  expect(process.env.E2E_ALLOW_DESTRUCTIVE_TESTS, 'manual E2E results require the isolated test opt-in').toBe('true')
   const adminApi = await loginApi(config.sandboxAdmin)
-  const params = { batchId: fixture.batchId, gdStudentId: fixture.gdStudentId, page: 1, pageSize: 50 }
+  const params = { batchId: fixture.batchId, gdStudentId: fixture.gdStudentId, page: 1, pageSize: 200 }
   const readRows = async () => items(await adminApi.get('/graduation/gd-plagiarism', params))
-  const relevant = (rows) => rows.find((item) => String(item.gdFinalId || '') === String(row.id))
-    || rows.find((item) => String(item.gdStudentId || '') === String(fixture.gdStudentId))
+  // The same student can submit several drafts/finals. A prior document's
+  // successful check must never authorize the current final or its review.
+  const relevant = (rows) => rows.find((item) =>
+    String(item.gdFinalId || '') === String(row.id)
+    && String(item.gdStudentId || '') === String(fixture.gdStudentId))
+  const assertCompleted = (record) => {
+    expect(String(record?.gdFinalId || ''), 'check must identify the exact final').toBe(String(row.id))
+    expect(String(record?.gdStudentId || ''), 'check must identify the exact student').toBe(String(fixture.gdStudentId))
+    expect(record?.status).toBe('DONE')
+    expect(record?.overThreshold, 'over-threshold results require real rectification/dispute handling').toBe(false)
+    expect(record?.disputeStatus || '', 'do not overwrite or bypass an active or historical dispute').toBe('')
+    return record
+  }
   let record = relevant(await readRows())
-  if (record?.status === 'DONE' && record.overThreshold !== true) return record
+  if (record?.status === 'DONE') return assertCompleted(record)
+  if (record) {
+    expect(record.status, 'failed checks must not be overwritten to make E2E pass').toBe('CHECKING')
+    expect(record.disputeStatus || '').toBe('')
+  }
 
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
   const query = new URLSearchParams({
@@ -266,45 +282,65 @@ async function ensurePlagiarismCompleted(page, fixture, row) {
         && new URL(candidate.url()).pathname.endsWith(`/graduation/gd-plagiarism/${fixture.gdStudentId}/submit`)),
       page.getByRole('button', { name: '发起查重', exact: true }).click()
     ])
-    await expectGraduationBusinessSuccess(response, '管理员 PC 为正式定稿发起查重')
+    const created = await expectGraduationBusinessSuccess(response, '管理员 PC 为当前正式定稿发起查重')
+    expect(String(created.gdFinalId), 'UI request must bind the intended final').toBe(String(row.id))
+    expect(String(created.gdStudentId)).toBe(String(fixture.gdStudentId))
+    expect(created.status).toBe('CHECKING')
     await expect.poll(async () => {
       record = relevant(await readRows())
-      return record?.status || ''
-    }, { message: 'plagiarism task must read back before result entry', timeout: 30_000 }).toMatch(/CHECKING|DONE/)
+      return String(record?.id || '')
+    }, { message: 'exact plagiarism task must read back before result entry', timeout: 30_000 }).toBe(String(created.id))
   }
 
-  if (record.status !== 'DONE') {
-    const returnTo = `/admin/graduation/plagiarism-ledger?batchId=${fixture.batchId}&studentId=${fixture.gdStudentId}&panel=plagiarism`
-    const formQuery = new URLSearchParams({
-      formKey: 'plagiarismResult',
-      recordId: String(record.id),
-      batchId: fixture.batchId,
-      studentId: fixture.gdStudentId,
-      panel: 'plagiarism',
-      returnRoute: 'graduation-plagiarism-ledger',
-      returnTo
-    })
-    await page.goto(`${config.staffBaseUrl}/admin/graduation/defense-grade/${fixture.gdStudentId}/form?${formQuery}`)
-    await dismissGraduationGuide(page)
-    await expect(page.getByRole('heading', { name: '回填查重结果', exact: true })).toBeVisible()
-    await page.getByLabel('重复率（%）', { exact: false }).fill('12')
-    await page.getByLabel('报告链接', { exact: false }).fill('https://e2e.invalid/plagiarism-report')
-    const [response] = await Promise.all([
-      page.waitForResponse((candidate) => candidate.request().method() === 'POST'
-        && new URL(candidate.url()).pathname.endsWith(`/graduation/gd-plagiarism/${record.id}/result`)),
-      page.getByRole('button', { name: '确认回填', exact: true }).click()
-    ])
-    await expectGraduationBusinessSuccess(response, '管理员 PC 回填正式查重结果')
-    await expect.poll(async () => {
-      record = relevant(await readRows())
-      return record?.status || ''
-    }, { message: 'plagiarism result must persist before final approval', timeout: 30_000 }).toBe('DONE')
-  }
-  expect(record.overThreshold, 'test plagiarism rate must not block the normal final-approval path').not.toBe(true)
+  if (record.status === 'DONE') return assertCompleted(record)
+  expect(record.status).toBe('CHECKING')
+  const returnTo = `/admin/graduation/plagiarism-ledger?batchId=${fixture.batchId}&studentId=${fixture.gdStudentId}&panel=plagiarism`
+  const formQuery = new URLSearchParams({
+    formKey: 'plagiarismResult',
+    recordId: String(record.id),
+    batchId: fixture.batchId,
+    studentId: fixture.gdStudentId,
+    panel: 'plagiarism',
+    returnRoute: 'graduation-plagiarism-ledger',
+    returnTo
+  })
+  await page.goto(`${config.staffBaseUrl}/admin/graduation/defense-grade/${fixture.gdStudentId}/form?${formQuery}`)
+  await dismissGraduationGuide(page)
+  await expect(page.getByRole('heading', { name: '回填查重结果', exact: true })).toBeVisible()
+  await expect(page.locator('.dgf-context')).toContainText(fixture.studentNo)
+  // This value exercises the permitted manual-result workflow in E2E only.
+  // No external similarity engine was invoked, so do not invent a report URL.
+  await page.getByLabel('重复率（%）', { exact: false }).fill('12')
+  const checkId = String(record.id)
+  const [response] = await Promise.all([
+    page.waitForResponse((candidate) => candidate.request().method() === 'POST'
+      && new URL(candidate.url()).pathname.endsWith(`/graduation/gd-plagiarism/${checkId}/result`)),
+    page.getByRole('button', { name: '确认回填', exact: true }).click()
+  ])
+  expect(Number(response.request().postDataJSON()?.rate)).toBe(12)
+  const receipt = await expectGraduationBusinessSuccess(response, '管理员 PC 回填隔离环境的查重测试输入')
+  expect(String(receipt.id)).toBe(checkId)
+  assertCompleted(receipt)
+  await expect.poll(async () => {
+    record = relevant(await readRows())
+    return String(record?.id) === checkId && record.status === 'DONE'
+      && record.overThreshold === false
+      && Number(String(record.rate).replace('%', '')) === 12
+  }, { message: 'exact final result must persist before mentor approval', timeout: 30_000 }).toBe(true)
+  assertCompleted(record)
+  await test.info().attach(`plagiarism-${row.id}-manual-input-receipt`, {
+    body: Buffer.from(JSON.stringify({
+      head: process.env.E2E_EXPECTED_SHA || 'local', batchId: String(fixture.batchId),
+      gdStudentId: String(fixture.gdStudentId), gdFinalId: String(row.id), checkId,
+      status: record.status, overThreshold: record.overThreshold,
+      source: 'isolated-E2E-manual-input-not-an-external-engine-measurement'
+    }, null, 2)), contentType: 'application/json'
+  })
   return record
 }
 
 async function approveFinalInBrowser(page, fixture, row, { timeoutMs }) {
+  if (finalType(row) === '定稿') await ensurePlagiarismCompleted(page, fixture, row)
   const mentorApi = await loginApi(config.mentor)
   const params = { batchId: fixture.batchId }
   const detail = await mentorApi.get(`/graduation/finals/${row.id}`, params)
@@ -313,8 +349,6 @@ async function approveFinalInBrowser(page, fixture, row, { timeoutMs }) {
   expect(detail?.reviewReady).toBe(true)
   expect(String(detail?.fileVersionId || '')).toMatch(/^\d+$/)
   expect(detail?.materialVersion).not.toBeNull()
-
-  if (finalType(row) === '定稿') await ensurePlagiarismCompleted(page, fixture, row)
 
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
   const query = new URLSearchParams({ ...params, tab: FINAL_PENDING, sel: String(row.id) })
