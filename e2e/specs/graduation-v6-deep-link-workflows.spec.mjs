@@ -188,7 +188,7 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
       comment: chairComment,
       absent: false,
       absentReason: ''
-    })
+    }, { batchId: scoringFixture.batchId })
     expect(String(chairReceipt?.id || '')).toMatch(/^\d+$/)
     expect(String(chairReceipt?.gdStudentId || '')).toBe(String(scoringFixture.gdStudentId))
     expect(String(chairReceipt?.defenseGroupId || '')).toBe(String(scoringFixture.defenseGroupId))
@@ -291,8 +291,7 @@ test.describe.serial('V6 · graduation deep-link create workflows', () => {
     await expect(savedRow).toContainText('88')
     await expect(savedRow).toContainText('已评分')
     await testInfo.attach('defense-score-saved-after-reload', {
-      body: await page.screenshot({ fullPage: false, animations: 'disabled', caret: 'hide' }), contentType: 'image/png'
-    })
+      body: await page.screenshot({ fullPage: false, animations: 'disabled', caret: 'hide' }), contentType: 'image/png' })
     await testInfo.attach('defense-score-persistence-receipt', {
       body: Buffer.from(JSON.stringify({
         head: process.env.E2E_EXPECTED_SHA || process.env.GITHUB_SHA || 'local',
