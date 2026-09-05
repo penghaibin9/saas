@@ -21,7 +21,7 @@ function contract(name, check) {
     results.push({ name, status: 'FAIL', message: error?.message || String(error) })
     console.error(`[graduation-browser-architecture] FAIL ${name}`)
     console.error(error?.stack || error)
-    console.error(JSON.stringify({ contract: 'graduation-browser-architecture-v3', results }, null, 2))
+    console.error(JSON.stringify({ contract: 'graduation-browser-architecture-v4', results }, null, 2))
     process.exitCode = 1
     throw error
   }
@@ -41,6 +41,7 @@ const action = read('.github/actions/browser-runtime/action.yml')
 const bootstrap = read('scripts/e2e/bootstrap-browser-runtime.sh')
 const runner = read('scripts/e2e/run-browser-suite.sh')
 const e2eConfig = read('e2e/lib/config.mjs')
+const apiFixture = read('e2e/lib/api-fixture.mjs')
 const graduationRoleAccounts = read('e2e/lib/graduation-role-accounts.mjs')
 const scenario = read('e2e/lib/graduation-scenario-fixture.mjs')
 const deepLink = read('e2e/specs/graduation-v6-deep-link-workflows.spec.mjs')
@@ -164,27 +165,45 @@ contract('shared-graduation-scenarios', () => {
       `${name} must not own a duplicate final fixture`)
   }
   for (const marker of [
-    'ensureProposalApproved', 'ensureFinalPending', 'PROPOSAL_APPROVED',
-    'FINAL_PENDING', 'documentPages = 20', 'expectRenderedPdfCanvas'
+    'ensureProposalApproved', 'ensureFinalPending', 'ensureFinalApproved',
+    'PROPOSAL_APPROVED', 'FINAL_PENDING', 'documentPages = 20',
+    'expectRenderedPdfCanvas', "action: 'APPROVE'", 'expectedVersion:', 'fileVersionId:'
   ]) assert.ok(scenario.includes(marker), `scenario factory missing ${marker}`)
 })
 
-contract('module-local-real-role-actors', () => {
+contract('scenario-isolation-and-real-role-actors', () => {
   assert.doesNotMatch(e2eConfig, /E2E_GRADUATION_(?:REVIEWER|DEFENSE|SECRETARY)/,
     'shared E2E config must stay domain-neutral')
   for (const marker of [
     "reviewer: account('E2E_GRADUATION_REVIEWER'",
     "defenseExpert: account('E2E_GRADUATION_DEFENSE'",
     "defenseChair: account('E2E_GRADUATION_DEFENSE_B'",
-    "defenseSecretary: account('E2E_GRADUATION_SECRETARY'"
+    "defenseSecretary: account('E2E_GRADUATION_SECRETARY'",
+    "defenseStudent: account('E2E_GRADUATION_DEFENSE_STUDENT'"
   ]) assert.ok(graduationRoleAccounts.includes(marker), `role registry missing ${marker}`)
-  assert.ok(scenario.includes('ensureDefenseScoringContext'), 'scenario must own defense context')
+
+  for (const marker of [
+    'fixtureIdentity(rawRun, fixtureKey)',
+    'studentAccount = config.student',
+    "fixtureKey = ''",
+    'const studentNo = String(studentAccount?.username',
+    'studentAccount: { ...studentAccount }'
+  ]) assert.ok(apiFixture.includes(marker), `scenario-aware API fixture missing ${marker}`)
+
+  assert.ok(scenario.includes('ensureDefenseScoringContext(page, adminApi, fixture)'),
+    'scenario must own page-assisted defense context')
+  assert.ok(scenario.includes('ensureFinalApproved(page, adminApi, fixture)'),
+    'defense must advance through real final approval')
   assert.ok(scenario.includes('memberMentorIds: [Number(expert.id)]'), 'expert must occupy a real group seat')
   assert.ok(scenario.includes('did not read back as published'), 'published group must be server-readback')
+  assert.ok(deepLink.includes('studentAccount: graduationRoles.defenseStudent'),
+    'defense score must use a scenario-isolated student')
+  assert.ok(deepLink.includes("fixtureKey: 'defense-score'"),
+    'defense score must use an isolated batch namespace')
+  assert.ok(deepLink.includes('ensureDefenseScoringContext(page, adminApi, defenseFixture)'),
+    'score workflow must create the real role and final-approval graph')
   assert.ok(deepLink.includes('login.login(graduationRoles.defenseExpert)'),
     'score workflow must login as the dedicated expert')
-  assert.ok(deepLink.includes('ensureDefenseScoringContext(adminApi, fixture)'),
-    'score workflow must create the real role relation graph')
   assert.doesNotMatch(deepLink, /login\(config\.mentor\)[\s\S]{0,1200}formKey: 'scoreEntry'/,
     'mentor must not masquerade as a defense judge')
   assert.doesNotMatch(journeys, /const DEFENSE_EXPERT\s*=/,
@@ -200,6 +219,10 @@ contract('exact-miniapp-task-contract', () => {
     'exact task must assert the direct review header semantically')
   assert.equal(crossClient.includes("getByText('成果待批阅'"), false,
     'exact task must not wait for the bypassed list title')
+  assert.equal(crossClient.includes("page.locator('.rv__task')"), false,
+    'exact task must not depend on a nonexistent shell node')
+  assert.ok(crossClient.includes('window.localStorage.getItem(key)'),
+    'exact task must verify the persisted batch authority')
   for (const key of ['batchId', 'gdStudentId', 'recordId', 'materialVersion', 'fileVersionId']) {
     assert.ok(crossClient.includes(key), `exact task evidence missing ${key}`)
   }
@@ -218,7 +241,7 @@ contract('archive-readback-and-leaf-query', () => {
 })
 
 console.log(JSON.stringify({
-  contract: 'graduation-browser-architecture-v3',
+  contract: 'graduation-browser-architecture-v4',
   status: 'GREEN',
   passed: results.length,
   results
