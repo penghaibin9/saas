@@ -1,6 +1,6 @@
 <template>
-  <div class="gd-review-workspace" :class="{ 'is-narrow': narrow, 'is-submitting': submitting }" :aria-busy="submitting">
-    <aside class="gd-review-workspace__queue">
+  <div class="gd-review-workspace" :class="{ 'is-narrow': narrow, 'is-submitting': submitting }" :aria-busy="submitting ? 'true' : 'false'">
+    <aside class="gd-review-workspace__queue" :aria-label="queueTitle || (mode === 'proposal' ? '开题队列' : '成果队列')">
       <div class="gd-review-workspace__queue-head">
         <strong>{{ queueTitle || (mode === 'proposal' ? '开题队列' : '成果队列') }}</strong>
         <span>{{ currentIndex + 1 }} / {{ queue.length }}</span>
@@ -10,6 +10,7 @@
         :key="queueKey(item, index)"
         type="button"
         :class="{ 'is-active': index === currentIndex }"
+        :aria-current="index === currentIndex ? 'true' : undefined"
         :disabled="submitting"
         @click="emitUnlocked('select', item)"
       >
@@ -22,7 +23,7 @@
     </aside>
 
     <main class="gd-review-workspace__document">
-      <div class="gd-review-workspace__business-bar">
+      <div class="gd-review-workspace__business-bar" aria-live="polite">
         <div>
           <strong>{{ currentRecord?.studentName || '—' }}</strong>
           <span>{{ currentRecord?.topicTitle || '未填写课题' }}</span>
@@ -35,7 +36,7 @@
       <div v-if="submitting" class="gd-review-workspace__lock" role="status">
         正在提交当前审核结论；学生、记录、业务版本与文件版本已锁定。
       </div>
-      <div v-if="versionConflict" class="gd-review-workspace__conflict">
+      <div v-if="versionConflict" class="gd-review-workspace__conflict" role="alert">
         学生已提交新版本。当前阅读内容保持不动，批阅按钮已锁定；请切换最新版本后重新核验。
       </div>
       <AppDocumentViewer
@@ -56,10 +57,10 @@
         @select-version="emitUnlocked('select-version', $event)"
         @download="emitUnlocked('download', $event)"
       />
-      <div v-else class="gd-review-workspace__empty">当前记录没有可站内预览的安全文件版本。</div>
+      <div v-else class="gd-review-workspace__empty" role="status">当前记录没有可站内预览的安全文件版本。</div>
     </main>
 
-    <aside class="gd-review-workspace__review">
+    <aside class="gd-review-workspace__review" aria-label="当前材料批阅">
       <div class="gd-review-workspace__contract" data-testid="review-command-contract">
         <div><span>提交版本</span><b>{{ expectedVersion ?? '—' }}</b></div>
         <div><span>文件版本</span><b>{{ canonicalFileVersionId ?? '—' }}</b></div>
