@@ -16,8 +16,9 @@ const CARD_ALLOW = {
     /^scripts\/e2e\/(?:bootstrap-browser-runtime\.sh|run-browser-suite\.sh|build-graduation-gold-candidate\.py)$/,
     /^scripts\/check\/check-graduation-browser-architecture\.mjs$/,
     /^backend\/tests\/test_playwright_artifact_safety\.py$/,
-    /^e2e\/lib\/(?:graduation-role-accounts|graduation-scenario-fixture)\.mjs$/,
+    /^e2e\/lib\/(?:api-fixture|graduation-role-accounts|graduation-scenario-fixture)\.mjs$/,
     /^e2e\/specs\/(?:graduation-v6-deep-link-workflows|graduation-v6-thesis-cross-client|graduation-v8-golden-journeys|graduation-v9-final-review-visual)\.spec\.mjs$/,
+    /^frontend\/tests\/graduation\.v6-frontend-review\.contract\.test\.mjs$/,
   ],
   E2E_PREREQ: [
     /^e2e\/specs\/golden-rollout-material-evidence\.spec\.mjs$/,
