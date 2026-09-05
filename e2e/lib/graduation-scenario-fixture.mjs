@@ -421,6 +421,52 @@ function graduationStudentEntity(data) { return data?.student || data || null }
 function dateTimeAfterDays(days) {
   return new Date(Date.now() + Number(days || 0) * 86400000).toISOString().slice(0, 16).replace('T', ' ')
 }
+function dateAfterDays(days) {
+  return new Date(Date.now() + Number(days || 0) * 86400000).toISOString().slice(0, 10)
+}
+
+async function ensureDefenseBatchPhaseOpen(adminApi, fixture) {
+  const read = async () => {
+    const batch = await adminApi.get(`/graduation/batches/${fixture.batchId}`)
+    expect(String(batch?.id || '')).toBe(String(fixture.batchId))
+    expect(String(batch?.status || '').toUpperCase(), 'defense scoring requires a RUNNING batch').toBe('RUNNING')
+    return batch
+  }
+  const defenseStage = (batch) => (batch?.stages || []).find((row) =>
+    String(row?.code || row?.key || '').toUpperCase() === 'DEFENSE') || null
+  const today = dateAfterDays(0)
+  const phaseIsOpen = (row) => {
+    if (!row || row.enabled === false) return false
+    if (['CLOSED', 'DISABLED', 'LOCKED', 'PAUSED', 'DRAFT'].includes(String(row.status || '').toUpperCase())) return false
+    const start = String(row.startDate || row.start_at || row.startAt || '').slice(0, 10)
+    const end = String(row.endDate || row.end_at || row.endAt || '').slice(0, 10)
+    return (!start || start <= today) && (!end || end >= today)
+  }
+
+  let batch = await read()
+  if (!phaseIsOpen(defenseStage(batch))) {
+    // Use the production batch-stage API to place only this isolated defense-score
+    // fixture in a legitimate current defense window. Earlier student/final flows
+    // have already completed; do not bypass defense_policy or write the database.
+    await adminApi.post(`/graduation/batches/${fixture.batchId}/stages`, {
+      stages: [
+        { code: 'TOPIC', name: '选题', startDate: dateAfterDays(-180), endDate: dateAfterDays(-151) },
+        { code: 'PROPOSAL', name: '开题', startDate: dateAfterDays(-150), endDate: dateAfterDays(-121) },
+        { code: 'MIDTERM', name: '中期', startDate: dateAfterDays(-120), endDate: dateAfterDays(-91) },
+        { code: 'SUBMISSION', name: '成果', startDate: dateAfterDays(-90), endDate: dateAfterDays(-61) },
+        { code: 'PLAGIARISM', name: '查重', startDate: dateAfterDays(-60), endDate: dateAfterDays(-41) },
+        { code: 'REVIEW', name: '评阅', startDate: dateAfterDays(-40), endDate: dateAfterDays(-2) },
+        { code: 'DEFENSE', name: '答辩', startDate: dateAfterDays(-1), endDate: dateAfterDays(14) },
+        { code: 'GRADE', name: '成绩', startDate: dateAfterDays(15), endDate: dateAfterDays(45) }
+      ]
+    })
+    batch = await read()
+  }
+  const defense = defenseStage(batch)
+  expect(defense, 'the isolated scoring batch must contain a DEFENSE stage').not.toBeNull()
+  expect(phaseIsOpen(defense), 'the DEFENSE stage must read back as open before the judge submits a score').toBe(true)
+  return batch
+}
 
 async function ensureDefenseEligibleStudent(page, adminApi, fixture) {
   return (await ensureFinalApproved(page, adminApi, fixture)).student
@@ -470,6 +516,7 @@ export async function ensureDefenseScoringContext(page, adminApi, fixture) {
     secretary: secretary.teacherName || 'E2E学院秘书', secretaryMentorId: Number(secretary.id)
   }, { batchId: fixture.batchId })
   let student = await ensureDefenseEligibleStudent(page, adminApi, fixture)
+  await ensureDefenseBatchPhaseOpen(adminApi, fixture)
   if (String(student?.defenseGroupId || '') !== String(group.id)) {
     await adminApi.post(`/graduation/defense-groups/${group.id}/assign`, { studentIds: [String(fixture.gdStudentId)] }, { batchId: fixture.batchId })
     student = graduationStudentEntity(await adminApi.get(`/graduation/gd-students/${fixture.gdStudentId}`))
