@@ -4,10 +4,13 @@ import test from 'node:test'
 import { getVisibleNavPlan } from '../src/config/navPlan.js'
 import {
   countContextualWorkspaceDeepLinks,
-  projectStudentAffairsWorkspaceDeepLinks
+  projectStudentAffairsWorkspaceDeepLinks,
+  searchStudentAffairsWorkspaceDeepLinks
 } from '../src/config/studentAffairsWorkspaceDeepLinks.js'
 
 const basePortal = fs.readFileSync(new URL('../src/layouts/BasePortalLayout.vue', import.meta.url), 'utf8')
+const studentAffairsPortal = fs.readFileSync(new URL('../src/modules/studentAffairs/components/StudentAffairsPortalLayout.js', import.meta.url), 'utf8')
+const adminLayout = fs.readFileSync(new URL('../src/modules/studentAffairs/views/AdminStudentAffairsLayout.vue', import.meta.url), 'utf8')
 const riskView = fs.readFileSync(new URL('../src/modules/studentAffairs/views/StudentAffairsRiskListView.vue', import.meta.url), 'utf8')
 
 function project(patterns = ['*']) {
@@ -33,6 +36,7 @@ test('contextual projection exposes real D links without exposing H details or c
   assert.ok(contextual.every((leaf) => !['DETAIL', 'COMPAT'].includes(leaf.entryType)))
   assert.equal(contextual.some((leaf) => leaf.label === '学生360详情'), false)
   assert.equal(contextual.some((leaf) => leaf.label === '旧绿色通道入口'), false)
+  assert.equal(contextual.some((leaf) => leaf.path === '/admin/campus-service/grants'), false)
 })
 
 test('student, risk, aid and orientation workspaces gain their existing low-frequency real pages', () => {
@@ -47,12 +51,28 @@ test('student, risk, aid and orientation workspaces gain their existing low-freq
   )
   assert.deepEqual(
     workspace(group, 'sa-aid').children.filter((leaf) => leaf.contextualDeepLink).map((leaf) => leaf.label),
-    ['认定批次', '困难认定异议', '困难认定统计', '资助批次', '资助公示申诉', '助学金管理', '资助统计']
+    ['认定批次', '困难认定异议', '困难认定统计', '资助批次', '资助公示申诉', '资助统计']
   )
   assert.deepEqual(
     workspace(group, 'sa-orientation').children.filter((leaf) => leaf.contextualDeepLink).map((leaf) => leaf.label),
     ['报到流程配置', '现场报到点', '新生数据', '新生信息核验', '缴费与绿色通道', '材料审核', '宿舍预分配', '宿舍入住', '未报到学生', '迎新通知', '迎新归档']
   )
+})
+
+test('search-only D links are permission-scoped and compatibility redirects remain hidden', () => {
+  assert.deepEqual(
+    searchStudentAffairsWorkspaceDeepLinks('报到流程配置', ['studentAffairs.orientation.view'])
+      .map(({ label, path }) => ({ label, path })),
+    [{ label: '报到流程配置', path: '/admin/orientation/flow-config' }]
+  )
+  assert.deepEqual(
+    searchStudentAffairsWorkspaceDeepLinks('资助批次', ['studentAffairs.funding.view'])
+      .map(({ label, path }) => ({ label, path })),
+    [{ label: '资助批次', path: '/admin/student-affairs/funding/batches' }]
+  )
+  assert.equal(searchStudentAffairsWorkspaceDeepLinks('资助批次', ['studentAffairs.aid.view']).length, 0)
+  assert.equal(searchStudentAffairsWorkspaceDeepLinks('助学金管理', ['*']).length, 0)
+  assert.equal(searchStudentAffairsWorkspaceDeepLinks('报到流程配置', null).length, 0)
 })
 
 test('deep-link permissions remain fail-closed and never modify the cached visible tree', () => {
@@ -83,12 +103,15 @@ test('contextual entries retain business-stage grouping and explicit type badges
   assert.equal(archive.badge, '归档')
 })
 
-test('projection wiring and visual overrides are present exactly once', () => {
+test('projection and search wiring reuse the public shell without mutating it', () => {
   const baseImport = "import { projectStudentAffairsWorkspaceDeepLinks } from '@/config/studentAffairsWorkspaceDeepLinks'"
   const riskImport = "import { resolveRiskQueueIntent } from '@/modules/studentAffairs/utils/riskRouteQueueIntent'"
   assert.equal(basePortal.split(baseImport).length - 1, 1)
   assert.equal(basePortal.split('return projectStudentAffairsWorkspaceDeepLinks(group, permissionPatterns)').length - 1, 1)
   assert.equal(basePortal.split('/* V6 学工工作区：一级轨与当前工作区的低频真实三级页。 */').length - 1, 1)
+  assert.equal(studentAffairsPortal.split('searchStudentAffairsWorkspaceDeepLinks(query, permissionPatterns)').length - 1, 1)
+  assert.equal(studentAffairsPortal.split('const baseResults = baseFnResults.call(this)').length - 1, 1)
+  assert.equal(adminLayout.split("import BasePortalLayout from '@/modules/studentAffairs/components/StudentAffairsPortalLayout.js'").length - 1, 1)
   assert.equal(riskView.split(riskImport).length - 1, 1)
   assert.equal(riskView.split('this.activeQueue = resolveRiskQueueIntent(q)').length - 1, 1)
 })

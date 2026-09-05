@@ -3,9 +3,41 @@ import { config } from '../lib/config.mjs'
 import { StaffLoginPage } from '../pages/login.page.mjs'
 
 const ROUTE = '/admin/student-affairs/dashboard'
+const SEMANTIC_COUNTS = Object.freeze({
+  pendingTodo: 14,
+  pendingLeave: 7,
+  overdueLeave: 2,
+  pendingAid: 5,
+  pendingFunding: 3,
+  pendingDiscipline: 1,
+  riskStudents: 9
+})
+
+async function installSemanticColorFixture(page) {
+  // Test-only mixed counts: keep the real identity, permission and HTTP path, but guarantee
+  // that danger/warning/primary/neutral semantic states are all exercised even on an empty tenant.
+  await page.route(/\/api\/v1\/student-affairs\/dashboard(?:\?|$)/, async (route) => {
+    const response = await route.fetch()
+    const envelope = await response.json()
+    expect(envelope.code).toBe(0)
+    for (const card of envelope.data.summaryCards || []) {
+      if (Object.prototype.hasOwnProperty.call(SEMANTIC_COUNTS, card.key)) {
+        card.value = SEMANTIC_COUNTS[card.key]
+      }
+    }
+    envelope.data.riskSummary = {
+      ...(envelope.data.riskSummary || {}),
+      highCount: 4,
+      criticalCount: 1,
+      topRiskLevel: 'CRITICAL'
+    }
+    await route.fulfill({ response, json: envelope })
+  })
+}
 
 async function openDashboard(page, viewport) {
   await page.setViewportSize(viewport)
+  await installSemanticColorFixture(page)
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
   await page.goto(`${config.staffBaseUrl}${ROUTE}`)
   await expect(page.locator('.sa-v6-dashboard')).toBeVisible()

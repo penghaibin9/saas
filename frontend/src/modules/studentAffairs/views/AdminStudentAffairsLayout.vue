@@ -33,7 +33,7 @@
  * 禁止在此硬编码业务菜单。品牌名 / 角色 / 数据范围来自 studentAffairsApi.getContext()，ctx 下发给子路由。
  * W5：看板/风险/请假按权限展示服务器 SLA 真值；责任台账页额外挂临时代班到期幂等同步兜底，不改业务菜单。
  */
-import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
+import BasePortalLayout from '@/modules/studentAffairs/components/StudentAffairsPortalLayout.js'
 import { LoadingState, ErrorState } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { studentAffairsPickerAdapters } from '@/modules/studentAffairs/pickerAdapters'

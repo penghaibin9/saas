@@ -309,7 +309,7 @@
 }
 #app .sa-v6-page-shell .sa-v6-queue-row {
   min-height: var(--sa-v6-row-h);
-  grid-template-columns: 40px minmax(0, 1fr) 68px 92px;
+  grid-template-columns: 40px minmax(0, 1fr) 90px 92px;
   gap: 9px;
   padding: 7px 8px;
   border: 1px solid var(--border-light);
@@ -344,12 +344,15 @@
 }
 #app .sa-v6-page-shell .sa-v6-queue-row__count {
   display: block;
+  min-width: 0;
   text-align: right;
 }
 #app .sa-v6-page-shell .sa-v6-queue-row__count strong {
   display: block;
   font-size: 22px;
   line-height: 25px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 #app .sa-v6-page-shell .sa-v6-queue-row__count small {
   display: block;
@@ -411,7 +414,7 @@
     padding-inline: 10px;
   }
   #app .sa-v6-page-shell .sa-v6-queue-row {
-    grid-template-columns: 38px minmax(0, 1fr) 62px 86px;
+    grid-template-columns: 38px minmax(0, 1fr) 88px 86px;
   }
 }
 
