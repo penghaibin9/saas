@@ -120,6 +120,40 @@ export async function ensureProposalApproved(page, fixture, { suffix = 'scenario
   return student
 }
 
+/** Enter MIDTERM once through the administrator's existing, audited UI action. */
+async function ensureMidtermStage(page, fixture) {
+  const adminApi = await loginApi(config.sandboxAdmin)
+  const read = async () => {
+    const student = graduationStudentEntity(await adminApi.get(`/graduation/gd-students/${fixture.gdStudentId}`))
+    expect(String(student?.id || ''), 'stage transition must target the exact student').toBe(String(fixture.gdStudentId))
+    expect(String(student?.batchId || ''), 'stage transition must remain within the selected batch').toBe(String(fixture.batchId))
+    return student
+  }
+  const current = await read()
+  if (['MIDTERM', 'FINAL_CHECK'].includes(current.stage)) return current
+  expect(current.stage, 'only GUIDING may advance to MIDTERM; do not skip or rewind business stages').toBe('GUIDING')
+
+  await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+  const query = new URLSearchParams({ batchId: fixture.batchId, source: 'midterm-preflight' })
+  await page.goto(`${config.staffBaseUrl}/admin/graduation/students/${fixture.gdStudentId}?${query}`)
+  await dismissGraduationGuide(page)
+  await expect(page.locator('.gsd-summary')).toContainText(current.name)
+  await expect(page.locator('.gsd-page')).toContainText(fixture.topicTitle)
+  await page.getByRole('button', { name: '推进节点', exact: true }).click()
+  const responsePromise = page.waitForResponse((response) =>
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname.endsWith(`/graduation/gd-students/${fixture.gdStudentId}/stage`)
+  )
+  await page.getByRole('button', { name: '推进', exact: true }).click()
+  const response = await responsePromise
+  expect(response.request().postDataJSON()?.action).toBe('ADVANCE')
+  await expectGraduationBusinessSuccess(response, '管理员 PC 将已通过开题的学生推进到中期')
+  await expect.poll(async () => (await read()).stage, {
+    message: 'administrator stage transition must persist before the mentor checks midterm', timeout: 30_000
+  }).toBe('MIDTERM')
+  return read()
+}
+
 /** Complete the existing teacher-PC midterm form; do not seed an approved DB row. */
 export async function ensureMidtermApproved(page, fixture) {
   const mentorApi = await loginApi(config.mentor)
@@ -130,6 +164,7 @@ export async function ensureMidtermApproved(page, fixture) {
   if (['RECTIFYING', 'RECTIFY_SUBMITTED', 'CHECKED_FAIL'].includes(String(current?.status || ''))) {
     throw new Error(`Midterm ${current.status} requires its student rectification/review journey; refusing to overwrite it.`)
   }
+  await ensureMidtermStage(page, fixture)
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.mentor)
   const returnTo = `/admin/graduation/process?panel=midterm&studentId=${fixture.gdStudentId}&batchId=${fixture.batchId}`
   const query = new URLSearchParams({ ...params, studentId: fixture.gdStudentId, panel: 'midterm', returnTo })
