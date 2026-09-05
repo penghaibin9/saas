@@ -38,9 +38,6 @@ function assertLibraryIdentity(library, fixture, identity) {
 }
 
 function assertMobileIdentity(mobileDetail, fixture, identity, library) {
-  // The mobile review DTO deliberately omits gdStudentId, projectId and
-  // studentNo. Prove ownership through its materialId -> authorised student
-  // library relation instead of inventing fields or dropping the identity gate.
   const current = assertLibraryIdentity(library, fixture, identity)
   expect(String(mobileDetail?.id || '')).toBe(identity.recordId)
   expect(String(mobileDetail?.materialId || '')).toBe(identity.materialId)
@@ -107,7 +104,7 @@ test.describe.serial('V6 · one real thesis across student PC, teacher PC and te
     expect(String(pcDetail.id)).toBe(recordId)
     expect(String(pcDetail.materialVersion)).toBe(materialVersion)
     expect(String(pcDetail.fileVersionId)).toBe(fileVersionId)
-    const readLibrary = () => mentorApi.get(`/graduation/material-center/students/${fixture.gdStudentId}`, {
+    const readLibrary = () => mentorApi.get(`/graduation/material-center/students/${fixture.gdStudentId}/library`, {
       ...params, includeHistory: true
     })
     const library = await readLibrary()
