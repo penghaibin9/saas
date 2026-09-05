@@ -124,9 +124,16 @@ export default {
   watch: {
     '$route.query.batchId': {
       immediate: true,
-      handler(id) {
+      async handler(id) {
         const store = useGraduationBatchStore()
-        store.ensureLoaded({ batchIdFromUrl: id || '', force: !store.initialized })
+        await store.ensureLoaded({ batchIdFromUrl: id || '', force: !store.initialized })
+        // BasePortalLayout owns generic leaf navigation and may complete its
+        // path-only push after this module has emitted a batch-aware target.
+        // Graduation owns the selected batch, so repair only a missing query
+        // from the store; never replace an explicit batchId from the URL.
+        if (!id && this.$route.path.startsWith('/admin/graduation')) {
+          await this.syncBatchToUrl()
+        }
       }
     },
     '$route.query.panel': {
@@ -165,13 +172,15 @@ export default {
       if (!this.permissionReady) this.contextError = res.data.permissionError || '真实权限未加载成功，写操作已禁用'
       const store = useGraduationBatchStore()
       await store.ensureLoaded({ batchIdFromUrl: this.$route.query.batchId || '', force: true })
-      this.syncBatchToUrl()
+      await this.syncBatchToUrl()
     },
-    syncBatchToUrl() {
+    async syncBatchToUrl() {
       const store = useGraduationBatchStore()
       const cur = this.$route.query.batchId ? String(this.$route.query.batchId) : ''
       const next = store.selectedBatchId || ''
-      if (next && next !== cur) router.replace({ query: { ...this.$route.query, batchId: next } }).catch(() => {})
+      if (next && next !== cur) {
+        await router.replace({ query: { ...this.$route.query, batchId: next } }).catch(() => {})
+      }
     },
     onMenuSelect(item) {
       if (item?.path && item.path !== this.$route.fullPath.split('#')[0]) {

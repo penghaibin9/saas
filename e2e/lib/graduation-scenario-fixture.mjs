@@ -12,6 +12,7 @@ const BACKEND_DIR = fileURLToPath(new URL('../../backend/', import.meta.url))
 const PROPOSAL_APPROVED = /已通过|书面开题通过/
 const PROPOSAL_PENDING = /待.*审|已提交|审核中/
 const FINAL_PENDING = /待.*审|已提交|审核中/
+const DEFENSE_ELIGIBLE_STAGES = new Set(['FINAL_CHECK', 'DEFENSE', 'COMPLETED'])
 
 function serializePdfObjects(objects) {
   let body = '%PDF-1.4\n%YUEKE E2E GRADUATION SCENARIO\n'
@@ -213,6 +214,30 @@ function dateTimeAfterDays(days) {
   return date.toISOString().slice(0, 16).replace('T', ' ')
 }
 
+async function ensureDefenseEligibleStudent(adminApi, fixture) {
+  const read = async () => graduationStudentEntity(
+    await adminApi.get(`/graduation/gd-students/${fixture.gdStudentId}`)
+  )
+  let student = await read()
+  if (!DEFENSE_ELIGIBLE_STAGES.has(String(student?.stage || '').toUpperCase())) {
+    execFileSync(
+      'python',
+      ['scripts/e2e_seed_graduation_final_prerequisite.py', fixture.gdStudentId],
+      {
+        cwd: BACKEND_DIR,
+        env: { ...process.env, PYTHONPATH: BACKEND_DIR },
+        encoding: 'utf8'
+      }
+    )
+    student = await read()
+  }
+  const stage = String(student?.stage || '').toUpperCase()
+  if (!DEFENSE_ELIGIBLE_STAGES.has(stage)) {
+    throw new Error(`Graduation student ${fixture.gdStudentId} did not read back in a defense-eligible stage; got ${stage || 'EMPTY'}.`)
+  }
+  return student
+}
+
 async function ensureScenarioMentor(adminApi, account, {
   teacherName,
   title = '副教授',
@@ -260,9 +285,8 @@ async function ensureScenarioMentor(adminApi, account, {
 
 /**
  * Build one stable defense context for the dedicated judge account. The helper
- * owns the full relation graph: authenticated account -> gd mentor -> published
- * defense group -> exact graduation student. Tests must not use a mentor/admin
- * account merely because it can render the page shell.
+ * owns the complete relation graph and advances only the isolated E2E process
+ * prerequisite when server truth says the student is not defense-eligible.
  */
 export async function ensureDefenseScoringContext(adminApi, fixture) {
   const expert = await ensureScenarioMentor(adminApi, graduationRoles.defenseExpert, {
@@ -302,7 +326,7 @@ export async function ensureDefenseScoringContext(adminApi, fixture) {
     }, { batchId: fixture.batchId })
   }
 
-  let student = graduationStudentEntity(await adminApi.get(`/graduation/gd-students/${fixture.gdStudentId}`))
+  let student = await ensureDefenseEligibleStudent(adminApi, fixture)
   if (String(student?.defenseGroupId || '') !== String(group.id)) {
     await adminApi.post(`/graduation/defense-groups/${group.id}/assign`, {
       studentIds: [String(fixture.gdStudentId)]
