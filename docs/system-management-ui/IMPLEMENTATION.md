@@ -47,3 +47,31 @@ node --test tests/systemAdmin.governance.test.mjs tests/system-role-scope-target
 本记录不将组件夹具通过换算为真实身份、权限、数据库和公共壳视觉验收。原前端完整构建、School IAM 新增真实创建/保存/成员/审计回读流程、真实多角色和上游分支集成，以精确提交的后续运行结果为准。19个页面族未全部重构；账号、导入、组织、品牌、学期、任务、安全变更等后续页面不得从此记录标为完成。
 
 PR 保持 Draft，不自动合并 main、不部署。后续继续在原分支小批串行提交与复审，不新开同模块分支。
+
+## 第二批续工：角色真实流程收口与师生导入工作区
+
+本批起点为 `3c64a12`。`00f0407dbda19911728d2c5a98b860b66b184a6e` 已为角色创建表单的来源模板与默认范围补上稳定可访问名称；没有删除或放宽原浏览器断言。
+
+精确 `00f0407` 的 School IAM 工作流 `34043291564` 已成功，包含新增 UI 创建角色、保存权限、追加成员、刷新回读、保留原角色及审计验证，以及原安全变更与角色投影测试。该成功不能推算为下面新增导入工作区已完成真实 Excel→worker→MySQL 的整链验收。
+
+### P04/P05 逐控件接线
+
+教师、学生两个既有 route entry 均使用 `IdentityImportWorkspace.vue`，仅固定 kind，不改正式路由、权限定义、API客户端、后端或worker。原共享 ImportDialog 保留供其他页面使用；此处改为页内五步办理。
+
+| 控件 / 状态 | 生产调用与约束 |
+| --- | --- |
+| 下载标准模板 | 原 `systemApi.downloadTeacherImportTemplate` / `downloadStudentImportTemplate`，不在浏览器自建模板 |
+| 上传名单 | 原 `dataExchangeApi.validateIdentity(kind, File)`；同一 File 对象显式重试继续由原API的WeakMap复用上传幂等标识 |
+| 扫描与预检 | 原 `waitIdentityValidation` 纯GET轮询；处理态计数显示未取得；离开只Abort本地轮询，不取消服务器任务 |
+| 刷新和任务深链 | 当前导入页 `?jobId=` 纯GET恢复；校验数字ID、IMPORT/SYSTEM、IDENTITY_TEACHER/STUDENT与服务器版本；错误类型任务不显示 |
+| 错误明细 | 原 `getImportErrors`，20条分页；只投影行号/字段/消息，不渲染raw snapshot；读失败独立错误，不等于零错误 |
+| 核对并继续 | 重新GET，冻结任务ID、文件ID、版本、身份、状态与数量摘要；填写确认勾选不自动代勾 |
+| 确认导入 | 再次GET并比较核对摘要，仅调用原 `confirmImport(jobId, current.version)`；不提交rows/batchNo/tenantId；状态或版本变化重新核对 |
+| 完成回执 | POST成功后再次GET；确认结果未知时阻止再次POST；只展示后台真实分类计数，缺失不补0 |
+| 初始凭据 | 本页不存储/截图/自动下载凭据；沿原任务中心受控下载，不能将receiptFileId当exportJobId |
+
+现有确认服务校验：`data_exchange_confirm_service.confirm_identity_import_job` → `data_exchange_confirm_legacy.confirm_import_job` → `_finish`；确认后持久状态为SUCCEEDED。结果计数沿 `school_onboarding_service` 的 `entities.teachers/students/studentAccounts` 与 `summary.studentsReused/accountsSkipped`，不按原型样例推导。
+
+第二批本地：新增29项导入状态/请求生命周期/生产SFC测试；与已有测试合跑68项通过，修改文件ESLint通过。恢复快照全量Node为817项通过，但不是完整最新main的所有业务文件，不能代替精确HEAD CI。新增12项Chromium编译组件夹具检查通过，含1440/1280/768、教师/学生请求形状、扫描、错误分页、版本变化、只读与结果未知。
+
+保留待验：精确新HEAD构建与School IAM回归；真实师生XLSX上传、扫描worker、确认持久化与凭据票据下载；仅viewOwn身份的父布局/路由权限仍需专门联调，不能仅凭组件夹具宣布全站已兼容。账号目录、组织、任务中心等剩余页面继续按批准稿施工。
