@@ -15,9 +15,9 @@
         <label class="sw-field">角色名称<input v-model="form.name" class="sw-input" maxlength="100" aria-label="角色名称" :disabled="busy" /></label>
         <label class="sw-field">角色编码<input v-model="form.code" class="sw-input" maxlength="50" :readonly="!!form.id" :disabled="busy" placeholder="留空由系统生成" /></label>
         <template v-if="!form.id">
-          <label class="sw-field">已发布来源模板<select v-model="form.sourceTemplateCode" class="sw-input" :disabled="busy || sourceLoading"><option value="">{{ sourceLoading ? '正在读取模板…' : '请选择模板' }}</option>
+          <label class="sw-field">已发布来源模板<select v-model="form.sourceTemplateCode" aria-label="已发布来源模板" class="sw-input" :disabled="busy || sourceLoading"><option value="">{{ sourceLoading ? '正在读取模板…' : '请选择模板' }}</option>
             <option v-for="item in sourceTemplates" :key="item.id" :value="item.templateCode">{{ item.templateName || item.templateCode }} · 第 {{ item.templateVersion }} 版</option></select></label>
-          <label class="sw-field">默认数据范围<select v-model="form.scopeCode" class="sw-input" :disabled="busy"><option v-for="item in scopeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
+          <label class="sw-field">默认数据范围<select v-model="form.scopeCode" aria-label="默认数据范围" class="sw-input" :disabled="busy"><option v-for="item in scopeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
         </template>
       </div>
       <p v-if="formError" class="sw-alert sw-alert--error" role="alert">{{ formError }}</p>
