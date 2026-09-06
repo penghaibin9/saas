@@ -5,7 +5,9 @@ on:
     branches: [codex/system-management-ui-20260906]
     paths:
       - '.github/workflows/system-ui-contract-validation.yml'
-      - 'docs/system-management-ui/baseline.json'
+      - 'docs/system-management-ui/**'
+      - 'frontend/src/modules/system/**'
+      - 'frontend/tests/system-ui*'
   workflow_dispatch:
 
 permissions:
@@ -16,32 +18,68 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  freeze-source:
-    name: Freeze exact source for system UI implementation
+  frontend:
+    name: Exact-head system UI tests and original frontend build
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
-      - name: Record exact source and frozen backend bundle
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Lock source identity and backend boundary
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/system-ui-source"
+          mkdir -p artifacts/system-ui
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git rev-parse HEAD > "$RUNNER_TEMP/system-ui-source/HEAD.txt"
-          git ls-tree -r HEAD > "$RUNNER_TEMP/system-ui-source/git-tree.txt"
-          git cat-file commit HEAD > "$RUNNER_TEMP/system-ui-source/commit.txt"
-          sha256sum backend/app/modules/system_admin/routers/system_bundle.py > "$RUNNER_TEMP/system-ui-source/frozen-bundle.sha256"
-          git archive --format=tar.gz --output="$RUNNER_TEMP/system-ui-source/source.tar.gz" HEAD
-          sha256sum "$RUNNER_TEMP/system-ui-source/source.tar.gz" > "$RUNNER_TEMP/system-ui-source/archive.sha256"
-          printf 'Source captured at `%s`. No database, production credentials, migrations, or deployment were used.\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          git rev-parse HEAD > artifacts/system-ui/HEAD.txt
+          sha256sum frontend/package-lock.json > artifacts/system-ui/frontend-lock.sha256
+          echo '853423ae684e5f2dcc6089c4ef545d72ede6cc54f77b8b7344bedfd01b83fb59  backend/app/modules/system_admin/routers/system_bundle.py' | sha256sum --check
+      - name: Install exact locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: Focused system contracts
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t EXTRA < <(find tests -maxdepth 1 -name 'system-ui*.test.mjs' -print | sort)
+          node --test tests/systemAdmin.governance.test.mjs tests/system-role-scope-target-preservation.test.mjs tests/system-user-role-assignment-contract.test.mjs "${EXTRA[@]}" 2>&1 | tee ../artifacts/system-ui/frontend-tests.log
+      - name: Build the original frontend
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build 2>&1 | tee ../artifacts/system-ui/frontend-build.log
+      - name: Prepare isolated tooling for browser verification
+        if: ${{ always() && contains(github.event.head_commit.message, '[system-ui-tooling]') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d frontend/node_modules
+          mkdir -p "$RUNNER_TEMP/system-ui-tooling"
+          tar -czf "$RUNNER_TEMP/system-ui-tooling/frontend-node-modules.tar.gz" -C frontend node_modules
+          cp frontend/package-lock.json "$RUNNER_TEMP/system-ui-tooling/frontend-package-lock.json"
+          node --version > "$RUNNER_TEMP/system-ui-tooling/node-version.txt"
+          sha256sum "$RUNNER_TEMP/system-ui-tooling/frontend-node-modules.tar.gz" > "$RUNNER_TEMP/system-ui-tooling/SHA256SUMS.txt"
       - uses: actions/upload-artifact@v4
+        if: ${{ always() && contains(github.event.head_commit.message, '[system-ui-tooling]') }}
         with:
-          name: system-ui-exact-source-${{ github.sha }}
-          path: ${{ runner.temp }}/system-ui-source/
+          name: system-ui-locked-tooling-${{ github.sha }}
+          path: ${{ runner.temp }}/system-ui-tooling/
           retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: system-ui-validation-${{ github.sha }}
+          path: artifacts/system-ui/
+          retention-days: 7
           if-no-files-found: error
