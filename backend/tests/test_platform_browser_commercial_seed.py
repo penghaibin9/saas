@@ -37,7 +37,7 @@ def _safety_guard():
     {"DATABASE_URL": "mysql+pymysql://u:p@127.0.0.1/staging_test"},
 ])
 def test_seed_rejects_unsafe_targets(change, monkeypatch):
-    env = {"APP_ENV": "test", "DEPLOYMENT_MODE": "test", "E2E_ALLOW_DESTRUCTIVE_TESTS": "true",
+    env = {"APP_ENV": "test", "DEPLOYMENT_MODE": "local", "E2E_ALLOW_DESTRUCTIVE_TESTS": "true",
            "DATABASE_URL": "mysql+pymysql://u:p@127.0.0.1/e2e_test"}
     for key, value in {**env, **change}.items():
         monkeypatch.setenv(key, value)
@@ -61,7 +61,9 @@ def test_browser_seed_activates_real_orders_and_reuses_them_in_fresh_process(db_
     from app.services import commercial_entitlement_authority_service as commercial
 
     url = get_engine().url.render_as_string(hide_password=False)
-    env = {**os.environ, "APP_ENV": "test", "DEPLOYMENT_MODE": "test", "DB_ENABLED": "true",
+    # APP_ENV describes testing; DEPLOYMENT_MODE describes the local topology.
+    # Keep the real Settings validation active in the child process.
+    env = {**os.environ, "APP_ENV": "test", "DEPLOYMENT_MODE": "local", "DB_ENABLED": "true",
            "DATABASE_URL": url, "TEST_DATABASE_URL": url, "E2E_ALLOW_DESTRUCTIVE_TESTS": "true"}
 
     def run_seed():

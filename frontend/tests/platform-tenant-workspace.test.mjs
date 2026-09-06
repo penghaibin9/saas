@@ -23,7 +23,8 @@ test('detail and return preserve BIGINT identity, source picker, query and page'
 })
 test('return route rejects external or unrelated destinations', () => {
   for (const value of ['//evil.example', 'https://evil.example', '/admin/system', '/admin/platform/tenants/3']) assert.equal(w.returnLocation({returnTo:value}).path, '/admin/platform/tenants')
-  assert.equal(w.tenantLocation(1000000000000000003), null)
+  // Deliberately simulate a caller coercing a BIGINT; keep the source literal exact.
+  assert.equal(w.tenantLocation(Number('1000000000000000003')), null)
   assert.equal(w.tenantLocation('../3'), null)
 })
 test('unread or incomplete list is never an empty success', () => {
