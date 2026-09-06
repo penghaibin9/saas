@@ -146,12 +146,12 @@ jobs:
             echo "定时任务：执行 backend 全量 pytest"
             timeout 80m pytest -q -p no:warnings --durations=30
           else
-            # PR 的全量回归唯一由 Main canonical release gate 的 4 个
-            # deterministic shards 承担；CI 保持 change-aware，避免同一
-            # HEAD 在单 runner 上重复全量并被 90m job ceiling 取消。
+            # PR 的全量回归由 Main canonical release gate 的 12 个 deterministic shards
+            # 承担；CI 保持 change-aware。超大差异仍必须原样执行被选中的测试文件，但给到
+            # 与定时全量一致的 80m pytest 预算，并在 90m job ceiling 前保留安装/收尾余量。
             TARGETS="${{ steps.select.outputs.targets }}"
             echo "PR/push 变更感知：$TARGETS"
-            timeout 60m pytest $TARGETS -q -p no:warnings --durations=20
+            timeout 80m pytest $TARGETS -q -p no:warnings --durations=20
           fi
 
   frontend:
