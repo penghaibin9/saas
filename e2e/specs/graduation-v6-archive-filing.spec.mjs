@@ -84,7 +84,7 @@ async function ensureGuidance(adminApi, fixture) {
     method: 'OFFLINE',
     content: marker,
     issues: '已核对论文完善、答辩准备与归档材料要求'
-  })
+  }, { batchId: fixture.batchId })
   expect(String(created.gdStudentId)).toBe(String(fixture.gdStudentId))
   expect(created.content).toBe(marker)
 
