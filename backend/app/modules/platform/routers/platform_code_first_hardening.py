@@ -78,14 +78,14 @@ def governed_workflow_put(
     )
 
 
-@_routes.post("/tenants/{tenant_id}/transitions/{action}", summary="租户生命周期权威变更（商业旁路受控）")
+@_routes.post("/tenants/{tenant_id}/transitions/{action}", summary="租户生命周期权威变更（commit/cache 分离回执）")
 def governed_tenant_transition(
     tenant_id: int,
     action: str,
     body: dict = Body(...),
     user=Depends(_canonical.require_platform_capability("commercial.manage")),
 ):
-    from app.services.tenant_effective_state_service import apply_transition
+    from app.services.platform_transition_receipt_service import apply_transition_with_receipt
 
     normalized = str(action or "").strip().lower()
     payload = dict(body or {})
@@ -108,7 +108,7 @@ def governed_tenant_transition(
         "change-package": "PLATFORM_TENANT_CHANGE_PACKAGE",
         "quota": "PLATFORM_TENANT_QUOTA",
     }
-    out = apply_transition(
+    out = apply_transition_with_receipt(
         int(tenant_id),
         normalized,
         reason=payload.get("reason"),
@@ -117,6 +117,16 @@ def governed_tenant_transition(
         audit_action=audit_actions.get(normalized),
     )
     return success(out)
+
+
+@_routes.post("/tenants/{tenant_id}/auth-cache/recover", summary="仅恢复租户权限缓存，不重放业务变更")
+def governed_tenant_auth_cache_recover(
+    tenant_id: int,
+    user=Depends(_canonical.require_platform_capability("operations.manage")),
+):
+    from app.services.platform_transition_receipt_service import recover_tenant_auth_cache
+
+    return success(recover_tenant_auth_cache(int(tenant_id)))
 
 
 def _route_key(route) -> tuple[str, str]:
